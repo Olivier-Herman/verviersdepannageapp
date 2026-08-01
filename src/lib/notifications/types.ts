@@ -132,6 +132,24 @@ export const NOTIFICATION_TYPES: readonly NotificationType[] = [
     applicableRoles: ['driver', 'dispatcher', 'admin', 'superadmin'],
     defaultEnabled:  true,
   },
+
+  // ── Congés (RH) ──────────────────────────────────────────────────────
+  {
+    key:             'conge_requested',
+    label:           'Demande de congé',
+    description:     'Un travailleur a demandé un congé → à valider.',
+    category:        'admin',
+    applicableRoles: ['admin', 'superadmin'],
+    defaultEnabled:  true,
+  },
+  {
+    key:             'conge_decided',
+    label:           'Congé traité',
+    description:     'Ta demande de congé a été approuvée ou refusée.',
+    category:        'driver',
+    applicableRoles: ['driver', 'dispatcher', 'admin', 'superadmin'],
+    defaultEnabled:  true,
+  },
 ] as const
 
 export const NOTIFICATION_CATEGORY_LABELS: Record<NotificationCategory, string> = {

@@ -14,7 +14,7 @@ export default function CongesManagerClient({ userRole, userName, userEmail, use
 }) {
   const [reqs, setReqs] = useState<any[]>([])
   const [loading, setLd] = useState(true)
-  const [modal, setModal] = useState<{ id: string; decision: 'approve' | 'refuse'; worker: string } | null>(null)
+  const [modal, setModal] = useState<{ id: string; decision: 'approve' | 'refuse' | 'cancel'; worker: string } | null>(null)
   const [pin, setPin] = useState('')
   const [note, setNote] = useState('')
   const [busy, setBusy] = useState(false)
@@ -26,12 +26,14 @@ export default function CongesManagerClient({ userRole, userName, userEmail, use
   }, [])
   useEffect(() => { load() }, [load])
 
-  const decide = async () => {
+  const submit = async () => {
     if (!modal) return
     setBusy(true)
     try {
-      const r = await fetch('/api/conges', { method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'decide', id: modal.id, decision: modal.decision, pin, note }) })
+      const payload = modal.decision === 'cancel'
+        ? { action: 'cancel', id: modal.id, pin }
+        : { action: 'decide', id: modal.id, decision: modal.decision, pin, note }
+      const r = await fetch('/api/conges', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
       const j = await r.json()
       if (j.error) { alert(j.error); return }
       if (modal.decision === 'approve' && j.applied?.missing?.length)
@@ -69,15 +71,17 @@ export default function CongesManagerClient({ userRole, userName, userEmail, use
               <div className="flex items-center gap-2 flex-wrap">
                 <span className="font-semibold text-ink text-sm">{r.worker}</span>
                 <span className="text-[11px] px-2 py-0.5 rounded-full bg-brand/10 text-brand">{TYPE_LABEL[r.type] || r.type}</span>
-                <span className="text-ink-muted text-xs">· {r.days} j ouvrable{r.days > 1 ? 's' : ''}</span>
+                <span className="text-ink-muted text-xs">· {r.days} j{r.hours != null ? ` · ${r.hours} h` : ''}</span>
               </div>
               <div className="text-ink-secondary text-sm mt-1">Du <b>{fmtD(r.start_date)}</b> au <b>{fmtD(r.end_date)}</b></div>
               {r.reason && <div className="text-ink-muted text-xs mt-1 italic">« {r.reason} »</div>}
-              <div className="flex gap-2 mt-3">
+              <div className="flex gap-2 mt-3 flex-wrap">
                 <button onClick={() => setModal({ id: r.id, decision: 'approve', worker: r.worker })}
                   className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 text-white text-sm font-medium"><Check size={15} /> Approuver</button>
                 <button onClick={() => setModal({ id: r.id, decision: 'refuse', worker: r.worker })}
                   className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-ink-secondary text-sm hover:text-red-500"><X size={15} /> Refuser</button>
+                <button onClick={() => setModal({ id: r.id, decision: 'cancel', worker: r.worker })}
+                  className="ml-auto text-xs text-ink-muted hover:text-red-400 underline">Annuler la demande</button>
               </div>
             </div>
           ))}
@@ -91,9 +95,16 @@ export default function CongesManagerClient({ userRole, userName, userEmail, use
               {history.map(r => (
                 <div key={r.id} className="flex items-center gap-2 flex-wrap bg-surface border rounded-lg px-3 py-2 text-sm">
                   <span className="font-medium text-ink">{r.worker}</span>
-                  <span className="text-ink-muted text-xs">{TYPE_LABEL[r.type] || r.type} · {fmtD(r.start_date)}→{fmtD(r.end_date)} · {r.days}j</span>
+                  <span className="text-ink-muted text-xs">{TYPE_LABEL[r.type] || r.type} · {fmtD(r.start_date)}→{fmtD(r.end_date)} · {r.hours != null ? `${r.hours} h` : `${r.days}j`}</span>
                   <span className="ml-auto"><StatusBadge s={r.status} /></span>
-                  {r.decided_by && <span className="text-ink-muted text-[11px] w-full">par {r.decided_by}{r.decision_note ? ` — ${r.decision_note}` : ''}</span>}
+                  <div className="w-full flex items-center gap-3 mt-0.5">
+                    {r.decided_by && <span className="text-ink-muted text-[11px]">par {r.decided_by}{r.decision_note ? ` — ${r.decision_note}` : ''}</span>}
+                    <div className="ml-auto flex gap-3">
+                      {r.status === 'approved' && <button onClick={() => setModal({ id: r.id, decision: 'refuse', worker: r.worker })} className="text-[11px] text-ink-muted hover:text-brand underline">Passer en refusé</button>}
+                      {r.status === 'refused' && <button onClick={() => setModal({ id: r.id, decision: 'approve', worker: r.worker })} className="text-[11px] text-ink-muted hover:text-brand underline">Passer en approuvé</button>}
+                      <button onClick={() => setModal({ id: r.id, decision: 'cancel', worker: r.worker })} className="text-[11px] text-ink-muted hover:text-red-400 underline">Annuler</button>
+                    </div>
+                  </div>
                 </div>
               ))}
             </div>
@@ -106,20 +117,25 @@ export default function CongesManagerClient({ userRole, userName, userEmail, use
           <div className="bg-surface border rounded-2xl p-5 w-full max-w-sm" onClick={e => e.stopPropagation()}>
             <div className="flex items-center gap-2 mb-2">
               <ShieldCheck size={18} className={modal.decision === 'approve' ? 'text-emerald-600' : 'text-red-500'} />
-              <h2 className="font-semibold text-ink text-sm flex-1">{modal.decision === 'approve' ? 'Approuver le congé' : 'Refuser le congé'}</h2>
+              <h2 className="font-semibold text-ink text-sm flex-1">{modal.decision === 'approve' ? 'Approuver le congé' : modal.decision === 'refuse' ? 'Refuser le congé' : 'Annuler le congé'}</h2>
               <button onClick={() => setModal(null)} className="p-1 text-ink-muted hover:text-ink"><X size={18} /></button>
             </div>
-            <p className="text-ink-muted text-xs mb-3">{modal.worker} — confirme avec ton code PIN.{modal.decision === 'approve' ? ' Le congé sera posé sur la feuille de présence et le travailleur notifié.' : ' Le travailleur sera notifié.'}</p>
+            <p className="text-ink-muted text-xs mb-3">{modal.worker} — confirme avec ton code PIN.{
+              modal.decision === 'approve' ? ' Le congé sera posé sur la feuille de présence et le travailleur notifié.'
+              : modal.decision === 'cancel' ? ' La demande sera supprimée (et le congé retiré de la feuille de présence s\'il était posé).'
+              : ' Le travailleur sera notifié.'}</p>
             <input type="password" inputMode="numeric" value={pin} onChange={e => setPin(e.target.value)} placeholder="Code PIN" autoFocus
               className="w-full bg-surface-2 border rounded-lg px-3 py-2 text-sm text-ink text-center tracking-widest" />
-            <input value={note} onChange={e => setNote(e.target.value)} placeholder="Note (optionnel)"
-              className="w-full mt-2 bg-surface-2 border rounded-lg px-3 py-2 text-sm text-ink" />
+            {modal.decision !== 'cancel' && (
+              <input value={note} onChange={e => setNote(e.target.value)} placeholder="Note (optionnel)"
+                className="w-full mt-2 bg-surface-2 border rounded-lg px-3 py-2 text-sm text-ink" />
+            )}
             <div className="flex justify-end gap-2 mt-4">
-              <button onClick={() => setModal(null)} className="px-3 py-2 rounded-lg border text-sm text-ink-secondary">Annuler</button>
-              <button onClick={decide} disabled={!pin || busy}
+              <button onClick={() => setModal(null)} className="px-3 py-2 rounded-lg border text-sm text-ink-secondary">Fermer</button>
+              <button onClick={submit} disabled={!pin || busy}
                 className={`inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-white text-sm font-medium disabled:opacity-50 ${modal.decision === 'approve' ? 'bg-emerald-600' : 'bg-red-600'}`}>
                 {busy ? <RefreshCw size={15} className="animate-spin" /> : (modal.decision === 'approve' ? <Check size={15} /> : <X size={15} />)}
-                {modal.decision === 'approve' ? 'Approuver' : 'Refuser'}
+                {modal.decision === 'approve' ? 'Approuver' : modal.decision === 'refuse' ? 'Refuser' : 'Annuler'}
               </button>
             </div>
           </div>

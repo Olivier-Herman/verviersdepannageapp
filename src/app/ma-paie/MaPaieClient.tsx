@@ -8,6 +8,7 @@ import { useEffect, useState } from 'react'
 import AppShell from '@/components/layout/AppShell'
 import { FileText, Download, Wallet, Info, Eye, X, CalendarClock, Save, UserCog, Check, CalendarDays, Send } from 'lucide-react'
 import { normalizeEtatCivil } from '@/lib/paie/compare-infos'
+import { hoursForRange } from '@/lib/conges/apply'
 
 const CONGE_TYPE_LABEL: Record<string, string> = { conge: 'Congé légal', recup: 'Récupération', sans_solde: 'Congé sans solde' }
 const fmtDate = (d: string) => { const [y, m, j] = (d || '').split('-'); return j ? `${j}/${m}` : d }
@@ -62,6 +63,15 @@ export default function MaPaieClient({ userRole, userName, userEmail, userModule
       setCongeForm({ type: 'conge' }); await loadMine()
     } finally { setSubmittingConge(false) }
   }
+
+  const cancelMine = async (id: string) => {
+    if (!confirm('Annuler cette demande de congé ?')) return
+    const r = await fetch('/api/conges', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'cancel', id }) })
+    const j = await r.json(); if (j.error) { alert(j.error); return }
+    await loadMine()
+  }
+
+  const congeHours = (congeForm.start_date && congeForm.end_date) ? hoursForRange(data?.dayHours || {}, congeForm.start_date, congeForm.end_date) : 0
 
   const setMe = (k: string, v: any) => { setMeForm((f: any) => ({ ...f, [k]: v })); setSavedInfo(false) }
   const saveInfos = async () => {
@@ -125,7 +135,10 @@ export default function MaPaieClient({ userRole, userName, userEmail, userModule
                 <input type="date" value={congeForm.end_date || ''} onChange={e => setCongeForm({ ...congeForm, end_date: e.target.value })} className="w-full mt-1 bg-surface-2 border rounded-lg px-3 py-2 text-sm text-ink" /></label>
             </div>
             <input value={congeForm.reason || ''} onChange={e => setCongeForm({ ...congeForm, reason: e.target.value })} placeholder="Motif (optionnel)" className="w-full mt-3 bg-surface-2 border rounded-lg px-3 py-2 text-sm text-ink" />
-            <button onClick={submitConge} disabled={submittingConge} className="mt-3 inline-flex items-center gap-1.5 bg-brand text-white text-sm font-medium px-4 py-2 rounded-lg disabled:opacity-50"><Send size={15} /> {submittingConge ? 'Envoi…' : 'Envoyer la demande'}</button>
+            <div className="flex items-center gap-3 mt-3">
+              <button onClick={submitConge} disabled={submittingConge} className="inline-flex items-center gap-1.5 bg-brand text-white text-sm font-medium px-4 py-2 rounded-lg disabled:opacity-50"><Send size={15} /> {submittingConge ? 'Envoi…' : 'Envoyer la demande'}</button>
+              {congeHours > 0 && <span className="text-xs text-ink-muted">≈ <b className="text-ink-secondary">{congeHours} h</b> décomptées</span>}
+            </div>
 
             {(data.conges || []).length > 0 && (
               <div className="mt-5 border-t pt-4 flex flex-col gap-1.5">
@@ -133,7 +146,8 @@ export default function MaPaieClient({ userRole, userName, userEmail, userModule
                 {data.conges.map((c: any) => (
                   <div key={c.id} className="flex items-center gap-2 text-sm bg-surface-2 rounded-lg px-3 py-2">
                     <span className="text-ink">{CONGE_TYPE_LABEL[c.type] || c.type}</span>
-                    <span className="text-ink-muted text-xs">{fmtDate(c.start_date)}→{fmtDate(c.end_date)} · {c.days}j</span>
+                    <span className="text-ink-muted text-xs">{fmtDate(c.start_date)}→{fmtDate(c.end_date)} · {c.hours != null ? `${c.hours} h` : `${c.days} j`}</span>
+                    {c.status === 'pending' && <button onClick={() => cancelMine(c.id)} className="text-[11px] text-ink-muted hover:text-red-400 underline">annuler</button>}
                     <span className="ml-auto"><CongeStatus s={c.status} /></span>
                   </div>
                 ))}

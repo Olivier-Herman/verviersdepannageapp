@@ -35,6 +35,68 @@ export function countWeekdays(startDate: string, endDate: string): number {
   return Object.values(weekdaysByMonth(startDate, endDate)).reduce((n, arr) => n + arr.length, 0)
 }
 
+/** Heures/jour par jour de semaine (1=lundi … 5=vendredi) déduites d'une feuille. */
+export function weekdayHoursFromSheet(period: string, days: Record<string, any>): Record<number, number> {
+  const map: Record<number, number> = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 }
+  const [y, m] = (period || '').split('-').map(Number)
+  if (!y || !m) return map
+  for (const [d, v] of Object.entries(days || {})) {
+    if (!v || !(v.h > 0)) continue
+    const dow = new Date(Date.UTC(y, m - 1, Number(d))).getUTCDay()
+    if (dow >= 1 && dow <= 5) map[dow] = Math.max(map[dow], v.h)
+  }
+  return map
+}
+
+/** Total d'heures d'une plage selon le rythme (heures/jour de semaine). */
+export function hoursForRange(dayHours: Record<number, number>, start: string, end: string): number {
+  const [sy, sm, sd] = (start || '').split('-').map(Number)
+  const [ey, em, ed] = (end || '').split('-').map(Number)
+  if (!sy || !ey) return 0
+  let cur = new Date(Date.UTC(sy, sm - 1, sd)); const last = new Date(Date.UTC(ey, em - 1, ed))
+  let total = 0, guard = 0
+  while (cur <= last && guard++ < 800) {
+    const dow = cur.getUTCDay()
+    if (dow >= 1 && dow <= 5) total += dayHours[dow] || 0
+    cur.setUTCDate(cur.getUTCDate() + 1)
+  }
+  return Math.round(total * 100) / 100
+}
+
+/** Rythme (heures/jour) d'un travailleur, depuis sa feuille de présence la plus
+ *  récente ; fallback = Q/S ÷ 5. */
+export async function workerDayHours(sb: any, personnelId: string): Promise<Record<number, number>> {
+  const { data: sheets } = await sb.from('prestation_sheets').select('period, days, qs')
+    .eq('personnel_id', personnelId).order('period', { ascending: false }).limit(1)
+  const s = sheets?.[0]
+  if (s) { const wh = weekdayHoursFromSheet(s.period, s.days); if (Object.values(wh).some(h => h > 0)) return wh }
+  const qs = s?.qs ? parseFloat(String(s.qs).split('/')[0].replace(',', '.')) : 38
+  const per = (isFinite(qs) ? qs : 38) / 5
+  return { 1: per, 2: per, 3: per, 4: per, 5: per }
+}
+
+/** Retire un congé posé (restaure les heures prestées standard). */
+export async function revertLeaveFromSheets(sb: any, personnelId: string, type: string, startDate: string, endDate: string): Promise<void> {
+  const byMonth = weekdaysByMonth(startDate, endDate)
+  for (const [period, dayNums] of Object.entries(byMonth)) {
+    const { data: sheet } = await sb.from('prestation_sheets').select('id, days').eq('period', period).eq('personnel_id', personnelId).maybeSingle()
+    if (!sheet) continue
+    const days = { ...(sheet.days || {}) }
+    const wh = weekdayHoursFromSheet(period, days)
+    const [y, m] = period.split('-').map(Number)
+    let changed = false
+    for (const dn of dayNums) {
+      if (days[String(dn)]?.abs === type) {
+        const dow = new Date(Date.UTC(y, m - 1, dn)).getUTCDay()
+        const h = wh[dow] || 0
+        if (h > 0) days[String(dn)] = { h }; else delete days[String(dn)]
+        changed = true
+      }
+    }
+    if (changed) await sb.from('prestation_sheets').update({ days }).eq('id', sheet.id)
+  }
+}
+
 /** Écrit le code d'absence (`{abs:type}`) sur les feuilles de présence des mois
  *  couverts, pour cette personne, sans écraser une absence déjà saisie. Renvoie
  *  le nombre de jours effectivement posés. */

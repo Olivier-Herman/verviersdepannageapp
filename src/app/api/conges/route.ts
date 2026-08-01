@@ -11,7 +11,8 @@ import { authOptions }               from '@/lib/auth'
 import { createAdminClient }         from '@/lib/supabase'
 import { isPersonnelStaff }          from '@/lib/rh-access'
 import { sendEmail, emailLayout }    from '@/lib/emails'
-import { applyLeaveToSheets, countWeekdays, CONGE_TYPES } from '@/lib/conges/apply'
+import { applyLeaveToSheets, revertLeaveFromSheets, countWeekdays, workerDayHours, hoursForRange, CONGE_TYPES } from '@/lib/conges/apply'
+import { sendNotification }          from '@/lib/notifications/send'
 import bcrypt                        from 'bcryptjs'
 
 export const dynamic    = 'force-dynamic'
@@ -48,10 +49,11 @@ export async function POST(req: NextRequest) {
     if (!persons?.length) return NextResponse.json({ error: 'Aucune fiche liée à ton compte' }, { status: 400 })
     const days = countWeekdays(start, end)
     if (days < 1) return NextResponse.json({ error: 'La plage ne contient aucun jour ouvrable' }, { status: 400 })
+    const hours = hoursForRange(await workerDayHours(sb, persons[0].id), start, end)
 
     await sb.from('conge_requests').insert({
       personnel_id: persons[0].id, user_id: u.id, type, start_date: start, end_date: end,
-      days, reason: String(body.reason || '').trim() || null, status: 'pending',
+      days, hours, reason: String(body.reason || '').trim() || null, status: 'pending',
     })
     try {
       const html = emailLayout(
@@ -63,6 +65,13 @@ export async function POST(req: NextRequest) {
         'Demande de congé')
       await sendEmail(NOTIFY_MANAGER, `Demande de congé — ${persons[0].name}`, html, 'RH')
     } catch (e: any) { console.error('[conges] mail manager', e.message) }
+    // Notif in-app aux valideurs (superadmin + RH)
+    try {
+      const { data: mgrs } = await sb.from('users').select('id').or('role.in.(superadmin,rh),roles.ov.{superadmin,rh}')
+      await Promise.all((mgrs || []).map((m: any) => sendNotification(m.id, 'conge_requested', {
+        title: 'Demande de congé', body: `${persons[0].name} — ${CONGE_TYPES[type]}, ${start} → ${end} (${days}j)`, action_url: '/personnel/conges',
+      })))
+    } catch (e: any) { console.error('[conges] notif manager', e.message) }
     return NextResponse.json({ ok: true })
   }
 
@@ -77,11 +86,14 @@ export async function POST(req: NextRequest) {
 
     const { data: r } = await sb.from('conge_requests').select('*').eq('id', id).maybeSingle()
     if (!r) return NextResponse.json({ error: 'Demande introuvable' }, { status: 404 })
-    if (r.status !== 'pending') return NextResponse.json({ error: 'Demande déjà traitée' }, { status: 400 })
 
+    // Transitions (re-décision autorisée) : approuver → pose sur la feuille si pas
+    // déjà fait ; refuser une demande approuvée → retire le congé de la feuille.
     let appliedInfo: any = null
     if (decision === 'approve') {
-      appliedInfo = await applyLeaveToSheets(sb, r.personnel_id, r.type, r.start_date, r.end_date)
+      if (!r.applied) appliedInfo = await applyLeaveToSheets(sb, r.personnel_id, r.type, r.start_date, r.end_date)
+    } else {
+      if (r.applied) await revertLeaveFromSheets(sb, r.personnel_id, r.type, r.start_date, r.end_date)
     }
     await sb.from('conge_requests').update({
       status: decision === 'approve' ? 'approved' : 'refused',
@@ -95,8 +107,8 @@ export async function POST(req: NextRequest) {
       const { data: usr } = await sb.from('users').select('email, name').eq('id', r.user_id).maybeSingle()
       const { data: p } = await sb.from('personnel').select('name, email').eq('id', r.personnel_id).maybeSingle()
       const to = usr?.email || p?.email
+      const ok = decision === 'approve'
       if (to) {
-        const ok = decision === 'approve'
         const html = emailLayout(
           `<p style="margin:0 0 12px">Bonjour ${(usr?.name || p?.name || '').split(' ')[0]},</p>
            <p style="margin:0 0 12px">Ta demande de congé (${CONGE_TYPES[r.type]}, du ${r.start_date} au ${r.end_date}) a été <b>${ok ? 'approuvée ✅' : 'refusée'}</b>${me.name ? ` par ${me.name}` : ''}.</p>
@@ -104,9 +116,49 @@ export async function POST(req: NextRequest) {
           ok ? 'Congé approuvé' : 'Congé refusé')
         await sendEmail(to, `Congé ${ok ? 'approuvé' : 'refusé'} — ${r.start_date}`, html, usr?.name || '')
       }
-    } catch (e: any) { console.error('[conges] mail worker', e.message) }
+      // Notif in-app au travailleur
+      if (r.user_id) await sendNotification(r.user_id, 'conge_decided', {
+        title: ok ? 'Congé approuvé ✅' : 'Congé refusé',
+        body: `${CONGE_TYPES[r.type]}, du ${r.start_date} au ${r.end_date}${me.name ? ` — ${me.name}` : ''}`, action_url: '/ma-paie',
+      })
+    } catch (e: any) { console.error('[conges] notif worker', e.message) }
 
     return NextResponse.json({ ok: true, applied: appliedInfo })
+  }
+
+  if (action === 'cancel') {
+    const id = String(body.id || '')
+    if (!id) return NextResponse.json({ error: 'id requis' }, { status: 400 })
+    const { data: r } = await sb.from('conge_requests').select('*').eq('id', id).maybeSingle()
+    if (!r) return NextResponse.json({ error: 'Demande introuvable' }, { status: 404 })
+
+    const staff = isPersonnelStaff(u)
+    // Travailleur : peut annuler SA demande encore en attente, sans PIN.
+    if (!staff) {
+      if (r.user_id !== u.id || r.status !== 'pending') return NextResponse.json({ error: 'Non autorisé' }, { status: 403 })
+      await sb.from('conge_requests').delete().eq('id', id)
+      return NextResponse.json({ ok: true })
+    }
+
+    // Manager : annulation de n'importe quelle demande, au PIN + restauration.
+    const pin = String(body.pin || '')
+    const { data: me } = await sb.from('users').select('verify_pin_hash').eq('email', u.email).maybeSingle()
+    if (!me?.verify_pin_hash) return NextResponse.json({ error: "Aucun PIN configuré sur ton profil." }, { status: 400 })
+    if (!pin || !(await bcrypt.compare(pin, me.verify_pin_hash))) return NextResponse.json({ error: 'PIN incorrect' }, { status: 403 })
+
+    if (r.applied) await revertLeaveFromSheets(sb, r.personnel_id, r.type, r.start_date, r.end_date)
+    await sb.from('conge_requests').delete().eq('id', id)
+    if (r.status === 'approved' && r.user_id) {
+      try {
+        const { data: usr } = await sb.from('users').select('email, name').eq('id', r.user_id).maybeSingle()
+        if (usr?.email) {
+          const html = emailLayout(`<p>Bonjour,</p><p>Ton congé (${CONGE_TYPES[r.type]}, du ${r.start_date} au ${r.end_date}) a été <b>annulé</b>.</p>`, 'Congé annulé')
+          await sendEmail(usr.email, `Congé annulé — ${r.start_date}`, html, usr.name || '')
+        }
+        await sendNotification(r.user_id, 'conge_decided', { title: 'Congé annulé', body: `${CONGE_TYPES[r.type]}, du ${r.start_date} au ${r.end_date}`, action_url: '/ma-paie' })
+      } catch {}
+    }
+    return NextResponse.json({ ok: true })
   }
 
   return NextResponse.json({ error: 'Action inconnue' }, { status: 400 })
