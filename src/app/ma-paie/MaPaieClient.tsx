@@ -47,6 +47,7 @@ export default function MaPaieClient({ userRole, userName, userEmail, userModule
   const [congeForm, setCongeForm] = useState<any>({ type: 'conge' })
   const [submittingConge, setSubmittingConge] = useState(false)
   const [tab, setTab] = useState<'home' | 'fiches' | 'conges' | 'infos'>('home')
+  const [fyear, setFyear] = useState<string>('')
 
   const loadMine = () => fetch('/api/paie/mine', { cache: 'no-store' }).then(r => r.json())
     .then(d => { setData(d); if (d?.me) { if (d.me.etat_civil) d.me.etat_civil = normalizeEtatCivil(d.me.etat_civil); setMeForm(d.me) } })
@@ -104,6 +105,7 @@ export default function MaPaieClient({ userRole, userName, userEmail, userModule
   const byYear: Record<string, any[]> = {}
   for (const s of slips) { const y = (s.period || '').split('-')[0]; (byYear[y] = byYear[y] || []).push(s) }
   const years = Object.keys(byYear).sort().reverse()
+  const activeYear = fyear && years.includes(fyear) ? fyear : years[0]
 
   return (
     <AppShell title="Mes Prestations" userRole={userRole} userName={userName} userEmail={userEmail} userModules={userModules}>
@@ -247,27 +249,30 @@ export default function MaPaieClient({ userRole, userName, userEmail, userModule
         )}
 
         {!loading && tab === 'fiches' && slips.length > 0 && (
-          <div className="flex flex-col gap-6">
-            {years.map(year => (
-              <div key={year}>
-                <h2 className="text-ink-muted text-xs font-semibold uppercase tracking-wide mb-2">{year}</h2>
-                <div className="flex flex-col gap-2">
-                  {byYear[year].map((s: any) => (
-                    <button key={s.id} onClick={() => setPreview(s)}
-                      className="flex items-center gap-3 bg-surface border rounded-xl px-4 py-3 hover:border-brand/40 transition group text-left w-full">
-                      <div className="w-9 h-9 rounded-lg bg-brand/10 text-brand flex items-center justify-center flex-shrink-0"><FileText size={18} /></div>
-                      <div className="flex-1 min-w-0">
-                        <div className="text-ink font-medium"><span className="capitalize">{monthLabel(s.period)}</span> {year}</div>
-                        <div className="text-ink-muted text-xs">
-                          {ficheLabel(s)}{multiCompany ? ` · ${COMPANIES[s.company_code] || s.company_code}` : ''}
-                        </div>
-                      </div>
-                      <Eye size={18} className="text-ink-muted group-hover:text-brand flex-shrink-0" />
-                    </button>
-                  ))}
-                </div>
+          <div className="flex flex-col gap-4">
+            {years.length > 1 && (
+              <div className="inline-flex gap-1 p-1 bg-surface border rounded-xl self-start max-w-full overflow-x-auto">
+                {years.map(y => (
+                  <button key={y} onClick={() => setFyear(y)}
+                    className={`px-3.5 py-1.5 rounded-lg text-sm whitespace-nowrap ${activeYear === y ? 'bg-brand text-white font-medium' : 'text-ink-muted hover:text-ink'}`}>{y}</button>
+                ))}
               </div>
-            ))}
+            )}
+            <div className="flex flex-col gap-2">
+              {(byYear[activeYear] || []).map((s: any) => (
+                <button key={s.id} onClick={() => setPreview(s)}
+                  className="flex items-center gap-3 bg-surface border rounded-xl px-4 py-3 hover:border-brand/40 transition group text-left w-full">
+                  <div className="w-9 h-9 rounded-lg bg-brand/10 text-brand flex items-center justify-center flex-shrink-0"><FileText size={18} /></div>
+                  <div className="flex-1 min-w-0">
+                    <div className="text-ink font-medium"><span className="capitalize">{monthLabel(s.period)}</span> {activeYear}</div>
+                    <div className="text-ink-muted text-xs">
+                      {ficheLabel(s)}{multiCompany ? ` · ${COMPANIES[s.company_code] || s.company_code}` : ''}
+                    </div>
+                  </div>
+                  <Eye size={18} className="text-ink-muted group-hover:text-brand flex-shrink-0" />
+                </button>
+              ))}
+            </div>
           </div>
         )}
       </div>
