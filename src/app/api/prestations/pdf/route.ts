@@ -23,10 +23,11 @@ export async function GET(req: NextRequest) {
   if (!sheets?.length) return NextResponse.json({ error: 'Aucune feuille pour cette période' }, { status: 404 })
 
   const cc = sheets[0].company_code || '438'
-  const signedBy   = sheets[0].signed_by || 'Aperçu — non validé'
-  const signedDate = sheets[0].validated_at ? new Date(sheets[0].validated_at).toLocaleDateString('fr-BE') : new Date().toLocaleDateString('fr-BE')
+  const signed     = !!sheets[0].signed_by
+  const signedBy   = sheets[0].signed_by || ''
+  const signedDate = sheets[0].validated_at ? new Date(sheets[0].validated_at).toLocaleDateString('fr-BE') : ''
 
-  const bytes = await generatePrestationsPdf(period, cc, sheets as any, signedBy, signedDate)
+  const bytes = await generatePrestationsPdf(period, cc, sheets as any, signedBy, signedDate, signed)
   return new NextResponse(Buffer.from(bytes), {
     headers: { 'Content-Type': 'application/pdf', 'Content-Disposition': `inline; filename="feuille-presence-${period}.pdf"` },
   })

@@ -82,7 +82,7 @@ export async function POST(req: NextRequest) {
     const byCo: Record<string, any[]> = {}
     for (const s of sheets) (byCo[s.company_code || '438'] ||= []).push(s)
     for (const [cc, rows] of Object.entries(byCo)) {
-      const bytes = await generatePrestationsPdf(period, cc, rows as any, signedBy, signedDate)
+      const bytes = await generatePrestationsPdf(period, cc, rows as any, signedBy, signedDate, true)
       const b64 = Buffer.from(bytes).toString('base64')
       const html = emailLayout(
         `<p style="margin:0 0 12px">Bonjour,</p>
