@@ -27,6 +27,8 @@ export const NAV_ITEMS: NavItem[] = [
   // Olivier 2026-07-31 : module Gestion Achat en test → superadmin uniquement
   // (créer un moduleId 'achats' + rôle Acheteur quand opérationnel).
   { href: '/achats',        label: 'Gestion Achat',    icon: '📦', moduleId: null, role: 'superadmin' },
+  // Olivier 2026-08-01 : module Gestion du Personnel / paie en test → superadmin.
+  { href: '/personnel',     label: 'Personnel',        icon: '👤', moduleId: null, role: 'superadmin' },
   { href: '/mission',          label: 'Mes Missions',        i18nKey: 'nav.my_missions',   icon: '🚗', moduleId: 'driver_missions' },
   { href: '/missions-dispo',   label: 'Momo Market',                                       icon: '🛒', moduleId: 'driver_missions' },
   { href: '/services/tgr',  label: 'TGR Touring',      i18nKey: 'nav.services_tgr',  icon: '🛡️', moduleId: 'tgr' },
