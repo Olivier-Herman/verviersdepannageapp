@@ -7,7 +7,7 @@ import { useEffect, useState, useCallback } from 'react'
 import AppShell from '@/components/layout/AppShell'
 import PersonnelTabs from '@/components/layout/PersonnelTabs'
 import { applyHolidaysToDays } from '@/lib/prestations/belgian-holidays'
-import { Clock, RefreshCw, Save, Check, X, FileText, Send, ShieldCheck, CalendarCheck, StickyNote } from 'lucide-react'
+import { Clock, RefreshCw, Save, Check, X, FileText, Send, ShieldCheck, CalendarCheck, StickyNote, Settings } from 'lucide-react'
 
 const MONTHS = ['', 'janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre']
 const periodLabel = (p: string) => { const [y, m] = (p || '').split('-'); return m ? `${MONTHS[+m]} ${y}` : p }
@@ -38,6 +38,16 @@ export default function PrestationsClient({ userRole, userName, userEmail, userM
   const [pin, setPin] = useState('')
   const [signing, setSigning] = useState(false)
   const [genNote, setGenNote] = useState('')
+  const [settingsModal, setSettingsModal] = useState(false)
+  const [mailTo, setMailTo] = useState('')
+  const [mailCc, setMailCc] = useState('')
+
+  const saveSettings = async () => {
+    const r = await fetch('/api/prestations', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'save_settings', to: mailTo, cc: mailCc }) })
+    const j = await r.json()
+    if (j.error) { alert(j.error); return }
+    setSettingsModal(false); await load(period)
+  }
 
   const saveGenNote = async () => {
     await fetch('/api/prestations', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'save_general_note', period, note: genNote }) })
@@ -65,6 +75,7 @@ export default function PrestationsClient({ userRole, userName, userEmail, userM
     // Les jours fériés sont déjà intégrés à l'import (server) → on affiche tel
     // quel, sans rien re-marquer, pour ne JAMAIS écraser une correction manuelle.
     setData(j); setPeriod(j.period || ''); setSheets(j.sheets || []); setDirty(new Set()); setGenNote(j.generalNote || '')
+    setMailTo(j.settings?.to || ''); setMailCc(j.settings?.cc || '')
   }, [])
   useEffect(() => { load() }, [load])
 
@@ -156,6 +167,8 @@ export default function PrestationsClient({ userRole, userName, userEmail, userM
               {(data?.periods || []).length === 0 && <option value="">—</option>}
               {(data?.periods || []).map((p: string) => <option key={p} value={p}>{periodLabel(p)}</option>)}
             </select>
+            <button onClick={() => setSettingsModal(true)} title="Paramètres (destinataire de l'envoi)"
+              className="inline-flex items-center px-2.5 py-2 rounded-lg border text-ink-secondary hover:text-brand"><Settings size={15} /></button>
             {dirty.size > 0 && (
               <button onClick={saveAll} disabled={!!busy} className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-brand text-white text-sm font-medium disabled:opacity-50">
                 {busy === 'save' ? <RefreshCw size={15} className="animate-spin" /> : <Save size={15} />} Enregistrer ({dirty.size})
@@ -304,6 +317,25 @@ export default function PrestationsClient({ userRole, userName, userEmail, userM
               <button onClick={signSend} disabled={!pin || signing} className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-emerald-600 text-white text-sm font-medium disabled:opacity-50">
                 {signing ? <RefreshCw size={15} className="animate-spin" /> : <Send size={15} />} Signer & envoyer
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {settingsModal && (
+        <div className="fixed inset-0 z-[200] bg-black/50 flex items-center justify-center p-4" onClick={() => setSettingsModal(false)}>
+          <div className="bg-surface border rounded-2xl p-5 w-full max-w-md" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center gap-2 mb-3">
+              <Settings size={18} className="text-brand" />
+              <h2 className="font-semibold text-ink text-sm flex-1">Paramètres — envoi de la feuille</h2>
+              <button onClick={() => setSettingsModal(false)} className="p-1 text-ink-muted hover:text-ink"><X size={18} /></button>
+            </div>
+            <label className="block mb-3"><span className="text-ink-muted text-xs">E-mail du secrétariat social (destinataire)</span>
+              <input value={mailTo} onChange={e => setMailTo(e.target.value)} placeholder="jonathan.junius@easypay-group.com" className="w-full mt-1 bg-surface-2 border rounded-lg px-3 py-2 text-sm text-ink" /></label>
+            <label className="block mb-4"><span className="text-ink-muted text-xs">En copie (CC) — optionnel</span>
+              <input value={mailCc} onChange={e => setMailCc(e.target.value)} placeholder="mobi@verviersdepannage.be" className="w-full mt-1 bg-surface-2 border rounded-lg px-3 py-2 text-sm text-ink" /></label>
+            <div className="flex justify-end gap-2">
+              <button onClick={() => setSettingsModal(false)} className="px-3 py-2 rounded-lg border text-sm text-ink-secondary">Annuler</button>
+              <button onClick={saveSettings} className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-brand text-white text-sm font-medium"><Save size={15} /> Enregistrer</button>
             </div>
           </div>
         </div>

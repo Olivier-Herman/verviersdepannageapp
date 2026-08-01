@@ -13,8 +13,16 @@ import { generatePrestationsPdf }    from '@/lib/prestations/generate-pdf'
 import { sendEmail, emailLayout }    from '@/lib/emails'
 import bcrypt                        from 'bcryptjs'
 
-// Destinataire de la feuille de présence (gestionnaire EasyPay). Configurable plus tard.
-const JONATHAN = 'jonathan.junius@easypay-group.com'
+// Destinataire par défaut (gestionnaire EasyPay) — surchargeable dans les réglages.
+const DEFAULT_TO = 'jonathan.junius@easypay-group.com'
+const DEFAULT_CC = 'mobi@verviersdepannage.be'
+
+async function loadPrestSettings(sb: any): Promise<{ to: string; cc: string }> {
+  const { data } = await sb.from('app_settings').select('value').eq('key', 'prestation_settings').maybeSingle()
+  let s: any = {}
+  try { s = data?.value ? (typeof data.value === 'string' ? JSON.parse(data.value) : data.value) : {} } catch {}
+  return { to: (s.to || DEFAULT_TO).trim(), cc: (s.cc ?? DEFAULT_CC).trim() }
+}
 
 export const dynamic    = 'force-dynamic'
 export const fetchCache  = 'force-no-store'
@@ -43,7 +51,8 @@ export async function GET(req: NextRequest) {
     const { data: gn } = await sb.from('app_settings').select('value').eq('key', 'prestation_notes').maybeSingle()
     try { const map = gn?.value ? (typeof gn.value === 'string' ? JSON.parse(gn.value) : gn.value) : {}; generalNote = map[period] || '' } catch {}
   }
-  return NextResponse.json({ periods, period, sheets, generalNote })
+  const settings = await loadPrestSettings(sb)
+  return NextResponse.json({ periods, period, sheets, generalNote, settings })
 }
 
 export async function POST(req: NextRequest) {
@@ -67,6 +76,13 @@ export async function POST(req: NextRequest) {
     if (body.days && typeof body.days === 'object') patch.days = body.days
     if ('note' in body) patch.note = (body.note ? String(body.note) : null)
     await sb.from('prestation_sheets').update(patch).eq('id', id)
+    return NextResponse.json({ ok: true })
+  }
+
+  if (action === 'save_settings') {
+    const to = String(body.to || '').trim(), cc = String(body.cc || '').trim()
+    if (to && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(to)) return NextResponse.json({ error: 'E-mail destinataire invalide' }, { status: 400 })
+    await sb.from('app_settings').upsert({ key: 'prestation_settings', value: JSON.stringify({ to, cc }) }, { onConflict: 'key' })
     return NextResponse.json({ ok: true })
   }
 
@@ -101,6 +117,7 @@ export async function POST(req: NextRequest) {
     let generalNote = ''
     const { data: gn } = await sb.from('app_settings').select('value').eq('key', 'prestation_notes').maybeSingle()
     try { const map = gn?.value ? (typeof gn.value === 'string' ? JSON.parse(gn.value) : gn.value) : {}; generalNote = map[period] || '' } catch {}
+    const mail = await loadPrestSettings(sb)   // destinataire configurable
 
     // Une feuille (PDF) par société présente dans la période.
     const byCo: Record<string, any[]> = {}
@@ -113,12 +130,12 @@ export async function POST(req: NextRequest) {
          <p style="margin:0 0 12px">Veuillez trouver ci-joint la <b>feuille de présence</b> validée pour la période <b>${period}</b> (${cc}).</p>
          <p style="margin:0;color:#666;font-size:13px">Validée électroniquement par ${signedBy}, le ${signedDate}.</p>`,
         'Feuille de présence')
-      await sendEmail(JONATHAN, `Feuille de présence ${period} — ${cc}`, html, 'EasyPay', 'mobi@verviersdepannage.be',
+      await sendEmail(mail.to, `Feuille de présence ${period} — ${cc}`, html, 'Secrétariat social', mail.cc || undefined,
         [{ name: `feuille-presence-${period}-${cc}.pdf`, contentType: 'application/pdf', contentBytes: b64 }])
     }
 
     await sb.from('prestation_sheets').update({ validated: true, validated_at: new Date().toISOString(), signed_by: signedBy }).eq('period', period)
-    return NextResponse.json({ ok: true, signedBy, date: signedDate, to: JONATHAN })
+    return NextResponse.json({ ok: true, signedBy, date: signedDate, to: mail.to })
   }
 
   if (action === 'validate' || action === 'unvalidate') {
