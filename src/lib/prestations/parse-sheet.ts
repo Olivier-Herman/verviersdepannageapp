@@ -20,6 +20,7 @@ export async function extractPrestationsPdf(zipBuffer: Buffer): Promise<Uint8Arr
 export interface PrestWorker {
   matricule: string; name: string; departement: string | null; statut: string | null
   qs: string | null; fonction: string | null
+  date_entree: string | null; date_sortie: string | null; date_naissance: string | null
   days: Record<string, number>; conges_jours: number | null; conges_heures: number | null
 }
 export interface PrestSheet { period: string; company_code: string; workers: PrestWorker[] }
@@ -35,9 +36,12 @@ export async function parsePrestationSheet(pdfBytes: Uint8Array): Promise<PrestS
    "matricule": "<No. du travailleur, ex 5>",
    "name": "<Nom travailleur exactement>",
    "departement": "<ex OUVRIERS ou null>",
-   "statut": "<ex Ouvrier ou null>",
+   "statut": "<ouvrier | employe | gerant selon 'Stat.', ou null>",
    "qs": "<Q/S heures/semaine, ex '38,00/38,00' ou null>",
-   "fonction": "<Fonction ou null>",
+   "fonction": "<Fonction telle qu'imprimée (ex 'travailleur manuel'), ou null>",
+   "date_entree": "<'Début con.' (début contrat) au format AAAA-MM-JJ, ou null>",
+   "date_sortie": "<'Hors serv.' (date de sortie) au format AAAA-MM-JJ si présente, sinon null>",
+   "date_naissance": "<'Dat.naiss.' au format AAAA-MM-JJ, ou null>",
    "days": { "1": <heures ce jour>, "2": <...>, ... },
    "conges_jours": <nombre JOURS CONGES ou null>,
    "conges_heures": <nombre HEURES congés ou null>

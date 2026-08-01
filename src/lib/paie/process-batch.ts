@@ -51,6 +51,11 @@ Réponds UNIQUEMENT en JSON valide :
   "infos": {
     "matricule": "<numéro/matricule du travailleur (No.) tel qu'imprimé, ou null>",
     "date_naissance": "<date de naissance au format AAAA-MM-JJ, ou null>",
+    "date_entree": "<date d'entrée / début de contrat / ancienneté au format AAAA-MM-JJ, ou null>",
+    "date_sortie": "<date de sortie / hors service au format AAAA-MM-JJ si présente, sinon null>",
+    "statut": "<ouvrier | employe | gerant, ou null>",
+    "poste": "<fonction / poste tel qu'imprimé, ou null>",
+    "type_contrat": "<CDI | CDD | Intérim | Étudiant | Flexi si indiqué, sinon null>",
     "adresse": "<rue + numéro du travailleur tel qu'imprimé, ou null>",
     "code_postal": "<code postal, ou null>",
     "ville": "<ville, ou null>",
@@ -134,7 +139,7 @@ async function findOrCreatePersonnel(sb: any, name: string, companyCode: string 
 async function autoFillPersonnel(sb: any, personnelId: string, infos: any): Promise<void> {
   if (!personnelId || !infos || typeof infos !== 'object') return
   const { data: p } = await sb.from('personnel')
-    .select('matricule, birth_date, adresse, code_postal, ville, national_number, iban, etat_civil, personnes_charge')
+    .select('matricule, birth_date, date_entree, date_sortie, poste, type_contrat, statut, adresse, code_postal, ville, national_number, iban, etat_civil, personnes_charge')
     .eq('id', personnelId).maybeSingle()
   if (!p) return
   const patch: Record<string, any> = {}
@@ -142,6 +147,11 @@ async function autoFillPersonnel(sb: any, personnelId: string, infos: any): Prom
   const setIf = (field: string, val: any) => { if (empty(p[field]) && !empty(val)) patch[field] = val }
   setIf('matricule', infos.matricule != null ? String(infos.matricule) : null)
   if (empty(p.birth_date) && /^\d{4}-\d{2}-\d{2}$/.test(String(infos.date_naissance || ''))) patch.birth_date = infos.date_naissance
+  if (empty(p.date_entree) && /^\d{4}-\d{2}-\d{2}$/.test(String(infos.date_entree || ''))) patch.date_entree = infos.date_entree
+  if (empty(p.date_sortie) && /^\d{4}-\d{2}-\d{2}$/.test(String(infos.date_sortie || ''))) patch.date_sortie = infos.date_sortie
+  setIf('poste', infos.poste)
+  setIf('type_contrat', infos.type_contrat)
+  { const t = String(infos.statut || '').toLowerCase(); const st = /ouvr/.test(t) ? 'ouvrier' : /employ/.test(t) ? 'employe' : /g[eé]rant|dirig/.test(t) ? 'gerant' : null; if (empty(p.statut) && st) patch.statut = st }
   setIf('adresse', infos.adresse)
   setIf('code_postal', infos.code_postal)
   setIf('ville', infos.ville)

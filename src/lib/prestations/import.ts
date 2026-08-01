@@ -19,6 +19,31 @@ function defaultFrom(): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
 }
 
+const mapStatut = (s: any): string | null => {
+  const t = String(s || '').toLowerCase()
+  if (/ouvr/.test(t)) return 'ouvrier'
+  if (/employ/.test(t)) return 'employe'
+  if (/g[eé]rant|dirig/.test(t)) return 'gerant'
+  return null
+}
+const isDate = (v: any) => /^\d{4}-\d{2}-\d{2}$/.test(String(v || ''))
+
+/** Complète les champs VIDES de la fiche employé depuis la feuille de présence
+ *  (poste, statut, dates d'entrée/sortie, naissance). N'écrase jamais une valeur. */
+async function autoFillFromSheet(sb: any, personnelId: string, w: any): Promise<void> {
+  const { data: p } = await sb.from('personnel')
+    .select('poste, statut, date_entree, date_sortie, birth_date').eq('id', personnelId).maybeSingle()
+  if (!p) return
+  const patch: Record<string, any> = {}
+  const empty = (v: any) => v == null || v === ''
+  if (empty(p.poste) && w.fonction) patch.poste = w.fonction
+  if (empty(p.statut)) { const st = mapStatut(w.statut); if (st) patch.statut = st }
+  if (empty(p.date_entree) && isDate(w.date_entree)) patch.date_entree = w.date_entree
+  if (empty(p.date_sortie) && isDate(w.date_sortie)) patch.date_sortie = w.date_sortie
+  if (empty(p.birth_date) && isDate(w.date_naissance)) patch.birth_date = w.date_naissance
+  if (Object.keys(patch).length) { try { await sb.from('personnel').update(patch).eq('id', personnelId) } catch {} }
+}
+
 export async function importPrestations(from?: string) {
   const sb = createAdminClient()
   const mails = await fetchPayslipMails(from || defaultFrom())
@@ -42,6 +67,8 @@ export async function importPrestations(from?: string) {
       const match  = byMat || byName
       // Auto-remplit le matricule VD Soft s'il manque
       if (match && !match.matricule && mat) { try { await sb.from('personnel').update({ matricule: mat }).eq('id', match.id) } catch {} }
+      // Complète poste / statut / dates depuis la feuille (champs vides only)
+      if (match?.id) await autoFillFromSheet(sb, match.id, w)
 
       const meta = {
         personnel_id: match?.id || null, worker_name: w.name, departement: w.departement,
