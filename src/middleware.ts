@@ -117,6 +117,7 @@ export const config = {
     '/reception/:path*',
     '/achats/:path*',
     '/personnel/:path*',
+    '/ma-paie/:path*',
     '/garage/((?!login|activate).*)',  // /garage protege sauf login + activate (publics)
   ]
 }

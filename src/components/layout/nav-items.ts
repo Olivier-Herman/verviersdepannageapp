@@ -46,6 +46,7 @@ export const NAV_ITEMS: NavItem[] = [
   { href: '/garde',         label: 'Garde',            icon: '🛡️', moduleId: null, role: 'dispatcher_or_admin' },
   { href: '/garage-info',   label: 'Garage Info',      icon: 'ℹ️', moduleId: null, role: 'non_driver' },
   { href: '/admin',         label: 'Administration',   icon: '⚙️', moduleId: 'admin' },
+  { href: '/ma-paie',       label: 'Ma paie',          icon: '📄', moduleId: null },
   { href: '/aide',          label: 'Aide',             i18nKey: 'nav.help',          icon: '📖', moduleId: null },
   { href: '/assistant',     label: 'Assistant IA',     icon: '🤖', moduleId: null, role: 'superadmin' },
   // 'Mon Profil' retire de la sidebar : doublon avec le UserBlock cliquable
