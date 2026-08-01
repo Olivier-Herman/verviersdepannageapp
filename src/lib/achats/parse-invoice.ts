@@ -27,6 +27,7 @@ export const CATEGORIES = [
   'Honoraires & services externes',
   'Charges sociales & salaires',
   'Taxes & redevances',
+  'Amendes routières',
   'Petit matériel & fournitures',
   'Publicité & marketing',
   'Acompte / à régulariser',
@@ -66,6 +67,7 @@ Règles IMPORTANTES :
 - "Charges sociales & salaires" (ONSS, précompte, secrétariat social) = dépense normale.
 - "Sous-traitance dépannage" = un autre dépanneur qui a réalisé une intervention pour nous.
 - Cartes carburant/péage (AS24, DKV, Eurotoll, Total, Q8, Shell, TotalEnergies…) : lignes de carburant/gasoil/AdBlue → "Carburant" ; lignes de péage/tunnel/vignette/parking → "Péages & frais de route". JAMAIS "Honoraires".
+- Police Fédérale, SPF Justice/Finances pour une amende, perception immédiate, PV, infraction de roulage → "Amendes routières" (PAS "Taxes & redevances").
 - montant : HTVA par ligne, obligatoire (estime au mieux). La somme des lignes ≈ total HTVA de la facture.
 - plaque : uniquement si la ligne vise un véhicule identifié (carburant, garage, pneus). Sinon null.
 - Si illisible : confidence bas, une seule ligne categorie "Autre".`
