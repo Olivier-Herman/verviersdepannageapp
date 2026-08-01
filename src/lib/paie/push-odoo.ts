@@ -70,10 +70,23 @@ export async function pushPayslipToOdoo(payslipId: string, opts: { force?: boole
 
   if (!slip.personnel_id) throw new Error('Fiche non rattachée à une personne')
   const { data: person } = await sb.from('personnel')
-    .select('id, name, odoo_partner_id, statut').eq('id', slip.personnel_id).maybeSingle()
+    .select('id, name, odoo_partner_id, statut, phone, email, adresse, code_postal, ville').eq('id', slip.personnel_id).maybeSingle()
   if (!person) throw new Error('Personne introuvable')
   if (!person.odoo_partner_id) throw new Error(`${person.name} : pas d'ID contact Odoo renseigné (fiche employé → « ID contact Odoo »)`)
   const accountId = accountForStatut(person.statut)
+
+  // Réaligne le contact Odoo sur les infos VD Soft (source) à chaque push : toute
+  // correction faite dans la fiche se répercute dans Odoo au passage suivant.
+  try {
+    const vals: any = {}
+    if (person.name)        vals.name   = person.name
+    if (person.phone)       vals.phone  = person.phone
+    if (person.email)       vals.email  = person.email
+    if (person.adresse)     vals.street = person.adresse
+    if (person.code_postal) vals.zip    = person.code_postal
+    if (person.ville)       vals.city   = person.ville
+    if (Object.keys(vals).length) await odooRpc('res.partner', 'write', [[Number(person.odoo_partner_id)], vals])
+  } catch (e: any) { console.error('[paie push] sync contact Odoo', e.message) }
 
   const typeLabel = slip.label || TYPE_LABELS[slip.type] || 'Rémunération'
   const lineName  = `${typeLabel} ${slip.period}${isRefund ? ' (correction)' : ''} — ${slip.worker_name || person.name}`
