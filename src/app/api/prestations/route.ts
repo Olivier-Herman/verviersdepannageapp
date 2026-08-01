@@ -138,6 +138,18 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: true, signedBy, date: signedDate, to: mail.to })
   }
 
+  if (action === 'unlock') {
+    // Déverrouille une feuille validée (repasse en modifiable) — protégé par PIN.
+    const period = String(body.period || ''), pin = String(body.pin || '')
+    if (!period || !pin) return NextResponse.json({ error: 'period + pin requis' }, { status: 400 })
+    const email = (session!.user as any).email
+    const { data: me } = await sb.from('users').select('verify_pin_hash').eq('email', email).maybeSingle()
+    if (!me?.verify_pin_hash) return NextResponse.json({ error: "Aucun PIN configuré sur ton profil (Administration → PIN)." }, { status: 400 })
+    if (!(await bcrypt.compare(pin, me.verify_pin_hash))) return NextResponse.json({ error: 'PIN incorrect' }, { status: 403 })
+    await sb.from('prestation_sheets').update({ validated: false, validated_at: null, signed_by: null }).eq('period', period)
+    return NextResponse.json({ ok: true })
+  }
+
   if (action === 'validate' || action === 'unvalidate') {
     const v = action === 'validate'
     if (body.period) await sb.from('prestation_sheets').update({ validated: v, validated_at: v ? new Date().toISOString() : null }).eq('period', body.period)
