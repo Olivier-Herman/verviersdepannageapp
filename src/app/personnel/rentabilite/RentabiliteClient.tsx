@@ -15,15 +15,17 @@ export default function RentabiliteClient({ userRole, userName, userEmail, userM
   userRole: string; userName: string; userEmail: string; userModules: string[]
 }) {
   const [data, setData]   = useState<any>(null)
-  const [months, setMonths] = useState(12)
+  const [preset, setPreset] = useState('3m')
   const [loading, setLd]  = useState(true)
 
-  const load = (m: number) => {
+  const monthStr = (off: number) => { const d = new Date(); d.setMonth(d.getMonth() - off); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}` }
+  const load = (p: string) => {
     setLd(true)
-    fetch(`/api/rh/rentabilite?months=${m}`, { cache: 'no-store' })
+    const q = p === 'current' ? `only=${monthStr(0)}` : p === 'last' ? `only=${monthStr(1)}` : p === '3m' ? 'months=3' : 'months=12'
+    fetch(`/api/rh/rentabilite?${q}`, { cache: 'no-store' })
       .then(r => r.json()).then(setData).catch(() => setData({ drivers: [] })).finally(() => setLd(false))
   }
-  useEffect(() => { load(months) }, [months])
+  useEffect(() => { load(preset) }, [preset])
 
   const drivers = data?.drivers || []
   const totCa = drivers.reduce((s: number, d: any) => s + d.ca, 0)
@@ -40,14 +42,14 @@ export default function RentabiliteClient({ userRole, userName, userEmail, userM
             <div><h1 className="text-xl font-bold text-ink leading-tight">Rentabilité par chauffeur</h1>
               <p className="text-ink-muted text-sm">CA missions − coût salarial = marge de contribution</p></div>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             <div className="flex rounded-lg border overflow-hidden">
-              {[6, 12, 24].map(m => (
-                <button key={m} onClick={() => setMonths(m)}
-                  className={`px-3 py-1.5 text-sm font-medium ${months === m ? 'bg-brand text-white' : 'bg-surface text-ink-secondary hover:bg-white/5'}`}>{m} mois</button>
+              {[['current', 'Mois en cours'], ['last', 'Mois dernier'], ['3m', '3 mois'], ['12m', '12 mois']].map(([k, l]) => (
+                <button key={k} onClick={() => setPreset(k)}
+                  className={`px-3 py-1.5 text-sm font-medium whitespace-nowrap ${preset === k ? 'bg-brand text-white' : 'bg-surface text-ink-secondary hover:bg-white/5'}`}>{l}</button>
               ))}
             </div>
-            <button onClick={() => load(months)} className="p-2 rounded-lg border text-ink-muted hover:text-brand"><RefreshCw size={16} className={loading ? 'animate-spin' : ''} /></button>
+            <button onClick={() => load(preset)} className="p-2 rounded-lg border text-ink-muted hover:text-brand"><RefreshCw size={16} className={loading ? 'animate-spin' : ''} /></button>
           </div>
         </div>
 

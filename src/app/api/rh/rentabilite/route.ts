@@ -8,7 +8,6 @@ import { NextResponse }      from 'next/server'
 import { getServerSession }  from 'next-auth'
 import { authOptions }       from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase'
-import { isPersonnelStaff }  from '@/lib/rh-access'
 
 export const dynamic     = 'force-dynamic'
 export const fetchCache   = 'force-no-store'
@@ -20,13 +19,24 @@ const EMPLOYER_FACTOR = parseFloat(process.env.RH_EMPLOYER_FACTOR || '1.32')
 export async function GET(req: Request) {
   const session = await getServerSession(authOptions)
   const u = session?.user as any
-  if (!isPersonnelStaff(u)) {
+  const isSuper = u?.role === 'superadmin' || (u?.roles || []).includes('superadmin')
+  if (!isSuper) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
-  const months = Math.min(Math.max(parseInt(new URL(req.url).searchParams.get('months') || '12'), 1), 24)
-  const d = new Date(); d.setMonth(d.getMonth() - (months - 1)); d.setDate(1)
-  const startDate = d.toISOString().slice(0, 10)
-  const startPeriod = startDate.slice(0, 7)   // AAAA-MM
+  const sp = new URL(req.url).searchParams
+  const only = sp.get('only')   // AAAA-MM : un seul mois (mois en cours / dernier)
+  let months = 0, startDate = '', startPeriod = '', endPeriod = '', endDate = ''
+  if (only && /^\d{4}-\d{2}$/.test(only)) {
+    startPeriod = endPeriod = only
+    startDate = `${only}-01`
+    const [y, m] = only.split('-').map(Number)
+    endDate = new Date(Date.UTC(y, m, 0)).toISOString().slice(0, 10)   // dernier jour du mois
+  } else {
+    months = Math.min(Math.max(parseInt(sp.get('months') || '12'), 1), 24)
+    const d = new Date(); d.setMonth(d.getMonth() - (months - 1)); d.setDate(1)
+    startDate = d.toISOString().slice(0, 10)
+    startPeriod = startDate.slice(0, 7)
+  }
   const sb = createAdminClient()
 
   // Personnel lié à un compte app (= chauffeurs identifiables). On EXCLUT les
@@ -44,11 +54,12 @@ export async function GET(req: Request) {
   const missions: any[] = []
   const PAGE = 1000
   for (let from = 0; ; from += PAGE) {
-    const { data, error } = await sb.from('incoming_missions')
+    let q = sb.from('incoming_missions')
       .select('assigned_to, estimated_htva, mission_type, status, assigned_at')
       .in('assigned_to', userIds).gte('assigned_at', startDate + 'T00:00:00')
       .not('status', 'in', '(cancelled,ignored,parse_error)')
-      .order('id', { ascending: true }).range(from, from + PAGE - 1)
+    if (endDate) q = q.lte('assigned_at', endDate + 'T23:59:59')
+    const { data, error } = await q.order('id', { ascending: true }).range(from, from + PAGE - 1)
     if (error || !data?.length) break
     missions.push(...data)
     if (data.length < PAGE) break
@@ -68,9 +79,11 @@ export async function GET(req: Request) {
   // missions dans l'app (sinon CA partiel vs coût complet = faux négatif).
   const persIds = (personnel || []).map((p: any) => p.id)
   const persToUser = new Map((personnel || []).map((p: any) => [p.id, p.user_id]))
-  const { data: slips } = await sb.from('payslips')
+  let slipQ = sb.from('payslips')
     .select('personnel_id, cout_employeur, montant_brut, period')
     .in('personnel_id', persIds).gte('period', startPeriod)
+  if (endPeriod) slipQ = slipQ.lte('period', endPeriod)
+  const { data: slips } = await slipQ
   const cost = new Map<string, number>()
   for (const s of (slips || [])) {
     if (!s.personnel_id) continue
