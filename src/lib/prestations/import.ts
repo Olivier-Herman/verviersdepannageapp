@@ -10,9 +10,17 @@ import { fetchPayslipMails } from '@/lib/paie/fetch-mail'
 import { extractPrestationsPdf, parsePrestationSheet } from './parse-sheet'
 import { nameKey } from '@/lib/paie/process-batch'
 
+/** Par défaut on ne traite que le mail le plus récent (mois précédent) : la feuille
+ *  du mois à venir est toujours dans le dernier ZIP. Évite de rappeler Claude sur
+ *  tout l'historique (lent). Passer `from` (AAAA-MM) pour remonter plus loin. */
+function defaultFrom(): string {
+  const d = new Date(); d.setDate(1); d.setMonth(d.getMonth() - 1)
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+}
+
 export async function importPrestations(from?: string) {
   const sb = createAdminClient()
-  const mails = await fetchPayslipMails(from)
+  const mails = await fetchPayslipMails(from || defaultFrom())
   const { data: pers } = await sb.from('personnel').select('id, name_key, matricule, company_code')
 
   const results: any[] = []

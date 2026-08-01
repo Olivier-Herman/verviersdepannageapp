@@ -14,7 +14,8 @@ export const dynamic    = 'force-dynamic'
 export const fetchCache  = 'force-no-store'
 export const maxDuration = 300
 
-const isSuper = (u: any) => u?.role === 'superadmin' || (u?.roles || []).includes('superadmin')
+import { isPersonnelStaff } from '@/lib/rh-access'
+const isSuper = isPersonnelStaff
 
 export async function GET(req: NextRequest) {
   const session = await getServerSession(authOptions)

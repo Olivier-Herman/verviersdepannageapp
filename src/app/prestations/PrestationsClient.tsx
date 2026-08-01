@@ -50,9 +50,15 @@ export default function PrestationsClient({ userRole, userName, userEmail, userM
     try {
       const r = await fetch('/api/prestations', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'import' }) })
       const j = await r.json()
-      if (j.error) alert(j.error)
-      else { const tot = (j.results || []).reduce((s: number, x: any) => s + (x.stored || 0), 0); alert(`Import terminé : ${tot} feuille(s) importée(s).`) }
+      if (j.error) { alert('Erreur : ' + j.error); return }
+      const res = j.results || []
+      const stored  = res.reduce((s: number, x: any) => s + (x.stored || 0), 0)
+      const updated = res.reduce((s: number, x: any) => s + (x.updated || 0), 0)
+      const notes   = res.filter((x: any) => x.error || x.note).map((x: any) => `• ${x.mail || x.period || '?'} : ${x.error || x.note}`)
       await load(period)
+      alert(`Import terminé : ${stored} travailleur(s) ajouté(s), ${updated} mis à jour.` + (notes.length ? `\n\n${notes.join('\n')}` : (stored + updated === 0 ? '\n\nAucune feuille de présence trouvée dans le dernier ZIP.' : '')))
+    } catch (e: any) {
+      alert("L'import a échoué ou a expiré. Réessaie (la lecture de la feuille par l'IA peut prendre un moment).")
     } finally { setBusy('') }
   }
 

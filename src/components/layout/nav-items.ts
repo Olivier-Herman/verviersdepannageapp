@@ -13,7 +13,7 @@ export interface NavItem {
   i18nKey?: string             // Cle dans le dictionnaire i18n (cf src/lib/i18n/dictionaries) pour affichage bilingue en mode sq
   icon:     string
   moduleId: string | null
-  role?:    'dispatcher_or_admin' | 'superadmin' | 'non_driver'
+  role?:    'dispatcher_or_admin' | 'superadmin' | 'superadmin_or_rh' | 'non_driver'
 }
 
 export const NAV_ITEMS: NavItem[] = [
@@ -28,7 +28,7 @@ export const NAV_ITEMS: NavItem[] = [
   // (créer un moduleId 'achats' + rôle Acheteur quand opérationnel).
   { href: '/achats',        label: 'Gestion Achat',    icon: '📦', moduleId: null, role: 'superadmin' },
   // Olivier 2026-08-01 : module Gestion du Personnel / paie en test → superadmin.
-  { href: '/personnel',     label: 'Gestion du personnel', icon: '👤', moduleId: null, role: 'superadmin' },
+  { href: '/personnel',     label: 'Gestion du personnel', icon: '👤', moduleId: null, role: 'superadmin_or_rh' },
   { href: '/mission',          label: 'Mes Missions',        i18nKey: 'nav.my_missions',   icon: '🚗', moduleId: 'driver_missions' },
   { href: '/missions-dispo',   label: 'Momo Market',                                       icon: '🛒', moduleId: 'driver_missions' },
   { href: '/services/tgr',  label: 'TGR Touring',      i18nKey: 'nav.services_tgr',  icon: '🛡️', moduleId: 'tgr' },
@@ -66,14 +66,18 @@ export function filterNavItems(opts: {
   userModules:  string[]
   userRole:     string
   userNavOrder?: string[] | null
+  userRoles?:   string[] | null
 }): NavItem[] {
-  const { userModules, userRole, userNavOrder } = opts
+  const { userModules, userRole, userNavOrder, userRoles } = opts
+  const roleList     = [userRole, ...(Array.isArray(userRoles) ? userRoles : [])]
   const isAdmin      = ['admin', 'superadmin'].includes(userRole)
   const isDispatcher = ['dispatcher', 'admin', 'superadmin'].includes(userRole)
   const isSuperadmin = userRole === 'superadmin'
+  const isRH         = roleList.includes('rh')
 
   const visible = NAV_ITEMS.filter(item => {
     if (item.role === 'superadmin')          return isSuperadmin
+    if (item.role === 'superadmin_or_rh')    return isSuperadmin || isRH
     if (item.role === 'dispatcher_or_admin') return isDispatcher
     if (item.role === 'non_driver')          return userRole !== 'driver' && userRole !== 'garage'
     if (item.moduleId === null) return true

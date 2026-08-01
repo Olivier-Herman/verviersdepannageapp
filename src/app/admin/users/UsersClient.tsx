@@ -15,7 +15,7 @@ import { Avatar } from '@/components/ui/Avatar'
 import { Badge, type BadgeVariant } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
 
-const ROLES = ['driver', 'dispatcher', 'admin', 'superadmin', 'partner']
+const ROLES = ['driver', 'dispatcher', 'admin', 'superadmin', 'partner', 'rh']
 
 // Mapping rôle → variant <Badge>
 // - superadmin = brand (pouvoir maximal, identité de marque)

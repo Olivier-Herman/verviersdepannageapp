@@ -8,6 +8,7 @@ import { NextResponse }      from 'next/server'
 import { getServerSession }  from 'next-auth'
 import { authOptions }       from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase'
+import { isPersonnelStaff }  from '@/lib/rh-access'
 
 export const dynamic     = 'force-dynamic'
 export const fetchCache   = 'force-no-store'
@@ -19,7 +20,7 @@ const EMPLOYER_FACTOR = parseFloat(process.env.RH_EMPLOYER_FACTOR || '1.32')
 export async function GET(req: Request) {
   const session = await getServerSession(authOptions)
   const u = session?.user as any
-  if (!(u?.role === 'superadmin' || (u?.roles || []).includes('superadmin'))) {
+  if (!isPersonnelStaff(u)) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
   const months = Math.min(Math.max(parseInt(new URL(req.url).searchParams.get('months') || '12'), 1), 24)

@@ -11,7 +11,8 @@ import { compareSlipInfos, latestSlipWithInfos } from '@/lib/paie/compare-infos'
 export const dynamic    = 'force-dynamic'
 export const fetchCache = 'force-no-store'
 
-const isSuper = (u: any) => u?.role === 'superadmin' || (u?.roles || []).includes('superadmin')
+import { isPersonnelStaff } from '@/lib/rh-access'
+const isSuper = isPersonnelStaff
 
 export async function GET(_req: NextRequest, { params }: { params: { id: string } }) {
   const session = await getServerSession(authOptions)

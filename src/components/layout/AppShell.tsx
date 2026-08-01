@@ -64,7 +64,8 @@ export default function AppShell({
   // se reflete immediatement sans relogin.
   const { data: session } = useSession()
   const userNavOrder = (session?.user as any)?.navOrder as string[] | null | undefined
-  const visibleNav = filterNavItems({ userModules, userRole, userNavOrder })
+  const userRoles = (session?.user as any)?.roles as string[] | null | undefined
+  const visibleNav = filterNavItems({ userModules, userRole, userNavOrder, userRoles })
   const [drawerOpen, setDrawerOpen] = useState(false)
   const { theme, toggleTheme, mounted } = useTheme()
   const { onDuty, setOnDuty, isLockedByDuty } = useOnDutyPing()
