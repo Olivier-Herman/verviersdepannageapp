@@ -12,7 +12,7 @@ import { createAdminClient } from '@/lib/supabase'
 import { analyzeAchats, type SupplierConfig } from '@/lib/achats/odoo-spend'
 import { normPlate } from '@/lib/achats/parse-invoice'
 import { getGroupPartnerIds } from '@/lib/achats/odoo-rpc'
-import { generateAchatRecommendations } from '@/lib/achats/ai-recommendations'
+import { generateAchatRecommendations, buildAchatSummary, chatAboutAchats } from '@/lib/achats/ai-recommendations'
 
 export const dynamic     = 'force-dynamic'
 export const fetchCache   = 'force-no-store'
@@ -183,7 +183,7 @@ export async function GET(req: Request) {
       const data = await analyzeAchats(months, config)
       const ai = await aiCatsAndCoverage(config)
       const recos = await generateAchatRecommendations(data, ai.aiCategories)
-      const reco = { generated_at: new Date().toISOString(), months, total_saving: recos.reduce((s, r) => s + r.estimated_saving_eur, 0), recos }
+      const reco = { generated_at: new Date().toISOString(), months, total_saving: recos.reduce((s, r) => s + r.estimated_saving_eur, 0), recos, summary: buildAchatSummary(data, ai.aiCategories) }
       await sb.from('app_settings').upsert({ key: AI_KEY, value: JSON.stringify(reco) }, { onConflict: 'key' })
       return NextResponse.json({ ok: true, reco })
     }
@@ -206,6 +206,21 @@ export async function POST(req: Request) {
   const sb = createAdminClient()
   const cfg = await loadConfig(sb)
   const canon = (id: number) => cfg.merges[id] ?? id
+
+  // Chat : discuter des recommandations / dépenses avec l'IA (ancré sur le cache).
+  if (action === 'ai_chat') {
+    const messages = (Array.isArray(body.messages) ? body.messages : [])
+      .filter((m: any) => m && (m.role === 'user' || m.role === 'assistant') && typeof m.content === 'string')
+      .slice(-16)
+    if (!messages.length) return NextResponse.json({ error: 'Message vide' }, { status: 400 })
+    let cache = await loadReco(sb)
+    if (!cache?.summary) {
+      const data = await analyzeAchats(12, cfg)   // fallback : résumé sur 12 mois si pas encore analysé
+      cache = { recos: [], summary: buildAchatSummary(data, []) }
+    }
+    const reply = await chatAboutAchats(cache.summary, cache.recos || [], messages)
+    return NextResponse.json({ ok: true, reply })
+  }
 
   if (action === 'merge') {
     // Fusionne childId dans canonicalId (le fournisseur « à garder »).

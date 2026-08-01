@@ -53,12 +53,12 @@ Réponds UNIQUEMENT par un objet JSON valide (aucun texte autour) :
 }
 Classe les recommandations de la plus forte à la plus faible économie. Max 8 recommandations, garde les plus impactantes.`
 
-export async function generateAchatRecommendations(
+/** Synthèse compacte des dépenses (agrégats, pas de PII) — partagée reco + chat. */
+export function buildAchatSummary(
   a: AchatsAnalysis,
   aiCategories: Array<{ categorie: string; amount: number }> = [],
-): Promise<AchatReco[]> {
-  // Synthèse compacte envoyée à Claude (pas de PII, juste des agrégats).
-  const summary = {
+) {
+  return {
     periode_mois: a.monthsBack,
     depense_totale_htva: a.overview.totalHtva,
     nb_factures: a.overview.count,
@@ -71,6 +71,13 @@ export async function generateAchatRecommendations(
     tendance_mensuelle: a.byMonth,
     doublons_detectes: a.duplicates.slice(0, 10).map(d => ({ fournisseur: d.supplier, ref: d.ref, nb: d.count, montant: d.amount })),
   }
+}
+
+export async function generateAchatRecommendations(
+  a: AchatsAnalysis,
+  aiCategories: Array<{ categorie: string; amount: number }> = [],
+): Promise<AchatReco[]> {
+  const summary = buildAchatSummary(a, aiCategories)
 
   const response = await getClient().messages.create({
     model: ANTHROPIC_MODEL,
@@ -92,4 +99,32 @@ export async function generateAchatRecommendations(
     actions:              (Array.isArray(r.actions) ? r.actions : []).slice(0, 5).map((x: any) => String(x).slice(0, 200)),
     suppliers:            (Array.isArray(r.suppliers) ? r.suppliers : []).slice(0, 8).map((x: any) => String(x).slice(0, 80)),
   })).sort((x: AchatReco, y: AchatReco) => y.estimated_saving_eur - x.estimated_saving_eur)
+}
+
+export interface ChatMsg { role: 'user' | 'assistant'; content: string }
+
+const CHAT_SYSTEM = `Tu es le DIRECTEUR ACHATS IA de VD Soft (société belge de dépannage/remorquage). Tu discutes avec le patron (Olivier) de ses dépenses fournisseurs.
+On te fournit la SYNTHÈSE chiffrée des dépenses et les RECOMMANDATIONS déjà générées. Réponds à ses questions et affine l'analyse.
+
+Il veut notamment pouvoir « redispatcher » / reclasser des dépenses : si une dépense te semble mal catégorisée ou qu'il te dit de la reclasser, raisonne avec lui (ex. « ce fournisseur X est classé en Autre mais c'est du pneu → à basculer en Pneus, ça change la lecture du poste »).
+
+Style : direct, concret, CHIFFRÉ (€, %). Pas de blabla. Base-toi UNIQUEMENT sur les données fournies — si une info manque, dis-le et propose comment l'obtenir. Réponses courtes (quelques phrases ou une petite liste). Français.
+Actions réellement disponibles dans l'outil que tu peux suggérer : fusionner des fournisseurs en double, exclure un fournisseur non-achat, ignorer un véhicule. La reclassification fine des lignes de facture n'est pas encore automatisée — tu peux la recommander comme piste.`
+
+export async function chatAboutAchats(summary: any, recos: AchatReco[], messages: ChatMsg[]): Promise<string> {
+  const context = `=== SYNTHÈSE DES DÉPENSES ===\n${JSON.stringify(summary, null, 2)}\n\n=== RECOMMANDATIONS ACTUELLES ===\n${JSON.stringify(recos, null, 2)}`
+  const convo = messages.slice(-16).map(m => ({ role: m.role, content: m.role === 'user' ? m.content : m.content }))
+  // On injecte le contexte dans le 1er message user pour ancrer la conversation.
+  const withContext = convo.length
+    ? [{ role: 'user' as const, content: `${context}\n\n---\nQuestion : ${convo[0].content}` }, ...convo.slice(1)]
+    : [{ role: 'user' as const, content: context }]
+
+  const response = await getClient().messages.create({
+    model: ANTHROPIC_MODEL,
+    max_tokens: 1500,
+    system: CHAT_SYSTEM,
+    messages: withContext,
+  })
+  const block = response.content.find(b => b.type === 'text')
+  return block && block.type === 'text' ? block.text.trim() : '(pas de réponse)'
 }

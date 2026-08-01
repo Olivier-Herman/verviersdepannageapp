@@ -6,7 +6,7 @@
 // tendance, concentration fournisseurs, catégories, doublons. Olivier 2026-07-31.
 
 import { useEffect, useState } from 'react'
-import { ShoppingCart, TrendingUp, Users, Receipt, AlertTriangle, PieChart, RefreshCw, Search, X, Link2, Ban, Undo2, Sparkles, Truck, Lightbulb, Loader2, ChevronRight } from 'lucide-react'
+import { ShoppingCart, TrendingUp, Users, Receipt, AlertTriangle, PieChart, RefreshCw, Search, X, Link2, Ban, Undo2, Sparkles, Truck, Lightbulb, Loader2, ChevronRight, MessageCircle, Send } from 'lucide-react'
 import AppShell from '@/components/layout/AppShell'
 
 const eur = (n: number) => n.toLocaleString('fr-BE', { maximumFractionDigits: 0 }) + ' €'
@@ -25,6 +25,10 @@ export default function AchatsClient({ userRole, userName, userEmail, userModule
   const [parsing, setParsing] = useState(false)
   const [parseProg, setParseProg] = useState<{ done: number; remaining: number | null } | null>(null)
   const [analyzing, setAnalyzing] = useState(false)
+  const [chatOpen, setChatOpen] = useState(false)
+  const [chatMsgs, setChatMsgs] = useState<{ role: string; content: string }[]>([])
+  const [chatInput, setChatInput] = useState('')
+  const [chatBusy, setChatBusy] = useState(false)
   const [catDetail, setCatDetail] = useState<{ name: string; invoices: any[] | null } | null>(null)
   const [vehDetail, setVehDetail] = useState<{ plate: string; truck: string | null; total?: number; cats?: Record<string, number>; invoices: any[] | null } | null>(null)
   const [supDetail, setSupDetail] = useState<{ id: number; name: string; invoices: any[] | null } | null>(null)
@@ -140,6 +144,18 @@ export default function AchatsClient({ userRole, userName, userEmail, userModule
     } catch { setErr('Analyse IA impossible') } finally { setAnalyzing(false) }
   }
 
+  const sendChat = async () => {
+    const text = chatInput.trim()
+    if (!text || chatBusy) return
+    const next = [...chatMsgs, { role: 'user', content: text }]
+    setChatMsgs(next); setChatInput(''); setChatBusy(true)
+    try {
+      const r = await fetch('/api/admin/achats', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'ai_chat', messages: next }) })
+      const j = await r.json()
+      setChatMsgs(m => [...m, { role: 'assistant', content: j.reply || ('❌ ' + (j.error || 'Erreur')) }])
+    } catch { setChatMsgs(m => [...m, { role: 'assistant', content: '❌ Erreur réseau' }]) } finally { setChatBusy(false) }
+  }
+
   const maxMonth = data ? Math.max(1, ...data.byMonth.map((m: any) => m.htva)) : 1
   const maxSup   = data?.topSuppliers?.[0]?.htva || 1
   const maxCat   = data?.byCategory?.[0]?.amount || 1
@@ -244,6 +260,38 @@ export default function AchatsClient({ userRole, userName, userEmail, userModule
             {!analyzing && !data.aiReco && (
               <p className="text-ink-muted text-xs mt-3">Consolidation de fournisseurs, opportunités de négociation, anomalies de prix, doublons — chiffrés en €.</p>
             )}
+
+            {/* Discussion avec l'IA */}
+            <div className="mt-4 border-t pt-3">
+              {!chatOpen ? (
+                <button onClick={() => setChatOpen(true)} className="inline-flex items-center gap-1.5 text-sm text-brand hover:underline">
+                  <MessageCircle size={15} /> Discuter avec l'IA — poser une question, tester un « et si », reclasser une dépense…
+                </button>
+              ) : (
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-sm font-medium text-ink flex items-center gap-1.5"><MessageCircle size={15} className="text-brand" /> Discussion achats</span>
+                    <button onClick={() => setChatOpen(false)} className="text-ink-muted hover:text-ink"><X size={16} /></button>
+                  </div>
+                  <div className="space-y-2 max-h-96 overflow-auto mb-2 pr-1">
+                    {chatMsgs.length === 0 && (
+                      <div className="text-ink-muted text-xs space-y-1">
+                        <p>Exemples : «&nbsp;Pourquoi consolider les pneus&nbsp;?&nbsp;» · «&nbsp;Combien si je renégocie le fournisseur X de 5&nbsp;%&nbsp;?&nbsp;» · «&nbsp;Reclasse les dépenses Y en Énergie et redis-moi les postes.&nbsp;»</p>
+                      </div>
+                    )}
+                    {chatMsgs.map((m, i) => (
+                      <div key={i} className={`text-sm rounded-xl px-3 py-2 ${m.role === 'user' ? 'bg-brand/10 text-ink ml-8' : 'bg-surface-2 text-ink-secondary mr-8 whitespace-pre-wrap'}`}>{m.content}</div>
+                    ))}
+                    {chatBusy && <div className="text-sm rounded-xl px-3 py-2 bg-surface-2 text-ink-muted mr-8 inline-flex items-center gap-2"><Loader2 size={14} className="animate-spin" /> réflexion…</div>}
+                  </div>
+                  <div className="flex gap-2">
+                    <input value={chatInput} onChange={e => setChatInput(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') sendChat() }}
+                      placeholder="Ta question ou instruction…" className="flex-1 bg-surface border rounded-lg px-3 py-2 text-sm text-ink" />
+                    <button onClick={sendChat} disabled={chatBusy || !chatInput.trim()} className="px-3 py-2 rounded-lg bg-brand text-white disabled:opacity-50"><Send size={15} /></button>
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
 
           {/* Tendance mensuelle */}
