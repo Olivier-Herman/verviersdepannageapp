@@ -225,9 +225,13 @@ export async function GET(req: Request) {
   // (assigned_at plus fiable qu'intervention_date, souvent nul).
   const startMonth = bxlMonthStartISO()
   const start7 = bxlDayStartISO(7)
+  // La fenêtre « 7 derniers jours » peut déborder sur le mois précédent (début de
+  // mois). On charge donc depuis la plus ANCIENNE des deux bornes (7 j ou 1er du
+  // mois), sinon la slide « 7 derniers jours » perdrait les jours du mois d'avant.
+  const dataStart = start7 < startMonth ? start7 : startMonth
   const { data: monthMissions } = await sb.from('incoming_missions')
     .select('id, assigned_to, mission_type, accepted_at, completed_at, assigned_at, on_way_at, parked_at, source, incident_lat, incident_lng, departure_depot_id, depot_depart_id')
-    .or(`assigned_at.gte.${startMonth},completed_at.gte.${startMonth}`)
+    .or(`assigned_at.gte.${dataStart},completed_at.gte.${dataStart}`)
     .not('assigned_to', 'is', null)
     .not('status', 'in', '(cancelled,ignored,parse_error)')
     .limit(10000)
@@ -239,7 +243,7 @@ export async function GET(req: Request) {
   const { data: forcedLogs } = await sb.from('mission_logs')
     .select('mission_id')
     .in('action', ['force_status_to_invoice', 'force_status_parked', 'force_status_completed'])
-    .gte('created_at', startMonth)
+    .gte('created_at', dataStart)
     .limit(10000)
   for (const l of (forcedLogs || [])) if (l.mission_id) forcedSet.add(l.mission_id)
 
