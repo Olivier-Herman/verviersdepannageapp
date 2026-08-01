@@ -126,16 +126,80 @@ export async function pushPayslipToOdoo(payslipId: string, opts: { force?: boole
 }
 
 /**
+ * Garantit un contact Odoo (res.partner) pour une personne : si `odoo_partner_id`
+ * est déjà là → ne fait rien. Sinon cherche un FOURNISSEUR existant au même nom
+ * (le chauffeur est souvent déjà encodé comme fournisseur pour les salaires) ;
+ * à défaut, CRÉE le contact (personne, marqué fournisseur) avec les infos VD Soft.
+ * Écrit l'id trouvé/créé dans `personnel.odoo_partner_id`.
+ */
+export async function ensureOdooPartnerForPersonnel(personnelId: string): Promise<{ partnerId: number; created: boolean }> {
+  const sb = createAdminClient()
+  const { data: p } = await sb.from('personnel')
+    .select('id, name, odoo_partner_id, adresse, code_postal, ville, phone, email').eq('id', personnelId).maybeSingle()
+  if (!p) throw new Error('Personne introuvable')
+  if (p.odoo_partner_id) return { partnerId: p.odoo_partner_id, created: false }
+  if (!p.name?.trim()) throw new Error('Nom manquant sur la fiche')
+
+  const name  = p.name.trim()
+  const parts = name.split(/\s+/)
+  const inv   = parts.length > 1 ? [...parts.slice(1), parts[0]].join(' ') : name
+
+  // 1. Chercher un FOURNISSEUR existant (nom ou nom inversé) → on s'y rattache
+  //    pour ne pas créer de doublon. On ne matche PAS un simple client homonyme
+  //    (on préfère créer un contact dédié plutôt que d'imputer un salaire à un client).
+  const matches = await odooRpc<any[]>('res.partner', 'search_read',
+    [['|', ['name', 'ilike', name], ['name', 'ilike', inv]]],
+    { fields: ['id', 'name', 'supplier_rank'], limit: 10 })
+  const supplier = matches.find(m => (m.supplier_rank || 0) > 0)
+
+  let partnerId: number, created = false
+  if (supplier) {
+    partnerId = supplier.id
+    // Complète l'adresse manquante si on l'a
+    const vals: any = {}
+    if (p.adresse)     vals.street = p.adresse
+    if (p.code_postal) vals.zip    = p.code_postal
+    if (p.ville)       vals.city   = p.ville
+    if (Object.keys(vals).length) { try { await odooRpc('res.partner', 'write', [[partnerId], vals]) } catch {} }
+  } else {
+    partnerId = await odooRpc<number>('res.partner', 'create', [{
+      name, company_type: 'person', supplier_rank: 1,
+      street: p.adresse || false, zip: p.code_postal || false, city: p.ville || false,
+      phone: p.phone || false, email: p.email || false,
+    }])
+    created = true
+  }
+  await sb.from('personnel').update({ odoo_partner_id: partnerId }).eq('id', p.id)
+  return { partnerId, created }
+}
+
+/**
  * Push automatique : pousse toutes les fiches ÉLIGIBLES non encore poussées —
  * montant net > 0 ET personne liée avec `odoo_partner_id`. Les fiches sans
  * contact Odoo sont ignorées (elles seront reprises au prochain passage une
  * fois l'ID renseigné). Appelé après l'ingestion (cron paie-fetch).
  */
-export async function pushEligiblePayslips(): Promise<{ pushed: number; skipped: number; failed: number; eligible: number; details: any[] }> {
+export async function pushEligiblePayslips(): Promise<{ pushed: number; skipped: number; failed: number; eligible: number; partnersCreated: number; details: any[] }> {
   const sb = createAdminClient()
+
+  // 0. Personnes ayant une fiche à pousser (net ≠ 0, non poussée) SANS contact Odoo
+  //    → on leur crée/lie le contact d'abord, pour qu'elles deviennent éligibles.
+  const { data: pending } = await sb.from('payslips')
+    .select('personnel_id').not('montant_net', 'is', null).neq('montant_net', 0)
+    .is('odoo_move_id', null).not('personnel_id', 'is', null)
+  const pendingIds = [...new Set((pending || []).map((s: any) => s.personnel_id))]
+  let partnersCreated = 0
+  if (pendingIds.length) {
+    const { data: missing } = await sb.from('personnel').select('id').in('id', pendingIds).is('odoo_partner_id', null)
+    for (const m of (missing || [])) {
+      try { const r = await ensureOdooPartnerForPersonnel(m.id); if (r.created) partnersCreated++ }
+      catch (e: any) { console.error('[paie push] création contact Odoo', m.id, e.message) }
+    }
+  }
+
   const { data: pers } = await sb.from('personnel').select('id').not('odoo_partner_id', 'is', null)
   const ids = (pers || []).map((p: any) => p.id)
-  if (!ids.length) return { pushed: 0, skipped: 0, failed: 0, eligible: 0, details: [] }
+  if (!ids.length) return { pushed: 0, skipped: 0, failed: 0, eligible: 0, partnersCreated, details: [] }
 
   // Éligible = montant net renseigné et ≠ 0 (négatif accepté : correction de fiche).
   const { data: slips } = await sb.from('payslips')
@@ -156,6 +220,7 @@ export async function pushEligiblePayslips(): Promise<{ pushed: number; skipped:
     skipped: details.filter(d => d.skipped).length,
     failed:  details.filter(d => !d.ok).length,
     eligible: (slips || []).length,
+    partnersCreated,
     details,
   }
 }

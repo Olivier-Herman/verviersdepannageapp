@@ -7,7 +7,7 @@
 
 import { useEffect, useState, useCallback } from 'react'
 import AppShell from '@/components/layout/AppShell'
-import { Users, Mail, Upload, Download, RefreshCw, Trash2, FileText, Link2, AlertTriangle, Eye, X } from 'lucide-react'
+import { Users, Mail, Upload, Download, RefreshCw, Trash2, FileText, Link2, AlertTriangle, Eye, X, Building2 } from 'lucide-react'
 
 const COMPANIES: Record<string, string> = { '438': 'Verviers Dépannage', '3068': 'DGJ VHU' }
 const coLabel = (c: string) => COMPANIES[c] || c || '—'
@@ -74,6 +74,18 @@ export default function PersonnelClient({ userRole, userName, userEmail, userMod
 
   const post = async (payload: any) => { await fetch('/api/personnel', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) }); await load() }
 
+  const ensureAllOdoo = async () => {
+    if (!confirm('Créer / lier le contact Odoo pour toutes les personnes actives sans ID ?\n(rattache un fournisseur existant au même nom, sinon crée le contact)')) return
+    setBusy('odoo')
+    try {
+      const r = await fetch('/api/personnel', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'ensure_odoo_all' }) })
+      const j = await r.json()
+      if (j.error) alert(j.error)
+      else alert(`Contacts Odoo : ${j.created} créé(s), ${j.linked} rattaché(s)${j.errors?.length ? `, ${j.errors.length} en erreur` : ''}.`)
+      await load()
+    } finally { setBusy('') }
+  }
+
   const personnel = data?.personnel || []
   const slips = (data?.payslips || []).filter((s: any) => !period || s.period === period)
   const persById = new Map(personnel.map((p: any) => [p.id, p]))
@@ -98,6 +110,10 @@ export default function PersonnelClient({ userRole, userName, userEmail, userMod
             <button onClick={() => fetchMail(true)} disabled={!!busy}
               className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border text-sm text-ink-secondary hover:text-brand disabled:opacity-50" title="Re-traiter pour capter primes/congés ajoutés">
               <RefreshCw size={15} /> Re-traiter
+            </button>
+            <button onClick={ensureAllOdoo} disabled={!!busy}
+              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border text-sm text-ink-secondary hover:text-brand disabled:opacity-50" title="Créer / lier les contacts Odoo manquants">
+              {busy === 'odoo' ? <RefreshCw size={15} className="animate-spin" /> : <Building2 size={15} />} Contacts Odoo
             </button>
             <label className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border text-sm text-ink-secondary hover:text-brand cursor-pointer">
               {busy === 'upload' ? <RefreshCw size={15} className="animate-spin" /> : <Upload size={15} />} Importer

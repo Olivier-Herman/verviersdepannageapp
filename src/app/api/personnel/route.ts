@@ -11,6 +11,7 @@ import { authOptions }               from '@/lib/auth'
 import { createAdminClient }         from '@/lib/supabase'
 import { nameKey }                   from '@/lib/paie/process-batch'
 import { odooRpc }                   from '@/lib/odoo'
+import { ensureOdooPartnerForPersonnel } from '@/lib/paie/push-odoo'
 
 export const dynamic    = 'force-dynamic'
 export const fetchCache = 'force-no-store'
@@ -108,6 +109,26 @@ export async function POST(req: NextRequest) {
     await sb.from('payslips').update({ personnel_id: null }).eq('personnel_id', id)
     await sb.from('personnel').delete().eq('id', id)
     return NextResponse.json({ ok: true })
+  }
+
+  if (action === 'ensure_odoo') {
+    // Crée / lie le contact Odoo d'une personne et remplit odoo_partner_id.
+    const id = String(body.id || ''); if (!id) return NextResponse.json({ error: 'id requis' }, { status: 400 })
+    try {
+      const r = await ensureOdooPartnerForPersonnel(id)
+      return NextResponse.json({ ok: true, ...r })
+    } catch (e: any) { return NextResponse.json({ error: e.message }, { status: 400 }) }
+  }
+
+  if (action === 'ensure_odoo_all') {
+    // Crée / lie le contact Odoo pour toutes les personnes actives sans id.
+    const { data: missing } = await sb.from('personnel').select('id').is('odoo_partner_id', null).neq('active', false)
+    let created = 0, linked = 0; const errors: any[] = []
+    for (const m of (missing || [])) {
+      try { const r = await ensureOdooPartnerForPersonnel(m.id); r.created ? created++ : linked++ }
+      catch (e: any) { errors.push({ id: m.id, error: e.message }) }
+    }
+    return NextResponse.json({ ok: true, total: (missing || []).length, created, linked, errors })
   }
 
   if (action === 'reassign') {

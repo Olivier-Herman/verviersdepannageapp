@@ -32,6 +32,18 @@ export default function FicheEmployeClient({ id, userRole, userName, userEmail, 
   const [busy, setBusy] = useState(false)
   const [preview, setPreview] = useState<any>(null)
   const [pushing, setPushing] = useState<string | null>(null)
+  const [ensuring, setEnsuring] = useState(false)
+
+  const ensureOdoo = async () => {
+    setEnsuring(true)
+    try {
+      const r = await fetch('/api/personnel', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'ensure_odoo', id }) })
+      const j = await r.json()
+      if (j.error) alert(j.error)
+      else { alert(j.created ? `Contact Odoo créé (id ${j.partnerId}).` : `Rattaché au fournisseur Odoo existant (id ${j.partnerId}).`); await load() }
+    } finally { setEnsuring(false) }
+  }
 
   const pushOne = async (slip: any) => {
     setPushing(slip.id)
@@ -67,13 +79,6 @@ export default function FicheEmployeClient({ id, userRole, userName, userEmail, 
   }
 
   const set = (k: string, v: any) => setForm((f: any) => ({ ...f, [k]: v }))
-  const Fld = ({ label, k, type = 'text', ph }: any) => (
-    <label className="block">
-      <span className="text-ink-muted text-xs">{label}</span>
-      <input type={type} value={form[k] || ''} onChange={e => set(k, e.target.value)} placeholder={ph}
-        className="w-full mt-1 bg-surface border rounded-lg px-3 py-2 text-sm text-ink" />
-    </label>
-  )
 
   const p = data?.person
   const slips = data?.payslips || []
@@ -161,7 +166,15 @@ export default function FicheEmployeClient({ id, userRole, userName, userEmail, 
                       </select></label>
                     <Fld label="Date d'entrée" k="date_entree" type="date" form={form} set={set} />
                     <Fld label="Date de sortie" k="date_sortie" type="date" form={form} set={set} />
-                    <Fld label="ID contact Odoo" k="odoo_partner_id" ph="ex : 1234" form={form} set={set} />
+                    <div className="flex flex-col gap-1">
+                      <Fld label="ID contact Odoo" k="odoo_partner_id" ph="ex : 1234" form={form} set={set} />
+                      {!form.odoo_partner_id && (
+                        <button type="button" onClick={ensureOdoo} disabled={ensuring}
+                          className="self-start inline-flex items-center gap-1 text-[11px] px-2 py-1 rounded-lg border text-ink-secondary hover:text-brand hover:border-brand/40 disabled:opacity-50">
+                          <Building2 size={12} /> {ensuring ? 'Création…' : 'Créer / lier le contact Odoo'}
+                        </button>
+                      )}
+                    </div>
                   </div>
                 </section>
 
