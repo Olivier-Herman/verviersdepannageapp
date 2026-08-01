@@ -4,7 +4,7 @@
 
 import { useEffect, useState } from 'react'
 import AppShell from '@/components/layout/AppShell'
-import { Users, Clock, TrendingUp, AlertTriangle, Send, ChevronRight, CalendarDays } from 'lucide-react'
+import { Users, Clock, TrendingUp, AlertTriangle, Send, ChevronRight, CalendarDays, Megaphone } from 'lucide-react'
 
 export default function PersonnelHub({ userRole, userName, userEmail, userModules }: {
   userRole: string; userName: string; userEmail: string; userModules: string[]
@@ -38,6 +38,11 @@ export default function PersonnelHub({ userRole, userName, userEmail, userModule
     { href: '/personnel/rentabilite', icon: TrendingUp, tint: 'emerald',
       title: 'Rentabilité', desc: 'Marge de contribution par chauffeur (CA − coût salarial)',
       metric: 'Par chauffeur', badge: null },
+    ...(userRole === 'superadmin' ? [{
+      href: '/personnel/annonces', icon: Megaphone, tint: 'sky',
+      title: 'Annonces', desc: 'Pousser une nouveauté aux travailleurs et suivre qui l\'a lue',
+      metric: 'Nouveautés', badge: null as any,
+    }] : []),
   ]
 
   const tintCls: Record<string, string> = {
@@ -45,6 +50,7 @@ export default function PersonnelHub({ userRole, userName, userEmail, userModule
     violet:  'bg-purple-500/10 text-purple-500',
     emerald: 'bg-emerald-500/10 text-emerald-500',
     orange:  'bg-orange-500/10 text-orange-500',
+    sky:     'bg-sky-500/10 text-sky-500',
   }
 
   return (

@@ -6,6 +6,7 @@
 
 import { useEffect, useState } from 'react'
 import AppShell from '@/components/layout/AppShell'
+import AnnouncementModal from './AnnouncementModal'
 import { FileText, Download, Wallet, Info, Eye, X, CalendarClock, Save, UserCog, Check, CalendarDays, Send, ChevronRight, ChevronLeft, Sparkles } from 'lucide-react'
 import { normalizeEtatCivil } from '@/lib/paie/compare-infos'
 import { hoursForRange } from '@/lib/conges/apply'
@@ -109,6 +110,7 @@ export default function MaPaieClient({ userRole, userName, userEmail, userModule
 
   return (
     <AppShell title="Mes Prestations" userRole={userRole} userName={userName} userEmail={userEmail} userModules={userModules}>
+      <AnnouncementModal />
       <div className="max-w-3xl mx-auto px-4 py-6">
         <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-brand/15 via-brand/5 to-transparent border border-brand/10 p-6 mb-6">
           <div className="flex items-center gap-4">
