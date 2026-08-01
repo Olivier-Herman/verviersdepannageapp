@@ -146,43 +146,6 @@ export default function PersonnelClient({ userRole, userName, userEmail, userMod
 
         {data && (
           <div className="flex flex-col gap-6">
-            {/* Fiches de paie de la période */}
-            <div className="bg-surface border rounded-2xl p-5">
-              <div className="flex items-center gap-2 mb-3">
-                <FileText size={16} className="text-brand" />
-                <h2 className="font-semibold text-ink text-sm">Fiches de paie · {fmtPeriod(period) || '—'}</h2>
-                <span className="text-ink-muted text-xs ml-auto">{slips.length} fiche(s)</span>
-              </div>
-              {slips.length === 0 ? (
-                <p className="text-ink-muted text-sm italic">Aucune fiche pour cette période. « Récupérer (mail) » ou « Importer ».</p>
-              ) : (
-                <div className="flex flex-col divide-y divide-white/5">
-                  {slips.map((s: any) => {
-                    const p: any = s.personnel_id ? persById.get(s.personnel_id) : null
-                    return (
-                      <div key={s.id} className="flex items-center gap-2 py-2 text-sm">
-                        <FileText size={14} className="text-ink-muted flex-shrink-0" />
-                        <div className="flex-1 min-w-0">
-                          <span className="text-ink">{p?.name || s.worker_name || '—'}</span>
-                          <span className="text-ink-secondary text-xs ml-2">· {ficheLabel(s)}</span>
-                          <span className="text-ink-muted text-xs ml-2">{coLabel(s.company_code)}</span>
-                          {!s.personnel_id && <span className="ml-2 text-[10px] px-1.5 py-0.5 rounded-full bg-amber-500/15 text-amber-600 inline-flex items-center gap-0.5"><AlertTriangle size={10} />à rattacher</span>}
-                        </div>
-                        {!s.personnel_id && (
-                          <select onChange={e => e.target.value && post({ action: 'reassign', payslip_id: s.id, personnel_id: e.target.value })}
-                            className="bg-surface border rounded-lg px-2 py-1 text-xs" defaultValue="">
-                            <option value="">Rattacher à…</option>
-                            {personnel.map((pp: any) => <option key={pp.id} value={pp.id}>{pp.name}</option>)}
-                          </select>
-                        )}
-                        <button onClick={() => setPreview(s)} className="p-1.5 text-ink-muted hover:text-brand" title="Prévisualiser"><Eye size={15} /></button>
-                      </div>
-                    )
-                  })}
-                </div>
-              )}
-            </div>
-
             {/* Modifications self-service à transmettre au secrétariat social */}
             {(data?.pendingChanges?.length > 0) && (
               <div className="bg-amber-50 dark:bg-amber-500/10 border border-amber-400/50 rounded-2xl p-5">
@@ -259,6 +222,43 @@ export default function PersonnelClient({ userRole, userName, userEmail, userMod
                   )
                 })}
               </div>
+            </div>
+
+            {/* Fiches de paie de la période */}
+            <div className="bg-surface border rounded-2xl p-5">
+              <div className="flex items-center gap-2 mb-3">
+                <FileText size={16} className="text-brand" />
+                <h2 className="font-semibold text-ink text-sm">Fiches de paie · {fmtPeriod(period) || '—'}</h2>
+                <span className="text-ink-muted text-xs ml-auto">{slips.length} fiche(s)</span>
+              </div>
+              {slips.length === 0 ? (
+                <p className="text-ink-muted text-sm italic">Aucune fiche pour cette période. « Récupérer (mail) » ou « Importer ».</p>
+              ) : (
+                <div className="flex flex-col divide-y divide-white/5">
+                  {slips.map((s: any) => {
+                    const p: any = s.personnel_id ? persById.get(s.personnel_id) : null
+                    return (
+                      <div key={s.id} className="flex items-center gap-2 py-2 text-sm">
+                        <FileText size={14} className="text-ink-muted flex-shrink-0" />
+                        <div className="flex-1 min-w-0">
+                          <span className="text-ink">{p?.name || s.worker_name || '—'}</span>
+                          <span className="text-ink-secondary text-xs ml-2">· {ficheLabel(s)}</span>
+                          <span className="text-ink-muted text-xs ml-2">{coLabel(s.company_code)}</span>
+                          {!s.personnel_id && <span className="ml-2 text-[10px] px-1.5 py-0.5 rounded-full bg-amber-500/15 text-amber-600 inline-flex items-center gap-0.5"><AlertTriangle size={10} />à rattacher</span>}
+                        </div>
+                        {!s.personnel_id && (
+                          <select onChange={e => e.target.value && post({ action: 'reassign', payslip_id: s.id, personnel_id: e.target.value })}
+                            className="bg-surface border rounded-lg px-2 py-1 text-xs" defaultValue="">
+                            <option value="">Rattacher à…</option>
+                            {personnel.map((pp: any) => <option key={pp.id} value={pp.id}>{pp.name}</option>)}
+                          </select>
+                        )}
+                        <button onClick={() => setPreview(s)} className="p-1.5 text-ink-muted hover:text-brand" title="Prévisualiser"><Eye size={15} /></button>
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
             </div>
 
             <p className="text-ink-muted text-xs text-center">
