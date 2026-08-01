@@ -28,8 +28,16 @@ export default function AnnouncementModal() {
     body: JSON.stringify({ action: 'seen', id: ann.id }),
   }).catch(() => {})
 
-  const close = () => { markSeen(); setShow(false); setTimeout(() => setAnn(null), 200) }
-  const go    = () => { markSeen(); window.location.href = ann.action_url }
+  const dismiss = () => { setShow(false); setTimeout(() => setAnn(null), 200) }
+  const close = async () => { await markSeen(); dismiss() }
+  const go    = async () => {
+    await markSeen()
+    const target = ann.action_url || '/'
+    // Si la cible = la page courante (ex. /ma-paie), inutile de recharger
+    // (sinon le modal se rouvre en boucle) → on ferme simplement.
+    if (target === window.location.pathname) dismiss()
+    else window.location.href = target
+  }
 
   return (
     <div className={`fixed inset-0 z-[100] flex items-center justify-center p-4 transition-opacity duration-200 ${show ? 'opacity-100' : 'opacity-0'}`}
