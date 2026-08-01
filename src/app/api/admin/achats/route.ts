@@ -48,6 +48,22 @@ export async function GET(req: Request) {
     for (const [child, cid] of Object.entries(config.merges || {})) if ((config.excluded || []).includes(cid)) s.add(Number(child))
     return s
   }
+  // Lit TOUTES les factures de la période, paginé + trié (déterministe). Sans
+  // ça, PostgREST plafonne à 1000 lignes dans un ordre arbitraire → les totaux
+  // « switchent » entre deux états à chaque appel.
+  const fetchAllFactures = async (cols: string) => {
+    const out: any[] = []
+    for (let page = 0; page < 30; page++) {
+      const { data } = await sb.from('achats_factures').select(cols)
+        .gte('invoice_date', periodStart())
+        .order('odoo_move_id', { ascending: true })
+        .range(page * 1000, page * 1000 + 999)
+      if (!data || !data.length) break
+      out.push(...data)
+      if (data.length < 1000) break
+    }
+    return out
+  }
   // Lignes d'une facture, montants mis à l'échelle du total HTVA (l'IA estime,
   // on recale pour que la somme des lignes = le montant réel de la facture).
   const scaledLines = (r: any): Array<{ montant: number; categorie: string; plaque: string | null; description: string }> => {
@@ -60,9 +76,8 @@ export async function GET(req: Request) {
 
   const aiCatsAndCoverage = async (config: SupplierConfig) => {
     const excl = excludedMemberSet(config)
-    const { data: fx } = await sb.from('achats_factures')
-      .select('categorie, amount_htva, partner_id, items, parsed_at').gte('invoice_date', periodStart())
-    const rows = (fx || []).filter((r: any) => !excl.has(r.partner_id))
+    const fx = await fetchAllFactures('categorie, amount_htva, partner_id, items, parsed_at')
+    const rows = fx.filter((r: any) => !excl.has(r.partner_id))
     const parsedRows = rows.filter((r: any) => r.parsed_at)
     const catMap: Record<string, number> = {}
     for (const r of parsedRows) for (const l of scaledLines(r)) catMap[l.categorie] = (catMap[l.categorie] || 0) + l.montant
@@ -75,13 +90,13 @@ export async function GET(req: Request) {
   // dépanneuse (trucks). Montants mis à l'échelle du total facture.
   const costByVehicle = async (config: SupplierConfig) => {
     const excl = excludedMemberSet(config)
-    const [{ data: fx }, { data: trucks }] = await Promise.all([
-      sb.from('achats_factures').select('partner_id, amount_htva, categorie, items, parsed_at').gte('invoice_date', periodStart()),
+    const [fx, { data: trucks }] = await Promise.all([
+      fetchAllFactures('partner_id, amount_htva, categorie, items, parsed_at'),
       sb.from('trucks').select('name, plate'),
     ])
     const truckMap = new Map<string, string>()
     for (const t of (trucks || [])) if (t.plate) truckMap.set(normPlate(t.plate), t.name)
-    const rows = (fx || []).filter((r: any) => !excl.has(r.partner_id) && r.parsed_at)
+    const rows = fx.filter((r: any) => !excl.has(r.partner_id) && r.parsed_at)
     const agg = new Map<string, { plate: string; truck: string | null; total: number; count: number; cats: Record<string, number> }>()
     for (const r of rows) {
       for (const l of scaledLines(r)) {
@@ -108,10 +123,8 @@ export async function GET(req: Request) {
     if (vehicle) {
       const target = normPlate(vehicle)
       const excl = excludedMemberSet(config)
-      const { data: fx } = await sb.from('achats_factures')
-        .select('odoo_move_id, supplier_name, partner_id, invoice_date, amount_htva, ref, categorie, resume, items')
-        .gte('invoice_date', periodStart()).order('invoice_date', { ascending: false }).limit(1000)
-      const invoices = (fx || []).filter((r: any) => !excl.has(r.partner_id))
+      const fx = await fetchAllFactures('odoo_move_id, supplier_name, partner_id, invoice_date, amount_htva, ref, categorie, resume, items')
+      const invoices = fx.filter((r: any) => !excl.has(r.partner_id))
         .map((r: any) => {
           const lines = scaledLines(r).filter(l => l.plaque === target)
           if (!lines.length) return null
@@ -123,10 +136,8 @@ export async function GET(req: Request) {
     // Drill-down : lignes d'une catégorie (par facture, montant de ligne).
     if (category) {
       const excl = excludedMemberSet(config)
-      const { data: fx } = await sb.from('achats_factures')
-        .select('odoo_move_id, supplier_name, partner_id, invoice_date, amount_htva, ref, categorie, resume, items')
-        .gte('invoice_date', periodStart()).order('invoice_date', { ascending: false }).limit(1500)
-      const invoices = (fx || []).filter((r: any) => !excl.has(r.partner_id))
+      const fx = await fetchAllFactures('odoo_move_id, supplier_name, partner_id, invoice_date, amount_htva, ref, categorie, resume, items')
+      const invoices = fx.filter((r: any) => !excl.has(r.partner_id))
         .map((r: any) => {
           const lines = scaledLines(r).filter(l => l.categorie === category)
           if (!lines.length) return null

@@ -13,6 +13,7 @@ import { ANTHROPIC_MODEL } from '@/lib/anthropic-model'
 // Taxonomie fermée (dépannage / garage). L'IA DOIT choisir dans cette liste.
 export const CATEGORIES = [
   'Carburant',
+  'Péages & frais de route',
   'Sous-traitance dépannage',
   'Pièces & fournitures véhicules',
   'Pneus',
@@ -64,6 +65,7 @@ Règles IMPORTANTES :
 - "Acompte / à régulariser" = toute ligne d'ACOMPTE / provision / avance (souvent libellée « Acompte », « Down payment »). Ces lignes se soldent sur la facture finale → NE PAS les ranger dans un vrai poste, mets "Acompte / à régulariser".
 - "Charges sociales & salaires" (ONSS, précompte, secrétariat social) = dépense normale.
 - "Sous-traitance dépannage" = un autre dépanneur qui a réalisé une intervention pour nous.
+- Cartes carburant/péage (AS24, DKV, Eurotoll, Total, Q8, Shell, TotalEnergies…) : lignes de carburant/gasoil/AdBlue → "Carburant" ; lignes de péage/tunnel/vignette/parking → "Péages & frais de route". JAMAIS "Honoraires".
 - montant : HTVA par ligne, obligatoire (estime au mieux). La somme des lignes ≈ total HTVA de la facture.
 - plaque : uniquement si la ligne vise un véhicule identifié (carburant, garage, pneus). Sinon null.
 - Si illisible : confidence bas, une seule ligne categorie "Autre".`
