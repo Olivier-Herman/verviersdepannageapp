@@ -45,34 +45,43 @@ export async function POST(req: NextRequest) {
     if (!CONGE_TYPES[type]) return NextResponse.json({ error: 'Type invalide' }, { status: 400 })
     if (!/^\d{4}-\d{2}-\d{2}$/.test(start) || !/^\d{4}-\d{2}-\d{2}$/.test(end) || end < start)
       return NextResponse.json({ error: 'Dates invalides' }, { status: 400 })
-    const { data: persons } = await sb.from('personnel').select('id, name').eq('user_id', u.id)
+    const { data: persons } = await sb.from('personnel').select('id, name, kind').eq('user_id', u.id)
     if (!persons?.length) return NextResponse.json({ error: 'Aucune fiche liée à ton compte' }, { status: 400 })
     const days = countWeekdays(start, end)
     if (days < 1) return NextResponse.json({ error: 'La plage ne contient aucun jour ouvrable' }, { status: 400 })
     const hours = hoursForRange(await workerDayHours(sb, persons[0].id), start, end)
+    // Indépendant (sous-traitant) : peut « imposer » son congé (auto-approuvé, RH informé).
+    const isIndep = persons[0].kind === 'independant'
+    const impose  = !!body.impose && isIndep
 
     await sb.from('conge_requests').insert({
       personnel_id: persons[0].id, user_id: u.id, type, start_date: start, end_date: end,
-      days, hours, reason: String(body.reason || '').trim() || null, status: 'pending',
+      days, hours, reason: String(body.reason || '').trim() || null,
+      status: impose ? 'approved' : 'pending',
+      ...(impose ? { applied: true, decided_by: `${persons[0].name} (indépendant)`, decided_at: new Date().toISOString() } : {}),
     })
+    if (impose) await applyLeaveToSheets(sb, persons[0].id, type, start, end).catch(() => {})   // no-op si pas de feuille
+
+    const verb = impose ? 'a imposé un congé' : 'a demandé un congé'
     try {
       const html = emailLayout(
-        `<p style="margin:0 0 12px"><b>${persons[0].name}</b> a demandé un congé.</p>
+        `<p style="margin:0 0 12px"><b>${persons[0].name}</b> ${verb}${impose ? ' (indépendant, sans validation)' : ''}.</p>
          <p style="margin:0 0 6px"><b>Type :</b> ${CONGE_TYPES[type]}</p>
          <p style="margin:0 0 6px"><b>Du :</b> ${start} <b>au</b> ${end} (${days} jour${days > 1 ? 's' : ''} ouvrable${days > 1 ? 's' : ''})</p>
          ${body.reason ? `<p style="margin:0 0 6px"><b>Motif :</b> ${String(body.reason)}</p>` : ''}
-         <p style="margin:12px 0 0;color:#666;font-size:13px">À valider dans VD Soft → Gestion du personnel → Congés.</p>`,
-        'Demande de congé')
-      await sendEmail(NOTIFY_MANAGER, `Demande de congé — ${persons[0].name}`, html, 'RH')
+         <p style="margin:12px 0 0;color:#666;font-size:13px">${impose ? 'Pour information — congé déjà approuvé.' : 'À valider dans VD Soft → Gestion du personnel → Congés.'}</p>`,
+        impose ? 'Congé imposé' : 'Demande de congé')
+      await sendEmail(NOTIFY_MANAGER, `${impose ? 'Congé imposé' : 'Demande de congé'} — ${persons[0].name}`, html, 'RH')
     } catch (e: any) { console.error('[conges] mail manager', e.message) }
     // Notif in-app aux valideurs (superadmin + RH)
     try {
       const { data: mgrs } = await sb.from('users').select('id').or('role.in.(superadmin,rh),roles.ov.{superadmin,rh}')
       await Promise.all((mgrs || []).map((m: any) => sendNotification(m.id, 'conge_requested', {
-        title: 'Demande de congé', body: `${persons[0].name} — ${CONGE_TYPES[type]}, ${start} → ${end} (${days}j)`, action_url: '/personnel/conges',
+        title: impose ? 'Congé imposé (indépendant)' : 'Demande de congé',
+        body: `${persons[0].name} — ${CONGE_TYPES[type]}, ${start} → ${end} (${days}j)`, action_url: '/personnel/conges',
       })))
     } catch (e: any) { console.error('[conges] notif manager', e.message) }
-    return NextResponse.json({ ok: true })
+    return NextResponse.json({ ok: true, imposed: impose })
   }
 
   if (action === 'decide') {

@@ -19,7 +19,7 @@ export async function GET() {
   const sb = createAdminClient()
 
   const { data: persons } = await sb.from('personnel')
-    .select('id, name, company_code, adresse, code_postal, ville, etat_civil, personnes_charge, iban, phone, email, contact_urgence_nom, contact_urgence_tel')
+    .select('id, name, company_code, kind, adresse, code_postal, ville, etat_civil, personnes_charge, iban, phone, email, contact_urgence_nom, contact_urgence_tel')
     .eq('user_id', u.id)
   const persIds = (persons || []).map((p: any) => p.id)
   if (!persIds.length) return NextResponse.json({ payslips: [], linked: false })
@@ -27,6 +27,7 @@ export async function GET() {
   // Infos éditables par le travailleur (self-service) — prises sur la 1re fiche liée.
   const src = persons![0]
   const me = {
+    kind: src.kind || 'interne',
     adresse: src.adresse, code_postal: src.code_postal, ville: src.ville,
     etat_civil: src.etat_civil, personnes_charge: src.personnes_charge, iban: src.iban,
     phone: src.phone, email: src.email,

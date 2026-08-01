@@ -133,6 +133,39 @@ export default function PersonnelClient({ userRole, userName, userEmail, userMod
   const personnel = data?.personnel || []
   const slips = (data?.payslips || []).filter((s: any) => !period || s.period === period)
   const persById = new Map(personnel.map((p: any) => [p.id, p]))
+  const internes     = personnel.filter((p: any) => p.kind !== 'independant')
+  const independants  = personnel.filter((p: any) => p.kind === 'independant')
+
+  const personCard = (p: any) => {
+    const initials = (p.name || '?').split(' ').map((w: string) => w[0]).slice(0, 2).join('')
+    return (
+      <div key={p.id} className="group relative bg-surface-2 border rounded-xl p-4 hover:border-brand/40 hover:shadow-md transition-all">
+        <button onClick={() => { if (confirm(`Supprimer ${p.name} du répertoire ? (les fiches sont conservées, détachées)`)) post({ action: 'delete', id: p.id }) }}
+          className="absolute top-2 right-2 p-1 text-ink-muted/50 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity" title="Retirer du répertoire"><Trash2 size={14} /></button>
+        <a href={`/personnel/${p.id}`} className="flex items-center gap-3">
+          <div className="w-11 h-11 rounded-full bg-brand/10 text-brand flex items-center justify-center font-bold flex-shrink-0">{initials}</div>
+          <div className="min-w-0">
+            <div className="flex items-center gap-1.5">
+              <span className="text-ink font-semibold text-sm truncate group-hover:text-brand">{p.name}</span>
+              {p.mismatch_count > 0 && (
+                <span className="inline-flex items-center gap-0.5 text-[10px] px-1.5 py-0.5 rounded-full bg-amber-50 dark:bg-amber-500/10 text-amber-800 border border-amber-400/50 flex-shrink-0"
+                  title={`Diffère de la fiche de paie : ${(p.mismatch_fields || []).join(', ')}`}><AlertTriangle size={10} /> {p.mismatch_count}</span>
+              )}
+            </div>
+            <div className="text-ink-muted text-xs truncate">{p.kind === 'independant' ? (p.poste || 'Indépendant') : [coLabel(p.company_code), p.matricule && `#${p.matricule}`].filter(Boolean).join(' · ')}</div>
+          </div>
+        </a>
+        <div className="flex items-center gap-2 mt-3">
+          {p.kind !== 'independant' && <span className="inline-flex items-center gap-1 text-[11px] px-2 py-1 rounded-lg bg-white/5 text-ink-secondary flex-shrink-0"><FileText size={11} /> {p.payslip_count}</span>}
+          <select value={p.user_id || ''} onChange={e => post({ action: 'update', id: p.id, user_id: e.target.value || null })}
+            className="flex-1 min-w-0 bg-surface border rounded-lg px-2 py-1 text-xs text-ink" title="Compte app lié">
+            <option value="">— non lié —</option>
+            {(data.users || []).map((u: any) => <option key={u.id} value={u.id}>{u.name}</option>)}
+          </select>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <AppShell title="Gestion du Personnel" userRole={userRole} userName={userName} userEmail={userEmail} userModules={userModules}>
@@ -236,50 +269,35 @@ export default function PersonnelClient({ userRole, userName, userEmail, userMod
               </div>
             )}
 
-            {/* Répertoire du personnel */}
+            {/* Répertoire du personnel interne */}
             <div className="bg-surface border rounded-2xl p-5">
               <div className="flex items-center gap-2 mb-3">
                 <Users size={16} className="text-brand" />
-                <h2 className="font-semibold text-ink text-sm">Répertoire du personnel</h2>
-                {personnel.filter((p: any) => p.mismatch_count > 0).length > 0 && (
+                <h2 className="font-semibold text-ink text-sm">Répertoire du personnel interne</h2>
+                {internes.filter((p: any) => p.mismatch_count > 0).length > 0 && (
                   <span className="inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full bg-amber-50 dark:bg-amber-500/10 text-amber-800 border border-amber-400/50">
-                    <AlertTriangle size={12} /> {personnel.filter((p: any) => p.mismatch_count > 0).length} à vérifier
+                    <AlertTriangle size={12} /> {internes.filter((p: any) => p.mismatch_count > 0).length} à vérifier
                   </span>
                 )}
-                <span className="text-ink-muted text-xs ml-auto">{personnel.length} personne(s)</span>
+                <span className="text-ink-muted text-xs ml-auto">{internes.length} personne(s)</span>
               </div>
-              {!personnel.length && <p className="py-4 text-ink-muted text-sm italic">Le répertoire se remplit automatiquement au traitement des fiches.</p>}
+              {!internes.length && <p className="py-4 text-ink-muted text-sm italic">Le répertoire se remplit automatiquement au traitement des fiches.</p>}
               <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                {personnel.map((p: any) => {
-                  const initials = (p.name || '?').split(' ').map((w: string) => w[0]).slice(0, 2).join('')
-                  return (
-                    <div key={p.id} className="group relative bg-surface-2 border rounded-xl p-4 hover:border-brand/40 hover:shadow-md transition-all">
-                      <button onClick={() => { if (confirm(`Supprimer ${p.name} du répertoire ? (les fiches sont conservées, détachées)`)) post({ action: 'delete', id: p.id }) }}
-                        className="absolute top-2 right-2 p-1 text-ink-muted/50 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity" title="Retirer du répertoire"><Trash2 size={14} /></button>
-                      <a href={`/personnel/${p.id}`} className="flex items-center gap-3">
-                        <div className="w-11 h-11 rounded-full bg-brand/10 text-brand flex items-center justify-center font-bold flex-shrink-0">{initials}</div>
-                        <div className="min-w-0">
-                          <div className="flex items-center gap-1.5">
-                            <span className="text-ink font-semibold text-sm truncate group-hover:text-brand">{p.name}</span>
-                            {p.mismatch_count > 0 && (
-                              <span className="inline-flex items-center gap-0.5 text-[10px] px-1.5 py-0.5 rounded-full bg-amber-50 dark:bg-amber-500/10 text-amber-800 border border-amber-400/50 flex-shrink-0"
-                                title={`Diffère de la fiche de paie : ${(p.mismatch_fields || []).join(', ')}`}><AlertTriangle size={10} /> {p.mismatch_count}</span>
-                            )}
-                          </div>
-                          <div className="text-ink-muted text-xs truncate">{[coLabel(p.company_code), p.matricule && `#${p.matricule}`].filter(Boolean).join(' · ')}</div>
-                        </div>
-                      </a>
-                      <div className="flex items-center gap-2 mt-3">
-                        <span className="inline-flex items-center gap-1 text-[11px] px-2 py-1 rounded-lg bg-white/5 text-ink-secondary flex-shrink-0"><FileText size={11} /> {p.payslip_count}</span>
-                        <select value={p.user_id || ''} onChange={e => post({ action: 'update', id: p.id, user_id: e.target.value || null })}
-                          className="flex-1 min-w-0 bg-surface border rounded-lg px-2 py-1 text-xs text-ink" title="Compte app lié">
-                          <option value="">— non lié —</option>
-                          {(data.users || []).map((u: any) => <option key={u.id} value={u.id}>{u.name}</option>)}
-                        </select>
-                      </div>
-                    </div>
-                  )
-                })}
+                {internes.map(personCard)}
+              </div>
+            </div>
+
+            {/* Répertoire du personnel indépendant (sous-traitants) */}
+            <div className="bg-surface border rounded-2xl p-5">
+              <div className="flex items-center gap-2 mb-1">
+                <Users size={16} className="text-sky-500" />
+                <h2 className="font-semibold text-ink text-sm">Répertoire du personnel indépendant</h2>
+                <span className="text-ink-muted text-xs ml-auto">{independants.length} personne(s)</span>
+              </div>
+              <p className="text-ink-muted text-[11px] mb-3">Sous-traitants : pas de fiche de paie ni de présence. Ils utilisent le module Congés (et peuvent imposer leur congé).</p>
+              {!independants.length && <p className="py-4 text-ink-muted text-sm italic">Aucun indépendant. Ajoute-les en base (colonne <code>kind = 'independant'</code>).</p>}
+              <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                {independants.map(personCard)}
               </div>
             </div>
 

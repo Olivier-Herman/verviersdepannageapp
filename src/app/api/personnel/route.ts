@@ -26,7 +26,7 @@ export async function GET() {
   const sb = createAdminClient()
 
   const [{ data: personnel }, { data: users }, { data: slips }] = await Promise.all([
-    sb.from('personnel').select('id, name, company_code, matricule, user_id, active, odoo_partner_id, adresse, code_postal, ville, national_number, iban, etat_civil, personnes_charge').order('name'),
+    sb.from('personnel').select('id, name, company_code, matricule, user_id, active, odoo_partner_id, kind, adresse, code_postal, ville, national_number, iban, etat_civil, personnes_charge').order('name'),
     sb.from('users').select('id, name').order('name'),
     sb.from('payslips').select('id, personnel_id, worker_name, period, company_code, type, label, pages, slip_infos').order('period', { ascending: false }),
   ])

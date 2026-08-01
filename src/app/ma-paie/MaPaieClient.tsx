@@ -55,14 +55,15 @@ export default function MaPaieClient({ userRole, userName, userEmail, userModule
 
   useEffect(() => { loadMine().catch(() => setData({ payslips: [], linked: false })).finally(() => setLd(false)) }, [])
 
-  const submitConge = async () => {
+  const submitConge = async (impose = false) => {
     if (!congeForm.start_date || !congeForm.end_date) { alert('Indique les dates de début et de fin.'); return }
+    if (impose && !confirm('Imposer ce congé sans validation RH ? Il sera directement approuvé.')) return
     setSubmittingConge(true)
     try {
-      const r = await fetch('/api/conges', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'request', ...congeForm }) })
+      const r = await fetch('/api/conges', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'request', impose, ...congeForm }) })
       const j = await r.json()
       if (j.error) { alert(j.error); return }
-      alert('Demande de congé envoyée. Tu seras notifié de la décision.')
+      alert(impose ? 'Congé imposé et approuvé.' : 'Demande de congé envoyée. Tu seras notifié de la décision.')
       setCongeForm({ type: 'conge' }); await loadMine()
     } finally { setSubmittingConge(false) }
   }
@@ -81,6 +82,10 @@ export default function MaPaieClient({ userRole, userName, userEmail, userModule
   }
 
   const congeHours = (congeForm.start_date && congeForm.end_date) ? hoursForRange(data?.dayHours || {}, congeForm.start_date, congeForm.end_date) : 0
+  // Indépendants (sous-traitants) : pas de fiche de présence → un seul type « Congé ».
+  const isIndep = data?.me?.kind === 'independant'
+  const congeTypesShown: Record<string, string> = isIndep ? { conge: 'Congé' } : CONGE_TYPE_LABEL
+  const congeLabel = (t: string) => (isIndep && t === 'conge') ? 'Congé' : (CONGE_TYPE_LABEL[t] || t)
 
   const setMe = (k: string, v: any) => { setMeForm((f: any) => ({ ...f, [k]: v })); setSavedInfo(false) }
   const saveInfos = async () => {
@@ -170,7 +175,7 @@ export default function MaPaieClient({ userRole, userName, userEmail, userModule
             <div className="grid sm:grid-cols-2 gap-3">
               <label className="block"><span className="text-ink-muted text-xs">Type</span>
                 <select value={congeForm.type} onChange={e => setCongeForm({ ...congeForm, type: e.target.value })} className="w-full mt-1 bg-surface-2 border rounded-lg px-3 py-2 text-sm text-ink">
-                  {Object.entries(CONGE_TYPE_LABEL).map(([k, l]) => <option key={k} value={k}>{l}</option>)}
+                  {Object.entries(congeTypesShown).map(([k, l]) => <option key={k} value={k}>{l}</option>)}
                 </select></label>
               <div className="hidden sm:block" />
               <label className="block"><span className="text-ink-muted text-xs">Du</span>
@@ -179,17 +184,19 @@ export default function MaPaieClient({ userRole, userName, userEmail, userModule
                 <input type="date" value={congeForm.end_date || ''} onChange={e => setCongeForm({ ...congeForm, end_date: e.target.value })} className="w-full mt-1 bg-surface-2 border rounded-lg px-3 py-2 text-sm text-ink" /></label>
             </div>
             <input value={congeForm.reason || ''} onChange={e => setCongeForm({ ...congeForm, reason: e.target.value })} placeholder="Motif (optionnel)" className="w-full mt-3 bg-surface-2 border rounded-lg px-3 py-2 text-sm text-ink" />
-            <div className="flex items-center gap-3 mt-3">
-              <button onClick={submitConge} disabled={submittingConge} className="inline-flex items-center gap-1.5 bg-brand text-white text-sm font-medium px-4 py-2 rounded-lg disabled:opacity-50"><Send size={15} /> {submittingConge ? 'Envoi…' : 'Envoyer la demande'}</button>
+            <div className="flex flex-wrap items-center gap-3 mt-3">
+              <button onClick={() => submitConge(false)} disabled={submittingConge} className="inline-flex items-center gap-1.5 bg-brand text-white text-sm font-medium px-4 py-2 rounded-lg disabled:opacity-50"><Send size={15} /> {submittingConge ? 'Envoi…' : 'Envoyer la demande'}</button>
+              {isIndep && <button onClick={() => submitConge(true)} disabled={submittingConge} className="inline-flex items-center gap-1.5 border border-brand/40 text-brand text-sm font-medium px-4 py-2 rounded-lg hover:bg-brand/5 disabled:opacity-50"><Check size={15} /> Imposer mon congé</button>}
               {congeHours > 0 && <span className="text-xs text-ink-muted">≈ <b className="text-ink-secondary">{congeHours} h</b> décomptées</span>}
             </div>
+            {isIndep && <p className="text-[11px] text-ink-muted/70 mt-2">En tant qu'indépendant, tu peux imposer ton congé directement, ou l'envoyer en validation comme d'habitude.</p>}
 
             {(data.conges || []).length > 0 && (
               <div className="mt-5 border-t pt-4 flex flex-col gap-1.5">
                 <div className="text-ink-muted text-xs mb-1">Mes demandes</div>
                 {data.conges.map((c: any) => (
                   <div key={c.id} className="flex items-center gap-2 text-sm bg-surface-2 rounded-lg px-3 py-2">
-                    <span className="text-ink">{CONGE_TYPE_LABEL[c.type] || c.type}</span>
+                    <span className="text-ink">{congeLabel(c.type)}</span>
                     <span className="text-ink-muted text-xs">{fmtDate(c.start_date)}→{fmtDate(c.end_date)} · {c.hours != null ? `${c.hours} h` : `${c.days} j`}</span>
                     {c.status === 'pending' && <button onClick={() => cancelMine(c.id)} className="text-[11px] text-ink-muted hover:text-red-400 underline">annuler</button>}
                     {c.status === 'approved' && <button onClick={() => requestCancelMine(c.id)} className="text-[11px] text-ink-muted hover:text-orange-500 underline">demander l'annulation</button>}
