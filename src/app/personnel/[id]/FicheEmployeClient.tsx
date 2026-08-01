@@ -87,7 +87,7 @@ export default function FicheEmployeClient({ id, userRole, userName, userEmail, 
   return (
     <AppShell title="Fiche employé" userRole={userRole} userName={userName} userEmail={userEmail} userModules={userModules}>
       <div className="max-w-3xl mx-auto px-4 py-6">
-        <a href="/personnel" className="inline-flex items-center gap-1.5 text-ink-muted hover:text-brand text-sm mb-4"><ArrowLeft size={15} /> Répertoire</a>
+        <a href="/personnel/repertoire" className="inline-flex items-center gap-1.5 text-ink-muted hover:text-brand text-sm mb-4"><ArrowLeft size={15} /> Répertoire</a>
 
         {!data && <p className="text-ink-muted text-sm">Chargement…</p>}
         {p && (
