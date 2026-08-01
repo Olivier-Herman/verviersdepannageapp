@@ -24,8 +24,12 @@ create table if not exists announcement_reads (
 );
 
 -- Accès serveur uniquement (API routes via service_role, qui contourne la RLS).
+-- IMPORTANT : une table créée en SQL brut (Management API / SQL Editor) n'a AUCUN
+-- grant par défaut → même service_role reçoit « permission denied ». Il faut granter.
 alter table announcements enable row level security;
 alter table announcement_reads enable row level security;
+grant all on table announcements     to service_role, postgres;
+grant all on table announcement_reads to service_role, postgres;
 
 insert into announcements (key, emoji, title, body, action_url, cta_label)
 values ('mes_prestations', '✨', 'Ton espace « Mes Prestations » est arrivé !',
