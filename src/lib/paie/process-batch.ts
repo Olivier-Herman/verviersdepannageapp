@@ -27,6 +27,7 @@ interface PayslipRange {
   worker_name: string; type: string; label: string; start_page: number; end_page: number
   vac_total: number | null; vac_used: number | null; vac_available: number | null
   montant_net: number | null; montant_brut: number | null; cout_employeur: number | null
+  infos: any
 }
 
 /** Claude lit le PDF et renvoie une plage de pages par FICHE (un travailleur
@@ -46,11 +47,21 @@ Réponds UNIQUEMENT en JSON valide :
   "vac_available": <heures DISPONIBLES / solde restant, ou null>,
   "montant_net": <NET À PAYER en €, ou null>,
   "montant_brut": <BRUT en €, ou null>,
-  "cout_employeur": <COÛT TOTAL EMPLOYEUR en € si indiqué (brut + charges patronales), sinon null>
+  "cout_employeur": <COÛT TOTAL EMPLOYEUR en € si indiqué (brut + charges patronales), sinon null>,
+  "infos": {
+    "adresse": "<rue + numéro du travailleur tel qu'imprimé, ou null>",
+    "code_postal": "<code postal, ou null>",
+    "ville": "<ville, ou null>",
+    "national_number": "<n° national / NISS tel qu'imprimé, ou null>",
+    "iban": "<IBAN du compte de versement, ou null>",
+    "etat_civil": "<état civil / situation familiale si indiqué (célibataire, marié…), ou null>",
+    "personnes_charge": <nombre de personnes/enfants à charge si indiqué, sinon null>
+  }
 } ] }
 Règles : pages 1-indexées ; les plages couvrent TOUT le PDF sans chevauchement ; une entrée PAR FICHE (pas par travailleur) ; nom exactement tel qu'imprimé ; type parmi la liste (salaire par défaut).
 Congés : cherche les compteurs de vacances (souvent « Vac. légales », « Congés », en heures) — total / pris / solde. En HEURES (nombre). Si absent, null.
-Montants : montant_net = le NET À PAYER de CETTE fiche (€) ; montant_brut = le brut ; cout_employeur = coût total employeur si la fiche l'indique, sinon null. Nombres, pas de symbole. Si absent, null.`
+Montants : montant_net = le NET À PAYER de CETTE fiche (€) ; montant_brut = le brut ; cout_employeur = coût total employeur si la fiche l'indique, sinon null. Nombres, pas de symbole. Si absent, null.
+Infos : recopie les DONNÉES PERSONNELLES du travailleur telles qu'imprimées sur la fiche (adresse, NISS, IBAN, état civil, personnes à charge), pour recoupement. Toute info absente de la fiche → null.`
   const res = await client.messages.create({
     model: ANTHROPIC_MODEL,
     max_tokens: 4096,
@@ -70,6 +81,7 @@ export interface SplitPayslip {
   worker_name: string; type: string; label: string; pages: number; pdf_b64: string
   vac_total: number | null; vac_used: number | null; vac_available: number | null
   montant_net: number | null; montant_brut: number | null; cout_employeur: number | null
+  slip_infos: any
 }
 const num = (v: any): number | null => (typeof v === 'number' && isFinite(v)) ? v : null
 
@@ -98,6 +110,7 @@ export async function splitPayslips(pdfBytes: Uint8Array): Promise<SplitPayslip[
       pdf_b64: Buffer.from(bytes).toString('base64'),
       vac_total: num(r.vac_total), vac_used: num(r.vac_used), vac_available: num(r.vac_available),
       montant_net: num(r.montant_net), montant_brut: num(r.montant_brut), cout_employeur: num(r.cout_employeur),
+      slip_infos: r.infos && typeof r.infos === 'object' ? r.infos : null,
     })
   }
   return out
@@ -114,11 +127,23 @@ async function findOrCreatePersonnel(sb: any, name: string, companyCode: string 
   return created?.id || null
 }
 
-export interface IngestResult { total: number; stored: number; skipped: number }
+export interface IngestResult { total: number; stored: number; updated: number; skipped: number }
+
+/** Champs enrichis (re)lus par Claude — mis à jour sur une fiche existante sans
+ *  écraser une valeur déjà présente par un null (Claude peut ne pas relire un champ). */
+function enrichPatch(s: SplitPayslip): Record<string, any> {
+  const patch: Record<string, any> = {}
+  const set = (k: string, v: any) => { if (v !== null && v !== undefined) patch[k] = v }
+  set('vac_total', s.vac_total); set('vac_used', s.vac_used); set('vac_available', s.vac_available)
+  set('montant_net', s.montant_net); set('montant_brut', s.montant_brut); set('cout_employeur', s.cout_employeur)
+  set('slip_infos', s.slip_infos); set('label', s.label)
+  return patch
+}
 
 /**
- * Traite un PDF de fiches de paie : découpe, rattache, stocke (idempotent par
- * personne + période + société).
+ * Traite un PDF de fiches de paie : découpe, rattache, stocke. Idempotent par
+ * personne + type + période + société : une fiche déjà présente est MISE À JOUR
+ * (montants, congés, infos) — ce qui permet à « Re-traiter » de compléter l'existant.
  */
 export async function ingestPayslipPdf(sb: any, opts: {
   pdfBytes: Uint8Array; period: string; companyCode: string; source: string; sourceRef?: string
@@ -126,26 +151,32 @@ export async function ingestPayslipPdf(sb: any, opts: {
   const slips = await splitPayslips(opts.pdfBytes)
   const keyOf = (personnelId: string | null, worker: string, type: string) => `${personnelId || nameKey(worker)}|${type || 'salaire'}`
 
-  // Dédup type-aware : Salaire + Prime + Vacances coexistent, mais on ne
-  // ré-insère pas une fiche déjà présente (personne + type) pour ce mois.
   const { data: existing } = await sb.from('payslips')
-    .select('personnel_id, worker_name, type').eq('period', opts.period).eq('company_code', opts.companyCode)
-  const seen = new Set<string>()
-  for (const e of (existing || [])) seen.add(keyOf(e.personnel_id, e.worker_name, e.type))
+    .select('id, personnel_id, worker_name, type').eq('period', opts.period).eq('company_code', opts.companyCode)
+  const idByKey = new Map<string, string>()
+  for (const e of (existing || [])) idByKey.set(keyOf(e.personnel_id, e.worker_name, e.type), e.id)
 
-  let stored = 0, skipped = 0
+  let stored = 0, updated = 0, skipped = 0
   for (const s of slips) {
     const personnelId = await findOrCreatePersonnel(sb, s.worker_name, opts.companyCode)
     const k = keyOf(personnelId, s.worker_name, s.type)
-    if (seen.has(k)) { skipped++; continue }
+    const existingId = idByKey.get(k)
+    if (existingId) {
+      // Fiche déjà là → complète les infos enrichies (ne ré-insère pas).
+      const patch = enrichPatch(s)
+      if (Object.keys(patch).length) { const { error } = await sb.from('payslips').update(patch).eq('id', existingId); error ? skipped++ : updated++ }
+      else skipped++
+      continue
+    }
     const { error } = await sb.from('payslips').insert({
       personnel_id: personnelId, worker_name: s.worker_name, period: opts.period,
       company_code: opts.companyCode, type: s.type, label: s.label, pages: s.pages, pdf_b64: s.pdf_b64,
       vac_total: s.vac_total, vac_used: s.vac_used, vac_available: s.vac_available,
       montant_net: s.montant_net, montant_brut: s.montant_brut, cout_employeur: s.cout_employeur,
+      slip_infos: s.slip_infos,
       source: opts.source, source_ref: opts.sourceRef || null,
     })
-    if (error) skipped++; else { stored++; seen.add(k) }
+    if (error) skipped++; else { stored++; idByKey.set(k, 'new') }
   }
-  return { total: slips.length, stored, skipped }
+  return { total: slips.length, stored, updated, skipped }
 }

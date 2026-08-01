@@ -37,7 +37,7 @@ export default function PersonnelClient({ userRole, userName, userEmail, userMod
   const fetchMail = async (force = false) => {
     if (force && !confirm('Re-traiter les mois (depuis la période « depuis ») pour capter les primes/congés ajoutés ?\nRelance le découpage IA — les fiches déjà présentes ne sont pas dupliquées. Restreins « depuis » pour aller vite.')) return
     setBusy('mail')
-    let total = 0, err = ''
+    let total = 0, totalUpd = 0, err = ''
     try {
       // Boucle : chaque appel traite les périodes manquantes (idempotent). Si un
       // appel dépasse le timeout, on relance jusqu'à ce qu'il n'y ait plus rien.
@@ -49,12 +49,13 @@ export default function PersonnelClient({ userRole, userName, userEmail, userMod
         } catch { continue }   // timeout → on relance
         if (j?.error) { err = j.error; break }
         const stored = (j.results || []).reduce((s: number, x: any) => s + (x.stored || 0), 0)
-        total += stored
+        const upd    = (j.results || []).reduce((s: number, x: any) => s + (x.updated || 0), 0)
+        total += stored; totalUpd += upd
         await load()
-        if (stored === 0) break   // plus rien de nouveau
+        if (stored === 0) break   // plus rien de nouveau à ajouter
       }
     } finally { setBusy('') }
-    alert(err ? `Erreur : ${err}` : `${force ? 'Re-traitement' : 'Récupération'} terminé : ${total} fiche(s) ajoutée(s).`)
+    alert(err ? `Erreur : ${err}` : `${force ? 'Re-traitement' : 'Récupération'} terminé : ${total} ajoutée(s)${totalUpd ? `, ${totalUpd} mise(s) à jour` : ''}.`)
   }
 
   const upload = async (file: File) => {
@@ -185,6 +186,11 @@ export default function PersonnelClient({ userRole, userName, userEmail, userMod
               <div className="flex items-center gap-2 mb-3">
                 <Users size={16} className="text-brand" />
                 <h2 className="font-semibold text-ink text-sm">Répertoire du personnel</h2>
+                {personnel.filter((p: any) => p.mismatch_count > 0).length > 0 && (
+                  <span className="inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full bg-amber-50 dark:bg-amber-500/10 text-amber-800 border border-amber-400/50">
+                    <AlertTriangle size={12} /> {personnel.filter((p: any) => p.mismatch_count > 0).length} à vérifier
+                  </span>
+                )}
                 <span className="text-ink-muted text-xs ml-auto">{personnel.length} personne(s)</span>
               </div>
               <div className="overflow-x-auto">
@@ -195,7 +201,15 @@ export default function PersonnelClient({ userRole, userName, userEmail, userMod
                   <tbody>
                     {personnel.map((p: any) => (
                       <tr key={p.id} className="border-b border-white/5">
-                        <td className="py-2"><a href={`/personnel/${p.id}`} className="text-ink hover:text-brand font-medium">{p.name}</a></td>
+                        <td className="py-2">
+                          <a href={`/personnel/${p.id}`} className="text-ink hover:text-brand font-medium">{p.name}</a>
+                          {p.mismatch_count > 0 && (
+                            <span className="ml-2 inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-full bg-amber-50 dark:bg-amber-500/10 text-amber-800 border border-amber-400/50 align-middle"
+                              title={`Diffère de la fiche de paie : ${(p.mismatch_fields || []).join(', ')}`}>
+                              <AlertTriangle size={11} /> {p.mismatch_count}
+                            </span>
+                          )}
+                        </td>
                         <td className="text-ink-muted text-xs">{coLabel(p.company_code)}</td>
                         <td>
                           <select value={p.user_id || ''} onChange={e => post({ action: 'update', id: p.id, user_id: e.target.value || null })}

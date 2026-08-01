@@ -12,6 +12,7 @@ import { createAdminClient }         from '@/lib/supabase'
 import { nameKey }                   from '@/lib/paie/process-batch'
 import { odooRpc }                   from '@/lib/odoo'
 import { ensureOdooPartnerForPersonnel } from '@/lib/paie/push-odoo'
+import { compareSlipInfos, latestSlipWithInfos } from '@/lib/paie/compare-infos'
 
 export const dynamic    = 'force-dynamic'
 export const fetchCache = 'force-no-store'
@@ -24,22 +25,30 @@ export async function GET() {
   const sb = createAdminClient()
 
   const [{ data: personnel }, { data: users }, { data: slips }] = await Promise.all([
-    sb.from('personnel').select('id, name, company_code, matricule, user_id, active').order('name'),
+    sb.from('personnel').select('id, name, company_code, matricule, user_id, active, odoo_partner_id, adresse, code_postal, ville, national_number, iban, etat_civil, personnes_charge').order('name'),
     sb.from('users').select('id, name').order('name'),
-    sb.from('payslips').select('id, personnel_id, worker_name, period, company_code, type, label, pages').order('period', { ascending: false }),
+    sb.from('payslips').select('id, personnel_id, worker_name, period, company_code, type, label, pages, slip_infos').order('period', { ascending: false }),
   ])
   const uName = new Map((users || []).map((u: any) => [u.id, u.name]))
   const cntByPers = new Map<string, number>()
   const lastByPers = new Map<string, string>()
+  const slipsByPers = new Map<string, any[]>()
   for (const s of (slips || [])) {
     if (!s.personnel_id) continue
     cntByPers.set(s.personnel_id, (cntByPers.get(s.personnel_id) || 0) + 1)
     if (!lastByPers.has(s.personnel_id)) lastByPers.set(s.personnel_id, s.period)
+    if (!slipsByPers.has(s.personnel_id)) slipsByPers.set(s.personnel_id, [])
+    slipsByPers.get(s.personnel_id)!.push(s)
   }
-  const personnelOut = (personnel || []).map((p: any) => ({
-    ...p, user_name: p.user_id ? (uName.get(p.user_id) || null) : null,
-    payslip_count: cntByPers.get(p.id) || 0, last_period: lastByPers.get(p.id) || null,
-  }))
+  const personnelOut = (personnel || []).map((p: any) => {
+    const ref = latestSlipWithInfos(slipsByPers.get(p.id) || [])
+    const mm  = ref ? compareSlipInfos(p, ref.slip_infos) : []
+    return {
+      ...p, user_name: p.user_id ? (uName.get(p.user_id) || null) : null,
+      payslip_count: cntByPers.get(p.id) || 0, last_period: lastByPers.get(p.id) || null,
+      mismatch_count: mm.length, mismatch_fields: mm.map((x: any) => x.label),
+    }
+  })
   const periods = [...new Set((slips || []).map((s: any) => s.period).filter(Boolean))].sort().reverse()
 
   return NextResponse.json({ personnel: personnelOut, users: users || [], periods, payslips: slips || [] })

@@ -3,7 +3,7 @@
 
 import { useEffect, useState, useCallback } from 'react'
 import AppShell from '@/components/layout/AppShell'
-import { ArrowLeft, User, Save, FileText, Eye, Download, X, CalendarClock, Building2, CheckCircle2 } from 'lucide-react'
+import { ArrowLeft, User, Save, FileText, Eye, Download, X, CalendarClock, Building2, CheckCircle2, AlertTriangle } from 'lucide-react'
 
 const COMPANIES: Record<string, string> = { '438': 'Verviers Dépannage', '3068': 'DGJ VHU' }
 const MONTHS = ['', 'janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre']
@@ -100,6 +100,26 @@ export default function FicheEmployeClient({ id, userRole, userName, userEmail, 
               </div>
               {p.active === false && <span className="ml-auto text-[10px] px-2 py-0.5 rounded-full bg-white/10 text-ink-muted">inactif</span>}
             </div>
+
+            {(data.mismatches?.length > 0) && (
+              <div className="mb-5 rounded-xl border border-amber-400/50 bg-amber-50 dark:bg-amber-500/10 p-4">
+                <div className="flex items-center gap-2 mb-1 text-amber-800">
+                  <AlertTriangle size={16} />
+                  <span className="font-semibold text-sm">Incohérence avec la fiche de paie{data.mismatchPeriod ? ` (${monthLabel(data.mismatchPeriod)} ${(data.mismatchPeriod || '').split('-')[0]})` : ''}</span>
+                </div>
+                <p className="text-amber-800/90 text-xs mb-2">Ces infos diffèrent entre VD Soft et la dernière fiche de paie reçue — à vérifier (une modif pas encore adaptée par le secrétariat social ?).</p>
+                <ul className="flex flex-col gap-1">
+                  {data.mismatches.map((m: any) => (
+                    <li key={m.key} className="text-xs text-amber-900 flex flex-wrap items-baseline gap-x-2">
+                      <span className="font-semibold">{m.label} —</span>
+                      <span>VD Soft : « {String(m.vdsoft ?? '—')} »</span>
+                      <span className="text-amber-700">vs</span>
+                      <span>Fiche : « {String(m.fiche ?? '—')} »</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
 
             <div className="flex gap-1 border-b mb-5">
               {[['infos', 'Infos'], ['paie', `Paie (${slips.length})`], ['conges', 'Congés']].map(([k, l]) => (
