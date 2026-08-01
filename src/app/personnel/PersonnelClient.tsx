@@ -58,9 +58,14 @@ export default function PersonnelClient({ userRole, userName, userEmail, userMod
         if (stored === 0) break   // plus rien de nouveau à ajouter
       }
     } finally { setBusy('') }
-    alert(err ? `Erreur : ${err}`
-      : `${force ? 'Re-traitement' : 'Récupération'} terminé : ${total} ajoutée(s)${totalUpd ? `, ${totalUpd} mise(s) à jour` : ''}.`
-        + (errNotes.length ? `\n\n⚠️ Mois en erreur (relance « Re-traiter ») :\n${errNotes.join('\n')}` : ''))
+    const creditIssue = [err, ...errNotes].some(t => /credit balance/i.test(String(t)))
+    if (creditIssue) {
+      alert('⚠️ Crédits IA (Anthropic) épuisés.\n\nLe traitement des fiches utilise l\'IA. Recharge le solde sur console.anthropic.com → Billing, puis relance « Re-traiter ». Ce qui est déjà traité est conservé.')
+    } else {
+      alert(err ? `Erreur : ${err}`
+        : `${force ? 'Re-traitement' : 'Récupération'} terminé : ${total} ajoutée(s)${totalUpd ? `, ${totalUpd} mise(s) à jour` : ''}.`
+          + (errNotes.length ? `\n\n⚠️ Mois en erreur (relance « Re-traiter ») :\n${errNotes.join('\n')}` : ''))
+    }
   }
 
   const upload = async (file: File) => {
