@@ -7,7 +7,7 @@ import { useEffect, useState, useCallback } from 'react'
 import AppShell from '@/components/layout/AppShell'
 import PersonnelTabs from '@/components/layout/PersonnelTabs'
 import { applyHolidaysToDays } from '@/lib/prestations/belgian-holidays'
-import { Clock, RefreshCw, Save, Check, X } from 'lucide-react'
+import { Clock, RefreshCw, Save, Check, X, FileText, Send, ShieldCheck } from 'lucide-react'
 
 const MONTHS = ['', 'janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre']
 const periodLabel = (p: string) => { const [y, m] = (p || '').split('-'); return m ? `${MONTHS[+m]} ${y}` : p }
@@ -34,6 +34,21 @@ export default function PrestationsClient({ userRole, userName, userEmail, userM
   const [sheets, setSheets] = useState<any[]>([])
   const [dirty, setDirty]   = useState<Set<string>>(new Set())
   const [editing, setEditing] = useState<{ sheetId: string; day: number; worker: string } | null>(null)
+  const [pinModal, setPinModal] = useState(false)
+  const [pin, setPin] = useState('')
+  const [signing, setSigning] = useState(false)
+
+  const signSend = async () => {
+    setSigning(true)
+    try {
+      const r = await fetch('/api/prestations', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'sign_send', period, pin }) })
+      const j = await r.json()
+      if (j.error) { alert(j.error); return }
+      setPinModal(false); setPin('')
+      alert(`Feuille validée et envoyée à ${j.to}\nSignée par ${j.signedBy} le ${j.date}.`)
+      await load(period)
+    } finally { setSigning(false) }
+  }
 
   const load = useCallback(async (p?: string) => {
     const r = await fetch(`/api/prestations${p ? `?period=${p}` : ''}`, { cache: 'no-store' })
@@ -53,6 +68,9 @@ export default function PrestationsClient({ userRole, userName, userEmail, userM
 
   const daysInMonth = (() => { const [y, m] = (period || '').split('-').map(Number); return y && m ? new Date(y, m, 0).getDate() : 0 })()
   const dow = (d: number) => { const [y, m] = (period || '').split('-').map(Number); return new Date(y, m - 1, d).getDay() }
+  const validated  = sheets.length > 0 && sheets.every((s: any) => s.validated)
+  const signedBy   = sheets[0]?.signed_by
+  const signedDate = sheets[0]?.validated_at ? new Date(sheets[0].validated_at).toLocaleDateString('fr-BE') : ''
 
   const importMail = async () => {
     if (!confirm('Importer les feuilles de présence depuis les mails EasyPay ?\n(les jours déjà édités ne sont pas écrasés)')) return
@@ -125,11 +143,28 @@ export default function PrestationsClient({ userRole, userName, userEmail, userM
                 {busy === 'save' ? <RefreshCw size={15} className="animate-spin" /> : <Save size={15} />} Enregistrer ({dirty.size})
               </button>
             )}
+            {sheets.length > 0 && (
+              <a href={`/api/prestations/pdf?period=${period}`} target="_blank" rel="noreferrer"
+                className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border text-sm text-ink-secondary hover:text-brand"><FileText size={15} /> Aperçu PDF</a>
+            )}
+            {sheets.length > 0 && (
+              <button onClick={() => setPinModal(true)} disabled={!!busy || dirty.size > 0}
+                title={dirty.size > 0 ? "Enregistre d'abord tes modifications" : ''}
+                className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-emerald-600 text-white text-sm font-medium disabled:opacity-50">
+                <Send size={15} /> {validated ? 'Renvoyer' : 'Valider & envoyer'}
+              </button>
+            )}
             <button onClick={importMail} disabled={!!busy} className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border text-sm text-ink-secondary hover:text-brand disabled:opacity-50">
               {busy === 'import' ? <RefreshCw size={15} className="animate-spin" /> : <RefreshCw size={15} />} Importer (mail)
             </button>
           </div>
         </div>
+
+        {validated && (
+          <div className="mb-4 flex items-center gap-2 rounded-xl border border-emerald-500/40 bg-emerald-50 dark:bg-emerald-500/10 px-4 py-2.5 text-sm text-emerald-800">
+            <ShieldCheck size={16} /> Feuille validée{signedBy ? ` par ${signedBy}` : ''}{signedDate ? ` le ${signedDate}` : ''} — envoyée au secrétariat social. (Tu peux corriger et « Renvoyer » si besoin.)
+          </div>
+        )}
 
         {sheets.length === 0 && (
           <div className="bg-surface border rounded-2xl p-8 text-center">
@@ -218,6 +253,27 @@ export default function PrestationsClient({ userRole, userName, userEmail, userM
           </div>
         )
       })()}
+
+      {pinModal && (
+        <div className="fixed inset-0 z-[200] bg-black/50 flex items-center justify-center p-4" onClick={() => setPinModal(false)}>
+          <div className="bg-surface border rounded-2xl p-5 w-full max-w-sm" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center gap-2 mb-2">
+              <ShieldCheck size={18} className="text-emerald-600" />
+              <h2 className="font-semibold text-ink text-sm flex-1">Valider et envoyer</h2>
+              <button onClick={() => setPinModal(false)} className="p-1 text-ink-muted hover:text-ink"><X size={18} /></button>
+            </div>
+            <p className="text-ink-muted text-xs mb-3">Signe la feuille de <b>{periodLabel(period)}</b> avec ton code PIN. Elle sera envoyée au secrétariat social (Jonathan, EasyPay), signée à ton nom.</p>
+            <input type="password" inputMode="numeric" value={pin} onChange={e => setPin(e.target.value)} placeholder="Code PIN"
+              className="w-full bg-surface-2 border rounded-lg px-3 py-2 text-sm text-ink text-center tracking-widest" autoFocus />
+            <div className="flex justify-end gap-2 mt-4">
+              <button onClick={() => setPinModal(false)} className="px-3 py-2 rounded-lg border text-sm text-ink-secondary">Annuler</button>
+              <button onClick={signSend} disabled={!pin || signing} className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-emerald-600 text-white text-sm font-medium disabled:opacity-50">
+                {signing ? <RefreshCw size={15} className="animate-spin" /> : <Send size={15} />} Signer & envoyer
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </AppShell>
   )
 }

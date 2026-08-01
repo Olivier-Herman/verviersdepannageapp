@@ -9,6 +9,12 @@ import { getServerSession }          from 'next-auth'
 import { authOptions }               from '@/lib/auth'
 import { createAdminClient }         from '@/lib/supabase'
 import { importPrestations }         from '@/lib/prestations/import'
+import { generatePrestationsPdf }    from '@/lib/prestations/generate-pdf'
+import { sendEmail, emailLayout }    from '@/lib/emails'
+import bcrypt                        from 'bcryptjs'
+
+// Destinataire de la feuille de présence (gestionnaire EasyPay). Configurable plus tard.
+const JONATHAN = 'jonathan.junius@easypay-group.com'
 
 export const dynamic    = 'force-dynamic'
 export const fetchCache  = 'force-no-store'
@@ -53,6 +59,42 @@ export async function POST(req: NextRequest) {
     if (!id || typeof body.days !== 'object') return NextResponse.json({ error: 'id + days requis' }, { status: 400 })
     await sb.from('prestation_sheets').update({ days: body.days, updated_at: new Date().toISOString() }).eq('id', id)
     return NextResponse.json({ ok: true })
+  }
+
+  if (action === 'sign_send') {
+    // Valide + signe (PIN du profil) + envoie la feuille à Jonathan (EasyPay).
+    const period = String(body.period || ''), pin = String(body.pin || '')
+    if (!period || !pin) return NextResponse.json({ error: 'period + pin requis' }, { status: 400 })
+
+    const email = (session!.user as any).email
+    const { data: me } = await sb.from('users').select('name, verify_pin_hash').eq('email', email).maybeSingle()
+    if (!me?.verify_pin_hash) return NextResponse.json({ error: "Aucun PIN configuré sur ton profil (Administration → PIN)." }, { status: 400 })
+    const ok = await bcrypt.compare(pin, me.verify_pin_hash)
+    if (!ok) return NextResponse.json({ error: 'PIN incorrect' }, { status: 403 })
+
+    const { data: sheets } = await sb.from('prestation_sheets').select('*').eq('period', period).order('worker_name')
+    if (!sheets?.length) return NextResponse.json({ error: 'Aucune feuille pour cette période' }, { status: 404 })
+
+    const signedBy = me.name || 'Responsable'
+    const signedDate = new Date().toLocaleDateString('fr-BE')
+
+    // Une feuille (PDF) par société présente dans la période.
+    const byCo: Record<string, any[]> = {}
+    for (const s of sheets) (byCo[s.company_code || '438'] ||= []).push(s)
+    for (const [cc, rows] of Object.entries(byCo)) {
+      const bytes = await generatePrestationsPdf(period, cc, rows as any, signedBy, signedDate)
+      const b64 = Buffer.from(bytes).toString('base64')
+      const html = emailLayout(
+        `<p style="margin:0 0 12px">Bonjour,</p>
+         <p style="margin:0 0 12px">Veuillez trouver ci-joint la <b>feuille de présence</b> validée pour la période <b>${period}</b> (${cc}).</p>
+         <p style="margin:0;color:#666;font-size:13px">Validée électroniquement par ${signedBy}, le ${signedDate}.</p>`,
+        'Feuille de présence')
+      await sendEmail(JONATHAN, `Feuille de présence ${period} — ${cc}`, html, 'EasyPay', 'mobi@verviersdepannage.be',
+        [{ name: `feuille-presence-${period}-${cc}.pdf`, contentType: 'application/pdf', contentBytes: b64 }])
+    }
+
+    await sb.from('prestation_sheets').update({ validated: true, validated_at: new Date().toISOString(), signed_by: signedBy }).eq('period', period)
+    return NextResponse.json({ ok: true, signedBy, date: signedDate, to: JONATHAN })
   }
 
   if (action === 'validate' || action === 'unvalidate') {
