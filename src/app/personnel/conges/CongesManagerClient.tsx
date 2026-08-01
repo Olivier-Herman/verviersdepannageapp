@@ -42,11 +42,17 @@ export default function CongesManagerClient({ userRole, userName, userEmail, use
     } finally { setBusy(false) }
   }
 
-  const pending = reqs.filter(r => r.status === 'pending')
-  const history = reqs.filter(r => r.status !== 'pending')
+  const refuseCancel = async (id: string) => {
+    const r = await fetch('/api/conges', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'refuse_cancel', id }) })
+    const j = await r.json(); if (j.error) { alert(j.error); return }
+    await load()
+  }
+
+  const pending = reqs.filter(r => r.status === 'pending' || r.status === 'cancel_requested')
+  const history = reqs.filter(r => r.status === 'approved' || r.status === 'refused')
 
   const StatusBadge = ({ s }: { s: string }) => {
-    const map: any = { approved: ['bg-emerald-500/10 text-emerald-700', 'Approuvé'], refused: ['bg-red-500/10 text-red-600', 'Refusé'], pending: ['bg-amber-500/10 text-amber-700', 'En attente'] }
+    const map: any = { approved: ['bg-emerald-500/10 text-emerald-700', 'Approuvé'], refused: ['bg-red-500/10 text-red-600', 'Refusé'], pending: ['bg-amber-500/10 text-amber-700', 'En attente'], cancel_requested: ['bg-orange-500/10 text-orange-700', 'Annulation demandée'] }
     const [cls, lbl] = map[s] || map.pending
     return <span className={`text-[11px] px-2 py-0.5 rounded-full ${cls}`}>{lbl}</span>
   }
@@ -72,17 +78,27 @@ export default function CongesManagerClient({ userRole, userName, userEmail, use
                 <span className="font-semibold text-ink text-sm">{r.worker}</span>
                 <span className="text-[11px] px-2 py-0.5 rounded-full bg-brand/10 text-brand">{TYPE_LABEL[r.type] || r.type}</span>
                 <span className="text-ink-muted text-xs">· {r.days} j{r.hours != null ? ` · ${r.hours} h` : ''}</span>
+                {r.status === 'cancel_requested' && <span className="text-[11px] px-2 py-0.5 rounded-full bg-orange-500/10 text-orange-700">Annulation demandée</span>}
               </div>
               <div className="text-ink-secondary text-sm mt-1">Du <b>{fmtD(r.start_date)}</b> au <b>{fmtD(r.end_date)}</b></div>
               {r.reason && <div className="text-ink-muted text-xs mt-1 italic">« {r.reason} »</div>}
-              <div className="flex gap-2 mt-3 flex-wrap">
-                <button onClick={() => setModal({ id: r.id, decision: 'approve', worker: r.worker })}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 text-white text-sm font-medium"><Check size={15} /> Approuver</button>
-                <button onClick={() => setModal({ id: r.id, decision: 'refuse', worker: r.worker })}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-ink-secondary text-sm hover:text-red-500"><X size={15} /> Refuser</button>
-                <button onClick={() => setModal({ id: r.id, decision: 'cancel', worker: r.worker })}
-                  className="ml-auto text-xs text-ink-muted hover:text-red-400 underline">Annuler la demande</button>
-              </div>
+              {r.status === 'pending' ? (
+                <div className="flex gap-2 mt-3 flex-wrap">
+                  <button onClick={() => setModal({ id: r.id, decision: 'approve', worker: r.worker })}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 text-white text-sm font-medium"><Check size={15} /> Approuver</button>
+                  <button onClick={() => setModal({ id: r.id, decision: 'refuse', worker: r.worker })}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-ink-secondary text-sm hover:text-red-500"><X size={15} /> Refuser</button>
+                  <button onClick={() => setModal({ id: r.id, decision: 'cancel', worker: r.worker })}
+                    className="ml-auto text-xs text-ink-muted hover:text-red-400 underline">Annuler la demande</button>
+                </div>
+              ) : (
+                <div className="flex gap-2 mt-3 flex-wrap">
+                  <button onClick={() => setModal({ id: r.id, decision: 'cancel', worker: r.worker })}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-red-600 text-white text-sm font-medium"><Check size={15} /> Confirmer l'annulation</button>
+                  <button onClick={() => refuseCancel(r.id)}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-ink-secondary text-sm hover:text-brand"><X size={15} /> Refuser l'annulation</button>
+                </div>
+              )}
             </div>
           ))}
         </div>

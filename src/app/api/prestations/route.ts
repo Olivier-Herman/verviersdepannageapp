@@ -9,6 +9,7 @@ import { getServerSession }          from 'next-auth'
 import { authOptions }               from '@/lib/auth'
 import { createAdminClient }         from '@/lib/supabase'
 import { importPrestations }         from '@/lib/prestations/import'
+import { syncCongeRequestsForSheet }  from '@/lib/conges/apply'
 import { generatePrestationsPdf }    from '@/lib/prestations/generate-pdf'
 import { sendEmail, emailLayout }    from '@/lib/emails'
 import bcrypt                        from 'bcryptjs'
@@ -76,6 +77,11 @@ export async function POST(req: NextRequest) {
     if (body.days && typeof body.days === 'object') patch.days = body.days
     if ('note' in body) patch.note = (body.note ? String(body.note) : null)
     await sb.from('prestation_sheets').update(patch).eq('id', id)
+    // Si la grille change, recale les demandes de congé sur la feuille.
+    if (patch.days) {
+      const { data: s } = await sb.from('prestation_sheets').select('personnel_id, period').eq('id', id).maybeSingle()
+      if (s?.personnel_id) { try { await syncCongeRequestsForSheet(sb, s.personnel_id, s.period) } catch (e: any) { console.error('[prestations] sync congés', e.message) } }
+    }
     return NextResponse.json({ ok: true })
   }
 

@@ -75,6 +75,35 @@ export async function workerDayHours(sb: any, personnelId: string): Promise<Reco
   return { 1: per, 2: per, 3: per, 4: per, 5: per }
 }
 
+/** Recalcule days/hours d'une demande de congé d'après l'état ACTUEL des feuilles
+ *  de présence : ne compte que les jours encore marqués `{abs:type}` (si le RH a
+ *  remis des heures ou une autre absence, ils ne comptent plus). */
+export async function recomputeCongeRequest(sb: any, req: any): Promise<void> {
+  const dh = await workerDayHours(sb, req.personnel_id)
+  const byMonth = weekdaysByMonth(req.start_date, req.end_date)
+  let days = 0, hours = 0
+  for (const [period, dayNums] of Object.entries(byMonth)) {
+    const { data: sheet } = await sb.from('prestation_sheets').select('days').eq('period', period).eq('personnel_id', req.personnel_id).maybeSingle()
+    const [y, m] = period.split('-').map(Number)
+    for (const dn of dayNums) {
+      // Pas de feuille → on garde (sera posé à l'import). Feuille → doit être `{abs:type}`.
+      const stillLeave = sheet ? (sheet.days?.[String(dn)]?.abs === req.type) : true
+      if (stillLeave) { days++; hours += dh[new Date(Date.UTC(y, m - 1, dn)).getUTCDay()] || 0 }
+    }
+  }
+  await sb.from('conge_requests').update({ days, hours: Math.round(hours * 100) / 100 }).eq('id', req.id)
+}
+
+/** Synchronise les demandes de congé d'un travailleur avec la feuille d'un mois
+ *  (appelé quand le RH édite la grille). */
+export async function syncCongeRequestsForSheet(sb: any, personnelId: string, period: string): Promise<void> {
+  if (!personnelId || !period) return
+  const { data: reqs } = await sb.from('conge_requests').select('*')
+    .eq('personnel_id', personnelId).in('status', ['approved', 'cancel_requested'])
+    .lte('start_date', `${period}-31`).gte('end_date', `${period}-01`)
+  for (const r of (reqs || [])) await recomputeCongeRequest(sb, r)
+}
+
 /** Retire un congé posé (restaure les heures prestées standard). */
 export async function revertLeaveFromSheets(sb: any, personnelId: string, type: string, startDate: string, endDate: string): Promise<void> {
   const byMonth = weekdaysByMonth(startDate, endDate)

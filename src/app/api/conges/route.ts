@@ -161,5 +161,36 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: true })
   }
 
+  if (action === 'request_cancel') {
+    // Travailleur : demande l'annulation d'un congé APPROUVÉ (le manager confirmera).
+    const id = String(body.id || '')
+    const { data: r } = await sb.from('conge_requests').select('*').eq('id', id).maybeSingle()
+    if (!r) return NextResponse.json({ error: 'Demande introuvable' }, { status: 404 })
+    if (r.user_id !== u.id && !isPersonnelStaff(u)) return NextResponse.json({ error: 'Non autorisé' }, { status: 403 })
+    if (r.status !== 'approved') return NextResponse.json({ error: "Seul un congé approuvé peut faire l'objet d'une demande d'annulation." }, { status: 400 })
+    await sb.from('conge_requests').update({ status: 'cancel_requested' }).eq('id', id)
+    try {
+      const { data: p } = await sb.from('personnel').select('name').eq('id', r.personnel_id).maybeSingle()
+      const { data: mgrs } = await sb.from('users').select('id').or('role.in.(superadmin,rh),roles.ov.{superadmin,rh}')
+      const html = emailLayout(`<p><b>${p?.name || ''}</b> demande l'<b>annulation</b> de son congé (${CONGE_TYPES[r.type]}, du ${r.start_date} au ${r.end_date}).</p><p style="color:#666;font-size:13px">À confirmer dans VD Soft → Congés.</p>`, 'Annulation de congé demandée')
+      await sendEmail(NOTIFY_MANAGER, `Annulation de congé — ${p?.name || ''}`, html, 'RH')
+      await Promise.all((mgrs || []).map((m: any) => sendNotification(m.id, 'conge_requested', {
+        title: 'Annulation de congé demandée', body: `${p?.name || ''} — ${CONGE_TYPES[r.type]}, ${r.start_date} → ${r.end_date}`, action_url: '/personnel/conges',
+      })))
+    } catch (e: any) { console.error('[conges] request_cancel notif', e.message) }
+    return NextResponse.json({ ok: true })
+  }
+
+  if (action === 'refuse_cancel') {
+    // Manager : refuse la demande d'annulation → le congé est maintenu.
+    if (!isPersonnelStaff(u)) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    const id = String(body.id || '')
+    const { data: r } = await sb.from('conge_requests').select('*').eq('id', id).maybeSingle()
+    if (!r) return NextResponse.json({ error: 'Demande introuvable' }, { status: 404 })
+    await sb.from('conge_requests').update({ status: 'approved' }).eq('id', id)
+    if (r.user_id) { try { await sendNotification(r.user_id, 'conge_decided', { title: 'Annulation refusée', body: `Ton congé (${CONGE_TYPES[r.type]}, du ${r.start_date} au ${r.end_date}) est maintenu.`, action_url: '/ma-paie' }) } catch {} }
+    return NextResponse.json({ ok: true })
+  }
+
   return NextResponse.json({ error: 'Action inconnue' }, { status: 400 })
 }

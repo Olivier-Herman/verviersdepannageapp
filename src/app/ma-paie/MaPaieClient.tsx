@@ -13,7 +13,7 @@ import { hoursForRange } from '@/lib/conges/apply'
 const CONGE_TYPE_LABEL: Record<string, string> = { conge: 'Congé légal', recup: 'Récupération', sans_solde: 'Congé sans solde' }
 const fmtDate = (d: string) => { const [y, m, j] = (d || '').split('-'); return j ? `${j}/${m}` : d }
 function CongeStatus({ s }: { s: string }) {
-  const map: any = { approved: ['bg-emerald-500/10 text-emerald-700', 'Approuvé'], refused: ['bg-red-500/10 text-red-600', 'Refusé'], pending: ['bg-amber-500/10 text-amber-700', 'En attente'] }
+  const map: any = { approved: ['bg-emerald-500/10 text-emerald-700', 'Approuvé'], refused: ['bg-red-500/10 text-red-600', 'Refusé'], pending: ['bg-amber-500/10 text-amber-700', 'En attente'], cancel_requested: ['bg-orange-500/10 text-orange-700', 'Annulation demandée'] }
   const [cls, lbl] = map[s] || map.pending
   return <span className={`text-[11px] px-2 py-0.5 rounded-full ${cls} flex-shrink-0`}>{lbl}</span>
 }
@@ -67,6 +67,12 @@ export default function MaPaieClient({ userRole, userName, userEmail, userModule
   const cancelMine = async (id: string) => {
     if (!confirm('Annuler cette demande de congé ?')) return
     const r = await fetch('/api/conges', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'cancel', id }) })
+    const j = await r.json(); if (j.error) { alert(j.error); return }
+    await loadMine()
+  }
+  const requestCancelMine = async (id: string) => {
+    if (!confirm("Demander l'annulation de ce congé ? Un responsable devra la confirmer.")) return
+    const r = await fetch('/api/conges', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'request_cancel', id }) })
     const j = await r.json(); if (j.error) { alert(j.error); return }
     await loadMine()
   }
@@ -148,6 +154,7 @@ export default function MaPaieClient({ userRole, userName, userEmail, userModule
                     <span className="text-ink">{CONGE_TYPE_LABEL[c.type] || c.type}</span>
                     <span className="text-ink-muted text-xs">{fmtDate(c.start_date)}→{fmtDate(c.end_date)} · {c.hours != null ? `${c.hours} h` : `${c.days} j`}</span>
                     {c.status === 'pending' && <button onClick={() => cancelMine(c.id)} className="text-[11px] text-ink-muted hover:text-red-400 underline">annuler</button>}
+                    {c.status === 'approved' && <button onClick={() => requestCancelMine(c.id)} className="text-[11px] text-ink-muted hover:text-orange-500 underline">demander l'annulation</button>}
                     <span className="ml-auto"><CongeStatus s={c.status} /></span>
                   </div>
                 ))}
