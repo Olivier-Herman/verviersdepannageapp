@@ -8,6 +8,7 @@
 import { createAdminClient } from '@/lib/supabase'
 import { fetchPayslipMails } from '@/lib/paie/fetch-mail'
 import { extractPrestationsPdf, parsePrestationSheet } from './parse-sheet'
+import { applyHolidaysToDays } from './belgian-holidays'
 import { nameKey } from '@/lib/paie/process-batch'
 
 /** Par défaut on ne traite que le mail le plus récent (mois précédent) : la feuille
@@ -57,8 +58,9 @@ export async function importPrestations(from?: string) {
         await sb.from('prestation_sheets').update(meta).eq('id', ex.id)
         updated++
       } else {
-        const days: Record<string, any> = {}
-        for (const [d, h] of Object.entries(w.days || {})) days[d] = { h: Number(h) || 0 }
+        const raw: Record<string, any> = {}
+        for (const [d, h] of Object.entries(w.days || {})) raw[d] = { h: Number(h) || 0 }
+        const { days } = applyHolidaysToDays(raw, period)   // pré-marque les fériés belges
         const { error } = await sb.from('prestation_sheets').insert({ period, company_code: cc, matricule: mat, days, ...meta })
         if (!error) stored++
       }
