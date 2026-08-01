@@ -6,7 +6,18 @@
 
 import { useEffect, useState } from 'react'
 import AppShell from '@/components/layout/AppShell'
-import { FileText, Download, Wallet, Info, Eye, X, CalendarClock } from 'lucide-react'
+import { FileText, Download, Wallet, Info, Eye, X, CalendarClock, Save, UserCog, Check } from 'lucide-react'
+
+// Champ défini au niveau module (sinon perte de focus à chaque frappe).
+function MeInput({ label, k, form, onChange, type = 'text', full }: any) {
+  return (
+    <label className={`block ${full ? 'sm:col-span-2' : ''}`}>
+      <span className="text-ink-muted text-xs">{label}</span>
+      <input type={type} value={form[k] ?? ''} onChange={e => onChange(k, e.target.value)}
+        className="w-full mt-1 bg-surface border rounded-lg px-3 py-2 text-sm text-ink" />
+    </label>
+  )
+}
 
 const COMPANIES: Record<string, string> = { '438': 'Verviers Dépannage', '3068': 'DGJ VHU' }
 const MONTHS = ['', 'janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre']
@@ -20,11 +31,27 @@ export default function MaPaieClient({ userRole, userName, userEmail, userModule
   const [data, setData]   = useState<any>(null)
   const [loading, setLd]  = useState(true)
   const [preview, setPreview] = useState<any>(null)
+  const [meForm, setMeForm] = useState<any>({})
+  const [savingInfo, setSavingInfo] = useState(false)
+  const [savedInfo, setSavedInfo] = useState(false)
 
   useEffect(() => {
     fetch('/api/paie/mine', { cache: 'no-store' }).then(r => r.json())
-      .then(setData).catch(() => setData({ payslips: [], linked: false })).finally(() => setLd(false))
+      .then(d => { setData(d); if (d?.me) setMeForm(d.me) })
+      .catch(() => setData({ payslips: [], linked: false })).finally(() => setLd(false))
   }, [])
+
+  const setMe = (k: string, v: any) => { setMeForm((f: any) => ({ ...f, [k]: v })); setSavedInfo(false) }
+  const saveInfos = async () => {
+    setSavingInfo(true)
+    try {
+      const r = await fetch('/api/paie/mes-infos', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(meForm) })
+      const j = await r.json()
+      if (j.error) { alert(j.error); return }
+      setSavedInfo(true)
+      if (j.changed > 0) alert(`Modification${j.changed > 1 ? 's' : ''} enregistrée${j.changed > 1 ? 's' : ''} et transmise${j.changed > 1 ? 's' : ''} à l'administration.`)
+    } finally { setSavingInfo(false) }
+  }
 
   const slips: any[] = data?.payslips || []
   const multiCompany = new Set(slips.map(s => s.company_code)).size > 1
@@ -56,6 +83,39 @@ export default function MaPaieClient({ userRole, userName, userEmail, userModule
               <div><div className="text-2xl font-bold text-brand tabular-nums">{data.vacation.available ?? '—'}</div><div className="text-ink-muted text-xs mt-0.5">disponibles (h)</div></div>
               <div><div className="text-2xl font-bold text-ink tabular-nums">{data.vacation.used ?? '—'}</div><div className="text-ink-muted text-xs mt-0.5">prises (h)</div></div>
               <div><div className="text-2xl font-bold text-ink-secondary tabular-nums">{data.vacation.total ?? '—'}</div><div className="text-ink-muted text-xs mt-0.5">total (h)</div></div>
+            </div>
+          </div>
+        )}
+
+        {/* Self-service : mes informations personnelles */}
+        {!loading && data?.linked && (
+          <div className="bg-surface border rounded-2xl p-5 mb-6">
+            <div className="flex items-center gap-2 mb-1">
+              <UserCog size={18} className="text-brand" />
+              <h2 className="font-semibold text-ink text-sm">Mes informations</h2>
+            </div>
+            <p className="text-ink-muted text-xs mb-4">Tiens tes coordonnées à jour. Toute modification est transmise à l'administration pour mise à jour auprès du secrétariat social.</p>
+            <div className="grid sm:grid-cols-2 gap-3">
+              <MeInput label="Adresse (rue + n°)" k="adresse" form={meForm} onChange={setMe} full />
+              <MeInput label="Code postal" k="code_postal" form={meForm} onChange={setMe} />
+              <MeInput label="Ville" k="ville" form={meForm} onChange={setMe} />
+              <label className="block"><span className="text-ink-muted text-xs">État civil</span>
+                <select value={meForm.etat_civil || ''} onChange={e => setMe('etat_civil', e.target.value)} className="w-full mt-1 bg-surface border rounded-lg px-3 py-2 text-sm text-ink">
+                  <option value="">—</option>{['Célibataire', 'Marié(e)', 'Cohabitant(e) légal(e)', 'Divorcé(e)', 'Séparé(e)', 'Veuf/Veuve'].map(t => <option key={t} value={t}>{t}</option>)}
+                </select></label>
+              <MeInput label="Personnes à charge" k="personnes_charge" type="number" form={meForm} onChange={setMe} />
+              <MeInput label="IBAN (versement du salaire)" k="iban" form={meForm} onChange={setMe} full />
+              <MeInput label="Téléphone" k="phone" form={meForm} onChange={setMe} />
+              <MeInput label="E-mail" k="email" form={meForm} onChange={setMe} />
+              <MeInput label="Contact d'urgence (nom)" k="contact_urgence_nom" form={meForm} onChange={setMe} />
+              <MeInput label="Contact d'urgence (tél.)" k="contact_urgence_tel" form={meForm} onChange={setMe} />
+            </div>
+            <div className="flex items-center gap-3 mt-4">
+              <button onClick={saveInfos} disabled={savingInfo}
+                className="inline-flex items-center gap-1.5 bg-brand text-white text-sm font-medium px-4 py-2 rounded-lg disabled:opacity-50">
+                <Save size={15} /> {savingInfo ? 'Enregistrement…' : 'Enregistrer'}
+              </button>
+              {savedInfo && <span className="inline-flex items-center gap-1 text-emerald-600 text-xs"><Check size={14} /> Transmis à l'administration</span>}
             </div>
           </div>
         )}

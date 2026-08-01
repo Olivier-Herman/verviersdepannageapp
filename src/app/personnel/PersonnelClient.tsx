@@ -7,7 +7,7 @@
 
 import { useEffect, useState, useCallback } from 'react'
 import AppShell from '@/components/layout/AppShell'
-import { Users, Mail, Upload, Download, RefreshCw, Trash2, FileText, Link2, AlertTriangle, Eye, X, Building2 } from 'lucide-react'
+import { Users, Mail, Upload, Download, RefreshCw, Trash2, FileText, Link2, AlertTriangle, Eye, X, Building2, Send, Check } from 'lucide-react'
 
 const COMPANIES: Record<string, string> = { '438': 'Verviers Dépannage', '3068': 'DGJ VHU' }
 const coLabel = (c: string) => COMPANIES[c] || c || '—'
@@ -180,6 +180,37 @@ export default function PersonnelClient({ userRole, userName, userEmail, userMod
                 </div>
               )}
             </div>
+
+            {/* Modifications self-service à transmettre au secrétariat social */}
+            {(data?.pendingChanges?.length > 0) && (
+              <div className="bg-amber-50 dark:bg-amber-500/10 border border-amber-400/50 rounded-2xl p-5">
+                <div className="flex items-center gap-2 mb-3">
+                  <Send size={16} className="text-amber-700" />
+                  <h2 className="font-semibold text-amber-900 text-sm">À transmettre au secrétariat social</h2>
+                  <span className="text-amber-800 text-xs">{data.pendingChanges.length} modif(s)</span>
+                  <button onClick={() => post({ action: 'transmit_change', id: 'all' })}
+                    className="ml-auto inline-flex items-center gap-1 text-xs px-2.5 py-1 rounded-lg border border-amber-400/60 text-amber-800 hover:bg-amber-100/50">
+                    <Check size={13} /> Tout marquer transmis
+                  </button>
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  {data.pendingChanges.map((c: any) => (
+                    <div key={c.id} className="flex flex-wrap items-baseline gap-x-2 text-xs text-amber-900 bg-white/40 dark:bg-white/5 rounded-lg px-3 py-2">
+                      <span className="font-semibold">{c.worker}</span>
+                      <span className="text-amber-700">·</span>
+                      <span className="font-medium">{c.label} :</span>
+                      <span className="text-amber-700 line-through">{c.old_value ?? '—'}</span>
+                      <span>→</span>
+                      <span className="font-semibold">{c.new_value ?? '—'}</span>
+                      <button onClick={() => post({ action: 'transmit_change', id: c.id })}
+                        className="ml-auto inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded border border-amber-400/60 hover:bg-amber-100/50" title="Marquer transmis">
+                        <Check size={12} /> transmis
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
 
             {/* Répertoire du personnel */}
             <div className="bg-surface border rounded-2xl p-5">

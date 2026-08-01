@@ -51,7 +51,14 @@ export async function GET() {
   })
   const periods = [...new Set((slips || []).map((s: any) => s.period).filter(Boolean))].sort().reverse()
 
-  return NextResponse.json({ personnel: personnelOut, users: users || [], periods, payslips: slips || [] })
+  // Modifications self-service en attente de transmission au secrétariat social.
+  const { data: changes } = await sb.from('personnel_changes')
+    .select('id, personnel_id, label, old_value, new_value, created_at').eq('transmitted', false)
+    .order('created_at', { ascending: false })
+  const nameByPers = new Map((personnel || []).map((p: any) => [p.id, p.name]))
+  const pendingChanges = (changes || []).map((c: any) => ({ ...c, worker: nameByPers.get(c.personnel_id) || '?' }))
+
+  return NextResponse.json({ personnel: personnelOut, users: users || [], periods, payslips: slips || [], pendingChanges })
 }
 
 export async function POST(req: NextRequest) {
@@ -138,6 +145,15 @@ export async function POST(req: NextRequest) {
       catch (e: any) { errors.push({ id: m.id, error: e.message }) }
     }
     return NextResponse.json({ ok: true, total: (missing || []).length, created, linked, errors })
+  }
+
+  if (action === 'transmit_change') {
+    // Marque une modif self-service comme transmise au secrétariat social.
+    const id = String(body.id || '')
+    if (id === 'all') await sb.from('personnel_changes').update({ transmitted: true, transmitted_at: new Date().toISOString() }).eq('transmitted', false)
+    else if (id)     await sb.from('personnel_changes').update({ transmitted: true, transmitted_at: new Date().toISOString() }).eq('id', id)
+    else return NextResponse.json({ error: 'id requis' }, { status: 400 })
+    return NextResponse.json({ ok: true })
   }
 
   if (action === 'reassign') {
