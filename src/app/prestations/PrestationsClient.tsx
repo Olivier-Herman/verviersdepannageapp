@@ -6,7 +6,8 @@
 import { useEffect, useState, useCallback } from 'react'
 import AppShell from '@/components/layout/AppShell'
 import PersonnelTabs from '@/components/layout/PersonnelTabs'
-import { Clock, RefreshCw, Save, Check, X, FileText, Send, ShieldCheck } from 'lucide-react'
+import { applyHolidaysToDays } from '@/lib/prestations/belgian-holidays'
+import { Clock, RefreshCw, Save, Check, X, FileText, Send, ShieldCheck, CalendarCheck } from 'lucide-react'
 
 const MONTHS = ['', 'janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre']
 const periodLabel = (p: string) => { const [y, m] = (p || '').split('-'); return m ? `${MONTHS[+m]} ${y}` : p }
@@ -82,6 +83,22 @@ export default function PrestationsClient({ userRole, userName, userEmail, userM
     } finally { setBusy('') }
   }
 
+  const applyHolidays = async () => {
+    const toSave: Array<{ id: string; days: any }> = []
+    const updated = sheets.map((s: any) => {
+      const { days, changed } = applyHolidaysToDays(s.days || {}, period)
+      if (changed) { toSave.push({ id: s.id, days }); return { ...s, days } }
+      return s
+    })
+    if (!toSave.length) { alert('Aucun jour férié à appliquer sur ce mois (ou déjà appliqués).'); return }
+    setSheets(updated)
+    setBusy('holidays')
+    try {
+      for (const t of toSave) await fetch('/api/prestations', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'save', id: t.id, days: t.days }) })
+      alert(`Jours fériés appliqués et enregistrés sur ${toSave.length} feuille(s).`)
+    } finally { setBusy('') }
+  }
+
   const setCell = (sheetId: string, day: number, val: any) => {
     setSheets(prev => prev.map(s => {
       if (s.id !== sheetId) return s
@@ -133,6 +150,12 @@ export default function PrestationsClient({ userRole, userName, userEmail, userM
             {dirty.size > 0 && (
               <button onClick={saveAll} disabled={!!busy} className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-brand text-white text-sm font-medium disabled:opacity-50">
                 {busy === 'save' ? <RefreshCw size={15} className="animate-spin" /> : <Save size={15} />} Enregistrer ({dirty.size})
+              </button>
+            )}
+            {sheets.length > 0 && (
+              <button onClick={applyHolidays} disabled={!!busy}
+                className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border text-sm text-ink-secondary hover:text-brand disabled:opacity-50" title="Marquer les jours fériés belges du mois">
+                {busy === 'holidays' ? <RefreshCw size={15} className="animate-spin" /> : <CalendarCheck size={15} />} Fériés
               </button>
             )}
             {sheets.length > 0 && (
