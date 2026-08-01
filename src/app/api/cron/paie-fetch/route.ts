@@ -43,10 +43,16 @@ export async function GET(req: Request) {
       }
       const pdf = await extractPayslipPdf(m.zipBuffer)
       if (!pdf) { results.push({ subject: m.subject, error: 'PDF fiches introuvable dans le ZIP' }); continue }
-      const r = await ingestPayslipPdf(sb, {
-        pdfBytes: pdf, period: m.period, companyCode: m.companyCode, source: 'mail', sourceRef: m.messageId,
-      })
-      results.push({ period: m.period, company: m.companyCode, ...r })
+      // Un mois qui échoue (ex. JSON IA tronqué) ne doit pas interrompre les autres.
+      try {
+        const r = await ingestPayslipPdf(sb, {
+          pdfBytes: pdf, period: m.period, companyCode: m.companyCode, source: 'mail', sourceRef: m.messageId,
+        })
+        results.push({ period: m.period, company: m.companyCode, ...r })
+      } catch (e: any) {
+        console.error(`[paie-fetch] ${m.companyCode} ${m.period}:`, e.message)
+        results.push({ period: m.period, company: m.companyCode, error: e.message })
+      }
     }
     // Push automatique vers Odoo des fiches éligibles (net > 0 + contact Odoo).
     // Tourne à chaque passage → rattrape aussi le backlog dès qu'un odoo_partner_id

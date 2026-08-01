@@ -66,7 +66,7 @@ Montants : montant_net = le NET À PAYER de CETTE fiche (€) ; montant_brut = l
 Infos : recopie les DONNÉES PERSONNELLES du travailleur telles qu'imprimées sur la fiche (adresse, NISS, IBAN, état civil, personnes à charge), pour recoupement. Toute info absente de la fiche → null.`
   const res = await client.messages.create({
     model: ANTHROPIC_MODEL,
-    max_tokens: 4096,
+    max_tokens: 16000,
     messages: [{ role: 'user', content: [
       { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: pdfB64 } },
       { type: 'text', text: prompt },

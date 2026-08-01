@@ -39,6 +39,7 @@ export default function PersonnelClient({ userRole, userName, userEmail, userMod
     if (force && !confirm('Re-traiter les mois (depuis la période « depuis ») pour capter les primes/congés ajoutés ?\nRelance le découpage IA — les fiches déjà présentes ne sont pas dupliquées. Restreins « depuis » pour aller vite.')) return
     setBusy('mail')
     let total = 0, totalUpd = 0, err = ''
+    const errNotes: string[] = []
     try {
       // Boucle : chaque appel traite les périodes manquantes (idempotent). Si un
       // appel dépasse le timeout, on relance jusqu'à ce qu'il n'y ait plus rien.
@@ -51,12 +52,15 @@ export default function PersonnelClient({ userRole, userName, userEmail, userMod
         if (j?.error) { err = j.error; break }
         const stored = (j.results || []).reduce((s: number, x: any) => s + (x.stored || 0), 0)
         const upd    = (j.results || []).reduce((s: number, x: any) => s + (x.updated || 0), 0)
+        for (const x of (j.results || [])) if (x.error && errNotes.length < 8) errNotes.push(`${x.company || ''} ${x.period || ''} : ${String(x.error).slice(0, 80)}`)
         total += stored; totalUpd += upd
         await load()
         if (stored === 0) break   // plus rien de nouveau à ajouter
       }
     } finally { setBusy('') }
-    alert(err ? `Erreur : ${err}` : `${force ? 'Re-traitement' : 'Récupération'} terminé : ${total} ajoutée(s)${totalUpd ? `, ${totalUpd} mise(s) à jour` : ''}.`)
+    alert(err ? `Erreur : ${err}`
+      : `${force ? 'Re-traitement' : 'Récupération'} terminé : ${total} ajoutée(s)${totalUpd ? `, ${totalUpd} mise(s) à jour` : ''}.`
+        + (errNotes.length ? `\n\n⚠️ Mois en erreur (relance « Re-traiter ») :\n${errNotes.join('\n')}` : ''))
   }
 
   const upload = async (file: File) => {
