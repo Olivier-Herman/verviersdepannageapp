@@ -5,6 +5,7 @@
 
 import { useEffect, useState, useCallback } from 'react'
 import AppShell from '@/components/layout/AppShell'
+import PersonnelTabs from '@/components/layout/PersonnelTabs'
 import { Clock, RefreshCw, Save, Check, X } from 'lucide-react'
 
 const MONTHS = ['', 'janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre']
@@ -91,6 +92,7 @@ export default function PrestationsClient({ userRole, userName, userEmail, userM
   return (
     <AppShell title="Prestations" userRole={userRole} userName={userName} userEmail={userEmail} userModules={userModules}>
       <div className="max-w-full mx-auto px-4 py-6">
+        <PersonnelTabs />
         <div className="flex items-center justify-between flex-wrap gap-3 mb-5">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-xl bg-brand/10 text-brand flex items-center justify-center"><Clock size={22} /></div>

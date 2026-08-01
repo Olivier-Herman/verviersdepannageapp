@@ -6,6 +6,7 @@
 
 import { useEffect, useState } from 'react'
 import AppShell from '@/components/layout/AppShell'
+import PersonnelTabs from '@/components/layout/PersonnelTabs'
 import { TrendingUp, RefreshCw, Info } from 'lucide-react'
 
 const eur = (n: number) => n.toLocaleString('fr-BE', { maximumFractionDigits: 0 }) + ' €'
@@ -32,6 +33,7 @@ export default function RentabiliteClient({ userRole, userName, userEmail, userM
   return (
     <AppShell title="Rentabilité chauffeur" userRole={userRole} userName={userName} userEmail={userEmail} userModules={userModules}>
       <div className="max-w-4xl mx-auto px-4 py-6">
+        <PersonnelTabs />
         <div className="flex items-center justify-between flex-wrap gap-3 mb-5">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-xl bg-brand/10 text-brand flex items-center justify-center"><TrendingUp size={22} /></div>

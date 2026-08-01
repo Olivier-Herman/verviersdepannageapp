@@ -7,6 +7,7 @@
 
 import { useEffect, useState, useCallback } from 'react'
 import AppShell from '@/components/layout/AppShell'
+import PersonnelTabs from '@/components/layout/PersonnelTabs'
 import { Users, Mail, Upload, Download, RefreshCw, Trash2, FileText, Link2, AlertTriangle, Eye, X, Building2, Send, Check } from 'lucide-react'
 
 const COMPANIES: Record<string, string> = { '438': 'Verviers Dépannage', '3068': 'DGJ VHU' }
@@ -94,11 +95,12 @@ export default function PersonnelClient({ userRole, userName, userEmail, userMod
   return (
     <AppShell title="Gestion du Personnel" userRole={userRole} userName={userName} userEmail={userEmail} userModules={userModules}>
       <div className="max-w-5xl mx-auto px-4 py-6">
+        <PersonnelTabs />
         {/* En-tête + actions */}
         <div className="flex items-center justify-between flex-wrap gap-3 mb-5">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-xl bg-brand/10 text-brand flex items-center justify-center"><Users size={22} /></div>
-            <div><h1 className="text-xl font-bold text-ink leading-tight">Gestion du Personnel</h1>
+            <div><h1 className="text-xl font-bold text-ink leading-tight">Répertoire du personnel</h1>
               <p className="text-ink-muted text-sm">Fiches de paie EasyPay — récupération & répertoire</p></div>
           </div>
           <div className="flex items-center gap-2 flex-wrap">
