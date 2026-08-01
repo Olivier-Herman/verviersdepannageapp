@@ -179,7 +179,7 @@ export default function PersonnelClient({ userRole, userName, userEmail, userMod
                   <tbody>
                     {personnel.map((p: any) => (
                       <tr key={p.id} className="border-b border-white/5">
-                        <td className="py-2 text-ink">{p.name}</td>
+                        <td className="py-2"><a href={`/personnel/${p.id}`} className="text-ink hover:text-brand font-medium">{p.name}</a></td>
                         <td className="text-ink-muted text-xs">{coLabel(p.company_code)}</td>
                         <td>
                           <select value={p.user_id || ''} onChange={e => post({ action: 'update', id: p.id, user_id: e.target.value || null })}

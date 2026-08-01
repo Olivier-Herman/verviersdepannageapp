@@ -10,6 +10,7 @@ import { getServerSession }          from 'next-auth'
 import { authOptions }               from '@/lib/auth'
 import { createAdminClient }         from '@/lib/supabase'
 import { nameKey }                   from '@/lib/paie/process-batch'
+import { odooRpc }                   from '@/lib/odoo'
 
 export const dynamic    = 'force-dynamic'
 export const fetchCache = 'force-no-store'
@@ -58,7 +59,28 @@ export async function POST(req: NextRequest) {
     if ('company_code' in body)             patch.company_code = String(body.company_code || '').trim() || null
     if ('user_id' in body)                  patch.user_id = body.user_id || null
     if ('active' in body)                   patch.active = !!body.active
+    if ('poste' in body)                    patch.poste = String(body.poste || '').trim() || null
+    if ('type_contrat' in body)             patch.type_contrat = String(body.type_contrat || '').trim() || null
+    if ('date_entree' in body)              patch.date_entree = body.date_entree || null
+    if ('date_sortie' in body)              patch.date_sortie = body.date_sortie || null
+    if ('phone' in body)                    patch.phone = String(body.phone || '').trim() || null
+    if ('email' in body)                    patch.email = String(body.email || '').trim() || null
+    if ('notes' in body)                    patch.notes = String(body.notes || '').trim() || null
+    if ('odoo_partner_id' in body)          patch.odoo_partner_id = body.odoo_partner_id ? Number(body.odoo_partner_id) : null
+
     await sb.from('personnel').update(patch).eq('id', id)
+
+    // Sync vers le contact Odoo (complète le manquant / met à jour le modifié).
+    const { data: p } = await sb.from('personnel').select('odoo_partner_id, name, phone, email').eq('id', id).maybeSingle()
+    if (p?.odoo_partner_id) {
+      try {
+        const vals: any = {}
+        if (p.name)  vals.name  = p.name
+        if (p.phone) vals.phone = p.phone
+        if (p.email) vals.email = p.email
+        if (Object.keys(vals).length) await odooRpc('res.partner', 'write', [[p.odoo_partner_id], vals])
+      } catch (e: any) { console.error('[personnel] sync Odoo:', e.message) }
+    }
     return NextResponse.json({ ok: true })
   }
 
