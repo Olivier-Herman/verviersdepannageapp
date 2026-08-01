@@ -27,5 +27,12 @@ export async function GET() {
     if (count) badges['/personnel'] = count
   }
 
+  // TGR Gestion : demandes non traitées (statut « pending »).
+  if ((u.modules || []).includes('admin') || u.role === 'superadmin') {
+    const { count } = await sb.from('tgr_missions').select('id', { count: 'exact', head: true })
+      .eq('status', 'pending')
+    if (count) badges['/admin/tgr'] = count
+  }
+
   return NextResponse.json({ badges })
 }
