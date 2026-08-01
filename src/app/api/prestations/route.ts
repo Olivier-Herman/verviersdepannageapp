@@ -37,7 +37,13 @@ export async function GET(req: NextRequest) {
     const { data } = await sb.from('prestation_sheets').select('*').eq('period', period).order('worker_name')
     sheets = data || []
   }
-  return NextResponse.json({ periods, period, sheets })
+  // Note générale du mois (app_settings, clé prestation_notes = { période: note }).
+  let generalNote = ''
+  if (period) {
+    const { data: gn } = await sb.from('app_settings').select('value').eq('key', 'prestation_notes').maybeSingle()
+    try { const map = gn?.value ? (typeof gn.value === 'string' ? JSON.parse(gn.value) : gn.value) : {}; generalNote = map[period] || '' } catch {}
+  }
+  return NextResponse.json({ periods, period, sheets, generalNote })
 }
 
 export async function POST(req: NextRequest) {
@@ -56,8 +62,22 @@ export async function POST(req: NextRequest) {
 
   if (action === 'save') {
     const id = String(body.id || '')
-    if (!id || typeof body.days !== 'object') return NextResponse.json({ error: 'id + days requis' }, { status: 400 })
-    await sb.from('prestation_sheets').update({ days: body.days, updated_at: new Date().toISOString() }).eq('id', id)
+    if (!id) return NextResponse.json({ error: 'id requis' }, { status: 400 })
+    const patch: any = { updated_at: new Date().toISOString() }
+    if (body.days && typeof body.days === 'object') patch.days = body.days
+    if ('note' in body) patch.note = (body.note ? String(body.note) : null)
+    await sb.from('prestation_sheets').update(patch).eq('id', id)
+    return NextResponse.json({ ok: true })
+  }
+
+  if (action === 'save_general_note') {
+    const period = String(body.period || '')
+    if (!period) return NextResponse.json({ error: 'period requis' }, { status: 400 })
+    const { data: gn } = await sb.from('app_settings').select('value').eq('key', 'prestation_notes').maybeSingle()
+    let map: Record<string, string> = {}
+    try { map = gn?.value ? (typeof gn.value === 'string' ? JSON.parse(gn.value) : gn.value) : {} } catch {}
+    map[period] = String(body.note || '')
+    await sb.from('app_settings').upsert({ key: 'prestation_notes', value: JSON.stringify(map) }, { onConflict: 'key' })
     return NextResponse.json({ ok: true })
   }
 
@@ -78,11 +98,15 @@ export async function POST(req: NextRequest) {
     const signedBy = me.name || 'Responsable'
     const signedDate = new Date().toLocaleDateString('fr-BE')
 
+    let generalNote = ''
+    const { data: gn } = await sb.from('app_settings').select('value').eq('key', 'prestation_notes').maybeSingle()
+    try { const map = gn?.value ? (typeof gn.value === 'string' ? JSON.parse(gn.value) : gn.value) : {}; generalNote = map[period] || '' } catch {}
+
     // Une feuille (PDF) par société présente dans la période.
     const byCo: Record<string, any[]> = {}
     for (const s of sheets) (byCo[s.company_code || '438'] ||= []).push(s)
     for (const [cc, rows] of Object.entries(byCo)) {
-      const bytes = await generatePrestationsPdf(period, cc, rows as any, signedBy, signedDate, true)
+      const bytes = await generatePrestationsPdf(period, cc, rows as any, signedBy, signedDate, true, generalNote)
       const b64 = Buffer.from(bytes).toString('base64')
       const html = emailLayout(
         `<p style="margin:0 0 12px">Bonjour,</p>

@@ -23,8 +23,8 @@ const daysInMonth = (period: string) => { const [y, m] = period.split('-').map(N
 const dow = (period: string, d: number) => { const [y, m] = period.split('-').map(Number); return new Date(y, m - 1, d).getDay() }
 
 export async function generatePrestationsPdf(
-  period: string, companyCode: string, sheets: PrestSheetRow[],
-  signedBy: string, signedDate: string, signed = false,
+  period: string, companyCode: string, sheets: (PrestSheetRow & { note?: string | null })[],
+  signedBy: string, signedDate: string, signed = false, generalNote = '',
 ): Promise<Uint8Array> {
   const pdf = await PDFDocument.create()
   const font = await pdf.embedFont(StandardFonts.Helvetica)
@@ -96,6 +96,16 @@ export async function generatePrestationsPdf(
     p.drawLine({ start: { x: margin, y: headerBottom }, end: { x: pageW - margin, y: headerBottom }, thickness: 1, color: ink })
   }
 
+  const wrap = (txt: string, maxW: number, size: number, f: PDFFont): string[] => {
+    const out: string[] = []; let cur = ''
+    for (const w of String(txt).split(/\s+/)) {
+      const t = cur ? `${cur} ${w}` : w
+      if (f.widthOfTextAtSize(t, size) > maxW && cur) { out.push(cur); cur = w } else cur = t
+    }
+    if (cur) out.push(cur); return out
+  }
+  const workerNotes: string[] = []
+
   let page = pdf.addPage([pageW, pageH])
   drawPageHeader(page)
   let yTop = headerBottom
@@ -120,9 +130,28 @@ export async function generatePrestationsPdf(
       else if (v?.h > 0) { centered(page, String(v.h), cx, yb + 7, 7.5, font, ink); tot += v.h }
     }
     centered(page, String(Math.round(tot)), gridX + gridW + totW / 2, yb + 7, 8, bold, ink)
+    if (s.note) workerNotes.push(`${(s.worker_name || '').slice(0, 24)} — ${s.note}`)
     page.drawLine({ start: { x: margin, y: yb }, end: { x: pageW - margin, y: yb }, thickness: 0.4, color: faint })
     yTop -= rowH
   })
+
+  // Section « Remarques » (note générale + notes par travailleur)
+  if (generalNote || workerNotes.length) {
+    const contentW = pageW - margin * 2 - 6
+    const needed = (generalNote ? 14 + wrap(generalNote, contentW, 8.5, font).length * 11 + 4 : 0)
+      + (workerNotes.length ? 12 + workerNotes.reduce((n, wn) => n + wrap(wn, contentW, 7.5, font).length, 0) * 10 : 0) + 8
+    let ny = yTop - 14
+    if (ny - needed < 66) { page = pdf.addPage([pageW, pageH]); drawPageHeader(page); ny = headerBottom - 14 }
+    if (generalNote) {
+      page.drawText('NOTE GÉNÉRALE', { x: margin, y: ny, size: 8, font: bold, color: accent }); ny -= 12
+      for (const ln of wrap(generalNote, contentW, 8.5, font)) { page.drawText(ln, { x: margin, y: ny, size: 8.5, font, color: ink }); ny -= 11 }
+      ny -= 4
+    }
+    if (workerNotes.length) {
+      page.drawText('REMARQUES PAR TRAVAILLEUR', { x: margin, y: ny, size: 8, font: bold, color: grey }); ny -= 12
+      for (const wn of workerNotes) for (const ln of wrap(wn, contentW, 7.5, font)) { page.drawText(ln, { x: margin + 6, y: ny, size: 7.5, font, color: ink }); ny -= 10 }
+    }
+  }
 
   // Légende + pied
   const legend = 'C = congé légal    M = maladie    AT = accident    F = férié    R = récup    SS = sans solde    PC = petit chômage    CT = chômage temp.'

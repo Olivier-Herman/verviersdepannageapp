@@ -27,7 +27,11 @@ export async function GET(req: NextRequest) {
   const signedBy   = sheets[0].signed_by || ''
   const signedDate = sheets[0].validated_at ? new Date(sheets[0].validated_at).toLocaleDateString('fr-BE') : ''
 
-  const bytes = await generatePrestationsPdf(period, cc, sheets as any, signedBy, signedDate, signed)
+  let generalNote = ''
+  const { data: gn } = await sb.from('app_settings').select('value').eq('key', 'prestation_notes').maybeSingle()
+  try { const map = gn?.value ? (typeof gn.value === 'string' ? JSON.parse(gn.value) : gn.value) : {}; generalNote = map[period] || '' } catch {}
+
+  const bytes = await generatePrestationsPdf(period, cc, sheets as any, signedBy, signedDate, signed, generalNote)
   return new NextResponse(Buffer.from(bytes), {
     headers: { 'Content-Type': 'application/pdf', 'Content-Disposition': `inline; filename="feuille-presence-${period}.pdf"` },
   })

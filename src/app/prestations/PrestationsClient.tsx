@@ -7,7 +7,7 @@ import { useEffect, useState, useCallback } from 'react'
 import AppShell from '@/components/layout/AppShell'
 import PersonnelTabs from '@/components/layout/PersonnelTabs'
 import { applyHolidaysToDays } from '@/lib/prestations/belgian-holidays'
-import { Clock, RefreshCw, Save, Check, X, FileText, Send, ShieldCheck, CalendarCheck } from 'lucide-react'
+import { Clock, RefreshCw, Save, Check, X, FileText, Send, ShieldCheck, CalendarCheck, StickyNote } from 'lucide-react'
 
 const MONTHS = ['', 'janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre']
 const periodLabel = (p: string) => { const [y, m] = (p || '').split('-'); return m ? `${MONTHS[+m]} ${y}` : p }
@@ -37,6 +37,15 @@ export default function PrestationsClient({ userRole, userName, userEmail, userM
   const [pinModal, setPinModal] = useState(false)
   const [pin, setPin] = useState('')
   const [signing, setSigning] = useState(false)
+  const [genNote, setGenNote] = useState('')
+
+  const saveGenNote = async () => {
+    await fetch('/api/prestations', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'save_general_note', period, note: genNote }) })
+  }
+  const setNote = (sheetId: string, note: string) => {
+    setSheets(prev => prev.map(s => s.id === sheetId ? { ...s, note } : s))
+    setDirty(prev => new Set(prev).add(sheetId))
+  }
 
   const signSend = async () => {
     setSigning(true)
@@ -55,7 +64,7 @@ export default function PrestationsClient({ userRole, userName, userEmail, userM
     const j = await r.json()
     // Les jours fériés sont déjà intégrés à l'import (server) → on affiche tel
     // quel, sans rien re-marquer, pour ne JAMAIS écraser une correction manuelle.
-    setData(j); setPeriod(j.period || ''); setSheets(j.sheets || []); setDirty(new Set())
+    setData(j); setPeriod(j.period || ''); setSheets(j.sheets || []); setDirty(new Set()); setGenNote(j.generalNote || '')
   }, [])
   useEffect(() => { load() }, [load])
 
@@ -115,7 +124,7 @@ export default function PrestationsClient({ userRole, userName, userEmail, userM
     try {
       for (const id of dirty) {
         const s = sheets.find(x => x.id === id); if (!s) continue
-        await fetch('/api/prestations', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'save', id, days: s.days || {} }) })
+        await fetch('/api/prestations', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'save', id, days: s.days || {}, note: s.note ?? null }) })
       }
       setDirty(new Set())
       alert('Modifications enregistrées.')
@@ -188,6 +197,14 @@ export default function PrestationsClient({ userRole, userName, userEmail, userM
         )}
 
         {sheets.length > 0 && (
+          <div className="bg-surface border rounded-xl p-3 mb-4">
+            <label className="text-xs font-medium text-ink-muted flex items-center gap-1.5"><StickyNote size={13} /> Note générale (à l'attention du secrétariat social)</label>
+            <textarea value={genNote} onChange={e => setGenNote(e.target.value)} onBlur={saveGenNote} rows={2}
+              placeholder="Une précision, une question pour Jonathan…" className="w-full mt-1.5 bg-surface-2 border rounded-lg px-3 py-2 text-sm text-ink" />
+          </div>
+        )}
+
+        {sheets.length > 0 && (
           <div className="bg-surface border rounded-2xl overflow-hidden">
             <div className="overflow-x-auto">
               <table className="text-sm border-collapse">
@@ -207,6 +224,8 @@ export default function PrestationsClient({ userRole, userName, userEmail, userM
                       <td className="px-3 py-2 sticky left-0 bg-surface z-10">
                         <div className="text-ink font-medium text-xs">{s.worker_name}</div>
                         <div className="text-ink-muted text-[10px]">{[s.matricule && `#${s.matricule}`, s.qs && `Q/S ${s.qs}`].filter(Boolean).join(' · ')}</div>
+                        <input value={s.note || ''} onChange={e => setNote(s.id, e.target.value)} placeholder="note…"
+                          className="mt-1 w-full bg-surface-2 border rounded px-1.5 py-0.5 text-[10px] text-ink placeholder:text-ink-muted/50" />
                       </td>
                       {Array.from({ length: daysInMonth }, (_, i) => i + 1).map(d => {
                         const we = dow(d) === 0 || dow(d) === 6
