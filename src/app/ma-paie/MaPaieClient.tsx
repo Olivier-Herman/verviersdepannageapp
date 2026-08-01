@@ -6,8 +6,16 @@
 
 import { useEffect, useState } from 'react'
 import AppShell from '@/components/layout/AppShell'
-import { FileText, Download, Wallet, Info, Eye, X, CalendarClock, Save, UserCog, Check } from 'lucide-react'
+import { FileText, Download, Wallet, Info, Eye, X, CalendarClock, Save, UserCog, Check, CalendarDays, Send } from 'lucide-react'
 import { normalizeEtatCivil } from '@/lib/paie/compare-infos'
+
+const CONGE_TYPE_LABEL: Record<string, string> = { conge: 'Congé légal', recup: 'Récupération', sans_solde: 'Congé sans solde' }
+const fmtDate = (d: string) => { const [y, m, j] = (d || '').split('-'); return j ? `${j}/${m}` : d }
+function CongeStatus({ s }: { s: string }) {
+  const map: any = { approved: ['bg-emerald-500/10 text-emerald-700', 'Approuvé'], refused: ['bg-red-500/10 text-red-600', 'Refusé'], pending: ['bg-amber-500/10 text-amber-700', 'En attente'] }
+  const [cls, lbl] = map[s] || map.pending
+  return <span className={`text-[11px] px-2 py-0.5 rounded-full ${cls} flex-shrink-0`}>{lbl}</span>
+}
 
 // Champ défini au niveau module (sinon perte de focus à chaque frappe).
 function MeInput({ label, k, form, onChange, type = 'text', full }: any) {
@@ -35,12 +43,25 @@ export default function MaPaieClient({ userRole, userName, userEmail, userModule
   const [meForm, setMeForm] = useState<any>({})
   const [savingInfo, setSavingInfo] = useState(false)
   const [savedInfo, setSavedInfo] = useState(false)
+  const [congeForm, setCongeForm] = useState<any>({ type: 'conge' })
+  const [submittingConge, setSubmittingConge] = useState(false)
 
-  useEffect(() => {
-    fetch('/api/paie/mine', { cache: 'no-store' }).then(r => r.json())
-      .then(d => { setData(d); if (d?.me) { if (d.me.etat_civil) d.me.etat_civil = normalizeEtatCivil(d.me.etat_civil); setMeForm(d.me) } })
-      .catch(() => setData({ payslips: [], linked: false })).finally(() => setLd(false))
-  }, [])
+  const loadMine = () => fetch('/api/paie/mine', { cache: 'no-store' }).then(r => r.json())
+    .then(d => { setData(d); if (d?.me) { if (d.me.etat_civil) d.me.etat_civil = normalizeEtatCivil(d.me.etat_civil); setMeForm(d.me) } })
+
+  useEffect(() => { loadMine().catch(() => setData({ payslips: [], linked: false })).finally(() => setLd(false)) }, [])
+
+  const submitConge = async () => {
+    if (!congeForm.start_date || !congeForm.end_date) { alert('Indique les dates de début et de fin.'); return }
+    setSubmittingConge(true)
+    try {
+      const r = await fetch('/api/conges', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'request', ...congeForm }) })
+      const j = await r.json()
+      if (j.error) { alert(j.error); return }
+      alert('Demande de congé envoyée. Tu seras notifié de la décision.')
+      setCongeForm({ type: 'conge' }); await loadMine()
+    } finally { setSubmittingConge(false) }
+  }
 
   const setMe = (k: string, v: any) => { setMeForm((f: any) => ({ ...f, [k]: v })); setSavedInfo(false) }
   const saveInfos = async () => {
@@ -62,12 +83,12 @@ export default function MaPaieClient({ userRole, userName, userEmail, userModule
   const years = Object.keys(byYear).sort().reverse()
 
   return (
-    <AppShell title="Mes fiches de paie" userRole={userRole} userName={userName} userEmail={userEmail} userModules={userModules}>
+    <AppShell title="Mes Prestations" userRole={userRole} userName={userName} userEmail={userEmail} userModules={userModules}>
       <div className="max-w-2xl mx-auto px-4 py-6">
         <div className="flex items-center gap-3 mb-6">
           <div className="w-11 h-11 rounded-xl bg-brand/10 text-brand flex items-center justify-center"><Wallet size={24} /></div>
           <div>
-            <h1 className="text-xl font-bold text-ink leading-tight">Mes fiches de paie</h1>
+            <h1 className="text-xl font-bold text-ink leading-tight">Mes Prestations</h1>
             <p className="text-ink-muted text-sm">{data?.name || userName}</p>
           </div>
         </div>
@@ -85,6 +106,39 @@ export default function MaPaieClient({ userRole, userName, userEmail, userModule
               <div><div className="text-2xl font-bold text-ink tabular-nums">{data.vacation.used ?? '—'}</div><div className="text-ink-muted text-xs mt-0.5">prises (h)</div></div>
               <div><div className="text-2xl font-bold text-ink-secondary tabular-nums">{data.vacation.total ?? '—'}</div><div className="text-ink-muted text-xs mt-0.5">total (h)</div></div>
             </div>
+          </div>
+        )}
+
+        {/* Mes congés : demande + suivi */}
+        {!loading && data?.linked && (
+          <div className="bg-surface border rounded-2xl p-5 mb-6">
+            <div className="flex items-center gap-2 mb-3"><CalendarDays size={18} className="text-brand" /><h2 className="font-semibold text-ink text-sm">Mes congés</h2></div>
+            <div className="grid sm:grid-cols-2 gap-3">
+              <label className="block"><span className="text-ink-muted text-xs">Type</span>
+                <select value={congeForm.type} onChange={e => setCongeForm({ ...congeForm, type: e.target.value })} className="w-full mt-1 bg-surface-2 border rounded-lg px-3 py-2 text-sm text-ink">
+                  {Object.entries(CONGE_TYPE_LABEL).map(([k, l]) => <option key={k} value={k}>{l}</option>)}
+                </select></label>
+              <div className="hidden sm:block" />
+              <label className="block"><span className="text-ink-muted text-xs">Du</span>
+                <input type="date" value={congeForm.start_date || ''} onChange={e => setCongeForm({ ...congeForm, start_date: e.target.value })} className="w-full mt-1 bg-surface-2 border rounded-lg px-3 py-2 text-sm text-ink" /></label>
+              <label className="block"><span className="text-ink-muted text-xs">Au</span>
+                <input type="date" value={congeForm.end_date || ''} onChange={e => setCongeForm({ ...congeForm, end_date: e.target.value })} className="w-full mt-1 bg-surface-2 border rounded-lg px-3 py-2 text-sm text-ink" /></label>
+            </div>
+            <input value={congeForm.reason || ''} onChange={e => setCongeForm({ ...congeForm, reason: e.target.value })} placeholder="Motif (optionnel)" className="w-full mt-3 bg-surface-2 border rounded-lg px-3 py-2 text-sm text-ink" />
+            <button onClick={submitConge} disabled={submittingConge} className="mt-3 inline-flex items-center gap-1.5 bg-brand text-white text-sm font-medium px-4 py-2 rounded-lg disabled:opacity-50"><Send size={15} /> {submittingConge ? 'Envoi…' : 'Envoyer la demande'}</button>
+
+            {(data.conges || []).length > 0 && (
+              <div className="mt-5 border-t pt-4 flex flex-col gap-1.5">
+                <div className="text-ink-muted text-xs mb-1">Mes demandes</div>
+                {data.conges.map((c: any) => (
+                  <div key={c.id} className="flex items-center gap-2 text-sm bg-surface-2 rounded-lg px-3 py-2">
+                    <span className="text-ink">{CONGE_TYPE_LABEL[c.type] || c.type}</span>
+                    <span className="text-ink-muted text-xs">{fmtDate(c.start_date)}→{fmtDate(c.end_date)} · {c.days}j</span>
+                    <span className="ml-auto"><CongeStatus s={c.status} /></span>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         )}
 

@@ -40,5 +40,9 @@ export async function GET() {
   const vsrc = (slips || []).find((s: any) => s.vac_available != null || s.vac_total != null)
   const vacation = vsrc ? { total: vsrc.vac_total, used: vsrc.vac_used, available: vsrc.vac_available, period: vsrc.period } : null
 
-  return NextResponse.json({ payslips: slips || [], linked: true, name: persons?.[0]?.name || u.name, vacation, me })
+  const { data: conges } = await sb.from('conge_requests')
+    .select('id, type, start_date, end_date, days, status, decided_at, decision_note')
+    .in('personnel_id', persIds).order('created_at', { ascending: false }).limit(50)
+
+  return NextResponse.json({ payslips: slips || [], linked: true, name: persons?.[0]?.name || u.name, vacation, me, conges: conges || [] })
 }

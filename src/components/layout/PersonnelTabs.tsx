@@ -3,12 +3,13 @@
 // dans le menu de gauche → onglets internes (segmented control + icônes).
 
 import { usePathname } from 'next/navigation'
-import { Home, Users, Clock, TrendingUp } from 'lucide-react'
+import { Home, Users, Clock, TrendingUp, CalendarDays } from 'lucide-react'
 
 const TABS = [
   { href: '/personnel',             label: 'Accueil',      Icon: Home },
   { href: '/personnel/repertoire',  label: 'Répertoire',   Icon: Users },
   { href: '/prestations',           label: 'Prestations',  Icon: Clock },
+  { href: '/personnel/conges',      label: 'Congés',       Icon: CalendarDays },
   { href: '/personnel/rentabilite', label: 'Rentabilité',  Icon: TrendingUp },
 ]
 
@@ -17,8 +18,9 @@ export default function PersonnelTabs() {
   return (
     <div className="inline-flex gap-0.5 p-1 bg-surface border rounded-xl mb-6 max-w-full overflow-x-auto">
       {TABS.map(({ href, label, Icon }) => {
+        const knownSub = ['/personnel', '/personnel/rentabilite', '/personnel/conges']
         const active = path === href
-          || (href === '/personnel/repertoire' && path.startsWith('/personnel/') && path !== '/personnel/rentabilite' && path !== '/personnel')
+          || (href === '/personnel/repertoire' && path.startsWith('/personnel/') && !knownSub.includes(path))
         return (
           <a key={href} href={href}
             className={`inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-sm whitespace-nowrap transition-colors ${

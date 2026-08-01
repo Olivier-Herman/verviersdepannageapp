@@ -1,0 +1,130 @@
+'use client'
+// src/app/personnel/conges/CongesManagerClient.tsx — Validation des congés (RH/superadmin).
+
+import { useEffect, useState, useCallback } from 'react'
+import AppShell from '@/components/layout/AppShell'
+import PersonnelTabs from '@/components/layout/PersonnelTabs'
+import { CalendarDays, Check, X, ShieldCheck, RefreshCw, Clock } from 'lucide-react'
+
+const TYPE_LABEL: Record<string, string> = { conge: 'Congé légal', recup: 'Récupération', sans_solde: 'Congé sans solde' }
+const fmtD = (d: string) => { const [y, m, j] = (d || '').split('-'); return j ? `${j}/${m}/${y}` : d }
+
+export default function CongesManagerClient({ userRole, userName, userEmail, userModules }: {
+  userRole: string; userName: string; userEmail: string; userModules: string[]
+}) {
+  const [reqs, setReqs] = useState<any[]>([])
+  const [loading, setLd] = useState(true)
+  const [modal, setModal] = useState<{ id: string; decision: 'approve' | 'refuse'; worker: string } | null>(null)
+  const [pin, setPin] = useState('')
+  const [note, setNote] = useState('')
+  const [busy, setBusy] = useState(false)
+
+  const load = useCallback(async () => {
+    setLd(true)
+    const r = await fetch('/api/conges', { cache: 'no-store' })
+    const j = await r.json(); setReqs(j.requests || []); setLd(false)
+  }, [])
+  useEffect(() => { load() }, [load])
+
+  const decide = async () => {
+    if (!modal) return
+    setBusy(true)
+    try {
+      const r = await fetch('/api/conges', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'decide', id: modal.id, decision: modal.decision, pin, note }) })
+      const j = await r.json()
+      if (j.error) { alert(j.error); return }
+      if (modal.decision === 'approve' && j.applied?.missing?.length)
+        alert(`Approuvé. ${j.applied.applied} jour(s) posé(s). Mois sans feuille de présence (posés au prochain import) : ${j.applied.missing.join(', ')}.`)
+      setModal(null); setPin(''); setNote(''); await load()
+    } finally { setBusy(false) }
+  }
+
+  const pending = reqs.filter(r => r.status === 'pending')
+  const history = reqs.filter(r => r.status !== 'pending')
+
+  const StatusBadge = ({ s }: { s: string }) => {
+    const map: any = { approved: ['bg-emerald-500/10 text-emerald-700', 'Approuvé'], refused: ['bg-red-500/10 text-red-600', 'Refusé'], pending: ['bg-amber-500/10 text-amber-700', 'En attente'] }
+    const [cls, lbl] = map[s] || map.pending
+    return <span className={`text-[11px] px-2 py-0.5 rounded-full ${cls}`}>{lbl}</span>
+  }
+
+  return (
+    <AppShell title="Congés" userRole={userRole} userName={userName} userEmail={userEmail} userModules={userModules}>
+      <div className="max-w-3xl mx-auto px-4 py-6">
+        <PersonnelTabs />
+        <div className="flex items-center gap-3 mb-5">
+          <div className="w-10 h-10 rounded-xl bg-brand/10 text-brand flex items-center justify-center"><CalendarDays size={22} /></div>
+          <div><h1 className="text-xl font-bold text-ink leading-tight">Congés</h1>
+            <p className="text-ink-muted text-sm">Demandes des travailleurs — à valider</p></div>
+          <button onClick={load} className="ml-auto p-2 text-ink-muted hover:text-brand"><RefreshCw size={16} className={loading ? 'animate-spin' : ''} /></button>
+        </div>
+
+        {/* En attente */}
+        <h2 className="text-xs font-semibold uppercase tracking-wide text-ink-muted mb-2 flex items-center gap-1.5"><Clock size={13} /> À valider ({pending.length})</h2>
+        {pending.length === 0 && <p className="text-ink-muted text-sm italic mb-6">Aucune demande en attente.</p>}
+        <div className="flex flex-col gap-2 mb-8">
+          {pending.map(r => (
+            <div key={r.id} className="bg-surface border rounded-xl p-4">
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="font-semibold text-ink text-sm">{r.worker}</span>
+                <span className="text-[11px] px-2 py-0.5 rounded-full bg-brand/10 text-brand">{TYPE_LABEL[r.type] || r.type}</span>
+                <span className="text-ink-muted text-xs">· {r.days} j ouvrable{r.days > 1 ? 's' : ''}</span>
+              </div>
+              <div className="text-ink-secondary text-sm mt-1">Du <b>{fmtD(r.start_date)}</b> au <b>{fmtD(r.end_date)}</b></div>
+              {r.reason && <div className="text-ink-muted text-xs mt-1 italic">« {r.reason} »</div>}
+              <div className="flex gap-2 mt-3">
+                <button onClick={() => setModal({ id: r.id, decision: 'approve', worker: r.worker })}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 text-white text-sm font-medium"><Check size={15} /> Approuver</button>
+                <button onClick={() => setModal({ id: r.id, decision: 'refuse', worker: r.worker })}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-ink-secondary text-sm hover:text-red-500"><X size={15} /> Refuser</button>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* Historique */}
+        {history.length > 0 && (
+          <>
+            <h2 className="text-xs font-semibold uppercase tracking-wide text-ink-muted mb-2">Historique</h2>
+            <div className="flex flex-col gap-1.5">
+              {history.map(r => (
+                <div key={r.id} className="flex items-center gap-2 flex-wrap bg-surface border rounded-lg px-3 py-2 text-sm">
+                  <span className="font-medium text-ink">{r.worker}</span>
+                  <span className="text-ink-muted text-xs">{TYPE_LABEL[r.type] || r.type} · {fmtD(r.start_date)}→{fmtD(r.end_date)} · {r.days}j</span>
+                  <span className="ml-auto"><StatusBadge s={r.status} /></span>
+                  {r.decided_by && <span className="text-ink-muted text-[11px] w-full">par {r.decided_by}{r.decision_note ? ` — ${r.decision_note}` : ''}</span>}
+                </div>
+              ))}
+            </div>
+          </>
+        )}
+      </div>
+
+      {modal && (
+        <div className="fixed inset-0 z-[200] bg-black/50 flex items-center justify-center p-4" onClick={() => setModal(null)}>
+          <div className="bg-surface border rounded-2xl p-5 w-full max-w-sm" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center gap-2 mb-2">
+              <ShieldCheck size={18} className={modal.decision === 'approve' ? 'text-emerald-600' : 'text-red-500'} />
+              <h2 className="font-semibold text-ink text-sm flex-1">{modal.decision === 'approve' ? 'Approuver le congé' : 'Refuser le congé'}</h2>
+              <button onClick={() => setModal(null)} className="p-1 text-ink-muted hover:text-ink"><X size={18} /></button>
+            </div>
+            <p className="text-ink-muted text-xs mb-3">{modal.worker} — confirme avec ton code PIN.{modal.decision === 'approve' ? ' Le congé sera posé sur la feuille de présence et le travailleur notifié.' : ' Le travailleur sera notifié.'}</p>
+            <input type="password" inputMode="numeric" value={pin} onChange={e => setPin(e.target.value)} placeholder="Code PIN" autoFocus
+              className="w-full bg-surface-2 border rounded-lg px-3 py-2 text-sm text-ink text-center tracking-widest" />
+            <input value={note} onChange={e => setNote(e.target.value)} placeholder="Note (optionnel)"
+              className="w-full mt-2 bg-surface-2 border rounded-lg px-3 py-2 text-sm text-ink" />
+            <div className="flex justify-end gap-2 mt-4">
+              <button onClick={() => setModal(null)} className="px-3 py-2 rounded-lg border text-sm text-ink-secondary">Annuler</button>
+              <button onClick={decide} disabled={!pin || busy}
+                className={`inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-white text-sm font-medium disabled:opacity-50 ${modal.decision === 'approve' ? 'bg-emerald-600' : 'bg-red-600'}`}>
+                {busy ? <RefreshCw size={15} className="animate-spin" /> : (modal.decision === 'approve' ? <Check size={15} /> : <X size={15} />)}
+                {modal.decision === 'approve' ? 'Approuver' : 'Refuser'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </AppShell>
+  )
+}
