@@ -32,3 +32,5 @@ values ('mes_prestations', '✨', 'Ton espace « Mes Prestations » est arrivé 
   'Tes fiches de paie, tes congés et tes infos personnelles sont désormais réunis au même endroit, rien que pour toi. Demande un congé en 2 clics, garde tes infos à jour, retrouve toutes tes fiches par année.',
   '/ma-paie', 'Découvrir mon espace')
 on conflict (key) do nothing;
+
+notify pgrst, 'reload schema';

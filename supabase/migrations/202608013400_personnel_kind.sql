@@ -11,3 +11,5 @@ values
   ('HERMAN Olivier', 'herman olivier', 'independant', '29df3445-f452-4ebc-a7bb-c16a8377289b', true, 'Indépendant'),
   ('VIVIAN', 'vivian', 'independant', '8a927fee-cdde-420b-a466-9d5d8c129838', true, 'Indépendant')
 on conflict do nothing;
+
+notify pgrst, 'reload schema';
