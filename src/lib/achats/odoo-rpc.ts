@@ -60,3 +60,16 @@ export async function getGroupCompanyPartnerIds(): Promise<number[]> {
   _coCache = { ids, exp: Date.now() + 600_000 }
   return ids
 }
+
+// TOUS les partenaires du groupe (sociétés + leurs contacts) — pour exclure
+// l'intercompagnie au niveau du cache (partner_id stocké, pas commercial_partner).
+let _gpCache: { ids: number[]; exp: number } | null = null
+export async function getGroupPartnerIds(): Promise<number[]> {
+  if (_gpCache && _gpCache.exp > Date.now()) return _gpCache.ids
+  const coIds = await getGroupCompanyPartnerIds()
+  if (!coIds.length) { _gpCache = { ids: [], exp: Date.now() + 600_000 }; return [] }
+  const parts = await achatsRpc<number[]>('res.partner', 'search', [[['commercial_partner_id', 'in', coIds]]])
+  const ids = [...new Set([...coIds, ...(parts || [])])]
+  _gpCache = { ids, exp: Date.now() + 600_000 }
+  return ids
+}

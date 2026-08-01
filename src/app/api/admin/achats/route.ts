@@ -11,6 +11,7 @@ import { authOptions }       from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase'
 import { analyzeAchats, type SupplierConfig } from '@/lib/achats/odoo-spend'
 import { normPlate } from '@/lib/achats/parse-invoice'
+import { getGroupPartnerIds } from '@/lib/achats/odoo-rpc'
 
 export const dynamic     = 'force-dynamic'
 export const fetchCache   = 'force-no-store'
@@ -48,6 +49,14 @@ export async function GET(req: Request) {
     for (const [child, cid] of Object.entries(config.merges || {})) if ((config.excluded || []).includes(cid)) s.add(Number(child))
     return s
   }
+  // Exclusion complète appliquée à la lecture du cache : exclusions manuelles
+  // + TOUTE l'intercompagnie (partenaires du groupe VD/Riga/DGJ). Le cache peut
+  // contenir d'anciennes lignes intercompagnie (sync antérieur au filtre).
+  const fullExclusion = async (config: SupplierConfig) => {
+    const s = excludedMemberSet(config)
+    for (const id of await getGroupPartnerIds()) s.add(id)
+    return s
+  }
   // Lit TOUTES les factures de la période, paginé + trié (déterministe). Sans
   // ça, PostgREST plafonne à 1000 lignes dans un ordre arbitraire → les totaux
   // « switchent » entre deux états à chaque appel.
@@ -75,7 +84,7 @@ export async function GET(req: Request) {
   }
 
   const aiCatsAndCoverage = async (config: SupplierConfig) => {
-    const excl = excludedMemberSet(config)
+    const excl = await fullExclusion(config)
     const fx = await fetchAllFactures('categorie, amount_htva, partner_id, items, parsed_at')
     const rows = fx.filter((r: any) => !excl.has(r.partner_id))
     const parsedRows = rows.filter((r: any) => r.parsed_at)
@@ -89,7 +98,7 @@ export async function GET(req: Request) {
   // Coût par véhicule : agrège les LIGNES portant une plaque, enrichi du nom de
   // dépanneuse (trucks). Montants mis à l'échelle du total facture.
   const costByVehicle = async (config: SupplierConfig) => {
-    const excl = excludedMemberSet(config)
+    const excl = await fullExclusion(config)
     const [fx, { data: trucks }] = await Promise.all([
       fetchAllFactures('partner_id, amount_htva, categorie, items, parsed_at'),
       sb.from('trucks').select('name, plate'),
@@ -122,7 +131,7 @@ export async function GET(req: Request) {
     const vehicle = sp.get('vehicle')
     if (vehicle) {
       const target = normPlate(vehicle)
-      const excl = excludedMemberSet(config)
+      const excl = await fullExclusion(config)
       const fx = await fetchAllFactures('odoo_move_id, supplier_name, partner_id, invoice_date, amount_htva, ref, categorie, resume, items')
       const invoices = fx.filter((r: any) => !excl.has(r.partner_id))
         .map((r: any) => {
@@ -135,7 +144,7 @@ export async function GET(req: Request) {
 
     // Drill-down : lignes d'une catégorie (par facture, montant de ligne).
     if (category) {
-      const excl = excludedMemberSet(config)
+      const excl = await fullExclusion(config)
       const fx = await fetchAllFactures('odoo_move_id, supplier_name, partner_id, invoice_date, amount_htva, ref, categorie, resume, items')
       const invoices = fx.filter((r: any) => !excl.has(r.partner_id))
         .map((r: any) => {
