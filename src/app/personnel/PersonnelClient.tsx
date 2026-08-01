@@ -104,6 +104,7 @@ export default function PersonnelClient({ userRole, userName, userEmail, userMod
               <input type="file" accept=".zip,.pdf" className="hidden" disabled={!!busy}
                 onChange={e => { const f = e.target.files?.[0]; if (f) upload(f); e.currentTarget.value = '' }} />
             </label>
+            <a href="/personnel/rentabilite" className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border text-sm text-ink-secondary hover:text-brand">📈 Rentabilité</a>
           </div>
         </div>
 
