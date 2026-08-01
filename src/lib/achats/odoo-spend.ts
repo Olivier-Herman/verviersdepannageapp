@@ -11,7 +11,6 @@
 // ============================================================
 
 import { achatsRpc as odooRpc, getGroupCompanyPartnerIds } from './odoo-rpc'   // connecteur multi-société dédié Achats
-import { PAIE_JOURNAL_ID } from '@/lib/paie/push-odoo'   // journal des fiches de paie → exclu des achats
 
 /** 1er jour du mois, `monthsBack` mois en arrière (fenêtre glissante). */
 function periodStart(monthsBack: number): string {
@@ -55,19 +54,18 @@ export async function analyzeAchats(monthsBack = 12, config: SupplierConfig = { 
   // Neutralise l'intercompagnie (VD ↔ Riga ↔ DGJ) : pas un achat externe.
   const companyPartners = await getGroupCompanyPartnerIds()
   const interco = companyPartners.length ? [['commercial_partner_id', 'not in', companyPartners]] : []
-  // Exclut le journal des fiches de paie (salaires ≠ achat fournisseur).
-  const notPaie = [['journal_id', '!=', PAIE_JOURNAL_ID]]
-  const baseDom = [['move_type', '=', 'in_invoice'], ['state', '=', 'posted'], ['invoice_date', '>=', start], ...interco, ...notPaie]
+  // Les fiches de paie (journal PAIE) SONT incluses dans l'analyse des dépenses
+  // (catégorie « Rémunérations » + chauffeurs en fournisseurs) — Olivier 2026-08-01.
+  const baseDom = [['move_type', '=', 'in_invoice'], ['state', '=', 'posted'], ['invoice_date', '>=', start], ...interco]
   const billDom = [...baseDom, ...excl]   // totaux/catégories (exclusions appliquées)
 
   const [overviewRows, draftRows, monthRows, supplierRows, catRows, bills] = await Promise.all([
     odooRpc<any[]>('account.move', 'read_group', [billDom, ['amount_untaxed:sum'], []]),
-    odooRpc<any[]>('account.move', 'read_group', [[['move_type', '=', 'in_invoice'], ['state', '=', 'draft'], ...notPaie], ['amount_untaxed:sum'], []]),
+    odooRpc<any[]>('account.move', 'read_group', [[['move_type', '=', 'in_invoice'], ['state', '=', 'draft']], ['amount_untaxed:sum'], []]),
     odooRpc<any[]>('account.move', 'read_group', [billDom, ['amount_untaxed:sum'], ['invoice_date:month']]),
     odooRpc<any[]>('account.move', 'read_group', [baseDom, ['amount_untaxed:sum'], ['partner_id']]),   // TOUS les fournisseurs
     odooRpc<any[]>('account.move.line', 'read_group', [
       [['move_id.move_type', '=', 'in_invoice'], ['move_id.state', '=', 'posted'], ['date', '>=', start], ['account_id.internal_group', '=', 'expense'],
-        ['move_id.journal_id', '!=', PAIE_JOURNAL_ID],
         ...(exclArr.length ? [['move_id.partner_id', 'not in', exclArr]] : []),
         ...(companyPartners.length ? [['move_id.commercial_partner_id', 'not in', companyPartners]] : [])],
       ['balance:sum'], ['account_id'],
