@@ -3,7 +3,6 @@
 // dans le menu de gauche → onglets internes (segmented control + icônes).
 
 import { usePathname } from 'next/navigation'
-import { useSession } from 'next-auth/react'
 import { Home, Users, Clock, TrendingUp, CalendarDays } from 'lucide-react'
 
 const TABS = [
@@ -16,13 +15,9 @@ const TABS = [
 
 export default function PersonnelTabs() {
   const path = usePathname()
-  const { data: session } = useSession()
-  const u = session?.user as any
-  const isSuper = u?.role === 'superadmin' || (u?.roles || []).includes('superadmin')
-  const tabs = TABS.filter(t => t.href !== '/personnel/rentabilite' || isSuper)   // Rentabilité = superadmin
   return (
     <div className="inline-flex gap-0.5 p-1 bg-surface border rounded-xl mb-6 max-w-full overflow-x-auto">
-      {tabs.map(({ href, label, Icon }) => {
+      {TABS.map(({ href, label, Icon }) => {
         const knownSub = ['/personnel', '/personnel/rentabilite', '/personnel/conges']
         const active = path === href
           || (href === '/personnel/repertoire' && path.startsWith('/personnel/') && !knownSub.includes(path))

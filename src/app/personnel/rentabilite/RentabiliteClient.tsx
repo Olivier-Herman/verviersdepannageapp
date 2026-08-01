@@ -44,6 +44,7 @@ export default function RentabiliteClient({ userRole, userName, userEmail, userM
     load(preset)
   }
 
+  const isSuper = userRole === 'superadmin'
   const drivers = data?.drivers || []
   const totCa = drivers.reduce((s: number, d: any) => s + d.ca, 0)
   const totCout = drivers.reduce((s: number, d: any) => s + d.cout, 0)
@@ -102,7 +103,8 @@ export default function RentabiliteClient({ userRole, userName, userEmail, userM
               </div>
             </div>
 
-            {/* CA manuel */}
+            {/* CA manuel — superadmin uniquement */}
+            {isSuper && (
             <div className="bg-surface border rounded-2xl p-5 mt-4">
               <div className="flex items-center gap-2 mb-1"><Plus size={16} className="text-brand" /><h2 className="font-semibold text-ink text-sm">CA manuel (courses non rattachées)</h2></div>
               <p className="text-ink-muted text-xs mb-3">Attribue à un chauffeur, pour un mois, le CA de courses facturées directement dans Odoo (incentive, aftersix…) et non rattachées. C'est ajouté à son CA.</p>
@@ -130,6 +132,7 @@ export default function RentabiliteClient({ userRole, userName, userEmail, userM
                 </div>
               )}
             </div>
+            )}
 
             <div className="bg-info-soft border border-info rounded-xl px-4 py-3 text-info text-xs mt-4 flex items-start gap-2">
               <Info size={16} className="flex-shrink-0 mt-0.5" />

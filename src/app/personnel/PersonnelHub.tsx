@@ -76,7 +76,7 @@ export default function PersonnelHub({ userRole, userName, userEmail, userModule
 
         {/* Cartes-boutons */}
         <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4 mt-6">
-          {CARDS.filter(c => c.href !== '/personnel/rentabilite' || userRole === 'superadmin').map(c => (
+          {CARDS.map(c => (
             <a key={c.href} href={c.href}
               className="group relative flex flex-col gap-3 bg-surface border rounded-2xl p-5 hover:border-brand/40 hover:shadow-lg hover:-translate-y-0.5 transition-all">
               <div className="flex items-start justify-between">
