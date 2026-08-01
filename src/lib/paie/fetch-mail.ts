@@ -18,7 +18,7 @@ export async function fetchPayslipMails(fromPeriod?: string): Promise<PayslipMai
   const token = await getAppToken()
   const H = { Authorization: `Bearer ${token}` }
 
-  const url = `https://graph.microsoft.com/v1.0/users/${MAILBOX}/messages?$search="Traitement mensuel"&$select=id,subject,receivedDateTime,hasAttachments&$top=60`
+  const url = `https://graph.microsoft.com/v1.0/users/${MAILBOX}/messages?$search="Traitement mensuel"&$select=id,subject,receivedDateTime,hasAttachments&$top=100`
   const r = await fetch(url, { headers: H })
   const j = await r.json()
   const msgs = (j.value || []).filter((m: any) => m.hasAttachments && /Traitement mensuel/i.test(m.subject))

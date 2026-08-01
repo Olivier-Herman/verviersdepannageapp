@@ -20,6 +20,7 @@ export default function PersonnelClient({ userRole, userName, userEmail, userMod
   const [period, setPeriod] = useState<string>('')
   const [busy, setBusy]     = useState('')
   const [company, setCompany] = useState('438')
+  const [fromP, setFromP]   = useState('2025-01')   // borne du backfill mail
 
   const load = useCallback(async () => {
     const r = await fetch('/api/personnel', { cache: 'no-store' })
@@ -32,13 +33,25 @@ export default function PersonnelClient({ userRole, userName, userEmail, userMod
 
   const fetchMail = async () => {
     setBusy('mail')
+    let total = 0, err = ''
     try {
-      const r = await fetch('/api/cron/paie-fetch', { cache: 'no-store' })
-      const j = await r.json()
-      if (j.error) alert(j.error)
-      else alert(`Récupération : ${j.mails} mail(s)\n` + (j.results || []).map((x: any) => `• ${x.period || ''} ${coLabel(x.company)} : ${x.stored ?? 0} stockée(s), ${x.skipped ?? 0} déjà là${x.error ? ' — ' + x.error : ''}`).join('\n'))
-      await load()
+      // Boucle : chaque appel traite les périodes non encore importées (idempotent).
+      // Si un appel dépasse le timeout serveur, on relance (les fiches déjà
+      // stockées sont conservées) jusqu'à ce qu'il n'y ait plus rien de neuf.
+      for (let round = 0; round < 20; round++) {
+        let j: any
+        try {
+          const r = await fetch(`/api/cron/paie-fetch?from=${encodeURIComponent(fromP)}`, { cache: 'no-store' })
+          j = await r.json()
+        } catch { continue }   // timeout → on relance
+        if (j?.error) { err = j.error; break }
+        const stored = (j.results || []).reduce((s: number, x: any) => s + (x.stored || 0), 0)
+        total += stored
+        await load()
+        if (stored === 0) break   // plus rien de nouveau
+      }
     } finally { setBusy('') }
+    alert(err ? `Erreur : ${err}` : `Récupération terminée : ${total} fiche(s) importée(s).`)
   }
 
   const upload = async (file: File) => {
@@ -73,6 +86,8 @@ export default function PersonnelClient({ userRole, userName, userEmail, userMod
               <p className="text-ink-muted text-sm">Fiches de paie EasyPay — récupération & répertoire</p></div>
           </div>
           <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-ink-muted text-xs">depuis</span>
+            <input value={fromP} onChange={e => setFromP(e.target.value)} placeholder="AAAA-MM" className="bg-surface border rounded-lg px-2 py-1.5 text-sm w-24" title="Remonter jusqu'à cette période" />
             <button onClick={fetchMail} disabled={!!busy}
               className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-brand text-white text-sm font-medium disabled:opacity-50">
               {busy === 'mail' ? <RefreshCw size={15} className="animate-spin" /> : <Mail size={15} />} Récupérer (mail)
