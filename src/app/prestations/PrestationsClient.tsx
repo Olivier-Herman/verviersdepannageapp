@@ -3,7 +3,7 @@
 // Grille mensuelle travailleurs × jours, pré-remplie depuis la feuille EasyPay.
 // Momo marque les écarts (absences), on enregistre. PDF signé + envoi = Phase 2.
 
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useRef } from 'react'
 import AppShell from '@/components/layout/AppShell'
 import PersonnelTabs from '@/components/layout/PersonnelTabs'
 import { applyHolidaysToDays } from '@/lib/prestations/belgian-holidays'
@@ -32,8 +32,19 @@ export default function PrestationsClient({ userRole, userName, userEmail, userM
   const [period, setPeriod] = useState<string>('')
   const [busy, setBusy]     = useState('')
   const [sheets, setSheets] = useState<any[]>([])
-  const [dirty, setDirty]   = useState<Set<string>>(new Set())
+  const [saving, setSaving] = useState(false)
+  const [savedFlash, setSavedFlash] = useState(false)
+  const noteTimers = useRef<Record<string, any>>({})
   const [editing, setEditing] = useState<{ sheetId: string; day: number; worker: string } | null>(null)
+
+  // Auto-save d'une feuille (jours et/ou note).
+  const persist = async (id: string, patch: any) => {
+    setSaving(true)
+    try {
+      await fetch('/api/prestations', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'save', id, ...patch }) })
+      setSavedFlash(true); setTimeout(() => setSavedFlash(false), 1500)
+    } finally { setSaving(false) }
+  }
   const [pinModal, setPinModal] = useState(false)
   const [pin, setPin] = useState('')
   const [signing, setSigning] = useState(false)
@@ -54,7 +65,8 @@ export default function PrestationsClient({ userRole, userName, userEmail, userM
   }
   const setNote = (sheetId: string, note: string) => {
     setSheets(prev => prev.map(s => s.id === sheetId ? { ...s, note } : s))
-    setDirty(prev => new Set(prev).add(sheetId))
+    clearTimeout(noteTimers.current[sheetId])
+    noteTimers.current[sheetId] = setTimeout(() => persist(sheetId, { note }), 700)
   }
 
   const signSend = async () => {
@@ -74,7 +86,7 @@ export default function PrestationsClient({ userRole, userName, userEmail, userM
     const j = await r.json()
     // Les jours fériés sont déjà intégrés à l'import (server) → on affiche tel
     // quel, sans rien re-marquer, pour ne JAMAIS écraser une correction manuelle.
-    setData(j); setPeriod(j.period || ''); setSheets(j.sheets || []); setDirty(new Set()); setGenNote(j.generalNote || '')
+    setData(j); setPeriod(j.period || ''); setSheets(j.sheets || []); setGenNote(j.generalNote || '')
     setMailTo(j.settings?.to || ''); setMailCc(j.settings?.cc || '')
   }, [])
   useEffect(() => { load() }, [load])
@@ -120,26 +132,12 @@ export default function PrestationsClient({ userRole, userName, userEmail, userM
   }
 
   const setCell = (sheetId: string, day: number, val: any) => {
-    setSheets(prev => prev.map(s => {
-      if (s.id !== sheetId) return s
-      const days = { ...(s.days || {}) }
-      if (val === null) delete days[String(day)]; else days[String(day)] = val
-      return { ...s, days }
-    }))
-    setDirty(prev => new Set(prev).add(sheetId))
     setEditing(null)
-  }
-
-  const saveAll = async () => {
-    setBusy('save')
-    try {
-      for (const id of dirty) {
-        const s = sheets.find(x => x.id === id); if (!s) continue
-        await fetch('/api/prestations', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'save', id, days: s.days || {}, note: s.note ?? null }) })
-      }
-      setDirty(new Set())
-      alert('Modifications enregistrées.')
-    } finally { setBusy('') }
+    const s = sheets.find(x => x.id === sheetId); if (!s) return
+    const days = { ...(s.days || {}) }
+    if (val === null) delete days[String(day)]; else days[String(day)] = val
+    setSheets(prev => prev.map(x => x.id === sheetId ? { ...x, days } : x))
+    persist(sheetId, { days })   // auto-save
   }
 
   const totalHours = (s: any) => Object.values(s.days || {}).reduce((t: number, v: any) => t + (v?.h || 0), 0)
@@ -169,11 +167,11 @@ export default function PrestationsClient({ userRole, userName, userEmail, userM
             </select>
             <button onClick={() => setSettingsModal(true)} title="Paramètres (destinataire de l'envoi)"
               className="inline-flex items-center px-2.5 py-2 rounded-lg border text-ink-secondary hover:text-brand"><Settings size={15} /></button>
-            {dirty.size > 0 && (
-              <button onClick={saveAll} disabled={!!busy} className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-brand text-white text-sm font-medium disabled:opacity-50">
-                {busy === 'save' ? <RefreshCw size={15} className="animate-spin" /> : <Save size={15} />} Enregistrer ({dirty.size})
-              </button>
-            )}
+            <span className="inline-flex items-center gap-1.5 text-xs text-ink-muted min-w-[92px]">
+              {saving ? <><RefreshCw size={13} className="animate-spin" /> Enregistrement…</>
+                : savedFlash ? <><Check size={13} className="text-emerald-600" /> Enregistré</>
+                : <><Save size={13} /> Auto-enregistré</>}
+            </span>
             {sheets.length > 0 && (
               <button onClick={applyHolidays} disabled={!!busy}
                 className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border text-sm text-ink-secondary hover:text-brand disabled:opacity-50" title="Marquer les jours fériés belges du mois">
@@ -185,8 +183,8 @@ export default function PrestationsClient({ userRole, userName, userEmail, userM
                 className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border text-sm text-ink-secondary hover:text-brand"><FileText size={15} /> Aperçu PDF</a>
             )}
             {sheets.length > 0 && (
-              <button onClick={() => setPinModal(true)} disabled={!!busy || dirty.size > 0}
-                title={dirty.size > 0 ? "Enregistre d'abord tes modifications" : ''}
+              <button onClick={() => setPinModal(true)} disabled={!!busy || saving}
+                title={saving ? 'Enregistrement en cours…' : ''}
                 className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-emerald-600 text-white text-sm font-medium disabled:opacity-50">
                 <Send size={15} /> {validated ? 'Renvoyer' : 'Valider & envoyer'}
               </button>
