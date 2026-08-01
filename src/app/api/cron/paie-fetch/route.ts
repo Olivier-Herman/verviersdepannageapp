@@ -25,9 +25,10 @@ export async function GET(req: Request) {
     }
   }
 
+  const from = new URL(req.url).searchParams.get('from') || undefined   // AAAA-MM, défaut janvier
   const sb = createAdminClient()
   try {
-    const mails = await fetchPayslipMails()
+    const mails = await fetchPayslipMails(from)
     const results: any[] = []
     for (const m of mails) {
       // Déjà traité (période + société) ? → on ne re-découpe pas (coût Claude).

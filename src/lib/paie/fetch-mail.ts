@@ -12,11 +12,13 @@ export interface PayslipMail {
   messageId: string; subject: string; companyCode: string; period: string; zipBuffer: Buffer
 }
 
-export async function fetchPayslipMails(): Promise<PayslipMail[]> {
+/** `fromPeriod` (AAAA-MM) : ne remonte pas avant. Défaut = janvier de l'année courante. */
+export async function fetchPayslipMails(fromPeriod?: string): Promise<PayslipMail[]> {
+  const from = fromPeriod || `${new Date().getFullYear()}-01`
   const token = await getAppToken()
   const H = { Authorization: `Bearer ${token}` }
 
-  const url = `https://graph.microsoft.com/v1.0/users/${MAILBOX}/messages?$search="Traitement mensuel"&$select=id,subject,receivedDateTime,hasAttachments&$top=10`
+  const url = `https://graph.microsoft.com/v1.0/users/${MAILBOX}/messages?$search="Traitement mensuel"&$select=id,subject,receivedDateTime,hasAttachments&$top=60`
   const r = await fetch(url, { headers: H })
   const j = await r.json()
   const msgs = (j.value || []).filter((m: any) => m.hasAttachments && /Traitement mensuel/i.test(m.subject))
@@ -27,6 +29,7 @@ export async function fetchPayslipMails(): Promise<PayslipMail[]> {
     const pm = m.subject.match(/(\d{2})\/(\d{4})/)                 // 07/2026
     if (!cc || !pm) continue
     const period = `${pm[2]}-${pm[1]}`
+    if (period < from) continue   // borne : pas avant `from`
 
     const ar = await fetch(`https://graph.microsoft.com/v1.0/users/${MAILBOX}/messages/${m.id}/attachments?$select=id,name,contentType,size`, { headers: H })
     const aj = await ar.json()
