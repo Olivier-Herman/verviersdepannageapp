@@ -10,6 +10,7 @@ import { authOptions }          from '@/lib/auth'
 import { createAdminClient }    from '@/lib/supabase'
 import { fetchPayslipMails }    from '@/lib/paie/fetch-mail'
 import { extractPayslipPdf, ingestPayslipPdf } from '@/lib/paie/process-batch'
+import { pushEligiblePayslips } from '@/lib/paie/push-odoo'
 
 export const dynamic     = 'force-dynamic'
 export const maxDuration = 300
@@ -47,7 +48,14 @@ export async function GET(req: Request) {
       })
       results.push({ period: m.period, company: m.companyCode, ...r })
     }
-    return NextResponse.json({ ok: true, mails: mails.length, results })
+    // Push automatique vers Odoo des fiches éligibles (net > 0 + contact Odoo).
+    // Tourne à chaque passage → rattrape aussi le backlog dès qu'un odoo_partner_id
+    // est renseigné. Idempotent (odoo_move_id). Ne bloque pas la réponse en cas d'échec.
+    let push: any = null
+    try { push = await pushEligiblePayslips() }
+    catch (e: any) { console.error('[paie-fetch] push Odoo:', e.message); push = { error: e.message } }
+
+    return NextResponse.json({ ok: true, mails: mails.length, results, push })
   } catch (e: any) {
     console.error('[paie-fetch]', e.message)
     return NextResponse.json({ error: e.message }, { status: 500 })

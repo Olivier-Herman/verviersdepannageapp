@@ -21,7 +21,7 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
   if (!person) return NextResponse.json({ error: 'Introuvable' }, { status: 404 })
 
   const [{ data: slips }, { data: users }] = await Promise.all([
-    sb.from('payslips').select('id, period, company_code, type, label, pages, montant_net, vac_available, vac_used, vac_total')
+    sb.from('payslips').select('id, period, company_code, type, label, pages, montant_net, odoo_move_id, vac_available, vac_used, vac_total')
       .eq('personnel_id', params.id).order('period', { ascending: false }),
     sb.from('users').select('id, name').order('name'),
   ])

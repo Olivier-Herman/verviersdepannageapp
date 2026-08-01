@@ -60,6 +60,7 @@ export async function POST(req: NextRequest) {
     if ('user_id' in body)                  patch.user_id = body.user_id || null
     if ('active' in body)                   patch.active = !!body.active
     if ('poste' in body)                    patch.poste = String(body.poste || '').trim() || null
+    if ('statut' in body)                   patch.statut = String(body.statut || '').trim() || null
     if ('type_contrat' in body)             patch.type_contrat = String(body.type_contrat || '').trim() || null
     if ('date_entree' in body)              patch.date_entree = body.date_entree || null
     if ('date_sortie' in body)              patch.date_sortie = body.date_sortie || null
@@ -67,17 +68,34 @@ export async function POST(req: NextRequest) {
     if ('email' in body)                    patch.email = String(body.email || '').trim() || null
     if ('notes' in body)                    patch.notes = String(body.notes || '').trim() || null
     if ('odoo_partner_id' in body)          patch.odoo_partner_id = body.odoo_partner_id ? Number(body.odoo_partner_id) : null
+    // Dossier RH perso
+    if ('birth_date' in body)               patch.birth_date = body.birth_date || null
+    if ('birth_place' in body)              patch.birth_place = String(body.birth_place || '').trim() || null
+    if ('nationalite' in body)              patch.nationalite = String(body.nationalite || '').trim() || null
+    if ('national_number' in body)          patch.national_number = String(body.national_number || '').trim() || null
+    if ('etat_civil' in body)               patch.etat_civil = String(body.etat_civil || '').trim() || null
+    if ('personnes_charge' in body)         patch.personnes_charge = body.personnes_charge === '' || body.personnes_charge == null ? null : Number(body.personnes_charge)
+    if ('adresse' in body)                  patch.adresse = String(body.adresse || '').trim() || null
+    if ('code_postal' in body)              patch.code_postal = String(body.code_postal || '').trim() || null
+    if ('ville' in body)                    patch.ville = String(body.ville || '').trim() || null
+    if ('pays' in body)                     patch.pays = String(body.pays || '').trim() || null
+    if ('iban' in body)                     patch.iban = String(body.iban || '').replace(/\s+/g, '').toUpperCase() || null
+    if ('contact_urgence_nom' in body)      patch.contact_urgence_nom = String(body.contact_urgence_nom || '').trim() || null
+    if ('contact_urgence_tel' in body)      patch.contact_urgence_tel = String(body.contact_urgence_tel || '').trim() || null
 
     await sb.from('personnel').update(patch).eq('id', id)
 
     // Sync vers le contact Odoo (complète le manquant / met à jour le modifié).
-    const { data: p } = await sb.from('personnel').select('odoo_partner_id, name, phone, email').eq('id', id).maybeSingle()
+    const { data: p } = await sb.from('personnel').select('odoo_partner_id, name, phone, email, adresse, code_postal, ville').eq('id', id).maybeSingle()
     if (p?.odoo_partner_id) {
       try {
         const vals: any = {}
-        if (p.name)  vals.name  = p.name
-        if (p.phone) vals.phone = p.phone
-        if (p.email) vals.email = p.email
+        if (p.name)        vals.name   = p.name
+        if (p.phone)       vals.phone  = p.phone
+        if (p.email)       vals.email  = p.email
+        if (p.adresse)     vals.street = p.adresse
+        if (p.code_postal) vals.zip    = p.code_postal
+        if (p.ville)       vals.city   = p.ville
         if (Object.keys(vals).length) await odooRpc('res.partner', 'write', [[p.odoo_partner_id], vals])
       } catch (e: any) { console.error('[personnel] sync Odoo:', e.message) }
     }
