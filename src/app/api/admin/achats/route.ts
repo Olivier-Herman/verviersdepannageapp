@@ -71,7 +71,7 @@ export async function GET(req: Request) {
     if (!items.length) return r.categorie ? [{ montant: r.amount_htva || 0, categorie: r.categorie, plaque: null, description: r.resume || '' }] : []
     const sum = items.reduce((s: number, i: any) => s + (i.montant || 0), 0)
     const scale = sum > 0 ? (r.amount_htva || 0) / sum : 0
-    return items.map((i: any) => ({ montant: (i.montant || 0) * scale, categorie: i.categorie, plaque: i.plaque || null, description: i.description || '' }))
+    return items.map((i: any) => ({ montant: (i.montant || 0) * scale, categorie: i.categorie, plaque: i.plaque ? normPlate(i.plaque) : null, description: i.description || '' }))
   }
 
   const aiCatsAndCoverage = async (config: SupplierConfig) => {

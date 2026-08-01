@@ -78,8 +78,10 @@ export interface Categorization {
   confidence: number
 }
 
-/** Normalise une plaque : MAJ, uniquement [A-Z0-9]. */
-export const normPlate = (p: string) => String(p || '').toUpperCase().replace(/[^A-Z0-9]/g, '')
+/** Normalise une plaque : MAJ, [A-Z0-9], sans le code pays « BE » de tête
+ *  (les documents affichent souvent « BE-2-ECA-631 » → 2ECA631). */
+export const normPlate = (p: string) =>
+  String(p || '').toUpperCase().replace(/[^A-Z0-9]/g, '').replace(/^BE(?=\d)/, '')
 
 /**
  * Envoie le document (base64) à Claude et renvoie la catégorisation.
