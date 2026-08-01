@@ -197,8 +197,10 @@ export async function pushEligiblePayslips(): Promise<{ pushed: number; skipped:
 
   // 0. Personnes ayant une fiche à pousser (net ≠ 0, non poussée) SANS contact Odoo
   //    → on leur crée/lie le contact d'abord, pour qu'elles deviennent éligibles.
+  // SEULEMENT Verviers Dépannage (438) : les fiches DGJ VHU (3068) ne vont pas
+  // dans l'Odoo de Verviers Dépannage.
   const { data: pending } = await sb.from('payslips')
-    .select('personnel_id').not('montant_net', 'is', null).neq('montant_net', 0)
+    .select('personnel_id').eq('company_code', '438').not('montant_net', 'is', null).neq('montant_net', 0)
     .is('odoo_move_id', null).not('personnel_id', 'is', null)
   const pendingIds = [...new Set((pending || []).map((s: any) => s.personnel_id))]
   let partnersCreated = 0
@@ -214,9 +216,9 @@ export async function pushEligiblePayslips(): Promise<{ pushed: number; skipped:
   const ids = (pers || []).map((p: any) => p.id)
   if (!ids.length) return { pushed: 0, skipped: 0, failed: 0, eligible: 0, partnersCreated, details: [] }
 
-  // Éligible = montant net renseigné et ≠ 0 (négatif accepté : correction de fiche).
+  // Éligible = 438, montant net renseigné et ≠ 0 (négatif accepté : correction de fiche).
   const { data: slips } = await sb.from('payslips')
-    .select('id, worker_name').not('montant_net', 'is', null).neq('montant_net', 0)
+    .select('id, worker_name').eq('company_code', '438').not('montant_net', 'is', null).neq('montant_net', 0)
     .is('odoo_move_id', null).in('personnel_id', ids)
 
   const details: any[] = []

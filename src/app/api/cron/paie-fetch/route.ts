@@ -28,10 +28,11 @@ export async function GET(req: Request) {
 
   const sp    = new URL(req.url).searchParams
   const from  = sp.get('from') || undefined      // AAAA-MM, défaut janvier
+  const only  = sp.get('only') || undefined      // AAAA-MM : ce mois uniquement (progression mois par mois)
   const force = sp.get('force') === '1'           // re-traite même les mois déjà faits
   const sb = createAdminClient()
   try {
-    const mails = await fetchPayslipMails(from)
+    const mails = await fetchPayslipMails(from, only)
     const results: any[] = []
     for (const m of mails) {
       // Déjà traité (période + société) ? → on ne re-découpe pas (coût Claude),

@@ -5,7 +5,7 @@
 // Récup auto (mail info@) + import manuel + répertoire + fiches par période.
 // Olivier 2026-08-01.
 
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useRef } from 'react'
 import AppShell from '@/components/layout/AppShell'
 import PersonnelTabs from '@/components/layout/PersonnelTabs'
 import { Users, Mail, Upload, Download, RefreshCw, Trash2, FileText, Link2, AlertTriangle, Eye, X, Building2, Send, Check } from 'lucide-react'
@@ -25,6 +25,19 @@ export default function PersonnelClient({ userRole, userName, userEmail, userMod
   const [company, setCompany] = useState('438')
   const [fromP, setFromP]   = useState('2025-01')   // borne du backfill mail
   const [preview, setPreview] = useState<any>(null)
+  const [progress, setProgress] = useState<{ done: number; total: number; label: string } | null>(null)
+  const stopRef = useRef(false)
+
+  // Liste des périodes AAAA-MM de `from` jusqu'au mois courant (inclus).
+  const monthsFrom = (from: string): string[] => {
+    const [fy, fm] = from.split('-').map(Number)
+    if (!fy || !fm) return []
+    const now = new Date(), cy = now.getFullYear(), cm = now.getMonth() + 1
+    const out: string[] = []
+    let y = fy, m = fm
+    while (y < cy || (y === cy && m <= cm)) { out.push(`${y}-${String(m).padStart(2, '0')}`); m++; if (m > 12) { m = 1; y++ } }
+    return out
+  }
 
   const load = useCallback(async () => {
     const r = await fetch('/api/personnel', { cache: 'no-store' })
@@ -36,35 +49,43 @@ export default function PersonnelClient({ userRole, userName, userEmail, userMod
   useEffect(() => { load() }, [])   // eslint-disable-line
 
   const fetchMail = async (force = false) => {
-    if (force && !confirm('Re-traiter les mois (depuis la période « depuis ») pour capter les primes/congés ajoutés ?\nRelance le découpage IA — les fiches déjà présentes ne sont pas dupliquées. Restreins « depuis » pour aller vite.')) return
+    if (force && !confirm('Re-traiter mois par mois (depuis « depuis ») ?\nRelance le découpage IA — les fiches déjà présentes ne sont pas dupliquées.')) return
+    const periods = monthsFrom(fromP)
+    if (!periods.length) { alert('Période « depuis » invalide (format AAAA-MM).'); return }
+    stopRef.current = false
     setBusy('mail')
-    let total = 0, totalUpd = 0, err = ''
+    let total = 0, totalUpd = 0, credit = false
     const errNotes: string[] = []
     try {
-      // Boucle : chaque appel traite les périodes manquantes (idempotent). Si un
-      // appel dépasse le timeout, on relance jusqu'à ce qu'il n'y ait plus rien.
-      for (let round = 0; round < 20; round++) {
+      // Un appel COURT par mois → pas de timeout, progression visible, pas de
+      // reprise depuis zéro (chaque mois est indépendant et idempotent).
+      for (let i = 0; i < periods.length; i++) {
+        if (stopRef.current) break
+        setProgress({ done: i, total: periods.length, label: fmtPeriod(periods[i]) })
         let j: any
         try {
-          const r = await fetch(`/api/cron/paie-fetch?from=${encodeURIComponent(fromP)}${force ? '&force=1' : ''}`, { cache: 'no-store' })
+          const r = await fetch(`/api/cron/paie-fetch?only=${periods[i]}${force ? '&force=1' : ''}`, { cache: 'no-store' })
           j = await r.json()
-        } catch { continue }   // timeout → on relance
-        if (j?.error) { err = j.error; break }
-        const stored = (j.results || []).reduce((s: number, x: any) => s + (x.stored || 0), 0)
-        const upd    = (j.results || []).reduce((s: number, x: any) => s + (x.updated || 0), 0)
-        for (const x of (j.results || [])) if (x.error && errNotes.length < 8) errNotes.push(`${x.company || ''} ${x.period || ''} : ${String(x.error).slice(0, 80)}`)
-        total += stored; totalUpd += upd
+        } catch { errNotes.push(`${periods[i]} : interrompu`); continue }
+        if (j?.error) {
+          if (/credit balance/i.test(String(j.error))) { credit = true; break }
+          errNotes.push(`${periods[i]} : ${String(j.error).slice(0, 70)}`); continue
+        }
+        total    += (j.results || []).reduce((s: number, x: any) => s + (x.stored || 0), 0)
+        totalUpd += (j.results || []).reduce((s: number, x: any) => s + (x.updated || 0), 0)
+        for (const x of (j.results || [])) {
+          if (x.error && /credit balance/i.test(String(x.error))) { credit = true; break }
+          if (x.error && errNotes.length < 12) errNotes.push(`${x.company || ''} ${x.period || ''} : ${String(x.error).slice(0, 70)}`)
+        }
+        if (credit) break
         await load()
-        if (stored === 0) break   // plus rien de nouveau à ajouter
       }
-    } finally { setBusy('') }
-    const creditIssue = [err, ...errNotes].some(t => /credit balance/i.test(String(t)))
-    if (creditIssue) {
-      alert('⚠️ Crédits IA (Anthropic) épuisés.\n\nLe traitement des fiches utilise l\'IA. Recharge le solde sur console.anthropic.com → Billing, puis relance « Re-traiter ». Ce qui est déjà traité est conservé.')
+    } finally { setProgress(null); setBusy('') }
+    if (credit) {
+      alert('⚠️ Crédits IA (Anthropic) épuisés.\n\nRecharge le solde sur console.anthropic.com → Billing, puis relance. Ce qui est déjà traité est conservé.')
     } else {
-      alert(err ? `Erreur : ${err}`
-        : `${force ? 'Re-traitement' : 'Récupération'} terminé : ${total} ajoutée(s)${totalUpd ? `, ${totalUpd} mise(s) à jour` : ''}.`
-          + (errNotes.length ? `\n\n⚠️ Mois en erreur (relance « Re-traiter ») :\n${errNotes.join('\n')}` : ''))
+      alert(`${force ? 'Re-traitement' : 'Récupération'} terminé : ${total} ajoutée(s)${totalUpd ? `, ${totalUpd} mise(s) à jour` : ''}.`
+        + (errNotes.length ? `\n\n⚠️ Mois en erreur (relance) :\n${errNotes.join('\n')}` : ''))
     }
   }
 
@@ -135,6 +156,17 @@ export default function PersonnelClient({ userRole, userName, userEmail, userMod
             <a href="/personnel/rentabilite" className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border text-sm text-ink-secondary hover:text-brand">📈 Rentabilité</a>
           </div>
         </div>
+
+        {progress && (
+          <div className="flex items-center gap-3 mb-4 bg-surface border rounded-xl px-4 py-2.5">
+            <RefreshCw size={15} className="animate-spin text-brand flex-shrink-0" />
+            <div className="flex-1 min-w-0">
+              <div className="flex justify-between text-xs text-ink-muted mb-1"><span>Traitement · {progress.label}</span><span className="tabular-nums">{progress.done}/{progress.total}</span></div>
+              <div className="h-1.5 rounded-full bg-white/10 overflow-hidden"><div className="h-full bg-brand transition-all" style={{ width: `${progress.total ? Math.round((progress.done / progress.total) * 100) : 0}%` }} /></div>
+            </div>
+            <button onClick={() => { stopRef.current = true }} className="text-xs px-2.5 py-1 rounded-lg border text-ink-secondary hover:text-red-400 flex-shrink-0">Arrêter</button>
+          </div>
+        )}
 
         {/* Filtres import/période */}
         <div className="flex items-center gap-2 mb-5 text-sm flex-wrap">
