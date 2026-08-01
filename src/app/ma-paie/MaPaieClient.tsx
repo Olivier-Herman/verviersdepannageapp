@@ -92,6 +92,9 @@ export default function MaPaieClient({ userRole, userName, userEmail, userModule
   }
 
   const slips: any[] = data?.payslips || []
+  const dispName = data?.name || userName || ''
+  const firstName = dispName.split(' ')[0] || ''
+  const initials = (dispName || '?').split(' ').map((w: string) => w[0]).slice(0, 2).join('')
   const multiCompany = new Set(slips.map(s => s.company_code)).size > 1
   // Groupé par année (desc).
   const byYear: Record<string, any[]> = {}
@@ -102,23 +105,23 @@ export default function MaPaieClient({ userRole, userName, userEmail, userModule
     <AppShell title="Mes Prestations" userRole={userRole} userName={userName} userEmail={userEmail} userModules={userModules}>
       <div className="max-w-2xl mx-auto px-4 py-6">
         <div className="flex items-center gap-3 mb-6">
-          <div className="w-11 h-11 rounded-xl bg-brand/10 text-brand flex items-center justify-center"><Wallet size={24} /></div>
+          <div className="w-12 h-12 rounded-full bg-brand/10 text-brand flex items-center justify-center font-bold text-lg">{initials || <Wallet size={22} />}</div>
           <div>
-            <h1 className="text-xl font-bold text-ink leading-tight">Mes Prestations</h1>
-            <p className="text-ink-muted text-sm">{data?.name || userName}</p>
+            <h1 className="text-2xl font-bold text-ink leading-tight">Bonjour{firstName ? ` ${firstName}` : ''}</h1>
+            <p className="text-ink-muted text-sm">Mes Prestations{dispName ? ` · ${dispName}` : ''}</p>
           </div>
         </div>
 
         {/* Solde congés (dernier compteur connu) */}
         {!loading && data?.vacation && (data.vacation.available != null || data.vacation.total != null) && (
-          <div className="bg-surface border rounded-2xl p-5 mb-6">
+          <div className="bg-gradient-to-br from-brand/10 to-brand/[0.03] border border-brand/20 rounded-2xl p-5 mb-6">
             <div className="flex items-center gap-2 mb-3">
               <CalendarClock size={18} className="text-brand" />
               <h2 className="font-semibold text-ink text-sm">Solde congés</h2>
               <span className="text-ink-muted text-xs ml-auto">au {monthLabel(data.vacation.period)} {(data.vacation.period || '').split('-')[0]}</span>
             </div>
             <div className="grid grid-cols-3 gap-3 text-center">
-              <div><div className="text-2xl font-bold text-brand tabular-nums">{data.vacation.available ?? '—'}</div><div className="text-ink-muted text-xs mt-0.5">disponibles (h)</div></div>
+              <div><div className="text-3xl font-bold text-brand tabular-nums">{data.vacation.available ?? '—'}</div><div className="text-ink-muted text-xs mt-0.5">disponibles (h)</div></div>
               <div><div className="text-2xl font-bold text-ink tabular-nums">{data.vacation.used ?? '—'}</div><div className="text-ink-muted text-xs mt-0.5">prises (h)</div></div>
               <div><div className="text-2xl font-bold text-ink-secondary tabular-nums">{data.vacation.total ?? '—'}</div><div className="text-ink-muted text-xs mt-0.5">total (h)</div></div>
             </div>

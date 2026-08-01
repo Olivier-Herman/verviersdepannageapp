@@ -4,7 +4,7 @@
 
 import { useEffect, useState } from 'react'
 import AppShell from '@/components/layout/AppShell'
-import { Users, Clock, TrendingUp, AlertTriangle, Send, ChevronRight } from 'lucide-react'
+import { Users, Clock, TrendingUp, AlertTriangle, Send, ChevronRight, CalendarDays } from 'lucide-react'
 
 export default function PersonnelHub({ userRole, userName, userEmail, userModules }: {
   userRole: string; userName: string; userEmail: string; userModules: string[]
@@ -12,12 +12,15 @@ export default function PersonnelHub({ userRole, userName, userEmail, userModule
   const [stats, setStats] = useState<any>(null)
 
   useEffect(() => {
-    fetch('/api/personnel', { cache: 'no-store' }).then(r => r.json())
-      .then(j => setStats({
-        people: (j.personnel || []).length,
-        alerts: (j.personnel || []).filter((p: any) => p.mismatch_count > 0).length,
-        pending: (j.pendingChanges || []).length,
-      })).catch(() => setStats({ people: 0, alerts: 0, pending: 0 }))
+    Promise.all([
+      fetch('/api/personnel', { cache: 'no-store' }).then(r => r.json()).catch(() => ({})),
+      fetch('/api/conges', { cache: 'no-store' }).then(r => r.json()).catch(() => ({})),
+    ]).then(([j, c]) => setStats({
+      people: (j.personnel || []).length,
+      alerts: (j.personnel || []).filter((p: any) => p.mismatch_count > 0).length,
+      pending: (j.pendingChanges || []).length,
+      congesToDo: (c.requests || []).filter((r: any) => r.status === 'pending' || r.status === 'cancel_requested').length,
+    }))
   }, [])
 
   const CARDS = [
@@ -28,6 +31,10 @@ export default function PersonnelHub({ userRole, userName, userEmail, userModule
     { href: '/prestations', icon: Clock, tint: 'violet',
       title: 'Prestations', desc: 'Feuilles de présence à valider et renvoyer au secrétariat social',
       metric: 'Feuille du mois', badge: null },
+    { href: '/personnel/conges', icon: CalendarDays, tint: 'orange',
+      title: 'Congés', desc: 'Demandes de congé des travailleurs à valider',
+      metric: stats ? (stats.congesToDo ? `${stats.congesToDo} à traiter` : 'À jour') : '…',
+      badge: stats?.congesToDo ? { n: stats.congesToDo, label: 'à traiter' } : null },
     { href: '/personnel/rentabilite', icon: TrendingUp, tint: 'emerald',
       title: 'Rentabilité', desc: 'Marge de contribution par chauffeur (CA − coût salarial)',
       metric: 'Par chauffeur', badge: null },
@@ -37,6 +44,7 @@ export default function PersonnelHub({ userRole, userName, userEmail, userModule
     brand:   'bg-brand/10 text-brand',
     violet:  'bg-purple-500/10 text-purple-500',
     emerald: 'bg-emerald-500/10 text-emerald-500',
+    orange:  'bg-orange-500/10 text-orange-500',
   }
 
   return (
