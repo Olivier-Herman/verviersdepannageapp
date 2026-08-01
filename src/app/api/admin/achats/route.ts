@@ -12,7 +12,8 @@ import { createAdminClient } from '@/lib/supabase'
 import { analyzeAchats, type SupplierConfig } from '@/lib/achats/odoo-spend'
 import { normPlate } from '@/lib/achats/parse-invoice'
 import { getGroupPartnerIds } from '@/lib/achats/odoo-rpc'
-import { generateAchatRecommendations, buildAchatSummary, chatAboutAchats } from '@/lib/achats/ai-recommendations'
+import { generateAchatRecommendations, buildAchatSummary, runAchatsChat } from '@/lib/achats/ai-recommendations'
+import { CATEGORIES } from '@/lib/achats/parse-invoice'
 
 export const dynamic     = 'force-dynamic'
 export const fetchCache   = 'force-no-store'
@@ -26,14 +27,14 @@ const loadReco = async (sb: any) => {
   if (!data?.value) return null
   try { return typeof data.value === 'string' ? JSON.parse(data.value) : data.value } catch { return null }
 }
-const DEFAULT: SupplierConfig = { merges: {}, excluded: [], ignoredPlates: [] }
+const DEFAULT: SupplierConfig = { merges: {}, excluded: [], ignoredPlates: [], categoryOverrides: {} }
 
 async function loadConfig(sb: any): Promise<SupplierConfig> {
   const { data } = await sb.from('app_settings').select('value').eq('key', KEY).maybeSingle()
   if (!data?.value) return { ...DEFAULT }
   try {
     const v = typeof data.value === 'string' ? JSON.parse(data.value) : data.value
-    return { merges: v.merges || {}, excluded: v.excluded || [], ignoredPlates: v.ignoredPlates || [] }
+    return { merges: v.merges || {}, excluded: v.excluded || [], ignoredPlates: v.ignoredPlates || [], categoryOverrides: v.categoryOverrides || {} }
   } catch { return { ...DEFAULT } }
 }
 const saveConfig = (sb: any, cfg: SupplierConfig) =>
@@ -96,8 +97,12 @@ export async function GET(req: Request) {
     const fx = await fetchAllFactures('categorie, amount_htva, partner_id, items, parsed_at')
     const rows = fx.filter((r: any) => !excl.has(r.partner_id))
     const parsedRows = rows.filter((r: any) => r.parsed_at)
+    const overrides = config.categoryOverrides || {}
     const catMap: Record<string, number> = {}
-    for (const r of parsedRows) for (const l of scaledLines(r)) catMap[l.categorie] = (catMap[l.categorie] || 0) + l.montant
+    for (const r of parsedRows) {
+      const ov = overrides[String(r.partner_id)]   // redispatch : force la catégorie du fournisseur
+      for (const l of scaledLines(r)) { const c = ov || l.categorie; catMap[c] = (catMap[c] || 0) + l.montant }
+    }
     const aiCategories = Object.entries(catMap).map(([categorie, amount]) => ({ categorie, amount: Math.round(amount) })).sort((a, b) => b.amount - a.amount)
     const coverage = { parsed: parsedRows.length, total: rows.length, pct: rows.length ? Math.round(parsedRows.length / rows.length * 100) : 0 }
     return { aiCategories, coverage }
@@ -156,9 +161,11 @@ export async function GET(req: Request) {
     if (category) {
       const excl = await fullExclusion(config)
       const fx = await fetchAllFactures('odoo_move_id, supplier_name, partner_id, invoice_date, amount_htva, ref, categorie, resume, items')
+      const overrides = config.categoryOverrides || {}
       const invoices = fx.filter((r: any) => !excl.has(r.partner_id))
         .map((r: any) => {
-          const lines = scaledLines(r).filter(l => l.categorie === category)
+          const ov = overrides[String(r.partner_id)]
+          const lines = scaledLines(r).filter(l => (ov || l.categorie) === category)
           if (!lines.length) return null
           return { odoo_move_id: r.odoo_move_id, supplier_name: r.supplier_name, invoice_date: r.invoice_date, ref: r.ref, sous_categorie: lines.map(l => l.description).filter(Boolean).slice(0, 2).join(' · '), resume: r.resume, amount_htva: Math.round(lines.reduce((s, l) => s + l.montant, 0)) }
         }).filter(Boolean).sort((a: any, b: any) => b.amount_htva - a.amount_htva).slice(0, 500)
@@ -207,7 +214,7 @@ export async function POST(req: Request) {
   const cfg = await loadConfig(sb)
   const canon = (id: number) => cfg.merges[id] ?? id
 
-  // Chat : discuter des recommandations / dépenses avec l'IA (ancré sur le cache).
+  // Chat : discuter des recommandations / dépenses avec l'IA — ET AGIR (tool-use).
   if (action === 'ai_chat') {
     const messages = (Array.isArray(body.messages) ? body.messages : [])
       .filter((m: any) => m && (m.role === 'user' || m.role === 'assistant') && typeof m.content === 'string')
@@ -218,8 +225,50 @@ export async function POST(req: Request) {
       const data = await analyzeAchats(12, cfg)   // fallback : résumé sur 12 mois si pas encore analysé
       cache = { recos: [], summary: buildAchatSummary(data, []) }
     }
-    const reply = await chatAboutAchats(cache.summary, cache.recos || [], messages)
-    return NextResponse.json({ ok: true, reply })
+    // Exécuteur d'outils : applique réellement les changements sur la config.
+    const execTool = async (name: string, input: any): Promise<string> => {
+      if (name === 'reclassify_supplier') {
+        const id = Number(input.supplier_id), cat = String(input.category || '')
+        if (!id || !(CATEGORIES as readonly string[]).includes(cat)) return 'Paramètres invalides (id ou catégorie).'
+        cfg.categoryOverrides = cfg.categoryOverrides || {}
+        cfg.categoryOverrides[String(id)] = cat
+        await saveConfig(sb, cfg)
+        return `OK — toutes les dépenses du fournisseur #${id} sont désormais classées en « ${cat} ».`
+      }
+      if (name === 'merge_suppliers') {
+        const src = Number(input.source_id), keep = Number(input.keep_id)
+        if (!src || !keep || src === keep) return 'ids invalides.'
+        cfg.merges[src] = keep
+        for (const k of Object.keys(cfg.merges)) if (cfg.merges[k] === src) cfg.merges[k] = keep
+        cfg.excluded = cfg.excluded.filter(x => x !== src)
+        await saveConfig(sb, cfg)
+        return `OK — fournisseur #${src} fusionné dans #${keep}.`
+      }
+      if (name === 'exclude_supplier') {
+        const id = canon(Number(input.supplier_id))
+        if (!id) return 'id invalide.'
+        if (!cfg.excluded.includes(id)) cfg.excluded.push(id)
+        await saveConfig(sb, cfg)
+        return `OK — fournisseur #${id} exclu de l'analyse.`
+      }
+      if (name === 'ignore_vehicle') {
+        const p = normPlate(String(input.plate || ''))
+        if (!p) return 'Plaque invalide.'
+        cfg.ignoredPlates = cfg.ignoredPlates || []
+        if (!cfg.ignoredPlates.includes(p)) cfg.ignoredPlates.push(p)
+        await saveConfig(sb, cfg)
+        return `OK — véhicule ${p} retiré de l'analyse coût/véhicule.`
+      }
+      if (name === 'reset_supplier_category') {
+        const id = String(Number(input.supplier_id))
+        if (cfg.categoryOverrides) delete cfg.categoryOverrides[id]
+        await saveConfig(sb, cfg)
+        return `OK — redispatch du fournisseur #${id} annulé (catégorie d'origine rétablie).`
+      }
+      return 'Outil inconnu.'
+    }
+    const { reply, acted } = await runAchatsChat(cache.summary, cache.recos || [], messages, execTool)
+    return NextResponse.json({ ok: true, reply, acted })
   }
 
   if (action === 'merge') {

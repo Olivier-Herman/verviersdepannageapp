@@ -153,6 +153,7 @@ export default function AchatsClient({ userRole, userName, userEmail, userModule
       const r = await fetch('/api/admin/achats', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'ai_chat', messages: next }) })
       const j = await r.json()
       setChatMsgs(m => [...m, { role: 'assistant', content: j.reply || ('❌ ' + (j.error || 'Erreur')) }])
+      if (j.acted) load(months)   // l'IA a modifié la config/redispatch → rafraîchit les graphes
     } catch { setChatMsgs(m => [...m, { role: 'assistant', content: '❌ Erreur réseau' }]) } finally { setChatBusy(false) }
   }
 

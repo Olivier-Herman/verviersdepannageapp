@@ -8,6 +8,7 @@
 
 import Anthropic from '@anthropic-ai/sdk'
 import { ANTHROPIC_MODEL } from '@/lib/anthropic-model'
+import { CATEGORIES } from './parse-invoice'
 import type { AchatsAnalysis } from './odoo-spend'
 
 export interface AchatReco {
@@ -65,7 +66,7 @@ export function buildAchatSummary(
     nb_fournisseurs: a.overview.suppliers,
     ticket_moyen: a.overview.avgTicket,
     concentration_top5_pct: a.concentrationTop5,
-    top_fournisseurs: a.topSuppliers.slice(0, 15).map(s => ({ nom: s.name, htva: s.htva, part_pct: s.share, nb_factures: s.count })),
+    top_fournisseurs: a.topSuppliers.slice(0, 15).map(s => ({ id: s.id, nom: s.name, htva: s.htva, part_pct: s.share, nb_factures: s.count })),
     depenses_par_categorie_comptable: a.byCategory.slice(0, 15),
     depenses_par_categorie_ia: aiCategories.slice(0, 15),
     tendance_mensuelle: a.byMonth,
@@ -103,28 +104,93 @@ export async function generateAchatRecommendations(
 
 export interface ChatMsg { role: 'user' | 'assistant'; content: string }
 
-const CHAT_SYSTEM = `Tu es le DIRECTEUR ACHATS IA de VD Soft (société belge de dépannage/remorquage). Tu discutes avec le patron (Olivier) de ses dépenses fournisseurs.
-On te fournit la SYNTHÈSE chiffrée des dépenses et les RECOMMANDATIONS déjà générées. Réponds à ses questions et affine l'analyse.
+const CHAT_SYSTEM = `Tu es le DIRECTEUR ACHATS IA de VD Soft (société belge de dépannage/remorquage). Tu discutes avec le patron (Olivier) de ses dépenses fournisseurs et tu AGIS.
+On te fournit la SYNTHÈSE chiffrée des dépenses (avec les id des fournisseurs) et les RECOMMANDATIONS.
 
-Il veut notamment pouvoir « redispatcher » / reclasser des dépenses : si une dépense te semble mal catégorisée ou qu'il te dit de la reclasser, raisonne avec lui (ex. « ce fournisseur X est classé en Autre mais c'est du pneu → à basculer en Pneus, ça change la lecture du poste »).
+Tu disposes d'OUTILS pour appliquer réellement des changements — utilise-les quand Olivier le demande (ou propose-les puis exécute s'il valide) :
+- reclassify_supplier : « redispatcher » = forcer la catégorie de TOUTES les dépenses d'un fournisseur (ex. un fournisseur classé « Autre » qui est en fait du pneu → catégorie "Pneus"). Ça se répercute sur la répartition par poste.
+- merge_suppliers : fusionner un fournisseur en double dans un autre (garde le principal).
+- exclude_supplier : exclure un fournisseur qui n'est pas un achat (intercompagnie, remboursement…).
+- ignore_vehicle : retirer un véhicule (plaque) de l'analyse coût/véhicule.
 
-Style : direct, concret, CHIFFRÉ (€, %). Pas de blabla. Base-toi UNIQUEMENT sur les données fournies — si une info manque, dis-le et propose comment l'obtenir. Réponses courtes (quelques phrases ou une petite liste). Français.
-Actions réellement disponibles dans l'outil que tu peux suggérer : fusionner des fournisseurs en double, exclure un fournisseur non-achat, ignorer un véhicule. La reclassification fine des lignes de facture n'est pas encore automatisée — tu peux la recommander comme piste.`
+Catégories valides pour reclassify_supplier : ${CATEGORIES.join(', ')}.
 
-export async function chatAboutAchats(summary: any, recos: AchatReco[], messages: ChatMsg[]): Promise<string> {
+Règles : identifie les fournisseurs par leur id (présent dans la synthèse). Quand une action modifie l'analyse, dis-le clairement et rappelle que le tableau se met à jour au rafraîchissement. Si un id est ambigu ou absent, demande une précision AVANT d'agir. Style : direct, concret, chiffré (€, %), français, réponses courtes.`
+
+// Définitions d'outils exposées à Claude (exécutées côté serveur par l'appelant).
+export const ACHATS_TOOLS = [
+  {
+    name: 'reclassify_supplier',
+    description: "Redispatch : force la catégorie de TOUTES les dépenses d'un fournisseur.",
+    input_schema: { type: 'object', properties: {
+      supplier_id: { type: 'integer', description: 'id du fournisseur (partner_id)' },
+      category:    { type: 'string', enum: CATEGORIES as unknown as string[], description: 'catégorie cible' },
+    }, required: ['supplier_id', 'category'] },
+  },
+  {
+    name: 'merge_suppliers',
+    description: 'Fusionne un fournisseur (source) dans un fournisseur à garder (doublon).',
+    input_schema: { type: 'object', properties: {
+      source_id: { type: 'integer', description: 'id du fournisseur à fusionner (disparaît)' },
+      keep_id:   { type: 'integer', description: 'id du fournisseur principal à garder' },
+    }, required: ['source_id', 'keep_id'] },
+  },
+  {
+    name: 'exclude_supplier',
+    description: "Exclut un fournisseur de l'analyse (pas un achat : intercompagnie, remboursement…).",
+    input_schema: { type: 'object', properties: { supplier_id: { type: 'integer' } }, required: ['supplier_id'] },
+  },
+  {
+    name: 'ignore_vehicle',
+    description: "Retire un véhicule (plaque) de l'analyse coût par véhicule.",
+    input_schema: { type: 'object', properties: { plate: { type: 'string' } }, required: ['plate'] },
+  },
+  {
+    name: 'reset_supplier_category',
+    description: "Annule le redispatch d'un fournisseur (retrouve sa catégorie d'origine).",
+    input_schema: { type: 'object', properties: { supplier_id: { type: 'integer' } }, required: ['supplier_id'] },
+  },
+] as const
+
+/** Exécute la conversation avec outils. executeTool(name, input) applique l'action
+ *  côté serveur et retourne un texte de résultat (succès/erreur). */
+export async function runAchatsChat(
+  summary: any,
+  recos: AchatReco[],
+  messages: ChatMsg[],
+  executeTool: (name: string, input: any) => Promise<string>,
+): Promise<{ reply: string; acted: boolean }> {
   const context = `=== SYNTHÈSE DES DÉPENSES ===\n${JSON.stringify(summary, null, 2)}\n\n=== RECOMMANDATIONS ACTUELLES ===\n${JSON.stringify(recos, null, 2)}`
-  const convo = messages.slice(-16).map(m => ({ role: m.role, content: m.role === 'user' ? m.content : m.content }))
-  // On injecte le contexte dans le 1er message user pour ancrer la conversation.
-  const withContext = convo.length
-    ? [{ role: 'user' as const, content: `${context}\n\n---\nQuestion : ${convo[0].content}` }, ...convo.slice(1)]
-    : [{ role: 'user' as const, content: context }]
+  const convo = messages.slice(-16)
+  const msgs: any[] = convo.length
+    ? [{ role: 'user', content: `${context}\n\n---\nMessage : ${convo[0].content}` }, ...convo.slice(1).map(m => ({ role: m.role, content: m.content }))]
+    : [{ role: 'user', content: context }]
 
-  const response = await getClient().messages.create({
-    model: ANTHROPIC_MODEL,
-    max_tokens: 1500,
-    system: CHAT_SYSTEM,
-    messages: withContext,
-  })
-  const block = response.content.find(b => b.type === 'text')
-  return block && block.type === 'text' ? block.text.trim() : '(pas de réponse)'
+  const client = getClient()
+  let acted = false
+  for (let step = 0; step < 6; step++) {
+    const resp = await client.messages.create({
+      model: ANTHROPIC_MODEL,
+      max_tokens: 1500,
+      system: CHAT_SYSTEM,
+      tools: ACHATS_TOOLS as any,
+      messages: msgs,
+    })
+    const toolUses = resp.content.filter((b: any) => b.type === 'tool_use')
+    if (resp.stop_reason === 'tool_use' && toolUses.length) {
+      msgs.push({ role: 'assistant', content: resp.content })
+      const results: any[] = []
+      for (const tu of toolUses as any[]) {
+        acted = true
+        let out: string
+        try { out = await executeTool(tu.name, tu.input) } catch (e: any) { out = `Erreur: ${e.message || e}` }
+        results.push({ type: 'tool_result', tool_use_id: tu.id, content: out })
+      }
+      msgs.push({ role: 'user', content: results })
+      continue
+    }
+    const block = resp.content.find((b: any) => b.type === 'text') as any
+    return { reply: block?.text?.trim() || '(action effectuée)', acted }
+  }
+  return { reply: 'Trop d’étapes enchaînées — reformule en une action précise.', acted }
 }

@@ -36,7 +36,14 @@ export interface AchatsAnalysis {
 
 // Config VD Soft (répertoire fournisseurs) : fusions (child→canonical) + exclusions
 // (non-achat). Stockée en app_settings, appliquée ici — Odoo n'est jamais modifié.
-export interface SupplierConfig { merges: Record<string, number>; excluded: number[]; ignoredPlates?: string[] }
+export interface SupplierConfig {
+  merges: Record<string, number>
+  excluded: number[]
+  ignoredPlates?: string[]
+  /** Redispatch : force la catégorie IA de TOUTES les lignes d'un fournisseur.
+   *  Clé = partner_id (string), valeur = catégorie (cf parse-invoice CATEGORIES). */
+  categoryOverrides?: Record<string, string>
+}
 
 export async function analyzeAchats(monthsBack = 12, config: SupplierConfig = { merges: {}, excluded: [] }): Promise<AchatsAnalysis> {
   const start = periodStart(monthsBack)
