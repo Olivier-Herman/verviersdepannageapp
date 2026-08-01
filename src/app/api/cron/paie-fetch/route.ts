@@ -25,16 +25,21 @@ export async function GET(req: Request) {
     }
   }
 
-  const from = new URL(req.url).searchParams.get('from') || undefined   // AAAA-MM, défaut janvier
+  const sp    = new URL(req.url).searchParams
+  const from  = sp.get('from') || undefined      // AAAA-MM, défaut janvier
+  const force = sp.get('force') === '1'           // re-traite même les mois déjà faits
   const sb = createAdminClient()
   try {
     const mails = await fetchPayslipMails(from)
     const results: any[] = []
     for (const m of mails) {
-      // Déjà traité (période + société) ? → on ne re-découpe pas (coût Claude).
-      const { count } = await sb.from('payslips').select('*', { count: 'exact', head: true })
-        .eq('period', m.period).eq('company_code', m.companyCode)
-      if (count && count > 0) { results.push({ period: m.period, company: m.companyCode, skipped: 'déjà traité' }); continue }
+      // Déjà traité (période + société) ? → on ne re-découpe pas (coût Claude),
+      // sauf en mode force (pour récupérer les fiches ajoutées : primes/congés).
+      if (!force) {
+        const { count } = await sb.from('payslips').select('*', { count: 'exact', head: true })
+          .eq('period', m.period).eq('company_code', m.companyCode)
+        if (count && count > 0) { results.push({ period: m.period, company: m.companyCode, skipped: 'déjà traité' }); continue }
+      }
       const pdf = await extractPayslipPdf(m.zipBuffer)
       if (!pdf) { results.push({ subject: m.subject, error: 'PDF fiches introuvable dans le ZIP' }); continue }
       const r = await ingestPayslipPdf(sb, {

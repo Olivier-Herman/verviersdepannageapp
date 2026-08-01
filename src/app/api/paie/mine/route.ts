@@ -22,7 +22,7 @@ export async function GET() {
   if (!persIds.length) return NextResponse.json({ payslips: [], linked: false })
 
   const { data: slips } = await sb.from('payslips')
-    .select('id, period, company_code, worker_name, pages')
+    .select('id, period, company_code, worker_name, type, label, pages')
     .in('personnel_id', persIds).order('period', { ascending: false })
 
   return NextResponse.json({ payslips: slips || [], linked: true, name: persons?.[0]?.name || u.name })

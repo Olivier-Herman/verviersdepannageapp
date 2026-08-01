@@ -7,11 +7,13 @@
 
 import { useEffect, useState, useCallback } from 'react'
 import AppShell from '@/components/layout/AppShell'
-import { Users, Mail, Upload, Download, RefreshCw, Trash2, FileText, Link2, AlertTriangle } from 'lucide-react'
+import { Users, Mail, Upload, Download, RefreshCw, Trash2, FileText, Link2, AlertTriangle, Eye, X } from 'lucide-react'
 
 const COMPANIES: Record<string, string> = { '438': 'Verviers Dépannage', '3068': 'DGJ VHU' }
 const coLabel = (c: string) => COMPANIES[c] || c || '—'
 const fmtPeriod = (p: string) => { const [y, m] = (p || '').split('-'); return m ? `${m}/${y}` : p }
+const TYPE_LABELS: Record<string, string> = { salaire: 'Salaire', prime: 'Prime', vacances: 'Pécule de vacances', conge: 'Congé', autre: 'Autre' }
+const ficheLabel = (s: any) => s.label || TYPE_LABELS[s.type] || (s.type || 'Salaire')
 
 export default function PersonnelClient({ userRole, userName, userEmail, userModules }: {
   userRole: string; userName: string; userEmail: string; userModules: string[]
@@ -21,6 +23,7 @@ export default function PersonnelClient({ userRole, userName, userEmail, userMod
   const [busy, setBusy]     = useState('')
   const [company, setCompany] = useState('438')
   const [fromP, setFromP]   = useState('2025-01')   // borne du backfill mail
+  const [preview, setPreview] = useState<any>(null)
 
   const load = useCallback(async () => {
     const r = await fetch('/api/personnel', { cache: 'no-store' })
@@ -31,17 +34,17 @@ export default function PersonnelClient({ userRole, userName, userEmail, userMod
   }, [period])
   useEffect(() => { load() }, [])   // eslint-disable-line
 
-  const fetchMail = async () => {
+  const fetchMail = async (force = false) => {
+    if (force && !confirm('Re-traiter les mois (depuis la période « depuis ») pour capter les primes/congés ajoutés ?\nRelance le découpage IA — les fiches déjà présentes ne sont pas dupliquées. Restreins « depuis » pour aller vite.')) return
     setBusy('mail')
     let total = 0, err = ''
     try {
-      // Boucle : chaque appel traite les périodes non encore importées (idempotent).
-      // Si un appel dépasse le timeout serveur, on relance (les fiches déjà
-      // stockées sont conservées) jusqu'à ce qu'il n'y ait plus rien de neuf.
+      // Boucle : chaque appel traite les périodes manquantes (idempotent). Si un
+      // appel dépasse le timeout, on relance jusqu'à ce qu'il n'y ait plus rien.
       for (let round = 0; round < 20; round++) {
         let j: any
         try {
-          const r = await fetch(`/api/cron/paie-fetch?from=${encodeURIComponent(fromP)}`, { cache: 'no-store' })
+          const r = await fetch(`/api/cron/paie-fetch?from=${encodeURIComponent(fromP)}${force ? '&force=1' : ''}`, { cache: 'no-store' })
           j = await r.json()
         } catch { continue }   // timeout → on relance
         if (j?.error) { err = j.error; break }
@@ -51,7 +54,7 @@ export default function PersonnelClient({ userRole, userName, userEmail, userMod
         if (stored === 0) break   // plus rien de nouveau
       }
     } finally { setBusy('') }
-    alert(err ? `Erreur : ${err}` : `Récupération terminée : ${total} fiche(s) importée(s).`)
+    alert(err ? `Erreur : ${err}` : `${force ? 'Re-traitement' : 'Récupération'} terminé : ${total} fiche(s) ajoutée(s).`)
   }
 
   const upload = async (file: File) => {
@@ -88,9 +91,13 @@ export default function PersonnelClient({ userRole, userName, userEmail, userMod
           <div className="flex items-center gap-2 flex-wrap">
             <span className="text-ink-muted text-xs">depuis</span>
             <input value={fromP} onChange={e => setFromP(e.target.value)} placeholder="AAAA-MM" className="bg-surface border rounded-lg px-2 py-1.5 text-sm w-24" title="Remonter jusqu'à cette période" />
-            <button onClick={fetchMail} disabled={!!busy}
+            <button onClick={() => fetchMail(false)} disabled={!!busy}
               className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-brand text-white text-sm font-medium disabled:opacity-50">
               {busy === 'mail' ? <RefreshCw size={15} className="animate-spin" /> : <Mail size={15} />} Récupérer (mail)
+            </button>
+            <button onClick={() => fetchMail(true)} disabled={!!busy}
+              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border text-sm text-ink-secondary hover:text-brand disabled:opacity-50" title="Re-traiter pour capter primes/congés ajoutés">
+              <RefreshCw size={15} /> Re-traiter
             </button>
             <label className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border text-sm text-ink-secondary hover:text-brand cursor-pointer">
               {busy === 'upload' ? <RefreshCw size={15} className="animate-spin" /> : <Upload size={15} />} Importer
@@ -137,6 +144,7 @@ export default function PersonnelClient({ userRole, userName, userEmail, userMod
                         <FileText size={14} className="text-ink-muted flex-shrink-0" />
                         <div className="flex-1 min-w-0">
                           <span className="text-ink">{p?.name || s.worker_name || '—'}</span>
+                          <span className="text-ink-secondary text-xs ml-2">· {ficheLabel(s)}</span>
                           <span className="text-ink-muted text-xs ml-2">{coLabel(s.company_code)}</span>
                           {!s.personnel_id && <span className="ml-2 text-[10px] px-1.5 py-0.5 rounded-full bg-amber-500/15 text-amber-600 inline-flex items-center gap-0.5"><AlertTriangle size={10} />à rattacher</span>}
                         </div>
@@ -147,8 +155,7 @@ export default function PersonnelClient({ userRole, userName, userEmail, userMod
                             {personnel.map((pp: any) => <option key={pp.id} value={pp.id}>{pp.name}</option>)}
                           </select>
                         )}
-                        <a href={`/api/paie/pdf?id=${s.id}`} target="_blank" rel="noreferrer"
-                          className="p-1.5 text-ink-muted hover:text-brand" title="Ouvrir la fiche"><Download size={15} /></a>
+                        <button onClick={() => setPreview(s)} className="p-1.5 text-ink-muted hover:text-brand" title="Prévisualiser"><Eye size={15} /></button>
                       </div>
                     )
                   })}
@@ -199,6 +206,23 @@ export default function PersonnelClient({ userRole, userName, userEmail, userMod
           </div>
         )}
       </div>
+
+      {/* Prévisualisation in-app du PDF */}
+      {preview && (
+        <div className="fixed inset-0 z-[200] bg-black/70 flex flex-col">
+          <div className="flex items-center gap-2 px-4 py-3 bg-surface border-b">
+            <FileText size={18} className="text-brand" />
+            <div className="flex-1 min-w-0">
+              <div className="text-ink font-medium text-sm">{personnel.find((pp: any) => pp.id === preview.personnel_id)?.name || preview.worker_name} · {fmtPeriod(preview.period)}</div>
+              <div className="text-ink-muted text-xs">{ficheLabel(preview)} · {coLabel(preview.company_code)}</div>
+            </div>
+            <a href={`/api/paie/pdf?id=${preview.id}`} download target="_blank" rel="noreferrer"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-sm text-ink-secondary hover:text-brand"><Download size={15} /> Télécharger</a>
+            <button onClick={() => setPreview(null)} className="p-1.5 text-ink-muted hover:text-ink"><X size={20} /></button>
+          </div>
+          <iframe src={`/api/paie/pdf?id=${preview.id}`} className="flex-1 w-full bg-white" title="Fiche de paie" />
+        </div>
+      )}
     </AppShell>
   )
 }

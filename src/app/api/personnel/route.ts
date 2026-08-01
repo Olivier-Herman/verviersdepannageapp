@@ -24,7 +24,7 @@ export async function GET() {
   const [{ data: personnel }, { data: users }, { data: slips }] = await Promise.all([
     sb.from('personnel').select('id, name, company_code, matricule, user_id, active').order('name'),
     sb.from('users').select('id, name').order('name'),
-    sb.from('payslips').select('id, personnel_id, worker_name, period, company_code, pages').order('period', { ascending: false }),
+    sb.from('payslips').select('id, personnel_id, worker_name, period, company_code, type, label, pages').order('period', { ascending: false }),
   ])
   const uName = new Map((users || []).map((u: any) => [u.id, u.name]))
   const cntByPers = new Map<string, number>()

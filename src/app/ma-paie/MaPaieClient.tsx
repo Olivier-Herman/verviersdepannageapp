@@ -6,17 +6,20 @@
 
 import { useEffect, useState } from 'react'
 import AppShell from '@/components/layout/AppShell'
-import { FileText, Download, Wallet, Info } from 'lucide-react'
+import { FileText, Download, Wallet, Info, Eye, X } from 'lucide-react'
 
 const COMPANIES: Record<string, string> = { '438': 'Verviers Dépannage', '3068': 'DGJ VHU' }
 const MONTHS = ['', 'janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre']
 const monthLabel = (p: string) => { const m = parseInt((p || '').split('-')[1]); return MONTHS[m] || p }
+const TYPE_LABELS: Record<string, string> = { salaire: 'Salaire', prime: 'Prime', vacances: 'Pécule de vacances', conge: 'Congé', autre: 'Autre' }
+export const ficheLabel = (s: any) => s.label || TYPE_LABELS[s.type] || (s.type ? s.type : 'Salaire')
 
 export default function MaPaieClient({ userRole, userName, userEmail, userModules }: {
   userRole: string; userName: string; userEmail: string; userModules: string[]
 }) {
   const [data, setData]   = useState<any>(null)
   const [loading, setLd]  = useState(true)
+  const [preview, setPreview] = useState<any>(null)
 
   useEffect(() => {
     fetch('/api/paie/mine', { cache: 'no-store' }).then(r => r.json())
@@ -64,15 +67,17 @@ export default function MaPaieClient({ userRole, userName, userEmail, userModule
                 <h2 className="text-ink-muted text-xs font-semibold uppercase tracking-wide mb-2">{year}</h2>
                 <div className="flex flex-col gap-2">
                   {byYear[year].map((s: any) => (
-                    <a key={s.id} href={`/api/paie/pdf?id=${s.id}`} target="_blank" rel="noreferrer"
-                      className="flex items-center gap-3 bg-surface border rounded-xl px-4 py-3 hover:border-brand/40 transition group">
+                    <button key={s.id} onClick={() => setPreview(s)}
+                      className="flex items-center gap-3 bg-surface border rounded-xl px-4 py-3 hover:border-brand/40 transition group text-left w-full">
                       <div className="w-9 h-9 rounded-lg bg-brand/10 text-brand flex items-center justify-center flex-shrink-0"><FileText size={18} /></div>
                       <div className="flex-1 min-w-0">
-                        <div className="text-ink font-medium capitalize">{monthLabel(s.period)} {year}</div>
-                        {multiCompany && <div className="text-ink-muted text-xs">{COMPANIES[s.company_code] || s.company_code}</div>}
+                        <div className="text-ink font-medium"><span className="capitalize">{monthLabel(s.period)}</span> {year}</div>
+                        <div className="text-ink-muted text-xs">
+                          {ficheLabel(s)}{multiCompany ? ` · ${COMPANIES[s.company_code] || s.company_code}` : ''}
+                        </div>
                       </div>
-                      <Download size={18} className="text-ink-muted group-hover:text-brand flex-shrink-0" />
-                    </a>
+                      <Eye size={18} className="text-ink-muted group-hover:text-brand flex-shrink-0" />
+                    </button>
                   ))}
                 </div>
               </div>
@@ -80,6 +85,23 @@ export default function MaPaieClient({ userRole, userName, userEmail, userModule
           </div>
         )}
       </div>
+
+      {/* Prévisualisation in-app du PDF */}
+      {preview && (
+        <div className="fixed inset-0 z-[200] bg-black/70 flex flex-col">
+          <div className="flex items-center gap-2 px-4 py-3 bg-surface border-b">
+            <FileText size={18} className="text-brand" />
+            <div className="flex-1 min-w-0">
+              <div className="text-ink font-medium text-sm"><span className="capitalize">{monthLabel(preview.period)}</span> {(preview.period || '').split('-')[0]}</div>
+              <div className="text-ink-muted text-xs">{ficheLabel(preview)}</div>
+            </div>
+            <a href={`/api/paie/pdf?id=${preview.id}`} download target="_blank" rel="noreferrer"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-sm text-ink-secondary hover:text-brand"><Download size={15} /> Télécharger</a>
+            <button onClick={() => setPreview(null)} className="p-1.5 text-ink-muted hover:text-ink"><X size={20} /></button>
+          </div>
+          <iframe src={`/api/paie/pdf?id=${preview.id}`} className="flex-1 w-full bg-white" title="Fiche de paie" />
+        </div>
+      )}
     </AppShell>
   )
 }
