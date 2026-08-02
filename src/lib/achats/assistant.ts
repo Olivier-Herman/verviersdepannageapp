@@ -9,6 +9,7 @@
 import Anthropic from '@anthropic-ai/sdk'
 import { ANTHROPIC_MODEL } from '@/lib/anthropic-model'
 import { CATEGORIES } from './parse-invoice'
+import { ACHATS_TOOLS } from './ai-recommendations'
 
 let _client: Anthropic | null = null
 const getClient = () => (_client ??= new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY! }))
@@ -22,27 +23,40 @@ CONTEXTE MÉTIER — RÈGLES FERMES :
 
 Outils :
 - web_search : cherche sur le web des fournisseurs, des prix de marché, des solutions. Utilise-le dès que ça peut aider (trouver des fournisseurs près de Verviers, comparer des offres, vérifier un tarif marché). Cite ce que tu trouves.
-- inspect_category : voir le détail d'une catégorie de dépense (fournisseurs, montants) avant de conseiller.
-- add_market_supplier : enregistrer un fournisseur intéressant (trouvé en ligne ou suggéré) dans la base marché, pour un futur appel d'offre.
+- inspect_category : voir le détail d'une catégorie de dépense (fournisseurs, montants) avant de conseiller ou d'agir.
+- reclassify_supplier / reset_supplier_category : REDISPATCHER — forcer (ou annuler) la catégorie de toutes les dépenses d'un fournisseur. Sers-toi des id fournisseurs (dans le contexte / inspect_category).
+- merge_suppliers : fusionner un doublon. exclude_supplier : exclure un non-achat. ignore_vehicle : retirer un véhicule de l'analyse coût.
+- query_spend : STATS sur les factures (montants par catégorie/fournisseur/mois, filtre par mot-clé dans les libellés). Sers-t'en pour toute question chiffrée (« volume de carburant sur 6 mois », « évolution des pneus », « combien chez X »). Les montants sont en € HTVA ; si l'utilisateur veut un volume en litres/unités, cherche la quantité dans les libellés retournés et précise que c'est estimé.
+- add_market_supplier : enregistrer un fournisseur intéressant (trouvé en ligne ou suggéré) dans la base marché.
+Quand tu agis (reclassement, fusion, exclusion…), confirme et rappelle que le tableau se met à jour au rafraîchissement. Si un id est ambigu, demande avant d'agir.
 
 Tu as la MÉMOIRE de la conversation : réfère-toi à ce qui a été dit, assure le suivi des pistes. Réponses claires, en français, structurées mais pas verbeuses. Quand tu proposes des fournisseurs, donne nom + contact/site + pourquoi.
 Catégories d'achat existantes : ${CATEGORIES.join(', ')}.`
 
-export const ASSISTANT_TOOLS = [
-  {
-    name: 'inspect_category',
-    description: "Détail d'une catégorie de dépense (fournisseurs, montants, libellés).",
-    input_schema: { type: 'object', properties: { category: { type: 'string', enum: CATEGORIES as unknown as string[] } }, required: ['category'] },
-  },
-  {
-    name: 'add_market_supplier',
-    description: "Ajoute un fournisseur à la base marché (pour futurs appels d'offre).",
-    input_schema: { type: 'object', properties: {
-      name: { type: 'string' }, category: { type: 'string', enum: CATEGORIES as unknown as string[] },
-      email: { type: 'string' }, phone: { type: 'string' }, website: { type: 'string' }, region: { type: 'string' }, why: { type: 'string' },
-    }, required: ['name', 'category'] },
-  },
-] as const
+const ADD_MARKET_TOOL = {
+  name: 'add_market_supplier',
+  description: "Ajoute un fournisseur à la base marché (pour futurs appels d'offre).",
+  input_schema: { type: 'object', properties: {
+    name: { type: 'string' }, category: { type: 'string', enum: CATEGORIES as unknown as string[] },
+    email: { type: 'string' }, phone: { type: 'string' }, website: { type: 'string' }, region: { type: 'string' }, why: { type: 'string' },
+  }, required: ['name', 'category'] },
+} as const
+
+const QUERY_SPEND_TOOL = {
+  name: 'query_spend',
+  description: "STATISTIQUES sur les factures. Filtre par catégorie, fournisseur (id), mot-clé (cherché dans les libellés de lignes, ex. « gasoil », « pneu ») et période (mois), et regroupe par mois/fournisseur/catégorie. Renvoie montants HTVA, nb de lignes/factures et des exemples de libellés (utile pour estimer un volume si la quantité y figure). Pour répondre à « combien de carburant sur 6 mois », « évolution par mois », « top fournisseurs de pièces », etc.",
+  input_schema: { type: 'object', properties: {
+    category:    { type: 'string', enum: CATEGORIES as unknown as string[] },
+    supplier_id: { type: 'integer' },
+    keyword:     { type: 'string' },
+    months:      { type: 'integer' },
+    group_by:    { type: 'string', enum: ['month', 'supplier', 'category', 'none'] },
+  }, required: [] },
+} as const
+
+// Panoplie complète : actions (redispatch/fusion/exclusion/inspection, définies
+// dans ai-recommendations) + stats + ajout au marché.
+export const ASSISTANT_TOOLS = [...ACHATS_TOOLS, QUERY_SPEND_TOOL, ADD_MARKET_TOOL] as const
 
 export interface AssistantMsg { role: 'user' | 'assistant'; content: string }
 

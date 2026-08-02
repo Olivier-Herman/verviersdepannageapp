@@ -10,7 +10,32 @@ import { getServerSession }  from 'next-auth'
 import { authOptions }       from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase'
 import { runAchatsAssistant } from '@/lib/achats/assistant'
-import { CATEGORIES } from '@/lib/achats/parse-invoice'
+import { CATEGORIES, normPlate } from '@/lib/achats/parse-invoice'
+
+const CFG_KEY = 'achats_supplier_config'
+async function loadCfg(sb: any) {
+  const { data } = await sb.from('app_settings').select('value').eq('key', CFG_KEY).maybeSingle()
+  const def = { merges: {} as Record<string, number>, excluded: [] as number[], ignoredPlates: [] as string[], categoryOverrides: {} as Record<string, string> }
+  if (!data?.value) return def
+  try { const v = typeof data.value === 'string' ? JSON.parse(data.value) : data.value; return { merges: v.merges || {}, excluded: v.excluded || [], ignoredPlates: v.ignoredPlates || [], categoryOverrides: v.categoryOverrides || {} } } catch { return def }
+}
+const saveCfg = (sb: any, cfg: any) => sb.from('app_settings').upsert({ key: CFG_KEY, value: JSON.stringify(cfg) }, { onConflict: 'key' })
+const scaledLines = (r: any): Array<{ montant: number; cat: string; description: string }> => {
+  const items = (Array.isArray(r.items) ? r.items : []).filter((i: any) => i?.categorie)
+  if (!items.length) return r.categorie ? [{ montant: r.amount_htva || 0, cat: r.categorie, description: r.resume || '' }] : []
+  const sum = items.reduce((a: number, i: any) => a + (i.montant || 0), 0)
+  const sc = sum > 0 ? (r.amount_htva || 0) / sum : 0
+  return items.map((i: any) => ({ montant: (i.montant || 0) * sc, cat: i.categorie, description: i.description || '' }))
+}
+async function fetchFactures(sb: any, months: number) {
+  const start = (() => { const d = new Date(); d.setMonth(d.getMonth() - (months - 1)); d.setDate(1); return d.toISOString().slice(0, 10) })()
+  const out: any[] = []
+  for (let p = 0; p < 40; p++) {
+    const { data } = await sb.from('achats_factures').select('odoo_move_id, partner_id, supplier_name, invoice_date, amount_htva, items, categorie, parsed_at').gte('invoice_date', start).order('odoo_move_id').range(p * 1000, p * 1000 + 999)
+    if (!data || !data.length) break; out.push(...data); if (data.length < 1000) break
+  }
+  return out
+}
 
 export const dynamic     = 'force-dynamic'
 export const fetchCache   = 'force-no-store'
@@ -42,47 +67,77 @@ async function buildContext(sb: any): Promise<string> {
   return parts.join('\n\n').slice(0, 20000)
 }
 
-// Exécuteur d'outils de l'assistant.
+// Exécuteur d'outils de l'assistant (conseil + actions + stats).
 function makeExec(sb: any) {
   return async (name: string, input: any): Promise<string> => {
+    // ── Ajout marché ──
     if (name === 'add_market_supplier') {
       const cat = String(input.category || '')
       if (!input.name || !(CATEGORIES as readonly string[]).includes(cat)) return 'Nom/catégorie invalide.'
       const s = (x: any) => { const v = String(x ?? '').trim(); return v || null }
-      const { error } = await sb.from('achats_market').insert({
-        name: String(input.name).slice(0, 120), category: cat, email: s(input.email), phone: s(input.phone),
-        website: s(input.website), region: s(input.region), notes: s(input.why), status: 'valide', source: 'ia_web',
-      })
+      const { error } = await sb.from('achats_market').insert({ name: String(input.name).slice(0, 120), category: cat, email: s(input.email), phone: s(input.phone), website: s(input.website), region: s(input.region), notes: s(input.why), status: 'valide', source: 'ia_web' })
       return error ? `Non ajouté (${error.message.includes('duplicate') ? 'déjà en base' : error.message}).` : `OK — « ${input.name} » ajouté à la base marché (${cat}).`
     }
-    if (name === 'inspect_category') {
-      const cat = String(input.category || '')
-      if (!(CATEGORIES as readonly string[]).includes(cat)) return 'Catégorie inconnue.'
-      const cfgRow = await sb.from('app_settings').select('value').eq('key', 'achats_supplier_config').maybeSingle()
-      let overrides: Record<string, string> = {}, merges: Record<string, number> = {}
-      try { const c = cfgRow.data?.value ? (typeof cfgRow.data.value === 'string' ? JSON.parse(cfgRow.data.value) : cfgRow.data.value) : {}; overrides = c.categoryOverrides || {}; merges = c.merges || {} } catch { /* noop */ }
-      const start = (() => { const d = new Date(); d.setMonth(d.getMonth() - 11); d.setDate(1); return d.toISOString().slice(0, 10) })()
-      const out: any[] = []
-      for (let p = 0; p < 30; p++) {
-        const { data } = await sb.from('achats_factures').select('partner_id, supplier_name, amount_htva, items, categorie, parsed_at').gte('invoice_date', start).order('odoo_move_id').range(p * 1000, p * 1000 + 999)
-        if (!data || !data.length) break; out.push(...data); if (data.length < 1000) break
+
+    // ── Actions sur la config (redispatch / fusion / exclusion / véhicule) ──
+    if (['reclassify_supplier', 'reset_supplier_category', 'merge_suppliers', 'exclude_supplier', 'ignore_vehicle'].includes(name)) {
+      const cfg = await loadCfg(sb)
+      const canon = (id: number) => cfg.merges[id] ?? id
+      if (name === 'reclassify_supplier') {
+        const id = Number(input.supplier_id), c = String(input.category || '')
+        if (!id || !(CATEGORIES as readonly string[]).includes(c)) return 'id ou catégorie invalide.'
+        cfg.categoryOverrides[String(id)] = c; await saveCfg(sb, cfg)
+        return `OK — toutes les dépenses du fournisseur #${id} classées en « ${c} ».`
       }
-      const bySup = new Map<number, { name: string; amount: number }>()
-      for (const r of out) {
-        const ov = overrides[String(r.partner_id)]
-        const items = (Array.isArray(r.items) ? r.items : []).filter((i: any) => i?.categorie)
-        const sum = items.reduce((a: number, i: any) => a + (i.montant || 0), 0)
-        const scale = sum > 0 ? (r.amount_htva || 0) / sum : 0
-        const lines: Array<{ montant: number; cat: string }> = items.length ? items.map((i: any) => ({ montant: (i.montant || 0) * scale, cat: ov || i.categorie })) : (r.categorie ? [{ montant: r.amount_htva || 0, cat: ov || r.categorie }] : [])
-        const amt = lines.filter((l) => l.cat === cat).reduce((a: number, l) => a + l.montant, 0)
-        if (amt <= 0) continue
-        const cid = merges[r.partner_id] ?? r.partner_id
-        const g = bySup.get(cid) || { name: r.supplier_name || `#${cid}`, amount: 0 }
-        g.amount += amt; bySup.set(cid, g)
+      if (name === 'reset_supplier_category') { delete cfg.categoryOverrides[String(Number(input.supplier_id))]; await saveCfg(sb, cfg); return `OK — redispatch du #${Number(input.supplier_id)} annulé.` }
+      if (name === 'merge_suppliers') {
+        const src = Number(input.source_id), keep = Number(input.keep_id)
+        if (!src || !keep || src === keep) return 'ids invalides.'
+        cfg.merges[src] = keep; for (const k of Object.keys(cfg.merges)) if (cfg.merges[k] === src) cfg.merges[k] = keep
+        cfg.excluded = cfg.excluded.filter((x: number) => x !== src); await saveCfg(sb, cfg)
+        return `OK — #${src} fusionné dans #${keep}.`
       }
-      const suppliers = [...bySup.values()].map(s => ({ ...s, amount: Math.round(s.amount) })).sort((a, b) => b.amount - a.amount).slice(0, 15)
-      return JSON.stringify({ category: cat, total: suppliers.reduce((a, s) => a + s.amount, 0), fournisseurs: suppliers })
+      if (name === 'exclude_supplier') { const id = canon(Number(input.supplier_id)); if (!id) return 'id invalide.'; if (!cfg.excluded.includes(id)) cfg.excluded.push(id); await saveCfg(sb, cfg); return `OK — #${id} exclu.` }
+      if (name === 'ignore_vehicle') { const p = normPlate(String(input.plate || '')); if (!p) return 'plaque invalide.'; if (!cfg.ignoredPlates.includes(p)) cfg.ignoredPlates.push(p); await saveCfg(sb, cfg); return `OK — véhicule ${p} ignoré.` }
     }
+
+    // ── Lecture / stats ──
+    if (name === 'inspect_category' || name === 'query_spend') {
+      const cfg = await loadCfg(sb)
+      const months = name === 'query_spend' ? Math.min(Math.max(Number(input.months) || 12, 1), 36) : 12
+      const rows = await fetchFactures(sb, months)
+      const cat = input.category && (CATEGORIES as readonly string[]).includes(String(input.category)) ? String(input.category) : null
+      const supplierId = name === 'query_spend' ? (Number(input.supplier_id) || null) : null
+      const keyword = name === 'query_spend' ? String(input.keyword || '').trim().toLowerCase() : ''
+      const groupBy = name === 'query_spend' ? String(input.group_by || (cat ? 'month' : 'category')) : 'supplier'
+      const excl = new Set<number>(cfg.excluded || [])
+      for (const [child, cid] of Object.entries(cfg.merges || {})) if (excl.has(cid as number)) excl.add(Number(child))
+
+      const groups = new Map<string, { total: number; lines: number; invoices: Set<any> }>()
+      const samples: Array<{ desc: string; montant: number; supplier: string }> = []
+      for (const r of rows) {
+        if (excl.has(r.partner_id)) continue
+        const cid = cfg.merges[r.partner_id] ?? r.partner_id
+        if (supplierId && cid !== supplierId) continue
+        const ov = cfg.categoryOverrides[String(r.partner_id)]
+        for (const l of scaledLines(r)) {
+          const lc = ov || l.cat
+          if (cat && lc !== cat) continue
+          if (keyword && !String(l.description).toLowerCase().includes(keyword)) continue
+          const key = groupBy === 'month' ? String(r.invoice_date || '').slice(0, 7)
+            : groupBy === 'supplier' ? (r.supplier_name || `#${cid}`)
+            : groupBy === 'category' ? lc : 'total'
+          const g = groups.get(key) || { total: 0, lines: 0, invoices: new Set() }
+          g.total += l.montant; g.lines += 1; g.invoices.add(r.odoo_move_id); groups.set(key, g)
+          if (keyword && samples.length < 20) samples.push({ desc: l.description.slice(0, 80), montant: Math.round(l.montant), supplier: r.supplier_name || `#${cid}` })
+        }
+      }
+      const arr = [...groups.entries()].map(([group, g]) => ({ group, total_htva: Math.round(g.total), nb_lignes: g.lines, nb_factures: g.invoices.size }))
+        .sort((a, b) => groupBy === 'month' ? a.group.localeCompare(b.group) : b.total_htva - a.total_htva).slice(0, 40)
+      const grandTotal = arr.reduce((a, x) => a + x.total_htva, 0)
+      return JSON.stringify({ periode_mois: months, filtre: { categorie: cat, fournisseur_id: supplierId, mot_cle: keyword || null }, groupe_par: groupBy, total_htva: grandTotal, groupes: arr, ...(keyword ? { exemples_lignes: samples } : {}) })
+    }
+
     return 'Outil inconnu.'
   }
 }
