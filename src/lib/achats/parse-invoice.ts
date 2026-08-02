@@ -53,6 +53,8 @@ Réponds UNIQUEMENT par un objet JSON valide (aucun texte autour), structure EXA
       "description": "<libellé de la ligne>",
       "montant": <montant HTVA de CETTE ligne (nombre) — les montants des lignes doivent SOMMER au total HTVA de la facture>,
       "categorie": "<catégorie EXACTE de CETTE ligne parmi la liste>",
+      "quantite": <quantité de CETTE ligne en nombre si présente (ex. litres de carburant, nb de pièces/pneus), sinon null>,
+      "unite": "<unité de la quantité : 'L' pour litres/gasoil/AdBlue, 'pcs' pour pièces/pneus, 'kg', 'h'… sinon null>",
       "plaque": "<immatriculation MAJUSCULES sans espaces ni tirets si la ligne concerne un véhicule précis, sinon null>"
     }
   ],
@@ -74,7 +76,7 @@ Règles IMPORTANTES :
 - plaque : uniquement si la ligne vise un véhicule identifié (carburant, garage, pneus). Sinon null.
 - Si illisible : confidence bas, une seule ligne categorie "Autre".`
 
-export interface CatLine { description: string; montant: number; categorie: string; plaque: string | null }
+export interface CatLine { description: string; montant: number; categorie: string; plaque: string | null; quantite?: number | null; unite?: string | null }
 export interface Categorization {
   categorie: string
   resume: string | null
@@ -126,11 +128,14 @@ export async function categorizeInvoiceDoc(opts: {
   const normCat = (c: any) => (CATEGORIES as readonly string[]).includes(c) ? c : 'Autre'
   const items: CatLine[] = (Array.isArray(parsed.items) ? parsed.items : []).slice(0, 12).map((l: any) => {
     const pl = normPlate(l.plaque)
+    const q = Number(l.quantite)
     return {
       description: String(l.description || '').slice(0, 120),
       montant: typeof l.montant === 'number' ? l.montant : 0,
       categorie: normCat(l.categorie),
       plaque: pl.length >= 4 ? pl : null,
+      quantite: isFinite(q) && q > 0 ? q : null,
+      unite: l.unite ? String(l.unite).slice(0, 8) : null,
     }
   })
   // Catégorie dominante : la plus grosse par montant (fallback = champ fourni).

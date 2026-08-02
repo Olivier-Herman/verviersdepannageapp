@@ -20,12 +20,12 @@ async function loadCfg(sb: any) {
   try { const v = typeof data.value === 'string' ? JSON.parse(data.value) : data.value; return { merges: v.merges || {}, excluded: v.excluded || [], ignoredPlates: v.ignoredPlates || [], categoryOverrides: v.categoryOverrides || {} } } catch { return def }
 }
 const saveCfg = (sb: any, cfg: any) => sb.from('app_settings').upsert({ key: CFG_KEY, value: JSON.stringify(cfg) }, { onConflict: 'key' })
-const scaledLines = (r: any): Array<{ montant: number; cat: string; description: string }> => {
+const scaledLines = (r: any): Array<{ montant: number; cat: string; description: string; quantite: number | null; unite: string | null }> => {
   const items = (Array.isArray(r.items) ? r.items : []).filter((i: any) => i?.categorie)
-  if (!items.length) return r.categorie ? [{ montant: r.amount_htva || 0, cat: r.categorie, description: r.resume || '' }] : []
+  if (!items.length) return r.categorie ? [{ montant: r.amount_htva || 0, cat: r.categorie, description: r.resume || '', quantite: null, unite: null }] : []
   const sum = items.reduce((a: number, i: any) => a + (i.montant || 0), 0)
   const sc = sum > 0 ? (r.amount_htva || 0) / sum : 0
-  return items.map((i: any) => ({ montant: (i.montant || 0) * sc, cat: i.categorie, description: i.description || '' }))
+  return items.map((i: any) => ({ montant: (i.montant || 0) * sc, cat: i.categorie, description: i.description || '', quantite: typeof i.quantite === 'number' && i.quantite > 0 ? i.quantite : null, unite: i.unite || null }))
 }
 async function fetchFactures(sb: any, months: number) {
   const start = (() => { const d = new Date(); d.setMonth(d.getMonth() - (months - 1)); d.setDate(1); return d.toISOString().slice(0, 10) })()
@@ -113,8 +113,9 @@ function makeExec(sb: any) {
       const excl = new Set<number>(cfg.excluded || [])
       for (const [child, cid] of Object.entries(cfg.merges || {})) if (excl.has(cid as number)) excl.add(Number(child))
 
-      const groups = new Map<string, { total: number; lines: number; invoices: Set<any> }>()
-      const samples: Array<{ desc: string; montant: number; supplier: string }> = []
+      const groups = new Map<string, { total: number; lines: number; invoices: Set<any>; vol: Record<string, number> }>()
+      const samples: Array<{ desc: string; montant: number; qte: number | null; unite: string | null; supplier: string }> = []
+      const volTotal: Record<string, number> = {}
       for (const r of rows) {
         if (excl.has(r.partner_id)) continue
         const cid = cfg.merges[r.partner_id] ?? r.partner_id
@@ -127,15 +128,19 @@ function makeExec(sb: any) {
           const key = groupBy === 'month' ? String(r.invoice_date || '').slice(0, 7)
             : groupBy === 'supplier' ? (r.supplier_name || `#${cid}`)
             : groupBy === 'category' ? lc : 'total'
-          const g = groups.get(key) || { total: 0, lines: 0, invoices: new Set() }
-          g.total += l.montant; g.lines += 1; g.invoices.add(r.odoo_move_id); groups.set(key, g)
-          if (keyword && samples.length < 20) samples.push({ desc: l.description.slice(0, 80), montant: Math.round(l.montant), supplier: r.supplier_name || `#${cid}` })
+          const g = groups.get(key) || { total: 0, lines: 0, invoices: new Set(), vol: {} }
+          g.total += l.montant; g.lines += 1; g.invoices.add(r.odoo_move_id)
+          if (l.quantite && l.unite) { g.vol[l.unite] = (g.vol[l.unite] || 0) + l.quantite; volTotal[l.unite] = (volTotal[l.unite] || 0) + l.quantite }
+          groups.set(key, g)
+          if (keyword && samples.length < 20) samples.push({ desc: l.description.slice(0, 80), montant: Math.round(l.montant), qte: l.quantite, unite: l.unite, supplier: r.supplier_name || `#${cid}` })
         }
       }
-      const arr = [...groups.entries()].map(([group, g]) => ({ group, total_htva: Math.round(g.total), nb_lignes: g.lines, nb_factures: g.invoices.size }))
+      const roundVol = (v: Record<string, number>) => Object.fromEntries(Object.entries(v).map(([u, n]) => [u, Math.round(n)]))
+      const arr = [...groups.entries()].map(([group, g]) => ({ group, total_htva: Math.round(g.total), nb_lignes: g.lines, nb_factures: g.invoices.size, volume: roundVol(g.vol) }))
         .sort((a, b) => groupBy === 'month' ? a.group.localeCompare(b.group) : b.total_htva - a.total_htva).slice(0, 40)
       const grandTotal = arr.reduce((a, x) => a + x.total_htva, 0)
-      return JSON.stringify({ periode_mois: months, filtre: { categorie: cat, fournisseur_id: supplierId, mot_cle: keyword || null }, groupe_par: groupBy, total_htva: grandTotal, groupes: arr, ...(keyword ? { exemples_lignes: samples } : {}) })
+      const volGlobal = roundVol(volTotal)
+      return JSON.stringify({ periode_mois: months, filtre: { categorie: cat, fournisseur_id: supplierId, mot_cle: keyword || null }, groupe_par: groupBy, total_htva: grandTotal, volume_total: volGlobal, note_volume: Object.keys(volGlobal).length ? 'quantités extraites des factures (fiable quand présent)' : 'aucune quantité extraite sur cette sélection (factures pas encore re-parsées avec quantités ?)', groupes: arr, ...(keyword ? { exemples_lignes: samples } : {}) })
     }
 
     return 'Outil inconnu.'
