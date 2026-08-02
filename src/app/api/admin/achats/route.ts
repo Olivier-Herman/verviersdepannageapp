@@ -14,6 +14,7 @@ import { normPlate } from '@/lib/achats/parse-invoice'
 import { getGroupPartnerIds, achatsRpc } from '@/lib/achats/odoo-rpc'
 import { generateAchatRecommendations, buildAchatSummary, runAchatsChat } from '@/lib/achats/ai-recommendations'
 import { CATEGORIES } from '@/lib/achats/parse-invoice'
+import { enrichSupplier } from '@/lib/achats/enrich'
 
 export const dynamic     = 'force-dynamic'
 export const fetchCache   = 'force-no-store'
@@ -365,6 +366,25 @@ export async function POST(req: Request) {
     const { error } = await sb.from('achats_suppliers').upsert(row, { onConflict: 'partner_id' })
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
     return NextResponse.json({ ok: true })
+  }
+
+  if (action === 'supplier_enrich') {
+    const pid = Number(body.partner_id)
+    const supplierName = String(body.supplier_name || '').trim()
+    if (!pid || !supplierName) return NextResponse.json({ error: 'partner_id / nom manquant' }, { status: 400 })
+    // Contexte factures : résumés + libellés de lignes (payment terms parfois dedans).
+    const { data: fx } = await sb.from('achats_factures').select('resume, items').eq('partner_id', pid).limit(20)
+    const invoiceContext = (fx || []).map((r: any) => [r.resume, ...(Array.isArray(r.items) ? r.items.map((i: any) => i.description) : [])].filter(Boolean).join(' · ')).filter(Boolean).join('\n').slice(0, 4000)
+    const enr = await enrichSupplier(supplierName, invoiceContext)
+    // Ne remplit que les champs VIDES existants.
+    const { data: cur } = await sb.from('achats_suppliers').select('*').eq('partner_id', pid).maybeSingle()
+    const patch: any = { partner_id: pid, updated_at: new Date().toISOString() }
+    const filled: string[] = []
+    for (const f of ['email', 'phone', 'contact_name', 'payment_terms'] as const) {
+      if ((enr as any)[f] && !(cur as any)?.[f]) { patch[f] = (enr as any)[f]; filled.push(f) }
+    }
+    if (filled.length) await sb.from('achats_suppliers').upsert(patch, { onConflict: 'partner_id' })
+    return NextResponse.json({ ok: true, filled, found: enr, sources: enr.source_count })
   }
 
   if (action === 'supplier_import') {

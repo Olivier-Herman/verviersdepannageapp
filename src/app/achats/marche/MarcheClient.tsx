@@ -44,7 +44,8 @@ export default function MarcheClient({ userRole, userName, userEmail, userModule
   const inCat = market.filter(m => m.category === cat)
   const candidates = inCat.filter(m => m.status === 'a_verifier')
   const validated = inCat.filter(m => m.status === 'valide')
-  const oursInCat = ours.filter(s => (s.meta?.categories?.includes(cat)) || s.dominant?.includes(cat))
+  // Catégories éditées (« ce qu'il fournit ») prioritaires ; sinon déduction auto.
+  const oursInCat = ours.filter(s => s.meta?.categories?.length ? s.meta.categories.includes(cat) : s.dominant?.includes(cat))
 
   const Row = ({ m }: { m: any }) => (
     <div className="flex items-start gap-2 bg-surface-2 border rounded-lg px-3 py-2">

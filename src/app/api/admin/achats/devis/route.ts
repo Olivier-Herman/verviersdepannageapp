@@ -28,7 +28,10 @@ export async function GET() {
   const { data: quotes } = ids.length
     ? await sb.from('achats_quotes').select('*').in('request_id', ids).order('total_htva', { ascending: true, nullsFirst: false })
     : { data: [] }
-  return NextResponse.json({ requests: requests || [], quotes: quotes || [] })
+  const { data: recipients } = ids.length
+    ? await sb.from('achats_rfq_recipients').select('id, request_id, name, email, status, sent_at, opened_at, responded_at, quote_id').in('request_id', ids)
+    : { data: [] }
+  return NextResponse.json({ requests: requests || [], quotes: quotes || [], recipients: recipients || [] })
 }
 
 export async function POST(req: Request) {

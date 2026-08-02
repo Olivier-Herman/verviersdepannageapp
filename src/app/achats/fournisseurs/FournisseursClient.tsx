@@ -6,7 +6,7 @@
 
 import { useEffect, useState } from 'react'
 import AppShell from '@/components/layout/AppShell'
-import { ShoppingCart, ArrowLeft, Search, Mail, Phone, Star, Save, Download, Loader2, Package, CalendarClock, ChevronDown } from 'lucide-react'
+import { ShoppingCart, ArrowLeft, Search, Mail, Phone, Star, Save, Download, Loader2, Package, CalendarClock, ChevronDown, Sparkles } from 'lucide-react'
 
 const eur = (n: number) => n.toLocaleString('fr-BE', { maximumFractionDigits: 0 }) + ' €'
 const fmtDate = (s: string | null) => s ? new Date(s).toLocaleDateString('fr-BE', { day: '2-digit', month: '2-digit', year: '2-digit' }) : '—'
@@ -21,6 +21,7 @@ export default function FournisseursClient({ userRole, userName, userEmail, user
   const [form, setForm] = useState<any>({})
   const [saving, setSaving] = useState(false)
   const [importing, setImporting] = useState(false)
+  const [enriching, setEnriching] = useState<number | null>(null)
   const [msg, setMsg] = useState('')
 
   const load = () => { setLoading(true); return fetch('/api/admin/achats?suppliers=1&months=12', { cache: 'no-store' }).then(r => r.json()).then(setData).finally(() => setLoading(false)) }
@@ -52,6 +53,20 @@ export default function FournisseursClient({ userRole, userName, userEmail, user
       setMsg(r.ok ? `✅ ${j.filled} contact(s) importé(s) depuis Odoo` : '❌ ' + (j.error || 'Erreur'))
       await load()
     } finally { setImporting(false) }
+  }
+
+  const enrich = async (s: any) => {
+    setEnriching(s.id); setMsg('')
+    try {
+      const r = await fetch('/api/admin/achats', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'supplier_enrich', partner_id: s.id, supplier_name: s.name }) })
+      const j = await r.json()
+      if (!r.ok) { setMsg('❌ ' + (j.error || 'Erreur')); return }
+      // Pré-remplit le formulaire ouvert avec ce qui a été trouvé (champs vides).
+      const f = j.found || {}
+      setForm((prev: any) => ({ ...prev, email: prev.email || f.email || '', phone: prev.phone || f.phone || '', contact_name: prev.contact_name || f.contact_name || '', payment_terms: prev.payment_terms || f.payment_terms || '' }))
+      setMsg(j.filled?.length ? `✅ Complété : ${j.filled.join(', ')} (${j.sources} mail(s))` : `Rien de neuf trouvé (${j.sources} mail(s) analysés)`)
+      await load()
+    } finally { setEnriching(null) }
   }
 
   const toggleCat = (c: string) => setForm((f: any) => ({ ...f, categories: f.categories.includes(c) ? f.categories.filter((x: string) => x !== c) : [...f.categories, c] }))
@@ -124,7 +139,7 @@ export default function FournisseursClient({ userRole, userName, userEmail, user
                     </div>
 
                     <div>
-                      <span className="text-ink-muted text-xs flex items-center gap-1"><Package size={11} /> Ce qu'il fournit</span>
+                      <span className="text-ink-muted text-xs flex items-center gap-1"><Package size={11} /> Ce qu'il fournit <span className="text-ink-muted/60">— corrige ici (prioritaire sur la déduction auto)</span></span>
                       <div className="flex flex-wrap gap-1 mt-1.5">
                         {(data?.allCategories || []).map((c: string) => (
                           <button key={c} onClick={() => toggleCat(c)} className={`text-[11px] px-2 py-1 rounded-full border ${form.categories.includes(c) ? 'bg-brand text-white border-brand' : 'text-ink-muted hover:bg-bg'}`}>{c}</button>
@@ -150,8 +165,11 @@ export default function FournisseursClient({ userRole, userName, userEmail, user
                     <label className="block"><span className="text-ink-muted text-xs">Notes</span>
                       <textarea value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })} rows={2} className="w-full mt-1 bg-bg border rounded-lg px-3 py-2 text-sm text-ink resize-none" /></label>
 
-                    <div className="flex items-center gap-2">
+                    <div className="flex flex-wrap items-center gap-2">
                       <button onClick={() => save(s.id)} disabled={saving} className="inline-flex items-center gap-1.5 text-sm px-3.5 py-2 rounded-lg bg-brand text-white hover:opacity-90 disabled:opacity-50"><Save size={15} /> {saving ? 'Enregistrement…' : 'Enregistrer'}</button>
+                      <button onClick={() => enrich(s)} disabled={enriching === s.id} className="inline-flex items-center gap-1.5 text-sm px-3 py-2 rounded-lg border border-brand/40 text-brand hover:bg-brand/5 disabled:opacity-50" title="Chercher contact, téléphone et délai de paiement dans les mails et factures">
+                        {enriching === s.id ? <><Loader2 size={15} className="animate-spin" /> Recherche…</> : <><Sparkles size={15} /> Compléter via l'IA</>}
+                      </button>
                     </div>
                   </div>
                 )}
