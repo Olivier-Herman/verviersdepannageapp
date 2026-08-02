@@ -171,14 +171,15 @@ export default function MaPaieClient({ userRole, userName, userEmail, userModule
           </div>
         )}
 
-        {/* Accueil : 3 grands boutons colorés */}
+        {/* Accueil : grands boutons colorés + calendrier */}
         {!loading && data?.linked && tab === 'home' && (
+          <>
           <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
             {[
               { k: 'infos',  title: 'Mes infos',          desc: 'Coordonnées, IBAN, contact', Icon: UserCog,      from: 'from-sky-500/15',    to: 'to-sky-500/5',    ring: 'hover:border-sky-500/40',    ic: 'bg-sky-500/15 text-sky-500' },
               { k: 'fiches', title: 'Mes fiches de paie', desc: `${slips.length} fiche${slips.length > 1 ? 's' : ''} disponible${slips.length > 1 ? 's' : ''}`, Icon: FileText, from: 'from-brand/15', to: 'to-brand/5', ring: 'hover:border-brand/40', ic: 'bg-brand/15 text-brand' },
               { k: 'conges', title: 'Mes congés',         desc: congesPending ? `${congesPending} en cours` : 'Demander un congé', Icon: CalendarDays, from: 'from-amber-500/15', to: 'to-amber-500/5', ring: 'hover:border-amber-500/40', ic: 'bg-amber-500/15 text-amber-500' },
-              { k: 'gardes', title: 'Mon calendrier',      desc: 'Mes gardes et mes congés', Icon: ShieldCheck, from: 'from-indigo-500/15', to: 'to-indigo-500/5', ring: 'hover:border-indigo-500/40', ic: 'bg-indigo-500/15 text-indigo-500' },
+              { k: 'gardes', title: 'Mes gardes',          desc: 'Prochaines gardes & remplacements', Icon: ShieldCheck, from: 'from-indigo-500/15', to: 'to-indigo-500/5', ring: 'hover:border-indigo-500/40', ic: 'bg-indigo-500/15 text-indigo-500' },
             ].map(c => (
               <button key={c.k} onClick={() => setTab(c.k as any)}
                 className={`group relative flex flex-col gap-4 bg-gradient-to-br ${c.from} ${c.to} border rounded-2xl p-5 text-left transition-all hover:shadow-lg hover:-translate-y-1 ${c.ring}`}>
@@ -190,6 +191,11 @@ export default function MaPaieClient({ userRole, userName, userEmail, userModule
               </button>
             ))}
           </div>
+          <div className="bg-surface border rounded-2xl p-5 mt-6">
+            <div className="flex items-center gap-2 mb-3"><ShieldCheck size={18} className="text-indigo-500" /><h2 className="font-semibold text-ink text-sm">Mon calendrier — gardes & congés</h2></div>
+            <MyCalendar conges={data.conges || []} />
+          </div>
+          </>
         )}
 
         {/* Retour à l'accueil */}
@@ -234,14 +240,6 @@ export default function MaPaieClient({ userRole, userName, userEmail, userModule
                 ))}
               </div>
             )}
-          </div>
-        )}
-
-        {/* Mon calendrier : gardes + congés */}
-        {!loading && data?.linked && tab === 'gardes' && (
-          <div className="bg-surface border rounded-2xl p-5 mb-6">
-            <div className="flex items-center gap-2 mb-3"><ShieldCheck size={18} className="text-indigo-500" /><h2 className="font-semibold text-ink text-sm">Mon calendrier — gardes & congés</h2></div>
-            <MyCalendar conges={data.conges || []} />
           </div>
         )}
 
