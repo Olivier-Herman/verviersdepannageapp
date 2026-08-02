@@ -126,16 +126,18 @@ export async function POST(req: Request) {
       }).select('id, token').single()
       if (error || !row) { failed++; continue }
       const link = `${APP_URL}/devis/${row.token}`
+      const ref = `VD${String(row.token).slice(0, 8).toUpperCase()}`   // réf dans l'objet → matche les réponses par mail
+      const subjectRef = `${subject} [réf. ${ref}]`
       const body_html = emailLayout(
         `<p>Bonjour${rcp.name ? ' ' + escapeHtml(rcp.name) : ''},</p>
          ${paragraphs.map(p => `<p>${escapeHtml(p)}</p>`).join('')}
          <p style="margin:22px 0"><a href="${link}" style="background:#CC2222;color:#fff;text-decoration:none;font-weight:600;padding:12px 22px;border-radius:10px;display:inline-block">Remettre votre offre en ligne</a></p>
-         <p style="color:#666;font-size:13px">Vous pouvez aussi simplement répondre à cet e-mail avec votre devis en pièce jointe.</p>
+         <p style="color:#666;font-size:13px">Vous pouvez aussi simplement répondre à cet e-mail avec votre devis en pièce jointe (merci de conserver la référence <b>${ref}</b> dans l'objet).</p>
          <p>Bien à vous,<br>Le service achats — Verviers Dépannage</p>
          <img src="${APP_URL}/api/devis/${row.token}/pixel" width="1" height="1" style="display:none" alt="">`,
-        subject)
+        subjectRef)
       try {
-        await sendEmail(rcp.email, subject, body_html, rcp.name || rcp.email, undefined, undefined, RFQ_FROM)
+        await sendEmail(rcp.email, subjectRef, body_html, rcp.name || rcp.email, undefined, undefined, RFQ_FROM)
         await sb.from('achats_rfq_recipients').update({ status: 'sent', sent_at: new Date().toISOString() }).eq('id', row.id)
         sent++
       } catch { await sb.from('achats_rfq_recipients').update({ status: 'failed' }).eq('id', row.id); failed++ }
