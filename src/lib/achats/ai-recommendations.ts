@@ -26,8 +26,15 @@ const RECO_TYPES = ['consolidation', 'negociation', 'anomalie', 'doublon', 'cate
 let _client: Anthropic | null = null
 const getClient = () => (_client ??= new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY! }))
 
+// Règles métier fermes injectées dans TOUS les prompts achats.
+const ACHATS_CONTEXT = `CONTEXTE MÉTIER — RÈGLES FERMES (à respecter absolument) :
+- HERMAN Olivier est le PATRON de VD Soft ET un fournisseur interne important (il facture ses prestations). Ne JAMAIS proposer de baisser son taux horaire ni de « renégocier ses tarifs ». Le SEUL levier acceptable le concernant est de réduire le VOLUME d'heures. Ne le liste pas comme cible de renégociation de prix.
+- Ses lignes « prestation circuit » relèvent de « Sous-traitance dépannage ». Ses prestations administratives relèvent de « Honoraires & Services externes ».`
+
 const PROMPT = `Tu es DIRECTEUR ACHATS pour une société belge de DÉPANNAGE / REMORQUAGE automobile (VD Soft — Verviers Dépannage).
 On te donne une synthèse chiffrée des dépenses fournisseurs (factures Odoo) sur une période. Ton job : trouver où faire des ÉCONOMIES concrètes.
+
+${ACHATS_CONTEXT}
 
 Analyse et propose des recommandations ACTIONNABLES et RÉALISTES pour ce métier (pièces, pneus, carburant, sous-traitance dépannage, télécom, assurances, etc.). Cherche notamment :
 - **Consolidation** : plusieurs fournisseurs pour un même type d'achat → regrouper pour du volume/remise.
@@ -107,7 +114,10 @@ export interface ChatMsg { role: 'user' | 'assistant'; content: string }
 const CHAT_SYSTEM = `Tu es le DIRECTEUR ACHATS IA de VD Soft (société belge de dépannage/remorquage). Tu discutes avec le patron (Olivier) de ses dépenses fournisseurs et tu AGIS.
 On te fournit la SYNTHÈSE chiffrée des dépenses (avec les id des fournisseurs) et les RECOMMANDATIONS.
 
-Tu disposes d'OUTILS pour appliquer réellement des changements — utilise-les quand Olivier le demande (ou propose-les puis exécute s'il valide) :
+${ACHATS_CONTEXT}
+
+Tu disposes d'OUTILS pour inspecter et appliquer réellement des changements — utilise-les quand Olivier le demande (ou propose-les puis exécute s'il valide) :
+- inspect_category : LECTURE — voir le contenu d'une catégorie (fournisseurs, montants, libellés). Utilise-le pour investiguer un poste (« qu'y a-t-il dans Autre ? ») et cibler tes reclassements. Enchaîne : inspecte → propose/agis.
 - reclassify_supplier : « redispatcher » = forcer la catégorie de TOUTES les dépenses d'un fournisseur (ex. un fournisseur classé « Autre » qui est en fait du pneu → catégorie "Pneus"). Ça se répercute sur la répartition par poste.
 - merge_suppliers : fusionner un fournisseur en double dans un autre (garde le principal).
 - exclude_supplier : exclure un fournisseur qui n'est pas un achat (intercompagnie, remboursement…).
@@ -149,6 +159,11 @@ export const ACHATS_TOOLS = [
     name: 'reset_supplier_category',
     description: "Annule le redispatch d'un fournisseur (retrouve sa catégorie d'origine).",
     input_schema: { type: 'object', properties: { supplier_id: { type: 'integer' } }, required: ['supplier_id'] },
+  },
+  {
+    name: 'inspect_category',
+    description: "LECTURE : voir le détail d'une catégorie de dépense — quels fournisseurs la composent, montants et libellés. À utiliser AVANT de reclasser pour cibler juste.",
+    input_schema: { type: 'object', properties: { category: { type: 'string', enum: CATEGORIES as unknown as string[] } }, required: ['category'] },
   },
 ] as const
 

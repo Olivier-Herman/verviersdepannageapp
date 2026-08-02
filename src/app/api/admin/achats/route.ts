@@ -27,6 +27,47 @@ const loadReco = async (sb: any) => {
   if (!data?.value) return null
   try { return typeof data.value === 'string' ? JSON.parse(data.value) : data.value } catch { return null }
 }
+
+// Contenu détaillé d'une catégorie de dépense (pour l'outil inspect_category du
+// chat) : ventilation par fournisseur sur les N derniers mois, overrides appliqués.
+async function categoryContent(sb: any, cfg: SupplierConfig, category: string, months = 12) {
+  const start = (() => { const d = new Date(); d.setMonth(d.getMonth() - (months - 1)); d.setDate(1); return d.toISOString().slice(0, 10) })()
+  const canon = (id: number) => cfg.merges[id] ?? id
+  const excl = new Set<number>(cfg.excluded || [])
+  for (const [child, cid] of Object.entries(cfg.merges || {})) if (excl.has(cid)) excl.add(Number(child))
+  for (const id of await getGroupPartnerIds()) excl.add(id)
+  const overrides = cfg.categoryOverrides || {}
+  const scaled = (r: any): Array<{ montant: number; categorie: string; description: string }> => {
+    const items = (Array.isArray(r.items) ? r.items : []).filter((i: any) => i && i.categorie)
+    if (!items.length) return r.categorie ? [{ montant: r.amount_htva || 0, categorie: r.categorie, description: r.resume || '' }] : []
+    const sum = items.reduce((s: number, i: any) => s + (i.montant || 0), 0)
+    const scale = sum > 0 ? (r.amount_htva || 0) / sum : 0
+    return items.map((i: any) => ({ montant: (i.montant || 0) * scale, categorie: i.categorie, description: i.description || '' }))
+  }
+  const out: any[] = []
+  for (let page = 0; page < 30; page++) {
+    const { data } = await sb.from('achats_factures')
+      .select('partner_id, supplier_name, invoice_date, amount_htva, items, categorie, parsed_at')
+      .gte('invoice_date', start).order('odoo_move_id', { ascending: true }).range(page * 1000, page * 1000 + 999)
+    if (!data || !data.length) break
+    out.push(...data); if (data.length < 1000) break
+  }
+  const bySup = new Map<number, { id: number; name: string; amount: number; lines: number; samples: string[] }>()
+  let total = 0
+  for (const r of out) {
+    if (excl.has(r.partner_id)) continue
+    const ov = overrides[String(r.partner_id)]
+    const lines = scaled(r).filter(l => (ov || l.categorie) === category)
+    if (!lines.length) continue
+    const cid = canon(r.partner_id)
+    const g = bySup.get(cid) || { id: cid, name: r.supplier_name || `#${cid}`, amount: 0, lines: 0, samples: [] as string[] }
+    for (const l of lines) { g.amount += l.montant; g.lines += 1; if (g.samples.length < 3 && l.description) g.samples.push(l.description.slice(0, 60)) }
+    total += lines.reduce((s, l) => s + l.montant, 0)
+    bySup.set(cid, g)
+  }
+  const suppliers = [...bySup.values()].map(s => ({ ...s, amount: Math.round(s.amount) })).sort((a, b) => b.amount - a.amount).slice(0, 20)
+  return { category, months, total: Math.round(total), nb_fournisseurs: bySup.size, fournisseurs: suppliers }
+}
 const DEFAULT: SupplierConfig = { merges: {}, excluded: [], ignoredPlates: [], categoryOverrides: {} }
 
 async function loadConfig(sb: any): Promise<SupplierConfig> {
@@ -290,6 +331,12 @@ export async function POST(req: Request) {
         if (cfg.categoryOverrides) delete cfg.categoryOverrides[id]
         await saveConfig(sb, cfg)
         return `OK — redispatch du fournisseur #${id} annulé (catégorie d'origine rétablie).`
+      }
+      if (name === 'inspect_category') {
+        const cat = String(input.category || '')
+        if (!(CATEGORIES as readonly string[]).includes(cat)) return 'Catégorie inconnue.'
+        const content = await categoryContent(sb, cfg, cat)
+        return JSON.stringify(content)
       }
       return 'Outil inconnu.'
     }

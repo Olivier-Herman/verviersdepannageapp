@@ -67,6 +67,7 @@ Règles IMPORTANTES :
 - "Acompte / à régulariser" = toute ligne d'ACOMPTE / provision / avance (souvent libellée « Acompte », « Down payment »). Ces lignes se soldent sur la facture finale → NE PAS les ranger dans un vrai poste, mets "Acompte / à régulariser".
 - "Charges sociales & salaires" (ONSS, précompte, secrétariat social) = dépense normale.
 - "Sous-traitance dépannage" = un autre dépanneur qui a réalisé une intervention pour nous.
+- HERMAN Olivier (patron & fournisseur interne polyvalent, « couteau suisse ») : ses prestations touchent PLUSIEURS postes → catégorise CHAQUE ligne selon sa nature réelle (prestation circuit → "Sous-traitance dépannage" ; administratif/gestion → "Honoraires & Services externes" ; et tout autre poste selon le libellé). Ne force pas tout dans une seule catégorie.
 - Cartes carburant/péage (AS24, DKV, Eurotoll, Total, Q8, Shell, TotalEnergies…) : lignes de carburant/gasoil/AdBlue → "Carburant" ; lignes de péage/tunnel/vignette/parking → "Péages & frais de route". JAMAIS "Honoraires".
 - Police Fédérale, SPF Justice/Finances pour une amende, perception immédiate, PV, infraction de roulage → "Amendes routières" (PAS "Taxes & redevances").
 - montant : HTVA par ligne, obligatoire (estime au mieux). La somme des lignes ≈ total HTVA de la facture.
