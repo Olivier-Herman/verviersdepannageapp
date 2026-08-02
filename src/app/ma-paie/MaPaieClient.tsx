@@ -224,44 +224,33 @@ export default function MaPaieClient({ userRole, userName, userEmail, userModule
           </div>
         )}
 
-        {/* Mes gardes (liste à venir) */}
-        {!loading && data?.linked && tab === 'gardes' && (
-          <div className="bg-surface border rounded-2xl p-5 mb-6">
-            <div className="flex items-center gap-2 mb-3"><ShieldCheck size={18} className="text-indigo-500" /><h2 className="font-semibold text-ink text-sm">Mes gardes à venir (3 mois)</h2></div>
-            {!myGarde.length && <p className="text-ink-muted text-sm">Aucune garde prévue.</p>}
-            {(() => {
-              const semaine = myGarde.filter((d: any) => d.mine_role === 'semaine')
-              const nuits = myGarde.filter((d: any) => d.mine_role === 'nuit1')
-              const weeks = new Map<number, string[]>()
-              for (const d of semaine) { const w = weeks.get(d.week_no) || []; w.push(d.date); weeks.set(d.week_no, w) }
-              return (
-                <div className="flex flex-col gap-4">
-                  {weeks.size > 0 && (
-                    <div>
-                      <div className="text-ink-muted text-xs mb-1.5">Semaines de garde — jour + nuit (2e départ)</div>
-                      <div className="flex flex-col gap-1.5">
-                        {[...weeks.entries()].map(([wk, dates]) => (
-                          <div key={wk} className="flex items-center gap-2 text-sm bg-indigo-500/10 border border-indigo-500/20 rounded-lg px-3 py-2">
-                            <span className="text-indigo-600 font-semibold text-xs w-10">S{wk}</span>
-                            <span className="text-ink">{fmtDate(dates[0])} → {fmtDate(dates[dates.length - 1])}</span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                  {nuits.length > 0 && (
-                    <div>
-                      <div className="text-ink-muted text-xs mb-1.5">Nuits en 1er départ (mercredi)</div>
-                      <div className="flex flex-wrap gap-1.5">
-                        {nuits.map((d: any) => <span key={d.date} className="inline-flex items-center gap-1 text-xs px-2 py-1 rounded-full bg-indigo-500/10 text-indigo-700"><Moon size={11} /> {fmtDate(d.date)}</span>)}
-                      </div>
-                    </div>
-                  )}
+        {/* Mes prochaines gardes */}
+        {!loading && data?.linked && tab === 'gardes' && (() => {
+          const semaine = myGarde.filter((d: any) => d.mine_role === 'semaine')
+          const nuits = myGarde.filter((d: any) => d.mine_role === 'nuit1')
+          const wk0 = semaine.length ? semaine[0].week_no : null
+          const nextWeek = wk0 != null ? semaine.filter((d: any) => d.week_no === wk0) : []
+          const nextNuit = nuits[0] || null
+          return (
+            <div className="bg-surface border rounded-2xl p-5 mb-6">
+              <div className="flex items-center gap-2 mb-3"><ShieldCheck size={18} className="text-indigo-500" /><h2 className="font-semibold text-ink text-sm">Mes prochaines gardes</h2></div>
+              <div className="grid sm:grid-cols-2 gap-3">
+                <div className="rounded-xl border border-sky-500/20 bg-sky-500/10 p-3">
+                  <div className="text-[11px] text-sky-700/80 mb-1 flex items-center gap-1"><ShieldCheck size={12} /> Prochaine garde (semaine, 2e départ)</div>
+                  {nextWeek.length
+                    ? <div className="text-ink font-semibold text-sm">S{nextWeek[0].week_no} · {fmtDate(nextWeek[0].date)} → {fmtDate(nextWeek[nextWeek.length - 1].date)}</div>
+                    : <div className="text-ink-muted text-sm">Aucune prévue</div>}
                 </div>
-              )
-            })()}
-          </div>
-        )}
+                <div className="rounded-xl border border-indigo-500/20 bg-indigo-500/10 p-3">
+                  <div className="text-[11px] text-indigo-700/80 mb-1 flex items-center gap-1"><Moon size={12} /> Prochain 1er départ (nuit)</div>
+                  {nextNuit
+                    ? <div className="text-ink font-semibold text-sm">{fmtDate(nextNuit.date)}</div>
+                    : <div className="text-ink-muted text-sm">Aucun prévu</div>}
+                </div>
+              </div>
+            </div>
+          )
+        })()}
 
         {/* Self-service : mes informations personnelles */}
         {!loading && data?.linked && tab === 'infos' && (
