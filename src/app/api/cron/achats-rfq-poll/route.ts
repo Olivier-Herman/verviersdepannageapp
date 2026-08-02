@@ -9,12 +9,11 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase'
 import { getAppToken } from '@/lib/emails'
 import { parseQuoteDoc } from '@/lib/achats/parse-quote'
+import { getRfqMailbox } from '@/lib/achats/rfq'
 
 export const dynamic     = 'force-dynamic'
 export const fetchCache   = 'force-no-store'
 export const maxDuration  = 120
-
-const BOX = 'achats@verviersdepannage.com'
 
 export async function GET(req: NextRequest) {
   const auth = req.headers.get('authorization')
@@ -22,6 +21,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
   const sb = createAdminClient()
+  const BOX = await getRfqMailbox(sb)
   let token: string
   try { token = await getAppToken() } catch (e: any) { return NextResponse.json({ error: `Graph token: ${e.message}` }, { status: 500 }) }
   const g = (url: string, init?: any) => fetch(`https://graph.microsoft.com/v1.0${url}`, { ...init, headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', ...(init?.headers || {}) } })

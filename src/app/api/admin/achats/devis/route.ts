@@ -12,11 +12,10 @@ import { getServerSession }  from 'next-auth'
 import { authOptions }       from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase'
 import { parseQuoteDoc, compareQuotes } from '@/lib/achats/parse-quote'
-import { generateRfqEmail } from '@/lib/achats/rfq'
+import { generateRfqEmail, getRfqMailbox } from '@/lib/achats/rfq'
 import { sendEmail, emailLayout } from '@/lib/emails'
 
-const RFQ_FROM = 'achats@verviersdepannage.com'
-const APP_URL  = process.env.NEXT_PUBLIC_APP_URL || 'https://app.verviersdepannage.com'
+const APP_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://app.verviersdepannage.com'
 
 export const dynamic     = 'force-dynamic'
 export const fetchCache   = 'force-no-store'
@@ -117,6 +116,7 @@ export async function POST(req: Request) {
     const recipients: any[] = Array.isArray(body.recipients) ? body.recipients.filter((r: any) => r?.email) : []
     if (!requestId || !subject || !recipients.length) return NextResponse.json({ error: 'Paramètres manquants' }, { status: 400 })
 
+    const RFQ_FROM = await getRfqMailbox(sb)
     let sent = 0, failed = 0
     for (const rcp of recipients) {
       // Crée la ligne destinataire → récupère le token unique.

@@ -14,6 +14,21 @@ const getClient = () => (_client ??= new Anthropic({ apiKey: process.env.ANTHROP
 
 export interface RfqEmail { subject: string; paragraphs: string[] }
 
+// Boîte d'envoi/réception des appels d'offre — configurable en base (app_settings
+// clé 'achats_rfq_mailbox') pour flipper vers achats@ dès qu'elle est autorisée
+// dans l'ApplicationAccessPolicy, sans redéploiement. Défaut : administration@.
+export async function getRfqMailbox(sb: any): Promise<string> {
+  try {
+    const { data } = await sb.from('app_settings').select('value').eq('key', 'achats_rfq_mailbox').maybeSingle()
+    if (data?.value) {
+      const raw = typeof data.value === 'string' ? data.value : String(data.value)
+      const v = raw.trim().startsWith('"') ? JSON.parse(raw) : raw
+      if (typeof v === 'string' && v.includes('@')) return v.trim()
+    }
+  } catch { /* défaut ci-dessous */ }
+  return 'administration@verviersdepannage.com'
+}
+
 export async function generateRfqEmail(label: string, spec?: string): Promise<RfqEmail> {
   const prompt = `Rédige une DEMANDE DE DEVIS professionnelle et NATURELLE (français de Belgique), de la part de la société "Verviers Dépannage" (dépannage/remorquage automobile), adressée à un fournisseur.
 Besoin : « ${label} ».${spec ? `\nPrécisions : ${spec}` : ''}
