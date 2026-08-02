@@ -7,7 +7,7 @@
 import { useEffect, useState } from 'react'
 import AppShell from '@/components/layout/AppShell'
 import AnnouncementModal from './AnnouncementModal'
-import { FileText, Download, Wallet, Info, Eye, X, CalendarClock, Save, UserCog, Check, CalendarDays, Send, ChevronRight, ChevronLeft, Sparkles } from 'lucide-react'
+import { FileText, Download, Wallet, Info, Eye, X, CalendarClock, Save, UserCog, Check, CalendarDays, Send, ChevronRight, ChevronLeft, Sparkles, ShieldCheck, Moon } from 'lucide-react'
 import { normalizeEtatCivil } from '@/lib/paie/compare-infos'
 import { hoursForRange } from '@/lib/conges/apply'
 
@@ -47,13 +47,19 @@ export default function MaPaieClient({ userRole, userName, userEmail, userModule
   const [savedInfo, setSavedInfo] = useState(false)
   const [congeForm, setCongeForm] = useState<any>({ type: 'conge' })
   const [submittingConge, setSubmittingConge] = useState(false)
-  const [tab, setTab] = useState<'home' | 'fiches' | 'conges' | 'infos'>('home')
+  const [tab, setTab] = useState<'home' | 'fiches' | 'conges' | 'infos' | 'gardes'>('home')
+  const [myGarde, setMyGarde] = useState<any[]>([])
   const [fyear, setFyear] = useState<string>('')
 
   const loadMine = () => fetch('/api/paie/mine', { cache: 'no-store' }).then(r => r.json())
     .then(d => { setData(d); if (d?.me) { if (d.me.etat_civil) d.me.etat_civil = normalizeEtatCivil(d.me.etat_civil); setMeForm(d.me) } })
 
   useEffect(() => { loadMine().catch(() => setData({ payslips: [], linked: false })).finally(() => setLd(false)) }, [])
+  useEffect(() => {
+    const f = new Date(), t = new Date(); t.setDate(t.getDate() + 90)
+    const p = (d: Date) => d.toISOString().slice(0, 10)
+    fetch(`/api/garde/plan?events=1&from=${p(f)}&to=${p(t)}&mine=1`, { cache: 'no-store' }).then(r => r.json()).then(j => setMyGarde(j.days || [])).catch(() => {})
+  }, [])
 
   const submitConge = async (impose = false) => {
     if (!congeForm.start_date || !congeForm.end_date) { alert('Indique les dates de début et de fin.'); return }
@@ -145,11 +151,12 @@ export default function MaPaieClient({ userRole, userName, userEmail, userModule
 
         {/* Accueil : 3 grands boutons colorés */}
         {!loading && data?.linked && tab === 'home' && (
-          <div className="grid sm:grid-cols-3 gap-4">
+          <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
             {[
               { k: 'infos',  title: 'Mes infos',          desc: 'Coordonnées, IBAN, contact', Icon: UserCog,      from: 'from-sky-500/15',    to: 'to-sky-500/5',    ring: 'hover:border-sky-500/40',    ic: 'bg-sky-500/15 text-sky-500' },
               { k: 'fiches', title: 'Mes fiches de paie', desc: `${slips.length} fiche${slips.length > 1 ? 's' : ''} disponible${slips.length > 1 ? 's' : ''}`, Icon: FileText, from: 'from-brand/15', to: 'to-brand/5', ring: 'hover:border-brand/40', ic: 'bg-brand/15 text-brand' },
               { k: 'conges', title: 'Mes congés',         desc: congesPending ? `${congesPending} en cours` : 'Demander un congé', Icon: CalendarDays, from: 'from-amber-500/15', to: 'to-amber-500/5', ring: 'hover:border-amber-500/40', ic: 'bg-amber-500/15 text-amber-500' },
+              { k: 'gardes', title: 'Mes gardes',         desc: myGarde.length ? `${myGarde.length} jour(s) à venir` : 'Aucune garde prévue', Icon: ShieldCheck, from: 'from-indigo-500/15', to: 'to-indigo-500/5', ring: 'hover:border-indigo-500/40', ic: 'bg-indigo-500/15 text-indigo-500' },
             ].map(c => (
               <button key={c.k} onClick={() => setTab(c.k as any)}
                 className={`group relative flex flex-col gap-4 bg-gradient-to-br ${c.from} ${c.to} border rounded-2xl p-5 text-left transition-all hover:shadow-lg hover:-translate-y-1 ${c.ring}`}>
@@ -205,6 +212,45 @@ export default function MaPaieClient({ userRole, userName, userEmail, userModule
                 ))}
               </div>
             )}
+          </div>
+        )}
+
+        {/* Mes gardes */}
+        {!loading && data?.linked && tab === 'gardes' && (
+          <div className="bg-surface border rounded-2xl p-5 mb-6">
+            <div className="flex items-center gap-2 mb-3"><ShieldCheck size={18} className="text-indigo-500" /><h2 className="font-semibold text-ink text-sm">Mes gardes (3 prochains mois)</h2></div>
+            {!myGarde.length && <p className="text-ink-muted text-sm">Aucune garde prévue.</p>}
+            {(() => {
+              const semaine = myGarde.filter((d: any) => d.mine_role === 'semaine')
+              const nuits = myGarde.filter((d: any) => d.mine_role === 'nuit1')
+              const weeks = new Map<number, string[]>()
+              for (const d of semaine) { const w = weeks.get(d.week_no) || []; w.push(d.date); weeks.set(d.week_no, w) }
+              return (
+                <div className="flex flex-col gap-4">
+                  {weeks.size > 0 && (
+                    <div>
+                      <div className="text-ink-muted text-xs mb-1.5">Semaines de garde — jour + nuit (2e départ)</div>
+                      <div className="flex flex-col gap-1.5">
+                        {[...weeks.entries()].map(([wk, dates]) => (
+                          <div key={wk} className="flex items-center gap-2 text-sm bg-indigo-500/10 border border-indigo-500/20 rounded-lg px-3 py-2">
+                            <span className="text-indigo-600 font-semibold text-xs w-10">S{wk}</span>
+                            <span className="text-ink">{fmtDate(dates[0])} → {fmtDate(dates[dates.length - 1])}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  {nuits.length > 0 && (
+                    <div>
+                      <div className="text-ink-muted text-xs mb-1.5">Nuits en 1er départ (mercredi)</div>
+                      <div className="flex flex-wrap gap-1.5">
+                        {nuits.map((d: any) => <span key={d.date} className="inline-flex items-center gap-1 text-xs px-2 py-1 rounded-full bg-indigo-500/10 text-indigo-700"><Moon size={11} /> {fmtDate(d.date)}</span>)}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )
+            })()}
           </div>
         )}
 

@@ -4,7 +4,7 @@
 
 import { useEffect, useState } from 'react'
 import AppShell from '@/components/layout/AppShell'
-import { Users, Clock, TrendingUp, AlertTriangle, Send, ChevronRight, CalendarDays, Megaphone } from 'lucide-react'
+import { Users, Clock, TrendingUp, AlertTriangle, Send, ChevronRight, CalendarDays, Megaphone, ShieldCheck } from 'lucide-react'
 import PersonnelCalendar from '@/components/personnel/PersonnelCalendar'
 
 export default function PersonnelHub({ userRole, userName, userEmail, userModules }: {
@@ -39,6 +39,9 @@ export default function PersonnelHub({ userRole, userName, userEmail, userModule
     { href: '/personnel/rentabilite', icon: TrendingUp, tint: 'emerald',
       title: 'Rentabilité', desc: 'Marge de contribution par chauffeur (CA − coût salarial)',
       metric: 'Par chauffeur', badge: null },
+    { href: '/personnel/garde', icon: ShieldCheck, tint: 'sky',
+      title: 'Planning de garde', desc: 'Rotations jour/nuit à tour de rôle (semaine + mercredi)',
+      metric: 'Rotation', badge: null },
     ...(userRole === 'superadmin' ? [{
       href: '/personnel/annonces', icon: Megaphone, tint: 'sky',
       title: 'Annonces', desc: 'Pousser une nouveauté aux travailleurs et suivre qui l\'a lue',
