@@ -184,8 +184,11 @@ export default function AchatsClient({ userRole, userName, userEmail, userModule
               </button>
             ))}
           </div>
+          <a href="/achats/fournisseurs" className="px-3 py-1.5 rounded-lg border text-sm text-ink-secondary hover:text-brand inline-flex items-center gap-1.5">
+            <Users size={15} /> Répertoire
+          </a>
           <button onClick={() => { setManage(true); setQ(''); setMergeSrc(null) }} className="px-3 py-1.5 rounded-lg border text-sm text-ink-secondary hover:text-brand inline-flex items-center gap-1.5">
-            <Users size={15} /> Fournisseurs
+            <Link2 size={15} /> Fusions
           </button>
           <button onClick={() => load(months)} className="p-2 rounded-lg border text-ink-muted hover:text-brand" title="Rafraîchir">
             <RefreshCw size={16} className={loading ? 'animate-spin' : ''} />

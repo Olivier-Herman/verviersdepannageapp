@@ -11,7 +11,7 @@ import { authOptions }       from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase'
 import { analyzeAchats, type SupplierConfig } from '@/lib/achats/odoo-spend'
 import { normPlate } from '@/lib/achats/parse-invoice'
-import { getGroupPartnerIds } from '@/lib/achats/odoo-rpc'
+import { getGroupPartnerIds, achatsRpc } from '@/lib/achats/odoo-rpc'
 import { generateAchatRecommendations, buildAchatSummary, runAchatsChat } from '@/lib/achats/ai-recommendations'
 import { CATEGORIES } from '@/lib/achats/parse-invoice'
 
@@ -142,6 +142,32 @@ export async function GET(req: Request) {
       return NextResponse.json({ ok: true, light: true, ...(await aiCatsAndCoverage(config)), byVehicle: await costByVehicle(config) })
     }
 
+    // ── Répertoire fournisseurs enrichi (brique 2) ──────────────────────
+    if (sp.get('suppliers') === '1') {
+      const data = await analyzeAchats(months, config)
+      const active = data.allSuppliers.filter((s: any) => !s.excluded)
+      const canonId = (id: number) => config.merges[id] ?? id
+      const overrides = config.categoryOverrides || {}
+      const fx = await fetchAllFactures('partner_id, invoice_date, amount_htva, items, categorie, parsed_at')
+      const agg = new Map<number, { cats: Record<string, number>; last: string }>()
+      for (const r of fx) {
+        const cid = canonId(r.partner_id)
+        const g = agg.get(cid) || { cats: {}, last: '' }
+        if (r.invoice_date && r.invoice_date > g.last) g.last = r.invoice_date
+        if (r.parsed_at) { const ov = overrides[String(r.partner_id)]; for (const l of scaledLines(r)) { const c = ov || l.categorie; g.cats[c] = (g.cats[c] || 0) + l.montant } }
+        agg.set(cid, g)
+      }
+      const { data: metaRows } = await sb.from('achats_suppliers').select('*')
+      const metaById = new Map((metaRows || []).map((m: any) => [Number(m.partner_id), m]))
+      const grand = active.reduce((s: number, x: any) => s + x.htva, 0) || 1
+      const suppliers = active.map((s: any) => {
+        const g = agg.get(s.id) || { cats: {}, last: '' }
+        const dominant = Object.entries(g.cats).sort((a, b) => b[1] - a[1]).slice(0, 2).map(([c]) => c)
+        return { id: s.id, name: s.name, htva: s.htva, count: s.count, share: Math.round((s.htva / grand) * 1000) / 10, last_date: g.last || null, dominant, meta: metaById.get(s.id) || null }
+      })
+      return NextResponse.json({ ok: true, suppliers, allCategories: CATEGORIES })
+    }
+
     // Drill-down : lignes rattachées à une plaque (par facture).
     const vehicle = sp.get('vehicle')
     if (vehicle) {
@@ -269,6 +295,47 @@ export async function POST(req: Request) {
     }
     const { reply, acted } = await runAchatsChat(cache.summary, cache.recos || [], messages, execTool)
     return NextResponse.json({ ok: true, reply, acted })
+  }
+
+  // ── Répertoire fournisseurs enrichi : métadonnées + import contacts Odoo ──
+  if (action === 'supplier_save') {
+    const pid = Number(body.partner_id)
+    if (!pid) return NextResponse.json({ error: 'partner_id manquant' }, { status: 400 })
+    const m = body.meta || {}
+    const str = (x: any) => { const s = String(x ?? '').trim(); return s || null }
+    const row = {
+      partner_id:     pid,
+      contact_name:   str(m.contact_name),
+      email:          str(m.email),
+      phone:          str(m.phone),
+      categories:     Array.isArray(m.categories) ? m.categories.map((c: any) => String(c)).filter(Boolean) : [],
+      payment_terms:  str(m.payment_terms),
+      lead_time_days: m.lead_time_days !== '' && m.lead_time_days != null ? Math.max(0, Number(m.lead_time_days) || 0) : null,
+      rating:         m.rating !== '' && m.rating != null ? Math.min(5, Math.max(1, Number(m.rating) || 0)) : null,
+      notes:          str(m.notes),
+      updated_at:     new Date().toISOString(),
+    }
+    const { error } = await sb.from('achats_suppliers').upsert(row, { onConflict: 'partner_id' })
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+    return NextResponse.json({ ok: true })
+  }
+
+  if (action === 'supplier_import') {
+    const ids: number[] = (Array.isArray(body.ids) ? body.ids : []).map(Number).filter(Boolean).slice(0, 300)
+    if (!ids.length) return NextResponse.json({ error: 'ids manquants' }, { status: 400 })
+    const partners = await achatsRpc<any[]>('res.partner', 'read', [ids, ['email', 'phone']])
+    const { data: existing } = await sb.from('achats_suppliers').select('partner_id, email, phone').in('partner_id', ids)
+    const exById = new Map((existing || []).map((e: any) => [Number(e.partner_id), e]))
+    let filled = 0
+    const rows = (partners || []).map((p: any) => {
+      const ex = exById.get(p.id)
+      const email = ex?.email || (p.email || null)
+      const phone = ex?.phone || (p.phone || null)
+      if ((!ex?.email && p.email) || (!ex?.phone && p.phone)) filled++
+      return { partner_id: p.id, email, phone, updated_at: new Date().toISOString() }
+    }).filter((r: any) => r.email || r.phone)
+    if (rows.length) await sb.from('achats_suppliers').upsert(rows, { onConflict: 'partner_id' })
+    return NextResponse.json({ ok: true, filled })
   }
 
   if (action === 'merge') {
