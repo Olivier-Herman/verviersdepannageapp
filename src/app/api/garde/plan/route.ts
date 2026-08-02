@@ -62,10 +62,14 @@ export async function POST(req: NextRequest) {
   const sb = createAdminClient()
   const b = await req.json().catch(() => ({}))
   const clean = (a: any) => Array.isArray(a) ? a.filter((x: any) => typeof x === 'string' && x) : []
+  const exceptions = Array.isArray(b.exceptions) ? b.exceptions
+    .filter((e: any) => e && (e.scope === 'week' || e.scope === 'night') && /^\d{4}-\d{2}-\d{2}$/.test(e.date) && e.user_id)
+    .map((e: any) => ({ scope: e.scope, date: e.date, user_id: String(e.user_id), note: String(e.note || '').slice(0, 120) || undefined }))
+    .slice(0, 500) : []
   const cfg: GardeConfig = {
     anchor_monday: isoD(mondayOf(new Date(String(b.anchor_monday || isoD(mondayOf(new Date()))) + 'T00:00:00'))),
     weekly: clean(b.weekly), wednesday: clean(b.wednesday),
-    night_fixed: b.night_fixed || null,
+    night_fixed: b.night_fixed || null, exceptions,
     day_start: String(b.day_start || GARDE_HOURS_DEFAULT.day_start), day_end: String(b.day_end || GARDE_HOURS_DEFAULT.day_end),
     night_start: String(b.night_start || GARDE_HOURS_DEFAULT.night_start), night_end: String(b.night_end || GARDE_HOURS_DEFAULT.night_end),
   }
