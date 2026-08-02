@@ -151,6 +151,22 @@ export const NOTIFICATION_TYPES: readonly NotificationType[] = [
     defaultEnabled:  true,
   },
   {
+    key:             'garde_swap_requested',
+    label:           'Demande de remplacement de garde',
+    description:     'Un collègue te demande de le remplacer sur un jour de garde.',
+    category:        'driver',
+    applicableRoles: ['driver', 'dispatcher', 'admin', 'superadmin'],
+    defaultEnabled:  true,
+  },
+  {
+    key:             'garde_swap_decided',
+    label:           'Réponse à ta demande de remplacement',
+    description:     'Le collègue a accepté ou refusé de te remplacer.',
+    category:        'driver',
+    applicableRoles: ['driver', 'dispatcher', 'admin', 'superadmin'],
+    defaultEnabled:  true,
+  },
+  {
     key:             'feature_announcement',
     label:           'Nouveautés de l\'app',
     description:     'Annonce d\'une nouvelle fonctionnalité.',

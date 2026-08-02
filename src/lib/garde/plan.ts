@@ -13,7 +13,9 @@
 // Exception ponctuelle : remplace le garde d'une SEMAINE (scope 'week', date =
 // n'importe quel jour de la semaine visée) ou le 1er départ d'une NUIT précise
 // (scope 'night', date = ce jour). Une inversion = deux exceptions 'week'.
-export interface GardeException { scope: 'week' | 'night'; date: string; user_id: string; note?: string }
+// 'week' = garde d'une semaine entière ; 'day' = garde (jour+nuit, 2e départ) d'un
+// SEUL jour (remplacement journalier) ; 'night' = 1er départ d'une nuit précise.
+export interface GardeException { scope: 'week' | 'day' | 'night'; date: string; user_id: string; note?: string }
 
 export interface GardeConfig {
   anchor_monday: string        // un LUNDI de référence (semaine index 0)
@@ -61,11 +63,13 @@ export function isoWeek(date: Date): number {
 export function computeGardePlan(cfg: GardeConfig, from: Date, to: Date): GardeDay[] {
   const anchor = mondayOf(new Date(cfg.anchor_monday + 'T00:00:00'))
   // Exceptions indexées : par lundi de semaine (scope week) et par date (scope night).
-  const weekEx = new Map<string, string>()   // mondayISO -> user_id
-  const nightEx = new Map<string, string>()  // dateISO   -> user_id
+  const weekEx = new Map<string, string>()   // mondayISO -> user_id (semaine entière)
+  const dayEx = new Map<string, string>()    // dateISO   -> user_id (garde d'un jour)
+  const nightEx = new Map<string, string>()  // dateISO   -> user_id (1er départ nuit)
   for (const e of (cfg.exceptions || [])) {
     if (!e?.date || !e.user_id) continue
     if (e.scope === 'week') weekEx.set(iso(mondayOf(new Date(e.date + 'T00:00:00'))), e.user_id)
+    else if (e.scope === 'day') dayEx.set(e.date, e.user_id)
     else if (e.scope === 'night') nightEx.set(e.date, e.user_id)
   }
   const out: GardeDay[] = []
@@ -76,8 +80,10 @@ export function computeGardePlan(cfg: GardeConfig, from: Date, to: Date): GardeD
     const monIso = iso(mon)
     const weekIndex = Math.round((mon.getTime() - anchor.getTime()) / (7 * DAY))
     const dateIso = iso(cur)
-    // Garde de la semaine : exception 'week' prioritaire, sinon rotation.
-    let weekly = weekEx.has(monIso) ? weekEx.get(monIso)! : (cfg.weekly?.length ? cfg.weekly[mod(weekIndex, cfg.weekly.length)] : null)
+    // Garde : exception 'day' (un jour) > 'week' (semaine) > rotation.
+    let weekly = dayEx.has(dateIso) ? dayEx.get(dateIso)!
+      : weekEx.has(monIso) ? weekEx.get(monIso)!
+      : (cfg.weekly?.length ? cfg.weekly[mod(weekIndex, cfg.weekly.length)] : null)
     // 1er départ nuit : exception 'night' du jour prioritaire, sinon mercredi/fixe.
     const isWed = cur.getDay() === 3
     let nightFirst = nightEx.has(dateIso) ? nightEx.get(dateIso)!

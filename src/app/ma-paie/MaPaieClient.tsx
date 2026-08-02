@@ -50,17 +50,38 @@ export default function MaPaieClient({ userRole, userName, userEmail, userModule
   const [submittingConge, setSubmittingConge] = useState(false)
   const [tab, setTab] = useState<'home' | 'fiches' | 'conges' | 'infos' | 'gardes'>('home')
   const [myGarde, setMyGarde] = useState<any[]>([])
+  const [swap, setSwap] = useState<any>({ incoming: [], outgoing: [], colleagues: [] })
+  const [swapForm, setSwapForm] = useState<any>({ date: '', target_id: '', note: '' })
+  const [acceptPin, setAcceptPin] = useState<any>(null)
+  const [pinVal, setPinVal] = useState('')
   const [fyear, setFyear] = useState<string>('')
 
   const loadMine = () => fetch('/api/paie/mine', { cache: 'no-store' }).then(r => r.json())
     .then(d => { setData(d); if (d?.me) { if (d.me.etat_civil) d.me.etat_civil = normalizeEtatCivil(d.me.etat_civil); setMeForm(d.me) } })
 
   useEffect(() => { loadMine().catch(() => setData({ payslips: [], linked: false })).finally(() => setLd(false)) }, [])
-  useEffect(() => {
+  const loadMyGarde = () => {
     const f = new Date(), t = new Date(); t.setDate(t.getDate() + 90)
     const p = (d: Date) => d.toISOString().slice(0, 10)
-    fetch(`/api/garde/plan?events=1&from=${p(f)}&to=${p(t)}&mine=1`, { cache: 'no-store' }).then(r => r.json()).then(j => setMyGarde(j.days || [])).catch(() => {})
-  }, [])
+    return fetch(`/api/garde/plan?events=1&from=${p(f)}&to=${p(t)}&mine=1`, { cache: 'no-store' }).then(r => r.json()).then(j => setMyGarde(j.days || [])).catch(() => {})
+  }
+  const loadSwap = () => fetch('/api/garde/swap', { cache: 'no-store' }).then(r => r.json()).then(setSwap).catch(() => {})
+  useEffect(() => { loadMyGarde(); loadSwap() }, [])
+
+  const sendSwap = async () => {
+    if (!swapForm.date || !swapForm.target_id) { alert('Choisis un jour de garde et un collègue.'); return }
+    const g = myGarde.find((x: any) => x.date === swapForm.date)
+    const scope = g?.mine_role === 'nuit1' ? 'night' : 'day'
+    const r = await fetch('/api/garde/swap', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'request', date: swapForm.date, scope, target_id: swapForm.target_id, note: swapForm.note }) })
+    const j = await r.json(); if (j.error) { alert(j.error); return }
+    alert('Demande envoyée à ton collègue.'); setSwapForm({ date: '', target_id: '', note: '' }); loadSwap()
+  }
+  const decideSwap = async (id: string, decision: 'approve' | 'refuse', pin = '') => {
+    const r = await fetch('/api/garde/swap', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'decide', id, decision, pin }) })
+    const j = await r.json(); if (j.error) { alert(j.error); return }
+    setAcceptPin(null); setPinVal(''); await Promise.all([loadSwap(), loadMyGarde()])
+  }
+  const cancelSwap = async (id: string) => { await fetch('/api/garde/swap', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'cancel', id }) }); loadSwap() }
 
   const submitConge = async (impose = false) => {
     if (!congeForm.start_date || !congeForm.end_date) { alert('Indique les dates de début et de fin.'); return }
@@ -252,6 +273,70 @@ export default function MaPaieClient({ userRole, userName, userEmail, userModule
           )
         })()}
 
+        {/* Remplacements de garde */}
+        {!loading && data?.linked && tab === 'gardes' && (
+          <div className="bg-surface border rounded-2xl p-5 mb-6 space-y-5">
+            <div className="flex items-center gap-2"><Send size={18} className="text-brand" /><h2 className="font-semibold text-ink text-sm">Remplacements de garde</h2></div>
+
+            {/* Demandes reçues */}
+            {swap.incoming.length > 0 && (
+              <div>
+                <div className="text-ink-muted text-xs mb-1.5">On te demande de remplacer</div>
+                <div className="flex flex-col gap-1.5">
+                  {swap.incoming.map((s: any) => (
+                    <div key={s.id} className="flex flex-wrap items-center gap-2 bg-amber-50 dark:bg-amber-500/10 border border-amber-400/40 rounded-lg px-3 py-2 text-sm">
+                      <span className="text-ink"><b>{s.requester_name}</b> — {fmtDate(s.date)} ({s.scope === 'night' ? '1er départ nuit' : 'garde du jour'})</span>
+                      {s.note && <span className="text-ink-muted text-xs italic">« {s.note} »</span>}
+                      <div className="ml-auto flex gap-2">
+                        <button onClick={() => setAcceptPin({ id: s.id })} className="text-xs px-2.5 py-1.5 rounded-lg bg-brand text-white">Accepter (PIN)</button>
+                        <button onClick={() => decideSwap(s.id, 'refuse')} className="text-xs px-2.5 py-1.5 rounded-lg border text-ink-muted hover:text-red-500">Refuser</button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Demander un remplacement */}
+            <div>
+              <div className="text-ink-muted text-xs mb-1.5">Me faire remplacer sur un jour de garde</div>
+              <div className="grid sm:grid-cols-2 gap-2">
+                <select value={swapForm.date} onChange={e => setSwapForm({ ...swapForm, date: e.target.value })} className="bg-surface-2 border rounded-lg px-3 py-2 text-sm text-ink">
+                  <option value="">Jour de garde…</option>
+                  {myGarde.map((g: any) => <option key={g.date} value={g.date}>{fmtDate(g.date)} — {g.mine_role === 'nuit1' ? '1er départ nuit' : 'garde jour'}</option>)}
+                </select>
+                <select value={swapForm.target_id} onChange={e => setSwapForm({ ...swapForm, target_id: e.target.value })} className="bg-surface-2 border rounded-lg px-3 py-2 text-sm text-ink">
+                  <option value="">Collègue…</option>
+                  {swap.colleagues.map((c: any) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                </select>
+                <input value={swapForm.note} onChange={e => setSwapForm({ ...swapForm, note: e.target.value })} placeholder="Mot (optionnel)" className="sm:col-span-2 bg-surface-2 border rounded-lg px-3 py-2 text-sm text-ink" />
+                <button onClick={sendSwap} disabled={!swapForm.date || !swapForm.target_id} className="sm:col-span-2 inline-flex items-center justify-center gap-1.5 bg-brand text-white text-sm font-medium px-4 py-2 rounded-lg disabled:opacity-50"><Send size={15} /> Envoyer la demande</button>
+              </div>
+              {!myGarde.length && <p className="text-[11px] text-ink-muted mt-1">Tu n'as pas de garde à venir à faire remplacer.</p>}
+            </div>
+
+            {/* Mes demandes envoyées */}
+            {swap.outgoing.length > 0 && (
+              <div>
+                <div className="text-ink-muted text-xs mb-1.5">Mes demandes</div>
+                <div className="flex flex-col gap-1.5">
+                  {swap.outgoing.map((s: any) => {
+                    const st: any = { pending: ['bg-amber-500/10 text-amber-700', 'En attente'], approved: ['bg-emerald-500/10 text-emerald-700', 'Accepté'], refused: ['bg-red-500/10 text-red-600', 'Refusé'], cancelled: ['bg-ink-muted/10 text-ink-muted', 'Annulé'] }
+                    const [cls, lbl] = st[s.status] || st.pending
+                    return (
+                      <div key={s.id} className="flex items-center gap-2 bg-surface-2 rounded-lg px-3 py-2 text-sm">
+                        <span className="text-ink">{fmtDate(s.date)} → <b>{s.target_name}</b></span>
+                        <span className={`text-[11px] px-2 py-0.5 rounded-full ${cls}`}>{lbl}</span>
+                        {s.status === 'pending' && <button onClick={() => cancelSwap(s.id)} className="ml-auto text-[11px] text-ink-muted hover:text-red-400 underline">annuler</button>}
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
         {/* Self-service : mes informations personnelles */}
         {!loading && data?.linked && tab === 'infos' && (
           <div className="bg-surface border rounded-2xl p-5 mb-6">
@@ -344,6 +429,20 @@ export default function MaPaieClient({ userRole, userName, userEmail, userModule
             <button onClick={() => setPreview(null)} className="p-1.5 text-ink-muted hover:text-ink"><X size={20} /></button>
           </div>
           <iframe src={`/api/paie/pdf?id=${preview.id}`} className="flex-1 w-full bg-white" title="Fiche de paie" />
+        </div>
+      )}
+
+      {acceptPin && (
+        <div className="fixed inset-0 z-[200] bg-black/50 flex items-center justify-center p-4">
+          <div className="bg-surface border rounded-2xl p-5 w-full max-w-xs" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="font-semibold text-ink text-sm">Confirme avec ton PIN</h3>
+              <button onClick={() => { setAcceptPin(null); setPinVal('') }} className="text-ink-muted hover:text-ink"><X size={18} /></button>
+            </div>
+            <p className="text-ink-muted text-xs mb-3">Tu acceptes de remplacer ton collègue. Le changement sera appliqué au planning.</p>
+            <input type="password" inputMode="numeric" value={pinVal} onChange={e => setPinVal(e.target.value)} placeholder="••••" className="w-full bg-bg border rounded-lg px-3 py-2 text-sm text-ink tracking-widest text-center" />
+            <button onClick={() => decideSwap(acceptPin.id, 'approve', pinVal)} disabled={!pinVal} className="w-full mt-3 inline-flex items-center justify-center gap-1.5 bg-brand text-white text-sm font-medium px-4 py-2.5 rounded-lg disabled:opacity-50"><Check size={15} /> Accepter le remplacement</button>
+          </div>
         </div>
       )}
     </AppShell>
