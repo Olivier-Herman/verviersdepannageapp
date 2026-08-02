@@ -25,9 +25,11 @@ export default function MyCalendar({ conges }: { conges: any[] }) {
     const from = `${cur.y}-${pad2(cur.m + 1)}-01`
     const last = new Date(cur.y, cur.m + 1, 0)
     const to = `${cur.y}-${pad2(cur.m + 1)}-${pad2(last.getDate())}`
-    fetch(`/api/garde/plan?events=1&from=${from}&to=${to}&mine=1`, { cache: 'no-store' }).then(r => r.json())
+    // Tout le monde voit les gardes de tout le monde (pas de filtre user).
+    fetch(`/api/garde/plan?events=1&from=${from}&to=${to}`, { cache: 'no-store' }).then(r => r.json())
       .then(j => { const map: Record<string, any> = {}; for (const d of (j.days || [])) map[d.date] = d; setGarde(map) }).catch(() => {})
   }, [cur])
+  const prenom = (name: string) => { const p = (name || '').trim().split(/\s+/); return p[p.length - 1] || name }
 
   const cg = (conges || []).filter(c => ['approved', 'pending', 'cancel_requested'].includes(c.status))
   const congeAt = (ds: string) => cg.filter(c => c.start_date <= ds && ds <= c.end_date)
@@ -67,8 +69,8 @@ export default function MyCalendar({ conges }: { conges: any[] }) {
                   <div key={di} className={`min-h-[58px] rounded-lg border p-1 ${weekend ? 'bg-surface-2/50' : 'bg-surface'} ${ds === todayStr ? 'ring-1 ring-brand' : ''}`}>
                     <div className={`text-[11px] mb-0.5 ${ds === todayStr ? 'text-brand font-bold' : 'text-ink-muted'}`}>{d}</div>
                     <div className="flex flex-col gap-0.5">
-                      {g?.mine_role === 'semaine' && <span className="text-[9px] leading-tight px-1 py-0.5 rounded bg-sky-500/15 text-sky-700 border border-sky-500/30 truncate" title="Garde (jour + nuit, 2e départ)">🛡 Garde</span>}
-                      {g?.mine_role === 'nuit1' && <span className="text-[9px] leading-tight px-1 py-0.5 rounded bg-indigo-500/15 text-indigo-700 border border-indigo-500/30 truncate" title="1er départ nuit">🌙 Nuit 1er</span>}
+                      {g?.weekly_garde_name && <span className="text-[9px] leading-tight px-1 py-0.5 rounded bg-sky-500/15 text-sky-700 border border-sky-500/30 truncate" title={`Garde (jour + nuit, 2e départ) : ${g.weekly_garde_name}`}>🛡 {prenom(g.weekly_garde_name)}</span>}
+                      {g?.night_first_name && <span className="text-[9px] leading-tight px-1 py-0.5 rounded bg-indigo-500/15 text-indigo-700 border border-indigo-500/30 truncate" title={`1er départ nuit : ${g.night_first_name}`}>🌙 {prenom(g.night_first_name)}</span>}
                       {cs.map((c, j) => (
                         <span key={j} className={`text-[9px] leading-tight px-1 py-0.5 rounded truncate border ${c.status === 'approved' ? 'bg-emerald-500/15 text-emerald-700 border-emerald-500/30' : 'bg-amber-500/15 text-amber-700 border-amber-500/30'}`} title={`${TYPE_LABEL[c.type] || c.type} (${c.status})`}>{TYPE_LABEL[c.type] || 'Congé'}</span>
                       ))}
