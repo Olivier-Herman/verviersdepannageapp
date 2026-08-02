@@ -4,10 +4,13 @@
 import { useEffect, useState, useCallback } from 'react'
 import AppShell from '@/components/layout/AppShell'
 import PersonnelTabs from '@/components/layout/PersonnelTabs'
-import { CalendarDays, Check, X, ShieldCheck, RefreshCw, Clock } from 'lucide-react'
+import { CalendarDays, Check, X, ShieldCheck, RefreshCw, Clock, ChevronLeft, ChevronRight, List, LayoutGrid } from 'lucide-react'
 
 const TYPE_LABEL: Record<string, string> = { conge: 'Congé légal', recup: 'Récupération', sans_solde: 'Congé sans solde' }
 const fmtD = (d: string) => { const [y, m, j] = (d || '').split('-'); return j ? `${j}/${m}/${y}` : d }
+const MONTHS_FR = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre']
+const pad2 = (n: number) => String(n).padStart(2, '0')
+const prenom = (name: string) => { const p = (name || '').trim().split(/\s+/); return p[p.length - 1] || name }
 
 export default function CongesManagerClient({ userRole, userName, userEmail, userModules }: {
   userRole: string; userName: string; userEmail: string; userModules: string[]
@@ -18,6 +21,8 @@ export default function CongesManagerClient({ userRole, userName, userEmail, use
   const [pin, setPin] = useState('')
   const [note, setNote] = useState('')
   const [busy, setBusy] = useState(false)
+  const [view, setView] = useState<'list' | 'calendar'>('list')
+  const [cur, setCur] = useState(() => { const d = new Date(); return { y: d.getFullYear(), m: d.getMonth() } })
 
   const load = useCallback(async () => {
     setLd(true)
@@ -65,8 +70,66 @@ export default function CongesManagerClient({ userRole, userName, userEmail, use
           <div className="w-10 h-10 rounded-xl bg-brand/10 text-brand flex items-center justify-center"><CalendarDays size={22} /></div>
           <div><h1 className="text-xl font-bold text-ink leading-tight">Congés</h1>
             <p className="text-ink-muted text-sm">Demandes des travailleurs — à valider</p></div>
-          <button onClick={load} className="ml-auto p-2 text-ink-muted hover:text-brand"><RefreshCw size={16} className={loading ? 'animate-spin' : ''} /></button>
+          <div className="ml-auto flex items-center gap-1">
+            <div className="flex rounded-lg border overflow-hidden">
+              <button onClick={() => setView('list')} className={`px-2.5 py-1.5 text-sm inline-flex items-center gap-1 ${view === 'list' ? 'bg-brand text-white' : 'text-ink-secondary hover:bg-white/5'}`}><List size={15} /> Liste</button>
+              <button onClick={() => setView('calendar')} className={`px-2.5 py-1.5 text-sm inline-flex items-center gap-1 ${view === 'calendar' ? 'bg-brand text-white' : 'text-ink-secondary hover:bg-white/5'}`}><LayoutGrid size={15} /> Calendrier</button>
+            </div>
+            <button onClick={load} className="p-2 text-ink-muted hover:text-brand"><RefreshCw size={16} className={loading ? 'animate-spin' : ''} /></button>
+          </div>
         </div>
+
+        {view === 'calendar' && (() => {
+          const first = new Date(cur.y, cur.m, 1)
+          const startW = (first.getDay() + 6) % 7
+          const nDays = new Date(cur.y, cur.m + 1, 0).getDate()
+          const cells: (number | null)[] = [...Array(startW).fill(null), ...Array.from({ length: nDays }, (_, i) => i + 1)]
+          const events = reqs.filter(r => ['approved', 'pending', 'cancel_requested'].includes(r.status))
+          const evAt = (d: number) => { const ds = `${cur.y}-${pad2(cur.m + 1)}-${pad2(d)}`; return events.filter(e => e.start_date <= ds && ds <= e.end_date) }
+          const evCls = (s: string) => s === 'approved' ? 'bg-emerald-500/15 text-emerald-700 border border-emerald-500/30'
+            : s === 'cancel_requested' ? 'bg-orange-500/15 text-orange-700 border border-orange-500/30'
+            : 'bg-amber-500/15 text-amber-700 border border-amber-500/30'
+          const today = new Date(); const todayStr = `${today.getFullYear()}-${pad2(today.getMonth() + 1)}-${pad2(today.getDate())}`
+          return (
+            <div className="mb-8">
+              <div className="flex items-center justify-between mb-3">
+                <button onClick={() => setCur(c => c.m === 0 ? { y: c.y - 1, m: 11 } : { y: c.y, m: c.m - 1 })} className="p-1.5 rounded-lg border text-ink-muted hover:text-brand"><ChevronLeft size={16} /></button>
+                <span className="font-semibold text-ink capitalize">{MONTHS_FR[cur.m]} {cur.y}</span>
+                <button onClick={() => setCur(c => c.m === 11 ? { y: c.y + 1, m: 0 } : { y: c.y, m: c.m + 1 })} className="p-1.5 rounded-lg border text-ink-muted hover:text-brand"><ChevronRight size={16} /></button>
+              </div>
+              <div className="grid grid-cols-7 gap-1 text-center text-[11px] text-ink-muted mb-1">
+                {['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim'].map(d => <div key={d}>{d}</div>)}
+              </div>
+              <div className="grid grid-cols-7 gap-1">
+                {cells.map((d, i) => {
+                  if (d === null) return <div key={i} />
+                  const ds = `${cur.y}-${pad2(cur.m + 1)}-${pad2(d)}`
+                  const weekend = ((startW + d - 1) % 7) >= 5
+                  const evs = evAt(d)
+                  return (
+                    <div key={i} className={`min-h-[64px] rounded-lg border p-1 ${weekend ? 'bg-surface-2/50' : 'bg-surface'} ${ds === todayStr ? 'ring-1 ring-brand' : ''}`}>
+                      <div className={`text-[11px] mb-0.5 ${ds === todayStr ? 'text-brand font-bold' : 'text-ink-muted'}`}>{d}</div>
+                      <div className="flex flex-col gap-0.5">
+                        {evs.slice(0, 4).map((e, j) => (
+                          <span key={j} className={`text-[9px] leading-tight px-1 py-0.5 rounded truncate ${evCls(e.status)}`} title={`${e.worker} — ${TYPE_LABEL[e.type] || e.type} (${e.status})`}>{prenom(e.worker)}</span>
+                        ))}
+                        {evs.length > 4 && <span className="text-[9px] text-ink-muted">+{evs.length - 4}</span>}
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+              <div className="flex flex-wrap gap-3 mt-3 text-[11px] text-ink-muted">
+                <span className="inline-flex items-center gap-1"><span className="w-3 h-3 rounded bg-emerald-500/30 border border-emerald-500/40" /> Approuvé</span>
+                <span className="inline-flex items-center gap-1"><span className="w-3 h-3 rounded bg-amber-500/30 border border-amber-500/40" /> En attente</span>
+                <span className="inline-flex items-center gap-1"><span className="w-3 h-3 rounded bg-orange-500/30 border border-orange-500/40" /> Annulation demandée</span>
+                <span className="text-ink-muted/60">· Les gardes s'ajouteront ici prochainement.</span>
+              </div>
+            </div>
+          )
+        })()}
+
+        {view === 'list' && (<>
 
         {/* En attente */}
         <h2 className="text-xs font-semibold uppercase tracking-wide text-ink-muted mb-2 flex items-center gap-1.5"><Clock size={13} /> À valider ({pending.length})</h2>
@@ -126,6 +189,7 @@ export default function CongesManagerClient({ userRole, userName, userEmail, use
             </div>
           </>
         )}
+        </>)}
       </div>
 
       {modal && (
