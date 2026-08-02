@@ -58,6 +58,10 @@ export default function RentabiliteClient({ userRole, userName, userEmail, userM
     <AppShell title="Rentabilité chauffeur" userRole={userRole} userName={userName} userEmail={userEmail} userModules={userModules}>
       <div className="max-w-4xl mx-auto px-4 py-6">
         <PersonnelTabs />
+        <div className="flex items-start gap-2 bg-amber-50 dark:bg-amber-500/10 border border-amber-400/40 rounded-xl px-4 py-3 mb-5 text-amber-800 dark:text-amber-300">
+          <Info size={16} className="flex-shrink-0 mt-0.5" />
+          <p className="text-xs leading-relaxed">Chiffres <b>provisoires / indicatifs</b> : le CA hors Odoo repose sur des tarifs calculés (fiches) et le coût salarial sur les dernières fiches de paie disponibles. À affiner à froid — à ne pas utiliser tel quel comme résultat comptable.</p>
+        </div>
         <div className="flex items-center justify-between flex-wrap gap-3 mb-5">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-xl bg-brand/10 text-brand flex items-center justify-center"><TrendingUp size={22} /></div>
