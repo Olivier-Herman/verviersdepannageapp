@@ -12,12 +12,18 @@ import { getServerSession }  from 'next-auth'
 import { authOptions }       from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase'
 import { parseQuoteDoc, compareQuotes } from '@/lib/achats/parse-quote'
+import { generateRfqEmail } from '@/lib/achats/rfq'
+import { sendEmail, emailLayout } from '@/lib/emails'
+
+const RFQ_FROM = 'achats@verviersdepannage.com'
+const APP_URL  = process.env.NEXT_PUBLIC_APP_URL || 'https://app.verviersdepannage.com'
 
 export const dynamic     = 'force-dynamic'
 export const fetchCache   = 'force-no-store'
 export const maxDuration  = 60
 
 function isSuper(u: any) { return u?.role === 'superadmin' || (u?.roles || []).includes('superadmin') }
+const escapeHtml = (s: string) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
 
 export async function GET() {
   const session = await getServerSession(authOptions)
@@ -76,6 +82,65 @@ export async function POST(req: Request) {
   if (action === 'delete_request') {
     await sb.from('achats_quote_requests').delete().eq('id', String(body.id || ''))
     return NextResponse.json({ ok: true })
+  }
+
+  // ── Appel d'offre (RFQ) ────────────────────────────────────────────────
+  if (action === 'rfq_candidates') {
+    // Destinataires possibles : marché validé (avec email) + nos fournisseurs (avec email).
+    const { data: market } = await sb.from('achats_market').select('id, name, email, category').eq('status', 'valide').not('email', 'is', null)
+    const { data: sup } = await sb.from('achats_suppliers').select('partner_id, email, contact_name').not('email', 'is', null)
+    let ours: any[] = []
+    if (sup && sup.length) {
+      const { data: fx } = await sb.from('achats_factures').select('partner_id, supplier_name').in('partner_id', sup.map((s: any) => s.partner_id))
+      const nameById = new Map((fx || []).map((r: any) => [r.partner_id, r.supplier_name]))
+      ours = sup.map((s: any) => ({ partner_id: s.partner_id, name: nameById.get(s.partner_id) || `#${s.partner_id}`, email: s.email }))
+    }
+    return NextResponse.json({ market: market || [], ours })
+  }
+
+  if (action === 'rfq_draft') {
+    const requestId = String(body.request_id || '')
+    const spec = String(body.spec || '').trim() || null
+    const { data: reqRow } = await sb.from('achats_quote_requests').select('label').eq('id', requestId).maybeSingle()
+    if (!reqRow) return NextResponse.json({ error: 'Besoin introuvable' }, { status: 404 })
+    if (spec !== undefined) await sb.from('achats_quote_requests').update({ spec }).eq('id', requestId)
+    try {
+      const email = await generateRfqEmail(reqRow.label, spec || undefined)
+      return NextResponse.json({ ok: true, ...email })
+    } catch (e: any) { return NextResponse.json({ error: `Rédaction impossible : ${e.message}` }, { status: 500 }) }
+  }
+
+  if (action === 'rfq_send') {
+    const requestId = String(body.request_id || '')
+    const subject = String(body.subject || '').trim()
+    const paragraphs: string[] = Array.isArray(body.paragraphs) ? body.paragraphs.map((p: any) => String(p)) : []
+    const recipients: any[] = Array.isArray(body.recipients) ? body.recipients.filter((r: any) => r?.email) : []
+    if (!requestId || !subject || !recipients.length) return NextResponse.json({ error: 'Paramètres manquants' }, { status: 400 })
+
+    let sent = 0, failed = 0
+    for (const rcp of recipients) {
+      // Crée la ligne destinataire → récupère le token unique.
+      const { data: row, error } = await sb.from('achats_rfq_recipients').insert({
+        request_id: requestId, name: rcp.name || null, email: rcp.email,
+        market_id: rcp.market_id || null, partner_id: rcp.partner_id || null,
+      }).select('id, token').single()
+      if (error || !row) { failed++; continue }
+      const link = `${APP_URL}/devis/${row.token}`
+      const body_html = emailLayout(
+        `<p>Bonjour${rcp.name ? ' ' + escapeHtml(rcp.name) : ''},</p>
+         ${paragraphs.map(p => `<p>${escapeHtml(p)}</p>`).join('')}
+         <p style="margin:22px 0"><a href="${link}" style="background:#CC2222;color:#fff;text-decoration:none;font-weight:600;padding:12px 22px;border-radius:10px;display:inline-block">Remettre votre offre en ligne</a></p>
+         <p style="color:#666;font-size:13px">Vous pouvez aussi simplement répondre à cet e-mail avec votre devis en pièce jointe.</p>
+         <p>Bien à vous,<br>Le service achats — Verviers Dépannage</p>
+         <img src="${APP_URL}/api/devis/${row.token}/pixel" width="1" height="1" style="display:none" alt="">`,
+        subject)
+      try {
+        await sendEmail(rcp.email, subject, body_html, rcp.name || rcp.email, undefined, undefined, RFQ_FROM)
+        await sb.from('achats_rfq_recipients').update({ status: 'sent', sent_at: new Date().toISOString() }).eq('id', row.id)
+        sent++
+      } catch { await sb.from('achats_rfq_recipients').update({ status: 'failed' }).eq('id', row.id); failed++ }
+    }
+    return NextResponse.json({ ok: true, sent, failed })
   }
 
   if (action === 'compare') {

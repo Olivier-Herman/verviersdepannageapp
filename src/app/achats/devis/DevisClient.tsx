@@ -6,7 +6,7 @@
 
 import { useEffect, useRef, useState } from 'react'
 import AppShell from '@/components/layout/AppShell'
-import { ShoppingCart, ArrowLeft, Plus, Upload, Loader2, Trash2, Sparkles, FileText, Trophy, X } from 'lucide-react'
+import { ShoppingCart, ArrowLeft, Plus, Upload, Loader2, Trash2, Sparkles, FileText, Trophy, X, Mail, Send } from 'lucide-react'
 
 const eur = (n: number | null) => n == null ? '—' : n.toLocaleString('fr-BE', { maximumFractionDigits: 0 }) + ' €'
 
@@ -21,6 +21,13 @@ export default function DevisClient({ userRole, userName, userEmail, userModules
   const [comparing, setComparing] = useState(false)
   const [msg, setMsg] = useState('')
   const fileRef = useRef<HTMLInputElement>(null)
+  // Appel d'offre
+  const [rfqOpen, setRfqOpen] = useState(false)
+  const [cands, setCands] = useState<{ market: any[]; ours: any[] }>({ market: [], ours: [] })
+  const [picked, setPicked] = useState<Record<string, any>>({})   // email -> recipient
+  const [spec, setSpec] = useState('')
+  const [draft, setDraft] = useState<any>(null)
+  const [rfqBusy, setRfqBusy] = useState('')
 
   const load = () => fetch('/api/admin/achats/devis', { cache: 'no-store' }).then(r => r.json()).then(d => { setData(d); }).finally(() => setLoading(false))
   useEffect(() => { load() }, [])
@@ -51,6 +58,31 @@ export default function DevisClient({ userRole, userName, userEmail, userModules
   }
 
   const quotesFor = (rid: string) => data.quotes.filter((q: any) => q.request_id === rid)
+  const recipientsFor = (rid: string) => (data.recipients || []).filter((r: any) => r.request_id === rid)
+
+  const openRfq = async () => {
+    setRfqOpen(true); setDraft(null); setPicked({}); setSpec('')
+    const j = await post({ action: 'rfq_candidates', request_id: openId })
+    setCands({ market: j.market || [], ours: j.ours || [] })
+  }
+  const togglePick = (email: string, r: any) => setPicked(p => { const n = { ...p }; if (n[email]) delete n[email]; else n[email] = r; return n })
+  const genDraft = async () => {
+    setRfqBusy('draft')
+    try { const j = await post({ action: 'rfq_draft', request_id: openId, spec }); if (j.error) setMsg('❌ ' + j.error); else setDraft({ subject: j.subject, paragraphs: (j.paragraphs || []).join('\n\n') }) }
+    finally { setRfqBusy('') }
+  }
+  const sendRfq = async () => {
+    const recipients = Object.values(picked)
+    if (!recipients.length || !draft) return
+    if (!confirm(`Envoyer l'appel d'offre à ${recipients.length} fournisseur(s) ?`)) return
+    setRfqBusy('send')
+    try {
+      const j = await post({ action: 'rfq_send', request_id: openId, subject: draft.subject, paragraphs: draft.paragraphs.split(/\n\n+/).map((s: string) => s.trim()).filter(Boolean), recipients })
+      if (j.error) setMsg('❌ ' + j.error); else { setMsg(`✅ Envoyé à ${j.sent}${j.failed ? ` (${j.failed} échec)` : ''}`); setRfqOpen(false); await load() }
+    } finally { setRfqBusy('') }
+  }
+  const STATUS: Record<string, string> = { sent: 'Envoyé', opened: 'Ouvert', responded: 'A répondu', failed: 'Échec' }
+  const STATUS_CLS: Record<string, string> = { sent: 'bg-ink-muted/10 text-ink-muted', opened: 'bg-amber-500/10 text-amber-600', responded: 'bg-emerald-500/10 text-emerald-600', failed: 'bg-red-500/10 text-red-500' }
 
   return (
     <AppShell title="Comparateur de devis" userRole={userRole} userName={userName} userEmail={userEmail} userModules={userModules}>
@@ -131,7 +163,57 @@ export default function DevisClient({ userRole, userName, userEmail, userModules
                           {comparing ? <><Loader2 size={15} className="animate-spin" /> Analyse…</> : <><Sparkles size={15} /> Comparer avec l'IA</>}
                         </button>
                       )}
+                      <button onClick={openRfq} className="inline-flex items-center gap-1.5 text-sm px-3 py-2 rounded-lg border border-brand/40 text-brand hover:bg-brand/5 ml-auto"><Mail size={15} /> Appel d'offre</button>
                     </div>
+
+                    {/* Statuts des destinataires */}
+                    {recipientsFor(r.id).length > 0 && (
+                      <div className="mt-3 flex flex-wrap gap-1.5">
+                        {recipientsFor(r.id).map((rc: any) => (
+                          <span key={rc.id} className={`text-[11px] px-2 py-1 rounded-full ${STATUS_CLS[rc.status] || 'bg-ink-muted/10 text-ink-muted'}`} title={rc.email}>{rc.name || rc.email} · {STATUS[rc.status] || rc.status}</span>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* Panneau appel d'offre */}
+                    {rfqOpen && openId === r.id && (
+                      <div className="mt-3 border rounded-xl p-3 bg-surface-2/50 space-y-3">
+                        <div className="flex items-center justify-between">
+                          <span className="text-sm font-medium text-ink flex items-center gap-1.5"><Mail size={15} className="text-brand" /> Appel d'offre</span>
+                          <button onClick={() => setRfqOpen(false)} className="text-ink-muted hover:text-ink"><X size={16} /></button>
+                        </div>
+                        <textarea value={spec} onChange={e => setSpec(e.target.value)} rows={2} placeholder="Précisions techniques (référence, quantité, contraintes…) — optionnel" className="w-full bg-bg border rounded-lg px-3 py-2 text-sm text-ink resize-none" />
+                        {/* Destinataires */}
+                        <div>
+                          <div className="text-ink-muted text-xs mb-1">Destinataires ({Object.keys(picked).length} sélectionné(s))</div>
+                          <div className="max-h-40 overflow-auto border rounded-lg p-2 space-y-1">
+                            {[...cands.market.map((m: any) => ({ ...m, kind: 'marché', email: m.email, market_id: m.id })), ...cands.ours.map((o: any) => ({ ...o, kind: 'nôtre', partner_id: o.partner_id }))]
+                              .filter((c: any) => c.email).map((c: any, i: number) => (
+                              <label key={c.email + i} className="flex items-center gap-2 text-sm cursor-pointer">
+                                <input type="checkbox" checked={!!picked[c.email]} onChange={() => togglePick(c.email, { name: c.name, email: c.email, market_id: c.market_id || null, partner_id: c.partner_id || null })} />
+                                <span className="text-ink truncate">{c.name}</span>
+                                <span className="text-[10px] px-1 rounded bg-ink-muted/10 text-ink-muted">{c.kind}</span>
+                                <span className="text-ink-muted text-xs truncate">{c.email}</span>
+                              </label>
+                            ))}
+                            {!cands.market.length && !cands.ours.length && <p className="text-ink-muted text-xs">Aucun destinataire avec email. Renseigne des emails (Répertoire / Base marché).</p>}
+                          </div>
+                        </div>
+                        <button onClick={genDraft} disabled={rfqBusy === 'draft'} className="inline-flex items-center gap-1.5 text-sm px-3 py-2 rounded-lg border hover:bg-bg disabled:opacity-50">
+                          {rfqBusy === 'draft' ? <><Loader2 size={14} className="animate-spin" /> Rédaction…</> : <><Sparkles size={14} /> Générer le mail (IA)</>}
+                        </button>
+                        {draft && (
+                          <div className="space-y-2">
+                            <input value={draft.subject} onChange={e => setDraft({ ...draft, subject: e.target.value })} className="w-full bg-bg border rounded-lg px-3 py-2 text-sm text-ink font-medium" />
+                            <textarea value={draft.paragraphs} onChange={e => setDraft({ ...draft, paragraphs: e.target.value })} rows={6} className="w-full bg-bg border rounded-lg px-3 py-2 text-sm text-ink resize-none" />
+                            <p className="text-[11px] text-ink-muted">« Bonjour {'{nom}'} », le lien de dépôt et la signature sont ajoutés automatiquement.</p>
+                            <button onClick={sendRfq} disabled={rfqBusy === 'send' || !Object.keys(picked).length} className="inline-flex items-center gap-1.5 text-sm px-3.5 py-2 rounded-lg bg-brand text-white hover:opacity-90 disabled:opacity-50">
+                              {rfqBusy === 'send' ? <><Loader2 size={15} className="animate-spin" /> Envoi…</> : <><Send size={15} /> Envoyer à {Object.keys(picked).length}</>}
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    )}
 
                     {r.reco && (
                       <div className="mt-3 rounded-xl border border-brand/20 bg-brand/5 p-3">
