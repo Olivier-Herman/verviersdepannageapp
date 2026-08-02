@@ -10,6 +10,7 @@ import AnnouncementModal from './AnnouncementModal'
 import { FileText, Download, Wallet, Info, Eye, X, CalendarClock, Save, UserCog, Check, CalendarDays, Send, ChevronRight, ChevronLeft, Sparkles, ShieldCheck, Moon } from 'lucide-react'
 import { normalizeEtatCivil } from '@/lib/paie/compare-infos'
 import { hoursForRange } from '@/lib/conges/apply'
+import MyCalendar from '@/components/personnel/MyCalendar'
 
 const CONGE_TYPE_LABEL: Record<string, string> = { conge: 'Congé légal', recup: 'Récupération', sans_solde: 'Congé sans solde' }
 const fmtDate = (d: string) => { const [y, m, j] = (d || '').split('-'); return j ? `${j}/${m}` : d }
@@ -156,7 +157,7 @@ export default function MaPaieClient({ userRole, userName, userEmail, userModule
               { k: 'infos',  title: 'Mes infos',          desc: 'Coordonnées, IBAN, contact', Icon: UserCog,      from: 'from-sky-500/15',    to: 'to-sky-500/5',    ring: 'hover:border-sky-500/40',    ic: 'bg-sky-500/15 text-sky-500' },
               { k: 'fiches', title: 'Mes fiches de paie', desc: `${slips.length} fiche${slips.length > 1 ? 's' : ''} disponible${slips.length > 1 ? 's' : ''}`, Icon: FileText, from: 'from-brand/15', to: 'to-brand/5', ring: 'hover:border-brand/40', ic: 'bg-brand/15 text-brand' },
               { k: 'conges', title: 'Mes congés',         desc: congesPending ? `${congesPending} en cours` : 'Demander un congé', Icon: CalendarDays, from: 'from-amber-500/15', to: 'to-amber-500/5', ring: 'hover:border-amber-500/40', ic: 'bg-amber-500/15 text-amber-500' },
-              { k: 'gardes', title: 'Mes gardes',         desc: myGarde.length ? `${myGarde.length} jour(s) à venir` : 'Aucune garde prévue', Icon: ShieldCheck, from: 'from-indigo-500/15', to: 'to-indigo-500/5', ring: 'hover:border-indigo-500/40', ic: 'bg-indigo-500/15 text-indigo-500' },
+              { k: 'gardes', title: 'Mon calendrier',      desc: 'Mes gardes et mes congés', Icon: ShieldCheck, from: 'from-indigo-500/15', to: 'to-indigo-500/5', ring: 'hover:border-indigo-500/40', ic: 'bg-indigo-500/15 text-indigo-500' },
             ].map(c => (
               <button key={c.k} onClick={() => setTab(c.k as any)}
                 className={`group relative flex flex-col gap-4 bg-gradient-to-br ${c.from} ${c.to} border rounded-2xl p-5 text-left transition-all hover:shadow-lg hover:-translate-y-1 ${c.ring}`}>
@@ -215,10 +216,18 @@ export default function MaPaieClient({ userRole, userName, userEmail, userModule
           </div>
         )}
 
-        {/* Mes gardes */}
+        {/* Mon calendrier : gardes + congés */}
         {!loading && data?.linked && tab === 'gardes' && (
           <div className="bg-surface border rounded-2xl p-5 mb-6">
-            <div className="flex items-center gap-2 mb-3"><ShieldCheck size={18} className="text-indigo-500" /><h2 className="font-semibold text-ink text-sm">Mes gardes (3 prochains mois)</h2></div>
+            <div className="flex items-center gap-2 mb-3"><ShieldCheck size={18} className="text-indigo-500" /><h2 className="font-semibold text-ink text-sm">Mon calendrier — gardes & congés</h2></div>
+            <MyCalendar conges={data.conges || []} />
+          </div>
+        )}
+
+        {/* Mes gardes (liste à venir) */}
+        {!loading && data?.linked && tab === 'gardes' && (
+          <div className="bg-surface border rounded-2xl p-5 mb-6">
+            <div className="flex items-center gap-2 mb-3"><ShieldCheck size={18} className="text-indigo-500" /><h2 className="font-semibold text-ink text-sm">Mes gardes à venir (3 mois)</h2></div>
             {!myGarde.length && <p className="text-ink-muted text-sm">Aucune garde prévue.</p>}
             {(() => {
               const semaine = myGarde.filter((d: any) => d.mine_role === 'semaine')

@@ -6,6 +6,7 @@ import Link from 'next/link'
 import type { Session } from 'next-auth'
 import AppShell from '@/components/layout/AppShell'
 import AmbientBackground from '@/components/AmbientBackground'
+import GardeBanner from '@/components/personnel/GardeBanner'
 import { T } from '@/lib/i18n/T'
 import { useT } from '@/lib/i18n/I18nProvider'
 
@@ -150,6 +151,7 @@ export default function DashboardClient({
     >
       <AmbientBackground>
         <div className="px-4 lg:px-8 py-5 lg:py-8 max-w-5xl mx-auto">
+          <GardeBanner />
 
           {/* Hero header — desktop visible, mobile garde le header sticky AppShell */}
           <div className="hidden lg:block mb-8 ambient-fade-up">
