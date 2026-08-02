@@ -184,6 +184,9 @@ export default function AchatsClient({ userRole, userName, userEmail, userModule
               </button>
             ))}
           </div>
+          <a href="/achats/assistant" className="px-3 py-1.5 rounded-lg bg-brand text-white text-sm hover:opacity-90 inline-flex items-center gap-1.5">
+            <Sparkles size={15} /> Assistant
+          </a>
           <a href="/achats/marche" className="px-3 py-1.5 rounded-lg border text-sm text-ink-secondary hover:text-brand inline-flex items-center gap-1.5">
             <TrendingUp size={15} /> Marché
           </a>
