@@ -31,6 +31,7 @@ export const CATEGORIES = [
   'Petit matériel & fournitures',
   'Publicité & marketing',
   'Acompte / à régulariser',
+  'Avances de fond',
   'Autre',
 ] as const
 
