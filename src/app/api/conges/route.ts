@@ -29,7 +29,9 @@ export async function GET() {
   const { data: pers } = ids.length ? await sb.from('personnel').select('id, name').in('id', ids) : { data: [] }
   const nameById = new Map((pers || []).map((p: any) => [p.id, p.name]))
   const requests = (reqs || []).map((r: any) => ({ ...r, worker: nameById.get(r.personnel_id) || '?', typeLabel: CONGE_TYPES[r.type] || r.type }))
-  return NextResponse.json({ requests })
+  // Liste des travailleurs (pour l'encodage manuel d'un congé par le RH).
+  const { data: workers } = await sb.from('personnel').select('id, name, kind').eq('active', true).order('name')
+  return NextResponse.json({ requests, workers: workers || [] })
 }
 
 export async function POST(req: NextRequest) {
@@ -82,6 +84,36 @@ export async function POST(req: NextRequest) {
       })))
     } catch (e: any) { console.error('[conges] notif manager', e.message) }
     return NextResponse.json({ ok: true, imposed: impose })
+  }
+
+  // Encodage manuel d'un congé par le RH/superadmin pour un travailleur (approuvé direct, au PIN).
+  if (action === 'create_for') {
+    if (!isPersonnelStaff(u)) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    const personnelId = String(body.personnel_id || '')
+    const type = String(body.type || ''), start = String(body.start_date || ''), end = String(body.end_date || ''), pin = String(body.pin || '')
+    if (!personnelId) return NextResponse.json({ error: 'Travailleur requis' }, { status: 400 })
+    if (!CONGE_TYPES[type]) return NextResponse.json({ error: 'Type invalide' }, { status: 400 })
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(start) || !/^\d{4}-\d{2}-\d{2}$/.test(end) || end < start) return NextResponse.json({ error: 'Dates invalides' }, { status: 400 })
+
+    const { data: me } = await sb.from('users').select('name, verify_pin_hash').eq('email', u.email).maybeSingle()
+    if (!me?.verify_pin_hash) return NextResponse.json({ error: 'Aucun PIN configuré sur ton profil (Administration → PIN).' }, { status: 400 })
+    if (!(await bcrypt.compare(pin, me.verify_pin_hash))) return NextResponse.json({ error: 'PIN incorrect' }, { status: 403 })
+
+    const { data: person } = await sb.from('personnel').select('id, name, user_id').eq('id', personnelId).maybeSingle()
+    if (!person) return NextResponse.json({ error: 'Travailleur introuvable' }, { status: 404 })
+    const days = countWeekdays(start, end)
+    if (days < 1) return NextResponse.json({ error: 'La plage ne contient aucun jour ouvrable' }, { status: 400 })
+    const hours = hoursForRange(await workerDayHours(sb, person.id), start, end)
+    const applied = await applyLeaveToSheets(sb, person.id, type, start, end)
+    await sb.from('conge_requests').insert({
+      personnel_id: person.id, user_id: person.user_id || null, type, start_date: start, end_date: end,
+      days, hours, reason: String(body.reason || '').trim() || null, status: 'approved', applied: true,
+      decided_by: me.name || 'RH', decided_at: new Date().toISOString(),
+    })
+    if (person.user_id) {
+      try { await sendNotification(person.user_id, 'conge_decided', { title: 'Congé enregistré', body: `Un congé a été encodé pour toi : ${CONGE_TYPES[type]}, ${start} → ${end} (${days}j).`, action_url: '/ma-paie' }) } catch { /* noop */ }
+    }
+    return NextResponse.json({ ok: true, applied })
   }
 
   if (action === 'decide') {

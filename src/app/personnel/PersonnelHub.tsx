@@ -5,6 +5,7 @@
 import { useEffect, useState } from 'react'
 import AppShell from '@/components/layout/AppShell'
 import { Users, Clock, TrendingUp, AlertTriangle, Send, ChevronRight, CalendarDays, Megaphone } from 'lucide-react'
+import PersonnelCalendar from '@/components/personnel/PersonnelCalendar'
 
 export default function PersonnelHub({ userRole, userName, userEmail, userModules }: {
   userRole: string; userName: string; userEmail: string; userModules: string[]
@@ -101,6 +102,8 @@ export default function PersonnelHub({ userRole, userName, userEmail, userModule
             </a>
           ))}
         </div>
+
+        <PersonnelCalendar />
       </div>
     </AppShell>
   )
