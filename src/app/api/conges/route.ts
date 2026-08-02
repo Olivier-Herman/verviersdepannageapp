@@ -29,9 +29,19 @@ export async function GET() {
   const { data: pers } = ids.length ? await sb.from('personnel').select('id, name').in('id', ids) : { data: [] }
   const nameById = new Map((pers || []).map((p: any) => [p.id, p.name]))
   const requests = (reqs || []).map((r: any) => ({ ...r, worker: nameById.get(r.personnel_id) || '?', typeLabel: CONGE_TYPES[r.type] || r.type }))
-  // Liste des travailleurs (pour l'encodage manuel d'un congé par le RH).
+  // Liste des travailleurs (+ solde de congés depuis la dernière fiche de paie).
   const { data: workers } = await sb.from('personnel').select('id, name, kind').eq('active', true).order('name')
-  return NextResponse.json({ requests, workers: workers || [] })
+  const wIds = (workers || []).map((w: any) => w.id)
+  const { data: slips } = wIds.length
+    ? await sb.from('payslips').select('personnel_id, period, vac_total, vac_used, vac_available').in('personnel_id', wIds).order('period', { ascending: false })
+    : { data: [] }
+  const vacByPers = new Map<string, any>()
+  for (const s of (slips || [])) {
+    if (vacByPers.has(s.personnel_id)) continue
+    if (s.vac_available != null || s.vac_total != null) vacByPers.set(s.personnel_id, { total: s.vac_total, used: s.vac_used, available: s.vac_available, period: s.period })
+  }
+  const workersWithVac = (workers || []).map((w: any) => ({ ...w, vacation: vacByPers.get(w.id) || null }))
+  return NextResponse.json({ requests, workers: workersWithVac })
 }
 
 export async function POST(req: NextRequest) {

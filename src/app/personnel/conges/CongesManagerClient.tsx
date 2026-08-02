@@ -86,6 +86,26 @@ export default function CongesManagerClient({ userRole, userName, userEmail, use
           <button onClick={load} className="p-2 text-ink-muted hover:text-brand"><RefreshCw size={16} className={loading ? 'animate-spin' : ''} /></button>
         </div>
 
+        {/* Soldes de congés par travailleur */}
+        {workers.some(w => w.vacation) && (
+          <div className="bg-surface border rounded-2xl p-5 mb-6">
+            <h2 className="text-xs font-semibold uppercase tracking-wide text-ink-muted mb-3">Soldes de congés restants</h2>
+            <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-2">
+              {workers.filter(w => w.vacation).sort((a, b) => (b.vacation.available ?? 0) - (a.vacation.available ?? 0)).map(w => {
+                const v = w.vacation
+                const low = (v.available ?? 0) <= 0
+                return (
+                  <div key={w.id} className="flex items-center justify-between gap-2 bg-surface-2 border rounded-lg px-3 py-2">
+                    <span className="text-ink text-sm truncate">{w.name}</span>
+                    <span className={`text-sm font-semibold tabular-nums ${low ? 'text-red-500' : 'text-emerald-600'}`}>{v.available != null ? `${v.available} h` : '—'}</span>
+                  </div>
+                )
+              })}
+            </div>
+            <p className="text-[11px] text-ink-muted mt-2">Solde disponible d'après la dernière fiche de paie.</p>
+          </div>
+        )}
+
         {/* En attente */}
         <h2 className="text-xs font-semibold uppercase tracking-wide text-ink-muted mb-2 flex items-center gap-1.5"><Clock size={13} /> À valider ({pending.length})</h2>
         {pending.length === 0 && <p className="text-ink-muted text-sm italic mb-6">Aucune demande en attente.</p>}
