@@ -184,6 +184,9 @@ export default function AchatsClient({ userRole, userName, userEmail, userModule
               </button>
             ))}
           </div>
+          <a href="/achats/devis" className="px-3 py-1.5 rounded-lg border text-sm text-ink-secondary hover:text-brand inline-flex items-center gap-1.5">
+            <Receipt size={15} /> Devis
+          </a>
           <a href="/achats/fournisseurs" className="px-3 py-1.5 rounded-lg border text-sm text-ink-secondary hover:text-brand inline-flex items-center gap-1.5">
             <Users size={15} /> Répertoire
           </a>

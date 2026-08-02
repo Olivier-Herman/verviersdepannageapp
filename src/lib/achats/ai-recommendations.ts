@@ -28,7 +28,7 @@ const getClient = () => (_client ??= new Anthropic({ apiKey: process.env.ANTHROP
 
 // Règles métier fermes injectées dans TOUS les prompts achats.
 const ACHATS_CONTEXT = `CONTEXTE MÉTIER — RÈGLES FERMES (à respecter absolument) :
-- HERMAN Olivier est le PATRON de VD Soft ET un fournisseur interne important (il facture ses prestations). Ne JAMAIS proposer de baisser son taux horaire ni de « renégocier ses tarifs ». Le SEUL levier acceptable le concernant est de réduire le VOLUME d'heures. Ne le liste pas comme cible de renégociation de prix.
+- HERMAN Olivier est le PATRON de VD Soft ET un fournisseur interne important (il facture ses prestations). Ne produis AUCUNE recommandation le concernant : NI baisser/renégocier son tarif, NI réduire/internaliser/planifier/lisser le volume de ses heures. Exclus-le totalement des recommandations d'optimisation. (Il peut apparaître dans l'analyse/inspection, mais jamais comme cible d'une reco.)
 - Ses lignes « prestation circuit » relèvent de « Sous-traitance dépannage ». Ses prestations administratives relèvent de « Honoraires & Services externes ».`
 
 const PROMPT = `Tu es DIRECTEUR ACHATS pour une société belge de DÉPANNAGE / REMORQUAGE automobile (VD Soft — Verviers Dépannage).
