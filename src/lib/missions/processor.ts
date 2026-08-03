@@ -1230,6 +1230,21 @@ export async function processEmailMessage(messageId: string): Promise<ProcessRes
     // mission apparaisse quand même au dispatch en `new`. Dernier recours :
     // parse_error (au moins visible dans l'onglet Erreurs).
     if (finalUpdErr) {
+      // DOUBLON (Olivier 2026-08-03) : l'UPDATE a échoué sur la contrainte unique
+      // (source, external_id) → une AUTRE fiche possède déjà cet external_id
+      // (typiquement un mail TRANSFÉRÉ traité en parallèle de l'original, cf.
+      // 10099135/10099136). Ce n'est PAS une erreur de parsing : c'est un doublon.
+      // On jette le placeholder au lieu de fabriquer une fiche `ERR_` fantôme
+      // (sans dossier, dispatchable) qui polluait la file et pouvait être
+      // assignée à un chauffeur à la place de la vraie fiche.
+      const isDupKey = (finalUpdErr as any).code === '23505'
+        || /source_external_id_key|duplicate key/i.test(finalUpdErr.message || '')
+      if (isDupKey && !existingMissionId) {
+        if (placeholderId) await supabase.from('incoming_missions').delete().eq('id', placeholderId)
+        await markAsRead(token, messageId)
+        console.log(`[Processor] Doublon (${source}/${parsed.external_id}) → placeholder ${placeholderId} jeté, aucune fiche ERR créée.`)
+        return { status: 'skipped', reason: `Doublon ${source}/${parsed.external_id} — déjà reçu (mail transféré/redondant)` }
+      }
       console.error(`[Processor] step=update_final FAILED messageId=${msgIdShort} targetId=${targetId}: ${finalUpdErr.message} — retry payload minimal`)
       const s = (v: any, n: number) => (v == null ? null : String(v).slice(0, n) || null)
       const minimal: Record<string, unknown> = {
