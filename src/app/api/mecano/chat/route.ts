@@ -182,10 +182,36 @@ export async function POST(req: Request) {
         continue
       }
       const text = resp.content.find((b: any) => b.type === 'text') as any
-      return NextResponse.json({ ok: true, answer: text?.text || '(pas de réponse)', brand, model, generations, docs_used: used, attachments })
+      const answer = text?.text || '(pas de réponse)'
+      // Trace de la conversation (supervision superadmin + persistance mission).
+      // conversation_id = la mission (1 conversation/mission), sinon id fourni.
+      const convId = String(body.conversation_id || body.mission_id || '') || crypto.randomUUID()
+      const lastUser = [...history].reverse().find(h => h.role === 'user')?.content || question || (imgs.length ? '[photo]' : '')
+      const base = { conversation_id: convId, user_id: me?.id || null, user_name: firstName, mission_id: body.mission_id || null, brand, model }
+      await sb.from('mecano_messages').insert([
+        { ...base, role: 'user',      content: lastUser, images_count: imgs.length },
+        { ...base, role: 'assistant', content: answer, attachments: attachments.length ? attachments : null },
+      ]).then(() => {}, () => {})
+      return NextResponse.json({ ok: true, answer, brand, model, generations, docs_used: used, attachments, conversation_id: convId })
     }
     return NextResponse.json({ ok: true, answer: 'Réessaie ta question 🙂', attachments })
   } catch (e: any) {
     return NextResponse.json({ error: `Matthieu bloque là : ${e?.message || 'erreur IA'}` }, { status: 500 })
   }
+}
+
+// GET ?mission_id=... → historique de la conversation (persistance jusqu'à clôture)
+export async function GET(req: Request) {
+  const session = await getServerSession(authOptions)
+  const u = session?.user as any
+  if (!u) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const sb = createAdminClient()
+  const { data: me } = await sb.from('users').select('id, role').eq('email', u.email).maybeSingle()
+  if (!canUseMatthieu(me?.role, me?.id)) return NextResponse.json({ error: 'Accès réservé' }, { status: 403 })
+  const missionId = new URL(req.url).searchParams.get('mission_id')
+  if (!missionId) return NextResponse.json({ messages: [] })
+  const { data } = await sb.from('mecano_messages')
+    .select('role, content, attachments, created_at')
+    .eq('conversation_id', missionId).order('created_at')
+  return NextResponse.json({ messages: (data || []).map(m => ({ role: m.role, content: m.content, attachments: m.attachments })) })
 }

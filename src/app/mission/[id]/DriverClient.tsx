@@ -826,6 +826,17 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
     reader.onload = () => { const s = String(reader.result || ''); const c = s.split(',')[1]; if (c) setMatImg({ data: c, media_type: file.type || 'image/jpeg' }) }
     reader.readAsDataURL(file)
   }
+  const [matLoaded, setMatLoaded] = useState(false)
+  const openMatthieu = async () => {
+    setMatOpen(true)
+    if (matLoaded) return
+    setMatLoaded(true)
+    try {
+      const r = await fetch(`/api/mecano/chat?mission_id=${M.id}`, { cache: 'no-store' })
+      const j = await r.json()
+      if (Array.isArray(j.messages) && j.messages.length) setMatMsgs(j.messages)
+    } catch { /* silencieux */ }
+  }
   const askMatthieu = async (q: string) => {
     const question = q.trim()
     if ((!question && !matImg) || matBusy) return
@@ -3466,7 +3477,7 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
 
         {/* La tête à Matthieu — assistant mécano (accès restreint Matthieu + superadmin en test) */}
         {canMatthieu && (
-          <button onClick={() => setMatOpen(true)}
+          <button onClick={openMatthieu}
             className="w-full rounded-2xl p-3 border-2 border-indigo-500/40 bg-indigo-500/10 flex items-center gap-3 text-left active:scale-[0.99] transition">
             <span className="text-3xl flex-shrink-0">🔧</span>
             <div className="min-w-0 flex-1">

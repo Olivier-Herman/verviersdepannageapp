@@ -191,6 +191,8 @@ export default async function AdminPage() {
       <Group title="Support">
         <Card href="/admin/cobrowse" icon={LifeBuoy} label="Demandes d aide"
           desc="Sessions de co-browsing en attente ou en cours. Permet de voir l'écran d'un user en direct pour le dépanner." />
+        <Card href="/admin/matthieu" icon={LifeBuoy} label="La tête à Matthieu"
+          desc="Supervision de toutes les conversations avec l'assistant mécano. Pour aller voir en cas de problème." />
       </Group>
 
       <Group title="Réglages">
