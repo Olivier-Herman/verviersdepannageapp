@@ -100,6 +100,35 @@ export default function PersonnelCalendar() {
         <span className="inline-flex items-center gap-1"><span className="w-3 h-3 rounded bg-emerald-500/30 border border-emerald-500/40" /> Congé approuvé</span>
         <span className="inline-flex items-center gap-1"><span className="w-3 h-3 rounded bg-amber-500/30 border border-amber-500/40" /> Congé en attente</span>
       </div>
+
+      {/* Agenda du mois — lisible sur mobile (les cases sont trop petites pour les noms) */}
+      {(() => {
+        const WD = ['Dim', 'Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam']
+        const items: any[] = []
+        for (let d = 1; d <= nDays; d++) {
+          const ds = `${cur.y}-${pad2(cur.m + 1)}-${pad2(d)}`
+          const g = garde[ds]
+          const cs = congesAt(ds)
+          const lines: { c: string; txt: string }[] = []
+          if (g?.weekly_garde_name)  lines.push({ c: 'text-sky-700 dark:text-sky-300', txt: `🛡 Garde (jour + nuit 2e départ) : ${g.weekly_garde_name}` })
+          if (g?.night_first_name)   lines.push({ c: 'text-indigo-700 dark:text-indigo-300', txt: `🌙 Nuit 1er départ : ${g.night_first_name}` })
+          for (const e of cs)        lines.push({ c: e.status === 'approved' ? 'text-emerald-700 dark:text-emerald-300' : 'text-amber-700 dark:text-amber-300', txt: `🌴 ${e.worker} — ${TYPE_LABEL[e.type] || e.type} (${e.status === 'approved' ? 'approuvé' : 'en attente'})` })
+          if (!lines.length) continue
+          const wd = WD[new Date(cur.y, cur.m, d).getDay()]
+          items.push(
+            <div key={d} className="flex gap-3 py-2 border-t border-default/60 first:border-t-0">
+              <div className="w-10 flex-shrink-0 text-center"><div className="text-ink font-bold text-sm leading-none">{d}</div><div className="text-ink-muted text-[10px] uppercase">{wd}</div></div>
+              <div className="min-w-0 flex-1 flex flex-col gap-0.5">{lines.map((l, i) => <span key={i} className={`text-xs font-medium ${l.c}`}>{l.txt}</span>)}</div>
+            </div>
+          )
+        }
+        return (
+          <div className="mt-4">
+            <p className="text-ink-muted text-xs font-semibold uppercase tracking-wide mb-1">Agenda du mois</p>
+            {items.length ? <div>{items}</div> : <p className="text-ink-muted text-xs py-2">Aucune garde ni congé ce mois-ci.</p>}
+          </div>
+        )
+      })()}
     </div>
   )
 }
