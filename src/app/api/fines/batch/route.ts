@@ -43,14 +43,16 @@ export async function POST(req: Request) {
 
   const created: any[] = []
   const errors: { name: string; error: string }[] = []
-  const duplicates: { name: string; ref: string }[] = []
+  const duplicates: { name: string; ref: string; existing_id: string | null; existing_plate: string | null }[] = []
   const toProcess = files.slice(0, MAX_FILES)
   const skipped = files.length - toProcess.length
 
   // Anti-doublon sur le n° de PV : on charge les refs déjà présents (normalisés).
   const normRef = (s: string | null) => (s || '').toUpperCase().replace(/[^A-Z0-9]/g, '')
-  const { data: existingRefs } = await sb.from('fines').select('infraction_ref').not('infraction_ref', 'is', null)
-  const seenRefs = new Set<string>((existingRefs || []).map((r: any) => normRef(r.infraction_ref)).filter(Boolean))
+  const { data: existingRefs } = await sb.from('fines').select('id, plate, infraction_ref').not('infraction_ref', 'is', null)
+  const refToFine = new Map<string, { id: string; plate: string | null }>()
+  for (const r of (existingRefs || []) as any[]) { const n = normRef(r.infraction_ref); if (n) refToFine.set(n, { id: r.id, plate: r.plate }) }
+  const seenRefs = new Set<string>(refToFine.keys())
 
   for (const file of toProcess) {
     try {
@@ -65,7 +67,8 @@ export async function POST(req: Request) {
       // 2. Anti-doublon : si le n° de PV existe déjà → on ne recrée pas.
       const refN = normRef(ex.infraction_ref)
       if (refN && seenRefs.has(refN)) {
-        duplicates.push({ name: file.name, ref: ex.infraction_ref || '' })
+        const ex0 = refToFine.get(refN)
+        duplicates.push({ name: file.name, ref: ex.infraction_ref || '', existing_id: ex0?.id || null, existing_plate: ex0?.plate || null })
         continue
       }
 

@@ -113,14 +113,35 @@ export default function AdminAmendesClient({ fines, drivers, userRole, userName,
   const [dragOver, setDragOver] = useState(false)
   const [importing, setImporting] = useState(false)
   const [importMsg, setImportMsg] = useState<string>('')
+  const [scanResult, setScanResult] = useState<null | {
+    total: number; created: number; withAmount: number
+    dups: { name: string; ref: string; existing_id: string | null; existing_plate: string | null }[]
+    failed: string[]
+    ignored: string[]
+  }>(null)
 
   async function uploadFiles(fileList: FileList | File[]) {
-    const arr = Array.from(fileList).filter(f => f.type.includes('pdf') || f.type.startsWith('image/'))
-    if (arr.length === 0) { setImportMsg('⚠ Dépose des PDF ou images de PV.'); return }
+    // Certains PDF arrivent sans type MIME (glisser-déposer selon l'OS) → on
+    // accepte aussi sur l'extension du nom, sinon ils étaient écartés en silence.
+    const isDoc = (f: File) => {
+      const t = (f.type || '').toLowerCase()
+      const n = (f.name || '').toLowerCase()
+      return t.includes('pdf') || t.startsWith('image/') || /\.(pdf|jpe?g|png|heic|heif|webp|tiff?)$/.test(n)
+    }
+    const all = Array.from(fileList)
+    const arr = all.filter(isDoc)
+    const ignored = all.filter(f => !isDoc(f))
+    if (arr.length === 0) {
+      setScanResult({ total: all.length, created: 0, withAmount: 0, dups: [], failed: [], ignored: ignored.map(f => f.name) })
+      return
+    }
     setImporting(true)
+    setScanResult(null)
     // Un fichier par requête : évite la limite de taille du body + le timeout
     // (l'OCR est lent) quand on dépose plusieurs scans d'un coup.
-    let created = 0, withAmount = 0, dups = 0, errs = 0
+    let created = 0, withAmount = 0, errs = 0
+    const failed: string[] = []
+    const dupList: { name: string; ref: string; existing_id: string | null; existing_plate: string | null }[] = []
     for (let i = 0; i < arr.length; i++) {
       setImportMsg(`Lecture ${i + 1}/${arr.length}…`)
       try {
@@ -131,12 +152,15 @@ export default function AdminAmendesClient({ fines, drivers, userRole, userName,
         if (res.ok) {
           created += (j.created?.length || 0)
           withAmount += (j.created || []).filter((c: any) => c.amount != null).length
-          dups += (j.duplicates?.length || 0)
-          errs += (j.errors?.length || 0)
-        } else { errs++ }
-      } catch { errs++ }
+          for (const d of (j.duplicates || [])) dupList.push(d)
+          const e = (j.errors?.length || 0)
+          errs += e
+          if (e) failed.push(arr[i].name)
+        } else { errs++; failed.push(arr[i].name) }
+      } catch { errs++; failed.push(arr[i].name) }
     }
-    setImportMsg(`✅ ${created} PV importé(s) en brouillon (${withAmount} avec montant lu)${dups ? ` · ${dups} doublon(s) ignoré(s)` : ''}${errs ? ` · ${errs} échec(s)` : ''}`)
+    setImportMsg('')
+    setScanResult({ total: all.length, created, withAmount, dups: dupList, failed, ignored: ignored.map(f => f.name) })
     router.refresh()
     setImporting(false)
   }
@@ -270,7 +294,74 @@ export default function AdminAmendesClient({ fines, drivers, userRole, userName,
           <p className="text-ink-muted text-xs mt-1">PDF ou images · plusieurs à la fois · lecture auto (plaque, date, montant…) → brouillons à compléter</p>
           {importing && <p className="text-brand text-xs mt-2">⏳ {importMsg}</p>}
         </div>
-        {!importing && importMsg && <div className="text-sm bg-surface-2 border rounded-xl px-4 py-2 text-ink">{importMsg}</div>}
+        {scanResult && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+            <div className="bg-surface border rounded-2xl shadow-xl w-full max-w-lg max-h-[85vh] overflow-y-auto">
+              <div className="flex items-center justify-between px-5 py-4 border-b sticky top-0 bg-surface">
+                <h3 className="font-bold text-ink">Résultat du scan</h3>
+                <button onClick={() => setScanResult(null)} className="p-1.5 rounded-lg text-ink-muted hover:bg-surface-2" aria-label="Fermer">✕</button>
+              </div>
+              <div className="p-5 space-y-3 text-sm">
+                {/* Bilan chiffré */}
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className={`px-2.5 py-1 rounded-lg font-semibold ${scanResult.created > 0 ? 'bg-emerald-50 text-emerald-800 border border-emerald-200' : 'bg-surface-2 text-ink-muted border'}`}>
+                    {scanResult.created}/{scanResult.total} PV importé{scanResult.created > 1 ? 's' : ''} en brouillon
+                  </span>
+                  {scanResult.withAmount > 0 && <span className="px-2.5 py-1 rounded-lg bg-blue-50 text-blue-800 border border-blue-200 text-xs">{scanResult.withAmount} avec montant lu</span>}
+                </div>
+
+                {/* Doublons */}
+                {scanResult.dups.length > 0 && (
+                  <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 text-amber-900">
+                    <p className="font-semibold mb-1.5">{scanResult.dups.length} déjà en base (non réimporté{scanResult.dups.length > 1 ? 's' : ''}) :</p>
+                    <ul className="space-y-1.5">
+                      {scanResult.dups.map((d, i) => (
+                        <li key={i} className="flex items-center gap-2 flex-wrap">
+                          <span className="font-mono text-xs">{d.ref || '(n° illisible)'}</span>
+                          {d.existing_plate && <span className="text-xs">· {d.existing_plate}</span>}
+                          <span className="text-xs text-amber-700 truncate max-w-[160px]">· {d.name}</span>
+                          {d.existing_id && (
+                            <button
+                              onClick={() => {
+                                setStatusFilter('all'); setYearFilter('all'); setDriverFilter('all'); setScanResult(null)
+                                setTimeout(() => { const el = document.getElementById(`fine-${d.existing_id}`); if (el) { el.scrollIntoView({ behavior: 'smooth', block: 'center' }); if (location) location.hash = `fine-${d.existing_id}` } }, 80)
+                              }}
+                              className="text-xs px-2 py-0.5 rounded border border-amber-300 hover:bg-amber-100"
+                            >Voir la fiche</button>
+                          )}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+
+                {/* Échecs de lecture */}
+                {scanResult.failed.length > 0 && (
+                  <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-red-800">
+                    <p className="font-semibold mb-1">{scanResult.failed.length} échec{scanResult.failed.length > 1 ? 's' : ''} de lecture :</p>
+                    <p className="text-xs break-words">{scanResult.failed.join(', ')}</p>
+                    <p className="text-xs mt-1 text-red-700">Réessaie ces fichiers (scan de meilleure qualité).</p>
+                  </div>
+                )}
+
+                {/* Fichiers ignorés (pas PDF/image) */}
+                {scanResult.ignored.length > 0 && (
+                  <div className="bg-surface-2 border rounded-xl px-4 py-3 text-ink-secondary">
+                    <p className="font-semibold mb-1 text-ink">{scanResult.ignored.length} fichier{scanResult.ignored.length > 1 ? 's' : ''} ignoré{scanResult.ignored.length > 1 ? 's' : ''} (pas un PDF/image) :</p>
+                    <p className="text-xs break-words">{scanResult.ignored.join(', ')}</p>
+                  </div>
+                )}
+
+                {scanResult.created === 0 && scanResult.dups.length === 0 && scanResult.failed.length === 0 && scanResult.ignored.length === 0 && (
+                  <p className="text-ink-muted">Aucun fichier traité.</p>
+                )}
+              </div>
+              <div className="px-5 py-4 border-t flex justify-end sticky bottom-0 bg-surface">
+                <button onClick={() => setScanResult(null)} className="px-4 py-2 rounded-lg bg-brand text-white hover:bg-brand-hover font-semibold">Fermer</button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Filtres */}
         <div className="bg-surface border rounded-2xl p-4 grid grid-cols-1 sm:grid-cols-3 gap-3">
@@ -336,7 +427,7 @@ export default function AdminAmendesClient({ fines, drivers, userRole, userName,
               const status = STATUS_LABEL[f.status] || { label: f.status, color: 'bg-gray-500/15 text-gray-700 border-gray-500/30' }
               const isAuto = f.driver_match_method === 'auto'
               return (
-                <li key={f.id} className="bg-surface border rounded-2xl p-4">
+                <li key={f.id} id={`fine-${f.id}`} className="bg-surface border rounded-2xl p-4 scroll-mt-24 target:ring-2 target:ring-brand">
                   <div className="flex flex-col sm:flex-row gap-3">
                   <a href={f.photo_url} target="_blank" rel="noopener noreferrer"
                     className="flex-shrink-0 w-16 h-16 bg-surface-2 border rounded-xl flex items-center justify-center text-xl hover:border-brand">
