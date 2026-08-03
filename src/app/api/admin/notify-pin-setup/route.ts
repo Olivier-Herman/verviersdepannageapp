@@ -26,8 +26,8 @@ const PAYLOAD_SETUP = {
   action_url: '/definir-code',
 }
 const PAYLOAD_RECALL = {
-  title:      '🔐 Te souviens-tu de ton code ?',
-  body:       'Tu ne l\'as sûrement pas utilisé depuis longtemps. Tape ici pour confirmer que tu t\'en souviens (ou en redéfinir un).',
+  title:      '🎲 Vérification aléatoire de ton code',
+  body:       'Petit contrôle : confirme que tu te souviens de ton code à 4 chiffres (ou redéfinis-en un). Tape ici.',
   action_url: '/verifier-code',
 }
 

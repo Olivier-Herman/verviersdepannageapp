@@ -54,8 +54,9 @@ export default function VerifyCodeClient({
             </>
           ) : (
             <>
-              <h1 className="text-xl font-extrabold text-ink mt-4 mb-1.5">Tu te souviens de ton code ?</h1>
-              <p className="text-ink-secondary text-sm mb-1">Tu ne l'as sûrement pas utilisé depuis longtemps. Tape-le pour confirmer.</p>
+              <span className="inline-flex items-center gap-1.5 text-[11px] font-bold text-brand bg-brand/10 rounded-full px-3 py-1 mt-4">🎲 Vérification aléatoire</span>
+              <h1 className="text-xl font-extrabold text-ink mt-3 mb-1.5">Tu te souviens de ton code ?</h1>
+              <p className="text-ink-secondary text-sm mb-1">Petit contrôle de temps en temps. Tape ton code pour confirmer que tu le connais toujours.</p>
               <p className="text-ink-muted text-xs mb-5 inline-flex items-center gap-1"><ShieldCheck size={13} /> Personne d'autre ne le connaît.</p>
 
               {/* Dots */}
