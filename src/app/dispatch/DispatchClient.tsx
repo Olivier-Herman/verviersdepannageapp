@@ -629,6 +629,10 @@ function AssignAction({ mission, drivers, driverStatuses, onRefresh, onModalChan
         return
       }
       closeModal()
+      // Intervention sur autoroute → force la question Siabis juste après l'assignation
+      // (comme pour « Valider »). Le modal s'affiche tant que non tranché.
+      const { offer, highwayRef } = shouldOfferSiabis(mission.source, mission.incident_address)
+      if (offer) { setSiabisModal({ highwayRef }); return }
       onRefresh()
     } catch (e: any) {
       console.error('[DispatchClient] assign reseau:', e?.message)
