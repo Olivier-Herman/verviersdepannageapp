@@ -13,9 +13,39 @@ export default async function MatthieuPresentationPage() {
   const sb = createAdminClient()
   const uid = (session.user as any).id
   const { data: user } = uid
-    ? await sb.from('users').select('id, role').eq('id', uid).single()
-    : await sb.from('users').select('id, role').ilike('email', session.user!.email!).single()
+    ? await sb.from('users').select('id, role, language').eq('id', uid).single()
+    : await sb.from('users').select('id, role, language').ilike('email', session.user!.email!).single()
   if (!canUseMatthieu(user?.role, user?.id)) redirect('/login')
+  const sq = String((user as any)?.language || 'fr').toLowerCase() === 'sq'
+  const T = sq ? {
+    back: '← Kthehu', kicker: '🔧 E re në VD Soft', sub: 'Mekaniku që të gjithë e thërrasin në terren — tani në xhepin tënd, 24/7, në çdo ndërhyrje.',
+    chips: ['🚗 Të gjitha markat & modelet', '🔧 Riparim + rimorkim', '📄 Të tregon fletën', '📷 Dërgo një foto'],
+    chipsB: ['Të gjitha', '+', 'tregon', 'foto'],
+    quote: '« I bllokuar me një makinë të kyçur, një defekt i çuditshëm, një 4×4 për ta rimorkuar pa dëmtim? Më pyet, unë përgjigjem. »',
+    badge: 'E re', mtitle: 'Ja La tête à Matthieu', mlead: 'Mekaniku yt i xhepit. Ke një pyetje për automjetin? Ai njeh çdo model dhe të përgjigjet menjëherë.',
+    mf: ['Pyete çfarëdo për automjetin', 'Të tregon fletën e duhur (hapje, lidhje…)', 'I pasigurt për modelin? Dërgo një foto'],
+    tryBtn: 'Provoje →',
+    cards: [['Fillimisht sqaron', 'Konfirmon modelin, gjeneratën dhe motorizimin para çdo veprimi — asnjë gabim te tensioni i lartë ose pikat e lidhjes.'],
+            ['Të tregon', 'Ke nevojë për një skemë? Nxjerr fletën e saktë për pyetjen tënde, jo 40 faqe. E sheh menjëherë ku të shikosh.'],
+            ['Kudo, gjithmonë', 'Në çdo ndërhyrje, edhe natën. Riparim dhe rimorkim, të gjitha markat.']],
+    htHead: '👉 Si ta përdorësh',
+    steps: ['Hap fletën e ndërhyrjes (misioni yt aktual).', 'Shtyp pllakën 🔧 La tête à Matthieu.', 'Bëj pyetjen (ose një shkurtore: « Si ta hap? », « Pikat e lidhjes »).', 'I pasigurt për modelin? Shtyp 📷 dhe dërgo një foto — ai e analizon.', 'Nëse të nxjerr një fletë, shtyp kartën 📄 për të parë skemën.'],
+    finalBtn: 'Provoje tani (zgjidh një automjet) →', quoteAttr: '— La tête à Matthieu',
+  } : {
+    back: '← Retour', kicker: '🔧 Nouveau dans VD Soft', sub: 'Le mécano que tout le monde appelle sur le terrain — désormais dans ta poche, 24/7, sur chaque intervention.',
+    chips: ['🚗 Toutes les marques & modèles', '🔧 Dépannage + remorquage', '📄 Il te montre la fiche', '📷 Envoie une photo'],
+    chipsB: ['Toutes', '+', 'montre', 'photo'],
+    quote: '« Bloqué sur une caisse verrouillée, une panne bizarre, un 4×4 à atteler sans casse ? Tu me demandes, je réponds. »',
+    badge: 'Nouveau', mtitle: 'Voici La tête à Matthieu', mlead: 'Ton mécano de poche. Une question sur le véhicule ? Il connaît chaque modèle et te répond direct.',
+    mf: ['Demande n\'importe quoi sur le véhicule', 'Il t\'affiche la bonne fiche (ouverture, ancrage…)', 'Pas sûr du modèle ? Envoie une photo'],
+    tryBtn: 'Essayer →',
+    cards: [['Il cadre d\'abord', 'Il confirme le modèle, la génération et la motorisation avant toute manip — pas d\'erreur sur une coupure haute tension ou un point d\'ancrage.'],
+            ['Il te montre', 'Besoin d\'un schéma ? Il sort la fiche exacte concernée par ta question, pas 40 pages. Tu vois direct où regarder.'],
+            ['Partout, tout le temps', 'Sur n\'importe quelle intervention, même la nuit. Dépannage comme remorquage, toutes les marques.']],
+    htHead: '👉 Comment y accéder',
+    steps: ['Ouvre ta fiche d\'intervention (ta mission en cours).', 'Appuie sur la tuile 🔧 La tête à Matthieu.', 'Pose ta question (ou un raccourci : « Comment l\'ouvrir ? », « Points d\'ancrage »).', 'Pas sûr du modèle ? Appuie sur 📷 et envoie une photo — il l\'analyse.', 'S\'il te sort une fiche, appuie sur la carte 📄 pour voir le schéma.'],
+    finalBtn: 'Essayer maintenant (choisis un véhicule) →', quoteAttr: '— La tête à Matthieu',
+  }
 
   return (
     <div className="mt-root">
@@ -80,22 +110,19 @@ export default async function MatthieuPresentationPage() {
       `}</style>
 
       <div className="mt-wrap">
-        <Link href="/dashboard" className="mt-back">← Retour</Link>
+        <Link href="/dashboard" className="mt-back">{T.back}</Link>
 
         <div className="mt-top">
           <div>
-            <span className="mt-kicker">🔧 Nouveau dans VD Soft</span>
+            <span className="mt-kicker">{T.kicker}</span>
             <h1 className="mt-h1">La tête à<br /><span className="mt-grad">Matthieu</span></h1>
-            <p className="mt-sub">Le mécano que tout le monde appelle sur le terrain — désormais dans ta poche, <b style={{ color: 'var(--ink)' }}>24/7</b>, sur chaque intervention.</p>
+            <p className="mt-sub">{T.sub}</p>
             <div className="mt-chips">
-              <span className="mt-chip">🚗 <b>Toutes</b> les marques &amp; modèles</span>
-              <span className="mt-chip">🔧 Dépannage <b>+</b> remorquage</span>
-              <span className="mt-chip">📄 Il te <b>montre</b> la fiche</span>
-              <span className="mt-chip">📷 Envoie une <b>photo</b></span>
+              {T.chips.map((c, i) => <span key={i} className="mt-chip">{c}</span>)}
             </div>
             <div className="mt-quote">
-              « Bloqué sur une caisse verrouillée, une panne bizarre, un 4×4 à atteler sans casse&nbsp;? Tu me demandes, je réponds. »
-              <span>— La tête à Matthieu</span>
+              {T.quote}
+              <span>{T.quoteAttr}</span>
             </div>
           </div>
 
@@ -103,15 +130,15 @@ export default async function MatthieuPresentationPage() {
             <div className="mt-notch" />
             <div className="mt-modal">
               <div className="mt-crest"><span>🔧</span></div>
-              <span className="mt-badge">Nouveau</span>
-              <h2>Voici La tête à Matthieu</h2>
-              <p className="mt-lead">Ton mécano de poche. Une question sur le véhicule&nbsp;? Il connaît chaque modèle et te répond direct.</p>
+              <span className="mt-badge">{T.badge}</span>
+              <h2>{T.mtitle}</h2>
+              <p className="mt-lead">{T.mlead}</p>
               <div className="mt-feat">
-                <div className="mt-frow"><div className="ic">💬</div><div className="tx">Demande n&apos;importe quoi sur le véhicule</div></div>
-                <div className="mt-frow"><div className="ic">📄</div><div className="tx">Il t&apos;affiche la bonne fiche (ouverture, ancrage…)</div></div>
-                <div className="mt-frow"><div className="ic">📷</div><div className="tx">Pas sûr du modèle&nbsp;? Envoie une photo</div></div>
+                {['💬', '📄', '📷'].map((ic, i) => (
+                  <div key={i} className="mt-frow"><div className="ic">{ic}</div><div className="tx">{T.mf[i]}</div></div>
+                ))}
               </div>
-              <Link href="/matthieu" className="mt-cta">Essayer →</Link>
+              <Link href="/matthieu" className="mt-cta">{T.tryBtn}</Link>
             </div>
           </div></div>
         </div>
@@ -119,24 +146,20 @@ export default async function MatthieuPresentationPage() {
         <div className="mt-rule" />
 
         <div className="mt-grid3">
-          <div className="mt-card"><div className="n">01</div><h3>Il cadre d&apos;abord</h3><p>Il confirme le modèle, la génération et la motorisation avant toute manip — pas d&apos;erreur sur une coupure haute tension ou un point d&apos;ancrage.</p></div>
-          <div className="mt-card"><div className="n">02</div><h3>Il te montre</h3><p>Besoin d&apos;un schéma&nbsp;? Il sort la fiche exacte concernée par ta question, pas 40 pages. Tu vois direct où regarder.</p></div>
-          <div className="mt-card"><div className="n">03</div><h3>Partout, tout le temps</h3><p>Sur n&apos;importe quelle intervention, même la nuit. Dépannage comme remorquage, toutes les marques.</p></div>
+          {T.cards.map((c, i) => (
+            <div key={i} className="mt-card"><div className="n">{`0${i + 1}`}</div><h3>{c[0]}</h3><p>{c[1]}</p></div>
+          ))}
         </div>
 
         <div className="mt-howto">
-          <div className="mt-ht-head">👉 Comment y accéder</div>
+          <div className="mt-ht-head">{T.htHead}</div>
           <ol className="mt-steps">
-            <li><b>Ouvre ta fiche d&apos;intervention</b> (ta mission en cours).</li>
-            <li>Appuie sur la tuile <b style={{ color: 'var(--indigo)' }}>🔧 La tête à Matthieu</b>.</li>
-            <li><b>Pose ta question</b> (ou un raccourci : « Comment l&apos;ouvrir ? », « Points d&apos;ancrage »).</li>
-            <li>Pas sûr du modèle&nbsp;? Appuie sur <b>📷</b> et envoie une photo — il l&apos;analyse.</li>
-            <li>S&apos;il te sort une fiche, appuie sur la carte <b>📄</b> pour voir le schéma.</li>
+            {T.steps.map((s, i) => <li key={i}>{s}</li>)}
           </ol>
         </div>
 
         <div className="mt-final">
-          <Link href="/matthieu" className="mt-btn-primary">Essayer maintenant (choisis un véhicule) →</Link>
+          <Link href="/matthieu" className="mt-btn-primary">{T.finalBtn}</Link>
         </div>
         <p className="mt-foot">VD Soft · Verviers Dépannage — <b style={{ color: 'var(--ink)' }}>La tête à Matthieu</b></p>
       </div>
