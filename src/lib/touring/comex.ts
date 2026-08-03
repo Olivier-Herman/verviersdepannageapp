@@ -17,6 +17,8 @@
 //
 // Cf mémoire project_touring_comex_integration.
 
+import { recordComexLoginResult } from './comex-health'
+
 const COMEX_BASE = 'https://apps.touring.be/Comex'
 const REAL_UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36'
 
@@ -67,7 +69,20 @@ function credsFor(account: ComexAccount): { user: string; pass: string } {
  * Login COMEX. Retourne la session (cookies + token Basic) à passer aux appels REST.
  * account='dispatch' (défaut) = compte qui accepte/assigne.
  */
+// Wrapper : enregistre le résultat du login (santé COMEX) → alerte superadmin
+// après 10 échecs consécutifs, réarmée au premier succès.
 export async function loginComex(account: ComexAccount = 'dispatch'): Promise<ComexSession> {
+  try {
+    const session = await _loginComex(account)
+    await recordComexLoginResult(true)
+    return session
+  } catch (e: any) {
+    await recordComexLoginResult(false, e?.message)
+    throw e
+  }
+}
+
+async function _loginComex(account: ComexAccount = 'dispatch'): Promise<ComexSession> {
   const { user, pass } = credsFor(account)
   const login = user.toUpperCase()   // COMEX met le login en MAJUSCULES
   const jar = new CookieJar()

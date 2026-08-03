@@ -149,6 +149,14 @@ export const NOTIFICATION_TYPES: readonly NotificationType[] = [
     defaultEnabled:  true,
   },
   {
+    key:             'comex_login_failed',
+    label:           'COMEX injoignable (login échoue)',
+    description:     'Le login Touring/COMEX échoue de façon répétée → la synchro des statuts est interrompue.',
+    category:        'admin',
+    applicableRoles: ['superadmin'],
+    defaultEnabled:  true,
+  },
+  {
     key:             'mission_cancelled_by_insurer',
     label:           'Mission annulée par l\'assistance',
     description:     'L\'assisteur (Allianz, etc.) a annulé l\'affectation par e-mail → la fiche est annulée (ou trajet à vide si déjà démarrée).',
