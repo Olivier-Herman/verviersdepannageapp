@@ -443,12 +443,8 @@ export default function ProfileClient({ user }: { user: any }) {
               </p>
               <div className="text-ink-secondary text-xs space-y-2 leading-relaxed">
                 <p>C'est <strong className="text-ink">ta signature personnelle</strong> à 4 chiffres. Toi seul le connais — ne le partage jamais.</p>
-                <p>Il te sert à <strong className="text-ink">confirmer une action sensible sur le terrain</strong> :</p>
-                <ul className="list-disc list-inside space-y-1 pl-1">
-                  <li>encaisser un montant <strong className="text-ink">inférieur au prévu</strong> (tu prends la responsabilité du rabais) ;</li>
-                  <li>valider une <strong className="text-ink">remise d'espèces</strong> à un responsable.</li>
-                </ul>
-                <p className="text-ink-muted">Sans code, tu ne peux pas réduire un montant à encaisser — tu dois percevoir le montant prévu.</p>
+                <p>Il te sert à <strong className="text-ink">confirmer un encaissement dont le montant est inférieur au montant de la mission</strong> (par ex. un arrangement sur place avec le client), ainsi qu'à valider une <strong className="text-ink">remise d'espèces</strong>.</p>
+                <p className="text-ink-muted">Sans code, tu dois percevoir le montant prévu de la mission.</p>
               </div>
             </div>
             {pinSuccess && <div className="bg-green-500/10 border border-green-500/30 text-green-400 text-sm rounded-xl px-4 py-3 mb-4">{pinSuccess}</div>}

@@ -13,10 +13,17 @@ import { sendNotification, sendNotificationToMany } from '@/lib/notifications/se
 
 export const dynamic = 'force-dynamic'
 
+// Partenaires externes (garages) : jamais concernés par le code de validation.
+const EXCLUDED_ROLES = ['garage', 'partner']
+const isInternalStaff = (u: { role?: string | null; roles?: string[] | null }) => {
+  const rs = new Set<string>([u.role || '', ...(Array.isArray(u.roles) ? u.roles : [])].filter(Boolean))
+  return !EXCLUDED_ROLES.some(r => rs.has(r))
+}
+
 const PAYLOAD_SETUP = {
   title:      '🔐 Définis ton code de validation',
-  body:       'Pour valider un encaissement ou un transfert de caisse, tu dois avoir un code personnel à 4 chiffres. Tape ici pour le créer.',
-  action_url: '/profil#pin',
+  body:       'Pour confirmer un encaissement inférieur au montant d\'une mission, tu dois avoir un code personnel à 4 chiffres. Tape ici pour le créer.',
+  action_url: '/definir-code',
 }
 const PAYLOAD_RECALL = {
   title:      '🔐 Te souviens-tu de ton code ?',
@@ -44,12 +51,12 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: true, kind, target: 'me', sent: r.ok ? 1 : 0, result: r })
   }
 
-  // target = all :
+  // target = all (hors partenaires garages) :
   //   setup  → users actifs SANS code (verify_pin_hash null)
   //   recall → users actifs AVEC code (verify_pin_hash non null)
-  const q = sb.from('users').select('id').eq('active', true)
+  const q = sb.from('users').select('id, role, roles').eq('active', true)
   const { data: users } = kind === 'recall' ? await q.not('verify_pin_hash', 'is', null) : await q.is('verify_pin_hash', null)
-  const ids = (users || []).map(x => x.id)
+  const ids = (users || []).filter(isInternalStaff).map(x => x.id)
   if (!ids.length) return NextResponse.json({ ok: true, kind, target: 'all', sent: 0, note: kind === 'recall' ? 'Personne n\'a encore de code.' : 'Tous les users actifs ont déjà un code.' })
   const res = await sendNotificationToMany(ids, type, payload)
   return NextResponse.json({ ok: true, kind, target: 'all', eligible: ids.length, ...res })
@@ -62,9 +69,9 @@ export async function GET() {
   if (u?.role !== 'superadmin') return NextResponse.json({ error: 'Superadmin uniquement' }, { status: 403 })
   const sb = createAdminClient()
   const { data: users } = await sb.from('users')
-    .select('id, name, role, verify_pin_hash')
+    .select('id, name, role, roles, verify_pin_hash')
     .eq('active', true).order('name')
-  const list = (users || []).map((x: any) => ({ id: x.id, name: x.name, role: x.role, has_pin: !!x.verify_pin_hash }))
+  const list = (users || []).filter(isInternalStaff).map((x: any) => ({ id: x.id, name: x.name, role: x.role, has_pin: !!x.verify_pin_hash }))
   const without = list.filter(x => !x.has_pin)
   const withPin = list.filter(x => x.has_pin)
   return NextResponse.json({

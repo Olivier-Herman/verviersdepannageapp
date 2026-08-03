@@ -44,7 +44,7 @@ export default function VerifyCodeClient({
             <>
               <h1 className="text-xl font-extrabold text-ink mt-4 mb-1.5">Tu n'as pas encore de code</h1>
               <p className="text-ink-secondary text-sm mb-5">Crée ton code personnel à 4 chiffres pour valider tes encaissements.</p>
-              <a href="/profil#pin" className="block w-full py-3.5 rounded-2xl bg-brand text-white font-bold">Créer mon code →</a>
+              <a href="/definir-code" className="block w-full py-3.5 rounded-2xl bg-brand text-white font-bold">Créer mon code →</a>
             </>
           ) : state === 'ok' ? (
             <>
@@ -82,7 +82,7 @@ export default function VerifyCodeClient({
                 className="block w-full mt-5 py-3.5 rounded-2xl bg-brand text-white font-bold disabled:opacity-40">
                 {busy ? '⏳…' : 'Oui, je m\'en souviens'}
               </button>
-              <a href="/profil#pin" className="block w-full mt-2.5 py-3 text-ink-secondary text-sm font-medium">
+              <a href="/definir-code" className="block w-full mt-2.5 py-3 text-ink-secondary text-sm font-medium">
                 Je l'ai oublié → définir un nouveau code
               </a>
             </>

@@ -3095,7 +3095,7 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
                     </button>
                   ) : (
                     <div className="space-y-2">
-                      <p className="text-amber-900 text-[11px]">Saisis ton code à 4 chiffres pour confirmer (tu prends la responsabilité de ce montant).</p>
+                      <p className="text-amber-900 text-[11px]">Saisis ton code à 4 chiffres pour confirmer cet encaissement inférieur au montant de la mission.</p>
                       <input
                         type="password" inputMode="numeric" pattern="\d*" maxLength={4}
                         value={setAmtPin}

@@ -14,8 +14,8 @@ export const maxDuration = 60
 
 const PAYLOAD = {
   title:      '🔐 Définis ton code de validation',
-  body:       'Il te manque ton code personnel à 4 chiffres (validation encaissement). Tape ici pour le créer en 10 secondes.',
-  action_url: '/profil#pin',
+  body:       'Il te manque ton code personnel à 4 chiffres (pour confirmer un encaissement inférieur au montant d\'une mission). Tape ici pour le créer en 10 secondes.',
+  action_url: '/definir-code',
 }
 
 export async function GET(req: NextRequest) {
@@ -24,8 +24,12 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
   const sb = createAdminClient()
-  const { data: users } = await sb.from('users').select('id').eq('active', true).is('verify_pin_hash', null)
-  const ids = (users || []).map(u => u.id)
+  // Hors partenaires externes (garages) : non concernés par le code de validation.
+  const EXCLUDED = ['garage', 'partner']
+  const { data: users } = await sb.from('users').select('id, role, roles').eq('active', true).is('verify_pin_hash', null)
+  const ids = (users || [])
+    .filter((u: any) => { const rs = new Set([u.role || '', ...(Array.isArray(u.roles) ? u.roles : [])]); return !EXCLUDED.some(r => rs.has(r)) })
+    .map((u: any) => u.id)
   if (!ids.length) return NextResponse.json({ ok: true, without_pin: 0, sent: 0 })
   const res = await sendNotificationToMany(ids, 'pin_setup_reminder', PAYLOAD)
   return NextResponse.json({ ok: true, without_pin: ids.length, ...res })
