@@ -24,14 +24,17 @@ const hasAccess = (u: any) => ALLOWED.includes(u?.role) || (Array.isArray(u?.rol
 const time = (t: any) => /^\d{1,2}:\d{2}$/.test(String(t || '')) ? String(t) : null
 const cleanDays = (arr: any): any[] => (Array.isArray(arr) ? arr : [])
   .filter(d => d && /^\d{4}-\d{2}-\d{2}$/.test(d.date))
-  .map(d => ({ date: d.date, nb: Math.max(1, Number(d.nb) || 1), jour: !!d.jour, nuit: !!d.nuit, supp_from: time(d.supp_from), supp_to: time(d.supp_to) }))
+  .map(d => ({ date: d.date, nb: Math.max(1, Number(d.nb) || 1), jour: !!d.jour, nuit: !!d.nuit, supp_from: time(d.supp_from), supp_to: time(d.supp_to), drivers: Array.isArray(d.drivers) ? d.drivers.filter((x: any) => typeof x === 'string') : [] }))
+const suppHrs = (from?: string | null, to?: string | null) => { if (!from || !to) return 0; const m = (t: string) => { const [h, mm] = t.split(':').map(Number); return (h || 0) * 60 + (mm || 0) }; let d = m(to) - m(from); if (d < 0) d += 1440; return Math.round(d / 60 * 100) / 100 }
+const PRICE_FORFAIT = 650, PRICE_HSUPP = 75   // prix HTVA Odoo (Course / Heure suppl.)
 
 export async function GET() {
   const session = await getServerSession(authOptions)
   if (!hasAccess(session?.user)) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   const sb = createAdminClient()
   const { data } = await sb.from('circuit_race_weekends').select('*').order('created_at', { ascending: false })
-  return NextResponse.json({ weekends: data || [] })
+  const { data: personnel } = await sb.from('personnel').select('id, name').eq('active', true).neq('kind', 'independant').order('name')
+  return NextResponse.json({ weekends: data || [], personnel: personnel || [] })
 }
 
 export async function POST(req: Request) {
@@ -69,7 +72,22 @@ export async function POST(req: Request) {
         partnerId: w.client_odoo_id, label: w.label, days, notes: w.notes || undefined, confirm: false,
       }))
       await sb.from('circuit_race_weekends').update({ odoo_sale_order_id: order.id, odoo_sale_order_name: order.name, updated_at: new Date().toISOString() }).eq('id', w.id)
-      return NextResponse.json({ ok: true, order })
+
+      // Répercussion CA rentabilité : 1 chauffeur interne = 1 dépanneuse (sa part =
+      // forfait jour/nuit + supplément d'UNE dépanneuse pour ses jours). Idempotent.
+      const cleaned = cleanDays(w.days)
+      const acc = new Map<string, number>()   // personnelId|period -> montant
+      for (const d of cleaned) {
+        const dayCA = (d.jour ? PRICE_FORFAIT : 0) + (d.nuit ? PRICE_FORFAIT : 0) + suppHrs(d.supp_from, d.supp_to) * PRICE_HSUPP
+        if (dayCA <= 0 || !d.drivers?.length) continue
+        const period = String(d.date).slice(0, 7)
+        for (const pid of d.drivers) acc.set(`${pid}|${period}`, (acc.get(`${pid}|${period}`) || 0) + dayCA)
+      }
+      await sb.from('driver_extra_ca').delete().eq('source', 'circuit_race').eq('source_id', w.id)
+      const caRows = [...acc.entries()].map(([k, amount]) => { const [pid, period] = k.split('|'); return { personnel_id: pid, period, amount: Math.round(amount), label: `Course — ${w.label}`, source: 'circuit_race', source_id: w.id, created_by: u.id } })
+      if (caRows.length) await sb.from('driver_extra_ca').insert(caRows)
+
+      return NextResponse.json({ ok: true, order, ca_lines: caRows.length })
     } catch (e: any) { return NextResponse.json({ error: `Devis Odoo : ${e.message}` }, { status: 500 }) }
   }
 

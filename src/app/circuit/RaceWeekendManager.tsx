@@ -8,8 +8,8 @@ import { useEffect, useState } from 'react'
 import AppShell from '@/components/layout/AppShell'
 import { Flag, ArrowLeft, Plus, Trash2, Save, FileText, Loader2, Search, X, ExternalLink, Sun, Moon } from 'lucide-react'
 
-type Day = { date: string; nb: number; jour: boolean; nuit: boolean; supp_from: string; supp_to: string }
-const emptyDay = (): Day => ({ date: '', nb: 1, jour: true, nuit: false, supp_from: '', supp_to: '' })
+type Day = { date: string; nb: number; jour: boolean; nuit: boolean; supp_from: string; supp_to: string; drivers: string[] }
+const emptyDay = (): Day => ({ date: '', nb: 1, jour: true, nuit: false, supp_from: '', supp_to: '', drivers: [] })
 const suppHours = (from?: string, to?: string): number => {
   if (!from || !to) return 0
   const mins = (t: string) => { const [h, m] = t.split(':').map(Number); return (h || 0) * 60 + (m || 0) }
@@ -21,13 +21,15 @@ export default function RaceWeekendManager({ userRole, userName, userEmail, user
   userRole: string; userName: string; userEmail: string; userModules: string[]
 }) {
   const [list, setList] = useState<any[]>([])
+  const [personnel, setPersonnel] = useState<any[]>([])
   const [editing, setEditing] = useState<any>(null)   // {id?, label, client_odoo_id, client_name, days[], notes}
   const [q, setQ] = useState('')
   const [results, setResults] = useState<any[]>([])
   const [busy, setBusy] = useState('')
   const [msg, setMsg] = useState('')
 
-  const load = () => fetch('/api/circuit-race', { cache: 'no-store' }).then(r => r.json()).then(d => setList(d.weekends || []))
+  const nameOfP = (id: string) => personnel.find(p => p.id === id)?.name || '?'
+  const load = () => fetch('/api/circuit-race', { cache: 'no-store' }).then(r => r.json()).then(d => { setList(d.weekends || []); setPersonnel(d.personnel || []) })
   useEffect(() => { load() }, [])
 
   // Recherche client Odoo (debounce)
@@ -49,6 +51,7 @@ export default function RaceWeekendManager({ userRole, userName, userEmail, user
   const setDay = (i: number, patch: Partial<Day>) => setEditing((e: any) => ({ ...e, days: e.days.map((d: Day, idx: number) => idx === i ? { ...d, ...patch } : d) }))
   const addDay = () => setEditing((e: any) => ({ ...e, days: [...e.days, emptyDay()] }))
   const removeDay = (i: number) => setEditing((e: any) => ({ ...e, days: e.days.filter((_: any, idx: number) => idx !== i) }))
+  const toggleDriver = (i: number, pid: string) => setEditing((e: any) => ({ ...e, days: e.days.map((d: Day, idx: number) => idx === i ? { ...d, drivers: (d.drivers || []).includes(pid) ? d.drivers.filter(x => x !== pid) : [...(d.drivers || []), pid] } : d) }))
 
   const save = async () => {
     if (!editing.label?.trim()) { setMsg('❌ Intitulé requis'); return }
@@ -126,6 +129,17 @@ export default function RaceWeekendManager({ userRole, userName, userEmail, user
                       <input type="time" value={d.supp_to} onChange={e => setDay(i, { supp_to: e.target.value })} className="bg-bg border rounded-lg px-1.5 py-1.5 text-sm text-ink" />
                       {h > 0 && <span className="text-xs font-medium text-emerald-600">= {h} h</span>}
                       <button onClick={() => removeDay(i)} className="ml-auto p-1.5 text-ink-muted/60 hover:text-red-500"><X size={14} /></button>
+                      {/* Chauffeurs internes du jour (1 chauffeur = 1 dépanneuse → CA rentabilité) */}
+                      <div className="w-full flex flex-wrap items-center gap-1.5 pl-1">
+                        <span className="text-[11px] text-ink-muted">Chauffeurs internes :</span>
+                        {(d.drivers || []).map((pid: string) => (
+                          <span key={pid} className="inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-700">{nameOfP(pid)} <button onClick={() => toggleDriver(i, pid)}><X size={10} /></button></span>
+                        ))}
+                        <select value="" onChange={e => { if (e.target.value) toggleDriver(i, e.target.value); e.currentTarget.value = '' }} className="text-[11px] bg-bg border rounded px-1.5 py-1 text-ink">
+                          <option value="">+ ajouter</option>
+                          {personnel.filter(p => !(d.drivers || []).includes(p.id)).map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                        </select>
+                      </div>
                     </div>
                   )
                 })}
