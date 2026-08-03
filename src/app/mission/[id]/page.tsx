@@ -114,6 +114,7 @@ export default async function MissionDriverPage({ params, searchParams }: Props)
       <DriverClient
         mission={mission}
         currentUserId={currentUser.id}
+        userRole={(currentUser as any).role}
         isReadOnly={isStaff && !isDriverOfMission}
         navApp={currentUser.nav_app || 'gmaps'}
         defaultParcZone={defaultParcZone}

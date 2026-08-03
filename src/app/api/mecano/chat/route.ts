@@ -1,81 +1,91 @@
 // src/app/api/mecano/chat/route.ts
 //
 // « La tête à Matthieu » — assistant mécano des dépanneurs.
-// POST { mission_id? | brand, model, question | messages[] }
-//   → sélectionne les fiches techniques Touring du véhicule (dépannage +
-//     remorquage), les passe à Claude avec le persona « Matthieu », répond.
-// Accès : tout utilisateur connecté (chauffeur en intervention).
+// POST { mission_id? | brand?, model?, messages[], images?[] }
+//   messages : [{role:'user'|'assistant', content:string}]
+//   images   : [{ data:base64, media_type }] joints au DERNIER message user (photo à analyser)
+// → cadre le véhicule (génération/motorisation), demande photo/VIN si incertain,
+//   s'appuie sur les fiches Touring, répond en « Matthieu ».
+// Accès (test) : superadmin + Matthieu.
 
 import { NextResponse }      from 'next/server'
 import { getServerSession }  from 'next-auth'
 import { authOptions }       from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase'
 import { normVehicle }       from '@/lib/mecano/ingest'
+import { canUseMatthieu }    from '@/lib/mecano/access'
 import Anthropic             from '@anthropic-ai/sdk'
 import { ANTHROPIC_MODEL }   from '@/lib/anthropic-model'
 
 export const dynamic     = 'force-dynamic'
 export const maxDuration  = 60
 
-const MAX_DOCS = 4   // borne le nb de PDF envoyés à Claude (tokens)
-
-// Priorité des types de fiche selon l'intention (par défaut : conseil panne).
+const MAX_DOCS = 5
 const TYPE_PRIORITY = ['tips', 'ouverture', 'gestion_moteur', 'electricite', 'remorquage', 'hv_securite', 'emergency', 'identification', 'autre']
 
-const SYSTEM = `Tu es « La tête à Matthieu », le mécano-dépanneur expert de Verviers Dépannage.
-Matthieu est LA référence que tous les chauffeurs appellent sur le terrain : tu réponds comme lui — direct, concret, pratique, orienté terrain, la sécurité d'abord.
-Tu t'appuies EN PRIORITÉ sur les fiches techniques Touring fournies (dépannage et remorquage du véhicule concerné). Cite ce qu'elles disent (ex. emplacement d'un fusible, point d'ancrage, mode transport, procédure d'ouverture, coupure haute tension pour les électriques/hybrides).
-Si l'info n'est pas dans les fiches, dis-le clairement et donne ton meilleur conseil de mécano en le signalant (« pas dans la fiche, mais d'expérience… »).
-Réponses courtes et actionnables (le chauffeur est en intervention, souvent au téléphone d'une main). Étapes numérotées quand c'est une procédure. Toujours rappeler les précautions de sécurité pertinentes (batterie, airbags non déployés, haute tension, boîte auto…).
-Tu réponds en français, tutoiement, ton collègue.`
+const SYSTEM = `Tu es « La tête à Matthieu », le mécano-dépanneur expert de Verviers Dépannage — la référence que tous les chauffeurs appellent sur le terrain. Tu réponds comme lui : direct, concret, orienté terrain, la SÉCURITÉ d'abord, tutoiement, ton collègue, en français.
+
+RÈGLE ABSOLUE — CADRER AVANT DE RÉPONDRE :
+Ne donne JAMAIS une procédure précise (ouverture, coupure haute tension, point d'ancrage, mode remorquage, gestion moteur) sans être CERTAIN du véhicule EXACT : marque, modèle, **génération/année**, et **motorisation** (essence/diesel/hybride/électrique). Une même appellation couvre plusieurs générations très différentes — se tromper de génération peut être dangereux.
+- Si la génération ou la motorisation n'est pas certaine, POSE la question d'abord (propose les générations disponibles listées dans le contexte).
+- Si le chauffeur ne sait pas : demande-lui **une photo** (du véhicule, du compartiment moteur, de la plaque motorisation, du tableau de bord) que tu analyseras, ou **le VIN** (n° de châssis, 17 caractères — le 10e caractère code l'année). Tu peux déduire beaucoup d'une photo ou d'un VIN.
+- Une fois le véhicule confirmé, réponds sur base des fiches Touring fournies.
+
+STYLE :
+- Réponses courtes et actionnables (le chauffeur est en intervention, souvent une main sur le téléphone). Étapes numérotées pour une procédure.
+- Cite ce que dit la fiche (emplacement fusible, point d'ancrage, procédure d'ouverture, coupure HT…). Si l'info n'y est pas : dis-le et donne ton meilleur conseil en le signalant (« pas dans la fiche, mais d'expérience… »).
+- Rappelle toujours les précautions de sécurité pertinentes (batterie, airbags, haute tension sur électriques/hybrides, boîte auto, freins de parking électriques…).`
 
 function pickDocs(all: any[], missionModel: string): any[] {
   const mNorm = normVehicle(missionModel)
-  const coreTok = (missionModel || '').trim().split(/\s+/)[0] || ''
-  const core = normVehicle(coreTok)
+  const core = normVehicle((missionModel || '').trim().split(/\s+/)[0] || '')
   const scored = all.map(d => {
     let score = 0
-    if (core && (d.model_norm.startsWith(core) || d.model_norm.includes(core) || (mNorm && mNorm.includes(d.model_norm)))) score += 100
+    if (core && d.model_norm && (d.model_norm.startsWith(core) || d.model_norm.includes(core))) score += 100
     if (mNorm && d.model_norm && (mNorm.includes(d.model_norm) || d.model_norm.includes(mNorm))) score += 50
-    score += Math.max(0, 20 - TYPE_PRIORITY.indexOf(d.doc_type)) // type prioritaire
+    score += Math.max(0, 20 - TYPE_PRIORITY.indexOf(d.doc_type))
     return { d, score }
   }).sort((a, b) => b.score - a.score)
-  // Diversité de types : on évite 4 fois le même type.
-  const out: any[] = []; const typesSeen = new Set<string>()
+  const out: any[] = []; const typesSeen = new Map<string, number>()
   for (const { d } of scored) {
     if (out.length >= MAX_DOCS) break
-    if (typesSeen.has(d.doc_type) && out.length >= 2) continue
-    out.push(d); typesSeen.add(d.doc_type)
+    const n = typesSeen.get(d.doc_type) || 0
+    if (n >= 2) continue
+    out.push(d); typesSeen.set(d.doc_type, n + 1)
   }
   return out
 }
 
 export async function POST(req: Request) {
   const session = await getServerSession(authOptions)
-  if (!session?.user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const u = session?.user as any
+  if (!u) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   const sb = createAdminClient()
-  const body = await req.json().catch(() => ({}))
+  const { data: me } = await sb.from('users').select('id, role').eq('email', u.email).maybeSingle()
+  if (!canUseMatthieu(me?.role, me?.id)) return NextResponse.json({ error: 'Accès réservé (test)' }, { status: 403 })
 
-  // 1) Résoudre marque/modèle
+  const body = await req.json().catch(() => ({}))
   let brand = String(body.brand || '').trim()
   let model = String(body.model || '').trim()
   if (body.mission_id) {
     const { data: m } = await sb.from('incoming_missions').select('vehicle_brand, vehicle_model').eq('id', String(body.mission_id)).maybeSingle()
     if (m) { brand = brand || m.vehicle_brand || ''; model = model || m.vehicle_model || '' }
   }
-  if (!brand) return NextResponse.json({ error: 'Véhicule inconnu (marque manquante)' }, { status: 400 })
 
-  // 2) Fiches de la marque
-  const { data: docs } = await sb.from('mecano_docs')
-    .select('id, section, model, model_norm, doc_type, label, storage_path')
-    .eq('brand_norm', normVehicle(brand))
-    .not('storage_path', 'is', null)
-  if (!docs || !docs.length) {
-    return NextResponse.json({ ok: true, answer: `Je n'ai pas encore les fiches techniques pour ${brand} dans ma base. Préviens un superadmin pour lancer l'import de cette marque.`, docs: [] })
+  // Fiches + générations disponibles pour la marque
+  let chosen: any[] = []
+  let generations: string[] = []
+  if (brand) {
+    const { data: docs } = await sb.from('mecano_docs')
+      .select('id, section, model, model_norm, doc_type, label, storage_path')
+      .eq('brand_norm', normVehicle(brand)).not('storage_path', 'is', null)
+    if (docs?.length) {
+      generations = [...new Set(docs.map(d => d.model))].sort()
+      chosen = pickDocs(docs, model)
+    }
   }
-  const chosen = pickDocs(docs, model)
 
-  // 3) Télécharger les PDF choisis (base64)
+  // PDF choisis → blocs document
   const pdfBlocks: any[] = []
   const used: any[] = []
   for (const d of chosen) {
@@ -87,39 +97,39 @@ export async function POST(req: Request) {
     used.push({ section: d.section, model: d.model, type: d.doc_type, label: d.label })
   }
 
-  // 4) Messages (historique ou question simple)
+  // Photos jointes ce tour (vision)
+  const imgs: any[] = (Array.isArray(body.images) ? body.images : [])
+    .filter((x: any) => x && typeof x.data === 'string')
+    .slice(0, 3)
+    .map((x: any) => ({ type: 'image', source: { type: 'base64', media_type: x.media_type || 'image/jpeg', data: x.data } }))
+
   const history: { role: 'user' | 'assistant'; content: string }[] = Array.isArray(body.messages)
     ? body.messages.filter((x: any) => x && (x.role === 'user' || x.role === 'assistant') && typeof x.content === 'string')
     : []
   const question = String(body.question || '').trim()
   if (question) history.push({ role: 'user', content: question })
-  if (!history.length) return NextResponse.json({ error: 'Question vide' }, { status: 400 })
+  if (!history.length && !imgs.length) return NextResponse.json({ error: 'Question vide' }, { status: 400 })
 
-  // 5) Appel Claude — les PDF + le contexte véhicule sur le 1er message user
   const apiKey = process.env.ANTHROPIC_API_KEY
   if (!apiKey) return NextResponse.json({ error: 'IA indisponible (clé manquante)' }, { status: 503 })
   const client = new Anthropic({ apiKey })
 
+  const ctx = `Contexte véhicule (à CONFIRMER avant toute procédure) :\n- Marque : ${brand || 'INCONNUE'}\n- Modèle annoncé sur la fiche : ${model || 'non précisé'}\n${generations.length ? `- Générations disponibles dans la base Touring pour ${brand} : ${generations.join(' · ')}` : brand ? `- (pas encore de fiches importées pour ${brand})` : ''}`
+
+  const lastUserIdx = (() => { for (let i = history.length - 1; i >= 0; i--) if (history[i].role === 'user') return i; return -1 })()
   const msgs: any[] = history.map((h, i) => {
-    if (i === 0 && h.role === 'user') {
-      return { role: 'user', content: [
-        ...pdfBlocks,
-        { type: 'text', text: `Véhicule : ${brand} ${model || '(modèle non précisé)'}.\nFiches Touring jointes ci-dessus.\n\nQuestion du dépanneur : ${h.content}` },
-      ] }
-    }
-    return { role: h.role, content: h.content }
+    const blocks: any[] = []
+    if (i === 0) { blocks.push(...pdfBlocks); blocks.push({ type: 'text', text: ctx }) }
+    if (i === lastUserIdx && imgs.length) blocks.push(...imgs)
+    blocks.push({ type: 'text', text: h.content || (imgs.length ? 'Analyse cette photo pour identifier le véhicule.' : '') })
+    return { role: h.role, content: blocks.length === 1 ? blocks[0].text : blocks }
   })
 
   try {
-    const resp = await client.messages.create({
-      model: ANTHROPIC_MODEL,
-      max_tokens: 1500,
-      system: SYSTEM,
-      messages: msgs,
-    })
+    const resp = await client.messages.create({ model: ANTHROPIC_MODEL, max_tokens: 1500, system: SYSTEM, messages: msgs })
     const text = resp.content.find((b: any) => b.type === 'text') as any
-    return NextResponse.json({ ok: true, answer: text?.text || '(pas de réponse)', brand, model, docs_used: used })
+    return NextResponse.json({ ok: true, answer: text?.text || '(pas de réponse)', brand, model, generations, docs_used: used })
   } catch (e: any) {
-    return NextResponse.json({ error: `Matthieu réfléchit mal là : ${e?.message || 'erreur IA'}` }, { status: 500 })
+    return NextResponse.json({ error: `Matthieu bloque là : ${e?.message || 'erreur IA'}` }, { status: 500 })
   }
 }

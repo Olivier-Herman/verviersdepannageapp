@@ -25,6 +25,7 @@ import {
   missionToLAState, isActiveMissionStatus,
 } from '@/lib/native/liveActivity'
 import { interpretVr } from '@/lib/touring/vr'
+import { canUseMatthieu } from '@/lib/mecano/access'
 
 const sb = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!)
 
@@ -80,7 +81,7 @@ interface Mission {
   awaiting_payment?: boolean | null
 }
 interface VrLoc { id: string; name: string; address: string; lat: number | null; lng: number | null; is_default?: boolean }
-interface Props { mission: Mission; currentUserId?: string; isReadOnly?: boolean; navApp?: NavApp; defaultParcZone?: string | null }
+interface Props { mission: Mission; currentUserId?: string; userRole?: string; isReadOnly?: boolean; navApp?: NavApp; defaultParcZone?: string | null }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 // Olivier 2026-06-18 : null-safe. Le defaut `= ''` ne couvre QUE undefined ;
@@ -607,7 +608,8 @@ function BriefingTtsButton({ mission }: { mission: Mission }) {
 }
 
 // ─── Composant principal ──────────────────────────────────────────────────────
-export default function DriverClient({ mission: init, currentUserId, isReadOnly = false, navApp: initNav, defaultParcZone = null }: Props) {
+export default function DriverClient({ mission: init, currentUserId, userRole, isReadOnly = false, navApp: initNav, defaultParcZone = null }: Props) {
+  const canMatthieu = canUseMatthieu(userRole, currentUserId)
   const router = useRouter()
   const { t } = useT()   // traductions FR/albanais pour les messages d'erreur (strings)
 
@@ -817,15 +819,25 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
   const [matMsgs, setMatMsgs]   = useState<{ role: 'user' | 'assistant'; content: string }[]>([])
   const [matInput, setMatInput] = useState('')
   const [matBusy, setMatBusy]   = useState(false)
+  const [matImg, setMatImg]     = useState<{ data: string; media_type: string } | null>(null)
+  const matFileRef = useRef<HTMLInputElement>(null)
+  const attachMatPhoto = (file: File) => {
+    const reader = new FileReader()
+    reader.onload = () => { const s = String(reader.result || ''); const c = s.split(',')[1]; if (c) setMatImg({ data: c, media_type: file.type || 'image/jpeg' }) }
+    reader.readAsDataURL(file)
+  }
   const askMatthieu = async (q: string) => {
     const question = q.trim()
-    if (!question || matBusy) return
-    const next = [...matMsgs, { role: 'user' as const, content: question }]
-    setMatMsgs(next); setMatInput(''); setMatBusy(true)
+    if ((!question && !matImg) || matBusy) return
+    const label = question + (matImg ? (question ? ' ' : '') + '📷 [photo jointe]' : '')
+    const next = [...matMsgs, { role: 'user' as const, content: label }]
+    setMatMsgs(next); setMatInput('')
+    const imgs = matImg ? [matImg] : []
+    setMatImg(null); setMatBusy(true)
     try {
       const r = await fetch('/api/mecano/chat', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ mission_id: M.id, messages: next }),
+        body: JSON.stringify({ mission_id: M.id, messages: next.map(m => ({ role: m.role, content: m.content })), images: imgs }),
       })
       const j = await r.json()
       setMatMsgs(m => [...m, { role: 'assistant', content: j.answer || j.error || 'Pas de réponse.' }])
@@ -3094,12 +3106,23 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
             ))}
             {matBusy && <div className="flex justify-start"><div className="bg-surface border border rounded-2xl px-3.5 py-2.5 text-sm text-ink-muted">Matthieu réfléchit…</div></div>}
           </div>
+          {matImg && (
+            <div className="bg-surface border-t border px-3 pt-2 flex items-center gap-2">
+              <img src={`data:${matImg.media_type};base64,${matImg.data}`} className="w-12 h-12 object-cover rounded-lg border" />
+              <span className="text-ink-muted text-xs flex-1">Photo prête — pose ta question ou envoie.</span>
+              <button onClick={() => setMatImg(null)} className="text-ink-muted text-lg px-1">✕</button>
+            </div>
+          )}
           <div className="bg-surface border-t border px-3 py-2.5 flex items-center gap-2">
+            <input ref={matFileRef} type="file" accept="image/*" capture="environment" className="hidden"
+              onChange={e => { const f = e.target.files?.[0]; if (f) attachMatPhoto(f); e.target.value = '' }} />
+            <button onClick={() => matFileRef.current?.click()} disabled={matBusy}
+              className="w-10 h-10 rounded-full bg-surface-2 border border flex items-center justify-center flex-shrink-0 disabled:opacity-40" title="Envoyer une photo">📷</button>
             <input value={matInput} onChange={e => setMatInput(e.target.value)}
               onKeyDown={e => { if (e.key === 'Enter') askMatthieu(matInput) }}
               placeholder="Ta question…" disabled={matBusy}
               className="flex-1 bg-surface-2 border border rounded-full px-4 py-2.5 text-ink text-sm outline-none focus:border-brand" />
-            <button onClick={() => askMatthieu(matInput)} disabled={matBusy || !matInput.trim()}
+            <button onClick={() => askMatthieu(matInput)} disabled={matBusy || (!matInput.trim() && !matImg)}
               className="w-10 h-10 rounded-full bg-brand text-white flex items-center justify-center disabled:opacity-40 flex-shrink-0">➤</button>
           </div>
         </div>
@@ -3434,8 +3457,8 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
           )
         })()}
 
-        {/* La tête à Matthieu — assistant mécano (toute mission avec un véhicule) */}
-        {(M.vehicle_brand || '').trim() && (
+        {/* La tête à Matthieu — assistant mécano (accès restreint Matthieu + superadmin en test) */}
+        {canMatthieu && (
           <button onClick={() => setMatOpen(true)}
             className="w-full rounded-2xl p-3 border-2 border-indigo-500/40 bg-indigo-500/10 flex items-center gap-3 text-left active:scale-[0.99] transition">
             <span className="text-3xl flex-shrink-0">🔧</span>
