@@ -611,7 +611,19 @@ function BriefingTtsButton({ mission }: { mission: Mission }) {
 export default function DriverClient({ mission: init, currentUserId, userRole, isReadOnly = false, navApp: initNav, defaultParcZone = null }: Props) {
   const canMatthieu = canUseMatthieu(userRole, currentUserId)
   const router = useRouter()
-  const { t } = useT()   // traductions FR/albanais pour les messages d'erreur (strings)
+  const { t, lang } = useT()   // traductions FR/albanais pour les messages d'erreur (strings)
+  const matSq = lang === 'sq'
+  const MAT = matSq ? {
+    tileTitle: 'Një pyetje për këtë automjet? Pyet mekanikun.',
+    hello: 'Tung, jam Matthieu 👋 Bëj pyetjen tënde për këtë automjet.',
+    q: ['Si ta hap këtë automjet të kyçur?', 'Defektet e shpeshta te ky model?', 'Pikat e lidhjes / mënyra e rimorkimit?', 'Ndërprerja e tensionit të lartë (elektrik/hibrid)?'],
+    ph: 'Pyetja jote…', thinking: 'Matthieu po mendon…', photoReady: 'Fotoja gati — bëj pyetjen ose dërgo.', open: 'hap',
+  } : {
+    tileTitle: 'Une question sur ce véhicule ? Demande au mécano.',
+    hello: 'Salut, c\'est Matthieu 👋 Pose ta question sur ce véhicule.',
+    q: ['Comment ouvrir ce véhicule verrouillé ?', 'Pannes fréquentes sur ce modèle ?', 'Points d\'ancrage / mode remorquage ?', 'Coupure haute tension (électrique/hybride) ?'],
+    ph: 'Ta question…', thinking: 'Matthieu réfléchit…', photoReady: 'Photo prête — pose ta question ou envoie.', open: 'ouvrir',
+  }
 
   const [M, setM]               = useState<Mission>(init)
   const [screen, setScreen]     = useState<Screen>('main')
@@ -3101,9 +3113,9 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
           <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3 bg-surface-2">
             {matMsgs.length === 0 && (
               <div className="space-y-3">
-                <p className="text-ink-muted text-sm text-center">Salut, c'est Matthieu 👋 Pose ta question sur ce véhicule.</p>
+                <p className="text-ink-muted text-sm text-center">{MAT.hello}</p>
                 <div className="flex flex-col gap-2">
-                  {['Comment ouvrir ce véhicule verrouillé ?', 'Pannes fréquentes sur ce modèle ?', 'Points d\'ancrage / mode remorquage ?', 'Coupure haute tension (électrique/hybride) ?'].map(q => (
+                  {MAT.q.map(q => (
                     <button key={q} onClick={() => askMatthieu(q)} disabled={matBusy}
                       className="text-left text-sm px-3.5 py-2.5 rounded-xl bg-surface border border-indigo-500/30 text-ink hover:border-indigo-500/60 disabled:opacity-50">💬 {q}</button>
                   ))}
@@ -3122,12 +3134,12 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
                 ))}
               </div>
             ))}
-            {matBusy && <div className="flex justify-start"><div className="bg-surface border border rounded-2xl px-3.5 py-2.5 text-sm text-ink-muted">Matthieu réfléchit…</div></div>}
+            {matBusy && <div className="flex justify-start"><div className="bg-surface border border rounded-2xl px-3.5 py-2.5 text-sm text-ink-muted">{MAT.thinking}</div></div>}
           </div>
           {matImg && (
             <div className="bg-surface border-t border px-3 pt-2 flex items-center gap-2">
               <img src={`data:${matImg.media_type};base64,${matImg.data}`} className="w-12 h-12 object-cover rounded-lg border" />
-              <span className="text-ink-muted text-xs flex-1">Photo prête — pose ta question ou envoie.</span>
+              <span className="text-ink-muted text-xs flex-1">{MAT.photoReady}</span>
               <button onClick={() => setMatImg(null)} className="text-ink-muted text-lg px-1">✕</button>
             </div>
           )}
@@ -3138,7 +3150,7 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
               className="w-10 h-10 rounded-full bg-surface-2 border border flex items-center justify-center flex-shrink-0 disabled:opacity-40" title="Envoyer une photo">📷</button>
             <input value={matInput} onChange={e => setMatInput(e.target.value)}
               onKeyDown={e => { if (e.key === 'Enter') askMatthieu(matInput) }}
-              placeholder="Ta question…" disabled={matBusy}
+              placeholder={MAT.ph} disabled={matBusy}
               className="flex-1 bg-surface-2 border border rounded-full px-4 py-2.5 text-ink text-sm outline-none focus:border-brand" />
             <button onClick={() => askMatthieu(matInput)} disabled={matBusy || (!matInput.trim() && !matImg)}
               className="w-10 h-10 rounded-full bg-brand text-white flex items-center justify-center disabled:opacity-40 flex-shrink-0">➤</button>
@@ -3482,7 +3494,7 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
             <span className="text-3xl flex-shrink-0">🔧</span>
             <div className="min-w-0 flex-1">
               <p className="text-indigo-700 dark:text-indigo-300 text-xs uppercase tracking-widest font-bold">La tête à Matthieu</p>
-              <p className="text-ink text-sm font-semibold leading-tight">Une question sur ce véhicule ? Demande au mécano.</p>
+              <p className="text-ink text-sm font-semibold leading-tight">{MAT.tileTitle}</p>
             </div>
             <span className="text-indigo-600 dark:text-indigo-300 text-lg flex-shrink-0">›</span>
           </button>

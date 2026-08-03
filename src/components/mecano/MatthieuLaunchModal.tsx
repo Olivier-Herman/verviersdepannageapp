@@ -5,19 +5,39 @@
 // AppShell (hors partenaires). Design soigné (maquette validée). Olivier 2026-08-03.
 
 import { useEffect, useState } from 'react'
+import { useT } from '@/lib/i18n/I18nProvider'
 
 const SEEN_KEY  = 'matthieu_launch_v2'   // bump → réaffiché à tout le monde
 const ANN_ID    = '99afd1e2-48f8-4f26-beb4-08a159736140'
 // Splash « pleinement opérationnel » — à partir de 20h (base complète). Olivier.
 const LAUNCH_TS = Date.parse('2026-08-03T18:00:00Z')  // 20:00 Europe/Brussels
 
-const FEATURES: [string, string, string][] = [
-  ['💬', 'Demande-lui n\'importe quoi', 'Panne, ouverture, remorquage — il connaît chaque modèle.'],
-  ['📄', 'Il te montre la fiche', 'La bonne page (schéma, points d\'ancrage), pas 40 pages.'],
-  ['📷', 'Un doute sur le modèle ?', 'Envoie une photo, il l\'analyse et identifie le véhicule.'],
-]
+const TXT = {
+  fr: {
+    badge: 'Nouveau', titre: 'Voici La tête à Matthieu',
+    lead: 'Ton mécano de poche. Une question sur le véhicule ? Il connaît chaque modèle et te répond direct — dépannage et remorquage, toutes les marques.',
+    feats: [['💬', 'Demande-lui n\'importe quoi', 'Panne, ouverture, remorquage — il connaît chaque modèle.'],
+            ['📄', 'Il te montre la fiche', 'La bonne page (schéma, points d\'ancrage), pas 40 pages.'],
+            ['📷', 'Un doute sur le modèle ?', 'Envoie une photo, il l\'analyse et identifie le véhicule.']],
+    kicker: 'Nouveau dans VD Soft',
+    where: 'Sur ta fiche d\'intervention — la tuile 🔧 La tête à Matthieu.',
+    cta: 'Découvrir en détail →', later: 'Plus tard',
+  },
+  sq: {
+    badge: 'E re', titre: 'Ja La tête à Matthieu',
+    lead: 'Mekaniku yt i xhepit. Ke një pyetje për automjetin? Ai njeh çdo model dhe të përgjigjet menjëherë — riparim dhe rimorkim, të gjitha markat.',
+    feats: [['💬', 'Pyete çfarëdo gjë', 'Defekt, hapje, rimorkim — ai njeh çdo model.'],
+            ['📄', 'Të tregon fletën teknike', 'Faqen e duhur (skema, pikat e lidhjes), jo 40 faqe.'],
+            ['📷', 'I pasigurt për modelin?', 'Dërgo një foto, ai e analizon dhe e identifikon automjetin.']],
+    kicker: 'E re në VD Soft',
+    where: 'Te fleta e ndërhyrjes — pllaka 🔧 La tête à Matthieu.',
+    cta: 'Zbulo më shumë →', later: 'Më vonë',
+  },
+}
 
 export default function MatthieuLaunchModal({ userRole }: { userRole?: string }) {
+  const { lang } = useT()
+  const T = (TXT as any)[lang] || TXT.fr
   const [show, setShow]   = useState(false)
   const [enter, setEnter] = useState(false)
 
@@ -72,17 +92,15 @@ export default function MatthieuLaunchModal({ userRole }: { userRole?: string })
           </div>
 
           <div style={{ display: 'inline-block', marginTop: 18, fontSize: 11, fontWeight: 800, letterSpacing: '.16em', textTransform: 'uppercase',
-            color: '#f5c451', background: 'rgba(245,196,81,.14)', border: '1px solid rgba(245,196,81,.34)', padding: '5px 13px', borderRadius: 999 }}>✦ Nouveau dans VD Soft</div>
+            color: '#f5c451', background: 'rgba(245,196,81,.14)', border: '1px solid rgba(245,196,81,.34)', padding: '5px 13px', borderRadius: 999 }}>✦ {T.kicker}</div>
 
           <h2 style={{ margin: '15px 4px 0', fontSize: 27, lineHeight: 1.04, fontWeight: 900, letterSpacing: '-.02em', color: '#f4f2ef' }}>
-            Voici <span style={{ background: 'linear-gradient(100deg,#a79fff,#ff6a5c)', WebkitBackgroundClip: 'text', backgroundClip: 'text', color: 'transparent' }}>La tête à Matthieu</span>
+            <span style={{ background: 'linear-gradient(100deg,#a79fff,#ff6a5c)', WebkitBackgroundClip: 'text', backgroundClip: 'text', color: 'transparent' }}>{T.titre}</span>
           </h2>
-          <p style={{ margin: '9px 6px 0', fontSize: 13.5, lineHeight: 1.5, color: '#a7a2b8' }}>
-            Le mécano que tout le monde appelle, désormais dans ta poche <b style={{ color: '#f4f2ef' }}>24/7</b>. Dépannage <b style={{ color: '#f4f2ef' }}>et</b> remorquage, toutes les marques.
-          </p>
+          <p style={{ margin: '9px 6px 0', fontSize: 13.5, lineHeight: 1.5, color: '#a7a2b8' }}>{T.lead}</p>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: 9, marginTop: 20, textAlign: 'left' }}>
-            {FEATURES.map(([ic, t, d]) => (
+            {T.feats.map(([ic, t, d]: string[]) => (
               <div key={t} style={{ display: 'flex', gap: 12, alignItems: 'center', background: 'rgba(255,255,255,.035)', border: '1px solid rgba(255,255,255,.08)', borderRadius: 16, padding: '11px 13px' }}>
                 <span style={{ width: 34, height: 34, flexShrink: 0, borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18, background: 'rgba(124,116,255,.16)' }}>{ic}</span>
                 <span style={{ minWidth: 0 }}>
@@ -93,18 +111,16 @@ export default function MatthieuLaunchModal({ userRole }: { userRole?: string })
             ))}
           </div>
 
-          <p style={{ margin: '16px 4px 0', fontSize: 11.5, color: '#8f8aa0' }}>
-            👉 Sur ta <b style={{ color: '#f4f2ef' }}>fiche d'intervention</b> — la tuile 🔧 <b style={{ color: '#a79fff' }}>La tête à Matthieu</b>.
-          </p>
+          <p style={{ margin: '16px 4px 0', fontSize: 11.5, color: '#8f8aa0' }}>👉 {T.where}</p>
 
           <a href="/matthieu/presentation" onClick={close}
             style={{ display: 'block', textDecoration: 'none', width: '100%', marginTop: 16, padding: 15, borderRadius: 17, cursor: 'pointer',
               fontSize: 15.5, fontWeight: 900, color: '#fff', textAlign: 'center',
               background: 'linear-gradient(135deg,#7c74ff,#e23b2e)', boxShadow: '0 16px 32px -12px rgba(226,59,46,.6)' }}>
-            Découvrir en détail →
+            {T.cta}
           </a>
           <button onClick={close} style={{ width: '100%', marginTop: 8, padding: 10, border: 0, background: 'transparent', color: '#8f8aa0', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
-            Plus tard
+            {T.later}
           </button>
         </div>
       </div>
