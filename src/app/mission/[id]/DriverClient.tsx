@@ -760,6 +760,10 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
   const [setAmtModalOpen, setSetAmtModalOpen] = useState(false)
   const [setAmtValue, setSetAmtValue] = useState('')
   const [setAmtSubmitting, setSetAmtSubmitting] = useState(false)
+  // Contrôle « montant sous le prévu » : demande le code du chauffeur.
+  const [setAmtPinMode, setSetAmtPinMode] = useState(false)   // true = on affiche le champ code
+  const [setAmtPin, setSetAmtPin] = useState('')
+  const [setAmtNoPin, setSetAmtNoPin] = useState(false)       // le chauffeur n'a pas de code → renvoyer vers /profil
   const handleSetAmtTap = () => {
     const next = setAmtTapCount + 1
     setSetAmtTapCount(next)
@@ -767,11 +771,13 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
     if (next >= 5) {
       setSetAmtTapCount(0)
       setSetAmtValue(String(M.amount_to_collect || ''))
+      setSetAmtPinMode(false); setSetAmtPin(''); setSetAmtNoPin(false); setErr('')
       setSetAmtModalOpen(true)
       return
     }
     setSetAmtTapTimer(setTimeout(() => setSetAmtTapCount(0), 2000))
   }
+  const expectedTvac = estimatedAmount?.tvac || 0
   const submitSetAmount = async () => {
     const n = parseFloat(setAmtValue)
     if (Number.isNaN(n) || n < 0) { setErr('Montant invalide'); return }
@@ -780,12 +786,21 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
       const r = await fetch('/api/missions/driver-action', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ mission_id: M.id, action: 'set_amount_to_collect', amount: n }),
+        body: JSON.stringify({
+          mission_id: M.id, action: 'set_amount_to_collect', amount: n,
+          expected_tvac: expectedTvac || undefined,
+          pin: setAmtPinMode && setAmtPin ? setAmtPin : undefined,
+        }),
       })
       const j = await r.json()
-      if (!r.ok) throw new Error(j.error || 'Erreur')
+      if (!r.ok) {
+        // Montant sous le prévu → le serveur exige le code du chauffeur.
+        if (j.code === 'pin_required' || j.code === 'pin_invalid') { setSetAmtPinMode(true); setSetAmtNoPin(false); setErr(j.code === 'pin_invalid' ? 'Code incorrect, réessaie.' : ''); return }
+        if (j.code === 'no_pin')       { setSetAmtNoPin(true); setSetAmtPinMode(false); setErr(''); return }
+        throw new Error(j.error || 'Erreur')
+      }
       setSetAmtModalOpen(false)
-      setSetAmtValue('')
+      setSetAmtValue(''); setSetAmtPin(''); setSetAmtPinMode(false); setSetAmtNoPin(false)
       window.location.reload()
     } catch (e: any) {
       setErr(e.message || 'Erreur')
@@ -793,6 +808,8 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
       setSetAmtSubmitting(false)
     }
   }
+  // « Encaisser le montant manquant » : on remonte le montant au prévu et on soumet.
+  const collectFullExpected = () => { if (expectedTvac > 0) { setSetAmtValue(expectedTvac.toFixed(2)); setSetAmtPinMode(false); setSetAmtPin(''); setErr('') } }
   // Charge l etat de derogation pending au mount + refresh sur changement mission
   useEffect(() => {
     let cancelled = false
@@ -3029,27 +3046,74 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
           <div className="bg-surface w-full rounded-t-3xl p-6 space-y-3" onClick={e => e.stopPropagation()}>
             <div>
               <p className="text-ink font-semibold">💶 Montant à encaisser</p>
-              <p className="text-ink-muted text-xs mt-0.5">Ajoute ou modifie le montant à percevoir auprès du client. La banderole rouge apparaîtra après validation.</p>
+              <p className="text-ink-muted text-xs mt-0.5">Ajoute ou modifie le montant à percevoir auprès du client.</p>
             </div>
+            {expectedTvac > 0 && (
+              <p className="text-ink-muted text-xs">Montant prévu : <strong className="text-ink">{expectedTvac.toFixed(2)} € TVAC</strong></p>
+            )}
             <div>
               <p className="text-ink-muted text-xs uppercase tracking-widest font-medium mb-1.5">Montant (€)</p>
               <input
                 type="number" step="0.01" min={0}
                 value={setAmtValue}
-                onChange={e => setSetAmtValue(e.target.value)}
+                onChange={e => { setSetAmtValue(e.target.value); setSetAmtPinMode(false); setSetAmtPin(''); setSetAmtNoPin(false); setErr('') }}
                 placeholder="0.00"
                 autoFocus
                 className="w-full bg-surface-hover border border rounded-xl px-3 py-3 text-ink text-2xl font-bold text-center outline-none focus:border-brand"
                 disabled={setAmtSubmitting}
               />
             </div>
+
+            {(() => {
+              const n = parseFloat(setAmtValue)
+              const below = expectedTvac > 0 && !Number.isNaN(n) && n < expectedTvac - 0.01
+              if (!below) return null
+              const manque = (expectedTvac - n).toFixed(2)
+              // Aucun code défini → on renvoie vers le profil.
+              if (setAmtNoPin) return (
+                <div className="bg-amber-50 border border-amber-300 rounded-xl p-3 text-amber-900 text-xs space-y-2">
+                  <p className="font-semibold">Tu n'as pas encore de code de validation.</p>
+                  <p>Pour encaisser un montant inférieur au prévu, tu dois d'abord définir ton code personnel.</p>
+                  <a href="/profil" className="inline-block py-2 px-3 bg-amber-600 text-white rounded-lg font-semibold">Définir mon code →</a>
+                </div>
+              )
+              return (
+                <div className="bg-amber-50 border border-amber-300 rounded-xl p-3 space-y-2.5">
+                  <p className="text-amber-900 text-xs font-semibold">⚠️ Montant inférieur au prévu (manque {manque} €).</p>
+                  <button onClick={collectFullExpected} disabled={setAmtSubmitting}
+                    className="w-full py-2.5 bg-emerald-600 text-white rounded-xl text-sm font-semibold">
+                    Encaisser le montant prévu ({expectedTvac.toFixed(2)} €)
+                  </button>
+                  <p className="text-amber-800 text-[11px] text-center">— ou —</p>
+                  {!setAmtPinMode ? (
+                    <button onClick={() => { setSetAmtPinMode(true); setErr('') }} disabled={setAmtSubmitting}
+                      className="w-full py-2.5 bg-amber-600 text-white rounded-xl text-sm font-semibold">
+                      Confirmer ce montant avec mon code
+                    </button>
+                  ) : (
+                    <div className="space-y-2">
+                      <p className="text-amber-900 text-[11px]">Saisis ton code à 4 chiffres pour confirmer (tu prends la responsabilité de ce montant).</p>
+                      <input
+                        type="password" inputMode="numeric" pattern="\d*" maxLength={4}
+                        value={setAmtPin}
+                        onChange={e => setSetAmtPin(e.target.value.replace(/\D/g, '').slice(0, 4))}
+                        placeholder="••••"
+                        className="w-full bg-white border border-amber-300 rounded-xl px-3 py-2.5 text-ink text-xl font-bold text-center tracking-[0.5em] outline-none focus:border-amber-500"
+                        disabled={setAmtSubmitting}
+                      />
+                    </div>
+                  )}
+                </div>
+              )
+            })()}
+
             {err && <p className="text-red-400 text-xs">⚠️ {err}</p>}
             <div className="flex gap-3">
-              <button onClick={() => setSetAmtModalOpen(false)} disabled={setAmtSubmitting}
+              <button onClick={() => { setSetAmtModalOpen(false); setSetAmtPinMode(false); setSetAmtPin(''); setSetAmtNoPin(false); setErr('') }} disabled={setAmtSubmitting}
                 className="flex-1 py-3 bg-surface-hover text-ink-secondary rounded-2xl text-sm">Annuler</button>
-              <button onClick={submitSetAmount} disabled={setAmtSubmitting || !setAmtValue}
+              <button onClick={submitSetAmount} disabled={setAmtSubmitting || !setAmtValue || (setAmtPinMode && setAmtPin.length !== 4)}
                 className="flex-1 py-3 bg-brand disabled:opacity-40 text-white font-semibold rounded-2xl text-sm">
-                {setAmtSubmitting ? '⏳…' : 'Valider'}
+                {setAmtSubmitting ? '⏳…' : setAmtPinMode ? 'Confirmer avec le code' : 'Valider'}
               </button>
             </div>
           </div>

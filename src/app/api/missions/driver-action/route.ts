@@ -149,8 +149,8 @@ export async function POST(req: Request) {
   const supabase = createAdminClient()
 
   const { data: actor } = isInternal
-    ? await supabase.from('users').select('id, name, current_truck_id').eq('id', internalActor!).single()
-    : await supabase.from('users').select('id, name, current_truck_id').eq('email', session!.user.email!).single()
+    ? await supabase.from('users').select('id, name, current_truck_id, verify_pin_hash').eq('id', internalActor!).single()
+    : await supabase.from('users').select('id, name, current_truck_id, verify_pin_hash').eq('email', session!.user.email!).single()
   if (!actor) return NextResponse.json({ error: 'Utilisateur introuvable' }, { status: 401 })
 
   const { data: mission, error: fetchError } = await supabase
@@ -264,8 +264,29 @@ export async function POST(req: Request) {
     if (Number.isNaN(n) || n < 0) {
       return NextResponse.json({ error: 'Montant invalide' }, { status: 400 })
     }
+    // Règle Olivier 2026-08-03 : si le chauffeur encaisse MOINS que le montant
+    // prévu (tarif convenu/estimé, TVAC), il doit confirmer avec son code PIN
+    // (il prend la responsabilité). ≥ prévu → on adapte sans confirmation.
+    const expected = Number((body as any).expected_tvac)
+    const below = Number.isFinite(expected) && expected > 0 && n < expected - 0.01
+    ;(updatePayload as any).__below = below   // marqueur interne (retiré avant write)
+    if (below) {
+      const pin = (body as any).pin
+      if (!(actor as any).verify_pin_hash) {
+        return NextResponse.json({ error: 'Aucun code de validation défini sur ton profil', code: 'no_pin' }, { status: 409 })
+      }
+      if (!pin || String(pin).length !== 4) {
+        return NextResponse.json({ error: 'Montant inférieur au prévu — code requis', code: 'pin_required', expected_tvac: expected }, { status: 409 })
+      }
+      const bcrypt = (await import('bcryptjs')).default
+      const ok = await bcrypt.compare(String(pin), (actor as any).verify_pin_hash)
+      if (!ok) return NextResponse.json({ error: 'Code incorrect', code: 'pin_invalid' }, { status: 403 })
+    }
     updatePayload.amount_to_collect = n
   }
+  // Retire le marqueur interne avant l'écriture (colonne inexistante)
+  const belowConfirmed = (updatePayload as any).__below === true
+  delete (updatePayload as any).__below
 
   // ── Marquer une categorie photo comme couverte (multi-device) ───────────
   // Persiste en BDD (text[]) au lieu de localStorage local au device.
@@ -443,13 +464,24 @@ export async function POST(req: Request) {
   if (action === 'set_amount_to_collect' && updated) {
     const oldAmt = Number(mission.amount_to_collect) || 0
     const newAmt = Number(updated.amount_to_collect) || 0
+    const expected = Number((body as any).expected_tvac) || 0
     const label  = `${mission.dossier_number || mission.external_id || mission_id.slice(0, 8)}${updated.client_name ? ' — ' + updated.client_name : ''}`
     const change = oldAmt > 0 ? `${oldAmt} € → ${newAmt} €` : `${newAmt} €`
+    // Audit : montant réduit confirmé par le code du chauffeur.
+    if (belowConfirmed) {
+      const manque = Math.round((expected - newAmt) * 100) / 100
+      await supabase.from('mission_logs').insert({
+        mission_id, actor_id: actor.id, action: 'amount_below_expected_confirmed',
+        notes: `Montant réduit confirmé par code : prévu ${expected} € TVAC, encaissé ${newAmt} € (manque ${manque} €)`,
+        metadata: { expected_tvac: expected, collected_tvac: newAmt, shortfall: manque },
+      })
+    }
     try {
       const { sendNotificationToRoles } = await import('@/lib/notifications/send')
+      const warn = belowConfirmed ? `⚠️ SOUS le prévu (${expected} €, confirmé par code) — ` : ''
       await sendNotificationToRoles(['dispatcher', 'admin', 'superadmin'], 'driver_amount_set', {
         title:      `💶 Montant à encaisser ${oldAmt > 0 ? 'modifié' : 'ajouté'} par ${actor.name}`,
-        body:       `${label} : ${change}`,
+        body:       `${warn}${label} : ${change}`,
         action_url: `/dispatch/${mission_id}`,
         mission_id,
       })

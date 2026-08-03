@@ -525,6 +525,11 @@ function MissionBlock({
   }
 
   const totalCollected = payments.reduce((s, p) => s + Number(p.amount || 0), 0)
+  // Sécurité Olivier 2026-08-03 : écart entre le montant ENCAISSÉ (TVAC) et le
+  // montant qui va être FACTURÉ (TVAC). Empêche de facturer sans regarder.
+  const invoiceTvac    = pushTvac   // montant à facturer TVAC (customLines ou estimation)
+  const collectedDelta = (totalCollected > 0 && invoiceTvac > 0) ? Math.round((totalCollected - invoiceTvac) * 100) / 100 : 0
+  const hasCollectGap  = Math.abs(collectedDelta) >= 0.5
 
   return (
     <div className={`border rounded-2xl p-4 space-y-3 ${isReady ? 'bg-surface' : 'bg-surface-2 opacity-70'}`}>
@@ -644,6 +649,23 @@ function MissionBlock({
             {payments.length > 1
               ? '→ Crée le devis, puis encode MANUELLEMENT les ' + payments.length + ' paiements dans Odoo (un par mode).'
               : '→ Crée le devis, puis encode le paiement dans Odoo.'}
+          </p>
+        </div>
+      )}
+
+      {/* Sécurité : le montant encaissé ne correspond PAS au montant à facturer. */}
+      {hasCollectGap && (
+        <div className="bg-red-50 border-2 border-red-500 rounded-xl p-3 space-y-1">
+          <p className="text-red-700 text-xs font-bold flex items-center gap-1">
+            🚨 ÉCART ENCAISSÉ / À FACTURER — {collectedDelta > 0 ? 'trop perçu' : 'manque'} {Math.abs(collectedDelta).toFixed(2)} €
+          </p>
+          <p className="text-red-800 text-xs">
+            Encaissé : <strong>{totalCollected.toFixed(2)} €</strong> · À facturer : <strong>{invoiceTvac.toFixed(2)} € TVAC</strong>
+          </p>
+          <p className="text-red-700 text-[11px] italic">
+            {collectedDelta < 0
+              ? 'Le client a payé moins que le montant facturé — vérifie le tarif ou récupère le solde avant de facturer.'
+              : 'Le client a payé plus que le montant facturé — vérifie le tarif / adapte le devis avant de facturer.'}
           </p>
         </div>
       )}

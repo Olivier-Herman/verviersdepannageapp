@@ -133,6 +133,14 @@ export const NOTIFICATION_TYPES: readonly NotificationType[] = [
     defaultEnabled:  true,
   },
   {
+    key:             'pin_setup_reminder',
+    label:           'Rappel : définir ton code de validation',
+    description:     'Invite l\'utilisateur à définir son code personnel à 4 chiffres (validation encaissement/caisse).',
+    category:        'admin',
+    applicableRoles: ['driver', 'dispatcher', 'admin', 'superadmin'],
+    defaultEnabled:  true,
+  },
+  {
     key:             'kaze_cancelled_after_start',
     label:           'Mission Kaze annulée après acceptation',
     description:     'Kaze a annulé une mission déjà acceptée par le chauffeur → trajet à vide à facturer (chauffeur : fais demi-tour).',

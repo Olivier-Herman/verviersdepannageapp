@@ -429,12 +429,12 @@ export default function ProfileClient({ user }: { user: any }) {
         </div>
 
         {/* PIN */}
-        {user?.can_verify && (
+        <div id="pin" className="scroll-mt-24">
           <div className="bg-surface border border rounded-2xl p-5">
-            <h2 className="text-ink font-bold mb-1">PIN de validation caisse</h2>
+            <h2 className="text-ink font-bold mb-1">Code de validation</h2>
             <p className="text-ink-muted text-xs mb-4">
-              {hasPin ? 'Ton PIN est défini. Tu peux le modifier ci-dessous.'
-                      : "Aucun PIN défini. Crée-en un pour valider les remises d'espèces."}
+              {hasPin ? 'Ton code est défini. Tu peux le modifier ci-dessous.'
+                      : "Aucun code défini. Crée ton code à 4 chiffres pour valider un encaissement ou une remise d'espèces."}
             </p>
             {pinSuccess && <div className="bg-green-500/10 border border-green-500/30 text-green-400 text-sm rounded-xl px-4 py-3 mb-4">{pinSuccess}</div>}
             {pinError   && <div className="bg-red-500/10 border border-red-500/30 text-red-400 text-sm rounded-xl px-4 py-3 mb-4">{pinError}</div>}
@@ -459,7 +459,7 @@ export default function ProfileClient({ user }: { user: any }) {
               </button>
             </div>
           </div>
-        )}
+        </div>
 
         {/* Push */}
         {pushSupported && (

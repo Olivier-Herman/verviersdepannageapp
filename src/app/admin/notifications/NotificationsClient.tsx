@@ -1,7 +1,7 @@
 'use client'
 
-import { useMemo, useState } from 'react'
-import { Bell, Check, X } from 'lucide-react'
+import { useMemo, useState, useEffect } from 'react'
+import { Bell, Check, X, KeyRound } from 'lucide-react'
 import {
   NOTIFICATION_TYPES,
   NOTIFICATION_CATEGORY_LABELS,
@@ -21,6 +21,22 @@ export default function NotificationsClient({
   const [roleFilter, setRoleFilter] = useState<string>('')
   const [search,     setSearch]     = useState<string>('')
   const [saving,     setSaving]     = useState<string | null>(null)  // `${userId}:${type}` en cours
+
+  // ── Rappel « définis ton code de validation » ──────────────────────────────
+  const [pinBusy,  setPinBusy]  = useState<'me' | 'all' | null>(null)
+  const [pinMsg,   setPinMsg]   = useState('')
+  const [pinCount, setPinCount] = useState<{ without_pin: number; total: number } | null>(null)
+  useEffect(() => { fetch('/api/admin/notify-pin-setup').then(r => r.json()).then(j => { if (j && typeof j.without_pin === 'number') setPinCount(j) }).catch(() => {}) }, [])
+  const sendPinReminder = async (target: 'me' | 'all') => {
+    if (target === 'all' && !confirm(`Envoyer le rappel « définis ton code » à tous les utilisateurs SANS code${pinCount ? ` (${pinCount.without_pin})` : ''} ?`)) return
+    setPinBusy(target); setPinMsg('')
+    try {
+      const r = await fetch('/api/admin/notify-pin-setup', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ target }) })
+      const j = await r.json()
+      if (!r.ok) { setPinMsg('❌ ' + (j.error || 'Erreur')); return }
+      setPinMsg(target === 'me' ? '✅ Notif test envoyée sur ton compte.' : `✅ Envoyée à ${j.sent || 0} utilisateur(s) sans code.${j.note ? ' ' + j.note : ''}`)
+    } finally { setPinBusy(null) }
+  }
 
   // Index prefs par (user_id, type) pour resolution rapide
   const prefIndex = useMemo(() => {
@@ -91,6 +107,27 @@ export default function NotificationsClient({
           <p className="text-ink-muted text-sm">
             Configure les notifications activées par utilisateur. Les types disponibles dépendent du rôle.
           </p>
+        </div>
+      </div>
+
+      {/* Rappel « définis ton code de validation » */}
+      <div className="bg-surface border rounded-2xl p-4">
+        <div className="flex items-start gap-3">
+          <div className="w-9 h-9 bg-amber-500/10 rounded-xl flex items-center justify-center text-amber-600 flex-shrink-0"><KeyRound size={18} /></div>
+          <div className="flex-1 min-w-0">
+            <h2 className="text-ink font-semibold text-sm">Rappel « définis ton code »</h2>
+            <p className="text-ink-muted text-xs mt-0.5">
+              Invite les utilisateurs à créer leur code à 4 chiffres (validation encaissement). Lien direct vers leur profil.
+              {pinCount && <> {' '}<span className="text-amber-700 font-medium">{pinCount.without_pin}/{pinCount.total} sans code.</span></>}
+            </p>
+            {pinMsg && <p className="text-xs mt-2 text-ink">{pinMsg}</p>}
+          </div>
+          <div className="flex gap-2 flex-shrink-0">
+            <button onClick={() => sendPinReminder('me')} disabled={!!pinBusy}
+              className="text-xs px-3 py-2 rounded-lg border hover:bg-surface-2 disabled:opacity-50">{pinBusy === 'me' ? '…' : 'Test (moi)'}</button>
+            <button onClick={() => sendPinReminder('all')} disabled={!!pinBusy || (pinCount?.without_pin === 0)}
+              className="text-xs px-3 py-2 rounded-lg bg-amber-600 text-white font-semibold hover:opacity-90 disabled:opacity-50">{pinBusy === 'all' ? 'Envoi…' : 'Envoyer à tous (sans code)'}</button>
+          </div>
         </div>
       </div>
 
