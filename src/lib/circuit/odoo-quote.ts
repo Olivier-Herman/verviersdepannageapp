@@ -126,7 +126,17 @@ export interface RaceDay {
   nb_depanneuses:  number
   jour:            boolean  // forfait jour 08h-18h
   nuit:            boolean  // forfait nuit 18h-08h
-  supplement_h:    number   // heures de supplément (par dépanneuse)
+  supp_from?:      string   // supplément : heure de début 'HH:MM' (justificatif)
+  supp_to?:        string   // supplément : heure de fin 'HH:MM'
+}
+
+/** Heures de supplément déduites de la plage « de-à » (gère le passage minuit). */
+export function suppHours(from?: string, to?: string): number {
+  if (!from || !to) return 0
+  const mins = (t: string) => { const [h, m] = t.split(':').map(Number); return (h || 0) * 60 + (m || 0) }
+  let diff = mins(to) - mins(from)
+  if (diff < 0) diff += 24 * 60          // ex. 22:00 → 02:00
+  return Math.round((diff / 60) * 100) / 100
 }
 
 const JOURS_FR = ['dimanche', 'lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi']
@@ -146,7 +156,7 @@ export async function createRaceWeekendQuote(input: {
   confirm?:  boolean
 }): Promise<{ id: number; name: string }> {
   if (!input.partnerId) throw new Error('partnerId requis')
-  const days = (input.days || []).filter(d => d?.date && (d.jour || d.nuit || (d.supplement_h || 0) > 0))
+  const days = (input.days || []).filter(d => d?.date && (d.jour || d.nuit || suppHours(d.supp_from, d.supp_to) > 0))
   if (!days.length) throw new Error('Au moins un jour avec forfait ou supplément requis')
 
   const courseId = await findProductIdByCode(PRODUCT_REF_COURSE)
@@ -160,7 +170,8 @@ export async function createRaceWeekendQuote(input: {
     orderLines.push([0, 0, { display_type: 'line_section', name: `${fmtDayLabel(d.date)} — ${n} dépanneuse${n > 1 ? 's' : ''}`, sequence: seq++ }])
     if (d.jour)  orderLines.push([0, 0, { product_id: courseId, product_uom_qty: n, name: 'Forfait jour (08h-18h)',  sequence: seq++ }])
     if (d.nuit)  orderLines.push([0, 0, { product_id: courseId, product_uom_qty: n, name: 'Forfait nuit (18h-08h)',  sequence: seq++ }])
-    if ((d.supplement_h || 0) > 0) orderLines.push([0, 0, { product_id: hsuppId, product_uom_qty: n * d.supplement_h, name: 'Supplément horaire', sequence: seq++ }])
+    const sh = suppHours(d.supp_from, d.supp_to)
+    if (sh > 0) orderLines.push([0, 0, { product_id: hsuppId, product_uom_qty: n * sh, name: `Supplément horaire (de ${d.supp_from} à ${d.supp_to})`, sequence: seq++ }])
   }
 
   const orderId = await odooRpc<number>('sale.order', 'create', [{

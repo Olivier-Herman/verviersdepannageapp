@@ -8,8 +8,14 @@ import { useEffect, useState } from 'react'
 import AppShell from '@/components/layout/AppShell'
 import { Flag, ArrowLeft, Plus, Trash2, Save, FileText, Loader2, Search, X, ExternalLink, Sun, Moon } from 'lucide-react'
 
-type Day = { date: string; nb: number; jour: boolean; nuit: boolean; supp: number }
-const emptyDay = (): Day => ({ date: '', nb: 1, jour: true, nuit: false, supp: 0 })
+type Day = { date: string; nb: number; jour: boolean; nuit: boolean; supp_from: string; supp_to: string }
+const emptyDay = (): Day => ({ date: '', nb: 1, jour: true, nuit: false, supp_from: '', supp_to: '' })
+const suppHours = (from?: string, to?: string): number => {
+  if (!from || !to) return 0
+  const mins = (t: string) => { const [h, m] = t.split(':').map(Number); return (h || 0) * 60 + (m || 0) }
+  let diff = mins(to) - mins(from); if (diff < 0) diff += 1440
+  return Math.round((diff / 60) * 100) / 100
+}
 
 export default function RaceWeekendManager({ userRole, userName, userEmail, userModules }: {
   userRole: string; userName: string; userEmail: string; userModules: string[]
@@ -104,23 +110,28 @@ export default function RaceWeekendManager({ userRole, userName, userEmail, user
 
             {/* Jours */}
             <div>
-              <div className="grid grid-cols-[1fr,auto,auto,auto,auto,auto] gap-2 text-[11px] text-ink-muted px-1 mb-1">
-                <span>Date</span><span>Dép.</span><span className="text-center">Jour</span><span className="text-center">Nuit</span><span>Suppl. (h)</span><span></span>
-              </div>
-              <div className="flex flex-col gap-1.5">
-                {editing.days.map((d: Day, i: number) => (
-                  <div key={i} className="grid grid-cols-[1fr,auto,auto,auto,auto,auto] gap-2 items-center">
-                    <input type="date" value={d.date} onChange={e => setDay(i, { date: e.target.value })} className="bg-bg border rounded-lg px-2 py-1.5 text-sm text-ink" />
-                    <input type="number" min={1} value={d.nb} onChange={e => setDay(i, { nb: Number(e.target.value) })} className="w-14 bg-bg border rounded-lg px-2 py-1.5 text-sm text-ink text-center" />
-                    <button onClick={() => setDay(i, { jour: !d.jour })} title="Forfait jour (08h-18h)" className={`w-9 h-9 rounded-lg border flex items-center justify-center ${d.jour ? 'bg-amber-500/20 text-amber-600 border-amber-400' : 'text-ink-muted'}`}><Sun size={15} /></button>
-                    <button onClick={() => setDay(i, { nuit: !d.nuit })} title="Forfait nuit (18h-08h)" className={`w-9 h-9 rounded-lg border flex items-center justify-center ${d.nuit ? 'bg-indigo-500/20 text-indigo-600 border-indigo-400' : 'text-ink-muted'}`}><Moon size={15} /></button>
-                    <input type="number" min={0} step={0.5} value={d.supp} onChange={e => setDay(i, { supp: Number(e.target.value) })} className="w-16 bg-bg border rounded-lg px-2 py-1.5 text-sm text-ink text-center" />
-                    <button onClick={() => removeDay(i)} className="p-1.5 text-ink-muted/60 hover:text-red-500"><X size={14} /></button>
-                  </div>
-                ))}
+              <div className="flex flex-col gap-2">
+                {editing.days.map((d: Day, i: number) => {
+                  const h = suppHours(d.supp_from, d.supp_to)
+                  return (
+                    <div key={i} className="flex flex-wrap items-center gap-2 bg-surface-2/50 border rounded-xl p-2">
+                      <input type="date" value={d.date} onChange={e => setDay(i, { date: e.target.value })} className="bg-bg border rounded-lg px-2 py-1.5 text-sm text-ink" />
+                      <label className="flex items-center gap-1 text-xs text-ink-muted">Dép.
+                        <input type="number" min={1} value={d.nb} onChange={e => setDay(i, { nb: Number(e.target.value) })} className="w-12 bg-bg border rounded-lg px-1 py-1.5 text-sm text-ink text-center" /></label>
+                      <button onClick={() => setDay(i, { jour: !d.jour })} title="Forfait jour (08h-18h)" className={`inline-flex items-center gap-1 px-2 h-8 rounded-lg border text-xs ${d.jour ? 'bg-amber-500/20 text-amber-600 border-amber-400' : 'text-ink-muted'}`}><Sun size={14} /> Jour</button>
+                      <button onClick={() => setDay(i, { nuit: !d.nuit })} title="Forfait nuit (18h-08h)" className={`inline-flex items-center gap-1 px-2 h-8 rounded-lg border text-xs ${d.nuit ? 'bg-indigo-500/20 text-indigo-600 border-indigo-400' : 'text-ink-muted'}`}><Moon size={14} /> Nuit</button>
+                      <span className="text-xs text-ink-muted ml-1">Suppl. de</span>
+                      <input type="time" value={d.supp_from} onChange={e => setDay(i, { supp_from: e.target.value })} className="bg-bg border rounded-lg px-1.5 py-1.5 text-sm text-ink" />
+                      <span className="text-xs text-ink-muted">à</span>
+                      <input type="time" value={d.supp_to} onChange={e => setDay(i, { supp_to: e.target.value })} className="bg-bg border rounded-lg px-1.5 py-1.5 text-sm text-ink" />
+                      {h > 0 && <span className="text-xs font-medium text-emerald-600">= {h} h</span>}
+                      <button onClick={() => removeDay(i)} className="ml-auto p-1.5 text-ink-muted/60 hover:text-red-500"><X size={14} /></button>
+                    </div>
+                  )
+                })}
               </div>
               <button onClick={addDay} className="mt-2 inline-flex items-center gap-1 text-xs text-brand hover:underline"><Plus size={13} /> Ajouter un jour</button>
-              <p className="text-[11px] text-ink-muted mt-1">Forfait (jour/nuit) et supplément sont multipliés par le nb de dépanneuses. Produits : Course (650€), Heure suppl. (75€).</p>
+              <p className="text-[11px] text-ink-muted mt-1">Forfait (jour/nuit) et supplément (× heures de la plage) sont multipliés par le nb de dépanneuses. La plage « de‑à » justifie le supplément sur le devis. Produits : Course 650 €, Heure suppl. 75 €/h.</p>
             </div>
 
             <textarea value={editing.notes || ''} onChange={e => setEditing({ ...editing, notes: e.target.value })} rows={2} placeholder="Notes (optionnel)" className="w-full bg-bg border rounded-lg px-3 py-2 text-sm text-ink resize-none" />
