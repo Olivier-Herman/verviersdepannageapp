@@ -57,7 +57,7 @@ export default function DepotsTilesModal({ onClose }: { onClose: () => void }) {
               Aucun parc actif. Crée-en un depuis <Link href="/admin/depots" className="text-brand hover:underline">/admin/depots</Link>.
             </div>
           ) : (
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               {depots.map(d => (
                 <Link key={d.id} href={`/fourriere/parc/${d.id}`} onClick={onClose}
                   className="bg-surface-2 border hover:border-brand/50 hover:bg-surface-hover rounded-card p-4 transition group">
