@@ -436,13 +436,12 @@ export default function ProfileClient({ user }: { user: any }) {
               {hasPin ? 'Ton code est défini. Tu peux le modifier ci-dessous.'
                       : "Aucun code défini. Crée ton code à 4 chiffres pour valider un encaissement ou une remise d'espèces."}
             </p>
-            {/* À quoi sert ce code */}
-            <details className="group mb-4 rounded-xl border border-amber-500/30 bg-amber-500/5 open:bg-amber-500/10">
-              <summary className="flex items-center gap-2 cursor-pointer list-none px-3.5 py-2.5 text-amber-700 dark:text-amber-300 text-sm font-semibold select-none">
+            {/* À quoi sert ce code — explication toujours visible */}
+            <div className="mb-4 rounded-xl border border-amber-500/30 bg-amber-500/5 px-3.5 py-3">
+              <p className="flex items-center gap-2 text-amber-700 dark:text-amber-300 text-sm font-semibold mb-2">
                 <span aria-hidden="true">💡</span> À quoi me sert ce code ?
-                <span className="ml-auto text-amber-600/70 group-open:rotate-180 transition-transform" aria-hidden="true">⌄</span>
-              </summary>
-              <div className="px-3.5 pb-3.5 -mt-1 text-ink-secondary text-xs space-y-2 leading-relaxed">
+              </p>
+              <div className="text-ink-secondary text-xs space-y-2 leading-relaxed">
                 <p>C'est <strong className="text-ink">ta signature personnelle</strong> à 4 chiffres. Toi seul le connais — ne le partage jamais.</p>
                 <p>Il te sert à <strong className="text-ink">confirmer une action sensible sur le terrain</strong> :</p>
                 <ul className="list-disc list-inside space-y-1 pl-1">
@@ -451,7 +450,7 @@ export default function ProfileClient({ user }: { user: any }) {
                 </ul>
                 <p className="text-ink-muted">Sans code, tu ne peux pas réduire un montant à encaisser — tu dois percevoir le montant prévu.</p>
               </div>
-            </details>
+            </div>
             {pinSuccess && <div className="bg-green-500/10 border border-green-500/30 text-green-400 text-sm rounded-xl px-4 py-3 mb-4">{pinSuccess}</div>}
             {pinError   && <div className="bg-red-500/10 border border-red-500/30 text-red-400 text-sm rounded-xl px-4 py-3 mb-4">{pinError}</div>}
             <div className="flex flex-col gap-3">
