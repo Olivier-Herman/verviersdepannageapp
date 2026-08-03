@@ -28,6 +28,9 @@ export interface CreateCircuitQuoteInput {
 const PRODUCT_REF_INCENTIVE = 'Incentive'
 const PRODUCT_REF_AFTER_SIX = 'After6'
 
+// Modèle d'e-mail Odoo de confirmation des missions incentive (Olivier 2026-08-03).
+const INCENTIVE_CONFIRM_TEMPLATE_ID = 62
+
 const TYPE_LABELS: Record<string, string> = {
   incentive:  'Incentive',
   after_six:  'After-Six',
@@ -93,12 +96,26 @@ export async function createCircuitQuote(input: CreateCircuitQuoteInput): Promis
   }])
 
   // Confirme le devis (state draft -> sale)
+  let confirmed = false
   try {
     await odooRpc('sale.order', 'action_confirm', [[orderId]])
+    confirmed = true
   } catch (e: any) {
     // Si la confirmation echoue (ex: workflow Odoo custom), on laisse en draft
     // mais on log pour traceabilite. L operateur pourra confirmer manuellement.
     console.warn(`[Odoo Circuit] action_confirm KO order=${orderId}:`, e?.message)
+  }
+
+  // Olivier 2026-08-03 : pour les INCENTIVES, envoyer le mail de confirmation
+  // via le modèle Odoo 62 (« Ventes : Confirmation de mission dépanneuse
+  // incentive - Circuit de Spa-Francorchamps »). Non bloquant.
+  const hasIncentive = input.lines.some(l => l.type === 'incentive')
+  if (confirmed && hasIncentive) {
+    try {
+      await odooRpc('mail.template', 'send_mail', [[INCENTIVE_CONFIRM_TEMPLATE_ID], orderId], { force_send: true })
+    } catch (e: any) {
+      console.warn(`[Odoo Circuit] envoi mail.template ${INCENTIVE_CONFIRM_TEMPLATE_ID} KO order=${orderId}:`, e?.message)
+    }
   }
 
   // Notes internes (optionnel)
