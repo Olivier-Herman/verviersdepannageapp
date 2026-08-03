@@ -64,14 +64,19 @@ export default function RaceWeekendManager({ userRole, userName, userEmail, user
   }
 
   const makeQuote = async () => {
-    if (!editing.id) { setMsg('❌ Enregistre d\'abord'); return }
+    if (!editing.label?.trim()) { setMsg('❌ Intitulé requis'); return }
     if (!editing.client_odoo_id) { setMsg('❌ Sélectionne un client Odoo'); return }
     setBusy('quote'); setMsg('')
     try {
-      const j = await post({ action: 'quote', id: editing.id })
+      // Enregistre l'état courant d'abord (crée l'id si besoin), puis génère le devis.
+      const s = await post({ action: 'save', id: editing.id, label: editing.label, client_odoo_id: editing.client_odoo_id, client_name: editing.client_name, days: editing.days, notes: editing.notes })
+      if (s.error) { setMsg('❌ ' + s.error); return }
+      const id = s.id || editing.id
+      setEditing((e: any) => ({ ...e, id }))
+      const j = await post({ action: 'quote', id })
       if (j.error) { setMsg('❌ ' + j.error); return }
       setMsg(`✅ Devis brouillon créé : ${j.order?.name}`); await load()
-      setEditing((e: any) => ({ ...e, odoo_sale_order_id: j.order?.id, odoo_sale_order_name: j.order?.name }))
+      setEditing((e: any) => ({ ...e, id, odoo_sale_order_id: j.order?.id, odoo_sale_order_name: j.order?.name }))
     } finally { setBusy('') }
   }
 
@@ -157,7 +162,7 @@ export default function RaceWeekendManager({ userRole, userName, userEmail, user
 
             <div className="flex flex-wrap gap-2">
               <button onClick={save} disabled={!!busy} className="inline-flex items-center gap-1.5 text-sm px-3.5 py-2 rounded-lg border hover:bg-bg disabled:opacity-50"><Save size={15} /> {busy === 'save' ? 'Enregistrement…' : 'Enregistrer'}</button>
-              <button onClick={makeQuote} disabled={!!busy || !editing.id} className="inline-flex items-center gap-1.5 text-sm px-3.5 py-2 rounded-lg bg-brand text-white hover:opacity-90 disabled:opacity-50">{busy === 'quote' ? <><Loader2 size={15} className="animate-spin" /> Création…</> : <><FileText size={15} /> Créer le devis (brouillon)</>}</button>
+              <button onClick={makeQuote} disabled={!!busy || !editing.client_odoo_id} title={!editing.client_odoo_id ? 'Sélectionne un client Odoo d\'abord' : ''} className="inline-flex items-center gap-1.5 text-sm px-3.5 py-2 rounded-lg bg-brand text-white hover:opacity-90 disabled:opacity-50">{busy === 'quote' ? <><Loader2 size={15} className="animate-spin" /> Création…</> : <><FileText size={15} /> Créer le devis (brouillon)</>}</button>
               <button onClick={() => setEditing(null)} className="text-sm px-3.5 py-2 rounded-lg border hover:bg-bg ml-auto">Fermer</button>
             </div>
           </div>
