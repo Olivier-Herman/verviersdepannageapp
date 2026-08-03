@@ -84,6 +84,7 @@ export async function GET(req: Request) {
   const { data: candidates } = await sb.from('incoming_missions')
     .select('id, mission_number, external_id, source, mission_type, parent_mission_id, completed_at, odoo_quote_id, invoice_odoo_id, billed_to_name')
     .eq('status', 'to_invoice')
+    .eq('needs_siabis_decision', false)   // pas d'auto-facture tant que la question autoroute n'est pas tranchée
     .in('source', activeSources)
     .lt('completed_at', cutoff)
     .is('odoo_quote_id', null)

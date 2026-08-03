@@ -33,16 +33,16 @@ export function HighwaySiabisModal({
 }) {
   const [loading, setLoading] = useState<string | null>(null)
 
-  // source=null → « laisser en normal » (aucune modif, on ferme).
+  // source=null → « tarif normal » : on ne change PAS la source mais on lève le
+  // drapeau (la question a été tranchée). Les 2 autres changent la source + lèvent.
   const apply = async (source: 'sia_couvert' | 'police_snc' | null) => {
     if (loading) return
-    if (!source) { onClose(); return }
-    setLoading(source)
+    setLoading(source || 'normal')
     try {
       const res = await fetch(`/api/missions/${missionId}`, {
         method:  'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ source }),
+        body:    JSON.stringify(source ? { source, needs_siabis_decision: false } : { needs_siabis_decision: false }),
       })
       if (!res.ok) {
         const d = await res.json().catch(() => ({}))
@@ -71,8 +71,8 @@ export function HighwaySiabisModal({
           <div>
             <h3 className="font-bold text-ink text-base">Intervention sur autoroute ?</h3>
             <p className="text-ink-secondary text-sm mt-1">
-              Il semblerait que l'intervention se trouve sur une autoroute
-              {highwayRef ? ` (${highwayRef})` : ''}. Veux-tu passer la mission en Siabis ?
+              Il me semble que cette intervention se situe sur l'autoroute
+              {highwayRef ? ` (${highwayRef})` : ''}. Quelle tarification appliquer ?
             </p>
           </div>
         </div>
@@ -91,7 +91,7 @@ export function HighwaySiabisModal({
           <button
             onClick={() => apply(null)} disabled={!!loading}
             className="w-full py-3 bg-surface border hover:border-zinc-500 text-ink-secondary hover:text-ink font-medium rounded-xl text-sm transition disabled:opacity-50">
-            Laisser en intervention normale
+            {loading === 'normal' ? '⏳…' : 'Ce n\'est pas sur l\'autoroute — tarification normale'}
           </button>
         </div>
 

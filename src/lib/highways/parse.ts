@@ -100,7 +100,11 @@ export function parseHighwayAddress(input: string | null | undefined): ParsedHig
 // (E40, E42, E411…), mots-clés « autoroute » / « voie rapide » / « bretelle »,
 // ou un marqueur de borne kilométrique (BK / PK) — typique des adresses Touring
 // sur autoroute (« E42 BK 22.3 sens Liège »).
-const HIGHWAY_HINT_RE = /\bautoroute\b|\bvoie\s+rapide\b|\bbretelle\b|\bE\s?0*\d{1,3}[a-z]?\b|\b(?:b\.?\s?k|p\.?\s?k)\b\.?\s*\d/i
+// Indices d'axe autoroutier SANS n° d'autoroute A-number (déjà géré par
+// parseHighwayAddress) : mot « autoroute », E-number (E40, E42, E411…), bornes
+// BK/PK, et surtout les AIRES d'autoroute (« aire de Polleur », « aire d'... »)
+// + parking/station d'autoroute — cas fréquents où le mot « autoroute » n'apparaît pas.
+const HIGHWAY_HINT_RE = /\bautoroute\b|\bvoie\s+rapide\b|\bbretelle\b|\baire\s+d[e']|\b(?:parking|station|aire)\s+(?:d['e]\s*)?autoroute\b|\bE\s?0*\d{1,3}[a-z]?\b|\b(?:b\.?\s?k|p\.?\s?k)\b\.?\s*\d/i
 export function isHighwayAddress(input: string | null | undefined): boolean {
   if (!input) return false
   if (parseHighwayAddress(input).highwayRef) return true

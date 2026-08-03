@@ -93,13 +93,23 @@ export async function POST(req: Request, { params }: { params: { id: string } })
       ff_base_htva, ff_gardiennage_days, ff_gardiennage_pu,
       incident_lat, incident_lng, destination_lat, destination_lng,
       snc_scenario, snc_requires_balisage, extra_addresses,
-      odoo_quote_id, odoo_quote_url, invoice_odoo_id
+      odoo_quote_id, odoo_quote_url, invoice_odoo_id, needs_siabis_decision
     `)
     .eq('id', params.id)
     .single()
 
   if (missionErr || !mission) {
     return NextResponse.json({ error: 'Mission introuvable' }, { status: 404 })
+  }
+
+  // Garde-fou Siabis/autoroute : on ne facture PAS tant que la question autoroute
+  // n'a pas été tranchée (sinon mauvais tarif). Le front rouvre le modal. Olivier 2026-08-03.
+  if (mission.needs_siabis_decision) {
+    return NextResponse.json({
+      error:        'Intervention sur autoroute — choisis d\'abord la tarification (Siabis couvert / non couvert / normale).',
+      code:         'siabis_pending',
+      incident_address: mission.incident_address,
+    }, { status: 409 })
   }
 
   if (!mission.billed_to_id) {

@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from 'react'
 import PushToScreenButton from '@/components/caisse/PushToScreenButton'
+import { HighwaySiabisModal } from '@/app/dispatch/HighwaySiabisModal'
+import { parseHighwayAddress } from '@/lib/highways/parse'
 
 interface BaseMission {
   id: string
@@ -274,6 +276,7 @@ function MissionBlock({
   const [quoteBusy, setQuoteBusy] = useState(false)
   const [invoiceBusy, setInvoiceBusy] = useState(false)
   const [quoteError, setQuoteError] = useState<string | null>(null)
+  const [siabisPrompt, setSiabisPrompt] = useState(false)   // autoroute à trancher avant facturation
   const [quoteStatus, setQuoteStatus] = useState<QuoteStatusData | null>(null)
   const [quoteStatusLoading, setQuoteStatusLoading] = useState(true)
   // Edition manuelle des lignes : null = mode preview/auto, array = lignes editees a pousser
@@ -398,6 +401,11 @@ function MissionBlock({
         body:    JSON.stringify(payload),
       })
       const j = await res.json()
+      if (res.status === 409 && j.code === 'siabis_pending') {
+        // Autoroute non tranchée → on rouvre le modal Siabis au lieu de facturer.
+        setSiabisPrompt(true)
+        return
+      }
       if (!res.ok || !j.ok) {
         setQuoteError(j.error || `Erreur ${res.status}`)
         return
@@ -520,6 +528,13 @@ function MissionBlock({
 
   return (
     <div className={`border rounded-2xl p-4 space-y-3 ${isReady ? 'bg-surface' : 'bg-surface-2 opacity-70'}`}>
+      {siabisPrompt && (
+        <HighwaySiabisModal
+          missionId={m.id}
+          highwayRef={parseHighwayAddress((m as any).incident_address || '').highwayRef}
+          onClose={() => { setSiabisPrompt(false); setQuoteError('Tarification Siabis mise à jour — vérifie le montant puis reclique Facturer.'); refreshQuoteStatus() }}
+        />
+      )}
       <div className="flex items-center justify-between gap-2 flex-wrap">
         <div className="flex items-center gap-2 flex-wrap">
           <span className={`inline-flex items-center justify-center px-2 py-1 rounded-lg text-white text-xs font-bold ${KIND_COLOR[kind]}`}>

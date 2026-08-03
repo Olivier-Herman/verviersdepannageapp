@@ -1540,6 +1540,14 @@ export default function MissionDetailClient({
   const [loadingConfirm, setLoadingConfirm]   = useState(false)
   // Modal « autoroute → Siabis » proposé après validation (Olivier 2026-07-09).
   const [siabisModal, setSiabisModal] = useState<{ highwayRef: string | null } | null>(null)
+  // Ouverture AUTOMATIQUE si la mission a été marquée « autoroute — Siabis à trancher »
+  // (drapeau posé à la sortie du statut 'new', quel que soit le chemin). Olivier 2026-08-03.
+  useEffect(() => {
+    if ((initialMission as any)?.needs_siabis_decision) {
+      const { highwayRef } = shouldOfferSiabis(initialMission.source, initialMission.incident_address)
+      setSiabisModal({ highwayRef })
+    }
+  }, [])   // eslint-disable-line react-hooks/exhaustive-deps
   const [loadingRefuse,  setLoadingRefuse]    = useState(false)
   const [loadingSave,    setLoadingSave]      = useState(false)
   const [brands,         setBrands]           = useState<{id:number;name:string}[]>([])
