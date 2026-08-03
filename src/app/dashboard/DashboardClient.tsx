@@ -48,11 +48,11 @@ interface ModuleItem {
 // Section 1 — actions principales (mises en avant, grandes cards)
 // `police_mission` est conditionnel sur hasTowsoft (1ère position si présent)
 const MAIN_ACTIONS: ActionItem[] = [
-  { id: 'matthieu',        label: 'La tête à Matthieu',     subtitle: 'Ton mécano de poche 🔧',             href: '/matthieu',       icon: '🔧', color: 'purple' },
   { id: 'police_mission',  label: 'Créer une mission',      subtitle: 'Police · Saisie · Mal Garée · SNC', href: '/mission/police', icon: '🚨', color: 'brand',   i18nKey: 'dashboard.tile_police_label',   i18nSubKey: 'dashboard.tile_police_subtitle' },
   { id: 'encaissement',    label: 'Encaissement Chauffeur', subtitle: 'Espèces · Carte · Virement',         href: '/encaissement',   icon: '💳', color: 'success', i18nKey: 'dashboard.tile_cash_label',     i18nSubKey: 'dashboard.tile_cash_subtitle' },
   { id: 'missions',        label: 'Dispatch Missions',      subtitle: 'Pipeline temps réel',                href: '/dispatch',       icon: '📡', color: 'info',    i18nKey: 'dashboard.tile_dispatch_label', i18nSubKey: 'dashboard.tile_dispatch_subtitle' },
   { id: 'driver_missions', label: 'Mes Missions',           subtitle: 'Mes interventions du jour',          href: '/mission',        icon: '🚗', color: 'warning', i18nKey: 'dashboard.tile_missions_label', i18nSubKey: 'dashboard.tile_missions_subtitle' },
+  { id: 'matthieu',        label: 'La tête à Matthieu',     subtitle: 'Ton mécano de poche 🔧',             href: '/matthieu',       icon: '🔧', color: 'purple' },
   { id: 'avance_fonds',    label: 'Avance de Fonds',        subtitle: 'Demander une avance',                href: '/avance-fonds',   icon: '💰', color: 'success', i18nKey: 'dashboard.tile_advance_label',  i18nSubKey: 'dashboard.tile_advance_subtitle' },
 ]
 
