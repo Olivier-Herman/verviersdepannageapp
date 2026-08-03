@@ -112,3 +112,72 @@ export async function createCircuitQuote(input: CreateCircuitQuoteInput): Promis
 
   return { id: orderId, name: orders[0]?.name || `S${orderId}` }
 }
+
+// ── Week-ends de COURSE ────────────────────────────────────────────────────
+// Facturation différente : par jour, une SECTION puis les produits :
+//   - Forfait jour (08h-18h)  → produit "Course" (id 217), qté = nb dépanneuses
+//   - Forfait nuit (18h-08h)  → produit "Course" (id 217), qté = nb dépanneuses
+//   - Supplément horaire      → produit "hsupplcircuit" (id 216), qté = nb dép. × heures
+const PRODUCT_REF_COURSE   = 'Course'         // 217 — Prestation Circuit (forfait)
+const PRODUCT_REF_HSUPP    = 'hsupplcircuit'  // 216 — Heure supplémentaire
+
+export interface RaceDay {
+  date:            string   // YYYY-MM-DD
+  nb_depanneuses:  number
+  jour:            boolean  // forfait jour 08h-18h
+  nuit:            boolean  // forfait nuit 18h-08h
+  supplement_h:    number   // heures de supplément (par dépanneuse)
+}
+
+const JOURS_FR = ['dimanche', 'lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi']
+const fmtDayLabel = (iso: string) => {
+  const [y, m, d] = iso.split('-').map(Number)
+  const wd = JOURS_FR[new Date(Date.UTC(y, m - 1, d)).getUTCDay()]
+  return `${wd} ${String(d).padStart(2, '0')}/${String(m).padStart(2, '0')}/${y}`
+}
+
+/** Crée un devis (sale.order) BROUILLON pour un week-end de course : une section
+ *  par jour, suivie des lignes forfait jour / nuit / supplément (× nb dépanneuses). */
+export async function createRaceWeekendQuote(input: {
+  partnerId: number
+  label:     string
+  days:      RaceDay[]
+  notes?:    string
+  confirm?:  boolean
+}): Promise<{ id: number; name: string }> {
+  if (!input.partnerId) throw new Error('partnerId requis')
+  const days = (input.days || []).filter(d => d?.date && (d.jour || d.nuit || (d.supplement_h || 0) > 0))
+  if (!days.length) throw new Error('Au moins un jour avec forfait ou supplément requis')
+
+  const courseId = await findProductIdByCode(PRODUCT_REF_COURSE)
+  const hsuppId  = await findProductIdByCode(PRODUCT_REF_HSUPP)
+
+  const orderLines: any[] = []
+  let seq = 10
+  for (const d of days) {
+    const n = Math.max(1, d.nb_depanneuses || 1)
+    // Section du jour
+    orderLines.push([0, 0, { display_type: 'line_section', name: `${fmtDayLabel(d.date)} — ${n} dépanneuse${n > 1 ? 's' : ''}`, sequence: seq++ }])
+    if (d.jour)  orderLines.push([0, 0, { product_id: courseId, product_uom_qty: n, name: 'Forfait jour (08h-18h)',  sequence: seq++ }])
+    if (d.nuit)  orderLines.push([0, 0, { product_id: courseId, product_uom_qty: n, name: 'Forfait nuit (18h-08h)',  sequence: seq++ }])
+    if ((d.supplement_h || 0) > 0) orderLines.push([0, 0, { product_id: hsuppId, product_uom_qty: n * d.supplement_h, name: 'Supplément horaire', sequence: seq++ }])
+  }
+
+  const orderId = await odooRpc<number>('sale.order', 'create', [{
+    partner_id:       input.partnerId,
+    client_order_ref: input.label || 'Week-end de course — Circuit Spa-Francorchamps',
+    order_line:       orderLines,
+  }])
+
+  // Par défaut on laisse en BROUILLON (test). Confirmation optionnelle.
+  if (input.confirm) {
+    try { await odooRpc('sale.order', 'action_confirm', [[orderId]]) }
+    catch (e: any) { console.warn(`[Odoo Course] action_confirm KO order=${orderId}:`, e?.message) }
+  }
+  if (input.notes && input.notes.trim()) {
+    await odooRpc('sale.order', 'message_post', [[orderId]], { body: input.notes.trim(), message_type: 'comment', subtype_id: 2 }).catch(() => {})
+  }
+
+  const orders = await odooRpc<any[]>('sale.order', 'read', [[orderId]], { fields: ['id', 'name'] })
+  return { id: orderId, name: orders[0]?.name || `S${orderId}` }
+}

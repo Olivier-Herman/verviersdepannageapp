@@ -121,12 +121,17 @@ export default function CircuitClient() {
             <p className="text-sm text-ink-secondary">Spa-Francorchamps · Incentive & After-Six</p>
           </div>
         </div>
-        <button
-          onClick={() => setShowModal(true)}
-          className="px-4 py-2.5 bg-brand hover:bg-brand-hover text-white rounded-lg font-semibold inline-flex items-center gap-2"
-        >
-          <Plus size={16} /> Ajouter une prestation
-        </button>
+        <div className="flex items-center gap-2 flex-wrap">
+          <a href="/circuit/course" className="px-4 py-2.5 border rounded-lg font-semibold inline-flex items-center gap-2 text-ink-secondary hover:text-brand">
+            🏁 Week-ends de course
+          </a>
+          <button
+            onClick={() => setShowModal(true)}
+            className="px-4 py-2.5 bg-brand hover:bg-brand-hover text-white rounded-lg font-semibold inline-flex items-center gap-2"
+          >
+            <Plus size={16} /> Ajouter une prestation
+          </button>
+        </div>
       </div>
 
       {/* Onglets de filtre */}
