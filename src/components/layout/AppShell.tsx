@@ -21,6 +21,7 @@ import { useTheme } from '@/components/theme/ThemeProvider'
 import { useOnDutyPing } from '@/hooks/useOnDutyPing'
 import { useMissionGpsTracking } from '@/hooks/useMissionGpsTracking'
 import FacturationButtonAnnounce from '@/components/facturation/FacturationButtonAnnounce'
+import MatthieuLaunchModal from '@/components/mecano/MatthieuLaunchModal'
 import { useSidebarCollapsed } from './useSidebarCollapsed'
 import { Avatar } from '@/components/ui/Avatar'
 
@@ -100,6 +101,7 @@ export default function AppShell({
     <WatchPairingBridge />
     <CobrowseUserBanner />
     <FacturationButtonAnnounce userRole={userRole} userModules={userModules} />
+    <MatthieuLaunchModal userRole={userRole} />
     <div className="min-h-screen flex">
 
       {/* ── SIDEBAR DESKTOP ─────────────────────────────── */}
