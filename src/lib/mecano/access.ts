@@ -5,6 +5,8 @@
 
 export const MATTHIEU_USER_ID = 'de1c6853-fd3c-47fc-b755-82c5b13b0322'
 
-export function canUseMatthieu(role?: string | null, userId?: string | null): boolean {
-  return role === 'superadmin' || userId === MATTHIEU_USER_ID
+// Lancement 2026-08-03 : ouvert à tout le personnel (chauffeurs, dispatch, admin,
+// rh, superadmin). Exclut uniquement les partenaires externes (garages).
+export function canUseMatthieu(role?: string | null, _userId?: string | null): boolean {
+  return !!role && role !== 'garage' && role !== 'partner'
 }
