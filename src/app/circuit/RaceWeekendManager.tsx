@@ -6,7 +6,7 @@
 
 import { useEffect, useState } from 'react'
 import AppShell from '@/components/layout/AppShell'
-import { Flag, ArrowLeft, Plus, Trash2, Save, FileText, Loader2, Search, X, ExternalLink, Sun, Moon } from 'lucide-react'
+import { Flag, ArrowLeft, Plus, Trash2, Save, FileText, Loader2, Search, X, ExternalLink, Sun, Moon, CheckCircle2, Send } from 'lucide-react'
 
 type Supp = { from: string; to: string; nb: number }
 type Day = { date: string; nb: number; jour: boolean; nuit: boolean; supps: Supp[]; drivers: string[]; note: string }
@@ -68,19 +68,20 @@ export default function RaceWeekendManager({ userRole, userName, userEmail, user
     } finally { setBusy('') }
   }
 
-  const makeQuote = async () => {
+  const makeQuote = async (mode: 'draft' | 'confirm' | 'send' = 'draft') => {
     if (!editing.label?.trim()) { setMsg('❌ Intitulé requis'); return }
     if (!editing.client_odoo_id) { setMsg('❌ Sélectionne un client Odoo'); return }
-    setBusy('quote'); setMsg('')
+    setBusy('quote:' + mode); setMsg('')
     try {
       // Enregistre l'état courant d'abord (crée l'id si besoin), puis génère le devis.
       const s = await post({ action: 'save', id: editing.id, label: editing.label, client_odoo_id: editing.client_odoo_id, client_name: editing.client_name, days: editing.days, notes: editing.notes })
       if (s.error) { setMsg('❌ ' + s.error); return }
       const id = s.id || editing.id
       setEditing((e: any) => ({ ...e, id }))
-      const j = await post({ action: 'quote', id })
+      const j = await post({ action: 'quote', id, mode })
       if (j.error) { setMsg('❌ ' + j.error); return }
-      setMsg(`✅ Devis brouillon créé : ${j.order?.name}`); await load()
+      const label = mode === 'confirm' ? 'confirmé' : mode === 'send' ? 'envoyé au client' : 'brouillon créé'
+      setMsg(`✅ Devis ${label} : ${j.order?.name}`); await load()
       setEditing((e: any) => ({ ...e, id, odoo_sale_order_id: j.order?.id, odoo_sale_order_name: j.order?.name }))
     } finally { setBusy('') }
   }
@@ -176,14 +177,26 @@ export default function RaceWeekendManager({ userRole, userName, userEmail, user
 
             {msg && <p className="text-sm">{msg}</p>}
             {editing.odoo_sale_order_name && (
-              <a href={`${odooBase}/${editing.odoo_sale_order_id}`} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 text-sm text-brand hover:underline"><ExternalLink size={14} /> {editing.odoo_sale_order_name} (brouillon Odoo)</a>
+              <a href={`${odooBase}/${editing.odoo_sale_order_id}`} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 text-sm text-brand hover:underline"><ExternalLink size={14} /> {editing.odoo_sale_order_name} (devis Odoo)</a>
             )}
 
             <div className="flex flex-wrap gap-2">
               <button onClick={save} disabled={!!busy} className="inline-flex items-center gap-1.5 text-sm px-3.5 py-2 rounded-lg border hover:bg-bg disabled:opacity-50"><Save size={15} /> {busy === 'save' ? 'Enregistrement…' : 'Enregistrer'}</button>
-              <button onClick={makeQuote} disabled={!!busy || !editing.client_odoo_id} title={!editing.client_odoo_id ? 'Sélectionne un client Odoo d\'abord' : ''} className="inline-flex items-center gap-1.5 text-sm px-3.5 py-2 rounded-lg bg-brand text-white hover:opacity-90 disabled:opacity-50">{busy === 'quote' ? <><Loader2 size={15} className="animate-spin" /> {editing.odoo_sale_order_id ? 'Mise à jour…' : 'Création…'}</> : <><FileText size={15} /> {editing.odoo_sale_order_id ? 'Mettre à jour le devis' : 'Créer le devis (brouillon)'}</>}</button>
               <button onClick={() => setEditing(null)} className="text-sm px-3.5 py-2 rounded-lg border hover:bg-bg ml-auto">Fermer</button>
             </div>
+            {(() => {
+              const noClient = !editing.client_odoo_id
+              const upd = !!editing.odoo_sale_order_id
+              const tip = noClient ? 'Sélectionne un client Odoo d\'abord' : ''
+              const busyIcon = <Loader2 size={15} className="animate-spin" />
+              return (
+                <div className="flex flex-wrap gap-2 pt-2 border-t">
+                  <button onClick={() => makeQuote('draft')} disabled={!!busy || noClient} title={tip} className="inline-flex items-center gap-1.5 text-sm px-3.5 py-2 rounded-lg border border-brand text-brand hover:bg-brand/5 disabled:opacity-50">{busy === 'quote:draft' ? <>{busyIcon} …</> : <><FileText size={15} /> {upd ? 'Mettre à jour (brouillon)' : 'Créer le devis en brouillon'}</>}</button>
+                  <button onClick={() => makeQuote('confirm')} disabled={!!busy || noClient} title={tip} className="inline-flex items-center gap-1.5 text-sm px-3.5 py-2 rounded-lg bg-brand text-white hover:opacity-90 disabled:opacity-50">{busy === 'quote:confirm' ? <>{busyIcon} …</> : <><CheckCircle2 size={15} /> Créer le devis &amp; Confirmer</>}</button>
+                  <button onClick={() => makeQuote('send')} disabled={!!busy || noClient} title={tip} className="inline-flex items-center gap-1.5 text-sm px-3.5 py-2 rounded-lg bg-emerald-600 text-white hover:opacity-90 disabled:opacity-50">{busy === 'quote:send' ? <>{busyIcon} …</> : <><Send size={15} /> Créer le devis &amp; Envoyer</>}</button>
+                </div>
+              )
+            })()}
           </div>
         ) : (
           <div className="flex flex-col gap-2">

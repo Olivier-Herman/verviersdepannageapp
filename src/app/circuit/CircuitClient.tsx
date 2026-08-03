@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState, useCallback } from 'react'
-import { Plus, RefreshCw, Trash2, ExternalLink, Check, X, Loader2, CalendarDays, Users, MapPin, Pencil } from 'lucide-react'
+import { Plus, RefreshCw, Trash2, ExternalLink, Check, X, Loader2, CalendarDays, Users, MapPin, Pencil, Flag } from 'lucide-react'
 
 interface Prestation {
   id:                   string
@@ -37,6 +37,7 @@ const odooUrl = (id: number) => ODOO_BASE.replace('{ID}', String(id))
 export default function CircuitClient() {
   const [period, setPeriod]     = useState<Period>('upcoming')
   const [list, setList]         = useState<Prestation[]>([])
+  const [races, setRaces]       = useState<any[]>([])
   const [loading, setLoading]   = useState(true)
   const [showModal, setShowModal] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
@@ -45,9 +46,28 @@ export default function CircuitClient() {
   const load = useCallback(async () => {
     setLoading(true)
     try {
-      const r = await fetch(`/api/circuit-prestations?period=${period}`, { cache: 'no-store' })
+      const [r, rr] = await Promise.all([
+        fetch(`/api/circuit-prestations?period=${period}`, { cache: 'no-store' }),
+        fetch(`/api/circuit-race`, { cache: 'no-store' }),
+      ])
       const j = await r.json()
       setList(j.prestations || [])
+      const jr = await rr.json().catch(() => ({}))
+      const today = new Date().toISOString().slice(0, 10)
+      const matchPeriod = (w: any) => {
+        const dates = (w.days || []).map((d: any) => d.date).filter(Boolean).sort()
+        if (!dates.length) return period === 'all'
+        const first = dates[0], last = dates[dates.length - 1]
+        const invoiced = !!w.invoiced_at
+        switch (period) {
+          case 'upcoming':  return !invoiced && last >= today
+          case 'current':   return !invoiced && first <= today && last >= today
+          case 'past':      return !invoiced && last < today
+          case 'invoiced':  return invoiced
+          default:          return true   // 'all'
+        }
+      }
+      setRaces((jr.weekends || []).filter(matchPeriod))
     } catch (e: any) {
       console.warn('[CircuitClient] load KO:', e?.message)
     } finally {
@@ -164,12 +184,38 @@ export default function CircuitClient() {
         <div className="bg-surface border rounded-2xl p-10 text-center text-ink-muted">
           <Loader2 className="inline animate-spin mr-2" size={14} /> Chargement…
         </div>
-      ) : list.length === 0 ? (
+      ) : (list.length === 0 && races.length === 0) ? (
         <div className="bg-surface border rounded-2xl p-10 text-center">
           <p className="text-ink-muted text-sm">Aucune prestation dans cette catégorie.</p>
         </div>
       ) : (
         <div className="space-y-2">
+          {races.map(w => {
+            const dates    = (w.days || []).map((d: any) => d.date).filter(Boolean).sort()
+            const range    = dates.length ? (dates.length > 1 ? `${fmtShort(dates[0])} → ${fmtShort(dates[dates.length - 1])}` : fmtShort(dates[0])) : '—'
+            const invoiced = !!w.invoiced_at
+            return (
+              <a key={`race-${w.id}`} href="/circuit/course" className="block bg-surface border border-amber-200 rounded-2xl p-4 hover:border-amber-300 transition">
+                <div className="flex items-center gap-3 flex-wrap">
+                  <div className="w-11 h-11 rounded-xl bg-amber-100 text-amber-700 flex items-center justify-center flex-shrink-0"><Flag size={18} /></div>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="font-semibold text-ink text-sm truncate">{w.label}</span>
+                      <span className="text-[11px] px-2 py-0.5 rounded-full border bg-amber-50 text-amber-800 border-amber-200">Week-end de course</span>
+                      {invoiced && <span className="text-[11px] px-2 py-0.5 rounded-full border bg-emerald-50 text-emerald-800 border-emerald-200">Facturé</span>}
+                    </div>
+                    <div className="text-ink-muted text-xs mt-0.5">
+                      {w.client_name || '— client à définir —'} · {range} · {dates.length} jour{dates.length > 1 ? 's' : ''}
+                      {w.odoo_sale_order_name ? ` · devis ${w.odoo_sale_order_name}` : ''}
+                    </div>
+                  </div>
+                  {w.odoo_sale_order_id && (
+                    <span onClick={(e) => { e.preventDefault(); window.open(odooUrl(w.odoo_sale_order_id), '_blank') }} className="p-2 rounded-lg text-ink-muted hover:text-brand" title="Ouvrir le devis Odoo"><ExternalLink size={15} /></span>
+                  )}
+                </div>
+              </a>
+            )
+          })}
           {list.map(p => {
             const isPast    = p.prestation_date < new Date().toISOString().slice(0, 10)
             const isInvoiced = !!p.invoiced_at
@@ -589,4 +635,8 @@ function formatMonth(iso: string): string {
 }
 function formatYear(iso: string): string {
   return iso.split('-')[0]
+}
+function fmtShort(iso: string): string {
+  const [, m, d] = iso.split('-')
+  return `${d}/${m}`
 }

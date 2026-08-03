@@ -73,9 +73,10 @@ export async function POST(req: Request) {
     if (!w.client_odoo_id) return NextResponse.json({ error: 'Client Odoo requis (recherche le client d\'abord)' }, { status: 400 })
     const days = cleanDays(w.days).map((d: any) => ({ date: d.date, nb_depanneuses: d.nb, jour: d.jour, nuit: d.nuit, supps: d.supps, note: d.note || undefined }))
     if (!days.length) return NextResponse.json({ error: 'Aucun jour encodé' }, { status: 400 })
+    const mode = (['draft', 'confirm', 'send'].includes(String(body.mode)) ? body.mode : 'draft') as 'draft' | 'confirm' | 'send'
     try {
       const order = await withOdooActor(u.id, () => createRaceWeekendQuote({
-        partnerId: w.client_odoo_id, label: w.label, days, notes: w.notes || undefined, confirm: false,
+        partnerId: w.client_odoo_id, label: w.label, days, notes: w.notes || undefined, mode,
         existingOrderId: w.odoo_sale_order_id || undefined,   // met à jour le devis existant (nouveaux suppléments)
       }))
       await sb.from('circuit_race_weekends').update({ odoo_sale_order_id: order.id, odoo_sale_order_name: order.name, updated_at: new Date().toISOString() }).eq('id', w.id)

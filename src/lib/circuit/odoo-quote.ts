@@ -141,6 +141,11 @@ export async function createCircuitQuote(input: CreateCircuitQuoteInput): Promis
 const PRODUCT_REF_COURSE   = 'Course'         // 217 — Prestation Circuit (forfait)
 const PRODUCT_REF_HSUPP    = 'hsupplcircuit'  // 216 — Heure supplémentaire
 
+// Modèle d'e-mail Odoo « Sales: Send Quotation » (envoi du devis au client).
+const QUOTATION_TEMPLATE_ID = 19
+
+export type QuoteMode = 'draft' | 'confirm' | 'send'
+
 export interface RaceSupp { from: string; to: string; nb?: number }   // nb dépanneuses du supplément (défaut = nb du jour)
 export interface RaceDay {
   date:            string   // YYYY-MM-DD
@@ -187,7 +192,8 @@ export async function createRaceWeekendQuote(input: {
   label:     string
   days:      RaceDay[]
   notes?:    string
-  confirm?:  boolean
+  confirm?:  boolean          // compat : équivaut à mode='confirm'
+  mode?:     QuoteMode        // 'draft' (brouillon) | 'confirm' | 'send' (envoi au client)
   existingOrderId?: number   // si fourni → met à jour le devis existant (réécrit ses lignes)
 }): Promise<{ id: number; name: string }> {
   if (!input.partnerId) throw new Error('partnerId requis')
@@ -219,31 +225,42 @@ export async function createRaceWeekendQuote(input: {
 
   // Mise à jour en place (on repart de zéro : unlink toutes les lignes + recrée)
   // pour que les suppléments ajoutés retombent dans la bonne section.
+  let orderId = 0
+  let reused = false
   if (input.existingOrderId) {
     const st = (await odooRpc<any[]>('sale.order', 'read', [[input.existingOrderId]], { fields: ['state'] }))?.[0]?.state
     if (st === 'draft' || st === 'sent') {
       await odooRpc('sale.order', 'write', [[input.existingOrderId], { order_line: [[5, 0, 0], ...lineTuples], client_order_ref: input.label }])
-      const o = await odooRpc<any[]>('sale.order', 'read', [[input.existingOrderId]], { fields: ['id', 'name'] })
-      return { id: input.existingOrderId, name: o[0]?.name || `S${input.existingOrderId}` }
+      orderId = input.existingOrderId
+      reused  = true
     }
-    // devis confirmé/facturé → on ne réécrit pas ; on crée un nouveau devis.
+    // devis confirmé/facturé → on ne réécrit pas ; on crée un nouveau devis (ci-dessous).
+  }
+  if (!reused) {
+    orderId = await odooRpc<number>('sale.order', 'create', [{
+      partner_id:       input.partnerId,
+      client_order_ref: input.label || 'Week-end de course — Circuit Spa-Francorchamps',
+      order_line:       lineTuples,
+    }])
   }
 
-  const orderId = await odooRpc<number>('sale.order', 'create', [{
-    partner_id:       input.partnerId,
-    client_order_ref: input.label || 'Week-end de course — Circuit Spa-Francorchamps',
-    order_line:       lineTuples,
-  }])
-
-  // Par défaut on laisse en BROUILLON (test). Confirmation optionnelle.
-  if (input.confirm) {
-    try { await odooRpc('sale.order', 'action_confirm', [[orderId]]) }
+  // Finalisation selon le mode. Par défaut : BROUILLON (test).
+  const mode: QuoteMode = input.mode || (input.confirm ? 'confirm' : 'draft')
+  if (mode === 'confirm') {
+    try { await odooRpc('sale.order', 'action_confirm', [[orderId!]]) }
     catch (e: any) { console.warn(`[Odoo Course] action_confirm KO order=${orderId}:`, e?.message) }
-  }
-  if (input.notes && input.notes.trim()) {
-    await odooRpc('sale.order', 'message_post', [[orderId]], { body: input.notes.trim(), message_type: 'comment', subtype_id: 2 }).catch(() => {})
+  } else if (mode === 'send') {
+    // Envoie le devis au client (modèle « Send Quotation ») + passe l'état en « sent ».
+    try {
+      await odooRpc('mail.template', 'send_mail', [[QUOTATION_TEMPLATE_ID], orderId!], { force_send: true })
+      await odooRpc('sale.order', 'action_quotation_sent', [[orderId!]]).catch(() => {})
+    } catch (e: any) { console.warn(`[Odoo Course] envoi devis KO order=${orderId}:`, e?.message) }
   }
 
-  const orders = await odooRpc<any[]>('sale.order', 'read', [[orderId]], { fields: ['id', 'name'] })
-  return { id: orderId, name: orders[0]?.name || `S${orderId}` }
+  if (input.notes && input.notes.trim()) {
+    await odooRpc('sale.order', 'message_post', [[orderId!]], { body: input.notes.trim(), message_type: 'comment', subtype_id: 2 }).catch(() => {})
+  }
+
+  const orders = await odooRpc<any[]>('sale.order', 'read', [[orderId!]], { fields: ['id', 'name'] })
+  return { id: orderId!, name: orders[0]?.name || `S${orderId}` }
 }
