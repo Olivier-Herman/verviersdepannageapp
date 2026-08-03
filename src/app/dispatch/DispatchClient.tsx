@@ -17,6 +17,7 @@ import DispatcherOnDutyBadge from '@/components/dispatch/DispatcherOnDutyBadge'
 import { getSourceLabel, getSourceColor, type SourceDisplay as CatalogSource } from '@/lib/missions/source-display'
 import AutoDispatchButton from '@/components/dispatch/AutoDispatchButton'
 import { HighwaySiabisModal, shouldOfferSiabis } from './HighwaySiabisModal'
+import { parseHighwayAddress } from '@/lib/highways/parse'
 import { verifyAddressViaPlaces } from '@/components/AddressField'
 import {
   DndContext, closestCenter, PointerSensor, useSensor, useSensors,
@@ -52,6 +53,7 @@ interface Mission {
   vehicle_brand: string | null
   vehicle_model: string | null
   incident_address: string | null
+  needs_siabis_decision?: boolean | null
   incident_city: string | null
   incident_lat: number | null
   incident_lng: number | null
@@ -730,6 +732,7 @@ function MissionCard({ mission, drivers, driverStatuses, sources, onRefresh, onM
   userModules:    string[]
 }) {
   const router  = useRouter()
+  const [siabisCard, setSiabisCard] = useState(false)   // trancher Siabis depuis la carte
   const delai   = getDelai(mission.intervention_date, mission.status)
   const srcInfo = { label: getSourceLabel(mission.source, sources), color: getSourceColor(mission.source, sources) }
   const showDelai = delai.urgency !== 'muted'
@@ -744,10 +747,21 @@ function MissionCard({ mission, drivers, driverStatuses, sources, onRefresh, onM
       className={`relative border-2 rounded-2xl p-4 cursor-pointer transition-all overflow-hidden min-w-0 ${cardBg} ${URGENCY_BORDER[delai.urgency]} ${isGarage ? 'ring-2 ring-amber-400' : ''}`}
     >
       <MissionStamp mission={mission} />
+      {siabisCard && (
+        <div onClick={e => e.stopPropagation()}>
+          <HighwaySiabisModal missionId={mission.id} highwayRef={parseHighwayAddress(mission.incident_address || '').highwayRef}
+            onClose={() => { setSiabisCard(false); onRefresh() }} />
+        </div>
+      )}
       {/* Header */}
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-2 flex-wrap">
           <span className={`px-2 py-0.5 rounded text-xs font-bold text-white ${srcInfo.color}`}>{srcInfo.label}</span>
+          {mission.needs_siabis_decision && (
+            <button onClick={e => { e.stopPropagation(); setSiabisCard(true) }}
+              className="px-2 py-0.5 rounded text-xs font-bold bg-sky-600 hover:bg-sky-700 text-white animate-pulse"
+              title="Intervention sur autoroute — trancher la tarification Siabis">🛣️ Siabis ?</button>
+          )}
           {mission.source === 'touring' && (
             mission.source_format === 'comex' ? (
               <span className="px-2 py-0.5 rounded text-xs font-bold bg-sky-100 text-sky-800" title="Importée depuis la plateforme COMEX">🚗 COMEX</span>
