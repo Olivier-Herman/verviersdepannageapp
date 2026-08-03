@@ -177,7 +177,7 @@ export default function MaPaieClient({ userRole, userName, userEmail, userModule
         {/* Accueil : grands boutons colorés + calendrier */}
         {!loading && data?.linked && tab === 'home' && (
           <>
-          <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
             {[
               { k: 'infos',  title: 'Mes infos',          desc: 'Coordonnées, IBAN, contact', Icon: UserCog,      from: 'from-sky-500/15',    to: 'to-sky-500/5',    ring: 'hover:border-sky-500/40',    ic: 'bg-sky-500/15 text-sky-500' },
               { k: 'fiches', title: 'Mes fiches de paie', desc: `${slips.length} fiche${slips.length > 1 ? 's' : ''} disponible${slips.length > 1 ? 's' : ''}`, Icon: FileText, from: 'from-brand/15', to: 'to-brand/5', ring: 'hover:border-brand/40', ic: 'bg-brand/15 text-brand' },
@@ -185,11 +185,11 @@ export default function MaPaieClient({ userRole, userName, userEmail, userModule
               { k: 'gardes', title: 'Mes gardes',          desc: 'Prochaines gardes & remplacements', Icon: ShieldCheck, from: 'from-indigo-500/15', to: 'to-indigo-500/5', ring: 'hover:border-indigo-500/40', ic: 'bg-indigo-500/15 text-indigo-500' },
             ].map(c => (
               <button key={c.k} onClick={() => setTab(c.k as any)}
-                className={`group relative flex flex-col gap-4 bg-gradient-to-br ${c.from} ${c.to} border rounded-2xl p-5 text-left transition-all hover:shadow-lg hover:-translate-y-1 ${c.ring}`}>
-                <div className={`w-12 h-12 rounded-2xl flex items-center justify-center ${c.ic}`}><c.Icon size={24} /></div>
+                className={`group relative flex flex-col gap-2.5 sm:gap-4 bg-gradient-to-br ${c.from} ${c.to} border rounded-2xl p-4 sm:p-5 text-left transition-all hover:shadow-lg hover:-translate-y-1 ${c.ring}`}>
+                <div className={`w-11 h-11 sm:w-12 sm:h-12 rounded-2xl flex items-center justify-center ${c.ic}`}><c.Icon size={22} /></div>
                 <div>
-                  <div className="flex items-center gap-1 text-ink font-bold text-lg">{c.title}<ChevronRight size={18} className="text-ink-muted group-hover:text-ink group-hover:translate-x-0.5 transition-transform" /></div>
-                  <p className="text-ink-muted text-sm mt-0.5">{c.desc}</p>
+                  <div className="flex items-center gap-1 text-ink font-bold text-base sm:text-lg leading-tight">{c.title}<ChevronRight size={16} className="text-ink-muted group-hover:text-ink group-hover:translate-x-0.5 transition-transform flex-shrink-0" /></div>
+                  <p className="text-ink-muted text-xs sm:text-sm mt-0.5">{c.desc}</p>
                 </div>
               </button>
             ))}
