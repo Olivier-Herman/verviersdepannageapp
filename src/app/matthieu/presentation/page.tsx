@@ -3,24 +3,9 @@ import { authOptions } from '@/lib/auth'
 import { redirect } from 'next/navigation'
 import { createAdminClient } from '@/lib/supabase'
 import { canUseMatthieu } from '@/lib/mecano/access'
-import AppShell from '@/components/layout/AppShell'
 import Link from 'next/link'
 
 export const dynamic = 'force-dynamic'
-
-const FEATURES = [
-  ['💬', 'Demande-lui n\'importe quoi', 'Panne, voyant allumé, démarrage impossible… Il connaît chaque modèle et te répond direct, comme Matthieu au téléphone.'],
-  ['📄', 'Il te montre la fiche', 'Besoin d\'un schéma d\'ouverture ou des points d\'ancrage ? Il sort la bonne fiche — pas 40 pages, juste ce qui te concerne.'],
-  ['📷', 'Un doute sur le modèle ?', 'Envoie une photo (compartiment moteur, tableau de bord, plaque) : il l\'analyse et identifie le véhicule.'],
-  ['🔧', 'Dépannage ET remorquage', 'De la panne sur place au véhicule délicat à atteler (4×4, électrique, boîte auto bloquée) — il couvre les deux.'],
-]
-const STEPS = [
-  'Ouvre ta fiche d\'intervention (ta mission en cours).',
-  'Appuie sur la tuile 🔧 La tête à Matthieu.',
-  'Pose ta question, ou tape un raccourci (« Comment l\'ouvrir ? », « Points d\'ancrage »).',
-  'Pas sûr du modèle ? Appuie sur 📷 et envoie une photo.',
-  'S\'il te sort une fiche, appuie sur la carte 📄 pour voir le schéma.',
-]
 
 export default async function MatthieuPresentationPage() {
   const session = await getServerSession(authOptions)
@@ -28,53 +13,133 @@ export default async function MatthieuPresentationPage() {
   const sb = createAdminClient()
   const uid = (session.user as any).id
   const { data: user } = uid
-    ? await sb.from('users').select('id, role, name').eq('id', uid).single()
-    : await sb.from('users').select('id, role, name').ilike('email', session.user!.email!).single()
+    ? await sb.from('users').select('id, role').eq('id', uid).single()
+    : await sb.from('users').select('id, role').ilike('email', session.user!.email!).single()
   if (!canUseMatthieu(user?.role, user?.id)) redirect('/login')
-  const modules = (session.user as any).modules ?? []
 
   return (
-    <AppShell title="La tête à Matthieu" userRole={user?.role || ''} userName={user?.name || ''} userModules={modules}>
-      <div className="max-w-2xl mx-auto px-4 py-8">
-        {/* Hero */}
-        <div className="text-center">
-          <div className="w-[92px] h-[92px] mx-auto rounded-[27px] flex items-center justify-center text-[44px]"
-            style={{ background: 'linear-gradient(150deg,#8b83ff,#4b40e0)', boxShadow: '0 20px 46px -12px rgba(124,116,255,.55)' }}>🔧</div>
-          <span className="inline-block mt-4 text-[11px] font-extrabold tracking-widest uppercase px-3 py-1 rounded-full text-amber-600 dark:text-amber-400 bg-amber-500/12 border border-amber-500/30">✦ Nouveau dans VD Soft</span>
-          <h1 className="text-ink text-3xl sm:text-4xl font-black leading-none mt-3 tracking-tight">La tête à Matthieu</h1>
-          <p className="text-ink-secondary text-sm sm:text-base mt-3 max-w-lg mx-auto">Le mécano que tout le monde appelle sur le terrain — désormais dans ta poche, <b className="text-ink">24/7</b>, sur chaque intervention.</p>
-        </div>
+    <div className="mt-root">
+      <style>{`
+        .mt-root{--bg:#0e0d12;--panel:#17151d;--line:#2a2733;--ink:#f3f1ee;--ink-soft:#a7a2b3;
+          --red:#e23b2e;--indigo:#7c74ff;--indigo-deep:#4b40e0;--gold:#f5c451;--screen:#111016;--screen-soft:#8b8698;--card:#1c1a24;
+          min-height:100vh;color:var(--ink);
+          font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;-webkit-font-smoothing:antialiased;line-height:1.5;
+          background:radial-gradient(120% 80% at 85% -10%,rgba(124,116,255,.20),transparent 55%),radial-gradient(90% 70% at 0% 110%,rgba(226,59,46,.16),transparent 55%),var(--bg);}
+        .mt-root *{box-sizing:border-box}
+        .mt-wrap{max-width:1080px;margin:0 auto;padding:26px 22px 70px}
+        .mt-back{display:inline-flex;align-items:center;gap:7px;color:var(--ink-soft);text-decoration:none;font-size:13px;font-weight:600;margin-bottom:18px}
+        .mt-kicker{display:inline-flex;align-items:center;gap:8px;font-size:12px;font-weight:800;letter-spacing:.16em;text-transform:uppercase;
+          color:var(--indigo);background:rgba(124,116,255,.14);border:1px solid rgba(124,116,255,.32);padding:6px 13px;border-radius:999px}
+        .mt-h1{font-size:clamp(38px,8vw,74px);line-height:.98;letter-spacing:-.035em;font-weight:900;margin:.28em 0 .12em;text-wrap:balance}
+        .mt-grad{background:linear-gradient(100deg,var(--indigo),var(--red));-webkit-background-clip:text;background-clip:text;color:transparent}
+        .mt-sub{font-size:clamp(16px,2.4vw,20px);color:var(--ink-soft);max-width:54ch}
+        .mt-top{display:grid;grid-template-columns:1.05fr .95fr;gap:34px;align-items:center;margin-top:14px}
+        @media (max-width:820px){.mt-top{grid-template-columns:1fr;gap:26px}}
+        .mt-chips{display:flex;flex-wrap:wrap;gap:9px;margin-top:20px}
+        .mt-chip{display:inline-flex;align-items:center;gap:7px;font-size:13px;font-weight:600;color:var(--ink);background:var(--panel);border:1px solid var(--line);border-radius:999px;padding:8px 13px}
+        .mt-chip b{color:var(--indigo)}
+        .mt-quote{margin-top:26px;border-left:3px solid var(--red);padding:6px 0 6px 16px;color:var(--ink);font-size:16px;font-style:italic}
+        .mt-quote span{color:var(--ink-soft);font-style:normal;font-size:13px;display:block;margin-top:6px}
+        .mt-phone{width:100%;max-width:300px;justify-self:center;background:#0a090d;border-radius:42px;padding:12px;
+          box-shadow:0 40px 80px -30px rgba(124,116,255,.5),0 10px 30px rgba(0,0,0,.4);border:1px solid #23202c}
+        .mt-screen{background:var(--screen);border-radius:31px;overflow:hidden;position:relative;min-height:566px}
+        .mt-notch{position:absolute;top:0;left:50%;transform:translateX(-50%);width:112px;height:24px;background:#0a090d;border-radius:0 0 15px 15px;z-index:6}
+        .mt-modal{position:absolute;inset:0;padding:26px 18px 18px;
+          background:radial-gradient(120% 60% at 50% 0%,rgba(124,116,255,.22),transparent 60%),linear-gradient(180deg,var(--screen),#0b0a10)}
+        .mt-crest{width:88px;height:88px;margin:14px auto 0;border-radius:26px;position:relative;
+          background:linear-gradient(150deg,var(--indigo),var(--indigo-deep));display:flex;align-items:center;justify-content:center;box-shadow:0 18px 40px -10px rgba(124,116,255,.6)}
+        .mt-crest span{font-size:42px}
+        .mt-crest::after{content:"";position:absolute;inset:-7px;border-radius:31px;border:2px solid var(--indigo);opacity:.35}
+        .mt-badge{display:block;width:max-content;margin:16px auto 0;font-size:11px;font-weight:800;letter-spacing:.12em;text-transform:uppercase;color:var(--gold);
+          background:rgba(245,196,81,.15);border:1px solid rgba(245,196,81,.34);padding:4px 11px;border-radius:999px}
+        .mt-modal h2{text-align:center;font-size:25px;line-height:1.06;font-weight:900;letter-spacing:-.02em;margin:14px 6px 6px;color:var(--ink)}
+        .mt-lead{text-align:center;font-size:13.5px;color:var(--screen-soft);margin:0 8px;line-height:1.5}
+        .mt-feat{margin-top:16px;display:flex;flex-direction:column;gap:8px}
+        .mt-frow{display:flex;align-items:center;gap:11px;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:10px 12px}
+        .mt-frow .ic{width:30px;height:30px;border-radius:9px;display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0;background:rgba(124,116,255,.14)}
+        .mt-frow .tx{font-size:12.5px;color:var(--ink);font-weight:600;line-height:1.25}
+        .mt-cta{display:block;text-align:center;text-decoration:none;margin-top:16px;padding:14px;border-radius:16px;font-size:15px;font-weight:800;color:#fff;
+          background:linear-gradient(135deg,var(--indigo),var(--red));box-shadow:0 14px 28px -10px rgba(226,59,46,.5)}
+        .mt-rule{height:1px;background:var(--line);margin:44px 0 30px}
+        .mt-grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
+        @media (max-width:720px){.mt-grid3{grid-template-columns:1fr}}
+        .mt-card{background:var(--panel);border:1px solid var(--line);border-radius:18px;padding:18px}
+        .mt-card .n{font-size:22px;font-weight:900;color:var(--indigo);letter-spacing:-.02em}
+        .mt-card h3{margin:6px 0 5px;font-size:15px;font-weight:800}
+        .mt-card p{margin:0;font-size:13.5px;color:var(--ink-soft);line-height:1.5}
+        .mt-howto{margin-top:30px;background:var(--panel);border:1px solid var(--line);border-radius:20px;padding:22px 24px}
+        .mt-ht-head{font-size:15px;font-weight:900;margin-bottom:12px}
+        .mt-steps{margin:0;padding:0;list-style:none;counter-reset:s;display:flex;flex-direction:column;gap:10px}
+        .mt-steps li{position:relative;padding-left:40px;font-size:14px;color:var(--ink);line-height:1.45}
+        .mt-steps li::before{counter-increment:s;content:counter(s);position:absolute;left:0;top:-1px;width:26px;height:26px;border-radius:50%;
+          background:linear-gradient(135deg,var(--indigo),var(--indigo-deep));color:#fff;font-size:13px;font-weight:800;display:flex;align-items:center;justify-content:center}
+        .mt-final{display:flex;flex-wrap:wrap;gap:12px;margin-top:30px}
+        .mt-btn-primary{flex:1;min-width:220px;text-align:center;text-decoration:none;padding:16px;border-radius:16px;font-size:16px;font-weight:900;color:#fff;
+          background:linear-gradient(135deg,var(--indigo),var(--red));box-shadow:0 16px 32px -12px rgba(226,59,46,.5)}
+        .mt-foot{margin-top:26px;text-align:center;color:var(--ink-soft);font-size:12px}
+      `}</style>
 
-        {/* Features */}
-        <div className="grid sm:grid-cols-2 gap-3 mt-8">
-          {FEATURES.map(([ic, t, d]) => (
-            <div key={t} className="bg-surface border rounded-2xl p-4">
-              <div className="w-10 h-10 rounded-xl bg-indigo-500/12 flex items-center justify-center text-xl mb-2">{ic}</div>
-              <h3 className="text-ink font-bold text-sm">{t}</h3>
-              <p className="text-ink-secondary text-xs mt-1 leading-relaxed">{d}</p>
+      <div className="mt-wrap">
+        <Link href="/dashboard" className="mt-back">← Retour</Link>
+
+        <div className="mt-top">
+          <div>
+            <span className="mt-kicker">🔧 Nouveau dans VD Soft</span>
+            <h1 className="mt-h1">La tête à<br /><span className="mt-grad">Matthieu</span></h1>
+            <p className="mt-sub">Le mécano que tout le monde appelle sur le terrain — désormais dans ta poche, <b style={{ color: 'var(--ink)' }}>24/7</b>, sur chaque intervention.</p>
+            <div className="mt-chips">
+              <span className="mt-chip">🚗 <b>Toutes</b> les marques &amp; modèles</span>
+              <span className="mt-chip">🔧 Dépannage <b>+</b> remorquage</span>
+              <span className="mt-chip">📄 Il te <b>montre</b> la fiche</span>
+              <span className="mt-chip">📷 Envoie une <b>photo</b></span>
             </div>
-          ))}
+            <div className="mt-quote">
+              « Bloqué sur une caisse verrouillée, une panne bizarre, un 4×4 à atteler sans casse&nbsp;? Tu me demandes, je réponds. »
+              <span>— La tête à Matthieu</span>
+            </div>
+          </div>
+
+          <div className="mt-phone"><div className="mt-screen">
+            <div className="mt-notch" />
+            <div className="mt-modal">
+              <div className="mt-crest"><span>🔧</span></div>
+              <span className="mt-badge">Nouveau</span>
+              <h2>Voici La tête à Matthieu</h2>
+              <p className="mt-lead">Ton mécano de poche. Une question sur le véhicule&nbsp;? Il connaît chaque modèle et te répond direct.</p>
+              <div className="mt-feat">
+                <div className="mt-frow"><div className="ic">💬</div><div className="tx">Demande n&apos;importe quoi sur le véhicule</div></div>
+                <div className="mt-frow"><div className="ic">📄</div><div className="tx">Il t&apos;affiche la bonne fiche (ouverture, ancrage…)</div></div>
+                <div className="mt-frow"><div className="ic">📷</div><div className="tx">Pas sûr du modèle&nbsp;? Envoie une photo</div></div>
+              </div>
+              <Link href="/matthieu" className="mt-cta">Essayer →</Link>
+            </div>
+          </div></div>
         </div>
 
-        {/* How to */}
-        <div className="bg-surface border rounded-2xl p-5 mt-6">
-          <h2 className="text-ink font-extrabold text-base mb-3">👉 Comment y accéder</h2>
-          <ol className="space-y-2.5">
-            {STEPS.map((s, i) => (
-              <li key={i} className="flex gap-3 items-start">
-                <span className="w-6 h-6 rounded-full flex-shrink-0 flex items-center justify-center text-xs font-extrabold text-white" style={{ background: 'linear-gradient(135deg,#7c74ff,#4b40e0)' }}>{i + 1}</span>
-                <span className="text-ink text-sm leading-snug">{s}</span>
-              </li>
-            ))}
+        <div className="mt-rule" />
+
+        <div className="mt-grid3">
+          <div className="mt-card"><div className="n">01</div><h3>Il cadre d&apos;abord</h3><p>Il confirme le modèle, la génération et la motorisation avant toute manip — pas d&apos;erreur sur une coupure haute tension ou un point d&apos;ancrage.</p></div>
+          <div className="mt-card"><div className="n">02</div><h3>Il te montre</h3><p>Besoin d&apos;un schéma&nbsp;? Il sort la fiche exacte concernée par ta question, pas 40 pages. Tu vois direct où regarder.</p></div>
+          <div className="mt-card"><div className="n">03</div><h3>Partout, tout le temps</h3><p>Sur n&apos;importe quelle intervention, même la nuit. Dépannage comme remorquage, toutes les marques.</p></div>
+        </div>
+
+        <div className="mt-howto">
+          <div className="mt-ht-head">👉 Comment y accéder</div>
+          <ol className="mt-steps">
+            <li><b>Ouvre ta fiche d&apos;intervention</b> (ta mission en cours).</li>
+            <li>Appuie sur la tuile <b style={{ color: 'var(--indigo)' }}>🔧 La tête à Matthieu</b>.</li>
+            <li><b>Pose ta question</b> (ou un raccourci : « Comment l&apos;ouvrir ? », « Points d&apos;ancrage »).</li>
+            <li>Pas sûr du modèle&nbsp;? Appuie sur <b>📷</b> et envoie une photo — il l&apos;analyse.</li>
+            <li>S&apos;il te sort une fiche, appuie sur la carte <b>📄</b> pour voir le schéma.</li>
           </ol>
         </div>
 
-        <Link href="/matthieu" className="block text-center mt-6 py-3.5 rounded-2xl text-white font-extrabold"
-          style={{ background: 'linear-gradient(135deg,#7c74ff,#e23b2e)', boxShadow: '0 16px 32px -12px rgba(226,59,46,.5)' }}>
-          Essayer maintenant (choisis un véhicule) →
-        </Link>
-        <p className="text-ink-muted text-xs text-center mt-3">Ou retrouve-le directement sur ta fiche d'intervention.</p>
+        <div className="mt-final">
+          <Link href="/matthieu" className="mt-btn-primary">Essayer maintenant (choisis un véhicule) →</Link>
+        </div>
+        <p className="mt-foot">VD Soft · Verviers Dépannage — <b style={{ color: 'var(--ink)' }}>La tête à Matthieu</b></p>
       </div>
-    </AppShell>
+    </div>
   )
 }

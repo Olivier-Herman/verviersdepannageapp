@@ -25,7 +25,9 @@ const TYPE_PRIORITY = ['tips', 'ouverture', 'gestion_moteur', 'electricite', 're
 
 const SYSTEM = `Tu es « La tête à Matthieu », le mécano-dépanneur expert de Verviers Dépannage — la référence que tous les chauffeurs appellent sur le terrain. Tu réponds comme lui : direct, concret, orienté terrain, la SÉCURITÉ d'abord, tutoiement, en français.
 
-Adresse-toi au chauffeur par son PRÉNOM (donné dans le contexte). Au tout premier message, commence par « Salut <prénom> ». N'utilise JAMAIS « collègue », ni un nom de famille.
+LANGUE : réponds TOUJOURS dans la langue du chauffeur (indiquée dans le contexte). S'il écrit en albanais, réponds en albanais ; s'il écrit en français, en français. Adapte tout (y compris le « Salut ») à cette langue.
+
+Adresse-toi au chauffeur par son PRÉNOM/surnom (donné dans le contexte). Au tout premier message, commence par un « Salut <prénom> » (dans sa langue). N'utilise JAMAIS « collègue », ni un nom de famille.
 
 PÉRIMÈTRE STRICT : tu es un mécano-dépanneur hyper compétent, PAS un psy, pas un coach, pas un conseiller de vie, pas un moteur de recherche généraliste. Tu ne parles QUE de véhicules, pannes, dépannage, remorquage et sécurité d'intervention. Si on te pose une question hors sujet (perso, sentimentale, existentielle, psychologique, politique, blague sans rapport, devoirs, cuisine…), tu RECADRES avec humour mais fermement et correctement, sans jamais être blessant — par ex. « Gros, je suis mécano, pas psy 😄 T'as un souci sur un véhicule, là je suis ton homme. » Puis tu ramènes direct sur l'intervention. Ne te laisse pas entraîner, même si on insiste.
 
@@ -70,10 +72,12 @@ export async function POST(req: Request) {
   const u = session?.user as any
   if (!u) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   const sb = createAdminClient()
-  const { data: me } = await sb.from('users').select('id, role, name, surnom').eq('email', u.email).maybeSingle()
+  const { data: me } = await sb.from('users').select('id, role, name, surnom, language').eq('email', u.email).maybeSingle()
   if (!canUseMatthieu(me?.role, me?.id)) return NextResponse.json({ error: 'Accès réservé (test)' }, { status: 403 })
   // Nom d'appel : surnom que Matthieu utilise s'il existe, sinon le prénom.
   const firstName = String(me?.surnom || '').trim() || String(me?.name || '').trim().split(/\s+/)[0] || ''
+  const langCode  = String(me?.language || 'fr').toLowerCase()
+  const langName  = langCode === 'sq' ? 'albanais (shqip)' : 'français'
 
   const body = await req.json().catch(() => ({}))
   let brand = String(body.brand || '').trim()
@@ -125,7 +129,7 @@ export async function POST(req: Request) {
   if (!apiKey) return NextResponse.json({ error: 'IA indisponible (clé manquante)' }, { status: 503 })
   const client = new Anthropic({ apiKey })
 
-  const ctx = `Chauffeur (prénom à utiliser) : ${firstName || 'inconnu'}\n\nContexte véhicule (à CONFIRMER avant toute procédure) :\n- Marque : ${brand || 'INCONNUE'}\n- Modèle annoncé sur la fiche : ${model || 'non précisé'}\n${generations.length ? `- Générations que tu connais pour ${brand} : ${generations.join(' · ')}` : brand ? `- (pas encore de fiches importées pour ${brand})` : ''}`
+  const ctx = `Chauffeur (prénom/surnom à utiliser) : ${firstName || 'inconnu'}\nLangue du chauffeur : ${langName} — RÉPONDS DANS CETTE LANGUE.\n\nContexte véhicule (à CONFIRMER avant toute procédure) :\n- Marque : ${brand || 'INCONNUE'}\n- Modèle annoncé sur la fiche : ${model || 'non précisé'}\n${generations.length ? `- Générations que tu connais pour ${brand} : ${generations.join(' · ')}` : brand ? `- (pas encore de fiches importées pour ${brand})` : ''}`
 
   const lastUserIdx = (() => { for (let i = history.length - 1; i >= 0; i--) if (history[i].role === 'user') return i; return -1 })()
   const msgs: any[] = history.map((h, i) => {
