@@ -800,7 +800,7 @@ function PreviewModal({
               <div className="rounded bg-success-soft text-success p-3 text-sm">
                 ✅ Aperçu généré · Réf : <span className="font-mono">{result.reference}</span>
               </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              <div className="grid grid-cols-2 gap-2">
                 <a href={result.pdf.signedUrl} target="_blank" rel="noopener noreferrer"
                    className="bg-surface-2 border rounded p-3 text-center hover:bg-surface text-sm">
                   📄 Voir le PDF

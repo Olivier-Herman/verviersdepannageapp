@@ -67,11 +67,11 @@ export default function FinanceClient({ userModules }: { userModules: string[] }
   return (
     <AmbientBackground>
     <div className="px-4 lg:px-8 py-6 ambient-fade-up">
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 max-w-7xl">
+      <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 sm:gap-4 max-w-7xl">
         {tiles.map(tile => (
           <Link key={tile.id} href={tile.href}
-            className="bg-surface-2 border rounded-2xl p-6
-                       flex items-center justify-between gap-4
+            className="bg-surface-2 border rounded-2xl p-4 sm:p-6
+                       flex items-center justify-between gap-3 sm:gap-4
                        hover:border-brand/50 transition-all active:opacity-80"
           >
             <div>
