@@ -23,20 +23,24 @@ export default function NotificationsClient({
   const [saving,     setSaving]     = useState<string | null>(null)  // `${userId}:${type}` en cours
 
   // ── Rappel « définis ton code de validation » ──────────────────────────────
-  const [pinBusy,  setPinBusy]  = useState<'me' | 'all' | null>(null)
+  const [pinBusy,  setPinBusy]  = useState<string | null>(null)   // `${kind}:${target}`
   const [pinMsg,   setPinMsg]   = useState('')
   const [pinCount, setPinCount] = useState<{ without_pin: number; with_pin: number; total: number; without: { name: string; role: string }[]; with: { name: string; role: string }[] } | null>(null)
   const [pinShowList, setPinShowList] = useState(false)
   const loadPinState = () => fetch('/api/admin/notify-pin-setup').then(r => r.json()).then(j => { if (j && typeof j.without_pin === 'number') setPinCount(j) }).catch(() => {})
   useEffect(() => { loadPinState() }, [])
-  const sendPinReminder = async (target: 'me' | 'all') => {
-    if (target === 'all' && !confirm(`Envoyer le rappel « définis ton code » à tous les utilisateurs SANS code${pinCount ? ` (${pinCount.without_pin})` : ''} ?`)) return
-    setPinBusy(target); setPinMsg('')
+  const sendPinReminder = async (target: 'me' | 'all', kind: 'setup' | 'recall' = 'setup') => {
+    if (target === 'all') {
+      const who = kind === 'recall' ? `tous les utilisateurs AVEC code${pinCount ? ` (${pinCount.with_pin})` : ''}` : `tous les utilisateurs SANS code${pinCount ? ` (${pinCount.without_pin})` : ''}`
+      const what = kind === 'recall' ? '« te souviens-tu de ton code ? »' : '« définis ton code »'
+      if (!confirm(`Envoyer ${what} à ${who} ?`)) return
+    }
+    setPinBusy(`${kind}:${target}`); setPinMsg('')
     try {
-      const r = await fetch('/api/admin/notify-pin-setup', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ target }) })
+      const r = await fetch('/api/admin/notify-pin-setup', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ target, kind }) })
       const j = await r.json()
       if (!r.ok) { setPinMsg('❌ ' + (j.error || 'Erreur')); return }
-      setPinMsg(target === 'me' ? '✅ Notif test envoyée sur ton compte.' : `✅ Envoyée à ${j.sent || 0} utilisateur(s) sans code.${j.note ? ' ' + j.note : ''}`)
+      setPinMsg(target === 'me' ? '✅ Notif test envoyée sur ton compte.' : `✅ Envoyée à ${j.sent || 0} utilisateur(s).${j.note ? ' ' + j.note : ''}`)
     } finally { setPinBusy(null) }
   }
 
@@ -144,11 +148,21 @@ export default function NotificationsClient({
             )}
             {pinMsg && <p className="text-xs mt-2 text-ink">{pinMsg}</p>}
           </div>
-          <div className="flex gap-2 flex-shrink-0">
-            <button onClick={() => sendPinReminder('me')} disabled={!!pinBusy}
-              className="text-xs px-3 py-2 rounded-lg border hover:bg-surface-2 disabled:opacity-50">{pinBusy === 'me' ? '…' : 'Test (moi)'}</button>
-            <button onClick={() => sendPinReminder('all')} disabled={!!pinBusy || (pinCount?.without_pin === 0)}
-              className="text-xs px-3 py-2 rounded-lg bg-amber-600 text-white font-semibold hover:opacity-90 disabled:opacity-50">{pinBusy === 'all' ? 'Envoi…' : 'Envoyer à tous (sans code)'}</button>
+          <div className="flex flex-col gap-2 flex-shrink-0 w-full sm:w-auto">
+            <div className="flex items-center gap-2">
+              <span className="text-[11px] text-ink-muted w-24 flex-shrink-0">Définir le code</span>
+              <button onClick={() => sendPinReminder('me', 'setup')} disabled={!!pinBusy}
+                className="text-xs px-3 py-2 rounded-lg border hover:bg-surface-2 disabled:opacity-50">{pinBusy === 'setup:me' ? '…' : 'Test (moi)'}</button>
+              <button onClick={() => sendPinReminder('all', 'setup')} disabled={!!pinBusy || (pinCount?.without_pin === 0)}
+                className="text-xs px-3 py-2 rounded-lg bg-amber-600 text-white font-semibold hover:opacity-90 disabled:opacity-50">{pinBusy === 'setup:all' ? 'Envoi…' : `À tous sans code${pinCount ? ` (${pinCount.without_pin})` : ''}`}</button>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-[11px] text-ink-muted w-24 flex-shrink-0">Vérif mémoire</span>
+              <button onClick={() => sendPinReminder('me', 'recall')} disabled={!!pinBusy}
+                className="text-xs px-3 py-2 rounded-lg border hover:bg-surface-2 disabled:opacity-50">{pinBusy === 'recall:me' ? '…' : 'Test (moi)'}</button>
+              <button onClick={() => sendPinReminder('all', 'recall')} disabled={!!pinBusy || (pinCount?.with_pin === 0)}
+                className="text-xs px-3 py-2 rounded-lg bg-brand text-white font-semibold hover:opacity-90 disabled:opacity-50">{pinBusy === 'recall:all' ? 'Envoi…' : `À tous avec code${pinCount ? ` (${pinCount.with_pin})` : ''}`}</button>
+            </div>
           </div>
         </div>
       </div>

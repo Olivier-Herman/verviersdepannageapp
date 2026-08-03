@@ -13,10 +13,15 @@ import { sendNotification, sendNotificationToMany } from '@/lib/notifications/se
 
 export const dynamic = 'force-dynamic'
 
-const PAYLOAD = {
+const PAYLOAD_SETUP = {
   title:      '🔐 Définis ton code de validation',
   body:       'Pour valider un encaissement ou un transfert de caisse, tu dois avoir un code personnel à 4 chiffres. Tape ici pour le créer.',
   action_url: '/profil#pin',
+}
+const PAYLOAD_RECALL = {
+  title:      '🔐 Te souviens-tu de ton code ?',
+  body:       'Tu ne l\'as sûrement pas utilisé depuis longtemps. Tape ici pour confirmer que tu t\'en souviens (ou en redéfinir un).',
+  action_url: '/verifier-code',
 }
 
 export async function POST(req: Request) {
@@ -27,21 +32,27 @@ export async function POST(req: Request) {
   const sb = createAdminClient()
   const body = await req.json().catch(() => ({}))
   const target = body?.target === 'all' ? 'all' : 'me'
+  const kind   = body?.kind === 'recall' ? 'recall' : 'setup'
+  const type    = kind === 'recall' ? 'pin_recall_check'  : 'pin_setup_reminder'
+  const payload = kind === 'recall' ? PAYLOAD_RECALL       : PAYLOAD_SETUP
 
   const { data: me } = await sb.from('users').select('id').eq('email', u.email).maybeSingle()
   if (!me) return NextResponse.json({ error: 'Utilisateur introuvable' }, { status: 404 })
 
   if (target === 'me') {
-    const r = await sendNotification(me.id, 'pin_setup_reminder', PAYLOAD)
-    return NextResponse.json({ ok: true, target: 'me', sent: r.ok ? 1 : 0, result: r })
+    const r = await sendNotification(me.id, type, payload)
+    return NextResponse.json({ ok: true, kind, target: 'me', sent: r.ok ? 1 : 0, result: r })
   }
 
-  // target = all → tous les users actifs qui n'ont PAS encore de code
-  const { data: users } = await sb.from('users').select('id').eq('active', true).is('verify_pin_hash', null)
+  // target = all :
+  //   setup  → users actifs SANS code (verify_pin_hash null)
+  //   recall → users actifs AVEC code (verify_pin_hash non null)
+  const q = sb.from('users').select('id').eq('active', true)
+  const { data: users } = kind === 'recall' ? await q.not('verify_pin_hash', 'is', null) : await q.is('verify_pin_hash', null)
   const ids = (users || []).map(x => x.id)
-  if (!ids.length) return NextResponse.json({ ok: true, target: 'all', sent: 0, note: 'Tous les users actifs ont déjà un code.' })
-  const res = await sendNotificationToMany(ids, 'pin_setup_reminder', PAYLOAD)
-  return NextResponse.json({ ok: true, target: 'all', eligible: ids.length, ...res })
+  if (!ids.length) return NextResponse.json({ ok: true, kind, target: 'all', sent: 0, note: kind === 'recall' ? 'Personne n\'a encore de code.' : 'Tous les users actifs ont déjà un code.' })
+  const res = await sendNotificationToMany(ids, type, payload)
+  return NextResponse.json({ ok: true, kind, target: 'all', eligible: ids.length, ...res })
 }
 
 // GET : état du déploiement du code — qui a défini son code, qui ne l'a pas.

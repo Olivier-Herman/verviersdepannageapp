@@ -141,6 +141,14 @@ export const NOTIFICATION_TYPES: readonly NotificationType[] = [
     defaultEnabled:  true,
   },
   {
+    key:             'pin_recall_check',
+    label:           'Vérif mémoire : te souviens-tu de ton code ?',
+    description:     'Demande à un utilisateur qui a déjà un code de confirmer qu\'il s\'en souvient (ou de le redéfinir).',
+    category:        'admin',
+    applicableRoles: ['driver', 'dispatcher', 'admin', 'superadmin'],
+    defaultEnabled:  true,
+  },
+  {
     key:             'kaze_cancelled_after_start',
     label:           'Mission Kaze annulée après acceptation',
     description:     'Kaze a annulé une mission déjà acceptée par le chauffeur → trajet à vide à facturer (chauffeur : fais demi-tour).',
