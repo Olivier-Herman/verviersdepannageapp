@@ -757,15 +757,18 @@ function MissionCard({ mission, drivers, driverStatuses, sources, onRefresh, onM
             onClose={() => { setSiabisCard(false); onRefresh() }} />
         </div>
       )}
+      {/* Bandeau bloquant : intervention autoroute, tarification Siabis à trancher */}
+      {mission.needs_siabis_decision && (
+        <button onClick={e => { e.stopPropagation(); setSiabisCard(true) }}
+          className="w-full mb-3 px-3 py-2 rounded-lg bg-red-600 hover:bg-red-700 text-white text-xs font-bold flex items-center justify-center gap-1.5 animate-pulse"
+          title="Intervention sur autoroute — trancher la tarification Siabis avant facturation">
+          🛣️ AUTOROUTE — tarification à trancher →
+        </button>
+      )}
       {/* Header */}
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-2 flex-wrap">
           <span className={`px-2 py-0.5 rounded text-xs font-bold text-white ${srcInfo.color}`}>{srcInfo.label}</span>
-          {mission.needs_siabis_decision && (
-            <button onClick={e => { e.stopPropagation(); setSiabisCard(true) }}
-              className="px-2 py-0.5 rounded text-xs font-bold bg-sky-600 hover:bg-sky-700 text-white animate-pulse"
-              title="Intervention sur autoroute — trancher la tarification Siabis">🛣️ Siabis ?</button>
-          )}
           {mission.source === 'touring' && (
             mission.source_format === 'comex' ? (
               <span className="px-2 py-0.5 rounded text-xs font-bold bg-sky-100 text-sky-800" title="Importée depuis la plateforme COMEX">🚗 COMEX</span>

@@ -34,5 +34,13 @@ export async function GET() {
     if (count) badges['/admin/tgr'] = count
   }
 
+  // Dispatch : missions sur autoroute dont la tarification Siabis n'est pas tranchée.
+  const roles = [u.role, ...(u.roles || [])]
+  if ((u.modules || []).includes('missions') || roles.some((r: string) => ['dispatcher', 'admin', 'superadmin'].includes(r))) {
+    const { count } = await sb.from('incoming_missions').select('id', { count: 'exact', head: true })
+      .eq('needs_siabis_decision', true)
+    if (count) badges['/dispatch'] = count
+  }
+
   return NextResponse.json({ badges })
 }
