@@ -14,6 +14,9 @@ import MyCalendar from '@/components/personnel/MyCalendar'
 
 const CONGE_TYPE_LABEL: Record<string, string> = { conge: 'Congé légal', recup: 'Récupération', sans_solde: 'Congé sans solde' }
 const fmtDate = (d: string) => { const [y, m, j] = (d || '').split('-'); return j ? `${j}/${m}` : d }
+// Lundi (ISO) de la semaine d'une date 'YYYY-MM-DD' — pour réafficher le vrai
+// début d'une semaine de garde en cours (la liste démarre à aujourd'hui).
+const mondayISO = (ds: string) => { const d = new Date(ds + 'T00:00:00'); const off = (d.getDay() + 6) % 7; d.setDate(d.getDate() - off); const p = (n: number) => String(n).padStart(2, '0'); return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}` }
 function CongeStatus({ s }: { s: string }) {
   const map: any = { approved: ['bg-emerald-500/10 text-emerald-700', 'Approuvé'], refused: ['bg-red-500/10 text-red-600', 'Refusé'], pending: ['bg-amber-500/10 text-amber-700', 'En attente'], cancel_requested: ['bg-orange-500/10 text-orange-700', 'Annulation demandée'] }
   const [cls, lbl] = map[s] || map.pending
@@ -250,6 +253,7 @@ export default function MaPaieClient({ userRole, userName, userEmail, userModule
           const wk0 = semaine.length ? semaine[0].week_no : null
           const nextWeek = wk0 != null ? semaine.filter((d: any) => d.week_no === wk0) : []
           const nextNuit = nuits[0] || null
+          const _t = new Date(); const todayStr = `${_t.getFullYear()}-${String(_t.getMonth() + 1).padStart(2, '0')}-${String(_t.getDate()).padStart(2, '0')}`
           return (
             <div className="bg-surface border rounded-2xl p-5 mb-6">
               <div className="flex items-center gap-2 mb-3"><ShieldCheck size={18} className="text-indigo-500" /><h2 className="font-semibold text-ink text-sm">Mes prochaines gardes</h2></div>
@@ -257,7 +261,10 @@ export default function MaPaieClient({ userRole, userName, userEmail, userModule
                 <div className="rounded-xl border border-sky-500/20 bg-sky-500/10 p-3">
                   <div className="text-[11px] text-sky-700/80 mb-1 flex items-center gap-1"><ShieldCheck size={12} /> Prochaine garde (semaine, 2e départ)</div>
                   {nextWeek.length
-                    ? <div className="text-ink font-semibold text-sm">S{nextWeek[0].week_no} · {fmtDate(nextWeek[0].date)} → {fmtDate(nextWeek[nextWeek.length - 1].date)}</div>
+                    ? <>
+                        <div className="text-ink font-semibold text-sm">S{nextWeek[0].week_no} · {fmtDate(mondayISO(nextWeek[0].date))} → {fmtDate(nextWeek[nextWeek.length - 1].date)}</div>
+                        {nextWeek[0].date <= todayStr && <div className="text-[11px] text-sky-700/70 mt-0.5">En cours cette semaine</div>}
+                      </>
                     : <div className="text-ink-muted text-sm">Aucune prévue</div>}
                 </div>
                 <div className="rounded-xl border border-indigo-500/20 bg-indigo-500/10 p-3">
