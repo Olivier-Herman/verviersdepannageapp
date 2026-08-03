@@ -3073,8 +3073,11 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
               if (setAmtNoPin) return (
                 <div className="bg-amber-50 border border-amber-300 rounded-xl p-3 text-amber-900 text-xs space-y-2">
                   <p className="font-semibold">Tu n'as pas encore de code de validation.</p>
-                  <p>Pour encaisser un montant inférieur au prévu, tu dois d'abord définir ton code personnel.</p>
-                  <a href="/profil" className="inline-block py-2 px-3 bg-amber-600 text-white rounded-lg font-semibold">Définir mon code →</a>
+                  <p>Impossible d'encaisser moins que le prévu sans code. Encaisse le montant prévu, ou définis ton code depuis la notification de rappel (elle t'y emmène directement).</p>
+                  <button onClick={collectFullExpected} disabled={setAmtSubmitting}
+                    className="w-full py-2.5 bg-emerald-600 text-white rounded-xl text-sm font-semibold">
+                    Encaisser le montant prévu ({expectedTvac.toFixed(2)} €)
+                  </button>
                 </div>
               )
               return (
