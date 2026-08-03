@@ -9,7 +9,7 @@ import { NextResponse }      from 'next/server'
 import { getServerSession }  from 'next-auth'
 import { authOptions }       from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase'
-import { sendNotification }  from '@/lib/notifications/send'
+import { sendNotificationToRoles } from '@/lib/notifications/send'
 
 export const dynamic = 'force-dynamic'
 
@@ -97,27 +97,19 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     .single()
   if (error || !derogation) return NextResponse.json({ error: error?.message || 'Erreur creation' }, { status: 500 })
 
-  // Notifie le dispatcher de garde
-  const { data: onDuty } = await sb
-    .from('dispatcher_on_duty')
-    .select('user_id')
-    .eq('id', 1)
-    .maybeSingle()
-  if (onDuty?.user_id) {
-    const label = `${mission.dossier_number || mission.external_id || params.id.slice(0,8)}${mission.client_name ? ' — ' + mission.client_name : ''}`
-    try {
-      await sendNotification(onDuty.user_id, 'payment_derogation_requested', {
-        title:      `🆘 Dérogation paiement demandée`,
-        body:       `${me.name} — ${label} (${mission.amount_to_collect || 0} €) : ${motive.slice(0, 80)}`,
-        action_url: `/dispatch/${params.id}`,
-        mission_id: params.id,
-        derogation_id: derogation.id,
-      } as any)
-    } catch (e: any) {
-      console.error('[Derogation] Notif dispatcher echouee:', e.message)
-    }
-  } else {
-    console.warn('[Derogation] Aucun dispatcher de garde defini — pas de notif envoyee')
+  // Notifie TOUS les dispatchers (+ admin/superadmin) — pas seulement le
+  // dispatcher de garde. N'importe lequel peut statuer sur la dérogation.
+  const label = `${mission.dossier_number || mission.external_id || params.id.slice(0,8)}${mission.client_name ? ' — ' + mission.client_name : ''}`
+  try {
+    await sendNotificationToRoles(['dispatcher', 'admin', 'superadmin'], 'payment_derogation_requested', {
+      title:      `🆘 Dérogation paiement demandée`,
+      body:       `${me.name} — ${label} (${mission.amount_to_collect || 0} €) : ${motive.slice(0, 80)}`,
+      action_url: `/dispatch/${params.id}`,
+      mission_id: params.id,
+      derogation_id: derogation.id,
+    } as any)
+  } catch (e: any) {
+    console.error('[Derogation] Notif dispatchers echouee:', e.message)
   }
 
   // Log mission_logs pour audit

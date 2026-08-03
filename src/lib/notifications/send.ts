@@ -161,3 +161,26 @@ export async function sendNotificationToRole(
   if (!users || users.length === 0) return { sent: 0, skipped: 0, errors: 0 }
   return sendNotificationToMany(users.map(u => u.id), type, payload)
 }
+
+/**
+ * Envoie une notification a tous les users portant l'un des roles donnes.
+ * Filtre sur la colonne `role` ET le tableau `roles[]` (sinon on rate ceux qui
+ * n'ont le role que dans le tableau — ex. role='driver', roles=['driver','dispatcher']).
+ */
+export async function sendNotificationToRoles(
+  roles:   Array<'driver' | 'dispatcher' | 'admin' | 'superadmin'>,
+  type:    string,
+  payload: NotificationPayload,
+): Promise<{ sent: number; skipped: number; errors: number }> {
+  const sb = createAdminClient()
+  const inList = roles.map(r => `"${r}"`).join(',')
+  const ovList = `{${roles.join(',')}}`
+  const { data: users } = await sb
+    .from('users')
+    .select('id')
+    .eq('active', true)
+    .or(`role.in.(${inList}),roles.ov.${ovList}`)
+  const ids = [...new Set((users || []).map(u => u.id))]
+  if (!ids.length) return { sent: 0, skipped: 0, errors: 0 }
+  return sendNotificationToMany(ids, type, payload)
+}

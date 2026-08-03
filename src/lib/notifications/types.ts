@@ -125,6 +125,14 @@ export const NOTIFICATION_TYPES: readonly NotificationType[] = [
     defaultEnabled:  true,
   },
   {
+    key:             'driver_amount_set',
+    label:           'Montant à encaisser fixé/modifié par le chauffeur',
+    description:     'Un chauffeur a ajouté ou modifié le montant à encaisser sur une mission (geste dossier). À vérifier.',
+    category:        'on_duty',
+    applicableRoles: ['dispatcher', 'admin', 'superadmin'],
+    defaultEnabled:  true,
+  },
+  {
     key:             'kaze_cancelled_after_start',
     label:           'Mission Kaze annulée après acceptation',
     description:     'Kaze a annulé une mission déjà acceptée par le chauffeur → trajet à vide à facturer (chauffeur : fais demi-tour).',

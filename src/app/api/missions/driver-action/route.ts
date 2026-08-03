@@ -437,6 +437,27 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Erreur mise à jour' }, { status: 500 })
   }
 
+  // Montant à encaisser fixé/modifié par le chauffeur (geste 5-tap sur dossier) :
+  // le montant s'applique immédiatement (le chauffeur doit encaisser sur place),
+  // mais on notifie TOUS les dispatchers pour vérification/correction éventuelle.
+  if (action === 'set_amount_to_collect' && updated) {
+    const oldAmt = Number(mission.amount_to_collect) || 0
+    const newAmt = Number(updated.amount_to_collect) || 0
+    const label  = `${mission.dossier_number || mission.external_id || mission_id.slice(0, 8)}${updated.client_name ? ' — ' + updated.client_name : ''}`
+    const change = oldAmt > 0 ? `${oldAmt} € → ${newAmt} €` : `${newAmt} €`
+    try {
+      const { sendNotificationToRoles } = await import('@/lib/notifications/send')
+      await sendNotificationToRoles(['dispatcher', 'admin', 'superadmin'], 'driver_amount_set', {
+        title:      `💶 Montant à encaisser ${oldAmt > 0 ? 'modifié' : 'ajouté'} par ${actor.name}`,
+        body:       `${label} : ${change}`,
+        action_url: `/dispatch/${mission_id}`,
+        mission_id,
+      })
+    } catch (e: any) {
+      console.error('[driver-action] notif set_amount echouee:', e?.message)
+    }
+  }
+
   // Parc automobile Odoo : dès que la fiche atteint un statut terminal
   // (to_invoice / completed), on passe le véhicule en "Terminé" — mais seulement
   // si TOUT le dossier est bouclé (dernière fiche enfant en to_invoice pour un
