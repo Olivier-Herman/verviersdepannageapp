@@ -8,7 +8,7 @@ import { useEffect, useState } from 'react'
 import AppShell from '@/components/layout/AppShell'
 import { Flag, ArrowLeft, Plus, Trash2, Save, FileText, Loader2, Search, X, ExternalLink, Sun, Moon } from 'lucide-react'
 
-type Supp = { from: string; to: string }
+type Supp = { from: string; to: string; nb: number }
 type Day = { date: string; nb: number; jour: boolean; nuit: boolean; supps: Supp[]; drivers: string[]; note: string }
 const emptyDay = (): Day => ({ date: '', nb: 1, jour: true, nuit: false, supps: [], drivers: [], note: '' })
 const suppHours = (from?: string, to?: string): number => {
@@ -54,7 +54,7 @@ export default function RaceWeekendManager({ userRole, userName, userEmail, user
   const addDay = () => setEditing((e: any) => ({ ...e, days: [...e.days, emptyDay()] }))
   const removeDay = (i: number) => setEditing((e: any) => ({ ...e, days: e.days.filter((_: any, idx: number) => idx !== i) }))
   const toggleDriver = (i: number, pid: string) => setEditing((e: any) => ({ ...e, days: e.days.map((d: Day, idx: number) => idx === i ? { ...d, drivers: (d.drivers || []).includes(pid) ? d.drivers.filter(x => x !== pid) : [...(d.drivers || []), pid] } : d) }))
-  const addSupp = (i: number) => setEditing((e: any) => ({ ...e, days: e.days.map((d: Day, idx: number) => idx === i ? { ...d, supps: [...(d.supps || []), { from: '', to: '' }] } : d) }))
+  const addSupp = (i: number) => setEditing((e: any) => ({ ...e, days: e.days.map((d: Day, idx: number) => idx === i ? { ...d, supps: [...(d.supps || []), { from: '', to: '', nb: d.nb }] } : d) }))
   const setSupp = (i: number, si: number, patch: Partial<Supp>) => setEditing((e: any) => ({ ...e, days: e.days.map((d: Day, idx: number) => idx === i ? { ...d, supps: d.supps.map((s, sj) => sj === si ? { ...s, ...patch } : s) } : d) }))
   const removeSupp = (i: number, si: number) => setEditing((e: any) => ({ ...e, days: e.days.map((d: Day, idx: number) => idx === i ? { ...d, supps: d.supps.filter((_, sj) => sj !== si) } : d) }))
 
@@ -143,7 +143,9 @@ export default function RaceWeekendManager({ userRole, userName, userEmail, user
                               <input type="time" value={s.from} onChange={e => setSupp(i, si, { from: e.target.value })} className="bg-bg border rounded-lg px-1.5 py-1 text-sm text-ink" />
                               <span className="text-[11px] text-ink-muted">à</span>
                               <input type="time" value={s.to} onChange={e => setSupp(i, si, { to: e.target.value })} className="bg-bg border rounded-lg px-1.5 py-1 text-sm text-ink" />
-                              {h > 0 && <span className="text-xs font-medium text-emerald-600">= {h} h</span>}
+                              <label className="flex items-center gap-1 text-[11px] text-ink-muted">×
+                                <input type="number" min={1} value={s.nb} onChange={e => setSupp(i, si, { nb: Number(e.target.value) })} title="Nb de dépanneuses pour ce supplément" className="w-11 bg-bg border rounded-lg px-1 py-1 text-sm text-ink text-center" /> dép.</label>
+                              {h > 0 && <span className="text-xs font-medium text-emerald-600">= {h} h × {s.nb || d.nb}</span>}
                               <button onClick={() => removeSupp(i, si)} className="p-1 text-ink-muted/50 hover:text-red-400"><X size={12} /></button>
                             </div>
                           )

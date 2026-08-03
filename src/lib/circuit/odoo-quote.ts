@@ -124,7 +124,7 @@ export async function createCircuitQuote(input: CreateCircuitQuoteInput): Promis
 const PRODUCT_REF_COURSE   = 'Course'         // 217 — Prestation Circuit (forfait)
 const PRODUCT_REF_HSUPP    = 'hsupplcircuit'  // 216 — Heure supplémentaire
 
-export interface RaceSupp { from: string; to: string }
+export interface RaceSupp { from: string; to: string; nb?: number }   // nb dépanneuses du supplément (défaut = nb du jour)
 export interface RaceDay {
   date:            string   // YYYY-MM-DD
   nb_depanneuses:  number
@@ -192,7 +192,8 @@ export async function createRaceWeekendQuote(input: {
     if (d.nuit)  lineTuples.push([0, 0, { product_id: courseId, product_uom_qty: n, name: 'Forfait nuit (18h-08h)',  sequence: seq++ }])
     for (const s of (d.supps || [])) {
       const sh = suppHours(s.from, s.to)
-      if (sh > 0) lineTuples.push([0, 0, { product_id: hsuppId, product_uom_qty: n * sh, name: `Supplément horaire (de ${s.from} à ${s.to})`, sequence: seq++ }])
+      const sn = Math.max(1, Number(s.nb) || n)
+      if (sh > 0) lineTuples.push([0, 0, { product_id: hsuppId, product_uom_qty: sn * sh, name: `Supplément horaire (de ${s.from} à ${s.to})${sn !== n ? ` — ${sn} dépanneuse${sn > 1 ? 's' : ''}` : ''}`, sequence: seq++ }])
     }
   }
 

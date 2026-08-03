@@ -22,13 +22,14 @@ const ALLOWED = ['dispatcher', 'admin', 'superadmin']
 const hasAccess = (u: any) => ALLOWED.includes(u?.role) || (Array.isArray(u?.roles) && u.roles.some((r: string) => ALLOWED.includes(r)))
 
 const time = (t: any) => /^\d{1,2}:\d{2}$/.test(String(t || '')) ? String(t) : null
-const cleanSupps = (arr: any) => (Array.isArray(arr) ? arr : []).filter((s: any) => time(s?.from) && time(s?.to)).map((s: any) => ({ from: time(s.from), to: time(s.to) }))
+const cleanSupps = (arr: any, defNb: number) => (Array.isArray(arr) ? arr : []).filter((s: any) => time(s?.from) && time(s?.to)).map((s: any) => ({ from: time(s.from), to: time(s.to), nb: Math.max(1, Number(s.nb) || defNb) }))
 const cleanDays = (arr: any): any[] => (Array.isArray(arr) ? arr : [])
   .filter(d => d && /^\d{4}-\d{2}-\d{2}$/.test(d.date))
   .map(d => {
-    let supps = cleanSupps(d.supps)
-    if (!supps.length && time(d.supp_from) && time(d.supp_to)) supps = [{ from: time(d.supp_from), to: time(d.supp_to) }]   // compat ancien format
-    return { date: d.date, nb: Math.max(1, Number(d.nb) || 1), jour: !!d.jour, nuit: !!d.nuit, supps, note: typeof d.note === 'string' ? d.note.slice(0, 300) : null, drivers: Array.isArray(d.drivers) ? d.drivers.filter((x: any) => typeof x === 'string') : [] }
+    const nb = Math.max(1, Number(d.nb) || 1)
+    let supps = cleanSupps(d.supps, nb)
+    if (!supps.length && time(d.supp_from) && time(d.supp_to)) supps = [{ from: time(d.supp_from), to: time(d.supp_to), nb }]   // compat ancien format
+    return { date: d.date, nb, jour: !!d.jour, nuit: !!d.nuit, supps, note: typeof d.note === 'string' ? d.note.slice(0, 300) : null, drivers: Array.isArray(d.drivers) ? d.drivers.filter((x: any) => typeof x === 'string') : [] }
   })
 const suppHrs = (from?: string | null, to?: string | null) => { if (!from || !to) return 0; const m = (t: string) => { const [h, mm] = t.split(':').map(Number); return (h || 0) * 60 + (mm || 0) }; let d = m(to) - m(from); if (d < 0) d += 1440; return Math.round(d / 60 * 100) / 100 }
 const PRICE_FORFAIT = 650, PRICE_HSUPP = 75   // prix HTVA Odoo (Course / Heure suppl.)
