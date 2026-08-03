@@ -25,24 +25,27 @@ export function shouldOfferSiabis(
 }
 
 export function HighwaySiabisModal({
-  missionId, highwayRef, onClose,
+  missionId, highwayRef, onClose, blocking,
 }: {
   missionId: string
   highwayRef: string | null
-  onClose: () => void
+  onClose: (decided?: boolean) => void
+  blocking?: boolean          // true → pas de fermeture au clic-fond, décision obligatoire
 }) {
   const [loading, setLoading] = useState<string | null>(null)
 
-  // source=null → « tarif normal » : on ne change PAS la source mais on lève le
-  // drapeau (la question a été tranchée). Les 2 autres changent la source + lèvent.
+  // source=null → « tarif normal » : on ne change PAS la source mais on marque la
+  // mission comme tranchée (siabis_reviewed) + lève le drapeau. Les 2 autres
+  // changent aussi la source (le chauffeur reçoit alors la bonne consigne d'encaissement).
   const apply = async (source: 'sia_couvert' | 'police_snc' | null) => {
     if (loading) return
     setLoading(source || 'normal')
     try {
+      const base = { needs_siabis_decision: false, siabis_reviewed: true }
       const res = await fetch(`/api/missions/${missionId}`, {
         method:  'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify(source ? { source, needs_siabis_decision: false } : { needs_siabis_decision: false }),
+        body:    JSON.stringify(source ? { source, ...base } : base),
       })
       if (!res.ok) {
         const d = await res.json().catch(() => ({}))
@@ -50,7 +53,7 @@ export function HighwaySiabisModal({
         setLoading(null)
         return
       }
-      onClose()
+      onClose(true)
     } catch (e: any) {
       alert(`Erreur réseau : ${e?.message || 'connexion impossible'}`)
       setLoading(null)
@@ -60,7 +63,7 @@ export function HighwaySiabisModal({
   return (
     <div
       className="fixed inset-0 bg-black/60 z-[60] flex items-center justify-center p-4"
-      onClick={() => !loading && onClose()}
+      onClick={() => { if (!loading && !blocking) onClose(false) }}
     >
       <div
         className="bg-surface border rounded-2xl max-w-md w-full p-5 space-y-4 shadow-xl"

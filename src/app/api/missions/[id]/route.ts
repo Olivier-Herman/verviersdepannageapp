@@ -97,7 +97,7 @@ export async function PATCH(
     // Olivier 2026-07-05 : roulant / non roulant modifiable depuis la fiche (picto).
     'is_rollable',
     // Chantier Siabis : le dispatch a tranché la question autoroute → lève le drapeau.
-    'needs_siabis_decision',
+    'needs_siabis_decision', 'siabis_reviewed',
   ]
 
   // On charge l etat actuel pour comparer (notamment la source avant change).

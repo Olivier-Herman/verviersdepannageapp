@@ -553,8 +553,18 @@ function AssignAction({ mission, drivers, driverStatuses, onRefresh, onModalChan
   // dossier Odoo cote serveur (best effort) et la fait passer en "En attente".
   const [confirmLoading, setConfirmLoading] = useState(false)
   // Modal « autoroute → Siabis » proposé après validation (Olivier 2026-07-09).
-  const [siabisModal, setSiabisModal] = useState<{ highwayRef: string | null } | null>(null)
-  const confirmMission = async () => {
+  const [siabisModal, setSiabisModal] = useState<{ highwayRef: string | null; next?: () => void } | null>(null)
+
+  // Passage OBLIGÉ « autoroute → Siabis » AVANT d'envoyer le chauffeur : la décision
+  // (couvert / non couvert / normal) doit être prise au dispatch — sinon le chauffeur
+  // part sans savoir s'il doit encaisser le client, et à la facturation c'est trop tard.
+  const withSiabisGate = (action: () => void) => {
+    const { offer, highwayRef } = shouldOfferSiabis(mission.source, mission.incident_address)
+    if (offer) { setSiabisModal({ highwayRef, next: action }); return }
+    action()
+  }
+
+  const doConfirm = async () => {
     if (confirmLoading) return
     setConfirmLoading(true)
     try {
@@ -564,15 +574,7 @@ function AssignAction({ mission, drivers, driverStatuses, onRefresh, onModalChan
         body:    JSON.stringify({ mission_id: mission.id, action: 'confirm' }),
       })
       const data = await res.json().catch(() => ({}))
-      if (!res.ok) {
-        alert(`Echec validation : ${data?.error || `HTTP ${res.status}`}`)
-        return
-      }
-      // Adresse sur autoroute + source non Siabis/police → proposer le
-      // basculement. On garde le modal ouvert et on ne rafraîchit qu'à sa
-      // fermeture (sinon la card se remonte et le modal disparaît).
-      const { offer, highwayRef } = shouldOfferSiabis(mission.source, mission.incident_address)
-      if (offer) { setSiabisModal({ highwayRef }); return }
+      if (!res.ok) { alert(`Echec validation : ${data?.error || `HTTP ${res.status}`}`); return }
       onRefresh()
     } catch (e: any) {
       console.error('[DispatchClient] confirm reseau:', e?.message)
@@ -581,6 +583,7 @@ function AssignAction({ mission, drivers, driverStatuses, onRefresh, onModalChan
       setConfirmLoading(false)
     }
   }
+  const confirmMission = () => withSiabisGate(doConfirm)
 
   // Olivier 2026-06-17 : "Refuser" écarte la mission (new → ignored) sans ouvrir
   // la fiche. Confirmation + raison optionnelle pour éviter les refus accidentels.
@@ -611,7 +614,7 @@ function AssignAction({ mission, drivers, driverStatuses, onRefresh, onModalChan
   }
 
   const [assignLoading, setAssignLoading] = useState(false)
-  const assign = async (driverId: string) => {
+  const doAssign = async (driverId: string) => {
     if (assignLoading) return  // anti double-clic
     setAssignLoading(true)
     try {
@@ -629,10 +632,6 @@ function AssignAction({ mission, drivers, driverStatuses, onRefresh, onModalChan
         return
       }
       closeModal()
-      // Intervention sur autoroute → force la question Siabis juste après l'assignation
-      // (comme pour « Valider »). Le modal s'affiche tant que non tranché.
-      const { offer, highwayRef } = shouldOfferSiabis(mission.source, mission.incident_address)
-      if (offer) { setSiabisModal({ highwayRef }); return }
       onRefresh()
     } catch (e: any) {
       console.error('[DispatchClient] assign reseau:', e?.message)
@@ -641,6 +640,9 @@ function AssignAction({ mission, drivers, driverStatuses, onRefresh, onModalChan
       setAssignLoading(false)
     }
   }
+  // La question Siabis passe AVANT l'assignation (le chauffeur doit partir avec la
+  // bonne consigne d'encaissement).
+  const assign = (driverId: string) => withSiabisGate(() => doAssign(driverId))
 
   if (mission.status === 'completed') {
     return <span className="text-green-400 text-xs font-medium">{mission.assigned_user?.name || '—'}</span>
@@ -652,7 +654,8 @@ function AssignAction({ mission, drivers, driverStatuses, onRefresh, onModalChan
           <HighwaySiabisModal
             missionId={mission.id}
             highwayRef={siabisModal.highwayRef}
-            onClose={() => { setSiabisModal(null); onRefresh() }}
+            blocking={!!siabisModal.next}
+            onClose={(decided) => { const n = siabisModal.next; setSiabisModal(null); if (decided && n) n(); else onRefresh() }}
           />
         )}
         <button type="button" onClick={confirmMission} disabled={confirmLoading || refuseLoading}
