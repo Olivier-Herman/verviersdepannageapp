@@ -473,7 +473,7 @@ export default function RechercheClient({ initialQuery, userRole, userName, user
                       <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${meta.accent} font-medium border`}>{items.length}</span>
                       <div className="flex-1 h-px bg-border ml-2" />
                     </div>
-                    <div className="grid grid-cols-2 gap-2.5">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                       {items.map((r, i) => (
                         <button
                           key={`${r.category}-${r.id}`}
