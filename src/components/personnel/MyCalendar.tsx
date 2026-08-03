@@ -50,10 +50,10 @@ export default function MyCalendar({ conges }: { conges: any[] }) {
         <span className="text-sm font-semibold text-ink capitalize">{MONTHS_FR[cur.m]} {cur.y}</span>
         <button onClick={() => setCur(c => c.m === 11 ? { y: c.y + 1, m: 0 } : { y: c.y, m: c.m + 1 })} className="p-1.5 rounded-lg border text-ink-muted hover:text-brand"><ChevronRight size={15} /></button>
       </div>
-      <div className="grid gap-1 text-center text-[11px] text-ink-muted mb-1" style={{ gridTemplateColumns: '26px repeat(7, minmax(0, 1fr))' }}>
+      <div className="hidden md:grid gap-1 text-center text-[11px] text-ink-muted mb-1" style={{ gridTemplateColumns: '26px repeat(7, minmax(0, 1fr))' }}>
         <div />{['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim'].map(d => <div key={d}>{d}</div>)}
       </div>
-      <div className="flex flex-col gap-1">
+      <div className="hidden md:flex flex-col gap-1">
         {rows.map((row, ri) => {
           const wk = isoWeek(new Date(cur.y, cur.m, ri * 7 - startW + 1))
           return (
@@ -82,7 +82,7 @@ export default function MyCalendar({ conges }: { conges: any[] }) {
           )
         })}
       </div>
-      <div className="flex flex-wrap gap-3 mt-3 text-[11px] text-ink-muted">
+      <div className="hidden md:flex flex-wrap gap-3 mt-3 text-[11px] text-ink-muted">
         <span className="inline-flex items-center gap-1"><span className="w-3 h-3 rounded bg-sky-500/30 border border-sky-500/40" /> Garde semaine</span>
         <span className="inline-flex items-center gap-1"><span className="w-3 h-3 rounded bg-indigo-500/30 border border-indigo-500/40" /> Nuit 1er départ</span>
         <span className="inline-flex items-center gap-1"><span className="w-3 h-3 rounded bg-emerald-500/30 border border-emerald-500/40" /> Congé approuvé</span>
@@ -116,7 +116,7 @@ export default function MyCalendar({ conges }: { conges: any[] }) {
           )
         }
         return (
-          <div className="mt-4">
+          <div className="mt-4 md:hidden">
             <p className="text-ink-muted text-xs font-semibold uppercase tracking-wide mb-1">Agenda du mois</p>
             {items.length ? <div>{items}</div> : <p className="text-ink-muted text-xs py-2">Aucune garde ni congé ce mois-ci.</p>}
           </div>

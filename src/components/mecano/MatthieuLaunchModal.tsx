@@ -7,7 +7,7 @@
 import { useEffect, useState } from 'react'
 import { useT } from '@/lib/i18n/I18nProvider'
 
-const SEEN_KEY  = 'matthieu_launch_v2'   // bump → réaffiché à tout le monde
+const SEEN_KEY  = 'matthieu_launch_v3'   // bump → réaffiché à tout le monde
 const ANN_ID    = '99afd1e2-48f8-4f26-beb4-08a159736140'
 // Splash « pleinement opérationnel » — à partir de 20h (base complète). Olivier.
 const LAUNCH_TS = Date.parse('2026-08-03T18:00:00Z')  // 20:00 Europe/Brussels
