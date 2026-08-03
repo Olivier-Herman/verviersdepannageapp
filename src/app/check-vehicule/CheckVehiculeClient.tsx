@@ -55,6 +55,18 @@ export default function CheckVehiculeClient({ session }: { session: Session }) {
     <AmbientBackground>
     <div className="max-w-2xl mx-auto p-4 space-y-5 ambient-fade-up">
 
+      {/* Accès Convocations contrôle technique (staff) */}
+      {isResponsible && (
+        <a href="/check-vehicule/convocations" className="block bg-surface border rounded-2xl p-4 hover:border-brand/40 transition flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl bg-brand/10 text-brand flex items-center justify-center text-xl">📅</div>
+          <div className="flex-1 min-w-0">
+            <p className="text-ink font-semibold text-sm">Convocations contrôle technique</p>
+            <p className="text-ink-muted text-xs">Scanner une convocation → agenda VD Soft + Outlook (rappel 1 mois avant)</p>
+          </div>
+          <span className="text-ink-muted text-lg">›</span>
+        </a>
+      )}
+
       {/* Bannière driver: contrôle en cours sur son véhicule */}
       {!isResponsible && activeCheck && (
         <div className="bg-orange-500/15 border border-orange-500 rounded-xl p-4 flex items-start gap-3">
