@@ -1,61 +1,110 @@
 'use client'
 // src/components/mecano/MatthieuLaunchModal.tsx
 //
-// Modal de lancement « La tête à Matthieu » — s'ouvre à la 1re ouverture de
-// l'app à partir de 20h le soir du lancement, une seule fois par user.
-// Design repris de la maquette validée. Olivier 2026-08-03.
+// Modal de lancement « La tête à Matthieu » — splash premium, 1×/user, dans
+// AppShell (hors partenaires). Design soigné (maquette validée). Olivier 2026-08-03.
 
 import { useEffect, useState } from 'react'
 
-const SEEN_KEY  = 'matthieu_launch_v1'
+const SEEN_KEY  = 'matthieu_launch_v2'   // bump → réaffiché à tout le monde
 const ANN_ID    = '99afd1e2-48f8-4f26-beb4-08a159736140'
+// Splash « pleinement opérationnel » — à partir de 20h (base complète). Olivier.
+const LAUNCH_TS = Date.parse('2026-08-03T18:00:00Z')  // 20:00 Europe/Brussels
+
+const FEATURES: [string, string, string][] = [
+  ['💬', 'Demande-lui n\'importe quoi', 'Panne, ouverture, remorquage — il connaît chaque modèle.'],
+  ['📄', 'Il te montre la fiche', 'La bonne page (schéma, points d\'ancrage), pas 40 pages.'],
+  ['📷', 'Un doute sur le modèle ?', 'Envoie une photo, il l\'analyse et identifie le véhicule.'],
+]
 
 export default function MatthieuLaunchModal({ userRole }: { userRole?: string }) {
-  const [show, setShow] = useState(false)
+  const [show, setShow]   = useState(false)
+  const [enter, setEnter] = useState(false)
 
   useEffect(() => {
     if (userRole === 'garage' || userRole === 'partner') return
-    // Olivier 2026-08-03 : afficher dès que dispo (plus d'attente 20h), 1×/user.
     try { if (localStorage.getItem(SEEN_KEY)) return } catch { /* */ }
     setShow(true)
+    const t = setTimeout(() => setEnter(true), 30)
+    return () => clearTimeout(t)
   }, [userRole])
 
   const close = () => {
-    setShow(false)
+    setEnter(false)
+    setTimeout(() => setShow(false), 220)
     try { localStorage.setItem(SEEN_KEY, '1') } catch { /* */ }
-    // Suivi de lecture : marque l'annonce comme vue.
     fetch('/api/announcements', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'seen', id: ANN_ID }) }).catch(() => {})
   }
 
   if (!show) return null
   return (
-    <div className="fixed inset-0 z-[70] flex items-center justify-center p-4" style={{ background: 'rgba(6,5,10,.62)', backdropFilter: 'blur(3px)' }}>
-      <div className="w-full max-w-[360px] rounded-[28px] overflow-hidden shadow-2xl border border-indigo-500/30"
-        style={{ background: 'radial-gradient(120% 60% at 50% 0%, rgba(124,116,255,.20), transparent 60%), var(--surface, #16151c)' }}>
-        <div className="px-6 pt-7 pb-6 text-center">
-          <div className="w-[86px] h-[86px] mx-auto rounded-[26px] flex items-center justify-center relative"
-            style={{ background: 'linear-gradient(150deg,#7c74ff,#4b40e0)', boxShadow: '0 18px 40px -10px rgba(124,116,255,.6)' }}>
-            <span className="text-[42px]">🔧</span>
-            <span className="absolute -inset-[7px] rounded-[31px] border-2 border-indigo-400/40" />
-          </div>
-          <span className="inline-block mt-4 text-[11px] font-extrabold tracking-widest uppercase px-3 py-1 rounded-full text-amber-500 bg-amber-500/15 border border-amber-500/30">Nouveau</span>
-          <h2 className="text-ink text-[24px] font-black leading-tight mt-3.5">Voici La tête à Matthieu</h2>
-          <p className="text-ink-muted text-[13.5px] mt-1.5 leading-relaxed">Ton mécano de poche. Une question sur le véhicule ? Il connaît chaque modèle et te répond direct — dépannage <b className="text-ink">et</b> remorquage.</p>
+    <div className="fixed inset-0 z-[70] flex items-center justify-center p-4"
+      style={{ background: 'rgba(5,4,9,.66)', backdropFilter: 'blur(4px)', opacity: enter ? 1 : 0, transition: 'opacity .22s ease' }}>
+      <style>{`
+        @keyframes mtSheen{0%{transform:translateX(-120%)}60%,100%{transform:translateX(220%)}}
+        @keyframes mtFloat{0%,100%{transform:translateY(0)}50%{transform:translateY(-5px)}}
+        @keyframes mtPulse{0%,100%{opacity:.35;transform:scale(1)}50%{opacity:.6;transform:scale(1.06)}}
+        @media (prefers-reduced-motion:reduce){.mt-anim{animation:none!important}}
+      `}</style>
+      <div
+        style={{
+          width: '100%', maxWidth: 372, borderRadius: 30, overflow: 'hidden', position: 'relative',
+          transform: enter ? 'translateY(0) scale(1)' : 'translateY(18px) scale(.96)',
+          transition: 'transform .26s cubic-bezier(.2,.9,.3,1.2)',
+          background: 'linear-gradient(180deg,#1b1930,#121019)',
+          border: '1px solid rgba(124,116,255,.34)',
+          boxShadow: '0 40px 90px -30px rgba(124,116,255,.55), 0 12px 40px rgba(0,0,0,.5)',
+        }}>
+        {/* glow haut */}
+        <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none',
+          background: 'radial-gradient(130% 55% at 50% -8%, rgba(124,116,255,.42), transparent 60%), radial-gradient(90% 40% at 100% 0%, rgba(226,59,46,.28), transparent 55%)' }} />
+        {/* sheen animé */}
+        <div className="mt-anim" style={{ position: 'absolute', top: 0, left: 0, width: '55%', height: '100%',
+          background: 'linear-gradient(100deg,transparent,rgba(255,255,255,.06),transparent)', animation: 'mtSheen 2.6s ease-in-out .4s infinite', pointerEvents: 'none' }} />
 
-          <div className="flex flex-col gap-2 mt-5 text-left">
-            {[['💬', 'Demande-lui n\'importe quoi sur le véhicule'], ['📄', 'Il t\'affiche la bonne fiche (ouverture, ancrage…)'], ['📷', 'Pas sûr du modèle ? Envoie une photo']].map(([ic, tx]) => (
-              <div key={tx} className="flex items-center gap-3 bg-surface border rounded-2xl px-3 py-2.5">
-                <span className="w-8 h-8 rounded-lg bg-indigo-500/15 flex items-center justify-center text-lg flex-shrink-0">{ic}</span>
-                <span className="text-ink text-[12.5px] font-semibold leading-tight">{tx}</span>
+        <div style={{ position: 'relative', padding: '30px 24px 22px', textAlign: 'center' }}>
+          {/* crest */}
+          <div className="mt-anim" style={{ width: 92, height: 92, margin: '4px auto 0', borderRadius: 27, position: 'relative',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            background: 'linear-gradient(150deg,#8b83ff,#4b40e0)', boxShadow: '0 20px 46px -12px rgba(124,116,255,.7)', animation: 'mtFloat 3.4s ease-in-out infinite' }}>
+            <span style={{ fontSize: 46, filter: 'drop-shadow(0 3px 5px rgba(0,0,0,.35))' }}>🔧</span>
+            <span className="mt-anim" style={{ position: 'absolute', inset: -8, borderRadius: 33, border: '2px solid #8b83ff', animation: 'mtPulse 2.8s ease-in-out infinite' }} />
+          </div>
+
+          <div style={{ display: 'inline-block', marginTop: 18, fontSize: 11, fontWeight: 800, letterSpacing: '.16em', textTransform: 'uppercase',
+            color: '#f5c451', background: 'rgba(245,196,81,.14)', border: '1px solid rgba(245,196,81,.34)', padding: '5px 13px', borderRadius: 999 }}>✦ Nouveau dans VD Soft</div>
+
+          <h2 style={{ margin: '15px 4px 0', fontSize: 27, lineHeight: 1.04, fontWeight: 900, letterSpacing: '-.02em', color: '#f4f2ef' }}>
+            Voici <span style={{ background: 'linear-gradient(100deg,#a79fff,#ff6a5c)', WebkitBackgroundClip: 'text', backgroundClip: 'text', color: 'transparent' }}>La tête à Matthieu</span>
+          </h2>
+          <p style={{ margin: '9px 6px 0', fontSize: 13.5, lineHeight: 1.5, color: '#a7a2b8' }}>
+            Le mécano que tout le monde appelle, désormais dans ta poche <b style={{ color: '#f4f2ef' }}>24/7</b>. Dépannage <b style={{ color: '#f4f2ef' }}>et</b> remorquage, toutes les marques.
+          </p>
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 9, marginTop: 20, textAlign: 'left' }}>
+            {FEATURES.map(([ic, t, d]) => (
+              <div key={t} style={{ display: 'flex', gap: 12, alignItems: 'center', background: 'rgba(255,255,255,.035)', border: '1px solid rgba(255,255,255,.08)', borderRadius: 16, padding: '11px 13px' }}>
+                <span style={{ width: 34, height: 34, flexShrink: 0, borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18, background: 'rgba(124,116,255,.16)' }}>{ic}</span>
+                <span style={{ minWidth: 0 }}>
+                  <b style={{ display: 'block', fontSize: 13, color: '#f4f2ef', lineHeight: 1.2 }}>{t}</b>
+                  <span style={{ fontSize: 11.5, color: '#9a95a8', lineHeight: 1.3 }}>{d}</span>
+                </span>
               </div>
             ))}
           </div>
 
-          <p className="text-ink-muted text-[11.5px] mt-4">Tu le trouves sur ta <b className="text-ink">fiche d'intervention</b> — la tuile 🔧 <b style={{ color: '#7c74ff' }}>La tête à Matthieu</b>.</p>
+          <p style={{ margin: '16px 4px 0', fontSize: 11.5, color: '#8f8aa0' }}>
+            👉 Sur ta <b style={{ color: '#f4f2ef' }}>fiche d'intervention</b> — la tuile 🔧 <b style={{ color: '#a79fff' }}>La tête à Matthieu</b>.
+          </p>
 
-          <button onClick={close} className="w-full mt-4 py-3.5 rounded-2xl text-white font-extrabold text-[15px]"
-            style={{ background: 'linear-gradient(135deg,#7c74ff,#e23b2e)', boxShadow: '0 14px 28px -10px rgba(226,59,46,.5)' }}>
-            Génial, j'ai compris ! →
+          <a href="/matthieu/presentation" onClick={close}
+            style={{ display: 'block', textDecoration: 'none', width: '100%', marginTop: 16, padding: 15, borderRadius: 17, cursor: 'pointer',
+              fontSize: 15.5, fontWeight: 900, color: '#fff', textAlign: 'center',
+              background: 'linear-gradient(135deg,#7c74ff,#e23b2e)', boxShadow: '0 16px 32px -12px rgba(226,59,46,.6)' }}>
+            Découvrir en détail →
+          </a>
+          <button onClick={close} style={{ width: '100%', marginTop: 8, padding: 10, border: 0, background: 'transparent', color: '#8f8aa0', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
+            Plus tard
           </button>
         </div>
       </div>

@@ -390,12 +390,15 @@ export const authOptions: NextAuthOptions = {
               loadModules(token.id as string),
               loadOdooAccess(token.id as string),
               loadNavOrder(token.id as string),
-              supabase.from('users').select('name, email, avatar_url, audio_mode, language, must_change_password, force_native_app').eq('id', token.id).maybeSingle(),
+              supabase.from('users').select('name, email, avatar_url, audio_mode, language, must_change_password, force_native_app, role, roles').eq('id', token.id).maybeSingle(),
             ])
             ;(session.user as any).modules        = fresh
             ;(session.user as any).hasOdooAccess  = odooAccess
             ;(session.user as any).navOrder       = navOrder
             if (dbUser.data) {
+              // Rôles rafraîchis depuis la DB (évite un JWT périmé après ajout d'un rôle).
+              if ((dbUser.data as any).role)  (session.user as any).role  = (dbUser.data as any).role
+              if ((dbUser.data as any).roles) (session.user as any).roles = (dbUser.data as any).roles
               session.user.name  = dbUser.data.name || session.user.name
               session.user.email = dbUser.data.email || session.user.email
               session.user.image = dbUser.data.avatar_url || session.user.image

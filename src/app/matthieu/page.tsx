@@ -15,7 +15,7 @@ export default async function MatthieuPage() {
   const { data: user } = uid
     ? await sb.from('users').select('id, role, name').eq('id', uid).single()
     : await sb.from('users').select('id, role, name').ilike('email', session.user!.email!).single()
-  if (!canUseMatthieu(user?.role, user?.id)) redirect('/dashboard')
+  if (!canUseMatthieu(user?.role, user?.id)) redirect('/login')
   const modules = (session.user as any).modules ?? []
   return <MatthieuClient userRole={user?.role || ''} userName={user?.name || ''} userModules={modules} />
 }

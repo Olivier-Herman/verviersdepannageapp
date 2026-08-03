@@ -31,8 +31,8 @@ export const NAV_ITEMS: NavItem[] = [
   { href: '/personnel',     label: 'Gestion du personnel', icon: '👤', moduleId: null, role: 'superadmin_or_rh' },
   { href: '/mission',          label: 'Mes Missions',        i18nKey: 'nav.my_missions',   icon: '🚗', moduleId: 'driver_missions' },
   { href: '/missions-dispo',   label: 'Momo Market',                                       icon: '🛒', moduleId: 'driver_missions' },
-  // Olivier 2026-08-03 : « La tête à Matthieu » (assistant mécano) en test → superadmin.
-  { href: '/matthieu',      label: 'La tête à Matthieu', icon: '🔧', moduleId: null, role: 'superadmin' },
+  // Olivier 2026-08-03 : « La tête à Matthieu » — accessible à tout le personnel.
+  { href: '/matthieu',      label: 'La tête à Matthieu', icon: '🔧', moduleId: null },
   { href: '/services/tgr',  label: 'TGR Touring',      i18nKey: 'nav.services_tgr',  icon: '🛡️', moduleId: 'tgr' },
   { href: '/admin/tgr',     label: 'TGR Gestion',      icon: '📋', moduleId: 'admin' },
   { href: '/facturation',       label: 'Facturation',         icon: '🧾', moduleId: 'facturation' },
