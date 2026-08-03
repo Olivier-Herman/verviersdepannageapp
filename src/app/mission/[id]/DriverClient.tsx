@@ -811,6 +811,28 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
   }
   // « Encaisser le montant manquant » : on remonte le montant au prévu et on soumet.
   const collectFullExpected = () => { if (expectedTvac > 0) { setSetAmtValue(expectedTvac.toFixed(2)); setSetAmtPinMode(false); setSetAmtPin(''); setErr('') } }
+
+  // ── « La tête à Matthieu » — assistant mécano ──────────────────────────────
+  const [matOpen, setMatOpen]   = useState(false)
+  const [matMsgs, setMatMsgs]   = useState<{ role: 'user' | 'assistant'; content: string }[]>([])
+  const [matInput, setMatInput] = useState('')
+  const [matBusy, setMatBusy]   = useState(false)
+  const askMatthieu = async (q: string) => {
+    const question = q.trim()
+    if (!question || matBusy) return
+    const next = [...matMsgs, { role: 'user' as const, content: question }]
+    setMatMsgs(next); setMatInput(''); setMatBusy(true)
+    try {
+      const r = await fetch('/api/mecano/chat', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mission_id: M.id, messages: next }),
+      })
+      const j = await r.json()
+      setMatMsgs(m => [...m, { role: 'assistant', content: j.answer || j.error || 'Pas de réponse.' }])
+    } catch {
+      setMatMsgs(m => [...m, { role: 'assistant', content: 'Réseau KO — réessaie.' }])
+    } finally { setMatBusy(false) }
+  }
   // Charge l etat de derogation pending au mount + refresh sur changement mission
   useEffect(() => {
     let cancelled = false
@@ -3042,6 +3064,47 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
       )}
 
       {/* Modal "Définir un montant à encaisser" (geste 5-taps sur Dossier) */}
+      {/* La tête à Matthieu — chat mécano */}
+      {matOpen && (
+        <div className="fixed inset-0 bg-black/70 z-50 flex flex-col">
+          <div className="bg-surface flex items-center gap-2 px-4 py-3 border-b border">
+            <span className="text-2xl">🔧</span>
+            <div className="flex-1 min-w-0">
+              <p className="text-ink font-bold text-sm leading-tight">La tête à Matthieu</p>
+              <p className="text-ink-muted text-[11px] truncate">{[M.vehicle_brand, M.vehicle_model].filter(Boolean).join(' ') || 'véhicule'}</p>
+            </div>
+            <button onClick={() => setMatOpen(false)} className="p-2 text-ink-muted hover:text-ink text-xl">✕</button>
+          </div>
+          <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3 bg-surface-2">
+            {matMsgs.length === 0 && (
+              <div className="space-y-3">
+                <p className="text-ink-muted text-sm text-center">Salut, c'est Matthieu 👋 Pose ta question sur ce véhicule.</p>
+                <div className="flex flex-col gap-2">
+                  {['Comment ouvrir ce véhicule verrouillé ?', 'Pannes fréquentes sur ce modèle ?', 'Points d\'ancrage / mode remorquage ?', 'Coupure haute tension (électrique/hybride) ?'].map(q => (
+                    <button key={q} onClick={() => askMatthieu(q)} disabled={matBusy}
+                      className="text-left text-sm px-3.5 py-2.5 rounded-xl bg-surface border border-indigo-500/30 text-ink hover:border-indigo-500/60 disabled:opacity-50">💬 {q}</button>
+                  ))}
+                </div>
+              </div>
+            )}
+            {matMsgs.map((m, i) => (
+              <div key={i} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                <div className={`max-w-[85%] rounded-2xl px-3.5 py-2.5 text-sm whitespace-pre-wrap ${m.role === 'user' ? 'bg-brand text-white' : 'bg-surface border border text-ink'}`}>{m.content}</div>
+              </div>
+            ))}
+            {matBusy && <div className="flex justify-start"><div className="bg-surface border border rounded-2xl px-3.5 py-2.5 text-sm text-ink-muted">Matthieu réfléchit…</div></div>}
+          </div>
+          <div className="bg-surface border-t border px-3 py-2.5 flex items-center gap-2">
+            <input value={matInput} onChange={e => setMatInput(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter') askMatthieu(matInput) }}
+              placeholder="Ta question…" disabled={matBusy}
+              className="flex-1 bg-surface-2 border border rounded-full px-4 py-2.5 text-ink text-sm outline-none focus:border-brand" />
+            <button onClick={() => askMatthieu(matInput)} disabled={matBusy || !matInput.trim()}
+              className="w-10 h-10 rounded-full bg-brand text-white flex items-center justify-center disabled:opacity-40 flex-shrink-0">➤</button>
+          </div>
+        </div>
+      )}
+
       {setAmtModalOpen && (
         <div className="fixed inset-0 bg-black/70 z-50 flex items-end">
           <div className="bg-surface w-full rounded-t-3xl p-6 space-y-3" onClick={e => e.stopPropagation()}>
@@ -3370,6 +3433,19 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
             </div>
           )
         })()}
+
+        {/* La tête à Matthieu — assistant mécano (toute mission avec un véhicule) */}
+        {(M.vehicle_brand || '').trim() && (
+          <button onClick={() => setMatOpen(true)}
+            className="w-full rounded-2xl p-3 border-2 border-indigo-500/40 bg-indigo-500/10 flex items-center gap-3 text-left active:scale-[0.99] transition">
+            <span className="text-3xl flex-shrink-0">🔧</span>
+            <div className="min-w-0 flex-1">
+              <p className="text-indigo-700 dark:text-indigo-300 text-xs uppercase tracking-widest font-bold">La tête à Matthieu</p>
+              <p className="text-ink text-sm font-semibold leading-tight">Une question sur ce véhicule ? Demande au mécano.</p>
+            </div>
+            <span className="text-indigo-600 dark:text-indigo-300 text-lg flex-shrink-0">›</span>
+          </button>
+        )}
 
         {/* Bandeau Bloqué par la police (AVP : auto, autres : si saisi) */}
         {M.police_blocked && (
