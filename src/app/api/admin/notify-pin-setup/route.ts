@@ -44,13 +44,23 @@ export async function POST(req: Request) {
   return NextResponse.json({ ok: true, target: 'all', eligible: ids.length, ...res })
 }
 
-// GET : combien d'utilisateurs actifs n'ont pas encore de code (pour l'UI).
+// GET : état du déploiement du code — qui a défini son code, qui ne l'a pas.
 export async function GET() {
   const session = await getServerSession(authOptions)
   const u = session?.user as any
   if (u?.role !== 'superadmin') return NextResponse.json({ error: 'Superadmin uniquement' }, { status: 403 })
   const sb = createAdminClient()
-  const { count: without } = await sb.from('users').select('id', { count: 'exact', head: true }).eq('active', true).is('verify_pin_hash', null)
-  const { count: total }   = await sb.from('users').select('id', { count: 'exact', head: true }).eq('active', true)
-  return NextResponse.json({ without_pin: without || 0, total: total || 0 })
+  const { data: users } = await sb.from('users')
+    .select('id, name, role, verify_pin_hash')
+    .eq('active', true).order('name')
+  const list = (users || []).map((x: any) => ({ id: x.id, name: x.name, role: x.role, has_pin: !!x.verify_pin_hash }))
+  const without = list.filter(x => !x.has_pin)
+  const withPin = list.filter(x => x.has_pin)
+  return NextResponse.json({
+    total: list.length,
+    without_pin: without.length,
+    with_pin: withPin.length,
+    without: without.map(x => ({ name: x.name, role: x.role })),
+    with:    withPin.map(x => ({ name: x.name, role: x.role })),
+  })
 }

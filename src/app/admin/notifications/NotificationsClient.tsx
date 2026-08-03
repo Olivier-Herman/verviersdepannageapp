@@ -25,8 +25,10 @@ export default function NotificationsClient({
   // ── Rappel « définis ton code de validation » ──────────────────────────────
   const [pinBusy,  setPinBusy]  = useState<'me' | 'all' | null>(null)
   const [pinMsg,   setPinMsg]   = useState('')
-  const [pinCount, setPinCount] = useState<{ without_pin: number; total: number } | null>(null)
-  useEffect(() => { fetch('/api/admin/notify-pin-setup').then(r => r.json()).then(j => { if (j && typeof j.without_pin === 'number') setPinCount(j) }).catch(() => {}) }, [])
+  const [pinCount, setPinCount] = useState<{ without_pin: number; with_pin: number; total: number; without: { name: string; role: string }[]; with: { name: string; role: string }[] } | null>(null)
+  const [pinShowList, setPinShowList] = useState(false)
+  const loadPinState = () => fetch('/api/admin/notify-pin-setup').then(r => r.json()).then(j => { if (j && typeof j.without_pin === 'number') setPinCount(j) }).catch(() => {})
+  useEffect(() => { loadPinState() }, [])
   const sendPinReminder = async (target: 'me' | 'all') => {
     if (target === 'all' && !confirm(`Envoyer le rappel « définis ton code » à tous les utilisateurs SANS code${pinCount ? ` (${pinCount.without_pin})` : ''} ?`)) return
     setPinBusy(target); setPinMsg('')
@@ -117,9 +119,29 @@ export default function NotificationsClient({
           <div className="flex-1 min-w-0">
             <h2 className="text-ink font-semibold text-sm">Rappel « définis ton code »</h2>
             <p className="text-ink-muted text-xs mt-0.5">
-              Invite les utilisateurs à créer leur code à 4 chiffres (validation encaissement). Lien direct vers leur profil.
-              {pinCount && <> {' '}<span className="text-amber-700 font-medium">{pinCount.without_pin}/{pinCount.total} sans code.</span></>}
+              Invite les utilisateurs à créer leur code à 4 chiffres (validation encaissement). Lien direct vers leur profil. Renvoyée chaque jour tant que le code n'est pas défini.
             </p>
+            {pinCount && (
+              <div className="flex items-center gap-3 mt-1.5 text-xs">
+                <span className="inline-flex items-center gap-1 text-emerald-700 dark:text-emerald-400 font-medium">✅ {pinCount.with_pin} avec code</span>
+                <span className="inline-flex items-center gap-1 text-amber-700 dark:text-amber-400 font-medium">⏳ {pinCount.without_pin} sans code</span>
+                <button onClick={() => { setPinShowList(v => !v); loadPinState() }} className="text-brand hover:underline">{pinShowList ? 'masquer' : 'voir qui'}</button>
+              </div>
+            )}
+            {pinShowList && pinCount && (
+              <div className="grid sm:grid-cols-2 gap-3 mt-2">
+                <div className="bg-amber-500/5 border border-amber-500/20 rounded-lg p-2.5">
+                  <p className="text-amber-700 dark:text-amber-400 text-[11px] font-semibold mb-1">⏳ Sans code ({pinCount.without_pin})</p>
+                  {pinCount.without.length === 0 ? <p className="text-ink-muted text-[11px]">— personne, tout le monde est couvert 🎉</p>
+                    : <ul className="text-ink-secondary text-[11px] space-y-0.5">{pinCount.without.map((x, i) => <li key={i}>{x.name} <span className="text-ink-muted">· {x.role}</span></li>)}</ul>}
+                </div>
+                <div className="bg-emerald-500/5 border border-emerald-500/20 rounded-lg p-2.5">
+                  <p className="text-emerald-700 dark:text-emerald-400 text-[11px] font-semibold mb-1">✅ Avec code ({pinCount.with_pin})</p>
+                  {pinCount.with.length === 0 ? <p className="text-ink-muted text-[11px]">—</p>
+                    : <ul className="text-ink-secondary text-[11px] space-y-0.5">{pinCount.with.map((x, i) => <li key={i}>{x.name} <span className="text-ink-muted">· {x.role}</span></li>)}</ul>}
+                </div>
+              </div>
+            )}
             {pinMsg && <p className="text-xs mt-2 text-ink">{pinMsg}</p>}
           </div>
           <div className="flex gap-2 flex-shrink-0">
