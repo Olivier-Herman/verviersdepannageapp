@@ -22,9 +22,14 @@ const ALLOWED = ['dispatcher', 'admin', 'superadmin']
 const hasAccess = (u: any) => ALLOWED.includes(u?.role) || (Array.isArray(u?.roles) && u.roles.some((r: string) => ALLOWED.includes(r)))
 
 const time = (t: any) => /^\d{1,2}:\d{2}$/.test(String(t || '')) ? String(t) : null
+const cleanSupps = (arr: any) => (Array.isArray(arr) ? arr : []).filter((s: any) => time(s?.from) && time(s?.to)).map((s: any) => ({ from: time(s.from), to: time(s.to) }))
 const cleanDays = (arr: any): any[] => (Array.isArray(arr) ? arr : [])
   .filter(d => d && /^\d{4}-\d{2}-\d{2}$/.test(d.date))
-  .map(d => ({ date: d.date, nb: Math.max(1, Number(d.nb) || 1), jour: !!d.jour, nuit: !!d.nuit, supp_from: time(d.supp_from), supp_to: time(d.supp_to), note: typeof d.note === 'string' ? d.note.slice(0, 300) : null, drivers: Array.isArray(d.drivers) ? d.drivers.filter((x: any) => typeof x === 'string') : [] }))
+  .map(d => {
+    let supps = cleanSupps(d.supps)
+    if (!supps.length && time(d.supp_from) && time(d.supp_to)) supps = [{ from: time(d.supp_from), to: time(d.supp_to) }]   // compat ancien format
+    return { date: d.date, nb: Math.max(1, Number(d.nb) || 1), jour: !!d.jour, nuit: !!d.nuit, supps, note: typeof d.note === 'string' ? d.note.slice(0, 300) : null, drivers: Array.isArray(d.drivers) ? d.drivers.filter((x: any) => typeof x === 'string') : [] }
+  })
 const suppHrs = (from?: string | null, to?: string | null) => { if (!from || !to) return 0; const m = (t: string) => { const [h, mm] = t.split(':').map(Number); return (h || 0) * 60 + (mm || 0) }; let d = m(to) - m(from); if (d < 0) d += 1440; return Math.round(d / 60 * 100) / 100 }
 const PRICE_FORFAIT = 650, PRICE_HSUPP = 75   // prix HTVA Odoo (Course / Heure suppl.)
 
@@ -65,11 +70,12 @@ export async function POST(req: Request) {
     const { data: w } = await sb.from('circuit_race_weekends').select('*').eq('id', String(body.id || '')).maybeSingle()
     if (!w) return NextResponse.json({ error: 'Week-end introuvable' }, { status: 404 })
     if (!w.client_odoo_id) return NextResponse.json({ error: 'Client Odoo requis (recherche le client d\'abord)' }, { status: 400 })
-    const days = cleanDays(w.days).map((d: any) => ({ date: d.date, nb_depanneuses: d.nb, jour: d.jour, nuit: d.nuit, supp_from: d.supp_from, supp_to: d.supp_to, note: d.note || undefined }))
+    const days = cleanDays(w.days).map((d: any) => ({ date: d.date, nb_depanneuses: d.nb, jour: d.jour, nuit: d.nuit, supps: d.supps, note: d.note || undefined }))
     if (!days.length) return NextResponse.json({ error: 'Aucun jour encodé' }, { status: 400 })
     try {
       const order = await withOdooActor(u.id, () => createRaceWeekendQuote({
         partnerId: w.client_odoo_id, label: w.label, days, notes: w.notes || undefined, confirm: false,
+        existingOrderId: w.odoo_sale_order_id || undefined,   // met à jour le devis existant (nouveaux suppléments)
       }))
       await sb.from('circuit_race_weekends').update({ odoo_sale_order_id: order.id, odoo_sale_order_name: order.name, updated_at: new Date().toISOString() }).eq('id', w.id)
 
@@ -78,7 +84,8 @@ export async function POST(req: Request) {
       const cleaned = cleanDays(w.days)
       const acc = new Map<string, number>()   // personnelId|period -> montant
       for (const d of cleaned) {
-        const dayCA = (d.jour ? PRICE_FORFAIT : 0) + (d.nuit ? PRICE_FORFAIT : 0) + suppHrs(d.supp_from, d.supp_to) * PRICE_HSUPP
+        const suppH = (d.supps || []).reduce((a: number, s: any) => a + suppHrs(s.from, s.to), 0)
+        const dayCA = (d.jour ? PRICE_FORFAIT : 0) + (d.nuit ? PRICE_FORFAIT : 0) + suppH * PRICE_HSUPP
         if (dayCA <= 0 || !d.drivers?.length) continue
         const period = String(d.date).slice(0, 7)
         for (const pid of d.drivers) acc.set(`${pid}|${period}`, (acc.get(`${pid}|${period}`) || 0) + dayCA)

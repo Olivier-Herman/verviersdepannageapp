@@ -124,14 +124,14 @@ export async function createCircuitQuote(input: CreateCircuitQuoteInput): Promis
 const PRODUCT_REF_COURSE   = 'Course'         // 217 — Prestation Circuit (forfait)
 const PRODUCT_REF_HSUPP    = 'hsupplcircuit'  // 216 — Heure supplémentaire
 
+export interface RaceSupp { from: string; to: string }
 export interface RaceDay {
   date:            string   // YYYY-MM-DD
   nb_depanneuses:  number
   jour:            boolean  // forfait jour 08h-18h
   nuit:            boolean  // forfait nuit 18h-08h
-  supp_from?:      string   // supplément : heure de début 'HH:MM' (justificatif)
-  supp_to?:        string   // supplément : heure de fin 'HH:MM'
-  note?:           string   // note libre du jour (affichée sous la section)
+  supps?:          RaceSupp[]   // suppléments (plusieurs possibles) — chacun 'de-à'
+  note?:           string       // note libre du jour (affichée sous la section)
 }
 
 /** Prix de vente HTVA d'un produit (list_price). */
@@ -171,34 +171,50 @@ export async function createRaceWeekendQuote(input: {
   days:      RaceDay[]
   notes?:    string
   confirm?:  boolean
+  existingOrderId?: number   // si fourni → met à jour le devis existant (réécrit ses lignes)
 }): Promise<{ id: number; name: string }> {
   if (!input.partnerId) throw new Error('partnerId requis')
-  const days = (input.days || []).filter(d => d?.date && (d.jour || d.nuit || suppHours(d.supp_from, d.supp_to) > 0))
+  const hasSupp = (d: RaceDay) => (d.supps || []).some(s => suppHours(s.from, s.to) > 0)
+  const days = (input.days || []).filter(d => d?.date && (d.jour || d.nuit || hasSupp(d)))
   if (!days.length) throw new Error('Au moins un jour avec forfait ou supplément requis')
 
   const courseId = await findProductIdByCode(PRODUCT_REF_COURSE)
   const hsuppId  = await findProductIdByCode(PRODUCT_REF_HSUPP)
 
-  const orderLines: any[] = []
+  const lineTuples: any[] = []
   let seq = 10
   for (const d of days) {
     const n = Math.max(1, d.nb_depanneuses || 1)
     // Section du jour (+ note du jour éventuelle)
-    orderLines.push([0, 0, { display_type: 'line_section', name: `${fmtDayLabel(d.date)} — ${n} dépanneuse${n > 1 ? 's' : ''}`, sequence: seq++ }])
-    if (d.note && d.note.trim()) orderLines.push([0, 0, { display_type: 'line_note', name: d.note.trim(), sequence: seq++ }])
-    if (d.jour)  orderLines.push([0, 0, { product_id: courseId, product_uom_qty: n, name: 'Forfait jour (08h-18h)',  sequence: seq++ }])
-    if (d.nuit)  orderLines.push([0, 0, { product_id: courseId, product_uom_qty: n, name: 'Forfait nuit (18h-08h)',  sequence: seq++ }])
-    const sh = suppHours(d.supp_from, d.supp_to)
-    if (sh > 0) orderLines.push([0, 0, { product_id: hsuppId, product_uom_qty: n * sh, name: `Supplément horaire (de ${d.supp_from} à ${d.supp_to})`, sequence: seq++ }])
+    lineTuples.push([0, 0, { display_type: 'line_section', name: `${fmtDayLabel(d.date)} — ${n} dépanneuse${n > 1 ? 's' : ''}`, sequence: seq++ }])
+    if (d.note && d.note.trim()) lineTuples.push([0, 0, { display_type: 'line_note', name: d.note.trim(), sequence: seq++ }])
+    if (d.jour)  lineTuples.push([0, 0, { product_id: courseId, product_uom_qty: n, name: 'Forfait jour (08h-18h)',  sequence: seq++ }])
+    if (d.nuit)  lineTuples.push([0, 0, { product_id: courseId, product_uom_qty: n, name: 'Forfait nuit (18h-08h)',  sequence: seq++ }])
+    for (const s of (d.supps || [])) {
+      const sh = suppHours(s.from, s.to)
+      if (sh > 0) lineTuples.push([0, 0, { product_id: hsuppId, product_uom_qty: n * sh, name: `Supplément horaire (de ${s.from} à ${s.to})`, sequence: seq++ }])
+    }
   }
 
   // Note obligatoire en bas de tout devis circuit.
-  orderLines.push(await hsuppNoteLine(seq++))
+  lineTuples.push(await hsuppNoteLine(seq++))
+
+  // Mise à jour en place (on repart de zéro : unlink toutes les lignes + recrée)
+  // pour que les suppléments ajoutés retombent dans la bonne section.
+  if (input.existingOrderId) {
+    const st = (await odooRpc<any[]>('sale.order', 'read', [[input.existingOrderId]], { fields: ['state'] }))?.[0]?.state
+    if (st === 'draft' || st === 'sent') {
+      await odooRpc('sale.order', 'write', [[input.existingOrderId], { order_line: [[5, 0, 0], ...lineTuples], client_order_ref: input.label }])
+      const o = await odooRpc<any[]>('sale.order', 'read', [[input.existingOrderId]], { fields: ['id', 'name'] })
+      return { id: input.existingOrderId, name: o[0]?.name || `S${input.existingOrderId}` }
+    }
+    // devis confirmé/facturé → on ne réécrit pas ; on crée un nouveau devis.
+  }
 
   const orderId = await odooRpc<number>('sale.order', 'create', [{
     partner_id:       input.partnerId,
     client_order_ref: input.label || 'Week-end de course — Circuit Spa-Francorchamps',
-    order_line:       orderLines,
+    order_line:       lineTuples,
   }])
 
   // Par défaut on laisse en BROUILLON (test). Confirmation optionnelle.

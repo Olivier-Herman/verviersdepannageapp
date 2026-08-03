@@ -8,14 +8,16 @@ import { useEffect, useState } from 'react'
 import AppShell from '@/components/layout/AppShell'
 import { Flag, ArrowLeft, Plus, Trash2, Save, FileText, Loader2, Search, X, ExternalLink, Sun, Moon } from 'lucide-react'
 
-type Day = { date: string; nb: number; jour: boolean; nuit: boolean; supp_from: string; supp_to: string; drivers: string[]; note: string }
-const emptyDay = (): Day => ({ date: '', nb: 1, jour: true, nuit: false, supp_from: '', supp_to: '', drivers: [], note: '' })
+type Supp = { from: string; to: string }
+type Day = { date: string; nb: number; jour: boolean; nuit: boolean; supps: Supp[]; drivers: string[]; note: string }
+const emptyDay = (): Day => ({ date: '', nb: 1, jour: true, nuit: false, supps: [], drivers: [], note: '' })
 const suppHours = (from?: string, to?: string): number => {
   if (!from || !to) return 0
   const mins = (t: string) => { const [h, m] = t.split(':').map(Number); return (h || 0) * 60 + (m || 0) }
   let diff = mins(to) - mins(from); if (diff < 0) diff += 1440
   return Math.round((diff / 60) * 100) / 100
 }
+const dayHours = (d: Day) => (d.supps || []).reduce((a, s) => a + suppHours(s.from, s.to), 0)
 
 export default function RaceWeekendManager({ userRole, userName, userEmail, userModules }: {
   userRole: string; userName: string; userEmail: string; userModules: string[]
@@ -52,6 +54,9 @@ export default function RaceWeekendManager({ userRole, userName, userEmail, user
   const addDay = () => setEditing((e: any) => ({ ...e, days: [...e.days, emptyDay()] }))
   const removeDay = (i: number) => setEditing((e: any) => ({ ...e, days: e.days.filter((_: any, idx: number) => idx !== i) }))
   const toggleDriver = (i: number, pid: string) => setEditing((e: any) => ({ ...e, days: e.days.map((d: Day, idx: number) => idx === i ? { ...d, drivers: (d.drivers || []).includes(pid) ? d.drivers.filter(x => x !== pid) : [...(d.drivers || []), pid] } : d) }))
+  const addSupp = (i: number) => setEditing((e: any) => ({ ...e, days: e.days.map((d: Day, idx: number) => idx === i ? { ...d, supps: [...(d.supps || []), { from: '', to: '' }] } : d) }))
+  const setSupp = (i: number, si: number, patch: Partial<Supp>) => setEditing((e: any) => ({ ...e, days: e.days.map((d: Day, idx: number) => idx === i ? { ...d, supps: d.supps.map((s, sj) => sj === si ? { ...s, ...patch } : s) } : d) }))
+  const removeSupp = (i: number, si: number) => setEditing((e: any) => ({ ...e, days: e.days.map((d: Day, idx: number) => idx === i ? { ...d, supps: d.supps.filter((_, sj) => sj !== si) } : d) }))
 
   const save = async () => {
     if (!editing.label?.trim()) { setMsg('❌ Intitulé requis'); return }
@@ -119,21 +124,33 @@ export default function RaceWeekendManager({ userRole, userName, userEmail, user
             {/* Jours */}
             <div>
               <div className="flex flex-col gap-2">
-                {editing.days.map((d: Day, i: number) => {
-                  const h = suppHours(d.supp_from, d.supp_to)
-                  return (
+                {editing.days.map((d: Day, i: number) => (
                     <div key={i} className="flex flex-wrap items-center gap-2 bg-surface-2/50 border rounded-xl p-2">
                       <input type="date" value={d.date} onChange={e => setDay(i, { date: e.target.value })} className="bg-bg border rounded-lg px-2 py-1.5 text-sm text-ink" />
                       <label className="flex items-center gap-1 text-xs text-ink-muted">Dép.
                         <input type="number" min={1} value={d.nb} onChange={e => setDay(i, { nb: Number(e.target.value) })} className="w-12 bg-bg border rounded-lg px-1 py-1.5 text-sm text-ink text-center" /></label>
                       <button onClick={() => setDay(i, { jour: !d.jour })} title="Forfait jour (08h-18h)" className={`inline-flex items-center gap-1 px-2 h-8 rounded-lg border text-xs ${d.jour ? 'bg-amber-500/20 text-amber-600 border-amber-400' : 'text-ink-muted'}`}><Sun size={14} /> Jour</button>
                       <button onClick={() => setDay(i, { nuit: !d.nuit })} title="Forfait nuit (18h-08h)" className={`inline-flex items-center gap-1 px-2 h-8 rounded-lg border text-xs ${d.nuit ? 'bg-indigo-500/20 text-indigo-600 border-indigo-400' : 'text-ink-muted'}`}><Moon size={14} /> Nuit</button>
-                      <span className="text-xs text-ink-muted ml-1">Suppl. de</span>
-                      <input type="time" value={d.supp_from} onChange={e => setDay(i, { supp_from: e.target.value })} className="bg-bg border rounded-lg px-1.5 py-1.5 text-sm text-ink" />
-                      <span className="text-xs text-ink-muted">à</span>
-                      <input type="time" value={d.supp_to} onChange={e => setDay(i, { supp_to: e.target.value })} className="bg-bg border rounded-lg px-1.5 py-1.5 text-sm text-ink" />
-                      {h > 0 && <span className="text-xs font-medium text-emerald-600">= {h} h</span>}
                       <button onClick={() => removeDay(i)} className="ml-auto p-1.5 text-ink-muted/60 hover:text-red-500"><X size={14} /></button>
+
+                      {/* Suppléments du jour (plusieurs possibles, plage de-à) */}
+                      <div className="w-full flex flex-col gap-1 pl-1">
+                        {(d.supps || []).map((s: Supp, si: number) => {
+                          const h = suppHours(s.from, s.to)
+                          return (
+                            <div key={si} className="flex items-center gap-1.5 flex-wrap">
+                              <span className="text-[11px] text-ink-muted">Suppl. de</span>
+                              <input type="time" value={s.from} onChange={e => setSupp(i, si, { from: e.target.value })} className="bg-bg border rounded-lg px-1.5 py-1 text-sm text-ink" />
+                              <span className="text-[11px] text-ink-muted">à</span>
+                              <input type="time" value={s.to} onChange={e => setSupp(i, si, { to: e.target.value })} className="bg-bg border rounded-lg px-1.5 py-1 text-sm text-ink" />
+                              {h > 0 && <span className="text-xs font-medium text-emerald-600">= {h} h</span>}
+                              <button onClick={() => removeSupp(i, si)} className="p-1 text-ink-muted/50 hover:text-red-400"><X size={12} /></button>
+                            </div>
+                          )
+                        })}
+                        <button onClick={() => addSupp(i)} className="inline-flex items-center gap-1 text-[11px] text-brand hover:underline w-fit"><Plus size={12} /> supplément</button>
+                      </div>
+
                       {/* Chauffeurs internes du jour (1 chauffeur = 1 dépanneuse → CA rentabilité) */}
                       <div className="w-full flex flex-wrap items-center gap-1.5 pl-1">
                         <span className="text-[11px] text-ink-muted">Chauffeurs internes :</span>
@@ -147,8 +164,7 @@ export default function RaceWeekendManager({ userRole, userName, userEmail, user
                       </div>
                       <input value={d.note || ''} onChange={e => setDay(i, { note: e.target.value })} placeholder="Note du jour (affichée sous la section du devis)" className="w-full bg-bg border rounded-lg px-2 py-1.5 text-xs text-ink" />
                     </div>
-                  )
-                })}
+                ))}
               </div>
               <button onClick={addDay} className="mt-2 inline-flex items-center gap-1 text-xs text-brand hover:underline"><Plus size={13} /> Ajouter un jour</button>
               <p className="text-[11px] text-ink-muted mt-1">Forfait (jour/nuit) et supplément (× heures de la plage) sont multipliés par le nb de dépanneuses. La plage « de‑à » justifie le supplément sur le devis. Produits : Course 650 €, Heure suppl. 75 €/h.</p>
@@ -163,7 +179,7 @@ export default function RaceWeekendManager({ userRole, userName, userEmail, user
 
             <div className="flex flex-wrap gap-2">
               <button onClick={save} disabled={!!busy} className="inline-flex items-center gap-1.5 text-sm px-3.5 py-2 rounded-lg border hover:bg-bg disabled:opacity-50"><Save size={15} /> {busy === 'save' ? 'Enregistrement…' : 'Enregistrer'}</button>
-              <button onClick={makeQuote} disabled={!!busy || !editing.client_odoo_id} title={!editing.client_odoo_id ? 'Sélectionne un client Odoo d\'abord' : ''} className="inline-flex items-center gap-1.5 text-sm px-3.5 py-2 rounded-lg bg-brand text-white hover:opacity-90 disabled:opacity-50">{busy === 'quote' ? <><Loader2 size={15} className="animate-spin" /> Création…</> : <><FileText size={15} /> Créer le devis (brouillon)</>}</button>
+              <button onClick={makeQuote} disabled={!!busy || !editing.client_odoo_id} title={!editing.client_odoo_id ? 'Sélectionne un client Odoo d\'abord' : ''} className="inline-flex items-center gap-1.5 text-sm px-3.5 py-2 rounded-lg bg-brand text-white hover:opacity-90 disabled:opacity-50">{busy === 'quote' ? <><Loader2 size={15} className="animate-spin" /> {editing.odoo_sale_order_id ? 'Mise à jour…' : 'Création…'}</> : <><FileText size={15} /> {editing.odoo_sale_order_id ? 'Mettre à jour le devis' : 'Créer le devis (brouillon)'}</>}</button>
               <button onClick={() => setEditing(null)} className="text-sm px-3.5 py-2 rounded-lg border hover:bg-bg ml-auto">Fermer</button>
             </div>
           </div>
