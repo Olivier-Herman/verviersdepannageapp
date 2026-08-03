@@ -9,7 +9,7 @@ export default function MatthieuClient({ userRole, userName, userModules }: { us
   const [brand, setBrand]   = useState('')
   const [model, setModel]   = useState('')
   const [locked, setLocked] = useState(false)
-  const [msgs, setMsgs]     = useState<{ role: 'user' | 'assistant'; content: string }[]>([])
+  const [msgs, setMsgs]     = useState<{ role: 'user' | 'assistant'; content: string; attachments?: { title: string; url: string; section?: string }[] }[]>([])
   const [input, setInput]   = useState('')
   const [busy, setBusy]     = useState(false)
   const [img, setImg]       = useState<{ data: string; media_type: string } | null>(null)
@@ -31,7 +31,7 @@ export default function MatthieuClient({ userRole, userName, userModules }: { us
         body: JSON.stringify({ brand: brand.trim(), model: model.trim(), messages: next.map(m => ({ role: m.role, content: m.content })), images: imgs }),
       })
       const j = await r.json()
-      setMsgs(m => [...m, { role: 'assistant', content: j.answer || j.error || 'Pas de réponse.' }])
+      setMsgs(m => [...m, { role: 'assistant', content: j.answer || j.error || 'Pas de réponse.', attachments: j.attachments }])
     } catch { setMsgs(m => [...m, { role: 'assistant', content: 'Réseau KO.' }]) }
     finally { setBusy(false) }
   }
@@ -67,8 +67,15 @@ export default function MatthieuClient({ userRole, userName, userModules }: { us
             </div>
           )}
           {msgs.map((m, i) => (
-            <div key={i} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+            <div key={i} className={`flex flex-col ${m.role === 'user' ? 'items-end' : 'items-start'}`}>
               <div className={`max-w-[85%] rounded-2xl px-3.5 py-2.5 text-sm whitespace-pre-wrap ${m.role === 'user' ? 'bg-brand text-white' : 'bg-surface border text-ink'}`}>{m.content}</div>
+              {m.attachments?.map((a, j) => (
+                <a key={j} href={a.url} target="_blank" rel="noreferrer" className="mt-1.5 max-w-[85%] flex items-center gap-2 bg-surface border border-indigo-500/40 rounded-xl px-3 py-2 hover:border-indigo-500">
+                  <span className="text-xl">📄</span>
+                  <span className="text-ink text-xs font-medium flex-1 leading-tight">{a.title}</span>
+                  <span className="text-indigo-600 dark:text-indigo-300 text-sm">ouvrir</span>
+                </a>
+              ))}
             </div>
           ))}
           {busy && <div className="flex justify-start"><div className="bg-surface border rounded-2xl px-3.5 py-2.5 text-sm text-ink-muted">Matthieu réfléchit…</div></div>}

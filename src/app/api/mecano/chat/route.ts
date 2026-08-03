@@ -5,7 +5,7 @@
 //   messages : [{role:'user'|'assistant', content:string}]
 //   images   : [{ data:base64, media_type }] joints au DERNIER message user (photo à analyser)
 // → cadre le véhicule (génération/motorisation), demande photo/VIN si incertain,
-//   s'appuie sur les fiches Touring, répond en « Matthieu ».
+//   s.appuie sur les fiches, répond en « Matthieu ».
 // Accès (test) : superadmin + Matthieu.
 
 import { NextResponse }      from 'next/server'
@@ -23,13 +23,20 @@ export const maxDuration  = 60
 const MAX_DOCS = 5
 const TYPE_PRIORITY = ['tips', 'ouverture', 'gestion_moteur', 'electricite', 'remorquage', 'hv_securite', 'emergency', 'identification', 'autre']
 
-const SYSTEM = `Tu es « La tête à Matthieu », le mécano-dépanneur expert de Verviers Dépannage — la référence que tous les chauffeurs appellent sur le terrain. Tu réponds comme lui : direct, concret, orienté terrain, la SÉCURITÉ d'abord, tutoiement, ton collègue, en français.
+const SYSTEM = `Tu es « La tête à Matthieu », le mécano-dépanneur expert de Verviers Dépannage — la référence que tous les chauffeurs appellent sur le terrain. Tu réponds comme lui : direct, concret, orienté terrain, la SÉCURITÉ d'abord, tutoiement, en français.
+
+Adresse-toi au chauffeur par son PRÉNOM (donné dans le contexte). Au tout premier message, commence par « Salut <prénom> ». N'utilise JAMAIS « collègue », ni un nom de famille.
+
+SOURCE : ta connaissance vient de TOI, « La tête à Matthieu ». Ne cite JAMAIS « Touring » (ni aucune marque de base de données externe) comme source. Parle de « ma fiche », « ma doc », « d'expérience », « ce que je connais sur ce modèle ». Le mot « Touring » ne doit jamais apparaître dans tes réponses.
 
 RÈGLE ABSOLUE — CADRER AVANT DE RÉPONDRE :
 Ne donne JAMAIS une procédure précise (ouverture, coupure haute tension, point d'ancrage, mode remorquage, gestion moteur) sans être CERTAIN du véhicule EXACT : marque, modèle, **génération/année**, et **motorisation** (essence/diesel/hybride/électrique). Une même appellation couvre plusieurs générations très différentes — se tromper de génération peut être dangereux.
 - Si la génération ou la motorisation n'est pas certaine, POSE la question d'abord (propose les générations disponibles listées dans le contexte).
 - Si le chauffeur ne sait pas : demande-lui **une photo** (du véhicule, du compartiment moteur, de la plaque motorisation, du tableau de bord) que tu analyseras, ou **le VIN** (n° de châssis, 17 caractères — le 10e caractère code l'année). Tu peux déduire beaucoup d'une photo ou d'un VIN.
-- Une fois le véhicule confirmé, réponds sur base des fiches Touring fournies.
+- Une fois le véhicule confirmé, réponds sur base de tes fiches fournies.
+
+MONTRER UNE FICHE :
+Tu PEUX montrer un schéma/diagramme au chauffeur — utilise l'outil \`montrer_fiche\` (type = ouverture, remorquage, electricite, gestion_moteur, tips, hv_securite…) en précisant la génération confirmée. La fiche s'affichera dans le chat. Fais-le dès que le chauffeur veut VOIR quelque chose (« montre-moi », « t'as un schéma ? », points d'ancrage, emplacement d'un point…). Montre UNIQUEMENT la fiche concernée par sa question, jamais tout. Commente brièvement ce qu'il doit y regarder.
 
 STYLE :
 - Réponses courtes et actionnables (le chauffeur est en intervention, souvent une main sur le téléphone). Étapes numérotées pour une procédure.
@@ -61,8 +68,10 @@ export async function POST(req: Request) {
   const u = session?.user as any
   if (!u) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   const sb = createAdminClient()
-  const { data: me } = await sb.from('users').select('id, role').eq('email', u.email).maybeSingle()
+  const { data: me } = await sb.from('users').select('id, role, name, surnom').eq('email', u.email).maybeSingle()
   if (!canUseMatthieu(me?.role, me?.id)) return NextResponse.json({ error: 'Accès réservé (test)' }, { status: 403 })
+  // Nom d'appel : surnom que Matthieu utilise s'il existe, sinon le prénom.
+  const firstName = String(me?.surnom || '').trim() || String(me?.name || '').trim().split(/\s+/)[0] || ''
 
   const body = await req.json().catch(() => ({}))
   let brand = String(body.brand || '').trim()
@@ -114,7 +123,7 @@ export async function POST(req: Request) {
   if (!apiKey) return NextResponse.json({ error: 'IA indisponible (clé manquante)' }, { status: 503 })
   const client = new Anthropic({ apiKey })
 
-  const ctx = `Contexte véhicule (à CONFIRMER avant toute procédure) :\n- Marque : ${brand || 'INCONNUE'}\n- Modèle annoncé sur la fiche : ${model || 'non précisé'}\n${generations.length ? `- Générations disponibles dans la base Touring pour ${brand} : ${generations.join(' · ')}` : brand ? `- (pas encore de fiches importées pour ${brand})` : ''}`
+  const ctx = `Chauffeur (prénom à utiliser) : ${firstName || 'inconnu'}\n\nContexte véhicule (à CONFIRMER avant toute procédure) :\n- Marque : ${brand || 'INCONNUE'}\n- Modèle annoncé sur la fiche : ${model || 'non précisé'}\n${generations.length ? `- Générations que tu connais pour ${brand} : ${generations.join(' · ')}` : brand ? `- (pas encore de fiches importées pour ${brand})` : ''}`
 
   const lastUserIdx = (() => { for (let i = history.length - 1; i >= 0; i--) if (history[i].role === 'user') return i; return -1 })()
   const msgs: any[] = history.map((h, i) => {
@@ -125,10 +134,55 @@ export async function POST(req: Request) {
     return { role: h.role, content: blocks.length === 1 ? blocks[0].text : blocks }
   })
 
+  // Outil « montrer une fiche » : Claude choisit type + génération → on renvoie
+  // la fiche (URL signée) que le client affiche.
+  const tools = [{
+    name: 'montrer_fiche',
+    description: 'Affiche au chauffeur UNE fiche technique précise (la partie concernée par sa question, pas toute la doc).',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        type:       { type: 'string', description: 'Type de fiche', enum: ['ouverture', 'remorquage', 'tips', 'electricite', 'gestion_moteur', 'hv_securite', 'emergency', 'identification'] },
+        generation: { type: 'string', description: 'Génération/année confirmée du véhicule (ex. "A4 2015-"). Optionnel si évident.' },
+      },
+      required: ['type'],
+    },
+  }]
+
+  async function resolveFiche(input: any): Promise<{ ok: boolean; title?: string; url?: string; section?: string; note?: string }> {
+    if (!brand) return { ok: false, note: 'véhicule non identifié' }
+    let q = sb.from('mecano_docs').select('section, model, model_norm, doc_type, label, storage_path')
+      .eq('brand_norm', normVehicle(brand)).eq('doc_type', String(input?.type || '')).not('storage_path', 'is', null)
+    const { data: cands } = await q
+    if (!cands?.length) return { ok: false, note: `pas de fiche ${input?.type} pour ${brand}` }
+    const gen = normVehicle(String(input?.generation || model || ''))
+    const best = gen ? (cands.find(c => c.model_norm === gen) || cands.find(c => c.model_norm.includes(gen) || gen.includes(c.model_norm)) || cands[0]) : cands[0]
+    const { data: signed } = await sb.storage.from('mecano').createSignedUrl(best.storage_path, 3600)
+    if (!signed?.signedUrl) return { ok: false, note: 'fiche indisponible' }
+    return { ok: true, title: `${best.section === 'remorquage' ? 'Remorquage' : 'Dépannage'} · ${best.model} · ${best.label}`, url: signed.signedUrl, section: best.section }
+  }
+
   try {
-    const resp = await client.messages.create({ model: ANTHROPIC_MODEL, max_tokens: 1500, system: SYSTEM, messages: msgs })
-    const text = resp.content.find((b: any) => b.type === 'text') as any
-    return NextResponse.json({ ok: true, answer: text?.text || '(pas de réponse)', brand, model, generations, docs_used: used })
+    const attachments: any[] = []
+    let guard = 0
+    while (guard++ < 4) {
+      const resp: any = await client.messages.create({ model: ANTHROPIC_MODEL, max_tokens: 1500, system: SYSTEM, tools, messages: msgs })
+      if (resp.stop_reason === 'tool_use') {
+        msgs.push({ role: 'assistant', content: resp.content })
+        const results: any[] = []
+        for (const b of resp.content) {
+          if (b.type !== 'tool_use') continue
+          const r = await resolveFiche(b.input)
+          if (r.ok) attachments.push({ title: r.title, url: r.url, section: r.section })
+          results.push({ type: 'tool_result', tool_use_id: b.id, content: r.ok ? `Fiche affichée au chauffeur : ${r.title}` : `Impossible : ${r.note}` })
+        }
+        msgs.push({ role: 'user', content: results })
+        continue
+      }
+      const text = resp.content.find((b: any) => b.type === 'text') as any
+      return NextResponse.json({ ok: true, answer: text?.text || '(pas de réponse)', brand, model, generations, docs_used: used, attachments })
+    }
+    return NextResponse.json({ ok: true, answer: 'Réessaie ta question 🙂', attachments })
   } catch (e: any) {
     return NextResponse.json({ error: `Matthieu bloque là : ${e?.message || 'erreur IA'}` }, { status: 500 })
   }
