@@ -27,7 +27,7 @@ const COMEX_OVERWRITE_FIELDS = [
   'vehicle_plate', 'vehicle_brand', 'vehicle_model', 'vehicle_vin', 'vehicle_fuel', 'vehicle_gearbox',
   'incident_address', 'incident_city', 'incident_lat', 'incident_lng',
   'destination_name', 'destination_address', 'destination_lat', 'destination_lng',
-  'billed_to_id', 'billed_to_name', 'parse_confidence',
+  'billed_to_id', 'billed_to_name', 'parse_confidence', 'touring_vr',
 ]
 
 export interface TouringImportResult {

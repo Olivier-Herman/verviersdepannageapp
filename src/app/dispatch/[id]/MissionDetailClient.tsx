@@ -39,6 +39,7 @@ import { getSourceLabel, getSourceColor, type SourceDisplay as CatalogSource } f
 import { getMissionTypeLabel } from '@/lib/missions/mission-types'
 import { parcZoneLabel } from '@/lib/parc/zone-label'
 import { useGarageClosure } from '@/lib/useGarageClosures'
+import { interpretVr } from '@/lib/touring/vr'
 
 const sb = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -2499,6 +2500,36 @@ export default function MissionDetailClient({
             </div>
           </div>
         )}
+
+        {/* Droits VR / taxi / shuttle (Touring) — info dispatch, dispo dès l'acceptation */}
+        {(M as any).touring_vr && (() => {
+          const raw = (M as any).touring_vr
+          const v = interpretVr(raw)
+          const yes = !!v?.any
+          return (
+            <div className="px-4 lg:px-8 pt-6">
+              <div className={`rounded-2xl p-4 border-2 ${yes ? 'bg-emerald-500/10 border-emerald-500/50' : 'bg-red-500/10 border-red-500/40'}`}>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-2xl">{yes ? '🚗' : '🚫'}</span>
+                  <p className={`font-bold text-sm uppercase tracking-wide ${yes ? 'text-emerald-700 dark:text-emerald-300' : 'text-red-700 dark:text-red-300'}`}>
+                    Véhicule de remplacement — {yes ? 'DROIT OUVERT' : 'PAS DE DROIT'}
+                  </p>
+                  {v?.proactive && <span className="text-[11px] px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-700 dark:text-amber-300 border border-amber-500/30">proactif (offert d'office)</span>}
+                </div>
+                {yes && v?.eligible?.length ? (
+                  <ul className="mt-2 flex flex-wrap gap-1.5">
+                    {v.eligible.map(e => (
+                      <li key={e.key} className="text-xs px-2.5 py-1 rounded-lg bg-emerald-500/15 text-emerald-800 dark:text-emerald-200 border border-emerald-500/30">✓ {e.label}</li>
+                    ))}
+                  </ul>
+                ) : null}
+                <p className="text-ink-muted text-[11px] mt-2 font-mono">
+                  brut : VR={raw.vr} · VR+taxi={raw.vr_taxi} · shuttle+VR={raw.shuttle_vr} · shuttle={raw.shuttle} · taxi={raw.taxi} · proactif={raw.proactive}
+                </p>
+              </div>
+            </div>
+          )
+        })()}
 
         {/* Dérogation paiement en attente — encart prioritaire pour le dispatcher */}
         {pendingDerog && (

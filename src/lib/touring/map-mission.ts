@@ -7,6 +7,8 @@
 // Sémantique VD Soft : client_name = personne à joindre sur place (INT_*),
 // assisted_name = membre Touring (MEM_*), billed_to = Touring (paie).
 
+import { mapComexVr } from './vr'
+
 const s = (v: any): string | null => {
   const t = v == null ? '' : String(v).trim()
   return t ? t : null
@@ -108,6 +110,11 @@ export function mapComexToMission(input: ComexMapInput): Record<string, any> {
 
     // Traçabilité : on garde la source brute (JSON COMEX) → pas de Claude, et le
     // document « source » de la fiche fonctionne.
+    // Droits VR / taxi / shuttle du membre Touring (dispo dès l'acceptation).
+    // Valeurs COMEX brutes conservées (9 = proposable, 0 = non, 10 = proactif) →
+    // l'affichage dérive l'éligibilité (cf. lib/touring/vr.ts). Olivier 2026-08-03.
+    touring_vr:         mapComexVr(d),
+
     parse_confidence:   1.0,
     raw_content:        JSON.stringify(d).slice(0, 10000),
     received_at:        comexDate(d.D_SEND) || comexDate(d.D_CREATION) || nowIso,

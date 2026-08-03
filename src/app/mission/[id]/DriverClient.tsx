@@ -24,6 +24,7 @@ import {
   startForMission, updateForMission, endForMission,
   missionToLAState, isActiveMissionStatus,
 } from '@/lib/native/liveActivity'
+import { interpretVr } from '@/lib/touring/vr'
 
 const sb = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!)
 
@@ -3352,6 +3353,23 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
             )}
           </div>
         </div>
+
+        {/* Droit VR (Touring) — tuile Oui/Non bien visible pour le chauffeur */}
+        {(M as any).touring_vr && (() => {
+          const v = interpretVr((M as any).touring_vr)
+          const yes = !!v?.any
+          return (
+            <div className={`rounded-2xl p-3 border-2 flex items-center justify-between ${yes ? 'bg-emerald-500/10 border-emerald-500' : 'bg-red-500/10 border-red-500'}`}>
+              <div className="min-w-0">
+                <p className={`text-xs uppercase tracking-widest font-bold ${yes ? 'text-emerald-700 dark:text-emerald-300' : 'text-red-700 dark:text-red-300'}`}>Véhicule de remplacement</p>
+                <p className={`text-lg font-black leading-tight ${yes ? 'text-emerald-700 dark:text-emerald-300' : 'text-red-600 dark:text-red-300'}`}>
+                  {yes ? `VR OUI${v?.short && v.short !== 'VR' ? ` — ${v.short}` : ''}` : 'VR NON'}
+                </p>
+              </div>
+              <span className="text-3xl flex-shrink-0">{yes ? '🚗' : '🚫'}</span>
+            </div>
+          )
+        })()}
 
         {/* Bandeau Bloqué par la police (AVP : auto, autres : si saisi) */}
         {M.police_blocked && (
