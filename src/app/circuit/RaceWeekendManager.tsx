@@ -8,8 +8,8 @@ import { useEffect, useState } from 'react'
 import AppShell from '@/components/layout/AppShell'
 import { Flag, ArrowLeft, Plus, Trash2, Save, FileText, Loader2, Search, X, ExternalLink, Sun, Moon } from 'lucide-react'
 
-type Day = { date: string; nb: number; jour: boolean; nuit: boolean; supp_from: string; supp_to: string; drivers: string[] }
-const emptyDay = (): Day => ({ date: '', nb: 1, jour: true, nuit: false, supp_from: '', supp_to: '', drivers: [] })
+type Day = { date: string; nb: number; jour: boolean; nuit: boolean; supp_from: string; supp_to: string; drivers: string[]; note: string }
+const emptyDay = (): Day => ({ date: '', nb: 1, jour: true, nuit: false, supp_from: '', supp_to: '', drivers: [], note: '' })
 const suppHours = (from?: string, to?: string): number => {
   if (!from || !to) return 0
   const mins = (t: string) => { const [h, m] = t.split(':').map(Number); return (h || 0) * 60 + (m || 0) }
@@ -145,6 +145,7 @@ export default function RaceWeekendManager({ userRole, userName, userEmail, user
                           {personnel.filter(p => !(d.drivers || []).includes(p.id)).map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
                         </select>
                       </div>
+                      <input value={d.note || ''} onChange={e => setDay(i, { note: e.target.value })} placeholder="Note du jour (affichée sous la section du devis)" className="w-full bg-bg border rounded-lg px-2 py-1.5 text-xs text-ink" />
                     </div>
                   )
                 })}

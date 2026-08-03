@@ -83,6 +83,9 @@ export async function createCircuitQuote(input: CreateCircuitQuoteInput): Promis
     }]
   })
 
+  // Note obligatoire en bas de tout devis circuit.
+  orderLines.push(await hsuppNoteLine(10 + orderLines.length))
+
   const orderId = await odooRpc<number>('sale.order', 'create', [{
     partner_id:       input.partnerId,
     client_order_ref: 'Prestation Circuit Spa-Francorchamps',
@@ -128,6 +131,20 @@ export interface RaceDay {
   nuit:            boolean  // forfait nuit 18h-08h
   supp_from?:      string   // supplément : heure de début 'HH:MM' (justificatif)
   supp_to?:        string   // supplément : heure de fin 'HH:MM'
+  note?:           string   // note libre du jour (affichée sous la section)
+}
+
+/** Prix de vente HTVA d'un produit (list_price). */
+async function readProductPrice(id: number): Promise<number> {
+  const p = await odooRpc<any[]>('product.product', 'read', [[id], ['list_price']])
+  return p?.[0]?.list_price ?? 0
+}
+/** Ligne de note « heures supplémentaires » à mettre en bas de tout devis circuit. */
+async function hsuppNoteLine(seq: number): Promise<any> {
+  let price = 0
+  try { price = await readProductPrice(await findProductIdByCode(PRODUCT_REF_HSUPP)) } catch { /* défaut ci-dessous */ }
+  const p = price || 75
+  return [0, 0, { display_type: 'line_note', name: `Toute heure supplémentaire est facturée au prix de ${p}€ HTVA par heure.`, sequence: seq }]
 }
 
 /** Heures de supplément déduites de la plage « de-à » (gère le passage minuit). */
@@ -166,13 +183,17 @@ export async function createRaceWeekendQuote(input: {
   let seq = 10
   for (const d of days) {
     const n = Math.max(1, d.nb_depanneuses || 1)
-    // Section du jour
+    // Section du jour (+ note du jour éventuelle)
     orderLines.push([0, 0, { display_type: 'line_section', name: `${fmtDayLabel(d.date)} — ${n} dépanneuse${n > 1 ? 's' : ''}`, sequence: seq++ }])
+    if (d.note && d.note.trim()) orderLines.push([0, 0, { display_type: 'line_note', name: d.note.trim(), sequence: seq++ }])
     if (d.jour)  orderLines.push([0, 0, { product_id: courseId, product_uom_qty: n, name: 'Forfait jour (08h-18h)',  sequence: seq++ }])
     if (d.nuit)  orderLines.push([0, 0, { product_id: courseId, product_uom_qty: n, name: 'Forfait nuit (18h-08h)',  sequence: seq++ }])
     const sh = suppHours(d.supp_from, d.supp_to)
     if (sh > 0) orderLines.push([0, 0, { product_id: hsuppId, product_uom_qty: n * sh, name: `Supplément horaire (de ${d.supp_from} à ${d.supp_to})`, sequence: seq++ }])
   }
+
+  // Note obligatoire en bas de tout devis circuit.
+  orderLines.push(await hsuppNoteLine(seq++))
 
   const orderId = await odooRpc<number>('sale.order', 'create', [{
     partner_id:       input.partnerId,

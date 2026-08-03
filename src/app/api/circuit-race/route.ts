@@ -24,7 +24,7 @@ const hasAccess = (u: any) => ALLOWED.includes(u?.role) || (Array.isArray(u?.rol
 const time = (t: any) => /^\d{1,2}:\d{2}$/.test(String(t || '')) ? String(t) : null
 const cleanDays = (arr: any): any[] => (Array.isArray(arr) ? arr : [])
   .filter(d => d && /^\d{4}-\d{2}-\d{2}$/.test(d.date))
-  .map(d => ({ date: d.date, nb: Math.max(1, Number(d.nb) || 1), jour: !!d.jour, nuit: !!d.nuit, supp_from: time(d.supp_from), supp_to: time(d.supp_to), drivers: Array.isArray(d.drivers) ? d.drivers.filter((x: any) => typeof x === 'string') : [] }))
+  .map(d => ({ date: d.date, nb: Math.max(1, Number(d.nb) || 1), jour: !!d.jour, nuit: !!d.nuit, supp_from: time(d.supp_from), supp_to: time(d.supp_to), note: typeof d.note === 'string' ? d.note.slice(0, 300) : null, drivers: Array.isArray(d.drivers) ? d.drivers.filter((x: any) => typeof x === 'string') : [] }))
 const suppHrs = (from?: string | null, to?: string | null) => { if (!from || !to) return 0; const m = (t: string) => { const [h, mm] = t.split(':').map(Number); return (h || 0) * 60 + (mm || 0) }; let d = m(to) - m(from); if (d < 0) d += 1440; return Math.round(d / 60 * 100) / 100 }
 const PRICE_FORFAIT = 650, PRICE_HSUPP = 75   // prix HTVA Odoo (Course / Heure suppl.)
 
@@ -65,7 +65,7 @@ export async function POST(req: Request) {
     const { data: w } = await sb.from('circuit_race_weekends').select('*').eq('id', String(body.id || '')).maybeSingle()
     if (!w) return NextResponse.json({ error: 'Week-end introuvable' }, { status: 404 })
     if (!w.client_odoo_id) return NextResponse.json({ error: 'Client Odoo requis (recherche le client d\'abord)' }, { status: 400 })
-    const days = cleanDays(w.days).map((d: any) => ({ date: d.date, nb_depanneuses: d.nb, jour: d.jour, nuit: d.nuit, supp_from: d.supp_from, supp_to: d.supp_to }))
+    const days = cleanDays(w.days).map((d: any) => ({ date: d.date, nb_depanneuses: d.nb, jour: d.jour, nuit: d.nuit, supp_from: d.supp_from, supp_to: d.supp_to, note: d.note || undefined }))
     if (!days.length) return NextResponse.json({ error: 'Aucun jour encodé' }, { status: 400 })
     try {
       const order = await withOdooActor(u.id, () => createRaceWeekendQuote({
