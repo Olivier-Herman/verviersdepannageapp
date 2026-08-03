@@ -4,6 +4,7 @@ import { createAdminClient }            from '@/lib/supabase'
 import { detectSource, extractContent } from './extractor'
 import { parseMissionContent }          from './parser'
 import { sendPushToRole, sendPushToUser } from '@/lib/push'
+import { sendNotification, sendNotificationToRoles } from '@/lib/notifications/send'
 
 const MISSIONS_EMAIL = process.env.MISSIONS_EMAIL!
 
@@ -88,6 +89,45 @@ async function markAsRead(token: string, messageId: string): Promise<void> {
       body:    JSON.stringify({ isRead: true })
     }
   )
+}
+
+// Statuts où le chauffeur est DÉJÀ engagé : on ne supprime pas la course, on la
+// bascule en « trajet à vide » (à facturer) plutôt que de l'annuler sèchement.
+const INSURER_STARTED_STATUSES = ['accepted', 'on_way', 'on_site', 'loaded', 'in_progress', 'delivering', 'parked']
+
+/**
+ * Annule une fiche suite à une annulation/expiration côté assisteur (Allianz).
+ *  - Chauffeur déjà parti  → mission_type=trajet_vide (gardée, à facturer) + notifs.
+ *  - Pas encore parti       → status=cancelled.
+ *  - État terminal          → skip.
+ */
+async function cancelMissionFromInsurer(
+  sb: any,
+  m: { id: string; status: string; assigned_to: string | null; mission_type: string | null; mission_number: number | null },
+  reason: string,
+): Promise<{ action: 'cancelled' | 'trajet_vide' | 'skipped' }> {
+  if (['completed', 'cancelled', 'ignored', 'to_invoice'].includes(m.status)) return { action: 'skipped' }
+  const num = m.mission_number ? `#${m.mission_number}` : ''
+  if (INSURER_STARTED_STATUSES.includes(m.status)) {
+    await sb.from('incoming_missions').update({ mission_type: 'trajet_vide' }).eq('id', m.id)
+    await sb.from('mission_logs').insert({
+      mission_id: m.id, action: 'cancelled_by_insurer_after_start',
+      notes: `${reason} — chauffeur déjà engagé → trajet à vide à facturer.`,
+      metadata: { previous_status: m.status, original_mission_type: m.mission_type },
+    }).then(() => {}, () => {})
+    const base = { title: "Mission annulée par l'assistance", mission_id: m.id, action_url: `/dispatch/${m.id}` }
+    if (m.assigned_to) await sendNotification(m.assigned_to, 'mission_cancelled_by_insurer', { ...base, body: `La mission ${num} vient d'être annulée par l'assistance. Fais demi-tour — trajet à vide.` }).catch(() => {})
+    await sendNotificationToRoles(['dispatcher', 'admin', 'superadmin'], 'mission_cancelled_by_insurer', { ...base, body: `La mission ${num} annulée par l'assistance après départ → trajet à vide à facturer.` }).catch(() => {})
+    return { action: 'trajet_vide' }
+  }
+  await sb.from('incoming_missions').update({ status: 'cancelled', closing_notes: reason }).eq('id', m.id)
+  await sb.from('mission_logs').insert({ mission_id: m.id, action: 'cancelled_by_insurer', notes: reason }).then(() => {}, () => {})
+  await sendNotificationToRoles(['dispatcher', 'admin', 'superadmin'], 'mission_cancelled_by_insurer', {
+    title: "Mission annulée par l'assistance",
+    body:  `La mission ${num} a été annulée/expirée (assistance) avant départ.`,
+    mission_id: m.id, action_url: `/dispatch/${m.id}`,
+  }).catch(() => {})
+  return { action: 'cancelled' }
 }
 
 /**
@@ -618,6 +658,16 @@ export async function processEmailMessage(messageId: string): Promise<ProcessRes
     const source = await detectSource(fromEmail, subject)
     console.log(`[Processor] step=detect_source messageId=${msgIdShort} source=${source}`)
 
+    // Mail d'ANNULATION / EXPIRATION d'affectation Allianz (Mondial) :
+    //   - "Toewijzing geannuleerd door agent"  → annulée par l'agent
+    //   - "Toewijzing verlopen"                → offre expirée
+    // Dans les deux cas on ANNULE la fiche correspondante chez nous (cf. branche
+    // plus bas après résolution). On ne crée JAMAIS de fiche depuis ces mails :
+    // une éventuelle ré-affectation créera une fiche neuve (pas un doublon).
+    // Olivier 2026-08-03.
+    const isCancellationEmail = source === 'mondial'
+      && /geannuleerd|verlopen|annul(?:é|ée|ation|er)|cancell?ed|cancellation/i.test(subject)
+
     // ── Détection OTP Allianz (intercepté depuis la boîte assistance@) ──────
     // Le sujet contient "One Time Password" — c'est un OTP pour le login Hexalite
     if (subject.toLowerCase().includes('one time password') && fromEmail.toLowerCase().includes('allianz')) {
@@ -629,15 +679,39 @@ export async function processEmailMessage(messageId: string): Promise<ProcessRes
       return { status: 'skipped', reason: 'OTP Allianz intercepté et traité' }
     }
 
-    // ── Mondial/Allianz : ignorer les notifications "verlopen" (expirées) ───
-    // Quand une mission Mondial expire, ils renvoient un mail dont le sujet
-    // contient "verlopen" (NL = "expiré"). Sans filtre, on créait une mission
-    // vide en BDD. Cf. user feedback 2026-05-18.
-    if (source === 'mondial' && subject.toLowerCase().includes('verlopen')) {
-      console.log(`[Processor] Mail Mondial "verlopen" ignoré: ${subject.slice(0, 80)}`)
+    // ── Mondial/Allianz : ANNULATION / EXPIRATION d'affectation ─────────────
+    // Le n° de dossier/affectation (39…) est dans le sujet ou le corps du mail.
+    // On identifie la fiche par ce numéro et on l'annule (ou trajet à vide si le
+    // chauffeur est déjà parti). On ne crée JAMAIS de fiche depuis ces mails.
+    // Olivier 2026-08-03.
+    if (isCancellationEmail) {
       await markAsRead(token, messageId)
       if (placeholderId) await supabase.from('incoming_missions').delete().eq('id', placeholderId)
-      return { status: 'skipped', reason: 'Mondial verlopen (mission expirée)' }
+      const bodyContent = String((message as any).body?.content || '')
+      const hay = `${subject}\n${bodyContent}`
+      const ref = (hay.match(/\b(39\d{12})\b/) || [])[1]
+               || (hay.match(/dossier[^0-9]{0,15}(\d{9,16})/i) || [])[1]
+               || null
+      if (!ref) {
+        console.log(`[Processor] Annulation Mondial sans référence identifiable: ${subject.slice(0, 80)}`)
+        return { status: 'skipped', reason: 'Annulation Mondial (référence introuvable)' }
+      }
+      const { data: target } = await supabase
+        .from('incoming_missions')
+        .select('id, status, assigned_to, mission_type, mission_number')
+        .or(`external_id.eq.${ref},dossier_number.eq.${ref}`)
+        .eq('source', 'mondial')
+        .not('status', 'in', '("cancelled","ignored","completed","to_invoice")')
+        .order('received_at', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+      if (!target?.id) {
+        console.log(`[Processor] Annulation Mondial ref=${ref} → aucune fiche active à annuler.`)
+        return { status: 'skipped', reason: `Annulation Mondial ${ref} — aucune fiche active` }
+      }
+      const res = await cancelMissionFromInsurer(supabase, target as any, `Affectation annulée/expirée côté Allianz (${subject.slice(0, 100)})`)
+      console.log(`[Processor] Annulation Mondial ref=${ref} → fiche #${(target as any).mission_number} : ${res.action}`)
+      return { status: 'skipped', reason: `Mission annulée par assistance (${res.action})` }
     }
 
     // ── Mondial : ignorer les OTP "Hexalite - One Time Password" ────────────

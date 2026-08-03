@@ -149,6 +149,14 @@ export const NOTIFICATION_TYPES: readonly NotificationType[] = [
     defaultEnabled:  true,
   },
   {
+    key:             'mission_cancelled_by_insurer',
+    label:           'Mission annulée par l\'assistance',
+    description:     'L\'assisteur (Allianz, etc.) a annulé l\'affectation par e-mail → la fiche est annulée (ou trajet à vide si déjà démarrée).',
+    category:        'on_duty',
+    applicableRoles: ['driver', 'dispatcher', 'admin', 'superadmin'],
+    defaultEnabled:  true,
+  },
+  {
     key:             'kaze_cancelled_after_start',
     label:           'Mission Kaze annulée après acceptation',
     description:     'Kaze a annulé une mission déjà acceptée par le chauffeur → trajet à vide à facturer (chauffeur : fais demi-tour).',
