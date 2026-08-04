@@ -1,7 +1,8 @@
 'use client'
 // src/app/touring-check/TouringCheckAdminClient.tsx
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import { createClient } from '@supabase/supabase-js'
 import AppShell from '@/components/layout/AppShell'
 
 const RESP: Record<string, { label: string; cls: string; willDo: (item: any) => string }> = {
@@ -49,12 +50,31 @@ export default function TouringCheckAdminClient(props: {
   const [busy, setBusy] = useState<string | null>(null)
   const [msg, setMsg] = useState('')
 
+  const loadRef = useRef<() => void>(() => {})
   async function load() {
     const r = await fetch('/api/touring/check', { cache: 'no-store' })
     const j = await r.json().catch(() => ({}))
     setData(j)
   }
+  loadRef.current = load
   useEffect(() => { load() }, [])
+
+  // Temps réel : on écoute le signal (mini-table sans donnée sensible) et on
+  // recharge dès que Touring répond ou qu'un dossier entre/sort. + filet polling.
+  useEffect(() => {
+    const url = process.env.NEXT_PUBLIC_SUPABASE_URL, key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+    let ch: any
+    if (url && key) {
+      const sb = createClient(url, key)
+      ch = sb.channel('touring-check-signal')
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'touring_check_signal' }, () => loadRef.current())
+        .subscribe()
+    }
+    const onVis = () => { if (document.visibilityState === 'visible') loadRef.current() }
+    document.addEventListener('visibilitychange', onVis)
+    const iv = setInterval(() => loadRef.current(), 20000)
+    return () => { try { ch?.unsubscribe() } catch {} ; document.removeEventListener('visibilitychange', onVis); clearInterval(iv) }
+  }, [])
 
   async function post(body: any, label: string) {
     setBusy(label); setMsg('')

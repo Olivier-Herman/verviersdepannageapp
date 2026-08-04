@@ -2,7 +2,8 @@
 // src/app/touring/check/[token]/TouringCheckClient.tsx
 // Tableau public : Touring choisit une réponse par dossier (+ champ libre).
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import { createClient } from '@supabase/supabase-js'
 
 const RESPONSES = [
   { code: 'already_invoiced',       label: 'Déjà facturé' },
@@ -37,8 +38,9 @@ export default function TouringCheckClient({ token }: { token: string }) {
   const [items, setItems] = useState<any[] | null>(null)
   const [err, setErr] = useState('')
   const [draft, setDraft] = useState<Record<string, { code: string; note: string }>>({})
-  const [saving, setSaving] = useState<string | null>(null)
-  const [saved, setSaved] = useState<Record<string, boolean>>({})
+  // statut par dossier : 'saving' | 'saved' | undefined
+  const [status, setStatus] = useState<Record<string, 'saving' | 'saved'>>({})
+  const timers = useRef<Record<string, any>>({})
 
   async function load() {
     const r = await fetch(`/api/touring/check/${token}`, { cache: 'no-store' })
@@ -51,20 +53,53 @@ export default function TouringCheckClient({ token }: { token: string }) {
     }
     setDraft(d)
   }
+  const loadRef = useRef<() => void>(() => {})
+  loadRef.current = load
   useEffect(() => { load() }, [])
 
-  async function save(id: string) {
-    const dr = draft[id]
-    if (!dr?.code) return
-    if (dr.code === 'already_invoiced' && !dr.note.trim()) { alert('Merci d\'indiquer le n° d\'accord.'); return }
-    setSaving(id)
+  // Temps réel : nouveaux dossiers / retraits apparaissent sans rafraîchir.
+  // On ne recharge PAS pendant une saisie en cours pour ne pas l'écraser.
+  useEffect(() => {
+    const url = process.env.NEXT_PUBLIC_SUPABASE_URL, key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+    let ch: any
+    const safeReload = () => { if (!Object.keys(timers.current).length && !document.activeElement?.matches('input,textarea,select')) loadRef.current() }
+    if (url && key) {
+      const sb = createClient(url, key)
+      ch = sb.channel('touring-check-public')
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'touring_check_signal' }, safeReload)
+        .subscribe()
+    }
+    return () => { try { ch?.unsubscribe() } catch {} }
+  }, [])
+
+  async function save(id: string, code: string, note: string) {
+    if (!code) return
+    if (code === 'already_invoiced' && !note.trim()) return  // attend le n° d'accord
+    setStatus(s => ({ ...s, [id]: 'saving' }))
     const r = await fetch(`/api/touring/check/${token}`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id, response_code: dr.code, response_note: dr.note }),
+      body: JSON.stringify({ id, response_code: code, response_note: note }),
     })
-    setSaving(null)
-    if (r.ok) { setSaved(s => ({ ...s, [id]: true })); setTimeout(() => setSaved(s => ({ ...s, [id]: false })), 2500) }
-    else { const j = await r.json().catch(() => ({})); alert(j.error || 'Erreur') }
+    if (r.ok) {
+      setStatus(s => ({ ...s, [id]: 'saved' }))
+      setTimeout(() => setStatus(s => { const n = { ...s }; if (n[id] === 'saved') delete n[id]; return n }), 2500)
+    } else {
+      setStatus(s => { const n = { ...s }; delete n[id]; return n })
+      const j = await r.json().catch(() => ({})); alert(j.error || 'Erreur')
+    }
+  }
+
+  // Choix du menu : enregistre tout de suite si la réponse n'exige pas de texte.
+  function onSelect(id: string, code: string) {
+    const note = draft[id]?.note || ''
+    setDraft(d => ({ ...d, [id]: { code, note } }))
+    if (code && code !== 'already_invoiced' && code !== 'other') save(id, code, note)
+  }
+  // Saisie du texte : enregistre après une courte pause (debounce).
+  function onText(id: string, code: string, note: string) {
+    setDraft(d => ({ ...d, [id]: { code, note } }))
+    clearTimeout(timers.current[id])
+    timers.current[id] = setTimeout(() => save(id, code, note), 800)
   }
 
   const pending = (items || []).filter(i => i.status !== 'applied')
@@ -112,28 +147,34 @@ export default function TouringCheckClient({ token }: { token: string }) {
                     </div>
                   </div>
                 ))}
-                {/* Réponse */}
+                {/* Réponse — enregistrement automatique */}
                 <div className="px-4 py-3 bg-black/[0.03] border-t border-black/5">
-                  <div className="flex flex-col sm:flex-row gap-2">
+                  <div className="flex items-center gap-2">
                     <select
                       value={dr.code}
-                      onChange={e => setDraft(d => ({ ...d, [it.id]: { code: e.target.value, note: d[it.id]?.note || '' } }))}
+                      onChange={e => onSelect(it.id, e.target.value)}
                       className="flex-1 bg-white border border-gray-300 rounded-lg px-3 py-2 text-sm font-medium focus:border-[#d6002a] outline-none">
                       <option value="">Choisir une réponse…</option>
                       {RESPONSES.map(r => <option key={r.code} value={r.code}>{r.label}</option>)}
                     </select>
-                    <button onClick={() => save(it.id)} disabled={!dr.code || saving === it.id}
-                      className="bg-[#d6002a] text-white font-semibold text-sm px-5 py-2 rounded-lg disabled:opacity-40 whitespace-nowrap">
-                      {saving === it.id ? '…' : saved[it.id] ? '✓ Enregistré' : it.response_code ? 'Modifier' : 'Enregistrer'}
-                    </button>
+                    <span className="text-xs font-semibold whitespace-nowrap w-24 text-right">
+                      {status[it.id] === 'saving' ? <span className="text-gray-400">…</span>
+                        : status[it.id] === 'saved' ? <span className="text-emerald-600">✓ Enregistré</span>
+                        : dr.code && !(dr.code === 'already_invoiced' && !dr.note.trim()) ? <span className="text-gray-400">✓</span>
+                        : null}
+                    </span>
                   </div>
                   {dr.code === 'already_invoiced' && (
-                    <input value={dr.note} onChange={e => setDraft(d => ({ ...d, [it.id]: { code: dr.code, note: e.target.value } }))}
+                    <input value={dr.note}
+                      onChange={e => onText(it.id, dr.code, e.target.value)}
+                      onBlur={() => save(it.id, dr.code, dr.note)}
                       placeholder="N° d'accord Touring (ex. 2024AC002456)"
                       className="mt-2 w-full bg-white border border-gray-300 rounded-lg px-3 py-2 text-sm font-mono focus:border-[#d6002a] outline-none" />
                   )}
                   {dr.code === 'other' && (
-                    <textarea value={dr.note} onChange={e => setDraft(d => ({ ...d, [it.id]: { code: dr.code, note: e.target.value } }))}
+                    <textarea value={dr.note}
+                      onChange={e => onText(it.id, dr.code, e.target.value)}
+                      onBlur={() => save(it.id, dr.code, dr.note)}
                       placeholder="Précisez…" rows={2}
                       className="mt-2 w-full bg-white border border-gray-300 rounded-lg px-3 py-2 text-sm focus:border-[#d6002a] outline-none" />
                   )}

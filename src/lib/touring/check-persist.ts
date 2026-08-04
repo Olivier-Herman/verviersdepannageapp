@@ -3,6 +3,13 @@
 // Persiste la liste « Check Touring » construite : upsert des items (en
 // préservant le statut/réponse existants), puis purge des 'pending' disparus.
 
+/** Pousse un « ping » realtime pour que les modules ouverts se rechargent. */
+export async function bumpCheckSignal(sb: any, reason: string): Promise<void> {
+  await sb.from('touring_check_signal')
+    .upsert({ id: 1, bumped_at: new Date().toISOString(), reason }, { onConflict: 'id' })
+    .then(() => {}, () => {})
+}
+
 export async function persistCheckList(sb: any, items: any[]): Promise<void> {
   const now = new Date().toISOString()
   const roots = items.map(i => i.root_mission_id)
@@ -19,4 +26,5 @@ export async function persistCheckList(sb: any, items: any[]): Promise<void> {
   let q = sb.from('touring_check_dossiers').delete().eq('status', 'pending')
   if (roots.length) q = q.not('root_mission_id', 'in', `(${roots.join(',')})`)
   await q
+  await bumpCheckSignal(sb, 'list_refreshed')
 }

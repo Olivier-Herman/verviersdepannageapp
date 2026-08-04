@@ -7,6 +7,7 @@
 import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase'
 import { getCheckToken } from '@/lib/touring/check-config'
+import { bumpCheckSignal } from '@/lib/touring/check-persist'
 
 export const dynamic = 'force-dynamic'
 
@@ -50,5 +51,6 @@ export async function POST(req: Request, { params }: { params: { token: string }
     answered_at: new Date().toISOString(),
   }).eq('id', id)
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  await bumpCheckSignal(sb, 'touring_answered')
   return NextResponse.json({ ok: true })
 }

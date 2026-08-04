@@ -11,7 +11,7 @@ import { createAdminClient } from '@/lib/supabase'
 import { buildTouringCheckList } from '@/lib/touring/check-list'
 import { reconcileHorsComexWithAccords } from '@/lib/touring/accord-reconcile'
 import { applyCheckItem } from '@/lib/touring/check-apply'
-import { persistCheckList } from '@/lib/touring/check-persist'
+import { persistCheckList, bumpCheckSignal } from '@/lib/touring/check-persist'
 import { getCheckToken, rotateCheckToken, getCheckEmail, checkLink } from '@/lib/touring/check-config'
 
 export const dynamic = 'force-dynamic'
@@ -73,12 +73,14 @@ export async function POST(req: Request) {
       applied_by: outcome.ok ? user.id : null,
       applied_result: outcome.result,
     }).eq('id', id)
+    await bumpCheckSignal(sb, 'applied')
     return NextResponse.json({ ok: outcome.ok, result: outcome.result })
   }
 
   if (action === 'dismiss') {
     const id = String(body?.id || '')
     await sb.from('touring_check_dossiers').update({ status: 'dismissed' }).eq('id', id)
+    await bumpCheckSignal(sb, 'dismissed')
     return NextResponse.json({ ok: true })
   }
 
