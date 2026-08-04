@@ -27,12 +27,18 @@ export async function GET() {
   // On affiche TOUTES les lignes présentes dans COMEX BKO. Le bouton Accepter
   // n'apparaîtra (côté UI) que pour les fiches to_invoice ; les autres montrent
   // le statut VD Soft. Olivier 2026-07-27.
-  const { data: rows } = await sb.from('touring_comex_dossiers')
+  const { data: allRows } = await sb.from('touring_comex_dossiers')
     .select('*').eq('in_comex', true).order('file_date', { ascending: true })
+  // On masque les dossiers dont la mission VD Soft est déjà terminée/facturée :
+  // plus rien à faire (ni accepter, ni auto-facturer) → ils n'ont plus leur place
+  // dans la liste « à valider ». On garde les to_invoice et les non-rapprochés
+  // (mission_status null). Olivier 2026-08-04.
+  const DONE = ['completed', 'invoiced']
+  const rows = (allRows || []).filter(r => !DONE.includes(r.mission_status))
   const { data: lastSync } = await sb.from('app_settings').select('value').eq('key', 'comex_bko_last_sync').maybeSingle()
   const ls = typeof lastSync?.value === 'string' ? JSON.parse(lastSync.value) : lastSync?.value
-  const counts = { total: (rows || []).length, ok: 0, verify: 0, noMatch: 0 }
-  for (const r of (rows || [])) {
+  const counts = { total: rows.length, ok: 0, verify: 0, noMatch: 0 }
+  for (const r of rows) {
     if (r.verdict === 'ok') counts.ok++
     else if (r.verdict === 'verify') counts.verify++
     else counts.noMatch++
