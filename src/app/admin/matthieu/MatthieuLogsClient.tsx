@@ -41,7 +41,8 @@ export default function MatthieuLogsClient() {
             <button key={c.conversation_id} onClick={() => openConv(c)} className="bg-surface border rounded-2xl p-3.5 text-left hover:border-indigo-500/40 flex items-center gap-3">
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-2 flex-wrap">
-                  <span className="font-semibold text-ink text-sm">{c.user_name || '—'}</span>
+                  <span className="font-semibold text-ink text-sm">{c.user_real || c.user_name || '—'}</span>
+                  {c.user_email && <span className="text-[11px] text-ink-muted">{c.user_email}</span>}
                   {c.brand && <span className="text-xs px-2 py-0.5 rounded-full bg-indigo-500/10 text-indigo-600 dark:text-indigo-300 border border-indigo-500/20">🔧 {c.brand} {c.model || ''}</span>}
                   {c.mission_number && <span className="text-[11px] text-ink-muted">#{c.mission_number}{c.plate ? ` · ${c.plate}` : ''}</span>}
                   {c.archived ? <span className="text-[11px] px-2 py-0.5 rounded-full bg-ink-muted/10 text-ink-muted">archivée</span>
@@ -65,8 +66,8 @@ export default function MatthieuLogsClient() {
             <div className="flex items-center gap-2 px-4 py-3 border-b">
               <Wrench size={16} className="text-indigo-500" />
               <div className="flex-1 min-w-0">
-                <p className="font-semibold text-ink text-sm">{open.user_name} · {open.brand} {open.model}</p>
-                <p className="text-ink-muted text-[11px]">{open.mission_number ? `Mission #${open.mission_number}` : 'Bureau'} · {open.count} messages</p>
+                <p className="font-semibold text-ink text-sm">{open.user_real || open.user_name} · {open.brand} {open.model}</p>
+                <p className="text-ink-muted text-[11px]">{open.user_email ? `${open.user_email} · ` : ''}{open.mission_number ? `Mission #${open.mission_number}` : 'Bureau'} · {open.count} messages</p>
               </div>
               <button onClick={() => setOpen(null)} className="p-1.5 text-ink-muted hover:text-ink">✕</button>
             </div>
