@@ -26,6 +26,7 @@ import {
 } from '@/lib/native/liveActivity'
 import { interpretVr } from '@/lib/touring/vr'
 import { canUseMatthieu } from '@/lib/mecano/access'
+import { cleanVin, isPlausibleVin } from '@/lib/mecano/vin'
 
 const sb = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!)
 
@@ -833,12 +834,9 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
   const [matMsgs, setMatMsgs]   = useState<{ role: 'user' | 'assistant'; content: string; attachments?: { title: string; url: string; section?: string }[] }[]>([])
   const [matInput, setMatInput] = useState('')
   const [matYear, setMatYear]   = useState('')
-  // VIN prérempli depuis la fiche mission si l'assistance l'a fourni (et s'il a
-  // l'air réel : pas un VIN factice type "XXXXXXX") → pris en compte directement.
-  const [matVin, setMatVin]     = useState(() => {
-    const v = (init.vehicle_vin || '').toUpperCase().trim()
-    return (v.length >= 11 && !/^(.)\1+$/.test(v)) ? v : ''
-  })
+  // VIN prérempli depuis la fiche mission si l'assistance l'a fourni ET qu'il est
+  // structurellement réel (17 car., pas un VIN factice) → pris en compte direct.
+  const [matVin, setMatVin]     = useState(() => isPlausibleVin(init.vehicle_vin) ? cleanVin(init.vehicle_vin) : '')
   const [matBusy, setMatBusy]   = useState(false)
   const [matImg, setMatImg]     = useState<{ data: string; media_type: string } | null>(null)
   const matFileRef = useRef<HTMLInputElement>(null)
@@ -3123,10 +3121,12 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
             <div className="grid grid-cols-2 gap-2">
               <input value={matYear} onChange={e => setMatYear(e.target.value)} placeholder={MAT.yearPh} disabled={matBusy}
                 className="bg-surface-2 border rounded-lg px-3 py-1.5 text-sm text-ink outline-none focus:border-brand" />
-              <input value={matVin} onChange={e => setMatVin(e.target.value.toUpperCase())} placeholder={MAT.vinPh} disabled={matBusy}
-                className="bg-surface-2 border rounded-lg px-3 py-1.5 text-sm text-ink font-mono outline-none focus:border-brand" />
+              <input value={matVin} onChange={e => setMatVin(cleanVin(e.target.value))} placeholder={MAT.vinPh} disabled={matBusy}
+                className={`bg-surface-2 border rounded-lg px-3 py-1.5 text-sm text-ink font-mono outline-none focus:border-brand ${matVin && !isPlausibleVin(matVin) ? 'border-amber-500/60' : matVin ? 'border-emerald-500/60' : ''}`} />
             </div>
-            <p className="text-ink-faint text-[10px] mt-1">{MAT.vinHint}</p>
+            <p className="text-ink-faint text-[10px] mt-1">
+              {matVin && !isPlausibleVin(matVin) ? '⚠ VIN incomplet (17 caractères attendus) — laissé de côté si non valide.' : MAT.vinHint}
+            </p>
           </div>
           <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3 bg-surface-2">
             {matMsgs.length === 0 && (

@@ -14,6 +14,7 @@ import { authOptions }       from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase'
 import { normVehicle }       from '@/lib/mecano/ingest'
 import { canUseMatthieu }    from '@/lib/mecano/access'
+import { cleanVin, isPlausibleVin, decodeVinYear } from '@/lib/mecano/vin'
 import Anthropic             from '@anthropic-ai/sdk'
 import { ANTHROPIC_MODEL }   from '@/lib/anthropic-model'
 
@@ -91,11 +92,14 @@ export async function POST(req: Request) {
   let brand = String(body.brand || '').trim()
   let model = String(body.model || '').trim()
   let year  = String(body.year || '').trim()
-  let vin   = String(body.vin || '').trim().toUpperCase()
+  let vin   = cleanVin(body.vin)
   if (body.mission_id) {
     const { data: m } = await sb.from('incoming_missions').select('vehicle_brand, vehicle_model, vehicle_vin').eq('id', String(body.mission_id)).maybeSingle()
-    if (m) { brand = brand || m.vehicle_brand || ''; model = model || m.vehicle_model || ''; vin = vin || (m.vehicle_vin || '').toUpperCase() }
+    if (m) { brand = brand || m.vehicle_brand || ''; model = model || m.vehicle_model || ''; if (!vin) vin = cleanVin(m.vehicle_vin) }
   }
+  // On n'exploite un VIN que s'il est structurellement réel (pas un « XXXX » factice).
+  if (!isPlausibleVin(vin)) vin = ''
+  const vinYear = vin ? decodeVinYear(vin) : null
 
   // Fiches + générations disponibles pour la marque
   let chosen: any[] = []
@@ -139,7 +143,7 @@ export async function POST(req: Request) {
   if (!apiKey) return NextResponse.json({ error: 'IA indisponible (clé manquante)' }, { status: 503 })
   const client = new Anthropic({ apiKey })
 
-  const ctx = `Chauffeur (prénom/surnom à utiliser) : ${firstName || 'inconnu'}\nLangue du chauffeur : ${langName} — RÉPONDS DANS CETTE LANGUE.\n\nContexte véhicule (à CONFIRMER avant toute procédure — le modèle est souvent vague) :\n- Marque : ${brand || 'INCONNUE'}\n- Modèle annoncé sur la fiche : ${model || 'non précisé'}\n- Année : ${year || 'non communiquée — demande-la si utile'}\n- VIN : ${vin || 'non communiqué — demande-le si la génération est incertaine'}${vin ? ' (10e caractère = année-modèle : sers-t\'en pour verrouiller la génération)' : ''}\n${generations.length ? `- Générations que tu connais pour ${brand} : ${generations.join(' · ')}` : brand ? `- (pas encore de fiches importées pour ${brand})` : ''}\n\nChaque fiche jointe porte SA génération dans son titre : n'utilise que celle qui colle au véhicule confirmé.`
+  const ctx = `Chauffeur (prénom/surnom à utiliser) : ${firstName || 'inconnu'}\nLangue du chauffeur : ${langName} — RÉPONDS DANS CETTE LANGUE.\n\nContexte véhicule (à CONFIRMER avant toute procédure — le modèle est souvent vague) :\n- Marque : ${brand || 'INCONNUE'}\n- Modèle annoncé sur la fiche : ${model || 'non précisé'}\n- Année : ${year || (vinYear ? `${vinYear} (déduite du VIN)` : 'non communiquée')}\n- VIN : ${vin || 'non communiqué'}${vin ? ` — VIN réel validé${vinYear ? `, année-modèle ${vinYear}` : ''} : sers-t'en pour verrouiller la génération, ne le redemande pas` : ''}\n${generations.length ? `- Générations que tu connais pour ${brand} : ${generations.join(' · ')}` : brand ? `- (pas encore de fiches importées pour ${brand})` : ''}\n\nChaque fiche jointe porte SA génération dans son titre : n'utilise que celle qui colle au véhicule confirmé.`
 
   const lastUserIdx = (() => { for (let i = history.length - 1; i >= 0; i--) if (history[i].role === 'user') return i; return -1 })()
   const msgs: any[] = history.map((h, i) => {
