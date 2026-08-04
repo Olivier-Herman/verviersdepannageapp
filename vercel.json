@@ -25,6 +25,8 @@
     { "path": "/api/cron/vab-poll",                  "schedule": "*/5 * * * *"  },
     { "path": "/api/cron/touring-comex-poll",        "schedule": "*/2 * * * *"  },
     { "path": "/api/cron/poll-comex-bko",            "schedule": "*/3 * * * *"  },
+    { "path": "/api/cron/touring-accord-reconcile",  "schedule": "0 8 * * 3"    },
+    { "path": "/api/cron/touring-check-reminder",    "schedule": "0 13 5 * *"   },
     { "path": "/api/cron/auto-archive",              "schedule": "0 3 * * *"    },
     { "path": "/api/cron/sync-mission-pdf",          "schedule": "30 3 * * *"   },
     { "path": "/api/cron/auto-dispatch-tick",        "schedule": "* * * * *"    },

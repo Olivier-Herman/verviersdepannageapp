@@ -52,6 +52,7 @@ interface MissionRow {
   billed_to_name?:  string | null
   domaine_vente_date?: string | null
   domaine_vente_firm?: string | null
+  touring_check_stamp?: string | null
 }
 
 interface SiblingRow {
@@ -631,6 +632,13 @@ export default function FacturationClient({
                 title="Rapprochement auto-facturation Touring COMEX BKO">
                 🅣 Touring COMEX
               </Link>
+              {isSuperadmin && (
+                <Link href="/touring-check"
+                  className="flex items-center gap-2 px-4 py-2 bg-surface-2 hover:bg-surface-hover border rounded-xl text-ink-secondary hover:text-ink text-sm font-semibold transition"
+                  title="Dossiers Touring hors comex à faire trancher par Touring">
+                  🅣 Check Touring
+                </Link>
+              )}
             </div>
           )}
         </div>
@@ -943,6 +951,12 @@ export default function FacturationClient({
                           <span className="px-3 py-1 bg-purple-600 text-white text-sm rounded-lg font-black uppercase tracking-widest border border-purple-300 shadow-lg shadow-purple-600/30 -rotate-2"
                             title={`Vendu au Domaine${m.domaine_vente_firm ? ` · firme ${m.domaine_vente_firm}` : ''}`}>
                             🏛 Domaine
+                          </span>
+                        )}
+                        {m.touring_check_stamp && (
+                          <span className="px-2.5 py-1 bg-amber-500/15 text-amber-800 dark:text-amber-300 text-xs rounded-lg font-bold border border-amber-500/40"
+                            title="Décision Touring (Check Touring)">
+                            🅣 {m.touring_check_stamp}
                           </span>
                         )}
                       </div>

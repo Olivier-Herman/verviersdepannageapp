@@ -166,6 +166,76 @@ export async function dumpDossColumns(dossier: string): Promise<Array<{ account:
   return out
 }
 
+// ────────────────────────────────────────────────────────────────────────────
+// ACCORDS (onglet « Invoices » du BKO) — LECTURE SEULE.
+// Permet de retrouver, pour chaque n° d'accord Touring, la liste des dossiers
+// (missions) qu'il couvre → rapprochement automatique « déjà facturé ».
+// Endpoints reverse-engineered : secured/invoices/getAccList.do (liste des
+// accords) + getDossListWithNumAccord.do?numAccord=X (dossiers d'un accord).
+// ────────────────────────────────────────────────────────────────────────────
+
+export interface BkoAccord {
+  numAccord:    string   // ex 2024AC002456
+  creationDate: string   // dd/mm/yyyy hh:mm:ss
+  sumTVAC:      number
+  prestataire:  string
+}
+
+/** Liste des accords (facturés) côté BKO — onglet Invoices. Lecture seule. */
+export async function listBkoAccords(cookie: string, noLimit = false): Promise<BkoAccord[]> {
+  const body = new URLSearchParams({ flagNoLimit: noLimit ? 'true' : '' }).toString()
+  const r = await fetch(`${BASE}/secured/invoices/getAccList.do?`, {
+    method: 'POST', headers: hdr(cookie, true), body, signal: AbortSignal.timeout(25000),
+  })
+  if (!r.ok) throw new Error(`getAccList HTTP ${r.status}`)
+  const text = new TextDecoder('iso-8859-15').decode(Buffer.from(await r.arrayBuffer()))
+  const out: BkoAccord[] = []
+  for (const line of text.split('\n')) {
+    if (!line.includes(';')) continue
+    const c = line.split(';')
+    const numAccord = (c[0] || '').trim()
+    if (!/^\d{4}AC\d+/.test(numAccord)) continue
+    out.push({
+      numAccord,
+      creationDate: (c[1] || '').trim(),
+      sumTVAC:      num(c[5]),
+      prestataire:  (c[10] || '').trim(),
+    })
+  }
+  return out
+}
+
+export interface BkoAccordDossier {
+  cidDos:         string   // n° dossier = clé de rapprochement (col 15)
+  prestationType: string   // DEP / REM / REM+TGR … (col 3)
+  commande:       string   // (col 4)
+  plaque:         string   // (col 19)
+}
+
+/** Dossiers (missions) couverts par un accord donné. Lecture seule. */
+export async function listBkoDossiersForAccord(cookie: string, numAccord: string): Promise<BkoAccordDossier[]> {
+  const body = new URLSearchParams({ numAccord }).toString()
+  const r = await fetch(`${BASE}/secured/invoices/getDossListWithNumAccord.do?`, {
+    method: 'POST', headers: hdr(cookie, true), body, signal: AbortSignal.timeout(25000),
+  })
+  if (!r.ok) throw new Error(`getDossListWithNumAccord HTTP ${r.status}`)
+  const text = new TextDecoder('iso-8859-15').decode(Buffer.from(await r.arrayBuffer()))
+  const out: BkoAccordDossier[] = []
+  for (const line of text.split('\n')) {
+    if (!line.includes(';')) continue
+    const c = line.split(';')
+    const cidDos = (c[15] || '').trim()
+    if (!cidDos) continue
+    out.push({
+      cidDos,
+      prestationType: (c[3]  || '').trim(),
+      commande:       (c[4]  || '').trim(),
+      plaque:         (c[19] || '').trim(),
+    })
+  }
+  return out
+}
+
 /**
  * Interroge TOUS les comptes BKO configurés, SÉQUENTIELLEMENT (un compte après
  * l'autre — jamais deux sessions concurrentes). Retourne les dossiers taggés par
