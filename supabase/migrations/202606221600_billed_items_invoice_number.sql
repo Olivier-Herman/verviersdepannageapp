@@ -5,3 +5,4 @@ ALTER TABLE mission_billed_items
   ADD COLUMN IF NOT EXISTS invoice_number text;
 
 NOTIFY pgrst, 'reload schema';
+

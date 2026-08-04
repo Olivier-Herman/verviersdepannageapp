@@ -25,3 +25,4 @@ insert into public.customer_display (key, label) values ('facturation', 'Bureau 
   on conflict (key) do nothing;
 
 notify pgrst, 'reload schema';
+
