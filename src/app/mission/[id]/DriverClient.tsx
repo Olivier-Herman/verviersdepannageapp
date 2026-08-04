@@ -833,7 +833,12 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
   const [matMsgs, setMatMsgs]   = useState<{ role: 'user' | 'assistant'; content: string; attachments?: { title: string; url: string; section?: string }[] }[]>([])
   const [matInput, setMatInput] = useState('')
   const [matYear, setMatYear]   = useState('')
-  const [matVin, setMatVin]     = useState('')
+  // VIN prérempli depuis la fiche mission si l'assistance l'a fourni (et s'il a
+  // l'air réel : pas un VIN factice type "XXXXXXX") → pris en compte directement.
+  const [matVin, setMatVin]     = useState(() => {
+    const v = (init.vehicle_vin || '').toUpperCase().trim()
+    return (v.length >= 11 && !/^(.)\1+$/.test(v)) ? v : ''
+  })
   const [matBusy, setMatBusy]   = useState(false)
   const [matImg, setMatImg]     = useState<{ data: string; media_type: string } | null>(null)
   const matFileRef = useRef<HTMLInputElement>(null)
