@@ -618,11 +618,13 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
     hello: 'Tung, jam Matthieu 👋 Bëj pyetjen tënde për këtë automjet.',
     q: ['Si ta hap këtë automjet të kyçur?', 'Defektet e shpeshta te ky model?', 'Pikat e lidhjes / mënyra e rimorkimit?', 'Ndërprerja e tensionit të lartë (elektrik/hibrid)?'],
     ph: 'Pyetja jote…', thinking: 'Matthieu po mendon…', photoReady: 'Fotoja gati — bëj pyetjen ose dërgo.', open: 'hap',
+    yearPh: 'Viti (opsional)', vinPh: 'VIN / shasia (opsional)', vinHint: 'Viti dhe VIN ndihmojnë Matthieun të gjejë gjeneratën e saktë.',
   } : {
     tileTitle: 'Une question sur ce véhicule ? Demande au mécano.',
     hello: 'Salut, c\'est Matthieu 👋 Pose ta question sur ce véhicule.',
     q: ['Comment ouvrir ce véhicule verrouillé ?', 'Pannes fréquentes sur ce modèle ?', 'Points d\'ancrage / mode remorquage ?', 'Coupure haute tension (électrique/hybride) ?'],
     ph: 'Ta question…', thinking: 'Matthieu réfléchit…', photoReady: 'Photo prête — pose ta question ou envoie.', open: 'ouvrir',
+    yearPh: 'Année (option.)', vinPh: 'VIN / châssis (option.)', vinHint: 'Année et VIN aident Matthieu à viser la bonne génération.',
   }
 
   const [M, setM]               = useState<Mission>(init)
@@ -830,6 +832,8 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
   const [matOpen, setMatOpen]   = useState(false)
   const [matMsgs, setMatMsgs]   = useState<{ role: 'user' | 'assistant'; content: string; attachments?: { title: string; url: string; section?: string }[] }[]>([])
   const [matInput, setMatInput] = useState('')
+  const [matYear, setMatYear]   = useState('')
+  const [matVin, setMatVin]     = useState('')
   const [matBusy, setMatBusy]   = useState(false)
   const [matImg, setMatImg]     = useState<{ data: string; media_type: string } | null>(null)
   const matFileRef = useRef<HTMLInputElement>(null)
@@ -860,7 +864,7 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
     try {
       const r = await fetch('/api/mecano/chat', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ mission_id: M.id, messages: next.map(m => ({ role: m.role, content: m.content })), images: imgs }),
+        body: JSON.stringify({ mission_id: M.id, year: matYear.trim(), vin: matVin.trim(), messages: next.map(m => ({ role: m.role, content: m.content })), images: imgs }),
       })
       const j = await r.json()
       setMatMsgs(m => [...m, { role: 'assistant', content: j.answer || j.error || 'Pas de réponse.', attachments: j.attachments }])
@@ -3109,6 +3113,15 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
               <p className="text-ink-muted text-[11px] truncate">{[M.vehicle_brand, M.vehicle_model].filter(Boolean).join(' ') || 'véhicule'}</p>
             </div>
             <button onClick={() => setMatOpen(false)} className="p-2 text-ink-muted hover:text-ink text-xl">✕</button>
+          </div>
+          <div className="bg-surface border-b border px-3 py-2">
+            <div className="grid grid-cols-2 gap-2">
+              <input value={matYear} onChange={e => setMatYear(e.target.value)} placeholder={MAT.yearPh} disabled={matBusy}
+                className="bg-surface-2 border rounded-lg px-3 py-1.5 text-sm text-ink outline-none focus:border-brand" />
+              <input value={matVin} onChange={e => setMatVin(e.target.value.toUpperCase())} placeholder={MAT.vinPh} disabled={matBusy}
+                className="bg-surface-2 border rounded-lg px-3 py-1.5 text-sm text-ink font-mono outline-none focus:border-brand" />
+            </div>
+            <p className="text-ink-faint text-[10px] mt-1">{MAT.vinHint}</p>
           </div>
           <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3 bg-surface-2">
             {matMsgs.length === 0 && (

@@ -35,8 +35,15 @@ SOURCE : ta connaissance vient de TOI, « La tête à Matthieu ». Ne cite JAMAI
 
 RÈGLE ABSOLUE — CADRER AVANT DE RÉPONDRE :
 Ne donne JAMAIS une procédure précise (ouverture, coupure haute tension, point d'ancrage, mode remorquage, gestion moteur) sans être CERTAIN du véhicule EXACT : marque, modèle, **génération/année**, et **motorisation** (essence/diesel/hybride/électrique). Une même appellation couvre plusieurs générations très différentes — se tromper de génération peut être dangereux.
-- Si la génération ou la motorisation n'est pas certaine, POSE la question d'abord (propose les générations disponibles listées dans le contexte).
-- Si le chauffeur ne sait pas : demande-lui **une photo** (du véhicule, du compartiment moteur, de la plaque motorisation, du tableau de bord) que tu analyseras, ou **le VIN** (n° de châssis, 17 caractères — le 10e caractère code l'année). Tu peux déduire beaucoup d'une photo ou d'un VIN.
+- Le modèle annoncé sur la fiche est souvent VAGUE ou approximatif (ex. « Polo », « A4 » sans année). Ne le prends jamais pour argent comptant.
+- Sers-toi en PRIORITÉ de l'**année** et du **VIN** s'ils sont dans le contexte : le VIN (17 caractères) code le constructeur (3 premiers), et le **10e caractère = l'année-modèle** (ex. R=2024, S=2025, T=2026 ; L=2020, M=2021, N=2022, P=2023). Utilise-les pour verrouiller la bonne génération AVANT de répondre.
+- Si la génération/motorisation reste incertaine, POSE UNE question précise (propose les générations disponibles listées dans le contexte) — ne devine pas.
+- Si le chauffeur ne sait pas : demande **une photo** (véhicule, compartiment moteur, étiquette constructeur, tableau de bord) ou le **VIN**.
+
+UTILISER TES FICHES CORRECTEMENT (crucial) :
+- Les fiches jointes peuvent couvrir PLUSIEURS générations de la même marque — chaque fiche porte SA génération dans son titre. Utilise UNIQUEMENT la fiche qui correspond au véhicule confirmé. Ne mélange jamais deux générations.
+- Si AUCUNE fiche jointe ne correspond au véhicule exact (mauvaise génération, modèle absent), DIS-LE clairement (« j'ai pas la fiche pile pour cette génération ») et soit tu demandes une info pour cibler, soit tu donnes ton conseil d'expérience EN LE SIGNALANT — mais tu n'appliques pas une procédure d'une autre génération comme si c'était la bonne.
+- Vise la VRAIE solution au symptôme décrit : ne balance pas une réponse générique plausible. Si le chauffeur décrit une panne, relie-la à la fiche pertinente (fusible, procédure, point précis) plutôt qu'à des généralités.
 - Une fois le véhicule confirmé, réponds sur base de tes fiches fournies.
 
 MONTRER UNE FICHE :
@@ -82,9 +89,11 @@ export async function POST(req: Request) {
   const body = await req.json().catch(() => ({}))
   let brand = String(body.brand || '').trim()
   let model = String(body.model || '').trim()
+  let year  = String(body.year || '').trim()
+  let vin   = String(body.vin || '').trim().toUpperCase()
   if (body.mission_id) {
-    const { data: m } = await sb.from('incoming_missions').select('vehicle_brand, vehicle_model').eq('id', String(body.mission_id)).maybeSingle()
-    if (m) { brand = brand || m.vehicle_brand || ''; model = model || m.vehicle_model || '' }
+    const { data: m } = await sb.from('incoming_missions').select('vehicle_brand, vehicle_model, vehicle_vin').eq('id', String(body.mission_id)).maybeSingle()
+    if (m) { brand = brand || m.vehicle_brand || ''; model = model || m.vehicle_model || ''; vin = vin || (m.vehicle_vin || '').toUpperCase() }
   }
 
   // Fiches + générations disponibles pour la marque
@@ -129,7 +138,7 @@ export async function POST(req: Request) {
   if (!apiKey) return NextResponse.json({ error: 'IA indisponible (clé manquante)' }, { status: 503 })
   const client = new Anthropic({ apiKey })
 
-  const ctx = `Chauffeur (prénom/surnom à utiliser) : ${firstName || 'inconnu'}\nLangue du chauffeur : ${langName} — RÉPONDS DANS CETTE LANGUE.\n\nContexte véhicule (à CONFIRMER avant toute procédure) :\n- Marque : ${brand || 'INCONNUE'}\n- Modèle annoncé sur la fiche : ${model || 'non précisé'}\n${generations.length ? `- Générations que tu connais pour ${brand} : ${generations.join(' · ')}` : brand ? `- (pas encore de fiches importées pour ${brand})` : ''}`
+  const ctx = `Chauffeur (prénom/surnom à utiliser) : ${firstName || 'inconnu'}\nLangue du chauffeur : ${langName} — RÉPONDS DANS CETTE LANGUE.\n\nContexte véhicule (à CONFIRMER avant toute procédure — le modèle est souvent vague) :\n- Marque : ${brand || 'INCONNUE'}\n- Modèle annoncé sur la fiche : ${model || 'non précisé'}\n- Année : ${year || 'non communiquée — demande-la si utile'}\n- VIN : ${vin || 'non communiqué — demande-le si la génération est incertaine'}${vin ? ' (10e caractère = année-modèle : sers-t\'en pour verrouiller la génération)' : ''}\n${generations.length ? `- Générations que tu connais pour ${brand} : ${generations.join(' · ')}` : brand ? `- (pas encore de fiches importées pour ${brand})` : ''}\n\nChaque fiche jointe porte SA génération dans son titre : n'utilise que celle qui colle au véhicule confirmé.`
 
   const lastUserIdx = (() => { for (let i = history.length - 1; i >= 0; i--) if (history[i].role === 'user') return i; return -1 })()
   const msgs: any[] = history.map((h, i) => {

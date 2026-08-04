@@ -8,6 +8,8 @@ import AppShell from '@/components/layout/AppShell'
 export default function MatthieuClient({ userRole, userName, userModules }: { userRole: string; userName: string; userModules: string[] }) {
   const [brand, setBrand]   = useState('')
   const [model, setModel]   = useState('')
+  const [year, setYear]     = useState('')
+  const [vin, setVin]       = useState('')
   const [locked, setLocked] = useState(false)
   const [msgs, setMsgs]     = useState<{ role: 'user' | 'assistant'; content: string; attachments?: { title: string; url: string; section?: string }[] }[]>([])
   const [input, setInput]   = useState('')
@@ -28,7 +30,7 @@ export default function MatthieuClient({ userRole, userName, userModules }: { us
     try {
       const r = await fetch('/api/mecano/chat', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ brand: brand.trim(), model: model.trim(), messages: next.map(m => ({ role: m.role, content: m.content })), images: imgs }),
+        body: JSON.stringify({ brand: brand.trim(), model: model.trim(), year: year.trim(), vin: vin.trim(), messages: next.map(m => ({ role: m.role, content: m.content })), images: imgs }),
       })
       const j = await r.json()
       setMsgs(m => [...m, { role: 'assistant', content: j.answer || j.error || 'Pas de réponse.', attachments: j.attachments }])
@@ -43,7 +45,7 @@ export default function MatthieuClient({ userRole, userName, userModules }: { us
           <div className="w-11 h-11 rounded-2xl bg-indigo-500/15 text-indigo-500 flex items-center justify-center text-2xl">🔧</div>
           <div>
             <h1 className="text-xl font-bold text-ink leading-tight">La tête à Matthieu</h1>
-            <p className="text-ink-muted text-xs">Le mécano de poche — base technique Touring (dépannage + remorquage)</p>
+            <p className="text-ink-muted text-xs">Le mécano de poche — base technique complète (dépannage + remorquage)</p>
           </div>
         </div>
 
@@ -51,9 +53,14 @@ export default function MatthieuClient({ userRole, userName, userModules }: { us
         <div className="bg-surface border rounded-2xl p-3 mb-3 grid grid-cols-2 gap-2">
           <input value={brand} onChange={e => setBrand(e.target.value)} placeholder="Marque (ex. Audi)"
             className="bg-surface-2 border rounded-lg px-3 py-2 text-sm text-ink outline-none focus:border-brand" />
-          <input value={model} onChange={e => setModel(e.target.value)} placeholder="Modèle (ex. A3 2020)"
+          <input value={model} onChange={e => setModel(e.target.value)} placeholder="Modèle (ex. A3)"
             className="bg-surface-2 border rounded-lg px-3 py-2 text-sm text-ink outline-none focus:border-brand" />
+          <input value={year} onChange={e => setYear(e.target.value)} placeholder="Année (option.)"
+            className="bg-surface-2 border rounded-lg px-3 py-2 text-sm text-ink outline-none focus:border-brand" />
+          <input value={vin} onChange={e => setVin(e.target.value.toUpperCase())} placeholder="VIN / châssis (option.)"
+            className="bg-surface-2 border rounded-lg px-3 py-2 text-sm text-ink font-mono outline-none focus:border-brand" />
         </div>
+        <p className="text-ink-faint text-[11px] -mt-2 mb-3 px-1">Année et VIN facultatifs — mais ils aident Matthieu à viser la bonne génération.</p>
 
         {/* Chat */}
         <div className="flex-1 bg-surface-2 border rounded-2xl p-3 overflow-y-auto space-y-3 min-h-[240px]">
