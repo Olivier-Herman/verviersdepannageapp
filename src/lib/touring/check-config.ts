@@ -11,6 +11,7 @@ const EMAIL_KEY = 'touring_check_email'
 // Destinataires du rappel mensuel (par défaut ; surchargeable via app_settings).
 export const CHECK_EMAIL_DEFAULT = 'BKO.Comex@touring.be'
 export const CHECK_EMAIL_CC = ['Andre.ANGELIQUE@touring.be']
+export const CHECK_EMAIL_BCC = ['mobi@verviersdepannage.be']
 
 export const APP_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://app.verviersdepannage.com'
 

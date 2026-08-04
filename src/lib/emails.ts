@@ -42,9 +42,11 @@ export async function sendEmail(
   cc?: string | string[],
   attachments?: EmailAttachment[],
   from?: string,            // boite expeditrice (defaut FROM_EMAIL) — doit etre une boite M365 du tenant
+  bcc?: string | string[],  // copie invisible (CCI)
 ) {
   const token = await getAppToken()
   const ccList = Array.isArray(cc) ? cc : cc ? [cc] : []
+  const bccList = Array.isArray(bcc) ? bcc : bcc ? [bcc] : []
   const message: any = {
     subject,
     body: { contentType: 'HTML', content: html },
@@ -52,6 +54,9 @@ export async function sendEmail(
   }
   if (ccList.length > 0) {
     message.ccRecipients = ccList.map(addr => ({ emailAddress: { address: addr } }))
+  }
+  if (bccList.length > 0) {
+    message.bccRecipients = bccList.map(addr => ({ emailAddress: { address: addr } }))
   }
   if (attachments && attachments.length > 0) {
     message.attachments = attachments.map(a => ({
