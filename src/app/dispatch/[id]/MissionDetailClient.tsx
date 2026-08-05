@@ -1385,7 +1385,19 @@ export default function MissionDetailClient({
       method:  'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body:    JSON.stringify(fields),
-    }).catch(() => {})
+    })
+      .then(r => r.ok ? r.json() : null)
+      .then(j => {
+        // Le serveur recalcule amount_to_collect (SNC) quand adresse/scénario/coords
+        // changent → on réapplique le montant au form pour l'afficher sans reload.
+        const amt = j?.mission?.amount_to_collect
+        if (amt !== undefined) {
+          setForm(prev => (String(prev.amount_to_collect ?? '') === String(amt ?? '')
+            ? prev
+            : { ...prev, amount_to_collect: amt == null ? '' : String(amt) }))
+        }
+      })
+      .catch(() => {})
     // Si une donnée KM-relevant change → trigger refresh
     if (Object.keys(fields).some(k => /lat|lng|depot_depart_id|extra_addresses|destination_address|incident_address/.test(k))) {
       setKmRefresh(k => k + 1)

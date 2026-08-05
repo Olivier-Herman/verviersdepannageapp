@@ -155,7 +155,7 @@ export async function POST(req: Request) {
 
   const { data: mission, error: fetchError } = await supabase
     .from('incoming_missions')
-    .select('id, status, assigned_to, external_id, vehicle_plate, vehicle_vin, vehicle_brand, vehicle_model, amount_to_collect, source, extra_addresses, driver_photos, odoo_task_id, odoo_vehicle_id, mission_type, photo_categories_covered, kaze_job_id, dossier_number, client_signature, snc_scenario, destination_address, redelivery_address, truck_id, intervention_date, received_at, completed_at, invoice_number, invoice_odoo_id, odoo_quote_id')
+    .select('id, status, assigned_to, external_id, vehicle_plate, vehicle_vin, vehicle_brand, vehicle_model, amount_to_collect, source, extra_addresses, driver_photos, odoo_task_id, odoo_vehicle_id, mission_type, photo_categories_covered, kaze_job_id, dossier_number, client_signature, snc_scenario, snc_requires_balisage, incident_lat, incident_lng, destination_address, destination_lat, destination_lng, billed_to_id, billed_to_name, redelivery_address, truck_id, intervention_date, received_at, completed_at, invoice_number, invoice_odoo_id, odoo_quote_id')
     .eq('id', mission_id).single()
 
   if (fetchError || !mission) return NextResponse.json({ error: 'Mission introuvable' }, { status: 404 })
@@ -254,6 +254,33 @@ export async function POST(req: Request) {
   // ── Mettre à jour les stops ──────────────────────────────────────────────
   if (action === 'update_stops' && body.stops) {
     updatePayload.extra_addresses = body.stops
+  }
+
+  // ── Recalcul auto du montant à encaisser (SNC non couvert) quand le chauffeur
+  // change une adresse ou les stops → il voit le bon montant SANS sortir/rentrer.
+  if ((action === 'update_address' || action === 'update_stops') && (mission as any).source === 'police_snc') {
+    try {
+      const { computeSncAmountToCollect } = await import('@/lib/snc/amount')
+      const pick = (k: string) => (k in updatePayload ? (updatePayload as any)[k] : (mission as any)[k])
+      const sc = String((mission as any).snc_scenario || '')
+      const scenario = ['dsp', 'rem_client', 'rem_direct'].includes(sc)
+        ? sc
+        : (['depannage', 'dsp', 'reparation_place'].includes(String((mission as any).mission_type || '').toLowerCase()) ? 'dsp' : 'rem_direct')
+      const amt = await computeSncAmountToCollect({
+        source:                'police_snc',
+        incident_lat:          pick('incident_lat'),
+        incident_lng:          pick('incident_lng'),
+        destination_lat:       pick('destination_lat'),
+        destination_lng:       pick('destination_lng'),
+        snc_requires_balisage: (mission as any).snc_requires_balisage,
+        intervention_date:     (mission as any).intervention_date,
+        received_at:           (mission as any).received_at,
+        extra_addresses:       pick('extra_addresses'),
+        billed_to_id:          (mission as any).billed_to_id,
+        billed_to_name:        (mission as any).billed_to_name,
+      }, scenario as any)
+      if (amt != null && amt > 0) updatePayload.amount_to_collect = amt
+    } catch { /* best-effort : ne bloque pas la mise à jour d'adresse */ }
   }
 
   // ── Definir/modifier le montant a encaisser (geste 5-taps cache sur dossier)
