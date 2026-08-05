@@ -47,7 +47,10 @@ export async function getDrivingRoute(a: Coord, b: Coord): Promise<RouteResult> 
       method:  'POST',
       headers: { Authorization: ORS_KEY, 'Content-Type': 'application/json' },
       body:    JSON.stringify({ coordinates: [[a.lng, a.lat], [b.lng, b.lat]] }),
-      signal:  AbortSignal.timeout(8000),
+      // Timeout court : si ORS ne répond pas vite (quota/dégradé), on retombe
+      // immédiatement sur l'estimation haversine plutôt que de faire traîner la
+      // facturation (plusieurs segments × timeout = fonction Vercel qui explose).
+      signal:  AbortSignal.timeout(2500),
     })
     if (!res.ok) throw new Error(`ORS ${res.status}`)
     const j = await res.json()
