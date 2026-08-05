@@ -155,11 +155,11 @@ export async function GET(req: Request) {
   // enfant via parent_mission_id). On le compte UNE fois, et la borne « prêt à
   // facturer » = le completed_at de la DERNIÈRE fiche clôturée du dossier (max),
   // pas le completed_at précoce du parent (qui a attendu l'enfant).
-  interface Grp { completed: number; invoiced: number; police: boolean; touring: boolean; comexBko: boolean }
+  interface Grp { completed: number; invoiced: number; police: boolean; touring: boolean; comexBko: boolean; imported: boolean }
   const groups = new Map<string, Grp>()
   for (let page = 0; page < 15; page++) {
     const { data: chunk } = await sb.from('incoming_missions')
-      .select('id, parent_mission_id, source, completed_at, invoiced_at, no_charge_at')
+      .select('id, parent_mission_id, source, external_id, completed_at, invoiced_at, no_charge_at')
       .eq('status', 'completed')
       .or(`invoiced_at.gte.${startPeriod},no_charge_at.gte.${startPeriod}`)
       .order('id', { ascending: true })
@@ -169,12 +169,13 @@ export async function GET(req: Request) {
       const end = m.invoiced_at || m.no_charge_at
       if (!end || !m.completed_at) continue
       const root = (m.parent_mission_id as string) || (m.id as string)   // clé dossier
-      const g = groups.get(root) || { completed: -Infinity, invoiced: -Infinity, police: false, touring: false, comexBko: false }
+      const g = groups.get(root) || { completed: -Infinity, invoiced: -Infinity, police: false, touring: false, comexBko: false, imported: false }
       g.completed = Math.max(g.completed, Date.parse(m.completed_at))     // dernière fiche clôturée
       g.invoiced  = Math.max(g.invoiced,  Date.parse(end))
       if (isPoliceSource(m.source)) g.police = true
       if (TOURING_SOURCES.includes(m.source)) g.touring = true
       if (comexBkoIds.has(m.id)) g.comexBko = true
+      if (String(m.external_id || '').startsWith('TS-')) g.imported = true  // import TowSoft (completed_at ancien → fausse la moyenne)
       groups.set(root, g)
     }
     if (chunk.length < 1000) break
@@ -183,6 +184,7 @@ export async function GET(req: Request) {
   for (const g of groups.values()) {
     if (g.police) continue                              // appels police écartés
     if (g.touring && !g.comexBko) continue              // Touring hors COMEX BKO écarté
+    if (g.imported) continue                            // imports TowSoft écartés
     const d = g.invoiced - g.completed
     if (d >= 0) durs.push(d)
   }
