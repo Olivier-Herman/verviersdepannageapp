@@ -385,6 +385,11 @@ export async function GET(req: Request) {
   const { count: aPreparer } = await sb.from('domaine_ventes_epaves')
     .select('*', { count: 'exact', head: true })
     .is('prepare_at', null).is('sortie_reelle_date', null)
+  // Préparé en attente d'enlèvement : préparation OK mais pas encore sorti (le
+  // véhicule est prêt, on attend que la firme vienne l'enlever).
+  const { count: enAttenteEnlevement } = await sb.from('domaine_ventes_epaves')
+    .select('*', { count: 'exact', head: true })
+    .not('prepare_at', 'is', null).is('sortie_reelle_date', null)
 
   const STATUS_LBL: Record<string, string> = { assigned: 'Assignée', accepted: 'Acceptée', in_progress: 'En cours', delivering: 'Livraison' }
   const enCoursDetail = (active || []).map((m: any) => ({
@@ -418,6 +423,6 @@ export async function GET(req: Request) {
     chauffeurs,
     perf,
     enCours: enCoursDetail,
-    domaine: { aTransferer: aTransferer || 0, aPreparer: aPreparer || 0 },
+    domaine: { aTransferer: aTransferer || 0, aPreparer: aPreparer || 0, enAttenteEnlevement: enAttenteEnlevement || 0 },
   })
 }

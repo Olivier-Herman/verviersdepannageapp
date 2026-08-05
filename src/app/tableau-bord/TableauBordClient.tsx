@@ -20,7 +20,7 @@ interface Kpi {
   }
   chauffeurs?: { jour: DrvRow[]; semaine: DrvRow[]; mois: DrvRow[] }
   enCours?: { id: string; missionNumber: number | null; driver: string; plate: string; vehicle: string; category: string; city: string; statusLabel: string; since: string | null }[]
-  domaine?: { aTransferer: number; aPreparer: number }
+  domaine?: { aTransferer: number; aPreparer: number; enAttenteEnlevement: number }
   perf?: { parChauffeur: PerfRow[]; global: { acceptMin: number | null; routeMin: number | null; traitMin: number | null } }
 }
 
@@ -306,6 +306,7 @@ export default function TableauBordClient({ variant = 'full' }: { variant?: 'ful
     <div className="tb-domaine" key="domaine">
       <Tile label="À transférer en Domaine" value={dm?.aTransferer} color="#a78bfa" hint="remis au Domaine, pas encore en zone I" />
       <Tile label="À préparer pour enlèvement" value={dm?.aPreparer} color="#fbbf24" hint="épaves vendues, préparation non faite" />
+      <Tile label="Préparé, en attente d'enlèvement" value={dm?.enAttenteEnlevement} color="#34d399" hint="prêt, on attend l'enlèvement par la firme" />
     </div>,
   ]
   slideCountRef.current = slides.length
@@ -522,7 +523,7 @@ const CSS = `
 .tb-ec-timer{font-weight:900;font-variant-numeric:tabular-nums;font-size:1.08em;color:#4ade80;text-align:right}
 .tb-ec-timer.sev1{color:#fbbf24}
 .tb-ec-timer.sev2{color:#f87171}
-.tb-domaine{flex:1;display:grid;grid-template-columns:1fr 1fr;gap:min(2vw,26px);padding:1vh 2.4vw 1.4vh}
+.tb-domaine{flex:1;display:grid;grid-template-columns:repeat(3,1fr);gap:min(2vw,26px);padding:1vh 2.4vw 1.4vh}
 .tb-foot{display:flex;align-items:center;gap:1.6vw;padding:.4vh 2.4vw 1.2vh}
 .tb-dotsnav{display:flex;gap:9px}
 .tb-navdot{width:11px;height:11px;border-radius:50%;background:rgba(255,255,255,.2)}
