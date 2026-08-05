@@ -51,11 +51,11 @@ function depannageLabel(source: string | null): string | null {
 export type FicheKind = 'REM' | 'DSP' | 'REL' | 'DPR' | 'AUTRE'
 
 export function ficheKind(m: any): FicheKind {
-  const mt = m.mission_type
-  const it = m.incident_type
+  const mt = String(m.mission_type || '').toLowerCase()
+  const it = String(m.incident_type || '').toLowerCase()
   if (mt === 'relivraison' || mt === 'rel' || it === 'relivraison' || m.parent_mission_id) return 'REL'
   if (it === 'dpr') return 'DPR'
-  if (mt === 'remorquage') return 'REM'
+  if (mt.startsWith('rem')) return 'REM'   // remorquage, REM+REL…
   if (['depannage', 'reparation_place', 'trajet_vide'].includes(mt)) return 'DSP'
   return 'AUTRE'
 }
@@ -232,7 +232,10 @@ export async function buildTouringCheckList(sb: any): Promise<CheckItem[]> {
         brand: m.vehicle_brand,
         model: m.vehicle_model,
         incident: addr(m.incident_address, m.incident_city),
-        destination: m.redelivery_address || m.destination_address || m.destination_name || null,
+        // destination_address = livraison réelle de la fiche (REM → notre dépôt,
+        // REL → garage final). redelivery_address = destination du leg relivraison,
+        // à ne pas afficher sur la REM. Donc destination_address en priorité.
+        destination: m.destination_address || m.redelivery_address || m.destination_name || null,
         intervention_date: m.intervention_date,
         depannage_label: depannageLabel(m.source),
         depannage_htva: null,
