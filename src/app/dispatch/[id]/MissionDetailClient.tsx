@@ -58,6 +58,7 @@ interface Mission {
   mission_type: string | null
   incident_type: string | null
   incident_description: string | null
+  tariff_locked?: boolean | null
   client_name: string | null
   client_phone: string | null
   client_address: string | null
@@ -1922,6 +1923,22 @@ export default function MissionDetailClient({
   }, [vehicleResults, odooVehicleId])
 
   const [M, setM] = useState<Mission>(initialMission)
+  // Verrou tarifaire (Touring a répondu) : déverrouillage superadmin + code.
+  const [unlockOpen, setUnlockOpen] = useState(false)
+  const [unlockPin, setUnlockPin]   = useState('')
+  const [unlockBusy, setUnlockBusy] = useState(false)
+  const doUnlock = async () => {
+    setUnlockBusy(true)
+    try {
+      const r = await fetch(`/api/missions/${M.id}/tariff-lock`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'unlock', pin: unlockPin }),
+      })
+      const j = await r.json().catch(() => ({}))
+      if (r.ok) { setM(prev => ({ ...prev, tariff_locked: false } as any)); setUnlockOpen(false); setUnlockPin('') }
+      else alert(j.error || 'Erreur')
+    } finally { setUnlockBusy(false) }
+  }
   const [saveOk, setSaveOk] = useState(false)
   const [kmRefresh, setKmRefresh] = useState(0)  // incrémenté à chaque save → force le re-calcul des KM
 
@@ -2410,6 +2427,23 @@ export default function MissionDetailClient({
       userRole={userRole}
       userModules={userModules}
     >
+      {M.tariff_locked && (
+        <div className="mb-3 bg-amber-100 dark:bg-amber-500/10 border-2 border-amber-500 rounded-xl px-4 py-2.5 text-amber-800 dark:text-amber-200 text-sm flex items-center gap-2 flex-wrap">
+          <span className="font-bold">🔒 Tarif verrouillé</span>
+          <span className="text-amber-700 dark:text-amber-300">Touring a répondu — les champs qui touchent le tarif sont figés (note, véhicule, facturation restent possibles).</span>
+          {userRole === 'superadmin' && (unlockOpen ? (
+            <span className="ml-auto flex items-center gap-2">
+              <input value={unlockPin} onChange={e => setUnlockPin(e.target.value)} type="password" inputMode="numeric"
+                placeholder="Code" className="w-24 bg-white dark:bg-surface border rounded-lg px-2 py-1 text-sm text-ink outline-none" autoFocus />
+              <button onClick={doUnlock} disabled={unlockBusy || !unlockPin}
+                className="px-3 py-1 rounded-lg bg-amber-600 text-white text-xs font-bold disabled:opacity-50">{unlockBusy ? '…' : 'Valider'}</button>
+              <button onClick={() => { setUnlockOpen(false); setUnlockPin('') }} className="text-amber-700 dark:text-amber-300 text-xs">annuler</button>
+            </span>
+          ) : (
+            <button onClick={() => setUnlockOpen(true)} className="ml-auto px-3 py-1 rounded-lg bg-amber-600 text-white text-xs font-bold">🔓 Déverrouiller</button>
+          ))}
+        </div>
+      )}
       {vabConflict && (
         vabConflict.type === 'should_link' ? (
           <div className="mb-3 bg-sky-100 border-2 border-sky-500 rounded-xl px-4 py-2.5 text-sky-800 text-sm shadow-sm">

@@ -40,7 +40,7 @@ export async function POST(req: Request, { params }: { params: { token: string }
   if (!id || !VALID_CODES.includes(code)) return NextResponse.json({ error: 'Réponse invalide' }, { status: 400 })
   if (code === 'already_invoiced' && !note) return NextResponse.json({ error: 'N° d\'accord requis' }, { status: 400 })
 
-  const { data: item } = await sb.from('touring_check_dossiers').select('id, status').eq('id', id).maybeSingle()
+  const { data: item } = await sb.from('touring_check_dossiers').select('id, status, fiches').eq('id', id).maybeSingle()
   if (!item) return NextResponse.json({ error: 'Dossier introuvable' }, { status: 404 })
   if (!['pending', 'answered'].includes(item.status)) return NextResponse.json({ error: 'Dossier déjà traité' }, { status: 409 })
 
@@ -51,6 +51,12 @@ export async function POST(req: Request, { params }: { params: { token: string }
     answered_at: new Date().toISOString(),
   }).eq('id', id)
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+
+  // Touring a répondu → on verrouille le tarif des fiches du dossier.
+  const missionIds = (Array.isArray(item.fiches) ? item.fiches : []).map((f: any) => f.mission_id).filter(Boolean)
+  if (missionIds.length) {
+    await sb.from('incoming_missions').update({ tariff_locked: true }).in('id', missionIds).then(() => {}, () => {})
+  }
   await bumpCheckSignal(sb, 'touring_answered')
   return NextResponse.json({ ok: true })
 }

@@ -10,6 +10,7 @@ import { withOdooActor }       from '@/lib/odoo'
 import { isRelEligibleSource } from '@/lib/missions/rel-eligible'
 import { isRemorquage }        from '@/lib/missions/mission-types'
 import { KEY_LOCATION_LABELS }  from '@/lib/key-location'
+import { lockedFieldsIn }        from '@/lib/touring/tariff-lock'
 
 // Le PATCH peut calculer un tarif SNC (routing dépôt) → marge de temps.
 export const maxDuration = 30
@@ -100,10 +101,10 @@ export async function PATCH(
     'needs_siabis_decision', 'siabis_reviewed',
   ]
 
-  // On charge l etat actuel pour comparer (notamment la source avant change).
+  // On charge l etat actuel pour comparer (source avant change + verrou tarifaire).
   const { data: before } = await supabase
     .from('incoming_missions')
-    .select('source, snc_scenario, mission_type, amount_to_collect, amount_to_collect_manual, incident_lat, incident_lng, destination_lat, destination_lng, snc_requires_balisage, intervention_date, received_at, extra_addresses, billed_to_id, billed_to_name')
+    .select('source, snc_scenario, mission_type, incident_type, amount_to_collect, amount_to_collect_manual, amount_guaranteed, special_tarif_htva, incident_lat, incident_lng, incident_address, incident_city, incident_country, incident_borne_km, incident_sens, incident_at, destination_lat, destination_lng, destination_name, destination_address, destination_borne_km, destination_sens, redelivery_address, redelivery_lat, redelivery_lng, depot_depart_id, depot_depart_locked, snc_requires_balisage, intervention_date, parked_at, delivering_at, received_at, extra_addresses, billed_to_id, billed_to_name, tariff_locked')
     .eq('id', params.id)
     .maybeSingle()
 
@@ -116,6 +117,20 @@ export async function PATCH(
       } else {
         updates[key] = body[key] === '' ? null : body[key]
       }
+    }
+  }
+
+  // Verrou tarifaire : si Touring a répondu, on refuse toute modif d'un champ qui
+  // ferait bouger le tarif (adresses, dates, type, source, montant, scénario…).
+  // Note, véhicule, client, facturation restent libres. Déverrouillage = superadmin + code.
+  if ((before as any)?.tariff_locked) {
+    const changed = lockedFieldsIn(updates).filter(k =>
+      JSON.stringify(updates[k]) !== JSON.stringify((before as any)[k]))
+    if (changed.length) {
+      return NextResponse.json({
+        error: 'Fiche verrouillée : Touring a répondu. Déverrouille (superadmin + code) pour modifier le tarif.',
+        locked_fields: changed,
+      }, { status: 423 })
     }
   }
 
