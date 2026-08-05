@@ -19,7 +19,23 @@ const COLS =
   'id, parent_mission_id, status, source, dossier_number, external_id, ' +
   'mission_type, incident_type, vehicle_plate, vehicle_brand, vehicle_model, ' +
   'incident_address, incident_city, destination_name, destination_address, ' +
-  'redelivery_address, intervention_date, completed_at, parked_at, touring_check_stamp'
+  'redelivery_address, intervention_date, completed_at, parked_at, touring_check_stamp, ' +
+  'billed_to_id, billed_to_name'
+
+// Partenaire Odoo « Touring » (facturé à Touring).
+const TOURING_BILLED_ID = 14
+
+/**
+ * Une mission entre dans la file Check Touring si :
+ *   - sa source est 'touring' (dossiers Touring natifs / importés), OU
+ *   - c'est un appel POLICE facturé à Touring (billed_to = Touring).
+ * (sia_couvert facturé Touring en est exclu : il s'auto-facture.)
+ */
+function isTouringForCheck(m: any): boolean {
+  if (m.source === 'touring') return true
+  const billedTouring = m.billed_to_id === TOURING_BILLED_ID || /touring/i.test(m.billed_to_name || '')
+  return String(m.source || '').startsWith('police') && billedTouring
+}
 
 export type FicheKind = 'REM' | 'DSP' | 'REL' | 'DPR' | 'AUTRE'
 
@@ -45,6 +61,23 @@ export interface CheckFiche {
   incident: string | null      // lieu d'intervention (adresse + ville)
   destination: string | null   // lieu de livraison (remorquage / relivraison)
   intervention_date: string | null
+  is_police: boolean           // appel police facturé à Touring
+  police_depannage_htva: number | null  // sous-total DÉPANNAGE HT (hors gardiennage)
+}
+
+const APP_BASE = process.env.NEXTAUTH_URL || 'https://app.verviersdepannage.com'
+
+/** Sous-total DÉPANNAGE HT d'une fiche (hors gardiennage) via price-estimate. */
+async function policeDepannageHtva(missionId: string): Promise<number | null> {
+  try {
+    const r = await fetch(`${APP_BASE}/api/missions/${missionId}/price-estimate`, {
+      headers: { 'x-internal-secret': process.env.NEXTAUTH_SECRET || '' },
+    })
+    const j = await r.json().catch(() => ({}))
+    if (!j?.ok) return null
+    const dep = Math.round((Number(j.subtotal_eur || 0) - Number(j.parc_eur || 0)) * 100) / 100
+    return dep > 0 ? dep : null
+  } catch { return null }
 }
 
 export interface CheckItem {
@@ -103,8 +136,8 @@ export async function buildTouringCheckList(sb: any): Promise<CheckItem[]> {
   const { data: queue, error } = await sb
     .from('incoming_missions')
     .select(COLS)
-    .eq('source', 'touring')
     .eq('status', 'to_invoice')
+    .or(`source.eq.touring,billed_to_id.eq.${TOURING_BILLED_ID}`)
   if (error) throw new Error(error.message)
   if (!queue?.length) return []
 
@@ -136,9 +169,10 @@ export async function buildTouringCheckList(sb: any): Promise<CheckItem[]> {
     const all = byRoot.get(root) || []
     if (!all.length) continue
 
-    // Fiches à trancher = fiches Touring en to_invoice, hors COMEX BKO.
+    // Fiches à trancher = fiches Touring (source touring OU police facturé Touring)
+    // en to_invoice, hors COMEX BKO.
     const toBill = all.filter(m =>
-      m.source === 'touring' && m.status === 'to_invoice' && !bkoIds.has(m.id))
+      isTouringForCheck(m) && m.status === 'to_invoice' && !bkoIds.has(m.id))
     if (!toBill.length) continue
 
     // Exclusion 1 — dernière clôture chauffeur < 15 j (sur toute la chaîne).
@@ -171,6 +205,8 @@ export async function buildTouringCheckList(sb: any): Promise<CheckItem[]> {
         incident: addr(m.incident_address, m.incident_city),
         destination: m.redelivery_address || m.destination_address || m.destination_name || null,
         intervention_date: m.intervention_date,
+        is_police: String(m.source || '').startsWith('police'),
+        police_depannage_htva: null,
       }))
 
     items.push({
@@ -181,6 +217,10 @@ export async function buildTouringCheckList(sb: any): Promise<CheckItem[]> {
       fiches,
     })
   }
+
+  // Montant DÉPANNAGE HT des fiches police (en parallèle, best-effort).
+  const policeFiches = items.flatMap(it => it.fiches).filter(f => f.is_police)
+  await Promise.all(policeFiches.map(async f => { f.police_depannage_htva = await policeDepannageHtva(f.mission_id) }))
 
   // Tri par date d'intervention décroissante (plus récent en haut).
   items.sort((a, b) => (b.intervention_date || '').localeCompare(a.intervention_date || ''))

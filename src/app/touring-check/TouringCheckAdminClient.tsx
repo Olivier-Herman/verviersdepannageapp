@@ -148,6 +148,14 @@ export default function TouringCheckAdminClient(props: {
                   <span className="ml-auto text-[11px] text-ink-faint">{fiches.map(f => f.plate).filter(Boolean).join(' · ')}</span>
                 </div>
 
+                {fiches.some(f => f.is_police) && (
+                  <div className="px-4 py-1.5 text-xs font-semibold text-ink border-b border-black/5 dark:border-white/5">
+                    {fiches.filter(f => f.is_police).map((f, i) => (
+                      <span key={i} className="mr-3">🚓 Appel police{f.plate ? ` (${f.plate})` : ''} : {f.police_depannage_htva != null ? `${f.police_depannage_htva.toFixed(2)} € HT` : '—'}</span>
+                    ))}
+                  </div>
+                )}
+
                 {it.status === 'applied' ? (
                   <div className="px-4 py-3 text-sm text-ink-muted flex items-center gap-2">
                     <span className="text-emerald-600">✅ Appliqué</span> — {it.applied_result}
