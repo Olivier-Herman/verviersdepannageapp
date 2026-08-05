@@ -42,8 +42,9 @@ function isTouringForCheck(m: any): boolean {
 /** Libellé du montant dépannage à afficher selon la source (null = pas d'affichage). */
 function depannageLabel(source: string | null): string | null {
   const s = String(source || '')
+  if (s === 'police_snc')  return 'Siabis non couvert'  // SNC repris par Touring (reste un SNC)
+  if (s === 'sia_couvert')  return 'Siabis couvert'
   if (s.startsWith('police')) return 'Appel police'
-  if (s === 'sia_couvert') return 'Siabis couvert'
   return null
 }
 
