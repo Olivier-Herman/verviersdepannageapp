@@ -12,7 +12,7 @@
 
 import { createAdminClient } from '@/lib/supabase'
 import { loginComex, listComexMissions, getComexMissionDetail } from './comex'
-import { mapComexToMission } from './map-mission'
+import { mapComexToMission, comexVehiculeNonCouvert } from './map-mission'
 
 export type TouringImportMode = 'preview' | 'send'
 
@@ -28,6 +28,11 @@ const COMEX_OVERWRITE_FIELDS = [
   'incident_address', 'incident_city', 'incident_lat', 'incident_lng',
   'destination_name', 'destination_address', 'destination_lat', 'destination_lng',
   'billed_to_id', 'billed_to_name', 'parse_confidence', 'touring_vr',
+  // Contrat + droit au véhicule de remplacement : sans ça, une fiche arrivée par
+  // mail puis adoptée par COMEX n'aurait jamais l'info (elle ne passe pas par
+  // l'insert). NB : vr_proposed = false est une valeur utile, pas un vide — le
+  // filtre ci-dessous la laisse passer, contrairement à null (= « ? »).
+  'contract_code', 'contract_label', 'vr_proposed',
 ]
 
 export interface TouringImportResult {
@@ -72,7 +77,7 @@ export async function runTouringImport(opts: { mode: TouringImportMode }): Promi
 
       // Dédup : fiche déjà présente (import COMEX précédent OU mail Touring).
       const { data: existing } = await sb.from('incoming_missions')
-        .select('id, status, source_format')
+        .select('id, status, source_format, source')
         .eq('external_id', externalId)
         .maybeSingle()
       if (existing) {
@@ -111,6 +116,13 @@ export async function runTouringImport(opts: { mode: TouringImportMode }): Promi
           for (const f of COMEX_OVERWRITE_FIELDS) {
             const v = (mapped as any)[f]
             if (v !== undefined && v !== null && v !== '') contentUpd[f] = v   // COMEX gagne là où il a une valeur
+          }
+          // Touring annonce « véhicule pas couvert » → la fiche est un Siabis non
+          // couvert, même si elle est arrivée par mail en tant que dossier Touring.
+          // Volontairement conditionné à source === 'touring' : si un dispatcher
+          // l'a déjà reclassée à la main, on ne repasse pas derrière lui.
+          if (comexVehiculeNonCouvert(detail) && String((existing as any).source) === 'touring') {
+            contentUpd.source = 'police_snc'
           }
           if (Object.keys(contentUpd).length > 0) {
             const { error: cErr } = await sb.from('incoming_missions').update(contentUpd).eq('id', (existing as any).id)

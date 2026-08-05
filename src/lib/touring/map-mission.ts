@@ -30,6 +30,58 @@ const name = (prenom: any, nom: any): string | null => {
   return n || null
 }
 
+/**
+ * Touring annonce lui-même que le véhicule n'est pas couvert : c'est un dossier
+ * Siabis non couvert, pas un dossier Touring. On matche sur CID_PROD (code
+ * produit, insensible à la langue) avec le libellé en filet de sécurité.
+ * Vérifié le 05/08/2026 : sur les 55 dossiers non couverts en base, le code
+ * 1050101 et le libellé « VEHICULE PAS COUVERT » se recouvrent exactement.
+ */
+export const COMEX_PROD_NON_COUVERT = '1050101'
+
+export function comexVehiculeNonCouvert(d: Record<string, any>): boolean {
+  if (String(d?.CID_PROD ?? '').trim() === COMEX_PROD_NON_COUVERT) return true
+  return /pas\s+couvert|niet\s+gedekt|not\s+covered/i.test(String(d?.LIB_PROD ?? ''))
+}
+
+/**
+ * Véhicule de remplacement PROPOSÉ PAR TOURING POUR CETTE MISSION.
+ *
+ * COMEX envoie `LST_CODE_END_MIS` : la liste des codes de clôture que Touring
+ * autorise sur ce dossier précis. Si un code « + VR » y figure, Touring accepte
+ * qu'on clôture avec un véhicule de remplacement — donc le membre y a droit ici.
+ *
+ * Libellés relevés dans COMEX le 05/08/2026 (combo Dojo `detailInfosEndMission`,
+ * lu dans le magasin Dojo du widget — le <select> visible dans le HTML est un
+ * vestige commenté et vide) :
+ *   00 Fin de tache            02 Fin de tache + Remorquage
+ *   03 Fin de tache + Rem + VR    ← VR      04 Fin de tache + VR        ← VR
+ *   06 Fin dep tel             07 Fin de REM transformé en DEP
+ *   33 Fin dep tel + VR           ← VR      34 Fin de tache + Rem + Taxi
+ *   35 Fin de tache + Rem + VR + Taxi ← VR  36 Refus garage
+ *   20/21/23/24/25/28/29/40 = annulations
+ *   05 = seul code encore sans libellé. Il n'apparaît que sur la liste « 00;05 »,
+ *   celle des dossiers « VEHICULE PAS COUVERT » — dont on sait par ailleurs
+ *   qu'ils n'ont aucun contrat. Risque résiduel : 1 mission sur 652.
+ *
+ * POURQUOI CE SIGNAL ET PAS LES DRAPEAUX FL_DEMANDE_*. Mesuré sur 652 missions :
+ * la liste prend 8 valeurs distinctes, et les 55 dossiers « VEHICULE PAS COUVERT »
+ * n'en proposent AUCUN avec VR — zéro faux positif. Croisée avec la base des
+ * contrats (Prestex FDDS), elle concorde à 90 % contre 64 % pour les drapeaux.
+ * Les écarts restants sont attendus : Prestex décrit le CONTRAT (« ce contrat
+ * prévoit-il un VR ? »), la liste décrit LA MISSION (« Touring en propose-t-il un
+ * ici ? »), et un contrat qui couvre le VR en panne mais pas en vol produit
+ * exactement cet écart sur un dossier vol. C'est la question mission qui compte.
+ */
+export const COMEX_CODES_FIN_VR = ['03', '04', '33', '35']
+
+export function comexVrPropose(d: Record<string, any>): boolean | null {
+  const brut = s(d?.LST_CODE_END_MIS)
+  if (!brut) return null                       // pas d'info → « ? », jamais « non »
+  const codes = brut.split(';').map(x => x.trim())
+  return COMEX_CODES_FIN_VR.some(c => codes.includes(c))
+}
+
 /** LIB_GAR / type COMEX → mission_type VD Soft. */
 export function comexMissionType(libGar: any): 'remorquage' | 'depannage' {
   const t = (s(libGar) || '').toLowerCase()
@@ -70,7 +122,9 @@ export function mapComexToMission(input: ComexMapInput): Record<string, any> {
   return {
     external_id:        externalId,
     dossier_number:     dossier || null,
-    source:             'touring',
+    // Touring dit « véhicule pas couvert » → la fiche est un Siabis non couvert
+    // dès l'import, plus besoin de la reclasser à la main.
+    source:             comexVehiculeNonCouvert(d) ? 'police_snc' : 'touring',
     source_format:      'comex',
     status:             input.status,
     mission_type:       comexMissionType(d.LIB_GAR),
@@ -107,6 +161,15 @@ export function mapComexToMission(input: ComexMapInput): Record<string, any> {
 
     // Facturation : Touring paie (billed_to par défaut du catalog).
     ...(input.billedToId ? { billed_to_id: input.billedToId, billed_to_name: input.billedToName } : {}),
+
+    // Code contrat Touring (aussi présent dans les mails). C'est la SEULE donnée
+    // COMEX fiable sur les droits : elle ouvre la fiche contrat dans Prestex FDDS,
+    // conservé pour la traçabilité et l'affichage (nom du programme sur la fiche).
+    contract_code:      s(d.CID_PROD),
+    contract_label:     s(d.LIB_PROD),
+
+    // Droit au véhicule de remplacement POUR CETTE MISSION (cf. comexVrPropose).
+    vr_proposed:        comexVrPropose(d),
 
     // Traçabilité : on garde la source brute (JSON COMEX) → pas de Claude, et le
     // document « source » de la fiche fonctionne.

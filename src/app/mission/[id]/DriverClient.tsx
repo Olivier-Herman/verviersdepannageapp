@@ -24,7 +24,6 @@ import {
   startForMission, updateForMission, endForMission,
   missionToLAState, isActiveMissionStatus,
 } from '@/lib/native/liveActivity'
-import { interpretVr } from '@/lib/touring/vr'
 import { canUseMatthieu } from '@/lib/mecano/access'
 import { cleanVin, isPlausibleVin } from '@/lib/mecano/vin'
 
@@ -3488,19 +3487,33 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
           </div>
         </div>
 
-        {/* Droit VR (Touring) — tuile Oui/Non bien visible pour le chauffeur */}
-        {(M as any).touring_vr && (() => {
-          const v = interpretVr((M as any).touring_vr)
-          const yes = !!v?.any
+        {/* Tuile « VR OUI / VR NON » RETIRÉE le 05/08/2026 : elle annonçait « VR OUI »
+            sur 34 des 38 missions Touring, y compris sur des dossiers marqués
+            « VEHICULE PAS COUVERT » par Touring. Un chauffeur pouvait promettre un
+            véhicule de remplacement à un client qui n'y avait pas droit. Détail de
+            la démonstration dans src/lib/touring/vr.ts. Remplacée par la tuile
+            ci-dessous, qui lit le CONTRAT (Prestex FDDS) et non un drapeau COMEX. */}
+
+        {/* VR prévu au contrat. Trois états : oui / non / « ? » quand le contrat
+            est introuvable — on n'affiche jamais « non » par défaut, c'est ce qui
+            avait fait promettre des VR inexistants. */}
+        {((M as any).source_format === 'comex' || (M as any).contract_code) && (() => {
+          const vr = (M as any).vr_proposed as boolean | null | undefined
+          const inconnu = vr !== true && vr !== false
+          const style = vr === true
+            ? 'bg-emerald-50 border-emerald-500 text-emerald-800 dark:bg-emerald-500/10 dark:text-emerald-300'
+            : vr === false
+            ? 'bg-slate-100 border-slate-400 text-slate-700 dark:bg-slate-500/10 dark:text-slate-300'
+            : 'bg-amber-50 border-amber-500 text-amber-800 dark:bg-amber-500/10 dark:text-amber-300'
           return (
-            <div className={`rounded-2xl p-3 border-2 flex items-center justify-between ${yes ? 'bg-emerald-500/10 border-emerald-500' : 'bg-red-500/10 border-red-500'}`}>
+            <div className={`rounded-2xl p-3 border-2 flex items-center justify-between ${style}`}>
               <div className="min-w-0">
-                <p className={`text-xs uppercase tracking-widest font-bold ${yes ? 'text-emerald-700 dark:text-emerald-300' : 'text-red-700 dark:text-red-300'}`}>Véhicule de remplacement</p>
-                <p className={`text-lg font-black leading-tight ${yes ? 'text-emerald-700 dark:text-emerald-300' : 'text-red-600 dark:text-red-300'}`}>
-                  {yes ? `VR OUI${v?.short && v.short !== 'VR' ? ` — ${v.short}` : ''}` : 'VR NON'}
+                <p className="text-xs uppercase tracking-widest font-bold">Véhicule de remplacement</p>
+                <p className="text-lg font-black leading-tight">
+                  {vr === true ? 'VR OUI' : vr === false ? 'VR NON' : 'À VÉRIFIER'}
                 </p>
               </div>
-              <span className="text-3xl flex-shrink-0">{yes ? '🚗' : '🚫'}</span>
+              <span className="text-3xl flex-shrink-0">{vr === true ? '🚗' : inconnu ? '❔' : '🚫'}</span>
             </div>
           )
         })()}

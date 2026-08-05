@@ -1,10 +1,34 @@
 // src/lib/touring/vr.ts
 //
-// Droits « véhicule de remplacement / taxi / shuttle » du membre Touring.
-// COMEX expose des drapeaux par mission dans rest/Mission/detail/get (dispo dès
-// l'acceptation). Valeurs observées : 9 = proposable, 10 = proactif (offert
-// d'office), 0 = non. Sémantique à CONFIRMER en test terrain (Olivier 2026-08-03).
-// Pur (aucun import serveur) → utilisable côté serveur (map) et client (UI).
+// Drapeaux « véhicule de remplacement / taxi / shuttle » exposés par COMEX
+// (rest/Mission/detail/get). On les STOCKE tels quels, on n'en DÉDUIT rien.
+//
+// ─────────────────────────────────────────────────────────────────────────────
+// Pourquoi plus aucune interprétation — mesuré le 05/08/2026 sur les 38 missions
+// Touring en base, après qu'Olivier a repéré un bandeau « droit ouvert » sur un
+// dossier qui n'était même pas couvert :
+//
+//   • FL_VR_PROACTIVE = 10 sur les 38 missions, sans exception. Ce n'est donc pas
+//     un drapeau « offert d'office » mais une constante — le badge « proactif »
+//     s'affichait partout.
+//   • Les 7 dossiers dont LIB_PROD = "VEHICULE PAS COUVERT" portaient les CINQ
+//     drapeaux à 9, la valeur qu'on lisait comme « proposable ». Un véhicule non
+//     couvert aurait donc eu droit à tout : la lecture était inversée.
+//   • Les vrais contrats (ANWB, Toyota SARA, Renault Assistance, Volvo, Arval)
+//     sont à 0-0-9-9-0, pas à 9-9-9-9-9.
+//   • VR_NOM et COMM_VR sont vides sur les 38 : aucun véhicule de remplacement
+//     n'a jamais été réellement attribué sur ces dossiers.
+//
+// Conclusion : 9 ne veut pas dire « droit ouvert ». La sémantique réelle reste
+// inconnue et n'a jamais été confirmée par Touring (le TODO d'origine le disait
+// déjà). Les droits contractuels vivent dans **Prestex** (FDDS / fdds_arc.asp) —
+// c'est de là qu'il faudra les lire, pas d'ici.
+//
+// Ne pas réintroduire de fonction « interpretVr » sans une confirmation écrite
+// de Touring sur la signification de 0 / 9 / 10.
+// ─────────────────────────────────────────────────────────────────────────────
+//
+// Pur (aucun import serveur) → utilisable côté serveur (map) et client.
 
 export interface VrRights {
   vr:         number
@@ -26,37 +50,4 @@ export function mapComexVr(d: Record<string, any>): VrRights {
     taxi:       n(d.FL_DEMANDE_TAXI),
     proactive:  n(d.FL_VR_PROACTIVE),
   }
-}
-
-const isOn = (v?: number) => v === 9 || v === 10   // proposable ou proactif
-
-const FLAG_LABELS: { key: keyof VrRights; label: string }[] = [
-  { key: 'vr',         label: 'VR (véhicule de remplacement)' },
-  { key: 'vr_taxi',    label: 'VR + taxi' },
-  { key: 'shuttle_vr', label: 'Shuttle + VR' },
-  { key: 'shuttle',    label: 'Shuttle' },
-  { key: 'taxi',       label: 'Taxi' },
-]
-
-export interface VrView {
-  any:       boolean
-  proactive: boolean
-  eligible:  { key: string; label: string; proactive: boolean }[]
-  /** Résumé court pour le chauffeur (ex. « VR + taxi »). */
-  short:     string
-}
-
-/** Interprète les droits VR pour l'affichage. Retourne null si inconnu. */
-export function interpretVr(r?: VrRights | null): VrView | null {
-  if (!r) return null
-  const eligible = FLAG_LABELS
-    .filter(f => isOn(r[f.key] as number))
-    .map(f => ({ key: f.key, label: f.label, proactive: (r[f.key] as number) === 10 }))
-  const proactive = eligible.some(e => e.proactive) || r.proactive === 10
-  // Résumé court : VR si l'un des VR-types, + taxi/shuttle.
-  const hasVr      = isOn(r.vr) || isOn(r.vr_taxi) || isOn(r.shuttle_vr)
-  const hasTaxi    = isOn(r.taxi) || isOn(r.vr_taxi)
-  const hasShuttle = isOn(r.shuttle) || isOn(r.shuttle_vr)
-  const parts = [hasVr && 'VR', hasTaxi && 'taxi', hasShuttle && 'shuttle'].filter(Boolean) as string[]
-  return { any: eligible.length > 0, proactive, eligible, short: parts.join(' + ') }
 }

@@ -39,7 +39,6 @@ import { getSourceLabel, getSourceColor, type SourceDisplay as CatalogSource } f
 import { getMissionTypeLabel } from '@/lib/missions/mission-types'
 import { parcZoneLabel } from '@/lib/parc/zone-label'
 import { useGarageClosure } from '@/lib/useGarageClosures'
-import { interpretVr } from '@/lib/touring/vr'
 
 const sb = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -2547,31 +2546,44 @@ export default function MissionDetailClient({
           </div>
         )}
 
-        {/* Droits VR / taxi / shuttle (Touring) — info dispatch, dispo dès l'acceptation */}
-        {(M as any).touring_vr && (() => {
-          const raw = (M as any).touring_vr
-          const v = interpretVr(raw)
-          const yes = !!v?.any
+        {/* Droits VR : bandeau RETIRÉ le 05/08/2026. Les drapeaux COMEX FL_DEMANDE_*
+            ne veulent pas dire ce qu'on croyait : sur les 38 missions en base, les 7
+            dossiers « VEHICULE PAS COUVERT » portaient les cinq drapeaux à 9 (la
+            valeur qu'on lisait comme « droit ouvert »), et VR_NOM/COMM_VR étaient
+            vides partout — aucun VR n'a jamais été réellement attribué. Le bandeau
+            annonçait donc « DROIT OUVERT » 34 fois sur 38, à tort. FL_VR_PROACTIVE
+            valait 10 sur les 38 : le badge « proactif » était constant, donc faux.
+            Les droits réels vivent dans Prestex (FDDS) — c'est ce qu'affiche le
+            bandeau ci-dessous. Les valeurs brutes restent stockées dans touring_vr. */}
+
+        {/* VR prévu au contrat — lu dans la base des contrats Touring (Prestex FDDS).
+            « prévu au contrat » et non « droit ouvert » : certains contrats couvrent
+            le VR en panne mais pas en vol, un OUI sec deviendrait faux hors de ces cas.
+            Trois états, jamais deux : oui / non / « ? » quand le contrat est
+            introuvable (programmes constructeurs et étrangers absents de FDDS). */}
+        {((M as any).source_format === 'comex' || (M as any).contract_code) && (() => {
+          const vr = (M as any).vr_proposed as boolean | null | undefined
+          const inconnu = vr !== true && vr !== false
+          const style = vr === true
+            ? 'bg-emerald-50 border-emerald-300 text-emerald-800 dark:bg-emerald-500/10 dark:border-emerald-500/40 dark:text-emerald-300'
+            : vr === false
+            ? 'bg-slate-100 border-slate-300 text-slate-700 dark:bg-slate-500/10 dark:border-slate-500/40 dark:text-slate-300'
+            : 'bg-amber-50 border-amber-300 text-amber-800 dark:bg-amber-500/10 dark:border-amber-500/40 dark:text-amber-300'
           return (
             <div className="px-4 lg:px-8 pt-6">
-              <div className={`rounded-2xl p-4 border-2 ${yes ? 'bg-emerald-500/10 border-emerald-500/50' : 'bg-red-500/10 border-red-500/40'}`}>
-                <div className="flex items-center gap-2 flex-wrap">
-                  <span className="text-2xl">{yes ? '🚗' : '🚫'}</span>
-                  <p className={`font-bold text-sm uppercase tracking-wide ${yes ? 'text-emerald-700 dark:text-emerald-300' : 'text-red-700 dark:text-red-300'}`}>
-                    Véhicule de remplacement — {yes ? 'DROIT OUVERT' : 'PAS DE DROIT'}
-                  </p>
-                  {v?.proactive && <span className="text-[11px] px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-700 dark:text-amber-300 border border-amber-500/30">proactif (offert d'office)</span>}
-                </div>
-                {yes && v?.eligible?.length ? (
-                  <ul className="mt-2 flex flex-wrap gap-1.5">
-                    {v.eligible.map(e => (
-                      <li key={e.key} className="text-xs px-2.5 py-1 rounded-lg bg-emerald-500/15 text-emerald-800 dark:text-emerald-200 border border-emerald-500/30">✓ {e.label}</li>
-                    ))}
-                  </ul>
-                ) : null}
-                <p className="text-ink-muted text-[11px] mt-2 font-mono">
-                  brut : VR={raw.vr} · VR+taxi={raw.vr_taxi} · shuttle+VR={raw.shuttle_vr} · shuttle={raw.shuttle} · taxi={raw.taxi} · proactif={raw.proactive}
+              <div className={`rounded-2xl p-4 border-2 flex items-center gap-3 flex-wrap ${style}`}>
+                <span className="text-2xl">{vr === true ? '🚗' : inconnu ? '❔' : '🚫'}</span>
+                <p className="font-bold text-sm uppercase tracking-wide">
+                  Véhicule de remplacement : {vr === true ? 'OUI' : vr === false ? 'NON' : '?'}
                 </p>
+                <span className="text-[11px] opacity-80 font-mono">
+                  {(M as any).contract_label || (M as any).contract_code || ''}
+                </span>
+                {inconnu && (
+                  <span className="text-[11px] opacity-80 w-full">
+                    Touring n'a pas transmis l'information sur ce dossier — à vérifier avec eux.
+                  </span>
+                )}
               </div>
             </div>
           )
