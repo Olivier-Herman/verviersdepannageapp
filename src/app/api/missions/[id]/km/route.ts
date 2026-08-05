@@ -22,8 +22,8 @@ type Coord = { lat: number; lng: number }
 // l'ancien endpoint /maps/api/directions/json pour les nouveaux projets).
 // Doc : https://developers.google.com/maps/documentation/routes/compute_route_directions
 async function getDistanceKm(origin: Coord, destination: Coord): Promise<number | null> {
-  // Distance routière via OpenRouteService (gratuit) au lieu de Google Routes.
-  const r = await getDrivingRoute(origin, destination)
+  // Facturation : ORS (gratuit) puis repli Google si ORS lâche 2× (précis).
+  const r = await getDrivingRoute(origin, destination, { googleFallback: true })
   return r?.km ?? null
 }
 
