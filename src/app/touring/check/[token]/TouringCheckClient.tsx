@@ -145,7 +145,7 @@ export default function TouringCheckClient({ token }: { token: string }) {
                       {f.incident && <div><span className="text-gray-400 uppercase text-[10px] mr-1">Interv.</span>{f.incident}</div>}
                       {f.destination && <div><span className="text-gray-400 uppercase text-[10px] mr-1">Livr.</span><span className="text-[#d6002a] font-bold mx-0.5">→</span>{f.destination}</div>}
                       {f.depannage_label && (
-                        <div className="mt-1 font-semibold text-gray-900">{f.depannage_label === 'Appel police' ? '🚓' : '🛠'} {f.depannage_label} : {f.depannage_htva != null ? `${f.depannage_htva.toFixed(2)} € HT` : '—'}</div>
+                        <div className="mt-1 font-semibold text-gray-900">{f.depannage_label === 'Appel police' ? '🚓' : '🛠'} {f.depannage_label.startsWith('Siabis') ? 'Siabis' : f.depannage_label} : {f.depannage_htva != null ? `${f.depannage_htva.toFixed(2)} € HT` : '—'}</div>
                       )}
                     </div>
                   </div>
