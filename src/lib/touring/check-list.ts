@@ -78,7 +78,12 @@ export interface CheckFiche {
 
 const APP_BASE = process.env.NEXTAUTH_URL || 'https://app.verviersdepannage.com'
 
-/** Sous-total DÉPANNAGE HT d'une fiche (hors gardiennage) via price-estimate. */
+/**
+ * Sous-total DÉPANNAGE HT d'une fiche (dépannage + majoration, HORS gardiennage).
+ * On somme les lignes facturables du breakdown en excluant le gardiennage/parc —
+ * plus fiable que `subtotal_eur − parc_eur` (parc_eur peut valoir 0 alors que le
+ * gardiennage est déjà dans subtotal_eur, et subtotal_eur n'inclut pas la majoration).
+ */
 async function policeDepannageHtva(missionId: string): Promise<number | null> {
   try {
     const r = await fetch(`${APP_BASE}/api/missions/${missionId}/price-estimate`, {
@@ -86,6 +91,19 @@ async function policeDepannageHtva(missionId: string): Promise<number | null> {
     })
     const j = await r.json().catch(() => ({}))
     if (!j?.ok) return null
+    if (Array.isArray(j.breakdown) && j.breakdown.length) {
+      let sum = 0
+      for (const b of j.breakdown) {
+        if (b?.amount == null) continue
+        const lbl = String(b.label || '').toLowerCase()
+        if (lbl.includes('gardiennage') || lbl.includes('parc')) continue  // exclut le gardiennage
+        const n = Number(b.amount)
+        if (Number.isFinite(n)) sum += n
+      }
+      const dep = Math.round(sum * 100) / 100
+      return dep > 0 ? dep : null
+    }
+    // Repli (modes sans breakdown détaillé).
     const dep = Math.round((Number(j.subtotal_eur || 0) - Number(j.parc_eur || 0)) * 100) / 100
     return dep > 0 ? dep : null
   } catch { return null }
