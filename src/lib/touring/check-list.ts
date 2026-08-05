@@ -28,13 +28,23 @@ const TOURING_BILLED_ID = 14
 /**
  * Une mission entre dans la file Check Touring si :
  *   - sa source est 'touring' (dossiers Touring natifs / importés), OU
- *   - c'est un appel POLICE facturé à Touring (billed_to = Touring).
- * (sia_couvert facturé Touring en est exclu : il s'auto-facture.)
+ *   - c'est un appel POLICE ou un SIABIS COUVERT facturé à Touring.
+ * (Chez Touring, seul COMEX BKO s'auto-facture ; ces dossiers hors comex doivent
+ *  donc être tranchés par Touring.)
  */
 function isTouringForCheck(m: any): boolean {
   if (m.source === 'touring') return true
   const billedTouring = m.billed_to_id === TOURING_BILLED_ID || /touring/i.test(m.billed_to_name || '')
-  return String(m.source || '').startsWith('police') && billedTouring
+  const src = String(m.source || '')
+  return (src.startsWith('police') || src === 'sia_couvert') && billedTouring
+}
+
+/** Libellé du montant dépannage à afficher selon la source (null = pas d'affichage). */
+function depannageLabel(source: string | null): string | null {
+  const s = String(source || '')
+  if (s.startsWith('police')) return 'Appel police'
+  if (s === 'sia_couvert') return 'Siabis couvert'
+  return null
 }
 
 export type FicheKind = 'REM' | 'DSP' | 'REL' | 'DPR' | 'AUTRE'
@@ -61,8 +71,8 @@ export interface CheckFiche {
   incident: string | null      // lieu d'intervention (adresse + ville)
   destination: string | null   // lieu de livraison (remorquage / relivraison)
   intervention_date: string | null
-  is_police: boolean           // appel police facturé à Touring
-  police_depannage_htva: number | null  // sous-total DÉPANNAGE HT (hors gardiennage)
+  depannage_label: string | null       // 'Appel police' | 'Siabis couvert' | null
+  depannage_htva: number | null        // sous-total DÉPANNAGE HT (hors gardiennage)
 }
 
 const APP_BASE = process.env.NEXTAUTH_URL || 'https://app.verviersdepannage.com'
@@ -205,8 +215,8 @@ export async function buildTouringCheckList(sb: any): Promise<CheckItem[]> {
         incident: addr(m.incident_address, m.incident_city),
         destination: m.redelivery_address || m.destination_address || m.destination_name || null,
         intervention_date: m.intervention_date,
-        is_police: String(m.source || '').startsWith('police'),
-        police_depannage_htva: null,
+        depannage_label: depannageLabel(m.source),
+        depannage_htva: null,
       }))
 
     items.push({
@@ -218,9 +228,9 @@ export async function buildTouringCheckList(sb: any): Promise<CheckItem[]> {
     })
   }
 
-  // Montant DÉPANNAGE HT des fiches police (en parallèle, best-effort).
-  const policeFiches = items.flatMap(it => it.fiches).filter(f => f.is_police)
-  await Promise.all(policeFiches.map(async f => { f.police_depannage_htva = await policeDepannageHtva(f.mission_id) }))
+  // Montant DÉPANNAGE HT (hors gardiennage) des fiches police / siabis couvert.
+  const amountFiches = items.flatMap(it => it.fiches).filter(f => f.depannage_label)
+  await Promise.all(amountFiches.map(async f => { f.depannage_htva = await policeDepannageHtva(f.mission_id) }))
 
   // Tri par date d'intervention décroissante (plus récent en haut).
   items.sort((a, b) => (b.intervention_date || '').localeCompare(a.intervention_date || ''))
