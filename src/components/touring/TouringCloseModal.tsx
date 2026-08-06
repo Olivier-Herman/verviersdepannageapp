@@ -138,6 +138,12 @@ export default function TouringCloseModal({
   const presetsShown = tab === 'dsp' ? PRESETS_DSP : [...PRESETS_REM, PRESET_REM_CATCHALL]
   const selCls = 'mt-1 w-full border rounded-lg px-2.5 py-2 text-sm bg-surface-2'
   const lblCls = 'text-[11px] font-bold text-ink-secondary uppercase tracking-wide'
+  const shortLabel = (p: ClosePreset) => p.label.replace(/ → .*/, '')
+  // COMEX n'autorise la clôture qu'à partir de « sur place » (06). 07 = déjà clôturée.
+  const statusBlock = init?.status && init.status !== '06'
+    ? (init.status === '07' ? 'Cette mission est déjà clôturée dans Touring.'
+       : `Clôture possible uniquement quand le chauffeur est sur place (statut COMEX actuel : ${init.status}).`)
+    : null
 
   return (
     <div className="fixed inset-0 z-[60] bg-ink/50 flex items-end sm:items-center justify-center p-0 sm:p-4">
@@ -153,7 +159,13 @@ export default function TouringCloseModal({
           {loadErr && <div className="bg-critical/10 text-critical rounded-lg p-3 text-sm">{loadErr}</div>}
           {!init && !loadErr && <div className="text-ink-secondary text-sm py-6 text-center">Chargement…</div>}
 
-          {init && (
+          {init && statusBlock && (
+            <div className="bg-amber-50 border border-amber-300 text-amber-800 rounded-xl p-3 text-sm flex items-start gap-2">
+              <span className="text-lg leading-none">⏳</span><span>{statusBlock}</span>
+            </div>
+          )}
+
+          {init && !statusBlock && (
             <>
               {/* onglets */}
               <div className="flex bg-surface-2 border rounded-xl p-1 gap-1">
@@ -165,20 +177,37 @@ export default function TouringCloseModal({
                 ))}
               </div>
 
-              {/* raccourcis / presets */}
-              {isDispatch && <div className={lblCls}>⚡ Raccourcis — remplit les codes</div>}
-              <div className="grid grid-cols-3 gap-2">
-                {presetsShown.map(p => {
-                  const sel = presetKey === p.key
-                  const isCatch = p.key === 'rem_autre'
-                  return (
-                    <button key={p.key} onClick={() => pickPreset(p)}
-                      className={`rounded-xl border p-2 text-center min-h-[70px] flex flex-col items-center justify-center gap-1 ${isCatch ? 'col-span-3 min-h-0 py-3' : ''} ${sel ? 'border-amber-500 bg-amber-50 ring-2 ring-amber-400' : 'bg-surface-2 hover:bg-surface-hover'}`}>
-                      <span className="text-[11px] font-bold leading-tight text-ink">{p.label.replace(/ → .*/, '')}</span>
-                    </button>
-                  )
-                })}
-              </div>
+              {/* presets — chips (dispatch) / tuiles à icônes (chauffeur) */}
+              {isDispatch ? (
+                <div className="rounded-xl border border-[#1f5fd6]/25 bg-[#1f5fd6]/[.06] p-3">
+                  <div className="text-[11px] font-extrabold text-[#1f5fd6] uppercase tracking-wide mb-2.5">⚡ Raccourcis — remplit les codes</div>
+                  <div className="flex flex-wrap gap-2">
+                    {presetsShown.map(p => {
+                      const sel = presetKey === p.key
+                      return (
+                        <button key={p.key} onClick={() => pickPreset(p)}
+                          className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-bold transition ${sel ? 'bg-surface border-[#1f5fd6] ring-2 ring-[#1f5fd6] text-ink' : 'bg-surface border text-ink-secondary hover:text-ink hover:border-[#1f5fd6]/40'}`}>
+                          <span className="text-sm leading-none">{p.icon}</span>{shortLabel(p)}
+                        </button>
+                      )
+                    })}
+                  </div>
+                </div>
+              ) : (
+                <div className="grid grid-cols-3 gap-2.5">
+                  {presetsShown.map(p => {
+                    const sel = presetKey === p.key
+                    const isCatch = p.key === 'rem_autre'
+                    return (
+                      <button key={p.key} onClick={() => pickPreset(p)}
+                        className={`rounded-2xl border p-3 flex items-center justify-center gap-1.5 transition ${isCatch ? 'col-span-3 py-3.5' : 'flex-col min-h-[88px]'} ${sel ? 'border-amber-500 bg-amber-50 ring-2 ring-amber-400 shadow-sm' : 'bg-surface-2 hover:bg-surface-hover border'}`}>
+                        <span className="text-[26px] leading-none">{p.icon}</span>
+                        <span className="text-[11px] font-bold leading-tight text-ink text-center">{shortLabel(p)}</span>
+                      </button>
+                    )
+                  })}
+                </div>
+              )}
 
               {/* FORMULAIRE COMPLET (dispatch) */}
               {isDispatch && (
@@ -290,7 +319,7 @@ export default function TouringCloseModal({
 
         <div className="px-4 py-3 border-t flex gap-2">
           <button onClick={onClose} className="px-4 py-2.5 rounded-xl border text-ink-secondary text-sm font-semibold">Fermer</button>
-          <button onClick={submit} disabled={busy || !finSel}
+          <button onClick={submit} disabled={busy || !finSel || !!statusBlock}
             className="flex-1 px-4 py-2.5 rounded-xl bg-success hover:bg-success-soft text-white text-sm font-bold disabled:opacity-40">
             {busy ? 'Clôture en cours…' : `Clôturer${finSel ? ' · ' + endMissionLabel(finSel) : ''}`}
           </button>

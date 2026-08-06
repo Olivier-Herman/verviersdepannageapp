@@ -4000,7 +4000,9 @@ export default function MissionDetailClient({
                   chauffeur + fige les dates parc. Olivier 2026-06-14. */}
               {/* Clôturer chez Touring — missions COMEX uniquement, juste au-dessus
                   de « Sauvegarder ». Ouvre le modal (form complet + raccourcis). */}
-              {(M as any).source_format === 'comex' && status !== 'ignored' && (
+              {/* Clôture Touring : uniquement missions COMEX ET chauffeur sur place
+                  (touring_onspot_at posé ⇒ COMEX ≥ 06). Avant, COMEX refuse. */}
+              {(M as any).source_format === 'comex' && (M as any).touring_onspot_at && status !== 'ignored' && (
                 <button
                   onClick={() => setShowTouringClose(true)}
                   title="Clôturer la mission dans Touring COMEX"

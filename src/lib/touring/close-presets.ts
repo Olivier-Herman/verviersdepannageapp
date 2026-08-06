@@ -17,6 +17,7 @@
 export interface ClosePreset {
   key:    string   // identifiant stable (UI + logs)
   label:  string   // libellé chauffeur
+  icon:   string   // emoji (UI)
   cause:  string   // COD_PANNE_CAUSE (Code Incident)
   desc:   string   // COD_PANNE_DESC  (Code Type)
   result: string   // COD_PANNE_RESULT (Code Résultat)
@@ -63,33 +64,33 @@ export function endMissionLabel(code: string): string {
 
 // ── A) Dépannage sur place — FIN 00 ──────────────────────────────────────────
 export const PRESETS_DSP: ClosePreset[] = [
-  { key: 'batt_recharge',   label: 'Batterie déchargée → rechargée',            cause: '400', desc: '29', result: '58', fin: '00', rem: false },
-  { key: 'batt_boost',      label: 'Batterie à plat → aide au démarrage',       cause: '400', desc: '29', result: '59', fin: '00', rem: false },
-  { key: 'crevaison_roue',  label: 'Crevaison → roue de secours montée',        cause: '246', desc: '14', result: '61', fin: '00', rem: false },
-  { key: 'pneu_regonfle',   label: 'Pneu dégonflé → regonflé',                  cause: '247', desc: '24', result: '57', fin: '00', rem: false },
-  { key: 'cles_habitacle',  label: 'Clés enfermées → ouverture',                cause: '680', desc: '45', result: '60', fin: '00', rem: false },
-  { key: 'serrure_bloquee', label: 'Serrure / portière bloquée → ouverte',      cause: '661', desc: '25', result: '60', fin: '00', rem: false },
-  { key: 'panne_seche',     label: 'Panne sèche → ravitaillement',              cause: '515', desc: '17', result: '50', fin: '00', rem: false },
-  { key: 'cosses_batt',     label: 'Cosses batterie desserrées → remises',      cause: '403', desc: '27', result: '57', fin: '00', rem: false },
-  { key: 'antivol_bloque',  label: 'Antivol de direction bloqué → débloqué',    cause: '239', desc: '25', result: '55', fin: '00', rem: false },
+  { key: 'batt_recharge',   label: 'Batterie déchargée → rechargée',            icon: '🔋', cause: '400', desc: '29', result: '58', fin: '00', rem: false },
+  { key: 'batt_boost',      label: 'Batterie à plat → aide au démarrage',       icon: '⚡', cause: '400', desc: '29', result: '59', fin: '00', rem: false },
+  { key: 'crevaison_roue',  label: 'Crevaison → roue de secours montée',        icon: '🛞', cause: '246', desc: '14', result: '61', fin: '00', rem: false },
+  { key: 'pneu_regonfle',   label: 'Pneu dégonflé → regonflé',                  icon: '💨', cause: '247', desc: '24', result: '57', fin: '00', rem: false },
+  { key: 'cles_habitacle',  label: 'Clés enfermées → ouverture',                icon: '🔑', cause: '680', desc: '45', result: '60', fin: '00', rem: false },
+  { key: 'serrure_bloquee', label: 'Serrure / portière bloquée → ouverte',      icon: '🚪', cause: '661', desc: '25', result: '60', fin: '00', rem: false },
+  { key: 'panne_seche',     label: 'Panne sèche → ravitaillement',              icon: '⛽', cause: '515', desc: '17', result: '50', fin: '00', rem: false },
+  { key: 'cosses_batt',     label: 'Cosses batterie desserrées → remises',      icon: '🔌', cause: '403', desc: '27', result: '57', fin: '00', rem: false },
+  { key: 'antivol_bloque',  label: 'Antivol de direction bloqué → débloqué',    icon: '🔒', cause: '239', desc: '25', result: '55', fin: '00', rem: false },
 ]
 
 // ── B) Remorquage — FIN 02, RESULT toujours 73 ───────────────────────────────
 export const PRESETS_REM: ClosePreset[] = [
-  { key: 'moteur',        label: 'Problème moteur (surchauffe) → remorquage',       cause: '355', desc: '22', result: RESULT_REM_IMPOSSIBLE, fin: '02', rem: true },
-  { key: 'boite_embray',  label: 'Boîte de vitesses / embrayage → remorquage',      cause: '704', desc: '25', result: RESULT_REM_IMPOSSIBLE, fin: '02', rem: true },
-  { key: 'crevaison_rem', label: 'Crevaison, réparation impossible → remorquage',   cause: '259', desc: '14', result: RESULT_REM_IMPOSSIBLE, fin: '02', rem: true },
-  { key: 'demarreur',     label: 'Démarreur défaillant → remorquage',              cause: '427', desc: '10', result: RESULT_REM_IMPOSSIBLE, fin: '02', rem: true },
-  { key: 'batt_hs',       label: 'Batterie HS (ne tient plus) → remorquage',       cause: '400', desc: '26', result: RESULT_REM_IMPOSSIBLE, fin: '02', rem: true },
-  { key: 'accident',      label: 'Accident → remorquage',                          cause: '144', desc: '42', result: RESULT_REM_IMPOSSIBLE, fin: '02', rem: true },
-  { key: 'carburant_err', label: 'Erreur de carburant (mauvais plein) → remorquage', cause: '515', desc: '41', result: RESULT_REM_IMPOSSIBLE, fin: '02', rem: true },
-  { key: 'courroie_dist', label: 'Courroie de distribution cassée → remorquage',   cause: '377', desc: '10', result: RESULT_REM_IMPOSSIBLE, fin: '02', rem: true },
-  { key: 'fouine_durit',  label: 'Tuyau percé par une fouine → remorquage',        cause: '313', desc: '73', result: RESULT_REM_IMPOSSIBLE, fin: '02', rem: true },
+  { key: 'moteur',        label: 'Problème moteur (surchauffe) → remorquage',       icon: '🌡️', cause: '355', desc: '22', result: RESULT_REM_IMPOSSIBLE, fin: '02', rem: true },
+  { key: 'boite_embray',  label: 'Boîte de vitesses / embrayage → remorquage',      icon: '⚙️', cause: '704', desc: '25', result: RESULT_REM_IMPOSSIBLE, fin: '02', rem: true },
+  { key: 'crevaison_rem', label: 'Crevaison, réparation impossible → remorquage',   icon: '🛞', cause: '259', desc: '14', result: RESULT_REM_IMPOSSIBLE, fin: '02', rem: true },
+  { key: 'demarreur',     label: 'Démarreur défaillant → remorquage',              icon: '🔌', cause: '427', desc: '10', result: RESULT_REM_IMPOSSIBLE, fin: '02', rem: true },
+  { key: 'batt_hs',       label: 'Batterie HS (ne tient plus) → remorquage',       icon: '🔋', cause: '400', desc: '26', result: RESULT_REM_IMPOSSIBLE, fin: '02', rem: true },
+  { key: 'accident',      label: 'Accident → remorquage',                          icon: '💥', cause: '144', desc: '42', result: RESULT_REM_IMPOSSIBLE, fin: '02', rem: true },
+  { key: 'carburant_err', label: 'Erreur de carburant (mauvais plein) → remorquage', icon: '⛽', cause: '515', desc: '41', result: RESULT_REM_IMPOSSIBLE, fin: '02', rem: true },
+  { key: 'courroie_dist', label: 'Courroie de distribution cassée → remorquage',   icon: '🔗', cause: '377', desc: '10', result: RESULT_REM_IMPOSSIBLE, fin: '02', rem: true },
+  { key: 'fouine_durit',  label: 'Tuyau percé par une fouine → remorquage',        icon: '🦫', cause: '313', desc: '73', result: RESULT_REM_IMPOSSIBLE, fin: '02', rem: true },
 ]
 
 // Catch-all : le chauffeur ne sait pas trancher → remorquage générique.
 export const PRESET_REM_CATCHALL: ClosePreset = {
-  key: 'rem_autre', label: 'Autre panne → remorquage', cause: '999', desc: '46', result: RESULT_REM_IMPOSSIBLE, fin: '02', rem: true,
+  key: 'rem_autre', label: 'Autre panne → remorquage', icon: '❓', cause: '999', desc: '46', result: RESULT_REM_IMPOSSIBLE, fin: '02', rem: true,
 }
 
 /** Toutes les options de remorquage (spécifiques + catch-all). */
