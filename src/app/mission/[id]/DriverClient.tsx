@@ -1214,6 +1214,29 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
   const [touringMandatory, setTouringMandatory] = useState(false) // popup DSP obligatoire post-Terminer
   const loaded   = !!M.loaded_at || M.status === 'delivering' || M.status === 'parked'
 
+  // FILET anti-esquive : la clôture VD Soft d'un DSP se fait AVANT le popup Touring.
+  // Si le chauffeur tue l'app pendant le popup, la mission est déjà terminée et le
+  // popup (état React) est perdu → il aurait zappé la clôture COMEX. Donc à
+  // l'ouverture d'un DSP Touring terminé dont COMEX n'est PAS en 07, on ré-impose le
+  // popup obligatoire. Olivier 2026-08-06.
+  const touringNetRef = useRef(false)
+  useEffect(() => {
+    if (touringNetRef.current) return
+    const done  = M.status === 'completed' || M.status === 'to_invoice'
+    const isDsp = (M.mission_type || '') === 'depannage'
+    if (!(isTouringComex && done && isDsp)) return
+    touringNetRef.current = true
+    fetch(`/api/missions/${M.id}/touring-close`)
+      .then(r => r.json())
+      .then(d => {
+        if (!d || d.error) return
+        const closed = d.closure?.closed === true || d.status === '07'
+        if (closed) return                       // déjà clôturé chez Touring → RAS
+        setTouringMandatory(true); setShowTouringClose(true)
+      })
+      .catch(() => {})
+  }, [M.id, M.status, M.mission_type, isTouringComex])
+
   // ── Geofence « Sur place ? » (suggestion) ──────────────────────────────────
   // Suggère de pointer « Sur place » dès que le chauffeur est à ~200 m de
   // l'incident. Non bloquant (il confirme d'un tap) → pas besoin d'attendre un
@@ -2107,6 +2130,18 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
     window.location.href = __url.toString()
   }
 
+  // Modal Touring — rendu à la fois dans la vue principale ET l'écran « mission
+  // terminée » (le filet anti-esquive l'ouvre sur une mission déjà terminée).
+  const touringModalEl = showTouringClose ? (
+    <TouringCloseModal
+      missionId={M.id}
+      mode="driver"
+      mandatory={touringMandatory}
+      onClose={() => { setShowTouringClose(false); if (touringMandatory) { setTouringMandatory(false); reloadMission() } }}
+      onDone={() => { setShowTouringClose(false); if (touringMandatory) { setTouringMandatory(false); reloadMission() } }}
+    />
+  ) : null
+
   // Éviter l'hydratation mismatch (localStorage vs SSR)
   if (!mounted) return null
 
@@ -2942,6 +2977,9 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
         </button>
       )}
       <button onClick={() => router.push('/mission')} className="w-full max-w-xs py-3 bg-surface border border text-ink-secondary rounded-2xl text-sm">← Mes missions</button>
+      {/* Filet Touring : la clôture COMEX obligatoire s'affiche PAR-DESSUS le résumé
+          (donc avant), tant que le DSP n'est pas clôturé chez Touring. */}
+      {touringModalEl}
     </div>
   )
 
@@ -3562,19 +3600,11 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
           </button>
         )}
 
-        {/* Touring COMEX — le chauffeur n'a PAS de bouton « Clôturer chez Touring »
-            générique (décision Olivier). Le modal sert uniquement à : transformer un
-            DSP en REM, ou demander un VR sur un REM ; la version DSP s'affiche seule à
-            la fin, après l'écran de clôture VD Soft. Déclencheurs câblés plus bas. */}
-        {showTouringClose && (
-          <TouringCloseModal
-            missionId={M.id}
-            mode="driver"
-            mandatory={touringMandatory}
-            onClose={() => { setShowTouringClose(false); if (touringMandatory) { setTouringMandatory(false); reloadMission() } }}
-            onDone={() => { setShowTouringClose(false); if (touringMandatory) { setTouringMandatory(false); reloadMission() } }}
-          />
-        )}
+        {/* Touring COMEX — pas de bouton « Clôturer chez Touring » générique (décision
+            Olivier). Le modal (variable partagée touringModalEl, rendue aussi sur
+            l'écran « mission terminée ») sert à : popup DSP obligatoire post-clôture,
+            transformation DSP→REM (tuiles d'action existantes) et demande de VR. */}
+        {touringModalEl}
 
         {/* La tête à Matthieu — assistant mécano (accès restreint Matthieu + superadmin en test) */}
         {canMatthieu && (
