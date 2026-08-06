@@ -14,6 +14,7 @@ import CancelMissionButton from '@/components/missions/CancelMissionButton'
 import SaisiePanel from '@/components/missions/SaisiePanel'
 import { KEY_LOCATION_LABELS } from '@/lib/key-location'
 import OfficerAutocomplete from '@/components/missions/OfficerAutocomplete'
+import { isJudicialSaisie } from '@/lib/missions/judicial'
 
 interface Fiche {
   mission: any
@@ -145,6 +146,16 @@ function FicheContent({ fiche, userModules, userRole, router, onClose, onChanged
 
   return (
     <div className="space-y-4">
+
+      {isJudicialSaisie(m) && (
+        <div className="bg-red-600 text-white rounded-card px-4 py-3 flex items-center gap-3 shadow-lg animate-pulse">
+          <span className="text-3xl">⚠️</span>
+          <div>
+            <p className="text-lg font-black uppercase tracking-wide leading-none">Attention — Saisie Judiciaire</p>
+            <p className="text-red-100 text-sm mt-0.5">Procédure et restitution strictement encadrées.</p>
+          </div>
+        </div>
+      )}
 
       {/* Bandeau identité véhicule */}
       <div className="bg-surface-2 border rounded-card p-4">

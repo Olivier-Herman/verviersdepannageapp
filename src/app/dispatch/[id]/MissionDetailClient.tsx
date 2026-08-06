@@ -27,6 +27,7 @@ import FicheFacturerButton from '@/components/facturation/FicheFacturerButton'
 import OfficerAutocomplete from '@/components/missions/OfficerAutocomplete'
 import AddressField, { verifyAddressViaPlaces, reverseGeocodeCity } from '@/components/AddressField'
 import { parseHighwayAddress } from '@/lib/highways/parse'
+import { isJudicialSaisie } from '@/lib/missions/judicial'
 import { HighwaySiabisModal, shouldOfferSiabis } from '../HighwaySiabisModal'
 import DriverPickerModal from '@/components/DriverPickerModal'
 import ScanButton from '@/components/ScanButton'
@@ -57,6 +58,8 @@ interface Mission {
   mission_type: string | null
   incident_type: string | null
   incident_description: string | null
+  saisie_motif_code?: string | null
+  saisie_motif_label?: string | null
   tariff_locked?: boolean | null
   client_name: string | null
   client_phone: string | null
@@ -2438,6 +2441,15 @@ export default function MissionDetailClient({
       userRole={userRole}
       userModules={userModules}
     >
+      {isJudicialSaisie(M) && (
+        <div className="mb-3 bg-red-600 text-white rounded-xl px-4 py-3 flex items-center gap-3 shadow-lg animate-pulse">
+          <span className="text-3xl">⚠️</span>
+          <div>
+            <p className="text-lg font-black uppercase tracking-wide leading-none">Attention — Saisie Judiciaire</p>
+            <p className="text-red-100 text-sm mt-0.5">Véhicule sous saisie judiciaire : procédure et restitution strictement encadrées.</p>
+          </div>
+        </div>
+      )}
       {M.tariff_locked && (
         <div className="mb-3 bg-amber-100 dark:bg-amber-500/10 border-2 border-amber-500 rounded-xl px-4 py-2.5 text-amber-800 dark:text-amber-200 text-sm flex items-center gap-2 flex-wrap">
           <span className="font-bold">🔒 Tarif verrouillé</span>
