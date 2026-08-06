@@ -141,6 +141,55 @@ async function runTouringAcceptReconcile(
   return { scanned: data.length, validated, retried }
 }
 
+// RATTRAPAGE des étapes onRoad/onSpot quand COMEX est EN RETARD sur nos marqueurs
+// (ex. faux-succès sur un 500 avant le correctif : on avait posé touring_onroad_at
+// mais COMEX est resté en 04). On efface le marqueur erroné puis on RE-POUSSE via
+// les fonctions sync — qui backdatent l'operDate sur l'accept (SLA respecté).
+// Olivier 2026-08-06.
+async function runTouringStepRepair(
+  missions: Awaited<ReturnType<typeof listComexMissions>>,
+): Promise<{ scanned: number; repaired: number }> {
+  const sb = createAdminClient()
+  const floor = new Date(Date.now() - 6 * 60 * 60_000).toISOString()   // fenêtre 6 h
+  const { data } = await sb.from('incoming_missions')
+    .select('id, raw_content, touring_onroad_at, touring_onspot_at')
+    .eq('source_format', 'comex')
+    .not('touring_accepted_at', 'is', null)
+    .gte('received_at', floor)
+    .not('status', 'in', `(${DEAD_STATUSES.join(',')})`)
+  if (!Array.isArray(data) || data.length === 0) return { scanned: 0, repaired: 0 }
+
+  const statusByKey = new Map<string, string>()
+  for (const m of missions) statusByKey.set(`${String(m.CID_DOS).toUpperCase()}|${m.CID_SEQ_ACTION}`, m.COD_STATUT_MTR)
+
+  let repaired = 0
+  for (const row of data as any[]) {
+    let cid: any; try { cid = JSON.parse(row.raw_content) } catch { continue }
+    const CID_DOS = String(cid?.CID_DOS || '').trim()
+    const CID_SEQ_ACTION = String(cid?.CID_SEQ_ACTION || '').trim()
+    if (!CID_DOS || !CID_SEQ_ACTION) continue
+    const st = statusByKey.get(`${CID_DOS.toUpperCase()}|${CID_SEQ_ACTION}`)
+    if (!st || st === '07') continue
+
+    try {
+      // On croit « sur place » mais COMEX n'y est pas (≠ 06) → re-pousser onRoad+onSpot.
+      if (row.touring_onspot_at && st !== '06') {
+        await sb.from('incoming_missions')
+          .update({ touring_onspot_at: null, ...(st === '04' ? { touring_onroad_at: null } : {}) }).eq('id', row.id)
+        const { syncTouringOnSpot } = await import('@/lib/touring/sync')
+        if (await syncTouringOnSpot(sb, row.id).catch(() => false)) repaired++
+      }
+      // On croit « en route » mais COMEX est resté en 04 → re-pousser onRoad.
+      else if (row.touring_onroad_at && st === '04') {
+        await sb.from('incoming_missions').update({ touring_onroad_at: null }).eq('id', row.id)
+        const { syncTouringOnRoad } = await import('@/lib/touring/sync')
+        if (await syncTouringOnRoad(sb, row.id).catch(() => false)) repaired++
+      }
+    } catch (e: any) { console.warn('[cron touring-repair]', CID_DOS, e?.message) }
+  }
+  return { scanned: data.length, repaired }
+}
+
 export async function GET(req: Request) {
   const authHeader = req.headers.get('authorization')
   if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
@@ -237,7 +286,14 @@ export async function GET(req: Request) {
       }
     } catch (e: any) { console.warn('[cron touring-reconcile]', e?.message) }
 
-    return NextResponse.json({ ...result, slaRoad, sla, reconcile })
+    // Rattrapage onRoad/onSpot si COMEX est en retard sur nos marqueurs (faux-succès 500).
+    let stepRepair = { scanned: 0, repaired: 0 }
+    try {
+      stepRepair = await runTouringStepRepair(missions)
+      if (stepRepair.repaired) console.log(`[cron touring-repair] repaired=${stepRepair.repaired}/${stepRepair.scanned}`)
+    } catch (e: any) { console.warn('[cron touring-repair]', e?.message) }
+
+    return NextResponse.json({ ...result, slaRoad, sla, reconcile, stepRepair })
   } catch (e: any) {
     console.error('[cron touring-comex]', e.message)
     // Les balayages SLA ont déjà tourné (en amont, indépendants) → on les renvoie.
