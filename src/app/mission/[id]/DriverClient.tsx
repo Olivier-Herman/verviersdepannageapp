@@ -1211,10 +1211,13 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
   // On masque le déclencheur si VR ≠ OUI — inutile de proposer un VR non couvert.
   const canTouringVr   = isTouringComex && rem && (M as any).vr_proposed === true
   const [showTouringClose, setShowTouringClose] = useState(false)
-  // Écran supplémentaire Touring : pour une source COMEX, la clôture Touring est un
-  // écran OBLIGATOIRE qui précède la clôture VD Soft. Tant qu'il n'est pas validé, on
-  // n'entre pas dans l'écran de clôture VD Soft. Olivier 2026-08-06.
-  const [touringGate, setTouringGate] = useState(false)
+  // Écran supplémentaire Touring (vrai écran, source COMEX). Trois actions :
+  //  • 'dsp'     : clôture de la fiche dépannage (fin 00) AVANT la clôture VD Soft
+  //                (sortie bloquée) → ensuite écran de clôture VD Soft DSP.
+  //  • 'dsp2rem' : DSP→REM — clôture fiche dépannage +REM (02) / +REM+VR (03) ; la
+  //                jambe remorquage part au dispatch → on transforme la mission VD Soft.
+  //  • 'vr'      : mission déjà REM, demande de VR (+VR pré-coché).
+  const [touringAction, setTouringAction] = useState<'dsp' | 'dsp2rem' | 'vr' | null>(null)
   const loaded   = !!M.loaded_at || M.status === 'delivering' || M.status === 'parked'
 
   // ── Geofence « Sur place ? » (suggestion) ──────────────────────────────────
@@ -2103,21 +2106,35 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
     window.location.href = __url.toString()
   }
 
-  // Modal Touring (écran supplémentaire). Deux usages :
-  //  • touringGate = true  → étape obligatoire AVANT la clôture VD Soft : une fois
-  //    validé (ou échappatoire si COMEX pas prêt), on enchaîne sur l'écran de clôture.
-  //  • touringGate = false → « Demander un VR » (mission REM) : simple ouverture/fermeture.
-  const proceedToVdSoftClose = () => {
-    setShowTouringClose(false); setTouringGate(false)
-    setCloseType('dsp'); setScreen('close')
+  // Modal Touring (vrai écran). Effet de bord à la validation selon l'action :
+  //  • 'dsp'     → clôture VD Soft DSP (setScreen('close')).
+  //  • 'dsp2rem' → transformation VD Soft en REM (adresse + change_type).
+  //  • 'vr'      → mission déjà REM : simple rafraîchissement.
+  const onTouringDone = () => {
+    const act = touringAction
+    setShowTouringClose(false); setTouringAction(null)
+    if (act === 'dsp')          { setCloseType('dsp'); setScreen('close') }
+    else if (act === 'dsp2rem') { openDestPrompt('rem') }   // → change_type('REM')
+    else if (act === 'vr')      { reloadMission() }
+  }
+  const onTouringCancel = () => {
+    const act = touringAction
+    setShowTouringClose(false); setTouringAction(null)
+    // Sur le gate DSP, la ✕ est masquée : onClose n'arrive que via l'échappatoire
+    // « Continuer sans clôturer Touring » (COMEX pas prêt) → on enchaîne quand même.
+    if (act === 'dsp') { setCloseType('dsp'); setScreen('close') }
   }
   const touringModalEl = showTouringClose ? (
     <TouringCloseModal
       missionId={M.id}
       mode="driver"
-      mandatory={touringGate}
-      onClose={() => { if (touringGate) proceedToVdSoftClose(); else setShowTouringClose(false) }}
-      onDone={()  => { if (touringGate) proceedToVdSoftClose(); else setShowTouringClose(false) }}
+      mandatory
+      blockExit={touringAction === 'dsp'}
+      leg={touringAction === 'dsp' ? 'dsp' : 'rem'}
+      vrAllowed={(M as any).vr_proposed === true}
+      initialVr={touringAction === 'vr'}
+      onClose={onTouringCancel}
+      onDone={onTouringDone}
     />
   ) : null
 
@@ -3554,7 +3571,7 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
             </>
           )
           return canTouringVr ? (
-            <button onClick={() => { setTouringGate(false); setShowTouringClose(true) }}
+            <button onClick={() => { setTouringAction('vr'); setShowTouringClose(true) }}
               className={`w-full text-left rounded-2xl p-3 border-2 flex items-center justify-between active:scale-[0.99] transition ${style}`}>
               {inner}
             </button>
@@ -3569,7 +3586,7 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
             pour les missions REM Touring — ouvre le modal (onglet REM, toggle VR). */}
         {canTouringVr && (
           <button
-            onClick={() => { setTouringGate(false); setShowTouringClose(true) }}
+            onClick={() => { setTouringAction('vr'); setShowTouringClose(true) }}
             className="w-full py-3.5 bg-[#1f5fd6] hover:bg-[#1b54bd] text-white rounded-2xl font-bold text-sm shadow-lg shadow-[#1f5fd6]/20 transition"
           >
             🚗 Demander un VR (Touring)
@@ -4134,9 +4151,9 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
                     if (sncPaymentDue) { setScreen('encaissement'); return }
                     // Source Touring (DSP) : écran supplémentaire de clôture Touring
                     // AVANT la clôture VD Soft. Tant qu'il n'est pas validé, on n'entre
-                    // pas dans l'écran de clôture VD Soft. proceedToVdSoftClose enchaîne.
+                    // pas dans l'écran de clôture VD Soft. onTouringDone enchaîne.
                     if (isTouringComex && M.mission_type !== 'trajet_vide') {
-                      setTouringGate(true); setShowTouringClose(true); return
+                      setTouringAction('dsp'); setShowTouringClose(true); return
                     }
                     setCloseType(M.mission_type === 'trajet_vide' ? 'dpr' : 'dsp'); setScreen('close')
                   }}
@@ -4235,8 +4252,14 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
                   <span className="text-sm font-medium text-indigo-400"><T k="mission_detail.action_advance" /></span>
                 </a>
               )}
-              {/* DSP↔REM */}
-              <button onClick={() => rem ? changeType('DSP') : openDestPrompt('rem')} disabled={loading}
+              {/* DSP↔REM. Pour un DSP source Touring : on clôture d'abord la fiche
+                  dépannage +REM (02) / +REM+VR (03) chez Touring (vrai écran), la jambe
+                  remorquage part au dispatch ; onTouringDone enchaîne sur le change_type. */}
+              <button onClick={() => {
+                  if (rem) { changeType('DSP'); return }
+                  if (isTouringComex) { setTouringAction('dsp2rem'); setShowTouringClose(true); return }
+                  openDestPrompt('rem')
+                }} disabled={loading}
                 className="rounded-2xl py-5 flex flex-col items-center justify-center gap-2 border bg-blue-600/10 border-blue-600/30 transition active:scale-95 disabled:opacity-50">
                 <span className="text-2xl">🔄</span>
                 <span className="text-sm font-medium text-blue-400">

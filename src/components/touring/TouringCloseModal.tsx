@@ -37,18 +37,30 @@ function withCurrent(list: CodeOption[], code: string): CodeOption[] {
 }
 
 export default function TouringCloseModal({
-  missionId, mode = 'driver', onClose, onDone, mandatory = false,
+  missionId, mode = 'driver', onClose, onDone, mandatory = false, blockExit = false,
+  leg, vrAllowed = false, initialVr = false,
 }: {
   missionId: string
   mode?: 'driver' | 'dispatch'
   onClose: () => void
-  onDone?: () => void
-  /** Popup obligatoire (clôture DSP post-Terminer) : masque la ✕, ouvre sur l'onglet DSP. */
+  onDone?: (finCode?: string) => void
+  /** Vrai écran plein cadre (étape de clôture Touring, pas un popup superposé). */
   mandatory?: boolean
+  /** Sortie bloquée : masque la ✕ (le chauffeur doit valider) — gate DSP « Terminer »
+   *  uniquement. Échappatoire seulement si COMEX n'est pas prêt. */
+  blockExit?: boolean
+  /** Contexte chauffeur : 'dsp' = écran Dépannage sur place (fin 00) ; 'rem' = écran
+   *  Remorquage (fin 02, +VR=03). Absent (dispatch) = onglets libres + formulaire complet. */
+  leg?: 'dsp' | 'rem'
+  /** VR autorisé par COMEX (vr_proposed) → affiche le toggle VR sur l'écran Remorquage. */
+  vrAllowed?: boolean
+  /** Pré-coche le +VR (raccourci « Demander un VR »). */
+  initialVr?: boolean
 }) {
   const [init, setInit]         = useState<InitData | null>(null)
   const [loadErr, setLoadErr]   = useState<string | null>(null)
-  const [tab, setTab]           = useState<'dsp' | 'rem'>(mandatory ? 'dsp' : 'rem')
+  const [tab, setTab]           = useState<'dsp' | 'rem'>(leg ?? (mandatory ? 'dsp' : 'rem'))
+  const [wantVr, setWantVr]     = useState(initialVr)
   const [presetKey, setPresetKey] = useState<string>('')
   const [codes, setCodes]       = useState({ cause: '', desc: '', result: '' })
   const [finSel, setFinSel]     = useState('')
@@ -111,12 +123,15 @@ export default function TouringCloseModal({
   function pickPreset(p: ClosePreset) {
     setPresetKey(p.key)
     setCodes({ cause: p.cause, desc: p.desc, result: p.result })
-    setFinSel(p.fin)
+    setFinSel(p.rem && wantVr ? '03' : p.fin)   // +VR pré-coché → fin 03
     setGarageCid('')
   }
 
-  const vrOn = finSel === '03'
-  function toggleVr(on: boolean) { setFinSel(on ? '03' : '02') }
+  const vrOn = finSel === '03' || (tab === 'rem' && wantVr)
+  function toggleVr(on: boolean) {
+    setWantVr(on)
+    if (presetKey) setFinSel(on ? '03' : '02')   // maj immédiate si un preset est déjà choisi
+  }
 
   async function reportToMobi() {
     setReportState('sending')
@@ -135,7 +150,9 @@ export default function TouringCloseModal({
     let body: any = null
     try {
       body = { finCode: finSel, cause: codes.cause, desc: codes.desc, result: codes.result, vin: vin || null, mecIso: init?.mecIso || null, km: km || null }
-      if (isRem) {
+      // Garage/dépose = dispatch uniquement. Côté chauffeur, la clôture +REM (02/03)
+      // ferme la fiche dépannage ; la jambe remorquage part au dispatch.
+      if (isRem && isDispatch) {
         if (garageMode === 'list') {
           const g = (providers || []).find(p => p.cidPrx === garageCid)
           if (!g) { setError('Choisis un garage'); setBusy(false); return }
@@ -156,7 +173,7 @@ export default function TouringCloseModal({
         setError(j.error || `Clôture refusée par COMEX (statut ${j.statusAfter ?? '?'})`)
         setErrorCtx({ attempted: body, comexResponse: j }); setReportState('idle'); setBusy(false); return
       }
-      onDone?.(); onClose()
+      if (onDone) onDone(finSel); else onClose()
     } catch (e: any) {
       setError(e?.message || 'Erreur')
       setErrorCtx({ attempted: body, comexResponse: { exception: String(e?.message || e) } }); setReportState('idle'); setBusy(false)
@@ -187,9 +204,9 @@ export default function TouringCloseModal({
       <div className={panelCls}>
         <div className="flex items-center gap-3 px-4 py-3 border-b">
           <span className="text-xl">🚗</span>
-          <div className="font-bold text-ink">{isDispatch ? 'Clôturer chez Touring' : mandatory ? 'Clôture — détails de la panne' : 'Touring'}</div>
+          <div className="font-bold text-ink">{isDispatch ? 'Clôturer chez Touring' : tab === 'rem' ? 'Remorquage — Touring' : 'Clôture — la panne'}</div>
           {init?.plate && <span className="ml-auto font-mono font-bold text-sm bg-ink text-white px-2 py-0.5 rounded">{init.plate}</span>}
-          {!mandatory && (
+          {!blockExit && (
             <button onClick={onClose} className="ml-2 text-ink-secondary hover:text-ink text-xl leading-none">✕</button>
           )}
         </div>
@@ -204,9 +221,9 @@ export default function TouringCloseModal({
             </div>
           )}
 
-          {/* Popup obligatoire : ne jamais piéger le chauffeur si Touring n'est pas
-              prêt (mauvais statut) ou si le chargement échoue → échappatoire. */}
-          {mandatory && (loadErr || statusBlock) && (
+          {/* Sortie bloquée : ne jamais piéger le chauffeur si Touring n'est pas prêt
+              (mauvais statut) ou si le chargement échoue → échappatoire. */}
+          {blockExit && (loadErr || statusBlock) && (
             <button onClick={onClose}
               className="w-full py-3 bg-surface-2 border rounded-2xl font-bold text-sm text-ink-secondary">
               Continuer sans clôturer Touring →
@@ -218,15 +235,22 @@ export default function TouringCloseModal({
               {!isDispatch && tab === 'dsp' && (
                 <div className="text-center text-[15px] font-bold text-amber-800 bg-amber-50 border border-amber-200 rounded-xl py-2.5 px-3">{intro}</div>
               )}
-              {/* onglets */}
-              <div className="flex bg-surface-2 border rounded-xl p-1 gap-1">
-                {(['dsp', 'rem'] as const).map(t => (
-                  <button key={t} onClick={() => { setTab(t); setPresetKey(''); }}
-                    className={`flex-1 py-2 rounded-lg text-sm font-bold ${tab === t ? (t === 'rem' ? 'bg-surface text-amber-700 shadow-sm' : 'bg-surface text-ink shadow-sm') : 'text-ink-secondary'}`}>
-                    {t === 'dsp' ? 'Dépannage sur place' : 'Remorquage'}
-                  </button>
-                ))}
-              </div>
+              {/* onglets — dispatch uniquement ; côté chauffeur l'écran est fixé par le
+                  contexte (leg) : DSP → Dépannage sur place, REM → Remorquage. */}
+              {isDispatch ? (
+                <div className="flex bg-surface-2 border rounded-xl p-1 gap-1">
+                  {(['dsp', 'rem'] as const).map(t => (
+                    <button key={t} onClick={() => { setTab(t); setPresetKey(''); }}
+                      className={`flex-1 py-2 rounded-lg text-sm font-bold ${tab === t ? (t === 'rem' ? 'bg-surface text-amber-700 shadow-sm' : 'bg-surface text-ink shadow-sm') : 'text-ink-secondary'}`}>
+                      {t === 'dsp' ? 'Dépannage sur place' : 'Remorquage'}
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                <div className={`rounded-xl px-3 py-2 text-sm font-bold text-center ${tab === 'rem' ? 'bg-amber-50 text-amber-800 border border-amber-200' : 'bg-surface-2 text-ink border'}`}>
+                  {tab === 'rem' ? '🚛 Remorquage' : '🔧 Dépannage sur place'}
+                </div>
+              )}
 
               {/* presets — chips (dispatch) / tuiles à icônes (chauffeur) */}
               {isDispatch ? (
@@ -311,16 +335,17 @@ export default function TouringCloseModal({
                 </div>
               )}
 
-              {/* +VR (remorquage) */}
-              {isRem && (
+              {/* +VR (remorquage) — visible seulement si VR autorisé par COMEX (ou dispatch) */}
+              {tab === 'rem' && (isDispatch || vrAllowed) && (
                 <label className="flex items-center justify-between p-3 border rounded-xl bg-surface-2 cursor-pointer">
                   <span className="text-sm font-semibold text-ink">+ Demander un VR (véhicule de remplacement)</span>
                   <input type="checkbox" checked={vrOn} onChange={e => toggleVr(e.target.checked)} className="w-5 h-5 accent-amber-500" />
                 </label>
               )}
 
-              {/* garage (remorquage) */}
-              {isRem && (
+              {/* garage (remorquage) — DISPATCH uniquement : côté chauffeur, la jambe
+                  remorquage (garage/parc) est gérée par le dispatch, pas ici. */}
+              {isRem && isDispatch && (
                 <div className="border border-amber-300 bg-amber-50/50 rounded-xl p-3">
                   <div className="text-xs font-bold text-amber-700 uppercase tracking-wide mb-2">Où déposer le véhicule ?</div>
                   <div className="flex gap-1 mb-3">
