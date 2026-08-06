@@ -1211,31 +1211,11 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
   // On masque le déclencheur si VR ≠ OUI — inutile de proposer un VR non couvert.
   const canTouringVr   = isTouringComex && rem && (M as any).vr_proposed === true
   const [showTouringClose, setShowTouringClose] = useState(false)
-  const [touringMandatory, setTouringMandatory] = useState(false) // popup DSP obligatoire post-Terminer
+  // Écran supplémentaire Touring : pour une source COMEX, la clôture Touring est un
+  // écran OBLIGATOIRE qui précède la clôture VD Soft. Tant qu'il n'est pas validé, on
+  // n'entre pas dans l'écran de clôture VD Soft. Olivier 2026-08-06.
+  const [touringGate, setTouringGate] = useState(false)
   const loaded   = !!M.loaded_at || M.status === 'delivering' || M.status === 'parked'
-
-  // FILET anti-esquive : la clôture VD Soft d'un DSP se fait AVANT le popup Touring.
-  // Si le chauffeur tue l'app pendant le popup, la mission est déjà terminée et le
-  // popup (état React) est perdu → il aurait zappé la clôture COMEX. Donc à
-  // l'ouverture d'un DSP Touring terminé dont COMEX n'est PAS en 07, on ré-impose le
-  // popup obligatoire. Olivier 2026-08-06.
-  const touringNetRef = useRef(false)
-  useEffect(() => {
-    if (touringNetRef.current) return
-    const done  = M.status === 'completed' || M.status === 'to_invoice'
-    const isDsp = (M.mission_type || '') === 'depannage'
-    if (!(isTouringComex && done && isDsp)) return
-    touringNetRef.current = true
-    fetch(`/api/missions/${M.id}/touring-close`)
-      .then(r => r.json())
-      .then(d => {
-        if (!d || d.error) return
-        const closed = d.closure?.closed === true || d.status === '07'
-        if (closed) return                       // déjà clôturé chez Touring → RAS
-        setTouringMandatory(true); setShowTouringClose(true)
-      })
-      .catch(() => {})
-  }, [M.id, M.status, M.mission_type, isTouringComex])
 
   // ── Geofence « Sur place ? » (suggestion) ──────────────────────────────────
   // Suggère de pointer « Sur place » dès que le chauffeur est à ~200 m de
@@ -2111,13 +2091,6 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
       const j = await r.json()
       if (!r.ok) throw new Error(j.error || 'Erreur')
       if (!photosRef.current.length) clearDraft()   // garde le brouillon si des photos restent à envoyer
-      // DSP Touring : la clôture VD Soft est faite, mais il reste la clôture COMEX.
-      // On la rend OBLIGATOIRE via un popup qui s'ouvre APRÈS Terminer (Olivier
-      // 2026-08-06) — pas d'indication « envoyer à Touring », ça fait partie de
-      // leur clôture. Le rechargement n'a lieu qu'une fois le popup complété.
-      if (closeType === 'dsp' && isTouringComex) {
-        setTouringMandatory(true); setShowTouringClose(true); setLoading(false); return
-      }
       reloadMission()
     } catch (e: any) { setErr(e.message || 'Erreur') }
     finally { setLoading(false) }
@@ -2130,15 +2103,21 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
     window.location.href = __url.toString()
   }
 
-  // Modal Touring — rendu à la fois dans la vue principale ET l'écran « mission
-  // terminée » (le filet anti-esquive l'ouvre sur une mission déjà terminée).
+  // Modal Touring (écran supplémentaire). Deux usages :
+  //  • touringGate = true  → étape obligatoire AVANT la clôture VD Soft : une fois
+  //    validé (ou échappatoire si COMEX pas prêt), on enchaîne sur l'écran de clôture.
+  //  • touringGate = false → « Demander un VR » (mission REM) : simple ouverture/fermeture.
+  const proceedToVdSoftClose = () => {
+    setShowTouringClose(false); setTouringGate(false)
+    setCloseType('dsp'); setScreen('close')
+  }
   const touringModalEl = showTouringClose ? (
     <TouringCloseModal
       missionId={M.id}
       mode="driver"
-      mandatory={touringMandatory}
-      onClose={() => { setShowTouringClose(false); if (touringMandatory) { setTouringMandatory(false); reloadMission() } }}
-      onDone={() => { setShowTouringClose(false); if (touringMandatory) { setTouringMandatory(false); reloadMission() } }}
+      mandatory={touringGate}
+      onClose={() => { if (touringGate) proceedToVdSoftClose(); else setShowTouringClose(false) }}
+      onDone={()  => { if (touringGate) proceedToVdSoftClose(); else setShowTouringClose(false) }}
     />
   ) : null
 
@@ -2977,9 +2956,6 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
         </button>
       )}
       <button onClick={() => router.push('/mission')} className="w-full max-w-xs py-3 bg-surface border border text-ink-secondary rounded-2xl text-sm">← Mes missions</button>
-      {/* Filet Touring : la clôture COMEX obligatoire s'affiche PAR-DESSUS le résumé
-          (donc avant), tant que le DSP n'est pas clôturé chez Touring. */}
-      {touringModalEl}
     </div>
   )
 
@@ -3578,7 +3554,7 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
             </>
           )
           return canTouringVr ? (
-            <button onClick={() => { setTouringMandatory(false); setShowTouringClose(true) }}
+            <button onClick={() => { setTouringGate(false); setShowTouringClose(true) }}
               className={`w-full text-left rounded-2xl p-3 border-2 flex items-center justify-between active:scale-[0.99] transition ${style}`}>
               {inner}
             </button>
@@ -3593,7 +3569,7 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
             pour les missions REM Touring — ouvre le modal (onglet REM, toggle VR). */}
         {canTouringVr && (
           <button
-            onClick={() => { setTouringMandatory(false); setShowTouringClose(true) }}
+            onClick={() => { setTouringGate(false); setShowTouringClose(true) }}
             className="w-full py-3.5 bg-[#1f5fd6] hover:bg-[#1b54bd] text-white rounded-2xl font-bold text-sm shadow-lg shadow-[#1f5fd6]/20 transition"
           >
             🚗 Demander un VR (Touring)
@@ -4156,6 +4132,12 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
                 <button onClick={() => {
                     // Siabis non couvert direct : encaissement obligatoire avant clôture.
                     if (sncPaymentDue) { setScreen('encaissement'); return }
+                    // Source Touring (DSP) : écran supplémentaire de clôture Touring
+                    // AVANT la clôture VD Soft. Tant qu'il n'est pas validé, on n'entre
+                    // pas dans l'écran de clôture VD Soft. proceedToVdSoftClose enchaîne.
+                    if (isTouringComex && M.mission_type !== 'trajet_vide') {
+                      setTouringGate(true); setShowTouringClose(true); return
+                    }
                     setCloseType(M.mission_type === 'trajet_vide' ? 'dpr' : 'dsp'); setScreen('close')
                   }}
                   className="w-full py-4 bg-green-600 text-ink font-bold rounded-2xl text-base">

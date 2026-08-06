@@ -173,19 +173,28 @@ export default function TouringCloseModal({
        : `Clôture possible uniquement quand le chauffeur est sur place (statut COMEX actuel : ${init.status}).`)
     : null
 
+  // `mandatory` = vrai écran plein cadre (étape de clôture Touring, pas un popup) ;
+  // sinon bottom-sheet superposé (dispatch, demande VR). Olivier 2026-08-06.
+  const rootCls = mandatory
+    ? 'fixed inset-0 z-[100] bg-surface flex flex-col overscroll-contain'
+    : 'fixed inset-0 z-[100] bg-ink/60 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4 overscroll-contain touch-none'
+  const panelCls = mandatory
+    ? 'bg-surface w-full h-full flex flex-col overscroll-contain'
+    : 'bg-surface w-full sm:max-w-lg sm:rounded-2xl rounded-t-2xl max-h-[92vh] flex flex-col shadow-2xl overscroll-contain'
+
   return (
-    <div className="fixed inset-0 z-[100] bg-ink/60 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4 overscroll-contain touch-none">
-      <div className="bg-surface w-full sm:max-w-lg sm:rounded-2xl rounded-t-2xl max-h-[92vh] flex flex-col shadow-2xl overscroll-contain">
+    <div className={rootCls}>
+      <div className={panelCls}>
         <div className="flex items-center gap-3 px-4 py-3 border-b">
           <span className="text-xl">🚗</span>
-          <div className="font-bold text-ink">{isDispatch ? 'Clôturer chez Touring' : mandatory ? 'Dernière étape : la panne' : 'Touring'}</div>
+          <div className="font-bold text-ink">{isDispatch ? 'Clôturer chez Touring' : mandatory ? 'Clôture — détails de la panne' : 'Touring'}</div>
           {init?.plate && <span className="ml-auto font-mono font-bold text-sm bg-ink text-white px-2 py-0.5 rounded">{init.plate}</span>}
           {!mandatory && (
             <button onClick={onClose} className="ml-2 text-ink-secondary hover:text-ink text-xl leading-none">✕</button>
           )}
         </div>
 
-        <div className="overflow-y-auto overscroll-contain p-4 space-y-4">
+        <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain p-4 space-y-4">
           {loadErr && <div className="bg-critical/10 text-critical rounded-lg p-3 text-sm">{loadErr}</div>}
           {!init && !loadErr && <div className="text-ink-secondary text-sm py-6 text-center">Chargement…</div>}
 
