@@ -13,6 +13,14 @@ import {
 } from '@/lib/touring/close-presets'
 import { PANNE_CAUSE, PANNE_DESC, PANNE_RESULT, type CodeOption } from '@/lib/touring/close-referentials'
 
+// Petit clin d'œil au chauffeur à l'ouverture (mode driver). Olivier 2026-08-06.
+const DRIVER_INTROS = [
+  'Bravo champion 🏆 elle avait quoi cette caisse ?',
+  'Beau sauvetage 💪 c’était quoi le souci ?',
+  'Encore un dépannage de maître 😎 dis-moi la panne !',
+  'Mission accomplie 🚗 alors, elle avait quoi cette fois ?',
+]
+
 interface Provider {
   cidPrx: string; nom: string; rue: string; numRue: string
   cp: string; localite: string; distance: number; lat: number; lng: number
@@ -52,6 +60,7 @@ export default function TouringCloseModal({
   const [error, setError]       = useState<string | null>(null)
   const [errorCtx, setErrorCtx] = useState<any>(null)
   const [reportState, setReportState] = useState<'idle' | 'sending' | 'sent'>('idle')
+  const [intro] = useState(() => DRIVER_INTROS[Math.floor(Math.random() * DRIVER_INTROS.length)])
 
   const isDispatch = mode === 'dispatch'
   const isRem = REM_FIN_CODES.has(finSel)
@@ -167,6 +176,9 @@ export default function TouringCloseModal({
 
           {init && !statusBlock && (
             <>
+              {!isDispatch && (
+                <div className="text-center text-[15px] font-bold text-ink bg-amber-50 border border-amber-200 rounded-xl py-2.5 px-3">{intro}</div>
+              )}
               {/* onglets */}
               <div className="flex bg-surface-2 border rounded-xl p-1 gap-1">
                 {(['dsp', 'rem'] as const).map(t => (
