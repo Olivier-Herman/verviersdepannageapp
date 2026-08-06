@@ -11,7 +11,7 @@ import { useEffect, useState } from 'react'
 import {
   PRESETS_DSP, PRESETS_REM, PRESET_REM_CATCHALL, endMissionLabel, REM_FIN_CODES, type ClosePreset,
 } from '@/lib/touring/close-presets'
-import { PANNE_CAUSE, PANNE_DESC, PANNE_RESULT, labelOf, type CodeOption } from '@/lib/touring/close-referentials'
+import { PANNE_CAUSE, PANNE_DESC, PANNE_RESULT, type CodeOption } from '@/lib/touring/close-referentials'
 
 // Petit clin d'œil au chauffeur à l'ouverture (mode driver). Olivier 2026-08-06.
 const DRIVER_INTROS = [
@@ -38,12 +38,12 @@ function withCurrent(list: CodeOption[], code: string): CodeOption[] {
 
 export default function TouringCloseModal({
   missionId, mode = 'driver', onClose, onDone, mandatory = false, blockExit = false,
-  leg, vrAllowed = false, initialVr = false,
+  leg, vrAllowed = false, initialVr = false, fallbackVin = '', fallbackKm = '',
 }: {
   missionId: string
   mode?: 'driver' | 'dispatch'
   onClose: () => void
-  onDone?: (finCode?: string) => void
+  onDone?: (result?: { finCode: string; destination?: { address: string; lat?: number; lng?: number } }) => void
   /** Vrai écran plein cadre (étape de clôture Touring, pas un popup superposé). */
   mandatory?: boolean
   /** Sortie bloquée : masque la ✕ (le chauffeur doit valider) — gate DSP « Terminer »
@@ -56,6 +56,9 @@ export default function TouringCloseModal({
   vrAllowed?: boolean
   /** Pré-coche le +VR (raccourci « Demander un VR »). */
   initialVr?: boolean
+  /** Repli VIN / km depuis la fiche VD Soft si COMEX ne les a pas (évite la double saisie). */
+  fallbackVin?: string
+  fallbackKm?: string | number
 }) {
   const [init, setInit]         = useState<InitData | null>(null)
   const [loadErr, setLoadErr]   = useState<string | null>(null)
@@ -87,13 +90,18 @@ export default function TouringCloseModal({
       .then(d => {
         if (!alive) return
         if (d.error) { setLoadErr(d.error); return }
-        setInit(d); setVin(d.vin || '')
+        setInit(d)
+        // VIN/km : COMEX en priorité, sinon repli sur la fiche VD Soft (le VIN y est,
+        // récupéré de COMEX à la création). Évite un champ vierge au DSP→REM alors que
+        // la jambe DSP ne les renvoie pas encore. Olivier 2026-08-07.
+        setVin(d.vin || fallbackVin || '')
         // Pré-remplissage : si COMEX a DÉJÀ des codes panne / Fin de mission, on les
         // reprend dans les selects (le dispatch peut ajuster). Olivier 2026-08-06.
         const c = d.closure
         if (c && (c.cause || c.desc || c.result)) setCodes({ cause: c.cause || '', desc: c.desc || '', result: c.result || '' })
         if (c?.finCode) setFinSel(c.finCode)
         if (c?.km) setKm(String(c.km))
+        else if (fallbackKm !== '' && fallbackKm != null) setKm(String(fallbackKm))
       })
       .catch(() => alive && setLoadErr('Impossible de charger la clôture'))
     return () => { alive = false }
@@ -176,7 +184,7 @@ export default function TouringCloseModal({
         setError(j.error || `Clôture refusée par COMEX (statut ${j.statusAfter ?? '?'})`)
         setErrorCtx({ attempted: body, comexResponse: j }); setReportState('idle'); setBusy(false); return
       }
-      if (onDone) onDone(finSel); else onClose()
+      if (onDone) onDone({ finCode: finSel, destination: body.destination }); else onClose()
     } catch (e: any) {
       setError(e?.message || 'Erreur')
       setErrorCtx({ attempted: body, comexResponse: { exception: String(e?.message || e) } }); setReportState('idle'); setBusy(false)
@@ -287,24 +295,16 @@ export default function TouringCloseModal({
                 </div>
               )}
 
-              {/* Codes déjà présents chez Touring — le chauffeur n'est PAS obligé de
-                  choisir un preset (qui écraserait ces codes). Il peut clôturer tel quel. */}
-              {!isDispatch && !presetKey && (codes.cause || codes.desc || codes.result) && (
-                <div className="rounded-xl border border-emerald-300 bg-emerald-50 p-3 text-sm">
-                  <div className="font-bold text-emerald-800 mb-1">✅ Touring a déjà renseigné les codes</div>
-                  <div className="text-emerald-900 space-y-0.5 text-[13px]">
-                    {finSel       && <div><span className="font-semibold">Fin :</span> {endMissionLabel(finSel)}</div>}
-                    {codes.cause  && <div><span className="font-semibold">Incident :</span> {labelOf(PANNE_CAUSE, codes.cause)}</div>}
-                    {codes.desc   && <div><span className="font-semibold">Type :</span> {labelOf(PANNE_DESC, codes.desc)}</div>}
-                    {codes.result && <div><span className="font-semibold">Résultat :</span> {labelOf(PANNE_RESULT, codes.result)}</div>}
-                  </div>
-                  <div className="text-[12px] text-emerald-700 mt-1.5">Tu peux clôturer directement avec ces codes, ou choisir une panne ci-dessus pour les remplacer.</div>
-                </div>
-              )}
-
-              {/* FORMULAIRE COMPLET (dispatch) */}
-              {isDispatch && (
+              {/* Codes panne — sélecteurs éditables (dispatch ET chauffeur), pré-remplis
+                  depuis Touring : le chauffeur VOIT les codes déjà mis et peut les ajuster,
+                  sans être obligé de choisir un preset. La « Fin de mission » reste au
+                  dispatch (côté chauffeur = contexte leg + toggle VR). Olivier 2026-08-07. */}
+              {init && (
                 <div className="space-y-2.5 border rounded-xl p-3 bg-surface-2/50">
+                  {!isDispatch && (codes.cause || codes.desc || codes.result) && !presetKey && (
+                    <div className="text-[12px] text-emerald-700 font-semibold">✅ Codes déjà fournis par Touring — vérifie/ajuste, ou choisis une panne ci-dessus.</div>
+                  )}
+                  {isDispatch && (
                   <div>
                     <label className={lblCls}>Fin de mission</label>
                     <select value={finSel} onChange={e => setFinSel(e.target.value)} className={selCls}>
@@ -312,6 +312,7 @@ export default function TouringCloseModal({
                       {init.finCodes.map(f => <option key={f.code} value={f.code}>{f.label}</option>)}
                     </select>
                   </div>
+                  )}
                   <div className="grid grid-cols-3 gap-2">
                     <div>
                       <label className={lblCls}>Incident</label>
@@ -387,9 +388,8 @@ export default function TouringCloseModal({
                 </div>
               )}
 
-              {/* km + VIN — visibles dès qu'on a de quoi clôturer : preset choisi,
-                  dispatch (formulaire complet), ou codes déjà fournis par Touring. */}
-              {(presetKey || isDispatch || (codes.cause || codes.desc || codes.result)) && (
+              {/* km + VIN — toujours visibles (pré-remplis COMEX ou repli fiche VD Soft) */}
+              {init && (
                 <div className="grid grid-cols-2 gap-2">
                   <div>
                     <label className={lblCls}>Kilométrage (optionnel)</label>

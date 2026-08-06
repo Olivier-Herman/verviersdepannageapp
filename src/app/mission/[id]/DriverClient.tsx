@@ -2110,12 +2110,27 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
   //  • 'dsp'     → clôture VD Soft DSP (setScreen('close')).
   //  • 'dsp2rem' → transformation VD Soft en REM (adresse + change_type).
   //  • 'vr'      → mission déjà REM : simple rafraîchissement.
-  const onTouringDone = () => {
+  const onTouringDone = async (result?: { finCode: string; destination?: { address: string; lat?: number; lng?: number } }) => {
     const act = touringAction
     setShowTouringClose(false); setTouringAction(null)
-    if (act === 'dsp')          { setCloseType('dsp'); setScreen('close') }
-    else if (act === 'dsp2rem') { openDestPrompt('rem') }   // → change_type('REM')
-    else if (act === 'vr')      { reloadMission() }
+    if (act === 'dsp')  { setCloseType('dsp'); setScreen('close'); return }
+    if (act === 'vr')   { reloadMission(); return }
+    if (act === 'dsp2rem') {
+      const dest = result?.destination
+      if (dest?.address) {
+        // Adresse déjà choisie dans la liste Touring → on la reprend directement dans
+        // la fiche VD Soft (pas de double saisie), puis on transforme en REM.
+        try {
+          const body: any = { destination_address: dest.address }
+          if (dest.lat != null) body.destination_lat = dest.lat
+          if (dest.lng != null) body.destination_lng = dest.lng
+          await fetch(`/api/missions/${M.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+        } catch { /* non bloquant : on demandera l'adresse si besoin */ }
+        await changeType('REM')   // recharge la fiche
+      } else {
+        openDestPrompt('rem')     // pas d'adresse Touring (liste vide) → on la demande
+      }
+    }
   }
   const onTouringCancel = () => {
     const act = touringAction
@@ -2133,6 +2148,8 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
       leg={touringAction === 'dsp' ? 'dsp' : 'rem'}
       vrAllowed={(M as any).vr_proposed === true}
       initialVr={touringAction === 'vr'}
+      fallbackVin={(M as any).vehicle_vin || ''}
+      fallbackKm={(M as any).vehicle_mileage ?? ''}
       onClose={onTouringCancel}
       onDone={onTouringDone}
     />
