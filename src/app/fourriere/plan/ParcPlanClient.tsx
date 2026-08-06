@@ -18,6 +18,7 @@ import { RefreshCw, Car, AlertTriangle, Edit3, Check, Search, X, Ban, Link2, Unl
 import Link from 'next/link'
 import AppShell from '@/components/layout/AppShell'
 import { createClient } from '@supabase/supabase-js'
+import { isJudicialSaisie } from '@/lib/missions/judicial'
 
 const sbClient = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -107,6 +108,8 @@ interface PlacedMission {
   client_name:         string | null
   status:              string
   mission_type:        string | null
+  source:              string | null
+  saisie_motif_code:   string | null
   parc_zone_key:       string | null
   parc_row_number:     number | null
   parc_slot_index:     number | null
@@ -1603,6 +1606,7 @@ function VehicleCard({ mission, compact, dragging, highlighted, disableDrag }: {
   const { setNodeRef } = useDraggable({ id: mission.id, disabled: true })
   const { selectedId, onSelect } = useContext(VehicleSelectionCtx)
   const isSelected = selectedId === mission.id
+  const judicial = isJudicialSaisie(mission)
 
   function handleClick(e: React.MouseEvent) {
     // Empeche le click de bubbler vers le slot parent (qui declencherait
@@ -1616,26 +1620,27 @@ function VehicleCard({ mission, compact, dragging, highlighted, disableDrag }: {
     <div
       ref={setNodeRef}
       onClick={handleClick}
-      className={`cursor-pointer select-none rounded transition ${
+      className={`cursor-pointer select-none rounded transition ${judicial ? 'bg-red-600/20 ring-2 ring-red-500' : ''} ${
         compact
           ? `w-full h-full flex flex-col items-center justify-center text-[9px] leading-tight px-1 ${
               isSelected ? 'ring-2 ring-info ring-offset-1' : ''
             }`
-          : `bg-surface border px-2.5 py-2 hover:border-brand text-xs ${
+          : `${judicial ? 'border-red-500' : 'bg-surface border'} px-2.5 py-2 hover:border-brand text-xs ${
               dragging ? 'shadow-2xl border-brand bg-brand/5' : ''
             } ${highlighted ? 'ring-4 ring-amber-400 border-amber-500 bg-amber-50 animate-pulse' : ''} ${
               isSelected ? 'ring-2 ring-info border-info bg-info/5' : ''
             }`
       }`}
+      title={judicial ? '⚠️ SAISIE JUDICIAIRE' : undefined}
     >
       {compact ? (
         <>
-          <span className="font-mono font-bold text-ink truncate w-full text-center">{mission.vehicle_plate || '—'}</span>
+          <span className={`font-mono font-bold truncate w-full text-center ${judicial ? 'text-red-700' : 'text-ink'}`}>{judicial ? '⚠️ ' : ''}{mission.vehicle_plate || '—'}</span>
           <span className="text-ink-faint truncate w-full text-center">{mission.vehicle_brand || ''}</span>
         </>
       ) : (
         <>
-          <div className="font-mono font-bold text-ink">{mission.vehicle_plate || '—'}</div>
+          <div className={`font-mono font-bold ${judicial ? 'text-red-700' : 'text-ink'}`}>{judicial ? '⚠️ ' : ''}{mission.vehicle_plate || '—'}</div>
           <div className="text-ink-muted text-[11px] truncate">
             {[mission.vehicle_brand, mission.vehicle_model].filter(Boolean).join(' ') || mission.client_name || '?'}
           </div>

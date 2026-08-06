@@ -85,7 +85,7 @@ export async function GET() {
     sb.from('parc_zones').select('*').eq('active', true).order('sort_order'),
     sb.from('parc_rows').select('*').order('zone_key').order('row_number'),
     sb.from('incoming_missions')
-      .select('id, external_id, vehicle_plate, vehicle_brand, vehicle_model, client_name, status, parc_zone_key, parc_row_number, parc_slot_index, mission_type')
+      .select('id, external_id, vehicle_plate, vehicle_brand, vehicle_model, client_name, status, parc_zone_key, parc_row_number, parc_slot_index, mission_type, source, saisie_motif_code')
       .in('status', PARKED_STATUSES),
     sb.from('parc_settings').select('canvas_height_px').eq('id', 1).maybeSingle(),
     sb.from('parc_blocked_slots').select('zone_key, row_number, slot_index, reason'),
@@ -99,7 +99,7 @@ export async function GET() {
   const { data: byPlateMissions } = odooPlates.length > 0
     ? await sb
         .from('incoming_missions')
-        .select('id, external_id, vehicle_plate, vehicle_brand, vehicle_model, client_name, status, parc_zone_key, parc_row_number, parc_slot_index, mission_type, updated_at')
+        .select('id, external_id, vehicle_plate, vehicle_brand, vehicle_model, client_name, status, parc_zone_key, parc_row_number, parc_slot_index, mission_type, source, saisie_motif_code, updated_at')
         .in('vehicle_plate', odooPlates)
         .order('updated_at', { ascending: false })
     : { data: [] as any[] }
@@ -174,6 +174,8 @@ export async function GET() {
         client_name:      existingMission.client_name,
         status:           existingMission.status,
         mission_type:     existingMission.mission_type,
+        source:           existingMission.source,
+        saisie_motif_code: existingMission.saisie_motif_code,
         parc_zone_key:    canonZoneKey(existingMission.parc_zone_key || v.zone_code),
         parc_row_number:  existingMission.parc_row_number,
         parc_slot_index:  existingMission.parc_slot_index,

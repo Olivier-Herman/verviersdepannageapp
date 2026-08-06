@@ -40,6 +40,7 @@ export async function GET(req: Request) {
       destination_name, destination_address, redelivery_address,
       amount_guaranteed, incident_at, received_at, intervention_date, rdv_at,
       status, dispatch_mode,
+      saisie_motif_code, saisie_motif_label,
       assigned_to, assigned_at, accepted_at,
       parse_confidence,
       invoice_method, invoice_number,

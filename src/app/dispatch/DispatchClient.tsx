@@ -18,6 +18,7 @@ import { getSourceLabel, getSourceColor, type SourceDisplay as CatalogSource } f
 import AutoDispatchButton from '@/components/dispatch/AutoDispatchButton'
 import { HighwaySiabisModal, shouldOfferSiabis } from './HighwaySiabisModal'
 import { parseHighwayAddress } from '@/lib/highways/parse'
+import { isJudicialSaisie } from '@/lib/missions/judicial'
 import { verifyAddressViaPlaces } from '@/components/AddressField'
 import {
   DndContext, closestCenter, PointerSensor, useSensor, useSensors,
@@ -81,6 +82,8 @@ interface Mission {
   driver_eta_at?: string | null
   requested_by_garage_id?: string | null   // commande passée via l'espace client garage
   kaze_cancelled_after_accept?: boolean     // Kaze a annulé après acceptation → trajet à vide
+  saisie_motif_code?: string | null          // motif saisie police (SAISIE_JUDICIAIRE → carte rouge)
+  saisie_motif_label?: string | null
 }
 
 interface Driver {
@@ -746,14 +749,26 @@ function MissionCard({ mission, drivers, driverStatuses, sources, onRefresh, onM
   // Commande passée par un garage via son espace client → fond ambré + ring
   // pour attirer l'attention du dispatch. Olivier 2026-06-17.
   const isGarage = !!mission.requested_by_garage_id
-  const cardBg   = isGarage ? 'bg-amber-500/10 hover:bg-amber-500/20' : 'bg-surface hover:bg-surface-2'
+  // Saisie JUDICIAIRE → carte rouge très visible (prioritaire sur le style garage).
+  const judicial = isJudicialSaisie(mission)
+  const cardBg   = judicial  ? 'bg-red-600/15 hover:bg-red-600/25'
+                 : isGarage  ? 'bg-amber-500/10 hover:bg-amber-500/20'
+                 : 'bg-surface hover:bg-surface-2'
+  const cardBorder = judicial ? 'border-red-600' : URGENCY_BORDER[delai.urgency]
+  const cardRing   = judicial ? 'ring-2 ring-red-500' : isGarage ? 'ring-2 ring-amber-400' : ''
 
   return (
     <div
       onClick={() => router.push(`/dispatch/${mission.id}`)}
-      className={`relative border-2 rounded-2xl p-4 cursor-pointer transition-all overflow-hidden min-w-0 ${cardBg} ${URGENCY_BORDER[delai.urgency]} ${isGarage ? 'ring-2 ring-amber-400' : ''}`}
+      className={`relative border-2 rounded-2xl p-4 cursor-pointer transition-all overflow-hidden min-w-0 ${cardBg} ${cardBorder} ${cardRing}`}
     >
       <MissionStamp mission={mission} />
+      {judicial && (
+        <div className="mb-3 -mt-1 flex items-center gap-2 rounded-lg bg-red-600 text-white px-3 py-1.5 text-xs font-black uppercase tracking-wide animate-pulse">
+          <span className="text-base leading-none">⚠️</span>
+          Attention — Saisie Judiciaire
+        </div>
+      )}
       {siabisCard && (
         <div onClick={e => e.stopPropagation()}>
           <HighwaySiabisModal missionId={mission.id} highwayRef={parseHighwayAddress(mission.incident_address || '').highwayRef}
