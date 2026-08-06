@@ -685,6 +685,13 @@ export async function closeTouringMission(
     const toCid = isRem ? (input.toCidIntv || '') : ''
     const adrDepot = await resolveComexDepotCid(session, keys)
 
+    // 0) endTech — « Fin Technique » : arme la clôture (FL_TECH_END_MIS). L'UI COMEX
+    // le fait AVANT de valider ; on le reproduit ici pour être auto-suffisant.
+    // Best-effort (si déjà armé, COMEX renvoie OK). Olivier 2026-08-06.
+    await comexRest(session, 'Mission/detail/endTech', {
+      CID_DOS: keys.CID_DOS, CID_SEQ_ACTION: keys.CID_SEQ_ACTION, FL_TECH_END_MIS: 0,
+    }).catch(() => {})
+
     // 1) saveData — persiste le formulaire (comme l'UI COMEX). Best-effort.
     await comexRest(session, 'Mission/saveData', {
       CID_DOS: keys.CID_DOS, CID_SEQ_ACTION: keys.CID_SEQ_ACTION,
