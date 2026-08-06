@@ -150,19 +150,22 @@ export default function TouringCloseModal({
     let body: any = null
     try {
       body = { finCode: finSel, cause: codes.cause, desc: codes.desc, result: codes.result, vin: vin || null, mecIso: init?.mecIso || null, km: km || null }
-      // Garage/dépose = dispatch uniquement. Côté chauffeur, la clôture +REM (02/03)
-      // ferme la fiche dépannage ; la jambe remorquage part au dispatch.
-      if (isRem && isDispatch) {
-        if (garageMode === 'list') {
+      // Garage/dépose. Dispatch : liste ou adresse libre. Chauffeur : uniquement si
+      // Touring a renvoyé une liste préencodée NON vide (il choisit) ; sinon on ne
+      // fixe pas de garage → la clôture +REM ferme la fiche dépannage, la jambe
+      // remorquage part au dispatch. Olivier 2026-08-06.
+      const hasGarageList = providers != null && providers.length > 0
+      if (isRem && (isDispatch || hasGarageList)) {
+        if (isDispatch && garageMode === 'manual') {
+          if (!manual.rue || !manual.cp || !manual.loc) { setError('Complète l’adresse (rue, code postal, ville)'); setBusy(false); return }
+          body.manualAddress = manual
+          body.destination = { address: `${manual.rue} ${manual.num}, ${manual.cp} ${manual.loc}`.trim() }
+        } else {
           const g = (providers || []).find(p => p.cidPrx === garageCid)
           if (!g) { setError('Choisis un garage'); setBusy(false); return }
           body.toCidIntv = g.cidPrx
           body.comment = `// ADRESSE TO REM AUTO : ${g.nom} ${g.numRue} ${g.rue} ${g.cp} ${g.localite} //`
           body.destination = { address: `${g.rue} ${g.numRue}, ${g.cp} ${g.localite}`, lat: g.lat, lng: g.lng }
-        } else {
-          if (!manual.rue || !manual.cp || !manual.loc) { setError('Complète l’adresse (rue, code postal, ville)'); setBusy(false); return }
-          body.manualAddress = manual
-          body.destination = { address: `${manual.rue} ${manual.num}, ${manual.cp} ${manual.loc}`.trim() }
         }
       }
       const r = await fetch(`/api/missions/${missionId}/touring-close`, {
@@ -343,19 +346,23 @@ export default function TouringCloseModal({
                 </label>
               )}
 
-              {/* garage (remorquage) — DISPATCH uniquement : côté chauffeur, la jambe
-                  remorquage (garage/parc) est gérée par le dispatch, pas ici. */}
-              {isRem && isDispatch && (
+              {/* garage (remorquage). Dispatch : toujours (liste + adresse libre).
+                  Chauffeur : seulement si Touring renvoie une liste préencodée NON vide
+                  pour ce REM → il choisit ; sinon rien (la jambe REM part au dispatch).
+                  Olivier 2026-08-06. */}
+              {isRem && (isDispatch || (providers != null && providers.length > 0)) && (
                 <div className="border border-amber-300 bg-amber-50/50 rounded-xl p-3">
                   <div className="text-xs font-bold text-amber-700 uppercase tracking-wide mb-2">Où déposer le véhicule ?</div>
-                  <div className="flex gap-1 mb-3">
-                    {(['list', 'manual'] as const).map(gm => (
-                      <button key={gm} onClick={() => setGarageMode(gm)}
-                        className={`flex-1 py-1.5 rounded-lg text-xs font-bold ${garageMode === gm ? 'bg-surface text-ink shadow-sm' : 'text-ink-secondary'}`}>
-                        {gm === 'list' ? 'Garage de la liste' : 'Autre adresse'}
-                      </button>
-                    ))}
-                  </div>
+                  {isDispatch && (
+                    <div className="flex gap-1 mb-3">
+                      {(['list', 'manual'] as const).map(gm => (
+                        <button key={gm} onClick={() => setGarageMode(gm)}
+                          className={`flex-1 py-1.5 rounded-lg text-xs font-bold ${garageMode === gm ? 'bg-surface text-ink shadow-sm' : 'text-ink-secondary'}`}>
+                          {gm === 'list' ? 'Garage de la liste' : 'Autre adresse'}
+                        </button>
+                      ))}
+                    </div>
+                  )}
                   {garageMode === 'list' ? (
                     providers == null ? <div className="text-xs text-ink-secondary py-2">Chargement des garages…</div> : (
                       <div className="space-y-1.5 max-h-52 overflow-y-auto">
