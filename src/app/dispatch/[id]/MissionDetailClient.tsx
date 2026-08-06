@@ -3795,11 +3795,26 @@ export default function MissionDetailClient({
                 </div>
               </div>
 
-              {/* Compte rendu cloture — visible des que le chauffeur a fini (to_invoice) */}
-              {(initialMission.status === 'completed' || initialMission.status === 'to_invoice') && (
+              {/* Compte rendu clôture — visible dès que le chauffeur a fini (to_invoice),
+                  ET conservé même après une réinitialisation/réassignation tant que des
+                  données de clôture existent (notes, photos, signature, encaissement) :
+                  sinon la remarque/DPR d'un chauffeur précédent « disparaît ». Le statut
+                  redevenant non terminé n'efface pas ces données en base. Olivier 2026-08-06. */}
+              {(() => {
+                const done = initialMission.status === 'completed' || initialMission.status === 'to_invoice'
+                const hasReport = !!initialMission.closing_notes
+                  || (initialMission.driver_photos?.length ?? 0) > 0
+                  || !!initialMission.client_signature
+                  || initialMission.amount_collected != null
+                  || (initialMission as any).vehicle_mileage != null
+                return done || hasReport
+              })() && (
                 <div className="bg-surface border border-success rounded-2xl p-5">
                   <h2 className="text-ink font-semibold text-sm mb-4 flex items-center gap-2">
                     <span>🏁</span> Compte rendu de mission
+                    {!(initialMission.status === 'completed' || initialMission.status === 'to_invoice') && (
+                      <span className="ml-auto text-[10px] font-medium text-amber-700 bg-amber-50 border border-amber-200 rounded px-1.5 py-0.5 uppercase tracking-wide">clôture précédente</span>
+                    )}
                   </h2>
                   <div className="space-y-3">
                     {initialMission.vehicle_mileage && (
@@ -4004,9 +4019,12 @@ export default function MissionDetailClient({
               {/* Historique — Olivier 2026-06-14 : placé sous les Remarques */}
               {logs.length > 0 && (
                 <div className="bg-surface border rounded-2xl p-5 hover:border-brand/30 transition md-card-enter">
-                  <h3 className="text-ink-muted text-xs font-medium uppercase tracking-wide mb-3">Historique</h3>
-                  <div className="space-y-3">
-                    {logs.slice(0, 8).map(log => (
+                  <h3 className="text-ink-muted text-xs font-medium uppercase tracking-wide mb-3">Historique <span className="text-ink-faint normal-case">({logs.length})</span></h3>
+                  {/* Historique COMPLET (suivi de la fiche) — Olivier 2026-08-06 : ne
+                      jamais tronquer, sinon on perd la trace d'un chauffeur précédent
+                      après réassignation. Scrollable si long. */}
+                  <div className="space-y-3 max-h-[28rem] overflow-y-auto pr-1">
+                    {logs.map(log => (
                       <div key={log.id} className="flex gap-2">
                         <span className="text-base leading-none mt-0.5">{LOG_ICONS[log.action] || '•'}</span>
                         <div className="flex-1 min-w-0">
