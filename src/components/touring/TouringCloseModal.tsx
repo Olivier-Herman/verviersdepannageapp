@@ -70,7 +70,16 @@ export default function TouringCloseModal({
     let alive = true
     fetch(`/api/missions/${missionId}/touring-close`)
       .then(r => r.json())
-      .then(d => { if (!alive) return; if (d.error) setLoadErr(d.error); else { setInit(d); setVin(d.vin || '') } })
+      .then(d => {
+        if (!alive) return
+        if (d.error) { setLoadErr(d.error); return }
+        setInit(d); setVin(d.vin || '')
+        // Pré-remplissage : si COMEX a DÉJÀ des codes panne / Fin de mission, on les
+        // reprend dans les selects (le dispatch peut ajuster). Olivier 2026-08-06.
+        const c = d.closure
+        if (c && (c.cause || c.desc || c.result)) setCodes({ cause: c.cause || '', desc: c.desc || '', result: c.result || '' })
+        if (c?.finCode) setFinSel(c.finCode)
+      })
       .catch(() => alive && setLoadErr('Impossible de charger la clôture'))
     return () => { alive = false }
   }, [missionId])
