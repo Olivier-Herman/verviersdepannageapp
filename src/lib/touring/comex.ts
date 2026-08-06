@@ -516,8 +516,12 @@ export async function acceptTouringMission(
           break
         }
       }
+      // Round 0 : on cycle TOUS les dépôts (un 500 peut être propre à un dépôt → un
+      // autre peut faire basculer 03→04). Rounds suivants : on retente juste le
+      // meilleur dépôt (si TOUS ont 500 au round 0 = blip COMEX transitoire).
+      const depotsThisRound = round === 0 ? candidates : candidates.slice(0, 1)
       sawServerError = false
-      for (const depot of candidates) {
+      for (const depot of depotsThisRound) {
         triedDepots.push(depot)
         sentDepotCid = depot
         const acc = await pushComexOperation(session, keys, 'accept', operDate, depot)
@@ -528,7 +532,7 @@ export async function acceptTouringMission(
         attemptLog.push(`r${round} ${depot}→${st ?? '?'} ${snip}`)
         if (st && st !== '03' && st !== statusBefore) { accepted = true; statusAfter = st; break }
         statusAfter = st
-        if (serverErr) { sawServerError = true; break }   // 500 transitoire → on retentera après backoff
+        if (serverErr) sawServerError = true   // NE PAS break : un autre dépôt peut basculer
       }
       // Tous les dépôts en no-op PROPRE (sans erreur serveur) = vrai souci de
       // dépôt/secteur → ré-essayer ne changera rien, on sort.
