@@ -2,14 +2,16 @@
 // src/components/touring/TouringCloseModal.tsx
 //
 // Modal de clôture Touring COMEX (chauffeur & dispatch). Le chauffeur choisit une
-// panne (preset) ; le dispatch a en plus les raccourcis + peut ajuster les codes.
-// Sur un remorquage : sélection du garage (liste COMEX) ou adresse libre.
-// Fermable ✕ / Fermer uniquement (pas au clic-fond). Olivier 2026-08-06.
+// panne (preset). Le dispatch a les raccourcis + le FORMULAIRE COMPLET (Fin de
+// mission + 3 codes panne éditables) ; choisir un preset préremplit les 3 selects.
+// Sur remorquage : garage de la liste ou adresse libre. Fermable ✕/Fermer only.
+// Olivier 2026-08-06.
 
 import { useEffect, useState } from 'react'
 import {
-  PRESETS_DSP, PRESETS_REM, PRESET_REM_CATCHALL, endMissionLabel, type ClosePreset,
+  PRESETS_DSP, PRESETS_REM, PRESET_REM_CATCHALL, endMissionLabel, REM_FIN_CODES, type ClosePreset,
 } from '@/lib/touring/close-presets'
+import { PANNE_CAUSE, PANNE_DESC, PANNE_RESULT, type CodeOption } from '@/lib/touring/close-referentials'
 
 interface Provider {
   cidPrx: string; nom: string; rue: string; numRue: string
@@ -18,6 +20,12 @@ interface Provider {
 interface InitData {
   finCodes: { code: string; label: string; rem: boolean }[]
   vin: string; mecIso: string; status: string; plate: string
+}
+
+// Ajoute l'option courante à la liste si absente (code hors référentiel curé).
+function withCurrent(list: CodeOption[], code: string): CodeOption[] {
+  if (!code || list.some(o => o.code === code)) return list
+  return [{ code, label: `Code ${code}` }, ...list]
 }
 
 export default function TouringCloseModal({
@@ -31,8 +39,9 @@ export default function TouringCloseModal({
   const [init, setInit]         = useState<InitData | null>(null)
   const [loadErr, setLoadErr]   = useState<string | null>(null)
   const [tab, setTab]           = useState<'dsp' | 'rem'>('rem')
-  const [preset, setPreset]     = useState<ClosePreset | null>(null)
-  const [vr, setVr]             = useState(false)
+  const [presetKey, setPresetKey] = useState<string>('')
+  const [codes, setCodes]       = useState({ cause: '', desc: '', result: '' })
+  const [finSel, setFinSel]     = useState('')
   const [providers, setProviders] = useState<Provider[] | null>(null)
   const [garageMode, setGarageMode] = useState<'list' | 'manual'>('list')
   const [garageCid, setGarageCid]   = useState<string>('')
@@ -41,6 +50,11 @@ export default function TouringCloseModal({
   const [vin, setVin]           = useState('')
   const [busy, setBusy]         = useState(false)
   const [error, setError]       = useState<string | null>(null)
+  const [errorCtx, setErrorCtx] = useState<any>(null)
+  const [reportState, setReportState] = useState<'idle' | 'sending' | 'sent'>('idle')
+
+  const isDispatch = mode === 'dispatch'
+  const isRem = REM_FIN_CODES.has(finSel)
 
   // Init (codes Fin de mission dispo, VIN, MEC).
   useEffect(() => {
@@ -52,31 +66,47 @@ export default function TouringCloseModal({
     return () => { alive = false }
   }, [missionId])
 
-  // Sur un preset remorquage → charger la liste des garages.
+  // Sur un remorquage avec les 3 codes → charger la liste des garages.
   useEffect(() => {
-    if (!preset?.rem) { setProviders(null); return }
+    if (!isRem || !codes.cause || !codes.desc || !codes.result) { setProviders(null); return }
     let alive = true
     setProviders(null)
-    const q = new URLSearchParams({ providers: '1', cause: preset.cause, desc: preset.desc, result: preset.result })
+    const q = new URLSearchParams({ providers: '1', cause: codes.cause, desc: codes.desc, result: codes.result })
     fetch(`/api/missions/${missionId}/touring-close?${q}`)
       .then(r => r.json())
-      .then(d => { if (!alive) return; const list: Provider[] = d.providers || []; setProviders(list); if (list[0]) setGarageCid(list[0].cidPrx) })
+      .then(d => { if (!alive) return; const list: Provider[] = d.providers || []; setProviders(list); if (list[0] && !garageCid) setGarageCid(list[0].cidPrx) })
       .catch(() => alive && setProviders([]))
     return () => { alive = false }
-  }, [preset, missionId])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isRem, codes.cause, codes.desc, codes.result, missionId])
 
-  const isRem = !!preset?.rem
-  const finCode = preset ? (isRem && vr ? '03' : preset.fin) : ''
+  function pickPreset(p: ClosePreset) {
+    setPresetKey(p.key)
+    setCodes({ cause: p.cause, desc: p.desc, result: p.result })
+    setFinSel(p.fin)
+    setGarageCid('')
+  }
+
+  const vrOn = finSel === '03'
+  function toggleVr(on: boolean) { setFinSel(on ? '03' : '02') }
+
+  async function reportToMobi() {
+    setReportState('sending')
+    try {
+      await fetch(`/api/missions/${missionId}/touring-close/report`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ error, attempted: errorCtx?.attempted, comexResponse: errorCtx?.comexResponse }),
+      })
+      setReportState('sent')
+    } catch { setReportState('idle') }
+  }
 
   async function submit() {
-    if (!preset) return
+    if (!finSel || !codes.cause || !codes.desc || !codes.result) { setError('Complète la panne (Fin de mission + les 3 codes)'); return }
     setBusy(true); setError(null)
+    let body: any = null
     try {
-      const body: any = {
-        finCode, cause: preset.cause, desc: preset.desc, result: preset.result,
-        vin: vin || null, mecIso: init?.mecIso || null,
-        km: km || null,
-      }
+      body = { finCode: finSel, cause: codes.cause, desc: codes.desc, result: codes.result, vin: vin || null, mecIso: init?.mecIso || null, km: km || null }
       if (isRem) {
         if (garageMode === 'list') {
           const g = (providers || []).find(p => p.cidPrx === garageCid)
@@ -94,20 +124,24 @@ export default function TouringCloseModal({
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
       })
       const j = await r.json()
-      if (!r.ok || !j.ok) { setError(j.error || `Clôture refusée par COMEX (statut ${j.statusAfter ?? '?'})`); setBusy(false); return }
-      onDone?.()
-      onClose()
+      if (!r.ok || !j.ok) {
+        setError(j.error || `Clôture refusée par COMEX (statut ${j.statusAfter ?? '?'})`)
+        setErrorCtx({ attempted: body, comexResponse: j }); setReportState('idle'); setBusy(false); return
+      }
+      onDone?.(); onClose()
     } catch (e: any) {
-      setError(e?.message || 'Erreur'); setBusy(false)
+      setError(e?.message || 'Erreur')
+      setErrorCtx({ attempted: body, comexResponse: { exception: String(e?.message || e) } }); setReportState('idle'); setBusy(false)
     }
   }
 
   const presetsShown = tab === 'dsp' ? PRESETS_DSP : [...PRESETS_REM, PRESET_REM_CATCHALL]
+  const selCls = 'mt-1 w-full border rounded-lg px-2.5 py-2 text-sm bg-surface-2'
+  const lblCls = 'text-[11px] font-bold text-ink-secondary uppercase tracking-wide'
 
   return (
     <div className="fixed inset-0 z-[60] bg-ink/50 flex items-end sm:items-center justify-center p-0 sm:p-4">
       <div className="bg-surface w-full sm:max-w-lg sm:rounded-2xl rounded-t-2xl max-h-[92vh] flex flex-col shadow-2xl">
-        {/* header */}
         <div className="flex items-center gap-3 px-4 py-3 border-b">
           <span className="text-xl">🚗</span>
           <div className="font-bold text-ink">Clôturer chez Touring</div>
@@ -124,32 +158,69 @@ export default function TouringCloseModal({
               {/* onglets */}
               <div className="flex bg-surface-2 border rounded-xl p-1 gap-1">
                 {(['dsp', 'rem'] as const).map(t => (
-                  <button key={t} onClick={() => { setTab(t); setPreset(null); setVr(false) }}
+                  <button key={t} onClick={() => { setTab(t); setPresetKey(''); }}
                     className={`flex-1 py-2 rounded-lg text-sm font-bold ${tab === t ? (t === 'rem' ? 'bg-surface text-amber-700 shadow-sm' : 'bg-surface text-ink shadow-sm') : 'text-ink-secondary'}`}>
                     {t === 'dsp' ? 'Dépannage sur place' : 'Remorquage'}
                   </button>
                 ))}
               </div>
 
-              {/* grille presets */}
+              {/* raccourcis / presets */}
+              {isDispatch && <div className={lblCls}>⚡ Raccourcis — remplit les codes</div>}
               <div className="grid grid-cols-3 gap-2">
                 {presetsShown.map(p => {
-                  const sel = preset?.key === p.key
+                  const sel = presetKey === p.key
                   const isCatch = p.key === 'rem_autre'
                   return (
-                    <button key={p.key} onClick={() => { setPreset(p); setVr(false) }}
-                      className={`rounded-xl border p-2 text-center min-h-[74px] flex flex-col items-center justify-center gap-1 ${isCatch ? 'col-span-3 flex-row' : ''} ${sel ? 'border-amber-500 bg-amber-50 ring-2 ring-amber-400' : 'bg-surface-2 hover:bg-surface-hover'}`}>
+                    <button key={p.key} onClick={() => pickPreset(p)}
+                      className={`rounded-xl border p-2 text-center min-h-[70px] flex flex-col items-center justify-center gap-1 ${isCatch ? 'col-span-3 min-h-0 py-3' : ''} ${sel ? 'border-amber-500 bg-amber-50 ring-2 ring-amber-400' : 'bg-surface-2 hover:bg-surface-hover'}`}>
                       <span className="text-[11px] font-bold leading-tight text-ink">{p.label.replace(/ → .*/, '')}</span>
                     </button>
                   )
                 })}
               </div>
 
+              {/* FORMULAIRE COMPLET (dispatch) */}
+              {isDispatch && (
+                <div className="space-y-2.5 border rounded-xl p-3 bg-surface-2/50">
+                  <div>
+                    <label className={lblCls}>Fin de mission</label>
+                    <select value={finSel} onChange={e => setFinSel(e.target.value)} className={selCls}>
+                      <option value="">— choisir —</option>
+                      {init.finCodes.map(f => <option key={f.code} value={f.code}>{f.label}</option>)}
+                    </select>
+                  </div>
+                  <div className="grid grid-cols-3 gap-2">
+                    <div>
+                      <label className={lblCls}>Incident</label>
+                      <select value={codes.cause} onChange={e => setCodes({ ...codes, cause: e.target.value })} className={selCls}>
+                        <option value="">—</option>
+                        {withCurrent(PANNE_CAUSE, codes.cause).map(o => <option key={o.code} value={o.code}>{o.label}</option>)}
+                      </select>
+                    </div>
+                    <div>
+                      <label className={lblCls}>Type</label>
+                      <select value={codes.desc} onChange={e => setCodes({ ...codes, desc: e.target.value })} className={selCls}>
+                        <option value="">—</option>
+                        {withCurrent(PANNE_DESC, codes.desc).map(o => <option key={o.code} value={o.code}>{o.label}</option>)}
+                      </select>
+                    </div>
+                    <div>
+                      <label className={lblCls}>Résultat</label>
+                      <select value={codes.result} onChange={e => setCodes({ ...codes, result: e.target.value })} className={selCls}>
+                        <option value="">—</option>
+                        {withCurrent(PANNE_RESULT, codes.result).map(o => <option key={o.code} value={o.code}>{o.label}</option>)}
+                      </select>
+                    </div>
+                  </div>
+                </div>
+              )}
+
               {/* +VR (remorquage) */}
               {isRem && (
                 <label className="flex items-center justify-between p-3 border rounded-xl bg-surface-2 cursor-pointer">
                   <span className="text-sm font-semibold text-ink">+ Demander un VR (véhicule de remplacement)</span>
-                  <input type="checkbox" checked={vr} onChange={e => setVr(e.target.checked)} className="w-5 h-5 accent-amber-500" />
+                  <input type="checkbox" checked={vrOn} onChange={e => toggleVr(e.target.checked)} className="w-5 h-5 accent-amber-500" />
                 </label>
               )}
 
@@ -190,30 +261,38 @@ export default function TouringCloseModal({
               )}
 
               {/* km + VIN */}
-              {preset && (
+              {(presetKey || isDispatch) && (
                 <div className="grid grid-cols-2 gap-2">
                   <div>
-                    <label className="text-[11px] font-bold text-ink-secondary uppercase">Kilométrage (optionnel)</label>
-                    <input value={km} onChange={e => setKm(e.target.value)} inputMode="numeric" placeholder="—" className="mt-1 w-full border rounded-lg px-3 py-2 text-sm bg-surface-2" />
+                    <label className={lblCls}>Kilométrage (optionnel)</label>
+                    <input value={km} onChange={e => setKm(e.target.value)} inputMode="numeric" placeholder="—" className={selCls} />
                   </div>
                   <div>
-                    <label className="text-[11px] font-bold text-ink-secondary uppercase">VIN</label>
-                    <input value={vin} onChange={e => setVin(e.target.value)} className="mt-1 w-full border rounded-lg px-3 py-2 text-sm bg-surface-2 font-mono" />
+                    <label className={lblCls}>VIN</label>
+                    <input value={vin} onChange={e => setVin(e.target.value)} className={selCls + ' font-mono'} />
                   </div>
                 </div>
               )}
             </>
           )}
 
-          {error && <div className="bg-critical/10 text-critical rounded-lg p-3 text-sm">{error}</div>}
+          {error && (
+            <div className="bg-critical/10 text-critical rounded-lg p-3 text-sm space-y-2">
+              <div>{error}</div>
+              <div className="text-ink-secondary text-xs">Tu peux clôturer normalement dans COMEX, ou m'envoyer l'erreur :</div>
+              <button onClick={reportToMobi} disabled={reportState !== 'idle'}
+                className="px-3 py-1.5 rounded-lg bg-ink text-white text-xs font-bold disabled:opacity-60">
+                {reportState === 'sending' ? 'Envoi…' : reportState === 'sent' ? '✅ Envoyé à Mobi' : '📧 Envoyer à Mobi'}
+              </button>
+            </div>
+          )}
         </div>
 
-        {/* footer */}
         <div className="px-4 py-3 border-t flex gap-2">
           <button onClick={onClose} className="px-4 py-2.5 rounded-xl border text-ink-secondary text-sm font-semibold">Fermer</button>
-          <button onClick={submit} disabled={!preset || busy}
+          <button onClick={submit} disabled={busy || !finSel}
             className="flex-1 px-4 py-2.5 rounded-xl bg-success hover:bg-success-soft text-white text-sm font-bold disabled:opacity-40">
-            {busy ? 'Clôture en cours…' : `Clôturer${finCode ? ' · ' + endMissionLabel(finCode) : ''}`}
+            {busy ? 'Clôture en cours…' : `Clôturer${finSel ? ' · ' + endMissionLabel(finSel) : ''}`}
           </button>
         </div>
       </div>
