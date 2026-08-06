@@ -151,6 +151,7 @@ export default function CongesManagerClient({ userRole, userName, userEmail, use
                   <span className="font-medium text-ink">{r.worker}</span>
                   <span className="text-ink-muted text-xs">{TYPE_LABEL[r.type] || r.type} · {fmtD(r.start_date)}→{fmtD(r.end_date)} · {r.hours != null ? `${r.hours} h` : `${r.days}j`}</span>
                   <span className="ml-auto"><StatusBadge s={r.status} /></span>
+                  {r.reason && <div className="w-full text-ink-muted text-xs italic">« {r.reason} »</div>}
                   <div className="w-full flex items-center gap-3 mt-0.5">
                     {r.decided_by && <span className="text-ink-muted text-[11px]">par {r.decided_by}{r.decision_note ? ` — ${r.decision_note}` : ''}</span>}
                     <div className="ml-auto flex gap-3">
