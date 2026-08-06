@@ -395,6 +395,11 @@ export async function pushComexOperation(
   const payload: Record<string, any> = { CID_DOS: keys.CID_DOS, CID_SEQ_ACTION: keys.CID_SEQ_ACTION, operType, operDate }
   for (const f of SET_ECHO_FIELDS) {
     const v = d[f]
+    // ⭐ CAUSE RACINE des 500 (2026-08-06) : D_MEC VIDE → COMEX tente de parser ""
+    // comme une date → 500 "java.text.ParseException: Unparseable date". Les
+    // missions SANS date de 1re mise en circulation (ANWB, remorquages…) 500aient
+    // sur accept/onRoad/onSpot. On OMET donc D_MEC quand il est vide.
+    if (f === 'D_MEC' && (v === undefined || v === null || String(v).trim() === '')) continue
     payload[f] = (v === undefined || v === null)
       ? (f === 'FL_PLAINTE_CLIENT' ? '0' : (f === 'MONT_KM' ? 0 : ''))
       : v
