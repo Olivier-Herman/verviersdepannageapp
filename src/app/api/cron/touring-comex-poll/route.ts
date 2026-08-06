@@ -87,6 +87,60 @@ async function runTouringSlaSweep(): Promise<{ scanned: number; pushed: number }
   return { scanned: data.length, pushed }
 }
 
+// Réconciliation accept ↔ COMEX (source de vérité = statut COMEX). Pour chaque
+// mission VD Soft liée COMEX pas encore marquée validée (fenêtre 20 min) :
+//   • statut COMEX 04+ (accepté par NOUS ou À LA MAIN) → auto-valide chez nous.
+//   • statut COMEX 03 (toujours à accepter) ET dispatch a confirmé (status ≠ 'new')
+//     → on rejoue l'accept (absorbe le blip 500 transitoire). noRetry : le poll
+//     (2 min) EST la cadence « jusqu'à 04 » ; zéro retry à vide car on s'arrête dès
+//     que COMEX est en 04. Olivier 2026-08-06.
+async function runTouringAcceptReconcile(
+  missions: Awaited<ReturnType<typeof listComexMissions>>,
+): Promise<{ scanned: number; validated: number; retried: number }> {
+  const sb = createAdminClient()
+  const floor = new Date(Date.now() - 20 * 60_000).toISOString()
+  const { data } = await sb.from('incoming_missions')
+    .select('id, raw_content, status')
+    .eq('source_format', 'comex')
+    .is('touring_accepted_at', null)
+    .gte('received_at', floor)
+    .not('status', 'in', `(${DEAD_STATUSES.join(',')})`)
+  if (!Array.isArray(data) || data.length === 0) return { scanned: 0, validated: 0, retried: 0 }
+
+  const statusByKey = new Map<string, string>()
+  for (const m of missions) {
+    statusByKey.set(`${String(m.CID_DOS).toUpperCase()}|${m.CID_SEQ_ACTION}`, m.COD_STATUT_MTR)
+  }
+
+  let validated = 0, retried = 0
+  const markValidated = (id: string, note: string) => Promise.all([
+    sb.from('incoming_missions').update({ touring_accepted_at: new Date().toISOString() }).eq('id', id),
+    sb.from('mission_logs').insert({ mission_id: id, action: 'touring_synced', notes: note }).then(() => {}, () => {}),
+  ])
+
+  for (const row of data) {
+    let cid: any; try { cid = JSON.parse((row as any).raw_content) } catch { continue }
+    const CID_DOS = String(cid?.CID_DOS || '').trim()
+    const CID_SEQ_ACTION = String(cid?.CID_SEQ_ACTION || '').trim()
+    if (!CID_DOS || !CID_SEQ_ACTION) continue
+    const st = statusByKey.get(`${CID_DOS.toUpperCase()}|${CID_SEQ_ACTION}`)
+    if (!st) continue   // plus dans la liste active (07/sortie) → on ne touche pas
+
+    if (st !== '03') {
+      await markValidated((row as any).id, `Touring COMEX ↗ auto-validé — statut COMEX ${st} détecté par le poll (accepté par nous ou à la main).`)
+      validated++
+    } else if ((row as any).status !== 'new') {
+      retried++
+      try {
+        const { acceptTouringMission } = await import('@/lib/touring/comex')
+        const r = await acceptTouringMission({ CID_DOS, CID_SEQ_ACTION }, { noRetry: true })
+        if (r.ok) { await markValidated((row as any).id, `Touring COMEX ↗ accepté au retry (poll) — COMEX ${r.statusBefore ?? '?'}→${r.statusAfter ?? '?'}.`); validated++ }
+      } catch (e: any) { console.warn('[cron touring-reconcile] accept', CID_DOS, e?.message) }
+    }
+  }
+  return { scanned: data.length, validated, retried }
+}
+
 export async function GET(req: Request) {
   const authHeader = req.headers.get('authorization')
   if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
@@ -173,7 +227,17 @@ export async function GET(req: Request) {
       ;(result as any).duplicatesIgnored = dedup.ignored
     } catch (e: any) { console.warn('[cron touring-comex] neutralize KO:', e?.message) }
 
-    return NextResponse.json({ ...result, slaRoad, sla })
+    // Réconciliation accept : auto-valide les 04+ (dont validations manuelles) et
+    // rejoue les 03 confirmées (blip 500). Source de vérité = statut COMEX.
+    let reconcile = { scanned: 0, validated: 0, retried: 0 }
+    try {
+      reconcile = await runTouringAcceptReconcile(missions)
+      if (reconcile.validated || reconcile.retried) {
+        console.log(`[cron touring-reconcile] validated=${reconcile.validated} retried=${reconcile.retried} scanned=${reconcile.scanned}`)
+      }
+    } catch (e: any) { console.warn('[cron touring-reconcile]', e?.message) }
+
+    return NextResponse.json({ ...result, slaRoad, sla, reconcile })
   } catch (e: any) {
     console.error('[cron touring-comex]', e.message)
     // Les balayages SLA ont déjà tourné (en amont, indépendants) → on les renvoie.

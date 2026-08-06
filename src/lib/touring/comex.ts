@@ -338,7 +338,27 @@ const SET_ECHO_FIELDS = [
   'TO_COD_ADRESSE', 'TO_NOM', 'TO_RUE', 'TO_NUM_RUE', 'TO_CP', 'TO_LOC', 'ADR_DEPOT_CID_INTV',
 ]
 
-export type ComexOperType = 'accept' | 'onRoad' | 'onSpot'
+export type ComexOperType = 'accept' | 'onRoad' | 'onSpot' | 'end'
+
+/** Petite pause (retry backoff). */
+const sleep = (ms: number) => new Promise<void>(r => setTimeout(r, ms))
+
+/**
+ * Détecte une ERREUR SERVEUR COMEX dans la réponse d'un detail/set. COMEX renvoie
+ * alors un tableau `[{errorEnum:"INTERNAL_SERVER_ERROR", errorPattern:"Internal
+ * Server Error", errorMessage:...}]` (HTTP 500) SANS `success:false` → `comexRest`
+ * ne throw pas et le statut reste inchangé. C'est TRANSITOIRE (prouvé : la même
+ * mission s'accepte à la main quelques minutes plus tard). À distinguer d'un
+ * no-op propre « mauvais dépôt ». Olivier 2026-08-06.
+ */
+export function isComexServerError(resp: any): boolean {
+  if (!resp) return false
+  const arr = Array.isArray(resp) ? resp : [resp]
+  return arr.some(x => x && typeof x === 'object' && (
+    x.errorEnum || x.errorPattern ||
+    /internal server error/i.test(String(x.errorMessage || ''))
+  ))
+}
 
 /** Format COMEX pour operDate : "YYYY-MM-DDTHH:mm:ss.000" en **heure locale belge**
  * (Europe/Brussels). CRITIQUE : le serveur Vercel tourne en UTC → getHours()
@@ -424,7 +444,7 @@ export const DEFAULT_REF_PATROL = '001'
  */
 export async function acceptTouringMission(
   keys: { CID_DOS: string; CID_SEQ_ACTION: string },
-  opts?: { etaMinutes?: number; refPatrol?: string; acceptedAt?: Date },
+  opts?: { etaMinutes?: number; refPatrol?: string; acceptedAt?: Date; noRetry?: boolean },
 ): Promise<{ ok: boolean; steps: Record<string, boolean>; error?: string; statusBefore?: string | null; statusAfter?: string | null; sentDepotCid?: string; acceptResp?: any; alreadyAccepted?: boolean }> {
   const steps: Record<string, boolean> = { accept: false, eta: false, assign: false }
   // Preuve indépendante : on relit le statut COMEX AVANT et APRÈS notre appel.
@@ -473,16 +493,46 @@ export async function acceptTouringMission(
     const candidates = await getComexDepotCandidates(session, keys)
     const attemptLog: string[] = []
     let accepted = false
-    for (const depot of candidates) {
-      triedDepots.push(depot)
-      sentDepotCid = depot
-      const acc = await pushComexOperation(session, keys, 'accept', operDate, depot)
-      acceptResp = acc?.response
-      const st = await readStatus(session)
-      const snip = (() => { try { return JSON.stringify(acc?.response).slice(0, 90) } catch { return String(acc?.response).slice(0, 90) } })()
-      attemptLog.push(`${depot}→${st ?? '?'} ${snip}`)
-      if (st && st !== '03' && st !== statusBefore) { accepted = true; statusAfter = st; break }
-      statusAfter = st  // reste 03 → on tentera le dépôt suivant
+    let sawServerError = false
+    // RETRY BACKOFF COURT en-appel : un 500 COMEX est TRANSITOIRE (prouvé le
+    // 2026-08-06 : la mission #10102059 a 500 sur les 5 dépôts en 1 s, puis s'est
+    // acceptée à la main 8 min plus tard sans souci). On ré-essaie donc l'accept
+    // en backoff court AVANT d'abandonner, en relisant le statut entre 2 essais
+    // (si un dispatcher valide À LA MAIN → on le détecte et on arrête). Sur une
+    // erreur serveur, inutile de cycler les 5 dépôts (ils vont tous 500) → on
+    // retente le meilleur dépôt après la pause. Le « jusqu'à 04 » au-delà de ces
+    // ~7 s est assuré par le poll (touring-comex-poll). Olivier 2026-08-06.
+    // noRetry (appel depuis le poll) : une seule passe — c'est le poll lui-même
+    // qui fournit la cadence de retry « jusqu'à 04 ». En-appel (clic Valider) :
+    // backoff court pour un feedback rapide.
+    const RETRY_DELAYS_MS = opts?.noRetry ? [0] : [0, 2000, 2500, 2500]   // ~7 s cumulés max
+    for (let round = 0; round < RETRY_DELAYS_MS.length && !accepted; round++) {
+      if (RETRY_DELAYS_MS[round] > 0) {
+        await sleep(RETRY_DELAYS_MS[round])
+        const stRetry = await readStatus(session)   // validé à la main entre-temps ?
+        if (stRetry && stRetry !== '03' && stRetry !== statusBefore) {
+          accepted = true; statusAfter = stRetry
+          attemptLog.push(`r${round}: déjà ${stRetry} (validé ailleurs)`)
+          break
+        }
+      }
+      sawServerError = false
+      for (const depot of candidates) {
+        triedDepots.push(depot)
+        sentDepotCid = depot
+        const acc = await pushComexOperation(session, keys, 'accept', operDate, depot)
+        acceptResp = acc?.response
+        const serverErr = isComexServerError(acc?.response)
+        const st = await readStatus(session)
+        const snip = (() => { try { return JSON.stringify(acc?.response).slice(0, 90) } catch { return String(acc?.response).slice(0, 90) } })()
+        attemptLog.push(`r${round} ${depot}→${st ?? '?'} ${snip}`)
+        if (st && st !== '03' && st !== statusBefore) { accepted = true; statusAfter = st; break }
+        statusAfter = st
+        if (serverErr) { sawServerError = true; break }   // 500 transitoire → on retentera après backoff
+      }
+      // Tous les dépôts en no-op PROPRE (sans erreur serveur) = vrai souci de
+      // dépôt/secteur → ré-essayer ne changera rien, on sort.
+      if (!accepted && !sawServerError) break
     }
     steps.accept = accepted
 
@@ -490,7 +540,10 @@ export async function acceptTouringMission(
       await setComexEta(session, keys, opts?.etaMinutes ?? 60);          steps.eta = true
       await assignComexPatrol(session, keys, opts?.refPatrol ?? DEFAULT_REF_PATROL); steps.assign = true
     }
-    return { ok: accepted, steps, statusBefore, statusAfter, sentDepotCid, acceptResp, error: accepted ? undefined : `aucun dépôt n'a fait basculer — ${attemptLog.join(' · ')}` }
+    const failReason = sawServerError
+      ? `COMEX en erreur serveur (500) — transitoire, sera ré-essayé par le poll`
+      : `aucun dépôt n'a fait basculer`
+    return { ok: accepted, steps, statusBefore, statusAfter, sentDepotCid, acceptResp, error: accepted ? undefined : `${failReason} — ${attemptLog.join(' · ')}` }
   } catch (e: any) {
     return { ok: false, steps, error: e?.message || 'erreur', statusBefore, statusAfter, sentDepotCid, acceptResp }
   }
