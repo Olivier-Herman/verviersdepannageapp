@@ -281,11 +281,23 @@ export interface BkoDossierDetail {
   agent:      string   // c30
 }
 
-/**
- * Détail d'un dossier BKO : POST getDossDetail.do (form). Renvoie les HEURES que
- * COMEX détient (= reçues par Touring) via la section `[dossier]` (';'-séparée).
- * Paramètres issus d'une ligne de liste. Reverse 2026-08-06.
- */
+/** Parse UNE ligne (';'-séparée, format [dossier]) → heures + codes. Partagé par
+ * getDossDetail, getDossListWithNumAccord et getDossList (même layout de colonnes). */
+export function parseBkoDeroulementLine(line: string): BkoDossierDetail | null {
+  if (!line.includes(';')) return null
+  const c = line.split(';')
+  const dossier = (c[15] || '').trim()
+  if (!dossier) return null
+  const g = (i: number) => (c[i] || '').trim()
+  return {
+    fileDate: g(2), action: g(3), orderNum: g(4),
+    assignDate: g(5), acceptDate: g(6), onRoadDate: g(7), onSpotDate: g(8), endDate: g(9),
+    prestataire: g(14), dossier, seq: g(16) || '0', arcCode: g(17), vin: g(18), plate: g(19),
+    codTrajet: g(20), accord: g(21), brand: g(28), model: g(29), agent: g(30),
+  }
+}
+
+/** Détail d'un dossier BKO (getDossDetail.do, section [dossier]). */
 export async function getBkoDossierDetail(cookie: string, p: {
   cidDoss: string; cidSeqAction: string; commNum: string; typPrest: string; codTrajetComex: string; codStatutFactComex: string
 }): Promise<BkoDossierDetail | null> {
@@ -297,18 +309,32 @@ export async function getBkoDossierDetail(cookie: string, p: {
     method: 'POST', headers: hdr(cookie, true), body: body.toString(), signal: AbortSignal.timeout(20000),
   })
   if (!r.ok) return null
-  const text = new TextDecoder('iso-8859-15').decode(Buffer.from(await r.arrayBuffer()))
-  const lines = text.split('\n')
+  const lines = new TextDecoder('iso-8859-15').decode(Buffer.from(await r.arrayBuffer())).split('\n')
   const idx = lines.findIndex(l => l.trim() === '[dossier]')
-  if (idx < 0 || !lines[idx + 1]?.includes(';')) return null
-  const c = lines[idx + 1].split(';')
-  const g = (i: number) => (c[i] || '').trim()
-  return {
-    fileDate: g(2), action: g(3), orderNum: g(4),
-    assignDate: g(5), acceptDate: g(6), onRoadDate: g(7), onSpotDate: g(8), endDate: g(9),
-    prestataire: g(14), dossier: g(15), seq: g(16), arcCode: g(17), vin: g(18), plate: g(19),
-    codTrajet: g(20), accord: g(21), brand: g(28), model: g(29), agent: g(30),
-  }
+  return idx >= 0 ? parseBkoDeroulementLine(lines[idx + 1] || '') : null
+}
+
+/** Tous les dossiers d'un accord AVEC leurs heures (getDossListWithNumAccord — même
+ * format que le détail, une ligne par dossier). Pas de getDossDetail par dossier. */
+export async function listBkoDeroulementForAccord(cookie: string, numAccord: string): Promise<BkoDossierDetail[]> {
+  const r = await fetch(`${BASE}/secured/invoices/getDossListWithNumAccord.do?`, {
+    method: 'POST', headers: hdr(cookie, true), body: new URLSearchParams({ numAccord }).toString(), signal: AbortSignal.timeout(25000),
+  })
+  if (!r.ok) throw new Error(`getDossListWithNumAccord HTTP ${r.status}`)
+  const text = new TextDecoder('iso-8859-15').decode(Buffer.from(await r.arrayBuffer()))
+  return text.split('\n').map(parseBkoDeroulementLine).filter((x): x is BkoDossierDetail => !!x)
+}
+
+/** Dossiers en cours (non encore facturés) AVEC leurs heures (getDossList InWait/à valider). */
+export async function listBkoDeroulementInWait(cookie: string): Promise<BkoDossierDetail[]> {
+  const r = await fetch(`${BASE}/secured/accord/getDossList.do?dojo.preventCache=${Math.floor(Math.random() * 1e12)}`, {
+    headers: hdr(cookie), signal: AbortSignal.timeout(25000),
+  })
+  if (!r.ok) throw new Error(`getDossList HTTP ${r.status}`)
+  const text = new TextDecoder('iso-8859-15').decode(Buffer.from(await r.arrayBuffer()))
+  return text.split('\n')
+    .filter(l => { const c0 = (l.split(';')[0] || '').trim(); return c0 === '0' || c0 === '1' })
+    .map(parseBkoDeroulementLine).filter((x): x is BkoDossierDetail => !!x)
 }
 
 /**

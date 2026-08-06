@@ -197,6 +197,17 @@ export default function StatsClient({ catalogSources, ...props }: StatsClientPro
       userModules={props.userModules}
     >
       <div className="space-y-4 max-w-7xl mx-auto p-4">
+        {/* Sous-page « Déroulement Touring » (SLA historique COMEX BKO) */}
+        <a href="/stats/touring"
+          className="flex items-center gap-3 bg-[#1f5fd6]/[.08] border border-[#1f5fd6]/25 rounded-xl px-4 py-3 hover:bg-[#1f5fd6]/[.14] transition">
+          <span className="text-2xl">🚗</span>
+          <div>
+            <div className="font-bold text-ink text-sm">Déroulement Touring</div>
+            <div className="text-xs text-ink-secondary">Heures de pointage & délais SLA (avant/après automatisation) — moyennes mensuelles</div>
+          </div>
+          <span className="ml-auto text-[#1f5fd6] font-bold">→</span>
+        </a>
+
         {/* ── Filtres ────────────────────────────────────────── */}
         <div className="flex flex-wrap gap-2 items-center bg-surface p-3 rounded-lg">
           <select value={period} onChange={e => setPeriod(e.target.value)} className="px-3 py-2 bg-surface-hover rounded text-sm">

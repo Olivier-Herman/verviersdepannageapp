@@ -1,29 +1,19 @@
 // src/app/api/stats/touring-deroulement/route.ts
 //
-// Tableau « Déroulement Touring » : pour chaque mission COMEX (active + récemment
-// clôturée, telles que COMEX les liste), on lit les HEURES DE POINTAGE que COMEX
-// détient (= celles que Touring reçoit) : premier appel, accepté, en route, sur
-// place, fin. + les délais SLA. Olivier 2026-08-06.
+// Données du module « Déroulement Touring » (SLA historique, source COMEX BKO).
+//   - monthly : moyennes mensuelles des 4 délais par phase (avant/après auto).
+//   - rows    : détail des missions sur la période demandée (from/to), plafonné.
+// Olivier 2026-08-06.
 
 import { NextResponse }     from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions }      from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase'
-import { loginComex, listComexMissions, getComexMissionDetail } from '@/lib/touring/comex'
 
 export const dynamic     = 'force-dynamic'
-export const maxDuration = 60
+export const maxDuration = 30
 
-const CONC = 5   // detail/get en parallèle, par lots
-
-function diffMin(a?: string | null, b?: string | null): number | null {
-  if (!a || !b) return null
-  const t1 = new Date(a).getTime(), t2 = new Date(b).getTime()
-  if (isNaN(t1) || isNaN(t2)) return null
-  return Math.round((t2 - t1) / 60000)
-}
-
-export async function GET() {
+export async function GET(req: Request) {
   const session = await getServerSession(authOptions)
   if (!session?.user?.email) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   const sb = createAdminClient()
@@ -33,45 +23,25 @@ export async function GET() {
     return NextResponse.json({ error: 'Accès refusé' }, { status: 403 })
   }
 
-  try {
-    const comex = await loginComex('dispatch')
-    const missions = await listComexMissions(comex)
+  const url = new URL(req.url)
+  const from = url.searchParams.get('from')   // ISO
+  const to   = url.searchParams.get('to')     // ISO
+  const account = url.searchParams.get('account') || ''
 
-    const rows: any[] = []
-    for (let i = 0; i < missions.length; i += CONC) {
-      const batch = missions.slice(i, i + CONC)
-      const out = await Promise.all(batch.map(async m => {
-        let d: any = {}
-        try {
-          const r: any = await getComexMissionDetail(comex, { CID_DOS: m.CID_DOS, CID_SEQ_ACTION: m.CID_SEQ_ACTION })
-          d = r?.content || r || {}
-        } catch { /* row partielle */ }
-        const send      = d.D_SEND || (m as any).D_SEND || null
-        const accepte   = d.D_ACCEPT || null
-        const enRoute   = d.D_START || null
-        const surPlace  = d.D_ARRIVE || null
-        const acceptDelai   = diffMin(send, accepte)
-        const enRouteDelai  = diffMin(accepte, enRoute)
-        const surPlaceDelai = diffMin(accepte, surPlace)
-        return {
-          cidDos: m.CID_DOS, seq: m.CID_SEQ_ACTION, plate: (m as any).NUM_PLAQUE || d.NUM_PLAQUE || '',
-          loc: (m as any).LOC || d.LOC || '', gar: (m as any).LIB_GAR || d.LIB_GAR || '',
-          statut: m.COD_STATUT_MTR,
-          creation:     d.D_CREATION || (m as any).D_CREATION || null,
-          premierAppel: d.DH_1R_APPEL || null,
-          send, accepte, enRoute, surPlace, fin: d.D_FIN || null,
-          acceptDelai, enRouteDelai, surPlaceDelai,
-          acceptOk:   acceptDelai   == null ? null : acceptDelai   <= 7,
-          enRouteOk:  enRouteDelai  == null ? null : enRouteDelai  <= 10,
-          surPlaceOk: surPlaceDelai == null ? null : surPlaceDelai <= 45,
-        }
-      }))
-      rows.push(...out)
-    }
-    // tri : plus récent (création) d'abord
-    rows.sort((a, b) => String(b.creation || '').localeCompare(String(a.creation || '')))
-    return NextResponse.json({ rows, at: new Date().toISOString() })
-  } catch (e: any) {
-    return NextResponse.json({ error: e?.message || 'Erreur COMEX' }, { status: 502 })
-  }
+  // Moyennes mensuelles (toute l'histoire) — la comparaison avant/après.
+  const { data: monthly } = await sb.from('touring_deroulement_monthly').select('*').order('month')
+
+  // Détail sur la période.
+  let q = sb.from('touring_deroulement')
+    .select('dossier, seq, account, file_date, action, order_num, plate, arc_code, prestataire, brand, model, statut_fact, auto_phase, assign_at, accept_at, onroad_at, onspot_at, end_at, delai_assign_accept, delai_accept_onroad, delai_assign_onspot, delai_accept_end')
+    .order('file_date', { ascending: false })
+    .limit(1000)
+  if (from) q = q.gte('file_date', from)
+  if (to)   q = q.lte('file_date', to)
+  if (account) q = q.eq('account', account)
+  const { data: rows } = await q
+
+  const { count: total } = await sb.from('touring_deroulement').select('*', { count: 'exact', head: true })
+
+  return NextResponse.json({ monthly: monthly || [], rows: rows || [], total: total || 0 })
 }
