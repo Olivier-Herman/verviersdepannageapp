@@ -20,6 +20,7 @@ import { openNavigation } from '@/lib/open-navigation'
 import AddressField from '@/components/AddressField'
 import { T }    from '@/lib/i18n/T'
 import { useT } from '@/lib/i18n/I18nProvider'
+import TouringCloseModal from '@/components/touring/TouringCloseModal'
 import {
   startForMission, updateForMission, endForMission,
   missionToLAState, isActiveMissionStatus,
@@ -81,7 +82,7 @@ interface Mission {
   awaiting_payment?: boolean | null
 }
 interface VrLoc { id: string; name: string; address: string; lat: number | null; lng: number | null; is_default?: boolean }
-interface Props { mission: Mission; currentUserId?: string; userRole?: string; isReadOnly?: boolean; navApp?: NavApp; defaultParcZone?: string | null }
+interface Props { mission: Mission; currentUserId?: string; userRole?: string; isReadOnly?: boolean; navApp?: NavApp; defaultParcZone?: string | null; touringBeta?: boolean }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 // Olivier 2026-06-18 : null-safe. Le defaut `= ''` ne couvre QUE undefined ;
@@ -608,7 +609,7 @@ function BriefingTtsButton({ mission }: { mission: Mission }) {
 }
 
 // ─── Composant principal ──────────────────────────────────────────────────────
-export default function DriverClient({ mission: init, currentUserId, userRole, isReadOnly = false, navApp: initNav, defaultParcZone = null }: Props) {
+export default function DriverClient({ mission: init, currentUserId, userRole, isReadOnly = false, navApp: initNav, defaultParcZone = null, touringBeta = false }: Props) {
   const canMatthieu = canUseMatthieu(userRole, currentUserId)
   const router = useRouter()
   const { t, lang } = useT()   // traductions FR/albanais pour les messages d'erreur (strings)
@@ -1202,6 +1203,9 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
   const rem      = isREM(mType)
   const rel      = isRELMission(M)         // REL = relivraison depuis le parc
   const onSite   = !!M.on_site_at
+  // Clôture Touring (beta chauffeur : Franck + superadmin) — visible sur place.
+  const [showTouringClose, setShowTouringClose] = useState(false)
+  const canTouringClose = touringBeta && (M as any).source_format === 'comex' && onSite
   const loaded   = !!M.loaded_at || M.status === 'delivering' || M.status === 'parked'
 
   // ── Geofence « Sur place ? » (suggestion) ──────────────────────────────────
@@ -3517,6 +3521,24 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
             </div>
           )
         })()}
+
+        {/* Clôture Touring (beta chauffeur : Franck + superadmin) — visible sur place. */}
+        {canTouringClose && (
+          <button
+            onClick={() => setShowTouringClose(true)}
+            className="w-full py-3.5 bg-[#1f5fd6] hover:bg-[#1b54bd] text-white rounded-2xl font-bold text-sm shadow-lg shadow-[#1f5fd6]/20 transition"
+          >
+            🚗 Clôturer la mission chez Touring
+          </button>
+        )}
+        {showTouringClose && (
+          <TouringCloseModal
+            missionId={M.id}
+            mode="driver"
+            onClose={() => setShowTouringClose(false)}
+            onDone={() => setShowTouringClose(false)}
+          />
+        )}
 
         {/* La tête à Matthieu — assistant mécano (accès restreint Matthieu + superadmin en test) */}
         {canMatthieu && (

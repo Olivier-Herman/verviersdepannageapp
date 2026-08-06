@@ -30,6 +30,10 @@ export default async function MissionDriverPage({ params, searchParams }: Props)
     .from('users').select('id, role, nav_app').eq('email', session.user.email!).single()
   if (!currentUser) redirect('/dashboard')
 
+  // Beta clôture Touring côté chauffeur : superadmin + Franck uniquement. Olivier 2026-08-06.
+  const touringBeta = (currentUser as any).role === 'superadmin'
+    || (session.user.email || '').toLowerCase() === 'bose4845@gmail.com'
+
   // params.id accepte UUID OU mission_number numerique (Olivier 2026-05-26).
   const idIsNumeric = /^\d+$/.test(params.id)
   const { data: mission } = idIsNumeric
@@ -118,6 +122,7 @@ export default async function MissionDriverPage({ params, searchParams }: Props)
         isReadOnly={isStaff && !isDriverOfMission}
         navApp={currentUser.nav_app || 'gmaps'}
         defaultParcZone={defaultParcZone}
+        touringBeta={touringBeta}
       />
     </>
   )
