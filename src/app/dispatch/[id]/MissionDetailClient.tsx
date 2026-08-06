@@ -8,6 +8,7 @@ import { createClient } from '@supabase/supabase-js'
 import { Pencil } from 'lucide-react'
 import { DriverTimeline } from '@/components/missions/DriverTimeline'
 import PriceEstimateCard from '@/components/missions/PriceEstimateCard'
+import TouringCloseModal from '@/components/touring/TouringCloseModal'
 import MissionRemarks from '@/components/missions/MissionRemarks'
 import BillingRemarks from '@/components/missions/BillingRemarks'
 import DriverInstructions from '@/components/missions/DriverInstructions'
@@ -1566,6 +1567,7 @@ export default function MissionDetailClient({
   }, [])   // eslint-disable-line react-hooks/exhaustive-deps
   const [loadingRefuse,  setLoadingRefuse]    = useState(false)
   const [loadingSave,    setLoadingSave]      = useState(false)
+  const [showTouringClose, setShowTouringClose] = useState(false)   // modal clôture Touring COMEX
   const [brands,         setBrands]           = useState<{id:number;name:string}[]>([])
   const [models,         setModels]           = useState<{id:number;name:string}[]>([])
   const [loadingBrands,  setLoadingBrands]    = useState(false)
@@ -3996,6 +3998,25 @@ export default function MissionDetailClient({
                   niveau des boutons de restitution. Reste visible au scroll.
                   Les champs s'enregistrent déjà en auto ; ce bouton notifie le
                   chauffeur + fige les dates parc. Olivier 2026-06-14. */}
+              {/* Clôturer chez Touring — missions COMEX uniquement, juste au-dessus
+                  de « Sauvegarder ». Ouvre le modal (form complet + raccourcis). */}
+              {(M as any).source_format === 'comex' && status !== 'ignored' && (
+                <button
+                  onClick={() => setShowTouringClose(true)}
+                  title="Clôturer la mission dans Touring COMEX"
+                  className="w-full mb-2 py-3 bg-[#1f5fd6] hover:bg-[#1b54bd] text-white rounded-2xl font-semibold text-sm shadow-lg shadow-[#1f5fd6]/20 transition"
+                >
+                  🚗 Clôturer la mission chez Touring
+                </button>
+              )}
+              {showTouringClose && (
+                <TouringCloseModal
+                  missionId={initialMission.id}
+                  mode="dispatch"
+                  onClose={() => setShowTouringClose(false)}
+                  onDone={() => { setShowTouringClose(false); router.refresh() }}
+                />
+              )}
               {status !== 'ignored' && (
                 <div className="sticky top-[76px] z-10">
                   <button

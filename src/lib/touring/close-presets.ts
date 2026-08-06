@@ -27,6 +27,40 @@ export interface ClosePreset {
 /** COD_PANNE_RESULT figé pour tout remorquage. */
 export const RESULT_REM_IMPOSSIBLE = '73'   // « Réparation sur route impossible »
 
+/**
+ * Référentiel « Fin de mission » (COD_FIN_MISSION) code→libellé — dump COMEX
+ * 2026-08-06 (widget detailInfosEndMission). Une mission n'expose qu'un
+ * sous-ensemble via `LST_CODE_END_MIS` (dynamique) → filtrer avec ça à l'affichage.
+ */
+export const END_MISSION_LABELS: Record<string, string> = {
+  '00': 'Fin de tâche',
+  '02': 'Fin de tâche, + Remorquage',
+  '03': 'Fin de tâche, + Rem + VR',
+  '04': 'Fin de tâche, + VR',
+  '06': 'Fin dépannage téléphonique',
+  '07': 'Fin de REM transformé en DEP',
+  '33': 'Fin dép. tél. + VR',
+  '34': 'Fin de tâche + Rem + Taxi',
+  '35': 'Fin de tâche + Rem + VR + Taxi',
+  '36': 'Refus garage',
+  '20': 'Annul. Sté partie avec déplacement',
+  '21': 'Annul. Refus POU avec déplacement',
+  '23': 'Annul. Sté partie sans déplacement',
+  '24': 'Annul. Refus POU sans déplacement',
+  '25': 'Annul. envoyer quelqu’un d’autre',
+  '28': 'Annul. mauvaise adresse sans dép.',
+  '29': 'Annul. mauvaise adresse avec dép.',
+  '40': 'Annul. matériel inadapté avec dép.',
+}
+
+/** Codes Fin de mission qui impliquent un remorquage (dépose garage/adresse). */
+export const REM_FIN_CODES = new Set(['02', '03', '34', '35'])
+
+/** Libellé d'un code Fin de mission (fallback « Code XX »). */
+export function endMissionLabel(code: string): string {
+  return END_MISSION_LABELS[code] || `Code ${code}`
+}
+
 // ── A) Dépannage sur place — FIN 00 ──────────────────────────────────────────
 export const PRESETS_DSP: ClosePreset[] = [
   { key: 'batt_recharge',   label: 'Batterie déchargée → rechargée',            cause: '400', desc: '29', result: '58', fin: '00', rem: false },

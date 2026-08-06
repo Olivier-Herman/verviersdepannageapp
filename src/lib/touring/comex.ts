@@ -665,7 +665,11 @@ export async function closeTouringMission(
     const operDate = comexOperDate(input.at || new Date())
 
     const isRem = REM_FIN_CODES.has(input.finCode)
-    const toCid = isRem ? (input.toCidIntv || DEFAULT_RAC_DEPOT_CID) : ''
+    // toCidIntv = garage de la liste (provider/get). Vide = adresse LIBRE (saisie
+    // manuelle) : la destination vit alors dans COMM_FIN_MISSION (input.comment,
+    // format « // ADRESSE TO REM MAN : … // »). Le choix « notre dépôt » = l'UI
+    // envoie DEFAULT_RAC_DEPOT_CID explicitement. Pas de défaut forcé ici.
+    const toCid = isRem ? (input.toCidIntv || '') : ''
     const adrDepot = await resolveComexDepotCid(session, keys)
 
     // 1) saveData — persiste le formulaire (comme l'UI COMEX). Best-effort.
