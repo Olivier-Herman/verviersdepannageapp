@@ -38,7 +38,7 @@ function withCurrent(list: CodeOption[], code: string): CodeOption[] {
 
 export default function TouringCloseModal({
   missionId, mode = 'driver', onClose, onDone, mandatory = false, blockExit = false,
-  leg, vrAllowed = false, initialVr = false, fallbackVin = '', fallbackKm = '',
+  leg, vrAllowed = false, initialVr = false, fallbackVin = '', fallbackKm = '', forcedFin = '',
 }: {
   missionId: string
   mode?: 'driver' | 'dispatch'
@@ -59,6 +59,9 @@ export default function TouringCloseModal({
   /** Repli VIN / km depuis la fiche VD Soft si COMEX ne les a pas (évite la double saisie). */
   fallbackVin?: string
   fallbackKm?: string | number
+  /** Force le code Fin de mission (ex. '05' mise en parc) : les presets ne l'écrasent
+   *  pas, et comme 05 ∉ REM_FIN_CODES, garage + VR sont masqués automatiquement. */
+  forcedFin?: string
 }) {
   const [init, setInit]         = useState<InitData | null>(null)
   const [loadErr, setLoadErr]   = useState<string | null>(null)
@@ -66,7 +69,7 @@ export default function TouringCloseModal({
   const [wantVr, setWantVr]     = useState(initialVr)
   const [presetKey, setPresetKey] = useState<string>('')
   const [codes, setCodes]       = useState({ cause: '', desc: '', result: '' })
-  const [finSel, setFinSel]     = useState('')
+  const [finSel, setFinSel]     = useState(forcedFin || '')
   const [providers, setProviders] = useState<Provider[] | null>(null)
   const [garageMode, setGarageMode] = useState<'list' | 'manual'>('list')
   const [garageCid, setGarageCid]   = useState<string>('')
@@ -99,7 +102,7 @@ export default function TouringCloseModal({
         // reprend dans les selects (le dispatch peut ajuster). Olivier 2026-08-06.
         const c = d.closure
         if (c && (c.cause || c.desc || c.result)) setCodes({ cause: c.cause || '', desc: c.desc || '', result: c.result || '' })
-        if (c?.finCode) setFinSel(c.finCode)
+        if (c?.finCode && !forcedFin) setFinSel(c.finCode)
         if (c?.km) setKm(String(c.km))
         else if (fallbackKm !== '' && fallbackKm != null) setKm(String(fallbackKm))
       })
@@ -131,7 +134,7 @@ export default function TouringCloseModal({
   function pickPreset(p: ClosePreset) {
     setPresetKey(p.key)
     setCodes({ cause: p.cause, desc: p.desc, result: p.result })
-    setFinSel(p.rem && wantVr ? '03' : p.fin)   // +VR pré-coché → fin 03
+    setFinSel(forcedFin || (p.rem && wantVr ? '03' : p.fin))   // forcedFin (05) l'emporte ; sinon +VR → 03
     setGarageCid('')
   }
 
@@ -215,7 +218,7 @@ export default function TouringCloseModal({
       <div className={panelCls}>
         <div className="flex items-center gap-3 px-4 py-3 border-b">
           <span className="text-xl">🚗</span>
-          <div className="font-bold text-ink">{isDispatch ? 'Clôturer chez Touring' : tab === 'rem' ? 'Remorquage — Touring' : 'Clôture — la panne'}</div>
+          <div className="font-bold text-ink">{isDispatch ? 'Clôturer chez Touring' : forcedFin === '05' ? 'Mise en parc — Touring' : tab === 'rem' ? 'Remorquage — Touring' : 'Clôture — la panne'}</div>
           {init?.plate && <span className="ml-auto font-mono font-bold text-sm bg-ink text-white px-2 py-0.5 rounded">{init.plate}</span>}
           {!blockExit && (
             <button onClick={onClose} className="ml-2 text-ink-secondary hover:text-ink text-xl leading-none">✕</button>
@@ -259,7 +262,7 @@ export default function TouringCloseModal({
                 </div>
               ) : (
                 <div className={`rounded-xl px-3 py-2 text-sm font-bold text-center ${tab === 'rem' ? 'bg-amber-50 text-amber-800 border border-amber-200' : 'bg-surface-2 text-ink border'}`}>
-                  {tab === 'rem' ? '🚛 Remorquage' : '🔧 Dépannage sur place'}
+                  {forcedFin === '05' ? '🅿️ Mise en parc (Fin Remorquage + Transfert)' : tab === 'rem' ? '🚛 Remorquage' : '🔧 Dépannage sur place'}
                 </div>
               )}
 

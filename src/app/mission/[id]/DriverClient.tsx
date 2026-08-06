@@ -1217,7 +1217,7 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
   //  • 'dsp2rem' : DSP→REM — clôture fiche dépannage +REM (02) / +REM+VR (03) ; la
   //                jambe remorquage part au dispatch → on transforme la mission VD Soft.
   //  • 'vr'      : mission déjà REM, demande de VR (+VR pré-coché).
-  const [touringAction, setTouringAction] = useState<'dsp' | 'dsp2rem' | 'vr' | null>(null)
+  const [touringAction, setTouringAction] = useState<'dsp' | 'dsp2rem' | 'vr' | 'park' | null>(null)
   const loaded   = !!M.loaded_at || M.status === 'delivering' || M.status === 'parked'
 
   // ── Geofence « Sur place ? » (suggestion) ──────────────────────────────────
@@ -2110,11 +2110,18 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
   //  • 'dsp'     → clôture VD Soft DSP (setScreen('close')).
   //  • 'dsp2rem' → transformation VD Soft en REM (adresse + change_type).
   //  • 'vr'      → mission déjà REM : simple rafraîchissement.
+  // Enchaîne le flux « mise en parc » VD Soft (après la clôture Touring 05).
+  const continuePark = () => {
+    if (!parkDepot) { const def = vrLocs.find(v => (v as any).is_default) || vrLocs[0]; if (def) setParkDepot(def) }
+    if (isDispatchRem) { openDestPrompt('park') }
+    else { setCloseType('park'); setScreen('close') }
+  }
   const onTouringDone = async (result?: { finCode: string; destination?: { address: string; lat?: number; lng?: number } }) => {
     const act = touringAction
     setShowTouringClose(false); setTouringAction(null)
     if (act === 'dsp')  { setCloseType('dsp'); setScreen('close'); return }
     if (act === 'vr')   { reloadMission(); return }
+    if (act === 'park') { continuePark(); return }   // 05 clôturé chez Touring → parc VD Soft
     if (act === 'dsp2rem') {
       const dest = result?.destination
       if (dest?.address) {
@@ -2135,18 +2142,21 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
   const onTouringCancel = () => {
     const act = touringAction
     setShowTouringClose(false); setTouringAction(null)
-    // Sur le gate DSP, la ✕ est masquée : onClose n'arrive que via l'échappatoire
-    // « Continuer sans clôturer Touring » (COMEX pas prêt) → on enchaîne quand même.
-    if (act === 'dsp') { setCloseType('dsp'); setScreen('close') }
+    // Sur les gates à sortie bloquée (DSP, park), la ✕ est masquée : onClose n'arrive
+    // que via l'échappatoire « Continuer sans clôturer Touring » (COMEX pas prêt) →
+    // on enchaîne quand même sur la suite VD Soft.
+    if (act === 'dsp')  { setCloseType('dsp'); setScreen('close') }
+    if (act === 'park') { continuePark() }
   }
   const touringModalEl = showTouringClose ? (
     <TouringCloseModal
       missionId={M.id}
       mode="driver"
       mandatory
-      blockExit={touringAction === 'dsp'}
+      blockExit={touringAction === 'dsp' || touringAction === 'park'}
       leg={touringAction === 'dsp' ? 'dsp' : 'rem'}
-      vrAllowed={(M as any).vr_proposed === true}
+      forcedFin={touringAction === 'park' ? '05' : ''}
+      vrAllowed={touringAction !== 'park' && (M as any).vr_proposed === true}
       initialVr={touringAction === 'vr'}
       fallbackVin={(M as any).vehicle_vin || ''}
       fallbackKm={(M as any).vehicle_mileage ?? ''}
@@ -4137,6 +4147,9 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
                         const def = vrLocs.find(v => (v as any).is_default) || vrLocs[0]
                         if (def) setParkDepot(def)
                       }
+                      // Touring : mise en parc = fin technique dépôt (05) chez Touring
+                      // AVANT le parc VD Soft. continuePark enchaîne après validation.
+                      if (isTouringComex) { setTouringAction('park'); setShowTouringClose(true); return }
                       // Dispatch REM : on confirme d'abord l'adresse de relivraison.
                       // Police / SIABIS : parc direct (fourrière, pas de relivraison).
                       if (isDispatchRem) { openDestPrompt('park') }
@@ -4301,7 +4314,7 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
               )}
               {/* Mise en parc (REM uniquement) */}
               {rem && (
-                <button onClick={() => { setShowGrid(false); if (isDispatchRem) { openDestPrompt('park') } else { setShowPark(true) } }}
+                <button onClick={() => { setShowGrid(false); if (isTouringComex) { setTouringAction('park'); setShowTouringClose(true); return } if (isDispatchRem) { openDestPrompt('park') } else { setShowPark(true) } }}
                   className="rounded-2xl py-5 flex flex-col items-center justify-center gap-2 border bg-amber-600/10 border-amber-600/30 transition active:scale-95">
                   <span className="text-2xl">🅿️</span>
                   <span className="text-sm font-medium text-amber-400"><T k="mission_detail.action_park" /></span>
