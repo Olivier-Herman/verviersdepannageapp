@@ -16,6 +16,7 @@ import {
   loginComex, getComexMissionDetail, getComexProviders, closeTouringMission,
 } from '@/lib/touring/comex'
 import { endMissionLabel, REM_FIN_CODES } from '@/lib/touring/close-presets'
+import { labelOf, PANNE_CAUSE, PANNE_DESC, PANNE_RESULT } from '@/lib/touring/close-referentials'
 
 export const dynamic     = 'force-dynamic'
 export const maxDuration = 60
@@ -68,14 +69,30 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
       .split(';').map(s => s.trim()).filter(Boolean)
       .map(code => ({ code, label: endMissionLabel(code), rem: REM_FIN_CODES.has(code) }))
 
+    const st = String(d.COD_STATUT_MTR_ACT || '')
+    const finC = String(d.COD_FIN_MISSION || '')
+    const rawComm = String(d.COMM_FIN_MISSION || '')
     return NextResponse.json({
       finCodes,
       vin:    d.NUM_CHASSIS || '',
       mecIso: d.D_MEC || '',
-      status: d.COD_STATUT_MTR_ACT || '',
+      status: st,
       plate:  (m as any).vehicle_plate || '',
       // codes sinistre d'origine (pré-remplissage éventuel côté dispatch)
       sinistre: { cause: d.COD_CAUSE_SIN || '', type: d.COD_TYPE_SIN || '', desc: d.COD_DESC_SIN || '' },
+      // Récap de clôture (renvoyé en permanence — reflète COMEX, clôture module OU manuelle).
+      closure: {
+        closed:      st === '07',
+        finCode:     finC,
+        finLabel:    finC ? endMissionLabel(finC) : '',
+        cause:       String(d.COD_PANNE_CAUSE || ''),  causeLabel:  labelOf(PANNE_CAUSE, String(d.COD_PANNE_CAUSE || '')),
+        desc:        String(d.COD_PANNE_DESC || ''),   descLabel:   labelOf(PANNE_DESC, String(d.COD_PANNE_DESC || '')),
+        result:      String(d.COD_PANNE_RESULT || ''), resultLabel: labelOf(PANNE_RESULT, String(d.COD_PANNE_RESULT || '')),
+        km:          (d.MONT_KM === 0 || d.MONT_KM) ? String(d.MONT_KM) : '',
+        kmReason:    String(d.COD_NON_SAISIE_KM || ''),
+        destination: rawComm && rawComm !== 'null' ? rawComm : '',
+        vr: { nom: String(d.VR_NOM || ''), rue: String(d.VR_RUE || ''), cp: String(d.VR_CP || ''), loc: String(d.VR_LOC || ''), comm: String(d.COMM_VR || '') },
+      },
     })
   } catch (e: any) {
     return NextResponse.json({ error: e?.message || 'Erreur COMEX' }, { status: 502 })

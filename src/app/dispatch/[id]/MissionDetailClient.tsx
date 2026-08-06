@@ -1568,6 +1568,13 @@ export default function MissionDetailClient({
   const [loadingRefuse,  setLoadingRefuse]    = useState(false)
   const [loadingSave,    setLoadingSave]      = useState(false)
   const [showTouringClose, setShowTouringClose] = useState(false)   // modal clôture Touring COMEX
+  const [comexTouring, setComexTouring] = useState<any>(null)       // statut + récap clôture COMEX (live)
+  const reloadComexTouring = () => {
+    if ((initialMission as any)?.source_format !== 'comex') return
+    fetch(`/api/missions/${initialMission.id}/touring-close`)
+      .then(r => r.json()).then(d => { if (!d?.error) setComexTouring(d) }).catch(() => {})
+  }
+  useEffect(() => { reloadComexTouring() /* eslint-disable-next-line */ }, [initialMission.id])
   const [brands,         setBrands]           = useState<{id:number;name:string}[]>([])
   const [models,         setModels]           = useState<{id:number;name:string}[]>([])
   const [loadingBrands,  setLoadingBrands]    = useState(false)
@@ -4000,9 +4007,35 @@ export default function MissionDetailClient({
                   chauffeur + fige les dates parc. Olivier 2026-06-14. */}
               {/* Clôturer chez Touring — missions COMEX uniquement, juste au-dessus
                   de « Sauvegarder ». Ouvre le modal (form complet + raccourcis). */}
-              {/* Clôture Touring : uniquement missions COMEX ET chauffeur sur place
-                  (touring_onspot_at posé ⇒ COMEX ≥ 06). Avant, COMEX refuse. */}
-              {(M as any).source_format === 'comex' && (M as any).touring_onspot_at && status !== 'ignored' && (
+              {/* Bloc récap clôture Touring — reflète COMEX en permanence (clôture via
+                  le module OU manuelle). Olivier 2026-08-06. */}
+              {comexTouring?.closure && (comexTouring.closure.closed || comexTouring.closure.finCode) && (() => {
+                const c = comexTouring.closure
+                const vrTxt = [c.vr?.nom, c.vr?.rue, c.vr?.cp, c.vr?.loc].filter(Boolean).join(' ')
+                return (
+                  <div className="mb-2 rounded-2xl border border-green-300 bg-green-50 overflow-hidden">
+                    <div className="flex items-center gap-2 px-4 py-2.5 bg-green-100/70 border-b border-green-200">
+                      <span className="text-green-700 text-lg">✓</span>
+                      <span className="font-bold text-green-900 text-sm">Clôturée dans Touring</span>
+                      <span className="ml-auto text-[11px] font-bold bg-green-600 text-white px-2 py-0.5 rounded-full">COMEX {comexTouring.status}</span>
+                    </div>
+                    <div className="p-4 grid grid-cols-2 gap-x-4 gap-y-2.5 text-green-950">
+                      <div className="col-span-2"><div className="text-[10px] font-bold uppercase tracking-wide text-green-700/80">Fin de mission</div><div className="text-sm font-bold">{c.finLabel || `Code ${c.finCode}`}</div></div>
+                      <div><div className="text-[10px] font-bold uppercase tracking-wide text-green-700/80">Incident</div><div className="text-sm font-semibold">{c.causeLabel || '—'}</div></div>
+                      <div><div className="text-[10px] font-bold uppercase tracking-wide text-green-700/80">Type</div><div className="text-sm font-semibold">{c.descLabel || '—'}</div></div>
+                      <div><div className="text-[10px] font-bold uppercase tracking-wide text-green-700/80">Résultat</div><div className="text-sm font-semibold">{c.resultLabel || '—'}</div></div>
+                      <div><div className="text-[10px] font-bold uppercase tracking-wide text-green-700/80">Kilométrage</div><div className="text-sm font-semibold">{c.km || '—'}</div></div>
+                      {c.destination && <div className="col-span-2"><div className="text-[10px] font-bold uppercase tracking-wide text-green-700/80">Dépose</div><div className="text-sm font-semibold break-words">{c.destination.replace(/^\/\/\s*ADRESSE TO REM \w+ :\s*/i, '').replace(/\s*\/\/\s*$/, '')}</div></div>}
+                      {vrTxt && <div className="col-span-2"><div className="text-[10px] font-bold uppercase tracking-wide text-green-700/80">VR — lieu de mise à disposition</div><div className="text-sm font-bold text-amber-800">{vrTxt}</div></div>}
+                    </div>
+                  </div>
+                )
+              })()}
+
+              {/* Clôture Touring : missions COMEX de 04 à 06 (le bouton disparaît dès
+                  que COMEX ne permet plus — 07). Clôture réelle uniquement à « sur
+                  place » (06) — garde-fou dans le modal. Olivier 2026-08-06. */}
+              {comexTouring && ['04', '05', '06'].includes(comexTouring.status) && status !== 'ignored' && (
                 <button
                   onClick={() => setShowTouringClose(true)}
                   title="Clôturer la mission dans Touring COMEX"
@@ -4016,7 +4049,7 @@ export default function MissionDetailClient({
                   missionId={initialMission.id}
                   mode="dispatch"
                   onClose={() => setShowTouringClose(false)}
-                  onDone={() => { setShowTouringClose(false); router.refresh() }}
+                  onDone={() => { setShowTouringClose(false); reloadComexTouring(); router.refresh() }}
                 />
               )}
               {status !== 'ignored' && (
