@@ -258,6 +258,59 @@ export async function listAllComexBko(): Promise<{ dossiers: BkoDossier[]; error
   return { dossiers, errors }
 }
 
+// ── Détail d'un dossier (heures de pointage COMEX = celles reçues par Touring) ──
+export interface BkoDossierDetail {
+  fileDate:   string   // c2  date dossier  (DD/MM/YYYY HH:mm:ss)
+  action:     string   // c3  REM / DEP
+  orderNum:   string   // c4  n° commande
+  assignDate: string   // c5
+  acceptDate: string   // c6
+  onRoadDate: string   // c7
+  onSpotDate: string   // c8
+  endDate:    string   // c9
+  dossier:    string   // c15 file ID (2026BE…)
+  seq:        string   // c16
+  arcCode:    string   // c17 codes panne « cause desc result » (ex « 259 14 73 »)
+  vin:        string   // c18
+  plate:      string   // c19
+  codTrajet:  string   // c20
+  accord:     string   // c21
+  prestataire: string  // c14 dépôt/prestataire
+  brand:      string   // c28
+  model:      string   // c29
+  agent:      string   // c30
+}
+
+/**
+ * Détail d'un dossier BKO : POST getDossDetail.do (form). Renvoie les HEURES que
+ * COMEX détient (= reçues par Touring) via la section `[dossier]` (';'-séparée).
+ * Paramètres issus d'une ligne de liste. Reverse 2026-08-06.
+ */
+export async function getBkoDossierDetail(cookie: string, p: {
+  cidDoss: string; cidSeqAction: string; commNum: string; typPrest: string; codTrajetComex: string; codStatutFactComex: string
+}): Promise<BkoDossierDetail | null> {
+  const body = new URLSearchParams({
+    cidDoss: p.cidDoss, cidSeqAction: p.cidSeqAction, commNum: p.commNum,
+    typPrest: p.typPrest, codTrajetComex: p.codTrajetComex, codStatutFactComex: p.codStatutFactComex,
+  })
+  const r = await fetch(`${BASE}/secured/invoices/getDossDetail.do?`, {
+    method: 'POST', headers: hdr(cookie, true), body: body.toString(), signal: AbortSignal.timeout(20000),
+  })
+  if (!r.ok) return null
+  const text = new TextDecoder('iso-8859-15').decode(Buffer.from(await r.arrayBuffer()))
+  const lines = text.split('\n')
+  const idx = lines.findIndex(l => l.trim() === '[dossier]')
+  if (idx < 0 || !lines[idx + 1]?.includes(';')) return null
+  const c = lines[idx + 1].split(';')
+  const g = (i: number) => (c[i] || '').trim()
+  return {
+    fileDate: g(2), action: g(3), orderNum: g(4),
+    assignDate: g(5), acceptDate: g(6), onRoadDate: g(7), onSpotDate: g(8), endDate: g(9),
+    prestataire: g(14), dossier: g(15), seq: g(16), arcCode: g(17), vin: g(18), plate: g(19),
+    codTrajet: g(20), accord: g(21), brand: g(28), model: g(29), agent: g(30),
+  }
+}
+
 /**
  * Accepte (valide) un dossier côté COMEX BKO :
  *   1. setKmDossierExt.do  → pose les km (on reprend les km COMEX proposés).
