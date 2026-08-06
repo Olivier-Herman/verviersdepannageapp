@@ -15,5 +15,13 @@ export default async function Page() {
   if (!(['admin', 'superadmin'].includes(role) || modules.includes('stats'))) {
     redirect('/dashboard?error=access_denied')
   }
-  return <TouringDeroulementClient />
+  return (
+    <TouringDeroulementClient
+      userRole={role}
+      userName={user.name || ''}
+      userEmail={user.email}
+      userId={user.id}
+      userModules={modules}
+    />
+  )
 }

@@ -40,7 +40,9 @@ function rangeFor(period: string): { from?: string; to?: string } {
   return {}
 }
 
-export default function TouringDeroulementClient() {
+export default function TouringDeroulementClient(props: {
+  userRole?: string; userName?: string; userEmail?: string; userId?: string; userModules?: string[]
+}) {
   const [monthly, setMonthly] = useState<Monthly[]>([])
   const [rows, setRows]       = useState<Row[]>([])
   const [total, setTotal]     = useState(0)
@@ -75,7 +77,9 @@ export default function TouringDeroulementClient() {
   const td = 'py-1.5 px-2 whitespace-nowrap'
 
   return (
-    <AppShell title="Déroulement Touring">
+    <AppShell title="Déroulement Touring"
+      userRole={props.userRole} userName={props.userName} userEmail={props.userEmail}
+      userId={props.userId} userModules={props.userModules}>
       <div className="max-w-6xl mx-auto p-4 space-y-6">
         <div className="flex items-center gap-3 flex-wrap">
           <Link href="/stats" className="text-ink-secondary hover:text-ink text-sm">‹ Stats</Link>
