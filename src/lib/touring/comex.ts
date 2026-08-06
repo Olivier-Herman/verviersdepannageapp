@@ -564,7 +564,10 @@ export async function setTouringOnRoad(
 ): Promise<{ ok: boolean; error?: string }> {
   try {
     const session = await loginComex('user')
-    await pushComexOperation(session, keys, 'onRoad', comexOperDate(opts?.at || new Date()))
+    const r = await pushComexOperation(session, keys, 'onRoad', comexOperDate(opts?.at || new Date()))
+    // ⚠️ Un 500 COMEX ne throw pas → on le détecte ici, sinon on marquerait à tort
+    // le succès et le balayage ne réessaierait jamais. Olivier 2026-08-06.
+    if (isComexServerError(r?.response)) return { ok: false, error: 'COMEX 500 (onRoad)' }
     return { ok: true }
   } catch (e: any) {
     return { ok: false, error: e?.message || 'erreur' }
@@ -583,7 +586,8 @@ export async function setTouringOnSpot(
 ): Promise<{ ok: boolean; error?: string }> {
   try {
     const session = await loginComex('user')
-    await pushComexOperation(session, keys, 'onSpot', comexOperDate(opts?.at || new Date()))
+    const r = await pushComexOperation(session, keys, 'onSpot', comexOperDate(opts?.at || new Date()))
+    if (isComexServerError(r?.response)) return { ok: false, error: 'COMEX 500 (onSpot)' }
     return { ok: true }
   } catch (e: any) {
     return { ok: false, error: e?.message || 'erreur' }
