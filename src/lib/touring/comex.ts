@@ -585,3 +585,115 @@ export async function setTouringOnSpot(
     return { ok: false, error: e?.message || 'erreur' }
   }
 }
+
+// ── CLÔTURE (06 → 07) — operType 'end' ────────────────────────────────────────
+// Recette capturée + vérifiée le 2026-08-06 (dossier 2026BE312847). Séquence UI :
+//   (si +REM) provider/get → liste garages · saveData · detail/set operType:'end'.
+// Session USER/patrouille (comme onRoad/onSpot). Une clôture +REM fait auto-créer
+// par COMEX la jambe REMORQUAGE (même CID_DOS, CID_SEQ_ACTION+1), à clôturer aussi.
+
+/** Dépôt RAC par défaut (VERVIERS DEP - DEPOT RAC, Pepinster) = destination REM
+ *  par défaut et fallback « Autre » du sélecteur garage. */
+export const DEFAULT_RAC_DEPOT_CID = '005567968'
+
+/** Codes Fin de mission impliquant un remorquage (libellé « Rem »). */
+const REM_FIN_CODES = new Set(['02', '03', '34', '35'])
+
+export interface ComexProvider {
+  cidPrx: string; nom: string; rue: string; numRue: string
+  cp: string; localite: string; distance: number; lat: number; lng: number
+}
+
+/**
+ * Liste des garages autorisés pour la dépose (+REM) : POST provider/get avec les
+ * codes panne + géo de la mission. Triée par distance croissante, notre dépôt RAC
+ * en tête. `cidPrx` = l'identifiant à renvoyer dans `TO_CID_INTV`.
+ */
+export async function getComexProviders(
+  session: ComexSession,
+  keys: { CID_DOS: string; CID_SEQ_ACTION: string },
+  codes: { cause: string; desc: string; result: string },
+): Promise<ComexProvider[]> {
+  const dRes: any = await getComexMissionDetail(session, keys)
+  const d = (dRes?.content || dRes || {}) as Record<string, any>
+  const res = await comexRest<{ content?: ComexProvider[] }>(session, 'provider/get', {
+    CID_REGR: d.CID_REGR ?? '', CID_PROD: d.CID_PROD ?? '',
+    CID_MARQUE: d.CID_MARQUE ?? '', CID_MODELE: d.CID_MODELE ?? '',
+    COD_CAUSE_SIN: d.COD_CAUSE_SIN ?? '', COD_TYPE_SIN: d.COD_TYPE_SIN ?? '', COD_DESC_SIN: d.COD_DESC_SIN ?? '',
+    COD_PANNE_CAUSE: codes.cause, COD_PANNE_RESULT: codes.result, COD_PANNE_DESC: codes.desc,
+    NUM_CHASSIS: d.NUM_CHASSIS ?? '', NUM_PLAQUE: d.NUM_PLAQUE ?? '',
+    D_SIN: d.D_SIN ?? '', LONGITUDE: String(d.LONGITUDE ?? ''), LATITUDE: String(d.LATITUDE ?? ''),
+  })
+  return Array.isArray(res?.content) ? res.content : []
+}
+
+/**
+ * Clôture une action COMEX (detail/set operType:'end' → statut 07). `toCidIntv` =
+ * garage de dépose (cidPrx de getComexProviders) requis sur un code +REM ; défaut
+ * = notre RAC. Replis (Olivier 2026-08-06) : VIN non conforme (≠17 car. VIN)/vide
+ * → 17×'X' ; MEC absente → 2000-01-01 ; km absent → COD_NON_SAISIE_KM='04'.
+ */
+export async function closeTouringMission(
+  keys: { CID_DOS: string; CID_SEQ_ACTION: string },
+  input: {
+    finCode: string
+    cause: string; desc: string; result: string
+    vin?: string | null; mecIso?: string | null; km?: number | null
+    comment?: string | null; toCidIntv?: string | null; at?: Date
+  },
+): Promise<{ ok: boolean; statusBefore?: string | null; statusAfter?: string | null; error?: string; response?: any }> {
+  try {
+    const session = await loginComex('user')
+    const readStatus = async (): Promise<string | null> => {
+      try {
+        const list = await listComexMissions(session)
+        const m = list.find(x => String(x.CID_DOS).toUpperCase() === keys.CID_DOS.toUpperCase()
+          && String(x.CID_SEQ_ACTION) === keys.CID_SEQ_ACTION)
+        return m?.COD_STATUT_MTR ?? null
+      } catch { return null }
+    }
+    const statusBefore = await readStatus()
+
+    const dRes: any = await getComexMissionDetail(session, keys)
+    const d = (dRes?.content || dRes || {}) as Record<string, any>
+
+    // Replis
+    const vinRaw = String(input.vin ?? d.NUM_CHASSIS ?? '').trim().toUpperCase()
+    const vin = /^[A-HJ-NPR-Z0-9]{17}$/.test(vinRaw) ? vinRaw : 'X'.repeat(17)
+    const mec = input.mecIso || d.D_MEC || '2000-01-01T00:00:00.000'
+    const kmMissing = input.km == null || !Number.isFinite(input.km)
+    const operDate = comexOperDate(input.at || new Date())
+
+    const isRem = REM_FIN_CODES.has(input.finCode)
+    const toCid = isRem ? (input.toCidIntv || DEFAULT_RAC_DEPOT_CID) : ''
+    const adrDepot = await resolveComexDepotCid(session, keys)
+
+    // 1) saveData — persiste le formulaire (comme l'UI COMEX). Best-effort.
+    await comexRest(session, 'Mission/saveData', {
+      CID_DOS: keys.CID_DOS, CID_SEQ_ACTION: keys.CID_SEQ_ACTION,
+      COD_PANNE_CAUSE: input.cause, COD_PANNE_RESULT: input.result, COD_PANNE_DESC: input.desc,
+      NUM_CHASSIS: vin, MONT_KM: kmMissing ? null : input.km, COD_FIN_MISSION: input.finCode, D_MEC: mec,
+    }).catch(() => {})
+
+    // 2) detail/set operType 'end' = LA clôture (06 → 07).
+    const response = await comexRest(session, 'Mission/detail/set', {
+      CID_DOS: keys.CID_DOS, CID_SEQ_ACTION: keys.CID_SEQ_ACTION,
+      operType: 'end', operDate,
+      COD_PANNE_CAUSE: input.cause, COD_PANNE_RESULT: input.result, COD_PANNE_DESC: input.desc,
+      NUM_CHASSIS: vin, D_MEC: mec, COD_FIN_MISSION: input.finCode,
+      BON_AFFILIATION: '', BON_AFFIL_MOP: '', BON_AFFIL_PRD: '',
+      COMM_FIN_MISSION: input.comment ?? '',
+      COD_NON_SAISIE_KM: kmMissing ? '04' : '',
+      FL_PLAINTE_CLIENT: '0', LIB_PLAINTE_CLIENT: '',
+      TO_CID_INTV: toCid, TO_COD_ADRESSE: isRem ? 'GAR' : '',
+      TO_NOM: '', TO_RUE: '', TO_NUM_RUE: '', TO_CP: '', TO_LOC: '',
+      ADR_DEPOT_CID_INTV: adrDepot,
+    })
+
+    const statusAfter = await readStatus()
+    const ok = statusAfter === '07'
+    return { ok, statusBefore, statusAfter, response, error: ok ? undefined : `clôture non confirmée (statut ${statusBefore ?? '?'}→${statusAfter ?? '?'})` }
+  } catch (e: any) {
+    return { ok: false, error: e?.message || 'erreur' }
+  }
+}
