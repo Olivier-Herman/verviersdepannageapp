@@ -252,6 +252,10 @@ export async function getComexAddresses(
 /** Dépôt COMEX par défaut = VERVIERS DÉPANNAGE principal (Rue de la Cité 22a). */
 export const DEFAULT_DEPOT_CID = '001072478'
 
+/** Adresse dépôt écrite dans COMM_FIN_MISSION pour une mise en parc (code 05).
+ * Format calqué sur l'UI COMEX : « ␣␣ADRESSE DEPOT : … ». Olivier 2026-08-06. */
+export const DEFAULT_DEPOT_ADDRESS = 'VERVIERS DÉPANNAGE 22a Rue de la Cité 4800 VERVIERS'
+
 /**
  * Liste des dépôts candidats (CID_INTV) pour l'accept COMEX, ORDONNÉS par
  * pertinence GÉOGRAPHIQUE : COMEX exige le dépôt du SECTEUR de l'intervention
@@ -677,19 +681,28 @@ export async function closeTouringMission(
     const kmMissing = input.km == null || !Number.isFinite(input.km)
     const operDate = comexOperDate(input.at || new Date())
 
+    // Code 05 « Fin Remorquage, + Transfert » = REM mis en parc (dépôt). La fin
+    // technique s'arme avec FL_TECH_END_MIS:1 (et non 0) ; la destination est notre
+    // dépôt (ADR_DEPOT_CID_INTV), pas un garage. Olivier 2026-08-06 (mouchard 313472).
+    const isParkTransfer = input.finCode === '05'
     const isRem = REM_FIN_CODES.has(input.finCode)
     // toCidIntv = garage de la liste (provider/get). Vide = adresse LIBRE (saisie
     // manuelle) : la destination vit alors dans COMM_FIN_MISSION (input.comment,
     // format « // ADRESSE TO REM MAN : … // »). Le choix « notre dépôt » = l'UI
     // envoie DEFAULT_RAC_DEPOT_CID explicitement. Pas de défaut forcé ici.
     const toCid = isRem ? (input.toCidIntv || '') : ''
-    const adrDepot = await resolveComexDepotCid(session, keys)
+    // Mise en parc (05) : destination = NOTRE dépôt. Elle vit dans COMM_FIN_MISSION
+    // (« ␣␣ADRESSE DEPOT : … ») + ADR_DEPOT_CID_INTV = notre cidPrx. Les TO_* sont des
+    // échos résiduels du detail/get (garage précédent) — on les renvoie tels quels.
+    const adrDepot = isParkTransfer ? DEFAULT_DEPOT_CID : await resolveComexDepotCid(session, keys)
+    const parkComment = `  ADRESSE DEPOT : ${DEFAULT_DEPOT_ADDRESS}`
 
     // 0) endTech — « Fin Technique » : arme la clôture (FL_TECH_END_MIS). L'UI COMEX
     // le fait AVANT de valider ; on le reproduit ici pour être auto-suffisant.
     // Best-effort (si déjà armé, COMEX renvoie OK). Olivier 2026-08-06.
     await comexRest(session, 'Mission/detail/endTech', {
-      CID_DOS: keys.CID_DOS, CID_SEQ_ACTION: keys.CID_SEQ_ACTION, FL_TECH_END_MIS: 0,
+      CID_DOS: keys.CID_DOS, CID_SEQ_ACTION: keys.CID_SEQ_ACTION,
+      FL_TECH_END_MIS: isParkTransfer ? 1 : 0,
     }).catch(() => {})
 
     // 1) saveData — persiste le formulaire (comme l'UI COMEX). Best-effort.
@@ -706,11 +719,15 @@ export async function closeTouringMission(
       COD_PANNE_CAUSE: input.cause, COD_PANNE_RESULT: input.result, COD_PANNE_DESC: input.desc,
       NUM_CHASSIS: vin, D_MEC: mec, COD_FIN_MISSION: input.finCode,
       BON_AFFILIATION: '', BON_AFFIL_MOP: '', BON_AFFIL_PRD: '',
-      COMM_FIN_MISSION: input.comment ?? '',
+      COMM_FIN_MISSION: isParkTransfer ? parkComment : (input.comment ?? ''),
       COD_NON_SAISIE_KM: kmMissing ? '04' : '',
       FL_PLAINTE_CLIENT: '0', LIB_PLAINTE_CLIENT: '',
-      TO_CID_INTV: toCid, TO_COD_ADRESSE: isRem ? 'GAR' : '',
-      TO_NOM: '', TO_RUE: '', TO_NUM_RUE: '', TO_CP: '', TO_LOC: '',
+      TO_CID_INTV: toCid, TO_COD_ADRESSE: (isRem || isParkTransfer) ? 'GAR' : '',
+      TO_NOM:     isParkTransfer ? (d.TO_NOM     ?? '') : '',
+      TO_RUE:     isParkTransfer ? (d.TO_RUE     ?? '') : '',
+      TO_NUM_RUE: isParkTransfer ? (d.TO_NUM_RUE ?? '') : '',
+      TO_CP:      isParkTransfer ? (d.TO_CP      ?? '') : '',
+      TO_LOC:     isParkTransfer ? (d.TO_LOC     ?? '') : '',
       ADR_DEPOT_CID_INTV: adrDepot,
     })
 

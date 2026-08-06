@@ -1203,9 +1203,15 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
   const rem      = isREM(mType)
   const rel      = isRELMission(M)         // REL = relivraison depuis le parc
   const onSite   = !!M.on_site_at
-  // Clôture Touring (beta chauffeur : Franck + superadmin) — visible sur place.
+  // Touring COMEX (beta chauffeur : Franck + superadmin). Pas de bouton « Clôturer
+  // chez Touring » : le popup DSP fait partie de la clôture (mandaté après Terminer),
+  // et le VR se demande via bouton/tuile dédiés sur les missions REM. Olivier 2026-08-06.
+  const isTouringComex = touringBeta && (M as any).source_format === 'comex'
+  // « Demander un VR » : missions REM Touring dont le contrat accorde un VR (vr_proposed).
+  // On masque le déclencheur si VR ≠ OUI — inutile de proposer un VR non couvert.
+  const canTouringVr   = isTouringComex && rem && (M as any).vr_proposed === true
   const [showTouringClose, setShowTouringClose] = useState(false)
-  const canTouringClose = touringBeta && (M as any).source_format === 'comex' && onSite
+  const [touringMandatory, setTouringMandatory] = useState(false) // popup DSP obligatoire post-Terminer
   const loaded   = !!M.loaded_at || M.status === 'delivering' || M.status === 'parked'
 
   // ── Geofence « Sur place ? » (suggestion) ──────────────────────────────────
@@ -2082,13 +2088,23 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
       const j = await r.json()
       if (!r.ok) throw new Error(j.error || 'Erreur')
       if (!photosRef.current.length) clearDraft()   // garde le brouillon si des photos restent à envoyer
-      {
-        const __url = new URL(window.location.href)
-        __url.searchParams.set('t', String(Date.now()))
-        window.location.href = __url.toString()
+      // DSP Touring : la clôture VD Soft est faite, mais il reste la clôture COMEX.
+      // On la rend OBLIGATOIRE via un popup qui s'ouvre APRÈS Terminer (Olivier
+      // 2026-08-06) — pas d'indication « envoyer à Touring », ça fait partie de
+      // leur clôture. Le rechargement n'a lieu qu'une fois le popup complété.
+      if (closeType === 'dsp' && isTouringComex) {
+        setTouringMandatory(true); setShowTouringClose(true); setLoading(false); return
       }
+      reloadMission()
     } catch (e: any) { setErr(e.message || 'Erreur') }
     finally { setLoading(false) }
+  }
+
+  // Recharge la fiche (cache-bust) — extrait pour être réutilisé après le popup Touring.
+  const reloadMission = () => {
+    const __url = new URL(window.location.href)
+    __url.searchParams.set('t', String(Date.now()))
+    window.location.href = __url.toString()
   }
 
   // Éviter l'hydratation mismatch (localStorage vs SSR)
@@ -3509,34 +3525,54 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
             : vr === false
             ? 'bg-slate-100 border-slate-400 text-slate-700 dark:bg-slate-500/10 dark:text-slate-300'
             : 'bg-amber-50 border-amber-500 text-amber-800 dark:bg-amber-500/10 dark:text-amber-300'
-          return (
-            <div className={`rounded-2xl p-3 border-2 flex items-center justify-between ${style}`}>
+          // Sur une mission REM Touring (beta), la tuile devient cliquable : elle
+          // ouvre le modal pour DEMANDER un VR à Touring. Olivier 2026-08-06.
+          const inner = (
+            <>
               <div className="min-w-0">
                 <p className="text-xs uppercase tracking-widest font-bold">Véhicule de remplacement</p>
                 <p className="text-lg font-black leading-tight">
                   {vr === true ? 'VR OUI' : vr === false ? 'VR NON' : 'À VÉRIFIER'}
                 </p>
+                {canTouringVr && <p className="text-[11px] font-semibold opacity-80 mt-0.5">Toucher pour demander un VR →</p>}
               </div>
               <span className="text-3xl flex-shrink-0">{vr === true ? '🚗' : inconnu ? '❔' : '🚫'}</span>
+            </>
+          )
+          return canTouringVr ? (
+            <button onClick={() => { setTouringMandatory(false); setShowTouringClose(true) }}
+              className={`w-full text-left rounded-2xl p-3 border-2 flex items-center justify-between active:scale-[0.99] transition ${style}`}>
+              {inner}
+            </button>
+          ) : (
+            <div className={`rounded-2xl p-3 border-2 flex items-center justify-between ${style}`}>
+              {inner}
             </div>
           )
         })()}
 
-        {/* Clôture Touring (beta chauffeur : Franck + superadmin) — visible sur place. */}
-        {canTouringClose && (
+        {/* Bouton dédié « Demander un VR » (même emplacement que l'ancien bouton bleu),
+            pour les missions REM Touring — ouvre le modal (onglet REM, toggle VR). */}
+        {canTouringVr && (
           <button
-            onClick={() => setShowTouringClose(true)}
+            onClick={() => { setTouringMandatory(false); setShowTouringClose(true) }}
             className="w-full py-3.5 bg-[#1f5fd6] hover:bg-[#1b54bd] text-white rounded-2xl font-bold text-sm shadow-lg shadow-[#1f5fd6]/20 transition"
           >
-            🚗 Clôturer la mission chez Touring
+            🚗 Demander un VR (Touring)
           </button>
         )}
+
+        {/* Touring COMEX — le chauffeur n'a PAS de bouton « Clôturer chez Touring »
+            générique (décision Olivier). Le modal sert uniquement à : transformer un
+            DSP en REM, ou demander un VR sur un REM ; la version DSP s'affiche seule à
+            la fin, après l'écran de clôture VD Soft. Déclencheurs câblés plus bas. */}
         {showTouringClose && (
           <TouringCloseModal
             missionId={M.id}
             mode="driver"
-            onClose={() => setShowTouringClose(false)}
-            onDone={() => setShowTouringClose(false)}
+            mandatory={touringMandatory}
+            onClose={() => { setShowTouringClose(false); if (touringMandatory) { setTouringMandatory(false); reloadMission() } }}
+            onDone={() => { setShowTouringClose(false); if (touringMandatory) { setTouringMandatory(false); reloadMission() } }}
           />
         )}
 

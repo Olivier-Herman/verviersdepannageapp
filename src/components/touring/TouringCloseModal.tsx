@@ -11,7 +11,7 @@ import { useEffect, useState } from 'react'
 import {
   PRESETS_DSP, PRESETS_REM, PRESET_REM_CATCHALL, endMissionLabel, REM_FIN_CODES, type ClosePreset,
 } from '@/lib/touring/close-presets'
-import { PANNE_CAUSE, PANNE_DESC, PANNE_RESULT, type CodeOption } from '@/lib/touring/close-referentials'
+import { PANNE_CAUSE, PANNE_DESC, PANNE_RESULT, labelOf, type CodeOption } from '@/lib/touring/close-referentials'
 
 // Petit clin d'œil au chauffeur à l'ouverture (mode driver). Olivier 2026-08-06.
 const DRIVER_INTROS = [
@@ -37,16 +37,18 @@ function withCurrent(list: CodeOption[], code: string): CodeOption[] {
 }
 
 export default function TouringCloseModal({
-  missionId, mode = 'driver', onClose, onDone,
+  missionId, mode = 'driver', onClose, onDone, mandatory = false,
 }: {
   missionId: string
   mode?: 'driver' | 'dispatch'
   onClose: () => void
   onDone?: () => void
+  /** Popup obligatoire (clôture DSP post-Terminer) : masque la ✕, ouvre sur l'onglet DSP. */
+  mandatory?: boolean
 }) {
   const [init, setInit]         = useState<InitData | null>(null)
   const [loadErr, setLoadErr]   = useState<string | null>(null)
-  const [tab, setTab]           = useState<'dsp' | 'rem'>('rem')
+  const [tab, setTab]           = useState<'dsp' | 'rem'>(mandatory ? 'dsp' : 'rem')
   const [presetKey, setPresetKey] = useState<string>('')
   const [codes, setCodes]       = useState({ cause: '', desc: '', result: '' })
   const [finSel, setFinSel]     = useState('')
@@ -79,10 +81,18 @@ export default function TouringCloseModal({
         const c = d.closure
         if (c && (c.cause || c.desc || c.result)) setCodes({ cause: c.cause || '', desc: c.desc || '', result: c.result || '' })
         if (c?.finCode) setFinSel(c.finCode)
+        if (c?.km) setKm(String(c.km))
       })
       .catch(() => alive && setLoadErr('Impossible de charger la clôture'))
     return () => { alive = false }
   }, [missionId])
+
+  // Modal plein premier plan : on verrouille le scroll de la page derrière.
+  useEffect(() => {
+    const prev = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => { document.body.style.overflow = prev }
+  }, [])
 
   // Sur un remorquage avec les 3 codes → charger la liste des garages.
   useEffect(() => {
@@ -164,16 +174,18 @@ export default function TouringCloseModal({
     : null
 
   return (
-    <div className="fixed inset-0 z-[60] bg-ink/50 flex items-end sm:items-center justify-center p-0 sm:p-4">
-      <div className="bg-surface w-full sm:max-w-lg sm:rounded-2xl rounded-t-2xl max-h-[92vh] flex flex-col shadow-2xl">
+    <div className="fixed inset-0 z-[100] bg-ink/60 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4 overscroll-contain touch-none">
+      <div className="bg-surface w-full sm:max-w-lg sm:rounded-2xl rounded-t-2xl max-h-[92vh] flex flex-col shadow-2xl overscroll-contain">
         <div className="flex items-center gap-3 px-4 py-3 border-b">
           <span className="text-xl">🚗</span>
-          <div className="font-bold text-ink">Clôturer chez Touring</div>
+          <div className="font-bold text-ink">{isDispatch ? 'Clôturer chez Touring' : mandatory ? 'Dernière étape : la panne' : 'Touring'}</div>
           {init?.plate && <span className="ml-auto font-mono font-bold text-sm bg-ink text-white px-2 py-0.5 rounded">{init.plate}</span>}
-          <button onClick={onClose} className="ml-2 text-ink-secondary hover:text-ink text-xl leading-none">✕</button>
+          {!mandatory && (
+            <button onClick={onClose} className="ml-2 text-ink-secondary hover:text-ink text-xl leading-none">✕</button>
+          )}
         </div>
 
-        <div className="overflow-y-auto p-4 space-y-4">
+        <div className="overflow-y-auto overscroll-contain p-4 space-y-4">
           {loadErr && <div className="bg-critical/10 text-critical rounded-lg p-3 text-sm">{loadErr}</div>}
           {!init && !loadErr && <div className="text-ink-secondary text-sm py-6 text-center">Chargement…</div>}
 
@@ -183,10 +195,19 @@ export default function TouringCloseModal({
             </div>
           )}
 
+          {/* Popup obligatoire : ne jamais piéger le chauffeur si Touring n'est pas
+              prêt (mauvais statut) ou si le chargement échoue → échappatoire. */}
+          {mandatory && (loadErr || statusBlock) && (
+            <button onClick={onClose}
+              className="w-full py-3 bg-surface-2 border rounded-2xl font-bold text-sm text-ink-secondary">
+              Continuer sans clôturer Touring →
+            </button>
+          )}
+
           {init && !statusBlock && (
             <>
-              {!isDispatch && (
-                <div className="text-center text-[15px] font-bold text-ink bg-amber-50 border border-amber-200 rounded-xl py-2.5 px-3">{intro}</div>
+              {!isDispatch && tab === 'dsp' && (
+                <div className="text-center text-[15px] font-bold text-amber-800 bg-amber-50 border border-amber-200 rounded-xl py-2.5 px-3">{intro}</div>
               )}
               {/* onglets */}
               <div className="flex bg-surface-2 border rounded-xl p-1 gap-1">
@@ -227,6 +248,21 @@ export default function TouringCloseModal({
                       </button>
                     )
                   })}
+                </div>
+              )}
+
+              {/* Codes déjà présents chez Touring — le chauffeur n'est PAS obligé de
+                  choisir un preset (qui écraserait ces codes). Il peut clôturer tel quel. */}
+              {!isDispatch && !presetKey && (codes.cause || codes.desc || codes.result) && (
+                <div className="rounded-xl border border-emerald-300 bg-emerald-50 p-3 text-sm">
+                  <div className="font-bold text-emerald-800 mb-1">✅ Touring a déjà renseigné les codes</div>
+                  <div className="text-emerald-900 space-y-0.5 text-[13px]">
+                    {finSel       && <div><span className="font-semibold">Fin :</span> {endMissionLabel(finSel)}</div>}
+                    {codes.cause  && <div><span className="font-semibold">Incident :</span> {labelOf(PANNE_CAUSE, codes.cause)}</div>}
+                    {codes.desc   && <div><span className="font-semibold">Type :</span> {labelOf(PANNE_DESC, codes.desc)}</div>}
+                    {codes.result && <div><span className="font-semibold">Résultat :</span> {labelOf(PANNE_RESULT, codes.result)}</div>}
+                  </div>
+                  <div className="text-[12px] text-emerald-700 mt-1.5">Tu peux clôturer directement avec ces codes, ou choisir une panne ci-dessus pour les remplacer.</div>
                 </div>
               )}
 
@@ -310,8 +346,9 @@ export default function TouringCloseModal({
                 </div>
               )}
 
-              {/* km + VIN */}
-              {(presetKey || isDispatch) && (
+              {/* km + VIN — visibles dès qu'on a de quoi clôturer : preset choisi,
+                  dispatch (formulaire complet), ou codes déjà fournis par Touring. */}
+              {(presetKey || isDispatch || (codes.cause || codes.desc || codes.result)) && (
                 <div className="grid grid-cols-2 gap-2">
                   <div>
                     <label className={lblCls}>Kilométrage (optionnel)</label>

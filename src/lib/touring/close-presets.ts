@@ -38,6 +38,7 @@ export const END_MISSION_LABELS: Record<string, string> = {
   '02': 'Fin de tâche, + Remorquage',
   '03': 'Fin de tâche, + Rem + VR',
   '04': 'Fin de tâche, + VR',
+  '05': 'Fin Remorquage, + Transfert',   // REM mis en parc (clôture jambe remorquage → dépôt)
   '06': 'Fin dépannage téléphonique',
   '07': 'Fin de REM transformé en DEP',
   '33': 'Fin dép. tél. + VR',
