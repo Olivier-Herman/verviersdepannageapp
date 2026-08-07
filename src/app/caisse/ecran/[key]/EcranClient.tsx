@@ -192,9 +192,9 @@ export default function EcranClient({ displayKey }: { displayKey: string }) {
       return (
         <div style={S.wrap}>
           <div style={{ textAlign: 'center' }}>
-            <div style={{ fontSize: '9vw' }}>✅</div>
-            <div style={{ fontSize: '4.4vw', fontWeight: 800, color: '#16a34a' }}>Merci&nbsp;!</div>
-            <div style={{ fontSize: '2vw', color: '#64748b', marginTop: '1vh' }}>Vos informations ont bien été transmises au comptoir.</div>
+            <div style={{ fontSize: 'min(9vw, 13vh)' }}>✅</div>
+            <div style={{ fontSize: 'min(4.4vw, 6.5vh)', fontWeight: 800, color: '#16a34a' }}>Merci&nbsp;!</div>
+            <div style={{ fontSize: 'min(2vw, 3vh)', color: '#64748b', marginTop: '1vh' }}>Vos informations ont bien été transmises au comptoir.</div>
           </div>
         </div>
       )
@@ -205,7 +205,7 @@ export default function EcranClient({ displayKey }: { displayKey: string }) {
       return (
         <div style={S.wrap}>
           <div style={E.card}>
-            <div style={{ fontSize: '6vw' }}>🪪</div>
+            <div style={{ fontSize: 'min(6vw, 9vh)', lineHeight: 1 }}>🪪</div>
             <div style={E.title}>Créons votre fiche client</div>
             <div style={E.lead}>
               Insérez votre <strong>carte d'identité</strong> dans le lecteur, puis appuyez sur le bouton.
@@ -242,7 +242,7 @@ export default function EcranClient({ displayKey }: { displayKey: string }) {
       return (
         <div style={S.wrap}>
           <div style={E.card}>
-            <div style={{ fontSize: '6vw' }}>⚠️</div>
+            <div style={{ fontSize: 'min(6vw, 9vh)', lineHeight: 1 }}>⚠️</div>
             <div style={E.title}>Lecture impossible</div>
             <div style={E.lead}>{eidError || 'Vérifiez que la carte est bien insérée.'}</div>
             <button style={E.btnPrimary} onClick={startEidRead}>Réessayer</button>
@@ -455,30 +455,32 @@ const S: Record<string, React.CSSProperties> = {
   badges: { display: 'flex', gap: '1.6vw', flexWrap: 'wrap', justifyContent: 'center' },
 }
 
-// Styles du mode eID (création client au comptoir).
+// Styles du mode eID (création client au comptoir). Tailles bornées par la
+// HAUTEUR (vh) autant que la largeur (vw) → tout tient sur un écran paysage,
+// carte large pour exploiter la largeur. min(vw, vh) = ne déborde jamais en haut.
 const E: Record<string, React.CSSProperties> = {
-  card: { display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2.4vh',
-    textAlign: 'center', maxWidth: 'min(70vw, 700px)', width: '100%' },
-  title: { fontSize: '3.2vw', fontWeight: 800, color: '#0b1120', lineHeight: 1.1, textWrap: 'balance' as any },
-  lead: { fontSize: '1.7vw', color: '#475569', lineHeight: 1.35, maxWidth: '52vw' },
-  consentList: { display: 'flex', gap: '2.4vw', flexWrap: 'wrap', justifyContent: 'center',
-    fontSize: '1.9vw', fontWeight: 700, color: '#0b1120', background: '#f1f5f9',
-    borderRadius: '16px', padding: '1.6vh 2.4vw' },
-  btnPrimary: { fontSize: '2.4vw', fontWeight: 800, color: '#fff', background: '#16a34a',
-    border: 'none', borderRadius: '18px', padding: '2.2vh 5vw', cursor: 'pointer',
-    boxShadow: '0 16px 40px rgba(22,163,74,.28)', marginTop: '1vh' },
-  rgpd: { fontSize: '1.1vw', color: '#94a3b8', maxWidth: '48vw' },
-  spinner: { width: '7vw', height: '7vw', borderRadius: '50%',
-    border: '0.9vw solid #e2e8f0', borderTopColor: '#16a34a', animation: 'vd-spin 0.9s linear infinite' },
-  readGrid: { display: 'flex', flexDirection: 'column', gap: '1.2vh', width: '100%',
-    background: '#f8fafc', border: '1px solid #e5e7eb', borderRadius: '16px', padding: '2vh 2.4vw' },
+  card: { display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 'min(2vh, 1.6vw)',
+    textAlign: 'center', maxWidth: 'min(92vw, 1100px)', width: '100%' },
+  title: { fontSize: 'min(3vw, 4.4vh)', fontWeight: 800, color: '#0b1120', lineHeight: 1.1, textWrap: 'balance' as any },
+  lead: { fontSize: 'min(1.7vw, 2.5vh)', color: '#475569', lineHeight: 1.3, maxWidth: '78vw' },
+  consentList: { display: 'flex', gap: 'min(3vw, 3vh)', flexWrap: 'wrap', justifyContent: 'center',
+    fontSize: 'min(1.9vw, 2.8vh)', fontWeight: 700, color: '#0b1120', background: '#f1f5f9',
+    borderRadius: '16px', padding: 'min(1.4vh,1.1vw) min(3vw,2.4vh)' },
+  btnPrimary: { fontSize: 'min(2.2vw, 3.2vh)', fontWeight: 800, color: '#fff', background: '#16a34a',
+    border: 'none', borderRadius: '16px', padding: 'min(1.7vh,1.3vw) min(6vw,4.5vh)', cursor: 'pointer',
+    boxShadow: '0 12px 32px rgba(22,163,74,.28)', marginTop: '.4vh' },
+  rgpd: { fontSize: 'min(1.1vw, 1.7vh)', color: '#94a3b8', maxWidth: '78vw' },
+  spinner: { width: 'min(6vw, 10vh)', height: 'min(6vw, 10vh)', borderRadius: '50%',
+    border: 'min(0.8vw,1.3vh) solid #e2e8f0', borderTopColor: '#16a34a', animation: 'vd-spin 0.9s linear infinite' },
+  readGrid: { display: 'flex', flexDirection: 'column', gap: 'min(1vh,.8vw)', width: '100%',
+    background: '#f8fafc', border: '1px solid #e5e7eb', borderRadius: '16px', padding: 'min(1.6vh,1.3vw) min(3vw,2.4vh)' },
   readRow: { display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: '2vw', textAlign: 'left' },
-  readLbl: { fontSize: '1.2vw', color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '.08em', fontWeight: 600, whiteSpace: 'nowrap' },
-  readVal: { fontSize: '1.9vw', fontWeight: 700, color: '#0b1120', textAlign: 'right' },
-  formGrid: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.4vw', width: '100%' },
-  field: { display: 'flex', flexDirection: 'column', gap: '.7vh', textAlign: 'left' },
-  fieldLbl: { fontSize: '1.2vw', color: '#64748b', fontWeight: 600 },
-  input: { fontSize: '1.9vw', padding: '1.6vh 1.4vw', borderRadius: '14px',
+  readLbl: { fontSize: 'min(1.2vw,1.8vh)', color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '.08em', fontWeight: 600, whiteSpace: 'nowrap' },
+  readVal: { fontSize: 'min(1.9vw,2.8vh)', fontWeight: 700, color: '#0b1120', textAlign: 'right' },
+  formGrid: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'min(2vw,2vh)', width: '100%' },
+  field: { display: 'flex', flexDirection: 'column', gap: '.5vh', textAlign: 'left' },
+  fieldLbl: { fontSize: 'min(1.2vw,1.8vh)', color: '#64748b', fontWeight: 600 },
+  input: { fontSize: 'min(1.8vw,2.6vh)', padding: 'min(1.3vh,1vw) min(1.4vw,1.2vh)', borderRadius: '12px',
     border: '2px solid #cbd5e1', outline: 'none', color: '#0b1120', background: '#fff', width: '100%' },
-  err: { fontSize: '1.4vw', color: '#b91c1c', fontWeight: 600 },
+  err: { fontSize: 'min(1.4vw,2.1vh)', color: '#b91c1c', fontWeight: 600 },
 }
