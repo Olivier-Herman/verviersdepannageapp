@@ -98,12 +98,18 @@ export default function TouringCloseModal({
         // récupéré de COMEX à la création). Évite un champ vierge au DSP→REM alors que
         // la jambe DSP ne les renvoie pas encore. Olivier 2026-08-07.
         setVin(d.vin || fallbackVin || '')
-        // Pré-remplissage : si COMEX a DÉJÀ des codes panne / Fin de mission, on les
-        // reprend dans les selects (le dispatch peut ajuster). Olivier 2026-08-06.
-        const c = d.closure
-        if (c && (c.cause || c.desc || c.result)) setCodes({ cause: c.cause || '', desc: c.desc || '', result: c.result || '' })
-        if (c?.finCode && !forcedFin) setFinSel(c.finCode)
-        if (c?.km) setKm(String(c.km))
+        // Pré-remplissage. Priorité à la 1ère clôture déjà encodée (d.prefill : codes
+        // repris de la clôture précédente du dossier, ex. seq 200 + demande VR) →
+        // le chauffeur ne ré-encode pas. Sinon repli sur les codes présents dans COMEX.
+        // Olivier 2026-08-07.
+        const c  = d.closure
+        const pf = d.prefill
+        if (pf && (pf.cause || pf.desc || pf.result)) setCodes({ cause: pf.cause || '', desc: pf.desc || '', result: pf.result || '' })
+        else if (c && (c.cause || c.desc || c.result)) setCodes({ cause: c.cause || '', desc: c.desc || '', result: c.result || '' })
+        if (!forcedFin) { if (pf?.finCode) setFinSel(pf.finCode); else if (c?.finCode) setFinSel(c.finCode) }
+        if (pf?.toCidIntv) setGarageCid(String(pf.toCidIntv))   // garage de la 1ère clôture pré-sélectionné
+        if (pf?.km) setKm(String(pf.km))
+        else if (c?.km) setKm(String(c.km))
         else if (fallbackKm !== '' && fallbackKm != null) setKm(String(fallbackKm))
       })
       .catch(() => alive && setLoadErr('Impossible de charger la clôture'))

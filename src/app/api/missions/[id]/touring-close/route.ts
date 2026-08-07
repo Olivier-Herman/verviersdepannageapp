@@ -72,8 +72,18 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
     const st = String(d.COD_STATUT_MTR_ACT || '')
     const finC = String(d.COD_FIN_MISSION || '')
     const rawComm = String(d.COMM_FIN_MISSION || '')
+
+    // Pré-remplissage « 1ère clôture » : quand une clôture précédente a été faite
+    // sur ce dossier (ex. seq 200 avec demande VR), on reprend ses codes encodés
+    // pour la clôture de l'action de suivi (seq 201) → le chauffeur ne ré-encode pas.
+    const { data: lastClose } = await sb.from('mission_logs')
+      .select('metadata').eq('mission_id', (m as any).id).eq('action', 'touring_closed')
+      .order('created_at', { ascending: false }).limit(1).maybeSingle()
+    const prefill = (lastClose as any)?.metadata || null
+
     return NextResponse.json({
       finCodes,
+      prefill,
       vin:    d.NUM_CHASSIS || '',
       mecIso: d.D_MEC || '',
       status: st,
@@ -164,7 +174,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     await sb.from('mission_logs').insert({
       mission_id: (m as any).id, actor_id: (actor as any)?.id, action: 'touring_closed',
       notes: `Clôture Touring — ${endMissionLabel(String(finCode))} (codes ${cause}/${desc}/${result})${isRem ? ' → remorquage' : ''}`,
-      metadata: { finCode, cause, desc, result, toCidIntv: toCidIntv || null, statusBefore: r.statusBefore, statusAfter: r.statusAfter },
+      metadata: { finCode, cause, desc, result, toCidIntv: toCidIntv || null, km: (km === '' || km == null) ? null : Number(km), vin: vin ?? null, comment: finalComment || null, statusBefore: r.statusBefore, statusAfter: r.statusAfter },
     }).then(() => {}, () => {})
   }
 
