@@ -272,8 +272,9 @@ export async function GET(req: Request) {
     try {
       const { neutralizeTouringDuplicates } = await import('@/lib/touring/neutralize-duplicates')
       const dedup = await neutralizeTouringDuplicates(createAdminClient())
-      if (dedup.ignored > 0) console.log(`[cron touring-comex] doublons neutralisés: ${dedup.ignored} (${dedup.refs.join(',')})`)
+      if (dedup.ignored > 0 || dedup.merged > 0) console.log(`[cron touring-comex] dédup: ${dedup.ignored} neutralisées, ${dedup.merged} fusionnées (${dedup.refs.join(',')})`)
       ;(result as any).duplicatesIgnored = dedup.ignored
+      ;(result as any).followupsMerged = dedup.merged
     } catch (e: any) { console.warn('[cron touring-comex] neutralize KO:', e?.message) }
 
     // Réconciliation accept : auto-valide les 04+ (dont validations manuelles) et
