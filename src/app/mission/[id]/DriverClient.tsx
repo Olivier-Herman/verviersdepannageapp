@@ -1210,6 +1210,10 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
   // « Demander un VR » : missions REM Touring dont le contrat accorde un VR (vr_proposed).
   // On masque le déclencheur si VR ≠ OUI — inutile de proposer un VR non couvert.
   const canTouringVr   = isTouringComex && rem && (M as any).vr_proposed === true
+  // Action de suivi Touring (2e tracking : même dossier, seq incrémenté). Quand
+  // elle existe, le « Terminer » à l'arrivée destination doit clôturer CETTE action
+  // chez Touring (sinon elle reste ouverte). Olivier 2026-08-07.
+  const hasTouringFollowup = isTouringComex && Array.isArray((M as any).touring_actions) && (M as any).touring_actions.length > 1
   const [showTouringClose, setShowTouringClose] = useState(false)
   // Écran supplémentaire Touring (vrai écran, source COMEX). Trois actions :
   //  • 'dsp'     : clôture de la fiche dépannage (fin 00) AVANT la clôture VD Soft
@@ -1217,7 +1221,10 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
   //  • 'dsp2rem' : DSP→REM — clôture fiche dépannage +REM (02) / +REM+VR (03) ; la
   //                jambe remorquage part au dispatch → on transforme la mission VD Soft.
   //  • 'vr'      : mission déjà REM, demande de VR (+VR pré-coché).
-  const [touringAction, setTouringAction] = useState<'dsp' | 'dsp2rem' | 'vr' | 'park' | null>(null)
+  //  • 'remclose': REM à l'arrivée destination avec action de suivi non clôturée →
+  //                on clôture le seq actif chez Touring (écran pré-rempli) avant la
+  //                clôture VD Soft.
+  const [touringAction, setTouringAction] = useState<'dsp' | 'dsp2rem' | 'vr' | 'park' | 'remclose' | null>(null)
   const loaded   = !!M.loaded_at || M.status === 'delivering' || M.status === 'parked'
 
   // ── Geofence « Sur place ? » (suggestion) ──────────────────────────────────
@@ -2120,6 +2127,7 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
     const act = touringAction
     setShowTouringClose(false); setTouringAction(null)
     if (act === 'dsp')  { setCloseType('dsp'); setScreen('close'); return }
+    if (act === 'remclose') { setCloseType('rem'); setScreen('close'); return } // seq suivi clôturé → clôture VD Soft
     if (act === 'vr')   { reloadMission(); return }
     if (act === 'park') { continuePark(); return }   // 05 clôturé chez Touring → parc VD Soft
     if (act === 'dsp2rem') {
@@ -4362,7 +4370,13 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
                 <span className="text-sm font-medium text-ink-secondary"><T k="mission_detail.action_dpr" /></span>
               </button>
               {/* Terminer */}
-              <button onClick={() => { setShowGrid(false); setCloseType(rem ? 'rem' : 'dsp'); setScreen('close') }}
+              <button onClick={() => {
+                  setShowGrid(false)
+                  // REM Touring avec action de suivi non clôturée : d'abord la clôture
+                  // Touring (écran pré-rempli) du seq actif, puis la clôture VD Soft.
+                  if (hasTouringFollowup && rem) { setTouringAction('remclose'); setShowTouringClose(true); return }
+                  setCloseType(rem ? 'rem' : 'dsp'); setScreen('close')
+                }}
                 className="col-span-2 rounded-2xl py-5 flex flex-col items-center justify-center gap-2 border bg-brand border-brand transition active:scale-95">
                 <span className="text-2xl">🏁</span>
                 <span className="text-sm font-bold text-ink"><T k="mission_detail.action_finish" /></span>
