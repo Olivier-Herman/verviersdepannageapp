@@ -33,6 +33,7 @@ import { HighwaySiabisModal, shouldOfferSiabis } from '../HighwaySiabisModal'
 import DriverPickerModal from '@/components/DriverPickerModal'
 import ScanButton from '@/components/ScanButton'
 import CreateClientModal from '@/components/CreateClientModal'
+import EidImportButton, { type EidData } from '@/components/caisse/EidImportButton'
 import RestituerMalGareeModal from '@/components/restitution/RestituerMalGareeModal'
 import RestituerEtFacturerModal from '@/components/fourriere/RestituerEtFacturerModal'
 import GererSncDepotModal from '@/components/restitution/GererSncDepotModal'
@@ -1738,6 +1739,17 @@ export default function MissionDetailClient({
   // ── Recherche/lien client Odoo (facturé) ────────────────────────────────────
   const [billedPartnerId, setBilledPartnerId] = useState<number | null>(initialMission.billed_to_id || null)
   const [showCreateClientModal, setShowCreateClientModal] = useState(false)
+  const [eidPrefill, setEidPrefill] = useState<{ name?: string; phone?: string; email?: string; street?: string; zip?: string; city?: string } | null>(null)
+
+  // Carte d'identité lue au comptoir → préremplir le formulaire « Créer un client ».
+  const handleEidImport = (d: EidData) => {
+    const fullName = [d.firstName, d.lastName].filter(Boolean).join(' ').trim()
+    setEidPrefill({
+      name: fullName || undefined, phone: d.phone || undefined, email: d.email || undefined,
+      street: d.street || undefined, zip: d.zip || undefined, city: d.city || undefined,
+    })
+    setShowCreateClientModal(true)
+  }
   const [showPartialInvoice, setShowPartialInvoice] = useState(false)
   const [showRestituerModal, setShowRestituerModal] = useState(false)
   const [showRestituerFacturer, setShowRestituerFacturer] = useState(false)
@@ -3171,9 +3183,12 @@ export default function MissionDetailClient({
 
                 {/* Client facturé */}
                 <div className="bg-surface border rounded-2xl p-5 hover:border-brand/30 transition md-card-enter flex flex-col h-full">
-                  <h2 className="text-ink font-semibold text-sm mb-4 flex items-center gap-2">
-                    <span>🧾</span> Client facturé
-                  </h2>
+                  <div className="flex items-center justify-between mb-4">
+                    <h2 className="text-ink font-semibold text-sm flex items-center gap-2">
+                      <span>🧾</span> Client facturé
+                    </h2>
+                    <EidImportButton onImport={handleEidImport} />
+                  </div>
 
                   {/* Recherche Odoo */}
                   <div className="relative mb-3">
@@ -4671,11 +4686,13 @@ export default function MissionDetailClient({
       {showCreateClientModal && (
         <CreateClientModal
           initialName={clientQuery || form.billed_to_name || ''}
+          prefill={eidPrefill || undefined}
           gmKey={googleMapsKey}
-          onClose={() => setShowCreateClientModal(false)}
+          onClose={() => { setShowCreateClientModal(false); setEidPrefill(null) }}
           onCreated={(client) => {
             selectBilledClient({ id: client.id, name: client.name })
             setShowCreateClientModal(false)
+            setEidPrefill(null)
           }}
         />
       )}
