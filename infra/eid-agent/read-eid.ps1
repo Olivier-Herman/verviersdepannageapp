@@ -7,6 +7,8 @@ param([switch]$Dump)
 # -Dump : ajoute un champ _debug avec les APDU/réponses en hex.
 
 $ErrorActionPreference = 'Stop'
+# Sortie en UTF-8 : sinon les accents (â, é…) sont cassés quand Node relit stdout.
+try { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8 } catch {}
 
 Add-Type -Language CSharp @"
 using System;
@@ -103,7 +105,11 @@ function ParseTlv($b) {
   }
   return $m
 }
-function S($bytes) { if ($bytes -and $bytes.Length) { [System.Text.Encoding]::UTF8.GetString([byte[]]$bytes).Trim() } else { '' } }
+function S($bytes) {
+  if ($bytes -and $bytes.Length) {
+    (([System.Text.Encoding]::UTF8.GetString([byte[]]$bytes)) -replace '\s+', ' ').Trim()
+  } else { '' }
+}
 
 try {
   $idBuf = ReadFile @(0x3F, 0x00, 0xDF, 0x01, 0x40, 0x31)   # identité
