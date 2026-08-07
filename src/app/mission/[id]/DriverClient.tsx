@@ -3915,6 +3915,32 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
           ) : null
         })()}
 
+        {/* Étape « Véhicule de remplacement » — insérée entre le pointage courant
+            et la destination. Renseignée par le cron touring-vr-scan dès que
+            Touring a réservé le VR (touring_vr_location). Tap → navigation.
+            Olivier 2026-08-07. */}
+        {(() => {
+          const vr = (M as any).touring_vr_location as { nom?: string; rue?: string; num?: string; cp?: string; loc?: string; comm?: string } | null
+          if (!vr || !vr.nom) return null
+          const vrAddr = [
+            [vr.rue, vr.num].filter(Boolean).join(' '),
+            [vr.cp, vr.loc].filter(Boolean).join(' '),
+          ].filter(Boolean).join(', ')
+          return (
+            <button
+              onClick={() => openNavigation(navApp, null, null, vrAddr || vr.nom || '')}
+              className="w-full bg-emerald-50 dark:bg-emerald-500/10 border-2 border-emerald-500 rounded-2xl p-4 text-left hover:border-emerald-400 transition active:scale-95">
+              <div className="flex justify-between mb-1">
+                <p className="text-emerald-700 dark:text-emerald-300 text-xs uppercase tracking-widest font-bold">🚗 Véhicule de remplacement</p>
+                <span className="text-emerald-700 dark:text-emerald-300 text-xs">🗺️ Naviguer</span>
+              </div>
+              <p className="text-ink text-sm font-medium">{vr.nom}</p>
+              {vrAddr && <p className="text-ink-secondary text-sm">{vrAddr}</p>}
+              {vr.comm && <p className="text-ink-muted text-xs mt-1">{vr.comm}</p>}
+            </button>
+          )
+        })()}
+
         {/* Destination — accès direct Naviguer / Modifier dès que le chauffeur
             est au minimum sur place (Olivier 2026-07-09). Avant : la destination
             n'était modifiable qu'enfouie dans l'itinéraire (ressemblait à un stop)
