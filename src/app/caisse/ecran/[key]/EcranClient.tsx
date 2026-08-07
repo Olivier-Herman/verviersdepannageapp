@@ -5,12 +5,40 @@ import QRCode from 'qrcode'
 import { createClient } from '@supabase/supabase-js'
 
 interface Payload {
+  // Mode facture (par défaut)
   client?: string | null; plate?: string | null; brand?: string | null; model?: string | null
-  reference?: string; amount: number; amountTotal?: number | null; lines?: { label: string; amount: number }[]
+  reference?: string; amount?: number; amountTotal?: number | null; lines?: { label: string; amount: number }[]
   sumupQrUrl?: string | null; sumupCheckoutId?: string | null; epcPayload?: string | null
+  // Mode eID (lecture carte → création client)
+  mode?: 'facture' | 'eid'; request_id?: string; step?: 'consent' | 'done'
+}
+
+// Identité lue sur la puce d'une carte d'identité belge (sans PIN : nom/prénom/adresse).
+interface EidIdentity {
+  lastName?: string | null; firstName?: string | null
+  street?: string | null; zip?: string | null; city?: string | null; country?: string | null
+  nationalNumber?: string | null; birthDate?: string | null
 }
 
 const eur = (n: number) => `${Number(n).toFixed(2).replace('.', ',')} €`
+
+// Agent eID local (lecteur PC/SC + middleware BeID sur le PC comptoir). Absent →
+// on simule la lecture (mock) pour valider tout le flux avant d'avoir le lecteur.
+const EID_AGENT_URL = process.env.NEXT_PUBLIC_EID_AGENT_URL || ''
+const EID_MOCK: EidIdentity = {
+  lastName: 'Dupont', firstName: 'Jean',
+  street: 'Rue de la Station 12', zip: '4800', city: 'Verviers', country: 'Belgique',
+  nationalNumber: '85.07.30-033.28', birthDate: '30/07/1985',
+}
+async function readEidCard(): Promise<EidIdentity> {
+  if (!EID_AGENT_URL) {                       // pas d'agent → mock (le lecteur viendra ensuite)
+    await new Promise(r => setTimeout(r, 1200))
+    return EID_MOCK
+  }
+  const r = await fetch(EID_AGENT_URL, { method: 'GET', cache: 'no-store' })
+  if (!r.ok) throw new Error('lecteur')
+  return await r.json()
+}
 
 export default function EcranClient({ displayKey }: { displayKey: string }) {
   const [payload, setPayload]   = useState<Payload | null>(null)
@@ -20,14 +48,30 @@ export default function EcranClient({ displayKey }: { displayKey: string }) {
   const [now, setNow]           = useState(() => Date.now())
   const sb = useMemo(() => createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!), [])
 
+  // ── État local du mode eID (les transitions consentement→lecture→formulaire
+  //    sont pilotées côté client ; le serveur ne fait qu'ouvrir/clore le mode). ──
+  const [eidStep, setEidStep]       = useState<'consent' | 'reading' | 'form' | 'sending' | 'done' | 'error'>('consent')
+  const [eidId, setEidId]           = useState<EidIdentity | null>(null)
+  const [eidEmail, setEidEmail]     = useState('')
+  const [eidPhone, setEidPhone]     = useState('')
+  const [eidError, setEidError]     = useState<string | null>(null)
+  const eidReqRef = useRef<string | null>(null)
+
   const apply = (p: Payload | null, exp: string | null) => {
     setPaid(false)
     setPayload(p)
     setExpires(exp ? new Date(exp).getTime() : null)
   }
 
+  // Mode démo (?demo=eid) : prévisualise le parcours eID sans backend ni fiche.
+  const isDemo = typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('demo') === 'eid'
+
   // Chargement initial + realtime
   useEffect(() => {
+    if (isDemo) {
+      apply({ mode: 'eid', request_id: 'demo', step: 'consent' } as Payload, new Date(Date.now() + 3600_000).toISOString())
+      return
+    }
     let alive = true
     fetch(`/api/caisse/ecran?key=${encodeURIComponent(displayKey)}`)
       .then(r => r.json()).then(j => { if (alive && !j.error) apply(j.payload || null, j.expires_at || null) })
@@ -74,6 +118,48 @@ export default function EcranClient({ displayKey }: { displayKey: string }) {
     return () => { clearInterval(iv); if (paidTimer.current) clearTimeout(paidTimer.current) }
   }, [payload?.sumupCheckoutId, paid])
 
+  // ── Mode eID : (ré)initialise l'état local à chaque nouvelle demande ────────
+  useEffect(() => {
+    if (payload?.mode !== 'eid') { eidReqRef.current = null; return }
+    if (payload.step === 'done') { setEidStep('done'); return }   // « merci » piloté serveur
+    if (payload.request_id && payload.request_id !== eidReqRef.current) {
+      eidReqRef.current = payload.request_id
+      setEidStep('consent'); setEidId(null); setEidEmail(''); setEidPhone(''); setEidError(null)
+    }
+  }, [payload?.mode, payload?.request_id, payload?.step])
+
+  const startEidRead = async () => {
+    setEidError(null); setEidStep('reading')
+    try {
+      const id = await readEidCard()
+      if (!id?.lastName && !id?.firstName) throw new Error('carte illisible')
+      setEidId(id); setEidStep('form')
+    } catch {
+      setEidError("Lecture impossible. Vérifiez que la carte est bien insérée, puis réessayez.")
+      setEidStep('error')
+    }
+  }
+
+  const submitEid = async () => {
+    if (!eidId || !payload?.request_id) return
+    setEidStep('sending'); setEidError(null)
+    if (isDemo) { setTimeout(() => setEidStep('done'), 500); return }   // démo : pas de backend
+    try {
+      const r = await fetch('/api/caisse/ecran', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'eid_submit', key: displayKey, request_id: payload.request_id,
+          data: { ...eidId, email: eidEmail.trim() || null, phone: eidPhone.trim() || null },
+        }),
+      })
+      if (!r.ok) throw new Error('envoi')
+      setEidStep('done')   // le serveur bascule aussi l'écran en « done » puis repos
+    } catch {
+      setEidError("Envoi impossible. Réessayez ou signalez-le au comptoir.")
+      setEidStep('form')
+    }
+  }
+
   const active = !!payload && !!expiresAt && expiresAt > now
   const vehicle = payload ? [payload.brand, payload.model].filter(Boolean).join(' ') : ''
 
@@ -90,8 +176,109 @@ export default function EcranClient({ displayKey }: { displayKey: string }) {
     )
   }
 
+  // ── ÉCRAN MODE eID (lecture carte → création client) ──────────────────────
+  if (active && payload?.mode === 'eid') {
+    // « Merci » (le client a validé, ou le serveur a clos la demande)
+    if (eidStep === 'done' || payload.step === 'done') {
+      return (
+        <div style={S.wrap}>
+          <div style={{ textAlign: 'center' }}>
+            <div style={{ fontSize: '9vw' }}>✅</div>
+            <div style={{ fontSize: '4.4vw', fontWeight: 800, color: '#16a34a' }}>Merci&nbsp;!</div>
+            <div style={{ fontSize: '2vw', color: '#64748b', marginTop: '1vh' }}>Vos informations ont bien été transmises au comptoir.</div>
+          </div>
+        </div>
+      )
+    }
+
+    // Consentement (RGPD : le client voit ce qu'on va importer et accepte)
+    if (eidStep === 'consent') {
+      return (
+        <div style={S.wrap}>
+          <div style={E.card}>
+            <div style={{ fontSize: '6vw' }}>🪪</div>
+            <div style={E.title}>Créons votre fiche client</div>
+            <div style={E.lead}>
+              Insérez votre <strong>carte d'identité</strong> dans le lecteur, puis appuyez sur le bouton.
+              Nous lirons uniquement&nbsp;:
+            </div>
+            <div style={E.consentList}>
+              <span>👤 Nom &amp; prénom</span>
+              <span>🏠 Adresse</span>
+            </div>
+            <div style={E.lead}>Vous pourrez vérifier les informations et ajouter votre e-mail avant l'envoi.</div>
+            <button style={E.btnPrimary} onClick={startEidRead}>Lire ma carte</button>
+            <div style={E.rgpd}>Aucune donnée n'est enregistrée sans votre validation. Code PIN non requis.</div>
+          </div>
+        </div>
+      )
+    }
+
+    // Lecture en cours
+    if (eidStep === 'reading') {
+      return (
+        <div style={S.wrap}>
+          <style>{'@keyframes vd-spin{to{transform:rotate(360deg)}}'}</style>
+          <div style={E.card}>
+            <div style={E.spinner} />
+            <div style={E.title}>Lecture de la carte…</div>
+            <div style={E.lead}>Ne retirez pas la carte du lecteur.</div>
+          </div>
+        </div>
+      )
+    }
+
+    // Erreur de lecture
+    if (eidStep === 'error') {
+      return (
+        <div style={S.wrap}>
+          <div style={E.card}>
+            <div style={{ fontSize: '6vw' }}>⚠️</div>
+            <div style={E.title}>Lecture impossible</div>
+            <div style={E.lead}>{eidError || 'Vérifiez que la carte est bien insérée.'}</div>
+            <button style={E.btnPrimary} onClick={startEidRead}>Réessayer</button>
+          </div>
+        </div>
+      )
+    }
+
+    // Formulaire : identité lue (lecture seule) + email/tél saisis par le client
+    const fullName = [eidId?.firstName, eidId?.lastName].filter(Boolean).join(' ')
+    const fullAddr = [eidId?.street, [eidId?.zip, eidId?.city].filter(Boolean).join(' ')].filter(Boolean).join(', ')
+    return (
+      <div style={S.wrap}>
+        <div style={{ ...E.card, maxWidth: 'min(80vw, 820px)' }}>
+          <div style={E.title}>Vérifiez vos informations</div>
+          <div style={E.readGrid}>
+            <div style={E.readRow}><span style={E.readLbl}>Nom &amp; prénom</span><span style={E.readVal}>{fullName || '—'}</span></div>
+            <div style={E.readRow}><span style={E.readLbl}>Adresse</span><span style={E.readVal}>{fullAddr || '—'}</span></div>
+          </div>
+          <div style={E.lead}>Ajoutez un moyen de vous contacter (facultatif)&nbsp;:</div>
+          <div style={E.formGrid}>
+            <label style={E.field}>
+              <span style={E.fieldLbl}>E-mail</span>
+              <input style={E.input} type="email" inputMode="email" autoComplete="email"
+                placeholder="vous@exemple.be" value={eidEmail} onChange={e => setEidEmail(e.target.value)} />
+            </label>
+            <label style={E.field}>
+              <span style={E.fieldLbl}>Téléphone</span>
+              <input style={E.input} type="tel" inputMode="tel" autoComplete="tel"
+                placeholder="04XX XX XX XX" value={eidPhone} onChange={e => setEidPhone(e.target.value)} />
+            </label>
+          </div>
+          {eidError && <div style={E.err}>{eidError}</div>}
+          <button style={{ ...E.btnPrimary, opacity: eidStep === 'sending' ? .6 : 1 }} disabled={eidStep === 'sending'} onClick={submitEid}>
+            {eidStep === 'sending' ? 'Envoi…' : 'Envoyer au comptoir'}
+          </button>
+          <div style={E.rgpd}>En envoyant, vous acceptez que ces informations créent votre fiche client.</div>
+        </div>
+      </div>
+    )
+  }
+
   // ── ÉCRAN ACTIF (facture) ─────────────────────────────────────────────────
   if (active && payload) {
+    const amount = payload.amount ?? 0
     // Auto-ajustement : plus il y a de lignes, plus le montant + le détail
     // rétrécissent, pour que tout tienne sans déborder de l'écran.
     const nLines     = Math.min(payload.lines?.length || 0, 10)
@@ -107,14 +294,14 @@ export default function EcranClient({ displayKey }: { displayKey: string }) {
         </div>
 
         <div style={S.amountBox}>
-          {payload.amountTotal != null && payload.amountTotal > payload.amount + 0.005 && (
+          {payload.amountTotal != null && payload.amountTotal > amount + 0.005 && (
             <div style={S.totalSmall}>
               Total {eur(payload.amountTotal)} TVAC
-              <span style={{ color: '#16a34a', marginLeft: '1vw' }}>· déjà réglé {eur(payload.amountTotal - payload.amount)}</span>
+              <span style={{ color: '#16a34a', marginLeft: '1vw' }}>· déjà réglé {eur(payload.amountTotal - amount)}</span>
             </div>
           )}
-          <div style={S.amountLabel}>{payload.amountTotal != null && payload.amountTotal > payload.amount + 0.005 ? 'Solde à payer' : 'Montant à payer'}</div>
-          <div style={{ ...S.amount, fontSize: amountFont }}>{eur(payload.amount)}</div>
+          <div style={S.amountLabel}>{payload.amountTotal != null && payload.amountTotal > amount + 0.005 ? 'Solde à payer' : 'Montant à payer'}</div>
+          <div style={{ ...S.amount, fontSize: amountFont }}>{eur(amount)}</div>
           <div style={S.tvac}>TVAC</div>
           {payload.lines && payload.lines.length > 0 && (
             <div style={{ ...S.lines, fontSize: lineFont, gap: lineGap }}>
@@ -257,4 +444,32 @@ const S: Record<string, React.CSSProperties> = {
   qrImgSecondary: { width: 'min(10.5vw, 15vh)', height: 'auto', display: 'block', margin: '0 auto' },
   qrSubSec: { fontSize: '.75vw', color: '#94a3b8', marginTop: '.7vh' },
   badges: { display: 'flex', gap: '1.6vw', flexWrap: 'wrap', justifyContent: 'center' },
+}
+
+// Styles du mode eID (création client au comptoir).
+const E: Record<string, React.CSSProperties> = {
+  card: { display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2.4vh',
+    textAlign: 'center', maxWidth: 'min(70vw, 700px)', width: '100%' },
+  title: { fontSize: '3.2vw', fontWeight: 800, color: '#0b1120', lineHeight: 1.1, textWrap: 'balance' as any },
+  lead: { fontSize: '1.7vw', color: '#475569', lineHeight: 1.35, maxWidth: '52vw' },
+  consentList: { display: 'flex', gap: '2.4vw', flexWrap: 'wrap', justifyContent: 'center',
+    fontSize: '1.9vw', fontWeight: 700, color: '#0b1120', background: '#f1f5f9',
+    borderRadius: '16px', padding: '1.6vh 2.4vw' },
+  btnPrimary: { fontSize: '2.4vw', fontWeight: 800, color: '#fff', background: '#16a34a',
+    border: 'none', borderRadius: '18px', padding: '2.2vh 5vw', cursor: 'pointer',
+    boxShadow: '0 16px 40px rgba(22,163,74,.28)', marginTop: '1vh' },
+  rgpd: { fontSize: '1.1vw', color: '#94a3b8', maxWidth: '48vw' },
+  spinner: { width: '7vw', height: '7vw', borderRadius: '50%',
+    border: '0.9vw solid #e2e8f0', borderTopColor: '#16a34a', animation: 'vd-spin 0.9s linear infinite' },
+  readGrid: { display: 'flex', flexDirection: 'column', gap: '1.2vh', width: '100%',
+    background: '#f8fafc', border: '1px solid #e5e7eb', borderRadius: '16px', padding: '2vh 2.4vw' },
+  readRow: { display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: '2vw', textAlign: 'left' },
+  readLbl: { fontSize: '1.2vw', color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '.08em', fontWeight: 600, whiteSpace: 'nowrap' },
+  readVal: { fontSize: '1.9vw', fontWeight: 700, color: '#0b1120', textAlign: 'right' },
+  formGrid: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.4vw', width: '100%' },
+  field: { display: 'flex', flexDirection: 'column', gap: '.7vh', textAlign: 'left' },
+  fieldLbl: { fontSize: '1.2vw', color: '#64748b', fontWeight: 600 },
+  input: { fontSize: '1.9vw', padding: '1.6vh 1.4vw', borderRadius: '14px',
+    border: '2px solid #cbd5e1', outline: 'none', color: '#0b1120', background: '#fff', width: '100%' },
+  err: { fontSize: '1.4vw', color: '#b91c1c', fontWeight: 600 },
 }

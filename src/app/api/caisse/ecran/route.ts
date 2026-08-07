@@ -4,10 +4,15 @@
 //   GET  ?key=…                         → état courant de l'écran (public : la
 //                                          tablette kiosque le lit sans login).
 //   POST { action:'push', key, … }      → affiche une facture (montant + détail
-//                                          + 2 QR SumUp/SEPA), TTL 5 min.
+//                                          + 2 QR SumUp/SEPA), TTL 2 min.
 //        { action:'clear', key }         → repos.
-//   POST push renvoie { occupied, occupant } si l'écran affiche déjà quelqu'un
-//   (sauf force:true) → garde-fou anti-écrasement. Olivier 2026-07-28.
+//        { action:'eid', key, request_id } → mode « lecture carte eID / création
+//                                          client » (consentement), TTL 5 min.
+//        { action:'eid_submit', key, request_id, data } → PUBLIC : renvoi du
+//                                          client (Nom/Prénom/Adresse + email/tél)
+//                                          → écrit dans response/response_at.
+//   POST push/eid renvoient { occupied, occupant } si l'écran affiche déjà
+//   quelqu'un (sauf force:true) → garde-fou anti-écrasement. Olivier 2026-07-28.
 
 import { NextResponse }        from 'next/server'
 import { getServerSession }    from 'next-auth'
@@ -121,18 +126,64 @@ async function resolveMissionBilling(sb: any, missionId: string, origin: string)
 export async function GET(req: Request) {
   const key = new URL(req.url).searchParams.get('key') || 'facturation'
   const sb = createAdminClient()
-  const { data } = await sb.from('customer_display').select('payload, expires_at, label').eq('key', key).maybeSingle()
+  const { data } = await sb.from('customer_display').select('payload, expires_at, label, response, response_at').eq('key', key).maybeSingle()
   const expired = data?.expires_at ? new Date(data.expires_at).getTime() < Date.now() : true
   return NextResponse.json({
     key,
     label:   data?.label || null,
     payload: (data?.payload && !expired) ? data.payload : null,
     expires_at: expired ? null : data?.expires_at || null,
+    // Canal retour eID : la fiche opérateur lit ici les données renvoyées par le client.
+    response:    data?.response || null,
+    response_at: data?.response_at || null,
   })
 }
 
-// ── POST : push / clear (session requise, OU appel interne x-internal-secret) ─
+// ── POST : push / clear / eid (session requise) — eid_submit PUBLIC (kiosque) ─
 export async function POST(req: Request) {
+  const body = await req.json().catch(() => ({}))
+  const key = String(body.key || 'facturation')
+  const sb = createAdminClient()
+  const now = Date.now()
+
+  // ── eid_submit : RENVOI du client depuis le kiosque (PUBLIC, pas de session) ─
+  // Le client n'est pas authentifié : on n'accepte l'écriture QUE si l'écran est
+  // bien en mode eID avec le request_id attendu et non expiré (corrélation forte).
+  if (body.action === 'eid_submit') {
+    const reqId = String(body.request_id || '')
+    const { data: cur } = await sb.from('customer_display')
+      .select('payload, expires_at').eq('key', key).maybeSingle()
+    const p: any = cur?.payload || null
+    const live = cur?.expires_at && new Date(cur.expires_at).getTime() > now
+    if (!p || p.mode !== 'eid' || !live || !reqId || p.request_id !== reqId) {
+      return NextResponse.json({ error: 'Aucune demande eID active pour cet écran.' }, { status: 409 })
+    }
+    const d = (body.data && typeof body.data === 'object') ? body.data : {}
+    const response = {
+      request_id: reqId,
+      lastName:  d.lastName  ? String(d.lastName).slice(0, 120)  : null,
+      firstName: d.firstName ? String(d.firstName).slice(0, 120) : null,
+      street:    d.street    ? String(d.street).slice(0, 200)    : null,
+      zip:       d.zip       ? String(d.zip).slice(0, 20)        : null,
+      city:      d.city      ? String(d.city).slice(0, 120)      : null,
+      country:   d.country   ? String(d.country).slice(0, 80)    : null,
+      nationalNumber: d.nationalNumber ? String(d.nationalNumber).slice(0, 40) : null,
+      birthDate: d.birthDate ? String(d.birthDate).slice(0, 40)  : null,
+      email:     d.email     ? String(d.email).slice(0, 160)     : null,
+      phone:     d.phone     ? String(d.phone).slice(0, 40)      : null,
+    }
+    // Réponse enregistrée + écran passe en « merci » (bref) puis retombe au repos.
+    await sb.from('customer_display').update({
+      payload: { mode: 'eid', request_id: reqId, step: 'done' },
+      expires_at: new Date(now + 10_000).toISOString(),
+      response,
+      response_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    }).eq('key', key)
+    return NextResponse.json({ ok: true })
+  }
+
+  // ── Toutes les autres actions : session requise (OU appel interne) ──────────
   const isInternal = !!process.env.NEXTAUTH_SECRET && req.headers.get('x-internal-secret') === process.env.NEXTAUTH_SECRET
   const session = isInternal ? null : await getServerSession(authOptions)
   const user = (session?.user as any) || {}
@@ -142,17 +193,34 @@ export async function POST(req: Request) {
     || modules.includes('facturation') || modules.includes('encaissement') || modules.includes('encaissements')
   if (!ok) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
-  const body = await req.json().catch(() => ({}))
-  const key = String(body.key || 'facturation')
-  const sb = createAdminClient()
-  const now = Date.now()
-
   if (body.action === 'clear') {
     await sb.from('customer_display').upsert(
-      { key, payload: null, expires_at: null, updated_at: new Date().toISOString(), updated_by: user.id || null },
+      { key, payload: null, expires_at: null, response: null, response_at: null, updated_at: new Date().toISOString(), updated_by: user.id || null },
       { onConflict: 'key' },
     )
     return NextResponse.json({ ok: true })
+  }
+
+  // ── eid : COMMANDE « lire une carte d'identité » depuis la fiche opérateur ──
+  // Affiche l'écran de consentement eID. request_id corrèle la réponse à venir.
+  if (body.action === 'eid') {
+    const reqId = String(body.request_id || '').slice(0, 80) || `eid-${now}`
+    // Garde-fou anti-écrasement (comme push) : écran déjà occupé et pas de force.
+    if (!body.force) {
+      const { data: cur } = await sb.from('customer_display').select('payload, expires_at').eq('key', key).maybeSingle()
+      const active = cur?.payload && cur.expires_at && new Date(cur.expires_at).getTime() > now
+      if (active) {
+        const occ: any = cur!.payload
+        return NextResponse.json({ occupied: true, occupant: { client: occ.client || null, plate: occ.plate || null, mode: occ.mode || 'facture' } }, { status: 409 })
+      }
+    }
+    // TTL plus long (le client lit/saisit) : 5 min. On efface toute réponse précédente.
+    const expires_at = new Date(now + 5 * 60_000).toISOString()
+    await sb.from('customer_display').upsert(
+      { key, payload: { mode: 'eid', request_id: reqId, step: 'consent' }, expires_at, response: null, response_at: null, updated_at: new Date().toISOString(), updated_by: user.id || null },
+      { onConflict: 'key' },
+    )
+    return NextResponse.json({ ok: true, request_id: reqId, expires_at })
   }
 
   // action = 'push'
