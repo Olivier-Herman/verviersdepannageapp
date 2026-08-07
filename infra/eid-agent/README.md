@@ -57,7 +57,8 @@ Manuellement en ligne de commande : `schtasks /query /tn EidAgent` (état) · `s
 | `/read` → `409 NO_CARD` | Aucune carte détectée : insérer la carte pubce vers le haut. |
 | `/read` → `500 READ_FAILED` | Carte non-eID belge, ou lecteur occupé par une autre appli (fermer le Visualiseur eID / autre logiciel qui garde la carte). |
 | L'écran comptoir reste sur le mock (Jean Dupont) | L'URL kiosque n'a pas `?eid=http://localhost:7181/read`, ou l'agent n'est pas lancé. |
-| `npm install` échoue sur `@pokusew/pcsclite` | Utiliser Node LTS 18/20 (binaires précompilés) ; sinon installer les *build tools* Windows. |
+| `npm install` long/erreur | `npm install` n'installe que `express` + `cors` (pur JS, **aucune compilation**). La lecture carte passe par `read-eid.ps1` (WinSCard, intégré à Windows). |
+| `/read` → `NO_PCSC` | Démarrer le service Windows **« Carte à puce »** (SCardSvr) — normalement automatique dès qu'un lecteur est branché. |
 | Le fetch est bloqué par le navigateur | Utiliser **`localhost`** (pas une IP distante) dans l'URL `?eid=` ; l'agent n'écoute que sur `127.0.0.1`. |
 
 ## Sécurité
