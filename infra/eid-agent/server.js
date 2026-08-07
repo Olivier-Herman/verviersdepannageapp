@@ -35,11 +35,13 @@ const POWERSHELL = process.env.SystemRoot
   : 'powershell'
 
 // Lance read-eid.ps1 et renvoie l'objet identité (ou lève une erreur avec code).
-function readEid() {
+function readEid(dump) {
+  const args = ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', SCRIPT]
+  if (dump) args.push('-Dump')
   return new Promise((resolve, reject) => {
     execFile(
       POWERSHELL,
-      ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', SCRIPT],
+      args,
       { timeout: 20000, windowsHide: true, maxBuffer: 1024 * 1024 },
       (err, stdout, stderr) => {
         if (err && !stdout) return reject(new Error(stderr || err.message))
@@ -60,9 +62,9 @@ app.get('/health', (_req, res) => {
   res.json({ ok: true, engine: 'winscard-powershell', port: PORT })
 })
 
-app.get('/read', async (_req, res) => {
+app.get('/read', async (req, res) => {
   try {
-    res.json(await readEid())
+    res.json(await readEid(!!req.query.debug))
   } catch (e) {
     const code = e && e.code
     if (code === 'NO_CARD')   return res.status(409).json({ error: 'NO_CARD',   message: 'Aucune carte détectée. Insérez la carte dans le lecteur.' })

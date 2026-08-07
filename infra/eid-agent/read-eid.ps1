@@ -1,7 +1,10 @@
+param([switch]$Dump)
+
 # read-eid.ps1 — Lit la carte d'identité belge via WinSCard (intégré à Windows).
 # Sort un JSON compact sur stdout : { lastName, firstName, street, zip, city,
-# country, nationalNumber, birthDate, nationality }  ou  { error: "NO_CARD" }.
-# Aucune dépendance à compiler : utilise l'API PC/SC native de Windows.
+# country, nationalNumber, birthDate, nationality }  ou  { error: "..." }.
+# Gère T=0 (6CXX → relecture avec la bonne longueur, 61XX → GET RESPONSE).
+# -Dump : ajoute un champ _debug avec les APDU/réponses en hex.
 
 $ErrorActionPreference = 'Stop'
 
@@ -19,27 +22,26 @@ public class WinSCard {
 }
 "@
 
+$script:dbg = New-Object System.Collections.Generic.List[string]
+function Hex($b) { if ($b -and $b.Length) { (($b | ForEach-Object { $_.ToString('X2') }) -join ' ') } else { '' } }
+
 function Fail($code) { [Console]::Out.Write((@{ error = $code } | ConvertTo-Json -Compress)); exit 0 }
 
 $ctx = [IntPtr]::Zero
-$r = [WinSCard]::SCardEstablishContext(0, [IntPtr]::Zero, [IntPtr]::Zero, [ref]$ctx)   # 0 = SCARD_SCOPE_USER
-if ($r -ne 0) { Fail "NO_PCSC" }
+if ([WinSCard]::SCardEstablishContext(0, [IntPtr]::Zero, [IntPtr]::Zero, [ref]$ctx) -ne 0) { Fail "NO_PCSC" }
 
-# Liste des lecteurs (buffer unique de 2048 octets, noms ANSI séparés par \0)
 $buf = New-Object byte[] 2048
 $blen = 2048
-$r = [WinSCard]::SCardListReadersA($ctx, $null, $buf, [ref]$blen)
-if ($r -ne 0) { [WinSCard]::SCardReleaseContext($ctx) | Out-Null; Fail "NO_READER" }
+if ([WinSCard]::SCardListReadersA($ctx, $null, $buf, [ref]$blen) -ne 0) { [WinSCard]::SCardReleaseContext($ctx) | Out-Null; Fail "NO_READER" }
 $reader = ''
 for ($i = 0; $i -lt $blen; $i++) { if ($buf[$i] -eq 0) { break }; $reader += [char]$buf[$i] }
 if (-not $reader) { [WinSCard]::SCardReleaseContext($ctx) | Out-Null; Fail "NO_READER" }
 
-# Connexion à la carte
 $card = [IntPtr]::Zero; $active = 0
-$r = [WinSCard]::SCardConnectA($ctx, $reader, 2, 3, [ref]$card, [ref]$active)   # 2=SHARED, 3=T0|T1
-if ($r -ne 0) { [WinSCard]::SCardReleaseContext($ctx) | Out-Null; Fail "NO_CARD" }
+if ([WinSCard]::SCardConnectA($ctx, $reader, 2, 3, [ref]$card, [ref]$active) -ne 0) { [WinSCard]::SCardReleaseContext($ctx) | Out-Null; Fail "NO_CARD" }
 
-function Transmit($apdu) {
+# Transmet un APDU brut ; renvoie le buffer complet (data + SW1 SW2).
+function Raw($apdu) {
   $io = New-Object WinSCard+IORequest
   $io.dwProtocol = $active
   $io.cbPciLength = 8
@@ -47,22 +49,44 @@ function Transmit($apdu) {
   $rlen = 512
   $rc = [WinSCard]::SCardTransmit($card, [ref]$io, [byte[]]$apdu, $apdu.Length, [IntPtr]::Zero, $rbuf, [ref]$rlen)
   if ($rc -ne 0) { throw "transmit_$rc" }
-  return ,($rbuf[0..($rlen - 1)])
+  $out = $rbuf[0..($rlen - 1)]
+  if ($Dump) { $script:dbg.Add(("-> " + (Hex $apdu) + "  <- " + (Hex $out))) }
+  return , $out
+}
+
+# Transmet en gérant T=0 : 6CXX (relire avec Le=XX) et 61XX (GET RESPONSE).
+function Xmit($apdu) {
+  $resp = Raw $apdu
+  $sw1 = $resp[$resp.Length - 2]; $sw2 = $resp[$resp.Length - 1]
+  if ($sw1 -eq 0x6C) {
+    $a2 = @($apdu[0], $apdu[1], $apdu[2], $apdu[3], $sw2)
+    $resp = Raw $a2
+    $sw1 = $resp[$resp.Length - 2]; $sw2 = $resp[$resp.Length - 1]
+  }
+  $acc = New-Object System.Collections.Generic.List[byte]
+  if ($resp.Length -gt 2) { for ($j = 0; $j -lt $resp.Length - 2; $j++) { $acc.Add($resp[$j]) } }
+  while ($sw1 -eq 0x61) {
+    $resp = Raw @(0x00, 0xC0, 0x00, 0x00, $sw2)
+    $sw1 = $resp[$resp.Length - 2]; $sw2 = $resp[$resp.Length - 1]
+    if ($resp.Length -gt 2) { for ($j = 0; $j -lt $resp.Length - 2; $j++) { $acc.Add($resp[$j]) } }
+  }
+  return , @{ data = $acc.ToArray(); sw1 = $sw1; sw2 = $sw2 }
 }
 
 function ReadFile($path) {
   $sel = @(0x00, 0xA4, 0x08, 0x0C, $path.Length) + $path
-  [void](Transmit $sel)
+  $r = Xmit $sel
+  if ($Dump) { $script:dbg.Add("SELECT " + (Hex $path) + " -> SW " + $r.sw1.ToString('X2') + $r.sw2.ToString('X2')) }
   $out = New-Object System.Collections.Generic.List[byte]
   $off = 0
-  for ($k = 0; $k -lt 32; $k++) {
+  for ($k = 0; $k -lt 64; $k++) {
     $rb = @(0x00, 0xB0, [byte](($off -shr 8) -band 0xFF), [byte]($off -band 0xFF), 0xFF)
-    $resp = Transmit $rb
-    $bodyLen = $resp.Length - 2
-    if ($bodyLen -gt 0) { for ($j = 0; $j -lt $bodyLen; $j++) { $out.Add($resp[$j]) } }
-    if ($bodyLen -lt 0xFF) { break }
-    $off += $bodyLen
-    if ($resp[$resp.Length - 2] -ne 0x90) { break }
+    $r = Xmit $rb
+    $body = $r.data
+    if ($body.Length -gt 0) { foreach ($x in $body) { $out.Add($x) } }
+    if ($body.Length -lt 0xFF) { break }
+    $off += $body.Length
+    if ($r.sw1 -ne 0x90) { break }
   }
   return $out.ToArray()
 }
@@ -97,10 +121,13 @@ try {
     city           = S $ad[3]
     country        = 'Belgique'
   }
-  [Console]::Out.Write(($out | ConvertTo-Json -Compress))
+  if ($Dump) { $out._debug = @{ idLen = $idBuf.Length; adLen = $adBuf.Length; steps = $script:dbg.ToArray() } }
+  [Console]::Out.Write(($out | ConvertTo-Json -Compress -Depth 5))
 }
 catch {
-  [Console]::Out.Write((@{ error = 'READ_FAILED'; detail = "$_" } | ConvertTo-Json -Compress))
+  $o = @{ error = 'READ_FAILED'; detail = "$_" }
+  if ($Dump) { $o._debug = $script:dbg.ToArray() }
+  [Console]::Out.Write(($o | ConvertTo-Json -Compress -Depth 5))
 }
 finally {
   [WinSCard]::SCardDisconnect($card, 0) | Out-Null
