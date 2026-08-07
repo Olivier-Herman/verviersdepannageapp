@@ -2455,6 +2455,21 @@ export default function MissionDetailClient({
               🧪 Vue dossier
             </Link>
           )}
+          {userRole === 'superadmin' && (
+            <button
+              onClick={async () => {
+                if (!window.confirm('Annuler le dernier pointage de cette fiche ? Elle reviendra à l’étape précédente.')) return
+                try {
+                  const r = await fetch(`/api/missions/${initialMission.id}/undo-checkpoint`, { method: 'POST' })
+                  const j = await r.json().catch(() => ({}))
+                  if (!r.ok) { alert(j.error || 'Erreur'); return }
+                  window.location.reload()
+                } catch { alert('Erreur réseau') }
+              }}
+              className="px-2 py-0.5 rounded-lg text-xs font-semibold bg-red-500/15 text-red-700 dark:text-red-300 border border-red-500/30 hover:bg-red-500/25 transition">
+              ↩️ Annuler dernier pointage
+            </button>
+          )}
         </div>
       }
       userName={userName}
