@@ -4157,6 +4157,10 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
                   // Olivier 2026-06-24 : REM sans adresse de destination → on
                   // demande de l'encoder à l'arrivée avant de clôturer.
                   if (rem && !rel && !M.destination_address) { openDestPrompt('arrival'); return }
+                  // REM Touring avec action de suivi non clôturée : écran de clôture
+                  // Touring (pré-rempli, seq actif) AVANT le résumé de clôture VD Soft.
+                  // Olivier 2026-08-07.
+                  if (hasTouringFollowup && !rel) { setTouringAction('remclose'); setShowTouringClose(true); return }
                   setCloseType(rel ? 'rel' : 'rem'); setScreen('close')
                 }} disabled={loading}
                 className="w-full py-4 bg-green-600 disabled:opacity-50 text-ink font-bold rounded-2xl text-base flex items-center justify-center gap-2">
@@ -4370,13 +4374,7 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
                 <span className="text-sm font-medium text-ink-secondary"><T k="mission_detail.action_dpr" /></span>
               </button>
               {/* Terminer */}
-              <button onClick={() => {
-                  setShowGrid(false)
-                  // REM Touring avec action de suivi non clôturée : d'abord la clôture
-                  // Touring (écran pré-rempli) du seq actif, puis la clôture VD Soft.
-                  if (hasTouringFollowup && rem) { setTouringAction('remclose'); setShowTouringClose(true); return }
-                  setCloseType(rem ? 'rem' : 'dsp'); setScreen('close')
-                }}
+              <button onClick={() => { setShowGrid(false); setCloseType(rem ? 'rem' : 'dsp'); setScreen('close') }}
                 className="col-span-2 rounded-2xl py-5 flex flex-col items-center justify-center gap-2 border bg-brand border-brand transition active:scale-95">
                 <span className="text-2xl">🏁</span>
                 <span className="text-sm font-bold text-ink"><T k="mission_detail.action_finish" /></span>
