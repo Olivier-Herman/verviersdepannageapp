@@ -22,20 +22,29 @@ interface EidIdentity {
 
 const eur = (n: number) => `${Number(n).toFixed(2).replace('.', ',')} €`
 
-// Agent eID local (lecteur PC/SC + middleware BeID sur le PC comptoir). Absent →
-// on simule la lecture (mock) pour valider tout le flux avant d'avoir le lecteur.
-const EID_AGENT_URL = process.env.NEXT_PUBLIC_EID_AGENT_URL || ''
+// Agent eID local (lecteur PC/SC sur le PC comptoir). URL résolue à l'exécution :
+//   1) paramètre d'URL ?eid=http://localhost:7181/read (par écran/PC comptoir)
+//   2) sinon variable de build NEXT_PUBLIC_EID_AGENT_URL
+//   3) sinon → lecture MOCK (démontre le parcours sans lecteur).
+function eidAgentUrl(): string {
+  try {
+    const q = new URLSearchParams(window.location.search).get('eid')
+    if (q) return q
+  } catch { /* SSR */ }
+  return process.env.NEXT_PUBLIC_EID_AGENT_URL || ''
+}
 const EID_MOCK: EidIdentity = {
   lastName: 'Dupont', firstName: 'Jean',
   street: 'Rue de la Station 12', zip: '4800', city: 'Verviers', country: 'Belgique',
   nationalNumber: '85.07.30-033.28', birthDate: '30/07/1985',
 }
 async function readEidCard(): Promise<EidIdentity> {
-  if (!EID_AGENT_URL) {                       // pas d'agent → mock (le lecteur viendra ensuite)
+  const url = eidAgentUrl()
+  if (!url) {                                 // pas d'agent → mock (le lecteur viendra ensuite)
     await new Promise(r => setTimeout(r, 1200))
     return EID_MOCK
   }
-  const r = await fetch(EID_AGENT_URL, { method: 'GET', cache: 'no-store' })
+  const r = await fetch(url, { method: 'GET', cache: 'no-store' })
   if (!r.ok) throw new Error('lecteur')
   return await r.json()
 }

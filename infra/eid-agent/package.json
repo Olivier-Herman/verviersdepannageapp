@@ -1,0 +1,18 @@
+{
+  "name": "vdsoft-eid-agent",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Agent eID local (lecteur carte d'identité belge) pour l'écran comptoir VD Soft",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "@pokusew/pcsclite": "^1.0.0",
+    "cors": "^2.8.5",
+    "express": "^4.19.2"
+  }
+}
