@@ -97,7 +97,8 @@ function ParseTlv($b) {
   while ($i + 1 -lt $b.Length) {
     $tag = $b[$i]; $len = $b[$i + 1]
     if ($tag -eq 0 -or ($i + 2 + $len) -gt $b.Length) { break }
-    if ($len -eq 0) { $m[$tag] = @() } else { $m[$tag] = $b[($i + 2)..($i + 1 + $len)] }
+    # Clé en [int] : sinon lookup $id[7] (int) ≠ clé stockée en [byte] → vide.
+    if ($len -eq 0) { $m[[int]$tag] = @() } else { $m[[int]$tag] = $b[($i + 2)..($i + 1 + $len)] }
     $i += 2 + $len
   }
   return $m
