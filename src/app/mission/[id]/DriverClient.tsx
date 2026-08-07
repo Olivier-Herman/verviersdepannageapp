@@ -4260,6 +4260,15 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
             </button>
           )}
 
+          {/* Superadmin : annuler le dernier pointage — TOUJOURS accessible (même
+              mission clôturée/to_invoice) pour rejouer une étape. Olivier 2026-08-07. */}
+          {userRole === 'superadmin' && (
+            <button onClick={undoCheckpoint} disabled={loading}
+              className="w-full py-2.5 bg-surface border border-red-500/30 hover:border-red-500/60 text-red-400 font-medium rounded-2xl text-sm flex items-center justify-center gap-2 disabled:opacity-50">
+              ↩️ Annuler le dernier pointage
+            </button>
+          )}
+
           {/* Mission TERMINÉE (completed/to_invoice) : accès direct aux photos pour
               en supprimer/corriger une (ex. mauvaise photo). Le serveur autorise
               save_photos quel que soit le statut. Olivier 2026-07-14. */}
@@ -4359,14 +4368,6 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
                   className="rounded-2xl py-5 flex flex-col items-center justify-center gap-2 border bg-teal-600/10 border-teal-600/30 transition active:scale-95 disabled:opacity-50">
                   <span className="text-2xl">🚨</span>
                   <span className="text-sm font-medium text-teal-400 text-center leading-tight">Siabis couvert</span>
-                </button>
-              )}
-              {/* Superadmin : annuler le dernier pointage (revenir à l'étape précédente). */}
-              {userRole === 'superadmin' && (
-                <button onClick={() => { setShowGrid(false); undoCheckpoint() }} disabled={loading}
-                  className="rounded-2xl py-5 flex flex-col items-center justify-center gap-2 border bg-red-600/10 border-red-600/40 transition active:scale-95 disabled:opacity-50">
-                  <span className="text-2xl">↩️</span>
-                  <span className="text-sm font-medium text-red-400 text-center leading-tight">Annuler dernier pointage</span>
                 </button>
               )}
               {/* Mise en parc (REM uniquement) */}
