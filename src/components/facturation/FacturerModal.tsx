@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from 'react'
 import PushToScreenButton from '@/components/caisse/PushToScreenButton'
+import EidImportButton, { type EidData } from '@/components/caisse/EidImportButton'
+import CreateClientModal from '@/components/CreateClientModal'
 import { HighwaySiabisModal } from '@/app/dispatch/HighwaySiabisModal'
 import { parseHighwayAddress } from '@/lib/highways/parse'
 
@@ -1044,6 +1046,18 @@ export default function FacturerModal({
   const [billedName, setBilledName] = useState<string>(mission.billed_to_name || '')
   const [clientQ, setClientQ]       = useState('')
   const [clientResults, setClientResults] = useState<Array<{ id: number; name: string; city?: string; zip?: string }>>([])
+  const [showCreateClient, setShowCreateClient] = useState(false)
+  const [eidPrefill, setEidPrefill] = useState<{ name?: string; phone?: string; email?: string; street?: string; zip?: string; city?: string } | null>(null)
+
+  // Carte d'identité lue au comptoir → préremplir le formulaire de création client.
+  const onEidImport = (d: EidData) => {
+    const fullName = [d.firstName, d.lastName].filter(Boolean).join(' ').trim()
+    setEidPrefill({
+      name: fullName || undefined, phone: d.phone || undefined, email: d.email || undefined,
+      street: d.street || undefined, zip: d.zip || undefined, city: d.city || undefined,
+    })
+    setShowCreateClient(true)
+  }
   const [clientBusy, setClientBusy] = useState(false)
   const [savingEdit, setSavingEdit] = useState(false)
   const [editMsg, setEditMsg]       = useState<string | null>(null)
@@ -1352,9 +1366,12 @@ export default function FacturerModal({
 
                 {/* Client facturé (Odoo) */}
                 <div>
-                  <label className="block text-ink-muted text-xs mb-1">
-                    Client facturé {billedId ? <span className="text-success">· lié (#{billedId})</span> : <span className="text-warning">· non lié</span>}
-                  </label>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="block text-ink-muted text-xs">
+                      Client facturé {billedId ? <span className="text-success">· lié (#{billedId})</span> : <span className="text-warning">· non lié</span>}
+                    </label>
+                    <EidImportButton onImport={onEidImport} />
+                  </div>
                   {billedName && (
                     <div className="flex items-center gap-2 mb-1.5 text-sm text-ink">
                       <span className="font-medium">{billedName}</span>
@@ -1664,6 +1681,19 @@ export default function FacturerModal({
             </div>
           </div>
         </div>
+      )}
+
+      {showCreateClient && (
+        <CreateClientModal
+          prefill={eidPrefill || undefined}
+          onClose={() => { setShowCreateClient(false); setEidPrefill(null) }}
+          onCreated={(client) => {
+            setBilledId(client.id)
+            setBilledName(client.name)
+            setShowCreateClient(false)
+            setEidPrefill(null)
+          }}
+        />
       )}
     </div>
   )

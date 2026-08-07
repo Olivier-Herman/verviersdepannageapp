@@ -6,6 +6,7 @@ import Link            from 'next/link'
 import AppShell from '@/components/layout/AppShell'
 import AddressField from '@/components/AddressField'
 import CreateClientModal from '@/components/CreateClientModal'
+import EidImportButton, { type EidData } from '@/components/caisse/EidImportButton'
 import DriverPickerModal from '@/components/DriverPickerModal'
 import ScanButton from '@/components/ScanButton'
 
@@ -275,6 +276,8 @@ export default function NewMissionClient({
   const [billedName,      setBilledName]      = useState('')
   const [odooPartnerId,   setOdooPartnerId]   = useState<number|null>(null)
   const [showCreateClient, setShowCreateClient] = useState(false)
+  // Préremplissage du formulaire client depuis une lecture de carte d'identité (eID).
+  const [eidPrefill, setEidPrefill] = useState<{ name?: string; phone?: string; email?: string; street?: string; zip?: string; city?: string } | null>(null)
 
   // ── Client assisté ────────────────────────────────────────────────────────
   const [assistedName,  setAssistedName]  = useState('')
@@ -629,6 +632,24 @@ export default function NewMissionClient({
     } else if (data.source === source) {
       setSourceFromOdoo(data.found)
     }
+  }
+
+  // Carte d'identité lue au comptoir → préremplir le formulaire « Créer un client »
+  // (Nom/Prénom, adresse, email, tél) et l'ouvrir. On renseigne aussi la personne
+  // assistée sur place (= le porteur de la carte).
+  const handleEidImport = (d: EidData) => {
+    const fullName = [d.firstName, d.lastName].filter(Boolean).join(' ').trim()
+    setEidPrefill({
+      name:   fullName || undefined,
+      phone:  d.phone || undefined,
+      email:  d.email || undefined,
+      street: d.street || undefined,
+      zip:    d.zip || undefined,
+      city:   d.city || undefined,
+    })
+    if (fullName) setAssistedName(fullName)
+    if (d.phone)  setAssistedPhone(d.phone)
+    setShowCreateClient(true)
   }
 
   // Copier client facturé → assisté
@@ -1126,7 +1147,10 @@ export default function NewMissionClient({
                 className="bg-surface border rounded-2xl p-5 hover:border-brand/30 transition nm-card-enter relative"
                 style={showClientDrop ? { zIndex: 50 } : undefined}
               >
-                <h2 className="text-ink font-semibold text-sm mb-4">🧾 Client facturé</h2>
+                <div className="flex items-center justify-between mb-4">
+                  <h2 className="text-ink font-semibold text-sm">🧾 Client facturé</h2>
+                  <EidImportButton onImport={handleEidImport} />
+                </div>
                 <div className="relative mb-3">
                   <label className="block text-ink-muted text-xs mb-1.5">Rechercher un client</label>
                   <input value={clientSearch.query}
@@ -1633,8 +1657,9 @@ export default function NewMissionClient({
         {showCreateClient && (
           <CreateClientModal
             initialName={clientSearch.query || billedName}
+            prefill={eidPrefill || undefined}
             gmKey={googleMapsKey}
-            onClose={() => setShowCreateClient(false)}
+            onClose={() => { setShowCreateClient(false); setEidPrefill(null) }}
             onCreated={(client) => {
               // Le nouveau client devient le client lie : on appelle selectClient
               // avec un objet conforme a l'interface OdooClient locale.
@@ -1650,6 +1675,7 @@ export default function NewMissionClient({
               }
               selectClient(odooClient)
               setShowCreateClient(false)
+              setEidPrefill(null)
             }}
           />
         )}

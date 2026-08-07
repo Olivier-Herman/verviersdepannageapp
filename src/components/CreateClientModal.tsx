@@ -17,19 +17,21 @@ export interface CreatedClient {
 
 interface Props {
   initialName?: string
+  // Préremplissage complet (ex. depuis une lecture de carte d'identité eID).
+  prefill?:     { name?: string; phone?: string; email?: string; street?: string; zip?: string; city?: string }
   gmKey?:       string  // Cle Google Maps (pour Places Autocomplete sur l adresse)
   onClose:      () => void
   onCreated:    (client: CreatedClient) => void
 }
 
-export default function CreateClientModal({ initialName, gmKey, onClose, onCreated }: Props) {
-  const [name,   setName]   = useState(initialName || '')
-  const [phone,  setPhone]  = useState('')
+export default function CreateClientModal({ initialName, prefill, gmKey, onClose, onCreated }: Props) {
+  const [name,   setName]   = useState(prefill?.name || initialName || '')
+  const [phone,  setPhone]  = useState(prefill?.phone  || '')
   const [mobile, setMobile] = useState('')
-  const [email,  setEmail]  = useState('')
-  const [street, setStreet] = useState('')
-  const [zip,    setZip]    = useState('')
-  const [city,   setCity]   = useState('')
+  const [email,  setEmail]  = useState(prefill?.email  || '')
+  const [street, setStreet] = useState(prefill?.street || '')
+  const [zip,    setZip]    = useState(prefill?.zip    || '')
+  const [city,   setCity]   = useState(prefill?.city   || '')
   const [vat,    setVat]    = useState('')
   const [isCompany, setIsCompany] = useState(false)
   const [saving, setSaving] = useState(false)
