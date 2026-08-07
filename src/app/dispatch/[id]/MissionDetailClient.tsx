@@ -34,6 +34,7 @@ import DriverPickerModal from '@/components/DriverPickerModal'
 import ScanButton from '@/components/ScanButton'
 import CreateClientModal from '@/components/CreateClientModal'
 import EidImportButton, { type EidData } from '@/components/caisse/EidImportButton'
+import IdPhotoButton from '@/components/caisse/IdPhotoButton'
 import RestituerMalGareeModal from '@/components/restitution/RestituerMalGareeModal'
 import RestituerEtFacturerModal from '@/components/fourriere/RestituerEtFacturerModal'
 import GererSncDepotModal from '@/components/restitution/GererSncDepotModal'
@@ -3187,7 +3188,10 @@ export default function MissionDetailClient({
                     <h2 className="text-ink font-semibold text-sm flex items-center gap-2">
                       <span>🧾</span> Client facturé
                     </h2>
-                    <EidImportButton onImport={handleEidImport} />
+                    <div className="flex items-center gap-3">
+                      <EidImportButton onImport={handleEidImport} />
+                      <IdPhotoButton onImport={handleEidImport} />
+                    </div>
                   </div>
 
                   {/* Recherche Odoo */}

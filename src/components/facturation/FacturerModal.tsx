@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import PushToScreenButton from '@/components/caisse/PushToScreenButton'
 import EidImportButton, { type EidData } from '@/components/caisse/EidImportButton'
+import IdPhotoButton from '@/components/caisse/IdPhotoButton'
 import CreateClientModal from '@/components/CreateClientModal'
 import { HighwaySiabisModal } from '@/app/dispatch/HighwaySiabisModal'
 import { parseHighwayAddress } from '@/lib/highways/parse'
@@ -1370,7 +1371,10 @@ export default function FacturerModal({
                     <label className="block text-ink-muted text-xs">
                       Client facturé {billedId ? <span className="text-success">· lié (#{billedId})</span> : <span className="text-warning">· non lié</span>}
                     </label>
-                    <EidImportButton onImport={onEidImport} />
+                    <div className="flex items-center gap-3">
+                      <EidImportButton onImport={onEidImport} />
+                      <IdPhotoButton onImport={onEidImport} />
+                    </div>
                   </div>
                   {billedName && (
                     <div className="flex items-center gap-2 mb-1.5 text-sm text-ink">

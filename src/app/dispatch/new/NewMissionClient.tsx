@@ -7,6 +7,7 @@ import AppShell from '@/components/layout/AppShell'
 import AddressField from '@/components/AddressField'
 import CreateClientModal from '@/components/CreateClientModal'
 import EidImportButton, { type EidData } from '@/components/caisse/EidImportButton'
+import IdPhotoButton from '@/components/caisse/IdPhotoButton'
 import DriverPickerModal from '@/components/DriverPickerModal'
 import ScanButton from '@/components/ScanButton'
 
@@ -1149,7 +1150,10 @@ export default function NewMissionClient({
               >
                 <div className="flex items-center justify-between mb-4">
                   <h2 className="text-ink font-semibold text-sm">🧾 Client facturé</h2>
-                  <EidImportButton onImport={handleEidImport} />
+                  <div className="flex items-center gap-3">
+                    <EidImportButton onImport={handleEidImport} />
+                    <IdPhotoButton onImport={handleEidImport} />
+                  </div>
                 </div>
                 <div className="relative mb-3">
                   <label className="block text-ink-muted text-xs mb-1.5">Rechercher un client</label>
