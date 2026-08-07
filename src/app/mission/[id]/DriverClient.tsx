@@ -2113,16 +2113,6 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
     window.location.href = __url.toString()
   }
 
-  // Superadmin : annule le dernier pointage → la fiche revient à l'étape précédente.
-  const undoCheckpoint = async () => {
-    if (!window.confirm('Annuler le dernier pointage de cette fiche ? Elle reviendra à l’étape précédente.')) return
-    try {
-      const r = await fetch(`/api/missions/${M.id}/undo-checkpoint`, { method: 'POST' })
-      const j = await r.json().catch(() => ({}))
-      if (!r.ok) { alert(j.error || 'Erreur'); return }
-      reloadMission()
-    } catch { alert('Erreur réseau') }
-  }
 
   // Modal Touring (vrai écran). Effet de bord à la validation selon l'action :
   //  • 'dsp'     → clôture VD Soft DSP (setScreen('close')).
@@ -4257,15 +4247,6 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
             <button onClick={() => setShowGrid(true)}
               className="w-full py-3 bg-surface border border hover:border-zinc-600 text-ink-secondary hover:text-ink font-medium rounded-2xl text-sm flex items-center justify-center gap-2">
               <T k="mission_detail.btn_other_actions" />
-            </button>
-          )}
-
-          {/* Superadmin : annuler le dernier pointage — TOUJOURS accessible (même
-              mission clôturée/to_invoice) pour rejouer une étape. Olivier 2026-08-07. */}
-          {userRole === 'superadmin' && (
-            <button onClick={undoCheckpoint} disabled={loading}
-              className="w-full py-2.5 bg-surface border border-red-500/30 hover:border-red-500/60 text-red-400 font-medium rounded-2xl text-sm flex items-center justify-center gap-2 disabled:opacity-50">
-              ↩️ Annuler le dernier pointage
             </button>
           )}
 
