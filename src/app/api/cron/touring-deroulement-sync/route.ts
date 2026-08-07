@@ -47,7 +47,9 @@ function toRow(d: BkoDossierDetail, account: string, statut: string) {
     arc_code: d.arcCode, vin: d.vin, plate: d.plate, cod_trajet: d.codTrajet,
     prestataire: d.prestataire, brand: d.brand, model: d.model, agent: d.agent,
     delai_assign_accept: dmin(as, ac), delai_accept_onroad: dmin(ac, or),
-    delai_assign_onspot: dmin(as, os), delai_accept_end: dmin(ac, en),
+    // NB : colonne nommée _assign_onspot pour raisons historiques, mais mesure
+    // désormais « En route → Sur place » (or→os) à la demande d'Olivier 2026-08-07.
+    delai_assign_onspot: dmin(or, os), delai_accept_end: dmin(ac, en),
     auto_phase: phaseRef == null ? null : (phaseRef < CUTOFF ? 'avant' : 'apres'),
   }
 }

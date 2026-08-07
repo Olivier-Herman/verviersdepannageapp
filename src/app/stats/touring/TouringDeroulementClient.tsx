@@ -16,8 +16,10 @@ const fmtDT = (iso?: string | null) => {
   return isNaN(d.getTime()) ? '—' : d.toLocaleString('fr-BE', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
 }
 const fmtMin = (m?: number | null) => (m == null ? '—' : m >= 60 ? `${Math.floor(m / 60)}h${String(m % 60).padStart(2, '0')}` : `${m}′`)
-// Seuils SLA (min) : accept ≤7 · en route ≤10 (post-accept) · sur place ≤45 (post-assign) · fin (indicatif)
+// Seuils SLA (min) : accept ≤7 · en route ≤10 (post-accept) · sur place ≤40 (post en route) · fin (indicatif)
 const cls = (m: number | null | undefined, seuil: number) => m == null ? 'text-ink-faint' : m <= seuil ? 'text-green-600' : m <= seuil * 2 ? 'text-amber-600' : 'text-red-600 font-bold'
+// Coloration BINAIRE (En route→Sur place) : ≤ seuil = vert, sinon rouge (pas d'orange). Olivier 2026-08-07.
+const clsBin = (m: number | null | undefined, seuil: number) => m == null ? 'text-ink-faint' : m <= seuil ? 'text-green-600' : 'text-red-600 font-bold'
 
 const PERIODS = [
   { key: 'week',     label: 'Semaine' },
@@ -103,7 +105,7 @@ export default function TouringDeroulementClient(props: {
                 <tr className="border-b">
                   <th className={th}>Mois</th><th className={th}>Phase</th><th className={th}>Missions</th>
                   <th className={th}>Assign→Accept</th><th className={th}>Accept→En route</th>
-                  <th className={th}>Assign→Sur place</th><th className={th}>Accept→Fin</th>
+                  <th className={th}>En route→Sur place</th><th className={th}>Accept→Fin</th>
                 </tr>
               </thead>
               <tbody>
@@ -119,7 +121,7 @@ export default function TouringDeroulementClient(props: {
                       <td className={td}>{r.n}</td>
                       <td className={td + ' ' + cls(r.avg_assign_accept, 7)}>{fmtMin(r.avg_assign_accept)}</td>
                       <td className={td + ' ' + cls(r.avg_accept_onroad, 10)}>{fmtMin(r.avg_accept_onroad)}</td>
-                      <td className={td + ' ' + cls(r.avg_assign_onspot, 45)}>{fmtMin(r.avg_assign_onspot)}</td>
+                      <td className={td + ' ' + clsBin(r.avg_assign_onspot, 40)}>{fmtMin(r.avg_assign_onspot)}</td>
                       <td className={td}>{fmtMin(r.avg_accept_end)}</td>
                     </tr>
                   )
@@ -150,7 +152,7 @@ export default function TouringDeroulementClient(props: {
                   <tr className="border-b">
                     <th className={th}>Dossier</th><th className={th}>Plaque</th><th className={th}>Type</th><th className={th}>Codes</th>
                     <th className={th}>Assign</th><th className={th}>Accept</th><th className={th}>En route</th><th className={th}>Sur place</th><th className={th}>Fin</th>
-                    <th className={th}>A→Acc</th><th className={th}>Acc→Rte</th><th className={th}>A→Spot</th><th className={th}>Acc→Fin</th>
+                    <th className={th}>A→Acc</th><th className={th}>Acc→Rte</th><th className={th}>Rte→Spot</th><th className={th}>Acc→Fin</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -168,7 +170,7 @@ export default function TouringDeroulementClient(props: {
                       <td className={td}>{fmtDT(r.end_at)}</td>
                       <td className={td + ' ' + cls(r.delai_assign_accept, 7)}>{fmtMin(r.delai_assign_accept)}</td>
                       <td className={td + ' ' + cls(r.delai_accept_onroad, 10)}>{fmtMin(r.delai_accept_onroad)}</td>
-                      <td className={td + ' ' + cls(r.delai_assign_onspot, 45)}>{fmtMin(r.delai_assign_onspot)}</td>
+                      <td className={td + ' ' + clsBin(r.delai_assign_onspot, 40)}>{fmtMin(r.delai_assign_onspot)}</td>
                       <td className={td}>{fmtMin(r.delai_accept_end)}</td>
                     </tr>
                   ))}
