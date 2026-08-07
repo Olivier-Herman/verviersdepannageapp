@@ -866,10 +866,10 @@ function MissionCard({ mission, drivers, driverStatuses, sources, onRefresh, onM
         </p>
       )}
 
-      {/* Destination */}
+      {/* Destination — nom (garage) + adresse résolue */}
       {(mission.destination_address || mission.destination_name) && (
         <p className="text-ink-muted text-xs mb-2 truncate">
-          🏁 {mission.destination_name || mission.destination_address}
+          🏁 {[mission.destination_name, mission.destination_address].filter(Boolean).join(' · ')}
         </p>
       )}
 
@@ -1733,7 +1733,12 @@ export default function DispatchClient({
                         <td className="px-4 py-3 text-ink-secondary text-xs">
                           {activeTab === 'parked'
                             ? (m.redelivery_address || '—')
-                            : (m.destination_name || m.destination_address || '—')}
+                            : (m.destination_name || m.destination_address)
+                              ? <>
+                                  {m.destination_name && <p className="text-ink text-xs">{m.destination_name}</p>}
+                                  {m.destination_address && <p className="text-ink-muted text-xs">{m.destination_address}</p>}
+                                </>
+                              : '—'}
                         </td>
                         {activeTab !== 'parked' && (
                         <td className="px-4 py-3" onClick={e => e.stopPropagation()}>
