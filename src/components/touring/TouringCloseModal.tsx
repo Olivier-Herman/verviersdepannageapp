@@ -106,7 +106,15 @@ export default function TouringCloseModal({
         const pf = d.prefill
         if (pf && (pf.cause || pf.desc || pf.result)) setCodes({ cause: pf.cause || '', desc: pf.desc || '', result: pf.result || '' })
         else if (c && (c.cause || c.desc || c.result)) setCodes({ cause: c.cause || '', desc: c.desc || '', result: c.result || '' })
-        if (!forcedFin) { if (pf?.finCode) setFinSel(pf.finCode); else if (c?.finCode) setFinSel(c.finCode) }
+        if (!forcedFin) {
+          let fin = pf?.finCode || c?.finCode
+          // RE-clôture d'une jambe (prefill présent = une clôture déjà faite sur le
+          // dossier) : NE JAMAIS re-demander le VR (un seul VR par dossier). Le code
+          // 03 (Fin + Rem + VR) est ramené à 02 (Fin + Rem). Olivier 2026-08-07.
+          if (pf && fin === '03') fin = '02'
+          if (fin) setFinSel(fin)
+        }
+        if (pf) setWantVr(false)   // re-clôture : VR déjà demandé → décoché par défaut
         if (pf?.toCidIntv) setGarageCid(String(pf.toCidIntv))   // garage de la 1ère clôture pré-sélectionné
         if (pf?.km) setKm(String(pf.km))
         else if (c?.km) setKm(String(c.km))
