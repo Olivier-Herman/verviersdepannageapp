@@ -83,7 +83,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     ? await sb.from('users').select('id').eq('email', actorEmail).single()
     : { data: null as any }
 
-  const cols = 'id, mission_number, source, status, billed_to_id, billed_to_name, dossier_number, amount_guaranteed, client_name, client_phone, driver_photos, remarks_general, merged_into_mission_id, vehicle_plate, received_at, assigned_to, parc_zone_key'
+  const cols = 'id, mission_number, source, status, billed_to_id, billed_to_name, dossier_number, amount_guaranteed, client_name, client_phone, driver_photos, remarks_general, merged_into_mission_id, vehicle_plate, received_at, assigned_to, parc_zone_key, destination_name, destination_address, destination_lat, destination_lng'
   const [{ data: a }, { data: b }] = await Promise.all([
     sb.from('incoming_missions').select(cols).eq('id', params.id).single(),
     sb.from('incoming_missions').select(cols).eq('id', otherId).single(),
@@ -129,6 +129,16 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   ]
   for (const [field, cur, fromSec] of fillIfEmpty) {
     if ((cur == null || cur === '') && fromSec != null && fromSec !== '') upd[field] = fromSec
+  }
+  // Destination : la secondaire (fiche la plus récente = 2e jambe d'un tow splitté,
+  // ex. dépôt→garage chez Kaze) porte la destination FINALE → elle ÉCRASE celle de
+  // la principale (qui gardait une destination intermédiaire, ex. le dépôt).
+  // L'incident de la principale (1re jambe) reste inchangé. Olivier 2026-08-07.
+  if (secondary.destination_address && secondary.destination_address !== master.destination_address) {
+    upd.destination_address = secondary.destination_address
+    upd.destination_name    = secondary.destination_name ?? null
+    upd.destination_lat     = secondary.destination_lat ?? null
+    upd.destination_lng     = secondary.destination_lng ?? null
   }
   // Photos : union (la principale garde les siennes + celles de la secondaire).
   const masterPhotos = Array.isArray(master.driver_photos) ? master.driver_photos : []
