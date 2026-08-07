@@ -2113,6 +2113,17 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
     window.location.href = __url.toString()
   }
 
+  // Superadmin : annule le dernier pointage → la fiche revient à l'étape précédente.
+  const undoCheckpoint = async () => {
+    if (!window.confirm('Annuler le dernier pointage de cette fiche ? Elle reviendra à l’étape précédente.')) return
+    try {
+      const r = await fetch(`/api/missions/${M.id}/undo-checkpoint`, { method: 'POST' })
+      const j = await r.json().catch(() => ({}))
+      if (!r.ok) { alert(j.error || 'Erreur'); return }
+      reloadMission()
+    } catch { alert('Erreur réseau') }
+  }
+
   // Modal Touring (vrai écran). Effet de bord à la validation selon l'action :
   //  • 'dsp'     → clôture VD Soft DSP (setScreen('close')).
   //  • 'dsp2rem' → transformation VD Soft en REM (adresse + change_type).
@@ -4348,6 +4359,14 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
                   className="rounded-2xl py-5 flex flex-col items-center justify-center gap-2 border bg-teal-600/10 border-teal-600/30 transition active:scale-95 disabled:opacity-50">
                   <span className="text-2xl">🚨</span>
                   <span className="text-sm font-medium text-teal-400 text-center leading-tight">Siabis couvert</span>
+                </button>
+              )}
+              {/* Superadmin : annuler le dernier pointage (revenir à l'étape précédente). */}
+              {userRole === 'superadmin' && (
+                <button onClick={() => { setShowGrid(false); undoCheckpoint() }} disabled={loading}
+                  className="rounded-2xl py-5 flex flex-col items-center justify-center gap-2 border bg-red-600/10 border-red-600/40 transition active:scale-95 disabled:opacity-50">
+                  <span className="text-2xl">↩️</span>
+                  <span className="text-sm font-medium text-red-400 text-center leading-tight">Annuler dernier pointage</span>
                 </button>
               )}
               {/* Mise en parc (REM uniquement) */}
