@@ -41,12 +41,13 @@ Sans le paramètre `?eid=...` (et sans la variable de build `NEXT_PUBLIC_EID_AGE
 
 > Chrome autorise une page HTTPS à appeler `http://localhost` (exception « localhost = contexte sûr ») → pas de blocage *mixed-content*, pas de ngrok.
 
-## Démarrage automatique (au boot)
+## Démarrage automatique (au boot / ouverture de session)
 
-Planificateur de tâches Windows → **Créer une tâche** « EidAgent » :
-- Déclencheur : *À l'ouverture de session* (ou *Au démarrage*).
-- Action : démarrer `infra\eid-agent\start-eid-agent.bat`.
-- Cocher « Exécuter avec les autorisations maximales », « Exécuter même si l'utilisateur n'est pas connecté » selon le poste.
+**Le plus simple :** clic droit sur **`install-autostart.bat`** → **Exécuter en tant qu'administrateur**.
+Ça installe les dépendances si besoin, crée la tâche planifiée **« EidAgent »** (déclenchée *à l'ouverture de session*) et démarre l'agent tout de suite. Après un redémarrage du PC, l'agent repart donc **tout seul** dès qu'une session s'ouvre.
+
+Pour vérifier/supprimer : Planificateur de tâches Windows → tâche **« EidAgent »**.
+Manuellement en ligne de commande : `schtasks /query /tn EidAgent` (état) · `schtasks /delete /tn EidAgent /f` (retirer).
 
 ## Dépannage
 
