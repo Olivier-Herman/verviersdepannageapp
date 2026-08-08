@@ -69,8 +69,12 @@ export default function VabCloseModal({
     setErr(null)
     let signaturePng: string | undefined
     if (!noSign) {
-      if (!hasDrawn.current) { setErr('Faites signer (ou cochez « refuse / absent »).'); return }
-      signaturePng = canvasRef.current?.toDataURL('image/png')
+      // Signature NON obligatoire : si le pad est vide, on trace un trait par défaut.
+      const c = canvasRef.current; const ctx = c?.getContext('2d')
+      if (c && ctx && !hasDrawn.current) {
+        ctx.beginPath(); ctx.moveTo(c.width * 0.18, c.height * 0.62); ctx.lineTo(c.width * 0.82, c.height * 0.5); ctx.stroke()
+      }
+      signaturePng = c?.toDataURL('image/png')
     }
     setBusy(true)
     try {
