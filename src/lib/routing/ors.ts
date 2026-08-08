@@ -93,7 +93,10 @@ export async function getDrivingRoute(a: Coord, b: Coord, opts: { googleFallback
       const res = await fetch(`${ORS_BASE}/v2/directions/driving-car`, {
         method:  'POST',
         headers: { Authorization: ORS_KEY as string, 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ coordinates: [[a.lng, a.lat], [b.lng, b.lat]] }),
+        // « fastest » = itinéraire le plus RAPIDE (comme le chauffeur/Waze),
+        // pas le plus court. Ce qui compte = faire attendre le client le moins
+        // longtemps. Olivier 2026-08-08.
+        body:    JSON.stringify({ coordinates: [[a.lng, a.lat], [b.lng, b.lat]], preference: 'fastest' }),
         signal:  AbortSignal.timeout(2500),
       })
       if (!res.ok) throw new Error(`ORS ${res.status}`)
