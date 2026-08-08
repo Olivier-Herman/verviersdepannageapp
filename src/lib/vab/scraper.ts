@@ -1084,7 +1084,7 @@ export interface VabActionsDump {
   hiddenNames?: string[]
   actions?: Array<{ label: string; target: string | null; arg: string; tag: string; name?: string; id?: string }>
   buttonTexts?: string[]
-  buttons?: Array<{ text: string; id: string | null; name: string | null; onclick: string; href: string; tag: string }>
+  buttons?: Array<{ text: string; id: string | null; name: string | null; target: string | null; onclick: string; href: string; tag: string }>
   postbackTargets?: string[]
   inputs?: Array<{ name: string; type: string; id: string | null; placeholder: string | null; value: string }>
   pageText?: string   // texte visible (modale/contenu) — pour lire ex. Contrat (REM/VR/jours)
@@ -1098,21 +1098,32 @@ function parseVabActions(html: string): Omit<VabActionsDump, 'ok' | 'error'> {
   const hiddenNames: string[] = []
   $('input[type=hidden]').each((_, el) => { const n = $(el).attr('name'); if (n) hiddenNames.push(n) })
 
+  // Extrait le __EVENTTARGET (+arg) d'un onclick/href : __doPostBack('T','A')
+  // OU OsAjax(evt,'clientId','T','A',...) — VAB utilise surtout OsAjax (le 3e
+  // argument = l'UniqueID serveur avec des $ = le vrai __EVENTTARGET).
+  const extractTarget = (blob: string): { target: string; arg: string } | null => {
+    const pb = blob.match(/__doPostBack\((?:&#39;|['"])([^'"&]+)(?:&#39;|['"])\s*,\s*(?:&#39;|['"])([^'"&]*)/)
+    if (pb) return { target: pb[1], arg: pb[2] || '' }
+    const os = blob.match(/OsAjax\([^,]+,\s*(?:&#39;|['"])[^'"&]*(?:&#39;|['"])\s*,\s*(?:&#39;|['"])([^'"&]+)(?:&#39;|['"])\s*,\s*(?:&#39;|['"])([^'"&]*)/)
+    if (os) return { target: os[1], arg: os[2] || '' }
+    return null
+  }
+
   const actions: NonNullable<VabActionsDump['actions']> = []
   const seen = new Set<string>()
   $('a, button, input[type=submit], input[type=button], span[onclick], div[onclick]').each((_, el) => {
     const $el = $(el)
     const blob = `${$el.attr('onclick') || ''} ${$el.attr('href') || ''}`
-    const m = blob.match(/__doPostBack\((?:&#39;|['"])([^'"&]+)(?:&#39;|['"])\s*,\s*(?:&#39;|['"])([^'"&]*)/)
+    const ext = extractTarget(blob)
     const name = $el.attr('name')
     const isBtn = $el.is('input[type=submit]') || $el.is('input[type=button]') || $el.is('button')
-    if (!m && !(isBtn && name)) return
+    if (!ext && !(isBtn && name)) return
     const label = (($el.text() || '') || $el.attr('value') || '').replace(/\s+/g, ' ').trim().slice(0, 70)
-    const target = m ? m[1] : (name || null)
+    const target = ext ? ext.target : (name || null)
     const key = `${target}|${label}`
     if (seen.has(key)) return
     seen.add(key)
-    actions.push({ label, target, arg: m ? m[2] : '', tag: (el as any).tagName, name, id: $el.attr('id') })
+    actions.push({ label, target, arg: ext ? ext.arg : '', tag: (el as any).tagName, name, id: $el.attr('id') })
   })
 
   const buttonTexts: string[] = []
@@ -1123,7 +1134,7 @@ function parseVabActions(html: string): Omit<VabActionsDump, 'ok' | 'error'> {
 
   const buttons: NonNullable<VabActionsDump['buttons']> = []
   const bseen = new Set<string>()
-  $('.Button, [class*=Button], a[class*=Link], a[href^="javascript"], input[type=submit], input[type=button]').each((_, el) => {
+  $('.Button, [class*=Button], a[class*=Link], a[href^="javascript"], a[onclick], input[type=submit], input[type=button]').each((_, el) => {
     const $el = $(el)
     const text = (($el.text() || '') || $el.attr('value') || '').replace(/\s+/g, ' ').trim()
     if (!text || text.length > 45) return
@@ -1131,7 +1142,9 @@ function parseVabActions(html: string): Omit<VabActionsDump, 'ok' | 'error'> {
     const key = `${text}|${id}`
     if (bseen.has(key)) return
     bseen.add(key)
-    buttons.push({ text, id, name: $el.attr('name') || null, onclick: ($el.attr('onclick') || '').slice(0, 240), href: ($el.attr('href') || '').slice(0, 160), tag: (el as any).tagName })
+    const onclick = ($el.attr('onclick') || '')
+    const ext = extractTarget(`${onclick} ${$el.attr('href') || ''}`)
+    buttons.push({ text, id, name: $el.attr('name') || null, target: ext ? ext.target : ($el.attr('name') || null), onclick: onclick.slice(0, 240), href: ($el.attr('href') || '').slice(0, 160), tag: (el as any).tagName })
   })
 
   // Champs saisissables visibles (km, VIN, signature…) — pour piloter les étapes.
@@ -1142,7 +1155,9 @@ function parseVabActions(html: string): Omit<VabActionsDump, 'ok' | 'error'> {
     inputs.push({ name, type: ($el.attr('type') || (el as any).tagName || '').toLowerCase(), id: $el.attr('id') || null, placeholder: $el.attr('placeholder') || null, value: ($el.attr('value') || '').slice(0, 60) })
   })
 
-  const postbackTargets = [...new Set([...html.matchAll(/__doPostBack\(\s*['"]([^'"]+)['"]/g)].map(m => m[1]))].slice(0, 80)
+  const pbAll = [...html.matchAll(/__doPostBack\(\s*['"]([^'"]+)['"]/g)].map(m => m[1])
+  const osAll = [...html.matchAll(/OsAjax\([^,]+,\s*['"][^'"]*['"]\s*,\s*['"]([^'"]+)['"]/g)].map(m => m[1])
+  const postbackTargets = [...new Set([...pbAll, ...osAll])].slice(0, 120)
 
   // Message OutSystems (feedback/toast) éventuel.
   let message: string | null = null

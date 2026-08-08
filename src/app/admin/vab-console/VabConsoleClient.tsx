@@ -12,8 +12,8 @@ interface Dump {
   ok: boolean; error?: string; message?: string | null; status?: number
   buttonTexts?: string[]
   actions?: Array<{ label: string; target: string | null; arg: string; tag: string; name?: string; id?: string }>
-  buttons?: Array<{ text: string; id: string | null; name: string | null; onclick: string; href: string; tag: string }>
   postbackTargets?: string[]
+  buttons?: Array<{ text: string; id: string | null; name: string | null; target: string | null; onclick: string; href: string; tag: string }>
   inputs?: Array<{ name: string; type: string; id: string | null; placeholder: string | null; value: string }>
   pageText?: string
 }
@@ -72,12 +72,12 @@ export default function VabConsoleClient() {
   // Cibles exécutables mergées (actions à target connu + name des boutons + postbackTargets).
   const targets = Array.from(new Set([
     ...(d?.actions || []).map(a => a.target).filter(Boolean) as string[],
-    ...(d?.buttons || []).map(b => b.name).filter(Boolean) as string[],
+    ...(d?.buttons || []).map(b => b.target).filter(Boolean) as string[],
     ...(d?.postbackTargets || []),
   ]))
   const labelFor = (t: string) =>
     (d?.actions || []).find(a => a.target === t)?.label
-    || (d?.buttons || []).find(b => b.name === t)?.text || ''
+    || (d?.buttons || []).find(b => b.target === t)?.text || ''
 
   return (
     <div className="min-h-screen bg-surface max-w-4xl mx-auto flex flex-col">
@@ -125,8 +125,9 @@ export default function VabConsoleClient() {
                       <div className="flex items-center gap-2">
                         <b className="text-ink">{b.text || '(vide)'}</b>
                         <span className="text-ink-muted">&lt;{b.tag}&gt;</span>
-                        {b.name && <button onClick={() => execute(b.name!)} disabled={busy} className="px-2 py-0.5 bg-brand text-white rounded text-[11px]">Exécuter (name)</button>}
+                        {b.target && <button onClick={() => execute(b.target!)} disabled={busy} className="px-2 py-0.5 bg-brand text-white rounded text-[11px]">Exécuter</button>}
                       </div>
+                      {b.target && <div className="font-mono text-emerald-700 break-all">target: {b.target}</div>}
                       {b.name && <div className="font-mono text-ink-secondary break-all">name: {b.name}</div>}
                       {b.id && <div className="font-mono text-ink-muted break-all">id: {b.id}</div>}
                       {b.onclick && <div className="font-mono text-ink-muted break-all">onclick: {b.onclick}</div>}
