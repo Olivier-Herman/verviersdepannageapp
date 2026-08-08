@@ -35,6 +35,7 @@ import ScanButton from '@/components/ScanButton'
 import CreateClientModal from '@/components/CreateClientModal'
 import EidImportButton, { type EidData } from '@/components/caisse/EidImportButton'
 import IdPhotoButton from '@/components/caisse/IdPhotoButton'
+import VisitorsPanel from '@/components/caisse/VisitorsPanel'
 import RestituerMalGareeModal from '@/components/restitution/RestituerMalGareeModal'
 import RestituerEtFacturerModal from '@/components/fourriere/RestituerEtFacturerModal'
 import GererSncDepotModal from '@/components/restitution/GererSncDepotModal'
@@ -4185,6 +4186,17 @@ export default function MissionDetailClient({
                   className="w-full py-2.5 bg-surface-2 hover:bg-surface border rounded-2xl text-ink-secondary text-sm font-medium transition">
                   🧾 Facture partielle
                 </button>
+              )}
+
+              {/* Registre des visites — véhicule en parc : personnes venant
+                  récupérer des affaires / faire expertiser (lecture carte au
+                  comptoir + motifs, ou ajout manuel). Olivier 2026-08-08. */}
+              {status === 'parked' && (
+                <VisitorsPanel
+                  missionId={initialMission.id}
+                  plate={(initialMission as any).vehicle_plate}
+                  screenKey="facturation"
+                />
               )}
 
               {/* Bouton Restituer — Olivier 2026-06-14 : remonté en haut du bloc

@@ -183,6 +183,56 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: true })
   }
 
+  // ── visitor_submit : RENVOI du visiteur depuis le kiosque (PUBLIC) ──────────
+  // Mode « registre de visite » (véhicule en parc). Comme eid_submit : on
+  // n'accepte l'écriture que si l'écran est bien en mode visitor avec le bon
+  // request_id non expiré. La visite est INSÉRÉE côté serveur dans
+  // mission_visitors (mission_id mémorisé dans le payload à l'ouverture).
+  if (body.action === 'visitor_submit') {
+    const reqId = String(body.request_id || '')
+    const { data: cur } = await sb.from('customer_display')
+      .select('payload, expires_at').eq('key', key).maybeSingle()
+    const p: any = cur?.payload || null
+    const live = cur?.expires_at && new Date(cur.expires_at).getTime() > now
+    if (!p || p.mode !== 'visitor' || !live || !reqId || p.request_id !== reqId) {
+      return NextResponse.json({ error: 'Aucune demande de visite active pour cet écran.' }, { status: 409 })
+    }
+    const d = (body.data && typeof body.data === 'object') ? body.data : {}
+    const lastName  = d.lastName  ? String(d.lastName).slice(0, 120)  : null
+    const firstName = d.firstName ? String(d.firstName).slice(0, 120) : null
+    const motifs    = Array.isArray(d.motifs) ? d.motifs.map((m: any) => String(m).trim()).filter(Boolean).slice(0, 12) : []
+    if ((!lastName && !firstName) || !motifs.length) {
+      return NextResponse.json({ error: 'Nom/prénom et motif requis.' }, { status: 400 })
+    }
+    const response = {
+      request_id: reqId, lastName, firstName,
+      birthDate: d.birthDate ? String(d.birthDate).slice(0, 40) : null,
+      nationalNumber: d.nationalNumber ? String(d.nationalNumber).slice(0, 40) : null,
+      motifs, expert_bureau: d.expert_bureau ? String(d.expert_bureau).slice(0, 160) : null,
+      note: d.note ? String(d.note).slice(0, 500) : null,
+    }
+    // Insertion de la visite (source eID). mission_id vient du payload d'ouverture.
+    if (p.mission_id) {
+      await sb.from('mission_visitors').insert({
+        mission_id: p.mission_id, visited_at: new Date().toISOString(),
+        last_name: lastName, first_name: firstName, birth_date: response.birthDate,
+        motifs, expert_bureau: response.expert_bureau, note: response.note,
+        national_number: response.nationalNumber, source: 'eid', created_by: p.opened_by || null,
+      }).then(() => {}, () => {})
+      await sb.from('mission_logs').insert({
+        mission_id: p.mission_id, action: 'visitor',
+        notes: `Visite : ${[firstName, lastName].filter(Boolean).join(' ')} — ${motifs.join(', ')}${response.expert_bureau ? ` (${response.expert_bureau})` : ''} [eid]`,
+        metadata: { motifs, expert_bureau: response.expert_bureau, source: 'eid' },
+      }).then(() => {}, () => {})
+    }
+    await sb.from('customer_display').update({
+      payload: { mode: 'visitor', request_id: reqId, step: 'done' },
+      expires_at: new Date(now + 10_000).toISOString(),
+      response, response_at: new Date().toISOString(), updated_at: new Date().toISOString(),
+    }).eq('key', key)
+    return NextResponse.json({ ok: true })
+  }
+
   // ── Toutes les autres actions : session requise (OU appel interne) ──────────
   const isInternal = !!process.env.NEXTAUTH_SECRET && req.headers.get('x-internal-secret') === process.env.NEXTAUTH_SECRET
   const session = isInternal ? null : await getServerSession(authOptions)
@@ -220,6 +270,36 @@ export async function POST(req: Request) {
     const expires_at = new Date(now + 5 * 60_000).toISOString()
     await sb.from('customer_display').upsert(
       { key, payload: { mode: 'eid', request_id: reqId, step: 'consent' }, expires_at, response: null, response_at: null, updated_at: new Date().toISOString(), updated_by: user.id || null },
+      { onConflict: 'key' },
+    )
+    return NextResponse.json({ ok: true, request_id: reqId, expires_at })
+  }
+
+  // ── visitor : COMMANDE « registre de visite » depuis la fiche véhicule en parc ─
+  // Affiche l'écran de consentement + lecture carte + choix du/des motif(s).
+  // On embarque dans le payload les catalogues actifs (motifs + bureaux) car le
+  // kiosque est public et n'interroge pas la config. mission_id → insertion à la
+  // validation (visitor_submit).
+  if (body.action === 'visitor') {
+    if (!body.mission_id) return NextResponse.json({ error: 'mission_id requis' }, { status: 400 })
+    const reqId = String(body.request_id || '').slice(0, 80) || `vis-${now}`
+    if (!body.force) {
+      const { data: cur } = await sb.from('customer_display').select('payload, expires_at').eq('key', key).maybeSingle()
+      const active = cur?.payload && cur.expires_at && new Date(cur.expires_at).getTime() > now
+      if (active) {
+        const occ: any = cur!.payload
+        return NextResponse.json({ occupied: true, occupant: { client: occ.client || null, plate: occ.plate || null, mode: occ.mode || 'facture' } }, { status: 409 })
+      }
+    }
+    const [motifsRes, bureauxRes] = await Promise.all([
+      sb.from('visitor_motifs').select('label, is_expert').eq('active', true).order('sort_order').order('label'),
+      sb.from('expertise_bureaus').select('name').eq('active', true).order('sort_order').order('name'),
+    ])
+    const motifs  = (motifsRes.data  || []).map((m: any) => ({ label: m.label, is_expert: !!m.is_expert }))
+    const bureaux = (bureauxRes.data || []).map((b: any) => b.name)
+    const expires_at = new Date(now + 5 * 60_000).toISOString()
+    await sb.from('customer_display').upsert(
+      { key, payload: { mode: 'visitor', request_id: reqId, step: 'consent', mission_id: String(body.mission_id), plate: body.plate || null, opened_by: user.id || null, motifs, bureaux }, expires_at, response: null, response_at: null, updated_at: new Date().toISOString(), updated_by: user.id || null },
       { onConflict: 'key' },
     )
     return NextResponse.json({ ok: true, request_id: reqId, expires_at })

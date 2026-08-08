@@ -120,6 +120,8 @@ export default async function AdminPage() {
           desc="Motifs de visite et d'appel (bilingue FR/EN). Chaque motif crée une compétence activable dans la matrice." />
         <Card href="/admin/competences" icon={Users} label="Compétences réception"
           desc="Matrice motifs × employés (superadmin). Détermine qui reçoit quelles visites/appels." />
+        <Card href="/admin/visites" icon={Users} label="Visites au comptoir"
+          desc="Motifs de visite (dont « expert ») et bureaux d'expertise proposés lors de l'enregistrement d'une visite d'un véhicule en parc." />
         <Card href="/admin/police-zones" icon={ShieldCheck} label="Zones de police"
           desc="Liste des zones (Vesdre, Fagnes…) proposées au chauffeur lors de la création d'une mission Police. Une zone par défaut." />
         <Card href="/admin/garage-partners" icon={Users} label="Garages partenaires"

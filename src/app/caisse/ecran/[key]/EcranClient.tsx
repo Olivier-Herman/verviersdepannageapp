@@ -10,7 +10,11 @@ interface Payload {
   reference?: string; amount?: number; amountTotal?: number | null; lines?: { label: string; amount: number }[]
   sumupQrUrl?: string | null; sumupCheckoutId?: string | null; epcPayload?: string | null
   // Mode eID (lecture carte → création client)
-  mode?: 'facture' | 'eid'; request_id?: string; step?: 'consent' | 'done'
+  mode?: 'facture' | 'eid' | 'visitor'; request_id?: string; step?: 'consent' | 'done'
+  // Mode visitor (registre de visite véhicule en parc)
+  mission_id?: string
+  motifs?: { label: string; is_expert: boolean }[]
+  bureaux?: string[]
 }
 
 // Identité lue sur la puce d'une carte d'identité belge (sans PIN : nom/prénom/adresse).
@@ -65,6 +69,17 @@ export default function EcranClient({ displayKey }: { displayKey: string }) {
   const [eidPhone, setEidPhone]     = useState('')
   const [eidError, setEidError]     = useState<string | null>(null)
   const eidReqRef = useRef<string | null>(null)
+
+  // ── État local du mode visitor (registre de visite) ─────────────────────────
+  const [visStep, setVisStep]       = useState<'consent' | 'reading' | 'select' | 'sending' | 'done' | 'error'>('consent')
+  const [visId, setVisId]           = useState<EidIdentity | null>(null)
+  const [visMotifs, setVisMotifs]   = useState<string[]>([])       // libellés sélectionnés
+  const [visMotifOther, setVisMotifOther] = useState('')           // texte « Autre » motif
+  const [visBureau, setVisBureau]   = useState<string>('')         // bureau d'expertise choisi
+  const [visBureauOther, setVisBureauOther] = useState('')         // texte « Autre » bureau
+  const [visNote, setVisNote]       = useState('')
+  const [visError, setVisError]     = useState<string | null>(null)
+  const visReqRef = useRef<string | null>(null)
 
   const apply = (p: Payload | null, exp: string | null) => {
     setPaid(false)
@@ -137,6 +152,63 @@ export default function EcranClient({ displayKey }: { displayKey: string }) {
     }
   }, [payload?.mode, payload?.request_id, payload?.step])
 
+  // ── Mode visitor : (ré)initialise l'état local à chaque nouvelle demande ────
+  useEffect(() => {
+    if (payload?.mode !== 'visitor') { visReqRef.current = null; return }
+    if (payload.step === 'done') { setVisStep('done'); return }
+    if (payload.request_id && payload.request_id !== visReqRef.current) {
+      visReqRef.current = payload.request_id
+      setVisStep('consent'); setVisId(null); setVisMotifs([]); setVisMotifOther('')
+      setVisBureau(''); setVisBureauOther(''); setVisNote(''); setVisError(null)
+    }
+  }, [payload?.mode, payload?.request_id, payload?.step])
+
+  const startVisitorRead = async () => {
+    setVisError(null); setVisStep('reading')
+    try {
+      const id = await readEidCard()
+      if (!id?.lastName && !id?.firstName) throw new Error('carte illisible')
+      setVisId(id); setVisStep('select')
+    } catch {
+      setVisError("Lecture impossible. Vérifiez que la carte est bien insérée, puis réessayez.")
+      setVisStep('error')
+    }
+  }
+
+  // Étape « motifs » sans lecture de carte (le visiteur refuse l'eID au comptoir,
+  // mais on peut quand même consigner la visite avec l'identité laissée vide → ici
+  // on garde la lecture obligatoire côté écran ; l'ajout manuel se fait côté fiche).
+  const toggleVisMotif = (label: string) =>
+    setVisMotifs(prev => prev.includes(label) ? prev.filter(m => m !== label) : [...prev, label])
+
+  const submitVisitor = async () => {
+    if (!payload?.request_id) return
+    const motifs = [...visMotifs]
+    const other = visMotifOther.trim()
+    if (other) motifs.push(other)
+    if (!motifs.length) { setVisError('Sélectionnez au moins un motif.'); return }
+    const bureau = (visBureau === '__other__' ? visBureauOther.trim() : visBureau) || null
+    setVisStep('sending'); setVisError(null)
+    try {
+      const r = await fetch('/api/caisse/ecran', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'visitor_submit', key: displayKey, request_id: payload.request_id,
+          data: {
+            lastName: visId?.lastName || null, firstName: visId?.firstName || null,
+            birthDate: visId?.birthDate || null, nationalNumber: visId?.nationalNumber || null,
+            motifs, expert_bureau: bureau, note: visNote.trim() || null,
+          },
+        }),
+      })
+      if (!r.ok) throw new Error('envoi')
+      setVisStep('done')
+    } catch {
+      setVisError("Envoi impossible. Réessayez ou signalez-le au comptoir.")
+      setVisStep('select')
+    }
+  }
+
   const startEidRead = async () => {
     setEidError(null); setEidStep('reading')
     try {
@@ -180,6 +252,131 @@ export default function EcranClient({ displayKey }: { displayKey: string }) {
           <div style={{ fontSize: '9vw' }}>✅</div>
           <div style={{ fontSize: '5vw', fontWeight: 800, color: '#16a34a' }}>Paiement reçu</div>
           <div style={{ fontSize: '2.4vw', color: '#64748b', marginTop: '1vh' }}>Merci et bonne route&nbsp;!</div>
+        </div>
+      </div>
+    )
+  }
+
+  // ── ÉCRAN MODE VISITOR (registre de visite véhicule en parc) ──────────────
+  if (active && payload?.mode === 'visitor') {
+    const cfgMotifs = payload.motifs || []
+    const cfgBureaux = payload.bureaux || []
+    // Un motif « expert » est-il sélectionné → on demande le bureau d'expertise.
+    const expertSelected = cfgMotifs.some(m => m.is_expert && visMotifs.includes(m.label))
+
+    if (visStep === 'done' || payload.step === 'done') {
+      return (
+        <div style={S.wrap}>
+          <div style={{ textAlign: 'center' }}>
+            <div style={{ fontSize: 'min(9vw, 13vh)' }}>✅</div>
+            <div style={{ fontSize: 'min(4.4vw, 6.5vh)', fontWeight: 800, color: '#16a34a' }}>Visite enregistrée</div>
+            <div style={{ fontSize: 'min(2vw, 3vh)', color: '#64748b', marginTop: '1vh' }}>Merci, vous pouvez vous présenter au comptoir.</div>
+          </div>
+        </div>
+      )
+    }
+
+    if (visStep === 'consent') {
+      return (
+        <div style={S.wrap}>
+          <div style={E.card}>
+            <div style={{ fontSize: 'min(6vw, 9vh)', lineHeight: 1 }}>🪪</div>
+            <div style={E.title}>Enregistrement de votre visite</div>
+            <div style={E.lead}>
+              Insérez votre <strong>carte d'identité</strong> dans le lecteur, puis appuyez sur le bouton.
+              Nous lisons uniquement <strong>nom, prénom et date de naissance</strong>.
+            </div>
+            <button style={E.btnPrimary} onClick={startVisitorRead}>Lire ma carte</button>
+            <div style={E.rgpd}>Enregistrement à des fins de traçabilité des visites. Code PIN non requis.</div>
+          </div>
+        </div>
+      )
+    }
+
+    if (visStep === 'reading') {
+      return (
+        <div style={S.wrap}>
+          <style>{'@keyframes vd-spin{to{transform:rotate(360deg)}}'}</style>
+          <div style={E.card}>
+            <div style={E.spinner} />
+            <div style={E.title}>Lecture de la carte…</div>
+            <div style={E.lead}>Ne retirez pas la carte du lecteur.</div>
+          </div>
+        </div>
+      )
+    }
+
+    if (visStep === 'error') {
+      return (
+        <div style={S.wrap}>
+          <div style={E.card}>
+            <div style={{ fontSize: 'min(6vw, 9vh)', lineHeight: 1 }}>⚠️</div>
+            <div style={E.title}>Lecture impossible</div>
+            <div style={E.lead}>{visError || 'Vérifiez que la carte est bien insérée.'}</div>
+            <button style={E.btnPrimary} onClick={startVisitorRead}>Réessayer</button>
+          </div>
+        </div>
+      )
+    }
+
+    // Sélection des motifs (+ bureau d'expertise si motif expert)
+    const fullName = [visId?.firstName, visId?.lastName].filter(Boolean).join(' ')
+    return (
+      <div style={S.wrap}>
+        <div style={{ ...E.card, maxWidth: 'min(84vw, 900px)' }}>
+          <div style={E.title}>Motif de votre visite</div>
+          {fullName && (
+            <div style={{ fontSize: 'min(1.7vw, 2.5vh)', color: '#475569' }}>
+              👤 <strong>{fullName}</strong>
+            </div>
+          )}
+          <div style={E.lead}>Sélectionnez un ou plusieurs motifs&nbsp;:</div>
+          <div style={E.chipWrap}>
+            {cfgMotifs.map(m => {
+              const on = visMotifs.includes(m.label)
+              return (
+                <button key={m.label} onClick={() => toggleVisMotif(m.label)}
+                  style={{ ...E.chip, ...(on ? E.chipOn : {}) }}>
+                  {on ? '✓ ' : ''}{m.label}
+                </button>
+              )
+            })}
+          </div>
+          {/* Autre motif (texte libre) */}
+          <label style={{ ...E.field, width: '100%' }}>
+            <span style={E.fieldLbl}>Autre motif (facultatif)</span>
+            <input style={E.input} type="text" placeholder="Préciser…"
+              value={visMotifOther} onChange={e => setVisMotifOther(e.target.value)} />
+          </label>
+
+          {/* Bureau d'expertise (si un motif expert est coché) */}
+          {expertSelected && (
+            <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: 'min(1vh,.8vw)' }}>
+              <div style={E.lead}>Bureau d'expertise&nbsp;:</div>
+              <div style={E.chipWrap}>
+                {cfgBureaux.map(b => (
+                  <button key={b} onClick={() => { setVisBureau(b); setVisBureauOther('') }}
+                    style={{ ...E.chip, ...(visBureau === b ? E.chipOn : {}) }}>
+                    {visBureau === b ? '✓ ' : ''}{b}
+                  </button>
+                ))}
+                <button onClick={() => setVisBureau('__other__')}
+                  style={{ ...E.chip, ...(visBureau === '__other__' ? E.chipOn : {}) }}>
+                  {visBureau === '__other__' ? '✓ ' : ''}Autre
+                </button>
+              </div>
+              {visBureau === '__other__' && (
+                <input style={E.input} type="text" placeholder="Nom du bureau / de l'expert"
+                  value={visBureauOther} onChange={e => setVisBureauOther(e.target.value)} />
+              )}
+            </div>
+          )}
+
+          {visError && <div style={E.err}>{visError}</div>}
+          <button style={{ ...E.btnPrimary, opacity: visStep === 'sending' ? .6 : 1 }}
+            disabled={visStep === 'sending'} onClick={submitVisitor}>
+            {visStep === 'sending' ? 'Envoi…' : 'Valider ma visite'}
+          </button>
         </div>
       </div>
     )
@@ -483,4 +680,9 @@ const E: Record<string, React.CSSProperties> = {
   input: { fontSize: 'min(1.8vw,2.6vh)', padding: 'min(1.3vh,1vw) min(1.4vw,1.2vh)', borderRadius: '12px',
     border: '2px solid #cbd5e1', outline: 'none', color: '#0b1120', background: '#fff', width: '100%' },
   err: { fontSize: 'min(1.4vw,2.1vh)', color: '#b91c1c', fontWeight: 600 },
+  // Chips de sélection (motifs / bureaux) — mode visitor.
+  chipWrap: { display: 'flex', flexWrap: 'wrap', gap: 'min(1.4vh,1.1vw)', justifyContent: 'center', width: '100%' },
+  chip: { fontSize: 'min(1.7vw,2.5vh)', fontWeight: 700, color: '#334155', background: '#f1f5f9',
+    border: '2px solid #e2e8f0', borderRadius: '999px', padding: 'min(1.1vh,.9vw) min(2.4vw,2vh)', cursor: 'pointer' },
+  chipOn: { color: '#fff', background: '#16a34a', border: '2px solid #16a34a' },
 }
