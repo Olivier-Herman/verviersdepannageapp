@@ -22,9 +22,12 @@ export async function GET(_req: Request, { params }: { params: { token: string }
   const sb = createAdminClient()
   if (!(await checkToken(sb, params.token))) return NextResponse.json({ error: 'Lien invalide' }, { status: 404 })
 
+  // Touring ne voit QUE les dossiers SANS réponse (pending). Dès qu'ils répondent
+  // (answered) ou qu'on traite/archive/retire, le dossier disparaît de leur vue —
+  // ils n'ont pas besoin de revoir un dossier déjà répondu. Olivier 2026-08-08.
   const { data: rows } = await sb.from('touring_check_dossiers')
     .select('id, dossier_number, intervention_date, fiches, is_combined, status, response_code, response_note')
-    .in('status', ['pending', 'answered'])
+    .eq('status', 'pending')
     .order('intervention_date', { ascending: false })
   return NextResponse.json({ items: rows || [] })
 }
