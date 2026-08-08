@@ -111,14 +111,14 @@ export default function EcranIdleSlideshow() {
 const CSS = `
 .vd-ecran-pub{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Inter,Arial,sans-serif;color:#101828}
 .vd-ecran-pub .sl{position:absolute;inset:0;opacity:0;transition:opacity .8s ease;
-  display:flex;flex-direction:column;justify-content:center;padding:16vh 8vw 9vh;pointer-events:none}
+  display:flex;flex-direction:column;justify-content:center;padding:19vh 8vw 7vh;pointer-events:none}
 .vd-ecran-pub .sl.on{opacity:1}
 .vd-ecran-pub .hero{padding:0 8vw}
 .vd-ecran-pub .top{position:absolute;top:6vh;left:8vw;right:8vw;display:flex;align-items:center;justify-content:space-between;z-index:2}
-.vd-ecran-pub .topLogo{height:9vh;width:auto;object-fit:contain;display:block}
+.vd-ecran-pub .topLogo{height:6.5vh;width:auto;object-fit:contain;display:block}
 .vd-ecran-pub .sec{font-size:1.35vw;font-weight:800;letter-spacing:.2em;text-transform:uppercase;color:#475069}
 .vd-ecran-pub .kick{font-size:1.5vw;font-weight:800;letter-spacing:.18em;text-transform:uppercase;color:#CC2222;margin-bottom:1.6vh}
-.vd-ecran-pub .h{font-weight:800;letter-spacing:-.02em;line-height:1.03;font-size:5vw;text-wrap:balance}
+.vd-ecran-pub .h{font-weight:800;letter-spacing:-.02em;line-height:1.04;font-size:4.2vw;text-wrap:balance}
 .vd-ecran-pub .rule{width:9vw;height:.6vh;background:#CC2222;border-radius:9px;margin-top:2.4vh;margin-bottom:4vh}
 .vd-ecran-pub svg{display:block}
 
@@ -143,9 +143,9 @@ const CSS = `
 .vd-ecran-pub .cards,.vd-ecran-pub .rules{display:grid;gap:2.2vw;width:100%}
 .vd-ecran-pub .cards{grid-template-columns:repeat(3,1fr)}
 .vd-ecran-pub .rules{grid-template-columns:1fr 1fr}
-.vd-ecran-pub .card{background:#f4f6f9;border:1px solid #e6e9f0;border-radius:22px;padding:3.4vh 2vw;display:flex;flex-direction:column;align-items:center;text-align:center;gap:1.8vh}
-.vd-ecran-pub .card .ib{width:7vw;height:7vw}.vd-ecran-pub .card .ib svg{width:3.6vw;height:3.6vw}
-.vd-ecran-pub .card .n{font-weight:800;font-size:2.3vw}.vd-ecran-pub .card .d{font-size:1.5vw;color:#475069}
+.vd-ecran-pub .card{background:#f4f6f9;border:1px solid #e6e9f0;border-radius:20px;padding:2.6vh 2vw;display:flex;flex-direction:column;align-items:center;text-align:center;gap:1.2vh}
+.vd-ecran-pub .card .ib{width:5.4vw;height:5.4vw}.vd-ecran-pub .card .ib svg{width:2.9vw;height:2.9vw}
+.vd-ecran-pub .card .n{font-weight:800;font-size:2.1vw}.vd-ecran-pub .card .d{font-size:1.5vw;color:#475069}
 .vd-ecran-pub .vrcaution{margin-top:3.4vh;display:flex;gap:1.6vw;align-items:center;background:#fdecec;border:1px solid #f4caca;border-radius:16px;padding:2.4vh 2vw}
 .vd-ecran-pub .vrcaution .ib{width:5vw;height:5vw}.vd-ecran-pub .vrcaution .ib svg{width:2.6vw;height:2.6vw}
 .vd-ecran-pub .vrcaution .ct{font-size:1.7vw;color:#101828;line-height:1.4}
