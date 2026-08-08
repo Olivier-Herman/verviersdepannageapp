@@ -15,6 +15,7 @@ interface Dump {
   buttons?: Array<{ text: string; id: string | null; name: string | null; onclick: string; href: string; tag: string }>
   postbackTargets?: string[]
   inputs?: Array<{ name: string; type: string; id: string | null; placeholder: string | null; value: string }>
+  pageText?: string
 }
 interface Mission { missionNumber: string; detailHref: string; detail: any; dump: Dump }
 interface Field { name: string; value: string }
@@ -68,12 +69,15 @@ export default function VabConsoleClient() {
 
   const d = mission?.dump
   const dt = mission?.detail
-  // Cibles exécutables mergées (actions à target connu + tous les postbackTargets).
+  // Cibles exécutables mergées (actions à target connu + name des boutons + postbackTargets).
   const targets = Array.from(new Set([
     ...(d?.actions || []).map(a => a.target).filter(Boolean) as string[],
+    ...(d?.buttons || []).map(b => b.name).filter(Boolean) as string[],
     ...(d?.postbackTargets || []),
   ]))
-  const labelFor = (t: string) => (d?.actions || []).find(a => a.target === t)?.label || ''
+  const labelFor = (t: string) =>
+    (d?.actions || []).find(a => a.target === t)?.label
+    || (d?.buttons || []).find(b => b.name === t)?.text || ''
 
   return (
     <div className="min-h-screen bg-surface max-w-4xl mx-auto flex flex-col">
@@ -108,8 +112,38 @@ export default function VabConsoleClient() {
               </div>
             </div>
 
-            {/* Message / feedback OutSystems */}
-            {d?.message && <div className="bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-xl px-3 py-2 text-sm">💬 {d.message}</div>}
+            {/* Message / feedback OutSystems (on ignore le placeholder « Loading ») */}
+            {d?.message && d.message.trim() !== 'Loading' && <div className="bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-xl px-3 py-2 text-sm">💬 {d.message}</div>}
+
+            {/* Diagnostic : câblage brut des boutons (pour identifier Accepter/Contrat) */}
+            {d?.buttons?.length ? (
+              <details className="bg-surface border border-app rounded-2xl p-3">
+                <summary className="text-sm font-semibold text-ink cursor-pointer">🔧 Câblage des boutons ({d.buttons.length})</summary>
+                <div className="mt-2 space-y-1.5 max-h-72 overflow-y-auto">
+                  {d.buttons.map((b, i) => (
+                    <div key={i} className="text-xs border-b border-app pb-1.5">
+                      <div className="flex items-center gap-2">
+                        <b className="text-ink">{b.text || '(vide)'}</b>
+                        <span className="text-ink-muted">&lt;{b.tag}&gt;</span>
+                        {b.name && <button onClick={() => execute(b.name!)} disabled={busy} className="px-2 py-0.5 bg-brand text-white rounded text-[11px]">Exécuter (name)</button>}
+                      </div>
+                      {b.name && <div className="font-mono text-ink-secondary break-all">name: {b.name}</div>}
+                      {b.id && <div className="font-mono text-ink-muted break-all">id: {b.id}</div>}
+                      {b.onclick && <div className="font-mono text-ink-muted break-all">onclick: {b.onclick}</div>}
+                      {b.href && b.href !== '#' && <div className="font-mono text-ink-muted break-all">href: {b.href}</div>}
+                    </div>
+                  ))}
+                </div>
+              </details>
+            ) : null}
+
+            {/* Contenu de la page / modale (ex. Contrat : REM/VR + jours max) */}
+            {d?.pageText && (
+              <details className="bg-surface border border-app rounded-2xl p-3">
+                <summary className="text-sm font-semibold text-ink cursor-pointer">📄 Contenu de la page / modale</summary>
+                <pre className="text-xs text-ink-secondary whitespace-pre-wrap mt-2 max-h-72 overflow-y-auto">{d.pageText}</pre>
+              </details>
+            )}
 
             {/* Boutons visibles (ce que Franck voit sur VAB) */}
             {d?.buttonTexts?.length ? (

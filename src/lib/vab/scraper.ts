@@ -1087,6 +1087,7 @@ export interface VabActionsDump {
   buttons?: Array<{ text: string; id: string | null; name: string | null; onclick: string; href: string; tag: string }>
   postbackTargets?: string[]
   inputs?: Array<{ name: string; type: string; id: string | null; placeholder: string | null; value: string }>
+  pageText?: string   // texte visible (modale/contenu) — pour lire ex. Contrat (REM/VR/jours)
 }
 
 // Parse une page VAB (détail mission) → boutons/actions/champs/message.
@@ -1150,7 +1151,14 @@ function parseVabActions(html: string): Omit<VabActionsDump, 'ok' | 'error'> {
     if (t && t.length < 200 && !message) message = t
   })
 
-  return { formAction: $('form').attr('action') || null, htmlLen: html.length, message, hiddenNames, actions, buttonTexts: buttonTexts.slice(0, 40), buttons, postbackTargets, inputs: inputs.slice(0, 40) }
+  // Texte visible (modale en priorité, sinon contenu) — pour lire ex. le Contrat
+  // (REM/VR possible + nb de jours max) après un clic.
+  $('script, style').remove()
+  const modalTxt = $('[class*=Modal], [class*=Popup], [class*=modal], [class*=popup], [class*=Dialog]').text().replace(/\s+/g, ' ').trim()
+  const contentTxt = $('[class*=Content], .MainContent, main').text().replace(/\s+/g, ' ').trim()
+  const pageText = (modalTxt.length > 20 ? modalTxt : contentTxt || $('body').text().replace(/\s+/g, ' ').trim()).slice(0, 4000)
+
+  return { formAction: $('form').attr('action') || null, htmlLen: html.length, message, pageText, hiddenNames, actions, buttonTexts: buttonTexts.slice(0, 40), buttons, postbackTargets, inputs: inputs.slice(0, 40) }
 }
 
 // Collecte les valeurs des hidden inputs d'une page (pour ré-échoyer __OSVSTATE
