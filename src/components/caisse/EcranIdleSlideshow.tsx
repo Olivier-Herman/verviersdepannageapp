@@ -30,7 +30,7 @@ export default function EcranIdleSlideshow() {
 
       {/* 2 · PAIEMENT */}
       <section className={`sl ${i === 1 ? 'on' : ''}`}>
-        <img className="topLogo" src="/logo.jpg" alt="" />
+        <div className="top"><img className="topLogo" src="/logo.jpg" alt="" /></div>
         <div className="kick">Paiement</div>
         <div className="h">Simple &amp; rapide</div>
         <div className="rule" />
@@ -93,12 +93,12 @@ export default function EcranIdleSlideshow() {
 
       {/* 5 · SÉCURITÉ */}
       <section className={`sl navy ${i === 4 ? 'on' : ''}`}>
-        <div className="top"><span className="logo-chip"><img src="/logo.jpg" alt="" /></span><span className="sec">Sécurité</span></div>
+        <div className="top"><img className="topLogo" src="/logo.jpg" alt="" /><span className="sec">Sécurité</span></div>
         <div className="kick">Accès au parc</div>
         <div className="h">Accès aux véhicules après identification</div>
-        <div className="rule" style={{ background: '#8fc7ff' }} />
+        <div className="rule" />
         <div className="lead">Pour la sécurité de tous et la traçabilité, l'accès aux véhicules du parc se fait <b>uniquement après présentation et lecture de votre carte d'identité</b>.</div>
-        <div className="chipline"><div className="ib wht sm"><svg viewBox="0 0 24 24"><rect x="2.5" y="5" width="19" height="14" rx="2" /><circle cx="8" cy="11" r="2" /><path d="M4.8 16c.7-1.6 5.5-1.6 6.2 0" /><path d="M14.5 10h4.5M14.5 13h3.5" /></svg></div>Carte d'identité obligatoire</div>
+        <div className="chipline"><div className="ib red sm"><svg viewBox="0 0 24 24"><rect x="2.5" y="5" width="19" height="14" rx="2" /><circle cx="8" cy="11" r="2" /><path d="M4.8 16c.7-1.6 5.5-1.6 6.2 0" /><path d="M14.5 10h4.5M14.5 13h3.5" /></svg></div>Carte d'identité obligatoire</div>
         <div className="watermark"><svg viewBox="0 0 24 24"><path d="M12 2l8 3.4v5.6c0 5.2-3.4 8.6-8 10.4-4.6-1.8-8-5.2-8-10.4V5.4z" /><path d="M8.5 12l2.4 2.4L16 9.5" /></svg></div>
       </section>
 
@@ -111,8 +111,9 @@ export default function EcranIdleSlideshow() {
 const CSS = `
 .vd-ecran-pub{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Inter,Arial,sans-serif;color:#101828}
 .vd-ecran-pub .sl{position:absolute;inset:0;opacity:0;transition:opacity .8s ease;
-  display:flex;flex-direction:column;justify-content:center;padding:0 8vw;pointer-events:none}
+  display:flex;flex-direction:column;justify-content:center;padding:16vh 8vw 9vh;pointer-events:none}
 .vd-ecran-pub .sl.on{opacity:1}
+.vd-ecran-pub .hero{padding:0 8vw}
 .vd-ecran-pub .top{position:absolute;top:6vh;left:8vw;right:8vw;display:flex;align-items:center;justify-content:space-between;z-index:2}
 .vd-ecran-pub .topLogo{height:9vh;width:auto;object-fit:contain;display:block}
 .vd-ecran-pub .sec{font-size:1.35vw;font-weight:800;letter-spacing:.2em;text-transform:uppercase;color:#475069}
@@ -161,12 +162,12 @@ const CSS = `
 .vd-ecran-pub .warn .t{font-size:2.1vw;font-weight:600;line-height:1.4}
 .vd-ecran-pub .no{margin-top:3vh;display:flex;gap:1.4vw;align-items:center;font-weight:800;font-size:2.3vw}
 
-.vd-ecran-pub .navy{background:radial-gradient(130% 130% at 88% -10%,#20304f,#0d1525 80%);color:#fff}
-.vd-ecran-pub .navy .kick{color:#8fc7ff}.vd-ecran-pub .navy .sec{color:rgba(255,255,255,.82)}
-.vd-ecran-pub .navy .lead{font-size:2.1vw;color:rgba(255,255,255,.92);line-height:1.45;max-width:78%}
-.vd-ecran-pub .navy .chipline{margin-top:3.2vh;display:inline-flex;gap:1.4vw;align-items:center;background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.26);border-radius:16px;padding:2vh 1.8vw;font-weight:800;font-size:2vw}
-.vd-ecran-pub .navy .watermark{position:absolute;right:4vw;bottom:-4vh;opacity:.08;z-index:0}
-.vd-ecran-pub .navy .watermark svg{width:42vh;height:42vh;stroke:#fff;stroke-width:1;fill:none}
+.vd-ecran-pub .navy{background:#fff;color:#101828}
+.vd-ecran-pub .navy .kick{color:#CC2222}.vd-ecran-pub .navy .sec{color:#475069}
+.vd-ecran-pub .navy .lead{font-size:2.1vw;color:#475069;line-height:1.45;max-width:78%}
+.vd-ecran-pub .navy .chipline{margin-top:3.2vh;display:inline-flex;gap:1.4vw;align-items:center;background:#fdecec;border:1px solid #f4caca;border-radius:16px;padding:2vh 1.8vw;font-weight:800;font-size:2vw}
+.vd-ecran-pub .navy .watermark{position:absolute;right:4vw;bottom:-4vh;opacity:.05;z-index:0}
+.vd-ecran-pub .navy .watermark svg{width:42vh;height:42vh;stroke:#101828;stroke-width:1;fill:none}
 .vd-ecran-pub .navy .top,.vd-ecran-pub .navy .kick,.vd-ecran-pub .navy .h,.vd-ecran-pub .navy .rule,.vd-ecran-pub .navy .lead,.vd-ecran-pub .navy .chipline{position:relative;z-index:1}
 
 .vd-ecran-pub .dots{position:absolute;bottom:4vh;left:0;right:0;display:flex;gap:1vw;justify-content:center;z-index:5}

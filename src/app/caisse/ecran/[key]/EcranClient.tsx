@@ -151,6 +151,18 @@ export default function EcranClient({ displayKey }: { displayKey: string }) {
     return () => clearInterval(iv)
   }, [])
 
+  // Rechargement AUTOMATIQUE au retour aux slides (fin de transaction) → l'écran
+  // récupère la dernière version déployée sans qu'on touche au PC comptoir.
+  const wasActiveRef = useRef(false)
+  useEffect(() => {
+    if (isDemo) return
+    const active = !!payload && !!expiresAt && expiresAt > Date.now()
+    if (wasActiveRef.current && !active) {
+      setTimeout(() => { try { window.location.reload() } catch { /* noop */ } }, 1200)
+    }
+    wasActiveRef.current = active
+  }, [payload, expiresAt, now, isDemo])
+
   // Clavier physique pour la saisie du PIN (écran verrouillé)
   useEffect(() => {
     if (unlocked || isDemo) return
