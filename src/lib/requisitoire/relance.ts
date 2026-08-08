@@ -55,7 +55,7 @@ function fmtDate(iso?: string | null): string {
 type MissionRow = {
   id: string; mission_number: number | null; vehicle_plate: string | null
   vehicle_brand: string | null; vehicle_model: string | null
-  incident_address: string | null; address: string | null
+  incident_address: string | null
   created_at: string | null; parked_at: string | null
   police_pv_number: string | null; police_zone: string | null
   saisie_motif_label: string | null; officer_name: string | null
@@ -64,12 +64,12 @@ type MissionRow = {
   requisitoire_reminder_count: number
 }
 
-const SELECT = 'id, mission_number, vehicle_plate, vehicle_brand, vehicle_model, incident_address, address, created_at, parked_at, police_pv_number, police_zone, saisie_motif_label, officer_name, officer_partner_id, requisitoire_token, requisitoire_at, requisitoire_stop, requisitoire_reminder_count'
+const SELECT = 'id, mission_number, vehicle_plate, vehicle_brand, vehicle_model, incident_address, created_at, parked_at, police_pv_number, police_zone, saisie_motif_label, officer_name, officer_partner_id, requisitoire_token, requisitoire_at, requisitoire_stop, requisitoire_reminder_count'
 
 // Corps HTML de la relance.
 function buildHtml(m: MissionRow, token: string): string {
   const veh = [m.vehicle_brand, m.vehicle_model].filter(Boolean).join(' ') || '—'
-  const lieu = m.incident_address || m.address || '—'
+  const lieu = m.incident_address || '—'
   const ref = m.mission_number != null ? `SAI-${m.mission_number}` : '—'
   const link = depotLink(token)
   const n = m.requisitoire_reminder_count

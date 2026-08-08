@@ -17,7 +17,7 @@ const MAX_FILE_SIZE = 15 * 1024 * 1024 // 15 MB
 async function findByToken(sb: any, token: string) {
   if (!token || token.length < 8) return null
   const { data } = await sb.from('incoming_missions')
-    .select('id, mission_number, vehicle_plate, vehicle_brand, vehicle_model, incident_address, address, created_at, saisie_motif_label, police_pv_number, requisitoire_at, requisitoire_stop')
+    .select('id, mission_number, vehicle_plate, vehicle_brand, vehicle_model, incident_address, created_at, saisie_motif_label, police_pv_number, requisitoire_at, requisitoire_stop')
     .eq('requisitoire_token', token).maybeSingle()
   return data || null
 }
@@ -30,7 +30,7 @@ export async function GET(_req: Request, { params }: { params: { token: string }
     ref:        m.mission_number != null ? `SAI-${m.mission_number}` : null,
     plate:      m.vehicle_plate,
     vehicle:    [m.vehicle_brand, m.vehicle_model].filter(Boolean).join(' ') || null,
-    location:   m.incident_address || m.address || null,
+    location:   m.incident_address || null,
     saisie_at:  m.created_at,
     motif:      m.saisie_motif_label,
     pv:         m.police_pv_number,

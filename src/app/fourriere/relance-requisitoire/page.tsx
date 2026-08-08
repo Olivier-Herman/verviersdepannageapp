@@ -23,7 +23,7 @@ export default async function RelanceRequisitoirePage() {
 
   const sb = createAdminClient()
   const { data: rows } = await sb.from('incoming_missions')
-    .select('id, mission_number, vehicle_plate, vehicle_brand, vehicle_model, incident_address, address, created_at, saisie_motif_label, police_pv_number, police_zone, officer_name, officer_partner_id, requisitoire_token, requisitoire_stop, requisitoire_last_reminder_at, requisitoire_reminder_count')
+    .select('id, mission_number, vehicle_plate, vehicle_brand, vehicle_model, incident_address, created_at, saisie_motif_label, police_pv_number, police_zone, officer_name, officer_partner_id, requisitoire_token, requisitoire_stop, requisitoire_last_reminder_at, requisitoire_reminder_count')
     .in('source', RELANCE_SOURCES)
     .is('requisitoire_at', null)
     .not('status', 'in', '(cancelled,ignored,deleted)')
@@ -34,14 +34,18 @@ export default async function RelanceRequisitoirePage() {
   // Le token de dépôt est généré À LA DEMANDE (copie du lien / envoi relance),
   // PAS ici — sinon 200+ UPDATE séquentiels feraient timeouter le rendu.
 
-  // Résout en un appel l'email des policiers (contacts Odoo).
+  // Résout en un appel l'email des policiers (contacts Odoo). BORNÉ par un
+  // timeout : jamais bloquer le rendu de la liste si Odoo traîne/est indispo.
   const partnerIds = [...new Set(missions.map(m => m.officer_partner_id).filter(Boolean))] as number[]
   const emailMap: Record<number, string> = {}
   if (partnerIds.length) {
     try {
-      const parts = await odooRpc<any[]>('res.partner', 'read', [partnerIds], { fields: ['email'] })
+      const parts = await Promise.race([
+        odooRpc<any[]>('res.partner', 'read', [partnerIds], { fields: ['email'] }),
+        new Promise<any[]>(res => setTimeout(() => res([]), 5000)),
+      ])
       for (const p of (parts || [])) if (p.email && /@/.test(p.email)) emailMap[p.id] = p.email
-    } catch { /* Odoo indispo → pas d'email résolu */ }
+    } catch { /* Odoo indispo → pas d'email résolu, la liste s'affiche quand même */ }
   }
 
   const items = missions.map(m => ({
@@ -49,7 +53,7 @@ export default async function RelanceRequisitoirePage() {
     ref: m.mission_number != null ? `SAI-${m.mission_number}` : null,
     plate: m.vehicle_plate,
     vehicle: [m.vehicle_brand, m.vehicle_model].filter(Boolean).join(' ') || null,
-    location: m.incident_address || m.address || null,
+    location: m.incident_address || null,
     saisie_at: m.created_at,
     zone: m.police_zone,
     officer_name: m.officer_name,
