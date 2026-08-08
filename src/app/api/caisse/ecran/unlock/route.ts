@@ -9,7 +9,7 @@ import { NextResponse } from 'next/server'
 
 export const dynamic = 'force-dynamic'
 
-const ECRAN_PIN = process.env.ECRAN_PIN || '071000'
+const ECRAN_PIN = process.env.ECRAN_PIN || '004970'
 
 export async function POST(req: Request) {
   const body = await req.json().catch(() => ({}))
