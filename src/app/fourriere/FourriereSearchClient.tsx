@@ -158,6 +158,12 @@ export default function FourriereSearchClient({ userRole, userName, userEmail, u
               <FileText size={16} />
               Réquisitoires / levées
             </Link>
+            <Link
+              href="/fourriere/relance-requisitoire"
+              className="flex items-center gap-2 px-4 py-2 bg-surface-2 hover:bg-surface-hover border text-ink-secondary hover:text-ink rounded-xl text-sm font-semibold transition"
+              title="Relancer les policiers pour les réquisitoires manquants (mail depuis fourriere@ + lien de dépôt)">
+              📨 Relance réquisitoires
+            </Link>
             {userRole === 'superadmin' && (
               <Link
                 href="/fourriere/domaine"
