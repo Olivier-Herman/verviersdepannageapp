@@ -111,9 +111,9 @@ export default function EcranIdleSlideshow() {
 const CSS = `
 .vd-ecran-pub{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Inter,Arial,sans-serif;color:#101828}
 .vd-ecran-pub .sl{position:absolute;inset:0;opacity:0;transition:opacity .8s ease;
-  display:flex;flex-direction:column;justify-content:center;padding:19vh 8vw 7vh;pointer-events:none}
+  display:flex;flex-direction:column;justify-content:flex-start;padding:17vh 8vw 6vh;pointer-events:none}
 .vd-ecran-pub .sl.on{opacity:1}
-.vd-ecran-pub .hero{padding:0 8vw}
+.vd-ecran-pub .hero{padding:0 8vw;justify-content:center}
 .vd-ecran-pub .top{position:absolute;top:6vh;left:8vw;right:8vw;display:flex;align-items:center;justify-content:space-between;z-index:2}
 .vd-ecran-pub .topLogo{height:6.5vh;width:auto;object-fit:contain;display:block}
 .vd-ecran-pub .sec{font-size:1.35vw;font-weight:800;letter-spacing:.2em;text-transform:uppercase;color:#475069}
