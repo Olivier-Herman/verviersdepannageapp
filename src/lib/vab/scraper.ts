@@ -1078,34 +1078,30 @@ export async function sendVabMissionEmail(
  * VAB (Accept → Start → En route → Sur place → CheckVIN → signature → clôture)
  * AVANT de coder/déclencher quoi que ce soit (irréversible). Olivier 2026-08-08.
  */
-export async function dumpVabActions(
-  session: SessionCookies,
-  detailHref: string,
-): Promise<{
+export interface VabActionsDump {
   ok: boolean; error?: string; formAction?: string | null; htmlLen?: number
-  hiddenNames?: string[]; actions?: Array<{ label: string; target: string | null; arg: string; tag: string; name?: string; id?: string }>
+  message?: string | null   // message OutSystems visible (feedback/confirmation)
+  hiddenNames?: string[]
+  actions?: Array<{ label: string; target: string | null; arg: string; tag: string; name?: string; id?: string }>
   buttonTexts?: string[]
-}> {
-  const detailUrl = detailHref.startsWith('http')
-    ? detailHref
-    : `${VAB_BASE}${detailHref.startsWith('/') ? detailHref : '/' + detailHref}`
-  const res = await fetch(detailUrl, {
-    method: 'GET', redirect: 'follow',
-    headers: { 'User-Agent': REAL_UA, 'Accept': 'text/html,*/*;q=0.8', 'Accept-Language': 'fr-BE,fr;q=0.9', 'Cookie': session.cookieHeader },
-  })
-  if (res.status !== 200) return { ok: false, error: `GET status ${res.status}` }
-  const html = await res.text()
+  buttons?: Array<{ text: string; id: string | null; name: string | null; onclick: string; href: string; tag: string }>
+  postbackTargets?: string[]
+  inputs?: Array<{ name: string; type: string; id: string | null; placeholder: string | null; value: string }>
+}
+
+// Parse une page VAB (détail mission) → boutons/actions/champs/message.
+// Partagé par dumpVabActions (GET) et executeVabAction (résultat du POST).
+function parseVabActions(html: string): Omit<VabActionsDump, 'ok' | 'error'> {
   const $ = cheerio.load(html)
 
   const hiddenNames: string[] = []
   $('input[type=hidden]').each((_, el) => { const n = $(el).attr('name'); if (n) hiddenNames.push(n) })
 
-  const actions: Array<{ label: string; target: string | null; arg: string; tag: string; name?: string; id?: string }> = []
+  const actions: NonNullable<VabActionsDump['actions']> = []
   const seen = new Set<string>()
   $('a, button, input[type=submit], input[type=button], span[onclick], div[onclick]').each((_, el) => {
     const $el = $(el)
     const blob = `${$el.attr('onclick') || ''} ${$el.attr('href') || ''}`
-    // __doPostBack('TARGET','ARG') — guillemets éventuellement encodés HTML.
     const m = blob.match(/__doPostBack\((?:&#39;|['"])([^'"&]+)(?:&#39;|['"])\s*,\s*(?:&#39;|['"])([^'"&]*)/)
     const name = $el.attr('name')
     const isBtn = $el.is('input[type=submit]') || $el.is('input[type=button]') || $el.is('button')
@@ -1118,12 +1114,106 @@ export async function dumpVabActions(
     actions.push({ label, target, arg: m ? m[2] : '', tag: (el as any).tagName, name, id: $el.attr('id') })
   })
 
-  // Tous les textes qui ressemblent à des boutons (repère visuel de l'étape courante).
   const buttonTexts: string[] = []
   $('.Button, [class*=Button], [class*=btn]').each((_, el) => {
     const t = $(el).text().replace(/\s+/g, ' ').trim()
     if (t && t.length < 40 && !buttonTexts.includes(t)) buttonTexts.push(t)
   })
 
-  return { ok: true, formAction: $('form').attr('action') || null, htmlLen: html.length, hiddenNames, actions, buttonTexts: buttonTexts.slice(0, 40) }
+  const buttons: NonNullable<VabActionsDump['buttons']> = []
+  const bseen = new Set<string>()
+  $('.Button, [class*=Button], a[class*=Link], a[href^="javascript"], input[type=submit], input[type=button]').each((_, el) => {
+    const $el = $(el)
+    const text = (($el.text() || '') || $el.attr('value') || '').replace(/\s+/g, ' ').trim()
+    if (!text || text.length > 45) return
+    const id = $el.attr('id') || null
+    const key = `${text}|${id}`
+    if (bseen.has(key)) return
+    bseen.add(key)
+    buttons.push({ text, id, name: $el.attr('name') || null, onclick: ($el.attr('onclick') || '').slice(0, 240), href: ($el.attr('href') || '').slice(0, 160), tag: (el as any).tagName })
+  })
+
+  // Champs saisissables visibles (km, VIN, signature…) — pour piloter les étapes.
+  const inputs: NonNullable<VabActionsDump['inputs']> = []
+  $('input:not([type=hidden]):not([type=submit]):not([type=button]), textarea, select').each((_, el) => {
+    const $el = $(el)
+    const name = $el.attr('name'); if (!name) return
+    inputs.push({ name, type: ($el.attr('type') || (el as any).tagName || '').toLowerCase(), id: $el.attr('id') || null, placeholder: $el.attr('placeholder') || null, value: ($el.attr('value') || '').slice(0, 60) })
+  })
+
+  const postbackTargets = [...new Set([...html.matchAll(/__doPostBack\(\s*['"]([^'"]+)['"]/g)].map(m => m[1]))].slice(0, 80)
+
+  // Message OutSystems (feedback/toast) éventuel.
+  let message: string | null = null
+  $('.Feedback_Message, [class*=Feedback], .OSFillParent .Text, .feedbackmessagewrapper').each((_, el) => {
+    const t = $(el).text().replace(/\s+/g, ' ').trim()
+    if (t && t.length < 200 && !message) message = t
+  })
+
+  return { formAction: $('form').attr('action') || null, htmlLen: html.length, message, hiddenNames, actions, buttonTexts: buttonTexts.slice(0, 40), buttons, postbackTargets, inputs: inputs.slice(0, 40) }
+}
+
+// Collecte les valeurs des hidden inputs d'une page (pour ré-échoyer __OSVSTATE
+// & co. dans le POST de l'action suivante).
+function collectHidden(html: string): Record<string, string> {
+  const $ = cheerio.load(html)
+  const hidden: Record<string, string> = {}
+  $('input[type=hidden]').each((_, el) => { const n = $(el).attr('name'); if (n) hidden[n] = $(el).attr('value') || '' })
+  return hidden
+}
+
+/**
+ * EXÉCUTE une action VAB (postback OutSystems) sur la mission courante.
+ * GET la page (état + OSVSTATE frais) → POST le postback (__EVENTTARGET + tous
+ * les hidden ré-échoyés + champs extra) → parse la page résultat (nouveaux
+ * boutons + message). ⚠️ IRRÉVERSIBLE côté VAB : à déclencher en connaissance.
+ * Olivier 2026-08-08 (clôture pilotée avec Franck).
+ */
+export async function executeVabAction(
+  session: SessionCookies,
+  detailHref: string,
+  eventTarget: string,
+  extraFields: Record<string, string> = {},
+  eventArgument = '',
+): Promise<VabActionsDump & { status?: number }> {
+  const detailUrl = detailHref.startsWith('http')
+    ? detailHref
+    : `${VAB_BASE}${detailHref.startsWith('/') ? detailHref : '/' + detailHref}`
+  // 1) GET état frais
+  const getRes = await fetch(detailUrl, {
+    method: 'GET', redirect: 'follow',
+    headers: { 'User-Agent': REAL_UA, 'Accept': 'text/html,*/*;q=0.8', 'Accept-Language': 'fr-BE,fr;q=0.9', 'Cookie': session.cookieHeader },
+  })
+  if (getRes.status !== 200) return { ok: false, error: `GET status ${getRes.status}` }
+  const getHtml = await getRes.text()
+  const hidden = collectHidden(getHtml)
+  const formAction = cheerio.load(getHtml)('form').attr('action') || detailUrl
+  // 2) POST postback (ré-écho de tous les hidden dont __OSVSTATE)
+  const pb = await aspnetPostBack(detailUrl, formAction, hidden, eventTarget, eventArgument, extraFields, session.cookieHeader, detailUrl)
+  // OutSystems peut répondre en 302 (redirect manual) → suivre pour récupérer l'état.
+  let resultHtml = pb.html
+  if (pb.status >= 300 && pb.status < 400) {
+    const loc = pb.finalUrl || detailUrl
+    const follow = await fetch(loc.startsWith('http') ? loc : `${VAB_BASE}/${loc.replace(/^\//, '')}`, {
+      headers: { 'User-Agent': REAL_UA, 'Accept': 'text/html,*/*;q=0.8', 'Cookie': session.cookieHeader },
+    })
+    resultHtml = await follow.text()
+  }
+  return { ok: true, status: pb.status, ...parseVabActions(resultHtml) }
+}
+
+export async function dumpVabActions(
+  session: SessionCookies,
+  detailHref: string,
+): Promise<VabActionsDump> {
+  const detailUrl = detailHref.startsWith('http')
+    ? detailHref
+    : `${VAB_BASE}${detailHref.startsWith('/') ? detailHref : '/' + detailHref}`
+  const res = await fetch(detailUrl, {
+    method: 'GET', redirect: 'follow',
+    headers: { 'User-Agent': REAL_UA, 'Accept': 'text/html,*/*;q=0.8', 'Accept-Language': 'fr-BE,fr;q=0.9', 'Cookie': session.cookieHeader },
+  })
+  if (res.status !== 200) return { ok: false, error: `GET status ${res.status}` }
+  const html = await res.text()
+  return { ok: true, ...parseVabActions(html) }
 }
