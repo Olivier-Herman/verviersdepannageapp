@@ -134,6 +134,55 @@ export async function runTouringImport(opts: { mode: TouringImportMode }): Promi
         continue
       }
 
+      // ── Étape 1 — Chaînage par COMMANDE (dossier 2026BE/BX) ───────────────
+      // L'action (…MA) ci-dessus est inconnue en base. Mais 2026BE/BX = n° de
+      // COMMANDE (constant tout le cycle) tandis que …MA = n° d'ACTION (change à
+      // chaque étape DSP→REM→Transfert). Si une fiche ACTIVE du MÊME dossier
+      // existe déjà (le chauffeur bosse dessus), cette nouvelle action = SUCCESSION
+      // du cycle, PAS un nouveau dossier. On ADOPTE l'action courante sur la fiche
+      // active (raw_content → séquence LIVE) au lieu de créer une fiche orpheline à
+      // fusionner à la main → supprime le doublon ET route les pointages vers
+      // l'action vivante (fin des COMEX 500 sur une séquence clôturée). Garde
+      // anti-recul : on n'avance que vers une action plus récente (jamais de
+      // flip-flop). VR = système à part (n'apparaît pas dans ce loop « 03 à
+      // valider »). Olivier 2026-08-09 — cf project_touring_lifecycle_chainage.
+      if (m.CID_DOS) {
+        const { data: lineage } = await sb.from('incoming_missions')
+          .select('id, status, mission_number, raw_content')
+          .eq('dossier_number', m.CID_DOS)
+          .not('status', 'in', '(cancelled,completed,to_invoice,invoiced,ignored,deleted)')
+          .order('updated_at', { ascending: false })
+          .limit(1)
+          .maybeSingle()
+        if (lineage) {
+          const lin = lineage as any
+          let curSeq = -1
+          try { curSeq = parseInt(String(JSON.parse(lin.raw_content || '{}').CID_SEQ_ACTION || ''), 10) } catch { /* raw_content non-JSON */ }
+          const newSeq = parseInt(String(m.CID_SEQ_ACTION), 10)
+          // Fiche déjà sur cette action (ou une plus récente) → rien à faire.
+          if (!(Number.isFinite(newSeq) && (curSeq < 0 || newSeq > curSeq))) {
+            results.push({ dossier: m.CID_DOS, plaque: m.NUM_PLAQUE, action: 'skipped', external_id: externalId, reason: `commande déjà sur action ${curSeq} (≥ ${newSeq})` })
+            skipped++
+            continue
+          }
+          if (mode === 'preview') {
+            results.push({ dossier: m.CID_DOS, plaque: m.NUM_PLAQUE, action: 'would_link', external_id: externalId, reason: `action ${m.CID_SEQ_ACTION} → commande active (fiche #${lin.mission_number})` })
+            continue
+          }
+          const { error: adoptErr } = await sb.from('incoming_missions')
+            .update({ source_format: 'comex', raw_content: comexRaw, updated_at: new Date().toISOString() })
+            .eq('id', lin.id)
+          if (adoptErr) {
+            results.push({ dossier: m.CID_DOS, plaque: m.NUM_PLAQUE, action: 'failed', external_id: externalId, error: adoptErr.message })
+            failed++
+          } else {
+            results.push({ dossier: m.CID_DOS, plaque: m.NUM_PLAQUE, action: 'linked', external_id: externalId, reason: `action ${m.CID_SEQ_ACTION} rattachée à la commande (fiche #${lin.mission_number}, séq ${curSeq}→${newSeq})` })
+            linked++
+          }
+          continue
+        }
+      }
+
       if (mode === 'preview') {
         results.push({ dossier: m.CID_DOS, plaque: m.NUM_PLAQUE, action: 'would_create', external_id: externalId })
         continue
