@@ -31,8 +31,18 @@ export async function loadFacturationData(
     .from('incoming_missions')
     .select(MISSION_COLS)
     .eq('status', 'to_invoice')
-  if (opts.onlySource)    q = q.eq('source', opts.onlySource)
-  if (opts.excludeSource) q = q.neq('source', opts.excludeSource)
+  // Touring TRANSPORT (dossiers 2026BX, mission_type='transport') = facturation
+  // NORMALE → il reste dans la liste GÉNÉRALE avec les autres sources, et sort de
+  // la liste Touring (COMEX/Touring Check). Olivier 2026-08-08.
+  if (opts.onlySource === 'touring') {
+    q = q.eq('source', 'touring').or('mission_type.neq.transport,mission_type.is.null')
+  } else if (opts.onlySource) {
+    q = q.eq('source', opts.onlySource)
+  } else if (opts.excludeSource === 'touring') {
+    q = q.or('source.neq.touring,mission_type.eq.transport')
+  } else if (opts.excludeSource) {
+    q = q.neq('source', opts.excludeSource)
+  }
   // Phase de test auto-facturation (Olivier 2026-07-28) : les fiches déjà
   // auto-facturées (brouillon Odoo créé) sont masquées aux non-superadmins pour
   // éviter que Jona les re-facture (doublon). Superadmin les voit toujours.

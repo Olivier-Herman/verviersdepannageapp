@@ -406,8 +406,9 @@ export async function POST(req: Request, { params }: { params: { id: string } })
         const buffer      = await fileRes.arrayBuffer()
         const base64      = Buffer.from(buffer).toString('base64')
         const contentType = fileRes.headers.get('content-type') ?? 'image/jpeg'
-        const ext         = contentType.includes('pdf') ? 'pdf' : 'jpg'
-        const filename    = `avance-${adv.plate}-${Number(adv.amount_htva).toFixed(2)}.${ext}`
+        const ext         = contentType.includes('pdf') ? 'pdf' : contentType.includes('png') ? 'png' : 'jpg'
+        // Olivier 2026-08-08 : nom de la pièce jointe préfixé « Justificatif ».
+        const filename    = `Justificatif avance ${adv.plate} ${Number(adv.amount_htva).toFixed(2)}€.${ext}`
         await withOdooActor(user?.id, () => mode === 'invoice'
           ? attachFileToInvoice(result.id, base64, filename, contentType)
           : attachFileToOrder(result.id, base64, filename, contentType))

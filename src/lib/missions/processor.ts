@@ -1235,15 +1235,23 @@ export async function processEmailMessage(messageId: string): Promise<ProcessRes
       console.warn(`[Processor] Lookup billed_to default failed (non bloquant):`, e.message)
     }
 
+    // Règle Olivier 2026-08-08 : les dossiers Touring « 2026BX… » sont des
+    // TRANSPORTS (rapatriements frontaliers) → source=touring + type=transport,
+    // facturation NORMALE (jamais COMEX ni Touring Check ; ils arrivent par mail).
+    const finalDossier = String(parsed.dossier_number || parsed.external_id || '').trim()
+    const is2026BX     = /^2026BX/i.test(finalDossier)
+    const finalSource  = is2026BX ? 'touring'   : source
+    const finalType    = is2026BX ? 'transport' : parsed.mission_type
+
     const updatePayload: Record<string, unknown> = {
       external_id:          parsed.external_id,
       // Olivier 2026-06-18 : si l'assistance n'a pas de N° Dossier distinct, on
       // recopie sa référence (external_id) dans NOTRE champ dossier_number — sinon
       // il reste vide et n'arrive pas en référence (client_order_ref) du devis.
       dossier_number:       parsed.dossier_number || parsed.external_id || null,
-      source,
+      source:               finalSource,
       source_format:        content.sourceFormat,
-      mission_type:         parsed.mission_type,
+      mission_type:         finalType,
       incident_type:        parsed.incident_type,
       incident_description: parsed.incident_description,
       client_name:          parsed.client_name,

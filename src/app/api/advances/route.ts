@@ -74,7 +74,10 @@ export async function POST(req: NextRequest) {
             const fileBuffer  = await fileRes.arrayBuffer()
             const base64Data  = Buffer.from(fileBuffer).toString('base64')
             const contentType = fileRes.headers.get('content-type') ?? 'image/jpeg'
-            const filename    = `facture-avance-${normalizedPlate}-${Date.now()}.jpg`
+            // Olivier 2026-08-08 : le nom de la pièce jointe doit commencer par
+            // « Justificatif » (+ extension réelle selon le type, pas .jpg en dur).
+            const ext         = contentType.includes('pdf') ? 'pdf' : contentType.includes('png') ? 'png' : 'jpg'
+            const filename    = `Justificatif avance ${normalizedPlate} ${new Date().toISOString().slice(0, 10)}.${ext}`
             await attachFileToOrder(odooOrderId, base64Data, filename, contentType)
           }
         } catch (attachErr) {

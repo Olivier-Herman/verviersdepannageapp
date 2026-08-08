@@ -321,7 +321,10 @@ export default function FacturationClient({
   // disparaît de l'écran ; quand une nouvelle passe en to_invoice, elle apparaît.
   // Olivier 2026-06-30. La variante (général/touring) filtre par source.
   useEffect(() => {
-    const inScope = (m: any) => isTouring ? m.source === 'touring' : m.source !== 'touring'
+    // Touring transport (2026BX) = facturation normale → dans le général, hors touring.
+    const inScope = (m: any) => isTouring
+      ? (m.source === 'touring' && m.mission_type !== 'transport')
+      : (m.source !== 'touring' || m.mission_type === 'transport')
     const channel = sbRealtime.channel('facturation-list')
       .on('postgres_changes',
         { event: '*', schema: 'public', table: 'incoming_missions' },
