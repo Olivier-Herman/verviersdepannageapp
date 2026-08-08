@@ -1070,3 +1070,60 @@ export async function sendVabMissionEmail(
   console.log(`[vab/send] OK pour ${detailHref}. Debug: ${debugLog.join(' | ')}`)
   return { ok: true, debug: debugLog.join(' | ') }
 }
+
+/**
+ * DÉCOUVERTE READ-ONLY (aucune action déclenchée) : GET la page détail et
+ * inventorie tous les contrôles d'action (boutons/liens __doPostBack), les
+ * hidden fields et l'action du form. Sert à cartographier la machine à états
+ * VAB (Accept → Start → En route → Sur place → CheckVIN → signature → clôture)
+ * AVANT de coder/déclencher quoi que ce soit (irréversible). Olivier 2026-08-08.
+ */
+export async function dumpVabActions(
+  session: SessionCookies,
+  detailHref: string,
+): Promise<{
+  ok: boolean; error?: string; formAction?: string | null; htmlLen?: number
+  hiddenNames?: string[]; actions?: Array<{ label: string; target: string | null; arg: string; tag: string; name?: string; id?: string }>
+  buttonTexts?: string[]
+}> {
+  const detailUrl = detailHref.startsWith('http')
+    ? detailHref
+    : `${VAB_BASE}${detailHref.startsWith('/') ? detailHref : '/' + detailHref}`
+  const res = await fetch(detailUrl, {
+    method: 'GET', redirect: 'follow',
+    headers: { 'User-Agent': REAL_UA, 'Accept': 'text/html,*/*;q=0.8', 'Accept-Language': 'fr-BE,fr;q=0.9', 'Cookie': session.cookieHeader },
+  })
+  if (res.status !== 200) return { ok: false, error: `GET status ${res.status}` }
+  const html = await res.text()
+  const $ = cheerio.load(html)
+
+  const hiddenNames: string[] = []
+  $('input[type=hidden]').each((_, el) => { const n = $(el).attr('name'); if (n) hiddenNames.push(n) })
+
+  const actions: Array<{ label: string; target: string | null; arg: string; tag: string; name?: string; id?: string }> = []
+  const seen = new Set<string>()
+  $('a, button, input[type=submit], input[type=button], span[onclick], div[onclick]').each((_, el) => {
+    const $el = $(el)
+    const blob = `${$el.attr('onclick') || ''} ${$el.attr('href') || ''}`
+    // __doPostBack('TARGET','ARG') — guillemets éventuellement encodés HTML.
+    const m = blob.match(/__doPostBack\((?:&#39;|['"])([^'"&]+)(?:&#39;|['"])\s*,\s*(?:&#39;|['"])([^'"&]*)/)
+    const name = $el.attr('name')
+    const isBtn = $el.is('input[type=submit]') || $el.is('input[type=button]') || $el.is('button')
+    if (!m && !(isBtn && name)) return
+    const label = (($el.text() || '') || $el.attr('value') || '').replace(/\s+/g, ' ').trim().slice(0, 70)
+    const target = m ? m[1] : (name || null)
+    const key = `${target}|${label}`
+    if (seen.has(key)) return
+    seen.add(key)
+    actions.push({ label, target, arg: m ? m[2] : '', tag: (el as any).tagName, name, id: $el.attr('id') })
+  })
+
+  // Tous les textes qui ressemblent à des boutons (repère visuel de l'étape courante).
+  const buttonTexts: string[] = []
+  $('.Button, [class*=Button], [class*=btn]').each((_, el) => {
+    const t = $(el).text().replace(/\s+/g, ' ').trim()
+    if (t && t.length < 40 && !buttonTexts.includes(t)) buttonTexts.push(t)
+  })
+
+  return { ok: true, formAction: $('form').attr('action') || null, htmlLen: html.length, hiddenNames, actions, buttonTexts: buttonTexts.slice(0, 40) }
+}

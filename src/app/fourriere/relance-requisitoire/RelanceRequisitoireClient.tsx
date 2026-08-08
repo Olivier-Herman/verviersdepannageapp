@@ -60,20 +60,34 @@ export default function RelanceRequisitoireClient({ initialItems, appUrl }: { in
     } catch { note(it.id, 'Échec', false) } finally { setBusy(null) }
   }
 
+  // Copie robuste : clipboard API, sinon execCommand (fonctionne après un await),
+  // sinon prompt manuel. navigator.clipboard échoue souvent après un fetch (le
+  // « geste utilisateur » est consommé) → d'où le fallback.
+  const doCopy = async (text: string): Promise<boolean> => {
+    try { await navigator.clipboard.writeText(text); return true } catch { /* fallback */ }
+    try {
+      const ta = document.createElement('textarea')
+      ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0'
+      document.body.appendChild(ta); ta.focus(); ta.select()
+      const ok = document.execCommand('copy'); document.body.removeChild(ta)
+      return ok
+    } catch { return false }
+  }
+
   const copyLink = async (it: Item) => {
     try {
-      // Le token est créé à la demande côté serveur (GET) si absent.
       let link = it.token ? `${appUrl}/requisitoire/${it.token}` : ''
       if (!link) {
         const r = await fetch(`/api/missions/${it.id}/requisitoire-relance`, { method: 'GET' })
         const j = await r.json()
-        if (!r.ok || !j.link) throw new Error()
+        if (!r.ok || !j.link) throw new Error('link')
         link = j.link
         setItems(prev => prev.map(x => x.id === it.id ? { ...x, token: j.token } : x))
       }
-      await navigator.clipboard.writeText(link)
-      note(it.id, 'Lien copié', true)
-    } catch { note(it.id, 'Copie impossible', false) }
+      const ok = await doCopy(link)
+      if (ok) note(it.id, 'Lien copié', true)
+      else { window.prompt('Copiez le lien de dépôt :', link); note(it.id, 'Lien affiché', true) }
+    } catch { note(it.id, 'Lien indisponible', false) }
   }
 
   return (
