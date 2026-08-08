@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import QRCode from 'qrcode'
 import { createClient } from '@supabase/supabase-js'
+import EcranIdleSlideshow from '@/components/caisse/EcranIdleSlideshow'
 
 interface Payload {
   // Mode facture (par défaut)
@@ -615,21 +616,8 @@ export default function EcranClient({ displayKey }: { displayKey: string }) {
     )
   }
 
-  // ── ÉCRAN AU REPOS (logo + moyens de paiement) ────────────────────────────
-  const METHODS = ['visa', 'mastercard', 'maestro', 'bancontact', 'applepay', 'googlepay']
-  return (
-    <div style={S.wrap}>
-      <div style={S.idleInner}>
-        <img src="/logo.jpg" alt="Verviers Dépannage" style={S.logo} />
-        <div style={S.idleSub}>Moyens de paiement acceptés</div>
-        <div style={S.grid}>
-          {METHODS.map((m) => (
-            <div key={m} style={S.tile}><PayLogo name={m} /></div>
-          ))}
-        </div>
-      </div>
-    </div>
-  )
+  // ── ÉCRAN AU REPOS → diaporama publicitaire (défile ; bascule auto sur push) ─
+  return <EcranIdleSlideshow />
 }
 
 // Logos des moyens de paiement (marques d'acceptation, rendues en SVG).
