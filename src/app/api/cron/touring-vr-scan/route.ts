@@ -32,10 +32,12 @@ export async function GET(req: Request) {
   }
   const sb = createAdminClient()
 
-  // Candidats : Touring, actif, VR pas encore capté.
+  // Candidats : lié COMEX (source_format 'comex' — couvre touring MAIS AUSSI
+  // sia_couvert / police_snc couverts Touring, sinon la fiche du chauffeur en
+  // Siabis couvert est exclue et sa notif VR se perd), actif, VR pas encore capté.
   const { data: missions } = await sb.from('incoming_missions')
     .select('id, mission_number, raw_content, assigned_to, touring_vr, status')
-    .eq('source', 'touring')
+    .eq('source_format', 'comex')
     .in('status', ACTIVE_STATUSES)
     .is('touring_vr_location', null)
 

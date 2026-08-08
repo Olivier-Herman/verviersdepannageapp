@@ -12,7 +12,8 @@
 
 import { createAdminClient } from '@/lib/supabase'
 import { loginComex, listComexMissions, getComexMissionDetail } from './comex'
-import { mapComexToMission, comexVehiculeNonCouvert } from './map-mission'
+import { mapComexToMission, comexVehiculeNonCouvert, comexVrPropose } from './map-mission'
+import { mapComexVr } from './vr'
 
 export type TouringImportMode = 'preview' | 'send'
 
@@ -169,8 +170,18 @@ export async function runTouringImport(opts: { mode: TouringImportMode }): Promi
             results.push({ dossier: m.CID_DOS, plaque: m.NUM_PLAQUE, action: 'would_link', external_id: externalId, reason: `action ${m.CID_SEQ_ACTION} → commande active (fiche #${lin.mission_number})` })
             continue
           }
+          // On rafraîchit AUSSI les drapeaux VR depuis l'action courante : la
+          // demande de VR vit sur l'action REM (pas sur l'action DSP d'origine).
+          // Sans ça, la fiche active garderait touring_vr={vr:0} et ne deviendrait
+          // jamais candidate au scan VR → notif chauffeur perdue (étape 2).
+          const adoptPayload: Record<string, any> = {
+            source_format: 'comex', raw_content: comexRaw,
+            touring_vr: mapComexVr(detail), updated_at: new Date().toISOString(),
+          }
+          const vrProp = comexVrPropose(detail)
+          if (vrProp !== null) adoptPayload.vr_proposed = vrProp
           const { error: adoptErr } = await sb.from('incoming_missions')
-            .update({ source_format: 'comex', raw_content: comexRaw, updated_at: new Date().toISOString() })
+            .update(adoptPayload)
             .eq('id', lin.id)
           if (adoptErr) {
             results.push({ dossier: m.CID_DOS, plaque: m.NUM_PLAQUE, action: 'failed', external_id: externalId, error: adoptErr.message })
