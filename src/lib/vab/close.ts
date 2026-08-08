@@ -98,11 +98,20 @@ export interface VabCloseInput {
   signaturePng?: string      // dataURI PNG (sinon refus/absent requis)
   refusal?: boolean          // client refuse de signer
   notPresent?: boolean       // client absent
-  keysNr?: string            // valeur option (ex __ossli_1)
-  keyLocation?: string       // valeur option (ex 463=Client)
+  keysNr?: string            // valeur option nb clés (ex __ossli_1 = 1 clé)
+  keyLocation?: string       // valeur option emplacement (ex 465=Boîte à clés, 1043=Réception, 463=Client)
+  vehicleLocation?: string   // « Localisation du véhicule » (wt347), ex "Parking"
+  receiverName?: string      // Nom (qui réceptionne)
+  receiverFirstName?: string // Prénom
+  interventionDate?: string  // ⚠️ format À TIRETS « JJ-MM-AAAA » (slashes = « Date attendue ! »). Défaut = aujourd'hui.
+  interventionTime?: string  // « HH:MM:SS ». Défaut = maintenant.
+  present?: boolean          // « Quelqu'un est présent ? » (défaut true)
   extraFields?: Record<string, string>  // breakdown : VIN/codes/km (name->value)
   maxSteps?: number
 }
+
+function nowDateDash(): string { const d = new Date(), p = (n: number) => String(n).padStart(2, '0'); return `${p(d.getDate())}-${p(d.getMonth() + 1)}-${d.getFullYear()}` }
+function nowTime(): string { const d = new Date(), p = (n: number) => String(n).padStart(2, '0'); return `${p(d.getHours())}:${p(d.getMinutes())}:00` }
 
 export interface VabCloseResult { ok: boolean; completed: boolean; steps: string[]; error?: string; lastButtons?: string[] }
 
@@ -134,18 +143,25 @@ export async function closeVabMission(input: VabCloseInput): Promise<VabCloseRes
       continue
     }
 
-    // Étape FINALE : bouton wtLink_End (+ nb clés / emplacement).
+    // Étape FINALE : bouton wtLink_End (+ date/heure intervention, nom, localisation
+    // véhicule, nb clés, emplacement). ⚠️ Date à TIRETS sinon « Date attendue ! ».
     const endBtn = btnByTargetSuffix(p.buttons, 'wtLink_End')
     if (endBtn) {
       const extra: Record<string, string> = { ...(input.extraFields || {}) }
-      const keysNrName = nameEndsWith(p.inputNames, 'wtComboBox_KeysNr')
-      const keyLocName = nameEndsWith(p.inputNames, 'wtComboBoxKeyLocation')
-      if (keysNrName && input.keysNr) extra[keysNrName] = input.keysNr
-      if (keyLocName && input.keyLocation) extra[keyLocName] = input.keyLocation
+      const put = (suffix: string, val?: string) => { const n = nameEndsWith(p.inputNames, suffix); if (n && val != null && val !== '') extra[n] = val }
+      put('wtInterventionDate', input.interventionDate || nowDateDash())
+      put('wtInterventionTime', input.interventionTime || nowTime())
+      put('wtComboBox_KeysNr', input.keysNr)
+      put('wtComboBoxKeyLocation', input.keyLocation)
+      put('wt347', input.vehicleLocation)          // Localisation du véhicule
+      put('wt283', input.receiverName)             // Nom
+      put('wt359', input.receiverFirstName)        // Prénom
+      if (input.present !== false) { const c = nameEndsWith(p.inputNames, 'wt55'); if (c) extra[c] = 'on' }  // Quelqu'un est présent ?
       html = await osPost(sess.cookieHeader, url, html, endBtn.target!, extra)
       steps.push('fin_mission')
       const after = parse(html)
-      return { ok: true, completed: after.completed || !btnByTargetSuffix(after.buttons, 'wtLink_End'), steps, lastButtons: after.buttonTexts }
+      const done = after.completed || !btnByTargetSuffix(after.buttons, 'wtLink_End') || /Mission compl/i.test(html)
+      return { ok: done, completed: done, steps, lastButtons: after.buttonTexts, error: done ? undefined : 'Submit final refusé (validation VAB)' }
     }
 
     // Sinon : action de progression (Accepter / Départ / Arrivé / Fin livraison / Start…).
