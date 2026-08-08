@@ -232,6 +232,11 @@ export default function FourriereClient({ userRole, userName, userEmail, userMod
                 🏛 Domaine
               </Link>
             )}
+            <Link href="/fourriere/relance-requisitoire"
+              className="flex items-center gap-2 px-3 py-2 bg-surface-2 hover:bg-surface-hover border rounded-xl text-ink-secondary hover:text-ink text-sm transition"
+              title="Relancer les policiers pour les réquisitoires manquants (mail + lien de dépôt)">
+              📨 Relance réquisitoires
+            </Link>
             <button onClick={load} disabled={loading}
               className="flex items-center gap-2 px-3 py-2 bg-surface-2 hover:bg-surface-hover border rounded-xl text-ink-secondary hover:text-ink text-sm transition disabled:opacity-50">
               <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
