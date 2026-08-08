@@ -28,7 +28,8 @@ export async function GET() {
   if (!(await superadmin())) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   const sb = createAdminClient()
   const [{ data: rows }, token, email] = await Promise.all([
-    sb.from('touring_check_dossiers').select('*').neq('status', 'dismissed').order('intervention_date', { ascending: false }),
+    // Exclut les 'dismissed' (retirés) ET 'archived' (appliqués + vérifiés/classés).
+    sb.from('touring_check_dossiers').select('*').not('status', 'in', '("dismissed","archived")').order('intervention_date', { ascending: false }),
     getCheckToken(sb),
     getCheckEmail(sb),
   ])
@@ -82,6 +83,25 @@ export async function POST(req: Request) {
     await sb.from('touring_check_dossiers').update({ status: 'dismissed' }).eq('id', id)
     await bumpCheckSignal(sb, 'dismissed')
     return NextResponse.json({ ok: true })
+  }
+
+  // Archiver un dossier APPLIQUÉ (traité + vérifié) → sort de la vue générale.
+  if (action === 'archive') {
+    const id = String(body?.id || '')
+    const { error } = await sb.from('touring_check_dossiers')
+      .update({ status: 'archived' }).eq('id', id).eq('status', 'applied')
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+    await bumpCheckSignal(sb, 'archived')
+    return NextResponse.json({ ok: true })
+  }
+
+  // Archiver EN LOT tous les dossiers appliqués.
+  if (action === 'archive_applied') {
+    const { data: done, error } = await sb.from('touring_check_dossiers')
+      .update({ status: 'archived' }).eq('status', 'applied').select('id')
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+    await bumpCheckSignal(sb, 'archived')
+    return NextResponse.json({ ok: true, archived: (done || []).length })
   }
 
   if (action === 'rotate') {

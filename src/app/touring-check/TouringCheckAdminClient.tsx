@@ -92,6 +92,13 @@ export default function TouringCheckAdminClient(props: {
   }
   async function apply(id: string) { const j = await post({ action: 'apply', id }, id); if (j?.result) setMsg(j.result); load() }
   async function dismiss(id: string) { if (!confirm('Retirer ce dossier de la liste ?')) return; await post({ action: 'dismiss', id }, id); load() }
+  async function archive(id: string) { await post({ action: 'archive', id }, id); load() }
+  async function archiveApplied() {
+    if (!confirm('Archiver tous les dossiers appliqués ? Ils sortiront de la liste générale.')) return
+    const j = await post({ action: 'archive_applied' }, 'archive_applied')
+    if (j?.archived != null) setMsg(`${j.archived} dossier(s) archivé(s)`)
+    load()
+  }
   async function rotate() { if (!confirm('Régénérer le lien invalidera l\'ancien. Continuer ?')) return; await post({ action: 'rotate' }, 'rotate'); load() }
   function copy() { if (data?.link) { navigator.clipboard?.writeText(data.link); setMsg('Lien copié'); } }
 
@@ -126,6 +133,12 @@ export default function TouringCheckAdminClient(props: {
             <button onClick={copy} className="text-xs font-semibold text-brand hover:underline whitespace-nowrap">📋 Copier</button>
           </div>
           <button onClick={rotate} className="text-xs font-medium text-ink-muted hover:text-ink border rounded-lg px-3 py-2">♻︎ Régénérer le lien</button>
+          {(counts.applied || 0) > 0 && (
+            <button onClick={archiveApplied} disabled={busy === 'archive_applied'}
+              className="text-xs font-semibold text-ink-muted hover:text-ink border rounded-lg px-3 py-2 disabled:opacity-50">
+              🗄️ Archiver les appliqués ({counts.applied})
+            </button>
+          )}
         </div>
         {data?.email && <p className="text-xs text-ink-faint -mt-2 mb-3">Rappel mensuel envoyé à <b>{data.email}</b> le 5 à 13h · rapprochement auto le mercredi 8h.</p>}
         {msg && <div className="mb-3 text-sm bg-surface-2 border rounded-lg px-3 py-2 text-ink-secondary">{msg}</div>}
@@ -159,6 +172,10 @@ export default function TouringCheckAdminClient(props: {
                 {it.status === 'applied' ? (
                   <div className="px-4 py-3 text-sm text-ink-muted flex items-center gap-2">
                     <span className="text-emerald-600">✅ Appliqué</span> — {it.applied_result}
+                    <button onClick={() => archive(it.id)} disabled={busy === it.id}
+                      className="ml-auto text-xs font-semibold text-ink-muted hover:text-ink border border rounded-lg px-2.5 py-1 disabled:opacity-50">
+                      🗄️ Archiver
+                    </button>
                   </div>
                 ) : resp ? (
                   <div className="px-4 py-3 flex flex-wrap items-center gap-3">
