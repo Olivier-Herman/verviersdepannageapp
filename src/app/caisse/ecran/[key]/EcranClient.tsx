@@ -543,7 +543,7 @@ export default function EcranClient({ displayKey }: { displayKey: string }) {
             </label>
             <label style={E.field}>
               <span style={E.fieldLbl}>Téléphone</span>
-              <input style={E.input} type="tel" inputMode="tel" autoComplete="tel"
+              <input style={E.input} type="tel" inputMode="numeric" pattern="[0-9 +]*" autoComplete="tel"
                 placeholder="04XX XX XX XX" value={eidPhone} onChange={e => setEidPhone(e.target.value)} />
             </label>
           </div>
