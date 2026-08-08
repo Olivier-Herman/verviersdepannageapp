@@ -1,5 +1,4 @@
 @echo off
-REM Démarre l'agent eID local. À placer sur le PC comptoir et lancer au boot
-REM via le Planificateur de tâches Windows (tâche "EidAgent", au démarrage).
-cd /d "%~dp0"
-node server.js
+REM Lance l'agent eID (serveur PowerShell natif, sans Node) en arriere-plan.
+REM -ExecutionPolicy Bypass : contourne la strategie Restricted sans rien changer au systeme.
+powershell -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "%~dp0server-eid.ps1"
