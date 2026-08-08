@@ -8,7 +8,7 @@ import { NextResponse }      from 'next/server'
 import { getServerSession }  from 'next-auth'
 import { authOptions }       from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase'
-import { sendRequisitoireRelance } from '@/lib/requisitoire/relance'
+import { sendRequisitoireRelance, ensureDepotToken, depotLink } from '@/lib/requisitoire/relance'
 
 export const dynamic     = 'force-dynamic'
 export const maxDuration = 30
@@ -21,6 +21,16 @@ async function guard(sb: any, email?: string | null) {
   const modules = Array.isArray(me.modules) ? me.modules as string[] : []
   const ok = roles.some(r => ['admin', 'superadmin'].includes(r)) || modules.includes('fourriere')
   return ok ? me : null
+}
+
+// GET → garantit un token de dépôt et renvoie le lien public (copie du lien).
+export async function GET(_req: Request, { params }: { params: { id: string } }) {
+  const sb = createAdminClient()
+  const session = await getServerSession(authOptions)
+  if (!(await guard(sb, session?.user?.email))) return NextResponse.json({ error: 'Accès refusé' }, { status: 403 })
+  const token = await ensureDepotToken(params.id)
+  if (!token) return NextResponse.json({ error: 'Token indisponible' }, { status: 500 })
+  return NextResponse.json({ ok: true, token, link: depotLink(token) })
 }
 
 export async function POST(_req: Request, { params }: { params: { id: string } }) {

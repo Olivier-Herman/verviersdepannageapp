@@ -61,9 +61,19 @@ export default function RelanceRequisitoireClient({ initialItems, appUrl }: { in
   }
 
   const copyLink = async (it: Item) => {
-    if (!it.token) return
-    try { await navigator.clipboard.writeText(`${appUrl}/requisitoire/${it.token}`); note(it.id, 'Lien copié', true) }
-    catch { note(it.id, 'Copie impossible', false) }
+    try {
+      // Le token est créé à la demande côté serveur (GET) si absent.
+      let link = it.token ? `${appUrl}/requisitoire/${it.token}` : ''
+      if (!link) {
+        const r = await fetch(`/api/missions/${it.id}/requisitoire-relance`, { method: 'GET' })
+        const j = await r.json()
+        if (!r.ok || !j.link) throw new Error()
+        link = j.link
+        setItems(prev => prev.map(x => x.id === it.id ? { ...x, token: j.token } : x))
+      }
+      await navigator.clipboard.writeText(link)
+      note(it.id, 'Lien copié', true)
+    } catch { note(it.id, 'Copie impossible', false) }
   }
 
   return (

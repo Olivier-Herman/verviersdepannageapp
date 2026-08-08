@@ -21,6 +21,17 @@ export function depotLink(token: string): string {
   return `${APP_URL}/requisitoire/${token}`
 }
 
+// Garantit un token de dépôt pour une fiche (le crée s'il manque). À la demande.
+export async function ensureDepotToken(missionId: string): Promise<string | null> {
+  const sb = createAdminClient()
+  const { data } = await sb.from('incoming_missions').select('requisitoire_token').eq('id', missionId).maybeSingle()
+  if (data?.requisitoire_token) return data.requisitoire_token
+  const token = randomUUID().replace(/-/g, '')
+  const { error } = await sb.from('incoming_missions').update({ requisitoire_token: token }).eq('id', missionId)
+  if (error) return null
+  return token
+}
+
 // Email du policier via son contact Odoo (res.partner). null si pas de partner
 // lié ou pas d'email → le process n'est pas opérationnel (à compléter dans Odoo).
 export async function getOfficerEmail(partnerId?: number | null): Promise<{ email: string; name: string } | null> {

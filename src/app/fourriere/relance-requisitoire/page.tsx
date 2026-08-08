@@ -5,7 +5,6 @@
 import { getServerSession }  from 'next-auth'
 import { authOptions }       from '@/lib/auth'
 import { redirect }          from 'next/navigation'
-import { randomUUID }        from 'crypto'
 import { createAdminClient } from '@/lib/supabase'
 import { odooRpc }           from '@/lib/odoo'
 import { RELANCE_SOURCES }   from '@/lib/requisitoire/relance'
@@ -32,14 +31,8 @@ export default async function RelanceRequisitoirePage() {
     .limit(500)
 
   const missions = rows || []
-
-  // Génère un token de dépôt pour celles qui n'en ont pas (lien copiable direct).
-  const missing = missions.filter(m => !m.requisitoire_token)
-  for (const m of missing) {
-    const token = randomUUID().replace(/-/g, '')
-    m.requisitoire_token = token
-    await sb.from('incoming_missions').update({ requisitoire_token: token }).eq('id', m.id)
-  }
+  // Le token de dépôt est généré À LA DEMANDE (copie du lien / envoi relance),
+  // PAS ici — sinon 200+ UPDATE séquentiels feraient timeouter le rendu.
 
   // Résout en un appel l'email des policiers (contacts Odoo).
   const partnerIds = [...new Set(missions.map(m => m.officer_partner_id).filter(Boolean))] as number[]
