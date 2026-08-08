@@ -367,9 +367,32 @@ function MissionBlock({
         // Avances ajoutees a la fin
         setCustomLines([...initialLines, ...advanceLines])
       }
-      // 3) Mode forfait ou autre : si avances presentes, on init quand meme
+      // 3) Mode forfait / brackets / spécial / forced : si des avances sont
+      //    présentes, on DOIT reconstruire les lignes du DÉPANNAGE (sinon elles
+      //    n'apparaissent pas et le devis ne contient que l'avance). Miroir de
+      //    build-quote-lines (SERV-PEC/KM/PARC/MAJ, ou SERV-DIV si tarif forcé).
+      //    Olivier 2026-08-08 : bug « le devis ne propose que l'avance de fonds ».
       else if (advanceLines.length > 0) {
-        setCustomLines(advanceLines)
+        const ref  = (m as any).external_id || (m as any).dossier_number || m.id.slice(0, 8)
+        const mode = (d as any)?.pricing_mode
+        const src  = (m as any).source
+        const dep: CustomLine[] = []
+        if (d?.ok) {
+          if (mode === 'special' || mode === 'forced_amounts') {
+            if (d.forfait && d.forfait > 0)
+              dep.push({ kind: 'SERV-DIV' as ProductKind, name: `Intervention — ${ref}`, qty: 1, price_unit: Number(d.forfait) })
+          } else {
+            if (d.forfait && d.forfait > 0)
+              dep.push({ kind: 'SERV-PEC' as ProductKind, name: `Prise en charge ${src ? `(${String(src).toUpperCase()}) ` : ''}— ${ref}`, qty: 1, price_unit: Number(d.forfait) })
+            if (d.km_extra > 0 && d.km_extra_eur > 0)
+              dep.push({ kind: 'SERV-KM' as ProductKind, name: `Km supplémentaires (${d.km_extra} km)`, qty: d.km_extra, price_unit: Math.round((d.km_extra_eur / d.km_extra) * 10000) / 10000 })
+            if (d.parc_jours > 0 && d.parc_eur > 0)
+              dep.push({ kind: 'SERV-PARC' as ProductKind, name: `Frais de parc (${d.parc_jours} jour${d.parc_jours > 1 ? 's' : ''})`, qty: d.parc_jours, price_unit: Math.round((d.parc_eur / d.parc_jours) * 10000) / 10000 })
+            if (d.surcharge_pct > 0 && d.surcharge_eur > 0)
+              dep.push({ kind: 'SERV-MAJ' as ProductKind, name: `Majoration ${d.surcharge_pct}%`, qty: 1, price_unit: Math.round(d.surcharge_eur * 100) / 100 })
+          }
+        }
+        setCustomLines([...dep, ...advanceLines])
       }
     }).catch(() => {}).finally(() => { if (!cancelled) setEstimateLoading(false) })
     fetch(`/api/missions/${m.id}/quote-status`)
