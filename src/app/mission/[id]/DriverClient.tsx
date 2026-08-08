@@ -21,6 +21,7 @@ import AddressField from '@/components/AddressField'
 import { T }    from '@/lib/i18n/T'
 import { useT } from '@/lib/i18n/I18nProvider'
 import TouringCloseModal from '@/components/touring/TouringCloseModal'
+import VabCloseModal from '@/components/vab/VabCloseModal'
 import {
   startForMission, updateForMission, endForMission,
   missionToLAState, isActiveMissionStatus,
@@ -1225,6 +1226,7 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
   //                on clôture le seq actif chez Touring (écran pré-rempli) avant la
   //                clôture VD Soft.
   const [touringAction, setTouringAction] = useState<'dsp' | 'dsp2rem' | 'vr' | 'park' | 'remclose' | null>(null)
+  const [showVabClose, setShowVabClose] = useState(false)   // clôture VAB (remorquage)
   const loaded   = !!M.loaded_at || M.status === 'delivering' || M.status === 'parked'
 
   // ── Geofence « Sur place ? » (suggestion) ──────────────────────────────────
@@ -4655,6 +4657,20 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
           setErr(e.message || 'Échec de la mise à jour du véhicule')
         }
       }} />}
+      {/* Clôture VAB (remorquage) — bouton flottant + modale. Additif, gaté sur la source. */}
+      {String((M as any).source).toLowerCase() === 'vab' && !(M as any).vab_closed_at && (
+        <button onClick={() => setShowVabClose(true)}
+          className="fixed bottom-4 right-4 z-40 px-4 py-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-2xl shadow-lg font-semibold text-sm">
+          🅅 Clôturer VAB
+        </button>
+      )}
+      {showVabClose && (
+        <VabCloseModal
+          missionId={M.id}
+          onClose={() => setShowVabClose(false)}
+          onDone={() => { setShowVabClose(false); setM(m => ({ ...m, vab_closed_at: new Date().toISOString() } as any)) }}
+        />
+      )}
       </AmbientBackground>
     </div>
   )
