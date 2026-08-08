@@ -12,6 +12,11 @@ import RelanceRequisitoireClient from './RelanceRequisitoireClient'
 
 export const dynamic = 'force-dynamic'
 
+// « EN PARC » = mêmes statuts que la recherche fourrière (ACTIVE_PARC_STATUSES).
+// On ne relance PAS un réquisitoire pour un véhicule déjà sorti / restitué /
+// facturé. Olivier 2026-08-08.
+const PARC_STATUSES = ['parked', 'delivering', 'unlocated', 'awaiting_payment']
+
 export default async function RelanceRequisitoirePage() {
   const session = await getServerSession(authOptions)
   if (!session) redirect('/login')
@@ -26,7 +31,7 @@ export default async function RelanceRequisitoirePage() {
     .select('id, mission_number, vehicle_plate, vehicle_brand, vehicle_model, incident_address, created_at, saisie_motif_label, police_pv_number, police_zone, officer_name, officer_partner_id, requisitoire_token, requisitoire_stop, requisitoire_last_reminder_at, requisitoire_reminder_count')
     .in('source', RELANCE_SOURCES)
     .is('requisitoire_at', null)
-    .not('status', 'in', '(cancelled,ignored,deleted)')
+    .in('status', PARC_STATUSES)
     .order('created_at', { ascending: true })
     .limit(500)
 
