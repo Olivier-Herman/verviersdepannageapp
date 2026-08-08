@@ -22,12 +22,20 @@ export async function GET(_req: Request, { params }: { params: { token: string }
   const sb = createAdminClient()
   if (!(await checkToken(sb, params.token))) return NextResponse.json({ error: 'Lien invalide' }, { status: 404 })
 
-  // Touring ne voit QUE les dossiers SANS réponse (pending). Dès qu'ils répondent
-  // (answered) ou qu'on traite/archive/retire, le dossier disparaît de leur vue —
-  // ils n'ont pas besoin de revoir un dossier déjà répondu. Olivier 2026-08-08.
+  // Touring voit les dossiers SANS réponse (pending) + ceux répondus AUJOURD'HUI
+  // (visibles le jour de la réponse, disparaissent le lendemain = J+1). Les
+  // archivés/traités/retirés n'apparaissent plus. Olivier 2026-08-08.
+  const now = new Date()
+  const p = new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Europe/Brussels', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false,
+  }).formatToParts(now)
+  const nn = (t: string) => Number(p.find(x => x.type === t)?.value || '0')
+  const elapsedMs = ((nn('hour') * 60 + nn('minute')) * 60 + nn('second')) * 1000
+  const startOfTodayBrussels = new Date(now.getTime() - elapsedMs).toISOString()  // minuit Bruxelles en UTC
+
   const { data: rows } = await sb.from('touring_check_dossiers')
     .select('id, dossier_number, intervention_date, fiches, is_combined, status, response_code, response_note')
-    .eq('status', 'pending')
+    .or(`status.eq.pending,and(status.eq.answered,answered_at.gte.${startOfTodayBrussels})`)
     .order('intervention_date', { ascending: false })
   return NextResponse.json({ items: rows || [] })
 }
