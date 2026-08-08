@@ -246,6 +246,22 @@ export default function FacturationClient({
   const [batchBusy, setBatchBusy]     = useState<null | 'facturer' | 'verify'>(null)
   const [batchReport, setBatchReport] = useState<string | null>(null)
   const [batchLinks, setBatchLinks]   = useState<{ label: string; url: string }[]>([])
+  const [siabisBusy, setSiabisBusy]   = useState(false)
+
+  // Check Siabis non couvert / ANWB : pour chaque fiche police_snc à facturer →
+  // facture Siabis dans Odoo (→ Facturation OK), sinon prise en charge ANWB par
+  // mail (→ tampon + client ANWB). Olivier 2026-08-08.
+  async function runSiabisAnwb() {
+    if (siabisBusy) return
+    setSiabisBusy(true); setBatchReport('🔎 Analyse Siabis non couvert (factures Odoo + prises en charge ANWB par mail)…'); setBatchLinks([])
+    try {
+      const r = await fetch('/api/facturation/check-siabis-anwb', { method: 'POST' })
+      const j = await r.json()
+      if (!r.ok) { setBatchReport(`⚠ ${j.error || 'Erreur'}`); return }
+      setBatchReport(`✅ ${j.scanned} analysée(s) · ${j.facturees} facturée(s) Siabis · ${j.anwb} taguée(s) ANWB · ${j.rien} sans résultat`)
+      setTimeout(() => window.location.reload(), 2000)
+    } catch { setBatchReport('⚠ Erreur réseau') } finally { setSiabisBusy(false) }
+  }
   const toggleSel = (id: string) => setSelectedIds(prev => {
     const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n
   })
@@ -642,6 +658,11 @@ export default function FacturationClient({
                   🅣 Check Touring
                 </Link>
               )}
+              <button onClick={runSiabisAnwb} disabled={siabisBusy}
+                className="flex items-center gap-2 px-4 py-2 bg-surface-2 hover:bg-surface-hover border rounded-xl text-ink-secondary hover:text-ink text-sm font-semibold transition disabled:opacity-50"
+                title="Siabis non couvert : facture Siabis (Odoo) ou prise en charge ANWB (mail info/administration)">
+                {siabisBusy ? '⏳ Check…' : '🔎 Check Siabis / ANWB'}
+              </button>
             </div>
           )}
         </div>
@@ -957,10 +978,18 @@ export default function FacturationClient({
                           </span>
                         )}
                         {m.touring_check_stamp && (
-                          <span className="px-2.5 py-1 bg-amber-500/15 text-amber-800 dark:text-amber-300 text-xs rounded-lg font-bold border border-amber-500/40"
-                            title="Décision Touring (Check Touring)">
-                            🅣 {m.touring_check_stamp}
-                          </span>
+                          m.touring_check_stamp.toUpperCase().startsWith('ANWB') ? (
+                            // Gros tampon ANWB (même style que le tampon Domaine).
+                            <span className="px-3 py-1 bg-blue-600 text-white text-sm rounded-lg font-black uppercase tracking-widest border border-blue-300 shadow-lg shadow-blue-600/30 -rotate-2"
+                              title="Prise en charge ANWB (facturer à ANWB)">
+                              🇳🇱 {m.touring_check_stamp}
+                            </span>
+                          ) : (
+                            <span className="px-2.5 py-1 bg-amber-500/15 text-amber-800 dark:text-amber-300 text-xs rounded-lg font-bold border border-amber-500/40"
+                              title="Décision Touring (Check Touring)">
+                              🅣 {m.touring_check_stamp}
+                            </span>
+                          )
                         )}
                       </div>
                       <p className="text-ink-secondary text-sm mt-0.5 truncate">
