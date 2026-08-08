@@ -155,7 +155,7 @@ export async function POST(req: Request) {
 
   const { data: mission, error: fetchError } = await supabase
     .from('incoming_missions')
-    .select('id, status, assigned_to, external_id, vehicle_plate, vehicle_vin, vehicle_brand, vehicle_model, amount_to_collect, source, extra_addresses, driver_photos, odoo_task_id, odoo_vehicle_id, mission_type, photo_categories_covered, kaze_job_id, dossier_number, client_signature, snc_scenario, snc_requires_balisage, incident_lat, incident_lng, destination_address, destination_lat, destination_lng, billed_to_id, billed_to_name, redelivery_address, truck_id, intervention_date, received_at, completed_at, invoice_number, invoice_odoo_id, odoo_quote_id')
+    .select('id, status, assigned_to, external_id, vehicle_plate, vehicle_vin, vehicle_brand, vehicle_model, amount_to_collect, source, source_format, extra_addresses, driver_photos, odoo_task_id, odoo_vehicle_id, mission_type, photo_categories_covered, kaze_job_id, dossier_number, client_signature, snc_scenario, snc_requires_balisage, incident_lat, incident_lng, destination_address, destination_lat, destination_lng, billed_to_id, billed_to_name, redelivery_address, truck_id, intervention_date, received_at, completed_at, invoice_number, invoice_odoo_id, odoo_quote_id')
     .eq('id', mission_id).single()
 
   if (fetchError || !mission) return NextResponse.json({ error: 'Mission introuvable' }, { status: 404 })
@@ -713,7 +713,11 @@ export async function POST(req: Request) {
   // on_way  → onRoad (05) · on_site → onSpot (06), avec l'HEURE RÉELLE du pointage.
   // Idempotent + SLA gérés dans lib/touring/sync. Gaté par TOURING_COMEX_MODE=import
   // (sinon no-op → on reste sur le mail/parse actuel). Olivier 2026-07-06.
-  if (mission.source === 'touring' && (action === 'on_way' || action === 'on_site')) {
+  // Gate = source_format 'comex', PAS source='touring' : une mission COMEX
+  // couverte Siabis est auto-reclassée sia_couvert / police_snc (client = Touring)
+  // mais son pointage en route / sur place doit continuer à partir dans COMEX.
+  // Aligne le call-site sur lib/touring/sync (comexKeys). Olivier 2026-08-09.
+  if (mission.source_format === 'comex' && (action === 'on_way' || action === 'on_site')) {
     const touringBackground = (async () => {
       try {
         const { syncTouringOnRoad, syncTouringOnSpot } = await import('@/lib/touring/sync')
