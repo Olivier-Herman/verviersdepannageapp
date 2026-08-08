@@ -4657,8 +4657,10 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
           setErr(e.message || 'Échec de la mise à jour du véhicule')
         }
       }} />}
-      {/* Clôture VAB (remorquage) — bouton flottant + modale. Additif, gaté sur la source. */}
-      {String((M as any).source).toLowerCase() === 'vab' && !(M as any).vab_closed_at && (
+      {/* Clôture VAB (remorquage) — bouton flottant + modale. Additif, gaté sur la source.
+          ⚠️ TEST : visible UNIQUEMENT pour Franck (chauffeur testeur) + superadmin. */}
+      {String((M as any).source).toLowerCase() === 'vab' && !(M as any).vab_closed_at
+        && (userRole === 'superadmin' || currentUserId === 'de9a37aa-41b5-4a56-894b-cc304f601d1a') && (
         <button onClick={() => setShowVabClose(true)}
           className="fixed bottom-4 right-4 z-40 px-4 py-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-2xl shadow-lg font-semibold text-sm">
           🅅 Clôturer VAB
