@@ -1,0 +1,20 @@
+{
+  "name": "VD Soft — Comptoir",
+  "short_name": "Comptoir",
+  "description": "Écran client face-comptoir (paiement, lecture eID, registre de visite)",
+  "start_url": "/caisse/ecran/facturation?eid=http%3A%2F%2Flocalhost%3A7181%2Fread",
+  "id": "/caisse/ecran/facturation",
+  "display": "standalone",
+  "orientation": "landscape",
+  "background_color": "#ffffff",
+  "theme_color": "#0b1120",
+  "scope": "/caisse/ecran/",
+  "lang": "fr-BE",
+  "icons": [
+    { "src": "/icons/icon-128x128.png", "sizes": "128x128", "type": "image/png", "purpose": "maskable any" },
+    { "src": "/icons/icon-192x192.png", "sizes": "192x192", "type": "image/png", "purpose": "maskable any" },
+    { "src": "/icons/icon-384x384.png", "sizes": "384x384", "type": "image/png", "purpose": "maskable any" },
+    { "src": "/icons/icon-512x512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable any" }
+  ],
+  "categories": ["business", "utilities"]
+}

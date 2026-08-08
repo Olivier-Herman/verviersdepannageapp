@@ -61,6 +61,38 @@ export default function EcranClient({ displayKey }: { displayKey: string }) {
   const [now, setNow]           = useState(() => Date.now())
   const sb = useMemo(() => createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!), [])
 
+  // ── Verrou par PIN (par poste) : le personnel déverrouille l'écran UNE fois
+  //    au démarrage → mémorisé localement. Le client au comptoir ne le voit pas. ─
+  const LOCK_KEY = `ecran_unlocked_${displayKey}`
+  const [unlocked, setUnlocked] = useState(false)
+  const [pin, setPin]           = useState('')
+  const [pinErr, setPinErr]     = useState<string | null>(null)
+  const [pinBusy, setPinBusy]   = useState(false)
+  useEffect(() => {
+    try { if (localStorage.getItem(LOCK_KEY) === '1') setUnlocked(true) } catch { /* noop */ }
+  }, [LOCK_KEY])
+
+  const submitPin = async (code: string) => {
+    setPinBusy(true); setPinErr(null)
+    try {
+      const r = await fetch('/api/caisse/ecran/unlock', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pin: code }),
+      })
+      if (!r.ok) { setPin(''); setPinErr('Code incorrect'); setPinBusy(false); return }
+      try { localStorage.setItem(LOCK_KEY, '1') } catch { /* noop */ }
+      setUnlocked(true); setPin(''); setPinBusy(false)
+    } catch { setPinErr('Réseau indisponible'); setPinBusy(false) }
+  }
+  const pushPin = (d: string) => {
+    setPinErr(null)
+    setPin(prev => {
+      const next = (prev + d).slice(0, 6)
+      if (next.length === 6) submitPin(next)
+      return next
+    })
+  }
+
   // ── État local du mode eID (les transitions consentement→lecture→formulaire
   //    sont pilotées côté client ; le serveur ne fait qu'ouvrir/clore le mode). ──
   const [eidStep, setEidStep]       = useState<'consent' | 'reading' | 'form' | 'sending' | 'done' | 'error'>('consent')
@@ -96,6 +128,7 @@ export default function EcranClient({ displayKey }: { displayKey: string }) {
       apply({ mode: 'eid', request_id: 'demo', step: 'consent' } as Payload, new Date(Date.now() + 3600_000).toISOString())
       return
     }
+    if (!unlocked) return   // écran verrouillé : pas d'abonnement tant que le PIN n'est pas saisi
     let alive = true
     fetch(`/api/caisse/ecran?key=${encodeURIComponent(displayKey)}`)
       .then(r => r.json()).then(j => { if (alive && !j.error) apply(j.payload || null, j.expires_at || null) })
@@ -109,13 +142,25 @@ export default function EcranClient({ displayKey }: { displayKey: string }) {
         })
       .subscribe()
     return () => { alive = false; sb.removeChannel(ch) }
-  }, [displayKey, sb])
+  }, [displayKey, sb, unlocked])
 
   // Horloge (pour le timeout d'expiration)
   useEffect(() => {
     const iv = setInterval(() => setNow(Date.now()), 1000)
     return () => clearInterval(iv)
   }, [])
+
+  // Clavier physique pour la saisie du PIN (écran verrouillé)
+  useEffect(() => {
+    if (unlocked || isDemo) return
+    const onKey = (e: KeyboardEvent) => {
+      if (/^[0-9]$/.test(e.key)) pushPin(e.key)
+      else if (e.key === 'Backspace') setPin(p => p.slice(0, -1))
+      else if (e.key === 'Enter' && pin.length) submitPin(pin)
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [unlocked, isDemo, pin]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Génère le QR virement (SEPA) à partir du payload
   useEffect(() => {
@@ -243,6 +288,36 @@ export default function EcranClient({ displayKey }: { displayKey: string }) {
 
   const active = !!payload && !!expiresAt && expiresAt > now
   const vehicle = payload ? [payload.brand, payload.model].filter(Boolean).join(' ') : ''
+
+  // ── ÉCRAN VERROUILLÉ (PIN au 1er démarrage du poste, mémorisé ensuite) ─────
+  if (!unlocked && !isDemo) {
+    return (
+      <div style={S.wrap}>
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 'min(2.4vh,2vw)' }}>
+          <img src="/logo.jpg" alt="Verviers Dépannage" style={{ height: '12vh', width: 'auto', objectFit: 'contain' }} />
+          <div style={{ fontSize: 'min(2.4vw,3.4vh)', fontWeight: 800, color: '#0b1120' }}>Écran comptoir verrouillé</div>
+          <div style={{ fontSize: 'min(1.4vw,2vh)', color: '#64748b' }}>Entrez le code du poste</div>
+          <div style={{ display: 'flex', gap: 'min(1.4vw,2vh)', margin: 'min(1vh,.8vw) 0' }}>
+            {[0, 1, 2, 3, 4, 5].map(i => (
+              <span key={i} style={{
+                width: 'min(2vw,3vh)', height: 'min(2vw,3vh)', borderRadius: '50%',
+                background: i < pin.length ? '#0b1120' : '#e2e8f0',
+              }} />
+            ))}
+          </div>
+          {pinErr && <div style={{ color: '#b91c1c', fontWeight: 700, fontSize: 'min(1.4vw,2vh)' }}>{pinErr}</div>}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 'min(1.4vw,2vh)' }}>
+            {['1', '2', '3', '4', '5', '6', '7', '8', '9'].map(d => (
+              <button key={d} onClick={() => pushPin(d)} disabled={pinBusy} style={KP.key}>{d}</button>
+            ))}
+            <button onClick={() => setPin(p => p.slice(0, -1))} disabled={pinBusy} style={{ ...KP.key, fontSize: 'min(2.4vw,3.4vh)' }}>⌫</button>
+            <button onClick={() => pushPin('0')} disabled={pinBusy} style={KP.key}>0</button>
+            <button onClick={() => pin.length && submitPin(pin)} disabled={pinBusy || !pin.length} style={{ ...KP.key, background: '#16a34a', color: '#fff', fontSize: 'min(2vw,2.8vh)' }}>OK</button>
+          </div>
+        </div>
+      </div>
+    )
+  }
 
   // ── ÉCRAN PAYÉ ────────────────────────────────────────────────────────────
   if (active && paid) {
@@ -685,4 +760,15 @@ const E: Record<string, React.CSSProperties> = {
   chip: { fontSize: 'min(1.7vw,2.5vh)', fontWeight: 700, color: '#334155', background: '#f1f5f9',
     border: '2px solid #e2e8f0', borderRadius: '999px', padding: 'min(1.1vh,.9vw) min(2.4vw,2vh)', cursor: 'pointer' },
   chipOn: { color: '#fff', background: '#16a34a', border: '2px solid #16a34a' },
+}
+
+// Pavé numérique du verrou PIN (écran comptoir).
+const KP: Record<string, React.CSSProperties> = {
+  key: {
+    width: 'min(9vw, 13vh)', height: 'min(9vw, 13vh)', borderRadius: '18px',
+    border: '1px solid #e5e7eb', background: '#f8fafc', color: '#0b1120',
+    fontSize: 'min(3vw, 4.2vh)', fontWeight: 700, cursor: 'pointer',
+    display: 'flex', alignItems: 'center', justifyContent: 'center',
+    boxShadow: '0 6px 18px rgba(15,23,42,.06)',
+  },
 }
