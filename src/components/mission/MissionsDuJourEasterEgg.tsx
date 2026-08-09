@@ -89,23 +89,27 @@ export default function MissionsDuJourEasterEgg({
     taps.current = [...taps.current.filter(t => now - t < 1400), now]
     if (taps.current.length >= 3) {
       taps.current = []
-      const c = punch(count, record, newRecord, firstName)   // vanne statique : instantané
-      setCard(c); setLine(c.line); setOpen(true)
+      setCard(punch(count, record, newRecord, firstName))   // secours si Claude échoue
+      setLine('')                                            // '' = petit chargement
+      setOpen(true)
     }
   }
 
-  // Auto-fermeture + génération d'une vanne FRAÎCHE via Claude (remplace la statique
-  // dès qu'elle arrive ; si pas de clé / lent / erreur → on garde la statique).
+  // Génère UNIQUEMENT la vanne de Claude (chargement le temps qu'elle arrive ; si
+  // pas de clé / lent / erreur → on retombe sur la statique de secours). Fermeture
+  // au tap uniquement + garde-fou long (30 s). Olivier 2026-08-09.
   useEffect(() => {
     if (!open) return
-    const closeT = setTimeout(() => setOpen(false), 7000)
+    const closeT = setTimeout(() => setOpen(false), 30000)
     const ctrl = new AbortController()
     fetch('/api/mission/punchline', {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, signal: ctrl.signal,
       body: JSON.stringify({ count, record, newRecord, firstName }),
-    }).then(r => r.json()).then(d => { if (d?.line) setLine(d.line) }).catch(() => {})
+    }).then(r => r.json())
+      .then(d => setLine(d?.line || card.line))
+      .catch(() => setLine(card.line))
     return () => { clearTimeout(closeT); ctrl.abort() }
-  }, [open, count, record, newRecord, firstName])
+  }, [open, count, record, newRecord, firstName, card.line])
 
   const p = card
   const confettiN = newRecord ? 44 : 26
@@ -157,7 +161,9 @@ export default function MissionsDuJourEasterEgg({
               <span className="tabular-nums font-black text-amber-300">{Math.max(record, count)}</span>
             </div>
 
-            <div className="text-white/85 text-[15px] mt-4 font-medium leading-snug min-h-[2.5em] flex items-center justify-center">{line}</div>
+            <div className="text-white/85 text-[15px] mt-4 font-medium leading-snug min-h-[2.5em] flex items-center justify-center px-2">
+              {line ? line : <span className="egg-dots text-white/60">•••</span>}
+            </div>
             <div className="text-white/40 text-[11px] mt-6 uppercase tracking-widest">Touche pour fermer</div>
           </div>
         </div>,
@@ -168,6 +174,8 @@ export default function MissionsDuJourEasterEgg({
         .egg-fade { animation: eggFade .2s ease-out; }
         @keyframes eggFade { from { opacity: 0 } to { opacity: 1 } }
         .egg-bg-normal { background: rgba(14,16,21,.97); }
+        .egg-dots { animation: eggDots 1s ease-in-out infinite; letter-spacing: .15em; }
+        @keyframes eggDots { 0%,100% { opacity: .3 } 50% { opacity: .9 } }
         .egg-bg-record { background: radial-gradient(120% 120% at 50% 0%, rgba(180,83,9,.97), rgba(12,14,18,.98)); }
         .egg-pop { animation: eggPop .5s cubic-bezier(.2,1.4,.4,1); }
         @keyframes eggPop { 0% { transform: scale(.5); opacity: 0 } 60% { transform: scale(1.06) } 100% { transform: scale(1); opacity: 1 } }
