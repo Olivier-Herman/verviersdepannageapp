@@ -54,3 +54,14 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   return NextResponse.json({ ok: true, dossier: data })
 }
+
+// Retire le dossier de l'intégration (la mission reste intacte → revient dans les
+// « à intégrer »). Cascade supprime les états de frais liés. Olivier 2026-08-09.
+export async function DELETE(_req: Request, { params }: { params: { id: string } }) {
+  const session = await getServerSession(authOptions)
+  if (!canAccess(session)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  const sb = createAdminClient()
+  const { error } = await sb.from('saisie_dossiers').delete().eq('id', params.id)
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  return NextResponse.json({ ok: true })
+}

@@ -19,6 +19,7 @@ interface Dossier {
   motif_code: string | null; motif_label: string | null; sent_to: string | null
   sent_at: string | null; validation_at: string | null
   pending_action: string | null; pending_action_at: string | null; domaine_remise_date: string | null
+  requisitoire_ok: boolean
 }
 
 const PENDING: Record<string, { label: string; cls: string }> = {
@@ -109,6 +110,17 @@ export default function SaisiesClient({ userRole, userName, userEmail, userModul
     } finally { setBusy(null) }
   }
 
+  async function remove(id: string, plate: string) {
+    if (!confirm(`Retirer ${plate} de l'intégration ?\n\nLa fiche reste intacte (elle reviendra dans « à intégrer »). Les états de frais liés à ce dossier seront supprimés.`)) return
+    setBusy(id); setMsg(null)
+    try {
+      const r = await fetch(`/api/fourriere/saisies/${id}`, { method: 'DELETE' })
+      const j = await r.json().catch(() => ({}))
+      if (!r.ok) { setMsg(`⚠ ${j.error || 'Erreur'}`); return }
+      setMsg('✓ Dossier retiré'); await load()
+    } finally { setBusy(null) }
+  }
+
   async function patch(id: string, body: any, okMsg = '✓ Mis à jour') {
     setBusy(id); setMsg(null)
     try {
@@ -195,7 +207,8 @@ export default function SaisiesClient({ userRole, userName, userEmail, userModul
               <DossierCard key={d.id} d={d} busy={busy === d.id}
                 onGenerate={() => setGen(d)}
                 onRecipient={(r) => patch(d.id, { recipient: r }, '✓ Destinataire mis à jour')}
-                onState={(s, m) => patch(d.id, { state: s }, m)} />
+                onState={(s, m) => patch(d.id, { state: s }, m)}
+                onRemove={() => remove(d.id, d.vehicle_plate || '—')} />
             ))}
           </div>
         )}
@@ -207,11 +220,12 @@ export default function SaisiesClient({ userRole, userName, userEmail, userModul
 }
 
 // ── Carte dossier ────────────────────────────────────────────────────────────
-function DossierCard({ d, busy, onGenerate, onRecipient, onState }: {
+function DossierCard({ d, busy, onGenerate, onRecipient, onState, onRemove }: {
   d: Dossier; busy: boolean
   onGenerate: () => void
   onRecipient: (r: Recipient) => void
   onState: (s: string, msg: string) => void
+  onRemove: () => void
 }) {
   const st = STATE[d.state] || { label: d.state, cls: 'bg-slate-100 text-slate-700 border-slate-300', rank: 8 }
   const days = daysSince(d.parked_at)
@@ -251,8 +265,16 @@ function DossierCard({ d, busy, onGenerate, onRecipient, onState }: {
         </div>
       </div>
 
+      {/* Réquisitoire manquant → on ne peut pas établir d'état de frais */}
+      {!d.requisitoire_ok && (
+        <div className="mt-3 flex items-center justify-between gap-3 rounded-xl border border-red-300 bg-red-50 px-3 py-2">
+          <span className="text-sm font-semibold text-red-800">⚠ Réquisitoire manquant — état de frais impossible</span>
+          <Link href="/fourriere/relance-requisitoire" className="text-xs font-bold text-red-700 underline shrink-0">Relancer</Link>
+        </div>
+      )}
+
       {/* Action détectée par le cron (mode Prépare + Alerte) */}
-      {d.pending_action && PENDING[d.pending_action] && (
+      {d.requisitoire_ok && d.pending_action && PENDING[d.pending_action] && (
         <div className={`mt-3 flex items-center justify-between gap-3 rounded-xl border px-3 py-2 ${PENDING[d.pending_action].cls}`}>
           <span className="text-sm font-semibold">
             🔔 {PENDING[d.pending_action].label}
@@ -267,8 +289,9 @@ function DossierCard({ d, busy, onGenerate, onRecipient, onState }: {
 
       {/* Actions */}
       <div className="flex items-center gap-2 flex-wrap mt-3 pt-3 border-t">
-        <button disabled={busy} onClick={onGenerate}
-          className="px-3 py-1.5 bg-brand hover:bg-brand-hover disabled:opacity-50 text-white rounded-lg text-sm font-semibold">
+        <button disabled={busy || !d.requisitoire_ok} onClick={onGenerate}
+          title={!d.requisitoire_ok ? 'Réquisitoire manquant' : undefined}
+          className="px-3 py-1.5 bg-brand hover:bg-brand-hover disabled:opacity-40 disabled:cursor-not-allowed text-white rounded-lg text-sm font-semibold">
           📄 {d.ef_number ? 'Nouvel état de frais' : 'Établir l\'état de frais'}
         </button>
 
@@ -293,6 +316,11 @@ function DossierCard({ d, busy, onGenerate, onRecipient, onState }: {
         {d.mission_id && (
           <Link href={`/dispatch/${d.mission_id}`} className="px-3 py-1.5 bg-surface-2 hover:bg-surface-hover border text-ink-secondary rounded-lg text-sm font-medium ml-auto">Voir la fiche</Link>
         )}
+        <button disabled={busy} onClick={onRemove}
+          title="Retirer de l'intégration"
+          className={`px-3 py-1.5 bg-surface-2 hover:bg-red-50 hover:text-red-700 border rounded-lg text-sm font-medium text-ink-faint disabled:opacity-50 ${d.mission_id ? '' : 'ml-auto'}`}>
+          Retirer
+        </button>
       </div>
     </div>
   )

@@ -41,11 +41,23 @@ export async function GET() {
   if (!canAccess(session)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   const sb = createAdminClient()
 
-  const { data: dossiers } = await sb
+  const { data: dossiersRaw } = await sb
     .from('saisie_dossiers')
     .select('*')
     .order('created_at', { ascending: false })
     .order('id', { ascending: false })
+
+  // Réquisitoire présent ? (règle : pas d'état de frais sans réquisitoire)
+  const missionIds = Array.from(new Set((dossiersRaw || []).map((d: any) => d.mission_id).filter(Boolean)))
+  const reqOk = new Map<string, boolean>()
+  if (missionIds.length) {
+    const { data: ms } = await sb.from('incoming_missions').select('id, requisitoire_at').in('id', missionIds)
+    for (const m of (ms || [])) reqOk.set(m.id, !!m.requisitoire_at)
+  }
+  const dossiers = (dossiersRaw || []).map((d: any) => ({
+    ...d,
+    requisitoire_ok: d.mission_id ? (reqOk.get(d.mission_id) ?? false) : true,  // dossier manuel sans fiche = pas de blocage
+  }))
 
   // Missions police_saisie EN PARC sans dossier → candidates à intégrer.
   const linked = new Set((dossiers || []).map((d: any) => d.mission_id).filter(Boolean))

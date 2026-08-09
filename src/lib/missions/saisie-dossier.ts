@@ -92,9 +92,15 @@ export async function generateEtatFrais(
 
   const mission = d.mission_id
     ? (await sb.from('incoming_missions')
-        .select('client_name, billed_to_name, incident_address, incident_city, vehicle_class')
+        .select('client_name, billed_to_name, incident_address, incident_city, vehicle_class, requisitoire_at')
         .eq('id', d.mission_id).maybeSingle()).data
     : null
+
+  // RÈGLE : on n'établit un état de frais que si le réquisitoire est au dossier.
+  // (L'aperçu reste autorisé pour vérifier le calcul.) Olivier 2026-08-09.
+  if (persist && mission && !mission.requisitoire_at) {
+    throw new Error('Réquisitoire manquant — impossible d\'établir l\'état de frais')
+  }
 
   const recipient = (opts.recipient || d.recipient || 'parquet') as SaisieRecipient
   const billingTo = (opts.billingTo || belgianToday()).slice(0, 10)
