@@ -63,6 +63,7 @@ function firstBillable(parkedAt?: string | null): string | null {
   return new Date(Date.UTC(y, m + 1, 0)).toISOString().slice(0, 10)
 }
 const todayISO = () => new Date().toISOString().slice(0, 10)
+const addMonthsStr = (ymd: string, n: number) => { const dt = new Date(String(ymd).slice(0, 10) + 'T00:00:00Z'); dt.setUTCMonth(dt.getUTCMonth() + n); return dt.toISOString().slice(0, 10) }
 const daysSince = (ymd?: string | null) => {
   if (!ymd) return null
   const d = new Date(String(ymd).slice(0, 10) + 'T00:00:00')
@@ -79,6 +80,8 @@ export default function SaisiesClient({ userRole, userName, userEmail, userModul
   const [busy, setBusy] = useState<string | null>(null)
   const [msg, setMsg] = useState<string | null>(null)
   const [gen, setGen] = useState<Dossier | null>(null)  // dossier en cours de génération (modal)
+  const [filter, setFilter] = useState<'todo' | 'sent' | 'closed' | 'all'>('todo')
+  const [showScan, setShowScan] = useState(false)
   const isAdmin = ['admin', 'superadmin'].includes(userRole)
 
   const load = useCallback(async () => {
@@ -155,6 +158,27 @@ export default function SaisiesClient({ userRole, userName, userEmail, userModul
     (STATE[a.state]?.rank ?? 8) - (STATE[b.state]?.rank ?? 8) ||
     (a.parked_at || '').localeCompare(b.parked_at || ''))
 
+  // Filtre : les envoyés (en attente de retour) et les clôturés ne polluent plus
+  // la liste de travail. Olivier 2026-08-10.
+  const counts = { todo: 0, sent: 0, closed: 0, all: dossiers.length }
+  for (const d of dossiers) {
+    if (d.state === 'clos') counts.closed++
+    else if (d.state === 'ef_envoye') counts.sent++
+    else counts.todo++
+  }
+  const inFilter = (d: Dossier) =>
+    filter === 'all' ? true
+    : filter === 'sent' ? d.state === 'ef_envoye'
+    : filter === 'closed' ? d.state === 'clos'
+    : (d.state !== 'ef_envoye' && d.state !== 'clos')
+  const visible = sorted.filter(inFilter)
+  const TABS: { key: typeof filter; label: string; n: number }[] = [
+    { key: 'todo', label: 'À traiter', n: counts.todo },
+    { key: 'sent', label: 'En attente de retour', n: counts.sent },
+    { key: 'closed', label: 'Clôturés', n: counts.closed },
+    { key: 'all', label: 'Tous', n: counts.all },
+  ]
+
   return (
     <AppShell title="Facturation Saisie" userRole={userRole} userName={userName} userEmail={userEmail} userModules={userModules}>
       <div className="px-4 lg:px-8 py-6 max-w-5xl mx-auto space-y-5">
@@ -182,8 +206,20 @@ export default function SaisiesClient({ userRole, userName, userEmail, userModul
                 </div>
               </div>
             )}
+            <button onClick={() => setShowScan(true)} className="px-3 py-2 bg-surface-2 hover:bg-surface-hover border rounded-xl text-sm font-semibold text-ink-secondary">📥 Scan groupé</button>
             <button onClick={load} className="px-3 py-2 bg-surface-2 hover:bg-surface-hover border rounded-xl text-sm font-medium text-ink-secondary">↻ Rafraîchir</button>
           </div>
+        </div>
+
+        {/* Filtre : sépare la liste de travail des envoyés en attente */}
+        <div className="flex items-center gap-1.5 flex-wrap">
+          {TABS.map(t => (
+            <button key={t.key} onClick={() => setFilter(t.key)}
+              className={`px-3 py-1.5 rounded-lg text-sm font-semibold border transition ${filter === t.key
+                ? 'bg-brand text-white border-brand' : 'bg-surface-2 text-ink-secondary hover:bg-surface-hover'}`}>
+              {t.label} <span className={filter === t.key ? 'opacity-90' : 'text-ink-faint'}>· {t.n}</span>
+            </button>
+          ))}
         </div>
 
         {msg && <div className="text-sm px-4 py-2 rounded-xl bg-surface-2 border text-ink-secondary">{msg}</div>}
@@ -220,15 +256,15 @@ export default function SaisiesClient({ userRole, userName, userEmail, userModul
         {/* Liste des dossiers */}
         {loading ? (
           <div className="text-center py-16 text-ink-faint text-sm">Chargement…</div>
-        ) : sorted.length === 0 ? (
+        ) : visible.length === 0 ? (
           <div className="text-center py-16 text-ink-faint">
             <p className="text-4xl mb-3">⚖️</p>
-            <p className="font-medium text-ink mb-1">Aucun dossier de saisie</p>
-            <p className="text-sm">Les saisies en parc apparaîtront ici pour être facturées.</p>
+            <p className="font-medium text-ink mb-1">{filter === 'todo' ? 'Rien à traiter 🎉' : 'Aucun dossier ici'}</p>
+            <p className="text-sm">{filter === 'todo' ? 'Les états de frais envoyés sont dans « En attente de retour ».' : 'Change de filtre pour voir les autres dossiers.'}</p>
           </div>
         ) : (
           <div className="space-y-3">
-            {sorted.map(d => (
+            {visible.map(d => (
               <DossierCard key={d.id} d={d} busy={busy === d.id}
                 onGenerate={() => setGen(d)}
                 onRecipient={(r) => patch(d.id, { recipient: r }, '✓ Destinataire mis à jour')}
@@ -241,7 +277,79 @@ export default function SaisiesClient({ userRole, userName, userEmail, userModul
       </div>
 
       {gen && <GenerateModal d={gen} onClose={() => setGen(null)} onDone={() => { setGen(null); load() }} onMsg={setMsg} />}
+      {showScan && <ScanModal onClose={() => setShowScan(false)} onDone={() => load()} />}
     </AppShell>
+  )
+}
+
+// ── Modal Scan groupé ────────────────────────────────────────────────────────
+function ScanModal({ onClose, onDone }: { onClose: () => void; onDone: () => void }) {
+  const [file, setFile] = useState<File | null>(null)
+  const [loading, setLoading] = useState(false)
+  const [summary, setSummary] = useState<any>(null)
+  const [err, setErr] = useState<string | null>(null)
+
+  async function submit() {
+    if (!file) return
+    setLoading(true); setErr(null)
+    try {
+      const fd = new FormData(); fd.append('file', file)
+      const r = await fetch('/api/fourriere/saisies/scan-split', { method: 'POST', body: fd })
+      const j = await r.json().catch(() => ({}))
+      if (!r.ok) { setErr(j.error || 'Découpe échouée'); return }
+      setSummary(j); onDone()
+    } catch { setErr('Erreur réseau') } finally { setLoading(false) }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50">
+      <div className="w-full max-w-lg rounded-2xl bg-surface border shadow-xl p-5" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between mb-1">
+          <h2 className="font-display text-lg font-bold text-ink">📥 Scan groupé des retours</h2>
+          <button onClick={onClose} className="text-ink-faint hover:text-ink text-xl leading-none">✕</button>
+        </div>
+        <p className="text-ink-muted text-sm mb-4">Uploade le PDF complet des états de frais renvoyés signés. Je découpe, je lis le n° EDF de chaque page et je rattache/valide le bon dossier.</p>
+
+        {!summary ? (
+          <>
+            <label className="block border-2 border-dashed rounded-xl px-4 py-8 text-center cursor-pointer hover:bg-surface-hover">
+              <input type="file" accept="application/pdf" className="hidden"
+                onChange={e => setFile(e.target.files?.[0] || null)} />
+              {file ? <span className="font-semibold text-ink">📎 {file.name}</span>
+                    : <span className="text-ink-faint">Cliquer pour choisir le PDF scanné</span>}
+            </label>
+            {err && <p className="text-red-600 text-sm mt-2">⚠ {err}</p>}
+            <div className="flex justify-end gap-2 mt-4">
+              <button onClick={onClose} className="px-3 py-2 text-sm text-ink-secondary hover:text-ink">Annuler</button>
+              <button disabled={!file || loading} onClick={submit}
+                className="px-4 py-2 bg-brand hover:bg-brand-hover disabled:opacity-50 text-white rounded-lg text-sm font-semibold">
+                {loading ? 'Découpe en cours…' : 'Découper & rattacher'}
+              </button>
+            </div>
+          </>
+        ) : (
+          <>
+            <div className="flex gap-2 text-sm font-semibold mb-3">
+              <span className="px-2.5 py-1 rounded-lg bg-green-100 text-green-800">✅ {summary.attached} accepté(s)</span>
+              {summary.refused > 0 && <span className="px-2.5 py-1 rounded-lg bg-red-100 text-red-800">❌ {summary.refused} refus</span>}
+              {summary.unmatched > 0 && <span className="px-2.5 py-1 rounded-lg bg-amber-100 text-amber-800">⚠ {summary.unmatched} non reconnu(s)</span>}
+              <span className="px-2.5 py-1 rounded-lg bg-surface-2 text-ink-secondary">{summary.pages} page(s)</span>
+            </div>
+            <div className="max-h-72 overflow-y-auto space-y-1">
+              {summary.results.map((r: any) => (
+                <div key={r.page} className="flex items-center justify-between gap-3 text-sm border rounded-lg px-3 py-1.5">
+                  <span className="text-ink-secondary">Page {r.page} · <b className="font-mono">{r.numero || '—'}</b>{r.plate ? ` · ${r.plate}` : ''}</span>
+                  <span className={r.matched ? (r.refus ? 'text-red-700' : 'text-green-700') : 'text-amber-700'}>{r.note}</span>
+                </div>
+              ))}
+            </div>
+            <div className="flex justify-end mt-4">
+              <button onClick={onClose} className="px-4 py-2 bg-brand text-white rounded-lg text-sm font-semibold">Terminé</button>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
   )
 }
 
@@ -259,7 +367,14 @@ function DossierCard({ d, busy, onGenerate, onRecipient, onState, onRemove, onRe
   // 1er état de frais bloqué tant que la 1re période n'est pas atteinte (sauf remise Domaine).
   const billableFrom = firstBillable(d.parked_at)
   const notYetBillable = !d.ef_number && !d.billed_to_date && !d.domaine_remise_date && !!billableFrom && todayISO() < billableFrom
-  const canEstablish = d.requisitoire_ok && !notYetBillable
+  // « Nouvel » état de frais (dossier déjà facturé) : seulement si un prochain est
+  // réellement dû — gardiennage +2 mois échu, clôture Domaine, ou action du cron.
+  const isFirstEf = !d.ef_number
+  const nextCut = d.billed_to_date ? addMonthsStr(d.billed_to_date, 2) : null
+  const recurringDue = !!nextCut && todayISO() >= nextCut
+  const clotureDue = !!d.domaine_remise_date && (!d.billed_to_date || String(d.billed_to_date).slice(0, 10) < String(d.domaine_remise_date).slice(0, 10))
+  const newEfDue = !!d.pending_action || recurringDue || clotureDue
+  const canEstablish = d.requisitoire_ok && (isFirstEf ? !notYetBillable : newEfDue)
 
   return (
     <div className="rounded-2xl border bg-surface p-4">
@@ -314,6 +429,13 @@ function DossierCard({ d, busy, onGenerate, onRecipient, onState, onRemove, onRe
         </div>
       )}
 
+      {/* Dossier déjà facturé mais aucun nouvel état de frais dû pour l'instant */}
+      {d.requisitoire_ok && !isFirstEf && !newEfDue && (
+        <div className="mt-3 rounded-xl border border-slate-300 bg-slate-50 px-3 py-2 text-sm text-slate-700">
+          ⏳ Prochain état de frais (gardiennage) {nextCut ? <>le <b>{fmt(nextCut)}</b></> : 'à définir'}.
+        </div>
+      )}
+
       {/* Action détectée par le cron (mode Prépare + Alerte) */}
       {canEstablish && d.pending_action && PENDING[d.pending_action] && (
         <div className={`mt-3 flex items-center justify-between gap-3 rounded-xl border px-3 py-2 ${PENDING[d.pending_action].cls}`}>
@@ -331,7 +453,7 @@ function DossierCard({ d, busy, onGenerate, onRecipient, onState, onRemove, onRe
       {/* Actions */}
       <div className="flex items-center gap-2 flex-wrap mt-3 pt-3 border-t">
         <button disabled={busy || !canEstablish} onClick={onGenerate}
-          title={!d.requisitoire_ok ? 'Réquisitoire manquant' : notYetBillable ? `Facturable à partir du ${fmt(billableFrom)}` : undefined}
+          title={!d.requisitoire_ok ? 'Réquisitoire manquant' : notYetBillable ? `Facturable à partir du ${fmt(billableFrom)}` : (!isFirstEf && !newEfDue) ? (nextCut ? `Prochain état de frais le ${fmt(nextCut)}` : 'Rien à facturer pour l\'instant') : undefined}
           className="px-3 py-1.5 bg-brand hover:bg-brand-hover disabled:opacity-40 disabled:cursor-not-allowed text-white rounded-lg text-sm font-semibold">
           📄 {d.ef_number ? 'Nouvel état de frais' : 'Établir l\'état de frais'}
         </button>
