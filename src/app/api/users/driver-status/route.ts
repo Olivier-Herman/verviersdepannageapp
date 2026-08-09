@@ -60,7 +60,23 @@ export async function GET() {
   }
 
   const now = new Date()
+
+  // Congés APPROUVÉS couvrant aujourd'hui (date belge) → le chauffeur est
+  // HORS SERVICE par défaut, même s'il a la garde ou un ping GPS récent (appli
+  // ouverte). Un chauffeur en congé ne doit pas apparaître « en ligne » au
+  // dispatch. Olivier 2026-08-09.
+  const todayBxl = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Brussels' }).format(now)
+  const onLeave = new Set<string>()
+  const { data: leaves } = await supabase
+    .from('conge_requests')
+    .select('user_id')
+    .eq('status', 'approved')
+    .lte('start_date', todayBxl)
+    .gte('end_date', todayBxl)
+    .in('user_id', drivers.map(d => d.id))
+  for (const l of (leaves || [])) if (l.user_id) onLeave.add(l.user_id as string)
   const result = drivers.map(d => {
+    const onConge = onLeave.has(d.id)
     const m = missionByDriver.get(d.id)
     if (m) {
       return {
@@ -73,12 +89,14 @@ export async function GET() {
         mission_status: m.status,
         schedule_day:   d.schedule_day,
         schedule_night: d.schedule_night,
+        on_conge:       onConge,
         lat:            d.last_location_lat,
         lng:            d.last_location_lng,
       }
     }
 
-    // Pas en mission → on regarde garde/ping
+    // Pas en mission → on regarde garde/ping. MAIS un congé approuvé force
+    // hors_service (hors ligne par défaut), quels que soient garde et ping.
     const inDay   = !!d.schedule_day   && isInDaySchedule(now)
     const inNight = !!d.schedule_night && isInNightSchedule(now)
     const onSchedule = inDay || inNight
@@ -87,7 +105,8 @@ export async function GET() {
       : null
     const freshPing = ageSeconds != null && ageSeconds < FRESH_PING_MIN * 60
 
-    const status: 'en_service' | 'hors_service' = (onSchedule || freshPing) ? 'en_service' : 'hors_service'
+    const status: 'en_service' | 'hors_service' =
+      (!onConge && (onSchedule || freshPing)) ? 'en_service' : 'hors_service'
 
     return {
       id:             d.id,
@@ -97,6 +116,7 @@ export async function GET() {
       schedule_night: d.schedule_night,
       on_schedule:    onSchedule,
       fresh_ping:     freshPing,
+      on_conge:       onConge,
       lat:            d.last_location_lat,
       lng:            d.last_location_lng,
     }
