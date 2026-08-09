@@ -7,7 +7,6 @@ import Link       from 'next/link'
 import AppShell   from '@/components/layout/AppShell'
 import AmbientBackground from '@/components/AmbientBackground'
 import NewInterventionButton from '@/components/mission/NewInterventionButton'
-import ReopenClosureButton from '@/components/mission/ReopenClosureButton'
 import MissionsDuJourEasterEgg from '@/components/mission/MissionsDuJourEasterEgg'
 
 export const dynamic = 'force-dynamic'
@@ -64,7 +63,6 @@ export default async function MissionListPage() {
 
   const CLOSED    = ['to_invoice', 'completed']
   const active    = missions?.filter(m => !CLOSED.includes(m.status)) || []
-  const completed = missions?.filter(m =>  CLOSED.includes(m.status)) || []
 
   // Easter egg : missions du chauffeur AUJOURD'HUI + RECORD PERSO (meilleure journée).
   // On récupère les dates d'assignation (léger : timestamps only), on groupe par
@@ -104,7 +102,7 @@ export default async function MissionListPage() {
           {/* Easter egg discret : date du jour → 3 taps = compteur du jour + record perso */}
           <MissionsDuJourEasterEgg count={todayCount} record={record} newRecord={newRecord} firstName={(user.name || '').split(' ')[0]} />
 
-          {active.length === 0 && completed.length === 0 && (
+          {active.length === 0 && (
             <div className="text-center py-16 text-ink-faint">
               <p className="text-4xl mb-4">🚗</p>
               <p className="font-medium text-ink mb-1">Aucune mission assignée</p>
@@ -135,16 +133,6 @@ export default async function MissionListPage() {
               </div>
             </div>
           )}
-
-          {/* Bouton discret : rouvrir une clôture récente (<6h) sans polluer la liste */}
-          <ReopenClosureButton missions={completed.map(m => ({
-            id: m.id,
-            mission_number: (m as any).mission_number ?? null,
-            dossier_number: m.dossier_number ?? null,
-            external_id: m.external_id ?? null,
-            client_name: m.client_name ?? null,
-            vehicle_plate: m.vehicle_plate ?? null,
-          }))} />
 
         </div>
 
