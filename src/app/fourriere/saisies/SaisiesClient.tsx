@@ -375,15 +375,24 @@ function GenerateModal({ d, onClose, onDone, onMsg }: {
   // Clôture Domaine : date de coupe = Date IN, envoi au Parquet (état final).
   const isCloture = d.pending_action === 'cloture_domaine'
   // Date de coupe CALCULÉE par le cron (pending_action_at) — pré-remplie ; modifiable si besoin.
-  const computedCut = d.pending_action_at ? String(d.pending_action_at).slice(0, 10)
-    : (isCloture && d.domaine_remise_date ? String(d.domaine_remise_date).slice(0, 10) : today)
+  // Date de coupe CALCULÉE (jamais saisie) — miroir du serveur, pour l'affichage.
+  const addM = (ymd: string, n: number) => { const dt = new Date(String(ymd).slice(0, 10) + 'T00:00:00Z'); dt.setUTCMonth(dt.getUTCMonth() + n); return dt.toISOString().slice(0, 10) }
+  const isFirst = !d.ef_number && !d.billed_to_date
+  const cutOff = (isCloture && d.domaine_remise_date) ? String(d.domaine_remise_date).slice(0, 10)
+    : d.pending_action_at ? String(d.pending_action_at).slice(0, 10)
+    : (isFirst && d.parked_at) ? (firstBillable(d.parked_at) || today)
+    : d.billed_to_date ? addM(d.billed_to_date, 2)
+    : today
+  const cutReason = isCloture ? 'Date IN — remise Domaine'
+    : isFirst ? 'dernier jour du mois suivant la saisie'
+    : 'dernière coupe + 2 mois'
   const [recipient, setRecipient] = useState<Recipient>(isCloture ? 'parquet' : d.recipient)
-  const [billingTo, setBillingTo] = useState(computedCut)
   const [roundTripKm, setRoundTripKm] = useState('')
   const [loading, setLoading] = useState<'' | 'preview' | 'send'>('')
 
+  // billingTo n'est PAS envoyé : le serveur calcule seul la coupe.
   const commonBody = () => ({
-    recipient, billingTo,
+    recipient,
     roundTripKm: roundTripKm.trim() ? Number(roundTripKm) : undefined,
   })
 
@@ -437,15 +446,10 @@ function GenerateModal({ d, onClose, onDone, onMsg }: {
             </select>
             {recipient !== 'client' && <p className="text-[11px] text-ink-faint mt-1">Parquet / Domaine : pas de frais administratifs.</p>}
           </div>
-          <div>
-            <label className="block text-xs font-semibold text-ink-secondary mb-1">Date de coupe (gardiennage jusqu'au)</label>
-            <input type="date" value={billingTo} onChange={e => setBillingTo(e.target.value)}
-              className="w-full bg-surface-2 border rounded-lg px-3 py-2 text-sm text-ink" />
-            {d.pending_action_at && (
-              <p className="text-[11px] text-ink-faint mt-1">
-                📌 Calculée automatiquement{isCloture ? ' (Date IN — remise Domaine)' : d.pending_action === 'facturer' ? ' (dernier jour du mois suivant la saisie)' : ' (dernière coupe + 2 mois)'}.
-              </p>
-            )}
+          <div className="rounded-lg bg-surface-2 border px-3 py-2">
+            <div className="text-xs font-semibold text-ink-secondary">Gardiennage facturé jusqu'au</div>
+            <div className="text-sm font-bold text-ink mt-0.5">{fmt(cutOff)}</div>
+            <div className="text-[11px] text-ink-faint mt-0.5">📌 Calculé automatiquement ({cutReason}).</div>
           </div>
           {!d.depannage_billed && (
             <div>

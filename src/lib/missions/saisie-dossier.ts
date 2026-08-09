@@ -107,6 +107,11 @@ export function firstBillableDate(parkedAt: string): string {
   const [y, m] = String(parkedAt).slice(0, 10).split('-').map(Number)
   return new Date(Date.UTC(y, m + 1, 0)).toISOString().slice(0, 10)
 }
+function addMonthsISO(ymd: string, n: number): string {
+  const dt = new Date(String(ymd).slice(0, 10) + 'T00:00:00Z')
+  dt.setUTCMonth(dt.getUTCMonth() + n)
+  return dt.toISOString().slice(0, 10)
+}
 const fmtFR = (ymd: string) => String(ymd).slice(0, 10).split('-').reverse().join('/')
 
 // Franchise km SAISIE : on ne facture les km qu'AU-DELÀ de 30 km ALLER-RETOUR.
@@ -168,7 +173,18 @@ export async function generateEtatFrais(
   }
 
   const recipient = (opts.recipient || d.recipient || 'parquet') as SaisieRecipient
-  const billingTo = (opts.billingTo || belgianToday()).slice(0, 10)
+
+  // DATE DE COUPE CALCULÉE (jamais saisie à la main). Olivier 2026-08-10 :
+  //   • clôture Domaine → Date IN (remise)
+  //   • 1er état de frais → dernier jour du mois suivant la saisie
+  //   • gardiennage récurrent → dernière coupe + 2 mois
+  // opts.billingTo reste prioritaire (le cron fournit déjà la bonne coupe).
+  const remiseDate = mission?.domaine_remise_date || d.domaine_remise_date || null
+  let billingTo: string
+  if (opts.billingTo) billingTo = opts.billingTo.slice(0, 10)
+  else if (hasDomaine && remiseDate) billingTo = String(remiseDate).slice(0, 10)
+  else if (!d.billed_to_date) billingTo = firstBillableDate(d.parked_at)
+  else billingTo = addMonthsISO(d.billed_to_date, 2)
   const billingFrom = d.billed_to_date || d.parked_at
   const includeDepannage = !d.depannage_billed
   // km facturés = au-delà de 30 km aller-retour (franchise). Priorité à une
