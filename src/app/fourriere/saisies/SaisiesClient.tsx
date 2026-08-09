@@ -337,8 +337,11 @@ function DossierCard({ d, busy, onGenerate, onRecipient, onState, onRemove, onRe
         </button>
 
         {d.state === 'ef_envoye' && <>
+          <span className="text-[11px] text-ink-faint w-full mb-1">
+            ✓ Validation <b>automatique</b> si le Parquet utilise le lien / QR. Sinon (réponse papier), marquez ici :
+          </span>
           <button disabled={busy} onClick={() => onState('accepte', '✓ Marqué accepté')}
-            className="px-3 py-1.5 bg-green-600 hover:bg-green-700 disabled:opacity-50 text-white rounded-lg text-sm font-semibold">✓ Accepté</button>
+            className="px-3 py-1.5 bg-green-600 hover:bg-green-700 disabled:opacity-50 text-white rounded-lg text-sm font-semibold">✓ Accepté (papier)</button>
           <button disabled={busy} onClick={() => onState('refuse', 'Marqué refusé')}
             className="px-3 py-1.5 bg-red-100 hover:bg-red-200 disabled:opacity-50 text-red-800 border border-red-300 rounded-lg text-sm font-semibold">✕ Refusé</button>
         </>}
