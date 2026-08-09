@@ -8,25 +8,54 @@
 
 import { useEffect, useRef, useState } from 'react'
 
-// Une punchline familière, choisie selon le contexte (déterministe côté client).
+// Une punchline familière/taquine, tirée au hasard selon le contexte.
 function punch(count: number, record: number, newRecord: boolean, name?: string): { emoji: string; title: string; line: string } {
-  const who = name ? `${name}` : ''
-  if (count <= 0)
-    return { emoji: '☕', title: 'Ça démarre', line: `Allez ${who}, chauffe le moteur, la journée t’attend !` }
+  const who = name || ''
+  const reste = Math.max(1, record - count + 1)
+
   if (newRecord)
     return { emoji: '🏆', title: 'NOUVEAU RECORD !', line: pick([
-      `T’es une machine ${who} 🔥`, 'Personne te suit là, gros !', 'Ça c’est du taf, respect 💪', 'En feu aujourd’hui, tranquille 🚀',
-    ], count) }
-  if (count === record)
-    return { emoji: '⚡', title: 'Record égalé !', line: `T’es à ta meilleure journée ${who} — un p’tit dernier pour le péter ?` }
-  const reste = record - count + 1
-  return { emoji: '💪', title: `${count} au compteur`, line: pick([
-    `Record perso : ${record}. Plus que ${reste} pour le péter !`,
-    `Ça déroule ${who}, encore ${reste} et t’exploses ton record 🔥`,
-    `T’es chaud, ${reste} de plus et c’est le record !`,
-  ], count) }
+      `T’es une machine ${who} 🔥`, 'Personne te suit là, gros !', 'Record explosé, respect total 💪',
+      'Flash a pris sa retraite, c’est toi le patron ⚡', 'Faut appeler le Guinness ou quoi ? 🏆',
+    ]) }
+
+  if (count > 0 && count === record)
+    return { emoji: '⚡', title: 'Record égalé !', line: pick([
+      `Un p’tit dernier et tu pètes ton record ${who} !`,
+      'À un cheveu du record… tu vas pas t’arrêter là ?',
+    ]) }
+
+  if (count <= 0)
+    return { emoji: '☕', title: 'Ça démarre', line: pick([
+      `Allez ${who}, chauffe le moteur, la journée t’attend !`,
+      'Le camion s’ennuie… faut le réveiller 😜', 'T’es sûr que t’as tourné la clé ?',
+    ]) }
+
+  if (count <= 2)
+    return { emoji: '🐌', title: `${count} au compteur`, line: pick([
+      'Eh ben, faut pas être en train de mourir quand on attend que t’arrives 😅',
+      'T’as troqué ton super camion contre un ultra-escargot ? 🐌',
+      'Le compteur a pas encore chauffé, on dirait…',
+      `Record perso : ${record}. Faut se bouger un peu là 😏`,
+    ]) }
+
+  if (count <= 5)
+    return { emoji: '💪', title: `${count} au compteur`, line: pick([
+      `Ça déroule ${who}, encore ${reste} et t’exploses ton record 🔥`,
+      'Rythme de croisière, continue comme ça 👌', `Plus que ${reste} pour le record, t’es chaud !`,
+    ]) }
+
+  if (count <= 9)
+    return { emoji: '🚀', title: `${count} au compteur`, line: pick([
+      'Flash n’a qu’à bien se tenir, tu viens de le dépasser ⚡',
+      'On t’a mis un moteur d’avion ou quoi ? 🚀', `Le camion fume, doucement 😎 (record : ${record})`,
+    ]) }
+
+  return { emoji: '🏆', title: `${count} au compteur`, line: pick([
+    'Machine de guerre, personne te suit 🏆', 'Tu roules pour deux, là !', 'Faut te clôner, c’est pas humain 😳',
+  ]) }
 }
-function pick<T>(arr: T[], seed: number): T { return arr[Math.abs(seed) % arr.length] }
+function pick<T>(arr: T[]): T { return arr[Math.floor(Math.random() * arr.length)] }
 
 export default function MissionsDuJourEasterEgg({
   count, record, newRecord, firstName,
