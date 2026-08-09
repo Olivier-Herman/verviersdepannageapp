@@ -173,12 +173,20 @@ export async function syncComexBko(sb: any): Promise<SyncResult> {
   }
 
   // Dossiers qui ont QUITTÉ COMEX (validés/générés ailleurs) → in_comex=false.
+  // GARDE-FOU : on n'évince JAMAIS les dossiers d'un compte dont le login/fetch a
+  // ÉCHOUÉ ce run. Un login BKO raté renvoie 0 dossier → « pas vu » ≠ « sorti ».
+  // Sans ce garde, un échec de login intermittent (canILog="not logged…") évince
+  // des dossiers encore présents (in_comex=false) → l'auto-validation les ignore
+  // et le dossier stagne en to_invoice. C'est ce qui bloquait STR1711 / 2026BE315977.
+  // Olivier 2026-08-09.
   let left = 0
+  const erroredAccounts = new Set((errors || []).map((e: any) => e.account))
   const { data: cached } = await sb.from('touring_comex_dossiers')
     .select('id, account, dossier, cid_seq_action').eq('in_comex', true)
   const seenSet = new Set(seenKeys.map(k => `${k.account}|${k.dossier}|${k.cid}`))
   const goneIds = (cached || [])
-    .filter((r: any) => !seenSet.has(`${r.account}|${r.dossier}|${r.cid_seq_action || ''}`))
+    .filter((r: any) => !erroredAccounts.has(r.account)
+      && !seenSet.has(`${r.account}|${r.dossier}|${r.cid_seq_action || ''}`))
     .map((r: any) => r.id)
   if (goneIds.length) {
     await sb.from('touring_comex_dossiers').update({ in_comex: false, last_seen_at: now }).in('id', goneIds)

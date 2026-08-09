@@ -56,7 +56,11 @@ function hdr(cookie: string, form = false): Record<string, string> {
   return h
 }
 
-/** Ouvre une session COMEX BKO pour un compte donné et retourne le Cookie. */
+/** Ouvre une session COMEX BKO pour un compte donné et retourne le Cookie.
+ * L'enchaînement (welcome → canILog → j_security_check → canILog) échoue par
+ * intermittence côté COMEX (rotation de session Spring qui « ne prend pas » →
+ * canILog renvoie "not logged…"). On RÉESSAIE jusqu'à 3× avec un court backoff :
+ * un login raté renvoie 0 dossier et fausse toute la synchro BKO. Olivier 2026-08-09. */
 export async function loginComexBko(account: BkoAccount): Promise<string> {
   const user = (account.user || '').toUpperCase()
   const pass = account.pass || ''
@@ -64,21 +68,30 @@ export async function loginComexBko(account: BkoAccount): Promise<string> {
   const hash = sha256(pass)
   const creds = new URLSearchParams({ j_username: user, j_password: hash }).toString()
 
-  let cookie = ''
-  // 1) welcome
-  let r = await fetch(`${BASE}/welcome.do`, { headers: hdr(cookie), signal: AbortSignal.timeout(20000) })
-  cookie = grabJsession(r, cookie)
-  // 2) pré-vol canILog (crée la saved request)
-  r = await fetch(`${BASE}/secured/canILog.do`, { method: 'POST', headers: hdr(cookie, true), body: creds, redirect: 'manual', signal: AbortSignal.timeout(20000) })
-  cookie = grabJsession(r, cookie)
-  // 3) j_security_check → 303 + rotation session
-  r = await fetch(`${BASE}/j_security_check`, { method: 'POST', headers: hdr(cookie, true), body: creds, redirect: 'manual', signal: AbortSignal.timeout(20000) })
-  cookie = grabJsession(r, cookie)
-  // 4) confirmation
-  r = await fetch(`${BASE}/secured/canILog.do`, { headers: hdr(cookie), signal: AbortSignal.timeout(20000) })
-  const txt = (await r.text()).trim()
-  if (!/^logged/.test(txt)) throw new Error(`login COMEX BKO échoué (canILog="${txt.slice(0, 40)}")`)
-  return cookie
+  let lastErr = 'login COMEX BKO échoué'
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    try {
+      let cookie = ''
+      // 1) welcome
+      let r = await fetch(`${BASE}/welcome.do`, { headers: hdr(cookie), signal: AbortSignal.timeout(20000) })
+      cookie = grabJsession(r, cookie)
+      // 2) pré-vol canILog (crée la saved request)
+      r = await fetch(`${BASE}/secured/canILog.do`, { method: 'POST', headers: hdr(cookie, true), body: creds, redirect: 'manual', signal: AbortSignal.timeout(20000) })
+      cookie = grabJsession(r, cookie)
+      // 3) j_security_check → 303 + rotation session
+      r = await fetch(`${BASE}/j_security_check`, { method: 'POST', headers: hdr(cookie, true), body: creds, redirect: 'manual', signal: AbortSignal.timeout(20000) })
+      cookie = grabJsession(r, cookie)
+      // 4) confirmation
+      r = await fetch(`${BASE}/secured/canILog.do`, { headers: hdr(cookie), signal: AbortSignal.timeout(20000) })
+      const txt = (await r.text()).trim()
+      if (!/^logged/.test(txt)) throw new Error(`login COMEX BKO échoué (canILog="${txt.slice(0, 40)}")`)
+      return cookie
+    } catch (e: any) {
+      lastErr = e?.message || 'login COMEX BKO échoué'
+      if (attempt < 3) await new Promise(res => setTimeout(res, 500 * attempt))
+    }
+  }
+  throw new Error(lastErr)
 }
 
 export interface BkoDossier {
