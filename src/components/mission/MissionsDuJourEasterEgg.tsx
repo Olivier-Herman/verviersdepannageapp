@@ -125,7 +125,7 @@ export default function MissionsDuJourEasterEgg({
       {open && (
         <div
           onClick={() => setOpen(false)}
-          className={`fixed inset-0 z-[200] flex items-center justify-center backdrop-blur-md px-6 egg-fade ${newRecord ? 'egg-bg-record' : 'bg-ink/95'}`}
+          className={`fixed inset-0 z-[200] flex items-center justify-center backdrop-blur-md px-6 egg-fade ${newRecord ? 'egg-bg-record' : 'egg-bg-normal'}`}
         >
           {/* Confettis */}
           <div className="pointer-events-none absolute inset-0 overflow-hidden">
@@ -162,6 +162,7 @@ export default function MissionsDuJourEasterEgg({
       <style jsx>{`
         .egg-fade { animation: eggFade .2s ease-out; }
         @keyframes eggFade { from { opacity: 0 } to { opacity: 1 } }
+        .egg-bg-normal { background: rgba(14,16,21,.97); }
         .egg-bg-record { background: radial-gradient(120% 120% at 50% 0%, rgba(180,83,9,.97), rgba(12,14,18,.98)); }
         .egg-pop { animation: eggPop .5s cubic-bezier(.2,1.4,.4,1); }
         @keyframes eggPop { 0% { transform: scale(.5); opacity: 0 } 60% { transform: scale(1.06) } 100% { transform: scale(1); opacity: 1 } }
