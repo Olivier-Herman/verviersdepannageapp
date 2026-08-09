@@ -746,6 +746,25 @@ export async function POST(req: Request) {
     } catch { await touringBackground }
   }
 
+  // ── Propagation VAB Comet : accept / en route / sur place (background) ────────
+  // Comme Touring : le pointage chauffeur déclenche l'étape Comet correspondante,
+  // en fire-and-forget (ne bloque pas la réponse). accept→Accepter, on_way→Départ
+  // domicile, on_site→Arrivé. Transitions simples = fiables headless. La CLÔTURE
+  // (on-site→codes) n'est PAS encore auto (à cracker). Olivier 2026-08-09.
+  if (String(mission.source).toLowerCase() === 'vab' && ['accept', 'on_way', 'on_site'].includes(action)) {
+    const vabBackground = (async () => {
+      try {
+        const { syncVabStep } = await import('@/lib/vab/sync')
+        const step = action === 'accept' ? 'accept' : action === 'on_way' ? 'depart' : 'arrive'
+        await syncVabStep(supabase, mission_id, step)
+      } catch (e: any) { console.warn('[driver-action] vab sync exception:', e?.message) }
+    })()
+    try {
+      const { waitUntil } = await import('@vercel/functions')
+      waitUntil(vabBackground)
+    } catch { await vabBackground }
+  }
+
   // ── Propagation Odoo : stage FSM + état véhicule (best effort, non bloquant) ──
   if (mission.odoo_task_id) {
     const stageName = ACTION_TO_FSM_STAGE[action]
