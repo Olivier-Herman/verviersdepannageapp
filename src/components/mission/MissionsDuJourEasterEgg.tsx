@@ -17,18 +17,24 @@ function punch(count: number, record: number, newRecord: boolean, name?: string)
     return { emoji: '🏆', title: 'NOUVEAU RECORD !', line: pick([
       `T’es une machine ${who} 🔥`, 'Personne te suit là, gros !', 'Record explosé, respect total 💪',
       'Flash a pris sa retraite, c’est toi le patron ⚡', 'Faut appeler le Guinness ou quoi ? 🏆',
+      'Le camion va demander une augmentation 😅', 'T’as mangé du lion ce matin ? 🦁',
+      'On arrête tout, c’est jour de fête 🎉', 'Mode turbo activé, personne comprend 🚀',
+      'Même ton camion est fier de toi 🥹',
     ]) }
 
   if (count > 0 && count === record)
     return { emoji: '⚡', title: 'Record égalé !', line: pick([
       `Un p’tit dernier et tu pètes ton record ${who} !`,
       'À un cheveu du record… tu vas pas t’arrêter là ?',
+      'T’égales ton record, encore un coup de collier 💪', 'Le record te tend les bras, vas-y !',
     ]) }
 
   if (count <= 0)
     return { emoji: '☕', title: 'Ça démarre', line: pick([
       `Allez ${who}, chauffe le moteur, la journée t’attend !`,
       'Le camion s’ennuie… faut le réveiller 😜', 'T’es sûr que t’as tourné la clé ?',
+      'Zéro pointé… le café d’abord, on t’en veut pas ☕', 'La journée est vierge, à toi de jouer 🎬',
+      'Même l’escargot a déjà commencé, là 🐌',
     ]) }
 
   if (count <= 2)
@@ -37,22 +43,31 @@ function punch(count: number, record: number, newRecord: boolean, name?: string)
       'T’as troqué ton super camion contre un ultra-escargot ? 🐌',
       'Le compteur a pas encore chauffé, on dirait…',
       `Record perso : ${record}. Faut se bouger un peu là 😏`,
+      'Deux missions ? T’as fait la sieste entre les deux ? 😴',
+      'À ce rythme, la retraite avant la prochaine 😅', 'Le GPS t’a envoyé faire un tour touristique ?',
+      'T’attends que les missions viennent à toi ou quoi ?',
     ]) }
 
   if (count <= 5)
     return { emoji: '💪', title: `${count} au compteur`, line: pick([
       `Ça déroule ${who}, encore ${reste} et t’exploses ton record 🔥`,
       'Rythme de croisière, continue comme ça 👌', `Plus que ${reste} pour le record, t’es chaud !`,
+      'Tranquille, ça avance bien 😎', 'Bon tempo, on sent le pro 💪',
+      'Le camion connaît la route par cœur maintenant 🛣️',
     ]) }
 
   if (count <= 9)
     return { emoji: '🚀', title: `${count} au compteur`, line: pick([
       'Flash n’a qu’à bien se tenir, tu viens de le dépasser ⚡',
       'On t’a mis un moteur d’avion ou quoi ? 🚀', `Le camion fume, doucement 😎 (record : ${record})`,
+      'T’enchaînes comme d’autres respirent 🔥', 'Les clients te voient à peine passer 💨',
+      'Y’a le feu ? Non, c’est juste toi qui carbures 🔥',
     ]) }
 
   return { emoji: '🏆', title: `${count} au compteur`, line: pick([
     'Machine de guerre, personne te suit 🏆', 'Tu roules pour deux, là !', 'Faut te clôner, c’est pas humain 😳',
+    'T’as un jumeau qui bosse en même temps ? 👯', 'Le patron va t’ériger une statue 🗿',
+    'Même ton camion demande grâce 😂', 'T’es plus un chauffeur, t’es une légende 🦸',
   ]) }
 }
 function pick<T>(arr: T[]): T { return arr[Math.floor(Math.random() * arr.length)] }
@@ -61,6 +76,8 @@ export default function MissionsDuJourEasterEgg({
   count, record, newRecord, firstName,
 }: { count: number; record: number; newRecord: boolean; firstName?: string }) {
   const [open, setOpen] = useState(false)
+  const [card, setCard] = useState<{ emoji: string; title: string; line: string }>({ emoji: '🚗', title: '', line: '' })
+  const [line, setLine] = useState('')
   const taps = useRef<number[]>([])
   const dateLabel = new Intl.DateTimeFormat('fr-BE', {
     timeZone: 'Europe/Brussels', weekday: 'long', day: 'numeric', month: 'long',
@@ -69,16 +86,27 @@ export default function MissionsDuJourEasterEgg({
   function onTap() {
     const now = Date.now()
     taps.current = [...taps.current.filter(t => now - t < 1400), now]
-    if (taps.current.length >= 3) { taps.current = []; setOpen(true) }
+    if (taps.current.length >= 3) {
+      taps.current = []
+      const c = punch(count, record, newRecord, firstName)   // vanne statique : instantané
+      setCard(c); setLine(c.line); setOpen(true)
+    }
   }
 
+  // Auto-fermeture + génération d'une vanne FRAÎCHE via Claude (remplace la statique
+  // dès qu'elle arrive ; si pas de clé / lent / erreur → on garde la statique).
   useEffect(() => {
     if (!open) return
-    const t = setTimeout(() => setOpen(false), 6500)
-    return () => clearTimeout(t)
-  }, [open])
+    const closeT = setTimeout(() => setOpen(false), 7000)
+    const ctrl = new AbortController()
+    fetch('/api/mission/punchline', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, signal: ctrl.signal,
+      body: JSON.stringify({ count, record, newRecord, firstName }),
+    }).then(r => r.json()).then(d => { if (d?.line) setLine(d.line) }).catch(() => {})
+    return () => { clearTimeout(closeT); ctrl.abort() }
+  }, [open, count, record, newRecord, firstName])
 
-  const p = punch(count, record, newRecord, firstName)
+  const p = card
   const confettiN = newRecord ? 44 : 26
 
   return (
@@ -125,7 +153,7 @@ export default function MissionsDuJourEasterEgg({
               <span className="tabular-nums font-black text-amber-300">{Math.max(record, count)}</span>
             </div>
 
-            <div className="text-white/85 text-[15px] mt-4 font-medium leading-snug">{p.line}</div>
+            <div className="text-white/85 text-[15px] mt-4 font-medium leading-snug min-h-[2.5em] flex items-center justify-center">{line}</div>
             <div className="text-white/40 text-[11px] mt-6 uppercase tracking-widest">Touche pour fermer</div>
           </div>
         </div>
