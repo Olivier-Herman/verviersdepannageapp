@@ -1,16 +1,16 @@
 // src/lib/missions/saisie-etat-frais-pdf.tsx
 //
 // ÉTAT DE FRAIS (saisie judiciaire) — PDF A4 via @react-pdf/renderer.
-// Rendu fidèle à la maquette validée par Olivier (2026-08-09) :
-//   • logo Verviers Dépannage + tons rougeâtres maison
-//   • titre « État de Frais » + son NUMÉRO en grand juste en dessous
-//   • coordonnées émetteur (Lefin 12, 4860 Pepinster — TVA BE0460.759.205)
-//   • bloc destinataire (Parquet / Domaine / Client)
-//   • tableau des frais (dépannage + gardiennage par période + frais admin client)
-//   • totaux HTVA / TVA 21 % / TVAC
-//   • QR EPC RÉEL et ENTIER (virement pré-rempli) — pas de mention « saisie »
-//
-// Les montants viennent de computeSaisieBilling → identiques à la fiche.
+// Reproduction FIDÈLE de la maquette validée par Olivier (artifact abf9f222) :
+//   • masthead : logo VD + « Verviers Dépannage » à gauche ; « État de frais » +
+//     n° EDF en grand + date d'émission à droite ; filet rouge.
+//   • blocs Émetteur / Destinataire (adresse + e-mail + TVA).
+//   • bandeau « Dossier & véhicule » (grille : PV, dates, période, plaque, VIN, motif).
+//   • tableau des prestations avec chips de code (SERV-PEC…).
+//   • totaux (Total HTVA / TVA 21 % / Total à charge du <destinataire>).
+//   • pied : QR de RATTACHEMENT (scan → rattache la validation à la fiche) +
+//     suivi & mentions ; bandeau légal.
+// Montants issus de computeSaisieBilling → identiques à la fiche.
 
 import React from 'react'
 import { Document, Page, Text, View, StyleSheet, Image, renderToBuffer } from '@react-pdf/renderer'
@@ -18,219 +18,261 @@ import { readFileSync } from 'fs'
 import { join } from 'path'
 import QRCode from 'qrcode'
 import { COMPANY } from '@/config/company'
-import { buildEpcQrPayload, bankConfigFromEnv } from '@/lib/payments/epc-qr'
 import type { SaisieBillingResult, SaisieRecipient } from '@/lib/missions/saisie-billing'
 
-const BRAND  = '#C41E1E'   // rouge Verviers Dépannage
-const BRAND_D = '#8F1414'  // rouge foncé (totaux)
-const INK    = '#1A1A1E'
-const MUTED  = '#6B7280'
-const FAINT  = '#9CA3AF'
-const BORDER = '#E5E7EB'
-const BG     = '#FAF6F6'   // fond légèrement rosé
-const BG_RED = '#FBEAEA'
+// Palette maquette
+const PAPER = '#FDFBFA', INK = '#28211F', MUTED = '#6B615E', FAINT = '#9A8F8C'
+const RED = '#A51C2C', RED2 = '#C0273A', TINT = '#F9EBEC', BAND = '#F6F2F0'
+const LINE = '#E8E2E0', LINE_STRONG = '#D6CDCA'
+const GOOD = '#1D7A54', GOOD_BG = '#E8F4EE', GOOD_BORDER = '#BFE3CF'
 
 const styles = StyleSheet.create({
-  page: { padding: 34, fontSize: 9, fontFamily: 'Helvetica', color: INK },
+  page: { backgroundColor: PAPER, fontFamily: 'Helvetica', color: INK, fontSize: 11, paddingBottom: 0 },
+  pad:  { paddingTop: 28, paddingHorizontal: 40, paddingBottom: 16 },
 
-  // En-tête
-  header:     { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
-  logo:       { height: 46, objectFit: 'contain' },
-  emitter:    { marginTop: 8 },
-  emitName:   { fontSize: 10, fontWeight: 700, color: INK },
-  emitLine:   { fontSize: 8, color: MUTED, marginTop: 1.5 },
-  titleBox:   { alignItems: 'flex-end' },
-  docTitle:   { fontSize: 15, fontWeight: 700, color: BRAND, letterSpacing: 0.5, textTransform: 'uppercase' },
-  docNumber:  { fontSize: 24, fontWeight: 700, color: INK, marginTop: 2, letterSpacing: 0.5 },
-  docDate:    { fontSize: 8.5, color: MUTED, marginTop: 4 },
+  // Masthead
+  top:       { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
+  brand:     { flexDirection: 'row', alignItems: 'center', gap: 11 },
+  logo:      { width: 44, height: 44, borderRadius: 9, backgroundColor: RED, color: '#fff', alignItems: 'center', justifyContent: 'center' },
+  logoTxt:   { color: '#fff', fontSize: 16, fontWeight: 700, letterSpacing: 0.5 },
+  brandNm:   { fontSize: 15, fontWeight: 700 },
+  brandSub:  { fontSize: 8.5, color: MUTED, marginTop: 1 },
+  docmeta:   { alignItems: 'flex-end' },
+  doctitle:  { fontSize: 15, fontWeight: 700, letterSpacing: 1.6, color: RED, textTransform: 'uppercase' },
+  docnum:    { fontSize: 23, fontWeight: 700, color: INK, marginTop: 3 },
+  docref:    { fontSize: 9.5, color: MUTED, marginTop: 4 },
 
-  rule:       { height: 2.4, backgroundColor: BRAND, marginTop: 12, marginBottom: 14 },
+  rule: { height: 2, backgroundColor: RED, marginTop: 13, marginBottom: 13, borderRadius: 2 },
 
-  // Blocs émetteur / destinataire / véhicule
-  cols:       { flexDirection: 'row', gap: 14, marginBottom: 14 },
-  card:       { flex: 1, backgroundColor: BG, borderWidth: 1, borderColor: BORDER, borderRadius: 5, padding: 10 },
-  cardLabel:  { fontSize: 7, fontWeight: 700, color: BRAND, textTransform: 'uppercase', letterSpacing: 0.6, marginBottom: 5 },
-  cardStrong: { fontSize: 9.5, fontWeight: 700, color: INK },
-  cardLine:   { fontSize: 8.5, color: INK, marginTop: 2, lineHeight: 1.3 },
-  cardMuted:  { fontSize: 8, color: MUTED, marginTop: 2 },
+  // Parties
+  parties: { flexDirection: 'row', gap: 26 },
+  party:   { flex: 1 },
+  lbl:     { fontSize: 8, fontWeight: 700, letterSpacing: 1, color: FAINT, textTransform: 'uppercase', marginBottom: 5 },
+  who:     { fontSize: 12, fontWeight: 700 },
+  addr:    { fontSize: 10, color: MUTED, marginTop: 2, lineHeight: 1.4 },
+  addrInk: { fontSize: 10, color: INK, marginTop: 2 },
+
+  // Bandeau dossier & véhicule
+  band:      { marginTop: 16, borderWidth: 1, borderColor: LINE, borderRadius: 9 },
+  bandHead:  { backgroundColor: BAND, paddingVertical: 8, paddingHorizontal: 14, fontSize: 8, fontWeight: 700, letterSpacing: 1, color: MUTED, textTransform: 'uppercase', borderBottomWidth: 1, borderBottomColor: LINE },
+  kvRow:     { flexDirection: 'row' },
+  kvRow2:    { borderTopWidth: 1, borderTopColor: LINE },
+  cell:      { width: '25%', paddingVertical: 9, paddingHorizontal: 14, borderRightWidth: 1, borderRightColor: LINE },
+  cellLast:  { borderRightWidth: 0 },
+  k:         { fontSize: 8, color: FAINT, textTransform: 'uppercase', letterSpacing: 0.4 },
+  v:         { fontSize: 11.5, fontWeight: 700, marginTop: 2 },
+  vMono:     { fontSize: 10.5, fontWeight: 700, marginTop: 2, fontFamily: 'Courier' },
+  plate:     { alignSelf: 'flex-start', marginTop: 3, backgroundColor: '#fff', borderWidth: 1.5, borderColor: INK, borderRadius: 3, paddingVertical: 1, paddingHorizontal: 6, fontSize: 11, fontWeight: 700, letterSpacing: 0.6 },
 
   // Tableau
-  table:      { borderWidth: 1, borderColor: BORDER, borderRadius: 5, overflow: 'hidden', marginBottom: 12 },
-  thead:      { flexDirection: 'row', backgroundColor: BRAND },
-  th:         { fontSize: 8, fontWeight: 700, color: '#FFFFFF', paddingVertical: 6, paddingHorizontal: 8, textTransform: 'uppercase', letterSpacing: 0.4 },
-  tr:         { flexDirection: 'row', borderTopWidth: 1, borderTopColor: BORDER },
-  trAlt:      { backgroundColor: '#FCFBFB' },
-  td:         { fontSize: 8.5, paddingVertical: 6, paddingHorizontal: 8, color: INK },
-  tdMuted:    { fontSize: 7.5, color: MUTED, marginTop: 1.5 },
-  cDesc:      { flex: 1 },
-  cQty:       { width: 62, textAlign: 'right' },
-  cPu:        { width: 78, textAlign: 'right' },
-  cTot:       { width: 82, textAlign: 'right' },
+  table:   { marginTop: 16 },
+  thead:   { flexDirection: 'row', borderBottomWidth: 2, borderBottomColor: LINE_STRONG, paddingBottom: 8 },
+  th:      { fontSize: 8, fontWeight: 700, letterSpacing: 0.8, color: MUTED, textTransform: 'uppercase', paddingHorizontal: 10 },
+  tr:      { flexDirection: 'row', borderBottomWidth: 1, borderBottomColor: LINE, paddingVertical: 9 },
+  cDesc:   { flex: 1, paddingHorizontal: 10 },
+  cQty:    { width: 52, paddingHorizontal: 10, textAlign: 'right' },
+  cPu:     { width: 84, paddingHorizontal: 10, textAlign: 'right' },
+  cTot:    { width: 90, paddingHorizontal: 10, textAlign: 'right' },
+  chip:    { alignSelf: 'flex-start', fontSize: 8, fontWeight: 700, color: RED, backgroundColor: TINT, borderRadius: 4, paddingVertical: 1, paddingHorizontal: 5, marginBottom: 4 },
+  desc:    { fontSize: 11.5, fontWeight: 700 },
+  meta:    { fontSize: 9.5, color: MUTED, marginTop: 2 },
+  numTxt:  { fontSize: 11.5 },
 
-  // Bas de page : QR + totaux
-  bottom:     { flexDirection: 'row', justifyContent: 'space-between', gap: 16, marginTop: 4 },
-  qrCard:     { width: 210, backgroundColor: BG, borderWidth: 1, borderColor: BORDER, borderRadius: 5, padding: 10, flexDirection: 'row', gap: 10, alignItems: 'center' },
-  qrImg:      { width: 84, height: 84 },
-  qrLabel:    { fontSize: 8, fontWeight: 700, color: BRAND, textTransform: 'uppercase', letterSpacing: 0.4 },
-  qrLine:     { fontSize: 7.5, color: INK, marginTop: 3, lineHeight: 1.3 },
-  qrMono:     { fontSize: 7.5, fontFamily: 'Courier', color: INK, marginTop: 2 },
+  // Totaux
+  totals:   { flexDirection: 'row', justifyContent: 'flex-end', marginTop: 10 },
+  totbox:   { width: 250 },
+  totrow:   { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 6, paddingHorizontal: 12 },
+  totT:     { fontSize: 11, color: MUTED },
+  totV:     { fontSize: 11 },
+  grand:    { flexDirection: 'row', justifyContent: 'space-between', marginTop: 6, backgroundColor: RED, borderRadius: 8, paddingVertical: 11, paddingHorizontal: 13 },
+  grandT:   { fontSize: 11, fontWeight: 700, color: '#F4D3D7' },
+  grandV:   { fontSize: 13, fontWeight: 700, color: '#fff' },
 
-  totals:     { flex: 1, alignItems: 'flex-end', justifyContent: 'flex-end' },
-  totRow:     { flexDirection: 'row', justifyContent: 'space-between', width: 210, paddingVertical: 2 },
-  totLabel:   { fontSize: 9, color: MUTED },
-  totValue:   { fontSize: 9, color: INK, fontWeight: 700 },
-  totGrand:   { flexDirection: 'row', justifyContent: 'space-between', width: 210, marginTop: 5, paddingVertical: 7, paddingHorizontal: 10, backgroundColor: BG_RED, borderRadius: 5 },
-  totGrandL:  { fontSize: 10, fontWeight: 700, color: BRAND_D },
-  totGrandV:  { fontSize: 13, fontWeight: 700, color: BRAND_D },
+  // Pied
+  foot:     { flexDirection: 'row', gap: 24, marginTop: 12, paddingTop: 12, borderTopWidth: 1, borderTopColor: LINE_STRONG, borderTopStyle: 'dashed' },
+  qrframe:  { width: 118, height: 118, padding: 6, backgroundColor: '#fff', borderWidth: 1, borderColor: LINE, borderRadius: 8 },
+  qrImg:    { width: '100%', height: '100%' },
+  qrRef:    { fontSize: 11, fontWeight: 700, marginTop: 6, textAlign: 'center', width: 118 },
+  qrCap:    { fontSize: 8.5, color: MUTED, marginTop: 3, textAlign: 'center', width: 118, lineHeight: 1.3 },
+  notes:    { flex: 1 },
+  pill:     { alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: GOOD_BG, borderWidth: 1, borderColor: GOOD_BORDER, borderRadius: 999, paddingVertical: 3, paddingHorizontal: 10, marginBottom: 8 },
+  pillDot:  { width: 6, height: 6, borderRadius: 3, backgroundColor: GOOD },
+  pillTxt:  { fontSize: 9.5, fontWeight: 700, color: GOOD },
+  noteP:    { fontSize: 9.5, color: MUTED, marginTop: 6, lineHeight: 1.4 },
+  noteSig:  { fontSize: 9.5, color: INK, marginTop: 6, fontStyle: 'italic', lineHeight: 1.4 },
 
-  footer:     { position: 'absolute', bottom: 20, left: 34, right: 34, flexDirection: 'row', justifyContent: 'space-between', fontSize: 7, color: FAINT, borderTopWidth: 1, borderTopColor: BORDER, paddingTop: 6 },
+  legal: { marginTop: 10, paddingVertical: 9, paddingHorizontal: 40, backgroundColor: BAND, borderTopWidth: 1, borderTopColor: LINE, fontSize: 9, color: FAINT, textAlign: 'center' },
 })
 
-// ── Format FR-BE ─────────────────────────────────────────────────────────────
 const eur = (n: number) => `${n.toFixed(2).replace('.', ',')} €`
-const fmtDate = (iso?: string | null) => {
+const fmtD = (iso?: string | null) => {
   if (!iso) return '—'
-  const [y, m, d] = iso.slice(0, 10).split('-')
-  return d && m && y ? `${d}/${m}/${y}` : iso.slice(0, 10)
+  const [y, m, d] = String(iso).slice(0, 10).split('-')
+  return d && m && y ? `${d}/${m}/${y}` : String(iso).slice(0, 10)
 }
-const RECIPIENT_LABEL: Record<SaisieRecipient, string> = {
-  parquet: 'Parquet', domaine: 'Domaine (SPF Finances)', client: 'Client',
-}
+const RECIP: Record<SaisieRecipient, string> = { parquet: 'du Parquet', domaine: 'du Domaine', client: 'du client' }
 
 export interface EtatFraisInput {
   numero: string
-  dateEmission?: string            // ISO — défaut aujourd'hui (passé par l'appelant)
+  dateEmission?: string
   recipient: SaisieRecipient
-  destinataire: { name: string; lines?: string[] }
-  vehicle: { plate: string; brand?: string | null; model?: string | null }
-  dossierRef?: string | null       // n° PV / dossier
+  destinataire: { name: string; lines: string[] }   // adresse / e-mail / TVA
+  pv?: string | null
+  dateSaisie?: string | null
   parkedAt: string
-  billingTo: string
-  leveeSaisieDate?: string | null
+  periodFrom?: string | null
+  periodTo: string
+  plate: string
+  vehicle: string
+  vin?: string | null
+  motif?: string | null
   billing: SaisieBillingResult
+  /** Contenu du QR de rattachement (URL de dépôt de la validation). */
+  qrUrl: string
 }
 
 function logoDataUrl(): string | null {
-  try {
-    const buf = readFileSync(join(process.cwd(), 'public', 'logo.png'))
-    return `data:image/png;base64,${buf.toString('base64')}`
-  } catch { return null }
+  try { return `data:image/png;base64,${readFileSync(join(process.cwd(), 'public', 'logo.png')).toString('base64')}` }
+  catch { return null }
+}
+
+// Libellé « meta » sous chaque ligne (comme la maquette).
+function lineMeta(l: SaisieBillingResult['lines'][number], parkedAt: string): string {
+  if (l.kind === 'SERV-PEC') return `Intervention du ${fmtD(parkedAt)} — forfait de base`
+  if (l.kind === 'SERV-KM')  return `Kilométrage facturé au-delà de la franchise`
+  if (l.kind === 'SERV-DIV') return `Frais administratifs de dossier`
+  if (l.kind === 'SERV-PARC' && l.period) return `Du ${fmtD(l.period.from)} au ${fmtD(l.period.to)} — ${l.qty} jour${l.qty > 1 ? 's' : ''} au tarif ${l.period.year}`
+  if (l.kind === 'SERV-PARC') return `${l.qty} jour${l.qty > 1 ? 's' : ''}`
+  return ''
 }
 
 function EtatFraisDoc({ input, qr, logo }: { input: EtatFraisInput; qr: string | null; logo: string | null }) {
-  const { billing } = input
-  const bank = bankConfigFromEnv()
-  const rows = billing.lines
+  const b = input.billing
+  const tva = b.totalTvac - b.totalHtva
+  const period = `${input.periodFrom ? 'du ' + fmtD(input.periodFrom) + ' au ' : ''}${fmtD(input.periodTo)}`
   return (
     <Document>
       <Page size="A4" style={styles.page}>
+        <View style={styles.pad}>
 
-        {/* En-tête : logo + émetteur | titre + numéro */}
-        <View style={styles.header}>
-          <View>
-            {logo ? <Image style={styles.logo} src={logo} /> : <Text style={styles.emitName}>{COMPANY.name}</Text>}
-            <View style={styles.emitter}>
-              <Text style={styles.emitName}>{COMPANY.name}</Text>
-              <Text style={styles.emitLine}>{COMPANY.address}</Text>
-              <Text style={styles.emitLine}>TVA : {COMPANY.vat}</Text>
-            </View>
-          </View>
-          <View style={styles.titleBox}>
-            <Text style={styles.docTitle}>État de Frais</Text>
-            <Text style={styles.docNumber}>{input.numero}</Text>
-            <Text style={styles.docDate}>Émis le {fmtDate(input.dateEmission)}</Text>
-          </View>
-        </View>
-
-        <View style={styles.rule} />
-
-        {/* Destinataire + véhicule */}
-        <View style={styles.cols}>
-          <View style={styles.card}>
-            <Text style={styles.cardLabel}>Destinataire — {RECIPIENT_LABEL[input.recipient]}</Text>
-            <Text style={styles.cardStrong}>{input.destinataire.name}</Text>
-            {(input.destinataire.lines || []).map((l, i) => <Text key={i} style={styles.cardLine}>{l}</Text>)}
-          </View>
-          <View style={styles.card}>
-            <Text style={styles.cardLabel}>Véhicule</Text>
-            <Text style={styles.cardStrong}>{input.vehicle.plate || '—'}</Text>
-            <Text style={styles.cardLine}>{[input.vehicle.brand, input.vehicle.model].filter(Boolean).join(' ') || '—'}</Text>
-            <Text style={styles.cardMuted}>Entrée en parc : {fmtDate(input.parkedAt)}</Text>
-            {input.leveeSaisieDate && <Text style={styles.cardMuted}>Levée de saisie : {fmtDate(input.leveeSaisieDate)}</Text>}
-            {input.dossierRef && <Text style={styles.cardMuted}>Réf. : {input.dossierRef}</Text>}
-          </View>
-        </View>
-
-        {/* Tableau des frais */}
-        <View style={styles.table}>
-          <View style={styles.thead}>
-            <Text style={[styles.th, styles.cDesc]}>Description</Text>
-            <Text style={[styles.th, styles.cQty]}>Qté</Text>
-            <Text style={[styles.th, styles.cPu]}>P.U. HTVA</Text>
-            <Text style={[styles.th, styles.cTot]}>Total HTVA</Text>
-          </View>
-          {rows.map((l, i) => (
-            <View key={i} style={[styles.tr, ...(i % 2 ? [styles.trAlt] : [])]} wrap={false}>
-              <View style={[styles.td, styles.cDesc]}>
-                <Text>{l.name}</Text>
-                {l.period && <Text style={styles.tdMuted}>{fmtDate(l.period.from)} au {fmtDate(l.period.to)} · {l.qty} nuit{l.qty > 1 ? 's' : ''}</Text>}
-              </View>
-              <Text style={[styles.td, styles.cQty]}>{l.qty}</Text>
-              <Text style={[styles.td, styles.cPu]}>{eur(l.unitPrice)}</Text>
-              <Text style={[styles.td, styles.cTot]}>{eur(l.total)}</Text>
-            </View>
-          ))}
-        </View>
-
-        {/* QR réel + totaux */}
-        <View style={styles.bottom}>
-          {qr && bank ? (
-            <View style={styles.qrCard}>
-              <Image style={styles.qrImg} src={qr} />
-              <View style={{ flex: 1 }}>
-                <Text style={styles.qrLabel}>Payez en scannant</Text>
-                <Text style={styles.qrLine}>Avec votre app bancaire</Text>
-                <Text style={styles.qrMono}>{bank.iban}</Text>
-                <Text style={styles.qrLine}>Comm. : {input.numero}</Text>
+          {/* Masthead */}
+          <View style={styles.top}>
+            <View style={styles.brand}>
+              {logo ? <Image style={{ width: 44, height: 44, objectFit: 'contain' }} src={logo} />
+                    : <View style={styles.logo}><Text style={styles.logoTxt}>VD</Text></View>}
+              <View>
+                <Text style={styles.brandNm}>Verviers Dépannage</Text>
+                <Text style={styles.brandSub}>Fourrière · Dépannage · Remorquage</Text>
               </View>
             </View>
-          ) : <View />}
+            <View style={styles.docmeta}>
+              <Text style={styles.doctitle}>État de frais</Text>
+              <Text style={styles.docnum}>{input.numero}</Text>
+              <Text style={styles.docref}>émis le {fmtD(input.dateEmission)}</Text>
+            </View>
+          </View>
 
+          <View style={styles.rule} />
+
+          {/* Émetteur / Destinataire */}
+          <View style={styles.parties}>
+            <View style={styles.party}>
+              <Text style={styles.lbl}>Émetteur</Text>
+              <Text style={styles.who}>{COMPANY.name}</Text>
+              <Text style={styles.addr}>{COMPANY.address}</Text>
+              <Text style={styles.addr}>fourriere@verviersdepannage.be</Text>
+              <Text style={styles.addrInk}>TVA {COMPANY.vat}</Text>
+            </View>
+            <View style={styles.party}>
+              <Text style={styles.lbl}>Destinataire</Text>
+              <Text style={styles.who}>{input.destinataire.name}</Text>
+              {input.destinataire.lines.map((l, i) => (
+                <Text key={i} style={i === input.destinataire.lines.length - 1 && /TVA/i.test(l) ? styles.addrInk : styles.addr}>{l}</Text>
+              ))}
+            </View>
+          </View>
+
+          {/* Bandeau dossier & véhicule */}
+          <View style={styles.band}>
+            <Text style={styles.bandHead}>Dossier & véhicule</Text>
+            <View style={styles.kvRow}>
+              <Cell k="N° de PV" v={input.pv || '—'} mono />
+              <Cell k="Date de saisie" v={fmtD(input.dateSaisie || input.parkedAt)} />
+              <Cell k="Entrée en parc" v={fmtD(input.parkedAt)} />
+              <Cell k="Période facturée" v={period} last />
+            </View>
+            <View style={[styles.kvRow, styles.kvRow2]}>
+              <View style={styles.cell}><Text style={styles.k}>Immatriculation</Text><Text style={styles.plate}>{input.plate || '—'}</Text></View>
+              <Cell k="Véhicule" v={input.vehicle || '—'} />
+              <Cell k="N° de châssis (VIN)" v={input.vin || '—'} mono />
+              <Cell k="Motif" v={input.motif || '—'} last />
+            </View>
+          </View>
+
+          {/* Tableau des prestations */}
+          <View style={styles.table}>
+            <View style={styles.thead}>
+              <Text style={[styles.th, styles.cDesc]}>Prestation</Text>
+              <Text style={[styles.th, styles.cQty]}>Qté</Text>
+              <Text style={[styles.th, styles.cPu]}>P.U. HTVA</Text>
+              <Text style={[styles.th, styles.cTot]}>Total HTVA</Text>
+            </View>
+            {b.lines.map((l, i) => (
+              <View key={i} style={styles.tr} wrap={false}>
+                <View style={styles.cDesc}>
+                  <Text style={styles.chip}>{l.kind}</Text>
+                  <Text style={styles.desc}>{l.name}</Text>
+                  <Text style={styles.meta}>{lineMeta(l, input.parkedAt)}</Text>
+                </View>
+                <Text style={[styles.cQty, styles.numTxt]}>{l.qty}</Text>
+                <Text style={[styles.cPu, styles.numTxt]}>{eur(l.unitPrice)}</Text>
+                <Text style={[styles.cTot, styles.numTxt]}>{eur(l.total)}</Text>
+              </View>
+            ))}
+          </View>
+
+          {/* Totaux */}
           <View style={styles.totals}>
-            <View style={styles.totRow}>
-              <Text style={styles.totLabel}>Total HTVA</Text>
-              <Text style={styles.totValue}>{eur(billing.totalHtva)}</Text>
+            <View style={styles.totbox}>
+              <View style={styles.totrow}><Text style={styles.totT}>Total HTVA</Text><Text style={styles.totV}>{eur(b.totalHtva)}</Text></View>
+              <View style={styles.totrow}><Text style={styles.totT}>TVA 21 %</Text><Text style={styles.totV}>{eur(tva)}</Text></View>
+              <View style={styles.grand}><Text style={styles.grandT}>Total à charge {RECIP[input.recipient]}</Text><Text style={styles.grandV}>{eur(b.totalTvac)}</Text></View>
             </View>
-            <View style={styles.totRow}>
-              <Text style={styles.totLabel}>TVA 21 %</Text>
-              <Text style={styles.totValue}>{eur(billing.totalTvac - billing.totalHtva)}</Text>
+          </View>
+
+          {/* Pied : QR rattachement + suivi */}
+          <View style={styles.foot}>
+            <View>
+              {qr && <View style={styles.qrframe}><Image style={styles.qrImg} src={qr} /></View>}
+              <Text style={styles.qrRef}>{input.numero}</Text>
+              <Text style={styles.qrCap}>Scannez pour rattacher le document à la fiche</Text>
             </View>
-            <View style={styles.totGrand}>
-              <Text style={styles.totGrandL}>TOTAL À PAYER (TVAC)</Text>
-              <Text style={styles.totGrandV}>{eur(billing.totalTvac)}</Text>
+            <View style={styles.notes}>
+              <Text style={styles.lbl}>Suivi & mentions</Text>
+              <View style={styles.pill}><View style={styles.pillDot} /><Text style={styles.pillTxt}>En attente de validation {RECIP[input.recipient]}</Text></View>
+              <Text style={styles.noteP}>Document établi conformément au réquisitoire joint. À nous retourner revêtu de votre accord (cachet + signature) ou via le lien communiqué par courriel.</Text>
+              <Text style={styles.noteSig}>La mention de signature électronique (frais de justice) figure automatiquement sur la facture émise après validation.</Text>
             </View>
           </View>
         </View>
 
-        <View style={styles.footer} fixed>
-          <Text>{COMPANY.name} · {COMPANY.address} · TVA {COMPANY.vat} · {bank?.iban}</Text>
-          <Text>Généré par VD Soft</Text>
-        </View>
+        <Text style={styles.legal}>{COMPANY.name} · {COMPANY.address} · TVA {COMPANY.vat}</Text>
       </Page>
     </Document>
   )
 }
 
-/** Rend l'état de frais en Buffer PDF. */
+function Cell({ k, v, mono, last }: { k: string; v: string; mono?: boolean; last?: boolean }) {
+  return (
+    <View style={last ? [styles.cell, styles.cellLast] : styles.cell}>
+      <Text style={styles.k}>{k}</Text>
+      <Text style={mono ? styles.vMono : styles.v}>{v}</Text>
+    </View>
+  )
+}
+
+/** Rend l'état de frais en Buffer PDF (QR = URL de rattachement). */
 export async function renderEtatFraisPdf(input: EtatFraisInput): Promise<Buffer> {
-  const bank = bankConfigFromEnv()
-  let qr: string | null = null
-  if (bank && input.billing.totalTvac > 0) {
-    const payload = buildEpcQrPayload({
-      name: bank.name, iban: bank.iban, bic: bank.bic,
-      amount: input.billing.totalTvac, remittance: input.numero,
-    })
-    qr = await QRCode.toDataURL(payload, { width: 320, margin: 1 }).catch(() => null as any)
-  }
+  const qr = input.qrUrl ? await QRCode.toDataURL(input.qrUrl, { width: 320, margin: 0 }).catch(() => null as any) : null
   return renderToBuffer(<EtatFraisDoc input={input} qr={qr} logo={logoDataUrl()} /> as any)
 }

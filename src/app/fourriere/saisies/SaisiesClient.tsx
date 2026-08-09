@@ -56,6 +56,13 @@ const STATE: Record<string, { label: string; cls: string; rank: number }> = {
 }
 const REC_LABEL: Record<Recipient, string> = { parquet: 'Parquet', domaine: 'Domaine', client: 'Client' }
 const fmt = (ymd?: string | null) => (ymd ? String(ymd).slice(0, 10).split('-').reverse().join('/') : '—')
+// Dernier jour du mois SUIVANT la saisie = 1re facturation possible (miroir serveur).
+function firstBillable(parkedAt?: string | null): string | null {
+  if (!parkedAt) return null
+  const [y, m] = String(parkedAt).slice(0, 10).split('-').map(Number)
+  return new Date(Date.UTC(y, m + 1, 0)).toISOString().slice(0, 10)
+}
+const todayISO = () => new Date().toISOString().slice(0, 10)
 const daysSince = (ymd?: string | null) => {
   if (!ymd) return null
   const d = new Date(String(ymd).slice(0, 10) + 'T00:00:00')
@@ -158,15 +165,22 @@ export default function SaisiesClient({ userRole, userName, userEmail, userModul
             <h1 className="font-display text-2xl font-bold text-ink flex items-center gap-2">⚖️ Facturation Saisie</h1>
             <p className="text-ink-muted text-sm mt-0.5">États de frais, validation Parquet et cycle de facturation.</p>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-3">
             {isAdmin && (
-              <button onClick={toggleMode}
-                title="Le cron journalier prépare les états de frais (Alerte) ou les envoie tout seul (Auto)"
-                className={`px-3 py-2 rounded-xl text-sm font-semibold border transition ${autoSend
-                  ? 'bg-green-100 border-green-300 text-green-800'
-                  : 'bg-amber-100 border-amber-300 text-amber-800'}`}>
-                {autoSend ? '🤖 Envoi auto' : '🔔 Prépare + alerte'}
-              </button>
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-semibold text-ink-faint uppercase tracking-wide">Envoi</span>
+                <div className="inline-flex rounded-xl border overflow-hidden text-sm font-semibold" role="group"
+                  title="Le cron journalier prépare les états de frais (Alerte) ou les envoie tout seul (Auto)">
+                  <button onClick={() => autoSend && toggleMode()}
+                    className={`px-3 py-2 transition ${!autoSend ? 'bg-amber-500 text-white' : 'bg-surface text-ink-faint hover:bg-surface-hover'}`}>
+                    🔔 Alerte
+                  </button>
+                  <button onClick={() => !autoSend && toggleMode()}
+                    className={`px-3 py-2 transition border-l ${autoSend ? 'bg-green-600 text-white' : 'bg-surface text-ink-faint hover:bg-surface-hover'}`}>
+                    🤖 Auto
+                  </button>
+                </div>
+              </div>
             )}
             <button onClick={load} className="px-3 py-2 bg-surface-2 hover:bg-surface-hover border rounded-xl text-sm font-medium text-ink-secondary">↻ Rafraîchir</button>
           </div>
@@ -242,6 +256,10 @@ function DossierCard({ d, busy, onGenerate, onRecipient, onState, onRemove, onRe
 }) {
   const st = STATE[d.state] || { label: d.state, cls: 'bg-slate-100 text-slate-700 border-slate-300', rank: 8 }
   const days = daysSince(d.parked_at)
+  // 1er état de frais bloqué tant que la 1re période n'est pas atteinte (sauf remise Domaine).
+  const billableFrom = firstBillable(d.parked_at)
+  const notYetBillable = !d.ef_number && !d.billed_to_date && !d.domaine_remise_date && !!billableFrom && todayISO() < billableFrom
+  const canEstablish = d.requisitoire_ok && !notYetBillable
 
   return (
     <div className="rounded-2xl border bg-surface p-4">
@@ -289,8 +307,15 @@ function DossierCard({ d, busy, onGenerate, onRecipient, onState, onRemove, onRe
         </div>
       )}
 
+      {/* 1re période pas encore atteinte → établissement bloqué */}
+      {d.requisitoire_ok && notYetBillable && (
+        <div className="mt-3 rounded-xl border border-slate-300 bg-slate-50 px-3 py-2 text-sm text-slate-700">
+          ⏳ 1er état de frais facturable à partir du <b>{fmt(billableFrom)}</b> (dernier jour du mois suivant la saisie).
+        </div>
+      )}
+
       {/* Action détectée par le cron (mode Prépare + Alerte) */}
-      {d.requisitoire_ok && d.pending_action && PENDING[d.pending_action] && (
+      {canEstablish && d.pending_action && PENDING[d.pending_action] && (
         <div className={`mt-3 flex items-center justify-between gap-3 rounded-xl border px-3 py-2 ${PENDING[d.pending_action].cls}`}>
           <span className="text-sm font-semibold">
             🔔 {PENDING[d.pending_action].label}
@@ -305,8 +330,8 @@ function DossierCard({ d, busy, onGenerate, onRecipient, onState, onRemove, onRe
 
       {/* Actions */}
       <div className="flex items-center gap-2 flex-wrap mt-3 pt-3 border-t">
-        <button disabled={busy || !d.requisitoire_ok} onClick={onGenerate}
-          title={!d.requisitoire_ok ? 'Réquisitoire manquant' : undefined}
+        <button disabled={busy || !canEstablish} onClick={onGenerate}
+          title={!d.requisitoire_ok ? 'Réquisitoire manquant' : notYetBillable ? `Facturable à partir du ${fmt(billableFrom)}` : undefined}
           className="px-3 py-1.5 bg-brand hover:bg-brand-hover disabled:opacity-40 disabled:cursor-not-allowed text-white rounded-lg text-sm font-semibold">
           📄 {d.ef_number ? 'Nouvel état de frais' : 'Établir l\'état de frais'}
         </button>

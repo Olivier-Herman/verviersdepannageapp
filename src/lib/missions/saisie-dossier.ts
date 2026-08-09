@@ -79,19 +79,27 @@ export const SAISIE_STATES = [
 ] as const
 export type SaisieState = typeof SAISIE_STATES[number]
 
-// Destinataires connus (adresses réelles pour le PDF).
-export function resolveDestinataire(recipient: SaisieRecipient, mission?: any): { name: string; lines: string[] } {
+// Bloc destinataire pour le PDF (adresse + e-mail routé + TVA).
+export function resolveDestinataire(recipient: SaisieRecipient, mission?: any, email?: string | null): { name: string; lines: string[] } {
   if (recipient === 'parquet')
-    return { name: 'Parquet', lines: ['Quai d\'Arona 4', '4500 Huy'] }
+    return { name: 'Parquet', lines: ['Quai d\'Arona 4, 4500 Huy', email || 'fdj.pplge@just.fgov.be', 'TVA BE 0308.357.753'] }
   if (recipient === 'domaine')
-    return { name: 'SPF Finances — Domaine', lines: ['Recette des domaines'] }
+    return { name: 'SPF Finances — Domaine', lines: ['Recette des domaines', email || ''].filter(Boolean) }
   // client : personne sur place / propriétaire
   const name = mission?.billed_to_name || mission?.client_name || 'Client'
-  const lines = [mission?.incident_address, mission?.incident_city].filter(Boolean)
+  const lines = [[mission?.incident_address, mission?.incident_city].filter(Boolean).join(', '), email || ''].filter(Boolean)
   return { name, lines: lines.length ? lines : ['—'] }
 }
 
 const belgianToday = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Brussels' }).format(new Date())
+
+// Dernier jour du mois SUIVANT une date (saisie 14/07 → 31/08) = date à partir de
+// laquelle le 1er état de frais est facturable. Olivier 2026-08-10.
+export function firstBillableDate(parkedAt: string): string {
+  const [y, m] = String(parkedAt).slice(0, 10).split('-').map(Number)
+  return new Date(Date.UTC(y, m + 1, 0)).toISOString().slice(0, 10)
+}
+const fmtFR = (ymd: string) => String(ymd).slice(0, 10).split('-').reverse().join('/')
 
 // Franchise km SAISIE : on ne facture les km qu'AU-DELÀ de 30 km ALLER-RETOUR.
 // « On les compte au-dessus de 30 kms aller-retour » — Olivier 2026-08-09.
@@ -130,7 +138,7 @@ export async function generateEtatFrais(
 
   const mission = d.mission_id
     ? (await sb.from('incoming_missions')
-        .select('client_name, billed_to_name, incident_address, incident_city, vehicle_class, requisitoire_at')
+        .select('client_name, billed_to_name, incident_address, incident_city, vehicle_class, vehicle_vin, client_email, received_at, requisitoire_at, domaine_remise_date')
         .eq('id', d.mission_id).maybeSingle()).data
     : null
 
@@ -138,6 +146,17 @@ export async function generateEtatFrais(
   // (L'aperçu reste autorisé pour vérifier le calcul.) Olivier 2026-08-09.
   if (persist && mission && !mission.requisitoire_at) {
     throw new Error('Réquisitoire manquant — impossible d\'établir l\'état de frais')
+  }
+
+  const hasDomaine = !!(mission?.domaine_remise_date || d.domaine_remise_date)
+  // RÈGLE : le 1er état de frais n'est possible qu'à partir du dernier jour du
+  // mois SUIVANT la saisie — SAUF s'il y a une remise Domaine (état de clôture).
+  // Olivier 2026-08-10.
+  if (persist && !d.billed_to_date && !hasDomaine && d.parked_at) {
+    const billable = firstBillableDate(d.parked_at)
+    if (belgianToday() < billable) {
+      throw new Error(`Première période non atteinte — état de frais facturable à partir du ${fmtFR(billable)}`)
+    }
   }
 
   const recipient = (opts.recipient || d.recipient || 'parquet') as SaisieRecipient
@@ -162,7 +181,7 @@ export async function generateEtatFrais(
   })
 
   // APERÇU : ne consomme pas de numéro, ne persiste rien, n'avance pas le dossier.
-  let numero = d.ef_number || 'EF-APERÇU'
+  let numero = d.ef_number || 'EDF-APERÇU'
   let efRowId = ''
   if (persist) {
     // Numérotation : 1er EF → attribue le n° au dossier. Suivants → suffixe.
@@ -200,17 +219,33 @@ export async function generateEtatFrais(
     }).eq('id', dossierId)
   }
 
+  // QR de RATTACHEMENT : lien de dépôt de la validation (token du dossier). En
+  // persistance on garantit le token ; en aperçu on met un lien générique.
+  let valToken: string | null = d.validation_token || null
+  if (persist && !valToken) {
+    valToken = randomUUID().replace(/-/g, '')
+    await sb.from('saisie_dossiers').update({ validation_token: valToken }).eq('id', dossierId)
+  }
+  const qrUrl = valToken ? validationLink(valToken) : `${APP_URL}/saisie-validation`
+
+  const destEmail = resolveRecipientEmail(recipient, d.motif_code, mission?.client_email)?.email || null
+
   const pdf = await renderEtatFraisPdf({
     numero,
     dateEmission: billingTo,
     recipient,
-    destinataire: resolveDestinataire(recipient, mission),
-    vehicle: { plate: d.vehicle_plate, brand: d.vehicle_brand, model: d.vehicle_model },
-    dossierRef: d.dossier_ref,
+    destinataire: resolveDestinataire(recipient, mission, destEmail),
+    pv: d.dossier_ref,
+    dateSaisie: mission?.received_at || d.parked_at,
     parkedAt: d.parked_at,
-    billingTo,
-    leveeSaisieDate: d.levee_date || null,
+    periodFrom: billingFrom,
+    periodTo: billingTo,
+    plate: d.vehicle_plate,
+    vehicle: [d.vehicle_brand, d.vehicle_model].filter(Boolean).join(' '),
+    vin: mission?.vehicle_vin || null,
+    motif: d.motif_label || null,
     billing,
+    qrUrl,
   })
 
   return { pdf, numero, totalHtva: billing.totalHtva, totalTvac: billing.totalTvac, efRowId }
@@ -265,10 +300,12 @@ export async function sendEtatFrais(
   // Infos fiche : email client (si destinataire=client) + VIN (si connu, ajouté au mail).
   let clientEmail: string | null = null
   let vin: string | null = null
+  let reqDocPath: string | null = null
   if (d.mission_id) {
-    const { data: m } = await sb.from('incoming_missions').select('client_email, vehicle_vin').eq('id', d.mission_id).maybeSingle()
+    const { data: m } = await sb.from('incoming_missions').select('client_email, vehicle_vin, requisitoire_doc_path').eq('id', d.mission_id).maybeSingle()
     clientEmail = m?.client_email || null
     vin = m?.vehicle_vin || null
+    reqDocPath = m?.requisitoire_doc_path || null
   }
   const dest = resolveRecipientEmail(recipient, d.motif_code, clientEmail)
   if (!dest) return { ok: false, error: recipient === 'client' ? "Email du client inconnu (compléter la fiche)" : 'Destinataire Domaine non configuré' }
@@ -279,11 +316,31 @@ export async function sendEtatFrais(
     gen = await generateEtatFrais(sb, dossierId, { ...opts, recipient, persist: true }, userId)
   } catch (e: any) { return { ok: false, error: e?.message || 'Génération échouée' } }
 
-  // Token de dépôt de la validation (stable une fois créé).
+  // Token de dépôt de la validation : generateEtatFrais l'a garanti → on le relit.
   let token = d.validation_token
+  if (!token) {
+    const { data: dd } = await sb.from('saisie_dossiers').select('validation_token').eq('id', dossierId).maybeSingle()
+    token = dd?.validation_token
+  }
   if (!token) {
     token = randomUUID().replace(/-/g, '')
     await sb.from('saisie_dossiers').update({ validation_token: token }).eq('id', dossierId)
+  }
+
+  // Pièces jointes : l'état de frais + le RÉQUISITOIRE (téléchargé du bucket).
+  const attachments: { name: string; contentType: string; contentBytes: string }[] = [
+    { name: `etat-de-frais-${gen.numero}.pdf`, contentType: 'application/pdf', contentBytes: gen.pdf.toString('base64') },
+  ]
+  if (reqDocPath) {
+    try {
+      const { data: blob } = await sb.storage.from('mission-remarks').download(reqDocPath)
+      if (blob) {
+        const buf = Buffer.from(await blob.arrayBuffer())
+        const ext = (reqDocPath.split('.').pop() || 'pdf').toLowerCase()
+        const ct = ext === 'pdf' ? 'application/pdf' : ext === 'png' ? 'image/png' : (ext === 'jpg' || ext === 'jpeg') ? 'image/jpeg' : 'application/octet-stream'
+        attachments.push({ name: `requisitoire-${d.vehicle_plate || 'vehicule'}.${ext}`, contentType: ct, contentBytes: buf.toString('base64') })
+      }
+    } catch (e: any) { console.warn('[saisie] réquisitoire non joint :', e?.message) }
   }
 
   const subject = `État de frais ${gen.numero} — ${d.vehicle_plate || 'véhicule'}`
@@ -292,7 +349,7 @@ export async function sendEtatFrais(
       dest.email, subject, buildEfEmailHtml(d, gen.numero, gen.totalTvac, validationLink(token), vin),
       dest.label,
       undefined,  // cc
-      [{ name: `etat-de-frais-${gen.numero}.pdf`, contentType: 'application/pdf', contentBytes: gen.pdf.toString('base64') }],
+      attachments,
       FOURRIERE_FROM,
       FOURRIERE_FROM,  // bcc = trace interne
     )

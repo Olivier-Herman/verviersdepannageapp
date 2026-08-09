@@ -18,9 +18,9 @@ export const dynamic = 'force-dynamic'
 export const maxDuration = 30
 
 const DEST: Record<SaisieRecipient, { name: string; lines: string[] }> = {
-  parquet: { name: 'Parquet du Procureur du Roi', lines: ['Division de Verviers', 'Rue du Tribunal 4, 4800 Verviers'] },
+  parquet: { name: 'Parquet', lines: ['Quai d\'Arona 4, 4500 Huy', 'fdj.pplge@just.fgov.be', 'TVA BE 0308.357.753'] },
   domaine: { name: 'SPF Finances — Domaine', lines: ['Recette des domaines', 'Verviers'] },
-  client:  { name: 'M. Jean Dupont', lines: ['Rue de la Station 12', '4800 Verviers'] },
+  client:  { name: 'M. Jean Dupont', lines: ['Rue de la Station 12, 4800 Verviers', 'jean.dupont@email.be'] },
 }
 
 export async function GET(req: Request) {
@@ -41,15 +41,21 @@ export async function GET(req: Request) {
   })
 
   const pdf = await renderEtatFraisPdf({
-    numero: 'EF-2026-0001',
+    numero: 'EDF-2026-0428',
     dateEmission: billingTo,
     recipient,
     destinataire: DEST[recipient],
-    vehicle: { plate: '1-ABC-123', brand: 'Volkswagen', model: 'Golf' },
-    dossierRef: 'PV VE.55.LX.001234/2025',
+    pv: '2026 / 045678',
+    dateSaisie: parkedAt,
     parkedAt,
-    billingTo,
+    periodFrom: parkedAt,
+    periodTo: billingTo,
+    plate: '1-ABC-234',
+    vehicle: 'Renault Trafic',
+    vin: 'VF1JL000272031498',
+    motif: 'Saisie Générale',
     billing,
+    qrUrl: 'https://app.verviersdepannage.com/saisie-validation/apercu',
   })
 
   return new NextResponse(pdf as any, {
