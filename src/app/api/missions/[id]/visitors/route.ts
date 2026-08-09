@@ -12,21 +12,14 @@ import { NextResponse }      from 'next/server'
 import { getServerSession }  from 'next-auth'
 import { authOptions }       from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase'
+import { sessionAccess }     from '@/lib/access'
 
 export const dynamic = 'force-dynamic'
 
 const ALLOWED_ROLES   = ['superadmin', 'admin', 'dispatcher']
 const ALLOWED_MODULES = ['facturation', 'fourriere', 'encaissement', 'encaissements']
 
-async function guard(sb: any, email?: string | null) {
-  if (!email) return null
-  const { data: me } = await sb.from('users').select('id, role, roles, modules').eq('email', email).maybeSingle()
-  if (!me) return null
-  const roles   = [me.role, ...(Array.isArray(me.roles) ? me.roles : [])].filter(Boolean) as string[]
-  const modules = Array.isArray(me.modules) ? me.modules as string[] : []
-  const ok = roles.some(r => ALLOWED_ROLES.includes(r)) || modules.some(m => ALLOWED_MODULES.includes(m))
-  return ok ? me : null
-}
+const guard = (session: any) => sessionAccess(session, { roles: ALLOWED_ROLES, modules: ALLOWED_MODULES })
 
 async function resolveMissionId(sb: any, idParam: string): Promise<string | null> {
   const isUuid = /^[0-9a-f-]{36}$/i.test(idParam)
@@ -38,8 +31,8 @@ async function resolveMissionId(sb: any, idParam: string): Promise<string | null
 export async function GET(_req: Request, { params }: { params: { id: string } }) {
   const sb = createAdminClient()
   const session = await getServerSession(authOptions)
-  const me = await guard(sb, session?.user?.email)
-  if (!me) return NextResponse.json({ error: 'Accès refusé' }, { status: 403 })
+  const acc = guard(session)
+  if (!acc.ok) return NextResponse.json({ error: 'Accès refusé' }, { status: 403 })
 
   const missionId = await resolveMissionId(sb, params.id)
   if (!missionId) return NextResponse.json({ error: 'Mission introuvable' }, { status: 404 })
@@ -60,8 +53,8 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
 export async function POST(req: Request, { params }: { params: { id: string } }) {
   const sb = createAdminClient()
   const session = await getServerSession(authOptions)
-  const me = await guard(sb, session?.user?.email)
-  if (!me) return NextResponse.json({ error: 'Accès refusé' }, { status: 403 })
+  const acc = guard(session)
+  if (!acc.ok) return NextResponse.json({ error: 'Accès refusé' }, { status: 403 })
 
   const missionId = await resolveMissionId(sb, params.id)
   if (!missionId) return NextResponse.json({ error: 'Mission introuvable' }, { status: 404 })
@@ -84,7 +77,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     note:            b.note ? String(b.note).slice(0, 500) : null,
     national_number: b.national_number ? String(b.national_number).slice(0, 40) : null,
     source:          b.source === 'eid' ? 'eid' : 'manual',
-    created_by:      me.id || null,
+    created_by:      acc.id || null,
   }
   const { data, error } = await sb.from('mission_visitors').insert(row).select().single()
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
@@ -101,8 +94,8 @@ export async function POST(req: Request, { params }: { params: { id: string } })
 export async function DELETE(req: Request, { params }: { params: { id: string } }) {
   const sb = createAdminClient()
   const session = await getServerSession(authOptions)
-  const me = await guard(sb, session?.user?.email)
-  if (!me) return NextResponse.json({ error: 'Accès refusé' }, { status: 403 })
+  const acc = guard(session)
+  if (!acc.ok) return NextResponse.json({ error: 'Accès refusé' }, { status: 403 })
 
   const vid = new URL(req.url).searchParams.get('vid')
   if (!vid) return NextResponse.json({ error: 'vid requis' }, { status: 400 })

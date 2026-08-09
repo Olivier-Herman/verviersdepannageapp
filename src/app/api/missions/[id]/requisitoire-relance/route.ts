@@ -8,35 +8,24 @@ import { NextResponse }      from 'next/server'
 import { getServerSession }  from 'next-auth'
 import { authOptions }       from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase'
+import { sessionAccess }     from '@/lib/access'
 import { sendRequisitoireRelance, ensureDepotToken, depotLink } from '@/lib/requisitoire/relance'
 
 export const dynamic     = 'force-dynamic'
 export const maxDuration = 30
 
-async function guard(sb: any, email?: string | null) {
-  if (!email) return null
-  const { data: me } = await sb.from('users').select('id, role, roles, modules').eq('email', email).maybeSingle()
-  if (!me) return null
-  const roles   = [me.role, ...(Array.isArray(me.roles) ? me.roles : [])].filter(Boolean) as string[]
-  const modules = Array.isArray(me.modules) ? me.modules as string[] : []
-  const ok = roles.some(r => ['admin', 'superadmin'].includes(r)) || modules.includes('fourriere')
-  return ok ? me : null
-}
-
 // GET → garantit un token de dépôt et renvoie le lien public (copie du lien).
 export async function GET(_req: Request, { params }: { params: { id: string } }) {
-  const sb = createAdminClient()
   const session = await getServerSession(authOptions)
-  if (!(await guard(sb, session?.user?.email))) return NextResponse.json({ error: 'Accès refusé' }, { status: 403 })
+  if (!sessionAccess(session, { modules: ['fourriere'] }).ok) return NextResponse.json({ error: 'Accès refusé' }, { status: 403 })
   const token = await ensureDepotToken(params.id)
   if (!token) return NextResponse.json({ error: 'Token indisponible' }, { status: 500 })
   return NextResponse.json({ ok: true, token, link: depotLink(token) })
 }
 
 export async function POST(_req: Request, { params }: { params: { id: string } }) {
-  const sb = createAdminClient()
   const session = await getServerSession(authOptions)
-  if (!(await guard(sb, session?.user?.email))) return NextResponse.json({ error: 'Accès refusé' }, { status: 403 })
+  if (!sessionAccess(session, { modules: ['fourriere'] }).ok) return NextResponse.json({ error: 'Accès refusé' }, { status: 403 })
 
   const res = await sendRequisitoireRelance(params.id)
   if (!res.ok) return NextResponse.json({ error: res.error }, { status: 400 })
@@ -46,7 +35,7 @@ export async function POST(_req: Request, { params }: { params: { id: string } }
 export async function PATCH(req: Request, { params }: { params: { id: string } }) {
   const sb = createAdminClient()
   const session = await getServerSession(authOptions)
-  if (!(await guard(sb, session?.user?.email))) return NextResponse.json({ error: 'Accès refusé' }, { status: 403 })
+  if (!sessionAccess(session, { modules: ['fourriere'] }).ok) return NextResponse.json({ error: 'Accès refusé' }, { status: 403 })
 
   const body = await req.json().catch(() => ({}))
   const stop = !!body.stop

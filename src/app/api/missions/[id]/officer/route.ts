@@ -14,25 +14,16 @@ import { getServerSession }  from 'next-auth'
 import { authOptions }       from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase'
 import { odooRpc }           from '@/lib/odoo'
+import { sessionAccess }     from '@/lib/access'
 
 export const dynamic     = 'force-dynamic'
 export const maxDuration = 30
 
-async function guard(sb: any, email?: string | null) {
-  if (!email) return null
-  const { data: me } = await sb.from('users').select('id, role, roles, modules').eq('email', email).maybeSingle()
-  if (!me) return null
-  const roles   = [me.role, ...(Array.isArray(me.roles) ? me.roles : [])].filter(Boolean) as string[]
-  const modules = Array.isArray(me.modules) ? me.modules as string[] : []
-  const ok = roles.some(r => ['admin', 'superadmin'].includes(r)) || modules.includes('fourriere')
-  return ok ? me : null
-}
-
 export async function POST(req: Request, { params }: { params: { id: string } }) {
   const sb = createAdminClient()
   const session = await getServerSession(authOptions)
-  const me = await guard(sb, session?.user?.email)
-  if (!me) return NextResponse.json({ error: 'Accès refusé' }, { status: 403 })
+  const { id: actorId, ok } = sessionAccess(session, { modules: ['fourriere'] })
+  if (!ok) return NextResponse.json({ error: 'Accès refusé' }, { status: 403 })
 
   const body = await req.json().catch(() => ({} as any))
   const create    = !!body.create
@@ -69,7 +60,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
     await sb.from('mission_logs').insert({
-      mission_id: params.id, actor_id: me.id,
+      mission_id: params.id, actor_id: actorId,
       action: create ? 'officer_created' : 'officer_linked',
       notes: `Policier ${create ? 'créé et ' : ''}rattaché : ${name || '—'}${emailOk ? ` <${emailOk}>` : ' (sans email)'}.`,
       metadata: { partner_id: partnerId, email: emailOk },

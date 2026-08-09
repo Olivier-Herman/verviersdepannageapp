@@ -25,6 +25,12 @@ const daysSince = (iso?: string | null) => {
   const d = Math.floor((Date.now() - new Date(iso).getTime()) / 86400000)
   return isNaN(d) ? null : d
 }
+const fmtDT = (iso?: string | null) => {
+  if (!iso) return '—'
+  try { return new Date(iso).toLocaleString('fr-BE', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) } catch { return '—' }
+}
+
+type Send = { at: string; email: string | null }
 
 export default function RelanceRequisitoireClient({ initialItems, appUrl }: { initialItems: Item[]; appUrl: string }) {
   const [items, setItems]     = useState<Item[]>(initialItems)
@@ -36,6 +42,9 @@ export default function RelanceRequisitoireClient({ initialItems, appUrl }: { in
   const [draftName, setDraftName] = useState('')
   const [showCreate, setShowCreate] = useState(false)
   const [form, setForm]           = useState<{ name: string; email: string; phone: string }>({ name: '', email: '', phone: '' })
+  // Historique des envois par dossier (déplié à la demande, source = logs).
+  const [histOpen, setHistOpen]   = useState<string | null>(null)
+  const [hist, setHist]           = useState<Record<string, Send[] | 'loading'>>({})
 
   const visible = useMemo(() => items.filter(i => showStop || !i.stop), [items, showStop])
   const stats = useMemo(() => ({
@@ -45,6 +54,20 @@ export default function RelanceRequisitoireClient({ initialItems, appUrl }: { in
 
   const note = (id: string, msg: string, ok: boolean) => { setFlash({ id, msg, ok }); setTimeout(() => setFlash(f => f?.id === id ? null : f), 4000) }
 
+  const loadHistory = async (id: string) => {
+    setHist(h => ({ ...h, [id]: 'loading' }))
+    try {
+      const r = await fetch(`/api/missions/${id}/requisitoire-history`)
+      const j = await r.json()
+      setHist(h => ({ ...h, [id]: Array.isArray(j.history) ? j.history : [] }))
+    } catch { setHist(h => ({ ...h, [id]: [] })) }
+  }
+  const toggleHistory = (it: Item) => {
+    if (histOpen === it.id) { setHistOpen(null); return }
+    setHistOpen(it.id)
+    if (hist[it.id] === undefined) loadHistory(it.id)
+  }
+
   const sendRelance = async (it: Item) => {
     setBusy(it.id)
     try {
@@ -53,6 +76,10 @@ export default function RelanceRequisitoireClient({ initialItems, appUrl }: { in
       if (!r.ok) throw new Error(j?.error || 'Erreur')
       setItems(prev => prev.map(x => x.id === it.id ? { ...x, reminder_count: x.reminder_count + 1, last_reminder_at: new Date().toISOString() } : x))
       note(it.id, `Relance envoyée à ${j.email}`, true)
+      // La carte s'alimente de l'historique réel : on recharge si ouvert, sinon on
+      // invalide le cache pour un rechargement au prochain déploiement.
+      if (histOpen === it.id) loadHistory(it.id)
+      else setHist(h => { const n = { ...h }; delete n[it.id]; return n })
     } catch (e: any) { note(it.id, e?.message || 'Échec', false) } finally { setBusy(null) }
   }
 
@@ -222,7 +249,26 @@ export default function RelanceRequisitoireClient({ initialItems, appUrl }: { in
                         </div>
                       )}
                       {it.reminder_count > 0 && (
-                        <div className="text-xs text-ink-muted mt-1">{it.reminder_count} relance(s){lastD != null ? ` · dernière il y a ${lastD} j` : ''}</div>
+                        <div className="mt-1">
+                          <button onClick={() => toggleHistory(it)} className="text-xs text-ink-muted hover:text-ink flex items-center gap-1">
+                            <span className="text-[10px]">{histOpen === it.id ? '▾' : '▸'}</span>
+                            {it.reminder_count} relance(s){lastD != null ? ` · dernière il y a ${lastD} j` : ''}
+                          </button>
+                          {histOpen === it.id && (
+                            <div className="mt-1 ml-2 pl-2.5 border-l-2 border-app space-y-0.5">
+                              {hist[it.id] === 'loading' || hist[it.id] === undefined
+                                ? <div className="text-[11px] text-ink-muted italic">Chargement…</div>
+                                : (hist[it.id] as Send[]).length === 0
+                                  ? <div className="text-[11px] text-ink-muted italic">Aucun envoi enregistré.</div>
+                                  : (hist[it.id] as Send[]).map((s, i) => (
+                                      <div key={i} className="text-[11px] text-ink-muted flex items-center gap-1.5">
+                                        <span className="font-medium text-ink-secondary tabular-nums">{fmtDT(s.at)}</span>
+                                        {s.email ? <span className="text-ink-muted">→ {s.email}</span> : <span className="text-amber-600">→ (email inconnu)</span>}
+                                      </div>
+                                    ))}
+                            </div>
+                          )}
+                        </div>
                       )}
                       {flash?.id === it.id && <div className={`text-xs mt-1 ${flash.ok ? 'text-emerald-600' : 'text-critical'}`}>{flash.ok ? '✓' : '⚠'} {flash.msg}</div>}
                     </div>

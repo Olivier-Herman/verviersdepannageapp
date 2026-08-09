@@ -11,6 +11,7 @@ import { NextResponse }      from 'next/server'
 import { getServerSession }  from 'next-auth'
 import { authOptions }       from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase'
+import { sessionAccess }     from '@/lib/access'
 import { closeVabMission }   from '@/lib/vab/close'
 
 export const dynamic     = 'force-dynamic'
@@ -19,10 +20,8 @@ export const maxDuration = 120
 export async function POST(req: Request, { params }: { params: { id: string } }) {
   const sb = createAdminClient()
   const session = await getServerSession(authOptions)
-  const email = session?.user?.email
-  if (!email) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  const { data: me } = await sb.from('users').select('id, role, roles, modules').eq('email', email).maybeSingle()
-  if (!me) return NextResponse.json({ error: 'Accès refusé' }, { status: 403 })
+  if (!session?.user?.email) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const acc = sessionAccess(session, { roles: ['admin', 'superadmin', 'dispatcher'], modules: ['fourriere'] })
 
   const isUuid = /^[0-9a-f-]{36}$/i.test(params.id)
   const q = sb.from('incoming_missions').select('id, source, external_id, mission_type, assigned_to, mission_number, status, requisitoire_at, vab_closed_at')
@@ -30,11 +29,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   if (!m) return NextResponse.json({ error: 'Mission introuvable' }, { status: 404 })
 
   // Autorisation : chauffeur assigné OU admin/superadmin/dispatcher OU module fourriere.
-  const roles   = [me.role, ...(Array.isArray(me.roles) ? me.roles : [])].filter(Boolean) as string[]
-  const modules = Array.isArray(me.modules) ? me.modules as string[] : []
-  const allowed = m.assigned_to === me.id
-    || roles.some(r => ['admin', 'superadmin', 'dispatcher'].includes(r))
-    || modules.includes('fourriere')
+  const allowed = (m.assigned_to && m.assigned_to === acc.id) || acc.ok
   if (!allowed) return NextResponse.json({ error: 'Accès refusé' }, { status: 403 })
 
   if (String(m.source).toLowerCase() !== 'vab') return NextResponse.json({ error: 'Mission non VAB' }, { status: 400 })
