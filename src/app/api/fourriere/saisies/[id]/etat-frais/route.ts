@@ -33,6 +33,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
       recipient: body.recipient || undefined,
       chargedKmBeyond: body.chargedKmBeyond != null ? Number(body.chargedKmBeyond) : undefined,
       roundTripKm: body.roundTripKm != null ? Number(body.roundTripKm) : undefined,
+      persist: body.preview ? false : true,   // aperçu = ne consomme pas de n°, n'avance pas
     }, userId)
     return new NextResponse(pdf as any, {
       headers: {

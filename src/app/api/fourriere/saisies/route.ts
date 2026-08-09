@@ -20,7 +20,7 @@ function canAccess(session: any): boolean {
   return ['admin', 'superadmin'].includes(u.role || '') || (u.modules || []).includes('fourriere')
 }
 
-const SNAP = 'id, dossier_number, vehicle_plate, vehicle_brand, vehicle_model, client_name, parked_at, received_at, levee_saisie_date, requisitoire_at'
+const SNAP = 'id, dossier_number, vehicle_plate, vehicle_brand, vehicle_model, client_name, parked_at, received_at, levee_saisie_date, requisitoire_at, saisie_motif_code, saisie_motif_label'
 
 function snapshotFromMission(m: any) {
   return {
@@ -31,6 +31,8 @@ function snapshotFromMission(m: any) {
     dossier_ref:   m.dossier_number || null,
     parked_at:     (m.parked_at || m.received_at || '').slice(0, 10) || null,
     levee_date:    m.levee_saisie_date ? String(m.levee_saisie_date).slice(0, 10) : null,
+    motif_code:    m.saisie_motif_code || null,
+    motif_label:   m.saisie_motif_label || null,
   }
 }
 

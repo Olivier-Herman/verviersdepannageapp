@@ -16,6 +16,17 @@ interface Dossier {
   vehicle_model: string | null; dossier_ref: string | null; parked_at: string | null
   levee_date: string | null; billed_to_date: string | null; depannage_billed: boolean
   justinvoice_ref: string | null; last_ef_at: string | null; notes: string | null
+  motif_code: string | null; motif_label: string | null; sent_to: string | null
+  sent_at: string | null; validation_at: string | null
+}
+
+// Boîte destinataire selon destinataire + motif (miroir du serveur, pour l'UI).
+function targetMail(recipient: Recipient, motifCode?: string | null): string {
+  if (recipient === 'parquet')
+    return String(motifCode || '').toUpperCase() === 'SAISIE_JUDICIAIRE'
+      ? 'frais.justice.verviers@just.fgov.be' : 'fdj.pplge@just.fgov.be'
+  if (recipient === 'client') return 'e-mail de la fiche'
+  return 'Domaine (à configurer)'
 }
 interface Orphan {
   id: string; dossier_number: string | null; vehicle_plate: string | null
@@ -191,6 +202,12 @@ function DossierCard({ d, busy, onGenerate, onRecipient, onState }: {
             {d.levee_date && <> · levée {fmt(d.levee_date)}</>}
             {d.billed_to_date && <> · facturé jusqu'au {fmt(d.billed_to_date)}</>}
           </p>
+          {(d.sent_at || d.validation_at) && (
+            <p className="text-xs mt-1">
+              {d.sent_at && <span className="text-blue-700">📧 Envoyé le {fmt(d.sent_at)}{d.sent_to && ` → ${d.sent_to}`}</span>}
+              {d.validation_at && <span className="text-green-700">{d.sent_at ? ' · ' : ''}✅ Validé le {fmt(d.validation_at)}</span>}
+            </p>
+          )}
         </div>
 
         {/* Destinataire */}
@@ -244,24 +261,40 @@ function GenerateModal({ d, onClose, onDone, onMsg }: {
   const [recipient, setRecipient] = useState<Recipient>(d.recipient)
   const [billingTo, setBillingTo] = useState(today)
   const [roundTripKm, setRoundTripKm] = useState('')
-  const [loading, setLoading] = useState(false)
+  const [loading, setLoading] = useState<'' | 'preview' | 'send'>('')
 
-  async function submit() {
-    setLoading(true)
+  const commonBody = () => ({
+    recipient, billingTo,
+    roundTripKm: roundTripKm.trim() ? Number(roundTripKm) : undefined,
+  })
+
+  // Aperçu : génère sans persister ni envoyer, ouvre le PDF.
+  async function preview() {
+    setLoading('preview')
     try {
       const r = await fetch(`/api/fourriere/saisies/${d.id}/etat-frais`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          recipient, billingTo,
-          roundTripKm: roundTripKm.trim() ? Number(roundTripKm) : undefined,
-        }),
+        body: JSON.stringify({ ...commonBody(), preview: true }),
       })
-      if (!r.ok) { const j = await r.json().catch(() => ({})); onMsg(`⚠ ${j.error || 'Génération échouée'}`); return }
+      if (!r.ok) { const j = await r.json().catch(() => ({})); onMsg(`⚠ ${j.error || 'Aperçu échoué'}`); return }
       const blob = await r.blob()
       window.open(URL.createObjectURL(blob), '_blank')
-      onMsg('✓ État de frais généré')
+    } catch { onMsg('⚠ Erreur réseau') } finally { setLoading('') }
+  }
+
+  // Envoi : génère (persiste) + envoie le mail au destinataire routé + lien de dépôt.
+  async function send() {
+    setLoading('send')
+    try {
+      const r = await fetch(`/api/fourriere/saisies/${d.id}/envoyer`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(commonBody()),
+      })
+      const j = await r.json().catch(() => ({}))
+      if (!r.ok) { onMsg(`⚠ ${j.error || 'Envoi échoué'}`); return }
+      onMsg(`✓ ${j.numero} envoyé à ${j.email}`)
       onDone()
-    } catch { onMsg('⚠ Erreur réseau') } finally { setLoading(false) }
+    } catch { onMsg('⚠ Erreur réseau') } finally { setLoading('') }
   }
 
   return (
@@ -297,14 +330,25 @@ function GenerateModal({ d, onClose, onDone, onMsg }: {
                 className="w-full bg-surface-2 border rounded-lg px-3 py-2 text-sm text-ink" />
             </div>
           )}
+
+          <div className="text-[12px] text-ink-muted bg-surface-2 border rounded-lg px-3 py-2">
+            Envoi vers <b className="text-ink">{targetMail(recipient, d.motif_code)}</b>
+            {recipient === 'parquet' && d.motif_label && <span className="text-ink-faint"> · motif {d.motif_label}</span>}
+          </div>
         </div>
 
-        <div className="flex items-center justify-end gap-2 mt-5">
+        <div className="flex items-center justify-between gap-2 mt-5">
           <button onClick={onClose} className="px-3 py-2 text-sm text-ink-secondary hover:text-ink">Annuler</button>
-          <button disabled={loading} onClick={submit}
-            className="px-4 py-2 bg-brand hover:bg-brand-hover disabled:opacity-50 text-white rounded-lg text-sm font-semibold">
-            {loading ? 'Génération…' : '📄 Générer & ouvrir'}
-          </button>
+          <div className="flex items-center gap-2">
+            <button disabled={!!loading} onClick={preview}
+              className="px-3 py-2 bg-surface-2 hover:bg-surface-hover disabled:opacity-50 border text-ink-secondary rounded-lg text-sm font-semibold">
+              {loading === 'preview' ? '…' : '👁 Aperçu'}
+            </button>
+            <button disabled={!!loading || recipient === 'domaine'} onClick={send}
+              className="px-4 py-2 bg-brand hover:bg-brand-hover disabled:opacity-50 text-white rounded-lg text-sm font-semibold">
+              {loading === 'send' ? 'Envoi…' : '📧 Envoyer'}
+            </button>
+          </div>
         </div>
       </div>
     </div>
