@@ -4,7 +4,7 @@
 // être tranchés par Touring avant qu'on puisse les facturer.
 //
 // Exclusions (demandées par Olivier) :
-//   1. Dossier clôturé il y a moins de 15 jours (combiné → date de la DERNIÈRE
+//   1. Dossier clôturé il y a moins de 7 jours (combiné → date de la DERNIÈRE
 //      clôture chauffeur sur toute la chaîne : max(completed_at)).
 //   2. Dossier encore dans COMEX BKO (touring_comex_dossiers.in_comex = true) —
 //      couvre les comptes VERVIERS + D68357 côté facturation.
@@ -13,7 +13,7 @@
 
 import { loginComex, listComexMissions } from './comex'
 
-const FIFTEEN_DAYS_MS = 15 * 24 * 60 * 60 * 1000
+const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000   // seuil « clôturé récent » (Olivier 2026-08-09, était 15 j)
 
 const COLS =
   'id, parent_mission_id, status, source, dossier_number, external_id, ' +
@@ -204,11 +204,11 @@ export async function buildTouringCheckList(sb: any): Promise<CheckItem[]> {
       isTouringForCheck(m) && m.status === 'to_invoice' && !bkoIds.has(m.id))
     if (!toBill.length) continue
 
-    // Exclusion 1 — dernière clôture chauffeur < 15 j (sur toute la chaîne).
+    // Exclusion 1 — dernière clôture chauffeur < 7 j (sur toute la chaîne).
     const lastClose = all
       .map(m => m.completed_at ? new Date(m.completed_at).getTime() : 0)
       .reduce((a, b) => Math.max(a, b), 0)
-    if (lastClose && (now - lastClose) < FIFTEEN_DAYS_MS) continue
+    if (lastClose && (now - lastClose) < SEVEN_DAYS_MS) continue
 
     // Exclusion 3 — encore ouvert dans /Comex opérationnel d68267.
     if (openDossiers) {
