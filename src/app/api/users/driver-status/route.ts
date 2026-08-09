@@ -27,7 +27,7 @@ export async function GET() {
   // (= chauffeurs non classes), puis fallback alphabetique.
   const { data: drivers, error } = await supabase
     .from('users')
-    .select('id, name, schedule_day, schedule_night, location_updated_at, last_location_lat, last_location_lng, priority_order')
+    .select('id, name, schedule_day, schedule_night, location_updated_at, last_location_lat, last_location_lng, priority_order, notif_preferences')
     .eq('active', true)
     .not('towsoft_name', 'is', null)
     .neq('towsoft_name', '')
@@ -76,7 +76,10 @@ export async function GET() {
     .in('user_id', drivers.map(d => d.id))
   for (const l of (leaves || [])) if (l.user_id) onLeave.add(l.user_id as string)
   const result = drivers.map(d => {
-    const onConge = onLeave.has(d.id)
+    const onConge      = onLeave.has(d.id)
+    // Statut MANUEL « Hors ligne » (toggle) → hors service, comme un congé.
+    const manualOffline = ((d as any).notif_preferences || {}).presence_offline === true
+    const forceOffline  = onConge || manualOffline
     const m = missionByDriver.get(d.id)
     if (m) {
       return {
@@ -90,13 +93,14 @@ export async function GET() {
         schedule_day:   d.schedule_day,
         schedule_night: d.schedule_night,
         on_conge:       onConge,
+        manual_offline: manualOffline,
         lat:            d.last_location_lat,
         lng:            d.last_location_lng,
       }
     }
 
-    // Pas en mission → on regarde garde/ping. MAIS un congé approuvé force
-    // hors_service (hors ligne par défaut), quels que soient garde et ping.
+    // Pas en mission → on regarde garde/ping. MAIS un congé approuvé OU le statut
+    // manuel « hors ligne » force hors_service, quels que soient garde et ping.
     const inDay   = !!d.schedule_day   && isInDaySchedule(now)
     const inNight = !!d.schedule_night && isInNightSchedule(now)
     const onSchedule = inDay || inNight
@@ -106,7 +110,7 @@ export async function GET() {
     const freshPing = ageSeconds != null && ageSeconds < FRESH_PING_MIN * 60
 
     const status: 'en_service' | 'hors_service' =
-      (!onConge && (onSchedule || freshPing)) ? 'en_service' : 'hors_service'
+      (!forceOffline && (onSchedule || freshPing)) ? 'en_service' : 'hors_service'
 
     return {
       id:             d.id,
@@ -117,6 +121,7 @@ export async function GET() {
       on_schedule:    onSchedule,
       fresh_ping:     freshPing,
       on_conge:       onConge,
+      manual_offline: manualOffline,
       lat:            d.last_location_lat,
       lng:            d.last_location_lng,
     }

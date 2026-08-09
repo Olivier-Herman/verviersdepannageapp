@@ -57,13 +57,17 @@ const NOTIF_TYPE_TO_ROLE_KEY: Partial<Record<NotifType, 'role_driver' | 'role_di
   // cash_transfer : intentionnellement non-mappe → toujours envoyee
 }
 
-// Notifs OPÉRATIONNELLES chauffeur : jamais envoyées à un chauffeur HORS LIGNE
-// (congé / hors garde sans ping / pas en mission). Il ne garde que les notifs
-// administratives (validation congé, annonces…) qui, elles, partent SANS
-// notifType et ne sont donc pas filtrées ici. On ne gate QUE les types chauffeur
-// (le « hors ligne » = garde+ping, notion driver ; l'appliquer aux notifs
-// dispatcher couperait les dispatchers qui ne pingent pas de GPS). Olivier 2026-08-09.
-const OFFLINE_GATED_NOTIF_TYPES = new Set<NotifType>(['driver_assigned', 'driver_modified'])
+// Notifs OPÉRATIONNELLES : jamais envoyées à un user HORS LIGNE. « On base le ok
+// notif sur le statut » (Olivier 2026-08-09) : le statut effectif (manuel /
+// congé / garde+ping) est calculé par getOfflineUserIds, qui traite déjà les
+// non-chauffeurs (dispatchers) comme EN LIGNE par défaut → hors ligne seulement
+// via le toggle manuel ou un congé. On peut donc gater aussi les types
+// dispatcher. Les notifs administratives (validation congé, annonces…) partent
+// SANS notifType et ne sont donc jamais filtrées ici. cash_transfer/alert_admin
+// restent essentielles (toujours envoyées).
+const OFFLINE_GATED_NOTIF_TYPES = new Set<NotifType>([
+  'driver_assigned', 'driver_modified', 'dispatch_new_mission', 'derogation_request',
+])
 
 /**
  * Filtre une liste d'user_ids selon les preferences notif_preferences.

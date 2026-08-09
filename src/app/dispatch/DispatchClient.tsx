@@ -999,6 +999,8 @@ export default function DispatchClient({
     finally { setReparsing(false); loadErrorCount(); load() }
   }
   const [modeLoading,    setModeLoading]    = useState(false)
+  const [myOffline,      setMyOffline]      = useState<boolean | null>(null)
+  const [presenceLoading, setPresenceLoading] = useState(false)
   const [viewMode,       setViewMode]       = useState<ViewMode>('list')
   const [driverStatuses, setDriverStatuses] = useState<DriverStatus[]>([])
   const [sortMode,       setSortMode]       = useState<SortMode>('intervention_date')
@@ -1192,7 +1194,29 @@ export default function DispatchClient({
       .then(r => r.json())
       .then(d => { if (d.mode) setDispatchMode(d.mode) })
       .catch(() => {})
+    fetch('/api/users/presence')
+      .then(r => r.json())
+      .then(d => setMyOffline(!!d.offline))
+      .catch(() => {})
   }, [])
+
+  // Statut de présence perso : En ligne ↔ Hors ligne. Hors ligne = plus de
+  // notifs opérationnelles + pas « vert » au dispatch. Olivier 2026-08-09.
+  const togglePresence = async () => {
+    if (myOffline == null) return
+    const next = !myOffline
+    setPresenceLoading(true)
+    try {
+      const res = await fetch('/api/users/presence', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ offline: next }),
+      })
+      if (!res.ok) { const d = await res.json().catch(() => ({})); alert(`Echec statut : ${d?.error || `HTTP ${res.status}`}`); return }
+      setMyOffline(next)
+    } catch (e: any) {
+      alert(`Erreur reseau : ${e?.message || 'connexion impossible'}`)
+    } finally { setPresenceLoading(false) }
+  }
 
   const toggleMode = async () => {
     const newMode = dispatchMode === 'manual' ? 'auto' : 'manual'
@@ -1374,6 +1398,23 @@ export default function DispatchClient({
               <span className="text-lg lg:hidden">+</span>
               <span className="hidden lg:inline">+ Nouvelle mission</span>
             </Link>
+
+            {/* Statut de présence perso : En ligne / Hors ligne. Hors ligne =
+                plus de notifs opérationnelles (et pas « vert » au dispatch). */}
+            <button
+              onClick={togglePresence}
+              disabled={presenceLoading || myOffline == null}
+              title={myOffline
+                ? 'Tu es HORS LIGNE : tu ne reçois plus les notifications opérationnelles. Clique pour repasser En ligne.'
+                : 'Tu es EN LIGNE : tu reçois les notifications opérationnelles. Clique pour passer Hors ligne.'}
+              className={`flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium border transition flex-shrink-0 disabled:opacity-50 ${
+                myOffline
+                  ? 'bg-ink/5 border-app text-ink-muted'
+                  : 'bg-green-500/10 border-green-500/40 text-green-600'
+              }`}>
+              <span className={`w-2 h-2 rounded-full ${myOffline ? 'bg-ink-faint' : 'bg-green-500'}`} />
+              <span className="hidden sm:inline">{myOffline == null ? '…' : myOffline ? 'Hors ligne' : 'En ligne'}</span>
+            </button>
 
             {/* Switch Manuel / Auto — masqué sur mobile */}
             <div className="hidden md:flex items-center gap-2 bg-surface border border rounded-xl px-3 py-2"
