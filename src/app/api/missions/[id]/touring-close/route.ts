@@ -17,6 +17,7 @@ import {
 } from '@/lib/touring/comex'
 import { endMissionLabel, REM_FIN_CODES } from '@/lib/touring/close-presets'
 import { labelOf, PANNE_CAUSE, PANNE_DESC, PANNE_RESULT } from '@/lib/touring/close-referentials'
+import { detectVehicleFromImages } from '@/lib/ocr/vehicle-detect'
 
 export const dynamic     = 'force-dynamic'
 export const maxDuration = 60
@@ -40,7 +41,7 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
 
   const sb = createAdminClient()
   const { data: m } = await sb.from('incoming_missions')
-    .select('id, source_format, raw_content, vehicle_plate')
+    .select('id, source_format, raw_content, vehicle_plate, vehicle_vin, driver_photos, vehicle_ocr_attempted_at')
     .eq('id', params.id).maybeSingle()
   if (!m) return NextResponse.json({ error: 'Mission introuvable' }, { status: 404 })
   if ((m as any).source_format !== 'comex') {
@@ -81,10 +82,37 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
       .order('created_at', { ascending: false }).limit(1).maybeSingle()
     const prefill = (lastClose as any)?.metadata || null
 
+    // VIN pour la clôture : COMEX d'abord, sinon fiche VD Soft. Si toujours vide mais
+    // qu'on a des photos chauffeur, on OCR le VIN (Claude vision, ne devine jamais —
+    // 17 car. validés ou null) et on le persiste sur la fiche → la clôture reçoit le
+    // vrai châssis au lieu du repli 17× 'X'. Non bloquant : tout échec OCR laisse le
+    // VIN vide et la clôture retombera sur le repli. Une seule tentative par fiche
+    // (marqueur vehicle_ocr_attempted_at, partagé avec l'OCR manuel). Olivier 2026-08-09.
+    let vinOut = String(d.NUM_CHASSIS || '').trim() || String((m as any).vehicle_vin || '').trim()
+    if (!vinOut) {
+      const photos: string[] = ((m as any).driver_photos as string[]) || []
+      if (photos.length > 0 && !(m as any).vehicle_ocr_attempted_at) {
+        try {
+          const { vin: ocrVin } = await detectVehicleFromImages(photos.slice(0, 6))
+          const now = new Date().toISOString()
+          const upd: Record<string, any> = { vehicle_ocr_attempted_at: now, updated_at: now }
+          if (ocrVin?.value) { vinOut = ocrVin.value; upd.vehicle_vin = ocrVin.value }
+          await sb.from('incoming_missions').update(upd).eq('id', (m as any).id).then(() => {}, () => {})
+          if (ocrVin?.value) {
+            await sb.from('mission_logs').insert({
+              mission_id: (m as any).id, action: 'vehicle_ocr_autofill',
+              notes: `VIN complété depuis la photo (clôture Touring) : ${ocrVin.value}`,
+              metadata: { source: 'touring_close_ocr', vehicle_vin: ocrVin.value },
+            }).then(() => {}, () => {})
+          }
+        } catch { /* OCR non bloquant */ }
+      }
+    }
+
     return NextResponse.json({
       finCodes,
       prefill,
-      vin:    d.NUM_CHASSIS || '',
+      vin:    vinOut,
       mecIso: d.D_MEC || '',
       status: st,
       plate:  (m as any).vehicle_plate || '',
