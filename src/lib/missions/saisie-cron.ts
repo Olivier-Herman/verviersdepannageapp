@@ -12,7 +12,7 @@
 //   C. Clôture Domaine — la Date IN (incoming_missions.domaine_remise_date) est
 //      atteinte → état de frais de clôture au Parquet, puis bascule au Domaine.
 
-import { sendEtatFrais, autoIntegrateNewSaisies } from '@/lib/missions/saisie-dossier'
+import { sendEtatFrais, autoIntegrateNewSaisies, saisieScopeFrom } from '@/lib/missions/saisie-dossier'
 import { sendRequisitoireRelance } from '@/lib/requisitoire/relance'
 import { sendNotificationToRoles } from '@/lib/notifications/send'
 
@@ -51,8 +51,11 @@ export async function runSaisieCron(sb: any): Promise<SaisieCronSummary> {
   // 0) Intègre automatiquement les nouvelles saisies en parc.
   out.integrated = await autoIntegrateNewSaisies(sb)
 
+  const scopeFrom = await saisieScopeFrom(sb)
   const { data: dossiers } = await sb.from('saisie_dossiers').select('*').neq('state', 'clos')
   for (const d of (dossiers || [])) {
+    // Périmètre : on ignore les saisies antérieures à juin 2026 (ancien système).
+    if (d.parked_at && String(d.parked_at).slice(0, 10) < scopeFrom) continue
     out.checked++
     const mission = d.mission_id
       ? (await sb.from('incoming_missions')

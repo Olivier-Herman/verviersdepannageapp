@@ -54,6 +54,14 @@ function snapshotSaisieMission(m: any) {
   }
 }
 
+// Plancher de PÉRIMÈTRE : on ne traite que les saisies entrées à partir de cette
+// date (juin 2026). Les plus anciennes (ancien système / TowSoft) sont ignorées.
+// Configurable via app_settings.saisie_scope_from. Olivier 2026-08-10.
+export async function saisieScopeFrom(sb: any): Promise<string> {
+  const { data } = await sb.from('app_settings').select('value').eq('key', 'saisie_scope_from').maybeSingle()
+  try { return data?.value ? JSON.parse(data.value) : '2026-06-01' } catch { return '2026-06-01' }
+}
+
 export async function autoIntegrateNewSaisies(sb: any): Promise<number> {
   const { data: cfg } = await sb.from('app_settings').select('value').eq('key', 'saisie_autointegrate_since').maybeSingle()
   let since = ''

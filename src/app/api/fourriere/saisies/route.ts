@@ -11,7 +11,7 @@ import { NextResponse }      from 'next/server'
 import { getServerSession }  from 'next-auth'
 import { authOptions }       from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase'
-import { autoIntegrateNewSaisies } from '@/lib/missions/saisie-dossier'
+import { autoIntegrateNewSaisies, saisieScopeFrom } from '@/lib/missions/saisie-dossier'
 
 export const dynamic = 'force-dynamic'
 
@@ -45,11 +45,16 @@ export async function GET() {
   // Intègre à la volée les nouvelles saisies (depuis la date d'activation).
   await autoIntegrateNewSaisies(sb).catch(() => {})
 
-  const { data: dossiersRaw } = await sb
+  // Plancher de périmètre : on n'affiche que les saisies à partir de juin 2026.
+  const scopeFrom = await saisieScopeFrom(sb)
+
+  const { data: dossiersRawAll } = await sb
     .from('saisie_dossiers')
     .select('*')
     .order('created_at', { ascending: false })
     .order('id', { ascending: false })
+  // Masque les dossiers antérieurs au périmètre (parked_at < plancher).
+  const dossiersRaw = (dossiersRawAll || []).filter((d: any) => !d.parked_at || String(d.parked_at).slice(0, 10) >= scopeFrom)
 
   // Réquisitoire présent ? (règle : pas d'état de frais sans réquisitoire)
   const missionIds = Array.from(new Set((dossiersRaw || []).map((d: any) => d.mission_id).filter(Boolean)))
@@ -70,6 +75,7 @@ export async function GET() {
     .select(SNAP)
     .eq('source', 'police_saisie')
     .in('status', ['parked', 'completed', 'to_invoice'])
+    .gte('received_at', scopeFrom)   // périmètre : à partir de juin 2026
     .order('received_at', { ascending: false })
     .limit(200)
   const orphans = (saisies || []).filter((m: any) => !linked.has(m.id))
@@ -98,12 +104,13 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: true, autoSend: body.auto === true })
   }
 
-  // Intégration en masse de toutes les saisies orphelines.
+  // Intégration en masse de toutes les saisies orphelines (dans le périmètre).
   if (body.action === 'sync_all') {
+    const scopeFrom = await saisieScopeFrom(sb)
     const { data: dossiers } = await sb.from('saisie_dossiers').select('mission_id')
     const linked = new Set((dossiers || []).map((d: any) => d.mission_id).filter(Boolean))
     const { data: saisies } = await sb.from('incoming_missions').select(SNAP)
-      .eq('source', 'police_saisie').in('status', ['parked', 'completed', 'to_invoice']).limit(200)
+      .eq('source', 'police_saisie').in('status', ['parked', 'completed', 'to_invoice']).gte('received_at', scopeFrom).limit(200)
     const toCreate = (saisies || []).filter((m: any) => !linked.has(m.id)).map(snapshotFromMission)
     if (toCreate.length === 0) return NextResponse.json({ ok: true, created: 0 })
     const { error } = await sb.from('saisie_dossiers').insert(toCreate)
