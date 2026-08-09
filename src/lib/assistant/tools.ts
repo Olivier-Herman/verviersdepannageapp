@@ -856,11 +856,17 @@ export const TOOLS_BY_NAME: Record<string, ToolDef> = Object.fromEntries(
   ALL_TOOLS.map(t => [t.name, t]),
 )
 
-/** Format Claude API : list de definitions tools pour le request body */
-export function toolsForClaude() {
-  return ALL_TOOLS.map(t => ({
+/** Format Claude API : list de definitions tools pour le request body.
+ *  Prompt caching : on pose `cache_control` sur le DERNIER outil → toute la liste
+ *  (~9k tokens, identique à CHAQUE appel + chaque itération de la boucle tool-use)
+ *  est mise en cache et relue à 10 % du tarif au lieu du plein tarif. Aucun
+ *  changement de comportement, juste moins cher. Olivier 2026-08-09. */
+export function toolsForClaude(): any[] {
+  const tools: any[] = ALL_TOOLS.map(t => ({
     name:         t.name,
     description:  t.description,
     input_schema: t.input_schema,
   }))
+  if (tools.length) tools[tools.length - 1].cache_control = { type: 'ephemeral' }
+  return tools
 }

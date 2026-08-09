@@ -140,7 +140,9 @@ export async function runChatTurn(input: ChatTurnInput): Promise<ChatTurnOutput>
     const resp = await client.messages.create({
       model:      MODEL,
       max_tokens: 4096,
-      system,
+      // Prompt caching : system + tools sont identiques à chaque itération/tour →
+      // on les met en cache (relus à 10 %). Olivier 2026-08-09.
+      system:     [{ type: 'text', text: system, cache_control: { type: 'ephemeral' } }],
       tools:      toolsForClaude(),
       messages:   claudeMessages,
     })
