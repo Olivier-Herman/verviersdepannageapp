@@ -27,7 +27,7 @@ export async function GET() {
   // (= chauffeurs non classes), puis fallback alphabetique.
   const { data: drivers, error } = await supabase
     .from('users')
-    .select('id, name, schedule_day, schedule_night, location_updated_at, last_location_lat, last_location_lng, priority_order, notif_preferences')
+    .select('id, name, schedule_day, schedule_night, location_updated_at, last_location_lat, last_location_lng, priority_order, manual_offline')
     .eq('active', true)
     .not('towsoft_name', 'is', null)
     .neq('towsoft_name', '')
@@ -78,7 +78,7 @@ export async function GET() {
   const result = drivers.map(d => {
     const onConge      = onLeave.has(d.id)
     // Statut MANUEL « Hors ligne » (toggle) → hors service, comme un congé.
-    const manualOffline = ((d as any).notif_preferences || {}).presence_offline === true
+    const manualOffline = (d as any).manual_offline === true
     const forceOffline  = onConge || manualOffline
     const m = missionByDriver.get(d.id)
     if (m) {

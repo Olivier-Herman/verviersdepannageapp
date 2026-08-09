@@ -103,6 +103,7 @@ interface DriverStatus {
   schedule_night?: boolean
   on_schedule?: boolean
   on_conge?: boolean
+  manual_offline?: boolean
   fresh_ping?: boolean
   lat?: number | null
   lng?: number | null
@@ -300,6 +301,8 @@ function SortableDriverBadge({ d, onClick, canDrag }: {
   const isHorsService = d.status === 'hors_service'
   const isOnSchedule  = !!(d as any).on_schedule
   const isOnConge     = !!d.on_conge
+  // Hors ligne MANUEL uniquement (pas congé, pas simple hors-garde) → bulle ROUGE.
+  const isManualOffline = !!d.manual_offline && !isOnConge
 
   const style: React.CSSProperties = {
     transform: CSS.Transform.toString(transform),
@@ -315,24 +318,28 @@ function SortableDriverBadge({ d, onClick, canDrag }: {
       onClick={onClick}
       {...attributes}
       {...listeners}
-      title={isOnConge
-        ? 'En congé'
-        : d.status === 'en_mission'
-          ? `${d.client_name || '?'} · ${d.mission_type || ''}`
-          : isHorsService
-            ? 'Cliquer pour activer la garde · glisser pour réordonner'
-            : 'Cliquer pour modifier la garde · glisser pour réordonner'}
+      title={isManualOffline
+        ? 'Hors ligne (mise hors ligne manuelle)'
+        : isOnConge
+          ? 'En congé'
+          : d.status === 'en_mission'
+            ? `${d.client_name || '?'} · ${d.mission_type || ''}`
+            : isHorsService
+              ? 'Cliquer pour activer la garde · glisser pour réordonner'
+              : 'Cliquer pour modifier la garde · glisser pour réordonner'}
       className={`flex items-center gap-2 px-3 py-1.5 rounded-xl border text-xs font-medium transition ${
-        styleByStatus[d.status]
+        isManualOffline ? 'bg-red-500/10 border-red-500/60 text-red-600 vd-blink' : styleByStatus[d.status]
       } ${canDrag ? 'cursor-grab active:cursor-grabbing' : ''} ${
         isHorsService ? 'hover:opacity-100' : 'hover:opacity-80'
       }`}
     >
-      <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${dotByStatus[d.status]}`} />
+      <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${isManualOffline ? 'bg-red-500' : dotByStatus[d.status]}`} />
       {d.name}
-      {isOnConge
-        ? <span title="En congé">🌴</span>
-        : d.status === 'en_service' && isOnSchedule && <span className="opacity-70">🛡️</span>}
+      {isManualOffline
+        ? <span title="Hors ligne manuel">⛔</span>
+        : isOnConge
+          ? <span title="En congé">🌴</span>
+          : d.status === 'en_service' && isOnSchedule && <span className="opacity-70">🛡️</span>}
     </button>
   )
 }
@@ -528,7 +535,7 @@ function AssignDropdown({ mission, drivers, driverStatuses, onAssigned }: {
         const ds = statusMap.get(d.id)
         return (
           <option key={d.id} value={d.id}>
-            {d.name}{ds?.on_conge ? ' 🌴' : ds?.status === 'en_mission' ? ' 🟠' : ds?.status === 'hors_service' ? ' ⚫' : ' 🟢'}
+            {d.name}{ds?.manual_offline && !ds?.on_conge ? ' 🔴' : ds?.on_conge ? ' 🌴' : ds?.status === 'en_mission' ? ' 🟠' : ds?.status === 'hors_service' ? ' ⚫' : ' 🟢'}
           </option>
         )
       })}

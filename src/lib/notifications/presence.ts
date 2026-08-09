@@ -24,7 +24,7 @@ export async function getOfflineUserIds(userIds: string[]): Promise<Set<string>>
   const todayBxl = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Brussels' }).format(now)
 
   const [usersRes, leavesRes, missionsRes] = await Promise.all([
-    sb.from('users').select('id, towsoft_name, schedule_day, schedule_night, location_updated_at, notif_preferences').in('id', userIds),
+    sb.from('users').select('id, towsoft_name, schedule_day, schedule_night, location_updated_at, manual_offline').in('id', userIds),
     sb.from('conge_requests').select('user_id')
       .eq('status', 'approved').lte('start_date', todayBxl).gte('end_date', todayBxl).in('user_id', userIds),
     sb.from('incoming_missions').select('assigned_to')
@@ -38,7 +38,7 @@ export async function getOfflineUserIds(userIds: string[]): Promise<Set<string>>
 
   for (const u of (usersRes.data || [])) {
     // Statut MANUEL « Hors ligne » (toggle) → prioritaire, vaut pour tout le monde.
-    if ((u.notif_preferences || {}).presence_offline === true) { offline.add(u.id); continue }
+    if (u.manual_offline === true) { offline.add(u.id); continue }
     if (onLeave.has(u.id)) { offline.add(u.id); continue }   // congé = hors ligne, même en garde/ping
     if (busy.has(u.id)) continue                             // en mission = en ligne
     // Chauffeur = towsoft_name renseigné : garde/ping déterminent la présence.
