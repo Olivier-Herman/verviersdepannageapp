@@ -372,10 +372,9 @@ export async function sendEtatFrais(
     await sendEmail(
       dest.email, subject, buildEfEmailHtml(d, gen.numero, gen.totalTvac, validationLink(token), vin),
       dest.label,
-      undefined,  // cc
+      undefined,       // cc
       attachments,
-      FOURRIERE_FROM,
-      FOURRIERE_FROM,  // bcc = trace interne
+      FOURRIERE_FROM,  // expéditeur (pas de copie interne)
     )
   } catch (e: any) { return { ok: false, error: `Envoi impossible : ${e?.message || e}` } }
 
