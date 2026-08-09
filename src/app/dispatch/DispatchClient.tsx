@@ -1283,15 +1283,20 @@ export default function DispatchClient({
   // Onglet « En attente » : on sépare les commandes à valider (new) des missions
   // déjà validées en attente d'assignation (dispatching), avec un bandeau.
   const isDispatchTab = activeTab === 'dispatching'
+  // Un RDV = intervention planifiée à +30 min (même règle que le badge 📅 RDV).
+  // Dans « En attente », on les pousse TOUT EN BAS de la liste (tri stable).
+  // Olivier 2026-08-09.
+  const isRdv   = (m: Mission) => !!m.intervention_date && new Date(m.intervention_date).getTime() > Date.now() + 30 * 60 * 1000
+  const rdvLast = (items: Mission[]) => [...items].sort((a, b) => Number(isRdv(a)) - Number(isRdv(b)))
   const newToValidate = isDispatchTab ? filtered.filter(m => m.status === 'new')  : []
-  const restWaiting   = isDispatchTab ? filtered.filter(m => m.status !== 'new') : filtered
+  const restWaiting   = isDispatchTab ? rdvLast(filtered.filter(m => m.status !== 'new')) : filtered
   const missionGroups: { key: string; header: string | null; tone: 'validate' | 'wait' | null; items: Mission[] }[] =
     (isDispatchTab && newToValidate.length > 0)
       ? [
           { key: 'validate', header: '🆕 À valider',                 tone: 'validate', items: newToValidate },
           { key: 'wait',     header: "En attente d'assignation",     tone: 'wait',     items: restWaiting },
         ].filter(g => g.items.length > 0) as any
-      : [{ key: 'all', header: null, tone: null, items: filtered }]
+      : [{ key: 'all', header: null, tone: null, items: isDispatchTab ? rdvLast(filtered) : filtered }]
 
   const bandClass = (tone: 'validate' | 'wait' | null) =>
     tone === 'validate'
