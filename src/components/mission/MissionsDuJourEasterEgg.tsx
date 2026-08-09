@@ -7,6 +7,7 @@
 // Olivier 2026-08-09.
 
 import { useEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 
 // Une punchline familière/taquine, tirée au hasard selon le contexte.
 function punch(count: number, record: number, newRecord: boolean, name?: string): { emoji: string; title: string; line: string } {
@@ -122,10 +123,13 @@ export default function MissionsDuJourEasterEgg({
         </button>
       </div>
 
-      {open && (
+      {open && typeof document !== 'undefined' && createPortal(
         <div
           onClick={() => setOpen(false)}
-          className={`fixed inset-0 z-[200] flex items-center justify-center backdrop-blur-md px-6 egg-fade ${newRecord ? 'egg-bg-record' : 'egg-bg-normal'}`}
+          className="fixed inset-0 z-[9999] flex items-center justify-center px-6 egg-fade"
+          style={{ background: newRecord
+            ? 'radial-gradient(120% 120% at 50% 0%, rgba(180,83,9,.98), rgba(10,12,16,.99))'
+            : 'rgba(12,14,19,.98)' }}
         >
           {/* Confettis */}
           <div className="pointer-events-none absolute inset-0 overflow-hidden">
@@ -156,7 +160,8 @@ export default function MissionsDuJourEasterEgg({
             <div className="text-white/85 text-[15px] mt-4 font-medium leading-snug min-h-[2.5em] flex items-center justify-center">{line}</div>
             <div className="text-white/40 text-[11px] mt-6 uppercase tracking-widest">Touche pour fermer</div>
           </div>
-        </div>
+        </div>,
+        document.body,
       )}
 
       <style jsx>{`
