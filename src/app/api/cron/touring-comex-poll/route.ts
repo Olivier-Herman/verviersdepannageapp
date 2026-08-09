@@ -17,6 +17,8 @@ import { NextResponse }  from 'next/server'
 import { loginComex, listComexMissions } from '@/lib/touring/comex'
 import { createAdminClient } from '@/lib/supabase'
 import { sendPushToRole } from '@/lib/push'
+import { withOdooActor } from '@/lib/odoo'
+import { createOdooDossierForMission } from '@/lib/missions/odoo-dossier'
 
 export const dynamic     = 'force-dynamic'
 export const maxDuration = 60
@@ -139,6 +141,44 @@ async function runTouringAcceptReconcile(
     }
   }
   return { scanned: data.length, validated, retried }
+}
+
+// PROMOTION : une mission COMEX ACCEPTÉE côté COMEX (touring_accepted_at posé, donc
+// statut 04+ détecté) mais restée 'new' en VD Soft (jamais confirmée par le
+// dispatch) demeure bloquée en « à valider » SANS dossier Odoo. On la promeut
+// automatiquement comme le ferait le bouton « Valider » : new → dispatching (ou
+// assigned si déjà affectée) + création du dossier Odoo (Helpdesk + FSM). L'accept
+// COMEX est déjà fait → on ne le rejoue pas. Corrige le cas KOS610H (validée dans
+// COMEX mais restée « à valider » en VD Soft). Olivier 2026-08-09.
+async function runTouringPromoteValidated(): Promise<{ scanned: number; promoted: number }> {
+  const sb = createAdminClient()
+  const floor = new Date(Date.now() - 48 * 60 * 60_000).toISOString()   // fenêtre 48 h
+  const { data } = await sb.from('incoming_missions')
+    .select('id, assigned_to')
+    .eq('source_format', 'comex')
+    .eq('status', 'new')
+    .not('touring_accepted_at', 'is', null)
+    .gte('received_at', floor)
+  if (!Array.isArray(data) || data.length === 0) return { scanned: 0, promoted: 0 }
+
+  let promoted = 0
+  for (const row of data) {
+    const id = (row as any).id
+    const newStatus = (row as any).assigned_to ? 'assigned' : 'dispatching'
+    try {
+      await sb.from('incoming_missions')
+        .update({ status: newStatus, updated_at: new Date().toISOString() }).eq('id', id)
+      await sb.from('mission_logs').insert({
+        mission_id: id, action: 'dispatched',
+        notes: `Mission auto-validée (accepté COMEX détecté par le poll) → ${newStatus}.`,
+      }).then(() => {}, () => {})
+      // Dossier Odoo (Helpdesk + FSM), comme « Valider ». Idempotent, best-effort.
+      try { await withOdooActor(null, () => createOdooDossierForMission(id)) }
+      catch (e: any) { console.warn('[cron touring-promote] odoo', id, e?.message) }
+      promoted++
+    } catch (e: any) { console.warn('[cron touring-promote]', id, e?.message) }
+  }
+  return { scanned: data.length, promoted }
 }
 
 // RATTRAPAGE des étapes onRoad/onSpot quand COMEX est EN RETARD sur nos marqueurs
@@ -286,6 +326,13 @@ export async function GET(req: Request) {
         console.log(`[cron touring-reconcile] validated=${reconcile.validated} retried=${reconcile.retried} scanned=${reconcile.scanned}`)
       }
     } catch (e: any) { console.warn('[cron touring-reconcile]', e?.message) }
+
+    // Promotion : fiches acceptées COMEX mais restées 'new' → dispatching + Odoo.
+    let promote = { scanned: 0, promoted: 0 }
+    try {
+      promote = await runTouringPromoteValidated()
+      if (promote.promoted) console.log(`[cron touring-promote] promoted=${promote.promoted}/${promote.scanned}`)
+    } catch (e: any) { console.warn('[cron touring-promote]', e?.message) }
 
     // Rattrapage onRoad/onSpot si COMEX est en retard sur nos marqueurs (faux-succès 500).
     let stepRepair = { scanned: 0, repaired: 0 }
