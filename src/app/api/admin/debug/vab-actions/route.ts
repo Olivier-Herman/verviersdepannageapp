@@ -14,12 +14,17 @@ import { loginVab, listVabMissions, fetchVabMissionDetail, dumpVabActions } from
 export const dynamic     = 'force-dynamic'
 export const maxDuration = 60
 
-export async function GET() {
-  const session = await getServerSession(authOptions)
-  if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  const user = session.user as any
-  const roles = Array.isArray(user.roles) ? user.roles : [user.role].filter(Boolean)
-  if (!roles.includes('superadmin')) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+export async function GET(req: Request) {
+  // Accès : superadmin OU secret interne (pilotage additif depuis un script de
+  // capture, comme les crons). Lecture seule, aucune action VAB. Olivier 2026-08-09.
+  const internalOk = !!process.env.NEXTAUTH_SECRET && req.headers.get('x-internal-secret') === process.env.NEXTAUTH_SECRET
+  if (!internalOk) {
+    const session = await getServerSession(authOptions)
+    if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    const user = session.user as any
+    const roles = Array.isArray(user.roles) ? user.roles : [user.role].filter(Boolean)
+    if (!roles.includes('superadmin')) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  }
 
   const report: any = { ts: new Date().toISOString() }
   try {

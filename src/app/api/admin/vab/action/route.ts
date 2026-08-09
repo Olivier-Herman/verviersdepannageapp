@@ -15,10 +15,16 @@ export const dynamic     = 'force-dynamic'
 export const maxDuration = 60
 
 export async function POST(req: Request) {
-  const session = await getServerSession(authOptions)
-  const user = session?.user as any
-  const roles = Array.isArray(user?.roles) ? user.roles : [user?.role].filter(Boolean)
-  if (!roles?.includes('superadmin')) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  // Accès : superadmin OU secret interne (pilotage depuis un script, via le MÊME
+  // code testé loginVab/executeVabAction — pas de réimplémentation à la volée sur
+  // une action irréversible). Olivier 2026-08-09.
+  const internalOk = !!process.env.NEXTAUTH_SECRET && req.headers.get('x-internal-secret') === process.env.NEXTAUTH_SECRET
+  if (!internalOk) {
+    const session = await getServerSession(authOptions)
+    const user = session?.user as any
+    const roles = Array.isArray(user?.roles) ? user.roles : [user?.role].filter(Boolean)
+    if (!roles?.includes('superadmin')) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  }
 
   const body = await req.json().catch(() => ({}))
   const detailHref  = String(body.detailHref || '').trim()
