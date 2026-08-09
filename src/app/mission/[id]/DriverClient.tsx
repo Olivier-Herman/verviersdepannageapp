@@ -2056,6 +2056,16 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
   const doClose = async () => {
     setLoading(true); setErr('')
     try {
+      // SNC / Siabis couvert : le SCÉNARIO doit être choisi avant toute clôture.
+      // Au dispatch, « Laisser le chauffeur choisir » laisse snc_scenario = null →
+      // on OBLIGE le chauffeur à sélectionner un scénario (DSP/REM…) avant de
+      // valider. Exception : DPR (trajet à vide, aucune intervention) — pas de
+      // scénario. Olivier 2026-08-09.
+      if ((M.source === 'police_snc' || M.source === 'sia_couvert')
+          && closeType !== 'dpr' && !M.snc_scenario) {
+        setErr('Choisis d\'abord le scénario (DSP / REM…) avant de clôturer.')
+        setLoading(false); return
+      }
       // Best-effort : ne bloque pas la clôture si le réseau échoue pile maintenant.
       // Les photos non envoyées restent dans le brouillon et repartent seules.
       let newUrls: string[] = []

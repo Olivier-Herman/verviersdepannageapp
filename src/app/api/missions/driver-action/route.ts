@@ -164,6 +164,18 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Accès refusé' }, { status: 403 })
   }
 
+  // SNC / Siabis couvert : le SCÉNARIO doit être choisi avant la clôture. Au
+  // dispatch, « Laisser le chauffeur choisir » laisse snc_scenario = null → on
+  // refuse la clôture tant qu'aucun scénario n'est sélectionné. Exception : DPR
+  // (trajet à vide, aucune intervention). Garde serveur en miroir de l'UI
+  // (DriverClient.doClose). Olivier 2026-08-09.
+  if (['completed', 'complete_delivery'].includes(action)
+      && (mission.source === 'police_snc' || mission.source === 'sia_couvert')
+      && closing_data?.final_mission_type !== 'trajet_vide'
+      && !(mission as any).snc_scenario) {
+    return NextResponse.json({ error: 'Scénario SNC / Siabis couvert requis avant clôture (DSP / REM…).' }, { status: 400 })
+  }
+
   // Modification de clôture par le chauffeur : ré-exécuter 'completed' sur une
   // mission déjà clôturée (to_invoice/completed) est autorisé < 6h après la
   // clôture ET si la mission n'est PAS encore facturée. Olivier 2026-07-01.
