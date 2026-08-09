@@ -36,6 +36,12 @@ export default async function RelanceRequisitoirePage() {
     .limit(500)
 
   const missions = rows || []
+
+  // Map zone de police → société Odoo (pour l'autocomplete/création du policier
+  // depuis la carte). Zéro-hardcode : lu depuis police_zones. Olivier 2026-08-09.
+  const { data: zones } = await sb.from('police_zones').select('name, odoo_company_id')
+  const zoneCompany: Record<string, number | null> = {}
+  for (const z of (zones || [])) if (z?.name) zoneCompany[z.name] = z.odoo_company_id ?? null
   // Le token de dépôt est généré À LA DEMANDE (copie du lien / envoi relance),
   // PAS ici — sinon 200+ UPDATE séquentiels feraient timeouter le rendu.
 
@@ -61,6 +67,7 @@ export default async function RelanceRequisitoirePage() {
     location: m.incident_address || null,
     saisie_at: m.created_at,
     zone: m.police_zone,
+    zone_company_id: m.police_zone ? (zoneCompany[m.police_zone] ?? null) : null,
     officer_name: m.officer_name,
     officer_email: m.officer_partner_id ? (emailMap[m.officer_partner_id] || null) : null,
     officer_linked: !!m.officer_partner_id,

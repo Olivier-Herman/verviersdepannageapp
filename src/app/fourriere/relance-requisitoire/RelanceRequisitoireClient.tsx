@@ -6,10 +6,12 @@
 
 import { useMemo, useState } from 'react'
 import Link from 'next/link'
+import OfficerAutocomplete from '@/components/missions/OfficerAutocomplete'
 
 interface Item {
   id: string; ref: string | null; plate: string | null; vehicle: string | null
   location: string | null; saisie_at: string | null; zone: string | null
+  zone_company_id: number | null
   officer_name: string | null; officer_email: string | null; officer_linked: boolean
   token: string | null; stop: boolean; reminder_count: number; last_reminder_at: string | null
 }
@@ -29,6 +31,11 @@ export default function RelanceRequisitoireClient({ initialItems, appUrl }: { in
   const [showStop, setShowStop] = useState(false)
   const [busy, setBusy]       = useState<string | null>(null)
   const [flash, setFlash]     = useState<{ id: string; msg: string; ok: boolean } | null>(null)
+  // Édition du policier depuis la carte (lier un contact existant ou en créer un).
+  const [editing, setEditing]     = useState<string | null>(null)
+  const [draftName, setDraftName] = useState('')
+  const [showCreate, setShowCreate] = useState(false)
+  const [form, setForm]           = useState<{ name: string; email: string; phone: string }>({ name: '', email: '', phone: '' })
 
   const visible = useMemo(() => items.filter(i => showStop || !i.stop), [items, showStop])
   const stats = useMemo(() => ({
@@ -90,6 +97,48 @@ export default function RelanceRequisitoireClient({ initialItems, appUrl }: { in
     } catch { note(it.id, 'Lien indisponible', false) }
   }
 
+  const openEditor = (it: Item) => {
+    setEditing(it.id); setDraftName(''); setShowCreate(false)
+    setForm({ name: it.officer_name || '', email: '', phone: '' })
+  }
+  const applyOfficer = (id: string, patch: Partial<Item>) =>
+    setItems(prev => prev.map(x => x.id === id ? { ...x, ...patch } : x))
+
+  // Lie un contact Odoo existant (l'endpoint relit nom + email côté Odoo).
+  const linkOfficer = async (it: Item, partnerId: number) => {
+    setBusy(it.id)
+    try {
+      const r = await fetch(`/api/missions/${it.id}/officer`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ partner_id: partnerId }),
+      })
+      const j = await r.json()
+      if (!r.ok) throw new Error(j?.error || 'Erreur')
+      applyOfficer(it.id, { officer_name: j.officer_name, officer_email: j.email, officer_linked: true })
+      note(it.id, j.email ? 'Policier lié — email connu' : 'Policier lié (contact sans email)', !!j.email)
+      setEditing(null)
+    } catch (e: any) { note(it.id, e?.message || 'Échec', false) } finally { setBusy(null) }
+  }
+
+  // Crée le contact policier (sous la société = zone) puis le lie.
+  const createOfficer = async (it: Item) => {
+    if (!form.name.trim()) { note(it.id, 'Nom du policier requis', false); return }
+    setBusy(it.id)
+    try {
+      const r = await fetch(`/api/missions/${it.id}/officer`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ create: true, name: form.name.trim(), email: form.email.trim(), phone: form.phone.trim(), company_id: it.zone_company_id }),
+      })
+      const j = await r.json()
+      if (!r.ok) throw new Error(j?.error || 'Erreur')
+      applyOfficer(it.id, { officer_name: j.officer_name, officer_email: j.email, officer_linked: true })
+      note(it.id, j.email ? 'Policier créé — email connu' : 'Policier créé (sans email)', true)
+      setEditing(null)
+    } catch (e: any) { note(it.id, e?.message || 'Échec', false) } finally { setBusy(null) }
+  }
+
+  const inputCls = 'w-full bg-surface-2 border border-app rounded-lg px-2.5 py-1.5 text-xs text-ink outline-none focus:border-brand'
+
   return (
     <div className="min-h-screen bg-surface max-w-5xl mx-auto flex flex-col">
       <div className="bg-surface-2 border-b border-app px-5 pt-12 pb-4">
@@ -139,7 +188,39 @@ export default function RelanceRequisitoireClient({ initialItems, appUrl }: { in
                           : it.officer_linked
                             ? <span className="text-amber-700 bg-amber-50 rounded px-1.5 py-0.5">⚠️ contact Odoo sans email</span>
                             : <span className="text-amber-700 bg-amber-50 rounded px-1.5 py-0.5">⚠️ policier non lié à Odoo</span>}
+                        <button onClick={() => editing === it.id ? setEditing(null) : openEditor(it)}
+                          className="text-brand hover:underline">{editing === it.id ? 'Fermer' : '✏️ Modifier'}</button>
                       </div>
+
+                      {editing === it.id && (
+                        <div className="mt-2 p-2.5 bg-surface border border-app rounded-xl space-y-2 max-w-md">
+                          <OfficerAutocomplete
+                            label="Rechercher et lier un policier existant"
+                            value={draftName}
+                            onChange={setDraftName}
+                            onPickPartner={(pid) => { if (pid != null) linkOfficer(it, pid) }}
+                            companyId={it.zone_company_id} />
+                          {!it.zone_company_id && (
+                            <p className="text-[11px] text-amber-600">Zone sans société Odoo liée — la recherche ne renverra rien, mais tu peux créer le contact ci-dessous.</p>
+                          )}
+                          <button onClick={() => { setShowCreate(s => !s); setForm(f => ({ ...f, name: draftName || f.name })) }}
+                            className="text-xs text-brand hover:underline">＋ Ajouter un nouveau policier</button>
+                          {showCreate && (
+                            <div className="space-y-1.5 pt-1">
+                              <input className={inputCls} placeholder="Nom du policier *" value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} />
+                              <input className={inputCls} placeholder="Email (pour recevoir la relance)" type="email" value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))} />
+                              <input className={inputCls} placeholder="Téléphone (optionnel)" value={form.phone} onChange={e => setForm(f => ({ ...f, phone: e.target.value }))} />
+                              <div className="flex gap-1.5 pt-0.5">
+                                <button onClick={() => createOfficer(it)} disabled={busy === it.id || !form.name.trim()}
+                                  className="px-3 py-1.5 bg-brand text-white rounded-lg text-xs font-semibold disabled:opacity-40">
+                                  {busy === it.id ? '…' : 'Ajouter & lier'}
+                                </button>
+                                <button onClick={() => setEditing(null)} className="px-3 py-1.5 bg-surface-2 border border-app rounded-lg text-xs text-ink-muted">Annuler</button>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      )}
                       {it.reminder_count > 0 && (
                         <div className="text-xs text-ink-muted mt-1">{it.reminder_count} relance(s){lastD != null ? ` · dernière il y a ${lastD} j` : ''}</div>
                       )}
