@@ -251,8 +251,14 @@ export async function sendEtatFrais(
     )
   } catch (e: any) { return { ok: false, error: `Envoi impossible : ${e?.message || e}` } }
 
+  // Si c'était l'état de frais de CLÔTURE Domaine (envoyé au Parquet jusqu'à la
+  // Date IN), la facturation future bascule au Domaine.
+  const wasCloture = d.pending_action === 'cloture_domaine'
   await sb.from('saisie_dossiers').update({
-    sent_to: dest.email, sent_at: new Date().toISOString(), state: 'ef_envoye', updated_at: new Date().toISOString(),
+    sent_to: dest.email, sent_at: new Date().toISOString(), state: 'ef_envoye',
+    pending_action: null, pending_action_at: null,
+    ...(wasCloture ? { recipient: 'domaine' } : {}),
+    updated_at: new Date().toISOString(),
   }).eq('id', dossierId)
 
   return { ok: true, email: dest.email, numero: gen.numero }

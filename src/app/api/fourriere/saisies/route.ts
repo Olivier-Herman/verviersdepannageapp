@@ -58,7 +58,12 @@ export async function GET() {
     .limit(200)
   const orphans = (saisies || []).filter((m: any) => !linked.has(m.id))
 
-  return NextResponse.json({ dossiers: dossiers || [], orphans })
+  // Mode d'envoi du cron (Prépare+Alerte vs Auto).
+  const { data: modeRow } = await sb.from('app_settings').select('value').eq('key', 'saisie_auto_send').maybeSingle()
+  let autoSend = false
+  try { autoSend = modeRow?.value ? JSON.parse(modeRow.value) === true : false } catch {}
+
+  return NextResponse.json({ dossiers: dossiers || [], orphans, autoSend })
 }
 
 export async function POST(req: Request) {
@@ -66,6 +71,16 @@ export async function POST(req: Request) {
   if (!canAccess(session)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   const sb = createAdminClient()
   const body = await req.json().catch(() => ({}))
+
+  // Bascule du mode d'envoi (Prépare+Alerte ↔ Auto). Admin/superadmin.
+  if (body.action === 'set_mode') {
+    const u = session!.user as any
+    if (!['admin', 'superadmin'].includes(u.role || '')) return NextResponse.json({ error: 'Réservé aux admins' }, { status: 403 })
+    const val = JSON.stringify(body.auto === true)
+    const { error } = await sb.from('app_settings').upsert({ key: 'saisie_auto_send', value: val, updated_at: new Date().toISOString() }, { onConflict: 'key' })
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+    return NextResponse.json({ ok: true, autoSend: body.auto === true })
+  }
 
   // Intégration en masse de toutes les saisies orphelines.
   if (body.action === 'sync_all') {

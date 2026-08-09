@@ -18,6 +18,13 @@ interface Dossier {
   justinvoice_ref: string | null; last_ef_at: string | null; notes: string | null
   motif_code: string | null; motif_label: string | null; sent_to: string | null
   sent_at: string | null; validation_at: string | null
+  pending_action: string | null; pending_action_at: string | null; domaine_remise_date: string | null
+}
+
+const PENDING: Record<string, { label: string; cls: string }> = {
+  facturer:        { label: 'À facturer (1er état de frais)',       cls: 'bg-amber-50 border-amber-300 text-amber-900' },
+  gardiennage:     { label: 'Gardiennage à facturer (2 mois)',      cls: 'bg-teal-50 border-teal-300 text-teal-900' },
+  cloture_domaine: { label: 'Clôture Domaine — état de frais final', cls: 'bg-purple-50 border-purple-300 text-purple-900' },
 }
 
 // Boîte destinataire selon destinataire + motif (miroir du serveur, pour l'UI).
@@ -59,21 +66,34 @@ export default function SaisiesClient({ userRole, userName, userEmail, userModul
 }) {
   const [dossiers, setDossiers] = useState<Dossier[]>([])
   const [orphans, setOrphans] = useState<Orphan[]>([])
+  const [autoSend, setAutoSend] = useState(false)
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState<string | null>(null)
   const [msg, setMsg] = useState<string | null>(null)
   const [gen, setGen] = useState<Dossier | null>(null)  // dossier en cours de génération (modal)
+  const isAdmin = ['admin', 'superadmin'].includes(userRole)
 
   const load = useCallback(async () => {
     setLoading(true)
     try {
       const r = await fetch('/api/fourriere/saisies', { cache: 'no-store' })
       const j = await r.json()
-      if (r.ok) { setDossiers(j.dossiers || []); setOrphans(j.orphans || []) }
+      if (r.ok) { setDossiers(j.dossiers || []); setOrphans(j.orphans || []); setAutoSend(!!j.autoSend) }
       else setMsg(`⚠ ${j.error || 'Erreur'}`)
     } catch { setMsg('⚠ Erreur réseau') } finally { setLoading(false) }
   }, [])
   useEffect(() => { load() }, [load])
+
+  async function toggleMode() {
+    const next = !autoSend
+    setAutoSend(next)
+    const r = await fetch('/api/fourriere/saisies', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'set_mode', auto: next }),
+    })
+    if (!r.ok) { setAutoSend(!next); const j = await r.json().catch(() => ({})); setMsg(`⚠ ${j.error || 'Erreur'}`) }
+    else setMsg(next ? '✓ Envoi automatique activé' : '✓ Mode Prépare + Alerte')
+  }
 
   async function integrate(missionId?: string) {
     setBusy(missionId || 'sync'); setMsg(null)
@@ -115,7 +135,18 @@ export default function SaisiesClient({ userRole, userName, userEmail, userModul
             <h1 className="font-display text-2xl font-bold text-ink flex items-center gap-2">⚖️ Facturation Saisie</h1>
             <p className="text-ink-muted text-sm mt-0.5">États de frais, validation Parquet et cycle de facturation.</p>
           </div>
-          <button onClick={load} className="px-3 py-2 bg-surface-2 hover:bg-surface-hover border rounded-xl text-sm font-medium text-ink-secondary">↻ Rafraîchir</button>
+          <div className="flex items-center gap-2">
+            {isAdmin && (
+              <button onClick={toggleMode}
+                title="Le cron journalier prépare les états de frais (Alerte) ou les envoie tout seul (Auto)"
+                className={`px-3 py-2 rounded-xl text-sm font-semibold border transition ${autoSend
+                  ? 'bg-green-100 border-green-300 text-green-800'
+                  : 'bg-amber-100 border-amber-300 text-amber-800'}`}>
+                {autoSend ? '🤖 Envoi auto' : '🔔 Prépare + alerte'}
+              </button>
+            )}
+            <button onClick={load} className="px-3 py-2 bg-surface-2 hover:bg-surface-hover border rounded-xl text-sm font-medium text-ink-secondary">↻ Rafraîchir</button>
+          </div>
         </div>
 
         {msg && <div className="text-sm px-4 py-2 rounded-xl bg-surface-2 border text-ink-secondary">{msg}</div>}
@@ -220,6 +251,20 @@ function DossierCard({ d, busy, onGenerate, onRecipient, onState }: {
         </div>
       </div>
 
+      {/* Action détectée par le cron (mode Prépare + Alerte) */}
+      {d.pending_action && PENDING[d.pending_action] && (
+        <div className={`mt-3 flex items-center justify-between gap-3 rounded-xl border px-3 py-2 ${PENDING[d.pending_action].cls}`}>
+          <span className="text-sm font-semibold">
+            🔔 {PENDING[d.pending_action].label}
+            {d.pending_action_at && <span className="font-normal opacity-80"> — au {fmt(d.pending_action_at)}</span>}
+          </span>
+          <button disabled={busy} onClick={onGenerate}
+            className="px-3 py-1.5 bg-white/70 hover:bg-white border rounded-lg text-sm font-bold shrink-0">
+            Traiter →
+          </button>
+        </div>
+      )}
+
       {/* Actions */}
       <div className="flex items-center gap-2 flex-wrap mt-3 pt-3 border-t">
         <button disabled={busy} onClick={onGenerate}
@@ -258,8 +303,10 @@ function GenerateModal({ d, onClose, onDone, onMsg }: {
   d: Dossier; onClose: () => void; onDone: () => void; onMsg: (m: string) => void
 }) {
   const today = new Date().toISOString().slice(0, 10)
-  const [recipient, setRecipient] = useState<Recipient>(d.recipient)
-  const [billingTo, setBillingTo] = useState(today)
+  // Clôture Domaine : date de coupe = Date IN, envoi au Parquet (état final).
+  const isCloture = d.pending_action === 'cloture_domaine'
+  const [recipient, setRecipient] = useState<Recipient>(isCloture ? 'parquet' : d.recipient)
+  const [billingTo, setBillingTo] = useState(isCloture && d.domaine_remise_date ? String(d.domaine_remise_date).slice(0, 10) : today)
   const [roundTripKm, setRoundTripKm] = useState('')
   const [loading, setLoading] = useState<'' | 'preview' | 'send'>('')
 
