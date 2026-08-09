@@ -68,28 +68,36 @@ export async function runSaisieCron(sb: any): Promise<SaisieCronSummary> {
       return res.ok
     }
 
-    // ── C. Clôture Domaine (prioritaire) ──────────────────────────────────────
+    // La DATE DE COUPE est calculée automatiquement selon le déclencheur.
+
+    // ── C. Clôture Domaine (prioritaire) → coupe = Date IN ────────────────────
     if (remise && remise <= today && d.recipient !== 'domaine' && (!d.billed_to_date || d.billed_to_date < remise)) {
       if (auto) await fire(remise, 'parquet')   // sendEtatFrais bascule recipient→domaine (pending cloture)
       else await flag('cloture_domaine', remise)
       continue
     }
 
-    // ── A. À facturer (1er état de frais) ─────────────────────────────────────
-    if (d.state === 'en_parc' && d.parked_at && today >= endOfMonthAfter(d.parked_at)) {
-      if (auto) await fire(today)
-      else {
-        await sb.from('saisie_dossiers').update({ state: 'a_facturer', pending_action: 'facturer', pending_action_at: today, updated_at: new Date().toISOString() }).eq('id', d.id)
-        out.prepared++; out.actions.push({ plate: d.vehicle_plate || '—', kind: 'facturer' })
+    // ── A. À facturer (1er état de frais) → coupe = dernier jour du mois suivant la saisie ─
+    if (d.state === 'en_parc' && d.parked_at) {
+      const cut = endOfMonthAfter(d.parked_at)
+      if (today >= cut) {
+        if (auto) await fire(cut)
+        else {
+          await sb.from('saisie_dossiers').update({ state: 'a_facturer', pending_action: 'facturer', pending_action_at: cut, updated_at: new Date().toISOString() }).eq('id', d.id)
+          out.prepared++; out.actions.push({ plate: d.vehicle_plate || '—', kind: 'facturer' })
+        }
+        continue
       }
-      continue
     }
 
-    // ── B. Gardiennage récurrent (tous les 2 mois après facturation) ──────────
-    if (['facture', 'gardiennage_recurrent'].includes(d.state) && d.last_ef_at && today >= addMonths(d.last_ef_at, 2)) {
-      if (auto) { if (await fire(today)) await sb.from('saisie_dossiers').update({ state: 'gardiennage_recurrent' }).eq('id', d.id) }
-      else await flag('gardiennage', today)
-      continue
+    // ── B. Gardiennage récurrent → coupe = dernière coupe + 2 mois ────────────
+    if (['facture', 'gardiennage_recurrent'].includes(d.state) && d.billed_to_date) {
+      const cut = addMonths(d.billed_to_date, 2)
+      if (today >= cut) {
+        if (auto) { if (await fire(cut)) await sb.from('saisie_dossiers').update({ state: 'gardiennage_recurrent' }).eq('id', d.id) }
+        else await flag('gardiennage', cut)
+        continue
+      }
     }
   }
 

@@ -305,8 +305,11 @@ function GenerateModal({ d, onClose, onDone, onMsg }: {
   const today = new Date().toISOString().slice(0, 10)
   // Clôture Domaine : date de coupe = Date IN, envoi au Parquet (état final).
   const isCloture = d.pending_action === 'cloture_domaine'
+  // Date de coupe CALCULÉE par le cron (pending_action_at) — pré-remplie ; modifiable si besoin.
+  const computedCut = d.pending_action_at ? String(d.pending_action_at).slice(0, 10)
+    : (isCloture && d.domaine_remise_date ? String(d.domaine_remise_date).slice(0, 10) : today)
   const [recipient, setRecipient] = useState<Recipient>(isCloture ? 'parquet' : d.recipient)
-  const [billingTo, setBillingTo] = useState(isCloture && d.domaine_remise_date ? String(d.domaine_remise_date).slice(0, 10) : today)
+  const [billingTo, setBillingTo] = useState(computedCut)
   const [roundTripKm, setRoundTripKm] = useState('')
   const [loading, setLoading] = useState<'' | 'preview' | 'send'>('')
 
@@ -369,6 +372,11 @@ function GenerateModal({ d, onClose, onDone, onMsg }: {
             <label className="block text-xs font-semibold text-ink-secondary mb-1">Date de coupe (gardiennage jusqu'au)</label>
             <input type="date" value={billingTo} onChange={e => setBillingTo(e.target.value)}
               className="w-full bg-surface-2 border rounded-lg px-3 py-2 text-sm text-ink" />
+            {d.pending_action_at && (
+              <p className="text-[11px] text-ink-faint mt-1">
+                📌 Calculée automatiquement{isCloture ? ' (Date IN — remise Domaine)' : d.pending_action === 'facturer' ? ' (dernier jour du mois suivant la saisie)' : ' (dernière coupe + 2 mois)'}.
+              </p>
+            )}
           </div>
           {!d.depannage_billed && (
             <div>
