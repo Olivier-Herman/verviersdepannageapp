@@ -105,6 +105,27 @@ async function osPost(cookie: string, url: string, html: string, target: string,
   return await r.text()
 }
 
+// Pop-up « VIN inconnu » (breakdown) : quand les 3 chiffres saisis ne concordent
+// pas avec le dossier VAB, Comet ouvre `BreakdownAssignments_Details_CheckVin_Popup.aspx`
+// (viewstate PROPRE) demandant « le VIN ne correspond pas, continuer ? » → on clique
+// « Oui » (`wtYesButtonLink`) = LE bypass. Renvoie true si cliqué. Olivier 2026-08-09
+// (cURL réels). Cf [[project_vab_comet_integration]].
+async function confirmCheckVinPopupIfAny(cookie: string): Promise<boolean> {
+  const purl = `${BASE}/BreakdownAssignments_Details_CheckVin_Popup.aspx?_ts=${Date.now()}`
+  let html: string
+  try { html = await osGet(cookie, purl) } catch { return false }
+  const $ = cheerio.load(html)
+  let yes: string | null = null
+  $('a, input, button').each((_, el) => {
+    if (yes) return
+    const t = extractTarget($(el).attr('onclick') || '', $(el).attr('href') || '')
+    if (t && /YesButton/i.test(t)) yes = t
+  })
+  if (!yes) return false
+  await osPost(cookie, purl, html, yes, {})
+  return true
+}
+
 const nameEndsWith = (names: string[], suffix: string) => names.find(n => n.endsWith(suffix)) || null
 const btnByTargetSuffix = (b: Btn[], suffix: string) => b.find(x => x.target && x.target.endsWith(suffix)) || null
 function progression(b: Btn[]): Btn | null {
@@ -158,9 +179,25 @@ export async function closeVabMission(input: VabCloseInput): Promise<VabCloseRes
     if (vinInput && checkVin && !vinChecked) {
       const vinVal = Object.entries(input.extraFields || {}).find(([k]) => k.endsWith('wtLastDigitInputField'))?.[1]
       if (vinVal) {
+        // CheckVin sur la page principale (porte tous les champs cumulés : km/VIN/signature).
         html = await osPost(sess.cookieHeader, url, html, checkVin.target!, input.extraFields || {})
+        // Pop-up « VIN inconnu » : si le VIN ne concorde pas, cliquer « Oui » (bypass).
+        // Effet serveur : pose le drapeau « VIN vérifié » → EndIntervention progresse.
+        const bypassed = await confirmCheckVinPopupIfAny(sess.cookieHeader)
+        // Après le « Oui » de la pop-up, Comet refresh le widget VIN sur la page
+        // principale (`wt436$RichWidgets_wt14$block$wt1`) → synchronise l'état sur
+        // « VIN confirmé » sans quoi « Fin lieu de la panne » ne progresse pas.
+        if (bypassed) {
+          // Refresh du widget VIN après le « Oui » de la pop-up → pose « VIN confirmé »
+          // dans la chaîne OSVSTATE. ⚠️ RESTE À FIABILISER : la réponse est un fragment
+          // partiel OsAjax dont le nouvel __OSVSTATE n'est pas un <input hidden> standard
+          // → collectHidden() ne le récupère pas encore, donc l'état ne se propage pas et
+          // « Fin lieu de la panne » reboucle. À finir avec le HAR (format réponse OsAjax).
+          const refreshTarget = checkVin.target!.replace(/wtLink_CheckVin$/, 'RichWidgets_wt14$block$wt1')
+          html = await osPost(sess.cookieHeader, url, html, refreshTarget, input.extraFields || {})
+        }
         vinChecked = true
-        steps.push('check_vin')
+        steps.push(bypassed ? 'check_vin (bypass VIN inconnu)' : 'check_vin')
         continue
       }
     }
