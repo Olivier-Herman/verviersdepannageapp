@@ -193,7 +193,8 @@ export async function closeVabMission(input: VabCloseInput): Promise<VabCloseRes
           // partiel OsAjax dont le nouvel __OSVSTATE n'est pas un <input hidden> standard
           // → collectHidden() ne le récupère pas encore, donc l'état ne se propage pas et
           // « Fin lieu de la panne » reboucle. À finir avec le HAR (format réponse OsAjax).
-          const refreshTarget = checkVin.target!.replace(/wtLink_CheckVin$/, 'RichWidgets_wt14$block$wt1')
+          // ⚠️ Ce target de refresh utilise des UNDERSCORES (pas des $) — cf cURL réel.
+          const refreshTarget = checkVin.target!.replace(/wtLink_CheckVin$/, 'RichWidgets_wt14$block$wt1').replace(/\$/g, '_')
           html = await osPost(sess.cookieHeader, url, html, refreshTarget, input.extraFields || {})
         }
         vinChecked = true
