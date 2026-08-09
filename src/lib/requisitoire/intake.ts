@@ -15,7 +15,7 @@
 
 import { randomUUID }        from 'crypto'
 import { createAdminClient } from '@/lib/supabase'
-import { listInboxMessages, getPdfAttachments, getMessageBody, type GraphMessageBody } from './graph'
+import { listInboxMessages, searchMessages, getPdfAttachments, getMessageBody, type GraphMessage, type GraphMessageBody } from './graph'
 import { extractRequisitoireFromPdf, extractRequisitoireFromText } from './extract'
 import { findRequisitoireCandidates } from './match'
 
@@ -98,124 +98,172 @@ function buildMailCaptureHtml(body: GraphMessageBody): string {
 export async function pollRequisitoires(opts?: { top?: number }): Promise<IntakeSummary> {
   const sb = createAdminClient()
   const summary: IntakeSummary = { scanned: 0, captured: 0, skipped: 0, errors: 0, autoAttached: 0 }
-
   const messages = await listInboxMessages(FOURRIERE_MAILBOX, opts?.top ?? 25)
-  let processed = 0
-
+  const budget = { remaining: MAX_PER_RUN }
   for (const msg of messages) {
-    summary.scanned++
+    await processMessage(sb, FOURRIERE_MAILBOX, msg, summary, budget)
+  }
+  return summary
+}
 
-    const { data: existing } = await sb
-      .from('requisitoire_intake').select('id').eq('source_email_id', msg.id).maybeSingle()
-    if (existing) { summary.skipped++; continue }
+// Traite UN message : dédup (source_email_id), classification, extraction Claude,
+// matching, auto-attache. Mutualisé entre le cron (pollRequisitoires) et la
+// réconciliation mailbox-wide (reconcileRequisitoires). `budget.remaining` borne
+// les appels Claude sur le run.
+async function processMessage(
+  sb: any, mailbox: string, msg: GraphMessage, summary: IntakeSummary, budget: { remaining: number },
+): Promise<void> {
+  summary.scanned++
 
-    // Un mail d'une adresse police belge = à traiter systématiquement
-    // (réquisitoire ou levée), même sans PJ ni mot-clé. Olivier 2026-07-01.
-    const fromPolice = /@police\.belgium\.eu\s*>?\s*$/i.test((msg.from || '').trim())
-    const looksLevee = fromPolice || LEVEE_KEYWORDS.some(k => `${msg.subject} ${msg.bodyPreview}`.toLowerCase().includes(k))
+  const { data: existing } = await sb
+    .from('requisitoire_intake').select('id').eq('source_email_id', msg.id).maybeSingle()
+  if (existing) { summary.skipped++; return }
 
-    try {
-      const pdfs = msg.hasAttachments ? await getPdfAttachments(FOURRIERE_MAILBOX, msg.id) : []
+  // Un mail d'une adresse police belge = à traiter systématiquement
+  // (réquisitoire ou levée), même sans PJ ni mot-clé. Olivier 2026-07-01.
+  const fromPolice = /@police\.belgium\.eu\s*>?\s*$/i.test((msg.from || '').trim())
+  const looksLevee = fromPolice || LEVEE_KEYWORDS.some(k => `${msg.subject} ${msg.bodyPreview}`.toLowerCase().includes(k))
 
-      // Ni PDF, ni indice de levée / police → on ne dépense pas d'appel Claude.
-      if (pdfs.length === 0 && !looksLevee) {
-        if (msg.hasAttachments) {
-          // PJ mais pas de PDF → trace pour ne pas re-scanner.
-          await sb.from('requisitoire_intake').insert({
-            mailbox: FOURRIERE_MAILBOX, source_email_id: msg.id, from_addr: msg.from,
-            subject: msg.subject, received_at: msg.receivedDateTime, status: 'not_requisitoire', doc_type: 'autre',
-          })
-        }
-        summary.skipped++; continue
-      }
+  try {
+    const pdfs = msg.hasAttachments ? await getPdfAttachments(mailbox, msg.id) : []
 
-      if (processed >= MAX_PER_RUN) { summary.skipped++; continue }
-      processed++
-
-      const intakeId = randomUUID()
-      let docPath: string | null = null
-      let fileName: string | null = null
-      let ex
-
-      if (pdfs.length > 0) {
-        const pdf = pdfs[0]
-        const safeName = pdf.name.replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 120) || 'document.pdf'
-        docPath  = `_intake/${intakeId}/${safeName}`
-        fileName = pdf.name
-        const { error: upErr } = await sb.storage.from(BUCKET).upload(docPath, Buffer.from(pdf.contentBytes, 'base64'), {
-          contentType: 'application/pdf', upsert: false,
-        })
-        if (upErr) throw new Error(`upload PDF: ${upErr.message}`)
-        ex = await extractRequisitoireFromPdf(pdf.contentBytes)
-      } else {
-        // Levée probable sans document → lire le corps + annexer une capture HTML.
-        const body = await getMessageBody(FOURRIERE_MAILBOX, msg.id)
-        const text = body.contentType === 'html' ? stripHtml(body.content) : body.content
-        ex = await extractRequisitoireFromText(`Objet: ${body.subject}\n\n${text}`)
-        docPath  = `_intake/${intakeId}/mail.html`
-        fileName = 'mail.html'
-        const { error: upErr } = await sb.storage.from(BUCKET).upload(docPath, Buffer.from(buildMailCaptureHtml(body), 'utf8'), {
-          contentType: 'text/html; charset=utf-8', upsert: false,
-        })
-        if (upErr) throw new Error(`upload capture mail: ${upErr.message}`)
-      }
-
-      // Type 'autre' → trace, pas de matching.
-      if (ex.doc_type === 'autre') {
+    // Ni PDF, ni indice de levée / police → on ne dépense pas d'appel Claude.
+    if (pdfs.length === 0 && !looksLevee) {
+      if (msg.hasAttachments) {
         await sb.from('requisitoire_intake').insert({
-          id: intakeId, mailbox: FOURRIERE_MAILBOX, source_email_id: msg.id, from_addr: msg.from,
-          subject: msg.subject, received_at: msg.receivedDateTime, file_name: fileName,
-          doc_path: docPath, extracted: ex as any, status: 'not_requisitoire', doc_type: 'autre',
+          mailbox, source_email_id: msg.id, from_addr: msg.from,
+          subject: msg.subject, received_at: msg.receivedDateTime, status: 'not_requisitoire', doc_type: 'autre',
         })
-        summary.skipped++; continue
       }
+      summary.skipped++; return
+    }
 
-      const match = await findRequisitoireCandidates(sb, ex)
+    if (budget.remaining <= 0) { summary.skipped++; return }
+    budget.remaining--
 
-      // Clé forte = plaque OU 5 derniers du VIN.
-      const plateAlnum = (ex.plaque || '').replace(/[^A-Za-z0-9]/g, '')
-      const vinAlnum   = (ex.vin || '').replace(/[^A-Za-z0-9]/g, '')
-      const hasStrongKey = plateAlnum.length >= 4 || vinAlnum.length >= 5
+    const intakeId = randomUUID()
+    let docPath: string | null = null
+    let fileName: string | null = null
+    let ex
 
-      // Statut : réquisitoire → pending si clé forte, sinon à vérifier.
-      //          levée → pending si clé forte ET date de levée, sinon à vérifier
-      //          (la date pilote le gardiennage, on ne lève pas sans elle).
-      let status: string
-      if (ex.doc_type === 'levee_saisie') {
-        status = (hasStrongKey && ex.levee_date) ? 'pending' : 'to_verify'
-      } else {
-        status = hasStrongKey ? 'pending' : 'to_verify'
-      }
-
-      await sb.from('requisitoire_intake').insert({
-        id: intakeId, mailbox: FOURRIERE_MAILBOX, source_email_id: msg.id, from_addr: msg.from,
-        subject: msg.subject, received_at: msg.receivedDateTime, file_name: fileName,
-        doc_path: docPath, extracted: ex as any, doc_type: ex.doc_type,
-        candidates: match.candidates as any,
-        matched_mission_id: (status === 'pending' && match.confidence === 'high') ? match.best?.mission_id ?? null : null,
-        confidence: match.confidence, status,
+    if (pdfs.length > 0) {
+      const pdf = pdfs[0]
+      const safeName = pdf.name.replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 120) || 'document.pdf'
+      docPath  = `_intake/${intakeId}/${safeName}`
+      fileName = pdf.name
+      const { error: upErr } = await sb.storage.from(BUCKET).upload(docPath, Buffer.from(pdf.contentBytes, 'base64'), {
+        contentType: 'application/pdf', upsert: false,
       })
-      summary.captured++
+      if (upErr) throw new Error(`upload PDF: ${upErr.message}`)
+      ex = await extractRequisitoireFromPdf(pdf.contentBytes)
+    } else {
+      // Levée probable sans document → lire le corps + annexer une capture HTML.
+      const body = await getMessageBody(mailbox, msg.id)
+      const text = body.contentType === 'html' ? stripHtml(body.content) : body.content
+      ex = await extractRequisitoireFromText(`Objet: ${body.subject}\n\n${text}`)
+      docPath  = `_intake/${intakeId}/mail.html`
+      fileName = 'mail.html'
+      const { error: upErr } = await sb.storage.from(BUCKET).upload(docPath, Buffer.from(buildMailCaptureHtml(body), 'utf8'), {
+        contentType: 'text/html; charset=utf-8', upsert: false,
+      })
+      if (upErr) throw new Error(`upload capture mail: ${upErr.message}`)
+    }
 
-      // Auto-rattachement (saisie/enlèvement UNIQUEMENT — pas les levées, qui
-      // arrêtent le gardiennage) : clé forte + adresse précise + candidat unique
-      // + date cohérente (≤1 j si présente). Sinon reste en file manuelle.
-      if (match.autoAttach && match.best && ex.doc_type !== 'levee_saisie') {
-        try {
-          const { attachRequisitoire } = await import('@/lib/requisitoire/attach')
-          const res = await attachRequisitoire(sb, intakeId, match.best.mission_id, null, {})
-          if (res.ok) summary.autoAttached = (summary.autoAttached || 0) + 1
-          else console.warn(`[requisitoire] auto-attache ${intakeId} refusée : ${res.error}`)
-        } catch (e: any) {
-          console.error(`[requisitoire] auto-attache ${intakeId} KO :`, e?.message)
+    // Type 'autre' → trace, pas de matching.
+    if (ex.doc_type === 'autre') {
+      await sb.from('requisitoire_intake').insert({
+        id: intakeId, mailbox, source_email_id: msg.id, from_addr: msg.from,
+        subject: msg.subject, received_at: msg.receivedDateTime, file_name: fileName,
+        doc_path: docPath, extracted: ex as any, status: 'not_requisitoire', doc_type: 'autre',
+      })
+      summary.skipped++; return
+    }
+
+    const match = await findRequisitoireCandidates(sb, ex)
+
+    // Clé forte = plaque OU 5 derniers du VIN.
+    const plateAlnum = (ex.plaque || '').replace(/[^A-Za-z0-9]/g, '')
+    const vinAlnum   = (ex.vin || '').replace(/[^A-Za-z0-9]/g, '')
+    const hasStrongKey = plateAlnum.length >= 4 || vinAlnum.length >= 5
+
+    let status: string
+    if (ex.doc_type === 'levee_saisie') {
+      status = (hasStrongKey && ex.levee_date) ? 'pending' : 'to_verify'
+    } else {
+      status = hasStrongKey ? 'pending' : 'to_verify'
+    }
+
+    await sb.from('requisitoire_intake').insert({
+      id: intakeId, mailbox, source_email_id: msg.id, from_addr: msg.from,
+      subject: msg.subject, received_at: msg.receivedDateTime, file_name: fileName,
+      doc_path: docPath, extracted: ex as any, doc_type: ex.doc_type,
+      candidates: match.candidates as any,
+      matched_mission_id: (status === 'pending' && match.confidence === 'high') ? match.best?.mission_id ?? null : null,
+      confidence: match.confidence, status,
+    })
+    summary.captured++
+
+    // Auto-rattachement (saisie/enlèvement UNIQUEMENT — pas les levées).
+    if (match.autoAttach && match.best && ex.doc_type !== 'levee_saisie') {
+      try {
+        const { attachRequisitoire } = await import('@/lib/requisitoire/attach')
+        const res = await attachRequisitoire(sb, intakeId, match.best.mission_id, null, {})
+        if (res.ok) summary.autoAttached = (summary.autoAttached || 0) + 1
+        else console.warn(`[requisitoire] auto-attache ${intakeId} refusée : ${res.error}`)
+      } catch (e: any) {
+        console.error(`[requisitoire] auto-attache ${intakeId} KO :`, e?.message)
+      }
+    }
+  } catch (err: any) {
+    console.error(`[requisitoire] mail ${msg.id} KO:`, err?.message)
+    summary.errors++
+  }
+}
+
+// ── Réconciliation MAILBOX-WIDE (ciblée) ─────────────────────────────────────
+// Pour chaque fiche de saisie EN PARC SANS réquisitoire, cherche sa plaque / VIN /
+// n° PV dans les DEUX boîtes (info@ + fourriere@, $search couvre TOUS les dossiers)
+// et laisse processMessage extraire + matcher + attacher. Olivier 2026-08-10.
+export const RECONCILE_MAILBOXES = ['info@verviersdepannage.com', FOURRIERE_MAILBOX]
+const RECONCILE_SAISIE_SOURCES = ['police_saisie', 'police_rodeo', 'police_avp']
+
+export interface ReconcileSummary extends IntakeSummary {
+  fichesScanned: number; searchTerms: number; messagesFound: number; budgetLeft: number
+}
+
+export async function reconcileRequisitoires(opts?: { maxClaude?: number }): Promise<ReconcileSummary> {
+  const sb = createAdminClient()
+  const summary: ReconcileSummary = { scanned: 0, captured: 0, skipped: 0, errors: 0, autoAttached: 0, fichesScanned: 0, searchTerms: 0, messagesFound: 0, budgetLeft: 0 }
+  const budget = { remaining: opts?.maxClaude ?? 80 }
+
+  const { data: fiches } = await sb.from('incoming_missions')
+    .select('id, vehicle_plate, vehicle_vin, police_pv_number')
+    .in('source', RECONCILE_SAISIE_SOURCES).eq('status', 'parked').is('requisitoire_at', null).limit(3000)
+
+  const seenMsg = new Set<string>()
+  for (const f of (fiches || [])) {
+    summary.fichesScanned++
+    const terms = new Set<string>()
+    if (f.vehicle_plate && f.vehicle_plate.replace(/[^A-Za-z0-9]/g, '').length >= 4) terms.add(f.vehicle_plate.trim())
+    if (f.vehicle_vin && String(f.vehicle_vin).length >= 6) terms.add(String(f.vehicle_vin).trim())
+    if (f.police_pv_number && String(f.police_pv_number).length >= 5) terms.add(String(f.police_pv_number).trim())
+
+    for (const term of terms) {
+      summary.searchTerms++
+      for (const mb of RECONCILE_MAILBOXES) {
+        let msgs: GraphMessage[] = []
+        try { msgs = await searchMessages(mb, term, 25) } catch { summary.errors++; continue }
+        for (const msg of msgs) {
+          if (seenMsg.has(msg.id)) continue
+          seenMsg.add(msg.id)
+          summary.messagesFound++
+          if (budget.remaining <= 0) { summary.skipped++; continue }
+          await processMessage(sb, mb, msg, summary, budget)
         }
       }
-    } catch (err: any) {
-      console.error(`[requisitoire] mail ${msg.id} KO:`, err?.message)
-      summary.errors++
     }
   }
-
+  summary.budgetLeft = budget.remaining
   return summary
 }
 
