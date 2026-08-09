@@ -13,7 +13,7 @@
 import { listAllComexBko, type BkoDossier } from '@/lib/touring/comex-bko'
 import { estimateMissionPrice }             from '@/lib/missions/estimate-price'
 
-export const ACCEPT_TOL_PCT = 0.03   // 3 %
+export const ACCEPT_TOL_PCT = 0.05   // 5 % (Olivier 2026-08-09, était 3 %)
 export const ACCEPT_TOL_MIN = 2      // ou 2 € mini
 
 export function tariffVerdict(comex: number, vd: number | null): 'ok' | 'verify' {

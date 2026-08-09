@@ -193,6 +193,27 @@ export async function GET(req: Request) {
     ? Math.round((durs.length % 2 ? durs[(durs.length - 1) / 2] : (durs[durs.length / 2 - 1] + durs[durs.length / 2]) / 2) / 60000)
     : null
 
+  // MÉDIANE VALIDATION COMEX BKO : délai entre la 1re synchro BKO↔VD Soft
+  // (first_seen_at) et la validation (accepted_at) des dossiers validés sur la
+  // période. Mesure la latence d'auto-validation. Olivier 2026-08-09.
+  const bkoDurs: number[] = []
+  {
+    const { data: bkoValid } = await sb.from('touring_comex_dossiers')
+      .select('first_seen_at, accepted_at')
+      .not('accepted_at', 'is', null)
+      .gte('accepted_at', startPeriod)
+      .limit(5000)
+    for (const r of (bkoValid || [])) {
+      if (!r.first_seen_at || !r.accepted_at) continue
+      const d = Date.parse(r.accepted_at as string) - Date.parse(r.first_seen_at as string)
+      if (d >= 0) bkoDurs.push(d)
+    }
+    bkoDurs.sort((a, b) => a - b)
+  }
+  const bkoValidMin = bkoDurs.length
+    ? Math.round((bkoDurs.length % 2 ? bkoDurs[(bkoDurs.length - 1) / 2] : (bkoDurs[bkoDurs.length / 2 - 1] + bkoDurs[bkoDurs.length / 2]) / 2) / 60000)
+    : null
+
   // ── Slide 2 : à facturer PAR SOURCE + ratios Touring/Allianz ───────────────
   const { data: toInvRows } = await sb.from('incoming_missions')
     .select('source').eq('status', 'to_invoice').limit(3000)
@@ -414,7 +435,7 @@ export async function GET(req: Request) {
       termineesJour: cTerminees.count || 0,
       factureesJour: cFacturees.count || 0,
     },
-    facturation: { periodeJours: PERIOD_DAYS, dureeMoyMin, dureeMoyN: durs.length },
+    facturation: { periodeJours: PERIOD_DAYS, dureeMoyMin, dureeMoyN: durs.length, bkoValidMin, bkoValidN: bkoDurs.length },
     sources: {
       parSource,
       touring: { bko: comexBko || 0, total: touringTotal },
