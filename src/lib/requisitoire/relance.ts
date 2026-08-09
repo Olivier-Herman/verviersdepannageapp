@@ -72,19 +72,13 @@ function buildHtml(m: MissionRow, token: string): string {
   const lieu = m.incident_address || '—'
   const ref = m.mission_number != null ? `SAI-${m.mission_number}` : '—'
   const link = depotLink(token)
-  const n = m.requisitoire_reminder_count
-  const relanceLine = n > 0
-    ? `<p style="margin:0 0 20px;font-size:14px;color:#b45309;">Rappel n°${n + 1} — nous n'avons pas encore reçu le réquisitoire pour ce véhicule.</p>`
-    : ''
   const content = `
-    <p style="margin:0 0 4px;font-size:22px;font-weight:700;color:#111;">Réquisitoire à transmettre</p>
+    <p style="margin:0 0 4px;font-size:22px;font-weight:700;color:#111;">Réquisitoire non reçu</p>
     <p style="margin:0 0 20px;font-size:14px;color:#888;">Réf. dossier <span style="font-weight:600;color:#444;">${ref}</span></p>
-    ${relanceLine}
     <p style="margin:0 0 16px;font-size:14px;color:#333;line-height:1.6;">
       Bonjour,<br><br>
       Le véhicule ci-dessous a été enlevé et placé en fourrière à la suite d'une saisie.
-      Afin de finaliser le dossier, nous vous remercions de nous transmettre le
-      <strong>réquisitoire</strong> correspondant.
+      À ce jour, nous n'avons pas encore reçu le <strong>réquisitoire</strong> correspondant.
     </p>
     <table width="100%" cellpadding="0" cellspacing="0" style="margin:8px 0 4px;">
       ${infoRow('Plaque', m.vehicle_plate || '—')}
@@ -95,16 +89,12 @@ function buildHtml(m: MissionRow, token: string): string {
       ${m.saisie_motif_label ? infoRow('Motif', m.saisie_motif_label) : ''}
     </table>
     ${divider()}
-    <p style="margin:0 0 16px;font-size:14px;color:#333;line-height:1.6;">
-      <strong>Deux possibilités&nbsp;:</strong>
-    </p>
     <p style="margin:0 0 20px;font-size:14px;color:#333;line-height:1.6;">
-      1️⃣ Déposer directement le document via le lien sécurisé ci-dessous&nbsp;:
+      Vous avez la possibilité de nous le transmettre en cliquant sur ce bouton&nbsp;:
     </p>
     <p style="margin:0 0 24px;text-align:center;">${button(link, 'Déposer le réquisitoire')}</p>
     <p style="margin:0 0 20px;font-size:14px;color:#333;line-height:1.6;">
-      2️⃣ Ou <strong>répondre simplement à cet e-mail</strong> en joignant le réquisitoire
-      (PDF) — il sera automatiquement rattaché au dossier <strong>${ref}</strong>.
+      Ou en répondant simplement à cet e-mail, en y joignant le réquisitoire (PDF).
     </p>
     <p style="margin:24px 0 0;font-size:13px;color:#888;">Merci pour votre collaboration,<br>Le service Fourrière — Verviers Dépannage</p>
   `
@@ -133,7 +123,7 @@ export async function sendRequisitoireRelance(missionId: string): Promise<Relanc
   }
 
   const ref = m.mission_number != null ? `SAI-${m.mission_number}` : `SAI-${missionId.slice(0, 8)}`
-  const subject = `Réquisitoire à transmettre — ${m.vehicle_plate || 'véhicule'} — réf ${ref}`
+  const subject = `Réquisitoire non reçu — ${m.vehicle_plate || 'véhicule'} — réf ${ref}`
   try {
     await sendEmail(officer.email, subject, buildHtml(m, token), officer.name, undefined, undefined, FOURRIERE_FROM)
   } catch (e: any) {
