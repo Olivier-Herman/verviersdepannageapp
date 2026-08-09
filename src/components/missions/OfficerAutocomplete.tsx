@@ -11,12 +11,13 @@
 
 import { useEffect, useRef, useState } from 'react'
 
-export default function OfficerAutocomplete({ label, value, onChange, onPickPartner, companyId }: {
+export default function OfficerAutocomplete({ label, value, onChange, onPickPartner, companyId, required }: {
   label:          string
   value:          string
   onChange:       (v: string) => void
   onPickPartner:  (id: number | null) => void
   companyId:      number | null
+  required?:      boolean
 }) {
   const [open, setOpen]       = useState(false)
   const [agents, setAgents]   = useState<Array<{ id: number; name: string; phone?: string; function?: string }>>([])
@@ -47,7 +48,7 @@ export default function OfficerAutocomplete({ label, value, onChange, onPickPart
   const showDrop = open && !!companyId && value.trim().length > 0
   return (
     <div ref={boxRef} className="relative">
-      <label className="block text-ink-secondary text-xs font-medium mb-1">{label}</label>
+      <label className="block text-ink-secondary text-xs font-medium mb-1">{label}{required && <span className="text-critical ml-0.5">*</span>}</label>
       <input
         type="text" value={value}
         onChange={e => { onChange(e.target.value); onPickPartner(null); setOpen(true) }}

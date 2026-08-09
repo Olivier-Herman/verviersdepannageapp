@@ -22,8 +22,13 @@ const TYPE_CONFIG: Record<MissionType, { label: string; icon: string; color: str
   snc:         { label: 'Siabis Non Couvert', icon: '🛣️', color: 'bg-blue-600',   colorLight: 'bg-blue-50 border-blue-200' },
   sc:          { label: 'Siabis Couvert',     icon: '🛣️', color: 'bg-cyan-600',   colorLight: 'bg-cyan-50 border-cyan-200', hidePolice: true, hideOwner: true },
   appel_prive: { label: 'Appel Privé',        icon: '📞', color: 'bg-green-800',  colorLight: 'bg-green-50 border-green-200', hidePolice: true },
-  avp:         { label: 'AVP',                icon: '🔲', color: 'bg-black',     colorLight: 'bg-gray-50 border-gray-200',  hidePolice: true, hideOwner: true },
+  avp:         { label: 'AVP',                icon: '🔲', color: 'bg-black',     colorLight: 'bg-gray-50 border-gray-200',  hideOwner: true },
 }
+
+// « Appel police » = sous-types où un policier est réellement sur place → Zone de
+// police + Nom du policier OBLIGATOIRES (Olivier 2026-08-09 : indispensable pour
+// la relance réquisitoire, qui email le policier via son contact Odoo).
+const POLICE_CALL_TYPES: MissionType[] = ['accident', 'saisie', 'rodeo', 'mal_garee', 'avp']
 
 // Triees alphabetiquement pour la liste affichee. Le defaut (zone la plus
 // frequente, Verviers Depannage etant sur Verviers) est Vesdre.
@@ -56,12 +61,12 @@ function LInput({ label, value, onChange, placeholder, type = 'text', required }
   )
 }
 
-function LSelect({ label, value, onChange, options }: {
-  label: string; value: string; onChange: (v: string) => void; options: string[]
+function LSelect({ label, value, onChange, options, required }: {
+  label: string; value: string; onChange: (v: string) => void; options: string[]; required?: boolean
 }) {
   return (
     <div>
-      <label className="block text-ink-secondary text-xs font-medium mb-1">{label}</label>
+      <label className="block text-ink-secondary text-xs font-medium mb-1">{label}{required && <span className="text-critical ml-0.5">*</span>}</label>
       <select value={value} onChange={e => onChange(e.target.value)}
         className="w-full bg-surface border border-strong rounded-xl px-3 py-2.5 text-ink text-sm outline-none focus:border-blue-500">
         {options.map(o => <option key={o} value={o}>{o}</option>)}
@@ -517,6 +522,12 @@ export default function PoliceClient({ userRole = 'driver' }: { userRole?: strin
     if (!model)           { setErr('Le modèle du véhicule est requis'); return }
     // 3 photos minimum obligatoires à la création (preuve terrain).
     if (photos.length < 3) { setErr('Ajoute au moins 3 photos (obligatoire).'); return }
+    // Appel police (accident/saisie/rodéo/mal garée/avp) : zone + nom du policier
+    // OBLIGATOIRES (Olivier 2026-08-09 — nécessaires à la relance réquisitoire).
+    if (POLICE_CALL_TYPES.includes(selectedType)) {
+      if (!policeZone.trim())  { setErr('La zone de police est obligatoire'); return }
+      if (!officerName.trim()) { setErr('Le nom du policier est obligatoire'); return }
+    }
     // Saisie : motif obligatoire (demande Franck 2026-06-01).
     if (selectedType === 'saisie' && !saisieMotifCode) {
       setErr('Le motif de la saisie est obligatoire'); return
@@ -965,8 +976,8 @@ export default function PoliceClient({ userRole = 'driver' }: { userRole?: strin
               </button>
             </div>
           </div>
-          {!cfg!.hidePolice && <LSelect label="Zone de police" value={policeZone} onChange={setPoliceZone} options={policeZones} />}
-          {!cfg!.hidePolice && <OfficerAutocomplete label="Nom du policier" value={officerName} onChange={setOfficerName} onPickPartner={setOfficerPartnerId} companyId={zoneCompanyMap[policeZone] ?? null} />}
+          {!cfg!.hidePolice && <LSelect label="Zone de police" value={policeZone} onChange={setPoliceZone} options={policeZones} required={POLICE_CALL_TYPES.includes(selectedType)} />}
+          {!cfg!.hidePolice && <OfficerAutocomplete label="Nom du policier" value={officerName} onChange={setOfficerName} onPickPartner={setOfficerPartnerId} companyId={zoneCompanyMap[policeZone] ?? null} required={POLICE_CALL_TYPES.includes(selectedType)} />}
         </Section>
 
         {/* Propriétaire — toujours optionnel. Pour les sources avec paiement
