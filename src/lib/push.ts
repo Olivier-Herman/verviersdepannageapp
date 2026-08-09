@@ -57,6 +57,14 @@ const NOTIF_TYPE_TO_ROLE_KEY: Partial<Record<NotifType, 'role_driver' | 'role_di
   // cash_transfer : intentionnellement non-mappe → toujours envoyee
 }
 
+// Notifs OPÉRATIONNELLES chauffeur : jamais envoyées à un chauffeur HORS LIGNE
+// (congé / hors garde sans ping / pas en mission). Il ne garde que les notifs
+// administratives (validation congé, annonces…) qui, elles, partent SANS
+// notifType et ne sont donc pas filtrées ici. On ne gate QUE les types chauffeur
+// (le « hors ligne » = garde+ping, notion driver ; l'appliquer aux notifs
+// dispatcher couperait les dispatchers qui ne pingent pas de GPS). Olivier 2026-08-09.
+const OFFLINE_GATED_NOTIF_TYPES = new Set<NotifType>(['driver_assigned', 'driver_modified'])
+
 /**
  * Filtre une liste d'user_ids selon les preferences notif_preferences.
  * Defaut on = retro-compat. Si la clef role est explicitement false, on bloque.
@@ -65,27 +73,36 @@ const NOTIF_TYPE_TO_ROLE_KEY: Partial<Record<NotifType, 'role_driver' | 'role_di
  */
 async function filterByNotifPref(userIds: string[], notifType?: NotifType): Promise<string[]> {
   if (!notifType || userIds.length === 0) return userIds
+  let ids = userIds
+
+  // 1) Préférences par role (toggle profil). cash_transfer (non mappe) ne peut
+  //    pas etre bloque par l user (notif essentielle).
   const roleKey = NOTIF_TYPE_TO_ROLE_KEY[notifType]
-  // cash_transfer (et tout type non mappe a un role) ne peut pas etre bloque
-  // par l user. On ignore aussi l ancienne clef per-categorie pour ces types
-  // pour respecter la decision Olivier (notif essentielle).
-  if (!roleKey) return userIds
-  const sb = createAdminClient()
-  const { data } = await sb
-    .from('users')
-    .select('id, notif_preferences')
-    .in('id', userIds)
-  if (!data) return userIds
-  return data
-    .filter(u => {
-      const pref = (u.notif_preferences || {}) as Record<string, unknown>
-      // 1. Bloque si la clef de role est explicitement false (nouveau systeme)
-      if (pref[roleKey] === false) return false
-      // 2. Retro-compat : bloque si l ancienne clef per-categorie est false
-      if (pref[notifType] === false) return false
-      return true
-    })
-    .map(u => u.id)
+  if (roleKey) {
+    const sb = createAdminClient()
+    const { data } = await sb.from('users').select('id, notif_preferences').in('id', ids)
+    if (data) {
+      ids = data
+        .filter(u => {
+          const pref = (u.notif_preferences || {}) as Record<string, unknown>
+          if (pref[roleKey] === false) return false        // nouveau systeme (par role)
+          if (pref[notifType] === false) return false       // retro-compat (par categorie)
+          return true
+        })
+        .map(u => u.id)
+    }
+  }
+
+  // 2) Notifs opérationnelles chauffeur → exclure les chauffeurs HORS LIGNE
+  //    (congé / hors garde sans ping / pas en mission). Les admin/annonces
+  //    passent sans notifType et ne sont donc jamais filtrées ici.
+  if (OFFLINE_GATED_NOTIF_TYPES.has(notifType) && ids.length) {
+    const { getOfflineUserIds } = await import('@/lib/notifications/presence')
+    const offline = await getOfflineUserIds(ids)
+    if (offline.size) ids = ids.filter(id => !offline.has(id))
+  }
+
+  return ids
 }
 
 /**
