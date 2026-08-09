@@ -164,6 +164,12 @@ export default function FourriereSearchClient({ userRole, userName, userEmail, u
               title="Relancer les policiers pour les réquisitoires manquants (mail depuis fourriere@ + lien de dépôt)">
               📨 Relance réquisitoires
             </Link>
+            <Link
+              href="/fourriere/saisies"
+              className="flex items-center gap-2 px-4 py-2 bg-surface-2 hover:bg-surface-hover border text-ink-secondary hover:text-ink rounded-xl text-sm font-semibold transition"
+              title="Facturation des saisies : états de frais, validation Parquet, cycle de facturation">
+              ⚖️ Saisies
+            </Link>
             {userRole === 'superadmin' && (
               <Link
                 href="/fourriere/domaine"
