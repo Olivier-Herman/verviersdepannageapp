@@ -34,6 +34,44 @@ export function resolveRecipientEmail(recipient: SaisieRecipient, motifCode?: st
   return null  // domaine : à câbler
 }
 
+// ── Auto-intégration des NOUVELLES saisies ───────────────────────────────────
+// À partir de la date `saisie_autointegrate_since` (app_settings), toute mission
+// police_saisie en parc crée automatiquement son dossier. Le parc antérieur reste
+// intégré à la main (tri). Olivier 2026-08-10.
+const SAISIE_MISSION_SNAP = 'id, dossier_number, vehicle_plate, vehicle_brand, vehicle_model, parked_at, received_at, levee_saisie_date, saisie_motif_code, saisie_motif_label'
+
+function snapshotSaisieMission(m: any) {
+  return {
+    mission_id:    m.id,
+    vehicle_plate: m.vehicle_plate || null,
+    vehicle_brand: m.vehicle_brand || null,
+    vehicle_model: m.vehicle_model || null,
+    dossier_ref:   m.dossier_number || null,
+    parked_at:     (m.parked_at || m.received_at || '').slice(0, 10) || null,
+    levee_date:    m.levee_saisie_date ? String(m.levee_saisie_date).slice(0, 10) : null,
+    motif_code:    m.saisie_motif_code || null,
+    motif_label:   m.saisie_motif_label || null,
+  }
+}
+
+export async function autoIntegrateNewSaisies(sb: any): Promise<number> {
+  const { data: cfg } = await sb.from('app_settings').select('value').eq('key', 'saisie_autointegrate_since').maybeSingle()
+  let since = ''
+  try { since = cfg?.value ? JSON.parse(cfg.value) : '' } catch {}
+  if (!since) return 0   // désactivé tant que la date n'est pas posée
+
+  const { data: linkedRows } = await sb.from('saisie_dossiers').select('mission_id')
+  const linked = new Set((linkedRows || []).map((d: any) => d.mission_id).filter(Boolean))
+  const { data: saisies } = await sb.from('incoming_missions')
+    .select(SAISIE_MISSION_SNAP)
+    .eq('source', 'police_saisie').eq('status', 'parked')
+    .gte('received_at', since).limit(300)
+  const toCreate = (saisies || []).filter((m: any) => !linked.has(m.id)).map(snapshotSaisieMission)
+  if (!toCreate.length) return 0
+  const { error } = await sb.from('saisie_dossiers').insert(toCreate)
+  return error ? 0 : toCreate.length
+}
+
 // ── Machine à états (pipeline) ───────────────────────────────────────────────
 export const SAISIE_STATES = [
   'en_parc', 'a_facturer', 'ef_envoye', 'accepte', 'refuse',
@@ -183,31 +221,32 @@ export interface SendEfResult { ok: boolean; email?: string; numero?: string; er
 
 export function validationLink(token: string): string { return `${APP_URL}/saisie-validation/${token}` }
 
-function buildEfEmailHtml(d: any, numero: string, totalTvac: number, link: string): string {
+function buildEfEmailHtml(d: any, numero: string, totalTvac: number, link: string, vin?: string | null): string {
   const veh = [d.vehicle_brand, d.vehicle_model].filter(Boolean).join(' ') || '—'
   const eur = `${totalTvac.toFixed(2).replace('.', ',')} €`
   const content = `
     <p style="margin:0 0 4px;font-size:22px;font-weight:700;color:#111;">État de frais ${numero}</p>
     <p style="margin:0 0 20px;font-size:14px;color:#888;">Verviers Dépannage SA</p>
     <p style="margin:0 0 16px;font-size:14px;color:#333;line-height:1.6;">
-      Bonjour,<br><br>
-      Veuillez trouver ci-joint l'état de frais relatif au véhicule saisi ci-dessous.
+      Madame, Monsieur,<br><br>
+      Veuillez trouver ci-joint l'état de frais relatif au véhicule saisi repris ci-dessous.
     </p>
     <table width="100%" cellpadding="0" cellspacing="0" style="margin:8px 0 4px;">
       ${infoRow('Plaque', d.vehicle_plate || '—')}
       ${infoRow('Véhicule', veh)}
+      ${vin ? infoRow('N° de châssis (VIN)', vin) : ''}
       ${d.dossier_ref ? infoRow('N° PV', d.dossier_ref) : ''}
       ${infoRow('Montant TVAC', eur)}
     </table>
     ${divider()}
     <p style="margin:0 0 16px;font-size:14px;color:#333;line-height:1.6;">
-      Merci de nous retourner votre validation (cachet / signature) en cliquant ci-dessous&nbsp;:
+      Auriez-vous l'amabilité de nous retourner votre validation (cachet / signature) en cliquant sur le bouton ci-dessous&nbsp;?
     </p>
     <p style="margin:0 0 24px;text-align:center;">${button(link, 'Déposer la validation')}</p>
     <p style="margin:0 0 20px;font-size:14px;color:#333;line-height:1.6;">
-      Vous pouvez aussi répondre à cet e-mail en joignant le document validé.
+      Vous pouvez également, si vous le préférez, répondre à cet e-mail en y joignant le document validé.
     </p>
-    <p style="margin:24px 0 0;font-size:13px;color:#888;">Le service Fourrière — Verviers Dépannage</p>
+    <p style="margin:24px 0 0;font-size:13px;color:#888;">Nous vous remercions par avance.<br>Le service Fourrière — Verviers Dépannage</p>
   `
   return emailLayout(content, `État de frais ${numero}`)
 }
@@ -223,11 +262,13 @@ export async function sendEtatFrais(
   if (!d) return { ok: false, error: 'Dossier introuvable' }
 
   const recipient = (opts.recipient || d.recipient || 'parquet') as SaisieRecipient
-  // Email destinataire (client → email de la fiche).
+  // Infos fiche : email client (si destinataire=client) + VIN (si connu, ajouté au mail).
   let clientEmail: string | null = null
-  if (recipient === 'client' && d.mission_id) {
-    const { data: m } = await sb.from('incoming_missions').select('client_email').eq('id', d.mission_id).maybeSingle()
+  let vin: string | null = null
+  if (d.mission_id) {
+    const { data: m } = await sb.from('incoming_missions').select('client_email, vehicle_vin').eq('id', d.mission_id).maybeSingle()
     clientEmail = m?.client_email || null
+    vin = m?.vehicle_vin || null
   }
   const dest = resolveRecipientEmail(recipient, d.motif_code, clientEmail)
   if (!dest) return { ok: false, error: recipient === 'client' ? "Email du client inconnu (compléter la fiche)" : 'Destinataire Domaine non configuré' }
@@ -248,7 +289,7 @@ export async function sendEtatFrais(
   const subject = `État de frais ${gen.numero} — ${d.vehicle_plate || 'véhicule'}`
   try {
     await sendEmail(
-      dest.email, subject, buildEfEmailHtml(d, gen.numero, gen.totalTvac, validationLink(token)),
+      dest.email, subject, buildEfEmailHtml(d, gen.numero, gen.totalTvac, validationLink(token), vin),
       dest.label,
       undefined,  // cc
       [{ name: `etat-de-frais-${gen.numero}.pdf`, contentType: 'application/pdf', contentBytes: gen.pdf.toString('base64') }],

@@ -11,6 +11,7 @@ import { NextResponse }      from 'next/server'
 import { getServerSession }  from 'next-auth'
 import { authOptions }       from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase'
+import { autoIntegrateNewSaisies } from '@/lib/missions/saisie-dossier'
 
 export const dynamic = 'force-dynamic'
 
@@ -40,6 +41,9 @@ export async function GET() {
   const session = await getServerSession(authOptions)
   if (!canAccess(session)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   const sb = createAdminClient()
+
+  // Intègre à la volée les nouvelles saisies (depuis la date d'activation).
+  await autoIntegrateNewSaisies(sb).catch(() => {})
 
   const { data: dossiersRaw } = await sb
     .from('saisie_dossiers')

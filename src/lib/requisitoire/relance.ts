@@ -54,7 +54,7 @@ function fmtDate(iso?: string | null): string {
 
 type MissionRow = {
   id: string; mission_number: number | null; vehicle_plate: string | null
-  vehicle_brand: string | null; vehicle_model: string | null
+  vehicle_brand: string | null; vehicle_model: string | null; vehicle_vin: string | null
   incident_address: string | null
   created_at: string | null; parked_at: string | null
   police_pv_number: string | null; police_zone: string | null
@@ -64,7 +64,7 @@ type MissionRow = {
   requisitoire_reminder_count: number
 }
 
-const SELECT = 'id, mission_number, vehicle_plate, vehicle_brand, vehicle_model, incident_address, created_at, parked_at, police_pv_number, police_zone, saisie_motif_label, officer_name, officer_partner_id, requisitoire_token, requisitoire_at, requisitoire_stop, requisitoire_reminder_count'
+const SELECT = 'id, mission_number, vehicle_plate, vehicle_brand, vehicle_model, vehicle_vin, incident_address, created_at, parked_at, police_pv_number, police_zone, saisie_motif_label, officer_name, officer_partner_id, requisitoire_token, requisitoire_at, requisitoire_stop, requisitoire_reminder_count'
 
 // Corps HTML de la relance.
 function buildHtml(m: MissionRow, token: string): string {
@@ -76,13 +76,14 @@ function buildHtml(m: MissionRow, token: string): string {
     <p style="margin:0 0 4px;font-size:22px;font-weight:700;color:#111;">Réquisitoire non reçu</p>
     <p style="margin:0 0 20px;font-size:14px;color:#888;">Réf. dossier <span style="font-weight:600;color:#444;">${ref}</span></p>
     <p style="margin:0 0 16px;font-size:14px;color:#333;line-height:1.6;">
-      Bonjour,<br><br>
-      Le véhicule ci-dessous a été enlevé et placé en fourrière à la suite d'une saisie.
-      À ce jour, nous n'avons pas encore reçu le <strong>réquisitoire</strong> correspondant.
+      Madame, Monsieur,<br><br>
+      Le véhicule repris ci-dessous a été enlevé et placé en fourrière à la suite d'une saisie.
+      Sauf erreur de notre part, le <strong>réquisitoire</strong> correspondant ne nous est pas encore parvenu.
     </p>
     <table width="100%" cellpadding="0" cellspacing="0" style="margin:8px 0 4px;">
       ${infoRow('Plaque', m.vehicle_plate || '—')}
       ${infoRow('Véhicule', veh)}
+      ${m.vehicle_vin ? infoRow('N° de châssis (VIN)', m.vehicle_vin) : ''}
       ${infoRow('Date de saisie', fmtDate(m.created_at))}
       ${infoRow('Lieu', lieu)}
       ${m.police_pv_number ? infoRow('N° PV', m.police_pv_number) : ''}
@@ -90,13 +91,13 @@ function buildHtml(m: MissionRow, token: string): string {
     </table>
     ${divider()}
     <p style="margin:0 0 20px;font-size:14px;color:#333;line-height:1.6;">
-      Vous avez la possibilité de nous le transmettre en cliquant sur ce bouton&nbsp;:
+      Auriez-vous l'amabilité de nous le faire parvenir en cliquant sur le bouton ci-dessous&nbsp;?
     </p>
     <p style="margin:0 0 24px;text-align:center;">${button(link, 'Déposer le réquisitoire')}</p>
     <p style="margin:0 0 20px;font-size:14px;color:#333;line-height:1.6;">
-      Ou en répondant simplement à cet e-mail, en y joignant le réquisitoire (PDF).
+      Vous pouvez également, si vous le préférez, répondre simplement à cet e-mail en y joignant le réquisitoire (PDF).
     </p>
-    <p style="margin:24px 0 0;font-size:13px;color:#888;">Merci pour votre collaboration,<br>Le service Fourrière — Verviers Dépannage</p>
+    <p style="margin:24px 0 0;font-size:13px;color:#888;">Nous vous remercions par avance de votre collaboration.<br>Le service Fourrière — Verviers Dépannage</p>
   `
   return emailLayout(content, `Réquisitoire ${ref}`)
 }

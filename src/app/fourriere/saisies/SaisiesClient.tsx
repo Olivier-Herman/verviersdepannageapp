@@ -110,6 +110,17 @@ export default function SaisiesClient({ userRole, userName, userEmail, userModul
     } finally { setBusy(null) }
   }
 
+  async function relanceReq(missionId: string | null, dossierId: string) {
+    if (!missionId) { setMsg('⚠ Pas de fiche liée — relance impossible'); return }
+    setBusy(dossierId); setMsg(null)
+    try {
+      const r = await fetch(`/api/missions/${missionId}/requisitoire-relance`, { method: 'POST' })
+      const j = await r.json().catch(() => ({}))
+      if (!r.ok) { setMsg(`⚠ ${j.error || 'Relance impossible'}`); return }
+      setMsg(`✓ Relance réquisitoire envoyée${j.email ? ` à ${j.email}` : ''}`)
+    } finally { setBusy(null) }
+  }
+
   async function remove(id: string, plate: string) {
     if (!confirm(`Retirer ${plate} de l'intégration ?\n\nLa fiche reste intacte (elle reviendra dans « à intégrer »). Les états de frais liés à ce dossier seront supprimés.`)) return
     setBusy(id); setMsg(null)
@@ -208,7 +219,8 @@ export default function SaisiesClient({ userRole, userName, userEmail, userModul
                 onGenerate={() => setGen(d)}
                 onRecipient={(r) => patch(d.id, { recipient: r }, '✓ Destinataire mis à jour')}
                 onState={(s, m) => patch(d.id, { state: s }, m)}
-                onRemove={() => remove(d.id, d.vehicle_plate || '—')} />
+                onRemove={() => remove(d.id, d.vehicle_plate || '—')}
+                onRelance={() => relanceReq(d.mission_id, d.id)} />
             ))}
           </div>
         )}
@@ -220,12 +232,13 @@ export default function SaisiesClient({ userRole, userName, userEmail, userModul
 }
 
 // ── Carte dossier ────────────────────────────────────────────────────────────
-function DossierCard({ d, busy, onGenerate, onRecipient, onState, onRemove }: {
+function DossierCard({ d, busy, onGenerate, onRecipient, onState, onRemove, onRelance }: {
   d: Dossier; busy: boolean
   onGenerate: () => void
   onRecipient: (r: Recipient) => void
   onState: (s: string, msg: string) => void
   onRemove: () => void
+  onRelance: () => void
 }) {
   const st = STATE[d.state] || { label: d.state, cls: 'bg-slate-100 text-slate-700 border-slate-300', rank: 8 }
   const days = daysSince(d.parked_at)
@@ -269,7 +282,10 @@ function DossierCard({ d, busy, onGenerate, onRecipient, onState, onRemove }: {
       {!d.requisitoire_ok && (
         <div className="mt-3 flex items-center justify-between gap-3 rounded-xl border border-red-300 bg-red-50 px-3 py-2">
           <span className="text-sm font-semibold text-red-800">⚠ Réquisitoire manquant — état de frais impossible</span>
-          <Link href="/fourriere/relance-requisitoire" className="text-xs font-bold text-red-700 underline shrink-0">Relancer</Link>
+          <button disabled={busy} onClick={onRelance}
+            className="px-3 py-1.5 bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white rounded-lg text-xs font-bold shrink-0">
+            📨 Relancer le policier
+          </button>
         </div>
       )}
 

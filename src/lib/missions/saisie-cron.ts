@@ -12,7 +12,7 @@
 //   C. Clôture Domaine — la Date IN (incoming_missions.domaine_remise_date) est
 //      atteinte → état de frais de clôture au Parquet, puis bascule au Domaine.
 
-import { sendEtatFrais } from '@/lib/missions/saisie-dossier'
+import { sendEtatFrais, autoIntegrateNewSaisies } from '@/lib/missions/saisie-dossier'
 import { sendRequisitoireRelance } from '@/lib/requisitoire/relance'
 import { sendNotificationToRoles } from '@/lib/notifications/send'
 
@@ -39,20 +39,24 @@ async function getAutoSend(sb: any): Promise<boolean> {
 
 export interface SaisieCronSummary {
   auto: boolean; checked: number; prepared: number; sent: number; relances: number
+  integrated: number; closed: number
   actions: { plate: string; kind: string }[]; errors: string[]
 }
 
 export async function runSaisieCron(sb: any): Promise<SaisieCronSummary> {
   const auto = await getAutoSend(sb)
   const today = belgianToday()
-  const out: SaisieCronSummary = { auto, checked: 0, prepared: 0, sent: 0, relances: 0, actions: [], errors: [] }
+  const out: SaisieCronSummary = { auto, checked: 0, prepared: 0, sent: 0, relances: 0, actions: [], errors: [], integrated: 0, closed: 0 }
+
+  // 0) Intègre automatiquement les nouvelles saisies en parc.
+  out.integrated = await autoIntegrateNewSaisies(sb)
 
   const { data: dossiers } = await sb.from('saisie_dossiers').select('*').neq('state', 'clos')
   for (const d of (dossiers || [])) {
     out.checked++
     const mission = d.mission_id
       ? (await sb.from('incoming_missions')
-          .select('domaine_remise_date, requisitoire_at, requisitoire_last_reminder_at')
+          .select('status, domaine_remise_date, domaine_enlevement_date, requisitoire_at, requisitoire_last_reminder_at')
           .eq('id', d.mission_id).maybeSingle()).data
       : null
     const remise = mission?.domaine_remise_date ? String(mission.domaine_remise_date).slice(0, 10) : null
@@ -60,6 +64,20 @@ export async function runSaisieCron(sb: any): Promise<SaisieCronSummary> {
     // Snapshot de la Date IN sur le dossier (visible au cockpit).
     if (remise && remise !== d.domaine_remise_date) {
       await sb.from('saisie_dossiers').update({ domaine_remise_date: remise }).eq('id', d.id)
+    }
+
+    // ── Restitution client (scénario 1) : véhicule sorti du parc + facturé, HORS
+    //    circuit Domaine, avant tout dépôt JustInvoice → on clôture le dossier. ──
+    if (mission && ['completed', 'to_invoice', 'cancelled'].includes(mission.status)
+        && !mission.domaine_enlevement_date && !mission.domaine_remise_date
+        && !['justinvoice', 'facture', 'gardiennage_recurrent'].includes(d.state)) {
+      await sb.from('saisie_dossiers').update({
+        state: 'clos', pending_action: null, pending_action_at: null,
+        notes: 'Clôturé auto : restitution / facturation directe (hors Parquet/Domaine).',
+        updated_at: new Date().toISOString(),
+      }).eq('id', d.id)
+      out.closed++
+      continue
     }
 
     // ── Détermine l'action DUE + sa date de coupe (calculée automatiquement) ──
