@@ -250,7 +250,7 @@ export async function generateEtatFrais(
     valToken = randomUUID().replace(/-/g, '')
     await sb.from('saisie_dossiers').update({ validation_token: valToken }).eq('id', dossierId)
   }
-  const qrUrl = valToken ? validationLink(valToken) : `${APP_URL}/saisie-validation`
+  const qrUrl = valToken ? validationLink(valToken) : `${APP_URL}/fourriere/saisies`
 
   const destEmail = resolveRecipientEmail(recipient, d.motif_code, mission?.client_email)?.email || null
 
@@ -299,11 +299,8 @@ function buildEfEmailHtml(d: any, numero: string, totalTvac: number, link: strin
     </table>
     ${divider()}
     <p style="margin:0 0 16px;font-size:14px;color:#333;line-height:1.6;">
-      Auriez-vous l'amabilité de nous retourner votre validation (cachet / signature) en cliquant sur le bouton ci-dessous&nbsp;?
-    </p>
-    <p style="margin:0 0 24px;text-align:center;">${button(link, 'Déposer la validation')}</p>
-    <p style="margin:0 0 20px;font-size:14px;color:#333;line-height:1.6;">
-      Vous pouvez également, si vous le préférez, répondre à cet e-mail en y joignant le document validé.
+      Auriez-vous l'amabilité de nous <strong>retourner le présent état de frais signé</strong>, pour accord ou pour refus,
+      par retour de courriel ou par courrier&nbsp;?
     </p>
     <p style="margin:24px 0 0;font-size:13px;color:#888;">Nous vous remercions par avance.<br>Le service Fourrière — Verviers Dépannage</p>
   `

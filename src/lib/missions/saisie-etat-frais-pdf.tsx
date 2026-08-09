@@ -250,7 +250,7 @@ function EtatFraisDoc({ input, qr, logo }: { input: EtatFraisInput; qr: string |
             <View style={styles.notes}>
               <Text style={styles.lbl}>Suivi & mentions</Text>
               <View style={styles.pill}><View style={styles.pillDot} /><Text style={styles.pillTxt}>En attente de validation {RECIP[input.recipient]}</Text></View>
-              <Text style={styles.noteP}>Document établi conformément au réquisitoire joint. À nous retourner revêtu de votre accord (cachet + signature) ou via le lien communiqué par courriel.</Text>
+              <Text style={styles.noteP}>Document établi conformément au réquisitoire joint. Merci de nous le retourner signé, pour accord ou pour refus, par courriel ou par courrier.</Text>
               <Text style={styles.noteSig}>La mention de signature électronique (frais de justice) figure automatiquement sur la facture émise après validation.</Text>
             </View>
           </View>
