@@ -60,7 +60,9 @@ export async function POST(req: NextRequest) {
     const { data: persons } = await sb.from('personnel').select('id, name, kind').eq('user_id', u.id)
     if (!persons?.length) return NextResponse.json({ error: 'Aucune fiche liée à ton compte' }, { status: 400 })
     const days = countWeekdays(start, end)
-    if (days < 1) return NextResponse.json({ error: 'La plage ne contient aucun jour ouvrable' }, { status: 400 })
+    // Congé autorisé même SANS jour ouvrable (week-end, jour férié, garde…) : on ne
+    // bloque plus sur days < 1. `days` peut valoir 0 (aucun jour ouvrable dans la
+    // plage) — le congé est enregistré comme marqueur d'absence. Olivier 2026-08-09.
     const hours = hoursForRange(await workerDayHours(sb, persons[0].id), start, end)
     // Indépendant (sous-traitant) : peut « imposer » son congé (auto-approuvé, RH informé).
     const isIndep = persons[0].kind === 'independant'
@@ -112,7 +114,9 @@ export async function POST(req: NextRequest) {
     const { data: person } = await sb.from('personnel').select('id, name, user_id').eq('id', personnelId).maybeSingle()
     if (!person) return NextResponse.json({ error: 'Travailleur introuvable' }, { status: 404 })
     const days = countWeekdays(start, end)
-    if (days < 1) return NextResponse.json({ error: 'La plage ne contient aucun jour ouvrable' }, { status: 400 })
+    // Congé autorisé même SANS jour ouvrable (week-end, jour férié, garde…) : on ne
+    // bloque plus sur days < 1. `days` peut valoir 0 (aucun jour ouvrable dans la
+    // plage) — le congé est enregistré comme marqueur d'absence. Olivier 2026-08-09.
     const hours = hoursForRange(await workerDayHours(sb, person.id), start, end)
     const applied = await applyLeaveToSheets(sb, person.id, type, start, end)
     await sb.from('conge_requests').insert({
