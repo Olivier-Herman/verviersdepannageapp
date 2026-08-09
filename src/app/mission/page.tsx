@@ -66,12 +66,29 @@ export default async function MissionListPage() {
   const active    = missions?.filter(m => !CLOSED.includes(m.status)) || []
   const completed = missions?.filter(m =>  CLOSED.includes(m.status)) || []
 
-  // Easter egg : nombre de missions assignées au chauffeur AUJOURD'HUI (heure belge).
-  const { count: todayCount } = await supabase
+  // Easter egg : missions du chauffeur AUJOURD'HUI + RECORD PERSO (meilleure journée).
+  // On récupère les dates d'assignation (léger : timestamps only), on groupe par
+  // jour belge et on prend le max. Le jour courant est inclus → on distingue le
+  // record HORS aujourd'hui pour détecter un nouveau record.
+  const todayKey = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Brussels' }).format(new Date())
+  const { data: hist } = await supabase
     .from('incoming_missions')
-    .select('id', { count: 'exact', head: true })
+    .select('assigned_at')
     .eq('assigned_to', user.id)
-    .gte('assigned_at', belgianTodayStartISO())
+    .not('assigned_at', 'is', null)
+    .order('assigned_at', { ascending: false })
+    .limit(6000)
+  const dayFmt = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Brussels' })
+  const byDay = new Map<string, number>()
+  for (const r of hist || []) {
+    const k = dayFmt.format(new Date((r as any).assigned_at))
+    byDay.set(k, (byDay.get(k) || 0) + 1)
+  }
+  const todayCount = byDay.get(todayKey) || 0
+  let prevBest = 0
+  for (const [k, n] of byDay) if (k !== todayKey && n > prevBest) prevBest = n
+  const record    = Math.max(prevBest, todayCount)
+  const newRecord = todayCount > prevBest && todayCount > 0
 
   return (
     <AppShell
@@ -84,8 +101,8 @@ export default async function MissionListPage() {
       <AmbientBackground>
         <div className="px-4 lg:px-8 py-6 max-w-2xl mx-auto space-y-6 pb-24 ambient-fade-up">
 
-          {/* Easter egg discret : date du jour → 3 taps = compteur du jour en grand */}
-          <MissionsDuJourEasterEgg count={todayCount ?? 0} firstName={(user.name || '').split(' ')[0]} />
+          {/* Easter egg discret : date du jour → 3 taps = compteur du jour + record perso */}
+          <MissionsDuJourEasterEgg count={todayCount} record={record} newRecord={newRecord} firstName={(user.name || '').split(' ')[0]} />
 
           {active.length === 0 && completed.length === 0 && (
             <div className="text-center py-16 text-ink-faint">
