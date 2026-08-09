@@ -62,6 +62,26 @@ function collectHidden($: cheerio.CheerioAPI): Record<string, string> {
   return h
 }
 
+// Options des <select> de codes (Solution / Panne) présents sur l'écran de clôture
+// breakdown — sert à capturer le référentiel ET de garde-fou (on ne clôture pas
+// sans code choisi). Olivier 2026-08-09.
+function codeSelectOptions(html: string): Record<string, Array<{ value: string; text: string }>> {
+  const $ = cheerio.load(html)
+  const out: Record<string, Array<{ value: string; text: string }>> = {}
+  $('select').each((_, el) => {
+    const name = $(el).attr('name') || ''
+    if (!/SolutionCode|BreakdownCode/i.test(name)) return
+    const opts: Array<{ value: string; text: string }> = []
+    $(el).find('option').each((_i, o) => {
+      const value = $(o).attr('value') || ''
+      const text = $(o).text().replace(/\s+/g, ' ').trim()
+      if (value !== '' || text) opts.push({ value, text })
+    })
+    out[name] = opts
+  })
+  return out
+}
+
 async function osGet(cookie: string, url: string): Promise<string> {
   const r = await fetch(url, { headers: { 'User-Agent': UA, Cookie: cookie } })
   return await r.text()
@@ -113,7 +133,7 @@ export interface VabCloseInput {
 function nowDateDash(): string { const d = new Date(), p = (n: number) => String(n).padStart(2, '0'); return `${p(d.getDate())}-${p(d.getMonth() + 1)}-${d.getFullYear()}` }
 function nowTime(): string { const d = new Date(), p = (n: number) => String(n).padStart(2, '0'); return `${p(d.getHours())}:${p(d.getMinutes())}:00` }
 
-export interface VabCloseResult { ok: boolean; completed: boolean; steps: string[]; error?: string; lastButtons?: string[] }
+export interface VabCloseResult { ok: boolean; completed: boolean; steps: string[]; error?: string; lastButtons?: string[]; needsCodes?: Record<string, Array<{ value: string; text: string }>> }
 
 export async function closeVabMission(input: VabCloseInput): Promise<VabCloseResult> {
   const sess = await loginVab()
@@ -123,10 +143,27 @@ export async function closeVabMission(input: VabCloseInput): Promise<VabCloseRes
   const steps: string[] = []
   let html = await osGet(sess.cookieHeader, url)
   let signed = false
+  let vinChecked = false
 
   for (let i = 0; i < (input.maxSteps || 14); i++) {
     const p = parse(html)
     if (p.completed) return { ok: true, completed: true, steps, lastButtons: p.buttonTexts }
+
+    // Étape VIN (breakdown uniquement) : saisir les 3 derniers chiffres + « Vérifier »
+    // une seule fois. Sans ce clic, le drapeau « VIN vérifié » n'est pas posé et
+    // « Fin lieu de la panne » boucle sans progresser (le tow n'a pas cette étape).
+    // Le VIN arrive dans extraFields (clé …wtLastDigitInputField). Olivier 2026-08-09.
+    const vinInput = nameEndsWith(p.inputNames, 'wtLastDigitInputField')
+    const checkVin = btnByTargetSuffix(p.buttons, 'wtLink_CheckVin')
+    if (vinInput && checkVin && !vinChecked) {
+      const vinVal = Object.entries(input.extraFields || {}).find(([k]) => k.endsWith('wtLastDigitInputField'))?.[1]
+      if (vinVal) {
+        html = await osPost(sess.cookieHeader, url, html, checkVin.target!, input.extraFields || {})
+        vinChecked = true
+        steps.push('check_vin')
+        continue
+      }
+    }
 
     // Étape SIGNATURE (champ wtInput_Signature présent) : signer une fois.
     const sigInput = nameEndsWith(p.inputNames, 'wtInput_Signature')
@@ -147,6 +184,16 @@ export async function closeVabMission(input: VabCloseInput): Promise<VabCloseRes
     // véhicule, nb clés, emplacement). ⚠️ Date à TIRETS sinon « Date attendue ! ».
     const endBtn = btnByTargetSuffix(p.buttons, 'wtLink_End')
     if (endBtn) {
+      // Garde-fou breakdown : l'écran final porte des selects Code Solution / Code
+      // Panne obligatoires. Si aucun code n'est fourni dans extraFields, NE PAS
+      // clôturer (VAB rejetterait, ou pire clôturerait sans code) → on remonte les
+      // options pour capturer le référentiel et laisser choisir. Olivier 2026-08-09.
+      const codeOpts = codeSelectOptions(html)
+      const hasCodeSelect = Object.keys(codeOpts).length > 0
+      const codeProvided = Object.keys(input.extraFields || {}).some(k => /SolutionCode|BreakdownCode/i.test(k))
+      if (hasCodeSelect && !codeProvided) {
+        return { ok: false, completed: false, steps, lastButtons: p.buttonTexts, needsCodes: codeOpts, error: 'Codes Solution/Panne requis pour clôturer (breakdown)' }
+      }
       const extra: Record<string, string> = { ...(input.extraFields || {}) }
       const put = (suffix: string, val?: string) => { const n = nameEndsWith(p.inputNames, suffix); if (n && val != null && val !== '') extra[n] = val }
       put('wtInterventionDate', input.interventionDate || nowDateDash())
