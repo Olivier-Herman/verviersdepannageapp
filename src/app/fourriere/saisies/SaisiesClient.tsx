@@ -134,6 +134,17 @@ export default function SaisiesClient({ userRole, userName, userEmail, userModul
     } finally { setBusy(null) }
   }
 
+  async function depotJustInvoice(id: string, plate: string) {
+    if (!confirm(`Déposer la créance de ${plate} sur JustInvoice (SPF Justice) ?\n\nCela envoie l'état de frais signé + le réquisitoire au portail. Action réelle.`)) return
+    setBusy(id); setMsg(null)
+    try {
+      const r = await fetch(`/api/fourriere/saisies/${id}/justinvoice`, { method: 'POST' })
+      const j = await r.json().catch(() => ({}))
+      if (!r.ok) { setMsg(`⚠ ${j.error || 'Dépôt échoué'}`); return }
+      setMsg(`✓ Déposé sur JustInvoice${j.ref ? ` — dossier ${j.ref}` : ''}`); await load()
+    } finally { setBusy(null) }
+  }
+
   async function relanceReq(missionId: string | null, dossierId: string) {
     if (!missionId) { setMsg('⚠ Pas de fiche liée — relance impossible'); return }
     setBusy(dossierId); setMsg(null)
@@ -287,7 +298,8 @@ export default function SaisiesClient({ userRole, userName, userEmail, userModul
                 onRecipient={(r) => patch(d.id, { recipient: r }, '✓ Destinataire mis à jour')}
                 onState={(s, m) => patch(d.id, { state: s }, m)}
                 onRemove={() => remove(d.id, d.vehicle_plate || '—')}
-                onRelance={() => relanceReq(d.mission_id, d.id)} />
+                onRelance={() => relanceReq(d.mission_id, d.id)}
+                onJustInvoice={() => depotJustInvoice(d.id, d.vehicle_plate || '—')} />
             ))}
           </div>
         )}
@@ -371,13 +383,14 @@ function ScanModal({ onClose, onDone }: { onClose: () => void; onDone: () => voi
 }
 
 // ── Carte dossier ────────────────────────────────────────────────────────────
-function DossierCard({ d, busy, onGenerate, onRecipient, onState, onRemove, onRelance }: {
+function DossierCard({ d, busy, onGenerate, onRecipient, onState, onRemove, onRelance, onJustInvoice }: {
   d: Dossier; busy: boolean
   onGenerate: () => void
   onRecipient: (r: Recipient) => void
   onState: (s: string, msg: string) => void
   onRemove: () => void
   onRelance: () => void
+  onJustInvoice: () => void
 }) {
   const st = STATE[d.state] || { label: d.state, cls: 'bg-slate-100 text-slate-700 border-slate-300', rank: 8 }
   const days = daysSince(d.parked_at)
@@ -492,8 +505,11 @@ function DossierCard({ d, busy, onGenerate, onRecipient, onState, onRemove, onRe
             className="px-3 py-1.5 bg-red-100 hover:bg-red-200 disabled:opacity-50 text-red-800 border border-red-300 rounded-lg text-sm font-semibold">✕ Refusé</button>
         </>}
         {d.state === 'accepte' && (
-          <button disabled={busy} onClick={() => onState('justinvoice', '✓ Passé à JustInvoice')}
-            className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white rounded-lg text-sm font-semibold">→ JustInvoice</button>
+          <button disabled={busy} onClick={onJustInvoice}
+            className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white rounded-lg text-sm font-semibold">📤 Déposer sur JustInvoice</button>
+        )}
+        {d.state === 'justinvoice' && d.justinvoice_ref && (
+          <span className="px-2.5 py-1 rounded-lg bg-indigo-50 text-indigo-800 text-xs font-semibold border border-indigo-200">JustInvoice {d.justinvoice_ref}</span>
         )}
         {d.state === 'justinvoice' && (
           <button disabled={busy} onClick={() => onState('facture', '✓ Marqué facturé')}
