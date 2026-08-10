@@ -181,7 +181,7 @@ export default function TouringCloseModal({
       // remorquage part au dispatch. Olivier 2026-08-06.
       const hasGarageList = providers != null && providers.length > 0
       if (isRem && (isDispatch || hasGarageList)) {
-        if (isDispatch && garageMode === 'manual') {
+        if (garageMode === 'manual') {   // Olivier 2026-08-10 : « Autre adresse » aussi pour le chauffeur.
           if (!manual.rue || !manual.cp || !manual.loc) { setError('Complète l’adresse (rue, code postal, ville)'); setBusy(false); return }
           body.manualAddress = manual
           body.destination = { address: `${manual.rue} ${manual.num}, ${manual.cp} ${manual.loc}`.trim() }
@@ -371,16 +371,16 @@ export default function TouringCloseModal({
               {isRem && (isDispatch || (providers != null && providers.length > 0)) && (
                 <div className="border border-amber-300 bg-amber-50/50 rounded-xl p-3">
                   <div className="text-xs font-bold text-amber-700 uppercase tracking-wide mb-2">Où déposer le véhicule ?</div>
-                  {isDispatch && (
-                    <div className="flex gap-1 mb-3">
-                      {(['list', 'manual'] as const).map(gm => (
-                        <button key={gm} onClick={() => setGarageMode(gm)}
-                          className={`flex-1 py-1.5 rounded-lg text-xs font-bold ${garageMode === gm ? 'bg-surface text-ink shadow-sm' : 'text-ink-secondary'}`}>
-                          {gm === 'list' ? 'Garage de la liste' : 'Autre adresse'}
-                        </button>
-                      ))}
-                    </div>
-                  )}
+                  {/* Olivier 2026-08-10 : le chauffeur doit aussi pouvoir saisir une
+                      AUTRE adresse (pas seulement un garage de la liste). */}
+                  <div className="flex gap-1 mb-3">
+                    {(['list', 'manual'] as const).map(gm => (
+                      <button key={gm} onClick={() => setGarageMode(gm)}
+                        className={`flex-1 py-1.5 rounded-lg text-xs font-bold ${garageMode === gm ? 'bg-surface text-ink shadow-sm' : 'text-ink-secondary'}`}>
+                        {gm === 'list' ? 'Garage de la liste' : 'Autre adresse'}
+                      </button>
+                    ))}
+                  </div>
                   {garageMode === 'list' ? (
                     providers == null ? <div className="text-xs text-ink-secondary py-2">Chargement des garages…</div> : (
                       <div className="space-y-1.5 max-h-52 overflow-y-auto">
