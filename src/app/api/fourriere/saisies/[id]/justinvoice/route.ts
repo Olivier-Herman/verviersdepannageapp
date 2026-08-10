@@ -34,7 +34,14 @@ export async function POST(_req: Request, { params }: { params: { id: string } }
 
   const { data: d } = await sb.from('saisie_dossiers').select('*').eq('id', params.id).maybeSingle()
   if (!d) return NextResponse.json({ error: 'Dossier introuvable' }, { status: 404 })
-  if (!d.validation_doc_path) return NextResponse.json({ error: 'État de frais signé manquant — dépose-le d\'abord (scan groupé / lien).' }, { status: 400 })
+
+  // On dépose L'ÉTAT DE FRAIS ACCEPTÉ (celui qu'on a scanné), pas « le dernier ».
+  const { data: efRow } = await sb.from('saisie_etats_frais')
+    .select('id, numero, validation_doc_path')
+    .eq('dossier_id', params.id).eq('status', 'accepte')
+    .order('created_at', { ascending: true }).limit(1).maybeSingle()
+  if (!efRow) return NextResponse.json({ error: 'Aucun état de frais accepté à déposer (scanne d\'abord le retour signé).' }, { status: 400 })
+  if (!efRow.validation_doc_path) return NextResponse.json({ error: 'État de frais signé manquant sur cet état de frais.' }, { status: 400 })
 
   // Réquisitoire de la fiche.
   let reqPath: string | null = null
@@ -46,25 +53,23 @@ export async function POST(_req: Request, { params }: { params: { id: string } }
   }
   if (!reqPath) return NextResponse.json({ error: 'Réquisitoire manquant sur la fiche.' }, { status: 400 })
 
-  const [ef, req] = await Promise.all([dl(sb, d.validation_doc_path), dl(sb, reqPath)])
+  const [ef, req] = await Promise.all([dl(sb, efRow.validation_doc_path), dl(sb, reqPath)])
   if (!ef || !req) return NextResponse.json({ error: 'Téléchargement des documents échoué.' }, { status: 500 })
 
-  const comments = `${missionNumber != null ? '#' + missionNumber : (d.dossier_ref || '')}${d.ef_number ? ' - ' + d.ef_number : ''}`.trim()
+  const comments = `${missionNumber != null ? '#' + missionNumber : (d.dossier_ref || '')}${efRow.numero ? ' - ' + efRow.numero : ''}`.trim()
 
   const res = await submitJustInvoiceClaim({
     comments,
     etatFrais: ef,
     requisitoire: req,
-    etatFraisName: `etat-de-frais-${d.ef_number || d.vehicle_plate || 'saisie'}.pdf`,
+    etatFraisName: `etat-de-frais-${efRow.numero || d.vehicle_plate || 'saisie'}.pdf`,
     requisitoireName: `requisitoire-${d.vehicle_plate || 'saisie'}.pdf`,
   })
   if (!res.ok) return NextResponse.json({ error: res.error || 'Dépôt refusé', raw: res.raw }, { status: 502 })
 
-  await sb.from('saisie_dossiers').update({
-    justinvoice_ref: res.ref || null,
-    state: 'justinvoice',
-    updated_at: new Date().toISOString(),
-  }).eq('id', params.id)
+  const now = new Date().toISOString()
+  await sb.from('saisie_etats_frais').update({ status: 'depose', justinvoice_ref: res.ref || null }).eq('id', efRow.id)
+  await sb.from('saisie_dossiers').update({ justinvoice_ref: res.ref || null, state: 'justinvoice', updated_at: now }).eq('id', params.id)
 
-  return NextResponse.json({ ok: true, ref: res.ref })
+  return NextResponse.json({ ok: true, ref: res.ref, numero: efRow.numero })
 }

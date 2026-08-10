@@ -82,36 +82,40 @@ export async function splitAndDispatch(sb: any, pdfBuffer: Buffer, userId?: stri
 
     if (!numero) { res.note = 'N° EDF illisible'; out.unmatched++; out.results.push(res); continue }
 
-    // Retrouve le dossier par son n° d'état de frais.
+    // On rattache à l'ÉTAT DE FRAIS précis (par son n° EDF), pas « le dernier ».
+    const { data: ef } = await sb.from('saisie_etats_frais')
+      .select('id, dossier_id, numero').eq('numero', numero).maybeSingle()
+    if (!ef) { res.note = `Aucun état de frais ${numero}`; out.unmatched++; out.results.push(res); continue }
     const { data: dossier } = await sb.from('saisie_dossiers')
-      .select('id, mission_id, vehicle_plate, state').eq('ef_number', numero).maybeSingle()
-    if (!dossier) { res.note = `Aucun dossier pour ${numero}`; out.unmatched++; out.results.push(res); continue }
+      .select('id, mission_id, vehicle_plate').eq('id', ef.dossier_id).maybeSingle()
 
-    res.dossierId = dossier.id
-    res.plate = dossier.vehicle_plate
+    res.dossierId = ef.dossier_id
+    res.plate = dossier?.vehicle_plate
 
     // Stocke la page signée.
-    const path = `saisie-validation/${dossier.id}/${Date.now()}_signe_${numero}.pdf`
+    const path = `saisie-validation/${ef.dossier_id}/${Date.now()}_signe_${numero}.pdf`
     const { error: upErr } = await sb.storage.from(BUCKET).upload(path, buf, { contentType: 'application/pdf', upsert: false })
     if (upErr) { res.note = `Upload échoué : ${upErr.message}`; out.unmatched++; out.results.push(res); continue }
 
-    const newState = refus ? 'refuse' : 'accepte'
+    const now = new Date().toISOString()
+    // Marque CET état de frais accepté/refusé (son propre cycle).
+    await sb.from('saisie_etats_frais').update({
+      status: refus ? 'refuse' : 'accepte', validation_doc_path: path, validation_at: now,
+    }).eq('id', ef.id)
+    // Rollup dossier (affichage cockpit).
     await sb.from('saisie_dossiers').update({
-      validation_doc_path: path,
-      validation_at: new Date().toISOString(),
-      state: newState,
-      notes: refus ? 'Refusé par le Parquet (scan groupé).' : 'Accepté par le Parquet (scan groupé).',
-      updated_at: new Date().toISOString(),
-    }).eq('id', dossier.id)
+      validation_doc_path: path, validation_at: now, state: refus ? 'refuse' : 'accepte',
+      notes: `${refus ? 'Refusé' : 'Accepté'} par le Parquet (scan groupé — ${numero}).`, updated_at: now,
+    }).eq('id', ef.dossier_id)
 
-    if (dossier.mission_id) {
+    if (dossier?.mission_id) {
       await sb.from('mission_remarks')
         .insert({ mission_id: dossier.mission_id, text: `${refus ? '❌ Refus' : '✅ Accord'} Parquet — état de frais ${numero} (scan groupé)`, created_by: userId || null })
         .then(() => {}, () => {})
     }
 
     res.matched = true
-    res.note = refus ? 'Refusé' : 'Accepté'
+    res.note = refus ? `Refusé (${numero})` : `Accepté (${numero})`
     if (refus) out.refused++; else out.attached++
     out.results.push(res)
   }

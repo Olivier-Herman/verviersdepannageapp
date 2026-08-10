@@ -23,12 +23,13 @@ export async function createSaisieParquetInvoice(sb: any, dossierId: string): Pr
   const partnerId = PARTNER_BY_RECIPIENT[d.recipient]
   if (!partnerId) return { ok: false, error: `Partner Odoo non configuré pour « ${d.recipient} » (seul le Parquet est câblé pour l'instant)` }
 
-  // Dernier état de frais émis (celui déposé) → ses lignes.
+  // On facture L'ÉTAT DE FRAIS DÉPOSÉ (celui qu'on a scanné puis déposé sur
+  // JustInvoice), pas « le dernier ». Le plus ancien déposé-non-facturé.
   const { data: ef } = await sb.from('saisie_etats_frais')
-    .select('numero, lines_json, period_from, period_to').eq('dossier_id', dossierId)
-    .order('created_at', { ascending: false }).order('id', { ascending: false }).limit(1).maybeSingle()
+    .select('id, numero, lines_json').eq('dossier_id', dossierId).eq('status', 'depose')
+    .order('created_at', { ascending: true }).limit(1).maybeSingle()
   if (!ef || !Array.isArray(ef.lines_json) || ef.lines_json.length === 0) {
-    return { ok: false, error: 'Aucune ligne d\'état de frais à facturer' }
+    return { ok: false, error: 'Aucun état de frais déposé (JustInvoice) à facturer' }
   }
 
   const lines: QuoteLine[] = (ef.lines_json as any[]).map(l => ({
@@ -53,9 +54,9 @@ export async function createSaisieParquetInvoice(sb: any, dossierId: string): Pr
       sections: [{ lines }],
       description: descParts.join(' · '),
     })
-    await sb.from('saisie_dossiers').update({
-      odoo_invoice_id: inv.id, state: 'facture', updated_at: new Date().toISOString(),
-    }).eq('id', dossierId)
+    const now = new Date().toISOString()
+    await sb.from('saisie_etats_frais').update({ status: 'facture', odoo_invoice_id: inv.id }).eq('id', ef.id)
+    await sb.from('saisie_dossiers').update({ odoo_invoice_id: inv.id, state: 'facture', updated_at: now }).eq('id', dossierId)
     return { ok: true, odooId: inv.id, url: inv.url }
   } catch (e: any) {
     return { ok: false, error: e?.message || 'Création facture Odoo échouée' }

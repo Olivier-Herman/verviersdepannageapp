@@ -41,12 +41,21 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   const { error: upErr } = await sb.storage.from('mission-remarks').upload(path, buf, { contentType: file.type || 'application/pdf', upsert: false })
   if (upErr) return NextResponse.json({ error: upErr.message }, { status: 500 })
 
+  const now = new Date().toISOString()
+  // Rattache à l'état de frais EN ATTENTE le plus ancien (dépôt manuel = 1 EF en vol).
+  const { data: efRow } = await sb.from('saisie_etats_frais')
+    .select('id, numero').eq('dossier_id', d.id).eq('status', 'envoye')
+    .order('created_at', { ascending: true }).limit(1).maybeSingle()
+  if (efRow) {
+    await sb.from('saisie_etats_frais').update({ status: refus ? 'refuse' : 'accepte', validation_doc_path: path, validation_at: now }).eq('id', efRow.id)
+  }
+
   await sb.from('saisie_dossiers').update({
     validation_doc_path: path,
-    validation_at: new Date().toISOString(),
+    validation_at: now,
     state: refus ? 'refuse' : 'accepte',
-    notes: refus ? 'Refusé par le Parquet (dépôt manuel).' : 'Accepté par le Parquet (dépôt manuel).',
-    updated_at: new Date().toISOString(),
+    notes: `${refus ? 'Refusé' : 'Accepté'} par le Parquet (dépôt manuel${efRow?.numero ? ' — ' + efRow.numero : ''}).`,
+    updated_at: now,
   }).eq('id', d.id)
 
   if (d.mission_id) {
