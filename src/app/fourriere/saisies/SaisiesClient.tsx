@@ -20,6 +20,22 @@ interface Dossier {
   sent_at: string | null; validation_at: string | null
   pending_action: string | null; pending_action_at: string | null; domaine_remise_date: string | null
   requisitoire_ok: boolean
+  etats: EtatFrais[]
+}
+interface EtatFrais {
+  id: string; numero: string; status: string; recipient: string
+  period_from: string | null; period_to: string | null
+  total_htva: number | null; total_tvac: number | null
+  justinvoice_ref: string | null; odoo_invoice_id: number | null; created_at: string
+}
+const EUR = (n?: number | null) => (n == null ? '—' : `${Number(n).toFixed(2).replace('.', ',')} €`)
+// Cycle d'un état de frais (= devis interne) : envoyé → accepté → déposé → facturé.
+const EF_STATUS: Record<string, { label: string; cls: string }> = {
+  envoye:  { label: 'Envoyé — attente validation', cls: 'bg-blue-100 text-blue-800 border-blue-300' },
+  accepte: { label: 'Validé (accord Parquet)',     cls: 'bg-green-100 text-green-800 border-green-300' },
+  refuse:  { label: 'Refusé',                       cls: 'bg-red-100 text-red-800 border-red-300' },
+  depose:  { label: 'Déposé sur JustInvoice',       cls: 'bg-indigo-100 text-indigo-800 border-indigo-300' },
+  facture: { label: 'Facturé',                      cls: 'bg-teal-100 text-teal-800 border-teal-300' },
 }
 
 const PENDING: Record<string, { label: string; cls: string }> = {
@@ -134,10 +150,12 @@ export default function SaisiesClient({ userRole, userName, userEmail, userModul
     } finally { setBusy(null) }
   }
 
-  async function factureOdoo(id: string) {
+  async function factureOdoo(id: string, efId: string) {
     setBusy(id); setMsg(null)
     try {
-      const r = await fetch(`/api/fourriere/saisies/${id}/facture-odoo`, { method: 'POST' })
+      const r = await fetch(`/api/fourriere/saisies/${id}/facture-odoo`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ef_id: efId }),
+      })
       const j = await r.json().catch(() => ({}))
       if (!r.ok) { setMsg(`⚠ ${j.error || 'Facture Odoo échouée'}`); return }
       setMsg(`✓ Facture Odoo créée (brouillon)${j.odooId ? ` #${j.odooId}` : ''}`)
@@ -146,22 +164,36 @@ export default function SaisiesClient({ userRole, userName, userEmail, userModul
     } finally { setBusy(null) }
   }
 
-  async function uploadValidation(id: string, file: File) {
+  async function uploadValidation(id: string, efId: string, file: File) {
     setBusy(id); setMsg(null)
     try {
-      const fd = new FormData(); fd.append('file', file)
+      const fd = new FormData(); fd.append('file', file); fd.append('ef_id', efId)
       const r = await fetch(`/api/fourriere/saisies/${id}/validation-upload`, { method: 'POST', body: fd })
       const j = await r.json().catch(() => ({}))
       if (!r.ok) { setMsg(`⚠ ${j.error || 'Upload échoué'}`); return }
-      setMsg('✓ Retour signé enregistré → Accepté'); await load()
+      setMsg('✓ Retour signé enregistré → Validé'); await load()
     } finally { setBusy(null) }
   }
 
-  async function depotJustInvoice(id: string, plate: string) {
-    if (!confirm(`Déposer la créance de ${plate} sur JustInvoice (SPF Justice) ?\n\nCela envoie l'état de frais signé + le réquisitoire au portail. Action réelle.`)) return
+  async function efStatus(id: string, efId: string, status: 'accepte' | 'refuse') {
     setBusy(id); setMsg(null)
     try {
-      const r = await fetch(`/api/fourriere/saisies/${id}/justinvoice`, { method: 'POST' })
+      const r = await fetch(`/api/fourriere/saisies/${id}/ef-status`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ef_id: efId, status }),
+      })
+      const j = await r.json().catch(() => ({}))
+      if (!r.ok) { setMsg(`⚠ ${j.error || 'Erreur'}`); return }
+      setMsg(status === 'refuse' ? 'Marqué refusé' : '✓ Marqué validé'); await load()
+    } finally { setBusy(null) }
+  }
+
+  async function depotJustInvoice(id: string, efId: string, plate: string) {
+    if (!confirm(`Déposer cet état de frais de ${plate} sur JustInvoice (SPF Justice) ?\n\nCela envoie l'état de frais signé + le réquisitoire au portail. Action réelle.`)) return
+    setBusy(id); setMsg(null)
+    try {
+      const r = await fetch(`/api/fourriere/saisies/${id}/justinvoice`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ef_id: efId }),
+      })
       const j = await r.json().catch(() => ({}))
       if (!r.ok) { setMsg(`⚠ ${j.error || 'Dépôt échoué'}`); return }
       setMsg(`✓ Déposé sur JustInvoice${j.ref ? ` — dossier ${j.ref}` : ''}`); await load()
@@ -322,9 +354,10 @@ export default function SaisiesClient({ userRole, userName, userEmail, userModul
                 onState={(s, m) => patch(d.id, { state: s }, m)}
                 onRemove={() => remove(d.id, d.vehicle_plate || '—')}
                 onRelance={() => relanceReq(d.mission_id, d.id)}
-                onJustInvoice={() => depotJustInvoice(d.id, d.vehicle_plate || '—')}
-                onUpload={(f) => uploadValidation(d.id, f)}
-                onFacture={() => factureOdoo(d.id)} />
+                onJustInvoice={(efId) => depotJustInvoice(d.id, efId, d.vehicle_plate || '—')}
+                onUpload={(efId, f) => uploadValidation(d.id, efId, f)}
+                onFacture={(efId) => factureOdoo(d.id, efId)}
+                onEfStatus={(efId, s) => efStatus(d.id, efId, s)} />
             ))}
           </div>
         )}
@@ -408,16 +441,17 @@ function ScanModal({ onClose, onDone }: { onClose: () => void; onDone: () => voi
 }
 
 // ── Carte dossier ────────────────────────────────────────────────────────────
-function DossierCard({ d, busy, onGenerate, onRecipient, onState, onRemove, onRelance, onJustInvoice, onUpload, onFacture }: {
+function DossierCard({ d, busy, onGenerate, onRecipient, onState, onRemove, onRelance, onJustInvoice, onUpload, onFacture, onEfStatus }: {
   d: Dossier; busy: boolean
   onGenerate: () => void
   onRecipient: (r: Recipient) => void
   onState: (s: string, msg: string) => void
   onRemove: () => void
   onRelance: () => void
-  onJustInvoice: () => void
-  onUpload: (f: File) => void
-  onFacture: () => void
+  onJustInvoice: (efId: string) => void
+  onUpload: (efId: string, f: File) => void
+  onFacture: (efId: string) => void
+  onEfStatus: (efId: string, status: 'accepte' | 'refuse') => void
 }) {
   const st = STATE[d.state] || { label: d.state, cls: 'bg-slate-100 text-slate-700 border-slate-300', rank: 8 }
   const days = daysSince(d.parked_at)
@@ -514,42 +548,13 @@ function DossierCard({ d, busy, onGenerate, onRecipient, onState, onRemove, onRe
         </div>
       )}
 
-      {/* Actions */}
+      {/* Actions dossier */}
       <div className="flex items-center gap-2 flex-wrap mt-3 pt-3 border-t">
         <button disabled={busy || !canEstablish} onClick={onGenerate}
           title={!d.requisitoire_ok ? 'Réquisitoire manquant' : notYetBillable ? `Facturable à partir du ${fmt(billableFrom)}` : (!isFirstEf && !newEfDue) ? (nextCut ? `Prochain état de frais le ${fmt(nextCut)}` : 'Rien à facturer pour l\'instant') : undefined}
           className="px-3 py-1.5 bg-brand hover:bg-brand-hover disabled:opacity-40 disabled:cursor-not-allowed text-white rounded-lg text-sm font-semibold">
           📄 {d.ef_number ? 'Nouvel état de frais' : 'Établir l\'état de frais'}
         </button>
-
-        {d.state === 'ef_envoye' && <>
-          <span className="text-[11px] text-ink-faint w-full mb-1">
-            Le Parquet renvoie l'état de frais signé → déposez-le via <b>Scan groupé</b> (rattachement + validation auto), ou marquez ici :
-          </span>
-          <label className={`px-3 py-1.5 bg-green-600 hover:bg-green-700 text-white rounded-lg text-sm font-semibold cursor-pointer ${busy ? 'opacity-50 pointer-events-none' : ''}`}>
-            📎 Déposer le retour signé
-            <input type="file" accept="application/pdf,image/*" className="hidden"
-              onChange={e => { const f = e.target.files?.[0]; if (f) onUpload(f) }} />
-          </label>
-          <button disabled={busy} onClick={() => onState('accepte', '✓ Marqué accepté')}
-            className="px-3 py-1.5 bg-surface-2 hover:bg-surface-hover disabled:opacity-50 border text-ink-secondary rounded-lg text-sm font-semibold">✓ Accepté (sans doc)</button>
-          <button disabled={busy} onClick={() => onState('refuse', 'Marqué refusé')}
-            className="px-3 py-1.5 bg-red-100 hover:bg-red-200 disabled:opacity-50 text-red-800 border border-red-300 rounded-lg text-sm font-semibold">✕ Refusé</button>
-        </>}
-        {d.state === 'accepte' && (
-          <button disabled={busy} onClick={onJustInvoice}
-            className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white rounded-lg text-sm font-semibold">📤 Déposer sur JustInvoice</button>
-        )}
-        {d.state === 'justinvoice' && d.justinvoice_ref && (
-          <span className="px-2.5 py-1 rounded-lg bg-indigo-50 text-indigo-800 text-xs font-semibold border border-indigo-200">JustInvoice {d.justinvoice_ref}</span>
-        )}
-        {d.state === 'justinvoice' && (
-          <button disabled={busy} onClick={onFacture}
-            className="px-3 py-1.5 bg-teal-600 hover:bg-teal-700 disabled:opacity-50 text-white rounded-lg text-sm font-semibold">🧾 Créer la facture Odoo</button>
-        )}
-        {d.state === 'facture' && d.odoo_invoice_id && (
-          <span className="px-2.5 py-1 rounded-lg bg-teal-50 text-teal-800 text-xs font-semibold border border-teal-200">Facture Odoo #{d.odoo_invoice_id}</span>
-        )}
         {['facture', 'gardiennage_recurrent'].includes(d.state) && (
           <button disabled={busy} onClick={() => onState('clos', '✓ Dossier clôturé')}
             className="px-3 py-1.5 bg-surface-2 hover:bg-surface-hover disabled:opacity-50 border text-ink-secondary rounded-lg text-sm font-semibold">Clôturer</button>
@@ -563,6 +568,55 @@ function DossierCard({ d, busy, onGenerate, onRecipient, onState, onRemove, onRe
           Retirer
         </button>
       </div>
+
+      {/* États de frais (= devis internes) : cycle par état de frais */}
+      {d.etats && d.etats.length > 0 && (
+        <div className="mt-3 space-y-2">
+          {d.etats.map(ef => {
+            const st = EF_STATUS[ef.status] || { label: ef.status, cls: 'bg-slate-100 text-slate-700 border-slate-300' }
+            return (
+              <div key={ef.id} className="rounded-xl border bg-surface-2 px-3 py-2">
+                <div className="flex items-center justify-between gap-2 flex-wrap">
+                  <div className="text-sm">
+                    <span className="font-mono font-bold text-ink">{ef.numero}</span>
+                    <span className="text-ink-muted"> · {EUR(ef.total_tvac)} TVAC</span>
+                    {ef.period_to && <span className="text-ink-faint"> · jusqu'au {fmt(ef.period_to)}</span>}
+                  </div>
+                  <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full border ${st.cls}`}>{st.label}</span>
+                </div>
+                <div className="flex items-center gap-2 flex-wrap mt-2">
+                  {ef.status === 'envoye' && <>
+                    <label className={`px-2.5 py-1 bg-green-600 hover:bg-green-700 text-white rounded-lg text-xs font-semibold cursor-pointer ${busy ? 'opacity-50 pointer-events-none' : ''}`}>
+                      📎 Retour signé
+                      <input type="file" accept="application/pdf,image/*" className="hidden"
+                        onChange={e => { const f = e.target.files?.[0]; if (f) onUpload(ef.id, f) }} />
+                    </label>
+                    <button disabled={busy} onClick={() => onEfStatus(ef.id, 'accepte')}
+                      className="px-2.5 py-1 bg-surface hover:bg-surface-hover border text-ink-secondary rounded-lg text-xs font-semibold">✓ Validé (sans doc)</button>
+                    <button disabled={busy} onClick={() => onEfStatus(ef.id, 'refuse')}
+                      className="px-2.5 py-1 bg-red-100 hover:bg-red-200 text-red-800 border border-red-300 rounded-lg text-xs font-semibold">✕ Refusé</button>
+                  </>}
+                  {ef.status === 'accepte' && (
+                    <button disabled={busy} onClick={() => onJustInvoice(ef.id)}
+                      className="px-2.5 py-1 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-semibold">📤 Déposer sur JustInvoice</button>
+                  )}
+                  {ef.status === 'depose' && <>
+                    {ef.justinvoice_ref && <span className="text-[11px] text-indigo-700 font-semibold">JustInvoice {ef.justinvoice_ref}</span>}
+                    <button disabled={busy} onClick={() => onFacture(ef.id)}
+                      className="px-2.5 py-1 bg-teal-600 hover:bg-teal-700 text-white rounded-lg text-xs font-semibold">🧾 Facturer (Odoo)</button>
+                  </>}
+                  {ef.status === 'facture' && (
+                    <span className="text-[11px] text-teal-700 font-semibold">
+                      {ef.justinvoice_ref ? `JustInvoice ${ef.justinvoice_ref} · ` : ''}Facture Odoo #{ef.odoo_invoice_id}
+                    </span>
+                  )}
+                  {ef.status === 'refuse' && <span className="text-[11px] text-red-700">Refusé — refaire un état de frais si nécessaire.</span>}
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      )}
     </div>
   )
 }

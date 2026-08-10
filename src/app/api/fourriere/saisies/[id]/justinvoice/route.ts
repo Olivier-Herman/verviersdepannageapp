@@ -27,20 +27,22 @@ async function dl(sb: any, path: string): Promise<Buffer | null> {
   return Buffer.from(await data.arrayBuffer())
 }
 
-export async function POST(_req: Request, { params }: { params: { id: string } }) {
+export async function POST(req: Request, { params }: { params: { id: string } }) {
   const session = await getServerSession(authOptions)
   if (!canAccess(session)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   const sb = createAdminClient()
+  const efId = (await req.json().catch(() => ({})))?.ef_id || null
 
   const { data: d } = await sb.from('saisie_dossiers').select('*').eq('id', params.id).maybeSingle()
   if (!d) return NextResponse.json({ error: 'Dossier introuvable' }, { status: 404 })
 
-  // On dépose L'ÉTAT DE FRAIS ACCEPTÉ (celui qu'on a scanné), pas « le dernier ».
-  const { data: efRow } = await sb.from('saisie_etats_frais')
-    .select('id, numero, validation_doc_path')
-    .eq('dossier_id', params.id).eq('status', 'accepte')
-    .order('created_at', { ascending: true }).limit(1).maybeSingle()
+  // On dépose l'état de frais ciblé (ef_id) ou, à défaut, le + ancien 'accepte'.
+  const q = sb.from('saisie_etats_frais').select('id, numero, validation_doc_path, status').eq('dossier_id', params.id)
+  const { data: efRow } = efId
+    ? await q.eq('id', efId).maybeSingle()
+    : await q.eq('status', 'accepte').order('created_at', { ascending: true }).limit(1).maybeSingle()
   if (!efRow) return NextResponse.json({ error: 'Aucun état de frais accepté à déposer (scanne d\'abord le retour signé).' }, { status: 400 })
+  if (efRow.status !== 'accepte') return NextResponse.json({ error: `Cet état de frais est « ${efRow.status} », pas « accepté ».` }, { status: 400 })
   if (!efRow.validation_doc_path) return NextResponse.json({ error: 'État de frais signé manquant sur cet état de frais.' }, { status: 400 })
 
   // Réquisitoire de la fiche.
@@ -53,15 +55,15 @@ export async function POST(_req: Request, { params }: { params: { id: string } }
   }
   if (!reqPath) return NextResponse.json({ error: 'Réquisitoire manquant sur la fiche.' }, { status: 400 })
 
-  const [ef, req] = await Promise.all([dl(sb, efRow.validation_doc_path), dl(sb, reqPath)])
-  if (!ef || !req) return NextResponse.json({ error: 'Téléchargement des documents échoué.' }, { status: 500 })
+  const [ef, reqBuf] = await Promise.all([dl(sb, efRow.validation_doc_path), dl(sb, reqPath)])
+  if (!ef || !reqBuf) return NextResponse.json({ error: 'Téléchargement des documents échoué.' }, { status: 500 })
 
   const comments = `${missionNumber != null ? '#' + missionNumber : (d.dossier_ref || '')}${efRow.numero ? ' - ' + efRow.numero : ''}`.trim()
 
   const res = await submitJustInvoiceClaim({
     comments,
     etatFrais: ef,
-    requisitoire: req,
+    requisitoire: reqBuf,
     etatFraisName: `etat-de-frais-${efRow.numero || d.vehicle_plate || 'saisie'}.pdf`,
     requisitoireName: `requisitoire-${d.vehicle_plate || 'saisie'}.pdf`,
   })

@@ -32,6 +32,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   const form = await req.formData().catch(() => null)
   const file = form?.get('file') as File | null
   const refus = String(form?.get('refus') || '') === 'true'
+  const efId  = String(form?.get('ef_id') || '') || null
   if (!file || file.size === 0) return NextResponse.json({ error: 'Fichier manquant' }, { status: 400 })
   if (file.size > MAX) return NextResponse.json({ error: 'Fichier trop volumineux (max 15 MB)' }, { status: 400 })
 
@@ -42,10 +43,11 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   if (upErr) return NextResponse.json({ error: upErr.message }, { status: 500 })
 
   const now = new Date().toISOString()
-  // Rattache à l'état de frais EN ATTENTE le plus ancien (dépôt manuel = 1 EF en vol).
-  const { data: efRow } = await sb.from('saisie_etats_frais')
-    .select('id, numero').eq('dossier_id', d.id).eq('status', 'envoye')
-    .order('created_at', { ascending: true }).limit(1).maybeSingle()
+  // Rattache à l'état de frais ciblé (ef_id) ou, à défaut, au + ancien 'envoye'.
+  const q = sb.from('saisie_etats_frais').select('id, numero').eq('dossier_id', d.id)
+  const { data: efRow } = efId
+    ? await q.eq('id', efId).maybeSingle()
+    : await q.eq('status', 'envoye').order('created_at', { ascending: true }).limit(1).maybeSingle()
   if (efRow) {
     await sb.from('saisie_etats_frais').update({ status: refus ? 'refuse' : 'accepte', validation_doc_path: path, validation_at: now }).eq('id', efRow.id)
   }

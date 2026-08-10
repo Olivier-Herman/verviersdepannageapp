@@ -16,21 +16,22 @@ export interface SaisieInvoiceResult { ok: boolean; odooId?: number; url?: strin
 
 const fmtD = (ymd?: string | null) => (ymd ? String(ymd).slice(0, 10).split('-').reverse().join('/') : '')
 
-export async function createSaisieParquetInvoice(sb: any, dossierId: string): Promise<SaisieInvoiceResult> {
+export async function createSaisieParquetInvoice(sb: any, dossierId: string, efId?: string | null): Promise<SaisieInvoiceResult> {
   const { data: d } = await sb.from('saisie_dossiers').select('*').eq('id', dossierId).maybeSingle()
   if (!d) return { ok: false, error: 'Dossier introuvable' }
 
   const partnerId = PARTNER_BY_RECIPIENT[d.recipient]
   if (!partnerId) return { ok: false, error: `Partner Odoo non configuré pour « ${d.recipient} » (seul le Parquet est câblé pour l'instant)` }
 
-  // On facture L'ÉTAT DE FRAIS DÉPOSÉ (celui qu'on a scanné puis déposé sur
-  // JustInvoice), pas « le dernier ». Le plus ancien déposé-non-facturé.
-  const { data: ef } = await sb.from('saisie_etats_frais')
-    .select('id, numero, lines_json').eq('dossier_id', dossierId).eq('status', 'depose')
-    .order('created_at', { ascending: true }).limit(1).maybeSingle()
+  // On facture l'état de frais ciblé (efId) ou, à défaut, le + ancien 'depose'.
+  const q = sb.from('saisie_etats_frais').select('id, numero, lines_json, status').eq('dossier_id', dossierId)
+  const { data: ef } = efId
+    ? await q.eq('id', efId).maybeSingle()
+    : await q.eq('status', 'depose').order('created_at', { ascending: true }).limit(1).maybeSingle()
   if (!ef || !Array.isArray(ef.lines_json) || ef.lines_json.length === 0) {
     return { ok: false, error: 'Aucun état de frais déposé (JustInvoice) à facturer' }
   }
+  if (ef.status !== 'depose') return { ok: false, error: `Cet état de frais est « ${ef.status} », pas « déposé ».` }
 
   const lines: QuoteLine[] = (ef.lines_json as any[]).map(l => ({
     kind:       l.kind as ProductCode,

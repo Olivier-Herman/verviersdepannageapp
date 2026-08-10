@@ -19,11 +19,12 @@ function canAccess(session: any): boolean {
   return ['admin', 'superadmin'].includes(u.role || '') || (u.modules || []).includes('fourriere')
 }
 
-export async function POST(_req: Request, { params }: { params: { id: string } }) {
+export async function POST(req: Request, { params }: { params: { id: string } }) {
   const session = await getServerSession(authOptions)
   if (!canAccess(session)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   const sb = createAdminClient()
-  const res = await createSaisieParquetInvoice(sb, params.id)
+  const efId = (await req.json().catch(() => ({})))?.ef_id || null
+  const res = await createSaisieParquetInvoice(sb, params.id, efId)
   if (!res.ok) return NextResponse.json({ error: res.error }, { status: 400 })
   return NextResponse.json({ ok: true, odooId: res.odooId, url: res.url })
 }

@@ -63,9 +63,22 @@ export async function GET() {
     const { data: ms } = await sb.from('incoming_missions').select('id, requisitoire_at').in('id', missionIds)
     for (const m of (ms || [])) reqOk.set(m.id, !!m.requisitoire_at)
   }
+  // États de frais (devis) par dossier — pour les actions par état de frais.
+  const dIds = (dossiersRaw || []).map((d: any) => d.id)
+  const efByDossier = new Map<string, any[]>()
+  if (dIds.length) {
+    const { data: efs } = await sb.from('saisie_etats_frais')
+      .select('id, dossier_id, numero, status, recipient, period_from, period_to, total_htva, total_tvac, justinvoice_ref, odoo_invoice_id, created_at')
+      .in('dossier_id', dIds).order('created_at', { ascending: true }).order('id', { ascending: true })
+    for (const e of (efs || [])) {
+      const arr = efByDossier.get(e.dossier_id) || []
+      arr.push(e); efByDossier.set(e.dossier_id, arr)
+    }
+  }
   const dossiers = (dossiersRaw || []).map((d: any) => ({
     ...d,
     requisitoire_ok: d.mission_id ? (reqOk.get(d.mission_id) ?? false) : true,  // dossier manuel sans fiche = pas de blocage
+    etats: efByDossier.get(d.id) || [],
   }))
 
   // Missions police_saisie EN PARC sans dossier → candidates à intégrer.
