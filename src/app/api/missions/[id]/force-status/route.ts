@@ -63,8 +63,14 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     update.completed_at = null
   }
 
-  // Si on force "completed" ou "to_invoice" → set completed_at si pas déjà
+  // Si on force "completed" ou "to_invoice" → set completed_at si pas déjà.
+  // GARDE : une clôture forcée doit quand même avoir le SCÉNARIO (SNC), sinon la
+  // mission est incomplète / non facturable. Olivier 2026-08-10 (cas 2ENY965).
   if (body.status === 'completed' || body.status === 'to_invoice') {
+    const { data: m } = await sb.from('incoming_missions').select('source, snc_scenario').eq('id', params.id).maybeSingle()
+    if (['police_snc', 'sia_couvert'].includes(m?.source || '') && !m?.snc_scenario) {
+      return NextResponse.json({ error: 'Scénario SNC requis avant de clôturer (dépannage sur place / REM…). Choisis le scénario sur la fiche, puis réessaie.' }, { status: 400 })
+    }
     update.completed_at = now
   }
 

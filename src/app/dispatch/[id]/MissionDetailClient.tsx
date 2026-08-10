@@ -4415,11 +4415,12 @@ export default function MissionDetailClient({
                       onClick={async () => {
                         if (!confirm('Forcer la clôture (passe en "À facturer") sans pointage ni photo ?')) return
                         try {
-                          await fetch(`/api/missions/${initialMission.id}/force-status`, {
+                          const r = await fetch(`/api/missions/${initialMission.id}/force-status`, {
                             method:  'POST',
                             headers: { 'Content-Type': 'application/json' },
                             body:    JSON.stringify({ status: 'to_invoice' }),
                           })
+                          if (!r.ok) { const j = await r.json().catch(() => ({})); alert(j.error || 'Clôture refusée'); return }
                           setStatus('to_invoice')
                           setM(prev => ({ ...prev, status: 'to_invoice', completed_at: new Date().toISOString() } as any))
                           router.refresh()
