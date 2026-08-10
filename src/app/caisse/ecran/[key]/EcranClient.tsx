@@ -233,6 +233,15 @@ export default function EcranClient({ displayKey }: { displayKey: string }) {
     }
   }
 
+  // Expert assurance : PAS de lecture de carte — on va direct au formulaire, motif
+  // expert pré-coché, il indique juste le bureau/compagnie d'expertise. Olivier 2026-08-10.
+  const startVisitorExpert = () => {
+    setVisError(null); setVisId(null)
+    const experts = (payload?.motifs || []).filter(m => m.is_expert).map(m => m.label)
+    setVisMotifs(experts.length ? [experts[0]] : [])
+    setVisStep('select')
+  }
+
   // Étape « motifs » sans lecture de carte (le visiteur refuse l'eID au comptoir,
   // mais on peut quand même consigner la visite avec l'identité laissée vide → ici
   // on garde la lecture obligatoire côté écran ; l'ajout manuel se fait côté fiche).
@@ -375,6 +384,12 @@ export default function EcranClient({ displayKey }: { displayKey: string }) {
               Nous lisons uniquement <strong>nom, prénom et date de naissance</strong>.
             </div>
             <button style={E.btnPrimary} onClick={startVisitorRead}>Lire ma carte</button>
+            {/* Expert d'assurance : pas de carte, juste la compagnie d'expertise. */}
+            <button
+              style={{ ...E.btnPrimary, background: '#fff', color: '#0f172a', border: '2px solid #cbd5e1', marginTop: '1.4vh' }}
+              onClick={startVisitorExpert}>
+              🧑‍💼 Expert d'assurance (sans carte)
+            </button>
             <div style={E.rgpd}>Enregistrement à des fins de traçabilité des visites. Code PIN non requis.</div>
           </div>
         </div>
