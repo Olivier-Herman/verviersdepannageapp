@@ -16,6 +16,7 @@
 import { NextResponse }  from 'next/server'
 import { loginComex, listComexMissions } from '@/lib/touring/comex'
 import { createAdminClient } from '@/lib/supabase'
+import { runTouringCancelDetect } from '@/lib/touring/cancel-detect'
 import { sendPushToRole } from '@/lib/push'
 import { withOdooActor } from '@/lib/odoo'
 import { createOdooDossierForMission } from '@/lib/missions/odoo-dossier'
@@ -254,6 +255,16 @@ export async function GET(req: Request) {
     if (sla.pushed > 0) console.log(`[cron touring-sla] auto-onSpot=${sla.pushed}/${sla.scanned}`)
   }
 
+  // Surveillance ANNULATION Touring (fiche active disparue de COMEX → règle Mondial).
+  // Indépendant, propre login. Import uniquement (pas de fiche active en observe).
+  let cancel: any = null
+  if (mode === 'import') {
+    cancel = await runTouringCancelDetect(createAdminClient()).catch((e) => { console.warn('[cron touring-cancel]', e?.message); return null })
+    if (cancel && (cancel.confirmed > 0 || cancel.missingNew > 0)) {
+      console.log(`[cron touring-cancel] missingNew=${cancel.missingNew} confirmed=${cancel.confirmed} (dep=${cancel.deplacement}, sansFrais=${cancel.sansFrais})`)
+    }
+  }
+
   try {
     const session  = await loginComex('dispatch')
     const missions = await listComexMissions(session)
@@ -341,7 +352,7 @@ export async function GET(req: Request) {
       if (stepRepair.repaired) console.log(`[cron touring-repair] repaired=${stepRepair.repaired}/${stepRepair.scanned}`)
     } catch (e: any) { console.warn('[cron touring-repair]', e?.message) }
 
-    return NextResponse.json({ ...result, slaRoad, sla, reconcile, stepRepair })
+    return NextResponse.json({ ...result, slaRoad, sla, reconcile, stepRepair, cancel })
   } catch (e: any) {
     console.error('[cron touring-comex]', e.message)
     // Les balayages SLA ont déjà tourné (en amont, indépendants) → on les renvoie.

@@ -91,6 +91,14 @@ export const NOTIFICATION_TYPES: readonly NotificationType[] = [
     defaultEnabled:  true,
   },
   {
+    key:             'touring_cancelled',
+    label:           'Touring — annulation détectée',
+    description:     'Une mission Touring a disparu de COMEX (annulée/réattribuée) : traitée sans frais ou en déplacement.',
+    category:        'admin',
+    applicableRoles: ['admin', 'superadmin', 'dispatcher'],
+    defaultEnabled:  true,
+  },
+  {
     key:             'saisie_facturation',
     label:           'Saisie — état de frais à traiter',
     description:     'Le cron a préparé des états de frais de saisie (à facturer, gardiennage, clôture Domaine).',
