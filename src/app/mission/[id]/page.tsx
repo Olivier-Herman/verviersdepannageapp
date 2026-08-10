@@ -112,6 +112,15 @@ export default async function MissionDriverPage({ params, searchParams }: Props)
   // suggérée à la mise en parc côté chauffeur (« catalog strict »).
   const defaultParcZone = await getDefaultParcZone(mission.source, supabase)
 
+  // Relivraison : remarque de clôture du REM PARENT → alerte obligatoire sur
+  // l'écran chauffeur (ex « Ne pas démarrer le véhicule »). Olivier 2026-08-10.
+  let parentClosingNote: string | null = null
+  if (mission.parent_mission_id) {
+    const { data: parent } = await supabase.from('incoming_missions')
+      .select('closing_notes').eq('id', mission.parent_mission_id).maybeSingle()
+    parentClosingNote = parent?.closing_notes || null
+  }
+
   return (
     <>
       {officePush}
@@ -123,6 +132,7 @@ export default async function MissionDriverPage({ params, searchParams }: Props)
         navApp={currentUser.nav_app || 'gmaps'}
         defaultParcZone={defaultParcZone}
         touringBeta={touringBeta}
+        parentClosingNote={parentClosingNote}
       />
     </>
   )

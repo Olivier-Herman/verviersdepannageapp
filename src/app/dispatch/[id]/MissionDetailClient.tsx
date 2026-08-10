@@ -2479,6 +2479,17 @@ export default function MissionDetailClient({
       userRole={userRole}
       userModules={userModules}
     >
+      {/* Remarque du chauffeur (clôture) — EN GROS, en haut. Olivier 2026-08-10 :
+          info importante (ex « Ne pas démarrer le véhicule ») à ne pas rater. */}
+      {initialMission.closing_notes && (
+        <div className="mb-3 bg-amber-100 dark:bg-amber-500/10 border-2 border-amber-500 rounded-xl px-4 py-3 flex items-start gap-3 shadow-sm">
+          <span className="text-3xl flex-shrink-0">📝</span>
+          <div className="min-w-0">
+            <p className="text-amber-900 dark:text-amber-200 text-xs font-bold uppercase tracking-wide">Remarque du chauffeur (clôture)</p>
+            <p className="text-amber-900 dark:text-amber-100 text-lg font-bold whitespace-pre-wrap leading-snug mt-0.5">{initialMission.closing_notes}</p>
+          </div>
+        </div>
+      )}
       {isJudicialSaisie(M) && (
         <div className="mb-3 bg-red-600 text-white rounded-xl px-4 py-3 flex items-center gap-3 shadow-lg animate-pulse">
           <span className="text-3xl">⚠️</span>

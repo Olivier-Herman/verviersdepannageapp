@@ -83,7 +83,7 @@ interface Mission {
   awaiting_payment?: boolean | null
 }
 interface VrLoc { id: string; name: string; address: string; lat: number | null; lng: number | null; is_default?: boolean }
-interface Props { mission: Mission; currentUserId?: string; userRole?: string; isReadOnly?: boolean; navApp?: NavApp; defaultParcZone?: string | null; touringBeta?: boolean }
+interface Props { mission: Mission; currentUserId?: string; userRole?: string; isReadOnly?: boolean; navApp?: NavApp; defaultParcZone?: string | null; touringBeta?: boolean; parentClosingNote?: string | null }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 // Olivier 2026-06-18 : null-safe. Le defaut `= ''` ne couvre QUE undefined ;
@@ -610,7 +610,7 @@ function BriefingTtsButton({ mission }: { mission: Mission }) {
 }
 
 // ─── Composant principal ──────────────────────────────────────────────────────
-export default function DriverClient({ mission: init, currentUserId, userRole, isReadOnly = false, navApp: initNav, defaultParcZone = null, touringBeta = false }: Props) {
+export default function DriverClient({ mission: init, currentUserId, userRole, isReadOnly = false, navApp: initNav, defaultParcZone = null, touringBeta = false, parentClosingNote = null }: Props) {
   const canMatthieu = canUseMatthieu(userRole, currentUserId)
   const router = useRouter()
   const { t, lang } = useT()   // traductions FR/albanais pour les messages d'erreur (strings)
@@ -3025,8 +3025,20 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
     <div className="min-h-screen bg-surface pb-48 relative">
       <AmbientBackground variant="light">
 
+      {/* Remarque du 1er chauffeur (clôture du REM parent) → alerte OBLIGATOIRE à la
+          relivraison, ex « Ne pas démarrer le véhicule ». Olivier 2026-08-10. */}
+      {parentClosingNote && (
+        <div className="mx-4 mt-14 mb-1 bg-amber-100 border-2 border-amber-500 rounded-2xl px-4 py-3 flex items-start gap-3 shadow-md">
+          <span className="text-3xl flex-shrink-0">⚠️</span>
+          <div className="min-w-0">
+            <p className="text-amber-900 text-[11px] font-bold uppercase tracking-wide">Consigne du 1ᵉʳ enlèvement</p>
+            <p className="text-amber-900 text-lg font-black whitespace-pre-wrap leading-snug mt-0.5">{parentClosingNote}</p>
+          </div>
+        </div>
+      )}
+
       {/* Header avec backdrop-blur pour fondre avec l'ambient */}
-      <div className="bg-surface/85 backdrop-blur-md border-b px-4 pt-12 pb-4 sticky top-0 z-20">
+      <div className={`bg-surface/85 backdrop-blur-md border-b px-4 ${parentClosingNote ? 'pt-3' : 'pt-12'} pb-4 sticky top-0 z-20`}>
         <div className="flex items-center justify-between mb-1">
           <button onClick={() => router.push('/mission')} className="w-9 h-9 flex items-center justify-center bg-surface-hover rounded-xl text-ink">←</button>
           <div className="flex items-center gap-2">
