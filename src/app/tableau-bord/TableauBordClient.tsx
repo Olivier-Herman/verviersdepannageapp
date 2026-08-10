@@ -12,7 +12,7 @@ interface Kpi {
     aFacturer: number; enParc: number; aRelivrer: number
     termineesJour: number; factureesJour: number
   }
-  facturation: { periodeJours: number; dureeMoyMin: number | null; dureeMoyN?: number; bkoValidMin?: number | null; bkoValidN?: number }
+  facturation: { periodeJours: number; dureeMoyMin: number | null; dureeMoyN?: number }
   sources?: {
     parSource: { key: string; label: string; hex: string; count: number }[]
     touring: { bko: number; total: number }
@@ -191,8 +191,6 @@ export default function TableauBordClient({ variant = 'full' }: { variant?: 'ful
       {!isDispatch && <Tile label="Facturées aujourd'hui" value={o?.factureesJour} color="#22d3ee" hint="facturation validée" />}
       {!isDispatch && <Tile label={`Délai médian à facturer${f?.dureeMoyN != null ? ` (${f.dureeMoyN})` : ''}`} valueStr={fmtDuree(f?.dureeMoyMin ?? null)} color="#f472b6"
         hint={`Terminé → facturé · médiane ${f?.periodeJours ?? 7} j`} />}
-      {!isDispatch && <Tile label={`Médiane validation BKO${f?.bkoValidN != null ? ` (${f.bkoValidN})` : ''}`} valueStr={fmtDuree(f?.bkoValidMin ?? null)} color="#38bdf8"
-        hint={`COMEX BKO · synchro → validation · ${f?.periodeJours ?? 7} j`} />}
     </>
   )
 
