@@ -302,6 +302,10 @@ function buildEfEmailHtml(d: any, numero: string, totalTvac: number, link: strin
       Auriez-vous l'amabilité de nous <strong>retourner le présent état de frais signé</strong>, pour accord ou pour refus,
       par retour de courriel ou par courrier&nbsp;?
     </p>
+    <p style="margin:0 0 16px;font-size:14px;color:#333;line-height:1.6;">
+      Vous pouvez également, si vous le préférez, le déposer directement en ligne&nbsp;:
+    </p>
+    <p style="margin:0 0 24px;text-align:center;">${button(link, 'Déposer l\'état de frais signé')}</p>
     <p style="margin:24px 0 0;font-size:13px;color:#888;">Nous vous remercions par avance.<br>Le service Fourrière — Verviers Dépannage</p>
   `
   return emailLayout(content, `État de frais ${numero}`)
