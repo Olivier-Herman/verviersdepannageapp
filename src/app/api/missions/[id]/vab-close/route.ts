@@ -40,12 +40,17 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   const b = await req.json().catch(() => ({}))
   const taskType: 'tow' | 'breakdown' = String(m.mission_type || '').toLowerCase().includes('remorquage') ? 'tow' : 'breakdown'
 
+  // Signature VAB = canvas JS non reproductible en HTTP → pour la clôture AUTO on
+  // coche « Client refuse de signer » (choix Olivier 2026-08-10). Défaut : refus,
+  // SAUF si l'appelant fournit une signature, « personne présent », ou refuse=false.
+  const refusalDefault = !b.signaturePng && !b.notPresent && b.refusal !== false
+
   let result
   try {
     result = await closeVabMission({
       assignmentId, taskType,
       signaturePng:      b.signaturePng || undefined,
-      refusal:           !!b.refusal,
+      refusal:           b.refusal != null ? !!b.refusal : refusalDefault,
       notPresent:        !!b.notPresent,
       keysNr:            b.keysNr || undefined,
       keyLocation:       b.keyLocation || undefined,
