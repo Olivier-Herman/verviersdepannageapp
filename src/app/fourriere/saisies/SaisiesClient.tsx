@@ -15,7 +15,7 @@ interface Dossier {
   recipient: Recipient; vehicle_plate: string | null; vehicle_brand: string | null
   vehicle_model: string | null; dossier_ref: string | null; parked_at: string | null
   levee_date: string | null; billed_to_date: string | null; depannage_billed: boolean
-  justinvoice_ref: string | null; last_ef_at: string | null; notes: string | null
+  justinvoice_ref: string | null; odoo_invoice_id: number | null; last_ef_at: string | null; notes: string | null
   motif_code: string | null; motif_label: string | null; sent_to: string | null
   sent_at: string | null; validation_at: string | null
   pending_action: string | null; pending_action_at: string | null; domaine_remise_date: string | null
@@ -130,6 +130,18 @@ export default function SaisiesClient({ userRole, userName, userEmail, userModul
       const j = await r.json()
       if (!r.ok) { setMsg(`⚠ ${j.error || 'Erreur'}`); return }
       setMsg(missionId ? '✓ Saisie intégrée' : `✓ ${j.created} saisie(s) intégrée(s)`)
+      await load()
+    } finally { setBusy(null) }
+  }
+
+  async function factureOdoo(id: string) {
+    setBusy(id); setMsg(null)
+    try {
+      const r = await fetch(`/api/fourriere/saisies/${id}/facture-odoo`, { method: 'POST' })
+      const j = await r.json().catch(() => ({}))
+      if (!r.ok) { setMsg(`⚠ ${j.error || 'Facture Odoo échouée'}`); return }
+      setMsg(`✓ Facture Odoo créée (brouillon)${j.odooId ? ` #${j.odooId}` : ''}`)
+      if (j.url) window.open(j.url, '_blank')
       await load()
     } finally { setBusy(null) }
   }
@@ -311,7 +323,8 @@ export default function SaisiesClient({ userRole, userName, userEmail, userModul
                 onRemove={() => remove(d.id, d.vehicle_plate || '—')}
                 onRelance={() => relanceReq(d.mission_id, d.id)}
                 onJustInvoice={() => depotJustInvoice(d.id, d.vehicle_plate || '—')}
-                onUpload={(f) => uploadValidation(d.id, f)} />
+                onUpload={(f) => uploadValidation(d.id, f)}
+                onFacture={() => factureOdoo(d.id)} />
             ))}
           </div>
         )}
@@ -395,7 +408,7 @@ function ScanModal({ onClose, onDone }: { onClose: () => void; onDone: () => voi
 }
 
 // ── Carte dossier ────────────────────────────────────────────────────────────
-function DossierCard({ d, busy, onGenerate, onRecipient, onState, onRemove, onRelance, onJustInvoice, onUpload }: {
+function DossierCard({ d, busy, onGenerate, onRecipient, onState, onRemove, onRelance, onJustInvoice, onUpload, onFacture }: {
   d: Dossier; busy: boolean
   onGenerate: () => void
   onRecipient: (r: Recipient) => void
@@ -404,6 +417,7 @@ function DossierCard({ d, busy, onGenerate, onRecipient, onState, onRemove, onRe
   onRelance: () => void
   onJustInvoice: () => void
   onUpload: (f: File) => void
+  onFacture: () => void
 }) {
   const st = STATE[d.state] || { label: d.state, cls: 'bg-slate-100 text-slate-700 border-slate-300', rank: 8 }
   const days = daysSince(d.parked_at)
@@ -530,8 +544,11 @@ function DossierCard({ d, busy, onGenerate, onRecipient, onState, onRemove, onRe
           <span className="px-2.5 py-1 rounded-lg bg-indigo-50 text-indigo-800 text-xs font-semibold border border-indigo-200">JustInvoice {d.justinvoice_ref}</span>
         )}
         {d.state === 'justinvoice' && (
-          <button disabled={busy} onClick={() => onState('facture', '✓ Marqué facturé')}
-            className="px-3 py-1.5 bg-teal-600 hover:bg-teal-700 disabled:opacity-50 text-white rounded-lg text-sm font-semibold">✓ Facturé (Odoo)</button>
+          <button disabled={busy} onClick={onFacture}
+            className="px-3 py-1.5 bg-teal-600 hover:bg-teal-700 disabled:opacity-50 text-white rounded-lg text-sm font-semibold">🧾 Créer la facture Odoo</button>
+        )}
+        {d.state === 'facture' && d.odoo_invoice_id && (
+          <span className="px-2.5 py-1 rounded-lg bg-teal-50 text-teal-800 text-xs font-semibold border border-teal-200">Facture Odoo #{d.odoo_invoice_id}</span>
         )}
         {['facture', 'gardiennage_recurrent'].includes(d.state) && (
           <button disabled={busy} onClick={() => onState('clos', '✓ Dossier clôturé')}
