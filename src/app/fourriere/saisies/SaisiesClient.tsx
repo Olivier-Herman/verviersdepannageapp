@@ -134,6 +134,17 @@ export default function SaisiesClient({ userRole, userName, userEmail, userModul
     } finally { setBusy(null) }
   }
 
+  async function uploadValidation(id: string, file: File) {
+    setBusy(id); setMsg(null)
+    try {
+      const fd = new FormData(); fd.append('file', file)
+      const r = await fetch(`/api/fourriere/saisies/${id}/validation-upload`, { method: 'POST', body: fd })
+      const j = await r.json().catch(() => ({}))
+      if (!r.ok) { setMsg(`⚠ ${j.error || 'Upload échoué'}`); return }
+      setMsg('✓ Retour signé enregistré → Accepté'); await load()
+    } finally { setBusy(null) }
+  }
+
   async function depotJustInvoice(id: string, plate: string) {
     if (!confirm(`Déposer la créance de ${plate} sur JustInvoice (SPF Justice) ?\n\nCela envoie l'état de frais signé + le réquisitoire au portail. Action réelle.`)) return
     setBusy(id); setMsg(null)
@@ -299,7 +310,8 @@ export default function SaisiesClient({ userRole, userName, userEmail, userModul
                 onState={(s, m) => patch(d.id, { state: s }, m)}
                 onRemove={() => remove(d.id, d.vehicle_plate || '—')}
                 onRelance={() => relanceReq(d.mission_id, d.id)}
-                onJustInvoice={() => depotJustInvoice(d.id, d.vehicle_plate || '—')} />
+                onJustInvoice={() => depotJustInvoice(d.id, d.vehicle_plate || '—')}
+                onUpload={(f) => uploadValidation(d.id, f)} />
             ))}
           </div>
         )}
@@ -383,7 +395,7 @@ function ScanModal({ onClose, onDone }: { onClose: () => void; onDone: () => voi
 }
 
 // ── Carte dossier ────────────────────────────────────────────────────────────
-function DossierCard({ d, busy, onGenerate, onRecipient, onState, onRemove, onRelance, onJustInvoice }: {
+function DossierCard({ d, busy, onGenerate, onRecipient, onState, onRemove, onRelance, onJustInvoice, onUpload }: {
   d: Dossier; busy: boolean
   onGenerate: () => void
   onRecipient: (r: Recipient) => void
@@ -391,6 +403,7 @@ function DossierCard({ d, busy, onGenerate, onRecipient, onState, onRemove, onRe
   onRemove: () => void
   onRelance: () => void
   onJustInvoice: () => void
+  onUpload: (f: File) => void
 }) {
   const st = STATE[d.state] || { label: d.state, cls: 'bg-slate-100 text-slate-700 border-slate-300', rank: 8 }
   const days = daysSince(d.parked_at)
@@ -499,8 +512,13 @@ function DossierCard({ d, busy, onGenerate, onRecipient, onState, onRemove, onRe
           <span className="text-[11px] text-ink-faint w-full mb-1">
             Le Parquet renvoie l'état de frais signé → déposez-le via <b>Scan groupé</b> (rattachement + validation auto), ou marquez ici :
           </span>
+          <label className={`px-3 py-1.5 bg-green-600 hover:bg-green-700 text-white rounded-lg text-sm font-semibold cursor-pointer ${busy ? 'opacity-50 pointer-events-none' : ''}`}>
+            📎 Déposer le retour signé
+            <input type="file" accept="application/pdf,image/*" className="hidden"
+              onChange={e => { const f = e.target.files?.[0]; if (f) onUpload(f) }} />
+          </label>
           <button disabled={busy} onClick={() => onState('accepte', '✓ Marqué accepté')}
-            className="px-3 py-1.5 bg-green-600 hover:bg-green-700 disabled:opacity-50 text-white rounded-lg text-sm font-semibold">✓ Accepté</button>
+            className="px-3 py-1.5 bg-surface-2 hover:bg-surface-hover disabled:opacity-50 border text-ink-secondary rounded-lg text-sm font-semibold">✓ Accepté (sans doc)</button>
           <button disabled={busy} onClick={() => onState('refuse', 'Marqué refusé')}
             className="px-3 py-1.5 bg-red-100 hover:bg-red-200 disabled:opacity-50 text-red-800 border border-red-300 rounded-lg text-sm font-semibold">✕ Refusé</button>
         </>}

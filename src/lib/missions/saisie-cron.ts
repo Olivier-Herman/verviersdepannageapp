@@ -89,7 +89,9 @@ export async function runSaisieCron(sb: any): Promise<SaisieCronSummary> {
       action = { kind: 'cloture_domaine', cut: remise }                               // coupe = Date IN
     } else if (d.state === 'en_parc' && d.parked_at && today >= endOfMonthAfter(d.parked_at)) {
       action = { kind: 'facturer', cut: endOfMonthAfter(d.parked_at) }                // dernier jour du mois suivant
-    } else if (['facture', 'gardiennage_recurrent'].includes(d.state) && d.billed_to_date && today >= addMonths(d.billed_to_date, 2)) {
+    } else if (d.billed_to_date && today >= addMonths(d.billed_to_date, 2)) {
+      // Gardiennage récurrent tous les 2 mois — MÊME en attente de retour Parquet
+      // (règle B, Olivier 2026-08-10). Dès que le 1er EF est fait (billed_to_date).
       action = { kind: 'gardiennage', cut: addMonths(d.billed_to_date, 2) }           // dernière coupe + 2 mois
     }
     if (!action) continue
