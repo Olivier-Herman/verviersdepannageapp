@@ -64,6 +64,20 @@ function firstBillable(parkedAt?: string | null): string | null {
 }
 const todayISO = () => new Date().toISOString().slice(0, 10)
 const addMonthsStr = (ymd: string, n: number) => { const dt = new Date(String(ymd).slice(0, 10) + 'T00:00:00Z'); dt.setUTCMonth(dt.getUTCMonth() + n); return dt.toISOString().slice(0, 10) }
+
+// Un état de frais est-il établissable MAINTENANT ? (miroir du bouton de la carte)
+function canEstablishEf(d: Dossier): boolean {
+  if (!d.requisitoire_ok || d.state === 'clos') return false
+  if (!d.ef_number) {  // 1er état de frais
+    const billableFrom = firstBillable(d.parked_at)
+    const notYet = !d.billed_to_date && !d.domaine_remise_date && !!billableFrom && todayISO() < billableFrom
+    return !notYet
+  }
+  const nextCut = d.billed_to_date ? addMonthsStr(d.billed_to_date, 2) : null
+  const recurringDue = !!nextCut && todayISO() >= nextCut
+  const clotureDue = !!d.domaine_remise_date && (!d.billed_to_date || String(d.billed_to_date).slice(0, 10) < String(d.domaine_remise_date).slice(0, 10))
+  return !!d.pending_action || recurringDue || clotureDue
+}
 const daysSince = (ymd?: string | null) => {
   if (!ymd) return null
   const d = new Date(String(ymd).slice(0, 10) + 'T00:00:00')
@@ -80,7 +94,7 @@ export default function SaisiesClient({ userRole, userName, userEmail, userModul
   const [busy, setBusy] = useState<string | null>(null)
   const [msg, setMsg] = useState<string | null>(null)
   const [gen, setGen] = useState<Dossier | null>(null)  // dossier en cours de génération (modal)
-  const [filter, setFilter] = useState<'todo' | 'sent' | 'closed' | 'all'>('todo')
+  const [filter, setFilter] = useState<'todo' | 'billable' | 'sent' | 'closed' | 'all'>('todo')
   const [showScan, setShowScan] = useState(false)
   const isAdmin = ['admin', 'superadmin'].includes(userRole)
 
@@ -160,20 +174,23 @@ export default function SaisiesClient({ userRole, userName, userEmail, userModul
 
   // Filtre : les envoyés (en attente de retour) et les clôturés ne polluent plus
   // la liste de travail. Olivier 2026-08-10.
-  const counts = { todo: 0, sent: 0, closed: 0, all: dossiers.length }
+  const counts = { todo: 0, billable: 0, sent: 0, closed: 0, all: dossiers.length }
   for (const d of dossiers) {
     if (d.state === 'clos') counts.closed++
     else if (d.state === 'ef_envoye') counts.sent++
     else counts.todo++
+    if (canEstablishEf(d)) counts.billable++
   }
   const inFilter = (d: Dossier) =>
     filter === 'all' ? true
+    : filter === 'billable' ? canEstablishEf(d)
     : filter === 'sent' ? d.state === 'ef_envoye'
     : filter === 'closed' ? d.state === 'clos'
     : (d.state !== 'ef_envoye' && d.state !== 'clos')
   const visible = sorted.filter(inFilter)
   const TABS: { key: typeof filter; label: string; n: number }[] = [
     { key: 'todo', label: 'À traiter', n: counts.todo },
+    { key: 'billable', label: '📄 Prêts à facturer', n: counts.billable },
     { key: 'sent', label: 'En attente de retour', n: counts.sent },
     { key: 'closed', label: 'Clôturés', n: counts.closed },
     { key: 'all', label: 'Tous', n: counts.all },
