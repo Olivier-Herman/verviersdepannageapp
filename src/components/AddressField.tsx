@@ -117,12 +117,14 @@ export async function reverseGeocodeCity(
 }
 
 export default function AddressField({
-  label, value, onChange, onSelect, onBlur, gmKey, placeholder, className,
+  label, value, onChange, onSelect, onParts, onBlur, gmKey, placeholder, className,
 }: {
   label?:       string
   value:        string
   onChange:     (v: string) => void
   onSelect?:    (addr: string, lat: number, lng: number, city?: string, name?: string) => void
+  /** Composants d'adresse découpés (pour pré-remplir un formulaire séparé, ex Touring). */
+  onParts?:     (parts: { num: string; rue: string; cp: string; loc: string; name?: string }) => void
   onBlur?:      () => void
   gmKey:        string
   placeholder?: string
@@ -140,6 +142,8 @@ export default function AddressField({
   onChangeRef.current = onChange
   const onSelectRef = useRef(onSelect)
   onSelectRef.current = onSelect
+  const onPartsRef = useRef(onParts)
+  onPartsRef.current = onParts
 
   // Suggestion "établissement à cette adresse" (recherche inverse non-destructive).
   // Quand on choisit une ADRESSE (pas un établissement), on cherche s'il y a un
@@ -197,6 +201,16 @@ export default function AddressField({
         const display = name ? `${name}, ${addr}` : addr
         onChangeRef.current(display)
         onSelectRef.current?.(display, lat, lng, city, name)
+        if (onPartsRef.current) {
+          const comp = (t: string) => (p.address_components || []).find((c: any) => c.types.includes(t))?.long_name || ''
+          onPartsRef.current({
+            num: comp('street_number'),
+            rue: comp('route'),
+            cp:  comp('postal_code'),
+            loc: comp('locality') || comp('postal_town') || comp('administrative_area_level_2') || '',
+            name,
+          })
+        }
         // Si on a choisi une adresse simple, on tente de retrouver l'établissement
         // à ce point pour le proposer (pastille). Sinon on efface une suggestion.
         setEstabHint(null)

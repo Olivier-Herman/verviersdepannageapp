@@ -12,6 +12,9 @@ import {
   PRESETS_DSP, PRESETS_REM, PRESET_REM_CATCHALL, endMissionLabel, REM_FIN_CODES, type ClosePreset,
 } from '@/lib/touring/close-presets'
 import { PANNE_CAUSE, PANNE_DESC, PANNE_RESULT, type CodeOption } from '@/lib/touring/close-referentials'
+import AddressField from '@/components/AddressField'
+
+const GM_KEY = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || ''
 
 // Petit clin d'œil au chauffeur à l'ouverture (mode driver). Olivier 2026-08-06.
 const DRIVER_INTROS = [
@@ -72,6 +75,10 @@ export default function TouringCloseModal({
   const [finSel, setFinSel]     = useState(forcedFin || '')
   const [providers, setProviders] = useState<Provider[] | null>(null)
   const [garageMode, setGarageMode] = useState<'list' | 'manual'>('list')
+  // « Autre adresse » : 1 champ Nom + 1 champ Adresse (Google autocomplete) qui
+  // découpe vers rue/num/cp/ville pour le formulaire Touring. Olivier 2026-08-10.
+  const [addrText, setAddrText] = useState('')
+  const [coords, setCoords]     = useState<{ lat: number; lng: number } | null>(null)
   const [garageCid, setGarageCid]   = useState<string>('')
   const [manual, setManual]     = useState({ nom: '', rue: '', num: '', cp: '', loc: '' })
   const [km, setKm]             = useState('')
@@ -184,7 +191,7 @@ export default function TouringCloseModal({
         if (garageMode === 'manual') {   // Olivier 2026-08-10 : « Autre adresse » aussi pour le chauffeur.
           if (!manual.rue || !manual.cp || !manual.loc) { setError('Complète l’adresse (rue, code postal, ville)'); setBusy(false); return }
           body.manualAddress = manual
-          body.destination = { address: `${manual.rue} ${manual.num}, ${manual.cp} ${manual.loc}`.trim() }
+          body.destination = { address: `${manual.rue} ${manual.num}, ${manual.cp} ${manual.loc}`.trim(), ...(coords ? { lat: coords.lat, lng: coords.lng } : {}) }
         } else {
           const g = (providers || []).find(p => p.cidPrx === garageCid)
           if (!g) { setError('Choisis un garage'); setBusy(false); return }
@@ -394,12 +401,33 @@ export default function TouringCloseModal({
                       </div>
                     )
                   ) : (
-                    <div className="grid grid-cols-2 gap-2">
-                      <input placeholder="Nom (optionnel)" value={manual.nom} onChange={e => setManual({ ...manual, nom: e.target.value })} className="col-span-2 border rounded-lg px-3 py-2 text-sm bg-surface" />
-                      <input placeholder="Rue" value={manual.rue} onChange={e => setManual({ ...manual, rue: e.target.value })} className="border rounded-lg px-3 py-2 text-sm bg-surface" />
-                      <input placeholder="N°" value={manual.num} onChange={e => setManual({ ...manual, num: e.target.value })} className="border rounded-lg px-3 py-2 text-sm bg-surface" />
-                      <input placeholder="Code postal" value={manual.cp} onChange={e => setManual({ ...manual, cp: e.target.value })} className="border rounded-lg px-3 py-2 text-sm bg-surface" />
-                      <input placeholder="Ville" value={manual.loc} onChange={e => setManual({ ...manual, loc: e.target.value })} className="border rounded-lg px-3 py-2 text-sm bg-surface" />
+                    <div className="space-y-2">
+                      <input placeholder="Nom (optionnel — garage, société…)" value={manual.nom}
+                        onChange={e => setManual({ ...manual, nom: e.target.value })}
+                        className="w-full border rounded-lg px-3 py-2 text-sm bg-surface" />
+                      <AddressField
+                        value={addrText}
+                        onChange={setAddrText}
+                        gmKey={GM_KEY}
+                        placeholder="Rechercher l'adresse (Google)…"
+                        onSelect={(_addr, lat, lng) => setCoords({ lat, lng })}
+                        onParts={p => setManual(m => ({ ...m, rue: p.rue, num: p.num, cp: p.cp, loc: p.loc, nom: m.nom || p.name || '' }))}
+                      />
+                      {(manual.rue || manual.cp) && (
+                        <div className="text-[11px] text-ink-secondary bg-surface-2 border rounded-lg px-2 py-1.5">
+                          → {[`${manual.rue} ${manual.num}`.trim(), `${manual.cp} ${manual.loc}`.trim()].filter(Boolean).join(', ')}
+                          {(!manual.rue || !manual.cp || !manual.loc) && <span className="text-amber-600"> · complète les champs manquants ci-dessous</span>}
+                        </div>
+                      )}
+                      {/* Repli manuel si l'autocomplete n'a pas tout rempli */}
+                      {(manual.rue || manual.cp || manual.loc) && (!manual.rue || !manual.cp || !manual.loc) && (
+                        <div className="grid grid-cols-2 gap-2">
+                          <input placeholder="Rue" value={manual.rue} onChange={e => setManual({ ...manual, rue: e.target.value })} className="border rounded-lg px-3 py-2 text-sm bg-surface" />
+                          <input placeholder="N°" value={manual.num} onChange={e => setManual({ ...manual, num: e.target.value })} className="border rounded-lg px-3 py-2 text-sm bg-surface" />
+                          <input placeholder="Code postal" value={manual.cp} onChange={e => setManual({ ...manual, cp: e.target.value })} className="border rounded-lg px-3 py-2 text-sm bg-surface" />
+                          <input placeholder="Ville" value={manual.loc} onChange={e => setManual({ ...manual, loc: e.target.value })} className="border rounded-lg px-3 py-2 text-sm bg-surface" />
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
