@@ -105,7 +105,10 @@ export async function runSaisieCron(sb: any): Promise<SaisieCronSummary> {
     }
 
     // ── Exécute l'action (Auto = envoie ; sinon Prépare + Alerte) ─────────────
-    if (auto) {
+    // Exception : levée de saisie → gardiennage hors saisie → JAMAIS d'envoi auto,
+    // le dossier doit être vérifié à la main. Olivier 2026-08-10.
+    const manualOnly = !!d.levee_date
+    if (auto && !manualOnly) {
       const res = await sendEtatFrais(sb, d.id, { billingTo: action.cut, recipient: action.kind === 'cloture_domaine' ? 'parquet' : undefined }, null)
       if (res.ok) {
         out.sent++; out.actions.push({ plate: d.vehicle_plate || '—', kind: 'envoyé' })

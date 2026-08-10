@@ -439,6 +439,13 @@ function DossierCard({ d, busy, onGenerate, onRecipient, onState, onRemove, onRe
         </div>
       )}
 
+      {/* Levée de saisie → gardiennage hors saisie → vérification manuelle */}
+      {d.levee_date && (
+        <div className="mt-3 rounded-xl border border-orange-300 bg-orange-50 px-3 py-2 text-sm text-orange-900">
+          ⚠️ <b>Levée de saisie le {fmt(d.levee_date)}</b> — gardiennage « hors saisie » à partir de cette date. Dossier <b>à vérifier manuellement</b> (pas d'envoi automatique).
+        </div>
+      )}
+
       {/* 1re période pas encore atteinte → établissement bloqué */}
       {d.requisitoire_ok && notYetBillable && (
         <div className="mt-3 rounded-xl border border-slate-300 bg-slate-50 px-3 py-2 text-sm text-slate-700">
