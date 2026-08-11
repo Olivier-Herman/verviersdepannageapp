@@ -31,7 +31,7 @@ export const dynamic     = 'force-dynamic'
 // serait TUÉ par un plafond à 60 s. Olivier 2026-08-11.
 export const maxDuration = 300
 
-const MISSION_COLS = 'id, source, source_format, raw_content, external_id, mission_type, status, loaded_at, vr_proposed, ' +
+const MISSION_COLS = 'id, source, source_format, raw_content, external_id, mission_type, status, loaded_at, vr_proposed, assigned_to, ' +
   'vehicle_vin, vehicle_mileage, incident_description, vehicle_brand, vehicle_model'
 
 async function loadContext(missionId: string, email: string) {

@@ -35,6 +35,8 @@ export const NAV_ITEMS: NavItem[] = [
   { href: '/matthieu',      label: 'La tête à Matthieu', icon: '🔧', moduleId: null },
   { href: '/services/tgr',  label: 'TGR Touring',      i18nKey: 'nav.services_tgr',  icon: '🛡️', moduleId: 'tgr' },
   { href: '/admin/tgr',     label: 'TGR Gestion',      icon: '📋', moduleId: 'admin' },
+  // Déploiement du flux 2 (clôture unifiée) : grille chauffeur × assistance.
+  { href: '/admin/flux2',   label: 'Flux 2',           icon: '⚡', moduleId: null, role: 'superadmin' },
   { href: '/facturation',       label: 'Facturation',         icon: '🧾', moduleId: 'facturation' },
   { href: '/missions-terminees', label: 'Missions terminées', i18nKey: 'nav.finished', icon: '📂', moduleId: 'facturation_or_missions' },
   { href: '/admin/amendes',     label: 'Amendes',             icon: '⚠️', moduleId: 'facturation_or_admin' },

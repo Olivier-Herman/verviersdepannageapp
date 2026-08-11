@@ -14,8 +14,8 @@ import {
   Map, ClipboardCheck,
   FileText, Archive, Wallet, Truck,
   Settings, Home, Printer, LifeBuoy,
-  type LucideIcon,
-} from 'lucide-react'
+  ToggleLeft,
+  type LucideIcon } from 'lucide-react'
 
 type NavItem = { href: string; label: string; icon: LucideIcon }
 type NavGroup = { title: string; items: NavItem[] }
@@ -61,6 +61,7 @@ const GROUPS: NavGroup[] = [
     title: 'Parc & Flotte',
     items: [
       { href: '/admin/parc',           label: 'Plan parc',     icon: Map },
+      { href: '/admin/flux2',          label: 'Flux 2',        icon: ToggleLeft },
       { href: '/admin/labels',         label: 'Étiquettes',    icon: Printer },
       { href: '/admin/check-vehicule', label: 'Check véhicule', icon: ClipboardCheck },
     ],

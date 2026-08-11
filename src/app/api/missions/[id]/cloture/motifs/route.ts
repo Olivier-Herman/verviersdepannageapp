@@ -34,7 +34,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     .select('id, role, roles').eq('email', session.user.email).maybeSingle()
 
   const { data: m } = await sb.from('incoming_missions')
-    .select('id, source, source_format, incident_description, vehicle_brand, vehicle_model')
+    .select('id, source, source_format, assigned_to, incident_description, vehicle_brand, vehicle_model')
     .eq('id', params.id).maybeSingle()
   if (!m) return NextResponse.json({ error: 'Mission introuvable' }, { status: 404 })
 

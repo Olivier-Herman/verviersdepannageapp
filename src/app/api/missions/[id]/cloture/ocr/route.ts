@@ -29,7 +29,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   const { data: actor } = await sb.from('users')
     .select('id, role, roles').eq('email', session.user.email).maybeSingle()
   const { data: m } = await sb.from('incoming_missions')
-    .select('id, source, source_format, driver_photos, vehicle_vin, vehicle_mileage')
+    .select('id, source, source_format, assigned_to, driver_photos, vehicle_vin, vehicle_mileage')
     .eq('id', params.id).maybeSingle()
   if (!m) return NextResponse.json({ error: 'Mission introuvable' }, { status: 404 })
   if (!(await flux2Enabled(actor as any, m as any))) {

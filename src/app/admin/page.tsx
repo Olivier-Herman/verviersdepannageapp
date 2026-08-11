@@ -16,8 +16,8 @@ import {
   DollarSign, Truck, FileText, Wallet, Settings,
   Tag, MapPin, Users, Car, Receipt, AlertTriangle, Radio, ShieldCheck,
   Bell, ClipboardCheck, Map, Archive, FileSignature, Printer, LifeBuoy,
-  type LucideIcon,
-} from 'lucide-react'
+  ToggleLeft,
+  type LucideIcon } from 'lucide-react'
 
 interface CardProps {
   href:    string
@@ -171,6 +171,8 @@ export default async function AdminPage() {
         <Card href="/admin/parc" icon={Map} label="Plan parc fourrière"
           desc="Zones, rangées, slots. Drag & drop, blocage manuel."
           count={parcSlots} />
+        <Card href="/admin/flux2" icon={ToggleLeft} label="Déploiement flux 2"
+          desc="Quels chauffeurs clôturent avec le nouvel écran « Action », assistance par assistance." />
         <Card href="/admin/labels" icon={Printer} label="Étiquettes"
           desc="Bibliothèque de templates ZPL pour l'imprimante Zebra (parc, REL, etc.). Aperçu + impression sur demande." />
         <Card href="/admin/check-vehicule" icon={ClipboardCheck} label="Check véhicule"
