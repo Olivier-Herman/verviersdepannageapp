@@ -57,6 +57,11 @@ export default function TableauBordClient({ variant = 'full' }: { variant?: 'ful
   const [clock, setClock]   = useState('')
   const [slide, setSlide]   = useState(0)
   const [progress, setProgress] = useState(0)
+  // Modes d'affichage du mur : 'actif' = tous les slides, 'reduit' = un sous-ensemble
+  // (Opérations + Sources + Missions en cours), 'fixe' = un seul slide figé (qui
+  // continue de se rafraîchir). Persisté (localStorage) + pilotable par ?mode=&slide=.
+  const [mode, setMode]       = useState<'actif' | 'reduit' | 'fixe'>('actif')
+  const [fixedId, setFixedId] = useState<string>('ops')
   const savedPin = useRef('')
   const rotateS  = useRef(15)
   const slideCountRef = useRef(1)
@@ -74,10 +79,19 @@ export default function TableauBordClient({ variant = 'full' }: { variant?: 'ful
       const sp = new URLSearchParams(window.location.search)
       const r = parseInt(sp.get('rotate') || '')
       if (r >= 3 && r <= 300) rotateS.current = r
+      const m = sp.get('mode') || localStorage.getItem('tb_mode')
+      if (m === 'actif' || m === 'reduit' || m === 'fixe') setMode(m)
+      const fs = sp.get('slide') || localStorage.getItem('tb_fixed')
+      if (fs) setFixedId(fs)
       const p = sessionStorage.getItem('tb_pin')
       if (p) { savedPin.current = p; setAuthed(true) }
     } catch {}
   }, [])
+
+  // Persiste le mode choisi (chaque écran garde son réglage).
+  useEffect(() => {
+    try { localStorage.setItem('tb_mode', mode); localStorage.setItem('tb_fixed', fixedId) } catch {}
+  }, [mode, fixedId])
 
   const fetchData = useCallback(async () => {
     const p = savedPin.current
@@ -225,11 +239,12 @@ export default function TableauBordClient({ variant = 'full' }: { variant?: 'ful
   ]
 
   // Coquille commune (header / rotation / footer) — partagée mur + dispatch.
-  const renderShell = (shownSlides: any[], cur: number) => (
+  const renderShell = (shownSlides: any[], cur: number, modeControl?: any) => (
     <div className="tb-root">
       <header className="tb-head">
         <div className="tb-brand">VD&nbsp;Soft <span className="tb-brand-sub">· {isDispatch ? 'Dispatch en direct' : 'Opérations en direct'}</span></div>
         <div className="tb-headright">
+          {modeControl}
           <span className={`tb-live ${stale ? 'off' : ''}`}>● {stale ? 'reconnexion…' : 'en direct'}</span>
           <span className="tb-clock">{clock}</span>
         </div>
@@ -272,45 +287,74 @@ export default function TableauBordClient({ variant = 'full' }: { variant?: 'ful
     return renderShell(shownSlides, cur)
   }
 
-  // Slides du mur complet. En ajouter ici fait tourner la rotation.
-  const slides = [
-    <div className="tb-grid8" key="ops">{opsTiles}</div>,
+  // Slides du mur complet, avec identité STABLE (id + label) → filtrage par mode.
+  const allSlides: { id: string; label: string; node: any }[] = [
+    { id: 'ops', label: 'Opérations', node: <div className="tb-grid8" key="ops">{opsTiles}</div> },
 
-    <div className="tb-src" key="sources">
-      <div className="tb-src-featured">
-        <RatioCard label="Touring" color="#3b82f6"
-          a={s?.touring.bko} b={s?.touring.total} aLbl="COMEX BKO" bLbl="Touring à facturer" />
-        <RatioCard label="Allianz / Mondial" color="#a855f7"
-          a={s?.allianz.cloture ?? undefined} b={s?.allianz.total} aLbl="Clôtures prêtes" bLbl="Allianz à facturer" />
-      </div>
-      <div className="tb-src-list">
-        <div className="tb-src-title">À facturer par source <span>· {(s?.parSource || []).reduce((n, x) => n + x.count, 0)} dossiers</span></div>
-        <div className="tb-src-rows">
-          {(s?.parSource || []).map(x => (
-            <div className="tb-src-row" key={x.key}>
-              <span className="tb-src-dot" style={{ background: x.hex }} />
-              <span className="tb-src-lbl">{x.label}</span>
-              <span className="tb-src-cnt">{x.count}</span>
-            </div>
-          ))}
-          {!s?.parSource?.length && <div className="tb-empty">Aucun dossier à facturer.</div>}
+    { id: 'sources', label: 'À facturer par source', node: (
+      <div className="tb-src" key="sources">
+        <div className="tb-src-featured">
+          <RatioCard label="Touring" color="#3b82f6"
+            a={s?.touring.bko} b={s?.touring.total} aLbl="COMEX BKO" bLbl="Touring à facturer" />
+          <RatioCard label="Allianz / Mondial" color="#a855f7"
+            a={s?.allianz.cloture ?? undefined} b={s?.allianz.total} aLbl="Clôtures prêtes" bLbl="Allianz à facturer" />
+        </div>
+        <div className="tb-src-list">
+          <div className="tb-src-title">À facturer par source <span>· {(s?.parSource || []).reduce((n, x) => n + x.count, 0)} dossiers</span></div>
+          <div className="tb-src-rows">
+            {(s?.parSource || []).map(x => (
+              <div className="tb-src-row" key={x.key}>
+                <span className="tb-src-dot" style={{ background: x.hex }} />
+                <span className="tb-src-lbl">{x.label}</span>
+                <span className="tb-src-cnt">{x.count}</span>
+              </div>
+            ))}
+            {!s?.parSource?.length && <div className="tb-empty">Aucun dossier à facturer.</div>}
+          </div>
         </div>
       </div>
-    </div>,
+    ) },
 
-    ...chPanels,
-    <PerfPanel key="perf" perf={pf} />,
+    { id: 'ch-jour', label: 'Chauffeurs · jour',    node: chPanels[0] },
+    { id: 'ch-sem',  label: 'Chauffeurs · 7 jours', node: chPanels[1] },
+    { id: 'ch-mois', label: 'Chauffeurs · mois',    node: chPanels[2] },
+    { id: 'perf',    label: 'Performance',          node: <PerfPanel key="perf" perf={pf} /> },
+    { id: 'encours', label: 'Missions en cours',    node: enCoursPanel },
 
-    enCoursPanel,
-
-    <div className="tb-domaine" key="domaine">
-      <Tile label="À transférer en Domaine" value={dm?.aTransferer} color="#a78bfa" hint="remis au Domaine, pas encore en zone I" />
-      <Tile label="À préparer pour enlèvement" value={dm?.aPreparer} color="#fbbf24" hint="épaves vendues, préparation non faite" />
-      <Tile label="Préparé, en attente d'enlèvement" value={dm?.enAttenteEnlevement} color="#34d399" hint="prêt, on attend l'enlèvement par la firme" />
-    </div>,
+    { id: 'domaine', label: 'Domaine', node: (
+      <div className="tb-domaine" key="domaine">
+        <Tile label="À transférer en Domaine" value={dm?.aTransferer} color="#a78bfa" hint="remis au Domaine, pas encore en zone I" />
+        <Tile label="À préparer pour enlèvement" value={dm?.aPreparer} color="#fbbf24" hint="épaves vendues, préparation non faite" />
+        <Tile label="Préparé, en attente d'enlèvement" value={dm?.enAttenteEnlevement} color="#34d399" hint="prêt, on attend l'enlèvement par la firme" />
+      </div>
+    ) },
   ]
-  slideCountRef.current = slides.length
-  return renderShell(slides, Math.min(slide, slides.length - 1))
+
+  // Réduit = Opérations + Sources + Missions en cours (les slides 1, 2 et 7).
+  const REDUIT_IDS = ['ops', 'sources', 'encours']
+  const shown =
+    mode === 'reduit' ? allSlides.filter(sl => REDUIT_IDS.includes(sl.id))
+    : mode === 'fixe' ? (allSlides.some(sl => sl.id === fixedId) ? allSlides.filter(sl => sl.id === fixedId) : [allSlides[0]])
+    : allSlides
+  slideCountRef.current = shown.length
+
+  // Sélecteur de mode (discret, en tête). En 'fixe' : un seul slide, pas de
+  // rotation, mais les données continuent de se rafraîchir (poll 10s inchangé).
+  const modeControl = (
+    <div className="tb-modes">
+      {([['actif', 'Tous'], ['reduit', 'Réduit'], ['fixe', 'Fixe']] as const).map(([m, lbl]) => (
+        <button key={m} className={`tb-modebtn ${mode === m ? 'on' : ''}`}
+          onClick={() => { setMode(m); setSlide(0) }}>{lbl}</button>
+      ))}
+      {mode === 'fixe' && (
+        <select className="tb-modesel" value={fixedId} onChange={e => { setFixedId(e.target.value); setSlide(0) }}>
+          {allSlides.map(sl => <option key={sl.id} value={sl.id}>{sl.label}</option>)}
+        </select>
+      )}
+    </div>
+  )
+
+  return renderShell(shown.map(sl => sl.node), Math.min(slide, shown.length - 1), modeControl)
 }
 
 function Tile({ label, value, valueStr, color, hint, sub }: { label: string; value?: number; valueStr?: string; color: string; hint: string; sub?: string }) {
@@ -433,7 +477,13 @@ const CSS = `
 .tb-head{display:flex;align-items:center;justify-content:space-between;padding:1.6vh 2.4vw .8vh}
 .tb-brand{font-size:clamp(18px,2.1vw,34px);font-weight:800;letter-spacing:.02em}
 .tb-brand-sub{color:#8b96a8;font-weight:600;font-size:.62em}
-.tb-headright{display:flex;align-items:center;gap:2vw}
+.tb-headright{display:flex;align-items:center;gap:1.6vw}
+.tb-modes{display:flex;align-items:center;gap:.4vw;opacity:.55;transition:opacity .2s}
+.tb-modes:hover{opacity:1}
+.tb-modebtn{padding:.35vw .8vw;border-radius:999px;border:1px solid rgba(255,255,255,.18);background:rgba(255,255,255,.04);color:#cbd5e1;font-size:clamp(11px,1vw,15px);font-weight:700;cursor:pointer;letter-spacing:.02em}
+.tb-modebtn:hover{background:rgba(255,255,255,.1)}
+.tb-modebtn.on{background:#2563eb;border-color:#2563eb;color:#fff}
+.tb-modesel{padding:.35vw .6vw;border-radius:8px;border:1px solid rgba(255,255,255,.18);background:#0f172a;color:#e2e8f0;font-size:clamp(11px,1vw,15px);font-weight:600;cursor:pointer;max-width:16vw}
 .tb-live{color:#4ade80;font-weight:700;font-size:clamp(13px,1.3vw,20px);letter-spacing:.03em}
 .tb-live.off{color:#fbbf24;animation:tb-blink 1s steps(2) infinite}
 @keyframes tb-blink{50%{opacity:.35}}
