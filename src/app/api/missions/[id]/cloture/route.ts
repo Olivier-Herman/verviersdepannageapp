@@ -1,0 +1,194 @@
+// src/app/api/missions/[id]/cloture/route.ts
+//
+// FLUX 2 — clôture unifiée « Action » (Olivier 2026-08-11).
+//
+//   GET  → contexte de la page Action : issues valides, VR proposé, données de
+//          repli (VIN/km), codes de fin autorisés pour un déplacement pour rien.
+//   POST → enregistre le tronc commun sur la fiche PUIS lance la transformation
+//          propre à l'assistance. Le chauffeur ne voit jamais cette partie.
+//
+// Ce qui n'est PAS ici : la clôture VD Soft elle-même (statut → completed →
+// to_invoice). Elle reste dans /api/missions/driver-action, inchangée — on ne
+// touche pas à ce qui marche pour toute la flotte. Cet endpoint prépare la fiche
+// et parle à l'assistance ; le chauffeur termine ensuite sur l'écran habituel.
+
+import { NextResponse }      from 'next/server'
+import { getServerSession }  from 'next-auth'
+import { authOptions }       from '@/lib/auth'
+import { createAdminClient } from '@/lib/supabase'
+import { flux2Enabled, flux2AssistanceOf } from '@/lib/cloture/gating'
+import { availableOutcomes, outcomeIsRem, DPR_END_CODES, OUTCOMES, type Outcome } from '@/lib/cloture/outcomes'
+import { parseComexKeys, transformTouring } from '@/lib/cloture/transform/touring'
+import { loginComex, getComexProviders } from '@/lib/touring/comex'
+import { findMotif } from '@/lib/cloture/motifs'
+import { branchOf, needsMotif }  from '@/lib/cloture/outcomes'
+
+export const dynamic     = 'force-dynamic'
+export const maxDuration = 60
+
+const MISSION_COLS = 'id, source, source_format, raw_content, mission_type, status, loaded_at, vr_proposed, ' +
+  'vehicle_vin, vehicle_mileage, incident_description, vehicle_brand, vehicle_model'
+
+async function loadContext(missionId: string, email: string) {
+  const sb = createAdminClient()
+  const { data: actor } = await sb.from('users')
+    .select('id, name, role, roles').eq('email', email).maybeSingle()
+  const { data: m } = await sb.from('incoming_missions').select(MISSION_COLS).eq('id', missionId).maybeSingle()
+  return { sb, actor, m }
+}
+
+// ── GET : de quoi peindre la page Action ──────────────────────────────────────
+export async function GET(req: Request, { params }: { params: { id: string } }) {
+  const session = await getServerSession(authOptions)
+  if (!session?.user?.email) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+  const { actor, m } = await loadContext(params.id, session.user.email)
+  if (!m) return NextResponse.json({ error: 'Mission introuvable' }, { status: 404 })
+  if (!(await flux2Enabled(actor as any, m as any))) {
+    return NextResponse.json({ error: 'Flux 2 non activé pour cette mission' }, { status: 403 })
+  }
+
+  // Sous-requête : garages proposés par Touring pour CE motif. Les codes panne
+  // pilotent la liste → on les résout ici, côté serveur (le client n'en voit aucun).
+  const url = new URL(req.url)
+  if (url.searchParams.get('garages')) {
+    const branch = url.searchParams.get('branch') as any
+    const motif  = branch ? findMotif(branch, String(url.searchParams.get('motifKey') || '')) : undefined
+    if (!motif) return NextResponse.json({ providers: [] })
+    const keys = parseComexKeys((m as any).raw_content)
+    if (!keys) return NextResponse.json({ providers: [] })
+    try {
+      const session = await loginComex('user')
+      const providers = await getComexProviders(session, keys, motif.touring)
+      return NextResponse.json({ providers })
+    } catch { return NextResponse.json({ providers: [] }) }
+  }
+
+  return NextResponse.json({
+    assistance: flux2AssistanceOf(m as any),
+    outcomes:   availableOutcomes(m as any).map(o => ({ key: o.key, label: o.label, icon: o.icon, group: o.group })),
+    dprCodes:   DPR_END_CODES,
+    fallback:   { vin: (m as any).vehicle_vin || '', km: (m as any).vehicle_mileage ?? '' },
+    description: (m as any).incident_description || '',
+  })
+}
+
+// ── POST : tronc commun + transformation assistance ──────────────────────────
+export async function POST(req: Request, { params }: { params: { id: string } }) {
+  const session = await getServerSession(authOptions)
+  if (!session?.user?.email) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+  const { sb, actor, m } = await loadContext(params.id, session.user.email)
+  if (!m) return NextResponse.json({ error: 'Mission introuvable' }, { status: 404 })
+  if (!(await flux2Enabled(actor as any, m as any))) {
+    return NextResponse.json({ error: 'Flux 2 non activé pour cette mission' }, { status: 403 })
+  }
+
+  const body     = await req.json().catch(() => ({}))
+  const outcome  = String(body?.outcome || '') as Outcome
+  if (!OUTCOMES[outcome]) return NextResponse.json({ error: 'Issue inconnue' }, { status: 400 })
+
+  const branch   = branchOf(outcome)
+  const motifKey = body?.motifKey ? String(body.motifKey) : null
+  if (needsMotif(outcome) && branch && (!motifKey || !findMotif(branch, motifKey))) {
+    return NextResponse.json({ error: 'Motif absent ou hors branche' }, { status: 400 })
+  }
+
+  // ── Tronc commun (collecté pour TOUTES les assistances, même si celle du jour
+  //    n'en demande qu'une partie — c'est de l'info précieuse pour le dispatch).
+  const common = body?.common || {}
+  const vin = String(common.vin || '').trim().toUpperCase() || null
+  const km  = common.km === '' || common.km == null ? null : Number(common.km)
+
+  // Chaque information va dans SA colonne — comme le fait déjà driver-action, qui
+  // éclate `closing_data` (payload, pas colonne) en champs réels de la fiche.
+  const patch: Record<string, any> = { updated_at: new Date().toISOString() }
+  if (vin) patch.vehicle_vin = vin
+  if (km != null && Number.isFinite(km)) patch.vehicle_mileage = km
+  if (common.vehicleLocation)            patch.vehicle_location  = String(common.vehicleLocation)
+  if (common.keyRecovered != null)       patch.key_recovered     = !!common.keyRecovered
+  if (common.keyLocation)                patch.key_location      = String(common.keyLocation)
+  if (common.remark)                     patch.closing_notes     = String(common.remark)
+  if (common.signaturePng)               patch.client_signature  = String(common.signaturePng)
+
+  // Transformation en remorquage : la fiche suit (type + destination), comme le
+  // fait déjà le flux actuel après une clôture +REM.
+  const dest = body?.destination
+  if (outcomeIsRem(outcome)) {
+    patch.mission_type = 'remorquage'
+    if (dest?.address) {
+      patch.destination_address = dest.address
+      if (Number.isFinite(dest.lat)) patch.destination_lat = dest.lat
+      if (Number.isFinite(dest.lng)) patch.destination_lng = dest.lng
+    }
+  }
+
+  await sb.from('incoming_missions').update(patch).eq('id', (m as any).id)
+
+  // ── Transformation propre à l'assistance ───────────────────────────────────
+  const assistance = flux2AssistanceOf(m as any)
+  let result: any = { ok: true, skipped: true }
+
+  let prefill: { cause: string; desc: string; result: string } | null = null
+  if (outcome === 'delivered') {
+    const { data: last } = await sb.from('mission_logs')
+      .select('metadata').eq('mission_id', (m as any).id).eq('action', 'touring_closed')
+      .order('created_at', { ascending: false }).limit(1).maybeSingle()
+    const md: any = (last as any)?.metadata
+    if (md?.cause && md?.desc && md?.result) prefill = { cause: md.cause, desc: md.desc, result: md.result }
+  }
+
+  if (assistance === 'touring') {
+    const keys = parseComexKeys((m as any).raw_content)
+    if (!keys) return NextResponse.json({ error: 'Clés Touring absentes de la fiche' }, { status: 400 })
+    result = await transformTouring(keys, {
+      outcome, motifKey, prefill,
+      dprCode: body?.dprCode ?? null,
+      vin, km,
+      toCidIntv: body?.toCidIntv ?? null,
+      manualAddress: body?.manualAddress ?? null,
+      comment: body?.comment ?? null,
+    })
+  }
+  // VAB / Kaze : leurs transformations viendront ici, gatées par leur propre flag.
+
+  // La clôture de l'ACTION DE SUIVI (même dossier, seq 200 → 201) se préremplit
+  // depuis le dernier log `touring_closed`. Sans cette trace au format attendu, le
+  // chauffeur devrait ré-encoder les codes sur la 2e jambe. Olivier 2026-08-07.
+  if (result.ok && assistance === 'touring' && result.codes) {
+    await sb.from('mission_logs').insert({
+      mission_id: (m as any).id,
+      actor_id:   (actor as any)?.id,
+      action:     'touring_closed',
+      notes:      `Clôture Touring (flux 2) — code ${result.finCode} (codes ${result.codes.cause}/${result.codes.desc}/${result.codes.result})`,
+      metadata: {
+        finCode: result.finCode, cause: result.codes.cause, desc: result.codes.desc, result: result.codes.result,
+        toCidIntv: body?.toCidIntv || null, km, vin,
+        statusBefore: result.statusBefore, statusAfter: result.statusAfter, flux2: true,
+      },
+    }).then(() => {}, () => {})
+  }
+
+  await sb.from('mission_logs').insert({
+    mission_id: (m as any).id,
+    actor_id:   (actor as any)?.id,
+    action:     result.ok ? 'flux2_closed' : 'flux2_close_failed',
+    notes: result.ok
+      ? `Clôture (flux 2) — ${OUTCOMES[outcome].label}${motifKey ? ` · ${motifKey}` : ''}`
+      : `Échec clôture (flux 2) — ${result.error || 'erreur inconnue'}`,
+    metadata: {
+      outcome, motifKey, assistance, result,
+      // Tronc commun consigné en entier : ce que l'assistance du jour n'exige pas
+      // reste lisible pour le dispatch (signature refusée, clé restée au client…).
+      common: {
+        signature: common.signature ?? null,        // 'signed' | 'refus' | 'absent'
+        keyRecovered: common.keyRecovered ?? null,
+        keyLocation: common.keyLocation ?? null,
+        vehicleLocation: common.vehicleLocation ?? null,
+        vin, km, remark: common.remark ?? null,
+      },
+    },
+  }).then(() => {}, () => {})
+
+  return NextResponse.json(result, { status: result.ok ? 200 : 502 })
+}

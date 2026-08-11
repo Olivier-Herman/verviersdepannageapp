@@ -22,6 +22,9 @@ import { T }    from '@/lib/i18n/T'
 import { useT } from '@/lib/i18n/I18nProvider'
 import TouringCloseModal from '@/components/touring/TouringCloseModal'
 import VabCloseModal from '@/components/vab/VabCloseModal'
+import SigPad from '@/components/mission/SigPad'
+import ActionScreen, { type OutcomeKey, type PriseEnCharge } from '@/components/cloture/ActionScreen'
+import CloseScreen, { type CloseCommon } from '@/components/cloture/CloseScreen'
 import {
   startForMission, updateForMission, endForMission,
   missionToLAState, isActiveMissionStatus,
@@ -83,7 +86,7 @@ interface Mission {
   awaiting_payment?: boolean | null
 }
 interface VrLoc { id: string; name: string; address: string; lat: number | null; lng: number | null; is_default?: boolean }
-interface Props { mission: Mission; currentUserId?: string; userRole?: string; isReadOnly?: boolean; navApp?: NavApp; defaultParcZone?: string | null; touringBeta?: boolean; parentClosingNote?: string | null }
+interface Props { mission: Mission; currentUserId?: string; userRole?: string; isReadOnly?: boolean; navApp?: NavApp; defaultParcZone?: string | null; touringBeta?: boolean; flux2?: boolean; parentClosingNote?: string | null }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 // Olivier 2026-06-18 : null-safe. Le defaut `= ''` ne couvre QUE undefined ;
@@ -285,96 +288,6 @@ function Stepper({ status, onSite, loaded, isRem, isRel }: {
 // ─── SigPad ───────────────────────────────────────────────────────────────────
 // Pad de signature : pointer events (touch + souris + stylet), fond blanc
 // fixe (papier), trait noir fixe (encre). Independant du theme dark/light.
-function SigPad({ onSave }: { onSave: (d: string) => void }) {
-  const ref = useRef<HTMLCanvasElement>(null)
-  const pen = useRef(false)
-  const last = useRef<{ x: number; y: number } | null>(null)
-  const [drawn, setDrawn] = useState(false)
-
-  // Initialise un fond blanc opaque sur le canvas (sinon toDataURL → fond
-  // transparent, ce qui peut etre illisible sur le PDF).
-  useEffect(() => {
-    const c = ref.current; if (!c) return
-    const ctx = c.getContext('2d')!
-    ctx.fillStyle = '#ffffff'
-    ctx.fillRect(0, 0, c.width, c.height)
-  }, [])
-
-  const getPos = (e: React.PointerEvent<HTMLCanvasElement>) => {
-    const c = ref.current!
-    const r = c.getBoundingClientRect()
-    return {
-      x: (e.clientX - r.left) / r.width  * c.width,
-      y: (e.clientY - r.top)  / r.height * c.height,
-    }
-  }
-  const down = (e: React.PointerEvent<HTMLCanvasElement>) => {
-    e.preventDefault()
-    ;(e.target as HTMLElement).setPointerCapture(e.pointerId)
-    const c = ref.current; if (!c) return
-    const ctx = c.getContext('2d')!
-    const p = getPos(e)
-    pen.current = true
-    last.current = p
-    // Petit point initial pour signer un simple tap
-    ctx.fillStyle = '#111111'
-    ctx.beginPath()
-    ctx.arc(p.x, p.y, 1.4, 0, Math.PI * 2)
-    ctx.fill()
-  }
-  const move = (e: React.PointerEvent<HTMLCanvasElement>) => {
-    if (!pen.current) return
-    e.preventDefault()
-    const c = ref.current; if (!c) return
-    const ctx = c.getContext('2d')!
-    const p = getPos(e)
-    if (!last.current) { last.current = p; return }
-    ctx.lineWidth   = 2.8
-    ctx.lineCap     = 'round'
-    ctx.lineJoin    = 'round'
-    ctx.strokeStyle = '#111111'
-    ctx.beginPath()
-    ctx.moveTo(last.current.x, last.current.y)
-    ctx.lineTo(p.x, p.y)
-    ctx.stroke()
-    last.current = p
-    setDrawn(true)
-  }
-  const up = (e: React.PointerEvent<HTMLCanvasElement>) => {
-    pen.current = false
-    last.current = null
-    try { (e.target as HTMLElement).releasePointerCapture(e.pointerId) } catch {}
-  }
-  const clear = () => {
-    const c = ref.current; if (!c) return
-    const ctx = c.getContext('2d')!
-    ctx.fillStyle = '#ffffff'
-    ctx.fillRect(0, 0, c.width, c.height)
-    setDrawn(false)
-  }
-  return (
-    <div>
-      <div className="border border rounded-xl overflow-hidden bg-white mb-3">
-        <canvas
-          ref={ref}
-          width={680}
-          height={260}
-          className="w-full touch-none"
-          style={{ aspectRatio: '680 / 260' }}
-          onPointerDown={down}
-          onPointerMove={move}
-          onPointerUp={up}
-          onPointerCancel={up}
-        />
-      </div>
-      <div className="flex gap-2">
-        <button onClick={clear} className="flex-1 py-2.5 bg-surface-hover text-ink-secondary rounded-xl text-sm">Effacer</button>
-        <button onClick={() => ref.current && onSave(ref.current.toDataURL('image/png'))} disabled={!drawn}
-          className="flex-1 py-2.5 bg-green-600 disabled:opacity-40 text-white rounded-xl text-sm font-medium">✅ Valider</button>
-      </div>
-    </div>
-  )
-}
 
 // ─── AddrInput ────────────────────────────────────────────────────────────────
 function AddrInput({ value, onChange, onPick, placeholder }: {
@@ -610,7 +523,7 @@ function BriefingTtsButton({ mission }: { mission: Mission }) {
 }
 
 // ─── Composant principal ──────────────────────────────────────────────────────
-export default function DriverClient({ mission: init, currentUserId, userRole, isReadOnly = false, navApp: initNav, defaultParcZone = null, touringBeta = false, parentClosingNote = null }: Props) {
+export default function DriverClient({ mission: init, currentUserId, userRole, isReadOnly = false, navApp: initNav, defaultParcZone = null, touringBeta = false, flux2 = false, parentClosingNote = null }: Props) {
   const canMatthieu = canUseMatthieu(userRole, currentUserId)
   const router = useRouter()
   const { t, lang } = useT()   // traductions FR/albanais pour les messages d'erreur (strings)
@@ -631,6 +544,14 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
 
   const [M, setM]               = useState<Mission>(init)
   const [screen, setScreen]     = useState<Screen>('main')
+  // ── FLUX 2 — clôture unifiée « Action ». Entièrement gaté par la prop `flux2`
+  //    (testeur ET assistance ouverte). Faux ⇒ pas un seul de ces écrans ne
+  //    s'affiche et tout le flux historique ci-dessous reste inchangé.
+  const [f2Screen, setF2Screen] = useState<'none' | 'action' | 'close'>('none')
+  const [f2Outcome, setF2Outcome] = useState<OutcomeKey | null>(null)
+  const [f2Prise, setF2Prise]     = useState<PriseEnCharge>(
+    init.source === 'sia_couvert' ? 'sia_couvert' : init.source === 'police_snc' ? 'police_snc' : 'standard')
+  const [f2Dpr, setF2Dpr]         = useState<{ code: string; label: string }[]>([])
   // Memorise l ecran d origine avant d entrer dans 'photos' pour pouvoir y
   // retourner apres save/retour. Sans ca, on revenait toujours sur 'main'
   // meme si on venait de 'close'.
@@ -2198,6 +2119,77 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
     park: ['bg-amber-500',  t('close.label_park')],
   }
   const [closeBg, closeLabel] = closeLabels[closeType] || ['bg-ink-faint', closeType.toUpperCase()]
+
+  // ── FLUX 2 : page « Action » puis clôture universelle ──────────────────────
+  // Gaté : sans `flux2`, rien de ce bloc ne peut s'afficher (f2Screen ne change
+  // jamais). Le reste du fichier — l'intégralité du flux actuel — est intact.
+  const f2Photos3 = (() => {
+    const cov: string[] = Array.isArray(M.photo_categories_covered) ? M.photo_categories_covered : []
+    return ['km', 'vehicule', 'vin'].every(c => cov.includes(c))
+  })()
+
+  if (flux2 && f2Screen === 'action') {
+    return (
+      <ActionScreen
+        missionId={M.id}
+        plate={M.vehicle_plate}
+        vehicle={[M.vehicle_brand, M.vehicle_model].filter(Boolean).join(' ')}
+        prise={f2Prise}
+        onPrise={async p => {
+          // Marqueur de TARIF, pas une issue : on reclasse la source et on relit la
+          // fiche (le montant Siabis est recalculé côté serveur). Surtout PAS
+          // setSiabisSource ici : il recharge la page et ferait perdre cet écran.
+          const prev = f2Prise
+          setF2Prise(p)
+          const newSource = p === 'standard' ? (init.source || 'touring') : p
+          if (M.source === newSource) return
+          try {
+            const r = await fetch(`/api/missions/${M.id}`, {
+              method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ source: newSource }),
+            })
+            if (!r.ok) throw new Error('patch')
+            const fresh = await fetch(`/api/missions/${M.id}`, { cache: 'no-store' }).then(x => x.json()).catch(() => null)
+            if (fresh?.mission) setM(fresh.mission)
+            else setM(prevM => ({ ...prevM, source: newSource }))
+          } catch { setF2Prise(prev); setErr('Impossible de changer la prise en charge') }
+        }}
+        onDprCodes={setF2Dpr}
+        onPick={o => { setF2Outcome(o); setF2Screen('close') }}
+        onBack={() => setF2Screen('none')}
+      />
+    )
+  }
+
+  if (flux2 && f2Screen === 'close' && f2Outcome) {
+    return (
+      <CloseScreen
+        missionId={M.id}
+        outcome={f2Outcome}
+        plate={M.vehicle_plate}
+        vehicle={[M.vehicle_brand, M.vehicle_model].filter(Boolean).join(' ')}
+        fallbackVin={(M as any).vehicle_vin || ''}
+        fallbackKm={(M as any).vehicle_mileage ?? ''}
+        photosDone={f2Photos3}
+        dprCodes={f2Dpr}
+        onNeedPhotos={() => { setF2Screen('none'); goPhotos('main') }}
+        onBack={() => setF2Screen('action')}
+        onDone={async r => {
+          // La transformation assistance est faite. On enchaîne sur la clôture
+          // VD Soft habituelle, préremplie — rien n'est perdu (photos, décharge,
+          // encaissement, parc) et le chauffeur n'a plus qu'à valider.
+          setF2Screen('none'); setF2Outcome(null)
+          if (r.common.remark) setCloseNote(r.common.remark)
+          if (r.common.signaturePng) setSig(r.common.signaturePng)
+          if (r.outcome === 'dpr')       { setCloseType('dpr');  setScreen('close'); return }
+          if (r.outcome === 'delivered') { setCloseType('rem');  setScreen('close'); return }
+          if (r.outcome === 'park')      { continuePark(); return }
+          if (r.outcome === 'rem' || r.outcome === 'rem_vr') { reloadMission(); return }
+          setCloseType('dsp'); setScreen('close')
+        }}
+      />
+    )
+  }
 
   // ══════════════════════════════════════════════════════════════════════════
   // ÉCRANS FULLSCREEN
@@ -4176,6 +4168,9 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
                   // Olivier 2026-06-24 : REM sans adresse de destination → on
                   // demande de l'encoder à l'arrivée avant de clôturer.
                   if (rem && !rel && !M.destination_address) { openDestPrompt('arrival'); return }
+                  // FLUX 2 : la jambe livraison se clôture aussi dans le flux unifié —
+                  // on migre des SCÉNARIOS ENTIERS, pas des bouts (Olivier 2026-08-11).
+                  if (flux2 && !rel) { setF2Outcome('delivered'); setF2Screen('close'); return }
                   // REM Touring avec action de suivi non clôturée : écran de clôture
                   // Touring (pré-rempli, seq actif) AVANT le résumé de clôture VD Soft.
                   // Olivier 2026-08-07.
@@ -4191,7 +4186,7 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
               {/* "Mise en parc" : pour REM seulement (une REL ramène DEPUIS le parc, pas vers).
                   Olivier 2026-07-03 : séparateur non-cliquable ("ou") + marge entre les
                   deux boutons → évite le fat-finger « Arrivé » ⇄ « Mise en parc ». */}
-              {!rel && (
+              {!flux2 && !rel && (
                 <>
                   <div aria-hidden="true"
                     className="flex items-center gap-3 py-3 my-1 select-none pointer-events-none">
@@ -4220,11 +4215,36 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
             </>
           )}
 
+          {/* FLUX 2 — un seul bouton une fois sur place : « Action » ouvre la page
+              d'issues. Photos garde son raccourci (sans photo du châssis, pas de
+              lecture automatique du VIN) et « Autres » garde décharge, encaissement
+              et avance de fonds. Olivier 2026-08-11. */}
+          {flux2 && onSite && !['completed', 'to_invoice', 'parked'].includes(M.status) && (
+            <>
+              <button onClick={() => setF2Screen('action')}
+                className="w-full py-4 bg-brand text-white font-bold rounded-2xl text-base">
+                ⚡ Action
+              </button>
+              <div className="grid grid-cols-2 gap-2">
+                <button onClick={() => goPhotos('main')}
+                  className={`py-3 rounded-2xl text-sm font-semibold border ${
+                    f2Photos3 ? 'bg-surface border text-ink-secondary' : 'bg-surface border-orange-500/60 text-orange-500'
+                  }`}>
+                  📷 Photos {f2Photos3 ? '✓' : ''}
+                </button>
+                <button onClick={() => setShowGrid(true)}
+                  className="py-3 bg-surface border border text-ink-secondary rounded-2xl text-sm font-semibold">
+                  ☰ Autres
+                </button>
+              </div>
+            </>
+          )}
+
           {/* DSP : sur place → photos / terminer (pas de chargement).
               Olivier 2026-06-02 : pour mission_type='trajet_vide' (DPR ou
               Mal Garee deplacement_paye), on ne charge pas et on ne depanne
               pas → pas de photos requises, bouton Terminer direct. */}
-          {!rem && onSite && M.status !== 'completed' && (
+          {!flux2 && !rem && onSite && M.status !== 'completed' && (
             <>
               {M.mission_type !== 'trajet_vide' && totPh < 3 && (
                 <button onClick={() => goPhotos('main')}
@@ -4261,7 +4281,7 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
           )}
 
           {/* Bouton secondaire — Actions (DPR, photos, etc.) toujours accessible quand on est sur place ou plus avancé */}
-          {(onSite || M.status === 'parked' || M.status === 'delivering' || loaded) && (
+          {!flux2 && (onSite || M.status === 'parked' || M.status === 'delivering' || loaded) && (
             <button onClick={() => setShowGrid(true)}
               className="w-full py-3 bg-surface border border hover:border-zinc-600 text-ink-secondary hover:text-ink font-medium rounded-2xl text-sm flex items-center justify-center gap-2">
               <T k="mission_detail.btn_other_actions" />
@@ -4342,7 +4362,7 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
               {/* DSP↔REM. Pour un DSP source Touring : on clôture d'abord la fiche
                   dépannage +REM (02) / +REM+VR (03) chez Touring (vrai écran), la jambe
                   remorquage part au dispatch ; onTouringDone enchaîne sur le change_type. */}
-              <button onClick={() => {
+              {!flux2 && <button onClick={() => {
                   if (rem) { changeType('DSP'); return }
                   if (isTouringComex) { setTouringAction('dsp2rem'); setShowTouringClose(true); return }
                   openDestPrompt('rem')
@@ -4352,17 +4372,17 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
                 <span className="text-sm font-medium text-blue-400">
                   {rem ? <T k="mission_detail.action_swap_to_dsp" /> : <T k="mission_detail.action_swap_to_rem" />}
                 </span>
-              </button>
+              </button>}
               {/* Reclasser en Siabis (Olivier 2026-06-21) — si le dispatch a oublié
                   de typer la mission. Affiche le bouton de l'AUTRE variante. */}
-              {M.source !== 'police_snc' && (
+              {!flux2 && M.source !== 'police_snc' && (
                 <button onClick={() => setSiabisSource('police_snc')} disabled={loading}
                   className="rounded-2xl py-5 flex flex-col items-center justify-center gap-2 border bg-orange-600/10 border-orange-600/30 transition active:scale-95 disabled:opacity-50">
                   <span className="text-2xl">🚨</span>
                   <span className="text-sm font-medium text-orange-400 text-center leading-tight">Siabis NON couvert</span>
                 </button>
               )}
-              {M.source !== 'sia_couvert' && (
+              {!flux2 && M.source !== 'sia_couvert' && (
                 <button onClick={() => setSiabisSource('sia_couvert')} disabled={loading}
                   className="rounded-2xl py-5 flex flex-col items-center justify-center gap-2 border bg-teal-600/10 border-teal-600/30 transition active:scale-95 disabled:opacity-50">
                   <span className="text-2xl">🚨</span>
@@ -4370,7 +4390,7 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
                 </button>
               )}
               {/* Mise en parc (REM uniquement) */}
-              {rem && (
+              {!flux2 && rem && (
                 <button onClick={() => { setShowGrid(false); if (isTouringComex) { setTouringAction('park'); setShowTouringClose(true); return } if (isDispatchRem) { openDestPrompt('park') } else { setShowPark(true) } }}
                   className="rounded-2xl py-5 flex flex-col items-center justify-center gap-2 border bg-amber-600/10 border-amber-600/30 transition active:scale-95">
                   <span className="text-2xl">🅿️</span>
@@ -4387,17 +4407,17 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
                 </button>
               )}
               {/* DPR — ouvre la modal motif avant de basculer */}
-              <button onClick={() => { setShowGrid(false); setDprFromRem(false); setDprToPark(false); setDprMotif(''); setDprMotifAutre(''); setShowDprMotif(true) }}
+              {!flux2 && <button onClick={() => { setShowGrid(false); setDprFromRem(false); setDprToPark(false); setDprMotif(''); setDprMotifAutre(''); setShowDprMotif(true) }}
                 className="rounded-2xl py-5 flex flex-col items-center justify-center gap-2 border bg-surface border transition active:scale-95">
                 <span className="text-2xl">❌</span>
                 <span className="text-sm font-medium text-ink-secondary"><T k="mission_detail.action_dpr" /></span>
-              </button>
+              </button>}
               {/* Terminer */}
-              <button onClick={() => { setShowGrid(false); setCloseType(rem ? 'rem' : 'dsp'); setScreen('close') }}
+              {!flux2 && <button onClick={() => { setShowGrid(false); setCloseType(rem ? 'rem' : 'dsp'); setScreen('close') }}
                 className="col-span-2 rounded-2xl py-5 flex flex-col items-center justify-center gap-2 border bg-brand border-brand transition active:scale-95">
                 <span className="text-2xl">🏁</span>
                 <span className="text-sm font-bold text-ink"><T k="mission_detail.action_finish" /></span>
-              </button>
+              </button>}
             </div>
           </div>
         </div>
