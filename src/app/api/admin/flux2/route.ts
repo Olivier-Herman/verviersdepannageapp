@@ -33,7 +33,9 @@ export async function GET() {
   const { sb } = g
 
   const [{ data: drivers }, { data: cat }, { data: grid }] = await Promise.all([
-    sb.from('users').select('id, name, email, role, roles, is_active')
+    // ⚠️ la colonne s'appelle `active`, pas `is_active` : la mauvaise version
+    // renvoyait un 400 PostgREST et donc « aucun chauffeur trouvé ».
+    sb.from('users').select('id, name, email, role, roles, active')
       .or('role.in.(driver,chauffeur),roles.ov.{driver,chauffeur}')
       .order('name'),
     sb.from('mission_source_catalog').select('key, label').in('key', SUPPORTED as any),
@@ -47,7 +49,7 @@ export async function GET() {
 
   return NextResponse.json({
     assistances,
-    drivers: (drivers || []).filter((d: any) => d.is_active !== false)
+    drivers: (drivers || []).filter((d: any) => d.active !== false)
       .map((d: any) => ({ id: d.id, name: d.name || d.email })),
     enabled,
   })
