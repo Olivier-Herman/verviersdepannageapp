@@ -173,10 +173,19 @@ async function resolveClientKey(
  * Si la date tombe un jour ferie BE, on utilise les regles du dimanche (weekday=7)
  * en signalant 'Dimanche (ferie)'.
  */
+/** Une relivraison ne porte JAMAIS de majoration, même exécutée en heures
+ *  majorées (nuit / week-end / férié). Olivier 2026-08-11. */
+export function isRelivraisonMission(m: { mission_type?: string | null }): boolean {
+  return (m.mission_type || '').toLowerCase().trim() === 'relivraison'
+}
+
 export async function getApplicableSurcharges(
   mission: MinimalMission,
   at:      Date,
 ): Promise<ApplicableSurcharge[]> {
+  // Relivraison → aucune majoration possible, quelle que soit l'heure.
+  if (isRelivraisonMission(mission)) return []
+
   const sb = createAdminClient()
 
   // 1. Charger les clients actifs + le flag apply_surcharges du catalog
