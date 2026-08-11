@@ -12,6 +12,9 @@
 import type { Browser, Page } from 'puppeteer-core'
 
 const BASE = 'https://comet.vab.be'
+// ⚠️ UA desktop OBLIGATOIRE : avec l'UA headless par défaut, VAB renvoie le
+// navigateur sur www.vab.be/404 en boucle (jamais le formulaire de login).
+const DESKTOP_UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36'
 const detailsUrl = (assignmentId: string) =>
   `${BASE}/Comet/BreakdownAssignments_Details.aspx?AssignmentId=${assignmentId}`
 
@@ -48,23 +51,33 @@ async function loginInBrowser(page: Page): Promise<void> {
   const password = process.env.VAB_PASSWORD
   if (!email || !password) throw new Error('VAB_EMAIL / VAB_PASSWORD requis')
   // Entrée par Home.aspx → VAB enchaîne des redirections JS (Home→NoPermission→
-  // Login) qui détruisent le contexte : on POLL le champ user (tolérant aux navs)
-  // plutôt qu'un waitForSelector qui casse.
-  await page.goto(`${BASE}/Comet/Home.aspx`, { waitUntil: 'domcontentloaded', timeout: 30000 }).catch(() => {})
+  // Login) qui détruisent le contexte : on POLL le champ user (tolérant aux navs),
+  // avec retry externe complet (la course de redirection est intermittente).
+  const sleep = (ms: number) => new Promise(r => setTimeout(r, ms))
   let userField = null
-  for (let i = 0; i < 15 && !userField; i++) {
-    await new Promise(r => setTimeout(r, 1200))
-    try { userField = await page.$('input[id*="wtUserNameInput"]') } catch { /* nav en cours */ }
+  for (let attempt = 0; attempt < 3 && !userField; attempt++) {
+    await page.goto(`${BASE}/Comet/Home.aspx`, { waitUntil: 'domcontentloaded', timeout: 30000 }).catch(() => {})
+    for (let i = 0; i < 25 && !userField; i++) {
+      await sleep(1000)
+      try { userField = await page.$('input[id*="wtUserNameInput"]') } catch { /* nav en cours */ }
+    }
   }
   if (!userField) throw new Error('formulaire de login VAB introuvable (redirections)')
-  await page.type('input[id*="wtUserNameInput"]', email)
-  await page.type('input[id*="wtPasswordInput"]', password)
+  // Stabiliser avant de taper (une nav peut encore se poser juste après l'apparition).
+  await sleep(1500)
+  for (let t = 0; t < 3; t++) {
+    try {
+      await page.click('input[id*="wtUserNameInput"]'); await page.keyboard.type(email)
+      await page.click('input[id*="wtPasswordInput"]'); await page.keyboard.type(password)
+      break
+    } catch { await sleep(1500) }
+  }
   await Promise.all([
     page.waitForNavigation({ waitUntil: 'domcontentloaded', timeout: 30000 }).catch(() => {}),
-    page.click('a[id*="wtLoginButton"], input[id*="wtLoginButton"]'),
+    page.click('a[id*="wtLoginButton"], input[id*="wtLoginButton"]').catch(() => {}),
   ])
   // Laisser la redirection post-login (→ Assignments) se poser.
-  await new Promise(r => setTimeout(r, 2000))
+  await sleep(2500)
 }
 
 async function clearAndType(page: Page, selector: string, value: string): Promise<boolean> {
@@ -95,6 +108,23 @@ async function drawSignature(page: Page): Promise<boolean> {
   return len > 50
 }
 
+/** Popup « VIN inconnu » (Non-concordance châssis) = IFRAME → cliquer « Oui »
+ *  DANS la frame (sinon la modale reste ouverte et masque le canvas). */
+async function clickOuiInFrames(page: Page): Promise<boolean> {
+  for (const fr of page.frames()) {
+    try {
+      const clicked = await fr.evaluate(() => {
+        const el = [...document.querySelectorAll('a,button')].find(e =>
+          /^oui$/i.test((e.textContent || '').trim()) || /YesButton/i.test((e as HTMLElement).id || ''))
+        if (el) { (el as HTMLElement).click(); return true }
+        return false
+      })
+      if (clicked) return true
+    } catch { /* frame détachée */ }
+  }
+  return false
+}
+
 /** Clique un lien/bouton OutSystems par son texte visible (OsAjax gère le postback). */
 async function clickByText(page: Page, src: string): Promise<boolean> {
   const handle = await page.evaluateHandle((rxSrc) => {
@@ -122,6 +152,7 @@ export async function vabCloseOnSiteBrowser(opts: {
   try {
     browser = await launchBrowser()
     const page = await browser.newPage()
+    await page.setUserAgent(DESKTOP_UA)
     await loginInBrowser(page)
     await page.goto(detailsUrl(opts.assignmentId), { waitUntil: 'domcontentloaded', timeout: 30000 })
 
@@ -149,15 +180,21 @@ export async function vabCloseOnSiteBrowser(opts: {
           })
           await new Promise(r => setTimeout(r, 500))
           await clickByText(page, 'vérifier|verifier|check')
-          await new Promise(r => setTimeout(r, 1500))
-          const clickedOui = await clickByText(page, '^oui$|^yes$')
+          await new Promise(r => setTimeout(r, 3000))
+          // Popup « Non-concordance châssis » = IFRAME → cliquer « Oui » dedans
+          // (bypass VIN inconnu). Sinon la modale masque le canvas → dessin bloqué.
+          let clickedOui = false
+          for (let t = 0; t < 8 && !clickedOui; t++) {
+            clickedOui = await clickOuiInFrames(page)
+            if (!clickedOui) await new Promise(r => setTimeout(r, 1000))
+          }
           if (!clickedOui) {
             await page.evaluate(() => {
               const cb = document.querySelector('input[type=checkbox][id*="wt20"]') as HTMLInputElement | null
               if (cb && !cb.checked) cb.click()
             })
           }
-          await new Promise(r => setTimeout(r, 800))
+          await new Promise(r => setTimeout(r, 2500))
           steps.push('vin+verifier')
         }
       } else { steps.push('vin déjà validé') }
