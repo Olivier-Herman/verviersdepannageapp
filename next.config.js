@@ -24,6 +24,11 @@ const nextConfig = {
   images: {
     domains: ["app.verviersdepannage.com"],
     unoptimized: true
+  },
+  experimental: {
+    // Clôture VAB : ces packages navigateur ne doivent pas être bundlés par Next
+    // (binaire Chromium chargé au runtime). Cf src/lib/vab/sign-browser.ts.
+    serverComponentsExternalPackages: ["puppeteer-core", "@sparticuz/chromium", "puppeteer"]
   }
 };
 

@@ -21,6 +21,7 @@
     "@dnd-kit/utilities": "^3.2.2",
     "@hookform/resolvers": "^3.9.0",
     "@react-pdf/renderer": "^4.5.1",
+    "@sparticuz/chromium": "^149.0.0",
     "@supabase/ssr": "^0.4.0",
     "@supabase/supabase-js": "^2.44.4",
     "@types/jsonwebtoken": "^9.0.10",
@@ -43,6 +44,7 @@
     "next-pwa": "^5.6.0",
     "pdf-lib": "^1.17.1",
     "postcss": "^8.4.39",
+    "puppeteer-core": "^25.5.0",
     "qrcode": "^1.5.4",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
@@ -62,6 +64,7 @@
     "@types/bcryptjs": "^2.4.4",
     "@types/web-push": "^3.6.4",
     "eslint": "^8.57.0",
-    "eslint-config-next": "14.2.5"
+    "eslint-config-next": "14.2.5",
+    "puppeteer": "^25.5.0"
   }
 }
