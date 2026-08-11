@@ -175,6 +175,19 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   if (common.remark)                     patch.closing_notes     = String(common.remark)
   if (common.signaturePng)               patch.client_signature  = String(common.signaturePng)
 
+  // Motif de panne : donnée VD Soft, quelle que soit l'assistance. Pour Touring et
+  // VAB il alimente aussi leurs codes ; pour Kaze, Allianz et le privé il n'existe
+  // aucun référentiel externe — il documente la fiche et s'arrête là.
+  const chosenMotif = branch && motifKey ? findMotif(branch, motifKey) : undefined
+  if (chosenMotif) {
+    patch.panne_motif       = chosenMotif.key
+    patch.panne_motif_label = chosenMotif.label
+  } else if (outcome === 'dpr' && body?.dprCode) {
+    const d = DPR_END_CODES.find(x => x.code === String(body.dprCode))
+    patch.panne_motif       = `dpr_${body.dprCode}`
+    patch.panne_motif_label = d?.label || 'Déplacement pour rien'
+  }
+
   // Transformation en remorquage : la fiche suit (type + destination), comme le
   // fait déjà le flux actuel après une clôture +REM.
   const dest = body?.destination
@@ -255,7 +268,19 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     try { const { waitUntil } = await import('@vercel/functions'); waitUntil(vabTask) } catch { /* hors Vercel */ }
     result = { ok: true, queuedVab: true }
   }
-  // Kaze : sa transformation viendra ici, gatée par son propre flag.
+  // ── Kaze / Allianz : PAS de transformation externe ────────────────────────
+  // Leur clôture réelle ne se joue pas ici et ne doit surtout pas être doublée :
+  //   • Kaze est synchronisé par `driver-action` (advanceKazeMissionForAction :
+  //     on_way→step1, on_site→step3, completed/park→step9 = clôture complète) —
+  //     code strictement inchangé ;
+  //   • Allianz se clôture à la FACTURATION via Hexalite, pas par le chauffeur.
+  // Le flux 2 n'ajoute donc que les écrans devant : on enregistre le motif de
+  // panne et le tronc commun dans VD Soft (déjà fait ci-dessus), et on rend la
+  // main. Le chauffeur enchaîne sur l'écran de clôture habituel, qui déclenche
+  // driver-action — c'est LUI qui parle à Kaze. Olivier 2026-08-11.
+  else if (assistance === 'kaze' || assistance === 'allianz') {
+    result = { ok: true, skipped: 'aucune plateforme à appeler', internalOnly: true }
+  }
 
   // La clôture de l'ACTION DE SUIVI (même dossier, seq 200 → 201) se préremplit
   // depuis le dernier log `touring_closed`. Sans cette trace au format attendu, le
@@ -288,6 +313,8 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     action:     result.ok ? 'flux2_closed' : 'flux2_close_failed',
     notes: !result.ok
       ? `Échec clôture (flux 2) — ${result.error || 'erreur inconnue'}`
+      : (result as any).internalOnly
+        ? `Clôture (flux 2) — ${OUTCOMES[outcome].label}${patch.panne_motif_label ? ` · ${patch.panne_motif_label}` : ''} — panne enregistrée dans VD Soft (${assistance} se clôture par son propre canal)`
       : queued
         ? `Clôture (flux 2) — ${OUTCOMES[outcome].label}${motifKey ? ` · ${motifKey}` : ''} — ⏳ ${assistance ?? 'assistance'} injoignable : mise en file, rattrapage automatique`
         : skipAssistance
