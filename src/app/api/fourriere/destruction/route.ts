@@ -8,7 +8,8 @@
 //
 // POST /api/fourriere/destruction
 //   Body : { mission_ids: string[], format?: 'xlsx' | 'pdf' }
-//   - passe les missions en status='completed' + scratched_at (tampon EPAVE)
+//   - passe les missions en status='cancelled', motif 'Scratch AVP' + date
+//     (+ scratched_at conserve comme tampon EPAVE technique)
 //   - libere la place dans le parc
 //   - genere le rapport (xlsx ou pdf) avec frais arretes a la date de sortie
 //   - envoie le rapport en piece jointe a avp@verviers.be (boite Ville) depuis
@@ -157,21 +158,26 @@ export async function POST(req: Request) {
 
   const now = new Date().toISOString()
   const destructionDate = fmtDate(now)
-  const actorId = (access.user as any).id
+  const actorId   = (access.user as any).id
+  const actorName = (access.user as any).name || (access.user as any).email || 'inconnu'
+  const CANCEL_REASON = 'Scratch AVP'
 
-  // 1. Update : completed + tampon EPAVE (scratched_at) + sans frais
-  const epaveNote = `ÉPAVE — sortie le ${destructionDate}`
+  // 1. Update : ANNULE (motif 'Scratch AVP' + date) + tampon EPAVE (scratched_at)
+  //    Le vehicule n est pas "termine" mais SORTI/scratch → status='cancelled'.
+  const epaveNote = `Scratch AVP — sortie le ${destructionDate}`
   await sb
     .from('incoming_missions')
     .update({
-      status:           'completed',
+      status:           'cancelled',
+      cancelled_reason: CANCEL_REASON,
+      cancelled_at:     now,
+      cancelled_by:     actorName,
       scratched_at:     now,
       scratched_by:     actorId,
       closing_notes:    epaveNote,
       no_charge_at:     now,
       no_charge_reason: 'Sortie AVP en épave (> 60j, accord Ville de Verviers)',
       no_charge_by:     actorId,
-      completed_at:     now,
       released_at:      now,
       released_by:      actorId,
       updated_at:       now,
@@ -182,13 +188,13 @@ export async function POST(req: Request) {
       await sb
         .from('incoming_missions')
         .update({
-          status:           'completed',
+          status:           'cancelled',
+          cancelled_reason: CANCEL_REASON,
+          cancelled_at:     now,
+          cancelled_by:     actorName,
           scratched_at:     now,
           scratched_by:     actorId,
           closing_notes:    epaveNote,
-          no_charge_at:     now,
-          no_charge_reason: 'Sortie AVP en épave (> 60j, accord Ville de Verviers)',
-          no_charge_by:     actorId,
         })
         .in('id', missionIds)
     })
