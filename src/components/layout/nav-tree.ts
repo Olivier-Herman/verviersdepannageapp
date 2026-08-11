@@ -141,6 +141,19 @@ export const NAV_TREE: NavModule[] = [
   },
 ]
 
+/**
+ * Raccourcis épinglés en haut du menu : ils restent visibles aux DEUX niveaux
+ * (ils ne glissent pas avec les panes). Réservé à ce qu'on utilise tout le temps,
+ * quel que soit le module où on se trouve.
+ *
+ * Un raccourci peut être un simple lien (Recherche) OU un module à sections
+ * (Dispatch, Facturation) : dans ce cas il garde son chevron et fait glisser le
+ * menu vers ses sections. On désigne le raccourci par la page d'atterrissage du
+ * module. Ajouter un raccourci = ajouter son href ici ; les permissions du user
+ * sont respectées (un raccourci auquel il n'a pas droit n'apparaît pas).
+ */
+export const PINNED_HREFS = ['/recherche', '/dispatch', '/facturation']
+
 /** Hrefs de NAV_ITEMS déjà couverts par un module de l'arbre (ne pas re-lister à plat). */
 const COVERED = new Set(
   NAV_TREE.flatMap(m => (m.sections || []).map(s => s.requires)),
@@ -212,6 +225,26 @@ export function buildNavTree(visible: NavItem[], userRole: string, userModules: 
   }
 
   return modules.sort((a, b) => a.order - b.order).map(m => m.mod)
+}
+
+/** Page d'atterrissage d'un module (lien direct, ou 1re section pour un groupe). */
+export function landingHref(mod: BuiltModule): string | undefined {
+  return mod.href ?? mod.visibleSections[0]?.href
+}
+
+/**
+ * Sépare les raccourcis épinglés (zone fixe en haut) du reste du menu (les panes
+ * qui glissent). Les raccourcis sortent dans l'ordre de PINNED_HREFS.
+ */
+export function splitPinned(modules: BuiltModule[]): { pinned: BuiltModule[]; rest: BuiltModule[] } {
+  const isPinned = (mod: BuiltModule) => {
+    const href = landingHref(mod)
+    return !!href && PINNED_HREFS.includes(href)
+  }
+  const pinned = PINNED_HREFS
+    .map(href => modules.find(m => landingHref(m) === href))
+    .filter((m): m is BuiltModule => !!m)
+  return { pinned, rest: modules.filter(m => !isPinned(m)) }
 }
 
 /** Le module correspondant à l'URL courante (pour ouvrir la bonne pane / surligner). */
