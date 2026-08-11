@@ -10,8 +10,16 @@
 // ailleurs (validation fiche / assignation chauffeur).
 
 import { createAdminClient } from '@/lib/supabase'
-import { sendNotificationToRoles } from '@/lib/notifications/send'
+import { sendNotification, sendNotificationToRoles } from '@/lib/notifications/send'
 import { getMissions, filterActionable, getMission } from './goassist'
+
+// Statuts VD Soft où le chauffeur EST PARTI (en route / sur place / livraison) :
+// une annulation AXA à ce stade = trajet à vide à facturer (déplacement compté).
+// En deçà (new/dispatching/assigned/accepted) = pas encore parti → annulation simple.
+// Même règle que Kaze/Allianz (Olivier 2026-08-11).
+const AXA_STARTED_STATUSES = ['in_progress', 'delivering']
+// États terminaux : on ne touche pas.
+const AXA_TERMINAL_STATUSES = ['completed', 'to_invoice', 'invoiced', 'cancelled', 'ignored', 'parked']
 
 export type ImportMode = 'preview' | 'send'
 
@@ -146,6 +154,72 @@ export async function runAxaImport({ mode = 'preview' }: { mode?: ImportMode } =
     }
   }
 
+  // Réconciliation des annulations (règle Allianz/Kaze) — même en preview on
+  // NE touche RIEN si mode !== 'send'.
+  if (mode === 'send') {
+    try { await reconcileAxaCancellations(sb, all) }
+    catch (e: any) { errors.push(`reconcile: ${e?.message || 'exception'}`) }
+  }
+
   const news = awaiting.filter(m => m.status === 'New').length
   return { ok: errors.length === 0, mode, awaiting: awaiting.length, news, items, imported, skipped, errors }
+}
+
+/**
+ * Annulations AXA (règle Allianz/Kaze) : pour chaque fiche AXA ouverte chez nous
+ * dont la mission go&assist est passée à `Cancelled`/`Refused` :
+ *   - chauffeur PAS parti (new/dispatching/assigned/accepted) → annulation simple ;
+ *   - chauffeur PARTI (in_progress/delivering) → trajet à vide (fiche GARDÉE +
+ *     lien go&assist conservé pour clôture avec pointages en MovementForNothing).
+ */
+async function reconcileAxaCancellations(sb: ReturnType<typeof createAdminClient>, missions: any[]): Promise<void> {
+  // Statut go&assist courant par missionOrderId.
+  const gaStatus = new Map<string, string>()
+  for (const m of missions) if (m.missionOrderId) gaStatus.set(m.missionOrderId, m.status)
+
+  // Fiches AXA ouvertes chez nous (non terminales).
+  const { data: openFiches } = await sb
+    .from('incoming_missions')
+    .select('id, external_id, status, assigned_to, mission_type, mission_number')
+    .eq('source', 'axa')
+    .not('status', 'in', `(${AXA_TERMINAL_STATUSES.join(',')})`)
+  if (!openFiches?.length) return
+
+  for (const f of openFiches) {
+    if (!f.external_id) continue
+    const gs = gaStatus.get(f.external_id)
+    if (gs !== 'Cancelled' && gs !== 'Refused') continue // annulée seulement si go&assist l'a annulée/refusée
+
+    const num = f.mission_number ? `#${f.mission_number}` : ''
+
+    if (AXA_STARTED_STATUSES.includes(f.status)) {
+      // ── Chauffeur parti → trajet à vide (fiche gardée, lien conservé) ────────
+      await sb.from('incoming_missions')
+        .update({ mission_type: 'trajet_vide', updated_at: new Date().toISOString() })
+        .eq('id', f.id)
+      await sb.from('mission_logs').insert({
+        mission_id: f.id, action: 'cancelled_by_axa_after_start',
+        notes: `Annulée par AXA (go&assist : ${gs}) après départ chauffeur → trajet à vide à facturer.`,
+        metadata: { mission_order_id: f.external_id, previous_status: f.status, original_mission_type: f.mission_type, ga_status: gs },
+      }).then(() => {}, () => {})
+      const payload = {
+        title: 'Mission AXA annulée', body: `La mission ${num} a été annulée par AXA après ton départ. Trajet à vide à facturer.`,
+        mission_id: f.id, action_url: `/dispatch/${f.id}`,
+      }
+      if (f.assigned_to) await sendNotification(f.assigned_to, 'axa_cancelled_after_start', {
+        ...payload, body: `La mission ${num} vient d'être annulée par AXA. Fais demi-tour — trajet à vide.`,
+      }).catch(() => {})
+      await sendNotificationToRoles(['dispatcher', 'admin', 'superadmin'], 'axa_cancelled_after_start', payload).catch(() => {})
+    } else {
+      // ── Pas encore parti → annulation simple ────────────────────────────────
+      await sb.from('incoming_missions')
+        .update({ status: 'cancelled', updated_at: new Date().toISOString() })
+        .eq('id', f.id)
+      await sb.from('mission_logs').insert({
+        mission_id: f.id, action: 'cancelled_by_axa',
+        notes: `Annulée par AXA (go&assist : ${gs}) avant départ chauffeur.`,
+        metadata: { mission_order_id: f.external_id, previous_status: f.status, ga_status: gs },
+      }).then(() => {}, () => {})
+    }
+  }
 }

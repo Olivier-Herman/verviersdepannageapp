@@ -62,6 +62,14 @@ export const NOTIFICATION_TYPES: readonly NotificationType[] = [
     applicableRoles: ['dispatcher', 'admin', 'superadmin'],
     defaultEnabled:  true,
   },
+  {
+    key:             'axa_cancelled_after_start',
+    label:           'Mission AXA annulée (chauffeur parti)',
+    description:     'Une mission AXA a été annulée alors que le chauffeur était en route → trajet à vide à facturer.',
+    category:        'dispatcher',
+    applicableRoles: ['driver', 'dispatcher', 'admin', 'superadmin'],
+    defaultEnabled:  true,
+  },
 
   // ── Chauffeur ────────────────────────────────────────────────────────
   {
