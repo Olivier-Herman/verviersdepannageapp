@@ -74,11 +74,30 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
   const pm: any = (prev as any)?.metadata
   const hasPrefill = !!(pm?.cause && pm?.desc && pm?.result)
 
+  // Codes de fin réellement autorisés par l'assistance sur CE dossier (déjà présents
+  // dans le detail COMEX stocké). On n'affiche pas une issue que Touring refusera :
+  // mieux vaut ne pas la proposer que de la faire échouer sous le pouce du chauffeur.
+  // Ex. réel : une jambe REM autorise 00/07 mais PAS 05 → « Mise en parc » masquée.
+  let allowedFins: string[] = []
+  try {
+    const raw = JSON.parse((m as any).raw_content || '{}')
+    allowedFins = String(raw?.LST_CODE_END_MIS || '').split(';').map((x: string) => x.trim()).filter(Boolean)
+  } catch { /* raw_content non JSON → on n'impose rien */ }
+
+  const outcomes = availableOutcomes(m as any)
+    .filter(o => allowedFins.length === 0 || o.fin === null || allowedFins.includes(o.fin))
+  const dprCodes = allowedFins.length === 0
+    ? DPR_END_CODES
+    : DPR_END_CODES.filter(d => allowedFins.includes(d.code))
+
   return NextResponse.json({
     hasPrefill,
+    allowedFins,
     assistance: flux2AssistanceOf(m as any),
-    outcomes:   availableOutcomes(m as any).map(o => ({ key: o.key, label: o.label, icon: o.icon, group: o.group })),
-    dprCodes:   DPR_END_CODES,
+    outcomes:   outcomes
+      .filter(o => o.key !== 'dpr' || dprCodes.length > 0)
+      .map(o => ({ key: o.key, label: o.label, icon: o.icon, group: o.group })),
+    dprCodes,
     fallback:   { vin: (m as any).vehicle_vin || '', km: (m as any).vehicle_mileage ?? '' },
     description: (m as any).incident_description || '',
   })

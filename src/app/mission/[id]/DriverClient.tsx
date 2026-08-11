@@ -2123,9 +2123,13 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
   // ── FLUX 2 : page « Action » puis clôture universelle ──────────────────────
   // Gaté : sans `flux2`, rien de ce bloc ne peut s'afficher (f2Screen ne change
   // jamais). Le reste du fichier — l'intégralité du flux actuel — est intact.
+  // Règle : 3 photos minimum (véhicule, châssis, compteur). Les catégories sont un
+  // GUIDE, pas un péage : un chauffeur qui a déjà 3 photos ou plus n'est pas renvoyé
+  // les refaire — sinon on bloque quelqu'un qui a fait le travail. Olivier 2026-08-11.
   const f2Photos3 = (() => {
     const cov: string[] = Array.isArray(M.photo_categories_covered) ? M.photo_categories_covered : []
-    return ['km', 'vehicule', 'vin'].every(c => cov.includes(c))
+    if (['km', 'vehicule', 'vin'].every(c => cov.includes(c))) return true
+    return totPh >= 3
   })()
 
   if (flux2 && f2Screen === 'action') {
