@@ -83,7 +83,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     ? await sb.from('users').select('id').eq('email', actorEmail).single()
     : { data: null as any }
 
-  const cols = 'id, mission_number, source, status, billed_to_id, billed_to_name, dossier_number, amount_guaranteed, client_name, client_phone, driver_photos, remarks_general, merged_into_mission_id, vehicle_plate, received_at, assigned_to, parc_zone_key, destination_name, destination_address, destination_lat, destination_lng'
+  const cols = 'id, mission_number, source, status, billed_to_id, billed_to_name, dossier_number, amount_guaranteed, client_name, client_phone, driver_photos, remarks_general, merged_into_mission_id, vehicle_plate, vehicle_vin, vehicle_brand, vehicle_model, received_at, assigned_to, parc_zone_key, destination_name, destination_address, destination_lat, destination_lng'
   const [{ data: a }, { data: b }] = await Promise.all([
     sb.from('incoming_missions').select(cols).eq('id', params.id).single(),
     sb.from('incoming_missions').select(cols).eq('id', otherId).single(),
@@ -126,6 +126,13 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     ['amount_guaranteed', master.amount_guaranteed, secondary.amount_guaranteed],
     ['client_name',      master.client_name,      secondary.client_name],
     ['client_phone',     master.client_phone,     secondary.client_phone],
+    // Infos véhicule : la jambe REM (secondaire) porte souvent des données plus
+    // riches (marque/modèle/VIN) → on comble les trous de la principale, sans
+    // jamais écraser une valeur déjà présente. Olivier 2026-08-11.
+    ['vehicle_plate',    master.vehicle_plate,    secondary.vehicle_plate],
+    ['vehicle_vin',      master.vehicle_vin,      secondary.vehicle_vin],
+    ['vehicle_brand',    master.vehicle_brand,    secondary.vehicle_brand],
+    ['vehicle_model',    master.vehicle_model,    secondary.vehicle_model],
   ]
   for (const [field, cur, fromSec] of fillIfEmpty) {
     if ((cur == null || cur === '') && fromSec != null && fromSec !== '') upd[field] = fromSec
