@@ -162,7 +162,7 @@ export async function vabCloseOnSiteBrowser(opts: {
       return { ok: false, onCodeScreen: false, cookieHeader, osvstate: null, steps, error: 'écran on-site/code non trouvé', diag }
     }
 
-    const alreadyCodes = await page.$('[id*="SolutionCode"]')
+    const alreadyCodes = await page.$('select[id*="SolutionCodeLevel1"]')
     if (alreadyCodes) {
       steps.push('déjà écran code')
     } else {
@@ -188,14 +188,15 @@ export async function vabCloseOnSiteBrowser(opts: {
             clickedOui = await clickOuiInFrames(page)
             if (!clickedOui) await new Promise(r => setTimeout(r, 1000))
           }
-          if (!clickedOui) {
-            await page.evaluate(() => {
-              const cb = document.querySelector('input[type=checkbox][id*="wt20"]') as HTMLInputElement | null
-              if (cb && !cb.checked) cb.click()
-            })
-          }
-          await new Promise(r => setTimeout(r, 2500))
-          steps.push('vin+verifier')
+          await new Promise(r => setTimeout(r, 2000))
+          // Cocher « Unknown VIN » (wt436_wt20, apparu après Vérifier+Oui) : sinon
+          // « Numéro de châssis doit être rempli » bloque Fin lieu de la panne.
+          await page.evaluate(() => {
+            const cb = document.querySelector('input[type=checkbox][id*="wt436_wt20"], input[type=checkbox][id*="_wt20"]') as HTMLInputElement | null
+            if (cb && !cb.checked) cb.click()
+          })
+          await new Promise(r => setTimeout(r, 2000))
+          steps.push('vin+verifier+unknownvin')
         }
       } else { steps.push('vin déjà validé') }
 
@@ -208,11 +209,20 @@ export async function vabCloseOnSiteBrowser(opts: {
       steps.push('envoyer')
 
       await clickByText(page, 'fin lieu de la panne')
-      await page.waitForSelector('[id*="SolutionCode"]', { timeout: 20000 }).catch(() => {})
+      await new Promise(r => setTimeout(r, 3500))
+      // Popup « kilométrage arrondi » éventuel → « Oui » (dans les frames).
+      for (const fr of page.frames()) {
+        try { await fr.evaluate(() => { const el = [...document.querySelectorAll('a,button')].find(e => /^oui$/i.test((e.textContent || '').trim())); if (el) (el as HTMLElement).click() }) } catch { /* frame */ }
+      }
+      // Le postback Fin met du temps à poser l'écran code → poll.
+      for (let i = 0; i < 12; i++) {
+        if (await page.$('select[id*="SolutionCodeLevel1"]')) break
+        await new Promise(r => setTimeout(r, 1500))
+      }
       steps.push('fin lieu de la panne')
     }
 
-    const onCodeScreen = !!(await page.$('[id*="SolutionCode"]'))
+    const onCodeScreen = !!(await page.$('select[id*="SolutionCodeLevel1"]'))
     const osvstate = await page.evaluate(() => {
       const h = document.querySelector('input[name="__OSVSTATE"]') as HTMLInputElement | null
       return h ? h.value : null
