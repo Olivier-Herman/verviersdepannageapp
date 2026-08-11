@@ -54,6 +54,14 @@ export const NOTIFICATION_TYPES: readonly NotificationType[] = [
     applicableRoles: ['dispatcher', 'admin', 'superadmin'],
     defaultEnabled:  false,
   },
+  {
+    key:             'axa_new_to_validate',
+    label:           'Mission AXA à valider',
+    description:     'Mission AXA (go&assist) reçue en « nouveau » — fenêtre d\'acceptation courte, valider vite.',
+    category:        'dispatcher',
+    applicableRoles: ['dispatcher', 'admin', 'superadmin'],
+    defaultEnabled:  true,
+  },
 
   // ── Chauffeur ────────────────────────────────────────────────────────
   {

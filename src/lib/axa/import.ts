@@ -10,6 +10,7 @@
 // ailleurs (validation fiche / assignation chauffeur).
 
 import { createAdminClient } from '@/lib/supabase'
+import { sendNotificationToRoles } from '@/lib/notifications/send'
 import { getMissions, filterActionable, getMission } from './goassist'
 
 export type ImportMode = 'preview' | 'send'
@@ -124,9 +125,20 @@ export async function runAxaImport({ mode = 'preview' }: { mode?: ImportMode } =
         intervention_date: service.maximumDelayOfArrivalDate || null,
         billed_to_name:    'AXA',
       }
-      const { error } = await sb.from('incoming_missions').insert(row)
+      const { data: created, error } = await sb.from('incoming_missions').insert(row).select('id').single()
       if (error) { errors.push(`${m.missionOrderId}: ${error.message}`); continue }
       imported++
+
+      // Notif dispatch UNIQUEMENT pour les `New` (fenêtre d'acceptation courte —
+      // il faut valider vite). Les `AwaitingDispatch` sont déjà validées → pas d'urgence.
+      if (item.axaStatus === 'New' && created?.id) {
+        await sendNotificationToRoles(['dispatcher', 'admin', 'superadmin'], 'axa_new_to_validate', {
+          title:      '🅰️ Mission AXA à valider',
+          body:       `${row.vehicle_plate || item.plate || '—'} · ${row.incident_city || '—'} — fenêtre courte, valider vite`,
+          action_url: `/dispatch/${created.id}`,
+          mission_id: created.id,
+        }).catch(() => {})
+      }
     } catch (e: any) {
       errors.push(`${m.missionOrderId}: ${e?.message || 'exception'}`)
     }
