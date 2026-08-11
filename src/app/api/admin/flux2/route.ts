@@ -16,7 +16,13 @@ export const dynamic = 'force-dynamic'
 /** Assistances proposées : celles pour lesquelles une transformation existe ou
  *  viendra. On n'expose pas les 30 sources du catalogue — cocher « garage » ou
  *  « unknown » n'aurait aucun sens tant qu'aucune clôture n'est branchée derrière. */
-const SUPPORTED = ['touring', 'vab', 'kaze', 'allianz', 'axa', 'mondial', 'prive'] as const
+// `allianz` n'apparaît PAS : c'est la même assistance que `mondial` (cf. alias
+// dans gating.ts), et c'est `mondial` qui porte le trafic. Une seule colonne,
+// sinon on coche une case qui ne sert à rien.
+const SUPPORTED = ['touring', 'vab', 'kaze', 'mondial', 'axa', 'prive'] as const
+
+/** Libellés qui priment sur le catalogue (regroupements, noms d'usage). */
+const LABEL_OVERRIDES: Record<string, string> = { mondial: 'Mondial / Allianz' }
 
 async function guard() {
   const session = await getServerSession(authOptions)
@@ -43,7 +49,7 @@ export async function GET() {
   ])
 
   const labels = new Map((cat || []).map((c: any) => [c.key, c.label]))
-  const assistances = SUPPORTED.map(k => ({ key: k, label: labels.get(k) || k }))
+  const assistances = SUPPORTED.map(k => ({ key: k, label: LABEL_OVERRIDES[k] || labels.get(k) || k }))
   const enabled: Record<string, boolean> = {}
   for (const r of (grid || []) as any[]) if (r.enabled) enabled[`${r.driver_id}|${r.assistance_key}`] = true
 

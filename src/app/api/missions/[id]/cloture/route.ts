@@ -273,12 +273,13 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   //   • Kaze est synchronisé par `driver-action` (advanceKazeMissionForAction :
   //     on_way→step1, on_site→step3, completed/park→step9 = clôture complète) —
   //     code strictement inchangé ;
-  //   • Allianz se clôture à la FACTURATION via Hexalite, pas par le chauffeur.
+  //   • Mondial / Allianz (même maison, clé canonique `mondial`) se clôture à la
+  //     FACTURATION via Hexalite, pas par le chauffeur.
   // Le flux 2 n'ajoute donc que les écrans devant : on enregistre le motif de
   // panne et le tronc commun dans VD Soft (déjà fait ci-dessus), et on rend la
   // main. Le chauffeur enchaîne sur l'écran de clôture habituel, qui déclenche
   // driver-action — c'est LUI qui parle à Kaze. Olivier 2026-08-11.
-  else if (assistance === 'kaze' || assistance === 'allianz') {
+  else if (assistance === 'kaze' || assistance === 'mondial') {
     result = { ok: true, skipped: 'aucune plateforme à appeler', internalOnly: true }
   }
 

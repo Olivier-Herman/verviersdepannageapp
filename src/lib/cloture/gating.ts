@@ -36,6 +36,16 @@ const isSuperadmin = (a: Flux2Actor | null | undefined) =>
   !!a && [a.role, ...(a.roles || [])].filter(Boolean).includes('superadmin')
 
 /**
+ * Mêmes assistances sous deux clés (Olivier 2026-08-11) : « Mondial Assistance »
+ * et « Allianz » sont la même maison — même client facturé (AP Solutions GmbH
+ * Belgium Branch). C'est `mondial` qui porte le trafic réel (251 missions contre
+ * 1 pour `allianz`), donc `mondial` est la clé canonique. Sans cet alias, cocher
+ * « Allianz » dans la grille n'ouvrirait rien : aucune mission n'arrive avec
+ * cette source.
+ */
+const ASSISTANCE_ALIASES: Record<string, string> = { allianz: 'mondial' }
+
+/**
  * Assistance d'une mission = la clé du catalogue des sources. Touring se
  * reconnaît AUSSI au lien COMEX : une mission autoroute reclassée en Siabis garde
  * son dossier COMEX mais perd sa source — c'est le bug de gating du 2026-07-09.
@@ -45,7 +55,8 @@ export function flux2AssistanceOf(
 ): string | null {
   if (!mission) return null
   if (mission.source_format === 'comex') return 'touring'
-  return mission.source || null
+  const key = mission.source || null
+  return key ? (ASSISTANCE_ALIASES[key] || key) : null
 }
 
 /** Le flux 2 est-il ouvert pour ce chauffeur sur cette assistance ? */
