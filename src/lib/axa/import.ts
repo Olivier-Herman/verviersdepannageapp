@@ -107,7 +107,9 @@ export async function runAxaImport({ mode = 'preview' }: { mode?: ImportMode } =
       const row: Record<string, any> = {
         source:            'axa',
         source_format:     'axa-goassist',
-        status:            'new',
+        // go&assist New = à valider → 'new' ; AwaitingDispatch = déjà validée par
+        // AXA → 'dispatching' (validée, en attente d'assignation), pas de Valider.
+        status:            item.axaStatus === 'New' ? 'new' : 'dispatching',
         external_id:       m.missionOrderId,
         dossier_number:    dc.caseId || item.caseId || null,
         mission_type:      item.mission_type,
