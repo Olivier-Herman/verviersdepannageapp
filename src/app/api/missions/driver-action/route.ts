@@ -721,6 +721,34 @@ export async function POST(req: Request) {
     }
   }
 
+  // ── Clôture AXA go&assist (background, gaté flux 2 chauffeur × assistance) ────
+  // Même patron que Kaze juste au-dessus : le chauffeur clôture chez nous, on
+  // déroule la séquence d'intervention restante chez AXA puis on envoie le rapport
+  // final qui SOLDE la mission. Best-effort : un échec n'empêche jamais la clôture
+  // VD Soft, il laisse une trace `axa_sync_error` exploitable au dispatch.
+  // Gate : la case (chauffeur, axa) de /admin/flux2 — activation progressive.
+  // Olivier 2026-08-11.
+  if ((mission as any).source === 'axa' && ['completed', 'park', 'complete_delivery'].includes(action)) {
+    const axaBg = (async () => {
+      try {
+        const { isFlux2Enabled } = await import('@/lib/cloture/gating')
+        const driverId = (mission as any).assigned_to || null
+        if (!(await isFlux2Enabled(driverId, 'axa'))) return
+
+        const { closeAxaBg, axaMissionOrderId } = await import('@/lib/axa/close-bg')
+        const mo = axaMissionOrderId((mission as any).external_id)
+        // Pas d'identifiant go&assist (relivraison créée chez nous) → rien à
+        // pousser : ce n'est pas une erreur, c'est une mission qui n'existe pas
+        // chez AXA. On ne pollue donc pas le journal avec une fausse alerte.
+        if (!mo) return
+        await closeAxaBg(mission.id, mo, (mission as any).assigned_to || null, supabase)
+      } catch (e) {
+        console.error('[driver-action] axa close failed:', e)
+      }
+    })()
+    try { const { waitUntil } = await import('@vercel/functions'); waitUntil(axaBg) } catch { await axaBg }
+  }
+
   // ── Propagation Touring COMEX : en route / sur place (background, gaté) ────────
   // on_way  → onRoad (05) · on_site → onSpot (06), avec l'HEURE RÉELLE du pointage.
   // Idempotent + SLA gérés dans lib/touring/sync. Gaté par TOURING_COMEX_MODE=import

@@ -157,6 +157,15 @@ export function skipSignatureStep(missionOrderId: string, signedStep: 'Signed_1'
 }
 
 /**
+ * DÉPLACEMENT À VIDE (mission annulée après départ chauffeur) : étape
+ * `MovementForNothing`. Clôture le trajet à vide côté go&assist avec les
+ * pointages. (À valider en conditions réelles dans le flux2.)
+ */
+export function reportMovementForNothing(missionOrderId: string): Promise<AxaResult> {
+  return postInterventionStep(missionOrderId, 'MovementForNothing')
+}
+
+/**
  * Signature réelle (trait). POST /v1.0/mission/signature en multipart.
  * ⚠️ NE PAS fixer Content-Type manuellement (le boundary est posé par fetch).
  * vehiculeDamageInformation="[]" quand aucun dégât (chaîne vide → refusé).
@@ -210,7 +219,16 @@ export interface AxaCloseResult { ok: boolean; steps: Array<{ step: string; ok: 
  * Signatures « passées » (skip) par défaut. Idempotent : reprend après la
  * dernière étape déjà pointée (lastInterventionStatus).
  */
-export async function closeMissionAuto(missionOrderId: string): Promise<AxaCloseResult> {
+export async function closeMissionAuto(
+  missionOrderId: string,
+  opts: {
+    /** Horodatage RÉEL par étape (ISO). Sans lui, chaque étape est pointée à
+     *  `now()` et la mission go&assist ressemble à un bypass à vide : toutes les
+     *  étapes à la même seconde. Avec, elle reflète notre panneau de pointage.
+     *  Olivier 2026-08-11. */
+    executedAt?: Record<string, string | null | undefined>
+  } = {},
+): Promise<AxaCloseResult> {
   const m = await getMission(missionOrderId)
   if (!m) return { ok: false, steps: [], error: 'mission introuvable' }
 
@@ -227,6 +245,9 @@ export async function closeMissionAuto(missionOrderId: string): Promise<AxaClose
     let extra: Record<string, any> = {}
     if (step === 'DestinationAddress') extra = { destinationAddress: destination || buildDestinationFromIncident(m) }
     if (step === 'Signed_1' || step === 'Signed_2') extra = { isSignatureSkipped: true }
+    // `extra` est étalé APRÈS executedAt dans postInterventionStep → il l'emporte.
+    const at = opts.executedAt?.[step]
+    if (at) extra = { ...extra, executedAt: at }
     const r = await postInterventionStep(missionOrderId, step, extra)
     steps.push({ step, ok: r.ok, message: r.data?.message })
     if (!r.ok) return { ok: false, steps, error: `échec à ${step}: ${r.data?.message || r.status}` }
