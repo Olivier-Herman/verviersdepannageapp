@@ -40,17 +40,19 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   const b = await req.json().catch(() => ({}))
   const taskType: 'tow' | 'breakdown' = String(m.mission_type || '').toLowerCase().includes('remorquage') ? 'tow' : 'breakdown'
 
-  // Signature VAB = canvas JS non reproductible en HTTP → pour la clôture AUTO on
-  // coche « Client refuse de signer » (choix Olivier 2026-08-10). Défaut : refus,
-  // SAUF si l'appelant fournit une signature, « personne présent », ou refuse=false.
-  const refusalDefault = !b.signaturePng && !b.notPresent && b.refusal !== false
+  // Signature VAB : DÉFAUT = trait de signature par défaut posé dans
+  // wtInput_Signature (VAB_DEFAULT_SIGNATURE_PNG, cf close.ts) → franchit l'écran
+  // signature → écran code panne. On NE coche PLUS « refuse de signer » par défaut
+  // (Olivier 2026-08-11) : ce défaut neutralisait le trait et bloquait à la
+  // signature. Le refus / l'absence ne s'appliquent que si l'appelant les demande
+  // explicitement (refusal:true / notPresent:true) ou fournit son propre PNG.
 
   let result
   try {
     result = await closeVabMission({
       assignmentId, taskType,
       signaturePng:      b.signaturePng || undefined,
-      refusal:           b.refusal != null ? !!b.refusal : refusalDefault,
+      refusal:           !!b.refusal,
       notPresent:        !!b.notPresent,
       keysNr:            b.keysNr || undefined,
       keyLocation:       b.keyLocation || undefined,
