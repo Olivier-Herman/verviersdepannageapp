@@ -54,20 +54,22 @@ export async function runAxaImport({ mode = 'preview' }: { mode?: ImportMode } =
   const all = await getMissions()
   const awaiting = filterActionable(all)
 
-  // fiches AXA déjà présentes (dédup) — par external_id (missionOrderId)
-  const orderIds = awaiting.map(m => m.missionOrderId).filter(Boolean)
-  const existing = new Set<string>()
-  if (orderIds.length) {
+  // Dédup par NUMÉRO DE DOSSIER (caseId), TOUTES sources confondues : un dossier
+  // AXA peut déjà exister dans VD Soft via une autre source (mail, autre jambe) →
+  // on ne le recrée pas. On ne proposera à la création que les dossiers ABSENTS.
+  const caseIds = Array.from(new Set(awaiting.map(m => m.case?.caseId).filter(Boolean)))
+  const existingDossiers = new Set<string>()
+  if (caseIds.length) {
     const { data } = await sb
       .from('incoming_missions')
-      .select('external_id')
-      .eq('source', 'axa')
-      .in('external_id', orderIds)
+      .select('dossier_number')
+      .in('dossier_number', caseIds)
       .not('status', 'in', '(cancelled,ignored)')
-    for (const r of data || []) if (r.external_id) existing.add(r.external_id)
+    for (const r of data || []) if (r.dossier_number) existingDossiers.add(r.dossier_number)
   }
 
   const items: AxaImportItem[] = []
+  const insertedDossiers = new Set<string>() // anti double-insert intra-run (même caseId)
   let imported = 0, skipped = 0
 
   for (const m of awaiting) {
@@ -83,11 +85,13 @@ export async function runAxaImport({ mode = 'preview' }: { mode?: ImportMode } =
       client_name:    [contact.firstName, contact.lastName].filter(Boolean).join(' '),
       incident_city:  caseObj.incidentLocation?.address?.locality || '',
       axaStatus:      m.status,
-      exists:         existing.has(m.missionOrderId),
+      exists:         !!caseObj.caseId && existingDossiers.has(caseObj.caseId),
     }
     items.push(item)
 
     if (mode !== 'send' || item.exists) { if (item.exists) skipped++; continue }
+    if (caseObj.caseId && insertedDossiers.has(caseObj.caseId)) { skipped++; continue }
+    if (caseObj.caseId) insertedDossiers.add(caseObj.caseId)
 
     try {
       // Enrichir avec le détail (véhicule/VIN/adresse/coords/destination).
