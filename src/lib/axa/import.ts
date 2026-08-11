@@ -55,8 +55,9 @@ export async function runAxaImport({ mode = 'preview' }: { mode?: ImportMode } =
   const awaiting = filterActionable(all)
 
   // Dédup par NUMÉRO DE DOSSIER (caseId), TOUTES sources confondues : un dossier
-  // AXA peut déjà exister dans VD Soft via une autre source (mail, autre jambe) →
-  // on ne le recrée pas. On ne proposera à la création que les dossiers ABSENTS.
+  // AXA peut déjà exister dans VD Soft via une autre source (ex. mail) → on ne le
+  // recrée pas. On ne proposera à la création que les dossiers ABSENTS.
+  // (Chez AXA : 1 dossier = 1 mission dans go&assist, pas de multi-fiche.)
   const caseIds = Array.from(new Set(awaiting.map(m => m.case?.caseId).filter(Boolean)))
   const existingDossiers = new Set<string>()
   if (caseIds.length) {
@@ -69,7 +70,7 @@ export async function runAxaImport({ mode = 'preview' }: { mode?: ImportMode } =
   }
 
   const items: AxaImportItem[] = []
-  const insertedDossiers = new Set<string>() // anti double-insert intra-run (même caseId)
+  const insertedDossiers = new Set<string>() // garde générique anti-doublon intra-run (même caseId renvoyé 2× par l'API)
   let imported = 0, skipped = 0
 
   for (const m of awaiting) {
