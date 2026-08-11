@@ -84,8 +84,15 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
     allowedFins = String(raw?.LST_CODE_END_MIS || '').split(';').map((x: string) => x.trim()).filter(Boolean)
   } catch { /* raw_content non JSON → on n'impose rien */ }
 
+  // ⚠️ Le code 05 (Fin Remorquage + Transfert = mise en parc) n'apparaît dans la
+  // liste QU'APRÈS la « Fin Technique Dépôt » (Olivier 2026-08-11). Or c'est
+  // justement ce que notre clôture arme elle-même (endTech FL_TECH_END_MIS:1).
+  // Le filtrer sur son absence reviendrait à masquer une issue parfaitement
+  // valide : on l'exempte.
+  const UNLOCKED_LATER = new Set(['05'])
   const outcomes = availableOutcomes(m as any)
-    .filter(o => allowedFins.length === 0 || o.fin === null || allowedFins.includes(o.fin))
+    .filter(o => allowedFins.length === 0 || o.fin === null
+      || allowedFins.includes(o.fin) || UNLOCKED_LATER.has(o.fin))
   const dprCodes = allowedFins.length === 0
     ? DPR_END_CODES
     : DPR_END_CODES.filter(d => allowedFins.includes(d.code))

@@ -102,8 +102,12 @@ export async function transformTouring(keys: ComexKeys, input: TransformInput): 
     if (!finCode) return { ok: false, error: 'Motif de déplacement pour rien manquant' }
   }
 
+  // Le 05 (mise en parc) ne figure dans LST_CODE_END_MIS qu'une fois la « Fin
+  // Technique Dépôt » faite — et c'est closeTouringMission qui l'arme juste après
+  // (endTech FL_TECH_END_MIS:1). On ne le refuse donc pas sur son absence.
+  const UNLOCKED_BY_END_TECH = finCode === '05'
   const allowed = await allowedFinCodes(keys)
-  if (allowed.length > 0 && !allowed.includes(finCode)) {
+  if (!UNLOCKED_BY_END_TECH && allowed.length > 0 && !allowed.includes(finCode)) {
     return {
       ok: false, finCode,
       error: `Touring n'autorise pas ce type de clôture sur ce dossier (codes possibles : ${allowed.join(', ')})`,
