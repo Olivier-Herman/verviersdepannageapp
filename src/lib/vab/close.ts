@@ -154,6 +154,7 @@ export interface VabCloseInput {
   interventionDate?: string  // ⚠️ format À TIRETS « JJ-MM-AAAA » (slashes = « Date attendue ! »). Défaut = aujourd'hui.
   interventionTime?: string  // « HH:MM:SS ». Défaut = maintenant.
   present?: boolean          // « Quelqu'un est présent ? » (défaut true)
+  vinLastDigits?: string     // breakdown : 3 derniers chiffres du VIN (le nom réel du champ est découvert côté close.ts)
   extraFields?: Record<string, string>  // breakdown : VIN/codes/km (name->value)
   maxSteps?: number
 }
@@ -184,10 +185,16 @@ export async function closeVabMission(input: VabCloseInput): Promise<VabCloseRes
     const vinInput = nameEndsWith(p.inputNames, 'wtLastDigitInputField')
     const checkVin = btnByTargetSuffix(p.buttons, 'wtLink_CheckVin')
     if (vinInput && checkVin && !vinChecked) {
-      const vinVal = Object.entries(input.extraFields || {}).find(([k]) => k.endsWith('wtLastDigitInputField'))?.[1]
+      // VIN : fourni simplement via input.vinLastDigits (recommandé — le nom réel du
+      // champ, mangé par OutSystems, est découvert ICI via vinInput), sinon déjà
+      // présent dans extraFields sous une clé finissant par wtLastDigitInputField.
+      // Olivier 2026-08-11.
+      const vinVal = input.vinLastDigits
+        || Object.entries(input.extraFields || {}).find(([k]) => k.endsWith('wtLastDigitInputField'))?.[1]
+      const vinFields = { ...(input.extraFields || {}), ...(vinVal ? { [vinInput]: vinVal } : {}) }
       if (vinVal) {
         // CheckVin sur la page principale (porte tous les champs cumulés : km/VIN/signature).
-        html = await osPost(sess.cookieHeader, url, html, checkVin.target!, input.extraFields || {})
+        html = await osPost(sess.cookieHeader, url, html, checkVin.target!, vinFields)
         // Pop-up « VIN inconnu » : si le VIN ne concorde pas, cliquer « Oui » (bypass).
         // Effet serveur : pose le drapeau « VIN vérifié » → EndIntervention progresse.
         const bypassed = await confirmCheckVinPopupIfAny(sess.cookieHeader)
@@ -197,7 +204,7 @@ export async function closeVabMission(input: VabCloseInput): Promise<VabCloseRes
         // Cible = wt436_RichWidgets_wt14_block_wt1 (UNDERSCORES) + __AJAX=…,Yes. HAR vab4.
         if (bypassed) {
           const refreshTarget = checkVin.target!.replace(/wtLink_CheckVin$/, 'RichWidgets_wt14$block$wt1').replace(/\$/g, '_')
-          html = await osPost(sess.cookieHeader, url, html, refreshTarget, input.extraFields || {}, '', { event: 'Notify', data: '1200,1598,,0,0,0,0,0,0,Yes' })
+          html = await osPost(sess.cookieHeader, url, html, refreshTarget, vinFields, '', { event: 'Notify', data: '1200,1598,,0,0,0,0,0,0,Yes' })
         }
         vinChecked = true
         steps.push(bypassed ? 'check_vin (bypass VIN inconnu)' : 'check_vin')
