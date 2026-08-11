@@ -82,6 +82,7 @@ export default function CloseScreen({
   const [hasPrefill, setHasPrefill] = useState<boolean | null>(null)
   const [motifs, setMotifs]       = useState<MotifItem[] | null>(null)
   const [suggested, setSuggested] = useState<string[]>([])
+  const [suggestVia, setSuggestVia] = useState<string | null>(null)
   const [motifKey, setMotifKey]   = useState('')
   const [dprCode, setDprCode]     = useState('')
 
@@ -136,7 +137,7 @@ export default function CloseScreen({
       body: JSON.stringify({ branch: motifBranch }),
     })
       .then(r => r.json())
-      .then(d => { if (!alive) return; setMotifs(d.motifs || []); setSuggested(d.suggested || []) })
+      .then(d => { if (!alive) return; setMotifs(d.motifs || []); setSuggested(d.suggested || []); setSuggestVia(d.via || null) })
       .catch(() => alive && setMotifs([]))
     return () => { alive = false }
   }, [missionId, motifBranch])
@@ -210,6 +211,10 @@ export default function CloseScreen({
       vin: vin.trim().toUpperCase(), km: km.trim(), remark: remark.trim(),
     }
     const body: any = { outcome, motifKey: motifKey || null, dprCode: dprCode || null, common }
+    // Diagnostic du test : qu'a-t-on proposé, dans quel ordre, et qu'a-t-il choisi ?
+    // C'est ce qui permettra de dire si « Autre » est un défaut de catalogue ou un
+    // réflexe de rapidité — sans avoir à deviner. Olivier 2026-08-11.
+    if (suggested.length) body.diag = { suggested, via: suggestVia, rank: suggested.indexOf(motifKey) }
     if (skipAssistance) body.skipAssistance = true
 
     if (isRem) {

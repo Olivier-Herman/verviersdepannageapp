@@ -277,7 +277,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
       outcome, motifKey, assistance, result, skipAssistance, queued,
       // Tronc commun consigné en entier : ce que l'assistance du jour n'exige pas
       // reste lisible pour le dispatch (signature refusée, clé restée au client…).
-      vin5, vinMismatch,
+      vin5, vinMismatch, diag: body?.diag ?? null,
       common: {
         signature: common.signature ?? null,        // 'signed' | 'refus' | 'absent'
         keyRecovered: common.keyRecovered ?? null,
