@@ -135,14 +135,21 @@ export async function GET(req: Request) {
     }
   }
 
+  // Catalog des sources (label + couleur) — pas de hardcode (admin-zero-hardcode).
+  const { data: srcCat } = await sb.from('mission_source_catalog').select('key, label, display_color')
+  const srcMap = new Map((srcCat || []).map((c: any) => [c.key, { label: c.label as string, color: (c.display_color as string) || null }]))
+
   const results = (data || []).map(r => {
     const z = r.parc_zone_key ? zoneToDepot[r.parc_zone_key] : null
+    const sc = srcMap.get(r.source)
     return {
       id:               r.id,
       mission_number:   r.mission_number,
       dossier_number:   r.dossier_number,
       external_id:      r.external_id,
       source:           r.source,
+      source_label:     sc?.label || r.source || null,
+      source_color:     sc?.color || null,
       status:           r.status,
       plate:            r.vehicle_plate,
       brand:            r.vehicle_brand,

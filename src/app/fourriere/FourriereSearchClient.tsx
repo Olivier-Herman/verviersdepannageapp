@@ -22,6 +22,8 @@ interface SearchResult {
   dossier_number:   string | null
   external_id:      string | null
   source:           string
+  source_label:     string | null
+  source_color:     string | null
   status:           string
   plate:            string | null
   brand:            string | null
@@ -338,6 +340,11 @@ function ResultCard({ r, onOpen }: { r: SearchResult; onOpen: () => void }) {
           <div className="flex items-center gap-2 flex-wrap">
             <span className="font-mono text-ink font-bold">{r.plate || '—'}</span>
             <span className="text-ink-muted text-sm">{[r.brand, r.model].filter(Boolean).join(' ') || '—'}</span>
+            {r.source_label && (
+              <span className={`text-[10px] px-1.5 py-0.5 rounded font-semibold text-white ${r.source_color || 'bg-slate-500'}`}>
+                {r.source_label}
+              </span>
+            )}
             {isOut && <span className="text-xs px-1.5 py-0.5 bg-ink/10 text-ink-muted rounded">Sortie</span>}
             {!isOut && r.parc_zone_key && (
               <span className="text-xs px-1.5 py-0.5 bg-brand/15 text-brand rounded font-semibold">
