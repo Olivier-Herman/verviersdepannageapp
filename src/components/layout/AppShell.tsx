@@ -12,6 +12,8 @@ import NotificationsProvider from '@/components/notifications/NotificationsProvi
 import { T } from '@/lib/i18n/T'
 import WatchPairingBridge from '@/components/watch/WatchPairingBridge'
 import { filterNavItems } from './nav-items'
+import AppNavV2 from './AppNavV2'
+import { useNavV2 } from './useNavV2'
 import MobileNavDrawer from './MobileNavDrawer'
 import GlobalSearch from '@/components/GlobalSearch'
 import { TruckSwitcherIcon } from '@/components/trucks/TruckSwitcherIcon'
@@ -70,14 +72,22 @@ export default function AppShell({
   const [drawerOpen, setDrawerOpen] = useState(false)
   // Compteurs d'attention par entrée de menu (ex. congés en attente sur /personnel).
   const [navBadges, setNavBadges] = useState<Record<string, number>>({})
+  // Flag `nav_menu_v2` (menu navigable) — résolu serveur, transporté par la même
+  // route que les badges (undefined tant que le fetch n'a pas répondu).
+  const [navV2Flag, setNavV2Flag] = useState<boolean | undefined>(undefined)
   useEffect(() => {
     let alive = true
     const load = () => fetch('/api/nav-badges', { cache: 'no-store' }).then(r => r.json())
-      .then(d => { if (alive) setNavBadges(d.badges || {}) }).catch(() => {})
+      .then(d => {
+        if (!alive) return
+        setNavBadges(d.badges || {})
+        setNavV2Flag(!!d.flags?.nav_menu_v2)
+      }).catch(() => {})
     load()
     const iv = setInterval(load, 60000)   // rafraîchit toutes les minutes
     return () => { alive = false; clearInterval(iv) }
   }, [])
+  const navV2 = useNavV2(navV2Flag)
   const { theme, toggleTheme, mounted } = useTheme()
   const { onDuty, setOnDuty, isLockedByDuty } = useOnDutyPing()
   // GPS piloté par les attributions (économie batterie) — monté UNE seule fois
@@ -135,6 +145,16 @@ export default function AppShell({
           </button>
         </div>
 
+        {/* Menu navigable (flag nav_menu_v2) — remplace UNIQUEMENT la liste du menu.
+            Sidebar repliée → on garde la version icônes ci-dessous, inchangée. */}
+        {navV2 && !collapsed ? (
+          <AppNavV2
+            items={visibleNav}
+            userRole={userRole}
+            userModules={userModules}
+            badges={navBadges}
+          />
+        ) : (
         <nav className={`flex-1 py-4 overflow-y-auto flex flex-col gap-0.5 ${collapsed ? 'px-2' : 'px-3'}`}>
           {visibleNav.map(item => {
             const active = pathname === item.href || pathname.startsWith(item.href + '/')
@@ -165,6 +185,7 @@ export default function AppShell({
             )
           })}
         </nav>
+        )}
 
         {/* ── FOOTER 3 ZONES ── */}
         <div className={`py-2 border-t space-y-1 ${collapsed ? 'px-1.5' : 'px-2'}`}>
@@ -221,6 +242,7 @@ export default function AppShell({
           userId={userId}
           userModules={userModules}
           navBadges={navBadges}
+          navV2={navV2}
         />
 
         {/* Header desktop */}

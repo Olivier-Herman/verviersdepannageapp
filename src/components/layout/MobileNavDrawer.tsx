@@ -6,6 +6,7 @@ import { useEffect } from 'react'
 import { X } from 'lucide-react'
 import { useSession } from 'next-auth/react'
 import { filterNavItems } from './nav-items'
+import AppNavV2 from './AppNavV2'
 import { useTheme } from '@/components/theme/ThemeProvider'
 import { useOnDutyPing } from '@/hooks/useOnDutyPing'
 import { T } from '@/lib/i18n/T'
@@ -20,9 +21,11 @@ interface Props {
   userId?:      string
   userModules:  string[]
   navBadges?:   Record<string, number>
+  /** Flag `nav_menu_v2` résolu par l'AppShell (évite un second fetch). */
+  navV2?:       boolean
 }
 
-export default function MobileNavDrawer({ open, onClose, userName, userRole, userEmail, userId, userModules, navBadges = {} }: Props) {
+export default function MobileNavDrawer({ open, onClose, userName, userRole, userEmail, userId, userModules, navBadges = {}, navV2 = false }: Props) {
   const pathname = usePathname()
   const { data: session } = useSession()
   const userNavOrder = (session?.user as any)?.navOrder as string[] | null | undefined
@@ -78,7 +81,17 @@ export default function MobileNavDrawer({ open, onClose, userName, userRole, use
           </button>
         </div>
 
-        {/* Items */}
+        {/* Items — menu navigable si le flag nav_menu_v2 est actif, sinon liste plate */}
+        {navV2 ? (
+          <AppNavV2
+            items={items}
+            userRole={userRole}
+            userModules={userModules}
+            badges={navBadges}
+            variant="drawer"
+            onNavigate={onClose}
+          />
+        ) : (
         <nav className="flex-1 px-3 py-3 overflow-y-auto flex flex-col gap-0.5">
           {items.map(item => {
             const active = pathname === item.href || (item.href !== '/dashboard' && pathname.startsWith(item.href))
@@ -97,6 +110,7 @@ export default function MobileNavDrawer({ open, onClose, userName, userRole, use
             )
           })}
         </nav>
+        )}
 
         {/* Footer 3 zones — sous-composants partagés avec AppShell */}
         <div className="px-2 py-2 border-t space-y-1">

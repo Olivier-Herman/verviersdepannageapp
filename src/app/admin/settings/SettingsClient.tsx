@@ -4,6 +4,7 @@ import { useState }  from 'react'
 import { useRouter }  from 'next/navigation'
 import { signIn } from 'next-auth/react'
 import { signOutCascade as signOut } from '@/lib/auth-signout'
+import FeatureFlagsPanel from '@/components/admin/FeatureFlagsPanel'
 
 const LIST_TYPES = [
   { key: 'motif',        label: 'Motifs d\'intervention' },
@@ -184,6 +185,9 @@ export default function SettingsClient({
           >
             {paramsSaved ? '✅ Enregistré' : savingParams ? 'Enregistrement...' : 'Enregistrer les paramètres'}
           </button>
+
+          {/* Préversions (feature flags) — visible superadmin uniquement */}
+          <FeatureFlagsPanel />
 
           {/* Vider le cache session */}
           <div className="bg-surface-2 border border rounded-2xl p-4 mt-2">
