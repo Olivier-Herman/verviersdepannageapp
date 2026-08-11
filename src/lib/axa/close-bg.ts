@@ -18,7 +18,7 @@
 // Garde-fou connu : go&assist répond souvent 200 avec `{isSuccess:false}` — le
 // client le traduit déjà en `ok:false`, on journalise le message tel quel.
 
-import { closeMissionAuto, postReport, getMission } from '@/lib/axa/goassist'
+import { closeMissionAuto, postReport, getMission, postInterventionStep, reportMovementForNothing } from '@/lib/axa/goassist'
 
 export interface AxaCloseBgResult {
   ok: boolean
@@ -98,7 +98,7 @@ export async function closeAxaBg(
 
   try {
     const { data: m } = await sb.from('incoming_missions')
-      .select('id, on_way_at, on_site_at, loaded_at, completed_at, delivering_at, client_name, client_phone, ' +
+      .select('id, mission_type, on_way_at, on_site_at, loaded_at, completed_at, delivering_at, client_name, client_phone, ' +
               'incident_description, panne_motif, panne_motif_label, snc_km_total, axa_closed_at')
       .eq('id', missionId).maybeSingle()
 
@@ -118,6 +118,62 @@ export async function closeAxaBg(
       Signed_1:           end,
       Signed_2:           end,
       Completed:          end,
+    }
+
+    // ── TRAJET À VIDE : AXA a annulé APRÈS le départ du chauffeur ─────────────
+    // La fiche est conservée (mission_type='trajet_vide', lien go&assist intact)
+    // par reconcileAxaCancellations, pour être clôturée normalement AVEC ses
+    // pointages. Chez AXA ce n'est PAS une intervention : on ne déroule pas la
+    // séquence complète (pas de Started/Signed/Completed sur une mission que
+    // personne n'a réalisée) — on pousse ce qu'on a vraiment fait, puis l'étape
+    // `MovementForNothing`. Olivier 2026-08-11.
+    if (String(m?.mission_type || '') === 'trajet_vide') {
+      const ga = await getMission(missionOrderId)
+      const available: string[] = ga?.configuration?.interventionStepConfiguration?.availableSteps || []
+      const last: string | null = ga?.lastInterventionStatus || null
+      const done = new Set<string>(last ? [last] : [])
+      const steps: Array<{ step: string; ok: boolean; message?: string }> = []
+
+      // Pointages réels, uniquement s'ils existent ET ne sont pas déjà passés.
+      for (const [step, at] of [['OnTheRoad', executedAt.OnTheRoad], ['OnSite', executedAt.OnSite]] as const) {
+        if (!at || done.has(step) || (available.length > 0 && !available.includes(step))) continue
+        const rs = await postInterventionStep(missionOrderId, step, { executedAt: at })
+        steps.push({ step, ok: rs.ok, message: rs.data?.message })
+        if (!rs.ok) {
+          await log('axa_sync_error', `AXA (trajet à vide) : échec à ${step} — ${rs.data?.message || rs.status}`,
+            { steps, availableSteps: available, lastInterventionStatus: last })
+          return { ok: false, steps, error: `échec à ${step}` }
+        }
+      }
+
+      // L'étape terminale. `end` = l'heure de clôture chez nous quand on l'a ;
+      // sinon le helper pointe à l'instant présent.
+      const mfn = end
+        ? await postInterventionStep(missionOrderId, 'MovementForNothing', { executedAt: end })
+        : await reportMovementForNothing(missionOrderId)
+      steps.push({ step: 'MovementForNothing', ok: mfn.ok, message: mfn.data?.message })
+
+      if (!mfn.ok) {
+        await log('axa_sync_error',
+          `AXA (trajet à vide) : MovementForNothing refusé — ${mfn.data?.message || mfn.status}`,
+          { steps, availableSteps: available, lastInterventionStatus: last, response: mfn.data })
+        return { ok: false, steps, error: 'MovementForNothing refusé' }
+      }
+
+      await sb.from('incoming_missions')
+        .update({ axa_closed_at: new Date().toISOString(), updated_at: new Date().toISOString() })
+        .eq('id', missionId).then(() => {}, () => {})
+
+      // ⚠️ À VALIDER au premier cas réel : go&assist attend-il en plus un rapport
+      // final (isSendingToAxa) sur un trajet à vide ? On ne l'envoie PAS tant
+      // qu'on ne l'a pas vu — un rapport d'intervention sur une mission non
+      // réalisée serait faux. Les métadonnées ci-dessous donnent la réponse
+      // (séquence acceptée, étapes disponibles) dès la première mission.
+      await log('axa_synced',
+        `AXA : trajet à vide déclaré (${steps.map(s => s.step).join(' → ')}) — rapport final non envoyé (à valider)`,
+        { steps, availableSteps: available, lastInterventionStatus: last, movementForNothing: true })
+
+      return { ok: true, steps, reported: false }
     }
 
     const r = await closeMissionAuto(missionOrderId, { executedAt })
