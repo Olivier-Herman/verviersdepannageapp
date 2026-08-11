@@ -16,7 +16,7 @@
 //     par le user (drag & drop /profil, `userNavOrder`) est respecté.
 
 import {
-  Radio, Plus, Repeat, FolderCheck, Car, ShoppingCart, Search, FileWarning, FileText,
+  Radio, Plus, Repeat, FolderCheck, Search, FileWarning, FileText,
   Mail, Trash2, ScanLine, AlertTriangle, Map as MapIcon, Landmark, Receipt, ShieldCheck, Shield,
   ClipboardList, BarChart3, LayoutGrid, CreditCard, Wallet, Users, CalendarDays,
   Megaphone, Contact, TrendingUp, Settings, Store, Building2, Bot, ClipboardCheck,
@@ -62,13 +62,8 @@ export const NAV_TREE: NavModule[] = [
       { href: '/missions-terminees', label: 'Missions terminées', icon: FolderCheck, i18nKey: 'nav.finished', requires: '/missions-terminees' },
     ],
   },
-  {
-    key: 'mission', label: 'Mes Missions', i18nKey: 'nav.my_missions', icon: '🚗',
-    sections: [
-      { href: '/mission',        label: 'Mes Missions', icon: Car,          i18nKey: 'nav.my_missions', requires: '/mission' },
-      { href: '/missions-dispo', label: 'Momo Market',  icon: ShoppingCart, requires: '/missions-dispo' },
-    ],
-  },
+  // Pas de groupe « Mes Missions » : ce sont les deux écrans les plus utilisés du
+  // chauffeur (Olivier 2026-08-11) — ils restent au niveau 1, accessibles en un clic.
   {
     key: 'fourriere', label: 'Fourrière', icon: '🚓',
     sections: [
