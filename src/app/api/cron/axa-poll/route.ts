@@ -3,8 +3,8 @@
 // Cron : poll go&assist (missions « à affecter ») → crée les fiches `new`. Même
 // helper runAxaImport que le bouton manuel (/api/axa/import). Cf lib/axa/import.ts.
 //
-// ⚠️ OPT-IN : inerte tant que ENABLE_AXA_POLL !== 'true' (intégration en
-// validation — évite de créer des fiches avant feu vert). Bascule sans redeploy.
+// Kill-switch : DISABLE_AXA_POLL=true sur Vercel pour désactiver sans redeploy
+// (convention VAB/Touring). Actif par défaut.
 
 export const dynamic     = 'force-dynamic'
 export const maxDuration = 60
@@ -17,8 +17,8 @@ export async function GET(req: Request) {
   if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
-  if (process.env.ENABLE_AXA_POLL !== 'true') {
-    return NextResponse.json({ ok: true, disabled: true, reason: 'ENABLE_AXA_POLL!=true' })
+  if (process.env.DISABLE_AXA_POLL === 'true') {
+    return NextResponse.json({ ok: true, disabled: true, reason: 'DISABLE_AXA_POLL=true' })
   }
 
   try {
