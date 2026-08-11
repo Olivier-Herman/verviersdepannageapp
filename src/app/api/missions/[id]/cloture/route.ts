@@ -139,13 +139,31 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   // ── Tronc commun (collecté pour TOUTES les assistances, même si celle du jour
   //    n'en demande qu'une partie — c'est de l'info précieuse pour le dispatch).
   const common = body?.common || {}
-  const vin = String(common.vin || '').trim().toUpperCase() || null
   const km  = common.km === '' || common.km == null ? null : Number(common.km)
+
+  // ── CHÂSSIS : le chauffeur saisit les 5 DERNIERS chiffres — c'est une
+  // VÉRIFICATION terrain (comme le CheckVin VAB), PAS un numéro de châssis.
+  //   • ne jamais écraser le VIN complet de la fiche avec ce fragment ;
+  //   • ne jamais l'envoyer à l'assistance : COMEX rejette tout ce qui ne fait pas
+  //     17 caractères et le remplace par 17×'X' — on lui enverrait un faux châssis.
+  // On envoie donc le VIN COMPLET (fiche ou OCR), et on se sert des 5 chiffres pour
+  // détecter un désaccord, qui est signalé au dispatch. Olivier 2026-08-11.
+  const vin5      = String(common.vin || '').trim().toUpperCase()
+  const ficheVin  = String((m as any).vehicle_vin || '').trim().toUpperCase()
+  const isFullVin = (v: string) => /^[A-HJ-NPR-Z0-9]{17}$/.test(v)
+  let vin: string | null = null
+  let vinMismatch = false
+  if (isFullVin(vin5))          vin = vin5              // le chauffeur a saisi le VIN entier
+  else if (isFullVin(ficheVin)) {
+    vin = ficheVin
+    if (vin5.length >= 3 && !ficheVin.endsWith(vin5)) vinMismatch = true
+  }
 
   // Chaque information va dans SA colonne — comme le fait déjà driver-action, qui
   // éclate `closing_data` (payload, pas colonne) en champs réels de la fiche.
   const patch: Record<string, any> = { updated_at: new Date().toISOString() }
-  if (vin) patch.vehicle_vin = vin
+  // On n'écrit le châssis QUE s'il est complet et que la fiche n'en a pas.
+  if (vin && isFullVin(vin) && !isFullVin(ficheVin)) patch.vehicle_vin = vin
   if (km != null && Number.isFinite(km)) patch.vehicle_mileage = km
   if (common.vehicleLocation)            patch.vehicle_location  = String(common.vehicleLocation)
   if (common.keyRecovered != null)       patch.key_recovered     = !!common.keyRecovered
@@ -236,6 +254,14 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     }).then(() => {}, () => {})
   }
 
+  if (vinMismatch) {
+    await sb.from('mission_logs').insert({
+      mission_id: (m as any).id, actor_id: (actor as any)?.id, action: 'vin_mismatch',
+      notes: `⚠️ Châssis : le chauffeur a relevé « …${vin5} » mais le dossier porte ${ficheVin}. Vérifier qu'il s'agit du bon véhicule.`,
+      metadata: { vin5, ficheVin },
+    }).then(() => {}, () => {})
+  }
+
   await sb.from('mission_logs').insert({
     mission_id: (m as any).id,
     actor_id:   (actor as any)?.id,
@@ -251,6 +277,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
       outcome, motifKey, assistance, result, skipAssistance, queued,
       // Tronc commun consigné en entier : ce que l'assistance du jour n'exige pas
       // reste lisible pour le dispatch (signature refusée, clé restée au client…).
+      vin5, vinMismatch,
       common: {
         signature: common.signature ?? null,        // 'signed' | 'refus' | 'absent'
         keyRecovered: common.keyRecovered ?? null,
