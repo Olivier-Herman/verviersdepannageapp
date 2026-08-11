@@ -2179,6 +2179,9 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
           // VD Soft habituelle, préremplie — rien n'est perdu (photos, décharge,
           // encaissement, parc) et le chauffeur n'a plus qu'à valider.
           setF2Screen('none'); setF2Outcome(null)
+          // Plateforme de l'assistance injoignable : c'est enregistré et rattrapé
+          // automatiquement. On le dit simplement, sans bloquer quoi que ce soit.
+          if (r.queued) setErr("Enregistré ✅ — l'assistance est injoignable pour l'instant, on s'en occupe automatiquement dès qu'elle revient.")
           if (r.common.remark) setCloseNote(r.common.remark)
           if (r.common.signaturePng) setSig(r.common.signaturePng)
           if (r.outcome === 'dpr')       { setCloseType('dpr');  setScreen('close'); return }

@@ -21,6 +21,7 @@ import { availableOutcomes, outcomeIsRem, DPR_END_CODES, OUTCOMES, type Outcome 
 import { parseComexKeys, transformTouring } from '@/lib/cloture/transform/touring'
 import { loginComex, getComexProviders } from '@/lib/touring/comex'
 import { findMotif } from '@/lib/cloture/motifs'
+import { enqueueClose, isRetryable } from '@/lib/cloture/queue'
 import { branchOf, needsMotif }  from '@/lib/cloture/outcomes'
 
 export const dynamic     = 'force-dynamic'
@@ -141,6 +142,12 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   await sb.from('incoming_missions').update(patch).eq('id', (m as any).id)
 
   // ── Transformation propre à l'assistance ───────────────────────────────────
+  // ÉCHAPPATOIRE : quand la plateforme de l'assistance est en panne (COMEX
+  // injoignable, session refusée…), on ne piège pas le chauffeur sur la route.
+  // Il continue sa clôture VD Soft ; le dispatch clôturera chez l'assistance
+  // quand elle sera revenue. Le tronc commun est déjà enregistré ci-dessus.
+  // Olivier 2026-08-11 (panne COMEX pendant le 1er test de Franck).
+  const skipAssistance = body?.skipAssistance === true
   const assistance = flux2AssistanceOf(m as any)
   let result: any = { ok: true, skipped: true }
 
@@ -153,17 +160,36 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     if (md?.cause && md?.desc && md?.result) prefill = { cause: md.cause, desc: md.desc, result: md.result }
   }
 
-  if (assistance === 'touring') {
+  let queued = false
+
+  if (skipAssistance) {
+    result = { ok: true, skipped: 'assistance', finCode: null, codes: null }
+  } else if (assistance === 'touring') {
     const keys = parseComexKeys((m as any).raw_content)
     if (!keys) return NextResponse.json({ error: 'Clés Touring absentes de la fiche' }, { status: 400 })
-    result = await transformTouring(keys, {
+    const input = {
       outcome, motifKey, prefill,
       dprCode: body?.dprCode ?? null,
       vin, km,
       toCidIntv: body?.toCidIntv ?? null,
       manualAddress: body?.manualAddress ?? null,
       comment: body?.comment ?? null,
-    })
+    }
+    result = await transformTouring(keys, input)
+
+    // ── UNE APPLICATION TIERCE NE BLOQUE JAMAIS LE CHAUFFEUR (Olivier 2026-08-11).
+    // Panne / session refusée / timeout → on MÉMORISE la clôture et on laisse le
+    // chauffeur terminer sa mission. Le cron `assistance-close-retry` la rejouera
+    // dès que la plateforme répond. Un refus MÉTIER (code de fin non autorisé sur
+    // ce dossier) n'est pas mis en file : le rejouer ne changerait rien.
+    if (!result.ok && isRetryable(result.error)) {
+      await enqueueClose({
+        missionId: (m as any).id, assistance: 'touring', input,
+        rawContent: (m as any).raw_content, actorId: (actor as any)?.id, error: result.error,
+      })
+      queued = true
+      result = { ...result, ok: true, queued: true }
+    }
   }
   // VAB / Kaze : leurs transformations viendront ici, gatées par leur propre flag.
 
@@ -188,11 +214,15 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     mission_id: (m as any).id,
     actor_id:   (actor as any)?.id,
     action:     result.ok ? 'flux2_closed' : 'flux2_close_failed',
-    notes: result.ok
-      ? `Clôture (flux 2) — ${OUTCOMES[outcome].label}${motifKey ? ` · ${motifKey}` : ''}`
-      : `Échec clôture (flux 2) — ${result.error || 'erreur inconnue'}`,
+    notes: !result.ok
+      ? `Échec clôture (flux 2) — ${result.error || 'erreur inconnue'}`
+      : queued
+        ? `Clôture (flux 2) — ${OUTCOMES[outcome].label}${motifKey ? ` · ${motifKey}` : ''} — ⏳ ${assistance ?? 'assistance'} injoignable : mise en file, rattrapage automatique`
+        : skipAssistance
+        ? `Clôture (flux 2) — ${OUTCOMES[outcome].label}${motifKey ? ` · ${motifKey}` : ''} — ⚠️ NON clôturée chez ${assistance ?? "l'assistance"} (plateforme injoignable) : à clôturer par le dispatch`
+        : `Clôture (flux 2) — ${OUTCOMES[outcome].label}${motifKey ? ` · ${motifKey}` : ''}`,
     metadata: {
-      outcome, motifKey, assistance, result,
+      outcome, motifKey, assistance, result, skipAssistance, queued,
       // Tronc commun consigné en entier : ce que l'assistance du jour n'exige pas
       // reste lisible pour le dispatch (signature refusée, clé restée au client…).
       common: {

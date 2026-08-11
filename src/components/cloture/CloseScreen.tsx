@@ -66,7 +66,7 @@ export default function CloseScreen({
   onNeedPhotos: () => void
   onBack: () => void
   /** Transformation réussie → le parent enchaîne sur la clôture VD Soft. */
-  onDone: (r: { outcome: OutcomeKey; common: CloseCommon; destination?: { address: string; lat?: number; lng?: number } }) => void
+  onDone: (r: { outcome: OutcomeKey; common: CloseCommon; destination?: { address: string; lat?: number; lng?: number }; queued?: boolean }) => void
 }) {
   const branch = BRANCH_OF[outcome] || null
   const isRem  = outcome === 'rem' || outcome === 'rem_vr'
@@ -106,6 +106,9 @@ export default function CloseScreen({
 
   const [busy, setBusy]   = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // La plateforme de l'assistance a refusé/échoué → on propose de continuer sans
+  // elle plutôt que de bloquer le chauffeur sur la route.
+  const [canSkip, setCanSkip] = useState(false)
 
   useEffect(() => {
     if (!isDelivered) { setHasPrefill(false); return }
@@ -175,7 +178,7 @@ export default function CloseScreen({
     if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' })
   }
 
-  async function submit() {
+  async function submit(skipAssistance = false) {
     setBusy(true); setError(null)
     const common: CloseCommon = {
       signature: sig, signaturePng: sigPng,
@@ -185,6 +188,7 @@ export default function CloseScreen({
       vin: vin.trim().toUpperCase(), km: km.trim(), remark: remark.trim(),
     }
     const body: any = { outcome, motifKey: motifKey || null, dprCode: dprCode || null, common }
+    if (skipAssistance) body.skipAssistance = true
 
     if (isRem) {
       if (destMode === 'manual') {
@@ -208,8 +212,14 @@ export default function CloseScreen({
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
       })
       const j = await r.json()
-      if (!r.ok || !j.ok) { setError(j.error || 'Clôture refusée'); setBusy(false); return }
-      onDone({ outcome, common, destination: body.destination })
+      if (!r.ok || !j.ok) {
+        setError(j.error || 'Clôture refusée')
+        setCanSkip(true)   // → « Continuer sans clôturer »
+        setBusy(false); return
+      }
+      // j.queued = la plateforme de l'assistance était injoignable : c'est
+      // enregistré et rejoué automatiquement. Le chauffeur continue, point.
+      onDone({ outcome, common, destination: body.destination, queued: !!j.queued })
     } catch (e: any) {
       setError(e?.message || 'Erreur réseau'); setBusy(false)
     }
@@ -424,7 +434,22 @@ export default function CloseScreen({
             className="w-full bg-surface border border rounded-xl px-3 py-3 text-ink text-sm outline-none resize-none" />
         </div>
 
-        {error && <div className="bg-red-500/10 text-red-500 rounded-xl px-3 py-3 text-sm">{error}</div>}
+        {error && (
+          <div className="bg-red-500/10 text-red-500 rounded-xl px-3 py-3 text-sm space-y-2">
+            <p>{error}</p>
+            {canSkip && (
+              <p className="text-ink-secondary text-xs">
+                Tu peux terminer ta mission quand même : le dispatch s'occupera de la clôture chez l'assistance.
+              </p>
+            )}
+          </div>
+        )}
+        {canSkip && (
+          <button onClick={() => submit(true)} disabled={busy}
+            className="w-full py-3.5 bg-surface-2 border border rounded-2xl text-sm font-bold text-ink-secondary">
+            Continuer sans clôturer →
+          </button>
+        )}
       </div>
 
       <div className="px-4 py-4 border-t border space-y-2">
@@ -439,7 +464,7 @@ export default function CloseScreen({
             </button>
           </>
         ) : (
-          <button onClick={submit} disabled={busy || !canSubmit}
+          <button onClick={() => submit()} disabled={busy || !canSubmit}
             className="w-full py-4 bg-green-600 disabled:opacity-40 text-white font-bold rounded-2xl text-base">
             {busy ? 'Clôture en cours…' : !canSubmit ? (!motifKey && !isDpr ? 'Choisis un motif' : isDpr ? 'Choisis un motif' : 'Indique où déposer le véhicule') : 'Valider la clôture'}
           </button>
