@@ -110,6 +110,29 @@ export async function pollRequisitoires(opts?: { top?: number }): Promise<Intake
 // matching, auto-attache. Mutualisé entre le cron (pollRequisitoires) et la
 // réconciliation mailbox-wide (reconcileRequisitoires). `budget.remaining` borne
 // les appels Claude sur le run.
+/**
+ * Réponse à NOTRE relance : le sujet porte la référence `SAI-<mission_number>`
+ * qu'on a émise nous-mêmes ([[relance.ts]] : « Réquisitoire non reçu — … — réf
+ * SAI-10011430 »). C'est la clé la plus fiable possible — impossible de se
+ * tromper de dossier. Retourne l'id de la fiche si le sujet contient une réf
+ * valide pointant vers une fiche existante (non archivée). Prime sur le matching
+ * flou (VIN/adresse), qui reste inchangé pour les réquisitoires spontanés.
+ * Olivier 2026-08-11.
+ */
+async function ficheIdFromOurRef(sb: any, subject: string | null | undefined): Promise<string | null> {
+  const m = /SAI-0*(\d{3,})/i.exec(subject || '')
+  if (!m) return null
+  const num = Number(m[1])
+  if (!Number.isFinite(num)) return null
+  const { data } = await sb
+    .from('incoming_missions')
+    .select('id')
+    .eq('mission_number', num)
+    .is('archived_at', null)
+    .maybeSingle()
+  return data?.id ?? null
+}
+
 async function processMessage(
   sb: any, mailbox: string, msg: GraphMessage, summary: IntakeSummary, budget: { remaining: number },
 ): Promise<void> {
@@ -193,25 +216,36 @@ async function processMessage(
       status = hasStrongKey ? 'pending' : 'to_verify'
     }
 
+    // Réponse à notre relance : réf SAI-<n° fiche> dans le sujet = clé infaillible,
+    // elle prime sur le matching flou. Olivier 2026-08-11.
+    const refFicheId = await ficheIdFromOurRef(sb, msg.subject)
+
     await sb.from('requisitoire_intake').insert({
       id: intakeId, mailbox, source_email_id: msg.id, from_addr: msg.from,
       subject: msg.subject, received_at: msg.receivedDateTime, file_name: fileName,
       doc_path: docPath, extracted: ex as any, doc_type: ex.doc_type,
       candidates: match.candidates as any,
-      matched_mission_id: (status === 'pending' && match.confidence === 'high') ? match.best?.mission_id ?? null : null,
-      confidence: match.confidence, status,
+      matched_mission_id: refFicheId
+        ?? ((status === 'pending' && match.confidence === 'high') ? match.best?.mission_id ?? null : null),
+      confidence: refFicheId ? 'high' : match.confidence,
+      status: refFicheId ? 'pending' : status,
     })
     summary.captured++
 
-    // Auto-rattachement (saisie/enlèvement UNIQUEMENT — pas les levées).
-    if (match.autoAttach && match.best && ex.doc_type !== 'levee_saisie') {
-      try {
-        const { attachRequisitoire } = await import('@/lib/requisitoire/attach')
-        const res = await attachRequisitoire(sb, intakeId, match.best.mission_id, null, {})
-        if (res.ok) summary.autoAttached = (summary.autoAttached || 0) + 1
-        else console.warn(`[requisitoire] auto-attache ${intakeId} refusée : ${res.error}`)
-      } catch (e: any) {
-        console.error(`[requisitoire] auto-attache ${intakeId} KO :`, e?.message)
+    // Auto-rattachement (saisie/enlèvement UNIQUEMENT — pas les levées) :
+    //  - réf SAI- de NOTRE relance → rattache direct à cette fiche (infaillible) ;
+    //  - sinon matching flou strict (clé forte + adresse précise + unique + date).
+    if (ex.doc_type !== 'levee_saisie') {
+      const attachId = refFicheId ?? (match.autoAttach ? match.best?.mission_id ?? null : null)
+      if (attachId) {
+        try {
+          const { attachRequisitoire } = await import('@/lib/requisitoire/attach')
+          const res = await attachRequisitoire(sb, intakeId, attachId, null, {})
+          if (res.ok) summary.autoAttached = (summary.autoAttached || 0) + 1
+          else console.warn(`[requisitoire] auto-attache ${intakeId} refusée : ${res.error}`)
+        } catch (e: any) {
+          console.error(`[requisitoire] auto-attache ${intakeId} KO :`, e?.message)
+        }
       }
     }
   } catch (err: any) {
@@ -281,7 +315,7 @@ export async function rematchPendingRequisitoires(): Promise<{ scanned: number; 
   // 'high' à auto-attacher. On ne filtre PAS sur matched_mission_id (sinon les
   // candidats forts déjà suggérés ne seraient jamais auto-rattachés). Olivier 2026-07-29.
   const { data: rows } = await sb.from('requisitoire_intake')
-    .select('id, extracted, status, doc_type')
+    .select('id, subject, extracted, status, doc_type')
     .in('status', ['pending', 'to_verify'])
     .order('received_at', { ascending: false })
     .limit(300)
@@ -292,22 +326,27 @@ export async function rematchPendingRequisitoires(): Promise<{ scanned: number; 
     if (!ex) continue
     try {
       const match = await findRequisitoireCandidates(sb, ex)
+      // Réponse à notre relance (réf SAI- dans le sujet) → prime sur le matching flou.
+      const refFicheId = await ficheIdFromOurRef(sb, (row as any).subject)
       await sb.from('requisitoire_intake').update({
         candidates:         match.candidates as any,
-        confidence:         match.confidence,
-        matched_mission_id: match.confidence === 'high' ? (match.best?.mission_id ?? null) : null,
+        confidence:         refFicheId ? 'high' : match.confidence,
+        matched_mission_id: refFicheId ?? (match.confidence === 'high' ? (match.best?.mission_id ?? null) : null),
       }).eq('id', (row as any).id)
       updated++
 
-      // Auto-rattachement des anciens dossiers dont la fiche est apparue ENTRE-TEMPS.
-      // Mêmes critères que la capture (clé forte + adresse précise + unique + date
-      // ≤1j), saisie UNIQUEMENT (jamais les levées). Commande complète du bouton
-      // « Rattacher » (annexion + PV + classement email). Olivier 2026-07-29.
-      if (match.autoAttach && match.best && (row as any).doc_type !== 'levee_saisie') {
-        const { attachRequisitoire } = await import('@/lib/requisitoire/attach')
-        const res = await attachRequisitoire(sb, (row as any).id, match.best.mission_id, null, {})
-        if (res.ok) autoAttached++
-        else console.warn(`[requisitoire rematch] auto-attache ${(row as any).id} refusée : ${res.error}`)
+      // Auto-rattachement des anciens dossiers dont la fiche est apparue ENTRE-TEMPS,
+      // ou dont la réponse porte notre réf SAI- (infaillible). Saisie UNIQUEMENT
+      // (jamais les levées). Commande complète du bouton « Rattacher » (annexion +
+      // PV + classement email). Olivier 2026-07-29 / réf SAI- 2026-08-11.
+      if ((row as any).doc_type !== 'levee_saisie') {
+        const attachId = refFicheId ?? (match.autoAttach ? (match.best?.mission_id ?? null) : null)
+        if (attachId) {
+          const { attachRequisitoire } = await import('@/lib/requisitoire/attach')
+          const res = await attachRequisitoire(sb, (row as any).id, attachId, null, {})
+          if (res.ok) autoAttached++
+          else console.warn(`[requisitoire rematch] auto-attache ${(row as any).id} refusée : ${res.error}`)
+        }
       }
     } catch (e: any) {
       console.error('[requisitoire rematch]', (row as any).id, e?.message)

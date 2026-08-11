@@ -126,6 +126,7 @@ export default function AppNavV2({
               {openModule.visibleSections.map(section => {
                 const isActive = findActiveSectionHref(openModule, pathname) === section.href
                 const badge    = badges[section.href] || 0
+                const Icon     = section.icon
                 return (
                   <Link
                     key={section.href}
@@ -136,6 +137,7 @@ export default function AppNavV2({
                       isActive ? 'bg-brand-soft text-brand' : 'text-ink-secondary hover:text-ink hover:bg-surface-hover'
                     }`}
                   >
+                    {Icon && <Icon size={16} className="flex-shrink-0 opacity-70" />}
                     <span className="flex-1 min-w-0 truncate">
                       {section.i18nKey ? <T k={section.i18nKey} /> : section.label}
                     </span>

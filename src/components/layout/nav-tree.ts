@@ -15,12 +15,21 @@
 //   - l'ordre du niveau 1 suit l'ordre des items filtrés, donc l'ordre personnalisé
 //     par le user (drag & drop /profil, `userNavOrder`) est respecté.
 
+import {
+  Radio, Plus, Repeat, FolderCheck, Car, ShoppingCart, Search, FileWarning, FileText,
+  Mail, Trash2, ScanLine, AlertTriangle, Map as MapIcon, Landmark, Receipt, ShieldCheck, Shield,
+  ClipboardList, BarChart3, LayoutGrid, CreditCard, Wallet, Users, CalendarDays,
+  Megaphone, Contact, TrendingUp, Settings, Store, Building2, Bot, ClipboardCheck,
+  CalendarClock, Send, type LucideIcon,
+} from 'lucide-react'
 import { type NavItem } from './nav-items'
 
 export interface NavSection {
   href:     string
   label:    string
   i18nKey?: string
+  /** Icône affichée devant le libellé dans la pane niveau 2. */
+  icon?:    LucideIcon
   /** href du NAV_ITEM qui autorise cette section (elle-même ou son module parent). */
   requires: string
   /** Modules dont AU MOINS UN est requis, en plus de `requires` (admin/superadmin passent
@@ -47,40 +56,40 @@ export const NAV_TREE: NavModule[] = [
   {
     key: 'dispatch', label: 'Dispatch', icon: '📡',
     sections: [
-      { href: '/dispatch',           label: 'Dispatch',           requires: '/dispatch' },
-      { href: '/dispatch/new',       label: 'Nouvelle mission',   requires: '/dispatch' },
-      { href: '/relivraison',        label: 'Relivraison',        requires: '/relivraison' },
-      { href: '/missions-terminees', label: 'Missions terminées', i18nKey: 'nav.finished', requires: '/missions-terminees' },
+      { href: '/dispatch',           label: 'Dispatch',           icon: Radio,       requires: '/dispatch' },
+      { href: '/dispatch/new',       label: 'Nouvelle mission',   icon: Plus,        requires: '/dispatch' },
+      { href: '/relivraison',        label: 'Relivraison',        icon: Repeat,      requires: '/relivraison' },
+      { href: '/missions-terminees', label: 'Missions terminées', icon: FolderCheck, i18nKey: 'nav.finished', requires: '/missions-terminees' },
     ],
   },
   {
     key: 'mission', label: 'Mes Missions', i18nKey: 'nav.my_missions', icon: '🚗',
     sections: [
-      { href: '/mission',        label: 'Mes Missions', i18nKey: 'nav.my_missions', requires: '/mission' },
-      { href: '/missions-dispo', label: 'Momo Market',  requires: '/missions-dispo' },
+      { href: '/mission',        label: 'Mes Missions', icon: Car,          i18nKey: 'nav.my_missions', requires: '/mission' },
+      { href: '/missions-dispo', label: 'Momo Market',  icon: ShoppingCart, requires: '/missions-dispo' },
     ],
   },
   {
     key: 'fourriere', label: 'Fourrière', icon: '🚓',
     sections: [
-      { href: '/fourriere',                     label: 'Recherche & parcs',      requires: '/fourriere' },
-      { href: '/fourriere/saisies',             label: 'Saisies',                requires: '/fourriere' },
-      { href: '/fourriere/requisitoires',       label: 'Réquisitoires',          requires: '/fourriere' },
-      { href: '/fourriere/relance-requisitoire', label: 'Relance réquisitoires', requires: '/fourriere' },
-      { href: '/fourriere/destruction',         label: 'Sortie AVP',             requires: '/fourriere' },
-      { href: '/fourriere/inventaire',          label: 'Inventaire',             requires: '/fourriere' },
-      { href: '/fourriere/non-localises',       label: 'Non-localisés',          requires: '/fourriere' },
-      { href: '/fourriere/plan',                label: 'Plan du parc',           requires: '/fourriere' },
-      { href: '/fourriere/domaine',             label: 'Domaine',                requires: '/fourriere', superadminOnly: true },
+      { href: '/fourriere',                     label: 'Recherche & parcs',     icon: Search,        requires: '/fourriere' },
+      { href: '/fourriere/saisies',             label: 'Saisies',               icon: FileWarning,   requires: '/fourriere' },
+      { href: '/fourriere/requisitoires',       label: 'Réquisitoires',         icon: FileText,      requires: '/fourriere' },
+      { href: '/fourriere/relance-requisitoire', label: 'Relance réquisitoires', icon: Mail,         requires: '/fourriere' },
+      { href: '/fourriere/destruction',         label: 'Sortie AVP',            icon: Trash2,        requires: '/fourriere' },
+      { href: '/fourriere/inventaire',          label: 'Inventaire',            icon: ScanLine,      requires: '/fourriere' },
+      { href: '/fourriere/non-localises',       label: 'Non-localisés',         icon: AlertTriangle, requires: '/fourriere' },
+      { href: '/fourriere/plan',                label: 'Plan du parc',          icon: MapIcon,           requires: '/fourriere' },
+      { href: '/fourriere/domaine',             label: 'Domaine',               icon: Landmark,      requires: '/fourriere', superadminOnly: true },
     ],
   },
   {
     key: 'facturation', label: 'Facturation', icon: '🧾',
     sections: [
-      { href: '/facturation',         label: 'Facturation',    requires: '/facturation' },
-      { href: '/facturation/allianz', label: 'Clôture Allianz', requires: '/facturation' },
-      { href: '/facturation/touring', label: 'Touring',         requires: '/facturation' },
-      { href: '/admin/amendes',       label: 'Amendes',         requires: '/admin/amendes' },
+      { href: '/facturation',         label: 'Facturation',     icon: Receipt,       requires: '/facturation' },
+      { href: '/facturation/allianz', label: 'Clôture Allianz', icon: ShieldCheck,   requires: '/facturation' },
+      { href: '/facturation/touring', label: 'Touring',         icon: Shield,        requires: '/facturation' },
+      { href: '/admin/amendes',       label: 'Amendes',         icon: AlertTriangle, requires: '/admin/amendes' },
     ],
   },
   {
@@ -89,50 +98,50 @@ export const NAV_TREE: NavModule[] = [
     // tuiles en sections, avec exactement le même gating.
     key: 'finance', label: 'Finance', icon: '💵',
     sections: [
-      { href: '/finance',       label: 'Vue d\'ensemble',  requires: '/finance' },
-      { href: '/encaissement',  label: 'Encaissement',     requires: '/finance', requiresModules: ['encaissement'] },
-      { href: '/encaissements', label: 'Mouvements',       requires: '/finance', requiresModules: ['encaissements'] },
-      { href: '/caisse',        label: 'Ma Caisse',        requires: '/finance', requiresModules: ['caisse'] },
-      { href: '/avance-fonds',  label: 'Avance de fonds',  requires: '/finance', requiresModules: ['avance_fonds'] },
-      { href: '/relances',      label: 'Relance Client',   requires: '/finance', requiresModules: ['relances'] },
+      { href: '/finance',       label: 'Vue d\'ensemble', icon: LayoutGrid, requires: '/finance' },
+      { href: '/encaissement',  label: 'Encaissement',    icon: CreditCard, requires: '/finance', requiresModules: ['encaissement'] },
+      { href: '/encaissements', label: 'Mouvements',      icon: BarChart3,  requires: '/finance', requiresModules: ['encaissements'] },
+      { href: '/caisse',        label: 'Ma Caisse',       icon: Wallet,     requires: '/finance', requiresModules: ['caisse'] },
+      { href: '/avance-fonds',  label: 'Avance de fonds', icon: FileText,   requires: '/finance', requiresModules: ['avance_fonds'] },
+      { href: '/relances',      label: 'Relance Client',  icon: Send,       requires: '/finance', requiresModules: ['relances'] },
     ],
   },
   {
     key: 'touring', label: 'Touring', icon: '🛡️',
     sections: [
-      { href: '/services/tgr',  label: 'TGR Touring',   i18nKey: 'nav.services_tgr', requires: '/services/tgr' },
-      { href: '/admin/tgr',     label: 'TGR Gestion',   requires: '/admin/tgr' },
-      { href: '/stats/touring', label: 'Stats Touring', requires: '/stats' },
+      { href: '/services/tgr',  label: 'TGR Touring',   icon: Shield,        i18nKey: 'nav.services_tgr', requires: '/services/tgr' },
+      { href: '/admin/tgr',     label: 'TGR Gestion',   icon: ClipboardList, requires: '/admin/tgr' },
+      { href: '/stats/touring', label: 'Stats Touring', icon: BarChart3,     requires: '/stats' },
     ],
   },
   {
     key: 'personnel', label: 'Gestion du personnel', icon: '👤',
     sections: [
-      { href: '/personnel',             label: 'Personnel',           requires: '/personnel' },
-      { href: '/personnel/conges',      label: 'Congés',              requires: '/personnel' },
-      { href: '/personnel/annonces',    label: 'Annonces',            requires: '/personnel' },
-      { href: '/personnel/repertoire',  label: 'Répertoire',          requires: '/personnel' },
-      { href: '/personnel/rentabilite', label: 'Rentabilité',         requires: '/personnel' },
-      { href: '/garde',                 label: 'Planning de garde',   requires: '/garde' },
-      { href: '/personnel/garde',       label: 'Configuration garde', requires: '/personnel' },
+      { href: '/personnel',             label: 'Personnel',           icon: Users,        requires: '/personnel' },
+      { href: '/personnel/conges',      label: 'Congés',              icon: CalendarDays, requires: '/personnel' },
+      { href: '/personnel/annonces',    label: 'Annonces',            icon: Megaphone,    requires: '/personnel' },
+      { href: '/personnel/repertoire',  label: 'Répertoire',          icon: Contact,      requires: '/personnel' },
+      { href: '/personnel/rentabilite', label: 'Rentabilité',         icon: TrendingUp,   requires: '/personnel' },
+      { href: '/garde',                 label: 'Planning de garde',   icon: ShieldCheck,  requires: '/garde' },
+      { href: '/personnel/garde',       label: 'Configuration garde', icon: Settings,     requires: '/personnel' },
     ],
   },
   {
     // Module jeune, appelé à grossir : il garde son propre niveau 1.
     key: 'achats', label: 'Gestion Achat', icon: '📦',
     sections: [
-      { href: '/achats',             label: 'Vue d\'ensemble', requires: '/achats' },
-      { href: '/achats/marche',      label: 'Marché',          requires: '/achats' },
-      { href: '/achats/fournisseurs', label: 'Fournisseurs',   requires: '/achats' },
-      { href: '/achats/devis',       label: 'Devis',           requires: '/achats' },
-      { href: '/achats/assistant',   label: 'Assistant achat', requires: '/achats' },
+      { href: '/achats',              label: 'Vue d\'ensemble', icon: LayoutGrid, requires: '/achats' },
+      { href: '/achats/marche',       label: 'Marché',          icon: Store,      requires: '/achats' },
+      { href: '/achats/fournisseurs', label: 'Fournisseurs',    icon: Building2,  requires: '/achats' },
+      { href: '/achats/devis',        label: 'Devis',           icon: FileText,   requires: '/achats' },
+      { href: '/achats/assistant',    label: 'Assistant achat', icon: Bot,        requires: '/achats' },
     ],
   },
   {
     key: 'check-vehicule', label: 'Check Véhicule', i18nKey: 'nav.check', icon: '🔧',
     sections: [
-      { href: '/check-vehicule',             label: 'Check Véhicule', i18nKey: 'nav.check', requires: '/check-vehicule' },
-      { href: '/check-vehicule/convocations', label: 'Convocations CT', requires: '/check-vehicule' },
+      { href: '/check-vehicule',              label: 'Check Véhicule',  icon: ClipboardCheck, i18nKey: 'nav.check', requires: '/check-vehicule' },
+      { href: '/check-vehicule/convocations', label: 'Convocations CT', icon: CalendarClock,  requires: '/check-vehicule' },
     ],
   },
 ]
