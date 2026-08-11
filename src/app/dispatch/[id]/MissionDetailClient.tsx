@@ -4199,16 +4199,16 @@ export default function MissionDetailClient({
                 </button>
               )}
 
-              {/* Registre des visites — véhicule en parc : personnes venant
-                  récupérer des affaires / faire expertiser (lecture carte au
-                  comptoir + motifs, ou ajout manuel). Olivier 2026-08-08. */}
-              {status === 'parked' && (
-                <VisitorsPanel
-                  missionId={initialMission.id}
-                  plate={(initialMission as any).vehicle_plate}
-                  screenKey="facturation"
-                />
-              )}
+              {/* Registre des visites — persiste même après la sortie du parc
+                  (historique consultable, clic = détail complet). Lecture eID /
+                  ajout / suppression uniquement quand le véhicule est en parc.
+                  Olivier 2026-08-08 ; persistance 2026-08-11. */}
+              <VisitorsPanel
+                missionId={initialMission.id}
+                plate={(initialMission as any).vehicle_plate}
+                screenKey="facturation"
+                canManage={status === 'parked'}
+              />
 
               {/* Bouton Restituer — Olivier 2026-06-14 : remonté en haut du bloc
                   droit (permuté avec l'impression d'étiquette). Visible pour

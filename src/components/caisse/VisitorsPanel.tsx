@@ -18,6 +18,7 @@ interface Visitor {
   motifs: string[]
   expert_bureau: string | null
   note: string | null
+  created_at?: string | null
   source: 'eid' | 'manual'
 }
 interface Motif { label: string; is_expert: boolean }
@@ -29,17 +30,21 @@ const fmt = (iso: string) => {
 }
 
 export default function VisitorsPanel({
-  missionId, plate, screenKey = 'facturation',
+  missionId, plate, screenKey = 'facturation', canManage = true,
 }: {
   missionId: string
   plate?: string | null
   screenKey?: string
+  /** true (véhicule en parc) = lecture eID + ajout + suppression ;
+   *  false = historique en lecture seule (bloc persistant hors parc). */
+  canManage?: boolean
 }) {
   const [visitors, setVisitors] = useState<Visitor[]>([])
   const [motifs, setMotifs]     = useState<Motif[]>([])
   const [bureaux, setBureaux]   = useState<string[]>([])
   const [loading, setLoading]   = useState(true)
   const [showManual, setShowManual] = useState(false)
+  const [detail, setDetail]         = useState<Visitor | null>(null)
 
   const load = useCallback(async () => {
     try {
@@ -58,32 +63,40 @@ export default function VisitorsPanel({
     load()
   }
 
+  // Hors parc et sans visite : bloc masqué (rien à persister).
+  if (!canManage && !loading && visitors.length === 0) return null
+
   return (
     <div className="w-full bg-surface-2 border border-app rounded-2xl p-3 space-y-3">
       <div className="flex items-center justify-between">
         <h3 className="text-sm font-semibold text-ink flex items-center gap-1.5">
           👥 Visites
           {visitors.length > 0 && <span className="text-xs font-normal text-ink-muted">({visitors.length})</span>}
+          {!canManage && visitors.length > 0 && <span className="text-[10px] font-normal text-ink-muted">· historique</span>}
         </h3>
-        <button onClick={() => setShowManual(v => !v)}
-          className="text-xs text-brand hover:underline">
-          {showManual ? 'Fermer' : '＋ Ajout manuel'}
-        </button>
+        {canManage && (
+          <button onClick={() => setShowManual(v => !v)}
+            className="text-xs text-brand hover:underline">
+            {showManual ? 'Fermer' : '＋ Ajout manuel'}
+          </button>
+        )}
       </div>
 
-      {/* Enregistrement via l'écran comptoir */}
-      <VisitorButton missionId={missionId} plate={plate} screenKey={screenKey} onDone={load} />
-
-      {/* Ajout manuel (refus de lecture eID) */}
-      {showManual && (
-        <ManualVisitorForm
-          motifs={motifs} bureaux={bureaux}
-          onSaved={() => { setShowManual(false); load() }}
-          missionId={missionId}
-        />
+      {/* Lecture eID (comptoir) + ajout manuel : uniquement quand le véhicule est en parc */}
+      {canManage && (
+        <>
+          <VisitorButton missionId={missionId} plate={plate} screenKey={screenKey} onDone={load} />
+          {showManual && (
+            <ManualVisitorForm
+              motifs={motifs} bureaux={bureaux}
+              onSaved={() => { setShowManual(false); load() }}
+              missionId={missionId}
+            />
+          )}
+        </>
       )}
 
-      {/* Liste des visites */}
+      {/* Liste des visites — clic sur une visite = détail complet (persiste hors parc). */}
       {loading ? (
         <p className="text-xs text-ink-muted">Chargement…</p>
       ) : visitors.length === 0 ? (
@@ -91,8 +104,9 @@ export default function VisitorsPanel({
       ) : (
         <ul className="space-y-2">
           {visitors.map(v => (
-            <li key={v.id} className="bg-surface border border-app rounded-xl p-2.5 text-sm">
-              <div className="flex items-start justify-between gap-2">
+            <li key={v.id}>
+              <button type="button" onClick={() => setDetail(v)}
+                className="w-full text-left bg-surface border border-app rounded-xl p-2.5 text-sm flex items-start justify-between gap-2 hover:border-brand hover:bg-surface-2 transition">
                 <div className="min-w-0">
                   <div className="font-medium text-ink truncate">
                     {[v.first_name, v.last_name].filter(Boolean).join(' ') || '—'}
@@ -106,19 +120,55 @@ export default function VisitorsPanel({
                       <span className="text-xs px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 font-medium">🔎 {v.expert_bureau}</span>
                     )}
                   </div>
-                  {v.note && <div className="text-xs text-ink-muted mt-1 italic">{v.note}</div>}
                 </div>
                 <div className="flex flex-col items-end gap-1 shrink-0">
                   <span className="text-[11px] text-ink-muted whitespace-nowrap">{fmt(v.visited_at)}</span>
                   <span className={`text-[10px] px-1.5 py-0.5 rounded ${v.source === 'eid' ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-600'}`}>
                     {v.source === 'eid' ? '🪪 carte' : '✍️ manuel'}
                   </span>
-                  <button onClick={() => remove(v.id)} className="text-[11px] text-ink-muted hover:text-critical">Suppr.</button>
+                  <span className="text-[11px] text-brand">détails →</span>
                 </div>
-              </div>
+              </button>
             </li>
           ))}
         </ul>
+      )}
+
+      {/* Détail complet en MODAL (le bloc de la fiche est trop étroit). Fermeture
+          par ✕ ou « Fermer » uniquement (pas de clic-fond). Olivier 2026-08-11. */}
+      {detail && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/50 p-4">
+          <div className="w-full max-w-md bg-surface border border-app rounded-2xl shadow-xl max-h-[85vh] overflow-y-auto">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-app sticky top-0 bg-surface">
+              <h4 className="text-base font-semibold text-ink flex items-center gap-1.5">👤 Détail de la visite</h4>
+              <button onClick={() => setDetail(null)} className="text-ink-muted hover:text-ink text-xl leading-none px-1">✕</button>
+            </div>
+            <div className="p-4 space-y-3">
+              <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 text-sm text-ink">
+                <dt className="text-ink-muted">Nom</dt>            <dd className="font-medium">{detail.last_name || '—'}</dd>
+                <dt className="text-ink-muted">Prénom</dt>         <dd className="font-medium">{detail.first_name || '—'}</dd>
+                <dt className="text-ink-muted">Date de naissance</dt><dd className="font-medium">{detail.birth_date || '—'}</dd>
+                <dt className="text-ink-muted">Motifs</dt>         <dd>{detail.motifs.length ? detail.motifs.join(', ') : '—'}</dd>
+                {detail.expert_bureau && (<><dt className="text-ink-muted">Bureau d&apos;expertise</dt><dd>🔎 {detail.expert_bureau}</dd></>)}
+                <dt className="text-ink-muted">Date de visite</dt> <dd>{fmt(detail.visited_at)}</dd>
+                <dt className="text-ink-muted">Source</dt>         <dd>{detail.source === 'eid' ? '🪪 Lecture carte eID' : '✍️ Saisie manuelle'}</dd>
+              </dl>
+              {detail.note && (
+                <div className="bg-surface-2 border border-app rounded-xl p-2.5 text-sm text-ink-secondary">
+                  <span className="text-ink-muted text-xs">Remarque</span><br />{detail.note}
+                </div>
+              )}
+              <div className="flex items-center justify-between pt-1">
+                {canManage ? (
+                  <button onClick={() => { const id = detail.id; setDetail(null); remove(id) }}
+                    className="text-xs text-critical hover:underline">Supprimer cette visite</button>
+                ) : <span />}
+                <button onClick={() => setDetail(null)}
+                  className="px-4 py-2 bg-surface-2 hover:bg-surface border border-app rounded-xl text-sm font-medium text-ink">Fermer</button>
+              </div>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   )
