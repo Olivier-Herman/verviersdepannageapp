@@ -83,21 +83,21 @@ export default function AppNavV2({
               )
             }
 
-            // Module à sections → fait glisser le menu.
+            // Module à sections → fait glisser le menu ET ouvre sa première
+            // section (l'écran s'affiche à droite dans la foulée, pas de clic mort).
             return (
-              <button
+              <Link
                 key={mod.key}
-                type="button"
-                onClick={() => setOpenKey(mod.key)}
+                href={mod.visibleSections[0].href}
+                onClick={() => { setOpenKey(mod.key); onNavigate?.() }}
                 className={`${cls} w-full text-left`}
                 tabIndex={slid ? -1 : undefined}
-                aria-expanded={false}
               >
                 <span className="text-base">{mod.icon}</span>
                 <span className="flex-1 min-w-0 truncate">{label}</span>
                 {badge > 0 && <Badge n={badge} />}
                 <ChevronRight size={15} className="flex-shrink-0 opacity-50 group-hover:opacity-100 transition-opacity" />
-              </button>
+              </Link>
             )
           })}
         </div>
