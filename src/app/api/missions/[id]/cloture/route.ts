@@ -22,12 +22,16 @@ import { parseComexKeys, transformTouring } from '@/lib/cloture/transform/tourin
 import { loginComex, getComexProviders } from '@/lib/touring/comex'
 import { findMotif } from '@/lib/cloture/motifs'
 import { enqueueClose, isRetryable } from '@/lib/cloture/queue'
+import { runVabOnSite } from '@/lib/cloture/transform/vab'
 import { branchOf, needsMotif }  from '@/lib/cloture/outcomes'
 
 export const dynamic     = 'force-dynamic'
-export const maxDuration = 60
+// 300 s (5 min, plafond Vercel Pro) : la réponse au chauffeur part en quelques
+// secondes, mais le pilotage VAB headless lancé en waitUntil dure 60-90 s et
+// serait TUÉ par un plafond à 60 s. Olivier 2026-08-11.
+export const maxDuration = 300
 
-const MISSION_COLS = 'id, source, source_format, raw_content, mission_type, status, loaded_at, vr_proposed, ' +
+const MISSION_COLS = 'id, source, source_format, raw_content, external_id, mission_type, status, loaded_at, vr_proposed, ' +
   'vehicle_vin, vehicle_mileage, incident_description, vehicle_brand, vehicle_model'
 
 async function loadContext(missionId: string, email: string) {
@@ -235,7 +239,23 @@ export async function POST(req: Request, { params }: { params: { id: string } })
       result = { ...result, ok: true, queued: true }
     }
   }
-  // VAB / Kaze : leurs transformations viendront ici, gatées par leur propre flag.
+  // ── VAB : brique ON-SITE → ÉCRAN DE CODE (pilotage Chromium headless) ──────
+  // 60-90 s de run : on la lance en TÂCHE DE FOND et on répond tout de suite au
+  // chauffeur. Il a terminé sa mission ; ce qui se passe chez VAB ne le regarde pas.
+  // Mission vélo (« Fiets ») = pas de compteur → km/VIN vides, le closer saute
+  // ces étapes. Le verrou du compte partagé est géré dans runVabOnSite.
+  else if (assistance === 'vab') {
+    const vabTask = runVabOnSite({
+      missionId:     (m as any).id,
+      externalId:    (m as any).external_id,
+      km:            km ?? null,
+      vinLastDigits: vin5 || null,
+      actorId:       (actor as any)?.id ?? null,
+    }).catch(() => {})
+    try { const { waitUntil } = await import('@vercel/functions'); waitUntil(vabTask) } catch { /* hors Vercel */ }
+    result = { ok: true, queuedVab: true }
+  }
+  // Kaze : sa transformation viendra ici, gatée par son propre flag.
 
   // La clôture de l'ACTION DE SUIVI (même dossier, seq 200 → 201) se préremplit
   // depuis le dernier log `touring_closed`. Sans cette trace au format attendu, le
