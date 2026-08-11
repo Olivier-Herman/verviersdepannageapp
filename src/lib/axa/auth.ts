@@ -50,11 +50,16 @@ const settingKey = (ctx: AxaContext) => `axa_auth_${ctx}`
 
 async function readState(sb: any, ctx: AxaContext): Promise<AxaAuthState | null> {
   const { data } = await sb.from('app_settings').select('value').eq('key', settingKey(ctx)).maybeSingle()
-  return (data?.value as AxaAuthState) || null
+  if (!data?.value) return null
+  // app_settings.value = TEXTE → JSON.parse à la lecture (cf feedback). Tolère
+  // aussi une valeur déjà objet (colonne jsonb sur un autre environnement).
+  try {
+    return (typeof data.value === 'string' ? JSON.parse(data.value) : data.value) as AxaAuthState
+  } catch { return null }
 }
 async function writeState(sb: any, ctx: AxaContext, state: AxaAuthState): Promise<void> {
   await sb.from('app_settings').upsert(
-    { key: settingKey(ctx), value: { ...state, updated_at: new Date().toISOString() } },
+    { key: settingKey(ctx), value: JSON.stringify({ ...state, updated_at: new Date().toISOString() }) },
     { onConflict: 'key' },
   )
 }
