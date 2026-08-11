@@ -9,7 +9,8 @@
 
 import { useEffect, useState } from 'react'
 import {
-  PRESETS_DSP, PRESETS_REM, PRESET_REM_CATCHALL, endMissionLabel, REM_FIN_CODES, type ClosePreset,
+  ALL_DSP_PRESETS, ALL_REM_PRESETS, isCatchAllPreset,
+  endMissionLabel, REM_FIN_CODES, type ClosePreset,
 } from '@/lib/touring/close-presets'
 import { PANNE_CAUSE, PANNE_DESC, PANNE_RESULT, type CodeOption } from '@/lib/touring/close-referentials'
 import AddressField from '@/components/AddressField'
@@ -215,7 +216,8 @@ export default function TouringCloseModal({
     }
   }
 
-  const presetsShown = tab === 'dsp' ? PRESETS_DSP : [...PRESETS_REM, PRESET_REM_CATCHALL]
+  // Les listes portent déjà le catch-all « Autre » EN DERNIER (Olivier 2026-08-11).
+  const presetsShown = tab === 'dsp' ? ALL_DSP_PRESETS : ALL_REM_PRESETS
   const selCls = 'mt-1 w-full border rounded-lg px-2.5 py-2 text-sm bg-surface-2'
   const lblCls = 'text-[11px] font-bold text-ink-secondary uppercase tracking-wide'
   const shortLabel = (p: ClosePreset) => p.label.replace(/ → .*/, '')
@@ -307,7 +309,7 @@ export default function TouringCloseModal({
                 <div className="grid grid-cols-3 gap-2.5">
                   {presetsShown.map(p => {
                     const sel = presetKey === p.key
-                    const isCatch = p.key === 'rem_autre'
+                    const isCatch = isCatchAllPreset(p)
                     return (
                       <button key={p.key} onClick={() => pickPreset(p)}
                         className={`rounded-2xl border p-3 flex items-center justify-center gap-1.5 transition ${isCatch ? 'col-span-3 py-3.5' : 'flex-col min-h-[88px]'} ${sel ? 'border-amber-500 bg-amber-50 ring-2 ring-amber-400 shadow-sm' : 'bg-surface-2 hover:bg-surface-hover border'}`}>
