@@ -1,10 +1,12 @@
 // src/lib/ocr/vehicle-detect.ts
 //
-// Détection PLAQUE + VIN depuis des photos (Claude Haiku vision, multi-images en
+// Détection PLAQUE + VIN + KILOMÉTRAGE depuis des photos (Claude Haiku vision, multi-images en
 // un appel). Cœur PARTAGÉ entre la route /ocr-vehicle (confirmation chauffeur à
 // la clôture) et l'action `park` (filet auto à la mise en parc). Ne renvoie que
 // des valeurs VALIDÉES (format plaque / VIN 17 car.) — jamais inventé.
-// Olivier 2026-07-13.
+// Olivier 2026-07-13 · kilométrage ajouté le 2026-08-11 (Franck : « les km ne se
+// sont pas complétés malgré ma photo » — le compteur est photographié, autant le
+// lire). Champ OPTIONNEL : les appelants existants ignorent simplement `mileage`.
 
 import Anthropic from '@anthropic-ai/sdk'
 import { ANTHROPIC_CHEAP_MODELS, createWithModelFallback } from '@/lib/anthropic-model'
@@ -22,20 +24,31 @@ function getClient(): Anthropic {
   return cachedClient
 }
 
-const SYSTEM_PROMPT = `Tu extrais la PLAQUE D'IMMATRICULATION et le VIN (numéro de châssis) d'un véhicule à partir de photos prises par un dépanneur. Tu reçois plusieurs images numérotées (1, 2, 3...).
+const SYSTEM_PROMPT = `Tu extrais la PLAQUE D'IMMATRICULATION, le VIN (numéro de châssis) et le KILOMÉTRAGE d'un véhicule à partir de photos prises par un dépanneur. Tu reçois plusieurs images numérotées (1, 2, 3...).
 
 Retourne UNIQUEMENT un JSON strict, sans markdown, sans commentaire :
-{ "plate": { "value": "<plaque>", "image": <numéro 1..N> } | null,
-  "vin":   { "value": "<VIN 17 caractères>", "image": <numéro 1..N> } | null }
+{ "plate":   { "value": "<plaque>", "image": <numéro 1..N> } | null,
+  "vin":     { "value": "<VIN 17 caractères>", "image": <numéro 1..N> } | null,
+  "mileage": { "value": <nombre entier>, "image": <numéro 1..N> } | null }
 
 Règles STRICTES :
 - VIN = EXACTEMENT 17 caractères (lettres + chiffres, JAMAIS de I, O ni Q). Si tu ne lis pas un VIN complet et net de 17 caractères, mets null. Ne DEVINE JAMAIS.
 - Plaque = plaque d'immatriculation du véhicule (format belge, lettres + chiffres). Si non lisible clairement, null.
+- KILOMÉTRAGE = l'odomètre TOTAL lu sur le tableau de bord (compteur), en chiffres, SANS séparateur ni unité.
+  · Ne confonds PAS avec le trip/journalier (souvent précédé de "TRIP"/"A"/"B" et avec une décimale), la vitesse, la température, l'heure ou l'autonomie.
+  · Le total est l'entier le plus grand affiché, généralement suivi de "km".
+  · Si le compteur n'est pas net et lisible en entier, mets null. Ne DEVINE JAMAIS un chiffre.
 - "image" = le numéro de la photo (1..N) où tu as lu la valeur.
 - Dans le doute, préfère null plutôt qu'une valeur approximative.`
 
 export interface VehicleOcrHit { value: string; image: number }
-export interface VehicleOcrResult { plate: VehicleOcrHit | null; vin: VehicleOcrHit | null }
+export interface VehicleOcrKmHit { value: number; image: number }
+export interface VehicleOcrResult {
+  plate: VehicleOcrHit | null
+  vin: VehicleOcrHit | null
+  /** Kilométrage total lu au compteur (optionnel — null si non lisible). */
+  mileage?: VehicleOcrKmHit | null
+}
 
 /**
  * `rawImages` = tableau de data-URL/base64 (capture locale) OU d'URL http (photos
@@ -44,7 +57,7 @@ export interface VehicleOcrResult { plate: VehicleOcrHit | null; vin: VehicleOcr
  */
 export async function detectVehicleFromImages(rawImages: (string | null | undefined)[]): Promise<VehicleOcrResult> {
   const raw = (rawImages || []).map(s => String(s || '').trim()).filter(Boolean).slice(0, MAX_IMAGES)
-  if (raw.length === 0) return { plate: null, vin: null }
+  if (raw.length === 0) return { plate: null, vin: null, mileage: null }
 
   // Anthropic n'accepte que jpeg/png/gif/webp — envoyer un mauvais media_type
   // (ex. jpeg codé en dur pour un PNG) casse le décodage → aucun OCR. On déduit
@@ -76,13 +89,13 @@ export async function detectVehicleFromImages(rawImages: (string | null | undefi
       images.push({ data: item.replace(/^data:[^,]+,/, ''), media: norm(m?.[1]) })
     }
   }
-  if (images.length === 0) return { plate: null, vin: null }
+  if (images.length === 0) return { plate: null, vin: null, mileage: null }
 
   const client = getClient()
   const content: any[] = images.map(({ data, media }) => ({
     type: 'image', source: { type: 'base64', media_type: media, data },
   }))
-  content.push({ type: 'text', text: `Voici ${images.length} photo(s). Extrais plaque + VIN. JSON strict uniquement.` })
+  content.push({ type: 'text', text: `Voici ${images.length} photo(s). Extrais plaque + VIN + kilométrage. JSON strict uniquement.` })
 
   const resp = await createWithModelFallback(client, OCR_MODELS, {
     max_tokens: 300,
@@ -96,7 +109,7 @@ export async function detectVehicleFromImages(rawImages: (string | null | undefi
   let parsed: any
   try { parsed = JSON.parse(cleaned) } catch {
     console.error('[vehicle-detect] JSON parse fail:', text.slice(0, 300))
-    return { plate: null, vin: null }
+    return { plate: null, vin: null, mileage: null }
   }
 
   const validate = (obj: any, kind: 'plate' | 'vin'): VehicleOcrHit | null => {
@@ -109,5 +122,20 @@ export async function detectVehicleFromImages(rawImages: (string | null | undefi
     return { value: v, image }
   }
 
-  return { plate: validate(parsed.plate, 'plate'), vin: validate(parsed.vin, 'vin') }
+  // Kilométrage : entier plausible uniquement (0 exclu, 2 000 000 km = borne haute
+  // large mais qui écarte une lecture de VIN ou d'heure prise pour un compteur).
+  const validateKm = (obj: any): VehicleOcrKmHit | null => {
+    if (!obj) return null
+    const n = Math.round(Number(String(obj.value ?? '').toString().replace(/[^0-9]/g, '')))
+    if (!Number.isFinite(n) || n <= 0 || n > 2_000_000) return null
+    const img = Number(obj.image)
+    const image = Number.isFinite(img) && img >= 1 && img <= images.length ? img : 1
+    return { value: n, image }
+  }
+
+  return {
+    plate:   validate(parsed.plate, 'plate'),
+    vin:     validate(parsed.vin, 'vin'),
+    mileage: validateKm(parsed.mileage),
+  }
 }

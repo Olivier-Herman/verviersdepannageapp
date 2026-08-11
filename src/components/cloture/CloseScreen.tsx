@@ -104,6 +104,8 @@ export default function CloseScreen({
   const [km, setKm]                 = useState('')
   const [remark, setRemark]         = useState('')
 
+  const [ocrBusy, setOcrBusy] = useState(false)
+  const [ocrGot, setOcrGot]   = useState<{ vin: boolean; km: boolean } | null>(null)
   const [busy, setBusy]   = useState(false)
   const [error, setError] = useState<string | null>(null)
   // La plateforme de l'assistance a refusé/échoué → on propose de continuer sans
@@ -144,6 +146,26 @@ export default function CloseScreen({
     if (fallbackVin) setVin(String(fallbackVin).slice(-5).toUpperCase())
     if (fallbackKm !== '' && fallbackKm != null) setKm(String(fallbackKm))
   }, [fallbackVin, fallbackKm])
+
+  // OCR des photos : châssis + COMPTEUR (Franck 2026-08-11 — « les km ne se sont
+  // pas complétés malgré ma photo »). Non bloquant, et on ne remplit QUE les cases
+  // vides : ce que le chauffeur a tapé n'est jamais écrasé.
+  useEffect(() => {
+    if (isDpr) return
+    let alive = true
+    setOcrBusy(true)
+    fetch(`/api/missions/${missionId}/cloture/ocr`, { method: 'POST' })
+      .then(r => r.json())
+      .then(d => {
+        if (!alive) return
+        if (d.vin) setVin(prev => prev || String(d.vin).slice(-5).toUpperCase())
+        if (d.km != null) setKm(prev => prev || String(d.km))
+        setOcrGot(d.read || null)
+      })
+      .catch(() => {})
+      .finally(() => { if (alive) setOcrBusy(false) })
+    return () => { alive = false }
+  }, [missionId, isDpr])
 
   // Liste des garages Touring dès qu'un motif est choisi (elle dépend des codes).
   useEffect(() => {
@@ -418,6 +440,13 @@ export default function CloseScreen({
               <input value={km} onChange={e => setKm(e.target.value)} inputMode="numeric" placeholder="Kilométrage"
                 className="w-full border rounded-xl px-3 py-2.5 text-sm bg-surface font-mono" />
             </div>
+            {ocrBusy && <p className="cap">✨ Je lis tes photos (châssis, compteur)…</p>}
+            {!ocrBusy && ocrGot && (ocrGot.vin || ocrGot.km) && (
+              <p className="cap">
+                ✨ <b>Lu sur tes photos</b> : {[ocrGot.vin ? 'le châssis' : null, ocrGot.km ? 'le kilométrage' : null]
+                  .filter(Boolean).join(' et ')} — vérifie avant de valider.
+              </p>
+            )}
             {needPhotos && (
               <div className="bg-amber-500/10 border border-amber-500/40 text-amber-700 dark:text-amber-300 rounded-xl px-3 py-3 text-sm font-medium">
                 📷 Prends le châssis et le compteur en photo — je remplis les deux cases pour toi.
