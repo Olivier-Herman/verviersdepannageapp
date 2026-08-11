@@ -20,6 +20,7 @@
  */
 
 import { useEffect, useRef, useState, useCallback } from 'react'
+import { createPortal } from 'react-dom'
 import { LifeBuoy, X }    from 'lucide-react'
 import { createClient as createSupabaseClient } from '@supabase/supabase-js'
 
@@ -242,8 +243,10 @@ export default function CobrowseUserBridge() {
         )}
       </button>
 
-      {/* Modal "Demander de l aide" */}
-      {showAsk && (
+      {/* Modal "Demander de l aide" — monte sur <body> : ce composant vit dans le
+          header `sticky z-20`, contexte d'empilement qui ferait passer le modal
+          sous la sidebar (z-30). */}
+      {showAsk && typeof document !== 'undefined' && createPortal((
         <div className="fixed inset-0 z-[120] bg-black/50 flex items-center justify-center p-4">
           <div
             className="bg-surface rounded-xl shadow-xl max-w-md w-full p-6"
@@ -318,7 +321,7 @@ export default function CobrowseUserBridge() {
             )}
           </div>
         </div>
-      )}
+      ), document.body)}
     </>
   )
 }

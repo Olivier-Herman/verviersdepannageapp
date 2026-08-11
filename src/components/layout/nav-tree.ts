@@ -152,7 +152,7 @@ export const NAV_TREE: NavModule[] = [
  * module. Ajouter un raccourci = ajouter son href ici ; les permissions du user
  * sont respectées (un raccourci auquel il n'a pas droit n'apparaît pas).
  */
-export const PINNED_HREFS = ['/recherche', '/dispatch', '/facturation']
+export const PINNED_HREFS = ['/recherche', '/dispatch', '/facturation', '/fourriere']
 
 /** Hrefs de NAV_ITEMS déjà couverts par un module de l'arbre (ne pas re-lister à plat). */
 const COVERED = new Set(

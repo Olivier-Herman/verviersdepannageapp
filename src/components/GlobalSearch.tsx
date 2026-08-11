@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { useRouter } from 'next/navigation'
 import { useSession } from 'next-auth/react'
 import { Search, X, Loader2, Sparkles } from 'lucide-react'
@@ -166,9 +167,12 @@ export default function GlobalSearch() {
         <kbd className="hidden sm:inline text-[10px] px-1.5 py-0.5 rounded bg-surface border text-ink-faint font-mono">⌘K</kbd>
       </button>
 
-      {open && (
+      {/* Le modal est monté sur <body> via un portal : le header qui contient ce
+          composant est `sticky z-20`, donc il crée un contexte d'empilement dans
+          lequel un `z-50` reste prisonnier — la sidebar (z-30) passait devant. */}
+      {open && typeof document !== 'undefined' && createPortal((
         <div
-          className="fixed inset-0 z-50 flex items-start justify-center pt-[10vh] px-4 bg-black/70 backdrop-blur-md"
+          className="fixed inset-0 z-[200] flex items-start justify-center pt-[10vh] px-4 bg-black/70 backdrop-blur-md"
           style={{ animation: 'gs-fade 150ms ease-out' }}
           onClick={() => setOpen(false)}
         >
@@ -394,7 +398,7 @@ export default function GlobalSearch() {
             </div>
           </div>
         </div>
-      )}
+      ), document.body)}
     </>
   )
 }

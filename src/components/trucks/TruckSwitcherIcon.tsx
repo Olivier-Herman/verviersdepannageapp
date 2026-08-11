@@ -8,6 +8,7 @@
 // Reserve aux roles autorises (driver / admin / superadmin / dispatcher).
 
 import { useEffect, useState } from 'react'
+import { createPortal }         from 'react-dom'
 import { useSession }          from 'next-auth/react'
 import { Truck }               from 'lucide-react'
 import { T }                   from '@/lib/i18n/T'
@@ -98,7 +99,9 @@ export function TruckSwitcherIcon() {
         }
       </button>
 
-      {open && (
+      {/* Monte sur <body> : ce composant vit dans le header `sticky z-20`, qui
+          cree un contexte d'empilement — sans portal le modal passe SOUS la sidebar. */}
+      {open && typeof document !== 'undefined' && createPortal((
         <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/70 backdrop-blur-sm p-4 overflow-y-auto"
              onClick={() => !busy && setOpen(false)}>
           <div onClick={e => e.stopPropagation()}
@@ -151,7 +154,7 @@ export function TruckSwitcherIcon() {
             </button>
           </div>
         </div>
-      )}
+      ), document.body)}
     </>
   )
 }
