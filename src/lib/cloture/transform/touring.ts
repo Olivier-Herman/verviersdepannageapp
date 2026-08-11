@@ -79,9 +79,16 @@ export async function transformTouring(keys: ComexKeys, input: TransformInput): 
     if (!motif) return { ok: false, error: 'Motif absent ou hors branche' }
     codes = motif.touring
   } else if (input.outcome === 'delivered') {
-    // Livraison : la panne a déjà été encodée sur la jambe dépannage. On reprend
-    // ces codes (comme le prefill de l'écran actuel) — le chauffeur ne ré-encode rien.
-    codes = input.prefill || catchAllOf('remorquage').touring
+    // Livraison. Deux cas :
+    //   • jambe REM issue d'un DSP → les codes ont été encodés à la 1re clôture,
+    //     on les reprend et le chauffeur ne ré-encode rien ;
+    //   • REM envoyé DIRECTEMENT par Touring → aucun code antérieur : le chauffeur
+    //     a choisi un motif. Sans lui on clôturerait en « cause inconnue », ce qui
+    //     pollue la facturation BKO. Olivier 2026-08-11.
+    const chosen = input.motifKey ? findMotif('remorquage', input.motifKey) : undefined
+    if (chosen)            codes = chosen.touring
+    else if (input.prefill) codes = input.prefill
+    else return { ok: false, error: 'Motif de remorquage manquant (aucun code à reprendre)' }
   } else {
     // Déplacement pour rien : AUCUN code panne (Olivier). Le chauffeur n'a rien
     // constaté — le motif est porté par le code de fin d'annulation.

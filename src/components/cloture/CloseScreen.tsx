@@ -77,6 +77,9 @@ export default function CloseScreen({
   // Sur un remorquage, véhicule + clé se demandent à l'arrivée, pas ici.
   const askLocKey = !isRem && !isDpr
 
+  // Livraison : y a-t-il des codes à reprendre de la 1re jambe ? Si non (REM natif
+  // Touring), on demande le motif ici plutôt que de clôturer en « cause inconnue ».
+  const [hasPrefill, setHasPrefill] = useState<boolean | null>(null)
   const [motifs, setMotifs]       = useState<MotifItem[] | null>(null)
   const [suggested, setSuggested] = useState<string[]>([])
   const [motifKey, setMotifKey]   = useState('')
@@ -104,20 +107,34 @@ export default function CloseScreen({
   const [busy, setBusy]   = useState(false)
   const [error, setError] = useState<string | null>(null)
 
+  useEffect(() => {
+    if (!isDelivered) { setHasPrefill(false); return }
+    let alive = true
+    fetch(`/api/missions/${missionId}/cloture`, { cache: 'no-store' })
+      .then(r => r.json())
+      .then(d => { if (alive) setHasPrefill(!!d.hasPrefill) })
+      .catch(() => alive && setHasPrefill(false))
+    return () => { alive = false }
+  }, [missionId, isDelivered])
+
+  // Une livraison sans codes à reprendre demande un motif (branche remorquage).
+  const deliveredNeedsMotif = isDelivered && hasPrefill === false
+  const motifBranch: 'mobilite' | 'remorquage' | null = branch || (deliveredNeedsMotif ? 'remorquage' : null)
+
   // Motifs de la branche + priorisation IA (l'IA ne renvoie que des clés du
   // catalogue : impossible de recevoir un code inventé).
   useEffect(() => {
-    if (!branch) { setMotifs([]); return }
+    if (!motifBranch) { setMotifs([]); return }
     let alive = true
     fetch(`/api/missions/${missionId}/cloture/motifs`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ branch }),
+      body: JSON.stringify({ branch: motifBranch }),
     })
       .then(r => r.json())
       .then(d => { if (!alive) return; setMotifs(d.motifs || []); setSuggested(d.suggested || []) })
       .catch(() => alive && setMotifs([]))
     return () => { alive = false }
-  }, [missionId, branch])
+  }, [missionId, motifBranch])
 
   // Repli VIN / km depuis la fiche.
   useEffect(() => {
@@ -149,7 +166,9 @@ export default function CloseScreen({
   const vinEmpty = !vin.trim(), kmEmpty = !km.trim()
   const needPhotos = (vinEmpty && kmEmpty) || !photosDone
   const destOk = !isRem || (destMode === 'list' ? !!garageCid : !!manual.rue && !!manual.cp)
-  const canSubmit = isDpr ? !!dprCode : isDelivered ? true : (!!motifKey && destOk)
+  const canSubmit = isDpr ? !!dprCode
+    : isDelivered ? (hasPrefill !== false || !!motifKey)
+    : (!!motifKey && destOk)
 
   const scrollTo = (id: string) => {
     const el = document.getElementById(id)
@@ -237,14 +256,14 @@ export default function CloseScreen({
               ))}
             </div>
           </>
-        ) : isDelivered ? (
+        ) : isDelivered && !deliveredNeedsMotif ? (
           <div className="bg-green-500/10 border border-green-500/30 text-green-700 dark:text-green-300 rounded-xl px-3 py-3 text-sm font-medium">
             ✅ Véhicule livré. Plus de panne à encoder — il reste la signature, où tu laisses le véhicule et la clé.
           </div>
         ) : (
           <>
             {/* ── Motif (branche fixée par l'issue) ────────────────────────── */}
-            <p className={sectCls}>{isRem ? 'Pourquoi le remorquage ?' : "Qu'est-ce que tu as fait ?"}</p>
+            <p className={sectCls}>{isRem || isDelivered ? 'Pourquoi le remorquage ?' : "Qu'est-ce que tu as fait ?"}</p>
             {!motifs && <p className="text-ink-muted text-sm py-4 text-center">Chargement des motifs…</p>}
             <div className="grid grid-cols-3 gap-2.5">
               {ordered.map(m => {

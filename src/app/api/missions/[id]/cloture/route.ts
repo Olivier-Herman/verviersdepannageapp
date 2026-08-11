@@ -42,7 +42,7 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
   const session = await getServerSession(authOptions)
   if (!session?.user?.email) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const { actor, m } = await loadContext(params.id, session.user.email)
+  const { sb, actor, m } = await loadContext(params.id, session.user.email)
   if (!m) return NextResponse.json({ error: 'Mission introuvable' }, { status: 404 })
   if (!(await flux2Enabled(actor as any, m as any))) {
     return NextResponse.json({ error: 'Flux 2 non activé pour cette mission' }, { status: 403 })
@@ -64,7 +64,17 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
     } catch { return NextResponse.json({ providers: [] }) }
   }
 
+  // Codes deja encodes sur une jambe precedente (DSP -> REM). Un REM envoye
+  // DIRECTEMENT par Touring n'en a aucun : dans ce cas la livraison doit demander
+  // le motif, sinon on clotûrerait en « cause inconnue ». Olivier 2026-08-11.
+  const { data: prev } = await sb.from('mission_logs')
+    .select('metadata').eq('mission_id', (m as any).id).eq('action', 'touring_closed')
+    .order('created_at', { ascending: false }).limit(1).maybeSingle()
+  const pm: any = (prev as any)?.metadata
+  const hasPrefill = !!(pm?.cause && pm?.desc && pm?.result)
+
   return NextResponse.json({
+    hasPrefill,
     assistance: flux2AssistanceOf(m as any),
     outcomes:   availableOutcomes(m as any).map(o => ({ key: o.key, label: o.label, icon: o.icon, group: o.group })),
     dprCodes:   DPR_END_CODES,
@@ -92,6 +102,11 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   const motifKey = body?.motifKey ? String(body.motifKey) : null
   if (needsMotif(outcome) && branch && (!motifKey || !findMotif(branch, motifKey))) {
     return NextResponse.json({ error: 'Motif absent ou hors branche' }, { status: 400 })
+  }
+  // Livraison : soit on reprend les codes de la 1re jambe, soit le chauffeur a
+  // choisi un motif (REM natif Touring). Jamais de clôture en « cause inconnue ».
+  if (outcome === 'delivered' && motifKey && !findMotif('remorquage', motifKey)) {
+    return NextResponse.json({ error: 'Motif hors branche' }, { status: 400 })
   }
 
   // ── Tronc commun (collecté pour TOUTES les assistances, même si celle du jour
