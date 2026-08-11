@@ -19,10 +19,11 @@ interface Item {
   mission_type:   string
   client_name:    string
   incident_city:  string
+  axaStatus:      string
   exists:         boolean
 }
 interface Result {
-  ok: boolean; mode: 'preview' | 'send'; awaiting: number
+  ok: boolean; mode: 'preview' | 'send'; awaiting: number; news: number
   items: Item[]; imported: number; skipped: number; errors: string[]
 }
 
@@ -91,10 +92,14 @@ export default function AxaImportButton({ onImportDone }: { onImportDone?: () =>
 
           {phase === 'preview' && preview && !loading && (
             <>
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-3 gap-3">
                 <div className="bg-surface-2 border rounded-xl p-3">
-                  <p className="text-ink-muted text-xs uppercase tracking-wider">À affecter</p>
+                  <p className="text-ink-muted text-xs uppercase tracking-wider">Actionnable</p>
                   <p className="text-ink text-2xl font-bold">{preview.awaiting}</p>
+                </div>
+                <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl p-3">
+                  <p className="text-amber-600 text-xs uppercase tracking-wider font-semibold">À valider</p>
+                  <p className="text-amber-600 text-2xl font-bold">{preview.news}</p>
                 </div>
                 <div className="bg-sky-500/10 border border-sky-500/30 rounded-xl p-3">
                   <p className="text-sky-600 text-xs uppercase tracking-wider font-semibold">Nouvelles</p>
@@ -104,14 +109,20 @@ export default function AxaImportButton({ onImportDone }: { onImportDone?: () =>
 
               {news.length > 0 && (
                 <div className="space-y-1.5">
-                  {news.map(m => (
-                    <div key={m.missionOrderId} className="bg-surface-2 border rounded-xl p-3">
-                      <p className="text-ink font-mono text-sm font-semibold">{m.plate || m.missionOrderId}
-                        <span className="ml-2 text-xs px-2 py-0.5 rounded bg-sky-500/15 text-sky-600">{m.mission_type}</span>
-                      </p>
-                      <p className="text-ink-muted text-xs">{m.client_name || '—'} · {m.incident_city || '—'} · dossier {m.caseId}</p>
-                    </div>
-                  ))}
+                  {news.map(m => {
+                    const isNew = m.axaStatus === 'New'
+                    return (
+                      <div key={m.missionOrderId} className="bg-surface-2 border rounded-xl p-3">
+                        <p className="text-ink font-mono text-sm font-semibold">{m.plate || m.missionOrderId}
+                          <span className="ml-2 text-xs px-2 py-0.5 rounded bg-sky-500/15 text-sky-600">{m.mission_type}</span>
+                          <span className={`ml-1.5 text-xs px-2 py-0.5 rounded ${isNew ? 'bg-amber-500/15 text-amber-600' : 'bg-success/15 text-success'}`}>
+                            {isNew ? 'à valider' : 'validée AXA'}
+                          </span>
+                        </p>
+                        <p className="text-ink-muted text-xs">{m.client_name || '—'} · {m.incident_city || '—'} · dossier {m.caseId}</p>
+                      </div>
+                    )
+                  })}
                 </div>
               )}
               {olds.length > 0 && (

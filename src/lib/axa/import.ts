@@ -10,7 +10,7 @@
 // ailleurs (validation fiche / assignation chauffeur).
 
 import { createAdminClient } from '@/lib/supabase'
-import { getMissions, filterAwaitingDispatch, getMission } from './goassist'
+import { getMissions, filterActionable, getMission } from './goassist'
 
 export type ImportMode = 'preview' | 'send'
 
@@ -22,13 +22,15 @@ export interface AxaImportItem {
   mission_type:   string
   client_name:    string
   incident_city:  string
+  axaStatus:      string   // 'New' (à valider) | 'AwaitingDispatch' (déjà validé)
   exists:         boolean
 }
 
 export interface AxaImportResult {
   ok:        boolean
   mode:      ImportMode
-  awaiting:  number
+  awaiting:  number   // total actionnable (New + AwaitingDispatch)
+  news:      number   // dont status New (à valider)
   items:     AxaImportItem[]
   imported:  number
   skipped:   number
@@ -50,7 +52,7 @@ export async function runAxaImport({ mode = 'preview' }: { mode?: ImportMode } =
   const errors: string[] = []
 
   const all = await getMissions()
-  const awaiting = filterAwaitingDispatch(all)
+  const awaiting = filterActionable(all)
 
   // fiches AXA déjà présentes (dédup) — par external_id (missionOrderId)
   const orderIds = awaiting.map(m => m.missionOrderId).filter(Boolean)
@@ -80,6 +82,7 @@ export async function runAxaImport({ mode = 'preview' }: { mode?: ImportMode } =
       mission_type:   mapServiceToType(service.serviceCode),
       client_name:    [contact.firstName, contact.lastName].filter(Boolean).join(' '),
       incident_city:  caseObj.incidentLocation?.address?.locality || '',
+      axaStatus:      m.status,
       exists:         existing.has(m.missionOrderId),
     }
     items.push(item)
@@ -124,5 +127,6 @@ export async function runAxaImport({ mode = 'preview' }: { mode?: ImportMode } =
     }
   }
 
-  return { ok: errors.length === 0, mode, awaiting: awaiting.length, items, imported, skipped, errors }
+  const news = awaiting.filter(m => m.status === 'New').length
+  return { ok: errors.length === 0, mode, awaiting: awaiting.length, news, items, imported, skipped, errors }
 }

@@ -66,20 +66,33 @@ export async function getMission(missionOrderId: string): Promise<any | null> {
   return r.data?.data || r.data || null
 }
 
+// Statuts go&assist « actionnables » chez nous (onglets NOUVEAU + À AFFECTER).
+//   'New'             = NOUVEAU → AXA a envoyé, on doit VALIDER (accept).
+//   'AwaitingDispatch'= À AFFECTER → déjà validé (par nous ou par AXA au tél), à assigner.
+// AXA valide souvent lui-même après un rappel tél → une mission peut arriver
+// directement en AwaitingDispatch sans passer (visiblement) par New chez nous.
+export const AXA_ACTIONABLE_STATUSES = ['New', 'AwaitingDispatch'] as const
+
 /**
- * Missions « à affecter » = statut AwaitingDispatch non clôturé. ⚠️ getmissions
- * inclut des AwaitingDispatch historiques auto-clôturés à 3j → on écarte celles
- * trop vieilles (auto-closure delay ~3j) via `maxAgeDays`.
+ * Missions à récupérer dans VD Soft = NOUVEAU + À AFFECTER, non clôturées.
+ * ⚠️ getmissions inclut des AwaitingDispatch historiques auto-clôturés à 3j →
+ * on écarte celles trop vieilles via `maxAgeDays`.
  */
-export function filterAwaitingDispatch(missions: any[], maxAgeDays = 3): any[] {
+export function filterActionable(missions: any[], maxAgeDays = 3): any[] {
   const cutoff = Date.now() - maxAgeDays * 86400_000
   return missions.filter(m => {
-    if (m.status !== 'AwaitingDispatch') return false
+    if (!AXA_ACTIONABLE_STATUSES.includes(m.status)) return false
     const sub = Array.isArray(m.subStatus) ? m.subStatus : (m.subStatus ? [m.subStatus] : [])
     if (sub.some((s: string) => /Closed/i.test(s))) return false
     const t = new Date(m.missionSendingDate || m.updatedAt || 0).getTime()
     return !t || t >= cutoff
   })
+}
+
+/** Statut go&assist courant d'une mission ('New' | 'AwaitingDispatch' | …). */
+export async function getMissionStatus(missionOrderId: string): Promise<string | null> {
+  const m = await getMission(missionOrderId)
+  return m?.status || null
 }
 
 /** updatedAt courant (jeton de concurrence) pour une mission. */

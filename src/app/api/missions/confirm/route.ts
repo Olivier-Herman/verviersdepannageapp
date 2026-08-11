@@ -11,6 +11,7 @@ import { withOdooActor }                from '@/lib/odoo'
 import { reprintLabelForMission }       from '@/lib/missions/reprint-label-helper'
 import { acceptTouringBg }              from '@/lib/touring/accept-bg'
 import { acceptKazeProposalBg, acceptAllianzBg } from '@/lib/missions/provider-accept-bg'
+import { acceptAxaBg }                  from '@/lib/axa/affect-bg'
 
 export const maxDuration = 60   // création dossier Odoo en synchrone (~2-5s)
 
@@ -208,6 +209,12 @@ export async function POST(req: Request) {
     // Mission Allianz/mondial → accepter l'affectation dans Hexalite (API, arrière-plan).
     if (mission?.source === 'mondial') {
       await acceptAllianzBg(mission_id, mission?.dossier_number || mission?.external_id || null, actor?.id || null, supabase)
+    }
+
+    // Mission AXA go&assist → VALIDER (nouveau → à affecter) si encore New
+    // (auto-no-op si AXA l'a déjà validée). Arrière-plan.
+    if (mission?.source === 'axa') {
+      await acceptAxaBg(mission_id, mission?.external_id || null, actor?.id || null, supabase)
     }
 
     // Création AUTO du dossier Odoo (Helpdesk + FSM Task) — best effort, non bloquant.
