@@ -10,6 +10,7 @@
 
 import * as cheerio from 'cheerio'
 import { loginVab } from './scraper'
+import { VAB_DEFAULT_SIGNATURE_PNG } from './default-signature'
 
 const BASE = 'https://comet.vab.be'
 const UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36'
@@ -52,7 +53,10 @@ function parse(html: string): Parsed {
   const inputNames: string[] = []
   $('input:not([type=hidden]), textarea, select').each((_, el) => { const n = $(el).attr('name'); if (n) inputNames.push(n) })
   const feedback = (html.match(/Feedback_Message_Wrapper[^>]*>\s*<[^>]*>([^<]{2,150})</) || [])[1]?.trim() || ''
-  const completed = /successfully completed|Mission compl|assignment was successfully|Assignments\.aspx/i.test(html) && !/wtLink_End/.test(html)
+  // « Terminé » = feedback explicite de complétion. ⚠️ NE PAS matcher « Assignments.aspx »
+  // (présent dans le lien « Retourner » de CHAQUE page → faux positif au stade Accepter,
+  // close.ts croyait la mission finie alors qu'elle démarre). HAR 2026-08-10.
+  const completed = /successfully completed|Mission compl[eé]t|assignment was successfully|cr[eé][eé] avec succ[eè]s/i.test(html) && !/wtLink_End/.test(html)
   return { buttons, inputNames, buttonTexts: buttons.map(b => b.text), feedback, completed, html }
 }
 
@@ -89,12 +93,15 @@ async function osGet(cookie: string, url: string): Promise<string> {
 
 // POST chaîné : ré-injecte TOUS les hidden de `html` (dont __OSVSTATE), pose le
 // __EVENTTARGET + les champs extra, renvoie le HTML résultat.
-async function osPost(cookie: string, url: string, html: string, target: string, extra: Record<string, string> = {}, arg = ''): Promise<string> {
+async function osPost(cookie: string, url: string, html: string, target: string, extra: Record<string, string> = {}, arg = '', ajax?: { event: string; data: string }): Promise<string> {
   const $ = cheerio.load(html)
   const body = new URLSearchParams()
   for (const [k, v] of Object.entries(collectHidden($))) body.set(k, v)
   body.set('__EVENTTARGET', target)
   body.set('__EVENTARGUMENT', arg)
+  // Événement OsAjax (ex Notify) : certains widgets ne se synchronisent QUE via un
+  // postback __AJAXEVENT (cf refresh « VIN confirmé » après la popup VIN inconnu).
+  if (ajax) { body.set('__AJAXEVENT', ajax.event); body.set('__AJAX', ajax.data) }
   for (const [k, v] of Object.entries(extra)) body.set(k, v)
   const fa = $('form').attr('action') || url
   const r = await fetch(new URL(fa, url).toString(), {
@@ -185,17 +192,12 @@ export async function closeVabMission(input: VabCloseInput): Promise<VabCloseRes
         // Effet serveur : pose le drapeau « VIN vérifié » → EndIntervention progresse.
         const bypassed = await confirmCheckVinPopupIfAny(sess.cookieHeader)
         // Après le « Oui » de la pop-up, Comet refresh le widget VIN sur la page
-        // principale (`wt436$RichWidgets_wt14$block$wt1`) → synchronise l'état sur
-        // « VIN confirmé » sans quoi « Fin lieu de la panne » ne progresse pas.
+        // principale via un postback __AJAXEVENT=Notify (message « Yes ») → synchronise
+        // l'état sur « VIN confirmé » sans quoi « Fin lieu de la panne » reboucle.
+        // Cible = wt436_RichWidgets_wt14_block_wt1 (UNDERSCORES) + __AJAX=…,Yes. HAR vab4.
         if (bypassed) {
-          // Refresh du widget VIN après le « Oui » de la pop-up → pose « VIN confirmé »
-          // dans la chaîne OSVSTATE. ⚠️ RESTE À FIABILISER : la réponse est un fragment
-          // partiel OsAjax dont le nouvel __OSVSTATE n'est pas un <input hidden> standard
-          // → collectHidden() ne le récupère pas encore, donc l'état ne se propage pas et
-          // « Fin lieu de la panne » reboucle. À finir avec le HAR (format réponse OsAjax).
-          // ⚠️ Ce target de refresh utilise des UNDERSCORES (pas des $) — cf cURL réel.
           const refreshTarget = checkVin.target!.replace(/wtLink_CheckVin$/, 'RichWidgets_wt14$block$wt1').replace(/\$/g, '_')
-          html = await osPost(sess.cookieHeader, url, html, refreshTarget, input.extraFields || {})
+          html = await osPost(sess.cookieHeader, url, html, refreshTarget, input.extraFields || {}, '', { event: 'Notify', data: '1200,1598,,0,0,0,0,0,0,Yes' })
         }
         vinChecked = true
         steps.push(bypassed ? 'check_vin (bypass VIN inconnu)' : 'check_vin')
@@ -204,15 +206,33 @@ export async function closeVabMission(input: VabCloseInput): Promise<VabCloseRes
     }
 
     // Étape SIGNATURE (champ wtInput_Signature présent) : signer une fois.
+    // DÉFAUT (Olivier 2026-08-10) : poster un TRAIT signature (PNG canvas data URI)
+    // dans wtInput_Signature → « Signature envoyée avec succès ! » (validé HAR vab4).
+    // Plus besoin de cocher « refuse de signer ». Le refus/absent restent des options
+    // explicites — et eux DOIVENT être cochés par leur PROPRE postback (event Change
+    // sur la case) AVANT le clic GetSignature (sinon VAB ne les enregistre pas).
     const sigInput = nameEndsWith(p.inputNames, 'wtInput_Signature')
     const getSig = btnByTargetSuffix(p.buttons, 'wtLink_GetSignature')
     if (sigInput && getSig && !signed) {
-      const extra: Record<string, string> = {}
-      if (input.refusal) extra[nameEndsWith(p.inputNames, 'wtCheck_Refusal') || ''] = 'on'
-      else if (input.notPresent) extra[nameEndsWith(p.inputNames, 'wtCheck_NotPresent') || ''] = 'on'
-      else if (input.signaturePng) extra[sigInput] = input.signaturePng
-      else return { ok: false, completed: false, steps, error: 'Signature requise (dessin, refus ou absent)' }
-      html = await osPost(sess.cookieHeader, url, html, getSig.target!, extra)
+      const checkName = input.refusal
+        ? nameEndsWith(p.inputNames, 'wtCheck_Refusal')
+        : input.notPresent ? nameEndsWith(p.inputNames, 'wtCheck_NotPresent') : null
+      if (checkName) {
+        // 1) Postback dédié qui coche la case (event Change) → VAB enregistre l'état.
+        html = await osPost(sess.cookieHeader, url, html, checkName, { [checkName]: 'on' })
+        // 2) Nouvelle page/OSVSTATE : re-cibler GetSignature + re-poser la case cochée.
+        const p2 = parse(html)
+        const getSig2 = btnByTargetSuffix(p2.buttons, 'wtLink_GetSignature') || getSig
+        const checkName2 = nameEndsWith(p2.inputNames, input.refusal ? 'wtCheck_Refusal' : 'wtCheck_NotPresent') || checkName
+        html = await osPost(sess.cookieHeader, url, html, getSig2.target!, { [checkName2]: 'on' })
+      } else {
+        // Trait signature par défaut (ou PNG fourni). Poser aussi wt20 (case présence)
+        // si présente, pour coller au flux réel capturé.
+        const png = input.signaturePng || VAB_DEFAULT_SIGNATURE_PNG
+        const extra: Record<string, string> = { [sigInput]: png }
+        const wt20 = nameEndsWith(p.inputNames, 'wt20'); if (wt20) extra[wt20] = 'on'
+        html = await osPost(sess.cookieHeader, url, html, getSig.target!, extra)
+      }
       signed = true
       steps.push('signature')
       continue
