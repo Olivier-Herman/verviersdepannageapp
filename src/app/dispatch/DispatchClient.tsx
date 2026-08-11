@@ -13,6 +13,7 @@ import AmbientBackground from '@/components/AmbientBackground'
 import MissionStamp from '@/components/missions/MissionStamp'
 import VabImportButton from '@/components/dispatch/VabImportButton'
 import TouringImportButton from '@/components/dispatch/TouringImportButton'
+import AxaImportButton from '@/components/dispatch/AxaImportButton'
 import DispatcherOnDutyBadge from '@/components/dispatch/DispatcherOnDutyBadge'
 import { getSourceLabel, getSourceColor, type SourceDisplay as CatalogSource } from '@/lib/missions/source-display'
 import AutoDispatchButton from '@/components/dispatch/AutoDispatchButton'
@@ -1402,6 +1403,10 @@ export default function DispatchClient({
             {/* Import Touring COMEX — superadmin only pendant la phase de validation
                 (l'import lit COMEX + crée les fiches, ne mute rien côté Touring). */}
             {userRole === 'superadmin' && <TouringImportButton onImportDone={() => load()} />}
+
+            {/* Import AXA go&assist — superadmin only pendant la validation
+                (poll lecture seule → crée les fiches ; n'affecte rien côté AXA). */}
+            {userRole === 'superadmin' && <AxaImportButton onImportDone={() => load()} />}
 
             {/* Nouvelle mission — icône seule sur mobile, label sur desktop */}
             <Link href="/dispatch/new"

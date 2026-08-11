@@ -13,6 +13,7 @@ import { createOdooDossierForMission } from '@/lib/missions/odoo-dossier'
 import { withOdooActor }               from '@/lib/odoo'
 import { acceptTouringBg }             from '@/lib/touring/accept-bg'
 import { acceptKazeProposalBg, acceptAllianzBg } from '@/lib/missions/provider-accept-bg'
+import { affectAxaBg }                  from '@/lib/axa/affect-bg'
 
 export async function POST(req: Request) {
   const session = await getServerSession(authOptions)
@@ -83,6 +84,13 @@ export async function POST(req: Request) {
       notes:     `Assigné à ${driver?.name}`,
       metadata:  { driver_id, driver_name: driver?.name }
     })
+
+    // AXA go&assist : au moment de l'assignation VD Soft, on AFFECTE la mission
+    // à notre technicien dans go&assist (appointmentAt = assignation + 1h).
+    // Best-effort / idempotent. Cf [[project_axa_goassist_integration]].
+    if (mission.source === 'axa') {
+      await affectAxaBg(mission_id, (mission as any).external_id || null, actor?.id || null, supabase)
+    }
 
     // Live Activity « push-to-start » : fait apparaître la mission sur le device
     // du chauffeur (Dynamic Island + écran verrouillé) dès l'attribution, pour
