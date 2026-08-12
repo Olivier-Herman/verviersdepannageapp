@@ -7,7 +7,7 @@
 
 import { useEffect, useState } from 'react'
 
-interface Assistance { key: string; label: string }
+interface Assistance { key: string; label: string; integrated?: boolean }
 interface Driver { id: string; name: string }
 
 export default function Flux2GridClient() {
@@ -70,6 +70,7 @@ export default function Flux2GridClient() {
                 <th className="text-left font-semibold text-ink px-4 py-3 sticky left-0 bg-surface-2 z-10">Chauffeur</th>
                 {assistances.map(a => (
                   <th key={a.key} className="px-3 py-3 font-semibold text-ink text-center whitespace-nowrap">
+                    {a.integrated && <span title="La clôture part aussi chez l'assisteur">🔗 </span>}
                     {a.label}
                     <span className="block text-[11px] font-normal text-ink-muted">
                       {countFor(a.key)}/{drivers.length}
@@ -112,6 +113,9 @@ export default function Flux2GridClient() {
       )}
 
       <p className="text-ink-muted text-xs max-w-2xl">
+        🔗 = la clôture part aussi chez l'assisteur (Touring, VAB, AXA, Kaze). Sans le lien,
+        les écrans sont les mêmes mais tout reste dans VD Soft — c'est le cas d'ANWB, du privé
+        ou de la police.<br />
         Les superadmins voient toujours le flux 2, sans être cochés — pour pouvoir vérifier.
         Une modification s'applique en moins d'une minute, sans redéploiement.
       </p>

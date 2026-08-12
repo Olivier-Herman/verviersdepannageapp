@@ -16,10 +16,16 @@ export const dynamic = 'force-dynamic'
 /** Assistances proposées : celles pour lesquelles une transformation existe ou
  *  viendra. On n'expose pas les 30 sources du catalogue — cocher « garage » ou
  *  « unknown » n'aurait aucun sens tant qu'aucune clôture n'est branchée derrière. */
-// `allianz` n'apparaît PAS : c'est la même assistance que `mondial` (cf. alias
-// dans gating.ts), et c'est `mondial` qui porte le trafic. Une seule colonne,
-// sinon on coche une case qui ne sert à rien.
-const SUPPORTED = ['touring', 'vab', 'kaze', 'mondial', 'axa', 'prive'] as const
+// Objectif (Olivier 2026-08-12) : le chauffeur voit les MÊMES écrans partout.
+// La grille expose donc TOUTES les sources actives du catalogue, pas une liste
+// figée — ajouter une assistance ne demande plus de toucher au code. Les
+// intégrations qui poussent vraiment chez l'assisteur restent en tête.
+const PRIORITY = ['touring', 'vab', 'axa', 'kaze', 'mondial'] as const
+
+// Exclues : `allianz` (même assistance que `mondial`, cf. alias dans gating.ts),
+// `unknown` (fourre-tout technique) et les garages partenaires `garage_*`
+// (générés automatiquement, un par client).
+const EXCLUDED = (k: string) => k === 'allianz' || k === 'unknown' || k.startsWith('garage_')
 
 /** Libellés qui priment sur le catalogue (regroupements, noms d'usage). */
 const LABEL_OVERRIDES: Record<string, string> = { mondial: 'Mondial / Allianz' }
@@ -44,12 +50,16 @@ export async function GET() {
     sb.from('users').select('id, name, email, role, roles, active')
       .or('role.in.(driver,chauffeur),roles.ov.{driver,chauffeur}')
       .order('name'),
-    sb.from('mission_source_catalog').select('key, label').in('key', SUPPORTED as any),
+    sb.from('mission_source_catalog').select('key, label, active, sort_order').eq('active', true),
     sb.from('flux2_activation').select('driver_id, assistance_key, enabled'),
   ])
 
+  const keys = (cat || []).map((c: any) => c.key).filter((k: string) => !EXCLUDED(k))
   const labels = new Map((cat || []).map((c: any) => [c.key, c.label]))
-  const assistances = SUPPORTED.map(k => ({ key: k, label: LABEL_OVERRIDES[k] || labels.get(k) || k }))
+  const rank = (k: string) => { const i = (PRIORITY as readonly string[]).indexOf(k); return i < 0 ? 99 : i }
+  const assistances = keys
+    .sort((x: string, y: string) => rank(x) - rank(y) || String(labels.get(x)).localeCompare(String(labels.get(y))))
+    .map((k: string) => ({ key: k, label: LABEL_OVERRIDES[k] || labels.get(k) || k, integrated: rank(k) < 99 }))
   const enabled: Record<string, boolean> = {}
   for (const r of (grid || []) as any[]) if (r.enabled) enabled[`${r.driver_id}|${r.assistance_key}`] = true
 
@@ -69,9 +79,12 @@ export async function POST(req: Request) {
   const driverId = String(b?.driverId || '')
   const key      = String(b?.assistanceKey || '')
   const enabled  = !!b?.enabled
-  if (!driverId || !(SUPPORTED as readonly string[]).includes(key)) {
+  if (!driverId || !key || EXCLUDED(key)) {
     return NextResponse.json({ error: 'Paramètres invalides' }, { status: 400 })
   }
+  // La clé doit exister au catalogue : pas de case fantôme.
+  const { data: known } = await sb.from('mission_source_catalog').select('key').eq('key', key).maybeSingle()
+  if (!known) return NextResponse.json({ error: 'Source inconnue' }, { status: 400 })
 
   const { error } = await sb.from('flux2_activation').upsert(
     { driver_id: driverId, assistance_key: key, enabled, updated_at: new Date().toISOString(), updated_by: (me as any)?.id },

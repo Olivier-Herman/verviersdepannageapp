@@ -268,18 +268,18 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     try { const { waitUntil } = await import('@vercel/functions'); waitUntil(vabTask) } catch { /* hors Vercel */ }
     result = { ok: true, queuedVab: true }
   }
-  // ── Kaze / Allianz : PAS de transformation externe ────────────────────────
-  // Leur clôture réelle ne se joue pas ici et ne doit surtout pas être doublée :
-  //   • Kaze est synchronisé par `driver-action` (advanceKazeMissionForAction :
-  //     on_way→step1, on_site→step3, completed/park→step9 = clôture complète) —
-  //     code strictement inchangé ;
-  //   • Mondial / Allianz (même maison, clé canonique `mondial`) se clôture à la
-  //     FACTURATION via Hexalite, pas par le chauffeur.
-  // Le flux 2 n'ajoute donc que les écrans devant : on enregistre le motif de
-  // panne et le tronc commun dans VD Soft (déjà fait ci-dessus), et on rend la
-  // main. Le chauffeur enchaîne sur l'écran de clôture habituel, qui déclenche
-  // driver-action — c'est LUI qui parle à Kaze. Olivier 2026-08-11.
-  else if (assistance === 'kaze' || assistance === 'mondial') {
+  // ── TOUTE AUTRE ASSISTANCE : aucun appel externe ──────────────────────────
+  // C'est le cas par DÉFAUT, pas une liste à maintenir (Olivier 2026-08-12) :
+  // « les chauffeurs voient les mêmes écrans partout, et ça alimente notre fiche ».
+  // Kaze, Mondial/Allianz, ANWB, privé, police… passent par les mêmes écrans, et
+  // le flux 2 se contente d'enregistrer le motif de panne et le tronc commun.
+  // Leur clôture réelle, quand elle existe, se joue AILLEURS et ne doit pas être
+  // doublée :
+  //   • Kaze est synchronisé par `driver-action` (advanceKazeMissionForAction) ;
+  //   • AXA go&assist également, par le hook `closeAxaBg` ;
+  //   • Mondial / Allianz se clôture à la FACTURATION via Hexalite ;
+  //   • ANWB, privé, police… n'ont pas de plateforme : la fiche VD Soft suffit.
+  else {
     result = { ok: true, skipped: 'aucune plateforme à appeler', internalOnly: true }
   }
 
