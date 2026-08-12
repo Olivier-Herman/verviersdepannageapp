@@ -20,7 +20,7 @@ import {
   Mail, Trash2, ScanLine, AlertTriangle, Map as MapIcon, Landmark, Receipt, ShieldCheck, Shield,
   ClipboardList, BarChart3, LayoutGrid, CreditCard, Wallet, Users, CalendarDays,
   Megaphone, Contact, TrendingUp, Settings, Store, Building2, Bot, ClipboardCheck,
-  CalendarClock, Send, type LucideIcon,
+  CalendarClock, Send, Link2, type LucideIcon,
 } from 'lucide-react'
 import { type NavItem } from './nav-items'
 
@@ -99,6 +99,8 @@ export const NAV_TREE: NavModule[] = [
       { href: '/caisse',        label: 'Ma Caisse',       icon: Wallet,     requires: '/finance', requiresModules: ['caisse'] },
       { href: '/avance-fonds',  label: 'Avance de fonds', icon: FileText,   requires: '/finance', requiresModules: ['avance_fonds'] },
       { href: '/relances',      label: 'Relance Client',  icon: Send,       requires: '/finance', requiresModules: ['relances'] },
+      // Olivier 2026-08-14 : en rodage → superadmin, comme la tuile et l'API.
+      { href: '/finance/reconciliation', label: 'Réconciliation', icon: Link2, requires: '/finance', superadminOnly: true },
     ],
   },
   {
