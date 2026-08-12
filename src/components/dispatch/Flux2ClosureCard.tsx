@@ -29,10 +29,15 @@ const statusWords = (before?: string | null, after?: string | null) => {
   if (b) return `dossier « ${b} »`
   return null
 }
-const codeWords = (c?: any) => c && (c.cause || c.desc || c.result)
-  ? [labelOf(PANNE_CAUSE, String(c.cause || '')), labelOf(PANNE_DESC, String(c.desc || '')), labelOf(PANNE_RESULT, String(c.result || ''))]
-      .filter(Boolean).join(' · ')
-  : null
+// Le triplet COMEX, éclaté en trois informations lisibles (Olivier 2026-08-12) :
+//   • PANNE    = l'élément concerné      (COD_PANNE_CAUSE — « Code Incident »)
+//   • CAUSE    = ce qui lui est arrivé   (COD_PANNE_DESC  — « Code Type »)
+//   • RÉSULTAT = ce que le chauffeur a pu en faire (COD_PANNE_RESULT)
+const codeParts = (c?: any) => c && (c.cause || c.desc || c.result) ? {
+  panne:    { label: labelOf(PANNE_CAUSE,  String(c.cause  || '')), code: String(c.cause  || '') },
+  cause:    { label: labelOf(PANNE_DESC,   String(c.desc   || '')), code: String(c.desc   || '') },
+  resultat: { label: labelOf(PANNE_RESULT, String(c.result || '')), code: String(c.result || '') },
+} : null
 
 const OUTCOME_LABELS: Record<string, { label: string; tone: 'green' | 'amber' | 'slate' }> = {
   dsp:       { label: 'Dépannage réussi',          tone: 'green' },
@@ -50,9 +55,9 @@ const TONE = {
   slate: 'bg-ink/5 text-ink-secondary border-[color:var(--border-strong)]',
 }
 
-function Item({ icon, label, value, muted }: { icon: string; label: string; value: string; muted?: boolean }) {
+function Item({ icon, label, value, muted, hint }: { icon: string; label: string; value: string; muted?: boolean; hint?: string }) {
   return (
-    <div className="flex items-start gap-2.5 min-w-0">
+    <div className="flex items-start gap-2.5 min-w-0" title={hint}>
       <span className="text-lg leading-none mt-0.5 flex-shrink-0">{icon}</span>
       <div className="min-w-0">
         <p className="text-[10.5px] font-bold uppercase tracking-wide text-ink-muted">{label}</p>
@@ -100,7 +105,7 @@ export default function Flux2ClosureCard({ mission, logs }: { mission: any; logs
     : null
 
   // Panne telle que l'assisteur la lit, en toutes lettres.
-  const pushDetail = codeWords(result.codes)
+  const parts = codeParts(result.codes)
   // Codes bruts : uniquement en infobulle, pour recoupement avec leur écran.
   const rawCodes = result.codes
     ? `fin ${result.finCode} · ${result.codes.cause}/${result.codes.desc}/${result.codes.result}`
@@ -134,7 +139,9 @@ export default function Flux2ClosureCard({ mission, logs }: { mission: any; logs
 
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-x-5 gap-y-4 px-4 py-4">
           {mission.panne_motif_label && <Item icon="🔧" label="Motif" value={mission.panne_motif_label} />}
-          {pushDetail && <Item icon="🩺" label="Panne déclarée à l'assistance" value={pushDetail} />}
+          {parts?.panne.label    && <Item icon="🩺" label="Panne"    value={parts.panne.label}    hint={`code ${parts.panne.code}`} />}
+          {parts?.cause.label    && <Item icon="❓" label="Cause"    value={parts.cause.label}    hint={`code ${parts.cause.code}`} />}
+          {parts?.resultat.label && <Item icon="✅" label="Résultat" value={parts.resultat.label} hint={`code ${parts.resultat.code}`} />}
           {signature            && <Item icon="✍️" label="Signature"  value={signature} muted={common.signature !== 'signed' && !mission.client_signature} />}
           {key                  && <Item icon="🔑" label="Clé"        value={key} />}
           {mission.vehicle_location && <Item icon="📍" label="Véhicule laissé" value={mission.vehicle_location} />}
