@@ -39,7 +39,15 @@ Règles STRICTES :
   · Le total est l'entier le plus grand affiché, généralement suivi de "km".
   · Si le compteur n'est pas net et lisible en entier, mets null. Ne DEVINE JAMAIS un chiffre.
 - "image" = le numéro de la photo (1..N) où tu as lu la valeur.
-- Dans le doute, préfère null plutôt qu'une valeur approximative.`
+- Dans le doute, préfère null plutôt qu'une valeur approximative.
+
+ORIENTATION (Olivier 2026-08-12) : les photos sont prises au téléphone, souvent
+de biais ou en portrait devant une étiquette posée à l'horizontale. Le texte peut
+donc apparaître TOURNÉ à 90° ou 180°, en biais, sombre ou avec des reflets.
+Lis-le quand même — un VIN à la verticale reste un VIN. Le châssis se trouve sur
+la plaque constructeur (montant de portière, bas de pare-brise, compartiment
+moteur) ; sur ces plaques il est la LONGUE suite de 17 caractères, à côté du nom
+du constructeur et des masses en kg (3500 kg, 1650 kg…), qui ne sont PAS le VIN.`
 
 export interface VehicleOcrHit { value: string; image: number }
 export interface VehicleOcrKmHit { value: number; image: number }
@@ -133,9 +141,39 @@ export async function detectVehicleFromImages(rawImages: (string | null | undefi
     return { value: n, image }
   }
 
-  return {
+  const result: VehicleOcrResult = {
     plate:   validate(parsed.plate, 'plate'),
     vin:     validate(parsed.vin, 'vin'),
     mileage: validateKm(parsed.mileage),
   }
+
+  // Deuxième passe, VIN SEUL. Vu en réel le 12/08 (VAB 2GHQ619, Sprinter) : la
+  // plaque constructeur était nette sur la photo, mais tournée à 90° — noyée dans
+  // une demande qui cherchait aussi la plaque et le compteur, le VIN est ressorti
+  // null. Une question unique, sur les mêmes images, le retrouve. On ne relance
+  // que si le premier passage n'a rien donné : coût nul dans le cas normal.
+  if (!result.vin) {
+    try {
+      const retry = await createWithModelFallback(client, OCR_MODELS, {
+        max_tokens: 120,
+        system: `Tu cherches UNIQUEMENT le VIN (numéro de châssis) sur des photos de véhicule.
+Le VIN fait EXACTEMENT 17 caractères (jamais de I, O ni Q). Il est estampé sur la plaque
+constructeur ou gravé sur le châssis. Les photos peuvent être TOURNÉES (90°/180°), sombres
+ou avec des reflets : lis quand même. Ne confonds pas avec les masses en kg, le numéro
+d'homologation (e1*...) ni le type du véhicule.
+Réponds UNIQUEMENT : {"vin":{"value":"<17 caractères>","image":<n>}} ou {"vin":null}.
+Si tu ne lis pas les 17 caractères en entier, réponds null. Ne DEVINE JAMAIS.`,
+        messages: [{ role: 'user', content: [
+          ...images.map(({ data, media }) => ({ type: 'image', source: { type: 'base64', media_type: media, data } })),
+          { type: 'text', text: `Voici ${images.length} photo(s). Trouve le VIN. JSON strict uniquement.` },
+        ] }],
+      })
+      const t = retry.content.filter((c: any) => c.type === 'text').map((c: any) => c.text).join('')
+        .replace(/^```json\s*/i, '').replace(/^```\s*/i, '').replace(/\s*```$/i, '').trim()
+      const p2 = JSON.parse(t)
+      result.vin = validate(p2?.vin, 'vin')
+    } catch { /* la 2e passe est un bonus : son échec ne change rien */ }
+  }
+
+  return result
 }
