@@ -21,10 +21,19 @@ import { createAdminClient } from '@/lib/supabase'
 
 export type Confidence = 'exact' | 'corrige' | 'plaque' | 'propose' | 'aucun'
 
+export interface InvoiceCandidate {
+  id: number
+  name: string
+  partner: string
+  amount: number
+  date: string
+  payment_state: string | null
+}
+
 export interface Resolution {
   confidence:  Confidence
   invoiceIds:  number[]          // plusieurs si un paiement couvre plusieurs factures
-  candidates:  { id: number; name: string; partner: string; amount: number; date: string }[]
+  candidates:  InvoiceCandidate[]
   explanation: string            // affiché tel quel dans l'écran
 }
 
@@ -227,6 +236,9 @@ const shape = (r: any) => ({
   partner: Array.isArray(r.partner_id) ? r.partner_id[1] : '',
   amount: Number(r.amount_total),
   date: r.invoice_date || '',
+  // Indispensable : sans lui, une facture retrouvée par plaque passait pour
+  // soldée et l'encaissement perdu n'était pas détecté.
+  payment_state: r.payment_state ?? null,
 })
 
 /**

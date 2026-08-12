@@ -170,7 +170,7 @@ export async function postPlan(plan: PostingPlan, actorNote?: string): Promise<{
       '|',
       ['id', '=', lines[0].id],
       ['payment_id', 'in', plan.paymentIds],
-    ]], { fields: ['id'], limit: 100 })
+    ]], { fields: ['id', 'debit', 'credit', 'amount_residual'], limit: 100 })
 
     const ids = toReconcile.map(l => l.id)
     if (odMoveId) {
@@ -178,6 +178,15 @@ export async function postPlan(plan: PostingPlan, actorNote?: string): Promise<{
         ['move_id', '=', odMoveId], ['account_id', '=', ACC.outstanding],
       ]], { fields: ['id'], limit: 2 })
       ids.push(...odLines.map(l => l.id))
+    }
+
+    // Le brut des paiements doit couvrir ce qu'on veut solder (net + commission).
+    // Sinon on s'arrête là plutôt que de laisser un lettrage partiel derrière.
+    const available = toReconcile.reduce((s, l) => s + Number(l.debit || 0), 0)
+    if (available + 0.005 < plan.gross) {
+      throw new Error(
+        `Paiements insuffisants côté Odoo : ${available.toFixed(2)} € disponibles pour ${plan.gross.toFixed(2)} € encaissés`,
+      )
     }
 
     await odooRpc('account.move.line', 'reconcile', [ids])

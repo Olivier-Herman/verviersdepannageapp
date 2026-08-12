@@ -105,14 +105,25 @@ async function invoicesByName(names: string[]): Promise<Map<string, any>> {
   return map
 }
 
-/** Les paiements Odoo déjà enregistrés pour ces factures (à lettrer contre la banque). */
-async function paymentsByMemo(names: string[]): Promise<Map<string, any>> {
-  const map = new Map<string, any>()
-  if (!names.length) return map
+/**
+ * Le paiement Odoo qui solde chaque facture — c'est lui qu'on lettre contre la
+ * ligne bancaire.
+ *
+ * ⚠️ Passer par `memo` ne marche pas : ce champ ne porte le numéro de facture
+ * que pour les encaissements caisse. On interroge donc le lien réel,
+ * `reconciled_invoice_ids`, qui vaut pour tous les paiements.
+ */
+async function paymentsForInvoices(invoiceIds: number[]): Promise<Map<number, number>> {
+  const map = new Map<number, number>()
+  if (!invoiceIds.length) return map
   const rows = await odooRpc<any[]>('account.payment', 'search_read', [[
-    ['memo', 'in', names],
-  ]], { fields: ['id', 'memo', 'amount', 'journal_id', 'payment_method_line_id'], limit: names.length + 50 })
-  for (const r of rows) if (!map.has(r.memo)) map.set(r.memo, r)
+    ['reconciled_invoice_ids', 'in', invoiceIds],
+  ]], { fields: ['id', 'reconciled_invoice_ids'], limit: invoiceIds.length + 200 })
+  for (const p of rows) {
+    for (const inv of (p.reconciled_invoice_ids || [])) {
+      if (!map.has(Number(inv))) map.set(Number(inv), p.id)
+    }
+  }
   return map
 }
 
@@ -244,9 +255,10 @@ export async function buildMatchReport(
     }
 
     // Les paiements Odoo déjà enregistrés, à lettrer contre la ligne bancaire.
-    const names = matched.map(m => m.invoiceName).filter((n): n is string => !!n && !n.includes(' + '))
-    const payments = await paymentsByMemo(names)
-    for (const m of matched) if (m.invoiceName) m.paymentId = payments.get(m.invoiceName)?.id ?? null
+    const payments = await paymentsForInvoices(matched.flatMap(m => m.invoiceIds))
+    for (const m of matched) {
+      m.paymentId = m.invoiceIds.map(id => payments.get(id)).find(Boolean) ?? null
+    }
 
     const gross      = round2(group.reduce((s, t) => s + t.rawAmount, 0))
     const commission = round2(gross - Number(line.amount))
