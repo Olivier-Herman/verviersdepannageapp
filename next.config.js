@@ -28,7 +28,18 @@ const nextConfig = {
   experimental: {
     // Clôture VAB : ces packages navigateur ne doivent pas être bundlés par Next
     // (binaire Chromium chargé au runtime). Cf src/lib/vab/sign-browser.ts.
-    serverComponentsExternalPackages: ["puppeteer-core", "@sparticuz/chromium", "puppeteer"]
+    serverComponentsExternalPackages: ["puppeteer-core", "@sparticuz/chromium", "puppeteer"],
+    // ⚠️ « externe » ne veut PAS dire « embarqué ». Sans cette ligne, le binaire
+    // Chromium reste sur le sol au déploiement et la fonction part sans
+    // navigateur : @sparticuz échoue en 0 s sur
+    //   The input directory ".../@sparticuz/chromium/bin" does not exist
+    // (vu en prod le 12/08 sur la 1re clôture VAB réelle, 2ETN444).
+    // Uniquement sur la route de clôture — les ~66 Mo n'ont rien à faire
+    // ailleurs. Olivier 2026-08-12.
+    outputFileTracingIncludes: {
+      "/api/missions/[id]/cloture": ["./node_modules/@sparticuz/chromium/bin/**"],
+      "/api/missions/[id]/cloture/route": ["./node_modules/@sparticuz/chromium/bin/**"]
+    }
   }
 };
 
