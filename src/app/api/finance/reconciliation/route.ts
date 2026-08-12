@@ -16,7 +16,7 @@ import { sessionAccess }             from '@/lib/access'
 import { createAdminClient }         from '@/lib/supabase'
 import { buildMatchReport }          from '@/lib/paynovate-match'
 import { buildPostingPlan, summarizePlans, postPlan } from '@/lib/paynovate-post'
-import { saveOverride }              from '@/lib/paynovate-resolve'
+import { saveOverride, removeOverride, resolveReference } from '@/lib/paynovate-resolve'
 
 export const dynamic     = 'force-dynamic'
 export const maxDuration = 120
@@ -96,6 +96,50 @@ export async function PUT(req: NextRequest) {
       ok: true, ...saved,
       warning: fits ? null
         : `Le total des factures (${saved.total.toFixed(2)} €) ne correspond pas aux ${amount.toFixed(2)} € encaissés — le versement restera à trancher.`,
+    })
+  } catch (e: any) {
+    return NextResponse.json({ error: String(e?.message || e) }, { status: 400 })
+  }
+}
+
+/**
+ * DELETE → défait un rattachement manuel (mauvaise facture désignée), puis
+ * relance la résolution automatique pour cette référence et renvoie le
+ * résultat, afin que l'écran se mette à jour sans tout relire chez Paynovate.
+ */
+export async function DELETE(req: NextRequest) {
+  const session = await getServerSession(authOptions)
+  const access  = sessionAccess(session, ACCESS)
+  if (!access.ok) return NextResponse.json({ error: 'Non autorisé' }, { status: 403 })
+
+  const body   = await req.json().catch(() => ({}))
+  const ref    = String(body.merchantRef || '').trim()
+  const amount = Number(body.amount)
+  const at     = body.at ? String(body.at) : null
+  if (!ref || !Number.isFinite(amount)) {
+    return NextResponse.json({ error: 'Référence ou montant manquant' }, { status: 400 })
+  }
+
+  try {
+    const removed = await removeOverride(ref, amount)
+    const res     = await resolveReference(ref, amount, at)
+
+    // On renvoie de quoi réafficher la ligne : la facture retenue, s'il y en a.
+    const kept  = res.candidates.filter(c => res.invoiceIds.includes(c.id))
+    const total = kept.reduce((s, c) => s + c.amount, 0)
+
+    return NextResponse.json({
+      ok: true,
+      removed,
+      confidence:   res.confidence,
+      explanation:  res.explanation,
+      manual:       !!res.manual,
+      invoiceIds:   res.invoiceIds,
+      names:        kept.map(c => c.name),
+      total:        Math.round(total * 100) / 100,
+      partner:      kept[0]?.partner ?? '',
+      paymentState: kept.length === 1 ? kept[0].payment_state : null,
+      candidates:   res.candidates,
     })
   } catch (e: any) {
     return NextResponse.json({ error: String(e?.message || e) }, { status: 400 })

@@ -46,7 +46,8 @@ export interface MatchedTx {
   invoiceTotal: number | null
   paymentState: string | null   // 'paid' | 'not_paid' | 'partial' | …
   paymentId:    number | null   // le paiement Odoo à lettrer, s'il existe
-  candidates:   { id: number; name: string; partner: string; amount: number; date: string }[]
+  candidates:   { id: number; name: string; partner: string; amount: number; date: string; payment_state?: string | null }[]
+  manual:       boolean         // rattachement humain → détachable depuis l'écran
   issue:        'lost' | 'gap' | 'miss' | null
 }
 
@@ -210,6 +211,7 @@ export async function buildMatchReport(
       let confidence: Confidence = 'aucun'
       let explanation = ''
       let candidates: MatchedTx['candidates'] = []
+      let manual = false
       let hits: any[] = []
 
       if (inv) {
@@ -223,6 +225,7 @@ export async function buildMatchReport(
         confidence  = r.confidence
         explanation = r.explanation
         candidates  = r.candidates
+        manual      = !!r.manual
         hits        = r.candidates.filter(c => r.invoiceIds.includes(c.id))
       }
 
@@ -250,6 +253,7 @@ export async function buildMatchReport(
         paymentState: state,
         paymentId:    null,
         candidates,
+        manual,
         issue,
       })
     }

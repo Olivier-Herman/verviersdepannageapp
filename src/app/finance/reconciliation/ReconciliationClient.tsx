@@ -21,8 +21,9 @@ interface Tx {
   partner: string | null
   invoiceTotal: number | null
   paymentState: string | null
-  candidates: { id: number; name: string; partner: string; amount: number; date: string }[]
+  candidates: { id: number; name: string; partner: string; amount: number; date: string; payment_state?: string | null }[]
   issue: 'lost' | 'gap' | 'miss' | null
+  manual?: boolean
 }
 
 interface Payout {
@@ -108,25 +109,37 @@ function applyLink(
   prev: Report,
   payoutId: number,
   txIndex: number,
-  res: { names: string[]; invoiceIds: number[]; total: number; partner: string; paymentState: string | null },
+  res: {
+    names: string[]; invoiceIds: number[]; total: number; partner: string
+    paymentState: string | null
+    confidence?: string; explanation?: string; manual?: boolean
+    candidates?: Tx['candidates']
+  },
 ): Report {
   const payouts = prev.payouts.map(p => {
     if (p.paymentId !== payoutId) return p
     const txs = p.txs.map((x, i) => {
       if (i !== txIndex) return x
-      const fits  = Math.abs(res.total - x.amount) < 0.005
-      const paid  = res.paymentState === 'paid' || res.paymentState === 'in_payment'
-      const issue: Tx['issue'] = !fits ? 'gap' : (res.paymentState && !paid) ? 'lost' : null
+      const linked = res.invoiceIds.length > 0
+      const sure   = res.confidence ? ['exact', 'corrige', 'plaque'].includes(res.confidence) : true
+      const fits   = Math.abs(res.total - x.amount) < 0.005
+      const paid   = res.paymentState === 'paid' || res.paymentState === 'in_payment'
+      const issue: Tx['issue'] =
+        (!linked || !sure) ? 'miss'
+        : !fits            ? 'gap'
+        : (res.paymentState && !paid) ? 'lost'
+        : null
       return {
         ...x,
-        confidence:   'exact',
-        explanation:  `Rattachée à la main : ${res.names.join(' + ')}`,
+        confidence:   res.confidence ?? 'exact',
+        explanation:  res.explanation ?? `Rattachée à la main : ${res.names.join(' + ')}`,
+        manual:       res.manual ?? true,
         invoiceIds:   res.invoiceIds,
-        invoiceName:  res.names.join(' + '),
-        partner:      res.partner || x.partner,
-        invoiceTotal: res.total,
+        invoiceName:  res.names.length ? res.names.join(' + ') : null,
+        partner:      res.partner || null,
+        invoiceTotal: linked ? res.total : null,
         paymentState: res.paymentState,
-        candidates:   [],
+        candidates:   res.candidates ?? [],
         issue,
       }
     })
@@ -350,6 +363,15 @@ export default function ReconciliationClient({ userName }: { userName: string })
                           <span className="font-mono text-[13px] font-semibold">{x.invoiceName || x.merchantRef}</span>
                           {x.partner && <span className="text-[13.5px] text-ink-secondary">{x.partner}</span>}
                           {!x.issue && <span className="text-xs font-semibold text-success">✓ facture soldée</span>}
+                          {x.manual && (
+                            <Detacher
+                              tx={x}
+                              onDetached={res => {
+                                setReport(prev => (prev ? applyLink(prev, p.paymentId, i, res) : prev))
+                                setToast(res.removed ? 'Rattachement défait' : 'Aucun rattachement à défaire')
+                              }}
+                            />
+                          )}
                         </div>
                         {x.issue && (
                           <p className={`mt-2 rounded-btn border-l-2 px-3 py-2 text-[12.5px] leading-relaxed ${
@@ -361,7 +383,10 @@ export default function ReconciliationClient({ userName }: { userName: string })
                               : x.explanation}
                           </p>
                         )}
-                        {x.issue === 'miss' && (
+                        {/* Dès qu'il y a un souci, on doit pouvoir désigner la
+                            bonne facture — une note de crédit suivie d'une
+                            refacturation rend la facture d'origine caduque. */}
+                        {x.issue && (
                           <Linker
                             tx={x}
                             onLinked={res => {
@@ -503,7 +528,11 @@ function Linker({ tx, onLinked }: { tx: Tx; onLinked: (res: any) => void }) {
 
       <div className="flex flex-wrap items-center gap-2 rounded-btn border border-dashed border-strong bg-surface px-3 py-2.5">
         <label className="text-[12.5px] text-ink-secondary" htmlFor={`inv-${tx.merchantRef}`}>
-          {tx.candidates.length > 0 ? 'Aucune ne convient — numéro de facture :' : 'Numéro de facture :'}
+          {tx.invoiceName
+            ? 'Ce n\'est pas la bonne facture ? Indique le bon numéro :'
+            : tx.candidates.length > 0
+              ? 'Aucune ne convient — numéro de facture :'
+              : 'Numéro de facture :'}
         </label>
         <input
           id={`inv-${tx.merchantRef}`}
@@ -526,6 +555,39 @@ function Linker({ tx, onLinked }: { tx: Tx; onLinked: (res: any) => void }) {
 
       {msg && <p className="text-[12.5px] font-semibold text-ink-secondary">{msg}</p>}
     </div>
+  )
+}
+
+/** Défait un rattachement fait à la main, et rend la main à la résolution auto. */
+function Detacher({ tx, onDetached }: { tx: Tx; onDetached: (res: any) => void }) {
+  const [busy, setBusy] = useState(false)
+
+  async function detach() {
+    setBusy(true)
+    try {
+      const r = await fetch('/api/finance/reconciliation', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ merchantRef: tx.merchantRef, amount: tx.amount, at: tx.at }),
+      })
+      const j = await r.json()
+      if (r.ok) onDetached(j)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <span className="inline-flex items-baseline gap-1.5">
+      <span className="rounded-full bg-info-soft px-2 py-0.5 text-[11px] font-semibold text-info">
+        rattachée à la main
+      </span>
+      <button onClick={detach} disabled={busy}
+        title="Supprime le rattachement et refait la recherche automatique"
+        className="text-[11.5px] font-semibold text-brand hover:underline disabled:text-ink-faint">
+        {busy ? '…' : 'Détacher'}
+      </button>
+    </span>
   )
 }
 

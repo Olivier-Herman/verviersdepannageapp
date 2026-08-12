@@ -35,6 +35,8 @@ export interface Resolution {
   invoiceIds:  number[]          // plusieurs si un paiement couvre plusieurs factures
   candidates:  InvoiceCandidate[]
   explanation: string            // affiché tel quel dans l'écran
+  /** Vrai si le rattachement vient d'une saisie humaine → détachable. */
+  manual?:     boolean
 }
 
 // ── Normalisation ───────────────────────────────────────────
@@ -215,6 +217,20 @@ export async function saveOverride(
   }
 }
 
+/** Supprime un rattachement manuel — on s'est trompé de facture. */
+export async function removeOverride(ref: string, amount: number): Promise<boolean> {
+  const sb = createAdminClient()
+  const { error, count } = await sb
+    .from('payout_reference_overrides')
+    .delete({ count: 'exact' })
+    .eq('provider', 'paynovate')
+    .eq('merchant_ref', ref.trim())
+    .eq('amount', Math.round(amount * 100) / 100)
+  if (error) throw new Error(`Détachement impossible : ${error.message}`)
+  plateIndex = null
+  return (count ?? 0) > 0
+}
+
 /** Les factures clients du même montant, dans les jours qui précèdent. */
 async function sameAmountInvoices(amount: number, when: string | null, days = 3) {
   if (!when) return []
@@ -269,6 +285,7 @@ export async function resolveReference(
         invoiceIds: rows.map(r => r.id),
         candidates: rows.map(shape),
         explanation: `Rattachée à la main : ${rows.map(r => r.name).join(' + ')}`,
+        manual: true,
       }
     }
   }

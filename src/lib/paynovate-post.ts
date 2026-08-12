@@ -43,7 +43,28 @@ export const ACC = {
   odJournal:   9,   // Miscellaneous Operations (MISC), société Verviers Depannage
 } as const
 
+/**
+ * Terminal → caisse sur laquelle enregistrer un paiement Bancontact manquant.
+ * Le TID identifie le site : c'est la seule information fiable, les deux
+ * terminaux versant sur le même compte bancaire.
+ */
+export const TERMINALS: Record<string, { site: string; journal: number; methodLine: number }> = {
+  '38904065': { site: 'Fourrière', journal: 14, methodLine: 12 },  // Bancontact (Fourrière Caisse)
+  '38912308': { site: 'Dépannage', journal: 13, methodLine: 11 },  // Bancontact (Dépannage Caisse)
+}
+
 export interface OdLine { account: number; label: string; debit: number; credit: number }
+
+/** Un paiement à créer parce que la facture est restée ouverte alors qu'elle est payée. */
+export interface MissingPayment {
+  invoiceId:   number
+  invoiceName: string
+  amount:      number      // le BRUT encaissé au terminal
+  date:        string
+  journal:     number
+  methodLine:  number
+  site:        string
+}
 
 export interface PostingPlan {
   payoutId:    number
@@ -54,6 +75,7 @@ export interface PostingPlan {
   commission:  number
   invoiceIds:  number[]
   paymentIds:  number[]
+  paymentsToCreate: MissingPayment[]
   od:          { journal: number; date: string; ref: string; lines: OdLine[] } | null
   bankCounterpart: { account: number; amount: number }
   warnings:    string[]
@@ -68,14 +90,46 @@ const r2 = (n: number) => Math.round(n * 100) / 100
 export function buildPostingPlan(p: MatchedPayout): PostingPlan {
   const warnings: string[] = []
 
-  if (p.state !== 'ready') warnings.push(`Versement en état « ${p.state} » — non rapprochable en l'état`)
+  // « lost » est rapprochable : il manque juste le paiement, qu'on va créer.
+  if (p.state !== 'ready' && p.state !== 'lost') {
+    warnings.push(`Versement en état « ${p.state} » — non rapprochable en l'état`)
+  }
 
   const commission = r2(p.grossAmount - p.bankAmount)
   if (commission < -0.005) warnings.push(`Commission négative (${commission.toFixed(2)} €) — le net dépasse le brut`)
 
+  const terminal = p.tid ? TERMINALS[p.tid] : undefined
+
+  // Transactions dont la facture est restée ouverte : on créera le paiement
+  // Bancontact manquant sur la caisse du terminal qui a encaissé.
+  const paymentsToCreate: MissingPayment[] = []
+  for (const t of p.txs) {
+    if (t.paymentId || t.issue === 'gap' || t.issue === 'miss') continue
+    const paid = t.paymentState === 'paid' || t.paymentState === 'in_payment'
+    if (paid) continue
+    if (t.invoiceIds.length !== 1) {
+      warnings.push(`${t.merchantRef} : paiement à créer sur plusieurs factures — à faire à la main`)
+      continue
+    }
+    if (!terminal) {
+      warnings.push(`Terminal ${p.tid || 'inconnu'} non répertorié — impossible de savoir sur quelle caisse enregistrer le paiement`)
+      continue
+    }
+    paymentsToCreate.push({
+      invoiceId:   t.invoiceIds[0],
+      invoiceName: t.invoiceName || t.merchantRef,
+      amount:      t.amount,
+      date:        (t.at || p.bankDate).slice(0, 10),
+      journal:     terminal.journal,
+      methodLine:  terminal.methodLine,
+      site:        terminal.site,
+    })
+  }
+
   const paymentIds = p.txs.map(t => t.paymentId).filter((n): n is number => !!n)
-  if (paymentIds.length !== p.txs.length) {
-    warnings.push('Certaines transactions n\'ont pas de paiement enregistré dans Odoo — il faudra le créer')
+  const covered = paymentIds.length + paymentsToCreate.length
+  if (covered !== p.txs.length) {
+    warnings.push('Certaines transactions n\'ont ni paiement enregistré ni paiement créable — à traiter à la main')
   }
 
   const label = `Commission Paynovate — versement ${p.paymentId}${p.tid ? ` · terminal ${p.tid}` : ''} · ${p.bankDate}`
@@ -89,6 +143,7 @@ export function buildPostingPlan(p: MatchedPayout): PostingPlan {
     commission,
     invoiceIds: p.txs.flatMap(t => t.invoiceIds),
     paymentIds,
+    paymentsToCreate,
     od: commission > 0.005 ? {
       journal: ACC.odJournal,
       date:    p.bankDate,
@@ -130,6 +185,40 @@ export async function postPlan(plan: PostingPlan, actorNote?: string): Promise<{
     throw new Error(`Rapprochement refusé : ${plan.warnings.join(' · ')}`)
   }
 
+  // ── Vérifications AVANT toute écriture ────────────────────
+  // Ordre capital : modifier l'extrait puis échouer laisse une ligne qui
+  // paraît lettrée alors que rien ne l'est. On contrôle donc d'abord.
+  const bankMoveId = await bankMoveIdOf(plan.bankLineId)
+
+  const suspenseLines = await odooRpc<any[]>('account.move.line', 'search_read', [[
+    ['move_id', '=', bankMoveId],
+    ['account_id', '=', ACC.suspense],
+  ]], { fields: ['id', 'partner_id'], limit: 2 })
+  if (!suspenseLines.length) {
+    throw new Error('Cet extrait a déjà été touché : sa contrepartie n\'est plus en compte d\'attente')
+  }
+  // Valeur d'origine, à restituer telle quelle en cas de rollback.
+  const originalPartner = Array.isArray(suspenseLines[0].partner_id)
+    ? suspenseLines[0].partner_id[0]
+    : (suspenseLines[0].partner_id || false)
+
+  const available = await odooRpc<any[]>('account.move.line', 'search_read', [[
+    ['account_id', '=', ACC.outstanding],
+    ['reconciled', '=', false],
+    ['payment_id', 'in', plan.paymentIds],
+  ]], { fields: ['id', 'debit', 'payment_id'], limit: 200 })
+
+  const availableSum = r2(available.reduce((s, l) => s + Number(l.debit || 0), 0))
+  if (availableSum + 0.005 < plan.gross) {
+    const used = plan.paymentIds.filter(id => !available.some(l => (Array.isArray(l.payment_id) ? l.payment_id[0] : l.payment_id) === id))
+    throw new Error(
+      `Paiements déjà lettrés ailleurs : ${availableSum.toFixed(2)} € disponibles pour ${plan.gross.toFixed(2)} € encaissés`
+      + (used.length ? ` — ${used.length} paiement(s) déjà utilisé(s) sur une autre ligne bancaire` : '')
+      + '. À traiter à la main.',
+    )
+  }
+
+  // ── Écritures ─────────────────────────────────────────────
   let odMoveId: number | null = null
 
   if (plan.od) {
@@ -149,30 +238,18 @@ export async function postPlan(plan: PostingPlan, actorNote?: string): Promise<{
     await odooRpc('account.move', 'action_post', [[id]])
   }
 
+  const suspenseLineId = suspenseLines[0].id
+  let bankLineMoved = false
+
   try {
-    // La ligne de contrepartie de l'extrait (aujourd'hui sur 265).
-    const lines = await odooRpc<any[]>('account.move.line', 'search_read', [[
-      ['move_id', '=', await bankMoveIdOf(plan.bankLineId)],
-      ['account_id', '=', ACC.suspense],
-    ]], { fields: ['id'], limit: 2 })
-
-    if (!lines.length) throw new Error('Ligne de contrepartie introuvable sur l\'extrait bancaire')
-
-    await odooRpc('account.move.line', 'write', [[lines[0].id], {
+    await odooRpc('account.move.line', 'write', [[suspenseLineId], {
       account_id: ACC.outstanding,
       partner_id: ACC.partner,
     }])
+    bankLineMoved = true
 
     // Lettrage : les crédits 542 (banque + OD) contre les débits 542 des paiements.
-    const toReconcile = await odooRpc<any[]>('account.move.line', 'search_read', [[
-      ['account_id', '=', ACC.outstanding],
-      ['reconciled', '=', false],
-      '|',
-      ['id', '=', lines[0].id],
-      ['payment_id', 'in', plan.paymentIds],
-    ]], { fields: ['id', 'debit', 'credit', 'amount_residual'], limit: 100 })
-
-    const ids = toReconcile.map(l => l.id)
+    const ids = [suspenseLineId, ...available.map(l => l.id)]
     if (odMoveId) {
       const odLines = await odooRpc<any[]>('account.move.line', 'search_read', [[
         ['move_id', '=', odMoveId], ['account_id', '=', ACC.outstanding],
@@ -180,24 +257,25 @@ export async function postPlan(plan: PostingPlan, actorNote?: string): Promise<{
       ids.push(...odLines.map(l => l.id))
     }
 
-    // Le brut des paiements doit couvrir ce qu'on veut solder (net + commission).
-    // Sinon on s'arrête là plutôt que de laisser un lettrage partiel derrière.
-    const available = toReconcile.reduce((s, l) => s + Number(l.debit || 0), 0)
-    if (available + 0.005 < plan.gross) {
-      throw new Error(
-        `Paiements insuffisants côté Odoo : ${available.toFixed(2)} € disponibles pour ${plan.gross.toFixed(2)} € encaissés`,
-      )
-    }
-
     await odooRpc('account.move.line', 'reconcile', [ids])
     return { odMoveId }
   } catch (e: any) {
-    // Rollback de l'OD : on remet en brouillon puis on supprime.
+    // Rollback complet : on ne laisse ni OD orpheline, ni extrait à moitié
+    // basculé — un extrait dont la contrepartie a quitté le compte d'attente
+    // passe pour lettré alors que rien ne l'est, et disparaît de la file.
+    if (bankLineMoved) {
+      try {
+        await odooRpc('account.move.line', 'write', [[suspenseLineId], {
+          account_id: ACC.suspense,
+          partner_id: originalPartner,
+        }])
+      } catch { /* on remonte l'erreur d'origine */ }
+    }
     if (odMoveId) {
       try {
         await odooRpc('account.move', 'button_draft', [[odMoveId]])
         await odooRpc('account.move', 'unlink', [[odMoveId]])
-      } catch { /* on remonte l'erreur d'origine, pas celle du rollback */ }
+      } catch { /* idem */ }
     }
     throw e
   }
