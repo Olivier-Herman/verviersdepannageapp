@@ -60,13 +60,18 @@ export function flux2AssistanceOf(
 }
 
 /**
- * Sources qui gardent LEUR parcours, quoi qu'il arrive : les appels police ont
- * leur module et leurs écrans dédiés (Olivier 2026-08-12). Garde de sécurité —
- * même une ligne résiduelle en base ne peut pas les basculer dans le flux 2.
- * (Une mission Touring autoroute reclassée Siabis n'est pas concernée : elle
- * garde son lien COMEX, donc son assistance reste `touring`.)
+ * Sources qui gardent LEUR parcours : les appels police ont leur module et leurs
+ * écrans dédiés (Olivier 2026-08-12). Garde de sécurité — même une ligne
+ * résiduelle en base ne peut pas les basculer dans le flux 2.
+ *
+ * ⚠️ SIABIS N'EN FAIT PAS PARTIE. Une mission « Siabis non couvert » envoyée par
+ * le dispatch — ou une mission d'assistance reclassée en Siabis — n'a pas
+ * `awaiting_payment` : elle suit déjà le parcours chauffeur normal (accepter →
+ * en route → sur place), pas la fiche brouillon. Elle passe donc par le flux 2,
+ * avec l'encaissement AVANT clôture. Olivier 2026-08-12.
  */
-const OUT_OF_SCOPE = (k: string) => k.startsWith('police_') || k === 'sia_couvert'
+const POLICE_CALLS = ['police_mg', 'police_saisie', 'police_accident', 'police_avp', 'police_rodeo']
+const OUT_OF_SCOPE = (k: string) => POLICE_CALLS.includes(k)
 
 /** Le flux 2 est-il ouvert pour ce chauffeur sur cette assistance ? */
 export async function isFlux2Enabled(driverId: string | null | undefined, assistanceKey: string | null | undefined): Promise<boolean> {

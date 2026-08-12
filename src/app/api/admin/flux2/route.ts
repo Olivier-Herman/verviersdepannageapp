@@ -26,14 +26,15 @@ const PRIORITY = ['touring', 'vab', 'axa', 'kaze', 'mondial'] as const
 //   • `allianz` — même assistance que `mondial` (cf. alias dans gating.ts) ;
 //   • `unknown` — fourre-tout technique ;
 //   • `garage_*` — garages partenaires générés automatiquement, un par client ;
-//   • `police_*` et `sia_couvert` — LES APPELS POLICE NE CHANGENT PAS (Olivier
-//     2026-08-12) : ils ont leur module et leurs écrans dédiés (fiche Siabis,
-//     fourrière, encaissement au comptoir). Le flux 2 n'a rien à y faire.
-//     ⚠️ Ça ne concerne PAS une mission Touring autoroute reclassée en Siabis :
-//     elle garde son lien COMEX, donc son assistance reste `touring`.
+//   • les APPELS POLICE (mal garée, saisie, accident, AVP, rodéo) — ils ne
+//     changent pas : module et écrans dédiés (Olivier 2026-08-12).
+//     ⚠️ Siabis (couvert / non couvert) N'EST PAS un appel police au sens du
+//     flux : envoyé par le dispatch ou reclassé depuis une assistance, il suit
+//     le parcours chauffeur normal et passe donc par le flux 2 — avec
+//     l'encaissement avant clôture.
+const POLICE_CALLS = ['police_mg', 'police_saisie', 'police_accident', 'police_avp', 'police_rodeo']
 const EXCLUDED = (k: string) =>
-  k === 'allianz' || k === 'unknown' || k.startsWith('garage_') ||
-  k.startsWith('police_') || k === 'sia_couvert'
+  k === 'allianz' || k === 'unknown' || k.startsWith('garage_') || POLICE_CALLS.includes(k)
 
 /** Libellés qui priment sur le catalogue (regroupements, noms d'usage). */
 const LABEL_OVERRIDES: Record<string, string> = { mondial: 'Mondial / Allianz' }

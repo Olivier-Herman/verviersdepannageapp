@@ -178,7 +178,12 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   // Motif de panne : donnée VD Soft, quelle que soit l'assistance. Pour Touring et
   // VAB il alimente aussi leurs codes ; pour Kaze, Allianz et le privé il n'existe
   // aucun référentiel externe — il documente la fiche et s'arrête là.
-  const chosenMotif = branch && motifKey ? findMotif(branch, motifKey) : undefined
+  // ⚠️ `delivered` n'a pas de branche (les codes viennent en principe de la 1re
+  // jambe), MAIS quand il n'y a rien à reprendre le chauffeur choisit un motif —
+  // et il faut l'enregistrer. Sans ça, une livraison sans jambe précédente
+  // (ANWB, Kaze, REM natif) perdait le motif : vu en vrai le 12/08 sur MTTX03.
+  const motifBranch = branch || (outcome === 'delivered' ? 'remorquage' : null)
+  const chosenMotif = motifBranch && motifKey ? findMotif(motifBranch, motifKey) : undefined
   if (chosenMotif) {
     patch.panne_motif       = chosenMotif.key
     patch.panne_motif_label = chosenMotif.label

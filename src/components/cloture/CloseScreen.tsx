@@ -74,8 +74,11 @@ export default function CloseScreen({
   // Livraison : les codes ont été encodés sur la jambe dépannage, on les reprend
   // côté serveur → aucun motif à re-choisir. Restent signature, véhicule, clé, km.
   const isDelivered = outcome === 'delivered'
-  // Sur un remorquage, véhicule + clé se demandent à l'arrivée, pas ici.
-  const askLocKey = !isRem && !isDpr
+  // Où est le véhicule / où est la clé : UNIQUEMENT quand le chauffeur laisse le
+  // véhicule quelque part — à la dépose d'un remorquage (issue « livré ») ou en
+  // mise en parc. Sur un dépannage réussi, le client repart AVEC son véhicule et
+  // sa clé : ces deux questions n'ont aucun sens. Olivier 2026-08-12.
+  const askLocKey = outcome === 'delivered' || outcome === 'park'
 
   // Livraison : y a-t-il des codes à reprendre de la 1re jambe ? Si non (REM natif
   // Touring), on demande le motif ici plutôt que de clôturer en « cause inconnue ».
@@ -429,7 +432,7 @@ export default function CloseScreen({
               )}
             </div>
           </>
-        ) : !isDpr && (
+        ) : isRem && (
           <div className="bg-blue-500/10 border border-blue-500/30 text-blue-700 dark:text-blue-300 rounded-xl px-3 py-3 text-sm font-medium">
             📍 Où tu déposes le véhicule et où tu laisses la clé : on te le demandera à l'arrivée.
           </div>
