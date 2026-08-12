@@ -115,7 +115,9 @@ export default function Flux2GridClient() {
       <p className="text-ink-muted text-xs max-w-2xl">
         🔗 = la clôture part aussi chez l'assisteur (Touring, VAB, AXA, Kaze). Sans le lien,
         les écrans sont les mêmes mais tout reste dans VD Soft — c'est le cas d'ANWB, du privé
-        ou de la police.<br />
+        ou des assurances sans intégration.<br />
+        Les <b>appels police</b> (saisie, mal garée, accident, AVP, rodéo, Siabis) n'y figurent
+        pas : ils gardent leur module et leurs écrans dédiés.<br />
         Les superadmins voient toujours le flux 2, sans être cochés — pour pouvoir vérifier.
         Une modification s'applique en moins d'une minute, sans redéploiement.
       </p>

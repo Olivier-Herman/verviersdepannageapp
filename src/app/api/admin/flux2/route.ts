@@ -22,10 +22,18 @@ export const dynamic = 'force-dynamic'
 // intégrations qui poussent vraiment chez l'assisteur restent en tête.
 const PRIORITY = ['touring', 'vab', 'axa', 'kaze', 'mondial'] as const
 
-// Exclues : `allianz` (même assistance que `mondial`, cf. alias dans gating.ts),
-// `unknown` (fourre-tout technique) et les garages partenaires `garage_*`
-// (générés automatiquement, un par client).
-const EXCLUDED = (k: string) => k === 'allianz' || k === 'unknown' || k.startsWith('garage_')
+// Exclues du flux 2 :
+//   • `allianz` — même assistance que `mondial` (cf. alias dans gating.ts) ;
+//   • `unknown` — fourre-tout technique ;
+//   • `garage_*` — garages partenaires générés automatiquement, un par client ;
+//   • `police_*` et `sia_couvert` — LES APPELS POLICE NE CHANGENT PAS (Olivier
+//     2026-08-12) : ils ont leur module et leurs écrans dédiés (fiche Siabis,
+//     fourrière, encaissement au comptoir). Le flux 2 n'a rien à y faire.
+//     ⚠️ Ça ne concerne PAS une mission Touring autoroute reclassée en Siabis :
+//     elle garde son lien COMEX, donc son assistance reste `touring`.
+const EXCLUDED = (k: string) =>
+  k === 'allianz' || k === 'unknown' || k.startsWith('garage_') ||
+  k.startsWith('police_') || k === 'sia_couvert'
 
 /** Libellés qui priment sur le catalogue (regroupements, noms d'usage). */
 const LABEL_OVERRIDES: Record<string, string> = { mondial: 'Mondial / Allianz' }

@@ -59,9 +59,19 @@ export function flux2AssistanceOf(
   return key ? (ASSISTANCE_ALIASES[key] || key) : null
 }
 
+/**
+ * Sources qui gardent LEUR parcours, quoi qu'il arrive : les appels police ont
+ * leur module et leurs écrans dédiés (Olivier 2026-08-12). Garde de sécurité —
+ * même une ligne résiduelle en base ne peut pas les basculer dans le flux 2.
+ * (Une mission Touring autoroute reclassée Siabis n'est pas concernée : elle
+ * garde son lien COMEX, donc son assistance reste `touring`.)
+ */
+const OUT_OF_SCOPE = (k: string) => k.startsWith('police_') || k === 'sia_couvert'
+
 /** Le flux 2 est-il ouvert pour ce chauffeur sur cette assistance ? */
 export async function isFlux2Enabled(driverId: string | null | undefined, assistanceKey: string | null | undefined): Promise<boolean> {
   if (!driverId || !assistanceKey) return false
+  if (OUT_OF_SCOPE(assistanceKey)) return false
   try { return (await loadGrid()).has(`${driverId}|${assistanceKey}`) } catch { return false }
 }
 
@@ -75,7 +85,7 @@ export async function flux2Enabled(
   mission: { source?: string | null; source_format?: string | null; assigned_to?: string | null } | null | undefined,
 ): Promise<boolean> {
   const assistance = flux2AssistanceOf(mission)
-  if (!assistance) return false
+  if (!assistance || OUT_OF_SCOPE(assistance)) return false
   if (isSuperadmin(actor)) return true
   const driverId = (mission as any)?.assigned_to || actor?.id || null
   return isFlux2Enabled(driverId, assistance)
