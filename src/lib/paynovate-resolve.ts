@@ -141,6 +141,57 @@ async function readInvoicesById(ids: number[]) {
   })
 }
 
+/** Un rattachement manuel enregistré pour cette référence et ce montant. */
+async function readOverride(ref: string, amount: number) {
+  try {
+    const sb = createAdminClient()
+    const { data } = await sb
+      .from('payout_reference_overrides')
+      .select('invoice_ids, invoice_names')
+      .eq('provider', 'paynovate')
+      .eq('merchant_ref', ref)
+      .eq('amount', Math.round(amount * 100) / 100)
+      .maybeSingle()
+    return data?.invoice_ids?.length ? data : null
+  } catch {
+    return null            // table absente ou injoignable → on continue en auto
+  }
+}
+
+/**
+ * Enregistre le rattachement d'une référence terminal à des factures.
+ * Les factures sont vérifiées côté Odoo : on ne mémorise rien d'inexistant.
+ */
+export async function saveOverride(
+  ref: string,
+  amount: number,
+  invoiceNames: string[],
+  userId: string | null,
+): Promise<{ invoiceIds: number[]; names: string[]; total: number }> {
+  const wanted = invoiceNames.map(n => n.trim()).filter(Boolean)
+  if (!wanted.length) throw new Error('Aucun numéro de facture indiqué')
+
+  const rows = await readInvoices(wanted)
+  const missing = wanted.filter(n => !rows.some(r => r.name === n))
+  if (missing.length) throw new Error(`Facture introuvable dans Odoo : ${missing.join(', ')}`)
+
+  const total = rows.reduce((s, r) => s + Number(r.amount_total), 0)
+
+  const sb = createAdminClient()
+  const { error } = await sb.from('payout_reference_overrides').upsert({
+    provider:      'paynovate',
+    merchant_ref:  ref.trim(),
+    amount:        Math.round(amount * 100) / 100,
+    invoice_ids:   rows.map(r => r.id),
+    invoice_names: rows.map(r => r.name),
+    created_by:    userId,
+  }, { onConflict: 'provider,merchant_ref,amount' })
+  if (error) throw new Error(`Rattachement non enregistré : ${error.message}`)
+
+  plateIndex = null        // la prochaine résolution repart d'un index propre
+  return { invoiceIds: rows.map(r => r.id), names: rows.map(r => r.name), total: Math.round(total * 100) / 100 }
+}
+
 /** Les factures clients du même montant, dans les jours qui précèdent. */
 async function sameAmountInvoices(amount: number, when: string | null, days = 3) {
   if (!when) return []
@@ -179,6 +230,22 @@ export async function resolveReference(
   const none: Resolution = { confidence: 'aucun', invoiceIds: [], candidates: [], explanation: '' }
   const raw = String(ref || '').trim()
   if (!raw) return { ...none, explanation: 'Aucune référence saisie sur le terminal' }
+
+  // ── 0. Rattachement déjà indiqué à la main ────────────────
+  // Consulté en premier : ce qu'un humain a tranché fait autorité, et le
+  // versement redevient « prêt » par le chemin normal, garde-fous compris.
+  const manual = await readOverride(raw, amount)
+  if (manual) {
+    const rows = await readInvoicesById(manual.invoice_ids)
+    if (rows.length) {
+      return {
+        confidence: 'exact',
+        invoiceIds: rows.map(r => r.id),
+        candidates: rows.map(shape),
+        explanation: `Rattachée à la main : ${rows.map(r => r.name).join(' + ')}`,
+      }
+    }
+  }
 
   // ── 1. Numéro de facture, tel quel ────────────────────────
   if (INVOICE_RE.test(raw)) {

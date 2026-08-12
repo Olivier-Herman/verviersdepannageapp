@@ -123,8 +123,22 @@ async function paymentsByMemo(names: string[]): Promise<Map<string, any>> {
  *   date de VERSEMENT, donc on remonte large : une ligne bancaire d'aujourd'hui
  *   peut porter des transactions de plusieurs semaines en arrière.
  */
-export async function buildMatchReport(monthsBack = 5): Promise<MatchReport> {
-  const lines = await unreconciledPaynovateLines()
+export async function buildMatchReport(
+  monthsBack = 5,
+  opts: { onlyPayouts?: number[] } = {},
+): Promise<MatchReport> {
+  let lines = await unreconciledPaynovateLines()
+
+  // Vérification ciblée (validation d'un versement) : on ne résout que celui-là.
+  // Sans ce filtre, valider un versement coûtait la résolution des 163 autres
+  // transactions — plusieurs secondes d'attente pour rien.
+  if (opts.onlyPayouts?.length) {
+    const wanted = new Set(opts.onlyPayouts.map(Number))
+    lines = lines.filter(l => {
+      const pid = paymentIdFromLabel(l.payment_ref)
+      return pid !== null && wanted.has(pid)
+    })
+  }
 
   const to   = new Date()
   const from = new Date(Date.UTC(to.getUTCFullYear(), to.getUTCMonth() - monthsBack, 1))

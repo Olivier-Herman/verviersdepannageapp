@@ -16,6 +16,7 @@ import { sessionAccess }             from '@/lib/access'
 import { createAdminClient }         from '@/lib/supabase'
 import { buildMatchReport }          from '@/lib/paynovate-match'
 import { buildPostingPlan, summarizePlans, postPlan } from '@/lib/paynovate-post'
+import { saveOverride }              from '@/lib/paynovate-resolve'
 
 export const dynamic     = 'force-dynamic'
 export const maxDuration = 120
@@ -67,6 +68,40 @@ export async function GET(req: NextRequest) {
   }
 }
 
+/**
+ * PUT → rattache une référence terminal à une ou plusieurs factures, quand la
+ * résolution automatique n'a rien trouvé de sûr. On ne rapproche RIEN ici : on
+ * enregistre le rattachement, et le versement redevient « prêt » par le chemin
+ * normal. Le rapprochement garde donc tous ses garde-fous.
+ */
+export async function PUT(req: NextRequest) {
+  const session = await getServerSession(authOptions)
+  const access  = sessionAccess(session, ACCESS)
+  if (!access.ok) return NextResponse.json({ error: 'Non autorisé' }, { status: 403 })
+
+  const body   = await req.json().catch(() => ({}))
+  const ref    = String(body.merchantRef || '').trim()
+  const amount = Number(body.amount)
+  const names  = (Array.isArray(body.invoiceNames) ? body.invoiceNames : String(body.invoiceNames || '').split(/[\s,;+]+/))
+    .map((s: any) => String(s).trim()).filter(Boolean)
+
+  if (!ref)                        return NextResponse.json({ error: 'Référence manquante' }, { status: 400 })
+  if (!Number.isFinite(amount))    return NextResponse.json({ error: 'Montant manquant' }, { status: 400 })
+  if (!names.length)               return NextResponse.json({ error: 'Indique au moins un numéro de facture' }, { status: 400 })
+
+  try {
+    const saved = await saveOverride(ref, amount, names, access.id)
+    const fits  = Math.abs(saved.total - amount) < 0.005
+    return NextResponse.json({
+      ok: true, ...saved,
+      warning: fits ? null
+        : `Le total des factures (${saved.total.toFixed(2)} €) ne correspond pas aux ${amount.toFixed(2)} € encaissés — le versement restera à trancher.`,
+    })
+  } catch (e: any) {
+    return NextResponse.json({ error: String(e?.message || e) }, { status: 400 })
+  }
+}
+
 export async function POST(req: NextRequest) {
   const session = await getServerSession(authOptions)
   const access  = sessionAccess(session, ACCESS)
@@ -78,7 +113,12 @@ export async function POST(req: NextRequest) {
   if (!payoutIds.length) return NextResponse.json({ error: 'Aucun versement indiqué' }, { status: 400 })
 
   try {
-    const [report, done] = await Promise.all([buildMatchReport(Number(body.months) || 5), alreadyDone()])
+    // Vérification ciblée : on ne recalcule que les versements demandés.
+    // Le contrôle reste intégral (état, factures, montants) — simplement borné.
+    const [report, done] = await Promise.all([
+      buildMatchReport(Number(body.months) || 5, { onlyPayouts: payoutIds }),
+      alreadyDone(),
+    ])
     const sb = createAdminClient()
 
     const results: { payoutId: number; ok: boolean; error?: string; odMoveId?: number | null }[] = []

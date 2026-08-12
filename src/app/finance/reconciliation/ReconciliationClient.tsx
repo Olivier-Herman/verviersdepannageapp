@@ -56,6 +56,41 @@ const eur = (n: number) =>
 const day = (iso: string) =>
   new Date(iso + (iso.length === 10 ? 'T00:00:00' : '')).toLocaleDateString('fr-BE', { day: 'numeric', month: 'short' })
 
+const r2 = (n: number) => Math.round(n * 100) / 100
+
+/** Retire les versements rapprochés et recalcule les compteurs, sans relire Paynovate. */
+function recount(prev: Report, settled: Set<number>): Report {
+  const payouts = prev.payouts.filter(p => !settled.has(p.paymentId))
+  const byState: Report['totals']['byState'] = {
+    ready: { count: 0, amount: 0 }, lost: { count: 0, amount: 0 },
+    gap:   { count: 0, amount: 0 }, miss: { count: 0, amount: 0 },
+  }
+  for (const p of payouts) {
+    byState[p.state].count += 1
+    byState[p.state].amount = r2(byState[p.state].amount + p.bankAmount)
+  }
+  const lost = payouts.flatMap(p => p.txs).filter(x => x.issue === 'lost')
+  const ready = payouts.filter(p => p.state === 'ready')
+  return {
+    ...prev,
+    payouts,
+    totals: {
+      ...prev.totals,
+      count:  payouts.length,
+      amount: r2(payouts.reduce((s, p) => s + p.bankAmount, 0)),
+      byState,
+      lostInvoices: lost.length,
+      lostAmount:   r2(lost.reduce((s, x) => s + x.amount, 0)),
+    },
+    ready: {
+      payouts:    ready.length,
+      net:        r2(ready.reduce((s, p) => s + p.bankAmount, 0)),
+      commission: r2(ready.reduce((s, p) => s + p.commission, 0)),
+      invoices:   new Set(ready.flatMap(p => p.txs.flatMap(x => x.invoiceIds))).size,
+    },
+  }
+}
+
 const STATE: Record<string, { label: string; cls: string }> = {
   ready: { label: 'Prêt',                cls: 'bg-success-soft text-success' },
   lost:  { label: 'Encaissement perdu',  cls: 'bg-warning-soft text-warning' },
@@ -118,7 +153,14 @@ export default function ReconciliationClient({ userName }: { userName: string })
       setToast(ok.length
         ? `${ok.length} versement${ok.length > 1 ? 's' : ''} rapproché${ok.length > 1 ? 's' : ''}${ko.length ? ` · ${ko.length} en échec` : ''}`
         : `Échec : ${ko[0]?.error || j.error || 'raison inconnue'}`)
-      await load()
+
+      // On retire les versements traités de la file sans tout relire chez
+      // Paynovate : une relecture complète, c'est dix secondes d'attente pour
+      // un résultat qu'on connaît déjà. Le bouton « Actualiser » reste là.
+      if (ok.length) {
+        const settled = new Set<number>(ok.map((x: any) => Number(x.payoutId)))
+        setReport(prev => (prev ? recount(prev, settled) : prev))
+      }
     } catch (e: any) {
       setToast(`Échec : ${e.message}`)
     } finally {
@@ -172,13 +214,20 @@ export default function ReconciliationClient({ userName }: { userName: string })
           <Tab on={tab === 'queue'} onClick={() => setTab('queue')} count={report.payouts.length}>À rapprocher</Tab>
           <Tab on={tab === 'lost'}  onClick={() => setTab('lost')}  count={lostTxs.length}>Encaissements perdus</Tab>
         </div>
-        {tab === 'queue' && report.payouts.length > 0 && (
-          <button
-            onClick={() => setOpen(open.size ? new Set() : new Set(report.payouts.map(p => p.paymentId)))}
-            className="mb-2 shrink-0 rounded-btn border border-strong px-3 py-1.5 text-xs font-semibold text-ink-secondary hover:bg-surface-hover">
-            {open.size ? 'Tout replier' : 'Tout déplier'}
+        <div className="mb-2 flex shrink-0 gap-2">
+          {tab === 'queue' && report.payouts.length > 0 && (
+            <button
+              onClick={() => setOpen(open.size ? new Set() : new Set(report.payouts.map(p => p.paymentId)))}
+              className="rounded-btn border border-strong px-3 py-1.5 text-xs font-semibold text-ink-secondary hover:bg-surface-hover">
+              {open.size ? 'Tout replier' : 'Tout déplier'}
+            </button>
+          )}
+          <button onClick={load} disabled={busy.length > 0}
+            title="Relit les versements chez Paynovate — une dizaine de secondes"
+            className="rounded-btn border border-strong px-3 py-1.5 text-xs font-semibold text-ink-secondary hover:bg-surface-hover disabled:text-ink-faint">
+            Actualiser
           </button>
-        )}
+        </div>
       </div>
 
       {tab === 'lost' && (
@@ -267,15 +316,8 @@ export default function ReconciliationClient({ userName }: { userName: string })
                               : x.explanation}
                           </p>
                         )}
-                        {x.issue === 'miss' && x.candidates.length > 0 && (
-                          <div className="mt-2 flex flex-col gap-1.5">
-                            {x.candidates.slice(0, 4).map(c => (
-                              <div key={c.id} className="flex items-center justify-between gap-3 rounded-btn border border-border bg-surface px-3 py-2 text-[13px]">
-                                <span><span className="font-mono">{c.name}</span> · {c.partner} · <span className="font-mono">{eur(c.amount)}</span></span>
-                                <span className="text-xs text-ink-faint">{c.date}</span>
-                              </div>
-                            ))}
-                          </div>
+                        {x.issue === 'miss' && (
+                          <Linker tx={x} onLinked={load} />
                         )}
                       </div>
                     ))}
@@ -358,6 +400,80 @@ function Tab({ on, onClick, count, children }: { on: boolean; onClick: () => voi
         {count}
       </span>
     </button>
+  )
+}
+
+/**
+ * Rattacher une référence à sa facture. Les propositions sont cliquables, et
+ * si aucune ne convient on saisit le numéro à la main — plusieurs si le
+ * paiement couvre plusieurs factures.
+ */
+function Linker({ tx, onLinked }: { tx: Tx; onLinked: () => void }) {
+  const [value, setValue] = useState('')
+  const [busy, setBusy]   = useState(false)
+  const [msg, setMsg]     = useState<string | null>(null)
+
+  async function link(names: string[]) {
+    setBusy(true); setMsg(null)
+    try {
+      const r = await fetch('/api/finance/reconciliation', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ merchantRef: tx.merchantRef, amount: tx.amount, invoiceNames: names }),
+      })
+      const j = await r.json()
+      if (!r.ok) { setMsg(j.error || `Erreur ${r.status}`); return }
+      setMsg(j.warning || `Rattachée à ${j.names.join(' + ')} — actualisation…`)
+      if (!j.warning) setTimeout(onLinked, 700)
+    } catch (e: any) {
+      setMsg(e.message)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div className="mt-2 flex flex-col gap-2">
+      {tx.candidates.length > 0 && (
+        <>
+          <p className="text-[11px] font-semibold uppercase tracking-wider text-ink-faint">Propositions</p>
+          {tx.candidates.slice(0, 4).map(c => (
+            <div key={c.id} className="flex items-center justify-between gap-3 rounded-btn border border-border bg-surface px-3 py-2 text-[13px]">
+              <span><span className="font-mono">{c.name}</span> · {c.partner} · <span className="font-mono">{eur(c.amount)}</span></span>
+              <button disabled={busy} onClick={() => link([c.name])}
+                className="shrink-0 text-[12.5px] font-semibold text-brand hover:underline disabled:text-ink-faint">
+                C&apos;est celle-là
+              </button>
+            </div>
+          ))}
+        </>
+      )}
+
+      <div className="flex flex-wrap items-center gap-2 rounded-btn border border-dashed border-strong bg-surface px-3 py-2.5">
+        <label className="text-[12.5px] text-ink-secondary" htmlFor={`inv-${tx.merchantRef}`}>
+          {tx.candidates.length > 0 ? 'Aucune ne convient — numéro de facture :' : 'Numéro de facture :'}
+        </label>
+        <input
+          id={`inv-${tx.merchantRef}`}
+          value={value}
+          onChange={e => setValue(e.target.value)}
+          onKeyDown={e => { if (e.key === 'Enter' && value.trim()) link(value.split(/[\s,;+]+/).filter(Boolean)) }}
+          placeholder="2026/07/123"
+          className="w-40 rounded-btn border border-strong bg-input px-2.5 py-1.5 font-mono text-[13px] text-ink placeholder:text-ink-faint"
+        />
+        <button
+          disabled={busy || !value.trim()}
+          onClick={() => link(value.split(/[\s,;+]+/).filter(Boolean))}
+          className="rounded-btn bg-brand px-3.5 py-1.5 text-[12.5px] font-semibold text-white hover:bg-brand-hover disabled:bg-surface-hover disabled:text-ink-faint">
+          {busy ? 'Rattachement…' : 'Rattacher'}
+        </button>
+        <span className="w-full text-[11.5px] text-ink-faint">
+          Plusieurs factures ? Sépare-les par un espace. Le rattachement est mémorisé pour la prochaine fois.
+        </span>
+      </div>
+
+      {msg && <p className="text-[12.5px] font-semibold text-ink-secondary">{msg}</p>}
+    </div>
   )
 }
 
