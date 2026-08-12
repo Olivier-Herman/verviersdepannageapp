@@ -27,7 +27,7 @@ export default async function FinancePage() {
       userName={session.user.name ?? ''}
       userModules={modules}
     >
-      <FinanceClient userModules={modules} />
+      <FinanceClient userModules={modules} userRole={(session.user as any).role} />
     </AppShell>
   )
 }

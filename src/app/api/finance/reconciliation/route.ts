@@ -20,7 +20,10 @@ import { buildPostingPlan, summarizePlans, postPlan } from '@/lib/paynovate-post
 export const dynamic     = 'force-dynamic'
 export const maxDuration = 120
 
-const ACCESS = { roles: ['admin', 'superadmin'], modules: ['facturation'] }
+// Rodage : superadmin STRICT. Même règle que la tuile Finance et que la page,
+// pour qu'on ne puisse pas contourner l'écran en appelant l'API directement.
+// Ouvrir au module 'facturation' quand les écritures seront validées.
+const ACCESS = { roles: ['superadmin'], modules: [] as string[] }
 
 /** Les versements déjà rapprochés — ils ne doivent plus apparaître. */
 async function alreadyDone(): Promise<Set<string>> {

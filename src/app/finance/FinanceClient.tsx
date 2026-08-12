@@ -3,7 +3,8 @@
 import Link from 'next/link'
 import AmbientBackground from '@/components/AmbientBackground'
 
-export default function FinanceClient({ userModules }: { userModules: string[] }) {
+export default function FinanceClient({ userModules, userRole }: { userModules: string[]; userRole?: string }) {
+  const isSuperadmin      = userRole === 'superadmin'
   const isAdmin           = userModules.includes('admin')
   const hasEncaissement   = userModules.includes('encaissement')  || isAdmin
   const hasEncaissements  = userModules.includes('encaissements') || isAdmin
@@ -51,6 +52,16 @@ export default function FinanceClient({ userModules }: { userModules: string[] }
       icon:  '📨',
       href:  '/relances',
       show:  hasRelances,
+    },
+    // Olivier 2026-08-14 : en rodage → superadmin uniquement, le temps de
+    // valider les premières écritures. Ouvrir au module facturation ensuite.
+    {
+      id:    'reconciliation',
+      label: 'Réconciliation',
+      desc:  'Versements carte à rapprocher des factures',
+      icon:  '🔗',
+      href:  '/finance/reconciliation',
+      show:  isSuperadmin,
     },
   ].filter(t => t.show)
 

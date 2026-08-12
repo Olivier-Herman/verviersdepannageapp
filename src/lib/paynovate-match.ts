@@ -86,7 +86,7 @@ async function unreconciledPaynovateLines(): Promise<any[]> {
     ['payment_ref', 'ilike', 'PAYNOVATE'],
   ]], {
     fields: ['id', 'date', 'amount', 'payment_ref', 'move_id', 'journal_id'],
-    order: 'date asc, id asc',
+    order: 'date desc, id desc',      // le plus récent en haut de la file
     limit: 500,
   })
 }
