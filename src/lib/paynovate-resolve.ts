@@ -167,7 +167,13 @@ export async function saveOverride(
   amount: number,
   invoiceNames: string[],
   userId: string | null,
-): Promise<{ invoiceIds: number[]; names: string[]; total: number }> {
+): Promise<{
+  invoiceIds: number[]
+  names: string[]
+  total: number
+  partner: string
+  paymentState: string | null
+}> {
   const wanted = invoiceNames.map(n => n.trim()).filter(Boolean)
   if (!wanted.length) throw new Error('Aucun numéro de facture indiqué')
 
@@ -189,7 +195,15 @@ export async function saveOverride(
   if (error) throw new Error(`Rattachement non enregistré : ${error.message}`)
 
   plateIndex = null        // la prochaine résolution repart d'un index propre
-  return { invoiceIds: rows.map(r => r.id), names: rows.map(r => r.name), total: Math.round(total * 100) / 100 }
+  return {
+    invoiceIds:   rows.map(r => r.id),
+    names:        rows.map(r => r.name),
+    total:        Math.round(total * 100) / 100,
+    partner:      Array.isArray(rows[0]?.partner_id) ? rows[0].partner_id[1] : '',
+    // Une seule facture → son état de paiement pilote l'affichage ; plusieurs
+    // → on laisse le serveur trancher au moment du rapprochement.
+    paymentState: rows.length === 1 ? (rows[0].payment_state ?? null) : null,
+  }
 }
 
 /** Les factures clients du même montant, dans les jours qui précèdent. */

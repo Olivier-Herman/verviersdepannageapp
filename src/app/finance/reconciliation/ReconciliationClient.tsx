@@ -91,6 +91,51 @@ function recount(prev: Report, settled: Set<number>): Report {
   }
 }
 
+/** État d'un versement = le pire de ses transactions. Même règle que le serveur. */
+function stateOf(txs: Tx[]): Payout['state'] {
+  if (txs.some(x => x.issue === 'miss')) return 'miss'
+  if (txs.some(x => x.issue === 'gap'))  return 'gap'
+  if (txs.some(x => x.issue === 'lost')) return 'lost'
+  return 'ready'
+}
+
+/**
+ * Applique un rattachement manuel sans relire Paynovate. C'est de l'affichage :
+ * le serveur revérifie tout au moment du rapprochement, donc une estimation
+ * optimiste ici ne peut rien laisser passer.
+ */
+function applyLink(
+  prev: Report,
+  payoutId: number,
+  txIndex: number,
+  res: { names: string[]; invoiceIds: number[]; total: number; partner: string; paymentState: string | null },
+): Report {
+  const payouts = prev.payouts.map(p => {
+    if (p.paymentId !== payoutId) return p
+    const txs = p.txs.map((x, i) => {
+      if (i !== txIndex) return x
+      const fits  = Math.abs(res.total - x.amount) < 0.005
+      const paid  = res.paymentState === 'paid' || res.paymentState === 'in_payment'
+      const issue: Tx['issue'] = !fits ? 'gap' : (res.paymentState && !paid) ? 'lost' : null
+      return {
+        ...x,
+        confidence:   'exact',
+        explanation:  `Rattachée à la main : ${res.names.join(' + ')}`,
+        invoiceIds:   res.invoiceIds,
+        invoiceName:  res.names.join(' + '),
+        partner:      res.partner || x.partner,
+        invoiceTotal: res.total,
+        paymentState: res.paymentState,
+        candidates:   [],
+        issue,
+      }
+    })
+    const blocking = txs.filter(x => x.issue).map(x => x.explanation || `${x.merchantRef} à trancher`)
+    return { ...p, txs, blocking, state: stateOf(txs) }
+  })
+  return recount({ ...prev, payouts }, new Set())
+}
+
 const STATE: Record<string, { label: string; cls: string }> = {
   ready: { label: 'Prêt',                cls: 'bg-success-soft text-success' },
   lost:  { label: 'Encaissement perdu',  cls: 'bg-warning-soft text-warning' },
@@ -317,7 +362,13 @@ export default function ReconciliationClient({ userName }: { userName: string })
                           </p>
                         )}
                         {x.issue === 'miss' && (
-                          <Linker tx={x} onLinked={load} />
+                          <Linker
+                            tx={x}
+                            onLinked={res => {
+                              setReport(prev => (prev ? applyLink(prev, p.paymentId, i, res) : prev))
+                              setToast(`Rattachée à ${res.names.join(' + ')}`)
+                            }}
+                          />
                         )}
                       </div>
                     ))}
@@ -408,7 +459,7 @@ function Tab({ on, onClick, count, children }: { on: boolean; onClick: () => voi
  * si aucune ne convient on saisit le numéro à la main — plusieurs si le
  * paiement couvre plusieurs factures.
  */
-function Linker({ tx, onLinked }: { tx: Tx; onLinked: () => void }) {
+function Linker({ tx, onLinked }: { tx: Tx; onLinked: (res: any) => void }) {
   const [value, setValue] = useState('')
   const [busy, setBusy]   = useState(false)
   const [msg, setMsg]     = useState<string | null>(null)
@@ -423,8 +474,9 @@ function Linker({ tx, onLinked }: { tx: Tx; onLinked: () => void }) {
       })
       const j = await r.json()
       if (!r.ok) { setMsg(j.error || `Erreur ${r.status}`); return }
-      setMsg(j.warning || `Rattachée à ${j.names.join(' + ')} — actualisation…`)
-      if (!j.warning) setTimeout(onLinked, 700)
+      // Mise à jour sur place : pas de relecture Paynovate pour un rattachement.
+      if (j.warning) setMsg(j.warning)
+      onLinked(j)
     } catch (e: any) {
       setMsg(e.message)
     } finally {
