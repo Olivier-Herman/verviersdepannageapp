@@ -72,16 +72,29 @@ function haversineRoute(a: Coord, b: Coord): RouteResult {
 // même dépôt→incident…) → moins d'appels ORS, respecte le quota gratuit.
 const routeCache = new Map<string, { r: RouteResult; exp: number }>()
 const CACHE_TTL_MS = 5 * 60 * 1000
-const cacheKey = (a: Coord, b: Coord) =>
-  `${a.lat.toFixed(3)},${a.lng.toFixed(3)}>${b.lat.toFixed(3)},${b.lng.toFixed(3)}`
+// La préférence fait partie de la clé : « fastest » (ETA) et « shortest » (tarif)
+// donnent des trajets différents pour la même paire → ne pas les confondre.
+const cacheKey = (a: Coord, b: Coord, pref: string) =>
+  `${pref}:${a.lat.toFixed(3)},${a.lng.toFixed(3)}>${b.lat.toFixed(3)},${b.lng.toFixed(3)}`
 
 /**
  * Trajet routier 1→1 (temps min + distance km).
  * ORS d'abord (gratuit) ; après 2 échecs consécutifs → Google (précis) pendant
  * 3 min ; haversine seulement si Google échoue aussi.
  */
-export async function getDrivingRoute(a: Coord, b: Coord, opts: { googleFallback?: boolean } = {}): Promise<RouteResult> {
-  const k = cacheKey(a, b)
+export async function getDrivingRoute(
+  a: Coord,
+  b: Coord,
+  opts: { googleFallback?: boolean; preference?: 'fastest' | 'shortest' } = {},
+): Promise<RouteResult> {
+  // Préférence d'itinéraire :
+  //   'fastest'  = le plus RAPIDE (comme le chauffeur/Waze) → ETA (le client
+  //                doit attendre le moins longtemps).
+  //   'shortest' = le plus COURT en distance → TARIFS/facturation (Olivier
+  //                2026-08-13 : le prix se calcule sur le chemin le plus court).
+  // Défaut = fastest (préserve l'ETA et la rétro-compat).
+  const pref = opts.preference || 'fastest'
+  const k = cacheKey(a, b, pref)
   const hit = routeCache.get(k)
   if (hit && hit.exp > Date.now()) return hit.r
   const cache = (r: RouteResult) => { routeCache.set(k, { r, exp: Date.now() + CACHE_TTL_MS }); if (routeCache.size > 2000) routeCache.clear(); return r }
@@ -93,10 +106,7 @@ export async function getDrivingRoute(a: Coord, b: Coord, opts: { googleFallback
       const res = await fetch(`${ORS_BASE}/v2/directions/driving-car`, {
         method:  'POST',
         headers: { Authorization: ORS_KEY as string, 'Content-Type': 'application/json' },
-        // « fastest » = itinéraire le plus RAPIDE (comme le chauffeur/Waze),
-        // pas le plus court. Ce qui compte = faire attendre le client le moins
-        // longtemps. Olivier 2026-08-08.
-        body:    JSON.stringify({ coordinates: [[a.lng, a.lat], [b.lng, b.lat]], preference: 'fastest' }),
+        body:    JSON.stringify({ coordinates: [[a.lng, a.lat], [b.lng, b.lat]], preference: pref }),
         signal:  AbortSignal.timeout(2500),
       })
       if (!res.ok) throw new Error(`ORS ${res.status}`)

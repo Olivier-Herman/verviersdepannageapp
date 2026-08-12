@@ -49,7 +49,9 @@ export async function estimatePoliceTripMin(
   const leg = await getDrivingRoute(
     { lat: depot.lat, lng: depot.lng },
     { lat: Number(m.incident_lat), lng: Number(m.incident_lng) },
-    { googleFallback: true },  // estimation de prix → repli Google si ORS lâche
+    // Durée « perf » (temps réaliste du chauffeur) → le plus RAPIDE, pas le plus
+    // court. (Le « shortest » ne concerne que la distance FACTURÉE.) + repli Google.
+    { googleFallback: true },
   )
   // Aller-retour = 2 × trajet dépôt→intervention, + temps sur place.
   return Math.round(leg.minutes * 2 + ON_SITE_MIN)

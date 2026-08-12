@@ -23,7 +23,8 @@ type Coord = { lat: number; lng: number }
 // Doc : https://developers.google.com/maps/documentation/routes/compute_route_directions
 async function getDistanceKm(origin: Coord, destination: Coord): Promise<number | null> {
   // Facturation : ORS (gratuit) puis repli Google si ORS lâche 2× (précis).
-  const r = await getDrivingRoute(origin, destination, { googleFallback: true })
+  // Tarif = chemin le plus COURT (Olivier 2026-08-13), pas le plus rapide.
+  const r = await getDrivingRoute(origin, destination, { googleFallback: true, preference: 'shortest' })
   return r?.km ?? null
 }
 

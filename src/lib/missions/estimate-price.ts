@@ -51,7 +51,7 @@ type Coord = { lat: number; lng: number }
 
 async function routesDistanceKm(origin: Coord, destination: Coord): Promise<number | null> {
   // Distance routière via OpenRouteService (gratuit) au lieu de Google Routes.
-  const r = await getDrivingRoute(origin, destination, { googleFallback: true })
+  const r = await getDrivingRoute(origin, destination, { googleFallback: true, preference: 'shortest' })
   return r?.km ?? null
 }
 
