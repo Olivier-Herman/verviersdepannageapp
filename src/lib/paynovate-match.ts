@@ -48,7 +48,7 @@ export interface MatchedTx {
   paymentId:    number | null   // le paiement Odoo à lettrer, s'il existe
   candidates:   { id: number; name: string; partner: string; amount: number; date: string; payment_state?: string | null }[]
   manual:       boolean         // rattachement humain → détachable depuis l'écran
-  issue:        'lost' | 'gap' | 'miss' | null
+  issue:        'lost' | 'gap' | 'miss' | 'used' | null
 }
 
 export interface MatchedPayout {
@@ -126,6 +126,71 @@ async function paymentsForInvoices(invoiceIds: number[]): Promise<Map<number, nu
     }
   }
   return map
+}
+
+/**
+ * Pourquoi le paiement d'une facture n'est plus disponible au lettrage.
+ *
+ * Un paiement carte dont la ligne 542 est déjà lettrée ailleurs bloque le
+ * versement entier. Plutôt que d'annoncer « il manque X € », on remonte la
+ * chaîne — lettrage → contrepartie → ligne bancaire — pour dire en clair
+ * contre quoi il a été consommé. C'est presque toujours un double paiement :
+ * la facture réglée par carte, puis re-réglée par virement.
+ *
+ * @returns paymentId → phrase explicative, pour les seuls paiements consommés.
+ */
+async function explainConsumedPayments(paymentIds: number[]): Promise<Map<number, string>> {
+  const out = new Map<number, string>()
+  if (!paymentIds.length) return out
+
+  const lines = await odooRpc<any[]>('account.move.line', 'search_read', [[
+    ['payment_id', 'in', paymentIds],
+    ['account_id', '=', 542],
+    ['reconciled', '=', true],
+  ]], { fields: ['id', 'debit', 'payment_id', 'matched_credit_ids', 'matched_debit_ids'], limit: 200 })
+  if (!lines.length) return out
+
+  const partialIds = lines.flatMap(l => [...(l.matched_credit_ids || []), ...(l.matched_debit_ids || [])])
+  if (!partialIds.length) return out
+
+  const partials = await odooRpc<any[]>('account.partial.reconcile', 'read', [[...new Set(partialIds)]],
+    { fields: ['id', 'amount', 'debit_move_id', 'credit_move_id', 'max_date'] })
+
+  const idOf = (v: any) => (Array.isArray(v) ? Number(v[0]) : Number(v))
+  const counterpartIds = new Set<number>()
+  for (const p of partials) { counterpartIds.add(idOf(p.debit_move_id)); counterpartIds.add(idOf(p.credit_move_id)) }
+  for (const l of lines) counterpartIds.delete(l.id)
+
+  const counterparts = counterpartIds.size
+    ? await odooRpc<any[]>('account.move.line', 'read', [[...counterpartIds]], { fields: ['id', 'move_id', 'name'] })
+    : []
+  const cpById = new Map(counterparts.map(c => [c.id, c]))
+
+  // La contrepartie est-elle une ligne d'extrait ? Si oui, on cite le virement.
+  const moveIds = [...new Set(counterparts.map(c => (Array.isArray(c.move_id) ? Number(c.move_id[0]) : Number(c.move_id))))]
+  const stmt = moveIds.length
+    ? await odooRpc<any[]>('account.bank.statement.line', 'search_read', [[['move_id', 'in', moveIds]]],
+        { fields: ['id', 'date', 'amount', 'payment_ref', 'move_id'], limit: 100 })
+    : []
+  const stmtByMove = new Map(stmt.map(s => [Array.isArray(s.move_id) ? Number(s.move_id[0]) : Number(s.move_id), s]))
+
+  for (const l of lines) {
+    const pid = idOf(l.payment_id)
+    const mine = partials.filter(p => idOf(p.debit_move_id) === l.id || idOf(p.credit_move_id) === l.id)
+    for (const p of mine) {
+      const otherId = idOf(p.debit_move_id) === l.id ? idOf(p.credit_move_id) : idOf(p.debit_move_id)
+      const cp = cpById.get(otherId)
+      if (!cp) continue
+      const moveId = Array.isArray(cp.move_id) ? Number(cp.move_id[0]) : Number(cp.move_id)
+      const s = stmtByMove.get(moveId)
+      const jour = s ? String(s.date).split('-').reverse().join('/') : ''
+      out.set(pid, s
+        ? `son paiement de ${Number(l.debit).toFixed(2)} € a déjà été lettré contre le virement de ${Number(s.amount).toFixed(2)} € du ${jour} — la facture a donc été réglée deux fois`
+        : `son paiement de ${Number(l.debit).toFixed(2)} € a déjà été lettré contre l'écriture ${Array.isArray(cp.move_id) ? cp.move_id[1] : moveId}`)
+      break
+    }
+  }
+  return out
 }
 
 /**
@@ -264,6 +329,15 @@ export async function buildMatchReport(
       m.paymentId = m.invoiceIds.map(id => payments.get(id)).find(Boolean) ?? null
     }
 
+    // Un paiement déjà lettré ailleurs rend le versement non rapprochable.
+    // On le détecte ICI, pour l'expliquer dans la file plutôt qu'au clic.
+    const consumed = await explainConsumedPayments(
+      matched.map(m => m.paymentId).filter((n): n is number => !!n),
+    )
+    for (const m of matched) {
+      if (m.paymentId && consumed.has(m.paymentId) && !m.issue) m.issue = 'used'
+    }
+
     const gross      = round2(group.reduce((s, t) => s + t.rawAmount, 0))
     const commission = round2(gross - Number(line.amount))
 
@@ -272,6 +346,7 @@ export async function buildMatchReport(
       if (m.issue === 'miss') blocking.push(m.explanation || `Référence « ${m.merchantRef} » non résolue`)
       if (m.issue === 'gap')  blocking.push(`${m.invoiceName || m.merchantRef} : encaissé ${m.amount.toFixed(2)} € pour une facture de ${(m.invoiceTotal ?? 0).toFixed(2)} €`)
       if (m.issue === 'lost') blocking.push(`${m.invoiceName} (${m.partner || '?'}) : facture encore ouverte alors qu'elle est payée`)
+      if (m.issue === 'used') blocking.push(`${m.invoiceName} (${m.partner || '?'}) : ${consumed.get(m.paymentId!)}`)
     }
 
     // Contrôle de cohérence : le brut Paynovate doit couvrir le net crédité.
@@ -281,6 +356,7 @@ export async function buildMatchReport(
 
     const state: MatchState =
       matched.some(m => m.issue === 'miss') ? 'miss'
+      : matched.some(m => m.issue === 'used') ? 'gap'
       : matched.some(m => m.issue === 'gap')  ? 'gap'
       : matched.some(m => m.issue === 'lost') ? 'lost'
       : 'ready'

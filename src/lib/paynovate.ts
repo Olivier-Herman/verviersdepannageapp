@@ -61,20 +61,34 @@ export interface PaynovateTx {
 // Jar minimaliste : paires nom=valeur, ce qui suffit ici puisque tous les
 // cookies utiles vivent sur *.paynovate.com.
 
-type Jar = Map<string, string>
+/**
+ * ⚠️ Cloisonné PAR HÔTE, et ce n'est pas un détail : `auth.paynovate.com` et
+ * `portal.paynovate.com` posent tous les deux un cookie `XSRF-TOKEN`. Avec un
+ * panier à plat, celui de l'auth écrase celui du portail — le portail se croit
+ * alors en session invalide et renvoie indéfiniment vers /auth/refresh.
+ */
+type Jar = Map<string, Map<string, string>>
 
-function jarHeader(jar: Jar): string {
-  return Array.from(jar.entries()).map(([k, v]) => `${k}=${v}`).join('; ')
+const hostOf = (url: string) => { try { return new URL(url).host } catch { return '' } }
+
+function jarHeader(jar: Jar, url: string): string {
+  const jar4 = jar.get(hostOf(url))
+  if (!jar4?.size) return ''
+  return Array.from(jar4.entries()).map(([k, v]) => `${k}=${v}`).join('; ')
 }
 
-function absorb(jar: Jar, res: Response) {
+function absorb(jar: Jar, res: Response, url: string) {
   // getSetCookie() renvoie chaque Set-Cookie séparément (Node 18.13+).
   const raw = (res.headers as any).getSetCookie?.() ?? []
+  if (!raw.length) return
+  const host = hostOf(url)
+  const bucket = jar.get(host) ?? new Map<string, string>()
   for (const line of raw as string[]) {
     const [pair] = line.split(';')
     const idx = pair.indexOf('=')
-    if (idx > 0) jar.set(pair.slice(0, idx).trim(), pair.slice(idx + 1).trim())
+    if (idx > 0) bucket.set(pair.slice(0, idx).trim(), pair.slice(idx + 1).trim())
   }
+  jar.set(host, bucket)
 }
 
 /**
@@ -96,11 +110,11 @@ async function hop(url: string, jar: Jar, init: RequestInit = {}, maxHops = 10):
       headers: {
         'User-Agent': UA,
         'Accept-Language': 'fr-BE,fr;q=0.9,en;q=0.8',
-        ...(jar.size ? { Cookie: jarHeader(jar) } : {}),
+        ...(jarHeader(jar, current) ? { Cookie: jarHeader(jar, current) } : {}),
         ...(init.headers || {}),
       },
     })
-    absorb(jar, res)
+    absorb(jar, res, current)
 
     const loc = res.headers.get('location')
     if (res.status >= 300 && res.status < 400 && loc) {
@@ -122,10 +136,10 @@ async function readCachedJar(): Promise<Jar | null> {
     const { data } = await sb.from('app_settings').select('value').eq('key', SESSION_KEY).maybeSingle()
     if (!data?.value) return null
     // ⚠️ app_settings.value est du TEXTE : toujours parser.
-    const saved = JSON.parse(data.value as string) as { at: string; cookies: Record<string, string> }
+    const saved = JSON.parse(data.value as string) as { at: string; hosts?: Record<string, Record<string, string>> }
     const ageMin = (Date.now() - new Date(saved.at).getTime()) / 60000
-    if (ageMin > SESSION_TTL_MIN) return null
-    return new Map(Object.entries(saved.cookies))
+    if (ageMin > SESSION_TTL_MIN || !saved.hosts) return null
+    return new Map(Object.entries(saved.hosts).map(([h, c]) => [h, new Map(Object.entries(c))]))
   } catch {
     return null
   }
@@ -134,7 +148,8 @@ async function readCachedJar(): Promise<Jar | null> {
 async function writeCachedJar(jar: Jar) {
   try {
     const sb = createAdminClient()
-    const value = JSON.stringify({ at: new Date().toISOString(), cookies: Object.fromEntries(jar) })
+    const hosts = Object.fromEntries(Array.from(jar.entries()).map(([h, c]) => [h, Object.fromEntries(c)]))
+    const value = JSON.stringify({ at: new Date().toISOString(), hosts })
     await sb.from('app_settings').upsert({ key: SESSION_KEY, value }, { onConflict: 'key' })
   } catch {
     /* le cache est un confort, pas une dépendance */
@@ -193,15 +208,44 @@ async function authed(
     : {}
 
   for (let attempt = 0; attempt < 2; attempt++) {
-    const res = await hop(`${PORTAL_BASE}${path}`, current, {
-      headers: { Referer: `${PORTAL_BASE}/en`, ...extra },
-    })
+    // Réchauffage : l'aller-retour OAuth du portail doit se faire avec des
+    // en-têtes de navigateur. Déclenché depuis un appel XHR (Accept JSON,
+    // X-Requested-With), l'auth server ne redirige pas correctement et la
+    // chaîne tourne en rond. On établit donc la session sur une page normale
+    // d'abord, puis on demande la ressource.
+    try {
+      await hop(`${PORTAL_BASE}/en`, current, { headers: { Referer: PORTAL_BASE } }, 15)
+    } catch { /* si le réchauffage échoue, la requête suivante retentera */ }
+
+    let res: Response
+    try {
+      res = await hop(`${PORTAL_BASE}${path}`, current, {
+        headers: { Referer: `${PORTAL_BASE}/en`, ...extra },
+      }, 15)
+    } catch (e: any) {
+      // Session morte : le portail boucle entre /auth/refresh et la page.
+      // On repart d'un login complet plutôt que de remonter l'erreur.
+      if (attempt === 0) { current = await login(); continue }
+      throw e
+    }
 
     // Éjecté vers l'auth server → on reprend une session propre.
     if (res.url.startsWith(AUTH_BASE) || res.status === 401 || res.status === 419) {
       current = await login()
       continue
     }
+
+    // La ressource demandée peut déclencher un aller-retour OAuth
+    // (/auth/refresh → /auth/redirect → oauth/authorize → /auth/callback).
+    // Le portail rétablit bien la session, mais retombe sur son accueil : l'URL
+    // d'origine est perdue. On la redemande une fois, maintenant qu'on est
+    // authentifié — sans ça on reçoit la page d'accueil au lieu du CSV.
+    const wanted = path.split('?')[0]
+    if (res.ok && !new URL(res.url).pathname.startsWith(wanted) && attempt === 0) {
+      await writeCachedJar(current)
+      continue
+    }
+
     if (res.ok) {
       await writeCachedJar(current)
       return { res, jar: current }
