@@ -10,7 +10,29 @@
 // Aucun appel réseau : la fiche et ses journaux sont déjà chargés par la page.
 // Le bloc ne s'affiche que si une clôture flux 2 a bien eu lieu.
 
+import { endMissionLabel } from '@/lib/touring/close-presets'
+import { labelOf, PANNE_CAUSE, PANNE_DESC, PANNE_RESULT } from '@/lib/touring/close-referentials'
+
 interface AnyLog { action: string; notes: string | null; created_at: string; metadata?: any; actor?: { name: string } | null }
+
+// Le dispatch ne parle pas « fin 00 » ni « 06→07 » : on traduit tout (Olivier
+// 2026-08-12). Les codes bruts restent accessibles en infobulle, pour le jour où
+// quelqu'un doit les recouper avec l'écran de Touring.
+const COMEX_STATUS: Record<string, string> = {
+  '03': 'à valider', '04': 'acceptée', '05': 'en route',
+  '06': 'sur place', '07': 'terminée',
+}
+const statusWords = (before?: string | null, after?: string | null) => {
+  const a = before ? COMEX_STATUS[before] || `statut ${before}` : null
+  const b = after ? COMEX_STATUS[after] || `statut ${after}` : null
+  if (a && b && a !== b) return `dossier passé de « ${a} » à « ${b} »`
+  if (b) return `dossier « ${b} »`
+  return null
+}
+const codeWords = (c?: any) => c && (c.cause || c.desc || c.result)
+  ? [labelOf(PANNE_CAUSE, String(c.cause || '')), labelOf(PANNE_DESC, String(c.desc || '')), labelOf(PANNE_RESULT, String(c.result || ''))]
+      .filter(Boolean).join(' · ')
+  : null
 
 const OUTCOME_LABELS: Record<string, { label: string; tone: 'green' | 'amber' | 'slate' }> = {
   dsp:       { label: 'Dépannage réussi',          tone: 'green' },
@@ -66,13 +88,23 @@ export default function Flux2ClosureCard({ mission, logs }: { mission: any; logs
 
   // Ce qui est effectivement parti chez l'assisteur — ou pourquoi rien n'est parti.
   const push =
-    result.finCode ? `Touring · fin ${result.finCode} · codes ${result.codes?.cause}/${result.codes?.desc}/${result.codes?.result}${result.statusAfter ? ` · dossier ${result.statusBefore}→${result.statusAfter}` : ''}`
+    result.finCode ? [
+      `Touring — ${endMissionLabel(String(result.finCode)).toLowerCase()}`,
+      statusWords(result.statusBefore, result.statusAfter),
+    ].filter(Boolean).join(' · ')
     : md.queued        ? 'Assistance injoignable — clôture mise en file, rattrapage automatique'
     : md.skipAssistance ? 'Clôturé sans l’assistance (à faire par le dispatch)'
     : result.internalOnly || result.skipped === 'aucune plateforme à appeler' ? 'Enregistré dans VD Soft — cette assistance se clôture par son propre canal'
-    : mission.vab_onsite_at ? 'VAB · amenée à l’écran de code'
-    : mission.axa_closed_at ? 'AXA go&assist · mission soldée'
+    : mission.vab_onsite_at ? 'VAB — mission amenée à l’écran de code'
+    : mission.axa_closed_at ? 'AXA go&assist — mission soldée'
     : null
+
+  // Panne telle que l'assisteur la lit, en toutes lettres.
+  const pushDetail = codeWords(result.codes)
+  // Codes bruts : uniquement en infobulle, pour recoupement avec leur écran.
+  const rawCodes = result.codes
+    ? `fin ${result.finCode} · ${result.codes.cause}/${result.codes.desc}/${result.codes.result}`
+    : undefined
 
   return (
     <div className="px-4 lg:px-8 pt-4">
@@ -102,6 +134,7 @@ export default function Flux2ClosureCard({ mission, logs }: { mission: any; logs
 
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-x-5 gap-y-4 px-4 py-4">
           {mission.panne_motif_label && <Item icon="🔧" label="Motif" value={mission.panne_motif_label} />}
+          {pushDetail && <Item icon="🩺" label="Panne déclarée à l'assistance" value={pushDetail} />}
           {signature            && <Item icon="✍️" label="Signature"  value={signature} muted={common.signature !== 'signed' && !mission.client_signature} />}
           {key                  && <Item icon="🔑" label="Clé"        value={key} />}
           {mission.vehicle_location && <Item icon="📍" label="Véhicule laissé" value={mission.vehicle_location} />}
@@ -122,7 +155,7 @@ export default function Flux2ClosureCard({ mission, logs }: { mission: any; logs
         )}
 
         {push && (
-          <div className="px-4 py-2.5 border-t border-emerald-500/20 bg-emerald-500/[0.04]">
+          <div className="px-4 py-2.5 border-t border-emerald-500/20 bg-emerald-500/[0.04]" title={rawCodes}>
             <p className="text-[12px] text-ink-secondary">
               <span className="font-bold text-emerald-700 dark:text-emerald-300">Transmis :</span> {push}
             </p>
