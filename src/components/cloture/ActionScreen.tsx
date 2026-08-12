@@ -34,7 +34,7 @@ const GROUP_TITLES: Record<string, string> = {
 }
 
 export default function ActionScreen({
-  missionId, plate, vehicle, prise, onPrise, balisage, onBalisage, onDprCodes, onPick, onBack,
+  missionId, plate, vehicle, prise, onPrise, balisage, onBalisage, canLoad, onLoad, onDprCodes, onPick, onBack,
 }: {
   missionId: string
   plate?: string | null
@@ -44,6 +44,9 @@ export default function ActionScreen({
   /** Balisage posé sur place — entre dans le tarif Siabis. */
   balisage: boolean
   onBalisage: (v: boolean) => void
+  /** Remorquage pas encore chargé : le geste suivant est de charger. */
+  canLoad?: boolean
+  onLoad?: () => void
   /** Codes d'annulation autorisés par l'assistance (déplacement pour rien). */
   onDprCodes?: (codes: { code: string; label: string }[]) => void
   onPick: (outcome: OutcomeKey) => void
@@ -137,6 +140,21 @@ export default function ActionScreen({
                     </button>
                   ))}
                 </div>
+              </div>
+            )}
+
+            {/* Charger le véhicule : ce n'est pas une issue de mission, mais c'est
+                LE geste attendu ensuite sur un remorquage. Sans lui, la page Action
+                d'un REM non chargé ne proposait que « finalement réparé » et
+                « déplacement pour rien » — le chauffeur ne pouvait plus avancer.
+                Vu en test le 12/08. Olivier 2026-08-12. */}
+            {canLoad && onLoad && (
+              <div className="space-y-2 pt-1">
+                <p className="text-ink-muted text-[11px] uppercase tracking-widest font-bold">Le véhicule part avec moi</p>
+                <button onClick={onLoad}
+                  className="w-full py-4 px-4 rounded-2xl font-bold text-base flex items-center gap-2.5 justify-center bg-blue-600 text-white transition active:scale-[.99]">
+                  <span>🚛</span>Véhicule chargé sur le camion
+                </button>
               </div>
             )}
 

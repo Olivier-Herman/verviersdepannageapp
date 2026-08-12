@@ -2182,6 +2182,8 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
             else setM(prevM => ({ ...prevM, snc_requires_balisage: v } as any))
           } catch { setF2Balisage(prev); setErr('Impossible d’enregistrer le balisage') }
         }}
+        canLoad={rem && !rel && !loaded && M.status === 'in_progress'}
+        onLoad={() => { setF2Screen('none'); api('load_vehicle') }}
         onDprCodes={setF2Dpr}
         onPick={o => { setF2Outcome(o); setF2Screen('close') }}
         onBack={() => setF2Screen('none')}
