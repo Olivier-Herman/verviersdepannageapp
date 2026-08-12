@@ -44,7 +44,7 @@ export async function POST(req: Request) {
     // Vérifier si un chauffeur est déjà assigné
     const { data: mission } = await supabase
       .from('incoming_missions')
-      .select('assigned_to, kaze_proposal_id, kaze_job_id, source, source_format, dossier_number, external_id, incident_type, parent_mission_id, vehicle_plate, destination_address, destination_lat, destination_lng')
+      .select('assigned_to, kaze_proposal_id, kaze_job_id, source, source_format, dossier_number, external_id, axa_mission_order_id, incident_type, parent_mission_id, vehicle_plate, destination_address, destination_lat, destination_lng')
       .eq('id', mission_id)
       .single()
 
@@ -211,10 +211,12 @@ export async function POST(req: Request) {
       await acceptAllianzBg(mission_id, mission?.dossier_number || mission?.external_id || null, actor?.id || null, supabase)
     }
 
-    // Mission AXA go&assist → VALIDER (nouveau → à affecter) si encore New
-    // (auto-no-op si AXA l'a déjà validée). Arrière-plan.
-    if (mission?.source === 'axa') {
-      await acceptAxaBg(mission_id, mission?.external_id || null, actor?.id || null, supabase)
+    // Mission liée à go&assist (AXA) → VALIDER (nouveau → à affecter) si encore
+    // New (auto-no-op si déjà validée). On cible via axa_mission_order_id (le
+    // lien go&assist) — présent seulement si le dossier est dans go&assist ;
+    // sinon rien (clôture VD Soft pure). Arrière-plan.
+    if ((mission as any)?.axa_mission_order_id) {
+      await acceptAxaBg(mission_id, (mission as any).axa_mission_order_id, actor?.id || null, supabase)
     }
 
     // Création AUTO du dossier Odoo (Helpdesk + FSM Task) — best effort, non bloquant.

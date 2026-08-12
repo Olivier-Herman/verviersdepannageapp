@@ -43,7 +43,39 @@ export interface AxaImportResult {
   items:     AxaImportItem[]
   imported:  number
   skipped:   number
+  linked:    number   // fiches existantes liées à go&assist + enrichies
   errors:    string[]
+}
+
+/**
+ * Lie une fiche VD Soft existante à sa mission go&assist (axa_mission_order_id)
+ * et COMBLE ses champs manquants depuis go&assist (sans écraser l'existant).
+ */
+async function linkAndEnrich(sb: ReturnType<typeof createAdminClient>, fiche: any, missionOrderId: string, d: any): Promise<void> {
+  const dc = d?.case || {}
+  const veh = d?.vehicle || dc.vehicle || {}
+  const addr = dc.incidentLocation?.address || {}
+  const dest = dc.service?.serviceDestination || null
+  const ct = (d?.contacts || []).find((c: any) => c?.firstName || c?.lastName) || {}
+  const upd: Record<string, any> = { axa_mission_order_id: missionOrderId, updated_at: new Date().toISOString() }
+  const fill = (col: string, cur: any, val: any) => { if ((cur == null || cur === '') && val != null && val !== '') upd[col] = val }
+  fill('vehicle_plate',      fiche.vehicle_plate,      dc.registrationPlateNumber)
+  fill('vehicle_brand',      fiche.vehicle_brand,      veh.brand)
+  fill('vehicle_model',      fiche.vehicle_model,      veh.model)
+  fill('vehicle_vin',        fiche.vehicle_vin,        veh.referenceNumber)
+  fill('client_name',        fiche.client_name,        [ct.firstName, ct.lastName].filter(Boolean).join(' '))
+  fill('client_phone',       fiche.client_phone,       ct.phoneNumber)
+  fill('incident_address',   fiche.incident_address,   addr.streetAddress)
+  fill('incident_city',      fiche.incident_city,      addr.locality)
+  fill('destination_name',   fiche.destination_name,   dest?.name || (dest?.category ? 'Garage partenaire' : null))
+  fill('destination_address', fiche.destination_address, dest?.address?.streetAddress)
+  await sb.from('incoming_missions').update(upd).eq('id', fiche.id)
+  const enriched = Object.keys(upd).filter(k => k !== 'axa_mission_order_id' && k !== 'updated_at')
+  await sb.from('mission_logs').insert({
+    mission_id: fiche.id, action: 'axa_linked',
+    notes: `Liée à go&assist (${missionOrderId})${enriched.length ? ' + enrichie (' + enriched.join(', ') + ')' : ''}`,
+    metadata: { mission_order_id: missionOrderId, filled: enriched },
+  }).then(() => {}, () => {})
 }
 
 function mapServiceToType(serviceCode: string): string {
@@ -69,22 +101,25 @@ export async function runAxaImport({ mode = 'preview' }: { mode?: ImportMode } =
   // ⚠️ La réf VD Soft peut CONTENIR le n° AXA sans y être égale : un accident
   // repris par AXA a une réf combinée « ACC-4347 / 0126551053-REL ». → match
   // « CONTIENT le numéro » (ilike), pas égalité stricte. (Olivier 2026-08-13)
+  const ENRICH_COLS = 'id, dossier_number, axa_mission_order_id, vehicle_plate, vehicle_brand, vehicle_model, vehicle_vin, client_name, client_phone, incident_address, incident_city, destination_name, destination_address'
   const caseIds = Array.from(new Set<string>(awaiting.map(m => m.case?.caseId).filter(Boolean)))
-  const existingCaseIds = new Set<string>() // caseIds déjà présents dans VD Soft
+  const fichesByCaseId = new Map<string, any[]>() // caseId → fiches VD Soft ouvertes portant ce n°
   if (caseIds.length) {
     const orFilter = caseIds.map(c => `dossier_number.ilike.*${c}*`).join(',')
     const { data } = await sb
       .from('incoming_missions')
-      .select('dossier_number')
+      .select(ENRICH_COLS)
       .or(orFilter)
       .not('status', 'in', '(cancelled,ignored)')
-    const found = (data || []).map(r => String(r.dossier_number || ''))
-    for (const c of caseIds) if (found.some(dn => dn.includes(c))) existingCaseIds.add(c)
+    for (const r of data || []) {
+      const dn = String(r.dossier_number || '')
+      for (const c of caseIds) if (dn.includes(c)) { (fichesByCaseId.get(c) || fichesByCaseId.set(c, []).get(c)!).push(r) }
+    }
   }
 
   const items: AxaImportItem[] = []
   const insertedDossiers = new Set<string>() // garde générique anti-doublon intra-run (même caseId renvoyé 2× par l'API)
-  let imported = 0, skipped = 0
+  let imported = 0, skipped = 0, linked = 0
 
   for (const m of awaiting) {
     const caseObj = m.case || {}
@@ -99,11 +134,27 @@ export async function runAxaImport({ mode = 'preview' }: { mode?: ImportMode } =
       client_name:    [contact.firstName, contact.lastName].filter(Boolean).join(' '),
       incident_city:  caseObj.incidentLocation?.address?.locality || '',
       axaStatus:      m.status,
-      exists:         !!caseObj.caseId && existingCaseIds.has(caseObj.caseId),
+      exists:         !!caseObj.caseId && fichesByCaseId.has(caseObj.caseId),
     }
     items.push(item)
 
-    if (mode !== 'send' || item.exists) { if (item.exists) skipped++; continue }
+    // Dossier DÉJÀ présent dans VD Soft (ex. créé par le mail) → on ne recrée PAS.
+    // On en profite pour LIER la fiche à go&assist (axa_mission_order_id) et
+    // COMBLER ses champs manquants depuis go&assist. (Olivier 2026-08-13)
+    if (item.exists) {
+      skipped++
+      if (mode === 'send') {
+        const fiches = (fichesByCaseId.get(caseObj.caseId!) || []).filter(f => !f.axa_mission_order_id)
+        if (fiches.length) {
+          try {
+            const detail = await getMission(m.missionOrderId)
+            for (const f of fiches) { await linkAndEnrich(sb, f, m.missionOrderId, detail); linked++ }
+          } catch (e: any) { errors.push(`link ${m.missionOrderId}: ${e?.message || 'exception'}`) }
+        }
+      }
+      continue
+    }
+    if (mode !== 'send') continue
     if (caseObj.caseId && insertedDossiers.has(caseObj.caseId)) { skipped++; continue }
     if (caseObj.caseId) insertedDossiers.add(caseObj.caseId)
 
@@ -123,6 +174,7 @@ export async function runAxaImport({ mode = 'preview' }: { mode?: ImportMode } =
         // AXA → 'dispatching' (validée, en attente d'assignation), pas de Valider.
         status:            item.axaStatus === 'New' ? 'new' : 'dispatching',
         external_id:       m.missionOrderId,
+        axa_mission_order_id: m.missionOrderId, // lien go&assist (interrupteur de pilotage)
         dossier_number:    dc.caseId || item.caseId || null,
         mission_type:      item.mission_type,
         vehicle_plate:     dc.registrationPlateNumber || item.plate || null,
@@ -166,7 +218,7 @@ export async function runAxaImport({ mode = 'preview' }: { mode?: ImportMode } =
   }
 
   const news = awaiting.filter(m => m.status === 'New').length
-  return { ok: errors.length === 0, mode, awaiting: awaiting.length, news, items, imported, skipped, errors }
+  return { ok: errors.length === 0, mode, awaiting: awaiting.length, news, items, imported, skipped, linked, errors }
 }
 
 /**
@@ -181,17 +233,19 @@ async function reconcileAxaCancellations(sb: ReturnType<typeof createAdminClient
   const gaStatus = new Map<string, string>()
   for (const m of missions) if (m.missionOrderId) gaStatus.set(m.missionOrderId, m.status)
 
-  // Fiches AXA ouvertes chez nous (non terminales).
+  // Fiches LIÉES à go&assist et ouvertes chez nous (non terminales). On se base
+  // sur axa_mission_order_id (le lien), PAS sur source='axa' : un accident repris
+  // par AXA garde source='police_accident' mais porte le lien go&assist.
   const { data: openFiches } = await sb
     .from('incoming_missions')
-    .select('id, external_id, status, assigned_to, mission_type, mission_number')
-    .eq('source', 'axa')
+    .select('id, axa_mission_order_id, status, assigned_to, mission_type, mission_number')
+    .not('axa_mission_order_id', 'is', null)
     .not('status', 'in', `(${AXA_TERMINAL_STATUSES.join(',')})`)
   if (!openFiches?.length) return
 
   for (const f of openFiches) {
-    if (!f.external_id) continue
-    const gs = gaStatus.get(f.external_id)
+    if (!f.axa_mission_order_id) continue
+    const gs = gaStatus.get(f.axa_mission_order_id)
     if (gs !== 'Cancelled' && gs !== 'Refused') continue // annulée seulement si go&assist l'a annulée/refusée
 
     const num = f.mission_number ? `#${f.mission_number}` : ''
@@ -204,7 +258,7 @@ async function reconcileAxaCancellations(sb: ReturnType<typeof createAdminClient
       await sb.from('mission_logs').insert({
         mission_id: f.id, action: 'cancelled_by_axa_after_start',
         notes: `Annulée par AXA (go&assist : ${gs}) après départ chauffeur → trajet à vide à facturer.`,
-        metadata: { mission_order_id: f.external_id, previous_status: f.status, original_mission_type: f.mission_type, ga_status: gs },
+        metadata: { mission_order_id: f.axa_mission_order_id, previous_status: f.status, original_mission_type: f.mission_type, ga_status: gs },
       }).then(() => {}, () => {})
       const payload = {
         title: 'Mission AXA annulée', body: `La mission ${num} a été annulée par AXA après ton départ. Trajet à vide à facturer.`,
@@ -222,7 +276,7 @@ async function reconcileAxaCancellations(sb: ReturnType<typeof createAdminClient
       await sb.from('mission_logs').insert({
         mission_id: f.id, action: 'cancelled_by_axa',
         notes: `Annulée par AXA (go&assist : ${gs}) avant départ chauffeur.`,
-        metadata: { mission_order_id: f.external_id, previous_status: f.status, ga_status: gs },
+        metadata: { mission_order_id: f.axa_mission_order_id, previous_status: f.status, ga_status: gs },
       }).then(() => {}, () => {})
     }
   }

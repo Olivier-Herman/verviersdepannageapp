@@ -27,7 +27,7 @@ export async function POST(req: Request) {
   // Récupérer les infos de la mission (incl. odoo_task_id pour update FSM)
   const { data: mission, error: mErr } = await supabase
     .from('incoming_missions')
-    .select('id, external_id, source, source_format, kaze_proposal_id, dossier_number, mission_type, vehicle_brand, vehicle_model, vehicle_plate, incident_address, incident_city, odoo_task_id, status')
+    .select('id, external_id, axa_mission_order_id, source, source_format, kaze_proposal_id, dossier_number, mission_type, vehicle_brand, vehicle_model, vehicle_plate, incident_address, incident_city, odoo_task_id, status')
     .eq('id', mission_id)
     .single()
 
@@ -87,9 +87,11 @@ export async function POST(req: Request) {
 
     // AXA go&assist : au moment de l'assignation VD Soft, on AFFECTE la mission
     // à notre technicien dans go&assist (appointmentAt = assignation + 1h).
+    // On cible via axa_mission_order_id (le lien go&assist) — présent seulement
+    // si le dossier est dans go&assist ; sinon rien (flux VD Soft pur).
     // Best-effort / idempotent. Cf [[project_axa_goassist_integration]].
-    if (mission.source === 'axa') {
-      await affectAxaBg(mission_id, (mission as any).external_id || null, actor?.id || null, supabase)
+    if ((mission as any).axa_mission_order_id) {
+      await affectAxaBg(mission_id, (mission as any).axa_mission_order_id, actor?.id || null, supabase)
     }
 
     // Live Activity « push-to-start » : fait apparaître la mission sur le device
