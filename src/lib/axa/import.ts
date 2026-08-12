@@ -64,18 +64,22 @@ export async function runAxaImport({ mode = 'preview' }: { mode?: ImportMode } =
   const awaiting = filterActionable(all)
 
   // Dédup par NUMÉRO DE DOSSIER (caseId), TOUTES sources confondues : un dossier
-  // AXA peut déjà exister dans VD Soft via une autre source (ex. mail) → on ne le
-  // recrée pas. On ne proposera à la création que les dossiers ABSENTS.
-  // (Chez AXA : 1 dossier = 1 mission dans go&assist, pas de multi-fiche.)
-  const caseIds = Array.from(new Set(awaiting.map(m => m.case?.caseId).filter(Boolean)))
-  const existingDossiers = new Set<string>()
+  // AXA peut déjà exister dans VD Soft via une autre source (ex. mail). On ne le
+  // recrée pas ; on ne propose à la création que les dossiers ABSENTS.
+  // ⚠️ La réf VD Soft peut CONTENIR le n° AXA sans y être égale : un accident
+  // repris par AXA a une réf combinée « ACC-4347 / 0126551053-REL ». → match
+  // « CONTIENT le numéro » (ilike), pas égalité stricte. (Olivier 2026-08-13)
+  const caseIds = Array.from(new Set<string>(awaiting.map(m => m.case?.caseId).filter(Boolean)))
+  const existingCaseIds = new Set<string>() // caseIds déjà présents dans VD Soft
   if (caseIds.length) {
+    const orFilter = caseIds.map(c => `dossier_number.ilike.*${c}*`).join(',')
     const { data } = await sb
       .from('incoming_missions')
       .select('dossier_number')
-      .in('dossier_number', caseIds)
+      .or(orFilter)
       .not('status', 'in', '(cancelled,ignored)')
-    for (const r of data || []) if (r.dossier_number) existingDossiers.add(r.dossier_number)
+    const found = (data || []).map(r => String(r.dossier_number || ''))
+    for (const c of caseIds) if (found.some(dn => dn.includes(c))) existingCaseIds.add(c)
   }
 
   const items: AxaImportItem[] = []
@@ -95,7 +99,7 @@ export async function runAxaImport({ mode = 'preview' }: { mode?: ImportMode } =
       client_name:    [contact.firstName, contact.lastName].filter(Boolean).join(' '),
       incident_city:  caseObj.incidentLocation?.address?.locality || '',
       axaStatus:      m.status,
-      exists:         !!caseObj.caseId && existingDossiers.has(caseObj.caseId),
+      exists:         !!caseObj.caseId && existingCaseIds.has(caseObj.caseId),
     }
     items.push(item)
 
