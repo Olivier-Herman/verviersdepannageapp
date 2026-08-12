@@ -142,17 +142,16 @@ export const NAV_TREE: NavModule[] = [
 ]
 
 /**
- * Raccourcis épinglés en haut du menu : ils restent visibles aux DEUX niveaux
- * (ils ne glissent pas avec les panes). Réservé à ce qu'on utilise tout le temps,
- * quel que soit le module où on se trouve.
+ * Raccourcis épinglés en tête du menu, hors de la zone qui défile.
  *
- * Un raccourci peut être un simple lien (Recherche) OU un module à sections
- * (Dispatch, Facturation) : dans ce cas il garde son chevron et fait glisser le
- * menu vers ses sections. On désigne le raccourci par la page d'atterrissage du
- * module. Ajouter un raccourci = ajouter son href ici ; les permissions du user
- * sont respectées (un raccourci auquel il n'a pas droit n'apparaît pas).
+ * VIDE depuis le passage à l'accordéon (Olivier 2026-08-12) : la liste complète
+ * des modules restant visible en permanence, une zone fixe faisait doublon — et
+ * chacun ordonne déjà son menu par drag & drop dans /profil (`userNavOrder`).
+ * Le mécanisme reste en place : remettre un href ici (ex. '/recherche', ou la
+ * page d'atterrissage d'un module comme '/dispatch') réaffiche la zone, avec
+ * les permissions du user respectées.
  */
-export const PINNED_HREFS = ['/recherche', '/dispatch', '/facturation', '/fourriere']
+export const PINNED_HREFS: string[] = []
 
 /** Hrefs de NAV_ITEMS déjà couverts par un module de l'arbre (ne pas re-lister à plat). */
 const COVERED = new Set(
