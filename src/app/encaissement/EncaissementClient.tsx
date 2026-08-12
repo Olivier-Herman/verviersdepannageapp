@@ -327,6 +327,16 @@ export default function EncaissementClient({
 
   // Page 4
   const [amount, setAmount] = useState(prefill?.amount ? String(prefill.amount) : '')
+  // Solde réellement dû sur la mission (transmis par la fiche). Tant qu'il existe,
+  // le montant n'est PAS librement modifiable : on propose le solde, et il faut un
+  // geste explicite pour encaisser autre chose. Vu en test le 12/08 : 533,96 € dus,
+  // 0,01 € tapé, mission passée « à facturer 0,01 € ». Olivier 2026-08-12.
+  const dueAmount = prefill?.amount && prefill.amount > 0 ? Number(prefill.amount) : 0
+  const [amountUnlocked, setAmountUnlocked] = useState(false)
+  const [amountReason, setAmountReason] = useState('')
+  const amountLocked = dueAmount > 0 && !amountUnlocked
+  const typedAmount  = parseFloat(amount) || 0
+  const restAfter    = dueAmount > 0 ? Math.round((dueAmount - typedAmount) * 100) / 100 : 0
   const [paymentMode, setPaymentMode] = useState('')
 
   // ── Easter egg : QR virement bancaire (plan B quand SumUp est down) ──────────
@@ -757,7 +767,11 @@ export default function EncaissementClient({
           model_text: selectedModel === 'Autre' ? (modelOther || 'Autre') : selectedModel,
           motif_id: motif, motif_text: motifLabel,
           motif_precision: motifPrecision || null,
-          location_address: location, amount,
+          // « Non payé — à facturer » : c'est le SOLDE qui part en facture. Un
+          // montant partiel n'a aucun sens ici — on ne facture pas 0,01 € parce
+          // qu'il a été tapé dans la case. Olivier 2026-08-12.
+          location_address: location,
+          amount: (paymentMode === 'unpaid' && dueAmount > 0) ? String(dueAmount) : amount,
           payment_mode: paymentMode || (sumupStatus === 'PAID' ? 'sumup' : 'unpaid'),
           payment_reference: sumupData?.sumupReference || undefined,
           // Preuve du virement (photo de la confirmation client) → référence + notes.
@@ -770,7 +784,10 @@ export default function EncaissementClient({
           client_address: client.address, client_street: client.street,
           client_zip: client.zip, client_city: client.city,
           client_country_code: client.countryCode,
-          client_phone: client.phone, client_email: client.email, notes,
+          client_phone: client.phone, client_email: client.email,
+          notes: [notes, amountReason.trim() && dueAmount > 0 && typedAmount < dueAmount
+            ? `Montant partiel (solde dû ${formatEur(dueAmount)}) — ${amountReason.trim()}`
+            : ''].filter(Boolean).join(' · ') || notes,
         })
       })
       if (!res.ok) { const d = await res.json(); setError(d.error || 'Erreur'); return }
@@ -1163,9 +1180,10 @@ export default function EncaissementClient({
             type="text"
             id="amount-field"
             value={amount}
+            readOnly={amountLocked}
             onChange={e => { setAmount(e.target.value.replace(',', '.').replace(/[^0-9.]/g, '')); setSumupData(null); setSumupStatus(null) }}
             placeholder="0.00"
-            autoFocus
+            autoFocus={!amountLocked}
             autoComplete="off"
             autoCorrect="off"
             autoCapitalize="off"
@@ -1177,6 +1195,48 @@ export default function EncaissementClient({
           />
           <span onClick={handleBankTap} className="absolute right-5 top-1/2 -translate-y-1/2 text-ink-muted text-xl select-none cursor-default">€</span>
         </div>
+
+        {/* Solde dû : affiché en clair, et proposé par défaut. Le paiement en
+            plusieurs fois reste possible (200 € cash + solde par carte), mais il
+            se déclare — il ne s'obtient pas en écrasant le champ. */}
+        {dueAmount > 0 && (
+          <div className="mb-6 -mt-3 space-y-2">
+            <div className="flex items-baseline justify-between gap-3 px-1">
+              <span className="text-ink-muted text-sm">Solde à encaisser</span>
+              <span className="text-ink font-bold tabular-nums">{formatEur(dueAmount)}</span>
+            </div>
+            {amountLocked ? (
+              <button type="button"
+                onClick={() => setAmountUnlocked(true)}
+                className="w-full py-2.5 rounded-xl border border text-ink-secondary text-sm font-medium">
+                Encaisser un autre montant (acompte, dérogation)
+              </button>
+            ) : (
+              <>
+                <div className="flex gap-2">
+                  <button type="button" onClick={() => { setAmount(String(dueAmount)); setAmountUnlocked(false); setAmountReason('') }}
+                    className="flex-1 py-2.5 rounded-xl border border text-ink-secondary text-sm font-medium">
+                    ↩︎ Revenir au solde
+                  </button>
+                </div>
+                {typedAmount > 0 && restAfter > 0 && (
+                  <div className="bg-warning-soft border border-warning rounded-xl px-4 py-3 text-warning text-sm">
+                    Il restera <b>{formatEur(restAfter)}</b> à encaisser après ce paiement.
+                    <span className="block opacity-80">Le client peut payer le reste par un autre moyen — refais un encaissement.</span>
+                  </div>
+                )}
+                {typedAmount > 0 && restAfter > 0 && (
+                  <input
+                    value={amountReason}
+                    onChange={e => setAmountReason(e.target.value)}
+                    placeholder="Pourquoi ce montant ? (acompte, accord bureau…)"
+                    className={inputCls}
+                  />
+                )}
+              </>
+            )}
+          </div>
+        )}
 
         {/* Statut SumUp */}
         {sumupStatus === 'PAID' && (
@@ -1619,7 +1679,9 @@ export default function EncaissementClient({
             { label: 'Véhicule', value: vehicleDisplay.trim() },
             { label: 'Motif', value: motifPrecision || motifLabel },
             { label: 'Lieu', value: location },
-            { label: 'Montant', value: `${formatEur(parseFloat(amount || '0'))} TVAC` },
+            // Le récap doit montrer ce qui part vraiment : en « à facturer », c'est
+            // le solde complet, pas le montant tapé. Olivier 2026-08-12.
+            { label: 'Montant', value: `${formatEur(paymentMode === 'unpaid' && dueAmount > 0 ? dueAmount : (parseFloat(amount || '0')))} TVAC` },
             { label: 'Paiement', value: paymentModes.find(p => p.value === paymentMode)?.label },
             { label: 'Client', value: client.name },
             { label: 'Téléphone', value: client.phone },
