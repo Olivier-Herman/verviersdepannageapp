@@ -89,7 +89,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
       parked_at, intervention_date, received_at, incident_type, parent_mission_id,
       levee_saisie_date, temp_returned_at, domaine_remise_date,
       billed_to_id, billed_to_name, payment_method,
-      amount_to_collect, special_tarif_htva, amount_guaranteed,
+      amount_to_collect, amount_to_collect_manual, special_tarif_htva, amount_guaranteed,
       ff_base_htva, ff_gardiennage_days, ff_gardiennage_pu,
       incident_lat, incident_lng, destination_lat, destination_lng,
       snc_scenario, snc_requires_balisage, extra_addresses,
@@ -127,7 +127,9 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   // Olivier 2026-06-04 : helper centralise pour les overrides (tarif special
   // OU amount_guaranteed + amount_to_collect = 2 lignes). S applique pour
   // TOUTES les sources (y compris SNC/SC). Retourne null si rien d applicable.
-  const override = buildOverrideLines(mission as any)
+  // sncDetail: la branche Siabis détaillée est juste en dessous — sur une mission
+  // Siabis, la facture doit porter le détail (PEC, km, balisage), pas un total.
+  const override = buildOverrideLines(mission as any, { sncDetail: true })
   if (customLines) {
     lines = customLines
     totalForResponse = customLines.reduce((s, l) => s + l.qty * l.price_unit, 0)

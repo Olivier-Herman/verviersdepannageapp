@@ -32,7 +32,7 @@ export const dynamic     = 'force-dynamic'
 export const maxDuration = 300
 
 const MISSION_COLS = 'id, source, source_format, raw_content, external_id, mission_type, status, loaded_at, vr_proposed, assigned_to, ' +
-  'vehicle_vin, vehicle_mileage, incident_description, vehicle_brand, vehicle_model'
+  'vehicle_vin, vehicle_mileage, incident_description, vehicle_brand, vehicle_model, panne_motif'
 
 async function loadContext(missionId: string, email: string) {
   const sb = createAdminClient()
@@ -101,8 +101,17 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
     ? DPR_END_CODES
     : DPR_END_CODES.filter(d => allowedFins.includes(d.code))
 
+  // Motif déjà choisi sur la 1re jambe (transformation en remorquage) : à la
+  // livraison, on le REPROPOSE sélectionné au lieu de refaire choisir. Vu en test
+  // le 12/08 : sur une mission sans codes Touring, l'écran de livraison repartait
+  // d'une liste vierge alors que le chauffeur avait déjà répondu. Il peut toujours
+  // en changer. Olivier 2026-08-12.
+  const priorMotif = String((m as any).panne_motif || '')
+  const priorMotifKey = priorMotif && findMotif('remorquage', priorMotif) ? priorMotif : null
+
   return NextResponse.json({
     hasPrefill,
+    priorMotifKey,
     allowedFins,
     assistance: flux2AssistanceOf(m as any),
     outcomes:   outcomes

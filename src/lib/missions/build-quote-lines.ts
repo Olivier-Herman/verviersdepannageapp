@@ -69,6 +69,10 @@ interface MissionLike {
   special_tarif_htva?: number | null
   amount_guaranteed?:  number | null
   amount_to_collect?:  number | null
+  /** Le dispatcher a saisi le montant à la main → il écrase le calcul. */
+  amount_to_collect_manual?: boolean | null
+  /** Siabis : scénario tarifaire (dsp / rem_client / rem_depot / rem_direct). */
+  snc_scenario?:       string | null
   // Francofolies (Phase 2) : tarification figée à l'enlèvement.
   ff_base_htva?:        number | null
   ff_gardiennage_days?: number | null
@@ -82,7 +86,17 @@ interface MissionLike {
  * calcul standard. Utilise par buildLinesFromEstimate ET les routes qui
  * n appellent pas le helper (ex: SNC dans /quote, restitute, etc.).
  */
-export function buildOverrideLines(mission: MissionLike): QuoteLine[] | null {
+export function buildOverrideLines(
+  mission: MissionLike,
+  /**
+   * `sncDetail` : l'appelant sait produire le détail Siabis lui-même
+   * (computeSncMetrics + buildSncQuoteLines) — on lui rend la main plutôt que
+   * d'écraser par une ligne unique. À n'activer QUE là où cette branche existe
+   * juste après : /quote et /price-estimate. La restitution fourrière, elle,
+   * retomberait sur son forfait + gardiennage — surtout pas. Olivier 2026-08-12.
+   */
+  opts: { sncDetail?: boolean } = {},
+): QuoteLine[] | null {
   const missionRef = mission.external_id || mission.dossier_number || `M-${mission.id.slice(0, 8)}`
 
   // 0. Francofolies (mal garée évènementiel) — tarification figée à l'enlèvement.
@@ -131,6 +145,21 @@ export function buildOverrideLines(mission: MissionLike): QuoteLine[] | null {
   // indiqué sur la fiche, mais ne génère aucune ligne obligatoire.
   const toCollect = mission.amount_to_collect != null && Number(mission.amount_to_collect) > 0
     ? Number(mission.amount_to_collect) : 0
+
+  // ⚠️ SIABIS : ne PAS écraser le détail par une ligne unique (Olivier 2026-08-12).
+  // Sur une mission Siabis, `amount_to_collect` n'est pas un montant forcé : c'est
+  // le TOTAL du tarif Siabis, recalculé automatiquement à chaque changement (source,
+  // type, balisage…). Le remplacer par « Paiement à réclamer au client » ferait
+  // perdre à la facture le détail que le client doit pouvoir lire — prise en charge,
+  // kilomètres, balisage, majoration horaire. On laisse donc la main à la branche
+  // Siabis (computeSncMetrics + buildSncQuoteLines), qui produit ces lignes.
+  // Exception : un montant saisi À LA MAIN par le dispatch reste souverain.
+  const isSiabisAuto = opts.sncDetail === true
+    && (mission.source === 'police_snc' || mission.source === 'sia_couvert')
+    && !!mission.snc_scenario
+    && mission.amount_to_collect_manual !== true
+  if (toCollect > 0 && isSiabisAuto) return null
+
   if (toCollect > 0) {
     // amount_to_collect est un montant TVAC → conversion HTVA (÷1,21, 4 déc.)
     // pour que HTVA×1,21 = TVAC exact (sinon TVA comptée 2×).

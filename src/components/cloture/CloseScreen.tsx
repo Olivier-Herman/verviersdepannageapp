@@ -121,7 +121,13 @@ export default function CloseScreen({
     let alive = true
     fetch(`/api/missions/${missionId}/cloture`, { cache: 'no-store' })
       .then(r => r.json())
-      .then(d => { if (alive) setHasPrefill(!!d.hasPrefill) })
+      .then(d => {
+        if (!alive) return
+        setHasPrefill(!!d.hasPrefill)
+        // Motif déjà donné à l'aller : on le représélectionne au lieu de faire
+        // recommencer. Le chauffeur reste libre d'en changer. Olivier 2026-08-12.
+        if (!d.hasPrefill && d.priorMotifKey) setMotifKey(k => k || String(d.priorMotifKey))
+      })
       .catch(() => alive && setHasPrefill(false))
     return () => { alive = false }
   }, [missionId, isDelivered])
@@ -193,7 +199,12 @@ export default function CloseScreen({
   })
 
   const vinEmpty = !vin.trim(), kmEmpty = !km.trim()
-  const needPhotos = (vinEmpty && kmEmpty) || !photosDone
+  // 3 photos suffisent — c'est un guide, pas un péage (Olivier 2026-08-11). Vu en
+  // test le 12/08 : à la LIVRAISON, les photos étaient déjà prises sur la première
+  // jambe mais l'écran les redemandait, parce qu'un châssis et un kilométrage vides
+  // suffisaient à déclencher le blocage. On garde le rappel visuel, on ne bloque
+  // plus quelqu'un qui a fait le travail.
+  const needPhotos = !photosDone
   const destOk = !isRem || (destMode === 'list' ? !!garageCid : !!manual.rue && !!manual.cp)
   const canSubmit = isDpr ? !!dprCode
     : isDelivered ? (hasPrefill !== false || !!motifKey)
@@ -455,7 +466,7 @@ export default function CloseScreen({
                   .filter(Boolean).join(' et ')} — vérifie avant de valider.
               </p>
             )}
-            {needPhotos && (
+            {(needPhotos || (vinEmpty && kmEmpty)) && (
               <div className="bg-amber-500/10 border border-amber-500/40 text-amber-700 dark:text-amber-300 rounded-xl px-3 py-3 text-sm font-medium">
                 📷 Prends le châssis et le compteur en photo — je remplis les deux cases pour toi.
               </div>
