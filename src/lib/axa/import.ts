@@ -69,6 +69,12 @@ async function linkAndEnrich(sb: ReturnType<typeof createAdminClient>, fiche: an
   fill('incident_city',      fiche.incident_city,      addr.locality)
   fill('destination_name',   fiche.destination_name,   dest?.name || (dest?.category ? 'Garage partenaire' : null))
   fill('destination_address', fiche.destination_address, dest?.address?.streetAddress)
+  // « Prévue » trompeur : si l'intervention_date est une ÉCHÉANCE future (heure
+  // limite d'arrivée AXA parsée du mail), on la remplace par l'heure de réception
+  // — une mission d'assistance go&assist n'a pas de rendez-vous. (Olivier 2026-08-13)
+  if (fiche.received_at && (!fiche.intervention_date || new Date(fiche.intervention_date) > new Date(fiche.received_at))) {
+    upd.intervention_date = fiche.received_at
+  }
   await sb.from('incoming_missions').update(upd).eq('id', fiche.id)
   const enriched = Object.keys(upd).filter(k => k !== 'axa_mission_order_id' && k !== 'updated_at')
   await sb.from('mission_logs').insert({
@@ -101,7 +107,7 @@ export async function runAxaImport({ mode = 'preview' }: { mode?: ImportMode } =
   // ⚠️ La réf VD Soft peut CONTENIR le n° AXA sans y être égale : un accident
   // repris par AXA a une réf combinée « ACC-4347 / 0126551053-REL ». → match
   // « CONTIENT le numéro » (ilike), pas égalité stricte. (Olivier 2026-08-13)
-  const ENRICH_COLS = 'id, dossier_number, axa_mission_order_id, vehicle_plate, vehicle_brand, vehicle_model, vehicle_vin, client_name, client_phone, incident_address, incident_city, destination_name, destination_address'
+  const ENRICH_COLS = 'id, dossier_number, axa_mission_order_id, received_at, intervention_date, vehicle_plate, vehicle_brand, vehicle_model, vehicle_vin, client_name, client_phone, incident_address, incident_city, destination_name, destination_address'
   const caseIds = Array.from(new Set<string>(awaiting.map(m => m.case?.caseId).filter(Boolean)))
   const fichesByCaseId = new Map<string, any[]>() // caseId → fiches VD Soft ouvertes portant ce n°
   if (caseIds.length) {
@@ -188,7 +194,10 @@ export async function runAxaImport({ mode = 'preview' }: { mode?: ImportMode } =
         destination_name:  dest?.name || (dest?.category ? 'Garage partenaire' : null),
         destination_address: dest?.address?.streetAddress || null,
         received_at:       m.missionSendingDate || new Date().toISOString(),
-        intervention_date: service.maximumDelayOfArrivalDate || null,
+        // ⚠️ PAS maximumDelayOfArrivalDate : c'est une heure LIMITE d'arrivée
+        // (échéance), pas un rendez-vous → on prend l'heure de réception, sinon
+        // la fiche affiche « Prévue HH:MM » trompeur. (Olivier 2026-08-13)
+        intervention_date: m.missionSendingDate || new Date().toISOString(),
         billed_to_name:    'AXA',
       }
       const { data: created, error } = await sb.from('incoming_missions').insert(row).select('id').single()
