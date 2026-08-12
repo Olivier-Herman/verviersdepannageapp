@@ -155,7 +155,7 @@ export async function POST(req: Request) {
 
   const { data: mission, error: fetchError } = await supabase
     .from('incoming_missions')
-    .select('id, status, assigned_to, external_id, vehicle_plate, vehicle_vin, vehicle_brand, vehicle_model, amount_to_collect, source, source_format, extra_addresses, driver_photos, odoo_task_id, odoo_vehicle_id, mission_type, photo_categories_covered, kaze_job_id, dossier_number, client_signature, snc_scenario, snc_requires_balisage, incident_lat, incident_lng, destination_address, destination_lat, destination_lng, billed_to_id, billed_to_name, redelivery_address, truck_id, intervention_date, received_at, completed_at, invoice_number, invoice_odoo_id, odoo_quote_id')
+    .select('id, status, assigned_to, external_id, vehicle_plate, vehicle_vin, vehicle_brand, vehicle_model, amount_to_collect, source, source_format, extra_addresses, driver_photos, odoo_task_id, odoo_vehicle_id, mission_type, photo_categories_covered, kaze_job_id, axa_mission_order_id, dossier_number, client_signature, snc_scenario, snc_requires_balisage, incident_lat, incident_lng, destination_address, destination_lat, destination_lng, billed_to_id, billed_to_name, redelivery_address, truck_id, intervention_date, received_at, completed_at, invoice_number, invoice_odoo_id, odoo_quote_id')
     .eq('id', mission_id).single()
 
   if (fetchError || !mission) return NextResponse.json({ error: 'Mission introuvable' }, { status: 404 })
@@ -736,7 +736,10 @@ export async function POST(req: Request) {
         if (!(await isFlux2Enabled(driverId, 'axa'))) return
 
         const { closeAxaBg, axaMissionOrderId } = await import('@/lib/axa/close-bg')
-        const mo = axaMissionOrderId((mission as any).external_id)
+        // La colonne dediee prime : sur une fiche RATTACHEE (mail parse puis lie
+        // au poll), external_id porte le n° de dossier du mail, PAS l'identifiant
+        // go&assist. Le pousser reviendrait a viser une autre mission.
+        const mo = axaMissionOrderId((mission as any).axa_mission_order_id || (mission as any).external_id)
         // Pas d'identifiant go&assist (relivraison créée chez nous) → rien à
         // pousser : ce n'est pas une erreur, c'est une mission qui n'existe pas
         // chez AXA. On ne pollue donc pas le journal avec une fausse alerte.

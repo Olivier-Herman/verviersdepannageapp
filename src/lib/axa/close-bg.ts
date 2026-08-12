@@ -28,17 +28,26 @@ export interface AxaCloseBgResult {
 }
 
 /**
- * missionOrderId go&assist = `external_id` de la fiche, mais UNIQUEMENT quand
- * c'en est vraiment un : format numérique (ex. « 11000820 »).
+ * Identifiant go&assist de la mission. Deux formats coexistent en vrai :
+ *   • numérique — « 11000820 » (fiches créées par le poll AXA) ;
+ *   • alphanumérique — « AXP0097-RBND4I3 » (vu le 2026-08-12 sur une fiche
+ *     rattachée). Exiger des chiffres seuls écartait donc de VRAIES missions.
  *
- * ⚠️ Toutes les fiches `source='axa'` n'en portent pas. Les relivraisons créées
- * chez nous ont un external_id INTERNE (« REL-ACC-db5e6fb3 », « REL-10729317 »)
- * qui n'existe pas chez AXA — l'envoyer reviendrait à interroger go&assist avec
- * un identifiant fantôme. Dans ce cas on ne déclenche rien. Olivier 2026-08-11.
+ * ⚠️ À l'inverse, toutes les fiches `source='axa'` n'ont pas d'identifiant chez
+ * eux : les relivraisons créées chez nous portent un external_id INTERNE
+ * (« REL-ACC-db5e6fb3 », « REL-10729317 »). Les pousser reviendrait à interroger
+ * go&assist avec un identifiant fantôme — on ne déclenche rien.
+ *
+ * ⚠️ La SOURCE de cet identifiant est la colonne `axa_mission_order_id` quand
+ * elle existe : sur une fiche rattachée (mail parsé puis lié au poll),
+ * `external_id` porte le n° de dossier du mail, pas l'identifiant go&assist.
  */
-export function axaMissionOrderId(externalId: string | null | undefined): string | null {
-  const v = String(externalId || '').trim()
-  return /^\d{6,}$/.test(v) ? v : null
+export function axaMissionOrderId(id: string | null | undefined): string | null {
+  const v = String(id || '').trim()
+  if (!v || v.length < 6) return null
+  if (/^REL[-_]/i.test(v)) return null            // relivraison créée chez nous
+  if (!/^[A-Z0-9][A-Z0-9._-]{4,}$/i.test(v)) return null
+  return v
 }
 
 /**
