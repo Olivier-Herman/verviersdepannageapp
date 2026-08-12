@@ -332,9 +332,6 @@ export default function EncaissementClient({
   // geste explicite pour encaisser autre chose. Vu en test le 12/08 : 533,96 € dus,
   // 0,01 € tapé, mission passée « à facturer 0,01 € ». Olivier 2026-08-12.
   const dueAmount = prefill?.amount && prefill.amount > 0 ? Number(prefill.amount) : 0
-  const [amountUnlocked, setAmountUnlocked] = useState(false)
-  const [amountReason, setAmountReason] = useState('')
-  const amountLocked = dueAmount > 0 && !amountUnlocked
   const typedAmount  = parseFloat(amount) || 0
   const restAfter    = dueAmount > 0 ? Math.round((dueAmount - typedAmount) * 100) / 100 : 0
   const [paymentMode, setPaymentMode] = useState('')
@@ -785,9 +782,7 @@ export default function EncaissementClient({
           client_zip: client.zip, client_city: client.city,
           client_country_code: client.countryCode,
           client_phone: client.phone, client_email: client.email,
-          notes: [notes, amountReason.trim() && dueAmount > 0 && typedAmount < dueAmount
-            ? `Montant partiel (solde dû ${formatEur(dueAmount)}) — ${amountReason.trim()}`
-            : ''].filter(Boolean).join(' · ') || notes,
+          notes,
         })
       })
       if (!res.ok) { const d = await res.json(); setError(d.error || 'Erreur'); return }
@@ -1180,10 +1175,9 @@ export default function EncaissementClient({
             type="text"
             id="amount-field"
             value={amount}
-            readOnly={amountLocked}
             onChange={e => { setAmount(e.target.value.replace(',', '.').replace(/[^0-9.]/g, '')); setSumupData(null); setSumupStatus(null) }}
             placeholder="0.00"
-            autoFocus={!amountLocked}
+            autoFocus
             autoComplete="off"
             autoCorrect="off"
             autoCapitalize="off"
@@ -1205,35 +1199,11 @@ export default function EncaissementClient({
               <span className="text-ink-muted text-sm">Solde à encaisser</span>
               <span className="text-ink font-bold tabular-nums">{formatEur(dueAmount)}</span>
             </div>
-            {amountLocked ? (
-              <button type="button"
-                onClick={() => setAmountUnlocked(true)}
-                className="w-full py-2.5 rounded-xl border border text-ink-secondary text-sm font-medium">
-                Encaisser un autre montant (acompte, dérogation)
-              </button>
-            ) : (
-              <>
-                <div className="flex gap-2">
-                  <button type="button" onClick={() => { setAmount(String(dueAmount)); setAmountUnlocked(false); setAmountReason('') }}
-                    className="flex-1 py-2.5 rounded-xl border border text-ink-secondary text-sm font-medium">
-                    ↩︎ Revenir au solde
-                  </button>
-                </div>
-                {typedAmount > 0 && restAfter > 0 && (
-                  <div className="bg-warning-soft border border-warning rounded-xl px-4 py-3 text-warning text-sm">
-                    Il restera <b>{formatEur(restAfter)}</b> à encaisser après ce paiement.
-                    <span className="block opacity-80">Le client peut payer le reste par un autre moyen — refais un encaissement.</span>
-                  </div>
-                )}
-                {typedAmount > 0 && restAfter > 0 && (
-                  <input
-                    value={amountReason}
-                    onChange={e => setAmountReason(e.target.value)}
-                    placeholder="Pourquoi ce montant ? (acompte, accord bureau…)"
-                    className={inputCls}
-                  />
-                )}
-              </>
+            {typedAmount > 0 && restAfter > 0 && (
+              <div className="bg-warning-soft border border-warning rounded-xl px-4 py-3 text-warning text-sm">
+                Il restera <b>{formatEur(restAfter)}</b> à encaisser — la mission garde son solde ouvert
+                et son bouton de paiement.
+              </div>
             )}
           </div>
         )}
