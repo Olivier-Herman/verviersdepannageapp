@@ -38,6 +38,10 @@ export const NAV_ITEMS: NavItem[] = [
   // Déploiement du flux 2 (clôture unifiée) : grille chauffeur × assistance.
   { href: '/admin/flux2',   label: 'Flux 2',           icon: '⚡', moduleId: null, role: 'superadmin' },
   { href: '/facturation',       label: 'Facturation',         icon: '🧾', moduleId: 'facturation' },
+  // Olivier 2026-08-14 : rapprochement des versements Paynovate/SumUp, en
+  // rodage → superadmin uniquement (repasser sur moduleId 'facturation'
+  // une fois les premières écritures validées en production).
+  { href: '/finance/reconciliation', label: 'Réconciliation', icon: '🔗', moduleId: null, role: 'superadmin' },
   { href: '/missions-terminees', label: 'Missions terminées', i18nKey: 'nav.finished', icon: '📂', moduleId: 'facturation_or_missions' },
   { href: '/admin/amendes',     label: 'Amendes',             icon: '⚠️', moduleId: 'facturation_or_admin' },
   // Olivier 2026-06-02 : Dépanneuses retirée de la sidebar globale (fonction
