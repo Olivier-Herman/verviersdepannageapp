@@ -113,3 +113,94 @@ export async function runVabOnSite(input: VabOnSiteInput): Promise<void> {
     await releaseLock()
   }
 }
+
+// ── CLÔTURE DU REMORQUAGE (tow) ─────────────────────────────────────────────
+// Remplace le bouton flottant « Clôturer VAB », retiré le 12/08/2026 : « ça doit
+// être automatique, invisible pour le chauffeur » (Olivier). Même appel que
+// /api/missions/[id]/vab-close, mais déclenché tout seul à la clôture flux 2,
+// avec ce que le chauffeur vient de saisir (emplacement du véhicule, de la clé).
+
+/** Nos libellés → valeurs d'option Comet (liste VAB, pas notre config). */
+const KEY_LOCATION_VAB: Record<string, string> = {
+  'Réception':          '1043',
+  'Boîte à clés':       '465',
+  'Boîte aux lettres':  '1042',
+  'Remise au client':   '463',
+  'Dans le véhicule':   '1040',   // clapet réservoir carburant — le plus proche
+}
+/** Repli = « Boîte à clés », le défaut historique de la modale. */
+const KEY_LOCATION_FALLBACK = '465'
+
+export interface VabTowCloseInput {
+  missionId:  string
+  externalId: string | null
+  /** Emplacement du véhicule saisi à la clôture (« Parking », « Dans l'atelier »…). */
+  vehicleLocation?: string | null
+  /** Emplacement de la clé, dans NOS libellés — traduit ci-dessus. */
+  keyLocation?: string | null
+  /** Clé récupérée ? false → on ne prétend pas l'avoir déposée quelque part. */
+  keyRecovered?: boolean | null
+  /** Signature : 'signed' | 'refus' | 'absent' — repris du tronc commun. */
+  signature?: string | null
+  actorId?: string | null
+}
+
+/**
+ * Clôture la mission chez VAB (remorquage). À lancer en TÂCHE DE FOND : la
+ * séquence HTTP enchaîne plusieurs écrans OutSystems et prend 10-30 s.
+ */
+export async function runVabTowClose(input: VabTowCloseInput): Promise<void> {
+  const sb = createAdminClient()
+  const log = (action: string, notes: string, metadata: any = {}) =>
+    sb.from('mission_logs').insert({ mission_id: input.missionId, actor_id: input.actorId ?? null, action, notes, metadata })
+      .then(() => {}, () => {})
+
+  const assignmentId = vabAssignmentId(input.externalId)
+  if (!assignmentId) { await log('vab_close_skipped', 'VAB : AssignmentId introuvable dans external_id', { externalId: input.externalId }); return }
+
+  const { data: m } = await sb.from('incoming_missions').select('vab_closed_at').eq('id', input.missionId).maybeSingle()
+  if ((m as any)?.vab_closed_at) { await log('vab_close_skipped', 'VAB : déjà clôturée chez eux, on ne rejoue pas', { assignmentId }); return }
+
+  // Même compte partagé que le pilotage headless → même verrou.
+  if (!(await acquireLock(input.missionId))) {
+    await log('vab_close_skipped',
+      '⏳ VAB : le compte est déjà utilisé (autre clôture ou session ouverte) — clôture à reprendre par le dispatch',
+      { assignmentId })
+    return
+  }
+
+  const started = Date.now()
+  try {
+    const { closeVabMission } = await import('@/lib/vab/close')
+    const r = await closeVabMission({
+      assignmentId,
+      taskType:        'tow',
+      refusal:         input.signature === 'refus',
+      notPresent:      input.signature === 'absent',
+      present:         input.signature !== 'absent',
+      keysNr:          input.keyRecovered === false ? undefined : '__ossli_1',
+      keyLocation:     input.keyRecovered === false
+        ? undefined
+        : (KEY_LOCATION_VAB[String(input.keyLocation || '')] || KEY_LOCATION_FALLBACK),
+      vehicleLocation: (input.vehicleLocation || '').trim() || 'Parking',
+    })
+    const secs = Math.round((Date.now() - started) / 1000)
+
+    if (r.completed) {
+      await sb.from('incoming_missions')
+        .update({ vab_closed_at: new Date().toISOString(), updated_at: new Date().toISOString() })
+        .eq('id', input.missionId)
+    }
+    await log(
+      r.completed ? 'vab_closed' : 'vab_close_failed',
+      r.completed
+        ? `VAB : remorquage clôturé automatiquement en ${secs}s (${r.steps.join(' → ')})`
+        : `VAB : clôture non aboutie après ${secs}s — ${r.error || 'raison inconnue'}${r.steps.length ? ` (${r.steps.join(' → ')})` : ''}`,
+      { assignmentId, steps: r.steps, error: r.error ?? null, lastButtons: r.lastButtons ?? null, seconds: secs },
+    )
+  } catch (e: any) {
+    await log('vab_close_failed', `VAB : erreur pendant la clôture — ${e?.message || e}`, { assignmentId })
+  } finally {
+    await releaseLock()
+  }
+}

@@ -21,7 +21,6 @@ import AddressField from '@/components/AddressField'
 import { T }    from '@/lib/i18n/T'
 import { useT } from '@/lib/i18n/I18nProvider'
 import TouringCloseModal from '@/components/touring/TouringCloseModal'
-import VabCloseModal from '@/components/vab/VabCloseModal'
 import SigPad from '@/components/mission/SigPad'
 import ActionScreen, { type OutcomeKey, type PriseEnCharge } from '@/components/cloture/ActionScreen'
 import CloseScreen, { type CloseCommon } from '@/components/cloture/CloseScreen'
@@ -1147,7 +1146,6 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
   //                on clôture le seq actif chez Touring (écran pré-rempli) avant la
   //                clôture VD Soft.
   const [touringAction, setTouringAction] = useState<'dsp' | 'dsp2rem' | 'vr' | 'park' | 'remclose' | null>(null)
-  const [showVabClose, setShowVabClose] = useState(false)   // clôture VAB (remorquage)
   const loaded   = !!M.loaded_at || M.status === 'delivering' || M.status === 'parked'
 
   // ── Geofence « Sur place ? » (suggestion) ──────────────────────────────────
@@ -4700,24 +4698,11 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
           setErr(e.message || 'Échec de la mise à jour du véhicule')
         }
       }} />}
-      {/* Clôture VAB — bouton flottant + modale. Additif, gaté sur la source.
-          ⚠️ TEST : REMORQUAGE uniquement (breakdown pas encore validé → capture manuelle),
-          et visible UNIQUEMENT pour Franck (chauffeur testeur) + superadmin. */}
-      {String((M as any).source).toLowerCase() === 'vab' && !(M as any).vab_closed_at
-        && String((M as any).mission_type || '').toLowerCase().includes('remorquage')
-        && (userRole === 'superadmin' || currentUserId === 'de9a37aa-41b5-4a56-894b-cc304f601d1a') && (
-        <button onClick={() => setShowVabClose(true)}
-          className="fixed bottom-4 right-4 z-40 px-4 py-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-2xl shadow-lg font-semibold text-sm">
-          🅅 Clôturer VAB
-        </button>
-      )}
-      {showVabClose && (
-        <VabCloseModal
-          missionId={M.id}
-          onClose={() => setShowVabClose(false)}
-          onDone={() => { setShowVabClose(false); setM(m => ({ ...m, vab_closed_at: new Date().toISOString() } as any)) }}
-        />
-      )}
+      {/* Le bouton flottant « Clôturer VAB » a été RETIRÉ le 12/08/2026 (Olivier) :
+          la clôture VAB doit être automatique et invisible pour le chauffeur. Elle
+          part désormais en tâche de fond depuis la clôture flux 2
+          (src/lib/cloture/transform/vab.ts). La modale et /api/missions/[id]/vab-close
+          restent en place pour un rattrapage manuel par le dispatch. */}
       </AmbientBackground>
     </div>
   )

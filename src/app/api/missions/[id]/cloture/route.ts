@@ -22,7 +22,7 @@ import { parseComexKeys, transformTouring } from '@/lib/cloture/transform/tourin
 import { loginComex, getComexProviders } from '@/lib/touring/comex'
 import { findMotif } from '@/lib/cloture/motifs'
 import { enqueueClose, isRetryable } from '@/lib/cloture/queue'
-import { runVabOnSite } from '@/lib/cloture/transform/vab'
+import { runVabOnSite, runVabTowClose } from '@/lib/cloture/transform/vab'
 import { branchOf, needsMotif }  from '@/lib/cloture/outcomes'
 
 export const dynamic     = 'force-dynamic'
@@ -263,15 +263,34 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   // Mission vélo (« Fiets ») = pas de compteur → km/VIN vides, le closer saute
   // ces étapes. Le verrou du compte partagé est géré dans runVabOnSite.
   else if (assistance === 'vab') {
-    const vabTask = runVabOnSite({
-      missionId:     (m as any).id,
-      externalId:    (m as any).external_id,
-      km:            km ?? null,
-      vinLastDigits: vin5 || null,
-      actorId:       (actor as any)?.id ?? null,
-    }).catch(() => {})
+    // Deux moments, deux séquences chez VAB (Olivier 2026-08-12) :
+    //   • le véhicule est ARRIVÉ (livré, ou déposé dans notre parc) → c'est la
+    //     clôture du REMORQUAGE qu'ils attendent — ce que faisait l'ancien bouton
+    //     flottant, retiré : ça doit être automatique et invisible ;
+    //   • sinon (dépannage sur place, transformation) → la brique ON-SITE, qui
+    //     amène la mission jusqu'à l'écran de code.
+    const isTow = String((m as any).mission_type || '').toLowerCase().includes('remorquage')
+    const arrived = outcome === 'delivered' || outcome === 'park'
+    const vabTask = (isTow && arrived
+      ? runVabTowClose({
+          missionId:       (m as any).id,
+          externalId:      (m as any).external_id,
+          vehicleLocation: common.vehicleLocation ?? null,
+          keyLocation:     common.keyLocation ?? null,
+          keyRecovered:    common.keyRecovered ?? null,
+          signature:       common.signature ?? null,
+          actorId:         (actor as any)?.id ?? null,
+        })
+      : runVabOnSite({
+          missionId:     (m as any).id,
+          externalId:    (m as any).external_id,
+          km:            km ?? null,
+          vinLastDigits: vin5 || null,
+          actorId:       (actor as any)?.id ?? null,
+        })
+    ).catch(() => {})
     try { const { waitUntil } = await import('@vercel/functions'); waitUntil(vabTask) } catch { /* hors Vercel */ }
-    result = { ok: true, queuedVab: true }
+    result = { ok: true, queuedVab: true, vabStep: isTow && arrived ? 'tow_close' : 'on_site' }
   }
   // ── TOUTE AUTRE ASSISTANCE : aucun appel externe ──────────────────────────
   // C'est le cas par DÉFAUT, pas une liste à maintenir (Olivier 2026-08-12) :
