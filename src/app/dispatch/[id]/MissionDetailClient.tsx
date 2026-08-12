@@ -44,6 +44,7 @@ import { getSourceLabel, getSourceColor, type SourceDisplay as CatalogSource } f
 import { getMissionTypeLabel } from '@/lib/missions/mission-types'
 import { parcZoneLabel } from '@/lib/parc/zone-label'
 import { useGarageClosure } from '@/lib/useGarageClosures'
+import Flux2ClosureCard from '@/components/dispatch/Flux2ClosureCard'
 
 const sb = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -167,6 +168,8 @@ interface MissionLog {
   notes: string | null
   created_at: string
   actor: { name: string } | null
+  /** Détail structuré (codes envoyés, tronc commun de la clôture flux 2…). */
+  metadata?: any
 }
 
 interface Driver {
@@ -2959,6 +2962,11 @@ export default function MissionDetailClient({
             </div>
           </div>
         )}
+
+        {/* ── Clôture chauffeur (flux 2) — tout ce qu'il a renseigné, d'un coup
+            d'œil : motif, signature, clé, où est le véhicule, châssis, km, et ce
+            qui est réellement parti chez l'assisteur. Olivier 2026-08-12. */}
+        <Flux2ClosureCard mission={initialMission} logs={logs as any} />
 
         {/* ── Bandeau Position parc (visible si mission parked avec zone) ── */}
         {status === 'parked' && parcZone && (
