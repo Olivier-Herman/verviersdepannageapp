@@ -86,8 +86,9 @@ export default function ReconciliationClient({ userName }: { userName: string })
       const j = await r.json()
       if (!r.ok) throw new Error(j.error || `Erreur ${r.status}`)
       setReport(j)
-      // Ce qui demande une décision s'ouvre d'office.
-      setOpen(new Set(j.payouts.filter((p: Payout) => p.state !== 'ready').map((p: Payout) => p.paymentId)))
+      // Tout est déplié d'office : on ne valide pas ce qu'on ne voit pas.
+      // Le bouton « Tout replier » reste là pour scanner la file de haut en bas.
+      setOpen(new Set(j.payouts.map((p: Payout) => p.paymentId)))
     } catch (e: any) {
       setError(e.message)
     } finally {
@@ -166,9 +167,18 @@ export default function ReconciliationClient({ userName }: { userName: string })
               note="Écarts et références non résolues" />
       </section>
 
-      <div className="flex gap-1 overflow-x-auto border-b border-border">
-        <Tab on={tab === 'queue'} onClick={() => setTab('queue')} count={report.payouts.length}>À rapprocher</Tab>
-        <Tab on={tab === 'lost'}  onClick={() => setTab('lost')}  count={lostTxs.length}>Encaissements perdus</Tab>
+      <div className="flex items-end justify-between gap-3 border-b border-border">
+        <div className="flex gap-1 overflow-x-auto">
+          <Tab on={tab === 'queue'} onClick={() => setTab('queue')} count={report.payouts.length}>À rapprocher</Tab>
+          <Tab on={tab === 'lost'}  onClick={() => setTab('lost')}  count={lostTxs.length}>Encaissements perdus</Tab>
+        </div>
+        {tab === 'queue' && report.payouts.length > 0 && (
+          <button
+            onClick={() => setOpen(open.size ? new Set() : new Set(report.payouts.map(p => p.paymentId)))}
+            className="mb-2 shrink-0 rounded-btn border border-strong px-3 py-1.5 text-xs font-semibold text-ink-secondary hover:bg-surface-hover">
+            {open.size ? 'Tout replier' : 'Tout déplier'}
+          </button>
+        )}
       </div>
 
       {tab === 'lost' && (
