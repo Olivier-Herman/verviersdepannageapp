@@ -466,9 +466,16 @@ export default function CloseScreen({
                   .filter(Boolean).join(' et ')} — vérifie avant de valider.
               </p>
             )}
-            {(needPhotos || (vinEmpty && kmEmpty)) && (
+            {/* Rappel CIBLÉ sur ce qui manque encore. Vu en test le 12/08 (VAB
+                2GHQ619) : le kilométrage était lu, le châssis non, et plus rien
+                ne le signalait — la case est restée vide sans que personne ne le
+                voie. L'OCR ne devine jamais un VIN : sans photo nette des 17
+                caractères, il rend null, à raison. Olivier 2026-08-12. */}
+            {(vinEmpty || kmEmpty) && (
               <div className="bg-amber-500/10 border border-amber-500/40 text-amber-700 dark:text-amber-300 rounded-xl px-3 py-3 text-sm font-medium">
-                📷 Prends le châssis et le compteur en photo — je remplis les deux cases pour toi.
+                📷 Prends {vinEmpty && kmEmpty ? 'le châssis et le compteur' : vinEmpty ? 'le châssis' : 'le compteur'} en
+                photo — je remplis {vinEmpty && kmEmpty ? 'les deux cases' : 'la case'} pour toi.
+                {vinEmpty && !kmEmpty && <span className="block font-normal opacity-90">Le châssis est sur le montant de portière ou en bas du pare-brise.</span>}
               </div>
             )}
           </div>
