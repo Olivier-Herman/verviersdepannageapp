@@ -4165,8 +4165,11 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
             </button>
           )}
 
-          {/* REM : Sur place + véhicule pas encore chargé → bouton "Véhicule chargé" + bouton "Refus" */}
-          {rem && !rel && M.status === 'in_progress' && onSite && !loaded && (
+          {/* REM : Sur place + véhicule pas encore chargé → bouton "Véhicule chargé" + bouton "Refus"
+              ⚠️ FLUX 2 : une fois sur place, le pied ne porte QUE « Action » (Olivier
+              2026-08-12). Ces deux gestes restent accessibles dans « Autres » — on les
+              range, on ne les supprime pas. */}
+          {!flux2 && rem && !rel && M.status === 'in_progress' && onSite && !loaded && (
             <>
               <button onClick={() => api('load_vehicle')} disabled={loading}
                 className="w-full py-4 bg-blue-600 disabled:opacity-50 text-ink font-bold rounded-2xl text-base">
@@ -4343,6 +4346,23 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
               </div>
               <button onClick={() => setShowGrid(false)} className="text-ink-muted text-2xl">×</button>
             </div>
+            {/* FLUX 2 — gestes retirés du pied de la fiche (qui ne porte plus que
+                « Action ») mais qui doivent rester à portée : charger le véhicule et
+                le refus/impossibilité. Olivier 2026-08-12. */}
+            {flux2 && rem && !rel && M.status === 'in_progress' && onSite && !loaded && (
+              <div className="px-4 pt-4 space-y-2">
+                <button onClick={() => { setShowGrid(false); api('load_vehicle') }} disabled={loading}
+                  className="w-full py-4 bg-blue-600 disabled:opacity-50 text-ink font-bold rounded-2xl text-base">
+                  <T k="mission_detail.btn_loaded_truck" />
+                </button>
+                <button
+                  onClick={() => { setShowGrid(false); setDprFromRem(true); setDprToPark(false); setDprMotif(''); setDprMotifAutre(''); setShowDprMotif(true) }}
+                  disabled={loading}
+                  className="w-full py-3 bg-surface border border text-ink-secondary font-medium rounded-2xl text-sm">
+                  <T k="mission_detail.btn_refuse_dpr" />
+                </button>
+              </div>
+            )}
             <div className="grid grid-cols-2 gap-3 p-4">
               {/* Photos — masque pour les missions sans chargement/depannage
                   (DPR, Mal Garee deplacement_paye : mission_type='trajet_vide'). */}
