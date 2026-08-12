@@ -550,6 +550,10 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
   const [f2Outcome, setF2Outcome] = useState<OutcomeKey | null>(null)
   const [f2Prise, setF2Prise]     = useState<PriseEnCharge>(
     init.source === 'sia_couvert' ? 'sia_couvert' : init.source === 'police_snc' ? 'police_snc' : 'standard')
+  // Balisage : « Non » par défaut (Olivier 2026-08-12). Il entre dans le tarif
+  // Siabis, donc chaque changement repart aussitôt au serveur, qui recalcule
+  // amount_to_collect — sinon le montant présenté au client serait faux.
+  const [f2Balisage, setF2Balisage] = useState<boolean>(!!(init as any).snc_requires_balisage)
   const [f2Dpr, setF2Dpr]         = useState<{ code: string; label: string }[]>([])
   // Memorise l ecran d origine avant d entrer dans 'photos' pour pouvoir y
   // retourner apres save/retour. Sans ca, on revenait toujours sur 'main'
@@ -2154,7 +2158,29 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
             const fresh = await fetch(`/api/missions/${M.id}`, { cache: 'no-store' }).then(x => x.json()).catch(() => null)
             if (fresh?.mission) setM(fresh.mission)
             else setM(prevM => ({ ...prevM, source: newSource }))
+            // Retour au tarif normal : le serveur remet le balisage à false —
+            // l'écran doit suivre, sinon il affiche « Oui » sur une mission qui
+            // n'a plus de balisage facturé.
+            setF2Balisage(!!(fresh?.mission as any)?.snc_requires_balisage)
           } catch { setF2Prise(prev); setErr('Impossible de changer la prise en charge') }
+        }}
+        balisage={f2Balisage}
+        onBalisage={async v => {
+          const prev = f2Balisage
+          setF2Balisage(v)
+          try {
+            // Le PATCH recalcule amount_to_collect côté serveur (le balisage est
+            // un champ de tarification). On relit la fiche pour que le garde-fou
+            // d'encaissement voie tout de suite le bon montant.
+            const r = await fetch(`/api/missions/${M.id}`, {
+              method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ snc_requires_balisage: v }),
+            })
+            if (!r.ok) throw new Error('patch')
+            const fresh = await fetch(`/api/missions/${M.id}`, { cache: 'no-store' }).then(x => x.json()).catch(() => null)
+            if (fresh?.mission) setM(fresh.mission)
+            else setM(prevM => ({ ...prevM, snc_requires_balisage: v } as any))
+          } catch { setF2Balisage(prev); setErr('Impossible d’enregistrer le balisage') }
         }}
         onDprCodes={setF2Dpr}
         onPick={o => { setF2Outcome(o); setF2Screen('close') }}

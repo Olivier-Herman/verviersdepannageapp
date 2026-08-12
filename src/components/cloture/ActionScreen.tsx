@@ -34,13 +34,16 @@ const GROUP_TITLES: Record<string, string> = {
 }
 
 export default function ActionScreen({
-  missionId, plate, vehicle, prise, onPrise, onDprCodes, onPick, onBack,
+  missionId, plate, vehicle, prise, onPrise, balisage, onBalisage, onDprCodes, onPick, onBack,
 }: {
   missionId: string
   plate?: string | null
   vehicle?: string | null
   prise: PriseEnCharge
   onPrise: (p: PriseEnCharge) => void
+  /** Balisage posé sur place — entre dans le tarif Siabis. */
+  balisage: boolean
+  onBalisage: (v: boolean) => void
   /** Codes d'annulation autorisés par l'assistance (déplacement pour rien). */
   onDprCodes?: (codes: { code: string; label: string }[]) => void
   onPick: (outcome: OutcomeKey) => void
@@ -114,6 +117,28 @@ export default function ActionScreen({
                 </button>
               ))}
             </div>
+
+            {/* Balisage — JUSTE sous les boutons Siabis et AVANT le choix de
+                l'issue : posé plus tard, il fausse le montant déjà annoncé au
+                client. Aucun euro affiché ici, le chauffeur répond à une question
+                de terrain. Non par défaut. Olivier 2026-08-12. */}
+            {prise !== 'standard' && (
+              <div className="space-y-2 pt-1">
+                <p className="text-ink font-bold text-[15px]">🚧 Balisage</p>
+                <div className="flex gap-2">
+                  {[{ v: true, l: 'Oui' }, { v: false, l: 'Non' }].map(o => (
+                    <button key={o.l} onClick={() => onBalisage(o.v)}
+                      className={`flex-1 py-3.5 rounded-xl text-base font-extrabold border transition ${
+                        balisage === o.v
+                          ? 'border-green-500 bg-green-500/10 text-green-700 dark:text-green-300'
+                          : 'border bg-surface-2 text-ink-secondary'
+                      }`}>
+                      {o.l}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
 
             {groups.map(g => {
               const items = outcomes.filter(o => o.group === g)
