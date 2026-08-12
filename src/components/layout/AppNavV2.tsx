@@ -64,13 +64,22 @@ export default function AppNavV2({
 
   /** Un module + ses sections dépliées. Même rendu épinglé ou dans la liste. */
   const ModuleBlock = ({ mod }: { mod: BuiltModule }) => {
-    const badge    = moduleBadge(mod)
-    const isHere   = active?.key === mod.key
-    const href     = landingHref(mod)
-    const hasKids  = mod.visibleSections.length > 0
+    const badge = moduleBadge(mod)
+    const href  = landingHref(mod)
+    const label = mod.i18nKey ? <T k={mod.i18nKey} /> : mod.label
+    // La ligne du module ouvre déjà sa page par défaut : on ne répète pas cette
+    // page dans le sous-menu (sinon « Dispatch » apparaissait deux fois).
+    const kids     = mod.visibleSections.filter(s => s.href !== href)
+    const hasKids  = kids.length > 0
     const expanded = hasKids && openKey === mod.key
-    const label    = mod.i18nKey ? <T k={mod.i18nKey} /> : mod.label
     if (!href) return null
+
+    // Page courante = la page par défaut du module → la ligne est active.
+    // Page courante = une sous-section → c'est elle qui est surlignée, la ligne
+    // du module reste seulement mise en évidence (pas de double surlignage).
+    const activeSection = findActiveSectionHref(mod, pathname)
+    const inModule      = active?.key === mod.key
+    const rowActive     = inModule && (!activeSection || activeSection === href)
 
     return (
       <div>
@@ -78,7 +87,9 @@ export default function AppNavV2({
           href={href}
           onClick={() => { setOpenKey(hasKids ? mod.key : null); onNavigate?.() }}
           className={`group relative flex items-center gap-3 rounded-md text-sm font-medium transition-colors ${rowPad} ${
-            isHere ? 'bg-brand-soft text-brand' : 'text-ink-secondary hover:text-ink hover:bg-surface-hover'
+            rowActive ? 'bg-brand-soft text-brand'
+              : inModule ? 'text-ink hover:bg-surface-hover'
+              : 'text-ink-secondary hover:text-ink hover:bg-surface-hover'
           }`}
         >
           <span className="text-base">{mod.icon}</span>
@@ -112,8 +123,8 @@ export default function AppNavV2({
           >
             <div className="overflow-hidden">
               <div className="flex flex-col gap-0.5 pt-0.5 pb-1 pl-4 ml-1.5 border-l">
-                {mod.visibleSections.map(section => {
-                  const isActive = findActiveSectionHref(mod, pathname) === section.href
+                {kids.map(section => {
+                  const isActive = activeSection === section.href
                   const sBadge   = badges[section.href] || 0
                   const Icon     = section.icon
                   return (
