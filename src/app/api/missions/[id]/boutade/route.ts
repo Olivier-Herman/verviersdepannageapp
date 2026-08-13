@@ -9,7 +9,8 @@
 //     client, ni du chauffeur, ni de personne ;
 //   • dès qu'il y a accident, blessé, incendie, police ou saisie, on ne
 //     plaisante pas : on renvoie un mot d'encouragement neutre.
-// Rien n'est stocké : c'est du décor, pas de la donnée.
+// La phrase est journalisée sur la fiche (Olivier 2026-08-13) : c'est le seul
+// moyen de relire ce qui a été dit et d'ajuster le ton sans passer par Franck.
 
 import { NextResponse }      from 'next/server'
 import { getServerSession }  from 'next-auth'
@@ -49,8 +50,17 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
   const contexte = [m.incident_description, m.incident_type].filter(Boolean).join(' — ')
   const pick = () => REPLIS[Math.floor(Math.random() * REPLIS.length)]
 
+  // Journal : discret, une ligne, pour pouvoir relire et régler le ton.
+  const journalise = (text: string, via: 'ia' | 'repli' | 'sujet-sérieux') =>
+    sb.from('mission_logs').insert({
+      mission_id: params.id, actor_id: (me as any)?.id ?? null,
+      action: 'boutade', notes: text, metadata: { via },
+    }).then(() => {}, () => {})
+
   if (SERIEUX.test(`${contexte} ${m.source || ''}`)) {
-    return NextResponse.json({ text: pick(), serious: true })
+    const t = pick()
+    await journalise(t, 'sujet-sérieux')
+    return NextResponse.json({ text: t, serious: true })
   }
 
   const heure = new Date().toLocaleTimeString('fr-BE', { timeZone: 'Europe/Brussels', hour: '2-digit', minute: '2-digit' })
@@ -90,8 +100,13 @@ Réponds UNIQUEMENT la phrase, rien d'autre.`,
     })
     const text = resp.content.filter((c: any) => c.type === 'text').map((c: any) => c.text).join('').trim()
       .replace(/^["'«»\s]+|["'«»\s]+$/g, '')
-    return NextResponse.json({ text: text && text.length <= 200 ? text : pick() })
+    const ok = !!text && text.length <= 200
+    const out = ok ? text : pick()
+    await journalise(out, ok ? 'ia' : 'repli')
+    return NextResponse.json({ text: out })
   } catch {
-    return NextResponse.json({ text: pick() })
+    const t = pick()
+    await journalise(t, 'repli')
+    return NextResponse.json({ text: t })
   }
 }
