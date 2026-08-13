@@ -3210,31 +3210,31 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
         </div>
       )}
 
-      {/* Banderole rouge : montant à encaisser (rien encore OU partiel) */}
-      {/* 5 taps caches sur la banderole → modal derogation (briefing vocal) */}
+      {/* UN SEUL point d'entrée : un bouton rouge « Paiement » en haut de l'écran
+          (Olivier 2026-08-13). Il n'apparaît que lorsque le CYCLE COMPLET est
+          connu — dépannage confirmé, ou remorquage avec sa destination — car
+          c'est seulement là que le montant veut dire quelque chose. Toute la
+          suite (détail, transactions, solde) se passe sur sa page dédiée.
+          5 taps cachés = demande de dérogation au dispatch. */}
       {M.amount_to_collect != null && M.amount_to_collect > 0 && !paidEffective && (
         <div
           onClick={handleDerogTap}
-          className={`relative bg-red-600 border-b-2 border-red-700 px-4 py-3 flex items-center justify-between gap-3 select-none ${derogTapCount >= 3 ? 'animate-pulse' : ''}`}
+          className={`relative bg-red-600 border-b-2 border-red-700 px-4 py-3 select-none ${derogTapCount >= 3 ? 'animate-pulse' : ''}`}
         >
-          <div className="flex items-center gap-2">
-            <span className="text-2xl">💶</span>
-            <div>
-              <p className="text-ink font-bold text-sm uppercase tracking-wide">{partiallyPaid ? 'Reste à encaisser' : 'À encaisser'}</p>
-              {partiallyPaid ? (
-                <p className="text-ink text-xl font-bold">
-                  {formatEur(requiredAmount - (M.payment_amount ?? 0), { suffix: false })} {M.amount_currency || 'EUR'}
-                  <span className="text-ink/80 text-xs font-normal ml-2">({formatEur(M.payment_amount ?? 0, { suffix: false })} / {formatEur(requiredAmount, { suffix: false })})</span>
-                </p>
-              ) : (
-                <p className="text-ink text-xl font-bold">{formatEur(M.amount_to_collect, { suffix: false })} {M.amount_currency || 'EUR'}</p>
-              )}
-            </div>
-          </div>
           <button onClick={e => { e.stopPropagation(); setScreen('encaissement') }}
-            className="px-3 py-2 bg-white text-red-700 rounded-lg text-xs font-bold whitespace-nowrap">
-            Encaisser →
+            className="w-full flex items-center justify-center gap-2 text-white font-bold text-lg py-1">
+            <span className="text-2xl">💶</span>
+            Paiement
+            <span className="tabular-nums">
+              {formatEur(partiallyPaid ? requiredAmount - (M.payment_amount ?? 0) : requiredAmount)}
+            </span>
+            <span className="text-white/80 text-xl">›</span>
           </button>
+          {partiallyPaid && (
+            <p className="text-white/85 text-xs text-center -mt-0.5">
+              déjà encaissé {formatEur(M.payment_amount ?? 0)} sur {formatEur(requiredAmount)}
+            </p>
+          )}
           {/* Compteur discret à partir du 3e tap */}
           {derogTapCount >= 3 && derogTapCount < 5 && (
             <span className="absolute bottom-1 right-2 text-[10px] text-ink/70 font-mono">{derogTapCount}/5</span>

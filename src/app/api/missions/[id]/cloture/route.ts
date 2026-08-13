@@ -214,7 +214,45 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     }
   }
 
+  // ── SIABIS : le cycle est connu → le scénario tarifaire aussi ─────────────
+  // Le bouton de paiement ne doit apparaître qu'une fois le cycle COMPLET connu
+  // (Olivier 2026-08-13) : un dépannage confirmé, ou un remorquage dont on tient
+  // l'adresse de destination. C'est exactement ce que dit l'issue choisie ici —
+  // on la traduit en scénario, et le montant se calcule dans la foulée (le PATCH
+  // fiche recalcule amount_to_collect sur ces champs).
+  //   • dépannage confirmé (ou remorquage annulé, le client repart) → dsp
+  //   • remorquage avec destination                                 → rem_client
+  //   • mise en parc : le client règle au bureau                    → rem_depot
+  const siabisSrc = (m as any).source === 'police_snc' || (m as any).source === 'sia_couvert'
+  if (siabisSrc) {
+    if (outcome === 'dsp' || outcome === 'rem2dsp')            patch.snc_scenario = 'dsp'
+    else if (outcomeIsRem(outcome) && patch.destination_address) patch.snc_scenario = 'rem_client'
+    else if (outcome === 'park')                                patch.snc_scenario = 'rem_depot'
+  }
+
   await sb.from('incoming_missions').update(patch).eq('id', (m as any).id)
+
+  // Le scénario vient de changer → le montant à réclamer doit suivre TOUT DE
+  // SUITE (le recalcul vit dans la route PATCH de la fiche, pas dans un trigger).
+  if (siabisSrc && patch.snc_scenario) {
+    try {
+      const { computeSncAmountToCollect } = await import('@/lib/snc/amount')
+      const { data: fresh } = await sb.from('incoming_missions')
+        .select('source, snc_scenario, snc_requires_balisage, amount_to_collect_manual, incident_lat, incident_lng, destination_lat, destination_lng, intervention_date, received_at, extra_addresses, billed_to_id, billed_to_name')
+        .eq('id', (m as any).id).maybeSingle()
+      const f: any = fresh || {}
+      if (f.source === 'police_snc' && f.amount_to_collect_manual !== true) {
+        if (f.snc_scenario === 'rem_depot') {
+          await sb.from('incoming_missions').update({ amount_to_collect: null }).eq('id', (m as any).id)
+        } else {
+          const amt = await computeSncAmountToCollect(f, f.snc_scenario)
+          if (amt != null && amt > 0) await sb.from('incoming_missions').update({ amount_to_collect: amt }).eq('id', (m as any).id)
+        }
+      }
+    } catch (e: any) {
+      console.warn('[cloture] recalcul montant Siabis KO (non bloquant):', e?.message)
+    }
+  }
 
   // ── Transformation propre à l'assistance ───────────────────────────────────
   // ÉCHAPPATOIRE : quand la plateforme de l'assistance est en panne (COMEX
