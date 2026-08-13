@@ -161,6 +161,10 @@ export default async function AdminPage() {
           desc="Heures jour/nuit + plage auto-dispatch nuit (modifiables sans déploiement)." />
         <Card href="/admin/notifications" icon={Bell} label="Notifications"
           desc="Canaux push, événements déclencheurs, destinataires." />
+        {user.role === 'superadmin' && (
+          <Card href="/admin/boutades" icon={FileText} label="Boutades"
+            desc="Historique des vannes affichées à Franck à l'acceptation (privé)." />
+        )}
         <Card href="/admin/decharges" icon={ShieldCheck} label="Décharges"
           desc="Modèles de décharge légale (acceptation paiement, refus...)." />
         <Card href="/admin/missions" icon={FileSignature} label="Missions (vue tech)"

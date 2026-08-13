@@ -70,6 +70,14 @@ export const NOTIFICATION_TYPES: readonly NotificationType[] = [
     applicableRoles: ['driver', 'dispatcher', 'admin', 'superadmin'],
     defaultEnabled:  true,
   },
+  {
+    key:             'boutade_mirror',
+    label:           'Boutade chauffeur (copie)',
+    description:     'Copie de la vanne humoristique affichée au chauffeur à l\'acceptation d\'une mission.',
+    category:        'admin',
+    applicableRoles: ['admin', 'superadmin'],
+    defaultEnabled:  true,
+  },
 
   // ── Chauffeur ────────────────────────────────────────────────────────
   {

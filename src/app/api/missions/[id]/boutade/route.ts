@@ -16,6 +16,7 @@ import { NextResponse }      from 'next/server'
 import { getServerSession }  from 'next-auth'
 import { authOptions }       from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase'
+import { sendNotification }  from '@/lib/notifications/send'
 import Anthropic             from '@anthropic-ai/sdk'
 import { ANTHROPIC_CHEAP_MODELS, createWithModelFallback } from '@/lib/anthropic-model'
 
@@ -50,7 +51,7 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
   if (!session?.user?.email) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const sb = createAdminClient()
-  const { data: me } = await sb.from('users').select('id').eq('email', session.user.email).maybeSingle()
+  const { data: me } = await sb.from('users').select('id, name').eq('email', session.user.email).maybeSingle()
   if ((me as any)?.id !== FRANCK) return NextResponse.json({ text: null })
 
   const { data: m } = await sb.from('incoming_missions')
@@ -60,13 +61,29 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
 
   const contexte = [m.incident_description, m.incident_type].filter(Boolean).join(' — ')
   const pick = () => REPLIS[Math.floor(Math.random() * REPLIS.length)]
+  const vehLabel = [m.vehicle_brand, m.vehicle_model].filter(Boolean).join(' ') || null
 
-  // Journal : discret, une ligne, pour pouvoir relire et régler le ton.
-  const journalise = (text: string, via: 'ia' | 'repli' | 'sujet-sérieux') =>
-    sb.from('mission_logs').insert({
-      mission_id: params.id, actor_id: (me as any)?.id ?? null,
-      action: 'boutade', notes: text, metadata: { via },
+  // Mobi (superadmin) : reçoit la boutade en notif + la retrouve dans le tableau
+  // dédié /admin/boutades. Résolu par email (pas de hardcode d'id).
+  const { data: mobi } = await sb.from('users').select('id').eq('email', 'mobi@verviersdepannage.be').maybeSingle()
+
+  // Historique À PART (table `boutades`) — PLUS dans mission_logs, donc n'apparaît
+  // PAS sur la fiche ; visible seulement par Mobi via /admin/boutades. En parallèle,
+  // on pousse la vanne en notif à Mobi. Olivier 2026-08-13.
+  const journalise = (text: string, via: 'ia' | 'repli' | 'sujet-sérieux') => {
+    sb.from('boutades').insert({
+      mission_id: params.id, driver_id: (me as any)?.id ?? null, driver_name: (me as any)?.name ?? 'Franck',
+      text, via, vehicle: vehLabel, city: m.incident_city ?? null,
     }).then(() => {}, () => {})
+    if ((mobi as any)?.id) {
+      sendNotification((mobi as any).id, 'boutade_mirror', {
+        title:      '🃏 Boutade Franck',
+        body:       text,
+        action_url: `/dispatch/${params.id}`,
+        mission_id: params.id,
+      }).catch(() => {})
+    }
+  }
 
   if (SERIEUX.test(`${contexte} ${m.source || ''}`)) {
     const t = pick()
