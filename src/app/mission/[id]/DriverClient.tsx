@@ -3223,16 +3223,18 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
         >
           <button onClick={e => { e.stopPropagation(); setScreen('encaissement') }}
             className="w-full flex items-center justify-center gap-2 text-white font-bold text-lg py-1">
+            {/* PAS de montant sur le bouton (Olivier 2026-08-13) : tant qu'on n'est
+                pas certain qu'il se rafraîchit à CHAQUE modification d'adresse ou
+                de stop, un chiffre affiché ici induirait le chauffeur en erreur
+                devant le client. Le montant est calculé et affiché sur la page
+                dédiée, au moment où on l'ouvre. */}
             <span className="text-2xl">💶</span>
-            Paiement
-            <span className="tabular-nums">
-              {formatEur(partiallyPaid ? requiredAmount - (M.payment_amount ?? 0) : requiredAmount)}
-            </span>
+            Paiement à recevoir
             <span className="text-white/80 text-xl">›</span>
           </button>
           {partiallyPaid && (
             <p className="text-white/85 text-xs text-center -mt-0.5">
-              déjà encaissé {formatEur(M.payment_amount ?? 0)} sur {formatEur(requiredAmount)}
+              déjà encaissé {formatEur(M.payment_amount ?? 0)} — il reste un solde
             </p>
           )}
           {/* Compteur discret à partir du 3e tap */}
