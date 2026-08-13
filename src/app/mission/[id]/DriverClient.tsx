@@ -568,6 +568,8 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
   const [showNav, setShowNav]   = useState(false)
   const [showVeh, setShowVeh]   = useState(false)
   const [showGrid, setShowGrid] = useState(false)
+  // Petit mot d'accueil à l'acceptation d'une mission — du décor, rien de plus.
+  const [boutade, setBoutade] = useState<string | null>(null)
   const [showPark, setShowPark] = useState(false)
   const [dischFrom, setDischFrom] = useState<Screen>('main')
   const [addrModal, setAddrModal] = useState<{ title: string; address: string; lat?: number; lng?: number; field?: string } | null>(null)
@@ -1357,6 +1359,21 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
       console.log(`[api] RES action=${action} ok=${r.ok}`, { newStatus: j.mission?.status, newLoadedAt: j.mission?.loaded_at, newDeliveringAt: j.mission?.delivering_at })
       if (!r.ok) throw new Error(j.error || 'Erreur')
       setM(j.mission)
+      // Mission acceptée : un mot pour la route (Olivier 2026-08-13). Silencieux
+      // si l'appel échoue, et jamais deux fois pour la même mission.
+      // Réservé à Franck (Olivier 2026-08-13).
+      if (action === 'accept' && currentUserId === 'de9a37aa-41b5-4a56-894b-cc304f601d1a') {
+        try {
+          const seen = `vd_boutade_${M.id}`
+          if (!localStorage.getItem(seen)) {
+            localStorage.setItem(seen, '1')
+            fetch(`/api/missions/${M.id}/boutade`, { cache: 'no-store' })
+              .then(x => x.json())
+              .then(d => { if (d?.text) setBoutade(String(d.text)) })
+              .catch(() => {})
+          }
+        } catch { /* localStorage indisponible → tant pis */ }
+      }
       // Olivier 2026-06-03 : preserve les searchParams existants (notamment
       // ?legacy=1 utilise par SNC/SC) pour eviter le re-bascule sur SncMissionFiche
       // apres chaque action (boucle infinie Vehicule charge ↔ Arrivee destination).
@@ -3491,6 +3508,25 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
       )}
 
       {setAmtModal}
+
+      {/* Le mot pour la route. Lisibilité d'abord : gros texte, fort contraste,
+          clair comme sombre, et ça se ferme au premier contact n'importe où. */}
+      {boutade && (
+        <div onClick={() => setBoutade(null)}
+          className="fixed inset-0 z-[60] bg-black/70 flex items-center justify-center p-5">
+          <div onClick={e => e.stopPropagation()}
+            className="w-full max-w-sm bg-surface border border rounded-3xl px-6 py-7 shadow-2xl">
+            <p className="text-center text-4xl mb-3">🛠️</p>
+            <p className="text-ink text-center text-[20px] font-bold leading-[1.35]">
+              {boutade}
+            </p>
+            <button onClick={() => setBoutade(null)}
+              className="mt-6 w-full py-4 bg-brand text-white rounded-2xl text-base font-bold">
+              Allez, au boulot
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Modal "Réponse à votre dérogation" : OK = reload */}
       {derogResult && (
