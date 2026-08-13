@@ -178,7 +178,10 @@ export async function POST(req: NextRequest) {
         results.push({ payoutId: id, ok: false, error: 'Versement introuvable' })
         continue
       }
-      if (payout.state !== 'ready') {
+      // « lost » est rapprochable : le module enregistre le paiement carte
+      // manquant avant de lettrer. Ne laisser passer que « ready » fermait la
+      // porte à un cas que le moteur sait traiter.
+      if (payout.state !== 'ready' && payout.state !== 'lost') {
         results.push({ payoutId: id, ok: false, error: `Versement à trancher (${payout.blocking[0] || payout.state})` })
         continue
       }
