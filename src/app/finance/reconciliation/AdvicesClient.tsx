@@ -37,10 +37,15 @@ interface Report {
   items: Item[]
   totals: { pendingAmount: number; readyCount: number; readyAmount: number; orphanCount: number; orphanAmount: number; toDecide: number }
   ready: { payments: number; amount: number; invoices: number }
+  cachedAt: string | null
+  unreadable: { subject: string; error: string }[]
 }
 
 const eur = (n: number) =>
   n.toLocaleString('fr-BE', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' €'
+
+const stamp = (iso: string) =>
+  new Date(iso).toLocaleString('fr-BE', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
 
 const day = (iso: string) =>
   new Date(iso.length === 10 ? iso + 'T00:00:00' : iso)
@@ -63,16 +68,26 @@ export default function AdvicesClient() {
   const [picked, setPicked]   = useState<Set<number>>(new Set())
   const [toast, setToast]     = useState<string | null>(null)
 
-  const load = useCallback(async () => {
-    setLoading(true); setError(null)
+  const [rereading, setRereading] = useState(false)
+
+  // `refresh` va rechercher les avis dans la boîte mail — lent, et donc réservé
+  // à un clic explicite. L'affichage normal lit le cache rempli par le cron.
+  const load = useCallback(async (refresh = false) => {
+    refresh ? setRereading(true) : setLoading(true)
+    setError(null)
     try {
-      const r = await fetch('/api/finance/advices', { cache: 'no-store' })
+      const r = await fetch(`/api/finance/advices${refresh ? '?refresh=1' : ''}`, { cache: 'no-store' })
       const j = await r.json()
       if (!r.ok) throw new Error(j.error || `Erreur ${r.status}`)
       setReport(j)
       setPicked(new Set())
       setOpen(new Set(j.items.filter((i: Item) => i.state !== 'pending' && i.bank).map((i: Item) => i.bank!.lineId)))
-    } catch (e: any) { setError(e.message) } finally { setLoading(false) }
+      if (refresh && j.synced) {
+        setToast(j.synced.read
+          ? `${j.synced.read} nouvel${j.synced.read > 1 ? 's' : ''} avis lu${j.synced.read > 1 ? 's' : ''}`
+          : 'Aucun nouvel avis dans la boîte mail')
+      }
+    } catch (e: any) { setError(e.message) } finally { setLoading(false); setRereading(false) }
   }, [])
 
   useEffect(() => { load() }, [load])
@@ -119,13 +134,13 @@ export default function AdvicesClient() {
   const togglePick = (id: number) =>
     setPicked(s => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n })
 
-  if (loading) return <p className="text-ink-muted">Lecture des avis de paiement dans la boîte mail…</p>
+  if (loading) return <p className="text-ink-muted">Chargement des avis de paiement…</p>
 
   if (error) return (
     <div className="rounded-card border border-critical/40 bg-critical-soft p-5">
       <p className="font-semibold text-critical">Impossible de lire les avis</p>
       <p className="mt-1 text-sm text-ink-secondary">{error}</p>
-      <button onClick={load} className="mt-3 rounded-btn border border-strong px-4 py-2 text-sm font-semibold">Réessayer</button>
+      <button onClick={() => load()} className="mt-3 rounded-btn border border-strong px-4 py-2 text-sm font-semibold">Réessayer</button>
     </div>
   )
 
@@ -145,7 +160,9 @@ export default function AdvicesClient() {
 
       <div className="flex flex-wrap items-center justify-between gap-3">
         <p className="text-[13px] text-ink-muted">
-          Les avis sont lus directement dans la boîte info@. Un avis sans virement n&apos;est pas une anomalie : l&apos;assureur annonce avant de payer.
+          Les avis de la boîte info@ sont relus automatiquement à 5 h et à midi
+          {report.cachedAt && <> — dernière lecture le {stamp(report.cachedAt)}</>}.
+          {' '}Un avis sans virement n&apos;est pas une anomalie : l&apos;assureur annonce avant de payer.
         </p>
         <div className="flex gap-2">
           {readyIds.length > 0 && (
@@ -154,12 +171,32 @@ export default function AdvicesClient() {
               {picked.size === readyIds.length ? 'Tout décocher' : 'Cocher tous les prêts'}
             </button>
           )}
-          <button onClick={load} disabled={busy}
+          <button onClick={() => load()} disabled={busy || rereading}
             className="rounded-btn border border-strong px-3 py-1.5 text-xs font-semibold text-ink-secondary hover:bg-surface-hover disabled:text-ink-faint">
             Actualiser
           </button>
+          <button onClick={() => load(true)} disabled={busy || rereading}
+            className="rounded-btn border border-strong px-3 py-1.5 text-xs font-semibold text-ink-secondary hover:bg-surface-hover disabled:text-ink-faint">
+            {rereading ? 'Lecture des mails…' : 'Relire la boîte mail'}
+          </button>
         </div>
       </div>
+
+      {report.unreadable?.length > 0 && (
+        <div className="rounded-card border border-warning/40 bg-warning-soft p-4">
+          <p className="text-[13px] font-semibold text-warning">
+            {report.unreadable.length} avis reçu{report.unreadable.length > 1 ? 's' : ''} mais illisible{report.unreadable.length > 1 ? 's' : ''}
+          </p>
+          <ul className="mt-1.5 flex flex-col gap-1 text-[12.5px] text-ink-secondary">
+            {report.unreadable.map((u, i) => (
+              <li key={i}>{u.subject} — {u.error}</li>
+            ))}
+          </ul>
+          <p className="mt-1.5 text-[12px] text-ink-muted">
+            Chaque relecture les retente. S&apos;ils persistent, le document est à joindre à la main.
+          </p>
+        </div>
+      )}
 
       <div className="flex flex-col gap-2.5">
         {report.items.length === 0 && (

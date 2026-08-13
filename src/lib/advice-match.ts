@@ -28,6 +28,7 @@
 
 import { odooRpc }        from '@/lib/odoo'
 import { readAllAdvices, type PaymentAdvice } from '@/lib/payment-advices'
+import { cachedAdvices }  from '@/lib/advice-cache'
 
 export type AdviceState = 'pending' | 'ready' | 'gap' | 'miss' | 'orphan' | 'done'
 
@@ -50,6 +51,8 @@ export interface MatchedInvoice {
   paymentState: string | null
   matchedBy:    'numéro' | 'référence interne' | null
   issue:        'introuvable' | 'écart' | 'déjà soldée' | null
+  /** L'assureur règle puis reprend la même facture dans le même avis : effet nul. */
+  neutralisee?: boolean
 }
 
 export interface MatchedAdvicePayment {
@@ -69,6 +72,10 @@ export interface MatchedAdvicePayment {
 
 export interface AdviceReport {
   items: MatchedAdvicePayment[]
+  /** Quand les avis ont été lus dans la boîte mail (cron de 5 h et de midi). */
+  cachedAt: string | null
+  /** Avis reçus mais dont l'extraction n'a rien donné — signalés, pas masqués. */
+  unreadable: { subject: string; error: string }[]
   totals: {
     pendingAmount: number      // annoncé, pas encore reçu
     readyCount:    number
@@ -128,10 +135,44 @@ async function invoicesByRefs(refs: string[]): Promise<Map<string, any>> {
   return map
 }
 
-/** Résout les lignes d'un avis en factures Odoo. */
+/**
+ * Résout les lignes d'un avis en factures Odoo.
+ *
+ * ⚠️ On REGROUPE d'abord par facture. Un assureur peut régler une pièce puis se
+ * la reprendre dans le même avis — IMA le fait avec une ligne positive et une
+ * ligne négative du même montant. Ligne à ligne, le montant négatif ne
+ * correspond à rien et le versement partait en « écart » ; regroupées, les deux
+ * s'annulent et la facture reste simplement ouverte, ce qui est le fait.
+ */
 function resolveLines(advice: PaymentAdvice, invoices: Map<string, any>): MatchedInvoice[] {
-  return advice.lines.map(l => {
+  const parLigne = new Map<string, number>()
+  for (const l of advice.lines) {
+    const ref = l.invoiceRef.trim()
+    parLigne.set(ref, r2((parLigne.get(ref) ?? 0) + l.amount))
+  }
+
+  const vues = new Set<string>()
+  return advice.lines.filter(l => {
+    const ref = l.invoiceRef.trim()
+    if (vues.has(ref)) return false
+    vues.add(ref)
+    return true
+  }).map(l0 => {
+    const l = { ...l0, amount: parLigne.get(l0.invoiceRef.trim()) ?? l0.amount }
     const inv = invoices.get(l.invoiceRef.trim())
+
+    // Réglée puis reprise : rien à lettrer, la facture reste due.
+    if (Math.abs(l.amount) < 0.005) {
+      return {
+        ref: l.invoiceRef, amount: 0,
+        invoiceId: inv?.id ?? null, invoiceName: inv?.name ?? null,
+        invoiceTotal: inv ? r2(Number(inv.amount_total)) : null,
+        residual: inv ? r2(Number(inv.amount_residual)) : null,
+        paymentState: inv?.payment_state ?? null,
+        matchedBy: inv?._by ?? null,
+        issue: null, neutralisee: true,
+      }
+    }
     if (!inv) {
       return {
         ref: l.invoiceRef, amount: l.amount,
@@ -158,17 +199,28 @@ function resolveLines(advice: PaymentAdvice, invoices: Map<string, any>): Matche
 /**
  * Construit le rapport.
  *
- * @param monthsBack profondeur de lecture des mails et des virements.
+ * Les avis viennent du CACHE (`payment_advices`), rempli par le cron de 5 h et
+ * de midi. Relire la boîte mail à chaque affichage coûtait 30 à 90 secondes
+ * pour un résultat identique : un avis reçu ne change plus jamais.
+ *
+ * @param monthsBack profondeur de lecture des avis et des virements.
+ * @param opts.live  relit la boîte mail au lieu du cache — dépannage seulement.
  */
-export async function buildAdviceReport(monthsBack = 2): Promise<AdviceReport> {
+export async function buildAdviceReport(
+  monthsBack = 2,
+  opts: { live?: boolean } = {},
+): Promise<AdviceReport> {
   const since = new Date()
   since.setUTCMonth(since.getUTCMonth() - monthsBack)
   const sinceIso = since.toISOString()
 
-  const [advices, lines] = await Promise.all([
-    readAllAdvices(sinceIso),
+  const [cache, lines] = await Promise.all([
+    opts.live
+      ? readAllAdvices(sinceIso).then(advices => ({ advices, fetchedAt: new Date().toISOString(), failed: [] }))
+      : cachedAdvices(sinceIso),
     insurerBankLines(sinceIso),
   ])
+  const advices = cache.advices
 
   const invoices = await invoicesByRefs(advices.flatMap(a => a.lines.map(l => l.invoiceRef)))
 
@@ -178,7 +230,7 @@ export async function buildAdviceReport(monthsBack = 2): Promise<AdviceReport> {
   for (const advice of advices) {
     const payer = PAYERS.find(p => p.key === advice.provider)!
     const resolved = resolveLines(advice, invoices)
-    const linesSum = r2(resolved.reduce((s, x) => s + x.amount, 0))
+    const linesSum = r2(resolved.reduce((s, x) => s + x.amount, 0))   // les neutralisées valent 0
 
     // Appariement : même payeur, montant du virement égal à la somme des
     // lignes, et virement postérieur à l'avis dans la fenêtre.
@@ -194,6 +246,7 @@ export async function buildAdviceReport(monthsBack = 2): Promise<AdviceReport> {
 
     const blocking: string[] = []
     for (const x of resolved) {
+      if (x.neutralisee) continue   // réglée puis reprise : rien à signaler
       if (x.issue === 'introuvable') blocking.push(`Aucune facture pour la référence ${x.ref}`)
       if (x.issue === 'écart')       blocking.push(`${x.invoiceName} : ${x.amount.toFixed(2)} € annoncés pour une facture de ${(x.invoiceTotal ?? 0).toFixed(2)} €`)
       if (x.issue === 'déjà soldée') blocking.push(`${x.invoiceName} est déjà soldée dans Odoo`)
@@ -254,6 +307,8 @@ export async function buildAdviceReport(monthsBack = 2): Promise<AdviceReport> {
 
   return {
     items,
+    cachedAt:   cache.fetchedAt,
+    unreadable: cache.failed,
     totals: {
       pendingAmount: sum(by('pending'), i => i.linesSum),
       readyCount:    by('ready').length,

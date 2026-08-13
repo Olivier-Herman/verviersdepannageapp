@@ -16,6 +16,7 @@ import { authOptions }               from '@/lib/auth'
 import { sessionAccess }             from '@/lib/access'
 import { createAdminClient }         from '@/lib/supabase'
 import { buildAdviceReport }         from '@/lib/advice-match'
+import { syncAdvices }               from '@/lib/advice-cache'
 import { buildAdvicePlan, summarizeAdvicePlans, postAdvicePlan } from '@/lib/advice-post'
 
 export const dynamic     = 'force-dynamic'
@@ -42,6 +43,18 @@ export async function GET(req: NextRequest) {
 
   try {
     const months = Math.min(12, Math.max(1, Number(req.nextUrl.searchParams.get('months')) || 2))
+
+    // L'écran lit le cache — instantané. `refresh=1` va rechercher les avis
+    // arrivés depuis le dernier passage du cron (5 h et midi) ; c'est le seul
+    // chemin qui parle à Graph, et il est déclenché par un clic, jamais par
+    // l'affichage.
+    let synced: any = null
+    if (req.nextUrl.searchParams.get('refresh') === '1') {
+      const since = new Date()
+      since.setUTCMonth(since.getUTCMonth() - months)
+      synced = await syncAdvices(since.toISOString())
+    }
+
     const [report, done] = await Promise.all([buildAdviceReport(months), alreadyDone()])
 
     const items = report.items.filter(i => i.state !== 'done' && !(i.bank && done.has(i.bank.lineId)))
@@ -52,6 +65,9 @@ export async function GET(req: NextRequest) {
       items,
       totals: report.totals,
       ready: summarizeAdvicePlans(plans),
+      cachedAt:   report.cachedAt,
+      unreadable: report.unreadable,
+      synced,
       generatedAt: new Date().toISOString(),
     }, { headers: { 'Cache-Control': 'no-store' } })
   } catch (e: any) {
@@ -83,7 +99,7 @@ export async function POST(req: NextRequest) {
 
       const plan = buildAdvicePlan(item)
       try {
-        const { reconciled } = await postAdvicePlan(plan)
+        const { reconciled, paymentIds } = await postAdvicePlan(plan)
 
         await sb.from('payout_reconciliations').insert({
           provider:     item.payer,
@@ -95,7 +111,7 @@ export async function POST(req: NextRequest) {
           commission_amount: 0,
           bank_line_id: plan.bankLineId,
           invoice_ids:  plan.invoiceIds,
-          payment_ids:  [],
+          payment_ids:  paymentIds,
           reconciled_by: access.id,
           payload:      { item, plan },
         })

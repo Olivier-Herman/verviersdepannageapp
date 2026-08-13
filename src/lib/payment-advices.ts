@@ -39,6 +39,14 @@ export interface AdviceLine {
   invoiceDate: string | null  // ISO
 }
 
+/** La pièce jointe d'origine — gardée jusqu'au rapprochement, puis libérée. */
+export interface AdviceDoc {
+  name:  string
+  mime:  string
+  bytes: number
+  b64:   string
+}
+
 export interface PaymentAdvice {
   provider:    AdviceProvider
   mailId:      string
@@ -51,6 +59,8 @@ export interface PaymentAdvice {
   /** La somme des lignes doit égaler le total. Sinon : pas de rapprochement auto. */
   checksum:    { linesSum: number; delta: number; ok: boolean }
   warnings:    string[]
+  /** Présent à la lecture du mail, absent quand l'avis vient du cache. */
+  doc?:        AdviceDoc | null
 }
 
 const MAILBOX = 'info@verviersdepannage.com'
@@ -166,38 +176,28 @@ function parseImaCsv(bytes: Buffer): { lines: AdviceLine[]; warnings: string[] }
   return { lines, warnings }
 }
 
-/** Les avis de paiement IMA reçus depuis `sinceIso`. */
-export async function readImaAdvices(sinceIso: string): Promise<PaymentAdvice[]> {
-  const token = await getAppOnlyToken()
-  if (!token) throw new Error('Microsoft Graph non configuré (AZURE_AD_*)')
+/** Un avis IMA : le CSV joint suffit, aucun modèle en jeu. */
+async function readImaAdvice(mail: MailRef, token: string): Promise<PaymentAdvice> {
+  const atts = await attachmentsOf(mail.id, token)
+  const csv  = atts.find(a => /\.csv$/i.test(a.name))
+  if (!csv) return emptyAdvice('ima', mail, ['Aucun CSV joint à cet avis'])
 
-  const mails = (await mailsFrom('dfc@imabenelux.com', token))
-    .filter(m => m.receivedDateTime >= sinceIso && /avis de paiement/i.test(m.subject))
-
-  const out: PaymentAdvice[] = []
-  for (const mail of mails) {
-    const atts = await attachmentsOf(mail.id, token)
-    const csv  = atts.find(a => /\.csv$/i.test(a.name))
-    if (!csv) {
-      out.push(emptyAdvice('ima', mail, ['Aucun CSV joint à cet avis']))
-      continue
-    }
-    const { lines, warnings } = parseImaCsv(await attachmentBytes(mail.id, csv.id, token))
-    // IMA n'annonce pas de total dans le CSV : le total EST la somme des lignes.
-    // Le contrôle se fait alors contre la ligne bancaire, pas contre le fichier.
-    const sum = r2(lines.reduce((s, l) => s + l.amount, 0))
-    out.push({
-      provider: 'ima',
-      mailId: mail.id, subject: mail.subject, receivedAt: mail.receivedDateTime,
-      adviceDate: mail.receivedDateTime.slice(0, 10),
-      reference: mail.subject.match(/-\s*(\w+)\s*-/)?.[1] ?? null,
-      total: sum,
-      lines,
-      checksum: { linesSum: sum, delta: 0, ok: lines.length > 0 },
-      warnings,
-    })
+  const bytes = await attachmentBytes(mail.id, csv.id, token)
+  const { lines, warnings } = parseImaCsv(bytes)
+  // IMA n'annonce pas de total dans le CSV : le total EST la somme des lignes.
+  // Le contrôle se fait alors contre la ligne bancaire, pas contre le fichier.
+  const sum = r2(lines.reduce((s, l) => s + l.amount, 0))
+  return {
+    provider: 'ima',
+    mailId: mail.id, subject: mail.subject, receivedAt: mail.receivedDateTime,
+    adviceDate: mail.receivedDateTime.slice(0, 10),
+    reference: mail.subject.match(/-\s*(\w+)\s*-/)?.[1] ?? null,
+    total: sum,
+    lines,
+    checksum: { linesSum: sum, delta: 0, ok: lines.length > 0 },
+    warnings,
+    doc: { name: csv.name, mime: csv.contentType || 'text/csv', bytes: bytes.length, b64: bytes.toString('base64') },
   }
-  return out
 }
 
 // ── AWP / Mondial : le PDF ──────────────────────────────────
@@ -268,44 +268,39 @@ async function extractAwpPdf(pdf: Buffer): Promise<{
 }
 
 /**
- * Les avis de virement AWP reçus depuis `sinceIso`.
+ * Un avis AWP : le PDF passe par Claude. C'est l'étape coûteuse du module —
+ * d'où le cache, qui garantit qu'un même PDF n'est lu qu'une fois.
  * Un mail = un avis = un « Tiers » ; plusieurs peuvent arriver le même jour.
  */
-export async function readAwpAdvices(sinceIso: string): Promise<PaymentAdvice[]> {
-  const token = await getAppOnlyToken()
-  if (!token) throw new Error('Microsoft Graph non configuré (AZURE_AD_*)')
+async function readAwpAdvice(mail: MailRef, token: string): Promise<PaymentAdvice> {
+  const atts = await attachmentsOf(mail.id, token)
+  const pdf  = atts.find(a => /\.pdf$/i.test(a.name))
+  if (!pdf) return emptyAdvice('awp', mail, ['Aucun PDF joint à cet avis'])
 
-  const mails = (await mailsFrom('accountancy.be@allianz.com', token))
-    .filter(m => m.receivedDateTime >= sinceIso && /payment advice note/i.test(m.subject))
+  const bytes = await attachmentBytes(mail.id, pdf.id, token)
+  const doc   = { name: pdf.name, mime: pdf.contentType || 'application/pdf', bytes: bytes.length, b64: bytes.toString('base64') }
 
-  const out: PaymentAdvice[] = []
-  for (const mail of mails) {
-    const atts = await attachmentsOf(mail.id, token)
-    const pdf  = atts.find(a => /\.pdf$/i.test(a.name))
-    if (!pdf) { out.push(emptyAdvice('awp', mail, ['Aucun PDF joint à cet avis'])); continue }
-
-    try {
-      const x   = await extractAwpPdf(await attachmentBytes(mail.id, pdf.id, token))
-      const sum = r2(x.lines.reduce((s, l) => s + l.amount, 0))
-      const delta = r2(sum - x.total)
-      out.push({
-        provider: 'awp',
-        mailId: mail.id, subject: mail.subject, receivedAt: mail.receivedDateTime,
-        adviceDate: x.adviceDate ?? mail.receivedDateTime.slice(0, 10),
-        // Le « Tiers » figure aussi dans l'objet du mail — filet si le PDF muet.
-        reference: x.reference ?? mail.subject.match(/\b(BEVO\d+)\b/i)?.[1] ?? null,
-        total: x.total,
-        lines: x.lines,
-        checksum: { linesSum: sum, delta, ok: x.lines.length > 0 && Math.abs(delta) < 0.005 },
-        warnings: Math.abs(delta) < 0.005 ? [] : [
-          `Le détail ne boucle pas : ${sum.toFixed(2)} € de lignes pour un total annoncé de ${x.total.toFixed(2)} €`,
-        ],
-      })
-    } catch (e: any) {
-      out.push(emptyAdvice('awp', mail, [String(e?.message || e)]))
+  try {
+    const x     = await extractAwpPdf(bytes)
+    const sum   = r2(x.lines.reduce((s, l) => s + l.amount, 0))
+    const delta = r2(sum - x.total)
+    return {
+      provider: 'awp',
+      mailId: mail.id, subject: mail.subject, receivedAt: mail.receivedDateTime,
+      adviceDate: x.adviceDate ?? mail.receivedDateTime.slice(0, 10),
+      // Le « Tiers » figure aussi dans l'objet du mail — filet si le PDF muet.
+      reference: x.reference ?? mail.subject.match(/\b(BEVO\d+)\b/i)?.[1] ?? null,
+      total: x.total,
+      lines: x.lines,
+      checksum: { linesSum: sum, delta, ok: x.lines.length > 0 && Math.abs(delta) < 0.005 },
+      warnings: Math.abs(delta) < 0.005 ? [] : [
+        `Le détail ne boucle pas : ${sum.toFixed(2)} € de lignes pour un total annoncé de ${x.total.toFixed(2)} €`,
+      ],
+      doc,
     }
+  } catch (e: any) {
+    return { ...emptyAdvice('awp', mail, [String(e?.message || e)]), doc }
   }
-  return out
 }
 
 function emptyAdvice(provider: AdviceProvider, mail: MailRef, warnings: string[]): PaymentAdvice {
@@ -315,11 +310,62 @@ function emptyAdvice(provider: AdviceProvider, mail: MailRef, warnings: string[]
     total: 0, lines: [],
     checksum: { linesSum: 0, delta: 0, ok: false },
     warnings,
+    doc: null,
   }
 }
 
-/** Les avis des deux assureurs, du plus récent au plus ancien. */
+// ── Lister, puis lire ───────────────────────────────────────
+//
+// Deux temps volontairement séparés : lister les mails est rapide (une requête
+// Graph par expéditeur), les lire est lent (une requête par pièce jointe, plus
+// Claude sur chaque PDF). Le cache s'intercale entre les deux et ne fait relire
+// que ce qu'il n'a jamais vu.
+
+/** Où les avis arrivent, et à quoi on les reconnaît. */
+const SOURCES = [
+  { provider: 'ima' as const, sender: 'dfc@imabenelux.com',         subject: /avis de paiement/i },
+  { provider: 'awp' as const, sender: 'accountancy.be@allianz.com', subject: /payment advice note/i },
+]
+
+export interface AdviceMailRef {
+  provider:   AdviceProvider
+  id:         string
+  subject:    string
+  receivedAt: string
+}
+
+/** Les mails d'avis reçus depuis `sinceIso`, sans ouvrir la moindre pièce jointe. */
+export async function listAdviceMails(sinceIso: string): Promise<AdviceMailRef[]> {
+  const token = await getAppOnlyToken()
+  if (!token) throw new Error('Microsoft Graph non configuré (AZURE_AD_*)')
+
+  const out: AdviceMailRef[] = []
+  for (const src of SOURCES) {
+    const mails = (await mailsFrom(src.sender, token))
+      .filter(m => m.receivedDateTime >= sinceIso && src.subject.test(m.subject))
+    for (const m of mails) {
+      out.push({ provider: src.provider, id: m.id, subject: m.subject, receivedAt: m.receivedDateTime })
+    }
+  }
+  return out.sort((a, b) => b.receivedAt.localeCompare(a.receivedAt))
+}
+
+/** Lit un avis : pièce jointe téléchargée et détail extrait. C'est l'étape lente. */
+export async function readAdviceMail(ref: AdviceMailRef): Promise<PaymentAdvice> {
+  const token = await getAppOnlyToken()
+  if (!token) throw new Error('Microsoft Graph non configuré (AZURE_AD_*)')
+
+  const mail: MailRef = { id: ref.id, subject: ref.subject, receivedDateTime: ref.receivedAt }
+  return ref.provider === 'ima' ? readImaAdvice(mail, token) : readAwpAdvice(mail, token)
+}
+
+/**
+ * Les avis des deux assureurs, du plus récent au plus ancien, lus en direct.
+ * Chemin de secours : l'écran passe par le cache (cf. advice-cache.ts).
+ */
 export async function readAllAdvices(sinceIso: string): Promise<PaymentAdvice[]> {
-  const [ima, awp] = await Promise.all([readImaAdvices(sinceIso), readAwpAdvices(sinceIso)])
-  return [...ima, ...awp].sort((a, b) => b.receivedAt.localeCompare(a.receivedAt))
+  const refs = await listAdviceMails(sinceIso)
+  const out: PaymentAdvice[] = []
+  for (const ref of refs) out.push(await readAdviceMail(ref))
+  return out
 }
