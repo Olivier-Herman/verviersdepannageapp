@@ -73,6 +73,49 @@ export async function importComexByRefs(opts: {
   payload.raw_content   = comexRaw
   payload.dispatch_mode = 'manual'
 
+  // ── CHAÎNAGE PAR COMMANDE, avant tout le reste ──────────────────────────
+  // `external_id` est le n° d'ACTION (…MA) : il CHANGE à chaque étape du cycle
+  // (dépannage → remorquage → transfert). Chercher par lui seul ne pouvait donc
+  // jamais reconnaître la jambe suivante — d'où une 2e fiche créée à côté de
+  // celle du chauffeur. Vu en réel le 13/08 sur ACRX747 : Franck transforme en
+  // remorquage à 13:20, Touring ouvre la séquence 201, elle arrive par mail à
+  // 13:21 comme une fiche neuve « en dispatching », et la livraison de 13:41
+  // part sur la séquence 200 déjà clôturée (COMEX 07→07) pendant que la vraie
+  // jambe remorquage attend un chauffeur.
+  //
+  // Le poll COMEX (src/lib/touring/import.ts) savait déjà chaîner sur le n° de
+  // COMMANDE (2026BE…, constant tout le cycle) ; ce chemin-ci, déclenché par le
+  // MAIL, ne le savait pas. Même règle des deux côtés, garde anti-recul comprise.
+  // Olivier 2026-08-13.
+  if (match.CID_DOS) {
+    const { data: lineage } = await supabase.from('incoming_missions')
+      .select('id, status, mission_number, raw_content')
+      .eq('dossier_number', String(match.CID_DOS))
+      .not('status', 'in', '(cancelled,completed,to_invoice,invoiced,ignored,deleted)')
+      .order('updated_at', { ascending: false })
+      .limit(1).maybeSingle()
+    if (lineage && (lineage as any).id !== placeholderId) {
+      const lin: any = lineage
+      let curSeq = -1
+      try { curSeq = parseInt(String(JSON.parse(lin.raw_content || '{}').CID_SEQ_ACTION || ''), 10) } catch { /* raw non-JSON */ }
+      const newSeq = parseInt(String(match.CID_SEQ_ACTION), 10)
+      // On n'avance QUE vers une action plus récente — jamais de retour en arrière.
+      if (Number.isFinite(newSeq) && (curSeq < 0 || newSeq > curSeq)) {
+        await supabase.from('incoming_missions').update({
+          source_format: 'comex', raw_content: comexRaw, external_id: externalId,
+          updated_at: new Date().toISOString(),
+        }).eq('id', lin.id)
+        await supabase.from('mission_logs').insert({
+          mission_id: lin.id, action: 'touring_synced',
+          notes: `Touring : action ${match.CID_SEQ_ACTION} rattachée à cette fiche (séquence ${curSeq} → ${newSeq}) — pas de 2e fiche.`,
+          metadata: { cid_dos: match.CID_DOS, seq_from: curSeq, seq_to: newSeq, external_id: externalId, via: 'mail' },
+        }).then(() => {}, () => {})
+        if (placeholderId) await supabase.from('incoming_missions').delete().eq('id', placeholderId)
+        return { matched: true, missionId: lin.id, externalId, action: 'linked' }
+      }
+    }
+  }
+
   // Fiche déjà présente avec ce ref (import COMEX précédent ou 1er mail) ?
   const { data: existing } = await supabase.from('incoming_missions')
     .select('id, status, source_format').eq('external_id', externalId).maybeSingle()
