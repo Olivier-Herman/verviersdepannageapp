@@ -208,7 +208,8 @@ export async function postPlan(plan: PostingPlan, actorNote?: string): Promise<{
     ['payment_id', 'in', plan.paymentIds],
   ]], { fields: ['id', 'debit', 'payment_id'], limit: 200 })
 
-  const availableSum = r2(available.reduce((s, l) => s + Number(l.debit || 0), 0))
+  const toCreateSum  = r2(plan.paymentsToCreate.reduce((s, m) => s + m.amount, 0))
+  const availableSum = r2(available.reduce((s, l) => s + Number(l.debit || 0), 0) + toCreateSum)
   if (availableSum + 0.005 < plan.gross) {
     const used = plan.paymentIds.filter(id => !available.some(l => (Array.isArray(l.payment_id) ? l.payment_id[0] : l.payment_id) === id))
     throw new Error(
@@ -219,6 +220,26 @@ export async function postPlan(plan: PostingPlan, actorNote?: string): Promise<{
   }
 
   // ── Écritures ─────────────────────────────────────────────
+  // 0. Les paiements manquants (encaissements perdus) : le client a payé au
+  //    terminal mais la facture est restée ouverte dans Odoo. On enregistre le
+  //    paiement Bancontact sur la caisse du terminal, ce qui solde la facture
+  //    et crée la ligne 542 que le lettrage suivant consommera.
+  const createdPaymentIds: number[] = []
+  for (const m of plan.paymentsToCreate) {
+    const id = await registerPayment(m)
+    createdPaymentIds.push(id)
+  }
+  if (createdPaymentIds.length) {
+    plan.paymentIds.push(...createdPaymentIds)
+    // Les lignes 542 fraîchement créées doivent entrer dans le lettrage.
+    const fresh = await odooRpc<any[]>('account.move.line', 'search_read', [[
+      ['account_id', '=', ACC.outstanding],
+      ['reconciled', '=', false],
+      ['payment_id', 'in', createdPaymentIds],
+    ]], { fields: ['id', 'debit', 'payment_id'], limit: 50 })
+    available.push(...fresh)
+  }
+
   let odMoveId: number | null = null
 
   if (plan.od) {
@@ -277,8 +298,50 @@ export async function postPlan(plan: PostingPlan, actorNote?: string): Promise<{
         await odooRpc('account.move', 'unlink', [[odMoveId]])
       } catch { /* idem */ }
     }
+    // Les paiements créés à l'étape 0 doivent partir aussi, sinon la facture
+    // reste soldée par un paiement qui ne correspond à aucun lettrage.
+    for (const pid of createdPaymentIds) {
+      try {
+        await odooRpc('account.payment', 'action_draft', [[pid]])
+        await odooRpc('account.payment', 'unlink', [[pid]])
+      } catch { /* idem */ }
+    }
     throw e
   }
+}
+
+/**
+ * Enregistre le paiement Bancontact manquant sur une facture restée ouverte.
+ *
+ * On passe par l'assistant `account.payment.register` plutôt que de créer un
+ * `account.payment` à la main : c'est lui qui choisit les bons comptes, pose
+ * le partenaire, valide l'écriture et lettre le paiement sur la facture. Le
+ * faire soi-même reviendrait à réimplémenter — mal — ce que fait Odoo.
+ *
+ * @returns l'id du paiement créé.
+ */
+async function registerPayment(m: MissingPayment): Promise<number> {
+  const ctx = { active_model: 'account.move', active_ids: [m.invoiceId], active_id: m.invoiceId }
+
+  const wizardId = await odooRpc<number>('account.payment.register', 'create', [{
+    payment_date:           m.date,
+    amount:                 m.amount,
+    journal_id:             m.journal,
+    payment_method_line_id: m.methodLine,
+    communication:          m.invoiceName,
+  }], { context: ctx })
+
+  await odooRpc('account.payment.register', 'action_create_payments', [[wizardId]], { context: ctx })
+
+  // L'assistant ne renvoie pas l'id du paiement : on le retrouve par la facture.
+  const payments = await odooRpc<any[]>('account.payment', 'search_read', [[
+    ['reconciled_invoice_ids', 'in', [m.invoiceId]],
+  ]], { fields: ['id'], order: 'id desc', limit: 1 })
+
+  if (!payments.length) {
+    throw new Error(`Paiement créé pour ${m.invoiceName} mais introuvable ensuite — à vérifier dans Odoo`)
+  }
+  return payments[0].id
 }
 
 async function bankMoveIdOf(bankLineId: number): Promise<number> {
