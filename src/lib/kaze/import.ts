@@ -267,6 +267,58 @@ export async function importKazeJob(
       }
     }
 
+    // ── AUTO-FUSION d'une RELIVRAISON sur un véhicule DÉJÀ EN PARC ───────────
+    // « Pourquoi passer par une acceptation manuelle ? Ça ne serait pas plus
+    // simple qu'elle s'auto-valide et évite de polluer l'écran de commande ? »
+    // (Olivier 2026-08-13). Le dispatcher ne faisait que confirmer l'évidence :
+    // le véhicule est chez nous, Kaze demande sa relivraison, il n'y a rien à
+    // décider. On le fait donc à l'arrivée, et la fiche part directement dans
+    // « À relivrer » au lieu de dormir dans l'écran de commande.
+    //
+    // Garde-fous : uniquement une RELIVRAISON, sur un parent EN PARC de la MÊME
+    // plaque, qui n'a pas déjà une relivraison rattachée. Le moindre doute →
+    // on ne touche à rien et le dispatcher tranche comme avant.
+    if (result.action === 'insert' && result.mission_id
+        && (mapped.incident_type === 'relivraison' || /AB$/.test(String(mapped.dossier_number || '')))) {
+      try {
+        let parent: any = null
+        if (parent_mission_id) {
+          const { data } = await sb.from('incoming_missions')
+            .select('id, status, rel_kaze_job_id').eq('id', parent_mission_id).maybeSingle()
+          if (data?.status === 'parked' && !data.rel_kaze_job_id) parent = data
+        }
+        if (!parent && mapped.vehicle_plate) {
+          const { data } = await sb.from('incoming_missions')
+            .select('id, status, rel_kaze_job_id')
+            .eq('vehicle_plate', mapped.vehicle_plate).eq('status', 'parked')
+            .is('rel_kaze_job_id', null)
+            .neq('id', result.mission_id)
+            .order('received_at', { ascending: false }).limit(1).maybeSingle()
+          if (data) parent = data
+        }
+        if (parent?.id) {
+          const { mergeKazeRelIntoParked } = await import('@/lib/kaze/merge-rel')
+          const r = await mergeKazeRelIntoParked({
+            sb, parentId: parent.id, actorId: null,
+            actorName: 'rattachée automatiquement à l’arrivée du job',
+            rel: {
+              id: result.mission_id,
+              kaze_job_id:         kazeJobId,
+              kaze_proposal_id:    (mapped as any).kaze_proposal_id ?? null,
+              destination_address: mapped.destination_address,
+              destination_lat:     (mapped as any).destination_lat ?? null,
+              destination_lng:     (mapped as any).destination_lng ?? null,
+            },
+          })
+          warnings.push(`Relivraison auto-fusionnée dans la fiche en parc (zone ${r.zone})`)
+        }
+      } catch (e: any) {
+        // Best-effort : en cas de pépin, la fiche reste « new » et le dispatcher
+        // la valide à la main, exactement comme avant.
+        warnings.push(`Auto-fusion relivraison échouée : ${e?.message || e}`)
+      }
+    }
+
     // Log mission
     await sb.from('mission_logs').insert({
       mission_id: result.mission_id,

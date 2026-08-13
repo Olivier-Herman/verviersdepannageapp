@@ -116,78 +116,22 @@ export async function POST(req: Request) {
       }
 
       if (parentId) {
-        // 1. Validation Kaze conservée (proposal de la relivraison).
-        await acceptKazeProposalBg(mission_id, mission?.kaze_proposal_id, actor?.id || null, supabase)
-
-        // Adresse du parc (dépôt où le véhicule est physiquement) → destination.
-        // Règle métier : véhicule en parc ⇒ destination = adresse du parc, et
-        // l'adresse de RELIVRAISON = l'ancienne destination (le garage/client).
-        let parcAddr: string | null = null
-        {
-          const { data: pRow } = await supabase.from('incoming_missions')
-            .select('depot_depart_id').eq('id', parentId).maybeSingle()
-          const depotId = (pRow as any)?.depot_depart_id
-          if (depotId) {
-            const { data: d } = await supabase.from('depots').select('address').eq('id', depotId).maybeSingle()
-            parcAddr = (d?.address || '').trim() || null
-          }
-          if (!parcAddr) {
-            const { data: d } = await supabase.from('depots').select('address').eq('is_default', true).eq('active', true).maybeSingle()
-            parcAddr = (d?.address || '').trim() || null
-          }
-        }
-
-        // 2. Compléter la fiche parc parent + transfert du lien Kaze.
-        const redelivery = (mission.destination_address || '').trim() || null
-        // K1 « en attente d'adresse » si la relivraison n'a pas de vraie destination
-        // (absente ou = un de nos dépôts), sinon K. Olivier 2026-07-13.
-        const { relivraisonZoneFor } = await import('@/lib/parc/relivraison-zone')
-        const relZone = await relivraisonZoneFor(supabase, redelivery)
-        const updParent: Record<string, any> = {
-          parc_zone_key:    relZone,
-          parc_row_number:  null,
-          parc_slot_index:  null,
-          mission_type:     'REM+REL',
-          // Job Kaze de la RELIVRAISON stocké à part : NE PAS écraser kaze_job_id du
-          // parent (= job du REMORQUAGE, qui a sa propre clôture). La relivraison
-          // généralisée héritera de rel_kaze_job_id (voir create-relivraison.ts) →
-          // les DEUX jobs Kaze se clôturent, chacun le sien.
-          rel_kaze_job_id:  mission.kaze_job_id || null,
-          updated_at:       now,
-        }
-        if (redelivery)                      updParent.redelivery_address  = redelivery
-        if (parcAddr)                        updParent.destination_address = parcAddr   // destination = le parc
-        if (mission.destination_lat != null) updParent.redelivery_lat     = mission.destination_lat
-        if (mission.destination_lng != null) updParent.redelivery_lng     = mission.destination_lng
-        await supabase.from('incoming_missions').update(updParent).eq('id', parentId)
-        await supabase.from('mission_logs').insert({
-          mission_id: parentId, actor_id: actor?.id || null, action: 'request_relivraison',
-          notes: `Relivraison Kaze rattachée → zone ${relZone}${redelivery ? ' · ' + redelivery : ''} (validée par ${actor?.name || 'dispatcher'})`,
-          metadata: { merged_from_kaze_rel: mission_id, redelivery_address: redelivery },
-        }).then(() => {}, () => {})
-
-        // 3. Neutraliser la fiche relivraison Kaze (pas de mission séparée).
-        //    On TRANSFÈRE le job Kaze : il est déjà copié dans rel_kaze_job_id du
-        //    parent (ci-dessus) → on le RETIRE de la fiche ignorée, sinon quand la
-        //    REL héritera de rel_kaze_job_id, l'INSERT collisionnera avec cette fiche
-        //    qui garde le même kaze_job_id (index unique partiel
-        //    uq_incoming_missions_kaze_job_id, insensible au statut). Correctif 2026-07-06.
-        await supabase.from('incoming_missions')
-          // merged_into_mission_id : la fiche s'affiche « Fusionnée » avec un lien
-          // vers celle conservée, au lieu de « Refusée » en rouge. Rien n'a été
-          // refusé — ni chez nous, ni chez Kaze. Olivier 2026-08-13.
-          .update({ status: 'ignored', kaze_job_id: null, merged_into_mission_id: parentId, updated_at: now }).eq('id', mission_id)
-        await supabase.from('mission_logs').insert({
-          mission_id, actor_id: actor?.id || null, action: 'kaze_rel_merged',
-          notes: `Relivraison Kaze fusionnée dans la fiche en parc (procédure « À relivrer » généralisée).`,
-          metadata: { parent_mission_id: parentId },
-        }).then(() => {}, () => {})
-
-        // 4. Étiquette REL du parent (best-effort).
-        let labelPrinted = false
-        try { const r = await reprintLabelForMission({ kind: 'uuid', value: parentId }); labelPrinted = !!r.ok } catch { /* non bloquant */ }
-
-        return NextResponse.json({ ok: true, merged_into: parentId, zone: 'K', label_printed: labelPrinted })
+        // Fusion dans la fiche en parc — logique partagée avec l'auto-fusion à
+        // l'arrivée du job (src/lib/kaze/merge-rel.ts). Olivier 2026-08-13.
+        const { mergeKazeRelIntoParked } = await import('@/lib/kaze/merge-rel')
+        const r = await mergeKazeRelIntoParked({
+          sb: supabase, parentId, actorId: actor?.id || null,
+          actorName: `validée par ${actor?.name || 'dispatcher'}`,
+          rel: {
+            id: mission_id,
+            kaze_job_id:         mission.kaze_job_id,
+            kaze_proposal_id:    (mission as any).kaze_proposal_id,
+            destination_address: mission.destination_address,
+            destination_lat:     mission.destination_lat,
+            destination_lng:     mission.destination_lng,
+          },
+        })
+        return NextResponse.json({ ok: true, merged_into: parentId, zone: r.zone, label_printed: r.labelPrinted })
       }
       // Aucun parent en parc trouvé → comportement normal (REL = sa propre mission).
     }
