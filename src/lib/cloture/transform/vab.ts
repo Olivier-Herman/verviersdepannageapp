@@ -172,9 +172,15 @@ export async function runVabTowClose(input: VabTowCloseInput): Promise<void> {
   const started = Date.now()
   try {
     const { closeVabMission } = await import('@/lib/vab/close')
-    const r = await closeVabMission({
+    // Le type de dossier est celui de VAB, PAS le nôtre. Vu en réel le 13/08 sur
+    // 2HFN413 : le chauffeur avait passé la fiche en remorquage chez nous, mais
+    // VAB n'a jamais reçu la demande de remorquage — chez eux c'était resté une
+    // panne. On demandait donc une page de remorquage inexistante, VAB renvoyait
+    // sa liste, et la séquence tournait en rond sur un lien de tri jusqu'à
+    // épuisement. D'où la reprise en « panne » si le remorquage ne trouve rien.
+    const closeAs = async (taskType: 'tow' | 'breakdown') => closeVabMission({
       assignmentId,
-      taskType:        'tow',
+      taskType,
       refusal:         input.signature === 'refus',
       notPresent:      input.signature === 'absent',
       present:         input.signature !== 'absent',
@@ -184,6 +190,11 @@ export async function runVabTowClose(input: VabTowCloseInput): Promise<void> {
         : (KEY_LOCATION_VAB[String(input.keyLocation || '')] || KEY_LOCATION_FALLBACK),
       vehicleLocation: (input.vehicleLocation || '').trim() || 'Parking',
     })
+    let r = await closeAs('tow')
+    if (!r.completed) {
+      const retry = await closeAs('breakdown')
+      if (retry.completed) r = retry
+    }
     const secs = Math.round((Date.now() - started) / 1000)
 
     if (r.completed) {
