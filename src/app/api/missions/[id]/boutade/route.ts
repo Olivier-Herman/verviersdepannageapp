@@ -23,7 +23,18 @@ export const dynamic     = 'force-dynamic'
 export const maxDuration = 15
 
 // Sujets sur lesquels on ne fait pas d'humour.
-const SERIEUX = /accident|bless|incendie|feu\b|collision|percut|choc|mort|décès|deces|police|saisie|réquisit|requisit|agress|arme|urgence|ambulance|pompier/i
+// ⚠️ Frontières de mots OBLIGATOIRES. Vu le 13/08 : « arme » matchait dans
+// « alarme » — un voyant de batterie allumé suffisait à tuer la vanne. Même piège
+// avec « mort » dans « mortier » ou « choc » dans « chocolat ». Un filtre trop
+// large ne se voit pas : il rend juste la fonctionnalité muette.
+const SERIEUX = new RegExp([
+  'accident', 'bless[ée]e?s?', 'incendie', 'feu', 'collision', 'percut[ée]e?s?', 'choc',
+  'mort', 'd[ée]c[èe]s', 'police', 'saisie', 'r[ée]quisit\\w*', 'agress\\w*',
+  'arme', 'armes', 'urgence', 'ambulance', 'pompier',
+  // \b ne marche PAS après un accent (« é » n'est pas un caractère de mot pour
+  // JavaScript) : « blessé » n'était jamais reconnu. D'où ces frontières écrites
+  // à la main, qui incluent les lettres accentuées.
+].map(w => `(?<![\\wà-ÿ])${w}(?![\\wà-ÿ])`).join('|'), 'i')
 
 const REPLIS = [
   'Bonne route — roule prudemment.',
