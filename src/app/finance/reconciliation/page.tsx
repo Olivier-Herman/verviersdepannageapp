@@ -6,7 +6,7 @@ import { redirect }          from 'next/navigation'
 import { createAdminClient } from '@/lib/supabase'
 import AppShell              from '@/components/layout/AppShell'
 import { sessionAccess }     from '@/lib/access'
-import ReconciliationClient  from './ReconciliationClient'
+import SourceTabs            from './SourceTabs'
 
 export default async function ReconciliationPage() {
   const session = await getServerSession(authOptions)
@@ -33,7 +33,7 @@ export default async function ReconciliationPage() {
       userName={session.user.name ?? ''}
       userModules={modules}
     >
-      <ReconciliationClient userName={session.user.name ?? ''} />
+      <SourceTabs userName={session.user.name ?? ''} />
     </AppShell>
   )
 }

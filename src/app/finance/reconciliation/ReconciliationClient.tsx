@@ -163,7 +163,7 @@ const BAR: Record<string, string> = {
 // Le TID dit quel terminal a encaissé — donc quel site.
 const SITE: Record<string, string> = { '38904065': 'Fourrière', '38912308': 'Dépannage' }
 
-export default function ReconciliationClient({ userName }: { userName: string }) {
+export default function ReconciliationClient({ userName, embedded = false }: { userName: string; embedded?: boolean }) {
   const [report, setReport]   = useState<Report | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError]     = useState<string | null>(null)
@@ -171,6 +171,7 @@ export default function ReconciliationClient({ userName }: { userName: string })
   const [open, setOpen]       = useState<Set<number>>(new Set())
   const [toast, setToast]     = useState<string | null>(null)
   const [tab, setTab]         = useState<'queue' | 'lost'>('queue')
+  const [picked, setPicked]   = useState<Set<number>>(new Set())
 
   const load = useCallback(async () => {
     setLoading(true); setError(null)
@@ -218,6 +219,7 @@ export default function ReconciliationClient({ userName }: { userName: string })
       if (ok.length) {
         const settled = new Set<number>(ok.map((x: any) => Number(x.payoutId)))
         setReport(prev => (prev ? recount(prev, settled) : prev))
+        setPicked(prev => { const n = new Set(prev); settled.forEach(id => n.delete(id)); return n })
       }
     } catch (e: any) {
       setToast(`Échec : ${e.message}`)
@@ -229,10 +231,10 @@ export default function ReconciliationClient({ userName }: { userName: string })
   const toggle = (id: number) =>
     setOpen(s => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n })
 
-  if (loading) return <Shell><p className="text-ink-muted">Lecture des versements chez Paynovate…</p></Shell>
+  if (loading) return <Shell bare={embedded}><p className="text-ink-muted">Lecture des versements chez Paynovate…</p></Shell>
 
   if (error) return (
-    <Shell>
+    <Shell bare={embedded}>
       <div className="rounded-card border border-critical/40 bg-critical-soft p-5">
         <p className="font-semibold text-critical">Impossible de lire les versements</p>
         <p className="mt-1 text-sm text-ink-secondary">{error}</p>
@@ -249,14 +251,14 @@ export default function ReconciliationClient({ userName }: { userName: string })
   const shown = tab === 'queue' ? report.payouts : []
 
   return (
-    <Shell>
-      <header className="flex flex-col gap-1">
+    <Shell bare={embedded}>
+      {!embedded && <header className="flex flex-col gap-1">
         <span className="text-[11px] font-semibold uppercase tracking-[0.09em] text-ink-faint">VD Soft · Finance</span>
         <h1 className="font-display text-2xl font-bold tracking-tight">Réconciliation</h1>
         <p className="max-w-[62ch] text-sm text-ink-muted">
           Les versements Paynovate arrivés sur le compte, rapprochés des factures qu&apos;ils paient.
         </p>
-      </header>
+      </header>}
 
       <section className="grid gap-3 sm:grid-cols-3">
         <Tile label="En attente" figure={eur(t.amount)} note={`${t.count} versements`} />
@@ -318,9 +320,16 @@ export default function ReconciliationClient({ userName }: { userName: string })
             return (
               <article key={p.paymentId}
                 className={`overflow-hidden rounded-card border border-border border-l-[3px] bg-surface shadow-sm ${BAR[p.state]}`}>
+                <div className="flex w-full items-center gap-3 p-3.5">
+                  {p.state === 'ready' ? (
+                    <input type="checkbox" checked={picked.has(p.paymentId)}
+                      onChange={() => setPicked(s => { const n = new Set(s); n.has(p.paymentId) ? n.delete(p.paymentId) : n.add(p.paymentId); return n })}
+                      aria-label={`Sélectionner le versement de ${eur(p.bankAmount)}`}
+                      className="size-4 shrink-0 accent-[var(--brand)]" />
+                  ) : <span className="size-4 shrink-0" />}
                 <button onClick={() => toggle(p.paymentId)}
                   aria-expanded={isOpen}
-                  className="flex w-full items-center gap-3 p-3.5 text-left hover:bg-surface-hover">
+                  className="flex flex-1 items-center gap-3 text-left">
                   <span className={`text-ink-faint transition-transform ${isOpen ? 'rotate-90' : ''}`}>›</span>
                   <span className="flex min-w-0 flex-1 flex-col gap-1.5">
                     <span className="flex flex-wrap items-baseline gap-2.5">
@@ -337,16 +346,17 @@ export default function ReconciliationClient({ userName }: { userName: string })
                       </span>
                     </span>
                   </span>
-                  {p.state === 'ready' && (
-                    <span
-                      role="button" tabIndex={0}
-                      onClick={e => { e.stopPropagation(); if (!working) reconcile([p.paymentId]) }}
-                      onKeyDown={e => { if (e.key === 'Enter') { e.stopPropagation(); reconcile([p.paymentId]) } }}
-                      className="shrink-0 rounded-btn bg-brand px-4 py-2 text-[13.5px] font-semibold text-white hover:bg-brand-hover">
-                      {working ? 'En cours…' : 'Rapprocher'}
-                    </span>
-                  )}
                 </button>
+
+                {p.state === 'ready' && (
+                  <button
+                    disabled={working}
+                    onClick={() => reconcile([p.paymentId])}
+                    className="shrink-0 rounded-btn bg-brand px-4 py-2 text-[13.5px] font-semibold text-white hover:bg-brand-hover disabled:bg-surface-hover disabled:text-ink-faint">
+                    {working ? 'En cours…' : 'Rapprocher'}
+                  </button>
+                )}
+                </div>
 
                 {isOpen && (
                   <div className="border-t border-border bg-surface-2 px-4 pb-3.5 pt-1">
@@ -407,6 +417,25 @@ export default function ReconciliationClient({ userName }: { userName: string })
             )
           })}
 
+          {picked.size > 0 && (
+            <div className="sticky bottom-4 z-10 flex flex-wrap items-center justify-between gap-3 rounded-card border border-border bg-surface p-4 shadow-md">
+              <p className="text-[13px] text-ink-secondary">
+                <strong>{picked.size}</strong> versement{picked.size > 1 ? 's' : ''} sélectionné{picked.size > 1 ? 's' : ''} ·{' '}
+                {eur(shown.filter(p => picked.has(p.paymentId)).reduce((s, p) => s + p.bankAmount, 0))}
+              </p>
+              <div className="flex gap-2">
+                <button onClick={() => setPicked(new Set())}
+                  className="rounded-btn border border-strong px-4 py-2 text-sm font-semibold text-ink-secondary hover:bg-surface-hover">
+                  Annuler
+                </button>
+                <button disabled={busy.length > 0} onClick={() => reconcile([...picked])}
+                  className="rounded-btn bg-brand px-5 py-2.5 text-sm font-semibold text-white hover:bg-brand-hover disabled:bg-surface-hover disabled:text-ink-faint">
+                  {busy.length ? 'Rapprochement…' : `Rapprocher la sélection · ${eur(shown.filter(p => picked.has(p.paymentId)).reduce((s, p) => s + p.bankAmount, 0))}`}
+                </button>
+              </div>
+            </div>
+          )}
+
           {readyIds.length > 0 && (
             <div className="mt-2 flex flex-wrap items-center justify-between gap-3 rounded-card border border-border bg-surface p-4 shadow-sm">
               <p className="max-w-[52ch] text-[13px] text-ink-muted">
@@ -451,7 +480,9 @@ export default function ReconciliationClient({ userName }: { userName: string })
 
 // ── Petits blocs ────────────────────────────────────────────
 
-function Shell({ children }: { children: React.ReactNode }) {
+function Shell({ children, bare }: { children: React.ReactNode; bare?: boolean }) {
+  // Embarqué dans SourceTabs, le conteneur et l'en-tête sont déjà posés.
+  if (bare) return <div className="flex flex-col gap-7">{children}</div>
   return <div className="mx-auto flex max-w-5xl flex-col gap-7 px-5 py-8">{children}</div>
 }
 
