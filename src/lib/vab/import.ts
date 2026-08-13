@@ -161,13 +161,39 @@ export async function runVabImport(opts: { mode: VabImportMode }): Promise<VabIm
         // action VAB sur un dossier dont la fiche est déjà terminée (completed /
         // to_invoice) ou annulée/ignorée doit créer une NOUVELLE fiche, pas être
         // avalée dans l'ancienne (sinon la mission n'arrive jamais dans le dispatch).
+        const FICHE_COLS = 'id, mission_type, destination_name, destination_address, redelivery_address, status, assigned_to, mission_number, vab_assignment_ids, vehicle_plate'
+        const incomingPlate = detail.vehiclePlate?.replace(/\s/g, '').toUpperCase() || null
         const { data: existingRows } = await sb.from('incoming_missions')
-          .select('id, mission_type, destination_name, destination_address, redelivery_address, status, assigned_to, mission_number, vab_assignment_ids')
+          .select(FICHE_COLS)
           .ilike('source', 'vab')
           .or(`dossier_number.ilike.${dossierBase}/%,dossier_number.eq.${dossierBase}`)
           .not('status', 'in', '("ignored","cancelled","completed","to_invoice")')
           .order('created_at', { ascending: false })
-        const fiche = (existingRows || [])[0] || null
+        let fiche: any = (existingRows || [])[0] || null
+
+        // Garde-fou PLAQUE : un même dossier VAB peut porter une action sur un
+        // AUTRE véhicule (2e voiture). Dans ce cas ce n'est pas une suite, c'est
+        // une mission à part → elle mérite sa fiche. Olivier 2026-08-13.
+        if (fiche && incomingPlate && fiche.vehicle_plate && fiche.vehicle_plate !== incomingPlate) fiche = null
+
+        // Repli PAR PLAQUE : VAB ouvre parfois un dossier DIFFÉRENT pour le
+        // remorquage qui suit un dépannage (vu en réel : 8316292 → 8315113,
+        // 8326166 → 8327858). Le rapprochement par dossier ne peut alors rien
+        // voir, et une 2e fiche atterrissait dans l'écran de commande, qu'un
+        // humain annulait à la main. Même plaque + fiche encore ouverte = c'est
+        // la suite de la même intervention. Olivier 2026-08-13.
+        if (!fiche && incomingPlate) {
+          const { data: byPlate } = await sb.from('incoming_missions')
+            .select(FICHE_COLS)
+            .ilike('source', 'vab')
+            .eq('vehicle_plate', incomingPlate)
+            .not('status', 'in', '("ignored","cancelled","completed","to_invoice")')
+            .gte('received_at', new Date(Date.now() - 24 * 3600 * 1000).toISOString())
+            .order('created_at', { ascending: false }).limit(1)
+          fiche = (byPlate || [])[0] || null
+          if (fiche) console.log(`[VAB] ${incomingPlate} : suite rattachée par PLAQUE (dossiers différents) → fiche ${fiche.id}`)
+        }
+
         if (fiche) {
           const wasUpgrade = fiche.mission_type !== 'remorquage' && desiredType === 'remorquage'
           const upd: Record<string, any> = {}
@@ -187,7 +213,13 @@ export async function runVabImport(opts: { mode: VabImportMode }): Promise<VabIm
           }
 
           const destAdded = !!(upd.destination_name || upd.destination_address || upd.redelivery_address)
-          const realChange = wasUpgrade || destAdded
+          // Un AssignmentId encore inconnu sur une fiche du même véhicule est déjà
+          // un changement en soi : c'est une nouvelle action VAB sur cette
+          // intervention. Sans ça, on créait une 2e fiche que le dispatch
+          // annulait à la main (vu 5× en 90 jours). Olivier 2026-08-13.
+          const curIds: string[] = Array.isArray((fiche as any).vab_assignment_ids) ? (fiche as any).vab_assignment_ids : []
+          const newAssignment = !!assignmentId && !curIds.includes(assignmentId)
+          const realChange = wasUpgrade || destAdded || newAssignment
 
           // On ne FUSIONNE (rattacher à la fiche existante sans créer de fiche) QUE
           // si c'est une vraie escalation du MÊME dossier : dépannage→remorquage,
