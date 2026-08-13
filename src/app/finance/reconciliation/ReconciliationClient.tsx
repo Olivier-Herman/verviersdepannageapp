@@ -317,11 +317,16 @@ export default function ReconciliationClient({ userName, embedded = false }: { u
             const st = STATE[p.state]
             const isOpen = open.has(p.paymentId)
             const working = busy.includes(p.paymentId)
+            // « lost » est actionnable au même titre que « ready » : le module
+            // crée le paiement manquant avant de lettrer. Ne montrer le bouton
+            // que sur « ready » laissait ces versements sans aucune action.
+            const actionable = p.state === 'ready' || p.state === 'lost'
+            const lostCount  = p.txs.filter(t => t.issue === 'lost').length
             return (
               <article key={p.paymentId}
                 className={`overflow-hidden rounded-card border border-border border-l-[3px] bg-surface shadow-sm ${BAR[p.state]}`}>
                 <div className="flex w-full items-center gap-3 p-3.5">
-                  {p.state === 'ready' ? (
+                  {actionable ? (
                     <input type="checkbox" checked={picked.has(p.paymentId)}
                       onChange={() => setPicked(s => { const n = new Set(s); n.has(p.paymentId) ? n.delete(p.paymentId) : n.add(p.paymentId); return n })}
                       aria-label={`Sélectionner le versement de ${eur(p.bankAmount)}`}
@@ -348,12 +353,15 @@ export default function ReconciliationClient({ userName, embedded = false }: { u
                   </span>
                 </button>
 
-                {p.state === 'ready' && (
+                {actionable && (
                   <button
                     disabled={working}
                     onClick={() => reconcile([p.paymentId])}
+                    title={p.state === 'lost'
+                      ? `Enregistre ${lostCount} paiement${lostCount > 1 ? 's' : ''} carte manquant${lostCount > 1 ? 's' : ''}, solde la ou les factures, puis lettre le versement`
+                      : undefined}
                     className="shrink-0 rounded-btn bg-brand px-4 py-2 text-[13.5px] font-semibold text-white hover:bg-brand-hover disabled:bg-surface-hover disabled:text-ink-faint">
-                    {working ? 'En cours…' : 'Rapprocher'}
+                    {working ? 'En cours…' : p.state === 'lost' ? 'Rapprocher et solder' : 'Rapprocher'}
                   </button>
                 )}
                 </div>
