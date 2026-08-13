@@ -646,6 +646,34 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
     && ['dsp', 'rem_client', 'rem_direct'].includes(M.snc_scenario || '')
     && requiredAmount <= 0
 
+  // ── Pourquoi le montant ne se calcule pas ─────────────────────────────────
+  // « On ne peut pas risquer d'avoir une mission dont le calcul ne peut pas se
+  // faire avant la fin de l'intervention » (Olivier 2026-08-13). Le tarif Siabis
+  // se calcule sur des COORDONNÉES : sans elles, pas de montant, et on s'en
+  // aperçoit quand le client est déjà parti. On dit donc tout de suite ce qui
+  // manque, en clair, avec le bouton pour le corriger — pas un message générique.
+  const sncNeedsDest = String(M.mission_type || '').toLowerCase().includes('remorquage')
+    || ['rem_client', 'rem_direct'].includes(M.snc_scenario || '')
+  const sncBlockers: { text: string; action?: () => void; cta?: string }[] = []
+  if (M.source === 'police_snc' && !paidEffective && requiredAmount <= 0) {
+    if (M.incident_lat == null || M.incident_lng == null) {
+      sncBlockers.push({
+        text: "le lieu d'intervention n'a pas de position GPS (adresse tapée à la main, sans choisir la suggestion Google)",
+        cta:  "📍 Réencoder le lieu d'intervention",
+        action: () => { setModField('incident'); setModVal(M.incident_address || ''); setModLat(null); setModLng(null); setScreen('modify-addr') },
+      })
+    }
+    if (sncNeedsDest && (M.destination_lat == null || M.destination_lng == null)) {
+      sncBlockers.push({
+        text: M.destination_address
+          ? "l'adresse de destination n'a pas de position GPS"
+          : "l'adresse de destination n'est pas encore encodée",
+        cta:  '🏁 Encoder la destination',
+        action: () => { setModField('destination'); setModVal(M.destination_address || ''); setModLat(null); setModLng(null); setScreen('modify-addr') },
+      })
+    }
+  }
+
   // ── Dérogation paiement (5-tap caché sur banderole rouge) ──────────────────
   // UX : pas de bouton visible (briefing vocal a l equipe). 5 taps rapides
   // (< 2s entre chaque) sur la banderole "A encaisser" → modal s ouvre.
@@ -3244,6 +3272,34 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
         </div>
       )}
 
+      {/* Montant impossible à calculer : on le dit MAINTENANT, pas à la clôture.
+          Chaque point bloquant est nommé et porte son bouton de correction —
+          l'écran d'adresse utilise la recherche Google, donc la position revient
+          avec, et le montant se recalcule tout seul à l'enregistrement. */}
+      {sncBlockers.length > 0 && !['completed', 'to_invoice'].includes(M.status) && (
+        <div className="bg-red-600 border-b-2 border-red-700 px-4 py-3 space-y-2">
+          <div className="flex items-start gap-2">
+            <span className="text-2xl leading-none">⚠️</span>
+            <div className="min-w-0">
+              <p className="text-white font-bold text-sm uppercase tracking-wide">Montant impossible à calculer</p>
+              <p className="text-white/90 text-sm leading-snug">
+                {sncBlockers.length > 1 ? 'Deux choses bloquent : ' : 'Ce qui bloque : '}
+                {sncBlockers.map(b => b.text).join(' · ')}.
+              </p>
+              <p className="text-white/80 text-xs mt-1">
+                Corrige-le avant la fin de l'intervention — après, le client sera parti.
+              </p>
+            </div>
+          </div>
+          {sncBlockers.filter(b => b.action).map((b, i) => (
+            <button key={i} onClick={b.action}
+              className="w-full py-2.5 bg-white text-red-700 rounded-xl text-sm font-bold">
+              {b.cta}
+            </button>
+          ))}
+        </div>
+      )}
+
       {/* Paiement soldé : le bandeau rouge disparaissait sans rien dire. Le chauffeur
           doit VOIR que c'est réglé avant de clôturer. Olivier 2026-08-13. */}
       {M.amount_to_collect != null && M.amount_to_collect > 0 && paidEffective && (
@@ -4183,11 +4239,12 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
             </div>
           )}
 
-          {/* Montant SNC non calculé (mission convertie sans coords incident) :
-              alerte persistante pour ne pas clôturer impayé sans le savoir. */}
-          {sncAmountUnresolved && (
+          {/* Le message générique « montant non calculé » a été remplacé par le
+              bandeau détaillé en haut de la fiche, qui nomme ce qui bloque et
+              donne le bouton pour le corriger. Olivier 2026-08-13. */}
+          {sncAmountUnresolved && sncBlockers.length === 0 && (
             <div className="w-full py-2 px-3 bg-red-500/15 border border-red-500/50 rounded-xl text-center text-red-700 dark:text-red-300 text-xs font-semibold">
-              <T k="mission_detail.snc_amount_unresolved" />
+              Montant non calculé — préviens le dispatch avant de clôturer.
             </div>
           )}
 

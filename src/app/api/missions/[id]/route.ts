@@ -176,7 +176,10 @@ export async function PATCH(
     const finalType     = ('mission_type' in updates ? updates.mission_type : before?.mission_type) as string | null
     const lockedManual  = updates.amount_to_collect_manual === true || before?.amount_to_collect_manual === true
 
-    const PRICING_FIELDS = ['source', 'snc_scenario', 'mission_type', 'incident_lat', 'incident_lng', 'destination_lat', 'destination_lng', 'snc_requires_balisage']
+    // extra_addresses = les STOPS, qui entrent dans les kilomètres facturés : les
+    // oublier ici laissait un montant périmé après l'ajout d'un passage par le
+    // dispatch (le chemin chauffeur, lui, recalculait déjà). Olivier 2026-08-13.
+    const PRICING_FIELDS = ['source', 'snc_scenario', 'mission_type', 'incident_lat', 'incident_lng', 'destination_lat', 'destination_lng', 'snc_requires_balisage', 'extra_addresses']
     const pricingTouched  = PRICING_FIELDS.some(f => f in updates)
     const sourceBecameSnc = 'source' in updates && updates.source === 'police_snc' && before?.source !== 'police_snc'
 
