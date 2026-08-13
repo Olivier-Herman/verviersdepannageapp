@@ -98,7 +98,10 @@ export async function POST(req: Request) {
         // Neutraliser la fiche Kaze REM (transfert du job → retirer kaze_job_id
         // pour éviter la collision d'index unique).
         await supabase.from('incoming_missions')
-          .update({ status: 'ignored', kaze_job_id: null, updated_at: now }).eq('id', mission_id)
+          // merged_into_mission_id : la fiche s'affiche « Fusionnée » avec un lien
+          // vers celle conservée, au lieu de « Refusée » en rouge. Rien n'a été
+          // refusé — ni chez nous, ni chez Kaze. Olivier 2026-08-13.
+          .update({ status: 'ignored', kaze_job_id: null, merged_into_mission_id: parentId, updated_at: now }).eq('id', mission_id)
         await supabase.from('mission_logs').insert({
           mission_id: parentId, actor_id: actor?.id || null, action: 'dispatched',
           notes: `REM Kaze rattaché à la mission EN COURS → destination${dest ? ' · ' + dest : ''} (validé par ${actor?.name || 'dispatcher'})`,
@@ -170,7 +173,10 @@ export async function POST(req: Request) {
         //    qui garde le même kaze_job_id (index unique partiel
         //    uq_incoming_missions_kaze_job_id, insensible au statut). Correctif 2026-07-06.
         await supabase.from('incoming_missions')
-          .update({ status: 'ignored', kaze_job_id: null, updated_at: now }).eq('id', mission_id)
+          // merged_into_mission_id : la fiche s'affiche « Fusionnée » avec un lien
+          // vers celle conservée, au lieu de « Refusée » en rouge. Rien n'a été
+          // refusé — ni chez nous, ni chez Kaze. Olivier 2026-08-13.
+          .update({ status: 'ignored', kaze_job_id: null, merged_into_mission_id: parentId, updated_at: now }).eq('id', mission_id)
         await supabase.from('mission_logs').insert({
           mission_id, actor_id: actor?.id || null, action: 'kaze_rel_merged',
           notes: `Relivraison Kaze fusionnée dans la fiche en parc (procédure « À relivrer » généralisée).`,
