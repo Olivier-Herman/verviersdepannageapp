@@ -570,6 +570,15 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
   const [showGrid, setShowGrid] = useState(false)
   // Petit mot d'accueil à l'acceptation d'une mission — du décor, rien de plus.
   const [boutade, setBoutade] = useState<string | null>(null)
+  // La boutade est demandée AVANT le reload de page (accept) puis stockée en
+  // sessionStorage ; on l'affiche ici au montage suivant (sinon le reload la tue).
+  useEffect(() => {
+    try {
+      const k = `vd_boutade_pending_${init.id}`
+      const t = sessionStorage.getItem(k)
+      if (t) { setBoutade(t); sessionStorage.removeItem(k) }
+    } catch { /* sessionStorage indisponible */ }
+  }, [init.id])
   const [showPark, setShowPark] = useState(false)
   const [dischFrom, setDischFrom] = useState<Screen>('main')
   const [addrModal, setAddrModal] = useState<{ title: string; address: string; lat?: number; lng?: number; field?: string } | null>(null)
@@ -1367,12 +1376,15 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
           const seen = `vd_boutade_${M.id}`
           if (!localStorage.getItem(seen)) {
             localStorage.setItem(seen, '1')
-            fetch(`/api/missions/${M.id}/boutade`, { cache: 'no-store' })
-              .then(x => x.json())
-              .then(d => { if (d?.text) setBoutade(String(d.text)) })
-              .catch(() => {})
+            // ⚠️ La page se recharge juste après (window.location.href plus bas) →
+            // on ATTEND la vanne et on la stocke en sessionStorage pour l'afficher
+            // APRÈS le reload (sinon setBoutade est tué avant tout affichage).
+            // Timeout court pour ne pas retarder l'accept si l'IA traîne.
+            const d = await fetch(`/api/missions/${M.id}/boutade`, { cache: 'no-store', signal: AbortSignal.timeout(4000) })
+              .then(x => x.json()).catch(() => null)
+            if (d?.text) sessionStorage.setItem(`vd_boutade_pending_${M.id}`, String(d.text))
           }
-        } catch { /* localStorage indisponible → tant pis */ }
+        } catch { /* storage/API indisponible → tant pis */ }
       }
       // Olivier 2026-06-03 : preserve les searchParams existants (notamment
       // ?legacy=1 utilise par SNC/SC) pour eviter le re-bascule sur SncMissionFiche
