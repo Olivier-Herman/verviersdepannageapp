@@ -516,8 +516,10 @@ export interface VabMissionDetail {
   missionNumber:    string
   /** AssignmentId (depuis URL) */
   assignmentId:     string | null
-  /** N° dossier interne VAB / contrat */
+  /** N° dossier interne VAB / contrat (2e partie du titre, ex: 34952598) */
   dossierNumber:    string | null
+  /** Vrai N° DOSSIER VAB (1re partie du titre du détail, ex: 8387074) — autoritaire */
+  dossierBase:      string | null
   taskType:         string | null
   /** Codes de panne (ex: "Accident de voiture") */
   codesDePanne:     string | null
@@ -768,19 +770,25 @@ export async function fetchVabMissionDetail(
     }
   }
 
-  // Extract dossier number depuis le titre (ex: "8293644 / 34496031")
+  // Extract dossier number depuis le TITRE du détail (ex: "8387074 / 34952598").
+  //   m[1] = vrai N° DOSSIER VAB (autoritaire) — à préférer à `missionNumber`,
+  //          qui vient de la LISTE via un scope large et peut attraper un numéro
+  //          voisin/partagé (bug : 2 véhicules ≠ même dossier). Olivier 2026-08-13.
+  //   m[2] = n° tâche / contrat interne.
   let dossierNumber: string | null = null
+  let dossierBase:   string | null = null
   $('.HeaderTitle, .Heading1').each((_idx: number, el: any) => {
     if (dossierNumber) return
     const txt = $(el).text().trim()
     const m = txt.match(/(\d{6,10})\s*\/\s*(\d{6,10})/)
-    if (m) dossierNumber = m[2]  // 2eme = n° tache / contrat interne
+    if (m) { dossierBase = m[1]; dossierNumber = m[2] }
   })
 
   const detail: VabMissionDetail = {
     missionNumber,
     assignmentId,
     dossierNumber,
+    dossierBase,
     taskType:       taskTypeRaw,
     codesDePanne,
 

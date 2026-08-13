@@ -138,9 +138,14 @@ export async function runVabImport(opts: { mode: VabImportMode }): Promise<VabIm
 
       const aidMatch = item.detailHref.match(/[?&]AssignmentId=(\d+)/i)
       const assignmentId = aidMatch ? aidMatch[1] : null
+      // N° dossier = 1re partie du TITRE du détail (dossierBase, autoritaire).
+      // Repli sur missionNumber (liste) si le titre n'a pas été parsé — mais
+      // missionNumber peut être un numéro partagé/voisin (cf bug 8387138 sur 2
+      // véhicules ≠). Olivier 2026-08-13.
+      const dossierHead = detail.dossierBase || detail.missionNumber
       const fullDossier = detail.dossierNumber
-        ? `${detail.missionNumber}/${detail.dossierNumber}`
-        : detail.missionNumber
+        ? `${dossierHead}/${detail.dossierNumber}`
+        : dossierHead
 
       const desiredType = detail.taskType?.toLowerCase().includes('remorquage') ? 'remorquage'
                         : detail.taskType?.toLowerCase().includes('panne')      ? 'depannage'
