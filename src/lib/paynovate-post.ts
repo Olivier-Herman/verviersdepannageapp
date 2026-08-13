@@ -104,7 +104,7 @@ export function buildPostingPlan(p: MatchedPayout): PostingPlan {
   // Bancontact manquant sur la caisse du terminal qui a encaissé.
   const paymentsToCreate: MissingPayment[] = []
   for (const t of p.txs) {
-    if (t.paymentId || t.issue === 'gap' || t.issue === 'miss') continue
+    if (t.paymentId || t.issue === 'gap' || t.issue === 'miss' || t.issue === 'draft') continue
     const paid = t.paymentState === 'paid' || t.paymentState === 'in_payment'
     if (paid) continue
     if (t.invoiceIds.length !== 1) {

@@ -48,7 +48,7 @@ export interface MatchedTx {
   paymentId:    number | null   // le paiement Odoo à lettrer, s'il existe
   candidates:   { id: number; name: string; partner: string; amount: number; date: string; payment_state?: string | null }[]
   manual:       boolean         // rattachement humain → détachable depuis l'écran
-  issue:        'lost' | 'gap' | 'miss' | 'used' | null
+  issue:        'lost' | 'gap' | 'miss' | 'used' | 'draft' | null
 }
 
 export interface MatchedPayout {
@@ -297,10 +297,12 @@ export async function buildMatchReport(
       const sure  = confidence === 'exact' || confidence === 'corrige' || confidence === 'plaque'
       const total = hits.reduce((s, h) => s + Number(h.amount ?? h.amount_total ?? 0), 0)
       const state = hits.length === 1 ? (hits[0].payment_state ?? null) : null
+      const moveState = hits.length === 1 ? (hits[0].state ?? null) : null
 
       let issue: MatchedTx['issue'] = null
       if (!sure || !hits.length) issue = 'miss'
       else if (Math.abs(total - t.rawAmount) > 0.005) issue = 'gap'
+      else if (moveState === 'draft') issue = 'draft'
       else if (state && state !== 'paid' && state !== 'in_payment') issue = 'lost'
 
       matched.push({
@@ -346,6 +348,7 @@ export async function buildMatchReport(
       if (m.issue === 'miss') blocking.push(m.explanation || `Référence « ${m.merchantRef} » non résolue`)
       if (m.issue === 'gap')  blocking.push(`${m.invoiceName || m.merchantRef} : encaissé ${m.amount.toFixed(2)} € pour une facture de ${(m.invoiceTotal ?? 0).toFixed(2)} €`)
       if (m.issue === 'lost') blocking.push(`${m.invoiceName} (${m.partner || '?'}) : facture encore ouverte alors qu'elle est payée`)
+      if (m.issue === 'draft') blocking.push(`${m.invoiceName} (${m.partner || '?'}) : facture encore en brouillon — valide-la dans Odoo, le rapprochement suivra`)
       if (m.issue === 'used') blocking.push(`${m.invoiceName} (${m.partner || '?'}) : ${consumed.get(m.paymentId!)}`)
     }
 
@@ -355,8 +358,9 @@ export async function buildMatchReport(
     }
 
     const state: MatchState =
-      matched.some(m => m.issue === 'miss') ? 'miss'
-      : matched.some(m => m.issue === 'used') ? 'gap'
+      matched.some(m => m.issue === 'miss')  ? 'miss'
+      : matched.some(m => m.issue === 'draft') ? 'gap'
+      : matched.some(m => m.issue === 'used')  ? 'gap'
       : matched.some(m => m.issue === 'gap')  ? 'gap'
       : matched.some(m => m.issue === 'lost') ? 'lost'
       : 'ready'

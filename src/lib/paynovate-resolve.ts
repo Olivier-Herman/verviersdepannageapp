@@ -28,6 +28,7 @@ export interface InvoiceCandidate {
   amount: number
   date: string
   payment_state: string | null
+  state?: string | null
 }
 
 export interface Resolution {
@@ -139,7 +140,7 @@ export async function loadPlateIndex(sinceIso: string, force = false): Promise<M
 async function readInvoices(names: string[]) {
   if (!names.length) return []
   return odooRpc<any[]>('account.move', 'search_read', [[['name', 'in', names]]], {
-    fields: ['id', 'name', 'partner_id', 'amount_total', 'invoice_date', 'payment_state'],
+    fields: ['id', 'name', 'partner_id', 'amount_total', 'invoice_date', 'payment_state', 'state'],
     limit: names.length + 10,
   })
 }
@@ -147,7 +148,7 @@ async function readInvoices(names: string[]) {
 async function readInvoicesById(ids: number[]) {
   if (!ids.length) return []
   return odooRpc<any[]>('account.move', 'search_read', [[['id', 'in', ids]]], {
-    fields: ['id', 'name', 'partner_id', 'amount_total', 'invoice_date', 'payment_state'],
+    fields: ['id', 'name', 'partner_id', 'amount_total', 'invoice_date', 'payment_state', 'state'],
     limit: ids.length + 10,
   })
 }
@@ -243,7 +244,7 @@ async function sameAmountInvoices(amount: number, when: string | null, days = 3)
     ['amount_total', '<=', amount + 0.005],
     ['invoice_date', '>=', from.toISOString().slice(0, 10)],
     ['invoice_date', '<=', day],
-  ]], { fields: ['id', 'name', 'partner_id', 'amount_total', 'invoice_date', 'payment_state'], limit: 6 })
+  ]], { fields: ['id', 'name', 'partner_id', 'amount_total', 'invoice_date', 'payment_state', 'state'], limit: 6 })
 }
 
 const shape = (r: any) => ({
@@ -255,6 +256,9 @@ const shape = (r: any) => ({
   // Indispensable : sans lui, une facture retrouvée par plaque passait pour
   // soldée et l'encaissement perdu n'était pas détecté.
   payment_state: r.payment_state ?? null,
+  // Une facture en brouillon n'est pas une facture impayée : Odoo refuse d'y
+  // enregistrer un paiement tant qu'elle n'est pas comptabilisée.
+  state: r.state ?? null,
 })
 
 /**
