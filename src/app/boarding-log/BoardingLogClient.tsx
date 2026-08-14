@@ -17,7 +17,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 
 const POLL_MS = 15000
 
-interface Ev { at: string; action: string; notes: string; number: number | null; plate: string | null; source: string | null; driver: string | null; repeats?: number }
+interface Ev { at: string; action: string; text: string; ton: 'info' | 'ok' | 'alerte'; notes: string; number: number | null; plate: string | null; source: string | null; driver: string | null; repeats?: number }
 interface Ano { level: 'rouge' | 'ambre'; titre: string; detail: string; at: string }
 
 const ICONS: Record<string, string> = {
@@ -26,15 +26,6 @@ const ICONS: Record<string, string> = {
   axa_closed: '🅰️', touring_synced: '🅃', vab_synced: '🅅', kaze_synced: '🅺',
   invoiced: '💶', invoice_autoposted: '💶', request_relivraison: '🔁', kaze_rel_merged: '🔗',
   force_status_to_invoice: '✋', force_status_parked: '✋', force_status_completed: '✋',
-}
-const LABELS: Record<string, string> = {
-  accept: 'Acceptée', on_way: 'En route', on_site: 'Sur place', load_vehicle: 'Chargé',
-  park: 'Mise en parc', completed: 'Terminée', flux2_closed: 'Clôture chauffeur',
-  touring_closed: 'Clôturée chez Touring', vab_closed: 'Clôturée chez VAB', axa_closed: 'Clôturée chez AXA',
-  touring_synced: 'Touring', vab_synced: 'VAB', kaze_synced: 'Kaze',
-  invoiced: 'Facturée', invoice_autoposted: 'Facture comptabilisée',
-  request_relivraison: 'Relivraison rattachée', kaze_rel_merged: 'Relivraison fusionnée',
-  force_status_to_invoice: 'Statut forcé', force_status_parked: 'Statut forcé', force_status_completed: 'Statut forcé',
 }
 
 const hm = (s: string) => new Date(s).toLocaleTimeString('fr-BE', { timeZone: 'Europe/Brussels', hour: '2-digit', minute: '2-digit' })
@@ -180,15 +171,11 @@ export default function BoardingLogClient() {
         <h2>Journal — 24 dernières heures</h2>
         <div className="bl-scroll">
           {(log?.events || []).map((e, i) => (
-            <div key={i} className="bl-ev">
+            <p key={i} className={`bl-ev ${e.ton}`}>
               <span className="bl-evh">{hm(e.at)}</span>
               <span className="bl-evi">{ICONS[e.action] || '•'}</span>
-              <span className="bl-evm">#{e.number ?? '?'} <b>{e.plate || ''}</b></span>
-              <span className="bl-evs">{e.source || ''}</span>
-              <span className="bl-eva">{LABELS[e.action] || e.action.replace(/_/g, ' ')}{(e.repeats ?? 1) > 1 && <b className="bl-rep"> ×{e.repeats}</b>}</span>
-              <span className="bl-evd">{e.driver || ''}</span>
-              <span className="bl-evn">{e.notes}</span>
-            </div>
+              <span className="bl-evt">{e.text}</span>
+            </p>
           ))}
           {(!log?.events || log.events.length === 0) && <p className="bl-empty">Aucun mouvement.</p>}
         </div>
@@ -209,68 +196,68 @@ function Kpi({ label, val, txt }: { label: string; val?: number; txt?: string })
 }
 
 const CSS = `
-:root { color-scheme: dark; }
-body { margin:0; background:#0d1117; color:#e8edf5;
-  font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif; }
+/* Écran clair : la page reste allumée toute la journée dans un bureau éclairé —
+   le sombre y est moins lisible et fatigue plus vite. Olivier 2026-08-14. */
+:root { color-scheme: light; }
+body { margin:0; background:#F4F1EC; color:#1F1A17;
+  font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif; -webkit-font-smoothing:antialiased; }
 .bl { display:flex; flex-direction:column; gap:10px; height:100vh; padding:10px 12px; box-sizing:border-box; }
 
-.bl-kpis { display:flex; align-items:center; gap:18px; flex-wrap:wrap;
-  padding:6px 12px; background:#131a24; border:1px solid #1f2a37; border-radius:10px; }
+.bl-kpis { display:flex; align-items:center; gap:20px; flex-wrap:wrap;
+  padding:7px 14px; background:#fff; border:1px solid #E3DDD6; border-radius:10px; }
 .bl-kpi { display:flex; align-items:baseline; gap:7px; }
-.bl-kpil { font-size:11px; color:#7d8899; text-transform:uppercase; letter-spacing:.06em; font-weight:700; }
-.bl-kpiv { font-size:16px; font-weight:800; font-variant-numeric:tabular-nums; color:#e8edf5; }
-.bl-clock { margin-left:auto; font-size:13px; font-weight:800; color:#7d8899; font-variant-numeric:tabular-nums; }
-.bl-stale { color:#f59e0b; font-weight:700; }
+.bl-kpil { font-size:11px; color:#8A7F74; text-transform:uppercase; letter-spacing:.06em; font-weight:700; }
+.bl-kpiv { font-size:16px; font-weight:800; font-variant-numeric:tabular-nums; color:#1F1A17; }
+.bl-clock { margin-left:auto; font-size:13px; font-weight:800; color:#8A7F74; font-variant-numeric:tabular-nums; }
+.bl-stale { color:#C2410C; font-weight:700; }
 
-.bl-cols { display:grid; grid-template-columns:1.35fr 1fr; gap:10px; min-height:0; flex:0 0 42%; }
-.bl-card { background:#131a24; border:1px solid #1f2a37; border-radius:12px;
+.bl-cols { display:grid; grid-template-columns:1.3fr 1fr; gap:10px; min-height:0; flex:0 0 38%; }
+.bl-card { background:#fff; border:1px solid #E3DDD6; border-radius:12px;
   display:flex; flex-direction:column; min-height:0; overflow:hidden; }
 .bl-card h2 { margin:0; padding:9px 14px; font-size:12px; text-transform:uppercase; letter-spacing:.07em;
-  color:#94a3b8; border-bottom:1px solid #1f2a37; display:flex; gap:8px; align-items:center; }
-.bl-card h2 span { background:#1f2a37; color:#cbd5e1; border-radius:999px; padding:1px 8px; font-size:11px; }
-.bl-card h2 span.warn { background:#7f1d1d; color:#fecaca; }
+  color:#6B625A; border-bottom:1px solid #EDE8E2; display:flex; gap:8px; align-items:center; font-weight:800; }
+.bl-card h2 span { background:#F1EDE7; color:#4A413C; border-radius:999px; padding:1px 8px; font-size:11px; }
+.bl-card h2 span.warn { background:#FEE2E2; color:#B91C1C; }
 .bl-scroll { overflow-y:auto; flex:1; min-height:0; }
-.bl-empty { color:#64748b; font-size:13px; padding:14px; margin:0; }
+.bl-empty { color:#A89E92; font-size:13px; padding:14px; margin:0; }
 
-.bl-tbl { width:100%; border-collapse:collapse; font-size:13px; }
-.bl-tbl td { padding:7px 10px; border-bottom:1px solid #192230; vertical-align:middle; white-space:nowrap; }
-.bl-num { color:#64748b; font-variant-numeric:tabular-nums; }
+.bl-tbl { width:100%; border-collapse:collapse; font-size:13.5px; }
+.bl-tbl td { padding:7px 10px; border-bottom:1px solid #F1EDE7; vertical-align:middle; white-space:nowrap; }
+.bl-num { color:#A89E92; font-variant-numeric:tabular-nums; }
 .bl-plate { font-weight:800; letter-spacing:.03em; }
-.bl-veh { color:#94a3b8; white-space:normal; }
-.bl-veh span { display:block; color:#64748b; font-size:11.5px; }
-.bl-drv { color:#cbd5e1; font-weight:600; }
-.bl-st { color:#7dd3fc; font-weight:700; font-size:12px; }
-.bl-since { color:#64748b; text-align:right; font-variant-numeric:tabular-nums; }
+.bl-veh { color:#6B625A; white-space:normal; }
+.bl-veh span { display:block; color:#A89E92; font-size:11.5px; }
+.bl-drv { color:#1F1A17; font-weight:600; }
+.bl-st { color:#1D4ED8; font-weight:700; font-size:12px; }
+.bl-since { color:#A89E92; text-align:right; font-variant-numeric:tabular-nums; }
 
-.bl-ano { padding:9px 14px; border-bottom:1px solid #192230; border-left:3px solid transparent; }
-.bl-ano.rouge { border-left-color:#ef4444; }
-.bl-ano.ambre { border-left-color:#f59e0b; }
-.bl-anot { margin:0; font-weight:800; font-size:13px; }
-.bl-anod { margin:2px 0 0; color:#94a3b8; font-size:12px; }
-.bl-anoh { margin:2px 0 0; color:#64748b; font-size:11px; font-variant-numeric:tabular-nums; }
+.bl-ano { padding:9px 14px; border-bottom:1px solid #F1EDE7; border-left:3px solid transparent; }
+.bl-ano.rouge { border-left-color:#DC2626; background:#FEF2F2; }
+.bl-ano.ambre { border-left-color:#D97706; background:#FFFBEB; }
+.bl-anot { margin:0; font-weight:800; font-size:13.5px; color:#1F1A17; }
+.bl-anod { margin:2px 0 0; color:#6B625A; font-size:12.5px; }
+.bl-anoh { margin:2px 0 0; color:#A89E92; font-size:11px; font-variant-numeric:tabular-nums; }
 
+/* Le journal : des phrases, pas un tableau. */
 .bl-feed { flex:1; min-height:0; }
-.bl-ev { display:grid; grid-template-columns:46px 22px 128px 74px 190px 92px 1fr;
-  gap:8px; align-items:baseline; padding:5px 14px; border-bottom:1px solid #161f2b; font-size:12.5px; }
-.bl-evh { color:#64748b; font-variant-numeric:tabular-nums; }
-.bl-evm { color:#94a3b8; font-variant-numeric:tabular-nums; }
-.bl-evm b { color:#e8edf5; letter-spacing:.03em; }
-.bl-evs { color:#7d8899; text-transform:uppercase; font-size:10.5px; font-weight:700; letter-spacing:.05em; }
-.bl-eva { color:#cbd5e1; font-weight:700; }
-.bl-rep { color:#f59e0b; }
-.bl-evd { color:#7dd3fc; }
-.bl-evn { color:#64748b; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.bl-ev { display:flex; gap:10px; align-items:baseline; margin:0;
+  padding:6px 16px; border-bottom:1px solid #F5F1EC; font-size:14.5px; line-height:1.45; }
+.bl-ev.ok     .bl-evt { color:#15803D; }
+.bl-ev.alerte { background:#FEF2F2; }
+.bl-ev.alerte .bl-evt { color:#B91C1C; font-weight:600; }
+.bl-evh { color:#A89E92; font-variant-numeric:tabular-nums; font-size:12.5px; flex:0 0 42px; font-weight:700; }
+.bl-evi { flex:0 0 20px; }
+.bl-evt { color:#1F1A17; }
 
 .bl-pin { height:100vh; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:18px; }
 .bl-pintitle { font-size:20px; font-weight:800; margin:0; }
-.bl-pindots { font-size:34px; letter-spacing:.35em; margin:0; color:#94a3b8; }
-.bl-pindots.err { color:#ef4444; }
+.bl-pindots { font-size:34px; letter-spacing:.35em; margin:0; color:#8A7F74; }
+.bl-pindots.err { color:#DC2626; }
 .bl-pad { display:grid; grid-template-columns:repeat(3,86px); gap:12px; }
 .bl-pad button { height:74px; font-size:26px; font-weight:800; border-radius:14px;
-  background:#1c2531; border:1px solid #2a3543; color:#e8edf5; cursor:pointer; }
+  background:#fff; border:1px solid #E3DDD6; color:#1F1A17; cursor:pointer; }
 .bl-pad button:disabled { opacity:0; cursor:default; }
-.bl-pad button:active { background:#26313f; }
+.bl-pad button:active { background:#F1EDE7; }
 
-@media (max-width:1100px) { .bl-cols { grid-template-columns:1fr; flex:0 0 auto; }
-  .bl-ev { grid-template-columns:44px 20px 1fr; } .bl-evs, .bl-evd, .bl-evn { display:none; } }
+@media (max-width:1100px) { .bl-cols { grid-template-columns:1fr; flex:0 0 auto; } }
 `

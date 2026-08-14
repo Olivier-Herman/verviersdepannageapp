@@ -85,17 +85,101 @@ export async function GET(req: Request) {
     if (n === 1) kept.push(l)          // rawLogs est trié du plus récent au plus ancien
   }
 
+  // ── La phrase ────────────────────────────────────────────────────────────
+  // Olivier veut lire ce que je lui écris ici, pas un tableau d'actions
+  // techniques : « Franck vient de pointer sur place et tout est ok ». On
+  // fabrique donc la phrase ICI, en un seul endroit, à partir de ce qu'on sait.
+  const SRC_LBL: Record<string, string> = {
+    touring: 'Touring', vab: 'VAB', kaze: 'Kaze', axa: 'AXA', mondial: 'Allianz',
+    anwb: 'ANWB', ethias: 'Ethias', police_snc: 'Siabis non couvert', sia_couvert: 'Siabis couvert',
+  }
+  const TYPE_LBL: Record<string, string> = {
+    depannage: 'dépannage', remorquage: 'remorquage', trajet_vide: 'déplacement pour rien',
+    relivraison: 'relivraison', 'REM+REL': 'remorquage avec relivraison',
+  }
+
+  function phrase(l: any, m: any, n: number): { text: string; ton: 'info' | 'ok' | 'alerte' } {
+    const who   = nameOf(m.assigned_to) || 'Le chauffeur'
+    const veh   = m.vehicle_plate ? `le ${m.vehicle_plate}` : `la mission #${m.mission_number}`
+    const src   = SRC_LBL[m.source] || m.source || ''
+    const type  = TYPE_LBL[String(m.mission_type || '').toLowerCase()] || TYPE_LBL[m.mission_type] || 'intervention'
+    const fois  = n > 1 ? ` — ${n} tentatives` : ''
+    const motif = m.panne_motif_label ? ` Motif retenu : « ${m.panne_motif_label} ».` : ''
+
+    switch (l.action) {
+      case 'accept':       return { ton: 'info', text: `${who} a accepté ${veh} — ${type}${src ? ' ' + src : ''}.` }
+      case 'on_way':       return { ton: 'info', text: `${who} est en route vers ${veh}.` }
+      case 'on_site':      return { ton: 'info', text: `${who} est sur place sur ${veh}.` }
+      case 'load_vehicle': return { ton: 'info', text: `${who} a chargé ${veh} sur le camion.` }
+      case 'park':         return { ton: 'info', text: `${who} a déposé ${veh} au parc.` }
+      case 'completed':    return { ton: 'ok',   text: `${who} a terminé ${veh}. La mission part à la facturation.` }
+      case 'flux2_closed': return { ton: 'ok',   text: `Clôture chauffeur sur ${veh}.${motif}` }
+      case 'touring_closed': return { ton: 'ok', text: `${veh} est clôturé chez Touring — ${(l.notes || '').replace(/^Clôture Touring \(flux 2\) — /, '')}` }
+      case 'vab_closed':   return { ton: 'ok',   text: `${veh} est clôturé chez VAB.` }
+      case 'axa_closed':   return { ton: 'ok',   text: `${veh} est clôturé chez AXA.` }
+      case 'touring_synced':
+      case 'vab_synced':
+      case 'kaze_synced': {
+        // Les notes de synchro sont écrites pour le débogage (« ↗ en route
+        // (2026-08-14T07:46:17.585Z) », « workflow avancé (statut started) »).
+        // Sur un écran mural, on veut la phrase, pas la trace.
+        const n0 = (l.notes || '')
+        const ETAPES: [RegExp, string, string][] = [
+          [/accept/i,                  'l’acceptation',      'remontée'],
+          [/en route|on_way|départ/i,  'le départ',          'remonté'],
+          [/sur place|on_site|arriv/i, 'l’arrivée sur place','remontée'],
+          [/charg|load/i,              'le chargement',      'remonté'],
+          [/park|parc/i,               'la mise en parc',    'remontée'],
+          [/complet|termin/i,          'la clôture',         'remontée'],
+          [/photo/i,                   'les photos',         'remontées'],
+        ]
+        const hit   = ETAPES.find(([re]) => re.test(n0))
+        const etape = hit?.[1]
+        const acc   = hit?.[2] || 'remonté'
+        if (/rattachée à cette fiche/.test(n0)) return { ton: 'ok', text: `${veh} : ${n0.replace(/^Touring : /, '')}` }
+        if (/auto-validé/.test(n0))             return { ton: 'info', text: `${veh} a été validé automatiquement chez ${src}.` }
+        if (/échec|erreur/i.test(n0))           return { ton: 'alerte', text: `${veh} : ${n0}` }
+        return { ton: 'info', text: etape
+          ? `${veh} : ${etape} est ${acc} chez ${src}.`
+          : `${veh} : ${n0.replace(/^\w+ ↗ /, '')}` }
+      }
+      case 'invoiced':
+      case 'invoice_autoposted': return { ton: 'ok', text: `${veh} est facturé. ${(l.notes || '')}` }
+      case 'request_relivraison': return { ton: 'info', text: `Relivraison rattachée sur ${veh}.` }
+      case 'kaze_rel_merged':     return { ton: 'info', text: `Relivraison Kaze fusionnée dans la fiche en parc (${veh}).` }
+      case 'force_status_to_invoice':
+      case 'force_status_parked':
+      case 'force_status_completed':
+        return {
+          ton: ENVOI_REEL.includes(m.source) ? 'alerte' : 'info',
+          text: ENVOI_REEL.includes(m.source)
+            ? `Statut forcé par le dispatch sur ${veh} — attention, rien n'est parti chez ${src}.`
+            : `Statut forcé par le dispatch sur ${veh}.`,
+        }
+      default:
+        if (/error|failed/i.test(l.action)) {
+          return { ton: 'alerte', text: `Échec de synchronisation sur ${veh}${src ? ' (' + src + ')' : ''}${fois} : ${(l.notes || '').replace(/^.*— /, '')}` }
+        }
+        return { ton: 'info', text: `${veh} : ${l.notes || l.action.replace(/_/g, ' ')}` }
+    }
+  }
+
   const events = kept.map(l => {
     const m = missions.get(l.mission_id) || {}
+    const n = repeats.get(groupKey(l.mission_id, l.action)) || 1
+    const ph = phrase(l, m, n)
+    ph.text = ph.text.charAt(0).toUpperCase() + ph.text.slice(1)
     return {
       at:      l.created_at,
       action:  l.action,
-      notes:   l.notes || '',
+      text:    ph.text,
+      ton:     ph.ton,
       number:  m.mission_number ?? null,
       plate:   m.vehicle_plate ?? null,
       source:  m.source ?? null,
       driver:  nameOf(m.assigned_to) || null,
-      repeats: repeats.get(groupKey(l.mission_id, l.action)) || 1,
+      repeats: n,
+      notes:   l.notes || '',
     }
   })
 
