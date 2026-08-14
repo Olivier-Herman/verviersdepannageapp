@@ -414,7 +414,13 @@ export async function GET(req: Request) {
       termineesJour: cTerminees.count || 0,
       factureesJour: cFacturees.count || 0,
     },
-    facturation: { periodeJours: PERIOD_DAYS, dureeMoyMin, dureeMoyN: durs.length },
+    facturation: {
+      periodeJours: PERIOD_DAYS, dureeMoyMin, dureeMoyN: durs.length,
+      // Médiane : sur des délais de facturation, une poignée de dossiers oubliés
+      // tire la moyenne très haut et masque le comportement réel.
+      // Olivier 2026-08-14.
+      dureeMedMin: durs.length ? Math.round(durs[Math.floor(durs.length / 2)] / 60000) : null,
+    },
     sources: {
       parSource,
       touring: { bko: comexBko || 0, total: touringTotal },
