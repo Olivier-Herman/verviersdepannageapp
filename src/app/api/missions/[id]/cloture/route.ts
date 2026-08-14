@@ -279,7 +279,21 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     result = { ok: true, skipped: 'assistance', finCode: null, codes: null }
   } else if (assistance === 'touring') {
     const keys = parseComexKeys((m as any).raw_content)
-    if (!keys) return NextResponse.json({ error: 'Clés Touring absentes de la fiche' }, { status: 400 })
+    // ⚠️ Une mission Touring reçue par MAIL n'a pas de dossier COMEX : il n'y a
+    // rien à clôturer chez eux. Ce n'était pas un incident, mais on renvoyait une
+    // erreur — le chauffeur voyait un bandeau rouge « Clés Touring absentes de la
+    // fiche » au moment de terminer. Notre plomberie ne le regarde pas, et il n'y
+    // a rien à faire. Vu par Franck le 14/08 sur 1UXZ479. Olivier : « il ne faut
+    // pas qu'il y ait ça. »
+    if (!keys) {
+      await sb.from('mission_logs').insert({
+        mission_id: (m as any).id, actor_id: (actor as any)?.id ?? null,
+        action: 'assistance_close_na',
+        notes: 'Touring : pas de dossier COMEX sur cette mission (reçue par mail) — rien à clôturer chez eux',
+        metadata: { assistance: 'touring', outcome },
+      }).then(() => {}, () => {})
+      result = { ok: true, skipped: 'sans_dossier', finCode: null, codes: null }
+    } else {
     const input = {
       outcome, motifKey, prefill,
       dprCode: body?.dprCode ?? null,
@@ -302,6 +316,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
       })
       queued = true
       result = { ...result, ok: true, queued: true }
+    }
     }
   }
   // ── VAB : brique ON-SITE → ÉCRAN DE CODE (pilotage Chromium headless) ──────
