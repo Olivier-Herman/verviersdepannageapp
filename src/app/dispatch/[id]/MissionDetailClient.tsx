@@ -45,6 +45,7 @@ import { getMissionTypeLabel } from '@/lib/missions/mission-types'
 import { parcZoneLabel } from '@/lib/parc/zone-label'
 import { useGarageClosure } from '@/lib/useGarageClosures'
 import Flux2ClosureCard from '@/components/dispatch/Flux2ClosureCard'
+import PointagesCard from '@/components/dispatch/PointagesCard'
 
 const sb = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -2973,6 +2974,10 @@ export default function MissionDetailClient({
             d'œil : motif, signature, clé, où est le véhicule, châssis, km, et ce
             qui est réellement parti chez l'assisteur. Olivier 2026-08-12. */}
         <Flux2ClosureCard mission={initialMission} logs={logs as any} />
+        {/* Où chaque pointage a réellement été fait — superadmin seulement. */}
+        {userRole === 'superadmin' && (
+          <PointagesCard missionId={initialMission.id} googleMapsKey={googleMapsKey} />
+        )}
 
         {/* ── Bandeau Position parc (visible si mission parked avec zone) ── */}
         {status === 'parked' && parcZone && (

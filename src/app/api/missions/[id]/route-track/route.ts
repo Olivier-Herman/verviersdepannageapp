@@ -47,9 +47,35 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
   const pings   = all.filter(r => r.kind === 'ping')
   const points  = all.filter(r => r.kind !== 'ping')
 
+  // ── Distances ROUTIÈRES (Olivier 2026-08-14) ────────────────────────────
+  // « À vol d'oiseau c'est très proche, il faut le faire en route réelle » :
+  // à Verviers, un garage et notre dépôt peuvent être à 800 m l'un de l'autre
+  // en ligne droite et à plusieurs kilomètres par la route. Un rayon d'un
+  // kilomètre à vol d'oiseau ne prouve donc rien.
+  // Calculé À LA DEMANDE (?road=1) et en DEUX requêtes matricielles, pas une par
+  // point : la carte, elle, n'en a pas besoin et ne doit pas ralentir.
+  let road: { toIncident: (number | null)[]; toDestination: (number | null)[] } | null = null
+  if (new URL(_req.url).searchParams.get('road') === '1' && points.length > 0) {
+    try {
+      const { getDrivingMatrix } = await import('@/lib/routing/ors')
+      const origins = points.map(p => ({ lat: Number(p.lat), lng: Number(p.lng) }))
+      const inc = mission?.incident_lat != null && mission?.incident_lng != null
+        ? await getDrivingMatrix(origins, { lat: Number(mission.incident_lat), lng: Number(mission.incident_lng) })
+        : null
+      const dst = mission?.destination_lat != null && mission?.destination_lng != null
+        ? await getDrivingMatrix(origins, { lat: Number(mission.destination_lat), lng: Number(mission.destination_lng) })
+        : null
+      road = {
+        toIncident:    origins.map((_, i) => inc?.[i]?.km ?? null),
+        toDestination: origins.map((_, i) => dst?.[i]?.km ?? null),
+      }
+    } catch { /* ORS indisponible → le tableau reste lisible sans les distances */ }
+  }
+
   return NextResponse.json({
     pings,
     points,
+    road,
     incident: mission?.incident_lat != null && mission?.incident_lng != null
       ? { lat: Number(mission.incident_lat), lng: Number(mission.incident_lng), address: mission.incident_address || '' }
       : null,
