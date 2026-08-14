@@ -41,13 +41,15 @@ const DEAD_STATUSES = ['cancelled', 'rejected', 'deleted', 'ignored', 'duplicate
 
 // Auto-EN ROUTE proactif : missions Touring acceptées ≥10 min sans en route ni sur
 // place → on pousse onRoad (backdaté) pour tenir le SLA « démarré ». Mode import.
-async function runTouringOnRoadSweep(): Promise<{ scanned: number; pushed: number }> {
+async function runTouringOnRoadSweep(
+  missions?: Awaited<ReturnType<typeof listComexMissions>>,
+): Promise<{ scanned: number; pushed: number; skipped: number }> {
   const sb = createAdminClient()
   const now = Date.now()
   const cutoff = new Date(now - SLA_ONROAD_AFTER_MIN * 60_000).toISOString()
   const floor  = new Date(now - 6 * 60 * 60_000).toISOString()
   const { data, error } = await sb.from('incoming_missions')
-    .select('id')
+    .select('id, raw_content')
     .eq('source_format', 'comex')
     .not('touring_accepted_at', 'is', null)
     .is('touring_onroad_at', null)
@@ -55,14 +57,51 @@ async function runTouringOnRoadSweep(): Promise<{ scanned: number; pushed: numbe
     .lte('touring_accepted_at', cutoff)
     .gte('touring_accepted_at', floor)
     .not('status', 'in', `(${DEAD_STATUSES.join(',')})`)
-  if (error || !Array.isArray(data) || data.length === 0) return { scanned: 0, pushed: 0 }
-  const { syncTouringOnRoad } = await import('@/lib/touring/sync')
-  let pushed = 0
-  for (const m of data) {
-    try { if (await syncTouringOnRoad(sb, (m as any).id)) pushed++ }
-    catch (e: any) { console.warn('[cron touring-onroad] onRoad', (m as any).id, e?.message) }
+  if (error || !Array.isArray(data) || data.length === 0) return { scanned: 0, pushed: 0, skipped: 0 }
+
+  // ⚠️ Ne JAMAIS pousser « en route » sur un dossier que COMEX a déjà dépassé.
+  // Vu le 14/08 sur 2ERS242 et TR41JN : le dossier était déjà « sur place » (06)
+  // chez eux, COMEX refusait le onRoad avec un 500, l'échec laissait
+  // touring_onroad_at à null, et la minute suivante on recommençait — 149
+  // tentatives pour une seule mission. La liste COMEX est déjà chargée par le
+  // poll : on s'en sert pour ne tenter que les dossiers réellement en 04.
+  // Olivier 2026-08-14.
+  // Le balayage tourne AVANT l'import (pour ne pas dépendre de son login) : il va
+  // donc chercher la liste lui-même, en une requête, comme les autres balayages.
+  let liste = missions
+  if (!liste) {
+    try {
+      const session = await loginComex('user')
+      liste = await listComexMissions(session)
+    } catch (e: any) {
+      console.warn('[cron touring-onroad] liste COMEX indisponible :', e?.message)
+      liste = undefined
+    }
   }
-  return { scanned: data.length, pushed }
+  const statusByKey = new Map<string, string>()
+  for (const m of (liste || [])) {
+    statusByKey.set(`${String(m.CID_DOS).toUpperCase()}|${m.CID_SEQ_ACTION}`, m.COD_STATUT_MTR)
+  }
+  const { syncTouringOnRoad } = await import('@/lib/touring/sync')
+  let pushed = 0, skipped = 0
+  for (const m of data as any[]) {
+    if (statusByKey.size > 0) {
+      let cid: any; try { cid = JSON.parse(m.raw_content || '{}') } catch { cid = null }
+      const key = cid ? `${String(cid.CID_DOS || '').toUpperCase()}|${String(cid.CID_SEQ_ACTION || '')}` : ''
+      const st  = key ? statusByKey.get(key) : undefined
+      // Absent de la liste = plus en cours chez eux (clôturé) → rien à pousser.
+      if (st !== '04') {
+        skipped++
+        // On note l'étape comme faite : sans ça, on retenterait indéfiniment.
+        await sb.from('incoming_missions')
+          .update({ touring_onroad_at: new Date().toISOString() }).eq('id', m.id)
+        continue
+      }
+    }
+    try { if (await syncTouringOnRoad(sb, m.id)) pushed++ }
+    catch (e: any) { console.warn('[cron touring-onroad] onRoad', m.id, e?.message) }
+  }
+  return { scanned: data.length, pushed, skipped }
 }
 
 // Auto-onSpot des missions Touring dont le SLA arrive à échéance (mode import).
@@ -246,11 +285,11 @@ export async function GET(req: Request) {
   // JAMAIS être bloqués si l'import/login échoue. Ils partent en PREMIER. Chacun
   // gère son propre login COMEX (session user). Bug corrigé 2026-07-08 : avant, ils
   // étaient dans le try de l'import → un login KO sautait tout l'auto-SLA.
-  let slaRoad = { scanned: 0, pushed: 0 }
+  let slaRoad = { scanned: 0, pushed: 0, skipped: 0 }
   let sla     = { scanned: 0, pushed: 0 }
   if (mode === 'import') {
-    slaRoad = await runTouringOnRoadSweep().catch((e) => { console.warn('[cron touring-onroad]', e?.message); return { scanned: 0, pushed: 0 } })
-    if (slaRoad.pushed > 0) console.log(`[cron touring-onroad] auto-onRoad=${slaRoad.pushed}/${slaRoad.scanned}`)
+    slaRoad = await runTouringOnRoadSweep().catch((e) => { console.warn('[cron touring-onroad]', e?.message); return { scanned: 0, pushed: 0, skipped: 0 } })
+    if (slaRoad.pushed > 0 || slaRoad.skipped > 0) console.log(`[cron touring-onroad] auto-onRoad=${slaRoad.pushed}/${slaRoad.scanned} (dépassés: ${slaRoad.skipped})`)
     sla = await runTouringSlaSweep().catch((e) => { console.warn('[cron touring-sla]', e?.message); return { scanned: 0, pushed: 0 } })
     if (sla.pushed > 0) console.log(`[cron touring-sla] auto-onSpot=${sla.pushed}/${sla.scanned}`)
   }
