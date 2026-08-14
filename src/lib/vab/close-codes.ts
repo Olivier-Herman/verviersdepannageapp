@@ -298,7 +298,10 @@ export async function closeVabCodeScreen(input: VabCodeInput): Promise<VabCodeRe
 
     // 1 — code solution
     await change(nSol, { [nSol]: SOL })
-    steps.push(input.tow ? 'solution : remorquage' : 'solution : mobilité rétablie')
+    // Le libellé suit le code RÉELLEMENT envoyé : figé, il annonçait « mobilité
+    // rétablie » sur une clôture « Client Pas Aidé » et le journal mentait.
+    const libelléSol = $(`select[name="${nSol}"] option[value="${SOL}"]`).text().trim().replace(/\s*---\s*/, ' — ')
+    steps.push(`solution : ${libelléSol || (input.tow ? 'remorquage' : 'mobilité rétablie')}`)
 
     // 2 — code panne (en portant le niveau 2 de la solution)
     const sol2 = nSol2 && SOL2 ? { [nSol2]: SOL2 } : {}
@@ -317,9 +320,14 @@ export async function closeVabCodeScreen(input: VabCodeInput): Promise<VabCodeRe
     let brk2 = input.breakdownL2 || ''
     if (!brk2 && nBrk2) {
       const bloc = frag.match(/BreakdownCodeLevel2[\s\S]{0,20000}?<\\?\/select>/)?.[0] || frag
-      const opts = [...bloc.matchAll(/<option value=\\?"(\d{3,6})\\?"/g)].map(m => m[1])
-      brk2 = opts[0] || (BRK === BRK_OTHER ? BRK_OTHER_L2 : '')
-      steps.push(`niveau 2 : ${opts.length} option(s) → ${brk2 || 'aucune'}`)
+      // On lit aussi le LIBELLÉ : « Voir Varia » veut dire « c'est écrit dans les
+      // remarques », et c'est ce que demande Olivier quand rien de precis ne
+      // colle. Sans ça on prenait la première ligne de la liste, au hasard.
+      const paires = [...bloc.matchAll(/<option value=\\?"(\d{3,6})\\?"[^>]*>([^<]{0,60})/g)]
+        .map(m => ({ v: m[1], t: m[2].trim() }))
+      const varia = paires.find(p => /voir\s*varia/i.test(p.t))
+      brk2 = varia?.v || paires[0]?.v || (BRK === BRK_OTHER ? BRK_OTHER_L2 : '')
+      steps.push(`niveau 2 : ${paires.length} option(s) → ${varia ? 'Voir Varia' : brk2 || 'aucune'}`)
     }
     if (nBrk2 && brk2) {
       await change(nBrk2, { [nSol]: SOL, ...sol2, [nBrk]: BRK, [nBrk2]: brk2 })
