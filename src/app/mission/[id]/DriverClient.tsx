@@ -3807,17 +3807,20 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
                 <p className="text-lg font-black leading-tight">
                   {vr === true ? 'VR OUI' : vr === false ? 'VR NON' : 'À VÉRIFIER'}
                 </p>
-                {canTouringVr && <p className="text-[11px] font-semibold opacity-80 mt-0.5">Toucher pour demander un VR →</p>}
+                {canTouringVr && (
+                  <p className="text-[11px] font-semibold opacity-80 mt-0.5">
+                    {(M as any).touring_vr_requested_at ? 'Demandé — Touring cherche le véhicule' : 'Demande possible, bouton ci-dessous'}
+                  </p>
+                )}
               </div>
               <span className="text-3xl flex-shrink-0">{vr === true ? '🚗' : inconnu ? '❔' : '🚫'}</span>
             </>
           )
-          return canTouringVr ? (
-            <button onClick={() => { setTouringAction('vr'); setShowTouringClose(true) }}
-              className={`w-full text-left rounded-2xl p-3 border-2 flex items-center justify-between active:scale-[0.99] transition ${style}`}>
-              {inner}
-            </button>
-          ) : (
+          // La tuile ne déclenche plus rien : elle INFORME. La demande passe par
+          // le bouton dédié, qui pose la confirmation « un seul VR, sans retour
+          // en arrière ». Deux chemins pour une action irréversible, dont un sans
+          // garde-fou, c'était l'accident qui attendait son tour.
+          return (
             <div className={`rounded-2xl p-3 border-2 flex items-center justify-between ${style}`}>
               {inner}
             </div>
