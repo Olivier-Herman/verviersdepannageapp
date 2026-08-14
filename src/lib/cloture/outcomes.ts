@@ -77,6 +77,12 @@ export function availableOutcomes(m: MissionForOutcomes): OutcomeDef[] {
     out.push(OUTCOMES.dsp)
     out.push(OUTCOMES.rem)
     if (m.vr_proposed === true) out.push(OUTCOMES.rem_vr)
+    // Filet : un véhicule CHARGÉ peut toujours être mis en parc, même si la
+    // détection du type de mission nous échappe. Sur 1UXZ479 (14/08) le parc
+    // n'a pas été proposé alors que tout le disait possible, et Franck a dû
+    // clôturer en « livré » pour un véhicule qu'il ramenait au dépôt. Cause non
+    // élucidée — donc on ne fait plus dépendre le parc du type.
+    if (loaded) out.push(OUTCOMES.park)
   }
   out.push(OUTCOMES.dpr)
   return out
