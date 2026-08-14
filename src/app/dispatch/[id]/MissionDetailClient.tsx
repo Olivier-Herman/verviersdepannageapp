@@ -2571,6 +2571,12 @@ export default function MissionDetailClient({
             <span className="text-ink-muted text-[10px] lg:text-xs">
               <span className="hidden sm:inline">Reçu le </span>
               {new Date(initialMission.received_at).toLocaleString('fr-BE', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
+              {(() => {
+                // « par … » : dispatcher si créée manuellement, sinon la source (auto).
+                const by = (initialMission as any).parsed_data?.created_manually_by
+                  || getSourceLabel(initialMission.source, sources)
+                return by ? <span> · par {by}</span> : null
+              })()}
             </span>
             {initialMission.parse_confidence !== null && (
               <span className={`text-[10px] lg:text-xs px-1.5 py-0.5 rounded-full ${
