@@ -149,13 +149,15 @@ export async function GET(req: Request) {
       case 'kaze_rel_merged':     return { ton: 'info', text: `Relivraison Kaze fusionnée dans la fiche en parc (${veh}).` }
       case 'force_status_to_invoice':
       case 'force_status_parked':
-      case 'force_status_completed':
+      case 'force_status_completed': {
+        const forcedBy = nameOf(l.actor_id) || 'le dispatch'  // QUI a forcé (acteur du log), pas le chauffeur
         return {
           ton: ENVOI_REEL.includes(m.source) ? 'alerte' : 'info',
           text: ENVOI_REEL.includes(m.source)
-            ? `Statut forcé par le dispatch sur ${veh} — attention, rien n'est parti chez ${src}.`
-            : `Statut forcé par le dispatch sur ${veh}.`,
+            ? `Statut forcé par ${forcedBy} sur ${veh} — attention, rien n'est parti chez ${src}.`
+            : `Statut forcé par ${forcedBy} sur ${veh}.`,
         }
+      }
       default:
         if (/error|failed/i.test(l.action)) {
           return { ton: 'alerte', text: `Échec de synchronisation sur ${veh}${src ? ' (' + src + ')' : ''}${fois} : ${(l.notes || '').replace(/^.*— /, '')}` }
