@@ -4373,6 +4373,18 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
             </>
           )}
 
+          {/* ⚠️ Chargement NON pointé alors que la mission est déjà « en livraison ».
+              Ça arrive : `start_delivery` (mise en livraison d'une relivraison)
+              pose le statut sans poser `loaded_at`. On ne peut pas arriver à
+              destination sans avoir chargé (Olivier 2026-08-14) — donc on propose
+              le pointage manquant ici, plutôt que l'arrivée. */}
+          {(rem || rel) && M.status === 'delivering' && !M.loaded_at && (
+            <button onClick={() => api('load_vehicle')} disabled={loading}
+              className="w-full py-4 bg-blue-600 disabled:opacity-50 text-ink font-bold rounded-2xl text-base">
+              {loading ? <T k="mission_detail.loading" /> : <T k="mission_detail.btn_loaded_park" />}
+            </button>
+          )}
+
           {/* REL : in_progress (peu importe onSite) + non chargé → bouton "Véhicule chargé au parc" */}
           {rel && M.status === 'in_progress' && !loaded && (
             <button onClick={() => api('load_vehicle')} disabled={loading}
@@ -4382,7 +4394,7 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
           )}
 
           {/* REM/REL : véhicule chargé → arrivée à destination (+ mise en parc pour REM uniquement) */}
-          {(rem || rel) && (M.status === 'delivering' || (loaded && M.status === 'in_progress')) && (
+          {(rem || rel) && !!M.loaded_at && ['delivering', 'in_progress'].includes(M.status) && (
             <>
               <button onClick={() => {
                   // Siabis non couvert direct : encaissement obligatoire avant
@@ -4442,7 +4454,12 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
               d'issues. Photos garde son raccourci (sans photo du châssis, pas de
               lecture automatique du VIN) et « Autres » garde décharge, encaissement
               et avance de fonds. Olivier 2026-08-11. */}
-          {flux2 && onSite && !['completed', 'to_invoice', 'parked'].includes(M.status) && (
+          {/* ⚠️ « sur place » NE DOIT PAS être la seule porte. Une mission passée
+              en livraison sans ce pointage n'avait plus AUCUN accès aux issues :
+              le bouton vert « Arrivé à destination » s'affichait (il ne regarde
+              que le statut), mais ni Action ni Mise en parc. C'est le blocage
+              vécu par Franck le 14/08. Olivier. */}
+          {flux2 && (onSite || M.status === 'delivering') && !['completed', 'to_invoice', 'parked'].includes(M.status) && (
             <>
               <button onClick={() => setF2Screen('action')}
                 className="w-full py-4 bg-brand text-white font-bold rounded-2xl text-base">
