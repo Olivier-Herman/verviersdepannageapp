@@ -563,6 +563,27 @@ export async function acceptTouringMission(
 }
 
 /**
+ * Statut moteur du dossier chez COMEX (03 à 07), ou null s'il est illisible.
+ *
+ * Sert de garde-fou avant de pousser une étape : COMEX répond 500 quand on lui
+ * repousse une étape qu'il a déjà passée, et un 500 ne marque rien chez nous —
+ * donc la relance repart, indéfiniment. 64 tentatives sur PLLG40 avant qu'Olivier
+ * ne le voie. 2026-08-14.
+ */
+export async function readComexStatus(
+  session: ComexSession,
+  keys: { CID_DOS: string; CID_SEQ_ACTION: string },
+): Promise<string | null> {
+  try {
+    const list = await listComexMissions(session)
+    const m = list.find(x => String(x.CID_DOS).toUpperCase() === keys.CID_DOS.toUpperCase()
+      && (!keys.CID_SEQ_ACTION || String(x.CID_SEQ_ACTION) === keys.CID_SEQ_ACTION))
+      || list.find(x => String(x.CID_DOS).toUpperCase() === keys.CID_DOS.toUpperCase())
+    return m?.COD_STATUT_MTR ?? null
+  } catch { return null }
+}
+
+/**
  * Pousse « en route » (onRoad, 05) côté COMEX via la session USER (patrouille
  * D6826701). `at` optionnel = heure de l'action (peut être BACKDATÉE pour tenir
  * le SLA : onRoad doit rester ≤ accept+10min et précéder le onSpot).
@@ -570,9 +591,12 @@ export async function acceptTouringMission(
 export async function setTouringOnRoad(
   keys: { CID_DOS: string; CID_SEQ_ACTION: string },
   opts?: { at?: Date },
-): Promise<{ ok: boolean; error?: string }> {
+): Promise<{ ok: boolean; error?: string; already?: boolean }> {
   try {
     const session = await loginComex('user')
+    // Déjà en route (05) ou plus loin → rien à pousser, mais ce n'est PAS un échec.
+    const st = await readComexStatus(session, keys)
+    if (st && st >= '05') return { ok: true, already: true }
     const r = await pushComexOperation(session, keys, 'onRoad', comexOperDate(opts?.at || new Date()))
     // ⚠️ Un 500 COMEX ne throw pas → on le détecte ici, sinon on marquerait à tort
     // le succès et le balayage ne réessaierait jamais. Olivier 2026-08-06.
@@ -592,9 +616,12 @@ export async function setTouringOnRoad(
 export async function setTouringOnSpot(
   keys: { CID_DOS: string; CID_SEQ_ACTION: string },
   opts?: { at?: Date },
-): Promise<{ ok: boolean; error?: string }> {
+): Promise<{ ok: boolean; error?: string; already?: boolean }> {
   try {
     const session = await loginComex('user')
+    // Déjà sur place (06) ou terminée (07) → l'étape est faite chez eux.
+    const st = await readComexStatus(session, keys)
+    if (st && st >= '06') return { ok: true, already: true }
     const r = await pushComexOperation(session, keys, 'onSpot', comexOperDate(opts?.at || new Date()))
     if (isComexServerError(r?.response)) return { ok: false, error: 'COMEX 500 (onSpot)' }
     return { ok: true }

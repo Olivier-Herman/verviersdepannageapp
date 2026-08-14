@@ -153,7 +153,9 @@ export async function syncTouringOnSpot(
     await supabase.from('incoming_missions').update({ touring_onspot_at: new Date().toISOString() }).eq('id', missionId)
   }
   await logSync(supabase, missionId, opts?.actorId ?? null, r.ok,
-    r.ok ? `Touring COMEX ↗ sur place (${spotAt.toISOString()}${opts?.at ? '' : ', auto'})` : `Touring COMEX ↗ échec sur place — ${r.error}`,
-    { ...keys, step: 'onSpot', operAt: spotAt.toISOString(), auto: !opts?.at })
+    r.already ? 'Touring COMEX ✓ sur place — déjà enregistré chez eux'
+      : r.ok ? `Touring COMEX ↗ sur place (${spotAt.toISOString()}${opts?.at ? '' : ', auto'})`
+      : `Touring COMEX ↗ échec sur place — ${r.error}`,
+    { ...keys, step: 'onSpot', operAt: spotAt.toISOString(), auto: !opts?.at, already: !!r.already })
   return r.ok
 }
