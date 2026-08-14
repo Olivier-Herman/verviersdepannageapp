@@ -52,7 +52,16 @@ donc apparaître TOURNÉ à 90° ou 180°, en biais, sombre ou avec des reflets.
 Lis-le quand même — un VIN à la verticale reste un VIN. Le châssis se trouve sur
 la plaque constructeur (montant de portière, bas de pare-brise, compartiment
 moteur) ; sur ces plaques il est la LONGUE suite de 17 caractères, à côté du nom
-du constructeur et des masses en kg (3500 kg, 1650 kg…), qui ne sont PAS le VIN.`
+du constructeur et des masses en kg (3500 kg, 1650 kg…), qui ne sont PAS le VIN.
+
+OÙ LE CHERCHER AUSSI — LE CERTIFICAT D'IMMATRICULATION (Olivier 2026-08-14) :
+c'est l'endroit que les dépanneurs photographient le plus souvent, posé sur le
+tableau de bord ou derrière le pare-brise. Carte rose/verte intitulée
+« Kentekenbewijs Deel I », « Certificat d'immatriculation Partie I »,
+« Zulassungsbescheinigung Teil I ». Le VIN y est imprimé EN CLAIR au repère
+« E. VIN », encadré, sous la date de première inscription. La plaque est en haut
+au repère A. Un suffixe entre parenthèses après le VIN — « (01) », « (1) » — est
+un code de contrôle : IGNORE-LE et ne renvoie que les 17 caractères.`
 
 export interface VehicleOcrHit { value: string; image: number }
 export interface VehicleOcrKmHit { value: number; image: number }
@@ -163,7 +172,11 @@ export async function detectVehicleFromImages(rawImages: (string | null | undefi
         max_tokens: 120,
         system: `Tu cherches UNIQUEMENT le VIN (numéro de châssis) sur des photos de véhicule.
 Le VIN fait EXACTEMENT 17 caractères (jamais de I, O ni Q). Il est estampé sur la plaque
-constructeur ou gravé sur le châssis. Les photos peuvent être TOURNÉES (90°/180°), sombres
+constructeur, gravé sur le châssis, OU imprimé en clair au repère « E. VIN » du certificat
+d'immatriculation (« Kentekenbewijs Deel I » / « Certificat d'immatriculation Partie I »),
+que les dépanneurs photographient très souvent sur le tableau de bord. Un suffixe entre
+parenthèses — « (01) » — est un code de contrôle : ignore-le, renvoie les 17 caractères.
+Les photos peuvent être TOURNÉES (90°/180°), sombres
 ou avec des reflets : lis quand même. Ne confonds pas avec les masses en kg, le numéro
 d'homologation (e1*...) ni le type du véhicule.
 Réponds UNIQUEMENT : {"vin":{"value":"<17 caractères>","image":<n>}} ou {"vin":null}.
