@@ -188,12 +188,16 @@ export async function GET(req: Request) {
   const anomalies: { level: 'rouge' | 'ambre'; titre: string; detail: string; at: string }[] = []
 
   // 1. Terminée chez nous, jamais clôturée chez l'assisteur (KRAA728, 1EYJ678).
+  // Fenêtre de 7 JOURS, pas 24 h : un dossier oublié chez l'assisteur ne se
+  // rappelle pas à nous le lendemain, il dort. Constaté le 14/08 — 8 dossiers
+  // ouverts chez VAB, dont 6 datant de plus d'un jour. Olivier 2026-08-14.
+  const since7j = new Date(Date.now() - 7 * 24 * 3600 * 1000).toISOString()
   const { data: closedMissions } = await sb.from('incoming_missions')
-    .select('id, mission_number, vehicle_plate, source, status, completed_at, vab_closed_at, axa_closed_at')
+    .select('id, mission_number, vehicle_plate, source, mission_type, status, completed_at, vab_closed_at, axa_closed_at')
     .in('source', ENVOI_REEL)
     .in('status', ['to_invoice', 'completed'])
-    .gte('completed_at', since24)
-    .limit(200)
+    .gte('completed_at', since7j)
+    .limit(300)
   const closedIds = (closedMissions || []).map(m => m.id)
   const touringClosed = new Set<string>()
   if (closedIds.length) {
@@ -206,10 +210,12 @@ export async function GET(req: Request) {
       : m.source === 'vab' ? !!m.vab_closed_at
       : !!m.axa_closed_at
     if (!ok) {
+      const jours = Math.floor((Date.now() - Date.parse(m.completed_at)) / 86400000)
       anomalies.push({
         level: 'rouge',
-        titre: `#${m.mission_number} ${m.vehicle_plate || ''} — pas clôturée chez ${m.source}`,
-        detail: 'Terminée chez nous, le dossier reste ouvert chez l’assisteur.',
+        titre: `#${m.mission_number} ${m.vehicle_plate || ''} — pas clôturée chez ${SRC_LBL[m.source] || m.source}`
+          + (jours >= 1 ? ` (depuis ${jours} j)` : ''),
+        detail: `Terminée chez nous${m.mission_type ? ' en ' + (TYPE_LBL[String(m.mission_type).toLowerCase()] || m.mission_type) : ''}, le dossier reste ouvert chez l’assisteur.`,
         at: m.completed_at,
       })
     }
