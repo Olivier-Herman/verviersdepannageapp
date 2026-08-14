@@ -63,10 +63,16 @@ export function availableOutcomes(m: MissionForOutcomes): OutcomeDef[] {
   const out: OutcomeDef[] = []
 
   if (rem) {
-    // Chargé → les issues sont « je livre » ou « je mets en parc ». Un véhicule
-    // sur le plateau ne « repart » plus : rem2dsp n'a de sens qu'avant chargement.
-    if (loaded) { out.push(OUTCOMES.delivered); out.push(OUTCOMES.park) }
-    else out.push(OUTCOMES.rem2dsp)
+    // ⚠️ NE PAS conditionner « livré » et « mise en parc » au pointage « véhicule
+    // chargé ». Sur 30 jours : 93 mises en parc, dont 10 seulement avaient
+    // `loaded_at`. Le pointage est facultatif dans les faits, et le gater dessus
+    // privait 9 chauffeurs sur 10 de leur bouton parc — signalé par Franck et
+    // Fred Palm le 14/08, au point de repasser en flux traditionnel.
+    out.push(OUTCOMES.delivered)
+    out.push(OUTCOMES.park)
+    // « Finalement réparé » n'a de sens qu'AVANT le chargement : un véhicule sur
+    // le plateau ne repart pas par ses propres moyens.
+    if (!loaded) out.push(OUTCOMES.rem2dsp)
   } else {
     out.push(OUTCOMES.dsp)
     out.push(OUTCOMES.rem)
