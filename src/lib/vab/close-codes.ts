@@ -162,14 +162,20 @@ export async function closeVabCodeScreen(input: VabCodeInput): Promise<VabCodeRe
     steps.push('code panne')
 
     // 3 — code panne niveau 2 : celui que VAB vient de proposer
+    // Le niveau 2 est OBLIGATOIRE : sans lui, « Confirmer » redessine la page au
+    // lieu de valider. On le lit sur la fiche RELUE après le choix du niveau 1 —
+    // le fragment AJAX, lui, ne contient pas toujours la liste repeuplée.
+    // Le niveau 2 est OBLIGATOIRE : sans lui, « Confirmer » redessine la page au
+    // lieu de valider. Il n'existe QUE dans le fragment renvoyé par le choix du
+    // niveau 1 — relire la fiche ne sert à rien, l'état vit dans __OSVSTATE et
+    // un GET repart de zéro. Et dans ce fragment, le HTML est échappé en JSON :
+    // les guillemets des attributs sont précédés d'un antislash.
     let brk2 = input.breakdownL2 || ''
     if (!brk2 && nBrk2) {
-      // Le fragment renvoyé contient le select de niveau 2 repeuplé : on prend
-      // sa première vraie option (la première est le tiret « __ossli_0 »).
-      const bloc = frag.match(/wtBreakdownCodeLevel2[\s\S]{0,6000}?<\/select>/)?.[0] || ''
-      const opts = [...bloc.matchAll(/<option value="([^"]+)"/g)].map(m => m[1]).filter(v => /^\d{3,6}$/.test(v))
-      // À défaut, le niveau 2 du code fourre-tout, relevé sur la clôture réelle.
+      const bloc = frag.match(/BreakdownCodeLevel2[\s\S]{0,20000}?<\\?\/select>/)?.[0] || frag
+      const opts = [...bloc.matchAll(/<option value=\\?"(\d{3,6})\\?"/g)].map(m => m[1])
       brk2 = opts[0] || (BRK === BRK_OTHER ? BRK_OTHER_L2 : '')
+      steps.push(`niveau 2 : ${opts.length} option(s) → ${brk2 || 'aucune'}`)
     }
     if (nBrk2 && brk2) {
       await change(nBrk2, { [nSol]: SOL, ...sol2, [nBrk]: BRK, [nBrk2]: brk2 })
@@ -181,12 +187,39 @@ export async function closeVabCodeScreen(input: VabCodeInput): Promise<VabCodeRe
     if (!endName) return { ok: false, steps, error: 'bouton Confirmer introuvable' }
     const nEnd = endName.replace(/_/g, '$')
     {
-      const b = formOf($)
+      // ⚠️ La vraie requête n'envoie que 21 champs, pas toute la page. Envoyer
+      // l'intégralité des champs cachés faisait redessiner l'écran au lieu de
+      // valider. On reproduit STRICTEMENT la liste de la capture.
+      const b = new URLSearchParams()
+      for (const n of ['__OSVSTATE', '__VIEWSTATE', '__VIEWSTATEGENERATOR']) {
+        b.set(n, $(`input[name="${n}"]`).attr('value') || '')
+      }
+      // Les deux cases à cocher « frais » de la section détours.
+      $('input[type=checkbox]').each((_, e) => {
+        const n = $(e).attr('name') || ''
+        if (/wt410$|wt277$/.test(n)) b.set(n, 'off')
+      })
+      // Les champs texte de la zone frais/détours/remarque, vides.
+      for (const suf of ['wtInput_ExtraCostReason', 'wtInput_DetourNrOfKm', 'wtInput_DetourReason',
+                         'wt168', 'wtInput_ExtraTimeReason', 'wtInput_ExtraVehicleReason',
+                         'wtInput_RemarksIntervention']) {
+        const n = suffix($, suf); if (n) b.set(n, '')
+      }
       for (const [k, v] of Object.entries({ ...costEnd, [nSol]: SOL, ...sol2, [nBrk]: BRK, ...(brk2 ? { [nBrk2]: brk2 } : {}) })) b.set(k, v)
       b.set('__EVENTTARGET', nEnd); b.set('__EVENTARGUMENT', '')
-      b.set('__AJAX', `1901,2442,${endName},0,0,0,0,0,0,`)
-      await post(cookie, `${BASE}/BreakdownAssignments_Details.aspx?_ts=${ts()}`, b, dUrl)
-      steps.push('confirmer')
+      // Les nombres qui suivent l'identifiant ne sont PAS décoratifs : la capture
+      // montre `2252,40,1166,0,106,2263` là où j'envoyais des zéros, et avec des
+      // zéros le serveur redessine la page au lieu de valider. Repris tels quels.
+      b.set('__AJAX', `1901,2442,${endName},2252,40,1166,0,106,2263,`)
+      const rEnd = await post(cookie, `${BASE}/BreakdownAssignments_Details.aspx?_ts=${ts()}`, b, dUrl)
+      absorb($, rEnd)
+      // Le serveur annonce lui-même le résultat : on le lit plutôt que de le
+      // supposer. « Mission complétée et envoyée à VAB. » = le clic a porté.
+      const dit = (rEnd.match(/Mission[^"\\]{0,60}VAB[^"\\]{0,10}/) || [])[0]
+        || (rEnd.match(/"messages?"\s*:\s*"([^"]{5,90})"/) || [])[1]
+        || (rEnd.match(/Champ obligatoire[^"]{0,40}/) || [])[0]
+        || `${rEnd.length} octets`
+      steps.push(`confirmer → ${dit}`)
     }
 
     // 5 — la pop-up de fin : c'est ELLE qui déclare le remorquage
