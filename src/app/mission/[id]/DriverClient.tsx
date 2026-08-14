@@ -4461,10 +4461,27 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
               vécu par Franck le 14/08. Olivier. */}
           {flux2 && (onSite || M.status === 'delivering') && !['completed', 'to_invoice', 'parked'].includes(M.status) && (
             <>
-              <button onClick={() => setF2Screen('action')}
-                className="w-full py-4 bg-brand text-white font-bold rounded-2xl text-base">
-                ⚡ Action
-              </button>
+              {/* Véhicule CHARGÉ : il ne reste que deux issues, et « Arrivé à
+                  destination » est déjà au-dessus. Ouvrir la page Action pour y
+                  retrouver « livré » et « mise en parc » faisait doublon — donc
+                  ici, le parc directement. Olivier 2026-08-14. */}
+              {rem && !!M.loaded_at ? (
+                <button onClick={() => {
+                    if (!parkDepot) {
+                      const def = vrLocs.find(v => (v as any).is_default) || vrLocs[0]
+                      if (def) setParkDepot(def)
+                    }
+                    setF2Outcome('park'); setF2Screen('close')
+                  }}
+                  className="w-full py-4 bg-amber-500 text-ink font-bold rounded-2xl text-base">
+                  🅿️ <T k="mission_detail.btn_park" />
+                </button>
+              ) : (
+                <button onClick={() => setF2Screen('action')}
+                  className="w-full py-4 bg-brand text-white font-bold rounded-2xl text-base">
+                  ⚡ Action
+                </button>
+              )}
               <div className="grid grid-cols-2 gap-2">
                 <button onClick={() => goPhotos('main')}
                   className={`py-3 rounded-2xl text-sm font-semibold border ${

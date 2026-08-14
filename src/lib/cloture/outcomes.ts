@@ -84,7 +84,9 @@ export function availableOutcomes(m: MissionForOutcomes): OutcomeDef[] {
     // élucidée — donc on ne fait plus dépendre le parc du type.
     if (loaded) out.push(OUTCOMES.park)
   }
-  out.push(OUTCOMES.dpr)
+  // « Déplacement pour rien » n'a plus de sens une fois le véhicule chargé : s'il
+  // est sur le plateau, le déplacement n'a pas été pour rien. Olivier 2026-08-14.
+  if (!loaded) out.push(OUTCOMES.dpr)
   return out
 }
 
