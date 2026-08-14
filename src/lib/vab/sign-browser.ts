@@ -173,6 +173,10 @@ export async function vabCloseOnSiteBrowser(opts: {
   assignmentId: string
   km: string
   vinLastDigits: string
+  /** Châssis COMPLET. Certains dossiers n'ont pas les 3 derniers chiffres à
+   *  saisir mais un champ « Numéro de châssis » vide ET obligatoire — sans lui,
+   *  « Fin lieu de la panne » ne fait rien. Vu le 14/08 sur 2HLP070. */
+  vinFull?: string
   /** Fourni → on enchaîne sur l'écran de codes et on confirme. */
   codes?: VabCodes
 }): Promise<VabBrowserResult> {
@@ -213,6 +217,50 @@ export async function vabCloseOnSiteBrowser(opts: {
       steps.push('déjà écran code')
     } else {
       if (await clearAndType(page, 'input[id*="wtInput_MileageCheck"]', String(opts.km))) steps.push('km')
+
+      // ⚠️ Le KILOMÉTRAGE a son propre bouton « Vérifier », exactement comme le
+      // châssis (Olivier 2026-08-14). Sans ce clic, le drapeau « km vérifié »
+      // n'est pas posé et « Fin lieu de la panne » ne fait rien — la séquence
+      // semblait pourtant complète. Une pop-up d'arrondi peut suivre : on
+      // l'accepte, comme pour le VIN inconnu.
+      if (String(opts.km || '').trim()) {
+        const cliqué = await page.evaluate(() => {
+          const a = [...document.querySelectorAll('a, button')].find(e => /wtLink_CheckMileage/.test((e as HTMLElement).id || ''))
+            || [...document.querySelectorAll('a, button')].find(e => /^\s*v[ée]rifier\s*$/i.test(e.textContent || ''))
+          if (!a) return false
+          ;(a as HTMLElement).click()
+          return true
+        }).catch(() => false)
+        if (cliqué) {
+          steps.push('vérifier kilométrage')
+          await new Promise(r => setTimeout(r, 5000))
+          // Pop-up « kilométrage arrondi » : répondre oui, dans la page et dans
+          // les frames.
+          for (const fr of page.frames()) {
+            try {
+              await fr.evaluate(() => {
+                const el = [...document.querySelectorAll('a,button')]
+                  .find(e => /^\s*(oui|ja|yes|ok)\s*$/i.test((e.textContent || '').trim()))
+                if (el) (el as HTMLElement).click()
+              })
+            } catch { /* frame indisponible */ }
+          }
+          await new Promise(r => setTimeout(r, 3000))
+        }
+      }
+
+      // Châssis complet attendu et vide → on le saisit.
+      if (opts.vinFull) {
+        const posé = await page.evaluate((vin: string) => {
+          const c = document.querySelector('input[id*="wtChassisNumberInput"]') as HTMLInputElement | null
+          if (!c || (c.value || '').length > 5) return false
+          c.focus(); c.value = vin
+          c.dispatchEvent(new Event('input', { bubbles: true }))
+          c.dispatchEvent(new Event('change', { bubbles: true }))
+          return true
+        }, opts.vinFull).catch(() => false)
+        if (posé) { steps.push('châssis complet saisi'); await new Promise(r => setTimeout(r, 5000)) }
+      }
 
       const chassisOk = await page.evaluate(() => {
         const c = document.querySelector('input[id*="wtChassisNumberInput"]') as HTMLInputElement | null
