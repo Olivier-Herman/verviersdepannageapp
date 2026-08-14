@@ -43,6 +43,8 @@ export interface VabCodeInput {
   destinationAddress?: string
   /** Emplacement des clés (liste VAB). Par défaut « garagiste ». */
   keyLocation?: string
+  /** Nombre de personnes à transporter (champ obligatoire de VAB). */
+  numberOfPeople?: number
 }
 
 export interface VabCodeResult { ok: boolean; steps: string[]; error?: string }
@@ -102,13 +104,23 @@ async function post(cookie: string, url: string, body: URLSearchParams, referer:
 }
 let dumpSeq = 0
 
-/** Tous les champs de la page, tels que le navigateur les renverrait. */
+/**
+ * Tous les champs de la page, tels que le navigateur les renverrait.
+ *
+ * ⚠️ Ne PAS filtrer sur `type=text` : le formulaire de remorquage a un champ
+ * `number` obligatoire (« Nombre de personnes ») qui passait à la trappe, et un
+ * navigateur n'envoie QUE le radio coché — le mettre à `off` fait rejeter la
+ * page en silence, sans marquer le champ en erreur. Olivier 2026-08-14.
+ */
 function formOf($: cheerio.CheerioAPI): URLSearchParams {
   const b = new URLSearchParams()
-  $('input[type=hidden]').each((_, e) => { const n = $(e).attr('name'); if (n) b.set(n, $(e).attr('value') || '') })
-  $('input[type=text], textarea').each((_, e) => { const n = $(e).attr('name'); if (n) b.set(n, $(e).attr('value') || '') })
-  $('input[type=checkbox], input[type=radio]').each((_, e) => {
-    const n = $(e).attr('name'); if (n) b.set(n, $(e).attr('checked') != null ? 'on' : 'off')
+  $('input, textarea').each((_, e) => {
+    const n = $(e).attr('name'); if (!n) return
+    const t = ($(e).attr('type') || 'text').toLowerCase()
+    if (t === 'submit' || t === 'button' || t === 'image' || t === 'file' || t === 'reset') return
+    if (t === 'checkbox') { b.set(n, $(e).attr('checked') != null ? 'on' : 'off'); return }
+    if (t === 'radio') { if ($(e).attr('checked') != null) b.set(n, $(e).attr('value') || ''); return }
+    b.set(n, $(e).attr('value') || '')
   })
   $('select').each((_, e) => {
     const n = $(e).attr('name'); if (!n) return
@@ -192,6 +204,17 @@ async function createTowAssignment(cookie: string, input: VabCodeInput, steps: s
 
   const b = formOf($)
   if (nKey) b.set(nKey, input.keyLocation || '1402')   // « garagiste » par défaut
+
+  // Deux champs obligatoires que le formulaire ne montre pas au premier regard :
+  // « Nombre de personnes » (marqué Mandatory, 0 par défaut) et le oui/non
+  // « Le Moteur Fonctionne? ». Sur un remorquage, le moteur ne tourne pas —
+  // c'est la raison même de l'enlèvement.
+  const nPers = suffix($, 'wtInput_NumberOfPeople_NoAutoFill')
+  if (nPers) b.set(nPers, String(input.numberOfPeople ?? 0))
+  $('input[type=radio]').each((_, e) => {
+    const n = $(e).attr('name') || ''
+    if (/^\d{6,}$/.test(n) && $(e).attr('value') === 'False') b.set(n, 'False')
+  })
 
   // La liste des 104 destinations est leur réseau BMW. On ne s'en sert QUE sur
   // une correspondance exacte du nom : « mieux vaut entrer une adresse à la main
