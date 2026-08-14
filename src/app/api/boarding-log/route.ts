@@ -41,12 +41,13 @@ const bxlDayStartISO = (daysAgo = 0) => {
 export async function GET(req: Request) {
   const pin = req.headers.get('x-dashboard-pin') || new URL(req.url).searchParams.get('pin') || ''
   if (!VALID_PINS.includes(pin)) {
-    // Fallback : session staff (pour le module d'historique /journal authentifié).
+    // Fallback : session SUPERADMIN (pour le module d'historique /journal).
     const session = await getServerSession(authOptions)
     const role  = (session?.user as any)?.role || ''
     const roles = Array.isArray((session?.user as any)?.roles) ? (session!.user as any).roles : []
-    const ok = ['dispatcher', 'admin', 'superadmin'].some(r => role === r || roles.includes(r))
-    if (!ok) return NextResponse.json({ error: 'PIN invalide' }, { status: 401 })
+    if (role !== 'superadmin' && !roles.includes('superadmin')) {
+      return NextResponse.json({ error: 'PIN invalide' }, { status: 401 })
+    }
   }
 
   const sb = createAdminClient()

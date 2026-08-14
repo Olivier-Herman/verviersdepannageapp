@@ -13,7 +13,6 @@ export default async function JournalPage() {
   const session = await getServerSession(authOptions)
   const role  = (session?.user as any)?.role || ''
   const roles = Array.isArray((session?.user as any)?.roles) ? (session!.user as any).roles : []
-  const ok = ['dispatcher', 'admin', 'superadmin'].some(r => role === r || roles.includes(r))
-  if (!ok) redirect('/')
+  if (role !== 'superadmin' && !roles.includes('superadmin')) redirect('/')
   return <JournalClient />
 }
