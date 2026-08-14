@@ -563,6 +563,37 @@ export async function acceptTouringMission(
 }
 
 /**
+ * DEMANDE DE VÉHICULE DE REMPLACEMENT (Olivier 2026-08-14, capture réseau).
+ *
+ * `POST rest/Mission/detail/setDemVr` avec les deux seules clés du dossier, sur
+ * le compte PATROUILLE (le même que « en route » et « sur place »).
+ *
+ * C'est une action à part entière, PAS un code de fin : on peut demander un VR
+ * ET déposer le véhicule en parc, les deux coexistent (Olivier 2026-08-06). Elle
+ * remplace l'intérim qui clôturait avec le code 04 pour obtenir le même effet.
+ *
+ * Après la demande, Touring réserve le véhicule de son côté et remplit les
+ * `VR_*` du détail — c'est le cron `touring-vr-scan` qui les guette et prévient
+ * le chauffeur.
+ */
+export async function requestTouringVr(
+  keys: { CID_DOS: string; CID_SEQ_ACTION: string },
+): Promise<{ ok: boolean; error?: string; response?: any }> {
+  try {
+    const session = await loginComex('user')
+    const r: any = await comexRest(session, 'Mission/detail/setDemVr', {
+      CID_DOS: keys.CID_DOS, CID_SEQ_ACTION: keys.CID_SEQ_ACTION,
+    })
+    if (isComexServerError(r?.response ?? r)) return { ok: false, error: 'COMEX 500 (setDemVr)', response: r }
+    // COMEX répond `success:true` ; en l'absence du champ on ne crie pas victoire.
+    const ok = r?.success === true || r?.content === 'OK' || r?.content === true
+    return { ok, error: ok ? undefined : 'réponse inattendue de COMEX', response: r }
+  } catch (e: any) {
+    return { ok: false, error: e?.message || 'erreur' }
+  }
+}
+
+/**
  * Statut moteur du dossier chez COMEX (03 à 07), ou null s'il est illisible.
  *
  * Sert de garde-fou avant de pousser une étape : COMEX répond 500 quand on lui

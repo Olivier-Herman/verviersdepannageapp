@@ -1179,6 +1179,7 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
   // chez Touring (sinon elle reste ouverte). Olivier 2026-08-07.
   const hasTouringFollowup = isTouringComex && Array.isArray((M as any).touring_actions) && (M as any).touring_actions.length > 1
   const [showTouringClose, setShowTouringClose] = useState(false)
+  const [vrEnvoi, setVrEnvoi] = useState(false)
   // Écran supplémentaire Touring (vrai écran, source COMEX). Trois actions :
   //  • 'dsp'     : clôture de la fiche dépannage (fin 00) AVANT la clôture VD Soft
   //                (sortie bloquée) → ensuite écran de clôture VD Soft DSP.
@@ -3823,14 +3824,34 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
           )
         })()}
 
-        {/* Bouton dédié « Demander un VR » (même emplacement que l'ancien bouton bleu),
-            pour les missions REM Touring — ouvre le modal (onglet REM, toggle VR). */}
+        {/* « Demander un VR » — appel DIRECT à Touring depuis le 14/08.
+            Ce n'est plus une clôture déguisée : la demande ne touche pas au statut
+            de la mission chez eux, donc le chauffeur peut la lancer sur place et
+            poursuivre son intervention normalement. */}
         {canTouringVr && (
           <button
-            onClick={() => { setTouringAction('vr'); setShowTouringClose(true) }}
-            className="w-full py-3.5 bg-[#1f5fd6] hover:bg-[#1b54bd] text-white rounded-2xl font-bold text-sm shadow-lg shadow-[#1f5fd6]/20 transition"
+            disabled={vrEnvoi || !!(M as any).touring_vr_requested_at}
+            onClick={async () => {
+              if ((M as any).touring_vr_requested_at) return
+              if (!confirm('Demander un véhicule de remplacement à Touring ?\n\nUn seul VR par dossier — la demande ne peut pas être annulée.')) return
+              setVrEnvoi(true)
+              try {
+                const r = await fetch(`/api/missions/${M.id}/touring-vr`, { method: 'POST' })
+                const d = await r.json().catch(() => ({}))
+                if (r.ok && d.ok) {
+                  alert(d.déjàDemandé
+                    ? 'Le VR a déjà été demandé pour ce dossier.'
+                    : 'Demande envoyée à Touring.\n\nTu recevras une notification dès qu\'ils auront réservé le véhicule, avec le lieu où le retirer.')
+                  router.refresh()
+                } else {
+                  alert(`La demande n'est pas passée.\n\n${d.error || 'Touring n\'a pas répondu.'}\n\nPréviens le dispatch.`)
+                }
+              } finally { setVrEnvoi(false) }
+            }}
+            className="w-full py-3.5 bg-[#1f5fd6] hover:bg-[#1b54bd] disabled:opacity-50 text-white rounded-2xl font-bold text-sm shadow-lg shadow-[#1f5fd6]/20 transition"
           >
-            🚗 Demander un VR (Touring)
+            {(M as any).touring_vr_requested_at ? '🚗 VR demandé — en attente de Touring'
+              : vrEnvoi ? 'Envoi…' : '🚗 Demander un VR (Touring)'}
           </button>
         )}
 

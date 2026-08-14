@@ -36,6 +36,10 @@ export function touringSyncEnabled(): boolean {
   return process.env.TOURING_COMEX_MODE === 'import'
 }
 
+export function comexKeysOf(f: { source_format?: string | null; raw_content?: string | null }): { CID_DOS: string; CID_SEQ_ACTION: string } | null {
+  return comexKeys(f as TouringFiche)
+}
+
 function comexKeys(f: TouringFiche): { CID_DOS: string; CID_SEQ_ACTION: string } | null {
   // Lien COMEX = source_format 'comex' + clés CID dans raw_content. On ne gate
   // PLUS sur source='touring' : une mission COMEX autoroute est auto-classée en
