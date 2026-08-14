@@ -14,6 +14,8 @@
 //      celles-là sont toutes nées d'un cas réel rencontré cette semaine.
 
 import { NextResponse }      from 'next/server'
+import { getServerSession }  from 'next-auth'
+import { authOptions }       from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase'
 
 export const dynamic     = 'force-dynamic'
@@ -38,11 +40,27 @@ const bxlDayStartISO = (daysAgo = 0) => {
 
 export async function GET(req: Request) {
   const pin = req.headers.get('x-dashboard-pin') || new URL(req.url).searchParams.get('pin') || ''
-  if (!VALID_PINS.includes(pin)) return NextResponse.json({ error: 'PIN invalide' }, { status: 401 })
+  if (!VALID_PINS.includes(pin)) {
+    // Fallback : session staff (pour le module d'historique /journal authentifié).
+    const session = await getServerSession(authOptions)
+    const role  = (session?.user as any)?.role || ''
+    const roles = Array.isArray((session?.user as any)?.roles) ? (session!.user as any).roles : []
+    const ok = ['dispatcher', 'admin', 'superadmin'].some(r => role === r || roles.includes(r))
+    if (!ok) return NextResponse.json({ error: 'PIN invalide' }, { status: 401 })
+  }
 
   const sb = createAdminClient()
   const since24 = new Date(Date.now() - 24 * 3600 * 1000).toISOString()
   const today   = bxlDayStartISO(0)
+
+  // Fenêtre du JOURNAL pilotable par ?days= (défaut 1 = 24h pour le slide).
+  // Le module d'historique appelle ?days=30 / ?days=180 (+ ?journalOnly=1 pour ne
+  // renvoyer QUE le journal, sans recalculer les stats). Olivier 2026-08-14.
+  const url = new URL(req.url)
+  const days = Math.max(1, Math.min(200, Number(url.searchParams.get('days')) || 1))
+  const journalOnly = url.searchParams.get('journalOnly') === '1'
+  const sinceJournal = new Date(Date.now() - days * 24 * 3600 * 1000).toISOString()
+  const journalLimit = Math.min(3000, 250 * days)
 
   // ── Journal : les gestes du terrain, en clair ────────────────────────────
   const ACTIONS = [
@@ -56,9 +74,9 @@ export async function GET(req: Request) {
   const { data: rawLogs } = await sb.from('mission_logs')
     .select('mission_id, action, notes, created_at, actor_id')
     .in('action', ACTIONS)
-    .gte('created_at', since24)
+    .gte('created_at', sinceJournal)
     .order('created_at', { ascending: false })
-    .limit(220)
+    .limit(journalLimit)
 
   const ids = [...new Set((rawLogs || []).map(l => l.mission_id).filter(Boolean))] as string[]
   const missions = new Map<string, any>()
@@ -190,6 +208,10 @@ export async function GET(req: Request) {
       notes:   l.notes || '',
     }
   })
+
+  // Module d'historique (?journalOnly=1) : on ne renvoie QUE le journal, sans
+  // recalculer les stats/anomalies (inutiles et coûteuses sur 30j/6mois).
+  if (journalOnly) return NextResponse.json({ events })
 
   // ── Anomalies ────────────────────────────────────────────────────────────
   // Chacune vient d'un incident constaté, pas d'une idée de tableau de bord.
