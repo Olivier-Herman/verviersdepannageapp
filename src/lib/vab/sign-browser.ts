@@ -21,6 +21,8 @@ const detailsUrl = (assignmentId: string) =>
 export interface VabBrowserResult {
   ok: boolean
   onCodeScreen: boolean
+  /** L'écran de codes a été rempli ET confirmé → dossier soldé chez VAB. */
+  codesConfirmed?: boolean
   cookieHeader: string      // à réutiliser par l'orchestrateur HTTP (même session)
   osvstate: string | null   // __OSVSTATE courant lu dans le DOM (handoff HTTP)
   steps: string[]
@@ -89,6 +91,16 @@ async function clearAndType(page: Page, selector: string, value: string): Promis
 }
 
 /** Dessine un trait sur le canvas de signature (mouse events réels). */
+/** Vrai écran de codes = la liste des solutions est REMPLIE (le select existe
+ *  aussi, vide, sur l'écran de signature). Olivier 2026-08-14. */
+async function isCodeScreen(page: Page): Promise<boolean> {
+  return page.evaluate(() => {
+    const sel = [...document.querySelectorAll('select')]
+      .find(x => /SolutionCodeLevel1/i.test(x.id || x.getAttribute('name') || '')) as HTMLSelectElement | undefined
+    return !!sel && sel.options.length > 1
+  }).catch(() => false)
+}
+
 async function drawSignature(page: Page): Promise<boolean> {
   const sel = '[id*="wtSignatureContainer"] canvas, .SignatureContainer canvas'
   const canvas = await page.$(sel)
@@ -141,10 +153,28 @@ async function clickByText(page: Page, src: string): Promise<boolean> {
  * Déroule l'écran on-site dans un vrai navigateur puis rend la main à l'écran
  * des codes. On DESSINE réellement sur le canvas (ce que le HTTP ne sait pas faire).
  */
+/** Ce que le chauffeur a déclaré, traduit en codes VAB. */
+export interface VabCodes {
+  /** 'tow' = le véhicule est remorqué (déclare la DEMANDE DE REM chez eux). */
+  issue: 'tow' | 'fixed'
+  /** Code panne « niveau1|niveau2 ». Défaut : Divers — Autre Problème. */
+  breakdown?: string
+  /** Remorquage : pays (21 = Belgique) et code postal de destination. */
+  destCountry?: string
+  destZip?: string
+}
+
+// Codes de la liste VAB (relevés sur leur écran, 22 solutions / 351 pannes).
+const SOL_TOW   = '814|13938'    // Pas Résolue   — Remorquage
+const SOL_FIXED = '12900|13917'  // Mobilité Rétablit — Problème Résolue
+const BRK_OTHER = '4004|4066'    // Divers — Autre Problème
+
 export async function vabCloseOnSiteBrowser(opts: {
   assignmentId: string
   km: string
   vinLastDigits: string
+  /** Fourni → on enchaîne sur l'écran de codes et on confirme. */
+  codes?: VabCodes
 }): Promise<VabBrowserResult> {
   const steps: string[] = []
   let browser: Browser | null = null
@@ -156,13 +186,29 @@ export async function vabCloseOnSiteBrowser(opts: {
     await loginInBrowser(page)
     await page.goto(detailsUrl(opts.assignmentId), { waitUntil: 'domcontentloaded', timeout: 30000 })
 
-    const ready = await page.waitForSelector('input[id*="wtInput_MileageCheck"], [id*="SolutionCode"]', { timeout: 20000 }).catch(() => null)
+    // On-site prêt = champ km OU canvas signature OU écran code (vélo « Fiets » :
+    // pas de km → on ne bloque pas sur wtInput_MileageCheck).
+    const ready = await page.waitForSelector('input[id*="wtInput_MileageCheck"], [id*="wtSignatureContainer"], select[id*="SolutionCodeLevel1"]', { timeout: 25000 }).catch(() => null)
     if (!ready) {
       const diag = await page.evaluate(() => `${document.title} | ${location.href} | ${document.body?.innerText?.slice(0, 160) || ''}`)
       return { ok: false, onCodeScreen: false, cookieHeader, osvstate: null, steps, error: 'écran on-site/code non trouvé', diag }
     }
 
-    const alreadyCodes = await page.$('select[id*="SolutionCodeLevel1"]')
+    // VAB construit ses listes APRÈS l'affichage : tester tout de suite renvoie
+    // un écran de codes vide et fait repartir la séquence dans le décor. On lui
+    // laisse le temps — « prévoir un wait de 5 secondes n'est pas du luxe »
+    // (Olivier 2026-08-14). On sort dès que l'un des deux écrans est certain.
+    for (let i = 0; i < 4; i++) {
+      if (await isCodeScreen(page)) break
+      if (await page.$('input[id*="wtInput_MileageCheck"]')) {
+        // Écran on-site : les listes ne viendront pas, inutile d'attendre plus.
+        if (i >= 1) break
+      }
+      await new Promise(r => setTimeout(r, 5000))
+    }
+
+    // Même piège ici : la simple présence du select ne prouve rien.
+    const alreadyCodes = await isCodeScreen(page)
     if (alreadyCodes) {
       steps.push('déjà écran code')
     } else {
@@ -201,12 +247,48 @@ export async function vabCloseOnSiteBrowser(opts: {
       } else { steps.push('vin déjà validé') }
 
       const drawn = await drawSignature(page)
-      if (!drawn) return { ok: false, onCodeScreen: false, cookieHeader, osvstate: null, steps, error: 'canvas signature introuvable/non rempli' }
-      steps.push('signature dessinée')
+      if (drawn) steps.push('signature dessinée')
+      else {
+        // Repli NATIF : la page offre « Créer la signature en blanc ». Dessiner
+        // dans le canvas est fragile (widget JS) ; ce lien fait le même travail
+        // et c'est celui qu'un humain utilise quand le client n'est pas là.
+        // Vu le 14/08 sur 8387746 : le dessin ne prenait pas, « Envoyer » ne
+        // sauvait donc ni le kilométrage ni la signature. Olivier 2026-08-14.
+        const blank = await page.evaluate(() => {
+          const a = [...document.querySelectorAll('a, button')]
+            .find(e => /cr[ée]er la signature en blanc/i.test(e.textContent || ''))
+          if (!a) return false
+          ;(a as HTMLElement).click()
+          return true
+        })
+        if (!blank) return { ok: false, onCodeScreen: false, cookieHeader, osvstate: null, steps, error: 'signature impossible (ni canvas ni lien blanc)' }
+        steps.push('signature en blanc')
+        await new Promise(r => setTimeout(r, 1500))
+      }
 
       await clickByText(page, 'envoyer')
-      await new Promise(r => setTimeout(r, 1500))
-      steps.push('envoyer')
+      await new Promise(r => setTimeout(r, 2500))
+      // Preuve que l'envoi a pris : le kilométrage est retenu par la page.
+      const kmSaved = await page.evaluate(() => {
+        const el = [...document.querySelectorAll('input')].find(i => /MileageCheck/i.test(i.id || i.name || '')) as HTMLInputElement | undefined
+        return el ? (el.value || '').trim() : ''
+      }).catch(() => '')
+      steps.push(kmSaved ? `envoyer (km retenu: ${kmSaved})` : 'envoyer (⚠ rien retenu)')
+
+      // Diagnostic AVANT le clic final : quels champs l'écran attend-il encore ?
+      // Deviner coûte un aller-retour complet à chaque essai ; regarder, un seul.
+      const etat = await page.evaluate(() => {
+        const out: string[] = []
+        document.querySelectorAll('input[type=text], select, textarea').forEach((e: any) => {
+          const id = (e.id || e.name || '').split('_').slice(-2).join('_')
+          if (!id) return
+          const v = (e.value ?? '').toString().slice(0, 24)
+          const req = /Mandatory|Required/i.test(e.className || '')
+          if (req || !v) out.push(`${id}=${JSON.stringify(v)}${req ? ' (obligatoire)' : ''}`)
+        })
+        return out.slice(0, 18).join(' · ')
+      }).catch(() => '')
+      if (etat) steps.push(`état écran: ${etat}`)
 
       await clickByText(page, 'fin lieu de la panne')
       await new Promise(r => setTimeout(r, 3500))
@@ -215,14 +297,147 @@ export async function vabCloseOnSiteBrowser(opts: {
         try { await fr.evaluate(() => { const el = [...document.querySelectorAll('a,button')].find(e => /^oui$/i.test((e.textContent || '').trim())); if (el) (el as HTMLElement).click() }) } catch { /* frame */ }
       }
       // Le postback Fin met du temps à poser l'écran code → poll.
-      for (let i = 0; i < 12; i++) {
-        if (await page.$('select[id*="SolutionCodeLevel1"]')) break
-        await new Promise(r => setTimeout(r, 1500))
+      for (let i = 0; i < 8; i++) {
+        if (await isCodeScreen(page)) break
+        await new Promise(r => setTimeout(r, 5000))
       }
       steps.push('fin lieu de la panne')
     }
 
-    const onCodeScreen = !!(await page.$('select[id*="SolutionCodeLevel1"]'))
+    let onCodeScreen = await isCodeScreen(page)
+
+    // Écran de codes pas encore là : on RECHARGE la fiche. Vu le 14/08 sur
+    // 56154118 — la séquence va bien jusqu'au bout, mais le postback « Fin lieu
+    // de la panne » laisse une page intermédiaire ; l'écran de codes n'apparaît
+    // qu'à la relecture du dossier. Olivier 2026-08-14.
+    if (!onCodeScreen && !steps.some(x => x.includes('⚠ rien retenu'))) {
+      await page.goto(detailsUrl(opts.assignmentId), { waitUntil: 'domcontentloaded', timeout: 30000 }).catch(() => {})
+      await new Promise(r => setTimeout(r, 2500))
+      onCodeScreen = await isCodeScreen(page)
+      if (onCodeScreen) steps.push('écran de codes (après rechargement)')
+      else {
+        // On dit CE QU'ON VOIT, pour ne pas chercher à l'aveugle la prochaine fois.
+        const vu = await page.evaluate(() => {
+          const t = [...document.querySelectorAll('a, button, input[type=submit]')]
+            .map(e => (e.textContent || (e as HTMLInputElement).value || '').replace(/\s+/g, ' ').trim())
+            .filter(x => x && x.length < 28)
+          return [...new Set(t)].slice(0, 14).join(' | ')
+        }).catch(() => '')
+        steps.push(`écran inattendu — boutons vus : ${vu}`)
+      }
+    }
+
+    // ── ÉCRAN DE CODES ────────────────────────────────────────────────────
+    // Pourquoi dans le NAVIGATEUR et pas en HTTP : les contrôles de ce
+    // formulaire sont déclarés côté client (« Champ obligatoire ! », « Unité
+    // monétaire attendue ! ») et le bouton Confirmer ne s'exécute qu'après leur
+    // passage. Un POST direct est donc rejeté quoi qu'on envoie — cinq essais
+    // le 14/08 pour s'en convaincre. Ici, les validateurs tournent comme pour
+    // un humain. Olivier 2026-08-14.
+    //
+    // C'est le MÊME écran qui déclare le remorquage : choisir « Pas Résolue —
+    // Remorquage » ouvre le formulaire de destination. Sans ce geste, VAB garde
+    // un dossier de PANNE là où on a remorqué — 13 cas sur 10 jours.
+    let codesConfirmed = false
+    if (onCodeScreen && opts.codes) {
+      const c = opts.codes
+
+      // Les listes arrivent APRÈS l'écran : juste après « Fin lieu de la panne »,
+      // le select des solutions ne contient encore que son tiret. On l'attend, et
+      // on recharge la fiche si besoin — sans risque désormais, tout est
+      // enregistré. Vu le 14/08 : sans cette attente, les trois choix tombaient
+      // dans le vide et « Confirmer » repartait en arrière.
+      const optionsReady = async () => page.evaluate(() => {
+        const sel = [...document.querySelectorAll('select')].find(x => /SolutionCodeLevel1/i.test(x.id || x.getAttribute('name') || ''))
+        return sel ? (sel as HTMLSelectElement).options.length : 0
+      }).catch(() => 0)
+      for (let i = 0; i < 6 && (await optionsReady()) <= 1; i++) await new Promise(r => setTimeout(r, 5000))
+      if ((await optionsReady()) <= 1) {
+        await page.goto(detailsUrl(opts.assignmentId), { waitUntil: 'domcontentloaded', timeout: 30000 }).catch(() => {})
+        await new Promise(r => setTimeout(r, 5000))
+        for (let i = 0; i < 4 && (await optionsReady()) <= 1; i++) await new Promise(r => setTimeout(r, 5000))
+      }
+      const nbBrk = await page.evaluate(() => {
+        const sel = [...document.querySelectorAll('select')].find(x => /BreakdownCodeLevel1/i.test(x.id || ''))
+        return sel ? (sel as HTMLSelectElement).options.length : 0
+      }).catch(() => 0)
+      steps.push(`listes: solutions ${await optionsReady()} · pannes ${nbBrk}`)
+      const pick = async (idPart: string, value: string) => {
+        const sel = await page.$(`select[id*="${idPart}"]`)
+        if (!sel) return false
+        const ok = await page.evaluate((el: any, v: string) => {
+          const has = [...el.options].some((o: any) => o.value === v)
+          if (!has) return false
+          el.value = v
+          el.dispatchEvent(new Event('change', { bubbles: true }))
+          return true
+        }, sel, value)
+        if (ok) await new Promise(r => setTimeout(r, 5000))   // VAB est lent entre deux écrans
+        return ok
+      }
+      const type = async (idPart: string, value: string) => {
+        const el = await page.$(`input[id*="${idPart}"]`)
+        if (!el) return false
+        // On vide par le DOM (le triple-clic n'est pas disponible ici), puis on
+        // tape : VAB écoute la frappe, pas seulement la valeur.
+        await page.evaluate((n: any) => { (n as HTMLInputElement).value = '' }, el)
+        await el.type(value)
+        return true
+      }
+
+      if (await pick('SolutionCodeLevel1', c.issue === 'tow' ? SOL_TOW : SOL_FIXED))
+        steps.push(c.issue === 'tow' ? 'solution: remorquage' : 'solution: mobilité rétablie')
+      if (await pick('BreakdownCodeLevel1', c.breakdown || BRK_OTHER)) steps.push('code panne')
+
+      // Carnet d'entretien « Numérique » : sur « Lisible », VAB exige en plus le
+      // garage et la date du dernier entretien, que personne ne collecte.
+      const radioOk = await page.evaluate(() => {
+        const r = [...document.querySelectorAll('input[type=radio]')] as HTMLInputElement[]
+        const num = r.find(x => x.value === '3')
+        if (!num) return false
+        num.click()
+        return true
+      })
+      if (radioOk) { steps.push('carnet: numérique'); await new Promise(r => setTimeout(r, 5000)) }
+
+      // Coût supplémentaire : TOUJOURS 0 (Olivier). Détour idem.
+      await type('BreakdownExtraCostInput', '0')
+      await type('Input_DetourNrOfKm', '0')
+
+      if (c.issue === 'tow') {
+        if (c.destCountry && await pick('ComboBox_Destination_Country', c.destCountry)) steps.push('pays destination')
+        if (c.destZip) {
+          const zipOk = await page.evaluate((zip: string) => {
+            const sel = [...document.querySelectorAll('select')].find(s => /ZipcodeCity/i.test(s.id)) as HTMLSelectElement | undefined
+            if (!sel) return false
+            const opt = [...sel.options].find(o => o.text.trim().startsWith(zip))
+            if (!opt) return false
+            sel.value = opt.value
+            sel.dispatchEvent(new Event('change', { bubbles: true }))
+            return true
+          }, c.destZip)
+          if (zipOk) { steps.push('ville destination'); await new Promise(r => setTimeout(r, 5000)) }
+        }
+      }
+
+      // Confirmer (= wtLink_End). Une confirmation navigateur peut s'afficher.
+      page.on('dialog', d => { d.accept().catch(() => {}) })
+      const confirmed = await page.evaluate(() => {
+        const a = [...document.querySelectorAll('a')].find(x => /^\s*Confirmer\s*$/i.test(x.textContent || ''))
+        if (!a) return false
+        ;(a as HTMLElement).click()
+        return true
+      })
+      if (confirmed) {
+        steps.push('confirmer')
+        await page.waitForNavigation({ waitUntil: 'domcontentloaded', timeout: 25000 }).catch(() => {})
+        await new Promise(r => setTimeout(r, 5000))
+        // Preuve : l'écran de codes a disparu.
+        codesConfirmed = !(await isCodeScreen(page))
+        steps.push(codesConfirmed ? 'dossier soldé' : 'confirmation refusée')
+      }
+    }
+
     const osvstate = await page.evaluate(() => {
       const h = document.querySelector('input[name="__OSVSTATE"]') as HTMLInputElement | null
       return h ? h.value : null
@@ -230,7 +445,7 @@ export async function vabCloseOnSiteBrowser(opts: {
     const cookies = await page.cookies()
     cookieHeader = cookies.map(c => `${c.name}=${c.value}`).join('; ')
 
-    return { ok: onCodeScreen, onCodeScreen, cookieHeader, osvstate, steps }
+    return { ok: onCodeScreen, onCodeScreen, codesConfirmed, cookieHeader, osvstate, steps }
   } catch (e: any) {
     return { ok: false, onCodeScreen: false, cookieHeader, osvstate: null, steps, error: e?.message || String(e) }
   } finally {
