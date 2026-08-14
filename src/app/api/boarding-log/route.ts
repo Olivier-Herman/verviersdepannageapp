@@ -113,7 +113,7 @@ export async function GET(req: Request) {
       case 'load_vehicle': return { ton: 'info', text: `${who} a chargé ${veh} sur le camion.` }
       case 'park':         return { ton: 'info', text: `${who} a déposé ${veh} au parc.` }
       case 'completed':    return { ton: 'ok',   text: `${who} a terminé ${veh}. La mission part à la facturation.` }
-      case 'flux2_closed': return { ton: 'ok',   text: `Clôture chauffeur sur ${veh}.${motif}` }
+      case 'flux2_closed': return { ton: 'ok',   text: `Clôture par ${who} sur ${veh}.${motif}` }
       case 'touring_closed': return { ton: 'ok', text: `${veh} est clôturé chez Touring — ${(l.notes || '').replace(/^Clôture Touring \(flux 2\) — /, '')}` }
       case 'vab_closed':   return { ton: 'ok',   text: `${veh} est clôturé chez VAB.` }
       case 'axa_closed':   return { ton: 'ok',   text: `${veh} est clôturé chez AXA.` }
