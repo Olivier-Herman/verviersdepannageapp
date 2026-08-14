@@ -169,6 +169,12 @@ export async function GET(req: Request) {
     const n = repeats.get(groupKey(l.mission_id, l.action)) || 1
     const ph = phrase(l, m, n)
     ph.text = ph.text.charAt(0).toUpperCase() + ph.text.slice(1)
+    // Source visible sur CHAQUE ligne (Olivier 2026-08-14) : on sait de quel
+    // scénario on parle. On saute si déjà mentionnée (ex. « clôturé chez VAB »).
+    const srcLbl = SRC_LBL[m.source] || m.source || ''
+    if (srcLbl && !ph.text.includes(srcLbl)) {
+      ph.text = ph.text.replace(/[.\s]*$/, '') + ` · ${srcLbl}`
+    }
     return {
       at:      l.created_at,
       action:  l.action,
