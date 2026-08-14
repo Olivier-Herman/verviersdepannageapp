@@ -38,7 +38,10 @@ const nextConfig = {
     // ailleurs. Olivier 2026-08-12.
     outputFileTracingIncludes: {
       "/api/missions/[id]/cloture": ["./node_modules/@sparticuz/chromium/bin/**"],
-      "/api/missions/[id]/cloture/route": ["./node_modules/@sparticuz/chromium/bin/**"]
+      "/api/missions/[id]/cloture/route": ["./node_modules/@sparticuz/chromium/bin/**"],
+      // Le filet pilote le même Chromium : sans cette ligne il tourne en local
+      // et tombe en prod sur « bin does not exist ».
+      "/api/cron/vab-close-retry": ["./node_modules/@sparticuz/chromium/bin/**"]
     }
   }
 };

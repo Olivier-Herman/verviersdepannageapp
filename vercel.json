@@ -25,6 +25,7 @@
     { "path": "/api/cron/achats-parse?sync=1&limit=20", "schedule": "*/10 * * * *" },
     { "path": "/api/cron/paie-fetch",                "schedule": "0 7 * * *"    },
     { "path": "/api/cron/vab-poll",                  "schedule": "*/5 * * * *"  },
+    { "path": "/api/cron/vab-close-retry",           "schedule": "*/15 * * * *" },
     { "path": "/api/cron/axa-poll",                  "schedule": "* * * * *"    },
     { "path": "/api/cron/touring-comex-poll",        "schedule": "* * * * *"    },
     { "path": "/api/cron/touring-vr-scan",           "schedule": "* * * * *"    },
