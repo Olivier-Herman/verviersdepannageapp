@@ -38,6 +38,11 @@ export interface VabCodeInput {
   solutionL2?: string   // niveau 2
   breakdown?: string    // panne niveau 1
   breakdownL2?: string  // panne niveau 2 (sinon : le premier proposé)
+  /** Remorquage : où va le véhicule. Repris de la fiche, jamais saisi à la main. */
+  destinationName?: string
+  destinationAddress?: string
+  /** Emplacement des clés (liste VAB). Par défaut « garagiste ». */
+  keyLocation?: string
 }
 
 export interface VabCodeResult { ok: boolean; steps: string[]; error?: string }
@@ -51,6 +56,23 @@ const BRK_OTHER_L2 = '4591'                          // son niveau 2, relevé su
 // lecture des handlers échoue.
 const POP_TOW = 'WebPatterns_wt15_block_wtMainContent_wtLink_ClickTow'
 const POP_OK  = 'WebPatterns_wt15_block_wtMainContent_wtLink_Ok'
+
+/**
+ * Identifiant DOM (`a_b_c`) → nom de contrôle ASP.NET (`a$b$c`).
+ *
+ * ⚠️ Le `$` ne sépare que les CONTENEURS. Deux familles gardent leur underscore
+ * et les remplacer casse tout : les indices de widget (`LisbonTheme_wt401`,
+ * `WebPatterns_wt15`) et le suffixe des liens (`wtLink_Ok`, `wtLink_End`,
+ * `wtLink_ClickTow`). Un `wtLink$Ok` fait répondre à VAB « There was an error
+ * processing your request » — c'est ce qui bloquait la pop-up de fin.
+ * Vérifié dans les deux sens sur la capture d'Olivier. 2026-08-14.
+ */
+function toName(id: string): string {
+  return id
+    .replace(/_/g, '$')
+    .replace(/\$wt(\d)/g, '_wt$1')
+    .replace(/wtLink\$/g, 'wtLink_')
+}
 
 const detailUrl = (aid: string) => `${BASE}/BreakdownAssignments_Details.aspx?AssignmentId=${aid}`
 const ts = () => Date.now()
@@ -66,8 +88,19 @@ async function post(cookie: string, url: string, body: URLSearchParams, referer:
     },
     body: body.toString(),
   })
-  return r.text()
+  const txt = await r.text()
+  // Trace : compter les octets d'un refus n'apprend rien, il faut LIRE ce que
+  // VAB répond. VAB_DUMP_DIR posé → chaque échange est écrit sur disque.
+  if (process.env.VAB_DUMP_DIR) {
+    const fs = await import('node:fs')
+    const n = String(++dumpSeq).padStart(2, '0')
+    const dir = process.env.VAB_DUMP_DIR
+    fs.writeFileSync(`${dir}/${n}-req.txt`, `${url}\n\n${body.toString().replace(/&/g, '\n')}`)
+    fs.writeFileSync(`${dir}/${n}-res.txt`, txt)
+  }
+  return txt
 }
+let dumpSeq = 0
 
 /** Tous les champs de la page, tels que le navigateur les renverrait. */
 function formOf($: cheerio.CheerioAPI): URLSearchParams {
@@ -114,6 +147,94 @@ const suffix = ($: cheerio.CheerioAPI, s: string) => {
   return f
 }
 const toId = (n: string) => n.replace(/\$/g, '_')
+
+/** Sans accents ni ponctuation, pour comparer « Straße » à « STRASSE ». */
+const plat = (s: string) => (s || '').normalize('NFD').replace(/[̀-ͯ]/g, '')
+  .replace(/ß/g, 'ss').toUpperCase().replace(/[^A-Z0-9 ]+/g, ' ').replace(/\s+/g, ' ').trim()
+
+/**
+ * Découpe « BMW Louyet Verviers, Av. du Parc 31, 4800 Verviers » en ses morceaux.
+ * VAB veut le code postal, la ville, la rue et le numéro dans des champs séparés.
+ */
+export function decoupeAdresse(adresse: string): { zip: string; city: string; street: string; number: string } {
+  const parts = (adresse || '').split(',').map(s => s.trim()).filter(Boolean)
+  let zip = '', city = '', street = '', number = ''
+  for (const p of parts) {
+    const mz = p.match(/\b(\d{4})\b\s*(.*)$/)
+    if (mz && !zip) { zip = mz[1]; city = mz[2].trim(); continue }
+    const mr = p.match(/^(.+?)\s+(\d+[A-Za-z]?)$/)
+    if (mr && !street) { street = mr[1].trim(); number = mr[2]; }
+  }
+  // Dernier recours : la voie est la partie qui n'est ni le nom ni la ville.
+  if (!street && parts.length >= 2) street = parts[parts.length - 2]
+  return { zip, city, street, number }
+}
+
+/**
+ * Le formulaire de DEMANDE DE REMORQUAGE (TowAssignments_Create.aspx).
+ *
+ * VAB propose 104 destinations connues — leur réseau BMW. Quand le garage y
+ * figure, on le sélectionne : l'adresse suit toute seule et il n'y a rien à
+ * retaper. Sinon on saisit code postal, ville, rue et numéro à la main.
+ */
+async function createTowAssignment(cookie: string, input: VabCodeInput, steps: string[]): Promise<boolean> {
+  const url = `${BASE}/TowAssignments_Create.aspx?BreakdownAssignmentId=${input.assignmentId}`
+  const html = await (await fetch(url, { headers: { 'User-Agent': UA, Cookie: cookie } })).text()
+  const $ = cheerio.load(html)
+
+  const nKey  = suffix($, 'wtComboBox_KeyLocation')
+  const nName = suffix($, 'wtComboBox_Destination_Name')
+  const nPays = suffix($, 'wtComboBox_Destination_Country')
+  const nZip  = suffix($, 'wtInput_Destination_ZipCode_NoAutoFill')
+  const nCity = suffix($, 'wtInput_Destination_City_NoAutoFill')
+  const nRue  = suffix($, 'wtInput_Destination_Street_NoAutoFill')
+  const nNum  = suffix($, 'wtInput_Destination_HouseNumber_NoAutoFill')
+
+  const b = formOf($)
+  if (nKey) b.set(nKey, input.keyLocation || '1402')   // « garagiste » par défaut
+
+  // La liste des 104 destinations est leur réseau BMW. On ne s'en sert QUE sur
+  // une correspondance exacte du nom : « mieux vaut entrer une adresse à la main
+  // que sélectionner un mauvais garage » (Olivier 2026-08-14). Une simple
+  // inclusion de mots ferait passer « LOUYET MALMEDY » pour « Garage Sepulchre
+  // Malmedy » — un véhicule envoyé au mauvais endroit.
+  const a = decoupeAdresse(input.destinationAddress || '')
+  const nom = plat(input.destinationName || (input.destinationAddress || '').split(',')[0])
+  let connu = ''
+  $(`select[name="${nName}"] option`).each((_, o) => {
+    const v = $(o).attr('value') || ''
+    const lib = plat($(o).text())
+    if (!connu && v !== '__ossli_0' && lib && (lib === nom || nom.endsWith(` ${lib}`))) connu = v
+  })
+  // L'adresse reste le chemin normal : on ne prend leur fiche que si on ne sait
+  // pas écrire l'adresse nous-mêmes.
+  if (connu && a.zip && a.street) connu = ''
+
+  if (connu && nName) {
+    b.set(nName, connu)
+    steps.push(`destination : réseau VAB (${connu})`)
+  } else {
+    if (!a.zip || !a.street) { steps.push(`adresse illisible : « ${input.destinationAddress || '—'} »`); return false }
+    if (nPays) b.set(nPays, '21')                      // Belgique
+    if (nZip)  b.set(nZip,  a.zip)
+    if (nCity) b.set(nCity, a.city)
+    if (nRue)  b.set(nRue,  a.street)
+    if (nNum)  b.set(nNum,  a.number)
+    steps.push(`destination saisie : ${a.street} ${a.number}, ${a.zip} ${a.city}`)
+  }
+
+  const createId = linkId(html, 'wtLink_Create')
+  if (!createId) { steps.push('bouton Créer introuvable'); return false }
+  b.set('__EVENTTARGET', toName(createId)); b.set('__EVENTARGUMENT', '')
+  b.set('__AJAX', `480,219,${createId},58,49,0,0,139,67,`)
+  const r = await post(cookie, url, b, url)
+  // « Champ obligatoire ! » est le gabarit du validateur, présent dans TOUTES
+  // les pages : le chercher faisait crier au refus sur des réponses saines.
+  // La seule preuve fiable est la disparition du dossier de leur liste.
+  const refus = /There was an error processing/.test(r)
+  steps.push(refus ? 'remorquage refusé' : 'formulaire de remorquage envoyé')
+  return !refus
+}
 
 export async function closeVabCodeScreen(input: VabCodeInput): Promise<VabCodeResult> {
   const steps: string[] = []
@@ -182,10 +303,11 @@ export async function closeVabCodeScreen(input: VabCodeInput): Promise<VabCodeRe
       steps.push(`code panne niveau 2 (${brk2})`)
     }
 
+    let endResponse = ''
     // 4 — Confirmer
     const endName = linkId(html, 'wtLink_End')
     if (!endName) return { ok: false, steps, error: 'bouton Confirmer introuvable' }
-    const nEnd = endName.replace(/_/g, '$')
+    const nEnd = toName(endName)
     {
       // ⚠️ La vraie requête n'envoie que 21 champs, pas toute la page. Envoyer
       // l'intégralité des champs cachés faisait redessiner l'écran au lieu de
@@ -220,33 +342,52 @@ export async function closeVabCodeScreen(input: VabCodeInput): Promise<VabCodeRe
         || (rEnd.match(/Champ obligatoire[^"]{0,40}/) || [])[0]
         || `${rEnd.length} octets`
       steps.push(`confirmer → ${dit}`)
+      endResponse = rEnd
     }
 
-    // 5 — la pop-up de fin : c'est ELLE qui déclare le remorquage
-    const popUrl = `${BASE}/BreakdownEnd_Popup.aspx`
-    const popHtml = await (await fetch(`${popUrl}?_ts=${ts()}`, { headers: { 'User-Agent': UA, Cookie: cookie } })).text()
+    // 5 — la pop-up de fin : c'est ELLE qui déclare le remorquage.
+    //
+    // ⚠️ Elle s'ouvre en IFRAME, avec des paramètres que la réponse du Confirmer
+    // nous donne — dont le numéro du dossier. La charger nue, comme je le
+    // faisais, renvoie une page sans contexte et VAB répond « There was an error
+    // processing your request ». Olivier 2026-08-14.
+    const popQuery = (endResponse.match(/BreakdownEnd_Popup\.aspx\?([^"'\\]{5,200})/) || [])[1]
+    const popUrl = popQuery
+      ? `${BASE}/BreakdownEnd_Popup.aspx?${popQuery.replace(/&amp;/g, '&')}`
+      : `${BASE}/BreakdownEnd_Popup.aspx?BreakdownAssignmentId=${input.assignmentId}`
+    const popHtml = await (await fetch(popUrl, { headers: { 'User-Agent': UA, Cookie: cookie, Referer: dUrl } })).text()
     const $p = cheerio.load(popHtml)
     // Le champ d'état de la pop-up (nom numérique) bascule END → TOW.
     let stateField = ''
     $p('input[type=hidden]').each((_, e) => { const n = $p(e).attr('name') || ''; if (!stateField && /^\d{6,}$/.test(n)) stateField = n })
 
-    const popPost = async (linkSuffix: string, stateValue: string, fallback = '') => {
-      const name = linkId(popHtml, linkSuffix) || fallback
-      if (!name) return false
+    // Les nombres qui suivent l'identifiant sont repris tels quels de la capture,
+    // comme pour le Confirmer où des zéros faisaient échouer le clic.
+    const popPost = async (linkSuffix: string, ajaxTail: string, stateValue?: string) => {
+      const name = linkId(popHtml, linkSuffix)
+        || (linkSuffix === 'wtLink_ClickTow' ? POP_TOW : linkSuffix === 'wtLink_Ok' ? POP_OK : '')
+        || `WebPatterns_wt15_block_wtMainContent_${linkSuffix}`
       const b = formOf($p)
-      if (stateField) b.set(stateField, stateValue)
-      b.set('__EVENTTARGET', name.replace(/_/g, '$')); b.set('__EVENTARGUMENT', '')
-      b.set('__AJAX', `480,219,${name},58,49,0,0,`)
-      const r = await post(cookie, `${popUrl}?_ts=${ts()}`, b, popUrl)
+      if (stateField && stateValue) b.set(stateField, stateValue)
+      b.set('__EVENTTARGET', toName(name)); b.set('__EVENTARGUMENT', '')
+      b.set('__AJAX', `480,219,${name},${ajaxTail}`)
+      const r = await post(cookie, popUrl, b, popUrl)
       absorb($p, r)
-      return true
+      return !/There was an error processing/.test(r)
     }
 
+    // La pop-up demande D'ABORD ce qu'on fait du véhicule — remorquage, dépôt,
+    // livraison ou fin sur place — et c'est ce clic qui pose l'état. Le forcer
+    // dans le champ caché ne suffit pas : la page expose bien un `wtLink_ClickEnd`
+    // pour le simple dépannage. Olivier 2026-08-14.
     if (input.tow) {
-      if (await popPost('wtLink_ClickTow', 'END', POP_TOW)) steps.push('demande de remorquage')
-      if (await popPost('wtLink_Ok', 'TOW', POP_OK))        steps.push('validation remorquage')
+      steps.push(await popPost('wtLink_ClickTow', '58,49,0,0,139,67,', 'END') ? 'demande de remorquage' : 'remorquage refusé')
+      const rem = await createTowAssignment(cookie, input, steps)
+      if (!rem) return { ok: false, steps, error: 'formulaire de remorquage refusé' }
+      steps.push(await popPost('wtLink_Ok', '173,200,0,0,239,181,', 'TOW') ? 'validation remorquage' : 'validation refusée')
     } else {
-      if (await popPost('wtLink_Ok', 'END', POP_OK)) steps.push('validation fin')
+      steps.push(await popPost('wtLink_ClickEnd', '58,49,0,0,139,67,', 'END') ? 'fin sur place' : 'fin refusée')
+      steps.push(await popPost('wtLink_Ok', '173,200,0,0,239,181,', 'END') ? 'validation fin' : 'validation refusée')
     }
 
     // 6 — vérification réelle : l'écran de codes a-t-il disparu ?
