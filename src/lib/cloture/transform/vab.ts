@@ -171,6 +171,84 @@ export async function runVabTowClose(input: VabTowCloseInput): Promise<void> {
 
   const started = Date.now()
   try {
+    // ── La chaîne qui aboutit, prouvée le 14/08 sur quatre dossiers ───────────
+    // 1) navigateur : kilométrage + châssis (chacun avec SON bouton « Vérifier »)
+    //    puis signature → l'écran des codes ;
+    // 2) HTTP : codes, Confirmer, pop-up de fin, et le formulaire de remorquage
+    //    rempli depuis la fiche.
+    // L'ancien chemin (`closeVabMission`) n'atteignait jamais l'écran des codes :
+    // il annonçait pourtant des succès, et c'est ainsi que treize dossiers sont
+    // restés ouverts chez eux pendant dix jours sans que personne le voie.
+    const { loginVab } = await import('@/lib/vab/scraper')
+    const { closeVabCodeScreen } = await import('@/lib/vab/close-codes')
+
+    const { data: f } = await sb.from('incoming_missions')
+      .select('vehicle_mileage, vehicle_vin, mission_type, destination_name, destination_address')
+      .eq('id', input.missionId).maybeSingle()
+    const km  = String((f as any)?.vehicle_mileage ?? '').replace(/\D+/g, '')
+    const vin = String((f as any)?.vehicle_vin ?? '').trim()
+    const tow = (f as any)?.mission_type === 'remorquage'
+
+    const étapes: string[] = []
+    const onsite = await vabCloseOnSiteBrowser({
+      assignmentId,
+      // Sans relevé, VAB refuse d'avancer : on met un chiffre bas plutôt que de
+      // bloquer la clôture (Olivier : « essaie un faux bas style 126 »).
+      km: km || '126',
+      vinLastDigits: vin ? vin.slice(-3) : '126',
+      vinFull: vin || undefined,
+    })
+    étapes.push(...onsite.steps)
+    if (!onsite.onCodeScreen) {
+      await log('vab_close_failed',
+        `VAB : bloqué avant l'écran des codes — ${onsite.error || 'raison inconnue'} (${étapes.join(' → ')})`,
+        { assignmentId, steps: étapes, diag: onsite.diag ?? null })
+      return
+    }
+
+    const s = await loginVab()
+    const codes = await closeVabCodeScreen({
+      assignmentId, cookieHeader: s.cookieHeader, tow,
+      destinationName:    (f as any)?.destination_name || '',
+      destinationAddress: (f as any)?.destination_address || '',
+      keyLocation: input.keyRecovered === false
+        ? undefined
+        : (KEY_LOCATION_VAB[String(input.keyLocation || '')] || KEY_LOCATION_FALLBACK),
+    })
+    étapes.push(...codes.steps)
+
+    const secs2 = Math.round((Date.now() - started) / 1000)
+    if (codes.ok) {
+      await sb.from('incoming_missions')
+        .update({ vab_closed_at: new Date().toISOString(), updated_at: new Date().toISOString() })
+        .eq('id', input.missionId)
+    }
+    await log(
+      codes.ok ? 'vab_closed' : 'vab_close_failed',
+      codes.ok
+        ? `VAB : ${tow ? 'remorquage' : 'dépannage'} clôturé automatiquement en ${secs2}s (${étapes.join(' → ')})`
+        : `VAB : clôture non aboutie après ${secs2}s — ${codes.error || 'raison inconnue'} (${étapes.join(' → ')})`,
+      { assignmentId, steps: étapes, error: codes.error ?? null, seconds: secs2, tow },
+    )
+    return
+  } catch (e: any) {
+    await log('vab_close_failed', `VAB : erreur pendant la clôture — ${e?.message || e}`, { assignmentId })
+    return
+  } finally {
+    await releaseLock()
+  }
+}
+
+/** Ancien chemin, conservé le temps de vérifier la bascule. */
+export async function runVabTowCloseLegacy(input: VabTowCloseInput): Promise<void> {
+  const sb = createAdminClient()
+  const log = (action: string, notes: string, metadata: any = {}) =>
+    sb.from('mission_logs').insert({ mission_id: input.missionId, actor_id: input.actorId ?? null, action, notes, metadata })
+      .then(() => {}, () => {})
+  const assignmentId = vabAssignmentId(input.externalId)
+  if (!assignmentId) return
+  const started = Date.now()
+  try {
     const { closeVabMission } = await import('@/lib/vab/close')
     // Le type de dossier est celui de VAB, PAS le nôtre. Vu en réel le 13/08 sur
     // 2HFN413 : le chauffeur avait passé la fiche en remorquage chez nous, mais
