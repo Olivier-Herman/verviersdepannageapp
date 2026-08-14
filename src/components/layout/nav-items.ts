@@ -53,6 +53,7 @@ export const NAV_ITEMS: NavItem[] = [
   { href: '/ma-paie',       label: 'Mes Prestations',  icon: '📋', moduleId: null },
   { href: '/aide',          label: 'Aide',             i18nKey: 'nav.help',          icon: '📖', moduleId: null },
   { href: '/assistant',     label: 'Assistant IA',     icon: '🤖', moduleId: null, role: 'superadmin' },
+  { href: '/journal',       label: 'Journal',          icon: '📓', moduleId: null, role: 'superadmin' },
   // 'Mon Profil' retire de la sidebar : doublon avec le UserBlock cliquable
   // en bas qui pointe deja vers /profil.
 ]

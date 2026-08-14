@@ -60,6 +60,7 @@ export const NAV_TREE: NavModule[] = [
       { href: '/dispatch/new',       label: 'Nouvelle mission',   icon: Plus,        requires: '/dispatch' },
       { href: '/relivraison',        label: 'Relivraison',        icon: Repeat,      requires: '/relivraison' },
       { href: '/missions-terminees', label: 'Missions terminées', icon: FolderCheck, i18nKey: 'nav.finished', requires: '/missions-terminees' },
+      { href: '/journal',            label: 'Journal',            icon: FileText,    requires: '/dispatch', superadminOnly: true },
     ],
   },
   // Pas de groupe « Mes Missions » : ce sont les deux écrans les plus utilisés du
