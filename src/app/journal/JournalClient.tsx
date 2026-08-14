@@ -39,6 +39,20 @@ export default function JournalClient() {
   }
   useEffect(() => { load(days) }, [days])
 
+  // Auto-refresh SILENCIEUX toutes les 30 s — uniquement sur la vue 24h (live).
+  // 30j/6mois = historique → rafraîchissement à la demande (bouton), pas en boucle.
+  useEffect(() => {
+    if (days !== 1) return
+    const iv = setInterval(async () => {
+      try {
+        const res = await fetch('/api/boarding-log?days=1&journalOnly=1', { cache: 'no-store' })
+        const j = await res.json()
+        if (res.ok) setEvents(j.events || [])
+      } catch { /* silencieux */ }
+    }, 30_000)
+    return () => clearInterval(iv)
+  }, [days])
+
   // Filtre texte (plaque, chauffeur, source, texte)
   const filtered = useMemo(() => {
     const s = q.trim().toLowerCase()
