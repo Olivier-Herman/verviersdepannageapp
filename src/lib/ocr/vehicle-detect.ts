@@ -13,7 +13,12 @@ import { ANTHROPIC_CHEAP_MODELS, createWithModelFallback } from '@/lib/anthropic
 import { looksLikePlate, looksLikeVin, normalizeOcr } from '@/lib/ocr/vehicle'
 
 const OCR_MODELS = [process.env.ANTHROPIC_OCR_MODEL, ...ANTHROPIC_CHEAP_MODELS].filter(Boolean) as string[]
-const MAX_IMAGES = 6
+// Les chauffeurs ne classent pas leurs photos — elles arrivent toutes en
+// « autre » — donc c'est à nous de retrouver le châssis et le compteur DANS le
+// lot (Olivier 2026-08-14). À six images, une mission qui en compte huit voyait
+// les premières ignorées : Franck avait cinq photos sur 1UXZ479 et l'écran lui
+// redemandait quand même le châssis.
+const MAX_IMAGES = 12
 
 let cachedClient: Anthropic | null = null
 function getClient(): Anthropic {

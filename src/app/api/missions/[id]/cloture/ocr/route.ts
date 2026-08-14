@@ -40,9 +40,15 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   if (photos.length === 0) return NextResponse.json({ vin: null, km: null, photos: 0 })
 
   try {
-    // Les dernières photos d'abord : le compteur et le châssis sont en général
-    // pris au moment de la clôture, pas au début de la mission.
-    const { vin, mileage } = await detectVehicleFromImages(photos.slice(-6))
+    // ⚠️ On ratisse TOUT le lot, pas seulement la fin. « Elles seront toujours
+    // classées "autre" : les chauffeurs n'utilisent pas les catégories. Il faut
+    // repérer le VIN et les km dans le lot de photos qu'ils font » (Olivier
+    // 2026-08-14). On se limitait aux six dernières — sur une mission qui en
+    // compte plus, la photo du châssis pouvait être avant et n'était jamais lue.
+    // Les dernières restent en tête : compteur et châssis sont souvent pris à la
+    // clôture. Plafond à 12 pour ne pas faire attendre le chauffeur.
+    const lot = [...photos].reverse().slice(0, 12)
+    const { vin, mileage } = await detectVehicleFromImages(lot)
 
     const patch: Record<string, any> = {}
     if (vin?.value && !(m as any).vehicle_vin) patch.vehicle_vin = vin.value

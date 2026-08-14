@@ -110,6 +110,8 @@ export default function CloseScreen({
 
   const [ocrBusy, setOcrBusy] = useState(false)
   const [ocrGot, setOcrGot]   = useState<{ vin: boolean; km: boolean } | null>(null)
+  /** Combien de photos l'OCR a réellement examinées (0 = il n'y en avait aucune). */
+  const [ocrPhotos, setOcrPhotos] = useState<number | null>(null)
   const [busy, setBusy]   = useState(false)
   const [error, setError] = useState<string | null>(null)
   // La plateforme de l'assistance a refusé/échoué → on propose de continuer sans
@@ -171,6 +173,7 @@ export default function CloseScreen({
         if (d.vin) setVin(prev => prev || String(d.vin).slice(-5).toUpperCase())
         if (d.km != null) setKm(prev => prev || String(d.km))
         setOcrGot(d.read || null)
+        setOcrPhotos(typeof d.photos === 'number' ? d.photos : null)
       })
       .catch(() => {})
       .finally(() => { if (alive) setOcrBusy(false) })
@@ -471,11 +474,26 @@ export default function CloseScreen({
                 ne le signalait — la case est restée vide sans que personne ne le
                 voie. L'OCR ne devine jamais un VIN : sans photo nette des 17
                 caractères, il rend null, à raison. Olivier 2026-08-12. */}
-            {(vinEmpty || kmEmpty) && (
+            {/* ⚠️ Ne PAS réclamer une photo à quelqu'un qui en a déjà fait. Franck
+                avait cinq photos sur 1UXZ479, l'OCR n'y a rien lu, et l'écran lui
+                répondait « prends le châssis en photo » — comme si son travail
+                n'existait pas. On dit ce qui s'est passé, et on lui laisse la
+                main. Olivier 2026-08-14. */}
+            {(vinEmpty || kmEmpty) && !ocrBusy && (
               <div className="bg-amber-500/10 border border-amber-500/40 text-amber-700 dark:text-amber-300 rounded-xl px-3 py-3 text-sm font-medium">
-                📷 Prends {vinEmpty && kmEmpty ? 'le châssis et le compteur' : vinEmpty ? 'le châssis' : 'le compteur'} en
-                photo — je remplis {vinEmpty && kmEmpty ? 'les deux cases' : 'la case'} pour toi.
-                {vinEmpty && !kmEmpty && <span className="block font-normal opacity-90">Le châssis est sur le montant de portière ou en bas du pare-brise.</span>}
+                {ocrPhotos && ocrPhotos > 0 ? (
+                  <>
+                    Je n'ai pas réussi à lire {vinEmpty && kmEmpty ? 'le châssis ni le compteur' : vinEmpty ? 'le châssis' : 'le compteur'} sur
+                    tes {ocrPhotos} photos. Tu peux {vinEmpty && kmEmpty ? 'remplir les cases' : 'remplir la case'} à la main, ou en refaire une de plus près.
+                    <span className="block font-normal opacity-90">Rien ne t'empêche de terminer sans.</span>
+                  </>
+                ) : (
+                  <>
+                    📷 Prends {vinEmpty && kmEmpty ? 'le châssis et le compteur' : vinEmpty ? 'le châssis' : 'le compteur'} en
+                    photo — je remplis {vinEmpty && kmEmpty ? 'les deux cases' : 'la case'} pour toi.
+                    {vinEmpty && !kmEmpty && <span className="block font-normal opacity-90">Le châssis est sur le montant de portière ou en bas du pare-brise.</span>}
+                  </>
+                )}
               </div>
             )}
           </div>
