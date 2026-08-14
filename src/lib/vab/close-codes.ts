@@ -303,6 +303,20 @@ export async function closeVabCodeScreen(input: VabCodeInput): Promise<VabCodeRe
       steps.push(`code panne niveau 2 (${brk2})`)
     }
 
+    // Carnet d'entretien : « Numérique ». Sur « Lisible », VAB réclame en plus
+    // le garage et la date du dernier entretien, que personne ne collecte sur
+    // le terrain. La voie navigateur cliquait bien ce bouton — en HTTP il
+    // manquait, et `formOf` mettait même les radios à `off`. Olivier 2026-08-14.
+    let nCarnet = '', vCarnet = ''
+    $('input[type=radio]').each((_, e) => {
+      const n = $(e).attr('name') || ''
+      if (!nCarnet && $(e).attr('value') === '3' && /MaintenanceBook|Carnet|wtRadio/i.test(n)) { nCarnet = n; vCarnet = '3' }
+    })
+    if (!nCarnet) {
+      $('input[type=radio][value="3"]').each((_, e) => { if (!nCarnet) { nCarnet = $(e).attr('name') || ''; vCarnet = '3' } })
+    }
+    if (nCarnet) steps.push('carnet : numérique')
+
     let endResponse = ''
     // 4 — Confirmer
     const endName = linkId(html, 'wtLink_End')
@@ -328,6 +342,7 @@ export async function closeVabCodeScreen(input: VabCodeInput): Promise<VabCodeRe
         const n = suffix($, suf); if (n) b.set(n, '')
       }
       for (const [k, v] of Object.entries({ ...costEnd, [nSol]: SOL, ...sol2, [nBrk]: BRK, ...(brk2 ? { [nBrk2]: brk2 } : {}) })) b.set(k, v)
+      if (nCarnet) b.set(nCarnet, vCarnet)
       b.set('__EVENTTARGET', nEnd); b.set('__EVENTARGUMENT', '')
       // Les nombres qui suivent l'identifiant ne sont PAS décoratifs : la capture
       // montre `2252,40,1166,0,106,2263` là où j'envoyais des zéros, et avec des
