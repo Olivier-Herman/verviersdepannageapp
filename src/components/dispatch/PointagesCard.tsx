@@ -19,7 +19,7 @@
 import { useEffect, useState } from 'react'
 import { reverseGeocodeCity } from '@/components/AddressField'
 
-interface Ping { lat: number; lng: number; kind: string; recorded_at: string }
+interface Ping { lat: number; lng: number; kind: string; recorded_at: string; address?: string | null }
 interface Track {
   points: Ping[]
   /** Distances ROUTIÈRES (km) calculées par ORS, dans l'ordre des points. */
@@ -62,23 +62,37 @@ export default function PointagesCard({ missionId, googleMapsKey }: { missionId:
     return () => { alive = false }
   }, [open, missionId, track])
 
-  // Résolution des adresses, une par une (Google n'aime pas les rafales).
+  // Résolution des adresses MANQUANTES seulement, une par une (Google n'aime pas
+  // les rafales), puis on les mémorise en base : une position ne bouge jamais,
+  // il n'y a aucune raison de la racheter à chaque ouverture de la fiche.
+  // Olivier 2026-08-14.
   useEffect(() => {
     if (!track || !googleMapsKey) return
     let alive = true
     ;(async () => {
+      const nouvelles: { lat: number; lng: number; address: string }[] = []
       for (const p of track.points) {
+        if (p.address) continue                       // déjà connue → zéro appel
         const key = `${p.lat.toFixed(5)},${p.lng.toFixed(5)}`
         if (addrs[key]) continue
         try {
           const r = await reverseGeocodeCity(p.lat, p.lng, googleMapsKey)
           if (!alive) return
-          if (r?.formatted) setAddrs(prev => ({ ...prev, [key]: r.formatted as string }))
+          if (r?.formatted) {
+            setAddrs(prev => ({ ...prev, [key]: r.formatted as string }))
+            nouvelles.push({ lat: p.lat, lng: p.lng, address: r.formatted })
+          }
         } catch { /* une adresse manquante n'empêche pas de lire le reste */ }
+      }
+      if (alive && nouvelles.length > 0) {
+        fetch(`/api/missions/${missionId}/ping-address`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ items: nouvelles }),
+        }).catch(() => { /* le cache est un bonus, pas une dépendance */ })
       }
     })()
     return () => { alive = false }
-  }, [track, googleMapsKey])   // eslint-disable-line react-hooks/exhaustive-deps
+  }, [track, googleMapsKey, missionId])   // eslint-disable-line react-hooks/exhaustive-deps
 
   const hm = (s: string) => new Date(s).toLocaleTimeString('fr-BE', {
     timeZone: 'Europe/Brussels', hour: '2-digit', minute: '2-digit',
@@ -132,7 +146,7 @@ export default function PointagesCard({ missionId, googleMapsKey }: { missionId:
                             {LABELS[p.kind] || p.kind}
                           </td>
                           <td className="px-2 py-2.5 text-ink-secondary">
-                            {addrs[key] || <span className="text-ink-faint tabular-nums">{p.lat.toFixed(4)}, {p.lng.toFixed(4)}</span>}
+                            {p.address || addrs[key] || <span className="text-ink-faint tabular-nums">{p.lat.toFixed(4)}, {p.lng.toFixed(4)}</span>}
                             <a href={`https://www.google.com/maps?q=${p.lat},${p.lng}`} target="_blank" rel="noopener"
                               className="ml-2 text-ink-muted hover:text-ink">↗</a>
                           </td>

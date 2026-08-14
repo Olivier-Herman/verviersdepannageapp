@@ -31,7 +31,7 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
 
   const { data: rows, error } = await sb
     .from('mission_position_pings')
-    .select('lat, lng, kind, recorded_at')
+    .select('lat, lng, kind, recorded_at, address')
     .eq('mission_id', params.id)
     .order('recorded_at', { ascending: true })
 

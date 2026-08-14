@@ -1986,10 +1986,15 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
       let newUrls: string[] = []
       try { newUrls = await uploadPhotos(photos) } catch { newUrls = [] }
       const allUrls = [...photoUrls, ...newUrls]
+      // Position du pointage : cette clôture ne passe pas par api(), donc elle
+      // n'héritait pas de la capture GPS — le pointage le plus important, celui
+      // qui dit OÙ le véhicule a été laissé, était le seul sans position.
+      // Olivier 2026-08-14.
+      const geoPark = await captureGeo()
       const r = await fetch('/api/missions/driver-action', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          mission_id: M.id, action: 'park',
+          mission_id: M.id, action: 'park', ...(geoPark || {}),
           closing_data: {
             final_mission_type: mType,
             photo_urls: allUrls.length ? allUrls : undefined,
@@ -2069,10 +2074,14 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
          dpr: 'trajet_vide',
          rel: 'relivraison',
        }
+      // Même chose pour « Terminer » : sans ça, on ne saurait jamais où le
+      // chauffeur se trouvait quand il a déclaré la mission terminée — et c'est
+      // précisément ce qu'on cherche à vérifier. Olivier 2026-08-14.
+      const geoDone = await captureGeo()
       const r = await fetch('/api/missions/driver-action', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          mission_id: M.id, action: 'completed',
+          mission_id: M.id, action: 'completed', ...(geoDone || {}),
           closing_data: {
             final_mission_type:    FINAL_TYPE_MAP[closeType] || closeType,
             photo_urls:            allUrls.length ? allUrls : undefined,
