@@ -314,6 +314,27 @@ export async function vabCloseOnSiteBrowser(opts: {
         await new Promise(r => setTimeout(r, 1500))
       }
 
+      // ⚠️ DERNIÈRE VÉRIFICATION avant d'envoyer : le champ « Numéro de châssis »
+      // n'apparaît parfois qu'APRÈS la pop-up « VIN inconnu ». Quand on le
+      // remplissait plus haut, il n'était pas encore dans la page — et VAB
+      // bloquait ensuite sur un champ obligatoire vide, sans le dire. Vu le 16/08
+      // sur 2HDJ908, dont le châssis était pourtant sur la fiche. On tape au
+      // clavier plutôt que d'écrire la valeur : OutSystems écoute la frappe.
+      if (opts.vinFull) {
+        const vide = await page.evaluate(() => {
+          const c = document.querySelector('input[id*="wtChassisNumberInput"]') as HTMLInputElement | null
+          return !!c && (c.value || '').length <= 5
+        }).catch(() => false)
+        if (vide && await clearAndType(page, 'input[id*="wtChassisNumberInput"]', opts.vinFull)) {
+          await page.evaluate(() => {
+            const c = document.querySelector('input[id*="wtChassisNumberInput"]') as HTMLInputElement | null
+            c && c.dispatchEvent(new Event('change', { bubbles: true }))
+          })
+          steps.push('châssis complet saisi (2e passe)')
+          await new Promise(r => setTimeout(r, 5000))
+        }
+      }
+
       await clickByText(page, 'envoyer')
       await new Promise(r => setTimeout(r, 2500))
       // Preuve que l'envoi a pris : le kilométrage est retenu par la page.
@@ -388,8 +409,30 @@ export async function vabCloseOnSiteBrowser(opts: {
     // un dossier de PANNE là où on a remorqué — 13 cas sur 10 jours.
     let codesConfirmed = false
     if (onCodeScreen && opts.codes) {
-      const c = opts.codes
+      codesConfirmed = await fillAndConfirmCodes(page, opts.assignmentId, opts.codes, steps)
+    }
 
+    const osvstate = await page.evaluate(() => {
+      const h = document.querySelector('input[name="__OSVSTATE"]') as HTMLInputElement | null
+      return h ? h.value : null
+    })
+    const cookies = await page.cookies()
+    cookieHeader = cookies.map(c => `${c.name}=${c.value}`).join('; ')
+
+    return { ok: onCodeScreen, onCodeScreen, codesConfirmed, cookieHeader, osvstate, steps }
+  } catch (e: any) {
+    return { ok: false, onCodeScreen: false, cookieHeader, osvstate: null, steps, error: e?.message || String(e) }
+  } finally {
+    if (browser) await browser.close()
+  }
+}
+
+/**
+ * Remplit l'écran de codes et confirme. Renvoie true si l'écran a disparu.
+ */
+async function fillAndConfirmCodes(page: Page, assignmentId: string, c: VabCodes, steps: string[]): Promise<boolean> {
+    let codesConfirmed = false
+    {
       // Les listes arrivent APRÈS l'écran : juste après « Fin lieu de la panne »,
       // le select des solutions ne contient encore que son tiret. On l'attend, et
       // on recharge la fiche si besoin — sans risque désormais, tout est
@@ -401,7 +444,7 @@ export async function vabCloseOnSiteBrowser(opts: {
       }).catch(() => 0)
       for (let i = 0; i < 6 && (await optionsReady()) <= 1; i++) await new Promise(r => setTimeout(r, 5000))
       if ((await optionsReady()) <= 1) {
-        await page.goto(detailsUrl(opts.assignmentId), { waitUntil: 'domcontentloaded', timeout: 30000 }).catch(() => {})
+        await page.goto(detailsUrl(assignmentId), { waitUntil: 'domcontentloaded', timeout: 30000 }).catch(() => {})
         await new Promise(r => setTimeout(r, 5000))
         for (let i = 0; i < 4 && (await optionsReady()) <= 1; i++) await new Promise(r => setTimeout(r, 5000))
       }
@@ -485,17 +528,47 @@ export async function vabCloseOnSiteBrowser(opts: {
         steps.push(codesConfirmed ? 'dossier soldé' : 'confirmation refusée')
       }
     }
+  return codesConfirmed
+}
 
-    const osvstate = await page.evaluate(() => {
-      const h = document.querySelector('input[name="__OSVSTATE"]') as HTMLInputElement | null
-      return h ? h.value : null
-    })
-    const cookies = await page.cookies()
-    cookieHeader = cookies.map(c => `${c.name}=${c.value}`).join('; ')
+/**
+ * Entrée DIRECTE sur l'écran de codes, pour un dossier qui a déjà passé la
+ * signature. `vabCloseOnSiteBrowser` part du kilométrage et abandonne ici —
+ * « signature impossible » — puisque le canvas n'existe plus.
+ * Olivier 2026-08-14 : « clôture les dossiers un par un ».
+ */
+export async function vabConfirmCodesBrowser(opts: {
+  assignmentId: string
+  codes: VabCodes
+}): Promise<VabBrowserResult> {
+  const steps: string[] = []
+  let browser: Browser | null = null
+  try {
+    browser = await launchBrowser()
+    const page = await browser.newPage()
+    await page.setUserAgent(DESKTOP_UA)
+    await loginInBrowser(page)
+    await page.goto(detailsUrl(opts.assignmentId), { waitUntil: 'domcontentloaded', timeout: 30000 })
 
-    return { ok: onCodeScreen, onCodeScreen, codesConfirmed, cookieHeader, osvstate, steps }
+    // L'écran met plusieurs secondes à peupler ses listes ; tant qu'elles sont
+    // vides, les trois choix tombent dans le vide.
+    let onCodeScreen = false
+    for (let i = 0; i < 8 && !onCodeScreen; i++) {
+      await new Promise(r => setTimeout(r, 5000))
+      onCodeScreen = await isCodeScreen(page)
+    }
+    if (!onCodeScreen) {
+      const diag = await page.evaluate(() => {
+        const sels = [...document.querySelectorAll('select')].map(s => `${s.id}=${(s as HTMLSelectElement).options.length}`)
+        return `${location.href} | selects: ${sels.join(', ') || 'aucun'} | ${(document.body?.innerText || '').replace(/\s+/g, ' ').slice(0, 220)}`
+      }).catch(() => '')
+      return { ok: false, onCodeScreen: false, cookieHeader: '', osvstate: null, steps, error: 'écran de codes non atteint', diag }
+    }
+
+    const codesConfirmed = await fillAndConfirmCodes(page, opts.assignmentId, opts.codes, steps)
+    return { ok: codesConfirmed, onCodeScreen: true, codesConfirmed, cookieHeader: '', osvstate: null, steps }
   } catch (e: any) {
-    return { ok: false, onCodeScreen: false, cookieHeader, osvstate: null, steps, error: e?.message || String(e) }
+    return { ok: false, onCodeScreen: false, cookieHeader: '', osvstate: null, steps, error: e?.message || String(e) }
   } finally {
     if (browser) await browser.close()
   }

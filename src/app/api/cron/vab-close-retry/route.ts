@@ -14,16 +14,16 @@
 // pilote un Chromium. Le verrou de `runVabTowClose` refuse de toute façon un
 // second run — autant ne pas le provoquer.
 //
-// ⚠️ FLUX 2 UNIQUEMENT (Olivier) : on ne clôture automatiquement que pour les
-// chauffeurs à qui le flux 2 est ouvert sur VAB. Les autres gardent leur
-// parcours, et leurs dossiers restent à traiter à la main.
+// ⚠️ TOUS les dossiers, quel que soit le parcours du chauffeur (Olivier
+// 2026-08-16 : « tout ce que tu peux clôturer doit l'être »). Un dossier ouvert
+// chez VAB alors que la mission est finie chez nous doit être soldé, que le
+// chauffeur soit en flux 2 ou non.
 
 export const dynamic     = 'force-dynamic'
 export const maxDuration = 300
 
 import { NextResponse }      from 'next/server'
 import { createAdminClient } from '@/lib/supabase'
-import { isFlux2Enabled }    from '@/lib/cloture/gating'
 
 /** Statuts qui signifient « l'intervention est finie chez nous ». */
 const TERMINÉES = ['to_invoice', 'completed', 'parked']
@@ -52,12 +52,16 @@ export async function GET(req: Request) {
       .is('vab_closed_at', null)
       .order('id', { ascending: true })
 
-    const candidats: any[] = []
-    for (const f of (fiches || []) as any[]) {
-      if (await isFlux2Enabled(f.assigned_to, 'vab')) candidats.push(f)
-    }
+    // ⚠️ PLUS de filtre flux 2 (Olivier 2026-08-16 : « tout ce que tu peux
+    // clôturer doit l'être »). La clôture ne dépend pas du parcours du chauffeur :
+    // elle lit le type et la destination sur la fiche, qui sont là dans les deux
+    // cas. Le 16/08, 2HDJ908 est resté ouvert chez VAB parce que son chauffeur
+    // venait d'être sorti du flux 2 — le filet l'ignorait alors qu'il savait le
+    // traiter. Garde-fou inchangé : une destination illisible laisse le dossier
+    // OUVERT plutôt que de partir de travers.
+    const candidats: any[] = (fiches || []) as any[]
     if (candidats.length === 0) {
-      return NextResponse.json({ ok: true, ouverts: ouverts.length, aTraiter: (fiches || []).length, flux2: 0 })
+      return NextResponse.json({ ok: true, ouverts: ouverts.length, aTraiter: 0 })
     }
 
     // Le plus ancien d'abord : c'est celui qui risque le plus de passer à la trappe.
@@ -74,7 +78,7 @@ export async function GET(req: Request) {
     const abouti = !!(après as any)?.vab_closed_at
     console.log(`[cron vab-close-retry] ${cible.vehicle_plate} → ${abouti ? 'soldé' : 'échec'} · reste ${candidats.length - 1}`)
     return NextResponse.json({
-      ok: true, ouverts: ouverts.length, flux2: candidats.length,
+      ok: true, ouverts: ouverts.length, aTraiter: candidats.length,
       traité: cible.vehicle_plate, abouti, reste: candidats.length - 1,
     })
   } catch (e: any) {

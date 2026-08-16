@@ -489,6 +489,28 @@ export async function POST(req: Request) {
     if (interv) updatePayload.parked_at = interv
   }
 
+  // ── SIABIS : le scénario tarifaire se déduit de la fin de mission ──────────
+  // Le flux 2 le posait, l'ancien parcours non — donc une fiche Siabis clôturée
+  // par un chauffeur qui n'y est pas encore arrivait en facturation SANS
+  // scénario, et Olivier devait le poser à la main pour pouvoir facturer (vu le
+  // 16/08 sur 2HDJ908). Le scénario n'est pas une préférence : il découle de ce
+  // qui s'est passé. On ne l'écrase jamais s'il existe déjà.
+  {
+    const src = (mission as any).source
+    const siabis = src === 'police_snc' || src === 'sia_couvert'
+    const fin = ['completed', 'complete_delivery', 'park'].includes(action)
+    if (siabis && fin && !(mission as any).snc_scenario) {
+      const typeFinal  = String(updatePayload.mission_type || (mission as any).mission_type || '')
+      const estRem     = /remorquage|rem\b|REM/i.test(typeFinal)
+      const destination = updatePayload.destination_address || (mission as any).destination_address
+      // `rem_direct` = Siabis COUVERT (formule assistance) · `rem_client` = non
+      // couvert (dépôt → intervention → destination → dépôt).
+      updatePayload.snc_scenario = action === 'park' ? 'rem_depot'
+        : estRem && destination ? (src === 'sia_couvert' ? 'rem_direct' : 'rem_client')
+        : 'dsp'
+    }
+  }
+
   const { data: updated, error: updateError } = await supabase
     .from('incoming_missions').update(updatePayload).eq('id', mission_id).select().single()
 

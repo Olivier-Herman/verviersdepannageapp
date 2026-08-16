@@ -221,12 +221,19 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   // on la traduit en scénario, et le montant se calcule dans la foulée (le PATCH
   // fiche recalcule amount_to_collect sur ces champs).
   //   • dépannage confirmé (ou remorquage annulé, le client repart) → dsp
-  //   • remorquage avec destination                                 → rem_client
+  //   • remorquage avec destination : rem_direct si COUVERT, rem_client sinon
   //   • mise en parc : le client règle au bureau                    → rem_depot
+  //
+  // ⚠️ Le remorquage a DEUX scénarios, et on posait `rem_client` dans les deux
+  // cas. Or `rem_direct` est celui du Siabis COUVERT (formule assistance) et
+  // `rem_client` celui du non couvert (dépôt → intervention → destination →
+  // dépôt). Résultat : sur un couvert, Olivier devait corriger le scénario à la
+  // main pour pouvoir facturer — vu le 16/08 sur 2HDJ908. Olivier.
   const siabisSrc = (m as any).source === 'police_snc' || (m as any).source === 'sia_couvert'
   if (siabisSrc) {
+    const couvert = (m as any).source === 'sia_couvert'
     if (outcome === 'dsp' || outcome === 'rem2dsp')            patch.snc_scenario = 'dsp'
-    else if (outcomeIsRem(outcome) && patch.destination_address) patch.snc_scenario = 'rem_client'
+    else if (outcomeIsRem(outcome) && patch.destination_address) patch.snc_scenario = couvert ? 'rem_direct' : 'rem_client'
     else if (outcome === 'park')                                patch.snc_scenario = 'rem_depot'
   }
 
