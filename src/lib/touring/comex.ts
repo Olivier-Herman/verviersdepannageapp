@@ -758,6 +758,16 @@ export async function closeTouringMission(
     // 0) endTech — « Fin Technique » : arme la clôture (FL_TECH_END_MIS). L'UI COMEX
     // le fait AVANT de valider ; on le reproduit ici pour être auto-suffisant.
     // Best-effort (si déjà armé, COMEX renvoie OK). Olivier 2026-08-06.
+    //
+    // ⚠️ DEUX BOUTONS, UN SEUL ENDPOINT — et le choix est DÉFINITIF.
+    // Dans leur JS (`missions-min.js`) : `executeEndMissionTech` envoie
+    // FL_TECH_END_MIS=0 (« Fin Technique »), `executeFinTechDepot` envoie 1
+    // (« Fin Technique Dépôt »). C'est le 1 qui fait apparaître le code de fin
+    // **05** (fin remorquage + transfert), celui qui dit à Touring que le
+    // véhicule est chez NOUS.
+    // Une fois la fin technique SIMPLE déclenchée, on ne peut plus passer au
+    // dépôt (Olivier 2026-08-16) : le 05 ne reviendra jamais sur cette jambe.
+    // Vu en réel sur 2026BE325697 seq201, condamnée par un appel à 0.
     await comexRest(session, 'Mission/detail/endTech', {
       CID_DOS: keys.CID_DOS, CID_SEQ_ACTION: keys.CID_SEQ_ACTION,
       FL_TECH_END_MIS: isParkTransfer ? 1 : 0,
