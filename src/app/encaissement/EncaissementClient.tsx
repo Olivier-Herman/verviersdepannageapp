@@ -395,6 +395,9 @@ export default function EncaissementClient({
   const [previousClients, setPreviousClients] = useState<OdooClient[]>([])
   const [selectedClient, setSelectedClient] = useState<OdooClient | null>(null)
   const [isNewClient, setIsNewClient] = useState(false)
+  // Client Odoo créé DÈS la validation des infos client (page 8), pas au paiement.
+  const [createdClientId, setCreatedClientId] = useState<number | null>(null)
+  const [creatingClient, setCreatingClient]   = useState(false)
 
   // Pages 6-8
   const [clientVat, setClientVat] = useState('')
@@ -776,7 +779,9 @@ export default function EncaissementClient({
           // Olivier 2026-05-26 : si client Odoo selectionne, on le remonte pour
           // que l API auto-lie billed_to_id sur la mission (uniquement si la
           // mission n a pas encore de client liee).
-          client_id: selectedClient?.id || null,
+          // Client déjà créé dans Odoo à l'étape infos (createdClientId) → on le
+          // relie, pas de recréation. Olivier 2026-08-16.
+          client_id: selectedClient?.id || createdClientId || null,
           client_vat: client.vat, client_name: client.name,
           client_address: client.address, client_street: client.street,
           client_zip: client.zip, client_city: client.city,
@@ -793,7 +798,7 @@ export default function EncaissementClient({
   const resetForm = () => {
     setPage(0); setSaved(false); setError('')
     setPlate(''); setOdooVehicle(null); setVehicleConfirmed(null)
-    setPreviousClients([]); setSelectedClient(null); setIsNewClient(false)
+    setPreviousClients([]); setSelectedClient(null); setIsNewClient(false); setCreatedClientId(null)
     setSelectedBrand(''); setSelectedBrandId(null)
     setSelectedModel(''); setSelectedModelId(null); setModelOther('')
     setMotif(''); setMotifLabel(''); setMotifPrecision(''); setLocation('')
@@ -1622,9 +1627,28 @@ export default function EncaissementClient({
         {/* Olivier 2026-06-04 : telephone non obligatoire. Continuer toujours
             possible. Si telephone fourni et pas encore d adresse, on tente
             une derniere recherche Odoo par telephone. */}
-        <BigBtn label="Continuer →" onClick={async () => {
+        <BigBtn label={creatingClient ? 'Enregistrement du client…' : 'Continuer →'} disabled={creatingClient} onClick={async () => {
           if (clientPhone.trim() && !clientStreet && !clientAddress) {
             await searchOdooByPhone()
+          }
+          // Créer le client dans Odoo DÈS ici (validation des infos), pas au
+          // paiement (Olivier 2026-08-16). Best-effort : si l'appel échoue, le
+          // paiement le (re)créera via findOrCreatePartner (idempotent).
+          if (clientName.trim()) {
+            setCreatingClient(true)
+            try {
+              const res = await fetch('/api/encaissement/create-client', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  name: clientName, phone: clientPhone, email: clientEmail,
+                  street: clientStreet, zip: clientZip, city: clientCity,
+                  address: clientAddress, countryCode: clientCountryCode,
+                }),
+              })
+              const d = await res.json().catch(() => ({}))
+              if (res.ok && d.id) setCreatedClientId(d.id)
+            } catch { /* best-effort */ }
+            finally { setCreatingClient(false) }
           }
           setPage(4)
         }} />
