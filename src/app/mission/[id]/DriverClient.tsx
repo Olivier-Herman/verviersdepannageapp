@@ -4412,10 +4412,18 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
                   if (hasTouringFollowup && !rel) { setTouringAction('remclose'); setShowTouringClose(true); return }
                   setCloseType(rel ? 'rel' : 'rem'); setScreen('close')
                 }} disabled={loading}
-                className="w-full py-4 bg-green-600 disabled:opacity-50 text-ink font-bold rounded-2xl text-base flex items-center justify-center gap-2">
-                <T k="mission_detail.btn_arrived_dest" />
-                {M.destination_address && (
-                  <span className="text-xs opacity-75 font-normal truncate max-w-[140px]">{M.destination_address}</span>
+                className={`w-full py-4 disabled:opacity-50 text-ink font-bold rounded-2xl text-base flex items-center justify-center gap-2 ${sncPaymentDue ? 'bg-amber-500' : 'bg-green-600'}`}>
+                {/* Paiement dû (Siabis non couvert / privé) → le bouton EST le bouton
+                    d'encaissement (même action : écran encaissement). Olivier 2026-08-16. */}
+                {sncPaymentDue ? (
+                  <>💳 Encaisser{requiredAmount ? ` ${requiredAmount.toFixed(2)} €` : ''}</>
+                ) : (
+                  <>
+                    <T k="mission_detail.btn_arrived_dest" />
+                    {M.destination_address && (
+                      <span className="text-xs opacity-75 font-normal truncate max-w-[140px]">{M.destination_address}</span>
+                    )}
+                  </>
                 )}
               </button>
               {/* "Mise en parc" : pour REM seulement (une REL ramène DEPUIS le parc, pas vers).
