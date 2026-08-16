@@ -29,6 +29,27 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   }
   const userId = (session.user as any).id
 
+  // ── FLUX 2 : le forçage est réservé au superadmin (Olivier 2026-08-16) ──────
+  // Sur une mission suivie en flux 2, le chauffeur dispose de toutes les issues
+  // et la clôture est poussée chez l'assistance. Forcer le statut par-dessus
+  // court-circuite cette mécanique : la mission change d'état chez nous sans que
+  // l'assistance en sache rien, et le chauffeur perd ses boutons.
+  {
+    const sbGuard = createAdminClient()
+    const { data: mg } = await sbGuard.from('incoming_missions')
+      .select('source, source_format, assigned_to').eq('id', params.id).maybeSingle()
+    if (mg && role !== 'superadmin') {
+      const { flux2AssistanceOf } = await import('@/lib/cloture/gating')
+      const { isFlux2Enabled } = await import('@/lib/cloture/gating')
+      const assistance = flux2AssistanceOf(mg as any)
+      if (await isFlux2Enabled((mg as any).assigned_to, assistance)) {
+        return NextResponse.json({
+          error: 'Mission suivie en flux 2 — le chauffeur la clôture depuis son écran. Demande à un superadmin si elle est vraiment bloquée.',
+        }, { status: 403 })
+      }
+    }
+  }
+
   const body = await req.json() as {
     status?:           string
     reset_assignment?: boolean
