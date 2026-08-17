@@ -290,7 +290,23 @@ export async function vabCloseOnSiteBrowser(opts: {
             if (cb && !cb.checked) cb.click()
           })
           await new Promise(r => setTimeout(r, 2000))
-          steps.push('vin+verifier+unknownvin')
+          // ⚠️ Une fois « VIN inconnu » coché, VIDER les 3 chiffres. On laissait
+          // le faux numéro dedans : VAB gardait le champ en erreur (« obligatoire »)
+          // et refusait d'avancer, alors qu'on venait de lui dire qu'on ne
+          // connaissait pas le châssis. Contradiction vue sur 2ERC726 le 17/08,
+          // dont le chauffeur n'avait photographié ni le châssis ni la carte.
+          const vidé = await page.evaluate(() => {
+            const cb = document.querySelector('input[type=checkbox][id*="wt436_wt20"], input[type=checkbox][id*="_wt20"]') as HTMLInputElement | null
+            if (!cb || !cb.checked) return false
+            const v = document.querySelector('input[id*="wtLastDigitInputField"]') as HTMLInputElement | null
+            if (!v) return false
+            v.value = ''
+            v.dispatchEvent(new Event('input', { bubbles: true }))
+            v.dispatchEvent(new Event('change', { bubbles: true }))
+            return true
+          }).catch(() => false)
+          if (vidé) await new Promise(r => setTimeout(r, 2000))
+          steps.push(vidé ? 'vin inconnu (3 chiffres effacés)' : 'vin+verifier+unknownvin')
         }
       } else { steps.push('vin déjà validé') }
 
