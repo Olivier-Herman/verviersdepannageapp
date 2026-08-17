@@ -646,9 +646,9 @@ export default function EcranClient({ displayKey }: { displayKey: string }) {
     }
     return (
       <div style={S.wrap}>
-        <div style={{ ...E.card, maxWidth: 'min(84vw, 860px)' }}>
+        <div style={{ ...E.card, maxWidth: 'min(84vw, 860px)', gap: 'min(1.3vh,1vw)', maxHeight: '92vh', overflowY: 'auto', paddingRight: '.5vw' }}>
           {/* Sélecteur de langue (FR par défaut) */}
-          <div style={{ display: 'flex', gap: '1vh', justifyContent: 'center', marginBottom: '1.6vh', flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', gap: '1vh', justifyContent: 'center', marginBottom: '.4vh', flexWrap: 'wrap' }}>
             {MAN_LANGS.map(l => (
               <button key={l.code} onClick={() => setManLang(l.code)}
                 style={{ padding: '0.8vh 1.8vh', borderRadius: '1vh', border: '2px solid ' + (manLang === l.code ? '#2563eb' : '#cbd5e1'),
