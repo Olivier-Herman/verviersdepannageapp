@@ -18,6 +18,7 @@ import { createAdminClient } from '@/lib/supabase'
 import { createSaleOrder, findFleetVehicleByPlate, type QuoteLine } from '@/lib/odoo-quote'
 import { buildInterventionDescription } from '@/lib/missions/build-quote-lines'
 import { withOdooActor }     from '@/lib/odoo'
+import { chevauchement }     from '@/lib/facturation/solde'
 
 export const dynamic     = 'force-dynamic'
 export const maxDuration = 30
@@ -58,8 +59,31 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     .eq('id', params.id)
     .single()
   if (!mission) return NextResponse.json({ error: 'Mission introuvable' }, { status: 404 })
-  if (!mission.billed_to_id) {
-    return NextResponse.json({ error: 'Pas de client à facturer (billed_to_id) — renseigne-le d\'abord sur la fiche.' }, { status: 400 })
+  // ── DESTINATAIRE PROPRE À CETTE FACTURE ───────────────────────────────────
+  // « Chaque facture partielle peut avoir un client différent » (Olivier
+  // 2026-08-17) : l'assistance règle le dépannage pendant que le client règle
+  // son parking. À défaut, le client de la mission.
+  const partnerId   = Number(body.billed_to_id) || Number(mission.billed_to_id) || 0
+  const partnerName = String(body.billed_to_name || mission.billed_to_name || '')
+  if (!partnerId) {
+    return NextResponse.json({ error: 'Pas de client à facturer — choisis un destinataire ou renseigne-le sur la fiche.' }, { status: 400 })
+  }
+
+  // ── GARDE-FOU : ne jamais facturer deux fois les mêmes jours de parc ───────
+  // Deux personnes qui traitent le même dossier à deux jours d'intervalle, et
+  // le gardiennage part en double sans que rien ne le signale.
+  const { data: dejaFactures } = await sb.from('mission_billed_items')
+    .select('kind, label, qty, price_unit, amount_htva, period_from, period_to, billed_at')
+    .eq('mission_id', params.id)
+  for (const l of lines) {
+    if (l.kind !== 'SERV-PARC' || !l.period_from || !l.period_to) continue
+    const conflit = chevauchement(l.period_from, l.period_to, (dejaFactures || []) as any)
+    if (conflit) {
+      return NextResponse.json({
+        error: `Ces jours de parc ont déjà été facturés (du ${String(conflit.period_from).slice(0, 10)} au ${String(conflit.period_to).slice(0, 10)}). `
+             + `La prochaine tranche doit démarrer après cette date.`,
+      }, { status: 409 })
+    }
   }
 
   const missionRef = mission.external_id || mission.dossier_number || `M-${mission.id.slice(0, 8)}`
@@ -77,7 +101,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
       let fleetVehicleId: number | null = null
       if (mission.vehicle_plate) fleetVehicleId = await findFleetVehicleByPlate(mission.vehicle_plate)
       return await createSaleOrder({
-        partner_id:       mission.billed_to_id as number,
+        partner_id:       partnerId,
         origin:           `${missionRef} (partiel)`,
         client_order_ref: mission.dossier_number || mission.external_id || undefined,
         fleet_vehicle_id: fleetVehicleId,
@@ -100,8 +124,10 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     amount_htva:   Math.round(l.qty * l.price_unit * 10000) / 10000,
     period_from:   l.period_from,
     period_to:     l.period_to,
-    odoo_quote_id: result.id,
-    billed_by:     actor?.id ?? null,
+    odoo_quote_id:  result.id,
+    billed_by:      actor?.id ?? null,
+    billed_to_id:   partnerId,
+    billed_to_name: partnerName || null,
   }))
   const { error: insErr } = await sb.from('mission_billed_items').insert(rows)
   if (insErr) {
