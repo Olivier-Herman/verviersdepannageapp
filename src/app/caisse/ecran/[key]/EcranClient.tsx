@@ -633,6 +633,10 @@ export default function EcranClient({ displayKey }: { displayKey: string }) {
   // ── ÉCRAN MODE manual (saisie des coordonnées au comptoir) ────────────────
   if (active && payload?.mode === 'manual') {
     const T = MAN_T[manLang]
+    // Styles compacts pour le formulaire (tient sur la hauteur de l'écran comptoir).
+    const inC:  React.CSSProperties = { ...E.input, padding: 'min(.7vh,.6vw) min(1.2vw,1vh)', fontSize: 'min(1.6vw,2.2vh)' }
+    const fC:   React.CSSProperties = { ...E.field, gap: '.15vh' }
+    const lblC: React.CSSProperties = { ...E.fieldLbl, fontSize: 'min(1.1vw,1.6vh)' }
     if (manStep === 'done' || payload.step === 'done') {
       return (
         <div style={S.wrap}>
@@ -674,70 +678,71 @@ export default function EcranClient({ displayKey }: { displayKey: string }) {
               <div style={E.rgpd}>{T.rgpd}</div>
             </>
           ) : (
-            /* ── Écran 2 : formulaire (avec TVA/VIES pour les pros) ─────────── */
+            /* ── Écran 2 : formulaire (avec TVA/VIES pour les pros) — compact ── */
             <>
-              <div style={E.title}>{T.title}</div>
-              <div style={E.lead}>{T.lead}</div>
+              <div style={{ ...E.title, fontSize: 'min(2.1vw, 3vh)' }}>{T.title}</div>
 
               {manType === 'pro' && (
                 <>
-                  <div style={{ display: 'flex', gap: '1vh', alignItems: 'flex-end', flexWrap: 'wrap', marginBottom: '1vh' }}>
-                    <label style={{ ...E.field, flex: '1 1 55%' }}>
-                      <span style={E.fieldLbl}>{T.vat}</span>
-                      <input style={E.input} value={manVat} placeholder={T.vatPh}
+                  <div style={{ display: 'flex', gap: '1vh', alignItems: 'flex-end', flexWrap: 'wrap', width: '100%' }}>
+                    <label style={{ ...fC, flex: '1 1 55%' }}>
+                      <span style={lblC}>{T.vat}</span>
+                      <input style={inC} value={manVat} placeholder={T.vatPh}
                         onChange={e => { setManVat(e.target.value.toUpperCase()); setManVatMsg(null) }} />
                     </label>
                     <button onClick={lookupVat} disabled={manVatBusy || manVat.trim().length < 6}
-                      style={{ ...E.btnPrimary, flex: '0 0 auto', padding: '1.5vh 2.4vh', fontSize: 'min(1.9vw,2.8vh)',
+                      style={{ ...E.btnPrimary, flex: '0 0 auto', padding: 'min(.9vh,.8vw) 2vh', fontSize: 'min(1.7vw,2.3vh)', marginTop: 0,
                         opacity: manVatBusy || manVat.trim().length < 6 ? .5 : 1 }}>
                       {manVatBusy ? T.vatSearching : '🔍 ' + T.vatSearch}
                     </button>
                   </div>
                   {manVatMsg && (
                     <div style={manVatMsg.ok
-                      ? { background: '#dcfce7', color: '#166534', border: '2px solid #86efac', borderRadius: '1vh', padding: '1vh 1.6vh', fontSize: 'min(1.7vw,2.5vh)', fontWeight: 700, marginBottom: '1vh' }
-                      : E.err}>{manVatMsg.ok ? '✓ ' : '⚠ '}{manVatMsg.text}</div>
+                      ? { background: '#dcfce7', color: '#166534', border: '2px solid #86efac', borderRadius: '1vh', padding: '.6vh 1.4vh', fontSize: 'min(1.5vw,2.1vh)', fontWeight: 700 }
+                      : { ...E.err, fontSize: 'min(1.4vw,2vh)' }}>{manVatMsg.ok ? '✓ ' : '⚠ '}{manVatMsg.text}</div>
                   )}
                 </>
               )}
 
-              <div style={E.formGrid}>
-                <label style={{ ...E.field, gridColumn: '1 / -1' }}>
-                  <span style={E.fieldLbl}>{T.name}</span>
-                  <input style={E.input} value={manName} onChange={e => setManName(e.target.value)} />
+              <div style={{ ...E.formGrid, gap: 'min(1.1vw,1.1vh)' }}>
+                <label style={{ ...fC, gridColumn: '1 / -1' }}>
+                  <span style={lblC}>{T.name}</span>
+                  <input style={inC} value={manName} onChange={e => setManName(e.target.value)} />
                 </label>
-                <label style={{ ...E.field, gridColumn: '1 / -1' }}>
-                  <span style={E.fieldLbl}>{T.address}</span>
-                  <input ref={manAddrInputRef} style={E.input} placeholder={T.addressPh} autoComplete="off"
+                <label style={{ ...fC, gridColumn: '1 / -1' }}>
+                  <span style={lblC}>{T.address}</span>
+                  <input ref={manAddrInputRef} style={inC} placeholder={T.addressPh} autoComplete="off"
                     value={manStreet} onChange={e => setManStreet(e.target.value)} />
                 </label>
-                <label style={E.field}>
-                  <span style={E.fieldLbl}>{T.zip}</span>
-                  <input style={E.input} value={manZip} onChange={e => setManZip(e.target.value)} />
+                <label style={fC}>
+                  <span style={lblC}>{T.zip}</span>
+                  <input style={inC} value={manZip} onChange={e => setManZip(e.target.value)} />
                 </label>
-                <label style={E.field}>
-                  <span style={E.fieldLbl}>{T.city}</span>
-                  <input style={E.input} value={manCity} onChange={e => setManCity(e.target.value)} />
+                <label style={fC}>
+                  <span style={lblC}>{T.city}</span>
+                  <input style={inC} value={manCity} onChange={e => setManCity(e.target.value)} />
                 </label>
-                <label style={E.field}>
-                  <span style={E.fieldLbl}>{T.email}</span>
-                  <input style={E.input} type="email" inputMode="email" value={manEmail} onChange={e => setManEmail(e.target.value)} />
+                <label style={fC}>
+                  <span style={lblC}>{T.email}</span>
+                  <input style={inC} type="email" inputMode="email" value={manEmail} onChange={e => setManEmail(e.target.value)} />
                 </label>
-                <label style={E.field}>
-                  <span style={E.fieldLbl}>{T.phone}</span>
-                  <input style={E.input} type="tel" inputMode="tel" value={manPhone} onChange={e => setManPhone(e.target.value)} />
+                <label style={fC}>
+                  <span style={lblC}>{T.phone}</span>
+                  <input style={inC} type="tel" inputMode="tel" value={manPhone} onChange={e => setManPhone(e.target.value)} />
                 </label>
               </div>
-              {manCountry && <div style={{ ...E.lead, fontSize: 'min(1.6vw, 2.4vh)', marginTop: '0.5vh' }}>📍 {manCountry}</div>}
-              {manError && <div style={E.err}>{manError}</div>}
-              <button style={{ ...E.btnPrimary, opacity: manStep === 'sending' ? .6 : 1 }} disabled={manStep === 'sending'} onClick={submitManual}>
-                {manStep === 'sending' ? T.sending : T.send}
-              </button>
-              <button onClick={() => { setManType(null); setManVatMsg(null); setManError(null) }}
-                style={{ marginTop: '1vh', background: 'none', border: 'none', color: '#64748b', fontSize: 'min(1.7vw,2.5vh)', cursor: 'pointer', textDecoration: 'underline' }}>
-                ← {T.back}
-              </button>
-              <div style={E.rgpd}>{T.rgpd}</div>
+              {manCountry && <div style={{ ...E.lead, fontSize: 'min(1.4vw, 2vh)', marginTop: 0 }}>📍 {manCountry}</div>}
+              {manError && <div style={{ ...E.err, fontSize: 'min(1.4vw,2vh)' }}>{manError}</div>}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '2vw', flexWrap: 'wrap', justifyContent: 'center' }}>
+                <button onClick={() => { setManType(null); setManVatMsg(null); setManError(null) }}
+                  style={{ background: 'none', border: 'none', color: '#64748b', fontSize: 'min(1.6vw,2.3vh)', cursor: 'pointer', textDecoration: 'underline' }}>
+                  ← {T.back}
+                </button>
+                <button style={{ ...E.btnPrimary, padding: 'min(1.1vh,1vw) min(6vw,4.5vh)', marginTop: 0, opacity: manStep === 'sending' ? .6 : 1 }} disabled={manStep === 'sending'} onClick={submitManual}>
+                  {manStep === 'sending' ? T.sending : T.send}
+                </button>
+              </div>
+              <div style={{ ...E.rgpd, marginTop: 0 }}>{T.rgpd}</div>
             </>
           )}
         </div>
