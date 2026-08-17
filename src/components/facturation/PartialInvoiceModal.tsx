@@ -93,12 +93,23 @@ export default function PartialInvoiceModal({ missionId, parkedSince, onClose, o
       // Postes déjà facturés
       const items: BilledItem[] = bi?.items || []
       setBilled(items)
+      // ⚠️ Un poste déjà facturé ne doit PLUS être proposé. Sur #10112844, la
+      // seconde facture partielle reproposait la prise en charge, les km et les
+      // frais administratifs déjà réglés (Olivier 2026-08-17). Le gardiennage
+      // fait exception : il se facture par tranches successives.
+      const dejaFactures = new Set(items.filter(i => i.kind !== 'SERV-PARC').map(i => i.kind))
+      if (dejaFactures.size > 0) proposed = proposed.filter(l => !dejaFactures.has(l.kind))
       // Pré-remplit les n° de facture déjà saisis (par lot odoo_quote_id).
       const drafts: Record<number, string> = {}
       for (const it of items) if (it.odoo_quote_id && it.invoice_number) drafts[it.odoo_quote_id] = it.invoice_number
       setInvDraft(drafts)
-      // Période gardiennage par défaut : après la dernière facturée, sinon entrée parc
-      const start = bi?.last_parc_period_to ? addDays(bi.last_parc_period_to, 1) : (parkedSince ? parkedSince.slice(0, 10) : todayISO())
+      // Période gardiennage par défaut : au lendemain de la dernière tranche
+      // facturée, sinon au LENDEMAIN DE L'ENTRÉE — le jour d'entrée ne se
+      // facture pas (Olivier 2026-08-17). On partait du jour d'entrée lui-même :
+      // un véhicule pris le 16 et facturé le 17 comptait deux jours au lieu d'un.
+      const start = bi?.last_parc_period_to
+        ? addDays(String(bi.last_parc_period_to).slice(0, 10), 1)
+        : (parkedSince ? addDays(parkedSince.slice(0, 10), 1) : todayISO())
       setParcFrom(start)
     }).catch(() => setError('Erreur de chargement'))
       .finally(() => { if (!cancelled) setLoading(false) })

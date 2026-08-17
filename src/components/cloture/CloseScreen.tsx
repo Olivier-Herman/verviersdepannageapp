@@ -66,7 +66,7 @@ export default function CloseScreen({
   onNeedPhotos: () => void
   onBack: () => void
   /** Transformation réussie → le parent enchaîne sur la clôture VD Soft. */
-  onDone: (r: { outcome: OutcomeKey; common: CloseCommon; destination?: { address: string; lat?: number; lng?: number }; queued?: boolean }) => void
+  onDone: (r: { outcome: OutcomeKey; common: CloseCommon; destination?: { address: string; lat?: number; lng?: number }; queued?: boolean; dprCode?: string | null; dprLabel?: string | null }) => void
 }) {
   const branch = BRANCH_OF[outcome] || null
   const isRem  = outcome === 'rem' || outcome === 'rem_vr'
@@ -263,7 +263,12 @@ export default function CloseScreen({
       }
       // j.queued = la plateforme de l'assistance était injoignable : c'est
       // enregistré et rejoué automatiquement. Le chauffeur continue, point.
-      onDone({ outcome, common, destination: body.destination, queued: !!j.queued })
+      // ⚠️ Transmettre le motif DPR : le récapitulatif qui suit le redemandait,
+      // alors que le chauffeur venait de le choisir ici. Blocage vécu sur
+      // BIZH888 le 17/08 (Olivier). Le libellé part avec, pour le dossier.
+      onDone({ outcome, common, destination: body.destination, queued: !!j.queued,
+               dprCode: dprCode || null,
+               dprLabel: (dprCodes || []).find(d => d.code === dprCode)?.label || null })
     } catch (e: any) {
       setError(e?.message || 'Erreur réseau'); setBusy(false)
     }

@@ -944,6 +944,8 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
   // Motif DPR (Deplacement Pour Rien)
   const [dprMotif,        setDprMotif]        = useState<DprMotifId | ''>('')
   const [dprMotifAutre,   setDprMotifAutre]   = useState('')
+  /** Motif DPR déjà choisi dans le flux 2 — on ne le redemande pas. */
+  const [f2DprMotif,      setF2DprMotif]      = useState<{ code: string; label: string } | null>(null)
   const [garageReopenDate, setGarageReopenDate] = useState('')   // garage fermé → réouverture
   const [showDprMotif,    setShowDprMotif]    = useState(false)
   const [dprFromRem,      setDprFromRem]      = useState(false)  // true si conversion depuis refus REM
@@ -2061,7 +2063,9 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
       const capturedCount = photoUrls.length + photos.length
       if (closeType !== 'dpr' && capturedCount < 1) { setErr('Ajoutez au moins une photo'); setLoading(false); return }
       // DPR exige toujours un motif (modal ouverte avant le passage en closeType='dpr').
-      if (closeType === 'dpr' && !dprMotif) {
+      // Le motif peut venir du flux 2 (écran « Déplacement pour rien ») : on ne
+      // le redemande pas. Olivier 2026-08-17, chauffeur bloqué sur BIZH888.
+      if (closeType === 'dpr' && !dprMotif && !f2DprMotif) {
         setErr('Motif DPR requis'); setLoading(false); return
       }
       // Olivier 2026-06-05 : envoyer le format BDD canonical (depannage /
@@ -2090,7 +2094,7 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
             signature:             sig || undefined,
             recipient_signature:   destSig || undefined,            // REM : signature destinataire
             discharge_data:        disch.length > 0 ? disch : undefined,
-            dpr_motif:             closeType === 'dpr' ? dprMotif : undefined,
+            dpr_motif:             closeType === 'dpr' ? (dprMotif || undefined) : undefined,
             dpr_motif_label:       closeType === 'dpr' ? (
               dprMotif === 'autre'
                 ? dprMotifAutre.trim()
@@ -2281,7 +2285,10 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
           if (r.queued) setErr("Enregistré ✅ — l'assistance est injoignable pour l'instant, on s'en occupe automatiquement dès qu'elle revient.")
           if (r.common.remark) setCloseNote(r.common.remark)
           if (r.common.signaturePng) setSig(r.common.signaturePng)
-          if (r.outcome === 'dpr')       { setCloseType('dpr');  setScreen('close'); return }
+          if (r.outcome === 'dpr') {
+            if (r.dprCode) setF2DprMotif({ code: r.dprCode, label: r.dprLabel || r.dprCode })
+            setCloseType('dpr'); setScreen('close'); return
+          }
           if (r.outcome === 'delivered') { setCloseType('rem');  setScreen('close'); return }
           if (r.outcome === 'park')      { continuePark(); return }
           if (r.outcome === 'rem' || r.outcome === 'rem_vr') { reloadMission(); return }
