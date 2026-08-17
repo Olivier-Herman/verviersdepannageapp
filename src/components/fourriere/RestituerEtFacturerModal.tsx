@@ -58,7 +58,9 @@ export default function RestituerEtFacturerModal({ mission, onClose, onSuccess }
   const [step, setStep] = useState<Step>('search')
 
   // Recherche
-  const [searchName,  setSearchName]  = useState((mission.client_name || mission.billed_to_name || '').trim())
+  // Le client de la fiche (billed_to) prime sur `client_name`, qui désigne la
+  // personne rencontrée sur place et pas forcément le payeur.
+  const [searchName,  setSearchName]  = useState((mission.billed_to_name || mission.client_name || '').trim())
   const [searching,   setSearching]   = useState(false)
   const [results,     setResults]     = useState<OdooPartner[]>([])
 
@@ -386,7 +388,18 @@ export default function RestituerEtFacturerModal({ mission, onClose, onSuccess }
 
           {step === 'search' && (
             <>
-              <p className="text-xs text-ink-muted">Recherche le client par nom dans Odoo (nom et prénom inversés sont aussi essayés).</p>
+              {/* Le client est DÉJÀ sur la fiche : on le propose en un clic plutôt
+                  que de faire rechercher ce qu'on sait déjà (Olivier 2026-08-17). */}
+              {mission.billed_to_id && mission.billed_to_name && (
+                <button
+                  onClick={() => selectPartner({ id: mission.billed_to_id as number, name: mission.billed_to_name as string } as OdooPartner)}
+                  className="w-full text-left bg-brand/10 border border-brand/40 hover:border-brand rounded-lg p-3 transition active:scale-95">
+                  <p className="text-[11px] uppercase tracking-wide text-brand font-bold">Client de la fiche</p>
+                  <p className="text-ink font-semibold text-sm mt-0.5">{mission.billed_to_name}</p>
+                  <p className="text-ink-muted text-xs mt-0.5">Toucher pour facturer à ce client</p>
+                </button>
+              )}
+              <p className="text-xs text-ink-muted">Ou recherche un autre client dans Odoo (nom et prénom inversés sont aussi essayés).</p>
               <div>
                 <label className="text-xs font-semibold text-ink-muted uppercase tracking-wide mb-1 block">
                   Nom du client
