@@ -1749,7 +1749,7 @@ export default function MissionDetailClient({
   // ── Recherche/lien client Odoo (facturé) ────────────────────────────────────
   const [billedPartnerId, setBilledPartnerId] = useState<number | null>(initialMission.billed_to_id || null)
   const [showCreateClientModal, setShowCreateClientModal] = useState(false)
-  const [eidPrefill, setEidPrefill] = useState<{ name?: string; phone?: string; email?: string; street?: string; zip?: string; city?: string; country?: string; countryCode?: string } | null>(null)
+  const [eidPrefill, setEidPrefill] = useState<{ name?: string; phone?: string; email?: string; street?: string; zip?: string; city?: string; country?: string; countryCode?: string; vat?: string; isCompany?: boolean } | null>(null)
 
   // Nom de pays → code ISO (pour Odoo). eID renvoie « Belgique » ; l'autocomplete
   // renvoie déjà le code ISO. Défaut BE si non reconnu.
@@ -1782,6 +1782,7 @@ export default function MissionDetailClient({
       name: d.name || undefined, phone: d.phone || undefined, email: d.email || undefined,
       street: d.street || undefined, zip: d.zip || undefined, city: d.city || undefined,
       country: d.country || undefined, countryCode: d.countryCode || countryToIso(d.country),
+      vat: d.vat || undefined, isCompany: d.isCompany || undefined,
     })
     setShowCreateClientModal(true)
   }

@@ -20,6 +20,7 @@ import { authOptions }         from '@/lib/auth'
 import { createAdminClient }   from '@/lib/supabase'
 import { createCheckout }      from '@/lib/sumup'
 import { buildEpcQrPayload, bankConfigFromEnv } from '@/lib/payments/epc-qr'
+import { checkVat }             from '@/lib/vies'
 import { odooRpc }             from '@/lib/odoo'
 
 export const dynamic     = 'force-dynamic'
@@ -206,6 +207,8 @@ export async function POST(req: Request) {
       countryCode: d.countryCode ? String(d.countryCode).slice(0, 4).toUpperCase() : null,
       email:       d.email   ? String(d.email).slice(0, 160)   : null,
       phone:       d.phone   ? String(d.phone).slice(0, 40)    : null,
+      vat:         d.vat     ? String(d.vat).slice(0, 32).toUpperCase() : null,
+      isCompany:   !!d.isCompany,
       manual:      true,
     }
     await sb.from('customer_display').update({
@@ -214,6 +217,24 @@ export async function POST(req: Request) {
       response, response_at: new Date().toISOString(), updated_at: new Date().toISOString(),
     }).eq('key', key)
     return NextResponse.json({ ok: true })
+  }
+
+  // ── vies : recherche TVA depuis le kiosque (PUBLIC) ─────────────────────────
+  // Le client professionnel au comptoir tape son n° de TVA → on interroge VIES.
+  // Accepté seulement si l'écran est en mode manual actif (corrélation forte).
+  if (body.action === 'vies') {
+    const reqId = String(body.request_id || '')
+    const vat   = String(body.vat || '').trim()
+    if (!vat) return NextResponse.json({ valid: false, error: 'TVA manquante' }, { status: 400 })
+    const { data: cur } = await sb.from('customer_display')
+      .select('payload, expires_at').eq('key', key).maybeSingle()
+    const p: any = cur?.payload || null
+    const live = cur?.expires_at && new Date(cur.expires_at).getTime() > now
+    if (!p || p.mode !== 'manual' || !live || !reqId || p.request_id !== reqId) {
+      return NextResponse.json({ valid: false, error: 'Aucune demande active.' }, { status: 409 })
+    }
+    const result = await checkVat(vat)
+    return NextResponse.json(result)
   }
 
   // ── visitor_submit : RENVOI du visiteur depuis le kiosque (PUBLIC) ──────────

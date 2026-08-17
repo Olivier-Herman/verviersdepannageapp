@@ -19,7 +19,7 @@ interface Props {
   initialName?: string
   // Préremplissage complet (ex. depuis une lecture de carte d'identité eID
   // ou une saisie manuelle au comptoir). countryCode = code ISO pour Odoo.
-  prefill?:     { name?: string; phone?: string; email?: string; street?: string; zip?: string; city?: string; country?: string; countryCode?: string }
+  prefill?:     { name?: string; phone?: string; email?: string; street?: string; zip?: string; city?: string; country?: string; countryCode?: string; vat?: string; isCompany?: boolean }
   gmKey?:       string  // Cle Google Maps (pour Places Autocomplete sur l adresse)
   onClose:      () => void
   onCreated:    (client: CreatedClient) => void
@@ -36,8 +36,8 @@ export default function CreateClientModal({ initialName, prefill, gmKey, onClose
   // Pays : nom affiché + code ISO envoyé à Odoo. Défaut Belgique.
   const [country,     setCountry]     = useState(prefill?.country     || (prefill?.countryCode ? '' : 'Belgique'))
   const [countryCode, setCountryCode] = useState((prefill?.countryCode || 'BE').toUpperCase())
-  const [vat,    setVat]    = useState('')
-  const [isCompany, setIsCompany] = useState(false)
+  const [vat,    setVat]    = useState(prefill?.vat || '')
+  const [isCompany, setIsCompany] = useState(!!prefill?.isCompany || !!prefill?.vat)
   const [saving, setSaving] = useState(false)
   const [error,  setError]  = useState<string | null>(null)
 

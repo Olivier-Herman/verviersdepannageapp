@@ -3,7 +3,7 @@
 import { NextResponse }     from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions }      from '@/lib/auth'
-import { odooRpc, withOdooActor, getCountryId } from '@/lib/odoo'
+import { odooRpc, withOdooActor, findOrCreatePartner } from '@/lib/odoo'
 
 export async function POST(req: Request) {
   const session = await getServerSession(authOptions)
@@ -21,24 +21,24 @@ export async function POST(req: Request) {
 
   return withOdooActor(actorId, async () => {
     try {
-      const vals: Record<string, any> = {
-        name:       name.trim(),
-        is_company: !!is_company,
-        customer_rank: 1,
-      }
+      // Idempotent : retrouve le partner existant (par TVA / e-mail / tél / nom)
+      // et complète ses champs manquants, sinon le crée. Évite les doublons Odoo.
       const effectivePhone = (phone?.trim() || mobile?.trim() || '').trim()
-      if (effectivePhone) vals.phone = effectivePhone
-      if (street) vals.street = street.trim()
-      if (city)   vals.city   = city.trim()
-      if (zip)    vals.zip    = zip.trim()
-      if (email)  vals.email  = email.trim()
-      if (vat)    vals.vat    = vat.trim()
-      // Pays : code ISO → id Odoo (défaut Belgique). Vient de l'autocomplete comptoir.
-      if (countryCode && String(countryCode).trim()) {
-        vals.country_id = await getCountryId(String(countryCode).trim())
-      }
+      const partnerId = await findOrCreatePartner({
+        name:        name.trim(),
+        phone:       effectivePhone || undefined,
+        email:       email?.trim()  || undefined,
+        vat:         vat?.trim()    || undefined,
+        street:      street?.trim() || undefined,
+        zip:         zip?.trim()    || undefined,
+        city:        city?.trim()   || undefined,
+        countryCode: (countryCode && String(countryCode).trim()) || undefined,
+      })
 
-      const partnerId = await odooRpc<number>('res.partner', 'create', [vals])
+      // Marquer société si demandé explicitement (le pro coche au comptoir).
+      if (is_company) {
+        await odooRpc('res.partner', 'write', [[partnerId], { company_type: 'company' }]).catch(() => {})
+      }
 
       const [partner] = await odooRpc<any[]>('res.partner', 'read', [[partnerId]], {
         fields: ['id', 'name', 'phone', 'street', 'city', 'zip', 'email', 'vat', 'country_id']

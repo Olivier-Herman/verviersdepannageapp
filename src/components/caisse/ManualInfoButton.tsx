@@ -14,6 +14,7 @@ export interface ManualClientData {
   street?: string | null; zip?: string | null; city?: string | null
   country?: string | null; countryCode?: string | null
   email?: string | null; phone?: string | null
+  vat?: string | null; isCompany?: boolean
   request_id?: string
 }
 

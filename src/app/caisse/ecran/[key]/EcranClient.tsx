@@ -28,15 +28,18 @@ interface EidIdentity {
 const eur = (n: number) => `${Number(n).toFixed(2).replace('.', ',')} €`
 
 // Traductions du formulaire « saisie manuelle » au comptoir. FR par défaut.
-type ManLang = 'fr' | 'nl' | 'de' | 'en'
+type ManLang = 'fr' | 'nl' | 'de' | 'en' | 'ru' | 'pl'
 const MAN_LANGS: { code: ManLang; label: string }[] = [
-  { code: 'fr', label: 'FR' }, { code: 'nl', label: 'NL' }, { code: 'de', label: 'DE' }, { code: 'en', label: 'EN' },
+  { code: 'fr', label: 'FR' }, { code: 'nl', label: 'NL' }, { code: 'de', label: 'DE' },
+  { code: 'en', label: 'EN' }, { code: 'ru', label: 'RU' }, { code: 'pl', label: 'PL' },
 ]
 const MAN_T: Record<ManLang, Record<string, string>> = {
-  fr: { title: 'Vos coordonnées', lead: 'Merci de compléter vos informations pour votre facture.', name: 'Nom ou société', address: 'Adresse', addressPh: 'Commencez à taper votre adresse…', zip: 'Code postal', city: 'Ville', email: 'E-mail', phone: 'Téléphone', send: 'Envoyer au comptoir', sending: 'Envoi…', thanks: 'Merci !', thanksSub: 'Vos informations ont bien été transmises au comptoir.', rgpd: 'Ces informations serviront à créer votre fiche client.', errName: 'Merci d’indiquer au moins votre nom.', errSend: 'Envoi impossible. Réessayez ou signalez-le au comptoir.' },
-  nl: { title: 'Uw gegevens', lead: 'Vul uw gegevens in voor uw factuur.', name: 'Naam of bedrijf', address: 'Adres', addressPh: 'Begin uw adres te typen…', zip: 'Postcode', city: 'Stad', email: 'E-mail', phone: 'Telefoon', send: 'Naar de balie sturen', sending: 'Verzenden…', thanks: 'Bedankt!', thanksSub: 'Uw gegevens zijn naar de balie verzonden.', rgpd: 'Deze gegevens worden gebruikt om uw klantenfiche aan te maken.', errName: 'Vul minstens uw naam in.', errSend: 'Verzenden mislukt. Probeer opnieuw of meld het aan de balie.' },
-  de: { title: 'Ihre Daten', lead: 'Bitte vervollständigen Sie Ihre Daten für Ihre Rechnung.', name: 'Name oder Firma', address: 'Adresse', addressPh: 'Beginnen Sie, Ihre Adresse einzugeben…', zip: 'Postleitzahl', city: 'Stadt', email: 'E-Mail', phone: 'Telefon', send: 'An den Schalter senden', sending: 'Senden…', thanks: 'Danke!', thanksSub: 'Ihre Daten wurden an den Schalter übermittelt.', rgpd: 'Diese Daten dienen zur Erstellung Ihrer Kundenkarte.', errName: 'Bitte geben Sie mindestens Ihren Namen an.', errSend: 'Senden fehlgeschlagen. Bitte erneut versuchen oder am Schalter melden.' },
-  en: { title: 'Your details', lead: 'Please complete your details for your invoice.', name: 'Name or company', address: 'Address', addressPh: 'Start typing your address…', zip: 'Postal code', city: 'City', email: 'E-mail', phone: 'Phone', send: 'Send to the counter', sending: 'Sending…', thanks: 'Thank you!', thanksSub: 'Your details have been sent to the counter.', rgpd: 'These details will be used to create your customer record.', errName: 'Please enter at least your name.', errSend: 'Sending failed. Please try again or tell the counter.' },
+  fr: { title: 'Vos coordonnées', lead: 'Merci de compléter vos informations pour votre facture.', name: 'Nom ou société', address: 'Adresse', addressPh: 'Commencez à taper votre adresse…', zip: 'Code postal', city: 'Ville', email: 'E-mail', phone: 'Téléphone', send: 'Envoyer au comptoir', sending: 'Envoi…', thanks: 'Merci !', thanksSub: 'Vos informations ont bien été transmises au comptoir.', rgpd: 'Ces informations serviront à créer votre fiche client.', errName: 'Merci d’indiquer au moins votre nom.', errSend: 'Envoi impossible. Réessayez ou signalez-le au comptoir.', choose: 'Vous êtes…', prive: 'Particulier', pro: 'Professionnel', vat: 'N° de TVA', vatPh: 'BE0123456789', vatSearch: 'Rechercher', vatSearching: 'Recherche…', vatOk: 'TVA valide', vatKo: 'TVA introuvable — complétez à la main', back: 'Retour' },
+  nl: { title: 'Uw gegevens', lead: 'Vul uw gegevens in voor uw factuur.', name: 'Naam of bedrijf', address: 'Adres', addressPh: 'Begin uw adres te typen…', zip: 'Postcode', city: 'Stad', email: 'E-mail', phone: 'Telefoon', send: 'Naar de balie sturen', sending: 'Verzenden…', thanks: 'Bedankt!', thanksSub: 'Uw gegevens zijn naar de balie verzonden.', rgpd: 'Deze gegevens worden gebruikt om uw klantenfiche aan te maken.', errName: 'Vul minstens uw naam in.', errSend: 'Verzenden mislukt. Probeer opnieuw of meld het aan de balie.', choose: 'U bent…', prive: 'Particulier', pro: 'Professioneel', vat: 'Btw-nummer', vatPh: 'BE0123456789', vatSearch: 'Zoeken', vatSearching: 'Zoeken…', vatOk: 'Btw geldig', vatKo: 'Btw niet gevonden — vul handmatig in', back: 'Terug' },
+  de: { title: 'Ihre Daten', lead: 'Bitte vervollständigen Sie Ihre Daten für Ihre Rechnung.', name: 'Name oder Firma', address: 'Adresse', addressPh: 'Beginnen Sie, Ihre Adresse einzugeben…', zip: 'Postleitzahl', city: 'Stadt', email: 'E-Mail', phone: 'Telefon', send: 'An den Schalter senden', sending: 'Senden…', thanks: 'Danke!', thanksSub: 'Ihre Daten wurden an den Schalter übermittelt.', rgpd: 'Diese Daten dienen zur Erstellung Ihrer Kundenkarte.', errName: 'Bitte geben Sie mindestens Ihren Namen an.', errSend: 'Senden fehlgeschlagen. Bitte erneut versuchen oder am Schalter melden.', choose: 'Sie sind…', prive: 'Privatperson', pro: 'Unternehmen', vat: 'USt-IdNr.', vatPh: 'BE0123456789', vatSearch: 'Suchen', vatSearching: 'Suchen…', vatOk: 'USt-IdNr. gültig', vatKo: 'USt-IdNr. nicht gefunden — bitte manuell ausfüllen', back: 'Zurück' },
+  en: { title: 'Your details', lead: 'Please complete your details for your invoice.', name: 'Name or company', address: 'Address', addressPh: 'Start typing your address…', zip: 'Postal code', city: 'City', email: 'E-mail', phone: 'Phone', send: 'Send to the counter', sending: 'Sending…', thanks: 'Thank you!', thanksSub: 'Your details have been sent to the counter.', rgpd: 'These details will be used to create your customer record.', errName: 'Please enter at least your name.', errSend: 'Sending failed. Please try again or tell the counter.', choose: 'You are…', prive: 'Individual', pro: 'Business', vat: 'VAT number', vatPh: 'BE0123456789', vatSearch: 'Search', vatSearching: 'Searching…', vatOk: 'VAT valid', vatKo: 'VAT not found — please fill in manually', back: 'Back' },
+  ru: { title: 'Ваши данные', lead: 'Пожалуйста, укажите ваши данные для счёта.', name: 'Имя или компания', address: 'Адрес', addressPh: 'Начните вводить адрес…', zip: 'Почтовый индекс', city: 'Город', email: 'Эл. почта', phone: 'Телефон', send: 'Отправить на стойку', sending: 'Отправка…', thanks: 'Спасибо!', thanksSub: 'Ваши данные отправлены на стойку.', rgpd: 'Эти данные будут использованы для создания вашей карточки клиента.', errName: 'Укажите хотя бы ваше имя.', errSend: 'Не удалось отправить. Повторите попытку или сообщите на стойке.', choose: 'Вы…', prive: 'Физ. лицо', pro: 'Компания', vat: 'Номер НДС', vatPh: 'BE0123456789', vatSearch: 'Поиск', vatSearching: 'Поиск…', vatOk: 'НДС действителен', vatKo: 'НДС не найден — заполните вручную', back: 'Назад' },
+  pl: { title: 'Twoje dane', lead: 'Uzupełnij swoje dane do faktury.', name: 'Imię lub firma', address: 'Adres', addressPh: 'Zacznij wpisywać adres…', zip: 'Kod pocztowy', city: 'Miasto', email: 'E-mail', phone: 'Telefon', send: 'Wyślij do kasy', sending: 'Wysyłanie…', thanks: 'Dziękujemy!', thanksSub: 'Twoje dane zostały wysłane do kasy.', rgpd: 'Te dane posłużą do utworzenia karty klienta.', errName: 'Podaj przynajmniej swoje imię.', errSend: 'Nie udało się wysłać. Spróbuj ponownie lub zgłoś w kasie.', choose: 'Jesteś…', prive: 'Osoba prywatna', pro: 'Firma', vat: 'Numer VAT', vatPh: 'BE0123456789', vatSearch: 'Szukaj', vatSearching: 'Szukanie…', vatOk: 'VAT prawidłowy', vatKo: 'Nie znaleziono VAT — uzupełnij ręcznie', back: 'Wstecz' },
 }
 
 // Agent eID local (lecteur PC/SC sur le PC comptoir). URL résolue à l'exécution :
@@ -116,6 +119,10 @@ export default function EcranClient({ displayKey }: { displayKey: string }) {
   // ── Mode manual (saisie coordonnées au comptoir) ──
   const [manStep, setManStep]   = useState<'form' | 'sending' | 'done'>('form')
   const [manLang, setManLang]   = useState<ManLang>('fr')  // FR par défaut ; reset à chaque nouvelle demande
+  const [manType, setManType]   = useState<'prive' | 'pro' | null>(null)  // null = écran de choix Particulier/Pro
+  const [manVat, setManVat]     = useState('')
+  const [manVatBusy, setManVatBusy]     = useState(false)
+  const [manVatMsg,  setManVatMsg]      = useState<{ ok: boolean; text: string } | null>(null)
   const [manName, setManName]   = useState('')
   const [manStreet, setManStreet] = useState('')
   const [manZip, setManZip]     = useState('')
@@ -256,9 +263,10 @@ export default function EcranClient({ displayKey }: { displayKey: string }) {
     if (payload.request_id && payload.request_id !== manReqRef.current) {
       manReqRef.current = payload.request_id
       manAcRef.current = null
-      setManStep('form'); setManLang('fr')
+      setManStep('form'); setManLang('fr'); setManType(null)
       setManName(''); setManStreet(''); setManZip(''); setManCity('')
       setManCountry(''); setManCountryCode(''); setManEmail(''); setManPhone(''); setManError(null)
+      setManVat(''); setManVatBusy(false); setManVatMsg(null)
     }
   }, [payload?.mode, payload?.request_id, payload?.step])
 
@@ -277,6 +285,8 @@ export default function EcranClient({ displayKey }: { displayKey: string }) {
             street: manStreet.trim() || null, zip: manZip.trim() || null, city: manCity.trim() || null,
             country: manCountry.trim() || null, countryCode: manCountryCode.trim() || null,
             email: manEmail.trim() || null, phone: manPhone.trim() || null,
+            vat: manType === 'pro' ? (manVat.trim() || null) : null,
+            isCompany: manType === 'pro',
           },
         }),
       })
@@ -284,6 +294,35 @@ export default function EcranClient({ displayKey }: { displayKey: string }) {
       setManStep('done')
     } catch {
       setManError(MAN_T[manLang].errSend); setManStep('form')
+    }
+  }
+
+  // Recherche VIES depuis le comptoir (client professionnel). Proxy public via
+  // l'API écran (pas de session côté kiosque). Préremplit nom + adresse.
+  const lookupVat = async () => {
+    if (!payload?.request_id || !manVat.trim()) return
+    setManVatBusy(true); setManVatMsg(null)
+    try {
+      const r = await fetch('/api/caisse/ecran', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'vies', key: displayKey, request_id: payload.request_id, vat: manVat.trim() }),
+      })
+      const j = await r.json().catch(() => ({}))
+      if (j?.valid) {
+        if (j.name) setManName(String(j.name))
+        if (j.address) {
+          const m = String(j.address).match(/^(.+?)\s+(\d{4,5})\s+(.+)$/)
+          if (m) { setManStreet(m[1].trim()); setManZip(m[2].trim()); setManCity(m[3].trim()) }
+          else   { setManStreet(String(j.address)) }
+        }
+        setManVatMsg({ ok: true, text: MAN_T[manLang].vatOk })
+      } else {
+        setManVatMsg({ ok: false, text: MAN_T[manLang].vatKo })
+      }
+    } catch {
+      setManVatMsg({ ok: false, text: MAN_T[manLang].vatKo })
+    } finally {
+      setManVatBusy(false)
     }
   }
 
@@ -380,7 +419,7 @@ export default function EcranClient({ displayKey }: { displayKey: string }) {
   // Google Places autocomplete sur l'adresse du formulaire manuel (pays → code ISO
   // pour Odoo). Chargé à l'affichage du formulaire. Clé publique NEXT_PUBLIC_.
   useEffect(() => {
-    if (!(active && payload?.mode === 'manual' && manStep === 'form')) return
+    if (!(active && payload?.mode === 'manual' && manStep === 'form' && manType)) return
     const key = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY
     if (!key) return
     let cancelled = false
@@ -415,7 +454,7 @@ export default function EcranClient({ displayKey }: { displayKey: string }) {
     }
     script.addEventListener('load', attach)
     return () => { cancelled = true; script?.removeEventListener('load', attach) }
-  }, [active, payload?.mode, manStep])
+  }, [active, payload?.mode, manStep, manType])
 
   // ── ÉCRAN VERROUILLÉ (PIN au 1er démarrage du poste, mémorisé ensuite) ─────
   if (!unlocked && !isDemo) {
@@ -609,7 +648,7 @@ export default function EcranClient({ displayKey }: { displayKey: string }) {
       <div style={S.wrap}>
         <div style={{ ...E.card, maxWidth: 'min(84vw, 860px)' }}>
           {/* Sélecteur de langue (FR par défaut) */}
-          <div style={{ display: 'flex', gap: '1vh', justifyContent: 'center', marginBottom: '1.6vh' }}>
+          <div style={{ display: 'flex', gap: '1vh', justifyContent: 'center', marginBottom: '1.6vh', flexWrap: 'wrap' }}>
             {MAN_LANGS.map(l => (
               <button key={l.code} onClick={() => setManLang(l.code)}
                 style={{ padding: '0.8vh 1.8vh', borderRadius: '1vh', border: '2px solid ' + (manLang === l.code ? '#2563eb' : '#cbd5e1'),
@@ -617,41 +656,90 @@ export default function EcranClient({ displayKey }: { displayKey: string }) {
                   fontWeight: 800, fontSize: 'min(1.9vw, 2.8vh)', cursor: 'pointer' }}>{l.label}</button>
             ))}
           </div>
-          <div style={E.title}>{T.title}</div>
-          <div style={E.lead}>{T.lead}</div>
-          <div style={E.formGrid}>
-            <label style={{ ...E.field, gridColumn: '1 / -1' }}>
-              <span style={E.fieldLbl}>{T.name}</span>
-              <input style={E.input} value={manName} onChange={e => setManName(e.target.value)} />
-            </label>
-            <label style={{ ...E.field, gridColumn: '1 / -1' }}>
-              <span style={E.fieldLbl}>{T.address}</span>
-              <input ref={manAddrInputRef} style={E.input} placeholder={T.addressPh} autoComplete="off"
-                value={manStreet} onChange={e => setManStreet(e.target.value)} />
-            </label>
-            <label style={E.field}>
-              <span style={E.fieldLbl}>{T.zip}</span>
-              <input style={E.input} value={manZip} onChange={e => setManZip(e.target.value)} />
-            </label>
-            <label style={E.field}>
-              <span style={E.fieldLbl}>{T.city}</span>
-              <input style={E.input} value={manCity} onChange={e => setManCity(e.target.value)} />
-            </label>
-            <label style={E.field}>
-              <span style={E.fieldLbl}>{T.email}</span>
-              <input style={E.input} type="email" inputMode="email" value={manEmail} onChange={e => setManEmail(e.target.value)} />
-            </label>
-            <label style={E.field}>
-              <span style={E.fieldLbl}>{T.phone}</span>
-              <input style={E.input} type="tel" inputMode="tel" value={manPhone} onChange={e => setManPhone(e.target.value)} />
-            </label>
-          </div>
-          {manCountry && <div style={{ ...E.lead, fontSize: 'min(1.6vw, 2.4vh)', marginTop: '0.5vh' }}>📍 {manCountry}</div>}
-          {manError && <div style={E.err}>{manError}</div>}
-          <button style={{ ...E.btnPrimary, opacity: manStep === 'sending' ? .6 : 1 }} disabled={manStep === 'sending'} onClick={submitManual}>
-            {manStep === 'sending' ? T.sending : T.send}
-          </button>
-          <div style={E.rgpd}>{T.rgpd}</div>
+
+          {manType === null ? (
+            /* ── Écran 1 : Particulier / Professionnel ─────────────────────── */
+            <>
+              <div style={E.title}>{T.choose}</div>
+              <div style={{ display: 'flex', gap: '2vh', marginTop: '3vh', flexWrap: 'wrap', justifyContent: 'center' }}>
+                <button onClick={() => setManType('prive')}
+                  style={{ ...E.btnPrimary, flex: '1 1 40%', minWidth: 'min(36vw,320px)', fontSize: 'min(2.6vw,3.6vh)', padding: '3vh 2vh' }}>
+                  🧍 {T.prive}
+                </button>
+                <button onClick={() => setManType('pro')}
+                  style={{ ...E.btnPrimary, flex: '1 1 40%', minWidth: 'min(36vw,320px)', fontSize: 'min(2.6vw,3.6vh)', padding: '3vh 2vh', background: '#0f766e' }}>
+                  🏢 {T.pro}
+                </button>
+              </div>
+              <div style={E.rgpd}>{T.rgpd}</div>
+            </>
+          ) : (
+            /* ── Écran 2 : formulaire (avec TVA/VIES pour les pros) ─────────── */
+            <>
+              <div style={E.title}>{T.title}</div>
+              <div style={E.lead}>{T.lead}</div>
+
+              {manType === 'pro' && (
+                <>
+                  <div style={{ display: 'flex', gap: '1vh', alignItems: 'flex-end', flexWrap: 'wrap', marginBottom: '1vh' }}>
+                    <label style={{ ...E.field, flex: '1 1 55%' }}>
+                      <span style={E.fieldLbl}>{T.vat}</span>
+                      <input style={E.input} value={manVat} placeholder={T.vatPh}
+                        onChange={e => { setManVat(e.target.value.toUpperCase()); setManVatMsg(null) }} />
+                    </label>
+                    <button onClick={lookupVat} disabled={manVatBusy || manVat.trim().length < 6}
+                      style={{ ...E.btnPrimary, flex: '0 0 auto', padding: '1.5vh 2.4vh', fontSize: 'min(1.9vw,2.8vh)',
+                        opacity: manVatBusy || manVat.trim().length < 6 ? .5 : 1 }}>
+                      {manVatBusy ? T.vatSearching : '🔍 ' + T.vatSearch}
+                    </button>
+                  </div>
+                  {manVatMsg && (
+                    <div style={manVatMsg.ok
+                      ? { background: '#dcfce7', color: '#166534', border: '2px solid #86efac', borderRadius: '1vh', padding: '1vh 1.6vh', fontSize: 'min(1.7vw,2.5vh)', fontWeight: 700, marginBottom: '1vh' }
+                      : E.err}>{manVatMsg.ok ? '✓ ' : '⚠ '}{manVatMsg.text}</div>
+                  )}
+                </>
+              )}
+
+              <div style={E.formGrid}>
+                <label style={{ ...E.field, gridColumn: '1 / -1' }}>
+                  <span style={E.fieldLbl}>{T.name}</span>
+                  <input style={E.input} value={manName} onChange={e => setManName(e.target.value)} />
+                </label>
+                <label style={{ ...E.field, gridColumn: '1 / -1' }}>
+                  <span style={E.fieldLbl}>{T.address}</span>
+                  <input ref={manAddrInputRef} style={E.input} placeholder={T.addressPh} autoComplete="off"
+                    value={manStreet} onChange={e => setManStreet(e.target.value)} />
+                </label>
+                <label style={E.field}>
+                  <span style={E.fieldLbl}>{T.zip}</span>
+                  <input style={E.input} value={manZip} onChange={e => setManZip(e.target.value)} />
+                </label>
+                <label style={E.field}>
+                  <span style={E.fieldLbl}>{T.city}</span>
+                  <input style={E.input} value={manCity} onChange={e => setManCity(e.target.value)} />
+                </label>
+                <label style={E.field}>
+                  <span style={E.fieldLbl}>{T.email}</span>
+                  <input style={E.input} type="email" inputMode="email" value={manEmail} onChange={e => setManEmail(e.target.value)} />
+                </label>
+                <label style={E.field}>
+                  <span style={E.fieldLbl}>{T.phone}</span>
+                  <input style={E.input} type="tel" inputMode="tel" value={manPhone} onChange={e => setManPhone(e.target.value)} />
+                </label>
+              </div>
+              {manCountry && <div style={{ ...E.lead, fontSize: 'min(1.6vw, 2.4vh)', marginTop: '0.5vh' }}>📍 {manCountry}</div>}
+              {manError && <div style={E.err}>{manError}</div>}
+              <button style={{ ...E.btnPrimary, opacity: manStep === 'sending' ? .6 : 1 }} disabled={manStep === 'sending'} onClick={submitManual}>
+                {manStep === 'sending' ? T.sending : T.send}
+              </button>
+              <button onClick={() => { setManType(null); setManVatMsg(null); setManError(null) }}
+                style={{ marginTop: '1vh', background: 'none', border: 'none', color: '#64748b', fontSize: 'min(1.7vw,2.5vh)', cursor: 'pointer', textDecoration: 'underline' }}>
+                ← {T.back}
+              </button>
+              <div style={E.rgpd}>{T.rgpd}</div>
+            </>
+          )}
         </div>
       </div>
     )
