@@ -39,6 +39,24 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
 
   const items = data || []
   const totalHtva = items.reduce((s, i) => s + Number(i.amount_htva || 0), 0)
+
+  // ── PRIX DU GARDIENNAGE : IL VIENT DU CATALOGUE DE LA SOURCE ──────────────
+  // `source_tariffs.parc_day_price` existait mais PERSONNE ne le lisait — ni
+  // l'estimation ni la modale — qui retombaient sur un prix reconstitué. D'où le
+  // tarif qui ne suivait pas la fiche (Olivier 2026-08-17, dossier #10112844).
+  let parcDayPrice: number | null = null
+  const { data: miss } = await sb.from('incoming_missions')
+    .select('source, mission_type').eq('id', params.id).maybeSingle()
+  if (miss?.source) {
+    const { data: tarifs } = await sb.from('source_tariffs')
+      .select('parc_day_price, mission_type, effective_from')
+      .eq('source', (miss as any).source)
+      .not('parc_day_price', 'is', null)
+      .order('effective_from', { ascending: false })
+    const exact = (tarifs || []).find((t: any) => t.mission_type === (miss as any).mission_type)
+    const prix = exact || (tarifs || [])[0]
+    if (prix) parcDayPrice = Number((prix as any).parc_day_price)
+  }
   // Dernière période de gardiennage déjà facturée (pour proposer la suivante).
   const lastParcTo = items
     .filter(i => i.kind === 'SERV-PARC' && i.period_to)
@@ -122,7 +140,7 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
     }
   }
 
-  return NextResponse.json({ items, count: items.length, total_htva: totalHtva, last_parc_period_to: lastParcTo, quotes_info: quotesInfo })
+  return NextResponse.json({ items, count: items.length, total_htva: totalHtva, last_parc_period_to: lastParcTo, parc_day_price: parcDayPrice, quotes_info: quotesInfo })
 }
 
 // PATCH : enregistre le n° de facture d'une facture partielle (lot odoo_quote_id).

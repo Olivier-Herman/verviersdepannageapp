@@ -87,8 +87,11 @@ export default function PartialInvoiceModal({ missionId, parkedSince, onClose, o
         if (est.surcharge_eur > 0) proposed.push({ kind: 'SERV-MAJ', label: `Majoration ${est.surcharge_pct || ''}%`, qty: 1, price_unit: round(est.surcharge_eur), checked: true })
       }
       setLines(proposed)
-      // Prix gardiennage / jour depuis l'estimation (forfait OU ligne SERV-PARC).
-      if (est?.parc_jours > 0 && est?.parc_eur > 0) setParcPrice(round(est.parc_eur / est.parc_jours))
+      // Prix gardiennage / jour — le CATALOGUE DE LA SOURCE fait foi (Olivier
+      // 2026-08-17). L'estimation ne servait que de repli et donnait un prix
+      // reconstitué qui ne suivait pas la fiche.
+      if (bi?.parc_day_price != null && Number(bi.parc_day_price) > 0) setParcPrice(round(Number(bi.parc_day_price)))
+      else if (est?.parc_jours > 0 && est?.parc_eur > 0) setParcPrice(round(est.parc_eur / est.parc_jours))
       else if (parcUnitFromLines && parcUnitFromLines > 0) setParcPrice(parcUnitFromLines)
       // Postes déjà facturés
       const items: BilledItem[] = bi?.items || []
