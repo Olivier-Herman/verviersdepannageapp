@@ -63,7 +63,7 @@ export default function PartialInvoiceModal({ missionId, parkedSince, onClose, o
       // Postes dépannage proposés depuis l'estimation — CHAQUE ligne est
       // sélectionnable (Olivier 2026-06-22). Le gardiennage (SERV-PARC) est géré
       // séparément dans sa propre section (période + prix/jour).
-      const proposed: Line[] = []
+      let proposed: Line[] = []
       let parcUnitFromLines: number | null = null
       if (est?.ok) {
         if (Array.isArray(est.template_lines) && est.template_lines.length > 0) {
