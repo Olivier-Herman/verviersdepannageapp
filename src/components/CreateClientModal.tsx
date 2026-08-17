@@ -17,8 +17,9 @@ export interface CreatedClient {
 
 interface Props {
   initialName?: string
-  // Préremplissage complet (ex. depuis une lecture de carte d'identité eID).
-  prefill?:     { name?: string; phone?: string; email?: string; street?: string; zip?: string; city?: string }
+  // Préremplissage complet (ex. depuis une lecture de carte d'identité eID
+  // ou une saisie manuelle au comptoir). countryCode = code ISO pour Odoo.
+  prefill?:     { name?: string; phone?: string; email?: string; street?: string; zip?: string; city?: string; country?: string; countryCode?: string }
   gmKey?:       string  // Cle Google Maps (pour Places Autocomplete sur l adresse)
   onClose:      () => void
   onCreated:    (client: CreatedClient) => void
@@ -32,6 +33,9 @@ export default function CreateClientModal({ initialName, prefill, gmKey, onClose
   const [street, setStreet] = useState(prefill?.street || '')
   const [zip,    setZip]    = useState(prefill?.zip    || '')
   const [city,   setCity]   = useState(prefill?.city   || '')
+  // Pays : nom affiché + code ISO envoyé à Odoo. Défaut Belgique.
+  const [country,     setCountry]     = useState(prefill?.country     || (prefill?.countryCode ? '' : 'Belgique'))
+  const [countryCode, setCountryCode] = useState((prefill?.countryCode || 'BE').toUpperCase())
   const [vat,    setVat]    = useState('')
   const [isCompany, setIsCompany] = useState(false)
   const [saving, setSaving] = useState(false)
@@ -95,8 +99,8 @@ export default function CreateClientModal({ initialName, prefill, gmKey, onClose
   // referencerait les setters du 1er render — meme bug que ailleurs).
   const streetInputRef = useRef<HTMLInputElement>(null)
   const acRef = useRef<any>(null)
-  const settersRef = useRef({ setStreet, setZip, setCity })
-  settersRef.current = { setStreet, setZip, setCity }
+  const settersRef = useRef({ setStreet, setZip, setCity, setCountry, setCountryCode })
+  settersRef.current = { setStreet, setZip, setCity, setCountry, setCountryCode }
 
   useEffect(() => {
     if (!gmKey || !streetInputRef.current) return
@@ -111,14 +115,19 @@ export default function CreateClientModal({ initialName, prefill, gmKey, onClose
         const p = acRef.current.getPlace()
         const comps = p?.address_components || []
         const get = (type: string) => comps.find((c: any) => c.types?.includes(type))?.long_name || ''
+        const getShort = (type: string) => comps.find((c: any) => c.types?.includes(type))?.short_name || ''
         const route       = get('route')
         const number      = get('street_number')
         const zipFound    = get('postal_code')
         const cityFound   = get('locality') || get('postal_town')
+        const countryName = get('country')
+        const countryIso  = getShort('country')
         const street      = [route, number].filter(Boolean).join(' ').trim()
-        if (street)    settersRef.current.setStreet(street)
-        if (zipFound)  settersRef.current.setZip(zipFound)
-        if (cityFound) settersRef.current.setCity(cityFound)
+        if (street)     settersRef.current.setStreet(street)
+        if (zipFound)   settersRef.current.setZip(zipFound)
+        if (cityFound)  settersRef.current.setCity(cityFound)
+        if (countryName) settersRef.current.setCountry(countryName)
+        if (countryIso)  settersRef.current.setCountryCode(countryIso.toUpperCase())
       })
     }
     if ((window as any).google?.maps?.places) { init(); return }
@@ -154,6 +163,7 @@ export default function CreateClientModal({ initialName, prefill, gmKey, onClose
           zip:        zip.trim()    || undefined,
           vat:        vat.trim()    || undefined,
           is_company: isCompany,
+          countryCode: countryCode || undefined,
         }),
       })
       const data = await res.json()
@@ -263,6 +273,21 @@ export default function CreateClientModal({ initialName, prefill, gmKey, onClose
               <input value={city} onChange={e => setCity(e.target.value)}
                 placeholder="Pepinster"
                 className="w-full bg-surface-2 border rounded-xl px-3 py-2 text-ink text-sm focus:outline-none focus:border-brand" />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-[1fr_120px] gap-3">
+            <div>
+              <label className="block text-ink-muted text-xs mb-1.5">Pays</label>
+              <input value={country} onChange={e => setCountry(e.target.value)}
+                placeholder="Belgique"
+                className="w-full bg-surface-2 border rounded-xl px-3 py-2 text-ink text-sm focus:outline-none focus:border-brand" />
+            </div>
+            <div>
+              <label className="block text-ink-muted text-xs mb-1.5">Code ISO</label>
+              <input value={countryCode} onChange={e => setCountryCode(e.target.value.toUpperCase())}
+                maxLength={2} placeholder="BE"
+                className="w-full bg-surface-2 border rounded-xl px-3 py-2 text-ink text-sm focus:outline-none focus:border-brand font-mono uppercase" />
             </div>
           </div>
 

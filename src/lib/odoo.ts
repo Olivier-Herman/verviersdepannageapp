@@ -194,7 +194,7 @@ export async function findOrCreateVehicle(data: {
 // PAYS — Récupérer l'ID Odoo par code ISO
 // ============================================================
 const countryCache: Record<string, number> = {}
-async function getCountryId(code: string): Promise<number> {
+export async function getCountryId(code: string): Promise<number> {
   if (!code) return 20 // Belgique par défaut
   const upper = code.toUpperCase()
   if (countryCache[upper]) return countryCache[upper]

@@ -183,6 +183,39 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: true })
   }
 
+  // ── manual_submit : RENVOI des coordonnées saisies au comptoir (PUBLIC) ──────
+  // Comme eid_submit : accepté seulement si l'écran est en mode manual avec le bon
+  // request_id non expiré. Le pays est renvoyé avec son code ISO (autocomplete).
+  if (body.action === 'manual_submit') {
+    const reqId = String(body.request_id || '')
+    const { data: cur } = await sb.from('customer_display')
+      .select('payload, expires_at').eq('key', key).maybeSingle()
+    const p: any = cur?.payload || null
+    const live = cur?.expires_at && new Date(cur.expires_at).getTime() > now
+    if (!p || p.mode !== 'manual' || !live || !reqId || p.request_id !== reqId) {
+      return NextResponse.json({ error: 'Aucune demande d\'info active pour cet écran.' }, { status: 409 })
+    }
+    const d = (body.data && typeof body.data === 'object') ? body.data : {}
+    const response = {
+      request_id:  reqId,
+      name:        d.name    ? String(d.name).slice(0, 200)    : null,
+      street:      d.street  ? String(d.street).slice(0, 200)  : null,
+      zip:         d.zip     ? String(d.zip).slice(0, 20)      : null,
+      city:        d.city    ? String(d.city).slice(0, 120)    : null,
+      country:     d.country ? String(d.country).slice(0, 80)  : null,
+      countryCode: d.countryCode ? String(d.countryCode).slice(0, 4).toUpperCase() : null,
+      email:       d.email   ? String(d.email).slice(0, 160)   : null,
+      phone:       d.phone   ? String(d.phone).slice(0, 40)    : null,
+      manual:      true,
+    }
+    await sb.from('customer_display').update({
+      payload: { mode: 'manual', request_id: reqId, step: 'done' },
+      expires_at: new Date(now + 10_000).toISOString(),
+      response, response_at: new Date().toISOString(), updated_at: new Date().toISOString(),
+    }).eq('key', key)
+    return NextResponse.json({ ok: true })
+  }
+
   // ── visitor_submit : RENVOI du visiteur depuis le kiosque (PUBLIC) ──────────
   // Mode « registre de visite » (véhicule en parc). Comme eid_submit : on
   // n'accepte l'écriture que si l'écran est bien en mode visitor avec le bon
@@ -270,6 +303,27 @@ export async function POST(req: Request) {
     const expires_at = new Date(now + 5 * 60_000).toISOString()
     await sb.from('customer_display').upsert(
       { key, payload: { mode: 'eid', request_id: reqId, step: 'consent' }, expires_at, response: null, response_at: null, updated_at: new Date().toISOString(), updated_by: user.id || null },
+      { onConflict: 'key' },
+    )
+    return NextResponse.json({ ok: true, request_id: reqId, expires_at })
+  }
+
+  // ── manual : COMMANDE « saisie manuelle des coordonnées » depuis la fiche ─────
+  // Affiche sur l'écran comptoir un formulaire de coordonnées (nom, adresse avec
+  // autocomplete, email, tél) + choix de langue. request_id corrèle la réponse.
+  if (body.action === 'manual') {
+    const reqId = String(body.request_id || '').slice(0, 80) || `man-${now}`
+    if (!body.force) {
+      const { data: cur } = await sb.from('customer_display').select('payload, expires_at').eq('key', key).maybeSingle()
+      const active = cur?.payload && cur.expires_at && new Date(cur.expires_at).getTime() > now
+      if (active) {
+        const occ: any = cur!.payload
+        return NextResponse.json({ occupied: true, occupant: { client: occ.client || null, plate: occ.plate || null, mode: occ.mode || 'facture' } }, { status: 409 })
+      }
+    }
+    const expires_at = new Date(now + 5 * 60_000).toISOString()
+    await sb.from('customer_display').upsert(
+      { key, payload: { mode: 'manual', request_id: reqId, step: 'form' }, expires_at, response: null, response_at: null, updated_at: new Date().toISOString(), updated_by: user.id || null },
       { onConflict: 'key' },
     )
     return NextResponse.json({ ok: true, request_id: reqId, expires_at })

@@ -34,6 +34,7 @@ import DriverPickerModal from '@/components/DriverPickerModal'
 import ScanButton from '@/components/ScanButton'
 import CreateClientModal from '@/components/CreateClientModal'
 import EidImportButton, { type EidData } from '@/components/caisse/EidImportButton'
+import ManualInfoButton, { type ManualClientData } from '@/components/caisse/ManualInfoButton'
 import IdPhotoButton from '@/components/caisse/IdPhotoButton'
 import VisitorsPanel from '@/components/caisse/VisitorsPanel'
 import RestituerMalGareeModal from '@/components/restitution/RestituerMalGareeModal'
@@ -1748,7 +1749,20 @@ export default function MissionDetailClient({
   // ── Recherche/lien client Odoo (facturé) ────────────────────────────────────
   const [billedPartnerId, setBilledPartnerId] = useState<number | null>(initialMission.billed_to_id || null)
   const [showCreateClientModal, setShowCreateClientModal] = useState(false)
-  const [eidPrefill, setEidPrefill] = useState<{ name?: string; phone?: string; email?: string; street?: string; zip?: string; city?: string } | null>(null)
+  const [eidPrefill, setEidPrefill] = useState<{ name?: string; phone?: string; email?: string; street?: string; zip?: string; city?: string; country?: string; countryCode?: string } | null>(null)
+
+  // Nom de pays → code ISO (pour Odoo). eID renvoie « Belgique » ; l'autocomplete
+  // renvoie déjà le code ISO. Défaut BE si non reconnu.
+  const countryToIso = (name?: string | null): string | undefined => {
+    const s = (name || '').trim().toLowerCase()
+    if (!s) return undefined
+    if (/belg|belgi/.test(s)) return 'BE'
+    if (/france|français/.test(s)) return 'FR'
+    if (/pays.?bas|nederl|holland/.test(s)) return 'NL'
+    if (/allemagne|deutsch|german/.test(s)) return 'DE'
+    if (/luxemb/.test(s)) return 'LU'
+    return undefined
+  }
 
   // Carte d'identité lue au comptoir → préremplir le formulaire « Créer un client ».
   const handleEidImport = (d: EidData) => {
@@ -1756,6 +1770,18 @@ export default function MissionDetailClient({
     setEidPrefill({
       name: fullName || undefined, phone: d.phone || undefined, email: d.email || undefined,
       street: d.street || undefined, zip: d.zip || undefined, city: d.city || undefined,
+      country: d.country || undefined, countryCode: countryToIso(d.country),
+    })
+    setShowCreateClientModal(true)
+  }
+
+  // Saisie manuelle au comptoir → même préremplissage (avec le code pays ISO
+  // fourni par l'autocomplete). Olivier 2026-08-17.
+  const handleManualImport = (d: ManualClientData) => {
+    setEidPrefill({
+      name: d.name || undefined, phone: d.phone || undefined, email: d.email || undefined,
+      street: d.street || undefined, zip: d.zip || undefined, city: d.city || undefined,
+      country: d.country || undefined, countryCode: d.countryCode || countryToIso(d.country),
     })
     setShowCreateClientModal(true)
   }
@@ -3237,9 +3263,10 @@ export default function MissionDetailClient({
                     <h2 className="text-ink font-semibold text-sm flex items-center gap-2">
                       <span>🧾</span> Client facturé
                     </h2>
-                    <div className="flex items-center gap-3">
+                    <div className="flex items-center gap-3 flex-wrap">
                       <EidImportButton onImport={handleEidImport} />
                       <IdPhotoButton onImport={handleEidImport} />
+                      <ManualInfoButton onImport={handleManualImport} />
                     </div>
                   </div>
 

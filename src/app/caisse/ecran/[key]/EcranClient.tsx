@@ -10,8 +10,8 @@ interface Payload {
   client?: string | null; plate?: string | null; brand?: string | null; model?: string | null
   reference?: string; amount?: number; amountTotal?: number | null; lines?: { label: string; amount: number }[]
   sumupQrUrl?: string | null; sumupCheckoutId?: string | null; epcPayload?: string | null
-  // Mode eID (lecture carte → création client)
-  mode?: 'facture' | 'eid' | 'visitor'; request_id?: string; step?: 'consent' | 'done'
+  // Mode eID (lecture carte → création client) / manual (saisie coordonnées)
+  mode?: 'facture' | 'eid' | 'visitor' | 'manual'; request_id?: string; step?: 'consent' | 'form' | 'done'
   // Mode visitor (registre de visite véhicule en parc)
   mission_id?: string
   motifs?: { label: string; is_expert: boolean }[]
@@ -26,6 +26,18 @@ interface EidIdentity {
 }
 
 const eur = (n: number) => `${Number(n).toFixed(2).replace('.', ',')} €`
+
+// Traductions du formulaire « saisie manuelle » au comptoir. FR par défaut.
+type ManLang = 'fr' | 'nl' | 'de' | 'en'
+const MAN_LANGS: { code: ManLang; label: string }[] = [
+  { code: 'fr', label: 'FR' }, { code: 'nl', label: 'NL' }, { code: 'de', label: 'DE' }, { code: 'en', label: 'EN' },
+]
+const MAN_T: Record<ManLang, Record<string, string>> = {
+  fr: { title: 'Vos coordonnées', lead: 'Merci de compléter vos informations pour votre facture.', name: 'Nom ou société', address: 'Adresse', addressPh: 'Commencez à taper votre adresse…', zip: 'Code postal', city: 'Ville', email: 'E-mail', phone: 'Téléphone', send: 'Envoyer au comptoir', sending: 'Envoi…', thanks: 'Merci !', thanksSub: 'Vos informations ont bien été transmises au comptoir.', rgpd: 'Ces informations serviront à créer votre fiche client.', errName: 'Merci d’indiquer au moins votre nom.', errSend: 'Envoi impossible. Réessayez ou signalez-le au comptoir.' },
+  nl: { title: 'Uw gegevens', lead: 'Vul uw gegevens in voor uw factuur.', name: 'Naam of bedrijf', address: 'Adres', addressPh: 'Begin uw adres te typen…', zip: 'Postcode', city: 'Stad', email: 'E-mail', phone: 'Telefoon', send: 'Naar de balie sturen', sending: 'Verzenden…', thanks: 'Bedankt!', thanksSub: 'Uw gegevens zijn naar de balie verzonden.', rgpd: 'Deze gegevens worden gebruikt om uw klantenfiche aan te maken.', errName: 'Vul minstens uw naam in.', errSend: 'Verzenden mislukt. Probeer opnieuw of meld het aan de balie.' },
+  de: { title: 'Ihre Daten', lead: 'Bitte vervollständigen Sie Ihre Daten für Ihre Rechnung.', name: 'Name oder Firma', address: 'Adresse', addressPh: 'Beginnen Sie, Ihre Adresse einzugeben…', zip: 'Postleitzahl', city: 'Stadt', email: 'E-Mail', phone: 'Telefon', send: 'An den Schalter senden', sending: 'Senden…', thanks: 'Danke!', thanksSub: 'Ihre Daten wurden an den Schalter übermittelt.', rgpd: 'Diese Daten dienen zur Erstellung Ihrer Kundenkarte.', errName: 'Bitte geben Sie mindestens Ihren Namen an.', errSend: 'Senden fehlgeschlagen. Bitte erneut versuchen oder am Schalter melden.' },
+  en: { title: 'Your details', lead: 'Please complete your details for your invoice.', name: 'Name or company', address: 'Address', addressPh: 'Start typing your address…', zip: 'Postal code', city: 'City', email: 'E-mail', phone: 'Phone', send: 'Send to the counter', sending: 'Sending…', thanks: 'Thank you!', thanksSub: 'Your details have been sent to the counter.', rgpd: 'These details will be used to create your customer record.', errName: 'Please enter at least your name.', errSend: 'Sending failed. Please try again or tell the counter.' },
+}
 
 // Agent eID local (lecteur PC/SC sur le PC comptoir). URL résolue à l'exécution :
 //   1) paramètre d'URL ?eid=http://localhost:7181/read (par écran/PC comptoir)
@@ -101,6 +113,21 @@ export default function EcranClient({ displayKey }: { displayKey: string }) {
   const [eidEmail, setEidEmail]     = useState('')
   const [eidPhone, setEidPhone]     = useState('')
   const [eidError, setEidError]     = useState<string | null>(null)
+  // ── Mode manual (saisie coordonnées au comptoir) ──
+  const [manStep, setManStep]   = useState<'form' | 'sending' | 'done'>('form')
+  const [manLang, setManLang]   = useState<ManLang>('fr')  // FR par défaut ; reset à chaque nouvelle demande
+  const [manName, setManName]   = useState('')
+  const [manStreet, setManStreet] = useState('')
+  const [manZip, setManZip]     = useState('')
+  const [manCity, setManCity]   = useState('')
+  const [manCountry, setManCountry]         = useState('')
+  const [manCountryCode, setManCountryCode] = useState('')
+  const [manEmail, setManEmail] = useState('')
+  const [manPhone, setManPhone] = useState('')
+  const [manError, setManError] = useState<string | null>(null)
+  const manReqRef      = useRef<string | null>(null)
+  const manAddrInputRef = useRef<HTMLInputElement>(null)
+  const manAcRef       = useRef<any>(null)
   const eidReqRef = useRef<string | null>(null)
 
   // ── État local du mode visitor (registre de visite) ─────────────────────────
@@ -221,6 +248,45 @@ export default function EcranClient({ displayKey }: { displayKey: string }) {
     }
   }, [payload?.mode, payload?.request_id, payload?.step])
 
+  // ── Mode manual : (ré)initialise à chaque nouvelle demande. TOUJOURS FR par
+  // défaut (l'écran revient en FR une fois la transaction terminée). Olivier 2026-08-17.
+  useEffect(() => {
+    if (payload?.mode !== 'manual') { manReqRef.current = null; return }
+    if (payload.step === 'done') { setManStep('done'); return }
+    if (payload.request_id && payload.request_id !== manReqRef.current) {
+      manReqRef.current = payload.request_id
+      manAcRef.current = null
+      setManStep('form'); setManLang('fr')
+      setManName(''); setManStreet(''); setManZip(''); setManCity('')
+      setManCountry(''); setManCountryCode(''); setManEmail(''); setManPhone(''); setManError(null)
+    }
+  }, [payload?.mode, payload?.request_id, payload?.step])
+
+  const submitManual = async () => {
+    if (!payload?.request_id) return
+    if (!manName.trim()) { setManError(MAN_T[manLang].errName); return }
+    setManStep('sending'); setManError(null)
+    if (isDemo) { setTimeout(() => setManStep('done'), 500); return }
+    try {
+      const r = await fetch('/api/caisse/ecran', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'manual_submit', key: displayKey, request_id: payload.request_id,
+          data: {
+            name: manName.trim(),
+            street: manStreet.trim() || null, zip: manZip.trim() || null, city: manCity.trim() || null,
+            country: manCountry.trim() || null, countryCode: manCountryCode.trim() || null,
+            email: manEmail.trim() || null, phone: manPhone.trim() || null,
+          },
+        }),
+      })
+      if (!r.ok) throw new Error('envoi')
+      setManStep('done')
+    } catch {
+      setManError(MAN_T[manLang].errSend); setManStep('form')
+    }
+  }
+
   const startVisitorRead = async () => {
     setVisError(null); setVisStep('reading')
     try {
@@ -310,6 +376,46 @@ export default function EcranClient({ displayKey }: { displayKey: string }) {
 
   const active = !!payload && !!expiresAt && expiresAt > now
   const vehicle = payload ? [payload.brand, payload.model].filter(Boolean).join(' ') : ''
+
+  // Google Places autocomplete sur l'adresse du formulaire manuel (pays → code ISO
+  // pour Odoo). Chargé à l'affichage du formulaire. Clé publique NEXT_PUBLIC_.
+  useEffect(() => {
+    if (!(active && payload?.mode === 'manual' && manStep === 'form')) return
+    const key = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY
+    if (!key) return
+    let cancelled = false
+    const attach = () => {
+      if (cancelled || !manAddrInputRef.current || manAcRef.current) return
+      const g = (window as any).google
+      if (!g?.maps?.places) return
+      const ac = new g.maps.places.Autocomplete(manAddrInputRef.current, {
+        componentRestrictions: { country: ['be', 'lu', 'fr', 'nl', 'de'] },
+        fields: ['address_components', 'formatted_address'], types: ['address'],
+      })
+      manAcRef.current = ac
+      ac.addListener('place_changed', () => {
+        const place = ac.getPlace()
+        const comp: any[] = place?.address_components || []
+        const get = (t: string, s = false) => { const c = comp.find(x => x.types.includes(t)); return c ? (s ? c.short_name : c.long_name) : '' }
+        setManStreet([get('route'), get('street_number')].filter(Boolean).join(' ').trim() || place?.formatted_address || '')
+        setManZip(get('postal_code'))
+        setManCity(get('locality') || get('postal_town'))
+        setManCountry(get('country'))
+        setManCountryCode(String(get('country', true) || '').toUpperCase())
+      })
+    }
+    if ((window as any).google?.maps?.places) { attach(); return () => { cancelled = true } }
+    let script = document.getElementById('gm-script') as HTMLScriptElement | null
+    if (!script) {
+      script = document.createElement('script')
+      script.id = 'gm-script'
+      script.src = `https://maps.googleapis.com/maps/api/js?key=${key}&libraries=places&region=BE&language=fr`
+      script.async = true
+      document.head.appendChild(script)
+    }
+    script.addEventListener('load', attach)
+    return () => { cancelled = true; script?.removeEventListener('load', attach) }
+  }, [active, payload?.mode, manStep])
 
   // ── ÉCRAN VERROUILLÉ (PIN au 1er démarrage du poste, mémorisé ensuite) ─────
   if (!unlocked && !isDemo) {
@@ -480,6 +586,72 @@ export default function EcranClient({ displayKey }: { displayKey: string }) {
             disabled={visStep === 'sending'} onClick={submitVisitor}>
             {visStep === 'sending' ? 'Envoi…' : 'Valider ma visite'}
           </button>
+        </div>
+      </div>
+    )
+  }
+
+  // ── ÉCRAN MODE manual (saisie des coordonnées au comptoir) ────────────────
+  if (active && payload?.mode === 'manual') {
+    const T = MAN_T[manLang]
+    if (manStep === 'done' || payload.step === 'done') {
+      return (
+        <div style={S.wrap}>
+          <div style={{ textAlign: 'center' }}>
+            <div style={{ fontSize: 'min(9vw, 13vh)' }}>✅</div>
+            <div style={{ fontSize: 'min(4.4vw, 6.5vh)', fontWeight: 800, color: '#16a34a' }}>{T.thanks}</div>
+            <div style={{ fontSize: 'min(2vw, 3vh)', color: '#64748b', marginTop: '1vh' }}>{T.thanksSub}</div>
+          </div>
+        </div>
+      )
+    }
+    return (
+      <div style={S.wrap}>
+        <div style={{ ...E.card, maxWidth: 'min(84vw, 860px)' }}>
+          {/* Sélecteur de langue (FR par défaut) */}
+          <div style={{ display: 'flex', gap: '1vh', justifyContent: 'center', marginBottom: '1.6vh' }}>
+            {MAN_LANGS.map(l => (
+              <button key={l.code} onClick={() => setManLang(l.code)}
+                style={{ padding: '0.8vh 1.8vh', borderRadius: '1vh', border: '2px solid ' + (manLang === l.code ? '#2563eb' : '#cbd5e1'),
+                  background: manLang === l.code ? '#2563eb' : '#fff', color: manLang === l.code ? '#fff' : '#334155',
+                  fontWeight: 800, fontSize: 'min(1.9vw, 2.8vh)', cursor: 'pointer' }}>{l.label}</button>
+            ))}
+          </div>
+          <div style={E.title}>{T.title}</div>
+          <div style={E.lead}>{T.lead}</div>
+          <div style={E.formGrid}>
+            <label style={{ ...E.field, gridColumn: '1 / -1' }}>
+              <span style={E.fieldLbl}>{T.name}</span>
+              <input style={E.input} value={manName} onChange={e => setManName(e.target.value)} />
+            </label>
+            <label style={{ ...E.field, gridColumn: '1 / -1' }}>
+              <span style={E.fieldLbl}>{T.address}</span>
+              <input ref={manAddrInputRef} style={E.input} placeholder={T.addressPh} autoComplete="off"
+                value={manStreet} onChange={e => setManStreet(e.target.value)} />
+            </label>
+            <label style={E.field}>
+              <span style={E.fieldLbl}>{T.zip}</span>
+              <input style={E.input} value={manZip} onChange={e => setManZip(e.target.value)} />
+            </label>
+            <label style={E.field}>
+              <span style={E.fieldLbl}>{T.city}</span>
+              <input style={E.input} value={manCity} onChange={e => setManCity(e.target.value)} />
+            </label>
+            <label style={E.field}>
+              <span style={E.fieldLbl}>{T.email}</span>
+              <input style={E.input} type="email" inputMode="email" value={manEmail} onChange={e => setManEmail(e.target.value)} />
+            </label>
+            <label style={E.field}>
+              <span style={E.fieldLbl}>{T.phone}</span>
+              <input style={E.input} type="tel" inputMode="tel" value={manPhone} onChange={e => setManPhone(e.target.value)} />
+            </label>
+          </div>
+          {manCountry && <div style={{ ...E.lead, fontSize: 'min(1.6vw, 2.4vh)', marginTop: '0.5vh' }}>📍 {manCountry}</div>}
+          {manError && <div style={E.err}>{manError}</div>}
+          <button style={{ ...E.btnPrimary, opacity: manStep === 'sending' ? .6 : 1 }} disabled={manStep === 'sending'} onClick={submitManual}>
+            {manStep === 'sending' ? T.sending : T.send}
+          </button>
+          <div style={E.rgpd}>{T.rgpd}</div>
         </div>
       </div>
     )
