@@ -31,8 +31,31 @@ export const dynamic     = 'force-dynamic'
 // serait TUÉ par un plafond à 60 s. Olivier 2026-08-11.
 export const maxDuration = 300
 
-const MISSION_COLS = 'id, source, source_format, raw_content, external_id, mission_type, status, loaded_at, vr_proposed, assigned_to, ' +
+const MISSION_COLS = 'id, source, source_format, raw_content, external_id, mission_type, status, loaded_at, vr_proposed, assigned_to, parent_mission_id, ' +
   'vehicle_vin, vehicle_mileage, incident_description, vehicle_brand, vehicle_model, panne_motif'
+
+
+/**
+ * Codes de panne de la mission — ou de sa MISSION D'ORIGINE quand c'est une
+ * relivraison.
+ *
+ * « Une relivraison ne doit jamais demander le code panne. Le code panne est
+ * déterminé avant la mise en parc. La voiture, en restant dans le parc, n'a pas
+ * de raison de changer de code panne. C'est un parking, pas Lourdes » (Olivier
+ * 2026-08-18). On va donc chercher les codes chez le parent au lieu de faire
+ * ressaisir un motif au chauffeur qui vient juste chercher le véhicule.
+ */
+async function prefillCodes(sb: any, mission: any): Promise<{ cause: string; desc: string; result: string } | null> {
+  const ids = [mission?.id, mission?.parent_mission_id].filter(Boolean)
+  for (const id of ids) {
+    const { data } = await sb.from('mission_logs')
+      .select('metadata').eq('mission_id', id).eq('action', 'touring_closed')
+      .order('created_at', { ascending: false }).limit(1).maybeSingle()
+    const md: any = (data as any)?.metadata
+    if (md?.cause && md?.desc && md?.result) return { cause: md.cause, desc: md.desc, result: md.result }
+  }
+  return null
+}
 
 async function loadContext(missionId: string, email: string) {
   const sb = createAdminClient()
@@ -72,11 +95,8 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
   // Codes deja encodes sur une jambe precedente (DSP -> REM). Un REM envoye
   // DIRECTEMENT par Touring n'en a aucun : dans ce cas la livraison doit demander
   // le motif, sinon on clotûrerait en « cause inconnue ». Olivier 2026-08-11.
-  const { data: prev } = await sb.from('mission_logs')
-    .select('metadata').eq('mission_id', (m as any).id).eq('action', 'touring_closed')
-    .order('created_at', { ascending: false }).limit(1).maybeSingle()
-  const pm: any = (prev as any)?.metadata
-  const hasPrefill = !!(pm?.cause && pm?.desc && pm?.result)
+  const prefillFromParent = await prefillCodes(sb, m)
+  const hasPrefill = !!prefillFromParent
 
   // Codes de fin réellement autorisés par l'assistance sur CE dossier (déjà présents
   // dans le detail COMEX stocké). On n'affiche pas une issue que Touring refusera :
@@ -271,14 +291,11 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   const assistance = flux2AssistanceOf(m as any)
   let result: any = { ok: true, skipped: true }
 
+  // Les codes viennent de la mission elle-même OU de son parent : une
+  // relivraison reprend les codes posés avant la mise en parc, elle ne les
+  // redemande pas (cf. `prefillCodes`).
   let prefill: { cause: string; desc: string; result: string } | null = null
-  if (outcome === 'delivered') {
-    const { data: last } = await sb.from('mission_logs')
-      .select('metadata').eq('mission_id', (m as any).id).eq('action', 'touring_closed')
-      .order('created_at', { ascending: false }).limit(1).maybeSingle()
-    const md: any = (last as any)?.metadata
-    if (md?.cause && md?.desc && md?.result) prefill = { cause: md.cause, desc: md.desc, result: md.result }
-  }
+  if (outcome === 'delivered') prefill = await prefillCodes(sb, m)
 
   let queued = false
 

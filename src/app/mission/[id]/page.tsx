@@ -119,11 +119,21 @@ export default async function MissionDriverPage({ params, searchParams }: Props)
 
   // Relivraison : remarque de clôture du REM PARENT → alerte obligatoire sur
   // l'écran chauffeur (ex « Ne pas démarrer le véhicule »). Olivier 2026-08-10.
+  // Et la PANNE relevée à l'enlèvement : « sur une fiche de relivraison il
+  // faudrait que le chauffeur puisse voir les codes panne renseignés par la
+  // mission parent, afin qu'il sache ce qu'a le véhicule qu'il va charger »
+  // (Olivier 2026-08-18).
   let parentClosingNote: string | null = null
+  let parentPanne: string | null = null
   if (mission.parent_mission_id) {
     const { data: parent } = await supabase.from('incoming_missions')
-      .select('closing_notes').eq('id', mission.parent_mission_id).maybeSingle()
+      .select('closing_notes, panne_motif').eq('id', mission.parent_mission_id).maybeSingle()
     parentClosingNote = parent?.closing_notes || null
+    const key = (parent as any)?.panne_motif || ''
+    if (key) {
+      const { findMotif } = await import('@/lib/cloture/motifs')
+      parentPanne = findMotif('remorquage', key)?.label || findMotif('mobilite', key)?.label || null
+    }
   }
 
   return (
@@ -138,6 +148,7 @@ export default async function MissionDriverPage({ params, searchParams }: Props)
         defaultParcZone={defaultParcZone}
         touringBeta={touringBeta}
         flux2={flux2}
+        parentPanne={parentPanne}
         parentClosingNote={parentClosingNote}
       />
     </>

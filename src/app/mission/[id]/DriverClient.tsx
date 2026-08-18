@@ -85,7 +85,7 @@ interface Mission {
   awaiting_payment?: boolean | null
 }
 interface VrLoc { id: string; name: string; address: string; lat: number | null; lng: number | null; is_default?: boolean }
-interface Props { mission: Mission; currentUserId?: string; userRole?: string; isReadOnly?: boolean; navApp?: NavApp; defaultParcZone?: string | null; touringBeta?: boolean; flux2?: boolean; parentClosingNote?: string | null }
+interface Props { mission: Mission; currentUserId?: string; userRole?: string; isReadOnly?: boolean; navApp?: NavApp; defaultParcZone?: string | null; touringBeta?: boolean; flux2?: boolean; parentClosingNote?: string | null; parentPanne?: string | null }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 // Olivier 2026-06-18 : null-safe. Le defaut `= ''` ne couvre QUE undefined ;
@@ -522,7 +522,7 @@ function BriefingTtsButton({ mission }: { mission: Mission }) {
 }
 
 // ─── Composant principal ──────────────────────────────────────────────────────
-export default function DriverClient({ mission: init, currentUserId, userRole, isReadOnly = false, navApp: initNav, defaultParcZone = null, touringBeta = false, flux2 = false, parentClosingNote = null }: Props) {
+export default function DriverClient({ mission: init, currentUserId, userRole, isReadOnly = false, navApp: initNav, defaultParcZone = null, touringBeta = false, flux2 = false, parentClosingNote = null, parentPanne = null }: Props) {
   const canMatthieu = canUseMatthieu(userRole, currentUserId)
   const router = useRouter()
   const { t, lang } = useT()   // traductions FR/albanais pour les messages d'erreur (strings)
@@ -3244,8 +3244,21 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
         </div>
       )}
 
+      {/* La PANNE relevée à l'enlèvement — pour que le chauffeur sache ce qu'il
+          va charger avant d'arriver. Elle ne se redemande jamais sur une
+          relivraison : le véhicule ne se répare pas tout seul au parc. */}
+      {parentPanne && (
+        <div className={`mx-4 ${parentClosingNote ? 'mt-1' : 'mt-14'} mb-1 bg-surface border rounded-2xl px-4 py-3 flex items-center gap-3`}>
+          <span className="text-2xl flex-shrink-0">🔧</span>
+          <div className="min-w-0">
+            <p className="text-ink-muted text-[11px] font-bold uppercase tracking-wide">Panne relevée à l'enlèvement</p>
+            <p className="text-ink text-base font-bold leading-snug mt-0.5">{parentPanne}</p>
+          </div>
+        </div>
+      )}
+
       {/* Header avec backdrop-blur pour fondre avec l'ambient */}
-      <div className={`bg-surface/85 backdrop-blur-md border-b px-4 ${parentClosingNote ? 'pt-3' : 'pt-12'} pb-4 sticky top-0 z-20`}>
+      <div className={`bg-surface/85 backdrop-blur-md border-b px-4 ${parentClosingNote || parentPanne ? 'pt-3' : 'pt-12'} pb-4 sticky top-0 z-20`}>
         <div className="flex items-center justify-between mb-1">
           <button onClick={() => router.push('/mission')} className="w-9 h-9 flex items-center justify-center bg-surface-hover rounded-xl text-ink">←</button>
           <div className="flex items-center gap-2">
