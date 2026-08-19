@@ -104,10 +104,11 @@ function RequisitoireSection({ mission, onDone }: { mission: SaisieMission; onDo
   const [busy,    setBusy]    = useState(false)
   const [error,   setError]   = useState<string | null>(null)
   const [scanned, setScanned] = useState<File[]>([])
+  const [ocr, setOcr] = useState<any>(null)
   const fileRef = useRef<HTMLInputElement>(null)
 
   async function submit() {
-    setError(null)
+    setError(null); setOcr(null)
     const files = fileRef.current?.files
     if ((!files || files.length === 0) && scanned.length === 0 && !note.trim()) {
       setError('Annexe un document ou saisis une note.')
@@ -123,6 +124,10 @@ function RequisitoireSection({ mission, onDone }: { mission: SaisieMission; onDo
       const j = await r.json()
       if (!r.ok) throw new Error(j.error || 'Erreur')
       setScanned([])
+      // Le document est lu par Claude comme ceux reçus par mail : on montre ce
+      // qui a été complété au lieu de le faire dans le dos du dispatcher.
+      setOcr(j.ocr || (j.ocr_error ? { failed: j.ocr_error } : null))
+      setBusy(false)
       onDone()
     } catch (e: any) {
       setError(e.message); setBusy(false)
@@ -171,9 +176,10 @@ function RequisitoireSection({ mission, onDone }: { mission: SaisieMission; onDo
           <textarea value={note} onChange={e => setNote(e.target.value)} rows={2}
             placeholder="Note (optionnel) — ex : réquisitoire reçu par mail du Parquet"
             className="w-full bg-surface border border-strong rounded-lg px-2.5 py-2 text-ink text-sm outline-none focus:border-brand" />
+          {ocr && <OcrSummary ocr={ocr} />}
           {error && <p className="text-critical text-xs">⚠ {error}</p>}
           <div className="flex gap-2">
-            <button onClick={() => { setOpen(false); setError(null) }} disabled={busy}
+            <button onClick={() => { setOpen(false); setError(null); setOcr(null) }} disabled={busy}
               className="flex-1 py-2 bg-surface border text-ink-secondary rounded-lg text-xs font-medium">
               Annuler
             </button>
@@ -531,6 +537,45 @@ function ScannedFiles({ files, onClear }: { files: File[]; onClear: () => void }
         🖨️ {files.length} page{files.length > 1 ? 's' : ''} scannée{files.length > 1 ? 's' : ''} ({ko} Ko) — prête{files.length > 1 ? 's' : ''} à annexer
       </span>
       <button type="button" onClick={onClear} className="text-emerald-700 text-[11px] underline shrink-0">Retirer</button>
+    </div>
+  )
+}
+
+// ── Ce que la lecture automatique a complété ────────────────────────────────
+// Le document scanné passe par le même moteur que les réquisitoires reçus par
+// mail. On affiche ce qui a été repris : une fiche qui se complète toute seule
+// sans le dire, personne ne lui fait confiance.
+function OcrSummary({ ocr }: { ocr: any }) {
+  if (ocr.failed) {
+    return (
+      <p className="text-amber-700 text-xs">
+        📖 Document annexé, mais la lecture automatique a échoué ({String(ocr.failed).slice(0, 80)}) — complète la fiche à la main.
+      </p>
+    )
+  }
+  if (ocr.misfiled) {
+    return (
+      <div className="bg-amber-50 border border-amber-200 rounded-lg p-2.5 text-xs">
+        <p className="text-amber-900 font-medium">📖 Ce document ressemble à une levée de saisie, pas à un réquisitoire.</p>
+        <p className="text-amber-800 mt-0.5">
+          Il est annexé, mais la fiche n&apos;a pas été complétée. Utilise le bouton <strong>🔓 Levée de saisie</strong>.
+        </p>
+      </div>
+    )
+  }
+  const bits = [
+    ocr.pv_number && `PV ${ocr.pv_number}`,
+    ocr.plaque    && `plaque ${ocr.plaque}`,
+    ocr.vin       && `VIN ${ocr.vin}`,
+    ocr.date      && `date ${ocr.date.split('-').reverse().join('/')}${ocr.heure ? ` ${ocr.heure}` : ''}`,
+    ocr.autorite,
+  ].filter(Boolean)
+  if (!bits.length) return <p className="text-ink-muted text-xs">📖 Document lu, rien d&apos;exploitable à reprendre.</p>
+  return (
+    <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-2.5 text-xs">
+      <p className="text-emerald-900 font-medium">📖 Lu automatiquement — fiche complétée</p>
+      <p className="text-emerald-800 mt-0.5">{bits.join(' · ')}</p>
+      {ocr.date_adapted && <p className="text-emerald-700 mt-0.5">Date d&apos;intervention alignée sur le réquisitoire.</p>}
     </div>
   )
 }

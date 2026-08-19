@@ -14,6 +14,8 @@ import { NextResponse }      from 'next/server'
 import { getServerSession }  from 'next-auth'
 import { authOptions }       from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase'
+import { extractRequisitoireFromPdf, extractRequisitoireFromImage, type RequisitoireExtract } from '@/lib/requisitoire/extract'
+import { buildMissionUpdateFromExtract } from '@/lib/requisitoire/attach'
 
 export const dynamic     = 'force-dynamic'
 export const maxDuration = 60
@@ -67,6 +69,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   if (insErr) return NextResponse.json({ error: insErr.message }, { status: 500 })
 
   let firstPath: string | null = null
+  let firstFile: File | null = null
   for (const file of realFiles) {
     const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 120)
     const path = `${params.id}/${remark.id}/${Date.now()}_${safeName}`
@@ -83,20 +86,83 @@ export async function POST(req: Request, { params }: { params: { id: string } })
       mime_type:   file.type || null,
       uploaded_by: actor.id,
     })
-    if (!firstPath) firstPath = path
+    if (!firstPath) { firstPath = path; firstFile = file }
   }
 
-  // Flag workflow sur la mission
-  const { error: updErr } = await sb
+  // ── OCR : ce que le document apprend à la fiche ────────────────────────────
+  let extract: RequisitoireExtract | null = null
+  let ocrError: string | null = null
+  if (firstFile) {
+    try {
+      const b64 = Buffer.from(await firstFile.arrayBuffer()).toString('base64')
+      const mime = firstFile.type || ''
+      extract = mime.startsWith('image/')
+        ? await extractRequisitoireFromImage(b64, mime)
+        : await extractRequisitoireFromPdf(b64)
+    } catch (e: any) {
+      ocrError = e?.message || 'lecture impossible'
+      console.error('[requisitoire] OCR KO:', ocrError)
+    }
+  }
+
+  // Fiche complète pour la fusion (plaque/VIN/PV ne s'écrasent jamais).
+  const { data: full } = await sb
     .from('incoming_missions')
-    .update({
-      requisitoire_at:       new Date().toISOString(),
-      requisitoire_note:     note || null,
-      requisitoire_doc_path: firstPath,
-      requisitoire_by:       actor.id,
+    .select('id, dossier_number, vehicle_plate, vehicle_vin, incident_at')
+    .eq('id', params.id).maybeSingle()
+
+  let update: Record<string, any> = {
+    requisitoire_at:       new Date().toISOString(),
+    requisitoire_note:     note || null,
+    requisitoire_doc_path: firstPath,
+    requisitoire_by:       actor.id,
+  }
+  let dateAdapted = false
+  // Un document lu comme « levée de saisie » ne doit PAS être écrit en
+  // réquisitoire : on annexe, on prévient, et on laisse l'humain trancher.
+  const misfiled = extract && extract.doc_type === 'levee_saisie'
+  if (extract && full && !misfiled) {
+    const built = buildMissionUpdateFromExtract(full, extract, {
+      docPath: firstPath, actorId: actor.id, isLevee: false, note: note || null,
     })
-    .eq('id', params.id)
+    update = { ...built.update, ...(note ? { requisitoire_note: note } : {}) }
+    dateAdapted = built.dateAdapted
+  }
+
+  const { error: updErr } = await sb.from('incoming_missions').update(update).eq('id', params.id)
   if (updErr) return NextResponse.json({ error: updErr.message }, { status: 500 })
 
-  return NextResponse.json({ ok: true })
+  // Trace lisible de ce que l'OCR a complété (la fiche doit pouvoir se relire).
+  if (extract && !misfiled) {
+    const bits = [
+      extract.pv_number && `PV ${extract.pv_number}`,
+      update.vehicle_plate && `plaque ${update.vehicle_plate}`,
+      update.vehicle_vin && `VIN ${update.vehicle_vin}`,
+      dateAdapted && 'date d\'intervention',
+      extract.autorite,
+    ].filter(Boolean).join(' · ')
+    if (bits) {
+      await sb.from('mission_logs').insert({
+        mission_id: params.id, actor_id: actor.id, action: 'requisitoire_ocr',
+        notes: `Lecture automatique du réquisitoire — ${bits}`,
+        metadata: { extract },
+      }).then(() => {}, () => {})
+    }
+  }
+
+  return NextResponse.json({
+    ok: true,
+    ocr: extract ? {
+      doc_type:  extract.doc_type,
+      pv_number: extract.pv_number,
+      plaque:    extract.plaque,
+      vin:       extract.vin,
+      autorite:  extract.autorite,
+      date:      extract.date_requisition,
+      heure:     extract.heure_requisition,
+      date_adapted: dateAdapted,
+      misfiled,
+    } : null,
+    ocr_error: ocrError,
+  })
 }

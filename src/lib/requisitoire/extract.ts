@@ -164,6 +164,26 @@ export async function extractRequisitoireFromPdf(pdfBase64: string): Promise<Req
   return coerce(parseJson(textBlock.text))
 }
 
+/** Extrait depuis une IMAGE (base64) — un scan qui n'est pas rendu en PDF. */
+export async function extractRequisitoireFromImage(imageBase64: string, mediaType: string): Promise<RequisitoireExtract> {
+  const client = getClient()
+  const media = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'].includes(mediaType) ? mediaType : 'image/jpeg'
+  const response = await client.messages.create({
+    model: ANTHROPIC_MODEL,
+    max_tokens: 1024,
+    messages: [{
+      role: 'user',
+      content: [
+        { type: 'image', source: { type: 'base64', media_type: media as any, data: imageBase64 } },
+        { type: 'text', text: PROMPT },
+      ],
+    }],
+  })
+  const textBlock = response.content.find(b => b.type === 'text')
+  if (!textBlock || textBlock.type !== 'text') throw new Error('Aucun texte retourné par Claude')
+  return coerce(parseJson(textBlock.text))
+}
+
 /** Extrait depuis un texte (corps du mail — levée sans document). */
 export async function extractRequisitoireFromText(text: string): Promise<RequisitoireExtract> {
   const client = getClient()

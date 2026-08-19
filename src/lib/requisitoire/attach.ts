@@ -21,6 +21,78 @@ export interface AttachOptions {
   leveeType?: 'definitive' | 'temporaire'  // override UI
 }
 
+
+/**
+ * Ce qu'un document (réquisitoire ou levée) apprend à une fiche.
+ *
+ * Extrait de `attachRequisitoire` le 2026-08-19 pour être partagé avec le SCAN
+ * depuis la fiche : un document scanné au comptoir doit compléter la fiche
+ * exactement comme le même document arrivé par mail. Deux chemins, un seul
+ * calcul — sinon ils divergent au premier correctif.
+ */
+export function buildMissionUpdateFromExtract(
+  mission: { dossier_number?: string | null; vehicle_plate?: string | null; vehicle_vin?: string | null; incident_at?: string | null },
+  ex: RequisitoireExtract,
+  opts: { docPath?: string | null; actorId?: string | null; isLevee: boolean; leveeDate?: string; leveeType?: 'definitive' | 'temporaire'; note?: string | null },
+): { update: Record<string, any>; dateAdapted: boolean } {
+  const update: Record<string, any> = {}
+  let dateAdapted = false
+
+  if (opts.isLevee) {
+    update.levee_saisie_at        = new Date().toISOString()
+    update.levee_saisie_date      = opts.leveeDate || ex.levee_date
+    update.levee_saisie_type      = opts.leveeType || ex.levee_type || 'definitive'
+    update.levee_saisie_note      = ex.autorite || null
+    update.levee_saisie_doc_path  = opts.docPath || null
+    update.levee_saisie_by        = opts.actorId || null
+    update.police_levee_saisie_ok = true
+  } else {
+    const pv = (ex.pv_number || '').trim()
+    const noteBits = [ex.autorite && `Autorité : ${ex.autorite}`, pv && `PV : ${pv}`].filter(Boolean).join(' · ')
+    update.requisitoire_at       = new Date().toISOString()
+    update.requisitoire_note     = opts.note || noteBits || null
+    update.requisitoire_doc_path = opts.docPath || null
+    update.requisitoire_by       = opts.actorId || null
+    if (pv) {
+      const current = (mission.dossier_number || '').trim()
+      if (!current) update.dossier_number = pv
+      else if (!current.split(/\s*\/\s*/).map((s: string) => s.trim()).includes(pv)) {
+        update.dossier_number = `${current} / ${pv}`
+      }
+    }
+    const reqAt = requisitoireIncidentAt(ex)
+    if (reqAt) {
+      const cur = mission.incident_at ? new Date(mission.incident_at).getTime() : null
+      if (cur === null || Math.abs(cur - new Date(reqAt).getTime()) > 60_000) {
+        update.incident_at = reqAt
+        update.intervention_date = reqAt
+        dateAdapted = true
+      }
+    }
+  }
+
+  // Plaque / VIN : présent et absent chez nous -> on remplit ; présent mais
+  // DIFFÉRENT -> on concatène. Jamais d'écrasement.
+  const normCmp = (v: string) => (v || '').toUpperCase().replace(/[^A-Z0-9]/g, '')
+  const mergeField = (current: string | null | undefined, incoming: string | null): string | undefined => {
+    const inc = (incoming || '').trim()
+    if (!inc) return undefined
+    const cur = (current || '').trim()
+    if (!cur) return inc
+    const parts = cur.split(/\s*\/\s*/).map(normCmp)
+    if (parts.includes(normCmp(inc))) return undefined
+    return `${cur} / ${inc}`
+  }
+  const incomingPlate = ex.plaque
+    || ((mission.vehicle_plate || '').trim() ? null : provisionalPlate(ex.marque, ex.vin))
+  const plateUpd = mergeField(mission.vehicle_plate, incomingPlate)
+  const vinUpd   = mergeField(mission.vehicle_vin, ex.vin)
+  if (plateUpd !== undefined) update.vehicle_plate = plateUpd
+  if (vinUpd   !== undefined) update.vehicle_vin   = vinUpd
+
+  return { update, dateAdapted }
+}
+
 export async function attachRequisitoire(
   sb: any,
   intakeId: string,
@@ -77,68 +149,12 @@ export async function attachRequisitoire(
     })
   }
 
-  // ── Écritures sur la fiche selon le type ───────────────────────────────────
-  let update: Record<string, any>
-  if (isLevee) {
-    update = {
-      levee_saisie_at:        new Date().toISOString(),
-      levee_saisie_date:      leveeDate,
-      levee_saisie_type:      leveeType,
-      levee_saisie_note:      ex.autorite || null,
-      levee_saisie_doc_path:  intake.doc_path || null,
-      levee_saisie_by:        actorId,
-      police_levee_saisie_ok: true,
-    }
-  } else {
-    // Réquisitoire : colonnes requisitoire_* + concat PV dans dossier_number.
-    const pv = (ex.pv_number || '').trim()
-    const noteBits = [ex.autorite && `Autorité : ${ex.autorite}`, pv && `PV : ${pv}`].filter(Boolean).join(' · ')
-    update = {
-      requisitoire_at:       new Date().toISOString(),
-      requisitoire_note:     noteBits || null,
-      requisitoire_doc_path: intake.doc_path || null,
-      requisitoire_by:       actorId,
-    }
-    if (pv) {
-      const current = (mission.dossier_number || '').trim()
-      if (!current) update.dossier_number = pv
-      else if (!current.split(/\s*\/\s*/).map((s: string) => s.trim()).includes(pv)) {
-        update.dossier_number = `${current} / ${pv}`
-      }
-    }
-    // Adapter la date/heure de la fiche à celle du réquisitoire si différente.
-    const reqAt = requisitoireIncidentAt(ex)
-    if (reqAt) {
-      const cur = mission.incident_at ? new Date(mission.incident_at).getTime() : null
-      if (cur === null || Math.abs(cur - new Date(reqAt).getTime()) > 60_000) {
-        update.incident_at = reqAt
-        update.intervention_date = reqAt
-        dateAdapted = true
-      }
-    }
-  }
-
-  // ── Complétion plaque / VIN depuis le document ─────────────────────────────
-  // Si présent sur le document et absent dans VD Soft → on remplit.
-  // Si présent mais DIFFÉRENT → on concatène (jamais d'écrasement).
-  const normCmp = (v: string) => (v || '').toUpperCase().replace(/[^A-Z0-9]/g, '')
-  const mergeField = (current: string | null, incoming: string | null): string | undefined => {
-    const inc = (incoming || '').trim()
-    if (!inc) return undefined
-    const cur = (current || '').trim()
-    if (!cur) return inc
-    const parts = cur.split(/\s*\/\s*/).map(normCmp)
-    if (parts.includes(normCmp(inc))) return undefined   // déjà présent
-    return `${cur} / ${inc}`
-  }
-  // Plaque : la vraie du document si présente ; sinon, si la fiche n'a AUCUNE
-  // plaque, on pose une immatriculation provisoire (marque + 5 derniers du VIN).
-  const incomingPlate = ex.plaque
-    || ((mission.vehicle_plate || '').trim() ? null : provisionalPlate(ex.marque, ex.vin))
-  const plateUpd = mergeField(mission.vehicle_plate, incomingPlate)
-  const vinUpd   = mergeField(mission.vehicle_vin, ex.vin)
-  if (plateUpd !== undefined) update.vehicle_plate = plateUpd
-  if (vinUpd   !== undefined) update.vehicle_vin   = vinUpd
+  // ── Écritures sur la fiche (même calcul que le scan depuis la fiche) ───────
+  const built = buildMissionUpdateFromExtract(mission, ex, {
+    docPath: intake.doc_path, actorId, isLevee, leveeDate, leveeType,
+  })
+  const update = built.update
+  dateAdapted = built.dateAdapted
 
   const { error: uErr } = await sb.from('incoming_missions').update(update).eq('id', missionId)
   if (uErr) return { ok: false, error: uErr.message }
