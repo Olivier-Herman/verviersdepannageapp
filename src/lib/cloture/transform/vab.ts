@@ -18,6 +18,7 @@
 
 import { createAdminClient } from '@/lib/supabase'
 import { vabCloseOnSiteBrowser } from '@/lib/vab/sign-browser'
+import * as cheerio from 'cheerio'
 
 const LOCK_KEY = 'vab_browser_lock'
 /** Un run va jusqu'à ~90 s ; au-delà de 6 min le verrou est forcément périmé. */
@@ -199,7 +200,29 @@ export async function runVabTowClose(input: VabTowCloseInput): Promise<void> {
       vinFull: vin || undefined,
     })
     étapes.push(...onsite.steps)
-    if (!onsite.onCodeScreen) {
+    // ⚠️ NE PAS CROIRE LE NAVIGATEUR SUR PAROLE (Olivier 2026-08-19 : « pourquoi
+    // tu réussis à les clôturer et pas VD Soft ? »).
+    //
+    // Dans le Chromium sans écran, les listes de l'écran de codes s'affichent
+    // VIDES — `isCodeScreen()` répond donc « non » alors que le dossier y est
+    // bel et bien. La chaîne abandonnait là, précisément là où une clôture à la
+    // main réussissait : la seule différence était que je relisais l'état en
+    // HTTP. C'est cette relecture qui tranche désormais.
+    let auxCodes = onsite.onCodeScreen
+    if (!auxCodes) {
+      try {
+        const s2 = await loginVab()
+        const html = await (await fetch(
+          `https://comet.vab.be/Comet/BreakdownAssignments_Details.aspx?AssignmentId=${assignmentId}`,
+          { headers: { 'User-Agent': 'Mozilla/5.0', Cookie: s2.cookieHeader, 'Cache-Control': 'no-store' } })).text()
+        const $$ = cheerio.load(html)
+        let n = 0
+        $$('select').each((_, e) => { if (/SolutionCodeLevel1/i.test($$(e).attr('id') || '')) n = $$(e).find('option').length })
+        auxCodes = n > 1
+        if (auxCodes) étapes.push('écran de codes confirmé en HTTP')
+      } catch { /* la relecture est un bonus : son échec ne change pas le verdict */ }
+    }
+    if (!auxCodes) {
       await log('vab_close_failed',
         `VAB : bloqué avant l'écran des codes — ${onsite.error || 'raison inconnue'} (${étapes.join(' → ')})`,
         { assignmentId, steps: étapes, diag: onsite.diag ?? null })
