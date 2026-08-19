@@ -15,8 +15,12 @@
 //   3. Au rapprochement, la pièce jointe part dans Odoo sur le virement, là où
 //      un comptable ira la chercher, et on libère la place ici.
 //
-// L'idempotence tient sur `mail_id` : l'identifiant Graph d'un message. Deux
-// crons qui se chevauchent produisent la même table.
+// L'idempotence tient sur le Message-ID RFC822 du mail. Surtout PAS sur l'id
+// Graph (`mail_id`) : celui-ci encode le dossier, et un mail déplacé ou archivé
+// en reçoit un nouveau. Le 19/08/2026, trois avis AWP avaient bougé de dossier :
+// la relecture les a pris pour des nouveaux, et un avis déjà rapproché est
+// réapparu dans la file. `mail_id` reste utile — il sert à retélécharger la
+// pièce jointe — et on le recale quand le message a bougé.
 
 import { createAdminClient } from '@/lib/supabase'
 import {
@@ -26,7 +30,7 @@ import {
 
 /** Colonnes d'affichage — jamais `doc_b64`, qui pèse des mégaoctets. */
 const LIGHT_COLS =
-  'provider,mail_id,subject,received_at,advice_date,reference,total,lines,checksum,warnings,' +
+  'provider,mail_id,internet_message_id,subject,received_at,advice_date,reference,total,lines,checksum,warnings,' +
   'doc_name,doc_bytes,attached_move_id,attached_at,purged_at,parse_error,fetched_at'
 
 /** Un avis est à relire tant qu'il n'a pas rendu une seule ligne exploitable. */
@@ -37,6 +41,7 @@ function toAdvice(row: any): PaymentAdvice {
   return {
     provider:   row.provider as AdviceProvider,
     mailId:     row.mail_id,
+    internetMessageId: row.internet_message_id ?? null,
     subject:    row.subject || '',
     receivedAt: new Date(row.received_at).toISOString(),
     adviceDate: row.advice_date ?? null,
@@ -72,21 +77,48 @@ export async function syncAdvices(
   const res: SyncResult = { scanned: refs.length, read: 0, cached: 0, failed: 0, errors: [] }
   if (!refs.length) return res
 
+  // On interroge le cache sur les DEUX clés : le Message-ID, qui est l'identité,
+  // et l'id Graph, pour les lignes d'avant cette colonne. Sans la première, un
+  // mail déplacé passait pour un nouvel avis.
+  const imids = refs.map(r => r.internetMessageId).filter(Boolean) as string[]
   const { data: known, error } = await sb
     .from('payment_advices')
-    .select('mail_id,lines,parse_error')
-    .in('mail_id', refs.map(r => r.id))
+    .select('id,mail_id,internet_message_id,lines,parse_error')
+    .or(
+      `mail_id.in.(${refs.map(r => `"${r.id}"`).join(',')})`
+      + (imids.length ? `,internet_message_id.in.(${imids.map(v => `"${v}"`).join(',')})` : ''),
+    )
   if (error) throw new Error(`Cache des avis illisible : ${error.message}`)
 
   const byMail = new Map((known || []).map(r => [String(r.mail_id), r]))
+  const byImid = new Map((known || []).filter(r => r.internet_message_id)
+    .map(r => [String(r.internet_message_id), r]))
+
+  /** La ligne déjà en cache pour ce mail, quel que soit le dossier où il se trouve. */
+  const cachedRow = (r: typeof refs[number]) =>
+    (r.internetMessageId ? byImid.get(r.internetMessageId) : undefined) ?? byMail.get(r.id)
 
   const todo = refs.filter(r => {
-    const row = byMail.get(r.id)
+    const row = cachedRow(r)
     if (!row) return true
     if (opts.force) return true
     return needsRetry(row)
   })
   res.cached = refs.length - todo.length
+
+  // Le mail a bougé de dossier, ou son Message-ID n'était pas encore connu :
+  // on recale la ligne sans la relire. Sans ça, `mail_id` pointe vers un
+  // message qui n'existe plus et la pièce jointe devient introuvable.
+  for (const r of refs) {
+    const row = cachedRow(r)
+    if (!row || todo.includes(r)) continue
+    const patch: Record<string, any> = {}
+    if (String(row.mail_id) !== r.id) patch.mail_id = r.id
+    if (r.internetMessageId && !row.internet_message_id) patch.internet_message_id = r.internetMessageId
+    if (Object.keys(patch).length) {
+      await sb.from('payment_advices').update(patch).eq('id', row.id)
+    }
+  }
 
   for (const ref of todo.slice(0, opts.max ?? 40)) {
     let advice: PaymentAdvice
@@ -104,9 +136,20 @@ export async function syncAdvices(
     if (failed) res.failed++
     else        res.read++
 
+    // Le mail a pu changer de dossier depuis la dernière lecture : on recale
+    // d'abord l'id Graph sur la ligne existante, repérée par son Message-ID.
+    // L'upsert suivant tombe alors dessus au lieu de créer un doublon.
+    if (advice.internetMessageId) {
+      await sb.from('payment_advices')
+        .update({ mail_id: advice.mailId })
+        .eq('internet_message_id', advice.internetMessageId)
+        .neq('mail_id', advice.mailId)
+    }
+
     const { error: upErr } = await sb.from('payment_advices').upsert({
       provider:    advice.provider,
       mail_id:     advice.mailId,
+      internet_message_id: advice.internetMessageId ?? null,
       subject:     advice.subject,
       received_at: advice.receivedAt,
       advice_date: advice.adviceDate,
@@ -133,7 +176,7 @@ export async function syncAdvices(
 
 export interface CachedAdvices {
   advices:   PaymentAdvice[]
-  /** Date de la lecture la plus ancienne du lot — « avis à jour au … ». */
+  /** Horodatage de la LECTURE LA PLUS RÉCENTE — c'est ce que l'écran annonce. */
   fetchedAt: string | null
   /** Avis dont l'extraction n'a rien donné : signalés, pas masqués. */
   failed:    { subject: string; error: string }[]
@@ -156,9 +199,13 @@ export async function cachedAdvices(sinceIso: string): Promise<CachedAdvices> {
 
   return {
     advices:   ok.map(toAdvice),
-    fetchedAt: rows.length
-      ? rows.map(r => String(r.fetched_at)).sort()[0]
-      : null,
+    // La plus récente, pas la plus ancienne : l'écran annonce « dernière
+    // lecture ». En prenant le minimum, il affichait la date du plus vieil avis
+    // du cache — figée pour toujours — et donnait à croire que le cron était mort.
+    fetchedAt: (() => {
+      const stamps = rows.map(r => String(r.fetched_at || '')).filter(Boolean).sort()
+      return stamps.length ? stamps[stamps.length - 1] : null
+    })(),
     failed: rows.filter(needsRetry).map(r => ({
       subject: String(r.subject || ''),
       error:   String(r.parse_error || 'Aucune ligne extraite'),

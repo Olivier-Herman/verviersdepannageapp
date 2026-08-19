@@ -50,6 +50,12 @@ export interface AdviceDoc {
 export interface PaymentAdvice {
   provider:    AdviceProvider
   mailId:      string
+  /**
+   * Message-ID RFC822 — l'identité stable du mail. `mailId` (l'id Graph) encode
+   * le dossier : déplacer un message lui en donne un nouveau, et l'avis passait
+   * alors pour un nouveau. Celui-ci ne bouge jamais.
+   */
+  internetMessageId?: string | null
   subject:     string
   receivedAt:  string         // ISO
   adviceDate:  string | null  // date de virement annoncée
@@ -82,13 +88,13 @@ async function graph<T = any>(path: string, token: string): Promise<T> {
   return body as T
 }
 
-interface MailRef { id: string; subject: string; receivedDateTime: string }
+interface MailRef { id: string; subject: string; receivedDateTime: string; internetMessageId?: string }
 
 /** Les mails d'un expéditeur, les plus récents d'abord. */
 async function mailsFrom(sender: string, token: string, top = 12): Promise<MailRef[]> {
   const q = encodeURIComponent(`"from:${sender}"`)
   const j = await graph<{ value: MailRef[] }>(
-    `/users/${MAILBOX}/messages?$search=${q}&$select=id,subject,receivedDateTime&$top=${top}`,
+    `/users/${MAILBOX}/messages?$search=${q}&$select=id,subject,receivedDateTime,internetMessageId&$top=${top}`,
     token,
   )
   return (j.value || []).sort((a, b) => b.receivedDateTime.localeCompare(a.receivedDateTime))
@@ -332,6 +338,8 @@ export interface AdviceMailRef {
   id:         string
   subject:    string
   receivedAt: string
+  /** Message-ID RFC822 — stable, contrairement à `id`. */
+  internetMessageId?: string | null
 }
 
 /** Les mails d'avis reçus depuis `sinceIso`, sans ouvrir la moindre pièce jointe. */
@@ -344,7 +352,10 @@ export async function listAdviceMails(sinceIso: string): Promise<AdviceMailRef[]
     const mails = (await mailsFrom(src.sender, token))
       .filter(m => m.receivedDateTime >= sinceIso && src.subject.test(m.subject))
     for (const m of mails) {
-      out.push({ provider: src.provider, id: m.id, subject: m.subject, receivedAt: m.receivedDateTime })
+      out.push({
+        provider: src.provider, id: m.id, subject: m.subject, receivedAt: m.receivedDateTime,
+        internetMessageId: m.internetMessageId ?? null,
+      })
     }
   }
   return out.sort((a, b) => b.receivedAt.localeCompare(a.receivedAt))
@@ -356,7 +367,8 @@ export async function readAdviceMail(ref: AdviceMailRef): Promise<PaymentAdvice>
   if (!token) throw new Error('Microsoft Graph non configuré (AZURE_AD_*)')
 
   const mail: MailRef = { id: ref.id, subject: ref.subject, receivedDateTime: ref.receivedAt }
-  return ref.provider === 'ima' ? readImaAdvice(mail, token) : readAwpAdvice(mail, token)
+  const advice = ref.provider === 'ima' ? await readImaAdvice(mail, token) : await readAwpAdvice(mail, token)
+  return { ...advice, internetMessageId: ref.internetMessageId ?? null }
 }
 
 /**
