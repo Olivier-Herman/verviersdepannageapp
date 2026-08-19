@@ -3807,45 +3807,12 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
             la démonstration dans src/lib/touring/vr.ts. Remplacée par la tuile
             ci-dessous, qui lit le CONTRAT (Prestex FDDS) et non un drapeau COMEX. */}
 
-        {/* VR prévu au contrat. Trois états : oui / non / « ? » quand le contrat
-            est introuvable — on n'affiche jamais « non » par défaut, c'est ce qui
-            avait fait promettre des VR inexistants. */}
-        {((M as any).source_format === 'comex' || (M as any).contract_code) && (() => {
-          const vr = (M as any).vr_proposed as boolean | null | undefined
-          const inconnu = vr !== true && vr !== false
-          const style = vr === true
-            ? 'bg-emerald-50 border-emerald-500 text-emerald-800 dark:bg-emerald-500/10 dark:text-emerald-300'
-            : vr === false
-            ? 'bg-slate-100 border-slate-400 text-slate-700 dark:bg-slate-500/10 dark:text-slate-300'
-            : 'bg-amber-50 border-amber-500 text-amber-800 dark:bg-amber-500/10 dark:text-amber-300'
-          // Sur une mission REM Touring (beta), la tuile devient cliquable : elle
-          // ouvre le modal pour DEMANDER un VR à Touring. Olivier 2026-08-06.
-          const inner = (
-            <>
-              <div className="min-w-0">
-                <p className="text-xs uppercase tracking-widest font-bold">Véhicule de remplacement</p>
-                <p className="text-lg font-black leading-tight">
-                  {vr === true ? 'VR OUI' : vr === false ? 'VR NON' : 'À VÉRIFIER'}
-                </p>
-                {canTouringVr && (
-                  <p className="text-[11px] font-semibold opacity-80 mt-0.5">
-                    {(M as any).touring_vr_requested_at ? 'Demandé — Touring cherche le véhicule' : 'Demande possible, bouton ci-dessous'}
-                  </p>
-                )}
-              </div>
-              <span className="text-3xl flex-shrink-0">{vr === true ? '🚗' : inconnu ? '❔' : '🚫'}</span>
-            </>
-          )
-          // La tuile ne déclenche plus rien : elle INFORME. La demande passe par
-          // le bouton dédié, qui pose la confirmation « un seul VR, sans retour
-          // en arrière ». Deux chemins pour une action irréversible, dont un sans
-          // garde-fou, c'était l'accident qui attendait son tour.
-          return (
-            <div className={`rounded-2xl p-3 border-2 flex items-center justify-between ${style}`}>
-              {inner}
-            </div>
-          )
-        })()}
+        {/* La tuile « VR oui / non / à vérifier » est RETIRÉE (Olivier 2026-08-19).
+            Annoncer un droit au véhicule de remplacement engageait la maison
+            devant le client, sur une lecture de contrat qui n'est pas toujours
+            juste. Il reste le bouton ci-dessous : il ne s'affiche que lorsque
+            COMEX ouvre réellement la possibilité, et il ne promet rien tant que
+            Touring n'a pas répondu. */}
 
         {/* « Demander un VR » — appel DIRECT à Touring depuis le 14/08.
             Ce n'est plus une clôture déguisée : la demande ne touche pas au statut
