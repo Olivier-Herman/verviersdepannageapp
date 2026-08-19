@@ -248,3 +248,42 @@ export function humanOdooError(e: unknown): string {
   }
   return raw.split('\n')[0].trim().slice(0, 300)
 }
+
+/**
+ * Quelles factures ne peuvent PLUS être rattachées à un encaissement.
+ *
+ * Une facture dont le paiement est déjà lettré — contre une autre ligne
+ * bancaire, un autre versement, ou une écriture d'un mois passé — ne pourra
+ * jamais solder celui-ci : son débit 542 est consommé. La proposer, c'est
+ * envoyer l'utilisateur dans un mur, et le mur ne se voit qu'au moment
+ * d'écrire. On le sait avant, en deux requêtes pour tout l'écran.
+ *
+ * @returns les ids de facture dont plus aucun paiement n'est disponible.
+ */
+export async function settledInvoices(invoiceIds: number[]): Promise<Set<number>> {
+  const out = new Set<number>()
+  const ids = [...new Set(invoiceIds)].filter(Boolean)
+  if (!ids.length) return out
+
+  const byInvoice = await paymentsForInvoices(ids)
+  const payIds = [...new Set([...byInvoice.values()].flat().map(p => p.id))]
+  if (!payIds.length) return out
+
+  const lines = await odooRpc<any[]>('account.move.line', 'search_read', [[
+    ['account_id', '=', ACC_OUTSTANDING],
+    ['reconciled', '=', false],
+    ['payment_id', 'in', payIds],
+  ]], { fields: ['payment_id'], limit: 3000 })
+
+  const free = new Set<number>()
+  for (const l of lines) {
+    const id = Array.isArray(l.payment_id) ? Number(l.payment_id[0]) : Number(l.payment_id)
+    if (id) free.add(id)
+  }
+
+  for (const [invId, pays] of byInvoice) {
+    // Elle a des paiements, mais aucun n'est encore disponible au lettrage.
+    if (pays.length && !pays.some(p => free.has(p.id))) out.add(invId)
+  }
+  return out
+}

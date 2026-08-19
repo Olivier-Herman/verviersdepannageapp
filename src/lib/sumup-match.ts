@@ -36,6 +36,7 @@ import {
   paymentsForInvoices,
   choosePayments,
   explainConsumedPayments,
+  settledInvoices,
   ROUNDING_TOLERANCE,
 } from '@/lib/reconcile-odoo'
 import { loadUnallocated, findUnallocated } from '@/lib/payout-unallocated'
@@ -323,6 +324,19 @@ export async function buildSumupMatchReport(
       txs:          matched,
       blocking,
     })
+  }
+
+  // Les propositions dont le paiement est déjà lettré ailleurs — dans un autre
+  // versement, ou dans un rapprochement d'il y a trois mois — ne pourront
+  // jamais aboutir. On les marque pour que l'écran les barre au lieu de laisser
+  // cliquer dessus.
+  const settled = await settledInvoices(
+    payouts.flatMap(p => p.txs.flatMap(t => t.candidates.map(c => c.id))),
+  )
+  for (const p of payouts) {
+    for (const t of p.txs) {
+      for (const c of t.candidates) c.settled = settled.has(c.id)
+    }
   }
 
   const byState = { ready: { count: 0, amount: 0 }, lost: { count: 0, amount: 0 }, gap: { count: 0, amount: 0 }, miss: { count: 0, amount: 0 } }

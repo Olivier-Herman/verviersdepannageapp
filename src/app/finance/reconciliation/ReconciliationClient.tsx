@@ -33,7 +33,7 @@ interface Tx {
   partner: string | null
   invoiceTotal: number | null
   paymentState: string | null
-  candidates: { id: number; name: string; partner: string; amount: number; date: string; payment_state?: string | null; move_type?: string | null }[]
+  candidates: { id: number; name: string; partner: string; amount: number; date: string; payment_state?: string | null; move_type?: string | null; settled?: boolean }[]
   issue: 'lost' | 'gap' | 'miss' | null
   manual?: boolean
   by?: string | null          // qui a encaissé — SumUp seulement
@@ -110,6 +110,25 @@ function recount(prev: Report, settled: Set<number>): Report {
       invoices:   new Set(ready.flatMap(p => p.txs.flatMap(x => x.invoiceIds))).size,
     },
   }
+}
+
+/**
+ * Les factures déjà rattachées à un autre encaissement — de ce versement OU
+ * d'un autre. Une facture ne règle qu'un encaissement : la reproposer ailleurs,
+ * c'est promettre un rapprochement qui sera refusé.
+ *
+ * Les versements déjà rapprochés ne sont plus dans le rapport ; leurs factures
+ * sont couvertes par `settled`, calculé côté serveur sur les lettrages réels.
+ */
+function claimedInvoices(report: Report, payoutId: number, txIndex: number): number[] {
+  const out: number[] = []
+  for (const p of report.payouts) {
+    p.txs.forEach((t, j) => {
+      if (p.paymentId === payoutId && j === txIndex) return   // pas la ligne courante
+      out.push(...t.invoiceIds)
+    })
+  }
+  return [...new Set(out)]
 }
 
 /** État d'un versement = le pire de ses transactions. Même règle que le serveur. */
@@ -515,7 +534,7 @@ export default function ReconciliationClient({
                               // versement se sont déjà attribuées. Sans ça, la
                               // proposition « même montant » reproposait la
                               // facture qu'on venait justement de détacher.
-                              claimed={p.txs.filter((_, j) => j !== i).flatMap(o => o.invoiceIds)}
+                              claimed={claimedInvoices(report, p.paymentId, i)}
                               onLinked={res => {
                                 setReport(prev => (prev ? applyLink(prev, p.paymentId, i, res) : prev))
                                 setToast(`Rattachée à ${res.names.join(' + ')}`)
@@ -701,7 +720,10 @@ function Linker({ tx, endpoint, claimed = [], onLinked }: {
         <>
           <p className="text-[11px] font-semibold uppercase tracking-wider text-ink-faint">Propositions</p>
           {tx.candidates.slice(0, 4).map(c => {
-            const taken = claimed.includes(c.id)
+            // Indisponible = prise par un autre encaissement de l'écran, ou
+            // dont le paiement est déjà lettré ailleurs (autre ligne bancaire,
+            // rapprochement d'un mois passé).
+            const taken = claimed.includes(c.id) || !!c.settled
             return (
               <div key={c.id}
                 className={`flex items-center justify-between gap-3 rounded-btn border border-border px-3 py-2 text-[13px] ${
@@ -714,7 +736,7 @@ function Linker({ tx, endpoint, claimed = [], onLinked }: {
                   )}
                   {taken && (
                     <span className="ml-2 rounded-full bg-alert-soft px-2 py-0.5 text-[10.5px] font-semibold text-alert">
-                      déjà prise par un autre encaissement
+                      {claimed.includes(c.id) ? 'déjà prise par un autre encaissement' : 'paiement déjà lettré ailleurs'}
                     </span>
                   )}
                 </span>

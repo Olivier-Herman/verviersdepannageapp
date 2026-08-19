@@ -32,6 +32,11 @@ export interface InvoiceCandidate {
   state?: string | null
   /** 'out_invoice' | 'out_refund' — dit s'il s'agit d'une note de crédit. */
   move_type?: string | null
+  /**
+   * Son paiement est déjà lettré ailleurs : elle ne peut plus rien solder ici.
+   * Renseigné par le moteur de rapprochement, pas par le résolveur.
+   */
+  settled?: boolean
 }
 
 /** Une note de crédit vient EN DÉDUCTION : Odoo stocke pourtant son total en positif. */
