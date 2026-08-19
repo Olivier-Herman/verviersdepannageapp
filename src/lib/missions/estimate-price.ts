@@ -280,6 +280,11 @@ interface MissionLike {
   // majorations horaires (la source originale 'prive' reste preservee pour
   // le tracking et le naming des lignes).
   amount_to_collect?: number | null
+  // Abandon volontaire « en échange des frais de gardiennage » : le véhicule ne
+  // sortira pas, le parc ne se facture plus. Le drapeau vaut pour toute la
+  // fenêtre de gardiennage, pas seulement pour les jours à venir.
+  // Olivier 2026-08-19.
+  storage_waived?:    boolean | null
 }
 
 /** Map mission_type DB vers le canonical attendu en source_tariffs (lowercase). */
@@ -496,7 +501,7 @@ export async function estimateMissionPrice(mission: MissionLike, opts?: { skipRe
   // (parked_at non null). Date de fin = sortie effective (delivering_at)
   // > cloture (completed_at) > aujourd hui (encore en parc).
   // Math.floor : jour d arrivee non compte (jours pleins ecoules).
-  if (mission.parked_at && tariff.parc_day_price) {
+  if (mission.parked_at && tariff.parc_day_price && !mission.storage_waived) {
     const parcStart = new Date(mission.parked_at)
     const refEnd    = (mission as any).delivering_at
                    || (mission as any).completed_at
@@ -583,7 +588,7 @@ export async function estimateMissionPrice(mission: MissionLike, opts?: { skipRe
   const breakdown = [
     { label: 'Forfait',   amount: forfait, note: kmInclus > 0 ? `${kmInclus} km inclus` : undefined },
     { label: `Km extra (${kmBasisLabel})`, amount: kmExtraEur > 0 ? kmExtraEur : null, note: kmExtra > 0 ? `${kmExtra} km × ${Number(tariff.km_price || 0).toFixed(2)} €` : `base : ${kmBase} km` },
-    { label: 'Parc',      amount: parcEur > 0 ? parcEur : null, note: parcJours > 0 ? `${parcJours} jour(s) × ${Number(tariff.parc_day_price || 0).toFixed(2)} €` : 'non applicable' },
+    { label: 'Parc',      amount: parcEur > 0 ? parcEur : null, note: parcJours > 0 ? `${parcJours} jour(s) × ${Number(tariff.parc_day_price || 0).toFixed(2)} €` : (mission.storage_waived ? 'abandon volontaire — gardiennage offert' : 'non applicable') },
     ...rulesBreakdown,
     { label: 'Majoration horaire', amount: surchargeEur > 0 ? surchargeEur : null, note: surchargeNote || 'aucune' },
   ]
@@ -693,7 +698,7 @@ async function estimateBrackets(
   // (parked_at non null). Date de fin = sortie effective (delivering_at)
   // > cloture (completed_at) > aujourd hui (encore en parc).
   // Math.floor : jour d arrivee non compte (jours pleins ecoules).
-  if (mission.parked_at && tariff.parc_day_price) {
+  if (mission.parked_at && tariff.parc_day_price && !mission.storage_waived) {
     const parcStart = new Date(mission.parked_at)
     const refEnd    = (mission as any).delivering_at
                    || (mission as any).completed_at
@@ -712,7 +717,7 @@ async function estimateBrackets(
 
   const breakdown = [
     { label: tariffLabel, amount: tariffTotal },
-    { label: 'Parc', amount: parcEur > 0 ? parcEur : null, note: parcJours > 0 ? `${parcJours} jour(s) × ${Number(tariff.parc_day_price || 0).toFixed(2)} €` : 'non applicable' },
+    { label: 'Parc', amount: parcEur > 0 ? parcEur : null, note: parcJours > 0 ? `${parcJours} jour(s) × ${Number(tariff.parc_day_price || 0).toFixed(2)} €` : (mission.storage_waived ? 'abandon volontaire — gardiennage offert' : 'non applicable') },
   ]
 
   return {

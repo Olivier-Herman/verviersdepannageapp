@@ -22,6 +22,7 @@ import MergeMissionButton from '@/components/dispatch/MergeMissionButton'
 import CancelMissionButton from '@/components/missions/CancelMissionButton'
 import RelivraisonModalButton from '@/components/missions/RelivraisonModalButton'
 import AllianzCompleteButton from '@/components/missions/AllianzCompleteButton'
+import AbandonVehiculeButton from '@/components/missions/AbandonVehiculeButton'
 import PartialInvoiceModal from '@/components/facturation/PartialInvoiceModal'
 import SaisiePanel from '@/components/missions/SaisiePanel'
 import FicheFacturerButton from '@/components/facturation/FicheFacturerButton'
@@ -4247,6 +4248,23 @@ export default function MissionDetailClient({
                   className="w-full py-2.5 bg-surface-2 hover:bg-surface border rounded-2xl text-ink-secondary text-sm font-medium transition">
                   🧾 Facture partielle
                 </button>
+              )}
+
+              {/* Abandon volontaire du véhicule — le client (souvent après un
+                  accident) laisse le véhicule à VD. Le document se remplit avec
+                  la carte d'identité + les données véhicule de la fiche, et la
+                  contrepartie habituelle (frais de gardiennage) est cochée par
+                  défaut. Olivier 2026-08-19. */}
+              {!['cancelled', 'ignored'].includes(status) && (
+                <AbandonVehiculeButton
+                  missionId={initialMission.id}
+                  plate={initialMission.vehicle_plate}
+                  brand={initialMission.vehicle_brand}
+                  model={initialMission.vehicle_model}
+                  vin={initialMission.vehicle_vin}
+                  abandonAt={(initialMission as any).abandon_at ?? null}
+                  abandonData={(initialMission as any).abandon_data ?? null}
+                />
               )}
 
               {/* Registre des visites — persiste même après la sortie du parc

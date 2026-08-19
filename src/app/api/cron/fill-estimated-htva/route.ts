@@ -23,7 +23,7 @@ export async function GET(req: Request) {
 
   // Missions clôturées, sans facture Odoo, sans CA figé → à calculer.
   const { data: missions } = await sb.from('incoming_missions')
-    .select('id, external_id, source, mission_type, vehicle_class, billed_to_id, billed_to_name, parked_at, incident_lat, incident_lng, destination_lat, destination_lng, snc_scenario, snc_requires_balisage, extra_addresses, intervention_date, received_at, special_tarif_htva, amount_to_collect, amount_guaranteed')
+    .select('id, external_id, source, mission_type, vehicle_class, billed_to_id, billed_to_name, parked_at, storage_waived, incident_lat, incident_lng, destination_lat, destination_lng, snc_scenario, snc_requires_balisage, extra_addresses, intervention_date, received_at, special_tarif_htva, amount_to_collect, amount_guaranteed')
     .in('status', ['to_invoice', 'invoiced', 'completed'])
     .is('estimated_htva', null)
     .is('odoo_quote_id', null)

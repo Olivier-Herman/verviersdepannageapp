@@ -49,6 +49,7 @@ export default function PartialInvoiceModal({ missionId, parkedSince, onClose, o
 
   // Gardiennage
   const [parcOn, setParcOn]       = useState(false)
+  const [parcWaived, setParcWaived] = useState(false)   // abandon volontaire → gardiennage offert
   const [parcPrice, setParcPrice] = useState(0)
   const [parcFrom, setParcFrom]   = useState('')
   const [parcTo, setParcTo]       = useState(todayISO())
@@ -90,6 +91,7 @@ export default function PartialInvoiceModal({ missionId, parkedSince, onClose, o
       // Prix gardiennage / jour — le CATALOGUE DE LA SOURCE fait foi (Olivier
       // 2026-08-17). L'estimation ne servait que de repli et donnait un prix
       // reconstitué qui ne suivait pas la fiche.
+      setParcWaived(!!bi?.storage_waived)
       if (bi?.parc_day_price != null && Number(bi.parc_day_price) > 0) setParcPrice(round(Number(bi.parc_day_price)))
       else if (est?.parc_jours > 0 && est?.parc_eur > 0) setParcPrice(round(est.parc_eur / est.parc_jours))
       else if (parcUnitFromLines && parcUnitFromLines > 0) setParcPrice(parcUnitFromLines)
@@ -225,11 +227,16 @@ export default function PartialInvoiceModal({ missionId, parkedSince, onClose, o
 
             {/* Gardiennage par période */}
             <div className="mb-4 rounded-xl border p-3">
-              <label className="flex items-center gap-2 cursor-pointer mb-2">
-                <input type="checkbox" checked={parcOn} onChange={e => setParcOn(e.target.checked)} />
+              <label className={`flex items-center gap-2 mb-2 ${parcWaived ? 'opacity-60' : 'cursor-pointer'}`}>
+                <input type="checkbox" checked={parcOn} disabled={parcWaived} onChange={e => setParcOn(e.target.checked)} />
                 <span className="text-ink text-sm font-medium">Gardiennage (par période)</span>
               </label>
-              {parcOn && (
+              {parcWaived && (
+                <p className="text-ink-muted text-xs">
+                  📄 Abandon volontaire du véhicule — gardiennage offert, plus rien à facturer à ce titre.
+                </p>
+              )}
+              {parcOn && !parcWaived && (
                 <div className="space-y-2">
                   <div className="flex items-center gap-2 text-xs">
                     <span className="text-ink-muted">Du</span>

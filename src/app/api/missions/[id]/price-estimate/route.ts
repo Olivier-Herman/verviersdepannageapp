@@ -26,7 +26,7 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
     .from('incoming_missions')
     .select(`
       id, source, mission_type, client_name, vehicle_mileage,
-      parked_at, delivering_at, completed_at, intervention_date, received_at, incident_type,
+      parked_at, delivering_at, completed_at, intervention_date, received_at, incident_type, storage_waived,
       levee_saisie_date, temp_returned_at, domaine_remise_date,
       parent_mission_id, amount_to_collect, amount_guaranteed,
       incident_lat, incident_lng, destination_lat, destination_lng,

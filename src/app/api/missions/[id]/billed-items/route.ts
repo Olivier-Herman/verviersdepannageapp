@@ -44,10 +44,14 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
   // `source_tariffs.parc_day_price` existait mais PERSONNE ne le lisait — ni
   // l'estimation ni la modale — qui retombaient sur un prix reconstitué. D'où le
   // tarif qui ne suivait pas la fiche (Olivier 2026-08-17, dossier #10112844).
+  // Abandon volontaire « en échange des frais de gardiennage » : plus de prix
+  // au jour → la modale de facture partielle ne propose plus de tranche de
+  // parc. Olivier 2026-08-19.
   let parcDayPrice: number | null = null
   const { data: miss } = await sb.from('incoming_missions')
-    .select('source, mission_type').eq('id', params.id).maybeSingle()
-  if (miss?.source) {
+    .select('source, mission_type, storage_waived').eq('id', params.id).maybeSingle()
+  const storageWaived = !!(miss as any)?.storage_waived
+  if (miss?.source && !storageWaived) {
     const { data: tarifs } = await sb.from('source_tariffs')
       .select('parc_day_price, mission_type, effective_from')
       .eq('source', (miss as any).source)
@@ -140,7 +144,7 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
     }
   }
 
-  return NextResponse.json({ items, count: items.length, total_htva: totalHtva, last_parc_period_to: lastParcTo, parc_day_price: parcDayPrice, quotes_info: quotesInfo })
+  return NextResponse.json({ items, count: items.length, total_htva: totalHtva, last_parc_period_to: lastParcTo, parc_day_price: parcDayPrice, storage_waived: storageWaived, quotes_info: quotesInfo })
 }
 
 // PATCH : enregistre le n° de facture d'une facture partielle (lot odoo_quote_id).
