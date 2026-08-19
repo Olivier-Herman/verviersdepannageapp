@@ -511,6 +511,11 @@ export default function ReconciliationClient({
                             <Linker
                               endpoint={endpoint}
                               tx={x}
+                              // Les factures que les AUTRES encaissements de ce
+                              // versement se sont déjà attribuées. Sans ça, la
+                              // proposition « même montant » reproposait la
+                              // facture qu'on venait justement de détacher.
+                              claimed={p.txs.filter((_, j) => j !== i).flatMap(o => o.invoiceIds)}
                               onLinked={res => {
                                 setReport(prev => (prev ? applyLink(prev, p.paymentId, i, res) : prev))
                                 setToast(`Rattachée à ${res.names.join(' + ')}`)
@@ -659,7 +664,13 @@ function Tab({ on, onClick, count, children }: { on: boolean; onClick: () => voi
  * si aucune ne convient on saisit le numéro à la main — plusieurs si le
  * paiement couvre plusieurs factures.
  */
-function Linker({ tx, endpoint, onLinked }: { tx: Tx; endpoint: string; onLinked: (res: any) => void }) {
+function Linker({ tx, endpoint, claimed = [], onLinked }: {
+  tx: Tx
+  endpoint: string
+  /** Factures déjà rattachées à un autre encaissement du même versement. */
+  claimed?: number[]
+  onLinked: (res: any) => void
+}) {
   const [value, setValue] = useState('')
   const [busy, setBusy]   = useState(false)
   const [msg, setMsg]     = useState<string | null>(null)
@@ -689,21 +700,35 @@ function Linker({ tx, endpoint, onLinked }: { tx: Tx; endpoint: string; onLinked
       {tx.candidates.length > 0 && (
         <>
           <p className="text-[11px] font-semibold uppercase tracking-wider text-ink-faint">Propositions</p>
-          {tx.candidates.slice(0, 4).map(c => (
-            <div key={c.id} className="flex items-center justify-between gap-3 rounded-btn border border-border bg-surface px-3 py-2 text-[13px]">
-              <span>
-                <span className="font-mono">{c.name}</span> · {c.partner} ·{' '}
-                <span className="font-mono">{eur(c.amount)}</span>
-                {c.move_type === 'out_refund' && (
-                  <span className="ml-2 rounded-full bg-info-soft px-2 py-0.5 text-[10.5px] font-semibold text-info">note de crédit</span>
+          {tx.candidates.slice(0, 4).map(c => {
+            const taken = claimed.includes(c.id)
+            return (
+              <div key={c.id}
+                className={`flex items-center justify-between gap-3 rounded-btn border border-border px-3 py-2 text-[13px] ${
+                  taken ? 'bg-surface-2 opacity-60' : 'bg-surface'}`}>
+                <span>
+                  <span className="font-mono">{c.name}</span> · {c.partner} ·{' '}
+                  <span className="font-mono">{eur(c.amount)}</span>
+                  {c.move_type === 'out_refund' && (
+                    <span className="ml-2 rounded-full bg-info-soft px-2 py-0.5 text-[10.5px] font-semibold text-info">note de crédit</span>
+                  )}
+                  {taken && (
+                    <span className="ml-2 rounded-full bg-alert-soft px-2 py-0.5 text-[10.5px] font-semibold text-alert">
+                      déjà prise par un autre encaissement
+                    </span>
+                  )}
+                </span>
+                {taken ? (
+                  <span className="shrink-0 text-[12.5px] text-ink-faint">indisponible</span>
+                ) : (
+                  <button disabled={busy} onClick={() => link([c.name])}
+                    className="shrink-0 text-[12.5px] font-semibold text-brand hover:underline disabled:text-ink-faint">
+                    C&apos;est celle-là
+                  </button>
                 )}
-              </span>
-              <button disabled={busy} onClick={() => link([c.name])}
-                className="shrink-0 text-[12.5px] font-semibold text-brand hover:underline disabled:text-ink-faint">
-                C&apos;est celle-là
-              </button>
-            </div>
-          ))}
+              </div>
+            )
+          })}
         </>
       )}
 
