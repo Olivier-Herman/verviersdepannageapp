@@ -14,6 +14,7 @@
 import { useRef, useState } from 'react'
 import { FileText, Loader2, Paperclip, CheckCircle2, Unlock, Wrench, Warehouse, Landmark } from 'lucide-react'
 import { FOURRIERE_ZONES } from '@/lib/fourriere'
+import ScanToFicheButton from '@/components/missions/ScanToFicheButton'
 
 // Jours pleins entre deux dates (end = aujourd'hui si absent)
 function joursEntre(start?: string | null, end?: string | null): number {
@@ -102,12 +103,13 @@ function RequisitoireSection({ mission, onDone }: { mission: SaisieMission; onDo
   const [note,    setNote]    = useState('')
   const [busy,    setBusy]    = useState(false)
   const [error,   setError]   = useState<string | null>(null)
+  const [scanned, setScanned] = useState<File[]>([])
   const fileRef = useRef<HTMLInputElement>(null)
 
   async function submit() {
     setError(null)
     const files = fileRef.current?.files
-    if ((!files || files.length === 0) && !note.trim()) {
+    if ((!files || files.length === 0) && scanned.length === 0 && !note.trim()) {
       setError('Annexe un document ou saisis une note.')
       return
     }
@@ -116,9 +118,11 @@ function RequisitoireSection({ mission, onDone }: { mission: SaisieMission; onDo
       const fd = new FormData()
       if (note.trim()) fd.append('note', note.trim())
       if (files) for (const f of Array.from(files)) fd.append('files', f)
+      for (const f of scanned) fd.append('files', f)
       const r = await fetch(`/api/missions/${mission.id}/requisitoire`, { method: 'POST', body: fd })
       const j = await r.json()
       if (!r.ok) throw new Error(j.error || 'Erreur')
+      setScanned([])
       onDone()
     } catch (e: any) {
       setError(e.message); setBusy(false)
@@ -161,6 +165,9 @@ function RequisitoireSection({ mission, onDone }: { mission: SaisieMission; onDo
             <input ref={fileRef} type="file" multiple accept="image/*,application/pdf"
               className="block w-full text-xs mt-1 text-ink-secondary file:mr-2 file:py-1 file:px-2 file:rounded-lg file:border file:bg-surface file:text-ink file:text-xs" />
           </label>
+          <ScanToFicheButton label="🖨️ Scanner le réquisitoire"
+            onScanned={fs => { setScanned(p => [...p, ...fs]); setError(null) }} />
+          <ScannedFiles files={scanned} onClear={() => setScanned([])} />
           <textarea value={note} onChange={e => setNote(e.target.value)} rows={2}
             placeholder="Note (optionnel) — ex : réquisitoire reçu par mail du Parquet"
             className="w-full bg-surface border border-strong rounded-lg px-2.5 py-2 text-ink text-sm outline-none focus:border-brand" />
@@ -189,6 +196,7 @@ function LeveeSaisieSection({ mission, onDone }: { mission: SaisieMission; onDon
   const [note,  setNote]  = useState('')
   const [busy,  setBusy]  = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [scanned, setScanned] = useState<File[]>([])
   const fileRef = useRef<HTMLInputElement>(null)
 
   const hasLevee = !!mission.levee_saisie_at
@@ -197,7 +205,7 @@ function LeveeSaisieSection({ mission, onDone }: { mission: SaisieMission; onDon
   async function submit() {
     setError(null)
     const files = fileRef.current?.files
-    if ((!files || files.length === 0) && !note.trim()) {
+    if ((!files || files.length === 0) && scanned.length === 0 && !note.trim()) {
       setError('Annexe un document OU saisis un commentaire (ex : « Levée par téléphone »).')
       return
     }
@@ -209,9 +217,11 @@ function LeveeSaisieSection({ mission, onDone }: { mission: SaisieMission; onDon
       fd.append('date', date)
       if (note.trim()) fd.append('note', note.trim())
       if (files) for (const f of Array.from(files)) fd.append('files', f)
+      for (const f of scanned) fd.append('files', f)
       const r = await fetch(`/api/missions/${mission.id}/levee-saisie`, { method: 'POST', body: fd })
       const j = await r.json()
       if (!r.ok) throw new Error(j.error || 'Erreur')
+      setScanned([])
       onDone()
     } catch (e: any) {
       setError(e.message); setBusy(false)
@@ -286,6 +296,9 @@ function LeveeSaisieSection({ mission, onDone }: { mission: SaisieMission; onDon
             <input ref={fileRef} type="file" multiple accept="image/*,application/pdf"
               className="block w-full text-xs mt-1 text-ink-secondary file:mr-2 file:py-1 file:px-2 file:rounded-lg file:border file:bg-surface file:text-ink file:text-xs" />
           </label>
+          <ScanToFicheButton label="🖨️ Scanner la levée"
+            onScanned={fs => { setScanned(p => [...p, ...fs]); setError(null) }} />
+          <ScannedFiles files={scanned} onClear={() => setScanned([])} />
 
           <textarea value={note} onChange={e => setNote(e.target.value)} rows={2}
             placeholder="Commentaire (ex : « Levée de saisie par téléphone »)"
@@ -502,6 +515,22 @@ function DomaineSection({ mission, onDone }: { mission: SaisieMission; onDone: (
           </div>
         </div>
       )}
+    </div>
+  )
+}
+
+// ── Pages scannées en attente d'envoi ───────────────────────────────────────
+// Le scan ne part pas tout seul : il rejoint le formulaire, et c'est « Annexer »
+// qui envoie. On voit donc toujours ce qu'on s'apprête à joindre.
+function ScannedFiles({ files, onClear }: { files: File[]; onClear: () => void }) {
+  if (!files.length) return null
+  const ko = Math.round(files.reduce((n, f) => n + f.size, 0) / 1024)
+  return (
+    <div className="flex items-center justify-between gap-2 bg-emerald-50 border border-emerald-200 rounded-lg px-2.5 py-1.5">
+      <span className="text-emerald-800 text-xs font-medium">
+        🖨️ {files.length} page{files.length > 1 ? 's' : ''} scannée{files.length > 1 ? 's' : ''} ({ko} Ko) — prête{files.length > 1 ? 's' : ''} à annexer
+      </span>
+      <button type="button" onClick={onClear} className="text-emerald-700 text-[11px] underline shrink-0">Retirer</button>
     </div>
   )
 }
