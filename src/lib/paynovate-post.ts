@@ -68,6 +68,12 @@ export interface MissingPayment {
 
 export interface PostingPlan {
   payoutId:    number
+  /**
+   * Le tiers porté par l'OD et par la ligne bancaire basculée. Paynovate et
+   * SumUp partagent la même mécanique mais pas le même fournisseur — c'est le
+   * seul endroit où le prestataire transparaît dans `postPlan`.
+   */
+  partnerId:   number
   bankLineId:  number
   bankMove:    string
   net:         number
@@ -136,6 +142,7 @@ export function buildPostingPlan(p: MatchedPayout): PostingPlan {
 
   return {
     payoutId:   p.paymentId,
+    partnerId:  ACC.partner,
     bankLineId: p.bankLineId,
     bankMove:   p.bankMoveName,
     net:        p.bankAmount,
@@ -249,7 +256,7 @@ export async function postPlan(plan: PostingPlan, actorNote?: string): Promise<{
       ref:        plan.od.ref + (actorNote ? ` — ${actorNote}` : ''),
       line_ids:   plan.od.lines.map(l => [0, 0, {
         account_id: l.account,
-        partner_id: ACC.partner,
+        partner_id: plan.partnerId,
         name:       l.label,
         debit:      l.debit,
         credit:     l.credit,
@@ -265,7 +272,7 @@ export async function postPlan(plan: PostingPlan, actorNote?: string): Promise<{
   try {
     await odooRpc('account.move.line', 'write', [[suspenseLineId], {
       account_id: ACC.outstanding,
-      partner_id: ACC.partner,
+      partner_id: plan.partnerId,
     }])
     bankLineMoved = true
 

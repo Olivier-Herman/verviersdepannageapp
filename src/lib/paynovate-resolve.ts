@@ -153,20 +153,53 @@ async function readInvoicesById(ids: number[]) {
   })
 }
 
+/**
+ * Le prestataire dont on résout les références. Les rattachements manuels sont
+ * cloisonnés par prestataire : « 2DPU256 » tapé sur un terminal Paynovate et
+ * sur un terminal SumUp ne désignent pas forcément la même facture.
+ */
+export type Provider = 'paynovate' | 'sumup'
+
 /** Un rattachement manuel enregistré pour cette référence et ce montant. */
-async function readOverride(ref: string, amount: number) {
+async function readOverride(ref: string, amount: number, provider: Provider) {
   try {
     const sb = createAdminClient()
     const { data } = await sb
       .from('payout_reference_overrides')
       .select('invoice_ids, invoice_names')
-      .eq('provider', 'paynovate')
+      .eq('provider', provider)
       .eq('merchant_ref', ref)
       .eq('amount', Math.round(amount * 100) / 100)
       .maybeSingle()
     return data?.invoice_ids?.length ? data : null
   } catch {
     return null            // table absente ou injoignable → on continue en auto
+  }
+}
+
+/**
+ * Le rattachement humain enregistré pour cette référence, s'il existe.
+ *
+ * Exporté pour les résolveurs qui ont leur propre chemin rapide (SumUp passe
+ * par le jeton VD Soft avant tout le reste) : ce qu'un humain a tranché doit
+ * rester consulté EN PREMIER, sinon un rattachement corrigé à la main serait
+ * écrasé au prochain calcul par la résolution automatique.
+ */
+export async function readManualOverride(
+  ref: string,
+  amount: number,
+  provider: Provider,
+): Promise<Resolution | null> {
+  const found = await readOverride(String(ref || '').trim(), amount, provider)
+  if (!found) return null
+  const rows = await readInvoicesById(found.invoice_ids)
+  if (!rows.length) return null
+  return {
+    confidence: 'exact',
+    invoiceIds: rows.map(r => r.id),
+    candidates: rows.map(shape),
+    explanation: `Rattachée à la main : ${rows.map(r => r.name).join(' + ')}`,
+    manual: true,
   }
 }
 
@@ -179,6 +212,7 @@ export async function saveOverride(
   amount: number,
   invoiceNames: string[],
   userId: string | null,
+  provider: Provider = 'paynovate',
 ): Promise<{
   invoiceIds: number[]
   names: string[]
@@ -197,7 +231,7 @@ export async function saveOverride(
 
   const sb = createAdminClient()
   const { error } = await sb.from('payout_reference_overrides').upsert({
-    provider:      'paynovate',
+    provider,
     merchant_ref:  ref.trim(),
     amount:        Math.round(amount * 100) / 100,
     invoice_ids:   rows.map(r => r.id),
@@ -219,12 +253,16 @@ export async function saveOverride(
 }
 
 /** Supprime un rattachement manuel — on s'est trompé de facture. */
-export async function removeOverride(ref: string, amount: number): Promise<boolean> {
+export async function removeOverride(
+  ref: string,
+  amount: number,
+  provider: Provider = 'paynovate',
+): Promise<boolean> {
   const sb = createAdminClient()
   const { error, count } = await sb
     .from('payout_reference_overrides')
     .delete({ count: 'exact' })
-    .eq('provider', 'paynovate')
+    .eq('provider', provider)
     .eq('merchant_ref', ref.trim())
     .eq('amount', Math.round(amount * 100) / 100)
   if (error) throw new Error(`Détachement impossible : ${error.message}`)
@@ -267,11 +305,13 @@ const shape = (r: any) => ({
  * @param ref    ce qui a été tapé sur le terminal
  * @param amount montant encaissé
  * @param when   date de l'encaissement (ISO)
+ * @param provider prestataire, pour ne consulter que SES rattachements manuels
  */
 export async function resolveReference(
   ref: string,
   amount: number,
   when: string | null,
+  provider: Provider = 'paynovate',
 ): Promise<Resolution> {
   const none: Resolution = { confidence: 'aucun', invoiceIds: [], candidates: [], explanation: '' }
   const raw = String(ref || '').trim()
@@ -280,7 +320,7 @@ export async function resolveReference(
   // ── 0. Rattachement déjà indiqué à la main ────────────────
   // Consulté en premier : ce qu'un humain a tranché fait autorité, et le
   // versement redevient « prêt » par le chemin normal, garde-fous compris.
-  const manual = await readOverride(raw, amount)
+  const manual = await readOverride(raw, amount, provider)
   if (manual) {
     const rows = await readInvoicesById(manual.invoice_ids)
     if (rows.length) {

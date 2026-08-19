@@ -1,34 +1,35 @@
 // ============================================================
-// VERVIERS DÉPANNAGE — Rapprochement des versements Paynovate
+// VERVIERS DÉPANNAGE — Rapprochement des versements SumUp
 // ============================================================
 //
-// Le moteur. Il ne fait que CALCULER : aucune écriture Odoo n'est produite
-// ici, c'est la validation dans l'écran qui déclenchera l'écriture.
+// Même moteur que Paynovate, mêmes états, mêmes garde-fous — seule la source
+// change. Il ne fait que CALCULER : rien n'est écrit dans Odoo ici.
 //
 // Chaîne :
-//   ligne bancaire non lettrée (Odoo)
-//     └─ libellé « … PAYMENT 391958542 » → identifiant de versement
-//         └─ transactions du versement (Paynovate)
-//             └─ « Merchant Reference » = n° de facture Odoo
+//   ligne bancaire non lettrée (Odoo, journal de banque)
+//     └─ libellé « … Communication : MC7 PID1332537 »
+//         └─ transactions du versement (API SumUp)
+//             └─ référence terminal (jeton VD Soft, plaque, n° de facture)
 //                 └─ facture + paiement en suspens à lettrer
 //
-// Quatre états possibles par versement :
-//   ready — tout concorde, un clic suffit
-//   lost  — la facture est encore ouverte alors que le client a payé
-//   gap   — le montant encaissé ne colle pas à la facture
-//   miss  — la référence ne correspond à aucune facture
+// Le paiement à lettrer existe presque toujours : l'app enregistre déjà
+// l'encaissement dans Odoo sur le journal « Encaissement Chauffeur », méthode
+// « Sumup », **au montant brut**, et sa ligne 542 reste en attente. C'est
+// exactement ce que le lettrage vient consommer.
 //
 // Un versement dont une seule transaction cloche reste bloqué en entier :
 // lettrer à moitié une ligne bancaire fausserait le solde du compte.
 
 import { odooRpc } from '@/lib/odoo'
 import {
-  fetchAllTransactions,
-  paymentIdFromLabel,
-  tidFromLabel,
-  type PaynovateTx,
-} from '@/lib/paynovate'
-import { resolveReference, type Confidence } from '@/lib/paynovate-resolve'
+  fetchPayoutTransactions,
+  payoutRefFromLabel,
+  payoutIdOf,
+  type SumUpTx,
+} from '@/lib/sumup-payouts'
+import { loadTokenIndex, readInvoices, resolveSumupReference } from '@/lib/sumup-resolve'
+import type { Confidence } from '@/lib/paynovate-resolve'
+import type { MatchedTx, MatchedPayout, MatchReport, MatchState } from '@/lib/paynovate-match'
 import {
   round2,
   invoicesByName,
@@ -36,61 +37,20 @@ import {
   explainConsumedPayments,
 } from '@/lib/reconcile-odoo'
 
-export type MatchState = 'ready' | 'lost' | 'gap' | 'miss'
+const INVOICE_RE = /^\d{4}\/\d{2}\/\d{3,4}$/
 
-export interface MatchedTx {
-  merchantRef:  string
-  amount:       number          // montant encaissé sur le terminal
-  cardBrand:    string
-  at:           string | null
-  commission:   number          // TVAC — c'est ce montant qui part en OD
-  confidence:   Confidence      // comment la facture a été retrouvée
-  explanation:  string          // en clair, pour l'écran
-  invoiceIds:   number[]        // plusieurs si un paiement couvre plusieurs factures
-  invoiceName:  string | null
-  partner:      string | null
-  invoiceTotal: number | null
-  paymentState: string | null   // 'paid' | 'not_paid' | 'partial' | …
-  paymentId:    number | null   // le paiement Odoo à lettrer, s'il existe
-  candidates:   { id: number; name: string; partner: string; amount: number; date: string; payment_state?: string | null }[]
-  manual:       boolean         // rattachement humain → détachable depuis l'écran
-  issue:        'lost' | 'gap' | 'miss' | 'used' | 'draft' | null
-  /** Qui a encaissé. Renseigné par SumUp (compte du terminal), absent chez Paynovate. */
-  by?:          string | null
-}
-
-export interface MatchedPayout {
-  state:        MatchState
-  paymentId:    number          // identifiant du versement Paynovate
-  tid:          string | null
-  terminal:     string | null   // nom du compte marchand
-  bankLineId:   number
-  bankMoveName: string
-  bankDate:     string
-  bankAmount:   number          // net crédité
-  grossAmount:  number          // brut encaissé
-  commission:   number          // brut − net, TVAC
-  txs:          MatchedTx[]
-  blocking:     string[]        // ce qui empêche le rapprochement, en clair
-}
-
-export interface MatchReport {
-  payouts:   MatchedPayout[]
-  unmatched: { bankLineId: number; date: string; amount: number; label: string; reason: string }[]
-  totals: {
-    count: number
-    amount: number
-    byState: Record<MatchState, { count: number; amount: number }>
-    lostInvoices: number
-    lostAmount: number
-  }
-}
-
-/** Les lignes bancaires Paynovate encore à lettrer. */
-async function unreconciledPaynovateLines(): Promise<any[]> {
+/**
+ * Les lignes bancaires SumUp encore à lettrer.
+ *
+ * ⚠️ Le filtre sur le TYPE du journal n'est pas décoratif : une OD manuelle
+ * intitulée « Commission Sumup » traîne sur le journal Opérations Diverses.
+ * Sans ce filtre elle remontait dans la file comme un versement de 1 000 €.
+ */
+async function unreconciledSumupLines(): Promise<any[]> {
   return odooRpc<any[]>('account.bank.statement.line', 'search_read', [[
     ['is_reconciled', '=', false],
-    ['payment_ref', 'ilike', 'PAYNOVATE'],
+    ['payment_ref', 'ilike', 'SumUp'],
+    ['journal_id.type', '=', 'bank'],
   ]], {
     fields: ['id', 'date', 'amount', 'payment_ref', 'move_id', 'journal_id'],
     order: 'date desc, id desc',      // le plus récent en haut de la file
@@ -99,65 +59,70 @@ async function unreconciledPaynovateLines(): Promise<any[]> {
 }
 
 /**
- * Construit le rapport de rapprochement.
+ * Construit le rapport de rapprochement SumUp.
  *
- * @param monthsBack profondeur de l'export Paynovate. La fenêtre porte sur la
- *   date de VERSEMENT, donc on remonte large : une ligne bancaire d'aujourd'hui
- *   peut porter des transactions de plusieurs semaines en arrière.
+ * @param monthsBack profondeur de lecture chez SumUp. La fenêtre porte sur la
+ *   date de VERSEMENT : une transaction du 14 peut n'être versée que le 17.
  */
-export async function buildMatchReport(
+export async function buildSumupMatchReport(
   monthsBack = 5,
   opts: { onlyPayouts?: number[] } = {},
 ): Promise<MatchReport> {
-  let lines = await unreconciledPaynovateLines()
+  let lines = await unreconciledSumupLines()
 
   // Vérification ciblée (validation d'un versement) : on ne résout que celui-là.
-  // Sans ce filtre, valider un versement coûtait la résolution des 163 autres
-  // transactions — plusieurs secondes d'attente pour rien.
   if (opts.onlyPayouts?.length) {
     const wanted = new Set(opts.onlyPayouts.map(Number))
     lines = lines.filter(l => {
-      const pid = paymentIdFromLabel(l.payment_ref)
-      return pid !== null && wanted.has(pid)
+      const ref = payoutRefFromLabel(l.payment_ref)
+      const id  = ref ? payoutIdOf(ref) : null
+      return id !== null && wanted.has(id)
     })
   }
 
   const to   = new Date()
   const from = new Date(Date.UTC(to.getUTCFullYear(), to.getUTCMonth() - monthsBack, 1))
-  const txs  = await fetchAllTransactions(from, to)
+  const txs  = await fetchPayoutTransactions(from, to)
 
   // Index des transactions par versement.
-  const byPayout = new Map<number, PaynovateTx[]>()
+  const byPayout = new Map<number, SumUpTx[]>()
   for (const t of txs) {
-    const arr = byPayout.get(t.paymentId) ?? []
+    const arr = byPayout.get(t.payoutId) ?? []
     arr.push(t)
-    byPayout.set(t.paymentId, arr)
+    byPayout.set(t.payoutId, arr)
   }
 
-  // Chemin rapide : les références déjà au format facture (72 % des cas) se
-  // lisent en une seule requête. Le reste passe par le résolveur, un par un.
-  const exactRefs = new Set<string>()
+  // Les références du lot, résolues en bloc avant la boucle : les jetons VD
+  // Soft en trois requêtes, les numéros de facture en une. Le reste, un par un.
+  const refsInPlay: string[] = []
   for (const l of lines) {
-    const pid = paymentIdFromLabel(l.payment_ref)
-    if (!pid) continue
-    for (const t of byPayout.get(pid) ?? []) {
-      if (/^\d{4}\/\d{2}\/\d{3,4}$/.test(t.merchantRef.trim())) exactRefs.add(t.merchantRef.trim())
-    }
+    const ref = payoutRefFromLabel(l.payment_ref)
+    const id  = ref ? payoutIdOf(ref) : null
+    if (id === null) continue
+    for (const t of byPayout.get(id) ?? []) if (t.merchantRef) refsInPlay.push(t.merchantRef)
   }
-  const invoices = await invoicesByName([...exactRefs])
 
-  const resolved = new Map<string, Awaited<ReturnType<typeof resolveReference>>>()
+  const tokenIndex   = await loadTokenIndex(refsInPlay)
+  const invoiceCache = await readInvoices(
+    [...tokenIndex.values()].map(h => h.invoiceId).filter((n): n is number => !!n),
+  )
+  const invoices = await invoicesByName(
+    [...new Set(refsInPlay.map(r => r.trim()).filter(r => INVOICE_RE.test(r)))],
+  )
+
+  const resolved = new Map<string, Awaited<ReturnType<typeof resolveSumupReference>>>()
 
   const payouts: MatchReport['payouts'] = []
   const unmatched: MatchReport['unmatched'] = []
 
   for (const line of lines) {
-    const pid = paymentIdFromLabel(line.payment_ref)
-    if (!pid) {
+    const ref = payoutRefFromLabel(line.payment_ref)
+    const pid = ref ? payoutIdOf(ref) : null
+    if (pid === null) {
       unmatched.push({
         bankLineId: line.id, date: line.date, amount: line.amount,
         label: String(line.payment_ref || '').slice(0, 120),
-        reason: 'Pas d\'identifiant de versement dans le libellé bancaire',
+        reason: 'Pas de communication « MC7 PID… » dans le libellé bancaire',
       })
       continue
     }
@@ -167,17 +132,16 @@ export async function buildMatchReport(
       unmatched.push({
         bankLineId: line.id, date: line.date, amount: line.amount,
         label: String(line.payment_ref || '').slice(0, 120),
-        reason: `Versement ${pid} absent de l'export Paynovate (hors fenêtre ?)`,
+        reason: `Versement ${ref} absent de l'API SumUp (hors fenêtre ?)`,
       })
       continue
     }
 
     const matched: MatchedTx[] = []
     for (const t of group) {
-      const ref = t.merchantRef.trim()
-      const inv = invoices.get(ref)
+      const r = t.merchantRef.trim()
+      const inv = INVOICE_RE.test(r) ? invoices.get(r) : undefined
 
-      // Chemin rapide, puis résolveur (avec cache : la même plaque revient).
       let confidence: Confidence = 'aucun'
       let explanation = ''
       let candidates: MatchedTx['candidates'] = []
@@ -186,17 +150,18 @@ export async function buildMatchReport(
 
       if (inv) {
         confidence  = 'exact'
-        explanation = `Facture ${ref}`
+        explanation = `Facture ${r}`
         hits        = [inv]
       } else {
-        const key = `${ref}|${t.rawAmount}`
-        const r = resolved.get(key) ?? await resolveReference(ref, t.rawAmount, t.transactionAt)
-        resolved.set(key, r)
-        confidence  = r.confidence
-        explanation = r.explanation
-        candidates  = r.candidates
-        manual      = !!r.manual
-        hits        = r.candidates.filter(c => r.invoiceIds.includes(c.id))
+        const key = `${r}|${t.rawAmount}`
+        const res = resolved.get(key)
+          ?? await resolveSumupReference(r, t.rawAmount, t.transactionAt, tokenIndex, invoiceCache)
+        resolved.set(key, res)
+        confidence  = res.confidence
+        explanation = res.explanation
+        candidates  = res.candidates
+        manual      = !!res.manual
+        hits        = res.candidates.filter(c => res.invoiceIds.includes(c.id))
       }
 
       const sure  = confidence === 'exact' || confidence === 'corrige' || confidence === 'plaque'
@@ -215,7 +180,7 @@ export async function buildMatchReport(
         amount:       t.rawAmount,
         cardBrand:    t.cardBrand,
         at:           t.transactionAt,
-        commission:   t.commissionTvac,
+        commission:   t.commission,
         confidence,
         explanation,
         invoiceIds:   hits.map(h => h.id),
@@ -227,6 +192,7 @@ export async function buildMatchReport(
         candidates,
         manual,
         issue,
+        by:           t.by,
       })
     }
 
@@ -237,7 +203,6 @@ export async function buildMatchReport(
     }
 
     // Un paiement déjà lettré ailleurs rend le versement non rapprochable.
-    // On le détecte ICI, pour l'expliquer dans la file plutôt qu'au clic.
     const consumed = await explainConsumedPayments(
       matched.map(m => m.paymentId).filter((n): n is number => !!n),
     )
@@ -257,7 +222,7 @@ export async function buildMatchReport(
       if (m.issue === 'used') blocking.push(`${m.invoiceName} (${m.partner || '?'}) : ${consumed.get(m.paymentId!)}`)
     }
 
-    // Contrôle de cohérence : le brut Paynovate doit couvrir le net crédité.
+    // Contrôle de cohérence : le brut SumUp doit couvrir le net crédité.
     if (gross + 0.005 < Number(line.amount)) {
       blocking.push(`Incohérence : brut ${gross.toFixed(2)} € inférieur au net crédité ${Number(line.amount).toFixed(2)} €`)
     }
@@ -273,8 +238,8 @@ export async function buildMatchReport(
     payouts.push({
       state,
       paymentId:    pid,
-      tid:          tidFromLabel(line.payment_ref) ?? group[0]?.tid ?? null,
-      terminal:     null,
+      tid:          null,                 // un seul compte marchand chez SumUp
+      terminal:     ref,                  // « MC7 PID1332537 », affiché tel quel
       bankLineId:   line.id,
       bankMoveName: Array.isArray(line.move_id) ? line.move_id[1] : '',
       bankDate:     line.date,

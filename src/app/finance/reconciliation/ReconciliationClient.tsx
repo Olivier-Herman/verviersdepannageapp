@@ -1,10 +1,15 @@
 'use client'
 
-// Finance › Réconciliation — la file des versements Paynovate.
+// Finance › Réconciliation — la file des versements d'un terminal carte.
 //
 // Un versement se déplie sur les paiements carte qui le composent. Ce qui
 // demande une décision s'ouvre tout seul ; ce qui est prêt part en un clic.
 // Rien n'est écrit sans ce clic : le serveur revérifie tout de son côté.
+//
+// Le composant sert Paynovate ET SumUp : les deux prestataires produisent le
+// même rapport et acceptent le même contrat (GET / POST / PUT / DELETE), donc
+// seuls l'URL et le nom affiché changent. Dupliquer l'écran aurait voulu dire
+// corriger deux fois chaque détail de la file.
 
 import { useCallback, useEffect, useState } from 'react'
 
@@ -24,12 +29,14 @@ interface Tx {
   candidates: { id: number; name: string; partner: string; amount: number; date: string; payment_state?: string | null }[]
   issue: 'lost' | 'gap' | 'miss' | null
   manual?: boolean
+  by?: string | null          // qui a encaissé — SumUp seulement
 }
 
 interface Payout {
   state: 'ready' | 'lost' | 'gap' | 'miss'
   paymentId: number
   tid: string | null
+  terminal?: string | null    // libellé du compte marchand, quand il y en a un
   bankLineId: number
   bankMoveName: string
   bankDate: string
@@ -160,10 +167,25 @@ const BAR: Record<string, string> = {
   ready: 'border-l-success', lost: 'border-l-warning', gap: 'border-l-alert', miss: 'border-l-purple',
 }
 
-// Le TID dit quel terminal a encaissé — donc quel site.
+// Le TID dit quel terminal a encaissé — donc quel site. Chez SumUp il n'y a
+// qu'un compte marchand : le serveur envoie directement le libellé.
 const SITE: Record<string, string> = { '38904065': 'Fourrière', '38912308': 'Dépannage' }
 
-export default function ReconciliationClient({ userName, embedded = false }: { userName: string; embedded?: boolean }) {
+const terminalOf = (p: Payout) => p.terminal || SITE[p.tid || ''] || (p.tid ? `TID ${p.tid}` : null)
+
+export default function ReconciliationClient({
+  userName,
+  embedded = false,
+  endpoint = '/api/finance/reconciliation',
+  provider = 'Paynovate',
+}: {
+  userName: string
+  embedded?: boolean
+  /** Route qui sert le rapport et reçoit les validations. */
+  endpoint?: string
+  /** Nom du prestataire, tel qu'il apparaît à l'écran. */
+  provider?: string
+}) {
   const [report, setReport]   = useState<Report | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError]     = useState<string | null>(null)
@@ -176,7 +198,7 @@ export default function ReconciliationClient({ userName, embedded = false }: { u
   const load = useCallback(async () => {
     setLoading(true); setError(null)
     try {
-      const r = await fetch('/api/finance/reconciliation', { cache: 'no-store' })
+      const r = await fetch(endpoint, { cache: 'no-store' })
       const j = await r.json()
       if (!r.ok) throw new Error(j.error || `Erreur ${r.status}`)
       setReport(j)
@@ -188,7 +210,7 @@ export default function ReconciliationClient({ userName, embedded = false }: { u
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [endpoint])
 
   useEffect(() => { load() }, [load])
 
@@ -201,7 +223,7 @@ export default function ReconciliationClient({ userName, embedded = false }: { u
   async function reconcile(ids: number[]) {
     setBusy(ids)
     try {
-      const r = await fetch('/api/finance/reconciliation', {
+      const r = await fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ payoutIds: ids }),
@@ -213,8 +235,8 @@ export default function ReconciliationClient({ userName, embedded = false }: { u
         ? `${ok.length} versement${ok.length > 1 ? 's' : ''} rapproché${ok.length > 1 ? 's' : ''}${ko.length ? ` · ${ko.length} en échec` : ''}`
         : `Échec : ${ko[0]?.error || j.error || 'raison inconnue'}`)
 
-      // On retire les versements traités de la file sans tout relire chez
-      // Paynovate : une relecture complète, c'est dix secondes d'attente pour
+      // On retire les versements traités de la file sans tout relire chez le
+      // prestataire : une relecture complète, c'est dix secondes d'attente pour
       // un résultat qu'on connaît déjà. Le bouton « Actualiser » reste là.
       if (ok.length) {
         const settled = new Set<number>(ok.map((x: any) => Number(x.payoutId)))
@@ -231,7 +253,7 @@ export default function ReconciliationClient({ userName, embedded = false }: { u
   const toggle = (id: number) =>
     setOpen(s => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n })
 
-  if (loading) return <Shell bare={embedded}><p className="text-ink-muted">Lecture des versements chez Paynovate…</p></Shell>
+  if (loading) return <Shell bare={embedded}><p className="text-ink-muted">Lecture des versements chez {provider}…</p></Shell>
 
   if (error) return (
     <Shell bare={embedded}>
@@ -256,7 +278,7 @@ export default function ReconciliationClient({ userName, embedded = false }: { u
         <span className="text-[11px] font-semibold uppercase tracking-[0.09em] text-ink-faint">VD Soft · Finance</span>
         <h1 className="font-display text-2xl font-bold tracking-tight">Réconciliation</h1>
         <p className="max-w-[62ch] text-sm text-ink-muted">
-          Les versements Paynovate arrivés sur le compte, rapprochés des factures qu&apos;ils paient.
+          Les versements {provider} arrivés sur le compte, rapprochés des factures qu&apos;ils paient.
         </p>
       </header>}
 
@@ -283,7 +305,7 @@ export default function ReconciliationClient({ userName, embedded = false }: { u
             </button>
           )}
           <button onClick={load} disabled={busy.length > 0}
-            title="Relit les versements chez Paynovate — une dizaine de secondes"
+            title={`Relit les versements chez ${provider} — une dizaine de secondes`}
             className="rounded-btn border border-strong px-3 py-1.5 text-xs font-semibold text-ink-secondary hover:bg-surface-hover disabled:text-ink-faint">
             Actualiser
           </button>
@@ -301,7 +323,8 @@ export default function ReconciliationClient({ userName, embedded = false }: { u
               </div>
               <p className="mt-1 text-sm text-ink-secondary">{x.partner}</p>
               <p className="mt-2 text-xs text-ink-muted">
-                Payé le {x.at ? day(x.at.slice(0, 10)) : '—'} par {x.cardBrand} · terminal {SITE[p.tid || ''] || p.tid}
+                Payé le {x.at ? day(x.at.slice(0, 10)) : '—'} par {x.cardBrand || 'carte'}
+                {x.by ? ` · encaissé par ${x.by}` : (terminalOf(p) ? ` · ${terminalOf(p)}` : '')}
                 {' · '}la facture est encore ouverte dans Odoo.
               </p>
             </div>
@@ -343,9 +366,11 @@ export default function ReconciliationClient({ userName, embedded = false }: { u
                     </span>
                     <span className="flex flex-wrap items-center gap-2">
                       <span className={`rounded-full px-2.5 py-0.5 text-[11.5px] font-semibold ${st.cls}`}>{st.label}</span>
-                      <span className="rounded-full border border-border bg-surface-2 px-2.5 py-0.5 text-[11.5px] font-semibold text-ink-secondary">
-                        {SITE[p.tid || ''] || `TID ${p.tid || '?'}`}
-                      </span>
+                      {terminalOf(p) && (
+                        <span className="rounded-full border border-border bg-surface-2 px-2.5 py-0.5 font-mono text-[11.5px] font-semibold text-ink-secondary">
+                          {terminalOf(p)}
+                        </span>
+                      )}
                       <span className="text-xs text-ink-muted">
                         {p.txs.length} paiement{p.txs.length > 1 ? 's' : ''} carte
                       </span>
@@ -374,6 +399,7 @@ export default function ReconciliationClient({ userName, embedded = false }: { u
                           <span className="font-mono text-xs text-ink-muted">
                             {x.at ? `${day(x.at.slice(0, 10))} · ${x.at.slice(11, 16)}` : '—'}
                             <span className="ml-2 uppercase tracking-wider text-ink-faint">{x.cardBrand}</span>
+                            {x.by && <span className="ml-2 text-ink-faint">par {x.by}</span>}
                           </span>
                           <span className="font-mono text-sm font-semibold tabular-nums">{eur(x.amount)}</span>
                         </div>
@@ -383,6 +409,7 @@ export default function ReconciliationClient({ userName, embedded = false }: { u
                           {!x.issue && <span className="text-xs font-semibold text-success">✓ facture soldée</span>}
                           {x.manual && (
                             <Detacher
+                              endpoint={endpoint}
                               tx={x}
                               onDetached={res => {
                                 setReport(prev => (prev ? applyLink(prev, p.paymentId, i, res) : prev))
@@ -406,6 +433,7 @@ export default function ReconciliationClient({ userName, embedded = false }: { u
                             refacturation rend la facture d'origine caduque. */}
                         {x.issue && (
                           <Linker
+                            endpoint={endpoint}
                             tx={x}
                             onLinked={res => {
                               setReport(prev => (prev ? applyLink(prev, p.paymentId, i, res) : prev))
@@ -416,7 +444,7 @@ export default function ReconciliationClient({ userName, embedded = false }: { u
                       </div>
                     ))}
                     <div className="mt-3 flex flex-wrap items-baseline justify-between gap-3 border-t border-border pt-2.5 text-[12.5px] text-ink-muted">
-                      <span>Frais Paynovate <span className="font-mono font-semibold text-ink-secondary">{eur(p.commission)}</span> — passés en OD sur le compte fournisseur</span>
+                      <span>Frais {provider} <span className="font-mono font-semibold text-ink-secondary">{eur(p.commission)}</span> — passés en OD sur le compte fournisseur</span>
                       <span className="font-mono text-[11px] text-ink-faint">versement {p.paymentId} · extrait {p.bankMoveName}</span>
                     </div>
                   </div>
@@ -523,7 +551,7 @@ function Tab({ on, onClick, count, children }: { on: boolean; onClick: () => voi
  * si aucune ne convient on saisit le numéro à la main — plusieurs si le
  * paiement couvre plusieurs factures.
  */
-function Linker({ tx, onLinked }: { tx: Tx; onLinked: (res: any) => void }) {
+function Linker({ tx, endpoint, onLinked }: { tx: Tx; endpoint: string; onLinked: (res: any) => void }) {
   const [value, setValue] = useState('')
   const [busy, setBusy]   = useState(false)
   const [msg, setMsg]     = useState<string | null>(null)
@@ -531,14 +559,14 @@ function Linker({ tx, onLinked }: { tx: Tx; onLinked: (res: any) => void }) {
   async function link(names: string[]) {
     setBusy(true); setMsg(null)
     try {
-      const r = await fetch('/api/finance/reconciliation', {
+      const r = await fetch(endpoint, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ merchantRef: tx.merchantRef, amount: tx.amount, invoiceNames: names }),
       })
       const j = await r.json()
       if (!r.ok) { setMsg(j.error || `Erreur ${r.status}`); return }
-      // Mise à jour sur place : pas de relecture Paynovate pour un rattachement.
+      // Mise à jour sur place : pas de relecture du prestataire pour un rattachement.
       if (j.warning) setMsg(j.warning)
       onLinked(j)
     } catch (e: any) {
@@ -598,13 +626,13 @@ function Linker({ tx, onLinked }: { tx: Tx; onLinked: (res: any) => void }) {
 }
 
 /** Défait un rattachement fait à la main, et rend la main à la résolution auto. */
-function Detacher({ tx, onDetached }: { tx: Tx; onDetached: (res: any) => void }) {
+function Detacher({ tx, endpoint, onDetached }: { tx: Tx; endpoint: string; onDetached: (res: any) => void }) {
   const [busy, setBusy] = useState(false)
 
   async function detach() {
     setBusy(true)
     try {
-      const r = await fetch('/api/finance/reconciliation', {
+      const r = await fetch(endpoint, {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ merchantRef: tx.merchantRef, amount: tx.amount, at: tx.at }),
