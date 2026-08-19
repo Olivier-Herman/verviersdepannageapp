@@ -49,8 +49,7 @@ try {
 
 $listener = $null; $ok = $false
 foreach ($p in @('http://+:7182/','http://127.0.0.1:7182/','http://localhost:7182/')) {
-  try { $l = New-Object System.Net.HttpListener; $l.Prefixes.Add($p); $l.Start(); $listener = $l; Log "Ecoute OK sur $p"; $ok = $true; break }
-  catch { Log "Echec bind $p : $($_.Exception.Message)" }
+  try { $l = New-Object System.Net.HttpListener; $l.Prefixes.Add($p); $l.Start(); $listener = $l; Log "Ecoute OK sur $p"; $ok = $true; break } catch { Log "Echec bind $p : $($_.Exception.Message)" }
 }
 if (-not $ok) { Log "AUCUN prefixe n'a pu ecouter -> arret."; Start-Sleep 3; exit 1 }
 
@@ -81,8 +80,7 @@ function Do-Scan($req) {
 
   $pages = $null; $via = ''
   if ($cfg.printerHost) {
-    try { $pages = @(Invoke-EsclScan -PrinterHost $cfg.printerHost -Source $source -Color $color -Dpi $dpi -Duplex $duplex); $via = 'escl' }
-    catch { Log "eSCL KO ($($_.Exception.Message)) -> repli WIA" }
+    try { $pages = @(Invoke-EsclScan -PrinterHost $cfg.printerHost -Source $source -Color $color -Dpi $dpi -Duplex $duplex); $via = 'escl' } catch { Log "eSCL KO ($($_.Exception.Message)) -> repli WIA" }
   }
   if (-not $pages) {
     $pages = @(Invoke-WiaScan -NameLike $cfg.wiaNameLike -Source $source -Color $color -Dpi $dpi -Duplex $duplex)
@@ -126,8 +124,7 @@ while ($listener.IsListening) {
       try { $wia = ($null -ne (Get-WiaScanner -NameLike $cfg.wiaNameLike)) } catch { }
       $body = (@{ ok = $true; agent = 'scan'; printer = $cfg.printerHost; escl = $escl; wia = $wia } | ConvertTo-Json -Compress)
     } elseif ($path -eq '/scan') {
-      try { $body = Do-Scan $req }
-      catch {
+      try { $body = Do-Scan $req } catch {
         $res.StatusCode = 500
         Log "Scan KO : $($_.Exception.Message)"
         $body = (@{ ok = $false; error = "$($_.Exception.Message)" } | ConvertTo-Json -Compress)

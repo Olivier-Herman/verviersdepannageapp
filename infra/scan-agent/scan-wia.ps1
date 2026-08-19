@@ -57,8 +57,7 @@ function Invoke-WiaScan {
     Set-WiaProp -Properties $item.Properties -Id $script:WIA_IPS_XRES -Value $Dpi
     Set-WiaProp -Properties $item.Properties -Id $script:WIA_IPS_YRES -Value $Dpi
 
-    try   { $img = $item.Transfer($script:WIA_FORMAT_JPEG) }
-    catch { if ($pages.Count -gt 0) { break } else { throw 'WIA_TRANSFER_FAILED' } }
+    try   { $img = $item.Transfer($script:WIA_FORMAT_JPEG) } catch { if ($pages.Count -gt 0) { break } else { throw 'WIA_TRANSFER_FAILED' } }
 
     $tmp = [System.IO.Path]::GetTempFileName() + '.jpg'
     $img.SaveFile($tmp)
