@@ -20,6 +20,7 @@ import { buildSumupMatchReport }     from '@/lib/sumup-match'
 import { buildSumupPostingPlan }     from '@/lib/sumup-post'
 import { summarizePlans, postPlan }  from '@/lib/paynovate-post'
 import { saveOverride, removeOverride } from '@/lib/paynovate-resolve'
+import { markUnallocated, clearUnallocated } from '@/lib/payout-unallocated'
 import { resolveSumupReference, loadTokenIndex, readInvoices } from '@/lib/sumup-resolve'
 
 export const dynamic     = 'force-dynamic'
@@ -28,6 +29,9 @@ export const maxDuration = 120
 // Rodage : superadmin STRICT, comme la tuile Finance et la page. Ouvrir au
 // module 'facturation' quand les écritures seront validées.
 const ACCESS = { roles: ['superadmin'], modules: [] as string[] }
+
+/** Le prestataire servi par cette route — cloisonne décisions et rattachements. */
+const PROVIDER = 'sumup' as const
 
 /** Les versements déjà rapprochés — ils ne doivent plus apparaître. */
 async function alreadyDone(): Promise<Set<string>> {
@@ -225,5 +229,43 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: okCount > 0, done: okCount, results })
   } catch (e: any) {
     return NextResponse.json({ error: String(e?.message || e) }, { status: 500 })
+  }
+}
+
+/**
+ * PATCH → décide qu'une ligne part en OD sur le compte d'attente, faute de
+ * facture identifiable. Ou annule cette décision.
+ *
+ * On ne rapproche RIEN ici : la décision est enregistrée, la ligne cesse de
+ * bloquer, et le versement redevient rapprochable par le chemin normal — le
+ * plan d'écriture y ajoutera le débit 542 manquant.
+ */
+export async function PATCH(req: NextRequest) {
+  const session = await getServerSession(authOptions)
+  const access  = sessionAccess(session, ACCESS)
+  if (!access.ok) return NextResponse.json({ error: 'Non autorisé' }, { status: 403 })
+
+  const body    = await req.json().catch(() => ({}))
+  const linkKey = String(body.linkKey || body.merchantRef || '').trim()
+  const amount  = Number(body.amount)
+  if (!linkKey || !Number.isFinite(amount)) {
+    return NextResponse.json({ error: 'Ligne ou montant manquant' }, { status: 400 })
+  }
+
+  try {
+    if (body.clear) {
+      const removed = await clearUnallocated(PROVIDER, linkKey, amount)
+      return NextResponse.json({ ok: true, cleared: removed })
+    }
+    const saved = await markUnallocated({
+      provider: PROVIDER,
+      linkKey,
+      amount,
+      reason:   String(body.reason || ''),
+      userId:   access.id,
+    })
+    return NextResponse.json({ ok: true, unallocated: { amount: saved.amount, reason: saved.reason } })
+  } catch (e: any) {
+    return NextResponse.json({ error: String(e?.message || e) }, { status: 400 })
   }
 }

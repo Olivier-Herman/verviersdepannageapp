@@ -37,6 +37,8 @@ interface Tx {
   issue: 'lost' | 'gap' | 'miss' | null
   manual?: boolean
   by?: string | null          // qui a encaissé — SumUp seulement
+  /** Ligne qu'on a décidé de passer en OD sur le compte d'attente. */
+  unallocated?: { amount: number; reason: string } | null
 }
 
 interface Payout {
@@ -108,10 +110,36 @@ function recount(prev: Report, settled: Set<number>): Report {
 
 /** État d'un versement = le pire de ses transactions. Même règle que le serveur. */
 function stateOf(txs: Tx[]): Payout['state'] {
-  if (txs.some(x => x.issue === 'miss')) return 'miss'
-  if (txs.some(x => x.issue === 'gap'))  return 'gap'
-  if (txs.some(x => x.issue === 'lost')) return 'lost'
+  const live = txs.filter(x => !x.unallocated)   // une ligne passée en OD ne bloque plus
+  if (live.some(x => x.issue === 'miss')) return 'miss'
+  if (live.some(x => x.issue === 'gap'))  return 'gap'
+  if (live.some(x => x.issue === 'lost')) return 'lost'
   return 'ready'
+}
+
+/**
+ * Applique une décision « passer en OD » sans relire le prestataire. Comme pour
+ * les rattachements, c'est de l'affichage : le serveur revérifie tout au clic.
+ */
+function applyOd(
+  prev: Report,
+  payoutId: number,
+  keys: Set<string>,
+  od: { amount: number; reason: string } | null,
+): Report {
+  const payouts = prev.payouts.map(p => {
+    if (p.paymentId !== payoutId) return p
+    const txs = p.txs.map(x => {
+      if (!keys.has(x.linkKey || x.merchantRef)) return x
+      return od
+        ? { ...x, unallocated: { amount: x.amount, reason: od.reason }, issue: null,
+            invoiceIds: [], invoiceName: null, partner: null, invoiceTotal: null, paymentState: null }
+        : { ...x, unallocated: null, issue: 'miss' as const }
+    })
+    const blocking = txs.filter(x => x.issue).map(x => x.explanation || `${x.merchantRef} à trancher`)
+    return { ...p, txs, blocking, state: stateOf(txs) }
+  })
+  return recount({ ...prev, payouts }, new Set())
 }
 
 /**
@@ -427,6 +455,26 @@ export default function ReconciliationClient({
                             />
                           )}
                         </div>
+                        {x.unallocated && (
+                          <div className="mt-2 flex flex-wrap items-baseline gap-2 rounded-btn border-l-2 border-info bg-info-soft px-3 py-2 text-[12.5px]">
+                            <span className="font-semibold text-info">Passée en OD — compte d&apos;attente 499000</span>
+                            <span className="text-ink-secondary">« {x.unallocated.reason} »</span>
+                            <button
+                              onClick={async () => {
+                                const r = await fetch(endpoint, {
+                                  method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+                                  body: JSON.stringify({ linkKey: x.linkKey || x.merchantRef, amount: x.amount, clear: true }),
+                                })
+                                if (r.ok) {
+                                  setReport(prev => (prev ? applyOd(prev, p.paymentId, new Set([x.linkKey || x.merchantRef]), null) : prev))
+                                  setToast('Passage en OD annulé')
+                                }
+                              }}
+                              className="text-[11.5px] font-semibold text-brand hover:underline">
+                              Annuler
+                            </button>
+                          </div>
+                        )}
                         {x.issue && (
                           <p className={`mt-2 rounded-btn border-l-2 px-3 py-2 text-[12.5px] leading-relaxed ${
                             x.issue === 'lost' ? 'border-warning bg-warning-soft'
@@ -441,17 +489,50 @@ export default function ReconciliationClient({
                             bonne facture — une note de crédit suivie d'une
                             refacturation rend la facture d'origine caduque. */}
                         {x.issue && (
-                          <Linker
-                            endpoint={endpoint}
-                            tx={x}
-                            onLinked={res => {
-                              setReport(prev => (prev ? applyLink(prev, p.paymentId, i, res) : prev))
-                              setToast(`Rattachée à ${res.names.join(' + ')}`)
-                            }}
-                          />
+                          <>
+                            <Linker
+                              endpoint={endpoint}
+                              tx={x}
+                              onLinked={res => {
+                                setReport(prev => (prev ? applyLink(prev, p.paymentId, i, res) : prev))
+                                setToast(`Rattachée à ${res.names.join(' + ')}`)
+                              }}
+                            />
+                            {/* Dernier recours quand la facture est introuvable :
+                                l'argent est bien arrivé, la ligne bancaire doit
+                                pouvoir se lettrer. Le montant part en attente. */}
+                            <OdEscape
+                              endpoint={endpoint}
+                              lines={[x]}
+                              onDone={res => {
+                                setReport(prev => (prev ? applyOd(prev, p.paymentId, new Set([x.linkKey || x.merchantRef]), res) : prev))
+                                setToast('Ligne passée en OD sur le compte d\'attente')
+                              }}
+                            />
+                          </>
                         )}
                       </div>
                     ))}
+                    {p.txs.filter(x => x.issue).length > 1 && (
+                      <div className="mt-3 rounded-btn border border-dashed border-strong bg-surface p-3">
+                        <p className="text-[12.5px] font-semibold text-ink-secondary">
+                          {p.txs.filter(x => x.issue).length} lignes bloquées sur ce versement
+                        </p>
+                        <p className="mt-0.5 text-[11.5px] text-ink-muted">
+                          Si aucune n&apos;est retrouvable, elles peuvent partir ensemble en OD avec le même commentaire.
+                        </p>
+                        <OdEscape
+                          endpoint={endpoint}
+                          lines={p.txs.filter(x => x.issue)}
+                          label={`Tout passer en OD · ${eur(p.txs.filter(x => x.issue).reduce((s, x) => s + x.amount, 0))}`}
+                          onDone={res => {
+                            const keys = new Set(p.txs.filter(x => x.issue).map(x => x.linkKey || x.merchantRef))
+                            setReport(prev => (prev ? applyOd(prev, p.paymentId, keys, res) : prev))
+                            setToast(`${keys.size} lignes passées en OD`)
+                          }}
+                        />
+                      </div>
+                    )}
                     <div className="mt-3 flex flex-wrap items-baseline justify-between gap-3 border-t border-border pt-2.5 text-[12.5px] text-ink-muted">
                       <span>Frais {provider} <span className="font-mono font-semibold text-ink-secondary">{eur(p.commission)}</span> — passés en OD sur le compte fournisseur</span>
                       <span className="font-mono text-[11px] text-ink-faint">versement {p.paymentId} · extrait {p.bankMoveName}</span>
@@ -630,6 +711,90 @@ function Linker({ tx, endpoint, onLinked }: { tx: Tx; endpoint: string; onLinked
       </div>
 
       {msg && <p className="text-[12.5px] font-semibold text-ink-secondary">{msg}</p>}
+    </div>
+  )
+}
+
+/**
+ * Passer une ou plusieurs lignes en OD sur le compte d'attente.
+ *
+ * Dernier recours : la facture est introuvable, mais l'argent est bien arrivé
+ * sur le compte et la ligne bancaire doit pouvoir se lettrer. Le montant part
+ * en 499000 en attendant d'être affecté.
+ *
+ * Le commentaire est obligatoire — c'est la seule chose lisible que le
+ * comptable aura en face du montant, et il est repris tel quel dans le libellé
+ * des lignes d'écriture.
+ */
+function OdEscape({ endpoint, lines, label, onDone }: {
+  endpoint: string
+  lines: Tx[]
+  label?: string
+  onDone: (res: { amount: number; reason: string }) => void
+}) {
+  const [open, setOpen]   = useState(false)
+  const [reason, setReason] = useState('')
+  const [busy, setBusy]   = useState(false)
+  const [msg, setMsg]     = useState<string | null>(null)
+
+  const total = lines.reduce((s, x) => s + x.amount, 0)
+
+  async function send() {
+    setBusy(true); setMsg(null)
+    try {
+      for (const x of lines) {
+        const r = await fetch(endpoint, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ linkKey: x.linkKey || x.merchantRef, amount: x.amount, reason }),
+        })
+        const j = await r.json()
+        if (!r.ok) { setMsg(j.error || `Erreur ${r.status}`); return }
+      }
+      onDone({ amount: total, reason: reason.trim() })
+    } catch (e: any) {
+      setMsg(e.message)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  if (!open) return (
+    <button onClick={() => setOpen(true)}
+      className="mt-2 self-start text-[12px] font-semibold text-ink-muted underline decoration-dotted underline-offset-2 hover:text-ink">
+      {label || 'Facture introuvable — passer en OD'}
+    </button>
+  )
+
+  return (
+    <div className="mt-2 flex flex-col gap-2 rounded-btn border border-strong bg-surface px-3 py-2.5">
+      <p className="text-[12.5px] text-ink-secondary">
+        <strong>{eur(total)}</strong> {lines.length > 1 ? `sur ${lines.length} lignes ` : ''}
+        part en attente sur <span className="font-mono">499000</span>. La ligne bancaire pourra se lettrer,
+        et le montant restera visible tant qu&apos;il n&apos;est pas affecté.
+      </p>
+      <label className="text-[11px] font-semibold uppercase tracking-wider text-ink-faint" htmlFor={`od-${lines[0]?.linkKey}`}>
+        Commentaire — repris dans l&apos;écriture
+      </label>
+      <input
+        id={`od-${lines[0]?.linkKey}`}
+        value={reason}
+        onChange={e => setReason(e.target.value)}
+        onKeyDown={e => { if (e.key === 'Enter' && reason.trim().length >= 3) send() }}
+        placeholder="Ex. : encaissement terminal sans référence, facture non retrouvée"
+        className="w-full rounded-btn border border-strong bg-input px-2.5 py-1.5 text-[13px] text-ink placeholder:text-ink-faint"
+      />
+      <div className="flex flex-wrap gap-2">
+        <button disabled={busy || reason.trim().length < 3} onClick={send}
+          className="rounded-btn bg-brand px-3.5 py-1.5 text-[12.5px] font-semibold text-white hover:bg-brand-hover disabled:bg-surface-hover disabled:text-ink-faint">
+          {busy ? 'Enregistrement…' : 'Passer en OD'}
+        </button>
+        <button disabled={busy} onClick={() => { setOpen(false); setReason(''); setMsg(null) }}
+          className="rounded-btn border border-strong px-3.5 py-1.5 text-[12.5px] font-semibold text-ink-secondary hover:bg-surface-hover">
+          Annuler
+        </button>
+      </div>
+      {msg && <p className="text-[12.5px] font-semibold text-alert">{msg}</p>}
     </div>
   )
 }

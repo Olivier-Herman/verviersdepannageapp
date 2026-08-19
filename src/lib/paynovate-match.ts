@@ -35,6 +35,7 @@ import {
   paymentsForInvoices,
   explainConsumedPayments,
 } from '@/lib/reconcile-odoo'
+import { loadUnallocated, findUnallocated } from '@/lib/payout-unallocated'
 
 export type MatchState = 'ready' | 'lost' | 'gap' | 'miss'
 
@@ -65,6 +66,12 @@ export interface MatchedTx {
   issue:        'lost' | 'gap' | 'miss' | 'used' | 'draft' | null
   /** Qui a encaissé. Renseigné par SumUp (compte du terminal), absent chez Paynovate. */
   by?:          string | null
+  /**
+   * Ligne dont on a décidé qu'elle partait en OD faute de facture identifiable.
+   * Elle cesse alors de bloquer le versement : le plan d'écriture produira le
+   * débit 542 manquant en face du compte d'attente.
+   */
+  unallocated?: { amount: number; reason: string } | null
 }
 
 export interface MatchedPayout {
@@ -154,6 +161,14 @@ export async function buildMatchReport(
   }
   const invoices = await invoicesByName([...exactRefs])
 
+  // Les lignes qu'on a décidé de passer en OD : elles ne bloquent plus rien.
+  const unallocated = await loadUnallocated('paynovate', [...new Set(
+    lines.flatMap(l => {
+      const pid = paymentIdFromLabel(l.payment_ref)
+      return pid ? (byPayout.get(pid) ?? []).map(t => t.merchantRef.trim()) : []
+    }),
+  )])
+
   const resolved = new Map<string, Awaited<ReturnType<typeof resolveReference>>>()
 
   const payouts: MatchReport['payouts'] = []
@@ -218,6 +233,9 @@ export async function buildMatchReport(
       else if (moveState === 'draft') issue = 'draft'
       else if (state && state !== 'paid' && state !== 'in_payment') issue = 'lost'
 
+      // Décision humaine : cette ligne part en OD sur le compte d'attente.
+      const od = findUnallocated(unallocated, ref, t.rawAmount)
+
       matched.push({
         merchantRef:  t.merchantRef,
         linkKey:      t.merchantRef,     // toujours renseignée chez Paynovate
@@ -227,15 +245,18 @@ export async function buildMatchReport(
         commission:   t.commissionTvac,
         confidence,
         explanation,
-        invoiceIds:   hits.map(h => h.id),
-        invoiceName:  hits.length === 1 ? (hits[0].name ?? null) : hits.map(h => h.name).join(' + ') || null,
-        partner:      hits.length ? (hits[0].partner ?? (Array.isArray(hits[0].partner_id) ? hits[0].partner_id[1] : null)) : null,
-        invoiceTotal: hits.length ? round2(total) : null,
-        paymentState: state,
+        // Passée en OD : c'est le compte d'attente qui encaisse, pas une
+        // facture. On efface celle qui aurait pu être devinée.
+        invoiceIds:   od ? [] : hits.map(h => h.id),
+        invoiceName:  od ? null : (hits.length === 1 ? (hits[0].name ?? null) : hits.map(h => h.name).join(' + ') || null),
+        partner:      od || !hits.length ? null : (hits[0].partner ?? (Array.isArray(hits[0].partner_id) ? hits[0].partner_id[1] : null)),
+        invoiceTotal: od || !hits.length ? null : round2(total),
+        paymentState: od ? null : state,
         paymentId:    null,
         candidates,
         manual,
-        issue,
+        issue:        od ? null : issue,
+        unallocated:  od ? { amount: od.amount, reason: od.reason } : null,
       })
     }
 

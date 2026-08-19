@@ -36,6 +36,7 @@ import {
   paymentsForInvoices,
   explainConsumedPayments,
 } from '@/lib/reconcile-odoo'
+import { loadUnallocated, findUnallocated } from '@/lib/payout-unallocated'
 
 const INVOICE_RE = /^\d{4}\/\d{2}\/\d{3,4}$/
 
@@ -101,6 +102,16 @@ export async function buildSumupMatchReport(
     if (id === null) continue
     for (const t of byPayout.get(id) ?? []) if (t.merchantRef) refsInPlay.push(t.merchantRef)
   }
+
+  // Les lignes qu'on a décidé de passer en OD : elles ne bloquent plus rien.
+  const linkKeys: string[] = []
+  for (const l of lines) {
+    const ref = payoutRefFromLabel(l.payment_ref)
+    const id  = ref ? payoutIdOf(ref) : null
+    if (id === null) continue
+    for (const t of byPayout.get(id) ?? []) linkKeys.push(t.merchantRef.trim() || t.transactionCode)
+  }
+  const unallocated = await loadUnallocated('sumup', linkKeys)
 
   const tokenIndex   = await loadTokenIndex(refsInPlay)
   const invoiceCache = await readInvoices(
@@ -180,6 +191,12 @@ export async function buildSumupMatchReport(
       else if (moveState === 'draft') issue = 'draft'
       else if (state && state !== 'paid' && state !== 'in_payment') issue = 'lost'
 
+      // Décision humaine : cette ligne part en OD. Elle cesse de bloquer, et le
+      // plan d'écriture produira le débit 542 qui manque. On efface aussi la
+      // facture éventuellement devinée : c'est le compte d'attente qui encaisse,
+      // pas elle — sinon le plan lettrerait un paiement qui n'existe pas.
+      const od = findUnallocated(unallocated, linkKey, t.rawAmount)
+
       matched.push({
         merchantRef:  t.merchantRef,
         linkKey,
@@ -189,16 +206,20 @@ export async function buildSumupMatchReport(
         commission:   t.commission,
         confidence,
         explanation,
-        invoiceIds:   hits.map(h => h.id),
-        invoiceName:  hits.length === 1 ? (hits[0].name ?? null) : hits.map(h => h.name).join(' + ') || null,
-        partner:      hits.length ? (hits[0].partner ?? (Array.isArray(hits[0].partner_id) ? hits[0].partner_id[1] : null)) : null,
-        invoiceTotal: hits.length ? round2(total) : null,
-        paymentState: state,
+        // Passée en OD : c'est le compte d'attente qui encaisse, pas une
+        // facture. On efface celle qui aurait pu être devinée, sinon le plan
+        // chercherait à lettrer un paiement qui ne la concerne pas.
+        invoiceIds:   od ? [] : hits.map(h => h.id),
+        invoiceName:  od ? null : (hits.length === 1 ? (hits[0].name ?? null) : hits.map(h => h.name).join(' + ') || null),
+        partner:      od || !hits.length ? null : (hits[0].partner ?? (Array.isArray(hits[0].partner_id) ? hits[0].partner_id[1] : null)),
+        invoiceTotal: od || !hits.length ? null : round2(total),
+        paymentState: od ? null : state,
         paymentId:    null,
         candidates,
         manual,
-        issue,
+        issue:        od ? null : issue,
         by:           t.by,
+        unallocated:  od ? { amount: od.amount, reason: od.reason } : null,
       })
     }
 

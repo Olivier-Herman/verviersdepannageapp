@@ -13,6 +13,40 @@ import { odooRpc } from '@/lib/odoo'
 /** Compte « Paiements entrants en suspens » — le pivot de tous les lettrages. */
 export const ACC_OUTSTANDING = 542
 
+/** 499000 Suspense Accounts — où atterrissent les encaissements non affectés. */
+export const ACC_UNALLOCATED = 265
+
+/**
+ * Les lignes d'OD des encaissements qu'on a décidé de ne pas affecter.
+ *
+ * Une transaction sans facture identifiable n'a aucun paiement carte à lettrer :
+ * il manque son débit 542, et la ligne bancaire reste ouverte. Ces deux lignes
+ * le fabriquent, en face du compte d'attente.
+ *
+ *     542 Paiements entrants en suspens   montant D   → rejoint le lettrage
+ *     499000 Suspense Accounts            montant C   → reste à affecter
+ *
+ * Le commentaire saisi par l'utilisateur est repris tel quel dans le libellé :
+ * c'est la seule chose lisible que le comptable aura en face du montant.
+ */
+export function unallocatedOdLines(
+  txs: { amount: number; merchantRef: string; unallocated?: { amount: number; reason: string } | null }[],
+  context: string,
+): { account: number; label: string; debit: number; credit: number }[] {
+  const out: { account: number; label: string; debit: number; credit: number }[] = []
+  for (const t of txs) {
+    if (!t.unallocated) continue
+    const amount = round2(t.unallocated.amount || t.amount)
+    if (amount <= 0.005) continue
+    const label = `Encaissement non affecté — ${context}`
+      + (t.merchantRef ? ` · réf. ${t.merchantRef}` : ' · sans référence')
+      + ` — ${t.unallocated.reason}`
+    out.push({ account: ACC_UNALLOCATED, label, debit: 0, credit: amount })
+    out.push({ account: ACC_OUTSTANDING, label, debit: amount, credit: 0 })
+  }
+  return out
+}
+
 export const round2 = (n: number) => Math.round(n * 100) / 100
 
 /** Les factures correspondant à une liste de numéros. */

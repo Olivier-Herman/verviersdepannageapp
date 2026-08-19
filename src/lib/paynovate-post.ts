@@ -30,6 +30,7 @@
 // la TVA serait déduite deux fois.
 
 import { odooRpc } from '@/lib/odoo'
+import { unallocatedOdLines } from '@/lib/reconcile-odoo'
 import type { MatchedPayout } from '@/lib/paynovate-match'
 
 // Comptes et journaux, relevés sur la base de production.
@@ -82,6 +83,12 @@ export interface PostingPlan {
   invoiceIds:  number[]
   paymentIds:  number[]
   paymentsToCreate: MissingPayment[]
+  /**
+   * Montant des lignes passées en OD faute de facture identifiable. Il est
+   * couvert par l'OD elle-même (débit 542) et non par un paiement carte — le
+   * contrôle de disponibilité avant écriture doit donc le compter.
+   */
+  unallocatedTotal: number
   od:          { journal: number; date: string; ref: string; lines: OdLine[] } | null
   bankCounterpart: { account: number; amount: number }
   warnings:    string[]
@@ -110,6 +117,10 @@ export function buildPostingPlan(p: MatchedPayout): PostingPlan {
   // Bancontact manquant sur la caisse du terminal qui a encaissé.
   const paymentsToCreate: MissingPayment[] = []
   for (const t of p.txs) {
+    // Une ligne passée en OD n'a pas de facture à solder : son débit 542 vient
+    // de l'OD elle-même. La faire passer ici produisait un avertissement
+    // bloquant (« paiement à créer sur plusieurs factures »).
+    if (t.unallocated) continue
     if (t.paymentId || t.issue === 'gap' || t.issue === 'miss' || t.issue === 'draft') continue
     const paid = t.paymentState === 'paid' || t.paymentState === 'in_payment'
     if (paid) continue
@@ -133,12 +144,17 @@ export function buildPostingPlan(p: MatchedPayout): PostingPlan {
   }
 
   const paymentIds = p.txs.map(t => t.paymentId).filter((n): n is number => !!n)
-  const covered = paymentIds.length + paymentsToCreate.length
+  const covered = paymentIds.length + paymentsToCreate.length + p.txs.filter(t => t.unallocated).length
   if (covered !== p.txs.length) {
     warnings.push('Certaines transactions n\'ont ni paiement enregistré ni paiement créable — à traiter à la main')
   }
 
   const label = `Commission Paynovate — versement ${p.paymentId}${p.tid ? ` · terminal ${p.tid}` : ''} · ${p.bankDate}`
+
+  // Lignes dont on a décidé qu'elles partaient en OD : elles produisent le
+  // débit 542 manquant, en face du compte d'attente.
+  const odUnallocated = unallocatedOdLines(p.txs, `Paynovate ${p.paymentId}`)
+  const unallocatedTotal = r2(odUnallocated.reduce((s, l) => s + l.debit, 0))
 
   return {
     payoutId:   p.paymentId,
@@ -151,13 +167,17 @@ export function buildPostingPlan(p: MatchedPayout): PostingPlan {
     invoiceIds: p.txs.flatMap(t => t.invoiceIds),
     paymentIds,
     paymentsToCreate,
-    od: commission > 0.005 ? {
+    unallocatedTotal,
+    od: (commission > 0.005 || odUnallocated.length) ? {
       journal: ACC.odJournal,
       date:    p.bankDate,
       ref:     `Paynovate ${p.paymentId}`,
       lines: [
-        { account: ACC.payable,     label, debit: commission, credit: 0 },
-        { account: ACC.outstanding, label, debit: 0, credit: commission },
+        ...(commission > 0.005 ? [
+          { account: ACC.payable,     label, debit: commission, credit: 0 },
+          { account: ACC.outstanding, label, debit: 0, credit: commission },
+        ] : []),
+        ...odUnallocated,
       ],
     } : null,
     bankCounterpart: { account: ACC.outstanding, amount: p.bankAmount },
@@ -173,6 +193,7 @@ export function summarizePlans(plans: PostingPlan[]) {
     gross:        r2(plans.reduce((s, p) => s + p.gross, 0)),
     commission:   r2(plans.reduce((s, p) => s + p.commission, 0)),
     odCount:      plans.filter(p => p.od).length,
+    unallocated:  r2(plans.reduce((s, p) => s + (p.unallocatedTotal || 0), 0)),
     invoices:     new Set(plans.flatMap(p => p.invoiceIds)).size,
     withWarnings: plans.filter(p => p.warnings.length).length,
   }
@@ -216,7 +237,12 @@ export async function postPlan(plan: PostingPlan, actorNote?: string): Promise<{
   ]], { fields: ['id', 'debit', 'payment_id'], limit: 200 })
 
   const toCreateSum  = r2(plan.paymentsToCreate.reduce((s, m) => s + m.amount, 0))
-  const availableSum = r2(available.reduce((s, l) => s + Number(l.debit || 0), 0) + toCreateSum)
+  // Les lignes passées en OD n'ont pas de paiement carte : c'est l'OD qui
+  // fournira leur débit 542. Sans les compter ici, le contrôle refuserait à
+  // tort un versement qu'on vient précisément de débloquer.
+  const availableSum = r2(
+    available.reduce((s, l) => s + Number(l.debit || 0), 0) + toCreateSum + (plan.unallocatedTotal || 0),
+  )
   if (availableSum + 0.005 < plan.gross) {
     const used = plan.paymentIds.filter(id => !available.some(l => (Array.isArray(l.payment_id) ? l.payment_id[0] : l.payment_id) === id))
     throw new Error(
