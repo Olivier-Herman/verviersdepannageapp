@@ -16,6 +16,48 @@ export const ACC_OUTSTANDING = 542
 /** 499000 Suspense Accounts — où atterrissent les encaissements non affectés. */
 export const ACC_UNALLOCATED = 265
 
+/** 757100 Positive Payment Differences — on a encaissé un centime de trop. */
+export const ACC_ROUND_GAIN = 461
+/** 657100 Negative Payment Differences — un centime de moins. */
+export const ACC_ROUND_LOSS = 409
+
+/**
+ * Au-delà, ce n'est plus un arrondi mais un vrai écart, et c'est un humain qui
+ * tranche. La TVA d'une facture ne décale jamais que d'un centime ou deux ;
+ * cinq laisse de la marge sans rien laisser passer de significatif.
+ */
+export const ROUNDING_TOLERANCE = 0.05
+
+/**
+ * Les lignes d'OD qui absorbent les écarts d'arrondi.
+ *
+ * Le terminal encaisse 262,30 € pour une facture de 262,29 € : le paiement
+ * n'apporte que 262,29 € de débit 542, et le lettrage tombe un centime court.
+ * Ce centime doit exister quelque part, sinon la ligne bancaire reste ouverte
+ * pour un centime — ce qui n'a aucun sens.
+ */
+export function roundingOdLines(
+  txs: { amount: number; merchantRef: string; invoiceName?: string | null; rounding?: number | null }[],
+  context: string,
+): { account: number; label: string; debit: number; credit: number }[] {
+  const out: { account: number; label: string; debit: number; credit: number }[] = []
+  for (const t of txs) {
+    const diff = round2(t.rounding || 0)
+    if (!diff) continue
+    const label = `Écart d'arrondi — ${context} · ${t.invoiceName || t.merchantRef || 'sans référence'}`
+      + ` · encaissé ${t.amount.toFixed(2)} €`
+    if (diff > 0) {
+      // Encaissé plus que la facture : le débit 542 manquant, en produit.
+      out.push({ account: ACC_OUTSTANDING, label, debit: diff, credit: 0 })
+      out.push({ account: ACC_ROUND_GAIN,  label, debit: 0, credit: diff })
+    } else {
+      out.push({ account: ACC_ROUND_LOSS,  label, debit: -diff, credit: 0 })
+      out.push({ account: ACC_OUTSTANDING, label, debit: 0, credit: -diff })
+    }
+  }
+  return out
+}
+
 /**
  * Les lignes d'OD des encaissements qu'on a décidé de ne pas affecter.
  *

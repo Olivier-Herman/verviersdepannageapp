@@ -41,6 +41,8 @@ interface Tx {
   unallocated?: { amount: number; reason: string } | null
   /** Encaissement qui ne règle qu'une partie de la facture — cas légitime. */
   partial?: boolean
+  /** Écart d'arrondi signé, absorbé par l'OD. */
+  rounding?: number | null
 }
 
 interface Payout {
@@ -449,7 +451,12 @@ export default function ReconciliationClient({
                             {x.invoiceName || x.merchantRef || <span className="text-ink-faint italic">sans référence</span>}
                           </span>
                           {x.partner && <span className="text-[13.5px] text-ink-secondary">{x.partner}</span>}
-                          {!x.issue && !x.partial && <span className="text-xs font-semibold text-success">✓ facture soldée</span>}
+                          {!x.issue && !x.partial && !x.rounding && <span className="text-xs font-semibold text-success">✓ facture soldée</span>}
+                          {!x.issue && !!x.rounding && (
+                            <span className="rounded-full bg-info-soft px-2 py-0.5 text-[11px] font-semibold text-info">
+                              arrondi {x.rounding > 0 ? '+' : ''}{x.rounding.toFixed(2)} € — absorbé par l&apos;OD
+                            </span>
+                          )}
                           {!x.issue && x.partial && (
                             <span className="rounded-full bg-info-soft px-2 py-0.5 text-[11px] font-semibold text-info">
                               règlement partiel · {eur(x.amount)} sur {eur(x.invoiceTotal ?? x.amount)}

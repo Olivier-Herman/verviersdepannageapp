@@ -36,6 +36,7 @@ import {
   paymentsForInvoices,
   choosePayments,
   explainConsumedPayments,
+  ROUNDING_TOLERANCE,
 } from '@/lib/reconcile-odoo'
 import { loadUnallocated, findUnallocated } from '@/lib/payout-unallocated'
 
@@ -247,6 +248,17 @@ export async function buildSumupMatchReport(
         m.issue = null
         m.partial = true
         m.explanation = `${m.invoiceName} réglée en plusieurs fois — ${m.amount.toFixed(2)} € sur ${(m.invoiceTotal ?? 0).toFixed(2)} €`
+      }
+
+      // Écart d'arrondi : la TVA ne tombe pas juste, le terminal a pris un
+      // centime de plus ou de moins que la facture. Ce n'est pas un écart à
+      // trancher — l'OD l'absorbe, sinon la ligne bancaire resterait ouverte
+      // pour un centime.
+      const diff = round2(m.amount - pick.total)
+      if (m.issue === 'gap' && pick.ids.length && diff !== 0 && Math.abs(diff) <= ROUNDING_TOLERANCE) {
+        m.issue = null
+        m.rounding = diff
+        m.explanation = `${m.invoiceName} : ${m.amount.toFixed(2)} € encaissés pour ${pick.total.toFixed(2)} € — écart d'arrondi de ${diff > 0 ? '+' : ''}${diff.toFixed(2)} €, absorbé par l'OD`
       }
     }
 

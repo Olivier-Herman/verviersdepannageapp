@@ -28,7 +28,7 @@
 // sur la facture SumUp, une seule fois.
 
 import { ACC, type MissingPayment, type PostingPlan } from '@/lib/paynovate-post'
-import { unallocatedOdLines } from '@/lib/reconcile-odoo'
+import { unallocatedOdLines, roundingOdLines } from '@/lib/reconcile-odoo'
 import type { MatchedPayout } from '@/lib/paynovate-match'
 
 /** res.partner « SumUp Ltd - German Branch » — celui que porte la seule facture SumUp encodée. */
@@ -103,6 +103,11 @@ export function buildSumupPostingPlan(p: MatchedPayout): PostingPlan {
   const odUnallocated = unallocatedOdLines(p.txs, `SumUp ${ref}`)
   const unallocatedTotal = r2(odUnallocated.reduce((s, l) => s + l.debit, 0))
 
+  // Écarts d'arrondi : quelques centimes qui doivent exister quelque part,
+  // sinon la ligne bancaire reste ouverte pour un centime.
+  const odRounding = roundingOdLines(p.txs, `SumUp ${ref}`)
+  const roundingTotal = r2(p.txs.reduce((s, t) => s + (t.rounding || 0), 0))
+
   // Une transaction est couverte si elle est passée en OD, si toutes ses
   // factures ont leur paiement, ou si les manquants seront créés. On compte des
   // TRANSACTIONS : compter les paiements faussait le total dès qu'une seule
@@ -128,7 +133,8 @@ export function buildSumupPostingPlan(p: MatchedPayout): PostingPlan {
     paymentIds,
     paymentsToCreate,
     unallocatedTotal,
-    od: (commission > 0.005 || odUnallocated.length) ? {
+    roundingTotal,
+    od: (commission > 0.005 || odUnallocated.length || odRounding.length) ? {
       journal: ACC.odJournal,
       date:    p.bankDate,
       ref:     `SumUp ${ref}`,
@@ -138,6 +144,7 @@ export function buildSumupPostingPlan(p: MatchedPayout): PostingPlan {
           { account: ACC.outstanding, label, debit: 0, credit: commission },
         ] : []),
         ...odUnallocated,
+        ...odRounding,
       ],
     } : null,
     bankCounterpart: { account: ACC.outstanding, amount: p.bankAmount },

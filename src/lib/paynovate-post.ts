@@ -30,7 +30,7 @@
 // la TVA serait déduite deux fois.
 
 import { odooRpc } from '@/lib/odoo'
-import { unallocatedOdLines } from '@/lib/reconcile-odoo'
+import { unallocatedOdLines, roundingOdLines } from '@/lib/reconcile-odoo'
 import type { MatchedPayout } from '@/lib/paynovate-match'
 
 // Comptes et journaux, relevés sur la base de production.
@@ -83,6 +83,8 @@ export interface PostingPlan {
   invoiceIds:  number[]
   paymentIds:  number[]
   paymentsToCreate: MissingPayment[]
+  /** Somme signée des écarts d'arrondi absorbés par l'OD. */
+  roundingTotal: number
   /**
    * Montant des lignes passées en OD faute de facture identifiable. Il est
    * couvert par l'OD elle-même (débit 542) et non par un paiement carte — le
@@ -170,6 +172,11 @@ export function buildPostingPlan(p: MatchedPayout): PostingPlan {
   const odUnallocated = unallocatedOdLines(p.txs, `Paynovate ${p.paymentId}`)
   const unallocatedTotal = r2(odUnallocated.reduce((s, l) => s + l.debit, 0))
 
+  // Écarts d'arrondi : quelques centimes qui doivent exister quelque part,
+  // sinon la ligne bancaire reste ouverte pour un centime.
+  const odRounding = roundingOdLines(p.txs, `Paynovate ${p.paymentId}`)
+  const roundingTotal = r2(p.txs.reduce((s, t) => s + (t.rounding || 0), 0))
+
   return {
     payoutId:   p.paymentId,
     partnerId:  ACC.partner,
@@ -182,7 +189,8 @@ export function buildPostingPlan(p: MatchedPayout): PostingPlan {
     paymentIds,
     paymentsToCreate,
     unallocatedTotal,
-    od: (commission > 0.005 || odUnallocated.length) ? {
+    roundingTotal,
+    od: (commission > 0.005 || odUnallocated.length || odRounding.length) ? {
       journal: ACC.odJournal,
       date:    p.bankDate,
       ref:     `Paynovate ${p.paymentId}`,
@@ -192,6 +200,7 @@ export function buildPostingPlan(p: MatchedPayout): PostingPlan {
           { account: ACC.outstanding, label, debit: 0, credit: commission },
         ] : []),
         ...odUnallocated,
+        ...odRounding,
       ],
     } : null,
     bankCounterpart: { account: ACC.outstanding, amount: p.bankAmount },
