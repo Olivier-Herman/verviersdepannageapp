@@ -177,7 +177,7 @@ export function parseAllianzDispatchLink(url: string | null | undefined): { assi
 }
 
 /** PUT EDSRA (accepte l'affectation) sur des IDs Hexalite connus. */
-async function putAllianzAccept(caseId: string, assignmentId: string): Promise<{ ok: boolean; status?: number; error?: string }> {
+async function putAllianzAccept(caseId: string, assignmentId: string): Promise<{ ok: boolean; status?: number; error?: string; body?: string; already?: boolean }> {
   try {
     const token = await getValidAllianzToken()
     const url = `${BASE_URL}/hexalite-job-monitoring/v1.0/assistanceCases/${caseId}/assignments/${assignmentId}/status?cache_buster=${Date.now()}`
@@ -188,11 +188,15 @@ async function putAllianzAccept(caseId: string, assignmentId: string): Promise<{
     })
     if (res.ok) return { ok: true, status: res.status }
     const txt = await res.text().catch(() => '')
-    // Déjà accepté (EDSRA→EDSRA) → transition refusée mais ce n'est pas une erreur.
-    if (res.status === 400 && /DUPLICATE_STATUS_UPDATE|EDSRA\s+to\s+EDSRA/i.test(txt)) {
-      return { ok: true, status: res.status }
-    }
-    return { ok: false, status: res.status, error: `HTTP ${res.status} ${txt.slice(0, 120)}` }
+    // ⚠️ UN 400 N'EST PAS UNE ACCEPTATION. On le prenait pour « déjà accepté » et
+    // on écrivait « affectation acceptée » dans le journal — sans garder la
+    // réponse, donc sans moyen de voir la différence. Vendredi 14/08 : deux
+    // acceptations sur trois ont reçu un 400 et Olivier a dû les valider à la
+    // main dans Hexalite. On distingue désormais les deux cas, et on GARDE le
+    // corps de la réponse.
+    const dejaFait = res.status === 400 && /DUPLICATE_STATUS_UPDATE|EDSRA\s+to\s+EDSRA/i.test(txt)
+    if (dejaFait) return { ok: true, status: res.status, already: true, body: txt.slice(0, 300) }
+    return { ok: false, status: res.status, error: `HTTP ${res.status} ${txt.slice(0, 120)}`, body: txt.slice(0, 300) }
   } catch (e: any) {
     return { ok: false, error: e?.message || 'PUT KO' }
   }
@@ -209,7 +213,7 @@ async function putAllianzAccept(caseId: string, assignmentId: string): Promise<{
 export async function acceptAllianzByNumber(
   assignmentNumber: string,
   fallback?: { dispatchLink?: string | null; assignmentId?: string | null; caseId?: string | null },
-): Promise<{ ok: boolean; status?: number; error?: string; usedFallback?: boolean; dispatchLink?: string | null }> {
+): Promise<{ ok: boolean; status?: number; error?: string; usedFallback?: boolean; dispatchLink?: string | null; body?: string; already?: boolean }> {
   const an = (assignmentNumber || '').split('/')[0].trim()
   const link = fallback?.dispatchLink || null
 

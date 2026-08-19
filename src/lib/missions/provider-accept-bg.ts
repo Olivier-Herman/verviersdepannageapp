@@ -55,6 +55,15 @@ export async function acceptAllianzBg(
   if (!assignmentNumber) return
   const run = (async () => {
     try {
+      // ⚠️ Une seule tentative. `confirm` ET `assign` appellent tous deux cette
+      // fonction : vendredi 14/08, 2GVB511 a reçu deux PUT à une seconde
+      // d'intervalle. Le second tombe forcément sur « déjà à ce statut » et
+      // brouille le diagnostic. Olivier 2026-08-19.
+      const { data: dejaTente } = await supabase.from('mission_logs')
+        .select('id').eq('mission_id', missionId).ilike('action', 'allianz_sync%')
+        .gte('created_at', new Date(Date.now() - 10 * 60_000).toISOString()).limit(1)
+      if ((dejaTente || []).length > 0) return
+
       const { acceptAllianzByNumber } = await import('@/lib/allianz/intake')
       // Garde-fou : on récupère le lien dispatch-drawer du mail d'origine
       // (assignmentId + caseId) pour pouvoir accepter même si la recherche par
@@ -73,11 +82,18 @@ export async function acceptAllianzBg(
       const link = r.dispatchLink || otp?.dispatch_link || null
       await supabase.from('mission_logs').insert({
         mission_id: missionId, actor_id: actorId,
-        action: r.ok ? 'allianz_synced' : 'allianz_sync_error',
-        notes:  r.ok
+        // ⚠️ Ne PAS écrire « acceptée » sur un 400. Hexalite refuse alors la
+        // transition, et le dossier reste à valider à la main — c'est ce qui
+        // s'est passé deux fois vendredi 14/08 sans que rien ne le signale.
+        // Le corps de la réponse est conservé : sans lui, impossible de savoir
+        // si c'était « déjà accepté » ou un vrai refus. Olivier 2026-08-19.
+        action: r.ok && !(r as any).already ? 'allianz_synced' : 'allianz_sync_error',
+        notes:  r.ok && !(r as any).already
           ? `Allianz ↗ affectation acceptée (Hexalite${r.usedFallback ? ' — via lien mail' : ''})`
+          : (r as any).already
+          ? `Allianz ⚠️ Hexalite a refusé la transition (déjà à ce statut) — À VÉRIFIER À LA MAIN${link ? ` · ${link}` : ''}`
           : `Allianz ↗ acceptation : échec — ${r.error || 'inconnue'}${link ? ` · Ouvrir la fiche Hexalite : ${link}` : ''}`,
-        metadata: { assignment_number: assignmentNumber, http: r.status ?? null, ok: r.ok, error: r.error ?? null, used_fallback: r.usedFallback ?? false, dispatch_link: link },
+        metadata: { assignment_number: assignmentNumber, http: r.status ?? null, ok: r.ok, already: (r as any).already ?? false, error: r.error ?? null, reponse: (r as any).body ?? null, used_fallback: r.usedFallback ?? false, dispatch_link: link },
       }).then(() => {}, () => {})
     } catch (e: any) {
       await supabase.from('mission_logs').insert({
