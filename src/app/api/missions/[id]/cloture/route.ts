@@ -224,7 +224,16 @@ export async function POST(req: Request, { params }: { params: { id: string } })
 
   // Transformation en remorquage : la fiche suit (type + destination), comme le
   // fait déjà le flux actuel après une clôture +REM.
+  //
+  // ⚠️ Et la bascule INVERSE, qui manquait. « Finalement réparé — plus de
+  // remorquage » laissait la fiche en remorquage : le bandeau de clôture disait
+  // la bonne chose, mais le type restait faux et Olivier devait le corriger à la
+  // main (2FKB345, 19/08). Le tarif se calcule sur source + type — un type faux,
+  // c'est une facture fausse.
   const dest = body?.destination
+  if (outcome === 'rem2dsp') {
+    patch.mission_type = 'depannage'
+  }
   if (outcomeIsRem(outcome)) {
     patch.mission_type = 'remorquage'
     if (dest?.address) {
