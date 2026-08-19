@@ -5,7 +5,7 @@
 // la faire depuis un poste NON connecté. Le téléchargement passe par
 // /api/scan-agent qui revalide le code côté serveur.
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 
 export default function ScanInstallationPage() {
   const [code, setCode]         = useState('')
@@ -63,6 +63,8 @@ export default function ScanInstallationPage() {
               ⬇️ Télécharger l&apos;agent Scan (.zip)
             </a>
 
+            <AgentStatus />
+
             <div className="bg-surface border rounded-2xl p-6 space-y-4 text-sm">
               <h2 className="font-semibold text-ink">Installation Windows (une fois par PC)</h2>
               <ol className="list-decimal ml-5 space-y-2 text-ink-secondary">
@@ -109,6 +111,85 @@ export default function ScanInstallationPage() {
           </div>
         )}
       </div>
+    </div>
+  )
+}
+
+// ── État de l'agent sur CE poste ────────────────────────────────────────────
+// Le bouton « Scanner » se cache tout seul quand l'agent ne répond pas : bien
+// pour l'utilisateur, aveugle pour celui qui installe. Ce bloc dit ce que le
+// navigateur voit vraiment, et permet d'essayer un scan sans quitter la page.
+function AgentStatus() {
+  const [state, setState] = useState<'checking' | 'off' | 'on'>('checking')
+  const [info, setInfo]   = useState<any>(null)
+  const [test, setTest]   = useState<string | null>(null)
+  const [busy, setBusy]   = useState(false)
+
+  const probe = () => {
+    const ctrl = new AbortController()
+    const t = setTimeout(() => ctrl.abort(), 2000)
+    fetch('http://localhost:7182/health', { signal: ctrl.signal, cache: 'no-store' })
+      .then(r => r.ok ? r.json() : null)
+      .then(j => { if (j?.ok) { setInfo(j); setState('on') } else setState('off') })
+      .catch(() => setState('off'))
+      .finally(() => clearTimeout(t))
+  }
+  useEffect(() => { probe(); const i = setInterval(probe, 5000); return () => clearInterval(i) }, [])
+
+  const tryScan = async () => {
+    setBusy(true); setTest(null)
+    try {
+      const r = await fetch('http://localhost:7182/scan?source=flatbed&color=color&dpi=200', { cache: 'no-store' })
+      const j = await r.json()
+      setTest(j?.ok
+        ? `✅ Scan réussi : ${j.files.length} fichier(s) — ${j.files[0]?.name}`
+        : `❌ ${j?.error || 'échec'}`)
+    } catch { setTest('❌ Agent injoignable.') } finally { setBusy(false) }
+  }
+
+  const canScan = !!(info?.escl || info?.wia)
+
+  return (
+    <div className="bg-surface border rounded-2xl p-5 space-y-3 text-sm">
+      <h2 className="font-semibold text-ink">État sur ce poste</h2>
+
+      {state === 'checking' && <p className="text-ink-muted">Recherche de l&apos;agent…</p>}
+
+      {state === 'off' && (
+        <div className="bg-amber-50 border border-amber-200 rounded-xl p-3">
+          <p className="text-amber-900 font-medium">Agent non détecté sur ce poste.</p>
+          <p className="text-amber-800 text-xs mt-1">
+            Le bouton <strong>🖨️ Scanner</strong> reste invisible dans les fiches tant que cet agent ne répond pas.
+            Installe-le ci-dessous, puis cette ligne passera au vert toute seule.
+          </p>
+        </div>
+      )}
+
+      {state === 'on' && (
+        <div className={`${canScan ? 'bg-emerald-50 border-emerald-200' : 'bg-amber-50 border-amber-200'} border rounded-xl p-3 space-y-1`}>
+          <p className={canScan ? 'text-emerald-900 font-medium' : 'text-amber-900 font-medium'}>
+            {canScan ? '✅ Agent actif — le bouton Scanner s’affiche dans les fiches.' : '⚠ Agent actif, mais aucun scanner joignable.'}
+          </p>
+          <p className="text-xs text-ink-secondary">
+            Imprimante : <strong>{info?.printer || '— non configurée —'}</strong> ·
+            {' '}eSCL : {info?.escl ? 'oui' : 'non'} · WIA : {info?.wia ? 'oui' : 'non'}
+          </p>
+          {!canScan && (
+            <p className="text-amber-800 text-xs">
+              Vérifie l&apos;adresse dans <code className="bg-surface-2 px-1 rounded">config.json</code>, et que l&apos;imprimante est allumée.
+            </p>
+          )}
+          {canScan && (
+            <div className="pt-1">
+              <button onClick={tryScan} disabled={busy}
+                className="px-3 py-1.5 bg-surface-2 border rounded-lg text-xs font-semibold text-ink hover:border-brand disabled:opacity-50">
+                {busy ? '⏳ Scan en cours…' : '🧪 Tester un scan (depuis la vitre)'}
+              </button>
+              {test && <p className="text-xs mt-2 text-ink-secondary">{test}</p>}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   )
 }

@@ -6,6 +6,7 @@
 // Olivier 2026-07-10.
 
 import { useRef, useState } from 'react'
+import ScanToFicheButton from '@/components/missions/ScanToFicheButton'
 
 type RemarkType = 'general' | 'billing' | 'driver'
 
@@ -98,9 +99,15 @@ export default function RemarksAddModal({
           <div>
             <input ref={fileInput} type="file" multiple className="hidden"
               onChange={e => setFiles(Array.from(e.target.files || []))} />
-            <button onClick={() => fileInput.current?.click()} className="text-xs text-ink-faint hover:text-brand">
-              📎 Ajouter des pièces jointes
-            </button>
+            <div className="flex items-center gap-3 flex-wrap">
+              <button onClick={() => fileInput.current?.click()} className="text-xs text-ink-faint hover:text-brand">
+                📎 Ajouter des pièces jointes
+              </button>
+              {/* Scanner directement sur l'imprimante réseau (PC équipé de
+                  l'agent). Le scan rejoint la liste des pièces jointes : c'est
+                  « Enregistrer » qui envoie. Olivier 2026-08-19. */}
+              <ScanToFicheButton onScanned={fs => setFiles(prev => [...prev, ...fs])} />
+            </div>
             {files.length > 0 && (
               <ul className="mt-2 space-y-1 text-xs">
                 {files.map((f, i) => (

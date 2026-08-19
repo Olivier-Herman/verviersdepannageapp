@@ -42,10 +42,16 @@ const log = (...a) => console.log(new Date().toISOString().slice(0, 19).replace(
 // une sonde synchrone (jusqu'a 5 s quand l'imprimante est eteinte) le ferait
 // disparaitre alors que tout va bien.
 let esclOnline = false
+let esclMisses = 0
 async function refreshEsclState() {
   if (!CFG.printerHost) { esclOnline = false; return }
   const before = esclOnline
-  esclOnline = !!(await esclBase(CFG.printerHost))
+  const up = !!(await esclBase(CFG.printerHost))
+  // Une imprimante en veille profonde met parfois plusieurs secondes a repondre
+  // a la premiere requete : on ne la declare eteinte qu'apres DEUX echecs
+  // d'affilee, sinon le bouton clignoterait a chaque reveil.
+  if (up) { esclMisses = 0; esclOnline = true }
+  else if (++esclMisses >= 2) esclOnline = false
   if (before !== esclOnline) log(`imprimante ${esclOnline ? 'joignable' : 'injoignable'} (${CFG.printerHost})`)
 }
 
@@ -55,7 +61,7 @@ async function esclBase(host) {
   for (const base of [`http://${host}/eSCL`, `https://${host}/eSCL`]) {
     try {
       const ctrl = new AbortController()
-      const t = setTimeout(() => ctrl.abort(), 2500)
+      const t = setTimeout(() => ctrl.abort(), 6000)
       const r = await fetch(`${base}/ScannerCapabilities`, { signal: ctrl.signal })
       clearTimeout(t)
       if (r.ok) return { base, caps: await r.text() }
@@ -164,7 +170,12 @@ const server = http.createServer(async (req, res) => {
   send(404, { error: 'NOT_FOUND' })
 })
 
+// Au demarrage on insiste : le premier appel tombe souvent pendant que
+// l'imprimante se reveille, et attendre la minute suivante ferait croire que
+// l'agent ne trouve rien.
 refreshEsclState()
+setTimeout(refreshEsclState,  5_000).unref()
+setTimeout(refreshEsclState, 20_000).unref()
 setInterval(refreshEsclState, 60_000).unref()
 
 server.listen(PORT, '127.0.0.1', () => {

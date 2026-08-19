@@ -38,13 +38,16 @@ export default function ScanToFicheButton({
   const [busy, setBusy]           = useState(false)
   const [err, setErr]             = useState<string | null>(null)
 
-  // Sonde l'agent au montage : pas d'agent → pas de bouton.
+  // Sonde l'agent au montage : pas d'agent → pas de bouton. On exige aussi un
+  // chemin de scan disponible (escl ou wia), sinon on afficherait un bouton qui
+  // ne peut qu'echouer. L'agent tient cet etat a jour en tache de fond, la
+  // reponse est donc immediate.
   useEffect(() => {
     const ctrl = new AbortController()
     const t = setTimeout(() => ctrl.abort(), 1500)
     fetch(`${AGENT_URL}/health`, { signal: ctrl.signal, cache: 'no-store' })
       .then(r => r.ok ? r.json() : null)
-      .then(j => setAvailable(!!j?.ok))
+      .then(j => setAvailable(!!j?.ok && (!!j.escl || !!j.wia)))
       .catch(() => setAvailable(false))
       .finally(() => clearTimeout(t))
     return () => { clearTimeout(t); ctrl.abort() }
