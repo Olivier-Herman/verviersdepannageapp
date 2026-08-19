@@ -9,7 +9,7 @@
 // lire). Champ OPTIONNEL : les appelants existants ignorent simplement `mileage`.
 
 import Anthropic from '@anthropic-ai/sdk'
-import { ANTHROPIC_CHEAP_MODELS, createWithModelFallback } from '@/lib/anthropic-model'
+import { ANTHROPIC_CHEAP_MODELS, ANTHROPIC_MODELS, createWithModelFallback } from '@/lib/anthropic-model'
 import { looksLikePlate, looksLikeVin, normalizeOcr } from '@/lib/ocr/vehicle'
 
 const OCR_MODELS = [process.env.ANTHROPIC_OCR_MODEL, ...ANTHROPIC_CHEAP_MODELS].filter(Boolean) as string[]
@@ -54,7 +54,19 @@ la plaque constructeur (montant de portière, bas de pare-brise, compartiment
 moteur) ; sur ces plaques il est la LONGUE suite de 17 caractères, à côté du nom
 du constructeur et des masses en kg (3500 kg, 1650 kg…), qui ne sont PAS le VIN.
 
-OÙ LE CHERCHER AUSSI — LE CERTIFICAT D'IMMATRICULATION (Olivier 2026-08-14) :
+
+OÙ LE CHERCHER — TROIS ENDROITS, PAS UN (Olivier 2026-08-18/19) :
+ 1. la LANGUETTE AU BAS DU PARE-BRISE, côté conducteur : une petite plaquette
+    blanche ou grise portant les 17 caractères, souvent photographiée DE HAUT
+    et donc TOURNÉE À 90°, à travers un pare-brise sale, mouillé ou couvert de
+    reflets. C'est l'endroit le plus courant et c'est celui qu'on ratait ;
+ 2. le CERTIFICAT D'IMMATRICULATION posé sur le tableau de bord — repère
+    « E. VIN », encadré ;
+ 3. la plaque constructeur (montant de portière, compartiment moteur).
+Lis le texte quel que soit son sens. Un VIN écrit à la verticale reste un VIN,
+et une plaquette derrière un pare-brise mouillé aussi.
+
+LE CERTIFICAT D'IMMATRICULATION (Olivier 2026-08-14) :
 c'est l'endroit que les dépanneurs photographient le plus souvent, posé sur le
 tableau de bord ou derrière le pare-brise. Carte rose/verte intitulée
 « Kentekenbewijs Deel I », « Certificat d'immatriculation Partie I »,
@@ -166,13 +178,25 @@ export async function detectVehicleFromImages(rawImages: (string | null | undefi
   // une demande qui cherchait aussi la plaque et le compteur, le VIN est ressorti
   // null. Une question unique, sur les mêmes images, le retrouve. On ne relance
   // que si le premier passage n'a rien donné : coût nul dans le cas normal.
-  if (!result.vin) {
+  // ⚠️ UNE IMAGE À LA FOIS. Envoyer les douze d'un coup noyait la languette du
+  // pare-brise — petite, tournée à 90°, derrière une vitre mouillée. Le modèle la
+  // lit sans peine quand c'est la seule chose qu'on lui montre. Vu sur 2ERC726 le
+  // 19/08 : châssis parfaitement lisible, rendu null deux fois de suite.
+  // « Il me semble que l'OCR rate souvent des VIN » (Olivier) — c'était ça.
+  // Et sur le MODÈLE FIABLE, pas l'éco : la première passe tourne sur le petit
+  // modèle, donc la relancer sur le même ne rattrape rien. Elle ne s'exécute que
+  // lorsque la première a échoué — le surcoût ne touche que les cas perdus, et un
+  // châssis manquant bloque une clôture VAB entière.
+  const VIN_MODELS = ANTHROPIC_MODELS
+  for (let idx = 0; idx < images.length && !result.vin; idx++) {
     try {
-      const retry = await createWithModelFallback(client, OCR_MODELS, {
+      const retry = await createWithModelFallback(client, VIN_MODELS, {
         max_tokens: 120,
         system: `Tu cherches UNIQUEMENT le VIN (numéro de châssis) sur des photos de véhicule.
-Le VIN fait EXACTEMENT 17 caractères (jamais de I, O ni Q). Il est estampé sur la plaque
-constructeur, gravé sur le châssis, OU imprimé en clair au repère « E. VIN » du certificat
+Le VIN fait EXACTEMENT 17 caractères (jamais de I, O ni Q). Regarde D'ABORD la petite
+LANGUETTE AU BAS DU PARE-BRISE côté conducteur — souvent photographiee de haut, donc
+TOURNÉE À 90°, à travers un pare-brise sale ou mouillé : c'est l'endroit le plus courant.
+Puis la plaque constructeur, le châssis grave, OU le repère « E. VIN » du certificat
 d'immatriculation (« Kentekenbewijs Deel I » / « Certificat d'immatriculation Partie I »),
 que les dépanneurs photographient très souvent sur le tableau de bord. Un suffixe entre
 parenthèses — « (01) » — est un code de contrôle : ignore-le, renvoie les 17 caractères.
@@ -182,14 +206,15 @@ d'homologation (e1*...) ni le type du véhicule.
 Réponds UNIQUEMENT : {"vin":{"value":"<17 caractères>","image":<n>}} ou {"vin":null}.
 Si tu ne lis pas les 17 caractères en entier, réponds null. Ne DEVINE JAMAIS.`,
         messages: [{ role: 'user', content: [
-          ...images.map(({ data, media }) => ({ type: 'image', source: { type: 'base64', media_type: media, data } })),
-          { type: 'text', text: `Voici ${images.length} photo(s). Trouve le VIN. JSON strict uniquement.` },
+          { type: 'image', source: { type: 'base64', media_type: images[idx].media, data: images[idx].data } },
+          { type: 'text', text: `Une seule photo. Trouve le VIN dessus. JSON strict uniquement.` },
         ] }],
       })
       const t = retry.content.filter((c: any) => c.type === 'text').map((c: any) => c.text).join('')
         .replace(/^```json\s*/i, '').replace(/^```\s*/i, '').replace(/\s*```$/i, '').trim()
       const p2 = JSON.parse(t)
-      result.vin = validate(p2?.vin, 'vin')
+      const trouve = validate(p2?.vin, 'vin')
+      if (trouve) result.vin = { value: trouve.value, image: idx + 1 }
     } catch { /* la 2e passe est un bonus : son échec ne change rien */ }
   }
 
