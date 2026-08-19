@@ -294,6 +294,20 @@ export async function vabCloseOnSiteBrowser(opts: {
         }
       } else { steps.push('vin déjà validé') }
 
+      // ⚠️ Sur certains dossiers, le canevas n'est pas encore ouvert : il reste un
+      // bouton « Obtenir la signature ». On dessinait alors dans le vide, et
+      // « Fin lieu de la panne » ne faisait rien — sans que rien ne le dise. Vu
+      // sur 2HXU702 le 19/08, dont le kilométrage et le châssis étaient pourtant
+      // déjà remplis chez eux.
+      const aOuvrir = await page.evaluate(() => {
+        const c = document.querySelector('[id*="wtSignatureContainer"] canvas, .SignatureContainer canvas')
+        if (c) return false
+        const b = [...document.querySelectorAll('a, button')].find(e => /wtLink_GetSignature/.test((e as HTMLElement).id || ''))
+        if (!b) return false
+        ;(b as HTMLElement).click(); return true
+      }).catch(() => false)
+      if (aOuvrir) { steps.push('ouvrir la signature'); await new Promise(r => setTimeout(r, 5000)) }
+
       const drawn = await drawSignature(page)
       if (drawn) steps.push('signature dessinée')
       else {
