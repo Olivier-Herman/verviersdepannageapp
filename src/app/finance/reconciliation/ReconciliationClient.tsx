@@ -39,6 +39,8 @@ interface Tx {
   by?: string | null          // qui a encaissé — SumUp seulement
   /** Ligne qu'on a décidé de passer en OD sur le compte d'attente. */
   unallocated?: { amount: number; reason: string } | null
+  /** Encaissement qui ne règle qu'une partie de la facture — cas légitime. */
+  partial?: boolean
 }
 
 interface Payout {
@@ -154,7 +156,7 @@ function applyLink(
   res: {
     names: string[]; invoiceIds: number[]; total: number; partner: string
     paymentState: string | null
-    confidence?: string; explanation?: string; manual?: boolean
+    confidence?: string; explanation?: string; manual?: boolean; partial?: boolean
     candidates?: Tx['candidates']
   },
 ): Report {
@@ -164,7 +166,10 @@ function applyLink(
       if (i !== txIndex) return x
       const linked = res.invoiceIds.length > 0
       const sure   = res.confidence ? ['exact', 'corrige', 'plaque'].includes(res.confidence) : true
-      const fits   = Math.abs(res.total - x.amount) < 0.005
+      // « fits » vaut aussi pour un règlement partiel : la facture vaut plus que
+      // l'encaissement, mais un paiement du montant exact existe. Le serveur l'a
+      // vérifié — sans ça l'écran annonçait un blocage qui n'en était pas un.
+      const fits   = Math.abs(res.total - x.amount) < 0.005 || !!res.partial
       const paid   = res.paymentState === 'paid' || res.paymentState === 'in_payment'
       const issue: Tx['issue'] =
         (!linked || !sure) ? 'miss'
@@ -182,6 +187,7 @@ function applyLink(
         invoiceTotal: linked ? res.total : null,
         paymentState: res.paymentState,
         candidates:   res.candidates ?? [],
+        partial:      !!res.partial,
         issue,
       }
     })
@@ -443,7 +449,12 @@ export default function ReconciliationClient({
                             {x.invoiceName || x.merchantRef || <span className="text-ink-faint italic">sans référence</span>}
                           </span>
                           {x.partner && <span className="text-[13.5px] text-ink-secondary">{x.partner}</span>}
-                          {!x.issue && <span className="text-xs font-semibold text-success">✓ facture soldée</span>}
+                          {!x.issue && !x.partial && <span className="text-xs font-semibold text-success">✓ facture soldée</span>}
+                          {!x.issue && x.partial && (
+                            <span className="rounded-full bg-info-soft px-2 py-0.5 text-[11px] font-semibold text-info">
+                              règlement partiel · {eur(x.amount)} sur {eur(x.invoiceTotal ?? x.amount)}
+                            </span>
+                          )}
                           {x.manual && (
                             <Detacher
                               endpoint={endpoint}

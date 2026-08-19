@@ -18,6 +18,7 @@ import { buildMatchReport }          from '@/lib/paynovate-match'
 import { buildPostingPlan, summarizePlans, postPlan } from '@/lib/paynovate-post'
 import { saveOverride, removeOverride, resolveReference } from '@/lib/paynovate-resolve'
 import { markUnallocated, clearUnallocated } from '@/lib/payout-unallocated'
+import { paymentsForInvoices } from '@/lib/reconcile-odoo'
 
 export const dynamic     = 'force-dynamic'
 export const maxDuration = 120
@@ -96,9 +97,19 @@ export async function PUT(req: NextRequest) {
   try {
     const saved = await saveOverride(ref, amount, names, access.id)
     const fits  = Math.abs(saved.total - amount) < 0.005
+
+    // Une facture peut être réglée en plusieurs fois : le total ne correspond
+    // pas, mais il existe un paiement du montant exact. Ce n'est pas un écart,
+    // et le dire tout de suite évite d'annoncer un blocage qui n'existe pas.
+    let partial = false
+    if (!fits) {
+      const byInvoice = await paymentsForInvoices(saved.invoiceIds)
+      partial = [...byInvoice.values()].flat().some(p => Math.abs(p.amount - amount) < 0.005)
+    }
+
     return NextResponse.json({
-      ok: true, ...saved,
-      warning: fits ? null
+      ok: true, ...saved, partial,
+      warning: fits || partial ? null
         : `Le total des factures (${saved.total.toFixed(2)} €) ne correspond pas aux ${amount.toFixed(2)} € encaissés — le versement restera à trancher.`,
     })
   } catch (e: any) {

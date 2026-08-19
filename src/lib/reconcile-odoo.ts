@@ -71,18 +71,54 @@ export async function invoicesByName(names: string[]): Promise<Map<string, any>>
  * que pour les encaissements caisse. On interroge donc le lien réel,
  * `reconciled_invoice_ids`, qui vaut pour tous les paiements.
  */
-export async function paymentsForInvoices(invoiceIds: number[]): Promise<Map<number, number>> {
-  const map = new Map<number, number>()
+export interface InvoicePayment { id: number; amount: number }
+
+export async function paymentsForInvoices(invoiceIds: number[]): Promise<Map<number, InvoicePayment[]>> {
+  const map = new Map<number, InvoicePayment[]>()
   if (!invoiceIds.length) return map
   const rows = await odooRpc<any[]>('account.payment', 'search_read', [[
     ['reconciled_invoice_ids', 'in', invoiceIds],
-  ]], { fields: ['id', 'reconciled_invoice_ids'], limit: invoiceIds.length + 200 })
+  ]], { fields: ['id', 'amount', 'reconciled_invoice_ids'], limit: invoiceIds.length + 200 })
   for (const p of rows) {
     for (const inv of (p.reconciled_invoice_ids || [])) {
-      if (!map.has(Number(inv))) map.set(Number(inv), p.id)
+      const key = Number(inv)
+      map.set(key, [...(map.get(key) || []), { id: Number(p.id), amount: Number(p.amount) || 0 }])
     }
   }
+  // Tri déterministe : jamais l'ordre de retour d'Odoo.
+  for (const list of map.values()) list.sort((a, b) => a.id - b.id)
   return map
+}
+
+/**
+ * Quels paiements lettrer pour une transaction, parmi ceux de ses factures.
+ *
+ * Une facture peut être réglée en PLUSIEURS FOIS — 220 € payés 200 € en espèces
+ * et 20 € par carte. L'encaissement carte ne vaut alors pas le total de la
+ * facture, et le comparer à ce total le faisait passer pour un écart de
+ * montant. On cherche donc d'abord le paiement qui vaut exactement la
+ * transaction ; à défaut, on prend tous ceux de la ou des factures.
+ *
+ * `taken` évite que deux transactions du même versement se disputent le même
+ * paiement — il est complété au fur et à mesure par l'appelant.
+ */
+export function choosePayments(
+  amount: number,
+  payableIds: number[],
+  byInvoice: Map<number, InvoicePayment[]>,
+  taken: Set<number>,
+): { ids: number[]; total: number; exact: boolean } {
+  const pool = [...new Map(
+    payableIds.flatMap(id => (byInvoice.get(id) || []).map(p => [p.id, p] as const)),
+  ).values()].filter(p => !taken.has(p.id))
+
+  const exact = pool.find(p => Math.abs(p.amount - amount) < 0.005)
+  const picked = exact ? [exact] : pool
+  return {
+    ids:   picked.map(p => p.id),
+    total: round2(picked.reduce((s, p) => s + p.amount, 0)),
+    exact: !!exact,
+  }
 }
 
 /**

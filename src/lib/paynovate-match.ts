@@ -33,6 +33,7 @@ import {
   round2,
   invoicesByName,
   paymentsForInvoices,
+  choosePayments,
   explainConsumedPayments,
 } from '@/lib/reconcile-odoo'
 import { loadUnallocated, findUnallocated } from '@/lib/payout-unallocated'
@@ -74,6 +75,8 @@ export interface MatchedTx {
    * rattachement « facture + NC » passait pour incomplet.
    */
   payableIds:   number[]
+  /** Encaissement qui ne règle qu'une PARTIE de la facture — cas légitime. */
+  partial?:     boolean
   candidates:   { id: number; name: string; partner: string; amount: number; date: string; payment_state?: string | null }[]
   manual:       boolean         // rattachement humain → détachable depuis l'écran
   issue:        'lost' | 'gap' | 'miss' | 'used' | 'draft' | null
@@ -277,10 +280,26 @@ export async function buildMatchReport(
     }
 
     // Les paiements Odoo déjà enregistrés, à lettrer contre la ligne bancaire.
+    //
+    // On alloue transaction par transaction, en réservant au passage : deux
+    // encaissements du même versement peuvent porter sur la même facture, et
+    // ils ne doivent pas se disputer le même paiement.
     const payments = await paymentsForInvoices(matched.flatMap(m => m.invoiceIds))
+    const taken = new Set<number>()
     for (const m of matched) {
-      m.paymentIds = [...new Set(m.payableIds.map(id => payments.get(id)).filter((n): n is number => !!n))]
-      m.paymentId  = m.paymentIds[0] ?? null
+      const pick = choosePayments(m.amount, m.payableIds, payments, taken)
+      m.paymentIds = pick.ids
+      m.paymentId  = pick.ids[0] ?? null
+      pick.ids.forEach(id => taken.add(id))
+
+      // Règlement partiel : la facture vaut plus que l'encaissement, mais il
+      // existe un paiement du montant exact. Ce n'est pas un écart — c'est une
+      // facture réglée en plusieurs fois, et c'est ce paiement-là qu'on lettre.
+      if (m.issue === 'gap' && pick.exact) {
+        m.issue = null
+        m.partial = true
+        m.explanation = `${m.invoiceName} réglée en plusieurs fois — ${m.amount.toFixed(2)} € sur ${(m.invoiceTotal ?? 0).toFixed(2)} €`
+      }
     }
 
     // Un paiement déjà lettré ailleurs rend le versement non rapprochable.
