@@ -29,6 +29,7 @@
 import { odooRpc }        from '@/lib/odoo'
 import { readAllAdvices, type PaymentAdvice } from '@/lib/payment-advices'
 import { cachedAdvices }  from '@/lib/advice-cache'
+import { loadAllUnallocated, findUnallocated } from '@/lib/payout-unallocated'
 
 export type AdviceState = 'pending' | 'ready' | 'gap' | 'miss' | 'orphan' | 'done'
 
@@ -53,6 +54,14 @@ export interface MatchedInvoice {
   issue:        'introuvable' | 'écart' | 'déjà soldée' | null
   /** L'assureur règle puis reprend la même facture dans le même avis : effet nul. */
   neutralisee?: boolean
+  /**
+   * Ligne qu'on a décidé de passer en OD, faute de facture retrouvée. Elle
+   * cesse de bloquer le virement : une OD dédiée apportera son débit 542, avec
+   * le commentaire saisi en libellé.
+   */
+  unallocated?: { amount: number; reason: string } | null
+  /** Clé de la décision — stable : la ligne bancaire ne bouge pas. */
+  linkKey?: string
 }
 
 export interface MatchedAdvicePayment {
@@ -224,6 +233,9 @@ export async function buildAdviceReport(
 
   const invoices = await invoicesByRefs(advices.flatMap(a => a.lines.map(l => l.invoiceRef)))
 
+  // Les lignes déjà passées en OD — chargées en bloc, une requête pour l'écran.
+  const unallocated = await loadAllUnallocated('assureur')
+
   const items: MatchedAdvicePayment[] = []
   const usedLineIds = new Set<number>()
 
@@ -244,9 +256,22 @@ export async function buildAdviceReport(
     })
     if (bank) usedLineIds.add(bank.id)
 
+    // Décisions humaines « passer cette ligne en OD ». La clé s'appuie sur la
+    // ligne bancaire, qui ne bouge pas — contrairement au mail d'avis, dont
+    // l'identifiant change quand il change de dossier.
+    for (const x of resolved) {
+      if (!bank) continue
+      x.linkKey = `${bank.id}:${x.ref}`
+      const od = findUnallocated(unallocated, x.linkKey, x.amount)
+      if (od) {
+        x.unallocated = { amount: od.amount, reason: od.reason }
+        x.issue = null            // elle ne bloque plus : l'OD apportera son débit
+      }
+    }
+
     const blocking: string[] = []
     for (const x of resolved) {
-      if (x.neutralisee) continue   // réglée puis reprise : rien à signaler
+      if (x.neutralisee || x.unallocated) continue   // réglée puis reprise, ou passée en OD
       if (x.issue === 'introuvable') blocking.push(`Aucune facture pour la référence ${x.ref}`)
       if (x.issue === 'écart')       blocking.push(`${x.invoiceName} : ${x.amount.toFixed(2)} € annoncés pour une facture de ${(x.invoiceTotal ?? 0).toFixed(2)} €`)
       if (x.issue === 'déjà soldée') blocking.push(`${x.invoiceName} est déjà soldée dans Odoo`)
@@ -261,7 +286,7 @@ export async function buildAdviceReport(
     const state: AdviceState =
       !bank                                          ? 'pending'
       : bank.is_reconciled                           ? 'done'
-      : resolved.some(x => x.issue === 'introuvable') ? 'miss'
+      : resolved.some(x => x.issue === 'introuvable' && !x.unallocated) ? 'miss'
       : blocking.length                              ? 'gap'
       : 'ready'
 

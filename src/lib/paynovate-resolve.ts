@@ -176,7 +176,7 @@ async function readInvoicesById(ids: number[]) {
  * cloisonnés par prestataire : « 2DPU256 » tapé sur un terminal Paynovate et
  * sur un terminal SumUp ne désignent pas forcément la même facture.
  */
-export type Provider = 'paynovate' | 'sumup'
+export type Provider = 'paynovate' | 'sumup' | 'assureur'
 
 /** Un rattachement manuel enregistré pour cette référence et ce montant. */
 async function readOverride(ref: string, amount: number, provider: Provider) {

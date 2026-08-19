@@ -18,6 +18,8 @@ import { createAdminClient }         from '@/lib/supabase'
 import { buildAdviceReport }         from '@/lib/advice-match'
 import { syncAdvices }               from '@/lib/advice-cache'
 import { buildAdvicePlan, summarizeAdvicePlans, postAdvicePlan } from '@/lib/advice-post'
+import { markUnallocated, clearUnallocated } from '@/lib/payout-unallocated'
+import { humanOdooError } from '@/lib/reconcile-odoo'
 
 export const dynamic     = 'force-dynamic'
 export const maxDuration = 180
@@ -119,7 +121,8 @@ export async function POST(req: NextRequest) {
         done.add(id)
         results.push({ bankLineId: id, ok: true, invoices: reconciled })
       } catch (e: any) {
-        results.push({ bankLineId: id, ok: false, error: String(e?.message || e) })
+        // Jamais la pile Odoo dans l'écran : seulement la phrase utile.
+        results.push({ bankLineId: id, ok: false, error: humanOdooError(e) })
       }
     }
 
@@ -127,5 +130,43 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: okCount > 0, done: okCount, results })
   } catch (e: any) {
     return NextResponse.json({ error: String(e?.message || e) }, { status: 500 })
+  }
+}
+
+/**
+ * PATCH → décide qu'une LIGNE de l'avis part en OD sur le compte d'attente,
+ * faute de facture retrouvée. Ou annule cette décision.
+ *
+ * Une écriture par ligne, avec son propre commentaire : c'est la seule chose
+ * lisible que le comptable aura en face du montant resté en 499000. On ne
+ * rapproche rien ici — le virement redevient rapprochable par le chemin normal.
+ */
+export async function PATCH(req: NextRequest) {
+  const session = await getServerSession(authOptions)
+  const access  = sessionAccess(session, ACCESS)
+  if (!access.ok) return NextResponse.json({ error: 'Non autorisé' }, { status: 403 })
+
+  const body    = await req.json().catch(() => ({}))
+  const linkKey = String(body.linkKey || '').trim()
+  const amount  = Number(body.amount)
+  if (!linkKey || !Number.isFinite(amount)) {
+    return NextResponse.json({ error: 'Ligne ou montant manquant' }, { status: 400 })
+  }
+
+  try {
+    if (body.clear) {
+      const cleared = await clearUnallocated('assureur', linkKey, amount)
+      return NextResponse.json({ ok: true, cleared })
+    }
+    const saved = await markUnallocated({
+      provider: 'assureur',
+      linkKey,
+      amount,
+      reason:   String(body.reason || ''),
+      userId:   access.id,
+    })
+    return NextResponse.json({ ok: true, unallocated: { amount: saved.amount, reason: saved.reason } })
+  } catch (e: any) {
+    return NextResponse.json({ error: String(e?.message || e) }, { status: 400 })
   }
 }

@@ -33,6 +33,8 @@ export const SUSPENSE = 265
 export const OUTSTANDING = 542
 /** Journal d'opérations diverses (MISC, société Verviers Depannage). */
 export const OD_JOURNAL = 9
+/** 499000 Suspense Accounts — où attendent les montants non affectés. */
+export const UNALLOCATED_ACC = 265
 
 export interface AdvicePostingPlan {
   bankLineId:  number
@@ -50,6 +52,12 @@ export interface AdvicePostingPlan {
   invoiceAmounts: number[]
   /** Factures réglées puis reprises dans le même avis : non lettrées, annotées. */
   neutralisees: { invoiceId: number; name: string; amount: number }[]
+  /**
+   * Lignes de l'avis passées en OD faute de facture retrouvée. UNE ÉCRITURE PAR
+   * LIGNE, chacune avec son commentaire — pour qu'on sache six mois plus tard
+   * à quoi correspond chaque montant resté en compte d'attente.
+   */
+  unallocated: { ref: string; amount: number; reason: string }[]
   warnings:    string[]
 }
 
@@ -69,7 +77,13 @@ export function buildAdvicePlan(item: MatchedAdvicePayment): AdvicePostingPlan {
 
   // Les factures réglées puis reprises dans le même avis restent dues : on ne
   // les lettre pas, sinon on solderait une créance que l'assureur n'a pas payée.
-  const utiles = item.invoices.filter(i => !i.neutralisee)
+  // Les lignes passées en OD sortent du lettrage des créances : leur débit 542
+  // viendra de leur propre écriture.
+  const unallocated = item.invoices
+    .filter(i => i.unallocated)
+    .map(i => ({ ref: i.invoiceName || i.ref, amount: r2(i.unallocated!.amount || i.amount), reason: i.unallocated!.reason }))
+
+  const utiles = item.invoices.filter(i => !i.neutralisee && !i.unallocated)
   const withInvoice = utiles.filter(i => i.invoiceId)
   if (withInvoice.length !== utiles.length) {
     warnings.push('Certaines lignes de l\'avis n\'ont pas de facture retrouvée')
@@ -92,6 +106,7 @@ export function buildAdvicePlan(item: MatchedAdvicePayment): AdvicePostingPlan {
     invoiceNames: withInvoice.map(i => i.invoiceName as string),
     invoiceAmounts: withInvoice.map(i => r2(i.amount)),
     neutralisees,
+    unallocated,
     warnings,
   }
 }
@@ -153,16 +168,20 @@ export async function postAdvicePlan(plan: AdvicePostingPlan): Promise<{ reconci
     ['reconciled', '=', false],
   ]], { fields: ['id', 'debit', 'credit', 'amount_residual', 'move_id'], limit: 300 })
 
-  if (!receivables.length) {
+  if (!receivables.length && plan.invoiceIds.length) {
     throw new Error('Aucune créance ouverte sur ces factures — elles ont déjà été soldées')
   }
 
   // Le solde dû doit couvrir le virement, sinon on lettrerait à moitié.
+  // Ce que les créances doivent couvrir : le virement MOINS ce qui part en OD.
+  const odSum   = r2(plan.unallocated.reduce((s, u) => s + u.amount, 0))
+  const toCover = r2(plan.amount - odSum)
   const openSum = r2(receivables.reduce((s, l) => s + Number(l.amount_residual || 0), 0))
-  if (openSum + 0.02 < plan.amount) {
+  if (openSum + 0.02 < toCover) {
     const soldees = plan.invoiceIds.length - receivables.length
     throw new Error(
-      `Créances insuffisantes : ${openSum.toFixed(2)} € encore dus pour un virement de ${plan.amount.toFixed(2)} €`
+      `Créances insuffisantes : ${openSum.toFixed(2)} € encore dus pour ${toCover.toFixed(2)} € à lettrer`
+      + (odSum ? ` (virement ${plan.amount.toFixed(2)} € dont ${odSum.toFixed(2)} € passés en OD)` : '')
       + (soldees > 0 ? ` — ${soldees} facture(s) déjà soldée(s) par ailleurs` : '')
       + '. À traiter à la main.',
     )
@@ -174,17 +193,24 @@ export async function postAdvicePlan(plan: AdvicePostingPlan): Promise<{ reconci
 
   // ── Écritures ─────────────────────────────────────────────
   let paymentIds: number[] = []
+  const odMoveIds: number[] = []
+  const odLineIds: number[] = []
   let moved = false
   try {
-    paymentIds = await registerInsurerPayments(plan, journalId, methodLineId)
+    // Une facture peut n'avoir aucune ligne à lettrer si TOUT l'avis part en OD.
+    paymentIds = plan.invoiceIds.length
+      ? await registerInsurerPayments(plan, journalId, methodLineId)
+      : []
 
     // Les lignes d'encaissement en suspens que les paiements viennent de créer.
     const moveIds = await Promise.all(paymentIds.map(paymentMoveId))
-    const outstanding = await odooRpc<any[]>('account.move.line', 'search_read', [[
-      ['move_id', 'in', moveIds],
-      ['account_id', '=', OUTSTANDING],
-      ['reconciled', '=', false],
-    ]], { fields: ['id'], limit: 100 })
+    const outstanding = moveIds.length
+      ? await odooRpc<any[]>('account.move.line', 'search_read', [[
+          ['move_id', 'in', moveIds],
+          ['account_id', '=', OUTSTANDING],
+          ['reconciled', '=', false],
+        ]], { fields: ['id'], limit: 100 })
+      : []
     if (outstanding.length !== paymentIds.length) {
       throw new Error(
         `${paymentIds.length} paiement(s) créé(s) mais ${outstanding.length} ligne(s) en compte d'attente`
@@ -192,15 +218,27 @@ export async function postAdvicePlan(plan: AdvicePostingPlan): Promise<{ reconci
       )
     }
 
+    // UNE ÉCRITURE PAR LIGNE passée en OD, chacune avec son commentaire. C'est
+    // ce qui rend le montant identifiable en compte d'attente des mois plus
+    // tard : une OD groupée ne dirait que « divers ».
+    for (const u of plan.unallocated) {
+      const od = await postUnallocatedOd(plan, u)
+      odMoveIds.push(od.moveId)
+      odLineIds.push(od.lineId)
+    }
+
     await odooRpc('account.move.line', 'write', [[suspenseLineId], {
       account_id: OUTSTANDING,
       partner_id: plan.partnerId,
       name: `Avis ${plan.payerLabel}${plan.adviceRef ? ` ${plan.adviceRef}` : ''}`
-          + ` — ${plan.invoiceIds.length} facture${plan.invoiceIds.length > 1 ? 's' : ''}`,
+          + ` — ${plan.invoiceIds.length} facture${plan.invoiceIds.length > 1 ? 's' : ''}`
+          + (plan.unallocated.length
+              ? ` + ${plan.unallocated.length} ligne${plan.unallocated.length > 1 ? 's' : ''} en attente d'affectation`
+              : ''),
     }])
     moved = true
 
-    await odooRpc('account.move.line', 'reconcile', [[suspenseLineId, ...outstanding.map(l => l.id)]])
+    await odooRpc('account.move.line', 'reconcile', [[suspenseLineId, ...outstanding.map(l => l.id), ...odLineIds]])
 
     // Le détail et l'avis d'origine, là où on les cherche : sur le paiement.
     // Hors du bloc critique — si ça échoue, le lettrage reste bon.
@@ -237,6 +275,14 @@ export async function postAdvicePlan(plan: AdvicePostingPlan): Promise<{ reconci
       try {
         await odooRpc('account.payment', 'action_draft', [paymentIds])
         await odooRpc('account.payment', 'unlink',       [paymentIds])
+      } catch { /* idem */ }
+    }
+    // Les OD de compte d'attente aussi : sinon on laisse des montants parqués
+    // en face d'un virement qui, lui, n'a pas bougé.
+    for (const id of odMoveIds.reverse()) {
+      try {
+        await odooRpc('account.move', 'button_draft', [[id]])
+        await odooRpc('account.move', 'unlink',       [[id]])
       } catch { /* idem */ }
     }
     throw e
@@ -399,4 +445,49 @@ async function postNeutralisationOd(
     await postChatterMessage('account.move', n.invoiceId,
       `<p><b>Reprise par l'assureur</b> — ${label} Une OD de constat a été passée (${plan.bankMove}).</p>`)
   } catch { /* confort */ }
+}
+
+/**
+ * Une ligne d'avis qu'on n'a pas su rattacher, passée en compte d'attente.
+ *
+ * L'assureur a bien viré l'argent : la ligne bancaire doit pouvoir se lettrer.
+ * Faute de facture, on fabrique le débit 542 qui manque, en face de 499000, et
+ * le commentaire saisi devient le libellé — c'est la seule chose lisible que
+ * le comptable aura en face du montant.
+ *
+ *     542 Encaissements en suspens   montant D   → rejoint le lettrage
+ *     499000 Suspense Accounts       montant C   → reste à affecter
+ *
+ * @returns l'écriture créée et sa ligne 542, à joindre au lettrage.
+ */
+async function postUnallocatedOd(
+  plan: AdvicePostingPlan,
+  u: { ref: string; amount: number; reason: string },
+): Promise<{ moveId: number; lineId: number }> {
+  const label =
+    `${u.amount >= 0 ? 'Encaissement' : 'Reprise'} non affecté${u.amount >= 0 ? '' : 'e'} — ${plan.payerLabel}${plan.adviceRef ? ` ${plan.adviceRef}` : ''}`
+    + ` · réf. ${u.ref} · virement ${plan.bankMove} du ${plan.bankDate} — ${u.reason}`
+
+  const [moveId] = await odooRpc<number[]>('account.move', 'create', [[{
+    journal_id: OD_JOURNAL,
+    date:       plan.bankDate,
+    ref:        `Non affecté ${u.ref} — ${plan.bankMove}`,
+    narration:  label,
+    // Une reprise ou un double paiement vient EN DÉDUCTION du virement : le
+    // sens de l'écriture s'inverse, sinon Odoo refuse un débit négatif.
+    line_ids: u.amount >= 0 ? [
+      [0, 0, { account_id: OUTSTANDING,     partner_id: plan.partnerId, name: label, debit: u.amount, credit: 0 }],
+      [0, 0, { account_id: UNALLOCATED_ACC, partner_id: plan.partnerId, name: label, debit: 0, credit: u.amount }],
+    ] : [
+      [0, 0, { account_id: UNALLOCATED_ACC, partner_id: plan.partnerId, name: label, debit: -u.amount, credit: 0 }],
+      [0, 0, { account_id: OUTSTANDING,     partner_id: plan.partnerId, name: label, debit: 0, credit: -u.amount }],
+    ],
+  }]])
+  await odooRpc('account.move', 'action_post', [[moveId]])
+
+  const [line] = await odooRpc<any[]>('account.move.line', 'search_read', [[
+    ['move_id', '=', moveId], ['account_id', '=', OUTSTANDING],
+  ]], { fields: ['id'], limit: 1 })
+  if (!line) throw new Error(`OD ${u.ref} créée mais sa ligne 542 est introuvable`)
+  return { moveId, lineId: line.id }
 }

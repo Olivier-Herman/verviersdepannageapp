@@ -66,6 +66,34 @@ export async function loadUnallocated(
   return out
 }
 
+/**
+ * Toutes les décisions d'un prestataire.
+ *
+ * Pour les assureurs, la clé combine la ligne bancaire et la référence annoncée
+ * — on ne peut pas la deviner avant d'avoir apparié avis et virement. Charger
+ * le lot entier reste une requête, et la table n'en compte qu'une poignée.
+ */
+export async function loadAllUnallocated(provider: Provider): Promise<Map<string, Unallocated>> {
+  const out = new Map<string, Unallocated>()
+  const sb = createAdminClient()
+  const { data } = await sb
+    .from('payout_unallocated_lines')
+    .select('link_key, amount, account_id, reason, created_at')
+    .eq('provider', provider)
+    .order('id', { ascending: true })
+
+  for (const r of data || []) {
+    out.set(keyOf(String(r.link_key), Number(r.amount)), {
+      linkKey:   String(r.link_key),
+      amount:    Number(r.amount),
+      accountId: Number(r.account_id) || ACC_UNALLOCATED,
+      reason:    String(r.reason || ''),
+      createdAt: String(r.created_at || ''),
+    })
+  }
+  return out
+}
+
 /** La ligne de ce lot, s'il y en a une. */
 export const findUnallocated = (
   map: Map<string, Unallocated>,
@@ -89,8 +117,12 @@ export async function markUnallocated(args: {
 }): Promise<Unallocated> {
   const linkKey = args.linkKey.trim()
   const reason  = args.reason.trim()
-  if (!linkKey)          throw new Error('Ligne non identifiée')
-  if (!Number.isFinite(args.amount) || args.amount <= 0) throw new Error('Montant invalide')
+  if (!linkKey) throw new Error('Ligne non identifiée')
+  // Négatif accepté : un avis assureur porte aussi des reprises et des doubles
+  // paiements, qui viennent en déduction du virement.
+  if (!Number.isFinite(args.amount) || Math.abs(args.amount) < 0.005) {
+    throw new Error('Montant invalide')
+  }
   if (reason.length < 3) throw new Error('Indique en une phrase pourquoi cette ligne part en OD — ce commentaire ira dans l\'écriture')
 
   const sb = createAdminClient()

@@ -19,6 +19,10 @@ interface Invoice {
   paymentState: string | null
   matchedBy: string | null
   issue: 'introuvable' | 'écart' | 'déjà soldée' | null
+  /** Clé de la décision « passer en OD » — posée par le serveur. */
+  linkKey?: string
+  /** Ligne passée en OD sur le compte d'attente, avec son commentaire. */
+  unallocated?: { amount: number; reason: string } | null
 }
 
 interface Item {
@@ -259,17 +263,48 @@ export default function AdvicesClient() {
                     </p>
                   ))}
                   {i.invoices.map((x, k) => (
-                    <div key={k} className="flex flex-wrap items-baseline justify-between gap-3 border-b border-dashed border-border py-2 last:border-b-0">
-                      <span className="flex flex-wrap items-baseline gap-2">
-                        <span className="font-mono text-[13px] font-semibold">{x.invoiceName || x.ref}</span>
-                        {x.matchedBy === 'référence interne' && (
-                          <span className="rounded-full bg-info-soft px-2 py-0.5 text-[11px] font-semibold text-info">
-                            via {x.ref}
-                          </span>
-                        )}
-                        {x.issue && <span className="text-xs font-semibold text-alert">{x.issue}</span>}
-                      </span>
-                      <span className="font-mono text-[13px] tabular-nums">{eur(x.amount)}</span>
+                    <div key={k} className="border-b border-dashed border-border py-2 last:border-b-0">
+                      <div className="flex flex-wrap items-baseline justify-between gap-3">
+                        <span className="flex flex-wrap items-baseline gap-2">
+                          <span className="font-mono text-[13px] font-semibold">{x.invoiceName || x.ref}</span>
+                          {x.matchedBy === 'référence interne' && (
+                            <span className="rounded-full bg-info-soft px-2 py-0.5 text-[11px] font-semibold text-info">
+                              via {x.ref}
+                            </span>
+                          )}
+                          {x.issue && <span className="text-xs font-semibold text-alert">{x.issue}</span>}
+                        </span>
+                        <span className="font-mono text-[13px] tabular-nums">{eur(x.amount)}</span>
+                      </div>
+
+                      {x.unallocated && (
+                        <div className="mt-1.5 flex flex-wrap items-baseline gap-2 rounded-btn border-l-2 border-info bg-info-soft px-3 py-2 text-[12.5px]">
+                          <span className="font-semibold text-info">Passée en OD — compte d&apos;attente 499000</span>
+                          <span className="text-ink-secondary">« {x.unallocated.reason} »</span>
+                          <button
+                            onClick={async () => {
+                              const r = await fetch('/api/finance/advices', {
+                                method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ linkKey: x.linkKey, amount: x.amount, clear: true }),
+                              })
+                              if (r.ok) { setToast('Passage en OD annulé'); load() }
+                            }}
+                            className="text-[11.5px] font-semibold text-brand hover:underline">
+                            Annuler
+                          </button>
+                        </div>
+                      )}
+
+                      {/* Dernier recours, ligne par ligne : l'assureur a bien
+                          viré l'argent, mais on ne retrouve pas la facture. */}
+                      {!x.unallocated && x.issue && x.linkKey && (
+                        <OdLine
+                          linkKey={x.linkKey}
+                          label={x.invoiceName || x.ref}
+                          amount={x.amount}
+                          onDone={() => { setToast('Ligne passée en OD'); load() }}
+                        />
+                      )}
                     </div>
                   ))}
                   {i.bank && (
@@ -319,6 +354,81 @@ function Tile({ label, figure, note, tone }: { label: string; figure: string; no
       <span className="text-[11px] font-semibold uppercase tracking-[0.09em] text-ink-faint">{label}</span>
       <span className={`font-mono text-2xl font-semibold tabular-nums tracking-tight ${color}`}>{figure}</span>
       <span className="text-[12.5px] text-ink-muted">{note}</span>
+    </div>
+  )
+}
+
+/**
+ * Passer UNE ligne d'avis en OD sur le compte d'attente.
+ *
+ * Une écriture par ligne, avec son propre commentaire — pas une OD fourre-tout
+ * sur tout ce qui n'a pas été rapproché. C'est ce commentaire qui permettra,
+ * dans six mois, de savoir à quoi correspond le montant resté en 499000.
+ */
+function OdLine({ linkKey, label, amount, onDone }: {
+  linkKey: string
+  label: string
+  amount: number
+  onDone: () => void
+}) {
+  const [open, setOpen]     = useState(false)
+  const [reason, setReason] = useState('')
+  const [busy, setBusy]     = useState(false)
+  const [msg, setMsg]       = useState<string | null>(null)
+
+  async function send() {
+    setBusy(true); setMsg(null)
+    try {
+      const r = await fetch('/api/finance/advices', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ linkKey, amount, reason }),
+      })
+      const j = await r.json()
+      if (!r.ok) { setMsg(j.error || `Erreur ${r.status}`); return }
+      onDone()
+    } catch (e: any) {
+      setMsg(e.message)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  if (!open) return (
+    <button onClick={() => setOpen(true)}
+      className="mt-1.5 text-[12px] font-semibold text-ink-muted underline decoration-dotted underline-offset-2 hover:text-ink">
+      Facture introuvable — passer cette ligne en OD
+    </button>
+  )
+
+  return (
+    <div className="mt-1.5 flex flex-col gap-2 rounded-btn border border-strong bg-surface px-3 py-2.5">
+      <p className="text-[12.5px] text-ink-secondary">
+        <strong>{eur(amount)}</strong> ({label}) part en attente sur <span className="font-mono">499000</span>,
+        dans sa propre écriture. Le virement pourra se lettrer.
+      </p>
+      <label className="text-[11px] font-semibold uppercase tracking-wider text-ink-faint" htmlFor={`od-${linkKey}`}>
+        Commentaire — repris dans l&apos;écriture
+      </label>
+      <input
+        id={`od-${linkKey}`}
+        value={reason}
+        onChange={e => setReason(e.target.value)}
+        onKeyDown={e => { if (e.key === 'Enter' && reason.trim().length >= 3) send() }}
+        placeholder="Ex. : facture annulée depuis, régularisation à venir"
+        className="w-full rounded-btn border border-strong bg-input px-2.5 py-1.5 text-[13px] text-ink placeholder:text-ink-faint"
+      />
+      <div className="flex flex-wrap gap-2">
+        <button disabled={busy || reason.trim().length < 3} onClick={send}
+          className="rounded-btn bg-brand px-3.5 py-1.5 text-[12.5px] font-semibold text-white hover:bg-brand-hover disabled:bg-surface-hover disabled:text-ink-faint">
+          {busy ? 'Enregistrement…' : 'Passer en OD'}
+        </button>
+        <button disabled={busy} onClick={() => { setOpen(false); setReason(''); setMsg(null) }}
+          className="rounded-btn border border-strong px-3.5 py-1.5 text-[12.5px] font-semibold text-ink-secondary hover:bg-surface-hover">
+          Annuler
+        </button>
+      </div>
+      {msg && <p className="text-[12.5px] font-semibold text-alert">{msg}</p>}
     </div>
   )
 }
