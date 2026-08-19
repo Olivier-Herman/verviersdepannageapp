@@ -93,7 +93,7 @@ export async function acceptAllianzBg(
           : (r as any).already
           ? `Allianz ⚠️ Hexalite a refusé la transition (déjà à ce statut) — À VÉRIFIER À LA MAIN${link ? ` · ${link}` : ''}`
           : `Allianz ↗ acceptation : échec — ${r.error || 'inconnue'}${link ? ` · Ouvrir la fiche Hexalite : ${link}` : ''}`,
-        metadata: { assignment_number: assignmentNumber, http: r.status ?? null, ok: r.ok, already: (r as any).already ?? false, error: r.error ?? null, reponse: (r as any).body ?? null, used_fallback: r.usedFallback ?? false, dispatch_link: link },
+        metadata: { assignment_number: assignmentNumber, http: r.status ?? null, ok: r.ok, already: (r as any).already ?? false, error: r.error ?? null, reponse: (r as any).body ?? null, assignment_id: (r as any).assignmentId ?? null, case_id: (r as any).caseId ?? null, used_fallback: r.usedFallback ?? false, dispatch_link: link },
       }).then(() => {}, () => {})
     } catch (e: any) {
       await supabase.from('mission_logs').insert({

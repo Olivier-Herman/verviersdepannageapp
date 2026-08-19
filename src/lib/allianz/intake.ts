@@ -44,7 +44,7 @@ const SEARCH_TABS = ['TO_ACCEPT', 'TO_ASSIGN', 'TO_MONITOR', 'TO_COMPLETE', 'TO_
  * assignmentNumber (= le n° présent dans le mail / notre dossier_number actuel).
  * Balaie les onglets et renvoie la 1re correspondance, sinon null.
  */
-export async function fetchAllianzAssignmentByNumber(assignmentNumber: string): Promise<any | null> {
+export async function fetchAllianzAssignmentByNumber(assignmentNumber: string, opts?: { fresh?: boolean }): Promise<any | null> {
   if (!assignmentNumber) return null
   const token = await getValidAllianzToken()
   const from = '2026-06-01T00:00:00+00:00'
@@ -55,7 +55,11 @@ export async function fetchAllianzAssignmentByNumber(assignmentNumber: string): 
     const url = `${BASE_URL}/hexalite-job-monitoring/v2.0/search/assignments`
       + `?estimatedDispatchTimeFrom=${encodeURIComponent(from)}`
       + `&estimatedDispatchTimeTo=${encodeURIComponent(to)}`
-      + `&sort=estimatedDispatchTime,asc&tabType=${tab}&fromCache=true&size=250`
+      // ⚠️ `fromCache=false` quand on cherche pour ACCEPTER : un cache peut rendre
+      // une affectation périmée portant le même numéro, et on validerait alors la
+      // mauvaise — ce qui expliquerait un « déjà à ce statut » sur un dossier que
+      // l'écran d'Hexalite montre encore en attente (Olivier 2026-08-19).
+      + `&sort=estimatedDispatchTime,asc&tabType=${tab}&fromCache=${opts?.fresh ? 'false' : 'true'}&size=250`
       + `&cache_buster=${Date.now()}`
     try {
       const res = await fetch(url, { headers: headers(token), signal: AbortSignal.timeout(20000) })
@@ -213,7 +217,7 @@ async function putAllianzAccept(caseId: string, assignmentId: string): Promise<{
 export async function acceptAllianzByNumber(
   assignmentNumber: string,
   fallback?: { dispatchLink?: string | null; assignmentId?: string | null; caseId?: string | null },
-): Promise<{ ok: boolean; status?: number; error?: string; usedFallback?: boolean; dispatchLink?: string | null; body?: string; already?: boolean }> {
+): Promise<{ ok: boolean; status?: number; error?: string; usedFallback?: boolean; dispatchLink?: string | null; body?: string; already?: boolean; assignmentId?: string; caseId?: string; retried?: boolean }> {
   const an = (assignmentNumber || '').split('/')[0].trim()
   const link = fallback?.dispatchLink || null
 
@@ -222,7 +226,7 @@ export async function acceptAllianzByNumber(
   let caseId: string | null = null
   if (an) {
     try {
-      const item = await fetchAllianzAssignmentByNumber(an)
+      const item = await fetchAllianzAssignmentByNumber(an, { fresh: true })
       if (item?.assignmentId && item?.assistanceCaseId) {
         assignmentId = String(item.assignmentId)
         caseId       = String(item.assistanceCaseId)
@@ -247,8 +251,36 @@ export async function acceptAllianzByNumber(
     return { ok: false, error: 'affectation introuvable côté Hexalite', dispatchLink: link }
   }
 
-  const r = await putAllianzAccept(caseId, assignmentId)
-  return { ...r, usedFallback, dispatchLink: link }
+  let r = await putAllianzAccept(caseId, assignmentId)
+
+  // ── SECONDE TENTATIVE, PAR UNE AUTRE PORTE (Olivier 2026-08-19) ────────────
+  // « S'il reçoit un 400, il faut qu'il retente sa commande. » Et surtout : on
+  // retente avec l'AUTRE source d'identifiants. Si la recherche a rendu une
+  // affectation périmée (cache), le lien du mail donne la bonne — c'est la seule
+  // explication qui tienne à un « déjà à ce statut » sur un dossier qu'Hexalite
+  // montre encore en attente.
+  if (!r.ok || r.already) {
+    const fromLink = parseAllianzDispatchLink(link)
+    const altAssign = fallback?.assignmentId || fromLink.assignmentId
+    const altCase   = fallback?.caseId       || fromLink.caseId
+    const different = altAssign && altCase && (altAssign !== assignmentId || altCase !== caseId)
+    await new Promise(res => setTimeout(res, 2000))
+    if (different) {
+      const r2 = await putAllianzAccept(altCase!, altAssign!)
+      if (r2.ok && !r2.already) {
+        return { ...r2, usedFallback: true, dispatchLink: link, assignmentId: altAssign!, caseId: altCase!, retried: true }
+      }
+      r = { ...r, body: `${r.body || ''} | 2e tentative (lien mail) : HTTP ${r2.status} ${r2.body || ''}`.slice(0, 400) }
+    } else {
+      const r2 = await putAllianzAccept(caseId, assignmentId)
+      if (r2.ok && !r2.already) return { ...r2, usedFallback, dispatchLink: link, assignmentId, caseId, retried: true }
+      r = { ...r, body: `${r.body || ''} | 2e tentative : HTTP ${r2.status} ${r2.body || ''}`.slice(0, 400) }
+    }
+  }
+
+  // Les identifiants RÉELLEMENT utilisés : sans eux, impossible de vérifier après
+  // coup qu'on a bien validé le bon dossier.
+  return { ...r, usedFallback, dispatchLink: link, assignmentId, caseId }
 }
 
 /**
