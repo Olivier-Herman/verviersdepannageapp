@@ -74,8 +74,11 @@ export function buildSumupPostingPlan(p: MatchedPayout): PostingPlan {
     // passer une transaction à deux factures dont une seule était payée : le
     // lettrage tombait à court, sans que rien ne l'ait annoncé.
     if (t.payableIds.length > 0 && t.paymentIds.length === t.payableIds.length) continue
+    // Facture déjà soldée : Odoo refuse tout net (« il ne reste rien à payer »).
+    // On ne tente donc jamais. Si elle est soldée mais qu'aucun paiement n'est
+    // disponible, c'est un cas à trancher — le contrôle de couverture le dira.
     const paid = t.paymentState === 'paid' || t.paymentState === 'in_payment'
-    if (paid && t.paymentIds.length) continue
+    if (paid) continue
     if (t.payableIds.length !== 1) {
       warnings.push(`${t.merchantRef} : paiement à créer sur plusieurs factures — à faire à la main`)
       continue

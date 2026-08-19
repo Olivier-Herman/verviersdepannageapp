@@ -30,7 +30,7 @@
 // la TVA serait déduite deux fois.
 
 import { odooRpc } from '@/lib/odoo'
-import { unallocatedOdLines, roundingOdLines } from '@/lib/reconcile-odoo'
+import { unallocatedOdLines, roundingOdLines, humanOdooError } from '@/lib/reconcile-odoo'
 import type { MatchedPayout } from '@/lib/paynovate-match'
 
 // Comptes et journaux, relevés sur la base de production.
@@ -128,8 +128,11 @@ export function buildPostingPlan(p: MatchedPayout): PostingPlan {
     // passer une transaction à deux factures dont une seule était payée : le
     // lettrage tombait à court, sans que rien ne l'ait annoncé.
     if (t.payableIds.length > 0 && t.paymentIds.length === t.payableIds.length) continue
+    // Facture déjà soldée : Odoo refuse tout net (« il ne reste rien à payer »).
+    // On ne tente donc jamais. Si elle est soldée mais qu'aucun paiement n'est
+    // disponible, c'est un cas à trancher — le contrôle de couverture le dira.
     const paid = t.paymentState === 'paid' || t.paymentState === 'in_payment'
-    if (paid && t.paymentIds.length) continue
+    if (paid) continue
     if (t.payableIds.length !== 1) {
       warnings.push(`${t.merchantRef} : paiement à créer sur plusieurs factures — à faire à la main`)
       continue
@@ -289,9 +292,21 @@ export async function postPlan(plan: PostingPlan, actorNote?: string): Promise<{
   //    paiement Bancontact sur la caisse du terminal, ce qui solde la facture
   //    et crée la ligne 542 que le lettrage suivant consommera.
   const createdPaymentIds: number[] = []
-  for (const m of plan.paymentsToCreate) {
-    const id = await registerPayment(m)
-    createdPaymentIds.push(id)
+  try {
+    for (const m of plan.paymentsToCreate) {
+      const id = await registerPayment(m)
+      createdPaymentIds.push(id)
+    }
+  } catch (e: any) {
+    // Un échec au milieu du lot laissait les paiements déjà créés derrière lui :
+    // des factures soldées par un paiement qui ne serait jamais lettré.
+    for (const pid of createdPaymentIds.reverse()) {
+      try {
+        await odooRpc('account.payment', 'action_draft', [[pid]])
+        await odooRpc('account.payment', 'unlink', [[pid]])
+      } catch { /* on remonte l'erreur d'origine */ }
+    }
+    throw new Error(`Paiement impossible à enregistrer : ${humanOdooError(e)}`)
   }
   if (createdPaymentIds.length) {
     plan.paymentIds.push(...createdPaymentIds)

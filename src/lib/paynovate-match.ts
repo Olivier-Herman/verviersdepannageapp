@@ -298,6 +298,15 @@ export async function buildMatchReport(
       m.paymentId  = pick.ids[0] ?? null
       pick.ids.forEach(id => taken.add(id))
 
+      // Deux encaissements du même versement rattachés à la MÊME facture : le
+      // premier a pris le paiement, le second n'a plus rien. Sans ce contrôle,
+      // le module tentait d'en créer un second et Odoo refusait en pleine
+      // écriture, avec une pile d'exécution en pleine figure.
+      if (!pick.ids.length && m.payableIds.length && (payments.get(m.payableIds[0]) || []).length) {
+        m.issue = 'used'
+        m.explanation = `${m.invoiceName} est déjà rattachée à un autre encaissement de ce versement — détache l'un des deux, ou rattache celui-ci à sa vraie facture`
+      }
+
       // Règlement partiel : la facture vaut plus que l'encaissement, mais il
       // existe un paiement du montant exact. Ce n'est pas un écart — c'est une
       // facture réglée en plusieurs fois, et c'est ce paiement-là qu'on lettre.
@@ -338,7 +347,11 @@ export async function buildMatchReport(
       if (m.issue === 'gap')  blocking.push(`${m.invoiceName || m.merchantRef} : encaissé ${m.amount.toFixed(2)} € pour une facture de ${(m.invoiceTotal ?? 0).toFixed(2)} €`)
       if (m.issue === 'lost') blocking.push(`${m.invoiceName} (${m.partner || '?'}) : facture encore ouverte alors qu'elle est payée`)
       if (m.issue === 'draft') blocking.push(`${m.invoiceName} (${m.partner || '?'}) : facture encore en brouillon — valide-la dans Odoo, le rapprochement suivra`)
-      if (m.issue === 'used') blocking.push(`${m.invoiceName} (${m.partner || '?'}) : ${consumed.get(m.paymentId!)}`)
+      if (m.issue === 'used') {
+        blocking.push(m.paymentId && consumed.has(m.paymentId)
+          ? `${m.invoiceName} (${m.partner || '?'}) : ${consumed.get(m.paymentId)}`
+          : m.explanation)
+      }
     }
 
     // Contrôle de cohérence : le brut Paynovate doit couvrir le net crédité.

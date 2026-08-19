@@ -21,7 +21,7 @@ import { buildSumupPostingPlan }     from '@/lib/sumup-post'
 import { summarizePlans, postPlan }  from '@/lib/paynovate-post'
 import { saveOverride, removeOverride } from '@/lib/paynovate-resolve'
 import { markUnallocated, clearUnallocated } from '@/lib/payout-unallocated'
-import { paymentsForInvoices } from '@/lib/reconcile-odoo'
+import { paymentsForInvoices, humanOdooError } from '@/lib/reconcile-odoo'
 import { resolveSumupReference, loadTokenIndex, readInvoices } from '@/lib/sumup-resolve'
 
 export const dynamic     = 'force-dynamic'
@@ -232,7 +232,8 @@ export async function POST(req: NextRequest) {
         done.add(String(id))
         results.push({ payoutId: id, ok: true, odMoveId })
       } catch (e: any) {
-        results.push({ payoutId: id, ok: false, error: String(e?.message || e) })
+        // Jamais la pile Odoo dans l'écran : seulement la phrase utile.
+        results.push({ payoutId: id, ok: false, error: humanOdooError(e) })
       }
     }
 

@@ -18,7 +18,7 @@ import { buildMatchReport }          from '@/lib/paynovate-match'
 import { buildPostingPlan, summarizePlans, postPlan } from '@/lib/paynovate-post'
 import { saveOverride, removeOverride, resolveReference } from '@/lib/paynovate-resolve'
 import { markUnallocated, clearUnallocated } from '@/lib/payout-unallocated'
-import { paymentsForInvoices } from '@/lib/reconcile-odoo'
+import { paymentsForInvoices, humanOdooError } from '@/lib/reconcile-odoo'
 
 export const dynamic     = 'force-dynamic'
 export const maxDuration = 120
@@ -226,7 +226,8 @@ export async function POST(req: NextRequest) {
         done.add(String(id))
         results.push({ payoutId: id, ok: true, odMoveId })
       } catch (e: any) {
-        results.push({ payoutId: id, ok: false, error: String(e?.message || e) })
+        // Jamais la pile Odoo dans l'écran : seulement la phrase utile.
+        results.push({ payoutId: id, ok: false, error: humanOdooError(e) })
       }
     }
 

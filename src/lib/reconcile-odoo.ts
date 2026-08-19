@@ -227,3 +227,24 @@ export async function explainConsumedPayments(paymentIds: number[]): Promise<Map
   }
   return out
 }
+
+/**
+ * Le message utile d'une erreur Odoo, sans la pile d'exécution.
+ *
+ * Un refus d'Odoo remonte sous forme de JSON contenant `data.message` (la
+ * phrase lisible, souvent une UserError) ET `data.debug` (quarante lignes de
+ * traceback Python). Affichée telle quelle dans l'écran, c'est illisible et ça
+ * recouvre la page. On ne garde que la phrase.
+ */
+export function humanOdooError(e: unknown): string {
+  const raw = String((e as any)?.message ?? e ?? '')
+  const start = raw.indexOf('{')
+  if (start >= 0) {
+    try {
+      const payload = JSON.parse(raw.slice(start))
+      const msg = payload?.data?.message ?? payload?.message
+      if (msg) return String(msg).split('\n')[0].trim().slice(0, 300)
+    } catch { /* pas du JSON : on retombe sur le brut tronqué */ }
+  }
+  return raw.split('\n')[0].trim().slice(0, 300)
+}
