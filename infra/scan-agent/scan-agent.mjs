@@ -43,6 +43,7 @@ const log = (...a) => console.log(new Date().toISOString().slice(0, 19).replace(
 // disparaitre alors que tout va bien.
 let esclOnline = false
 let esclMisses = 0
+let adfState = null      // true = document dans le chargeur, false = vide, null = inconnu
 async function refreshEsclState() {
   if (!CFG.printerHost) { esclOnline = false; return }
   const before = esclOnline
@@ -50,7 +51,7 @@ async function refreshEsclState() {
   // Une imprimante en veille profonde met parfois plusieurs secondes a repondre
   // a la premiere requete : on ne la declare eteinte qu'apres DEUX echecs
   // d'affilee, sinon le bouton clignoterait a chaque reveil.
-  if (up) { esclMisses = 0; esclOnline = true }
+  if (up) { esclMisses = 0; esclOnline = true; adfState = await adfLoaded(`http://${CFG.printerHost}/eSCL`) }
   else if (++esclMisses >= 2) esclOnline = false
   if (before !== esclOnline) log(`imprimante ${esclOnline ? 'joignable' : 'injoignable'} (${CFG.printerHost})`)
 }
@@ -96,32 +97,96 @@ function scanSettingsXml({ fmt, source, color, dpi, duplex }) {
 </scan:ScanSettings>`
 }
 
+// Un travail eSCL laissé ouvert bloque TOUS les suivants : le scanner répond
+// alors 500 à chaque nouvelle demande, jusqu'à ce qu'on le libère. On lit donc
+// l'état avant de commencer et on supprime ce qui traîne — sinon le premier
+// scan de la journée marche et plus jamais aucun autre.
+// Le Canon refuse le chargeur quand il est vide — et pas avec une erreur
+// parlante : un HTTP 500 sec, le meme que pour « scanner occupe ». On lit donc
+// l'etat du chargeur AVANT et on choisit la source tout seul : document dans le
+// bac -> chargeur, sinon la vitre. L'utilisateur pose sa feuille ou il veut.
+async function adfLoaded(base) {
+  try {
+    const r = await fetch(`${base}/ScannerStatus`)
+    if (!r.ok) return null
+    const xml = await r.text()
+    const m = xml.match(/<scan:AdfState>([^<]+)<\/scan:AdfState>/)
+    if (!m) return null
+    return /Loaded/i.test(m[1])
+  } catch { return null }
+}
+
+async function clearStaleJobs(base) {
+  try {
+    const r = await fetch(`${base}/ScannerStatus`)
+    if (!r.ok) return
+    const xml = await r.text()
+    const uris = [...xml.matchAll(/<pwg:JobUri>([^<]+)<\/pwg:JobUri>/g)].map(m => m[1])
+    for (const uri of uris) {
+      const full = /^https?:\/\//.test(uri) ? uri : new URL(uri, base).toString()
+      await fetch(full, { method: 'DELETE' }).catch(() => {})
+      log(`travail eSCL residuel supprime : ${uri}`)
+    }
+  } catch { /* best effort */ }
+}
+
 async function esclScan({ host, source, color, dpi, duplex }) {
   const probe = await esclBase(host)
   if (!probe) throw new Error('ESCL_UNAVAILABLE')
   const fmt = probe.caps.includes('application/pdf') ? 'application/pdf' : 'image/jpeg'
 
-  const post = await fetch(`${probe.base}/ScanJobs`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'text/xml; charset=utf-8' },
-    body: scanSettingsXml({ fmt, source, color, dpi, duplex }),
-  })
-  if (!post.ok && post.status !== 201) throw new Error('ESCL_JOB_REFUSED')
+  // Source reelle : ce que demande l'appelant, corrige par l'etat du chargeur.
+  let realSource = source
+  const loaded = await adfLoaded(probe.base)
+  if (source !== 'flatbed' && loaded === false) { realSource = 'flatbed'; log('chargeur vide -> scan depuis la vitre') }
+  if (source === 'flatbed' && loaded === true)  { log('document dans le chargeur, mais scan demande depuis la vitre') }
 
-  let job = post.headers.get('location')
-  if (!job) throw new Error('ESCL_NO_JOB')
-  if (!/^https?:\/\//.test(job)) job = new URL(job, probe.base).toString()   // Location relatif
+  const body = scanSettingsXml({ fmt, source: realSource, color, dpi, duplex })
+
+  await clearStaleJobs(probe.base)
+
+  // Une imprimante qui sort de veille refuse parfois la premiere demande : on
+  // insiste deux fois avant d'abandonner, en liberant les travaux entre-temps.
+  let job = null, lastStatus = 0
+  for (let attempt = 1; attempt <= 3 && !job; attempt++) {
+    try {
+      const post = await fetch(`${probe.base}/ScanJobs`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/xml; charset=utf-8' },
+        body,
+      })
+      lastStatus = post.status
+      const loc = post.headers.get('location')
+      if (loc) job = /^https?:\/\//.test(loc) ? loc : new URL(loc, probe.base).toString()
+    } catch { lastStatus = 0 }
+    if (!job && attempt < 3) {
+      await new Promise(r => setTimeout(r, 2000))
+      await clearStaleJobs(probe.base)
+    }
+  }
+  if (!job) throw new Error(lastStatus >= 500 ? 'ESCL_BUSY' : 'ESCL_NO_JOB')
+  log(`travail cree (${realSource}, ${fmt})`)
 
   const pages = []
-  for (let i = 0; i < 60; i++) {                 // garde-fou anti-boucle
-    let r
-    try { r = await fetch(`${job}/NextDocument`) } catch { break }
-    if (!r.ok) break                             // 404 = plus de page, fin normale
-    const buf = Buffer.from(await r.arrayBuffer())
-    if (buf.length < 128) break                  // page vide
-    pages.push({ mime: fmt, buf })
-    if (fmt === 'application/pdf') break         // le PDF porte déjà toutes les pages
+  try {
+    for (let i = 0; i < 60; i++) {              // garde-fou anti-boucle
+      let r
+      try { r = await fetch(`${job}/NextDocument`) } catch { break }
+      if (!r.ok) break                          // 404 = plus de page, fin normale
+      const buf = Buffer.from(await r.arrayBuffer())
+      if (buf.length < 128) break               // page vide
+      pages.push({ mime: fmt, buf })
+      // Meme en PDF (tout est dans le premier document), on redemande une fois :
+      // c'est ce 404 final qui ferme le travail cote scanner.
+      if (fmt === 'application/pdf') {
+        await fetch(`${job}/NextDocument`).catch(() => {})
+        break
+      }
+    }
+  } finally {
+    await fetch(job, { method: 'DELETE' }).catch(() => {})   // ceinture et bretelles
   }
+
   if (!pages.length) throw new Error('ESCL_NO_PAGE')
   return pages
 }
@@ -139,7 +204,7 @@ const server = http.createServer(async (req, res) => {
   if (req.method === 'OPTIONS') { res.statusCode = 204; return res.end() }
 
   if (url.pathname === '/health') {
-    return send(200, { ok: true, agent: 'scan-node', printer: CFG.printerHost, escl: esclOnline, wia: false })
+    return send(200, { ok: true, agent: 'scan-node', printer: CFG.printerHost, escl: esclOnline, wia: false, adf: adfState })
   }
 
   if (url.pathname === '/scan') {

@@ -35,22 +35,32 @@ export default function ScanToFicheButton({
   className?: string
 }) {
   const [available, setAvailable] = useState(false)
+  const [ready, setReady]         = useState(true)   // un chemin de scan est joignable
   const [busy, setBusy]           = useState(false)
   const [err, setErr]             = useState<string | null>(null)
 
-  // Sonde l'agent au montage : pas d'agent → pas de bouton. On exige aussi un
-  // chemin de scan disponible (escl ou wia), sinon on afficherait un bouton qui
-  // ne peut qu'echouer. L'agent tient cet etat a jour en tache de fond, la
-  // reponse est donc immediate.
+  // Sonde l'agent au montage : pas d'agent → pas de bouton.
+  //
+  // On N'EXIGE PAS que l'imprimante reponde pour afficher le bouton. Une
+  // imprimante en veille, en redemarrage ou momentanement occupee fait echouer
+  // la sonde — et un bouton qui disparait n'apprend rien a personne, alors
+  // qu'un bouton qui explique se repare tout seul. Il s'affiche donc en jaune
+  // avec la raison. La sonde est relancee toutes les 15 s : quand l'imprimante
+  // revient, le bouton redevient normal sans recharger la page.
   useEffect(() => {
-    const ctrl = new AbortController()
-    const t = setTimeout(() => ctrl.abort(), 1500)
-    fetch(`${AGENT_URL}/health`, { signal: ctrl.signal, cache: 'no-store' })
-      .then(r => r.ok ? r.json() : null)
-      .then(j => setAvailable(!!j?.ok && (!!j.escl || !!j.wia)))
-      .catch(() => setAvailable(false))
-      .finally(() => clearTimeout(t))
-    return () => { clearTimeout(t); ctrl.abort() }
+    let alive = true
+    const probe = () => {
+      const ctrl = new AbortController()
+      const t = setTimeout(() => ctrl.abort(), 1500)
+      fetch(`${AGENT_URL}/health`, { signal: ctrl.signal, cache: 'no-store' })
+        .then(r => r.ok ? r.json() : null)
+        .then(j => { if (!alive) return; setAvailable(!!j?.ok); setReady(!!j?.escl || !!j?.wia) })
+        .catch(() => { if (alive) setAvailable(false) })
+        .finally(() => clearTimeout(t))
+    }
+    probe()
+    const i = setInterval(probe, 15_000)
+    return () => { alive = false; clearInterval(i) }
   }, [])
 
   const scan = async (source: 'adf' | 'flatbed') => {
@@ -74,8 +84,9 @@ export default function ScanToFicheButton({
     <div className={className}>
       <div className="flex items-center gap-2">
         <button type="button" onClick={() => scan('adf')} disabled={busy}
-          title="Scanner le document posé dans le chargeur de l'imprimante"
-          className="px-3 py-1.5 bg-surface border border-app rounded-lg text-xs font-semibold text-ink hover:border-brand disabled:opacity-50 flex items-center gap-1.5">
+          title={ready ? "Scanner le document posé dans le chargeur de l'imprimante" : "L'imprimante ne répond pas — clique quand même pour réessayer"}
+          className={`px-3 py-1.5 rounded-lg text-xs font-semibold disabled:opacity-50 flex items-center gap-1.5 border ${
+            ready ? 'bg-surface border-app text-ink hover:border-brand' : 'bg-amber-50 border-amber-300 text-amber-900'}`}>
           {busy
             ? <><span className="inline-block w-3 h-3 border-2 border-brand border-t-transparent rounded-full animate-spin" /> Scan en cours…</>
             : label}
@@ -89,6 +100,11 @@ export default function ScanToFicheButton({
         )}
       </div>
       {busy && <p className="text-ink-muted text-[11px] mt-1">Ne retire pas les feuilles du chargeur.</p>}
+      {!busy && !ready && (
+        <p className="text-amber-700 text-[11px] mt-1">
+          Imprimante injoignable (veille, redémarrage, ou adresse à corriger) — le scan réessaiera.
+        </p>
+      )}
       {err && <p className="text-critical text-xs mt-1">⚠ {err}</p>}
     </div>
   )
@@ -97,7 +113,8 @@ export default function ScanToFicheButton({
 // Les codes de l'agent sont techniques : on les traduit en langage d'accueil.
 function errorLabel(code?: string): string {
   switch (String(code || '')) {
-    case 'ESCL_UNAVAILABLE':   return 'Imprimante injoignable — vérifie son adresse dans config.json.'
+    case 'ESCL_UNAVAILABLE':   return 'Imprimante injoignable — sort-elle de veille ? Réessaie dans 10 secondes.'
+    case 'ESCL_BUSY':          return 'Le scanner refuse les demandes : retire les feuilles du chargeur, reviens à l\'écran d\'accueil de l\'imprimante, puis réessaie.'
     case 'ESCL_NO_PAGE':
     case 'WIA_NO_PAGE':        return 'Aucune page détectée — le chargeur est-il vide ?'
     case 'WIA_NO_DEVICE':      return 'Aucun scanner trouvé sur ce PC.'

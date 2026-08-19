@@ -81,11 +81,11 @@ function Do-Scan($req) {
 
   $pages = $null; $via = ''
   if ($cfg.printerHost) {
-    try { $pages = Invoke-EsclScan -PrinterHost $cfg.printerHost -Source $source -Color $color -Dpi $dpi -Duplex $duplex; $via = 'escl' }
+    try { $pages = @(Invoke-EsclScan -PrinterHost $cfg.printerHost -Source $source -Color $color -Dpi $dpi -Duplex $duplex); $via = 'escl' }
     catch { Log "eSCL KO ($($_.Exception.Message)) -> repli WIA" }
   }
   if (-not $pages) {
-    $pages = Invoke-WiaScan -NameLike $cfg.wiaNameLike -Source $source -Color $color -Dpi $dpi -Duplex $duplex
+    $pages = @(Invoke-WiaScan -NameLike $cfg.wiaNameLike -Source $source -Color $color -Dpi $dpi -Duplex $duplex)
     $via = 'wia'
   }
 
