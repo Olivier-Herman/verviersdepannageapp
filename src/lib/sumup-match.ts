@@ -28,7 +28,7 @@ import {
   type SumUpTx,
 } from '@/lib/sumup-payouts'
 import { loadTokenIndex, readInvoices, resolveSumupReference } from '@/lib/sumup-resolve'
-import type { Confidence } from '@/lib/paynovate-resolve'
+import { isRefund, signedTotal, type Confidence } from '@/lib/paynovate-resolve'
 import type { MatchedTx, MatchedPayout, MatchReport, MatchState } from '@/lib/paynovate-match'
 import {
   round2,
@@ -181,7 +181,8 @@ export async function buildSumupMatchReport(
       }
 
       const sure  = confidence === 'exact' || confidence === 'corrige' || confidence === 'plaque'
-      const total = hits.reduce((s, h) => s + Number(h.amount ?? h.amount_total ?? 0), 0)
+      // Signé : une note de crédit rattachée vient EN DÉDUCTION de l'encaissement.
+      const total = hits.reduce((s, h) => s + signedTotal(h), 0)
       const state = hits.length === 1 ? (hits[0].payment_state ?? null) : null
       const moveState = hits.length === 1 ? (hits[0].state ?? null) : null
 
@@ -215,6 +216,8 @@ export async function buildSumupMatchReport(
         invoiceTotal: od || !hits.length ? null : round2(total),
         paymentState: od ? null : state,
         paymentId:    null,
+        paymentIds:   [],
+        payableIds:   hits.filter(h => !isRefund(h.move_type)).map(h => h.id),
         candidates,
         manual,
         issue:        od ? null : issue,
@@ -226,15 +229,17 @@ export async function buildSumupMatchReport(
     // Les paiements Odoo déjà enregistrés, à lettrer contre la ligne bancaire.
     const payments = await paymentsForInvoices(matched.flatMap(m => m.invoiceIds))
     for (const m of matched) {
-      m.paymentId = m.invoiceIds.map(id => payments.get(id)).find(Boolean) ?? null
+      m.paymentIds = [...new Set(m.payableIds.map(id => payments.get(id)).filter((n): n is number => !!n))]
+      m.paymentId  = m.paymentIds[0] ?? null
     }
 
     // Un paiement déjà lettré ailleurs rend le versement non rapprochable.
     const consumed = await explainConsumedPayments(
-      matched.map(m => m.paymentId).filter((n): n is number => !!n),
+      matched.flatMap(m => m.paymentIds),
     )
     for (const m of matched) {
-      if (m.paymentId && consumed.has(m.paymentId) && !m.issue) m.issue = 'used'
+      const hit = m.paymentIds.find(id => consumed.has(id))
+      if (hit && !m.issue) { m.issue = 'used'; m.paymentId = hit }
     }
 
     const gross      = round2(group.reduce((s, t) => s + t.rawAmount, 0))

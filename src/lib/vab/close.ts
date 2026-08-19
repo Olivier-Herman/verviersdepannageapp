@@ -155,6 +155,7 @@ export interface VabCloseInput {
   interventionTime?: string  // « HH:MM:SS ». Défaut = maintenant.
   present?: boolean          // « Quelqu'un est présent ? » (défaut true)
   vinLastDigits?: string     // breakdown : 3 derniers chiffres du VIN (le nom réel du champ est découvert côté close.ts)
+  km?: string                // breakdown : kilométrage (champ wtInput_MileageCheck), posé avec le VIN
   extraFields?: Record<string, string>  // breakdown : VIN/codes/km (name->value)
   maxSteps?: number
 }
@@ -183,18 +184,24 @@ export async function closeVabMission(input: VabCloseInput): Promise<VabCloseRes
     // « Fin lieu de la panne » boucle sans progresser (le tow n'a pas cette étape).
     // Le VIN arrive dans extraFields (clé …wtLastDigitInputField). Olivier 2026-08-09.
     const vinInput = nameEndsWith(p.inputNames, 'wtLastDigitInputField')
-    const checkVin = btnByTargetSuffix(p.buttons, 'wtLink_CheckVin')
-    if (vinInput && checkVin && !vinChecked) {
-      // VIN : fourni simplement via input.vinLastDigits (recommandé — le nom réel du
-      // champ, mangé par OutSystems, est découvert ICI via vinInput), sinon déjà
-      // présent dans extraFields sous une clé finissant par wtLastDigitInputField.
-      // Olivier 2026-08-11.
+    if (vinInput && !vinChecked) {
+      // VIN via input.vinLastDigits (le nom réel du champ est découvert ici via
+      // vinInput), sinon dans extraFields. Le bouton CheckVin est rendu disabled/
+      // sans onclick tant que le JS client n'a pas activé → NON parseable côté
+      // serveur : on DÉRIVE sa cible du nom du champ VIN. Km posé AVANT (ordre
+      // Olivier : km → VIN+vérifier → signer → fin lieu de la panne). Olivier 2026-08-11.
       const vinVal = input.vinLastDigits
         || Object.entries(input.extraFields || {}).find(([k]) => k.endsWith('wtLastDigitInputField'))?.[1]
-      const vinFields = { ...(input.extraFields || {}), ...(vinVal ? { [vinInput]: vinVal } : {}) }
       if (vinVal) {
+        const checkVinTarget = vinInput.replace(/wtLastDigitInputField$/, 'wtLink_CheckVin')
+        const kmInput = nameEndsWith(p.inputNames, 'wtInput_MileageCheck')
+        const vinFields: Record<string, string> = {
+          ...(input.extraFields || {}),
+          [vinInput]: vinVal,
+          ...(kmInput && input.km ? { [kmInput]: input.km } : {}),
+        }
         // CheckVin sur la page principale (porte tous les champs cumulés : km/VIN/signature).
-        html = await osPost(sess.cookieHeader, url, html, checkVin.target!, vinFields)
+        html = await osPost(sess.cookieHeader, url, html, checkVinTarget, vinFields)
         // Pop-up « VIN inconnu » : si le VIN ne concorde pas, cliquer « Oui » (bypass).
         // Effet serveur : pose le drapeau « VIN vérifié » → EndIntervention progresse.
         const bypassed = await confirmCheckVinPopupIfAny(sess.cookieHeader)
@@ -203,11 +210,15 @@ export async function closeVabMission(input: VabCloseInput): Promise<VabCloseRes
         // l'état sur « VIN confirmé » sans quoi « Fin lieu de la panne » reboucle.
         // Cible = wt436_RichWidgets_wt14_block_wt1 (UNDERSCORES) + __AJAX=…,Yes. HAR vab4.
         if (bypassed) {
-          const refreshTarget = checkVin.target!.replace(/wtLink_CheckVin$/, 'RichWidgets_wt14$block$wt1').replace(/\$/g, '_')
+          const refreshTarget = checkVinTarget.replace(/wtLink_CheckVin$/, 'RichWidgets_wt14$block$wt1').replace(/\$/g, '_')
           html = await osPost(sess.cookieHeader, url, html, refreshTarget, vinFields, '', { event: 'Notify', data: '1200,1598,,0,0,0,0,0,0,Yes' })
         }
         vinChecked = true
         steps.push(bypassed ? 'check_vin (bypass VIN inconnu)' : 'check_vin')
+        // Après le ballet CheckVin (postback + pop-up sur une autre URL + refresh),
+        // la réponse est un fragment AJAX partiel → on recharge la page COMPLÈTE pour
+        // resynchroniser l'état (VIN vérifié) et retrouver signature + EndIntervention.
+        html = await osGet(sess.cookieHeader, url)
         continue
       }
     }
@@ -247,7 +258,8 @@ export async function closeVabMission(input: VabCloseInput): Promise<VabCloseRes
 
     // Étape FINALE : bouton wtLink_End (+ date/heure intervention, nom, localisation
     // véhicule, nb clés, emplacement). ⚠️ Date à TIRETS sinon « Date attendue ! ».
-    const endBtn = btnByTargetSuffix(p.buttons, 'wtLink_End')
+    // Breakdown : « Fin lieu de la panne » = wtLink_EndIntervention. Tow : wtLink_End.
+    const endBtn = btnByTargetSuffix(p.buttons, 'wtLink_EndIntervention') || btnByTargetSuffix(p.buttons, 'wtLink_End')
     if (endBtn) {
       // Garde-fou breakdown : l'écran final porte des selects Code Solution / Code
       // Panne obligatoires. Si aucun code n'est fourni dans extraFields, NE PAS

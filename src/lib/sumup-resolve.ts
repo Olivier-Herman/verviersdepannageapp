@@ -27,6 +27,7 @@ import {
   readManualOverride,
   normalizePlate,
   proposeByAmount,
+  signedTotal,
   type Resolution,
 } from '@/lib/paynovate-resolve'
 
@@ -140,7 +141,7 @@ export async function loadTokenIndex(tokens: string[]): Promise<Map<string, Toke
 export async function readInvoices(ids: number[]) {
   if (!ids.length) return new Map<number, any>()
   const rows = await odooRpc<any[]>('account.move', 'search_read', [[['id', 'in', ids]]], {
-    fields: ['id', 'name', 'partner_id', 'amount_total', 'invoice_date', 'payment_state', 'state'],
+    fields: ['id', 'name', 'partner_id', 'amount_total', 'invoice_date', 'payment_state', 'state', 'move_type'],
     limit: ids.length + 10,
   })
   return new Map(rows.map(r => [Number(r.id), r]))
@@ -193,7 +194,8 @@ export async function resolveSumupReference(
           id: Number(inv.id),
           name: String(inv.name),
           partner: Array.isArray(inv.partner_id) ? inv.partner_id[1] : '',
-          amount: Number(inv.amount_total),
+          amount: signedTotal(inv),
+          move_type: inv.move_type ?? null,
           date: inv.invoice_date || '',
           payment_state: inv.payment_state ?? null,
           state: inv.state ?? null,

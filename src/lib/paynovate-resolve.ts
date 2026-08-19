@@ -25,10 +25,23 @@ export interface InvoiceCandidate {
   id: number
   name: string
   partner: string
+  /** SIGNÉ : négatif pour une note de crédit, qui vient en déduction. */
   amount: number
   date: string
   payment_state: string | null
   state?: string | null
+  /** 'out_invoice' | 'out_refund' — dit s'il s'agit d'une note de crédit. */
+  move_type?: string | null
+}
+
+/** Une note de crédit vient EN DÉDUCTION : Odoo stocke pourtant son total en positif. */
+export const isRefund = (moveType: string | null | undefined) =>
+  moveType === 'out_refund' || moveType === 'in_refund'
+
+/** Le montant d'un document, signé — c'est lui qui doit entrer dans les totaux. */
+export const signedTotal = (row: { amount_total?: any; amount?: any; move_type?: any }) => {
+  const raw = Number(row.amount_total ?? row.amount ?? 0)
+  return isRefund(row.move_type) ? -Math.abs(raw) : raw
 }
 
 export interface Resolution {
@@ -140,7 +153,7 @@ export async function loadPlateIndex(sinceIso: string, force = false): Promise<M
 async function readInvoices(names: string[]) {
   if (!names.length) return []
   return odooRpc<any[]>('account.move', 'search_read', [[['name', 'in', names]]], {
-    fields: ['id', 'name', 'partner_id', 'amount_total', 'invoice_date', 'payment_state', 'state'],
+    fields: ['id', 'name', 'partner_id', 'amount_total', 'invoice_date', 'payment_state', 'state', 'move_type'],
     limit: names.length + 10,
   })
 }
@@ -148,7 +161,7 @@ async function readInvoices(names: string[]) {
 async function readInvoicesById(ids: number[]) {
   if (!ids.length) return []
   return odooRpc<any[]>('account.move', 'search_read', [[['id', 'in', ids]]], {
-    fields: ['id', 'name', 'partner_id', 'amount_total', 'invoice_date', 'payment_state', 'state'],
+    fields: ['id', 'name', 'partner_id', 'amount_total', 'invoice_date', 'payment_state', 'state', 'move_type'],
     limit: ids.length + 10,
   })
 }
@@ -227,7 +240,9 @@ export async function saveOverride(
   const missing = wanted.filter(n => !rows.some(r => r.name === n))
   if (missing.length) throw new Error(`Facture introuvable dans Odoo : ${missing.join(', ')}`)
 
-  const total = rows.reduce((s, r) => s + Number(r.amount_total), 0)
+  // Facture + note de crédit : la NC se déduit. Sans le signe, un encaissement
+  // de 200 € pour une facture de 300 € moins une NC de 100 € comptait 400 €.
+  const total = rows.reduce((s, r) => s + signedTotal(r), 0)
 
   const sb = createAdminClient()
   const { error } = await sb.from('payout_reference_overrides').upsert({
@@ -282,14 +297,16 @@ async function sameAmountInvoices(amount: number, when: string | null, days = 3)
     ['amount_total', '<=', amount + 0.005],
     ['invoice_date', '>=', from.toISOString().slice(0, 10)],
     ['invoice_date', '<=', day],
-  ]], { fields: ['id', 'name', 'partner_id', 'amount_total', 'invoice_date', 'payment_state', 'state'], limit: 6 })
+  ]], { fields: ['id', 'name', 'partner_id', 'amount_total', 'invoice_date', 'payment_state', 'state', 'move_type'], limit: 6 })
 }
 
 const shape = (r: any) => ({
   id: r.id,
   name: r.name,
   partner: Array.isArray(r.partner_id) ? r.partner_id[1] : '',
-  amount: Number(r.amount_total),
+  // Signé : une note de crédit rattachée à un encaissement le diminue.
+  amount: signedTotal(r),
+  move_type: r.move_type ?? null,
   date: r.invoice_date || '',
   // Indispensable : sans lui, une facture retrouvée par plaque passait pour
   // soldée et l'encaissement perdu n'était pas détecté.

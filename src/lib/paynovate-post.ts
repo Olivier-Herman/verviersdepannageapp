@@ -121,10 +121,14 @@ export function buildPostingPlan(p: MatchedPayout): PostingPlan {
     // de l'OD elle-même. La faire passer ici produisait un avertissement
     // bloquant (« paiement à créer sur plusieurs factures »).
     if (t.unallocated) continue
-    if (t.paymentId || t.issue === 'gap' || t.issue === 'miss' || t.issue === 'draft') continue
+    if (t.issue === 'gap' || t.issue === 'miss' || t.issue === 'draft') continue
+    // Couverte = CHAQUE facture a son paiement. Se contenter du premier laissait
+    // passer une transaction à deux factures dont une seule était payée : le
+    // lettrage tombait à court, sans que rien ne l'ait annoncé.
+    if (t.payableIds.length > 0 && t.paymentIds.length === t.payableIds.length) continue
     const paid = t.paymentState === 'paid' || t.paymentState === 'in_payment'
-    if (paid) continue
-    if (t.invoiceIds.length !== 1) {
+    if (paid && t.paymentIds.length) continue
+    if (t.payableIds.length !== 1) {
       warnings.push(`${t.merchantRef} : paiement à créer sur plusieurs factures — à faire à la main`)
       continue
     }
@@ -133,7 +137,7 @@ export function buildPostingPlan(p: MatchedPayout): PostingPlan {
       continue
     }
     paymentsToCreate.push({
-      invoiceId:   t.invoiceIds[0],
+      invoiceId:   t.payableIds[0],
       invoiceName: t.invoiceName || t.merchantRef,
       amount:      t.amount,
       date:        (t.at || p.bankDate).slice(0, 10),
@@ -143,10 +147,20 @@ export function buildPostingPlan(p: MatchedPayout): PostingPlan {
     })
   }
 
-  const paymentIds = p.txs.map(t => t.paymentId).filter((n): n is number => !!n)
-  const covered = paymentIds.length + paymentsToCreate.length + p.txs.filter(t => t.unallocated).length
-  if (covered !== p.txs.length) {
-    warnings.push('Certaines transactions n\'ont ni paiement enregistré ni paiement créable — à traiter à la main')
+  // Tous les paiements de toutes les factures : une transaction peut en couvrir
+  // plusieurs, et il faut les lettrer ensemble pour solder le brut.
+  const paymentIds = [...new Set(p.txs.flatMap(t => t.paymentIds))]
+  // Une transaction est couverte si elle est passée en OD, si toutes ses
+  // factures ont leur paiement, ou si les manquants seront créés. On compte des
+  // TRANSACTIONS : compter les paiements faussait le total dès qu'une seule
+  // transaction en portait deux.
+  const uncovered = p.txs.filter(t => {
+    if (t.unallocated) return false
+    if (t.payableIds.length > 0 && t.paymentIds.length === t.payableIds.length) return false
+    return !paymentsToCreate.some(m => t.payableIds.includes(m.invoiceId))
+  })
+  if (uncovered.length) {
+    warnings.push(`${uncovered.length} transaction(s) sans paiement enregistré ni créable — à traiter à la main`)
   }
 
   const label = `Commission Paynovate — versement ${p.paymentId}${p.tid ? ` · terminal ${p.tid}` : ''} · ${p.bankDate}`

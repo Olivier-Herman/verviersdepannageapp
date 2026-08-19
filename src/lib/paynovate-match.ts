@@ -28,7 +28,7 @@ import {
   tidFromLabel,
   type PaynovateTx,
 } from '@/lib/paynovate'
-import { resolveReference, type Confidence } from '@/lib/paynovate-resolve'
+import { resolveReference, isRefund, signedTotal, type Confidence } from '@/lib/paynovate-resolve'
 import {
   round2,
   invoicesByName,
@@ -60,7 +60,20 @@ export interface MatchedTx {
   partner:      string | null
   invoiceTotal: number | null
   paymentState: string | null   // 'paid' | 'not_paid' | 'partial' | …
-  paymentId:    number | null   // le paiement Odoo à lettrer, s'il existe
+  paymentId:    number | null   // le premier paiement — affichage et diagnostic
+  /**
+   * TOUS les paiements Odoo à lettrer pour cette transaction. Un encaissement
+   * peut couvrir plusieurs factures, chacune avec son propre paiement : n'en
+   * retenir qu'un laissait le lettrage à court, et le rapprochement était
+   * refusé avec un « paiements déjà lettrés ailleurs » qui n'y était pour rien.
+   */
+  paymentIds:   number[]
+  /**
+   * Les documents qui doivent porter un paiement. Une note de crédit n'en a
+   * pas : elle se lettre contre la facture. Sans cette distinction, un
+   * rattachement « facture + NC » passait pour incomplet.
+   */
+  payableIds:   number[]
   candidates:   { id: number; name: string; partner: string; amount: number; date: string; payment_state?: string | null }[]
   manual:       boolean         // rattachement humain → détachable depuis l'écran
   issue:        'lost' | 'gap' | 'miss' | 'used' | 'draft' | null
@@ -223,7 +236,8 @@ export async function buildMatchReport(
       }
 
       const sure  = confidence === 'exact' || confidence === 'corrige' || confidence === 'plaque'
-      const total = hits.reduce((s, h) => s + Number(h.amount ?? h.amount_total ?? 0), 0)
+      // Signé : une note de crédit rattachée vient EN DÉDUCTION de l'encaissement.
+      const total = hits.reduce((s, h) => s + signedTotal(h), 0)
       const state = hits.length === 1 ? (hits[0].payment_state ?? null) : null
       const moveState = hits.length === 1 ? (hits[0].state ?? null) : null
 
@@ -253,6 +267,8 @@ export async function buildMatchReport(
         invoiceTotal: od || !hits.length ? null : round2(total),
         paymentState: od ? null : state,
         paymentId:    null,
+        paymentIds:   [],
+        payableIds:   hits.filter(h => !isRefund(h.move_type)).map(h => h.id),
         candidates,
         manual,
         issue:        od ? null : issue,
@@ -263,16 +279,18 @@ export async function buildMatchReport(
     // Les paiements Odoo déjà enregistrés, à lettrer contre la ligne bancaire.
     const payments = await paymentsForInvoices(matched.flatMap(m => m.invoiceIds))
     for (const m of matched) {
-      m.paymentId = m.invoiceIds.map(id => payments.get(id)).find(Boolean) ?? null
+      m.paymentIds = [...new Set(m.payableIds.map(id => payments.get(id)).filter((n): n is number => !!n))]
+      m.paymentId  = m.paymentIds[0] ?? null
     }
 
     // Un paiement déjà lettré ailleurs rend le versement non rapprochable.
     // On le détecte ICI, pour l'expliquer dans la file plutôt qu'au clic.
     const consumed = await explainConsumedPayments(
-      matched.map(m => m.paymentId).filter((n): n is number => !!n),
+      matched.flatMap(m => m.paymentIds),
     )
     for (const m of matched) {
-      if (m.paymentId && consumed.has(m.paymentId) && !m.issue) m.issue = 'used'
+      const hit = m.paymentIds.find(id => consumed.has(id))
+      if (hit && !m.issue) { m.issue = 'used'; m.paymentId = hit }
     }
 
     const gross      = round2(group.reduce((s, t) => s + t.rawAmount, 0))

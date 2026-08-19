@@ -56,7 +56,7 @@ export async function invoicesByName(names: string[]): Promise<Map<string, any>>
   const rows = await odooRpc<any[]>('account.move', 'search_read', [[
     ['name', 'in', names],
   ]], {
-    fields: ['id', 'name', 'partner_id', 'amount_total', 'amount_residual', 'payment_state', 'state'],
+    fields: ['id', 'name', 'partner_id', 'amount_total', 'amount_residual', 'payment_state', 'state', 'move_type'],
     limit: names.length + 50,
   })
   for (const r of rows) map.set(r.name, r)

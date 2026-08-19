@@ -33,7 +33,7 @@ interface Tx {
   partner: string | null
   invoiceTotal: number | null
   paymentState: string | null
-  candidates: { id: number; name: string; partner: string; amount: number; date: string; payment_state?: string | null }[]
+  candidates: { id: number; name: string; partner: string; amount: number; date: string; payment_state?: string | null; move_type?: string | null }[]
   issue: 'lost' | 'gap' | 'miss' | null
   manual?: boolean
   by?: string | null          // qui a encaissé — SumUp seulement
@@ -673,7 +673,13 @@ function Linker({ tx, endpoint, onLinked }: { tx: Tx; endpoint: string; onLinked
           <p className="text-[11px] font-semibold uppercase tracking-wider text-ink-faint">Propositions</p>
           {tx.candidates.slice(0, 4).map(c => (
             <div key={c.id} className="flex items-center justify-between gap-3 rounded-btn border border-border bg-surface px-3 py-2 text-[13px]">
-              <span><span className="font-mono">{c.name}</span> · {c.partner} · <span className="font-mono">{eur(c.amount)}</span></span>
+              <span>
+                <span className="font-mono">{c.name}</span> · {c.partner} ·{' '}
+                <span className="font-mono">{eur(c.amount)}</span>
+                {c.move_type === 'out_refund' && (
+                  <span className="ml-2 rounded-full bg-info-soft px-2 py-0.5 text-[10.5px] font-semibold text-info">note de crédit</span>
+                )}
+              </span>
               <button disabled={busy} onClick={() => link([c.name])}
                 className="shrink-0 text-[12.5px] font-semibold text-brand hover:underline disabled:text-ink-faint">
                 C&apos;est celle-là
@@ -696,8 +702,8 @@ function Linker({ tx, endpoint, onLinked }: { tx: Tx; endpoint: string; onLinked
           value={value}
           onChange={e => setValue(e.target.value)}
           onKeyDown={e => { if (e.key === 'Enter' && value.trim()) link(value.split(/[\s,;+]+/).filter(Boolean)) }}
-          placeholder="2026/07/123"
-          className="w-40 rounded-btn border border-strong bg-input px-2.5 py-1.5 font-mono text-[13px] text-ink placeholder:text-ink-faint"
+          placeholder="2026/07/123 2026-0221"
+          className="w-64 rounded-btn border border-strong bg-input px-2.5 py-1.5 font-mono text-[13px] text-ink placeholder:text-ink-faint"
         />
         <button
           disabled={busy || !value.trim()}
@@ -706,7 +712,8 @@ function Linker({ tx, endpoint, onLinked }: { tx: Tx; endpoint: string; onLinked
           {busy ? 'Rattachement…' : 'Rattacher'}
         </button>
         <span className="w-full text-[11.5px] text-ink-faint">
-          Plusieurs factures ? Sépare-les par un espace. Le rattachement est mémorisé pour la prochaine fois.
+          Plusieurs documents ? Sépare-les par un espace — et une note de crédit vient
+          automatiquement en déduction. Le rattachement est mémorisé pour la prochaine fois.
         </span>
       </div>
 
