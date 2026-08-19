@@ -54,6 +54,19 @@ foreach ($p in @('http://+:7182/','http://127.0.0.1:7182/','http://localhost:718
 }
 if (-not $ok) { Log "AUCUN prefixe n'a pu ecouter -> arret."; Start-Sleep 3; exit 1 }
 
+# Sonde eSCL mise en cache 60 s : /health doit repondre vite (le navigateur ne
+# l'attend qu'une seconde et demie avant de masquer le bouton Scanner).
+$script:esclCache = $null
+$script:esclCacheAt = [DateTime]::MinValue
+function Get-EsclState {
+  if (-not $cfg.printerHost) { return $false }
+  if ($null -ne $script:esclCache -and ((Get-Date) - $script:esclCacheAt).TotalSeconds -lt 60) { return $script:esclCache }
+  $v = $false
+  try { $v = Test-Escl -PrinterHost $cfg.printerHost } catch { }
+  $script:esclCache = $v; $script:esclCacheAt = Get-Date
+  return $v
+}
+
 function Get-Q($req, [string]$name, $def) {
   $v = $req.QueryString[$name]
   if ($null -eq $v -or "$v" -eq '') { return $def }
@@ -105,8 +118,7 @@ while ($listener.IsListening) {
     if ($req.HttpMethod -eq 'OPTIONS') {
       $res.StatusCode = 204
     } elseif ($path -eq '/health') {
-      $escl = $false
-      if ($cfg.printerHost) { try { $escl = Test-Escl -PrinterHost $cfg.printerHost } catch { } }
+      $escl = Get-EsclState
       $wia = $false
       try { $wia = ($null -ne (Get-WiaScanner -NameLike $cfg.wiaNameLike)) } catch { }
       $body = (@{ ok = $true; agent = 'scan'; printer = $cfg.printerHost; escl = $escl; wia = $wia } | ConvertTo-Json -Compress)

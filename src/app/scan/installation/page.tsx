@@ -64,7 +64,7 @@ export default function ScanInstallationPage() {
             </a>
 
             <div className="bg-surface border rounded-2xl p-6 space-y-4 text-sm">
-              <h2 className="font-semibold text-ink">Installation (une fois par PC)</h2>
+              <h2 className="font-semibold text-ink">Installation Windows (une fois par PC)</h2>
               <ol className="list-decimal ml-5 space-y-2 text-ink-secondary">
                 <li><strong className="text-ink">Décompresse</strong> le zip → dossier <code className="bg-surface-2 px-1 rounded">vdsoft-scan-agent</code> (ex. dans <code className="bg-surface-2 px-1 rounded">C:\VDSoft</code>).</li>
                 <li>Note l&apos;<strong className="text-ink">adresse IP de l&apos;imprimante</strong> (écran de la Canon, ou Windows &gt; Imprimantes &gt; Propriétés &gt; Ports).</li>
@@ -79,6 +79,20 @@ export default function ScanInstallationPage() {
                 <p><code className="bg-surface px-1 rounded">escl: false, wia: true</code> → l&apos;agent passera par le pilote Canon installé sur ce PC.</p>
                 <p><code className="bg-surface px-1 rounded">false</code> partout → ni l&apos;IP ni le pilote ne répondent : corrige <code className="bg-surface px-1 rounded">config.json</code>.</p>
               </div>
+
+              <h2 className="font-semibold text-ink pt-2">Installation macOS</h2>
+              <p className="text-ink-secondary">
+                Le paquet Windows ne s&apos;applique pas : sur Mac c&apos;est la version Node du même dossier
+                qui tourne — même port, même comportement. Node 18+ requis, rien d&apos;autre.
+              </p>
+              <code className="block bg-surface-2 border rounded-lg p-3 text-xs break-all">
+                cd vdsoft-scan-agent<br/>./install-mac.sh 192.168.1.50
+              </code>
+              <p className="text-ink-muted text-xs">
+                Sans argument, l&apos;IP est demandée. Installe un LaunchAgent (démarrage à l&apos;ouverture de session).
+                Sur Mac, l&apos;imprimante doit parler eSCL — si elle apparaît dans <em>Transfert d&apos;images</em>, c&apos;est bon.
+                Utilise <strong className="text-ink">Chrome</strong> : Safari est plus strict sur l&apos;appel de <code className="bg-surface-2 px-0.5 rounded">http://localhost</code> depuis une page HTTPS.
+              </p>
 
               <h2 className="font-semibold text-ink pt-2">Utilisation</h2>
               <p className="text-ink-secondary">

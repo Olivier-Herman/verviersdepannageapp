@@ -13,7 +13,7 @@ function Get-EsclBase {
   # http d'abord (le cas courant sur le LAN), https en repli (certificat auto-signe).
   foreach ($base in @("http://$PrinterHost/eSCL", "https://$PrinterHost/eSCL")) {
     try {
-      $r = Invoke-WebRequest -Uri "$base/ScannerCapabilities" -Method GET -TimeoutSec 6 -UseBasicParsing
+      $r = Invoke-WebRequest -Uri "$base/ScannerCapabilities" -Method GET -TimeoutSec 3 -UseBasicParsing
       if ($r.StatusCode -eq 200) { return @{ base = $base; caps = [string]$r.Content } }
     } catch { }
   }
