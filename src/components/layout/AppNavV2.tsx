@@ -16,7 +16,7 @@
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useEffect, useMemo, useState } from 'react'
-import { ChevronRight } from 'lucide-react'
+import { ChevronRight, Search, X } from 'lucide-react'
 import { T } from '@/lib/i18n/T'
 import { type NavItem } from './nav-items'
 import {
@@ -54,6 +54,22 @@ export default function AppNavV2({
   const [openKey, setOpenKey] = useState<string | null>(activeKey)
   useEffect(() => { if (activeKey) setOpenKey(activeKey) }, [activeKey])
 
+  // ── Recherche : filtre le menu en direct (module OU une de ses sections). ──
+  const [query, setQuery] = useState('')
+  const q = query.trim().toLowerCase()
+  const searching = q.length > 0
+
+  // Un module correspond si son libellé matche → on garde toutes ses sections ;
+  // sinon on ne garde que les sections dont le libellé matche. Rien → écarté.
+  const filterMod = (mod: BuiltModule): BuiltModule | null => {
+    if (!searching) return mod
+    if (mod.label.toLowerCase().includes(q)) return mod
+    const secs = mod.visibleSections.filter(s => s.label.toLowerCase().includes(q))
+    return secs.length ? { ...mod, visibleSections: secs } : null
+  }
+  const filterList = (list: BuiltModule[]) =>
+    searching ? list.flatMap(m => { const r = filterMod(m); return r ? [r] : [] }) : list
+
   const pad    = variant === 'drawer' ? 'px-3 py-3' : 'px-3 py-4'
   const rowPad = variant === 'drawer' ? 'px-3 py-3' : 'px-3 py-2.5'
 
@@ -71,7 +87,8 @@ export default function AppNavV2({
     // page dans le sous-menu (sinon « Dispatch » apparaissait deux fois).
     const kids     = mod.visibleSections.filter(s => s.href !== href)
     const hasKids  = kids.length > 0
-    const expanded = hasKids && openKey === mod.key
+    // En recherche : les modules affichés sont dépliés d'office (on voit les sous-menus).
+    const expanded = hasKids && (searching || openKey === mod.key)
     if (!href) return null
 
     // Page courante = la page par défaut du module → la ligne est active.
@@ -155,20 +172,50 @@ export default function AppNavV2({
     )
   }
 
+  const shownPinned = filterList(pinned)
+  const shownRest   = filterList(rest)
+  const noResult    = searching && shownPinned.length === 0 && shownRest.length === 0
+
   return (
     <nav className={`flex-1 flex flex-col overflow-hidden ${pad}`} aria-label="Menu principal">
 
+      {/* ── RECHERCHE : filtre le menu en direct ───────────── */}
+      <div className="flex-shrink-0 relative mb-2">
+        <Search size={15} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-ink-muted pointer-events-none" />
+        <input
+          type="text"
+          value={query}
+          onChange={e => setQuery(e.target.value)}
+          placeholder="Rechercher un menu…"
+          aria-label="Rechercher dans le menu"
+          className="w-full rounded-md border bg-surface-2 text-sm text-ink placeholder:text-ink-muted pl-8 pr-8 py-2 focus:outline-none focus:border-brand"
+        />
+        {query && (
+          <button
+            type="button"
+            onClick={() => setQuery('')}
+            aria-label="Effacer la recherche"
+            className="absolute right-1.5 top-1/2 -translate-y-1/2 p-1 rounded text-ink-muted hover:text-ink hover:bg-surface-hover"
+          >
+            <X size={14} />
+          </button>
+        )}
+      </div>
+
       {/* ── RACCOURCIS ÉPINGLÉS ─────────────────────────────
           Zone fixe : ce qu'on utilise tout le temps, toujours en haut. */}
-      {pinned.length > 0 && (
+      {shownPinned.length > 0 && (
         <div className="flex-shrink-0 max-h-[50%] overflow-y-auto flex flex-col gap-0.5 pb-2 mb-2 border-b">
-          {pinned.map(mod => <ModuleBlock key={mod.key} mod={mod} />)}
+          {shownPinned.map(mod => <ModuleBlock key={mod.key} mod={mod} />)}
         </div>
       )}
 
       {/* ── MODULES ────────────────────────────────────── */}
       <div className="flex-1 min-h-0 overflow-y-auto flex flex-col gap-0.5">
-        {rest.map(mod => <ModuleBlock key={mod.key} mod={mod} />)}
+        {shownRest.map(mod => <ModuleBlock key={mod.key} mod={mod} />)}
+        {noResult && (
+          <p className="px-3 py-4 text-sm text-ink-muted">Aucun menu ne correspond à « {query.trim()} ».</p>
+        )}
       </div>
     </nav>
   )
