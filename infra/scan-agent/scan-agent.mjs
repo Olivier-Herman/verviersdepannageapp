@@ -196,6 +196,9 @@ const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, `http://localhost:${PORT}`)
   res.setHeader('Access-Control-Allow-Origin', '*')
   res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS')
+  res.setHeader('Access-Control-Allow-Headers', '*')
+  // Chrome exige cet en-tete pour qu'une page HTTPS publique joigne localhost.
+  res.setHeader('Access-Control-Allow-Private-Network', 'true')
   res.setHeader('Cache-Control', 'no-store')
   res.setHeader('Content-Type', 'application/json; charset=utf-8')
 

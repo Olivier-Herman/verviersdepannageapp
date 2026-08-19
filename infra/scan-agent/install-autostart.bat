@@ -34,8 +34,14 @@ if %ERRORLEVEL%==0 (echo [OK] Agent installe au demarrage du PC ^(SYSTEM^).) els
 
 schtasks /Run /TN "VDSoft Scan Agent" >nul 2>&1
 
+REM 4) Verification reelle : on interroge l'agent au lieu de l'affirmer.
 echo.
-echo [OK] Agent Scan demarre.
-echo     Test : http://localhost:7182/health
+echo Verification...
+timeout /t 4 /nobreak >nul
+powershell -NoProfile -Command "try { $r = Invoke-RestMethod -Uri 'http://localhost:7182/health' -TimeoutSec 8; if ($r.escl -or $r.wia) { Write-Host '[OK] Agent actif — imprimante joignable.' -ForegroundColor Green } else { Write-Host '[!] Agent actif mais imprimante injoignable — verifiez l adresse IP dans config.json.' -ForegroundColor Yellow } } catch { Write-Host '[!!] L agent NE REPOND PAS. Lancez diagnostic.bat pour voir l erreur.' -ForegroundColor Red }"
+
+echo.
+echo Journal : %DIR%agent-log.txt
+echo En cas de souci : diagnostic.bat (affiche l erreur au lieu de la cacher).
 echo.
 pause

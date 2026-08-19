@@ -110,6 +110,9 @@ while ($listener.IsListening) {
     $res = $ctx.Response
     $res.Headers.Add('Access-Control-Allow-Origin',  '*')
     $res.Headers.Add('Access-Control-Allow-Methods', 'GET, OPTIONS')
+    $res.Headers.Add('Access-Control-Allow-Headers', '*')
+    # Chrome exige cet en-tete pour qu'une page HTTPS publique joigne localhost.
+    $res.Headers.Add('Access-Control-Allow-Private-Network', 'true')
     $res.Headers.Add('Cache-Control', 'no-store')
     $res.ContentType = 'application/json; charset=utf-8'
 

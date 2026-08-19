@@ -156,11 +156,26 @@ function AgentStatus() {
       {state === 'checking' && <p className="text-ink-muted">Recherche de l&apos;agent…</p>}
 
       {state === 'off' && (
-        <div className="bg-amber-50 border border-amber-200 rounded-xl p-3">
+        <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 space-y-2">
           <p className="text-amber-900 font-medium">Agent non détecté sur ce poste.</p>
-          <p className="text-amber-800 text-xs mt-1">
-            Le bouton <strong>🖨️ Scanner</strong> reste invisible dans les fiches tant que cet agent ne répond pas.
-            Installe-le ci-dessous, puis cette ligne passera au vert toute seule.
+          <p className="text-amber-800 text-xs">
+            Rien n&apos;écoute sur <code className="bg-white/60 px-1 rounded">localhost:7182</code>. Dans l&apos;ordre, ce qui
+            explique 9 cas sur 10 :
+          </p>
+          <ol className="list-decimal ml-5 text-xs text-amber-900 space-y-1">
+            <li>Le zip a été <strong>ouvert sans être décompressé</strong> : Windows lance alors les fichiers depuis un
+              dossier temporaire qui disparaît. Décompresse d&apos;abord dans <code className="bg-white/60 px-1 rounded">C:\VDSoft</code>.</li>
+            <li><code className="bg-white/60 px-1 rounded">install-autostart.bat</code> lancé <strong>sans « Exécuter en tant qu&apos;administrateur »</strong> :
+              la tâche de démarrage n&apos;est pas créée.</li>
+            <li>Un antivirus a bloqué PowerShell.</li>
+          </ol>
+          <p className="text-amber-800 text-xs">
+            Pour voir l&apos;erreur réelle : double-clique sur <strong>diagnostic.bat</strong> (fourni dans le zip). Il lance
+            l&apos;agent dans une fenêtre visible et affiche ce qui coince. Laisse la fenêtre ouverte et recharge cette page.
+          </p>
+          <p className="text-amber-800 text-xs">
+            Test direct dans le navigateur de ce poste :{' '}
+            <a href="http://localhost:7182/health" target="_blank" rel="noreferrer" className="underline font-medium">http://localhost:7182/health</a>
           </p>
         </div>
       )}
