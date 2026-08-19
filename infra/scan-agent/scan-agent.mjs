@@ -71,6 +71,20 @@ async function esclBase(host) {
   return null
 }
 
+// Le scanner n'accepte QUE les resolutions qu'il annonce : demander 200 dpi a
+// une machine qui propose 150 et 300 renvoie un HTTP 500, toujours le meme,
+// impossible a distinguer d'un scanner occupe. On cale donc sur la valeur
+// annoncee la plus proche, au lieu de propager l'erreur.
+function snapDpi(caps, wanted) {
+  const list = [...caps.matchAll(/<scan:DiscreteResolution>\s*<scan:XResolution>(\d+)<\/scan:XResolution>/g)]
+    .map(m => Number(m[1]))
+  if (!list.length) return wanted
+  if (list.includes(wanted)) return wanted
+  const best = list.reduce((a, b) => Math.abs(b - wanted) < Math.abs(a - wanted) ? b : a)
+  log(`resolution ${wanted} dpi non proposee (${list.join(', ')}) -> ${best} dpi`)
+  return best
+}
+
 function scanSettingsXml({ fmt, source, color, dpi, duplex }) {
   const input = source === 'flatbed' ? 'Platen' : 'Feeder'
   const mode  = color === 'gray' ? 'Grayscale8' : 'RGB24'
@@ -141,14 +155,14 @@ async function esclScan({ host, source, color, dpi, duplex }) {
   if (source !== 'flatbed' && loaded === false) { realSource = 'flatbed'; log('chargeur vide -> scan depuis la vitre') }
   if (source === 'flatbed' && loaded === true)  { log('document dans le chargeur, mais scan demande depuis la vitre') }
 
-  const body = scanSettingsXml({ fmt, source: realSource, color, dpi, duplex })
+  const body = scanSettingsXml({ fmt, source: realSource, color, dpi: snapDpi(probe.caps, dpi), duplex })
 
   await clearStaleJobs(probe.base)
 
   // Une imprimante qui sort de veille refuse parfois la premiere demande : on
   // insiste deux fois avant d'abandonner, en liberant les travaux entre-temps.
   let job = null, lastStatus = 0
-  for (let attempt = 1; attempt <= 3 && !job; attempt++) {
+  for (let attempt = 1; attempt <= 5 && !job; attempt++) {
     try {
       const post = await fetch(`${probe.base}/ScanJobs`, {
         method: 'POST',
@@ -159,8 +173,9 @@ async function esclScan({ host, source, color, dpi, duplex }) {
       const loc = post.headers.get('location')
       if (loc) job = /^https?:\/\//.test(loc) ? loc : new URL(loc, probe.base).toString()
     } catch { lastStatus = 0 }
-    if (!job && attempt < 3) {
-      await new Promise(r => setTimeout(r, 2000))
+    if (!job) log(`creation du travail refusee (HTTP ${lastStatus || 'pas de reponse'}), tentative ${attempt}/5`)
+    if (!job && attempt < 5) {
+      await new Promise(r => setTimeout(r, 3000))
       await clearStaleJobs(probe.base)
     }
   }

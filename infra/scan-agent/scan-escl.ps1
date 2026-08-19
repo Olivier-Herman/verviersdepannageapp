@@ -29,6 +29,19 @@ function Test-Escl {
 # parlante : un HTTP 500 sec, le meme que pour « scanner occupe ». On lit donc
 # l etat du chargeur AVANT et on choisit la source tout seul : document dans le
 # bac -> chargeur, sinon la vitre. L utilisateur pose sa feuille ou il veut.
+# Le scanner n accepte QUE les resolutions qu il annonce : demander 200 dpi a
+# une machine qui propose 150 et 300 renvoie un HTTP 500, le meme que pour un
+# scanner occupe. On cale donc sur la valeur annoncee la plus proche.
+function Get-EsclDpi {
+  param([string]$Caps, [int]$Wanted)
+  $list = @()
+  foreach ($m in [regex]::Matches($Caps, '<scan:DiscreteResolution>\s*<scan:XResolution>(\d+)</scan:XResolution>')) {
+    $list += [int]$m.Groups[1].Value
+  }
+  if ($list.Count -eq 0 -or $list -contains $Wanted) { return $Wanted }
+  return ($list | Sort-Object { [Math]::Abs($_ - $Wanted) })[0]
+}
+
 function Get-EsclAdfLoaded {
   param([string]$Base)
   try {
@@ -80,6 +93,7 @@ function Invoke-EsclScan {
   $realSource = $Source
   if ($Source -ne 'flatbed' -and $loaded -eq $false) { $realSource = 'flatbed' }
   $inp  = if ($realSource -eq 'flatbed') { 'Platen' } else { 'Feeder' }
+  $Dpi  = Get-EsclDpi -Caps $probe.caps -Wanted $Dpi
   $cm   = if ($Color  -eq 'gray')    { 'Grayscale8' } else { 'RGB24' }
   # A4 exprime en 1/300e de pouce (l unite eSCL), quelle que soit la resolution.
   $w = 2480; $h = 3508
@@ -113,7 +127,7 @@ function Invoke-EsclScan {
   # insiste deux fois avant d abandonner, en liberant les travaux entre-temps.
   $job = $null
   $lastStatus = 0
-  for ($attempt = 1; $attempt -le 3 -and -not $job; $attempt++) {
+  for ($attempt = 1; $attempt -le 5 -and -not $job; $attempt++) {
     try {
       $post = Invoke-WebRequest -Uri "$base/ScanJobs" -Method POST -TimeoutSec 30 -UseBasicParsing `
                 -ContentType 'text/xml; charset=utf-8' -Body ([System.Text.Encoding]::UTF8.GetBytes($xml))
@@ -123,8 +137,8 @@ function Invoke-EsclScan {
       $lastStatus = 500
       try { $lastStatus = [int]$_.Exception.Response.StatusCode } catch { }
     }
-    if (-not $job -and $attempt -lt 3) {
-      Start-Sleep -Seconds 2
+    if (-not $job -and $attempt -lt 5) {
+      Start-Sleep -Seconds 3
       Clear-EsclStaleJobs -Base $base
     }
   }

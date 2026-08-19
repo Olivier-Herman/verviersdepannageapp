@@ -114,7 +114,7 @@ export default function ScanToFicheButton({
 function errorLabel(code?: string): string {
   switch (String(code || '')) {
     case 'ESCL_UNAVAILABLE':   return 'Imprimante injoignable — sort-elle de veille ? Réessaie dans 10 secondes.'
-    case 'ESCL_BUSY':          return 'Le scanner refuse les demandes : retire les feuilles du chargeur, reviens à l\'écran d\'accueil de l\'imprimante, puis réessaie.'
+    case 'ESCL_BUSY':          return "Le scanner refuse les demandes. Quelqu'un est-il devant l'imprimante ? Reviens à son écran d'accueil (touche Accueil), retire les feuilles du chargeur, puis réessaie."
     case 'ESCL_NO_PAGE':
     case 'WIA_NO_PAGE':        return 'Aucune page détectée — le chargeur est-il vide ?'
     case 'WIA_NO_DEVICE':      return 'Aucun scanner trouvé sur ce PC.'

@@ -139,7 +139,7 @@ function AgentStatus() {
   const tryScan = async () => {
     setBusy(true); setTest(null)
     try {
-      const r = await fetch('http://localhost:7182/scan?source=flatbed&color=color&dpi=200', { cache: 'no-store' })
+      const r = await fetch('http://localhost:7182/scan?source=flatbed&color=color&dpi=300', { cache: 'no-store' })
       const j = await r.json()
       setTest(j?.ok
         ? `✅ Scan réussi : ${j.files.length} fichier(s) — ${j.files[0]?.name}`
