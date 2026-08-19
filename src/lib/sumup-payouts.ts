@@ -27,6 +27,34 @@
 
 const API = 'https://api.sumup.com/v0.1'
 
+/**
+ * SumUp horodate en UTC (« 2026-08-19T00:57:23.362Z ») ; Paynovate sort déjà des
+ * heures locales de son CSV. L'écran affiche les deux de la même façon, en
+ * découpant la chaîne — sans conversion ici, un encaissement de 2 h 57 du matin
+ * s'affichait à 0 h 57, et un paiement passé après 22 h était daté de la veille.
+ *
+ * On normalise donc à la source : les deux prestataires renvoient désormais une
+ * heure locale Bruxelles, sans suffixe de fuseau. `Intl` gère l'heure d'été.
+ */
+const BRUSSELS = new Intl.DateTimeFormat('fr-BE', {
+  timeZone: 'Europe/Brussels',
+  year: 'numeric', month: '2-digit', day: '2-digit',
+  hour: '2-digit', minute: '2-digit', second: '2-digit',
+  hour12: false,
+})
+
+function toLocalIso(utc: unknown): string | null {
+  const raw = String(utc ?? '').trim()
+  if (!raw) return null
+  const d = new Date(raw)
+  if (Number.isNaN(d.getTime())) return null
+  const p: Record<string, string> = {}
+  for (const part of BRUSSELS.formatToParts(d)) p[part.type] = part.value
+  // `hour` peut valoir « 24 » à minuit selon la plate-forme : on le ramène à 00.
+  const hh = p.hour === '24' ? '00' : p.hour
+  return `${p.year}-${p.month}-${p.day}T${hh}:${p.minute}:${p.second}`
+}
+
 /** Étiquettes que SumUp met par défaut : ce n'est pas une référence. */
 const NON_REFS = new Set(['montant personnalisé', 'custom amount', 'test', 'divers'])
 
@@ -38,7 +66,7 @@ export interface SumUpTx {
   rawAmount:       number        // brut encaissé au terminal
   commission:      number        // fee retenu à la source
   netAmount:       number        // ce qui arrive en banque
-  transactionAt:   string | null // horodatage de l'encaissement
+  transactionAt:   string | null // horodatage de l'encaissement, HEURE LOCALE (cf. toLocalIso)
   cardBrand:       string
   entryMode:       string
   by:              string | null // qui a encaissé (compte SumUp)
@@ -184,7 +212,7 @@ export async function fetchPayoutTransactions(from: Date, to: Date): Promise<Sum
       rawAmount:       Math.round((net + fee) * 100) / 100,
       commission:      fee,
       netAmount:       net,
-      transactionAt:   h?.timestamp ? String(h.timestamp) : null,
+      transactionAt:   toLocalIso(h?.timestamp),
       cardBrand:       String(h?.card_type || '').replace(/_/g, ' '),
       entryMode:       String(h?.entry_mode || ''),
       by:              h?.user ? String(h.user).split('@')[0] : null,
