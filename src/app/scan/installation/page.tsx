@@ -119,6 +119,8 @@ export default function ScanInstallationPage() {
 // Le bouton « Scanner » se cache tout seul quand l'agent ne répond pas : bien
 // pour l'utilisateur, aveugle pour celui qui installe. Ce bloc dit ce que le
 // navigateur voit vraiment, et permet d'essayer un scan sans quitter la page.
+const ATTENDU = '2026-08-19c'   // version d'agent que ce site attend
+
 function AgentStatus() {
   const [state, setState] = useState<'checking' | 'off' | 'on'>('checking')
   const [info, setInfo]   = useState<any>(null)
@@ -184,6 +186,10 @@ function AgentStatus() {
         <div className={`${canScan ? 'bg-emerald-50 border-emerald-200' : 'bg-amber-50 border-amber-200'} border rounded-xl p-3 space-y-1`}>
           <p className={canScan ? 'text-emerald-900 font-medium' : 'text-amber-900 font-medium'}>
             {canScan ? '✅ Agent actif — le bouton Scanner s’affiche dans les fiches.' : '⚠ Agent actif, mais aucun scanner joignable.'}
+          </p>
+          <p className="text-xs text-ink-secondary">
+            Version agent : <strong>{info?.version || 'ancienne (à re-télécharger)'}</strong>
+            {info?.version && info.version !== ATTENDU && <span className="text-amber-700"> — version attendue : {ATTENDU}, re-télécharge le zip</span>}
           </p>
           <p className="text-xs text-ink-secondary">
             Imprimante : <strong>{info?.printer || '— non configurée —'}</strong> ·

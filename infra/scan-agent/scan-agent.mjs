@@ -25,6 +25,9 @@ import { fileURLToPath } from 'node:url'
 
 const HERE = path.dirname(fileURLToPath(import.meta.url))
 const PORT = Number(process.env.SCAN_AGENT_PORT || 7182)
+// Affichee par /health et par la page d'installation : sans elle, impossible de
+// savoir a distance si un poste tourne encore sur d'anciens fichiers.
+const VERSION = '2026-08-19c'
 
 function readConfig() {
   let cfg = { printerHost: '', defaultSource: 'adf', defaultDpi: 300 }
@@ -222,7 +225,7 @@ const server = http.createServer(async (req, res) => {
   if (req.method === 'OPTIONS') { res.statusCode = 204; return res.end() }
 
   if (url.pathname === '/health') {
-    return send(200, { ok: true, agent: 'scan-node', printer: CFG.printerHost, escl: esclOnline, wia: false, adf: adfState })
+    return send(200, { ok: true, agent: 'scan-node', version: VERSION, printer: CFG.printerHost, escl: esclOnline, wia: false, adf: adfState })
   }
 
   if (url.pathname === '/scan') {
@@ -262,7 +265,7 @@ setTimeout(refreshEsclState, 20_000).unref()
 setInterval(refreshEsclState, 60_000).unref()
 
 server.listen(PORT, '127.0.0.1', () => {
-  log(`Agent Scan VD Soft (Node) — http://localhost:${PORT}`)
+  log(`Agent Scan VD Soft (Node) v${VERSION} — http://localhost:${PORT}`)
   log(CFG.printerHost
     ? `Imprimante : ${CFG.printerHost}`
     : 'Aucune imprimante configurée → passe l\'IP en argument, en SCAN_PRINTER_HOST, ou dans config.json')

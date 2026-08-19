@@ -15,6 +15,9 @@
 #   2. WIA             : pilote Canon installe sur ce PC (cf. scan-wia.ps1)
 
 $ErrorActionPreference = 'Stop'
+# Affichee par /health et par la page d installation : sans elle, impossible de
+# savoir a distance si un poste tourne encore sur d anciens fichiers.
+$VERSION = '2026-08-19c'
 try { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8 } catch {}
 
 $here    = Split-Path -Parent $MyInvocation.MyCommand.Path
@@ -39,7 +42,7 @@ if (Test-Path $cfgPath) {
     }
   } catch { Log "config.json illisible : $($_.Exception.Message)" }
 }
-Log "=== Demarrage agent Scan (PID $PID) — imprimante '$($cfg.printerHost)' ==="
+Log "=== Demarrage agent Scan v$VERSION (PID $PID) — imprimante '$($cfg.printerHost)' ==="
 
 # Libere le port si un ancien agent traine (zombie QuickEdit).
 try {
@@ -122,7 +125,7 @@ while ($listener.IsListening) {
       $escl = Get-EsclState
       $wia = $false
       try { $wia = ($null -ne (Get-WiaScanner -NameLike $cfg.wiaNameLike)) } catch { }
-      $body = (@{ ok = $true; agent = 'scan'; printer = $cfg.printerHost; escl = $escl; wia = $wia } | ConvertTo-Json -Compress)
+      $body = (@{ ok = $true; agent = 'scan'; version = $VERSION; printer = $cfg.printerHost; escl = $escl; wia = $wia } | ConvertTo-Json -Compress)
     } elseif ($path -eq '/scan') {
       try { $body = Do-Scan $req } catch {
         $res.StatusCode = 500
