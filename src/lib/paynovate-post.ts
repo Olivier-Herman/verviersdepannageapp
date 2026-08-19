@@ -263,14 +263,22 @@ export async function postPlan(plan: PostingPlan, actorNote?: string): Promise<{
   // Les lignes passées en OD n'ont pas de paiement carte : c'est l'OD qui
   // fournira leur débit 542. Sans les compter ici, le contrôle refuserait à
   // tort un versement qu'on vient précisément de débloquer.
+  // Ce que le lettrage aura sous la main : les débits 542 des paiements
+  // existants, ceux des paiements qu'on va créer, ceux que l'OD apporte pour
+  // les lignes non affectées, et l'écart d'arrondi — signé, car il peut aussi
+  // retirer un centime.
   const availableSum = r2(
-    available.reduce((s, l) => s + Number(l.debit || 0), 0) + toCreateSum + (plan.unallocatedTotal || 0),
+    available.reduce((s, l) => s + Number(l.debit || 0), 0)
+    + toCreateSum + (plan.unallocatedTotal || 0) + (plan.roundingTotal || 0),
   )
   if (availableSum + 0.005 < plan.gross) {
     const used = plan.paymentIds.filter(id => !available.some(l => (Array.isArray(l.payment_id) ? l.payment_id[0] : l.payment_id) === id))
+    const short = r2(plan.gross - availableSum)
     throw new Error(
-      `Paiements déjà lettrés ailleurs : ${availableSum.toFixed(2)} € disponibles pour ${plan.gross.toFixed(2)} € encaissés`
-      + (used.length ? ` — ${used.length} paiement(s) déjà utilisé(s) sur une autre ligne bancaire` : '')
+      `Il manque ${short.toFixed(2)} € au lettrage : ${availableSum.toFixed(2)} € disponibles pour ${plan.gross.toFixed(2)} € encaissés`
+      + (used.length
+          ? ` — ${used.length} paiement(s) déjà lettré(s) sur une autre ligne bancaire`
+          : ' — aucun paiement n\'est lettré ailleurs, il en manque simplement un')
       + '. À traiter à la main.',
     )
   }
