@@ -26,6 +26,7 @@ import {
   resolveReference,
   readManualOverride,
   normalizePlate,
+  proposeByAmount,
   type Resolution,
 } from '@/lib/paynovate-resolve'
 
@@ -37,6 +38,12 @@ import {
 const VD_TOKEN = /^VD[A-Z0-9]{6,10}$/i
 
 export const isVdToken = (ref: string) => VD_TOKEN.test(String(ref || '').trim())
+
+/**
+ * Un code de transaction SumUp (« TAAA4LQGKXE ») — pas une référence saisie.
+ * Il sert de clé de rattachement quand le terminal n'a rien enregistré.
+ */
+const isTxCode = (ref: string) => /^T[A-Z0-9]{8,}$/.test(String(ref || '').trim())
 
 /**
  * La plaque cachée dans une référence en toutes lettres.
@@ -154,17 +161,28 @@ export async function resolveSumupReference(
   when: string | null,
   tokens: Map<string, TokenHit>,
   invoiceCache: Map<number, any>,
+  linkKey?: string,
 ): Promise<Resolution> {
   const raw = String(ref || '').trim()
-  if (!raw) {
+
+  // Le rattachement humain passe avant tout le reste. Sa clé n'est pas
+  // forcément la référence : sans référence, c'est le code de la transaction.
+  const key = String(linkKey || raw).trim()
+  if (key) {
+    const manual = await readManualOverride(key, amount, 'sumup')
+    if (manual) return manual
+  }
+
+  // Rien n'a été saisi au terminal, ou on retombe sur le code de transaction
+  // après un détachement : la cascade ne peut rien en tirer, mais les factures
+  // du même montant restent une piste utile à cliquer.
+  if (!raw || isTxCode(raw)) {
     return {
-      confidence: 'aucun', invoiceIds: [], candidates: [],
+      confidence: 'aucun', invoiceIds: [],
+      candidates: await proposeByAmount(amount, when),
       explanation: 'Aucune référence saisie sur le terminal — SumUp n\'a enregistré que « Montant personnalisé »',
     }
   }
-
-  const manual = await readManualOverride(raw, amount, 'sumup')
-  if (manual) return manual
 
   const hit = tokens.get(raw)
   if (hit) {

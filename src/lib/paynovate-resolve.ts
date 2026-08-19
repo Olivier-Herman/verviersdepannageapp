@@ -300,6 +300,18 @@ const shape = (r: any) => ({
 })
 
 /**
+ * Les factures du même montant dans les jours qui précèdent, mises en forme.
+ *
+ * Exporté pour les transactions SANS aucune référence : la cascade ne peut rien
+ * en tirer, mais proposer les factures du bon montant évite de faire taper le
+ * numéro à la main à chaque fois.
+ */
+export async function proposeByAmount(amount: number, when: string | null) {
+  const rows = await sameAmountInvoices(amount, when)
+  return rows.map(shape)
+}
+
+/**
  * Retrouve la ou les factures payées par une transaction.
  *
  * @param ref    ce qui a été tapé sur le terminal

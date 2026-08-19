@@ -140,6 +140,11 @@ export async function buildSumupMatchReport(
     const matched: MatchedTx[] = []
     for (const t of group) {
       const r = t.merchantRef.trim()
+      // Sans référence au terminal (« Montant personnalisé »), un rattachement
+      // manuel se cale sur le code de la transaction : il est unique et stable.
+      // L'enregistrer sous la clé vide le ferait s'appliquer à tort à tous les
+      // encaissements suivants du même montant.
+      const linkKey = r || t.transactionCode
       const inv = INVOICE_RE.test(r) ? invoices.get(r) : undefined
 
       let confidence: Confidence = 'aucun'
@@ -153,9 +158,9 @@ export async function buildSumupMatchReport(
         explanation = `Facture ${r}`
         hits        = [inv]
       } else {
-        const key = `${r}|${t.rawAmount}`
+        const key = `${linkKey}|${t.rawAmount}`
         const res = resolved.get(key)
-          ?? await resolveSumupReference(r, t.rawAmount, t.transactionAt, tokenIndex, invoiceCache)
+          ?? await resolveSumupReference(r, t.rawAmount, t.transactionAt, tokenIndex, invoiceCache, linkKey)
         resolved.set(key, res)
         confidence  = res.confidence
         explanation = res.explanation
@@ -177,6 +182,7 @@ export async function buildSumupMatchReport(
 
       matched.push({
         merchantRef:  t.merchantRef,
+        linkKey,
         amount:       t.rawAmount,
         cardBrand:    t.cardBrand,
         at:           t.transactionAt,

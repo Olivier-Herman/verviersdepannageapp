@@ -40,6 +40,14 @@ export type MatchState = 'ready' | 'lost' | 'gap' | 'miss'
 
 export interface MatchedTx {
   merchantRef:  string
+  /**
+   * Ce sur quoi porte un rattachement manuel. Vaut la référence quand il y en a
+   * une ; sinon l'identifiant de la transaction chez le prestataire — sans quoi
+   * une transaction sans référence serait impossible à rattacher, et un
+   * rattachement enregistré sous la clé vide s'appliquerait à tort à tous les
+   * encaissements suivants du même montant.
+   */
+  linkKey:      string
   amount:       number          // montant encaissé sur le terminal
   cardBrand:    string
   at:           string | null
@@ -212,6 +220,7 @@ export async function buildMatchReport(
 
       matched.push({
         merchantRef:  t.merchantRef,
+        linkKey:      t.merchantRef,     // toujours renseignée chez Paynovate
         amount:       t.rawAmount,
         cardBrand:    t.cardBrand,
         at:           t.transactionAt,

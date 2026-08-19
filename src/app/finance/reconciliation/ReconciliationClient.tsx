@@ -15,6 +15,13 @@ import { useCallback, useEffect, useState } from 'react'
 
 interface Tx {
   merchantRef: string
+  /**
+   * Ce sur quoi porte le rattachement manuel. C'est la référence quand il y en
+   * a une, sinon l'identifiant de la transaction chez le prestataire — une
+   * transaction sans référence doit rester rattachable, et son rattachement ne
+   * doit surtout pas resservir au prochain encaissement du même montant.
+   */
+  linkKey: string
   amount: number
   cardBrand: string
   at: string | null
@@ -404,7 +411,9 @@ export default function ReconciliationClient({
                           <span className="font-mono text-sm font-semibold tabular-nums">{eur(x.amount)}</span>
                         </div>
                         <div className="mt-1 flex flex-wrap items-baseline gap-2">
-                          <span className="font-mono text-[13px] font-semibold">{x.invoiceName || x.merchantRef}</span>
+                          <span className="font-mono text-[13px] font-semibold">
+                            {x.invoiceName || x.merchantRef || <span className="text-ink-faint italic">sans référence</span>}
+                          </span>
                           {x.partner && <span className="text-[13.5px] text-ink-secondary">{x.partner}</span>}
                           {!x.issue && <span className="text-xs font-semibold text-success">✓ facture soldée</span>}
                           {x.manual && (
@@ -562,7 +571,7 @@ function Linker({ tx, endpoint, onLinked }: { tx: Tx; endpoint: string; onLinked
       const r = await fetch(endpoint, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ merchantRef: tx.merchantRef, amount: tx.amount, invoiceNames: names }),
+        body: JSON.stringify({ merchantRef: tx.linkKey || tx.merchantRef, amount: tx.amount, invoiceNames: names }),
       })
       const j = await r.json()
       if (!r.ok) { setMsg(j.error || `Erreur ${r.status}`); return }
@@ -594,7 +603,7 @@ function Linker({ tx, endpoint, onLinked }: { tx: Tx; endpoint: string; onLinked
       )}
 
       <div className="flex flex-wrap items-center gap-2 rounded-btn border border-dashed border-strong bg-surface px-3 py-2.5">
-        <label className="text-[12.5px] text-ink-secondary" htmlFor={`inv-${tx.merchantRef}`}>
+        <label className="text-[12.5px] text-ink-secondary" htmlFor={`inv-${tx.linkKey || tx.merchantRef}`}>
           {tx.invoiceName
             ? 'Ce n\'est pas la bonne facture ? Indique le bon numéro :'
             : tx.candidates.length > 0
@@ -602,7 +611,7 @@ function Linker({ tx, endpoint, onLinked }: { tx: Tx; endpoint: string; onLinked
               : 'Numéro de facture :'}
         </label>
         <input
-          id={`inv-${tx.merchantRef}`}
+          id={`inv-${tx.linkKey || tx.merchantRef}`}
           value={value}
           onChange={e => setValue(e.target.value)}
           onKeyDown={e => { if (e.key === 'Enter' && value.trim()) link(value.split(/[\s,;+]+/).filter(Boolean)) }}
@@ -635,7 +644,7 @@ function Detacher({ tx, endpoint, onDetached }: { tx: Tx; endpoint: string; onDe
       const r = await fetch(endpoint, {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ merchantRef: tx.merchantRef, amount: tx.amount, at: tx.at }),
+        body: JSON.stringify({ merchantRef: tx.linkKey || tx.merchantRef, amount: tx.amount, at: tx.at }),
       })
       const j = await r.json()
       if (r.ok) onDetached(j)
