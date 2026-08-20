@@ -4454,24 +4454,7 @@ export default function MissionDetailClient({
               )}
 
               {/* ── Actions admin (dispatcher peut forcer le statut sans pointage chauffeur) ── */}
-              {/* ⚠️ Retiré sur une mission suivie en FLUX 2 (Olivier 2026-08-16) :
-                  forcer le statut casse le suivi chez l'assistance — la mission
-                  change d'état chez nous sans que l'assistance en sache rien — et
-                  « tant qu'on ne le retire pas, il va continuer à être utilisé ».
-                  Le superadmin le garde pour débloquer un cas réel. */}
-              {flux2Mission && userRole !== 'superadmin' && ['admin', 'dispatcher'].includes(userRole) && (
-                <div className="bg-surface border border rounded-2xl p-5 md-card-enter">
-                  <h3 className="text-ink-muted text-xs font-medium uppercase tracking-wide mb-2">
-                    🛠 Actions dispatcher
-                  </h3>
-                  <p className="text-ink-faint text-xs">
-                    Cette mission est suivie en flux 2 : le chauffeur la clôture depuis son écran, et la clôture part chez l'assistance.
-                    Forcer le statut ici la désynchroniserait. Si elle est vraiment bloquée, passe par un superadmin.
-                  </p>
-                </div>
-              )}
-
-              {['admin', 'superadmin', 'dispatcher'].includes(userRole) && (userRole === 'superadmin' || !flux2Mission) && (
+              {['admin', 'superadmin', 'dispatcher'].includes(userRole) && (
                 <div className="bg-surface border border-amber-500/30 rounded-2xl p-5 md-card-enter">
                   <h3 className="text-ink-muted text-xs font-medium uppercase tracking-wide mb-3">
                     🛠 Actions dispatcher
