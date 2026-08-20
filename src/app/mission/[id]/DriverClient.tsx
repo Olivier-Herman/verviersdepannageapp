@@ -1710,6 +1710,36 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
     finally { setLoading(false) }
   }
 
+  // ── « Ceci n'est pas un Siabis » ────────────────────────────────────────────
+  // Cas typique : véhicule HORS AUTOROUTE → le tarif Siabis ne s'applique pas.
+  // On repasse sur la SOURCE d'assistance d'origine (ex. touring) + son client à
+  // facturer (snapshot persisté à l'import dans origin_*), facturé à l'assistance,
+  // sans encaissement client. Le stash dispatch étant en mémoire (éphémère), on
+  // s'appuie sur les colonnes origin_*. Refonte flux sur place 2026-08-20.
+  const revertToOrigin = async () => {
+    const originSrc = (M as any).origin_source
+    if (!originSrc) { setErr('Source d\'assistance d\'origine inconnue pour cette fiche.'); return }
+    setShowGrid(false); setLoading(true); setErr('')
+    try {
+      const r = await fetch(`/api/missions/${M.id}`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          source:         originSrc,
+          billed_to_id:   (M as any).origin_billed_to_id ?? null,
+          billed_to_name: (M as any).origin_billed_to_name ?? null,
+          snc_scenario:   null,
+          amount_to_collect: null,   // facturé à l'assistance → jamais d'encaissement client
+        }),
+      })
+      const j = await r.json()
+      if (!r.ok) throw new Error(j.error || 'Erreur')
+      const __url = new URL(window.location.href)
+      __url.searchParams.set('t', String(Date.now()))
+      window.location.href = __url.toString()
+    } catch (e: any) { setErr(e.message || 'Échec du repassage sur l\'assistance d\'origine') }
+    finally { setLoading(false) }
+  }
+
   // ── Upload photos ─────────────────────────────────────────────────────────
   const compressPhoto = (file: File): Promise<Blob> => new Promise(resolve => {
     const img = new window.Image()
@@ -3882,6 +3912,32 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
             creation). La tuile active est mise en evidence (bg + ring). */}
         {(M.source === 'police_snc' || M.source === 'sia_couvert') && !isReadOnly && (
           <div className="bg-blue-50 border-2 border-blue-500 rounded-2xl p-4 space-y-3">
+
+            {/* Refonte flux sur place (flag onsiteV2) : le chauffeur peut corriger
+                le TYPE de mission. « Ceci n'est pas un Siabis » (ex. hors autoroute
+                → tarif Siabis non applicable) repasse sur l'assistance d'origine. */}
+            {onsiteV2 && (
+              <div className="bg-surface border border rounded-xl p-3 space-y-2">
+                <p className="text-ink-secondary text-xs font-bold uppercase tracking-wide">Type de mission</p>
+                <div className="grid grid-cols-1 gap-1.5">
+                  <button type="button" disabled={loading} onClick={() => setSiabisSource('police_snc')}
+                    className={`p-2.5 rounded-lg border text-left text-sm disabled:opacity-50 ${M.source === 'police_snc' ? 'bg-blue-100 border-blue-600 font-semibold text-ink' : 'bg-surface-2 border text-ink-secondary'}`}>
+                    🔴 Siabis — Non couvert<span className="text-ink-muted text-xs block font-normal">Le client paie sur place</span>
+                  </button>
+                  <button type="button" disabled={loading} onClick={() => setSiabisSource('sia_couvert')}
+                    className={`p-2.5 rounded-lg border text-left text-sm disabled:opacity-50 ${M.source === 'sia_couvert' ? 'bg-blue-100 border-blue-600 font-semibold text-ink' : 'bg-surface-2 border text-ink-secondary'}`}>
+                    🔵 Siabis — Couvert<span className="text-ink-muted text-xs block font-normal">Facturé à l&apos;assistance, rien à encaisser</span>
+                  </button>
+                  {(M as any).origin_source && (
+                    <button type="button" disabled={loading} onClick={revertToOrigin}
+                      className="p-2.5 rounded-lg border border-dashed border-blue-300 text-left text-sm bg-surface-2 text-ink-secondary disabled:opacity-50">
+                      ↩️ Ceci n&apos;est pas un Siabis<span className="text-ink-muted text-xs block font-normal">Hors autoroute → repasse sur l&apos;assistance d&apos;origine (facturé à l&apos;assistance)</span>
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
+
             <div className="flex items-start gap-2">
               <span className="text-2xl">🚔</span>
               <div>
