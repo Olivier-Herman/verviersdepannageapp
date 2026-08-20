@@ -937,6 +937,18 @@ async function estimateLinesTemplate(
       }
       if (l.kind === 'SERV-KM'   && kmHorsForfait > 0) autoQty = Math.ceil(kmHorsForfait)
     }
+    // Abandon volontaire « en échange des frais de gardiennage » : le parc ne
+    // se facture plus, ni les jours déjà courus ni ceux à venir. Le drapeau
+    // prime sur TOUT (qty auto comme qty configurée en grille) — la branche
+    // "lines" est justement celle des sources fourrière (Accident, Saisie,
+    // Rodéo, Mal Garée), donc la seule où l'abandon se produit.
+    // Olivier 2026-08-20 : sans ça, l'abandon ne coupait le gardiennage que
+    // pour les modes forfait/brackets, qui n'en facturent quasi jamais.
+    if (l.kind === 'SERV-PARC' && mission.storage_waived) {
+      autoQty  = 0
+      parcFrom = null
+      parcTo   = null
+    }
     // Choix du prix : si majoration applicable ET la ligne a un prix majore
     // distinct, on prend ce prix. Sinon prix normal.
     const priceNormal  = l.default_price != null ? Number(l.default_price) : null
@@ -992,7 +1004,9 @@ async function estimateLinesTemplate(
       // "20.00 EUR/jour" plutot que "qty/PU a saisir" (Olivier 2026-05-25 :
       // "les jours de gardiennage toujours pas visible dans l estimation").
       let note: string | undefined
-      if (!hasQty && hasPrice) {
+      if (l.kind === 'SERV-PARC' && mission.storage_waived) {
+        note = 'abandon volontaire — gardiennage offert'
+      } else if (!hasQty && hasPrice) {
         note = `${Number(l.default_price).toFixed(2)} €/${unit}`
       } else if (!hasQty || !hasPrice) {
         note = 'qty/PU à saisir'

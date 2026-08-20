@@ -55,7 +55,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
 
   const { data: mission } = await sb
     .from('incoming_missions')
-    .select('id, mission_number, external_id, dossier_number, billed_to_id, billed_to_name, vehicle_plate, mission_type, intervention_date, received_at, incident_address, destination_address, redelivery_address')
+    .select('id, mission_number, external_id, dossier_number, billed_to_id, billed_to_name, vehicle_plate, mission_type, intervention_date, received_at, incident_address, destination_address, redelivery_address, storage_waived')
     .eq('id', params.id)
     .single()
   if (!mission) return NextResponse.json({ error: 'Mission introuvable' }, { status: 404 })
@@ -67,6 +67,15 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   const partnerName = String(body.billed_to_name || mission.billed_to_name || '')
   if (!partnerId) {
     return NextResponse.json({ error: 'Pas de client à facturer — choisis un destinataire ou renseigne-le sur la fiche.' }, { status: 400 })
+  }
+
+  // ── GARDE-FOU : abandon volontaire = gardiennage offert ───────────────────
+  // Le modal grise déjà la case, mais un devis partiel peut être poussé depuis
+  // un onglet ouvert avant l'abandon. Olivier 2026-08-20.
+  if ((mission as any).storage_waived && lines.some(l => l.kind === 'SERV-PARC')) {
+    return NextResponse.json({
+      error: 'Abandon volontaire enregistré sur cette fiche : le gardiennage a été offert, il ne peut plus être facturé. Retire la ligne de parc.',
+    }, { status: 409 })
   }
 
   // ── GARDE-FOU : ne jamais facturer deux fois les mêmes jours de parc ───────

@@ -128,6 +128,10 @@ async function computeProvisionalTariff(_sb: any, m: any): Promise<{ amount_tvac
       .filter(b => b.amount != null && b.amount > 0)
       .map(b => `${b.label} : ${(b.amount as number).toFixed(2)} €${b.note ? ` (${b.note})` : ''}`)
     if (est.parc_jours > 0) details.push(`${est.parc_jours} j en parc`)
+    // Le détail ne garde que les lignes > 0 € : sans ça, un gardiennage offert
+    // disparaît purement et simplement de la fiche fourrière et l'agent au
+    // comptoir ne sait pas pourquoi. Olivier 2026-08-20.
+    if ((m as any).storage_waived) details.push('Abandon volontaire — gardiennage offert')
     if (m.special_tarif_htva) details.push(`Tarif spécial : ${Number(m.special_tarif_htva).toFixed(2)} € HTVA`)
     return {
       amount_tvac: tvac,

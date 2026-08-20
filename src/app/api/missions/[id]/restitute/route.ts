@@ -142,7 +142,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
       client_name, client_phone, billed_to_id, billed_to_name,
       incident_address, incident_city, destination_address,
       parc_zone_key, parc_row_number, parc_slot_index,
-      received_at, intervention_date, parked_at,
+      received_at, intervention_date, parked_at, storage_waived,
       police_blocked, police_levee_saisie_ok, odoo_quote_id,
       special_tarif_htva, amount_guaranteed, amount_to_collect
     `)
@@ -188,8 +188,13 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   const now      = new Date().toISOString()
   const entry    = mission.parked_at || mission.received_at || mission.intervention_date || now
   const rawDays  = computeGardiennageDays(entry, now)
-  // Applique le minimum de jours selon source (3 pour Rodeo, 0 sinon)
-  const days     = Math.max(rawDays, sourceConfig.minDays)
+  // Abandon volontaire « en échange des frais de gardiennage » : zéro jour
+  // facturable, et le minimum par source ne s'applique pas non plus (le
+  // minimum sert à couvrir un séjour court, pas un gardiennage offert).
+  // Olivier 2026-08-20.
+  const days     = (mission as any).storage_waived
+    ? 0
+    : Math.max(rawDays, sourceConfig.minDays)
 
   // 4. Branche selon mode
   // ─── 4a. NO_CHARGE : motif requis, status -> completed, pas de devis ────────

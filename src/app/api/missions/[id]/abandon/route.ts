@@ -90,8 +90,14 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     created_by_name: actor.name || actor.email || null,
   }
 
+  // estimated_htva est FIGÉ à la clôture (cron fill-estimated-htva). Sur une
+  // fiche déjà clôturée, le CA gelé contient encore le gardiennage : on le
+  // remet à null pour que le cron le recalcule avec la remise. Olivier 2026-08-20.
   const { error } = await sb.from('incoming_missions')
-    .update({ abandon_data: abandon, abandon_at: now, storage_waived: waive })
+    .update({
+      abandon_data: abandon, abandon_at: now, storage_waived: waive,
+      ...(waive ? { estimated_htva: null, estimated_htva_at: null } : {}),
+    })
     .eq('id', params.id)
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
@@ -114,7 +120,7 @@ export async function DELETE(req: Request, { params }: { params: { id: string } 
 
   const sb = createAdminClient()
   const { error } = await sb.from('incoming_missions')
-    .update({ abandon_data: null, abandon_at: null, storage_waived: false })
+    .update({ abandon_data: null, abandon_at: null, storage_waived: false, estimated_htva: null, estimated_htva_at: null })
     .eq('id', params.id)
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
