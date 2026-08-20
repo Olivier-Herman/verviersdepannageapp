@@ -666,7 +666,10 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
   const sncNeedsDest = String(M.mission_type || '').toLowerCase().includes('remorquage')
     || ['rem_client', 'rem_direct'].includes(M.snc_scenario || '')
   const sncBlockers: { text: string; action?: () => void; cta?: string }[] = []
-  if (M.source === 'police_snc' && !paidEffective && requiredAmount <= 0) {
+  // Refonte flux sur place (onsiteV2) : on ne réclame PAS de destination/montant
+  // tant que le chauffeur n'a pas choisi de scénario (avant, le bandeau rouge
+  // « montant impossible » s'affichait dès l'ouverture de la fiche). 2026-08-20.
+  if (M.source === 'police_snc' && !paidEffective && requiredAmount <= 0 && (!onsiteV2 || !!M.snc_scenario)) {
     if (M.incident_lat == null || M.incident_lng == null) {
       sncBlockers.push({
         text: "le lieu d'intervention n'a pas de position GPS (adresse tapée à la main, sans choisir la suggestion Google)",
@@ -3910,8 +3913,12 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
             3 tuiles restent toujours visibles et le chauffeur peut basculer
             entre elles a tout moment (comme dans PoliceClient.tsx a la
             creation). La tuile active est mise en evidence (bg + ring). */}
-        {(M.source === 'police_snc' || M.source === 'sia_couvert') && !isReadOnly && (
+        {(M.source === 'police_snc' || M.source === 'sia_couvert') && !isReadOnly && (!onsiteV2 || onSite) && (
           <div className="bg-blue-50 border-2 border-blue-500 rounded-2xl p-4 space-y-3">
+
+            {/* onsiteV2 : ce bloc (type + scénario) n'apparaît qu'APRÈS « Sur place »
+                — c'est l'écran « Qu'est-ce qu'on fait ? ». Avant, il était visible
+                en permanence sur la fiche. 2026-08-20. */}
 
             {/* Refonte flux sur place (flag onsiteV2) : le chauffeur peut corriger
                 le TYPE de mission. « Ceci n'est pas un Siabis » (ex. hors autoroute
