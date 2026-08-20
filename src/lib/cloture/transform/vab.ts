@@ -196,7 +196,13 @@ export async function runVabTowClose(input: VabTowCloseInput): Promise<void> {
       // Sans relevé, VAB refuse d'avancer : on met un chiffre bas plutôt que de
       // bloquer la clôture (Olivier : « essaie un faux bas style 126 »).
       km: km || '126',
-      vinLastDigits: vin ? vin.slice(-3) : '126',
+      // ⚠️ Quand le châssis est inconnu, les 3 chiffres doivent CHANGER d'un essai
+      // à l'autre. En retapant toujours « 126 », la valeur restait identique à
+      // celle déjà connue de VAB : leur « Vérifier » ne se redéclenchait pas, la
+      // pop-up de non-concordance n'apparaissait pas, et la case « VIN inconnu »
+      // non plus — le champ restait obligatoire pour toujours. Vu sur 1XGJ912 le
+      // 20/08, bloqué là après plusieurs reprises. Olivier 2026-08-20.
+      vinLastDigits: vin ? vin.slice(-3) : String(100 + Math.floor(Math.random() * 900)),
       vinFull: vin || undefined,
     })
     étapes.push(...onsite.steps)

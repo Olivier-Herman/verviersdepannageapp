@@ -107,18 +107,40 @@ async function drawSignature(page: Page): Promise<boolean> {
   if (!canvas) return false
   const box = await canvas.boundingBox()
   if (!box) return false
-  await page.mouse.move(box.x + 20, box.y + box.height / 2)
+
+  // ⚠️ UN TRAIT DE MACHINE N'EST PAS UNE SIGNATURE. Trois mouvements rectilignes
+  // en quelques millisecondes remplissaient bien le champ caché, mais « Envoyer »
+  // ne retenait rien — le kilométrage revenait vide (1XGJ912, 2HXU702). Olivier
+  // fait « un trait » à la main et ça passe : la différence est dans le GESTE,
+  // pas dans l'enchaînement. On imite donc une main — plusieurs segments, une
+  // courbe, des pauses — au lieu de deux lignes droites. Olivier 2026-08-20.
+  const x0 = box.x + box.width * 0.15
+  const y0 = box.y + box.height * 0.60
+  const largeur = box.width * 0.70
+  const haut = box.height * 0.35
+
+  await page.mouse.move(x0, y0)
   await page.mouse.down()
-  await page.mouse.move(box.x + box.width - 20, box.y + box.height / 2, { steps: 25 })
-  await page.mouse.move(box.x + box.width / 2, box.y + 15, { steps: 25 })
+  // Une vague : montée, descente, remontée — 3 arches, point par point.
+  const points = 60
+  for (let i = 1; i <= points; i++) {
+    const t = i / points
+    const x = x0 + largeur * t
+    const y = y0 - Math.sin(t * Math.PI * 3) * haut * (0.6 + 0.4 * Math.random())
+    await page.mouse.move(x, y)
+    if (i % 12 === 0) await new Promise(r => setTimeout(r, 40))   // la main ralentit
+  }
+  await new Promise(r => setTimeout(r, 120))
   await page.mouse.up()
-  await new Promise(r => setTimeout(r, 400))
+  await new Promise(r => setTimeout(r, 800))
+
   const len = await page.evaluate(() => {
     const s = document.querySelector('input[id*="wtInput_Signature"]') as HTMLInputElement | null
     return s ? s.value.length : 0
   })
   return len > 50
 }
+
 
 /** Popup « VIN inconnu » (Non-concordance châssis) = IFRAME → cliquer « Oui »
  *  DANS la frame (sinon la modale reste ouverte et masque le canvas). */
