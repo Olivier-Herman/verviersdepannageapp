@@ -2348,6 +2348,7 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
         onDprCodes={setF2Dpr}
         onPick={o => { setF2Outcome(o); setF2Screen('close') }}
         onBack={() => setF2Screen('none')}
+        onsiteV2={onsiteV2}
       />
     )
   }

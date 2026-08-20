@@ -34,7 +34,7 @@ const GROUP_TITLES: Record<string, string> = {
 }
 
 export default function ActionScreen({
-  missionId, plate, vehicle, prise, onPrise, balisage, onBalisage, canLoad, onLoad, onDprCodes, onPick, onBack,
+  missionId, plate, vehicle, prise, onPrise, balisage, onBalisage, canLoad, onLoad, onDprCodes, onPick, onBack, onsiteV2 = false,
 }: {
   missionId: string
   plate?: string | null
@@ -44,6 +44,9 @@ export default function ActionScreen({
   /** Balisage posé sur place — entre dans le tarif Siabis. */
   balisage: boolean
   onBalisage: (v: boolean) => void
+  /** Refonte flux sur place : type + balisage sont décidés sur l'écran bloquant
+      « Qu'est-ce qu'on fait ? » → on les masque ici pour ne pas les redemander. */
+  onsiteV2?: boolean
   /** Remorquage pas encore chargé : le geste suivant est de charger. */
   canLoad?: boolean
   onLoad?: () => void
@@ -104,43 +107,45 @@ export default function ActionScreen({
 
         {outcomes && (
           <>
-            {/* Prise en charge — marqueur de tarif, toujours visible en premier. */}
-            <p className="text-ink-muted text-[11px] uppercase tracking-widest font-bold">
-              Prise en charge <span className="normal-case tracking-normal font-medium text-ink-faint">— change le tarif</span>
-            </p>
-            <div className="flex gap-2">
-              {PRISE_OPTIONS.map(p => (
-                <button key={p.key} onClick={() => onPrise(p.key)}
-                  className={`flex-1 py-2.5 px-1 rounded-xl text-[11px] font-bold leading-tight border transition ${
-                    prise === p.key
-                      ? 'border-green-500 bg-green-500/10 text-green-700 dark:text-green-300'
-                      : 'border bg-surface-2 text-ink-secondary'
-                  }`}>
-                  {p.label}
-                </button>
-              ))}
-            </div>
-
-            {/* Balisage — JUSTE sous les boutons Siabis et AVANT le choix de
-                l'issue : posé plus tard, il fausse le montant déjà annoncé au
-                client. Aucun euro affiché ici, le chauffeur répond à une question
-                de terrain. Non par défaut. Olivier 2026-08-12. */}
-            {prise !== 'standard' && (
-              <div className="space-y-2 pt-1">
-                <p className="text-ink font-bold text-[15px]">🚧 Balisage</p>
+            {/* Prise en charge + Balisage : décidés sur l'écran bloquant sous
+                onsiteV2 → on ne les redemande PAS ici (sinon doublon). Legacy
+                (flag off) : inchangé. Olivier 2026-08-20. */}
+            {!onsiteV2 && (
+              <>
+                <p className="text-ink-muted text-[11px] uppercase tracking-widest font-bold">
+                  Prise en charge <span className="normal-case tracking-normal font-medium text-ink-faint">— change le tarif</span>
+                </p>
                 <div className="flex gap-2">
-                  {[{ v: true, l: 'Oui' }, { v: false, l: 'Non' }].map(o => (
-                    <button key={o.l} onClick={() => onBalisage(o.v)}
-                      className={`flex-1 py-3.5 rounded-xl text-base font-extrabold border transition ${
-                        balisage === o.v
+                  {PRISE_OPTIONS.map(p => (
+                    <button key={p.key} onClick={() => onPrise(p.key)}
+                      className={`flex-1 py-2.5 px-1 rounded-xl text-[11px] font-bold leading-tight border transition ${
+                        prise === p.key
                           ? 'border-green-500 bg-green-500/10 text-green-700 dark:text-green-300'
                           : 'border bg-surface-2 text-ink-secondary'
                       }`}>
-                      {o.l}
+                      {p.label}
                     </button>
                   ))}
                 </div>
-              </div>
+
+                {prise !== 'standard' && (
+                  <div className="space-y-2 pt-1">
+                    <p className="text-ink font-bold text-[15px]">🚧 Balisage</p>
+                    <div className="flex gap-2">
+                      {[{ v: true, l: 'Oui' }, { v: false, l: 'Non' }].map(o => (
+                        <button key={o.l} onClick={() => onBalisage(o.v)}
+                          className={`flex-1 py-3.5 rounded-xl text-base font-extrabold border transition ${
+                            balisage === o.v
+                              ? 'border-green-500 bg-green-500/10 text-green-700 dark:text-green-300'
+                              : 'border bg-surface-2 text-ink-secondary'
+                          }`}>
+                          {o.l}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </>
             )}
 
             {/* Charger le véhicule : ce n'est pas une issue de mission, mais c'est
