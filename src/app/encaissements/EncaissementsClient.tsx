@@ -68,7 +68,34 @@ export default function EncaissementsClient({
   const [drivers,      setDrivers]      = useState<{ id: string; name: string }[]>([])
   const [selected,     setSelected]     = useState<Entry | null>(null)
 
-  const isAdmin = ['admin', 'superadmin', 'dispatcher'].includes(userRole)
+  // Suppression d'un encaissement encodé par erreur (superadmin only).
+  const [delOpen,   setDelOpen]   = useState(false)
+  const [delReason, setDelReason] = useState('')
+  const [delBusy,   setDelBusy]   = useState(false)
+  const [delErr,    setDelErr]    = useState<string | null>(null)
+  useEffect(() => { setDelOpen(false); setDelReason(''); setDelErr(null) }, [selected])
+
+  const isAdmin      = ['admin', 'superadmin', 'dispatcher'].includes(userRole)
+  const isSuperadmin = userRole === 'superadmin'
+
+  const handleDelete = async () => {
+    if (!selected) return
+    setDelBusy(true); setDelErr(null)
+    try {
+      const r = await fetch('/api/encaissement/delete', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: selected.id, reason: delReason.trim() }),
+      })
+      const j = await r.json().catch(() => ({}))
+      if (!r.ok) { setDelErr(j.error || 'Suppression impossible'); setDelBusy(false); return }
+      const delId = selected.id
+      setEntries(prev => prev.filter(e => !(e.type === 'intervention' && e.id === delId)))
+      setSelected(null); setDelBusy(false)
+      if (Array.isArray(j.warnings) && j.warnings.length) {
+        alert('Encaissement supprimé.\n\n⚠ ' + j.warnings.join('\n⚠ '))
+      }
+    } catch { setDelErr('Réseau indisponible'); setDelBusy(false) }
+  }
 
   useEffect(() => {
     fetch('/api/interventions?includeAdvances=true')
@@ -401,6 +428,44 @@ export default function EncaissementsClient({
                 className="mt-4 block w-full text-center py-3 bg-brand hover:bg-brand/80 text-white rounded-2xl font-semibold text-sm transition">
                 🚛 Voir la fiche mission
               </a>
+            )}
+
+            {/* Suppression d'un encaissement encodé par erreur — superadmin only. */}
+            {selected.type === 'intervention' && isSuperadmin && (
+              <div className="mt-4 pt-4 border-t border">
+                {!delOpen ? (
+                  <button onClick={() => { setDelOpen(true); setDelReason(''); setDelErr(null) }}
+                    className="w-full text-center py-2.5 rounded-2xl text-sm font-semibold text-critical border border-critical/40 hover:bg-critical/10 transition">
+                    🗑 Supprimer cet encaissement
+                  </button>
+                ) : (
+                  <div className="space-y-3">
+                    <p className="text-xs text-ink-muted leading-relaxed">
+                      Suppression définitive. La caisse du chauffeur est corrigée
+                      {selected.synced_to_odoo ? ', le devis Odoo est annulé' : ''}
+                      {selected.mission_id ? ', la mission est recalculée' : ''}.
+                      {!['cash', 'unpaid', ''].includes(selected.payment_mode) && (
+                        <span className="text-critical"> ⚠ Un paiement carte n’est PAS remboursé automatiquement.</span>
+                      )}
+                    </p>
+                    <textarea value={delReason} onChange={e => setDelReason(e.target.value)}
+                      placeholder="Motif (obligatoire) — ex. erreur chauffeur, doublon…"
+                      rows={2}
+                      className="w-full rounded-xl border bg-surface p-3 text-sm text-ink focus:outline-none focus:border-brand" />
+                    {delErr && <p className="text-critical text-xs">⚠ {delErr}</p>}
+                    <div className="flex gap-2">
+                      <button onClick={() => setDelOpen(false)} disabled={delBusy}
+                        className="flex-1 py-2.5 rounded-2xl text-sm border text-ink-secondary hover:bg-surface-hover transition">
+                        Annuler
+                      </button>
+                      <button onClick={handleDelete} disabled={delBusy || delReason.trim().length < 4}
+                        className="flex-1 py-2.5 rounded-2xl text-sm font-semibold text-white bg-critical hover:bg-critical/90 disabled:opacity-50 transition">
+                        {delBusy ? 'Suppression…' : 'Confirmer la suppression'}
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
             )}
           </div>
         </div>
