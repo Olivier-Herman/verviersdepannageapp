@@ -5,7 +5,6 @@ import { authOptions }       from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase'
 import DriverClient          from './DriverClient'
 import SncMissionFiche       from './SncMissionFiche'
-import PushToScreenButton    from '@/components/caisse/PushToScreenButton'
 import { getDefaultParcZone } from '@/lib/missions/parc-default'
 import { flux2Enabled }        from '@/lib/cloture/gating'
 import { isPreviewOn }         from '@/lib/feature-flags'
@@ -88,21 +87,9 @@ export default async function MissionDriverPage({ params, searchParams }: Props)
   const isDriverDraft = mission.awaiting_payment === true
   const isSncFiche    = isSncSource && isDriverDraft && !hasStartedDelivery
 
-  // Aperçu bureau : bouton flottant « Afficher au client » (écran comptoir),
-  // réservé au staff (le chauffeur ne l'a pas). Olivier 2026-07-28.
-  const officePush = isStaff ? (
-    <div className="fixed top-3 right-3 z-[60]">
-      <PushToScreenButton
-        compact
-        missionId={mission.id}
-        client={mission.client_name}
-        plate={mission.vehicle_plate}
-        brand={mission.vehicle_brand}
-        model={mission.vehicle_model}
-        reference={mission.mission_number != null ? String(mission.mission_number) : (mission.dossier_number || null)}
-      />
-    </div>
-  ) : null
+  // « Afficher au client » (écran comptoir) = action DISPATCH → retirée du flux
+  // chauffeur (elle reste sur la fiche dispatch). Olivier 2026-08-20.
+  const officePush = null
 
   if (isSncFiche && !forceLegacy) {
     return (

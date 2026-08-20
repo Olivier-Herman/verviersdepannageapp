@@ -1201,8 +1201,15 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
   // fiche Siabis sans scénario choisi, on ouvre l'écran PLEIN & BLOQUANT « Qu'est-ce
   // qu'on fait ? ». Piloté par un effet (pas par le bouton) → robuste aux reloads
   // de la page (l'état d'écran est reconstruit à chaque montage). 2026-08-20.
+  // Verrou : une fois que le chauffeur a choisi un scénario sur l'écran bloquant,
+  // on ne le renvoie plus dessus (sinon REM — qui passe par la saisie de
+  // destination sur la fiche, sans scénario encore posé — rebondirait en boucle).
+  // Réinitialisé au montage (donc l'écran revient après un reload si toujours
+  // aucun scénario). 2026-08-20.
+  const chooserPickedRef = useRef(false)
   useEffect(() => {
     if (onsiteV2 && onSite && !M.snc_scenario && !rel && !isReadOnly
+        && !chooserPickedRef.current
         && M.status === 'in_progress'
         && (M.source === 'police_snc' || M.source === 'sia_couvert')
         && screen === 'main') {
@@ -1777,6 +1784,7 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
   // Choix du scénario depuis l'écran bloquant → puis retour à la fiche (où vivent
   // la saisie de destination et la suite du flux).
   const chooserPickScenario = async (kind: 'dsp' | 'rem_client' | 'rem_depot' | 'rem_direct') => {
+    chooserPickedRef.current = true   // évite que l'effet rouvre l'écran bloquant
     if (kind === 'dsp') { await pickSncScenario('dsp'); setScreen('main'); return }
     setScreen('main'); openDestPrompt(kind)
   }
@@ -2444,7 +2452,7 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
             {scenarioTiles.map(opt => (
               <button key={opt.key} type="button" disabled={sncSaving !== null || loading}
                 onClick={() => chooserPickScenario(opt.key)}
-                className="w-full p-4 rounded-2xl border-2 border-blue-300 bg-surface text-left hover:border-blue-500 active:scale-[0.99] transition disabled:opacity-50">
+                className="w-full p-4 rounded-2xl border bg-surface text-left active:scale-[0.99] active:border-blue-500 transition disabled:opacity-50">
                 <div className="text-ink font-semibold">{opt.label}</div>
                 <div className="text-ink-muted text-xs mt-0.5">{opt.desc}</div>
                 {sncSaving === opt.key && <div className="text-blue-700 text-xs mt-1">⏳ Application en cours…</div>}
