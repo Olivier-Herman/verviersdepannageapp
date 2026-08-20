@@ -1573,6 +1573,10 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
               body:    JSON.stringify({ amount_to_collect: amount }),
             })
             setM(prev => ({ ...prev, amount_to_collect: amount as any }))
+            // Refonte flux sur place : dès que le tarif est calculé (non-couvert),
+            // on présente l'écran d'encaissement (montant + détail + bouton), au
+            // lieu de retomber sur la fiche. 2026-08-20.
+            if (onsiteV2 && amount != null && amount > 0) setScreen('encaissement')
           } else if (variant === 'snc') {
             // Tarif non calculable (API KO) → on prévient au lieu de rester muet.
             setSncInfoMsg("⚠️ Le tarif n'a pas pu être calculé. Préviens le dispatch pour fixer le montant à encaisser avant clôture.")
@@ -1785,7 +1789,9 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
   // la saisie de destination et la suite du flux).
   const chooserPickScenario = async (kind: 'dsp' | 'rem_client' | 'rem_depot' | 'rem_direct') => {
     chooserPickedRef.current = true   // évite que l'effet rouvre l'écran bloquant
-    if (kind === 'dsp') { await pickSncScenario('dsp'); setScreen('main'); return }
+    // On quitte l'écran bloquant AVANT le calcul : pickSncScenario bascule ensuite
+    // vers l'écran d'encaissement si un montant est dû (sinon on reste sur la fiche).
+    if (kind === 'dsp') { setScreen('main'); await pickSncScenario('dsp'); return }
     setScreen('main'); openDestPrompt(kind)
   }
 
