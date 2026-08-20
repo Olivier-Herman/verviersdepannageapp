@@ -10,6 +10,14 @@
 //     gardiennage de la fiche à zéro (storage_waived).
 // À la validation, le document imprimable s'ouvre : le client n'a plus qu'à
 // signer (ou signer directement à l'écran avant de générer). Olivier 2026-08-19.
+//
+// SAISIE POLICE : l'abandon ne se fait PAS chez nous. Le propriétaire doit
+// renoncer au véhicule auprès de la zone de police qui a ordonné la saisie —
+// c'est elle qui détient le dossier. Chez VD, l'abandon n'est possible que pour
+// un véhicule arrivé sur panne, accident ou enlèvement pour stationnement
+// gênant. Le bouton est donc remplacé par un rappel sur les fiches
+// `police_saisie` ; l'API refuse aussi, un garde-fou client ne suffit pas.
+// Olivier 2026-08-20.
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
@@ -30,10 +38,12 @@ export interface AbandonData {
 
 export default function AbandonVehiculeButton({
   missionId, plate, brand, model, vin,
+  source = null,
   abandonAt = null, abandonData = null,
   screenKey = 'facturation',
 }: {
   missionId: string
+  source?:   string | null
   plate?:    string | null
   brand?:    string | null
   model?:    string | null
@@ -135,6 +145,22 @@ export default function AbandonVehiculeButton({
           </button>
         </div>
         {err && <p className="text-critical text-xs">⚠ {err}</p>}
+      </div>
+    )
+  }
+
+  // ── Saisie police : la démarche appartient à la zone de police ──
+  // On affiche le rappel plutôt que de masquer : sans explication, un
+  // dispatcher chercherait le bouton disparu.
+  if ((source || '').toLowerCase().trim() === 'police_saisie') {
+    return (
+      <div className="w-full bg-surface-2 border border-app rounded-2xl p-3 space-y-1.5">
+        <p className="text-sm font-semibold text-ink flex items-center gap-1.5">🚔 Abandon : à faire à la police</p>
+        <p className="text-xs text-ink-muted">
+          Ce véhicule est en saisie police. La renonciation se fait auprès de la zone de police
+          qui a ordonné la saisie — on ne peut pas l&apos;enregistrer ici. L&apos;abandon chez nous
+          n&apos;est possible que pour une panne, un accident ou une mal garée.
+        </p>
       </div>
     )
   }

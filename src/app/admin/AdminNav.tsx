@@ -72,6 +72,7 @@ const GROUPS: NavGroup[] = [
       { href: '/admin/documents', label: 'Documents', icon: FileText },
       { href: '/admin/archives',  label: 'Archives',  icon: Archive },
       { href: '/admin/cash',      label: 'Caisses',   icon: Wallet },
+      { href: '/admin/ventes',    label: 'Ventes',    icon: Car },
       { href: '/admin/tgr',       label: 'TGR',       icon: Truck },
     ],
   },

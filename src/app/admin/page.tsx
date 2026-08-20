@@ -192,6 +192,8 @@ export default async function AdminPage() {
           desc="Caisses chauffeurs, mouvements, contrôle." />
         <Card href="/admin/amendes" icon={FileText} label="Amendes / PV"
           desc="Liste des PV reçus, stats par chauffeur, attribution manuelle." />
+        <Card href="/admin/ventes" icon={Car} label="Ventes de véhicules"
+          desc="Lots mis en vente sur le site : depuis une fiche ou ajoutés à la main. Offres et attribution." />
         <Card href="/admin/tgr" icon={Truck} label="Service TGR"
           desc="Configuration du service Touring Gros Recouvrement." />
       </Group>

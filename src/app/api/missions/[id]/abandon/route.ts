@@ -12,6 +12,13 @@
 // « En échange des frais de gardiennage » (coché par défaut) → storage_waived :
 // le gardiennage cesse de courir sur un véhicule qui ne sortira pas.
 // Olivier 2026-08-19.
+//
+// SAISIE POLICE : refusé. Le propriétaire d'un véhicule saisi doit renoncer au
+// véhicule auprès de la zone de police qui a ordonné la saisie — c'est elle qui
+// détient le dossier, VD ne peut pas l'acter à sa place. L'abandon chez nous ne
+// vaut que pour une panne, un accident ou une mal garée. Le DELETE reste ouvert :
+// il faut pouvoir rattraper un abandon enregistré à tort avant ce garde-fou.
+// Olivier 2026-08-20.
 
 import { NextResponse }      from 'next/server'
 import { getServerSession }  from 'next-auth'
@@ -56,10 +63,18 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   const sb = createAdminClient()
   const { data: mission } = await sb
     .from('incoming_missions')
-    .select('id, mission_number, external_id, dossier_number, vehicle_brand, vehicle_model, vehicle_plate, vehicle_vin, abandon_at')
+    .select('id, mission_number, external_id, dossier_number, source, vehicle_brand, vehicle_model, vehicle_plate, vehicle_vin, abandon_at')
     .eq('id', params.id)
     .maybeSingle()
   if (!mission) return NextResponse.json({ error: 'Mission introuvable' }, { status: 404 })
+
+  if ((mission.source || '').toLowerCase().trim() === 'police_saisie') {
+    return NextResponse.json({
+      error: "Véhicule en saisie police : l'abandon se fait auprès de la zone de police "
+           + "qui a ordonné la saisie, pas chez nous. L'abandon n'est possible ici que pour "
+           + 'une panne, un accident ou une mal garée.',
+    }, { status: 400 })
+  }
 
   const waive = body.waive_storage !== false        // coché par défaut
   const now   = new Date().toISOString()
