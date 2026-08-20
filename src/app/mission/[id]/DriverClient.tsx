@@ -35,7 +35,7 @@ const sb = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 type NavApp = 'gmaps' | 'waze' | 'apple'
-type Screen = 'main' | 'photos' | 'decharge' | 'sig' | 'encaissement' | 'close' | 'add-stop' | 'modify-addr'
+type Screen = 'main' | 'photos' | 'decharge' | 'sig' | 'encaissement' | 'close' | 'add-stop' | 'modify-addr' | 'onsite-chooser'
 
 interface Stop {
   id: string; type: string; label: string; address: string
@@ -1197,6 +1197,20 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
   const [touringAction, setTouringAction] = useState<'dsp' | 'dsp2rem' | 'vr' | 'park' | 'remclose' | null>(null)
   const loaded   = !!M.loaded_at || M.status === 'delivering' || M.status === 'parked'
 
+  // Refonte flux sur place (onsiteV2) : dès que le chauffeur est SUR PLACE sur une
+  // fiche Siabis sans scénario choisi, on ouvre l'écran PLEIN & BLOQUANT « Qu'est-ce
+  // qu'on fait ? ». Piloté par un effet (pas par le bouton) → robuste aux reloads
+  // de la page (l'état d'écran est reconstruit à chaque montage). 2026-08-20.
+  useEffect(() => {
+    if (onsiteV2 && onSite && !M.snc_scenario && !rel && !isReadOnly
+        && M.status === 'in_progress'
+        && (M.source === 'police_snc' || M.source === 'sia_couvert')
+        && screen === 'main') {
+      setScreen('onsite-chooser')
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [onsiteV2, onSite, M.snc_scenario, rel, isReadOnly, M.status, M.source, screen])
+
   // ── Geofence « Sur place ? » (suggestion) ──────────────────────────────────
   // Suggère de pointer « Sur place » dès que le chauffeur est à ~200 m de
   // l'incident. Non bloquant (il confirme d'un tap) → pas besoin d'attendre un
@@ -1741,6 +1755,30 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
       window.location.href = __url.toString()
     } catch (e: any) { setErr(e.message || 'Échec du repassage sur l\'assistance d\'origine') }
     finally { setLoading(false) }
+  }
+
+  // ── Handlers de l'écran bloquant onsiteV2 ───────────────────────────────────
+  // Changement de type SANS reload (on reste sur l'écran ; les tuiles scénario
+  // se recalculent selon la source). Refonte flux sur place 2026-08-20.
+  const chooserSetType = async (newSource: 'police_snc' | 'sia_couvert') => {
+    if (M.source === newSource) return
+    setLoading(true); setErr('')
+    try {
+      const r = await fetch(`/api/missions/${M.id}`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ source: newSource }),
+      })
+      const j = await r.json()
+      if (!r.ok) throw new Error(j.error || 'Erreur')
+      setM(prev => ({ ...prev, source: newSource, snc_scenario: null as any, amount_to_collect: null as any }))
+    } catch (e: any) { setErr(e.message || 'Échec du changement de type') }
+    finally { setLoading(false) }
+  }
+  // Choix du scénario depuis l'écran bloquant → puis retour à la fiche (où vivent
+  // la saisie de destination et la suite du flux).
+  const chooserPickScenario = async (kind: 'dsp' | 'rem_client' | 'rem_depot' | 'rem_direct') => {
+    if (kind === 'dsp') { await pickSncScenario('dsp'); setScreen('main'); return }
+    setScreen('main'); openDestPrompt(kind)
   }
 
   // ── Upload photos ─────────────────────────────────────────────────────────
@@ -2362,6 +2400,61 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
       // du resume de cloture). Plus besoin de cliquer Retour manuellement.
       setScreen(photosFrom)
     } catch (e: any) { setErr(e.message || 'Erreur sauvegarde'); setLoading(false) }
+  }
+
+  // ── Écran PLEIN & BLOQUANT « Qu'est-ce qu'on fait ? » (onsiteV2) ───────────
+  // Après « Sur place » sur une fiche Siabis : choix du TYPE de mission + du
+  // scénario. Pas de bouton retour → le chauffeur DOIT choisir. 2026-08-20.
+  if (onsiteV2 && screen === 'onsite-chooser') {
+    const isSC = M.source === 'sia_couvert'
+    const typeBtn = (src: 'police_snc' | 'sia_couvert', emoji: string, label: string, sub: string) => (
+      <button type="button" disabled={loading} onClick={() => chooserSetType(src)}
+        className={`w-full p-3 rounded-xl border text-left text-sm disabled:opacity-50 ${M.source === src ? 'bg-blue-100 border-blue-600 font-semibold text-ink' : 'bg-surface-2 border text-ink-secondary'}`}>
+        {emoji} {label}<span className="text-ink-muted text-xs block font-normal">{sub}</span>
+      </button>
+    )
+    const scenarioTiles: { key: 'dsp' | 'rem_client' | 'rem_depot' | 'rem_direct'; label: string; desc: string }[] = [
+      { key: 'dsp', label: '🔧 DSP — Dépannage sur place', desc: isSC ? "Réparation sur place, facturée à l'assistance (pas d'encaissement)." : 'Réparation sur place, le client paie en direct.' },
+      ...(M.source === 'police_snc' ? [{ key: 'rem_client' as const, label: '🚛 REM avec paiement immédiat', desc: 'Remorquage vers la destination du client, paiement immédiat.' }] : []),
+      ...(isSC ? [{ key: 'rem_direct' as const, label: '🚛 REM directe', desc: 'Remorquage direct sans passage dépôt (forfait SC + km).' }] : []),
+      { key: 'rem_depot', label: '🏢 REM vers dépôt', desc: isSC ? 'Zone Transit, relivraison ultérieure au tarif assistance.' : 'Zone Transit, le client passera au bureau ensuite.' },
+    ]
+    return (
+      <div className="fixed inset-0 bg-page z-40 flex flex-col">
+        <div className="bg-surface border-b border px-4 pt-12 pb-4 flex-shrink-0">
+          <p className="text-ink font-bold text-lg">Qu&apos;est-ce qu&apos;on fait&nbsp;?</p>
+          <p className="text-ink-muted text-xs truncate">{[M.client_name, plate(M.vehicle_plate), M.incident_address].filter(Boolean).join(' · ')}</p>
+        </div>
+        <div className="flex-1 overflow-y-auto p-4 space-y-5">
+          {/* Type de mission */}
+          <div className="bg-surface border border rounded-2xl p-3 space-y-2">
+            <p className="text-ink-secondary text-xs font-bold uppercase tracking-wide">Type de mission</p>
+            {typeBtn('police_snc', '🔴', 'Siabis — Non couvert', 'Le client paie sur place')}
+            {typeBtn('sia_couvert', '🔵', 'Siabis — Couvert', 'Facturé à l’assistance, rien à encaisser')}
+            {(M as any).origin_source && (
+              <button type="button" disabled={loading} onClick={revertToOrigin}
+                className="w-full p-3 rounded-xl border border-dashed border-blue-300 text-left text-sm bg-surface-2 text-ink-secondary disabled:opacity-50">
+                ↩️ Ceci n&apos;est pas un Siabis<span className="text-ink-muted text-xs block font-normal">Hors autoroute → repasse sur l&apos;assistance d&apos;origine (facturé à l&apos;assistance)</span>
+              </button>
+            )}
+          </div>
+          {/* Scénario */}
+          <div className="space-y-2">
+            <p className="text-ink-secondary text-xs font-bold uppercase tracking-wide px-1">Que fait-on du véhicule&nbsp;?</p>
+            {scenarioTiles.map(opt => (
+              <button key={opt.key} type="button" disabled={sncSaving !== null || loading}
+                onClick={() => chooserPickScenario(opt.key)}
+                className="w-full p-4 rounded-2xl border-2 border-blue-300 bg-surface text-left hover:border-blue-500 active:scale-[0.99] transition disabled:opacity-50">
+                <div className="text-ink font-semibold">{opt.label}</div>
+                <div className="text-ink-muted text-xs mt-0.5">{opt.desc}</div>
+                {sncSaving === opt.key && <div className="text-blue-700 text-xs mt-1">⏳ Application en cours…</div>}
+              </button>
+            ))}
+          </div>
+          {err && <p className="text-red-600 text-sm bg-red-50 border border-red-200 rounded-xl px-3 py-2">⚠️ {err}</p>}
+        </div>
+      </div>
+    )
   }
 
   // ── Photos (wizard guidé par catégorie) ───────────────────────────────────
@@ -3913,38 +4006,11 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
             3 tuiles restent toujours visibles et le chauffeur peut basculer
             entre elles a tout moment (comme dans PoliceClient.tsx a la
             creation). La tuile active est mise en evidence (bg + ring). */}
-        {(M.source === 'police_snc' || M.source === 'sia_couvert') && !isReadOnly && (!onsiteV2 || onSite) && (
+        {/* onsiteV2 : le TYPE + le SCÉNARIO vivent sur l'écran plein bloquant
+            « Qu'est-ce qu'on fait ? » (après « Sur place ») → ce bloc inline
+            n'existe QUE pour le flux legacy (flag off). 2026-08-20. */}
+        {(M.source === 'police_snc' || M.source === 'sia_couvert') && !isReadOnly && !onsiteV2 && (
           <div className="bg-blue-50 border-2 border-blue-500 rounded-2xl p-4 space-y-3">
-
-            {/* onsiteV2 : ce bloc (type + scénario) n'apparaît qu'APRÈS « Sur place »
-                — c'est l'écran « Qu'est-ce qu'on fait ? ». Avant, il était visible
-                en permanence sur la fiche. 2026-08-20. */}
-
-            {/* Refonte flux sur place (flag onsiteV2) : le chauffeur peut corriger
-                le TYPE de mission. « Ceci n'est pas un Siabis » (ex. hors autoroute
-                → tarif Siabis non applicable) repasse sur l'assistance d'origine. */}
-            {onsiteV2 && (
-              <div className="bg-surface border border rounded-xl p-3 space-y-2">
-                <p className="text-ink-secondary text-xs font-bold uppercase tracking-wide">Type de mission</p>
-                <div className="grid grid-cols-1 gap-1.5">
-                  <button type="button" disabled={loading} onClick={() => setSiabisSource('police_snc')}
-                    className={`p-2.5 rounded-lg border text-left text-sm disabled:opacity-50 ${M.source === 'police_snc' ? 'bg-blue-100 border-blue-600 font-semibold text-ink' : 'bg-surface-2 border text-ink-secondary'}`}>
-                    🔴 Siabis — Non couvert<span className="text-ink-muted text-xs block font-normal">Le client paie sur place</span>
-                  </button>
-                  <button type="button" disabled={loading} onClick={() => setSiabisSource('sia_couvert')}
-                    className={`p-2.5 rounded-lg border text-left text-sm disabled:opacity-50 ${M.source === 'sia_couvert' ? 'bg-blue-100 border-blue-600 font-semibold text-ink' : 'bg-surface-2 border text-ink-secondary'}`}>
-                    🔵 Siabis — Couvert<span className="text-ink-muted text-xs block font-normal">Facturé à l&apos;assistance, rien à encaisser</span>
-                  </button>
-                  {(M as any).origin_source && (
-                    <button type="button" disabled={loading} onClick={revertToOrigin}
-                      className="p-2.5 rounded-lg border border-dashed border-blue-300 text-left text-sm bg-surface-2 text-ink-secondary disabled:opacity-50">
-                      ↩️ Ceci n&apos;est pas un Siabis<span className="text-ink-muted text-xs block font-normal">Hors autoroute → repasse sur l&apos;assistance d&apos;origine (facturé à l&apos;assistance)</span>
-                    </button>
-                  )}
-                </div>
-              </div>
-            )}
-
             <div className="flex items-start gap-2">
               <span className="text-2xl">🚔</span>
               <div>
