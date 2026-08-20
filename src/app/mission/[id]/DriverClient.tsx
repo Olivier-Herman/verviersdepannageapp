@@ -1787,6 +1787,11 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
   }
   // Choix du scénario depuis l'écran bloquant → puis retour à la fiche (où vivent
   // la saisie de destination et la suite du flux).
+  // Balisage en Oui/Non (réutilise toggleSncBalisage qui PATCH + recalcule si besoin).
+  const setSncBalisage = async (val: boolean) => {
+    if (Boolean(M.snc_requires_balisage) === val) return
+    await toggleSncBalisage()
+  }
   const chooserPickScenario = async (kind: 'dsp' | 'rem_client' | 'rem_depot' | 'rem_direct') => {
     chooserPickedRef.current = true   // évite que l'effet rouvre l'écran bloquant
     // On quitte l'écran bloquant AVANT le calcul : pickSncScenario bascule ensuite
@@ -2452,6 +2457,17 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
               </button>
             )}
           </div>
+          {/* Balisage — 2ᵉ question, AVANT le scénario (il entre dans le tarif). */}
+          <div className="bg-surface border rounded-2xl p-3 space-y-2">
+            <p className="text-ink-secondary text-xs font-bold uppercase tracking-wide">Balisage&nbsp;? <span className="text-ink-muted font-normal normal-case">véhicule de sécurité (autoroute / voie rapide) — supplément SIABAL</span></p>
+            <div className="grid grid-cols-2 gap-2">
+              <button type="button" disabled={loading} onClick={() => setSncBalisage(true)}
+                className={`py-3 rounded-xl border text-sm font-semibold disabled:opacity-50 ${M.snc_requires_balisage ? 'bg-amber-100 border-amber-500 text-amber-800' : 'bg-surface-2 border text-ink-secondary'}`}>Oui</button>
+              <button type="button" disabled={loading} onClick={() => setSncBalisage(false)}
+                className={`py-3 rounded-xl border text-sm font-semibold disabled:opacity-50 ${!M.snc_requires_balisage ? 'bg-blue-100 border-blue-600 text-ink' : 'bg-surface-2 border text-ink-secondary'}`}>Non</button>
+            </div>
+          </div>
+
           {/* Scénario */}
           <div className="space-y-2">
             <p className="text-ink-secondary text-xs font-bold uppercase tracking-wide px-1">Que fait-on du véhicule&nbsp;?</p>
@@ -4114,12 +4130,20 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
             {(M.source === 'police_snc' || M.source === 'sia_couvert') && M.snc_scenario && (
               <div className="flex items-center gap-2 text-sm">
                 <span>🛣️</span>
-                <span className="text-ink">Scénario : <strong>{
+                <span className="text-ink flex-1">Scénario : <strong>{
                   M.snc_scenario === 'dsp'        ? 'DSP — dépannage sur place'
                 : M.snc_scenario === 'rem_client' ? 'REM avec paiement immédiat'
+                : M.snc_scenario === 'rem_direct' ? 'REM directe'
                 : M.snc_scenario === 'rem_depot'  ? 'REM vers dépôt Pepinster'
                 : M.snc_scenario
                 }</strong></span>
+                {/* onsiteV2 : erreur de choix (ex. a mis REM au lieu de DSP) →
+                    rouvre l'écran « Qu'est-ce qu'on fait ? ». 2026-08-20. */}
+                {onsiteV2 && !isReadOnly && !['completed', 'to_invoice'].includes(M.status) && (
+                  <button type="button"
+                    onClick={() => { chooserPickedRef.current = false; setScreen('onsite-chooser') }}
+                    className="text-brand text-xs font-semibold shrink-0">✏️ Modifier</button>
+                )}
               </div>
             )}
             {M.snc_requires_balisage && (
