@@ -23,6 +23,7 @@ import CancelMissionButton from '@/components/missions/CancelMissionButton'
 import RelivraisonModalButton from '@/components/missions/RelivraisonModalButton'
 import AllianzCompleteButton from '@/components/missions/AllianzCompleteButton'
 import AbandonVehiculeButton from '@/components/missions/AbandonVehiculeButton'
+import MettreEnVenteButton   from '@/components/missions/MettreEnVenteButton'
 import PartialInvoiceModal from '@/components/facturation/PartialInvoiceModal'
 import SaisiePanel from '@/components/missions/SaisiePanel'
 import FicheFacturerButton from '@/components/facturation/FicheFacturerButton'
@@ -4258,6 +4259,7 @@ export default function MissionDetailClient({
               {!['cancelled', 'ignored'].includes(status) && (
                 <AbandonVehiculeButton
                   missionId={initialMission.id}
+                  source={initialMission.source}
                   plate={initialMission.vehicle_plate}
                   brand={initialMission.vehicle_brand}
                   model={initialMission.vehicle_model}
@@ -4266,6 +4268,15 @@ export default function MissionDetailClient({
                   abandonData={(initialMission as any).abandon_data ?? null}
                 />
               )}
+
+              {/* Le véhicule nous appartient → il peut partir en vente.
+                  Le bouton se masque tout seul si l'abandon n'est pas
+                  enregistré ou si c'est une saisie police. Olivier 2026-08-20. */}
+              <MettreEnVenteButton
+                missionId={initialMission.id}
+                abandonAt={(initialMission as any).abandon_at ?? null}
+                source={initialMission.source}
+              />
 
               {/* Registre des visites — persiste même après la sortie du parc
                   (historique consultable, clic = détail complet). Lecture eID /
