@@ -8,6 +8,7 @@ import SncMissionFiche       from './SncMissionFiche'
 import PushToScreenButton    from '@/components/caisse/PushToScreenButton'
 import { getDefaultParcZone } from '@/lib/missions/parc-default'
 import { flux2Enabled }        from '@/lib/cloture/gating'
+import { isPreviewOn }         from '@/lib/feature-flags'
 
 // Olivier 2026-06-03 : force-dynamic obligatoire — sinon Next.js peut cacher
 // la fiche mission cote serveur, et apres action driver (load_vehicle, etc.)
@@ -46,6 +47,10 @@ export default async function MissionDriverPage({ params, searchParams }: Props)
   // FLUX 2 — clôture unifiée « Action ». Deux axes : testeur ET assistance ouverte
   // (flag `flux2_<assistance>` en base). Faux ⇒ le chauffeur garde l'écran actuel.
   const flux2 = await flux2Enabled(currentUser as any, mission as any)
+
+  // Refonte flux sur place (écran « Qu'est-ce qu'on fait ? » + scénario + type +
+  // encaissement couplé). Flag off ⇒ le chauffeur garde l'écran actuel. 2026-08-20.
+  const onsiteV2 = await isPreviewOn('driver_onsite_v2', (currentUser as any).role)
 
   const isDriverOfMission = mission.assigned_to === currentUser.id
   const isStaff = ['admin', 'superadmin', 'dispatcher'].includes(currentUser.role)
@@ -148,6 +153,7 @@ export default async function MissionDriverPage({ params, searchParams }: Props)
         defaultParcZone={defaultParcZone}
         touringBeta={touringBeta}
         flux2={flux2}
+        onsiteV2={onsiteV2}
         parentPanne={parentPanne}
         parentClosingNote={parentClosingNote}
       />

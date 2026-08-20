@@ -162,6 +162,17 @@ export function mapComexToMission(input: ComexMapInput): Record<string, any> {
     // Facturation : Touring paie (billed_to par défaut du catalog).
     ...(input.billedToId ? { billed_to_id: input.billedToId, billed_to_name: input.billedToName } : {}),
 
+    // Snapshot de l'assistance d'origine : quand la fiche est reclassée en Siabis
+    // non couvert (police_snc), on mémorise DUR la source réelle (touring) + le
+    // client à facturer. Sert à l'option chauffeur « Ceci n'est pas un Siabis »
+    // (hors autoroute) pour repasser sur l'assistance d'origine. Le stash dispatch
+    // est en mémoire React (éphémère) → indisponible côté chauffeur. 2026-08-20.
+    ...(comexVehiculeNonCouvert(d) ? {
+      origin_source:         'touring',
+      origin_billed_to_id:   input.billedToId ?? null,
+      origin_billed_to_name: input.billedToName ?? null,
+    } : {}),
+
     // Code contrat Touring (aussi présent dans les mails). C'est la SEULE donnée
     // COMEX fiable sur les droits : elle ouvre la fiche contrat dans Prestex FDDS,
     // conservé pour la traçabilité et l'affichage (nom du programme sur la fiche).
