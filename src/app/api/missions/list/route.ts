@@ -26,6 +26,13 @@ export async function GET(req: Request) {
 
   const supabase = createAdminClient()
 
+  // ── LES FICHES DE TEST NE PERTURBENT PAS LES OPÉRATIONS ───────────────────
+  // Convention maison : plaque « TEST ». Elles servent à essayer un parcours en
+  // conditions réelles — mais un dispatcher qui en voit une dans sa file perd du
+  // temps à comprendre, ou pire, l'attribue. Seul le superadmin les voit.
+  // Olivier 2026-08-21.
+  const estSuperadmin = ((session.user as any)?.role || '') === 'superadmin'
+
   // Récupérer les missions
   let query = supabase
     .from('incoming_missions')
@@ -66,6 +73,11 @@ export async function GET(req: Request) {
     // Exclure les missions archivees (auto-archivees 7j apres facturation).
     // Recherche globale ratisse partout, c'est le seul endroit ou on les voit.
     .is('archived_at', null)
+
+  // Les fiches de test restent invisibles au dispatch — sauf pour le superadmin
+  // qui les crée et les déroule (Olivier 2026-08-21 : « pour ne pas perturber
+  // les opérations en cours »).
+  if (!estSuperadmin) query = query.not('vehicle_plate', 'ilike', 'TEST')
 
   // Seuil RDV : au-delà de +12h, une intervention planifiée va dans l'onglet RDV.
   const RDV_THRESHOLD = new Date(Date.now() + 12 * 60 * 60 * 1000).toISOString()

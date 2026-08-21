@@ -4639,10 +4639,24 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
                   className="w-full py-4 bg-amber-500 text-ink font-bold rounded-2xl text-base">
                   🅿️ <T k="mission_detail.btn_park" />
                 </button>
+              ) : totPh === 0 ? (
+                /* ── LES PHOTOS D'ABORD (Olivier 2026-08-21) ─────────────────
+                   « Il ne faut pas oublier que les photos doivent être là avant
+                   le qu'est-ce qu'on fait. » Elles ne servent pas qu'à la preuve :
+                   c'est d'elles qu'on lit le châssis et le kilométrage. Prises
+                   avant, la clôture les a déjà — VAB ne bloque pas, et Touring ne
+                   reçoit pas un châssis en dix-sept X. */
+                <button onClick={() => goPhotos('main')}
+                  className="w-full py-4 bg-blue-600 text-white font-bold rounded-2xl text-base">
+                  📷 Photos du véhicule
+                </button>
               ) : (
+                /* Un bouton qui décrit SON geste à lui, pas une question posée
+                   trop tôt : il appuie quand il a fini de regarder. L'écran qui
+                   s'ouvre, lui, demande « Qu'est-ce qu'on fait ? ». */
                 <button onClick={() => setF2Screen('action')}
-                  className="w-full py-4 bg-brand text-white font-bold rounded-2xl text-base">
-                  ⚡ Action
+                  className="w-full py-4 bg-green-600 text-white font-bold rounded-2xl text-base">
+                  ✅ Diagnostic terminé
                 </button>
               )}
               <div className="grid grid-cols-2 gap-2">
