@@ -641,26 +641,20 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
   // hors dépôt (couvert = null, dépôt = null), donc le garde-fou ne touche
   // que les cas voulus.
   const isSiabisMission = M.source === 'police_snc' || M.source === 'sia_couvert'
-  // Dépannage PRIVÉ : le client paie sur place, exactement comme un Siabis non
-  // couvert — « dépannage privé il y a un encaissement » (Olivier 2026-08-21).
-  // Le montant vient du dispatch (il l'encode, ou il le communique au chauffeur
-  // qui l'entre lui-même) ; le garde-fou ne se déclenche donc que s'il existe.
+  // Dépannage PRIVÉ : le client paie sur place comme un Siabis non couvert, et le
+  // montant vient du dispatch (encodé, ou communiqué au chauffeur par téléphone).
+  // Le garde-fou est ÉCRIT MAIS PAS BRANCHÉ : « on garde juste ce qui est testé »
+  // (Olivier 2026-08-21) — aucun dépannage privé n'a encore été déroulé de bout en
+  // bout. Passer `isPrive` dans `sncPaymentDue` suffit à l'activer le jour du test.
   //
   // GARAGE (`garage`, `garage_*`) : jamais d'encaissement — « pour garage on
-  // facture au garage directement ». Ces sources n'ont pas d'amount_to_collect,
-  // et rien ici ne leur en réclame.
-  const isPrive = M.source === 'prive'
+  // facture au garage directement ». Ces sources ne portent pas de montant à
+  // encaisser, donc rien ici ne leur en réclame, branché ou pas.
   const sncPaymentDue =
-    (isSiabisMission || isPrive)
+    isSiabisMission
     && M.snc_scenario !== 'rem_depot'
     && requiredAmount > 0
     && !paymentComplete
-
-  // Privé SANS montant : le dispatch ne l'a pas encodé. Le chauffeur peut l'avoir
-  // reçu par téléphone — donc on ALERTE sans bloquer, et on lui donne le champ
-  // pour le saisir plutôt que de le laisser clôturer une course impayée.
-  const privePasDeMontant = isPrive && requiredAmount <= 0 && !paymentComplete
-    && (M as any).amount_to_collect_manual !== true
 
   // Anomalie : SNC NON COUVERT (police_snc) avec un scénario à encaissement
   // (dsp / rem_client / rem_direct) mais AUCUN montant calculé (coords incident
@@ -780,14 +774,6 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
       return
     }
     setSetAmtTapTimer(setTimeout(() => setSetAmtTapCount(0), 2000))
-  }
-  /** Ouverture DIRECTE du modal montant — sans le geste caché : sur un privé sans
-   *  montant, le chauffeur doit pouvoir entrer celui que le dispatch lui a donné
-   *  au téléphone, et un geste secret ne s'apprend pas au bord de la route. */
-  const openSetAmount = () => {
-    setSetAmtValue(String(M.amount_to_collect || ''))
-    setSetAmtPinMode(false); setSetAmtPin(''); setSetAmtNoPin(false); setErr('')
-    setSetAmtModalOpen(true)
   }
   const expectedTvac = estimatedAmount?.tvac || 0
   const submitSetAmount = async () => {
@@ -4627,13 +4613,6 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
           {/* Le message générique « montant non calculé » a été remplacé par le
               bandeau détaillé en haut de la fiche, qui nomme ce qui bloque et
               donne le bouton pour le corriger. Olivier 2026-08-13. */}
-          {privePasDeMontant && (
-            <button type="button" onClick={openSetAmount}
-              className="w-full py-2 px-3 bg-amber-500/15 border border-amber-500/40 rounded-xl text-center text-amber-700 dark:text-amber-300 text-xs font-semibold">
-              <T k="mission_detail.prive_no_amount" />
-            </button>
-          )}
-
           {sncAmountUnresolved && sncBlockers.length === 0 && (
             <div className="w-full py-2 px-3 bg-red-500/15 border border-red-500/50 rounded-xl text-center text-red-700 dark:text-red-300 text-xs font-semibold">
               Montant non calculé — préviens le dispatch avant de clôturer.
