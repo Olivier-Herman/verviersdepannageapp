@@ -1495,6 +1495,12 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
   //
   // Pour REM client : la destination doit etre saisie AVANT (lat/lng), sinon
   // l API renvoie 400. On bloque le clic dans ce cas avec un message clair.
+  // Détail du calcul, affiché sur l'écran d'encaissement : un chauffeur qui
+  // annonce un montant doit pouvoir dire de quoi il est fait. « 237,60 € » sans
+  // rien derrière, c'est indéfendable devant un client qui conteste.
+  // Olivier 2026-08-21.
+  const [tarifDetail, setTarifDetail] = useState<
+    { lines: { name: string; qty: number; price_unit: number }[]; total_htva: number; total_tvac: number } | null>(null)
   const [sncSaving, setSncSaving]   = useState<string | null>(null)
   const [sncInfoMsg, setSncInfoMsg] = useState<string | null>(null)
 
@@ -1507,6 +1513,29 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
   const [destAddr,   setDestAddr]   = useState('')
   const [destLat,    setDestLat]    = useState<number | null>(null)
   const [destLng,    setDestLng]    = useState<number | null>(null)
+
+  useEffect(() => {
+    if (screen !== 'encaissement') return
+    const snc = M.source === 'police_snc' || M.source === 'sia_couvert'
+    if (!snc || !M.snc_scenario || M.incident_lat == null || M.incident_lng == null) { setTarifDetail(null); return }
+    let vivant = true
+    fetch('/api/snc-preview-tarif', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        scenario: M.snc_scenario,
+        variant: M.source === 'sia_couvert' ? 'sc' : 'snc',
+        requires_balisage: Boolean(M.snc_requires_balisage),
+        incident_lat: M.incident_lat, incident_lng: M.incident_lng,
+        destination_lat: M.destination_lat, destination_lng: M.destination_lng,
+        billed_to_id: (M as any).billed_to_id ?? null,
+        billed_to_name: (M as any).billed_to_name ?? null,
+      }),
+    })
+      .then(r => r.json())
+      .then(d => { if (vivant && d?.ok) setTarifDetail({ lines: d.lines || [], total_htva: d.total_htva, total_tvac: d.total_tvac }) })
+      .catch(() => { /* le détail est un plus : son absence ne bloque pas l'encaissement */ })
+    return () => { vivant = false }
+  }, [screen, M.snc_scenario, M.source, M.snc_requires_balisage, M.incident_lat, M.incident_lng, M.destination_lat, M.destination_lng])
 
   const pickSncScenario = async (
     scenario: 'dsp' | 'rem_client' | 'rem_depot' | 'rem_direct',
@@ -2962,6 +2991,40 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
           <p className="text-ink/70 text-sm mb-1">Montant à encaisser</p>
           <p className="text-ink text-4xl font-semibold">{formatEur(M.amount_to_collect || 0)}</p>
         </div>
+
+        {tarifDetail && tarifDetail.lines.length > 0 && (
+          <div className="bg-surface border border rounded-2xl p-4 space-y-2">
+            <p className="text-ink-secondary text-[11px] font-bold uppercase tracking-wide">Détail du calcul</p>
+            {tarifDetail.lines.map((l, i) => (
+              <div key={i} className="flex items-baseline justify-between gap-3 text-sm">
+                <span className="text-ink-secondary min-w-0">
+                  {l.name}
+                  {l.qty !== 1 && <span className="text-ink-muted"> · {l.qty} × {formatEur(l.price_unit)}</span>}
+                </span>
+                <span className="text-ink font-semibold tabular-nums flex-shrink-0">{formatEur(l.qty * l.price_unit)}</span>
+              </div>
+            ))}
+            <div className="pt-2 border-t border space-y-1">
+              <div className="flex items-baseline justify-between text-sm">
+                <span className="text-ink-muted">Total hors TVA</span>
+                <span className="text-ink-secondary tabular-nums">{formatEur(tarifDetail.total_htva)}</span>
+              </div>
+              <div className="flex items-baseline justify-between text-sm">
+                <span className="text-ink-muted">TVA 21 %</span>
+                <span className="text-ink-secondary tabular-nums">{formatEur(tarifDetail.total_tvac - tarifDetail.total_htva)}</span>
+              </div>
+              <div className="flex items-baseline justify-between">
+                <span className="text-ink font-bold">Total TVAC</span>
+                <span className="text-ink font-bold tabular-nums">{formatEur(tarifDetail.total_tvac)}</span>
+              </div>
+            </div>
+            {Math.abs((M.amount_to_collect ?? 0) - tarifDetail.total_tvac) > 0.5 && (
+              <p className="text-amber-600 dark:text-amber-400 text-xs font-semibold pt-1">
+                Le montant demandé diffère du calcul — il a été fixé à la main.
+              </p>
+            )}
+          </div>
+        )}
         {paidEffective
           ? (isToInvoice
               ? <div className="bg-amber-600/20 border border-amber-500/30 rounded-2xl p-4 text-center"><p className="text-amber-400 font-semibold">📄 Facture à envoyer</p></div>
