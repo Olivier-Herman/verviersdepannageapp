@@ -4915,14 +4915,24 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
             {/* FLUX 2 — gestes retirés du pied de la fiche (qui ne porte plus que
                 « Action ») mais qui doivent rester à portée : charger le véhicule et
                 le refus/impossibilité. Olivier 2026-08-12. */}
-            {flux2 && rem && !rel && M.status === 'in_progress' && onSite && !loaded && (
+            {flux2 && !rel && M.status === 'in_progress' && onSite && !loaded && (
               <div className="px-4 pt-4 space-y-2">
-                <button onClick={() => { setShowGrid(false); api('load_vehicle') }} disabled={loading}
-                  className="w-full py-4 bg-blue-600 disabled:opacity-50 text-ink font-bold rounded-2xl text-base">
-                  <T k="mission_detail.btn_loaded_truck" />
-                </button>
+                {rem && (
+                  <button onClick={() => { setShowGrid(false); api('load_vehicle') }} disabled={loading}
+                    className="w-full py-4 bg-blue-600 disabled:opacity-50 text-ink font-bold rounded-2xl text-base">
+                    <T k="mission_detail.btn_loaded_truck" />
+                  </button>
+                )}
+                {/* ── DPR : DEUXIÈME PORTE, SANS PÉAGE PHOTO ──────────────────
+                    « Le DPR étant dans le menu Qu'est-ce qu'on fait, il oblige à
+                    prendre les 3 photos pour y accéder » (Olivier 2026-08-21).
+                    Un déplacement pour rien, c'est justement un véhicule qu'on
+                    n'a pas trouvé : exiger ses photos pour déclarer qu'il n'y en
+                    a pas est un cul-de-sac. On garde les deux emplacements — la
+                    page Action ET ce menu — et celui-ci n'impose rien.
+                    L'écran de clôture, lui, exempte déjà le DPR de photos. */}
                 <button
-                  onClick={() => { setShowGrid(false); setDprFromRem(true); setDprToPark(false); setDprMotif(''); setDprMotifAutre(''); setShowDprMotif(true) }}
+                  onClick={() => { setShowGrid(false); setF2Outcome('dpr'); setF2Screen('close') }}
                   disabled={loading}
                   className="w-full py-3 bg-surface border border text-ink-secondary font-medium rounded-2xl text-sm">
                   <T k="mission_detail.btn_refuse_dpr" />

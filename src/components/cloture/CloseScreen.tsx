@@ -144,6 +144,26 @@ export default function CloseScreen({
     return () => { alive = false }
   }, [missionId, isDelivered])
 
+  // ── DPR ATTEINT DIRECTEMENT ─────────────────────────────────────────────────
+  // Le déplacement pour rien s'ouvre depuis DEUX endroits : la page « Qu'est-ce
+  // qu'on fait ? », et le menu « Autres » — celui-là justement parce qu'il ne
+  // passe pas par les photos, qu'un DPR ne peut de toute façon pas fournir : le
+  // véhicule n'est pas là. Entré par le menu, l'écran n'a reçu aucun code
+  // d'annulation (c'est la page Action qui les charge) : il va les chercher
+  // lui-même, sinon il n'y aurait rien à choisir et rien à valider.
+  const [dprFetched, setDprFetched] = useState<{ code: string; label: string }[] | null>(null)
+  useEffect(() => {
+    if (!isDpr || (dprCodes && dprCodes.length)) return
+    let alive = true
+    fetch(`/api/missions/${missionId}/cloture`, { cache: 'no-store' })
+      .then(r => r.json())
+      .then(d => { if (alive) setDprFetched(d.dprCodes || []) })
+      .catch(() => alive && setDprFetched([]))
+    return () => { alive = false }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [missionId, isDpr])
+  const dprList = (dprCodes && dprCodes.length) ? dprCodes : (dprFetched || [])
+
   // Une livraison sans codes à reprendre demande un motif (branche remorquage).
   const deliveredNeedsMotif = isDelivered && hasPrefill === false
   const motifBranch: 'mobilite' | 'remorquage' | null = branch || (deliveredNeedsMotif ? 'remorquage' : null)
@@ -278,7 +298,7 @@ export default function CloseScreen({
       // BIZH888 le 17/08 (Olivier). Le libellé part avec, pour le dossier.
       onDone({ outcome, common, destination: body.destination, queued: !!j.queued,
                dprCode: dprCode || null,
-               dprLabel: (dprCodes || []).find(d => d.code === dprCode)?.label || null })
+               dprLabel: dprList.find(d => d.code === dprCode)?.label || null })
     } catch (e: any) {
       setError(e?.message || 'Erreur réseau'); setBusy(false)
     }
@@ -314,7 +334,7 @@ export default function CloseScreen({
               {t('cloture.dpr_none')}
             </div>
             <div className="bg-surface-2 border border rounded-2xl divide-y divide-[color:var(--border)]">
-              {(dprCodes || []).map(d => (
+              {dprList.map(d => (
                 <button key={d.code} onClick={() => setDprCode(d.code)}
                   className="w-full flex items-center justify-between px-4 py-3.5 text-left">
                   <span className="text-ink text-sm">{d.label}</span>
