@@ -2382,7 +2382,17 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
           }
           if (r.outcome === 'delivered') { setCloseType('rem');  setScreen('close'); return }
           if (r.outcome === 'park')      { continuePark(); return }
-          if (r.outcome === 'rem' || r.outcome === 'rem_vr') { reloadMission(); return }
+          if (r.outcome === 'rem' || r.outcome === 'rem_vr') {
+            // ── LE CHARGEMENT DÉCOULE DE LA DÉCISION (Olivier 2026-08-21) ────
+            // « La validation de l'adresse et de la demande de REM active
+            //   automatiquement le véhicule chargé. »
+            // Il vient de dire qu'il l'emmène et où : lui redemander de
+            // confirmer qu'il a chargé est un clic pour rien. La fiche revient
+            // donc déjà chargée, avec ses deux vraies issues — arrivé à
+            // destination, ou mise en parc.
+            api('load_vehicle')
+            return
+          }
           setCloseType('dsp'); setScreen('close')
         }}
       />
