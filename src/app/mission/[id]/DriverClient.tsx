@@ -2292,7 +2292,7 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
       forcedFin={touringAction === 'park' ? '05' : ''}
       vrAllowed={touringAction !== 'park' && (M as any).vr_proposed === true}
       initialVr={touringAction === 'vr'}
-      fallbackVin={(M as any).vehicle_vin || ''}
+      fallbackVin={(M as any).vehicle_vin || (M as any).vehicle_vin_partial || ''}
       fallbackKm={(M as any).vehicle_mileage ?? ''}
       onClose={onTouringCancel}
       onDone={onTouringDone}
@@ -2389,7 +2389,7 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
         outcome={f2Outcome}
         plate={M.vehicle_plate}
         vehicle={[M.vehicle_brand, M.vehicle_model].filter(Boolean).join(' ')}
-        fallbackVin={(M as any).vehicle_vin || ''}
+        fallbackVin={(M as any).vehicle_vin || (M as any).vehicle_vin_partial || ''}
         fallbackKm={(M as any).vehicle_mileage ?? ''}
         photosDone={f2Photos3}
         dprCodes={f2Dpr}
