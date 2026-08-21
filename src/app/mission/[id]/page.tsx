@@ -7,7 +7,7 @@ import DriverClient          from './DriverClient'
 import SncMissionFiche       from './SncMissionFiche'
 import { getDefaultParcZone } from '@/lib/missions/parc-default'
 import { flux2Enabled }        from '@/lib/cloture/gating'
-import { isPreviewOn }         from '@/lib/feature-flags'
+import { isPreviewOn, flagAppliesToMission } from '@/lib/feature-flags'
 
 // Olivier 2026-06-03 : force-dynamic obligatoire — sinon Next.js peut cacher
 // la fiche mission cote serveur, et apres action driver (load_vehicle, etc.)
@@ -49,7 +49,11 @@ export default async function MissionDriverPage({ params, searchParams }: Props)
 
   // Refonte flux sur place (écran « Qu'est-ce qu'on fait ? » + scénario + type +
   // encaissement couplé). Flag off ⇒ le chauffeur garde l'écran actuel. 2026-08-20.
-  const onsiteV2 = await isPreviewOn('driver_onsite_v2', (currentUser as any).role)
+  //
+  // ⚠️ Et une mission DÉJÀ COMMENCÉE garde son parcours (Olivier 2026-08-21) :
+  // changer les écrans sous les doigts d'un chauffeur au bord de la route, c'est
+  // la meilleure façon de le bloquer. La coupure se fait sur l'acceptation.
+  const onsiteV2 = await flagAppliesToMission('driver_onsite_v2', (currentUser as any).role, mission as any)
 
   const isDriverOfMission = mission.assigned_to === currentUser.id
   const isStaff = ['admin', 'superadmin', 'dispatcher'].includes(currentUser.role)
