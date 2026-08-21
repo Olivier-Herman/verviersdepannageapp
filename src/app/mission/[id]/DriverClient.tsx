@@ -1113,8 +1113,21 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
     }
     if (d.sig)   setSig(d.sig)
     if (d.disch) setDisch(Array.isArray(d.disch) ? d.disch : d.disch ? [d.disch] : [])
+    // ⚠️ L'ÉCRAN AUSSI SE MÉMORISE (Olivier 2026-08-21). L'app peut être fermée
+    // en pleine intervention — appel entrant, écran verrouillé, batterie vide.
+    // Le chauffeur doit RETROUVER son écran, pas repartir de la fiche et refaire
+    // le chemin. On ne restaure que les écrans « en cours » : jamais la clôture
+    // finale, ni un écran devenu impossible entre-temps.
+    const REPRISABLES = ['photos', 'encaissement', 'decharge', 'sig']
+    if (d.screen && REPRISABLES.includes(d.screen)) setScreen(d.screen as Screen)
     hydratedRef.current = true
   }, [])
+
+  // Mémorise l'écran courant : c'est lui qu'on retrouvera à la réouverture.
+  useEffect(() => {
+    if (!hydratedRef.current) return
+    saveDraft({ screen })
+  }, [screen])
 
   // Persiste en continu les photos NON envoyées (base64) dans le brouillon, pour
   // qu'elles ne soient jamais perdues (app tuée en arrière-plan pendant le trajet).
@@ -1513,6 +1526,26 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
   const [destAddr,   setDestAddr]   = useState('')
   const [destLat,    setDestLat]    = useState<number | null>(null)
   const [destLng,    setDestLng]    = useState<number | null>(null)
+
+  // ⚠️ Un montant affiché DOIT exister en base. Sur 10117922, l'écran montrait
+  // 303,99 € que la fiche n'avait pas : à la réouverture de l'app, le chauffeur
+  // retrouvait « Montant non calculé ». Quand le scénario est posé et que le
+  // montant manque, on le fait recalculer côté serveur — c'est lui qui décide.
+  // Olivier 2026-08-21.
+  useEffect(() => {
+    if (M.source !== 'police_snc' || !M.snc_scenario) return
+    if (M.amount_to_collect != null || M.snc_scenario === 'rem_depot') return
+    if (M.incident_lat == null || M.incident_lng == null) return
+    let vivant = true
+    fetch(`/api/missions/${M.id}`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ snc_scenario: M.snc_scenario }),   // suffit à relancer le calcul serveur
+    })
+      .then(r => r.ok ? r.json() : null)
+      .then(j => { if (vivant && j?.mission?.amount_to_collect != null) setM(prev => ({ ...prev, amount_to_collect: j.mission.amount_to_collect })) })
+      .catch(() => { /* non bloquant : le bandeau « non calculé » reste visible */ })
+    return () => { vivant = false }
+  }, [M.id, M.source, M.snc_scenario, M.amount_to_collect, M.incident_lat, M.incident_lng])
 
   useEffect(() => {
     if (screen !== 'encaissement') return
