@@ -3028,16 +3028,16 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
   ) : null
 
   if (screen === 'encaissement') return (
-    <ScreenWrap title="Encaisser le paiement" back={() => setScreen('main')}>
+    <ScreenWrap title={t('cloture.pay_title')} back={() => setScreen('main')}>
       <div className="flex-1 px-4 py-4 space-y-4">
         <div className="bg-brand rounded-2xl p-6 text-center">
-          <p className="text-ink/70 text-sm mb-1">Montant à encaisser</p>
+          <p className="text-ink/70 text-sm mb-1"><T k="cloture.pay_amount" /></p>
           <p className="text-ink text-4xl font-semibold">{formatEur(M.amount_to_collect || 0)}</p>
         </div>
 
         {tarifDetail && tarifDetail.lines.length > 0 && (
           <div className="bg-surface border border rounded-2xl p-4 space-y-2">
-            <p className="text-ink-secondary text-[11px] font-bold uppercase tracking-wide">Détail du calcul</p>
+            <p className="text-ink-secondary text-[11px] font-bold uppercase tracking-wide"><T k="cloture.pay_detail" /></p>
             {tarifDetail.lines.map((l, i) => (
               <div key={i} className="flex items-baseline justify-between gap-3 text-sm">
                 <span className="text-ink-secondary min-w-0">
@@ -3049,21 +3049,21 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
             ))}
             <div className="pt-2 border-t border space-y-1">
               <div className="flex items-baseline justify-between text-sm">
-                <span className="text-ink-muted">Total hors TVA</span>
+                <span className="text-ink-muted"><T k="cloture.pay_htva" /></span>
                 <span className="text-ink-secondary tabular-nums">{formatEur(tarifDetail.total_htva)}</span>
               </div>
               <div className="flex items-baseline justify-between text-sm">
-                <span className="text-ink-muted">TVA 21 %</span>
+                <span className="text-ink-muted"><T k="cloture.pay_tva" /></span>
                 <span className="text-ink-secondary tabular-nums">{formatEur(tarifDetail.total_tvac - tarifDetail.total_htva)}</span>
               </div>
               <div className="flex items-baseline justify-between">
-                <span className="text-ink font-bold">Total TVAC</span>
+                <span className="text-ink font-bold"><T k="cloture.pay_tvac" /></span>
                 <span className="text-ink font-bold tabular-nums">{formatEur(tarifDetail.total_tvac)}</span>
               </div>
             </div>
             {Math.abs((M.amount_to_collect ?? 0) - tarifDetail.total_tvac) > 0.5 && (
               <p className="text-amber-600 dark:text-amber-400 text-xs font-semibold pt-1">
-                Le montant demandé diffère de ce détail — c'est celui du haut qui fait foi.
+                <T k="cloture.pay_diff" />
               </p>
             )}
           </div>
@@ -3074,8 +3074,8 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
                proposer « Ouvrir l'encaissement » pour 0,00 € n'a pas de sens.
                Olivier 2026-08-21. */
             <div className="bg-surface border border rounded-2xl p-4 text-center space-y-1">
-              <p className="text-ink font-semibold">Rien à encaisser</p>
-              <p className="text-ink-muted text-sm">Le montant a été mis à zéro — tu peux terminer la mission.</p>
+              <p className="text-ink font-semibold"><T k="cloture.pay_nothing" /></p>
+              <p className="text-ink-muted text-sm"><T k="cloture.pay_nothing_hint" /></p>
             </div>
           )
           : paidEffective
@@ -3083,7 +3083,7 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
               ? <div className="bg-amber-600/20 border border-amber-500/30 rounded-2xl p-4 text-center"><p className="text-amber-400 font-semibold">📄 Facture à envoyer</p></div>
               : <div className="bg-green-600/20 border border-green-500/30 rounded-2xl p-4 text-center"><p className="text-green-400 font-semibold">✅ Payée</p></div>)
           : <>
-              <a href={buildEncaissementUrl(M as any, { amount: Math.max(0, requiredAmount - (M.payment_amount ?? 0)), returnTo: `/mission/${M.id}` })} onClick={() => setTimeout(() => setPaid(true), 3000)} className="w-full flex items-center justify-center py-4 bg-brand text-white font-semibold rounded-2xl">💳 Ouvrir l'encaissement</a>
+              <a href={buildEncaissementUrl(M as any, { amount: Math.max(0, requiredAmount - (M.payment_amount ?? 0)), returnTo: `/mission/${M.id}` })} onClick={() => setTimeout(() => setPaid(true), 3000)} className="w-full flex items-center justify-center py-4 bg-brand text-white font-semibold rounded-2xl"><T k="cloture.pay_open" /></a>
               {/* « Montant communiqué » : le prix annoncé au client n'est pas celui
                   calculé (accord bureau, tarif donné au téléphone…). Le chauffeur le
                   force ICI, et il devient le montant de la fiche. Sous le prévu, le
@@ -4784,7 +4784,7 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
                    reçoit pas un châssis en dix-sept X. */
                 <button onClick={() => goPhotos('main')}
                   className="w-full py-4 bg-blue-600 text-white font-bold rounded-2xl text-base">
-                  📷 Photos du véhicule
+                  <T k="cloture.btn_photos_first" />
                 </button>
               ) : (
                 /* Un bouton qui décrit SON geste à lui, pas une question posée
@@ -4792,7 +4792,7 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
                    s'ouvre, lui, demande « Qu'est-ce qu'on fait ? ». */
                 <button onClick={() => setF2Screen('action')}
                   className="w-full py-4 bg-green-600 text-white font-bold rounded-2xl text-base">
-                  ✅ Diagnostic terminé
+                  <T k="cloture.btn_diagnostic_done" />
                 </button>
               )}
               <div className="grid grid-cols-2 gap-2">

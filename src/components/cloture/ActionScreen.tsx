@@ -13,6 +13,7 @@
 // sans faire défiler ne sera jamais utilisé.
 
 import { useEffect, useState } from 'react'
+import { useT } from '@/lib/i18n/I18nProvider'
 
 export type OutcomeKey = 'dsp' | 'rem' | 'rem_vr' | 'rem2dsp' | 'delivered' | 'park' | 'dpr'
 
@@ -21,16 +22,17 @@ interface OutcomeItem { key: OutcomeKey; label: string; icon: string; group: str
 export type PriseEnCharge = 'standard' | 'sia_couvert' | 'police_snc'
 
 const PRISE_OPTIONS: { key: PriseEnCharge; label: string }[] = [
-  { key: 'standard',    label: 'Standard' },
-  { key: 'sia_couvert', label: 'Siabis couvert' },
-  { key: 'police_snc',  label: 'Siabis non couvert' },
+  { key: 'standard',    label: 'cloture.prise_standard' },
+  { key: 'sia_couvert', label: 'cloture.prise_sc' },
+  { key: 'police_snc',  label: 'cloture.prise_snc' },
 ]
 
-const GROUP_TITLES: Record<string, string> = {
-  repart:      'Le véhicule repart',
-  repart_pas:  'Le véhicule ne repart pas',
-  charge:      'Le véhicule est chargé',
-  rien:        'Rien à faire sur place',
+/** Titres de groupes — clés de traduction, pas des phrases figées. */
+const GROUP_KEYS: Record<string, string> = {
+  repart:      'cloture.group_repart',
+  repart_pas:  'cloture.group_repart_pas',
+  charge:      'cloture.group_charge',
+  rien:        'cloture.group_rien',
 }
 
 export default function ActionScreen({
@@ -55,6 +57,7 @@ export default function ActionScreen({
   onPick: (outcome: OutcomeKey) => void
   onBack: () => void
 }) {
+  const { t } = useT()
   const [outcomes, setOutcomes] = useState<OutcomeItem[] | null>(null)
   const [err, setErr] = useState<string | null>(null)
 
@@ -68,11 +71,17 @@ export default function ActionScreen({
         setOutcomes(d.outcomes || [])
         if (onDprCodes) onDprCodes(d.dprCodes || [])
       })
-      .catch(() => alive && setErr('Impossible de charger les actions'))
+      .catch(() => alive && setErr(t('cloture.loading_actions')))
     return () => { alive = false }
   }, [missionId])
 
   const groups = ['repart', 'repart_pas', 'charge', 'rien']
+  /** Libellé d'une issue : traduit depuis sa clé, repli sur le texte du serveur. */
+  const libelle = (o: OutcomeItem) => {
+    const tr = t('cloture.outcome_' + o.key)
+    return tr && !tr.startsWith('cloture.') ? tr : o.label
+  }
+
   const btn = (o: OutcomeItem) => {
     const style =
       o.key === 'dsp' || o.key === 'rem2dsp' ? 'bg-green-600 text-white'
@@ -84,7 +93,7 @@ export default function ActionScreen({
     return (
       <button key={o.key} onClick={() => onPick(o.key)}
         className={`w-full py-4 px-4 rounded-2xl font-bold text-base flex items-center gap-2.5 justify-center transition active:scale-[.99] ${style}`}>
-        <span>{o.icon}</span>{o.label}
+        <span>{o.icon}</span>{libelle(o)}
       </button>
     )
   }
@@ -95,7 +104,7 @@ export default function ActionScreen({
         <div className="flex items-center gap-3">
           <button onClick={onBack} className="w-9 h-9 flex items-center justify-center bg-surface-hover rounded-xl text-ink">←</button>
           <div className="flex-1 min-w-0">
-            <p className="text-ink font-semibold truncate">Que s'est-il passé ?</p>
+            <p className="text-ink font-semibold truncate">{t('cloture.title')}</p>
             <p className="text-ink-muted text-xs truncate">{[vehicle, plate].filter(Boolean).join(' · ')}</p>
           </div>
         </div>
@@ -103,7 +112,7 @@ export default function ActionScreen({
 
       <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3">
         {err && <div className="bg-red-500/10 text-red-500 rounded-xl px-3 py-3 text-sm">{err}</div>}
-        {!outcomes && !err && <p className="text-ink-muted text-sm py-6 text-center">Chargement…</p>}
+        {!outcomes && !err && <p className="text-ink-muted text-sm py-6 text-center">{t('common.loading')}</p>}
 
         {outcomes && (
           <>
@@ -113,7 +122,7 @@ export default function ActionScreen({
             {!onsiteV2 && (
               <>
                 <p className="text-ink-muted text-[11px] uppercase tracking-widest font-bold">
-                  Prise en charge <span className="normal-case tracking-normal font-medium text-ink-faint">— change le tarif</span>
+                  Prise en charge <span className="normal-case tracking-normal font-medium text-ink-faint">{t('cloture.balisage_hint')}</span>
                 </p>
                 <div className="flex gap-2">
                   {PRISE_OPTIONS.map(p => (
@@ -123,14 +132,14 @@ export default function ActionScreen({
                           ? 'border-green-500 bg-green-500/10 text-green-700 dark:text-green-300'
                           : 'border bg-surface-2 text-ink-secondary'
                       }`}>
-                      {p.label}
+                      {t(p.label)}
                     </button>
                   ))}
                 </div>
 
                 {prise !== 'standard' && (
                   <div className="space-y-2 pt-1">
-                    <p className="text-ink font-bold text-[15px]">🚧 Balisage</p>
+                    <p className="text-ink font-bold text-[15px]">{t('cloture.balisage')}</p>
                     <div className="flex gap-2">
                       {[{ v: true, l: 'Oui' }, { v: false, l: 'Non' }].map(o => (
                         <button key={o.l} onClick={() => onBalisage(o.v)}
@@ -155,10 +164,10 @@ export default function ActionScreen({
                 Vu en test le 12/08. Olivier 2026-08-12. */}
             {canLoad && onLoad && (
               <div className="space-y-2 pt-1">
-                <p className="text-ink-muted text-[11px] uppercase tracking-widest font-bold">Le véhicule part avec moi</p>
+                <p className="text-ink-muted text-[11px] uppercase tracking-widest font-bold">{t('cloture.group_takes')}</p>
                 <button onClick={onLoad}
                   className="w-full py-4 px-4 rounded-2xl font-bold text-base flex items-center gap-2.5 justify-center bg-blue-600 text-white transition active:scale-[.99]">
-                  <span>🚛</span>Véhicule chargé sur le camion
+                  <span>🚛</span>{t('cloture.load_vehicle')}
                 </button>
               </div>
             )}
@@ -168,7 +177,7 @@ export default function ActionScreen({
               if (items.length === 0) return null
               return (
                 <div key={g} className="space-y-2 pt-1">
-                  <p className="text-ink-muted text-[11px] uppercase tracking-widest font-bold">{GROUP_TITLES[g]}</p>
+                  <p className="text-ink-muted text-[11px] uppercase tracking-widest font-bold">{t(GROUP_KEYS[g] || g)}</p>
                   {items.map(btn)}
                 </div>
               )
