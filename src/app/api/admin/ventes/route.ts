@@ -9,6 +9,11 @@
 // Un véhicule en SAISIE POLICE ne peut pas entrer en vente : il ne nous
 // appartient pas, il part par le SPF Domaine. Même règle que l'abandon
 // (cf /api/missions/[id]/abandon). Olivier 2026-08-20.
+//
+// Les photos de la fiche sont RECOPIÉES dans le bucket public `ventes-photos`,
+// jamais référencées à leur adresse d'origine : une URL se lit dans le code
+// source de la page publique, et `mission-photos/police-1786…` racontait d'où
+// venait le véhicule. Olivier 2026-08-21.
 
 import { NextResponse }      from 'next/server'
 import { getServerSession }  from 'next-auth'
@@ -29,6 +34,32 @@ async function guard() {
 const str = (v: any, max = 300) => {
   const s = String(v ?? '').trim()
   return s ? s.slice(0, max) : null
+}
+
+const BUCKET = 'ventes-photos'
+
+/**
+ * Recopie des photos vers le bucket public des ventes, sous une adresse qui ne
+ * dit rien de leur provenance. Une photo qui ne se copie pas est simplement
+ * omise : mieux vaut un lot avec deux photos qu'une création qui échoue.
+ */
+async function copierPhotos(sb: any, saleId: string, sources: string[]): Promise<string[]> {
+  const out: string[] = []
+  for (const [i, url] of sources.entries()) {
+    try {
+      const res = await fetch(url)
+      if (!res.ok) continue
+      const ext  = (url.split('?')[0].split('.').pop() || 'jpg').toLowerCase().slice(0, 5)
+      const path = `${saleId}/${Date.now()}-${i}.${ext}`
+      const { error } = await sb.storage.from(BUCKET).upload(
+        path, Buffer.from(await res.arrayBuffer()),
+        { contentType: res.headers.get('content-type') || 'image/jpeg', upsert: true },
+      )
+      if (error) continue
+      out.push(sb.storage.from(BUCKET).getPublicUrl(path).data.publicUrl)
+    } catch { /* photo illisible : on passe */ }
+  }
+  return out
 }
 
 export async function GET(req: Request) {
@@ -77,6 +108,7 @@ export async function POST(req: Request) {
   const missionId = str(body.mission_id, 60)
 
   let seed: Record<string, any> = { origin: 'achat' }
+  let sourcePhotos: string[] = []
 
   if (missionId) {
     const { data: m } = await sb
@@ -117,8 +149,9 @@ export async function POST(req: Request) {
       mileage:    m.vehicle_mileage,
       // is_rollable vaut null quand personne ne s'est prononcé : on ne devine pas.
       condition:  m.is_rollable === true ? 'roulant' : m.is_rollable === false ? 'non_roulant' : 'roulant',
-      photos:     Array.isArray(m.driver_photos) ? m.driver_photos.slice(0, 12) : [],
+      photos:     [],   // rempli après l'insert, une fois l'id du lot connu
     }
+    sourcePhotos = Array.isArray(m.driver_photos) ? m.driver_photos.slice(0, 12) : []
   }
 
   const title = str(body.title, 160)
@@ -134,5 +167,15 @@ export async function POST(req: Request) {
   }).select().single()
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+
+  if (sourcePhotos.length) {
+    const photos = await copierPhotos(sb, data.id, sourcePhotos)
+    if (photos.length) {
+      const { data: withPhotos } = await sb.from('vehicle_sales')
+        .update({ photos }).eq('id', data.id).select().single()
+      if (withPhotos) return NextResponse.json({ sale: withPhotos })
+    }
+  }
+
   return NextResponse.json({ sale: data })
 }

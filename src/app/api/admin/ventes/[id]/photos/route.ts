@@ -3,9 +3,11 @@
 // POST /api/admin/ventes/[id]/photos  → ajoute des photos à un lot (multipart)
 //
 // Un lot créé depuis une fiche hérite des photos du chauffeur ; un lot ajouté à
-// la main n'en a aucune, et sans photo on ne publie pas. Même bucket que les
-// missions (`mission-photos`, public), rangé sous `ventes/<lot>/` pour ne pas
-// mélanger avec les photos d'intervention. Olivier 2026-08-20.
+// la main n'en a aucune, et sans photo on ne publie pas.
+//
+// Bucket DÉDIÉ `ventes-photos`, jamais celui des missions : une URL de photo se
+// lit dans le code source de la page publique, et `mission-photos/police-…`
+// racontait d'où venait le véhicule. Olivier 2026-08-21.
 
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession }          from 'next-auth'
@@ -17,6 +19,7 @@ export const maxDuration = 60
 export const dynamic = 'force-dynamic'
 
 const MAX_PHOTOS = 20
+const BUCKET = 'ventes-photos'
 
 export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
   const session = await getServerSession(authOptions)
@@ -42,15 +45,15 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
       return NextResponse.json({ error: `« ${file.name} » n'est pas une image.` }, { status: 400 })
     }
     const ext  = (file.name.split('.').pop() || 'jpg').toLowerCase().slice(0, 5)
-    const path = `ventes/${params.id}/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`
+    const path = `${params.id}/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`
 
-    const { error } = await sb.storage.from('mission-photos')
+    const { error } = await sb.storage.from(BUCKET)
       .upload(path, Buffer.from(await file.arrayBuffer()), {
         contentType: file.type || 'image/jpeg', upsert: true,
       })
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
-    urls.push(sb.storage.from('mission-photos').getPublicUrl(path).data.publicUrl)
+    urls.push(sb.storage.from(BUCKET).getPublicUrl(path).data.publicUrl)
   }
 
   const photos = [...current, ...urls]
