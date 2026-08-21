@@ -4639,6 +4639,16 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
                   className="w-full py-4 bg-amber-500 text-ink font-bold rounded-2xl text-base">
                   🅿️ <T k="mission_detail.btn_park" />
                 </button>
+              ) : rem && !!(M as any).panne_motif ? (
+                /* ── LE DIAGNOSTIC EST DÉJÀ FAIT ─────────────────────────────
+                   Après une transformation en remorquage, la fiche revient avec
+                   son itinéraire et le motif enregistré : lui reproposer
+                   « Diagnostic terminé » n'a plus de sens, il l'a déjà déclaré.
+                   Le geste attendu ici, c'est de charger. Olivier 2026-08-21. */
+                <button onClick={() => api('load_vehicle')} disabled={loading}
+                  className="w-full py-4 bg-blue-600 disabled:opacity-50 text-white font-bold rounded-2xl text-base">
+                  {loading ? <T k="mission_detail.loading" /> : <>🚛 <T k="mission_detail.btn_loaded_park" /></>}
+                </button>
               ) : totPh === 0 ? (
                 /* ── LES PHOTOS D'ABORD (Olivier 2026-08-21) ─────────────────
                    « Il ne faut pas oublier que les photos doivent être là avant
