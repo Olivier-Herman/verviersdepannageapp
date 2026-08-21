@@ -32,7 +32,7 @@ export const dynamic     = 'force-dynamic'
 export const maxDuration = 300
 
 const MISSION_COLS = 'id, source, source_format, raw_content, external_id, mission_type, status, loaded_at, vr_proposed, assigned_to, parent_mission_id, ' +
-  'vehicle_vin, vehicle_mileage, incident_description, vehicle_brand, vehicle_model, panne_motif'
+  'vehicle_vin, vehicle_vin_partial, vehicle_mileage, incident_description, vehicle_brand, vehicle_model, panne_motif'
 
 
 /**
@@ -95,8 +95,12 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
   // Codes deja encodes sur une jambe precedente (DSP -> REM). Un REM envoye
   // DIRECTEMENT par Touring n'en a aucun : dans ce cas la livraison doit demander
   // le motif, sinon on clotûrerait en « cause inconnue ». Olivier 2026-08-11.
+  // ⚠️ Un motif DÉJÀ sur la fiche vaut préremplissage : à la livraison, le
+  // chauffeur a répondu « pourquoi ce remorquage » au moment de la
+  // transformation. Le lui redemander à l'arrivée n'apporte rien et invite à
+  // répondre autre chose. Olivier 2026-08-21 : « absolument pas nécessaire ».
   const prefillFromParent = await prefillCodes(sb, m)
-  const hasPrefill = !!prefillFromParent
+  const hasPrefill = !!prefillFromParent || !!String((m as any).panne_motif || '').trim()
 
   // Codes de fin réellement autorisés par l'assistance sur CE dossier (déjà présents
   // dans le detail COMEX stocké). On n'affiche pas une issue que Touring refusera :
@@ -138,7 +142,7 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
       .filter(o => o.key !== 'dpr' || dprCodes.length > 0)
       .map(o => ({ key: o.key, label: o.label, icon: o.icon, group: o.group })),
     dprCodes,
-    fallback:   { vin: (m as any).vehicle_vin || '', km: (m as any).vehicle_mileage ?? '' },
+    fallback:   { vin: (m as any).vehicle_vin || (m as any).vehicle_vin_partial || '', km: (m as any).vehicle_mileage ?? '' },
     description: (m as any).incident_description || '',
   })
 }
@@ -197,6 +201,10 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   const patch: Record<string, any> = { updated_at: new Date().toISOString() }
   // On n'écrit le châssis QUE s'il est complet et que la fiche n'en a pas.
   if (vin && isFullVin(vin) && !isFullVin(ficheVin)) patch.vehicle_vin = vin
+  // ⚠️ Et on GARDE le fragment. L'écran demande « 5 derniers du VIN » : jeter ce
+  // que le chauffeur a tapé sous prétexte qu'il n'est pas complet, c'est le lui
+  // faire retaper à l'écran suivant. Vu par Olivier le 21/08.
+  if (vin5 && !isFullVin(vin5)) patch.vehicle_vin_partial = vin5
   if (km != null && Number.isFinite(km)) patch.vehicle_mileage = km
   if (common.vehicleLocation)            patch.vehicle_location  = String(common.vehicleLocation)
   if (common.keyRecovered != null)       patch.key_recovered     = !!common.keyRecovered
