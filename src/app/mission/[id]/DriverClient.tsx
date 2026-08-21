@@ -656,6 +656,10 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
     M.source === 'police_snc'
     && ['dsp', 'rem_client', 'rem_direct'].includes(M.snc_scenario || '')
     && requiredAmount <= 0
+    // ⚠️ …SAUF si quelqu'un l'a fixé exprès. Olivier a mis 0 € via « Montant
+    // communiqué » et l'app criait quand même « montant non calculé » : un
+    // avertissement qui se trompe est pire que pas d'avertissement.
+    && (M as any).amount_to_collect_manual !== true
 
   // ── Pourquoi le montant ne se calcule pas ─────────────────────────────────
   // « On ne peut pas risquer d'avoir une mission dont le calcul ne peut pas se
@@ -3064,7 +3068,17 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
             )}
           </div>
         )}
-        {paidEffective
+        {requiredAmount <= 0 && (M as any).amount_to_collect_manual === true
+          ? (
+            /* Montant volontairement mis à zéro : il n'y a rien à encaisser, et
+               proposer « Ouvrir l'encaissement » pour 0,00 € n'a pas de sens.
+               Olivier 2026-08-21. */
+            <div className="bg-surface border border rounded-2xl p-4 text-center space-y-1">
+              <p className="text-ink font-semibold">Rien à encaisser</p>
+              <p className="text-ink-muted text-sm">Le montant a été mis à zéro — tu peux terminer la mission.</p>
+            </div>
+          )
+          : paidEffective
           ? (isToInvoice
               ? <div className="bg-amber-600/20 border border-amber-500/30 rounded-2xl p-4 text-center"><p className="text-amber-400 font-semibold">📄 Facture à envoyer</p></div>
               : <div className="bg-green-600/20 border border-green-500/30 rounded-2xl p-4 text-center"><p className="text-green-400 font-semibold">✅ Payée</p></div>)
