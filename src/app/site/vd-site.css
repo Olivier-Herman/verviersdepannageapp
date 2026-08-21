@@ -199,7 +199,9 @@
 @media (prefers-reduced-motion:reduce) { .vdsite .ticker-in { animation:none } }
 
 /* ── chiffres ── */
-.vdsite .stats { display:grid; grid-template-columns:repeat(4,1fr); gap:12px; }
+/* auto-fit : la rangée tient aussi bien 4 chiffres (page circuit) que 5
+   (accueil) sans laisser une carte seule en bout de ligne. */
+.vdsite .stats { display:grid; grid-template-columns:repeat(auto-fit,minmax(196px,1fr)); gap:12px; }
 @media (max-width:900px) { .vdsite .stats { grid-template-columns:repeat(2,1fr); } }
 .vdsite .stat {
   background:var(--surface); border:1px solid var(--line); border-radius:16px;

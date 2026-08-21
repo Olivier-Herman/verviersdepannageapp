@@ -17,13 +17,7 @@ export const CHIFFRES = [
   { n: '47',      label: 'demandes traitées par jour, en moyenne', src: 'sur 81 jours consécutifs' },
   { n: '208',     label: 'communes et localités desservies', src: 'adresses d’intervention distinctes' },
   { n: '70 %',    label: 'sur place en moins de 30 minutes après le départ', src: 'médiane 18 min · 1 681 mesures' },
-]
-
-export const CHIFFRES_2 = [
-  { n: '14',  label: 'dépanneuses et camions en service', src: 'du véhicule léger au poids lourd' },
-  { n: '24 %', label: 'des interventions le samedi ou le dimanche', src: 'et 3 à 4 chaque nuit' },
-  { n: '714', label: 'missions pour les zones de police', src: 'saisies, accidents, mal garée' },
-  { n: '143', label: 'interventions sur les Francofolies', src: 'édition 2026' },
+  { n: '14',      label: 'dépanneuses et camions en service', src: 'du véhicule léger au poids lourd' },
 ]
 
 export const TICKER = [

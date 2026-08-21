@@ -1,6 +1,6 @@
 import Link from 'next/link'
 import {
-  TEL, TEL_HREF, CHIFFRES, CHIFFRES_2, TICKER,
+  TEL, TEL_HREF, CHIFFRES, TICKER,
   COMMUNES, COMMUNES_AUTRES, DEPOTS, ASSISTEURS,
 } from './_data'
 
@@ -76,11 +76,6 @@ export default function SiteAccueil() {
           </div>
           <div className="stats">
             {CHIFFRES.map(c => (
-              <div className="stat" key={c.label}><b>{c.n}</b><span>{c.label}</span><i>{c.src}</i></div>
-            ))}
-          </div>
-          <div className="stats">
-            {CHIFFRES_2.map(c => (
               <div className="stat" key={c.label}><b>{c.n}</b><span>{c.label}</span><i>{c.src}</i></div>
             ))}
           </div>
