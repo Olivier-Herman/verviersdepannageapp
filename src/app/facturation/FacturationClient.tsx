@@ -38,6 +38,10 @@ interface MissionRow {
   completed_at: string | null
   amount_to_collect: number | null
   amount_collected: number | null
+  /** Le montant a-t-il été posé à la main (« Montant communiqué ») ? */
+  amount_to_collect_manual?: boolean | null
+  estimated_htva?: number | null
+  snc_scenario?: string | null
   payment_method: string | null
   special_tarif_htva: number | null
   assigned_to: string | null
@@ -926,6 +930,22 @@ export default function FacturationClient({
                         même n° de dossier {vabConflict.prefix} que {vabConflict.others.map(o => `#${o.mission_number ?? '?'} (${o.plate || '—'})`).join(', ')} mais véhicule différent — vérifier l'encodage.
                       </div>
                     )
+                  )}
+                  {/* ── MONTANT MIS À ZÉRO SUR PLACE ────────────────────────
+                      « Quand le chauffeur met un montant à 0, il faut qu'on
+                      puisse le voir en alerte sur la mission à la facturation,
+                      pour pouvoir effectuer un double check de pourquoi le
+                      client n'a pas dû payer » (Olivier 2026-08-21). Sans ce
+                      bandeau, une mission a zéro passe pour une mission
+                      gratuite — et personne ne revient jamais dessus. */}
+                  {(m.amount_to_collect ?? 0) <= 0 && m.amount_to_collect_manual === true && (
+                    <div className={`bg-orange-100 border-2 border-orange-500 border-b-0 ${vabConflict ? '' : 'rounded-t-2xl'} px-3 py-1.5 text-orange-900 text-xs shadow-sm`}>
+                      <span className="font-bold">💶 Montant mis à 0 sur place</span>{' '}
+                      — à vérifier : pourquoi le client n'a-t-il rien payé&nbsp;?
+                      {m.estimated_htva != null && Number(m.estimated_htva) > 0 && (
+                        <> Le tarif calculé était de {Number(m.estimated_htva).toFixed(2)} € HTVA.</>
+                      )}
+                    </div>
                   )}
                   {hasRemark && (
                     <div className={`bg-amber-200 border-2 border-amber-500 border-b-0 ${vabConflict ? '' : 'rounded-t-2xl'} px-3 py-1.5 text-amber-900 text-xs shadow-sm`}>
