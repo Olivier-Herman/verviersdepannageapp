@@ -18,7 +18,7 @@ import { NextResponse } from 'next/server'
 import Anthropic        from '@anthropic-ai/sdk'
 import { ANTHROPIC_MODELS } from '@/lib/anthropic-model'
 import { createAdminClient } from '@/lib/supabase'
-import { TEL, TARIF_FOURRIERE, DEPOTS, ASSISTEURS, COMMUNES } from '@/app/site/_data'
+import { TEL, TARIF_FOURRIERE, TARIF_MAL_GAREE, DEPOTS, ASSISTEURS, COMMUNES } from '@/app/site/_data'
 import { SALE_CONDITIONS, SALE_MODES, type SaleMode } from '@/lib/ventes/types'
 
 export const dynamic = 'force-dynamic'
@@ -108,11 +108,19 @@ ASSISTANCES
 Deux missions sur trois viennent d'une société d'assistance. Nous travaillons notamment avec : ${ASSISTEURS.join(', ')}. Si l'assistance nous a mandatés, le client n'avance rien pour la partie couverte par son contrat ; un éventuel reste à charge est annoncé avant l'intervention.
 
 FOURRIÈRE — VÉHICULE SAISI PAR LA POLICE
-Procédure : 1) appeler la zone de police qui a ordonné l'enlèvement, elle délivre la levée de saisie ; 2) réunir carte d'identité, levée de saisie, certificat d'immatriculation, preuve d'assurance (+ procuration et copie de la carte d'identité du titulaire si ce n'est pas lui, + document de qualité du signataire pour un véhicule de société) ; 3) se présenter rue Lefin 12 à Pepinster, du lundi au vendredi de 9h à 17h. Conseiller d'appeler avant de se déplacer pour vérifier que le dossier est complet.
-Frais, au tarif officiel des frais de justice (nous ne les fixons pas) : prise en charge ${TARIF_FOURRIERE.pec.htva} HTVA (${TARIF_FOURRIERE.pec.tvac} TVAC), une seule fois ; gardiennage ${TARIF_FOURRIERE.gardiennage.htva} HTVA par jour entamé (${TARIF_FOURRIERE.gardiennage.tvac} TVAC). Exemple : 12 jours = 112,78 € HTVA.
+Procédure : 1) appeler la zone de police qui a ordonné l'enlèvement, elle délivre la levée de saisie ; 2) réunir carte d'identité et levée de saisie (+ procuration et copie de la carte d'identité du titulaire si ce n'est pas lui, + document de qualité du signataire pour un véhicule de société) ; 3) se présenter rue Lefin 12 à Pepinster, du lundi au vendredi de 9h à 17h. Conseiller d'appeler avant de se déplacer pour vérifier que le dossier est complet. C'est la police qui vérifie l'immatriculation et l'assurance, pas nous : ne demande jamais ces documents.
+Frais, au tarif officiel des frais de justice (nous ne les fixons pas) :
+${TARIF_FOURRIERE.map(l => `- ${l.poste} — ${l.base} : ${l.htva} HTVA (${l.tvac} TVAC)`).join('\n')}
+Exemple : enlèvement à moins de 15 km + 12 jours de parc pendant la saisie = 94,06 + (12 × 1,56) + 37,67 = 150,45 € HTVA, soit 182,04 € TVAC.
+POINT IMPORTANT : le gardiennage est à 1,56 €/jour TANT QUE LA SAISIE COURT. Dès la levée de saisie, s'il reste chez nous, il passe à 20 € HTVA par jour. Signale-le, ça change tout pour le propriétaire.
+Cyclomoteur ou moto : gardiennage 0,80 € HTVA par jour pendant la saisie.
+Un enlèvement de nuit, un week-end ou un jour férié peut faire l'objet d'une majoration.
 Sans clés : possible, mais à signaler, ça change l'organisation.
-Véhicule simplement déplacé parce qu'il gênait : ce n'est pas une saisie, procédure plus simple et frais plus limités, appeler directement.
-Parc fermé et surveillé, chaque véhicule photographié à son entrée.
+
+VÉHICULE ENLEVÉ POUR STATIONNEMENT GÊNANT (MAL GARÉE)
+Ce n'est PAS une saisie : pas de levée de saisie à obtenir, la personne nous appelle directement. Mais ce n'est PAS moins cher — ne dis jamais que les frais sont plus limités. Tarif :
+${TARIF_MAL_GAREE.map(l => `- ${l.poste} — ${l.base} : ${l.htva} HTVA (${l.tvac} TVAC)`).join('\n')}
+Parc fermé et surveillé, chaque véhicule repéré à l'emplacement près.
 
 RENONCER À SON VÉHICULE — LA RÈGLE À NE PAS CONFONDRE
 - Véhicule chez nous après une panne, un accident ou un enlèvement pour stationnement gênant : la démarche se fait avec nous, document signé sur place avec la carte d'identité, et les frais de stationnement s'arrêtent à ce moment-là.

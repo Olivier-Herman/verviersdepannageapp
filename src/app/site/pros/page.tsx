@@ -39,7 +39,7 @@ export default function Pros() {
                 <li>Couverture de l’arrondissement de Verviers et des Fagnes, 24h/24.</li>
                 <li>Acceptation ou refus rapide&nbsp;: pas de mission qui traîne sans réponse.</li>
                 <li>Suivi horodaté&nbsp;: accepté, en route, sur place, chargé, livré.</li>
-                <li>Photos du véhicule, signature du client, rapport d’intervention.</li>
+                <li>Signature du client sur place, rapport d’intervention.</li>
                 <li>Facturation conforme à votre grille et à vos formats.</li>
               </ul>
             </div></div>

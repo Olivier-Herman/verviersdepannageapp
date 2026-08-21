@@ -151,7 +151,7 @@ export default function SiteAccueil() {
             <div className="step"><span className="km">KM 2</span><h4>Le chauffeur vous appelle</h4>
               <p>Il vous donne son heure d’arrivée depuis la route. Pas de fourchette vague.</p></div>
             <div className="step"><span className="km">KM 3</span><h4>Prise en charge</h4>
-              <p>Le véhicule est photographié avant chargement. Vous savez ce qui est constaté, et quand.</p></div>
+              <p>L’état du véhicule est constaté avant chargement. Vous savez ce qui part, quand, et vers où.</p></div>
             <div className="step"><span className="km">KM 4</span><h4>Livraison</h4>
               <p>À l’adresse convenue, ou mise à l’abri dans notre parc le temps que vous décidiez.</p></div>
           </div>
@@ -173,7 +173,7 @@ export default function SiteAccueil() {
             <div className="card"><div className="card-body">
               <h3>On développe nos propres outils</h3>
               <p>
-                Dispatch, photos horodatées, suivi en temps réel, signature du client sur place, facturation&nbsp;:
+                Dispatch, suivi en temps réel, signature du client sur place, facturation&nbsp;:
                 tout tourne sur un logiciel qu’on a écrit nous-mêmes, parce qu’aucun produit du marché ne faisait
                 ce qu’on voulait. C’est ce qui nous permet de vous dire, à la minute près, où en est votre véhicule.
               </p>

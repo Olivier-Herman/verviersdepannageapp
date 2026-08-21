@@ -1,4 +1,4 @@
-import { TARIF_FOURRIERE } from '../_data'
+import { TARIF_FOURRIERE, TARIF_MAL_GAREE } from '../_data'
 
 export const metadata = {
   title: 'Fourrière — récupérer un véhicule saisi',
@@ -44,8 +44,6 @@ export default function Fourriere() {
                 <ul className="tight">
                   <li>Votre carte d’identité.</li>
                   <li>La levée de saisie délivrée par la police.</li>
-                  <li>Le certificat d’immatriculation du véhicule.</li>
-                  <li>Une preuve d’assurance en cours de validité.</li>
                   <li>Si vous n’êtes pas le titulaire&nbsp;: procuration écrite + copie de sa carte d’identité.</li>
                   <li>Véhicule de société&nbsp;: un document établissant la qualité du signataire.</li>
                 </ul>
@@ -82,24 +80,56 @@ export default function Fourriere() {
                   <tr><th>Poste</th><th>Base</th><th>Montant HTVA</th><th>Montant TVAC</th></tr>
                 </thead>
                 <tbody>
-                  <tr>
-                    <td>Prise en charge du véhicule (enlèvement)</td><td>forfait, une fois</td>
-                    <td className="num">{TARIF_FOURRIERE.pec.htva}</td>
-                    <td className="num">{TARIF_FOURRIERE.pec.tvac}</td>
-                  </tr>
-                  <tr>
-                    <td>Gardiennage en parc fermé</td><td>par jour entamé</td>
-                    <td className="num">{TARIF_FOURRIERE.gardiennage.htva}</td>
-                    <td className="num">{TARIF_FOURRIERE.gardiennage.tvac}</td>
-                  </tr>
+                  {TARIF_FOURRIERE.map(l => (
+                    <tr key={l.poste}>
+                      <td>{l.poste}</td><td>{l.base}</td>
+                      <td className="num">{l.htva}</td><td className="num">{l.tvac}</td>
+                    </tr>
+                  ))}
                 </tbody>
               </table>
             </div>
             <p style={{ fontSize: '.92rem', color: 'var(--ink-2)' }}>
-              Exemple&nbsp;: un véhicule resté 12 jours au parc représente 94,06 € + (12 × 1,56 €) =
-              <strong> 112,78 € HTVA</strong>, soit 136,46 € TVAC. Le gardiennage court tant que le véhicule
-              reste chez nous&nbsp;: plus vous tardez, plus la note monte.
+              Exemple&nbsp;: un véhicule enlevé à moins de 15 km et resté 12 jours au parc pendant la saisie
+              représente 94,06 € + (12 × 1,56 €) + 37,67 € = <strong>150,45 € HTVA</strong>, soit 182,04 € TVAC.
             </p>
+            <div className="callout">
+              <strong>Attention à ce qui se passe après la levée de saisie.</strong> Tant que la saisie court,
+              le gardiennage relève du tarif des frais de justice&nbsp;: 1,56 € par jour. Dès que la saisie est
+              levée, si le véhicule reste chez nous, il occupe une place à nos conditions&nbsp;:
+              <strong> 20 € HTVA par jour</strong>. Venez le chercher rapidement, la différence est de taille.
+            </div>
+            <p style={{ fontSize: '.9rem', color: 'var(--muted)' }}>
+              Pour un cyclomoteur ou une moto, le gardiennage pendant la saisie est de 0,80 € HTVA par jour.
+              Un enlèvement de nuit, un week-end ou un jour férié peut faire l’objet d’une majoration.
+            </p>
+          </div>
+
+          <div className="stack g16">
+            <div className="sec-head" style={{ marginBottom: 0 }}>
+              <span className="borne">Stationnement gênant</span>
+              <h2>Véhicule déplacé pour mal garée</h2>
+              <p>
+                Un véhicule enlevé parce qu’il gênait ne fait pas l’objet d’une saisie&nbsp;: pas de levée
+                de saisie à obtenir, vous nous appelez directement. Les frais, eux, relèvent d’un tarif
+                distinct de celui des frais de justice.
+              </p>
+            </div>
+            <div className="tw">
+              <table>
+                <thead>
+                  <tr><th>Poste</th><th>Base</th><th>Montant HTVA</th><th>Montant TVAC</th></tr>
+                </thead>
+                <tbody>
+                  {TARIF_MAL_GAREE.map(l => (
+                    <tr key={l.poste}>
+                      <td>{l.poste}</td><td>{l.base}</td>
+                      <td className="num">{l.htva}</td><td className="num">{l.tvac}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
 
           <div className="stack g16">
@@ -119,8 +149,11 @@ export default function Fourriere() {
               </div></div>
               <div className="proc-item"><span className="proc-n">?</span><div className="proc-b">
                 <h4>Ma voiture gênait, elle a été déplacée.</h4>
-                <p>Ce n’est pas une saisie. La procédure est plus simple et les frais plus limités&nbsp;:
-                appelez-nous directement.</p>
+                <p>
+                  Ce n’est pas une saisie&nbsp;: vous n’avez pas besoin d’une levée de saisie et vous pouvez
+                  nous appeler directement. En revanche, ce n’est pas moins cher — le tarif est différent,
+                  pas réduit. Voir la grille ci-dessous.
+                </p>
               </div></div>
               <div className="proc-item"><span className="proc-n">?</span><div className="proc-b">
                 <h4>Je ne veux pas récupérer le véhicule.</h4>
@@ -133,8 +166,8 @@ export default function Fourriere() {
               </div></div>
               <div className="proc-item"><span className="proc-n">?</span><div className="proc-b">
                 <h4>Mon véhicule est-il en sécurité&nbsp;?</h4>
-                <p>Parc fermé et surveillé. Chaque véhicule est photographié à l’entrée et repéré à
-                l’emplacement près&nbsp;: on sait exactement où il est et dans quel état il est arrivé.</p>
+                <p>Parc fermé et surveillé. Chaque véhicule est repéré à l’emplacement près&nbsp;:
+                on sait exactement où il se trouve.</p>
               </div></div>
             </div>
           </div>

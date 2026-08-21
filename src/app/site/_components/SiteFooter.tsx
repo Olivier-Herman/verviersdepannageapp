@@ -40,9 +40,9 @@ export default function SiteFooter() {
             <h4>Infos</h4>
             <ul>
               <li><Link href="/site/contact">Contact</Link></li>
-              <li>Mentions légales</li>
-              <li>Conditions générales</li>
-              <li>Politique de confidentialité</li>
+              <li><Link href="/site/mentions-legales">Mentions légales</Link></li>
+              <li><Link href="/site/confidentialite">Politique de confidentialité</Link></li>
+              <li><Link href="/site/vente">Conditions de vente</Link></li>
             </ul>
           </div>
         </div>
