@@ -1527,6 +1527,12 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
         requires_balisage: Boolean(M.snc_requires_balisage),
         incident_lat: M.incident_lat, incident_lng: M.incident_lng,
         destination_lat: M.destination_lat, destination_lng: M.destination_lng,
+        // ⚠️ La DATE D'INTERVENTION fait partie du calcul : c'est elle qui porte
+        // les majorations de nuit et de week-end. Sans elle, l'API repart sur
+        // « maintenant » et rend un total plus bas — 202,50 € au lieu de 303,99 €
+        // sur la fiche d'Olivier, soit exactement la majoration de 50 % perdue.
+        // Le détail accusait alors le montant d'avoir été « fixé à la main ».
+        intervention_at: M.intervention_date || (M as any).received_at || new Date().toISOString(),
         billed_to_id: (M as any).billed_to_id ?? null,
         billed_to_name: (M as any).billed_to_name ?? null,
       }),
@@ -2998,7 +3004,7 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
             {tarifDetail.lines.map((l, i) => (
               <div key={i} className="flex items-baseline justify-between gap-3 text-sm">
                 <span className="text-ink-secondary min-w-0">
-                  {l.name}
+                  {String(l.name).replace(/\s*[—-]\s*PREVIEW\s*$/i, '')}
                   {l.qty !== 1 && <span className="text-ink-muted"> · {l.qty} × {formatEur(l.price_unit)}</span>}
                 </span>
                 <span className="text-ink font-semibold tabular-nums flex-shrink-0">{formatEur(l.qty * l.price_unit)}</span>
@@ -3020,7 +3026,7 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
             </div>
             {Math.abs((M.amount_to_collect ?? 0) - tarifDetail.total_tvac) > 0.5 && (
               <p className="text-amber-600 dark:text-amber-400 text-xs font-semibold pt-1">
-                Le montant demandé diffère du calcul — il a été fixé à la main.
+                Le montant demandé diffère de ce détail — c'est celui du haut qui fait foi.
               </p>
             )}
           </div>
