@@ -17,6 +17,7 @@
 //     photos, d'où l'OCR remplit les deux champs. Guider, pas bloquer.
 
 import { useEffect, useState } from 'react'
+import { useT } from '@/lib/i18n/I18nProvider'
 import SigPad from '@/components/mission/SigPad'
 import AddressField from '@/components/AddressField'
 import type { OutcomeKey } from './ActionScreen'
@@ -68,6 +69,7 @@ export default function CloseScreen({
   /** Transformation réussie → le parent enchaîne sur la clôture VD Soft. */
   onDone: (r: { outcome: OutcomeKey; common: CloseCommon; destination?: { address: string; lat?: number; lng?: number }; queued?: boolean; dprCode?: string | null; dprLabel?: string | null }) => void
 }) {
+  const { t } = useT()
   const branch = BRANCH_OF[outcome] || null
   const isRem  = outcome === 'rem' || outcome === 'rem_vr'
   const isDpr  = outcome === 'dpr'
@@ -301,7 +303,7 @@ export default function CloseScreen({
         {isDpr ? (
           <>
             <div className="bg-blue-500/10 border border-blue-500/30 text-blue-700 dark:text-blue-300 rounded-xl px-3 py-3 text-sm font-medium">
-              Pas de panne à encoder — dis simplement pourquoi tu repars à vide.
+              {t('cloture.dpr_none')}
             </div>
             <div className="bg-surface-2 border border rounded-2xl divide-y divide-[color:var(--border)]">
               {(dprCodes || []).map(d => (
@@ -323,7 +325,7 @@ export default function CloseScreen({
           <>
             {/* ── Motif (branche fixée par l'issue) ────────────────────────── */}
             <p className={sectCls}>{isRem || isDelivered ? 'Pourquoi le remorquage ?' : "Qu'est-ce que tu as fait ?"}</p>
-            {!motifs && <p className="text-ink-muted text-sm py-4 text-center">Chargement des motifs…</p>}
+            {!motifs && <p className="text-ink-muted text-sm py-4 text-center">{t('cloture.motifs_loading')}</p>}
             <div className="grid grid-cols-3 gap-2.5">
               {ordered.map(m => {
                 const sel = motifKey === m.key
@@ -346,7 +348,7 @@ export default function CloseScreen({
         {/* ── Dépose (remorquage) ────────────────────────────────────────── */}
         {isRem && (
           <div id="f2-dest" className="space-y-2 pt-1">
-            <p className={sectCls}>Où déposer le véhicule ?</p>
+            <p className={sectCls}>{t('cloture.where_drop')}</p>
             <div className="flex gap-2">
               {(['list', 'manual'] as const).map(mode => (
                 <button key={mode} onClick={() => setDestMode(mode)}
@@ -358,8 +360,8 @@ export default function CloseScreen({
               ))}
             </div>
             {destMode === 'list' ? (
-              providers == null ? <p className="text-ink-muted text-xs py-2">Chargement des garages…</p>
-              : providers.length === 0 ? <p className="text-ink-muted text-xs py-2">Aucun garage proposé — utilise « Autre adresse ».</p>
+              providers == null ? <p className="text-ink-muted text-xs py-2">{t('cloture.garages_loading')}</p>
+              : providers.length === 0 ? <p className="text-ink-muted text-xs py-2">{t('cloture.garages_none')}</p>
               : (
                 <div className="space-y-1.5 max-h-56 overflow-y-auto">
                   {providers.map(g => (
@@ -378,12 +380,12 @@ export default function CloseScreen({
               )
             ) : (
               <div className="space-y-2">
-                <input placeholder="Nom (garage, société, domicile…)" value={manual.nom}
+                <input placeholder={t('cloture.addr_name_ph')} value={manual.nom}
                   onChange={e => setManual({ ...manual, nom: e.target.value })}
                   className="w-full border rounded-xl px-3 py-2.5 text-sm bg-surface" />
                 <AddressField
                   value={addrText} onChange={setAddrText} gmKey={GM_KEY}
-                  placeholder="Rechercher l'adresse (Google)…"
+                  placeholder={t('cloture.addr_search_ph')}
                   onSelect={(_a, lat, lng) => setCoords({ lat, lng })}
                   onParts={p => setManual(m => ({ ...m, rue: p.rue, num: p.num, cp: p.cp, loc: p.loc, nom: m.nom || p.name || '' }))}
                 />
@@ -399,13 +401,13 @@ export default function CloseScreen({
 
         {/* ── Signature ──────────────────────────────────────────────────── */}
         <div id="f2-sig" className="space-y-2 pt-1">
-          <p className={sectCls}>Signature du client</p>
+          <p className={sectCls}>{t('cloture.signature')}</p>
           {sigPng ? (
             <div className="flex items-center gap-2">
               <div className="flex-1 border border-green-500/40 rounded-xl overflow-hidden bg-white">
                 <img src={sigPng} alt="Signature" className="w-full max-h-24 object-contain" />
               </div>
-              <button onClick={() => { setSigPng(null); setSig(null) }} className="text-ink-muted text-xs">Refaire</button>
+              <button onClick={() => { setSigPng(null); setSig(null) }} className="text-ink-muted text-xs">{t('cloture.sign_redo')}</button>
             </div>
           ) : showPad ? (
             <SigPad onSave={d => { setSigPng(d); setSig('signed'); setShowPad(false); scrollTo(askLocKey ? 'f2-veh' : 'f2-releves') }} />
@@ -425,17 +427,17 @@ export default function CloseScreen({
         {askLocKey ? (
           <>
             <div id="f2-veh" className="space-y-2 pt-1">
-              <p className={sectCls}>Où se trouve le véhicule ?</p>
+              <p className={sectCls}>{t('cloture.where_vehicle')}</p>
               <div className="flex flex-wrap gap-2">
                 {VEHICLE_LOCATIONS.map(l => chip(l, vehLoc === l, () => { setVehLoc(l); if (l !== 'Autre') scrollTo('f2-key') }))}
               </div>
               {vehLoc === 'Autre' && (
-                <input value={vehOther} onChange={e => setVehOther(e.target.value)} placeholder="Précise l'endroit…"
+                <input value={vehOther} onChange={e => setVehOther(e.target.value)} placeholder={t('cloture.place_precise_ph')}
                   className="w-full border rounded-xl px-3 py-2.5 text-sm bg-surface" />
               )}
             </div>
             <div id="f2-key" className="space-y-2 pt-1">
-              <p className={sectCls}>Clé du véhicule</p>
+              <p className={sectCls}>{t('cloture.key_title')}</p>
               <div className="flex gap-2">
                 {chip('Récupérée', keyRecovered === true,  () => setKeyRec(true))}
                 {chip('Non',       keyRecovered === false, () => { setKeyRec(false); scrollTo('f2-releves') })}
@@ -446,7 +448,7 @@ export default function CloseScreen({
                 </div>
               )}
               {keyRecovered && keyLoc === 'Autre' && (
-                <input value={keyOther} onChange={e => setKeyOther(e.target.value)} placeholder="Où as-tu mis la clé ?"
+                <input value={keyOther} onChange={e => setKeyOther(e.target.value)} placeholder={t('cloture.key_where')}
                   className="w-full border rounded-xl px-3 py-2.5 text-sm bg-surface" />
               )}
             </div>
@@ -460,14 +462,14 @@ export default function CloseScreen({
         {/* ── Châssis + kilométrage ──────────────────────────────────────── */}
         {!isDpr && (
           <div id="f2-releves" className="space-y-2 pt-1">
-            <p className={sectCls}>Châssis &amp; kilométrage</p>
+            <p className={sectCls}>{t('cloture.vin_km')}</p>
             <div className="grid grid-cols-2 gap-2">
-              <input value={vin} onChange={e => setVin(e.target.value.toUpperCase())} placeholder="5 derniers du VIN"
+              <input value={vin} onChange={e => setVin(e.target.value.toUpperCase())} placeholder={t('cloture.vin_ph')}
                 className="w-full border rounded-xl px-3 py-2.5 text-sm bg-surface font-mono tracking-wider" />
-              <input value={km} onChange={e => setKm(e.target.value)} inputMode="numeric" placeholder="Kilométrage"
+              <input value={km} onChange={e => setKm(e.target.value)} inputMode="numeric" placeholder={t('cloture.km_ph')}
                 className="w-full border rounded-xl px-3 py-2.5 text-sm bg-surface font-mono" />
             </div>
-            {ocrBusy && <p className="cap">✨ Je lis tes photos (châssis, compteur)…</p>}
+            {ocrBusy && <p className="cap">{t('cloture.ocr_reading')}</p>}
             {!ocrBusy && ocrGot && (ocrGot.vin || ocrGot.km) && (
               <p className="cap">
                 ✨ <b>Lu sur tes photos</b> : {[ocrGot.vin ? 'le châssis' : null, ocrGot.km ? 'le kilométrage' : null]
@@ -490,13 +492,13 @@ export default function CloseScreen({
                   <>
                     Je n'ai pas réussi à lire {vinEmpty && kmEmpty ? 'le châssis ni le compteur' : vinEmpty ? 'le châssis' : 'le compteur'} sur
                     tes {ocrPhotos} photos. Tu peux {vinEmpty && kmEmpty ? 'remplir les cases' : 'remplir la case'} à la main, ou en refaire une de plus près.
-                    <span className="block font-normal opacity-90">Rien ne t'empêche de terminer sans.</span>
+                    <span className="block font-normal opacity-90">{t('cloture.ocr_no_block')}</span>
                   </>
                 ) : (
                   <>
                     📷 Prends {vinEmpty && kmEmpty ? 'le châssis et le compteur' : vinEmpty ? 'le châssis' : 'le compteur'} en
                     photo — je remplis {vinEmpty && kmEmpty ? 'les deux cases' : 'la case'} pour toi.
-                    {vinEmpty && !kmEmpty && <span className="block font-normal opacity-90">Le châssis est sur le montant de portière ou en bas du pare-brise.</span>}
+                    {vinEmpty && !kmEmpty && <span className="block font-normal opacity-90">{t('cloture.vin_hint')}</span>}
                   </>
                 )}
               </div>
@@ -508,7 +510,7 @@ export default function CloseScreen({
         <div className="space-y-2 pt-1">
           <p className={sectCls}>Remarque <span className="normal-case tracking-normal font-medium text-ink-faint">— facultatif</span></p>
           <textarea rows={3} value={remark} onChange={e => setRemark(e.target.value)}
-            placeholder="Un mot pour le dispatch…"
+            placeholder={t('cloture.remark_ph')}
             className="w-full bg-surface border border rounded-xl px-3 py-3 text-ink text-sm outline-none resize-none" />
         </div>
 
@@ -525,7 +527,7 @@ export default function CloseScreen({
         {canSkip && (
           <button onClick={() => submit(true)} disabled={busy}
             className="w-full py-3.5 bg-surface-2 border border rounded-2xl text-sm font-bold text-ink-secondary">
-            Continuer sans clôturer →
+            {t('cloture.skip_assistance')} →
           </button>
         )}
       </div>
@@ -535,16 +537,16 @@ export default function CloseScreen({
           <>
             <button onClick={onNeedPhotos}
               className="w-full py-4 bg-orange-500 text-ink font-bold rounded-2xl text-base">
-              📷 Prendre les photos
+              {t('cloture.take_photos')}
             </button>
             <button disabled className="w-full py-3 bg-surface-2 border border text-ink-faint rounded-2xl text-sm font-semibold">
-              Il faut les 3 photos pour clôturer
+              {t('cloture.need_photos')}
             </button>
           </>
         ) : (
           <button onClick={() => submit()} disabled={busy || !canSubmit}
             className="w-full py-4 bg-green-600 disabled:opacity-40 text-white font-bold rounded-2xl text-base">
-            {busy ? 'Clôture en cours…' : !canSubmit ? (!motifKey && !isDpr ? 'Choisis un motif' : isDpr ? 'Choisis un motif' : 'Indique où déposer le véhicule') : 'Valider la clôture'}
+            {busy ? t('cloture.submitting') : !canSubmit ? (isDpr || !motifKey ? t('cloture.pick_motif') : t('cloture.pick_place')) : t('cloture.submit')}
           </button>
         )}
       </div>
