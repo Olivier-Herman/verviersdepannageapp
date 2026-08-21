@@ -191,6 +191,44 @@ export const fr = {
   // ── FLUX 2 : le couloir sur place (Action → motif → dépose → clôture) ──────
   // Ajouté le 2026-08-21 : ces écrans étaient entièrement en français en dur,
   // ce qui empêchait d'ouvrir le flux 2 à un chauffeur albanophone.
+  // Motifs de clôture — libellés du catalogue serveur (src/lib/cloture/motifs.ts).
+  // Clé = clé du motif : le client traduit depuis la clé et retombe sur le
+  // libellé serveur quand la traduction manque.
+  motif: {
+    batt_boost: 'Batterie à plat → redémarrée',
+    crevaison_roue: 'Crevaison → roue de secours',
+    cosses_batt: 'Cosses batterie desserrées → remises',
+    moteur_repart: 'Moteur remis en route',
+    embourbe: 'Véhicule embourbé → dégagé',
+    cles_habitacle: 'Clés enfermées → ouverture',
+    egr_admission: 'Admission / EGR encrassée → nettoyée',
+    refroidissement: 'Liquide de refroidissement → appoint',
+    surchauffe_ok: 'Surchauffe → refroidi, repart',
+    freins_debloq: 'Freins bloqués → débloqués',
+    voyant_elec: 'Voyant / défaut électrique',
+    huile_moteur: 'Huile moteur → appoint',
+    accident_repart: 'Accident → véhicule repart',
+    panne_seche: 'Panne sèche → ravitaillement',
+    serrure_bloquee: 'Serrure / portière bloquée → ouverte',
+    dsp_autre: 'Autre → mobilité rétablie',
+    moteur_panne: 'Moteur : ne démarre plus / tourne mal',
+    accident: 'Accident → remorquage',
+    crevaison_rem: 'Crevaison, réparation impossible',
+    moteur_casse: 'Moteur cassé / HS',
+    moteur_surch: 'Moteur en surchauffe',
+    embrayage: 'Embrayage',
+    alternateur: 'Alternateur / plus de charge',
+    boite_vitesses: 'Boîte de vitesses',
+    moteur_bloque: 'Moteur bloqué / calé',
+    demarreur: 'Démarreur défaillant',
+    carburant_err: 'Erreur de carburant (mauvais plein)',
+    veh_dangereux: 'Véhicule dangereux / non roulant',
+    freins_bloques: 'Freins bloqués',
+    courroie_dist: 'Courroie de distribution cassée',
+    turbo: 'Turbo',
+    batt_hs: 'Batterie HS (ne tient plus)',
+    rem_autre: 'Autre panne → remorquage',
+  },
   cloture: {
     // Entrée du couloir (fiche mission)
     btn_photos_first:    '📷 Photos du véhicule',
@@ -271,6 +309,7 @@ export const fr = {
     pay_open:            '💳 Ouvrir l\'encaissement',
   },
   mission_detail: {
+    prive_no_amount: "⚠️ Aucun montant encodé par le dispatch — tape ici pour saisir celui qu'on t'a communiqué.",
     // statut header
     status_parked:       'En dépôt',
     status_on_site:      'Sur place',

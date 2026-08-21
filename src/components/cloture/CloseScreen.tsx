@@ -70,6 +70,14 @@ export default function CloseScreen({
   onDone: (r: { outcome: OutcomeKey; common: CloseCommon; destination?: { address: string; lat?: number; lng?: number }; queued?: boolean; dprCode?: string | null; dprLabel?: string | null }) => void
 }) {
   const { t } = useT()
+  // Les libellés de motifs viennent du serveur en français. On traduit depuis la
+  // CLÉ, et on retombe sur le libellé serveur quand la traduction manque : un
+  // motif ajouté côté serveur s'affiche donc toujours, jamais en clé brute.
+  const motifLabel = (m: { key: string; label: string }) => {
+    const k = `motif.${m.key}`
+    const tr = t(k)
+    return tr === k ? m.label : tr
+  }
   const branch = BRANCH_OF[outcome] || null
   const isRem  = outcome === 'rem' || outcome === 'rem_vr'
   const isDpr  = outcome === 'dpr'
@@ -337,7 +345,7 @@ export default function CloseScreen({
                     } ${sel ? 'border-amber-500 bg-amber-50 dark:bg-amber-500/10 ring-2 ring-amber-400' : 'bg-surface-2 border'}`}>
                     {suggested.includes(m.key) && <span className="absolute top-1.5 right-2 text-[10px]">✨</span>}
                     <span className="text-[26px] leading-none">{m.icon}</span>
-                    <span className="text-[11px] font-bold leading-tight text-ink text-center">{m.label}</span>
+                    <span className="text-[11px] font-bold leading-tight text-ink text-center">{motifLabel(m)}</span>
                   </button>
                 )
               })}

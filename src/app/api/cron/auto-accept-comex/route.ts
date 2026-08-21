@@ -1,6 +1,7 @@
 // src/app/api/cron/auto-accept-comex/route.ts
 //
-// Auto-validation Touring COMEX BKO (cron horaire). Accepte AUTOMATIQUEMENT les
+// Auto-validation Touring COMEX BKO (cron toutes les 15 min — cf vercel.json ; le
+// double-contrôle tarifaire sécurise, donc pas besoin d'attendre). Accepte AUTOMATIQUEMENT les
 // dossiers dont le verdict est 'ok' (le tarif Touring MATCHE le tarif VD Soft) —
 // donc pas besoin de fenêtre de vérif : le comparatif tarifaire est la sécurité.
 // Rejoue le bouton « Accepter » (même endpoint /accept) : écriture COMEX BKO +

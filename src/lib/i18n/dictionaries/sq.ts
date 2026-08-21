@@ -190,6 +190,44 @@ export const sq: Dictionary = {
   },
 
   // Flux 2 — korridori në vend (Veprim → arsyeja → dorëzimi → mbyllja).
+  // Motifs de clôture — libellés du catalogue serveur (src/lib/cloture/motifs.ts).
+  // Clé = clé du motif : le client traduit depuis la clé et retombe sur le
+  // libellé serveur quand la traduction manque.
+  motif: {
+    batt_boost: 'Bateria e shkarkuar → u ndez sërish',
+    crevaison_roue: 'Gomë e shpuar → rrota rezervë',
+    cosses_batt: 'Kapëset e baterisë të liruara → të shtrënguara',
+    moteur_repart: 'Motori u ndez sërish',
+    embourbe: 'Automjeti i ngecur → u nxor',
+    cles_habitacle: 'Çelësat brenda → u hap dera',
+    egr_admission: 'Marrja e ajrit / EGR e ndotur → u pastrua',
+    refroidissement: 'Lëng ftohës → u shtua',
+    surchauffe_ok: 'Mbinxehje → u ftoh, niset',
+    freins_debloq: 'Frenat e bllokuara → u çbllokuan',
+    voyant_elec: 'Dritë sinjalizuese / defekt elektrik',
+    huile_moteur: 'Vaj motori → u shtua',
+    accident_repart: 'Aksident → automjeti niset vetë',
+    panne_seche: 'Mbeti pa karburant → u furnizua',
+    serrure_bloquee: 'Bravë / derë e bllokuar → u hap',
+    dsp_autre: 'Tjetër → automjeti lëviz sërish',
+    moteur_panne: 'Motori: nuk ndizet / punon keq',
+    accident: 'Aksident → tërheqje',
+    crevaison_rem: 'Gomë e shpuar, riparim i pamundur',
+    moteur_casse: 'Motor i prishur / jashtë funksionit',
+    moteur_surch: 'Motor i mbinxehur',
+    embrayage: 'Friksioni',
+    alternateur: 'Alternatori / nuk karikon',
+    boite_vitesses: 'Kutia e shpejtësive',
+    moteur_bloque: 'Motor i bllokuar / i fikur',
+    demarreur: 'Startuesi me defekt',
+    carburant_err: 'Karburant i gabuar (mbushje e gabuar)',
+    veh_dangereux: 'Automjet i rrezikshëm / nuk lëviz',
+    freins_bloques: 'Frenat e bllokuara',
+    courroie_dist: 'Rripi i shpërndarjes i këputur',
+    turbo: 'Turbo',
+    batt_hs: 'Bateri e prishur (nuk mban më)',
+    rem_autre: 'Defekt tjetër → tërheqje',
+  },
   cloture: {
     btn_photos_first:    '📷 Fotot e automjetit',
     btn_diagnostic_done: '✅ Diagnoza përfundoi',
@@ -265,6 +303,7 @@ export const sq: Dictionary = {
     pay_open:            '💳 Hap arkëtimin',
   },
   mission_detail: {
+    prive_no_amount: '⚠️ Dispeceria nuk ka vendosur asnjë shumë — prek këtu për të shkruar sumën që të komunikuan.',
     status_parked:       'Në depo',
     status_on_site:      'Në vend',
     status_on_way:       'Në rrugë',
