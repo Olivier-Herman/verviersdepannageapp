@@ -115,7 +115,15 @@ export async function POST(req: Request) {
     const dupSource = FOURRIERE_TYPE_TO_SOURCE[type]
     const dupPlate  = plateOrVinTail(plate, vin)
     if (dupSource && dupPlate) {
-      const twoMinAgo = new Date(Date.now() - 2 * 60 * 1000).toISOString()
+      // ⚠️ 2 MINUTES NE COUVRAIENT QUE LE DOUBLE-TAP (Olivier 2026-08-24).
+      // SUAL792 : deux fiches saisie à 3 min 37 d'écart, deux tickets Odoo, le
+      // même Aixam compté deux fois en parc — donc deux gardiennages facturés.
+      // Ce n'était pas un double-tap mais une REPRISE : le chauffeur a refait la
+      // fiche, photos comprises, et refaire trois photos prend plus de deux
+      // minutes. Idem JXD60R le 16/08, à 46 minutes d'écart.
+      // 30 minutes : revoir la même plaque, à la même adresse, sur le même type
+      // d'appel dans la demi-heure n'arrive pas dans la vraie vie.
+      const twoMinAgo = new Date(Date.now() - 30 * 60 * 1000).toISOString()
       const { data: dup } = await supabase
         .from('incoming_missions')
         .select('id, mission_number')

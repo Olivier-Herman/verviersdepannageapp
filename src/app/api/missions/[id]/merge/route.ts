@@ -137,6 +137,30 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   for (const [field, cur, fromSec] of fillIfEmpty) {
     if ((cur == null || cur === '') && fromSec != null && fromSec !== '') upd[field] = fromSec
   }
+
+  // ── LE RÉQUISITOIRE SUIT LA FUSION (Olivier 2026-08-24) ───────────────────
+  // La principale est la PLUS ANCIENNE. Sur une reprise de fiche, c'est donc la
+  // plus pauvre qui est conservée : le châssis et le réquisitoire sont sur la
+  // seconde. Le châssis passait déjà par `fillIfEmpty` ; le réquisitoire, non —
+  // il serait mort avec la fiche absorbée. Or c'est lui qui porte le PV, le
+  // document et la date qui pilotent les relances et le délai légal d'une
+  // saisie. Vu sur SUAL792 : PV VE.93.L1.405280/2026 sur la fiche à annuler.
+  const [{ data: mReq }, { data: sReq }] = await Promise.all([
+    sb.from('incoming_missions').select('requisitoire_at, requisitoire_note, requisitoire_doc_path, requisitoire_by, vehicle_mileage, incident_at').eq('id', master.id).maybeSingle(),
+    sb.from('incoming_missions').select('requisitoire_at, requisitoire_note, requisitoire_doc_path, requisitoire_by, vehicle_mileage, incident_at').eq('id', secondary.id).maybeSingle(),
+  ])
+  if (!(mReq as any)?.requisitoire_at && (sReq as any)?.requisitoire_at) {
+    upd.requisitoire_at       = (sReq as any).requisitoire_at
+    upd.requisitoire_note     = (sReq as any).requisitoire_note     ?? null
+    upd.requisitoire_doc_path = (sReq as any).requisitoire_doc_path ?? null
+    upd.requisitoire_by       = (sReq as any).requisitoire_by       ?? null
+  }
+  // Kilométrage et heure d'intervention : on comble un trou, jamais on écrase —
+  // l'heure de la principale fixe la majoration horaire, donc le prix.
+  for (const champ of ['vehicle_mileage', 'incident_at'] as const) {
+    const cur = (mReq as any)?.[champ], fromSec = (sReq as any)?.[champ]
+    if ((cur == null || cur === '') && fromSec != null && fromSec !== '') upd[champ] = fromSec
+  }
   // Destination : la secondaire (fiche la plus récente = 2e jambe d'un tow splitté,
   // ex. dépôt→garage chez Kaze) porte la destination FINALE → elle ÉCRASE celle de
   // la principale (qui gardait une destination intermédiaire, ex. le dépôt).
