@@ -34,7 +34,7 @@ const eur = (n: number) => n.toFixed(2) + ' €'
 async function main() {
   const sb = createAdminClient()
   let q = sb.from('payout_reconciliations')
-    .select('id, provider, payout_ref, bank_line_id, net_amount, payment_ids, payload')
+    .select('id, provider, payout_ref, bank_line_id, od_move_id, net_amount, payment_ids, payload')
     .eq('status', 'done').not('bank_line_id', 'is', null).order('id')
   if (ONLY) q = q.eq('payout_ref', ONLY)
   const { data } = await q
@@ -200,6 +200,14 @@ async function main() {
         if (pid && !payLineByPayment.has(pid)) payLineByPayment.set(pid, l.id)
       }
     }
+    // Les lignes 542 de l'OD de commission : sur les versements d'avant le
+    // 24/08 elle ne porte qu'UNE paire globale, pas une par transaction.
+    const odLineIds: number[] = row.od_move_id
+      ? (await odooRpc<any[]>('account.move.line', 'search_read', [[
+          ['move_id', '=', row.od_move_id], ['account_id', '=', OUTSTANDING],
+        ]], { fields: ['id'], order: 'id', limit: 100 })).map(l => l.id)
+      : []
+
     const used = new Set<number>()
     for (let i = 0; i < fresh.length && i < sp.length; i++) {
       const pl = sp[i].paymentId ? payLineByPayment.get(sp[i].paymentId!) : undefined
@@ -207,8 +215,15 @@ async function main() {
       await odooRpc('account.move.line', 'reconcile', [[fresh[i].id, pl]])
       used.add(fresh[i].id); used.add(pl)
     }
-    const rest = [...fresh.map(l => l.id), ...payLineIds].filter(id => !used.has(id))
-    if (rest.length > 1) await odooRpc('account.move.line', 'reconcile', [rest])
+
+    // ⚠️ La ligne d'extrait vaut le NET, le paiement le BRUT : chaque paire
+    // reste courte de sa commission. On mène donc un second lettrage sur tout
+    // ce qui garde un résiduel, l'OD comprise — sinon le paiement n'est jamais
+    // soldé et ressort comme « sans liaison ».
+    const involved = [...fresh.map(l => l.id), ...payLineIds, ...odLineIds]
+    const state = await odooRpc<any[]>('account.move.line', 'read', [involved], { fields: ['id', 'amount_residual'] })
+    const openIds = state.filter(l => Math.abs(Number(l.amount_residual) || 0) > 0.004).map(l => l.id)
+    if (openIds.length > 1) await odooRpc('account.move.line', 'reconcile', [openIds])
 
     const [after] = await odooRpc<any[]>('account.bank.statement.line', 'read', [[row.bank_line_id]], { fields: ['is_reconciled'] })
     if (!after?.is_reconciled) throw new Error(`${tag} : l'extrait n'est plus lettré après reprise — ARRÊT`)
