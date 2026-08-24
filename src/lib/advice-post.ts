@@ -323,6 +323,12 @@ export async function postAdvicePlan(plan: AdvicePostingPlan): Promise<{ reconci
     const open = state.filter(l => Math.abs(Number(l.amount_residual) || 0) > 0.004).map(l => l.id)
     if (open.length > 1) await odooRpc('account.move.line', 'reconcile', [open])
 
+    // Reste l'arrondi du paiement groupé : Odoo l'arrondit au centime alors que
+    // la somme des factures tombe un centime plus bas. Sans l'absorber, le
+    // paiement garde un résiduel et ressort éternellement comme non lettré.
+    try { await absorbResidual(involved, plan) }
+    catch (e: any) { console.warn('[advice-post] écart d\'arrondi non absorbé :', e?.message) }
+
     // Le détail et l'avis d'origine, là où on les cherche : sur le paiement.
     // Hors du bloc critique — si ça échoue, le lettrage reste bon.
     try { await documentPayment(plan, paymentIds) }
@@ -623,4 +629,58 @@ async function postUnallocatedOd(
   ]], { fields: ['id'], limit: 1 })
   if (!line) throw new Error(`OD ${u.ref} créée mais sa ligne 542 est introuvable`)
   return { moveId, lineId: line.id }
+}
+
+/** 757100 Positive Payment Differences · 657100 Negative Payment Differences. */
+const ROUND_GAIN = 461
+const ROUND_LOSS = 409
+
+/**
+ * Absorbe le centime d'arrondi qui reste après le lettrage.
+ *
+ * `account.payment.register` groupé arrondit le paiement au centime supérieur
+ * quand il solde des dizaines de factures : 20 581,17 € pour 20 581,16 € de
+ * créances. Le paiement garde alors 0,01 € de résiduel et ressort indéfiniment
+ * comme « sans liaison ». Une OD d'un centime clôt l'affaire.
+ * Olivier 2026-08-24.
+ */
+async function absorbResidual(lineIds: number[], plan: AdvicePostingPlan): Promise<void> {
+  const TOL = 0.05
+  const rows = await odooRpc<any[]>('account.move.line', 'read', [lineIds],
+    { fields: ['id', 'amount_residual', 'partner_id'] })
+  const open = rows.filter(l => {
+    const r = Math.abs(Number(l.amount_residual) || 0)
+    return r > 0.004 && r <= TOL
+  })
+  if (!open.length) return
+
+  for (const l of open) {
+    const residual = r2(Number(l.amount_residual))
+    const label = `Écart d'arrondi — ${plan.payerLabel}${plan.adviceRef ? ` ${plan.adviceRef}` : ''}`
+                + ` · virement ${plan.bankMove} du ${plan.bankDate}`
+    const partnerId = Array.isArray(l.partner_id) ? Number(l.partner_id[0]) : plan.partnerId
+
+    // Résiduel DÉBITEUR : il manque un crédit sur 542, la charge est pour nous.
+    const lines = residual > 0
+      ? [
+          [0, 0, { account_id: OUTSTANDING, partner_id: partnerId, name: label, debit: 0, credit: residual }],
+          [0, 0, { account_id: ROUND_LOSS,  partner_id: partnerId, name: label, debit: residual, credit: 0 }],
+        ]
+      : [
+          [0, 0, { account_id: OUTSTANDING, partner_id: partnerId, name: label, debit: -residual, credit: 0 }],
+          [0, 0, { account_id: ROUND_GAIN,  partner_id: partnerId, name: label, debit: 0, credit: -residual }],
+        ]
+
+    const [odId] = await odooRpc<number[]>('account.move', 'create', [[{
+      journal_id: OD_JOURNAL, date: plan.bankDate,
+      ref: `Arrondi ${plan.adviceRef || plan.payerLabel} — ${plan.bankMove}`,
+      narration: label, line_ids: lines,
+    }]])
+    await odooRpc('account.move', 'action_post', [[odId]])
+
+    const [odLine] = await odooRpc<any[]>('account.move.line', 'search_read', [[
+      ['move_id', '=', odId], ['account_id', '=', OUTSTANDING],
+    ]], { fields: ['id'], limit: 1 })
+    if (odLine) await odooRpc('account.move.line', 'reconcile', [[l.id, odLine.id]])
+  }
 }
