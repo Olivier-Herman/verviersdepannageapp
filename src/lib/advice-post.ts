@@ -270,6 +270,16 @@ export async function postAdvicePlan(plan: AdvicePostingPlan): Promise<{ reconci
       throw new Error(`Éclatement incohérent : ${totalParts.toFixed(2)} € répartis pour un virement de ${plan.amount.toFixed(2)} €`)
     }
 
+    // Le résidu — un centime entre la somme des factures et le paiement groupé
+    // qu'Odoo arrondit — est reporté sur la plus grosse part. Sans ça l'écriture
+    // d'extrait ne boucle pas et Odoo la refuse.
+    const residu = r2(plan.amount - totalParts)
+    if (residu) {
+      let big = 0
+      for (let k = 1; k < parts.length; k++) if (Math.abs(parts[k].amount) > Math.abs(parts[big].amount)) big = k
+      parts[big].amount = r2(parts[big].amount + residu)
+    }
+
     await odooRpc('account.move', 'button_draft', [[bankMoveId]])
     try {
       await odooRpc('account.move', 'write', [[bankMoveId], {
@@ -306,8 +316,12 @@ export async function postAdvicePlan(plan: AdvicePostingPlan): Promise<{ reconci
       await odooRpc('account.move.line', 'reconcile', [[fresh[i].id, m]])
       used.add(fresh[i].id); used.add(m)
     }
-    const rest = [...fresh.map(l => l.id), ...outstanding.map(l => l.id), ...odLineIds].filter(id => !used.has(id))
-    if (rest.length > 1) await odooRpc('account.move.line', 'reconcile', [rest])
+    // Balayage : tout ce qui garde un résiduel — y compris une paire décalée
+    // d'un centime par le report ci-dessus — part dans un dernier lettrage.
+    const involved = [...new Set([...fresh.map(l => l.id), ...outstanding.map(l => l.id), ...odLineIds])]
+    const state = await odooRpc<any[]>('account.move.line', 'read', [involved], { fields: ['id', 'amount_residual'] })
+    const open = state.filter(l => Math.abs(Number(l.amount_residual) || 0) > 0.004).map(l => l.id)
+    if (open.length > 1) await odooRpc('account.move.line', 'reconcile', [open])
 
     // Le détail et l'avis d'origine, là où on les cherche : sur le paiement.
     // Hors du bloc critique — si ça échoue, le lettrage reste bon.
@@ -442,13 +456,37 @@ async function registerInsurerPayments(
 
   if (!created.length) throw new Error('Aucun paiement créé — à vérifier dans Odoo')
 
-  // Le total des paiements doit faire le virement, sinon on lettrerait de
-  // travers. Le contrôle porte sur la banque, pas sur ce qu'on croit avoir fait.
-  const total = r2(created.reduce((s, p) => s + Number(p.amount || 0), 0))
-  if (Math.abs(total - plan.amount) > 0.02) {
+  // Le total des paiements doit couvrir la part du virement qui revient aux
+  // FACTURES — c'est-à-dire le virement MOINS ce qui part en OD.
+  //
+  // ⚠️ Le contrôle comparait au virement brut. Avec le passage en OD, l'avis
+  // BEVO492091 du 31/07 crée légitimement 20 581,17 € de paiements pour un
+  // virement de 1 451,36 €, la différence étant une reprise de 19 129,80 €
+  // partie en compte d'attente. Le contrôle refusait donc un rapprochement
+  // parfaitement valable. Olivier 2026-08-24.
+  const odSum   = r2(plan.unallocated.reduce((s, u) => s + u.amount, 0))
+  const attendu = r2(plan.amount - odSum)
+  const total   = r2(created.reduce((s, p) => s + Number(p.amount || 0), 0))
+
+  if (Math.abs(total - attendu) > 0.02) {
+    // ⚠️ Les paiements EXISTENT déjà à ce stade. Jeter l'erreur sans les
+    // supprimer ici les rendait invisibles à l'appelant — qui ne reçoit rien
+    // en retour — et laissait un paiement fantôme soldant des dizaines de
+    // factures sans être relié à un virement. C'est ce qui est arrivé deux
+    // fois le 24/08 avec 20 581,17 € sur l'ING.
+    const ids = created.map(p => p.id)
+    let cleanup = 'paiements supprimés'
+    try {
+      await odooRpc('account.payment', 'action_draft', [ids])
+      await odooRpc('account.payment', 'unlink',       [ids])
+    } catch (e: any) {
+      cleanup = `⚠️ SUPPRESSION IMPOSSIBLE — à retirer à la main dans Odoo : ${ids.join(', ')}`
+        + ` (${String(e?.message || e).slice(0, 120)})`
+    }
     throw new Error(
-      `Les paiements créés totalisent ${total.toFixed(2)} € pour un virement de ${plan.amount.toFixed(2)} €`
-      + ' — écriture annulée',
+      `Les paiements créés totalisent ${total.toFixed(2)} € pour ${attendu.toFixed(2)} € attendus`
+      + (odSum ? ` (virement ${plan.amount.toFixed(2)} € dont ${odSum.toFixed(2)} € en OD)` : '')
+      + ` — écriture annulée, ${cleanup}`,
     )
   }
 
