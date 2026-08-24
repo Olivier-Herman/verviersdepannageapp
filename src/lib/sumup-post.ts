@@ -101,6 +101,18 @@ export function buildSumupPostingPlan(p: MatchedPayout): PostingPlan {
   const ref   = p.terminal || `PID${p.paymentId}`
   const label = `Commission SumUp — versement ${ref} · ${p.bankDate}`
 
+  const detail = p.txs.map(t => ({
+    at:      t.at,
+    ref:     t.merchantRef,
+    card:    [t.cardBrand, t.by ? `par ${t.by}` : ''].filter(Boolean).join(' · '),
+    amount:  t.amount,
+    invoice: t.invoiceName,
+    partner: t.partner,
+    note:    t.unallocated ? `non affecté — ${t.unallocated.reason}`
+           : t.rounding    ? `arrondi ${t.rounding > 0 ? '+' : ''}${t.rounding.toFixed(2)} €`
+           : t.partial     ? 'règlement partiel' : null,
+  }))
+
   // Lignes dont on a décidé qu'elles partaient en OD : elles produisent le
   // débit 542 manquant, en face du compte d'attente.
   const odUnallocated = unallocatedOdLines(p.txs, `SumUp ${ref}`)
@@ -137,6 +149,7 @@ export function buildSumupPostingPlan(p: MatchedPayout): PostingPlan {
     paymentsToCreate,
     unallocatedTotal,
     roundingTotal,
+    detail,
     od: (commission > 0.005 || odUnallocated.length || odRounding.length) ? {
       journal: ACC.odJournal,
       date:    p.bankDate,

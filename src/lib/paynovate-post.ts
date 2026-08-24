@@ -29,7 +29,7 @@
 // HTVA + TVA 21 % se fait sur la facture Paynovate, une seule fois — sinon
 // la TVA serait déduite deux fois.
 
-import { odooRpc } from '@/lib/odoo'
+import { odooRpc, postChatterMessage } from '@/lib/odoo'
 import { unallocatedOdLines, roundingOdLines, humanOdooError } from '@/lib/reconcile-odoo'
 import type { MatchedPayout } from '@/lib/paynovate-match'
 
@@ -85,6 +85,13 @@ export interface PostingPlan {
   paymentsToCreate: MissingPayment[]
   /** Somme signée des écarts d'arrondi absorbés par l'OD. */
   roundingTotal: number
+  /**
+   * Le détail du versement, transaction par transaction — pour l'écrire dans
+   * Odoo. Sans lui, l'extrait n'affiche qu'une ligne « Paiements entrants en
+   * suspens » face à N rapprochements : le détail n'existe que dans le
+   * lettrage, invisible tant qu'on ne l'ouvre pas. Olivier 2026-08-24.
+   */
+  detail: { at: string | null; ref: string; card: string; amount: number; invoice: string | null; partner: string | null; note: string | null }[]
   /**
    * Montant des lignes passées en OD faute de facture identifiable. Il est
    * couvert par l'OD elle-même (débit 542) et non par un paiement carte — le
@@ -170,6 +177,18 @@ export function buildPostingPlan(p: MatchedPayout): PostingPlan {
 
   const label = `Commission Paynovate — versement ${p.paymentId}${p.tid ? ` · terminal ${p.tid}` : ''} · ${p.bankDate}`
 
+  const detail = p.txs.map(t => ({
+    at:      t.at,
+    ref:     t.merchantRef,
+    card:    t.cardBrand,
+    amount:  t.amount,
+    invoice: t.invoiceName,
+    partner: t.partner,
+    note:    t.unallocated ? `non affecté — ${t.unallocated.reason}`
+           : t.rounding    ? `arrondi ${t.rounding > 0 ? '+' : ''}${t.rounding.toFixed(2)} €`
+           : t.partial     ? 'règlement partiel' : null,
+  }))
+
   // Lignes dont on a décidé qu'elles partaient en OD : elles produisent le
   // débit 542 manquant, en face du compte d'attente.
   const odUnallocated = unallocatedOdLines(p.txs, `Paynovate ${p.paymentId}`)
@@ -193,6 +212,7 @@ export function buildPostingPlan(p: MatchedPayout): PostingPlan {
     paymentsToCreate,
     unallocatedTotal,
     roundingTotal,
+    detail,
     od: (commission > 0.005 || odUnallocated.length || odRounding.length) ? {
       journal: ACC.odJournal,
       date:    p.bankDate,
@@ -342,9 +362,15 @@ export async function postPlan(plan: PostingPlan, actorNote?: string): Promise<{
   let bankLineMoved = false
 
   try {
+    // Le libellé porte le résumé, pas le texte brut de la banque : c'est la
+    // seule chose visible sur l'extrait quand on ne déplie pas le lettrage.
+    const names = [...new Set(plan.detail.map(d => d.invoice).filter(Boolean))] as string[]
     await odooRpc('account.move.line', 'write', [[suspenseLineId], {
       account_id: ACC.outstanding,
       partner_id: plan.partnerId,
+      name: `${plan.bankMove ? '' : ''}Versement ${plan.od?.ref || plan.payoutId}`
+          + ` — ${plan.detail.length} paiement${plan.detail.length > 1 ? 's' : ''} carte`
+          + (names.length ? ` : ${names.slice(0, 6).join(', ')}${names.length > 6 ? `, +${names.length - 6}` : ''}` : ''),
     }])
     bankLineMoved = true
 
@@ -358,6 +384,12 @@ export async function postPlan(plan: PostingPlan, actorNote?: string): Promise<{
     }
 
     await odooRpc('account.move.line', 'reconcile', [ids])
+
+    // Le détail complet dans le fil de l'extrait — là où un comptable le
+    // cherche. Hors du bloc critique : si la note échoue, le lettrage reste bon.
+    try { await documentPayout(bankMoveId, plan) }
+    catch (e: any) { console.warn('[postPlan] détail du versement non publié :', e?.message) }
+
     return { odMoveId }
   } catch (e: any) {
     // Rollback complet : on ne laisse ni OD orpheline, ni extrait à moitié
@@ -428,4 +460,46 @@ async function bankMoveIdOf(bankLineId: number): Promise<number> {
   const id = Array.isArray(line?.move_id) ? line.move_id[0] : line?.move_id
   if (!id) throw new Error(`Ligne bancaire ${bankLineId} sans écriture associée`)
   return Number(id)
+}
+
+/**
+ * Écrit le détail du versement dans le fil de discussion de l'extrait.
+ *
+ * Le montage lettre N paiements carte contre une seule ligne bancaire : Odoo
+ * n'affiche alors qu'une ligne « Paiements entrants en suspens » et le détail
+ * n'existe que dans le lettrage, qu'il faut déplier rapprochement par
+ * rapprochement. Cette note met tout à plat, à l'endroit où on la cherche.
+ * Olivier 2026-08-24 : « quand il y a plusieurs rapprochements je ne vois pas
+ * le détail dans Odoo ».
+ */
+async function documentPayout(bankMoveId: number, plan: PostingPlan): Promise<void> {
+  const eur = (n: number) => n.toFixed(2).replace('.', ',') + ' €'
+  const jour = (iso: string | null) => (iso ? iso.slice(0, 10).split('-').reverse().join('/') : '—')
+  const heure = (iso: string | null) => (iso && iso.length > 12 ? ` ${iso.slice(11, 16)}` : '')
+
+  const rows = plan.detail.map(d => `
+    <tr>
+      <td style="padding:2px 8px 2px 0;white-space:nowrap">${jour(d.at)}${heure(d.at)}</td>
+      <td style="padding:2px 8px 2px 0;text-align:right;white-space:nowrap"><b>${eur(d.amount)}</b></td>
+      <td style="padding:2px 8px 2px 0">${d.invoice || '<i>sans facture</i>'}</td>
+      <td style="padding:2px 8px 2px 0">${d.partner || ''}</td>
+      <td style="padding:2px 8px 2px 0;color:#888">${[d.card, d.ref ? `réf. ${d.ref}` : '', d.note || ''].filter(Boolean).join(' · ')}</td>
+    </tr>`).join('')
+
+  const body =
+    `<p><b>Versement ${plan.od?.ref || plan.payoutId}</b> — ${plan.detail.length} paiement`
+    + `${plan.detail.length > 1 ? 's' : ''} carte pour ${eur(plan.gross)} brut,`
+    + ` ${eur(plan.net)} crédités.</p>`
+    + `<table style="border-collapse:collapse;font-size:13px">${rows}</table>`
+    + (plan.commission > 0.005
+        ? `<p>Commission retenue à la source : <b>${eur(plan.commission)}</b> — passée en OD sur le compte fournisseur.</p>`
+        : '')
+    + (plan.unallocatedTotal
+        ? `<p>Dont <b>${eur(plan.unallocatedTotal)}</b> sans facture identifiée, en attente d'affectation sur le compte 499000.</p>`
+        : '')
+    + (plan.roundingTotal
+        ? `<p>Écart d'arrondi absorbé : ${eur(plan.roundingTotal)}.</p>`
+        : '')
+
+  await postChatterMessage('account.move', bankMoveId, body)
 }
