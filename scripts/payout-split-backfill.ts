@@ -79,12 +79,19 @@ async function main() {
 
     // 1. Défaire, 2. éclater, 3. relier.
     await odooRpc('account.move.line', 'remove_move_reconcile', [[only.id]])
-    await odooRpc('account.bank.statement.line', 'write', [[row.bank_line_id], {
-      line_ids: [
-        [1, only.id, { account_id: OUTSTANDING, name: sp[0].label, debit: 0, credit: sp[0].net, amount_currency: -sp[0].net }],
-        ...sp.slice(1).map(x => [0, 0, { account_id: OUTSTANDING, name: x.label, debit: 0, credit: x.net, amount_currency: -x.net }]),
-      ],
-    }])
+    // Brouillon → écriture unique sur la PIÈCE → revalidation. Les autres
+    // chemins sont refusés par Odoo 19 (cf. commentaire dans paynovate-post).
+    await odooRpc('account.move', 'button_draft', [[moveId]])
+    try {
+      await odooRpc('account.move', 'write', [[moveId], {
+        line_ids: [
+          [1, only.id, { account_id: OUTSTANDING, name: sp[0].label, debit: 0, credit: sp[0].net, amount_currency: -sp[0].net }],
+          ...sp.slice(1).map(x => [0, 0, { account_id: OUTSTANDING, name: x.label, debit: 0, credit: x.net, amount_currency: -x.net }]),
+        ],
+      }])
+    } finally {
+      await odooRpc('account.move', 'action_post', [[moveId]])
+    }
     const fresh = await odooRpc<any[]>('account.move.line', 'search_read', [[
       ['move_id', '=', moveId], ['account_id', '=', OUTSTANDING],
     ]], { fields: ['id'], limit: 100 })
