@@ -34,7 +34,7 @@ const eur = (n: number) => n.toFixed(2) + ' €'
 async function main() {
   const sb = createAdminClient()
   let q = sb.from('payout_reconciliations')
-    .select('id, provider, payout_ref, bank_line_id, net_amount, payload')
+    .select('id, provider, payout_ref, bank_line_id, net_amount, payment_ids, payload')
     .eq('status', 'done').not('bank_line_id', 'is', null).order('id')
   if (ONLY) q = q.eq('payout_ref', ONLY)
   const { data } = await q
@@ -44,8 +44,9 @@ async function main() {
 
   for (const row of (data || []) as any[]) {
     const tag = `${row.provider} ${row.payout_ref}`
+    const isAssureur = row.provider === 'ima' || row.provider === 'awp'
     const txs = row.payload?.payout?.txs
-    if (!txs?.length) { console.log(`  — ${tag} : trace sans détail`); skip++; continue }
+    if (!isAssureur && !txs?.length) { console.log(`  — ${tag} : trace sans détail`); skip++; continue }
 
     const [line] = await odooRpc<any[]>('account.bank.statement.line', 'read', [[row.bank_line_id]],
       { fields: ['move_id', 'is_reconciled', 'amount'] })
@@ -60,6 +61,80 @@ async function main() {
     if (parts.length > 1 && !REDO) { console.log(`  ✓ ${tag} : déjà éclaté (${parts.length} lignes)`); deja++; continue }
 
     const only = parts[0]
+
+    // ── Assureurs : les parts viennent des PAIEMENTS créés, un par débiteur.
+    if (isAssureur) {
+      // La colonne `payment_ids` fait foi : le payload assureur ne porte pas
+      // toujours le plan complet.
+      const ids: number[] = (row.payment_ids?.length ? row.payment_ids : (row.payload?.plan?.paymentIds || [])) as number[]
+      const payRows = ids.length
+        ? await odooRpc<any[]>('account.payment', 'read', [ids], { fields: ['id', 'amount', 'partner_id'] })
+        : []
+      if (!payRows.length) { console.log(`  — ${tag} : aucun paiement tracé`); skip++; continue }
+
+      const spA = payRows.map(pr => ({
+        net: Math.round(Number(pr.amount) * 100) / 100,
+        partnerId: Array.isArray(pr.partner_id) ? Number(pr.partner_id[0]) : null,
+        paymentId: Number(pr.id),
+        label: `${row.provider.toUpperCase()} ${row.payout_ref} — ${Array.isArray(pr.partner_id) ? pr.partner_id[1] : ''}`,
+      }))
+      const sumA = r2(spA.reduce((s, x) => s + x.net, 0))
+      if (Math.abs(sumA - Number(row.net_amount)) > 0.02) {
+        console.log(`  ✗ ${tag} : ${eur(sumA)} répartis pour ${eur(Number(row.net_amount))} — ignoré`); skip++; continue
+      }
+      console.log(`  ▸ ${tag} · extrait ${moveId} · ${eur(Number(row.net_amount))} → ${spA.length} ligne(s)`)
+      for (const x of spA) console.log(`        ${eur(x.net).padStart(10)}  ${x.label}`)
+      if (!APPLY) { split++; continue }
+
+      const partialIdsA = parts.flatMap((l: any) => l.matched_debit_ids || [])
+      const partialsA = partialIdsA.length
+        ? await odooRpc<any[]>('account.partial.reconcile', 'read', [[...partialIdsA]], { fields: ['debit_move_id'] })
+        : []
+      const payLineIdsA = [...new Set(partialsA.map((x: any) =>
+        Array.isArray(x.debit_move_id) ? Number(x.debit_move_id[0]) : Number(x.debit_move_id)))]
+
+      await odooRpc('account.move.line', 'remove_move_reconcile', [parts.map((l: any) => l.id)])
+      await odooRpc('account.move', 'button_draft', [[moveId]])
+      try {
+        await odooRpc('account.move', 'write', [[moveId], {
+          line_ids: [
+            [1, only.id, { account_id: OUTSTANDING, partner_id: spA[0].partnerId || false, name: spA[0].label,
+                           debit: 0, credit: spA[0].net, amount_currency: -spA[0].net }],
+            ...spA.slice(1).map(x => [0, 0, { account_id: OUTSTANDING, partner_id: x.partnerId || false, name: x.label,
+                           debit: 0, credit: x.net, amount_currency: -x.net }]),
+            ...parts.slice(1).map((l: any) => [2, l.id, false]),
+          ],
+        }])
+      } finally {
+        await odooRpc('account.move', 'action_post', [[moveId]])
+      }
+
+      const freshA = await odooRpc<any[]>('account.move.line', 'search_read', [[
+        ['move_id', '=', moveId], ['account_id', '=', OUTSTANDING],
+      ]], { fields: ['id'], order: 'id', limit: 100 })
+      const byPayA = new Map<number, number>()
+      if (payLineIdsA.length) {
+        const rows = await odooRpc<any[]>('account.move.line', 'read', [payLineIdsA], { fields: ['id', 'payment_id'] })
+        for (const l of rows) {
+          const pid = Array.isArray(l.payment_id) ? Number(l.payment_id[0]) : Number(l.payment_id)
+          if (pid && !byPayA.has(pid)) byPayA.set(pid, l.id)
+        }
+      }
+      const usedA = new Set<number>()
+      for (let i = 0; i < freshA.length && i < spA.length; i++) {
+        const pl = byPayA.get(spA[i].paymentId)
+        if (!pl) continue
+        await odooRpc('account.move.line', 'reconcile', [[freshA[i].id, pl]])
+        usedA.add(freshA[i].id); usedA.add(pl)
+      }
+      const restA = [...freshA.map(l => l.id), ...payLineIdsA].filter(id => !usedA.has(id))
+      if (restA.length > 1) await odooRpc('account.move.line', 'reconcile', [restA])
+
+      const [afterA] = await odooRpc<any[]>('account.bank.statement.line', 'read', [[row.bank_line_id]], { fields: ['is_reconciled'] })
+      if (!afterA?.is_reconciled) throw new Error(`${tag} : l'extrait n'est plus lettré après reprise — ARRÊT`)
+      console.log(`        ✓ ${freshA.length} lignes, extrait relettré`)
+      split++; continue
+    }
 
     // Les anciens payloads ne portent pas le tiers de la facture : on le
     // récupère dans Odoo, sinon la ligne d'extrait n'affiche aucun client.
