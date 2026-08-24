@@ -184,11 +184,28 @@ export async function runVabTowClose(input: VabTowCloseInput): Promise<void> {
     const { closeVabCodeScreen } = await import('@/lib/vab/close-codes')
 
     const { data: f } = await sb.from('incoming_missions')
-      .select('vehicle_mileage, vehicle_vin, mission_type, destination_name, destination_address')
+      .select('vehicle_mileage, vehicle_vin, mission_type, destination_name, destination_address, panne_motif')
       .eq('id', input.missionId).maybeSingle()
     const km  = String((f as any)?.vehicle_mileage ?? '').replace(/\D+/g, '')
     const vin = String((f as any)?.vehicle_vin ?? '').trim()
-    const tow = (f as any)?.mission_type === 'remorquage'
+    const tow = /remorquage|rem\b/i.test(String((f as any)?.mission_type || ''))
+
+    // ── LE MOTIF DE LA FICHE DEVIENT LE CODE PANNE DE VAB ────────────────────
+    // Sans ça, toute clôture partait en « Divers — Autre problème » alors que le
+    // chauffeur avait bel et bien encodé une crevaison ou un accident. Le motif
+    // porte déjà son équivalent VAB (`vabCodesFor`) ; quand la correspondance
+    // n'est pas encore capturée, on retombe sur le catch-all — donc jamais pire
+    // qu'avant, souvent juste.
+    let brk: { panne1: string; panne2?: string } | null = null
+    const motifKey = String((f as any)?.panne_motif || '')
+    if (motifKey) {
+      try {
+        const { findMotif, vabCodesFor } = await import('@/lib/cloture/motifs')
+        const motif = findMotif(tow ? 'remorquage' : 'mobilite', motifKey)
+                   || findMotif(tow ? 'mobilite' : 'remorquage', motifKey)
+        if (motif) { const c = vabCodesFor(motif); brk = { panne1: c.panne1, panne2: c.panne2 } }
+      } catch { /* le code panne est un plus : son absence ne bloque pas la clôture */ }
+    }
 
     const étapes: string[] = []
     const onsite = await vabCloseOnSiteBrowser({
@@ -238,6 +255,8 @@ export async function runVabTowClose(input: VabTowCloseInput): Promise<void> {
     const s = await loginVab()
     const codes = await closeVabCodeScreen({
       assignmentId, cookieHeader: s.cookieHeader, tow,
+      breakdown:   brk?.panne1,
+      breakdownL2: brk?.panne2,
       destinationName:    (f as any)?.destination_name || '',
       destinationAddress: (f as any)?.destination_address || '',
       keyLocation: input.keyRecovered === false

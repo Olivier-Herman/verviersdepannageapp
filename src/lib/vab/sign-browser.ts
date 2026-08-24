@@ -15,7 +15,7 @@ const BASE = 'https://comet.vab.be'
 // ⚠️ UA desktop OBLIGATOIRE : avec l'UA headless par défaut, VAB renvoie le
 // navigateur sur www.vab.be/404 en boucle (jamais le formulaire de login).
 const DESKTOP_UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36'
-const detailsUrl = (assignmentId: string) =>
+export const detailsUrl = (assignmentId: string) =>
   `${BASE}/Comet/BreakdownAssignments_Details.aspx?AssignmentId=${assignmentId}`
 
 export interface VabBrowserResult {
@@ -31,7 +31,7 @@ export interface VabBrowserResult {
 }
 
 /** Lance Chromium : @sparticuz en serverless, puppeteer complet en local. */
-async function launchBrowser(): Promise<Browser> {
+export async function launchBrowser(): Promise<Browser> {
   const serverless = !!(process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME)
   if (serverless) {
     const chromium = (await import('@sparticuz/chromium')).default as any
@@ -48,7 +48,7 @@ async function launchBrowser(): Promise<Browser> {
 }
 
 /** Login natif dans le navigateur (plus fiable que l'injection de cookies). */
-async function loginInBrowser(page: Page): Promise<void> {
+export async function loginInBrowser(page: Page): Promise<void> {
   const email = process.env.VAB_EMAIL
   const password = process.env.VAB_PASSWORD
   if (!email || !password) throw new Error('VAB_EMAIL / VAB_PASSWORD requis')
@@ -238,14 +238,33 @@ export async function vabCloseOnSiteBrowser(opts: {
     if (alreadyCodes) {
       steps.push('déjà écran code')
     } else {
-      if (await clearAndType(page, 'input[id*="wtInput_MileageCheck"]', String(opts.km))) steps.push('km')
+      // ── NE JAMAIS ÉCRASER UN KILOMÉTRAGE DÉJÀ ENREGISTRÉ ────────────────────
+      // Les trois dossiers bloqués du 24/08 (2JVA556, 1RTZ221, 2CNW997) avaient
+      // leur relevé DÉJÀ posé chez VAB : le champ revient `readonly` avec sa
+      // valeur (185000 sur 1RTZ221). Or `clearAndType` vide d'abord le champ en
+      // JavaScript — ce qui passe outre le `readonly` — puis tape, ce que le
+      // `readonly` refuse. Résultat : on effaçait leur donnée et on n'écrivait
+      // rien. Le champ obligatoire devenait vide, et « Fin lieu de la panne » ne
+      // faisait plus rien. On avait pris ça pour un rafraîchissement OutSystems ;
+      // c'était nous.
+      const kmDéjà = await page.evaluate(() => {
+        const el = document.querySelector('input[id*="wtInput_MileageCheck"]') as HTMLInputElement | null
+        if (!el) return null
+        return { valeur: (el.value || '').trim(), figé: el.readOnly || el.disabled }
+      }).catch(() => null)
+      const kmÀPoser = !!kmDéjà && !kmDéjà.figé && !kmDéjà.valeur
+      if (kmDéjà?.valeur || kmDéjà?.figé) {
+        steps.push(`km déjà chez VAB (${kmDéjà.valeur || 'verrouillé'})`)
+      } else if (kmÀPoser && await clearAndType(page, 'input[id*="wtInput_MileageCheck"]', String(opts.km))) {
+        steps.push('km')
+      }
 
       // ⚠️ Le KILOMÉTRAGE a son propre bouton « Vérifier », exactement comme le
       // châssis (Olivier 2026-08-14). Sans ce clic, le drapeau « km vérifié »
       // n'est pas posé et « Fin lieu de la panne » ne fait rien — la séquence
       // semblait pourtant complète. Une pop-up d'arrondi peut suivre : on
       // l'accepte, comme pour le VIN inconnu.
-      if (String(opts.km || '').trim()) {
+      if (String(opts.km || '').trim() && kmÀPoser) {
         const cliqué = await page.evaluate(() => {
           const a = [...document.querySelectorAll('a, button')].find(e => /wtLink_CheckMileage/.test((e as HTMLElement).id || ''))
             || [...document.querySelectorAll('a, button')].find(e => /^\s*v[ée]rifier\s*$/i.test(e.textContent || ''))
@@ -275,7 +294,7 @@ export async function vabCloseOnSiteBrowser(opts: {
       if (opts.vinFull) {
         const posé = await page.evaluate((vin: string) => {
           const c = document.querySelector('input[id*="wtChassisNumberInput"]') as HTMLInputElement | null
-          if (!c || (c.value || '').length > 5) return false
+          if (!c || (c.value || '').length > 5 || c.readOnly || c.disabled) return false
           c.focus(); c.value = vin
           c.dispatchEvent(new Event('input', { bubbles: true }))
           c.dispatchEvent(new Event('change', { bubbles: true }))
@@ -315,6 +334,63 @@ export async function vabCloseOnSiteBrowser(opts: {
           steps.push('vin+verifier+unknownvin')
         }
       } else { steps.push('vin déjà validé') }
+
+      // ── LE KILOMÉTRAGE SE FAIT VIDER PAR LE PASSAGE DU CHÂSSIS ───────────────
+      // Trois dossiers du 24/08 (2JVA556, 1RTZ221, 2CNW997) sont morts au même
+      // endroit : « envoyer (⚠ rien retenu) », champ kilométrage VIDE à l'arrivée
+      // alors qu'on venait de l'écrire. Le « Vérifier » du châssis, sa pop-up et
+      // la case « VIN inconnu » déclenchent chacun un rafraîchissement partiel
+      // OutSystems qui RÉINITIALISE le champ kilométrage — écrit trop tôt, il ne
+      // survit pas. Et quand le châssis était déjà validé chez eux, le lien
+      // « Vérifier » du kilométrage n'était même pas trouvé au premier passage.
+      //
+      // On repasse donc le kilométrage APRÈS le châssis, juste avant la
+      // signature, et on ne le déclare acquis qu'une fois relu dans le champ.
+      if (String(opts.km || '').trim() && kmÀPoser) {
+        const vide = await page.evaluate(() => {
+          const el = document.querySelector('input[id*="wtInput_MileageCheck"]') as HTMLInputElement | null
+          return !!el && !(el.value || '').trim() && !el.readOnly && !el.disabled
+        }).catch(() => false)
+        if (vide) {
+          if (await clearAndType(page, 'input[id*="wtInput_MileageCheck"]', String(opts.km))) {
+            await page.evaluate(() => {
+              const el = document.querySelector('input[id*="wtInput_MileageCheck"]') as HTMLInputElement | null
+              el && el.dispatchEvent(new Event('change', { bubbles: true }))
+            })
+            await new Promise(r => setTimeout(r, 1500))
+            const revérifié = await page.evaluate(() => {
+              const champ = document.querySelector('input[id*="wtInput_MileageCheck"]') as HTMLElement | null
+              // Le « Vérifier » du kilométrage est celui qui SUIT le champ : le
+              // chercher par proximité plutôt que par libellé évite d'appuyer sur
+              // celui du châssis, qui porte exactement le même mot.
+              const lien = [...document.querySelectorAll('a, button')].find(e => /wtLink_CheckMileage/.test((e as HTMLElement).id || ''))
+                || (champ ? [...(champ.closest('div, td, tr, section') || document).querySelectorAll('a, button')]
+                      .find(e => /^\s*v[ée]rifier\s*$/i.test(e.textContent || '')) : undefined)
+              if (!lien) return false
+              ;(lien as HTMLElement).click()
+              return true
+            }).catch(() => false)
+            if (revérifié) {
+              await new Promise(r => setTimeout(r, 5000))
+              for (const fr of page.frames()) {
+                try {
+                  await fr.evaluate(() => {
+                    const el = [...document.querySelectorAll('a,button')]
+                      .find(e => /^\s*(oui|ja|yes|ok)\s*$/i.test((e.textContent || '').trim()))
+                    if (el) (el as HTMLElement).click()
+                  })
+                } catch { /* frame indisponible */ }
+              }
+              await new Promise(r => setTimeout(r, 3000))
+            }
+            const tenu = await page.evaluate(() => {
+              const el = document.querySelector('input[id*="wtInput_MileageCheck"]') as HTMLInputElement | null
+              return (el?.value || '').trim()
+            }).catch(() => '')
+            steps.push(tenu ? `km repassé après châssis (${tenu})` : 'km repassé après châssis (⚠ toujours vide)')
+          }
+        }
+      }
 
       // ⚠️ Sur certains dossiers, le canevas n'est pas encore ouvert : il reste un
       // bouton « Obtenir la signature ». On dessinait alors dans le vide, et
