@@ -64,7 +64,21 @@ export async function GET(req: Request) {
       return NextResponse.json({ ok: true, ouverts: ouverts.length, aTraiter: 0 })
     }
 
-    // Le plus ancien d'abord : c'est celui qui risque le plus de passer à la trappe.
+    // ── ROTATION : UN DOSSIER BLOQUÉ NE DOIT PAS AFFAMER LES AUTRES ──────────
+    // Le filet ne traite qu'un dossier par passage et prenait toujours le plus
+    // ancien. Un dossier qui ne peut pas aboutir — destination illisible, écran
+    // qui refuse — se represente donc tous les quarts d'heure et les suivants
+    // n'ont jamais leur tour. Vu le 24/08 : dix dossiers en attente pendant que
+    // le filet rejouait le même. On passe donc au moins tenté récemment, et le
+    // jamais tenté d'abord.
+    const { data: essais } = await sb.from('mission_logs')
+      .select('mission_id, created_at')
+      .in('mission_id', candidats.map(c => c.id))
+      .in('action', ['vab_close_failed', 'vab_close_skipped'])
+      .order('created_at', { ascending: false })
+    const dernierEssai = new Map<string, string>()
+    for (const l of (essais || []) as any[]) if (!dernierEssai.has(l.mission_id)) dernierEssai.set(l.mission_id, l.created_at)
+    candidats.sort((a, b) => (dernierEssai.get(a.id) || '').localeCompare(dernierEssai.get(b.id) || ''))
     const cible = candidats[0]
     const { runVabTowClose } = await import('@/lib/cloture/transform/vab')
     await runVabTowClose({

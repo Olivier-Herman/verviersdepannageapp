@@ -247,6 +247,14 @@ export const NOTIFICATION_TYPES: readonly NotificationType[] = [
     defaultEnabled:  true,
   },
   {
+    key:             'vab_dossiers_ouverts',
+    label:           'VAB : dossiers non clôturés',
+    description:     "Des dossiers restent ouverts chez VAB alors que l'intervention est finie chez nous.",
+    category:        'admin',
+    applicableRoles: ['superadmin'],
+    defaultEnabled:  true,
+  },
+  {
     key:             'feature_announcement',
     label:           'Nouveautés de l\'app',
     description:     'Annonce d\'une nouvelle fonctionnalité.',
