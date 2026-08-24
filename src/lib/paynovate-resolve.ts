@@ -25,6 +25,8 @@ export interface InvoiceCandidate {
   id: number
   name: string
   partner: string
+  /** Le tiers Odoo — porté sur la ligne d'extrait, pour qu'elle nomme SON client. */
+  partnerId?: number | null
   /** SIGNÉ : négatif pour une note de crédit, qui vient en déduction. */
   amount: number
   date: string
@@ -309,6 +311,7 @@ const shape = (r: any) => ({
   id: r.id,
   name: r.name,
   partner: Array.isArray(r.partner_id) ? r.partner_id[1] : '',
+  partnerId: Array.isArray(r.partner_id) ? Number(r.partner_id[0]) : null,
   // Signé : une note de crédit rattachée à un encaissement le diminue.
   amount: signedTotal(r),
   move_type: r.move_type ?? null,

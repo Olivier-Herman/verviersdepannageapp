@@ -216,6 +216,7 @@ export async function buildSumupMatchReport(
         invoiceIds:   od ? [] : hits.map(h => h.id),
         invoiceName:  od ? null : (hits.length === 1 ? (hits[0].name ?? null) : hits.map(h => h.name).join(' + ') || null),
         partner:      od || !hits.length ? null : (hits[0].partner ?? (Array.isArray(hits[0].partner_id) ? hits[0].partner_id[1] : null)),
+        partnerId:    od || !hits.length ? null : (hits[0].partnerId ?? (Array.isArray(hits[0].partner_id) ? Number(hits[0].partner_id[0]) : null)),
         invoiceTotal: od || !hits.length ? null : round2(total),
         paymentState: od ? null : state,
         paymentId:    null,

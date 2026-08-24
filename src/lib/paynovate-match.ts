@@ -61,6 +61,8 @@ export interface MatchedTx {
   invoiceIds:   number[]        // plusieurs si un paiement couvre plusieurs factures
   invoiceName:  string | null
   partner:      string | null
+  /** Le tiers Odoo de la facture — la ligne d'extrait doit nommer SON client. */
+  partnerId:    number | null
   invoiceTotal: number | null
   paymentState: string | null   // 'paid' | 'not_paid' | 'partial' | …
   paymentId:    number | null   // le premier paiement — affichage et diagnostic
@@ -84,7 +86,7 @@ export interface MatchedTx {
    * Positif = encaissé un peu plus. Absorbé par l'OD, pas un blocage.
    */
   rounding?:    number | null
-  candidates:   { id: number; name: string; partner: string; amount: number; date: string; payment_state?: string | null; move_type?: string | null; settled?: boolean }[]
+  candidates:   { id: number; name: string; partner: string; partnerId?: number | null; amount: number; date: string; payment_state?: string | null; move_type?: string | null; settled?: boolean }[]
   manual:       boolean         // rattachement humain → détachable depuis l'écran
   issue:        'lost' | 'gap' | 'miss' | 'used' | 'draft' | null
   /** Qui a encaissé. Renseigné par SumUp (compte du terminal), absent chez Paynovate. */
@@ -274,6 +276,7 @@ export async function buildMatchReport(
         invoiceIds:   od ? [] : hits.map(h => h.id),
         invoiceName:  od ? null : (hits.length === 1 ? (hits[0].name ?? null) : hits.map(h => h.name).join(' + ') || null),
         partner:      od || !hits.length ? null : (hits[0].partner ?? (Array.isArray(hits[0].partner_id) ? hits[0].partner_id[1] : null)),
+        partnerId:    od || !hits.length ? null : (hits[0].partnerId ?? (Array.isArray(hits[0].partner_id) ? Number(hits[0].partner_id[0]) : null)),
         invoiceTotal: od || !hits.length ? null : round2(total),
         paymentState: od ? null : state,
         paymentId:    null,

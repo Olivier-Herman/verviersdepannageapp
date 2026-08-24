@@ -400,7 +400,8 @@ export async function postPlan(plan: PostingPlan, actorNote?: string): Promise<{
     // Seul le passage en brouillon, une écriture unique sur la PIÈCE, puis la
     // revalidation, fait le compte.
     const names = [...new Set(plan.detail.map(d => d.invoice).filter(Boolean))] as string[]
-    const splits = plan.splits.length ? plan.splits : [{
+    const splits: CounterpartSplit[] = plan.splits.length ? plan.splits : [{
+      partnerId: null, paymentId: null,
       net: plan.net, commission: 0, amount: plan.net, invoice: null,
       label: `Versement ${plan.od?.ref || plan.payoutId}`
            + (names.length ? ` : ${names.slice(0, 6).join(', ')}` : ''),
@@ -411,13 +412,15 @@ export async function postPlan(plan: PostingPlan, actorNote?: string): Promise<{
       await odooRpc('account.move', 'write', [[bankMoveId], {
         line_ids: [
           // La première réutilise la ligne existante, les suivantes sont créées.
+          // Le tiers de CHAQUE ligne est le client de la facture, pas le
+          // prestataire : c'est lui qu'on veut lire en face du montant.
           [1, suspenseLineId, {
-            account_id: ACC.outstanding, partner_id: plan.partnerId, name: splits[0].label,
-            debit: 0, credit: splits[0].net, amount_currency: -splits[0].net,
+            account_id: ACC.outstanding, partner_id: splits[0].partnerId || plan.partnerId,
+            name: splits[0].label, debit: 0, credit: splits[0].net, amount_currency: -splits[0].net,
           }],
           ...splits.slice(1).map(sp => [0, 0, {
-            account_id: ACC.outstanding, partner_id: plan.partnerId, name: sp.label,
-            debit: 0, credit: sp.net, amount_currency: -sp.net,
+            account_id: ACC.outstanding, partner_id: sp.partnerId || plan.partnerId,
+            name: sp.label, debit: 0, credit: sp.net, amount_currency: -sp.net,
           }]),
         ],
       }])
@@ -427,20 +430,46 @@ export async function postPlan(plan: PostingPlan, actorNote?: string): Promise<{
     }
     bankLineMoved = true
 
-    // Lettrage : les crédits 542 (toutes les contreparties d'extrait + l'OD)
-    // contre les débits 542 des paiements carte.
+    // Lettrage UN À UN, et non en bloc : c'est ce qui permet à Odoo d'afficher,
+    // en face de chaque ligne d'extrait, LE paiement qu'elle solde. Lettré
+    // globalement, il crée des rapprochements croisés et n'affiche plus rien.
     const bankParts = await odooRpc<any[]>('account.move.line', 'search_read', [[
       ['move_id', '=', bankMoveId], ['account_id', '=', ACC.outstanding],
-    ]], { fields: ['id'], limit: 200 })
-    const ids = [...bankParts.map(l => l.id), ...available.map(l => l.id)]
-    if (odMoveId) {
-      const odLines = await odooRpc<any[]>('account.move.line', 'search_read', [[
-        ['move_id', '=', odMoveId], ['account_id', '=', ACC.outstanding],
-      ]], { fields: ['id'], limit: 2 })
-      ids.push(...odLines.map(l => l.id))
+    ]], { fields: ['id', 'credit'], order: 'id', limit: 200 })
+    const odLines = odMoveId
+      ? await odooRpc<any[]>('account.move.line', 'search_read', [[
+          ['move_id', '=', odMoveId], ['account_id', '=', ACC.outstanding],
+        ]], { fields: ['id', 'debit', 'credit'], order: 'id', limit: 200 })
+      : []
+
+    const payLineOf = new Map<number, number>()
+    for (const l of available) {
+      const pid = Array.isArray(l.payment_id) ? Number(l.payment_id[0]) : Number(l.payment_id)
+      if (pid && !payLineOf.has(pid)) payLineOf.set(pid, l.id)
     }
 
-    await odooRpc('account.move.line', 'reconcile', [ids])
+    // Une commission par transaction, dans le même ordre que les contreparties.
+    const commLines = odLines.filter(l => Number(l.credit) > 0).map(l => l.id)
+    const restOd    = odLines.filter(l => !commLines.includes(l.id)).map(l => l.id)
+
+    const grouped = new Set<number>()
+    for (let i = 0; i < bankParts.length && i < splits.length; i++) {
+      const group = [bankParts[i].id]
+      const payLine = splits[i].paymentId ? payLineOf.get(splits[i].paymentId!) : undefined
+      if (payLine) group.push(payLine)
+      if (commLines[i]) group.push(commLines[i])
+      if (group.length < 2) continue
+      group.forEach(id => grouped.add(id))
+      await odooRpc('account.move.line', 'reconcile', [group])
+    }
+
+    // Le reliquat — paiements créés à la volée, lignes non affectées, arrondi —
+    // part dans un lettrage groupé : il n'a pas de correspondance un à un.
+    const rest = [
+      ...bankParts.map(l => l.id), ...available.map(l => l.id),
+      ...commLines, ...restOd,
+    ].filter(id => !grouped.has(id))
+    if (rest.length > 1) await odooRpc('account.move.line', 'reconcile', [rest])
 
     // Le détail complet dans le fil de l'extrait — là où un comptable le
     // cherche. Hors du bloc critique : si la note échoue, le lettrage reste bon.

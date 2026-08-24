@@ -289,6 +289,10 @@ export async function settledInvoices(invoiceIds: number[]): Promise<Set<number>
 }
 
 export interface CounterpartSplit {
+  /** Le client de la facture — la ligne d'extrait doit le nommer, pas le prestataire. */
+  partnerId:  number | null
+  /** Le paiement carte que cette ligne solde — sert au lettrage UN À UN. */
+  paymentId:  number | null
   /** Part du virement qui revient à cette transaction (brut − commission). */
   net:        number
   /** Commission propre à cette transaction, déduite de brut − net. */
@@ -316,7 +320,11 @@ export interface CounterpartSplit {
  *      un centime résiduel.
  */
 export function splitCounterpart(
-  txs: { amount: number; commission?: number; merchantRef: string; invoiceName?: string | null; partner?: string | null }[],
+  txs: {
+    amount: number; commission?: number; merchantRef: string
+    invoiceName?: string | null; partner?: string | null
+    partnerId?: number | null; paymentIds?: number[]
+  }[],
   creditedNet: number,
 ): CounterpartSplit[] {
   if (!txs.length) return []
@@ -331,6 +339,8 @@ export function splitCounterpart(
   }
 
   return txs.map((t, i) => ({
+    partnerId:  t.partnerId ?? null,
+    paymentId:  t.paymentIds?.[0] ?? null,
     net:        nets[i],
     commission: round2(t.amount - nets[i]),
     amount:     t.amount,
