@@ -33,7 +33,7 @@ export const maxDuration = 300
 
 const MISSION_COLS = 'id, source, source_format, raw_content, external_id, mission_type, status, loaded_at, vr_proposed, assigned_to, parent_mission_id, ' +
   'vehicle_vin, vehicle_vin_partial, vehicle_mileage, incident_description, vehicle_brand, vehicle_model, panne_motif, ' +
-  'destination_address, destination_name'
+  'destination_address, destination_name, destination_lat, destination_lng'
 
 
 /**
@@ -348,7 +348,10 @@ export async function POST(req: Request, { params }: { params: { id: string } })
       // et nous la redemandait par mail.
       // `patch` est déjà appliqué plus haut : une destination saisie à l'instant
       // prime sur celle que la fiche portait en arrivant.
-      ficheDestination: patch.destination_address || (m as any)?.destination_address || null,
+      ficheDestination:     patch.destination_address || (m as any)?.destination_address || null,
+      ficheDestinationName: patch.destination_name    || (m as any)?.destination_name    || null,
+      ficheDestinationLat:  patch.destination_lat  ?? (m as any)?.destination_lat  ?? null,
+      ficheDestinationLng:  patch.destination_lng  ?? (m as any)?.destination_lng  ?? null,
     }
     result = await transformTouring(keys, input)
 

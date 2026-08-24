@@ -18,8 +18,15 @@
 import { loginComex, getComexMissionDetail, closeTouringMission } from '@/lib/touring/comex'
 import { findMotif, catchAllOf } from '@/lib/cloture/motifs'
 import { branchOf, outcomeIsRem, OUTCOMES, type Outcome } from '@/lib/cloture/outcomes'
+import { splitAddress } from '@/lib/address-parts'
 
 export interface ComexKeys { CID_DOS: string; CID_SEQ_ACTION: string }
+
+/** Destination en champs séparés, telle que COMEX la range (TO_RUE, TO_CP…). */
+interface ComexToAddress {
+  nom?: string; rue?: string; numRue?: string; cp?: string; loc?: string
+  lat?: number | null; lng?: number | null
+}
 
 export interface TransformInput {
   outcome:   Outcome
@@ -40,6 +47,9 @@ export interface TransformInput {
    *  ni garage COMEX ni adresse manuelle n'ont été transmis (cas de la LIVRAISON,
    *  où le chauffeur ne rechoisit pas une destination déjà connue). */
   ficheDestination?: string | null
+  ficheDestinationName?: string | null
+  ficheDestinationLat?: number | null
+  ficheDestinationLng?: number | null
 }
 
 export interface TransformResult {
@@ -133,17 +143,37 @@ export async function transformTouring(keys: ComexKeys, input: TransformInput): 
   // Désormais : toute issue qui déplace le véhicule dit où il est allé, et à
   // défaut d'adresse saisie on reprend celle de la fiche.
   const déplaceLeVéhicule = outcomeIsRem(input.outcome) || input.outcome === 'delivered'
-  let comment = String(input.comment || '')
-  if (déplaceLeVéhicule && !input.toCidIntv && !comment) {
+
+  // On construit la destination en CHAMPS SÉPARÉS — rue, numéro, code postal,
+  // localité, coordonnées — parce que c'est de ces champs que dépendent leurs
+  // automatisations. Quand ils sont vides, Touring inscrit « CHECK ADDRESS » et
+  // nous écrit. Le commentaire reste, mais en doublure lisible, pas en substitut.
+  let toAddress: ComexToAddress | null = null
+  if (déplaceLeVéhicule && !input.toCidIntv) {
     const a = input.manualAddress
     if (a && (a.rue || a.cp || a.loc)) {
-      const nom = String(a.nom || '').trim() || 'x'
-      comment = `// ADRESSE TO REM MAN : ${nom} ${a.rue || 'x'} ${a.num || 'x'} ${a.cp || 'x'} ${a.loc || 'x'} //`
+      toAddress = {
+        nom: String(a.nom || '').trim(), rue: String(a.rue || '').trim(),
+        numRue: String(a.num || '').trim(), cp: String(a.cp || '').trim(),
+        loc: String(a.loc || '').trim(),
+      }
     } else if (String(input.ficheDestination || '').trim()) {
-      // Une seule ligne d'adresse : on la passe telle quelle plutôt que de la
-      // découper mal. Leur admin lit ce champ — mieux vaut lisible que structuré.
-      comment = `// ADRESSE TO REM MAN : ${String(input.ficheDestination).trim()} //`
+      // La fiche ne porte qu'une ligne : on la découpe pour remplir leurs champs.
+      const p = splitAddress(input.ficheDestination)
+      if (p.street || p.zip || p.city) {
+        toAddress = {
+          nom: String(input.ficheDestinationName || '').trim(),
+          rue: p.street, numRue: p.number, cp: p.zip, loc: p.city,
+          lat: input.ficheDestinationLat ?? null, lng: input.ficheDestinationLng ?? null,
+        }
+      }
     }
+  }
+
+  let comment = String(input.comment || '')
+  if (!comment && toAddress) {
+    const v = (x?: string | null) => (String(x || '').trim() || 'x')
+    comment = `// ADRESSE TO REM MAN : ${v(toAddress.nom)} ${v(toAddress.rue)} ${v(toAddress.numRue)} ${v(toAddress.cp)} ${v(toAddress.loc)} //`
   }
 
   const r = await closeTouringMission(keys, {
@@ -153,6 +183,7 @@ export async function transformTouring(keys: ComexKeys, input: TransformInput): 
     km: input.km ?? null,
     comment,
     toCidIntv: input.toCidIntv || null,
+    toAddress,
   })
 
   return {

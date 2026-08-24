@@ -339,7 +339,7 @@ const SET_ECHO_FIELDS = [
   'COD_PANNE_CAUSE', 'COD_PANNE_RESULT', 'COD_PANNE_DESC', 'NUM_CHASSIS', 'D_MEC', 'MONT_KM',
   'COD_FIN_MISSION', 'BON_AFFILIATION', 'BON_AFFIL_MOP', 'BON_AFFIL_PRD', 'COMM_FIN_MISSION',
   'COD_NON_SAISIE_KM', 'FL_PLAINTE_CLIENT', 'LIB_PLAINTE_CLIENT',
-  'TO_COD_ADRESSE', 'TO_NOM', 'TO_RUE', 'TO_NUM_RUE', 'TO_CP', 'TO_LOC', 'ADR_DEPOT_CID_INTV',
+  'TO_COD_ADRESSE', 'TO_NOM', 'TO_RUE', 'TO_NUM_RUE', 'TO_CP', 'TO_LOC', 'TO_LATITUDE', 'TO_LONGITUDE', 'ADR_DEPOT_CID_INTV',
 ]
 
 export type ComexOperType = 'accept' | 'onRoad' | 'onSpot' | 'end'
@@ -715,6 +715,14 @@ export async function closeTouringMission(
     cause: string; desc: string; result: string
     vin?: string | null; mecIso?: string | null; km?: number | null
     comment?: string | null; toCidIntv?: string | null; at?: Date
+    /** Destination quand elle n'est PAS un garage de leur liste : on remplit
+     *  quand même leurs champs structurés, c'est eux qui font tourner leurs
+     *  automatisations (Olivier 2026-08-24). */
+    toAddress?: {
+      nom?: string | null; rue?: string | null; numRue?: string | null
+      cp?: string | null; loc?: string | null
+      lat?: number | string | null; lng?: number | string | null
+    } | null
   },
 ): Promise<{ ok: boolean; statusBefore?: string | null; statusAfter?: string | null; error?: string; response?: any }> {
   try {
@@ -749,6 +757,21 @@ export async function closeTouringMission(
     // format « // ADRESSE TO REM MAN : … // »). Le choix « notre dépôt » = l'UI
     // envoie DEFAULT_RAC_DEPOT_CID explicitement. Pas de défaut forcé ici.
     const toCid = isRem ? (input.toCidIntv || '') : ''
+
+    // ── LEURS CHAMPS, PAS UN COMMENTAIRE ─────────────────────────────────────
+    // Relevé sur leurs dossiers vivants : une destination correcte, c'est
+    // TO_NOM / TO_RUE / TO_NUM_RUE / TO_CP / TO_LOC / TO_LATITUDE / TO_LONGITUDE
+    // remplis, avec TO_COD_ADRESSE='GAR'. Quand ils ne l'ont pas, ils écrivent
+    // eux-mêmes « CHECK ADDRESS » dans TO_NOM et nous envoient un mail — vu sur
+    // quatre dossiers ouverts le 24/08. Le commentaire ne les dispense de rien :
+    // ce sont ces champs qui font tourner leurs automatisations.
+    //
+    // On ne les remplit QUE si le garage n'est pas déjà identifié dans leur
+    // liste (TO_CID_INTV) : dans ce cas COMEX les remplit lui-même, et écrire
+    // par-dessus ne peut que diverger.
+    const a = (!toCid && input.toAddress) ? input.toAddress : null
+    const aUneAdresse = !!(a && (a.rue || a.cp || a.loc))
+    const txt = (v: any) => String(v ?? '').trim()
     // Mise en parc (05) : destination = NOTRE dépôt. Elle vit dans COMM_FIN_MISSION
     // (« ␣␣ADRESSE DEPOT : … ») + ADR_DEPOT_CID_INTV = notre cidPrx. Les TO_* sont des
     // échos résiduels du detail/get (garage précédent) — on les renvoie tels quels.
@@ -790,12 +813,18 @@ export async function closeTouringMission(
       COMM_FIN_MISSION: isParkTransfer ? parkComment : (input.comment ?? ''),
       COD_NON_SAISIE_KM: kmMissing ? '04' : '',
       FL_PLAINTE_CLIENT: '0', LIB_PLAINTE_CLIENT: '',
-      TO_CID_INTV: toCid, TO_COD_ADRESSE: (isRem || isParkTransfer) ? 'GAR' : '',
-      TO_NOM:     isParkTransfer ? (d.TO_NOM     ?? '') : '',
-      TO_RUE:     isParkTransfer ? (d.TO_RUE     ?? '') : '',
-      TO_NUM_RUE: isParkTransfer ? (d.TO_NUM_RUE ?? '') : '',
-      TO_CP:      isParkTransfer ? (d.TO_CP      ?? '') : '',
-      TO_LOC:     isParkTransfer ? (d.TO_LOC     ?? '') : '',
+      TO_CID_INTV: toCid,
+      TO_COD_ADRESSE: (isRem || isParkTransfer || aUneAdresse) ? 'GAR' : '',
+      TO_NOM:     aUneAdresse ? txt(a!.nom)    : (isParkTransfer ? (d.TO_NOM     ?? '') : ''),
+      TO_RUE:     aUneAdresse ? txt(a!.rue)    : (isParkTransfer ? (d.TO_RUE     ?? '') : ''),
+      TO_NUM_RUE: aUneAdresse ? txt(a!.numRue) : (isParkTransfer ? (d.TO_NUM_RUE ?? '') : ''),
+      TO_CP:      aUneAdresse ? txt(a!.cp)     : (isParkTransfer ? (d.TO_CP      ?? '') : ''),
+      TO_LOC:     aUneAdresse ? txt(a!.loc)    : (isParkTransfer ? (d.TO_LOC     ?? '') : ''),
+      // Les coordonnées ne sont pas décoratives : c'est ce qui leur permet de
+      // ranger le dossier sans relire l'adresse à la main.
+      ...(aUneAdresse && txt(a!.lat) && txt(a!.lng)
+        ? { TO_LATITUDE: txt(a!.lat), TO_LONGITUDE: txt(a!.lng) }
+        : {}),
       ADR_DEPOT_CID_INTV: adrDepot,
     })
 
