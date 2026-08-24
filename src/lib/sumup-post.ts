@@ -28,7 +28,7 @@
 // sur la facture SumUp, une seule fois.
 
 import { ACC, type MissingPayment, type PostingPlan } from '@/lib/paynovate-post'
-import { unallocatedOdLines, roundingOdLines } from '@/lib/reconcile-odoo'
+import { unallocatedOdLines, roundingOdLines, splitCounterpart } from '@/lib/reconcile-odoo'
 import type { MatchedPayout } from '@/lib/paynovate-match'
 
 /** res.partner « SumUp Ltd - German Branch » — celui que porte la seule facture SumUp encodée. */
@@ -150,14 +150,17 @@ export function buildSumupPostingPlan(p: MatchedPayout): PostingPlan {
     unallocatedTotal,
     roundingTotal,
     detail,
+    splits: splitCounterpart(p.txs, p.bankAmount),
     od: (commission > 0.005 || odUnallocated.length || odRounding.length) ? {
       journal: ACC.odJournal,
       date:    p.bankDate,
       ref:     `SumUp ${ref}`,
       lines: [
-        ...(commission > 0.005 ? [
-          { account: ACC.payable,     label, debit: commission, credit: 0 },
-          { account: ACC.outstanding, label, debit: 0, credit: commission },
+        // Une paire par transaction : la commission suit sa facture, et le
+        // lettrage de chaque ligne d'extrait tombe juste au centime.
+        ...splitCounterpart(p.txs, p.bankAmount).flatMap(sp => sp.commission > 0.005 ? [
+          { account: ACC.payable,     label: `${label} · ${sp.label}`, debit: sp.commission, credit: 0 },
+          { account: ACC.outstanding, label: `${label} · ${sp.label}`, debit: 0, credit: sp.commission },
         ] : []),
         ...odUnallocated,
         ...odRounding,

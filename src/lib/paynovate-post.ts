@@ -30,7 +30,7 @@
 // la TVA serait déduite deux fois.
 
 import { odooRpc, postChatterMessage } from '@/lib/odoo'
-import { unallocatedOdLines, roundingOdLines, humanOdooError } from '@/lib/reconcile-odoo'
+import { unallocatedOdLines, roundingOdLines, humanOdooError, splitCounterpart, type CounterpartSplit } from '@/lib/reconcile-odoo'
 import type { MatchedPayout } from '@/lib/paynovate-match'
 
 // Comptes et journaux, relevés sur la base de production.
@@ -92,6 +92,11 @@ export interface PostingPlan {
    * lettrage, invisible tant qu'on ne l'ouvre pas. Olivier 2026-08-24.
    */
   detail: { at: string | null; ref: string; card: string; amount: number; invoice: string | null; partner: string | null; note: string | null }[]
+  /**
+   * La contrepartie du virement, éclatée en une ligne par paiement carte —
+   * c'est ce qui rend le détail visible sur l'extrait Odoo.
+   */
+  splits: CounterpartSplit[]
   /**
    * Montant des lignes passées en OD faute de facture identifiable. Il est
    * couvert par l'OD elle-même (débit 542) et non par un paiement carte — le
@@ -213,14 +218,17 @@ export function buildPostingPlan(p: MatchedPayout): PostingPlan {
     unallocatedTotal,
     roundingTotal,
     detail,
+    splits: splitCounterpart(p.txs, p.bankAmount),
     od: (commission > 0.005 || odUnallocated.length || odRounding.length) ? {
       journal: ACC.odJournal,
       date:    p.bankDate,
       ref:     `Paynovate ${p.paymentId}`,
       lines: [
-        ...(commission > 0.005 ? [
-          { account: ACC.payable,     label, debit: commission, credit: 0 },
-          { account: ACC.outstanding, label, debit: 0, credit: commission },
+        // Une paire par transaction : la commission suit sa facture, et le
+        // lettrage de chaque ligne d'extrait tombe juste au centime.
+        ...splitCounterpart(p.txs, p.bankAmount).flatMap(sp => sp.commission > 0.005 ? [
+          { account: ACC.payable,     label: `${label} · ${sp.label}`, debit: sp.commission, credit: 0 },
+          { account: ACC.outstanding, label: `${label} · ${sp.label}`, debit: 0, credit: sp.commission },
         ] : []),
         ...odUnallocated,
         ...odRounding,
@@ -294,6 +302,17 @@ export async function postPlan(plan: PostingPlan, actorNote?: string): Promise<{
     available.reduce((s, l) => s + Number(l.debit || 0), 0)
     + toCreateSum + (plan.unallocatedTotal || 0) + (plan.roundingTotal || 0),
   )
+  // Garde-fou de l'éclatement : sans ces deux invariants, l'extrait ne boucle
+  // pas et Odoo refuse l'écriture au milieu du lot.
+  if (plan.splits.length) {
+    const sumNet = r2(plan.splits.reduce((s, x) => s + x.net, 0))
+    if (Math.abs(sumNet - plan.net) > 0.005) {
+      throw new Error(`Éclatement incohérent : ${sumNet.toFixed(2)} € répartis pour ${plan.net.toFixed(2)} € crédités`)
+    }
+    const bad = plan.splits.find(x => Math.abs(x.net + x.commission - x.amount) > 0.005)
+    if (bad) throw new Error(`Éclatement incohérent sur « ${bad.label} » : ${bad.net.toFixed(2)} + ${bad.commission.toFixed(2)} ≠ ${bad.amount.toFixed(2)}`)
+  }
+
   if (availableSum + 0.005 < plan.gross) {
     const used = plan.paymentIds.filter(id => !available.some(l => (Array.isArray(l.payment_id) ? l.payment_id[0] : l.payment_id) === id))
     const short = r2(plan.gross - availableSum)
@@ -362,20 +381,34 @@ export async function postPlan(plan: PostingPlan, actorNote?: string): Promise<{
   let bankLineMoved = false
 
   try {
-    // Le libellé porte le résumé, pas le texte brut de la banque : c'est la
-    // seule chose visible sur l'extrait quand on ne déplie pas le lettrage.
-    const names = [...new Set(plan.detail.map(d => d.invoice).filter(Boolean))] as string[]
-    await odooRpc('account.move.line', 'write', [[suspenseLineId], {
-      account_id: ACC.outstanding,
-      partner_id: plan.partnerId,
-      name: `${plan.bankMove ? '' : ''}Versement ${plan.od?.ref || plan.payoutId}`
-          + ` — ${plan.detail.length} paiement${plan.detail.length > 1 ? 's' : ''} carte`
-          + (names.length ? ` : ${names.slice(0, 6).join(', ')}${names.length > 6 ? `, +${names.length - 6}` : ''}` : ''),
+    // La contrepartie unique devient UNE LIGNE PAR PAIEMENT CARTE, chacune
+    // portant sa facture : c'est ce qu'on voit en ouvrant l'extrait, sans avoir
+    // à déplier le lettrage.
+    const splits = plan.splits.length
+      ? plan.splits
+      : [{ net: plan.net, commission: 0, amount: plan.net, label: `Versement ${plan.od?.ref || plan.payoutId}`, invoice: null }]
+
+    await odooRpc('account.bank.statement.line', 'write', [[plan.bankLineId], {
+      line_ids: [
+        // La première réutilise la ligne existante ; les suivantes sont créées.
+        [1, suspenseLineId, {
+          account_id: ACC.outstanding, partner_id: plan.partnerId, name: splits[0].label,
+          debit: 0, credit: splits[0].net, amount_currency: -splits[0].net,
+        }],
+        ...splits.slice(1).map(sp => [0, 0, {
+          account_id: ACC.outstanding, partner_id: plan.partnerId, name: sp.label,
+          debit: 0, credit: sp.net, amount_currency: -sp.net,
+        }]),
+      ],
     }])
     bankLineMoved = true
 
-    // Lettrage : les crédits 542 (banque + OD) contre les débits 542 des paiements.
-    const ids = [suspenseLineId, ...available.map(l => l.id)]
+    // Lettrage : les crédits 542 (toutes les contreparties d'extrait + l'OD)
+    // contre les débits 542 des paiements carte.
+    const bankParts = await odooRpc<any[]>('account.move.line', 'search_read', [[
+      ['move_id', '=', bankMoveId], ['account_id', '=', ACC.outstanding],
+    ]], { fields: ['id'], limit: 200 })
+    const ids = [...bankParts.map(l => l.id), ...available.map(l => l.id)]
     if (odMoveId) {
       const odLines = await odooRpc<any[]>('account.move.line', 'search_read', [[
         ['move_id', '=', odMoveId], ['account_id', '=', ACC.outstanding],
@@ -396,10 +429,21 @@ export async function postPlan(plan: PostingPlan, actorNote?: string): Promise<{
     // basculé — un extrait dont la contrepartie a quitté le compte d'attente
     // passe pour lettré alors que rien ne l'est, et disparaît de la file.
     if (bankLineMoved) {
+      // On restitue la contrepartie D'ORIGINE : une seule ligne, en compte
+      // d'attente, au montant crédité. Laisser N lignes éclatées derrière un
+      // échec rendrait l'extrait illisible et le versement irrécupérable.
       try {
-        await odooRpc('account.move.line', 'write', [[suspenseLineId], {
-          account_id: ACC.suspense,
-          partner_id: originalPartner,
+        const parts = await odooRpc<any[]>('account.move.line', 'search_read', [[
+          ['move_id', '=', bankMoveId], ['account_id', 'in', [ACC.outstanding, ACC.suspense]],
+        ]], { fields: ['id'], limit: 200 })
+        await odooRpc('account.bank.statement.line', 'write', [[plan.bankLineId], {
+          line_ids: [
+            [1, parts[0]?.id ?? suspenseLineId, {
+              account_id: ACC.suspense, partner_id: originalPartner, name: false,
+              debit: 0, credit: plan.net, amount_currency: -plan.net,
+            }],
+            ...parts.slice(1).map(l => [2, l.id, false]),
+          ],
         }])
       } catch { /* on remonte l'erreur d'origine */ }
     }

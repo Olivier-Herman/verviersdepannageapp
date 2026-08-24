@@ -287,3 +287,55 @@ export async function settledInvoices(invoiceIds: number[]): Promise<Set<number>
   }
   return out
 }
+
+export interface CounterpartSplit {
+  /** Part du virement qui revient à cette transaction (brut − commission). */
+  net:        number
+  /** Commission propre à cette transaction, déduite de brut − net. */
+  commission: number
+  amount:     number          // le brut encaissé
+  label:      string          // ce qui s'affichera sur la ligne d'extrait
+  invoice:    string | null
+}
+
+/**
+ * Éclate la contrepartie d'un virement en une ligne par paiement carte.
+ *
+ * Odoo n'affichait qu'une seule ligne « Paiements entrants en suspens » face à
+ * N rapprochements : impossible de voir ce que le virement solde sans déplier
+ * le lettrage un par un. En posant une contrepartie PAR transaction, l'extrait
+ * montre directement les factures. Olivier 2026-08-24 : « il me faut toutes les
+ * lignes rapprochées, pas juste une note ».
+ *
+ * ⚠️ Deux invariants, tenus par construction :
+ *   1. Σ net == le montant réellement crédité. Les nets par transaction sont
+ *      arrondis (Paynovate les donne à 5 décimales) et dérivent jusqu'à 0,13 €
+ *      sur un gros versement : le résidu est reporté sur la plus grosse ligne.
+ *   2. net + commission == brut, ligne à ligne. D'où la commission DÉDUITE de
+ *      brut − net, et non lue telle quelle : sans ça, chaque lettrage laissait
+ *      un centime résiduel.
+ */
+export function splitCounterpart(
+  txs: { amount: number; commission?: number; merchantRef: string; invoiceName?: string | null; partner?: string | null }[],
+  creditedNet: number,
+): CounterpartSplit[] {
+  if (!txs.length) return []
+
+  const nets = txs.map(t => round2(t.amount - (t.commission || 0)))
+  const residual = round2(creditedNet - round2(nets.reduce((s, n) => s + n, 0)))
+  if (residual) {
+    // Sur la plus grosse ligne : l'écart y pèse le moins.
+    let big = 0
+    for (let i = 1; i < nets.length; i++) if (nets[i] > nets[big]) big = i
+    nets[big] = round2(nets[big] + residual)
+  }
+
+  return txs.map((t, i) => ({
+    net:        nets[i],
+    commission: round2(t.amount - nets[i]),
+    amount:     t.amount,
+    invoice:    t.invoiceName ?? null,
+    label:      [t.invoiceName || (t.merchantRef ? `réf. ${t.merchantRef}` : 'sans référence'), t.partner || '']
+                  .filter(Boolean).join(' — '),
+  }))
+}
