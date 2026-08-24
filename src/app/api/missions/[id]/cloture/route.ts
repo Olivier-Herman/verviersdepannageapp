@@ -32,7 +32,8 @@ export const dynamic     = 'force-dynamic'
 export const maxDuration = 300
 
 const MISSION_COLS = 'id, source, source_format, raw_content, external_id, mission_type, status, loaded_at, vr_proposed, assigned_to, parent_mission_id, ' +
-  'vehicle_vin, vehicle_vin_partial, vehicle_mileage, incident_description, vehicle_brand, vehicle_model, panne_motif'
+  'vehicle_vin, vehicle_vin_partial, vehicle_mileage, incident_description, vehicle_brand, vehicle_model, panne_motif, ' +
+  'destination_address, destination_name'
 
 
 /**
@@ -342,6 +343,12 @@ export async function POST(req: Request, { params }: { params: { id: string } })
       toCidIntv: body?.toCidIntv ?? null,
       manualAddress: body?.manualAddress ?? null,
       comment: body?.comment ?? null,
+      // Filet de destination : sur la LIVRAISON, le chauffeur ne rechoisit pas
+      // une adresse déjà connue de la fiche — sans ça, Touring ne recevait rien
+      // et nous la redemandait par mail.
+      // `patch` est déjà appliqué plus haut : une destination saisie à l'instant
+      // prime sur celle que la fiche portait en arrivant.
+      ficheDestination: patch.destination_address || (m as any)?.destination_address || null,
     }
     result = await transformTouring(keys, input)
 

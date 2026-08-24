@@ -36,6 +36,10 @@ export interface TransformInput {
   manualAddress?: { nom?: string; rue?: string; num?: string; cp?: string; loc?: string } | null
   /** Commentaire déjà formaté (garage de la liste). */
   comment?:  string | null
+  /** Destination telle qu'elle vit sur la fiche VD Soft — dernier recours quand
+   *  ni garage COMEX ni adresse manuelle n'ont été transmis (cas de la LIVRAISON,
+   *  où le chauffeur ne rechoisit pas une destination déjà connue). */
+  ficheDestination?: string | null
 }
 
 export interface TransformResult {
@@ -114,12 +118,32 @@ export async function transformTouring(keys: ComexKeys, input: TransformInput): 
     }
   }
 
-  // ── Destination d'un remorquage : garage de la liste ou adresse libre ──────
+  // ── OÙ EST PARTI LE VÉHICULE — ON LE DIT TOUJOURS ─────────────────────────
+  // Touring nous écrit régulièrement « Pourriez-vous nous communiquer l'adresse
+  // de destination svp ? » (7 mails depuis le 28/07 : 1DOV823, MAT125, 2HSF833,
+  // SUJM1012, 2DNK746, GZB63T…). La raison est ici.
+  //
+  // Le commentaire de destination n'était fabriqué QUE sur la transformation en
+  // remorquage, et seulement si le chauffeur avait tapé une adresse manuelle.
+  // Sur la LIVRAISON — l'issue « véhicule livré à destination », le moment même
+  // où l'on annonce l'arrivée — `outcomeIsRem('delivered')` est faux : on ne
+  // remplissait donc AUCUN champ d'adresse et aucun commentaire. Touring recevait
+  // une clôture de remorquage sans destination, et devait la demander par mail.
+  //
+  // Désormais : toute issue qui déplace le véhicule dit où il est allé, et à
+  // défaut d'adresse saisie on reprend celle de la fiche.
+  const déplaceLeVéhicule = outcomeIsRem(input.outcome) || input.outcome === 'delivered'
   let comment = String(input.comment || '')
-  if (outcomeIsRem(input.outcome) && !input.toCidIntv && input.manualAddress) {
+  if (déplaceLeVéhicule && !input.toCidIntv && !comment) {
     const a = input.manualAddress
-    const nom = String(a.nom || '').trim() || 'x'
-    comment = `// ADRESSE TO REM MAN : ${nom} ${a.rue || 'x'} ${a.num || 'x'} ${a.cp || 'x'} ${a.loc || 'x'} //`
+    if (a && (a.rue || a.cp || a.loc)) {
+      const nom = String(a.nom || '').trim() || 'x'
+      comment = `// ADRESSE TO REM MAN : ${nom} ${a.rue || 'x'} ${a.num || 'x'} ${a.cp || 'x'} ${a.loc || 'x'} //`
+    } else if (String(input.ficheDestination || '').trim()) {
+      // Une seule ligne d'adresse : on la passe telle quelle plutôt que de la
+      // découper mal. Leur admin lit ce champ — mieux vaut lisible que structuré.
+      comment = `// ADRESSE TO REM MAN : ${String(input.ficheDestination).trim()} //`
+    }
   }
 
   const r = await closeTouringMission(keys, {
