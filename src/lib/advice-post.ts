@@ -253,13 +253,17 @@ export async function postAdvicePlan(plan: AdvicePostingPlan): Promise<{ reconci
         label:     `${plan.payerLabel}${plan.adviceRef ? ` ${plan.adviceRef}` : ''} — ${Array.isArray(pr.partner_id) ? pr.partner_id[1] : ''}`,
         match:     payLineOf.get(Number(pr.id)) ?? null,
       })),
+      // ⚠️ SIGNÉ, surtout pas en valeur absolue : un avis porte des reprises et
+      // des doubles paiements négatifs (BEVO492091 : −19 129,80 €). Les rendre
+      // positifs faisait exploser le contrôle de cohérence APRÈS création des
+      // paiements — et laissait un paiement orphelin. Olivier 2026-08-24.
       ...odLineIds.map((id, i) => ({
-        amount:    r2(Math.abs(plan.unallocated[i]?.amount ?? 0)),
+        amount:    r2(plan.unallocated[i]?.amount ?? 0),
         partnerId: plan.partnerId as number | false,
         label:     `Non affecté — ${plan.unallocated[i]?.ref ?? ''}`,
         match:     id,
       })),
-    ].filter(x => x.amount > 0.005)
+    ].filter(x => Math.abs(x.amount) > 0.005)
 
     const totalParts = r2(parts.reduce((s, x) => s + x.amount, 0))
     if (!parts.length || Math.abs(totalParts - plan.amount) > 0.02) {
@@ -270,13 +274,18 @@ export async function postAdvicePlan(plan: AdvicePostingPlan): Promise<{ reconci
     try {
       await odooRpc('account.move', 'write', [[bankMoveId], {
         line_ids: [
+          // Une part négative s'inscrit au DÉBIT : Odoo refuse un crédit négatif.
           [1, suspenseLineId, {
             account_id: OUTSTANDING, partner_id: parts[0].partnerId, name: parts[0].label,
-            debit: 0, credit: parts[0].amount, amount_currency: -parts[0].amount,
+            debit:  parts[0].amount < 0 ? -parts[0].amount : 0,
+            credit: parts[0].amount > 0 ?  parts[0].amount : 0,
+            amount_currency: -parts[0].amount,
           }],
           ...parts.slice(1).map(x => [0, 0, {
             account_id: OUTSTANDING, partner_id: x.partnerId, name: x.label,
-            debit: 0, credit: x.amount, amount_currency: -x.amount,
+            debit:  x.amount < 0 ? -x.amount : 0,
+            credit: x.amount > 0 ?  x.amount : 0,
+            amount_currency: -x.amount,
           }]),
         ],
       }])
@@ -345,11 +354,23 @@ export async function postAdvicePlan(plan: AdvicePostingPlan): Promise<{ reconci
     }
     // Les paiements créés partent avec le reste : sinon les factures restent
     // soldées par des paiements que plus rien ne relie à la banque.
+    // ⚠️ Ne JAMAIS avaler l'échec de cette suppression. Un paiement qui survit
+    // à un rapprochement raté laisse des factures soldées par de l'argent qui
+    // n'est relié à rien — 20 581,17 EUR dans ce cas, découverts par hasard.
+    // Olivier 2026-08-24 : « tu as créé un ING manuel ».
     if (paymentIds.length) {
       try {
         await odooRpc('account.payment', 'action_draft', [paymentIds])
         await odooRpc('account.payment', 'unlink',       [paymentIds])
-      } catch { /* idem */ }
+      } catch (undoErr: any) {
+        const names = paymentIds.join(', ')
+        throw new Error(
+          `${String(e?.message || e)} — ET LE RETOUR EN ARRIÈRE A ÉCHOUÉ : `
+          + `le ou les paiements ${names} sont restés dans Odoo et soldent des factures `
+          + `sans être reliés à un virement. À supprimer à la main. `
+          + `(${String(undoErr?.message || undoErr).slice(0, 160)})`,
+        )
+      }
     }
     // Les OD de compte d'attente aussi : sinon on laisse des montants parqués
     // en face d'un virement qui, lui, n'a pas bougé.
