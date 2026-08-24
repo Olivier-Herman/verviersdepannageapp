@@ -384,22 +384,24 @@ export async function postPlan(plan: PostingPlan, actorNote?: string): Promise<{
     // La contrepartie unique devient UNE LIGNE PAR PAIEMENT CARTE, chacune
     // portant sa facture : c'est ce qu'on voit en ouvrant l'extrait, sans avoir
     // à déplier le lettrage.
-    const splits = plan.splits.length
-      ? plan.splits
-      : [{ net: plan.net, commission: 0, amount: plan.net, label: `Versement ${plan.od?.ref || plan.payoutId}`, invoice: null }]
-
-    await odooRpc('account.bank.statement.line', 'write', [[plan.bankLineId], {
-      line_ids: [
-        // La première réutilise la ligne existante ; les suivantes sont créées.
-        [1, suspenseLineId, {
-          account_id: ACC.outstanding, partner_id: plan.partnerId, name: splits[0].label,
-          debit: 0, credit: splits[0].net, amount_currency: -splits[0].net,
-        }],
-        ...splits.slice(1).map(sp => [0, 0, {
-          account_id: ACC.outstanding, partner_id: plan.partnerId, name: sp.label,
-          debit: 0, credit: sp.net, amount_currency: -sp.net,
-        }]),
-      ],
+    // ⚠️ ÉCLATEMENT SUSPENDU (24/08/2026).
+    //
+    // Poser N contreparties via `account.bank.statement.line.write({line_ids})`
+    // est refusé par Odoo 19 : chaque commande est appliquée par un write
+    // séparé, et le contrôle d'équilibre tombe entre les deux — « L'écriture
+    // n'est pas équilibrée ». Le plan calcule bien `splits` (vérifié sur 74
+    // versements, 0 écart), mais la technique d'écriture reste à valider sur
+    // une base de test avant d'y revenir.
+    //
+    // En attendant : une seule contrepartie, mais un libellé qui nomme les
+    // factures, et le détail complet dans le fil de l'extrait.
+    const names = [...new Set(plan.detail.map(d => d.invoice).filter(Boolean))] as string[]
+    await odooRpc('account.move.line', 'write', [[suspenseLineId], {
+      account_id: ACC.outstanding,
+      partner_id: plan.partnerId,
+      name: `Versement ${plan.od?.ref || plan.payoutId}`
+          + ` — ${plan.detail.length} paiement${plan.detail.length > 1 ? 's' : ''} carte`
+          + (names.length ? ` : ${names.slice(0, 6).join(', ')}${names.length > 6 ? `, +${names.length - 6}` : ''}` : ''),
     }])
     bankLineMoved = true
 
@@ -433,17 +435,10 @@ export async function postPlan(plan: PostingPlan, actorNote?: string): Promise<{
       // d'attente, au montant crédité. Laisser N lignes éclatées derrière un
       // échec rendrait l'extrait illisible et le versement irrécupérable.
       try {
-        const parts = await odooRpc<any[]>('account.move.line', 'search_read', [[
-          ['move_id', '=', bankMoveId], ['account_id', 'in', [ACC.outstanding, ACC.suspense]],
-        ]], { fields: ['id'], limit: 200 })
-        await odooRpc('account.bank.statement.line', 'write', [[plan.bankLineId], {
-          line_ids: [
-            [1, parts[0]?.id ?? suspenseLineId, {
-              account_id: ACC.suspense, partner_id: originalPartner, name: false,
-              debit: 0, credit: plan.net, amount_currency: -plan.net,
-            }],
-            ...parts.slice(1).map(l => [2, l.id, false]),
-          ],
+        await odooRpc('account.move.line', 'write', [[suspenseLineId], {
+          account_id: ACC.suspense,
+          partner_id: originalPartner,
+          name:       false,
         }])
       } catch { /* on remonte l'erreur d'origine */ }
     }
