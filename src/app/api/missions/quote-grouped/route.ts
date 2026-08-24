@@ -147,17 +147,14 @@ export async function POST(req: Request) {
   const sb = createAdminClient()
   const { data: missions, error: missionErr } = await sb
     .from('incoming_missions')
-    .select(`
-      id, external_id, dossier_number, source, mission_type, status,
-      client_name, vehicle_plate, vehicle_mileage,
-      incident_address, destination_address, redelivery_address,
-      parked_at, storage_waived, intervention_date, received_at, incident_type, parent_mission_id,
-      levee_saisie_date, temp_returned_at, domaine_remise_date,
-      billed_to_id, billed_to_name,
-      amount_to_collect, special_tarif_htva, amount_guaranteed,
-      incident_address, incident_city, destination_address, destination_name,
-      odoo_quote_id, odoo_quote_url
-    `)
+    // Fiche COMPLÈTE, pas une projection.
+    //
+    // La liste figée qui tenait ici omettait `snc_scenario`, les coordonnées et
+    // le balisage : le calcul Siabis recevait une fiche sans scénario et rendait
+    // la main sans rien produire — section vide, montant absent de la facture.
+    // Le même piège attend le prochain champ dont un calcul aura besoin.
+    // Olivier 2026-08-24.
+    .select('*')
     .in('id', missionIds)
 
   // Charge les brouillons persistants des lignes pour chaque mission (si l employe
