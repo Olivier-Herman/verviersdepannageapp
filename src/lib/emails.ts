@@ -169,6 +169,11 @@ export async function sendClientReceipt(data: {
   locationAddress?: string
   driverName?: string
   sumupTransactionRef?: string
+  // Contexte tarifaire : permet de joindre la grille réglementée quand le
+  // montant en découle vraiment. Voir lib/tarifs/grille-officielle.
+  missionSource?:          string | null
+  amountToCollectManual?:  boolean | null
+  specialTarifHtva?:       number | null
 }) {
   const isPaid = data.paymentMode !== 'unpaid'
   const amountTvac = formatEur(data.amount)
@@ -176,6 +181,17 @@ export async function sendClientReceipt(data: {
   const tva        = formatEur(data.amount - data.amount / 1.21)
   const paymentLabel = PAYMENT_MODE_LABELS[data.paymentMode] || data.paymentMode
   const nextWorkDay = getNextWorkingDay()
+
+  // Grille officielle : jointe seulement si le montant en découle réellement.
+  // Un tarif retouché à la main ne colle plus à la grille — la joindre donnerait
+  // au client de quoi contester ligne par ligne. Olivier 2026-08-21.
+  const { grilleAJoindre, lireGrilleBase64, nomFichier } = await import('@/lib/tarifs/grille-officielle')
+  const grille = grilleAJoindre({
+    source:                   data.missionSource,
+    amount_to_collect_manual: data.amountToCollectManual,
+    special_tarif_htva:       data.specialTarifHtva,
+  })
+  const grilleB64 = grille ? await lireGrilleBase64(grille) : null
 
   const content = `
     <p style="margin:0 0 4px;font-size:22px;font-weight:700;color:#111;">${isPaid ? '✅ Reçu de paiement' : '📋 Confirmation d\'intervention'}</p>
@@ -227,6 +243,16 @@ export async function sendClientReceipt(data: {
       </table>
     </div>` : ''}
 
+    ${grille && grilleB64 ? `
+    <!-- Tarif reglemente -->
+    <div style="background:#f8f8f8;border-left:4px solid ${BRAND_RED};border-radius:0 8px 8px 0;padding:14px 18px;margin-bottom:20px;">
+      <p style="margin:0 0 6px;font-size:13px;font-weight:700;color:#111;">Un tarif que nous ne fixons pas</p>
+      <p style="margin:0;font-size:12px;color:#555;line-height:1.6;">
+        ${grille.mention}<br>
+        <span style="color:#888;">Référence : ${grille.source}</span>
+      </p>
+    </div>` : ''}
+
     <!-- Facture -->
     <div style="background:#e3f2fd;border:1px solid #bbdefb;border-radius:8px;padding:16px 18px;">
       <p style="margin:0 0 6px;font-size:13px;font-weight:700;color:#1565c0;">📧 Votre facture arrive bientôt</p>
@@ -241,7 +267,13 @@ export async function sendClientReceipt(data: {
     ? `Reçu — Intervention ${data.reference} · ${amountTvac}`
     : `Confirmation d'intervention ${data.reference} — NON PAYÉE`
 
-  await sendEmail(data.clientEmail, subject, emailLayout(content, subject), data.clientName)
+  await sendEmail(
+    data.clientEmail, subject, emailLayout(content, subject), data.clientName,
+    undefined,
+    grille && grilleB64
+      ? [{ name: nomFichier(grille), contentType: 'application/pdf', contentBytes: grilleB64 }]
+      : undefined,
+  )
 }
 
 // ─── Email 2 : Notification admin nouvelle demande d'accès ─

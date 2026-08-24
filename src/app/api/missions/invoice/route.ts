@@ -55,7 +55,7 @@ export async function POST(req: Request) {
   // Verifie que toutes les missions existent et sont en 'to_invoice'
   const { data: rows, error: fetchErr } = await sb
     .from('incoming_missions')
-    .select('id, status, external_id')
+    .select('id, status, external_id, source, amount_to_collect_manual, special_tarif_htva')
     .in('id', ids)
   if (fetchErr) return NextResponse.json({ error: fetchErr.message }, { status: 500 })
   if ((rows || []).length !== ids.length) {
@@ -95,6 +95,40 @@ export async function POST(req: Request) {
     invoiced_by:     user.id,
   }
   if (body.notes) updatePayload.invoice_notes = body.notes
+
+  // Grille officielle attachee a la facture Odoo.
+  //
+  // Sur une saisie ou un dossier SIABIS, le client n'a choisi ni son depanneur
+  // ni le prix : la grille repond a « pourquoi si cher, et qui a decide ca ? »
+  // sans que le bureau argumente au telephone. Mais elle ne part QUE si la
+  // facture en decoule vraiment — un montant retouche a la main donnerait au
+  // client de quoi contester ligne par ligne. Voir lib/tarifs/grille-officielle.
+  //
+  // Best effort : une piece jointe qui echoue ne doit pas faire rater la
+  // facturation. Olivier 2026-08-21.
+  if (invoice_odoo_id) {
+    const { grilleAJoindre, lireGrilleBase64, nomFichier } = await import('@/lib/tarifs/grille-officielle')
+    const eligibles = (rows || []).filter(r => grilleAJoindre(r as any))
+    const grille = eligibles.length ? grilleAJoindre(eligibles[0] as any) : null
+    // Une facture groupee ne part avec la grille que si TOUTES ses missions en relevent.
+    if (grille && eligibles.length === (rows || []).length) {
+      try {
+        const b64 = await lireGrilleBase64(grille)
+        if (b64) {
+          const { attachToOdoo } = await import('@/lib/odoo-attachment')
+          await attachToOdoo({
+            resModel:    'account.move',
+            resId:       invoice_odoo_id,
+            filename:    nomFichier(grille),
+            base64Data:  b64,
+            description: grille.mention,
+          })
+        }
+      } catch (e: any) {
+        console.warn('[invoice] grille officielle non attachee (non bloquant):', e?.message)
+      }
+    }
+  }
 
   const { data: updated, error: updErr } = await sb
     .from('incoming_missions')

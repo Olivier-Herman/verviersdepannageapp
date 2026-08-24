@@ -124,6 +124,14 @@ export async function POST(req: NextRequest) {
   // SNC dsp/rem_client / Mal Garee restitution / Privé direct de ne pas devoir
   // ressaisir le client cote form chauffeur — la recherche/creation se fait dans
   // /encaissement qui a deja toute la machinerie.
+  // Contexte tarifaire de la mission liee : renseigne dans le bloc ci-dessous,
+  // relu bien plus bas au moment d'envoyer le recu au client.
+  let tarifCtx: {
+    source: string | null
+    amount_to_collect_manual: boolean | null
+    special_tarif_htva: number | null
+  } = { source: null, amount_to_collect_manual: null, special_tarif_htva: null }
+
   if (intervention && body.mission_id) {
     try {
       const { data: allPayments } = await supabase
@@ -133,9 +141,11 @@ export async function POST(req: NextRequest) {
       const sum = (allPayments || []).reduce((s, p) => s + Number(p.amount || 0), 0)
 
       // Lire l etat actuel de la mission pour ne pas ecraser un billed_to existant
+      // Le recu part plus bas, hors de ce bloc : on met de cote de quoi decider
+      // s'il faut joindre la grille officielle. Olivier 2026-08-21.
       const { data: currentMission } = await supabase
         .from('incoming_missions')
-        .select('billed_to_id, billed_to_name, client_name, client_phone, client_address, driver_photos, status, source, parc_zone_key')
+        .select('billed_to_id, billed_to_name, client_name, client_phone, client_address, driver_photos, status, source, parc_zone_key, amount_to_collect_manual, special_tarif_htva')
         .eq('id', body.mission_id)
         .single()
 
@@ -170,6 +180,11 @@ export async function POST(req: NextRequest) {
       const composedAddr = String(body.client_address
         || [body.client_street, [body.client_zip, body.client_city].filter(Boolean).join(' ')].filter(Boolean).join(', ')
         || '').trim()
+      tarifCtx = {
+        source:                   currentMission?.source ?? null,
+        amount_to_collect_manual: (currentMission as any)?.amount_to_collect_manual ?? null,
+        special_tarif_htva:       (currentMission as any)?.special_tarif_htva ?? null,
+      }
       if (body.client_name    && !currentMission?.client_name)    updatePayload.client_name    = String(body.client_name)
       if (body.client_phone   && !currentMission?.client_phone)   updatePayload.client_phone   = String(body.client_phone)
       if (composedAddr        && !currentMission?.client_address) updatePayload.client_address = composedAddr
@@ -296,6 +311,11 @@ export async function POST(req: NextRequest) {
         locationAddress: body.location_address,
         driverName: session.user.name || undefined,
         sumupTransactionRef: body.payment_reference || undefined,
+        // La grille officielle ne part QUE si le montant vient bien d'elle :
+        // un tarif retouche a la main ne collerait plus a ses postes.
+        missionSource:         tarifCtx.source,
+        amountToCollectManual: tarifCtx.amount_to_collect_manual,
+        specialTarifHtva:      tarifCtx.special_tarif_htva,
       })
       console.log(`[Receipt] Email envoyé à ${body.client_email} (mode: ${paymentMode})`)
     } catch (err: any) {
