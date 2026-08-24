@@ -17,7 +17,7 @@ import { getServerSession }      from 'next-auth'
 import { authOptions }           from '@/lib/auth'
 import { createAdminClient }     from '@/lib/supabase'
 import { estimateMissionPrice }  from '@/lib/missions/estimate-price'
-import { buildLinesFromEstimate, buildInterventionDescription } from '@/lib/missions/build-quote-lines'
+import { buildLinesFromEstimate, buildInterventionDescription, buildOverrideLines } from '@/lib/missions/build-quote-lines'
 import { createSaleOrder, updateSaleOrder, findFleetVehicleByPlate, QuoteNotFoundError, type QuoteSection } from '@/lib/odoo-quote'
 import { withOdooActor }          from '@/lib/odoo'
 
@@ -28,11 +28,62 @@ export const maxDuration = 60
 function missionKind(m: any): string {
   const it = (m.incident_type || '').toLowerCase()
   const mt = (m.mission_type   || '').toLowerCase()
-  if (it === 'relivraison' || mt === 'relivraison' || m.parent_mission_id) return 'REL'
+  if (it === 'relivraison' || mt === 'relivraison' || mt === 'rel' || m.parent_mission_id) return 'REL'
   if (it === 'dpr')                                                         return 'DPR'
-  if (mt === 'remorquage')                                                  return 'REM'
+  // « REM+REL » : l'enlèvement d'une chaîne dont la relivraison viendra en
+  // section suivante. Non reconnu, il tombait en « AUTRE » — 13 missions en
+  // portaient l'étiquette. Olivier 2026-08-24.
+  if (mt === 'remorquage' || mt === 'rem' || mt === 'rem+rel')              return 'REM'
   if (['depannage', 'reparation_place', 'trajet_vide'].includes(mt))        return 'DSP'
   return 'AUTRE'
+}
+
+/**
+ * Les lignes Siabis (SNC / SC) d'une mission — prise en charge, kilomètres,
+ * balisage, majoration horaire.
+ *
+ * `estimateMissionPrice` ne sait pas les produire : il n'existe aucun tarif
+ * `police_snc` dans `source_tariffs`, et le calcul Siabis vit dans son propre
+ * moteur. Le devis d'une mission SEULE l'appelle depuis toujours ; le devis
+ * GROUPÉ, lui, ne l'appelait pas — la section sortait vide, « à compléter »,
+ * et le montant Siabis disparaissait purement et simplement de la facture.
+ * Relevé sur la fiche 2BLJ708 : 497,39 € HTVA absents. Olivier 2026-08-24.
+ */
+async function sncSectionLines(mission: any): Promise<{ kind: string; name: string; qty: number; price_unit: number }[] | null> {
+  const isSiabis = mission.source === 'police_snc' || mission.source === 'sia_couvert'
+  if (!isSiabis || !mission.snc_scenario) return null
+
+  const variant = mission.source === 'sia_couvert' ? 'sc' : 'snc'
+  const { computeSncMetrics, buildSncQuoteLines } = await import('@/lib/snc/pricing')
+
+  const rawStops = Array.isArray(mission.extra_addresses) ? mission.extra_addresses : []
+  const stops = [...rawStops].sort((a: any, b: any) => (a.sort_order || 0) - (b.sort_order || 0))
+    .map((x: any) => ({ lat: x.lat, lng: x.lng, label: x.label || x.address }))
+
+  const metrics = await computeSncMetrics({
+    scenario:         mission.snc_scenario,
+    requiresBalisage: Boolean(mission.snc_requires_balisage),
+    interventionLat:  mission.incident_lat,
+    interventionLng:  mission.incident_lng,
+    destinationLat:   mission.destination_lat,
+    destinationLng:   mission.destination_lng,
+    interventionAt:   mission.intervention_date || mission.received_at,
+    variant,
+    billedToId:       mission.billed_to_id,
+    billedToName:     mission.billed_to_name,
+    stops,
+  } as any)
+  // Sans coordonnées, pas de kilomètres : on laisse la section à compléter
+  // plutôt que de produire un montant faux.
+  if (!metrics) return null
+
+  const missionRef = mission.external_id || mission.dossier_number || `M-${String(mission.id).slice(0, 8)}`
+  return buildSncQuoteLines({
+    metrics,
+    requiresBalisage: Boolean(mission.snc_requires_balisage),
+    missionRef,
+    variant,
+  }).map(l => ({ kind: l.kind as any, name: l.name, qty: l.qty, price_unit: l.price_unit }))
 }
 
 /**
@@ -196,6 +247,22 @@ export async function POST(req: Request) {
       console.log(`[quote-grouped] Draft persistant utilise pour mission ${mission.id} (${lines.length} lignes)`)
       continue
     }
+
+    const pushSection = (lines: any[]) => {
+      sections.push({ section_label: sectionLabel, lines })
+      totalForResponse += lines.reduce((s: number, l: any) => s + l.qty * l.price_unit, 0)
+      sectionStats.push({ mission_id: mission.id, kind, ref, lines_count: lines.length, has_tariff: true })
+    }
+
+    // Montants forcés (tarif spécial, montant à réclamer, Francofolies…) —
+    // même règle que le devis d'une mission seule, qui les appliquait déjà.
+    // `sncDetail` rend la main à la branche Siabis juste en dessous.
+    const override = buildOverrideLines(mission as any, { sncDetail: true })
+    if (override?.length) { pushSection(override); continue }
+
+    // Siabis (SNC / SC) : moteur de prix dédié, que estimate-price ignore.
+    const sncLines = await sncSectionLines(mission)
+    if (sncLines?.length) { pushSection(sncLines); continue }
 
     // Sinon : calcul auto via estimate-price
     const estimate = await estimateMissionPrice(mission as any)
