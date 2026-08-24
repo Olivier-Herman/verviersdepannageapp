@@ -50,6 +50,8 @@ interface Payout {
   paymentId: number
   tid: string | null
   terminal?: string | null    // libellé du compte marchand, quand il y en a un
+  /** Déjà rapproché une fois par le module, puis délettré dans Odoo. */
+  previouslyDone?: boolean
   bankLineId: number
   bankMoveName: string
   bankDate: string
@@ -428,6 +430,12 @@ export default function ReconciliationClient({
                     </span>
                     <span className="flex flex-wrap items-center gap-2">
                       <span className={`rounded-full px-2.5 py-0.5 text-[11.5px] font-semibold ${st.cls}`}>{st.label}</span>
+                      {p.previouslyDone && (
+                        <span className="rounded-full bg-warning-soft px-2.5 py-0.5 text-[11.5px] font-semibold text-warning"
+                          title="Ce versement avait déjà été rapproché par le module. Son lettrage a été défait dans Odoo — la ligne bancaire est de nouveau ouverte.">
+                          lettrage défait dans Odoo
+                        </span>
+                      )}
                       {terminalOf(p) && (
                         <span className="rounded-full border border-border bg-surface-2 px-2.5 py-0.5 font-mono text-[11.5px] font-semibold text-ink-secondary">
                           {terminalOf(p)}

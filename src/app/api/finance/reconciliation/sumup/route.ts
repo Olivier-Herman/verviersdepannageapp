@@ -34,16 +34,27 @@ const ACCESS = { roles: ['superadmin'], modules: [] as string[] }
 /** Le prestataire servi par cette route — cloisonne décisions et rattachements. */
 const PROVIDER = 'sumup' as const
 
-/** Les versements déjà rapprochés — ils ne doivent plus apparaître. */
-async function alreadyDone(): Promise<Set<string>> {
+/**
+ * Les versements déjà rapprochés par le module.
+ *
+ * ⚠️ Cette trace ne fait PAS foi à elle seule. Un rapprochement défait dans
+ * Odoo — lettrage annulé à la main — laisse la ligne bancaire ouverte alors que
+ * la trace dit toujours « done ». Le versement disparaissait alors de la file
+ * pour toujours, et la ligne restait au compte d'attente sans que rien ne le
+ * signale. Constaté sur MC7 PID1307657 le 24/08/2026.
+ *
+ * La file est donc construite sur l'état RÉEL d'Odoo (lignes non lettrées) ;
+ * cette trace ne sert plus qu'à signaler « déjà passé une fois », pas à exclure.
+ */
+async function alreadyDone(): Promise<Map<string, { id: number; bankLineId: number }>> {
   const sb = createAdminClient()
   const { data } = await sb
     .from('payout_reconciliations')
-    .select('payout_ref')
+    .select('id, payout_ref, bank_line_id')
     .eq('provider', 'sumup')
     .eq('status', 'done')
     .order('id', { ascending: true })
-  return new Set((data || []).map(r => String(r.payout_ref)))
+  return new Map((data || []).map(r => [String(r.payout_ref), { id: Number(r.id), bankLineId: Number(r.bank_line_id) }]))
 }
 
 export async function GET(req: NextRequest) {
@@ -55,7 +66,13 @@ export async function GET(req: NextRequest) {
     const months = Math.min(12, Math.max(1, Number(req.nextUrl.searchParams.get('months')) || 5))
     const [report, done] = await Promise.all([buildSumupMatchReport(months), alreadyDone()])
 
-    const payouts = report.payouts.filter(p => !done.has(String(p.paymentId)))
+    // Le rapport ne contient QUE des lignes bancaires non lettrées : un
+    // versement qui y figure alors qu'il porte une trace « done » a été défait
+    // dans Odoo. On le remet dans la file en le signalant, au lieu de le cacher.
+    const payouts = report.payouts.map(p => ({
+      ...p,
+      previouslyDone: done.has(String(p.paymentId)),
+    }))
     const plans   = payouts.filter(p => p.state === 'ready').map(buildSumupPostingPlan)
 
     return NextResponse.json({
@@ -190,11 +207,11 @@ export async function POST(req: NextRequest) {
     const results: { payoutId: number; ok: boolean; error?: string; odMoveId?: number | null }[] = []
 
     for (const id of payoutIds) {
-      // On rejoue la vérification côté serveur : le client ne décide de rien.
-      if (done.has(String(id))) {
-        results.push({ payoutId: id, ok: false, error: 'Versement déjà rapproché' })
-        continue
-      }
+      // Une trace « done » n'interdit plus le rapprochement : le rapport ne
+      // contient que des lignes NON lettrées, donc si le versement est là, c'est
+      // que son lettrage a été défait dans Odoo. On le refait, et on marque
+      // l'ancienne trace comme défaite pour ne pas violer l'unicité.
+      const previous = done.get(String(id))
       const payout = report.payouts.find(p => p.paymentId === id)
       if (!payout) {
         results.push({ payoutId: id, ok: false, error: 'Versement introuvable' })
@@ -210,6 +227,15 @@ export async function POST(req: NextRequest) {
       const plan = buildSumupPostingPlan(payout)
       try {
         const { odMoveId } = await postPlan(plan)
+
+        // L'ancienne trace, dont le lettrage a été défait dans Odoo, passe en
+        // « reverted » : elle reste consultable, et l'index d'unicité (partiel
+        // sur status='done') laisse passer la nouvelle.
+        if (previous) {
+          await sb.from('payout_reconciliations')
+            .update({ status: 'reverted', reverted_at: new Date().toISOString() })
+            .eq('id', previous.id)
+        }
 
         // La trace part APRÈS l'écriture Odoo : si Odoo échoue, rien n'est noté.
         await sb.from('payout_reconciliations').insert({
@@ -229,7 +255,7 @@ export async function POST(req: NextRequest) {
           payload:           { payout, plan },
         })
 
-        done.add(String(id))
+        done.set(String(id), { id: 0, bankLineId: plan.bankLineId })
         results.push({ payoutId: id, ok: true, odMoveId })
       } catch (e: any) {
         // Jamais la pile Odoo dans l'écran : seulement la phrase utile.
