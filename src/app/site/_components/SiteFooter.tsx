@@ -42,6 +42,7 @@ export default function SiteFooter() {
               <li><Link href="/site/contact">Contact</Link></li>
               <li><Link href="/site/mentions-legales">Mentions légales</Link></li>
               <li><Link href="/site/confidentialite">Politique de confidentialité</Link></li>
+              <li><Link href="/site/tarifs">Tarifs officiels</Link></li>
               <li><Link href="/site/vente">Conditions de vente</Link></li>
             </ul>
           </div>

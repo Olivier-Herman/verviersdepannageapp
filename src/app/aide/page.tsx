@@ -36,6 +36,23 @@ export default async function AidePage() {
     guides.push({ id: 'fourriere-facturation', title: '🚓 Fourrière & 🧾 Facturation', file: '/aide/fourriere-facturation.html', description: 'Inventaire parc, transferts, restitution, devis, encaissement bureau' })
   }
 
+  // Grilles tarifaires officielles : ce ne sont pas des modes d'emploi mais des
+  // documents qu'on sort devant un client qui conteste un montant. Tout le monde
+  // y a droit — un chauffeur se fait demander le prix au bord de la route aussi
+  // souvent que le bureau au telephone. Olivier 2026-08-21.
+  guides.push({
+    id: 'tarifs-saisies',
+    title: '⚖️ Tarifs saisies judiciaires',
+    file: '/docs/tarifs-saisies-judiciaires-2026.pdf',
+    description: 'Circulaire 131/13 du 16/01/2026 — enlevement, km, gardiennage, frais de dossier',
+  })
+  guides.push({
+    id: 'tarifs-siabis',
+    title: '🛣️ Tarifs SIABIS+',
+    file: '/docs/tarifs-siabis-2026.pdf',
+    description: 'Reseau structurant wallon — depannage, balisage, supplements, gardiennage',
+  })
+
   return <AideClient
     guides={guides}
     userName={user.name || ''}

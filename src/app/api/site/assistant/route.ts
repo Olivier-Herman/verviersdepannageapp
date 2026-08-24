@@ -114,7 +114,9 @@ ${TARIF_FOURRIERE.map(l => `- ${l.poste} — ${l.base} : ${l.htva} HTVA (${l.tva
 Exemple : enlèvement à moins de 15 km + 12 jours de parc pendant la saisie = 94,06 + (12 × 1,56) + 37,67 = 150,45 € HTVA, soit 182,04 € TVAC.
 POINT IMPORTANT : le gardiennage est à 1,56 €/jour TANT QUE LA SAISIE COURT. Dès la levée de saisie, s'il reste chez nous, il passe à 20 € HTVA par jour. Signale-le, ça change tout pour le propriétaire.
 Cyclomoteur ou moto : gardiennage 0,80 € HTVA par jour pendant la saisie.
-Un enlèvement de nuit, un week-end ou un jour férié peut faire l'objet d'une majoration.
+Tarif de jour = lundi à vendredi 8h-20h hors fériés. Tarif de nuit/week-end = 20h-8h, samedis, dimanches et fériés : +50 % sur l'enlèvement (170,74 € TVAC au lieu de 113,81 € pour une voiture).
+Notre parc est un emplacement EXTÉRIEUR : 1,89 € TVAC par jour pour une voiture. Un emplacement intérieur ou couvert serait à 3,80 €, ça ne nous concerne pas.
+La grille complète (poids lourds, suppléments kilométriques) est publiée sur la page « Tarifs officiels » du site et téléchargeable en PDF.
 Sans clés : possible, mais à signaler, ça change l'organisation.
 
 VÉHICULE ENLEVÉ POUR STATIONNEMENT GÊNANT (MAL GARÉE)
@@ -131,6 +133,9 @@ Point d'appui à Francorchamps. Véhicules de sport et de collection : plateau b
 
 PROFESSIONNELS
 Garages, carrossiers, concessions, loueurs : transport de véhicules roulants et non roulants à l'unité ou en série, dépôt-reprise chez le client final, véhicules accidentés ou sans clés, gardiennage en parc fermé, interventions planifiées avec créneau confirmé.
+
+SIABIS+ — RÉSEAU STRUCTURANT WALLON (AUTOROUTES)
+Sur le réseau structurant wallon, les interventions relèvent du régime SIABIS+, à tarif réglementé lui aussi. Tarif standard du lundi au vendredi de 7h à 19h, tarif majoré le reste du temps. Quelques repères TVAC : dépannage d'un véhicule en panne ou accidenté 196 € (294 € en majoré) ; balisage 181,50 € (212 €) ; remorque ou caravane 130 € (195 €) ; gardiennage 20 €/jour, tarif unique. S'ajoutent un supplément horaire par tranche de 15 minutes, un supplément kilométrique aller-retour, et des suppléments techniques (grue, absence de clés, absorbant…). La grille complète est sur la page « Tarifs officiels » du site et téléchargeable en PDF.
 
 VÉHICULES À VENDRE
 Vente au plus offrant ou à prix fixe selon le véhicule, en l'état et sans garantie, visibles sur rendez-vous. Les offres se déposent en ligne sur la page « Véhicules à vendre » ; elles sont confidentielles (on affiche le nombre d'offres, jamais les montants) et doivent être confirmées par e-mail pour compter. Nous ne sommes pas tenus d'attribuer si aucune offre n'atteint notre prix minimum. Un véhicule destiné à reprendre la route est livré avec contrôle technique de vente et Car-Pass ; un véhicule vendu pour pièces ne peut pas être réimmatriculé. Enlèvement sous sept jours après paiement, depuis nos dépôts, sans livraison.

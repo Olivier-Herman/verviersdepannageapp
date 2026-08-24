@@ -1,3 +1,4 @@
+import Link from 'next/link'
 import { TARIF_FOURRIERE, TARIF_MAL_GAREE } from '../_data'
 
 export const metadata = {
@@ -100,8 +101,13 @@ export default function Fourriere() {
               <strong> 20 € HTVA par jour</strong>. Venez le chercher rapidement, la différence est de taille.
             </div>
             <p style={{ fontSize: '.9rem', color: 'var(--muted)' }}>
-              Pour un cyclomoteur ou une moto, le gardiennage pendant la saisie est de 0,80 € HTVA par jour.
-              Un enlèvement de nuit, un week-end ou un jour férié peut faire l’objet d’une majoration.
+              Notre parc est un emplacement extérieur&nbsp;: c’est le tarif repris ci-dessus. Pour un
+              cyclomoteur ou une moto, le gardiennage pendant la saisie est de 0,80 € HTVA par jour.
+              Un enlèvement de nuit (20h – 8h), un week-end ou un jour férié relève du tarif majoré,
+              soit +50&nbsp;% sur l’enlèvement.
+            </p>
+            <p style={{ fontSize: '.95rem' }}>
+              <Link className="card-link" href="/site/tarifs">Voir la grille officielle complète →</Link>
             </p>
           </div>
 
