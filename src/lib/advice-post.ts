@@ -227,18 +227,78 @@ export async function postAdvicePlan(plan: AdvicePostingPlan): Promise<{ reconci
       odLineIds.push(od.lineId)
     }
 
-    await odooRpc('account.move.line', 'write', [[suspenseLineId], {
-      account_id: OUTSTANDING,
-      partner_id: plan.partnerId,
-      name: `Avis ${plan.payerLabel}${plan.adviceRef ? ` ${plan.adviceRef}` : ''}`
-          + ` — ${plan.invoiceIds.length} facture${plan.invoiceIds.length > 1 ? 's' : ''}`
-          + (plan.unallocated.length
-              ? ` + ${plan.unallocated.length} ligne${plan.unallocated.length > 1 ? 's' : ''} en attente d'affectation`
-              : ''),
-    }])
+    // ── Éclatement de la contrepartie ─────────────────────────
+    // Une ligne par DÉBITEUR, à son nom : un virement assureur règle les
+    // factures de plusieurs clients, et une contrepartie unique ne dit pas
+    // lesquelles. Même exigence que sur les terminaux (Olivier, 24/08/2026).
+    //
+    // ⚠️ Seul chemin accepté par Odoo 19 : brouillon → écriture unique sur la
+    // PIÈCE → revalidation. Cf. le commentaire détaillé dans paynovate-post.
+    const payRows = paymentIds.length
+      ? await odooRpc<any[]>('account.payment', 'read', [paymentIds], { fields: ['id', 'amount', 'partner_id'] })
+      : []
+    const payLineOf = new Map<number, number>()
+    if (outstanding.length) {
+      const rows = await odooRpc<any[]>('account.move.line', 'read', [outstanding.map(l => l.id)], { fields: ['id', 'payment_id'] })
+      for (const l of rows) {
+        const pid = Array.isArray(l.payment_id) ? Number(l.payment_id[0]) : Number(l.payment_id)
+        if (pid) payLineOf.set(pid, l.id)
+      }
+    }
+
+    const parts: { amount: number; partnerId: number | false; label: string; match: number | null }[] = [
+      ...payRows.map(pr => ({
+        amount:    r2(Number(pr.amount)),
+        partnerId: (Array.isArray(pr.partner_id) ? Number(pr.partner_id[0]) : false) as number | false,
+        label:     `${plan.payerLabel}${plan.adviceRef ? ` ${plan.adviceRef}` : ''} — ${Array.isArray(pr.partner_id) ? pr.partner_id[1] : ''}`,
+        match:     payLineOf.get(Number(pr.id)) ?? null,
+      })),
+      ...odLineIds.map((id, i) => ({
+        amount:    r2(Math.abs(plan.unallocated[i]?.amount ?? 0)),
+        partnerId: plan.partnerId as number | false,
+        label:     `Non affecté — ${plan.unallocated[i]?.ref ?? ''}`,
+        match:     id,
+      })),
+    ].filter(x => x.amount > 0.005)
+
+    const totalParts = r2(parts.reduce((s, x) => s + x.amount, 0))
+    if (!parts.length || Math.abs(totalParts - plan.amount) > 0.02) {
+      throw new Error(`Éclatement incohérent : ${totalParts.toFixed(2)} € répartis pour un virement de ${plan.amount.toFixed(2)} €`)
+    }
+
+    await odooRpc('account.move', 'button_draft', [[bankMoveId]])
+    try {
+      await odooRpc('account.move', 'write', [[bankMoveId], {
+        line_ids: [
+          [1, suspenseLineId, {
+            account_id: OUTSTANDING, partner_id: parts[0].partnerId, name: parts[0].label,
+            debit: 0, credit: parts[0].amount, amount_currency: -parts[0].amount,
+          }],
+          ...parts.slice(1).map(x => [0, 0, {
+            account_id: OUTSTANDING, partner_id: x.partnerId, name: x.label,
+            debit: 0, credit: x.amount, amount_currency: -x.amount,
+          }]),
+        ],
+      }])
+    } finally {
+      await odooRpc('account.move', 'action_post', [[bankMoveId]])
+    }
     moved = true
 
-    await odooRpc('account.move.line', 'reconcile', [[suspenseLineId, ...outstanding.map(l => l.id), ...odLineIds]])
+    // Lettrage UN À UN : chaque ligne d'extrait avec le paiement qu'elle solde.
+    // En bloc, Odoo croise les rapprochements et n'affiche plus la contrepartie.
+    const fresh = await odooRpc<any[]>('account.move.line', 'search_read', [[
+      ['move_id', '=', bankMoveId], ['account_id', '=', OUTSTANDING],
+    ]], { fields: ['id'], order: 'id', limit: 200 })
+    const used = new Set<number>()
+    for (let i = 0; i < fresh.length && i < parts.length; i++) {
+      const m = parts[i].match
+      if (!m) continue
+      await odooRpc('account.move.line', 'reconcile', [[fresh[i].id, m]])
+      used.add(fresh[i].id); used.add(m)
+    }
+    const rest = [...fresh.map(l => l.id), ...outstanding.map(l => l.id), ...odLineIds].filter(id => !used.has(id))
+    if (rest.length > 1) await odooRpc('account.move.line', 'reconcile', [rest])
 
     // Le détail et l'avis d'origine, là où on les cherche : sur le paiement.
     // Hors du bloc critique — si ça échoue, le lettrage reste bon.
@@ -262,11 +322,25 @@ export async function postAdvicePlan(plan: AdvicePostingPlan): Promise<{ reconci
   } catch (e: any) {
     if (moved) {
       try {
-        await odooRpc('account.move.line', 'write', [[suspenseLineId], {
-          account_id: SUSPENSE,
-          partner_id: originalPartner,
-          name:       false,
-        }])
+        // On restitue la contrepartie d'origine : une seule ligne, en compte
+        // d'attente, au montant du virement.
+        const now = await odooRpc<any[]>('account.move.line', 'search_read', [[
+          ['move_id', '=', bankMoveId], ['account_id', 'in', [OUTSTANDING, SUSPENSE]],
+        ]], { fields: ['id'], order: 'id', limit: 200 })
+        await odooRpc('account.move', 'button_draft', [[bankMoveId]])
+        try {
+          await odooRpc('account.move', 'write', [[bankMoveId], {
+            line_ids: [
+              [1, now[0]?.id ?? suspenseLineId, {
+                account_id: SUSPENSE, partner_id: originalPartner, name: false,
+                debit: 0, credit: plan.amount, amount_currency: -plan.amount,
+              }],
+              ...now.slice(1).map(l => [2, l.id, false]),
+            ],
+          }])
+        } finally {
+          await odooRpc('account.move', 'action_post', [[bankMoveId]])
+        }
       } catch { /* on remonte l'erreur d'origine */ }
     }
     // Les paiements créés partent avec le reste : sinon les factures restent
