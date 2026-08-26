@@ -33,11 +33,18 @@ export async function GET(req: Request) {
   }
 
   try {
-    const { loginVab, listVabMissions } = await import('@/lib/vab/scraper')
-    const { missions } = await listVabMissions(await loginVab())
-    const ouverts = [...new Set((missions as any[])
+    const { loginVab, listVabMissions, vabTaskTypes, estVehiculeRemplacementVab } = await import('@/lib/vab/scraper')
+    const session = await loginVab()
+    const { missions } = await listVabMissions(session)
+    const tous = [...new Set((missions as any[])
       .map(m => String(m.detailHref || '').replace(/.*AssignmentId=/, '').trim())
       .filter(Boolean))]
+    // Les livraisons de véhicule de remplacement se clôturent à la main : elles
+    // ne sont pas des ratés du filet, et les compter comme tels ferait crier
+    // l'alerte tous les matins pour rien.
+    const types = await vabTaskTypes(session).catch(() => ({} as Record<string, string>))
+    const vr = tous.filter(a => estVehiculeRemplacementVab(types[a]))
+    const ouverts = tous.filter(a => !vr.includes(a))
 
     const sb = createAdminClient()
 
@@ -57,7 +64,7 @@ export async function GET(req: Request) {
     const couverts  = new Set(((fiches || []) as any[]).flatMap(f => f.vab_assignment_ids || []))
     const àRegarder = ouverts.filter(aid => !aClôturer.some(f => (f.vab_assignment_ids || []).includes(aid)))
 
-    if (!aClôturer.length && !àRegarder.length) {
+    if (!aClôturer.length && !àRegarder.length && !vr.length) {
       return NextResponse.json({ ok: true, ouverts: ouverts.length, rien: true })
     }
 
@@ -65,6 +72,7 @@ export async function GET(req: Request) {
     const corps = [
       aClôturer.length ? `${aClôturer.length} clôture(s) que le filet n'arrive pas à passer : ${plaques}` : '',
       àRegarder.length ? `${àRegarder.length} dossier(s) sans fiche terminée en face (à accepter, refuser ou vérifier) : ${àRegarder.join(', ')}` : '',
+      vr.length ? `${vr.length} véhicule(s) de remplacement à clôturer À LA MAIN (infos conducteur)` : '',
     ].filter(Boolean).join(' · ')
 
     const { sendNotificationToRoles } = await import('@/lib/notifications/send')
@@ -78,7 +86,7 @@ export async function GET(req: Request) {
     return NextResponse.json({
       ok: true, ouverts: ouverts.length,
       aClôturer: aClôturer.map(f => ({ plaque: f.vehicle_plate, statut: f.status })),
-      àRegarder, notifiés: envoi.sent, couverts: couverts.size,
+      àRegarder, vr, notifiés: envoi.sent, couverts: couverts.size,
     })
   } catch (e: any) {
     console.error('[cron vab-open-alert]', e?.message)

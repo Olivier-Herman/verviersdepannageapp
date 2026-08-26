@@ -562,6 +562,45 @@ export interface VabMissionDetail {
  * champs utilisables pour creer une mission dans incoming_missions sans
  * passer par l'email.
  */
+/**
+ * TYPE DE TÂCHE par AssignmentId, lu dans la colonne « Type de tâche » de la
+ * liste. `listVabMissions` existe déjà, mais son mapping de colonnes est décalé
+ * sur ce champ ; plutôt que de le refondre — il fait tourner l'import — on relit
+ * ici la seule colonne dont la clôture a besoin.
+ */
+export async function vabTaskTypes(session: SessionCookies): Promise<Record<string, string>> {
+  const res = await fetch(`${VAB_BASE}/Comet/Home.aspx`, {
+    headers: { 'User-Agent': REAL_UA, Cookie: session.cookieHeader, 'Cache-Control': 'no-store' },
+  })
+  const html = await res.text()
+  const out: Record<string, string> = {}
+  for (const m of html.matchAll(/<tr[^>]*>([\s\S]*?)<\/tr>/gi)) {
+    const aid = (m[1].match(/AssignmentId=(\d+)/) || [])[1]
+    if (!aid) continue
+    const cells = [...m[1].matchAll(/<t[dh][^>]*>([\s\S]*?)<\/t[dh]>/gi)].map(c =>
+      c[1].replace(/<script[\s\S]*?<\/script>/gi, '').replace(/<[^>]+>/g, ' ')
+          .replace(/&nbsp;/g, ' ').replace(/&#233;/g, 'é').replace(/&#232;/g, 'è')
+          .replace(/\s+/g, ' ').trim())
+    if (cells.length >= 3) out[aid] = cells[2] || ''
+  }
+  return out
+}
+
+/**
+ * LIVRAISON DE VÉHICULE DE REMPLACEMENT — à NE PAS clôturer automatiquement.
+ *
+ * « Il ne faut pas traiter la clôture de ces missions car il y a des infos du
+ * conducteur à entrer » (Olivier 2026-08-26) : permis, identité, état du
+ * véhicule prêté. Personne d'autre que l'humain qui a fait la remise ne les a.
+ *
+ * C'est aussi ce qui explique leur échec « écran on-site non trouvé » : une
+ * livraison de VR n'a pas d'écran de panne, on cherchait un formulaire qui
+ * n'existe pas pour elle.
+ */
+export function estVehiculeRemplacementVab(typeDeTache: string | null | undefined): boolean {
+  return /remplacement|vervangwagen|replacement/i.test(String(typeDeTache || ''))
+}
+
 export async function fetchVabMissionDetail(
   session:    SessionCookies,
   detailHref: string,

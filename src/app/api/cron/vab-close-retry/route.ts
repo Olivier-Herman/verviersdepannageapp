@@ -38,12 +38,21 @@ export async function GET(req: Request) {
   }
 
   try {
-    const { loginVab, listVabMissions } = await import('@/lib/vab/scraper')
-    const { missions } = await listVabMissions(await loginVab())
-    const ouverts = (missions as any[])
+    const { loginVab, listVabMissions, vabTaskTypes, estVehiculeRemplacementVab } = await import('@/lib/vab/scraper')
+    const session = await loginVab()
+    const { missions } = await listVabMissions(session)
+    const tous = (missions as any[])
       .map(m => String(m.detailHref || '').replace(/.*AssignmentId=/, '').trim())
       .filter(Boolean)
-    if (ouverts.length === 0) return NextResponse.json({ ok: true, ouverts: 0 })
+
+    // Les livraisons de véhicule de remplacement demandent les informations du
+    // conducteur : elles se clôturent à la main (Olivier 2026-08-26). Les laisser
+    // dans la file leur ferait consommer un créneau sur deux pour rien, et la
+    // rotation les ramènerait indéfiniment.
+    const types = await vabTaskTypes(session).catch(() => ({} as Record<string, string>))
+    const vr = tous.filter(a => estVehiculeRemplacementVab(types[a]))
+    const ouverts = tous.filter(a => !vr.includes(a))
+    if (ouverts.length === 0) return NextResponse.json({ ok: true, ouverts: 0, vrIgnorés: vr.length })
 
     const sb = createAdminClient()
     const { data: fiches } = await sb.from('incoming_missions')
@@ -62,7 +71,7 @@ export async function GET(req: Request) {
     // OUVERT plutôt que de partir de travers.
     const candidats: any[] = (fiches || []) as any[]
     if (candidats.length === 0) {
-      return NextResponse.json({ ok: true, ouverts: ouverts.length, aTraiter: 0 })
+      return NextResponse.json({ ok: true, ouverts: ouverts.length, vrIgnorés: vr.length, aTraiter: 0 })
     }
 
     // ── ROTATION : UN DOSSIER BLOQUÉ NE DOIT PAS AFFAMER LES AUTRES ──────────
@@ -105,7 +114,7 @@ export async function GET(req: Request) {
     const soldés = résultats.filter(r => r.abouti).length
     console.log(`[cron vab-close-retry] ${résultats.length} traité(s), ${soldés} soldé(s) · reste ${candidats.length - résultats.length}`)
     return NextResponse.json({
-      ok: true, ouverts: ouverts.length, aTraiter: candidats.length,
+      ok: true, ouverts: ouverts.length, vrIgnorés: vr.length, aTraiter: candidats.length,
       traités: résultats, soldés, reste: candidats.length - résultats.length,
     })
   } catch (e: any) {

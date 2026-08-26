@@ -162,6 +162,23 @@ export async function runVabTowClose(input: VabTowCloseInput): Promise<void> {
   const { data: m } = await sb.from('incoming_missions').select('vab_closed_at').eq('id', input.missionId).maybeSingle()
   if ((m as any)?.vab_closed_at) { await log('vab_close_skipped', 'VAB : déjà clôturée chez eux, on ne rejoue pas', { assignmentId }); return }
 
+  // ── LES VÉHICULES DE REMPLACEMENT NE SE CLÔTURENT PAS TOUT SEULS ──────────
+  // « Il ne faut pas traiter la clôture de ces missions car il y a des infos du
+  // conducteur à entrer » (Olivier 2026-08-26). Permis, identité, état du
+  // véhicule prêté : rien de tout ça n'est chez nous. On s'abstient AVANT
+  // d'ouvrir le navigateur — inutile de prendre le compte partagé pour rien.
+  try {
+    const { loginVab: lv, vabTaskTypes, estVehiculeRemplacementVab } = await import('@/lib/vab/scraper')
+    const types = await vabTaskTypes(await lv())
+    const type = types[assignmentId]
+    if (estVehiculeRemplacementVab(type)) {
+      await log('vab_close_skipped',
+        `VAB : « ${type} » — clôture laissée à l'humain (informations conducteur à encoder)`,
+        { assignmentId, taskType: type, vr: true })
+      return
+    }
+  } catch { /* type indisponible : on continue, le garde-fou n'est pas un péage */ }
+
   // Même compte partagé que le pilotage headless → même verrou.
   if (!(await acquireLock(input.missionId))) {
     await log('vab_close_skipped',
