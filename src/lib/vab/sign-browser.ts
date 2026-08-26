@@ -314,7 +314,31 @@ export async function vabCloseOnSiteBrowser(opts: {
             v && v.dispatchEvent(new Event('change', { bubbles: true }))
           })
           await new Promise(r => setTimeout(r, 500))
-          await clickByText(page, 'vérifier|verifier|check')
+          // ── LE BON « VÉRIFIER » ──────────────────────────────────────────
+          // VAB le dit lui-même quand on lui demande : « Chassis Number must be
+          // checked » (capté le 26/08 en lisant enfin son validateur). Le châssis
+          // ne doit pas seulement être REMPLI, il doit être VÉRIFIÉ par SON
+          // bouton — et la page en porte deux, identiques au mot près : celui du
+          // kilométrage et celui du châssis. On cliquait par le texte
+          // « Vérifier », donc toujours le premier du DOM : celui du
+          // kilométrage. Le châssis n'a jamais été vérifié une seule fois.
+          // Son bouton s'appelle `wtDummyButton_ChassisnumberInput`.
+          const vérifChâssis = await page.evaluate(() => {
+            // Deux noms selon le gabarit du dossier : `wtLink_CheckVin` sur la
+            // variante « 3 derniers chiffres », `wtDummyButton_ChassisnumberInput`
+            // sur celle qui demande le châssis complet.
+            const parId = [...document.querySelectorAll('a, button, input')]
+              .find(e => /wtLink_CheckVin|DummyButton_Chassisnumber/i.test((e as HTMLElement).id || ''))
+            if (parId) { (parId as HTMLElement).click(); return 'id' }
+            // Repli : le « Vérifier » voisin du champ châssis, pas celui du km.
+            const champ = document.querySelector('input[id*="wtLastDigitInputField"], input[id*="wtChassisNumberInput"]')
+            const zone = champ?.closest('div, td, tr, section')
+            const voisin = zone && [...zone.querySelectorAll('a, button')]
+              .find(e => /^\s*v[ée]rifier\s*$/i.test(e.textContent || ''))
+            if (voisin) { (voisin as HTMLElement).click(); return 'voisin' }
+            return ''
+          }).catch(() => '')
+          steps.push(vérifChâssis ? `vérifier châssis (${vérifChâssis})` : '⚠ bouton Vérifier châssis introuvable')
           await new Promise(r => setTimeout(r, 3000))
           // Popup « Non-concordance châssis » = IFRAME → cliquer « Oui » dedans
           // (bypass VIN inconnu). Sinon la modale masque le canvas → dessin bloqué.
@@ -473,6 +497,23 @@ export async function vabCloseOnSiteBrowser(opts: {
 
       await clickByText(page, 'fin lieu de la panne')
       await new Promise(r => setTimeout(r, 3500))
+      // ⚠️ CE QUE VAB REPROCHE, IL L'ÉCRIT. On a passé des jours à deviner quel
+      // champ bloquait « Fin lieu de la panne » alors que leur validateur affiche
+      // le motif à l'écran. On le lit — dans la page ET dans les iframes, la
+      // pop-up d'erreur en étant une. Olivier 2026-08-26.
+      const griefs: string[] = []
+      for (const fr of [page, ...page.frames()]) {
+        try {
+          const msgs = await (fr as any).evaluate(() => {
+            const out: string[] = []
+            document.querySelectorAll('[class*="Feedback_Message"], [class*="Validation"], [class*="alidation"], .ErrorMessage, [class*="error" i]')
+              .forEach((e: any) => { const t = (e.innerText || e.textContent || '').trim(); if (t && t.length < 200) out.push(t) })
+            return [...new Set(out)]
+          })
+          for (const m of msgs) if (!griefs.includes(m)) griefs.push(m)
+        } catch { /* frame détachée */ }
+      }
+      if (griefs.length) steps.push(`VAB refuse : ${griefs.slice(0, 4).join(' / ')}`)
       // Popup « kilométrage arrondi » éventuel → « Oui » (dans les frames).
       for (const fr of page.frames()) {
         try { await fr.evaluate(() => { const el = [...document.querySelectorAll('a,button')].find(e => /^oui$/i.test((e.textContent || '').trim())); if (el) (el as HTMLElement).click() }) } catch { /* frame */ }
