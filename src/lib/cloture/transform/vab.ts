@@ -179,6 +179,24 @@ export async function runVabTowClose(input: VabTowCloseInput): Promise<void> {
     }
   } catch { /* type indisponible : on continue, le garde-fou n'est pas un péage */ }
 
+  // ── UN DOSSIER JAMAIS ACCEPTÉ N'A PAS D'ÉCRAN À REMPLIR ───────────────────
+  // Sa page ne porte qu'un bouton « Accepter ». On y envoyait un Chromium qui
+  // cherchait 25 s un formulaire inexistant, puis repartait sur « écran on-site
+  // non trouvé » — quatre fois par heure, sans que personne comprenne pourquoi.
+  // On le dit maintenant en clair : c'est une acceptation qui manque, pas une
+  // clôture qui échoue. Accepter engage VD Soft vis-à-vis de VAB : c'est un
+  // geste humain, pas une reprise automatique.
+  try {
+    const { loginVab: lv2, vabEtatEcran } = await import('@/lib/vab/scraper')
+    const etat = await vabEtatEcran(await lv2(), assignmentId)
+    if (etat === 'a_accepter') {
+      await log('vab_close_skipped',
+        "VAB : dossier JAMAIS ACCEPTÉ chez eux — il n'a pas d'écran de clôture. À accepter (ou refuser) à la main dans Comet, la clôture suivra.",
+        { assignmentId, etat })
+      return
+    }
+  } catch { /* lecture indisponible : on tente quand même */ }
+
   // Même compte partagé que le pilotage headless → même verrou.
   if (!(await acquireLock(input.missionId))) {
     await log('vab_close_skipped',

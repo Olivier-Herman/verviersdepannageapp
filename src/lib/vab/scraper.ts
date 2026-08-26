@@ -601,6 +601,34 @@ export function estVehiculeRemplacementVab(typeDeTache: string | null | undefine
   return /remplacement|vervangwagen|replacement/i.test(String(typeDeTache || ''))
 }
 
+/**
+ * ÉTAT DE L'ÉCRAN d'un dossier, lu en HTTP avant d'ouvrir un navigateur.
+ *
+ *  - 'a_accepter' : le dossier n'a JAMAIS été accepté chez VAB. Sa page ne porte
+ *    qu'un bouton « Accepter » — il n'y a pas d'écran sur place, donc rien à
+ *    clôturer. C'est la vraie cause des échecs « écran on-site non trouvé » qui
+ *    revenaient en boucle (2KBB116, 1SXV639 le 26/08).
+ *  - 'sur_place' : l'écran de saisie (kilométrage / châssis / signature) est là.
+ *  - 'codes'     : on est déjà à l'écran des codes.
+ *  - 'inconnu'   : la page ne ressemble à rien de connu — on laisse tenter.
+ */
+export async function vabEtatEcran(
+  session: SessionCookies,
+  assignmentId: string,
+): Promise<'a_accepter' | 'sur_place' | 'codes' | 'inconnu'> {
+  try {
+    const html = await (await fetch(
+      `${VAB_BASE}/Comet/BreakdownAssignments_Details.aspx?AssignmentId=${assignmentId}`,
+      { headers: { 'User-Agent': REAL_UA, Cookie: session.cookieHeader, 'Cache-Control': 'no-store' } },
+    )).text()
+    const options = ((html.match(/SolutionCodeLevel1[\s\S]{0,4000}?<\/select>/) || [''])[0].match(/<option/g) || []).length
+    if (options > 1) return 'codes'
+    if (/wtInput_MileageCheck|wtChassisNumberInput|wtLastDigitInputField/.test(html)) return 'sur_place'
+    if (/id="[^"]*Accept[^"]*"|>\s*Accepter\s*</i.test(html)) return 'a_accepter'
+    return 'inconnu'
+  } catch { return 'inconnu' }
+}
+
 export async function fetchVabMissionDetail(
   session:    SessionCookies,
   detailHref: string,

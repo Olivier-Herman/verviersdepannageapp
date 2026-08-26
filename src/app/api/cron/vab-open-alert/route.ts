@@ -60,11 +60,20 @@ export async function GET(req: Request) {
           .overlaps('vab_assignment_ids', ouverts)
       : { data: [] as any[] }
 
-    const aClôturer = ((fiches || []) as any[]).filter(f => TERMINÉES.includes(f.status))
+    // Un dossier jamais accepté n'a pas d'écran de clôture : le filet ne peut
+    // rien pour lui, il faut l'accepter (ou le refuser) à la main. Le ranger
+    // avec les échecs ferait chercher un bug là où il n'y en a pas.
+    const { vabEtatEcran } = await import('@/lib/vab/scraper')
+    const états: Record<string, string> = {}
+    for (const a of ouverts) états[a] = await vabEtatEcran(session, a).catch(() => 'inconnu')
+    const àAccepter = ouverts.filter(a => états[a] === 'a_accepter')
+
+    const aClôturer = ((fiches || []) as any[]).filter(f =>
+      TERMINÉES.includes(f.status) && !(f.vab_assignment_ids || []).some((a: string) => àAccepter.includes(a)))
     const couverts  = new Set(((fiches || []) as any[]).flatMap(f => f.vab_assignment_ids || []))
     const àRegarder = ouverts.filter(aid => !aClôturer.some(f => (f.vab_assignment_ids || []).includes(aid)))
 
-    if (!aClôturer.length && !àRegarder.length && !vr.length) {
+    if (!aClôturer.length && !àRegarder.length && !vr.length && !àAccepter.length) {
       return NextResponse.json({ ok: true, ouverts: ouverts.length, rien: true })
     }
 
@@ -72,6 +81,7 @@ export async function GET(req: Request) {
     const corps = [
       aClôturer.length ? `${aClôturer.length} clôture(s) que le filet n'arrive pas à passer : ${plaques}` : '',
       àRegarder.length ? `${àRegarder.length} dossier(s) sans fiche terminée en face (à accepter, refuser ou vérifier) : ${àRegarder.join(', ')}` : '',
+      àAccepter.length ? `${àAccepter.length} dossier(s) JAMAIS ACCEPTÉ(S) chez VAB — à accepter ou refuser dans Comet : ${àAccepter.join(', ')}` : '',
       vr.length ? `${vr.length} véhicule(s) de remplacement à clôturer À LA MAIN (infos conducteur)` : '',
     ].filter(Boolean).join(' · ')
 
@@ -86,7 +96,7 @@ export async function GET(req: Request) {
     return NextResponse.json({
       ok: true, ouverts: ouverts.length,
       aClôturer: aClôturer.map(f => ({ plaque: f.vehicle_plate, statut: f.status })),
-      àRegarder, vr, notifiés: envoi.sent, couverts: couverts.size,
+      àRegarder, vr, àAccepter, notifiés: envoi.sent, couverts: couverts.size,
     })
   } catch (e: any) {
     console.error('[cron vab-open-alert]', e?.message)
