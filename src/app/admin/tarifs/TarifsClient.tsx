@@ -99,6 +99,19 @@ const MISSION_TYPES = ['remorquage', 'depannage', 'relivraison', 'transport', 't
 
 const TYPE_LABELS: Record<string, string> = {
   remorquage: '🚛 Remorquage', depannage: '🔧 Dépannage', relivraison: '🔁 Relivraison', transport: '🚐 Transport (rapatriement)', trajet_vide: '📍 Trajet vide', parc: '🅿️ Mise en parc',
+  // Source Gardiennage : le véhicule entre au parc sans intervention facturée.
+  // Le « type » ne désigne plus un déplacement mais le régime de gardiennage
+  // appliqué (Olivier 2026-08-26).
+  assistance: '🛟 Gardiennage Assistance', saisie: '⚖️ Gardiennage Saisie', siabis: '🛣️ Gardiennage Siabis', autre: '📦 Autre',
+}
+
+// Types d'intervention propres à la source Gardiennage (pas de REM/DSP : rien
+// n'est remorqué, seule la grille de gardiennage change).
+const GARDIENNAGE_TYPES = ['assistance', 'saisie', 'siabis', 'autre']
+
+/** Liste des types proposés pour une source donnée. */
+function typesForSource(src: string): string[] {
+  return (src || '').toLowerCase() === 'gardiennage' ? GARDIENNAGE_TYPES : MISSION_TYPES
 }
 
 export default function TarifsClient(props: Props) {
@@ -769,7 +782,7 @@ export default function TarifsClient(props: Props) {
                         />
                         <div className="flex-1 grid grid-cols-2 lg:grid-cols-4 gap-2 text-sm">
                           <FieldSelect label="Source" value={item.source} options={sortedSources.map(s => s.source)} optionLabels={SOURCE_LABELS} onChange={v => updateField(idx, 'source', v)} />
-                          <FieldSelect label="Type" value={item.mission_type} options={MISSION_TYPES} onChange={v => updateField(idx, 'mission_type', v)} />
+                          <FieldSelect label="Type" value={item.mission_type} options={typesForSource(item.source)} optionLabels={TYPE_LABELS} onChange={v => updateField(idx, 'mission_type', v)} />
                           <FieldNumber label="Forfait €" value={item.unit_price} onChange={v => updateField(idx, 'unit_price', v)} />
                           <FieldNumber label="Km inclus" value={item.km_inclus} onChange={v => updateField(idx, 'km_inclus', v)} />
                           <FieldNumber label="€/km extra" value={item.km_price} onChange={v => updateField(idx, 'km_price', v)} />
@@ -836,8 +849,12 @@ export default function TarifsClient(props: Props) {
                 {editTariff.id ? '✏️ Modifier le tarif' : '➕ Nouveau tarif manuel'}
               </h2>
               <div className="grid grid-cols-2 gap-3">
-                <FieldSelect label="Source" value={editTariff.source || ''} options={sortedSources.map(s => s.source)} optionLabels={SOURCE_LABELS} onChange={v => setEditTariff(p => ({ ...p!, source: v }))} />
-                <FieldSelect label="Type mission" value={editTariff.mission_type || ''} options={MISSION_TYPES} onChange={v => setEditTariff(p => ({ ...p!, mission_type: v }))} />
+                <FieldSelect label="Source" value={editTariff.source || ''} options={sortedSources.map(s => s.source)} optionLabels={SOURCE_LABELS} onChange={v => setEditTariff(p => {
+                  const allowed = typesForSource(v)
+                  const type = allowed.includes(p!.mission_type || '') ? p!.mission_type : allowed[0]
+                  return { ...p!, source: v, mission_type: type }
+                })} />
+                <FieldSelect label="Type mission" value={editTariff.mission_type || ''} options={typesForSource(editTariff.source || '')} optionLabels={TYPE_LABELS} onChange={v => setEditTariff(p => ({ ...p!, mission_type: v }))} />
 
                 {/* Toggle pricing mode : forfait vs brackets vs lines */}
                 <div className="col-span-2 bg-info/5 border border-info/30 rounded p-2">
@@ -1361,6 +1378,13 @@ export default function TarifsClient(props: Props) {
     setExtractedItems(prev => {
       const next = [...prev]
       ;(next[idx] as any)[field] = value
+      // Changer la source peut rendre le type courant impossible (Gardiennage
+      // n'a ni REM ni DSP) : on retombe sur le premier type de la nouvelle
+      // source plutôt que de laisser un couple source/type incohérent.
+      if (field === 'source') {
+        const allowed = typesForSource(value)
+        if (!allowed.includes(next[idx].mission_type)) next[idx].mission_type = allowed[0]
+      }
       return next
     })
   }
@@ -1400,7 +1424,10 @@ function FieldSelect({ label, value, options, onChange, optionLabels }: { label:
     <div>
       <label className="text-[10px] text-ink-faint uppercase tracking-wider">{label}</label>
       <select value={value} onChange={e => onChange(e.target.value)} className="w-full px-2 py-1 bg-surface-hover rounded text-sm">
-        {options.map(o => <option key={o} value={o}>{optionLabels?.[o] || o}</option>)}
+        {/* Si la valeur courante n'est pas dans la liste (ancien tarif, source
+            changee), on l'affiche quand meme : sinon le select montre autre
+            chose que ce qui sera enregistre. */}
+        {(options.includes(value) || !value ? options : [value, ...options]).map(o => <option key={o} value={o}>{optionLabels?.[o] || o}</option>)}
       </select>
     </div>
   )

@@ -53,6 +53,12 @@ export const TYPE_VARIANTS: Record<string, string[]> = {
 
 /** Label court par defaut (REM, DSP, Transport, TVD). */
 export const TYPE_LABEL_SHORT: Record<string, string> = {
+  // Source Gardiennage : le type designe le regime de gardiennage applique
+  // (grille /admin/tarifs), pas un deplacement. Olivier 2026-08-26.
+  assistance:             'Assistance',
+  saisie:                 'Saisie',
+  siabis:                 'Siabis',
+  autre:                  'Autre',
   remorquage:             'REM',
   depannage:              'DSP',
   reparation_place:       'DSP', // alias
@@ -64,6 +70,10 @@ export const TYPE_LABEL_SHORT: Record<string, string> = {
 
 /** Label long avec emoji pour notif / affichage detaille. */
 export const TYPE_LABEL_LONG: Record<string, string> = {
+  assistance:             '🛟 Gardiennage Assistance',
+  saisie:                 '⚖️ Gardiennage Saisie',
+  siabis:                 '🛣️ Gardiennage Siabis',
+  autre:                  '📦 Autre',
   remorquage:             '🚛 Remorquage',
   depannage:              '🔧 Dépannage',
   reparation_place:       '🔧 Dépannage', // alias

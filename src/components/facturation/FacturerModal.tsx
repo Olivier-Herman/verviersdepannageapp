@@ -113,6 +113,20 @@ const MISSION_TYPE_LABELS: Record<string, string> = {
   transport:        'Transport',
   autre:            'Autre',
 }
+
+// Source Gardiennage : le type ne décrit pas un déplacement mais le régime de
+// gardiennage appliqué (grille /admin/tarifs). Olivier 2026-08-26.
+const GARDIENNAGE_TYPE_LABELS: Record<string, string> = {
+  assistance: 'Assistance — 3 premiers jours inclus',
+  saisie:     'Saisie — tarif parquet',
+  siabis:     'Siabis — 20 € TVAC/jour',
+  autre:      'Autre — gardiennage standard',
+}
+
+/** Types proposés pour une source donnée. */
+function typeLabelsForSource(src: string): Record<string, string> {
+  return (src || '').toLowerCase() === 'gardiennage' ? GARDIENNAGE_TYPE_LABELS : MISSION_TYPE_LABELS
+}
 function fmtSource(s: string | null): string {
   if (!s) return '—'
   return SOURCE_LABEL[s.toLowerCase()] || s
@@ -1365,7 +1379,11 @@ export default function FacturerModal({
                     <label className="block text-ink-muted text-xs mb-1">Source</label>
                     <select
                       value={edit.source}
-                      onChange={e => setEdit(s => ({ ...s, source: e.target.value }))}
+                      onChange={e => setEdit(s => {
+                        const src = e.target.value
+                        const allowed = Object.keys(typeLabelsForSource(src))
+                        return { ...s, source: src, mission_type: allowed.includes((s.mission_type || '').toLowerCase()) ? s.mission_type : '' }
+                      })}
                       className="w-full bg-surface-2 border rounded-xl px-3 py-2 text-ink text-sm focus:outline-none focus:border-brand"
                     >
                       <option value="">— Choisir une source —</option>
@@ -1375,12 +1393,14 @@ export default function FacturerModal({
                   <div>
                     <label className="block text-ink-muted text-xs mb-1">Type d&apos;intervention</label>
                     <select
-                      value={edit.mission_type}
+                      // Les fiches stockent le type en casse libre ('REM',
+                      // 'Assistance'…) : on compare en minuscules aux clés.
+                      value={(edit.mission_type || '').toLowerCase()}
                       onChange={e => setEdit(s => ({ ...s, mission_type: e.target.value }))}
                       className="w-full bg-surface-2 border rounded-xl px-3 py-2 text-ink text-sm focus:outline-none focus:border-brand"
                     >
                       <option value="">— Choisir un type —</option>
-                      {Object.entries(MISSION_TYPE_LABELS).map(([val, label]) => (
+                      {Object.entries(typeLabelsForSource(edit.source)).map(([val, label]) => (
                         <option key={val} value={val}>{label}</option>
                       ))}
                     </select>

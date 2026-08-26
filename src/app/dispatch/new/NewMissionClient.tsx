@@ -50,7 +50,15 @@ const MISSION_TYPES = [
   { value: 'REL',       label: '🚛 REL — Relivraison (depuis dépôt)' },
   { value: 'Transport', label: '🚐 Transport / Rapatriement' },
   { value: 'DPR',       label: '📍 DPR — Déplacement pour rien' },
+  // Source Gardiennage (Olivier 2026-08-26) : le véhicule entre au parc sans
+  // déplacement facturé. Le type ne décrit pas une intervention mais le régime
+  // de gardiennage appliqué — il pilote la grille /admin/tarifs.
+  { value: 'Assistance', label: '🛟 Assistance — gardiennage tarif police' },
+  { value: 'Saisie',     label: '⚖️ Saisie — gardiennage tarif parquet' },
+  { value: 'Siabis',     label: '🛣️ Siabis — gardiennage 20 € TVAC/jour' },
+  { value: 'Autre',      label: '📦 Autre — gardiennage standard' },
 ]
+const GARDIENNAGE_TYPES = ['Assistance', 'Saisie', 'Siabis', 'Autre']
 // VR (Vehicule de Remplacement) retire de partout (Olivier 2026-05-25 :
 // "VR ne servira jamais. On le retire de partout").
 
@@ -71,6 +79,10 @@ const SIABIS_SOURCES = new Set(['police_snc', 'sia_couvert'])
 
 function getAvailableMissionTypes(src: string) {
   const key = (src || '').toLowerCase()
+  // Gardiennage : aucun déplacement, uniquement le régime de gardiennage.
+  if (key === 'gardiennage') {
+    return MISSION_TYPES.filter(t => GARDIENNAGE_TYPES.includes(t.value))
+  }
   if (POLICE_PURE_SOURCES.has(key)) {
     return MISSION_TYPES.filter(t => ['REM', 'DPR'].includes(t.value))
   }
@@ -1097,6 +1109,12 @@ export default function NewMissionClient({
                       REM: 'Remorquage vers parc fourrière',
                       DPR: 'Déplacement pour rien — mission annulée par police',
                     },
+                    gardiennage: {
+                      Assistance: 'Tarif gardiennage police — les 3 premiers jours sont inclus',
+                      Saisie:     'Tarif gardiennage parquet — le jour d\'entrée n\'est pas compté',
+                      Siabis:     '20 € TVAC/jour — à partir du lendemain de l\'entrée en parc',
+                      Autre:      'Gardiennage standard — à partir du lendemain de l\'entrée en parc',
+                    },
                     default: {
                       DSP:       'Dépannage sur place — réparation directe au véhicule',
                       REM:       'Remorquage simple vers une destination',
@@ -1104,7 +1122,9 @@ export default function NewMissionClient({
                       DPR:       'Déplacement pour rien — intervention annulée',
                     },
                   }
+                  const isGardiennage = source === 'gardiennage'
                   const pickDesc = (t: string) =>
+                    (isGardiennage && desc.gardiennage[t]) ||
                     (isSnc && desc.snc[t]) ||
                     (isSc  && desc.sc[t]) ||
                     (isPoliceHere && desc.police[t]) ||
