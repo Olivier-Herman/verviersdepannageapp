@@ -238,6 +238,20 @@ function RollableTag({ rollable, onClick }: { rollable: boolean | null | undefin
 }
 
 const MISSION_TYPES = ['remorquage', 'depannage', 'transport', 'trajet_vide', 'reparation_place', 'relivraison', 'autre']
+// Source Gardiennage : le véhicule entre au parc sans déplacement. Le type ne
+// décrit donc pas une intervention mais le régime de gardiennage appliqué —
+// c'est lui qui pilote la grille /admin/tarifs. Olivier 2026-08-26.
+const GARDIENNAGE_TYPES = ['assistance', 'saisie', 'siabis', 'autre']
+const GARDIENNAGE_TYPE_LABELS: Record<string, string> = {
+  assistance: '🛟 Assistance — 3 premiers jours inclus',
+  saisie:     '⚖️ Saisie — tarif parquet',
+  siabis:     '🛣️ Siabis — 20 € TVAC/jour',
+  autre:      '📦 Autre — gardiennage standard',
+}
+/** Types proposés pour une source donnée. */
+function typesForSource(src: string | null): string[] {
+  return (src || '').toLowerCase() === 'gardiennage' ? GARDIENNAGE_TYPES : MISSION_TYPES
+}
 const FUEL_TYPES    = ['Autre', 'Diesel', 'Électrique', 'Essence', 'GPL', 'Hybride']
 const GEARBOX_TYPES = ['Automatique', 'Manuelle', 'Semi-automatique']
 
@@ -1130,8 +1144,8 @@ function Input({ value, onChange, placeholder, readOnly, title }: {
   )
 }
 
-function Select({ value, onChange, options }: {
-  value: string; onChange: (v: string) => void; options: string[]
+function Select({ value, onChange, options, optionLabels }: {
+  value: string; onChange: (v: string) => void; options: string[]; optionLabels?: Record<string, string>
 }) {
   return (
     <select
@@ -1140,7 +1154,10 @@ function Select({ value, onChange, options }: {
       className="w-full bg-surface border rounded-xl px-3 py-2.5 text-ink text-sm focus:outline-none focus:border-brand"
     >
       <option value="">— Sélectionner —</option>
-      {options.map(o => <option key={o} value={o}>{o}</option>)}
+      {/* Une valeur hors liste (ancien type, source changée) reste affichée :
+          sinon le select montre autre chose que ce qui est enregistré. */}
+      {(options.includes(value) || !value ? options : [value, ...options])
+        .map(o => <option key={o} value={o}>{optionLabels?.[o] || o}</option>)}
     </select>
   )
 }
@@ -2186,6 +2203,13 @@ export default function MissionDetailClient({
 
   const handleSourceChange = (newSource: string) => {
     const oldSource = form.source
+    // Le type courant peut ne plus exister pour la nouvelle source (Gardiennage
+    // n'a ni remorquage ni depannage) : on repart du premier type proposé
+    // plutôt que de garder un couple source/type sans grille tarifaire.
+    const allowedTypes = typesForSource(newSource)
+    const nextType = allowedTypes.includes((form.mission_type || '').toLowerCase())
+      ? form.mission_type
+      : allowedTypes[0]
     const goingToSnc   = newSource === 'police_snc'
     const leavingSnc   = oldSource === 'police_snc' && newSource !== 'police_snc'
 
@@ -2202,6 +2226,7 @@ export default function MissionDetailClient({
       setForm(prev => ({
         ...prev,
         source:         newSource,
+        mission_type:   nextType,
         client_name:    '',
         client_phone:   '',
         client_address: '',
@@ -2217,6 +2242,7 @@ export default function MissionDetailClient({
       setForm(prev => ({
         ...prev,
         source:         newSource,
+        mission_type:   nextType,
         client_name:    stashedClientInfo.client_name,
         client_phone:   stashedClientInfo.client_phone,
         client_address: stashedClientInfo.client_address,
@@ -2235,7 +2261,7 @@ export default function MissionDetailClient({
     }
 
     // Cas 3 : changement standard, on garde tout
-    setForm(prev => ({ ...prev, source: newSource }))
+    setForm(prev => ({ ...prev, source: newSource, mission_type: nextType }))
   }
 
   // Détecter lien IMA dans raw_content
@@ -3525,7 +3551,9 @@ export default function MissionDetailClient({
                         l incoherence. Auto-fill se fait dans onClick tuile. */}
                     {!(form.source === 'police_snc' || form.source === 'sia_couvert') && (
                       <Field label="Type de mission">
-                        <Select value={form.mission_type} onChange={f('mission_type')} options={MISSION_TYPES} />
+                        <Select value={form.mission_type} onChange={f('mission_type')}
+                          options={typesForSource(form.source)}
+                          optionLabels={(form.source || '').toLowerCase() === 'gardiennage' ? GARDIENNAGE_TYPE_LABELS : undefined} />
                       </Field>
                     )}
                     {(form.source === 'police_snc' || form.source === 'sia_couvert') && (
