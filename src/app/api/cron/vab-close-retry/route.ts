@@ -10,9 +10,10 @@
 // ouverts chez VAB. Tout ce qui y traîne alors que la mission est terminée chez
 // nous est repris. Nos propres compteurs ne servent qu'à ne pas rejouer.
 //
-// ⚠️ Un seul dossier par passage : le compte VAB est partagé et la séquence
-// pilote un Chromium. Le verrou de `runVabTowClose` refuse de toute façon un
-// second run — autant ne pas le provoquer.
+// ⚠️ Les dossiers sont traités UN PAR UN, jamais en parallèle : le compte VAB est
+// partagé et la séquence pilote un Chromium. Mais plusieurs peuvent passer dans
+// le MÊME appel, à la file, tant qu'il reste du temps — un seul par quart d'heure
+// mettait deux heures à rattraper huit dossiers (Olivier 2026-08-26).
 //
 // ⚠️ TOUS les dossiers, quel que soit le parcours du chauffeur (Olivier
 // 2026-08-16 : « tout ce que tu peux clôturer doit l'être »). Un dossier ouvert
@@ -79,21 +80,33 @@ export async function GET(req: Request) {
     const dernierEssai = new Map<string, string>()
     for (const l of (essais || []) as any[]) if (!dernierEssai.has(l.mission_id)) dernierEssai.set(l.mission_id, l.created_at)
     candidats.sort((a, b) => (dernierEssai.get(a.id) || '').localeCompare(dernierEssai.get(b.id) || ''))
-    const cible = candidats[0]
-    const { runVabTowClose } = await import('@/lib/cloture/transform/vab')
-    await runVabTowClose({
-      missionId:  cible.id,
-      externalId: cible.external_id,
-      actorId:    null,
-    })
 
-    const { data: après } = await sb.from('incoming_missions')
-      .select('vab_closed_at').eq('id', cible.id).maybeSingle()
-    const abouti = !!(après as any)?.vab_closed_at
-    console.log(`[cron vab-close-retry] ${cible.vehicle_plate} → ${abouti ? 'soldé' : 'échec'} · reste ${candidats.length - 1}`)
+    // ── PLUSIEURS DOSSIERS PAR PASSAGE, À LA FILE ────────────────────────────
+    // Une clôture prend 80 à 110 s. À un dossier par quart d'heure, huit dossiers
+    // en retard demandaient deux heures. On enchaîne donc tant qu'il reste de
+    // quoi en faire une de plus dans le budget de la fonction — jamais deux en
+    // même temps, le compte VAB est partagé.
+    const { runVabTowClose } = await import('@/lib/cloture/transform/vab')
+    const DÉBUT = Date.now()
+    const BUDGET_MS = (maxDuration - 45) * 1000   // marge pour la réponse HTTP
+    const DURÉE_TYPE_MS = 110_000                 // une clôture observée, majorée
+    const résultats: { plaque: string; abouti: boolean }[] = []
+
+    for (const cible of candidats) {
+      if (Date.now() - DÉBUT + DURÉE_TYPE_MS > BUDGET_MS) break
+      await runVabTowClose({ missionId: cible.id, externalId: cible.external_id, actorId: null })
+      const { data: après } = await sb.from('incoming_missions')
+        .select('vab_closed_at').eq('id', cible.id).maybeSingle()
+      const abouti = !!(après as any)?.vab_closed_at
+      résultats.push({ plaque: cible.vehicle_plate, abouti })
+      console.log(`[cron vab-close-retry] ${cible.vehicle_plate} → ${abouti ? 'soldé' : 'échec'}`)
+    }
+
+    const soldés = résultats.filter(r => r.abouti).length
+    console.log(`[cron vab-close-retry] ${résultats.length} traité(s), ${soldés} soldé(s) · reste ${candidats.length - résultats.length}`)
     return NextResponse.json({
       ok: true, ouverts: ouverts.length, aTraiter: candidats.length,
-      traité: cible.vehicle_plate, abouti, reste: candidats.length - 1,
+      traités: résultats, soldés, reste: candidats.length - résultats.length,
     })
   } catch (e: any) {
     console.error('[cron vab-close-retry]', e?.message)
