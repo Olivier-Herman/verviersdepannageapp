@@ -152,6 +152,8 @@ export default async function AdminPage() {
           <Card href="/admin/facturation-auto" icon={Receipt} label="Facturation automatique"
             desc="Active la facturation auto (brouillon Odoo) par source × DSP/REM, à la clôture + délai. Missions sèches, vrai tarif requis." />
         )}
+        <Card href="/admin/mail-agent" icon={Receipt} label="Agent Mail"
+          desc="Rejets de facture reçus par mail : l'agent lit, retrouve la facture dans Odoo, contrôle, et prépare note de crédit + refacturation à la bonne entité." />
       </Group>
 
       <Group title="Workflow & Communication">
