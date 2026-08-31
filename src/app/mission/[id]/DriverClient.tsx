@@ -2485,7 +2485,15 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
             // confirmer qu'il a chargé est un clic pour rien. La fiche revient
             // donc déjà chargée, avec ses deux vraies issues — arrivé à
             // destination, ou mise en parc.
-            api('load_vehicle')
+            //
+            // ⚠️ SANS RECHARGER LA PAGE. `api()` termine par un
+            // `window.location.href` : au bout d'un couloir, sur un téléphone,
+            // cette navigation complète fait disparaître la fiche des yeux du
+            // chauffeur le temps du rechargement — et s'il retape sur « Chargé
+            // sur camion » pendant ce temps, il tombait sur une erreur. Ici on
+            // met simplement la fiche à jour sur place. Cas 1BIL216, Fred, le
+            // 28/08 à 22h35 (Olivier 2026-08-31).
+            apiSilent('load_vehicle')
             return
           }
           setCloseType('dsp'); setScreen('close')

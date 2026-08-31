@@ -66,7 +66,14 @@ const ALLOWED: Record<string, string[]> = {
   // Olivier 2026-06-18 : update_address autorisé en livraison (REL). Le chauffeur
   // doit pouvoir corriger l'adresse de relivraison une fois en route (ex: client
   // change de garage). Avant : "Action 'update_address' non permise depuis 'delivering'".
-  delivering:  ['arrive_stop', 'depart_stop', 'complete_delivery', 'completed', 'park', 'update_address', 'update_stops', 'save_photos', 'change_type', 'mark_photo_category', 'set_amount_to_collect'],
+  // `load_vehicle` accepté depuis 'delivering' : le véhicule Y EST DÉJÀ. Le
+  // couloir déclenche le chargement tout seul après une transformation en
+  // remorquage, et le chauffeur qui retape sur « Chargé sur camion » — parce que
+  // l'écran n'a pas encore fini de se rafraîchir — recevait « Action non permise
+  // depuis delivering » en pleine nuit, sur une mission qu'il venait de faire.
+  // Redire une chose déjà vraie n'est pas une erreur : c'est sans effet.
+  // Cas 1BIL216, Fred, 28/08 22h35 (Olivier 2026-08-31).
+  delivering:  ['load_vehicle', 'arrive_stop', 'depart_stop', 'complete_delivery', 'completed', 'park', 'update_address', 'update_stops', 'save_photos', 'change_type', 'mark_photo_category', 'set_amount_to_collect'],
 }
 
 interface Stop {
