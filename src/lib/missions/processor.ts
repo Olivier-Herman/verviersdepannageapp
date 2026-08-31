@@ -45,9 +45,12 @@ async function fetchNewGraphToken(): Promise<string> {
   if (!res.ok) throw new Error(`Graph token: ${data.error_description || data.error}`)
 
   // Microsoft renvoie expires_in en secondes (typiquement 3599 = ~1h).
-  // Marge de sécurité -60s pour éviter les races de fin de validité.
+  // Marge portée de 60 s à 5 min le 2026-08-31 : 60 s ne couvre pas un cron
+  // lent qui prend son jeton au début et fait ses appels plusieurs minutes
+  // après. C'est exactement ce qui a tué la lecture des avis de paiement
+  // pendant une semaine, dans un autre module (cf lib/payment-advices.ts).
   const expiresInMs = ((data.expires_in as number) || 3600) * 1000
-  const expiresAt   = Date.now() + expiresInMs - 60_000
+  const expiresAt   = Date.now() + expiresInMs - 300_000
 
   tokenCache = { token: data.access_token, expiresAt }
   console.log(`[Graph] token refreshed, expires in ${Math.floor(expiresInMs / 1000)}s`)
@@ -69,10 +72,25 @@ export async function getGraphToken(): Promise<string> {
   return inFlightToken
 }
 
+/**
+ * Lecture Graph, avec REPRISE si le jeton a expiré en cours de route.
+ *
+ * POURQUOI : un jeton pris au début d'un cron et présenté plusieurs minutes
+ * plus tard peut être périmé. Sans reprise, l'erreur fait tomber TOUT le
+ * traitement — et en silence. C'est ce qui est arrivé à la lecture des avis de
+ * paiement, tombée du 24 au 31/08 sans que personne le voie. Ici l'enjeu est
+ * l'ARRIVÉE DES MISSIONS : on ne prend pas ce risque. Olivier 2026-08-31.
+ */
 async function graphGet(token: string, path: string): Promise<any> {
-  const res = await fetch(`https://graph.microsoft.com/v1.0${path}`, {
-    headers: { Authorization: `Bearer ${token}` }
+  const call = (t: string) => fetch(`https://graph.microsoft.com/v1.0${path}`, {
+    headers: { Authorization: `Bearer ${t}` },
+    cache:   'no-store',
   })
+  let res = await call(token)
+  if (res.status === 401) {
+    tokenCache = null                       // le jeton en cache est mort
+    res = await call(await getGraphToken()) // un neuf, et on rejoue
+  }
   if (!res.ok) {
     const err = await res.text()
     throw new Error(`Graph GET ${res.status} ${path}: ${err.slice(0, 200)}`)
@@ -81,14 +99,22 @@ async function graphGet(token: string, path: string): Promise<any> {
 }
 
 async function markAsRead(token: string, messageId: string): Promise<void> {
-  await fetch(
+  // Même reprise que graphGet : un marquage perdu, c'est un mail relu au
+  // passage suivant — donc une mission potentiellement créée en double.
+  const call = (t: string) => fetch(
     `https://graph.microsoft.com/v1.0/users/${MISSIONS_EMAIL}/messages/${messageId}`,
     {
       method:  'PATCH',
-      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-      body:    JSON.stringify({ isRead: true })
+      headers: { Authorization: `Bearer ${t}`, 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ isRead: true }),
+      cache:   'no-store',
     }
   )
+  const res = await call(token)
+  if (res.status === 401) {
+    tokenCache = null
+    await call(await getGraphToken())
+  }
 }
 
 // Statuts où le chauffeur est DÉJÀ engagé : on ne supprime pas la course, on la
