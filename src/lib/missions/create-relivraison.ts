@@ -37,7 +37,11 @@ export interface RelivraisonInput {
    * Le dispatcher choisit la source au moment de cliquer "Relivrer".
    */
   sourceOverride?: string | null
-  /** Montant HTVA imposé sur la REL (cas source Privé) → special_tarif_htva. */
+  /** Montant HTVA imposé sur la REL → `special_tarif_htva`, qui court-circuite
+   *  le calcul au moment du devis. Facultatif : vide = tarif calculé comme
+   *  d'habitude. Ouvert à toutes les sources depuis le 31/08/2026 (il était
+   *  réservé au Privé sans raison : un montant convenu se convient avec
+   *  n'importe quel donneur d'ordre). */
   imposedHtva?: number | null
 }
 

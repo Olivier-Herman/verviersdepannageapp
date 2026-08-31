@@ -57,6 +57,15 @@ export default function RelivraisonModalButton({
   const [sourceOverride, setSourceOverride] = useState('')
   // Instructions chauffeur (une par ligne) → pop-up à l'acceptation de la REL.
   const [driverComments, setDriverComments] = useState('')
+  // Tarif imposé sur la relivraison — facultatif. Vide = le calcul habituel
+  // s'applique (Olivier 2026-08-31). On stocke en HTVA ; le dispatcher peut
+  // saisir l'un ou l'autre, c'est TVAC qu'on annonce le plus souvent au client.
+  const [tarif, setTarif]   = useState('')
+  const [tarifTvac, setTarifTvac] = useState(false)
+  const tarifNum   = Number(String(tarif).replace(',', '.'))
+  const htvaImposé = tarif.trim() && tarifNum > 0
+    ? Math.round((tarifTvac ? tarifNum / 1.21 : tarifNum) * 100) / 100
+    : null
   const [sourcesList, setSourcesList] = useState<Array<{ key: string; label: string }>>([])
 
   // Charge la liste des assistances pour le sélecteur (sources actives, hors
@@ -122,13 +131,18 @@ export default function RelivraisonModalButton({
     // SIABIS : la REL ne peut pas rester SIABIS → l'assistance qui reprend est
     // obligatoire (la REM garde sa source, la REL est facturée à l'assistance).
     if (requiresSource && !sourceOverride) { setErr('Choisis l\'assistance qui reprend la relivraison.'); return }
+    if (tarif.trim() && !(Number(tarif.replace(',', '.')) > 0)) { setErr('Tarif invalide — laisse vide pour le calcul automatique.'); return }
     setBusy('relivrer'); setErr('')
     try {
       if (!(await saveAddress())) { setErr('Échec de l\'enregistrement de l\'adresse.'); return }
       const res = await fetch(`/api/missions/${missionId}/relivrer`, {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ source_override: sourceOverride || null, driver_comments: driverComments || undefined }),
+        body:    JSON.stringify({
+          source_override: sourceOverride || null,
+          driver_comments: driverComments || undefined,
+          imposed_htva:    htvaImposé,
+        }),
       })
       const j = await res.json().catch(() => ({}))
       if (!res.ok) { setErr(j.error || 'Création de la relivraison échouée.'); return }
@@ -218,6 +232,40 @@ export default function RelivraisonModalButton({
                 </p>
               </div>
             )}
+
+            {/* ── TARIF IMPOSÉ (facultatif) ──────────────────────────────────
+                « Pour que quand la fiche se crée, le montant soit déjà imposé.
+                Pas en obligatoire. Si pas défini, le calcul normal se fait »
+                (Olivier 2026-08-31). Le champ est stocké en HTVA — c'est ce que
+                lit la facturation — mais on annonce le plus souvent un TVAC au
+                client, donc on laisse choisir et on convertit. */}
+            <div>
+              <label className="block text-ink-secondary text-xs font-semibold mb-1.5">
+                💶 Tarif de la relivraison <span className="text-ink-faint font-normal">(optionnel — vide = calcul automatique)</span>
+              </label>
+              <div className="flex gap-2">
+                <input
+                  type="text" inputMode="decimal" value={tarif}
+                  onChange={e => setTarif(e.target.value)}
+                  placeholder="Ex : 125"
+                  className="flex-1 px-3 py-2.5 bg-surface border rounded-xl text-sm text-ink outline-none placeholder:text-ink-faint/50"
+                />
+                <div className="flex rounded-xl border overflow-hidden">
+                  {([false, true] as const).map(t => (
+                    <button key={String(t)} type="button" onClick={() => setTarifTvac(t)}
+                      className={`px-3 py-2.5 text-sm font-semibold ${tarifTvac === t ? 'bg-blue-600 text-white' : 'bg-surface text-ink-secondary'}`}>
+                      {t ? 'TVAC' : 'HTVA'}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              {htvaImposé != null && (
+                <p className="text-ink-faint text-xs mt-1">
+                  Enregistré : <b>{htvaImposé.toFixed(2)} € HTVA</b> — soit {(htvaImposé * 1.21).toFixed(2)} € TVAC.
+                  Ce montant remplace le calcul pour cette relivraison.
+                </p>
+              )}
+            </div>
 
             {/* Instructions chauffeur : s'afficheront en pop-up quand le chauffeur
                 acceptera la mission REL (une par ligne). Olivier 2026-07-10. */}

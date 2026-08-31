@@ -75,9 +75,12 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     parkLng:           parent.destination_lng ?? null,
     redeliveryAddress: redelivery,
     sourceOverride:    body.source_override || null,
-    // Privé → montant HTVA imposé sur la REL (tarif spécial). La fiche d'origine
-    // garde son tarif calculé.
-    imposedHtva:       body.source_override === 'prive' && Number(body.imposed_htva) > 0 ? Number(body.imposed_htva) : null,
+    // Tarif imposé sur la REL, quelle que soit la source (Olivier 2026-08-31 :
+    // « pas en obligatoire ; si pas défini, le calcul normal se fait »). Le
+    // garde-fou « uniquement si source = privé » n'avait pas lieu d'être : un
+    // montant convenu se convient avec n'importe quel donneur d'ordre. La fiche
+    // d'origine, elle, garde son tarif calculé.
+    imposedHtva:       Number(body.imposed_htva) > 0 ? Number(body.imposed_htva) : null,
   })
 
   if (!result.id) {
