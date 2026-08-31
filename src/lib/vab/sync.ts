@@ -41,8 +41,14 @@ function findTarget(html: string, re: RegExp): string | null {
   return t
 }
 
-// Tire un bouton (si présent) sur la page détail. Renvoie 'fired' | 'absent'.
-async function fireStep(cookie: string, url: string, step: VabStep): Promise<'fired' | 'absent'> {
+/** Le bouton de l'étape est-il ENCORE là ? Tant qu'il y est, rien n'a bougé. */
+async function boutonEncoreLa(cookie: string, url: string, step: VabStep): Promise<boolean> {
+  const html = await (await fetch(url, { headers: { 'User-Agent': UA, Cookie: cookie, 'Cache-Control': 'no-store' } })).text()
+  return !!findTarget(html, TARGET_RE[step])
+}
+
+// Tire un bouton (si présent) sur la page détail. Renvoie 'fired' | 'absent' | 'ignore'.
+async function fireStep(cookie: string, url: string, step: VabStep): Promise<'fired' | 'absent' | 'ignore'> {
   const html = await (await fetch(url, { headers: { 'User-Agent': UA, Cookie: cookie } })).text()
   const target = findTarget(html, TARGET_RE[step])
   if (!target) return 'absent'   // bouton pas là → étape déjà faite / pas encore possible
@@ -58,7 +64,18 @@ async function fireStep(cookie: string, url: string, step: VabStep): Promise<'fi
     body: body.toString(),
   })
   if (pr.status >= 400) throw new Error(`postback ${step} statut ${pr.status}`)
-  return 'fired'
+
+  // ── UN 200 N'EST PAS UNE PREUVE (Olivier 2026-08-31) ──────────────────────
+  // « En acceptant la mission dans VD Soft, tu es censé valider chez VAB. »
+  // C'est bien ce qu'on essayait de faire — et on écrivait « VAB Comet ↗ accepté »
+  // dans le journal — mais leur serveur répondait 200 sans rien changer. Trois
+  // fois de suite sur 2HTT471, et le dossier est resté « À accepter » quatre
+  // jours. Un journal qui affirme une chose fausse est pire que pas de journal :
+  // il empêche de chercher.
+  //
+  // On relit donc la page : tant que le bouton y est, l'étape n'est pas passée.
+  await new Promise(r => setTimeout(r, 1500))
+  return (await boutonEncoreLa(cookie, url, step)) ? 'ignore' : 'fired'
 }
 
 const ORDER: VabStep[] = ['accept', 'depart', 'arrive']
@@ -86,12 +103,19 @@ export async function syncVabStep(sb: any, missionId: string, upToStep: VabStep)
   }
 
   const fired: string[] = []
+  const ignorés: string[] = []
   let anyOk = false
   for (let i = 0; i <= upTo; i++) {
     const step = ORDER[i]
     try {
       const res = await fireStep(sess.cookieHeader, url, step)
       if (res === 'fired') { fired.push(LABEL[step]); anyOk = true }
+      else if (res === 'ignore') {
+        // Le postback part, VAB répond 200, et l'étape ne passe pas. On le dit,
+        // et on n'enchaîne pas : les suivantes en dépendent de toute façon.
+        ignorés.push(LABEL[step])
+        break
+      }
     } catch (e: any) {
       await sb.from('mission_logs').insert({ mission_id: missionId, action: 'vab_sync_error', notes: `VAB Comet ${LABEL[step]} : ${e?.message || e}`, metadata: { step, assignmentId: aid, auto: true } }).then(() => {}, () => {})
       break   // on n'enchaîne pas si une étape casse
@@ -101,6 +125,13 @@ export async function syncVabStep(sb: any, missionId: string, upToStep: VabStep)
     await sb.from('mission_logs').insert({
       mission_id: missionId, action: 'vab_synced',
       notes: `VAB Comet ↗ ${fired.join(' → ')} (auto)`, metadata: { steps: fired, upTo: upToStep, assignmentId: aid, auto: true },
+    }).then(() => {}, () => {})
+  }
+  if (ignorés.length) {
+    await sb.from('mission_logs').insert({
+      mission_id: missionId, action: 'vab_sync_error',
+      notes: `⚠️ VAB Comet : « ${ignorés.join(', ')} » envoyé mais NON PRIS EN COMPTE de leur côté — le dossier reste à cette étape chez eux.`,
+      metadata: { ignored: ignorés, upTo: upToStep, assignmentId: aid, auto: true },
     }).then(() => {}, () => {})
   }
   return anyOk
