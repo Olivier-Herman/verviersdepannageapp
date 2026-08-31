@@ -64,6 +64,12 @@ export async function loginInBrowser(page: Page): Promise<void> {
       try { userField = await page.$('input[id*="wtUserNameInput"]') } catch { /* nav en cours */ }
     }
   }
+  // ⚠️ NE PAS RETENTER LE REPLI PAR COOKIES — essayé et REFUSÉ le 2026-08-31.
+  // Injecter dans le navigateur les cookies de la session HTTP (qui, elle,
+  // passe très bien au même instant) ne suffit pas : VAB continue de servir son
+  // formulaire de login. Leur session navigateur ne se transporte pas. Le login
+  // natif reste donc le seul chemin — il est simplement INTERMITTENT, la course
+  // de redirections Home → NoPermission → Login n'aboutissant pas toujours.
   if (!userField) throw new Error('formulaire de login VAB introuvable (redirections)')
   // Stabiliser avant de taper (une nav peut encore se poser juste après l'apparition).
   await sleep(1500)
@@ -336,7 +342,20 @@ export async function vabCloseOnSiteBrowser(opts: {
     browser = await launchBrowser()
     const page = await browser.newPage()
     await page.setUserAgent(DESKTOP_UA)
-    await loginInBrowser(page)
+    // ── DIRE QUE C'EST LA CONNEXION QUI A LÂCHÉ, PAS L'ÉCRAN DE CLÔTURE ──────
+    // Sans ce catch, un login navigateur raté (il est INTERMITTENT, cf
+    // loginInBrowser) faisait échouer la suite sur « écran on-site/code non
+    // trouvé » avec un diagnostic VIDE. Le message accusait l'écran de clôture
+    // alors que le navigateur était resté sur la page de login — de quoi
+    // chercher au mauvais endroit pendant des heures. Olivier 2026-08-31.
+    try { await loginInBrowser(page) }
+    catch (e: any) {
+      return {
+        onCodeScreen: false,
+        steps: ['connexion navigateur'],
+        error: `connexion VAB au navigateur impossible — ${e?.message || e}`,
+      } as VabBrowserResult
+    }
     await page.goto(detailsUrl(opts.assignmentId), { waitUntil: 'domcontentloaded', timeout: 30000 })
 
     // On-site prêt = champ km OU canvas signature OU écran code (vélo « Fiets » :

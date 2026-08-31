@@ -94,7 +94,30 @@ const REAL_UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537
  * 3. POST sur l'action URL avec username/password + hidden fields
  * 4. Verifie qu'on est bien logge (302 vers /Missions ou cookie auth different)
  */
-export async function loginVab(): Promise<SessionCookies> {
+// ── UNE SEULE CONNEXION À LA FOIS, RÉUTILISÉE ────────────────────────────────
+// Le compte VAB est PARTAGÉ. Or une seule clôture appelait loginVab() cinq fois
+// (type de tâche, état de l'écran, rattrapage des étapes, codes, formulaire de
+// remorquage), auxquelles s'ajoute le login natif du navigateur : sept
+// connexions pour solder un dossier. Le filet en traite deux par quart d'heure
+// → plus de mille connexions par jour sur le même compte.
+//
+// Symptôme constaté le 2026-08-31 : la connexion HTTP passait parfaitement
+// pendant que le login NAVIGATEUR échouait en boucle sur « formulaire de login
+// introuvable ». La clôture rapportait alors « écran on-site non trouvé », en
+// accusant le mauvais coupable.
+//
+// On met donc la session en cache. TTL court : mieux vaut se reconnecter un peu
+// trop que traîner une session morte. `forceRefresh` pour repartir de zéro.
+const VAB_SESSION_TTL_MS = 10 * 60 * 1000
+let sessionCache: { value: SessionCookies; expiresAt: number } | null = null
+
+/** Vide le cache de session — à appeler quand VAB renvoie une page de login. */
+export function resetVabSession(): void { sessionCache = null }
+
+export async function loginVab(forceRefresh = false): Promise<SessionCookies> {
+  if (!forceRefresh && sessionCache && sessionCache.expiresAt > Date.now()) {
+    return sessionCache.value
+  }
   const username = process.env.VAB_EMAIL
   const password = process.env.VAB_PASSWORD
   if (!username || !password) {
@@ -257,7 +280,9 @@ export async function loginVab(): Promise<SessionCookies> {
     throw new Error('VAB login : aucun cookie de session retourne')
   }
   console.log(`[vab/login] OK, ${jar.size()} cookies (header ${cookieHeader.length} bytes)`)
-  return { cookieHeader }
+  const session = { cookieHeader }
+  sessionCache = { value: session, expiresAt: Date.now() + VAB_SESSION_TTL_MS }
+  return session
 }
 
 /**
