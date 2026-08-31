@@ -113,18 +113,29 @@ export async function syncVabStep(sb: any, missionId: string, upToStep: VabStep)
     try {
       let res = await fireStep(sess.cookieHeader, url, step)
 
-      // ── L'ACCEPTATION PASSE PAR LE NAVIGATEUR ──────────────────────────────
-      // Leur bouton « Accepter » fait plus qu'un postback : en HTTP pur, VAB
-      // répond 200 et ne bouge pas. Le navigateur exécute leur JavaScript, comme
-      // pour la clôture. On ne l'ouvre qu'en RATTRAPAGE, quand le chemin léger a
-      // été ignoré — un Chromium coûte 15 s et le compte VAB est partagé.
+      // ── LES ÉTAPES PASSENT PAR LE NAVIGATEUR ───────────────────────────────
+      // Leurs boutons font plus qu'un postback : en HTTP pur, VAB répond 200 et
+      // ne bouge pas. Le navigateur exécute leur JavaScript, comme pour la
+      // clôture. On ne l'ouvre qu'en RATTRAPAGE, quand le chemin léger a été
+      // ignoré — un Chromium coûte 15 s et le compte VAB est partagé.
       // 'absent' compte aussi pour un REMORQUAGE : leur page de remorquage rend
       // ses boutons en JavaScript, donc notre couche HTTP n'en voit AUCUN — elle
       // conclut « déjà fait » alors qu'elle est simplement aveugle.
-      if ((res === 'ignore' || (res === 'absent' && /TowAssignments/i.test(url))) && step === 'accept') {
-        const { vabAcceptInBrowser } = await import('./sign-browser')
-        const r = await vabAcceptInBrowser(aid)
-        if (r.ok && !(await boutonEncoreLa(sess.cookieHeader, url, 'accept'))) res = 'fired'
+      //
+      // Étendu le 2026-08-31 d'« accept » à TOUTES les étapes. Jusque-là, un
+      // remorquage était bien accepté au navigateur puis restait bloqué à
+      // « Départ domicile » : les deux étapes suivantes ne partaient jamais, et
+      // l'écran de clôture n'apparaissait donc jamais.
+      const tow = /TowAssignments/i.test(url)
+      if (res === 'ignore' || (res === 'absent' && tow)) {
+        const { vabStepInBrowser } = await import('./sign-browser')
+        const r = await vabStepInBrowser(aid, step)
+        // ⚠️ Sur une page de REMORQUAGE, `boutonEncoreLa` est AVEUGLE : les
+        // boutons y sont rendus en JavaScript, la relecture HTTP n'en voit
+        // jamais aucun et conclurait « c'est passé » quoi qu'il arrive. C'est
+        // le navigateur qui a constaté la disparition du bouton — on s'y fie.
+        // Sur une page de PANNE, on reconfirme en HTTP, c'est gratuit.
+        if (r.ok && (tow || !(await boutonEncoreLa(sess.cookieHeader, url, step)))) res = 'fired'
         else if (r.error) échecNavigateur = r.error
       }
 

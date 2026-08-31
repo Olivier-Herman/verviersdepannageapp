@@ -192,19 +192,41 @@ const SOL_FIXED = '12900|13917'  // Mobilité Rétablit — Problème Résolue
 const BRK_OTHER = '4004|4066'    // Divers — Autre Problème
 
 /**
- * ACCEPTER un dossier dans un VRAI NAVIGATEUR.
+ * Les trois étapes d'avancement, et comment reconnaître leur bouton.
  *
- * Le postback HTTP ne suffit pas : VAB répond 200 et laisse le dossier « À
- * accepter » (2HTT471, trois tentatives le 27/08, quatre jours ouvert). Leur
- * bouton fait plus qu'un postback — même en imitant `OsAjax` avec `__AJAX` et
- * `__AJAXEVENT`. Le navigateur, lui, exécute leur JavaScript : c'est le chemin
- * qui marche déjà pour la clôture.
+ * On cherche par IDENTIFIANT d'abord (fiable sur la page des pannes) puis par
+ * TEXTE — la page des remorquages ne nomme pas ses boutons (`wtContent_wt16`).
+ * ⚠️ `wtLink_Start` est un préfixe de `wtLink_StartIntervention` : sans la
+ * négation, « départ domicile » attraperait le bouton de l'étape suivante.
+ */
+const ETAPE_BOUTON: Record<'accept' | 'depart' | 'arrive', { id: RegExp; texte: RegExp; label: string }> = {
+  accept: { id: /wtLink_Accept/,                     texte: /^\s*Accepter\s*$/i,                       label: 'Accepter' },
+  depart: { id: /wtLink_Start(?!Intervention)/,      texte: /^\s*D[ée]part\s+domicile\s*$/i,           label: 'Départ domicile' },
+  arrive: { id: /wtLink_StartIntervention/,          texte: /^\s*Arriv[ée].*(panne|place)\s*$/i,       label: 'Arrivé endroit de la panne' },
+}
+
+/**
+ * Faire avancer un dossier d'UNE étape dans un VRAI NAVIGATEUR.
+ *
+ * Le postback HTTP ne suffit pas : VAB répond 200 et laisse le dossier où il
+ * est (2HTT471, trois tentatives le 27/08, quatre jours ouvert). Leur bouton
+ * fait plus qu'un postback — même en imitant `OsAjax` avec `__AJAX` et
+ * `__AJAXEVENT`. Le navigateur, lui, exécute leur JavaScript.
+ *
+ * Étendu aux étapes « départ domicile » et « arrivé sur place » le 2026-08-31 :
+ * sur les pages de REMORQUAGE, les boutons sont rendus en JavaScript et notre
+ * couche HTTP n'en voit AUCUN — elle concluait « déjà fait » alors qu'elle était
+ * aveugle, et l'écran de clôture n'apparaissait jamais.
  *
  * On VÉRIFIE avant de rendre la main : le bouton doit avoir disparu. Un journal
  * qui affirme « accepté » sans l'avoir constaté est ce qui a masqué le problème
  * quatre jours durant. Olivier 2026-08-31.
  */
-export async function vabAcceptInBrowser(assignmentId: string): Promise<{ ok: boolean; error?: string }> {
+export async function vabStepInBrowser(
+  assignmentId: string,
+  step: 'accept' | 'depart' | 'arrive' = 'accept',
+): Promise<{ ok: boolean; error?: string }> {
+  const cible = ETAPE_BOUTON[step]
   let browser: Browser | null = null
   try {
     browser = await launchBrowser()
@@ -248,23 +270,25 @@ export async function vabAcceptInBrowser(assignmentId: string): Promise<{ ok: bo
       return { ok: false, error: `pas sur la fiche VAB (session refusée ?) — ${où}` }
     }
 
-    const boutonAccepter = () => page.evaluate(() => {
+    const boutonEtape = () => page.evaluate((src: { id: string; texte: string }) => {
+      const idRe = new RegExp(src.id), txRe = new RegExp(src.texte, 'i')
       const el = [...document.querySelectorAll('a, button, input')].find(e =>
-        /wtLink_Accept/.test((e as HTMLElement).id || '')
-        || /^\s*Accepter\s*$/i.test(e.textContent || '')
-        || /^\s*Accepter\s*$/i.test((e as HTMLInputElement).value || ''))
+        idRe.test((e as HTMLElement).id || '')
+        || txRe.test((e.textContent || '').trim())
+        || txRe.test(((e as HTMLInputElement).value || '').trim()))
       return el ? ((el as HTMLElement).id || 'sans-id') : null
-    }).catch(() => null)
+    }, { id: cible.id.source, texte: cible.texte.source }).catch(() => null)
 
-    if (!(await boutonAccepter())) return { ok: true }   // plus de bouton : déjà accepté
+    if (!(await boutonEtape())) return { ok: true }   // plus de bouton : étape déjà passée
 
-    await page.evaluate(() => {
+    await page.evaluate((src: { id: string; texte: string }) => {
+      const idRe = new RegExp(src.id), txRe = new RegExp(src.texte, 'i')
       const el = [...document.querySelectorAll('a, button, input')].find(e =>
-        /wtLink_Accept/.test((e as HTMLElement).id || '')
-        || /^\s*Accepter\s*$/i.test(e.textContent || '')
-        || /^\s*Accepter\s*$/i.test((e as HTMLInputElement).value || ''))
+        idRe.test((e as HTMLElement).id || '')
+        || txRe.test((e.textContent || '').trim())
+        || txRe.test(((e as HTMLInputElement).value || '').trim()))
       if (el) (el as HTMLElement).click()
-    })
+    }, { id: cible.id.source, texte: cible.texte.source })
     await new Promise(r => setTimeout(r, 5000))
     // Confirmation éventuelle (accepter une mission est un engagement : ils
     // demandent parfois « Oui »), dans la page comme dans les iframes.
@@ -279,14 +303,19 @@ export async function vabAcceptInBrowser(assignmentId: string): Promise<{ ok: bo
     }
     await new Promise(r => setTimeout(r, 5000))
 
-    return (await boutonAccepter())
-      ? { ok: false, error: 'le bouton Accepter est toujours là après le clic' }
+    return (await boutonEtape())
+      ? { ok: false, error: `le bouton « ${cible.label} » est toujours là après le clic` }
       : { ok: true }
   } catch (e: any) {
     return { ok: false, error: e?.message || 'erreur' }
   } finally {
     if (browser) await browser.close().catch(() => {})
   }
+}
+
+/** Compatibilité : l'acceptation reste le cas le plus appelé. */
+export async function vabAcceptInBrowser(assignmentId: string): Promise<{ ok: boolean; error?: string }> {
+  return vabStepInBrowser(assignmentId, 'accept')
 }
 
 export async function vabCloseOnSiteBrowser(opts: {

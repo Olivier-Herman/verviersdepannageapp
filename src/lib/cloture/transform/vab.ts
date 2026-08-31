@@ -234,10 +234,17 @@ export async function runVabTowClose(input: VabTowCloseInput): Promise<void> {
   // présents — et bascule sur le navigateur pour l'acceptation, que leur page de
   // remorquage rend en JavaScript (invisible à notre couche HTTP).
   //
-  // ⚠️ CHANGEMENT DE DOCTRINE (Olivier 2026-08-31 : « je veux que mes clôtures
-  // se fassent »). On réservait l'acceptation à l'humain, la jugeant engageante.
-  // Pour une mission DÉJÀ RÉALISÉE chez nous, ce n'est plus un engagement à
-  // prendre : c'est une formalité en retard chez le partenaire.
+  // ⚠️ NE PAS REMETTRE DE GARDE-FOU « l'acceptation est un geste humain » ici.
+  // C'est ce qu'a fait le correctif du 26/08 (c8b22111), et les dossiers non
+  // acceptés sont devenus des résidents permanents de la file : plus personne
+  // ne les acceptait, ni la machine ni un humain, et ils ont consommé toute la
+  // capacité du filet (2HTT471 : 357 tentatives, 2GUM715 : 204).
+  //
+  // Le geste humain a DÉJÀ eu lieu : c'est le dispatch qui accepte la mission
+  // dans VD Soft (Olivier 2026-08-31 : « c'est un geste humain puisqu'on
+  // l'accepte depuis VD Soft »). Ce qu'on envoie à Comet n'est pas une décision
+  // prise par la machine, c'est le RELAIS d'une décision déjà prise — et sur une
+  // mission déjà réalisée, un relais en retard.
   try {
     const { syncVabStep } = await import('@/lib/vab/sync')
     await syncVabStep(sb, input.missionId, 'arrive')

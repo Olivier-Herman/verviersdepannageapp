@@ -18,6 +18,10 @@
 // quand le chauffeur ouvre son téléphone. C'est donc là qu'il faut le leur dire.
 // Même doctrine que Touring COMEX (cf lib/touring/accept-bg.ts).
 //
+// Et ce n'est PAS une acceptation automatique : le geste humain a déjà eu lieu,
+// c'est le dispatcher qui accepte la mission dans VD Soft. Ce qui part vers
+// Comet en relaie la décision, il ne la prend pas (Olivier 2026-08-31).
+//
 // Partagé entre /api/missions/confirm (bouton « Valider ») et
 // /api/missions/assign (assignation directe = confirmation implicite) : c'est
 // exactement le trou qui avait été découvert sur Touring le 13/07.
