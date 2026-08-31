@@ -742,7 +742,16 @@ function MissionBlock({
                 Total estimé : {estimate.total_eur.toFixed(2).replace('.', ',')} € HTVA · {(estimate.total_eur * 1.21).toFixed(2).replace('.', ',')} € TVAC
               </span>
             ) : (
-              <span className="text-warning text-xs" title={estimate?.reason || ''}>⚠ Tarif introuvable</span>
+              /* ── DIRE POURQUOI, PAS « INTROUVABLE » ─────────────────────────
+                 « Il indique tarif introuvable. On doit ouvrir la fiche complète
+                 et resélectionner Siabis pour que le système calcule » (Olivier
+                 2026-08-31). Le tarif n'était pas introuvable : il manquait le
+                 SCÉNARIO, et l'API le disait déjà dans `reason` — on l'écrasait
+                 par un message générique qui envoyait chercher au mauvais
+                 endroit. On affiche la vraie raison. */
+              <span className="text-warning text-xs leading-snug block max-w-[26rem]" title={estimate?.reason || ''}>
+                ⚠ {estimate?.reason || 'Tarif introuvable'}
+              </span>
             )}
             {pushTvac > 0 && (
               <PushToScreenButton
