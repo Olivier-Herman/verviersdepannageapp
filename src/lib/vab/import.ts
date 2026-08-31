@@ -121,6 +121,26 @@ export async function runVabImport(opts: { mode: VabImportMode }): Promise<VabIm
       skipped++
       continue
     }
+    // ── SANS IDENTIFIANT, ON NE SAIT PAS QU'ON L'A DÉJÀ VUE ───────────────────
+    // `alreadyImported` se juge sur l'AssignmentId. Quand il manque, la réponse
+    // est TOUJOURS « jamais importée » : la ligne repasse à chaque tour du poll
+    // et fabrique une fiche de plus. Sept fiches identiques en quatre jours, le
+    // même véhicule de remplacement (SKODA FABIA 1HSX337, Sepulchre), toutes en
+    // attente de validation — pour UNE ligne de leur liste que VAB affiche
+    // fusionnée (enlèvement + livraison de VR sur la même ligne, deux numéros de
+    // mission, aucun lien exploitable). Olivier 2026-08-31.
+    //
+    // Une ligne qu'on ne sait pas identifier ne doit pas être importée : on la
+    // signale, elle se traite à la main. Mieux vaut une ligne visible dans le
+    // rapport qu'une fiche fantôme de plus par heure.
+    if (!item.detailHref.match(/[?&]AssignmentId=(\d+)/i)) {
+      results.push({
+        missionNumber: item.missionNumber, ok: false, action: 'skipped',
+        error: "Ligne VAB sans AssignmentId exploitable (ligne fusionnée côté VAB ?) — non importée pour ne pas créer un doublon à chaque passage",
+      })
+      skipped++
+      continue
+    }
     try {
       const detail = await fetchVabMissionDetail(session, item.detailHref, item.missionNumber)
       if ('error' in detail) {
