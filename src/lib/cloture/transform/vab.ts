@@ -131,6 +131,34 @@ export async function runVabOnSite(input: VabOnSiteInput): Promise<void> {
   }
 }
 
+
+// ── KILOMÉTRAGE PRÉSENTÉ À VAB ──────────────────────────────────────────────
+// Le relevé de la fiche fait toujours foi quand le chauffeur l'a encodé.
+// Quand il manque, on posait « 126 » (consigne d'Olivier du 20/08 : « essaie un
+// faux bas style 126 »). Ça ne passe que si VAB n'a aucun relevé antérieur :
+// dès qu'il en a un, son validateur refuse — « Le kilométrage est inférieur au
+// kilométrage précédent (15759) » — et la clôture s'arrête là. C'est ce qui
+// bloquait une partie des dossiers au 31/08.
+//
+// VAB écrit le relevé précédent dans son message de refus. On le relit donc et
+// on repropose ce relevé AUGMENTÉ de 100 à 500 km (Olivier 2026-08-31) : un
+// compteur qui a avancé d'un trajet, ce que le validateur accepte.
+const RE_KM_PRECEDENT = /kilom[ée]trage\s+pr[ée]c[ée]dent\s*\((\d+)\)/i
+
+/** Le relevé précédent que VAB vient de nous opposer, s'il l'a écrit. */
+function kmPrecedentRefuse(steps: string[]): number | null {
+  for (const s of steps) {
+    const m = String(s).match(RE_KM_PRECEDENT)
+    if (m) { const n = Number(m[1]); if (Number.isFinite(n)) return n }
+  }
+  return null
+}
+
+/** Relevé précédent + 100 à 500 km. */
+function kmPlausible(precedent: number): string {
+  return String(precedent + 100 + Math.floor(Math.random() * 401))
+}
+
 // ── CLÔTURE DU REMORQUAGE (tow) ─────────────────────────────────────────────
 // Remplace le bouton flottant « Clôturer VAB », retiré le 12/08/2026 : « ça doit
 // être automatique, invisible pour le chauffeur » (Olivier). Même appel que
@@ -259,20 +287,33 @@ export async function runVabTowClose(input: VabTowCloseInput): Promise<void> {
     }
 
     const étapes: string[] = []
-    const onsite = await vabCloseOnSiteBrowser({
+
+    // ⚠️ Quand le châssis est inconnu, les 3 chiffres doivent CHANGER d'un essai
+    // à l'autre. En retapant toujours la même valeur, elle restait identique à
+    // celle déjà connue de VAB : leur « Vérifier » ne se redéclenchait pas, la
+    // pop-up de non-concordance n'apparaissait pas, et la case « VIN inconnu »
+    // non plus — le champ restait obligatoire pour toujours. Vu sur 1XGJ912 le
+    // 20/08, bloqué là après plusieurs reprises. Olivier 2026-08-20.
+    const argsOnsite = (kmValeur: string) => ({
       assignmentId,
-      // Sans relevé, VAB refuse d'avancer : on met un chiffre bas plutôt que de
-      // bloquer la clôture (Olivier : « essaie un faux bas style 126 »).
-      km: km || '126',
-      // ⚠️ Quand le châssis est inconnu, les 3 chiffres doivent CHANGER d'un essai
-      // à l'autre. En retapant toujours « 126 », la valeur restait identique à
-      // celle déjà connue de VAB : leur « Vérifier » ne se redéclenchait pas, la
-      // pop-up de non-concordance n'apparaissait pas, et la case « VIN inconnu »
-      // non plus — le champ restait obligatoire pour toujours. Vu sur 1XGJ912 le
-      // 20/08, bloqué là après plusieurs reprises. Olivier 2026-08-20.
+      km: kmValeur,
       vinLastDigits: vin ? vin.slice(-3) : String(100 + Math.floor(Math.random() * 900)),
       vinFull: vin || undefined,
     })
+
+    let onsite = await vabCloseOnSiteBrowser(argsOnsite(km || '126'))
+
+    // VAB a opposé son relevé précédent : on repropose ce relevé + 100 à 500 km.
+    // Une seule reprise — si elle échoue aussi, le dossier reste ouvert et le
+    // motif est tracé, plutôt que de boucler sur le compte VAB partagé.
+    if (!onsite.onCodeScreen) {
+      const precedent = kmPrecedentRefuse(onsite.steps || [])
+      if (precedent != null) {
+        const kmRepris = kmPlausible(precedent)
+        étapes.push(`km refusé (précédent ${precedent}) → reprise avec ${kmRepris}`)
+        onsite = await vabCloseOnSiteBrowser(argsOnsite(kmRepris))
+      }
+    }
     étapes.push(...onsite.steps)
     // ⚠️ NE PAS CROIRE LE NAVIGATEUR SUR PAROLE (Olivier 2026-08-19 : « pourquoi
     // tu réussis à les clôturer et pas VD Soft ? »).

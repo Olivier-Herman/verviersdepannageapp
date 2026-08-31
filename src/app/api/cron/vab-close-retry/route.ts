@@ -29,11 +29,31 @@ import { createAdminClient } from '@/lib/supabase'
 /** Statuts qui signifient « l'intervention est finie chez nous ». */
 const TERMINÉES = ['to_invoice', 'completed', 'parked']
 
+
+/**
+ * Trace de passage, écrite qu'il réussisse ou qu'il échoue.
+ *
+ * Le 31/08 ce cron échouait depuis deux jours sans que rien ne le dise : 37 des
+ * 40 derniers essais en échec, 112 dossiers en attente, et aucun moyen de
+ * distinguer « ne se déclenche pas » de « se déclenche et échoue » sans aller
+ * lire les mission_logs un par un. Même leçon que payment-advices.
+ */
+async function trace(payload: Record<string, unknown>) {
+  try {
+    const sb = createAdminClient()
+    await sb.from('app_settings').upsert(
+      { key: 'vab_close_retry_last_run', value: JSON.stringify({ at: new Date().toISOString(), ...payload }) },
+      { onConflict: 'key' },
+    )
+  } catch { /* la trace ne doit jamais faire échouer le cron */ }
+}
+
 export async function GET(req: Request) {
   if (req.headers.get('authorization') !== `Bearer ${process.env.CRON_SECRET}`) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
   if (process.env.DISABLE_VAB_POLL === 'true') {
+    await trace({ ok: true, disabled: true })
     return NextResponse.json({ ok: true, disabled: true })
   }
 
@@ -52,7 +72,10 @@ export async function GET(req: Request) {
     const types = await vabTaskTypes(session).catch(() => ({} as Record<string, string>))
     const vr = tous.filter(a => estVehiculeRemplacementVab(types[a]))
     const ouverts = tous.filter(a => !vr.includes(a))
-    if (ouverts.length === 0) return NextResponse.json({ ok: true, ouverts: 0, vrIgnorés: vr.length })
+    if (ouverts.length === 0) {
+      await trace({ ok: true, ouverts: 0, vrIgnorés: vr.length })
+      return NextResponse.json({ ok: true, ouverts: 0, vrIgnorés: vr.length })
+    }
 
     const sb = createAdminClient()
     const { data: fiches } = await sb.from('incoming_missions')
@@ -71,6 +94,7 @@ export async function GET(req: Request) {
     // OUVERT plutôt que de partir de travers.
     const candidats: any[] = (fiches || []) as any[]
     if (candidats.length === 0) {
+      await trace({ ok: true, ouverts: ouverts.length, vrIgnorés: vr.length, aTraiter: 0 })
       return NextResponse.json({ ok: true, ouverts: ouverts.length, vrIgnorés: vr.length, aTraiter: 0 })
     }
 
@@ -113,12 +137,15 @@ export async function GET(req: Request) {
 
     const soldés = résultats.filter(r => r.abouti).length
     console.log(`[cron vab-close-retry] ${résultats.length} traité(s), ${soldés} soldé(s) · reste ${candidats.length - résultats.length}`)
-    return NextResponse.json({
+    const bilan = {
       ok: true, ouverts: ouverts.length, vrIgnorés: vr.length, aTraiter: candidats.length,
       traités: résultats, soldés, reste: candidats.length - résultats.length,
-    })
+    }
+    await trace(bilan)
+    return NextResponse.json(bilan)
   } catch (e: any) {
     console.error('[cron vab-close-retry]', e?.message)
+    await trace({ ok: false, error: e?.message || 'erreur' })
     return NextResponse.json({ error: e?.message || 'erreur' }, { status: 500 })
   }
 }
