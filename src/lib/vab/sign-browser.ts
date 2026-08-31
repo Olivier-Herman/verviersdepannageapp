@@ -191,6 +191,73 @@ const SOL_TOW   = '814|13938'    // Pas Résolue   — Remorquage
 const SOL_FIXED = '12900|13917'  // Mobilité Rétablit — Problème Résolue
 const BRK_OTHER = '4004|4066'    // Divers — Autre Problème
 
+/**
+ * ACCEPTER un dossier dans un VRAI NAVIGATEUR.
+ *
+ * Le postback HTTP ne suffit pas : VAB répond 200 et laisse le dossier « À
+ * accepter » (2HTT471, trois tentatives le 27/08, quatre jours ouvert). Leur
+ * bouton fait plus qu'un postback — même en imitant `OsAjax` avec `__AJAX` et
+ * `__AJAXEVENT`. Le navigateur, lui, exécute leur JavaScript : c'est le chemin
+ * qui marche déjà pour la clôture.
+ *
+ * On VÉRIFIE avant de rendre la main : le bouton doit avoir disparu. Un journal
+ * qui affirme « accepté » sans l'avoir constaté est ce qui a masqué le problème
+ * quatre jours durant. Olivier 2026-08-31.
+ */
+export async function vabAcceptInBrowser(assignmentId: string): Promise<{ ok: boolean; error?: string }> {
+  let browser: Browser | null = null
+  try {
+    browser = await launchBrowser()
+    const page = await browser.newPage()
+    await page.setUserAgent(DESKTOP_UA)
+    try { await loginInBrowser(page) }
+    catch (e: any) { return { ok: false, error: `login VAB impossible — ${e?.message || e}` } }
+    await page.goto(detailsUrl(assignmentId), { waitUntil: 'domcontentloaded', timeout: 30000 })
+    await page.waitForSelector('a[id*="wtLink_Accept"], input[id*="wtInput_MileageCheck"], a[id*="wtLink_Start"]', { timeout: 25000 }).catch(() => null)
+
+    // ⚠️ « Pas de bouton » ne veut PAS dire « déjà accepté » : ça peut vouloir
+    // dire qu'on n'est pas connecté du tout. La première version de cette
+    // fonction renvoyait ok:true depuis une page de login — exactement le
+    // mensonge que je venais de reprocher au journal. On exige donc une preuve
+    // qu'on est bien sur la fiche : son formulaire ou son bouton d'étape.
+    const surLaFiche = await page.evaluate(() =>
+      !!document.querySelector('[id*="wtLink_Accept"], [id*="wtLink_Start"], [id*="wtInput_MileageCheck"], [id*="SolutionCodeLevel1"]'))
+    if (!surLaFiche) {
+      const où = await page.evaluate(() => `${document.title.trim().slice(0, 40)} | ${location.pathname}`).catch(() => '?')
+      return { ok: false, error: `pas sur la fiche VAB (session refusée ?) — ${où}` }
+    }
+
+    const présent = await page.$('a[id*="wtLink_Accept"], button[id*="wtLink_Accept"], input[id*="wtLink_Accept"]')
+    if (!présent) return { ok: true }   // le bouton n'y est plus : déjà accepté
+
+    await page.evaluate(() => {
+      const b = [...document.querySelectorAll('a, button, input')]
+        .find(e => /wtLink_Accept/.test((e as HTMLElement).id || ''))
+      if (b) (b as HTMLElement).click()
+    })
+    await new Promise(r => setTimeout(r, 5000))
+    // Confirmation éventuelle (accepter une mission est un engagement : ils
+    // demandent parfois « Oui »), dans la page comme dans les iframes.
+    for (const fr of page.frames()) {
+      try {
+        await fr.evaluate(() => {
+          const e = [...document.querySelectorAll('a,button')]
+            .find(x => /^\s*(oui|ok|accepter|bevestigen|ja)\s*$/i.test((x.textContent || '').trim()))
+          if (e) (e as HTMLElement).click()
+        })
+      } catch { /* frame détachée */ }
+    }
+    await new Promise(r => setTimeout(r, 5000))
+
+    const encore = await page.$('a[id*="wtLink_Accept"], button[id*="wtLink_Accept"], input[id*="wtLink_Accept"]')
+    return encore ? { ok: false, error: 'le bouton Accepter est toujours là après le clic' } : { ok: true }
+  } catch (e: any) {
+    return { ok: false, error: e?.message || 'erreur' }
+  } finally {
+    if (browser) await browser.close().catch(() => {})
+  }
+}
+
 export async function vabCloseOnSiteBrowser(opts: {
   assignmentId: string
   km: string

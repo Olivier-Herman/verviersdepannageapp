@@ -104,11 +104,25 @@ export async function syncVabStep(sb: any, missionId: string, upToStep: VabStep)
 
   const fired: string[] = []
   const ignorés: string[] = []
+  let échecNavigateur: string | null = null
   let anyOk = false
   for (let i = 0; i <= upTo; i++) {
     const step = ORDER[i]
     try {
-      const res = await fireStep(sess.cookieHeader, url, step)
+      let res = await fireStep(sess.cookieHeader, url, step)
+
+      // ── L'ACCEPTATION PASSE PAR LE NAVIGATEUR ──────────────────────────────
+      // Leur bouton « Accepter » fait plus qu'un postback : en HTTP pur, VAB
+      // répond 200 et ne bouge pas. Le navigateur exécute leur JavaScript, comme
+      // pour la clôture. On ne l'ouvre qu'en RATTRAPAGE, quand le chemin léger a
+      // été ignoré — un Chromium coûte 15 s et le compte VAB est partagé.
+      if (res === 'ignore' && step === 'accept') {
+        const { vabAcceptInBrowser } = await import('./sign-browser')
+        const r = await vabAcceptInBrowser(aid)
+        if (r.ok && !(await boutonEncoreLa(sess.cookieHeader, url, 'accept'))) res = 'fired'
+        else if (r.error) échecNavigateur = r.error
+      }
+
       if (res === 'fired') { fired.push(LABEL[step]); anyOk = true }
       else if (res === 'ignore') {
         // Le postback part, VAB répond 200, et l'étape ne passe pas. On le dit,
@@ -130,8 +144,8 @@ export async function syncVabStep(sb: any, missionId: string, upToStep: VabStep)
   if (ignorés.length) {
     await sb.from('mission_logs').insert({
       mission_id: missionId, action: 'vab_sync_error',
-      notes: `⚠️ VAB Comet : « ${ignorés.join(', ')} » envoyé mais NON PRIS EN COMPTE de leur côté — le dossier reste à cette étape chez eux.`,
-      metadata: { ignored: ignorés, upTo: upToStep, assignmentId: aid, auto: true },
+      notes: `⚠️ VAB Comet : « ${ignorés.join(', ')} » envoyé mais NON PRIS EN COMPTE de leur côté — le dossier reste à cette étape chez eux.${échecNavigateur ? ` Reprise au navigateur : ${échecNavigateur}` : ''}`,
+      metadata: { ignored: ignorés, upTo: upToStep, assignmentId: aid, auto: true, browserError: échecNavigateur },
     }).then(() => {}, () => {})
   }
   return anyOk
