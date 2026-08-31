@@ -64,12 +64,19 @@ export async function loginInBrowser(page: Page): Promise<void> {
       try { userField = await page.$('input[id*="wtUserNameInput"]') } catch { /* nav en cours */ }
     }
   }
-  // ⚠️ NE PAS RETENTER LE REPLI PAR COOKIES — essayé et REFUSÉ le 2026-08-31.
-  // Injecter dans le navigateur les cookies de la session HTTP (qui, elle,
-  // passe très bien au même instant) ne suffit pas : VAB continue de servir son
-  // formulaire de login. Leur session navigateur ne se transporte pas. Le login
-  // natif reste donc le seul chemin — il est simplement INTERMITTENT, la course
-  // de redirections Home → NoPermission → Login n'aboutissant pas toujours.
+  // ⚠️ CE QUI A DÉJÀ ÉTÉ ESSAYÉ, ET QUI NE MARCHE PAS (2026-08-31) — ne pas
+  // refaire le tour :
+  //   · injecter les cookies de la session HTTP (qui, elle, passe très bien à la
+  //     même seconde) en `domain` + `path` → refusés en silence par Chrome ;
+  //   · les réinjecter correctement pour un site HTTPS, via `url` + `secure`,
+  //     après avoir chargé l'origine → VAB resert quand même son formulaire de
+  //     login. Leur session navigateur ne se transporte donc pas.
+  //   · vérifié aussi : toutes nos URL VAB sont bien en https.
+  //
+  // Le login natif reste le seul chemin connu, et il est INTERMITTENT : il a
+  // fonctionné à 13 h 39 puis refusé une heure durant. Piste non tranchée :
+  // throttling côté VAB sur le compte PARTAGÉ (une clôture ouvrait sept
+  // connexions avant la mise en cache de session du même jour).
   if (!userField) throw new Error('formulaire de login VAB introuvable (redirections)')
   // Stabiliser avant de taper (une nav peut encore se poser juste après l'apparition).
   await sleep(1500)
