@@ -12,7 +12,7 @@ export const maxDuration = 120
 
 export async function POST() {
   const session = await getServerSession(authOptions)
-  if (!sessionAccess(session, { modules: ['mail_agent', 'facturation'] }).ok) {
+  if (!sessionAccess(session, { roles: ['superadmin'] }).ok) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
   try {

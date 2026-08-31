@@ -10,7 +10,7 @@ export const dynamic = 'force-dynamic'
 
 export async function POST(_req: Request, { params }: { params: { id: string } }) {
   const session = await getServerSession(authOptions)
-  if (!sessionAccess(session, { modules: ['mail_agent', 'facturation'] }).ok) {
+  if (!sessionAccess(session, { roles: ['superadmin'] }).ok) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
   const actor = (session?.user as any)?.name || (session?.user as any)?.email || 'inconnu'

@@ -41,7 +41,10 @@ export const NAV_ITEMS: NavItem[] = [
   { href: '/missions-terminees', label: 'Missions terminées', i18nKey: 'nav.finished', icon: '📂', moduleId: 'facturation_or_missions' },
   { href: '/admin/amendes',     label: 'Amendes',             icon: '⚠️', moduleId: 'facturation_or_admin' },
   { href: '/admin/ventes',      label: 'Ventes véhicules',    icon: '🚗', moduleId: 'facturation_or_admin' },
-  { href: '/admin/mail-agent',  label: 'Agent Mail',          icon: '📬', moduleId: 'mail_agent' },
+  // Olivier 2026-08-31 : Agent Mail en rodage → superadmin uniquement.
+  // Le module 'mail_agent' existe déjà en base (désactivé) : pour l'ouvrir à
+  // Jona/Momo, réactiver le module et repasser sur moduleId: 'mail_agent'.
+  { href: '/mail-agent',        label: 'Agent Mail',          icon: '📬', moduleId: null, role: 'superadmin' },
   // Olivier 2026-06-02 : Dépanneuses retirée de la sidebar globale (fonction
   // secondaire, accessible via /admin → tuile + AdminNav latérale).
   { href: '/finance',           label: 'Finance',             icon: '💵', moduleId: 'finance' },
@@ -101,10 +104,6 @@ export function filterNavItems(opts: {
     }
     if (item.moduleId === 'facturation_or_admin') {
       return isAdmin || userModules.includes('facturation')
-    }
-    // Agent Mail : module attribuable à Jona/Momo, et visible d'office pour l'admin.
-    if (item.moduleId === 'mail_agent') {
-      return isAdmin || userModules.includes('mail_agent')
     }
     return userModules.includes(item.moduleId)
   })

@@ -14,7 +14,7 @@ import {
   Map, ClipboardCheck,
   FileText, Archive, Wallet, Truck,
   Settings, Home, Printer, LifeBuoy,
-  ToggleLeft, Mail,
+  ToggleLeft,
   type LucideIcon } from 'lucide-react'
 
 type NavItem = { href: string; label: string; icon: LucideIcon }
@@ -46,7 +46,6 @@ const GROUPS: NavGroup[] = [
       { href: '/admin/tarifs',     label: 'Tarifs',     icon: Receipt },
       { href: '/admin/surcharges', label: 'Surcharges', icon: DollarSign },
       { href: '/admin/facturation-auto', label: 'Facturation auto', icon: Receipt },
-      { href: '/admin/mail-agent',       label: 'Agent Mail',       icon: Mail },
     ],
   },
   {

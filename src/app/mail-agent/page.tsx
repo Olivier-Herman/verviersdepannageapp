@@ -13,8 +13,8 @@ export default async function MailAgentPage() {
   const session = await getServerSession(authOptions)
   if (!session) redirect('/login')
 
-  const access = sessionAccess(session, { modules: ['mail_agent', 'facturation'] })
-  if (!access.ok) redirect('/dashboard?error=forbidden')
+  const access = sessionAccess(session, { roles: ['superadmin'] })
+  if (!access.ok) redirect('/dashboard?error=superadmin_required')
 
   const user = session.user as any
   return (

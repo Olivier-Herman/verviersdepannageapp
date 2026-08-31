@@ -13,7 +13,7 @@ export const maxDuration = 60
 
 export async function POST(_req: Request, { params }: { params: { id: string } }) {
   const session = await getServerSession(authOptions)
-  const access  = sessionAccess(session)
+  const access  = sessionAccess(session, { roles: ['superadmin'] })
   if (!access.ok) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   const actor = (session?.user as any)?.name || (session?.user as any)?.email || 'inconnu'

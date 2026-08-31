@@ -128,7 +128,7 @@ export default function MailAgentClient({
     id && odooBase ? `${odooBase}/web#id=${id}&model=account.move&view_type=form` : null
 
   return (
-    <AppShell title="Agent Mail" backHref="/admin"
+    <AppShell title="Agent Mail" backHref="/dashboard"
       userRole={userRole} userName={userName} userEmail={userEmail} userModules={userModules}>
       <div className="max-w-5xl mx-auto p-4 space-y-4">
 
