@@ -18,6 +18,55 @@ const DESKTOP_UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/
 export const detailsUrl = (assignmentId: string) =>
   `${BASE}/Comet/BreakdownAssignments_Details.aspx?AssignmentId=${assignmentId}`
 
+/**
+ * OUVRIR LA FICHE D'UN DOSSIER, ET PROUVER QU'ON Y EST.
+ *
+ * Deux pièges, tous deux vus le 2026-08-31 et tous deux silencieux :
+ *
+ * 1. `detailsUrl()` construit TOUJOURS l'URL des PANNES. Un remorquage y arrive
+ *    sur une fiche vide — d'où « écran on-site non trouvé » avec un diagnostic
+ *    vide, qui accusait l'écran de clôture. La liste, elle, donne le bon lien
+ *    (`TowAssignments_Details.aspx` quand c'en est un).
+ *
+ * 2. Cliquer le lien de la liste NE NAVIGUE PAS (OutSystems intercepte). On
+ *    restait donc sur Home.aspx — or la LISTE porte elle-même des boutons
+ *    `wtLink_Accept_Tow` / `_Break` / `_Delivery` et le texte « Accepter ».
+ *    Notre chercheur de bouton attrapait celui d'une AUTRE ligne, le cliquait,
+ *    le voyait disparaître et concluait « accepté ». Les étapes suivantes ne
+ *    trouvaient rien et concluaient « déjà passée ». Toute la chaîne se
+ *    déclarait faite sans que rien n'ait bougé chez VAB — et pouvait accepter
+ *    la mission de quelqu'un d'autre.
+ *
+ * On lit donc le href dans la liste, on NAVIGUE dessus, et on EXIGE de voir
+ * l'AssignmentId dans l'URL avant de toucher au moindre bouton.
+ */
+export async function openAssignment(page: Page, assignmentId: string): Promise<{ ok: true; url: string } | { ok: false; error: string }> {
+  await page.goto(`${BASE}/Comet/Home.aspx`, { waitUntil: 'domcontentloaded', timeout: 30000 })
+  await new Promise(r => setTimeout(r, 5000))
+
+  const href: string | null = await page.evaluate(`(function(){
+    var as = Array.prototype.slice.call(document.querySelectorAll('a'));
+    for (var i=0;i<as.length;i++){
+      var h = as[i].getAttribute('href') || '';
+      if (h.indexOf('AssignmentId=${assignmentId}') >= 0) return h;
+    }
+    return null; })()`).catch(() => null) as any
+
+  if (!href) {
+    return { ok: false, error: `dossier ${assignmentId} absent de la liste VAB — non pilotable (déjà soldé chez eux, ou plus visible)` }
+  }
+
+  await page.goto(new URL(href, `${BASE}/Comet/`).toString(), { waitUntil: 'domcontentloaded', timeout: 30000 })
+  await new Promise(r => setTimeout(r, 6000))
+
+  const surLaFiche = await page.evaluate(`location.search.indexOf('AssignmentId=${assignmentId}') >= 0`).catch(() => false)
+  if (!surLaFiche) {
+    const ou = await page.evaluate('location.pathname + location.search').catch(() => '?')
+    return { ok: false, error: `fiche ${assignmentId} non atteinte — resté sur ${ou}` }
+  }
+  return { ok: true, url: page.url() }
+}
+
 export interface VabBrowserResult {
   ok: boolean
   onCodeScreen: boolean
@@ -73,10 +122,12 @@ export async function loginInBrowser(page: Page): Promise<void> {
   //     login. Leur session navigateur ne se transporte donc pas.
   //   · vérifié aussi : toutes nos URL VAB sont bien en https.
   //
-  // Le login natif reste le seul chemin connu, et il est INTERMITTENT : il a
-  // fonctionné à 13 h 39 puis refusé une heure durant. Piste non tranchée :
-  // throttling côté VAB sur le compte PARTAGÉ (une clôture ouvrait sept
-  // connexions avant la mise en cache de session du même jour).
+  // ⚠️ SI CE LOGIN ÉCHOUE, VÉRIFIER D'ABORD LE USER-AGENT DE LA PAGE.
+  // VAB refuse « HeadlessChrome » : il renvoie le navigateur en boucle sans
+  // jamais servir le formulaire, et l'erreur ressemble à un login cassé ou à un
+  // throttling. Le 2026-08-31 j'ai perdu une heure là-dessus avec des scripts de
+  // test qui oubliaient `page.setUserAgent(DESKTOP_UA)` — la production, elle,
+  // le pose à ses trois points d'entrée et n'a jamais eu le problème.
   if (!userField) throw new Error('formulaire de login VAB introuvable (redirections)')
   // Stabiliser avant de taper (une nav peut encore se poser juste après l'apparition).
   await sleep(1500)
@@ -248,40 +299,10 @@ export async function vabStepInBrowser(
     try { await loginInBrowser(page) }
     catch (e: any) { return { ok: false, error: `login VAB impossible — ${e?.message || e}` } }
 
-    // ── PASSER PAR LA LISTE, PAS PAR L'URL ────────────────────────────────────
-    // Ouverte directement, la page de détail rend une fiche VIDE (« 0 / 0 ») qui
-    // porte quand même un bouton « Accepter » inerte : on cliquait dans le vide.
-    // Le lien de la liste, lui, charge le vrai dossier — et il pointe vers la
-    // BONNE page, celle des remorquages quand c'en est un. Olivier 2026-08-31.
-    await page.goto(`${BASE}/Comet/Home.aspx`, { waitUntil: 'domcontentloaded', timeout: 30000 })
-    await new Promise(r => setTimeout(r, 5000))
-    const ouvert = await page.evaluate((aid: string) => {
-      const a = [...document.querySelectorAll('a')].find(x => (x.getAttribute('href') || '').includes(`AssignmentId=${aid}`))
-      if (!a) return false
-      ;(a as HTMLElement).click()
-      return true
-    }, assignmentId).catch(() => false)
-    if (!ouvert) {
-      await page.goto(detailsUrl(assignmentId), { waitUntil: 'domcontentloaded', timeout: 30000 })
-    }
-    await new Promise(r => setTimeout(r, 8000))
-
-    // ⚠️ « Pas de bouton » ne veut PAS dire « déjà accepté » : ça peut vouloir
-    // dire qu'on n'est pas connecté du tout. La première version de cette
-    // fonction renvoyait ok:true depuis une page de login — exactement le
-    // mensonge que je venais de reprocher au journal. On exige donc une preuve
-    // qu'on est bien sur la fiche : son formulaire ou son bouton d'étape.
-    // La page des REMORQUAGES ne nomme rien : son bouton s'appelle `wtContent_wt16`.
-    // On l'identifie donc par l'écran (titre / URL) et le bouton par son TEXTE —
-    // sur la page des pannes, l'identifiant reste le repère le plus sûr.
-    const surLaFiche = await page.evaluate(() =>
-      !!document.querySelector('[id*="wtLink_Accept"], [id*="wtLink_Start"], [id*="wtInput_MileageCheck"], [id*="SolutionCodeLevel1"]')
-      || /TowAssignments_Details/i.test(location.pathname)
-      || /remorquage/i.test(document.title))
-    if (!surLaFiche) {
-      const où = await page.evaluate(() => `${document.title.trim().slice(0, 40)} | ${location.pathname}`).catch(() => '?')
-      return { ok: false, error: `pas sur la fiche VAB (session refusée ?) — ${où}` }
-    }
+    // Ouvrir la fiche ET prouver qu'on y est : sans cette preuve, on cliquerait
+    // le bouton « Accepter » d'une autre ligne de la liste. Cf openAssignment.
+    const ouverture = await openAssignment(page, assignmentId)
+    if (!ouverture.ok) return { ok: false, error: ouverture.error }
 
     const boutonEtape = () => page.evaluate((src: { id: string; texte: string }) => {
       const idRe = new RegExp(src.id), txRe = new RegExp(src.texte, 'i')
@@ -363,7 +384,14 @@ export async function vabCloseOnSiteBrowser(opts: {
         error: `connexion VAB au navigateur impossible — ${e?.message || e}`,
       } as VabBrowserResult
     }
-    await page.goto(detailsUrl(opts.assignmentId), { waitUntil: 'domcontentloaded', timeout: 30000 })
+    // ⚠️ PAS `detailsUrl()` : il pointe TOUJOURS sur la page des PANNES, et un
+    // remorquage y arrive sur une fiche vide — c'est ce qui produisait
+    // « écran on-site non trouvé » avec un diagnostic vide. openAssignment lit
+    // le bon lien dans la liste et prouve qu'on est sur la fiche.
+    const ouverture = await openAssignment(page, opts.assignmentId)
+    if (!ouverture.ok) {
+      return { onCodeScreen: false, steps: ['ouverture fiche'], error: ouverture.error } as VabBrowserResult
+    }
 
     // On-site prêt = champ km OU canvas signature OU écran code (vélo « Fiets » :
     // pas de km → on ne bloque pas sur wtInput_MileageCheck).
@@ -717,7 +745,7 @@ export async function vabCloseOnSiteBrowser(opts: {
     // de la panne » laisse une page intermédiaire ; l'écran de codes n'apparaît
     // qu'à la relecture du dossier. Olivier 2026-08-14.
     if (!onCodeScreen && !steps.some(x => x.includes('⚠ rien retenu'))) {
-      await page.goto(detailsUrl(opts.assignmentId), { waitUntil: 'domcontentloaded', timeout: 30000 }).catch(() => {})
+      await openAssignment(page, opts.assignmentId).catch(() => {})
       await new Promise(r => setTimeout(r, 2500))
       onCodeScreen = await isCodeScreen(page)
       if (onCodeScreen) steps.push('écran de codes (après rechargement)')
@@ -781,7 +809,7 @@ async function fillAndConfirmCodes(page: Page, assignmentId: string, c: VabCodes
       }).catch(() => 0)
       for (let i = 0; i < 6 && (await optionsReady()) <= 1; i++) await new Promise(r => setTimeout(r, 5000))
       if ((await optionsReady()) <= 1) {
-        await page.goto(detailsUrl(assignmentId), { waitUntil: 'domcontentloaded', timeout: 30000 }).catch(() => {})
+        await openAssignment(page, assignmentId).catch(() => {})
         await new Promise(r => setTimeout(r, 5000))
         for (let i = 0; i < 4 && (await optionsReady()) <= 1; i++) await new Promise(r => setTimeout(r, 5000))
       }
@@ -885,7 +913,8 @@ export async function vabConfirmCodesBrowser(opts: {
     const page = await browser.newPage()
     await page.setUserAgent(DESKTOP_UA)
     await loginInBrowser(page)
-    await page.goto(detailsUrl(opts.assignmentId), { waitUntil: 'domcontentloaded', timeout: 30000 })
+    const ouv = await openAssignment(page, opts.assignmentId)
+    if (!ouv.ok) throw new Error(ouv.error)
 
     // L'écran met plusieurs secondes à peupler ses listes ; tant qu'elles sont
     // vides, les trois choix tombent dans le vide.
