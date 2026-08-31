@@ -39,7 +39,7 @@ export async function runTouringCancelDetect(sb: any): Promise<CancelDetectSumma
   const out: CancelDetectSummary = { checked: 0, missingNew: 0, recovered: 0, confirmed: 0, deplacement: 0, sansFrais: 0, actions: [] }
 
   const { data: fiches } = await sb.from('incoming_missions')
-    .select('id, mission_number, dossier_number, vehicle_plate, status, touring_onroad_at, touring_missing_since')
+    .select('id, mission_number, dossier_number, vehicle_plate, status, mission_type, loaded_at, completed_at, touring_onroad_at, touring_missing_since')
     .eq('source_format', 'comex')
     .in('status', ACTIVE_STATUSES)
     .not('dossier_number', 'is', null)
@@ -67,6 +67,30 @@ export async function runTouringCancelDetect(sb: any): Promise<CancelDetectSumma
       continue
     }
     if (now - Date.parse(f.touring_missing_since) < CONFIRM_MIN * 60000) continue   // fenêtre pas écoulée
+
+    // ── UNE MISSION FAITE NE DEVIENT PAS UN TRAJET À VIDE ───────────────────
+    // « On ne peut pas arriver à un trajet à vide si le chauffeur a déjà déposé
+    // le véhicule à destination » (Olivier 2026-08-31). Sur 2HDS859, Fred Palm
+    // avait chargé à 13h19 et clôturé « livré à destination » à 13h20 ; à 22h15
+    // cette règle a requalifié la mission en trajet à vide parce que Touring
+    // avait retiré le dossier de ses listes. Le travail était fait, et la fiche
+    // s'est retrouvée sans tarif possible — un trajet à vide n'a pas de scénario
+    // Siabis.
+    //
+    // Le dossier disparaît de chez eux pour des raisons qui les regardent
+    // (réattribution administrative, refacturation). Ça ne peut pas effacer ce
+    // que le chauffeur a fait. On note l'annulation, on ne retouche pas la fiche.
+    const véhiculeEmporté = !!f.loaded_at || ['delivering', 'parked', 'completed', 'to_invoice'].includes(String(f.status))
+    if (véhiculeEmporté) {
+      await sb.from('incoming_missions').update({ touring_missing_since: null, updated_at: new Date().toISOString() }).eq('id', f.id)
+      await sb.from('mission_logs').insert({
+        mission_id: f.id, action: 'touring_cancelled_ignored',
+        notes: `Touring a retiré le dossier ${f.dossier_number} de ses listes, mais le véhicule a été pris en charge `
+             + `(${f.loaded_at ? 'chargé' : 'statut ' + f.status}) — la mission est conservée telle quelle, à vérifier chez eux.`,
+      }).then(() => {}, () => {})
+      out.checked += 0
+      continue
+    }
 
     // Confirmé annulé → règle « Mondial ».
     const departed = !!f.touring_onroad_at
