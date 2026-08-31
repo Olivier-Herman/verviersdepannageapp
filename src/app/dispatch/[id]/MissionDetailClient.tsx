@@ -153,6 +153,7 @@ interface Mission {
   remarks_billing?:      string | null
   special_tarif_htva?:   number | null
   storage_waived?:       boolean | null
+  storage_flat_htva?:    number | null
 }
 
 interface Stop {
@@ -1275,6 +1276,8 @@ export default function MissionDetailClient({
   // Formulaire éditable
   /** « Pas de gardiennage » — miroir local de `storage_waived`. */
   const [storageWaived, setStorageWaived] = useState<boolean>(!!initialMission.storage_waived)
+  /** Forfait gardiennage (Ethias / Kaze sur accident police) — 220 € HTVA. */
+  const [storageFlat, setStorageFlat] = useState<boolean>(Number(initialMission.storage_flat_htva) > 0)
   const [form, setForm] = useState({
     source:               initialMission.source               || '',
     mission_type:         initialMission.mission_type         || '',
@@ -1329,6 +1332,12 @@ export default function MissionDetailClient({
       || (['parked', 'delivering', 'unlocated', 'awaiting_payment'].includes(initialMission.status) ? new Date().toISOString() : null)
     ),
   })
+  // Le montant est écrit sur la fiche à la coche, pas lu depuis le code à la
+  // facturation : si le forfait change, les anciens dossiers gardent le leur.
+  const FORFAIT_PARC_HTVA = 220
+  const forfaitParcApplicable =
+    (form.source || initialMission.source) === 'police_accident'
+    && /ethias|kaze/i.test(String(form.billed_to_name || initialMission.billed_to_name || ''))
 
   // Nombre de remarques de facturation (pour l'alerte en haut de fiche).
   const [billingRemarkCount, setBillingRemarkCount] = useState(0)
@@ -3921,6 +3930,36 @@ export default function MissionDetailClient({
                       </span>
                     </span>
                   </label>
+                  {/* ── FORFAIT GARDIENNAGE (Olivier 2026-08-31) ──────────────
+                      « Lorsque la source est police accident et que le client
+                      est Ethias ou Kaze : forfait 220 € HTVA, fixe. Donc on ne
+                      compte plus le gardiennage par jour. » La case n'apparaît
+                      que dans ce cas précis — proposée partout, elle finirait
+                      par être cochée là où elle ne s'applique pas. */}
+                  {forfaitParcApplicable && !storageWaived && (
+                    <label className={`flex items-start gap-2 mb-3 p-2.5 rounded-xl border cursor-pointer ${
+                      storageFlat ? 'border-emerald-500 bg-emerald-50' : 'border-dashed bg-surface-2'
+                    }`}>
+                      <input
+                        type="checkbox" checked={storageFlat}
+                        onChange={e => {
+                          setStorageFlat(e.target.checked)
+                          silentPatch({ storage_flat_htva: e.target.checked ? FORFAIT_PARC_HTVA : null })
+                        }}
+                        className="mt-0.5 h-4 w-4 accent-emerald-600"
+                      />
+                      <span className="text-xs">
+                        <span className={`font-semibold ${storageFlat ? 'text-emerald-900' : 'text-ink'}`}>
+                          Forfait gardiennage {initialMission.billed_to_name || 'assistance'} — {FORFAIT_PARC_HTVA} € HTVA
+                        </span>
+                        <span className="block text-ink-muted mt-0.5">
+                          {storageFlat
+                            ? `Le parc est facturé ${FORFAIT_PARC_HTVA} € HTVA au total, quel que soit le nombre de jours.`
+                            : 'Accident police repris par Ethias / Kaze : le parc se facture au forfait, pas au jour.'}
+                        </span>
+                      </span>
+                    </label>
+                  )}
                   <div className="grid grid-cols-2 gap-4">
                     <Field label="Entrée parc">
                       <input

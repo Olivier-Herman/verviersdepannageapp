@@ -49,9 +49,12 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
   // parc. Olivier 2026-08-19.
   let parcDayPrice: number | null = null
   const { data: miss } = await sb.from('incoming_missions')
-    .select('source, mission_type, storage_waived').eq('id', params.id).maybeSingle()
+    .select('source, mission_type, storage_waived, storage_flat_htva').eq('id', params.id).maybeSingle()
   const storageWaived = !!(miss as any)?.storage_waived
-  if (miss?.source && !storageWaived) {
+  // Forfait : plus de prix au jour → la modale n'affiche plus de tranche de parc,
+  // la ligne forfaitaire vient de l'estimation. Olivier 2026-08-31.
+  const forfaitParc = Number((miss as any)?.storage_flat_htva) > 0 ? Number((miss as any).storage_flat_htva) : null
+  if (miss?.source && !storageWaived && !forfaitParc) {
     const { data: tarifs } = await sb.from('source_tariffs')
       .select('parc_day_price, mission_type, effective_from')
       .eq('source', (miss as any).source)
@@ -144,7 +147,7 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
     }
   }
 
-  return NextResponse.json({ items, count: items.length, total_htva: totalHtva, last_parc_period_to: lastParcTo, parc_day_price: parcDayPrice, storage_waived: storageWaived, quotes_info: quotesInfo })
+  return NextResponse.json({ items, count: items.length, total_htva: totalHtva, last_parc_period_to: lastParcTo, parc_day_price: parcDayPrice, storage_waived: storageWaived, storage_flat_htva: forfaitParc, quotes_info: quotesInfo })
 }
 
 // PATCH : enregistre le n° de facture d'une facture partielle (lot odoo_quote_id).

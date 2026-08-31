@@ -26,7 +26,7 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
     .from('incoming_missions')
     .select(`
       id, source, mission_type, client_name, vehicle_mileage,
-      parked_at, delivering_at, completed_at, intervention_date, received_at, incident_type, storage_waived,
+      parked_at, delivering_at, completed_at, intervention_date, received_at, incident_type, storage_waived, storage_flat_htva,
       levee_saisie_date, temp_returned_at, domaine_remise_date,
       parent_mission_id, amount_to_collect, amount_guaranteed,
       incident_lat, incident_lng, destination_lat, destination_lng,
@@ -234,7 +234,16 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
       // Abandon volontaire « en échange des frais de gardiennage » : plus aucun
       // jour de parc facturable, même chemin SNC/SC. Olivier 2026-08-20.
       const storageWaived = !!(mission as any).storage_waived
-      if (parcLine && parcLine.default_price != null && !storageWaived) {
+      // ── FORFAIT DE GARDIENNAGE ────────────────────────────────────────────
+      // Accident police repris par Ethias ou Kaze : le parc est au FORFAIT, pas
+      // au jour (220 € HTVA — Olivier 2026-08-31). Le montant vit sur la fiche,
+      // pas dans le code : il se corrige sans redéploiement et chaque dossier
+      // garde la trace de ce qui lui a été appliqué.
+      const forfaitParc = Number((mission as any).storage_flat_htva) > 0
+        ? Number((mission as any).storage_flat_htva) : null
+      if (forfaitParc && !storageWaived) {
+        parcJours = 0
+      } else if (parcLine && parcLine.default_price != null && !storageWaived) {
         // Date de debut : intervention_date (Mal Garee) OU parked_at strict (autres).
         // PAS de fallback received_at — si pas parked_at sur les autres modes,
         // c est que le vehicule n est jamais passe par le parc.
@@ -257,7 +266,7 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
           parcRefLabel     = parcLine.parc_count_from === 'intervention_date' ? 'intervention' : 'mise en parc'
         }
       }
-      const parcEur   = parcJours * parcPrixJour
+      const parcEur   = (forfaitParc && !storageWaived) ? forfaitParc : parcJours * parcPrixJour
       const totalHtva = depannageTotal + parcEur
 
       const breakdown: any[] = sncLines.map(l => ({

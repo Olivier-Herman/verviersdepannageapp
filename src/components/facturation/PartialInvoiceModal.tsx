@@ -50,6 +50,7 @@ export default function PartialInvoiceModal({ missionId, parkedSince, onClose, o
   // Gardiennage
   const [parcOn, setParcOn]       = useState(false)
   const [parcWaived, setParcWaived] = useState(false)   // abandon volontaire → gardiennage offert
+  const [parcForfait, setParcForfait] = useState(false) // forfait → pas de comptage au jour
   const [parcPrice, setParcPrice] = useState(0)
   const [parcFrom, setParcFrom]   = useState('')
   const [parcTo, setParcTo]       = useState(todayISO())
@@ -91,12 +92,19 @@ export default function PartialInvoiceModal({ missionId, parkedSince, onClose, o
           if (est.km_extra > 0 && est.km_extra_eur > 0) proposed.push({ kind: 'SERV-KM', label: 'Km supplémentaires', qty: est.km_extra, price_unit: round(est.km_extra_eur / est.km_extra), checked: true })
         }
         if (est.surcharge_eur > 0) proposed.push({ kind: 'SERV-MAJ', label: `Majoration ${est.surcharge_pct || ''}%`, qty: 1, price_unit: round(est.surcharge_eur), checked: true })
+        // Gardiennage AU FORFAIT : une ligne de parc normale, mais un montant
+        // fixe et une seule fois — pas de période, donc pas de section « jours ».
+        // Olivier 2026-08-31 (Ethias / Kaze sur accident police).
+        if (bi?.storage_flat_htva > 0) {
+          proposed.push({ kind: 'SERV-PARC', label: 'Frais de gardiennage — forfait', qty: 1, price_unit: round(Number(bi.storage_flat_htva)), checked: true })
+        }
       }
       setLines(proposed)
       // Prix gardiennage / jour — le CATALOGUE DE LA SOURCE fait foi (Olivier
       // 2026-08-17). L'estimation ne servait que de repli et donnait un prix
       // reconstitué qui ne suivait pas la fiche.
       setParcWaived(!!bi?.storage_waived)
+      setParcForfait(Number(bi?.storage_flat_htva) > 0)
       if (bi?.parc_day_price != null && Number(bi.parc_day_price) > 0) setParcPrice(round(Number(bi.parc_day_price)))
       else if (est?.parc_jours > 0 && est?.parc_eur > 0) setParcPrice(round(est.parc_eur / est.parc_jours))
       else if (parcUnitFromLines && parcUnitFromLines > 0) setParcPrice(parcUnitFromLines)
@@ -230,7 +238,17 @@ export default function PartialInvoiceModal({ missionId, parkedSince, onClose, o
               ))}
             </div>
 
-            {/* Gardiennage par période */}
+            {/* Gardiennage par période — masqué quand le parc est AU FORFAIT :
+                il est déjà proposé plus haut comme une ligne fixe, et laisser la
+                section ouverte inviterait à facturer les deux. Olivier 2026-08-31. */}
+            {parcForfait ? (
+              <div className="mb-4 rounded-xl border border-emerald-300 bg-emerald-50 p-3">
+                <p className="text-emerald-900 text-xs font-semibold">🅿️ Gardiennage au forfait</p>
+                <p className="text-emerald-900 text-xs mt-1">
+                  Le parc est facturé en une ligne fixe (voir ci-dessus), pas au jour — aucune tranche à choisir.
+                </p>
+              </div>
+            ) : (
             <div className="mb-4 rounded-xl border p-3">
               <label className={`flex items-center gap-2 mb-2 ${parcWaived ? 'opacity-60' : 'cursor-pointer'}`}>
                 <input type="checkbox" checked={parcOn} disabled={parcWaived} onChange={e => setParcOn(e.target.checked)} />
@@ -257,6 +275,7 @@ export default function PartialInvoiceModal({ missionId, parkedSince, onClose, o
                 </div>
               )}
             </div>
+            )}
 
             <div className="flex items-center justify-between border-t pt-3 mb-3">
               <span className="text-ink-muted text-sm">Total facture partielle</span>
