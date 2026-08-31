@@ -48,6 +48,11 @@ export default function RelivraisonClient({ userRole, userName, userEmail, userM
   const [mErr,   setMErr]   = useState('')
   const [mSourceOverride, setMSourceOverride] = useState('')
   const [mImposedHtva, setMImposedHtva] = useState('')   // montant HTVA imposé si source REL = Privé
+  const [mTarifTvac, setMTarifTvac] = useState(false)
+  const mTarifNum   = Number(String(mImposedHtva).replace(',', '.'))
+  const mHtvaImpose = String(mImposedHtva).trim() && mTarifNum > 0
+    ? Math.round((mTarifTvac ? mTarifNum / 1.21 : mTarifNum) * 100) / 100
+    : null
 
   // Bascule de source REL : une relivraison SIABIS (couvert/non couvert) doit être
   // facturée à l'assistance qui reprend → choix obligatoire. Olivier 2026-07-06.
@@ -143,8 +148,8 @@ export default function RelivraisonClient({ userRole, userName, userEmail, userM
     const addr = mAddr.trim()
     if (!addr) { setMErr('Adresse de relivraison requise.'); return }
     if (mRequiresSource && !mSourceOverride) { setMErr('Choisis par qui la relivraison est reprise.'); return }
-    const imposed = mSourceOverride === 'prive' ? Number(String(mImposedHtva).replace(',', '.')) : null
-    if (mSourceOverride === 'prive' && (!imposed || imposed <= 0)) { setMErr('Indique le montant HTVA de la relivraison (Privé).'); return }
+    const imposed = mHtvaImpose
+    if (String(mImposedHtva).trim() && !(imposed && imposed > 0)) { setMErr('Tarif invalide — laisse vide pour le calcul automatique.'); return }
     setMBusy('relivrer'); setMErr('')
     try {
       const ok = await saveAddress(modal.id, addr, mLat, mLng)
@@ -355,26 +360,41 @@ export default function RelivraisonClient({ userRole, userName, userEmail, userM
                 <p className="text-ink-faint text-xs mt-1">
                   La fiche d&apos;origine garde son tarif calculé ; seule la relivraison (REL) est facturée à ce repreneur.
                 </p>
-                {mSourceOverride === 'prive' && (
-                  <div className="mt-2">
-                    <label className="block text-ink-secondary text-xs font-semibold mb-1.5">
-                      Montant HTVA de la relivraison (Privé) <span className="text-red-500">*</span>
-                    </label>
-                    <div className="relative">
-                      <input
-                        type="number" step="0.01" min="0" inputMode="decimal"
-                        value={mImposedHtva}
-                        onChange={e => setMImposedHtva(e.target.value)}
-                        placeholder="ex. 125.00"
-                        className={`w-full px-3 py-2.5 bg-surface border rounded-xl text-sm text-ink ${!mImposedHtva ? 'border-red-400' : ''}`}
-                      />
-                      <span className="absolute right-3 top-1/2 -translate-y-1/2 text-ink-faint text-xs">€ HTVA</span>
-                    </div>
-                    <p className="text-ink-faint text-xs mt-1">Montant imposé pour la relivraison privée (tarif spécial).</p>
-                  </div>
-                )}
               </div>
             )}
+
+            {/* ── TARIF IMPOSÉ (facultatif, toutes sources) ────────────────────
+                Même champ que sur la fiche : « pas en obligatoire ; si pas
+                défini, le calcul normal se fait » (Olivier 2026-08-31). Il était
+                ici réservé au Privé ET obligatoire — deux écrans, deux règles
+                pour la même chose. */}
+            <div>
+              <label className="block text-ink-secondary text-xs font-semibold mb-1.5">
+                💶 Tarif de la relivraison <span className="text-ink-faint font-normal">(optionnel — vide = calcul automatique)</span>
+              </label>
+              <div className="flex gap-2">
+                <input
+                  type="text" inputMode="decimal" value={mImposedHtva}
+                  onChange={e => setMImposedHtva(e.target.value)}
+                  placeholder="Ex : 125"
+                  className="flex-1 px-3 py-2.5 bg-surface border rounded-xl text-sm text-ink outline-none placeholder:text-ink-faint/50"
+                />
+                <div className="flex rounded-xl border overflow-hidden">
+                  {([false, true] as const).map(t => (
+                    <button key={String(t)} type="button" onClick={() => setMTarifTvac(t)}
+                      className={`px-3 py-2.5 text-sm font-semibold ${mTarifTvac === t ? 'bg-blue-600 text-white' : 'bg-surface text-ink-secondary'}`}>
+                      {t ? 'TVAC' : 'HTVA'}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              {mHtvaImpose != null && (
+                <p className="text-ink-faint text-xs mt-1">
+                  Enregistré : <b>{mHtvaImpose.toFixed(2)} € HTVA</b> — soit {(mHtvaImpose * 1.21).toFixed(2)} € TVAC.
+                  Ce montant remplace le calcul pour cette relivraison.
+                </p>
+              )}
+            </div>
 
             {mErr && <p className="text-red-400 text-sm">⚠ {mErr}</p>}
 
@@ -382,7 +402,7 @@ export default function RelivraisonClient({ userRole, userName, userEmail, userM
               <button
                 type="button"
                 onClick={onRelivrerNow}
-                disabled={!!mBusy || !mAddr.trim() || (mRequiresSource && !mSourceOverride) || (mSourceOverride === 'prive' && !(Number(String(mImposedHtva).replace(',', '.')) > 0))}
+                disabled={!!mBusy || !mAddr.trim() || (mRequiresSource && !mSourceOverride)}
                 className="w-full py-2.5 bg-brand hover:bg-brand-hover text-white rounded-xl text-sm font-bold transition disabled:opacity-50"
               >
                 {mBusy === 'relivrer' ? 'Création…' : '🚚 Relivrer maintenant'}
