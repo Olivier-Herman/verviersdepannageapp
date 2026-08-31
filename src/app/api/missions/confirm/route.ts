@@ -10,6 +10,7 @@ import { createOdooDossierForMission } from '@/lib/missions/odoo-dossier'
 import { withOdooActor }                from '@/lib/odoo'
 import { reprintLabelForMission }       from '@/lib/missions/reprint-label-helper'
 import { acceptTouringBg }              from '@/lib/touring/accept-bg'
+import { acceptVabBg }                  from '@/lib/vab/accept-bg'
 import { acceptKazeProposalBg, acceptAllianzBg } from '@/lib/missions/provider-accept-bg'
 import { acceptAxaBg }                  from '@/lib/axa/affect-bg'
 
@@ -155,6 +156,11 @@ export async function POST(req: Request) {
 
     // Mission Touring COMEX → accepter + délai 60 + assign DE-001 (arrière-plan, gaté).
     await acceptTouringBg(mission_id, mission?.source || null, (mission as any)?.source_format || null, actor?.id || null, supabase)
+
+    // Mission VAB → accepter dans Comet DÈS LA VALIDATION DU DISPATCH, sans
+    // attendre le pointage chauffeur (arrière-plan). Cf lib/vab/accept-bg.ts :
+    // VAB voyait le dossier « à accepter » 20 min en médiane, jusqu'à 4 h.
+    await acceptVabBg(mission_id, mission?.source || null, actor?.id || null, supabase)
 
     // Mission Allianz/mondial → accepter l'affectation dans Hexalite (API, arrière-plan).
     if (mission?.source === 'mondial') {

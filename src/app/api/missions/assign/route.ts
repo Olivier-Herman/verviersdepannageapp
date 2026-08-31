@@ -12,6 +12,7 @@ import { rpcFsm, getFsmStageId, FSM_FIELDS } from '@/lib/odoo-fsm'
 import { createOdooDossierForMission } from '@/lib/missions/odoo-dossier'
 import { withOdooActor }               from '@/lib/odoo'
 import { acceptTouringBg }             from '@/lib/touring/accept-bg'
+import { acceptVabBg }                 from '@/lib/vab/accept-bg'
 import { acceptKazeProposalBg, acceptAllianzBg } from '@/lib/missions/provider-accept-bg'
 import { affectAxaBg }                  from '@/lib/axa/affect-bg'
 
@@ -142,6 +143,7 @@ export async function POST(req: Request) {
       // acceptée côté fournisseur (il fallait le faire à la main). Olivier 2026-07-13.
       await acceptKazeProposalBg(mission_id, (mission as any).kaze_proposal_id, actor?.id || null, supabase)
       await acceptTouringBg(mission_id, mission.source || null, (mission as any).source_format || null, actor?.id || null, supabase)
+      await acceptVabBg(mission_id, mission.source || null, actor?.id || null, supabase)
       if (mission.source === 'mondial') {
         await acceptAllianzBg(mission_id, (mission as any).dossier_number || mission.external_id || null, actor?.id || null, supabase)
       }

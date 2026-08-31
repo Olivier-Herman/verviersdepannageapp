@@ -223,20 +223,36 @@ export async function runVabTowClose(input: VabTowCloseInput): Promise<void> {
     }
   } catch { /* type indisponible : on continue, le garde-fou n'est pas un péage */ }
 
-  // ── UN DOSSIER JAMAIS ACCEPTÉ N'A PAS D'ÉCRAN À REMPLIR ───────────────────
-  // Sa page ne porte qu'un bouton « Accepter ». On y envoyait un Chromium qui
-  // cherchait 25 s un formulaire inexistant, puis repartait sur « écran on-site
-  // non trouvé » — quatre fois par heure, sans que personne comprenne pourquoi.
-  // On le dit maintenant en clair : c'est une acceptation qui manque, pas une
-  // clôture qui échoue. Accepter engage VD Soft vis-à-vis de VAB : c'est un
-  // geste humain, pas une reprise automatique.
+  // ── RATTRAPER LES ÉTAPES AVANT DE VOULOIR CLÔTURER ────────────────────────
+  // Un dossier ne s'ouvre à la clôture que s'il est accepté ET avancé chez eux.
+  // Le chemin DÉPANNAGE rattrapait déjà la chaîne accept → départ → arrivé (cf.
+  // runVabOnSite) ; le chemin REMORQUAGE, lui, constatait « jamais accepté » et
+  // rendait la main. Résultat au 31/08 : 112 dossiers terminés chez nous et
+  // bloqués chez eux, avec un Chromium relancé quatre fois par heure pour rien.
+  //
+  // `syncVabStep` est idempotent — il ne tire que les boutons réellement
+  // présents — et bascule sur le navigateur pour l'acceptation, que leur page de
+  // remorquage rend en JavaScript (invisible à notre couche HTTP).
+  //
+  // ⚠️ CHANGEMENT DE DOCTRINE (Olivier 2026-08-31 : « je veux que mes clôtures
+  // se fassent »). On réservait l'acceptation à l'humain, la jugeant engageante.
+  // Pour une mission DÉJÀ RÉALISÉE chez nous, ce n'est plus un engagement à
+  // prendre : c'est une formalité en retard chez le partenaire.
+  try {
+    const { syncVabStep } = await import('@/lib/vab/sync')
+    await syncVabStep(sb, input.missionId, 'arrive')
+  } catch { /* best-effort : l'échec ici ne condamne pas la clôture */ }
+
+  // Garde-fou APRÈS rattrapage : si le dossier reste « à accepter », leur écran
+  // de clôture n'existe pas et un Chromium n'y trouvera rien. On le dit en clair
+  // plutôt que de le relancer indéfiniment.
   try {
     const { loginVab: lv2, vabEtatEcran } = await import('@/lib/vab/scraper')
     const etat = await vabEtatEcran(await lv2(), assignmentId)
     if (etat === 'a_accepter') {
       await log('vab_close_skipped',
-        "VAB : dossier JAMAIS ACCEPTÉ chez eux — il n'a pas d'écran de clôture. À accepter (ou refuser) à la main dans Comet, la clôture suivra.",
-        { assignmentId, etat })
+        "VAB : dossier TOUJOURS « à accepter » après rattrapage automatique — leur écran de clôture n'existe pas. À reprendre à la main dans Comet.",
+        { assignmentId, etat, rattrapageTente: true })
       return
     }
   } catch { /* lecture indisponible : on tente quand même */ }
