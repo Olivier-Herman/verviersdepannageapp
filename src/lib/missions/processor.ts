@@ -1296,8 +1296,28 @@ export async function processEmailMessage(messageId: string): Promise<ProcessRes
     // dispatcher peut avoir deja confirme/assigne/complete la mission).
     if (!existingMissionId) {
       updatePayload.intervention_date = receivedAt
-      updatePayload.status            = 'new'
+      // ── UN MAIL QUI N'EST PAS UNE MISSION N'EN DEVIENT PAS UNE ──────────────
+      // 45 fiches « nouveau » dormaient dans le dispatch, dont vingt Ethias et
+      // dix-sept Mondial sans type, sans véhicule et sans lieu — la plus vieille
+      // du 8 juin (Olivier 2026-08-31 : « aucun type aucun véhicule aucun lieu,
+      // c'est bizarre »). Ce ne sont pas des missions perdues : ce sont des mails
+      // ordinaires transformés en fiches. Une demande d'adresse de livraison, un
+      // « Toewijzing is klaar om te worden verzonden », un rejet de facture, un
+      // « les documents en pièce jointe demandent votre attention ».
+      //
+      // Le signal était déjà là et personne ne le lisait : l'extraction rend une
+      // confiance de 0.1 ou 0.2 et un identifiant `UNKNOWN_…` / `ERR_…`. On s'en
+      // sert. Un mail sans AUCUNE prise — ni plaque, ni lieu, ni dossier — et
+      // dont l'IA elle-même doute, part en `ignored` plutôt que d'aller encombrer
+      // la file à valider. Rien n'est perdu : la fiche existe, avec son mail
+      // complet, et le dispatch peut la ressortir.
+      const aucunePrise = !parsed.vehicle_plate && !parsed.incident_address && !parsed.dossier_number
+      const iaDoute     = typeof parsed.confidence === 'number' && parsed.confidence < 0.3
+      updatePayload.status            = (aucunePrise && iaDoute) ? 'ignored' : 'new'
       updatePayload.dispatch_mode     = 'manual'
+      if (updatePayload.status === 'ignored') {
+        updatePayload.closing_notes = `Mail sans élément de mission (ni plaque, ni lieu, ni dossier) et extraction peu sûre (${Math.round((parsed.confidence ?? 0) * 100)} %) — classé sans suite à l'arrivée. À rouvrir si c'était bien une mission.`
+      }
     }
     const { error: finalUpdErr } = await supabase.from('incoming_missions').update(updatePayload).eq('id', targetId)
 
