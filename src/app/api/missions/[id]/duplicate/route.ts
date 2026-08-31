@@ -1,14 +1,20 @@
 // src/app/api/missions/[id]/duplicate/route.ts
 //
-// POST — duplique une mission (superadmin uniquement). Copie le CONTENU (véhicule,
-// client, adresses, source, tarif…) dans une NOUVELLE fiche, en réinitialisant
-// tout le cycle de vie (statut, pointages, Odoo/Kaze, paiement, parc, photos…).
+// POST — duplique une mission. Copie le CONTENU (véhicule, client, adresses,
+// source, tarif…) dans une NOUVELLE fiche, en réinitialisant tout le cycle de
+// vie (statut, pointages, Odoo/Kaze, paiement, parc, photos…).
 // Olivier 2026-07-14.
+//
+// Accès : superadmin, ou permission « duplicate_mission » attribuée dans
+// /admin/users. Olivier 2026-08-31 : le bouton devait s'ouvrir à un dispatcher
+// (Jona) sans lui donner le superadmin — donc une permission nommée, pas un
+// nom en dur ni l'ouverture à tout un rôle.
 
 import { NextResponse }      from 'next/server'
 import { getServerSession }  from 'next-auth'
 import { authOptions }       from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase'
+import { sessionAccess }     from '@/lib/access'
 
 export const dynamic = 'force-dynamic'
 
@@ -34,8 +40,8 @@ const RESET_FIELDS = [
 export async function POST(_req: Request, { params }: { params: { id: string } }) {
   const session = await getServerSession(authOptions)
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  if ((session.user as any)?.role !== 'superadmin') {
-    return NextResponse.json({ error: 'Réservé au superadmin' }, { status: 403 })
+  if (!sessionAccess(session, { roles: ['superadmin'], modules: ['duplicate_mission'] }).ok) {
+    return NextResponse.json({ error: 'Duplication non autorisée' }, { status: 403 })
   }
   const actorId = (session.user as any)?.id || null
 

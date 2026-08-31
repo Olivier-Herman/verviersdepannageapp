@@ -4619,8 +4619,11 @@ export default function MissionDetailClient({
                 </div>
               )}
 
-              {/* ── Dupliquer la mission (superadmin uniquement) ────────────── */}
-              {userRole === 'superadmin' && (
+              {/* ── Dupliquer la mission ─────────────────────────────────────
+                  Olivier 2026-08-31 : plus réservé au superadmin. La permission
+                  « duplicate_mission » s'attribue dans /admin/users, pour ouvrir
+                  le bouton à un dispatcher sans lui donner tout le reste. */}
+              {(userRole === 'superadmin' || userModules.includes('duplicate_mission')) && (
                 <DuplicateMissionButton missionId={initialMission.id} />
               )}
 
@@ -5071,7 +5074,7 @@ function DuplicateMissionButton({ missionId }: { missionId: string }) {
   }
   return (
     <div className="bg-surface border border-purple-500/30 rounded-2xl p-5 md-card-enter">
-      <h3 className="text-ink-muted text-xs font-medium uppercase tracking-wide mb-3">🧬 Superadmin</h3>
+      <h3 className="text-ink-muted text-xs font-medium uppercase tracking-wide mb-3">🧬 Duplication</h3>
       <button type="button" onClick={run} disabled={busy}
         className="w-full flex items-center gap-3 px-4 py-3 bg-purple-500/10 hover:bg-purple-500/20 border border-purple-500/30 rounded-xl text-left transition disabled:opacity-50">
         <span className="text-xl flex-shrink-0">🧬</span>
