@@ -30,6 +30,47 @@ function chainSettled(m: ChainMission, cutoff: string): boolean {
   return Boolean(settledAt) && settledAt! < cutoff
 }
 
+
+/**
+ * Les COQUILLES VIDES du seau « En commande ».
+ *
+ * Le parseur crée une fiche pour chaque mail entrant. Quand il n'en tire rien
+ * (mail qui n'était pas une mission : accusé, relance, annulation, avis — ou
+ * extraction ratée), la fiche reste en `new` avec un dossier fabriqué
+ * (`UNKNOWN_<horodatage>`), sans plaque, sans client, sans adresse. Le tableau
+ * de dispatch les filtre déjà, donc PERSONNE ne les voit — et rien ne les
+ * nettoyait : 43 accumulées du 8 juin au 28 août (Olivier 2026-08-31, qui a
+ * tranché : « apparemment on n'en a pas eu besoin donc archivage automatique »).
+ *
+ * Critères VOLONTAIREMENT stricts : on n'archive que ce qui ne porte AUCUNE
+ * information exploitable. Une fiche avec une plaque, un client ou une adresse
+ * n'est pas une coquille, même mal parsée — elle reste visible.
+ * Et on attend le même délai que le reste : un échec récent doit pouvoir être
+ * regardé.
+ */
+async function archiveCoquillesVides(sb: any, cutoff: string): Promise<number> {
+  const { data } = await sb
+    .from('incoming_missions')
+    .select('id')
+    .eq('status', 'new')
+    .is('archived_at', null)
+    .is('assigned_to', null)
+    .is('vehicle_plate', null)
+    .is('client_name', null)
+    .is('incident_address', null)
+    .lt('parse_confidence', 0.3)
+    .lt('created_at', cutoff)
+    .limit(500)
+
+  const ids = (data || []).map((m: any) => m.id)
+  if (!ids.length) return 0
+  const { error } = await sb.from('incoming_missions')
+    .update({ archived_at: new Date().toISOString() }).in('id', ids)
+  if (error) { console.error('[auto-archive] coquilles:', error.message); return 0 }
+  console.log(`[auto-archive] ${ids.length} coquille(s) vide(s) archivée(s)`)
+  return ids.length
+}
+
 export async function GET(req: Request) {
   const authHeader = req.headers.get('authorization')
   if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
@@ -38,6 +79,9 @@ export async function GET(req: Request) {
 
   const sb = createAdminClient()
   const cutoff = new Date(Date.now() - ARCHIVE_DELAY_DAYS * 24 * 60 * 60 * 1000).toISOString()
+
+  // Nettoyage du seau « En commande » : indépendant des missions terminées.
+  const coquilles = await archiveCoquillesVides(sb, cutoff)
 
   // 1) Candidats : missions completed reglees (facture OU sans frais) avant cutoff
   const { data: candidates, error } = await sb
@@ -53,7 +97,7 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
   if (!candidates || candidates.length === 0) {
-    return NextResponse.json({ ok: true, archived: 0 })
+    return NextResponse.json({ ok: true, archived: 0, coquilles })
   }
 
   // Filtre cutoff cote app (Supabase ne supporte pas COALESCE dans .lt() facilement)
@@ -63,7 +107,7 @@ export async function GET(req: Request) {
   })
 
   if (eligible.length === 0) {
-    return NextResponse.json({ ok: true, archived: 0, candidates: candidates.length })
+    return NextResponse.json({ ok: true, archived: 0, coquilles, candidates: candidates.length })
   }
 
   // 2) Verifier la chaine REM+REL : tous les maillons doivent etre regles depuis > cutoff
@@ -114,6 +158,7 @@ export async function GET(req: Request) {
     return NextResponse.json({
       ok: true,
       archived: 0,
+      coquilles,
       candidates: candidates.length,
       eligible:   eligible.length,
       skipped_chain_incomplete: eligible.length,
@@ -135,6 +180,7 @@ export async function GET(req: Request) {
   return NextResponse.json({
     ok: true,
     archived:   toArchive.length,
+    coquilles,
     candidates: candidates.length,
     eligible:   eligible.length,
     skipped_chain_incomplete: eligible.length - toArchive.length,
