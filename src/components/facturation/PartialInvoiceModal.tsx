@@ -82,7 +82,12 @@ export default function PartialInvoiceModal({ missionId, parkedSince, onClose, o
           }
         } else {
           // Chemin "forfait" (assurances / garage / privé).
-          if (est.forfait && est.forfait > 0) proposed.push({ kind: 'SERV-PEC', label: 'Prise en charge / forfait', qty: 1, price_unit: round(est.forfait), checked: true })
+          // Tarif convenu (relivraison à prix imposé, accord client) : l'estimation
+          // renvoie `special_tarif` et met tout le montant dans `forfait`. On le
+          // nomme comme la facturation le nommera. Olivier 2026-08-31.
+          if (est.special_tarif && est.forfait > 0) {
+            proposed.push({ kind: 'SERV-DIV', label: 'Intervention suivant prix convenu', qty: 1, price_unit: round(est.forfait), checked: true })
+          } else if (est.forfait && est.forfait > 0) proposed.push({ kind: 'SERV-PEC', label: 'Prise en charge / forfait', qty: 1, price_unit: round(est.forfait), checked: true })
           if (est.km_extra > 0 && est.km_extra_eur > 0) proposed.push({ kind: 'SERV-KM', label: 'Km supplémentaires', qty: est.km_extra, price_unit: round(est.km_extra_eur / est.km_extra), checked: true })
         }
         if (est.surcharge_eur > 0) proposed.push({ kind: 'SERV-MAJ', label: `Majoration ${est.surcharge_pct || ''}%`, qty: 1, price_unit: round(est.surcharge_eur), checked: true })

@@ -77,6 +77,11 @@ export async function PATCH(
     'depot_depart_id', 'depot_depart_locked',
     'extra_addresses',
     'amount_guaranteed', 'amount_to_collect', 'amount_currency', 'special_tarif_htva',
+    // « Pas de gardiennage » : le champ existait et TOUT le lisait — devis,
+    // facture partielle, estimation, fiche fourrière — mais seul l'abandon
+    // volontaire pouvait le poser. Aucun écran ne permettait de dire simplement
+    // « ce dossier-là, on ne compte pas le parc ». Olivier 2026-08-31.
+    'storage_waived',
     'incident_at', 'intervention_date', 'remarks_general',
     // Olivier 2026-07-07 : « Remarque de facturation » éditable par le dispatch,
     // rappelée en haut de la fiche + blocage à la facturation.

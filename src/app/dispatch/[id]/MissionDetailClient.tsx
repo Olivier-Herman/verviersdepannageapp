@@ -152,6 +152,7 @@ interface Mission {
   snc_requires_balisage?: boolean | null
   remarks_billing?:      string | null
   special_tarif_htva?:   number | null
+  storage_waived?:       boolean | null
 }
 
 interface Stop {
@@ -1272,6 +1273,8 @@ export default function MissionDetailClient({
   }
 
   // Formulaire éditable
+  /** « Pas de gardiennage » — miroir local de `storage_waived`. */
+  const [storageWaived, setStorageWaived] = useState<boolean>(!!initialMission.storage_waived)
   const [form, setForm] = useState({
     source:               initialMission.source               || '',
     mission_type:         initialMission.mission_type         || '',
@@ -3897,6 +3900,27 @@ export default function MissionDetailClient({
                   <h3 className="text-ink font-semibold text-xs mb-3 flex items-center gap-2">
                     <span>🅿️</span> Gardiennage (dates de passage en parc)
                   </h3>
+                  {/* « Pas de gardiennage » (Olivier 2026-08-31). Le champ
+                      `storage_waived` existait et TOUT le lisait — devis, facture
+                      partielle, estimation, fiche fourrière — mais seul l'abandon
+                      volontaire pouvait le poser. Il manquait juste la case. */}
+                  <label className={`flex items-start gap-2 mb-3 p-2.5 rounded-xl border cursor-pointer ${
+                    storageWaived ? 'border-amber-500 bg-amber-50' : 'border-dashed bg-surface-2'
+                  }`}>
+                    <input
+                      type="checkbox" checked={storageWaived}
+                      onChange={e => { setStorageWaived(e.target.checked); silentPatch({ storage_waived: e.target.checked }) }}
+                      className="mt-0.5 h-4 w-4 accent-amber-600"
+                    />
+                    <span className="text-xs">
+                      <span className={`font-semibold ${storageWaived ? 'text-amber-900' : 'text-ink'}`}>Pas de gardiennage</span>
+                      <span className="block text-ink-muted mt-0.5">
+                        {storageWaived
+                          ? 'Aucun jour de parc ne sera compté ni proposé à la facturation.'
+                          : 'Coche si le parc n’est pas facturé sur ce dossier (geste commercial, accord, dépôt de courte durée…).'}
+                      </span>
+                    </span>
+                  </label>
                   <div className="grid grid-cols-2 gap-4">
                     <Field label="Entrée parc">
                       <input

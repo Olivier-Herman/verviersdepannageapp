@@ -150,5 +150,45 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     metadata: { odoo_quote_id: result.id, lines: lines.map(l => l.label) },
   })
 
-  return NextResponse.json({ ok: true, quote_id: result.id, quote_url: result.url, items: rows.length })
+  // ── PLUS RIEN À FACTURER ⇒ LE DOSSIER EST FINI ────────────────────────────
+  // « Si la facture partielle couvre le montant des deux interventions, ou qu'il
+  // y a une restitution et que le solde est à 0, il faut passer le dossier en
+  // completed. Ça n'a pas de sens de faire une facture à 0 » (Olivier
+  // 2026-08-31). Sans ça, un dossier entièrement réglé par une facture partielle
+  // restait « à facturer » et revenait indéfiniment dans la file.
+  //
+  // Le total attendu, c'est le tarif convenu s'il y en a un — il écrase tout le
+  // calcul — sinon l'estimation figée de la fiche. On tolère un centime : les
+  // arrondis de TVA ne doivent pas laisser un dossier ouvert pour 0,01 €.
+  let cloturé = false
+  try {
+    const { data: fin } = await sb.from('incoming_missions')
+      .select('status, special_tarif_htva, estimated_htva, storage_waived, parked_at')
+      .eq('id', params.id).maybeSingle()
+    const attendu = Number((fin as any)?.special_tarif_htva) > 0
+      ? Number((fin as any).special_tarif_htva)
+      : Number((fin as any)?.estimated_htva) || 0
+    if (attendu > 0 && ['to_invoice', 'completed'].includes(String((fin as any)?.status || ''))) {
+      const { data: tout } = await sb.from('mission_billed_items').select('amount_htva').eq('mission_id', params.id)
+      const facturé = (tout || []).reduce((t: number, i: any) => t + Number(i.amount_htva || 0), 0)
+      // Un gardiennage encore en cours peut faire grossir le total plus tard :
+      // on ne clôture que si le parc est soldé (offert, ou véhicule sorti).
+      const parcOuvert = !!(fin as any)?.parked_at && !(fin as any)?.storage_waived
+      if (facturé + 0.01 >= attendu && !parcOuvert && (fin as any)?.status !== 'completed') {
+        await sb.from('incoming_missions')
+          .update({ status: 'completed', completed_at: new Date().toISOString(), updated_at: new Date().toISOString() })
+          .eq('id', params.id).eq('status', 'to_invoice')
+        await sb.from('mission_logs').insert({
+          mission_id: params.id, actor_id: actor?.id ?? null, action: 'auto_completed',
+          notes: `Dossier soldé : ${facturé.toFixed(2)} € HTVA facturés pour ${attendu.toFixed(2)} € attendus — plus rien à facturer.`,
+          metadata: { facture: facturé, attendu, via: 'facture_partielle' },
+        }).then(() => {}, () => {})
+        cloturé = true
+      }
+    }
+  } catch (e: any) {
+    console.warn('[partial-invoice] clôture auto KO (non bloquant):', e?.message)
+  }
+
+  return NextResponse.json({ ok: true, quote_id: result.id, quote_url: result.url, items: rows.length, completed: cloturé })
 }
