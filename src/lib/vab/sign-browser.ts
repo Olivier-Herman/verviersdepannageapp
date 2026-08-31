@@ -357,7 +357,38 @@ export async function vabCloseOnSiteBrowser(opts: {
           await new Promise(r => setTimeout(r, 2000))
           steps.push('vin+verifier+unknownvin')
         }
-      } else { steps.push('vin déjà validé') }
+      } else {
+        // ── REMPLI N'EST PAS VÉRIFIÉ (Olivier 2026-08-31) ───────────────────
+        // Un châssis pré-rempli par VAB mais PAS ENCORE VÉRIFIÉ bloquait la
+        // clôture en silence : on sautait toute la branche de vérification en
+        // se disant « déjà validé », alors que seul le CHAMP l'était. Le
+        // dossier restait coincé sur « Chassis Number must be checked » sans
+        // que le message revienne (1WHL959, bloqué depuis le 30/08).
+        //
+        // Champ VERROUILLÉ = validé pour de bon chez eux : là, on ne touche à
+        // rien. Champ modifiable = à vérifier, même s'il porte déjà sa valeur.
+        const figé = await page.evaluate(() => {
+          const c = document.querySelector('input[id*="wtChassisNumberInput"]') as HTMLInputElement | null
+          return !c || c.readOnly || c.disabled
+        }).catch(() => true)
+        if (figé) {
+          steps.push('vin déjà validé chez VAB')
+        } else {
+          const ok = await page.evaluate(() => {
+            const b = [...document.querySelectorAll('a, button, input')]
+              .find(e => /wtLink_CheckVin|DummyButton_Chassisnumber/i.test((e as HTMLElement).id || ''))
+            if (!b) return false
+            ;(b as HTMLElement).click()
+            return true
+          }).catch(() => false)
+          steps.push(ok ? 'vin rempli → vérifié' : '⚠ vin rempli, bouton Vérifier introuvable')
+          if (ok) {
+            await new Promise(r => setTimeout(r, 3000))
+            for (let t = 0; t < 5; t++) { if (await clickOuiInFrames(page)) break; await new Promise(r => setTimeout(r, 1000)) }
+            await new Promise(r => setTimeout(r, 2000))
+          }
+        }
+      }
 
       // ── LE KILOMÉTRAGE SE FAIT VIDER PAR LE PASSAGE DU CHÂSSIS ───────────────
       // Trois dossiers du 24/08 (2JVA556, 1RTZ221, 2CNW997) sont morts au même

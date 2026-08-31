@@ -86,6 +86,22 @@ export async function runVabOnSite(input: VabOnSiteInput): Promise<void> {
     return
   }
 
+  // ── L'ÉCRAN SUR PLACE N'EXISTE QU'AU BOUT DE LA CHAÎNE ────────────────────
+  // « écran on-site non trouvé » ne voulait pas dire « écran introuvable » : il
+  // voulait dire « pas encore là ». VAB déroule accepté → départ domicile →
+  // arrivé sur place, et le formulaire de clôture n'apparaît qu'après la
+  // dernière étape. Sur 2KBB116, accepté à la main le 26/08, le navigateur
+  // tombait sur un bouton « Départ domicile » et repartait bredouille.
+  //
+  // `syncVabStep` sait rattraper ces étapes en HTTP pur, une par une, sans
+  // navigateur — et ne fait rien quand elles sont déjà passées. On l'appelle
+  // donc systématiquement avant d'ouvrir Chromium : c'est idempotent, ça coûte
+  // trois requêtes, et ça supprime toute une famille d'échecs.
+  try {
+    const { syncVabStep } = await import('@/lib/vab/sync')
+    await syncVabStep(sb, input.missionId, 'arrive')
+  } catch { /* best-effort : l'échec ici ne condamne pas la clôture */ }
+
   const started = Date.now()
   try {
     const km  = input.km == null || String(input.km).trim() === '' ? '' : String(input.km).trim()
