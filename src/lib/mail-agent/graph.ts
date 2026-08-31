@@ -137,6 +137,17 @@ export async function getMessageText(mailbox: string, messageId: string): Promis
   return m.body?.contentType === 'html' ? htmlToText(raw) : raw
 }
 
+/** Récupère les pièces jointes PDF d'un message, en base64. */
+export async function getPdfAttachments(mailbox: string, messageId: string): Promise<{ name: string; base64: string }[]> {
+  guardMailbox(mailbox)
+  const data = await authedGet(
+    `/users/${encodeURIComponent(mailbox)}/messages/${encodeURIComponent(messageId)}/attachments`)
+  return (data.value || [])
+    .filter((a: any) => !a.isInline && a.contentBytes
+      && (a.contentType === 'application/pdf' || /\.pdf$/i.test(a.name || '')))
+    .map((a: any) => ({ name: a.name || 'document.pdf', base64: a.contentBytes }))
+}
+
 /**
  * Déplace un message vers un dossier. Retourne ok:false plutôt que de lever :
  * un mail non déplacé ne doit JAMAIS annuler un traitement comptable déjà fait.

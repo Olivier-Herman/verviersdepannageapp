@@ -23,7 +23,7 @@
 // encore impayées.
 
 import { odooRpc } from '@/lib/odoo'
-import type { ImaEntity } from './handlers/ima-rejet'
+import type { RejectEntity } from './handlers/types'
 
 export interface OdooInvoice {
   id:              number
@@ -54,16 +54,45 @@ export async function findInvoiceByName(name: string): Promise<OdooInvoice | nul
   return rows[0]
 }
 
-/** Fiche Odoo de l'entité exigée, résolue par TVA, contact de facturation d'abord. */
-export async function resolveTargetPartner(entity: ImaEntity): Promise<{ id: number; name: string } | null> {
+/**
+ * Fiche Odoo de l'entité exigée, résolue par NUMÉRO DE TVA.
+ *
+ * Plusieurs fiches partagent souvent la même TVA (la fiche mère et son contact
+ * de facturation). On retient celle qui a le plus de factures PAYÉES : c'est la
+ * mesure la plus fiable de « celle qui se fait payer », et elle est
+ * auto-correctrice si la pratique change.
+ *
+ * Mesuré le 2026-08-31 — le classement par factures payées donne la bonne fiche
+ * dans les quatre cas rencontrés :
+ *   BE0402236531 → [19] P&V, Invoice        251 payées  (vs 3 sur la mère [18])
+ *   BE0474851226 → [21] Ima Benelux, Invoice 43 payées  (vs 0 sur la mère [20])
+ *   FR44481511632 → [23] IMA ASSURANCES, Inv. 30 payées (vs 8 sur la mère [22])
+ *   BE0837437919 → [45] AWP P&C S.A. - Belgian Branch 576 payées (vs 1 sur [47])
+ * Un simple « préférer le contact de type invoice » se trompait sur AWP, où
+ * aucune fiche n'est de ce type.
+ */
+export async function resolveTargetPartner(entity: { vat: string; label: string }): Promise<{ id: number; name: string } | null> {
   const rows = await odooRpc<any[]>('res.partner', 'search_read',
     [[['vat', '=', entity.vat]]],
-    { fields: ['id', 'name', 'type', 'parent_id'], limit: 10 })
+    { fields: ['id', 'name', 'type', 'parent_id'], limit: 20 })
   if (!rows?.length) return null
-  const invoiceContact = rows.find(r => r.type === 'invoice')
-  const chosen = invoiceContact || rows[0]
-  const label = chosen.name || (chosen.parent_id ? `${chosen.parent_id[1]}, Invoice` : `#${chosen.id}`)
-  return { id: chosen.id, name: label }
+  if (rows.length === 1) return { id: rows[0].id, name: labelOf(rows[0]) }
+
+  const scored: { row: any; paid: number }[] = []
+  for (const r of rows) {
+    const paid = await odooRpc<number>('account.move', 'search_count',
+      [[['move_type', '=', 'out_invoice'], ['partner_id', '=', r.id],
+        ['state', '=', 'posted'], ['payment_state', '=', 'paid']]])
+    scored.push({ row: r, paid: paid || 0 })
+  }
+  scored.sort((a, b) => b.paid - a.paid
+    || (b.row.type === 'invoice' ? 1 : 0) - (a.row.type === 'invoice' ? 1 : 0))
+  const best = scored[0].row
+  return { id: best.id, name: labelOf(best) }
+}
+
+function labelOf(p: any): string {
+  return p.name || (p.parent_id ? `${p.parent_id[1]}, ${p.type}` : `#${p.id}`)
 }
 
 export interface CheckResult {
@@ -199,7 +228,7 @@ export interface RebillResult {
 export async function creditAndRebill(
   inv: OdooInvoice,
   target: { id: number; name: string },
-  entity: ImaEntity,
+  entity: RejectEntity,
 ): Promise<RebillResult> {
   const warnings: string[] = []
   const reason = inv.ref || inv.name

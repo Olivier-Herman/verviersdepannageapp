@@ -25,32 +25,14 @@ export const IMA_SENDERS = [
   'hub@imabenelux.com',
 ]
 
+import type { MailHandler, RejectEntity, RejectExtraction } from './types'
+
 export type ImaEntityKey = 'pv' | 'ima_fr' | 'ima_be'
 
-export interface ImaEntity {
-  key:      ImaEntityKey
-  label:    string
-  /** Clé de résolution de la fiche Odoo — on cherche par TVA, jamais par ID en dur. */
-  vat:      string
-  /** Facture hors TVA (autoliquidation intracommunautaire) : entité française. */
-  zeroVat:  boolean
-}
-
-export const IMA_ENTITIES: Record<ImaEntityKey, ImaEntity> = {
+export const IMA_ENTITIES: Record<ImaEntityKey, RejectEntity> = {
   pv:     { key: 'pv',     label: 'P&V Assistance c/o IMA Benelux', vat: 'BE0402236531', zeroVat: false },
   ima_fr: { key: 'ima_fr', label: 'IMA ASSURANCES (Niort, FR)',     vat: 'FR44481511632', zeroVat: true  },
   ima_be: { key: 'ima_be', label: 'IMA BENELUX SA/NV',              vat: 'BE0474851226', zeroVat: false },
-}
-
-export interface ImaRejet {
-  invoiceNumber: string
-  /** Montant TTC annoncé par IMA — sert de contrôle croisé avec Odoo. */
-  amount:        number | null
-  entity:        ImaEntity
-  /** Référence de commande/dossier citée par IMA (contrôle croisé, pas le motif). */
-  mailReference: string | null
-  /** Phrase de motif telle qu'IMA la formule, pour l'affichage à l'humain. */
-  reason:        string
 }
 
 /** Ce mail est-il un rejet de facture IMA ? */
@@ -70,7 +52,7 @@ function parseAmount(raw: string): number | null {
  * Extrait les données du rejet. Retourne null si le mail ne correspond à aucun
  * gabarit connu → l'appelant doit le classer 'to_verify'.
  */
-export function extract(subject: string, text: string): ImaRejet | null {
+export function extract(subject: string, text: string): RejectExtraction | null {
   // ── numéro de facture : dans l'objet, et confirmé dans le corps ──
   const subjMatch = (subject || '').match(/votre facture n[°o]\s*([0-9]{4}\/[0-9]{2}\/[0-9]{3,4})/i)
   const bodyMatch = (text   || '').match(/votre facture n[°o]?\s*([0-9]{4}\/[0-9]{2}\/[0-9]{3,4})/i)
@@ -82,7 +64,7 @@ export function extract(subject: string, text: string): ImaRejet | null {
   const amount = amtMatch ? parseAmount(amtMatch[1]) : null
 
   // ── entité exigée : UNIQUEMENT par le numéro de TVA cité dans la demande ──
-  let entity: ImaEntity | null = null
+  let entity: RejectEntity | null = null
   if (/0402[\s.]?236[\s.]?531/.test(text))                       entity = IMA_ENTITIES.pv
   else if (/(?:FR\s*)?44[\s.]?481[\s.]?511[\s.]?632/.test(text)) entity = IMA_ENTITIES.ima_fr
   else if (/0474[\s.]?851[\s.]?226/.test(text))                  entity = IMA_ENTITIES.ima_be
@@ -103,4 +85,13 @@ export function extract(subject: string, text: string): ImaRejet | null {
     || 'Facture rejetée par IMA'
 
   return { invoiceNumber, amount, entity, mailReference: ref, reason }
+}
+
+
+export const imaHandler: MailHandler = {
+  id:         'ima_rejet',
+  label:      'Rejet de facture IMA / P&V',
+  doneFolder: IMA_DONE_FOLDER,
+  detect,
+  async extract({ subject, text }) { return extract(subject, text) },
 }

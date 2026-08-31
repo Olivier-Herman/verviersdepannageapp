@@ -12,16 +12,21 @@
 // seule écriture comptable ne parte. Le mode ('draft' | 'auto', réglable dans
 // app_settings sans redéploiement) décide si applyItem est déclenché
 // automatiquement à la fin du scan ou s'il attend une main humaine.
+//
+// L'orchestrateur ne connaît AUCUN assisteur : il délègue au registre de
+// handlers (cf handlers/index.ts). Ajouter Logicx ou VAB = un fichier de plus,
+// zéro modification ici.
 
 import { createAdminClient } from '@/lib/supabase'
-import { findFolderIdByName, listFolderMessages, getMessageText, moveMessage } from './graph'
-import { detect, extract, IMA_DONE_FOLDER } from './handlers/ima-rejet'
+import { findFolderIdByName, listFolderMessages, getMessageText, getPdfAttachments, moveMessage } from './graph'
+import { handlerFor, handlerById } from './handlers'
 import { findInvoiceByName, resolveTargetPartner, runChecks, creditAndRebill } from './odoo'
+import type { RejectEntity } from './handlers/types'
 
 export const MAIL_AGENT_MAILBOX = 'info@verviersdepannage.com'
 export const MAIL_AGENT_FOLDER  = '0 - Jona et Mobi'
-// Dossier de classement par défaut ; chaque handler peut imposer le sien.
-export const MAIL_AGENT_DONE_FOLDER = IMA_DONE_FOLDER
+/** Dossier de repli si le handler n'en impose pas. */
+export const MAIL_AGENT_DONE_FOLDER = 'Mail auto-géré'
 
 export type MailAgentMode = 'draft' | 'auto'
 
@@ -73,20 +78,18 @@ export async function scanFolder(opts: { mailbox?: string; folder?: string; limi
 
   for (const msg of messages) {
     try {
-      if (!detect(msg.fromEmail, msg.subject)) { report.skipped++; continue }
+      const handler = handlerFor(msg.fromEmail, msg.subject)
+      if (!handler) { report.skipped++; continue }
 
       // Un item déjà traité ne doit pas être rejoué.
       const { data: existing } = await sb.from('mail_agent_items')
         .select('id, status')
-        .eq('mailbox', mailbox).eq('message_id', msg.id).eq('handler', 'ima_rejet')
+        .eq('mailbox', mailbox).eq('message_id', msg.id).eq('handler', handler.id)
         .maybeSingle()
       if (existing && ['applied', 'ignored'].includes(existing.status)) { report.skipped++; continue }
 
-      const text = await getMessageText(mailbox, msg.id)
-      const parsed = extract(msg.subject, text)
-
       const base = {
-        handler:     'ima_rejet',
+        handler:     handler.id,
         mailbox,
         message_id:  msg.id,
         folder,
@@ -96,11 +99,31 @@ export async function scanFolder(opts: { mailbox?: string; folder?: string; limi
         updated_at:  new Date().toISOString(),
       }
 
+      // Rejet destiné à un autre prestataire (on est en simple copie).
+      if (handler.notOurs?.(msg.subject)) {
+        await upsert(sb, base, {
+          status: 'blocked',
+          blocked_reason: "Ce rejet porte sur la facture d'un tiers — le numéro n'appartient pas à notre numérotation. Nous sommes en copie.",
+          extracted: null,
+        })
+        report.captured++; report.blocked++
+        continue
+      }
+
+      const text   = await getMessageText(mailbox, msg.id)
+      // Les PJ ne sont téléchargées que si le handler en a besoin (Allianz oui,
+      // IMA non) : inutile de tirer des mégaoctets pour rien à chaque passage.
+      const parsed = await handler.extract({
+        subject: msg.subject,
+        text,
+        pdfs: () => getPdfAttachments(mailbox, msg.id),
+      })
+
       if (!parsed) {
-        // Gabarit inconnu : on ne devine pas, on demande un œil humain.
+        // Document non exploitable avec certitude : on ne devine pas.
         await upsert(sb, base, {
           status: 'to_verify',
-          blocked_reason: "Mail non reconnu comme un gabarit de rejet IMA connu — lecture humaine requise",
+          blocked_reason: `Mail non exploitable automatiquement (${handler.label}) — lecture humaine requise`,
           extracted: { rawExcerpt: text.slice(0, 1200) },
         })
         report.captured++; report.toVerify++
@@ -111,22 +134,20 @@ export async function scanFolder(opts: { mailbox?: string; folder?: string; limi
       const target = await resolveTargetPartner(parsed.entity)
       const checks = await runChecks(inv, target, parsed.amount)
 
-      const extracted = {
-        invoiceNumber: parsed.invoiceNumber,
-        amount:        parsed.amount,
-        entityKey:     parsed.entity.key,
-        entityLabel:   parsed.entity.label,
-        entityVat:     parsed.entity.vat,
-        zeroVat:       parsed.entity.zeroVat,
-        mailReference: parsed.mailReference,
-        reason:        parsed.reason,
-        odooRef:       inv?.ref || null,
-      }
-
       await upsert(sb, base, {
         status:              checks.ok ? 'ready' : 'blocked',
         blocked_reason:      checks.blocked || null,
-        extracted,
+        extracted: {
+          invoiceNumber: parsed.invoiceNumber,
+          amount:        parsed.amount,
+          entityKey:     parsed.entity.key,
+          entityLabel:   parsed.entity.label,
+          entityVat:     parsed.entity.vat,
+          zeroVat:       parsed.entity.zeroVat,
+          mailReference: parsed.mailReference,
+          reason:        parsed.reason,
+          odooRef:       inv?.ref || null,
+        },
         checks:              checks.details,
         odoo_move_id:        inv?.id   || null,
         odoo_move_name:      inv?.name || null,
@@ -178,14 +199,21 @@ export async function applyItem(itemId: string, actor: string): Promise<ApplyRes
   if (item.status === 'applied')  return { ok: false, error: 'Déjà appliqué' }
   if (!item.odoo_move_name)       return { ok: false, error: 'Aucune facture Odoo rattachée' }
 
-  const { IMA_ENTITIES } = await import('./handlers/ima-rejet')
-  const entity = IMA_ENTITIES[item.extracted?.entityKey as keyof typeof IMA_ENTITIES]
-  if (!entity) return { ok: false, error: 'Entité destinataire inconnue sur cet item' }
+  // L'entité est reconstruite depuis ce que le scan a extrait : elle est fixe
+  // chez IMA mais lue dans le PDF chez Allianz — pas de table en dur.
+  const x = item.extracted || {}
+  if (!x.entityVat) return { ok: false, error: 'Entité destinataire inconnue sur cet item' }
+  const entity: RejectEntity = {
+    key:     x.entityKey   || 'inconnu',
+    label:   x.entityLabel || x.entityVat,
+    vat:     x.entityVat,
+    zeroVat: Boolean(x.zeroVat),
+  }
 
   try {
     const inv    = await findInvoiceByName(item.odoo_move_name)
     const target = await resolveTargetPartner(entity)
-    const checks = await runChecks(inv, target, item.extracted?.amount ?? null)
+    const checks = await runChecks(inv, target, x.amount ?? null)
     if (!checks.ok || !inv || !target) {
       await sb.from('mail_agent_items').update({
         status: 'blocked', blocked_reason: checks.blocked, checks: checks.details,
@@ -198,7 +226,7 @@ export async function applyItem(itemId: string, actor: string): Promise<ApplyRes
 
     // Classement du mail — jamais bloquant : la comptabilité est déjà faite.
     let moved = false
-    const doneFolder = item.handler === 'ima_rejet' ? IMA_DONE_FOLDER : MAIL_AGENT_DONE_FOLDER
+    const doneFolder = handlerById(item.handler)?.doneFolder || MAIL_AGENT_DONE_FOLDER
     const doneId = await findFolderIdByName(item.mailbox, doneFolder)
     if (doneId) moved = (await moveMessage(item.mailbox, item.message_id, doneId)).ok
 
