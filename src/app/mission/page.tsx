@@ -50,14 +50,20 @@ export default async function MissionListPage() {
 
   const { data: missions } = await supabase
     .from('incoming_missions')
-    .select('id, mission_number, external_id, dossier_number, source, mission_type, status, client_name, vehicle_plate, vehicle_brand, vehicle_model, incident_address, incident_city, received_at, assigned_at, completed_at, awaiting_payment, amount_to_collect, payment_amount')
+    .select('id, mission_number, external_id, dossier_number, source, mission_type, status, client_name, vehicle_plate, vehicle_brand, vehicle_model, incident_address, incident_city, received_at, assigned_at, completed_at, parked_at, awaiting_payment, amount_to_collect, payment_amount')
     .eq('assigned_to', user.id)
     // Olivier 2026-06-17 : une mission 'parked' est en parc (fourrière) → elle
     // sort de la liste active du chauffeur. On garde le cas awaiting_payment
     // (mission à encaisser) même si parked.
     // + missions terminées (to_invoice/completed) des 6 dernières heures :
     // clôture encore modifiable par le chauffeur.
-    .or(`status.in.(assigned,accepted,in_progress,delivering),awaiting_payment.eq.true,and(status.in.(to_invoice,completed),completed_at.gte.${sixHAgo})`)
+    // + missions MISES EN PARC dans les 6 dernières heures : une mise en parc
+    //   fait sortir la mission de la liste à la seconde même. Le 29/08, Fred a
+    //   montré un écran VIDE à Jona après une mission qu'il venait de faire —
+    //   elle avait été forcée en parc entre-temps, et plus rien ne prouvait à
+    //   l'écran qu'il l'avait faite. Un chauffeur doit voir sa journée finir.
+    //   (Olivier 2026-08-31, cas 1BIL216.)
+    .or(`status.in.(assigned,accepted,in_progress,delivering),awaiting_payment.eq.true,and(status.in.(to_invoice,completed),completed_at.gte.${sixHAgo}),and(status.eq.parked,parked_at.gte.${sixHAgo})`)
     .order('assigned_at', { ascending: false })
     .limit(20)
 
