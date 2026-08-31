@@ -13,7 +13,7 @@
 // possible), no-op. Best-effort : ne throw jamais. Olivier 2026-08-09.
 
 import * as cheerio from 'cheerio'
-import { loginVab } from './scraper'
+import { loginVab, vabDetailUrl } from './scraper'
 
 const BASE = 'https://comet.vab.be'
 const UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/150.0.0.0 Safari/537.36'
@@ -92,7 +92,6 @@ export async function syncVabStep(sb: any, missionId: string, upToStep: VabStep)
   if (!m || String(m.source).toLowerCase() !== 'vab') return false
   const aid = String(m.external_id || '').match(/\d+/)?.[0]
   if (!aid) return false
-  const url = `${BASE}/BreakdownAssignments_Details.aspx?AssignmentId=${aid}`
   const upTo = ORDER.indexOf(upToStep)
 
   let sess: any
@@ -101,6 +100,9 @@ export async function syncVabStep(sb: any, missionId: string, upToStep: VabStep)
     await sb.from('mission_logs').insert({ mission_id: missionId, action: 'vab_sync_error', notes: `VAB Comet login : ${e?.message || e}`, metadata: { auto: true } }).then(() => {}, () => {})
     return false
   }
+
+  // Panne ou remorquage : ce ne sont pas les mêmes écrans chez eux.
+  const url = await vabDetailUrl(sess, aid)
 
   const fired: string[] = []
   const ignorés: string[] = []
@@ -116,7 +118,10 @@ export async function syncVabStep(sb: any, missionId: string, upToStep: VabStep)
       // répond 200 et ne bouge pas. Le navigateur exécute leur JavaScript, comme
       // pour la clôture. On ne l'ouvre qu'en RATTRAPAGE, quand le chemin léger a
       // été ignoré — un Chromium coûte 15 s et le compte VAB est partagé.
-      if (res === 'ignore' && step === 'accept') {
+      // 'absent' compte aussi pour un REMORQUAGE : leur page de remorquage rend
+      // ses boutons en JavaScript, donc notre couche HTTP n'en voit AUCUN — elle
+      // conclut « déjà fait » alors qu'elle est simplement aveugle.
+      if ((res === 'ignore' || (res === 'absent' && /TowAssignments/i.test(url))) && step === 'accept') {
         const { vabAcceptInBrowser } = await import('./sign-browser')
         const r = await vabAcceptInBrowser(aid)
         if (r.ok && !(await boutonEncoreLa(sess.cookieHeader, url, 'accept'))) res = 'fired'

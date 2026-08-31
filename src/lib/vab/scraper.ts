@@ -629,6 +629,37 @@ export async function vabEtatEcran(
   } catch { return 'inconnu' }
 }
 
+/**
+ * LA BONNE PAGE POUR CE DOSSIER — et il y en a DEUX (Olivier 2026-08-31).
+ *
+ * Une panne vit sur `BreakdownAssignments_Details.aspx`, un REMORQUAGE sur
+ * `TowAssignments_Details.aspx`. Tout notre pilotage tapait en dur sur la
+ * première. Ouverte avec l'identifiant d'un remorquage, elle ne renvoie pas une
+ * erreur : elle rend une fiche VIDE (« 0 / 0 ») qui porte quand même un bouton
+ * « Accepter » inerte. D'où quatre jours de diagnostic à côté — le postback
+ * partait bien, sur un écran qui ne concernait aucun dossier.
+ *
+ * On teste donc les deux et on garde celle qui porte un vrai numéro de dossier.
+ */
+export async function vabDetailUrl(session: SessionCookies, assignmentId: string): Promise<string> {
+  const candidates = [
+    `${VAB_BASE}/Comet/BreakdownAssignments_Details.aspx?AssignmentId=${assignmentId}`,
+    `${VAB_BASE}/Comet/TowAssignments_Details.aspx?AssignmentId=${assignmentId}`,
+  ]
+  for (const url of candidates) {
+    try {
+      const html = await (await fetch(url, {
+        headers: { 'User-Agent': REAL_UA, Cookie: session.cookieHeader, 'Cache-Control': 'no-store' },
+      })).text()
+      // Une fiche chargée affiche « <dossier> / <contrat> » ; une coquille vide
+      // affiche « 0 / 0 ». C'est le seul marqueur fiable : les deux pages ont
+      // les mêmes boutons.
+      if (/(\d{5,})\s*\/\s*(\d{5,})/.test(html.replace(/<[^>]+>/g, ' '))) return url
+    } catch { /* on essaie l'autre */ }
+  }
+  return candidates[0]
+}
+
 export async function fetchVabMissionDetail(
   session:    SessionCookies,
   detailHref: string,

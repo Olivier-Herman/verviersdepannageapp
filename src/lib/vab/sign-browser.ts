@@ -212,28 +212,58 @@ export async function vabAcceptInBrowser(assignmentId: string): Promise<{ ok: bo
     await page.setUserAgent(DESKTOP_UA)
     try { await loginInBrowser(page) }
     catch (e: any) { return { ok: false, error: `login VAB impossible — ${e?.message || e}` } }
-    await page.goto(detailsUrl(assignmentId), { waitUntil: 'domcontentloaded', timeout: 30000 })
-    await page.waitForSelector('a[id*="wtLink_Accept"], input[id*="wtInput_MileageCheck"], a[id*="wtLink_Start"]', { timeout: 25000 }).catch(() => null)
+
+    // ── PASSER PAR LA LISTE, PAS PAR L'URL ────────────────────────────────────
+    // Ouverte directement, la page de détail rend une fiche VIDE (« 0 / 0 ») qui
+    // porte quand même un bouton « Accepter » inerte : on cliquait dans le vide.
+    // Le lien de la liste, lui, charge le vrai dossier — et il pointe vers la
+    // BONNE page, celle des remorquages quand c'en est un. Olivier 2026-08-31.
+    await page.goto(`${BASE}/Comet/Home.aspx`, { waitUntil: 'domcontentloaded', timeout: 30000 })
+    await new Promise(r => setTimeout(r, 5000))
+    const ouvert = await page.evaluate((aid: string) => {
+      const a = [...document.querySelectorAll('a')].find(x => (x.getAttribute('href') || '').includes(`AssignmentId=${aid}`))
+      if (!a) return false
+      ;(a as HTMLElement).click()
+      return true
+    }, assignmentId).catch(() => false)
+    if (!ouvert) {
+      await page.goto(detailsUrl(assignmentId), { waitUntil: 'domcontentloaded', timeout: 30000 })
+    }
+    await new Promise(r => setTimeout(r, 8000))
 
     // ⚠️ « Pas de bouton » ne veut PAS dire « déjà accepté » : ça peut vouloir
     // dire qu'on n'est pas connecté du tout. La première version de cette
     // fonction renvoyait ok:true depuis une page de login — exactement le
     // mensonge que je venais de reprocher au journal. On exige donc une preuve
     // qu'on est bien sur la fiche : son formulaire ou son bouton d'étape.
+    // La page des REMORQUAGES ne nomme rien : son bouton s'appelle `wtContent_wt16`.
+    // On l'identifie donc par l'écran (titre / URL) et le bouton par son TEXTE —
+    // sur la page des pannes, l'identifiant reste le repère le plus sûr.
     const surLaFiche = await page.evaluate(() =>
-      !!document.querySelector('[id*="wtLink_Accept"], [id*="wtLink_Start"], [id*="wtInput_MileageCheck"], [id*="SolutionCodeLevel1"]'))
+      !!document.querySelector('[id*="wtLink_Accept"], [id*="wtLink_Start"], [id*="wtInput_MileageCheck"], [id*="SolutionCodeLevel1"]')
+      || /TowAssignments_Details/i.test(location.pathname)
+      || /remorquage/i.test(document.title))
     if (!surLaFiche) {
       const où = await page.evaluate(() => `${document.title.trim().slice(0, 40)} | ${location.pathname}`).catch(() => '?')
       return { ok: false, error: `pas sur la fiche VAB (session refusée ?) — ${où}` }
     }
 
-    const présent = await page.$('a[id*="wtLink_Accept"], button[id*="wtLink_Accept"], input[id*="wtLink_Accept"]')
-    if (!présent) return { ok: true }   // le bouton n'y est plus : déjà accepté
+    const boutonAccepter = () => page.evaluate(() => {
+      const el = [...document.querySelectorAll('a, button, input')].find(e =>
+        /wtLink_Accept/.test((e as HTMLElement).id || '')
+        || /^\s*Accepter\s*$/i.test(e.textContent || '')
+        || /^\s*Accepter\s*$/i.test((e as HTMLInputElement).value || ''))
+      return el ? ((el as HTMLElement).id || 'sans-id') : null
+    }).catch(() => null)
+
+    if (!(await boutonAccepter())) return { ok: true }   // plus de bouton : déjà accepté
 
     await page.evaluate(() => {
-      const b = [...document.querySelectorAll('a, button, input')]
-        .find(e => /wtLink_Accept/.test((e as HTMLElement).id || ''))
-      if (b) (b as HTMLElement).click()
+      const el = [...document.querySelectorAll('a, button, input')].find(e =>
+        /wtLink_Accept/.test((e as HTMLElement).id || '')
+        || /^\s*Accepter\s*$/i.test(e.textContent || '')
+        || /^\s*Accepter\s*$/i.test((e as HTMLInputElement).value || ''))
+      if (el) (el as HTMLElement).click()
     })
     await new Promise(r => setTimeout(r, 5000))
     // Confirmation éventuelle (accepter une mission est un engagement : ils
@@ -249,8 +279,9 @@ export async function vabAcceptInBrowser(assignmentId: string): Promise<{ ok: bo
     }
     await new Promise(r => setTimeout(r, 5000))
 
-    const encore = await page.$('a[id*="wtLink_Accept"], button[id*="wtLink_Accept"], input[id*="wtLink_Accept"]')
-    return encore ? { ok: false, error: 'le bouton Accepter est toujours là après le clic' } : { ok: true }
+    return (await boutonAccepter())
+      ? { ok: false, error: 'le bouton Accepter est toujours là après le clic' }
+      : { ok: true }
   } catch (e: any) {
     return { ok: false, error: e?.message || 'erreur' }
   } finally {
