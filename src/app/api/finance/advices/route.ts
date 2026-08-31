@@ -59,6 +59,19 @@ export async function GET(req: NextRequest) {
 
     const [report, done] = await Promise.all([buildAdviceReport(months), alreadyDone()])
 
+    // État du dernier passage du cron. Sans ça, une lecture automatique en
+    // échec est INVISIBLE : l'écran affiche simplement une date qui ne bouge
+    // plus, et il faut que quelqu'un la remarque (c'est arrivé le 2026-08-31,
+    // le cron échouait depuis le 24/08).
+    let lastRun: { at?: string; ok?: boolean; error?: string } | null = null
+    try {
+      const sb = createAdminClient()
+      const { data } = await sb.from('app_settings').select('value')
+        .eq('key', 'payment_advices_last_run').maybeSingle()
+      // app_settings.value est du TEXTE : toujours JSON.parse à la lecture.
+      if (typeof data?.value === 'string') lastRun = JSON.parse(data.value)
+    } catch { /* la trace ne doit jamais casser l'écran */ }
+
     const items = report.items.filter(i => i.state !== 'done' && !(i.bank && done.has(i.bank.lineId)))
     const plans = items.filter(i => i.state === 'ready').map(buildAdvicePlan)
 
@@ -68,6 +81,7 @@ export async function GET(req: NextRequest) {
       totals: report.totals,
       ready: summarizeAdvicePlans(plans),
       cachedAt:   report.cachedAt,
+      lastRun,
       unreadable: report.unreadable,
       synced,
       generatedAt: new Date().toISOString(),

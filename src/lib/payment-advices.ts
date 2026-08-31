@@ -78,12 +78,31 @@ const r2 = (n: number) => Math.round(n * 100) / 100
 // Note : on n'utilise pas fetchMailFull() de graph-mail-search — il annonce
 // zéro pièce jointe alors que les mails IMA en portent deux.
 
+/**
+ * Graph rejette-t-il le JETON (et non la requête) ? Dans ce cas on peut
+ * réessayer avec un jeton frais ; toute autre erreur doit remonter.
+ *
+ * POURQUOI : le 2026-08-31 on a découvert que ce cron échouait depuis le 24/08
+ * sur « InvalidAuthenticationToken : the token is expired » — sans aucune
+ * reprise, l'erreur faisait tomber TOUTE la lecture des avis, tous les jours,
+ * en silence. Le module « réquisitoire » avait déjà reçu ce correctif ; il
+ * n'avait jamais été reporté ici.
+ */
+function isTokenFailure(res: Response, body: any): boolean {
+  return res.status === 401 || body?.error?.code === 'InvalidAuthenticationToken'
+}
+
 async function graph<T = any>(path: string, token: string): Promise<T> {
-  const res = await fetch(`${GRAPH}${path}`, {
-    headers: { Authorization: `Bearer ${token}`, ConsistencyLevel: 'eventual' },
+  const doFetch = (t: string) => fetch(`${GRAPH}${path}`, {
+    headers: { Authorization: `Bearer ${t}`, ConsistencyLevel: 'eventual' },
     cache: 'no-store',
   })
-  const body = await res.json()
+  let res  = await doFetch(token)
+  let body = await res.json()
+  if (isTokenFailure(res, body)) {
+    const fresh = await getAppOnlyToken(true)   // force un jeton neuf
+    if (fresh) { res = await doFetch(fresh); body = await res.json() }
+  }
   if (body?.error) throw new Error(`Graph ${body.error.code} : ${body.error.message}`)
   return body as T
 }
@@ -111,10 +130,13 @@ async function attachmentsOf(messageId: string, token: string): Promise<Attachme
 }
 
 async function attachmentBytes(messageId: string, attachmentId: string, token: string): Promise<Buffer> {
-  const res = await fetch(
-    `${GRAPH}/users/${MAILBOX}/messages/${encodeURIComponent(messageId)}/attachments/${encodeURIComponent(attachmentId)}/$value`,
-    { headers: { Authorization: `Bearer ${token}` }, cache: 'no-store' },
-  )
+  const url = `${GRAPH}/users/${MAILBOX}/messages/${encodeURIComponent(messageId)}/attachments/${encodeURIComponent(attachmentId)}/$value`
+  const doFetch = (t: string) => fetch(url, { headers: { Authorization: `Bearer ${t}` }, cache: 'no-store' })
+  let res = await doFetch(token)
+  if (res.status === 401) {
+    const fresh = await getAppOnlyToken(true)
+    if (fresh) res = await doFetch(fresh)
+  }
   if (!res.ok) throw new Error(`Pièce jointe illisible (HTTP ${res.status})`)
   return Buffer.from(await res.arrayBuffer())
 }

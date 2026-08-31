@@ -20,7 +20,10 @@
 // Si une env var est absente, la recherche email est desactivee
 // silencieusement (no-op).
 
-const TOKEN_TTL_MS = 55 * 60 * 1000  // 55 min (token Graph dure 1h)
+// 50 min : Azure émet des jetons de 60 à 65 min. On garde 10 min de marge
+// plutôt que 5 — un cron lent ne doit pas se retrouver avec un jeton périmé
+// en cours de route. La reprise sur 401 couvre le reste.
+const TOKEN_TTL_MS = 50 * 60 * 1000
 
 let cachedToken: { value: string; expiresAt: number } | null = null
 
@@ -83,7 +86,7 @@ export async function getAppOnlyToken(forceRefresh = false): Promise<string | nu
   const data = await res.json() as { access_token: string; expires_in: number }
   cachedToken = {
     value:     data.access_token,
-    expiresAt: Date.now() + Math.min(TOKEN_TTL_MS, (data.expires_in - 60) * 1000),
+    expiresAt: Date.now() + Math.min(TOKEN_TTL_MS, (data.expires_in - 300) * 1000),
   }
   return data.access_token
 }

@@ -42,6 +42,7 @@ interface Report {
   totals: { pendingAmount: number; readyCount: number; readyAmount: number; orphanCount: number; orphanAmount: number; toDecide: number }
   ready: { payments: number; amount: number; invoices: number }
   cachedAt: string | null
+  lastRun?: { at?: string; ok?: boolean; error?: string } | null
   unreadable: { subject: string; error: string }[]
 }
 
@@ -161,6 +162,15 @@ export default function AdvicesClient() {
         <Tile label="À trancher" figure={String(t.toDecide + t.orphanCount)} tone="alert"
               note="Écarts, références non résolues, virements sans avis" />
       </section>
+
+      {report.lastRun && report.lastRun.ok === false && (
+        <div className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-[13px] text-amber-900">
+          <strong>La lecture automatique ne passe plus.</strong> Dernière tentative
+          {report.lastRun.at ? ` le ${stamp(report.lastRun.at)}` : ''} : {report.lastRun.error || 'échec'}.
+          {report.cachedAt && <> Les avis affichés datent du {stamp(report.cachedAt)}.</>}
+          {' '}Utilise « Relire la boîte mail » pour rattraper, et signale-le si ça se répète.
+        </div>
+      )}
 
       <div className="flex flex-wrap items-center justify-between gap-3">
         <p className="text-[13px] text-ink-muted">
