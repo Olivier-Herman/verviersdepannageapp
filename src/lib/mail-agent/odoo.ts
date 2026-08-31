@@ -167,19 +167,26 @@ export async function runChecks(
  * réadressées à IMA ASSURANCES (FR) sont sorties avec 21 % de TVA alors que la
  * position fiscale « Intra-Community » était bien posée.
  *
- * On se cale sur l'HISTORIQUE DE CE CLIENT plutôt que sur une taxe en dur :
- * c'est ce qui garantit la même case de déclaration TVA que les factures déjà
- * payées. Ça compte — le tax_map générique de la position fiscale renvoie
- * « 0% EU M » (marchandises) alors que nos prestations sont facturées en
- * « 0% EU S » (services) sur tout l'historique IMA. Repli sur le tax_map si le
- * client n'a pas encore d'historique.
+ * QUELLE taxe 0 % : **« 0 % EU S » (services)** — décision d'Olivier le
+ * 2026-08-31. Nos lignes sont des prestations (prise en charge, kilomètres,
+ * main d'œuvre, majorations), pas des marchandises, et la case de déclaration
+ * TVA n'est pas la même. Attention : le `tax_map` générique de la position
+ * fiscale « Intra-Community » renvoie « 0 % EU M » (marchandises) — c'est un
+ * piège, on ne peut pas le suivre aveuglément.
+ *
+ * Ordre de recherche : les taxes 0 % vente déjà utilisées pour CE client
+ * (auto-correcteur si la pratique évolue), puis celles proposées par la
+ * position fiscale. Dans les deux cas, à égalité, on retient la variante
+ * SERVICES.
  */
 async function resolveZeroVatTax(
   partnerId: number,
   fiscalPositionId: number | null,
   currentTaxIds: number[],
 ): Promise<number | null> {
-  // 1. Ce que porte l'historique de ce client.
+  const candidates: number[] = []
+
+  // 1. Ce que porte l'historique de ce client, du plus fréquent au moins fréquent.
   const past = await odooRpc<any[]>('account.move', 'search_read',
     [[['move_type', '=', 'out_invoice'], ['partner_id', '=', partnerId], ['state', '=', 'posted']]],
     { fields: ['id'], order: 'id desc', limit: 5 })
@@ -189,26 +196,32 @@ async function resolveZeroVatTax(
       { fields: ['tax_ids'], limit: 50 })
     const freq = new Map<number, number>()
     for (const l of lines || []) for (const t of l.tax_ids || []) freq.set(t, (freq.get(t) || 0) + 1)
-    const ranked = [...freq.entries()].sort((a, b) => b[1] - a[1]).map(e => e[0])
-    if (ranked.length) {
-      const taxes = await odooRpc<any[]>('account.tax', 'read', [ranked], { fields: ['id', 'amount', 'type_tax_use'] })
-      const zero = ranked.find(id => {
-        const t = (taxes || []).find(x => x.id === id)
-        return t && t.amount === 0 && t.type_tax_use === 'sale'
-      })
-      if (zero) return zero
-    }
+    candidates.push(...[...freq.entries()].sort((a, b) => b[1] - a[1]).map(e => e[0]))
   }
-  // 2. Repli : le mapping de la position fiscale (v19 : dict direct sur tax_map).
+
+  // 2. Ce que propose la position fiscale (v19 : dict direct sur tax_map).
   if (fiscalPositionId) {
-    const fp = await odooRpc<any[]>('account.fiscal.position', 'read', [[fiscalPositionId]], { fields: ['tax_map'] })
+    const fp = await odooRpc<any[]>('account.fiscal.position', 'read', [[fiscalPositionId]],
+      { fields: ['tax_map', 'tax_ids'] })
     const map = fp?.[0]?.tax_map as Record<string, number[]> | undefined
-    for (const src of currentTaxIds) {
-      const dest = map?.[String(src)]
-      if (dest?.length) return dest[0]
-    }
+    for (const src of currentTaxIds) candidates.push(...(map?.[String(src)] || []))
+    candidates.push(...((fp?.[0]?.tax_ids as number[]) || []))
   }
-  return null
+
+  const unique = [...new Set(candidates)]
+  if (!unique.length) return null
+
+  const taxes = await odooRpc<any[]>('account.tax', 'read', [unique],
+    { fields: ['id', 'name', 'amount', 'type_tax_use'] })
+  const zeroSale = unique
+    .map(id => (taxes || []).find(t => t.id === id))
+    .filter(t => t && t.amount === 0 && t.type_tax_use === 'sale')
+
+  if (!zeroSale.length) return null
+
+  // Préférence explicite : la variante SERVICES (« 0% EU S »), pas marchandises.
+  const services = zeroSale.find(t => /\bS\b/.test(String(t.name)))
+  return (services || zeroSale[0]).id
 }
 
 export interface RebillResult {
