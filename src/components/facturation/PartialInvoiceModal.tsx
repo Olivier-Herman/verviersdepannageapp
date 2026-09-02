@@ -50,7 +50,10 @@ export default function PartialInvoiceModal({ missionId, parkedSince, onClose, o
   // Gardiennage
   const [parcOn, setParcOn]       = useState(false)
   const [parcWaived, setParcWaived] = useState(false)   // abandon volontaire → gardiennage offert
-  const [parcForfait, setParcForfait] = useState(false) // forfait → pas de comptage au jour
+  const [parcForfait, setParcForfait] = useState(false)
+  /** Postes retirés parce que déjà facturés — affichés barrés, pour qu'on voie
+   *  qu'ils ont été traités plutôt que de les croire oubliés. */
+  const [dejaFactures, setDejaFactures] = useState<Line[]>([]) // forfait → pas de comptage au jour
   const [parcPrice, setParcPrice] = useState(0)
   const [parcFrom, setParcFrom]   = useState('')
   const [parcTo, setParcTo]       = useState(todayISO())
@@ -99,7 +102,6 @@ export default function PartialInvoiceModal({ missionId, parkedSince, onClose, o
           proposed.push({ kind: 'SERV-PARC', label: 'Frais de gardiennage — forfait', qty: 1, price_unit: round(Number(bi.storage_flat_htva)), checked: true })
         }
       }
-      setLines(proposed)
       // Prix gardiennage / jour — le CATALOGUE DE LA SOURCE fait foi (Olivier
       // 2026-08-17). L'estimation ne servait que de repli et donnait un prix
       // reconstitué qui ne suivait pas la fiche.
@@ -115,8 +117,17 @@ export default function PartialInvoiceModal({ missionId, parkedSince, onClose, o
       // seconde facture partielle reproposait la prise en charge, les km et les
       // frais administratifs déjà réglés (Olivier 2026-08-17). Le gardiennage
       // fait exception : il se facture par tranches successives.
+      //
+      // ⚠️ ET IL FAUT POSER LE RÉSULTAT. Ce filtre existait depuis le 17/08 mais
+      // `setLines(proposed)` était appelé AVANT lui : on filtrait une copie que
+      // plus personne ne lisait. Sur 2GAN408, le dépannage et les kilomètres
+      // sont partis DEUX fois — devis 5498 puis 5499, à treize minutes d'écart
+      // (Olivier 2026-09-02).
       const dejaFactures = new Set(items.filter(i => i.kind !== 'SERV-PARC').map(i => i.kind))
+      const dejaVus = proposed.filter(l => dejaFactures.has(l.kind))
       if (dejaFactures.size > 0) proposed = proposed.filter(l => !dejaFactures.has(l.kind))
+      setDejaFactures(dejaVus)
+      setLines(proposed)
       // Pré-remplit les n° de facture déjà saisis (par lot odoo_quote_id).
       const drafts: Record<number, string> = {}
       for (const it of items) if (it.odoo_quote_id && it.invoice_number) drafts[it.odoo_quote_id] = it.invoice_number
@@ -224,6 +235,13 @@ export default function PartialInvoiceModal({ missionId, parkedSince, onClose, o
             <div className="space-y-2 mb-4">
               <p className="text-ink-muted text-xs font-semibold uppercase tracking-wide">Postes</p>
               {lines.length === 0 && <p className="text-ink-faint text-xs">Aucun poste dépannage estimé.</p>}
+              {dejaFactures.map((l, idx) => (
+                <div key={'df' + idx} className="flex items-center gap-2 py-1 opacity-60" title="Déjà facturé — ne sera pas repris">
+                  <span className="text-emerald-600 text-xs">✓</span>
+                  <span className="flex-1 text-ink-muted text-sm line-through">{l.label}</span>
+                  <span className="text-ink-muted text-xs line-through">{(l.qty * l.price_unit).toFixed(2)} €</span>
+                </div>
+              ))}
               {lines.map((l, idx) => (
                 <label key={idx} className="flex items-center gap-2 bg-surface-2 border rounded-xl px-3 py-2 cursor-pointer">
                   <input type="checkbox" checked={l.checked} onChange={e => setLines(ls => ls.map((x, i) => i === idx ? { ...x, checked: e.target.checked } : x))} />

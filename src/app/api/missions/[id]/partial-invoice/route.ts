@@ -84,6 +84,22 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   const { data: dejaFactures } = await sb.from('mission_billed_items')
     .select('kind, label, qty, price_unit, amount_htva, period_from, period_to, billed_at')
     .eq('mission_id', params.id)
+  // ── UN POSTE HORS PARC NE SE FACTURE QU'UNE FOIS ──────────────────────────
+  // La modale filtre déjà, mais un onglet resté ouvert, un double-clic ou un
+  // rechargement suffisent à repasser à côté. Sur 2GAN408 le dépannage et les
+  // kilomètres sont partis deux fois, à treize minutes d'écart, sans que rien
+  // ne s'y oppose côté serveur. Le gardiennage fait exception : il se facture
+  // par tranches, et il a son propre contrôle de chevauchement juste en dessous.
+  // Olivier 2026-09-02.
+  const kindsFactures = new Set((dejaFactures || []).filter((i: any) => i.kind !== 'SERV-PARC').map((i: any) => i.kind))
+  const rejouees = lines.filter(l => l.kind !== 'SERV-PARC' && kindsFactures.has(l.kind))
+  if (rejouees.length) {
+    return NextResponse.json({
+      error: `Déjà facturé sur ce dossier : ${rejouees.map(l => l.label).join(', ')}. `
+           + `Décoche ces postes — ils ont été réglés sur une facture précédente.`,
+    }, { status: 409 })
+  }
+
   for (const l of lines) {
     if (l.kind !== 'SERV-PARC' || !l.period_from || !l.period_to) continue
     const conflit = chevauchement(l.period_from, l.period_to, (dejaFactures || []) as any)
