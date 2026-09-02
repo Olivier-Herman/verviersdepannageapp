@@ -38,6 +38,14 @@ const sb = createClient(
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 interface Mission {
+  /** Le véhicule est-il DÉJÀ dans notre parc ? Calculé par /api/missions/list :
+   *  une nouvelle mission sur une plaque déjà garée chez nous est presque
+   *  toujours soit sa relivraison, soit un doublon. Olivier 2026-09-02. */
+  vehicule_deja_en_parc?: {
+    mission_id: string; mission_number: number | null
+    zone: string | null; depuis: string | null; source: string
+    piste: 'relivraison' | 'doublon'
+  } | null
   id: string
   mission_number: number | null
   external_id: string
@@ -865,6 +873,21 @@ function MissionCard({ mission, drivers, driverStatuses, sources, onRefresh, onM
         <div className="flex items-center gap-2 mb-2">
           <span className="text-ink-muted text-xs">🚘</span>
           {mission.vehicle_plate && <span className="text-ink font-bold font-mono text-xs">{mission.vehicle_plate}</span>}
+          {mission.vehicule_deja_en_parc && (
+            <a
+              href={`/dispatch/${mission.vehicule_deja_en_parc.mission_id}`}
+              onClick={e => e.stopPropagation()}
+              title={`Ce véhicule est en parc (zone ${mission.vehicule_deja_en_parc.zone || '?'}) sur le dossier #${mission.vehicule_deja_en_parc.mission_number} — ${mission.vehicule_deja_en_parc.piste === 'relivraison' ? 'cette mission part de notre dépôt : c\'est probablement sa relivraison' : 'la voiture est déjà chez nous : vérifier s\'il ne s\'agit pas d\'un doublon'}`}
+              className={`ml-1.5 px-1.5 py-0.5 rounded text-[10px] font-bold border ${
+                mission.vehicule_deja_en_parc.piste === 'relivraison'
+                  ? 'bg-blue-100 border-blue-400 text-blue-800'
+                  : 'bg-amber-100 border-amber-400 text-amber-900'
+              }`}
+            >
+              {mission.vehicule_deja_en_parc.piste === 'relivraison' ? '🔄 déjà en parc — relivraison ?' : '⚠ déjà en parc — doublon ?'}
+              {' '}#{mission.vehicule_deja_en_parc.mission_number}
+            </a>
+          )}
           {(mission.vehicle_brand || mission.vehicle_model) && (
             <span className="text-ink-secondary text-xs">{[mission.vehicle_brand, mission.vehicle_model].filter(Boolean).join(' ')}</span>
           )}

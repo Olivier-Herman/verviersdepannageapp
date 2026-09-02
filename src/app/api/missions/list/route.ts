@@ -366,5 +366,61 @@ export async function GET(req: Request) {
     relZoneCounts[relZone] = parkedActiveCount   // zone active = compte exact
   }
 
+  // ── LE VÉHICULE EST-IL DÉJÀ CHEZ NOUS ? ───────────────────────────────────
+  // « Regarde toutes les missions en attente d'assignation, je pense qu'il y en
+  // a plusieurs qui sont en fait des relivraisons » (Olivier 2026-09-02). Elles
+  // arrivent comme des missions neuves — une nouvelle demande de l'assistance,
+  // un second appel Siabis — alors que le véhicule est DÉJÀ dans notre parc.
+  // Personne ne peut le deviner en lisant la ligne : la plaque ne dit pas où est
+  // la voiture.
+  //
+  // On le dit donc à l'écran, sans rien décider à la place du dispatch : pour
+  // chaque mission affichée, on cherche la même plaque déjà en parc et on
+  // renvoie de quoi trancher — le dossier, sa zone, et surtout D'OÙ PART la
+  // nouvelle mission. Un départ depuis notre dépôt, c'est une relivraison ; un
+  // départ d'ailleurs avec la voiture chez nous, c'est un doublon.
+  try {
+    const plaques = [...new Set(visibleMissions
+      .map(m => String((m as any).vehicle_plate || '').trim().toUpperCase())
+      .filter(p => p.length >= 4 && p.length <= 10 && p !== 'TEST'))]
+    if (plaques.length) {
+      const { data: dejaLa } = await supabase
+        .from('incoming_missions')
+        .select('id, mission_number, vehicle_plate, status, parc_zone_key, parked_at, source, redelivery_address')
+        .in('vehicle_plate', plaques)
+        .eq('status', 'parked')
+        .is('archived_at', null)
+      const parIdx = new Map<string, any>()
+      for (const p of (dejaLa || [])) {
+        const k = String(p.vehicle_plate || '').trim().toUpperCase()
+        // Le plus récemment entré fait foi.
+        const cur = parIdx.get(k)
+        if (!cur || String(p.parked_at || '') > String(cur.parked_at || '')) parIdx.set(k, p)
+      }
+      const { data: depots } = await supabase.from('depots').select('address').eq('active', true)
+      const motsDepot = (depots || [])
+        .map((d: any) => String(d.address || '').toLowerCase().match(/[a-zà-ÿ]{4,}/g)?.[0] || '')
+        .filter(Boolean)
+      for (const m of visibleMissions) {
+        const k = String((m as any).vehicle_plate || '').trim().toUpperCase()
+        const p = parIdx.get(k)
+        if (!p || p.id === (m as any).id) continue
+        const depart = String((m as any).incident_address || '').toLowerCase()
+        const partDuDepot = motsDepot.some(mot => depart.includes(mot))
+        ;(m as any).vehicule_deja_en_parc = {
+          mission_id:     p.id,
+          mission_number: p.mission_number,
+          zone:           p.parc_zone_key,
+          depuis:         p.parked_at,
+          source:         p.source,
+          // Indice, pas un verdict : le dispatch tranche.
+          piste: partDuDepot ? 'relivraison' : 'doublon',
+        }
+      }
+    }
+  } catch (e: any) {
+    console.warn('[missions/list] détection véhicule déjà en parc KO (non bloquant):', e?.message)
+  }
+
   return NextResponse.json({ missions: visibleMissions, counters, relZoneCounts })
 }
