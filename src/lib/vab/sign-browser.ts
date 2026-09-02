@@ -128,7 +128,28 @@ export async function loginInBrowser(page: Page): Promise<void> {
   // throttling. Le 2026-08-31 j'ai perdu une heure là-dessus avec des scripts de
   // test qui oubliaient `page.setUserAgent(DESKTOP_UA)` — la production, elle,
   // le pose à ses trois points d'entrée et n'a jamais eu le problème.
-  if (!userField) throw new Error('formulaire de login VAB introuvable (redirections)')
+  if (!userField) {
+    // ── REPLI : LES COOKIES DE LA SESSION HTTP ──────────────────────────────
+    // Le 02/09, ce formulaire a refusé DOUZE sessions d'affilée pendant que la
+    // connexion HTTP passait sans broncher. Un cron qui renonce ici abandonne en
+    // silence — c'est ainsi qu'on a cru pendant des jours que le filet
+    // travaillait alors qu'il ne se connectait même pas.
+    //
+    // On prend donc les cookies de `loginVab()` et on les pose dans le
+    // navigateur. Prouvé sur la clôture des remorquages le même jour.
+    try {
+      const { loginVab } = await import('./scraper')
+      const sess = await loginVab()
+      await page.setCookie(...sess.cookieHeader.split(';').map(c => c.trim()).filter(Boolean).map(c => {
+        const i = c.indexOf('=')
+        return { name: c.slice(0, i), value: c.slice(i + 1), domain: 'comet.vab.be', path: '/' }
+      }))
+      console.log('[vab/login] formulaire refusé → cookies de la session HTTP injectés')
+      return
+    } catch (e: any) {
+      throw new Error(`formulaire de login VAB introuvable, et repli cookies KO — ${e?.message || e}`)
+    }
+  }
   // Stabiliser avant de taper (une nav peut encore se poser juste après l'apparition).
   await sleep(1500)
   for (let t = 0; t < 3; t++) {
