@@ -913,9 +913,17 @@ export async function POST(req: Request) {
     }
   } catch (e) { /* silent */ }
 
-  // Olivier 2026-06-07 : si le chauffeur met en parc zone K (file d attente
-  // relivraison), imprime auto une etiquette REL. Non bloquant.
-  if (action === 'park' && (updated as any)?.parc_zone_key === 'K') {
+  // ── TOUTE ENTRÉE EN PARC SORT UNE ÉTIQUETTE ───────────────────────────────
+  // « Une entrée zone J et zone L crée une étiquette aussi. Ainsi qu'une entrée
+  // en transit » (Olivier 2026-09-02). Depuis le 06/2026, seule la zone K —
+  // la file de relivraison — en déclenchait une : les saisies en J, les entrées
+  // en L, en Transit ou en SNC repartaient sans rien. Le 01/09, cinq véhicules
+  // sont entrés en parc sans étiquette pour cette seule raison.
+  //
+  // L'étiquette elle-même n'a pas à changer : le helper choisit déjà le bon
+  // modèle — REL pour la zone K (avec l'adresse de relivraison et son QR),
+  // parc-entrée pour toutes les autres. Il suffisait de l'appeler.
+  if (action === 'park' && (updated as any)?.parc_zone_key) {
     try {
       const { reprintLabelForMission } = await import('@/lib/missions/reprint-label-helper')
       await reprintLabelForMission({ kind: 'uuid', value: mission_id })
