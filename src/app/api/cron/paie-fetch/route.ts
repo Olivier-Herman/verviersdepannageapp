@@ -35,12 +35,23 @@ export async function GET(req: Request) {
     const mails = await fetchPayslipMails(from, only)
     const results: any[] = []
     for (const m of mails) {
-      // Déjà traité (période + société) ? → on ne re-découpe pas (coût Claude),
-      // sauf en mode force (pour récupérer les fiches ajoutées : primes/congés).
+      // ── DÉJÀ TRAITÉ = CE MAIL-CI, PAS CE MOIS-LÀ ──────────────────────────
+      // Le test portait sur (période + société) : dès qu'UNE fiche existait pour
+      // le mois, tout mail suivant de la même société était écarté. Le 04/08,
+      // trois fiches isolées d'une travailleuse sont entrées pour 08/2026 chez
+      // Verviers Dépannage — et le vrai traitement mensuel, arrivé le 31/08, a
+      // été sauté deux fois de suite en silence. Trois jours sans fiches de paie
+      // pour toute la société (Olivier 2026-09-02).
+      //
+      // On se base désormais sur le mail lui-même : son identifiant est déjà
+      // stocké dans `source_ref`. Un mail déjà découpé n'est pas rejoué — c'est
+      // le coût Claude qu'on voulait éviter — mais un mail JAMAIS vu l'est
+      // toujours, même si le mois a déjà des fiches. Le découpage, lui, est
+      // idempotent par travailleur : rien n'est dupliqué.
       if (!force) {
         const { count } = await sb.from('payslips').select('*', { count: 'exact', head: true })
-          .eq('period', m.period).eq('company_code', m.companyCode)
-        if (count && count > 0) { results.push({ period: m.period, company: m.companyCode, skipped: 'déjà traité' }); continue }
+          .eq('source_ref', m.messageId)
+        if (count && count > 0) { results.push({ period: m.period, company: m.companyCode, skipped: 'mail déjà découpé' }); continue }
       }
       const pdf = await extractPayslipPdf(m.zipBuffer)
       if (!pdf) { results.push({ subject: m.subject, error: 'PDF fiches introuvable dans le ZIP' }); continue }
