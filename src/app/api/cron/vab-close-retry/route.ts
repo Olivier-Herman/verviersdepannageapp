@@ -127,7 +127,16 @@ export async function GET(req: Request) {
 
     for (const cible of candidats) {
       if (Date.now() - DÉBUT + DURÉE_TYPE_MS > BUDGET_MS) break
-      await runVabTowClose({ missionId: cible.id, externalId: cible.external_id, actorId: null })
+      // ⚠️ CLÔTURER L'ACTION OUVERTE, PAS LA PREMIÈRE DE LA FICHE. Une fiche
+      // porte plusieurs AssignmentId depuis qu'on rattache la jambe remorquage
+      // au lieu d'en faire un doublon (1CNE792 : 56302008 le dépannage, déjà
+      // soldé, puis 56303780 le remorquage). `external_id` garde le PREMIER —
+      // viser celui-là reviendrait à travailler sur un dossier déjà fermé
+      // pendant que l'autre reste ouvert. On prend celui qui figure dans la
+      // liste ouverte de VAB. Olivier 2026-09-02.
+      const aidOuvert = (cible.vab_assignment_ids || []).find((a: string) => ouverts.includes(a))
+        || cible.external_id
+      await runVabTowClose({ missionId: cible.id, externalId: aidOuvert, actorId: null })
       const { data: après } = await sb.from('incoming_missions')
         .select('vab_closed_at').eq('id', cible.id).maybeSingle()
       const abouti = !!(après as any)?.vab_closed_at
