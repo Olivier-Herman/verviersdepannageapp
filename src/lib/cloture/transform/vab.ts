@@ -272,6 +272,37 @@ export async function runVabTowClose(input: VabTowCloseInput): Promise<void> {
     return
   }
 
+  // ── UN REMORQUAGE NE SE CLÔTURE PAS COMME UN DÉPANNAGE ────────────────────
+  // Sa fiche vit sur une AUTRE page (TowAssignments) et ne redemande ni châssis
+  // ni kilométrage — tout a été relevé à la clôture du dépannage, avec la
+  // demande de REM. Séquence propre, prouvée le 02/09 sur 56303780 : accepter si
+  // besoin, signature, étapes, puis Parking / 1 clé / Réception et « Fin de la
+  // mission ». Chemin SÉPARÉ : la chaîne des dépannages n'est pas touchée.
+  try {
+    const { vabTaskTypes, estVehiculeRemplacementVab } = await import('@/lib/vab/scraper')
+    const { loginVab: lv3 } = await import('@/lib/vab/scraper')
+    const types = await vabTaskTypes(await lv3())
+    const type = types[assignmentId] || ''
+    if (/remorquage/i.test(type) && !estVehiculeRemplacementVab(type)) {
+      const { closeVabTowInBrowser } = await import('@/lib/vab/sign-browser')
+      const r = await closeVabTowInBrowser({ assignmentId, vehicleLocation: input.vehicleLocation || 'Parking' })
+      if (r.ok) {
+        await sb.from('incoming_missions')
+          .update({ vab_closed_at: new Date().toISOString(), updated_at: new Date().toISOString() })
+          .eq('id', input.missionId)
+      }
+      await log(r.ok ? 'vab_closed' : 'vab_close_failed',
+        r.ok ? `VAB : remorquage clôturé (${r.steps.join(' → ')})`
+             : `VAB : remorquage non clôturé — ${r.error} (${r.steps.join(' → ')})`,
+        { assignmentId, tow: true, steps: r.steps })
+      await releaseLock()
+      return
+    }
+  } catch (e: any) {
+    console.warn('[vab] aiguillage remorquage KO, on suit la voie dépannage :', e?.message)
+  }
+
+
   const started = Date.now()
   try {
     // ── La chaîne qui aboutit, prouvée le 14/08 sur quatre dossiers ───────────

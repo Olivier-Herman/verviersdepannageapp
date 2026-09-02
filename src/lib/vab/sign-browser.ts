@@ -352,6 +352,147 @@ export async function vabAcceptInBrowser(assignmentId: string): Promise<{ ok: bo
   return vabStepInBrowser(assignmentId, 'accept')
 }
 
+/**
+ * CLÔTURE D'UN REMORQUAGE (page TowAssignments) — prouvée le 02/09/2026 sur le
+ * dossier 56303780.
+ *
+ * Un remorquage qui suit un dépannage ne redemande RIEN : châssis, kilométrage
+ * et codes panne ont été relevés à la clôture du dépannage avec la demande de
+ * REM. Sa page ne veut que la signature, puis trois réponses et la fin.
+ *
+ * Quatre pièges, tous coûteux, tous réglés ici :
+ *
+ *  1. LE FORMULAIRE DE LOGIN NAVIGATEUR REFUSE. Douze tentatives d'affilée le
+ *     02/09. La connexion HTTP, elle, passe toujours : on lui prend ses cookies
+ *     et on les injecte. Plus de formulaire à franchir.
+ *  2. LA LISTE FAIT GELER CHROMIUM. On va droit sur l'URL du remorquage — ce qui
+ *     ne marchait pas avec l'ancienne session, et marche avec celle-ci.
+ *  3. « Localisation du véhicule » EST UN CHAMP TEXTE, pas une liste. Les deux
+ *     autres sont des listes « Selectize » : leur `<select>` natif reste vide,
+ *     OutSystems le remplace par son widget. On y pose donc directement les
+ *     valeurs relevées dans leur trafic — `__ossli_1` pour « 1 » clé, `1043`
+ *     pour « Réception ».
+ *  4. « Fin de la mission » OUVRE UN confirm() NATIF — « Are you sure of all the
+ *     information you want to submit to VAB? ». Tant que personne n'y répond, le
+ *     fil JavaScript de la page est bloqué et TOUT ordre envoyé à la page expire.
+ *     C'est ce qui produisait les « Runtime.callFunctionOn timed out » qu'on
+ *     prenait pour des lenteurs.
+ *
+ * Fonction SÉPARÉE de `vabCloseOnSiteBrowser` à dessein : greffer les étapes du
+ * remorquage dans la séquence commune a cassé les clôtures de dépannage le matin
+ * même. Un chemin neuf ne traverse pas un chemin éprouvé.
+ */
+export async function closeVabTowInBrowser(opts: {
+  assignmentId: string
+  /** Où le véhicule a été laissé — champ libre. */
+  vehicleLocation?: string | null
+}): Promise<{ ok: boolean; steps: string[]; error?: string }> {
+  const steps: string[] = []
+  let browser: Browser | null = null
+  try {
+    const { loginVab } = await import('./scraper')
+    const sess = await loginVab()
+
+    browser = await launchBrowser()
+    const page = await browser.newPage()
+    page.setDefaultTimeout(60000)
+    await page.setUserAgent(DESKTOP_UA)
+    page.on('dialog', async d => {
+      steps.push(`confirmation : ${d.message().slice(0, 60)}`)
+      try { await d.accept() } catch { /* déjà fermée */ }
+    })
+
+    await page.setCookie(...sess.cookieHeader.split(';').map(c => c.trim()).filter(Boolean).map(c => {
+      const i = c.indexOf('=')
+      return { name: c.slice(0, i), value: c.slice(i + 1), domain: 'comet.vab.be', path: '/' }
+    }))
+    await page.goto(`${BASE}/Comet/TowAssignments_Details.aspx?AssignmentId=${opts.assignmentId}`,
+      { waitUntil: 'domcontentloaded', timeout: 60000 })
+    await new Promise(r => setTimeout(r, 5000))
+    steps.push('fiche remorquage ouverte')
+
+    // Pas encore accepté ? On le fait ici : la session est déjà ouverte et la
+    // page chargée — inutile de repasser par une autre fonction.
+    if (await page.$('a[id*="wtLink_Accept"]') || await clickByText(page, '^\\s*Accepter\\s*$')) {
+      steps.push('« Accepter »')
+      await new Promise(r => setTimeout(r, 6000))
+    }
+
+    // On avance jusqu'au dernier écran : signature, puis les boutons d'étape.
+    for (let tour = 0; tour < 6; tour++) {
+      const fin = await page.$('a[id*="wtLink_End"]')
+      if (fin) break
+      if (await page.$('[id*="wtSignatureContainer"] canvas, .SignatureContainer canvas')) {
+        if (await drawSignature(page)) steps.push('signature dessinée')
+      }
+      let avancé = false
+      for (const lib of ['envoyer', 'fin adresse de livraison', 'départ domicile', 'arrivé endroit de chargement']) {
+        if (await clickByText(page, `^\\s*${lib}\\s*$`)) { steps.push(`« ${lib} »`); avancé = true; break }
+      }
+      if (!avancé) break
+      await new Promise(r => setTimeout(r, 5000))
+    }
+
+    if (!(await page.$('a[id*="wtLink_End"]'))) {
+      const vus = await page.evaluate(() => [...new Set([...document.querySelectorAll('a')]
+        .map(e => (e.textContent || '').replace(/\s+/g, ' ').trim())
+        .filter(t => t && t.length < 30))].slice(0, 12).join(' | ')).catch(() => '')
+      return { ok: false, steps, error: `écran de fin non atteint — boutons vus : ${vus}` }
+    }
+
+    const rempli = await page.evaluate((lieu: string) => {
+      const out: string[] = []
+      const champ = [...document.querySelectorAll('input')].find(x => /wt347/i.test(x.id || '')) as HTMLInputElement | undefined
+      if (champ) {
+        champ.focus(); champ.value = lieu
+        champ.dispatchEvent(new Event('input', { bubbles: true }))
+        champ.dispatchEvent(new Event('change', { bubbles: true }))
+        out.push(`véhicule : ${lieu}`)
+      }
+      const poser = (frag: RegExp, valeur: string, texte: string, lbl: string) => {
+        const sel = [...document.querySelectorAll('select')].find(x => frag.test(x.id || '')) as HTMLSelectElement | undefined
+        if (!sel) return
+        if (![...sel.options].some(o => o.value === valeur)) {
+          const o = document.createElement('option'); o.value = valeur; o.text = texte; sel.add(o)
+        }
+        sel.value = valeur
+        sel.dispatchEvent(new Event('change', { bubbles: true }))
+        out.push(`${lbl} : ${texte}`)
+      }
+      poser(/KeysNr/i,      '__ossli_1', '1',         'clés')
+      poser(/KeyLocation/i, '1043',      'Réception', 'clés rangées')
+      return out
+    }, opts.vehicleLocation || 'Parking').catch(() => [] as string[])
+    steps.push(rempli.join(' · ') || '⚠ champs de fin non remplis')
+    await new Promise(r => setTimeout(r, 2000))
+
+    // Clic RÉEL : un clic injecté resterait bloqué par le confirm() natif.
+    const cible = await page.evaluateHandle(() => [...document.querySelectorAll('a,button,input')]
+      .find(e => /wtLink_End/.test((e as HTMLElement).id || '')) || null)
+    const el = cible.asElement()
+    if (!el) return { ok: false, steps, error: 'bouton « Fin de la mission » introuvable' }
+    await (el as any).click().catch(() => {})
+    steps.push('« Fin de la mission »')
+    await new Promise(r => setTimeout(r, 8000))
+    for (let t = 0; t < 4; t++) { if (await clickOuiInFrames(page)) { steps.push('pop-up « Oui »'); break }; await new Promise(r => setTimeout(r, 1500)) }
+    await new Promise(r => setTimeout(r, 4000))
+
+    // Seule preuve valable : le dossier a quitté leur liste.
+    await page.goto(`${BASE}/Comet/Home.aspx`, { waitUntil: 'domcontentloaded', timeout: 60000 })
+    await new Promise(r => setTimeout(r, 5000))
+    const encore = await page.evaluate((aid: string) =>
+      [...document.querySelectorAll('a')].some(x => (x.getAttribute('href') || '').includes(`AssignmentId=${aid}`)),
+      opts.assignmentId).catch(() => true)
+    return encore
+      ? { ok: false, steps, error: 'le dossier est toujours dans la liste VAB' }
+      : { ok: true, steps }
+  } catch (e: any) {
+    return { ok: false, steps, error: e?.message || 'erreur' }
+  } finally {
+    if (browser) await browser.close().catch(() => {})
+  }
+}
+
 export async function vabCloseOnSiteBrowser(opts: {
   assignmentId: string
   km: string
