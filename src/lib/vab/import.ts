@@ -219,6 +219,51 @@ export async function runVabImport(opts: { mode: VabImportMode }): Promise<VabIm
           if (fiche) console.log(`[VAB] ${incomingPlate} : suite rattachée par PLAQUE (dossiers différents) → fiche ${fiche.id}`)
         }
 
+        // ── LA JAMBE REMORQUAGE ARRIVE APRÈS LA CLÔTURE ────────────────────────
+        // « Le problème, c'est que tu crées un doublon au lieu de rajouter à la
+        // fiche existante » (Olivier 2026-09-02). Quand le chauffeur transforme
+        // un dépannage en remorquage, VAB ouvre une action REMORQUAGE — parfois
+        // une heure APRÈS que la fiche soit terminée chez nous. Les deux replis
+        // ci-dessus écartent volontairement les fiches terminées (une vraie
+        // nouvelle mission doit arriver dans le dispatch), donc une 2e fiche
+        // naissait, que le dispatch annulait à la main.
+        //
+        // Cas 1CNE792 : dépannage 56302008 fait et livré à 14h26, la jambe
+        // remorquage 56303780 arrive à 15h05 → fiche fantôme. Le pointage, lui,
+        // s'est fait sur une seule fiche : la seconde n'a rien à porter, sauf
+        // l'identifiant VAB dont la clôture a besoin.
+        //
+        // On rattache donc l'AssignmentId à la fiche terminée, sans rien créer.
+        // Garde-fous : même plaque, action de type REMORQUAGE, et fiche terminée
+        // depuis moins de 24 h — au-delà, c'est une intervention distincte.
+        if (!fiche && incomingPlate && desiredType === 'remorquage' && assignmentId) {
+          const { data: finies } = await sb.from('incoming_missions')
+            .select(FICHE_COLS + ', completed_at')
+            .ilike('source', 'vab')
+            .eq('vehicle_plate', incomingPlate)
+            .in('status', ['completed', 'to_invoice'])
+            .gte('completed_at', new Date(Date.now() - 24 * 3600 * 1000).toISOString())
+            .order('completed_at', { ascending: false }).limit(1)
+          const finie: any = (finies || [])[0] || null
+          if (finie) {
+            const ids: string[] = Array.isArray(finie.vab_assignment_ids) ? finie.vab_assignment_ids : []
+            if (!ids.includes(assignmentId)) {
+              await sb.from('incoming_missions')
+                .update({ vab_assignment_ids: [...ids, assignmentId], updated_at: new Date().toISOString() })
+                .eq('id', finie.id)
+              await sb.from('mission_logs').insert({
+                mission_id: finie.id, action: 'vab_synced',
+                notes: `VAB : action ${assignmentId} (${detail.taskType || 'remorquage'}) rattachée à cette fiche déjà terminée — pas de 2e fiche. `
+                     + `Le filet la clôturera chez eux.`,
+                metadata: { assignmentId, dossier: fullDossier, auto: true },
+              }).then(() => {}, () => {})
+            }
+            results.push({ missionNumber: item.missionNumber, ok: true, action: 'merged', mergedInto: finie.id })
+            merged++
+            continue
+          }
+        }
+
         if (fiche) {
           const wasUpgrade = fiche.mission_type !== 'remorquage' && desiredType === 'remorquage'
           const upd: Record<string, any> = {}
