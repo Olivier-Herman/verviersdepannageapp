@@ -393,6 +393,47 @@ export async function vabCloseOnSiteBrowser(opts: {
       return { onCodeScreen: false, steps: ['ouverture fiche'], error: ouverture.error } as VabBrowserResult
     }
 
+    // ── DÉROULER LES ÉTAPES DU REMORQUAGE, DANS LE NAVIGATEUR ────────────────
+    // Sur la page des REMORQUAGES, les boutons d'étape sont rendus en JavaScript
+    // et portent des identifiants sans nom (`wtContent_wt16`…) : notre couche
+    // HTTP n'en voit aucun, et `syncVabStep` conclut « déjà fait » alors qu'elle
+    // est simplement aveugle. Le 02/09, 1CNE792 attendait « Départ domicile » et
+    // 2FEE165 « Arrivé endroit de chargement » — tous deux acceptés, tous deux
+    // bloqués là, avec pour seul message « écran on-site non trouvé ».
+    //
+    // On avance donc par le TEXTE du bouton, la seule chose stable sur cette
+    // page. Liste fermée : jamais « Refuser », jamais « Retourner ».
+    const ÉTAPES_REM = [
+      'Départ domicile', 'Arrivé endroit de chargement', 'Arrivé endroit de la panne',
+      'Chargement terminé', 'Départ vers destination', 'Arrivé à destination',
+    ]
+    for (let tour = 0; tour < ÉTAPES_REM.length + 3; tour++) {
+      const déjàLà = await page.$('input[id*="wtInput_MileageCheck"], [id*="wtSignatureContainer"], select[id*="SolutionCodeLevel1"]')
+      if (déjàLà) break
+      const cliqué = await page.evaluate((libellés: string[]) => {
+        const norm = (t: string) => t.replace(/\s+/g, ' ').trim().toLowerCase()
+        for (const lib of libellés) {
+          const el = [...document.querySelectorAll('a, button, input')].find(e => {
+            const t = norm(e.textContent || (e as HTMLInputElement).value || '')
+            return t === norm(lib)
+          })
+          if (el) { (el as HTMLElement).click(); return lib }
+        }
+        return ''
+      }, ÉTAPES_REM).catch(() => '')
+      if (!cliqué) {
+        // Rien trouvé : ces boutons sont posés par leur JavaScript, parfois
+        // plusieurs secondes après le chargement. On laisse deux chances avant
+        // de renoncer — abandonner au premier coup d'œil, c'était renoncer
+        // avant que la page ait fini de s'afficher.
+        if (tour >= 2) break
+        await new Promise(r => setTimeout(r, 4000))
+        continue
+      }
+      steps.push(`étape « ${cliqué} »`)
+      await new Promise(r => setTimeout(r, 6000))
+    }
+
     // On-site prêt = champ km OU canvas signature OU écran code (vélo « Fiets » :
     // pas de km → on ne bloque pas sur wtInput_MileageCheck).
     const ready = await page.waitForSelector('input[id*="wtInput_MileageCheck"], [id*="wtSignatureContainer"], select[id*="SolutionCodeLevel1"]', { timeout: 25000 }).catch(() => null)
