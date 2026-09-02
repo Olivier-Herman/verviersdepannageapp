@@ -285,6 +285,8 @@ interface MissionLike {
   // fenêtre de gardiennage, pas seulement pour les jours à venir.
   // Olivier 2026-08-19.
   storage_waived?:    boolean | null
+  /** Forfait qui REMPLACE le comptage au jour (NULL = comptage normal). */
+  storage_flat_htva?: number | null
 }
 
 /** Map mission_type DB vers le canonical attendu en source_tariffs (lowercase). */
@@ -501,7 +503,18 @@ export async function estimateMissionPrice(mission: MissionLike, opts?: { skipRe
   // (parked_at non null). Date de fin = sortie effective (delivering_at)
   // > cloture (completed_at) > aujourd hui (encore en parc).
   // Math.floor : jour d arrivee non compte (jours pleins ecoules).
-  if (mission.parked_at && tariff.parc_day_price && !mission.storage_waived) {
+  // ── FORFAIT DE GARDIENNAGE ────────────────────────────────────────────────
+  // « La coche pour le gardiennage Ethias n'agit pas sur le tarif. Elle doit
+  // remplacer le gardiennage journalier par un forfait » (Olivier 2026-09-02).
+  // La case écrivait bien `storage_flat_htva` sur la fiche, et l'aperçu de la
+  // facture partielle le lisait — mais PAS ce calculateur-ci, celui qui fait le
+  // devis et la facture. Deux estimateurs coexistent : j'avais câblé l'autre.
+  const forfaitParc = Number((mission as any).storage_flat_htva) > 0
+    ? Number((mission as any).storage_flat_htva) : null
+  if (forfaitParc && !mission.storage_waived) {
+    parcJours = 0
+    parcEur   = forfaitParc
+  } else if (mission.parked_at && tariff.parc_day_price && !mission.storage_waived) {
     const parcStart = new Date(mission.parked_at)
     const refEnd    = (mission as any).delivering_at
                    || (mission as any).completed_at
@@ -588,7 +601,9 @@ export async function estimateMissionPrice(mission: MissionLike, opts?: { skipRe
   const breakdown = [
     { label: 'Forfait',   amount: forfait, note: kmInclus > 0 ? `${kmInclus} km inclus` : undefined },
     { label: `Km extra (${kmBasisLabel})`, amount: kmExtraEur > 0 ? kmExtraEur : null, note: kmExtra > 0 ? `${kmExtra} km × ${Number(tariff.km_price || 0).toFixed(2)} €` : `base : ${kmBase} km` },
-    { label: 'Parc',      amount: parcEur > 0 ? parcEur : null, note: parcJours > 0 ? `${parcJours} jour(s) × ${Number(tariff.parc_day_price || 0).toFixed(2)} €` : (mission.storage_waived ? 'abandon volontaire — gardiennage offert' : 'non applicable') },
+    { label: 'Parc',      amount: parcEur > 0 ? parcEur : null, note: parcJours > 0 ? `${parcJours} jour(s) × ${Number(tariff.parc_day_price || 0).toFixed(2)} €`
+      : (Number((mission as any).storage_flat_htva) > 0 && !mission.storage_waived) ? 'forfait de gardiennage (pas de comptage au jour)'
+      : (mission.storage_waived ? 'abandon volontaire — gardiennage offert' : 'non applicable') },
     ...rulesBreakdown,
     { label: 'Majoration horaire', amount: surchargeEur > 0 ? surchargeEur : null, note: surchargeNote || 'aucune' },
   ]
@@ -698,7 +713,18 @@ async function estimateBrackets(
   // (parked_at non null). Date de fin = sortie effective (delivering_at)
   // > cloture (completed_at) > aujourd hui (encore en parc).
   // Math.floor : jour d arrivee non compte (jours pleins ecoules).
-  if (mission.parked_at && tariff.parc_day_price && !mission.storage_waived) {
+  // ── FORFAIT DE GARDIENNAGE ────────────────────────────────────────────────
+  // « La coche pour le gardiennage Ethias n'agit pas sur le tarif. Elle doit
+  // remplacer le gardiennage journalier par un forfait » (Olivier 2026-09-02).
+  // La case écrivait bien `storage_flat_htva` sur la fiche, et l'aperçu de la
+  // facture partielle le lisait — mais PAS ce calculateur-ci, celui qui fait le
+  // devis et la facture. Deux estimateurs coexistent : j'avais câblé l'autre.
+  const forfaitParc = Number((mission as any).storage_flat_htva) > 0
+    ? Number((mission as any).storage_flat_htva) : null
+  if (forfaitParc && !mission.storage_waived) {
+    parcJours = 0
+    parcEur   = forfaitParc
+  } else if (mission.parked_at && tariff.parc_day_price && !mission.storage_waived) {
     const parcStart = new Date(mission.parked_at)
     const refEnd    = (mission as any).delivering_at
                    || (mission as any).completed_at
@@ -717,7 +743,9 @@ async function estimateBrackets(
 
   const breakdown = [
     { label: tariffLabel, amount: tariffTotal },
-    { label: 'Parc', amount: parcEur > 0 ? parcEur : null, note: parcJours > 0 ? `${parcJours} jour(s) × ${Number(tariff.parc_day_price || 0).toFixed(2)} €` : (mission.storage_waived ? 'abandon volontaire — gardiennage offert' : 'non applicable') },
+    { label: 'Parc', amount: parcEur > 0 ? parcEur : null, note: parcJours > 0 ? `${parcJours} jour(s) × ${Number(tariff.parc_day_price || 0).toFixed(2)} €`
+      : (Number((mission as any).storage_flat_htva) > 0 && !mission.storage_waived) ? 'forfait de gardiennage (pas de comptage au jour)'
+      : (mission.storage_waived ? 'abandon volontaire — gardiennage offert' : 'non applicable') },
   ]
 
   return {

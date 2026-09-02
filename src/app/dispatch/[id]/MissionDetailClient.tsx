@@ -1334,7 +1334,12 @@ export default function MissionDetailClient({
   })
   // Le montant est écrit sur la fiche à la coche, pas lu depuis le code à la
   // facturation : si le forfait change, les anciens dossiers gardent le leur.
-  const FORFAIT_PARC_HTVA = 220
+  //
+  // ⚠️ 220 € TVAC (Olivier 2026-09-02), et la colonne stocke de l'HTVA — c'est
+  // ce que lisent le devis et la facture. On convertit ici, une fois, plutôt que
+  // de laisser chacun se tromper : 220 / 1,21 = 181,82 € HTVA.
+  const FORFAIT_PARC_TVAC = 220
+  const FORFAIT_PARC_HTVA = Math.round((FORFAIT_PARC_TVAC / 1.21) * 100) / 100
   const forfaitParcApplicable =
     (form.source || initialMission.source) === 'police_accident'
     && /ethias|kaze/i.test(String(form.billed_to_name || initialMission.billed_to_name || ''))
@@ -3950,11 +3955,11 @@ export default function MissionDetailClient({
                       />
                       <span className="text-xs">
                         <span className={`font-semibold ${storageFlat ? 'text-emerald-900' : 'text-ink'}`}>
-                          Forfait gardiennage {initialMission.billed_to_name || 'assistance'} — {FORFAIT_PARC_HTVA} € HTVA
+                          Forfait gardiennage {initialMission.billed_to_name || 'assistance'} — {FORFAIT_PARC_TVAC} € TVAC
                         </span>
                         <span className="block text-ink-muted mt-0.5">
                           {storageFlat
-                            ? `Le parc est facturé ${FORFAIT_PARC_HTVA} € HTVA au total, quel que soit le nombre de jours.`
+                            ? `Le parc est facturé ${FORFAIT_PARC_TVAC} € TVAC (${FORFAIT_PARC_HTVA.toFixed(2)} € HTVA) au total, quel que soit le nombre de jours.`
                             : 'Accident police repris par Ethias / Kaze : le parc se facture au forfait, pas au jour.'}
                         </span>
                       </span>
