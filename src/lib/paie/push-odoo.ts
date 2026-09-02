@@ -126,7 +126,12 @@ export async function pushPayslipToOdoo(payslipId: string, opts: { force?: boole
       }])
       await odooRpc('account.move', 'message_post', [[moveId]], {
         body: `Fiche de paie — ${typeLabel} ${slip.period}`,
-        message_type: 'comment', subtype_id: 2, attachment_ids: [[4, attId]],
+        // Odoo 19 refuse la commande x2many ici : « L'envoi d'un message devrait
+        // recevoir les enregistrements des pièces jointes sous la forme d'une
+        // liste d'identifiants (reçu [[4, 96645]]) ». `message_post` veut une
+        // liste d'ids NUS, pas un [[4, id]]. La pièce jointe existait bien —
+        // seul son rattachement au message échouait, en silence dans le journal.
+        message_type: 'comment', subtype_id: 2, attachment_ids: [attId],
       })
     } catch (e: any) { console.error('[paie push] attach PDF:', e.message) }
   }
