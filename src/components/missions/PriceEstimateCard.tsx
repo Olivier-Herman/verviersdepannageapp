@@ -72,6 +72,37 @@ export default function PriceEstimateCard({ missionId, overrides }: Props) {
     return s ? `?${s}` : ''
   })()
 
+  // ── CE QUI EST DÉJÀ FACTURÉ SE VOIT ICI AUSSI ─────────────────────────────
+  // « Ils doivent apparaître barrés dans l'aperçu » (Olivier 2026-09-02). Cette
+  // carte annonçait le tarif COMPLET, y compris des postes déjà réglés sur une
+  // facture partielle — on ne pouvait pas savoir, en la lisant, ce qui restait
+  // réellement à facturer. Sur 2GAN408 : prise en charge et kilomètres déjà
+  // payés, et affichés comme s'ils étaient dus.
+  const [dejaFactures, setDejaFactures] = useState<Set<string>>(new Set())
+  const [montantFacture, setMontantFacture] = useState(0)
+  useEffect(() => {
+    let vivant = true
+    fetch(`/api/missions/${missionId}/billed-items`, { cache: 'no-store' })
+      .then(r => r.json())
+      .then(d => {
+        if (!vivant) return
+        const items: any[] = d?.items || []
+        setDejaFactures(new Set(items.map(i => String(i.label || '').trim().toLowerCase()).filter(Boolean)))
+        setMontantFacture(items.reduce((t, i) => t + Number(i.amount_htva || 0), 0))
+      })
+      .catch(() => {})
+    return () => { vivant = false }
+  }, [missionId])
+
+  /** Un libellé déjà facturé ? On compare sur le début du libellé : le devis
+   *  précise parfois une période que l'estimation n'a pas. */
+  const estFacture = (label: string) => {
+    const l = String(label || '').trim().toLowerCase()
+    if (!l) return false
+    for (const f of dejaFactures) if (f === l || f.startsWith(l) || l.startsWith(f)) return true
+    return false
+  }
+
   useEffect(() => {
     setLoading(true)
     const ctrl = new AbortController()
@@ -184,17 +215,21 @@ export default function PriceEstimateCard({ missionId, overrides }: Props) {
                   {depannageLines.length === 0 && (
                     <p className="text-xs text-ink-faint italic">Aucune ligne dépannage</p>
                   )}
-                  {depannageLines.map((line, i) => (
-                    <div key={i} className="flex items-baseline justify-between gap-2 text-xs">
+                  {depannageLines.map((line, i) => {
+                    const paye = estFacture(line.label)
+                    return (
+                    <div key={i} className={`flex items-baseline justify-between gap-2 text-xs ${paye ? 'opacity-55' : ''}`}
+                         title={paye ? 'Déjà facturé — ne sera pas repris' : undefined}>
                       <div className="flex-1">
-                        <span className="text-ink-secondary">{line.label}</span>
+                        {paye && <span className="text-emerald-600 mr-1">✓</span>}
+                        <span className={`text-ink-secondary ${paye ? 'line-through' : ''}`}>{line.label}</span>
                         {line.note && <span className="text-ink-faint ml-2">— {line.note}</span>}
                       </div>
-                      <span className={line.amount && line.amount > 0 ? 'font-medium' : 'text-ink-faint'}>
+                      <span className={`${paye ? 'line-through text-ink-faint' : (line.amount && line.amount > 0 ? 'font-medium' : 'text-ink-faint')}`}>
                         {line.amount != null ? fmt(line.amount) : '—'}
                       </span>
                     </div>
-                  ))}
+                  )})}
                   {data.surcharge_pct > 0 && (
                     <div className="flex items-center justify-between gap-2 text-xs">
                       <span className="text-ink-faint">Majoration ({data.surcharge_pct}%)</span>
@@ -247,6 +282,26 @@ export default function PriceEstimateCard({ missionId, overrides }: Props) {
                     <span className="text-ink-muted">Total TVAC ({Math.round(TVA_RATE * 100)}%)</span>
                     <span className="font-medium text-ink-muted">{fmt(toTvac(data.total_eur))}</span>
                   </div>
+                  {montantFacture > 0 && (
+                    <div className="mt-2 pt-2 border-t border-surface-hover space-y-1">
+                      <div className="flex items-center justify-between gap-2 text-xs">
+                        <span className="text-ink-muted">Déjà facturé</span>
+                        <span className="font-medium text-ink-muted">− {fmt(montantFacture)}</span>
+                      </div>
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="font-bold text-sm">Reste à facturer HTVA</span>
+                        <span className="font-display font-bold text-base">
+                          {fmt(Math.max(0, Math.round((data.total_eur - montantFacture) * 100) / 100))}
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between gap-2 text-xs">
+                        <span className="text-ink-muted">Reste TVAC</span>
+                        <span className="font-medium text-ink-muted">
+                          {fmt(toTvac(Math.max(0, data.total_eur - montantFacture)))}
+                        </span>
+                      </div>
+                    </div>
+                  )}
                 </div>
               </>
             )
