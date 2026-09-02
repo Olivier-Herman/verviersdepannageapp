@@ -37,6 +37,8 @@ export interface RelivraisonInput {
    * Le dispatcher choisit la source au moment de cliquer "Relivrer".
    */
   sourceOverride?: string | null
+  /** Qui a demandé la relivraison (journal). */
+  actorId?: string | null
   /** Montant HTVA imposé sur la REL → `special_tarif_htva`, qui court-circuite
    *  le calcul au moment du devis. Facultatif : vide = tarif calculé comme
    *  d'habitude. Ouvert à toutes les sources depuis le 31/08/2026 (il était
@@ -61,15 +63,42 @@ export async function createRelivraisonMission(input: RelivraisonInput): Promise
 
   const externalId = `REL-${parent.external_id || parent.id.slice(0, 8)}`
 
-  // Vérifier qu'on n'a pas déjà créé une REL pour ce parent (idempotence)
+  // ── IDEMPOTENCE : UNE REL ANNULÉE NE COMPTE PAS ──────────────────────────
+  // « En créant le REL, je tombe sur la fiche que j'ai annulée » (Olivier
+  // 2026-09-02). Le contrôle rendait la REL existante SANS regarder son statut :
+  // une relivraison annulée par erreur — cas 2JEM405, prise pour un doublon
+  // parmi les cinq fiches du même véhicule — bloquait donc toute recréation. Le
+  // bouton « Relivrer » renvoyait indéfiniment sur la fiche morte, qu'on ne peut
+  // pas assigner.
+  //
+  // On RESSUSCITE cette fiche plutôt que d'en créer une de plus : l'historique,
+  // le dossier Odoo et l'étiquette déjà imprimée restent attachés. Mais on
+  // efface les marques d'annulation, sans quoi elle continue de s'afficher comme
+  // annulée partout.
   const { data: existing } = await sb
     .from('incoming_missions')
-    .select('id')
+    .select('id, status, mission_number')
     .eq('parent_mission_id', input.parentMissionId)
     .eq('external_id', externalId)
     .maybeSingle()
-  if (existing) {
+  if (existing && !['cancelled', 'ignored'].includes(String((existing as any).status))) {
     console.log(`[REL] Mission REL deja existante pour parent ${input.parentMissionId}: ${existing.id}`)
+    return { id: existing.id }
+  }
+  if (existing) {
+    await sb.from('incoming_missions').update({
+      status:           'dispatching',
+      cancelled_at:     null,
+      cancelled_reason: null,
+      cancelled_by:     null,
+      updated_at:       new Date().toISOString(),
+    }).eq('id', existing.id)
+    await sb.from('mission_logs').insert({
+      mission_id: existing.id, actor_id: input.actorId ?? null, action: 'received',
+      notes: `Relivraison réactivée : elle avait été annulée (${(existing as any).status}) puis redemandée depuis la fiche parent.`,
+      metadata: { revived: true },
+    }).then(() => {}, () => {})
+    console.log(`[REL] Mission REL annulée réactivée pour parent ${input.parentMissionId}: ${existing.id}`)
     return { id: existing.id }
   }
 
