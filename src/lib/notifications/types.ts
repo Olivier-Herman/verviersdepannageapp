@@ -131,6 +131,14 @@ export const NOTIFICATION_TYPES: readonly NotificationType[] = [
     defaultEnabled:  true,
   },
   {
+    key:             'verification_parc',
+    label:           'Vérification physique au parc',
+    description:     'Demande de vérifier sur place la présence de véhicules (popup bloquant jusqu\'à confirmation).',
+    category:        'admin',
+    applicableRoles: ['dispatcher', 'admin', 'superadmin'],
+    defaultEnabled:  true,
+  },
+  {
     key:             'garde_uncovered',
     label:           'Créneau de garde non couvert',
     description:     'Un créneau jour ou nuit n\'a aucun chauffeur assigné.',

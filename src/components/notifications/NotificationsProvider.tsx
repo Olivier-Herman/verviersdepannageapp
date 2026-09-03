@@ -12,6 +12,7 @@ import { createClient as createSupabaseClient } from '@supabase/supabase-js'
 import { playNotificationSound } from '@/lib/notifications/sounds'
 import { usePushRegistration } from '@/hooks/usePushRegistration'
 import NotificationBanner from './NotificationBanner'
+import BlockingNotificationModal from './BlockingNotificationModal'
 
 interface NotifEvent {
   id:           string
@@ -90,7 +91,9 @@ export default function NotificationsProvider({
 
     const handleNewNotif = (row: NotifEvent) => {
       if (row.channel && row.channel !== 'in_app') return
-      if (row.read_at) return                    // déjà lue en base → jamais de toast
+      // Popup bloquant : reste tant qu'il n'y a pas de RÉPONSE (même si « lu »).
+      const blocking = !!row.payload?.data?.modal
+      if (blocking ? row.responded_at : row.read_at) return   // déjà traitée en base
       if (seen.current.has(row.id)) return       // déjà affichée/fermée cette session
       let added = false
       setPending(prev => {
@@ -139,10 +142,15 @@ export default function NotificationsProvider({
   return (
     <NotificationsContext.Provider value={{ dismiss, markRead, pending }}>
       {children}
+      {/* Popup BLOQUANT (réponse obligatoire) : un à la fois, au-dessus de tout */}
+      {(() => {
+        const blocking = pending.find(n => n.payload?.data?.modal)
+        return blocking ? <BlockingNotificationModal notif={blocking} onDone={() => markRead(blocking.id)} /> : null
+      })()}
       {/* Stack de bandeaux : top-right, plus recente en haut */}
-      {pending.length > 0 && (
+      {pending.some(n => !n.payload?.data?.modal) && (
         <div className="fixed top-4 right-4 z-[300] flex flex-col gap-2 pointer-events-none max-w-sm w-full sm:max-w-md">
-          {pending.slice(-5).reverse().map(n => (
+          {pending.filter(n => !n.payload?.data?.modal).slice(-5).reverse().map(n => (
             <div key={n.id} className="pointer-events-auto">
               <NotificationBanner
                 notif={n}

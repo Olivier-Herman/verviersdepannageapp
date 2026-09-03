@@ -15,6 +15,7 @@
 import { getOfficerEmail, ensureDepotToken, depotLink } from '@/lib/requisitoire/relance'
 import { sendEmail, emailLayout, button, infoRow, divider } from '@/lib/emails'
 import { sendNotificationToRoles } from '@/lib/notifications/send'
+import { requestParcVerification, toVerificationItems } from '@/lib/missions/parc-verification'
 
 const FOURRIERE_FROM = 'fourriere@verviersdepannage.be'
 const PARC_STATUSES = ['parked', 'delivering', 'unlocated', 'awaiting_payment']
@@ -25,7 +26,15 @@ const MAX_ASKS = 3
 const fmtDate = (iso?: string | null) => iso ? new Date(iso).toLocaleDateString('fr-BE', { timeZone: 'Europe/Brussels', day: '2-digit', month: '2-digit', year: 'numeric' }) : '—'
 const daysSince = (iso?: string | null) => iso ? Math.floor((Date.now() - new Date(iso).getTime()) / 86400000) : 0
 
-export interface MalGareeAvpSummary { checked: number; asked: number; noEmail: number; errors: string[] }
+export interface MalGareeAvpSummary { checked: number; asked: number; noEmail: number; checksAsked: number; errors: string[] }
+const PARC_CHECK_VALID_DAYS = 30
+
+// Dispatchers de bureau actifs (destinataires du popup de vérification).
+async function officeUserIds(sb: any): Promise<string[]> {
+  const { data } = await sb.from('users').select('id, name').eq('active', true).or('role.eq.dispatcher,roles.ov.{dispatcher}')
+  // Les comptes « fusionné » sont des alias historiques.
+  return (data || []).filter((u: any) => !/fusionn/i.test(u.name || '')).map((u: any) => u.id)
+}
 
 function buildHtml(m: any, days: number, link: string, ref: string): string {
   const veh = [m.vehicle_brand, m.vehicle_model].filter(Boolean).join(' ') || '—'
@@ -63,18 +72,34 @@ function buildHtml(m: any, days: number, link: string, ref: string): string {
 
 /** Un passage : demande (ou rappelle) la confirmation AVP au policier pour chaque mal garée à J+60 en parc. */
 export async function runMalGareeAvpCheck(sb: any): Promise<MalGareeAvpSummary> {
-  const out: MalGareeAvpSummary = { checked: 0, asked: 0, noEmail: 0, errors: [] }
+  const out: MalGareeAvpSummary = { checked: 0, asked: 0, noEmail: 0, checksAsked: 0, errors: [] }
   const limit = new Date(Date.now() - MAL_GAREE_AVP_DAYS * 86400000).toISOString()
   const { data: rows } = await sb.from('incoming_missions')
-    .select('id, mission_number, vehicle_plate, vehicle_brand, vehicle_model, vehicle_vin, incident_address, parked_at, received_at, police_pv_number, dossier_number, police_zone, officer_name, officer_partner_id, avp_confirm_asked_at, avp_confirm_count, requisitoire_token')
+    .select('id, mission_number, vehicle_plate, vehicle_brand, vehicle_model, vehicle_vin, incident_address, parked_at, received_at, police_pv_number, dossier_number, police_zone, officer_name, officer_partner_id, avp_confirm_asked_at, avp_confirm_count, requisitoire_token, parc_verified_at, parc_verified_present, parc_check_asked_at')
     .eq('source', 'police_mg').in('status', PARC_STATUSES).is('archived_at', null)
     .or(`parked_at.lte.${limit},and(parked_at.is.null,received_at.lte.${limit})`)
     .limit(100)
+
+  // ── Étape 0 : vérification PHYSIQUE au parc par le bureau (popup bloquant)
+  //    avant toute demande au policier. Une vérification vaut 30 jours.
+  //    Olivier 2026-09-03. ─────────────────────────────────────────────────────
+  const needCheck = (rows || []).filter((m: any) =>
+    (m.avp_confirm_count || 0) < MAX_ASKS &&
+    (!m.parc_verified_at || daysSince(m.parc_verified_at) > PARC_CHECK_VALID_DAYS) &&
+    !(m.parc_check_asked_at && daysSince(m.parc_check_asked_at) < 2))   // pas de re-demande le lendemain
+  if (needCheck.length) {
+    const ids = await officeUserIds(sb)
+    const items = toVerificationItems(needCheck, (m: any) => `Mal garée depuis ${daysSince(m.parked_at || m.received_at)} j — passage en abandon voie publique à confirmer au policier ensuite`)
+    const r = await requestParcVerification(sb, ids, items, 'Merci de vérifier physiquement que ces véhicules sont toujours dans le parc. Tant que ce n\'est pas confirmé, aucune demande ne part vers la police.')
+    out.checksAsked += r.sent ? items.length : 0
+  }
 
   for (const m of (rows || [])) {
     out.checked++
     const count = m.avp_confirm_count || 0
     if (count >= MAX_ASKS) continue
+    // Pas de mail au policier sans présence confirmée récemment au parc.
+    if (!m.parc_verified_at || daysSince(m.parc_verified_at) > PARC_CHECK_VALID_DAYS || m.parc_verified_present !== true) continue
     if (m.avp_confirm_asked_at && daysSince(m.avp_confirm_asked_at) < REMINDER_DAYS) continue
     const days = daysSince(m.parked_at || m.received_at)
     const ref = m.mission_number != null ? `SAI-${m.mission_number}` : `SAI-${String(m.id).slice(0, 8)}`
