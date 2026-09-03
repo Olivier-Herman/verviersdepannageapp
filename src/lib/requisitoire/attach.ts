@@ -16,6 +16,7 @@
 import { requisitoireIncidentAt, provisionalPlate, type RequisitoireExtract } from './extract'
 import { moveMessageToFolder, AUTO_MANAGED_FOLDER } from './graph'
 import { isRequisitoireDoc } from './doc'
+import { requalifySourceFromRequisitoire } from './requalify'
 
 export interface AttachOptions {
   leveeDate?: string                       // YYYY-MM-DD (override UI)
@@ -165,6 +166,12 @@ export async function attachRequisitoire(
 
   const { error: uErr } = await sb.from('incoming_missions').update(update).eq('id', missionId)
   if (uErr) return { ok: false, error: uErr.message }
+
+  // ── Motif coché → la fiche est-elle vraiment une saisie ? (AVP / Mal garée) ─
+  if (!isLevee) {
+    await requalifySourceFromRequisitoire(sb, missionId, ex, { actorId, origin: 'réquisitoire reçu par mail' })
+      .catch((e: any) => console.warn('[requisitoire] requalification KO :', e?.message))
+  }
 
   // ── Marquer rattaché + déplacer le mail source ─────────────────────────────
   const { error: sErr } = await sb.from('requisitoire_intake').update({

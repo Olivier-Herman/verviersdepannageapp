@@ -16,6 +16,7 @@ import { authOptions }       from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase'
 import { extractRequisitoireFromPdf, extractRequisitoireFromImage, type RequisitoireExtract } from '@/lib/requisitoire/extract'
 import { buildMissionUpdateFromExtract } from '@/lib/requisitoire/attach'
+import { requalifySourceFromRequisitoire } from '@/lib/requisitoire/requalify'
 
 export const dynamic     = 'force-dynamic'
 export const maxDuration = 60
@@ -132,6 +133,13 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   const { error: updErr } = await sb.from('incoming_missions').update(update).eq('id', params.id)
   if (updErr) return NextResponse.json({ error: updErr.message }, { status: 500 })
 
+  // Motif coché → requalification AVP / Mal garée si la fiche est une saisie.
+  let requalified: any = null
+  if (extract && !misfiled) {
+    requalified = await requalifySourceFromRequisitoire(sb, params.id, extract, { actorId: actor.id, origin: 'scan depuis la fiche' })
+      .catch((e: any) => ({ changed: false, reason: e?.message }))
+  }
+
   // Trace lisible de ce que l'OCR a complété (la fiche doit pouvoir se relire).
   if (extract && !misfiled) {
     const bits = [
@@ -152,8 +160,10 @@ export async function POST(req: Request, { params }: { params: { id: string } })
 
   return NextResponse.json({
     ok: true,
+    requalified: requalified?.changed ? requalified : null,
     ocr: extract ? {
       doc_type:  extract.doc_type,
+      motif:     extract.motif,
       pv_number: extract.pv_number,
       plaque:    extract.plaque,
       vin:       extract.vin,

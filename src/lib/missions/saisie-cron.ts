@@ -70,10 +70,22 @@ export async function runSaisieCron(sb: any): Promise<SaisieCronSummary> {
     out.checked++
     const mission = d.mission_id
       ? (await sb.from('incoming_missions')
-          .select('status, domaine_remise_date, domaine_enlevement_date, levee_saisie_at, levee_saisie_date, requisitoire_at, requisitoire_doc_path, requisitoire_last_reminder_at')
+          .select('source, status, domaine_remise_date, domaine_enlevement_date, levee_saisie_at, levee_saisie_date, requisitoire_at, requisitoire_doc_path, requisitoire_last_reminder_at')
           .eq('id', d.mission_id).maybeSingle()).data
       : null
     const remise = mission?.domaine_remise_date ? String(mission.domaine_remise_date).slice(0, 10) : null
+
+    // ── Fiche requalifiée (AVP / Mal garée d'après le réquisitoire) : plus une
+    //    saisie → le dossier Parquet n'a plus lieu d'être. Olivier 2026-09-03. ──
+    if (mission && mission.source && mission.source !== 'police_saisie') {
+      await sb.from('saisie_dossiers').update({
+        state: 'clos', pending_action: null, pending_action_at: null, updated_at: new Date().toISOString(),
+        notes: `Clôturé auto : fiche requalifiée « ${mission.source} » (n'est plus une saisie).${d.ef_number ? ` ⚠ Un état de frais ${d.ef_number} est déjà parti au Parquet — à régulariser.` : ''}`,
+      }).eq('id', d.id)
+      out.closed++
+      if (d.ef_number) out.errors.push(`${d.vehicle_plate || '—'} : requalifié ${mission.source} mais ${d.ef_number} déjà envoyé au Parquet`)
+      continue
+    }
 
     // Snapshot de la Date IN sur le dossier (visible au cockpit).
     if (remise && remise !== d.domaine_remise_date) {
