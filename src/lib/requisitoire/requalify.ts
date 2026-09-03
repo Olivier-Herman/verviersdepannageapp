@@ -5,6 +5,7 @@
 // procédure de facturation dépend du formulaire de police :
 //   • réquisitoire ADMINISTRATIF, case « Abandon voie publique » → police_avp
 //   • réquisitoire ADMINISTRATIF, case « Stationnement »         → police_mg (Mal garée)
+//   • réquisitoire ADMINISTRATIF, « Autres : Rodéo »              → police_rodeo
 //   • réquisitoire JUDICIAIRE (non-assurance, accident, vol…)     → reste police_saisie
 // Un dossier AVP / Mal garée ne passe PAS par le Parquet : le dossier saisie
 // éventuel est retiré (ou clôturé si un état de frais est déjà parti, à traiter
@@ -15,9 +16,10 @@ import type { RequisitoireExtract } from './extract'
 export const SOURCE_BY_MOTIF: Partial<Record<NonNullable<RequisitoireExtract['motif']>, string>> = {
   abandon_voie_publique: 'police_avp',
   stationnement:         'police_mg',
+  rodeo:                 'police_rodeo',
 }
-const SOURCE_LABEL: Record<string, string> = { police_avp: 'Police AVP (abandon voie publique)', police_mg: 'Police Mal garée', police_saisie: 'Police Saisie' }
-const MOTIF_LABEL: Record<string, string> = { abandon_voie_publique: 'Abandon voie publique', stationnement: 'Stationnement' }
+const SOURCE_LABEL: Record<string, string> = { police_avp: 'Police AVP (abandon voie publique)', police_mg: 'Police Mal garée', police_rodeo: 'Police Rodéo', police_saisie: 'Police Saisie' }
+const MOTIF_LABEL: Record<string, string> = { abandon_voie_publique: 'Abandon voie publique', stationnement: 'Stationnement', rodeo: 'Rodéo' }
 
 /** Source cible d'après le motif coché, ou null si le motif ne change rien. */
 export function sourceForMotif(ex: Pick<RequisitoireExtract, 'motif' | 'form_kind'> | null | undefined): string | null {

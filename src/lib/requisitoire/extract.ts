@@ -43,11 +43,11 @@ export interface RequisitoireExtract {
 
 export type RequisitoireMotif =
   | 'non_assurance' | 'accident' | 'vol' | 'degrade_incendie' | 'recherche_indices' | 'patrimoniale' | 'autre_judiciaire'
-  | 'stationnement' | 'accident_administratif' | 'abandon_voie_publique' | 'autre_administratif'
+  | 'stationnement' | 'accident_administratif' | 'abandon_voie_publique' | 'rodeo' | 'autre_administratif'
 
 export const REQUISITOIRE_MOTIFS: RequisitoireMotif[] = [
   'non_assurance', 'accident', 'vol', 'degrade_incendie', 'recherche_indices', 'patrimoniale', 'autre_judiciaire',
-  'stationnement', 'accident_administratif', 'abandon_voie_publique', 'autre_administratif',
+  'stationnement', 'accident_administratif', 'abandon_voie_publique', 'rodeo', 'autre_administratif',
 ]
 
 const PROMPT = `Tu es un assistant d'une société de dépannage/fourrière en Belgique. On te fournit un document reçu par email (PDF scanné OU corps de mail). Il peut s'agir de :
@@ -72,13 +72,13 @@ Retourne UNIQUEMENT un objet JSON (pas de markdown) avec EXACTEMENT :
   "levee_type": "string|null — [levée] 'definitive' ou 'temporaire' si précisé, sinon null",
   "raw_quote": "string|null — très courte citation qui justifie (max 120 caractères)",
   "form_kind": "string|null — [réquisitoire] 'judiciaire' si l'en-tête est « RÉQUISITOIRE ENLÈVEMENT/GARDIENNAGE DE VÉHICULE » (bloc « DATE ET MOTIF DE LA SAISIE ») ; 'administratif' si l'en-tête est « RÉQUISITOIRE ADMINISTRATIF ENLÈVEMENT/GARDIENNAGE » (bloc « DATE ET MOTIF DE L'ENLÈVEMENT ») ; null si autre mise en page",
-  "motif": "string|null — [réquisitoire] la case COCHÉE (☒ / X / croix) du bloc motif. Formulaire judiciaire : 'non_assurance' | 'accident' | 'vol' | 'degrade_incendie' | 'recherche_indices' | 'patrimoniale' | 'autre_judiciaire'. Formulaire administratif : 'stationnement' | 'accident_administratif' | 'abandon_voie_publique' | 'autre_administratif'. Si aucune case n'est clairement cochée ou si le texte libre ne permet pas de trancher : null"
+  "motif": "string|null — [réquisitoire] la case COCHÉE (☒ / X / croix) du bloc motif. Formulaire judiciaire : 'non_assurance' | 'accident' | 'vol' | 'degrade_incendie' | 'recherche_indices' | 'patrimoniale' | 'autre_judiciaire'. Formulaire administratif : 'stationnement' | 'accident_administratif' | 'abandon_voie_publique' | 'rodeo' | 'autre_administratif'. Si aucune case n'est clairement cochée ou si le texte libre ne permet pas de trancher : null"
 }
 
 RÈGLES :
 - Si une info n'est pas présente, mets null (ne devine pas).
 - motif : regarde UNIQUEMENT les cases du bloc « DATE ET MOTIF … ». Une case cochée est marquée d'une croix (☒, X, ✓). Ne déduis pas le motif d'autres parties du document. Formulaire Fagnes en texte libre (« Infraction de roulage » + article sur l'assurance) → 'non_assurance'.
-- Si la case cochée est « Autres saisies administratives : … » et que le texte libre dit « Abandon voie publique » / « AVP » → 'abandon_voie_publique' ; s'il dit « Stationnement » → 'stationnement' ; sinon 'autre_administratif' et recopie le texte libre dans raw_quote.
+- Si la case cochée est « Autres saisies administratives : … » et que le texte libre dit « Abandon voie publique » / « AVP » → 'abandon_voie_publique' ; s'il dit « Stationnement » → 'stationnement' ; s'il dit « Rodéo » / « Rodeo urbain » → 'rodeo' ; sinon 'autre_administratif' et recopie le texte libre dans raw_quote.
 - Plaque belge : "1-ABC-234" ou "1ABC234". VIN = 17 caractères alphanumériques.
 - Ne confonds pas pv_number avec la plaque ou le VIN.
 
