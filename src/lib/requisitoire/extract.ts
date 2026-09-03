@@ -78,6 +78,7 @@ Retourne UNIQUEMENT un objet JSON (pas de markdown) avec EXACTEMENT :
 RÈGLES :
 - Si une info n'est pas présente, mets null (ne devine pas).
 - motif : regarde UNIQUEMENT les cases du bloc « DATE ET MOTIF … ». Une case cochée est marquée d'une croix (☒, X, ✓). Ne déduis pas le motif d'autres parties du document. Formulaire Fagnes en texte libre (« Infraction de roulage » + article sur l'assurance) → 'non_assurance'.
+- Si la case cochée est « Autres saisies administratives : … » et que le texte libre dit « Abandon voie publique » / « AVP » → 'abandon_voie_publique' ; s'il dit « Stationnement » → 'stationnement' ; sinon 'autre_administratif' et recopie le texte libre dans raw_quote.
 - Plaque belge : "1-ABC-234" ou "1ABC234". VIN = 17 caractères alphanumériques.
 - Ne confonds pas pv_number avec la plaque ou le VIN.
 
