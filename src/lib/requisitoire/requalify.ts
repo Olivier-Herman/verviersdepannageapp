@@ -6,10 +6,12 @@
 //   • réquisitoire ADMINISTRATIF, case « Abandon voie publique » → police_avp
 //   • réquisitoire ADMINISTRATIF, case « Stationnement »         → police_mg (Mal garée)
 //   • réquisitoire ADMINISTRATIF, « Autres : Rodéo »              → police_rodeo
-//   • réquisitoire JUDICIAIRE (non-assurance, accident, vol…)     → reste police_saisie
-// Un dossier AVP / Mal garée ne passe PAS par le Parquet : le dossier saisie
-// éventuel est retiré (ou clôturé si un état de frais est déjà parti, à traiter
-// à la main). Appelé au rattachement (mail, scan fiche) et par le rattrapage.
+//   • réquisitoire JUDICIAIRE (non-assurance, accident, vol…)     → police_saisie
+// Vaut dans TOUS les sens entre sources police (une fiche AVP dont le PDF est
+// judiciaire devient une saisie → cycle Parquet). Un dossier AVP / Mal garée ne
+// passe PAS par le Parquet : le dossier saisie éventuel est retiré (ou clôturé si
+// un état de frais est déjà parti, à traiter à la main). Appelé au rattachement
+// (mail, scan fiche) et par le rattrapage.
 
 import type { RequisitoireExtract } from './extract'
 
@@ -17,17 +19,28 @@ export const SOURCE_BY_MOTIF: Partial<Record<NonNullable<RequisitoireExtract['mo
   abandon_voie_publique: 'police_avp',
   stationnement:         'police_mg',
   rodeo:                 'police_rodeo',
+  // Formulaire judiciaire → saisie (Parquet)
+  non_assurance: 'police_saisie', accident: 'police_saisie', vol: 'police_saisie', degrade_incendie: 'police_saisie',
+  recherche_indices: 'police_saisie', patrimoniale: 'police_saisie', autre_judiciaire: 'police_saisie',
 }
+// Sources police entre lesquelles la requalification est permise.
+const POLICE_SOURCES = ['police_saisie', 'police_avp', 'police_mg', 'police_rodeo']
 const SOURCE_LABEL: Record<string, string> = { police_avp: 'Police AVP (abandon voie publique)', police_mg: 'Police Mal garée', police_rodeo: 'Police Rodéo', police_saisie: 'Police Saisie' }
-const MOTIF_LABEL: Record<string, string> = { abandon_voie_publique: 'Abandon voie publique', stationnement: 'Stationnement', rodeo: 'Rodéo' }
+const MOTIF_LABEL: Record<string, string> = {
+  abandon_voie_publique: 'Abandon voie publique', stationnement: 'Stationnement', rodeo: 'Rodéo',
+  non_assurance: 'Non-assurance', accident: 'Accident', vol: 'Véhicule volé', degrade_incendie: 'Véhicule dégradé ou incendié',
+  recherche_indices: 'Recherche d\'indices', patrimoniale: 'Patrimoniale', autre_judiciaire: 'Autres saisies judiciaires',
+}
 
 /** Source cible d'après le motif coché, ou null si le motif ne change rien. */
 export function sourceForMotif(ex: Pick<RequisitoireExtract, 'motif' | 'form_kind'> | null | undefined): string | null {
   if (!ex?.motif) return null
-  // Les motifs administratifs n'existent que sur le formulaire administratif ;
-  // si le lecteur dit « judiciaire » avec un motif administratif, on ne bouge pas.
-  if (ex.form_kind === 'judiciaire') return null
-  return SOURCE_BY_MOTIF[ex.motif] || null
+  const target = SOURCE_BY_MOTIF[ex.motif] || null
+  // Cohérence formulaire/motif : un motif administratif sur un formulaire lu
+  // « judiciaire » (ou l'inverse) = lecture douteuse → on ne bouge pas.
+  if (ex.form_kind === 'judiciaire' && target !== 'police_saisie') return null
+  if (ex.form_kind === 'administratif' && target === 'police_saisie') return null
+  return target
 }
 
 export interface RequalifyResult {
@@ -51,11 +64,11 @@ export async function requalifySourceFromRequisitoire(
   if (!target) return { changed: false, reason: 'motif sans incidence' }
   const { data: m } = await sb.from('incoming_missions').select('id, source, vehicle_plate, mission_number').eq('id', missionId).maybeSingle()
   if (!m) return { changed: false, reason: 'fiche introuvable' }
-  if (m.source !== 'police_saisie') return { changed: false, reason: `source ${m.source} (pas une saisie)` }
+  if (!POLICE_SOURCES.includes(m.source)) return { changed: false, reason: `source ${m.source} (hors police)` }
   if (m.source === target) return { changed: false, reason: 'déjà bonne source' }
 
   const motif = ex!.motif as string
-  const note = `Source « Police Saisie » → « ${SOURCE_LABEL[target] || target} » : case « ${MOTIF_LABEL[motif] || motif} » cochée sur le réquisitoire administratif (${opts.origin}).`
+  const note = `Source « ${SOURCE_LABEL[m.source] || m.source} » → « ${SOURCE_LABEL[target] || target} » : case « ${MOTIF_LABEL[motif] || motif} » cochée sur le réquisitoire ${target === 'police_saisie' ? 'judiciaire' : 'administratif'} (${opts.origin}).`
 
   // Dossier saisie lié ?
   let dossierAction: RequalifyResult['dossierAction'] = 'none'
