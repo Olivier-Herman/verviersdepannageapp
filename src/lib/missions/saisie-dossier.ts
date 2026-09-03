@@ -9,6 +9,7 @@ import { randomUUID } from 'crypto'
 import { computeSaisieBilling, type SaisieRecipient } from '@/lib/missions/saisie-billing'
 import { renderEtatFraisPdf } from '@/lib/missions/saisie-etat-frais-pdf'
 import { sendEmail, emailLayout, button, infoRow, divider } from '@/lib/emails'
+import { hasValidRequisitoire, isRequisitoireDoc, REQUISITOIRE_DOC_ERROR } from '@/lib/requisitoire/doc'
 
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://app.verviersdepannage.com'
 const FOURRIERE_FROM = 'fourriere@verviersdepannage.be'
@@ -168,14 +169,15 @@ export async function generateEtatFrais(
 
   const mission = d.mission_id
     ? (await sb.from('incoming_missions')
-        .select('client_name, billed_to_name, incident_address, incident_city, vehicle_class, vehicle_vin, client_email, received_at, requisitoire_at, domaine_remise_date')
+        .select('client_name, billed_to_name, incident_address, incident_city, vehicle_class, vehicle_vin, client_email, received_at, requisitoire_at, requisitoire_doc_path, domaine_remise_date')
         .eq('id', d.mission_id).maybeSingle()).data
     : null
 
-  // RÈGLE : on n'établit un état de frais que si le réquisitoire est au dossier.
+  // RÈGLE : on n'établit un état de frais que si le réquisitoire est au dossier —
+  // un vrai document PDF/JPG, pas une capture de mail (Olivier 2026-09-03).
   // (L'aperçu reste autorisé pour vérifier le calcul.) Olivier 2026-08-09.
-  if (persist && mission && !mission.requisitoire_at) {
-    throw new Error('Réquisitoire manquant — impossible d\'établir l\'état de frais')
+  if (persist && mission && !hasValidRequisitoire(mission)) {
+    throw new Error(REQUISITOIRE_DOC_ERROR)
   }
 
   const hasDomaine = !!(mission?.domaine_remise_date || d.domaine_remise_date)
@@ -383,7 +385,7 @@ export async function sendEtatFrais(
   const attachments: { name: string; contentType: string; contentBytes: string }[] = [
     { name: `etat-de-frais-${gen.numero}.pdf`, contentType: 'application/pdf', contentBytes: gen.pdf.toString('base64') },
   ]
-  if (reqDocPath) {
+  if (reqDocPath && isRequisitoireDoc(reqDocPath)) {
     try {
       const { data: blob } = await sb.storage.from('mission-remarks').download(reqDocPath)
       if (blob) {

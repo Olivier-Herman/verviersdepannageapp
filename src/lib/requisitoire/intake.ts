@@ -212,6 +212,11 @@ async function processMessage(
     let status: string
     if (ex.doc_type === 'levee_saisie') {
       status = (hasStrongKey && ex.levee_date) ? 'pending' : 'to_verify'
+    } else if (pdfs.length === 0) {
+      // Un « réquisitoire » lu dans le CORPS d'un mail sans pièce jointe n'est pas
+      // un réquisitoire (document PDF/JPG requis) → jamais rattaché tel quel,
+      // seulement signalé à vérifier. Olivier 2026-09-03.
+      status = 'to_verify'
     } else {
       status = hasStrongKey ? 'pending' : 'to_verify'
     }
@@ -235,7 +240,7 @@ async function processMessage(
     // Auto-rattachement (saisie/enlèvement UNIQUEMENT — pas les levées) :
     //  - réf SAI- de NOTRE relance → rattache direct à cette fiche (infaillible) ;
     //  - sinon matching flou strict (clé forte + adresse précise + unique + date).
-    if (ex.doc_type !== 'levee_saisie') {
+    if (ex.doc_type !== 'levee_saisie' && pdfs.length > 0) {
       const attachId = refFicheId ?? (match.autoAttach ? match.best?.mission_id ?? null : null)
       if (attachId) {
         try {

@@ -23,6 +23,7 @@
 import { sendEtatFrais, autoIntegrateNewSaisies, saisieScopeFrom, outOfParquetScope } from '@/lib/missions/saisie-dossier'
 import { forclusionDate, daysUntil, forclusionLevel, FORCLUSION_STOPS } from '@/lib/missions/saisie-relance'
 import { sendRequisitoireRelance } from '@/lib/requisitoire/relance'
+import { hasValidRequisitoire } from '@/lib/requisitoire/doc'
 import { sendNotificationToRoles } from '@/lib/notifications/send'
 
 const daysSince = (iso?: string | null) => iso ? Math.floor((Date.now() - new Date(iso).getTime()) / 86400000) : Infinity
@@ -69,7 +70,7 @@ export async function runSaisieCron(sb: any): Promise<SaisieCronSummary> {
     out.checked++
     const mission = d.mission_id
       ? (await sb.from('incoming_missions')
-          .select('status, domaine_remise_date, domaine_enlevement_date, levee_saisie_at, levee_saisie_date, requisitoire_at, requisitoire_last_reminder_at')
+          .select('status, domaine_remise_date, domaine_enlevement_date, levee_saisie_at, levee_saisie_date, requisitoire_at, requisitoire_doc_path, requisitoire_last_reminder_at')
           .eq('id', d.mission_id).maybeSingle()).data
       : null
     const remise = mission?.domaine_remise_date ? String(mission.domaine_remise_date).slice(0, 10) : null
@@ -151,17 +152,19 @@ export async function runSaisieCron(sb: any): Promise<SaisieCronSummary> {
     }
 
     await checkForclusion(sb, d, out)
-    if (!action) continue
 
-    // ── GATE réquisitoire : pas d'état de frais sans réquisitoire → on relance
-    //    le policier (throttle 7 j) au lieu de facturer. Olivier 2026-08-09. ────
-    if (mission && !mission.requisitoire_at) {
+    // ── GATE réquisitoire : un réquisitoire = document PDF/JPG (jamais une
+    //    capture de mail). Sans lui : pas d'état de frais, et surtout pas de dépôt
+    //    JustInvoice → on relance le policier (throttle 7 j) sur TOUT dossier
+    //    ouvert, action due ou non. Olivier 2026-08-09 / 2026-09-03. ─────────────
+    if (mission && !hasValidRequisitoire(mission)) {
       if (d.mission_id && daysSince(mission.requisitoire_last_reminder_at) >= 7) {
         const r = await sendRequisitoireRelance(d.mission_id)
         if (r.ok) { out.relances++; out.actions.push({ plate: d.vehicle_plate || '—', kind: 'relance réquisitoire' }) }
       }
       continue
     }
+    if (!action) continue
 
     // ── Exécute l'action (Auto = envoie ; sinon Prépare + Alerte) ─────────────
     // Exception : levée de saisie → gardiennage hors saisie → JAMAIS d'envoi auto,

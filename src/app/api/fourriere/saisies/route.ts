@@ -15,6 +15,7 @@ import { authOptions }       from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase'
 import { autoIntegrateNewSaisies, saisieScopeFrom, outOfParquetScope, sendEtatFrais } from '@/lib/missions/saisie-dossier'
 import { forclusionDate, daysUntil, forclusionLevel } from '@/lib/missions/saisie-relance'
+import { hasValidRequisitoire } from '@/lib/requisitoire/doc'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 120
@@ -64,8 +65,9 @@ export async function GET() {
   const reqOk = new Map<string, boolean>()
   const leveeByMission = new Map<string, string | null>()   // levée réelle (la fiche fait foi)
   if (missionIds.length) {
-    const { data: ms } = await sb.from('incoming_missions').select('id, requisitoire_at, levee_saisie_at, levee_saisie_date').in('id', missionIds)
-    for (const m of (ms || [])) { reqOk.set(m.id, !!m.requisitoire_at); leveeByMission.set(m.id, m.levee_saisie_at || m.levee_saisie_date || null) }
+    const { data: ms } = await sb.from('incoming_missions').select('id, requisitoire_at, requisitoire_doc_path, levee_saisie_at, levee_saisie_date').in('id', missionIds)
+    // Réquisitoire valable = date posée + document PDF/JPG (jamais une capture de mail).
+    for (const m of (ms || [])) { reqOk.set(m.id, hasValidRequisitoire(m)); leveeByMission.set(m.id, m.levee_saisie_at || m.levee_saisie_date || null) }
   }
   // États de frais (devis) par dossier — pour les actions par état de frais.
   const dIds = (dossiersRaw || []).map((d: any) => d.id)

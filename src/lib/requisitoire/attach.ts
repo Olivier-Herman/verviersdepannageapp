@@ -15,6 +15,7 @@
 
 import { requisitoireIncidentAt, provisionalPlate, type RequisitoireExtract } from './extract'
 import { moveMessageToFolder, AUTO_MANAGED_FOLDER } from './graph'
+import { isRequisitoireDoc } from './doc'
 
 export interface AttachOptions {
   leveeDate?: string                       // YYYY-MM-DD (override UI)
@@ -114,6 +115,12 @@ export async function attachRequisitoire(
   const ex = (intake.extracted || {}) as RequisitoireExtract
   const isLevee = intake.doc_type === 'levee_saisie'
   let dateAdapted = false
+
+  // Un réquisitoire est un DOCUMENT (PDF / JPG). La capture HTML d'un mail ne
+  // vaut que pour une levée (preuve du corps du mail). Olivier 2026-09-03.
+  if (!isLevee && !isRequisitoireDoc(intake.doc_path)) {
+    return { ok: false, error: 'Ce mail n\'a pas de réquisitoire en pièce jointe (PDF ou JPG) — une capture de mail ne peut pas être rattachée comme réquisitoire.' }
+  }
 
   // ── Validation spécifique levée : date obligatoire (pilote le gardiennage) ──
   const leveeDate = (opts.leveeDate || ex.levee_date || '').trim()

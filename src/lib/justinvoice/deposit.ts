@@ -7,6 +7,7 @@
 // Partagé par le bouton du cockpit et par l'automate (mode Auto). Olivier 2026-09-03.
 
 import { submitJustInvoiceClaim } from '@/lib/justinvoice/claim'
+import { isRequisitoireDoc, requisitoireDocExt, REQUISITOIRE_DOC_ERROR } from '@/lib/requisitoire/doc'
 
 export interface DepositResult { ok: boolean; ref?: string | null; numero?: string; error?: string; raw?: string }
 
@@ -36,7 +37,7 @@ export async function depositEtatFrais(sb: any, dossierId: string, efId?: string
     reqPath = m?.requisitoire_doc_path || null
     missionNumber = m?.mission_number ?? null
   }
-  if (!reqPath) return { ok: false, error: 'Réquisitoire manquant sur la fiche.' }
+  if (!reqPath || !isRequisitoireDoc(reqPath)) return { ok: false, error: REQUISITOIRE_DOC_ERROR }
 
   const [ef, reqBuf] = await Promise.all([dl(sb, efRow.validation_doc_path), dl(sb, reqPath)])
   if (!ef || !reqBuf) return { ok: false, error: 'Téléchargement des documents échoué.' }
@@ -47,7 +48,7 @@ export async function depositEtatFrais(sb: any, dossierId: string, efId?: string
     etatFrais: ef,
     requisitoire: reqBuf,
     etatFraisName: `etat-de-frais-${efRow.numero || d.vehicle_plate || 'saisie'}.pdf`,
-    requisitoireName: `requisitoire-${d.vehicle_plate || 'saisie'}.pdf`,
+    requisitoireName: `requisitoire-${d.vehicle_plate || 'saisie'}.${requisitoireDocExt(reqPath)}`,
   })
   if (!res.ok) return { ok: false, error: res.error || 'Dépôt refusé', raw: res.raw }
 
