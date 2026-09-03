@@ -907,6 +907,20 @@ async function estimateLinesTemplate(
   })
 
   const nowIso = new Date().toISOString()
+  // SAISIE : si un état de frais est déjà parti au Parquet, la période jusqu'à
+  // sa date de coupe est À CHARGE DU PARQUET — le client (restitution après
+  // levée) ne repaie pas ces nuits. Le décompte client repart de la dernière
+  // coupe facturée. Olivier 2026-09-03 (anti double facturation).
+  let parquetBilledTo: string | null = null
+  if (source === 'police_saisie' && mission.id) {
+    try {
+      const { data: sd } = await sb.from('saisie_dossiers').select('billed_to_date, ef_number').eq('mission_id', mission.id).maybeSingle()
+      if (sd?.ef_number && sd?.billed_to_date) parquetBilledTo = String(sd.billed_to_date).slice(0, 10)
+    } catch {}
+  }
+  const laterOf = (a?: string | null, b?: string | null): string | null | undefined =>
+    (a && b) ? (String(b).slice(0, 10) > String(a).slice(0, 10) ? b : a) : (a || b)
+
   const templateLines: TemplateLine[] = dedupedLines.map(l => {
     const qtyConfigured = l.default_qty != null ? Number(l.default_qty) : null
     let autoQty: number | null = qtyConfigured
@@ -948,10 +962,15 @@ async function estimateLinesTemplate(
         } else if (cutoff) {
           const startRef = l.parc_count_from === 'intervention_date'
             ? (mission.intervention_date || mission.received_at)
-            : (mission.parked_at || mission.received_at)
+            : laterOf(mission.parked_at || mission.received_at, parquetBilledTo)
           autoQty = Math.max(0, joursPleinsBetween(startRef, cutoff) - freeDays)
           parcFrom = startRef || null
           parcTo   = cutoff
+        } else if (parquetBilledTo && l.parc_count_from !== 'intervention_date') {
+          // Période déjà facturée au Parquet → le client repart de la coupe.
+          autoQty  = Math.max(0, joursPleinsEcoules(parquetBilledTo) - freeDays)
+          parcFrom = parquetBilledTo
+          parcTo   = nowIso
         } else {
           const ref = l.parc_count_from === 'intervention_date'
             ? autoParcJoursIntervention

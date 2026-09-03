@@ -38,7 +38,7 @@ export function resolveRecipientEmail(recipient: SaisieRecipient, motifCode?: st
 // À partir de la date `saisie_autointegrate_since` (app_settings), toute mission
 // police_saisie en parc crée automatiquement son dossier. Le parc antérieur reste
 // intégré à la main (tri). Olivier 2026-08-10.
-const SAISIE_MISSION_SNAP = 'id, dossier_number, vehicle_plate, vehicle_brand, vehicle_model, parked_at, received_at, levee_saisie_date, saisie_motif_code, saisie_motif_label'
+const SAISIE_MISSION_SNAP = 'id, dossier_number, vehicle_plate, vehicle_brand, vehicle_model, parked_at, received_at, status, levee_saisie_at, levee_saisie_date, domaine_remise_date, domaine_enlevement_date, saisie_motif_code, saisie_motif_label'
 
 function snapshotSaisieMission(m: any) {
   return {
@@ -74,7 +74,8 @@ export async function autoIntegrateNewSaisies(sb: any): Promise<number> {
     .select(SAISIE_MISSION_SNAP)
     .eq('source', 'police_saisie').eq('status', 'parked')
     .gte('received_at', since).limit(300)
-  const toCreate = (saisies || []).filter((m: any) => !linked.has(m.id)).map(snapshotSaisieMission)
+  // Hors circuit Parquet (levée de saisie, véhicule déjà sorti…) → pas de dossier.
+  const toCreate = (saisies || []).filter((m: any) => !linked.has(m.id) && !outOfParquetScope(m).out).map(snapshotSaisieMission)
   if (!toCreate.length) return 0
   const { error } = await sb.from('saisie_dossiers').insert(toCreate)
   return error ? 0 : toCreate.length
@@ -83,7 +84,7 @@ export async function autoIntegrateNewSaisies(sb: any): Promise<number> {
 // ── Machine à états (pipeline) ───────────────────────────────────────────────
 export const SAISIE_STATES = [
   'en_parc', 'a_facturer', 'ef_envoye', 'accepte', 'refuse',
-  'justinvoice', 'facture', 'gardiennage_recurrent', 'clos',
+  'justinvoice', 'liquide', 'facture', 'gardiennage_recurrent', 'clos',
 ] as const
 export type SaisieState = typeof SAISIE_STATES[number]
 
@@ -113,6 +114,22 @@ function addMonthsISO(ymd: string, n: number): string {
   return dt.toISOString().slice(0, 10)
 }
 const fmtFR = (ymd: string) => String(ymd).slice(0, 10).split('-').reverse().join('/')
+
+// ── HORS CIRCUIT PARQUET ─────────────────────────────────────────────────────
+// RÈGLE (Olivier 2026-08-24) : dès qu'il y a une LEVÉE DE SAISIE, il n'y a plus
+// de facturation au Parquet — le gardiennage éventuel à partir de cette date se
+// facture au client. Le dossier saisie n'a donc plus à être traité ici.
+// Idem quand le véhicule est déjà sorti / facturé hors circuit Domaine.
+// Exception : circuit Domaine en cours (Date IN / enlèvement) → le dossier vit.
+export function outOfParquetScope(m: any): { out: boolean; reason: string } {
+  if (!m) return { out: false, reason: '' }
+  if (m.domaine_remise_date || m.domaine_enlevement_date) return { out: false, reason: '' }
+  const levee = m.levee_saisie_at || m.levee_saisie_date
+  if (levee) return { out: true, reason: `Levée de saisie du ${fmtFR(String(levee))} — plus de facturation au Parquet.` }
+  if (['completed', 'to_invoice', 'cancelled'].includes(String(m.status || '')))
+    return { out: true, reason: 'Véhicule sorti / facturé hors circuit Parquet-Domaine.' }
+  return { out: false, reason: '' }
+}
 
 // Franchise km SAISIE : on ne facture les km qu'AU-DELÀ de 30 km ALLER-RETOUR.
 // « On les compte au-dessus de 30 kms aller-retour » — Olivier 2026-08-09.
@@ -173,6 +190,11 @@ export async function generateEtatFrais(
   }
 
   const recipient = (opts.recipient || d.recipient || 'parquet') as SaisieRecipient
+  // Le Domaine a son propre circuit (tableau validé par Rosemarie → facture
+  // trimestrielle, module Domaine) : jamais d'état de frais « domaine » ici.
+  if (persist && recipient === 'domaine') {
+    throw new Error('Le Domaine se facture via le module Domaine (tableau trimestriel), pas par état de frais.')
+  }
 
   // DATE DE COUPE CALCULÉE (jamais saisie à la main). Olivier 2026-08-10 :
   //   • clôture Domaine → Date IN (remise)
@@ -186,6 +208,11 @@ export async function generateEtatFrais(
   else if (!d.billed_to_date) billingTo = firstBillableDate(d.parked_at)
   else billingTo = addMonthsISO(d.billed_to_date, 2)
   const billingFrom = d.billed_to_date || d.parked_at
+  // GARDE-FOU : une coupe antérieure au début de période (ex. Date IN Domaine
+  // encodée avant l'entrée en parc) produirait un état de frais absurde.
+  if (billingFrom && billingTo < String(billingFrom).slice(0, 10)) {
+    throw new Error(`Date de coupe incohérente (${fmtFR(billingTo)} avant le début de période ${fmtFR(String(billingFrom))}) — vérifier la Date IN / l'entrée en parc sur la fiche.`)
+  }
   const includeDepannage = !d.depannage_billed
   // km facturés = au-delà de 30 km aller-retour (franchise). Priorité à une
   // valeur déjà calculée (chargedKmBeyond), sinon on dérive des km aller-retour.

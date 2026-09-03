@@ -26,16 +26,27 @@ interface EtatFrais {
   id: string; numero: string; status: string; recipient: string
   period_from: string | null; period_to: string | null
   total_htva: number | null; total_tvac: number | null
-  justinvoice_ref: string | null; odoo_invoice_id: number | null; created_at: string
+  justinvoice_ref: string | null; justinvoice_detail_url?: string | null; odoo_invoice_id: number | null; created_at: string
+  validation_at?: string | null; liquide_at?: string | null; status_note?: string | null
+  relance_count?: number; last_relance_at?: string | null; relance_stop?: boolean
+  forclusion_at?: string | null; forclusion_days?: number | null; forclusion_level?: number
 }
+interface CronLast { at: string; ok: boolean; errors?: string[]; prepared?: number; sent?: number; closed?: number; forclusionAlerts?: number }
 const EUR = (n?: number | null) => (n == null ? '—' : `${Number(n).toFixed(2).replace('.', ',')} €`)
 // Cycle d'un état de frais (= devis interne) : envoyé → accepté → déposé → facturé.
 const EF_STATUS: Record<string, { label: string; cls: string }> = {
   envoye:  { label: 'Envoyé — attente validation', cls: 'bg-blue-100 text-blue-800 border-blue-300' },
   accepte: { label: 'Validé (accord Parquet)',     cls: 'bg-green-100 text-green-800 border-green-300' },
   refuse:  { label: 'Refusé',                       cls: 'bg-red-100 text-red-800 border-red-300' },
-  depose:  { label: 'Déposé sur JustInvoice',       cls: 'bg-indigo-100 text-indigo-800 border-indigo-300' },
+  depose:  { label: 'Déposé — attente taxation',    cls: 'bg-indigo-100 text-indigo-800 border-indigo-300' },
+  liquide: { label: 'Liquidation OK — à facturer',  cls: 'bg-purple-100 text-purple-800 border-purple-300' },
   facture: { label: 'Facturé',                      cls: 'bg-teal-100 text-teal-800 border-teal-300' },
+}
+// Alerte forclusion (6 mois à dater de la prestation — AR 15/12/2019 art. 41).
+const FORCLUSION: Record<number, { cls: string }> = {
+  1: { cls: 'bg-amber-100 text-amber-900 border-amber-300' },
+  2: { cls: 'bg-orange-100 text-orange-900 border-orange-300' },
+  3: { cls: 'bg-red-600 text-white border-red-700' },
 }
 
 const PENDING: Record<string, { label: string; cls: string }> = {
@@ -50,7 +61,7 @@ function targetMail(recipient: Recipient, motifCode?: string | null): string {
     return String(motifCode || '').toUpperCase() === 'SAISIE_JUDICIAIRE'
       ? 'frais.justice.verviers@just.fgov.be' : 'fdj.pplge@just.fgov.be'
   if (recipient === 'client') return 'e-mail de la fiche'
-  return 'Domaine (à configurer)'
+  return 'Domaine : via le tableau de Rosemarie (module Domaine)'
 }
 interface Orphan {
   id: string; dossier_number: string | null; vehicle_plate: string | null
@@ -65,6 +76,7 @@ const STATE: Record<string, { label: string; cls: string; rank: number }> = {
   ef_envoye:            { label: 'État envoyé',       cls: 'bg-blue-100 text-blue-800 border-blue-300',      rank: 2 },
   accepte:               { label: 'Accepté',            cls: 'bg-green-100 text-green-800 border-green-300',   rank: 3 },
   justinvoice:           { label: 'JustInvoice',        cls: 'bg-indigo-100 text-indigo-800 border-indigo-300',rank: 4 },
+  liquide:               { label: 'Liquidé',            cls: 'bg-purple-100 text-purple-800 border-purple-300',rank: 3 },
   facture:               { label: 'Facturé',            cls: 'bg-teal-100 text-teal-800 border-teal-300',      rank: 5 },
   gardiennage_recurrent: { label: 'Gardiennage',        cls: 'bg-teal-100 text-teal-800 border-teal-300',      rank: 6 },
   en_parc:               { label: 'En parc',            cls: 'bg-slate-100 text-slate-700 border-slate-300',   rank: 7 },
@@ -83,7 +95,9 @@ const addMonthsStr = (ymd: string, n: number) => { const dt = new Date(String(ym
 
 // Un état de frais est-il établissable MAINTENANT ? (miroir du bouton de la carte)
 function canEstablishEf(d: Dossier): boolean {
-  if (!d.requisitoire_ok || d.state === 'clos') return false
+  if (!d.requisitoire_ok || d.state === 'clos' || d.recipient === 'domaine') return false
+  // Levée de saisie = plus de facturation au Parquet (tant qu'aucun EF n'est parti).
+  if (d.levee_date && !d.ef_number && !d.domaine_remise_date) return false
   if (!d.ef_number) {  // 1er état de frais
     const billableFrom = firstBillable(d.parked_at)
     const notYet = !d.billed_to_date && !d.domaine_remise_date && !!billableFrom && todayISO() < billableFrom
@@ -106,6 +120,7 @@ export default function SaisiesClient({ userRole, userName, userEmail, userModul
   const [dossiers, setDossiers] = useState<Dossier[]>([])
   const [orphans, setOrphans] = useState<Orphan[]>([])
   const [autoSend, setAutoSend] = useState(false)
+  const [cronLast, setCronLast] = useState<CronLast | null>(null)
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState<string | null>(null)
   const [msg, setMsg] = useState<string | null>(null)
@@ -119,7 +134,7 @@ export default function SaisiesClient({ userRole, userName, userEmail, userModul
     try {
       const r = await fetch('/api/fourriere/saisies', { cache: 'no-store' })
       const j = await r.json()
-      if (r.ok) { setDossiers(j.dossiers || []); setOrphans(j.orphans || []); setAutoSend(!!j.autoSend) }
+      if (r.ok) { setDossiers(j.dossiers || []); setOrphans(j.orphans || []); setAutoSend(!!j.autoSend); setCronLast(j.cronLast || null) }
       else setMsg(`⚠ ${j.error || 'Erreur'}`)
     } catch { setMsg('⚠ Erreur réseau') } finally { setLoading(false) }
   }, [])
@@ -197,6 +212,38 @@ export default function SaisiesClient({ userRole, userName, userEmail, userModul
       const j = await r.json().catch(() => ({}))
       if (!r.ok) { setMsg(`⚠ ${j.error || 'Dépôt échoué'}`); return }
       setMsg(`✓ Déposé sur JustInvoice${j.ref ? ` — dossier ${j.ref}` : ''}`); await load()
+    } finally { setBusy(null) }
+  }
+
+  // Envoi groupé : tous les états de frais établissables MAINTENANT (km AR = 0).
+  async function sendAll(ids: string[]) {
+    if (!ids.length) return
+    if (!confirm(`Envoyer ${ids.length} état(s) de frais au Parquet maintenant ?\n\nKm aller-retour comptés à 0 (franchise 30 km). Action réelle : mails envoyés depuis fourriere@.`)) return
+    setBusy('sync'); setMsg(null)
+    try {
+      const r = await fetch('/api/fourriere/saisies', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'send_all', ids }),
+      })
+      const j = await r.json().catch(() => ({}))
+      if (!r.ok) { setMsg(`⚠ ${j.error || 'Envoi groupé échoué'}`); return }
+      const ko = (j.results || []).filter((x: any) => !x.ok)
+      setMsg(`✓ ${j.sent} envoyé(s)${j.failed ? ` · ⚠ ${j.failed} échec(s) : ${ko.map((x: any) => x.error).slice(0, 3).join(' ; ')}` : ''}`)
+      await load()
+    } finally { setBusy(null) }
+  }
+
+  // Relance MANUELLE d'un état de frais (jamais automatique — le Parquet n'apprécie pas).
+  async function relanceEf(id: string, efId: string, numero: string) {
+    if (!confirm(`Renvoyer l'état de frais ${numero} au Parquet avec un rappel courtois ?\n\nÀ réserver aux cas proches de la forclusion.`)) return
+    setBusy(id); setMsg(null)
+    try {
+      const r = await fetch(`/api/fourriere/saisies/${id}/ef-relance`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ef_id: efId }),
+      })
+      const j = await r.json().catch(() => ({}))
+      if (!r.ok) { setMsg(`⚠ ${j.error || 'Rappel impossible'}`); return }
+      setMsg(`✓ Rappel envoyé à ${j.email}`); await load()
     } finally { setBusy(null) }
   }
 
@@ -307,6 +354,33 @@ export default function SaisiesClient({ userRole, userName, userEmail, userModul
 
         {msg && <div className="text-sm px-4 py-2 rounded-xl bg-surface-2 border text-ink-secondary">{msg}</div>}
 
+        {/* Santé du cron journalier : erreurs, ou muet depuis > 36 h */}
+        {(() => {
+          const ageH = cronLast?.at ? (Date.now() - new Date(cronLast.at).getTime()) / 3600000 : null
+          const silent = ageH == null || ageH > 36
+          const errs = cronLast?.errors || []
+          if (!silent && errs.length === 0) return null
+          return (
+            <div className="rounded-xl border border-red-300 bg-red-50 px-4 py-2 text-sm text-red-900">
+              {silent
+                ? <><b>⚠ Cron facturation saisie muet</b> — {cronLast?.at ? `dernier passage le ${new Date(cronLast.at).toLocaleString('fr-BE', { timeZone: 'Europe/Brussels' })}` : 'aucun passage enregistré'}. Rien ne se prépare tout seul tant qu'il ne tourne pas.</>
+                : <><b>⚠ Cron du {new Date(cronLast!.at).toLocaleString('fr-BE', { timeZone: 'Europe/Brussels' })} : {errs.length} erreur(s)</b>
+                    <ul className="list-disc ml-5 mt-1">{errs.slice(0, 6).map((e, i) => <li key={i}>{e}</li>)}</ul></>}
+            </div>
+          )
+        })()}
+
+        {/* Envoi groupé des états de frais prêts (onglet Prêts à facturer) */}
+        {filter === 'billable' && visible.length > 0 && (
+          <div className="flex items-center justify-between gap-3 rounded-xl border border-brand/40 bg-brand/5 px-4 py-2">
+            <span className="text-sm text-ink-secondary">{visible.length} état(s) de frais établissable(s) maintenant — coupe calculée, km aller-retour à 0.</span>
+            <button disabled={busy === 'sync'} onClick={() => sendAll(visible.filter(d => !d.levee_date).map(d => d.id))}
+              className="px-3 py-1.5 bg-brand hover:bg-brand-hover disabled:opacity-50 text-white rounded-lg text-sm font-semibold shrink-0">
+              {busy === 'sync' ? 'Envoi…' : '📧 Tout envoyer au Parquet'}
+            </button>
+          </div>
+        )}
+
         {/* Saisies à intégrer */}
         {orphans.length > 0 && (
           <div className="rounded-2xl border border-amber-300 bg-amber-50 p-4">
@@ -357,7 +431,8 @@ export default function SaisiesClient({ userRole, userName, userEmail, userModul
                 onJustInvoice={(efId) => depotJustInvoice(d.id, efId, d.vehicle_plate || '—')}
                 onUpload={(efId, f) => uploadValidation(d.id, efId, f)}
                 onFacture={(efId) => factureOdoo(d.id, efId)}
-                onEfStatus={(efId, s) => efStatus(d.id, efId, s)} />
+                onEfStatus={(efId, s) => efStatus(d.id, efId, s)}
+                onEfRelance={(efId, numero) => relanceEf(d.id, efId, numero)} />
             ))}
           </div>
         )}
@@ -441,7 +516,7 @@ function ScanModal({ onClose, onDone }: { onClose: () => void; onDone: () => voi
 }
 
 // ── Carte dossier ────────────────────────────────────────────────────────────
-function DossierCard({ d, busy, onGenerate, onRecipient, onState, onRemove, onRelance, onJustInvoice, onUpload, onFacture, onEfStatus }: {
+function DossierCard({ d, busy, onGenerate, onRecipient, onState, onRemove, onRelance, onJustInvoice, onUpload, onFacture, onEfStatus, onEfRelance }: {
   d: Dossier; busy: boolean
   onGenerate: () => void
   onRecipient: (r: Recipient) => void
@@ -452,6 +527,7 @@ function DossierCard({ d, busy, onGenerate, onRecipient, onState, onRemove, onRe
   onUpload: (efId: string, f: File) => void
   onFacture: (efId: string) => void
   onEfStatus: (efId: string, status: 'accepte' | 'refuse') => void
+  onEfRelance: (efId: string, numero: string) => void
 }) {
   const st = STATE[d.state] || { label: d.state, cls: 'bg-slate-100 text-slate-700 border-slate-300', rank: 8 }
   const days = daysSince(d.parked_at)
@@ -465,7 +541,9 @@ function DossierCard({ d, busy, onGenerate, onRecipient, onState, onRemove, onRe
   const recurringDue = !!nextCut && todayISO() >= nextCut
   const clotureDue = !!d.domaine_remise_date && (!d.billed_to_date || String(d.billed_to_date).slice(0, 10) < String(d.domaine_remise_date).slice(0, 10))
   const newEfDue = !!d.pending_action || recurringDue || clotureDue
-  const canEstablish = d.requisitoire_ok && (isFirstEf ? !notYetBillable : newEfDue)
+  // Levée de saisie → hors circuit Parquet : plus rien à établir ici.
+  const leveeBlocked = !!d.levee_date && isFirstEf && !d.domaine_remise_date
+  const canEstablish = d.requisitoire_ok && !leveeBlocked && (isFirstEf ? !notYetBillable : newEfDue)
 
   return (
     <div className="rounded-2xl border bg-surface p-4">
@@ -492,15 +570,24 @@ function DossierCard({ d, busy, onGenerate, onRecipient, onState, onRemove, onRe
           )}
         </div>
 
-        {/* Destinataire */}
+        {/* Destinataire (le Domaine n'est pas un choix : il découle de la Date IN) */}
         <div className="flex items-center gap-2">
           <label className="text-[11px] text-ink-faint uppercase tracking-wide">Vers</label>
-          <select value={d.recipient} disabled={busy} onChange={e => onRecipient(e.target.value as Recipient)}
-            className="text-sm bg-surface-2 border rounded-lg px-2 py-1 text-ink">
-            {(['parquet', 'domaine', 'client'] as Recipient[]).map(r => <option key={r} value={r}>{REC_LABEL[r]}</option>)}
-          </select>
+          {d.recipient === 'domaine'
+            ? <span className="text-sm px-2 py-1 rounded-lg border bg-purple-50 text-purple-900" title="Suite du gardiennage facturée au Domaine via le tableau de Rosemarie (module Domaine)">Domaine (module Domaine)</span>
+            : <select value={d.recipient} disabled={busy} onChange={e => onRecipient(e.target.value as Recipient)}
+                className="text-sm bg-surface-2 border rounded-lg px-2 py-1 text-ink">
+                {(['parquet', 'client'] as Recipient[]).map(r => <option key={r} value={r}>{REC_LABEL[r]}</option>)}
+              </select>}
         </div>
       </div>
+
+      {/* Bascule Domaine : Parquet clôturé à la Date IN → plus rien à établir ici */}
+      {d.recipient === 'domaine' && (
+        <div className="mt-3 rounded-xl border border-purple-300 bg-purple-50 px-3 py-2 text-sm text-purple-900">
+          🏛️ <b>Remis au Domaine le {fmt(d.domaine_remise_date)}</b> — facturation Parquet clôturée à cette date. La suite du gardiennage passe par le <b>tableau du Domaine</b> (validé par Rosemarie, facture trimestrielle). Ce dossier se clôture seul quand ses états de frais sont facturés.
+        </div>
+      )}
 
       {/* Réquisitoire manquant → on ne peut pas établir d'état de frais */}
       {!d.requisitoire_ok && (
@@ -513,10 +600,14 @@ function DossierCard({ d, busy, onGenerate, onRecipient, onState, onRemove, onRe
         </div>
       )}
 
-      {/* Levée de saisie → gardiennage hors saisie → vérification manuelle */}
+      {/* Levée de saisie → plus de facturation au Parquet (Olivier 2026-08-24) */}
       {d.levee_date && (
         <div className="mt-3 rounded-xl border border-orange-300 bg-orange-50 px-3 py-2 text-sm text-orange-900">
-          ⚠️ <b>Levée de saisie le {fmt(d.levee_date)}</b> — gardiennage « hors saisie » à partir de cette date. Dossier <b>à vérifier manuellement</b> (pas d'envoi automatique).
+          {leveeBlocked ? <>
+            ⚖️ <b>Levée de saisie le {fmt(d.levee_date)}</b> — <b>plus de facturation au Parquet</b>. Le gardiennage éventuel à partir de cette date se facture au client : ce dossier n'a plus à être traité ici (clôture automatique).
+          </> : <>
+            ⚠️ <b>Levée de saisie le {fmt(d.levee_date)}</b> — un état de frais est déjà parti au Parquet : on le suit jusqu'au bout. Aucun nouvel état de frais Parquet après la levée. <b>Pas d'envoi automatique.</b>
+          </>}
         </div>
       )}
 
@@ -528,7 +619,7 @@ function DossierCard({ d, busy, onGenerate, onRecipient, onState, onRemove, onRe
       )}
 
       {/* Dossier déjà facturé mais aucun nouvel état de frais dû pour l'instant */}
-      {d.requisitoire_ok && !isFirstEf && !newEfDue && (
+      {d.requisitoire_ok && !isFirstEf && !newEfDue && d.recipient !== 'domaine' && (
         <div className="mt-3 rounded-xl border border-slate-300 bg-slate-50 px-3 py-2 text-sm text-slate-700">
           ⏳ Prochain état de frais (gardiennage) {nextCut ? <>le <b>{fmt(nextCut)}</b></> : 'à définir'}.
         </div>
@@ -550,12 +641,12 @@ function DossierCard({ d, busy, onGenerate, onRecipient, onState, onRemove, onRe
 
       {/* Actions dossier */}
       <div className="flex items-center gap-2 flex-wrap mt-3 pt-3 border-t">
-        <button disabled={busy || !canEstablish} onClick={onGenerate}
-          title={!d.requisitoire_ok ? 'Réquisitoire manquant' : notYetBillable ? `Facturable à partir du ${fmt(billableFrom)}` : (!isFirstEf && !newEfDue) ? (nextCut ? `Prochain état de frais le ${fmt(nextCut)}` : 'Rien à facturer pour l\'instant') : undefined}
+        <button disabled={busy || !canEstablish || d.recipient === 'domaine'} onClick={onGenerate}
+          title={!d.requisitoire_ok ? 'Réquisitoire manquant' : d.recipient === 'domaine' ? 'Remis au Domaine — plus d\'état de frais Parquet' : leveeBlocked ? `Levée de saisie le ${fmt(d.levee_date)} — plus de facturation au Parquet` : notYetBillable ? `Facturable à partir du ${fmt(billableFrom)}` : (!isFirstEf && !newEfDue) ? (nextCut ? `Prochain état de frais le ${fmt(nextCut)}` : 'Rien à facturer pour l\'instant') : undefined}
           className="px-3 py-1.5 bg-brand hover:bg-brand-hover disabled:opacity-40 disabled:cursor-not-allowed text-white rounded-lg text-sm font-semibold">
           📄 {d.ef_number ? 'Nouvel état de frais' : 'Établir l\'état de frais'}
         </button>
-        {['facture', 'gardiennage_recurrent'].includes(d.state) && (
+        {(['facture', 'gardiennage_recurrent', 'liquide'].includes(d.state) || leveeBlocked || d.recipient === 'domaine') && (
           <button disabled={busy} onClick={() => onState('clos', '✓ Dossier clôturé')}
             className="px-3 py-1.5 bg-surface-2 hover:bg-surface-hover disabled:opacity-50 border text-ink-secondary rounded-lg text-sm font-semibold">Clôturer</button>
         )}
@@ -574,17 +665,38 @@ function DossierCard({ d, busy, onGenerate, onRecipient, onState, onRemove, onRe
         <div className="mt-3 space-y-2">
           {d.etats.map(ef => {
             const st = EF_STATUS[ef.status] || { label: ef.status, cls: 'bg-slate-100 text-slate-700 border-slate-300' }
+            const waiting = ef.status === 'envoye' ? daysSince(ef.created_at) : null
+            const fLevel = ef.forclusion_level || 0
             return (
-              <div key={ef.id} className="rounded-xl border bg-surface-2 px-3 py-2">
+              <div key={ef.id} className={`rounded-xl border px-3 py-2 ${fLevel >= 3 ? 'border-red-400 bg-red-50' : 'bg-surface-2'}`}>
                 <div className="flex items-center justify-between gap-2 flex-wrap">
                   <div className="text-sm">
                     <span className="font-mono font-bold text-ink">{ef.numero}</span>
                     <span className="text-ink-muted"> · {EUR(ef.total_tvac)} TVAC</span>
                     {ef.period_to && <span className="text-ink-faint"> · jusqu'au {fmt(ef.period_to)}</span>}
+                    {waiting != null && <span className={waiting > 45 ? 'text-orange-700 font-semibold' : 'text-ink-faint'}> · en attente depuis {waiting} j</span>}
                   </div>
-                  <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full border ${st.cls}`}>{st.label}</span>
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    {fLevel > 0 && ef.forclusion_at && (
+                      <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full border ${FORCLUSION[fLevel].cls}`}
+                        title="6 mois à dater de la prestation pour déposer l'état de frais au bureau de taxation (AR 15/12/2019 art. 41)">
+                        ⏳ Forclusion {ef.forclusion_days != null && ef.forclusion_days < 0 ? 'DÉPASSÉE' : `J-${ef.forclusion_days}`} · {fmt(ef.forclusion_at)}
+                      </span>
+                    )}
+                    <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full border ${st.cls}`}>{st.label}</span>
+                  </div>
                 </div>
+                {ef.status_note && !['liquide', 'facture'].includes(ef.status) && (
+                  <p className="text-[12px] text-orange-800 mt-1">Statut JustInvoice : <b>{ef.status_note}</b>{ef.justinvoice_detail_url && <> · <a href={ef.justinvoice_detail_url} target="_blank" rel="noreferrer" className="underline">voir le dossier</a></>}</p>
+                )}
                 <div className="flex items-center gap-2 flex-wrap mt-2">
+                  {ef.status === 'envoye' && fLevel >= 1 && (
+                    <button disabled={busy} onClick={() => onEfRelance(ef.id, ef.numero)}
+                      title="Rappel courtois au Parquet — manuel uniquement, à réserver aux cas proches de la forclusion"
+                      className="px-2.5 py-1 bg-orange-100 hover:bg-orange-200 text-orange-900 border border-orange-300 rounded-lg text-xs font-semibold">
+                      📨 Rappel Parquet{ef.relance_count ? ` (${ef.relance_count})` : ''}
+                    </button>
+                  )}
                   {ef.status === 'envoye' && <>
                     <label className={`px-2.5 py-1 bg-green-600 hover:bg-green-700 text-white rounded-lg text-xs font-semibold cursor-pointer ${busy ? 'opacity-50 pointer-events-none' : ''}`}>
                       📎 Retour signé
@@ -602,12 +714,19 @@ function DossierCard({ d, busy, onGenerate, onRecipient, onState, onRemove, onRe
                   )}
                   {ef.status === 'depose' && <>
                     {ef.justinvoice_ref && <span className="text-[11px] text-indigo-700 font-semibold">JustInvoice {ef.justinvoice_ref}</span>}
+                    <span className="text-[11px] text-ink-faint">· la facture Odoo se crée seule au mail « Transféré au bureau de liquidation »</span>
                     <button disabled={busy} onClick={() => onFacture(ef.id)}
-                      className="px-2.5 py-1 bg-teal-600 hover:bg-teal-700 text-white rounded-lg text-xs font-semibold">🧾 Facturer (Odoo)</button>
+                      title="Facturer sans attendre la liquidation (le montant doit rester identique à l'état de frais taxé)"
+                      className="px-2.5 py-1 bg-surface hover:bg-surface-hover border text-ink-secondary rounded-lg text-xs font-semibold">🧾 Facturer maintenant</button>
+                  </>}
+                  {ef.status === 'liquide' && <>
+                    {ef.justinvoice_ref && <span className="text-[11px] text-purple-800 font-semibold">JustInvoice {ef.justinvoice_ref} · liquidation OK{ef.liquide_at ? ` le ${fmt(ef.liquide_at)}` : ''}</span>}
+                    <button disabled={busy} onClick={() => onFacture(ef.id)}
+                      className="px-2.5 py-1 bg-teal-600 hover:bg-teal-700 text-white rounded-lg text-xs font-semibold">🧾 Créer la facture Odoo</button>
                   </>}
                   {ef.status === 'facture' && (
                     <span className="text-[11px] text-teal-700 font-semibold">
-                      {ef.justinvoice_ref ? `JustInvoice ${ef.justinvoice_ref} · ` : ''}Facture Odoo #{ef.odoo_invoice_id}
+                      {ef.justinvoice_ref ? `JustInvoice ${ef.justinvoice_ref} · ` : ''}Facture Odoo #{ef.odoo_invoice_id} (brouillon → à poster, Peppol ROJ-FJGK13)
                     </span>
                   )}
                   {ef.status === 'refuse' && <span className="text-[11px] text-red-700">Refusé — refaire un état de frais si nécessaire.</span>}
@@ -640,7 +759,7 @@ function GenerateModal({ d, onClose, onDone, onMsg }: {
   const cutReason = isCloture ? 'Date IN — remise Domaine'
     : isFirst ? 'dernier jour du mois suivant la saisie'
     : 'dernière coupe + 2 mois'
-  const [recipient, setRecipient] = useState<Recipient>(isCloture ? 'parquet' : d.recipient)
+  const [recipient, setRecipient] = useState<Recipient>((isCloture || d.recipient === 'domaine') ? 'parquet' : d.recipient)
   const [roundTripKm, setRoundTripKm] = useState('')
   const [loading, setLoading] = useState<'' | 'preview' | 'send'>('')
 
@@ -696,9 +815,9 @@ function GenerateModal({ d, onClose, onDone, onMsg }: {
             <label className="block text-xs font-semibold text-ink-secondary mb-1">Destinataire</label>
             <select value={recipient} onChange={e => setRecipient(e.target.value as Recipient)}
               className="w-full bg-surface-2 border rounded-lg px-3 py-2 text-sm text-ink">
-              {(['parquet', 'domaine', 'client'] as Recipient[]).map(r => <option key={r} value={r}>{REC_LABEL[r]}</option>)}
+              {(['parquet', 'client'] as Recipient[]).map(r => <option key={r} value={r}>{REC_LABEL[r]}</option>)}
             </select>
-            {recipient !== 'client' && <p className="text-[11px] text-ink-faint mt-1">Parquet / Domaine : pas de frais administratifs.</p>}
+            {recipient !== 'client' && <p className="text-[11px] text-ink-faint mt-1">Parquet : pas de frais administratifs.{isCloture ? ' État de clôture jusqu\'à la Date IN ; la suite passe au Domaine (tableau).' : ''}</p>}
           </div>
           <div className="rounded-lg bg-surface-2 border px-3 py-2">
             <div className="text-xs font-semibold text-ink-secondary">Gardiennage facturé jusqu'au</div>
@@ -726,7 +845,7 @@ function GenerateModal({ d, onClose, onDone, onMsg }: {
               className="px-3 py-2 bg-surface-2 hover:bg-surface-hover disabled:opacity-50 border text-ink-secondary rounded-lg text-sm font-semibold">
               {loading === 'preview' ? '…' : '👁 Aperçu'}
             </button>
-            <button disabled={!!loading || recipient === 'domaine'} onClick={send}
+            <button disabled={!!loading} onClick={send}
               className="px-4 py-2 bg-brand hover:bg-brand-hover disabled:opacity-50 text-white rounded-lg text-sm font-semibold">
               {loading === 'send' ? 'Envoi…' : '📧 Envoyer'}
             </button>

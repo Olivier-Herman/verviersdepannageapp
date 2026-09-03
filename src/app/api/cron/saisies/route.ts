@@ -22,6 +22,13 @@ export async function GET(req: Request) {
     return NextResponse.json({ ok: true, ...summary })
   } catch (err: any) {
     console.error('[cron saisies] KO:', err?.message)
+    // Un cron en échec doit s'afficher à l'écran (bandeau cockpit).
+    try {
+      await createAdminClient().from('app_settings').upsert({
+        key: 'saisie_cron_last',
+        value: JSON.stringify({ at: new Date().toISOString(), ok: false, errors: [String(err?.message || err)] }),
+      }, { onConflict: 'key' })
+    } catch {}
     return NextResponse.json({ error: err?.message || 'Erreur' }, { status: 500 })
   }
 }
