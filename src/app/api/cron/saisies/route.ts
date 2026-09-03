@@ -7,6 +7,7 @@
 import { NextResponse }      from 'next/server'
 import { createAdminClient } from '@/lib/supabase'
 import { runSaisieCron }     from '@/lib/missions/saisie-cron'
+import { runMalGareeAvpCheck } from '@/lib/missions/mal-garee-avp'
 
 export const dynamic     = 'force-dynamic'
 export const maxDuration = 120
@@ -19,7 +20,11 @@ export async function GET(req: Request) {
   try {
     const sb = createAdminClient()
     const summary = await runSaisieCron(sb)
-    return NextResponse.json({ ok: true, ...summary })
+    // Mal garées à J+60 en parc → confirmation AVP demandée au policier (best-effort).
+    let malGaree: any = null
+    try { malGaree = await runMalGareeAvpCheck(sb) }
+    catch (e: any) { malGaree = { error: e?.message || String(e) }; console.error('[cron saisies] mal garée → AVP KO:', e?.message) }
+    return NextResponse.json({ ok: true, ...summary, malGaree })
   } catch (err: any) {
     console.error('[cron saisies] KO:', err?.message)
     // Un cron en échec doit s'afficher à l'écran (bandeau cockpit).
