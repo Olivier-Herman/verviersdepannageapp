@@ -168,7 +168,10 @@ export async function runSaisieCron(sb: any): Promise<SaisieCronSummary> {
     // le dossier doit être vérifié à la main. Olivier 2026-08-10.
     const manualOnly = !!d.levee_date
     if (auto && !manualOnly) {
-      const res = await sendEtatFrais(sb, d.id, { billingTo: action.cut, recipient: 'parquet' }, null)
+      // Clôture Domaine = état final au Parquet ; sinon on respecte le destinataire
+      // du dossier (client possible), jamais « domaine » (module Domaine).
+      const recipient = action.kind === 'cloture_domaine' ? 'parquet' : (d.recipient === 'client' ? 'client' : 'parquet')
+      const res = await sendEtatFrais(sb, d.id, { billingTo: action.cut, recipient }, null)
       if (res.ok) {
         out.sent++; out.actions.push({ plate: d.vehicle_plate || '—', kind: 'envoyé' })
         if (action.kind === 'gardiennage') await sb.from('saisie_dossiers').update({ state: 'gardiennage_recurrent' }).eq('id', d.id)
