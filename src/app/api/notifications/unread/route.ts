@@ -39,6 +39,21 @@ export async function GET() {
 
   let notifs = data || []
 
+  // Popups BLOQUANTS (payload.data.modal) : ils exigent une RÉPONSE, pas une
+  // simple lecture → on les renvoie tant que responded_at est vide, même si
+  // read_at a été posé (ex. auto-dismiss d'un ancien client) et sans limite
+  // de 30 min. Olivier 2026-09-03.
+  const { data: blocking } = await sb
+    .from('notifications_log')
+    .select('id, user_id, notif_type, payload, channel, created_at, read_at, responded_at')
+    .eq('user_id', me.id)
+    .eq('channel', 'in_app')
+    .is('responded_at', null)
+    .eq('payload->data->>modal', 'true')
+    .order('created_at', { ascending: false })
+    .limit(5)
+  for (const b of (blocking || [])) if (!notifs.some(n => n.id === b.id)) notifs.push(b)
+
   // Notifs « nouvelle mission » : inutiles si la mission a deja ete prise en
   // charge (acceptee / demarree / cloturee...). On les retire du toast ET on
   // les marque lues pour qu'elles ne reviennent plus.
