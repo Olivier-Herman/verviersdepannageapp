@@ -131,6 +131,22 @@ export const NOTIFICATION_TYPES: readonly NotificationType[] = [
     defaultEnabled:  true,
   },
   {
+    key:             'expert_access',
+    label:           'Accès expert (validation)',
+    description:     'Un expert scanne le QR de l\'accueil pour la première fois (ou ajoute un bureau) : popup bloquant Valider / Refuser — le premier qui répond décide.',
+    category:        'admin',
+    applicableRoles: ['dispatcher', 'admin', 'superadmin'],
+    defaultEnabled:  true,
+  },
+  {
+    key:             'expert_visit',
+    label:           'Expert au parc',
+    description:     'Un expert a vu un véhicule (contrôle de sortie activé) ou pose une question depuis son téléphone.',
+    category:        'admin',
+    applicableRoles: ['dispatcher', 'admin', 'superadmin'],
+    defaultEnabled:  true,
+  },
+  {
     key:             'verification_parc',
     label:           'Vérification physique au parc',
     description:     'Demande de vérifier sur place la présence de véhicules (popup bloquant jusqu\'à confirmation).',

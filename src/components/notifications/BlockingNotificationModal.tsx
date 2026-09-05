@@ -17,6 +17,54 @@ interface NotifEvent {
 }
 
 export default function BlockingNotificationModal({ notif, onDone }: { notif: NotifEvent; onDone: () => void }) {
+  if (notif.notif_type === 'expert_access') return <ExpertAccessModal notif={notif} onDone={onDone} />
+  return <ParcVerificationModal notif={notif} onDone={onDone} />
+}
+
+// ── Accès expert : Valider / Refuser (le premier qui répond décide) ──────────
+function ExpertAccessModal({ notif, onDone }: { notif: NotifEvent; onDone: () => void }) {
+  const d = notif.payload?.data || {}
+  const [sending, setSending] = useState<'approve' | 'refuse' | null>(null)
+  const [err, setErr] = useState<string | null>(null)
+  async function decide(decision: 'approve' | 'refuse') {
+    setSending(decision); setErr(null)
+    try {
+      const r = await fetch(`/api/notifications/${notif.id}/respond`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ decision }),
+      })
+      const j = await r.json().catch(() => ({}))
+      if (!r.ok) { setErr(j.error || 'Envoi impossible'); return }
+      onDone()
+    } catch { setErr('Erreur réseau') } finally { setSending(null) }
+  }
+  return (
+    <div className="fixed inset-0 z-[400] flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
+      <div className="w-full max-w-lg rounded-2xl bg-white border-4 border-blue-700 shadow-2xl overflow-hidden" onClick={e => e.stopPropagation()}>
+        <div className="bg-blue-700 text-white px-5 py-4 flex items-center gap-3">
+          <span className="text-3xl">🪪</span>
+          <div>
+            <p className="text-lg font-bold leading-tight">Accès expert à valider</p>
+            <p className="text-sm opacity-90">Le premier qui répond décide ; le popup se ferme chez les autres.</p>
+          </div>
+        </div>
+        <div className="px-5 py-5 space-y-2">
+          <p className="text-2xl font-black text-slate-900">{d.first_name || '—'}</p>
+          <p className="text-slate-800">demande l'accès au parc pour <b>{d.bureau || '—'}</b>.</p>
+          {Array.isArray(d.already) && d.already.length > 0 && <p className="text-sm text-slate-600">Déjà validé pour : {d.already.join(', ')}.</p>}
+          <p className="text-xs text-slate-500">Il vient de scanner le QR de l'accueil : vérifie qu'il est bien devant toi ou attendu. Une fois validé, son téléphone garde l'accès (révocable dans Fourrière → Experts).</p>
+          {err && <p className="text-red-600 text-sm">⚠ {err}</p>}
+        </div>
+        <div className="px-5 py-4 border-t bg-slate-50 flex items-center justify-end gap-3">
+          <button type="button" disabled={!!sending} onClick={() => decide('refuse')} className="px-5 py-2.5 rounded-xl bg-white border-2 border-red-500 text-red-700 hover:bg-red-50 disabled:opacity-40 font-bold">{sending === 'refuse' ? '…' : '✕ Refuser'}</button>
+          <button type="button" disabled={!!sending} onClick={() => decide('approve')} className="px-5 py-2.5 rounded-xl bg-green-600 hover:bg-green-700 disabled:opacity-40 text-white font-bold">{sending === 'approve' ? 'Envoi…' : '✓ Valider l\'accès'}</button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ── Vérification parc : Présent / Absent par véhicule ─────────────────────────
+function ParcVerificationModal({ notif, onDone }: { notif: NotifEvent; onDone: () => void }) {
   const items: Item[] = notif.payload?.data?.items || []
   const [answers, setAnswers] = useState<Record<string, 'present' | 'absent'>>({})
   const [sending, setSending] = useState(false)

@@ -53,6 +53,7 @@ export default function NotificationsProvider({
   children: React.ReactNode
 }) {
   const [pending, setPending] = useState<NotifEvent[]>([])
+  const pendingRef = useRef<NotifEvent[]>([]); pendingRef.current = pending
 
   // Ids déjà affichés (fermés/lus) — garde-fou local : empêche le poll 15 s ou
   // Realtime de ré-afficher un bandeau déjà traité, même avant que read_at soit
@@ -127,12 +128,20 @@ export default function NotificationsProvider({
         for (const n of (j.notifications || []) as NotifEvent[]) {
           handleNewNotif(n)
         }
+        // Popup bloquant répondu AILLEURS (premier qui répond) : il n'est plus
+        // dans la liste des non-répondus → on le retire ici aussi. 2026-09-05.
+        const stillOpen = new Set(((j.notifications || []) as NotifEvent[]).map(n => n.id))
+        setPending(prev => prev.filter(n => !n.payload?.data?.modal || stillOpen.has(n.id)))
       } catch {}
     }
     pollUnread()  // tick immediat
     const pollId = setInterval(pollUnread, 15_000)
+    // Tant qu'un popup bloquant est affiché : 4 s (pour le fermer vite quand
+    // quelqu'un d'autre a répondu).
+    const fastId = setInterval(() => { if (pendingRef.current.some(n => n.payload?.data?.modal)) pollUnread() }, 4_000)
 
     return () => {
+      clearInterval(fastId)
       cancelled = true
       clearInterval(pollId)
       sb.removeChannel(channel)
