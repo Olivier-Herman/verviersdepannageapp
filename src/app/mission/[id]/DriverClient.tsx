@@ -1439,11 +1439,11 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
       // si l'appel échoue, et jamais deux fois pour la même mission.
       // Réservé à Franck (Olivier 2026-08-13).
       //
-      // DÉSACTIVÉ le 04/09/2026 à la demande d'Olivier. Tout le reste est
-      // conservé — la route, l'historique dans /admin/boutades, le miroir en
-      // notification — pour pouvoir remettre la vanne d'un mot : il suffit de
-      // repasser BOUTADES_ACTIVES à true.
-      const BOUTADES_ACTIVES = false
+      // Coupées le 04/09, RÉACTIVÉES le 05/09 mais réduites à deux vannes
+      // préparées — une batterie, une crevaison — qui partent une seule fois
+      // chacune. C'est la route qui décide et qui tient le compteur ; ici on se
+      // contente de demander, et de ne rien afficher quand elle répond null.
+      const BOUTADES_ACTIVES = true
       if (BOUTADES_ACTIVES && action === 'accept' && currentUserId === 'de9a37aa-41b5-4a56-894b-cc304f601d1a') {
         try {
           const seen = `vd_boutade_${M.id}`

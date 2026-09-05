@@ -60,81 +60,59 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
   if (!m) return NextResponse.json({ error: 'Mission introuvable' }, { status: 404 })
 
   const contexte = [m.incident_description, m.incident_type].filter(Boolean).join(' — ')
-  const pick = () => REPLIS[Math.floor(Math.random() * REPLIS.length)]
-  const vehLabel = [m.vehicle_brand, m.vehicle_model].filter(Boolean).join(' ') || null
 
-  // Mobi (superadmin) : reçoit la boutade en notif + la retrouve dans le tableau
-  // dédié /admin/boutades. Résolu par email (pas de hardcode d'id).
-  const { data: mobi } = await sb.from('users').select('id').eq('email', 'mobi@verviersdepannage.be').maybeSingle()
-
-  // Historique À PART (table `boutades`) — PLUS dans mission_logs, donc n'apparaît
-  // PAS sur la fiche ; visible seulement par Mobi via /admin/boutades. En parallèle,
-  // on pousse la vanne en notif à Mobi. Olivier 2026-08-13.
-  const journalise = (text: string, via: 'ia' | 'repli' | 'sujet-sérieux') => {
+  // ── DEUX VANNES PRÉPARÉES, UNE SEULE FOIS CHACUNE ─────────────────────────
+  // « Juste lui afficher une boutade préparée à sa prochaine intervention qui
+  // concernerait une batterie, et à la prochaine crevaison » (Olivier
+  // 2026-09-05). Les vannes générées à chaque mission sont coupées ; il reste
+  // ces deux-là, écrites d'avance, qui partent une fois puis s'éteignent.
+  //
+  // Le compteur vit en BASE, pas dans le navigateur : Franck change de
+  // téléphone, et une vanne « une seule fois » stockée en local se rejouerait à
+  // chaque appareil.
+  const PRÉPARÉES: { cle: string; motif: RegExp; texte: string }[] = [
+    {
+      cle:   'boutade_prete_batterie',
+      motif: /batter|d[ée]marr\w*|voyant|coss|altern/i,
+      texte: 'Une batterie, c’est comme l’amitié : lorsqu’elle devient faible, il vaut mieux la rebooster que de la laisser mourir.',
+    },
+    {
+      cle:   'boutade_prete_crevaison',
+      motif: /crevais|pneu|roue|jante/i,
+      texte: 'Un pneu, c’est comme un ami : quand il est blessé, il vaut mieux le réparer avant qu’il ne se déchire définitivement.',
+    },
+  ]
+  for (const p of PRÉPARÉES) {
+    if (!p.motif.test(contexte)) continue
+    const { data: dejaFait } = await sb.from('app_settings').select('value').eq('key', p.cle).maybeSingle()
+    if ((dejaFait as any)?.value) break            // déjà servie : on ne rejoue pas
+    await sb.from('app_settings').upsert(
+      { key: p.cle, value: JSON.stringify({ at: new Date().toISOString(), mission_id: params.id }) },
+      { onConflict: 'key' },
+    )
+    const vehL = [(m as any).vehicle_brand, (m as any).vehicle_model].filter(Boolean).join(' ') || null
     sb.from('boutades').insert({
       mission_id: params.id, driver_id: (me as any)?.id ?? null, driver_name: (me as any)?.name ?? 'Franck',
-      text, via, vehicle: vehLabel, city: m.incident_city ?? null,
+      text: p.texte, via: 'preparee', vehicle: vehL, city: (m as any).incident_city ?? null,
     }).then(() => {}, () => {})
+    // Olivier reçoit la même chose au même moment : la vanne part une seule
+    // fois, il n'y a pas de seconde chance de la voir passer.
+    const { data: mobi } = await sb.from('users').select('id').eq('email', 'mobi@verviersdepannage.be').maybeSingle()
     if ((mobi as any)?.id) {
       sendNotification((mobi as any).id, 'boutade_mirror', {
         title:      '🃏 Boutade Franck',
-        body:       text,
+        body:       p.texte,
         action_url: `/dispatch/${params.id}`,
         mission_id: params.id,
       }).catch(() => {})
     }
+    return NextResponse.json({ text: p.texte, prepared: true })
   }
-
-  if (SERIEUX.test(`${contexte} ${m.source || ''}`)) {
-    const t = pick()
-    await journalise(t, 'sujet-sérieux')
-    return NextResponse.json({ text: t, serious: true })
-  }
-
-  const heure = new Date().toLocaleTimeString('fr-BE', { timeZone: 'Europe/Brussels', hour: '2-digit', minute: '2-digit' })
-  const veh   = [m.vehicle_brand, m.vehicle_model].filter(Boolean).join(' ') || 'un véhicule'
-  const km    = (m as any).vehicle_mileage ? Number((m as any).vehicle_mileage).toLocaleString('fr-BE') : null
-
-  try {
-    const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY! })
-    const resp = await createWithModelFallback(client, ANTHROPIC_CHEAP_MODELS, {
-      max_tokens: 90,
-      system: `Tu écris UNE phrase drôle et courte (20 mots maximum) pour Franck, dépanneur à Verviers, qui démarre une mission.
-
-REGISTRE : liégeois, chaleureux, taquin — le ton d'un collègue en salle de garde.
-Tu peux placer « Oufti », « Nom di dju », « Allez hein », « Va-z-y » — au plus UN par phrase, et pas systématiquement.
-Le surnom « Monsieur Toucour » existe : garde-le pour les grandes occasions, pas à chaque fois.
-
-TU TE MOQUES de la panne, du véhicule, de la météo, de l'heure, du kilométrage, du sort.
-JAMAIS du client, jamais de Franck, jamais de personne. Aucune moquerie sur quelqu'un.
-
-Exemples du ton attendu :
-— Oufti, encore une batterie qui a décidé que c'était férié. Va-z-y Monsieur Toucour.
-— Elle démarrait très bien hier, paraît-il. Comme toutes.
-— Nom di dju, un moteur qui fait des misères un mardi. En route.
-— Le voyant est allumé depuis trois semaines, mais c'est aujourd'hui qu'il est pressé.
-— Allez hein, le plateau va encore travailler. Bonne route.
-— 280 000 km au compteur. Elle a bien mérité une petite pause.
-— Il drache et t'as une mission. Le métier rentre.
-
-Pas d'emoji, pas de guillemets, un seul point final. Tutoiement.
-Réponds UNIQUEMENT la phrase, rien d'autre.`,
-      messages: [{
-        role: 'user',
-        content: `Mission : ${m.mission_type || 'intervention'} sur ${veh} à ${m.incident_city || 'quelque part'}, ${heure}.`
-          + ` Panne annoncée : ${contexte || 'non précisée'}.`
-          + (km ? ` Compteur : ${km} km.` : ''),
-      }],
-    })
-    const text = resp.content.filter((c: any) => c.type === 'text').map((c: any) => c.text).join('').trim()
-      .replace(/^["'«»\s]+|["'«»\s]+$/g, '')
-    const ok = !!text && text.length <= 200
-    const out = ok ? text : pick()
-    await journalise(out, ok ? 'ia' : 'repli')
-    return NextResponse.json({ text: out })
-  } catch {
-    const t = pick()
-    await journalise(t, 'repli')
-    return NextResponse.json({ text: t })
-  }
+  // Aucune des deux ne s'applique, ou elles sont déjà passées : silence.
+  //
+  // Tout ce qui suivait — génération IA, replis aléatoires, filtre « sujets
+  // sérieux » — est retiré : Olivier a coupé les vannes systématiques le 04/09
+  // et n'en garde que deux, écrites d'avance. Le code mort d'une fonctionnalité
+  // débranchée ne se relit pas, il se réécrit. L'historique reste dans git.
+  return NextResponse.json({ text: null })
 }
