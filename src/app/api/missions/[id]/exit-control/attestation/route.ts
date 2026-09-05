@@ -44,7 +44,7 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
     : a.path === 'autre' ? `Autre sortie — ${esc(a.path_destination || '')}` : esc(a.path || '')
 
   const html = `<!doctype html><html lang="fr"><head><meta charset="utf-8">
-<title>Attestation d'enlèvement — ${esc(v.plate || '')}</title>
+<title>Attestation d'enlèvement — ${esc([v.brand, v.model, v.plate].filter(Boolean).join(' '))}</title>
 <style>
   @page { size: A4; margin: 16mm; }
   body { font-family: Arial, Helvetica, sans-serif; color: #111; font-size: 12.5px; line-height: 1.45; margin: 0; }
@@ -116,7 +116,7 @@ ${a.skips && Object.keys(a.skips).length ? `<h2>Étapes passées (motif + PIN)</
 
 <div class="decl">
 Je soussigné(e) <b>${esc([id.firstName, id.lastName].filter(Boolean).join(' ') || a.signer_name || '')}</b>, agissant en qualité de <b>${esc(roleLabel(a.identity_role).toLowerCase())}</b>${co.name ? ` pour le compte de <b>${esc(co.name)}</b>` : ''},
-déclare emporter ce jour le véhicule <b>${esc(v.plate || '')}</b>${v.vin ? ` (châssis ${esc(v.vin)})` : ''} du parc de Verviers Dépannage,
+déclare emporter ce jour le véhicule <b>${esc([v.brand, v.model].filter(Boolean).join(' '))} ${esc(v.plate || '')}</b>${v.vin ? ` (châssis ${esc(v.vin)})` : ''} du parc de Verviers Dépannage,
 ${a.path === 'informex' ? `sur base du bon d'enlèvement Informex${ix.reference ? ` n° ${esc(ix.reference)}` : ''} établi au nom de <b>${esc(ix.buyerName || '')}</b>,` : `conformément à l'instruction du bureau d'expertise${a.path_destination ? ` (destination : ${esc(a.path_destination)})` : ''},`}
 et reconnais que les documents présentés sont authentiques et que je suis habilité(e) à prendre possession de ce véhicule.
 </div>
