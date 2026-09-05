@@ -26,6 +26,7 @@ import { releaseParcAndShift }     from '@/lib/parc/release'
 import { createSaleOrder, type QuoteLine } from '@/lib/odoo-quote'
 import { withOdooActor }            from '@/lib/odoo'
 import { buildOverrideLines, buildInterventionDescription } from '@/lib/missions/build-quote-lines'
+import { assertExitAllowed }       from '@/lib/missions/exit-control'
 
 export const dynamic     = 'force-dynamic'
 export const maxDuration = 30
@@ -160,6 +161,11 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   }
   if (mission.status !== 'parked') {
     return NextResponse.json({ error: `Mission deja restituee (status=${mission.status})` }, { status: 409 })
+  }
+  // Contrôle de sortie (épave gérée par un bureau d'expertise). Olivier 2026-09-05.
+  {
+    const gate = await assertExitAllowed(sb, missionId)
+    if (!gate.ok) return NextResponse.json({ error: gate.error, exit_control_blocked: true }, { status: 409 })
   }
   if (mission.police_blocked && !body.police_verified) {
     return NextResponse.json({

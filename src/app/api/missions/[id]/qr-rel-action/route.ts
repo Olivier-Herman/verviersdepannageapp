@@ -21,6 +21,7 @@ import { createAdminClient }         from '@/lib/supabase'
 import { createRelivraisonMission }  from '@/lib/missions/create-relivraison'
 import { sendPushToUser }            from '@/lib/push'
 import { isRelEligibleSource }       from '@/lib/missions/rel-eligible'
+import { assertExitAllowed }         from '@/lib/missions/exit-control'
 
 export async function POST(req: Request, { params }: { params: { id: string } }) {
   const session = await getServerSession(authOptions)
@@ -62,6 +63,14 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   }
   if (!parent) {
     return NextResponse.json({ ok: false, error: 'Mission introuvable' }, { status: 404 })
+  }
+
+  // Contrôle de sortie (épave gérée par un bureau d'expertise) : une
+  // relivraison est une sortie du parc → chemin « autre sortie » ou
+  // « assistance » requis (ou sortie forcée). Olivier 2026-09-05.
+  if (parent.status === 'parked') {
+    const gate = await assertExitAllowed(sb, parent.id, { via: 'relivraison' })
+    if (!gate.ok) return NextResponse.json({ ok: false, error: gate.error, exit_control_blocked: true }, { status: 409 })
   }
 
   // 2. Verification eligibilite

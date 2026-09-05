@@ -41,10 +41,10 @@
  <h2>Application VD Soft — Profils Fourrière & Facturation</h2>
  <div class="intro">
  <p><strong>Ce guide est destiné aux utilisateurs disposant du module « fourriere » et / ou « facturation ».</strong></p>
- <p>Il couvre 7 fonctions communes à tous (Dashboard, recherche, profil...), 12 fonctions Fourrière (inventaire, actions par véhicule, restitution) et 12 fonctions Facturation (validation factures, devis, missions terminées) + l'encaissement bureau.</p>
+ <p>Il couvre 7 fonctions communes à tous (Dashboard, recherche, profil...), les fonctions Fourrière (inventaire, actions par véhicule, restitution, gestion judiciaire des saisies) et les fonctions Facturation (validation factures, devis, missions terminées) + l'encaissement bureau.</p>
  <p>📱 Cette interface est utilisable autant sur ordinateur (bureau) que mobile (terrain).</p>
  <p>🆘 <strong>En cas de problème</strong> : contacte un admin ou le dispatcher de garde.</p>
- <p style="margin-top: 20pt; color: #9ca3af; font-size: 9pt;">Version du document : 28/05/2026</p>
+ <p style="margin-top: 20pt; color: #9ca3af; font-size: 9pt;">Version du document : 05/09/2026</p>
  </div>
 </div>
 
@@ -53,119 +53,88 @@
 
  <h2>A. Fonctions communes (tous utilisateurs)</h2>
  <table>
- <tr><td>1</td><td><a href="#fn-1" style="color:inherit;text-decoration:none">Voir le Dashboard avec widgets actifs</a></td><td>p. 4</td></tr>
- <tr><td>2</td><td><a href="#fn-2" style="color:inherit;text-decoration:none">Recherche globale (plaque / dossier / client / mission)</a></td><td>p. 4</td></tr>
- <tr><td>3</td><td><a href="#fn-3" style="color:inherit;text-decoration:none">Voir et modifier son profil</a></td><td>p. 4</td></tr>
- <tr><td>4</td><td><a href="#fn-4" style="color:inherit;text-decoration:none">Changer son mot de passe</a></td><td>p. 5</td></tr>
- <tr><td>5</td><td><a href="#fn-5" style="color:inherit;text-decoration:none">Personnaliser l'ordre du menu de gauche</a></td><td>p. 5</td></tr>
- <tr><td>6</td><td><a href="#fn-6" style="color:inherit;text-decoration:none">Voir ses notifications push reçues</a></td><td>p. 5</td></tr>
- <tr><td>7</td><td><a href="#fn-7" style="color:inherit;text-decoration:none">Scanner un QR d'étiquette parc → Hub mission</a></td><td>p. 5</td></tr>
+ <tr><td>1</td><td>Voir le Dashboard avec widgets actifs</td><td>p. 4</td></tr>
+ <tr><td>2</td><td>Recherche globale (plaque / dossier / client / mission)</td><td>p. 4</td></tr>
+ <tr><td>3</td><td>Voir et modifier son profil</td><td>p. 4</td></tr>
+ <tr><td>4</td><td>Changer son mot de passe</td><td>p. 5</td></tr>
+ <tr><td>5</td><td>Personnaliser l'ordre du menu de gauche</td><td>p. 5</td></tr>
+ <tr><td>6</td><td>Voir ses notifications push reçues</td><td>p. 5</td></tr>
+ <tr><td>7</td><td>Scanner un QR d'étiquette parc → Hub mission</td><td>p. 5</td></tr>
  </table>
 
  <h2>D1. Fourrière — Inventaire parc</h2>
  <table>
- <tr><td>100</td><td><a href="#fn-100" style="color:inherit;text-decoration:none">Voir liste véhicules en fourrière (par zone)</a></td><td>p. 6</td></tr>
- <tr><td>101</td><td><a href="#fn-101" style="color:inherit;text-decoration:none">Plan visuel du parc (glisser-déposer emplacements)</a></td><td>p. 6</td></tr>
- <tr><td>102</td><td><a href="#fn-102" style="color:inherit;text-decoration:none">Inventaire détaillé (recherche, statut, motif)</a></td><td>p. 7</td></tr>
- <tr><td>103</td><td><a href="#fn-103" style="color:inherit;text-decoration:none">Voir véhicules destinés à destruction (AVP date+60j)</a></td><td>p. 7</td></tr>
- <tr><td>104</td><td><a href="#fn-104" style="color:inherit;text-decoration:none">Voir véhicules non-localisés (en parc sans zone/rangée)</a></td><td>p. 7</td></tr>
- <tr><td>105</td><td><a href="#fn-105" style="color:inherit;text-decoration:none">Bloquer manuellement un emplacement</a></td><td>p. 8</td></tr>
- <tr><td>106</td><td><a href="#fn-106" style="color:inherit;text-decoration:none">Réorganiser l'ordre d'affichage des zones</a></td><td>p. 8</td></tr>
+ <tr><td>100</td><td>Voir liste véhicules en fourrière (par zone)</td><td>p. 6</td></tr>
+ <tr><td>101</td><td>Plan visuel du parc (glisser-déposer emplacements)</td><td>p. 6</td></tr>
+ <tr><td>102</td><td>Inventaire détaillé (recherche, statut, motif)</td><td>p. 7</td></tr>
+ <tr><td>103</td><td>Sortie AVP : mise en épave + rapport à la Ville (AVP date+60j)</td><td>p. 7</td></tr>
+ <tr><td>104</td><td>Voir véhicules non-localisés (en parc sans zone/rangée)</td><td>p. 7</td></tr>
+ <tr><td>105</td><td>Bloquer manuellement un emplacement</td><td>p. 8</td></tr>
+ <tr><td>106</td><td>Réorganiser l'ordre d'affichage des zones</td><td>p. 8</td></tr>
  </table>
 
  <h2>D2. Fourrière — Actions par véhicule</h2>
  <table>
- <tr><td>110</td><td><a href="#fn-110" style="color:inherit;text-decoration:none">Transférer un véhicule vers une autre zone</a></td><td>p. 9</td></tr>
- <tr><td>111</td><td><a href="#fn-111" style="color:inherit;text-decoration:none">Envoyer un véhicule au Domaine</a></td><td>p. 9</td></tr>
- <tr><td>112</td><td><a href="#fn-112" style="color:inherit;text-decoration:none">Mettre un véhicule en épave / Scratch</a></td><td>p. 10</td></tr>
- <tr><td>113</td><td><a href="#fn-113" style="color:inherit;text-decoration:none">Imprimer / réimprimer une étiquette parc</a></td><td>p. 10</td></tr>
- <tr><td>114</td><td><a href="#fn-114" style="color:inherit;text-decoration:none">Voir l'historique d'un véhicule</a></td><td>p. 10</td></tr>
- <tr><td>115</td><td><a href="#fn-115" style="color:inherit;text-decoration:none">Calculer le gardiennage cumulé</a></td><td>p. 10</td></tr>
+ <tr><td>110</td><td>Transférer un véhicule vers une autre zone</td><td>p. 9</td></tr>
+ <tr><td>111</td><td>Envoyer un véhicule au Domaine</td><td>p. 9</td></tr>
+ <tr><td>112</td><td>Mettre un véhicule en épave / Scratch</td><td>p. 10</td></tr>
+ <tr><td>113</td><td>Imprimer / réimprimer une étiquette parc</td><td>p. 10</td></tr>
+ <tr><td>114</td><td>Voir l'historique d'un véhicule</td><td>p. 10</td></tr>
+ <tr><td>115</td><td>Calculer le gardiennage cumulé</td><td>p. 10</td></tr>
  </table>
 
  <h2>D3. Fourrière — Restitution</h2>
  <table>
- <tr><td>120</td><td><a href="#fn-120" style="color:inherit;text-decoration:none">Restituer un véhicule avec paiement (3 modes)</a></td><td>p. 11</td></tr>
- <tr><td>121</td><td><a href="#fn-121" style="color:inherit;text-decoration:none">Restituer sans frais (motif requis)</a></td><td>p. 12</td></tr>
- <tr><td>122</td><td><a href="#fn-122" style="color:inherit;text-decoration:none">Cash chauffeur (mode non)</a></td><td>p. 12</td></tr>
- <tr><td>123</td><td><a href="#fn-123" style="color:inherit;text-decoration:none">Restituer un Rodéo (avec vérif levée saisie)</a></td><td>p. 13</td></tr>
- <tr><td>124</td><td><a href="#fn-124" style="color:inherit;text-decoration:none">Restituer un véhicule bloqué police</a></td><td>p. 13</td></tr>
+ <tr><td>120</td><td>Restituer un véhicule avec paiement (3 modes)</td><td>p. 11</td></tr>
+ <tr><td>121</td><td>Restituer sans frais (motif requis)</td><td>p. 12</td></tr>
+ <tr><td>122</td><td>Cash chauffeur (mode non)</td><td>p. 12</td></tr>
+ <tr><td>123</td><td>Restituer un Rodéo (avec vérif levée saisie)</td><td>p. 13</td></tr>
+ <tr><td>124</td><td>Restituer un véhicule bloqué police</td><td>p. 13</td></tr>
+ <tr><td>124b</td><td>Épave gérée par un bureau d'expertise : contrôle de sortie</td><td>p. 13</td></tr>
+ </table>
+
+ <h2>D4. Police Saisie — gestion judiciaire</h2>
+ <table>
+ <tr><td>125</td><td>Annexer un réquisitoire</td><td>p. 13</td></tr>
+ <tr><td>126</td><td>Enregistrer une levée de saisie (définitive / temporaire)</td><td>p. 14</td></tr>
+ <tr><td>127</td><td>Levée temporaire : sortie garagiste puis retour parc</td><td>p. 14</td></tr>
+ <tr><td>128</td><td>Remise au Domaine (État)</td><td>p. 14</td></tr>
  </table>
 
  <h2>E. Facturation</h2>
  <table>
- <tr><td>130</td><td><a href="#fn-130" style="color:inherit;text-decoration:none">Voir liste des missions à facturer</a></td><td>p. 14</td></tr>
- <tr><td>131</td><td><a href="#fn-131" style="color:inherit;text-decoration:none">Badge « X€ encaissé » sur chaque mission</a></td><td>p. 14</td></tr>
- <tr><td>132</td><td><a href="#fn-132" style="color:inherit;text-decoration:none">Ouvrir la modal de facturation (sections groupées)</a></td><td>p. 14</td></tr>
- <tr><td>133</td><td><a href="#fn-133" style="color:inherit;text-decoration:none">Préparer un devis (forfait + km + parc + surcharges)</a></td><td>p. 15</td></tr>
- <tr><td>134</td><td><a href="#fn-134" style="color:inherit;text-decoration:none">Voir les missions liées REM+REL pour grouper</a></td><td>p. 15</td></tr>
- <tr><td>135</td><td><a href="#fn-135" style="color:inherit;text-decoration:none">Voir les encaissements liés (mode/montant/chauffeur)</a></td><td>p. 16</td></tr>
- <tr><td>136</td><td><a href="#fn-136" style="color:inherit;text-decoration:none">Marquer comme « facturée manuellement »</a></td><td>p. 16</td></tr>
- <tr><td>137</td><td><a href="#fn-137" style="color:inherit;text-decoration:none">Marquer comme « sans frais » (motif)</a></td><td>p. 16</td></tr>
- <tr><td>138</td><td><a href="#fn-138" style="color:inherit;text-decoration:none">Drafts persistants (reprise auto)</a></td><td>p. 17</td></tr>
- <tr><td>139</td><td><a href="#fn-139" style="color:inherit;text-decoration:none">Voir les missions terminées (archives)</a></td><td>p. 17</td></tr>
- <tr><td>140</td><td><a href="#fn-140" style="color:inherit;text-decoration:none">Filtrer terminées par statut</a></td><td>p. 17</td></tr>
- <tr><td>141</td><td><a href="#fn-141" style="color:inherit;text-decoration:none">Désarchiver une mission</a></td><td>p. 17</td></tr>
+ <tr><td>130</td><td>Voir liste des missions à facturer</td><td>p. 14</td></tr>
+ <tr><td>131</td><td>Badge « X€ encaissé » sur chaque mission</td><td>p. 14</td></tr>
+ <tr><td>132</td><td>Ouvrir la modal de facturation (sections groupées)</td><td>p. 14</td></tr>
+ <tr><td>133</td><td>Préparer un devis (forfait + km + parc + surcharges)</td><td>p. 15</td></tr>
+ <tr><td>134</td><td>Voir les missions liées REM+REL pour grouper</td><td>p. 15</td></tr>
+ <tr><td>135</td><td>Voir les encaissements liés (mode/montant/chauffeur)</td><td>p. 16</td></tr>
+ <tr><td>136</td><td>Marquer comme « facturée manuellement »</td><td>p. 16</td></tr>
+ <tr><td>137</td><td>Marquer comme « sans frais » (motif)</td><td>p. 16</td></tr>
+ <tr><td>138</td><td>Drafts persistants (reprise auto)</td><td>p. 17</td></tr>
+ <tr><td>139</td><td>Voir les missions terminées (archives)</td><td>p. 17</td></tr>
+ <tr><td>140</td><td>Filtrer terminées par statut</td><td>p. 17</td></tr>
+ <tr><td>141</td><td>Désarchiver une mission</td><td>p. 17</td></tr>
  </table>
 
  <h2>F1. Encaissement bureau (passage caisse)</h2>
  <table>
- <tr><td>145</td><td><a href="#fn-145" style="color:inherit;text-decoration:none">Encaisser un client au passage caisse (sans mission)</a></td><td>p. 18</td></tr>
- <tr><td>146</td><td><a href="#fn-146" style="color:inherit;text-decoration:none">Auto-détecter une mission ouverte par plaque</a></td><td>p. 18</td></tr>
- <tr><td>147</td><td><a href="#fn-147" style="color:inherit;text-decoration:none">Encaisser via Sumup</a></td><td>p. 19</td></tr>
- <tr><td>148</td><td><a href="#fn-148" style="color:inherit;text-decoration:none">Encaisser en cash / Bancontact / virement</a></td><td>p. 19</td></tr>
- <tr><td>149</td><td><a href="#fn-149" style="color:inherit;text-decoration:none">Envoyer un reçu email au client</a></td><td>p. 19</td></tr>
- <tr><td>150</td><td><a href="#fn-150" style="color:inherit;text-decoration:none">Voir liste des encaissements récents</a></td><td>p. 19</td></tr>
+ <tr><td>145</td><td>Encaisser un client au passage caisse (sans mission)</td><td>p. 18</td></tr>
+ <tr><td>146</td><td>Auto-détecter une mission ouverte par plaque</td><td>p. 18</td></tr>
+ <tr><td>147</td><td>Encaisser via Sumup</td><td>p. 19</td></tr>
+ <tr><td>148</td><td>Encaisser en cash / Bancontact / virement</td><td>p. 19</td></tr>
+ <tr><td>149</td><td>Envoyer un reçu email au client</td><td>p. 19</td></tr>
+ <tr><td>150</td><td>Voir liste des encaissements récents</td><td>p. 19</td></tr>
  </table>
 </div>
 
 <!-- ─────────────────────────────────────────────────────── -->
 <!-- A. COMMUNES (copie depuis driver, abrégé) -->
 <!-- ─────────────────────────────────────────────────────── -->
-<h1 class="section">🆕 Nouveautés (juin 2026)</h1>
-
-<div class="function">
- <h3 id="fn-N1"><span class="num">N1</span>Étiquettes parc — tout en nouveau format VD Soft</h3>
- <p class="desc">Toutes les missions qui partent en parc impriment maintenant le nouveau format VD Soft directement (QR vers hub VD Soft, template centralisé dans <strong>/admin/labels</strong>). Plus de dépendance Odoo pour la génération.</p>
- <p class="label">Notes spécifiques par type</p>
- <ul>
- <li><strong>Mal Garée chargement</strong> : « Pas de blocage » / « Blocage par police » selon la case cochée à la création</li>
- <li><strong>Rodéo</strong> : « Restitution à partir du JJ/MM/AA avec LEVEE DE SAISIE uniquement » (date d'intervention + 3 jours)</li>
- <li><strong>Police Accident</strong> : note vide</li>
- <li><strong>Police Saisie</strong> : « Zone de police - Nom du policier » si renseignés</li>
- <li><strong>AVP</strong> : « AVP DD-MM-YYYY » (date+60j éligibilité destruction)</li>
- <li><strong>SNC depot + Privé depot</strong> : adresse de relivraison si fournie, sinon « En attente d'info adresse de relivraison »</li>
- </ul>
- <div class="tip">⚠️ Pendant la transition, le callback Odoo imprime ENCORE l'ancienne étiquette pour certains types → double impression possible. À désactiver côté Odoo (module Helpdesk) une fois validé.</div>
-</div>
-
-<div class="function">
- <h3 id="fn-N2"><span class="num">N2</span>Réimprimer une étiquette via /api/missions/[id]/reprint-label</h3>
- <p class="desc">Pour réimprimer une étiquette parc avec le nouveau format à n'importe quel moment, depuis la console du navigateur (F12) connecté admin :</p>
- <pre style="background:#f4f4f4;padding:8pt;border-radius:4pt;font-size:9pt;">fetch('/api/missions/MISSION_ID/reprint-label', { method: 'POST' })
-  .then(r =&gt; r.json()).then(console.log)</pre>
- <p>Remplace MISSION_ID par l'UUID de la mission. Réponse : <code>{ok:true}</code> + étiquette sort sur la Zebra.</p>
-</div>
-
-<div class="function">
- <h3 id="fn-N3"><span class="num">N3</span>Mal Garée chargement — paiement à la restitution (pas à la création)</h3>
- <p class="desc">Pour les Mal Garée que le chauffeur met en parc, il n'y a <strong>plus de proposition d'encaissement à la création</strong>. Le paiement se fera quand le client vient récupérer son véhicule, via la recherche plaque ou le scan QR de l'étiquette parc.</p>
- <p class="label">Workflow Mal Garée à 2 cas</p>
- <ul>
- <li><strong>Mal Garée chargement</strong> (mise en parc) → mission créée + étiquette imprimée + statut « En dépôt ». Le chauffeur retourne au dashboard.</li>
- <li><strong>Mal Garée déplacement payé 125 €</strong> (client paie sur place, pas de chargement) → workflow encaisser-avant-créer côté chauffeur (cf nouveautés driver).</li>
- </ul>
-</div>
-
-<div class="function">
- <h3 id="fn-N4"><span class="num">N4</span>Zones de police gérées depuis /admin/police-zones</h3>
- <p class="desc">Tu peux ajouter / modifier / supprimer / définir une zone par défaut depuis <strong>/admin → Zones de police</strong>. La liste alimente le formulaire chauffeur (création mission Police) et la note de l'étiquette Saisie.</p>
-</div>
-
 <h1 class="section">A. Fonctions communes</h1>
 
 <div class="function">
- <h3 id="fn-1"><span class="num">1</span>Voir le Dashboard</h3>
+ <h3><span class="num">1</span>Voir le Dashboard</h3>
  <p class="desc">Écran d'accueil avec widgets actifs (missions, encaissements, raccourcis).</p>
  <p class="label">Comment y accéder</p>
  <ol>
@@ -176,7 +145,7 @@
 </div>
 
 <div class="function">
- <h3 id="fn-2"><span class="num">2</span>Recherche globale</h3>
+ <h3><span class="num">2</span>Recherche globale</h3>
  <p class="desc">Cherche plaque, mission #, client, encaissement, avance.</p>
  <p class="label">Comment faire</p>
  <ol>
@@ -187,7 +156,7 @@
 </div>
 
 <div class="function">
- <h3 id="fn-3"><span class="num">3</span>Voir et modifier son profil</h3>
+ <h3><span class="num">3</span>Voir et modifier son profil</h3>
  <p class="desc">Ton nom, email, photo, préférences notification.</p>
  <ol>
  <li>Clique sur ton nom en bas à gauche de la menu de gauche</li>
@@ -197,7 +166,7 @@
 </div>
 
 <div class="function">
- <h3 id="fn-4"><span class="num">4</span>Changer son mot de passe</h3>
+ <h3><span class="num">4</span>Changer son mot de passe</h3>
  <p class="desc">Recommandé tous les 6 mois.</p>
  <ol>
  <li>Profil → onglet « Sécurité »</li>
@@ -207,7 +176,7 @@
 </div>
 
 <div class="function">
- <h3 id="fn-5"><span class="num">5</span>Personnaliser l'ordre du menu</h3>
+ <h3><span class="num">5</span>Personnaliser l'ordre du menu</h3>
  <p class="desc">Mets en tête les pages les plus utilisées.</p>
  <ol>
  <li>Profil → « Ordre du menu »</li>
@@ -216,7 +185,7 @@
 </div>
 
 <div class="function">
- <h3 id="fn-6"><span class="num">6</span>Notifications push</h3>
+ <h3><span class="num">6</span>Notifications push</h3>
  <p class="desc">Tu reçois des notifs pour : nouvelle mission, encaissement, transfert d'argent, urgences.</p>
  <ol>
  <li>Active dans iOS Réglages → VD Soft → Notifications</li>
@@ -225,7 +194,7 @@
 </div>
 
 <div class="function">
- <h3 id="fn-7"><span class="num">7</span>Scanner un QR d'étiquette parc</h3>
+ <h3><span class="num">7</span>Scanner un QR d'étiquette parc</h3>
  <p class="desc">Sur chaque véhicule en parc, un QR ouvre le Hub mission avec toutes les actions.</p>
  <ol>
  <li>App Appareil photo iOS → pointe vers le QR</li>
@@ -243,7 +212,7 @@
 <h2 class="subsection">D1. Inventaire parc</h2>
 
 <div class="function">
- <h3 id="fn-100"><span class="num">100</span>Liste véhicules en fourrière par zone</h3>
+ <h3><span class="num">100</span>Liste véhicules en fourrière par zone</h3>
  <p class="desc">Vue d'ensemble des véhicules présents dans chaque zone du parc (A, J, K, L, Transit, etc.).</p>
  <p class="label">Comment faire</p>
  <ol>
@@ -255,7 +224,7 @@
 </div>
 
 <div class="function">
- <h3 id="fn-101"><span class="num">101</span>Plan visuel du parc</h3>
+ <h3><span class="num">101</span>Plan visuel du parc</h3>
  <p class="desc">Représentation graphique du parc avec glisser-déposer pour réorganiser les véhicules.</p>
  <p class="label">Comment faire</p>
  <ol>
@@ -269,7 +238,7 @@
 </div>
 
 <div class="function">
- <h3 id="fn-102"><span class="num">102</span>Inventaire détaillé</h3>
+ <h3><span class="num">102</span>Inventaire détaillé</h3>
  <p class="desc">Liste tabulaire complète avec filtres (statut, motif, source, dates entrée/sortie).</p>
  <p class="label">Comment faire</p>
  <ol>
@@ -281,19 +250,27 @@
 </div>
 
 <div class="function">
- <h3 id="fn-103"><span class="num">103</span>Véhicules destinés à destruction</h3>
- <p class="desc">Liste des AVP éligibles à destruction (date d'enlèvement + 60 jours, accord avec la Ville).</p>
+ <h3><span class="num">103</span>Sortie AVP (mise en épave)</h3>
+ <p class="desc">Liste des véhicules AVP en parc depuis 60 jours ou plus (accord avec la Ville). On les sort du parc en épave et on prévient la Ville. Aucune facture n'est faite : les dossiers sont simplement clôturés.</p>
  <p class="label">Comment faire</p>
  <ol>
- <li><code>/fourriere/destruction</code></li>
- <li>Liste les véhicules dont la date d'entrée parc + 60 jours est passée</li>
- <li>Procédure de destruction : marquer comme « Détruit » + log</li>
+ <li>Sur la page Fourrière, bouton « Sortie AVP » (ou plan d'un parc précis)</li>
+ <li>La liste montre, pour chaque véhicule : plaque, marque/modèle, emplacement, date d'entrée, nombre de jours en parc et les <strong>frais arrêtés à ce jour</strong> (forfait enlèvement + gardiennage)</li>
+ <li>Coche les véhicules à sortir (clic sur la ligne, ou scan du QR de l'étiquette, ou « Tout cocher »)</li>
+ <li>Choisis le format du rapport : <strong>Excel</strong> ou <strong>PDF</strong></li>
+ <li>Clique « Sortir … véhicules (épave) » puis confirme</li>
  </ol>
- <div class="warn">⚠️ Action irréversible. Toujours vérifier les conditions légales avant.</div>
+ <p class="label">Ce qui se passe automatiquement</p>
+ <ul>
+ <li>Chaque véhicule reçoit un gros tampon <strong>ÉPAVE</strong> avec la date de sortie (visible si on rescanne le QR), et sort du parc (la place est libérée)</li>
+ <li>Un rapport (Excel ou PDF) reprenant infos véhicule, dates d'entrée/sortie et frais arrêtés est <strong>téléchargé sur ton appareil</strong></li>
+ <li>Le même rapport est <strong>envoyé par mail à la Ville</strong> (avp@verviers.be) depuis la boîte fourriere@verviersdepannage.be</li>
+ </ul>
+ <div class="warn">⚠️ Action irréversible. L'email part automatiquement à la Ville : ne valide que des dossiers réellement à clôturer.</div>
 </div>
 
 <div class="function">
- <h3 id="fn-104"><span class="num">104</span>Véhicules non-localisés</h3>
+ <h3><span class="num">104</span>Véhicules non-localisés</h3>
  <p class="desc">Véhicules en parc mais sans zone/rangée définie. Aide à les retrouver et les positionner.</p>
  <p class="label">Comment faire</p>
  <ol>
@@ -304,7 +281,7 @@
 </div>
 
 <div class="function">
- <h3 id="fn-105"><span class="num">105</span>Bloquer un emplacement</h3>
+ <h3><span class="num">105</span>Bloquer un emplacement</h3>
  <p class="desc">Marquer un emplacement comme indisponible (panne, casse, photo manquante, etc.).</p>
  <p class="label">Comment faire</p>
  <ol>
@@ -316,7 +293,7 @@
 </div>
 
 <div class="function">
- <h3 id="fn-106"><span class="num">106</span>Réorganiser l'ordre d'affichage des zones</h3>
+ <h3><span class="num">106</span>Réorganiser l'ordre d'affichage des zones</h3>
  <p class="desc">Personnaliser l'ordre des zones (sort_order) pour l'équipe.</p>
  <p class="label">Comment faire</p>
  <ol>
@@ -329,7 +306,7 @@
 <h2 class="subsection">D2. Actions par véhicule</h2>
 
 <div class="function">
- <h3 id="fn-110"><span class="num">110</span>Transférer un véhicule vers une autre zone</h3>
+ <h3><span class="num">110</span>Transférer un véhicule vers une autre zone</h3>
  <p class="desc">Déplacer physiquement un véhicule dans le parc et mettre à jour son emplacement dans l'app.</p>
  <p class="label">Comment faire (Hub QR)</p>
  <ol>
@@ -351,7 +328,7 @@
 </div>
 
 <div class="function">
- <h3 id="fn-111"><span class="num">111</span>Envoyer un véhicule au Domaine</h3>
+ <h3><span class="num">111</span>Envoyer un véhicule au Domaine</h3>
  <p class="desc">Marquer un véhicule comme transféré à l'administration du Domaine (procédure légale épave).</p>
  <p class="label">Comment faire</p>
  <ol>
@@ -362,7 +339,7 @@
 </div>
 
 <div class="function">
- <h3 id="fn-112"><span class="num">112</span>Mettre un véhicule en épave / Scratch</h3>
+ <h3><span class="num">112</span>Mettre un véhicule en épave / Scratch</h3>
  <p class="desc">Marquer un véhicule comme épave (destruction définitive, accord obtenu).</p>
  <p class="label">Comment faire</p>
  <ol>
@@ -374,7 +351,7 @@
 </div>
 
 <div class="function">
- <h3 id="fn-113"><span class="num">113</span>Imprimer / réimprimer une étiquette parc</h3>
+ <h3><span class="num">113</span>Imprimer / réimprimer une étiquette parc</h3>
  <p class="desc">Réimpression de l'étiquette (Zebra) à coller sur le véhicule. Utile si l'étiquette est tombée, déchirée ou illisible.</p>
  <p class="label">Comment faire (Hub QR)</p>
  <ol>
@@ -391,7 +368,7 @@
 </div>
 
 <div class="function">
- <h3 id="fn-114"><span class="num">114</span>Voir l'historique d'un véhicule</h3>
+ <h3><span class="num">114</span>Voir l'historique d'un véhicule</h3>
  <p class="desc">Voir tous les changements de zone, déplacements et actions sur le véhicule.</p>
  <p class="label">Comment faire</p>
  <ol>
@@ -402,7 +379,7 @@
 </div>
 
 <div class="function">
- <h3 id="fn-115"><span class="num">115</span>Calculer le gardiennage cumulé</h3>
+ <h3><span class="num">115</span>Calculer le gardiennage cumulé</h3>
  <p class="desc">Le système calcule automatiquement les jours en parc et le montant de gardiennage selon le tarif source.</p>
  <p class="label">Comment ça marche</p>
  <ol>
@@ -416,7 +393,7 @@
 <h2 class="subsection">D3. Restitution</h2>
 
 <div class="function">
- <h3 id="fn-120"><span class="num">120</span>Restituer un véhicule avec paiement (3 modes)</h3>
+ <h3><span class="num">120</span>Restituer un véhicule avec paiement (3 modes)</h3>
  <p class="desc">Procédure de restitution au propriétaire avec paiement. 3 modes selon la situation.</p>
  <p class="label">Mode 1 : Facture directe (Invoice)</p>
  <ol>
@@ -452,7 +429,7 @@
 </div>
 
 <div class="function">
- <h3 id="fn-121"><span class="num">121</span>Restituer sans frais (motif requis)</h3>
+ <h3><span class="num">121</span>Restituer sans frais (motif requis)</h3>
  <p class="desc">Restitution sans paiement (geste commercial, erreur dossier, demande direction).</p>
  <p class="label">Comment faire (Hub QR)</p>
  <ol>
@@ -470,7 +447,7 @@
 </div>
 
 <div class="function">
- <h3 id="fn-122"><span class="num">122</span>Cash chauffeur (mode non)</h3>
+ <h3><span class="num">122</span>Cash chauffeur (mode non)</h3>
  <p class="desc">Mode utilisé quand l'encaissement se fait sur le terrain sans passer par la facturation.</p>
  <p class="label">Workflow</p>
  <ol>
@@ -483,7 +460,7 @@
 </div>
 
 <div class="function">
- <h3 id="fn-123"><span class="num">123</span>Restituer un Rodéo (avec vérif levée saisie)</h3>
+ <h3><span class="num">123</span>Restituer un Rodéo (avec vérif levée saisie)</h3>
  <p class="desc">Les Rodéos exigent une levée de saisie validée avant restitution.</p>
  <p class="label">Comment faire</p>
  <ol>
@@ -497,7 +474,7 @@
 </div>
 
 <div class="function">
- <h3 id="fn-124"><span class="num">124</span>Restituer un véhicule bloqué police</h3>
+ <h3><span class="num">124</span>Restituer un véhicule bloqué police</h3>
  <p class="desc">Quand le policier a exigé que le propriétaire passe au commissariat avant restitution ( = true).</p>
  <p class="label">Comment faire</p>
  <ol>
@@ -509,13 +486,95 @@
  <div class="tip">💡 Souvent pour les véhicules étrangers ou cas particuliers.</div>
 </div>
 
+<div class="function">
+ <h3><span class="num">124b</span>Épave gérée par un bureau d'expertise : contrôle de sortie</h3>
+ <p class="desc">Dès qu'un expert a enregistré son passage sur un véhicule <b>Police – Accident</b> (registre des visites, motif « expert » ou bureau renseigné), la fiche affiche un encadré « Contrôle de sortie » et <b>la sortie du parc est bloquée</b> tant que la checklist n'est pas complète. Tant qu'aucun expert n'est venu, rien ne change.</p>
+ <p class="label">La checklist</p>
+ <ol>
+ <li><b>Chemin de sortie</b> : « Informex » (véhicule vendu), « Autre sortie » (propriétaire, garage…) ou « Reprise par une assistance ». Le chemin est décidé par le bureau d'expertise : encode qui te l'a donné (nom) et par quel canal.</li>
+ <li><b>Bon Informex</b> (chemin Informex) : « Scanner avec le téléphone » affiche un QR ; tu le scannes avec ton téléphone, tu photographies le bon, le QR est décodé et le document lu (acheteur, plaque, châssis). La fiche indique si la plaque et le châssis concordent.</li>
+ <li><b>Personne présente</b> : carte belge → « Lire une carte d'identité » (écran comptoir) ; pièce étrangère → « Photographier la pièce » depuis le téléphone (lecture automatique) ; sinon saisie à la main. Choisis sa qualité : acheteur, mandataire, transporteur. <b>Compare avec l'acheteur du bon</b> : si ce n'est pas la même personne, mandat écrit + rappel de l'acheteur au numéro fourni par le bureau.</li>
+ <li><b>CMR</b> (transporteur) : « Photographier le CMR » depuis le téléphone.</li>
+ <li><b>Attestation d'enlèvement</b> : « Faire signer sur le téléphone » : la personne relit le résumé et signe ; l'attestation est figée et imprimable depuis la fiche.</li>
+ </ol>
+ <p class="label">Ensuite</p>
+ <ol>
+ <li>Quand tout est vert, les boutons « Restituer » redeviennent actifs : restitution habituelle (encaissement ou Restituer et facturer).</li>
+ <li>Toutes les pièces (photos, signature) restent au dossier, avec qui a fait quoi et quand.</li>
+ </ol>
+ <div class="warn">⚠️ Le V vert du QR Informex prouve que le <b>document</b> est authentique, pas que la personne qui le tient est l'acheteur. C'est la concordance d'identité qui protège.</div>
+ <div class="tip">🔓 <b>Sortie forcée</b> : possible par tout le monde, avec un motif et ton PIN personnel (celui de la caisse). Elle est tracée à ton nom sur la fiche.</div>
+</div>
+
+<!-- ─────────────────────────────────────────────────────── -->
+<!-- D4. POLICE SAISIE — GESTION JUDICIAIRE -->
+<!-- ─────────────────────────────────────────────────────── -->
+<h2 class="subsection">D4. Police Saisie — gestion judiciaire</h2>
+
+<p class="desc">Pour les véhicules saisis par la police, la fiche du véhicule (depuis le menu, bouton « Consulter le dossier ») affiche en haut à droite, juste sous l'impression d'étiquette, un encadré <strong>« 🚔 Saisie — gestion judiciaire »</strong> avec trois actions : le réquisitoire, la levée de saisie et la remise au Domaine.</p>
+
+<div class="function">
+ <h3><span class="num">125</span>Annexer un réquisitoire</h3>
+ <p class="desc">Joindre au dossier le réquisitoire reçu (du Parquet / de la police), en général par mail.</p>
+ <p class="label">Comment faire</p>
+ <ol>
+ <li>Ouvre la fiche du véhicule saisi → encadré « 🚔 Saisie »</li>
+ <li>Clique sur « 📋 Réquisitoire »</li>
+ <li>Choisis le document (PDF ou photo) et/ou écris une note (ex : « reçu par mail du Parquet »)</li>
+ <li>Clique sur « Annexer »</li>
+ </ol>
+ <div class="tip">💡 Une pastille verte « Réquisitoire reçu le … » s'affiche ensuite, et le document apparaît dans les Remarques de la fiche.</div>
+</div>
+
+<div class="function">
+ <h3><span class="num">126</span>Enregistrer une levée de saisie</h3>
+ <p class="desc">Quand la saisie est levée, on l'enregistre. Cela débloque le véhicule côté police et fixe la date qui sert au calcul du gardiennage.</p>
+ <p class="label">Comment faire</p>
+ <ol>
+ <li>Fiche du véhicule → encadré « 🚔 Saisie » → bouton « 🔓 Levée de saisie »</li>
+ <li>Choisis le type : <strong>Définitive</strong> (le client paie, le véhicule repart) ou <strong>Temporaire</strong> (le véhicule part chez un garagiste puis revient en parc en attendant la levée définitive)</li>
+ <li>Renseigne la <strong>date de levée</strong> (par défaut aujourd'hui, modifiable)</li>
+ <li>Joins un document <strong>OU</strong> écris un commentaire (ex : « Levée par téléphone »)</li>
+ <li>Clique sur « Enregistrer la levée »</li>
+ </ol>
+ <div class="tip">💡 Effet sur le gardiennage : jusqu'à la date de levée = tarif Parquet/saisie ; les jours <strong>au-delà</strong> de la date de levée = 20 €/jour (« hors période saisie »). Le détail est visible dans l'estimation tarif en bas de la fiche.</div>
+ <div class="warn">⚠️ Il faut un document <strong>ou</strong> un commentaire <strong>et</strong> une date pour que le blocage police soit retiré.</div>
+</div>
+
+<div class="function">
+ <h3><span class="num">127</span>Levée temporaire : sortie garagiste puis retour parc</h3>
+ <p class="desc">Pour une levée <strong>temporaire</strong>, le véhicule part en remise en ordre chez un garagiste, puis revient en parc jusqu'à la levée définitive.</p>
+ <p class="label">Comment faire</p>
+ <ol>
+ <li>Une fois la levée temporaire enregistrée, un encadré « Cycle levée temporaire » apparaît</li>
+ <li>Quand le véhicule part : clique sur « 🔧 Sortie vers garagiste » (il sort du parc, sa place est libérée)</li>
+ <li>Quand il revient : clique sur « ↩ Retour en parc », choisis la zone → le véhicule réintègre le parc sur le même dossier</li>
+ <li>Pour la sortie définitive ensuite : utilise la restitution habituelle (le blocage est déjà levé)</li>
+ </ol>
+ <div class="tip">💡 Le gardiennage « hors période » (20 €/jour) recommence à compter à partir du jour de retour en parc.</div>
+</div>
+
+<div class="function">
+ <h3><span class="num">128</span>Remise au Domaine (État)</h3>
+ <p class="desc">Quand le propriétaire ne se met pas en ordre, la police décide de remettre le véhicule au Domaine (l'État). Il sera vendu aux enchères puis enlevé par un épaviste.</p>
+ <p class="label">Comment faire</p>
+ <ol>
+ <li>Fiche du véhicule → encadré « 🚔 Saisie » → bouton « 🏛 Domaine »</li>
+ <li>Renseigne la <strong>date de remise</strong> (obligatoire)</li>
+ <li>Renseigne la <strong>date de vente</strong> si elle est connue (souvent plus tard — on peut revenir la compléter)</li>
+ <li>Joins un document <strong>OU</strong> écris un commentaire</li>
+ <li>Clique sur « Enregistrer la remise »</li>
+ </ol>
+ <div class="tip">💡 Facturation : le gardiennage facturé au client/parquet <strong>s'arrête à la date de remise</strong>. Les jours entre la remise et la vente sont comptés pour l'État (au tarif parc saisie) et iront dans le tableau trimestriel envoyé au Domaine.</div>
+</div>
+
 <!-- ─────────────────────────────────────────────────────── -->
 <!-- E. FACTURATION -->
 <!-- ─────────────────────────────────────────────────────── -->
 <h1 class="section">E. Facturation</h1>
 
 <div class="function">
- <h3 id="fn-130"><span class="num">130</span>Liste des missions à facturer</h3>
+ <h3><span class="num">130</span>Liste des missions à facturer</h3>
  <p class="desc">Toutes les missions clôturées par les chauffeurs en attente de validation facturation.</p>
  <p class="label">Comment faire</p>
  <ol>
@@ -527,7 +586,7 @@
 </div>
 
 <div class="function">
- <h3 id="fn-131"><span class="num">131</span>Badge « X€ encaissé »</h3>
+ <h3><span class="num">131</span>Badge « X€ encaissé »</h3>
  <p class="desc">Indique qu'un montant a déjà été encaissé sur place. Affiché sur la carte de la mission.</p>
  <p class="label">Comment ça marche</p>
  <ol>
@@ -538,7 +597,7 @@
 </div>
 
 <div class="function">
- <h3 id="fn-132"><span class="num">132</span>Ouvrir la modal de facturation</h3>
+ <h3><span class="num">132</span>Ouvrir la modal de facturation</h3>
  <p class="desc">Vue détaillée de la mission avec sections groupées pour préparer le devis.</p>
  <p class="label">Comment faire</p>
  <ol>
@@ -557,7 +616,7 @@
 </div>
 
 <div class="function">
- <h3 id="fn-133"><span class="num">133</span>Préparer un devis </h3>
+ <h3><span class="num">133</span>Préparer un devis </h3>
  <p class="desc">Création automatique du devis dans à partir des données mission.</p>
  <p class="label">Lignes générées auto</p>
  <ul>
@@ -582,7 +641,7 @@
 </div>
 
 <div class="function">
- <h3 id="fn-134"><span class="num">134</span>Missions liées REM+REL</h3>
+ <h3><span class="num">134</span>Missions liées REM+REL</h3>
  <p class="desc">Pour les missions REM avec relivraison ultérieure (REL), tu peux grouper les 2 sur un même devis.</p>
  <p class="label">Comment faire</p>
  <ol>
@@ -594,7 +653,7 @@
 </div>
 
 <div class="function">
- <h3 id="fn-135"><span class="num">135</span>Encaissements liés</h3>
+ <h3><span class="num">135</span>Encaissements liés</h3>
  <p class="desc">Vue détaillée des paiements déjà reçus du client (chauffeur ou bureau).</p>
  <p class="label">Comment ça s'affiche</p>
  <ol>
@@ -608,7 +667,7 @@
 </div>
 
 <div class="function">
- <h3 id="fn-136"><span class="num">136</span>Marquer comme facturée manuellement</h3>
+ <h3><span class="num">136</span>Marquer comme facturée manuellement</h3>
  <p class="desc">Si tu factures hors (cas exceptionnel, facture papier, ancienne procédure).</p>
  <p class="label">Comment faire</p>
  <ol>
@@ -619,7 +678,7 @@
 </div>
 
 <div class="function">
- <h3 id="fn-137"><span class="num">137</span>Marquer comme sans frais</h3>
+ <h3><span class="num">137</span>Marquer comme sans frais</h3>
  <p class="desc">Mission clôturée sans facturation (geste commercial, demande direction, erreur).</p>
  <p class="label">Comment faire</p>
  <ol>
@@ -630,7 +689,7 @@
 </div>
 
 <div class="function">
- <h3 id="fn-138"><span class="num">138</span>Brouillons sauvegardés automatiquement</h3>
+ <h3><span class="num">138</span>Brouillons sauvegardés automatiquement</h3>
  <p class="desc">Si tu fermes la fenêtre sans valider, ton brouillon est conservé. Tu reprends là où tu en étais.</p>
  <p class="label">Comment ça marche</p>
  <ol>
@@ -642,7 +701,7 @@
 </div>
 
 <div class="function">
- <h3 id="fn-139"><span class="num">139</span>Voir les missions terminées</h3>
+ <h3><span class="num">139</span>Voir les missions terminées</h3>
  <p class="desc">Toutes les missions au-delà de À facturer : facturées, sans frais, annulées, archivées.</p>
  <p class="label">Comment faire</p>
  <ol>
@@ -653,7 +712,7 @@
 </div>
 
 <div class="function">
- <h3 id="fn-140"><span class="num">140</span>Filtrer terminées par statut</h3>
+ <h3><span class="num">140</span>Filtrer terminées par statut</h3>
  <p class="desc">Onglets pour naviguer dans les sous-types.</p>
  <p class="label">Onglets disponibles</p>
  <ul>
@@ -667,7 +726,7 @@
 </div>
 
 <div class="function">
- <h3 id="fn-141"><span class="num">141</span>Désarchiver une mission</h3>
+ <h3><span class="num">141</span>Désarchiver une mission</h3>
  <p class="desc">Remettre une mission archivée dans la liste dispatch standard (cas erreur d'archivage, besoin de re-traiter).</p>
  <p class="label">Comment faire</p>
  <ol>
@@ -683,7 +742,7 @@
 <h1 class="section">F. Encaissement bureau (passage caisse)</h1>
 
 <div class="function">
- <h3 id="fn-145"><span class="num">145</span>Encaisser un client au passage caisse</h3>
+ <h3><span class="num">145</span>Encaisser un client au passage caisse</h3>
  <p class="desc">Quand un client se présente au bureau pour payer (sans mission ouverte associée OU pour une mission existante).</p>
  <p class="label">Comment faire</p>
  <ol>
@@ -695,7 +754,7 @@
 </div>
 
 <div class="function">
- <h3 id="fn-146"><span class="num">146</span>Auto-détection mission ouverte par plaque</h3>
+ <h3><span class="num">146</span>Auto-détection mission ouverte par plaque</h3>
  <p class="desc">Si une mission est ouverte pour cette plaque (en parc ou en cours), un bandeau vert te le signale.</p>
  <p class="label">Comment ça marche</p>
  <ol>
@@ -708,7 +767,7 @@
 </div>
 
 <div class="function">
- <h3 id="fn-147"><span class="num">147</span>Encaisser via Sumup</h3>
+ <h3><span class="num">147</span>Encaisser via Sumup</h3>
  <p class="desc">Paiement par carte bancaire via terminal Sumup (Bancontact / Visa / MasterCard).</p>
  <p class="label">Comment faire</p>
  <ol>
@@ -722,7 +781,7 @@
 </div>
 
 <div class="function">
- <h3 id="fn-148"><span class="num">148</span>Encaisser en cash / Bancontact / virement</h3>
+ <h3><span class="num">148</span>Encaisser en cash / Bancontact / virement</h3>
  <p class="desc">Autres modes de paiement disponibles.</p>
  <p class="label">Modes disponibles</p>
  <ul>
@@ -735,7 +794,7 @@
 </div>
 
 <div class="function">
- <h3 id="fn-149"><span class="num">149</span>Envoyer un reçu email au client</h3>
+ <h3><span class="num">149</span>Envoyer un reçu email au client</h3>
  <p class="desc">Le client reçoit automatiquement un reçu par email après paiement (si email saisi).</p>
  <p class="label">Comment ça marche</p>
  <ol>
@@ -754,7 +813,7 @@
 </div>
 
 <div class="function">
- <h3 id="fn-150"><span class="num">150</span>Voir les encaissements récents</h3>
+ <h3><span class="num">150</span>Voir les encaissements récents</h3>
  <p class="desc">Vue d'ensemble des encaissements (le tien si tu es chauffeur, tous si admin).</p>
  <p class="label">Comment faire</p>
  <ol>
@@ -768,7 +827,7 @@
 <hr style="border: none; border-top: 1pt solid #d1d5db; margin: 24pt 0 12pt 0;">
 
 <div style="text-align: center; font-size: 9pt; color: #9ca3af; padding: 8pt;">
- <p style="margin: 0;">Mode d'emploi VD Soft — Profils Fourrière & Facturation · Version du 28/05/2026</p>
+ <p style="margin: 0;">Mode d'emploi VD Soft — Profils Fourrière & Facturation · Version du 05/09/2026</p>
  <p style="margin: 4pt 0 0 0;">En cas de bug ou suggestion, contacte un admin.</p>
 </div>
 

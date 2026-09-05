@@ -5,6 +5,7 @@ import { createAdminClient } from '@/lib/supabase'
 import { syncInterventionToOdoo, withOdooActor, findOrCreatePartner } from '@/lib/odoo'
 import { sendClientReceipt, sendEmail, emailLayout } from '@/lib/emails'
 import { releaseParcAndShift } from '@/lib/parc/release'
+import { assertExitAllowed }   from '@/lib/missions/exit-control'
 
 // Olivier 2026-06-03 : sources fourriere qui declenchent l auto-restitution
 // quand un encaissement est fait sur une mission en parked.
@@ -45,6 +46,17 @@ export async function POST(req: NextRequest) {
 
   const { data: driver } = await supabase
     .from('users').select('id').eq('email', session.user.email).single()
+
+  // Contrôle de sortie (épave gérée par un bureau d'expertise) : un
+  // encaissement sur une fiche en parc vaut restitution → on vérifie AVANT
+  // d'enregistrer le paiement. Olivier 2026-09-05.
+  if (body.mission_id) {
+    const { data: gated } = await supabase.from('incoming_missions').select('status').eq('id', body.mission_id).maybeSingle()
+    if (gated?.status === 'parked') {
+      const gate = await assertExitAllowed(supabase, body.mission_id)
+      if (!gate.ok) return NextResponse.json({ error: gate.error, exit_control_blocked: true }, { status: 409 })
+    }
+  }
 
   // 1. Sauvegarder dans Supabase
   const { data: intervention, error } = await supabase

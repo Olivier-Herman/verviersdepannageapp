@@ -13,6 +13,7 @@ import { getServerSession }  from 'next-auth'
 import { authOptions }       from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase'
 import { sessionAccess }     from '@/lib/access'
+import { armExitControlFromVisit } from '@/lib/missions/exit-control'
 
 export const dynamic = 'force-dynamic'
 
@@ -81,6 +82,8 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   }
   const { data, error } = await sb.from('mission_visitors').insert(row).select().single()
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  // Passage d'un expert sur une épave Police – Accident → contrôle de sortie. 2026-09-05.
+  if (data) await armExitControlFromVisit(sb, missionId, data).catch(() => {})
 
   await sb.from('mission_logs').insert({
     mission_id: missionId, action: 'visitor',

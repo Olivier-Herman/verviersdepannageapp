@@ -21,6 +21,7 @@ import { authOptions }        from '@/lib/auth'
 import { createAdminClient }  from '@/lib/supabase'
 import QrMissionClient        from './QrMissionClient'
 import { isRelEligibleSource } from '@/lib/missions/rel-eligible'
+import { isExitControlSource, getExitControlState } from '@/lib/missions/exit-control'
 
 export const dynamic = 'force-dynamic'
 
@@ -79,6 +80,12 @@ export default async function QrMissionPage({ params }: { params: { id: string }
   // Olivier 2026-06-05 : depuis bascule Transit -> K pour rem_depot, on
   // accepte les 2 zones (rétrocompat missions migrees).
   const isParked = mission.status === 'parked'
+  // Contrôle de sortie (épave gérée par un bureau d'expertise). Olivier 2026-09-05.
+  let exitBlocked: string | null = null
+  if (isParked && isExitControlSource(mission.source)) {
+    const gate = await getExitControlState(sb, mission.id)
+    if (gate.armed && !gate.allowed) exitBlocked = gate.reason || 'Contrôle de sortie incomplet.'
+  }
   const isSiabisRemDepot = ['police_snc', 'sia_couvert'].includes(mission.source || '')
                         && mission.snc_scenario === 'rem_depot'
   const isRemRelMission = mission.mission_type === 'REM+REL'
@@ -194,8 +201,9 @@ export default async function QrMissionPage({ params }: { params: { id: string }
       }}
       activeDrivers={activeDrivers}
       consultUrl={consultUrl}
-      isElligibleForRel={isElligibleForRel}
+      isElligibleForRel={isElligibleForRel && !exitBlocked}
       relZoneType={isRelZoneType}
+      exitBlocked={exitBlocked}
     />
   )
 }

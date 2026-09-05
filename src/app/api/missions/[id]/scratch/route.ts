@@ -18,6 +18,7 @@ import { authOptions }       from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase'
 import { withOdooActor, odooRpc } from '@/lib/odoo'
 import { SCRATCH_STATE_ID }  from '@/lib/fourriere'
+import { assertExitAllowed } from '@/lib/missions/exit-control'
 
 export const dynamic = 'force-dynamic'
 
@@ -46,6 +47,12 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     .maybeSingle()
   if (mErr || !mission) {
     return NextResponse.json({ error: `Mission introuvable : ${mErr?.message || 'unknown'}` }, { status: 404 })
+  }
+
+  // Contrôle de sortie (épave gérée par un bureau d'expertise). Olivier 2026-09-05.
+  if (mission.status === 'parked') {
+    const gate = await assertExitAllowed(sb, mission.id)
+    if (!gate.ok) return NextResponse.json({ error: gate.error, exit_control_blocked: true }, { status: 409 })
   }
 
   // 2. Update VD Soft : sortie du parc + status completed

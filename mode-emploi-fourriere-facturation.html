@@ -44,7 +44,7 @@
  <p>Il couvre 7 fonctions communes à tous (Dashboard, recherche, profil...), les fonctions Fourrière (inventaire, actions par véhicule, restitution, gestion judiciaire des saisies) et les fonctions Facturation (validation factures, devis, missions terminées) + l'encaissement bureau.</p>
  <p>📱 Cette interface est utilisable autant sur ordinateur (bureau) que mobile (terrain).</p>
  <p>🆘 <strong>En cas de problème</strong> : contacte un admin ou le dispatcher de garde.</p>
- <p style="margin-top: 20pt; color: #9ca3af; font-size: 9pt;">Version du document : 14/06/2026</p>
+ <p style="margin-top: 20pt; color: #9ca3af; font-size: 9pt;">Version du document : 05/09/2026</p>
  </div>
 </div>
 
@@ -90,6 +90,7 @@
  <tr><td>122</td><td>Cash chauffeur (mode non)</td><td>p. 12</td></tr>
  <tr><td>123</td><td>Restituer un Rodéo (avec vérif levée saisie)</td><td>p. 13</td></tr>
  <tr><td>124</td><td>Restituer un véhicule bloqué police</td><td>p. 13</td></tr>
+ <tr><td>124b</td><td>Épave gérée par un bureau d'expertise : contrôle de sortie</td><td>p. 13</td></tr>
  </table>
 
  <h2>D4. Police Saisie — gestion judiciaire</h2>
@@ -485,6 +486,26 @@
  <div class="tip">💡 Souvent pour les véhicules étrangers ou cas particuliers.</div>
 </div>
 
+<div class="function">
+ <h3><span class="num">124b</span>Épave gérée par un bureau d'expertise : contrôle de sortie</h3>
+ <p class="desc">Dès qu'un expert a enregistré son passage sur un véhicule <b>Police – Accident</b> (registre des visites, motif « expert » ou bureau renseigné), la fiche affiche un encadré « Contrôle de sortie » et <b>la sortie du parc est bloquée</b> tant que la checklist n'est pas complète. Tant qu'aucun expert n'est venu, rien ne change.</p>
+ <p class="label">La checklist</p>
+ <ol>
+ <li><b>Chemin de sortie</b> : « Informex » (véhicule vendu), « Autre sortie » (propriétaire, garage…) ou « Reprise par une assistance ». Le chemin est décidé par le bureau d'expertise : encode qui te l'a donné (nom) et par quel canal.</li>
+ <li><b>Bon Informex</b> (chemin Informex) : « Scanner avec le téléphone » affiche un QR ; tu le scannes avec ton téléphone, tu photographies le bon, le QR est décodé et le document lu (acheteur, plaque, châssis). La fiche indique si la plaque et le châssis concordent.</li>
+ <li><b>Personne présente</b> : carte belge → « Lire une carte d'identité » (écran comptoir) ; pièce étrangère → « Photographier la pièce » depuis le téléphone (lecture automatique) ; sinon saisie à la main. Choisis sa qualité : acheteur, mandataire, transporteur. <b>Compare avec l'acheteur du bon</b> : si ce n'est pas la même personne, mandat écrit + rappel de l'acheteur au numéro fourni par le bureau.</li>
+ <li><b>CMR</b> (transporteur) : « Photographier le CMR » depuis le téléphone.</li>
+ <li><b>Attestation d'enlèvement</b> : « Faire signer sur le téléphone » : la personne relit le résumé et signe ; l'attestation est figée et imprimable depuis la fiche.</li>
+ </ol>
+ <p class="label">Ensuite</p>
+ <ol>
+ <li>Quand tout est vert, les boutons « Restituer » redeviennent actifs : restitution habituelle (encaissement ou Restituer et facturer).</li>
+ <li>Toutes les pièces (photos, signature) restent au dossier, avec qui a fait quoi et quand.</li>
+ </ol>
+ <div class="warn">⚠️ Le V vert du QR Informex prouve que le <b>document</b> est authentique, pas que la personne qui le tient est l'acheteur. C'est la concordance d'identité qui protège.</div>
+ <div class="tip">🔓 <b>Sortie forcée</b> : possible par tout le monde, avec un motif et ton PIN personnel (celui de la caisse). Elle est tracée à ton nom sur la fiche.</div>
+</div>
+
 <!-- ─────────────────────────────────────────────────────── -->
 <!-- D4. POLICE SAISIE — GESTION JUDICIAIRE -->
 <!-- ─────────────────────────────────────────────────────── -->
@@ -806,7 +827,7 @@
 <hr style="border: none; border-top: 1pt solid #d1d5db; margin: 24pt 0 12pt 0;">
 
 <div style="text-align: center; font-size: 9pt; color: #9ca3af; padding: 8pt;">
- <p style="margin: 0;">Mode d'emploi VD Soft — Profils Fourrière & Facturation · Version du 14/06/2026</p>
+ <p style="margin: 0;">Mode d'emploi VD Soft — Profils Fourrière & Facturation · Version du 05/09/2026</p>
  <p style="margin: 4pt 0 0 0;">En cas de bug ou suggestion, contacte un admin.</p>
 </div>
 

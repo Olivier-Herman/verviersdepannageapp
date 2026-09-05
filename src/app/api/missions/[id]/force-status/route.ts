@@ -14,6 +14,7 @@ import { authOptions }       from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase'
 import { isRelEligibleSource } from '@/lib/missions/rel-eligible'
 import { isRemorquage }        from '@/lib/missions/mission-types'
+import { assertExitAllowed }   from '@/lib/missions/exit-control'
 
 export const dynamic     = 'force-dynamic'
 export const maxDuration = 60   // clôture Kaze en arrière-plan peut prendre ~10s
@@ -52,6 +53,17 @@ export async function POST(req: Request, { params }: { params: { id: string } })
 
   const sb = createAdminClient()
   const now = new Date().toISOString()
+
+  // Contrôle de sortie (épave gérée par un bureau d'expertise) : forcer une
+  // fiche EN PARC vers clôturée / à facturer = la faire sortir du parc.
+  // Olivier 2026-09-05.
+  if (body.status === 'completed' || body.status === 'to_invoice') {
+    const { data: cur } = await sb.from('incoming_missions').select('status').eq('id', params.id).maybeSingle()
+    if (cur?.status === 'parked') {
+      const gate = await assertExitAllowed(sb, params.id)
+      if (!gate.ok) return NextResponse.json({ error: gate.error, exit_control_blocked: true }, { status: 409 })
+    }
+  }
 
   const update: any = {
     status:     body.status,

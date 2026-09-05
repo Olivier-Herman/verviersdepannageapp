@@ -40,6 +40,7 @@ import ManualInfoButton, { type ManualClientData } from '@/components/caisse/Man
 import IdPhotoButton from '@/components/caisse/IdPhotoButton'
 import VisitorsPanel from '@/components/caisse/VisitorsPanel'
 import RestituerMalGareeModal from '@/components/restitution/RestituerMalGareeModal'
+import ExitControlPanel from '@/components/exit-control/ExitControlPanel'
 import RestituerEtFacturerModal from '@/components/fourriere/RestituerEtFacturerModal'
 import GererSncDepotModal from '@/components/restitution/GererSncDepotModal'
 import AppShell from '@/components/layout/AppShell'
@@ -1824,6 +1825,9 @@ export default function MissionDetailClient({
   }
   const [showPartialInvoice, setShowPartialInvoice] = useState(false)
   const [showRestituerModal, setShowRestituerModal] = useState(false)
+  // Contrôle de sortie (épave gérée par un bureau d'expertise) : true tant que
+  // la checklist est incomplète → boutons de restitution inactifs. 2026-09-05.
+  const [exitBlocked, setExitBlocked] = useState(false)
   const [showRestituerFacturer, setShowRestituerFacturer] = useState(false)
   const [showSncDepotModal, setShowSncDepotModal] = useState(false)
   const [clientQuery,     setClientQuery]     = useState('')
@@ -4389,6 +4393,17 @@ export default function MissionDetailClient({
                   droit (permuté avec l'impression d'étiquette). Visible pour
                   TOUTES les sources Appel Police (+ sia_couvert) en parc.
                   Warnings conditionnels avant redirection (saisie / bloqué police). */}
+              {/* Contrôle de sortie — épave Police Accident vue par un expert :
+                  checklist bloquante (chemin, bon Informex, identité, CMR,
+                  attestation signée). Reste consultable après la sortie. */}
+              {initialMission.source === 'police_accident' && (
+                <ExitControlPanel
+                  missionId={initialMission.id}
+                  status={status}
+                  onChanged={(s: any) => setExitBlocked(!!s?.armed && !s?.allowed)}
+                />
+              )}
+
               {status === 'parked' && ['police_mg', 'police_rodeo', 'police_accident', 'police_saisie', 'police_avp', 'police_snc', 'sia_couvert'].includes(initialMission.source) && (
                 <>
                   {policeBlocked && (
@@ -4405,12 +4420,17 @@ export default function MissionDetailClient({
                   {(userModules.includes('facturation') || ['admin', 'superadmin'].includes(userRole)) && (
                     <button
                       onClick={() => setShowRestituerFacturer(true)}
-                      className="w-full py-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-2xl text-sm font-semibold transition flex items-center justify-center gap-2">
-                      🧾 Restituer et facturer
+                      disabled={exitBlocked}
+                      title={exitBlocked ? 'Sortie bloquée : contrôle de sortie incomplet' : undefined}
+                      className="w-full py-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-2xl text-sm font-semibold transition flex items-center justify-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed">
+                      {exitBlocked ? '🔒' : '🧾'} Restituer et facturer
                     </button>
                   )}
                   <button
+                    disabled={exitBlocked}
+                    title={exitBlocked ? 'Sortie bloquée : contrôle de sortie incomplet' : undefined}
                     onClick={() => {
+                      if (exitBlocked) return
                       const src = initialMission.source
                       const isSaisie = ['police_saisie', 'police_rodeo'].includes(src)
                       const leveeManquante = isSaisie && !(initialMission as any).police_levee_saisie_ok
@@ -4428,8 +4448,8 @@ export default function MissionDetailClient({
                       })
                       window.location.href = url
                     }}
-                    className="w-full py-3 bg-brand hover:bg-brand-hover text-white rounded-2xl text-sm font-semibold transition flex items-center justify-center gap-2">
-                    🔑 Restituer le véhicule (encaissement chauffeur)
+                    className="w-full py-3 bg-brand hover:bg-brand-hover text-white rounded-2xl text-sm font-semibold transition flex items-center justify-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed">
+                    {exitBlocked ? '🔒' : '🔑'} Restituer le véhicule (encaissement chauffeur)
                   </button>
                 </>
               )}

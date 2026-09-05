@@ -22,6 +22,7 @@ import { createCheckout }      from '@/lib/sumup'
 import { buildEpcQrPayload, bankConfigFromEnv } from '@/lib/payments/epc-qr'
 import { checkVat }             from '@/lib/vies'
 import { odooRpc }             from '@/lib/odoo'
+import { armExitControlFromVisit } from '@/lib/missions/exit-control'
 
 export const dynamic     = 'force-dynamic'
 export const maxDuration = 30
@@ -267,12 +268,14 @@ export async function POST(req: Request) {
     }
     // Insertion de la visite (source eID). mission_id vient du payload d'ouverture.
     if (p.mission_id) {
-      await sb.from('mission_visitors').insert({
+      const { data: visitRow } = await sb.from('mission_visitors').insert({
         mission_id: p.mission_id, visited_at: new Date().toISOString(),
         last_name: lastName, first_name: firstName, birth_date: response.birthDate,
         motifs, expert_bureau: response.expert_bureau, note: response.note,
         national_number: response.nationalNumber, source: 'eid', created_by: p.opened_by || null,
-      }).then(() => {}, () => {})
+      }).select('id, visited_at, first_name, last_name, motifs, expert_bureau').maybeSingle()
+      // Passage d'un expert sur une épave Police – Accident → contrôle de sortie. 2026-09-05.
+      if (visitRow) await armExitControlFromVisit(sb, p.mission_id, visitRow).catch(() => {})
       await sb.from('mission_logs').insert({
         mission_id: p.mission_id, action: 'visitor',
         notes: `Visite : ${[firstName, lastName].filter(Boolean).join(' ')} — ${motifs.join(', ')}${response.expert_bureau ? ` (${response.expert_bureau})` : ''} [eid]`,

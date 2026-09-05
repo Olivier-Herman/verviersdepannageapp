@@ -75,6 +75,7 @@ const fmtDate = (iso: string | null) => {
 
 export default function QrMissionClient({
   mission, existingRel, currentUser, permissions, consultUrl, isElligibleForRel, activeDrivers = [], relZoneType = false,
+  exitBlocked = null,
 }: {
   mission:            Mission
   existingRel:        ExistingRel | null
@@ -84,6 +85,9 @@ export default function QrMissionClient({
   isElligibleForRel:  boolean
   activeDrivers?:     { id: string; name: string }[]   // pour selecteur Relivrer dispatcher
   relZoneType?:       boolean   // zone de type relivraison/accident → saisie adresse possible au scan
+  // Contrôle de sortie (épave gérée par un bureau d'expertise) : motif du
+  // blocage, ou null si la sortie est libre. Olivier 2026-09-05.
+  exitBlocked?:       string | null
 }) {
   const router = useRouter()
   const [working,      setWorking]      = useState(false)
@@ -124,7 +128,7 @@ export default function QrMissionClient({
 
   // Sources fourriere : possibilite d encaisser via Restituer
   const RESTITUABLE_SOURCES = ['police_mg', 'police_rodeo', 'police_avp', 'police_snc', 'sia_couvert', 'prive']
-  const canRestituer = mission.status === 'parked' && RESTITUABLE_SOURCES.includes(mission.source || '')
+  const canRestituer = mission.status === 'parked' && RESTITUABLE_SOURCES.includes(mission.source || '') && !exitBlocked
 
   async function doRelivrer(confirmReassign: boolean = false) {
     // En mode dispatcher : selection chauffeur obligatoire
@@ -562,6 +566,17 @@ export default function QrMissionClient({
                 className="w-full py-4 bg-brand hover:opacity-90 text-white rounded-2xl text-base font-bold transition disabled:opacity-40 flex items-center justify-center gap-2 shadow-lg shadow-brand/20">
                 <Truck size={20} /> Relivrer ce véhicule
               </button>
+            )}
+
+            {/* Contrôle de sortie : véhicule géré par un bureau d'expertise,
+                checklist incomplète → pas de restitution ni de relivraison
+                depuis le hub. À compléter sur la fiche dispatch. */}
+            {exitBlocked && mission.status === 'parked' && (
+              <div className="w-full rounded-2xl border-2 border-critical/60 bg-critical/10 p-4">
+                <p className="text-critical font-black uppercase tracking-wide">🔒 Sortie bloquée</p>
+                <p className="text-ink text-sm mt-1">Véhicule géré par un bureau d'expertise. {exitBlocked}</p>
+                <p className="text-ink-muted text-xs mt-1">Complète le contrôle de sortie sur la fiche dispatch (bon Informex, identité, attestation signée) ou demande une sortie forcée au bureau.</p>
+              </div>
             )}
 
             {/* Restituer (tous users auth) */}
