@@ -12,7 +12,7 @@
 //     Police – Accident EN PARC ; il reçoit la zone + les photos d'entrée ;
 //     « Véhicule vu » enregistre la visite (registre) → arme le contrôle de sortie.
 
-import { randomBytes } from 'crypto'
+import { randomBytes, randomUUID } from 'crypto'
 import { sendNotification } from '@/lib/notifications/send'
 import { normalizePlate } from '@/lib/plate'
 import { armExitControlFromVisit } from '@/lib/missions/exit-control'
@@ -50,52 +50,75 @@ export async function deviceBureaus(sb: any, deviceId: string) {
   return data || []
 }
 
-/** Demande d'accès pour un bureau → ligne pending + popup bloquant au bureau fourrière. */
-export async function requestBureauAccess(sb: any, device: any, bureau: string): Promise<{ id: string; status: string }> {
-  const { data: existing } = await sb.from('expert_device_bureaus').select('id, status')
-    .eq('device_id', device.id).eq('bureau', bureau).maybeSingle()
-  if (existing && existing.status === 'approved') return existing
-  let row = existing
-  if (!row) {
-    const r = await sb.from('expert_device_bureaus').insert({ device_id: device.id, bureau, status: 'pending' }).select('id, status').single()
-    row = r.data
-  } else if (row.status !== 'pending') {
-    await sb.from('expert_device_bureaus').update({ status: 'pending', requested_at: new Date().toISOString(), decided_at: null, decided_by: null }).eq('id', row.id)
-    row = { ...row, status: 'pending' }
+/**
+ * Demande d'accès pour un ou plusieurs bureaux → lignes pending + UN SEUL popup
+ * bloquant au bureau fourrière (une décision par bureau, le premier qui
+ * répond décide pour tous, le popup se ferme chez les autres).
+ */
+export async function requestBureauAccess(sb: any, device: any, bureaus: string[]): Promise<{ id: string; bureau: string; status: string }[]> {
+  const wanted = Array.from(new Set(bureaus.map(b => String(b || '').trim()).filter(Boolean)))
+  const rows: { id: string; bureau: string; status: string }[] = []
+  const now = new Date().toISOString()
+  for (const bureau of wanted) {
+    const { data: existing } = await sb.from('expert_device_bureaus').select('id, bureau, status')
+      .eq('device_id', device.id).eq('bureau', bureau).maybeSingle()
+    if (existing && existing.status === 'approved') { rows.push(existing); continue }
+    if (!existing) {
+      const r = await sb.from('expert_device_bureaus').insert({ device_id: device.id, bureau, status: 'pending' }).select('id, bureau, status').single()
+      if (r.data) rows.push(r.data)
+    } else {
+      if (existing.status !== 'pending') {
+        await sb.from('expert_device_bureaus').update({ status: 'pending', requested_at: now, decided_at: null, decided_by: null }).eq('id', existing.id)
+      }
+      rows.push({ ...existing, status: 'pending' })
+    }
   }
-  if (!row) throw new Error('Demande impossible')
+  const pending = rows.filter(r => r.status === 'pending')
+  if (!pending.length) return rows
 
   const { data: others } = await sb.from('expert_device_bureaus').select('bureau').eq('device_id', device.id).eq('status', 'approved')
-  const already = (others || []).map((o: any) => o.bureau).filter((b: string) => b !== bureau)
-  const recipients = await officeUserIds(sb)
-  for (const userId of recipients) {
+  const already = (others || []).map((o: any) => o.bureau).filter((b: string) => !wanted.includes(b))
+  const group = randomUUID()
+  const list = pending.map(r => r.bureau).join(', ')
+  for (const userId of await officeUserIds(sb)) {
     await sendNotification(userId, 'expert_access', {
-      title: `Accès expert : ${device.first_name} — ${bureau}`,
+      title: `Accès expert : ${device.first_name} — ${list}`,
       body: already.length
-        ? `${device.first_name}, déjà validé pour ${already.join(', ')}, demande l'accès pour ${bureau}.`
-        : `${device.first_name} (${bureau}) scanne le QR experts pour la première fois et demande l'accès au parc.`,
+        ? `${device.first_name}, déjà validé pour ${already.join(', ')}, demande l'accès pour ${list}.`
+        : `${device.first_name} scanne le QR experts pour la première fois et demande l'accès au parc pour ${list}.`,
       action_url: '/fourriere',
-      data: { modal: true, kind: 'expert_access', request_id: row.id, device_id: device.id, first_name: device.first_name, bureau, already },
+      data: {
+        modal: true, kind: 'expert_access', request_group: group, device_id: device.id, first_name: device.first_name, already,
+        items: pending.map(r => ({ request_id: r.id, bureau: r.bureau })),
+      },
     })
   }
-  return row
+  return rows
 }
 
-/** Décision du bureau (premier qui répond) : applique + ferme le popup chez tout le monde. */
-export async function decideBureauAccess(sb: any, requestId: string, userId: string, decision: 'approve' | 'refuse') {
-  const { data: row } = await sb.from('expert_device_bureaus').select('id, device_id, bureau, status').eq('id', requestId).maybeSingle()
-  if (!row) return { ok: false, error: 'Demande introuvable' }
+/**
+ * Décision du bureau (premier qui répond) : une décision par demande, puis
+ * fermeture du popup chez tous les destinataires du même groupe.
+ */
+export async function decideBureauAccess(sb: any, group: string, decisions: Record<string, 'approve' | 'refuse'>, userId: string) {
   const now = new Date().toISOString()
-  if (row.status === 'pending') {
-    await sb.from('expert_device_bureaus').update({ status: decision === 'approve' ? 'approved' : 'refused', decided_at: now, decided_by: userId }).eq('id', row.id)
+  const results: { bureau: string; status: string }[] = []
+  for (const [requestId, decision] of Object.entries(decisions)) {
+    const { data: row } = await sb.from('expert_device_bureaus').select('id, bureau, status').eq('id', requestId).maybeSingle()
+    if (!row) continue
+    if (row.status === 'pending') {
+      await sb.from('expert_device_bureaus').update({ status: decision === 'approve' ? 'approved' : 'refused', decided_at: now, decided_by: userId }).eq('id', row.id)
+      results.push({ bureau: row.bureau, status: decision === 'approve' ? 'approved' : 'refused' })
+    } else results.push({ bureau: row.bureau, status: row.status })
   }
-  // Ferme le popup chez tous les destinataires (même request_id).
-  await sb.from('notifications_log')
-    .update({ responded_at: now, read_at: now })
-    .eq('notif_type', 'expert_access')
-    .is('responded_at', null)
-    .eq('payload->data->>request_id', requestId)
-  return { ok: true, status: row.status === 'pending' ? (decision === 'approve' ? 'approved' : 'refused') : row.status, bureau: row.bureau }
+  if (group) {
+    await sb.from('notifications_log')
+      .update({ responded_at: now, read_at: now })
+      .eq('notif_type', 'expert_access')
+      .is('responded_at', null)
+      .eq('payload->data->>request_group', group)
+  }
+  return { ok: true, results }
 }
 
 /** Fiche Police – Accident en parc pour cette plaque (zone + photos), sinon null. */

@@ -58,9 +58,11 @@ export async function POST(req: Request) {
 
   if (action === 'register') {
     const firstName = String(body.first_name || '').trim().slice(0, 60)
-    const bureau = String(body.bureau || '').trim().slice(0, 160)
+    const cat = await catalog(sb)
+    const bureausIn: string[] = Array.isArray(body.bureaus) ? body.bureaus : (body.bureau ? [body.bureau] : [])
+    const bureaus = bureausIn.map(b => String(b || '').trim().slice(0, 160)).filter(b => cat.includes(b))
     if (!firstName) return json({ error: 'Ton prénom, s\'il te plaît.' }, 400)
-    if (!bureau || !(await catalog(sb)).includes(bureau)) return json({ error: 'Choisis ton bureau d\'expertise dans la liste.' }, 400)
+    if (!bureaus.length) return json({ error: 'Choisis au moins un bureau d\'expertise dans la liste.' }, 400)
     let device = key ? await loadDevice(sb, key) : null
     let deviceKey = key
     if (!device) {
@@ -74,8 +76,8 @@ export async function POST(req: Request) {
       await sb.from('expert_devices').update({ first_name: firstName }).eq('id', device.id)
       device = { ...device, first_name: firstName }
     }
-    const row = await requestBureauAccess(sb, device, bureau)
-    return json({ ok: true, key: deviceKey, request: row, ...(await snapshot(sb, device)) })
+    const rows = await requestBureauAccess(sb, device, bureaus)
+    return json({ ok: true, key: deviceKey, requests: rows, ...(await snapshot(sb, device)) })
   }
 
   const device = await loadDevice(sb, key)
@@ -85,10 +87,12 @@ export async function POST(req: Request) {
 
   switch (action) {
     case 'add_bureau': {
-      const bureau = String(body.bureau || '').trim().slice(0, 160)
-      if (!bureau || !(await catalog(sb)).includes(bureau)) return json({ error: 'Bureau inconnu.' }, 400)
-      const row = await requestBureauAccess(sb, device, bureau)
-      return json({ ok: true, request: row, ...(await snapshot(sb, device)) })
+      const cat = await catalog(sb)
+      const bureausIn: string[] = Array.isArray(body.bureaus) ? body.bureaus : (body.bureau ? [body.bureau] : [])
+      const bureaus = bureausIn.map(b => String(b || '').trim().slice(0, 160)).filter(b => cat.includes(b))
+      if (!bureaus.length) return json({ error: 'Choisis au moins un bureau.' }, 400)
+      const rows = await requestBureauAccess(sb, device, bureaus)
+      return json({ ok: true, requests: rows, ...(await snapshot(sb, device)) })
     }
     case 'lookup': {
       const bureau = String(body.bureau || '').trim()

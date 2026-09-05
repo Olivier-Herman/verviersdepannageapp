@@ -34,7 +34,8 @@ export default function ExpertClient() {
 
   // Inscription
   const [firstName, setFirstName] = useState('')
-  const [bureau, setBureau] = useState('')
+  const [bureaux, setBureaux] = useState<string[]>([])
+  const toggle = (list: string[], b: string) => list.includes(b) ? list.filter(x => x !== b) : [...list, b]
   // Recherche
   const [plate, setPlate] = useState('')
   const [useBureau, setUseBureau] = useState('')
@@ -42,7 +43,7 @@ export default function ExpertClient() {
   const [seenOk, setSeenOk] = useState(false)
   // Ajout bureau
   const [showAdd, setShowAdd] = useState(false)
-  const [addBureau, setAddBureau] = useState('')
+  const [addBureaux, setAddBureaux] = useState<string[]>([])
   // Liste
   const [open, setOpen] = useState<string | null>(null)
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
@@ -84,14 +85,14 @@ export default function ExpertClient() {
   }
 
   async function register() {
-    const j = await post({ action: 'register', first_name: firstName.trim(), bureau })
+    const j = await post({ action: 'register', first_name: firstName.trim(), bureaus: bureaux })
     if (!j) return
-    try { localStorage.setItem(KEY, j.key); localStorage.setItem(LAST_BUREAU, bureau) } catch {}
-    setKey(j.key); setSnap(s => ({ ...(s as any), ...j, catalog: s?.catalog || [] })); setUseBureau(bureau)
+    try { localStorage.setItem(KEY, j.key); localStorage.setItem(LAST_BUREAU, bureaux[0] || '') } catch {}
+    setKey(j.key); setSnap(s => ({ ...(s as any), ...j, catalog: s?.catalog || [] })); setUseBureau(bureaux[0] || '')
   }
   async function requestAdd() {
-    const j = await post({ action: 'add_bureau', bureau: addBureau })
-    if (j) { setSnap(s => ({ ...(s as any), ...j, catalog: s?.catalog || [] })); setShowAdd(false); setAddBureau('') }
+    const j = await post({ action: 'add_bureau', bureaus: addBureaux })
+    if (j) { setSnap(s => ({ ...(s as any), ...j, catalog: s?.catalog || [] })); setShowAdd(false); setAddBureaux([]) }
   }
   async function lookup() {
     setResult(null); setSeenOk(false)
@@ -130,13 +131,18 @@ export default function ExpertClient() {
         <p className="font-semibold">Bienvenue. Une seule fois :</p>
         <label className="text-sm"><span className="text-ink-secondary">Votre prénom</span>
           <input value={firstName} onChange={e => setFirstName(e.target.value)} className="mt-1 w-full border rounded-lg px-3 py-2.5 bg-surface" placeholder="Prénom" autoComplete="given-name" /></label>
-        <label className="text-sm"><span className="text-ink-secondary">Votre bureau d'expertise</span>
-          <select value={bureau} onChange={e => setBureau(e.target.value)} className="mt-1 w-full border rounded-lg px-3 py-2.5 bg-surface">
-            <option value="">— Choisir —</option>
-            {snap.catalog.map(b => <option key={b} value={b}>{b}</option>)}
-          </select></label>
-        <p className="text-xs text-ink-muted">Le comptoir active votre accès en un clic. Votre téléphone garde ensuite la clé : plus rien à encoder. Vous travaillez pour plusieurs bureaux ? Vous pourrez les ajouter après.</p>
-        <button onClick={register} disabled={busy || !firstName.trim() || !bureau} className="py-3 rounded-xl bg-brand text-white font-bold disabled:opacity-40 flex items-center justify-center gap-2">
+        <div className="text-sm"><span className="text-ink-secondary">Vos bureaux d'expertise (un ou plusieurs)</span>
+          <div className="mt-1 flex flex-col gap-1.5">
+            {snap.catalog.map(b => (
+              <label key={b} className={`flex items-center gap-2 border rounded-lg px-3 py-2.5 cursor-pointer ${bureaux.includes(b) ? 'border-brand bg-brand/5' : 'bg-surface'}`}>
+                <input type="checkbox" checked={bureaux.includes(b)} onChange={() => setBureaux(l => toggle(l, b))} className="w-5 h-5 accent-brand" />
+                <span>{b}</span>
+              </label>
+            ))}
+            {snap.catalog.length === 0 && <p className="text-xs text-warning">Aucun bureau dans la liste : adressez-vous au comptoir.</p>}
+          </div></div>
+        <p className="text-xs text-ink-muted">Le comptoir active votre accès en un clic. Votre téléphone garde ensuite la clé : plus rien à encoder.</p>
+        <button onClick={register} disabled={busy || !firstName.trim() || !bureaux.length} className="py-3 rounded-xl bg-brand text-white font-bold disabled:opacity-40 flex items-center justify-center gap-2">
           {busy ? <Loader2 size={18} className="animate-spin" /> : <Check size={18} />} Demander l'accès
         </button>
       </div>,
@@ -165,7 +171,7 @@ export default function ExpertClient() {
           </div>
         ) : null}
         {refusedRows.length > 0 && (
-          <button onClick={() => post({ action: 'add_bureau', bureau: refusedRows[0].bureau }).then(j => j && setSnap(s => ({ ...(s as any), ...j, catalog: s?.catalog || [] })))} disabled={busy} className="py-2 rounded-lg border text-sm">Redemander</button>
+          <button onClick={() => post({ action: 'add_bureau', bureaus: refusedRows.map(b => b.bureau) }).then(j => j && setSnap(s => ({ ...(s as any), ...j, catalog: s?.catalog || [] })))} disabled={busy} className="py-2 rounded-lg border text-sm">Redemander</button>
         )}
       </div>,
     )
@@ -181,12 +187,14 @@ export default function ExpertClient() {
           <button onClick={() => setShowAdd(s => !s)} className="text-xs text-brand flex items-center gap-1"><Plus size={14} /> Ajouter un bureau</button>
         </div>
         {showAdd && (
-          <div className="flex gap-2">
-            <select value={addBureau} onChange={e => setAddBureau(e.target.value)} className="flex-1 border rounded-lg px-3 py-2 bg-surface text-sm">
-              <option value="">— Bureau —</option>
-              {snap.catalog.filter(b => !snap.bureaus.some(x => x.bureau === b && x.status !== 'refused')).map(b => <option key={b} value={b}>{b}</option>)}
-            </select>
-            <button onClick={requestAdd} disabled={busy || !addBureau} className="px-3 rounded-lg bg-brand text-white text-sm font-semibold disabled:opacity-40">Demander</button>
+          <div className="flex flex-col gap-1.5">
+            {snap.catalog.filter(b => !snap.bureaus.some(x => x.bureau === b && x.status !== 'refused')).map(b => (
+              <label key={b} className={`flex items-center gap-2 border rounded-lg px-3 py-2 cursor-pointer text-sm ${addBureaux.includes(b) ? 'border-brand bg-brand/5' : 'bg-surface'}`}>
+                <input type="checkbox" checked={addBureaux.includes(b)} onChange={() => setAddBureaux(l => toggle(l, b))} className="w-4 h-4 accent-brand" />
+                <span>{b}</span>
+              </label>
+            ))}
+            <button onClick={requestAdd} disabled={busy || !addBureaux.length} className="py-2 rounded-lg bg-brand text-white text-sm font-semibold disabled:opacity-40">Demander l'accès</button>
           </div>
         )}
         {pendingRows.length > 0 && <p className="text-xs text-warning flex items-center gap-1"><Loader2 size={12} className="animate-spin" /> En attente de validation : {pendingRows.map(b => b.bureau).join(', ')}</p>}

@@ -24,13 +24,16 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   const sb = createAdminClient()
   // Accès expert : Valider / Refuser — le premier qui répond décide et ferme
   // le popup chez tous les destinataires (même request_id). 2026-09-05.
-  if (body?.decision === 'approve' || body?.decision === 'refuse') {
+  if (body?.decisions && typeof body.decisions === 'object') {
     const { data: n } = await sb.from('notifications_log').select('id, notif_type, payload').eq('id', params.id).eq('user_id', userId).maybeSingle()
-    const reqId = n?.payload?.data?.request_id
-    if (n?.notif_type !== 'expert_access' || !reqId) return NextResponse.json({ error: 'Notification inconnue' }, { status: 404 })
-    const r = await decideBureauAccess(sb, String(reqId), userId, body.decision)
-    if (!r.ok) return NextResponse.json({ error: r.error }, { status: 400 })
-    return NextResponse.json({ ok: true, status: r.status, bureau: r.bureau })
+    if (n?.notif_type !== 'expert_access') return NextResponse.json({ error: 'Notification inconnue' }, { status: 404 })
+    const d = n.payload?.data || {}
+    const allowed = new Set((d.items || []).map((it: any) => String(it.request_id)))
+    const decisions: Record<string, 'approve' | 'refuse'> = {}
+    for (const [k, v] of Object.entries(body.decisions)) if (allowed.has(k) && (v === 'approve' || v === 'refuse')) decisions[k] = v
+    if (Object.keys(decisions).length !== allowed.size) return NextResponse.json({ error: 'Une décision par bureau est requise.' }, { status: 400 })
+    const r = await decideBureauAccess(sb, String(d.request_group || ''), decisions, userId)
+    return NextResponse.json({ ok: true, results: r.results })
   }
   const res = await applyParcVerificationResponse(sb, params.id, userId, answers)
   if (!res.ok) return NextResponse.json({ error: res.error }, { status: 400 })

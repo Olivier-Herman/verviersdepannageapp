@@ -24,18 +24,22 @@ export default function BlockingNotificationModal({ notif, onDone }: { notif: No
 // ── Accès expert : Valider / Refuser (le premier qui répond décide) ──────────
 function ExpertAccessModal({ notif, onDone }: { notif: NotifEvent; onDone: () => void }) {
   const d = notif.payload?.data || {}
-  const [sending, setSending] = useState<'approve' | 'refuse' | null>(null)
+  const items: { request_id: string; bureau: string }[] = d.items || []
+  const [decisions, setDecisions] = useState<Record<string, 'approve' | 'refuse'>>({})
+  const [sending, setSending] = useState(false)
   const [err, setErr] = useState<string | null>(null)
-  async function decide(decision: 'approve' | 'refuse') {
-    setSending(decision); setErr(null)
+  const complete = items.length > 0 && items.every(it => decisions[it.request_id])
+  const setAll = (v: 'approve' | 'refuse') => setDecisions(Object.fromEntries(items.map(it => [it.request_id, v])))
+  async function submit() {
+    setSending(true); setErr(null)
     try {
       const r = await fetch(`/api/notifications/${notif.id}/respond`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ decision }),
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ decisions }),
       })
       const j = await r.json().catch(() => ({}))
       if (!r.ok) { setErr(j.error || 'Envoi impossible'); return }
       onDone()
-    } catch { setErr('Erreur réseau') } finally { setSending(null) }
+    } catch { setErr('Erreur réseau') } finally { setSending(false) }
   }
   return (
     <div className="fixed inset-0 z-[400] flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
@@ -49,14 +53,29 @@ function ExpertAccessModal({ notif, onDone }: { notif: NotifEvent; onDone: () =>
         </div>
         <div className="px-5 py-5 space-y-2">
           <p className="text-2xl font-black text-slate-900">{d.first_name || '—'}</p>
-          <p className="text-slate-800">demande l'accès au parc pour <b>{d.bureau || '—'}</b>.</p>
+          <p className="text-slate-800">demande l'accès au parc pour {items.length > 1 ? 'ces bureaux' : 'ce bureau'} :</p>
+          <div className="space-y-2">
+            {items.map(it => {
+              const a = decisions[it.request_id]
+              return (
+                <div key={it.request_id} className={`rounded-xl border-2 px-4 py-2.5 flex items-center justify-between gap-3 flex-wrap ${a === 'approve' ? 'border-green-500 bg-green-50' : a === 'refuse' ? 'border-red-500 bg-red-50' : 'border-slate-300 bg-slate-50'}`}>
+                  <span className="font-semibold text-slate-900">{it.bureau}</span>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <button type="button" onClick={() => setDecisions(p => ({ ...p, [it.request_id]: 'approve' }))} className={`px-3 py-1.5 rounded-lg text-sm font-bold border-2 ${a === 'approve' ? 'bg-green-600 border-green-700 text-white' : 'bg-white border-green-500 text-green-700 hover:bg-green-50'}`}>✓ Valider</button>
+                    <button type="button" onClick={() => setDecisions(p => ({ ...p, [it.request_id]: 'refuse' }))} className={`px-3 py-1.5 rounded-lg text-sm font-bold border-2 ${a === 'refuse' ? 'bg-red-600 border-red-700 text-white' : 'bg-white border-red-500 text-red-700 hover:bg-red-50'}`}>✕ Refuser</button>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+          {items.length > 1 && <div className="flex gap-3 text-xs"><button type="button" onClick={() => setAll('approve')} className="text-green-700 underline">Tout valider</button><button type="button" onClick={() => setAll('refuse')} className="text-red-700 underline">Tout refuser</button></div>}
           {Array.isArray(d.already) && d.already.length > 0 && <p className="text-sm text-slate-600">Déjà validé pour : {d.already.join(', ')}.</p>}
           <p className="text-xs text-slate-500">Il vient de scanner le QR de l'accueil : vérifie qu'il est bien devant toi ou attendu. Une fois validé, son téléphone garde l'accès (révocable dans Fourrière → Experts).</p>
           {err && <p className="text-red-600 text-sm">⚠ {err}</p>}
         </div>
-        <div className="px-5 py-4 border-t bg-slate-50 flex items-center justify-end gap-3">
-          <button type="button" disabled={!!sending} onClick={() => decide('refuse')} className="px-5 py-2.5 rounded-xl bg-white border-2 border-red-500 text-red-700 hover:bg-red-50 disabled:opacity-40 font-bold">{sending === 'refuse' ? '…' : '✕ Refuser'}</button>
-          <button type="button" disabled={!!sending} onClick={() => decide('approve')} className="px-5 py-2.5 rounded-xl bg-green-600 hover:bg-green-700 disabled:opacity-40 text-white font-bold">{sending === 'approve' ? 'Envoi…' : '✓ Valider l\'accès'}</button>
+        <div className="px-5 py-4 border-t bg-slate-50 flex items-center justify-between gap-3">
+          <span className="text-xs text-slate-500">{Object.keys(decisions).length}/{items.length} décidé(s)</span>
+          <button type="button" disabled={!complete || sending} onClick={submit} className="px-5 py-2.5 rounded-xl bg-blue-700 hover:bg-blue-800 disabled:opacity-40 disabled:cursor-not-allowed text-white font-bold">{sending ? 'Envoi…' : 'Confirmer'}</button>
         </div>
       </div>
     </div>
