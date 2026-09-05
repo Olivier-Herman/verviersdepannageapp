@@ -11,8 +11,9 @@
 import { useEffect, useRef, useState } from 'react'
 import { Camera, Check, Loader2, QrCode, Trash2, AlertTriangle } from 'lucide-react'
 import SigPad from '@/components/mission/SigPad'
+import RestitutionWizard from './RestitutionWizard'
 
-type Kind = 'id_card' | 'cmr' | 'informex' | 'signature'
+type Kind = 'id_card' | 'cmr' | 'informex' | 'signature' | 'restitution'
 interface Info {
   status: 'pending' | 'used' | 'expired'
   kind: Kind
@@ -22,7 +23,7 @@ interface Info {
 }
 
 const TITLES: Record<Kind, string> = {
-  id_card: 'Pièce d\'identité', cmr: 'CMR du transporteur', informex: 'Bon Informex', signature: 'Attestation d\'enlèvement',
+  id_card: 'Pièce d\'identité', cmr: 'CMR du transporteur', informex: 'Bon Informex', signature: 'Attestation d\'enlèvement', restitution: 'Procédure de sortie',
 }
 const roleLabel = (r?: string | null) => r === 'mandate' ? 'mandataire de l\'acheteur' : r === 'transporter' ? 'transporteur' : 'acheteur'
 
@@ -152,6 +153,10 @@ export default function CaptureClient({ token }: { token: string }) {
         <p className="text-sm text-ink-secondary mt-1">Refais un QR depuis la fiche sur l'ordinateur.</p>
       </div>,
     )
+  }
+
+  if (info.kind === 'restitution') {
+    return shell(<RestitutionWizard token={token} mission={info.mission} initialPreview={info.preview} onFinished={() => setResult({ ok: true, kind: 'restitution' })} />)
   }
 
   if (result) {

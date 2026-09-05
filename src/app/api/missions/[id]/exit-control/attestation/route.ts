@@ -112,6 +112,8 @@ ${row('Destinataire', cmr.consignee)}
 ${row('Lieu de livraison', cmr.deliveryPlace)}
 </table>` : ''}
 
+${a.skips && Object.keys(a.skips).length ? `<h2>Étapes passées (motif + PIN)</h2><table>${Object.entries(a.skips).map(([k, v]: any) => row(k, `${v.reason} — ${v.by_name}, ${fmt(v.at)}`)).join('')}</table>` : ''}
+
 <div class="decl">
 Je soussigné(e) <b>${esc([id.firstName, id.lastName].filter(Boolean).join(' ') || a.signer_name || '')}</b>, agissant en qualité de <b>${esc(roleLabel(a.identity_role).toLowerCase())}</b>${co.name ? ` pour le compte de <b>${esc(co.name)}</b>` : ''},
 déclare emporter ce jour le véhicule <b>${esc(v.plate || '')}</b>${v.vin ? ` (châssis ${esc(v.vin)})` : ''} du parc de Verviers Dépannage,

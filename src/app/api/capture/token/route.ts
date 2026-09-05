@@ -16,8 +16,9 @@ import { sessionAccess }     from '@/lib/access'
 
 export const dynamic = 'force-dynamic'
 
-const CAPTURE_KINDS = ['id_card', 'cmr', 'informex', 'signature'] as const
+const CAPTURE_KINDS = ['id_card', 'cmr', 'informex', 'signature', 'restitution'] as const
 const TTL_MIN = 15
+const TTL_MIN_RESTITUTION = 45   // procédure complète sur le téléphone
 
 export async function POST(req: Request) {
   const session = await getServerSession(authOptions)
@@ -35,7 +36,7 @@ export async function POST(req: Request) {
   const { data: mission } = await sb.from('incoming_missions').select('id').eq('id', missionId).maybeSingle()
   if (!mission) return NextResponse.json({ error: 'Mission introuvable' }, { status: 404 })
 
-  const expires = new Date(Date.now() + TTL_MIN * 60_000).toISOString()
+  const expires = new Date(Date.now() + (kind === 'restitution' ? TTL_MIN_RESTITUTION : TTL_MIN) * 60_000).toISOString()
   const { data: tok, error } = await sb.from('capture_tokens')
     .insert({ mission_id: missionId, kind, created_by: acc.id, expires_at: expires })
     .select('id').single()

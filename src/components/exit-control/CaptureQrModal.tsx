@@ -10,19 +10,21 @@ import { useEffect, useRef, useState } from 'react'
 import QRCode from 'qrcode'
 import { X, Loader2, Smartphone, Check } from 'lucide-react'
 
-export type CaptureKind = 'id_card' | 'cmr' | 'informex' | 'signature'
+export type CaptureKind = 'id_card' | 'cmr' | 'informex' | 'signature' | 'restitution'
 
 const TITLES: Record<CaptureKind, string> = {
   id_card:   'Photographier la pièce d\'identité',
   cmr:       'Photographier le CMR',
   informex:  'Scanner le bon Informex',
   signature: 'Faire signer l\'attestation',
+  restitution: 'Restituer avec le téléphone',
 }
 const HINTS: Record<CaptureKind, string> = {
   id_card:   'Recto puis verso. La pièce est lue automatiquement (carte ou passeport, tous pays).',
   cmr:       'Photographie le CMR complet, bien à plat. Le numéro, le transporteur et la plaque du camion sont lus automatiquement.',
   informex:  'Le téléphone décode le QR du bon et lit le document (acheteur, plaque, châssis).',
   signature: 'La personne relit le résumé et signe sur le téléphone. L\'attestation est figée à la signature.',
+  restitution: 'Toute la procédure sur le téléphone : chemin, bon Informex, identité, CMR, signature. Chaque étape est passable avec motif + ton PIN. La fiche suit l\'avancement.',
 }
 
 export default function CaptureQrModal({ missionId, kind, onClose, onDone }: {
@@ -95,7 +97,7 @@ export default function CaptureQrModal({ missionId, kind, onClose, onDone }: {
             <>
               <img src={qr} alt="QR à scanner avec le téléphone" className="w-64 h-64 rounded-lg border bg-white" />
               <p className="text-ink-secondary text-sm">{HINTS[kind]}</p>
-              <p className="text-ink-muted text-xs flex items-center gap-2"><Loader2 size={14} className="animate-spin" /> En attente du téléphone… (lien valable 15 min)</p>
+              <p className="text-ink-muted text-xs flex items-center gap-2"><Loader2 size={14} className="animate-spin" /> En attente du téléphone… (lien valable {kind === 'restitution' ? '45' : '15'} min)</p>
               {url && (
                 <a href={url} target="_blank" rel="noreferrer" className="text-xs text-brand underline">Ouvrir sur cet appareil</a>
               )}

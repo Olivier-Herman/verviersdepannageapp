@@ -120,7 +120,20 @@ export async function armExitControlFromVisit(sb: any, missionId: string, visit:
   return true
 }
 
-function computeChecks(control: any): { checks: ExitChecks; requires: ExitControlState['requires'] } {
+export type ExitStep = 'path' | 'informex' | 'identity' | 'cmr' | 'attestation'
+export const EXIT_STEPS: ExitStep[] = ['path', 'informex', 'identity', 'cmr', 'attestation']
+export const EXIT_STEP_LABELS: Record<ExitStep, string> = {
+  path:        'Chemin de sortie',
+  informex:    'Bon Informex',
+  identity:    'Identité de la personne présente',
+  cmr:         'CMR du transporteur',
+  attestation: "Attestation d'enlèvement signée",
+}
+
+/** Une étape passée (motif + PIN) compte comme faite, mais reste tracée. */
+const skipped = (control: any, step: ExitStep) => !!control?.skips?.[step]
+
+export function computeChecks(control: any): { checks: ExitChecks; requires: ExitControlState['requires'] } {
   const path: ExitPath | null = control?.path || null
   const requires = {
     informex:    path === 'informex',
@@ -128,11 +141,11 @@ function computeChecks(control: any): { checks: ExitChecks; requires: ExitContro
     attestation: path !== 'assistance',
   }
   const checks: ExitChecks = {
-    path:        !!path,
-    informex:    !requires.informex || !!control?.informex_qr_raw,
-    identity:    path === 'assistance' || !!control?.identity,
-    cmr:         !requires.cmr || !!control?.cmr,
-    attestation: !requires.attestation || !!control?.attestation_signed_at,
+    path:        !!path || skipped(control, 'path'),
+    informex:    !requires.informex || !!control?.informex_qr_raw || skipped(control, 'informex'),
+    identity:    path === 'assistance' || !!control?.identity || skipped(control, 'identity'),
+    cmr:         !requires.cmr || !!control?.cmr || skipped(control, 'cmr'),
+    attestation: !requires.attestation || !!control?.attestation_signed_at || skipped(control, 'attestation'),
   }
   return { checks, requires }
 }
