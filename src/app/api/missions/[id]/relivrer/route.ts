@@ -10,7 +10,7 @@ import { getServerSession }  from 'next-auth'
 import { authOptions }       from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase'
 import { createRelivraisonMission } from '@/lib/missions/create-relivraison'
-import { assertExitAllowed }        from '@/lib/missions/exit-control'
+import { assertExitAllowed, isAssistanceSource } from '@/lib/missions/exit-control'
 
 const ALLOWED_ROLES = ['dispatcher', 'admin', 'superadmin']
 
@@ -50,7 +50,10 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   // Contrôle de sortie (épave gérée par un bureau d'expertise) : la REL est
   // une sortie du parc → chemin « autre sortie » / « assistance » requis.
   // Olivier 2026-09-05.
-  {
+  // Exception (Olivier 2026-09-05) : une REL créée AVEC une assistance choisie
+  // dans le sélecteur = reprise par cette assistance → vaut accord, on laisse
+  // passer ; la fiche passera en chemin « assistance » toute seule.
+  if (!isAssistanceSource(body.source_override)) {
     const gate = await assertExitAllowed(sb, params.id, { via: 'relivraison' })
     if (!gate.ok) return NextResponse.json({ error: gate.error, exit_control_blocked: true }, { status: 409 })
   }

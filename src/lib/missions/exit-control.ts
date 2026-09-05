@@ -21,6 +21,8 @@
 // Ce module est la SEULE source de vérité : toutes les routes qui font sortir
 // un véhicule du parc appellent assertExitAllowed() avant d'agir.
 
+import { normalizePlate } from '@/lib/plate'
+
 export const EXIT_CONTROL_SOURCES = ['police_accident']
 
 // Sources « police / privé » : une fille REL portant une AUTRE source est une
@@ -55,7 +57,7 @@ export function isExitControlSource(source?: string | null): boolean {
   return !!source && EXIT_CONTROL_SOURCES.includes(source)
 }
 
-const isAssistanceSource = (source?: string | null) =>
+export const isAssistanceSource = (source?: string | null) =>
   !!source && !NON_ASSISTANCE_PREFIXES.some(p => source.startsWith(p))
 
 /** Libellés des motifs de visite « expert » (catalogue paramétrable). */
@@ -174,7 +176,7 @@ export async function getExitControlState(sb: any, missionId: string): Promise<E
   })
 
   const { data: mission } = await sb.from('incoming_missions')
-    .select('id, source, status, vehicle_plate, vehicle_vin').eq('id', missionId).maybeSingle()
+    .select('id, source, status, vehicle_plate, vehicle_vin, rel_kaze_job_id, parked_at, received_at').eq('id', missionId).maybeSingle()
   if (!mission || !isExitControlSource(mission.source)) return empty()
 
   const expertVisits = await listExpertVisits(sb, missionId)
@@ -188,13 +190,38 @@ export async function getExitControlState(sb: any, missionId: string): Promise<E
     if (!control) return { ...empty(), expertVisits }
   }
 
-  // Reprise par une assistance : fille REL sur une source assistance.
+  // Reprise par une assistance : la mission d'assistance qui arrive VAUT accord
+  // (Olivier 2026-09-05 : le bureau d'expertise n'est généralement pas dans la
+  // boucle). On la reconnaît de quatre façons :
+  //   1. fille REL rattachée (parent_mission_id) sur une source assistance
+  //   2. job Kaze fusionné dans la fiche (rel_kaze_job_id)
+  //   3. fiche assistance fusionnée dans celle-ci (merged_into_mission_id)
+  //   4. toute autre fiche assistance, même plaque, arrivée après la mise en parc
   if (!control.path) {
-    const { data: kids } = await sb.from('incoming_missions')
-      .select('id, source, external_id, status')
-      .eq('parent_mission_id', missionId)
-      .not('status', 'in', '("cancelled","ignored")')
-    const assist = (kids || []).find((k: any) => isAssistanceSource(k.source))
+    let assist: any = null
+    if (mission.rel_kaze_job_id) {
+      assist = { id: null, source: 'kaze', external_id: `job Kaze ${mission.rel_kaze_job_id}` }
+    }
+    if (!assist) {
+      const { data: kids } = await sb.from('incoming_missions')
+        .select('id, source, external_id, status')
+        .or(`parent_mission_id.eq.${missionId},merged_into_mission_id.eq.${missionId}`)
+        .not('status', 'in', '("cancelled")')
+      assist = (kids || []).find((k: any) => isAssistanceSource(k.source)) || null
+    }
+    if (!assist && mission.vehicle_plate) {
+      const plate = normalizePlate(String(mission.vehicle_plate))
+      const since = mission.parked_at || mission.received_at
+      let q = sb.from('incoming_missions')
+        .select('id, source, external_id, status, vehicle_plate, received_at')
+        .neq('id', missionId)
+        .not('status', 'in', '("cancelled","ignored")')
+        .order('received_at', { ascending: false }).limit(20)
+      if (since) q = q.gte('received_at', since)
+      const { data: others } = await q
+      assist = (others || []).find((o: any) =>
+        isAssistanceSource(o.source) && normalizePlate(String(o.vehicle_plate || '')) === plate) || null
+    }
     if (assist) {
       const now = new Date().toISOString()
       await sb.from('mission_exit_control').update({
@@ -204,7 +231,7 @@ export async function getExitControlState(sb: any, missionId: string): Promise<E
       }).eq('mission_id', missionId)
       await sb.from('mission_logs').insert({
         mission_id: missionId, action: 'exit_control_path',
-        notes: `🔓 Contrôle de sortie : dossier repris par une assistance (${assist.source}, ${assist.external_id || assist.id}) — la demande d'assistance vaut demande de transfert.`,
+        notes: `🔓 Contrôle de sortie : dossier repris par une assistance (${assist.source}, ${assist.external_id || assist.id}) — la mission d'assistance vaut accord de transfert, sans passer par le bureau d'expertise.`,
         metadata: { path: 'assistance', assistance_mission_id: assist.id },
       }).then(() => {}, () => {})
       const r = await sb.from('mission_exit_control').select('*').eq('mission_id', missionId).maybeSingle()

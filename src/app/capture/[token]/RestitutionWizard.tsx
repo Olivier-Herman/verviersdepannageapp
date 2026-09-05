@@ -182,11 +182,11 @@ function PathStep({ p, busy, onSubmit, skip }: { p: any; busy: boolean; onSubmit
   return (
     <div className="bg-surface border rounded-xl p-4 flex flex-col gap-3">
       <p className="font-semibold">1 · Chemin de sortie</p>
-      <p className="text-sm text-ink-secondary">Décidé par le bureau d'expertise{p.expert_bureau ? ` (${p.expert_bureau})` : ''}. Encode qui te l'a donné.</p>
+      <p className="text-sm text-ink-secondary">Décidé par le bureau d'expertise{p.expert_bureau ? ` (${p.expert_bureau})` : ''} : encode qui te l'a donné. Exception : une mission de relivraison reçue d'une assistance (Touring, VAB, Kaze, Allianz, AXA) vaut accord à elle seule, et elle est reconnue toute seule quand elle est arrivée sur la même plaque.</p>
       <div className="grid grid-cols-1 gap-2">
         {(['informex', 'autre', 'assistance'] as const).map(k => (
           <button key={k} onClick={() => setPath(k)} className={`text-left px-3 py-2.5 rounded-lg border text-sm font-semibold ${path === k ? 'bg-brand text-white border-brand' : 'bg-surface'}`}>
-            {k === 'informex' ? 'Sortie Informex — véhicule vendu, bon avec QR' : k === 'autre' ? 'Autre sortie — propriétaire, garage, …' : 'Reprise par une assistance — dossier Touring, VAB, …'}
+            {k === 'informex' ? 'Sortie Informex — véhicule vendu, bon avec QR' : k === 'autre' ? 'Autre sortie — propriétaire, garage, …' : 'Reprise par une assistance — la mission de relivraison reçue vaut accord'}
           </button>
         ))}
       </div>
