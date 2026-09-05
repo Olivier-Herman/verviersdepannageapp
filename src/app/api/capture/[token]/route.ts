@@ -73,10 +73,52 @@ async function buildPreview(sb: any, missionId: string) {
   }
 }
 
-export async function GET(_req: Request, { params }: { params: { token: string } }) {
+// ── Écran comptoir depuis le téléphone ───────────────────────────────────────
+// La personne encode elle-même ses coordonnées (mode « manual ») ou insère sa
+// carte d'identité dans le lecteur (mode « eid ») sur l'écran comptoir. Le
+// téléphone commande l'écran, puis interroge GET ?counter=<request_id> ; dès
+// que le kiosque a répondu, l'identité est écrite sur le contrôle de sortie.
+const COUNTER_KEY_DEFAULT = 'facturation'
+
+async function applyCounterResponse(sb: any, tok: any, reqId: string, now: string) {
+  const { data: cur } = await sb.from('customer_display').select('key, payload, response, response_at').eq('key', COUNTER_KEY_DEFAULT).maybeSingle()
+  const resp: any = cur?.response
+  if (!resp || resp.request_id !== reqId) return 'waiting'
+  const { data: control } = await sb.from('mission_exit_control').select('identity, identity_role, company').eq('mission_id', tok.mission_id).maybeSingle()
+  if (!control) return 'done'
+  if (control.identity?.counter_request_id === reqId) return 'done'   // déjà appliqué
+  const isManual = !!resp.manual
+  const identity = isManual ? {
+    firstName: null, lastName: resp.name || null, birthDate: null, nationality: null, documentNumber: null, documentType: null,
+    country: resp.country || null, street: resp.street || null, zip: resp.zip || null, city: resp.city || null,
+    phone: resp.phone || null, email: resp.email || null, source: 'counter', counter_request_id: reqId,
+  } : {
+    firstName: resp.firstName || null, lastName: resp.lastName || null, birthDate: resp.birthDate || null, nationality: resp.nationality || 'Belge',
+    documentNumber: resp.nationalNumber || null, documentType: 'id_card', country: resp.country || 'Belgique',
+    street: resp.street || null, zip: resp.zip || null, city: resp.city || null, phone: resp.phone || null, email: resp.email || null,
+    source: 'eid', counter_request_id: reqId,
+  }
+  if (!identity.firstName && !identity.lastName) return 'done'
+  const fields: any = { identity, identity_at: now, identity_by: tok.created_by || null, identity_role: control.identity_role || 'buyer' }
+  if (isManual && resp.isCompany && resp.name) fields.company = { ...(control.company || {}), name: resp.name, vat: resp.vat || control.company?.vat || null }
+  await sb.from('mission_exit_control').update({ ...fields, updated_at: now }).eq('mission_id', tok.mission_id)
+  await sb.from('mission_logs').insert({
+    mission_id: tok.mission_id, actor_id: tok.created_by || null, action: 'exit_control_identity',
+    notes: `🪪 Identité ${isManual ? 'encodée par la personne sur l\'écran comptoir' : 'lue sur l\'écran comptoir (eID)'} : ${[identity.firstName, identity.lastName].filter(Boolean).join(' ')}.`,
+    metadata: { source: identity.source, request_id: reqId },
+  }).then(() => {}, () => {})
+  return 'done'
+}
+
+export async function GET(req: Request, { params }: { params: { token: string } }) {
   const sb = createAdminClient()
   const tok = await loadToken(sb, params.token)
   if (!tok) return json({ status: 'expired', error: 'Lien invalide' }, 404)
+  const counterReq = new URL(req.url).searchParams.get('counter')
+  if (counterReq && tok.kind === 'restitution' && tokenStatus(tok) === 'pending') {
+    const counter = await applyCounterResponse(sb, tok, counterReq, new Date().toISOString())
+    return json({ status: 'pending', kind: tok.kind, counter, preview: counter === 'done' ? await buildPreview(sb, tok.mission_id) : null })
+  }
   const { data: mission } = await sb.from('incoming_missions')
     .select('id, mission_number, external_id, dossier_number, vehicle_plate, vehicle_brand, vehicle_model, vehicle_vin, source')
     .eq('id', tok.mission_id).maybeSingle()
@@ -334,6 +376,32 @@ export async function POST(req: Request, { params }: { params: { token: string }
     await log('exit_control_informex', `📋 Bon Informex : QR / référence encodé sur le téléphone par ${authorName} : ${raw.slice(0, 200)}`, { raw, manual: true })
     return respond({ raw })
   }
+  // Commande l'écran comptoir (saisie par la personne, ou lecture eID).
+  async function handleCounter(mode: 'manual' | 'eid') {
+    const nowMs = Date.now()
+    const key = COUNTER_KEY_DEFAULT
+    const reqId = `${mode === 'eid' ? 'eid' : 'man'}-${nowMs}-${Math.floor(Math.random() * 1e6)}`
+    if (!body.force) {
+      const { data: cur } = await sb.from('customer_display').select('payload, expires_at').eq('key', key).maybeSingle()
+      const active = cur?.payload && cur.expires_at && new Date(cur.expires_at).getTime() > nowMs
+      if (active) {
+        const occ: any = cur!.payload
+        return json({ occupied: true, occupant: { client: occ.client || null, plate: occ.plate || null, mode: occ.mode || 'facture' } }, 409)
+      }
+    }
+    const expires_at = new Date(nowMs + 5 * 60_000).toISOString()
+    const payload = mode === 'eid'
+      ? { mode: 'eid', request_id: reqId, step: 'consent', plate: mv.vehicle_plate || null }
+      : { mode: 'manual', request_id: reqId, step: 'form' }
+    const { error } = await sb.from('customer_display').upsert(
+      { key, payload, expires_at, response: null, response_at: null, updated_at: now, updated_by: tok.created_by || null },
+      { onConflict: 'key' },
+    )
+    if (error) return json({ error: `Écran comptoir : ${error.message}` }, 500)
+    await log('exit_control_identity', `📺 Écran comptoir commandé depuis le téléphone (${mode === 'eid' ? 'lecture eID' : 'saisie par la personne'}) par ${authorName}.`, { mode, request_id: reqId })
+    return json({ ok: true, request_id: reqId, expires_at })
+  }
+
   async function handleFinish() {
     // Chemin assistance : pas d'attestation, la procédure se termine ici.
     if (!control) return json({ error: 'Cette fiche n\'est pas soumise au contrôle de sortie.' }, 409)
@@ -353,6 +421,8 @@ export async function POST(req: Request, { params }: { params: { token: string }
     case 'path':        return handlePath()
     case 'identity':    return handleIdentity()
     case 'informex_qr': return handleInformexQr()
+    case 'counter_manual': return handleCounter('manual')
+    case 'counter_eid':    return handleCounter('eid')
     case 'skip':        return handleSkip()
     case 'signature':   return handleSignature()
     case 'finish':      return handleFinish()

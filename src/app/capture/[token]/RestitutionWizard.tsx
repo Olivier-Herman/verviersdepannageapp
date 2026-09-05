@@ -346,9 +346,42 @@ function IdentityStep({ token, p, busy, setBusy, setError, onPhotoDone, onManual
   const [role, setRole] = useState<'buyer' | 'mandate' | 'transporter'>(p.identity_role || 'buyer')
   const [mandate, setMandate] = useState(p.mandate_note || '')
   const [company, setCompany] = useState({ name: p.company?.name || '', vat: p.company?.vat || '', truck_plate: p.company?.truck_plate || '' })
-  const [mode, setMode] = useState<'photo' | 'manual'>('photo')
+  const [mode, setMode] = useState<'photo' | 'manual' | 'counter'>('photo')
   const [id, setId] = useState({ firstName: '', lastName: '', documentNumber: '', nationality: '', birthDate: '' })
   const readOcr = lastResult?.kind === 'id_card' ? lastResult.ocr : null
+  // Écran comptoir : la personne encode elle-même (ou insère sa carte eID).
+  const [counterReq, setCounterReq] = useState<string | null>(null)
+  const [counterMode, setCounterMode] = useState<'manual' | 'eid' | null>(null)
+  const counterTimer = useRef<ReturnType<typeof setInterval> | null>(null)
+  async function sendToCounter(m: 'manual' | 'eid', force = false) {
+    setBusy(true); setError(null)
+    try {
+      const r = await fetch(`/api/capture/${token}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ step: m === 'eid' ? 'counter_eid' : 'counter_manual', force }) })
+      const j = await r.json()
+      if (r.status === 409 && j.occupied) {
+        const who = j.occupant?.client ? ` (${j.occupant.client})` : ''
+        if (window.confirm(`L'écran comptoir affiche déjà quelque chose${who}. Le remplacer ?`)) { setBusy(false); return sendToCounter(m, true) }
+        setBusy(false); return
+      }
+      if (!r.ok) throw new Error(j.error || 'Écran comptoir indisponible')
+      setCounterReq(j.request_id); setCounterMode(m)
+    } catch (e: any) { setError(e.message) } finally { setBusy(false) }
+  }
+  useEffect(() => {
+    if (!counterReq) return
+    counterTimer.current = setInterval(async () => {
+      try {
+        const r = await fetch(`/api/capture/${token}?counter=${encodeURIComponent(counterReq)}`, { cache: 'no-store' })
+        const j = await r.json()
+        if (j.counter === 'done') {
+          if (counterTimer.current) clearInterval(counterTimer.current)
+          setCounterReq(null)
+          onManual({ role, mandate_note: mandate, company })   // garde l'identité reçue, pose la qualité, avance
+        }
+      } catch { /* tick suivant */ }
+    }, 2500)
+    return () => { if (counterTimer.current) clearInterval(counterTimer.current) }
+  }, [counterReq]) // eslint-disable-line react-hooks/exhaustive-deps
 
   async function sendPhotos() {
     if (!ph.files.length) { setError('Ajoute au moins une photo.'); return }
@@ -379,11 +412,25 @@ function IdentityStep({ token, p, busy, setBusy, setError, onPhotoDone, onManual
           {role === 'transporter' && <input value={company.truck_plate} onChange={e => setCompany({ ...company, truck_plate: e.target.value })} placeholder="Plaque du camion" className="border rounded-lg px-3 py-2 bg-surface text-sm" />}
         </div>
       )}
-      <div className="flex gap-2">
-        <button onClick={() => setMode('photo')} className={`flex-1 py-2 rounded-lg border text-sm font-semibold ${mode === 'photo' ? 'bg-brand text-white border-brand' : ''}`}>Photographier la pièce</button>
-        <button onClick={() => setMode('manual')} className={`flex-1 py-2 rounded-lg border text-sm font-semibold ${mode === 'manual' ? 'bg-brand text-white border-brand' : ''}`}>Saisir à la main</button>
+      <div className="grid grid-cols-3 gap-2">
+        <button onClick={() => setMode('photo')} className={`py-2 rounded-lg border text-xs font-semibold ${mode === 'photo' ? 'bg-brand text-white border-brand' : ''}`}>Photographier la pièce</button>
+        <button onClick={() => setMode('counter')} className={`py-2 rounded-lg border text-xs font-semibold ${mode === 'counter' ? 'bg-brand text-white border-brand' : ''}`}>Écran comptoir</button>
+        <button onClick={() => setMode('manual')} className={`py-2 rounded-lg border text-xs font-semibold ${mode === 'manual' ? 'bg-brand text-white border-brand' : ''}`}>Saisir à la main</button>
       </div>
-      {mode === 'photo' ? (
+      {mode === 'counter' ? (
+        <div className="flex flex-col gap-2">
+          <p className="text-xs text-ink-muted">L'écran face au comptoir passe en mode saisie : la personne encode elle-même ses coordonnées, ou insère sa carte d'identité belge dans le lecteur. Dès qu'elle valide, l'identité arrive ici.</p>
+          {counterReq ? (
+            <p className="text-sm text-ink-secondary flex items-center gap-2 py-2"><Loader2 size={16} className="animate-spin" /> En attente de la personne au comptoir ({counterMode === 'eid' ? 'lecture de la carte' : 'saisie des coordonnées'})…</p>
+          ) : (
+            <div className="grid grid-cols-1 gap-2">
+              <button onClick={() => sendToCounter('manual')} disabled={busy} className="py-3 rounded-xl bg-brand text-white font-bold disabled:opacity-40">📺 La personne encode ses coordonnées</button>
+              <button onClick={() => sendToCounter('eid')} disabled={busy} className="py-3 rounded-xl border font-semibold disabled:opacity-40">🪪 Lire sa carte d'identité belge (lecteur)</button>
+            </div>
+          )}
+          {counterReq && <button onClick={() => { setCounterReq(null); if (counterTimer.current) clearInterval(counterTimer.current) }} className="text-xs text-ink-muted underline">Annuler</button>}
+        </div>
+      ) : mode === 'photo' ? (
         <>
           <p className="text-xs text-ink-muted">Carte d'identité ou passeport, tous pays : recto puis verso, bien net. Lecture automatique.</p>
           <PhotoPicker {...ph} label="Photographier la pièce" />
