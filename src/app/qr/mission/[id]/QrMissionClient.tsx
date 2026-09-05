@@ -163,6 +163,21 @@ export default function QrMissionClient({
     }
   }
 
+  // Contrôle de sortie : lance la procédure complète sur ce téléphone
+  // (jeton 45 min, même module que le QR de la fiche dispatch).
+  async function startExitProcedure() {
+    setWorking(true); setError(null)
+    try {
+      const r = await fetch('/api/capture/token', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mission_id: mission.id, kind: 'restitution' }),
+      })
+      const j = await r.json()
+      if (!r.ok) throw new Error(j.error || 'Procédure indisponible (accès bureau requis)')
+      window.location.href = j.url
+    } catch (e: any) { setError(e.message); setWorking(false) }
+  }
+
   async function doRestituerSansFrais() {
     const reason = noChargeReason.trim()
     if (!reason) { setError('Motif obligatoire'); return }
@@ -572,10 +587,14 @@ export default function QrMissionClient({
                 checklist incomplète → pas de restitution ni de relivraison
                 depuis le hub. À compléter sur la fiche dispatch. */}
             {exitBlocked && mission.status === 'parked' && (
-              <div className="w-full rounded-2xl border-2 border-critical/60 bg-critical/10 p-4">
-                <p className="text-critical font-black uppercase tracking-wide">🔒 Sortie bloquée</p>
-                <p className="text-ink text-sm mt-1">Véhicule géré par un bureau d'expertise. {exitBlocked}</p>
-                <p className="text-ink-muted text-xs mt-1">Complète le contrôle de sortie sur la fiche dispatch (bon Informex, identité, attestation signée) ou demande une sortie forcée au bureau.</p>
+              <div className="w-full rounded-2xl border-2 border-critical/60 bg-critical/10 p-4 flex flex-col gap-2">
+                <p className="text-critical font-black uppercase tracking-wide">🔒 Véhicule géré par un bureau d'expertise</p>
+                <p className="text-ink text-sm">{exitBlocked}</p>
+                <button onClick={startExitProcedure} disabled={working}
+                  className="w-full py-3 bg-brand hover:bg-brand-hover text-white rounded-2xl text-sm font-bold transition disabled:opacity-40">
+                  📱 Faire la procédure de sortie sur ce téléphone
+                </button>
+                <p className="text-ink-muted text-xs">Chemin de sortie, bon Informex, identité, CMR, attestation signée. Chaque étape est passable avec motif + PIN.</p>
               </div>
             )}
 

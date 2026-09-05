@@ -27,11 +27,12 @@ const HINTS: Record<CaptureKind, string> = {
   restitution: 'Toute la procédure sur le téléphone : chemin, bon Informex, identité, CMR, signature. Chaque étape est passable avec motif + ton PIN. La fiche suit l\'avancement.',
 }
 
-export default function CaptureQrModal({ missionId, kind, onClose, onDone }: {
+export default function CaptureQrModal({ missionId, kind, onClose, onDone, onTick }: {
   missionId: string
   kind:      CaptureKind
   onClose:   () => void
   onDone:    () => void
+  onTick?:   () => void      // à chaque interrogation du jeton (la fiche se rafraîchit)
 }) {
   const [token, setToken] = useState<string | null>(null)
   const [url, setUrl]     = useState<string | null>(null)
@@ -39,6 +40,8 @@ export default function CaptureQrModal({ missionId, kind, onClose, onDone }: {
   const [error, setError] = useState<string | null>(null)
   const [done, setDone]   = useState(false)
   const timer = useRef<ReturnType<typeof setInterval> | null>(null)
+  const onDoneRef = useRef(onDone); onDoneRef.current = onDone
+  const onTickRef = useRef(onTick); onTickRef.current = onTick
 
   useEffect(() => {
     let cancelled = false
@@ -64,10 +67,11 @@ export default function CaptureQrModal({ missionId, kind, onClose, onDone }: {
       try {
         const r = await fetch(`/api/capture/${token}`, { cache: 'no-store' })
         const j = await r.json()
+        onTickRef.current?.()
         if (j.status === 'used') {
           setDone(true)
           if (timer.current) clearInterval(timer.current)
-          onDone()
+          onDoneRef.current()
         } else if (j.status === 'expired') {
           setError('Lien expiré (15 min). Ferme et recommence.')
           if (timer.current) clearInterval(timer.current)
@@ -75,7 +79,7 @@ export default function CaptureQrModal({ missionId, kind, onClose, onDone }: {
       } catch { /* réessaie au tick suivant */ }
     }, 2500)
     return () => { if (timer.current) clearInterval(timer.current) }
-  }, [token, done, onDone])
+  }, [token, done])
 
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
@@ -89,7 +93,7 @@ export default function CaptureQrModal({ missionId, kind, onClose, onDone }: {
             <div className="flex flex-col items-center gap-2 py-6">
               <div className="w-14 h-14 rounded-full bg-success/15 text-success flex items-center justify-center"><Check size={30} /></div>
               <p className="text-ink font-semibold">Reçu sur la fiche</p>
-              <button onClick={onClose} className="mt-2 px-4 py-2 rounded-lg bg-brand text-white text-sm font-semibold">Fermer</button>
+              <button onClick={onClose} className="mt-2 px-4 py-2 rounded-lg bg-brand text-white text-sm font-semibold">{kind === 'restitution' ? 'Fermer — la sortie est autorisée' : 'Fermer'}</button>
             </div>
           ) : error ? (
             <p className="text-critical text-sm py-6">{error}</p>

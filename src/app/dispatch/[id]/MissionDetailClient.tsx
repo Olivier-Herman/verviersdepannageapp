@@ -41,6 +41,7 @@ import IdPhotoButton from '@/components/caisse/IdPhotoButton'
 import VisitorsPanel from '@/components/caisse/VisitorsPanel'
 import RestituerMalGareeModal from '@/components/restitution/RestituerMalGareeModal'
 import ExitControlPanel from '@/components/exit-control/ExitControlPanel'
+import CaptureQrModal   from '@/components/exit-control/CaptureQrModal'
 import RestituerEtFacturerModal from '@/components/fourriere/RestituerEtFacturerModal'
 import GererSncDepotModal from '@/components/restitution/GererSncDepotModal'
 import AppShell from '@/components/layout/AppShell'
@@ -1828,6 +1829,8 @@ export default function MissionDetailClient({
   // Contrôle de sortie (épave gérée par un bureau d'expertise) : true tant que
   // la checklist est incomplète → boutons de restitution inactifs. 2026-09-05.
   const [exitBlocked, setExitBlocked] = useState(false)
+  const [showExitProcedure, setShowExitProcedure] = useState(false)   // QR de la procédure téléphone
+  const [exitRefresh, setExitRefresh] = useState(0)
   const [showRestituerFacturer, setShowRestituerFacturer] = useState(false)
   const [showSncDepotModal, setShowSncDepotModal] = useState(false)
   const [clientQuery,     setClientQuery]     = useState('')
@@ -4400,6 +4403,7 @@ export default function MissionDetailClient({
                 <ExitControlPanel
                   missionId={initialMission.id}
                   status={status}
+                  refreshKey={exitRefresh}
                   onChanged={(s: any) => setExitBlocked(!!s?.armed && !s?.allowed)}
                 />
               )}
@@ -4419,18 +4423,16 @@ export default function MissionDetailClient({
                       puis bascule sur le module Facturation. Olivier 2026-06-14. */}
                   {(userModules.includes('facturation') || ['admin', 'superadmin'].includes(userRole)) && (
                     <button
-                      onClick={() => setShowRestituerFacturer(true)}
-                      disabled={exitBlocked}
-                      title={exitBlocked ? 'Sortie bloquée : contrôle de sortie incomplet' : undefined}
-                      className="w-full py-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-2xl text-sm font-semibold transition flex items-center justify-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed">
-                      {exitBlocked ? '🔒' : '🧾'} Restituer et facturer
+                      onClick={() => exitBlocked ? setShowExitProcedure(true) : setShowRestituerFacturer(true)}
+                      title={exitBlocked ? 'Véhicule géré par un bureau d\'expertise : la procédure de sortie se fait sur le téléphone' : undefined}
+                      className="w-full py-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-2xl text-sm font-semibold transition flex items-center justify-center gap-2">
+                      {exitBlocked ? '🔒' : '🧾'} Restituer et facturer{exitBlocked ? ' — procédure de sortie' : ''}
                     </button>
                   )}
                   <button
-                    disabled={exitBlocked}
-                    title={exitBlocked ? 'Sortie bloquée : contrôle de sortie incomplet' : undefined}
+                    title={exitBlocked ? 'Véhicule géré par un bureau d\'expertise : la procédure de sortie se fait sur le téléphone' : undefined}
                     onClick={() => {
-                      if (exitBlocked) return
+                      if (exitBlocked) { setShowExitProcedure(true); return }
                       const src = initialMission.source
                       const isSaisie = ['police_saisie', 'police_rodeo'].includes(src)
                       const leveeManquante = isSaisie && !(initialMission as any).police_levee_saisie_ok
@@ -4448,9 +4450,18 @@ export default function MissionDetailClient({
                       })
                       window.location.href = url
                     }}
-                    className="w-full py-3 bg-brand hover:bg-brand-hover text-white rounded-2xl text-sm font-semibold transition flex items-center justify-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed">
-                    {exitBlocked ? '🔒' : '🔑'} Restituer le véhicule (encaissement chauffeur)
+                    className="w-full py-3 bg-brand hover:bg-brand-hover text-white rounded-2xl text-sm font-semibold transition flex items-center justify-center gap-2">
+                    {exitBlocked ? '🔒' : '🔑'} Restituer le véhicule{exitBlocked ? ' — procédure de sortie' : ' (encaissement chauffeur)'}
                   </button>
+                  {showExitProcedure && (
+                    <CaptureQrModal
+                      missionId={initialMission.id}
+                      kind="restitution"
+                      onClose={() => { setShowExitProcedure(false); setExitRefresh(k => k + 1) }}
+                      onDone={() => { setExitRefresh(k => k + 1) }}
+                      onTick={() => { setExitRefresh(k => k + 1) }}
+                    />
+                  )}
                 </>
               )}
 

@@ -14,12 +14,12 @@ import {
   Lock, Unlock, ShieldAlert, Smartphone, FileText, CreditCard, Truck, PenLine, Printer,
   Check, AlertTriangle, Loader2, Paperclip, KeyRound, SkipForward,
 } from 'lucide-react'
-import CaptureQrModal from './CaptureQrModal'
 
 interface Props {
   missionId: string
   status:    string          // status de la fiche (le panneau reste consultable après la sortie)
   onChanged?: (state: any) => void
+  refreshKey?: number        // incrémenté par la fiche quand la procédure téléphone a avancé
 }
 
 const ROLE_LABELS: Record<string, string> = { buyer: 'Acheteur', mandate: 'Mandataire de l\'acheteur', transporter: 'Transporteur' }
@@ -27,11 +27,10 @@ const fmt = (iso?: string | null) => iso
   ? new Date(iso).toLocaleString('fr-BE', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })
   : '—'
 
-export default function ExitControlPanel({ missionId, status, onChanged }: Props) {
+export default function ExitControlPanel({ missionId, status, onChanged, refreshKey = 0 }: Props) {
   const [state, setState]   = useState<any>(null)
   const [busy, setBusy]     = useState(false)
   const [error, setError]   = useState<string | null>(null)
-  const [showQr, setShowQr] = useState(false)
   const [showForce, setShowForce] = useState(false)
   const [forceReason, setForceReason] = useState('')
   const [forcePin, setForcePin]       = useState('')
@@ -50,14 +49,7 @@ export default function ExitControlPanel({ missionId, status, onChanged }: Props
     } catch { /* silencieux : la fiche reste utilisable */ }
   }, [missionId])
 
-  useEffect(() => { load() }, [load])
-  // Pendant que le QR est affiché (procédure sur le téléphone), la fiche suit
-  // l'avancement toutes les 3 s.
-  useEffect(() => {
-    if (!showQr) return
-    const t = setInterval(load, 3000)
-    return () => clearInterval(t)
-  }, [showQr, load])
+  useEffect(() => { load() }, [load, refreshKey])
 
   async function force() {
     setBusy(true); setError(null)
@@ -123,12 +115,8 @@ export default function ExitControlPanel({ missionId, status, onChanged }: Props
 
       {error && <p className="text-critical text-sm bg-critical/10 border border-critical/30 rounded-lg px-3 py-2">{error}</p>}
 
-      {/* LE bouton : un seul QR, toute la procédure sur le téléphone */}
       {!state.allowed && !out && (
-        <button onClick={() => setShowQr(true)}
-          className="w-full py-3.5 rounded-2xl bg-brand hover:bg-brand-hover text-white font-bold flex items-center justify-center gap-2 transition">
-          <Smartphone size={18} /> Restituer avec le téléphone — toute la procédure
-        </button>
+        <p className="text-sm text-ink-secondary flex items-center gap-2"><Smartphone size={16} className="text-ink-muted" /> Clique « Restituer et facturer » ou « Restituer le véhicule » : le QR de la procédure s'affiche, tout se fait sur le téléphone.</p>
       )}
 
       {/* Étapes (état en direct) */}
@@ -227,9 +215,7 @@ export default function ExitControlPanel({ missionId, status, onChanged }: Props
         </div>
       )}
 
-      {showQr && (
-        <CaptureQrModal missionId={missionId} kind="restitution" onClose={() => { setShowQr(false); load() }} onDone={() => { load() }} />
-      )}
+
     </div>
   )
 }
