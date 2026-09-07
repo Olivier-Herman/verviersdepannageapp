@@ -89,7 +89,10 @@ const normPlate = (p: string | null | undefined) => (p || '').toUpperCase().repl
 
 const REGIME_LABEL: Record<string, string> = { assistance: 'assistance', saisie: 'saisie', siabis: 'Siabis', autre: 'autre' }
 
-const CHAIN_COLS = `id, mission_number, external_id, dossier_number, source, source_format, status, mission_type, incident_type,
+// (Historique : liste de colonnes explicite ; remplacée par '*' le 07/09/2026 —
+// les constructeurs de lignes (montants forcés, Siabis, brouillons) lisent des
+// champs qui n'y figuraient pas et le dossier divergeait de la facture.)
+const CHAIN_COLS_LEGACY = `id, mission_number, external_id, dossier_number, source, source_format, status, mission_type, incident_type,
   parent_mission_id, dossier_leg, parc_origin_mission_id, parc_exit_at, parc_exit_reason,
   vehicle_plate, vehicle_brand, vehicle_model, vehicle_vin, vehicle_class, vehicle_mileage,
   client_name, client_phone, billed_to_id, billed_to_name,
@@ -143,16 +146,16 @@ export async function buildDossier(anyMissionId: string, opts: { light?: boolean
   const light = !!opts.light
   const sb = createAdminClient()
 
-  const { data: m0, error: e0 } = await sb.from('incoming_missions').select(CHAIN_COLS).eq('id', anyMissionId).maybeSingle()
+  const { data: m0, error: e0 } = await sb.from('incoming_missions').select('*').eq('id', anyMissionId).maybeSingle()
   if (e0) console.error('[dossier/build]', e0.message)
   if (!m0) return null
   let root: any = m0
   if ((m0 as any).parent_mission_id) {
-    const { data: p } = await sb.from('incoming_missions').select(CHAIN_COLS).eq('id', (m0 as any).parent_mission_id).maybeSingle()
+    const { data: p } = await sb.from('incoming_missions').select('*').eq('id', (m0 as any).parent_mission_id).maybeSingle()
     if (p) root = p
   }
 
-  const { data: kidsRaw } = await sb.from('incoming_missions').select(CHAIN_COLS)
+  const { data: kidsRaw } = await sb.from('incoming_missions').select('*')
     .eq('parent_mission_id', root.id).order('received_at', { ascending: true })
   const kids: any[] = kidsRaw || []
 
@@ -300,8 +303,12 @@ export async function buildDossier(anyMissionId: string, opts: { light?: boolean
         if (built.has_tariff && built.lines.length) {
           amount = linesTotal(built.lines)
           note = built.lines.map(l => `${l.name.replace(/\s+—.*$/, '').slice(0, 40)}${l.qty !== 1 ? ` ×${l.qty}` : ''} ${Number(l.qty * l.price_unit).toFixed(2)} €`).join(' · ')
-        } else if (Number(m.estimated_htva) > 0) { amount = r2(Number(m.estimated_htva)); note = 'estimation figée' }
-        else { amount = 0; note = built.reason || est?.reason || 'tarif introuvable' }
+        } else {
+          // Pas de tarif calculable : on le DIT (montant inconnu), on ne
+          // ressort pas une estimation figée par l'ancien calcul (2AVA116 :
+          // 89,51 € figés alors que les km étaient inconnus).
+          amount = 0; amountUnknown = true; note = built.reason || est?.reason || 'tarif introuvable'
+        }
       }
       if (kind === 'rel' && amount === 0 && (m.status === 'cancelled')) nothing = 'annulée'
       if (kind === 'rel' && m.parked_at && ts(m.parked_at)! > (ts(m.loaded_at) || 0) && !m.completed_at) nothing = nothing || null
