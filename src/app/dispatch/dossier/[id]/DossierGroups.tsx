@@ -70,11 +70,17 @@ export default function DossierGroups({ initial, fiches, shared, isSuperadmin, o
 }) {
   const [d, setD] = useState<Dossier>(initial)
   const [flagMode, setFlagMode] = useState('')
-  const [open, setOpen] = useState<Set<string>>(() => {
-    const target = initial.legs.find(l => l.mission_id === openMissionId) || initial.legs[initial.legs.length - 1]
-    return new Set(target ? [target.letter] : [])
+  // Le dispatch doit voir la mission ENTIÈRE d'emblée (Olivier 07/09) : le
+  // dernier groupe est déplié ET sa fiche complète est ouverte. Si le dernier
+  // groupe n'est pas une fiche (Domaine, Sortie), on ouvre aussi la dernière
+  // fiche réelle avec son embed.
+  const initialTarget = initial.legs.find(l => l.mission_id === openMissionId) || initial.legs[initial.legs.length - 1]
+  const lastFiche = [...initial.legs].reverse().find(l => l.kind !== 'out')
+  const [open, setOpen] = useState<Set<string>>(() => new Set([initialTarget?.letter, initialTarget?.kind === 'out' ? lastFiche?.letter : undefined].filter(Boolean) as string[]))
+  const [embed, setEmbed] = useState<Set<string>>(() => {
+    const t = initialTarget && initialTarget.kind !== 'out' ? initialTarget : lastFiche
+    return new Set(t ? [t.letter] : [])
   })
-  const [embed, setEmbed] = useState<Set<string>>(new Set())
   const [billing, setBilling] = useState(false)
   const billable = d.legs.filter(l => !l.nothing_to_bill && !(l.billed_refs.length && l.billed_htva >= l.amount_htva - 0.01) && l.amount_htva > 0)
   const toggle = (l: string) => setOpen(p => { const n = new Set(p); n.has(l) ? n.delete(l) : n.add(l); return n })
@@ -240,16 +246,22 @@ function Group({ d, leg, isOpen, onToggle, embedOpen, onToggleEmbed, fiche, shar
               {leg.billing_remarks.map((r, i) => <p key={i}><span className="text-slate-300">📝 Remarque de facturation{r.author ? ' · ' + r.author : ''} : </span><span className="font-semibold whitespace-pre-line">{r.text}</span></p>)}
             </div>
           )}
-          <BillingRow d={d} leg={leg} onChanged={onChanged} gmKey={shared.googleMapsKey} />
+          {leg.kind !== 'out' && <BillingRow d={d} leg={leg} onChanged={onChanged} gmKey={shared.googleMapsKey} />}
+          {leg.kind === 'out' && leg.channel === 'domaine' && <div className="bg-surface-2 border border-dashed rounded-xl px-3 py-2 text-xs text-ink-secondary">Facturé au <b>SPF Finances — Domaine</b> par le relevé trimestriel (Fourrière → Domaine), pas par une facture Odoo de ce dossier.</div>}
 
           <EstimationTable d={d} me={leg.letter} />
 
-          <div className="flex flex-wrap gap-1.5">
-            <button onClick={onToggleEmbed} className="px-2.5 py-1 rounded-lg text-xs font-semibold border bg-surface text-ink-secondary hover:text-ink">{embedOpen ? 'Replier la fiche complète' : 'Ouvrir la fiche complète'}</button>
-            <Link href={`/dispatch/${leg.mission_id}`} className="px-2.5 py-1 rounded-lg text-xs font-semibold border bg-surface text-ink-secondary hover:text-ink">Fiche seule ↗</Link>
-          </div>
+          {leg.kind !== 'out' && (
+            <div className="flex flex-wrap gap-1.5">
+              <button onClick={onToggleEmbed} className="px-2.5 py-1 rounded-lg text-xs font-semibold border bg-surface text-ink-secondary hover:text-ink">{embedOpen ? 'Replier la fiche complète' : 'Ouvrir la fiche complète'}</button>
+              <Link href={`/dispatch/${leg.mission_id}`} className="px-2.5 py-1 rounded-lg text-xs font-semibold border bg-surface text-ink-secondary hover:text-ink">Fiche seule ↗</Link>
+            </div>
+          )}
+          {leg.kind === 'out' && leg.channel === 'domaine' && (
+            <div className="flex flex-wrap gap-1.5"><Link href="/fourriere/domaine" className="px-2.5 py-1 rounded-lg text-xs font-semibold border bg-surface text-ink-secondary hover:text-ink">Module Domaine ↗</Link></div>
+          )}
 
-          {embedOpen && fiche && (
+          {embedOpen && fiche && leg.kind !== 'out' && (
             <div className="border rounded-xl bg-page overflow-hidden -ml-0 md:-ml-[56px]">
               <MissionDetailClient
                 mission={fiche.mission} logs={fiche.logs} drivers={shared.drivers} sources={shared.sources}

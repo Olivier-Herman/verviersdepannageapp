@@ -48,6 +48,9 @@ export interface DossierLeg {
   regime:          string | null
   // Mode léger : pas de montant figé sur la fiche → à calculer (moteur de prix).
   amount_unknown?: boolean
+  // Canal de facturation : Odoo (défaut), relevé trimestriel Domaine, état de
+  // frais Parquet. Seul 'odoo' passe par la modale « Facturer » du dossier.
+  channel?:        'odoo' | 'domaine' | 'parquet'
   // Remarques de facturation (dispatch) : à confirmer AVANT de facturer.
   billing_remarks: { text: string; author: string | null; at: string | null }[]
   // Encaissements chauffeur liés à cette fiche (table interventions).
@@ -60,7 +63,7 @@ export interface DossierEvent {
   source:     string | null
   label:      string
   detail:     string | null
-  kind:       'cancelled' | 'ignored' | 'a_verifier' | 'orphan' | 'autre_dossier'
+  kind:       'cancelled' | 'ignored' | 'a_verifier' | 'orphan' | 'autre_dossier' | 'levee'
   mission_number?: number | null
   status?:    string
 }
@@ -280,7 +283,11 @@ export async function buildDossier(anyMissionId: string, opts: { light?: boolean
     if (kind === 'gard') {
       const regime = String(m.mission_type || 'autre')
       const entry = ts(m.parked_at) || ts(m.received_at) || Date.now()
-      const exit  = ts(m.parc_exit_at)
+      // Remise au Domaine : la période à charge du Parquet s'arrête là, même si
+      // la fiche gardiennage est encore ouverte (le véhicule reste au parc).
+      const remiseTs = root.domaine_remise_date ? ts(`${String(root.domaine_remise_date).slice(0, 10)}T00:00:00Z`) : null
+      const exitRaw = ts(m.parc_exit_at)
+      const exit  = remiseTs && remiseTs > entry && (!exitRaw || remiseTs < exitRaw) ? remiseTs : exitRaw
       open = !exit
       const rawDays = Math.max(1, Math.ceil(((exit ?? Date.now()) - entry) / DAY_MS))
       const tarif = dayPriceByRegime[regime]
@@ -292,7 +299,7 @@ export async function buildDossier(anyMissionId: string, opts: { light?: boolean
       else { amount = r2(days * dayPrice); note = dayPrice ? `${days} j × ${dayPrice.toFixed(2)} €` : `${days} j · tarif journalier introuvable` }
       title = 'Gardiennage'
       subtitle = [`régime ${REGIME_LABEL[regime] || regime}`, m.parc_zone_key ? `zone ${m.parc_zone_key}` : null, m.parc_row_number != null ? `rangée ${m.parc_row_number}` : null].filter(Boolean).join(' · ')
-      started = m.parked_at || m.received_at; ended = m.parc_exit_at
+      started = m.parked_at || m.received_at; ended = exit ? new Date(exit).toISOString() : null
       const originName = m.parc_origin_mission_id ? (legRows.find(x => x.id === m.parc_origin_mission_id)) : null
       facts.push({ label: 'Entrée', value: `${fmtD(started)}${originName?.assigned_to ? ' — ' + (nameById[originName.assigned_to] || '') : ''}` })
       facts.push({ label: 'Sortie', value: exit ? `${fmtD(m.parc_exit_at)} — ${({ relivraison: 'relivraison', sortie: 'sortie du parc', annulation: 'annulation', reparc: 'nouveau séjour', correction: 'correction' } as any)[m.parc_exit_reason] || m.parc_exit_reason || ''}` : 'toujours au parc' })
@@ -366,6 +373,78 @@ export async function buildDossier(anyMissionId: string, opts: { light?: boolean
       _sort: startKey(m, kind), _rank: kind === 'rem' ? 0 : kind === 'gard' ? 1 : 2,
     } as any)
   }
+  // ── Groupe DOMAINE (saisies) : remise → enlèvement, à charge du SPF Finances ─
+  // Même règle que le relevé trimestriel (lib/fourriere/domaine-billing) :
+  // jours = remise → enlèvement inclus, tarif SERV-PARC saisie (voiture/cyclo).
+  if (root.domaine_remise_date) {
+    const remise = String(root.domaine_remise_date).slice(0, 10)
+    const enlev  = root.domaine_enlevement_date ? String(root.domaine_enlevement_date).slice(0, 10) : null
+    const cyclo  = /moto|cyclo/i.test(String(root.vehicle_class || ''))
+    const { data: rl } = await sb.from('source_tariff_lines').select('name, default_price, effective_from, effective_to')
+      .eq('source', 'police_saisie').eq('kind', 'SERV-PARC')
+    const year = remise.slice(0, 4)
+    const rate = (rl || []).filter((l: any) => /gardiennage \(par jour\)/i.test(l.name) && !/hors période/i.test(l.name) && (/cyclo/i.test(l.name) === cyclo) && (!l.effective_from || l.effective_from <= `${year}-06-01`) && (!l.effective_to || l.effective_to >= `${year}-06-01`))
+      .map((l: any) => Number(l.default_price))[0] ?? 0
+    const dDays = enlev ? Math.max(0, Math.round((ts(`${enlev}T00:00:00Z`)! - ts(`${remise}T00:00:00Z`)!) / DAY_MS)) : Math.max(0, Math.floor((Date.now() - ts(`${remise}T00:00:00Z`)!) / DAY_MS))
+    const dAmount = r2(dDays * rate)
+    const { data: vente } = await sb.from('domaine_ventes_epaves').select('firm, vente_date, numero, sortie_reelle_date, date_out').eq('matched_mission_id', root.id).order('received_at', { ascending: false }).limit(1).maybeSingle()
+    const dFacts: { label: string; value: string }[] = [
+      { label: 'Remise', value: `${remise}${root.domaine_note ? ' · ' + root.domaine_note : ''}` },
+      { label: 'Enlèvement', value: enlev ? enlev : 'attendu' },
+      { label: 'Vente', value: root.domaine_vente_date ? `${String(root.domaine_vente_date).slice(0, 10)}${root.domaine_vente_firm ? ' · ' + root.domaine_vente_firm : ''}${(vente as any)?.numero ? ' · n° ' + (vente as any).numero : ''}` : ((vente as any)?.vente_date ? `${(vente as any).vente_date} · ${(vente as any).firm || ''}` : 'pas encore de lot') },
+      { label: 'Gardiennage État', value: rate ? `${dDays} j × ${rate.toFixed(2)} € = ${dAmount.toFixed(2)} € HTVA${enlev ? '' : ' à ce jour'}` : `${dDays} j · tarif saisie introuvable` },
+      { label: 'Facturation', value: 'relevé trimestriel Domaine (module Fourrière → Domaine), pas de facture Odoo par dossier' },
+    ]
+    legs.push({
+      letter: '', kind: 'out', mission_id: root.id + ':domaine', mission_number: root.mission_number, external_id: null,
+      dossier_number: root.dossier_number || null, title: 'Domaine', subtitle: `SPF Finances · remise du ${remise}`,
+      status: enlev ? 'completed' : 'parked', status_label: enlev ? (root.domaine_vente_date ? 'Vendu · relevé Domaine' : 'Enlevé · relevé Domaine') : 'Au parc pour le Domaine',
+      status_tone: enlev ? 'ok' : 'live', started_at: `${remise}T00:00:00Z`, ended_at: enlev ? `${enlev}T00:00:00Z` : null, open: !enlev,
+      driver_name: null, billed_to_id: null, billed_to_name: 'SPF Finances — Domaine', billed_inherited: false,
+      facts: dFacts, amount_htva: dAmount, amount_note: rate ? `${dDays} j × ${rate.toFixed(2)} €` : null, billed_htva: 0, billed_refs: [],
+      nothing_to_bill: null, days: dDays, regime: 'saisie', channel: 'domaine', billing_remarks: [], payments: [],
+      _sort: ts(`${remise}T00:00:00Z`), _rank: 3,
+    } as any)
+  }
+
+  // ── Groupe SORTIE : restitution / sans frais / épave détruite ─────────────
+  const { data: outLogs } = await sb.from('mission_logs').select('mission_id, action, notes, created_at, actor_id, metadata')
+    .in('mission_id', ids).in('action', ['restituted_invoice', 'restituted_driver_cash', 'no_charge', 'levee_saisie'])
+    .order('created_at', { ascending: true })
+  const outActors = Array.from(new Set((outLogs || []).map((l: any) => l.actor_id).filter(Boolean)))
+  if (outActors.length) {
+    const { data: us3 } = await sb.from('users').select('id, name').in('id', outActors.filter(a => !nameById[a]))
+    for (const u of us3 || []) nameById[(u as any).id] = (u as any).name
+  }
+  const sortie = (outLogs || []).find((l: any) => l.action !== 'levee_saisie')
+  if (sortie || root.scratched_at) {
+    const l: any = sortie
+    const mode = l?.action === 'restituted_invoice' ? 'Restitution facturée' : l?.action === 'restituted_driver_cash' ? 'Restitution encaissée' : l?.action === 'no_charge' ? 'Restitution sans frais' : 'Destruction (épave)'
+    const at = l?.created_at || root.scratched_at
+    const paysAll = ids.flatMap(id => payBy[id] || [])
+    const oFacts: { label: string; value: string }[] = [
+      { label: 'Sortie', value: `${fmtD(at)}${l?.actor_id ? ' — ' + (nameById[l.actor_id] || '') : ''}` },
+      ...(l?.notes ? [{ label: 'Détail', value: String(l.notes).slice(0, 200) }] : []),
+      ...(root.no_charge_reason ? [{ label: 'Motif', value: String(root.no_charge_reason) }] : []),
+      ...(paysAll.length ? [{ label: 'Encaissé', value: paysAll.map((pz: any) => `${r2(Number(pz.amount || 0)).toFixed(2)} €${pz.payment_mode ? ' (' + pz.payment_mode + ')' : ''}`).join(' · ') }] : []),
+    ]
+    legs.push({
+      letter: '', kind: 'out', mission_id: root.id + ':sortie', mission_number: root.mission_number, external_id: null,
+      dossier_number: root.dossier_number || null, title: mode, subtitle: root.billed_to_name || '',
+      status: 'completed', status_label: l?.action === 'restituted_invoice' ? 'Facturée avec le remorquage' : l?.action === 'restituted_driver_cash' ? 'Encaissée' : l?.action === 'no_charge' ? 'Sans frais' : 'Épave',
+      status_tone: 'ok', started_at: at, ended_at: at, open: false, driver_name: null,
+      billed_to_id: root.billed_to_id ?? null, billed_to_name: root.billed_to_name ?? null, billed_inherited: true,
+      facts: oFacts, amount_htva: 0, amount_note: null, billed_htva: 0, billed_refs: [],
+      nothing_to_bill: l?.action === 'restituted_invoice' ? 'réglé par la facture du remorquage' : l?.action === 'restituted_driver_cash' ? 'réglé à la restitution' : l?.action === 'no_charge' ? 'sans frais' : 'épave détruite',
+      days: null, regime: null, channel: 'odoo', billing_remarks: [], payments: [],
+      _sort: ts(at) || Date.now(), _rank: 4,
+    } as any)
+  }
+  // Levées de saisie : lignes fines dans la chronologie.
+  for (const l of (outLogs || []).filter((x: any) => x.action === 'levee_saisie')) {
+    eventRows.push({ _plain: true, id: l.mission_id, received_at: l.created_at, source: root.source, status: 'levee', mission_type: null, _label: String(l.notes || 'Levée de saisie').replace(/^🔓\s*/, '') })
+  }
+
   legs.sort((a: any, b: any) => (a._sort - b._sort) || (a._rank - b._rank))
   const LETTERS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'
   legs.forEach((l: any, i) => { l.letter = LETTERS[i] || String(i + 1); delete l._sort; delete l._rank })
@@ -373,13 +452,13 @@ export async function buildDossier(anyMissionId: string, opts: { light?: boolean
   // ── Événements (mails sans action) ───────────────────────────────────────
   const events: DossierEvent[] = eventRows.map((e: any): DossierEvent => ({
     at: e.received_at, mission_id: e.id, source: e.source,
-    label: e._other
+    label: e._plain ? e._label : e._other
       ? `Autre dossier #${e.mission_number ?? '?'} pour la même plaque — ${getMissionTypeLabel(e.mission_type, 'long')} ${sourceLabel(e.source)}, ${statusOf(e, 'rem').label.toLowerCase()}`
       : e._orphan
       ? (e._verify ? `Mail ${sourceLabel(e.source)} pour la même plaque, autre n° de dossier (${e.dossier_number}) — à vérifier` : `Mail ${sourceLabel(e.source)} reçu, sans action (${statusOf(e, 'rem').label.toLowerCase()})`)
       : `${getMissionTypeLabel(e.mission_type, 'long')} ${sourceLabel(e.source)} — ${statusOf(e, 'rem').label.toLowerCase()}`,
     detail: e._other ? null : (e.cancelled_reason || e.closing_notes || null),
-    kind: (e._other ? 'autre_dossier' : e._orphan ? (e._verify ? 'a_verifier' : 'orphan') : (e.status === 'cancelled' ? 'cancelled' : 'ignored')) as DossierEvent['kind'],
+    kind: (e._plain ? 'ignored' : e._other ? 'autre_dossier' : e._orphan ? (e._verify ? 'a_verifier' : 'orphan') : (e.status === 'cancelled' ? 'cancelled' : 'ignored')) as DossierEvent['kind'],
     mission_number: e.mission_number ?? null, status: e.status,
   })).sort((a, b) => (ts(a.at) || 0) - (ts(b.at) || 0))
 
@@ -411,7 +490,8 @@ export async function buildDossier(anyMissionId: string, opts: { light?: boolean
     }
   }
 
-  const openLeg = legs.find(l => l.kind === 'gard' && l.open)
+  const domaineOpen = legs.find(l => l.kind === 'out' && l.channel === 'domaine' && l.open)
+  const openLeg = legs.find(l => l.kind === 'gard' && l.open) || domaineOpen
   const relPending = legs.find(l => l.kind === 'rel' && l.open)
   const state = openLeg ? { open: true, reason: `véhicule au parc${openLeg.subtitle ? ' · ' + openLeg.subtitle.replace(/^régime [^·]+ · /, '') : ''}` }
     : relPending ? { open: true, reason: 'relivraison en cours' }
