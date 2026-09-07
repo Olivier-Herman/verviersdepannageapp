@@ -230,10 +230,16 @@ function Group({ d, leg, isOpen, onToggle, embedOpen, onToggleEmbed, fiche, shar
             {leg.facts.map((f, i) => (
               <div key={i} className="grid grid-cols-[110px_1fr] gap-2"><dt className="text-ink-muted">{f.label}</dt><dd className="text-ink break-words">{f.value}</dd></div>
             ))}
+            {leg.payments?.length > 0 && <div className="grid grid-cols-[110px_1fr] gap-2"><dt className="text-ink-muted">Encaissé</dt><dd className="text-ink">{leg.payments.map((p, i) => <span key={i} className="mr-2">{eur(p.amount)}{p.mode ? ` (${p.mode})` : ''}{p.driver ? ` · ${p.driver}` : ''}{p.at ? ` · ${fmt(p.at)}` : ''}</span>)}</dd></div>}
             {leg.amount_note && <div className="grid grid-cols-[110px_1fr] gap-2"><dt className="text-ink-muted">Estimation</dt><dd className="text-ink">{leg.nothing_to_bill ? leg.nothing_to_bill : <>{leg.amount_note} = <b>{eur(leg.amount_htva)} HTVA</b></>}</dd></div>}
             {leg.billed_refs.length > 0 && <div className="grid grid-cols-[110px_1fr] gap-2 items-center"><dt className="text-ink-muted">Facturé</dt><dd className="text-ink flex flex-wrap items-center gap-2">{eur(leg.billed_htva)} <Stamp refs={leg.billed_refs} small /> <span className="text-ink-faint text-[11px]">{refKind(leg.billed_refs[0])}</span></dd></div>}
           </dl>
 
+          {leg.billing_remarks?.length > 0 && (
+            <div className="bg-slate-800 text-white rounded-xl px-3 py-2 text-xs space-y-1">
+              {leg.billing_remarks.map((r, i) => <p key={i}><span className="text-slate-300">📝 Remarque de facturation{r.author ? ' · ' + r.author : ''} : </span><span className="font-semibold whitespace-pre-line">{r.text}</span></p>)}
+            </div>
+          )}
           <BillingRow d={d} leg={leg} onChanged={onChanged} gmKey={shared.googleMapsKey} />
 
           <EstimationTable d={d} me={leg.letter} />

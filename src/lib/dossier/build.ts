@@ -48,6 +48,10 @@ export interface DossierLeg {
   regime:          string | null
   // Mode léger : pas de montant figé sur la fiche → à calculer (moteur de prix).
   amount_unknown?: boolean
+  // Remarques de facturation (dispatch) : à confirmer AVANT de facturer.
+  billing_remarks: { text: string; author: string | null; at: string | null }[]
+  // Encaissements chauffeur liés à cette fiche (table interventions).
+  payments: { amount: number; mode: string | null; at: string | null; driver: string | null }[]
 }
 
 export interface DossierEvent {
@@ -212,6 +216,16 @@ export async function buildDossier(anyMissionId: string, opts: { light?: boolean
     const { data: drafts } = await sb.from('mission_invoice_drafts').select('mission_id, lines').in('mission_id', ids)
     for (const dr of drafts || []) if (Array.isArray((dr as any).lines) && (dr as any).lines.length) draftsBy[(dr as any).mission_id] = (dr as any).lines
   }
+  // Encaissements chauffeur (mêmes lignes que la page Facturation).
+  const { data: pays } = await sb.from('interventions')
+    .select('mission_id, amount, payment_mode, created_at, driver_id').in('mission_id', ids)
+  const payBy: Record<string, any[]> = {}
+  for (const pz of pays || []) (payBy[(pz as any).mission_id] ||= []).push(pz)
+  const payDriverIds = Array.from(new Set((pays || []).map((pz: any) => pz.driver_id).filter(Boolean)))
+  if (payDriverIds.length) {
+    const { data: us2 } = await sb.from('users').select('id, name').in('id', payDriverIds)
+    for (const u of us2 || []) nameById[(u as any).id] = (u as any).name
+  }
   const { data: items } = await sb.from('mission_billed_items')
     .select('mission_id, kind, label, amount_htva, invoice_number, billed_to_name, billed_at, odoo_quote_id, invoice_odoo_id, dossier_letter')
     .in('mission_id', ids)
@@ -344,6 +358,11 @@ export async function buildDossier(anyMissionId: string, opts: { light?: boolean
       billed_inherited: (m.billed_to_id ?? null) === (root.billed_to_id ?? null),
       facts, amount_htva: amount, amount_note: note, billed_htva: billedHtva || (billedRefs.length && !billedItems.length ? amount : 0),
       billed_refs: billedRefs, nothing_to_bill: nothing, days, regime: kind === 'gard' ? String(m.mission_type || 'autre') : null, amount_unknown: amountUnknown || undefined,
+      billing_remarks: [
+        ...((Array.isArray(m.billing_remarks) ? m.billing_remarks : []).map((r: any) => ({ text: String(r.text || ''), author: r.author_name || null, at: r.created_at || null }))),
+        ...(m.remarks_billing && !(Array.isArray(m.billing_remarks) && m.billing_remarks.some((r: any) => r.text === m.remarks_billing)) ? [{ text: String(m.remarks_billing), author: null, at: null }] : []),
+      ].filter(r => r.text.trim()),
+      payments: (payBy[m.id] || []).map((pz: any) => ({ amount: r2(Number(pz.amount || 0)), mode: pz.payment_mode || null, at: pz.created_at || null, driver: pz.driver_id ? (nameById[pz.driver_id] || null) : null })),
       _sort: startKey(m, kind), _rank: kind === 'rem' ? 0 : kind === 'gard' ? 1 : 2,
     } as any)
   }
@@ -367,7 +386,12 @@ export async function buildDossier(anyMissionId: string, opts: { light?: boolean
   // ── Totaux + factures ────────────────────────────────────────────────────
   const estimated = r2(legs.reduce((s, l) => s + l.amount_htva, 0))
   const billed    = r2(legs.reduce((s, l) => s + l.billed_htva, 0))
-  const collected = r2(legRows.reduce((s, m) => s + Number(m.payment_amount || m.amount_collected || 0), 0))
+  // Encaissé = encaissements chauffeur (interventions) ; repli sur le montant
+  // payé porté par la fiche quand il n'y a pas d'encaissement enregistré.
+  const collected = r2(legRows.reduce((s, m) => {
+    const enc = (payBy[m.id] || []).reduce((t: number, pz: any) => t + Number(pz.amount || 0), 0)
+    return s + (enc > 0 ? enc : Number(m.payment_amount || m.amount_collected || 0))
+  }, 0))
   const invMap: Record<string, { number: string; covers: Set<string>; client: string | null; amount: number; at: string | null; url: string | null }> = {}
   for (const l of legs) {
     const m = legRows.find(x => x.id === l.mission_id)

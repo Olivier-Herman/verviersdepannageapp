@@ -25,6 +25,10 @@ export default function BillingModal({ d, onClose, onDone }: { d: Dossier; onClo
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [result, setResult] = useState<{ invoices: any[]; warnings: string[] } | null>(null)
+  // Garde-fou « Remarque de facturation » (même règle que le module actuel,
+  // Olivier 2026-07-07) : si un groupe coché porte une remarque, on exige la
+  // confirmation qu'elle a été prise en compte AVANT de créer la facture.
+  const [remarkGate, setRemarkGate] = useState(false)
   const toggle = (id: string) => setSel(p => { const n = new Set(p); n.has(id) ? n.delete(id) : n.add(id); return n })
 
   const byClient = new Map<string, DossierLeg[]>()
@@ -36,7 +40,10 @@ export default function BillingModal({ d, onClose, onDone }: { d: Dossier; onClo
   const missingClient = chosen.some(l => !l.billed_to_id)
   const runningChosen = chosen.some(l => l.kind === 'gard' && l.open)
 
+  const remarksOfChosen = () => chosen.flatMap(l => (l.billing_remarks || []).map(r => ({ label: `${d.number}${l.letter}`, ...r })))
+  const askOrSubmit = () => { if (remarksOfChosen().length) setRemarkGate(true); else submit() }
   const submit = async () => {
+    setRemarkGate(false)
     setBusy(true); setError(null)
     // Les factures s'ouvrent d'elles-mêmes dans un nouvel onglet (Olivier
     // 07/09 : « pas de clic supplémentaire »). Le navigateur ne laisse ouvrir
@@ -79,6 +86,9 @@ export default function BillingModal({ d, onClose, onDone }: { d: Dossier; onClo
                   </button>
                 )
               })}
+              {legs.some(l => (l.billing_remarks || []).length) && legs.flatMap(l => (l.billing_remarks || []).map((r, i) => (
+                <div key={l.letter + i} className="mt-1 bg-slate-800 text-white rounded-lg px-3 py-2 text-xs"><span className="text-slate-300 text-[10.5px]">📝 {d.number}{l.letter}{r.author ? ' · ' + r.author : ''}</span><p className="font-semibold whitespace-pre-line leading-snug">{r.text}</p></div>
+              )))}
             </div>
           )
         })}
@@ -91,9 +101,30 @@ export default function BillingModal({ d, onClose, onDone }: { d: Dossier; onClo
             {error && <div className={`rounded-lg px-3 py-2 text-xs ${TONE.bad}`}>{error}</div>}
             <div className="flex items-center justify-between gap-3 text-xs">
               <span className="text-ink-muted">{chosen.length ? <><b className="text-ink">{chosen.length === allPickable.length ? 'Facture totale' : 'Facture partielle'}</b> · {nInv} facture{nInv > 1 ? 's' : ''} · {eur(total)} HTVA · référence « {d.number} {chosen.map(l => l.letter).join(' ')} »</> : 'Rien de coché'}</span>
-              <button disabled={busy || !chosen.length || missingClient} onClick={submit} className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-brand text-white disabled:opacity-40">{busy ? '⏳ Création…' : `Créer ${nInv > 1 ? 'les factures' : 'la facture'}`}</button>
+              <button disabled={busy || !chosen.length || missingClient} onClick={askOrSubmit} className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-brand text-white disabled:opacity-40">{busy ? '⏳ Création…' : `Créer ${nInv > 1 ? 'les factures' : 'la facture'}`}</button>
             </div>
           </>
+        )}
+
+        {remarkGate && (
+          <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/70 px-4" onClick={() => { if (!busy) setRemarkGate(false) }}>
+            <div onClick={e => e.stopPropagation()} className="bg-surface w-full max-w-md rounded-2xl border-2 border-slate-500 p-5 space-y-4">
+              <div className="flex items-center gap-2"><span className="text-2xl">📝</span><h3 className="text-ink font-bold text-base">Remarque de facturation</h3></div>
+              <p className="text-ink-secondary text-sm">{remarksOfChosen().length > 1 ? 'Ces groupes ont une remarque de facturation. As-tu bien pris en compte :' : 'Ce groupe a une remarque de facturation. As-tu bien pris en compte :'}</p>
+              <div className="space-y-2">
+                {remarksOfChosen().map((r, i) => (
+                  <div key={i} className="bg-slate-800 text-white rounded-lg p-3">
+                    <p className="text-slate-300 text-[11px] mb-1"><span className="font-mono">{r.label}</span>{r.author ? <span> · {r.author}</span> : null}</p>
+                    <p className="text-white text-sm font-semibold whitespace-pre-line leading-snug">{r.text}</p>
+                  </div>
+                ))}
+              </div>
+              <div className="flex gap-2 pt-1">
+                <button type="button" disabled={busy} onClick={() => setRemarkGate(false)} className="flex-1 py-2.5 bg-surface-2 border text-ink-secondary rounded-xl text-sm">Annuler</button>
+                <button type="button" disabled={busy} onClick={submit} className="flex-1 py-2.5 bg-slate-700 hover:bg-slate-600 text-white rounded-xl text-sm font-semibold">{busy ? '⏳…' : 'Oui, pris en compte — facturer'}</button>
+              </div>
+            </div>
+          </div>
         )}
 
         {result && (
