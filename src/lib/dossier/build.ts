@@ -13,6 +13,7 @@
 
 import { createAdminClient }   from '@/lib/supabase'
 import { estimateMissionPrice } from '@/lib/missions/estimate-price'
+import { actionLines, linesTotal } from '@/lib/dossier/lines'
 import { getMissionTypeLabel }  from '@/lib/missions/mission-types'
 
 export type LegKind = 'rem' | 'gard' | 'rel' | 'out'
@@ -201,6 +202,11 @@ export async function buildDossier(anyMissionId: string, opts: { light?: boolean
 
   // ── Facturé / encaissé ───────────────────────────────────────────────────
   const ids = legRows.map(r => r.id)
+  const draftsBy: Record<string, any[]> = {}
+  if (!light) {
+    const { data: drafts } = await sb.from('mission_invoice_drafts').select('mission_id, lines').in('mission_id', ids)
+    for (const dr of drafts || []) if (Array.isArray((dr as any).lines) && (dr as any).lines.length) draftsBy[(dr as any).mission_id] = (dr as any).lines
+  }
   const { data: items } = await sb.from('mission_billed_items')
     .select('mission_id, kind, label, amount_htva, invoice_number, billed_to_name, billed_at, odoo_quote_id, invoice_odoo_id, dossier_letter')
     .in('mission_id', ids)
@@ -279,17 +285,24 @@ export async function buildDossier(anyMissionId: string, opts: { light?: boolean
     } else {
       // Action réelle (REM / DSP / REL…) : estimation du moteur, hors gardiennage
       // (le gardiennage a ses propres groupes).
+      // Montant = EXACTEMENT les lignes que la facturation poussera dans Odoo
+      // (brouillon > montants forcés > moteur Siabis > estimation), gardiennage
+      // exclu quand le dossier a ses groupes gardiennage. L'estimation générale
+      // ne sert plus qu'aux km affichés.
       let est: any = null
       if (!light) { try { est = m.id === root.id ? rootEst : await estimateMissionPrice(m) } catch { est = null } }
-      if (Number(m.special_tarif_htva) > 0) { amount = r2(Number(m.special_tarif_htva)); note = 'prix convenu' }
-      else if (light) { amount = r2(Number(m.estimated_htva) || 0); note = Number(m.estimated_htva) > 0 ? 'estimation figée' : 'estimation à calculer'; if (!(Number(m.estimated_htva) > 0)) amountUnknown = true }
-      else if (est?.ok) {
-        const parcPart = Number(est.parc_eur || 0) * (1 + Number(est.surcharge_pct || 0) / 100)
-        amount = r2(Math.max(0, Number(est.total_eur || 0) - parcPart))
-        note = [est.forfait ? `forfait ${Number(est.forfait).toFixed(2)} €` : null, est.km_extra > 0 ? `${est.km_extra} km suppl.` : null, est.surcharge_pct ? `+${est.surcharge_pct} %` : null].filter(Boolean).join(' · ') || null
-        if (amount === 0 && kind === 'rel' && m.status !== 'completed' && m.status !== 'to_invoice') nothing = null
-      } else if (Number(m.estimated_htva) > 0) { amount = r2(Number(m.estimated_htva)); note = 'estimation figée' }
-      else { amount = 0; note = est?.reason || 'tarif introuvable' }
+      if (light) {
+        if (Number(m.special_tarif_htva) > 0) { amount = r2(Number(m.special_tarif_htva)); note = 'prix convenu' }
+        else { amount = r2(Number(m.estimated_htva) || 0); note = Number(m.estimated_htva) > 0 ? 'estimation figée' : 'estimation à calculer'; if (!(Number(m.estimated_htva) > 0)) amountUnknown = true }
+      } else {
+        let built: { lines: any[]; has_tariff: boolean; reason?: string } = { lines: [], has_tariff: false }
+        try { built = await actionLines(m, draftsBy[m.id], legRows.some(r => r.dossier_leg)) } catch (e: any) { built = { lines: [], has_tariff: false, reason: e?.message } }
+        if (built.has_tariff && built.lines.length) {
+          amount = linesTotal(built.lines)
+          note = built.lines.map(l => `${l.name.replace(/\s+—.*$/, '').slice(0, 40)}${l.qty !== 1 ? ` ×${l.qty}` : ''} ${Number(l.qty * l.price_unit).toFixed(2)} €`).join(' · ')
+        } else if (Number(m.estimated_htva) > 0) { amount = r2(Number(m.estimated_htva)); note = 'estimation figée' }
+        else { amount = 0; note = built.reason || est?.reason || 'tarif introuvable' }
+      }
       if (kind === 'rel' && amount === 0 && (m.status === 'cancelled')) nothing = 'annulée'
       if (kind === 'rel' && m.parked_at && ts(m.parked_at)! > (ts(m.loaded_at) || 0) && !m.completed_at) nothing = nothing || null
 
