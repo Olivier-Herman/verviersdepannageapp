@@ -218,6 +218,13 @@ export default function DossierGroups({ initial, fiches, shared, isSuperadmin, o
           {it.ev.kind === 'autre_dossier'
             ? <Link href={`/dispatch/dossier/${it.ev.mission_id}`} className="text-brand hover:underline">ouvrir ce dossier</Link>
             : <Link href={`/dispatch/${it.ev.mission_id}`} className="text-brand hover:underline">voir la fiche</Link>}
+          {(it.ev.kind === 'orphan' || it.ev.kind === 'a_verifier') && (
+            <button onClick={async () => {
+              if (!window.confirm('Rattacher ce mail à ce dossier ? Il apparaîtra dans sa chronologie.')) return
+              const r = await fetch(`/api/dossier/${d.root_id}/attach`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mission_id: it.ev!.mission_id }) })
+              const j = await r.json().catch(() => ({})); if (!r.ok) { alert(j.error || `HTTP ${r.status}`); return } await refresh()
+            }} className="px-2 py-0.5 rounded-lg border text-[11px] font-semibold text-ink-secondary hover:text-ink">Rattacher à ce dossier</button>
+          )}
         </div>
       ) : (
         <Group key={it.leg!.letter} d={d} leg={it.leg!} canBill={canBill} isOpen={open.has(it.leg!.letter)} onToggle={() => toggle(it.leg!.letter)}

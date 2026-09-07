@@ -62,6 +62,33 @@ export default function DossiersClient({ initial, autoById, comexById = {}, isSu
   const [report, setReport] = useState<string | null>(null)
   const [reportLinks, setReportLinks] = useState<{ label: string; url: string }[]>([])
   const [now, setNow] = useState(Date.now())
+  // Facturation par lot : on coche des dossiers prêts (sortis, tout Odoo), un
+  // bouton crée leurs factures à la suite (tous les groupes prêts de chacun).
+  const [lot, setLot] = useState<Set<string>>(new Set())
+  const [lotBusy, setLotBusy] = useState(false)
+  const lotEligible = (d: Dossier) => !d.state.open && !isDone(d) && !isCircuit(d) && ready(d).length > 0 && !d.legs.some(l => l.amount_unknown && !isLegBilled(l))
+  const runLot = async () => {
+    const targets = rows.filter(d => lot.has(d.root_id))
+    if (!targets.length) return
+    if (!window.confirm(`Créer les factures Odoo de ${targets.length} dossier(s) ? Une facture par client, tous les groupes prêts.`)) return
+    setLotBusy(true); setReport(`🧾 Facturation du lot : 0/${targets.length}…`); setReportLinks([])
+    let okN = 0; const links: { label: string; url: string }[] = []; const errs: string[] = []
+    for (const d of targets) {
+      try {
+        const full = await fetch(`/api/dossier/${d.root_id}?t=${Date.now()}`, { cache: 'no-store' }).then(r => r.json())
+        const dd: Dossier = full?.dossier || d
+        const ids = dd.legs.filter(l => isOdoo(l) && canPickLeg(l) && !(l.kind === 'gard' && l.open)).map(l => l.mission_id)
+        if (!ids.length) { errs.push(`${dd.ref} : rien de prêt`); continue }
+        const r = await fetch(`/api/dossier/${dd.root_id}/invoice`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mission_ids: ids }) })
+        const j = await r.json(); if (!r.ok || !j.ok) throw new Error(j.error || `HTTP ${r.status}`)
+        okN++; for (const inv of j.invoices || []) links.push({ label: `${dd.ref} → ${inv.client_name}`, url: inv.url })
+        await refreshOne(dd.root_id)
+      } catch (e: any) { errs.push(`${d.ref} : ${String(e.message || e)}`) }
+      setReport(`🧾 Facturation du lot : ${okN}/${targets.length}…`)
+    }
+    setReport(`✓ Lot terminé : ${okN} dossier(s) facturé(s)${errs.length ? ` · ${errs.length} en erreur — ${errs.join(' | ')}` : ''}`)
+    setReportLinks(links); setLot(new Set()); setLotBusy(false)
+  }
   // Recherche avancée VD Soft + TowSoft (même API que la page Facturation).
   const [advType, setAdvType] = useState<'immatriculation' | 'niv' | 'num_dossier' | 'id_appel' | 'num_facture'>('immatriculation')
   const [advKey, setAdvKey] = useState('')
@@ -254,6 +281,10 @@ export default function DossiersClient({ initial, autoById, comexById = {}, isSu
         {TABS.map(([k, lbl, f]) => (
           <button key={k} onClick={() => setTab(k)} className={`px-3 py-1.5 rounded-lg border text-xs font-semibold ${tab === k ? 'bg-brand text-white border-brand' : 'bg-surface text-ink-secondary'}`}>{lbl} <span className="opacity-70">{scoped.filter(f).length}</span></button>
         ))}
+        <span className="ml-auto flex items-center gap-2 text-xs">
+          <button onClick={() => setLot(new Set(visible.filter(lotEligible).map(d => d.root_id)))} disabled={!visible.some(lotEligible)} className="px-2.5 py-1.5 rounded-lg border text-ink-secondary hover:text-ink disabled:opacity-40">Tout cocher</button>
+          <button onClick={runLot} disabled={lotBusy || lot.size === 0} className="px-3 py-1.5 rounded-lg bg-brand text-white font-semibold disabled:opacity-40">{lotBusy ? '⏳ Facturation…' : `🧾 Facturer le lot (${lot.size})`}</button>
+        </span>
       </div>
 
       {visible.length === 0 && <div className="bg-surface border rounded-2xl p-8 text-center text-ink-muted text-sm">Rien dans cet onglet.</div>}
@@ -274,8 +305,10 @@ export default function DossiersClient({ initial, autoById, comexById = {}, isSu
           <div key={d.root_id} className="bg-surface border rounded-2xl overflow-hidden">
             <div onClick={() => setOpen(p => { const n = new Set(p); n.has(d.root_id) ? n.delete(d.root_id) : n.add(d.root_id); return n })}
               className="grid grid-cols-1 md:grid-cols-[minmax(200px,1.2fr)_minmax(160px,1fr)_minmax(200px,1.3fr)_110px_170px_auto] gap-3 items-center px-4 py-2.5 cursor-pointer hover:bg-surface-2/60">
-              <div className="text-ink font-bold text-sm">{d.ref} · <span className="font-mono">{d.vehicle.plate}</span>
-                <span className="block text-[11px] font-medium text-ink-muted">{[d.vehicle.brand, d.vehicle.model].filter(Boolean).join(' ')} · {d.source_label}{d.legs.length === 1 ? ' · dépannage simple' : ''}</span></div>
+              <div className="text-ink font-bold text-sm flex items-start gap-2">
+                {lotEligible(d) && <input type="checkbox" checked={lot.has(d.root_id)} onClick={e => e.stopPropagation()} onChange={() => setLot(p => { const n = new Set(p); n.has(d.root_id) ? n.delete(d.root_id) : n.add(d.root_id); return n })} className="mt-0.5 accent-[var(--tw-brand,#1f4fd8)]" title="Ajouter au lot à facturer" />}
+                <span>{d.ref} · <span className="font-mono">{d.vehicle.plate}</span>
+                <span className="block text-[11px] font-medium text-ink-muted">{[d.vehicle.brand, d.vehicle.model].filter(Boolean).join(' ')} · {d.source_label}{d.legs.length === 1 ? ' · dépannage simple' : ''}</span></span></div>
               <div className="text-xs text-ink-secondary">{d.billed_to.name || '—'}
                 <span className="block text-[11px] text-ink-muted">{clients.length > 1 ? `+ ${clients.filter(c => c !== d.billed_to.name).join(', ')}` : d.state.open ? d.state.reason : d.legs.some(l => l.ended_at) ? `terminé le ${fmtDay(d.legs[d.legs.length - 1].ended_at)}` : ''}</span></div>
               <div className="flex flex-wrap gap-1">
