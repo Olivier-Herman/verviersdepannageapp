@@ -1643,6 +1643,9 @@ export default function DispatchClient({
               {/* Desktop : nouvelle liste compacte (superadmin, test) */}
               {compactList && (
                 <div className="hidden lg:block space-y-2">
+                  <div className="grid grid-cols-[150px_56px_140px_minmax(0,1.6fr)_minmax(0,1fr)_minmax(300px,auto)] gap-3 px-4 py-1.5 text-[11px] uppercase tracking-wide text-ink-muted font-medium">
+                    <div>Dossier</div><div>Type</div><div>Véhicule</div><div>Intervention → destination</div><div>Client</div><div>{activeTab === 'parked' ? 'Parc' : 'Chauffeur / actions'}</div>
+                  </div>
                   {missionGroups.map(g => (
                     <div key={g.key} className="bg-surface border rounded-2xl overflow-hidden">
                       {g.header && (
@@ -1659,20 +1662,21 @@ export default function DispatchClient({
                         const href = userRole === 'superadmin' ? `/dispatch/dossier/${m.id}` : `/dispatch/${m.id}`
                         return (
                           <div key={m.id} onClick={() => router.push(href)}
-                            className={`grid grid-cols-[130px_64px_150px_1.4fr_1fr_190px_78px] gap-3 items-center px-4 py-2.5 border-t first:border-t-0 cursor-pointer transition ${
+                            className={`grid grid-cols-[150px_56px_140px_minmax(0,1.6fr)_minmax(0,1fr)_minmax(300px,auto)] gap-3 items-center px-4 py-2.5 border-t first:border-t-0 cursor-pointer transition ${
                               isGarage ? 'bg-amber-500/10 hover:bg-amber-500/20' : delai.urgency === 'critical' ? 'bg-red-500/5 hover:bg-surface-2' : 'hover:bg-surface-2'}`}>
                             <div className="min-w-0">
                               <p className="text-ink font-bold font-mono text-xs">{m.mission_number != null ? `#${m.mission_number}` : (m.dossier_number || m.external_id)}</p>
                               {(m.dossier_number || (m.mission_number != null && m.external_id)) && <p className="text-ink-secondary font-mono text-[11px] truncate" title={m.dossier_number || m.external_id}>{m.dossier_number || m.external_id}</p>}
                               <p className="mt-0.5"><span className={`px-1.5 py-0.5 rounded text-[10.5px] font-bold text-white ${srcInfo.color}`}>{srcInfo.label}</span>{m.source === 'touring' && <span className={`ml-1 px-1 py-0.5 rounded text-[10px] font-bold ${m.source_format === 'comex' ? 'bg-sky-100 text-sky-800' : 'bg-amber-100 text-amber-800'}`}>{m.source_format === 'comex' ? 'COMEX' : 'Mail'}</span>}</p>
                             </div>
-                            <div><span className={`px-2 py-0.5 rounded-md text-[10.5px] font-extrabold text-white tracking-wide ${kindCls}`} title={typeLbl}>{kind}</span>{activeTab === 'parked' && <span className="ml-1"><RollableMini v={m.is_rollable} /></span>}</div>
+                            <div className="flex flex-col items-start gap-1"><span className={`px-2 py-0.5 rounded-md text-[10.5px] font-extrabold text-white tracking-wide ${kindCls}`} title={typeLbl}>{kind}</span>{activeTab === 'parked' && <RollableMini v={m.is_rollable} />}</div>
                             <div className="min-w-0"><p className="text-ink font-bold font-mono text-xs">{m.vehicle_plate || '—'}</p><p className="text-ink-secondary text-[11.5px] truncate">{[m.vehicle_brand, m.vehicle_model].filter(Boolean).join(' ') || '—'}</p></div>
                             <div className="min-w-0 text-xs">
                               <p className="text-ink font-medium truncate" title={m.incident_address || ''}>{m.incident_address || '—'}{m.incident_city ? <span className="text-ink-muted"> · {m.incident_city}</span> : null}</p>
                               <p className="text-ink-secondary truncate" title={(activeTab === 'parked' ? m.redelivery_address : (m.destination_name || m.destination_address)) || ''}>
                                 {activeTab === 'parked' ? (m.redelivery_address ? `↪ relivraison : ${m.redelivery_address}` : '↪ relivraison : adresse à définir')
-                                  : (m.destination_name || m.destination_address) ? `→ ${[m.destination_name, m.destination_address].filter(Boolean).join(' · ')}` : 'sur place'}
+                                  : (m.destination_name || m.destination_address) ? `→ ${[m.destination_name, m.destination_address].filter(Boolean).join(' · ')}`
+                                  : kind === 'DSP' ? 'sur place' : kind === 'REM' || kind === 'TRP' ? '→ destination à définir' : ''}
                               </p>
                               {m.vehicule_deja_en_parc && m.status === 'new' && (
                                 <Link href={`/dispatch/${m.vehicule_deja_en_parc.mission_id}`} onClick={e => e.stopPropagation()} className="inline-block mt-0.5 px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-700 dark:text-amber-300 text-[10.5px] font-semibold">⚠ déjà en parc — doublon ? #{m.vehicule_deja_en_parc.mission_number}</Link>
@@ -1684,17 +1688,15 @@ export default function DispatchClient({
                               {m.client_phone && <a href={`tel:${m.client_phone}`} onClick={e => e.stopPropagation()} className="text-ink-secondary hover:text-brand">{m.client_phone}</a>}
                               {showDelai && <p className="mt-0.5"><span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[11px] font-medium ${delai.bgColor} ${delai.color} ${delai.pulse ? 'animate-pulse' : ''}`}>{delai.label}</span></p>}
                             </div>
-                            <div onClick={e => e.stopPropagation()}>
-                              {activeTab !== 'parked'
-                                ? <>
-                                    <AssignAction mission={m} drivers={drivers} driverStatuses={driverStatuses} onRefresh={load} onModalChange={onModalChange} userRole={userRole} userModules={userModules} />
-                                    {m.auto_dispatch_status && <p className="mt-1 text-brand text-[11px]"><span className="animate-pulse">⚡</span> {m.auto_dispatch_status}</p>}
-                                    {m.has_pending_derogation && <p className="mt-1 text-amber-400 text-[11px]"><span className="animate-pulse">🆘</span> Dérogation à valider</p>}
-                                  </>
-                                : <span className="text-ink-secondary text-xs">{(m as any).parked_at ? `parqué ${new Date((m as any).parked_at).toLocaleDateString('fr-BE', { day: '2-digit', month: '2-digit' })}` : ''}</span>}
-                            </div>
-                            <div onClick={e => e.stopPropagation()}>
-                              <Link href={href} className="px-3 py-1.5 bg-brand hover:bg-brand-dark text-ink rounded-lg text-xs font-medium transition inline-block">VOIR</Link>
+                            <div onClick={e => e.stopPropagation()} className="min-w-0">
+                              <div className="flex flex-wrap items-center gap-1.5">
+                                {activeTab !== 'parked'
+                                  ? <AssignAction mission={m} drivers={drivers} driverStatuses={driverStatuses} onRefresh={load} onModalChange={onModalChange} userRole={userRole} userModules={userModules} />
+                                  : <span className="text-ink-secondary text-xs">{(m as any).parked_at ? `parqué le ${new Date((m as any).parked_at).toLocaleDateString('fr-BE', { day: '2-digit', month: '2-digit' })}` : ''}</span>}
+                                <Link href={href} className="px-3 py-1.5 border border-brand/40 text-brand hover:bg-brand/10 rounded-lg text-xs font-semibold transition inline-block">VOIR</Link>
+                              </div>
+                              {m.auto_dispatch_status && <p className="mt-1 text-brand text-[11px]"><span className="animate-pulse">⚡</span> {m.auto_dispatch_status}</p>}
+                              {m.has_pending_derogation && <p className="mt-1 text-amber-400 text-[11px]"><span className="animate-pulse">🆘</span> Dérogation à valider</p>}
                             </div>
                           </div>
                         )
