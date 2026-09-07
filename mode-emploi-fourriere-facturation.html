@@ -44,7 +44,7 @@
  <p>Il couvre 7 fonctions communes à tous (Dashboard, recherche, profil...), les fonctions Fourrière (inventaire, actions par véhicule, restitution, gestion judiciaire des saisies) et les fonctions Facturation (validation factures, devis, missions terminées) + l'encaissement bureau.</p>
  <p>📱 Cette interface est utilisable autant sur ordinateur (bureau) que mobile (terrain).</p>
  <p>🆘 <strong>En cas de problème</strong> : contacte un admin ou le dispatcher de garde.</p>
- <p style="margin-top: 20pt; color: #9ca3af; font-size: 9pt;">Version du document : 05/09/2026</p>
+ <p style="margin-top: 20pt; color: #9ca3af; font-size: 9pt;">Version du document : 07/09/2026</p>
  </div>
 </div>
 
@@ -493,8 +493,8 @@
  <ol>
  <li>Sur la fiche, clique « <b>Restituer et facturer</b> » (ou « Restituer le véhicule ») comme d'habitude : tant que la fiche est bloquée, un QR s'affiche à la place. Scanne-le avec ton téléphone : toute la procédure se déroule dessus, la fiche suit l'avancement en direct. Depuis le hub de l'étiquette, le bouton « Faire la procédure de sortie sur ce téléphone » fait la même chose sans QR.</li>
  <li><b>Chemin de sortie</b> : Informex (véhicule vendu), Autre sortie (propriétaire, garage…) ou Reprise par une assistance. Encode qui, au bureau d'expertise, a donné l'instruction.</li>
- <li><b>Bon Informex</b> : photographie le bon, le QR est décodé sur la photo (ou scanne-le en direct). Le document est lu : acheteur, plaque, châssis, avec contrôle de concordance avec la fiche.</li>
- <li><b>Personne présente</b> : sa qualité (acheteur, mandataire, transporteur), puis photo de la pièce d'identité (tous pays, lecture automatique) ou saisie à la main. <b>Compare avec l'acheteur du bon</b> : si ce n'est pas la même personne, mandat écrit + rappel de l'acheteur au numéro fourni par le bureau.</li>
+ <li><b>Bon Informex</b> : photographie le bon, le QR est décodé sur la photo (ou scanne-le en direct). Le document est lu : acheteur, plaque, châssis, avec contrôle de concordance avec la fiche. QR illisible ? Tu peux encoder la référence à la main, mais c'est une <b>étape passée</b> (motif + PIN) : une référence tapée ne prouve rien, et l'attestation le mentionne.</li>
+ <li><b>Personne présente</b> : sa qualité (acheteur, mandataire, transporteur), puis photo de la pièce d'identité (tous pays, lecture automatique), écran comptoir (la personne encode elle-même ou insère sa carte eID) ou saisie à la main. L'app <b>compare le nom avec l'acheteur du bon</b> : si ce n'est pas la même personne, la sortie reste bloquée tant que tu n'as pas basculé en <b>Mandataire</b> avec le mandat écrit noté (signé par qui, rappel de l'acheteur au numéro fourni par le bureau, pas à celui de la personne présente) — ou passé l'étape (motif + PIN).</li>
  <li><b>CMR</b> (transporteur) : photo du CMR, lecture automatique.</li>
  <li><b>Attestation d'enlèvement</b> : la personne relit le résumé et signe sur le téléphone. L'attestation est figée et imprimable depuis la fiche.</li>
  </ol>
@@ -502,6 +502,7 @@
  <ol>
  <li>Quand la procédure est complète, les boutons « Restituer » redeviennent actifs : restitution habituelle (encaissement ou Restituer et facturer).</li>
  <li>Toutes les pièces (photos, signature) restent au dossier, avec qui a fait quoi et quand.</li>
+ <li>Le verrou vaut partout : annuler la fiche, la forcer dans un autre statut, la relivrer, l'encaisser ou en changer la source ne fait pas sortir le véhicule tant que la procédure n'est pas complète (ou forcée, motif + PIN).</li>
  </ol>
  <div class="warn">⚠️ Le V vert du QR Informex prouve que le <b>document</b> est authentique, pas que la personne qui le tient est l'acheteur. C'est la concordance d'identité qui protège.</div>
  <div class="tip">⏭️ <b>Passer une étape</b> : sur le téléphone, chaque étape a « Passer cette étape » : motif obligatoire + PIN personnel (celui de la caisse) de la personne qui a ouvert le QR. Tracé à son nom sur la fiche et sur l'attestation. La « Sortie forcée » de la fiche saute toute la procédure d'un coup, aux mêmes conditions.</div>
@@ -829,7 +830,7 @@
 <hr style="border: none; border-top: 1pt solid #d1d5db; margin: 24pt 0 12pt 0;">
 
 <div style="text-align: center; font-size: 9pt; color: #9ca3af; padding: 8pt;">
- <p style="margin: 0;">Mode d'emploi VD Soft — Profils Fourrière & Facturation · Version du 05/09/2026</p>
+ <p style="margin: 0;">Mode d'emploi VD Soft — Profils Fourrière & Facturation · Version du 07/09/2026</p>
  <p style="margin: 4pt 0 0 0;">En cas de bug ou suggestion, contacte un admin.</p>
 </div>
 

@@ -179,7 +179,7 @@ export async function deviceVehicles(sb: any, deviceId: string) {
   const ids = Array.from(new Set((visits || []).map((v: any) => v.mission_id)))
   if (!ids.length) return []
   const [{ data: missions }, { data: controls }, { data: zones }] = await Promise.all([
-    sb.from('incoming_missions').select('id, mission_number, vehicle_plate, vehicle_brand, vehicle_model, vehicle_vin, status, parc_zone_key, parked_at, released_at, completed_at, driver_photos').in('id', ids),
+    sb.from('incoming_missions').select('id, mission_number, vehicle_plate, vehicle_brand, vehicle_model, vehicle_vin, status, parc_zone_key, parked_at, completed_at, driver_photos').in('id', ids),
     sb.from('mission_exit_control').select('mission_id, path, path_destination, path_chosen_by_kind, path_chosen_by_name, attestation_signed_at, forced_at').in('mission_id', ids),
     sb.from('parc_zones').select('key, label'),
   ])
@@ -197,7 +197,7 @@ export async function deviceVehicles(sb: any, deviceId: string) {
       id: m.id, mission_number: m.mission_number, plate: m.vehicle_plate, brand: m.vehicle_brand, model: m.vehicle_model, vin: m.vehicle_vin,
       status: m.status, in_parc: m.status === 'parked',
       zone: m.parc_zone_key ? (zl.get(m.parc_zone_key) || m.parc_zone_key) : null,
-      parked_at: m.parked_at, left_at: m.released_at || m.completed_at || null,
+      parked_at: m.parked_at, left_at: m.status === 'parked' ? null : (m.completed_at || null),
       photos: Array.isArray(m.driver_photos) ? m.driver_photos.filter((p: any) => typeof p === 'string').slice(0, 6) : [],
       visited_at: v.visited_at, bureau: v.expert_bureau,
       exit: c ? { path: c.path, destination: c.path_destination, by_kind: c.path_chosen_by_kind, by_name: c.path_chosen_by_name, signed: !!c.attestation_signed_at, forced: !!c.forced_at } : null,

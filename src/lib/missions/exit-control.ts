@@ -40,6 +40,32 @@ export interface ExitChecks {
   attestation: boolean
 }
 
+/**
+ * Concordance entre la personne présente et l'acheteur du bon Informex.
+ * C'est LE contrôle qui manquait lors du vol (le V vert du QR authentifie le
+ * document, pas le porteur). Comparaison souple : un token (≥ 3 lettres) du
+ * nom / prénom / société de la personne doit se retrouver dans le nom de
+ * l'acheteur. null = impossible à vérifier (bon non lu, identité absente).
+ */
+export function identityMatchesBuyer(identity: any, company: any, buyerName?: string | null): boolean | null {
+  const norm = (v: any) => String(v || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase()
+  // Formes juridiques et mots génériques : « SA GARAGE X » ne doit pas
+  // « concorder » avec n'importe quel garage.
+  const LEGAL = new Set(['SA', 'NV', 'SPRL', 'SRL', 'BV', 'BVBA', 'GMBH', 'LTD', 'SARL', 'SAS', 'SCRL', 'CV', 'SNC', 'COMM', 'SE', 'EV', 'ASBL', 'VZW'])
+  const GENERIC = new Set(['AUTO', 'AUTOS', 'GARAGE', 'CARS', 'CAR', 'MOTORS', 'TRADING', 'EXPORT', 'IMPORT', 'THE', 'AND', 'VAN', 'DER', 'DEN', 'VON', 'DE', 'LE', 'LA'])
+  const raw = (v: any) => norm(v).split(/[^A-Z0-9]+/).filter(t => t.length >= 2)
+  const useful = (...vals: any[]) => vals.flatMap(raw).filter(t => !LEGAL.has(t) && !GENERIC.has(t))
+  if (!raw(buyerName).length) return null
+  const mine = useful(identity?.lastName, identity?.firstName, company?.name)
+  if (!mine.length && !raw(company?.name).length) return null
+  const buyer = useful(buyerName)
+  if (buyer.length) return mine.some(t => buyer.includes(t))
+  // Acheteur au nom entièrement générique (« AUTO EXPORT BVBA ») : il faut
+  // que la société de la personne porte exactement ce nom (hors forme juridique).
+  const strip = (v: any) => raw(v).filter(t => !LEGAL.has(t)).join(' ')
+  return !!strip(company?.name) && strip(company?.name) === strip(buyerName)
+}
+
 export interface ExitControlState {
   armed:        boolean
   allowed:      boolean
@@ -49,6 +75,7 @@ export interface ExitControlState {
   documents:    any[]
   checks:       ExitChecks
   requires:     { informex: boolean; cmr: boolean; attestation: boolean }
+  identityMatch: boolean | null
   expertVisits: any[]
   pendingTokens: any[]
 }
@@ -135,27 +162,40 @@ export const EXIT_STEP_LABELS: Record<ExitStep, string> = {
 /** Une étape passée (motif + PIN) compte comme faite, mais reste tracée. */
 const skipped = (control: any, step: ExitStep) => !!control?.skips?.[step]
 
-export function computeChecks(control: any): { checks: ExitChecks; requires: ExitControlState['requires'] } {
+export function computeChecks(control: any): { checks: ExitChecks; requires: ExitControlState['requires']; identityMatch: boolean | null } {
   const path: ExitPath | null = control?.path || null
   const requires = {
     informex:    path === 'informex',
     cmr:         control?.identity_role === 'transporter',
     attestation: path !== 'assistance',
   }
+  // Identité : enregistrée, ET (chemin Informex) concordante avec l'acheteur
+  // du bon quand la personne se présente comme l'acheteur ; un mandataire
+  // doit avoir un mandat écrit noté. Sinon : passer l'étape (motif + PIN).
+  const identityMatch = path === 'informex' && control?.identity_role === 'buyer'
+    ? identityMatchesBuyer(control?.identity, control?.company, control?.informex_doc?.buyerName)
+    : null
+  const mandateOk = control?.identity_role !== 'mandate' || !!String(control?.mandate_note || '').trim()
+  const identityOk = !!control?.identity && identityMatch !== false && mandateOk
   const checks: ExitChecks = {
     path:        !!path || skipped(control, 'path'),
     informex:    !requires.informex || !!control?.informex_qr_raw || skipped(control, 'informex'),
-    identity:    path === 'assistance' || !!control?.identity || skipped(control, 'identity'),
+    identity:    path === 'assistance' || identityOk || skipped(control, 'identity'),
     cmr:         !requires.cmr || !!control?.cmr || skipped(control, 'cmr'),
     attestation: !requires.attestation || !!control?.attestation_signed_at || skipped(control, 'attestation'),
   }
-  return { checks, requires }
+  return { checks, requires, identityMatch }
 }
 
-function blockedReason(control: any, checks: ExitChecks): string | null {
+function blockedReason(control: any, checks: ExitChecks, identityMatch: boolean | null): string | null {
   if (!checks.path)        return 'Chemin de sortie non choisi (Informex, autre sortie ou reprise par une assistance).'
   if (!checks.informex)    return 'Bon Informex non scanné.'
-  if (!checks.identity)    return 'Identité de la personne présente non enregistrée.'
+  if (!checks.identity) {
+    if (!control?.identity) return 'Identité de la personne présente non enregistrée.'
+    if (identityMatch === false) return `La personne présente (${[control.identity?.firstName, control.identity?.lastName].filter(Boolean).join(' ')}) n'est pas l'acheteur du bon Informex (${control?.informex_doc?.buyerName || '?'}) : mandataire + mandat écrit, ou étape passée (motif + PIN).`
+    if (control?.identity_role === 'mandate') return 'Mandataire sans mandat : note le mandat écrit (signé par qui, rappel de l\'acheteur à quel numéro).'
+    return 'Identité de la personne présente non enregistrée.'
+  }
   if (!checks.cmr)         return 'CMR du transporteur non photographié.'
   if (!checks.attestation) return "Attestation d'enlèvement non signée."
   return null
@@ -171,16 +211,20 @@ export async function getExitControlState(sb: any, missionId: string): Promise<E
   const empty = (): ExitControlState => ({
     armed: false, allowed: true, forced: false, reason: null, control: null, documents: [],
     checks: { path: true, informex: true, identity: true, cmr: true, attestation: true },
-    requires: { informex: false, cmr: false, attestation: false },
+    requires: { informex: false, cmr: false, attestation: false }, identityMatch: null,
     expertVisits: [], pendingTokens: [],
   })
 
   const { data: mission } = await sb.from('incoming_missions')
     .select('id, source, status, vehicle_plate, vehicle_vin, rel_kaze_job_id, parked_at, received_at').eq('id', missionId).maybeSingle()
-  if (!mission || !isExitControlSource(mission.source)) return empty()
+  if (!mission) return empty()
+
+  // Une ligne de contrôle existante fait foi même si la source de la fiche a
+  // été modifiée entre-temps (sinon changer la source désarmerait le verrou).
+  let { data: control } = await sb.from('mission_exit_control').select('*').eq('mission_id', missionId).maybeSingle()
+  if (!control && !isExitControlSource(mission.source)) return empty()
 
   const expertVisits = await listExpertVisits(sb, missionId)
-  let { data: control } = await sb.from('mission_exit_control').select('*').eq('mission_id', missionId).maybeSingle()
 
   if (!control) {
     if (!expertVisits.length) return { ...empty(), expertVisits }
@@ -247,14 +291,14 @@ export async function getExitControlState(sb: any, missionId: string): Promise<E
       .eq('mission_id', missionId).is('used_at', null).gt('expires_at', new Date().toISOString()),
   ])
 
-  const { checks, requires } = computeChecks(control)
+  const { checks, requires, identityMatch } = computeChecks(control)
   const forced  = !!control.forced_at
   const complete = Object.values(checks).every(Boolean)
   const allowed = forced || complete
   return {
     armed: true, allowed, forced,
-    reason: allowed ? null : blockedReason(control, checks),
-    control, documents: documents || [], checks, requires, expertVisits,
+    reason: allowed ? null : blockedReason(control, checks, identityMatch),
+    control, documents: documents || [], checks, requires, identityMatch, expertVisits,
     pendingTokens: tokens || [],
   }
 }

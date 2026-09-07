@@ -164,7 +164,7 @@ export default function RestitutionWizard({ token, mission, initialPreview, onFi
       {error && !skipFor && <p className="text-critical text-sm bg-critical/10 border border-critical/30 rounded-lg px-3 py-2">{error}</p>}
 
       {current === 'path' && <PathStep p={p} busy={busy} onSubmit={async b => advance(await post({ step: 'path', ...b }))} skip={skipButton('path')} />}
-      {current === 'informex' && <InformexStep token={token} p={p} busy={busy} setBusy={setBusy} setError={setError} onDone={async j => { if (j?.preview) setP(j.preview); setLastResult(j); await advance(j) }} onManual={async raw => advance(await post({ step: 'informex_qr', raw }))} skip={skipButton('informex')} lastResult={lastResult} />}
+      {current === 'informex' && <InformexStep token={token} p={p} busy={busy} setBusy={setBusy} setError={setError} onDone={async j => { if (j?.preview) setP(j.preview); setLastResult(j); await advance(j) }} onManual={async (raw, pin) => advance(await post({ step: 'informex_qr', raw, pin }))} skip={skipButton('informex')} lastResult={lastResult} />}
       {current === 'identity' && <IdentityStep token={token} p={p} busy={busy} setBusy={setBusy} setError={setError} onPhotoDone={async j => { if (j?.preview) setP(j.preview); setLastResult(j); if (!j?.needs_manual) await advance(j) }} onManual={async b => advance(await post({ step: 'identity', ...b }))} skip={skipButton('identity')} lastResult={lastResult} />}
       {current === 'cmr' && <PhotoStep token={token} kind="cmr" busy={busy} setBusy={setBusy} setError={setError} hint="Le document entier, à plat. Numéro, transporteur et plaque du camion sont lus automatiquement." onDone={async j => { if (j?.preview) setP(j.preview); await advance(j) }} skip={skipButton('cmr')} />}
       {current === 'attestation' && <SignatureStep token={token} p={p} mission={mission} busy={busy} onSubmit={async b => { const j = await post({ step: 'signature', ...b }); if (j) onFinished() }} skip={skipButton('attestation')} />}
@@ -270,13 +270,14 @@ function PhotoStep({ token, kind, hint, busy, setBusy, setError, onDone, skip }:
 
 // ── Étape 2 : bon Informex (QR + photo) ─────────────────────────────────────
 function InformexStep({ token, p, busy, setBusy, setError, onDone, onManual, skip, lastResult }: {
-  token: string; p: any; busy: boolean; setBusy: (b: boolean) => void; setError: (e: string | null) => void; onDone: (j: any) => void; onManual: (raw: string) => void; skip: React.ReactNode; lastResult: any
+  token: string; p: any; busy: boolean; setBusy: (b: boolean) => void; setError: (e: string | null) => void; onDone: (j: any) => void; onManual: (raw: string, pin: string) => void; skip: React.ReactNode; lastResult: any
 }) {
   const ph = usePhotos()
   const [qrRaw, setQrRaw] = useState('')
   const [qrBusy, setQrBusy] = useState(false)
   const [scanning, setScanning] = useState(false)
   const [manual, setManual] = useState('')
+  const [manualPin, setManualPin] = useState('')
   const scanRef = useRef<any>(null)
 
   async function decodeFromFile(file: File) {
@@ -328,9 +329,11 @@ function InformexStep({ token, p, busy, setBusy, setError, onDone, onManual, ski
       <button onClick={send} disabled={busy || (!ph.files.length && !qrRaw)} className="py-3 rounded-xl bg-success text-white font-bold disabled:opacity-40 flex items-center justify-center gap-2">{busy ? <><Loader2 size={18} className="animate-spin" /> Envoi et lecture…</> : <><Check size={18} /> Envoyer</>}</button>
       <details className="text-sm">
         <summary className="text-ink-muted cursor-pointer">QR illisible ? Encoder la référence à la main</summary>
+        <p className="text-xs text-warning mt-2">Une référence tapée ne prouve rien (le V vert est dans le QR) : l'étape est <b>passée</b>, tracée à ton nom avec ton PIN, et l'attestation le mentionne.</p>
         <div className="flex gap-2 mt-2">
-          <input value={manual} onChange={e => setManual(e.target.value)} placeholder="Contenu du QR ou référence du bon" className="border rounded-lg px-3 py-2 bg-surface text-sm flex-1" />
-          <button onClick={() => onManual(manual)} disabled={busy || !manual.trim()} className="px-3 rounded-lg border text-sm disabled:opacity-40">OK</button>
+          <input value={manual} onChange={e => setManual(e.target.value)} placeholder="Référence du bon" className="border rounded-lg px-3 py-2 bg-surface text-sm flex-1 min-w-0" />
+          <input value={manualPin} onChange={e => setManualPin(e.target.value.replace(/\D/g, '').slice(0, 4))} inputMode="numeric" placeholder="PIN" className="border rounded-lg px-3 py-2 bg-surface text-sm w-20 tracking-widest" />
+          <button onClick={() => onManual(manual, manualPin)} disabled={busy || !manual.trim() || manualPin.length !== 4} className="px-3 rounded-lg border text-sm disabled:opacity-40">OK</button>
         </div>
       </details>
       {skip}
@@ -349,6 +352,7 @@ function IdentityStep({ token, p, busy, setBusy, setError, onPhotoDone, onManual
   const [mode, setMode] = useState<'photo' | 'manual' | 'counter'>('photo')
   const [id, setId] = useState({ firstName: '', lastName: '', documentNumber: '', nationality: '', birthDate: '' })
   const readOcr = lastResult?.kind === 'id_card' ? lastResult.ocr : null
+  const mandateMissing = role === 'mandate' && !mandate.trim()
   // Écran comptoir : la personne encode elle-même (ou insère sa carte eID).
   const [counterReq, setCounterReq] = useState<string | null>(null)
   const [counterMode, setCounterMode] = useState<'manual' | 'eid' | null>(null)
@@ -396,15 +400,24 @@ function IdentityStep({ token, p, busy, setBusy, setError, onPhotoDone, onManual
     <div className="bg-surface border rounded-xl p-4 flex flex-col gap-3">
       <p className="font-semibold">Personne présente à l'enlèvement</p>
       {p.identity && <p className="text-sm text-success">✅ Déjà enregistrée : {[p.identity.firstName, p.identity.lastName].filter(Boolean).join(' ')} ({roleLabel(p.identity_role)})</p>}
+      {p.identity && p.path === 'informex' && p.identity_role === 'buyer' && p.identity_match === false && (
+        <p className="text-sm bg-critical/10 border border-critical/40 rounded-lg px-3 py-2 font-semibold flex items-start gap-1"><AlertTriangle size={16} className="mt-0.5 shrink-0" /> <span>{[p.identity.firstName, p.identity.lastName].filter(Boolean).join(' ')} n'est PAS l'acheteur du bon ({p.informex?.buyerName}). Ne pas restituer comme acheteur : passe en <b>Mandataire</b> avec le mandat écrit, ou passe l'étape (motif + PIN).</span></p>
+      )}
+      {p.identity && p.path === 'informex' && p.identity_role === 'buyer' && p.identity_match === true && (
+        <p className="text-sm text-success">✅ Même personne que l'acheteur du bon ({p.informex?.buyerName}).</p>
+      )}
       {p.path === 'informex' && p.informex?.buyerName && (
         <p className="text-sm bg-warning/10 border border-warning/40 rounded-lg px-3 py-2">Acheteur selon le bon : <b>{p.informex.buyerName}</b>. Si ce n'est pas la même personne : mandat écrit + rappel de l'acheteur au numéro fourni par le bureau, pas à celui de la personne présente.</p>
+      )}
+      {p.path === 'informex' && !p.informex?.buyerName && (
+        <p className="text-sm bg-warning/10 border border-warning/40 rounded-lg px-3 py-2">Acheteur du bon inconnu (bon non lu) : compare toi-même le nom de l'acheteur sur le bon avec la pièce d'identité.</p>
       )}
       <div className="flex flex-wrap gap-2">
         {(['buyer', 'mandate', 'transporter'] as const).map(r => (
           <button key={r} onClick={() => setRole(r)} className={`px-3 py-1.5 rounded-lg border text-sm font-semibold ${role === r ? 'bg-brand text-white border-brand' : 'bg-surface'}`}>{ROLE_LABELS[r]}</button>
         ))}
       </div>
-      {role === 'mandate' && <input value={mandate} onChange={e => setMandate(e.target.value)} placeholder="Mandat : signé par qui, rappel de l'acheteur à quel numéro / heure" className="border rounded-lg px-3 py-2 bg-surface text-sm" />}
+      {role === 'mandate' && <input value={mandate} onChange={e => setMandate(e.target.value)} placeholder="Mandat écrit (obligatoire) : signé par qui, rappel de l'acheteur à quel numéro / heure" className={`border rounded-lg px-3 py-2 bg-surface text-sm ${!mandate.trim() ? 'border-critical' : ''}`} />}
       {(role === 'transporter' || role === 'mandate') && (
         <div className="grid grid-cols-1 gap-2">
           <input value={company.name} onChange={e => setCompany({ ...company, name: e.target.value })} placeholder="Société" className="border rounded-lg px-3 py-2 bg-surface text-sm" />
@@ -424,8 +437,8 @@ function IdentityStep({ token, p, busy, setBusy, setError, onPhotoDone, onManual
             <p className="text-sm text-ink-secondary flex items-center gap-2 py-2"><Loader2 size={16} className="animate-spin" /> En attente de la personne au comptoir ({counterMode === 'eid' ? 'lecture de la carte' : 'saisie des coordonnées'})…</p>
           ) : (
             <div className="grid grid-cols-1 gap-2">
-              <button onClick={() => sendToCounter('manual')} disabled={busy} className="py-3 rounded-xl bg-brand text-white font-bold disabled:opacity-40">📺 La personne encode ses coordonnées</button>
-              <button onClick={() => sendToCounter('eid')} disabled={busy} className="py-3 rounded-xl border font-semibold disabled:opacity-40">🪪 Lire sa carte d'identité belge (lecteur)</button>
+              <button onClick={() => sendToCounter('manual')} disabled={busy || mandateMissing} className="py-3 rounded-xl bg-brand text-white font-bold disabled:opacity-40">📺 La personne encode ses coordonnées</button>
+              <button onClick={() => sendToCounter('eid')} disabled={busy || mandateMissing} className="py-3 rounded-xl border font-semibold disabled:opacity-40">🪪 Lire sa carte d'identité belge (lecteur)</button>
             </div>
           )}
           {counterReq && <button onClick={() => { setCounterReq(null); if (counterTimer.current) clearInterval(counterTimer.current) }} className="text-xs text-ink-muted underline">Annuler</button>}
@@ -435,7 +448,7 @@ function IdentityStep({ token, p, busy, setBusy, setError, onPhotoDone, onManual
           <p className="text-xs text-ink-muted">Carte d'identité ou passeport, tous pays : recto puis verso, bien net. Lecture automatique.</p>
           <PhotoPicker {...ph} label="Photographier la pièce" />
           {readOcr && !(readOcr.firstName || readOcr.lastName) && <p className="text-warning text-sm flex items-center gap-1"><AlertTriangle size={14} /> Lecture impossible : reprends la photo ou saisis à la main.</p>}
-          <button onClick={sendPhotos} disabled={busy || !ph.files.length} className="py-3 rounded-xl bg-success text-white font-bold disabled:opacity-40 flex items-center justify-center gap-2">{busy ? <><Loader2 size={18} className="animate-spin" /> Envoi et lecture…</> : <><Check size={18} /> Envoyer</>}</button>
+          <button onClick={sendPhotos} disabled={busy || !ph.files.length || mandateMissing} className="py-3 rounded-xl bg-success text-white font-bold disabled:opacity-40 flex items-center justify-center gap-2">{busy ? <><Loader2 size={18} className="animate-spin" /> Envoi et lecture…</> : <><Check size={18} /> Envoyer</>}</button>
         </>
       ) : (
         <>
@@ -446,10 +459,10 @@ function IdentityStep({ token, p, busy, setBusy, setError, onPhotoDone, onManual
             <input value={id.nationality} onChange={e => setId({ ...id, nationality: e.target.value })} placeholder="Nationalité" className="border rounded-lg px-3 py-2 bg-surface text-sm" />
             <input value={id.birthDate} onChange={e => setId({ ...id, birthDate: e.target.value })} placeholder="Date de naissance (JJ/MM/AAAA)" className="border rounded-lg px-3 py-2 bg-surface text-sm" />
           </div>
-          <button onClick={() => onManual({ identity: id, role, mandate_note: mandate, company })} disabled={busy || (!id.lastName && !id.firstName)} className="py-3 rounded-xl bg-success text-white font-bold disabled:opacity-40 flex items-center justify-center gap-2"><Check size={18} /> Enregistrer</button>
+          <button onClick={() => onManual({ identity: id, role, mandate_note: mandate, company })} disabled={busy || (!id.lastName && !id.firstName) || mandateMissing} className="py-3 rounded-xl bg-success text-white font-bold disabled:opacity-40 flex items-center justify-center gap-2"><Check size={18} /> Enregistrer</button>
         </>
       )}
-      {p.identity && <button onClick={() => onManual({ role, mandate_note: mandate, company })} disabled={busy} className="py-2 rounded-lg border text-sm">Garder l'identité déjà lue, mettre à jour la qualité et continuer</button>}
+      {p.identity && <button onClick={() => onManual({ role, mandate_note: mandate, company })} disabled={busy || mandateMissing} className="py-2 rounded-lg border text-sm">Garder l'identité déjà lue, mettre à jour la qualité et continuer</button>}
       {skip}
     </div>
   )

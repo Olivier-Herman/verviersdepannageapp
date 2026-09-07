@@ -85,6 +85,10 @@ export async function POST(_req: Request, { params }: { params: { id: string } }
 
   // 2. Auto-restituer si encore en parked + source fourriere
   if (mission.status === 'parked' && FOURRIERE_AUTO_RESTITUTE_SOURCES.includes(mission.source || '')) {
+    // Contrôle de sortie (épave gérée par un bureau d'expertise). 2026-09-07.
+    const { assertExitAllowed } = await import('@/lib/missions/exit-control')
+    const gate = await assertExitAllowed(sb, params.id)
+    if (!gate.ok) return NextResponse.json({ ok: false, error: gate.error, exit_control_blocked: true, actions }, { status: 409 })
     await sb.from('incoming_missions').update({
       status:       'to_invoice',
       completed_at: new Date().toISOString(),

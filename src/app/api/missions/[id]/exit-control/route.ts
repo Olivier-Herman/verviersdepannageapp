@@ -6,7 +6,7 @@
 //   { action: 'assistance', assistance_mission_id?, note? }   → chemin 'assistance'
 //   { action: 'identity',  identity: {...}, role: 'buyer'|'mandate'|'transporter', mandate_note?, company? }
 //   { action: 'company',   company: { name, vat, vies_ok, truck_plate } }
-//   { action: 'informex_qr', raw }                              → saisie manuelle du contenu QR / référence
+//   { action: 'informex_qr', raw, pin }                         → référence à la main = étape PASSÉE (PIN), pas un QR
 //   { action: 'force',     reason, pin }                        → sortie forcée (PIN personnel bcrypt)
 //   { action: 'reset_path' }                                    → efface le chemin (avant signature uniquement)
 //
@@ -49,11 +49,13 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   const { data: mission } = await sb.from('incoming_missions')
     .select('id, source, status, vehicle_plate, vehicle_vin').eq('id', missionId).maybeSingle()
   if (!mission) return NextResponse.json({ error: 'Mission introuvable' }, { status: 404 })
-  if (!isExitControlSource(mission.source)) {
-    return NextResponse.json({ error: 'Cette fiche n\'est pas soumise au contrôle de sortie.' }, { status: 409 })
-  }
+  // Une ligne de contrôle existante fait foi même si la source a changé
+  // depuis (sinon impossible de forcer / compléter une fiche requalifiée).
   const state = await getExitControlState(sb, missionId)
   if (!state.armed) {
+    if (!isExitControlSource(mission.source)) {
+      return NextResponse.json({ error: 'Cette fiche n\'est pas soumise au contrôle de sortie.' }, { status: 409 })
+    }
     return NextResponse.json({ error: 'Aucun passage d\'expert enregistré : la fiche n\'est pas soumise au contrôle.' }, { status: 409 })
   }
   const control = state.control
@@ -128,10 +130,20 @@ export async function POST(req: Request, { params }: { params: { id: string } })
         break
       }
       case 'informex_qr': {
-        const raw = String(body.raw || '').trim()
+        // Une référence tapée à la main n'authentifie rien (le V vert est dans
+        // le QR) : étape PASSÉE, motif + PIN, tracée comme telle.
+        const raw = String(body.raw || '').trim().slice(0, 300)
+        const pin = String(body.pin || '').trim()
         if (!raw) return NextResponse.json({ error: 'Contenu du QR / référence requis.' }, { status: 400 })
-        await patch({ informex_qr_raw: raw, informex_qr_at: now, informex_qr_by: acc.id })
-        await log('exit_control_informex', `Bon Informex encodé manuellement par ${meName} : ${raw.slice(0, 200)}`, { raw, manual: true })
+        if (!/^\d{4}$/.test(pin)) return NextResponse.json({ error: 'PIN à 4 chiffres requis (référence sans QR = étape passée).' }, { status: 400 })
+        if (!me?.verify_pin_hash) return NextResponse.json({ error: 'Aucun PIN configuré. Définis ton PIN dans Mon Profil.' }, { status: 400 })
+        if (!(await bcrypt.compare(pin, me.verify_pin_hash))) {
+          await log('exit_control_skip_denied', `⛔ Bon Informex : référence à la main refusée, PIN incorrect (${meName}).`, { raw })
+          return NextResponse.json({ error: 'PIN incorrect.' }, { status: 403 })
+        }
+        const reason = `QR illisible — référence encodée à la main : ${raw}`
+        await patch({ skips: { ...(control.skips || {}), informex: { reason, by: acc.id, by_name: meName, at: now } } })
+        await log('exit_control_step_skipped', `⚠️ Étape PASSÉE « Bon Informex » par ${meName} (PIN validé) — ${reason}`, { step: 'informex', reason, raw })
         break
       }
       case 'force': {

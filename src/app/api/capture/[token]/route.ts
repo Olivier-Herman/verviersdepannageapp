@@ -61,6 +61,7 @@ async function buildPreview(sb: any, missionId: string) {
     informex_qr:   !!c.informex_qr_raw,
     informex_match: c.informex_match || null,
     identity:      c.identity || null,
+    identity_match: state.identityMatch,
     identity_role: c.identity_role || null,
     mandate_note:  c.mandate_note || null,
     company:       c.company || null,
@@ -268,7 +269,7 @@ export async function POST(req: Request, { params }: { params: { token: string }
     const m = /^data:image\/png;base64,(.+)$/.exec(String(body.signature || ''))
     if (!m) return json({ error: 'Signature manquante.' }, 400)
     if (!control) return json({ error: 'Cette fiche n\'est pas soumise au contrôle de sortie.' }, 409)
-    const { checks } = computeChecks(control)
+    const { checks, identityMatch } = computeChecks(control)
     if (!checks.path)     return json({ error: 'Chemin de sortie à choisir (ou à passer) avant la signature.' }, 409)
     if (control.path === 'assistance') return json({ error: 'Reprise par une assistance : pas d\'attestation à signer.' }, 409)
     if (!checks.informex) return json({ error: 'Bon Informex à scanner (ou à passer) avant la signature.' }, 409)
@@ -298,6 +299,7 @@ export async function POST(req: Request, { params }: { params: { token: string }
       informex: control.informex_doc || null, informex_qr_raw: control.informex_qr_raw || null,
       informex_match: control.informex_match || null,
       identity: control.identity, identity_role: control.identity_role, mandate_note: control.mandate_note,
+      identity_match: identityMatch,
       company: control.company || null, cmr: control.cmr || null,
       skips: control.skips || {},
     }
@@ -309,10 +311,10 @@ export async function POST(req: Request, { params }: { params: { token: string }
   }
 
   // ── Étape passée : motif + PIN de celui qui a ouvert le QR ────────────────
-  async function handleSkip() {
-    const which = String(body.which || '') as ExitStep
+  async function handleSkip(whichIn?: ExitStep, reasonIn?: string) {
+    const which = (whichIn || String(body.which || '')) as ExitStep
     if (!EXIT_STEP_LABELS[which]) return json({ error: 'Étape inconnue.' }, 400)
-    const reason = String(body.reason || '').trim()
+    const reason = String(reasonIn ?? body.reason ?? '').trim()
     const pin = String(body.pin || '').trim()
     if (reason.length < 5) return json({ error: 'Motif obligatoire (5 caractères minimum).' }, 400)
     if (!/^\d{4}$/.test(pin)) return json({ error: 'PIN à 4 chiffres requis.' }, 400)
@@ -353,6 +355,7 @@ export async function POST(req: Request, { params }: { params: { token: string }
     const id = body.identity && typeof body.identity === 'object' ? body.identity : {}
     const role = ['buyer', 'mandate', 'transporter'].includes(body.role) ? body.role : (control?.identity_role || 'buyer')
     const fields: any = { identity_role: role, mandate_note: String(body.mandate_note || '').trim() || null }
+    if (role === 'mandate' && !fields.mandate_note) return json({ error: 'Mandataire : note le mandat écrit (signé par qui, rappel de l\'acheteur à quel numéro).' }, 400)
     if (body.company && typeof body.company === 'object') fields.company = { name: body.company.name || null, vat: body.company.vat || null, truck_plate: body.company.truck_plate || null }
     if (id.firstName || id.lastName) {
       fields.identity = {
@@ -369,12 +372,14 @@ export async function POST(req: Request, { params }: { params: { token: string }
     await log('exit_control_identity', `Identité ${fields.identity ? 'saisie sur le téléphone' : 'mise à jour'} : ${[control?.identity?.firstName, control?.identity?.lastName].filter(Boolean).join(' ')} — ${roleLabel(role)}${fields.mandate_note ? ` — mandat : ${fields.mandate_note}` : ''} (par ${authorName}).`, { role, source: fields.identity ? 'manual' : undefined })
     return respond({ role })
   }
+  // Une référence tapée à la main n'authentifie rien (c'est le QR qui porte le
+  // V vert) : on la garde au dossier mais l'étape est PASSÉE, motif + PIN,
+  // tracée comme telle sur la fiche et l'attestation.
   async function handleInformexQr() {
-    const raw = String(body.raw || '').trim()
+    const raw = String(body.raw || '').trim().slice(0, 300)
     if (!raw) return json({ error: 'Contenu du QR / référence requis.' }, 400)
-    await patchControl({ informex_qr_raw: raw, informex_qr_at: now, informex_qr_by: tok.created_by || null })
-    await log('exit_control_informex', `📋 Bon Informex : QR / référence encodé sur le téléphone par ${authorName} : ${raw.slice(0, 200)}`, { raw, manual: true })
-    return respond({ raw })
+    await log('exit_control_informex', `📋 Bon Informex : référence encodée à la main sur le téléphone par ${authorName} (QR non scanné) : ${raw.slice(0, 200)}`, { raw, manual: true })
+    return handleSkip('informex', `QR illisible — référence encodée à la main : ${raw}`)
   }
   // Commande l'écran comptoir (saisie par la personne, ou lecture eID).
   async function handleCounter(mode: 'manual' | 'eid') {

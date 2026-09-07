@@ -12,6 +12,7 @@ import { NextResponse }         from 'next/server'
 import { getServerSession }     from 'next-auth'
 import { authOptions }          from '@/lib/auth'
 import { createAdminClient }    from '@/lib/supabase'
+import { assertExitAllowed }   from '@/lib/missions/exit-control'
 import { releaseParcAndShift }  from '@/lib/parc/release'
 
 export const dynamic = 'force-dynamic'
@@ -50,6 +51,12 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   }
   if (mission.status === 'cancelled') {
     return NextResponse.json({ ok: true, alreadyCancelled: true })
+  }
+  // Contrôle de sortie (épave gérée par un bureau d'expertise) : annuler une
+  // fiche EN PARC libère la place = le véhicule sort. Olivier 2026-09-07.
+  if (mission.status === 'parked') {
+    const gate = await assertExitAllowed(sb, params.id)
+    if (!gate.ok) return NextResponse.json({ error: gate.error, exit_control_blocked: true }, { status: 409 })
   }
 
   const cancelledBy = user.name || user.email || 'inconnu'

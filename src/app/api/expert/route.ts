@@ -117,6 +117,7 @@ export async function POST(req: Request) {
       if (!text) return json({ error: 'Message vide.' }, 400)
       const { data: v } = await sb.from('mission_visitors').select('id, expert_bureau').eq('expert_device_id', device.id).eq('mission_id', missionId).limit(1).maybeSingle()
       if (!v) return json({ error: 'Ce véhicule n\'est pas dans ta liste.' }, 403)
+      if (!approvedFor(String(v.expert_bureau || ''))) return json({ error: 'Accès révoqué pour ce bureau. Adressez-vous au comptoir.' }, 403)
       await sb.from('mission_remarks').insert({ mission_id: missionId, text: `❓ Expert ${device.first_name} (${v.expert_bureau || '—'}) : ${text}` })
       const { data: m } = await sb.from('incoming_missions').select('vehicle_plate').eq('id', missionId).maybeSingle()
       for (const userId of await officeUserIds(sb)) {
@@ -133,6 +134,7 @@ export async function POST(req: Request) {
       const missionId = String(body.mission_id || '')
       const { data: v } = await sb.from('mission_visitors').select('id, expert_bureau').eq('expert_device_id', device.id).eq('mission_id', missionId).limit(1).maybeSingle()
       if (!v) return json({ error: 'Ce véhicule n\'est pas dans ta liste.' }, 403)
+      if (!approvedFor(String(v.expert_bureau || ''))) return json({ error: 'Accès révoqué pour ce bureau. Adressez-vous au comptoir.' }, 403)
       const state = await getExitControlState(sb, missionId)
       if (!state.armed) return json({ error: 'Pas de contrôle de sortie sur cette fiche.' }, 409)
       if (state.control?.attestation_signed_at) return json({ error: 'Le véhicule est déjà sorti ou l\'attestation est signée.' }, 409)

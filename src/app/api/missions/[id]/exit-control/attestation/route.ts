@@ -83,7 +83,7 @@ ${row('Référence', ix.reference)}
 ${row('Acheteur selon le bon', ix.buyerName)}
 ${row('TVA acheteur', ix.buyerVat)}
 ${row('Vendeur', ix.seller)}
-<tr><td class="l">Contrôle QR</td><td class="v">${a.informex_qr_raw ? 'QR décodé et enregistré' : '<span class="warn">non scanné</span>'}
+<tr><td class="l">Contrôle QR</td><td class="v">${a.informex_qr_raw ? 'QR décodé et enregistré' : a.skips?.informex ? '<span class="warn">non scanné — étape passée (voir ci-dessous)</span>' : '<span class="warn">non scanné</span>'}
 ${a.informex_match ? `<span class="badge">plaque ${a.informex_match.plate === null ? '?' : a.informex_match.plate ? 'OK' : 'KO'}</span><span class="badge">châssis ${a.informex_match.vin === null ? '?' : a.informex_match.vin ? 'OK' : 'KO'}</span>` : ''}</td></tr>
 </table>` : ''}
 
@@ -96,7 +96,8 @@ ${row('Nationalité', id.nationality)}
 ${row('Pièce d\'identité', [id.documentType, id.documentNumber].filter(Boolean).join(' '))}
 ${row('Adresse', [id.street, [id.zip, id.city].filter(Boolean).join(' '), id.country].filter(Boolean).join(', '))}
 ${row('Téléphone', id.phone)}
-${row('Identité lue par', id.source === 'eid' ? 'carte d\'identité électronique (lecteur)' : id.source === 'ocr' ? 'photo de la pièce (lecture automatique)' : 'saisie manuelle')}
+${row('Identité lue par', id.source === 'eid' ? 'carte d\'identité électronique (lecteur)' : id.source === 'ocr' ? 'photo de la pièce (lecture automatique)' : id.source === 'counter' ? 'encodée par la personne sur l\'écran comptoir' : 'saisie manuelle')}
+${a.path === 'informex' ? `<tr><td class="l">Concordance avec l'acheteur du bon</td><td class="v">${a.identity_match === true ? 'OK — même personne' : a.identity_match === false ? '<span class="warn">NON — personne différente de l\'acheteur</span>' : a.identity_role === 'mandate' ? 'mandataire (mandat ci-dessous)' : a.identity_role === 'transporter' ? 'transporteur (CMR ci-dessous)' : 'non vérifiable'}</td></tr>` : ''}
 ${row('Mandat', a.mandate_note)}
 ${row('Société', co.name)}
 ${row('N° TVA', co.vat)}

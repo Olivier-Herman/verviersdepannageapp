@@ -13,6 +13,7 @@ import { NextResponse }     from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions }      from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase'
+import { assertExitAllowed } from '@/lib/missions/exit-control'
 
 export const dynamic = 'force-dynamic'
 
@@ -40,6 +41,9 @@ export async function POST(_req: Request, { params }: { params: { id: string } }
     patch.status = (m as any).loaded_at ? 'delivering' : 'in_progress'
     undone = 'clôture'
   } else if (st === 'parked') {
+    // Contrôle de sortie : dé-parquer une épave armée = la faire sortir. 2026-09-07.
+    const gate = await assertExitAllowed(sb, (m as any).id)
+    if (!gate.ok) return NextResponse.json({ error: gate.error, exit_control_blocked: true }, { status: 409 })
     patch.status = (m as any).loaded_at ? 'delivering' : 'in_progress'
     patch.parked_at = null; patch.parc_zone_key = null; patch.park_stage_name = null
     undone = 'mise en parc'

@@ -54,6 +54,16 @@ async function toInvoiceIfMatched(sb: any, r: any, sortie: string, userId: strin
     .select('id, status, completed_at').eq('id', r.matched_mission_id).maybeSingle()
   if (!m || !['parked', 'new', 'dispatching', 'assigned', 'accepted', 'in_progress', 'delivering'].includes(m.status)) return false
   const now = new Date().toISOString()
+  // Contrôle de sortie (épave gérée par un bureau d'expertise) : une fiche
+  // armée ne sort pas par la sortie Domaine sans procédure. 2026-09-07.
+  if (m.status === 'parked') {
+    const { assertExitAllowed } = await import('@/lib/missions/exit-control')
+    const gate = await assertExitAllowed(sb, m.id)
+    if (!gate.ok) {
+      await sb.from('mission_remarks').insert({ mission_id: m.id, text: `⚠️ Sortie Domaine ${sortie} NON appliquée : ${gate.error}` }).then(() => {}, () => {})
+      return false
+    }
+  }
   await sb.from('incoming_missions').update({ status: 'to_invoice', completed_at: m.completed_at || now, updated_at: now }).eq('id', m.id)
   await sb.from('mission_logs').insert({
     mission_id: m.id, actor_id: userId, action: 'domaine_sortie',

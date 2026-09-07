@@ -155,6 +155,10 @@ export default function ExitControlPanel({ missionId, status, onChanged, refresh
               {c.identity.documentNumber && ` · n° ${c.identity.documentNumber}`}
               {' '}· {ROLE_LABELS[c.identity_role] || 'Acheteur'} · {c.identity.source === 'eid' ? 'eID' : c.identity.source === 'ocr' ? 'pièce photographiée et lue' : 'saisie'} · {fmt(c.identity_at)}
               {c.identity.confidence === 'low' && <span className="block text-warning">Lecture peu sûre : vérifiée avec la pièce en main ?</span>}
+              {c.path === 'informex' && c.identity_role === 'buyer' && state.identityMatch === true && <span className="block text-success">✅ Même personne que l'acheteur du bon ({c.informex_doc?.buyerName})</span>}
+              {c.path === 'informex' && c.identity_role === 'buyer' && state.identityMatch === false && <span className="block text-critical font-semibold">❌ Ce n'est PAS l'acheteur du bon ({c.informex_doc?.buyerName}) : mandataire + mandat écrit, ou étape passée (motif + PIN).</span>}
+              {c.path === 'informex' && c.identity_role === 'buyer' && state.identityMatch === null && !skips.identity && <span className="block text-warning">Concordance avec l'acheteur du bon impossible à vérifier (bon non lu).</span>}
+              {c.identity_role === 'mandate' && !c.mandate_note && <span className="block text-critical font-semibold">Mandataire sans mandat écrit noté.</span>}
               {c.mandate_note && <span className="block">Mandat : {c.mandate_note}</span>}
               {c.company?.name && <span className="block">Société : {c.company.name}{c.company.vat ? ` · ${c.company.vat}` : ''}{c.company.truck_plate ? ` · camion ${c.company.truck_plate}` : ''}</span>}
             </p>
