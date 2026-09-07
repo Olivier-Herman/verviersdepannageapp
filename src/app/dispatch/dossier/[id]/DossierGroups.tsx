@@ -66,11 +66,15 @@ const TONE = {
   muted: 'bg-surface-2 text-ink-muted border',
 } as const
 
-export default function DossierGroups({ initial, fiches, shared, isSuperadmin, openMissionId, compact = false }: {
+export default function DossierGroups({ initial, fiches, shared, isSuperadmin, openMissionId, compact = false, mobile = false }: {
   initial: Dossier; fiches: Record<string, any>; shared: any; isSuperadmin: boolean; openMissionId: string
   // compact : rendu dans une ligne dépliée de la liste dispatch — pas de
   // bandeau preview, pas de bouton Retour, marges réduites.
   compact?: boolean
+  // mobile : vue 2 de la maquette téléphone (Olivier 07/09/2026) — lettres,
+  // champs modifiables, « Facturer à » ; PAS de fiche complète dépliée, pas de
+  // légende ni de faits secondaires. Tout tient dans la largeur de l'écran.
+  mobile?: boolean
 }) {
   const router = useRouter()
   const goBack = () => { if (typeof window !== 'undefined' && window.history.length > 1) router.back(); else router.push('/dispatch') }
@@ -88,6 +92,7 @@ export default function DossierGroups({ initial, fiches, shared, isSuperadmin, o
   const lastFiche = [...initial.legs].reverse().find(l => l.kind !== 'out')
   const [open, setOpen] = useState<Set<string>>(() => new Set([initialTarget?.letter, initialTarget?.kind === 'out' ? lastFiche?.letter : undefined].filter(Boolean) as string[]))
   const [embed, setEmbed] = useState<Set<string>>(() => {
+    if (mobile) return new Set()
     const t = initialTarget && initialTarget.kind !== 'out' ? initialTarget : lastFiche
     return new Set(t ? [t.letter] : [])
   })
@@ -137,7 +142,7 @@ export default function DossierGroups({ initial, fiches, shared, isSuperadmin, o
   const vehicle = [d.vehicle.brand, d.vehicle.model].filter(Boolean).join(' ')
 
   return (
-    <div className={`${compact ? 'px-2 py-3' : 'px-3 lg:px-6 py-5'} space-y-3 max-w-full overflow-x-hidden`}>
+    <div className={`${compact ? 'px-2 py-3' : 'px-3 lg:px-6 py-5'} space-y-3 max-w-full overflow-x-hidden ${mobile ? 'break-words [&_.font-mono]:break-all' : ''}`}>
 
       {isSuperadmin && !compact && (
         <div className="flex items-center justify-between gap-3 bg-amber-500/10 border border-amber-500/30 rounded-2xl px-4 py-2">
@@ -152,11 +157,11 @@ export default function DossierGroups({ initial, fiches, shared, isSuperadmin, o
 
       {/* ── En-tête du dossier ── */}
       <div className="bg-surface border rounded-2xl overflow-hidden">
-        <div className="px-5 py-3 grid grid-cols-1 md:grid-cols-[1fr_auto] gap-x-6 gap-y-2 items-start">
+        <div className={`${mobile ? 'px-3' : 'px-5'} py-3 grid grid-cols-1 md:grid-cols-[1fr_auto] gap-x-6 gap-y-2 items-start min-w-0`}>
           <div>
             <h1 className="text-ink font-bold text-lg flex flex-wrap items-center gap-2">
               {!compact && <button onClick={goBack} title="Retour à l'écran précédent" className="px-2.5 py-1 rounded-lg border bg-surface text-ink-secondary hover:text-ink text-sm font-semibold">← <span className="hidden sm:inline">Retour</span></button>}
-              {compact && <Link href={`/dispatch/dossier/${d.root_id}?open=${openMissionId}`} target="_blank" className="px-2.5 py-1 rounded-lg bg-brand text-white text-xs font-semibold hover:bg-brand-hover">Vue complète ↗</Link>}
+              {compact && !mobile && <Link href={`/dispatch/dossier/${d.root_id}?open=${openMissionId}`} target="_blank" className="px-2.5 py-1 rounded-lg bg-brand text-white text-xs font-semibold hover:bg-brand-hover">Vue complète ↗</Link>}
               Dossier {d.ref}
               <span className="text-xs font-semibold text-ink-secondary bg-surface-2 border rounded-lg px-2 py-0.5">{d.source_label}</span>
               {d.dossier_number && <span className="text-xs font-mono text-ink-secondary bg-surface-2 border rounded-lg px-2 py-0.5">{d.dossier_number}</span>}
@@ -203,10 +208,10 @@ export default function DossierGroups({ initial, fiches, shared, isSuperadmin, o
         </div>
       </div>
 
-      <div className="flex flex-wrap gap-3 text-[11px] text-ink-muted px-1">
+      {!mobile && <div className="flex flex-wrap gap-3 text-[11px] text-ink-muted px-1">
         {(Object.keys(KIND) as Array<keyof typeof KIND>).map(k => <span key={k}><i className={`inline-block w-2.5 h-2.5 rounded-sm mr-1 align-[-1px] ${KIND[k].dot}`} />{KIND[k].label}</span>)}
         <span><i className="inline-block w-2.5 h-2.5 rounded-full border border-dashed border-ink-faint mr-1 align-[-1px]" />Mail reçu, sans action</span>
-      </div>
+      </div>}
 
       {/* ── Groupes + événements ── */}
       {timeline.map((it, i) => it.ev ? (
@@ -228,10 +233,10 @@ export default function DossierGroups({ initial, fiches, shared, isSuperadmin, o
         </div>
       ) : (
         <Group key={it.leg!.letter} d={d} leg={it.leg!} canBill={canBill} isOpen={open.has(it.leg!.letter)} onToggle={() => toggle(it.leg!.letter)}
-          embedOpen={embed.has(it.leg!.letter)} onToggleEmbed={() => toggleEmbed(it.leg!.letter)} fiche={fiches[it.leg!.mission_id]} shared={shared} onChanged={refresh} />
+          embedOpen={embed.has(it.leg!.letter)} onToggleEmbed={() => toggleEmbed(it.leg!.letter)} fiche={fiches[it.leg!.mission_id]} shared={shared} onChanged={refresh} mobile={mobile} />
       ))}
 
-      <p className="text-[11px] text-ink-faint px-1 pt-2">Les fiches Gardiennage sont créées automatiquement à la mise en parc et n'apparaissent que sur cet écran. « Facturer » crée directement les factures Odoo en brouillon, une par client.</p>
+      {!mobile && <p className="text-[11px] text-ink-faint px-1 pt-2">Les fiches Gardiennage sont créées automatiquement à la mise en parc et n'apparaissent que sur cet écran. « Facturer » crée directement les factures Odoo en brouillon, une par client.</p>}
 
       {billing && <BillingModal d={d} onClose={() => setBilling(false)} onDone={async () => { await refresh() }} />}
     </div>
@@ -239,8 +244,8 @@ export default function DossierGroups({ initial, fiches, shared, isSuperadmin, o
 }
 
 // ── Un groupe ─────────────────────────────────────────────────────────────
-function Group({ d, leg, canBill, isOpen, onToggle, embedOpen, onToggleEmbed, fiche, shared, onChanged }: {
-  d: Dossier; leg: DossierLeg; canBill: boolean; isOpen: boolean; onToggle: () => void; embedOpen: boolean; onToggleEmbed: () => void; fiche: any; shared: any; onChanged: () => void
+function Group({ d, leg, canBill, isOpen, onToggle, embedOpen, onToggleEmbed, fiche, shared, onChanged, mobile = false }: {
+  d: Dossier; leg: DossierLeg; canBill: boolean; isOpen: boolean; onToggle: () => void; embedOpen: boolean; onToggleEmbed: () => void; fiche: any; shared: any; onChanged: () => void; mobile?: boolean
 }) {
   const k = KIND[leg.kind]
   return (
@@ -263,7 +268,7 @@ function Group({ d, leg, canBill, isOpen, onToggle, embedOpen, onToggleEmbed, fi
       </button>
 
       {isOpen && (
-        <div className="border-t px-3 md:px-3.5 py-3 md:pl-[70px] space-y-3 min-w-0">
+        <div className={`border-t px-3 md:px-3.5 py-3 ${mobile ? '' : 'md:pl-[70px]'} space-y-3 min-w-0 max-w-full overflow-x-hidden`}>
           {leg.editable && (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-1 text-xs bg-surface-2 border rounded-xl px-3 py-2">
               <div className="grid grid-cols-[92px_minmax(0,1fr)] md:grid-cols-[110px_1fr] gap-2 items-center"><dt className="text-ink-muted">Client</dt><dd className="flex flex-wrap gap-x-2 gap-y-0.5 items-center">
@@ -282,14 +287,14 @@ function Group({ d, leg, canBill, isOpen, onToggle, embedOpen, onToggleEmbed, fi
                   title="Modifier dans la fiche (adresse géocodée)" className={`text-left rounded px-1 -mx-1 hover:bg-brand/10 hover:ring-1 hover:ring-brand/30 ${(leg.editable.destination_address || leg.editable.redelivery_address) ? 'text-ink' : 'text-ink-faint italic'}`}>{leg.editable.destination_address || leg.editable.redelivery_address || 'à définir'} <span className="text-ink-faint">✎</span></button></dd></div>
             </div>
           )}
-          <dl className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-1 text-xs">
+          {!mobile && <dl className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-1 text-xs">
             {leg.facts.filter(f => !leg.editable || !['Chauffeur', 'Intervention', 'Départ', 'Destination', 'Livré à'].includes(f.label) || f.label === 'Chauffeur').map((f, i) => (
               <div key={i} className="grid grid-cols-[92px_minmax(0,1fr)] md:grid-cols-[110px_1fr] gap-2"><dt className="text-ink-muted">{f.label}</dt><dd className="text-ink break-words min-w-0">{f.value}</dd></div>
             ))}
             {leg.payments?.length > 0 && <div className="grid grid-cols-[92px_minmax(0,1fr)] md:grid-cols-[110px_1fr] gap-2"><dt className="text-ink-muted">Encaissé</dt><dd className="text-ink">{leg.payments.map((p, i) => <span key={i} className="mr-2">{eur(p.amount)}{p.mode ? ` (${p.mode})` : ''}{p.driver ? ` · ${p.driver}` : ''}{p.at ? ` · ${fmt(p.at)}` : ''}</span>)}</dd></div>}
             {canBill && leg.amount_note && <div className="grid grid-cols-[92px_minmax(0,1fr)] md:grid-cols-[110px_1fr] gap-2"><dt className="text-ink-muted">Estimation</dt><dd className="text-ink">{leg.nothing_to_bill ? leg.nothing_to_bill : <>{leg.amount_note} = <b>{eur(leg.amount_htva)} HTVA</b></>}</dd></div>}
             {canBill && leg.billed_refs.length > 0 && <div className="grid grid-cols-[92px_minmax(0,1fr)] md:grid-cols-[110px_1fr] gap-2 items-center"><dt className="text-ink-muted">Facturé</dt><dd className="text-ink flex flex-wrap items-center gap-2">{eur(leg.billed_htva)} <Stamp refs={leg.billed_refs} small /> <span className="text-ink-faint text-[11px]">{refKind(leg.billed_refs[0])}</span></dd></div>}
-          </dl>
+          </dl>}
 
           {leg.billing_remarks?.length > 0 && (
             <div className="bg-slate-800 text-white rounded-xl px-3 py-2 text-xs space-y-1">
@@ -306,9 +311,9 @@ function Group({ d, leg, canBill, isOpen, onToggle, embedOpen, onToggleEmbed, fi
           )}
           {canBill && leg.kind === 'out' && leg.channel === 'domaine' && <div className="bg-surface-2 border border-dashed rounded-xl px-3 py-2 text-xs text-ink-secondary">Facturé au <b>SPF Finances — Domaine</b> par le relevé trimestriel (Fourrière → Domaine), pas par une facture Odoo de ce dossier.</div>}
 
-          {canBill && <EstimationTable d={d} me={leg.letter} />}
+          {canBill && !mobile && <EstimationTable d={d} me={leg.letter} />}
 
-          {leg.kind !== 'out' && (
+          {leg.kind !== 'out' && !mobile && (
             <div className="flex flex-wrap gap-1.5">
               {fiche
                 ? <button onClick={onToggleEmbed} className="px-2.5 py-1 rounded-lg text-xs font-semibold border bg-surface text-ink-secondary hover:text-ink">{embedOpen ? 'Replier la fiche complète' : 'Ouvrir la fiche complète'}</button>
@@ -321,7 +326,8 @@ function Group({ d, leg, canBill, isOpen, onToggle, embedOpen, onToggleEmbed, fi
           )}
 
           {embedOpen && fiche && leg.kind !== 'out' && (
-            <div className="border rounded-xl bg-page overflow-x-auto max-w-full md:-ml-[56px]">
+            <div className={`border rounded-xl bg-page overflow-x-auto max-w-full ${mobile ? '' : 'md:-ml-[56px]'}`}>
+              {mobile && <button onClick={onToggleEmbed} className="m-2 px-2.5 py-1 rounded-lg text-xs font-semibold border bg-surface text-ink-secondary">Replier la fiche</button>}
               <MissionDetailClient
                 mission={fiche.mission} logs={fiche.logs} drivers={shared.drivers} sources={shared.sources}
                 linkedParent={fiche.linkedParent} linkedChild={fiche.linkedChild}
@@ -365,7 +371,7 @@ function EditableText({ value, placeholder, missionId, field, onSaved, mono, upp
   return (
     <input autoFocus value={v} disabled={busy} onChange={e => setV(e.target.value)} placeholder={placeholder}
       onBlur={save} onKeyDown={e => { if (e.key === 'Enter') save(); if (e.key === 'Escape') { setV(value || ''); setEditing(false) } }}
-      className={`border rounded px-1.5 py-0.5 bg-surface text-ink text-xs w-full max-w-[260px] ${mono ? 'font-mono' : ''}`} />
+      className={`border rounded px-1.5 py-0.5 bg-surface text-ink text-xs w-full max-w-[260px] min-w-0 ${mono ? 'font-mono' : ''}`} />
   )
 }
 

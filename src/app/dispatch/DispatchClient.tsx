@@ -175,7 +175,7 @@ function MobileRow({ m, activeTab, drivers, driverStatuses, sources, onRefresh, 
   }
 
   return (
-    <div className={`bg-surface border rounded-2xl overflow-hidden ${expanded ? 'ring-1 ring-brand/40' : ''} ${isGarage ? 'border-amber-500/40' : delai.urgency === 'critical' ? 'border-red-500/40' : ''}`}>
+    <div className={`bg-surface border rounded-2xl overflow-hidden max-w-full min-w-0 ${expanded ? 'ring-1 ring-brand/40' : ''} ${isGarage ? 'border-amber-500/40' : delai.urgency === 'critical' ? 'border-red-500/40' : ''}`}>
       <div onClick={onToggle} className={`px-3 py-2.5 grid grid-cols-[1fr_auto] gap-x-3 gap-y-1 ${expanded ? 'bg-brand/5' : ''}`}>
         <div className="flex items-center gap-2 min-w-0">
           <span className="text-ink font-bold font-mono text-sm">{m.mission_number != null ? `#${m.mission_number}` : (m.dossier_number || m.external_id)}</span>
@@ -215,7 +215,7 @@ function MobileRow({ m, activeTab, drivers, driverStatuses, sources, onRefresh, 
       </div>
       {expanded && (
         <>
-          <ExpandedRow missionId={m.id} drivers={drivers} sources={sources} />
+          <ExpandedRow missionId={m.id} drivers={drivers} sources={sources} mobile />
           <div className="border-t px-3 py-2.5 space-y-2" onClick={e => e.stopPropagation()}>
             <div className="flex gap-2">
               <Link href={href} className="flex-1 text-center px-3 py-2.5 rounded-xl bg-brand text-white text-sm font-semibold">Dossier complet</Link>
@@ -245,7 +245,7 @@ function MobileRow({ m, activeTab, drivers, driverStatuses, sources, onRefresh, 
   )
 }
 
-function ExpandedRow({ missionId, drivers, sources }: { missionId: string; drivers: Driver[]; sources: CatalogSource[] }) {
+function ExpandedRow({ missionId, drivers, sources, mobile = false }: { missionId: string; drivers: Driver[]; sources: CatalogSource[]; mobile?: boolean }) {
   const [data, setData] = useState<any>(null)
   const [err, setErr] = useState<string | null>(null)
   useEffect(() => {
@@ -270,6 +270,7 @@ function ExpandedRow({ missionId, drivers, sources }: { missionId: string; drive
         isSuperadmin={false}
         openMissionId={missionId}
         compact
+        mobile={mobile}
       />
     </div>
   )
@@ -1190,6 +1191,7 @@ export default function DispatchClient({
   }, [dossierView])
   const toggleCompact = () => { const v = !compactList; setCompactList(v); try { localStorage.setItem('vd_dispatch_compact', v ? 'on' : 'off') } catch {} }
   const [expandedId, setExpandedId] = useState<string | null>(null)
+  const [driversOpen, setDriversOpen] = useState(false)
   // Simple clic = déplier / replier la ligne ; double clic = le dossier complet
   // dans un nouvel onglet (Olivier 07/09). Le simple clic attend 220 ms pour
   // laisser sa chance au double.
@@ -1555,6 +1557,9 @@ export default function DispatchClient({
             {/* Dispatcher de garde — badge cliquable pour cibler les escalades auto-dispatch */}
             <DispatcherOnDutyBadge userRole={userRole} />
 
+            {/* Boutons d'import — masqués sur téléphone dans le nouvel affichage
+                (Olivier 07/09/2026 : « on peut masquer les boutons d'import »). */}
+            <div className={compactList ? 'hidden lg:contents' : 'contents'}>
             {/* Import VAB — bouton dedie (orange ambre pour signal action externe) */}
             <VabImportButton onImportDone={() => load()} />
 
@@ -1565,6 +1570,7 @@ export default function DispatchClient({
             {/* Import AXA go&assist — superadmin only pendant la validation
                 (poll lecture seule → crée les fiches ; n'affecte rien côté AXA). */}
             {userRole === 'superadmin' && <AxaImportButton onImportDone={() => load()} />}
+            </div>
 
             {/* Nouvelle mission — icône seule sur mobile, label sur desktop */}
             <Link href="/dispatch/new"
@@ -1757,7 +1763,17 @@ export default function DispatchClient({
         )}
 
         {/* ── Panel statut chauffeurs ──────────────────────────────────── */}
-        <DriverStatusPanel statuses={driverStatuses} onRefresh={load} userRole={userRole} />
+        {/* Chauffeurs : replié par défaut sur téléphone dans le nouvel affichage
+            (Olivier 07/09/2026 : « masquer la liste des chauffeurs… ou du moins les replier »). */}
+        {compactList && (
+          <button onClick={() => setDriversOpen(v => !v)} className="lg:hidden mx-3 mt-2 px-3 py-2 bg-surface border rounded-xl text-ink-secondary text-sm font-medium text-left flex items-center justify-between">
+            <span>👥 Chauffeurs <span className="text-ink-muted">· {driverStatuses.filter(d => d.status !== 'hors_service').length} en service</span></span>
+            <span>{driversOpen ? '▾' : '▸'}</span>
+          </button>
+        )}
+        <div className={compactList && !driversOpen ? 'hidden lg:block' : ''}>
+          <DriverStatusPanel statuses={driverStatuses} onRefresh={load} userRole={userRole} />
+        </div>
 
         {/* ── Contenu wrappe d'un ambient background ────────────────── */}
         <AmbientBackground>
