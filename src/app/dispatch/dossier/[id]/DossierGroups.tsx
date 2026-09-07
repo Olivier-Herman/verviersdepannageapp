@@ -8,6 +8,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
 import MissionDetailClient from '@/app/dispatch/[id]/MissionDetailClient'
+import CreateClientModal from '@/components/CreateClientModal'
 import type { Dossier, DossierLeg } from '@/lib/dossier/build'
 
 const eur = (n: number) => n.toLocaleString('fr-BE', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' €'
@@ -64,7 +65,7 @@ export default function DossierGroups({ initial, fiches, shared, isSuperadmin, o
   const toggleEmbed = (l: string) => setEmbed(p => { const n = new Set(p); n.has(l) ? n.delete(l) : n.add(l); return n })
 
   const refresh = async () => {
-    try { const j = await fetch(`/api/dossier/${d.root_id}`, { cache: 'no-store' }).then(r => r.json()); if (j?.dossier) setD(j.dossier) } catch {}
+    try { const j = await fetch(`/api/dossier/${d.root_id}?t=${Date.now()}`, { cache: 'no-store' }).then(r => r.json()); if (j?.dossier) setD(j.dossier) } catch {}
   }
 
   useEffect(() => {
@@ -309,7 +310,7 @@ function Group({ d, leg, isOpen, onToggle, embedOpen, onToggleEmbed, fiche, shar
             {leg.billed_refs.length > 0 && <div className="grid grid-cols-[110px_1fr] gap-2 items-center"><dt className="text-ink-muted">Facturé</dt><dd className="text-ink flex flex-wrap items-center gap-2">{eur(leg.billed_htva)} <Stamp refs={leg.billed_refs} small /> <span className="text-ink-faint text-[11px]">{refKind(leg.billed_refs[0])}</span></dd></div>}
           </dl>
 
-          <BillingRow d={d} leg={leg} onChanged={onChanged} />
+          <BillingRow d={d} leg={leg} onChanged={onChanged} gmKey={shared.googleMapsKey} />
 
           <EstimationTable d={d} me={leg.letter} />
 
@@ -336,49 +337,71 @@ function Group({ d, leg, isOpen, onToggle, embedOpen, onToggleEmbed, fiche, shar
 }
 
 // ── Client de facturation du groupe (hérité du dossier, modifiable) ───────
-function BillingRow({ d, leg, onChanged }: { d: Dossier; leg: DossierLeg; onChanged: () => void }) {
+function BillingRow({ d, leg, onChanged, gmKey }: { d: Dossier; leg: DossierLeg; onChanged: () => void | Promise<void>; gmKey?: string }) {
   const [q, setQ] = useState('')
   const [results, setResults] = useState<{ id: number; name: string }[]>([])
+  const [searching, setSearching] = useState(false)
   const [editing, setEditing] = useState(false)
+  const [creating, setCreating] = useState(false)
   const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState<string | null>(null)
+  // Affichage optimiste : dès que le PATCH a réussi, on montre le nouveau client
+  // sans attendre le rechargement du dossier (Olivier 07/09 : « il faut que je
+  // l'encode deux fois »).
+  const [local, setLocal] = useState<{ id: number | null; name: string | null } | null>(null)
   const timer = useRef<any>(null)
+  useEffect(() => { setLocal(null) }, [leg.billed_to_id, leg.billed_to_name])
   useEffect(() => {
-    if (q.trim().length < 3) { setResults([]); return }
-    clearTimeout(timer.current)
+    if (q.trim().length < 3) { setResults([]); setSearching(false); return }
+    clearTimeout(timer.current); setSearching(true)
     timer.current = setTimeout(async () => {
       try { const j = await fetch(`/api/odoo/search-client?q=${encodeURIComponent(q.trim())}`).then(r => r.json()); setResults(j.clients || []) } catch {}
+      finally { setSearching(false) }
     }, 300)
   }, [q])
+  const shownId   = local ? local.id : leg.billed_to_id
+  const shownName = local ? local.name : leg.billed_to_name
+  const inherited = (shownId ?? null) === (d.billed_to.id ?? null)
   const save = async (c: { id: number | null; name: string | null }) => {
-    setBusy(true)
+    setBusy(true); setErr(null)
     try {
-      await fetch(`/api/missions/${leg.mission_id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ billed_to_id: c.id, billed_to_name: c.name }) })
-      setEditing(false); setQ(''); setResults([]); onChanged()
-    } finally { setBusy(false) }
+      const r = await fetch(`/api/missions/${leg.mission_id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ billed_to_id: c.id, billed_to_name: c.name }) })
+      if (!r.ok) { const j = await r.json().catch(() => ({})); throw new Error(j.error || `HTTP ${r.status}`) }
+      setLocal(c); setEditing(false); setQ(''); setResults([])
+      await onChanged()
+    } catch (e: any) { setErr(String(e.message || e)) } finally { setBusy(false) }
   }
   return (
     <div className="flex flex-wrap items-center gap-2 bg-surface-2 border border-dashed rounded-xl px-3 py-2 text-xs">
       <span className="text-ink-muted">Facturer à</span>
       {!editing ? (
         <>
-          <button onClick={() => setEditing(true)} className="border rounded-lg px-2.5 py-1 bg-surface text-ink font-medium min-w-[200px] text-left hover:border-brand/50">{leg.billed_to_name || '— à définir'} <span className="text-ink-faint float-right">▾</span></button>
-          {leg.billed_inherited
+          <button disabled={busy} onClick={() => setEditing(true)} className="border rounded-lg px-2.5 py-1 bg-surface text-ink font-medium min-w-[200px] text-left hover:border-brand/50">{busy ? '⏳ ' : ''}{shownName || '— à définir'} <span className="text-ink-faint float-right">▾</span></button>
+          {inherited
             ? <span className="text-ink-faint text-[11px]">= client du dossier</span>
             : <span className="text-amber-700 dark:text-amber-300 text-[11px] font-semibold">⚠ différent du dossier ({d.billed_to.name || '—'})</span>}
-          {!leg.billed_inherited && d.billed_to.id != null && (
+          {!inherited && d.billed_to.id != null && (
             <button disabled={busy} onClick={() => save({ id: d.billed_to.id, name: d.billed_to.name })} className="ml-auto text-[11px] border border-dashed rounded-lg px-2 py-0.5 text-ink-muted hover:text-ink">Revenir au client du dossier</button>
           )}
+          {err && <span className="text-red-600 text-[11px]">{err}</span>}
         </>
       ) : (
         <div className="relative flex-1 min-w-[240px]">
           <input autoFocus value={q} onChange={e => setQ(e.target.value)} placeholder="Chercher un client Odoo (3 lettres min.)" className="w-full border rounded-lg px-2.5 py-1 bg-surface text-ink text-xs" />
           <button onClick={() => { setEditing(false); setQ('') }} className="absolute right-1.5 top-1 text-ink-faint text-xs">✕</button>
-          {results.length > 0 && (
-            <div className="absolute z-10 left-0 right-0 mt-1 bg-surface border rounded-lg shadow-lg max-h-56 overflow-auto">
+          {q.trim().length >= 3 && (
+            <div className="absolute z-10 left-0 right-0 mt-1 bg-surface border rounded-lg shadow-lg max-h-64 overflow-auto">
               {results.map(c => <button key={c.id} disabled={busy} onClick={() => save(c)} className="block w-full text-left px-2.5 py-1.5 text-xs text-ink hover:bg-surface-2">{c.name} <span className="text-ink-faint">#{c.id}</span></button>)}
+              {searching && <div className="px-2.5 py-1.5 text-[11px] text-ink-faint">Recherche…</div>}
+              {!searching && results.length === 0 && <div className="px-2.5 py-1.5 text-[11px] text-ink-faint">Aucun client Odoo ne correspond.</div>}
+              {!searching && <button onClick={() => setCreating(true)} className="block w-full text-left px-2.5 py-1.5 text-xs font-semibold text-brand border-t hover:bg-brand/10">＋ Créer « {q.trim()} » comme nouveau client Odoo</button>}
             </div>
           )}
         </div>
+      )}
+      {creating && (
+        <CreateClientModal initialName={q.trim()} gmKey={gmKey} onClose={() => setCreating(false)}
+          onCreated={(c: any) => { setCreating(false); save({ id: Number(c.id), name: String(c.name || q.trim()) }) }} />
       )}
     </div>
   )
