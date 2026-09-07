@@ -31,6 +31,14 @@ export default function SettingsClient({
 
   // Paramètres app
   const [purchaseEmail,  setPurchaseEmail]  = useState(appSettings['odoo_purchase_email'] ?? '')
+  // Inventaire 07/09/2026 (partie D) : trois clés que seul du SQL pouvait écrire.
+  const geo0: any = (appSettings as any)['reception_geofence'] || {}
+  const [geoLat,      setGeoLat]      = useState(geo0.lat != null ? String(geo0.lat) : '')
+  const [geoLng,      setGeoLng]      = useState(geo0.lng != null ? String(geo0.lng) : '')
+  const [geoRadius,   setGeoRadius]   = useState(geo0.radius_m != null ? String(geo0.radius_m) : '')
+  const [tgrEmail,    setTgrEmail]    = useState(String(appSettings['tgr_info_email'] ?? ''))
+  const [rfqMailbox,  setRfqMailbox]  = useState(String(appSettings['achats_rfq_mailbox'] ?? ''))
+  const [paramsError, setParamsError] = useState<string | null>(null)
   const [savingParams,   setSavingParams]   = useState(false)
   const [paramsSaved,    setParamsSaved]    = useState(false)
 
@@ -103,17 +111,24 @@ export default function SettingsClient({
   }
 
   const saveParams = async () => {
-    setSavingParams(true)
+    setSavingParams(true); setParamsError(null)
     try {
-      await fetch('/api/admin/settings', {
+      const settings: Record<string, unknown> = { odoo_purchase_email: purchaseEmail }
+      const lat = parseFloat(geoLat.replace(',', '.')), lng = parseFloat(geoLng.replace(',', '.')), radius = parseInt(geoRadius, 10)
+      if (geoLat.trim() || geoLng.trim() || geoRadius.trim()) {
+        if (!Number.isFinite(lat) || !Number.isFinite(lng) || !(radius > 0)) { setParamsError('Zone GPS : latitude, longitude et rayon (m) doivent être remplis tous les trois.'); return }
+        settings.reception_geofence = { lat, lng, radius_m: radius }
+      }
+      if (tgrEmail.trim() && !tgrEmail.includes('@')) { setParamsError('Adresse TGR invalide.'); return }
+      if (rfqMailbox.trim() && !rfqMailbox.includes('@')) { setParamsError('Boîte des demandes de prix invalide.'); return }
+      settings.tgr_info_email = tgrEmail.trim()
+      settings.achats_rfq_mailbox = rfqMailbox.trim()
+      const r = await fetch('/api/admin/settings', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          settings: {
-            odoo_purchase_email: purchaseEmail,
-          }
-        })
+        body: JSON.stringify({ settings })
       })
+      if (!r.ok) { const j = await r.json().catch(() => ({})); setParamsError(j.error || `Erreur ${r.status}`); return }
       setParamsSaved(true)
       setTimeout(() => setParamsSaved(false), 2000)
     } finally {
@@ -176,6 +191,49 @@ export default function SettingsClient({
               Les factures fournisseurs (avances de fonds) seront envoyées à cette adresse pour traitement OCR Odoo.
             </p>
           </div>
+
+          <div className="bg-surface-2 border border rounded-2xl p-4">
+            <p className="text-ink-muted text-xs font-semibold uppercase tracking-widest mb-3">
+              Accueil visiteurs — zone GPS
+            </p>
+            <p className="text-ink-faint text-xs mb-3">
+              Le QR de l'accueil n'accepte un visiteur que si son téléphone est dans ce rayon autour du comptoir. Vide = dépôt de Pepinster, 200 m.
+            </p>
+            <div className="grid grid-cols-3 gap-2">
+              <label className="text-xs text-ink-secondary flex flex-col gap-1">Latitude
+                <input inputMode="decimal" placeholder="50.5703357" value={geoLat} onChange={e => setGeoLat(e.target.value)}
+                  className="bg-surface-hover border border-strong rounded-xl px-3 py-2 text-ink text-sm outline-none focus:border-brand" />
+              </label>
+              <label className="text-xs text-ink-secondary flex flex-col gap-1">Longitude
+                <input inputMode="decimal" placeholder="5.8216501" value={geoLng} onChange={e => setGeoLng(e.target.value)}
+                  className="bg-surface-hover border border-strong rounded-xl px-3 py-2 text-ink text-sm outline-none focus:border-brand" />
+              </label>
+              <label className="text-xs text-ink-secondary flex flex-col gap-1">Rayon (m)
+                <input inputMode="numeric" placeholder="200" value={geoRadius} onChange={e => setGeoRadius(e.target.value)}
+                  className="bg-surface-hover border border-strong rounded-xl px-3 py-2 text-ink text-sm outline-none focus:border-brand" />
+              </label>
+            </div>
+          </div>
+
+          <div className="bg-surface-2 border border rounded-2xl p-4">
+            <p className="text-ink-muted text-xs font-semibold uppercase tracking-widest mb-3">
+              TGR — adresse d'information
+            </p>
+            <input type="email" placeholder="info@verviersdepannage.com" value={tgrEmail} onChange={e => setTgrEmail(e.target.value)}
+              className="w-full bg-surface-hover border border-strong rounded-xl px-4 py-2.5 text-ink text-sm outline-none focus:border-brand" />
+            <p className="text-ink-faint text-xs mt-1.5">Reçoit le mail à chaque nouvelle demande TGR déposée par un partenaire. Vide = pas de mail.</p>
+          </div>
+
+          <div className="bg-surface-2 border border rounded-2xl p-4">
+            <p className="text-ink-muted text-xs font-semibold uppercase tracking-widest mb-3">
+              Achats — boîte des demandes de prix
+            </p>
+            <input type="email" placeholder="administration@verviersdepannage.com" value={rfqMailbox} onChange={e => setRfqMailbox(e.target.value)}
+              className="w-full bg-surface-hover border border-strong rounded-xl px-4 py-2.5 text-ink text-sm outline-none focus:border-brand" />
+            <p className="text-ink-faint text-xs mt-1.5">Boîte qui envoie et reçoit les appels d'offre du module Achats. Vide = administration@. La boîte doit être autorisée côté Microsoft avant de basculer.</p>
+          </div>
+
+          {paramsError && <p className="text-red-700 text-sm">{paramsError}</p>}
 
           <button
             onClick={saveParams}

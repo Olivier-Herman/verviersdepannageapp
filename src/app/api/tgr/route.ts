@@ -91,8 +91,9 @@ export async function POST(req: NextRequest) {
   const { data: infoEmailSetting } = await supabase
     .from('app_settings').select('value').eq('key', 'tgr_info_email').single()
 
-  if (infoEmailSetting?.value) {
-    const infoEmail = JSON.parse(infoEmailSetting.value) as string
+  let infoEmail = ''
+  try { infoEmail = String(JSON.parse(infoEmailSetting?.value || '""') || '').trim() } catch { infoEmail = String(infoEmailSetting?.value || '').trim() }
+  if (infoEmail.includes('@')) {
     await sendTGRNewMissionEmail({
       to:          infoEmail,
       mission,

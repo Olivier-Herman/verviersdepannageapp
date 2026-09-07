@@ -68,14 +68,16 @@ export async function DELETE(req: NextRequest) {
 export async function PUT(req: NextRequest) {
   if (!await checkAdmin()) return NextResponse.json({ error: 'Non autorisé' }, { status: 401 })
 
-  const { settings } = await req.json() as { settings: Record<string, string> }
+  const { settings } = await req.json() as { settings: Record<string, unknown> }
   const supabase = createAdminClient()
 
+  // Upsert : une clé qui n'a jamais été écrite (reception_geofence,
+  // achats_rfq_mailbox…) doit pouvoir naître depuis l'écran, pas seulement
+  // depuis un INSERT SQL. app_settings.value est du TEXTE JSON.
   for (const [key, value] of Object.entries(settings)) {
     const { error } = await supabase
       .from('app_settings')
-      .update({ value: JSON.stringify(value) })
-      .eq('key', key)
+      .upsert({ key, value: JSON.stringify(value), updated_at: new Date().toISOString() }, { onConflict: 'key' })
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   }
