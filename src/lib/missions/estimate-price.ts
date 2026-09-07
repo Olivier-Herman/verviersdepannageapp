@@ -119,7 +119,7 @@ async function computeMissionKm(missionId: string): Promise<{ chargedKm: number 
   const sb = createAdminClient()
   const { data: m } = await sb
     .from('incoming_missions')
-    .select('mission_type, incident_lat, incident_lng, destination_lat, destination_lng, extra_addresses, depot_depart_id')
+    .select('mission_type, incident_lat, incident_lng, destination_lat, destination_lng, destination_address, extra_addresses, depot_depart_id, parked_at')
     .eq('id', missionId)
     .maybeSingle()
   if (!m) return { chargedKm: null, totalKm: null }
@@ -160,7 +160,14 @@ async function computeMissionKm(missionId: string): Promise<{ chargedKm: number 
     const chain: Coord[] = [incident, ...stops]
     if (destinationCoord) chain.push(destinationCoord)
     if (chain.length < 2) {
-      chargedKm = 0
+      // Remorquage sans destination géocodée. Si le véhicule est au parc (ou
+      // n'a pas d'adresse de destination), c'est un dépôt chez nous : 0 km
+      // facturé, comme toujours. Mais s'il y a une ADRESSE de destination
+      // pas encore géocodée, les km sont INCONNUS — pas 0. Le 07/09/2026,
+      // 2ESG097 (Verviers → Bruxelles, 288 km) a été facturée à AXA à la
+      // tranche 0 km (57 € au lieu de 310 €) parce que la destination n'avait
+      // pas encore ses coordonnées au moment de la facture.
+      chargedKm = (!m.parked_at && (m.destination_address || '').trim()) ? null : 0
     } else {
       let acc = 0
       let ok = true
@@ -452,6 +459,9 @@ export async function estimateMissionPrice(mission: MissionLike, opts?: { skipRe
     kmTotalRoute = mission.distance_km
   } else if (mission.id) {
     const km = await computeMissionKm(mission.id)
+    if (km.chargedKm == null && kmBasis === 'charged') {
+      return emptyEstimate(source, String(mission.mission_type || ''), 'kilomètres inconnus : la destination n’est pas géocodée (ouvre la fiche, vérifie l’adresse de destination)')
+    }
     kmCharged    = km.chargedKm ?? 0
     kmTotalRoute = km.totalKm   ?? 0
   }
@@ -657,6 +667,10 @@ async function estimateBrackets(
     kmTotalRoute = mission.distance_km
   } else if (mission.id) {
     const km = await computeMissionKm(mission.id)
+    // Tranches = prix PAR KILOMÈTRE : sans km connus, pas de tarif (2ESG097).
+    if (km.chargedKm == null && kmBasis === 'charged') {
+      return emptyEstimate(source, missionType, 'kilomètres inconnus : la destination n’est pas géocodée (ouvre la fiche, vérifie l’adresse de destination)')
+    }
     kmCharged    = km.chargedKm ?? 0
     kmTotalRoute = km.totalKm   ?? 0
   }

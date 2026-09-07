@@ -76,24 +76,57 @@ export async function acceptKazeProposalBg(
         return
       }
 
-      let erreur: string | null = null
+      // 1) API à clé — jamais acceptée par Kaze à ce jour (feature_not_enabled /
+      //    422), mais on la tente d'abord : le jour où ils l'activent, elle prime.
+      let erreurApi: string | null = null
       try { await acceptProposal(jobId) }
-      catch (e: any) { erreur = e?.message || String(e) }
+      catch (e: any) { erreurApi = e?.message || String(e) }
 
       // ── UN APPEL SANS ERREUR N'EST PAS UNE PREUVE ─────────────────────────
-      // Même leçon que VAB le même jour : on relit le statut chez Kaze. Un
-      // journal qui affirme « accepté » sans l'avoir constaté est ce qui a
-      // masqué la panne — le mail passait, la mission restait proposée.
-      const après = await statutDe()
-      const confirmé = !!après && DÉJÀ.includes(après)
+      // On relit le statut chez Kaze après chaque tentative.
+      let après = await statutDe()
+      let confirmé = !!après && DÉJÀ.includes(après)
+      let voie: 'API' | 'session web' = 'API'
+
+      // 2) Session web (login GraphQL + passerelle /landing + formulaire
+      //    d'acceptation). Rétabli le 07/09/2026 : depuis le 31/08, les 12
+      //    acceptations « API seule » avaient toutes échoué, à la main ensuite.
+      let erreurWeb: string | null = null
+      if (!confirmé) {
+        try {
+          const { acceptKazeProposal } = await import('@/lib/kaze/web-session')
+          const r = await acceptKazeProposal(proposalId)
+          if (!r.ok) erreurWeb = r.error || `HTTP ${r.status}`
+        } catch (e: any) { erreurWeb = e?.message || String(e) }
+        après = await statutDe()
+        confirmé = !!après && DÉJÀ.includes(après)
+        voie = 'session web'
+      }
 
       await log(
         confirmé ? 'kaze_synced' : 'kaze_sync_error',
         confirmé
-          ? `Kaze ↗ proposition acceptée (API) — statut confirmé « ${après} »`
-          : `Kaze ↗ acceptation NON prise en compte — statut « ${après || 'inconnu'} » chez eux${erreur ? ` · ${erreur}` : ''}`,
-        { proposal_id: proposalId, job_id: jobId, statut_avant: avant, statut_apres: après, error: erreur },
+          ? `Kaze ↗ proposition acceptée (${voie}) — statut confirmé « ${après} »`
+          : `Kaze ↗ acceptation NON prise en compte — statut « ${après || 'inconnu'} » chez eux · API : ${erreurApi || 'sans erreur'} · web : ${erreurWeb || 'sans erreur'}`,
+        { proposal_id: proposalId, job_id: jobId, statut_avant: avant, statut_apres: après, voie, error_api: erreurApi, error_web: erreurWeb },
       )
+
+      // 3) Toujours pas acceptée : le dispatch doit le faire à la main dans Kaze,
+      //    tout de suite — sinon la mission reste « proposée » chez eux. Un
+      //    journal muet ne suffit pas (Olivier 07/09/2026, 1YNC479).
+      if (!confirmé) {
+        try {
+          const { data: fiche } = await supabase.from('incoming_missions')
+            .select('mission_number, vehicle_plate, dossier_number').eq('id', missionId).maybeSingle()
+          const { sendNotificationToRoles } = await import('@/lib/notifications/send')
+          await sendNotificationToRoles(['dispatcher', 'admin', 'superadmin'], 'kaze_accept_manual', {
+            title:      '⚠️ Kaze : à accepter à la main',
+            body:       `${(fiche as any)?.vehicle_plate || ''} · ${(fiche as any)?.dossier_number || ''} — l'acceptation automatique a échoué (${erreurWeb || erreurApi || 'statut non confirmé'}). Accepte la proposition dans Kaze.`,
+            action_url: `/dispatch/${missionId}`,
+            mission_id: missionId,
+          } as any)
+        } catch (e: any) { console.error('[kaze accept] notification KO:', e?.message) }
+      }
     } catch (e: any) {
       await log('kaze_sync_error', `Kaze ↗ acceptation proposition : exception — ${e?.message || 'inconnue'}`,
         { proposal_id: proposalId })

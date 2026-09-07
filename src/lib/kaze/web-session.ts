@@ -2,15 +2,16 @@
 //
 // Acceptation des PROPOSITIONS Kaze via l'appli web (session + CSRF).
 //
-// Pourquoi pas l'API à clé : testé le 2026-06-19, l'acceptation d'une
-// proposition n'existe pas via l'API (/job_proposals/{id} → 404,
-// /jobs/{id}/proposals → 403 feature_not_enabled). C'est une action web only
-// (même l'app smartphone ne voit pas les missions à accepter).
+// Pourquoi pas l'API à clé : testé le 2026-06-19 ET revérifié le 07/09/2026 :
+// l'acceptation d'une proposition n'existe pas via l'API (/jobs/{id}/proposals
+// → 403 feature_not_enabled, PUT accept_proposals → 422). Le passage « API
+// seule » du 31/08 a fait échouer les 12 acceptations suivantes, toutes
+// acceptées à la main par Olivier. C'est une action web only.
 //
-// Flux (capturé F12) :
-//   1. GET  /users/sign_in            → cookie _kaze_session + meta csrf-token
-//   2. POST /users/sign_in            → user[login] + user[password] + token
-//                                        → 302 + remember_user_token (auth OK)
+// Flux (capturé F12, refait le 07/09/2026 après le nouvel écran de login) :
+//   1. POST /api/v2/graphql mutation Login (X-Web-Client) → JWT + cookies
+//      `refresh` + `_kaze_session`
+//   2. GET  /landing?return_to=/app   → authentifie la session Rails « legacy »
 //   3. GET  /job_proposals/{id}/accept/edit.turbo_stream?form=accept
 //                                        → formulaire + authenticity_token frais
 //   4. POST /job_proposals/{id}/accept → _method=put + token + estimation + durée
@@ -47,41 +48,58 @@ export async function loginKazeWeb(): Promise<Jar> {
   const email = process.env.KAZE_WEB_EMAIL
   const pwd   = process.env.KAZE_WEB_PASSWORD
   if (!email || !pwd) throw new Error('KAZE_WEB_EMAIL / KAZE_WEB_PASSWORD non configurés')
-
   const jar: Jar = {}
-  // 1) GET sign_in → cookie de session + token CSRF (meta)
-  const g = await fetch(`${BASE}/users/sign_in`, {
-    headers: { 'user-agent': UA, accept: 'text/html' },
-    signal: AbortSignal.timeout(20000),
-  })
-  mergeCookies(jar, parseSetCookie(g.headers.get('set-cookie')))
-  const html = await g.text()
-  const csrf = (html.match(/<meta name="csrf-token" content="([^"]+)"/i) || [])[1]
-  if (!csrf) throw new Error('Token CSRF login introuvable')
-
-  // 2) POST sign_in
-  const body = new URLSearchParams({
-    authenticity_token: csrf,
-    'user[login]':      email,
-    'user[password]':   pwd,
-    'user[remember_me]': '1',
-  })
-  const p = await fetch(`${BASE}/users/sign_in`, {
-    method: 'POST', redirect: 'manual',
-    headers: {
-      'content-type': 'application/x-www-form-urlencoded',
-      'user-agent': UA, accept: 'text/html',
-      cookie: cookieHeader(jar), 'x-csrf-token': csrf,
-      origin: BASE, referer: `${BASE}/users/sign_in`,
-    },
-    body: body.toString(),
-    signal: AbortSignal.timeout(20000),
-  })
-  mergeCookies(jar, parseSetCookie(p.headers.get('set-cookie')))
-  // 302 = succès ; 200 = formulaire re-affiché (identifiants refusés)
-  if (p.status !== 302 || !jar['remember_user_token']) {
-    throw new Error(`Login Kaze échoué (HTTP ${p.status})`)
+  const absorb = (r: Response) => {
+    const list: string[] = typeof (r.headers as any).getSetCookie === 'function'
+      ? (r.headers as any).getSetCookie().map((c: string) => c.split(';')[0].trim())
+      : parseSetCookie(r.headers.get('set-cookie'))
+    mergeCookies(jar, list.filter(c => c.includes('=')))
   }
+
+  // 1) Login GraphQL, comme le navigateur (X-Web-Client → Kaze pose aussi les
+  //    cookies `refresh` + `_kaze_session` en plus du JWT).
+  const login = await fetch(`${BASE}/api/v2/graphql`, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json', accept: 'application/json',
+      'user-agent': UA, origin: BASE, referer: `${BASE}/app/login`, 'X-Web-Client': 'true',
+    },
+    body: JSON.stringify({
+      operationName: 'Login',
+      query: 'mutation Login($input: LoginInput!) { login(input: $input) { accessToken refreshToken viewer { id email } } }',
+      variables: { input: { login: email, password: pwd } },
+    }),
+    signal: AbortSignal.timeout(20000),
+  })
+  absorb(login)
+  const j: any = await login.json().catch(() => null)
+  const token: string | undefined = j?.data?.login?.accessToken
+  if (!token) {
+    const msg = j?.errors?.[0]?.message || j?.data?.login === null ? 'identifiants refusés' : `HTTP ${login.status}`
+    throw new Error(`Login Kaze échoué (${msg})`)
+  }
+
+  // 2) Passerelle /landing : c'est elle qui authentifie la session Rails des
+  //    pages « legacy » (dont l'acceptation des propositions).
+  let url = `${BASE}/landing?return_to=%2Fapp`
+  for (let hop = 0; hop < 5; hop++) {
+    const r = await fetch(url, {
+      headers: { cookie: cookieHeader(jar), 'user-agent': UA, accept: 'text/html', authorization: `Bearer ${token}` },
+      redirect: 'manual', signal: AbortSignal.timeout(20000),
+    })
+    absorb(r)
+    const loc = r.headers.get('location')
+    if (!loc) break
+    url = loc.startsWith('http') ? loc : `${BASE}${loc}`
+    if (/\/app\/login/.test(loc)) throw new Error('Passerelle /landing refusée (redirigé vers le login)')
+  }
+
+  // 3) Preuve : une page legacy répond 200 (et non 302 → login).
+  const probe = await fetch(`${BASE}/jobs`, {
+    headers: { cookie: cookieHeader(jar), 'user-agent': UA, accept: 'text/html' },
+    redirect: 'manual', signal: AbortSignal.timeout(20000),
+  })
+  if (probe.status !== 200) throw new Error(`Session web Kaze non reconnue par les pages legacy (HTTP ${probe.status})`)
   return jar
 }
 

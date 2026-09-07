@@ -271,6 +271,14 @@ export const NOTIFICATION_TYPES: readonly NotificationType[] = [
     defaultEnabled:  true,
   },
   {
+    key:             'kaze_accept_manual',
+    label:           'Kaze : acceptation à faire à la main',
+    description:     "L'acceptation automatique d'une proposition Kaze a échoué : il faut l'accepter dans Kaze.",
+    category:        'admin',
+    applicableRoles: ['dispatcher', 'admin', 'superadmin'],
+    defaultEnabled:  true,
+  },
+  {
     key:             'vab_dossiers_ouverts',
     label:           'VAB : dossiers non clôturés',
     description:     "Des dossiers restent ouverts chez VAB alors que l'intervention est finie chez nous.",

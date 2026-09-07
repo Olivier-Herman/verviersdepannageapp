@@ -54,7 +54,10 @@ async function kazeFetch<T = any>(path: string, init: RequestInit = {}): Promise
       res.status,
       body,
       `Kaze API ${res.status} on ${init.method || 'GET'} ${path}: ${
-        body?.message || body?.error || text || res.statusText
+        (typeof body?.message === 'string' && body.message)
+          || (typeof body?.error === 'string' && body.error)
+          || (body && typeof body === 'object' ? JSON.stringify(body).slice(0, 300) : '')
+          || text || res.statusText
       }`,
     )
   }
