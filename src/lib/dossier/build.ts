@@ -401,6 +401,13 @@ export async function buildDossier(anyMissionId: string, opts: { light?: boolean
     for (const l of legs as any[]) {
       if (l.kind === 'rem' && l.mission_id === root.id) {
         l.channel = 'parquet'
+        // Les postes « client uniquement » (frais administratifs) ne vont pas
+        // au Parquet : on les retire de l'affichage de ce groupe.
+        if (typeof l.amount_note === 'string' && /client uniquement/i.test(l.amount_note)) {
+          const parts = String(l.amount_note).split(' · ').filter((x: string) => !/client uniquement/i.test(x))
+          const kept = parts.reduce((t: number, x: string) => t + (Number((x.match(/([0-9]+(?:\.[0-9]+)?) €$/) || [])[1]) || 0), 0)
+          l.amount_note = parts.join(' · '); l.amount_htva = r2(kept)
+        }
         const ef = efDep || lastEf
         if (parquet.depannage_billed || efDep) {
           l.billed_refs = [`EF n°${ef?.numero ?? parquet.ef_number ?? '?'}`]; l.billed_htva = l.amount_htva
