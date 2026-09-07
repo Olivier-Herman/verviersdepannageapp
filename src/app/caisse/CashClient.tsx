@@ -4,7 +4,7 @@ import { useState, useEffect, useMemo } from 'react'
 import AppShell from '@/components/layout/AppShell'
 import AmbientBackground from '@/components/AmbientBackground'
 import { formatEur } from '@/lib/format'
-// Pattern utilisé partout dans les Client Components du projet (MissionListClient, DriverClient...)
+// Pattern utilisé partout dans les Client Components du projet (DriverClient, DispatchClient...)
 // — éviter d'importer depuis @/lib/supabase qui embarque next/headers (serveur uniquement).
 import { createClient } from '@supabase/supabase-js'
 

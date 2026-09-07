@@ -162,7 +162,7 @@ function kmPlausible(precedent: number): string {
 // ── CLÔTURE DU REMORQUAGE (tow) ─────────────────────────────────────────────
 // Remplace le bouton flottant « Clôturer VAB », retiré le 12/08/2026 : « ça doit
 // être automatique, invisible pour le chauffeur » (Olivier). Même appel que
-// /api/missions/[id]/vab-close, mais déclenché tout seul à la clôture flux 2,
+// l’ancienne route vab-close (supprimée le 07/09/2026), déclenché tout seul à la clôture flux 2,
 // avec ce que le chauffeur vient de saisir (emplacement du véhicule, de la clé).
 
 /** Nos libellés → valeurs d'option Comet (liste VAB, pas notre config). */

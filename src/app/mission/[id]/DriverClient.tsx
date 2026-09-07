@@ -5337,8 +5337,9 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
       {/* Le bouton flottant « Clôturer VAB » a été RETIRÉ le 12/08/2026 (Olivier) :
           la clôture VAB doit être automatique et invisible pour le chauffeur. Elle
           part désormais en tâche de fond depuis la clôture flux 2
-          (src/lib/cloture/transform/vab.ts). La modale et /api/missions/[id]/vab-close
-          restent en place pour un rattrapage manuel par le dispatch. */}
+          (src/lib/cloture/transform/vab.ts) ; le cron vab-close-retry et la vigie
+          de 5h rattrapent les échecs. La modale chauffeur et sa route ont été
+          supprimées le 07/09/2026 (inventaire code débranché). */}
       </AmbientBackground>
     </div>
   )

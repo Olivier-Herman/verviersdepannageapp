@@ -45,8 +45,10 @@ export default async function MissionListPage() {
 
   if (!user) redirect('/dashboard')
 
-  // Missions clôturées il y a moins de 6h → gardées dans la liste pour que le
-  // chauffeur puisse encore modifier leur clôture (bouton dans la fiche).
+  // Missions clôturées ou mises en parc il y a moins de 6h → gardées dans la
+  // liste pour que le chauffeur voie ce qu'il vient de finir. Le bouton
+  // « Modifier une clôture » côté chauffeur a été retiré le 09/08/2026 ; une
+  // correction se fait depuis le dispatch.
   const sixHAgo = new Date(Date.now() - 6 * 60 * 60 * 1000).toISOString()
 
   const { data: missions } = await supabase
