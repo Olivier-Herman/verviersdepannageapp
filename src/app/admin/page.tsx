@@ -217,6 +217,10 @@ export default async function AdminPage() {
             desc="Erreurs serveur applicatives (errors, warns, infos) avec filtres par route/niveau/période. Superadmin uniquement." />
         )}
         {user.role === 'superadmin' && (
+          <Card href="/admin/diagnostics" icon={Radio} label="Diagnostics"
+            desc="Un bouton par vérification : mails bloqués, COMEX, VAB, Graph, Odoo, parc, notifications, push, Teams, étiquette de test. Superadmin uniquement." />
+        )}
+        {user.role === 'superadmin' && (
           <Card href="/admin/activity" icon={Radio} label="Journal d'activité"
             desc="Mouchard : toutes les actions (qui / quoi / quand / quelle mission) en flux temps réel, filtrable par utilisateur, action, période. Superadmin uniquement." />
         )}
