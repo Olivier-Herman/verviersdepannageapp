@@ -61,7 +61,10 @@ export default function DossierGroups({ initial, fiches, shared, isSuperadmin, o
     const items: Array<{ t: number; leg?: DossierLeg; ev?: Dossier['events'][number] }> = []
     for (const leg of d.legs) items.push({ t: leg.started_at ? new Date(leg.started_at).getTime() : 0, leg })
     for (const ev of d.events) items.push({ t: ev.at ? new Date(ev.at).getTime() : 0, ev })
-    return items.sort((a, b) => a.t - b.t || (a.leg ? -1 : 1))
+    // À date égale (REM créé à la mise en parc), l'ordre des lettres fait foi :
+    // A avant B, jamais l'inverse. Un événement à la même date passe après.
+    const rank = (x: typeof items[number]) => x.leg ? d.legs.indexOf(x.leg) : d.legs.length + 1
+    return items.sort((a, b) => a.t - b.t || rank(a) - rank(b))
   }, [d])
 
   const vehicle = [d.vehicle.brand, d.vehicle.model].filter(Boolean).join(' ')
@@ -164,7 +167,7 @@ function Group({ d, leg, isOpen, onToggle, embedOpen, onToggleEmbed, fiche, shar
   return (
     <div id={`grp-${leg.letter}`} className={`border rounded-2xl overflow-hidden bg-surface ${leg.open ? 'border-brand/50' : ''}`}>
       <button onClick={onToggle} className={`w-full grid grid-cols-[52px_1fr_auto] gap-3 items-center px-3.5 py-2.5 text-left ${k.head} hover:brightness-95 transition`}>
-        <span className={`h-9 min-w-[44px] px-2 rounded-lg border flex items-center justify-center text-xs font-bold font-mono bg-surface ${k.dot}`}>{d.number != null ? `${d.number}${leg.letter}` : leg.letter}</span>
+        <span className={`h-9 w-9 rounded-lg border flex items-center justify-center text-sm font-bold font-mono bg-surface ${k.dot}`} title={d.number != null ? `${d.number}${leg.letter}` : leg.letter}>{leg.letter}</span>
         <span className="min-w-0">
           <span className="block text-ink text-sm font-semibold truncate">{leg.title}{leg.subtitle && <span className="text-ink-muted font-normal"> · {leg.subtitle}</span>}</span>
           <span className="block text-ink-secondary text-xs truncate">
