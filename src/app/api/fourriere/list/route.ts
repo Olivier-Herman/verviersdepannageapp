@@ -14,6 +14,7 @@ import { getServerSession }        from 'next-auth'
 import { authOptions }             from '@/lib/auth'
 import { createAdminClient }       from '@/lib/supabase'
 import { FOURRIERE_ZONES }         from '@/lib/fourriere'
+import { isPreviewOn }             from '@/lib/feature-flags'
 
 export const dynamic     = 'force-dynamic'
 export const maxDuration = 15
@@ -58,10 +59,38 @@ export async function GET(req: Request) {
     query = query.eq('parc_zone_key', zoneFilter)
   }
 
-  const { data: missions, error } = await query
+  // ── Bascule Fourrière (flag fourriere_gardiennage, superadmin d'abord) ──
+  // La liste lit les FICHES GARDIENNAGE ouvertes (Vue dossier) au lieu des
+  // remorquages figés en 'parked'. Les actions (fiche, QR, transfert,
+  // restitution) gardent l'id de la RACINE tant que le REM reste le porteur
+  // du parc en base (miroir). Olivier 07/09/2026.
+  const gardiennageMode = await isPreviewOn('fourriere_gardiennage', role)
+  let missions: any[] | null = null
+  let error: any = null
+  if (gardiennageMode) {
+    let q2 = sb.from('incoming_missions')
+      .select(`id, parent_mission_id, mission_type, parc_zone_key, parc_row_number, parc_slot_index, parked_at, updated_at, key_location,
+               root:incoming_missions!parent_mission_id(id, mission_number, external_id, vehicle_plate, vehicle_vin, vehicle_brand, vehicle_model, status, source, odoo_vehicle_id, odoo_helpdesk_id, client_name, migration_pending, migration_pending_reason)`)
+      .eq('dossier_leg', true).is('parc_exit_at', null).not('parc_zone_key', 'is', null)
+      .order('parc_zone_key', { ascending: true }).limit(2000)
+    if (zoneFilter) q2 = q2.eq('parc_zone_key', zoneFilter)
+    const r2 = await q2
+    error = r2.error
+    missions = (r2.data || []).map((g: any) => ({
+      ...(g.root || {}),
+      id: g.root?.id || g.parent_mission_id,
+      parc_zone_key: g.parc_zone_key, parc_row_number: g.parc_row_number, parc_slot_index: g.parc_slot_index,
+      parked_at: g.parked_at, updated_at: g.updated_at,
+      leg_id: g.id, regime: g.mission_type, key_location: g.key_location,
+    })).filter((m: any) => m.vehicle_plate || m.vehicle_vin)
+      .sort((a: any, b: any) => String(a.parc_zone_key).localeCompare(String(b.parc_zone_key)) || String(a.vehicle_plate || '').localeCompare(String(b.vehicle_plate || '')))
+  } else {
+    const r1 = await query
+    missions = r1.data; error = r1.error
+  }
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
-  const enriched = (missions || []).map(m => {
+  const enriched = (missions || []).map((m: any) => {
     // Cherche le libelle de zone (pour affichage)
     const zoneConf = FOURRIERE_ZONES.find(z => z.code === m.parc_zone_key)
     return {
@@ -79,6 +108,10 @@ export async function GET(req: Request) {
       parc_row_number:  m.parc_row_number ?? null,
       parc_slot_index:  m.parc_slot_index ?? null,
       last_update:      m.updated_at || m.parked_at || null,
+      parked_at:        m.parked_at || null,
+      leg_id:           m.leg_id || null,
+      regime:           m.regime || null,
+      days:             m.parked_at ? Math.max(0, Math.floor((Date.now() - new Date(m.parked_at).getTime()) / 86_400_000)) : null,
       source:           m.source,
       external_id:      m.external_id,
       migration_pending: m.migration_pending || false,
@@ -95,6 +128,6 @@ export async function GET(req: Request) {
   return NextResponse.json({
     vehicles: enriched,
     zones:    FOURRIERE_ZONES,
-    source:   'vd_soft',
+    source:   gardiennageMode ? 'gardiennage' : 'vd_soft',
   })
 }

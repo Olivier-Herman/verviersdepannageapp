@@ -8,6 +8,7 @@ import { NextResponse }      from 'next/server'
 import { getServerSession }  from 'next-auth'
 import { authOptions }       from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase'
+import { isPreviewOn }       from '@/lib/feature-flags'
 
 export const dynamic = 'force-dynamic'
 
@@ -57,11 +58,27 @@ export async function GET(req: Request) {
   }))
 
   // Missions de la zone active.
-  const { data: rows, error } = await stdFilters(
-    sb.from('incoming_missions').select(SELECT)
-      .eq('status', 'parked').eq('parc_zone_key', zone)
-      .order('intervention_date', { ascending: false, nullsFirst: false })
-  )
+  // Bascule Fourrière (flag fourriere_gardiennage) : la zone se lit sur les
+  // fiches GARDIENNAGE ouvertes ; les actions gardent l'id de la racine.
+  const gardiennageMode = await isPreviewOn('fourriere_gardiennage', (session.user as any)?.role)
+  let rows: any[] | null = null, error: any = null
+  if (gardiennageMode) {
+    const { data: legs } = await sb.from('incoming_missions').select('parent_mission_id')
+      .eq('dossier_leg', true).is('parc_exit_at', null).eq('parc_zone_key', zone)
+    const rootIds = Array.from(new Set((legs || []).map((l: any) => l.parent_mission_id).filter(Boolean)))
+    if (rootIds.length) {
+      const r = await stdFilters(sb.from('incoming_missions').select(SELECT).in('id', rootIds)
+        .order('intervention_date', { ascending: false, nullsFirst: false }))
+      rows = r.data; error = r.error
+    } else rows = []
+  } else {
+    const r = await stdFilters(
+      sb.from('incoming_missions').select(SELECT)
+        .eq('status', 'parked').eq('parc_zone_key', zone)
+        .order('intervention_date', { ascending: false, nullsFirst: false })
+    )
+    rows = r.data; error = r.error
+  }
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   let missions = rows || []
 
@@ -107,5 +124,6 @@ export async function GET(req: Request) {
     zone,
     zones: relZones.map(z => ({ key: z.key, label: z.label, count: counts[z.key] || 0 })),
     missions,
+    source: gardiennageMode ? 'gardiennage' : 'vd_soft',
   })
 }

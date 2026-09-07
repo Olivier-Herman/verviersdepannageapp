@@ -76,6 +76,7 @@ function fmtDate(d: string | null): string {
 
 export default function FourriereClient({ userRole, userName, userEmail, userModules, depotName, depotZoneKeys, parcsNav }: Props) {
   const [vehicles, setVehicles]   = useState<Vehicle[]>([])
+  const [listSource, setListSource] = useState<string>('vd_soft')
   const [allZones, setAllZones]   = useState<Zone[]>([])
   const [loading, setLoading]     = useState(true)
   const [filter, setFilter]       = useState<string>('')         // recherche libre
@@ -93,6 +94,7 @@ export default function FourriereClient({ userRole, userName, userEmail, userMod
       ])
       const j = await resList.json()
       setVehicles(j.vehicles || [])
+      setListSource(j.source || 'vd_soft')
       setAllZones(j.zones || [])
       if (resUnloc.ok) {
         const ju = await resUnloc.json()
@@ -191,7 +193,7 @@ export default function FourriereClient({ userRole, userName, userEmail, userMod
         <div className="flex items-center justify-between flex-wrap gap-3">
           <div>
             {depotName && (
-              <h1 className="font-display text-xl font-bold text-ink mb-0.5">Parc {depotName}</h1>
+              <h1 className="font-display text-xl font-bold text-ink mb-0.5">Parc {depotName}{listSource === 'gardiennage' && <span className="ml-2 align-middle text-[11px] font-semibold px-2 py-0.5 rounded-lg bg-amber-500/15 text-amber-700 dark:text-amber-300 border border-amber-500/40" title="Bascule Fourrière (test) : la liste lit les fiches Gardiennage de la Vue dossier">🧪 fiches Gardiennage</span>}</h1>
             )}
             <p className="text-ink-muted text-sm">{filtered.length} véhicule{filtered.length > 1 ? 's' : ''} affiché{filtered.length > 1 ? 's' : ''} · {scopedVehicles.length} total{depotName ? ' dans ce parc' : ''}</p>
           </div>
