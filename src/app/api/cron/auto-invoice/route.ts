@@ -126,9 +126,16 @@ export async function GET(req: Request) {
       }
     }
     // Mission sèche : aucune fiche enfant (relivraison).
-    const { count: childCount } = await sb.from('incoming_missions')
-      .select('id', { count: 'exact', head: true }).eq('parent_mission_id', m.id)
-    if (childCount) { combined++; details.push({ mission: ref(m), source: m.source, type: m.mission_type, outcome: 'combined' }); continue }
+    // Vue dossier (Olivier 07/09/2026) : les fiches gardiennage sont des enfants
+    // techniques, pas une chaîne REM+REL. Mais un gardiennage encore OUVERT
+    // (véhicule au parc) ou une REL en attente = dossier « En cours » → jamais
+    // d'auto-facturation ; ça partira groupé depuis le dossier à la sortie.
+    const { data: kids } = await sb.from('incoming_missions')
+      .select('id, dossier_leg, parc_exit_at, status, loaded_at').eq('parent_mission_id', m.id)
+    const realKids = (kids || []).filter((k: any) => !k.dossier_leg)
+    const dossierEnCours = (kids || []).some((k: any) => k.dossier_leg ? !k.parc_exit_at : (!k.loaded_at && !['cancelled', 'ignored', 'completed', 'to_invoice'].includes(k.status)))
+    if (dossierEnCours) { combined++; details.push({ mission: ref(m), source: m.source, type: m.mission_type, outcome: 'combined', reason: 'dossier en cours (véhicule au parc / relivraison en attente)' }); continue }
+    if (realKids.length) { combined++; details.push({ mission: ref(m), source: m.source, type: m.mission_type, outcome: 'combined' }); continue }
     if (invoiced >= BATCH) { details.push({ mission: ref(m), source: m.source, type: m.mission_type, outcome: 'batch_skipped' }); continue }
 
     try {

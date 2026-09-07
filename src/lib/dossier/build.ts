@@ -95,7 +95,7 @@ const CHAIN_COLS = `id, mission_number, external_id, dossier_number, source, sou
   requisitoire_at, requisitoire_reminder_count, levee_saisie_date, domaine_remise_date, domaine_enlevement_date,
   storage_waived, storage_flat_htva, special_tarif_htva, estimated_htva,
   driver_photos, remarks_general, closing_notes, client_signature, client_signature_name, cancelled_reason,
-  invoice_number, invoice_url, invoiced_at, payment_amount, amount_collected, payment_mode,
+  invoice_number, invoice_url, invoiced_at, invoice_odoo_id, invoice_created_at, payment_amount, amount_collected, payment_mode,
   snc_scenario, snc_requires_balisage, incident_lat, incident_lng, destination_lat, destination_lng, temp_returned_at, is_rollable`
 
 function kindOf(m: any): LegKind {
@@ -195,8 +195,13 @@ export async function buildDossier(anyMissionId: string): Promise<Dossier | null
   // ── Facturé / encaissé ───────────────────────────────────────────────────
   const ids = legRows.map(r => r.id)
   const { data: items } = await sb.from('mission_billed_items')
-    .select('mission_id, kind, label, amount_htva, invoice_number, billed_to_name, billed_at, odoo_quote_id')
+    .select('mission_id, kind, label, amount_htva, invoice_number, billed_to_name, billed_at, odoo_quote_id, invoice_odoo_id, dossier_letter')
     .in('mission_id', ids)
+  // Une facture Odoo encore en brouillon n'a pas de numéro : on la désigne par
+  // son id Odoo jusqu'à ce que le cron verify-invoices ramène le numéro posté.
+  const refOf = (it: any) => it.invoice_number || (it.invoice_odoo_id ? `brouillon Odoo #${it.invoice_odoo_id}` : null)
+  const ODOO_URL = process.env.ODOO_URL || ''
+  const draftUrl = (id: number) => ODOO_URL ? `${ODOO_URL}/web#id=${id}&model=account.move&view_type=form` : null
   const itemsBy: Record<string, any[]> = {}
   for (const it of items || []) (itemsBy[(it as any).mission_id] ||= []).push(it)
 
@@ -227,7 +232,10 @@ export async function buildDossier(anyMissionId: string): Promise<Dossier | null
     const st = statusOf(m, kind)
     const billedItems = itemsBy[m.id] || []
     const billedHtva = r2(billedItems.reduce((s, it) => s + Number(it.amount_htva || 0), 0))
-    const billedRefs = Array.from(new Set([...billedItems.map(it => it.invoice_number).filter(Boolean), ...(m.invoice_number ? [m.invoice_number] : [])])) as string[]
+    const billedRefs = Array.from(new Set([
+      ...billedItems.map(refOf).filter(Boolean),
+      ...(m.invoice_number ? [m.invoice_number] : (m.invoice_odoo_id && !billedItems.length ? [`brouillon Odoo #${m.invoice_odoo_id}`] : [])),
+    ])) as string[]
 
     let amount = 0, note: string | null = null, nothing: string | null = null, days: number | null = null
     const facts: { label: string; value: string }[] = []
@@ -330,13 +338,18 @@ export async function buildDossier(anyMissionId: string): Promise<Dossier | null
   for (const l of legs) {
     const m = legRows.find(x => x.id === l.mission_id)
     for (const it of itemsBy[l.mission_id] || []) {
-      if (!it.invoice_number) continue
-      const e = (invMap[it.invoice_number] ||= { number: it.invoice_number, covers: new Set(), client: it.billed_to_name || null, amount: 0, at: it.billed_at || null, url: null })
+      const ref = refOf(it); if (!ref) continue
+      const e = (invMap[ref] ||= { number: ref, covers: new Set(), client: it.billed_to_name || null, amount: 0, at: it.billed_at || null, url: it.invoice_odoo_id ? draftUrl(it.invoice_odoo_id) : null })
       e.covers.add(l.letter); e.amount = r2(e.amount + Number(it.amount_htva || 0))
     }
-    if (m?.invoice_number && !(itemsBy[l.mission_id] || []).some((it: any) => it.invoice_number === m.invoice_number)) {
-      const e = (invMap[m.invoice_number] ||= { number: m.invoice_number, covers: new Set(), client: m.billed_to_name || null, amount: 0, at: m.invoiced_at || null, url: m.invoice_url || null })
+    const items0 = itemsBy[l.mission_id] || []
+    if (m?.invoice_number && !items0.some((it: any) => it.invoice_number === m.invoice_number)) {
+      const e = (invMap[m.invoice_number] ||= { number: m.invoice_number, covers: new Set(), client: m.billed_to_name || null, amount: 0, at: m.invoiced_at || null, url: m.invoice_url || (m.invoice_odoo_id ? draftUrl(m.invoice_odoo_id) : null) })
       e.covers.add(l.letter); e.amount = r2(e.amount + l.amount_htva); if (!e.url && m.invoice_url) e.url = m.invoice_url
+    } else if (!m?.invoice_number && m?.invoice_odoo_id && !items0.length) {
+      const ref = `brouillon Odoo #${m.invoice_odoo_id}`
+      const e = (invMap[ref] ||= { number: ref, covers: new Set(), client: m.billed_to_name || null, amount: 0, at: m.invoice_created_at || null, url: draftUrl(m.invoice_odoo_id) })
+      e.covers.add(l.letter); e.amount = r2(e.amount + l.amount_htva)
     }
   }
 

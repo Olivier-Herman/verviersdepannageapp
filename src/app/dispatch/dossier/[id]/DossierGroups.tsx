@@ -28,23 +28,23 @@ function Stamp({ refs, small }: { refs: string[]; small?: boolean }) {
   if (!refs.length) return null
   const raw = refs[0]
   return (
-    <span title={refs.join(' · ')} className={`inline-flex items-center gap-1.5 ${small ? 'px-1.5 py-0 text-[10px]' : 'px-2.5 py-0.5 text-[11.5px]'} rounded-md font-black uppercase tracking-widest text-emerald-700 dark:text-emerald-300 border-2 border-emerald-600/70 bg-emerald-500/10 shadow-sm -rotate-2 whitespace-nowrap`}>
+    <span title={refs.join(' · ')} className={`inline-flex items-center gap-1.5 ${small ? 'px-1.5 py-0 text-[10px]' : 'px-2.5 py-0.5 text-[11.5px]'} rounded-md font-black uppercase tracking-widest text-emerald-700 dark:text-emerald-300 border-[3px] border-emerald-600 bg-emerald-500/15 shadow -rotate-2 whitespace-nowrap`}>
       <span>Facturé</span><span className="font-mono normal-case tracking-normal font-bold">{cleanRef(raw)}</span>{refs.length > 1 && <span className="font-mono normal-case tracking-normal">+{refs.length - 1}</span>}
     </span>
   )
 }
 
 const KIND = {
-  rem:  { label: 'Remorquage / dépannage', head: 'bg-blue-500/10',    dot: 'bg-blue-500/15 text-blue-700 dark:text-blue-300 border-blue-500/40' },
-  gard: { label: 'Gardiennage',            head: 'bg-amber-500/10',   dot: 'bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-500/40' },
-  rel:  { label: 'Relivraison',            head: 'bg-emerald-500/10', dot: 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/40' },
-  out:  { label: 'Sortie',                 head: 'bg-violet-500/10',  dot: 'bg-violet-500/15 text-violet-700 dark:text-violet-300 border-violet-500/40' },
+  rem:  { label: 'Remorquage / dépannage', head: 'bg-blue-600/15 border-l-4 border-l-blue-600',       dot: 'bg-blue-600 text-white border-blue-700' },
+  gard: { label: 'Gardiennage',            head: 'bg-amber-500/20 border-l-4 border-l-amber-500',     dot: 'bg-amber-500 text-white border-amber-600' },
+  rel:  { label: 'Relivraison',            head: 'bg-emerald-600/15 border-l-4 border-l-emerald-600', dot: 'bg-emerald-600 text-white border-emerald-700' },
+  out:  { label: 'Sortie',                 head: 'bg-violet-600/15 border-l-4 border-l-violet-600',   dot: 'bg-violet-600 text-white border-violet-700' },
 } as const
 const TONE = {
-  ok:    'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300',
-  warn:  'bg-amber-500/15 text-amber-700 dark:text-amber-300',
-  live:  'bg-blue-500/15 text-blue-700 dark:text-blue-300',
-  bad:   'bg-red-500/15 text-red-700 dark:text-red-300',
+  ok:    'bg-emerald-600 text-white',
+  warn:  'bg-amber-500 text-white',
+  live:  'bg-blue-600 text-white',
+  bad:   'bg-red-600 text-white',
   muted: 'bg-surface-2 text-ink-muted border',
 } as const
 
@@ -58,6 +58,8 @@ export default function DossierGroups({ initial, fiches, shared, isSuperadmin, o
     return new Set(target ? [target.letter] : [])
   })
   const [embed, setEmbed] = useState<Set<string>>(new Set())
+  const [billing, setBilling] = useState(false)
+  const billable = d.legs.filter(l => !l.nothing_to_bill && !(l.billed_refs.length && l.billed_htva >= l.amount_htva - 0.01) && l.amount_htva > 0)
   const toggle = (l: string) => setOpen(p => { const n = new Set(p); n.has(l) ? n.delete(l) : n.add(l); return n })
   const toggleEmbed = (l: string) => setEmbed(p => { const n = new Set(p); n.has(l) ? n.delete(l) : n.add(l); return n })
 
@@ -111,7 +113,7 @@ export default function DossierGroups({ initial, fiches, shared, isSuperadmin, o
               Dossier {d.ref}
               <span className="text-xs font-semibold text-ink-secondary bg-surface-2 border rounded-lg px-2 py-0.5">{d.source_label}</span>
               {d.dossier_number && <span className="text-xs font-mono text-ink-secondary bg-surface-2 border rounded-lg px-2 py-0.5">{d.dossier_number}</span>}
-              <span className={`text-xs font-semibold rounded-lg px-2 py-0.5 ${d.state.open ? TONE.live : TONE.ok}`}>{d.state.open ? `En cours · ${d.state.reason}` : 'Terminé'}</span>
+              <span className={`text-xs font-bold rounded-lg px-2.5 py-0.5 shadow-sm ${d.state.open ? TONE.live : TONE.ok}`}>{d.state.open ? `En cours · ${d.state.reason}` : 'Terminé'}</span>
             </h1>
             <p className="text-ink-secondary text-sm mt-0.5">{vehicle}{d.vehicle.plate ? <> · <span className="font-mono">{d.vehicle.plate}</span></> : null}{d.vehicle.vin ? <span className="text-ink-faint"> · VIN <span className="font-mono">{d.vehicle.vin}</span></span> : null}</p>
             <p className="text-ink-muted text-xs mt-0.5">{d.client.name ? `Client sur place : ${d.client.name}${d.client.phone ? ' · ' + d.client.phone : ''}` : 'Client sur place : —'} · reçu le {fmt(d.received_at)}</p>
@@ -120,7 +122,7 @@ export default function DossierGroups({ initial, fiches, shared, isSuperadmin, o
             <div className="flex md:justify-end items-center gap-2 flex-wrap">
               <span className="text-ink-muted text-xs">Client du dossier</span>
               <span className="text-ink text-sm font-medium border rounded-lg px-2.5 py-1 bg-surface-2">{d.billed_to.name || '—'}</span>
-              <button disabled title="Étape 2 : facturation par dossier (une facture par client)" className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-brand text-white opacity-40 cursor-not-allowed">Facturer</button>
+              <button disabled={!billable.length} onClick={() => setBilling(true)} title={billable.length ? 'Une facture Odoo par client, créée directement' : 'Rien à facturer'} className={`px-3 py-1.5 rounded-lg text-xs font-semibold bg-brand text-white ${billable.length ? 'hover:bg-brand-hover' : 'opacity-40 cursor-not-allowed'}`}>Facturer{billable.length ? ` (${billable.length})` : ''}</button>
             </div>
             <div className="grid grid-cols-4 gap-x-4 mt-2 text-[11px] text-ink-muted md:justify-items-end">
               <div>Estimé HTVA<b className="block text-ink text-sm tabular-nums">{eur(d.totals.estimated)}</b></div>
@@ -136,7 +138,7 @@ export default function DossierGroups({ initial, fiches, shared, isSuperadmin, o
           {timeline.map((it, i) => it.leg ? (
             <div key={`l${it.leg.letter}`} className="flex items-center flex-shrink-0">
               <button onClick={() => { toggle(it.leg!.letter); document.getElementById(`grp-${it.leg!.letter}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' }) }}
-                className={`w-8 h-8 rounded-lg border flex items-center justify-center text-[11px] font-bold font-mono ${KIND[it.leg.kind].dot} ${it.leg.open ? 'ring-2 ring-brand/30' : ''}`} title={it.leg.title}>{it.leg.letter}</button>
+                className={`w-8 h-8 rounded-lg border flex items-center justify-center text-[11px] font-bold font-mono shadow-sm ${KIND[it.leg.kind].dot} ${it.leg.open ? 'ring-2 ring-offset-1 ring-brand' : ''}`} title={it.leg.title}>{it.leg.letter}</button>
               <div className="ml-2 mr-3">
                 <p className="text-xs font-semibold text-ink leading-tight">{it.leg.title}</p>
                 <p className="text-[10.5px] text-ink-muted leading-tight">{fmtDay(it.leg.started_at)}{it.leg.ended_at ? ` → ${fmtDay(it.leg.ended_at)}` : it.leg.open ? ' → …' : ''}{it.leg.driver_name ? ` · ${it.leg.driver_name}` : ''}</p>
@@ -154,7 +156,7 @@ export default function DossierGroups({ initial, fiches, shared, isSuperadmin, o
       </div>
 
       <div className="flex flex-wrap gap-3 text-[11px] text-ink-muted px-1">
-        {(Object.keys(KIND) as Array<keyof typeof KIND>).map(k => <span key={k}><i className={`inline-block w-2.5 h-2.5 rounded-sm border mr-1 align-[-1px] ${KIND[k].dot}`} />{KIND[k].label}</span>)}
+        {(Object.keys(KIND) as Array<keyof typeof KIND>).map(k => <span key={k}><i className={`inline-block w-2.5 h-2.5 rounded-sm mr-1 align-[-1px] ${KIND[k].dot}`} />{KIND[k].label}</span>)}
         <span><i className="inline-block w-2.5 h-2.5 rounded-full border border-dashed border-ink-faint mr-1 align-[-1px]" />Mail reçu, sans action</span>
       </div>
 
@@ -174,7 +176,101 @@ export default function DossierGroups({ initial, fiches, shared, isSuperadmin, o
           embedOpen={embed.has(it.leg!.letter)} onToggleEmbed={() => toggleEmbed(it.leg!.letter)} fiche={fiches[it.leg!.mission_id]} shared={shared} onChanged={refresh} />
       ))}
 
-      <p className="text-[11px] text-ink-faint px-1 pt-2">Étape 1 (lecture) : les fiches Gardiennage sont créées automatiquement à la mise en parc et n'apparaissent que sur cet écran. Le bouton Facturer par dossier arrive en étape 2.</p>
+      <p className="text-[11px] text-ink-faint px-1 pt-2">Les fiches Gardiennage sont créées automatiquement à la mise en parc et n'apparaissent que sur cet écran. « Facturer » crée directement les factures Odoo en brouillon, une par client.</p>
+
+      {billing && <BillingModal d={d} onClose={() => setBilling(false)} onDone={async () => { await refresh() }} />}
+    </div>
+  )
+}
+
+// ── Modale « Facturer le dossier » : groupes cochés, une facture par client ──
+function BillingModal({ d, onClose, onDone }: { d: Dossier; onClose: () => void; onDone: () => Promise<void> }) {
+  const isBilled = (l: DossierLeg) => l.billed_refs.length > 0 && l.billed_htva >= l.amount_htva - 0.01
+  const canPick  = (l: DossierLeg) => !l.nothing_to_bill && !isBilled(l) && l.amount_htva > 0
+  // Par défaut : tout ce qui est prêt. Un gardiennage EN COURS n'est pas coché :
+  // le cocher arrête sa période à aujourd'hui et en ouvre une nouvelle.
+  const [sel, setSel] = useState<Set<string>>(() => new Set(d.legs.filter(l => canPick(l) && !(l.kind === 'gard' && l.open)).map(l => l.mission_id)))
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [result, setResult] = useState<{ invoices: any[]; warnings: string[] } | null>(null)
+  const toggle = (id: string) => setSel(p => { const n = new Set(p); n.has(id) ? n.delete(id) : n.add(id); return n })
+
+  const byClient = new Map<string, DossierLeg[]>()
+  for (const l of d.legs) { const k = l.billed_to_name || '— client à définir'; (byClient.get(k) || byClient.set(k, []).get(k)!).push(l) }
+  const chosen = d.legs.filter(l => sel.has(l.mission_id))
+  const allPickable = d.legs.filter(canPick)
+  const total = chosen.reduce((s, l) => s + l.amount_htva, 0)
+  const nInv = new Set(chosen.map(l => l.billed_to_id ?? 'none')).size
+  const missingClient = chosen.some(l => !l.billed_to_id)
+  const runningChosen = chosen.some(l => l.kind === 'gard' && l.open)
+
+  const submit = async () => {
+    setBusy(true); setError(null)
+    try {
+      const r = await fetch(`/api/dossier/${d.root_id}/invoice`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mission_ids: chosen.map(l => l.mission_id) }) })
+      const j = await r.json()
+      if (!r.ok || !j.ok) throw new Error(j.error || `HTTP ${r.status}`)
+      setResult(j); await onDone()
+    } catch (e: any) { setError(String(e.message || e)) } finally { setBusy(false) }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/45 flex items-start justify-center p-4 pt-12 overflow-auto">
+      <div className="w-full max-w-2xl bg-surface border rounded-2xl shadow-2xl p-5 space-y-3">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <h3 className="text-ink font-bold text-base">Facturer le dossier {d.ref} · {d.vehicle.plate}</h3>
+            <p className="text-ink-muted text-xs mt-0.5">Tout coché = facture totale. Décoche ce qui attend = facture partielle. Une facture Odoo par client, créée directement en brouillon, sans devis.</p>
+          </div>
+          <button onClick={onClose} className="text-ink-faint hover:text-ink text-lg leading-none">✕</button>
+        </div>
+
+        {!result && Array.from(byClient.entries()).map(([client, legs]) => {
+          const ch = legs.filter(l => sel.has(l.mission_id)); const sum = ch.reduce((s, l) => s + l.amount_htva, 0)
+          return (
+            <div key={client} className="border rounded-xl px-3 py-2">
+              <div className="flex justify-between text-sm font-semibold text-ink"><span>{ch.length ? 'Facture → ' : <span className="text-ink-muted">Rien pour </span>}{client}{/parquet|justice/i.test(client) && <span className={`ml-2 text-[10.5px] rounded-full px-2 py-0.5 ${TONE.warn}`}>Parquet : passe par l'état de frais, pas par Odoo</span>}</span><span className="tabular-nums">{ch.length ? eur(sum) + ' HTVA' : ''}</span></div>
+              {legs.map(l => {
+                const pick = canPick(l)
+                return (
+                  <button key={l.mission_id} disabled={!pick} onClick={() => toggle(l.mission_id)} className={`w-full grid grid-cols-[22px_1fr_auto] gap-2 items-center py-1 text-left text-xs ${pick ? 'text-ink-secondary' : 'opacity-50 cursor-default'}`}>
+                    <span className={`w-4 h-4 rounded border-[1.5px] flex items-center justify-center text-[10px] ${sel.has(l.mission_id) ? 'bg-brand border-brand text-white' : 'border-ink-muted'}`}>{sel.has(l.mission_id) ? '✓' : (isBilled(l) ? '✓' : l.nothing_to_bill ? '–' : '')}</span>
+                    <span><span className="font-mono">{l.letter}</span> {l.title}{l.kind === 'gard' && l.days != null ? ` ${l.days} j` : ''}{l.kind === 'gard' && l.open && <span className={`ml-1.5 rounded-full px-1.5 py-0.5 text-[10px] font-semibold ${TONE.live}`}>en cours · arrêté à aujourd'hui si coché</span>}</span>
+                    <span className="tabular-nums">{isBilled(l) ? `déjà facturé · ${cleanRef(l.billed_refs[0])}` : l.nothing_to_bill ? l.nothing_to_bill : eur(l.amount_htva)}</span>
+                  </button>
+                )
+              })}
+            </div>
+          )
+        })}
+
+        {!result && (
+          <>
+            {missingClient && <div className={`rounded-lg px-3 py-2 text-xs ${TONE.bad}`}>Un groupe coché n'a pas de client de facturation. Renseigne-le sur le groupe (ligne « Facturer à ») avant de facturer.</div>}
+            {runningChosen && <div className={`rounded-lg px-3 py-2 text-xs ${TONE.warn}`}>Un gardiennage en cours est coché : sa période s'arrête à aujourd'hui et un nouveau groupe s'ouvre sur la suite.</div>}
+            {d.state.open && <div className={`rounded-lg px-3 py-2 text-xs ${TONE.live}`}>Dossier en cours ({d.state.reason}) : facturation manuelle autorisée. L'automatique attendra la sortie du véhicule.</div>}
+            {error && <div className={`rounded-lg px-3 py-2 text-xs ${TONE.bad}`}>{error}</div>}
+            <div className="flex items-center justify-between gap-3 text-xs">
+              <span className="text-ink-muted">{chosen.length ? <><b className="text-ink">{chosen.length === allPickable.length ? 'Facture totale' : 'Facture partielle'}</b> · {nInv} facture{nInv > 1 ? 's' : ''} · {eur(total)} HTVA · référence « {d.number} {chosen.map(l => l.letter).join(' ')} »</> : 'Rien de coché'}</span>
+              <button disabled={busy || !chosen.length || missingClient} onClick={submit} className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-brand text-white disabled:opacity-40">{busy ? '⏳ Création…' : `Créer ${nInv > 1 ? 'les factures' : 'la facture'}`}</button>
+            </div>
+          </>
+        )}
+
+        {result && (
+          <div className="space-y-2">
+            <div className={`rounded-lg px-3 py-2 text-xs ${TONE.ok}`}>✓ {result.invoices.length} facture{result.invoices.length > 1 ? 's' : ''} Odoo créée{result.invoices.length > 1 ? 's' : ''} en brouillon. Les groupes couverts sont reliés ; le numéro définitif arrivera quand la facture sera postée dans Odoo.</div>
+            {result.invoices.map((i: any) => (
+              <div key={i.odoo_id} className="border rounded-xl px-3 py-2 text-xs flex items-center justify-between gap-3">
+                <span><b className="text-ink">{i.client_name}</b> · couvre {i.covers.join(' ')} · {eur(i.total_htva)} HTVA</span>
+                <a href={i.url} target="_blank" rel="noreferrer" className="px-2.5 py-1 rounded-lg border text-brand font-semibold hover:bg-brand/10">Ouvrir dans Odoo ↗</a>
+              </div>
+            ))}
+            {result.warnings.length > 0 && <div className={`rounded-lg px-3 py-2 text-xs ${TONE.warn}`}>{result.warnings.map((w: string, i: number) => <div key={i}>• {w}</div>)}</div>}
+            <div className="flex justify-end"><button onClick={onClose} className="px-3 py-1.5 rounded-lg text-xs font-semibold border">Fermer</button></div>
+          </div>
+        )}
+      </div>
     </div>
   )
 }
@@ -187,7 +283,7 @@ function Group({ d, leg, isOpen, onToggle, embedOpen, onToggleEmbed, fiche, shar
   return (
     <div id={`grp-${leg.letter}`} className={`border rounded-2xl overflow-hidden bg-surface ${leg.open ? 'border-brand/50' : ''}`}>
       <button onClick={onToggle} className={`w-full grid grid-cols-[52px_1fr_auto] gap-3 items-center px-3.5 py-2.5 text-left ${k.head} hover:brightness-95 transition`}>
-        <span className={`h-9 w-9 rounded-lg border flex items-center justify-center text-sm font-bold font-mono bg-surface ${k.dot}`} title={d.number != null ? `${d.number}${leg.letter}` : leg.letter}>{leg.letter}</span>
+        <span className={`h-9 w-9 rounded-lg border flex items-center justify-center text-sm font-bold font-mono shadow-sm ${k.dot}`} title={d.number != null ? `${d.number}${leg.letter}` : leg.letter}>{leg.letter}</span>
         <span className="min-w-0">
           <span className="block text-ink text-sm font-semibold truncate">{leg.title}{leg.subtitle && <span className="text-ink-muted font-normal"> · {leg.subtitle}</span>}</span>
           <span className="block text-ink-secondary text-xs truncate">

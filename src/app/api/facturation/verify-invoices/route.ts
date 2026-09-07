@@ -136,6 +136,41 @@ export async function POST(req: Request) {
     }
   }
 
+  // ── 2e passe (Vue dossier, Olivier 07/09/2026) : fiches facturées depuis le
+  // dossier mais PAS en 'to_invoice' — gardiennages (statut 'gardiennage') et
+  // remorquages encore au parc. On ramène seulement le NUMÉRO posté, sans
+  // toucher au statut ni libérer la place de parc (le véhicule y est encore).
+  try {
+    const { data: pending } = await sb.from('incoming_missions')
+      .select('id, invoice_odoo_id')
+      .neq('status', 'to_invoice').not('invoice_odoo_id', 'is', null).is('invoice_number', null)
+      .limit(200)
+    const pendIds = Array.from(new Set((pending || []).map((m: any) => Number(m.invoice_odoo_id)).filter(Boolean)))
+    if (pendIds.length) {
+      const moves = await odooRpc<any[]>('account.move', 'search_read',
+        [[['id', 'in', pendIds], ['state', '=', 'posted']]], { fields: ['id', 'name'], limit: pendIds.length })
+      for (const mv of moves || []) {
+        if (!mv?.name || mv.name === '/') continue
+        await sb.from('incoming_missions').update({ invoice_number: mv.name, invoiced_at: new Date().toISOString() })
+          .eq('invoice_odoo_id', mv.id).is('invoice_number', null)
+        await sb.from('mission_billed_items').update({ invoice_number: mv.name })
+          .eq('invoice_odoo_id', mv.id).is('invoice_number', null)
+      }
+    }
+    // Les postes facturés depuis un dossier dont la fiche a déjà son numéro.
+    const { data: itemsSansNum } = await sb.from('mission_billed_items')
+      .select('invoice_odoo_id').not('invoice_odoo_id', 'is', null).is('invoice_number', null).limit(200)
+    const itemIds = Array.from(new Set((itemsSansNum || []).map((i: any) => Number(i.invoice_odoo_id)).filter(id => id && !pendIds.includes(id))))
+    if (itemIds.length) {
+      const moves = await odooRpc<any[]>('account.move', 'search_read',
+        [[['id', 'in', itemIds], ['state', '=', 'posted']]], { fields: ['id', 'name'], limit: itemIds.length })
+      for (const mv of moves || []) {
+        if (!mv?.name || mv.name === '/') continue
+        await sb.from('mission_billed_items').update({ invoice_number: mv.name }).eq('invoice_odoo_id', mv.id).is('invoice_number', null)
+      }
+    }
+  } catch (e: any) { console.error('[verify-invoices] 2e passe dossier KO:', e?.message) }
+
   return NextResponse.json({
     ok: true, completed, draft, none,
     summary: { completed: completed.length, draft: draft.length, none: none.length },
