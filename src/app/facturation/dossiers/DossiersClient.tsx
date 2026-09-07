@@ -38,7 +38,9 @@ type AutoInfo = { status: string; eligibleAt?: string; reason?: string }
 
 const ready  = (d: Dossier) => d.legs.filter(l => (canPickLeg(l) || (l.amount_unknown && !isLegBilled(l) && !l.nothing_to_bill)) && !(l.kind === 'gard' && l.open))
 const hasUnknown = (d: Dossier) => d.legs.some(l => l.amount_unknown && !isLegBilled(l))
-const isDone = (d: Dossier) => d.legs.every(l => isLegBilled(l) || !!l.nothing_to_bill || l.amount_htva === 0)
+// Un groupe au montant INCONNU (tarif introuvable, destination non géocodée…)
+// n'est pas « facturé » : il reste à facturer, avec « à calculer » affiché.
+const isDone = (d: Dossier) => d.legs.every(l => isLegBilled(l) || !!l.nothing_to_bill || (l.amount_htva === 0 && !l.amount_unknown))
 const rest   = (d: Dossier) => d.totals.remaining
 
 export default function DossiersClient({ initial, autoById, isSuperadmin, capped }: { initial: Dossier[]; autoById: Record<string, boolean>; isSuperadmin: boolean; capped: boolean }) {
