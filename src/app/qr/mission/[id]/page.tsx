@@ -179,6 +179,7 @@ export default async function QrMissionPage({ params }: { params: { id: string }
         // Olivier 2026-06-08 : tampon ÉPAVE si scratched
         scratched_at:       mission.scratched_at || null,
         closing_notes:      mission.closing_notes || null,
+        driver_photos_count: Array.isArray(mission.driver_photos) ? mission.driver_photos.length : 0,
       }}
       existingRel={existingRel ? {
         id:             existingRel.id,

@@ -8,6 +8,7 @@ import { FOURRIERE_ZONES, SCRATCH_STATE_ID } from '@/lib/fourriere'
 import { buildEncaissementUrl } from '@/lib/missions/encaissement-url'
 import { parcZoneLabel } from '@/lib/parc/zone-label'
 import AddressField from '@/components/AddressField'
+import AddPhotosButton from '@/components/qr/AddPhotosButton'
 
 const GM_KEY = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || ''
 
@@ -41,6 +42,7 @@ interface Mission {
   odoo_ticket_id:     number | null
   scratched_at:       string | null
   closing_notes:      string | null
+  driver_photos_count?: number
 }
 
 interface ExistingRel {
@@ -622,6 +624,10 @@ export default function QrMissionClient({
                 </button>
               </>
             )}
+
+            {/* Ajouter des photos (tous users auth) — Olivier 07/09/2026 :
+                elles rejoignent les photos chauffeur de la fiche. */}
+            <AddPhotosButton missionId={mission.id} initialCount={mission.driver_photos_count || 0} />
 
             {/* Actions fourrière (admin / superadmin / module fourriere)
                 Olivier 2026-06-08 : masquees si la mission est en epave. */}
