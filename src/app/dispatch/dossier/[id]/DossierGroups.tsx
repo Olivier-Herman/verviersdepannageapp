@@ -9,6 +9,21 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
 import MissionDetailClient from '@/app/dispatch/[id]/MissionDetailClient'
 import CreateClientModal from '@/components/CreateClientModal'
+import EidImportButton, { type EidData } from '@/components/caisse/EidImportButton'
+import ManualInfoButton, { type ManualClientData } from '@/components/caisse/ManualInfoButton'
+import IdPhotoButton from '@/components/caisse/IdPhotoButton'
+
+// Pays lu sur la carte d'identité → code ISO pour Odoo (même règle que la fiche).
+const countryToIso = (name?: string | null) => {
+  const c = (name || '').trim().toLowerCase()
+  if (!c) return undefined
+  if (/belg|belgi/.test(c)) return 'BE'
+  if (/france|français/.test(c)) return 'FR'
+  if (/pays.?bas|nederl|holland/.test(c)) return 'NL'
+  if (/allemagne|deutsch|german/.test(c)) return 'DE'
+  if (/luxemb/.test(c)) return 'LU'
+  return undefined
+}
 import type { Dossier, DossierLeg } from '@/lib/dossier/build'
 
 const eur = (n: number) => n.toLocaleString('fr-BE', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' €'
@@ -343,6 +358,19 @@ function BillingRow({ d, leg, onChanged, gmKey }: { d: Dossier; leg: DossierLeg;
   const [searching, setSearching] = useState(false)
   const [editing, setEditing] = useState(false)
   const [creating, setCreating] = useState(false)
+  // Préremplissage du formulaire « Créer un client » : carte d'identité lue au
+  // comptoir, photo de la carte, ou saisie par le client sur l'écran comptoir.
+  const [prefill, setPrefill] = useState<any>(null)
+  const fromEid = (e: EidData) => {
+    setPrefill({ name: [e.firstName, e.lastName].filter(Boolean).join(' ').trim() || undefined, phone: e.phone || undefined, email: e.email || undefined,
+      street: e.street || undefined, zip: e.zip || undefined, city: e.city || undefined, country: e.country || undefined, countryCode: countryToIso(e.country) })
+    setCreating(true)
+  }
+  const fromManual = (m: ManualClientData) => {
+    setPrefill({ name: m.name || undefined, phone: m.phone || undefined, email: m.email || undefined, street: m.street || undefined, zip: m.zip || undefined,
+      city: m.city || undefined, country: m.country || undefined, countryCode: m.countryCode || countryToIso(m.country), vat: m.vat || undefined, isCompany: m.isCompany || undefined })
+    setCreating(true)
+  }
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState<string | null>(null)
   // Affichage optimiste : dès que le PATCH a réussi, on montre le nouveau client
@@ -389,6 +417,12 @@ function BillingRow({ d, leg, onChanged, gmKey }: { d: Dossier; leg: DossierLeg;
         <div className="relative flex-1 min-w-[240px]">
           <input autoFocus value={q} onChange={e => setQ(e.target.value)} placeholder="Chercher un client Odoo (3 lettres min.)" className="w-full border rounded-lg px-2.5 py-1 bg-surface text-ink text-xs" />
           <button onClick={() => { setEditing(false); setQ('') }} className="absolute right-1.5 top-1 text-ink-faint text-xs">✕</button>
+          <div className="flex items-center gap-3 flex-wrap mt-1.5 text-[11px]">
+            <span className="text-ink-faint">ou compléter depuis</span>
+            <EidImportButton onImport={fromEid} />
+            <IdPhotoButton onImport={fromEid} />
+            <ManualInfoButton onImport={fromManual} />
+          </div>
           {q.trim().length >= 3 && (
             <div className="absolute z-10 left-0 right-0 mt-1 bg-surface border rounded-lg shadow-lg max-h-64 overflow-auto">
               {results.map(c => <button key={c.id} disabled={busy} onClick={() => save(c)} className="block w-full text-left px-2.5 py-1.5 text-xs text-ink hover:bg-surface-2">{c.name} <span className="text-ink-faint">#{c.id}</span></button>)}
@@ -400,8 +434,8 @@ function BillingRow({ d, leg, onChanged, gmKey }: { d: Dossier; leg: DossierLeg;
         </div>
       )}
       {creating && (
-        <CreateClientModal initialName={q.trim()} gmKey={gmKey} onClose={() => setCreating(false)}
-          onCreated={(c: any) => { setCreating(false); save({ id: Number(c.id), name: String(c.name || q.trim()) }) }} />
+        <CreateClientModal initialName={q.trim()} prefill={prefill || undefined} gmKey={gmKey} onClose={() => { setCreating(false); setPrefill(null) }}
+          onCreated={(c: any) => { setCreating(false); setPrefill(null); save({ id: Number(c.id), name: String(c.name || prefill?.name || q.trim()) }) }} />
       )}
     </div>
   )
