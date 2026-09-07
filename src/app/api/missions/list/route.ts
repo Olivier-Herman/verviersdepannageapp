@@ -45,6 +45,7 @@ export async function GET(req: Request) {
       incident_address, incident_city, incident_country,
       incident_lat, incident_lng,
       destination_name, destination_address, redelivery_address,
+      parc_zone_key, parked_at,
       amount_guaranteed, incident_at, received_at, intervention_date, rdv_at,
       status, dispatch_mode,
       saisie_motif_code, saisie_motif_label,
@@ -161,6 +162,7 @@ export async function GET(req: Request) {
     .from('incoming_missions')
     .select('id')
     .eq('status', 'parked').eq('parc_zone_key', relZone)
+    .eq('dossier_leg', false)   // miroirs gardiennage : jamais listés → jamais comptés
     .not('external_id', 'like', 'PROCESSING_%').not('external_id', 'like', 'UNKNOWN_SENDER_%')
     .or('parse_confidence.is.null,parse_confidence.gte.0.3,assigned_to.not.is.null')
     .is('archived_at', null)
