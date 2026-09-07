@@ -140,6 +140,111 @@ const DossierGroupsEmbed = dynamic(() => import('@/app/dispatch/dossier/[id]/Dos
 // Ligne dépliée : fil du dossier (A, B, C…) + la fiche réelle, modifiable,
 // + « Vue complète » vers le dossier entier. Olivier 07/09/2026 : « le clic sur
 // une ligne développe les infos, le clic à nouveau replie ».
+// ── Ligne mobile (nouvelle liste sur téléphone) ───────────────────────────────
+// Un toucher déplie la vue 2 (ExpandedRow), un second replie. « Dossier
+// complet » remplace le double clic. « Forcer un statut » = les 3 actions
+// dispatcher principales, avec confirmation ; « forcer en parc » demande le
+// dépôt + la zone → fiche complète.
+function MobileRow({ m, activeTab, drivers, driverStatuses, sources, onRefresh, onModalChange, userRole, userModules, dossierView, expanded, onToggle }: {
+  m: Mission; activeTab: string; drivers: Driver[]; driverStatuses: DriverStatus[]; sources: CatalogSource[]
+  onRefresh: () => void; onModalChange?: (open: boolean) => void; userRole: string; userModules: string[]; dossierView: boolean
+  expanded: boolean; onToggle: () => void
+}) {
+  const [forceOpen, setForceOpen] = useState(false)
+  const [forcing,   setForcing]   = useState(false)
+  const delai   = getDelai(m.intervention_date, m.status)
+  const srcInfo = { label: getSourceLabel(m.source, sources), color: getSourceColor(m.source, sources) }
+  const typeLbl = getTypeLabel(m)
+  const kind    = /reliv/i.test(typeLbl) ? 'REL' : /d[ée]pannage|sur place|trajet/i.test(typeLbl) ? 'DSP' : /dpr|protocol/i.test(typeLbl) ? 'DPR' : /vhu|épave/i.test(typeLbl) ? 'VHU' : /transport|rapatri/i.test(typeLbl) ? 'TRP' : 'REM'
+  const kindCls = kind === 'REL' ? 'bg-emerald-600' : kind === 'DSP' ? 'bg-green-700' : kind === 'DPR' ? 'bg-red-600' : kind === 'VHU' ? 'bg-violet-600' : kind === 'TRP' ? 'bg-sky-600' : 'bg-blue-600'
+  const href    = dossierView ? `/dispatch/dossier/${m.id}` : `/dispatch/${m.id}`
+  const isParked = activeTab === 'parked'
+  const showDelai = delai.urgency !== 'muted' && !isParked
+  const isGarage = !!m.requested_by_garage_id
+  const ref = m.dossier_number || (m.mission_number != null ? m.external_id : null)
+
+  const force = async (status: 'dispatching' | 'completed', question: string) => {
+    if (!confirm(question)) return
+    setForcing(true)
+    try {
+      const r = await fetch(`/api/missions/${m.id}/force-status`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status }) })
+      const j = await r.json().catch(() => ({}))
+      if (!r.ok) { alert(j.error || `Erreur ${r.status}`); return }
+      setForceOpen(false); onRefresh()
+    } finally { setForcing(false) }
+  }
+
+  return (
+    <div className={`bg-surface border rounded-2xl overflow-hidden ${expanded ? 'ring-1 ring-brand/40' : ''} ${isGarage ? 'border-amber-500/40' : delai.urgency === 'critical' ? 'border-red-500/40' : ''}`}>
+      <div onClick={onToggle} className={`px-3 py-2.5 grid grid-cols-[1fr_auto] gap-x-3 gap-y-1 ${expanded ? 'bg-brand/5' : ''}`}>
+        <div className="flex items-center gap-2 min-w-0">
+          <span className="text-ink font-bold font-mono text-sm">{m.mission_number != null ? `#${m.mission_number}` : (m.dossier_number || m.external_id)}</span>
+          <span className={`px-1.5 py-0.5 rounded-md text-[10.5px] font-extrabold text-white tracking-wide ${kindCls}`} title={typeLbl}>{kind}</span>
+          <span className={`px-1.5 py-0.5 rounded text-[10.5px] font-bold text-white ${srcInfo.color}`}>{srcInfo.label}</span>
+        </div>
+        <div className="justify-self-end self-start">
+          {isParked
+            ? <span className="w-9 h-9 rounded-lg bg-amber-500 text-white font-bold font-mono text-base flex items-center justify-center" title="Zone de parc">{(m as any).parc_zone_key || '?'}</span>
+            : showDelai ? <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[11px] font-medium ${delai.bgColor} ${delai.color} ${delai.pulse ? 'animate-pulse' : ''}`}>{delai.label}</span> : null}
+        </div>
+        <div className="col-span-2 flex items-center gap-2 min-w-0">
+          <span className="text-ink font-bold font-mono text-[13px]">{m.vehicle_plate || '—'}</span>
+          <span className="text-ink-secondary text-[12.5px] truncate">{[m.vehicle_brand, m.vehicle_model].filter(Boolean).join(' ')}</span>
+        </div>
+        {ref && <p className="col-span-2 text-ink-muted font-mono text-[11px] truncate">{ref}</p>}
+        <div className="col-span-2 text-[12.5px] leading-snug">
+          <p className="text-ink font-medium break-words">{m.incident_address || '—'}{m.incident_city ? <span className="text-ink-muted"> · {m.incident_city}</span> : null}</p>
+          <p className="text-ink-secondary break-words">
+            {isParked ? (m.redelivery_address ? `↪ relivraison : ${m.redelivery_address}` : '↪ relivraison : adresse à définir')
+              : (m.destination_name || m.destination_address) ? `→ ${[m.destination_name, m.destination_address].filter(Boolean).join(' · ')}`
+              : kind === 'DSP' ? 'sur place' : kind === 'REM' || kind === 'TRP' ? '→ destination à définir' : ''}
+          </p>
+          {m.warnings && m.warnings.length > 0 && <p className="text-red-600 text-[11px] font-semibold">⚠ {m.warnings[0]}{m.warnings.length > 1 ? ` (+${m.warnings.length - 1})` : ''}</p>}
+        </div>
+        <div className="col-span-2 flex items-center justify-between gap-2 text-[12px]">
+          <span className="text-ink-muted truncate">{m.client_name || '—'}</span>
+          {m.client_phone && <a href={`tel:${m.client_phone}`} onClick={e => e.stopPropagation()} className="text-brand font-medium shrink-0">{m.client_phone}</a>}
+        </div>
+        <div className="col-span-2" onClick={e => e.stopPropagation()}>
+          {!isParked
+            ? <div className="flex flex-wrap items-center gap-1.5"><AssignAction mission={m} drivers={drivers} driverStatuses={driverStatuses} onRefresh={onRefresh} onModalChange={onModalChange} userRole={userRole} userModules={userModules} /></div>
+            : <p className="text-ink-muted text-[11px]">{(m as any).parked_at ? `Au parc depuis le ${new Date((m as any).parked_at).toLocaleDateString('fr-BE', { day: '2-digit', month: '2-digit' })}` : ''}</p>}
+          {m.auto_dispatch_status && <p className="mt-1 text-brand text-[11px]"><span className="animate-pulse">⚡</span> {m.auto_dispatch_status}</p>}
+          {m.has_pending_derogation && <p className="mt-1 text-amber-400 text-[11px]"><span className="animate-pulse">🆘</span> Dérogation à valider</p>}
+        </div>
+      </div>
+      {expanded && (
+        <>
+          <ExpandedRow missionId={m.id} drivers={drivers} sources={sources} />
+          <div className="border-t px-3 py-2.5 space-y-2" onClick={e => e.stopPropagation()}>
+            <div className="flex gap-2">
+              <Link href={href} className="flex-1 text-center px-3 py-2.5 rounded-xl bg-brand text-white text-sm font-semibold">Dossier complet</Link>
+              {['admin', 'superadmin', 'dispatcher'].includes(userRole) && (
+                <button onClick={() => setForceOpen(v => !v)} className={`flex-1 px-3 py-2.5 rounded-xl border text-sm font-semibold ${forceOpen ? 'bg-amber-500/15 border-amber-500/40 text-amber-700 dark:text-amber-300' : 'bg-surface text-ink'}`}>Forcer un statut</button>
+              )}
+            </div>
+            {forceOpen && (
+              <div className="grid grid-cols-1 gap-1.5">
+                {m.status !== 'dispatching' && m.status !== 'new' && (
+                  <button disabled={forcing} onClick={() => force('dispatching', 'Réinitialiser cette fiche en « En attente » et désassigner le chauffeur ?')}
+                    className="px-3 py-2 rounded-lg border bg-surface text-ink text-sm text-left disabled:opacity-50">↩ Réinitialiser en attente <span className="text-ink-muted text-xs">(désassigne le chauffeur)</span></button>
+                )}
+                {!['completed', 'to_invoice', 'parked'].includes(m.status) && (
+                  <button disabled={forcing} onClick={() => force('completed', 'Clôturer cette fiche sans pointage ni photos du chauffeur ?')}
+                    className="px-3 py-2 rounded-lg border bg-surface text-ink text-sm text-left disabled:opacity-50">✓ Clôturer sans pointage</button>
+                )}
+                {!isParked && (
+                  <Link href={`/dispatch/${m.id}#actions`} className="px-3 py-2 rounded-lg border bg-surface text-ink text-sm text-left">🅿 Forcer en parc… <span className="text-ink-muted text-xs">(dépôt + zone, sur la fiche)</span></Link>
+                )}
+              </div>
+            )}
+          </div>
+        </>
+      )}
+    </div>
+  )
+}
+
 function ExpandedRow({ missionId, drivers, sources }: { missionId: string; drivers: Driver[]; sources: CatalogSource[] }) {
   const [data, setData] = useState<any>(null)
   const [err, setErr] = useState<string | null>(null)
@@ -1442,8 +1547,8 @@ export default function DispatchClient({
             </button>
 
             {dossierView && (
-              <button onClick={toggleCompact} title={compactList ? 'Repasser à l’ancien tableau' : 'Revenir au nouvel affichage'}
-                className="hidden lg:block px-3 py-2 bg-surface border rounded-xl text-ink-secondary hover:text-ink text-sm font-medium transition">
+              <button onClick={toggleCompact} title={compactList ? 'Repasser à l’ancien affichage' : 'Revenir au nouvel affichage'}
+                className="px-3 py-2 bg-surface border rounded-xl text-ink-secondary hover:text-ink text-sm font-medium transition whitespace-nowrap">
                 {compactList ? '▤ Ancien affichage' : '✨ Nouvel affichage'}
               </button>
             )}
@@ -1668,7 +1773,30 @@ export default function DispatchClient({
 
             /* ── VUE LISTE ──────────────────────────────────────── */
             <>
+              {/* Mobile : nouvelle liste (Olivier + pilotes, 07/09/2026 — maquette
+                  validée : même contenu que le desktop empilé, 1 toucher = vue 2,
+                  « Dossier complet » remplace le double clic, pas de photos). */}
+              {compactList && (
+                <div className="lg:hidden space-y-3">
+                  {missionGroups.map(g => (
+                    <div key={g.key} className="space-y-2">
+                      {g.header && (
+                        <div className={`px-3 py-1.5 rounded-lg border text-xs font-bold inline-flex items-center gap-2 ${bandClass(g.tone)}`}>
+                          {g.header} <span className="opacity-70">({g.items.length})</span>
+                        </div>
+                      )}
+                      {g.items.map(m => (
+                        <MobileRow key={m.id} m={m} activeTab={activeTab} drivers={drivers} driverStatuses={driverStatuses} sources={sources}
+                          onRefresh={load} onModalChange={onModalChange} userRole={userRole} userModules={userModules} dossierView={dossierView}
+                          expanded={expandedId === m.id} onToggle={() => setExpandedId(expandedId === m.id ? null : m.id)} />
+                      ))}
+                    </div>
+                  ))}
+                </div>
+              )}
+
               {/* Mobile : cards (la table ne tient pas) */}
+              {!compactList && (
               <div className="lg:hidden space-y-4">
                 {missionGroups.map(g => (
                   <div key={g.key}>
@@ -1696,6 +1824,7 @@ export default function DispatchClient({
                   </div>
                 ))}
               </div>
+              )}
 
               {/* Desktop : nouvelle liste compacte (superadmin, test) */}
               {compactList && (
