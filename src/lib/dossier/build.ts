@@ -201,12 +201,17 @@ export async function buildDossier(anyMissionId: string): Promise<Dossier | null
   for (const it of items || []) (itemsBy[(it as any).mission_id] ||= []).push(it)
 
   // ── Tarif journalier du gardiennage par régime (lignes SERV-PARC) ────────
+  // Deux lignes par régime : voiture et cyclo (« cyclo » dans le libellé). On
+  // prend celle qui correspond à la classe du véhicule du dossier.
   const { data: parcLines } = await sb.from('source_tariff_lines')
-    .select('mission_type, default_price, free_days, effective_to')
+    .select('mission_type, name, default_price, free_days, effective_to')
     .eq('source', 'gardiennage').eq('kind', 'SERV-PARC')
+  const isMoto = String(root.vehicle_class || '').toLowerCase() === 'moto'
   const dayPriceByRegime: Record<string, { price: number; free: number }> = {}
   for (const l of parcLines || []) {
     if ((l as any).effective_to && ts((l as any).effective_to)! < Date.now()) continue
+    const cyclo = /cyclo|moto|2 roues/i.test(String((l as any).name || ''))
+    if (cyclo !== isMoto) continue
     dayPriceByRegime[(l as any).mission_type] = { price: Number((l as any).default_price || 0), free: Number((l as any).free_days || 0) }
   }
 
@@ -248,7 +253,8 @@ export async function buildDossier(anyMissionId: string): Promise<Dossier | null
       facts.push({ label: 'Entrée', value: `${fmtD(started)}${originName?.assigned_to ? ' — ' + (nameById[originName.assigned_to] || '') : ''}` })
       facts.push({ label: 'Sortie', value: exit ? `${fmtD(m.parc_exit_at)} — ${({ relivraison: 'relivraison', sortie: 'sortie du parc', annulation: 'annulation', reparc: 'nouveau séjour', correction: 'correction' } as any)[m.parc_exit_reason] || m.parc_exit_reason || ''}` : 'toujours au parc' })
       facts.push({ label: 'Durée', value: `${rawDays} jour${rawDays > 1 ? 's' : ''}${tarif?.free ? ` (${tarif.free} offert${tarif.free > 1 ? 's' : ''})` : ''}` })
-      if (m.key_location || m.keys_digibox_slot || m.saisie_key_hook) facts.push({ label: 'Clés', value: [m.key_location, m.keys_digibox_slot ? `digibox ${m.keys_digibox_slot}` : null, m.saisie_key_hook ? `crochet ${m.saisie_key_hook}` : null].filter(Boolean).join(' · ') })
+      const KEY_LOC: Record<string, string> = { in_vehicle: 'dans le véhicule', reception: 'réception', digibox: 'digibox', office: 'bureau', hook: 'crochet' }
+      if (m.key_location || m.keys_digibox_slot || m.saisie_key_hook) facts.push({ label: 'Clés', value: [m.key_location ? (KEY_LOC[m.key_location] || m.key_location) : null, m.keys_digibox_slot ? `digibox ${m.keys_digibox_slot}` : null, m.saisie_key_hook ? `crochet ${m.saisie_key_hook}` : null].filter(Boolean).join(' · ') })
       if (m.redelivery_address) facts.push({ label: 'Relivraison', value: `${m.redelivery_address}${m.garage_reopen_date ? ` · réouverture ${m.garage_reopen_date}` : ''}` })
       if (root.requisitoire_at && regime !== 'assistance') facts.push({ label: 'Réquisitoire', value: `reçu le ${fmtD(root.requisitoire_at)}${root.requisitoire_reminder_count ? ` · ${root.requisitoire_reminder_count} relance(s)` : ''}` })
       else if (regime === 'saisie' || String(root.source || '').startsWith('police_')) facts.push({ label: 'Réquisitoire', value: root.requisitoire_reminder_count ? `attendu · ${root.requisitoire_reminder_count} relance(s)` : 'attendu' })
