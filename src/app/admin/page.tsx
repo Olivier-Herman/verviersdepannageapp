@@ -122,6 +122,8 @@ export default async function AdminPage() {
           desc="Matrice motifs × employés (superadmin). Détermine qui reçoit quelles visites/appels." />
         <Card href="/admin/visites" icon={Users} label="Visites au comptoir"
           desc="Motifs de visite (dont « expert ») et bureaux d'expertise proposés lors de l'enregistrement d'une visite d'un véhicule en parc." />
+        <Card href="/admin/experts" icon={Users} label="Accès experts"
+          desc="Experts inscrits via le QR de l'accueil (/expert) : bureaux validés ou en attente, visites, révocation d'un téléphone, et qui reçoit les popups de validation." />
         <Card href="/admin/police-zones" icon={ShieldCheck} label="Zones de police"
           desc="Liste des zones (Vesdre, Fagnes…) proposées au chauffeur lors de la création d'une mission Police. Une zone par défaut." />
         <Card href="/admin/garage-partners" icon={Users} label="Garages partenaires"
