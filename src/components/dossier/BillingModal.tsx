@@ -1,0 +1,108 @@
+'use client'
+// Modale « Facturer le dossier » : groupes cochés par client, une facture Odoo
+// par client créée directement en brouillon. Partagée entre la Vue dossier et
+// le module Facturation par dossier. Olivier 07/09/2026.
+
+import { useState } from 'react'
+import type { Dossier, DossierLeg } from '@/lib/dossier/build'
+
+const eur = (n: number) => n.toLocaleString('fr-BE', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' €'
+export const cleanRef = (raw: string) => {
+  const m = raw.match(/([0-9]{4}\/[0-9]{2}\/[0-9A-Z-]+|[0-9]{4}[A-Z]{1,3}[0-9]{3,}|[A-Z]{1,3}-?[0-9]{4,}[A-Z0-9-]*|[0-9]{6,})\s*$/i)
+  return m ? m[1] : raw
+}
+const TONE = {
+  ok: 'bg-emerald-600 text-white', warn: 'bg-amber-500 text-white', live: 'bg-blue-600 text-white', bad: 'bg-red-600 text-white',
+} as const
+
+export const isLegBilled = (l: DossierLeg) => l.billed_refs.length > 0 && l.billed_htva >= l.amount_htva - 0.01
+export const canPickLeg  = (l: DossierLeg) => !l.nothing_to_bill && !isLegBilled(l) && l.amount_htva > 0
+
+export default function BillingModal({ d, onClose, onDone }: { d: Dossier; onClose: () => void; onDone: () => Promise<void> | void }) {
+  // Par défaut : tout ce qui est prêt. Un gardiennage EN COURS n'est pas coché :
+  // le cocher arrête sa période à aujourd'hui et en ouvre une nouvelle.
+  const [sel, setSel] = useState<Set<string>>(() => new Set(d.legs.filter(l => canPickLeg(l) && !(l.kind === 'gard' && l.open)).map(l => l.mission_id)))
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [result, setResult] = useState<{ invoices: any[]; warnings: string[] } | null>(null)
+  const toggle = (id: string) => setSel(p => { const n = new Set(p); n.has(id) ? n.delete(id) : n.add(id); return n })
+
+  const byClient = new Map<string, DossierLeg[]>()
+  for (const l of d.legs) { const k = l.billed_to_name || '— client à définir'; (byClient.get(k) || byClient.set(k, []).get(k)!).push(l) }
+  const chosen = d.legs.filter(l => sel.has(l.mission_id))
+  const allPickable = d.legs.filter(canPickLeg)
+  const total = chosen.reduce((s, l) => s + l.amount_htva, 0)
+  const nInv = new Set(chosen.map(l => l.billed_to_id ?? 'none')).size
+  const missingClient = chosen.some(l => !l.billed_to_id)
+  const runningChosen = chosen.some(l => l.kind === 'gard' && l.open)
+
+  const submit = async () => {
+    setBusy(true); setError(null)
+    try {
+      const r = await fetch(`/api/dossier/${d.root_id}/invoice`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mission_ids: chosen.map(l => l.mission_id) }) })
+      const j = await r.json()
+      if (!r.ok || !j.ok) throw new Error(j.error || `HTTP ${r.status}`)
+      setResult(j); await onDone()
+    } catch (e: any) { setError(String(e.message || e)) } finally { setBusy(false) }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/45 flex items-start justify-center p-4 pt-12 overflow-auto">
+      <div className="w-full max-w-2xl bg-surface border rounded-2xl shadow-2xl p-5 space-y-3">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <h3 className="text-ink font-bold text-base">Facturer le dossier {d.ref} · {d.vehicle.plate}</h3>
+            <p className="text-ink-muted text-xs mt-0.5">Tout coché = facture totale. Décoche ce qui attend = facture partielle. Une facture Odoo par client, créée directement en brouillon, sans devis.</p>
+          </div>
+          <button onClick={onClose} className="text-ink-faint hover:text-ink text-lg leading-none">✕</button>
+        </div>
+
+        {!result && Array.from(byClient.entries()).map(([client, legs]) => {
+          const ch = legs.filter(l => sel.has(l.mission_id)); const sum = ch.reduce((s, l) => s + l.amount_htva, 0)
+          return (
+            <div key={client} className="border rounded-xl px-3 py-2">
+              <div className="flex justify-between text-sm font-semibold text-ink"><span>{ch.length ? 'Facture → ' : <span className="text-ink-muted">Rien pour </span>}{client}{/parquet|justice/i.test(client) && <span className={`ml-2 text-[10.5px] rounded-full px-2 py-0.5 ${TONE.warn}`}>Parquet : passe par l'état de frais, pas par Odoo</span>}</span><span className="tabular-nums">{ch.length ? eur(sum) + ' HTVA' : ''}</span></div>
+              {legs.map(l => {
+                const pick = canPickLeg(l)
+                return (
+                  <button key={l.mission_id} disabled={!pick} onClick={() => toggle(l.mission_id)} className={`w-full grid grid-cols-[22px_1fr_auto] gap-2 items-center py-1 text-left text-xs ${pick ? 'text-ink-secondary' : 'opacity-50 cursor-default'}`}>
+                    <span className={`w-4 h-4 rounded border-[1.5px] flex items-center justify-center text-[10px] ${sel.has(l.mission_id) ? 'bg-brand border-brand text-white' : 'border-ink-muted'}`}>{sel.has(l.mission_id) ? '✓' : (isLegBilled(l) ? '✓' : l.nothing_to_bill ? '–' : '')}</span>
+                    <span><span className="font-mono">{l.letter}</span> {l.title}{l.kind === 'gard' && l.days != null ? ` ${l.days} j` : ''}{l.kind === 'gard' && l.open && <span className={`ml-1.5 rounded-full px-1.5 py-0.5 text-[10px] font-semibold ${TONE.live}`}>en cours · arrêté à aujourd'hui si coché</span>}</span>
+                    <span className="tabular-nums">{isLegBilled(l) ? `déjà facturé · ${cleanRef(l.billed_refs[0])}` : l.nothing_to_bill ? l.nothing_to_bill : eur(l.amount_htva)}</span>
+                  </button>
+                )
+              })}
+            </div>
+          )
+        })}
+
+        {!result && (
+          <>
+            {missingClient && <div className={`rounded-lg px-3 py-2 text-xs ${TONE.bad}`}>Un groupe coché n'a pas de client de facturation. Renseigne-le sur le groupe (ligne « Facturer à ») avant de facturer.</div>}
+            {runningChosen && <div className={`rounded-lg px-3 py-2 text-xs ${TONE.warn}`}>Un gardiennage en cours est coché : sa période s'arrête à aujourd'hui et un nouveau groupe s'ouvre sur la suite.</div>}
+            {d.state.open && <div className={`rounded-lg px-3 py-2 text-xs ${TONE.live}`}>Dossier en cours ({d.state.reason}) : facturation manuelle autorisée. L'automatique attendra la sortie du véhicule.</div>}
+            {error && <div className={`rounded-lg px-3 py-2 text-xs ${TONE.bad}`}>{error}</div>}
+            <div className="flex items-center justify-between gap-3 text-xs">
+              <span className="text-ink-muted">{chosen.length ? <><b className="text-ink">{chosen.length === allPickable.length ? 'Facture totale' : 'Facture partielle'}</b> · {nInv} facture{nInv > 1 ? 's' : ''} · {eur(total)} HTVA · référence « {d.number} {chosen.map(l => l.letter).join(' ')} »</> : 'Rien de coché'}</span>
+              <button disabled={busy || !chosen.length || missingClient} onClick={submit} className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-brand text-white disabled:opacity-40">{busy ? '⏳ Création…' : `Créer ${nInv > 1 ? 'les factures' : 'la facture'}`}</button>
+            </div>
+          </>
+        )}
+
+        {result && (
+          <div className="space-y-2">
+            <div className={`rounded-lg px-3 py-2 text-xs ${TONE.ok}`}>✓ {result.invoices.length} facture{result.invoices.length > 1 ? 's' : ''} Odoo créée{result.invoices.length > 1 ? 's' : ''} en brouillon. Les groupes couverts sont reliés ; le numéro définitif arrivera quand la facture sera postée dans Odoo.</div>
+            {result.invoices.map((i: any) => (
+              <div key={i.odoo_id} className="border rounded-xl px-3 py-2 text-xs flex items-center justify-between gap-3">
+                <span><b className="text-ink">{i.client_name}</b> · couvre {i.covers.join(' ')} · {eur(i.total_htva)} HTVA</span>
+                <a href={i.url} target="_blank" rel="noreferrer" className="px-2.5 py-1 rounded-lg border text-brand font-semibold hover:bg-brand/10">Ouvrir dans Odoo ↗</a>
+              </div>
+            ))}
+            {result.warnings.length > 0 && <div className={`rounded-lg px-3 py-2 text-xs ${TONE.warn}`}>{result.warnings.map((w: string, i: number) => <div key={i}>• {w}</div>)}</div>}
+            <div className="flex justify-end"><button onClick={onClose} className="px-3 py-1.5 rounded-lg text-xs font-semibold border">Fermer</button></div>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}

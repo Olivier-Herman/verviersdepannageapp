@@ -821,6 +821,12 @@ export default function FacturationClient({
 
         {/* Barre facturation par lot + vérification Odoo */}
         <div className="bg-surface border rounded-2xl p-3 flex flex-wrap items-center gap-2">
+          {userRole === 'superadmin' && (
+            <a href="/facturation/dossiers" title="Preview : une ligne par dossier, groupes lettrés, une facture par client"
+              className="py-2 px-3 bg-amber-500/15 text-amber-700 dark:text-amber-300 border border-amber-500/40 rounded-lg text-sm font-semibold hover:bg-amber-500/25 transition">
+              🧪 Par dossier
+            </a>
+          )}
           <button
             type="button"
             onClick={verifyInvoices}

@@ -132,7 +132,11 @@ function startKey(m: any, kind: LegKind): number {
   return ts(m.received_at) || ts(m.intervention_date) || 0
 }
 
-export async function buildDossier(anyMissionId: string): Promise<Dossier | null> {
+// `light` : pour les LISTES — pas de moteur de prix (routage), on prend le
+// montant figé de la fiche (special_tarif_htva / estimated_htva) ; pas de
+// recherche d'orphelins par plaque.
+export async function buildDossier(anyMissionId: string, opts: { light?: boolean } = {}): Promise<Dossier | null> {
+  const light = !!opts.light
   const sb = createAdminClient()
 
   const { data: m0, error: e0 } = await sb.from('incoming_missions').select(CHAIN_COLS).eq('id', anyMissionId).maybeSingle()
@@ -161,7 +165,7 @@ export async function buildDossier(anyMissionId: string): Promise<Dossier | null
   const winFrom = (ts(root.received_at) || Date.now()) - 3 * DAY_MS
   const winTo   = (lastExit == null ? Date.now() : lastExit) + 7 * DAY_MS
   const plate = normPlate(root.vehicle_plate)
-  if (plate.length >= 4) {
+  if (!light && plate.length >= 4) {
     const { data: same } = await sb.from('incoming_missions')
       .select('id, mission_number, source, status, mission_type, dossier_number, received_at, cancelled_reason, closing_notes, vehicle_plate, parent_mission_id, dossier_leg')
       .is('parent_mission_id', null).eq('dossier_leg', false)
@@ -223,7 +227,7 @@ export async function buildDossier(anyMissionId: string): Promise<Dossier | null
   // Estimation du REM racine (sert de repli pour le prix/jour et donne la part
   // hors gardiennage).
   let rootEst: any = null
-  try { rootEst = await estimateMissionPrice(root) } catch { rootEst = null }
+  if (!light) { try { rootEst = await estimateMissionPrice(root) } catch { rootEst = null } }
 
   // ── Construction des groupes ─────────────────────────────────────────────
   const legs: DossierLeg[] = []
@@ -273,8 +277,9 @@ export async function buildDossier(anyMissionId: string): Promise<Dossier | null
       // Action réelle (REM / DSP / REL…) : estimation du moteur, hors gardiennage
       // (le gardiennage a ses propres groupes).
       let est: any = null
-      try { est = m.id === root.id ? rootEst : await estimateMissionPrice(m) } catch { est = null }
+      if (!light) { try { est = m.id === root.id ? rootEst : await estimateMissionPrice(m) } catch { est = null } }
       if (Number(m.special_tarif_htva) > 0) { amount = r2(Number(m.special_tarif_htva)); note = 'prix convenu' }
+      else if (light) { amount = r2(Number(m.estimated_htva) || 0); note = Number(m.estimated_htva) > 0 ? 'estimation figée' : 'estimation à calculer' }
       else if (est?.ok) {
         const parcPart = Number(est.parc_eur || 0) * (1 + Number(est.surcharge_pct || 0) / 100)
         amount = r2(Math.max(0, Number(est.total_eur || 0) - parcPart))
