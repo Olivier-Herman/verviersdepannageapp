@@ -40,14 +40,15 @@ const isOdoo = (l: DossierLeg) => (l.channel || 'odoo') === 'odoo'
 const ready  = (d: Dossier) => d.legs.filter(l => isOdoo(l) && (canPickLeg(l) || (l.amount_unknown && !isLegBilled(l) && !l.nothing_to_bill)) && !(l.kind === 'gard' && l.open))
 // Dossier « circuit » = ce qui reste à régler passe par le Parquet (états de
 // frais) ou le Domaine (relevé trimestriel), pas par une facture Odoo d'ici.
-const isCircuit = (d: Dossier) => d.legs.some(l => !isOdoo(l) && !isLegBilled(l) && !l.nothing_to_bill) && ready(d).length === 0
+const isCircuitLegs = (d: Dossier) => d.legs.some(l => !isOdoo(l) && !isLegBilled(l) && !l.nothing_to_bill) && ready(d).length === 0
 const hasUnknown = (d: Dossier) => d.legs.some(l => l.amount_unknown && !isLegBilled(l))
 // Un groupe au montant INCONNU (tarif introuvable, destination non géocodée…)
 // n'est pas « facturé » : il reste à facturer, avec « à calculer » affiché.
 const isDone = (d: Dossier) => d.legs.every(l => isLegBilled(l) || !!l.nothing_to_bill || (l.amount_htva === 0 && !l.amount_unknown))
 const rest   = (d: Dossier) => d.totals.remaining
 
-export default function DossiersClient({ initial, autoById, isSuperadmin, capped }: { initial: Dossier[]; autoById: Record<string, boolean>; isSuperadmin: boolean; capped: boolean }) {
+type ComexInfo = { verdict: string | null; montant: number | null; accepted_at: string | null; dossier: string | null }
+export default function DossiersClient({ initial, autoById, comexById = {}, isSuperadmin, capped }: { initial: Dossier[]; autoById: Record<string, boolean>; comexById?: Record<string, ComexInfo>; isSuperadmin: boolean; capped: boolean }) {
   const router = useRouter()
   const [rows, setRows] = useState<Dossier[]>(initial)
   const [tab, setTab] = useState<'todo' | 'auto' | 'live' | 'circuit' | 'done'>('todo')
@@ -61,6 +62,21 @@ export default function DossiersClient({ initial, autoById, isSuperadmin, capped
   const [report, setReport] = useState<string | null>(null)
   const [reportLinks, setReportLinks] = useState<{ label: string; url: string }[]>([])
   const [now, setNow] = useState(Date.now())
+  // Recherche avancée VD Soft + TowSoft (même API que la page Facturation).
+  const [advType, setAdvType] = useState<'immatriculation' | 'niv' | 'num_dossier' | 'id_appel' | 'num_facture'>('immatriculation')
+  const [advKey, setAdvKey] = useState('')
+  const [advBusy, setAdvBusy] = useState(false)
+  const [advResults, setAdvResults] = useState<any[] | null>(null)
+  const [advErr, setAdvErr] = useState<string | null>(null)
+  const runAdv = async () => {
+    if (advKey.trim().length < 2) return
+    setAdvBusy(true); setAdvErr(null)
+    try {
+      const r = await fetch('/api/facturation/search', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ searchType: advType, key: advKey.trim() }) })
+      const j = await r.json(); if (!r.ok) throw new Error(j.error || `HTTP ${r.status}`)
+      setAdvResults(j.results || []); if (j.errors?.length) setAdvErr(j.errors.join(' · '))
+    } catch (e: any) { setAdvErr(String(e.message || e)); setAdvResults([]) } finally { setAdvBusy(false) }
+  }
   const [autoElig, setAutoElig] = useState<{ eligible: number; waiting: number; hexalite?: number; delayHours: number; byMission?: Record<string, AutoInfo> } | null>(null)
 
   // Même mémoire de filtre que la page Facturation (localStorage).
@@ -85,12 +101,14 @@ export default function DossiersClient({ initial, autoById, isSuperadmin, capped
     return !d.state.open && !isDone(d) && ready(d).length > 0 && !!autoById[d.root_id] && rest(d) <= AUTO_MAX
   }
 
+  const inComex = (d: Dossier) => { const c = comexById[d.root_id]; return !!c && !c.accepted_at && !isDone(d) }
+  const isCircuit = (d: Dossier) => isCircuitLegs(d) || inComex(d)
   const activeGroup = SOURCE_GROUPS.find(g => g.key === group) || SOURCE_GROUPS[0]
   const TABS: Array<[typeof tab, string, (d: Dossier) => boolean]> = [
     ['todo', 'À facturer', d => !isDone(d) && !isCircuit(d)],
     ['auto', 'Éligibles auto', d => isAuto(d)],
     ['live', 'En cours', d => d.state.open && !isDone(d) && !isCircuit(d)],
-    ['circuit', 'Parquet / Domaine', d => isCircuit(d) && !isDone(d)],
+    ['circuit', 'Parquet / Domaine / COMEX', d => isCircuit(d) && !isDone(d)],
     ['done', 'Facturées', d => isDone(d)],
   ]
   const inScope = (d: Dossier) => inGroup(d.source, activeGroup) && (src === 'all' || d.source === src)
@@ -201,6 +219,37 @@ export default function DossiersClient({ initial, autoById, isSuperadmin, capped
         <Kpi label="Partiel possible maintenant" value={String(scoped.filter(d => d.state.open && ready(d).length > 0).length)} />
       </div>
 
+      {/* Recherche avancée VD Soft + TowSoft : facturer une fiche qui n'est pas dans la liste */}
+      <details className="bg-surface border rounded-2xl px-4 py-2">
+        <summary className="cursor-pointer text-sm font-semibold text-ink flex items-center gap-2">🔎 Facturer un autre dossier <span className="text-ink-muted font-normal text-xs">recherche VD Soft + TowSoft par plaque, VIN, dossier, n° mission ou n° facture</span></summary>
+        <div className="mt-3 space-y-2">
+          <div className="flex flex-wrap gap-2">
+            {([['immatriculation', 'Plaque'], ['niv', 'VIN'], ['num_dossier', 'Dossier'], ['id_appel', 'N° mission'], ['num_facture', 'N° facture']] as const).map(([v, l]) => (
+              <button key={v} onClick={() => setAdvType(v)} className={`px-3 py-1.5 rounded-lg text-xs font-medium border ${advType === v ? 'bg-brand text-white border-brand' : 'bg-surface-2 text-ink-secondary hover:text-ink'}`}>{l}</button>
+            ))}
+          </div>
+          <div className="flex gap-2">
+            <input value={advKey} onChange={e => setAdvKey(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') runAdv() }} placeholder="Saisis la valeur à rechercher…" className="flex-1 bg-surface-2 border rounded-xl px-3 py-2 text-ink text-sm focus:outline-none focus:border-brand placeholder:text-ink-faint" />
+            <button onClick={runAdv} disabled={advBusy || advKey.trim().length < 2} className="px-4 py-2 bg-brand hover:bg-brand-hover disabled:opacity-50 text-white rounded-xl text-sm font-semibold">{advBusy ? '⏳…' : 'Rechercher'}</button>
+          </div>
+          {advErr && <p className="text-xs text-amber-700">⚠ {advErr}</p>}
+          {advResults && (advResults.length ? (
+            <div className="border rounded-xl overflow-hidden text-xs">
+              {advResults.map((r: any, i: number) => (
+                <div key={i} className="grid grid-cols-1 md:grid-cols-[90px_120px_1fr_1fr_140px_auto] gap-2 items-center px-3 py-2 border-t first:border-t-0">
+                  <span className={`px-1.5 py-0.5 rounded text-[10.5px] font-bold text-white w-fit ${r.source === 'vdsoft' ? 'bg-brand' : 'bg-slate-500'}`}>{r.source === 'vdsoft' ? 'VD Soft' : 'TowSoft'}</span>
+                  <span className="font-mono text-ink">{r.ref}{r.dossier ? <span className="block text-ink-muted">{r.dossier}</span> : null}</span>
+                  <span><span className="font-mono">{r.plate || '—'}</span> {[r.brand, r.model].filter(Boolean).join(' ')}<span className="block text-ink-muted">{r.type || ''}{r.date_iso ? ' · ' + fmtDay(r.date_iso) : ''}</span></span>
+                  <span className="text-ink-secondary">{r.client || '—'}<span className="block text-ink-muted truncate" title={r.lieu || ''}>{r.lieu || ''}</span></span>
+                  <span className="text-ink-secondary">{r.invoice_number ? `facture ${r.invoice_number}` : (r.status || '')}{r.montant_ttc != null ? <span className="block tabular-nums">{eur(Number(r.montant_ttc))} TTC</span> : null}</span>
+                  <span>{r.source === 'vdsoft' && r.vdsoft_id ? <Link href={`/dispatch/dossier/${r.vdsoft_id}`} className="px-2.5 py-1 rounded-lg border text-brand font-semibold hover:bg-brand/10">Dossier ↗</Link> : <span className="text-ink-faint">consultation</span>}</span>
+                </div>
+              ))}
+            </div>
+          ) : <p className="text-xs text-ink-muted">Aucun résultat.</p>)}
+        </div>
+      </details>
+
       <div className="flex flex-wrap items-center gap-2">
         {TABS.map(([k, lbl, f]) => (
           <button key={k} onClick={() => setTab(k)} className={`px-3 py-1.5 rounded-lg border text-xs font-semibold ${tab === k ? 'bg-brand text-white border-brand' : 'bg-surface text-ink-secondary'}`}>{lbl} <span className="opacity-70">{scoped.filter(f).length}</span></button>
@@ -214,6 +263,7 @@ export default function DossiersClient({ initial, autoById, isSuperadmin, capped
         const clients = Array.from(new Set(d.legs.filter(l => !isLegBilled(l) && !l.nothing_to_bill).map(l => l.billed_to_name || '—')))
         const lastEf = d.parquet?.efs?.length ? d.parquet.efs[d.parquet.efs.length - 1] : null
         const badge = isDone(d) ? ['bg-surface-2 text-ink-muted border', 'Facturé']
+          : inComex(d) ? ['bg-sky-600 text-white', `🅣 COMEX · ${comexById[d.root_id]?.verdict === 'verify' ? 'à vérifier' : 'à valider chez Touring'}`]
           : isCircuit(d) ? ['bg-violet-600 text-white', d.parquet ? (lastEf ? `Parquet · EF n°${lastEf.numero ?? ''} ${lastEf.status === 'refuse' ? 'refusé' : lastEf.liquide_at ? 'liquidé' : 'en attente'}` : 'Parquet · EF à venir') : 'Domaine · relevé']
           : ai?.status === 'hexalite' ? ['bg-blue-600 text-white', '🟦 Clôture Allianz']
           : isAuto(d) ? ['bg-emerald-600 text-white', '🎯 Éligible auto']
@@ -244,7 +294,7 @@ export default function DossiersClient({ initial, autoById, isSuperadmin, capped
               </div>
               <div className="flex gap-1.5">
                 {isCircuit(d)
-                  ? <Link href={d.parquet ? '/fourriere/saisies' : '/fourriere/domaine'} onClick={e => e.stopPropagation()} className="px-3 py-1.5 rounded-lg text-xs font-semibold border text-ink-secondary hover:text-ink">{d.parquet ? 'Module Saisie ↗' : 'Module Domaine ↗'}</Link>
+                  ? <Link href={inComex(d) ? '/touring-comex' : d.parquet ? '/fourriere/saisies' : '/fourriere/domaine'} onClick={e => e.stopPropagation()} className="px-3 py-1.5 rounded-lg text-xs font-semibold border text-ink-secondary hover:text-ink">{inComex(d) ? 'Touring COMEX ↗' : d.parquet ? 'Module Saisie ↗' : 'Module Domaine ↗'}</Link>
                   : <button disabled={(!rd.length && !d.legs.some(l => canPickLeg(l))) || loadingBill === d.root_id} onClick={e => { e.stopPropagation(); openBilling(d) }} className={`px-3 py-1.5 rounded-lg text-xs font-semibold ${rd.length ? 'bg-brand text-white' : 'border text-ink-secondary'} disabled:opacity-40`}>{loadingBill === d.root_id ? '⏳ Calcul…' : `Facturer${d.state.open && rd.length ? ' (partiel)' : ''}`}</button>}
                 <Link href={`/dispatch/dossier/${d.root_id}`} onClick={e => e.stopPropagation()} className="px-2.5 py-1.5 rounded-lg text-xs font-semibold border text-ink-secondary hover:text-ink">Dossier ↗</Link>
               </div>
@@ -276,6 +326,7 @@ export default function DossiersClient({ initial, autoById, isSuperadmin, capped
                       <span className="tabular-nums">{eur(i.amount)}</span>
                     </div>
                   )) : (!d.parquet?.efs?.length && <p className="text-ink-muted">Aucune facture pour l'instant.</p>)}
+                  {comexById[d.root_id] && <p className="mt-2 text-ink-muted border-l-2 pl-2">COMEX BKO : dossier {comexById[d.root_id].dossier || '—'} · montant Touring {comexById[d.root_id].montant != null ? eur(Number(comexById[d.root_id].montant)) : '—'} · {comexById[d.root_id].accepted_at ? `accepté le ${fmtDay(comexById[d.root_id].accepted_at)}` : (comexById[d.root_id].verdict === 'verify' ? 'écart à vérifier' : 'à valider chez Touring')}</p>}
                   {ai?.reason && <p className="mt-2 text-ink-muted border-l-2 pl-2">Auto-facturation : {ai.reason}</p>}
                   {d.state.open && rd.length > 0 && <p className="mt-2 text-ink-muted border-l-2 pl-2">Dossier en cours ({d.state.reason}) : pas de facturation automatique. Tu peux facturer maintenant les groupes prêts ; le reste partira à la sortie du véhicule.</p>}
                   {isAuto(d) && <p className="mt-2 text-ink-muted border-l-2 pl-2">Sera facturé automatiquement au prochain cron : référence « {d.number} {rd.map(l => l.letter).join(' ')} ».</p>}
