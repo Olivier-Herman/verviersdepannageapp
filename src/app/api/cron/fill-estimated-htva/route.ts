@@ -7,7 +7,7 @@
 
 import { NextResponse }          from 'next/server'
 import { createAdminClient }     from '@/lib/supabase'
-import { estimateMissionPrice }  from '@/lib/missions/estimate-price'
+import { actionLines, linesTotal } from '@/lib/dossier/lines'
 
 export const dynamic     = 'force-dynamic'
 export const maxDuration = 120
@@ -23,7 +23,7 @@ export async function GET(req: Request) {
 
   // Missions clôturées, sans facture Odoo, sans CA figé → à calculer.
   const { data: missions } = await sb.from('incoming_missions')
-    .select('id, external_id, source, mission_type, vehicle_class, billed_to_id, billed_to_name, parked_at, storage_waived, incident_lat, incident_lng, destination_lat, destination_lng, snc_scenario, snc_requires_balisage, extra_addresses, intervention_date, received_at, special_tarif_htva, amount_to_collect, amount_guaranteed')
+    .select('*')   // les constructeurs de lignes lisent la fiche complète (forcés, Siabis, brouillons)
     .in('status', ['to_invoice', 'invoiced', 'completed'])
     .is('estimated_htva', null)
     .is('odoo_quote_id', null)
@@ -31,14 +31,20 @@ export async function GET(req: Request) {
     .order('completed_at', { ascending: false, nullsFirst: false })
     .limit(BATCH)
 
-  let computed = 0, zero = 0
+  let computed = 0, zero = 0, skipped = 0
   const now = new Date().toISOString()
   for (const m of (missions || [])) {
-    let htva = 0
+    // Mêmes lignes que la facturation (brouillon > montants forcés > moteur
+    // Siabis > estimation) : avant, le moteur général seul figeait 0 sur les
+    // Siabis et une tranche 0 km sur les destinations non géocodées (2ESG097,
+    // 57 € figés pour 310 €). Olivier 07/09/2026.
+    let htva = 0, unknown = false
     try {
-      const est: any = await estimateMissionPrice(m as any)
-      htva = est?.ok && Number(est.total_eur) > 0 ? Math.round(Number(est.total_eur) * 100) / 100 : 0
+      const built = await actionLines(m as any, undefined, false)
+      if (built.has_tariff && built.lines.length) htva = linesTotal(built.lines)
+      else unknown = /kilom|géocod/i.test(String(built.reason || ''))
     } catch { htva = 0 }
+    if (unknown) { skipped++; continue }   // km inconnus : on réessaiera quand la fiche aura ses coordonnées
     // On fige même 0 (estimated_htva_at) pour ne pas re-tenter en boucle.
     await sb.from('incoming_missions')
       .update({ estimated_htva: htva, estimated_htva_at: now })
@@ -46,5 +52,5 @@ export async function GET(req: Request) {
     if (htva > 0) computed++; else zero++
   }
 
-  return NextResponse.json({ ok: true, processed: (missions || []).length, computed, zero, more: (missions || []).length >= BATCH })
+  return NextResponse.json({ ok: true, processed: (missions || []).length, computed, zero, skipped, more: (missions || []).length >= BATCH })
 }
