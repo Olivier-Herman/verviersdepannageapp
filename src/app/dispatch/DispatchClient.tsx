@@ -157,7 +157,7 @@ function ExpandedRow({ missionId, drivers, sources }: { missionId: string; drive
   const KIND_DOT: Record<string, string> = { rem: 'bg-blue-600', gard: 'bg-amber-500', rel: 'bg-emerald-600', out: 'bg-violet-600' }
   const fmtDay = (v: string | null) => v ? new Date(v).toLocaleDateString('fr-BE', { timeZone: 'Europe/Brussels', day: '2-digit', month: '2-digit' }) : ''
   return (
-    <div className="border-t bg-page" onClick={e => e.stopPropagation()}>
+    <div className="border-t bg-page" onClick={e => e.stopPropagation()} onDoubleClick={e => e.stopPropagation()}>
       <div className="flex flex-wrap items-center gap-2 px-4 py-2 border-b bg-surface">
         {d ? (
           <>
@@ -1096,6 +1096,18 @@ export default function DispatchClient({
   }, [userRole])
   const toggleCompact = () => { const v = !compactList; setCompactList(v); try { localStorage.setItem('vd_dispatch_compact', v ? 'on' : 'off') } catch {} }
   const [expandedId, setExpandedId] = useState<string | null>(null)
+  // Simple clic = déplier / replier la ligne ; double clic = le dossier complet
+  // dans un nouvel onglet (Olivier 07/09). Le simple clic attend 220 ms pour
+  // laisser sa chance au double.
+  const clickTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const onRowClick = (id: string) => {
+    if (clickTimer.current) clearTimeout(clickTimer.current)
+    clickTimer.current = setTimeout(() => { setExpandedId(prev => prev === id ? null : id); clickTimer.current = null }, 220)
+  }
+  const onRowDblClick = (href: string) => {
+    if (clickTimer.current) { clearTimeout(clickTimer.current); clickTimer.current = null }
+    try { window.open(href, '_blank', 'noopener') } catch { router.push(href) }
+  }
   const [driverStatuses, setDriverStatuses] = useState<DriverStatus[]>([])
   const [sortMode,       setSortMode]       = useState<SortMode>('intervention_date')
 
@@ -1717,7 +1729,7 @@ export default function DispatchClient({
                         const href = userRole === 'superadmin' ? `/dispatch/dossier/${m.id}` : `/dispatch/${m.id}`
                         return (
                           <div key={m.id} className={`border-t first:border-t-0 ${expandedId === m.id ? 'ring-1 ring-brand/40' : ''}`}>
-                          <div onClick={() => setExpandedId(prev => prev === m.id ? null : m.id)}
+                          <div onClick={() => onRowClick(m.id)} onDoubleClick={() => onRowDblClick(href)} title="Clic : déplier · double clic : dossier complet dans un nouvel onglet"
                             className={`grid ${activeTab === 'parked' ? 'grid-cols-[150px_56px_140px_minmax(0,1.5fr)_minmax(0,1fr)_120px]' : 'grid-cols-[150px_56px_140px_minmax(0,1.5fr)_minmax(0,1fr)_430px]'} gap-3 items-center px-4 py-2.5 cursor-pointer transition ${
                               expandedId === m.id ? 'bg-brand/5' : isGarage ? 'bg-amber-500/10 hover:bg-amber-500/20' : delai.urgency === 'critical' ? 'bg-red-500/5 hover:bg-surface-2' : 'hover:bg-surface-2'}`}>
                             <div className="min-w-0">
