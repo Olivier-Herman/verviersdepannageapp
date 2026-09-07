@@ -1032,6 +1032,15 @@ export default function DispatchClient({
   const [myOffline,      setMyOffline]      = useState<boolean | null>(null)
   const [presenceLoading, setPresenceLoading] = useState(false)
   const viewMode: ViewMode = 'list'
+  // Nouvelle liste compacte (Olivier 07/09/2026) : mêmes données, filtres et
+  // boutons que le tableau, présentation en lignes. Superadmin seulement pour
+  // l'instant (test), on l'ouvrira aux autres si nécessaire.
+  const [compactList, setCompactList] = useState<boolean>(false)
+  useEffect(() => {
+    if (userRole !== 'superadmin') return
+    try { setCompactList(localStorage.getItem('vd_dispatch_compact') !== 'off') } catch { setCompactList(true) }
+  }, [userRole])
+  const toggleCompact = () => { const v = !compactList; setCompactList(v); try { localStorage.setItem('vd_dispatch_compact', v ? 'on' : 'off') } catch {} }
   const [driverStatuses, setDriverStatuses] = useState<DriverStatus[]>([])
   const [sortMode,       setSortMode]       = useState<SortMode>('intervention_date')
 
@@ -1376,6 +1385,12 @@ export default function DispatchClient({
               ↻
             </button>
 
+            {userRole === 'superadmin' && (
+              <button onClick={toggleCompact} title="Basculer entre la nouvelle liste (lignes) et le tableau actuel"
+                className="hidden lg:block px-3 py-2 bg-surface border rounded-xl text-ink-secondary hover:text-ink text-sm font-medium transition">
+                {compactList ? '🧪 Nouvelle liste' : '▤ Tableau'}
+              </button>
+            )}
             {/* Dispatcher de garde — badge cliquable pour cibler les escalades auto-dispatch */}
             <DispatcherOnDutyBadge userRole={userRole} />
 
@@ -1625,7 +1640,72 @@ export default function DispatchClient({
                 ))}
               </div>
 
+              {/* Desktop : nouvelle liste compacte (superadmin, test) */}
+              {compactList && (
+                <div className="hidden lg:block space-y-2">
+                  {missionGroups.map(g => (
+                    <div key={g.key} className="bg-surface border rounded-2xl overflow-hidden">
+                      {g.header && (
+                        <div className={`px-4 py-2 text-xs font-bold border-b ${bandClass(g.tone)}`}>{g.header} <span className="opacity-70">({g.items.length})</span></div>
+                      )}
+                      {g.items.map(m => {
+                        const delai   = getDelai(m.intervention_date, m.status)
+                        const srcInfo = { label: getSourceLabel(m.source, sources), color: getSourceColor(m.source, sources) }
+                        const showDelai = delai.urgency !== 'muted' && activeTab !== 'parked'
+                        const isGarage  = !!m.requested_by_garage_id
+                        const typeLbl   = getTypeLabel(m)
+                        const kind      = /reliv/i.test(typeLbl) ? 'REL' : /d[ée]pannage|sur place|trajet/i.test(typeLbl) ? 'DSP' : /dpr|protocol/i.test(typeLbl) ? 'DPR' : /vhu|épave/i.test(typeLbl) ? 'VHU' : /transport/i.test(typeLbl) ? 'TRP' : 'REM'
+                        const kindCls   = kind === 'REL' ? 'bg-emerald-600' : kind === 'DSP' ? 'bg-green-700' : kind === 'DPR' ? 'bg-red-600' : kind === 'VHU' ? 'bg-violet-600' : kind === 'TRP' ? 'bg-sky-600' : 'bg-blue-600'
+                        const href = userRole === 'superadmin' ? `/dispatch/dossier/${m.id}` : `/dispatch/${m.id}`
+                        return (
+                          <div key={m.id} onClick={() => router.push(href)}
+                            className={`grid grid-cols-[130px_64px_150px_1.4fr_1fr_190px_78px] gap-3 items-center px-4 py-2.5 border-t first:border-t-0 cursor-pointer transition ${
+                              isGarage ? 'bg-amber-500/10 hover:bg-amber-500/20' : delai.urgency === 'critical' ? 'bg-red-500/5 hover:bg-surface-2' : 'hover:bg-surface-2'}`}>
+                            <div className="min-w-0">
+                              <p className="text-ink font-bold font-mono text-xs">{m.mission_number != null ? `#${m.mission_number}` : (m.dossier_number || m.external_id)}</p>
+                              {(m.dossier_number || (m.mission_number != null && m.external_id)) && <p className="text-ink-secondary font-mono text-[11px] truncate" title={m.dossier_number || m.external_id}>{m.dossier_number || m.external_id}</p>}
+                              <p className="mt-0.5"><span className={`px-1.5 py-0.5 rounded text-[10.5px] font-bold text-white ${srcInfo.color}`}>{srcInfo.label}</span>{m.source === 'touring' && <span className={`ml-1 px-1 py-0.5 rounded text-[10px] font-bold ${m.source_format === 'comex' ? 'bg-sky-100 text-sky-800' : 'bg-amber-100 text-amber-800'}`}>{m.source_format === 'comex' ? 'COMEX' : 'Mail'}</span>}</p>
+                            </div>
+                            <div><span className={`px-2 py-0.5 rounded-md text-[10.5px] font-extrabold text-white tracking-wide ${kindCls}`} title={typeLbl}>{kind}</span>{activeTab === 'parked' && <span className="ml-1"><RollableMini v={m.is_rollable} /></span>}</div>
+                            <div className="min-w-0"><p className="text-ink font-bold font-mono text-xs">{m.vehicle_plate || '—'}</p><p className="text-ink-secondary text-[11.5px] truncate">{[m.vehicle_brand, m.vehicle_model].filter(Boolean).join(' ') || '—'}</p></div>
+                            <div className="min-w-0 text-xs">
+                              <p className="text-ink font-medium truncate" title={m.incident_address || ''}>{m.incident_address || '—'}{m.incident_city ? <span className="text-ink-muted"> · {m.incident_city}</span> : null}</p>
+                              <p className="text-ink-secondary truncate" title={(activeTab === 'parked' ? m.redelivery_address : (m.destination_name || m.destination_address)) || ''}>
+                                {activeTab === 'parked' ? (m.redelivery_address ? `↪ relivraison : ${m.redelivery_address}` : '↪ relivraison : adresse à définir')
+                                  : (m.destination_name || m.destination_address) ? `→ ${[m.destination_name, m.destination_address].filter(Boolean).join(' · ')}` : 'sur place'}
+                              </p>
+                              {m.vehicule_deja_en_parc && m.status === 'new' && (
+                                <Link href={`/dispatch/${m.vehicule_deja_en_parc.mission_id}`} onClick={e => e.stopPropagation()} className="inline-block mt-0.5 px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-700 dark:text-amber-300 text-[10.5px] font-semibold">⚠ déjà en parc — doublon ? #{m.vehicule_deja_en_parc.mission_number}</Link>
+                              )}
+                              {m.warnings && m.warnings.length > 0 && <p className="text-red-600 text-[11px] font-semibold truncate" title={m.warnings.join(' · ')}>⚠ {m.warnings[0]}{m.warnings.length > 1 ? ` (+${m.warnings.length - 1})` : ''}</p>}
+                            </div>
+                            <div className="min-w-0 text-xs">
+                              <p className="text-ink truncate">{m.client_name || '—'}</p>
+                              {m.client_phone && <a href={`tel:${m.client_phone}`} onClick={e => e.stopPropagation()} className="text-ink-secondary hover:text-brand">{m.client_phone}</a>}
+                              {showDelai && <p className="mt-0.5"><span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[11px] font-medium ${delai.bgColor} ${delai.color} ${delai.pulse ? 'animate-pulse' : ''}`}>{delai.label}</span></p>}
+                            </div>
+                            <div onClick={e => e.stopPropagation()}>
+                              {activeTab !== 'parked'
+                                ? <>
+                                    <AssignAction mission={m} drivers={drivers} driverStatuses={driverStatuses} onRefresh={load} onModalChange={onModalChange} userRole={userRole} userModules={userModules} />
+                                    {m.auto_dispatch_status && <p className="mt-1 text-brand text-[11px]"><span className="animate-pulse">⚡</span> {m.auto_dispatch_status}</p>}
+                                    {m.has_pending_derogation && <p className="mt-1 text-amber-400 text-[11px]"><span className="animate-pulse">🆘</span> Dérogation à valider</p>}
+                                  </>
+                                : <span className="text-ink-secondary text-xs">{(m as any).parked_at ? `parqué ${new Date((m as any).parked_at).toLocaleDateString('fr-BE', { day: '2-digit', month: '2-digit' })}` : ''}</span>}
+                            </div>
+                            <div onClick={e => e.stopPropagation()}>
+                              <Link href={href} className="px-3 py-1.5 bg-brand hover:bg-brand-dark text-ink rounded-lg text-xs font-medium transition inline-block">VOIR</Link>
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  ))}
+                </div>
+              )}
+
               {/* Desktop : table */}
+              {!compactList && (
               <div className="hidden lg:block bg-surface border border rounded-2xl overflow-hidden">
               <table className="w-full text-sm">
                 <thead>
@@ -1758,6 +1838,7 @@ export default function DispatchClient({
                 </tbody>
               </table>
               </div>
+              )}
             </>
           )}
         </main>

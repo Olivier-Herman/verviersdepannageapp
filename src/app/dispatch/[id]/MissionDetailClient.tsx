@@ -2641,6 +2641,7 @@ export default function MissionDetailClient({
       {/* Top-bar : badges contextuels + ← retour. backdrop-blur pour fondre avec le bg ambient */}
       <div className="bg-surface/85 backdrop-blur-md border-b px-3 lg:px-8 py-3 lg:py-4 sticky top-0 z-20">
         <div className="flex items-center gap-2 lg:gap-4 flex-wrap min-w-0">
+          {!embed && (
           <button
             type="button"
             onClick={() => { if (typeof window !== 'undefined' && window.history.length > 1) router.back(); else router.push('/dispatch') }}
@@ -2649,6 +2650,7 @@ export default function MissionDetailClient({
           >
             ← <span className="hidden sm:inline text-sm">Retour</span>
           </button>
+          )}
           <div className="flex-1 min-w-0" />
           <div className="flex items-center gap-1.5 lg:gap-2 flex-wrap">
             <span className="text-ink-muted text-[10px] lg:text-xs">

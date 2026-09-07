@@ -7,6 +7,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import MissionDetailClient from '@/app/dispatch/[id]/MissionDetailClient'
 import CreateClientModal from '@/components/CreateClientModal'
 import BillingModal from '@/components/dossier/BillingModal'
@@ -68,6 +69,8 @@ const TONE = {
 export default function DossierGroups({ initial, fiches, shared, isSuperadmin, openMissionId }: {
   initial: Dossier; fiches: Record<string, any>; shared: any; isSuperadmin: boolean; openMissionId: string
 }) {
+  const router = useRouter()
+  const goBack = () => { if (typeof window !== 'undefined' && window.history.length > 1) router.back(); else router.push('/dispatch') }
   const [d, setD] = useState<Dossier>(initial)
   // Montants, « Facturer à », estimation du dossier et bouton Facturer : réservés
   // au module Facturation et aux admins (même règle que /facturation). Un
@@ -137,6 +140,7 @@ export default function DossierGroups({ initial, fiches, shared, isSuperadmin, o
         <div className="px-5 py-3 grid grid-cols-1 md:grid-cols-[1fr_auto] gap-x-6 gap-y-2 items-start">
           <div>
             <h1 className="text-ink font-bold text-lg flex flex-wrap items-center gap-2">
+              <button onClick={goBack} title="Retour à l'écran précédent" className="px-2.5 py-1 rounded-lg border bg-surface text-ink-secondary hover:text-ink text-sm font-semibold">← <span className="hidden sm:inline">Retour</span></button>
               Dossier {d.ref}
               <span className="text-xs font-semibold text-ink-secondary bg-surface-2 border rounded-lg px-2 py-0.5">{d.source_label}</span>
               {d.dossier_number && <span className="text-xs font-mono text-ink-secondary bg-surface-2 border rounded-lg px-2 py-0.5">{d.dossier_number}</span>}
