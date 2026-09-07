@@ -69,6 +69,10 @@ export default function DossierGroups({ initial, fiches, shared, isSuperadmin, o
   initial: Dossier; fiches: Record<string, any>; shared: any; isSuperadmin: boolean; openMissionId: string
 }) {
   const [d, setD] = useState<Dossier>(initial)
+  // Montants, « Facturer à », estimation du dossier et bouton Facturer : réservés
+  // au module Facturation et aux admins (même règle que /facturation). Un
+  // dispatcher voit le dossier, ses groupes et ses états, sans les chiffres.
+  const canBill = ['admin', 'superadmin'].includes(String(shared.userRole || '')) || (Array.isArray(shared.userModules) && shared.userModules.includes('facturation'))
   const [flagMode, setFlagMode] = useState('')
   // Le dispatch doit voir la mission ENTIÈRE d'emblée (Olivier 07/09) : le
   // dernier groupe est déplié ET sa fiche complète est ouverte. Si le dernier
@@ -141,7 +145,7 @@ export default function DossierGroups({ initial, fiches, shared, isSuperadmin, o
             <p className="text-ink-secondary text-sm mt-0.5">{vehicle}{d.vehicle.plate ? <> · <span className="font-mono">{d.vehicle.plate}</span></> : null}{d.vehicle.vin ? <span className="text-ink-faint"> · VIN <span className="font-mono">{d.vehicle.vin}</span></span> : null}</p>
             <p className="text-ink-muted text-xs mt-0.5">{d.client.name ? `Client sur place : ${d.client.name}${d.client.phone ? ' · ' + d.client.phone : ''}` : 'Client sur place : —'} · reçu le {fmt(d.received_at)}</p>
           </div>
-          <div className="md:text-right">
+          {canBill && <div className="md:text-right">
             <div className="flex md:justify-end items-center gap-2 flex-wrap">
               <span className="text-ink-muted text-xs">Client du dossier</span>
               <span className="text-ink text-sm font-medium border rounded-lg px-2.5 py-1 bg-surface-2">{d.billed_to.name || '—'}</span>
@@ -154,7 +158,7 @@ export default function DossierGroups({ initial, fiches, shared, isSuperadmin, o
               <div>Reste<b className="block text-ink text-sm tabular-nums">{eur(d.totals.remaining)}</b></div>
             </div>
             {d.state.open && <p className="text-[11px] text-ink-faint mt-1">Dossier en cours : pas de facturation automatique avant la sortie du véhicule.</p>}
-          </div>
+          </div>}
         </div>
         {/* Frise */}
         <div className="border-t px-5 py-2.5 flex items-center overflow-x-auto gap-0">
@@ -195,7 +199,7 @@ export default function DossierGroups({ initial, fiches, shared, isSuperadmin, o
             : <Link href={`/dispatch/${it.ev.mission_id}`} className="text-brand hover:underline">voir la fiche</Link>}
         </div>
       ) : (
-        <Group key={it.leg!.letter} d={d} leg={it.leg!} isOpen={open.has(it.leg!.letter)} onToggle={() => toggle(it.leg!.letter)}
+        <Group key={it.leg!.letter} d={d} leg={it.leg!} canBill={canBill} isOpen={open.has(it.leg!.letter)} onToggle={() => toggle(it.leg!.letter)}
           embedOpen={embed.has(it.leg!.letter)} onToggleEmbed={() => toggleEmbed(it.leg!.letter)} fiche={fiches[it.leg!.mission_id]} shared={shared} onChanged={refresh} />
       ))}
 
@@ -207,8 +211,8 @@ export default function DossierGroups({ initial, fiches, shared, isSuperadmin, o
 }
 
 // ── Un groupe ─────────────────────────────────────────────────────────────
-function Group({ d, leg, isOpen, onToggle, embedOpen, onToggleEmbed, fiche, shared, onChanged }: {
-  d: Dossier; leg: DossierLeg; isOpen: boolean; onToggle: () => void; embedOpen: boolean; onToggleEmbed: () => void; fiche: any; shared: any; onChanged: () => void
+function Group({ d, leg, canBill, isOpen, onToggle, embedOpen, onToggleEmbed, fiche, shared, onChanged }: {
+  d: Dossier; leg: DossierLeg; canBill: boolean; isOpen: boolean; onToggle: () => void; embedOpen: boolean; onToggleEmbed: () => void; fiche: any; shared: any; onChanged: () => void
 }) {
   const k = KIND[leg.kind]
   return (
@@ -219,7 +223,7 @@ function Group({ d, leg, isOpen, onToggle, embedOpen, onToggleEmbed, fiche, shar
           <span className="block text-ink text-sm font-semibold truncate">{leg.title}{leg.subtitle && <span className="text-ink-muted font-normal"> · {leg.subtitle}</span>}</span>
           <span className="block text-ink-secondary text-xs truncate">
             {leg.driver_name ? `${leg.driver_name} · ` : ''}{fmt(leg.started_at)}{leg.ended_at ? ` → ${fmt(leg.ended_at)}` : ''}{leg.days != null ? ` · ${leg.days} j` : ''}
-            {leg.nothing_to_bill ? ` · ${leg.nothing_to_bill}` : ` · ${eur(leg.amount_htva)} HTVA`}
+            {canBill ? (leg.nothing_to_bill ? ` · ${leg.nothing_to_bill}` : ` · ${eur(leg.amount_htva)} HTVA`) : ''}
           </span>
         </span>
         <span className="flex items-center gap-2 flex-shrink-0">
@@ -237,8 +241,8 @@ function Group({ d, leg, isOpen, onToggle, embedOpen, onToggleEmbed, fiche, shar
               <div key={i} className="grid grid-cols-[110px_1fr] gap-2"><dt className="text-ink-muted">{f.label}</dt><dd className="text-ink break-words">{f.value}</dd></div>
             ))}
             {leg.payments?.length > 0 && <div className="grid grid-cols-[110px_1fr] gap-2"><dt className="text-ink-muted">Encaissé</dt><dd className="text-ink">{leg.payments.map((p, i) => <span key={i} className="mr-2">{eur(p.amount)}{p.mode ? ` (${p.mode})` : ''}{p.driver ? ` · ${p.driver}` : ''}{p.at ? ` · ${fmt(p.at)}` : ''}</span>)}</dd></div>}
-            {leg.amount_note && <div className="grid grid-cols-[110px_1fr] gap-2"><dt className="text-ink-muted">Estimation</dt><dd className="text-ink">{leg.nothing_to_bill ? leg.nothing_to_bill : <>{leg.amount_note} = <b>{eur(leg.amount_htva)} HTVA</b></>}</dd></div>}
-            {leg.billed_refs.length > 0 && <div className="grid grid-cols-[110px_1fr] gap-2 items-center"><dt className="text-ink-muted">Facturé</dt><dd className="text-ink flex flex-wrap items-center gap-2">{eur(leg.billed_htva)} <Stamp refs={leg.billed_refs} small /> <span className="text-ink-faint text-[11px]">{refKind(leg.billed_refs[0])}</span></dd></div>}
+            {canBill && leg.amount_note && <div className="grid grid-cols-[110px_1fr] gap-2"><dt className="text-ink-muted">Estimation</dt><dd className="text-ink">{leg.nothing_to_bill ? leg.nothing_to_bill : <>{leg.amount_note} = <b>{eur(leg.amount_htva)} HTVA</b></>}</dd></div>}
+            {canBill && leg.billed_refs.length > 0 && <div className="grid grid-cols-[110px_1fr] gap-2 items-center"><dt className="text-ink-muted">Facturé</dt><dd className="text-ink flex flex-wrap items-center gap-2">{eur(leg.billed_htva)} <Stamp refs={leg.billed_refs} small /> <span className="text-ink-faint text-[11px]">{refKind(leg.billed_refs[0])}</span></dd></div>}
           </dl>
 
           {leg.billing_remarks?.length > 0 && (
@@ -246,17 +250,17 @@ function Group({ d, leg, isOpen, onToggle, embedOpen, onToggleEmbed, fiche, shar
               {leg.billing_remarks.map((r, i) => <p key={i}><span className="text-slate-300">📝 Remarque de facturation{r.author ? ' · ' + r.author : ''} : </span><span className="font-semibold whitespace-pre-line">{r.text}</span></p>)}
             </div>
           )}
-          {leg.kind !== 'out' && leg.channel !== 'parquet' && <BillingRow d={d} leg={leg} onChanged={onChanged} gmKey={shared.googleMapsKey} />}
-          {leg.channel === 'parquet' && (
+          {canBill && leg.kind !== 'out' && leg.channel !== 'parquet' && <BillingRow d={d} leg={leg} onChanged={onChanged} gmKey={shared.googleMapsKey} />}
+          {canBill && leg.channel === 'parquet' && (
             <div className="bg-surface-2 border border-dashed rounded-xl px-3 py-2 text-xs text-ink-secondary flex flex-wrap items-center gap-2">
               <span>Circuit <b>Parquet</b> : réglé par état de frais (module Saisie, JustInvoice), pas par une facture Odoo de ce dossier.</span>
               {d.parquet?.efs?.length ? <span className="text-ink-muted">{d.parquet.efs.map(e => `EF n°${e.numero ?? '?'} ${e.status === 'refuse' ? 'refusé' : e.liquide_at ? 'liquidé' : (e.status || 'envoyé')}`).join(' · ')}</span> : null}
               <Link href="/fourriere/saisies" className="ml-auto px-2 py-0.5 rounded-lg border bg-surface text-ink-secondary hover:text-ink font-semibold">Module Saisie ↗</Link>
             </div>
           )}
-          {leg.kind === 'out' && leg.channel === 'domaine' && <div className="bg-surface-2 border border-dashed rounded-xl px-3 py-2 text-xs text-ink-secondary">Facturé au <b>SPF Finances — Domaine</b> par le relevé trimestriel (Fourrière → Domaine), pas par une facture Odoo de ce dossier.</div>}
+          {canBill && leg.kind === 'out' && leg.channel === 'domaine' && <div className="bg-surface-2 border border-dashed rounded-xl px-3 py-2 text-xs text-ink-secondary">Facturé au <b>SPF Finances — Domaine</b> par le relevé trimestriel (Fourrière → Domaine), pas par une facture Odoo de ce dossier.</div>}
 
-          <EstimationTable d={d} me={leg.letter} />
+          {canBill && <EstimationTable d={d} me={leg.letter} />}
 
           {leg.kind !== 'out' && (
             <div className="flex flex-wrap gap-1.5">
