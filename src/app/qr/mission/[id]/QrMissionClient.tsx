@@ -190,7 +190,7 @@ export default function QrMissionClient({
       })
       const j = await r.json()
       if (!r.ok) throw new Error(j.error || 'Erreur')
-      router.push(`/dispatch/${mission.id}`)
+      router.push((currentUser as any)?.role === 'superadmin' ? `/dispatch/dossier/${mission.id}` : `/dispatch/${mission.id}`)
     } catch (e: any) {
       setError(e.message); setWorking(false)
     }

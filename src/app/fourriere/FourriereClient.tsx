@@ -28,6 +28,8 @@ interface Vehicle {
   zone_label:       string | null
   parc_row_number:  number | null
   parc_slot_index:  number | null
+  leg_id?:          string | null   // fiche gardiennage (bascule Fourrière)
+  days?:            number | null
   last_update:      string | null
   odoo_url:         string | null
   source?:          string | null
@@ -353,6 +355,13 @@ export default function FourriereClient({ userRole, userName, userEmail, userMod
                         {v.parc_slot_index ?? <span className="text-warning font-bold" title="Emplacement à définir">—</span>}
                       </td>
                       <td className="px-3 py-2 font-mono text-ink font-semibold">
+                        {v.leg_id && v.mission_id && (
+                          <Link href={`/dispatch/dossier/${v.mission_id}?open=${v.leg_id}`} target="_blank"
+                            className="mr-1 px-2 py-1 rounded-lg text-[11px] font-semibold bg-amber-500/15 text-amber-700 dark:text-amber-300 border border-amber-500/40 hover:bg-amber-500/25"
+                            title={`Dossier · gardiennage${v.days != null ? ' · ' + v.days + ' j' : ''}`}>
+                            Dossier{v.days != null ? ` · ${v.days} j` : ''}
+                          </Link>
+                        )}
                         {v.mission_id ? (
                           <Link href={`/qr/mission/${v.mission_id}`}
                             className="hover:text-brand hover:underline transition"
