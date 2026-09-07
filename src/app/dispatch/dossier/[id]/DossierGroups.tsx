@@ -14,6 +14,26 @@ const eur = (n: number) => n.toLocaleString('fr-BE', { minimumFractionDigits: 2,
 const fmt = (v: string | null) => v ? new Date(v).toLocaleString('fr-BE', { timeZone: 'Europe/Brussels', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : ''
 const fmtDay = (v: string | null) => v ? new Date(v).toLocaleDateString('fr-BE', { timeZone: 'Europe/Brussels', day: '2-digit', month: '2-digit' }) : ''
 
+// Le numéro de facture est parfois stocké avec son commentaire (« Déjà facturé
+// avec numéro d'accord 2026AC001812 ») : on n'affiche que le numéro, le reste
+// va dans le title du tampon.
+const cleanRef = (raw: string) => {
+  const m = raw.match(/([0-9]{4}\/[0-9]{2}\/[0-9A-Z-]+|[0-9]{4}[A-Z]{1,3}[0-9]{3,}|[A-Z]{1,3}-?[0-9]{4,}[A-Z0-9-]*|[0-9]{6,})\s*$/i)
+  return m ? m[1] : raw
+}
+const refKind = (raw: string) => /accord/i.test(raw) ? 'n° d’accord' : /EF|état de frais|justinvoice/i.test(raw) ? 'état de frais' : 'facture'
+
+// Tampon « FACTURÉ » avec le numéro, comme sur les cartes du module Facturation.
+function Stamp({ refs, small }: { refs: string[]; small?: boolean }) {
+  if (!refs.length) return null
+  const raw = refs[0]
+  return (
+    <span title={refs.join(' · ')} className={`inline-flex items-center gap-1.5 ${small ? 'px-1.5 py-0 text-[10px]' : 'px-2.5 py-0.5 text-[11.5px]'} rounded-md font-black uppercase tracking-widest text-emerald-700 dark:text-emerald-300 border-2 border-emerald-600/70 bg-emerald-500/10 shadow-sm -rotate-2 whitespace-nowrap`}>
+      <span>Facturé</span><span className="font-mono normal-case tracking-normal font-bold">{cleanRef(raw)}</span>{refs.length > 1 && <span className="font-mono normal-case tracking-normal">+{refs.length - 1}</span>}
+    </span>
+  )
+}
+
 const KIND = {
   rem:  { label: 'Remorquage / dépannage', head: 'bg-blue-500/10',    dot: 'bg-blue-500/15 text-blue-700 dark:text-blue-300 border-blue-500/40' },
   gard: { label: 'Gardiennage',            head: 'bg-amber-500/10',   dot: 'bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-500/40' },
@@ -176,7 +196,9 @@ function Group({ d, leg, isOpen, onToggle, embedOpen, onToggleEmbed, fiche, shar
           </span>
         </span>
         <span className="flex items-center gap-2 flex-shrink-0">
-          <span className={`text-[11px] font-semibold rounded-full px-2 py-0.5 ${TONE[leg.status_tone]}`}>{leg.status_label}</span>
+          {leg.billed_refs.length > 0 && leg.billed_htva >= leg.amount_htva - 0.01
+            ? <Stamp refs={leg.billed_refs} />
+            : <span className={`text-[11px] font-semibold rounded-full px-2 py-0.5 ${TONE[leg.status_tone]}`}>{leg.status_label}</span>}
           <span className="text-ink-muted text-sm">{isOpen ? '▾' : '▸'}</span>
         </span>
       </button>
@@ -188,7 +210,7 @@ function Group({ d, leg, isOpen, onToggle, embedOpen, onToggleEmbed, fiche, shar
               <div key={i} className="grid grid-cols-[110px_1fr] gap-2"><dt className="text-ink-muted">{f.label}</dt><dd className="text-ink break-words">{f.value}</dd></div>
             ))}
             {leg.amount_note && <div className="grid grid-cols-[110px_1fr] gap-2"><dt className="text-ink-muted">Estimation</dt><dd className="text-ink">{leg.nothing_to_bill ? leg.nothing_to_bill : <>{leg.amount_note} = <b>{eur(leg.amount_htva)} HTVA</b></>}</dd></div>}
-            {leg.billed_refs.length > 0 && <div className="grid grid-cols-[110px_1fr] gap-2"><dt className="text-ink-muted">Facturé</dt><dd className="text-ink">{eur(leg.billed_htva)} · {leg.billed_refs.join(', ')}</dd></div>}
+            {leg.billed_refs.length > 0 && <div className="grid grid-cols-[110px_1fr] gap-2 items-center"><dt className="text-ink-muted">Facturé</dt><dd className="text-ink flex flex-wrap items-center gap-2">{eur(leg.billed_htva)} <Stamp refs={leg.billed_refs} small /> <span className="text-ink-faint text-[11px]">{refKind(leg.billed_refs[0])}</span></dd></div>}
           </dl>
 
           <BillingRow d={d} leg={leg} onChanged={onChanged} />
@@ -279,7 +301,7 @@ function EstimationTable({ d, me }: { d: Dossier; me: string }) {
               <tr key={l.letter} className={`border-t ${l.letter === me ? 'bg-brand/10 text-ink font-semibold' : done ? 'text-ink-faint' : 'text-ink-secondary'}`}>
                 <td className="px-3 py-1">
                   <span className="font-mono">{l.letter}</span> {l.title}{l.kind === 'gard' && l.days != null ? ` ${l.days} j` : ''}{l.letter === me ? ' · cette fiche' : ''}
-                  {done && <span className={`ml-1.5 rounded-full px-1.5 py-0.5 text-[10px] font-semibold ${TONE.ok}`}>facturé{l.billed_refs[0] ? ' · ' + l.billed_refs[0] : ''}</span>}
+                  {done && <span className="ml-2 inline-block align-middle"><Stamp refs={l.billed_refs} small /></span>}
                   {!done && l.billed_htva > 0 && <span className={`ml-1.5 rounded-full px-1.5 py-0.5 text-[10px] font-semibold ${TONE.warn}`}>partiel {eur(l.billed_htva)}</span>}
                   {l.open && l.kind === 'gard' && <span className={`ml-1.5 rounded-full px-1.5 py-0.5 text-[10px] font-semibold ${TONE.live}`}>en cours</span>}
                   {!l.billed_inherited && <span className={`ml-1.5 rounded-full px-1.5 py-0.5 text-[10px] font-semibold ${TONE.warn}`}>→ {l.billed_to_name || '?'}</span>}
@@ -295,7 +317,7 @@ function EstimationTable({ d, me }: { d: Dossier; me: string }) {
       </table>
       {d.invoices.length > 0 && (
         <div className="border-t px-3 py-1.5 text-[11px] text-ink-muted">
-          Factures : {d.invoices.map(i => <span key={i.number} className="mr-2">{i.url ? <a href={i.url} target="_blank" rel="noreferrer" className="text-brand hover:underline font-mono">{i.number}</a> : <span className="font-mono">{i.number}</span>} <span className="text-ink-faint">couvre {i.covers.join(' ')} · {eur(i.amount)}</span></span>)}
+          Factures : {d.invoices.map(i => <span key={i.number} className="mr-3 inline-flex items-center gap-1.5">{i.url ? <a href={i.url} target="_blank" rel="noreferrer" title={i.number}><Stamp refs={[i.number]} small /></a> : <Stamp refs={[i.number]} small />}<span className="text-ink-faint">{refKind(i.number)} · couvre {i.covers.join(' ')} · {eur(i.amount)}</span></span>)}
         </div>
       )}
     </div>
