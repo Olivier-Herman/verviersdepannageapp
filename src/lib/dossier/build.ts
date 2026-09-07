@@ -277,8 +277,24 @@ export async function buildDossier(anyMissionId: string, opts: { light?: boolean
 
   // Estimation du REM racine (sert de repli pour le prix/jour et donne la part
   // hors gardiennage).
+  // Estimation racine : calculée dans le précalcul parallèle ci-dessous (prix
+  // du jour de parc en repli). On la lit après.
   let rootEst: any = null
-  if (!light) { try { rootEst = await estimateMissionPrice(root) } catch { rootEst = null } }
+
+  // ── Précalcul en parallèle (lignes de facturation + estimation par action) ──
+  // En série, chaque fiche coûtait 1 à 2 s de routage ; un dossier à trois
+  // groupes mettait 4 s à s'ouvrir (Olivier 07/09 : « fort long »).
+  const pre = new Map<string, { est: any; built: { lines: any[]; has_tariff: boolean; reason?: string } | null }>()
+  await Promise.all(legRows.map(async (m) => {
+    if (kindOf(m) === 'gard' || light) { pre.set(m.id, { est: null, built: null }); return }
+    const [est, built] = await Promise.all([
+      (m.id === root.id && rootEst) ? Promise.resolve(rootEst) : estimateMissionPrice(m).catch(() => null),
+      actionLines(m, draftsBy[m.id], legRows.some(r => r.dossier_leg)).catch((e: any) => ({ lines: [], has_tariff: false, reason: e?.message })),
+    ])
+    pre.set(m.id, { est, built })
+  }))
+
+  rootEst = pre.get(root.id)?.est ?? null
 
   // ── Construction des groupes ─────────────────────────────────────────────
   const legs: DossierLeg[] = []
@@ -339,14 +355,12 @@ export async function buildDossier(anyMissionId: string, opts: { light?: boolean
       // (brouillon > montants forcés > moteur Siabis > estimation), gardiennage
       // exclu quand le dossier a ses groupes gardiennage. L'estimation générale
       // ne sert plus qu'aux km affichés.
-      let est: any = null
-      if (!light) { try { est = m.id === root.id ? rootEst : await estimateMissionPrice(m) } catch { est = null } }
+      const est: any = pre.get(m.id)?.est ?? null
       if (light) {
         if (Number(m.special_tarif_htva) > 0) { amount = r2(Number(m.special_tarif_htva)); note = 'prix convenu' }
         else { amount = r2(Number(m.estimated_htva) || 0); note = Number(m.estimated_htva) > 0 ? 'estimation figée' : 'estimation à calculer'; if (!(Number(m.estimated_htva) > 0)) amountUnknown = true }
       } else {
-        let built: { lines: any[]; has_tariff: boolean; reason?: string } = { lines: [], has_tariff: false }
-        try { built = await actionLines(m, draftsBy[m.id], legRows.some(r => r.dossier_leg)) } catch (e: any) { built = { lines: [], has_tariff: false, reason: e?.message } }
+        const built: { lines: any[]; has_tariff: boolean; reason?: string } = pre.get(m.id)?.built || { lines: [], has_tariff: false }
         if (built.has_tariff && built.lines.length) {
           amount = linesTotal(built.lines)
           note = built.lines.map(l => `${l.name.replace(/\s+—.*$/, '').slice(0, 40)}${l.qty !== 1 ? ` ×${l.qty}` : ''} ${Number(l.qty * l.price_unit).toFixed(2)} €`).join(' · ')

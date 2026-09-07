@@ -30,20 +30,22 @@ export default async function DossierPage({ params, searchParams }: { params: { 
   const allowed = role === 'superadmin' || (await isPreviewOn('dossier_view', role))
   if (!allowed) redirect(`/dispatch/${params.id}`)
 
-  const dossier = await buildDossier(params.id)
-  if (!dossier) redirect('/dispatch')
-
+  // Sans droit facturation, pas de moteur de prix : le dossier s'ouvre en mode
+  // léger (montants figés), 5 × plus vite. Les chiffres ne sont de toute façon
+  // pas affichés à un dispatcher.
+  const modules: string[] = u.modules || []
+  const canBill = ['admin', 'superadmin'].includes(role) || modules.includes('facturation')
   const sb = createAdminClient()
-  const [{ data: drivers }, { data: catalogSources }] = await Promise.all([
+  // Tout ce qui ne dépend pas du dossier part en parallèle avec sa construction.
+  const [dossier, { data: drivers }, { data: catalogSources }, meRow] = await Promise.all([
+    buildDossier(params.id, { light: !canBill }),
     sb.from('users').select('id, name, avatar_url').eq('active', true)
       .or('role.in.(driver,admin,superadmin),roles.ov.{driver,admin,superadmin}').order('name'),
     sb.from('mission_source_catalog').select('key, label, display_color, group_key').eq('active', true).order('label'),
+    u.id ? sb.from('users').select('odoo_api_key').eq('id', u.id).maybeSingle().then(r => r.data) : Promise.resolve(null),
   ])
-  let userHasOdooAccess = false
-  if (u.id) {
-    const { data: meRow } = await sb.from('users').select('odoo_api_key').eq('id', u.id).maybeSingle()
-    userHasOdooAccess = Boolean(meRow?.odoo_api_key)
-  }
+  if (!dossier) redirect('/dispatch')
+  const userHasOdooAccess = Boolean((meRow as any)?.odoo_api_key)
 
   // Données de chaque fiche pour l'embed « Ouvrir la fiche complète ».
   const fiches: Record<string, any> = {}
