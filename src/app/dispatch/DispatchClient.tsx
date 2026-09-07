@@ -4,6 +4,7 @@
 
 import { useState, useEffect, useCallback, useRef, Fragment } from 'react'
 import Link        from 'next/link'
+import dynamic     from 'next/dynamic'
 import { useRouter }   from 'next/navigation'
 import { createClient } from '@supabase/supabase-js'
 import DriverPickerModal from '@/components/DriverPickerModal'
@@ -131,6 +132,59 @@ interface Counters {
 
 // Modes « Cartes » et « Carte » retirés le 07/09/2026 (Olivier : jamais utilisés, seule la liste l'est).
 type ViewMode = 'list'
+
+// Fiche dispatch embarquée dans la ligne dépliée de la nouvelle liste. Chargée
+// à la demande (composant lourd), jamais côté serveur.
+const MissionDetailEmbed = dynamic(() => import('@/app/dispatch/[id]/MissionDetailClient'), { ssr: false, loading: () => <p className="p-4 text-ink-muted text-sm">⏳ Chargement de la fiche…</p> })
+
+// Ligne dépliée : fil du dossier (A, B, C…) + la fiche réelle, modifiable,
+// + « Vue complète » vers le dossier entier. Olivier 07/09/2026 : « le clic sur
+// une ligne développe les infos, le clic à nouveau replie ».
+function ExpandedRow({ missionId, drivers, sources }: { missionId: string; drivers: Driver[]; sources: CatalogSource[] }) {
+  const [data, setData] = useState<any>(null)
+  const [err, setErr] = useState<string | null>(null)
+  useEffect(() => {
+    let cancelled = false
+    setData(null); setErr(null)
+    fetch(`/api/missions/${missionId}/fiche?t=${Date.now()}`, { cache: 'no-store' }).then(r => r.json())
+      .then(j => { if (cancelled) return; if (j?.ok) setData(j); else setErr(j?.error || 'Chargement impossible') })
+      .catch(e => { if (!cancelled) setErr(String(e?.message || e)) })
+    return () => { cancelled = true }
+  }, [missionId])
+  if (err) return <div className="px-4 py-3 text-sm text-red-600">⚠ {err}</div>
+  if (!data) return <div className="px-4 py-3 text-sm text-ink-muted">⏳ Chargement de la fiche…</div>
+  const d = data.dossier
+  const KIND_DOT: Record<string, string> = { rem: 'bg-blue-600', gard: 'bg-amber-500', rel: 'bg-emerald-600', out: 'bg-violet-600' }
+  const fmtDay = (v: string | null) => v ? new Date(v).toLocaleDateString('fr-BE', { timeZone: 'Europe/Brussels', day: '2-digit', month: '2-digit' }) : ''
+  return (
+    <div className="border-t bg-page" onClick={e => e.stopPropagation()}>
+      <div className="flex flex-wrap items-center gap-2 px-4 py-2 border-b bg-surface">
+        {d ? (
+          <>
+            <span className="text-ink-muted text-xs">Dossier {d.ref}{d.state?.open ? ` · en cours (${d.state.reason})` : ''}</span>
+            {d.legs.map((l: any) => (
+              <Link key={l.letter} href={`/dispatch/dossier/${d.root_id}?open=${l.mission_id}`}
+                className={`inline-flex items-center gap-1.5 pl-1 pr-2 py-0.5 rounded-lg border text-xs ${l.mission_id === missionId ? 'border-brand bg-brand/10 font-semibold text-ink' : 'text-ink-secondary hover:text-ink'}`} title={l.status_label}>
+                <span className={`w-5 h-5 rounded-md text-white text-[10.5px] font-bold flex items-center justify-center ${KIND_DOT[l.kind] || 'bg-slate-500'}`}>{l.letter}</span>
+                {l.title}{l.started_at ? <span className="text-ink-faint"> · {fmtDay(l.started_at)}</span> : null}
+              </Link>
+            ))}
+          </>
+        ) : <span className="text-ink-muted text-xs">Dossier</span>}
+        <Link href={`/dispatch/dossier/${d?.root_id || missionId}?open=${missionId}`} className="ml-auto px-3 py-1.5 rounded-lg bg-brand text-white text-xs font-semibold hover:bg-brand-hover">Vue complète ↗</Link>
+      </div>
+      <div className="overflow-x-auto">
+        <MissionDetailEmbed
+          mission={data.fiche.mission} logs={data.fiche.logs || []} drivers={drivers as any} sources={sources as any}
+          linkedParent={data.fiche.linkedParent} linkedChild={data.fiche.linkedChild}
+          userName={data.user.name} userEmail={data.user.email || undefined} userId={data.user.id || undefined} userRole={data.user.role}
+          userModules={data.user.modules || []} userHasOdooAccess={data.userHasOdooAccess} googleMapsKey={data.googleMapsKey}
+          autoDispatchStatus={data.fiche.autoDispatchStatus} parcZoneType={data.fiche.parcZoneType} embed
+        />
+      </div>
+    </div>
+  )
+}
 
 // ── Helpers & Constantes ──────────────────────────────────────────────────────
 
@@ -1041,6 +1095,7 @@ export default function DispatchClient({
     try { setCompactList(localStorage.getItem('vd_dispatch_compact') !== 'off') } catch { setCompactList(true) }
   }, [userRole])
   const toggleCompact = () => { const v = !compactList; setCompactList(v); try { localStorage.setItem('vd_dispatch_compact', v ? 'on' : 'off') } catch {} }
+  const [expandedId, setExpandedId] = useState<string | null>(null)
   const [driverStatuses, setDriverStatuses] = useState<DriverStatus[]>([])
   const [sortMode,       setSortMode]       = useState<SortMode>('intervention_date')
 
@@ -1643,7 +1698,7 @@ export default function DispatchClient({
               {/* Desktop : nouvelle liste compacte (superadmin, test) */}
               {compactList && (
                 <div className="hidden lg:block space-y-2">
-                  <div className="grid grid-cols-[150px_56px_140px_minmax(0,1.5fr)_minmax(0,1fr)_430px] gap-3 px-4 py-1.5 text-[11px] uppercase tracking-wide text-ink-muted font-medium">
+                  <div className={`grid ${activeTab === 'parked' ? 'grid-cols-[150px_56px_140px_minmax(0,1.5fr)_minmax(0,1fr)_120px]' : 'grid-cols-[150px_56px_140px_minmax(0,1.5fr)_minmax(0,1fr)_430px]'} gap-3 px-4 py-1.5 text-[11px] uppercase tracking-wide text-ink-muted font-medium`}>
                     <div>Dossier</div><div>Type</div><div>Véhicule</div><div>Intervention → destination</div><div>Client</div><div>{activeTab === 'parked' ? 'Parc' : 'Chauffeur / actions'}</div>
                   </div>
                   {missionGroups.map(g => (
@@ -1661,9 +1716,10 @@ export default function DispatchClient({
                         const kindCls   = kind === 'REL' ? 'bg-emerald-600' : kind === 'DSP' ? 'bg-green-700' : kind === 'DPR' ? 'bg-red-600' : kind === 'VHU' ? 'bg-violet-600' : kind === 'TRP' ? 'bg-sky-600' : 'bg-blue-600'
                         const href = userRole === 'superadmin' ? `/dispatch/dossier/${m.id}` : `/dispatch/${m.id}`
                         return (
-                          <div key={m.id} onClick={() => router.push(href)}
-                            className={`grid grid-cols-[150px_56px_140px_minmax(0,1.5fr)_minmax(0,1fr)_430px] gap-3 items-center px-4 py-2.5 border-t first:border-t-0 cursor-pointer transition ${
-                              isGarage ? 'bg-amber-500/10 hover:bg-amber-500/20' : delai.urgency === 'critical' ? 'bg-red-500/5 hover:bg-surface-2' : 'hover:bg-surface-2'}`}>
+                          <div key={m.id} className={`border-t first:border-t-0 ${expandedId === m.id ? 'ring-1 ring-brand/40' : ''}`}>
+                          <div onClick={() => setExpandedId(prev => prev === m.id ? null : m.id)}
+                            className={`grid ${activeTab === 'parked' ? 'grid-cols-[150px_56px_140px_minmax(0,1.5fr)_minmax(0,1fr)_120px]' : 'grid-cols-[150px_56px_140px_minmax(0,1.5fr)_minmax(0,1fr)_430px]'} gap-3 items-center px-4 py-2.5 cursor-pointer transition ${
+                              expandedId === m.id ? 'bg-brand/5' : isGarage ? 'bg-amber-500/10 hover:bg-amber-500/20' : delai.urgency === 'critical' ? 'bg-red-500/5 hover:bg-surface-2' : 'hover:bg-surface-2'}`}>
                             <div className="min-w-0">
                               <p className="text-ink font-bold font-mono text-xs">{m.mission_number != null ? `#${m.mission_number}` : (m.dossier_number || m.external_id)}</p>
                               {(m.dossier_number || (m.mission_number != null && m.external_id)) && <p className="text-ink-secondary font-mono text-[11px] truncate" title={m.dossier_number || m.external_id}>{m.dossier_number || m.external_id}</p>}
@@ -1692,12 +1748,14 @@ export default function DispatchClient({
                               <div className="flex flex-wrap items-center gap-1.5">
                                 {activeTab !== 'parked'
                                   ? <AssignAction mission={m} drivers={drivers} driverStatuses={driverStatuses} onRefresh={load} onModalChange={onModalChange} userRole={userRole} userModules={userModules} />
-                                  : <span className="text-ink-secondary text-xs">{(m as any).parked_at ? `parqué le ${new Date((m as any).parked_at).toLocaleDateString('fr-BE', { day: '2-digit', month: '2-digit' })}` : ''}</span>}
-                                <Link href={href} className="px-3 py-1.5 border border-brand/40 text-brand hover:bg-brand/10 rounded-lg text-xs font-semibold transition inline-block">VOIR</Link>
+                                  : <span className="inline-flex items-center gap-2"><span className="w-8 h-8 rounded-lg bg-amber-500 text-white font-bold font-mono text-sm flex items-center justify-center" title="Zone de parc">{(m as any).parc_zone_key || '?'}</span><span className="text-ink-muted text-[11px]">{(m as any).parked_at ? new Date((m as any).parked_at).toLocaleDateString('fr-BE', { day: '2-digit', month: '2-digit' }) : ''}</span></span>}
+                                <Link href={href} title="Ouvrir le dossier entier" className="px-3 py-1.5 border border-brand/40 text-brand hover:bg-brand/10 rounded-lg text-xs font-semibold transition inline-block">VOIR</Link>
                               </div>
                               {m.auto_dispatch_status && <p className="mt-1 text-brand text-[11px]"><span className="animate-pulse">⚡</span> {m.auto_dispatch_status}</p>}
                               {m.has_pending_derogation && <p className="mt-1 text-amber-400 text-[11px]"><span className="animate-pulse">🆘</span> Dérogation à valider</p>}
                             </div>
+                          </div>
+                          {expandedId === m.id && <ExpandedRow missionId={m.id} drivers={drivers} sources={sources} />}
                           </div>
                         )
                       })}

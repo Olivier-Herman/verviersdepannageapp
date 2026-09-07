@@ -134,8 +134,9 @@ function statusOf(m: any, kind: LegKind): { label: string; tone: DossierLeg['sta
     case 'completed':   return { label: m.invoice_number ? `Facturée ${m.invoice_number}` : 'Terminée', tone: 'ok' }
     case 'to_invoice':  return { label: 'À facturer', tone: 'warn' }
     case 'parked':      return { label: 'Au parc', tone: 'live' }
-    case 'delivering':  return { label: 'Véhicule chargé', tone: 'live' }
-    case 'in_progress': return { label: 'En cours', tone: 'live' }
+    case 'delivering':  return { label: m.loaded_at ? 'Chargé · en livraison' : 'En livraison', tone: 'live' }
+    // « En cours » ne dit rien : on montre l'étape du chauffeur (Olivier 07/09).
+    case 'in_progress': return { label: m.loaded_at ? 'Chargé sur camion' : m.on_site_at ? 'Sur place' : m.on_way_at ? 'En route' : 'En cours', tone: 'live' }
     case 'assigned': case 'accepted': return { label: 'Assignée', tone: 'live' }
     case 'dispatching': case 'new':   return { label: 'À assigner', tone: 'muted' }
     case 'cancelled':   return { label: 'Annulée', tone: 'bad' }
