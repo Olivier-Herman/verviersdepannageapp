@@ -7,6 +7,7 @@ import Link       from 'next/link'
 import AppShell   from '@/components/layout/AppShell'
 import AmbientBackground from '@/components/AmbientBackground'
 import NewInterventionButton from '@/components/mission/NewInterventionButton'
+import ParcRelivraisonButton from '@/components/mission/ParcRelivraisonButton'
 import MissionsDuJourEasterEgg from '@/components/mission/MissionsDuJourEasterEgg'
 
 export const dynamic = 'force-dynamic'
@@ -144,6 +145,9 @@ export default async function MissionListPage() {
 
         {/* ── FAB Nouvelle intervention ─────────────────────────────────── */}
         <NewInterventionButton variant="fab" />
+        {/* Parc de relivraison : le chauffeur peut sortir lui-même un véhicule du
+            parc K sans avoir à scanner un QR qui n'est pas encore collé dessus. */}
+        <ParcRelivraisonButton />
       </AmbientBackground>
     </AppShell>
   )
