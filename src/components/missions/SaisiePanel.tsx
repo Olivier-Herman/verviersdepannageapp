@@ -11,7 +11,7 @@
 //
 // Le document annexé est aussi visible dans la section Remarques de la fiche.
 
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { FileText, Loader2, Paperclip, CheckCircle2, Unlock, Wrench, Warehouse, Landmark } from 'lucide-react'
 import { FOURRIERE_ZONES } from '@/lib/fourriere'
 import ScanToFicheButton from '@/components/missions/ScanToFicheButton'
@@ -87,12 +87,70 @@ export default function SaisiePanel({ mission, onChanged, forceSaisie = false }:
         <h3 className="font-semibold text-ink text-sm">{title}</h3>
       </div>
 
+      {(src === 'police_saisie' || forceSaisie) && (
+        <SaisieMotifSection mission={mission} onDone={done} />
+      )}
       <RequisitoireSection mission={mission} onDone={done} />
       {showLevee && <div className="border-t pt-3"><LeveeSaisieSection mission={mission} onDone={done} /></div>}
       {showLevee && mission.levee_saisie_type === 'temporaire' && (
         <div className="border-t pt-3"><TemporaireCycleSection mission={mission} onDone={done} /></div>
       )}
       {showDomaine && <div className="border-t pt-3"><DomaineSection mission={mission} onDone={done} /></div>}
+    </div>
+  )
+}
+
+// ── Motif de saisie (Défaut d'assurance / Judiciaire / Générale…) ───────────
+// Olivier 2026-09-07 : le motif n'était choisi que sur le formulaire chauffeur.
+// Ici on peut le définir ou le corriger depuis la fiche dispatch : mêmes
+// boutons (catalogue /admin/saisie-motifs), tracé dans le journal, étiquette
+// réimprimée si le véhicule est en parc.
+function SaisieMotifSection({ mission, onDone }: { mission: SaisieMission; onDone: () => void }) {
+  const [motifs, setMotifs] = useState<Array<{ id: string; code: string; label: string; label_short: string | null }>>([])
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState<string | null>(null)
+  const [err, setErr] = useState<string | null>(null)
+  const current = (mission as any).saisie_motif_code as string | null | undefined
+  const currentLabel = (mission as any).saisie_motif_label as string | null | undefined
+  useEffect(() => {
+    fetch('/api/saisie-motifs').then(r => r.json()).then(d => setMotifs(d.motifs || [])).catch(() => {}).finally(() => setLoading(false))
+  }, [])
+  async function choose(code: string) {
+    if (code === current) return
+    if (current && !confirm(`Changer le motif de saisie « ${currentLabel || current} » ?`)) return
+    setSaving(code); setErr(null)
+    try {
+      const r = await fetch(`/api/missions/${mission.id}/saisie-motif`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ code }),
+      })
+      const j = await r.json().catch(() => ({}))
+      if (!r.ok) throw new Error(j.error || 'Enregistrement impossible')
+      onDone()
+    } catch (e: any) { setErr(e.message) } finally { setSaving(null) }
+  }
+  return (
+    <div>
+      <p className="text-ink-muted text-xs uppercase tracking-wide mb-1.5">Motif de saisie{current ? '' : ' — à définir'}</p>
+      {loading ? <p className="text-ink-muted text-xs flex items-center gap-1"><Loader2 size={12} className="animate-spin" /> Chargement…</p>
+      : motifs.length === 0 ? <p className="text-warning text-xs">Aucun motif configuré (admin → Motifs de saisie).</p>
+      : (
+        <div className="flex flex-wrap gap-1.5">
+          {motifs.map(m => {
+            const sel = m.code === current
+            const judicial = m.code === 'SAISIE_JUDICIAIRE'
+            return (
+              <button key={m.id} type="button" onClick={() => choose(m.code)} disabled={!!saving}
+                className={`px-3 py-1.5 rounded-lg border text-sm font-semibold transition disabled:opacity-50 ${sel
+                  ? (judicial ? 'bg-red-600 border-red-700 text-white' : 'bg-purple-600 border-purple-700 text-white')
+                  : 'bg-surface border-strong text-ink-secondary hover:border-purple-300'}`}>
+                {saving === m.code ? <Loader2 size={14} className="animate-spin inline" /> : sel ? '✓ ' : ''}{m.label}
+              </button>
+            )
+          })}
+        </div>
+      )}
+      {!current && !loading && motifs.length > 0 && <p className="text-warning text-xs mt-1">Sans motif, l'étiquette et la fiche ne disent pas de quelle saisie il s'agit.</p>}
+      {err && <p className="text-critical text-xs mt-1">{err}</p>}
     </div>
   )
 }
