@@ -585,8 +585,7 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
 
   // Modify address
   const [modField, setModField] = useState('')
-  const [destOnWay, setDestOnWay]   = useState(false)
-  const [destArrived, setDestArrived] = useState(false); const [modVal, setModVal] = useState('')
+  const [modVal, setModVal] = useState('')
   const [modLat, setModLat] = useState<number|null>(null); const [modLng, setModLng] = useState<number|null>(null)
 
   // Draft
@@ -1310,8 +1309,10 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
       address: M.destination_address,
       lat:     M.destination_lat ?? null,
       lng:     M.destination_lng ?? null,
-      arrived_at: destArrived ? new Date().toISOString() : null as null,
-      on_way_at: destOnWay ? new Date().toISOString() : null as null,
+      // Pas d'horodatage par étape : les pointages vivent sur la mission
+      // (on_way_at / on_site_at / completed_at). Inventaire 07/09/2026.
+      arrived_at: null as null,
+      on_way_at:  null as null,
       sort_order: stops.length,
     }] : []),
   ]

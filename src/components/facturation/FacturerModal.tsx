@@ -170,6 +170,8 @@ interface PriceEstimateData {
   reason?:       string
   pricing_mode?: 'forfait' | 'brackets' | 'lines'
   forfait:       number | null
+  km_charged?:   number
+  km_inclus?:    number
   km_extra:      number
   km_extra_eur:  number
   parc_jours:    number
@@ -261,7 +263,7 @@ const KIND_LABELS: Record<ProductKind, string> = {
 }
 
 function MissionBlock({
-  m, payments, driverName, busy, onValidate, onAuto, onNoCharge, onQuoteCreated,
+  m, payments, driverName, busy, onValidate, onAuto, onNoCharge, onQuoteCreated, onKm,
 }: {
   m:          BaseMission
   payments:   PaymentRow[]
@@ -271,6 +273,9 @@ function MissionBlock({
   onAuto:     () => void
   onNoCharge: () => void
   onQuoteCreated: (missionId: string, quoteId: number, quoteUrl: string) => void
+  // Remonte les km de la fiche au parent pour le total de la chaîne (Touring :
+  // km total − km inclus = km additionnels facturés). Olivier 2026-09-07.
+  onKm?: (missionId: string, info: { km?: number | null; km_inclus?: number | null }) => void
 }) {
   const [km, setKm] = useState<KmData | null>(null)
   const [kmLoading, setKmLoading] = useState(true)
@@ -310,7 +315,7 @@ function MissionBlock({
     setEstimateLoading(true)
     fetch(`/api/missions/${m.id}/km`)
       .then(r => r.json())
-      .then(d => { if (!cancelled) setKm(d) })
+      .then(d => { if (!cancelled) { setKm(d); onKm?.(m.id, { km: d?.total_km ?? null }) } })
       .catch(() => {})
       .finally(() => { if (!cancelled) setKmLoading(false) })
     fetch(`/api/missions/${m.id}/surcharges`)
@@ -326,6 +331,7 @@ function MissionBlock({
     ]).then(([d, draftRes, advRes, biRes]: [PriceEstimateData, any, any, any]) => {
       if (cancelled) return
       setEstimate(d)
+      onKm?.(m.id, { km_inclus: d?.km_inclus ?? null })
       const billed = Array.isArray(biRes?.items) ? biRes.items : []
       setBilledItems(billed)
       // Postes déjà facturés (facture partielle) : kinds one-off déjà émis, et
@@ -1179,7 +1185,28 @@ export default function FacturerModal({
   })
 
   const readyIds = all.filter(m => m.status === 'to_invoice').map(m => m.id)
-  const totalKmChainHint = ''  // optionnel : on pourrait sommer mais on a deja km par fiche
+
+  // Km de la chaîne (REM + REL). Touring compte « km total − km inclus » pour
+  // fixer les km additionnels : on l'affiche tel quel dans le bloc chaîne.
+  // Les km inclus sont ceux du tarif de la fiche parent (REM). Olivier 2026-09-07.
+  const [kmChain, setKmChain] = useState<Record<string, { km?: number | null; km_inclus?: number | null }>>({})
+  const onKm = (id: string, info: { km?: number | null; km_inclus?: number | null }) =>
+    setKmChain(prev => ({ ...prev, [id]: { ...prev[id], ...info } }))
+  const chainKm = (() => {
+    const parts = readyIds
+      .map(id => ({ m: all.find(x => x.id === id)!, km: kmChain[id]?.km ?? null }))
+      .filter(x => x.m)
+    if (parts.length < 2 || parts.some(x => x.km == null)) return null
+    const total  = Math.round(parts.reduce((s, x) => s + Number(x.km), 0))
+    const parent = parts.find(x => !x.m.parent_mission_id) || parts[0]
+    const inclus = kmChain[parent.m.id]?.km_inclus ?? null
+    return {
+      total,
+      detail: parts.map(x => `${missionKind(x.m)} ${Math.round(Number(x.km))}`).join(' + '),
+      inclus,
+      additionnels: inclus != null ? Math.max(0, total - Number(inclus)) : null,
+    }
+  })()
 
   // Blocage « Remarque de facturation » : si une des fiches à facturer porte une
   // remarque, on exige une confirmation qu'elle a bien été prise en compte AVANT
@@ -1520,6 +1547,7 @@ export default function FacturerModal({
                   onQuoteCreated={(missionId, quoteId, quoteUrl) => {
                     setCreatedQuotes(prev => ({ ...prev, [missionId]: { id: quoteId, url: quoteUrl } }))
                   }}
+                  onKm={onKm}
                 />
               )
             })}
@@ -1532,6 +1560,18 @@ export default function FacturerModal({
               <p className="text-ink-secondary text-xs">
                 Touring (et compagnies similaires) facturent souvent REM + REL ensemble avec 1 seul numéro.
               </p>
+              {chainKm && (
+                <p className="text-ink text-sm">
+                  Km de la chaîne : <Copyable value={`${chainKm.total}`} label="km chaîne" /> km
+                  <span className="text-ink-faint text-xs"> ({chainKm.detail})</span>
+                  {chainKm.inclus != null && chainKm.additionnels != null && (
+                    <>
+                      <span className="text-ink-muted text-xs"> · inclus au tarif {chainKm.inclus} km · </span>
+                      <span className="font-medium">additionnels <Copyable value={`${chainKm.additionnels}`} label="km additionnels" /> km</span>
+                    </>
+                  )}
+                </p>
+              )}
 
               {/* Bouton creer un devis groupe Odoo (1 sale.order avec sections) */}
               <button

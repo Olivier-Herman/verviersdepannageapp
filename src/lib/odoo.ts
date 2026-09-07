@@ -337,12 +337,6 @@ export async function createSaleOrder(data: {
   const tva = Math.round(tvac * 21 / 121 * 10000) / 10000
   const finalHT = parseFloat((tvac - tva).toFixed(4))
 
-  // Note interne : chauffeur + mode paiement
-  const internalNote = [
-    data.driverName ? `Chauffeur : ${data.driverName}` : null,
-    data.paymentMode ? `Mode de paiement : ${data.paymentMode}` : null,
-  ].filter(Boolean).join('<br/>')
-
   const orderId = await rpc<number>('sale.order', 'create', [{
     partner_id: data.partnerId,
     sale_order_template_id: SALE_TEMPLATE_ID,
