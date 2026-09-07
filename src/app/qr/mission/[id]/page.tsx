@@ -192,6 +192,7 @@ export default async function QrMissionPage({ params }: { params: { id: string }
         id:    user.id,
         name:  user.name || '',
         isDriver,
+        role:  user.role || '',
       }}
       permissions={{
         canFourriereActions,

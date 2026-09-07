@@ -56,6 +56,7 @@ interface CurrentUser {
   id:        string
   name:      string
   isDriver:  boolean
+  role?:     string
 }
 
 interface Permissions {
@@ -270,6 +271,9 @@ export default function QrMissionClient({
           <h1 className="text-ink text-xl font-bold mt-1">
             {mission.mission_number != null ? `#${mission.mission_number}` : `Mission ${mission.id.slice(0, 8)}`}
           </h1>
+          {currentUser.role === 'superadmin' && (
+            <Link href={`/dispatch/dossier/${mission.id}`} className="inline-block mt-2 px-3 py-1.5 rounded-lg bg-amber-500/15 text-amber-700 dark:text-amber-300 border border-amber-500/40 text-xs font-semibold hover:bg-amber-500/25">🧪 Vue dossier ↗</Link>
+          )}
         </header>
 
         {/* Toast */}
