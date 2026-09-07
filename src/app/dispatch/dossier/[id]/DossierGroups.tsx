@@ -14,7 +14,7 @@ import BillingModal from '@/components/dossier/BillingModal'
 import EidImportButton, { type EidData } from '@/components/caisse/EidImportButton'
 import ManualInfoButton, { type ManualClientData } from '@/components/caisse/ManualInfoButton'
 import IdPhotoButton from '@/components/caisse/IdPhotoButton'
-import AddressField from '@/components/AddressField'
+import { loadGoogleMaps } from '@/components/AddressField'
 
 // Pays lu sur la carte d'identité → code ISO pour Odoo (même règle que la fiche).
 const countryToIso = (name?: string | null) => {
@@ -379,7 +379,51 @@ function EditableAddress({ value, field, missionId, gmKey, onSaved, placeholder 
   const [v, setV] = useState(value || '')
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState<string | null>(null)
+  // Suggestions Google rendues DANS la ligne (boutons), pas la liste flottante
+  // de Google qui répond mal au toucher sur iPhone (Olivier 07/09/2026 :
+  // « les adresses ne sont pas connectées à l'autocomplete »).
+  const [preds, setPreds] = useState<{ id: string; main: string; sub: string }[]>([])
+  const [gm, setGm] = useState<'loading' | 'ok' | 'ko'>('loading')
+  const tokenRef = useRef<any>(null)
+  const timerRef = useRef<any>(null)
   useEffect(() => { if (!editing) setV(value || '') }, [value, editing])
+  useEffect(() => {
+    if (!editing) return
+    let dead = false
+    loadGoogleMaps(gmKey || '').then(() => { if (!dead) { setGm('ok'); tokenRef.current = new (window as any).google.maps.places.AutocompleteSessionToken() } })
+      .catch(() => { if (!dead) setGm('ko') })
+    return () => { dead = true }
+  }, [editing, gmKey])
+  const search = (q: string) => {
+    setV(q)
+    if (timerRef.current) clearTimeout(timerRef.current)
+    if (!q.trim() || gm !== 'ok') { setPreds([]); return }
+    timerRef.current = setTimeout(() => {
+      const g = (window as any).google
+      try {
+        new g.maps.places.AutocompleteService().getPlacePredictions({
+          input: q, sessionToken: tokenRef.current, componentRestrictions: { country: ['be', 'lu', 'fr', 'nl', 'de'] },
+          bounds: new g.maps.LatLngBounds({ lat: 49.49, lng: 2.51 }, { lat: 51.51, lng: 6.41 }),
+        }, (res: any[], status: string) => {
+          if (status !== g.maps.places.PlacesServiceStatus.OK || !res) { setPreds([]); return }
+          setPreds(res.slice(0, 5).map(r => ({ id: r.place_id, main: r.structured_formatting?.main_text || r.description, sub: r.structured_formatting?.secondary_text || '' })))
+        })
+      } catch { setPreds([]) }
+    }, 220)
+  }
+  const pick = (id: string) => {
+    const g = (window as any).google
+    setBusy(true)
+    new g.maps.places.PlacesService(document.createElement('div')).getDetails({ placeId: id, sessionToken: tokenRef.current, fields: ['name', 'formatted_address', 'geometry', 'address_components', 'types'] }, (p: any, status: string) => {
+      if (status !== g.maps.places.PlacesServiceStatus.OK || !p?.geometry) { setBusy(false); setErr('Adresse introuvable chez Google'); return }
+      const addr = p.formatted_address || ''
+      const isEstab = (p.types || []).some((t: string) => t === 'establishment' || t === 'point_of_interest')
+      const display = isEstab && p.name && !addr.startsWith(p.name) ? `${p.name}, ${addr}` : addr
+      const cityComp = (p.address_components || []).find((c: any) => c.types.includes('locality')) || (p.address_components || []).find((c: any) => c.types.includes('postal_town'))
+      setV(display); setPreds([])
+      save(display, p.geometry.location.lat(), p.geometry.location.lng(), cityComp?.long_name)
+    })
+  }
   const save = async (addr: string, lat: number | null, lng: number | null, city?: string) => {
     setBusy(true); setErr(null)
     try {
@@ -390,7 +434,7 @@ function EditableAddress({ value, field, missionId, gmKey, onSaved, placeholder 
           : { redelivery_address: addr || null, redelivery_lat: lat, redelivery_lng: lng }
       const r = await fetch(`/api/missions/${missionId}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
       if (!r.ok) { const j = await r.json().catch(() => ({})); throw new Error(j.error || `HTTP ${r.status}`) }
-      setEditing(false); await onSaved()
+      setEditing(false); setPreds([]); await onSaved()
     } catch (e: any) { setErr(String(e.message || e)) } finally { setBusy(false) }
   }
   if (!editing) return (
@@ -401,10 +445,22 @@ function EditableAddress({ value, field, missionId, gmKey, onSaved, placeholder 
   )
   return (
     <div className="space-y-1.5 min-w-0">
-      <AddressField value={v} onChange={setV} gmKey={gmKey || ''} placeholder="Tape l’adresse, choisis la suggestion…"
-        onSelect={(addr, lat, lng, city) => { setV(addr); save(addr, lat, lng, city) }} />
+      <input autoFocus value={v} disabled={busy} onChange={e => search(e.target.value)} placeholder="Tape l’adresse…" autoComplete="off"
+        onKeyDown={e => { if (e.key === 'Escape') { setV(value || ''); setPreds([]); setEditing(false) } }}
+        className="border rounded-lg px-2 py-1.5 bg-surface text-ink text-sm w-full min-w-0" />
+      {gm === 'ko' && <p className="text-amber-700 text-xs">Google indisponible : l’adresse sera gardée sans coordonnées.</p>}
+      {preds.length > 0 && (
+        <div className="border rounded-lg overflow-hidden bg-surface divide-y">
+          {preds.map(p => (
+            <button key={p.id} type="button" disabled={busy} onClick={() => pick(p.id)} className="w-full text-left px-2.5 py-2 hover:bg-brand/10 active:bg-brand/20 disabled:opacity-50">
+              <span className="block text-ink text-sm font-medium">{p.main}</span>
+              {p.sub && <span className="block text-ink-muted text-xs">{p.sub}</span>}
+            </button>
+          ))}
+        </div>
+      )}
       <div className="flex flex-wrap gap-1.5 text-xs">
-        <button type="button" disabled={busy} onClick={() => { setV(value || ''); setEditing(false); setErr(null) }} className="px-2.5 py-1 rounded-lg border bg-surface text-ink-secondary">Annuler</button>
+        <button type="button" disabled={busy} onClick={() => { setV(value || ''); setPreds([]); setEditing(false); setErr(null) }} className="px-2.5 py-1 rounded-lg border bg-surface text-ink-secondary">Annuler</button>
         <button type="button" disabled={busy || !v.trim()} onClick={() => save(v.trim(), null, null)} title="Sans suggestion Google : l’adresse est gardée telle quelle, sans coordonnées"
           className="px-2.5 py-1 rounded-lg border bg-surface text-ink-secondary disabled:opacity-50">{busy ? '…' : 'Garder le texte tel quel'}</button>
         {value && <button type="button" disabled={busy} onClick={() => save('', null, null)} className="px-2.5 py-1 rounded-lg border bg-surface text-red-700 disabled:opacity-50">Effacer</button>}
