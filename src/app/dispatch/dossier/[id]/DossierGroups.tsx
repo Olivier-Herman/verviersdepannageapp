@@ -122,7 +122,7 @@ export default function DossierGroups({ initial, fiches, shared, isSuperadmin, o
   const vehicle = [d.vehicle.brand, d.vehicle.model].filter(Boolean).join(' ')
 
   return (
-    <div className="px-3 lg:px-6 py-5 space-y-3">
+    <div className="px-3 lg:px-6 py-5 space-y-3 max-w-full overflow-x-hidden">
 
       {isSuperadmin && (
         <div className="flex items-center justify-between gap-3 bg-amber-500/10 border border-amber-500/30 rounded-2xl px-4 py-2">
@@ -155,7 +155,7 @@ export default function DossierGroups({ initial, fiches, shared, isSuperadmin, o
               <span className="text-ink text-sm font-medium border rounded-lg px-2.5 py-1 bg-surface-2">{d.billed_to.name || '—'}</span>
               <button disabled={!billable.length} onClick={() => setBilling(true)} title={billable.length ? 'Une facture Odoo par client, créée directement' : 'Rien à facturer'} className={`px-3 py-1.5 rounded-lg text-xs font-semibold bg-brand text-white ${billable.length ? 'hover:bg-brand-hover' : 'opacity-40 cursor-not-allowed'}`}>Facturer{billable.length ? ` (${billable.length})` : ''}</button>
             </div>
-            <div className="grid grid-cols-4 gap-x-4 mt-2 text-[11px] text-ink-muted md:justify-items-end">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-x-4 gap-y-1 mt-2 text-[11px] text-ink-muted md:justify-items-end">
               <div>Estimé HTVA<b className="block text-ink text-sm tabular-nums">{eur(d.totals.estimated)}</b></div>
               <div>Facturé<b className="block text-ink text-sm tabular-nums">{eur(d.totals.billed)}</b></div>
               <div>Encaissé<b className="block text-ink text-sm tabular-nums">{eur(d.totals.collected)}</b></div>
@@ -165,7 +165,7 @@ export default function DossierGroups({ initial, fiches, shared, isSuperadmin, o
           </div>}
         </div>
         {/* Frise */}
-        <div className="border-t px-5 py-2.5 flex items-center overflow-x-auto gap-0">
+        <div className="border-t px-3 md:px-5 py-2.5 flex items-center overflow-x-auto gap-0 max-w-full">
           {timeline.map((it, i) => it.leg ? (
             <div key={`l${it.leg.letter}`} className="flex items-center flex-shrink-0">
               <button onClick={() => { toggle(it.leg!.letter); document.getElementById(`grp-${it.leg!.letter}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' }) }}
@@ -221,7 +221,7 @@ function Group({ d, leg, canBill, isOpen, onToggle, embedOpen, onToggleEmbed, fi
   const k = KIND[leg.kind]
   return (
     <div id={`grp-${leg.letter}`} className={`border rounded-2xl overflow-hidden bg-surface ${leg.open ? 'border-brand/50' : ''}`}>
-      <button onClick={onToggle} className={`w-full grid grid-cols-[52px_1fr_auto] gap-3 items-center px-3.5 py-2.5 text-left ${k.head} hover:brightness-95 transition`}>
+      <button onClick={onToggle} className={`w-full grid grid-cols-[44px_minmax(0,1fr)_auto] gap-2 md:gap-3 items-center px-3 md:px-3.5 py-2.5 text-left ${k.head} hover:brightness-95 transition`}>
         <span className={`h-9 w-9 rounded-lg border flex items-center justify-center text-sm font-bold font-mono shadow-sm ${k.dot}`} title={d.number != null ? `${d.number}${leg.letter}` : leg.letter}>{leg.letter}</span>
         <span className="min-w-0">
           <span className="block text-ink text-sm font-semibold truncate">{leg.title}{leg.subtitle && <span className="text-ink-muted font-normal"> · {leg.subtitle}</span>}</span>
@@ -230,23 +230,23 @@ function Group({ d, leg, canBill, isOpen, onToggle, embedOpen, onToggleEmbed, fi
             {canBill ? (leg.nothing_to_bill ? ` · ${leg.nothing_to_bill}` : ` · ${eur(leg.amount_htva)} HTVA`) : ''}
           </span>
         </span>
-        <span className="flex items-center gap-2 flex-shrink-0">
+        <span className="flex items-center gap-2 flex-shrink-0 max-w-[45%] md:max-w-none">
           {leg.billed_refs.length > 0 && leg.billed_htva >= leg.amount_htva - 0.01
             ? <Stamp refs={leg.billed_refs} />
-            : <span className={`text-[11px] font-semibold rounded-full px-2 py-0.5 ${TONE[leg.status_tone]}`}>{leg.status_label}</span>}
+            : <span className={`text-[11px] font-semibold rounded-full px-2 py-0.5 truncate ${TONE[leg.status_tone]}`} title={leg.status_label}>{leg.status_label}</span>}
           <span className="text-ink-muted text-sm">{isOpen ? '▾' : '▸'}</span>
         </span>
       </button>
 
       {isOpen && (
-        <div className="border-t px-3.5 py-3 pl-3.5 md:pl-[70px] space-y-3">
+        <div className="border-t px-3 md:px-3.5 py-3 md:pl-[70px] space-y-3 min-w-0">
           <dl className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-1 text-xs">
             {leg.facts.map((f, i) => (
-              <div key={i} className="grid grid-cols-[110px_1fr] gap-2"><dt className="text-ink-muted">{f.label}</dt><dd className="text-ink break-words">{f.value}</dd></div>
+              <div key={i} className="grid grid-cols-[92px_minmax(0,1fr)] md:grid-cols-[110px_1fr] gap-2"><dt className="text-ink-muted">{f.label}</dt><dd className="text-ink break-words min-w-0">{f.value}</dd></div>
             ))}
-            {leg.payments?.length > 0 && <div className="grid grid-cols-[110px_1fr] gap-2"><dt className="text-ink-muted">Encaissé</dt><dd className="text-ink">{leg.payments.map((p, i) => <span key={i} className="mr-2">{eur(p.amount)}{p.mode ? ` (${p.mode})` : ''}{p.driver ? ` · ${p.driver}` : ''}{p.at ? ` · ${fmt(p.at)}` : ''}</span>)}</dd></div>}
-            {canBill && leg.amount_note && <div className="grid grid-cols-[110px_1fr] gap-2"><dt className="text-ink-muted">Estimation</dt><dd className="text-ink">{leg.nothing_to_bill ? leg.nothing_to_bill : <>{leg.amount_note} = <b>{eur(leg.amount_htva)} HTVA</b></>}</dd></div>}
-            {canBill && leg.billed_refs.length > 0 && <div className="grid grid-cols-[110px_1fr] gap-2 items-center"><dt className="text-ink-muted">Facturé</dt><dd className="text-ink flex flex-wrap items-center gap-2">{eur(leg.billed_htva)} <Stamp refs={leg.billed_refs} small /> <span className="text-ink-faint text-[11px]">{refKind(leg.billed_refs[0])}</span></dd></div>}
+            {leg.payments?.length > 0 && <div className="grid grid-cols-[92px_minmax(0,1fr)] md:grid-cols-[110px_1fr] gap-2"><dt className="text-ink-muted">Encaissé</dt><dd className="text-ink">{leg.payments.map((p, i) => <span key={i} className="mr-2">{eur(p.amount)}{p.mode ? ` (${p.mode})` : ''}{p.driver ? ` · ${p.driver}` : ''}{p.at ? ` · ${fmt(p.at)}` : ''}</span>)}</dd></div>}
+            {canBill && leg.amount_note && <div className="grid grid-cols-[92px_minmax(0,1fr)] md:grid-cols-[110px_1fr] gap-2"><dt className="text-ink-muted">Estimation</dt><dd className="text-ink">{leg.nothing_to_bill ? leg.nothing_to_bill : <>{leg.amount_note} = <b>{eur(leg.amount_htva)} HTVA</b></>}</dd></div>}
+            {canBill && leg.billed_refs.length > 0 && <div className="grid grid-cols-[92px_minmax(0,1fr)] md:grid-cols-[110px_1fr] gap-2 items-center"><dt className="text-ink-muted">Facturé</dt><dd className="text-ink flex flex-wrap items-center gap-2">{eur(leg.billed_htva)} <Stamp refs={leg.billed_refs} small /> <span className="text-ink-faint text-[11px]">{refKind(leg.billed_refs[0])}</span></dd></div>}
           </dl>
 
           {leg.billing_remarks?.length > 0 && (
@@ -277,7 +277,7 @@ function Group({ d, leg, canBill, isOpen, onToggle, embedOpen, onToggleEmbed, fi
           )}
 
           {embedOpen && fiche && leg.kind !== 'out' && (
-            <div className="border rounded-xl bg-page overflow-hidden -ml-0 md:-ml-[56px]">
+            <div className="border rounded-xl bg-page overflow-x-auto max-w-full md:-ml-[56px]">
               <MissionDetailClient
                 mission={fiche.mission} logs={fiche.logs} drivers={shared.drivers} sources={shared.sources}
                 linkedParent={fiche.linkedParent} linkedChild={fiche.linkedChild}
@@ -386,9 +386,9 @@ function BillingRow({ d, leg, onChanged, gmKey }: { d: Dossier; leg: DossierLeg;
 // ── Estimation de tout le dossier, ligne courante en surbrillance ─────────
 function EstimationTable({ d, me }: { d: Dossier; me: string }) {
   return (
-    <div className="border rounded-xl overflow-hidden text-xs">
+    <div className="border rounded-xl overflow-x-auto text-xs max-w-full">
       <div className="bg-surface-2 px-3 py-1.5 font-semibold text-ink-secondary flex justify-between"><span>Estimation du dossier {d.ref}</span><span>HTVA</span></div>
-      <table className="w-full">
+      <table className="w-full min-w-[420px]">
         <tbody>
           {d.legs.map(l => {
             const done = l.billed_refs.length > 0 && l.billed_htva >= l.amount_htva - 0.01
