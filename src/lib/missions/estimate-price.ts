@@ -347,7 +347,7 @@ function canonicalType(t: string | null): string | null {
   return normalizeType(t)
 }
 
-export async function estimateMissionPrice(mission: MissionLike, opts?: { skipRelShortcut?: boolean }): Promise<PriceEstimate> {
+export async function estimateMissionPrice(mission: MissionLike, opts?: { skipRelShortcut?: boolean; noChainKm?: boolean }): Promise<PriceEstimate> {
   const source = (mission.source || '').toLowerCase().trim()
   const missionType = canonicalType(mission.mission_type)
 
@@ -534,7 +534,22 @@ export async function estimateMissionPrice(mission: MissionLike, opts?: { skipRe
     }
   }
 
-  const kmInclus = Number(tariff.km_inclus || 0)
+  let kmInclus = Number(tariff.km_inclus || 0)
+  let chainInclusNote = ''
+  // Olivier 07/09/2026 — Touring compte les km additionnels sur le TOTAL du
+  // dossier : (km remorquage + km relivraison) − km inclus du forfait. Une REL
+  // Touring hérite donc de ce que le remorquage n'a pas consommé du forfait
+  // (20 km inclus, REM de 12 km → la REL a encore 8 km inclus). Avant, la REL
+  // partait de 0 km inclus et surfacturait ces km-là.
+  if (source === 'touring' && missionType === 'relivraison' && mission.id && !opts?.noChainKm) {
+    const left = await touringIncludedKmLeft(sb, mission).catch(() => null)
+    if (left) {
+      kmInclus = left.km
+      chainInclusNote = left.km > 0
+        ? `${left.km} km inclus restants du remorquage #${left.remNumber ?? '?'} (${left.remKm} km sur ${left.remInclus} inclus${left.relBefore > 0 ? `, ${left.relBefore} km déjà repris par une relivraison précédente` : ''})`
+        : `forfait épuisé par le remorquage #${left.remNumber ?? '?'} (${left.remKm} km sur ${left.remInclus} inclus${left.relBefore > 0 ? ` + ${left.relBefore} km de relivraison précédente` : ''})`
+    }
+  }
   // Km supplementaires arrondis a l unite superieure (pas de decimales sur les
   // quantites facturables : "12,4 km extras" devient "13 km")
   const kmExtra = Math.ceil(Math.max(0, kmBase - kmInclus))
@@ -644,7 +659,7 @@ export async function estimateMissionPrice(mission: MissionLike, opts?: { skipRe
     ? `aller-retour dépôt ${touringDepotNote}`
     : kmBasis === 'total' ? 'km totaux' : 'km chargés'
   const breakdown = [
-    { label: 'Forfait',   amount: forfait, note: kmInclus > 0 ? `${kmInclus} km inclus` : undefined },
+    { label: 'Forfait',   amount: forfait, note: chainInclusNote || (kmInclus > 0 ? `${kmInclus} km inclus` : undefined) },
     { label: `Km extra (${kmBasisLabel})`, amount: kmExtraEur > 0 ? kmExtraEur : null, note: kmExtra > 0 ? `${kmExtra} km × ${Number(tariff.km_price || 0).toFixed(2)} €` : `base : ${kmBase} km` },
     { label: 'Parc',      amount: parcEur > 0 ? parcEur : null, note: parcJours > 0 ? `${parcJours} jour(s) × ${Number(tariff.parc_day_price || 0).toFixed(2)} €`
       : (Number((mission as any).storage_flat_htva) > 0 && !mission.storage_waived) ? 'forfait de gardiennage (pas de comptage au jour)'
@@ -683,6 +698,44 @@ export async function estimateMissionPrice(mission: MissionLike, opts?: { skipRe
  * Km utilises = totalKm (depot -> ... -> retour depot) par defaut (km_basis='total').
  * Au-dela de beyond_max_km : prix bracket max + steps * beyond_max_step_price.
  */
+/**
+ * Touring — km inclus du forfait encore disponibles pour une relivraison :
+ * km inclus du remorquage racine (ou dépannage) − km facturés par ce remorquage
+ * − km des relivraisons précédentes du même dossier. null si la chaîne ne
+ * remonte pas à une fiche Touring tarifée (la REL garde alors son tarif seul).
+ */
+async function touringIncludedKmLeft(sb: any, mission: MissionLike): Promise<{ km: number; remNumber: number | null; remKm: number; remInclus: number; relBefore: number } | null> {
+  let cur: any = mission
+  let root: any = null
+  for (let i = 0; i < 4 && cur?.parent_mission_id; i++) {
+    const { data } = await sb.from('incoming_missions').select('*').eq('id', cur.parent_mission_id).maybeSingle()
+    if (!data) break
+    cur = data
+    if ((data as any).dossier_leg) continue
+    const t = canonicalType((data as any).mission_type)
+    if (t === 'remorquage' || t === 'depannage') { root = data; break }
+  }
+  if (!root || String(root.source || '').toLowerCase().trim() !== 'touring') return null
+  const remEst = await estimateMissionPrice(root, { noChainKm: true })
+  if (!remEst.ok || !(remEst.km_inclus > 0)) return null
+  let left = Math.max(0, remEst.km_inclus - remEst.km_charged)
+  let relBefore = 0
+  // Relivraisons antérieures du même dossier (une 2e REL ne reprend que le reste).
+  const { data: me } = await sb.from('incoming_missions').select('created_at').eq('id', mission.id).maybeSingle()
+  if (me?.created_at) {
+    const { data: sibs } = await sb.from('incoming_missions').select('*')
+      .eq('parent_mission_id', root.id).eq('dossier_leg', false).neq('id', mission.id)
+      .lt('created_at', me.created_at).not('status', 'in', '(cancelled,ignored,duplicate,parse_error)')
+    for (const s of sibs || []) {
+      if (canonicalType((s as any).mission_type) !== 'relivraison') continue
+      const e = await estimateMissionPrice(s, { skipRelShortcut: true, noChainKm: true }).catch(() => null)
+      if (e?.ok) relBefore += e.km_charged
+    }
+    left = Math.max(0, left - relBefore)
+  }
+  return { km: Math.round(left * 10) / 10, remNumber: root.mission_number ?? null, remKm: remEst.km_charged, remInclus: remEst.km_inclus, relBefore: Math.round(relBefore * 10) / 10 }
+}
+
 async function estimateBrackets(
   mission:     MissionLike,
   source:      string,
