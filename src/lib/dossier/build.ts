@@ -392,6 +392,10 @@ export async function buildDossier(anyMissionId: string, opts: { light?: boolean
       if (m.client_signature) facts.push({ label: 'Signature', value: `✓ ${m.client_signature_name || 'client'}` })
       if (Array.isArray(m.driver_photos) && m.driver_photos.length) facts.push({ label: 'Photos', value: `${m.driver_photos.length} photo${m.driver_photos.length > 1 ? 's' : ''}` })
       if (m.closing_notes) facts.push({ label: 'Remarque clôture', value: m.closing_notes })
+      {
+        const adv = (pre.get(m.id)?.built?.lines || []).filter((l: any) => /^Avance de fonds/i.test(l.name))
+        if (adv.length) facts.push({ label: 'Avances de fonds', value: `${adv.length} · ${r2(adv.reduce((t: number, l: any) => t + l.qty * l.price_unit, 0)).toFixed(2)} € HTVA, ajoutée${adv.length > 1 ? 's' : ''} à la facture` })
+      }
       if (m.cancelled_reason) facts.push({ label: 'Motif', value: m.cancelled_reason })
     }
 

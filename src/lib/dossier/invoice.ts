@@ -18,7 +18,7 @@ import { buildDossier, type Dossier, type DossierLeg } from '@/lib/dossier/build
 import { buildInterventionDescription } from '@/lib/missions/build-quote-lines'
 import { actionLines }              from '@/lib/dossier/lines'
 import { createDraftInvoice, findFleetVehicleByPlate, type QuoteLine, type QuoteSection } from '@/lib/odoo-quote'
-import { withOdooActor }            from '@/lib/odoo'
+import { withOdooActor, attachFileToInvoice } from '@/lib/odoo'
 
 export interface DossierInvoiceResult {
   invoices: { odoo_id: number; url: string; client_id: number; client_name: string; covers: string[]; total_htva: number; sections?: QuoteSection[] }[]
@@ -133,6 +133,22 @@ export async function invoiceDossierGroups(input: { anyMissionId: string; missio
       sections,
       description:      buildInterventionDescription(root || {}),
     }))
+
+    // Justificatifs des avances de fonds joints à la facture (best-effort,
+    // comme la route /quote).
+    try {
+      const { data: advs } = await sb.from('fund_advances').select('id, invoice_url, plate, amount_htva')
+        .in('mission_id', perLeg.map(p => p.leg.mission_id)).not('invoice_url', 'is', null)
+      for (const adv of advs || []) {
+        try {
+          const fileRes = await fetch((adv as any).invoice_url); if (!fileRes.ok) continue
+          const base64 = Buffer.from(await fileRes.arrayBuffer()).toString('base64')
+          const contentType = fileRes.headers.get('content-type') ?? 'image/jpeg'
+          const ext = contentType.includes('pdf') ? 'pdf' : contentType.includes('png') ? 'png' : 'jpg'
+          await withOdooActor(input.actorUserId, () => attachFileToInvoice(created.id, base64, `Justificatif avance ${(adv as any).plate} ${Number((adv as any).amount_htva).toFixed(2)}€.${ext}`, contentType))
+        } catch (e: any) { console.error('[dossier/invoice] justificatif avance KO:', e?.message) }
+      }
+    } catch {}
 
     // Trace par groupe : postes facturés + facture Odoo sur chaque fiche couverte.
     const items = perLeg.flatMap(p => p.lines.map(l => ({

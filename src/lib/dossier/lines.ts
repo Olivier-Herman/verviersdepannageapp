@@ -11,6 +11,7 @@
 import { estimateMissionPrice }     from '@/lib/missions/estimate-price'
 import { buildLinesFromEstimate, buildOverrideLines } from '@/lib/missions/build-quote-lines'
 import type { QuoteLine }           from '@/lib/odoo-quote'
+import { createAdminClient }        from '@/lib/supabase'
 
 // Lignes Siabis (SNC / SC) : moteur séparé, comme dans le devis groupé.
 export async function sncLines(mission: any): Promise<QuoteLine[] | null> {
@@ -54,6 +55,17 @@ export async function actionLines(mission: any, draftLines: any[] | undefined, d
     lines = buildLinesFromEstimate(est, mission)
   }
   if (dropParc) lines = lines.filter(l => l.kind !== 'SERV-PARC')
+  // Avances de fonds liées à la fiche : une ligne SERV-DIV chacune (même règle
+  // que la modale Facturer). Le devis groupé les oubliait. Olivier 07/09/2026.
+  if (mission.id && !lines.some(l => /^Avance de fonds/i.test(l.name))) {
+    try {
+      const sb = createAdminClient()
+      const { data: adv } = await sb.from('fund_advances').select('id, plate, amount_htva, created_at').eq('mission_id', mission.id)
+      for (const a of adv || []) {
+        lines.push({ kind: 'SERV-DIV' as any, name: `Avance de fonds — ${(a as any).plate || mission.vehicle_plate || ''}${(a as any).created_at ? ' du ' + new Date((a as any).created_at).toLocaleDateString('fr-BE') : ''}`, qty: 1, price_unit: Number((a as any).amount_htva) || 0 })
+      }
+    } catch {}
+  }
   return { lines, has_tariff: true }
 }
 
