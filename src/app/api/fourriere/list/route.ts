@@ -64,7 +64,7 @@ export async function GET(req: Request) {
   // remorquages figés en 'parked'. Les actions (fiche, QR, transfert,
   // restitution) gardent l'id de la RACINE tant que le REM reste le porteur
   // du parc en base (miroir). Olivier 07/09/2026.
-  const gardiennageMode = await isPreviewOn('fourriere_gardiennage', role)
+  const gardiennageMode = await isPreviewOn('fourriere_gardiennage', role, user.id)
   let missions: any[] | null = null
   let error: any = null
   if (gardiennageMode) {

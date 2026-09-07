@@ -27,7 +27,7 @@ export default async function DossierPage({ params, searchParams }: { params: { 
   const u    = session.user as any
   const role = u.role || ''
 
-  const allowed = role === 'superadmin' || (await isPreviewOn('dossier_view', role))
+  const allowed = role === 'superadmin' || (await isPreviewOn('dossier_view', role, u.id))
   if (!allowed) redirect(`/dispatch/${params.id}`)
 
   const modules: string[] = u.modules || []

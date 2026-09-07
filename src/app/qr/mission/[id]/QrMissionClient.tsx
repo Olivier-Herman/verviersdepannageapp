@@ -66,6 +66,7 @@ interface Permissions {
   canOpenOdoo:         boolean   // Lien direct Odoo (besoin odoo_api_key)
   canConsulterDossier: boolean   // Consulter le dossier (admin/superadmin/dispatcher)
   canRelivrerAsDispatcher: boolean  // Dispatcher peut creer REL + selectionner chauffeur cible
+  canDossierView?: boolean          // Vue dossier (flag dossier_view : superadmin, pilotes, tous)
 }
 
 const DOMAINE_STATE_ID = 13   // Zone I — Domaine
@@ -193,7 +194,7 @@ export default function QrMissionClient({
       })
       const j = await r.json()
       if (!r.ok) throw new Error(j.error || 'Erreur')
-      router.push((currentUser as any)?.role === 'superadmin' ? `/dispatch/dossier/${mission.id}` : `/dispatch/${mission.id}`)
+      router.push(permissions.canDossierView ? `/dispatch/dossier/${mission.id}` : `/dispatch/${mission.id}`)
     } catch (e: any) {
       setError(e.message); setWorking(false)
     }
@@ -273,7 +274,7 @@ export default function QrMissionClient({
           <h1 className="text-ink text-xl font-bold mt-1">
             {mission.mission_number != null ? `#${mission.mission_number}` : `Mission ${mission.id.slice(0, 8)}`}
           </h1>
-          {currentUser.role === 'superadmin' && (
+          {permissions.canDossierView && (
             <Link href={`/dispatch/dossier/${mission.id}`} className="inline-block mt-2 px-3 py-1.5 rounded-lg bg-amber-500/15 text-amber-700 dark:text-amber-300 border border-amber-500/40 text-xs font-semibold hover:bg-amber-500/25">🧪 Vue dossier ↗</Link>
           )}
         </header>

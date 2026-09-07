@@ -107,6 +107,7 @@ interface Props {
   billingRemarks?: Record<string, { text: string; author_name: string | null; created_at: string | null }[]>
   sourceLabels?: Record<string, string>
   userRole:    string
+  dossierView?: boolean
   userName:    string
   userEmail?:  string | null
   userModules: string[]
@@ -194,7 +195,7 @@ function AutoFactBadge({ info, now }: { info?: AutoInfo; now: number }) {
 
 export default function FacturationClient({
   missions, siblings, payments, drivers, advances = [], billingRemarks = {}, sourceLabels = {},
-  userRole, userName, userEmail, userModules, variant = 'general',
+  userRole, userName, userEmail, userModules, variant = 'general', dossierView = false,
 }: Props) {
   const isTouring = variant === 'touring'
 
@@ -821,7 +822,7 @@ export default function FacturationClient({
 
         {/* Barre facturation par lot + vérification Odoo */}
         <div className="bg-surface border rounded-2xl p-3 flex flex-wrap items-center gap-2">
-          {userRole === 'superadmin' && (
+          {dossierView && (
             <a href="/facturation/dossiers" title="Preview : une ligne par dossier, groupes lettrés, une facture par client"
               className="py-2 px-3 bg-amber-500/15 text-amber-700 dark:text-amber-300 border border-amber-500/40 rounded-lg text-sm font-semibold hover:bg-amber-500/25 transition">
               🧪 Par dossier

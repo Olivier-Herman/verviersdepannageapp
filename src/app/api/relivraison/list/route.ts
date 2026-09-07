@@ -60,7 +60,7 @@ export async function GET(req: Request) {
   // Missions de la zone active.
   // Bascule Fourrière (flag fourriere_gardiennage) : la zone se lit sur les
   // fiches GARDIENNAGE ouvertes ; les actions gardent l'id de la racine.
-  const gardiennageMode = await isPreviewOn('fourriere_gardiennage', (session.user as any)?.role)
+  const gardiennageMode = await isPreviewOn('fourriere_gardiennage', (session.user as any)?.role, (session.user as any)?.id)
   let rows: any[] | null = null, error: any = null
   if (gardiennageMode) {
     const { data: legs } = await sb.from('incoming_missions').select('parent_mission_id')

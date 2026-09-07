@@ -29,7 +29,7 @@ export default async function FacturationDossiersPage() {
   const modules: string[] = u.modules || []
   const hasAccess = ['admin', 'superadmin'].includes(role) || modules.includes('facturation')
   if (!hasAccess) redirect('/dashboard?error=access_denied')
-  if (role !== 'superadmin' && !(await isPreviewOn('dossier_view', role))) redirect('/facturation')
+  if (role !== 'superadmin' && !(await isPreviewOn('dossier_view', role, u.id))) redirect('/facturation')
 
   const sb = createAdminClient()
 

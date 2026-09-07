@@ -19,6 +19,7 @@ import { redirect, notFound } from 'next/navigation'
 import { getServerSession }   from 'next-auth'
 import { authOptions }        from '@/lib/auth'
 import { createAdminClient }  from '@/lib/supabase'
+import { isPreviewOn }  from '@/lib/feature-flags'
 import QrMissionClient        from './QrMissionClient'
 import { isRelEligibleSource } from '@/lib/missions/rel-eligible'
 import { isExitControlSource, getExitControlState } from '@/lib/missions/exit-control'
@@ -125,6 +126,7 @@ export default async function QrMissionPage({ params }: { params: { id: string }
   const canOpenOdoo = hasOdooKey
   const canConsulterDossier = isAdmin || isDispatcher          // Olivier 2026-05-27
   const canRelivrerAsDispatcher = isAdmin || isDispatcher      // Olivier 2026-05-28 : dispatcher peut creer REL + assigner driver
+  const canDossierView = await isPreviewOn('dossier_view', user.role, user.id)   // Vue dossier (superadmin, pilotes, ou tout le monde)
 
   // Si dispatcher : charge la liste des drivers actifs pour le selecteur d assignation REL
   let activeDrivers: { id: string; name: string }[] = []
@@ -199,6 +201,7 @@ export default async function QrMissionPage({ params }: { params: { id: string }
         canFourriereActions,
         canOpenOdoo,
         canConsulterDossier,
+        canDossierView,
         canRelivrerAsDispatcher,
       }}
       activeDrivers={activeDrivers}

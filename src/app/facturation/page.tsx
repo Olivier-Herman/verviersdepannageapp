@@ -10,6 +10,7 @@ import { redirect }          from 'next/navigation'
 import { authOptions }       from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase'
 import { loadFacturationData } from '@/lib/facturation/load-data'
+import { isPreviewOn }  from '@/lib/feature-flags'
 import FacturationClient     from './FacturationClient'
 
 export const dynamic = 'force-dynamic'
@@ -42,6 +43,7 @@ export default async function FacturationPage() {
       billingRemarks={billingRemarks}
       sourceLabels={sourceLabels}
       userRole={role}
+      dossierView={role === 'superadmin' || await isPreviewOn('dossier_view', role, user.id)}
       userName={user.name || ''}
       userEmail={user.email}
       userModules={modules}

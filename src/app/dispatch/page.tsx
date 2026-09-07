@@ -5,6 +5,7 @@ import { redirect }         from 'next/navigation'
 import { authOptions }      from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase'
 import DispatchClient       from './DispatchClient'
+import { isPreviewOn }      from '@/lib/feature-flags'
 
 export default async function DispatchPage() {
   const session = await getServerSession(authOptions)
@@ -18,7 +19,7 @@ export default async function DispatchPage() {
 
   const supabase = createAdminClient()
   // Chauffeurs + catalog sources (display_color, group_key) en parallele
-  const [{ data: drivers }, { data: catalogSources }] = await Promise.all([
+  const [{ data: drivers }, { data: catalogSources }, dossierView] = await Promise.all([
     supabase
       .from('users')
       .select('id, name, avatar_url')
@@ -30,10 +31,13 @@ export default async function DispatchPage() {
       .select('key, label, display_color, group_key')
       .eq('active', true)
       .order('label'),
+    // Vue dossier + nouvelle liste : superadmin, pilotes nommés, ou tout le monde (flag).
+    isPreviewOn('dossier_view', user.role, user.id),
   ])
 
   return (
     <DispatchClient
+      dossierView={dossierView}
       drivers={drivers || []}
       sources={catalogSources || []}
       userName={user.name || ''}

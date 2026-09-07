@@ -20,16 +20,25 @@ const TTL_MS = 30_000
 async function loadFlags(): Promise<Record<string, FlagMode>> {
   if (cache && Date.now() - cache.at < TTL_MS) return cache.map
   const sb = createAdminClient()
-  const { data } = await sb.from('feature_flags').select('key, mode, applies_from')
+  const { data } = await sb.from('feature_flags').select('key, mode, applies_from, pilot_user_ids')
   const map: Record<string, FlagMode> = {}
   const depuis: Record<string, string | null> = {}
+  const pilots: Record<string, string[]> = {}
   for (const f of data || []) {
     map[(f as any).key] = ((f as any).mode as FlagMode) || 'off'
     depuis[(f as any).key] = (f as any).applies_from || null
+    pilots[(f as any).key] = Array.isArray((f as any).pilot_user_ids) ? (f as any).pilot_user_ids.map(String) : []
   }
   cache = { at: Date.now(), map }
   cacheDepuis = depuis
+  cachePilots = pilots
   return map
+}
+
+/** Pilotes nommés (Olivier 07/09/2026) : en mode 'superadmin', ces users voient aussi la préversion. */
+let cachePilots: Record<string, string[]> = {}
+export async function getFlagPilots(key: string): Promise<string[]> {
+  try { await loadFlags(); return cachePilots[key] || [] } catch { return [] }
 }
 
 /** Date d'application aux missions (null = pas de gel). */
@@ -43,14 +52,15 @@ export async function getFlagMode(key: string): Promise<FlagMode> {
 }
 
 /** Le user voit-il le preview de ce flag ? (superadmin toujours prioritaire). */
-export function previewVisible(mode: FlagMode, role: string | null | undefined): boolean {
+export function previewVisible(mode: FlagMode, role: string | null | undefined, userId?: string | null, pilots?: string[]): boolean {
   if (mode === 'all') return true
-  if (mode === 'superadmin') return role === 'superadmin'
+  if (mode === 'superadmin') return role === 'superadmin' || (!!userId && !!pilots && pilots.includes(String(userId)))
   return false
 }
 
-export async function isPreviewOn(key: string, role: string | null | undefined): Promise<boolean> {
-  return previewVisible(await getFlagMode(key), role)
+export async function isPreviewOn(key: string, role: string | null | undefined, userId?: string | null): Promise<boolean> {
+  const mode = await getFlagMode(key)
+  return previewVisible(mode, role, userId, userId ? await getFlagPilots(key) : undefined)
 }
 
 /**

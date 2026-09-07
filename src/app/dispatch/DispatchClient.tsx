@@ -789,7 +789,7 @@ function AssignAction({ mission, drivers, driverStatuses, onRefresh, onModalChan
 // les cas "sans frais", "annulee" et "archivee" (utilise aussi dans
 // /missions-terminees pour coherence visuelle).
 
-function MissionCard({ mission, drivers, driverStatuses, sources, onRefresh, onModalChange, userRole, userModules }: {
+function MissionCard({ mission, drivers, driverStatuses, sources, onRefresh, onModalChange, userRole, userModules, dossierView = false }: {
   mission:        Mission
   drivers:        Driver[]
   driverStatuses: DriverStatus[]
@@ -798,6 +798,7 @@ function MissionCard({ mission, drivers, driverStatuses, sources, onRefresh, onM
   onModalChange?: (open: boolean) => void
   userRole:       string
   userModules:    string[]
+  dossierView?:   boolean
 }) {
   const router  = useRouter()
   const [siabisCard, setSiabisCard] = useState(false)   // trancher Siabis depuis la carte
@@ -817,7 +818,7 @@ function MissionCard({ mission, drivers, driverStatuses, sources, onRefresh, onM
 
   return (
     <div
-      onClick={() => router.push(userRole === 'superadmin' ? `/dispatch/dossier/${mission.id}` : `/dispatch/${mission.id}`)}
+      onClick={() => router.push(dossierView ? `/dispatch/dossier/${mission.id}` : `/dispatch/${mission.id}`)}
       className={`relative border-2 rounded-2xl p-4 cursor-pointer transition-all overflow-hidden min-w-0 ${cardBg} ${cardBorder} ${cardRing}`}
     >
       <MissionStamp mission={mission} />
@@ -981,7 +982,7 @@ function MissionCard({ mission, drivers, driverStatuses, sources, onRefresh, onM
             <span className="text-green-400 text-xs font-medium">✓ {mission.assigned_user.name}</span>
           )}
         </div>
-        <Link href={userRole === 'superadmin' ? `/dispatch/dossier/${mission.id}` : `/dispatch/${mission.id}`} onClick={e => e.stopPropagation()}
+        <Link href={dossierView ? `/dispatch/dossier/${mission.id}` : `/dispatch/${mission.id}`} onClick={e => e.stopPropagation()}
           className="px-3 py-1.5 bg-brand hover:bg-brand-dark text-ink rounded-lg text-xs font-medium transition flex-shrink-0">
           VOIR →
         </Link>
@@ -1000,6 +1001,7 @@ export default function DispatchClient({
   userEmail,
   userId,
   userModules = [],
+  dossierView = false,
 }: {
   drivers:      Driver[]
   sources:      CatalogSource[]
@@ -1008,6 +1010,7 @@ export default function DispatchClient({
   userEmail?:   string
   userId?:      string
   userModules?: string[]
+  dossierView?: boolean   // flag dossier_view : superadmin, pilotes nommés, ou tout le monde
 }) {
   const router = useRouter()
 
@@ -1074,10 +1077,12 @@ export default function DispatchClient({
   // boutons que le tableau, présentation en lignes. Superadmin seulement pour
   // l'instant (test), on l'ouvrira aux autres si nécessaire.
   const [compactList, setCompactList] = useState<boolean>(false)
+  // Olivier 07/09/2026 : la nouvelle liste est l'affichage PAR DÉFAUT pour ceux
+  // qui ont la vue dossier ; le bouton sert à repasser à l'ancien tableau.
   useEffect(() => {
-    if (userRole !== 'superadmin') return
+    if (!dossierView) return
     try { setCompactList(localStorage.getItem('vd_dispatch_compact') !== 'off') } catch { setCompactList(true) }
-  }, [userRole])
+  }, [dossierView])
   const toggleCompact = () => { const v = !compactList; setCompactList(v); try { localStorage.setItem('vd_dispatch_compact', v ? 'on' : 'off') } catch {} }
   const [expandedId, setExpandedId] = useState<string | null>(null)
   // Simple clic = déplier / replier la ligne ; double clic = le dossier complet
@@ -1436,10 +1441,10 @@ export default function DispatchClient({
               ↻
             </button>
 
-            {userRole === 'superadmin' && (
-              <button onClick={toggleCompact} title="Basculer entre la nouvelle liste (lignes) et le tableau actuel"
+            {dossierView && (
+              <button onClick={toggleCompact} title={compactList ? 'Repasser à l’ancien tableau' : 'Revenir au nouvel affichage'}
                 className="hidden lg:block px-3 py-2 bg-surface border rounded-xl text-ink-secondary hover:text-ink text-sm font-medium transition">
-                {compactList ? '🧪 Nouvelle liste' : '▤ Tableau'}
+                {compactList ? '▤ Ancien affichage' : '✨ Nouvel affichage'}
               </button>
             )}
             {/* Dispatcher de garde — badge cliquable pour cibler les escalades auto-dispatch */}
@@ -1684,6 +1689,7 @@ export default function DispatchClient({
                           onModalChange={onModalChange}
                           userRole={userRole}
                           userModules={userModules}
+                          dossierView={dossierView}
                         />
                       ))}
                     </div>
@@ -1710,7 +1716,7 @@ export default function DispatchClient({
                         const typeLbl   = getTypeLabel(m)
                         const kind      = /reliv/i.test(typeLbl) ? 'REL' : /d[ée]pannage|sur place|trajet/i.test(typeLbl) ? 'DSP' : /dpr|protocol/i.test(typeLbl) ? 'DPR' : /vhu|épave/i.test(typeLbl) ? 'VHU' : /transport/i.test(typeLbl) ? 'TRP' : 'REM'
                         const kindCls   = kind === 'REL' ? 'bg-emerald-600' : kind === 'DSP' ? 'bg-green-700' : kind === 'DPR' ? 'bg-red-600' : kind === 'VHU' ? 'bg-violet-600' : kind === 'TRP' ? 'bg-sky-600' : 'bg-blue-600'
-                        const href = userRole === 'superadmin' ? `/dispatch/dossier/${m.id}` : `/dispatch/${m.id}`
+                        const href = dossierView ? `/dispatch/dossier/${m.id}` : `/dispatch/${m.id}`
                         return (
                           <div key={m.id} className={`border-t first:border-t-0 ${expandedId === m.id ? 'ring-1 ring-brand/40' : ''}`}>
                           <div onClick={() => onRowClick(m.id)} onDoubleClick={() => onRowDblClick(href)} title="Clic : déplier · double clic : dossier complet dans un nouvel onglet"
@@ -1801,7 +1807,7 @@ export default function DispatchClient({
                           : delai.urgency === 'critical' ? 'bg-red-500/5 hover:bg-surface-2'
                           : 'hover:bg-surface-2'
                         }`}
-                        onClick={() => router.push(userRole === 'superadmin' ? `/dispatch/dossier/${m.id}` : `/dispatch/${m.id}`)}>
+                        onClick={() => router.push(dossierView ? `/dispatch/dossier/${m.id}` : `/dispatch/${m.id}`)}>
                         <td className="px-4 py-3" onClick={e => e.stopPropagation()}>
                           <span className={`px-2 py-0.5 rounded text-xs font-bold text-white ${srcInfo.color}`}>
                             {srcInfo.label}
@@ -1881,7 +1887,7 @@ export default function DispatchClient({
                         </td>
                         )}
                         <td className="px-4 py-3" onClick={e => e.stopPropagation()}>
-                          <Link href={userRole === 'superadmin' ? `/dispatch/dossier/${m.id}` : `/dispatch/${m.id}`}
+                          <Link href={dossierView ? `/dispatch/dossier/${m.id}` : `/dispatch/${m.id}`}
                             className="px-3 py-1.5 bg-brand hover:bg-brand-dark text-ink rounded-lg text-xs font-medium transition inline-block">
                             VOIR
                           </Link>
