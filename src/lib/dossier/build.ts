@@ -51,6 +51,10 @@ export interface DossierLeg {
   // Canal de facturation : Odoo (défaut), relevé trimestriel Domaine, état de
   // frais Parquet. Seul 'odoo' passe par la modale « Facturer » du dossier.
   channel?:        'odoo' | 'domaine' | 'parquet'
+  // Champs modifiables d'un clic dans le résumé du groupe (Olivier 07/09 :
+  // « tout doit être modifiable en cliquant sur l'objet »). Les adresses
+  // passent par la fiche (géocodage navigateur).
+  editable?:       { client_name: string | null; client_phone: string | null; vehicle_plate: string | null; vehicle_brand: string | null; vehicle_model: string | null; vehicle_vin: string | null; incident_address: string | null; destination_address: string | null; redelivery_address: string | null }
   // Remarques de facturation (dispatch) : à confirmer AVANT de facturer.
   billing_remarks: { text: string; author: string | null; at: string | null }[]
   // Encaissements chauffeur liés à cette fiche (table interventions).
@@ -400,6 +404,7 @@ export async function buildDossier(anyMissionId: string, opts: { light?: boolean
       billed_inherited: (m.billed_to_id ?? null) === (root.billed_to_id ?? null),
       facts, amount_htva: amount, amount_note: note, billed_htva: billedHtva || (billedRefs.length && !billedItems.length ? amount : 0),
       billed_refs: billedRefs, nothing_to_bill: nothing, days, regime: kind === 'gard' ? String(m.mission_type || 'autre') : null, amount_unknown: amountUnknown || undefined,
+      editable: kind === 'gard' ? undefined : { client_name: m.client_name || null, client_phone: m.client_phone || null, vehicle_plate: m.vehicle_plate || null, vehicle_brand: m.vehicle_brand || null, vehicle_model: m.vehicle_model || null, vehicle_vin: m.vehicle_vin || null, incident_address: m.incident_address || null, destination_address: m.destination_address || null, redelivery_address: m.redelivery_address || null },
       billing_remarks: [
         ...((Array.isArray(m.billing_remarks) ? m.billing_remarks : []).map((r: any) => ({ text: String(r.text || ''), author: r.author_name || null, at: r.created_at || null }))),
         ...(m.remarks_billing && !(Array.isArray(m.billing_remarks) && m.billing_remarks.some((r: any) => r.text === m.remarks_billing)) ? [{ text: String(m.remarks_billing), author: null, at: null }] : []),

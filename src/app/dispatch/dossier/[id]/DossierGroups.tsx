@@ -257,8 +257,26 @@ function Group({ d, leg, canBill, isOpen, onToggle, embedOpen, onToggleEmbed, fi
 
       {isOpen && (
         <div className="border-t px-3 md:px-3.5 py-3 md:pl-[70px] space-y-3 min-w-0">
+          {leg.editable && (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-1 text-xs bg-surface-2 border rounded-xl px-3 py-2">
+              <div className="grid grid-cols-[92px_minmax(0,1fr)] md:grid-cols-[110px_1fr] gap-2 items-center"><dt className="text-ink-muted">Client</dt><dd className="flex flex-wrap gap-x-2 gap-y-0.5 items-center">
+                <EditableText value={leg.editable.client_name} placeholder="nom du client" missionId={leg.mission_id} field="client_name" onSaved={onChanged} />
+                <EditableText value={leg.editable.client_phone} placeholder="téléphone" missionId={leg.mission_id} field="client_phone" onSaved={onChanged} mono /></dd></div>
+              <div className="grid grid-cols-[92px_minmax(0,1fr)] md:grid-cols-[110px_1fr] gap-2 items-center"><dt className="text-ink-muted">Véhicule</dt><dd className="flex flex-wrap gap-x-2 gap-y-0.5 items-center">
+                <EditableText value={leg.editable.vehicle_plate} placeholder="plaque" missionId={leg.mission_id} field="vehicle_plate" onSaved={onChanged} mono upper />
+                <EditableText value={leg.editable.vehicle_brand} placeholder="marque" missionId={leg.mission_id} field="vehicle_brand" onSaved={onChanged} />
+                <EditableText value={leg.editable.vehicle_model} placeholder="modèle" missionId={leg.mission_id} field="vehicle_model" onSaved={onChanged} />
+                <EditableText value={leg.editable.vehicle_vin} placeholder="VIN" missionId={leg.mission_id} field="vehicle_vin" onSaved={onChanged} mono upper /></dd></div>
+              <div className="grid grid-cols-[92px_minmax(0,1fr)] md:grid-cols-[110px_1fr] gap-2 items-center"><dt className="text-ink-muted">{leg.kind === 'rel' ? 'Départ' : 'Intervention'}</dt><dd>
+                <button type="button" onClick={() => { if (!embedOpen) onToggleEmbed(); setTimeout(() => document.getElementById(`grp-${leg.letter}`)?.querySelector('input[placeholder*="dresse"], input[name*="address"]')?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 250) }}
+                  title="Modifier dans la fiche (adresse géocodée)" className={`text-left rounded px-1 -mx-1 hover:bg-brand/10 hover:ring-1 hover:ring-brand/30 ${leg.editable.incident_address ? 'text-ink' : 'text-ink-faint italic'}`}>{leg.editable.incident_address || 'adresse à définir'} <span className="text-ink-faint">✎</span></button></dd></div>
+              <div className="grid grid-cols-[92px_minmax(0,1fr)] md:grid-cols-[110px_1fr] gap-2 items-center"><dt className="text-ink-muted">{leg.kind === 'rel' ? 'Livrer à' : 'Destination'}</dt><dd>
+                <button type="button" onClick={() => { if (!embedOpen) onToggleEmbed(); setTimeout(() => document.getElementById(`grp-${leg.letter}`)?.querySelector('input[placeholder*="estination"], input[name*="destination"]')?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 250) }}
+                  title="Modifier dans la fiche (adresse géocodée)" className={`text-left rounded px-1 -mx-1 hover:bg-brand/10 hover:ring-1 hover:ring-brand/30 ${(leg.editable.destination_address || leg.editable.redelivery_address) ? 'text-ink' : 'text-ink-faint italic'}`}>{leg.editable.destination_address || leg.editable.redelivery_address || 'à définir'} <span className="text-ink-faint">✎</span></button></dd></div>
+            </div>
+          )}
           <dl className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-1 text-xs">
-            {leg.facts.map((f, i) => (
+            {leg.facts.filter(f => !leg.editable || !['Chauffeur', 'Intervention', 'Départ', 'Destination', 'Livré à'].includes(f.label) || f.label === 'Chauffeur').map((f, i) => (
               <div key={i} className="grid grid-cols-[92px_minmax(0,1fr)] md:grid-cols-[110px_1fr] gap-2"><dt className="text-ink-muted">{f.label}</dt><dd className="text-ink break-words min-w-0">{f.value}</dd></div>
             ))}
             {leg.payments?.length > 0 && <div className="grid grid-cols-[92px_minmax(0,1fr)] md:grid-cols-[110px_1fr] gap-2"><dt className="text-ink-muted">Encaissé</dt><dd className="text-ink">{leg.payments.map((p, i) => <span key={i} className="mr-2">{eur(p.amount)}{p.mode ? ` (${p.mode})` : ''}{p.driver ? ` · ${p.driver}` : ''}{p.at ? ` · ${fmt(p.at)}` : ''}</span>)}</dd></div>}
@@ -309,6 +327,38 @@ function Group({ d, leg, canBill, isOpen, onToggle, embedOpen, onToggleEmbed, fi
         </div>
       )}
     </div>
+  )
+}
+
+// ── Valeur modifiable d'un clic (client, véhicule…) ────────────────────────
+function EditableText({ value, placeholder, missionId, field, onSaved, mono, upper }: {
+  value: string | null; placeholder: string; missionId: string; field: string; onSaved: () => void | Promise<void>; mono?: boolean; upper?: boolean
+}) {
+  const [editing, setEditing] = useState(false)
+  const [v, setV] = useState(value || '')
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState<string | null>(null)
+  useEffect(() => { if (!editing) setV(value || '') }, [value, editing])
+  const save = async () => {
+    const next = upper ? v.trim().toUpperCase() : v.trim()
+    if (next === (value || '')) { setEditing(false); return }
+    setBusy(true); setErr(null)
+    try {
+      const r = await fetch(`/api/missions/${missionId}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ [field]: next || null }) })
+      if (!r.ok) { const j = await r.json().catch(() => ({})); throw new Error(j.error || `HTTP ${r.status}`) }
+      setEditing(false); await onSaved()
+    } catch (e: any) { setErr(String(e.message || e)) } finally { setBusy(false) }
+  }
+  if (!editing) return (
+    <button type="button" onClick={() => setEditing(true)} title="Cliquer pour modifier"
+      className={`text-left rounded px-1 -mx-1 hover:bg-brand/10 hover:ring-1 hover:ring-brand/30 ${mono ? 'font-mono' : ''} ${value ? 'text-ink' : 'text-ink-faint italic'}`}>
+      {value || placeholder}{err && <span className="ml-1 text-red-600 not-italic">⚠ {err}</span>}
+    </button>
+  )
+  return (
+    <input autoFocus value={v} disabled={busy} onChange={e => setV(e.target.value)} placeholder={placeholder}
+      onBlur={save} onKeyDown={e => { if (e.key === 'Enter') save(); if (e.key === 'Escape') { setV(value || ''); setEditing(false) } }}
+      className={`border rounded px-1.5 py-0.5 bg-surface text-ink text-xs w-full max-w-[260px] ${mono ? 'font-mono' : ''}`} />
   )
 }
 
