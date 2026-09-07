@@ -16,7 +16,8 @@ const L_KIND: Record<DossierLeg['kind'], string> = {
 }
 const AUTO_MAX = 500
 
-const ready  = (d: Dossier) => d.legs.filter(l => canPickLeg(l) && !(l.kind === 'gard' && l.open))
+const ready  = (d: Dossier) => d.legs.filter(l => (canPickLeg(l) || (l.amount_unknown && !isLegBilled(l) && !l.nothing_to_bill)) && !(l.kind === 'gard' && l.open))
+const hasUnknown = (d: Dossier) => d.legs.some(l => l.amount_unknown && !isLegBilled(l))
 const isDone = (d: Dossier) => d.legs.every(l => isLegBilled(l) || !!l.nothing_to_bill || l.amount_htva === 0)
 const rest   = (d: Dossier) => d.totals.remaining
 
@@ -26,6 +27,14 @@ export default function DossiersClient({ initial, autoById, isSuperadmin, capped
   const [src, setSrc] = useState<string>('Tous')
   const [open, setOpen] = useState<Set<string>>(new Set())
   const [billing, setBilling] = useState<Dossier | null>(null)
+  const [loadingBill, setLoadingBill] = useState<string | null>(null)
+  // La liste est construite en mode léger (montants figés). Avant de facturer,
+  // on recharge le dossier complet (moteur de prix) pour des montants justes.
+  const openBilling = async (d: Dossier) => {
+    setLoadingBill(d.root_id)
+    try { const j = await fetch(`/api/dossier/${d.root_id}?t=${Date.now()}`, { cache: 'no-store' }).then(r => r.json()); setBilling(j?.dossier || d) }
+    catch { setBilling(d) } finally { setLoadingBill(null) }
+  }
 
   const isAuto = (d: Dossier) => !d.state.open && !isDone(d) && ready(d).length > 0 && !!autoById[d.root_id] && rest(d) <= AUTO_MAX
   const TABS: Array<[typeof tab, string, (d: Dossier) => boolean]> = [
@@ -93,10 +102,10 @@ export default function DossiersClient({ initial, autoById, isSuperadmin, capped
                     className={`w-6 h-6 rounded-md border inline-flex items-center justify-center text-[11px] font-bold font-mono ${L_KIND[l.kind]} ${isLegBilled(l) ? 'opacity-35 line-through' : ''} ${l.open && l.kind === 'gard' ? 'border-dashed !bg-transparent !text-amber-700 dark:!text-amber-300' : ''} ${l.nothing_to_bill ? 'opacity-45' : ''}`}>{l.letter}</span>
                 ))}
               </div>
-              <div className="text-right font-semibold tabular-nums text-ink text-sm">{eur(rest(d))}<span className="block text-[10.5px] font-normal text-ink-muted">reste HTVA</span></div>
+              <div className="text-right font-semibold tabular-nums text-ink text-sm">{hasUnknown(d) ? <span className="text-ink-muted font-normal">{rest(d) > 0 ? eur(rest(d)) + ' + ' : ''}à calculer</span> : eur(rest(d))}<span className="block text-[10.5px] font-normal text-ink-muted">reste HTVA</span></div>
               <div><span className={`text-[11px] font-semibold px-2.5 py-1 rounded-full ${badge[0]}`}>{badge[1]}</span></div>
               <div className="flex gap-1.5">
-                <button disabled={!rd.length && !d.legs.some(l => canPickLeg(l))} onClick={e => { e.stopPropagation(); setBilling(d) }} className={`px-3 py-1.5 rounded-lg text-xs font-semibold ${rd.length ? 'bg-brand text-white' : 'border text-ink-secondary'} disabled:opacity-40`}>Facturer{d.state.open && rd.length ? ' (partiel)' : ''}</button>
+                <button disabled={(!rd.length && !d.legs.some(l => canPickLeg(l))) || loadingBill === d.root_id} onClick={e => { e.stopPropagation(); openBilling(d) }} className={`px-3 py-1.5 rounded-lg text-xs font-semibold ${rd.length ? 'bg-brand text-white' : 'border text-ink-secondary'} disabled:opacity-40`}>{loadingBill === d.root_id ? '⏳ Calcul…' : `Facturer${d.state.open && rd.length ? ' (partiel)' : ''}`}</button>
                 <Link href={`/dispatch/dossier/${d.root_id}`} onClick={e => e.stopPropagation()} className="px-2.5 py-1.5 rounded-lg text-xs font-semibold border text-ink-secondary hover:text-ink">Dossier ↗</Link>
               </div>
             </div>
@@ -108,7 +117,7 @@ export default function DossiersClient({ initial, autoById, isSuperadmin, capped
                     <div key={l.letter} className="grid grid-cols-[24px_1fr_auto_auto] gap-2 items-center py-1 border-t first:border-t-0 text-ink-secondary">
                       <span className="font-mono">{l.letter}</span>
                       <span>{l.title}{l.kind === 'gard' && l.days != null ? ` ${l.days} j` : ''}{l.billed_to_name !== d.billed_to.name ? <span className="text-ink-muted"> · → {l.billed_to_name || '?'}</span> : null}</span>
-                      <span className="tabular-nums">{eur(l.amount_htva)}</span>
+                      <span className="tabular-nums">{l.amount_unknown && !isLegBilled(l) ? <span className="text-ink-muted">à calculer</span> : eur(l.amount_htva)}</span>
                       <span>{isLegBilled(l) ? <span className="px-1.5 py-0.5 rounded-full bg-surface border text-ink-muted font-mono">{cleanRef(l.billed_refs[0])}</span> : l.nothing_to_bill ? <span className="text-ink-faint">{l.nothing_to_bill}</span> : l.open && l.kind === 'gard' ? <span className="px-1.5 py-0.5 rounded-full bg-blue-600 text-white">en cours</span> : <span className="px-1.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-700 dark:text-emerald-300">prêt</span>}</span>
                     </div>
                   ))}

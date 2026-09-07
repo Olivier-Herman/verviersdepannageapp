@@ -45,6 +45,8 @@ export interface DossierLeg {
   nothing_to_bill: string | null
   days:            number | null
   regime:          string | null
+  // Mode léger : pas de montant figé sur la fiche → à calculer (moteur de prix).
+  amount_unknown?: boolean
 }
 
 export interface DossierEvent {
@@ -73,6 +75,7 @@ export interface Dossier {
   legs:           DossierLeg[]
   events:         DossierEvent[]
   totals:         { estimated: number; billed: number; collected: number; remaining: number }
+  light?:         boolean
   invoices:       { number: string; covers: string[]; client: string | null; amount: number; at: string | null; url: string | null }[]
 }
 
@@ -241,7 +244,7 @@ export async function buildDossier(anyMissionId: string, opts: { light?: boolean
       ...(m.invoice_number ? [m.invoice_number] : (m.invoice_odoo_id && !billedItems.length ? [`brouillon Odoo #${m.invoice_odoo_id}`] : [])),
     ])) as string[]
 
-    let amount = 0, note: string | null = null, nothing: string | null = null, days: number | null = null
+    let amount = 0, note: string | null = null, nothing: string | null = null, days: number | null = null, amountUnknown = false
     const facts: { label: string; value: string }[] = []
     let title = '', subtitle = '', started: string | null = null, ended: string | null = null, open = false
 
@@ -279,7 +282,7 @@ export async function buildDossier(anyMissionId: string, opts: { light?: boolean
       let est: any = null
       if (!light) { try { est = m.id === root.id ? rootEst : await estimateMissionPrice(m) } catch { est = null } }
       if (Number(m.special_tarif_htva) > 0) { amount = r2(Number(m.special_tarif_htva)); note = 'prix convenu' }
-      else if (light) { amount = r2(Number(m.estimated_htva) || 0); note = Number(m.estimated_htva) > 0 ? 'estimation figée' : 'estimation à calculer' }
+      else if (light) { amount = r2(Number(m.estimated_htva) || 0); note = Number(m.estimated_htva) > 0 ? 'estimation figée' : 'estimation à calculer'; if (!(Number(m.estimated_htva) > 0)) amountUnknown = true }
       else if (est?.ok) {
         const parcPart = Number(est.parc_eur || 0) * (1 + Number(est.surcharge_pct || 0) / 100)
         amount = r2(Math.max(0, Number(est.total_eur || 0) - parcPart))
@@ -314,7 +317,7 @@ export async function buildDossier(anyMissionId: string, opts: { light?: boolean
       billed_to_id: m.billed_to_id ?? null, billed_to_name: m.billed_to_name ?? null,
       billed_inherited: (m.billed_to_id ?? null) === (root.billed_to_id ?? null),
       facts, amount_htva: amount, amount_note: note, billed_htva: billedHtva || (billedRefs.length && !billedItems.length ? amount : 0),
-      billed_refs: billedRefs, nothing_to_bill: nothing, days, regime: kind === 'gard' ? String(m.mission_type || 'autre') : null,
+      billed_refs: billedRefs, nothing_to_bill: nothing, days, regime: kind === 'gard' ? String(m.mission_type || 'autre') : null, amount_unknown: amountUnknown || undefined,
       _sort: startKey(m, kind), _rank: kind === 'rem' ? 0 : kind === 'gard' ? 1 : 2,
     } as any)
   }
@@ -375,7 +378,7 @@ export async function buildDossier(anyMissionId: string, opts: { light?: boolean
     client: { name: root.client_name, phone: root.client_phone },
     billed_to: { id: root.billed_to_id ?? null, name: root.billed_to_name ?? null },
     received_at: root.received_at,
-    state, legs, events,
+    state, legs, events, light: light || undefined,
     totals: { estimated, billed, collected, remaining: r2(Math.max(0, estimated - billed)) },
     invoices: Object.values(invMap).map(e => ({ ...e, covers: Array.from(e.covers).sort() })),
   }
