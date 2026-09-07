@@ -54,7 +54,15 @@ export interface DossierLeg {
   // Champs modifiables d'un clic dans le résumé du groupe (Olivier 07/09 :
   // « tout doit être modifiable en cliquant sur l'objet »). Les adresses
   // passent par la fiche (géocodage navigateur).
-  editable?:       { client_name: string | null; client_phone: string | null; vehicle_plate: string | null; vehicle_brand: string | null; vehicle_model: string | null; vehicle_vin: string | null; incident_address: string | null; destination_address: string | null; redelivery_address: string | null }
+  editable?:       {
+    client_name: string | null; client_phone: string | null; client_address: string | null
+    assisted_name: string | null; assisted_phone: string | null
+    vehicle_plate: string | null; vehicle_brand: string | null; vehicle_model: string | null; vehicle_vin: string | null
+    vehicle_fuel: string | null; vehicle_gearbox: string | null; vehicle_mileage: string | null
+    incident_address: string | null; destination_address: string | null; destination_name: string | null; redelivery_address: string | null
+    mission_type: string | null; source: string | null; dossier_number: string | null; intervention_date: string | null
+    incident_type: string | null; incident_description: string | null; remarks_general: string | null
+  }
   // Remarques de facturation (dispatch) : à confirmer AVANT de facturer.
   billing_remarks: { text: string; author: string | null; at: string | null }[]
   // Encaissements chauffeur liés à cette fiche (table interventions).
@@ -408,7 +416,16 @@ export async function buildDossier(anyMissionId: string, opts: { light?: boolean
       billed_inherited: (m.billed_to_id ?? null) === (root.billed_to_id ?? null),
       facts, amount_htva: amount, amount_note: note, billed_htva: billedHtva || (billedRefs.length && !billedItems.length ? amount : 0),
       billed_refs: billedRefs, nothing_to_bill: nothing, days, regime: kind === 'gard' ? String(m.mission_type || 'autre') : null, amount_unknown: amountUnknown || undefined,
-      editable: kind === 'gard' ? undefined : { client_name: m.client_name || null, client_phone: m.client_phone || null, vehicle_plate: m.vehicle_plate || null, vehicle_brand: m.vehicle_brand || null, vehicle_model: m.vehicle_model || null, vehicle_vin: m.vehicle_vin || null, incident_address: m.incident_address || null, destination_address: m.destination_address || null, redelivery_address: m.redelivery_address || null },
+      // Olivier 07/09/2026 : « tout ce qui est modifiable doit l'être dans la vue 2 ».
+      editable: kind === 'gard' ? undefined : {
+        client_name: m.client_name || null, client_phone: m.client_phone || null, client_address: m.client_address || null,
+        assisted_name: m.assisted_name || null, assisted_phone: m.assisted_phone || null,
+        vehicle_plate: m.vehicle_plate || null, vehicle_brand: m.vehicle_brand || null, vehicle_model: m.vehicle_model || null, vehicle_vin: m.vehicle_vin || null,
+        vehicle_fuel: m.vehicle_fuel || null, vehicle_gearbox: m.vehicle_gearbox || null, vehicle_mileage: m.vehicle_mileage != null ? String(m.vehicle_mileage) : null,
+        incident_address: m.incident_address || null, destination_address: m.destination_address || null, destination_name: m.destination_name || null, redelivery_address: m.redelivery_address || null,
+        mission_type: m.mission_type || null, source: m.source || null, dossier_number: m.dossier_number || null, intervention_date: m.intervention_date || null,
+        incident_type: m.incident_type || null, incident_description: m.incident_description || null, remarks_general: m.remarks_general || null,
+      },
       billing_remarks: [
         ...((Array.isArray(m.billing_remarks) ? m.billing_remarks : []).map((r: any) => ({ text: String(r.text || ''), author: r.author_name || null, at: r.created_at || null }))),
         ...(m.remarks_billing && !(Array.isArray(m.billing_remarks) && m.billing_remarks.some((r: any) => r.text === m.remarks_billing)) ? [{ text: String(m.remarks_billing), author: null, at: null }] : []),

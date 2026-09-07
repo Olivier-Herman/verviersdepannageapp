@@ -14,6 +14,7 @@ import BillingModal from '@/components/dossier/BillingModal'
 import EidImportButton, { type EidData } from '@/components/caisse/EidImportButton'
 import ManualInfoButton, { type ManualClientData } from '@/components/caisse/ManualInfoButton'
 import IdPhotoButton from '@/components/caisse/IdPhotoButton'
+import AddressField from '@/components/AddressField'
 
 // Pays lu sur la carte d'identité → code ISO pour Odoo (même règle que la fiche).
 const countryToIso = (name?: string | null) => {
@@ -271,20 +272,44 @@ function Group({ d, leg, canBill, isOpen, onToggle, embedOpen, onToggleEmbed, fi
         <div className={`border-t px-3 md:px-3.5 py-3 ${mobile ? '' : 'md:pl-[70px]'} space-y-3 min-w-0 max-w-full overflow-x-hidden`}>
           {leg.editable && (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-1 text-xs bg-surface-2 border rounded-xl px-3 py-2">
+              {/* Olivier 07/09/2026 : tout ce qui est modifiable l'est ici, sans ouvrir la fiche. */}
+              <div className="grid grid-cols-[92px_minmax(0,1fr)] md:grid-cols-[110px_1fr] gap-2 items-center"><dt className="text-ink-muted">Type</dt><dd className="flex flex-wrap gap-x-2 gap-y-0.5 items-center">
+                <EditableSelect value={leg.editable.mission_type} missionId={leg.mission_id} field="mission_type" onSaved={onChanged}
+                  options={[['remorquage', 'REM — remorquage'], ['depannage', 'DSP — dépannage sur place'], ['relivraison', 'REL — relivraison'], ['transport', 'Transport'], ['trajet_vide', 'TVD — trajet à vide']]} />
+                <EditableSelect value={leg.editable.source} missionId={leg.mission_id} field="source" onSaved={onChanged}
+                  options={(shared.sources || []).map((x: any) => [x.key, x.label])} /></dd></div>
+              <div className="grid grid-cols-[92px_minmax(0,1fr)] md:grid-cols-[110px_1fr] gap-2 items-center"><dt className="text-ink-muted">Réf. assistance</dt><dd className="flex flex-wrap gap-x-2 gap-y-0.5 items-center">
+                <EditableText value={leg.editable.dossier_number} placeholder="référence du dossier assistance" missionId={leg.mission_id} field="dossier_number" onSaved={onChanged} mono />
+                <EditableDateTime value={leg.editable.intervention_date} missionId={leg.mission_id} field="intervention_date" onSaved={onChanged} /></dd></div>
               <div className="grid grid-cols-[92px_minmax(0,1fr)] md:grid-cols-[110px_1fr] gap-2 items-center"><dt className="text-ink-muted">Client</dt><dd className="flex flex-wrap gap-x-2 gap-y-0.5 items-center">
                 <EditableText value={leg.editable.client_name} placeholder="nom du client" missionId={leg.mission_id} field="client_name" onSaved={onChanged} />
-                <EditableText value={leg.editable.client_phone} placeholder="téléphone" missionId={leg.mission_id} field="client_phone" onSaved={onChanged} mono /></dd></div>
+                <EditableText value={leg.editable.client_phone} placeholder="téléphone" missionId={leg.mission_id} field="client_phone" onSaved={onChanged} mono />
+                <EditableText value={leg.editable.client_address} placeholder="adresse du client" missionId={leg.mission_id} field="client_address" onSaved={onChanged} /></dd></div>
+              <div className="grid grid-cols-[92px_minmax(0,1fr)] md:grid-cols-[110px_1fr] gap-2 items-center"><dt className="text-ink-muted">Assisté</dt><dd className="flex flex-wrap gap-x-2 gap-y-0.5 items-center">
+                <EditableText value={leg.editable.assisted_name} placeholder="nom de l’assisté (si ≠ client)" missionId={leg.mission_id} field="assisted_name" onSaved={onChanged} />
+                <EditableText value={leg.editable.assisted_phone} placeholder="téléphone" missionId={leg.mission_id} field="assisted_phone" onSaved={onChanged} mono /></dd></div>
               <div className="grid grid-cols-[92px_minmax(0,1fr)] md:grid-cols-[110px_1fr] gap-2 items-center"><dt className="text-ink-muted">Véhicule</dt><dd className="flex flex-wrap gap-x-2 gap-y-0.5 items-center">
                 <EditableText value={leg.editable.vehicle_plate} placeholder="plaque" missionId={leg.mission_id} field="vehicle_plate" onSaved={onChanged} mono upper />
                 <EditableText value={leg.editable.vehicle_brand} placeholder="marque" missionId={leg.mission_id} field="vehicle_brand" onSaved={onChanged} />
                 <EditableText value={leg.editable.vehicle_model} placeholder="modèle" missionId={leg.mission_id} field="vehicle_model" onSaved={onChanged} />
-                <EditableText value={leg.editable.vehicle_vin} placeholder="VIN" missionId={leg.mission_id} field="vehicle_vin" onSaved={onChanged} mono upper /></dd></div>
+                <EditableText value={leg.editable.vehicle_vin} placeholder="VIN" missionId={leg.mission_id} field="vehicle_vin" onSaved={onChanged} mono upper />
+                <EditableText value={leg.editable.vehicle_fuel} placeholder="carburant" missionId={leg.mission_id} field="vehicle_fuel" onSaved={onChanged} />
+                <EditableText value={leg.editable.vehicle_gearbox} placeholder="boîte" missionId={leg.mission_id} field="vehicle_gearbox" onSaved={onChanged} />
+                <EditableText value={leg.editable.vehicle_mileage} placeholder="km" missionId={leg.mission_id} field="vehicle_mileage" onSaved={onChanged} mono /></dd></div>
+              <div className="grid grid-cols-[92px_minmax(0,1fr)] md:grid-cols-[110px_1fr] gap-2 items-center"><dt className="text-ink-muted">Incident</dt><dd className="flex flex-wrap gap-x-2 gap-y-0.5 items-center">
+                <EditableText value={leg.editable.incident_type} placeholder="type d’incident" missionId={leg.mission_id} field="incident_type" onSaved={onChanged} />
+                <EditableText value={leg.editable.incident_description} placeholder="description" missionId={leg.mission_id} field="incident_description" onSaved={onChanged} /></dd></div>
               <div className="grid grid-cols-[92px_minmax(0,1fr)] md:grid-cols-[110px_1fr] gap-2 items-center"><dt className="text-ink-muted">{leg.kind === 'rel' ? 'Départ' : 'Intervention'}</dt><dd>
-                <button type="button" onClick={() => { if (!embedOpen) onToggleEmbed(); setTimeout(() => document.getElementById(`grp-${leg.letter}`)?.querySelector('input[placeholder*="dresse"], input[name*="address"]')?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 250) }}
-                  title="Modifier dans la fiche (adresse géocodée)" className={`text-left rounded px-1 -mx-1 hover:bg-brand/10 hover:ring-1 hover:ring-brand/30 ${leg.editable.incident_address ? 'text-ink' : 'text-ink-faint italic'}`}>{leg.editable.incident_address || 'adresse à définir'} <span className="text-ink-faint">✎</span></button></dd></div>
-              <div className="grid grid-cols-[92px_minmax(0,1fr)] md:grid-cols-[110px_1fr] gap-2 items-center"><dt className="text-ink-muted">{leg.kind === 'rel' ? 'Livrer à' : 'Destination'}</dt><dd>
-                <button type="button" onClick={() => { if (!embedOpen) onToggleEmbed(); setTimeout(() => document.getElementById(`grp-${leg.letter}`)?.querySelector('input[placeholder*="estination"], input[name*="destination"]')?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 250) }}
-                  title="Modifier dans la fiche (adresse géocodée)" className={`text-left rounded px-1 -mx-1 hover:bg-brand/10 hover:ring-1 hover:ring-brand/30 ${(leg.editable.destination_address || leg.editable.redelivery_address) ? 'text-ink' : 'text-ink-faint italic'}`}>{leg.editable.destination_address || leg.editable.redelivery_address || 'à définir'} <span className="text-ink-faint">✎</span></button></dd></div>
+                <EditableAddress value={leg.editable.incident_address} field="incident" missionId={leg.mission_id} gmKey={shared.googleMapsKey} onSaved={onChanged} /></dd></div>
+              <div className="grid grid-cols-[92px_minmax(0,1fr)] md:grid-cols-[110px_1fr] gap-2 items-center"><dt className="text-ink-muted">{leg.kind === 'rel' ? 'Livrer à' : 'Destination'}</dt><dd className="space-y-0.5">
+                <EditableText value={leg.editable.destination_name} placeholder="nom du lieu (garage, hôtel…)" missionId={leg.mission_id} field="destination_name" onSaved={onChanged} />
+                <EditableAddress value={leg.editable.destination_address} field="destination" missionId={leg.mission_id} gmKey={shared.googleMapsKey} onSaved={onChanged} placeholder={/d[ée]pannage|sur place/i.test(leg.title) ? 'sur place' : 'à définir'} /></dd></div>
+              {leg.kind !== 'rel' && (leg.editable.redelivery_address || leg.open) && (
+                <div className="grid grid-cols-[92px_minmax(0,1fr)] md:grid-cols-[110px_1fr] gap-2 items-center"><dt className="text-ink-muted">Relivraison</dt><dd>
+                  <EditableAddress value={leg.editable.redelivery_address} field="redelivery" missionId={leg.mission_id} gmKey={shared.googleMapsKey} onSaved={onChanged} placeholder="adresse de relivraison à définir" /></dd></div>
+              )}
+              <div className="grid grid-cols-[92px_minmax(0,1fr)] md:grid-cols-[110px_1fr] gap-2 items-center md:col-span-2"><dt className="text-ink-muted">Remarque</dt><dd>
+                <EditableText value={leg.editable.remarks_general} placeholder="remarque dispatch" missionId={leg.mission_id} field="remarks_general" onSaved={onChanged} /></dd></div>
             </div>
           )}
           {!mobile && <dl className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-1 text-xs">
@@ -340,6 +365,114 @@ function Group({ d, leg, canBill, isOpen, onToggle, embedOpen, onToggleEmbed, fi
         </div>
       )}
     </div>
+  )
+}
+
+// ── Adresse modifiable sur place (Olivier 07/09/2026 : « quand je modifie une
+// adresse dans la liste, ça redirige sur la fiche complète, c'est pas
+// friendly ») : même recherche Google que la fiche, coordonnées persistées
+// (géocodage = navigateur), le moteur de prix se recalcule côté API.
+function EditableAddress({ value, field, missionId, gmKey, onSaved, placeholder = 'adresse à définir' }: {
+  value: string | null; field: 'incident' | 'destination' | 'redelivery'; missionId: string; gmKey?: string; onSaved: () => void | Promise<void>; placeholder?: string
+}) {
+  const [editing, setEditing] = useState(false)
+  const [v, setV] = useState(value || '')
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState<string | null>(null)
+  useEffect(() => { if (!editing) setV(value || '') }, [value, editing])
+  const save = async (addr: string, lat: number | null, lng: number | null, city?: string) => {
+    setBusy(true); setErr(null)
+    try {
+      const body: Record<string, any> = field === 'incident'
+        ? { incident_address: addr || null, incident_lat: lat, incident_lng: lng, ...(city ? { incident_city: city } : {}) }
+        : field === 'destination'
+          ? { destination_address: addr || null, destination_lat: lat, destination_lng: lng }
+          : { redelivery_address: addr || null, redelivery_lat: lat, redelivery_lng: lng }
+      const r = await fetch(`/api/missions/${missionId}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+      if (!r.ok) { const j = await r.json().catch(() => ({})); throw new Error(j.error || `HTTP ${r.status}`) }
+      setEditing(false); await onSaved()
+    } catch (e: any) { setErr(String(e.message || e)) } finally { setBusy(false) }
+  }
+  if (!editing) return (
+    <button type="button" onClick={() => setEditing(true)} title="Toucher pour modifier"
+      className={`text-left rounded px-1 -mx-1 hover:bg-brand/10 hover:ring-1 hover:ring-brand/30 break-words ${value ? 'text-ink' : 'text-ink-faint italic'}`}>
+      {value || placeholder} <span className="text-ink-faint">✎</span>{err && <span className="ml-1 text-red-600 not-italic">⚠ {err}</span>}
+    </button>
+  )
+  return (
+    <div className="space-y-1.5 min-w-0">
+      <AddressField value={v} onChange={setV} gmKey={gmKey || ''} placeholder="Tape l’adresse, choisis la suggestion…"
+        onSelect={(addr, lat, lng, city) => { setV(addr); save(addr, lat, lng, city) }} />
+      <div className="flex flex-wrap gap-1.5 text-xs">
+        <button type="button" disabled={busy} onClick={() => { setV(value || ''); setEditing(false); setErr(null) }} className="px-2.5 py-1 rounded-lg border bg-surface text-ink-secondary">Annuler</button>
+        <button type="button" disabled={busy || !v.trim()} onClick={() => save(v.trim(), null, null)} title="Sans suggestion Google : l’adresse est gardée telle quelle, sans coordonnées"
+          className="px-2.5 py-1 rounded-lg border bg-surface text-ink-secondary disabled:opacity-50">{busy ? '…' : 'Garder le texte tel quel'}</button>
+        {value && <button type="button" disabled={busy} onClick={() => save('', null, null)} className="px-2.5 py-1 rounded-lg border bg-surface text-red-700 disabled:opacity-50">Effacer</button>}
+      </div>
+      {err && <p className="text-red-600 text-xs">⚠ {err}</p>}
+    </div>
+  )
+}
+
+// ── Liste déroulante modifiable (type, source) ─────────────────────────────
+function EditableSelect({ value, options, missionId, field, onSaved }: {
+  value: string | null; options: [string, string][]; missionId: string; field: string; onSaved: () => void | Promise<void>
+}) {
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState<string | null>(null)
+  const label = options.find(o => o[0] === value)?.[1] || value || '—'
+  const change = async (next: string) => {
+    if (!next || next === value) return
+    setBusy(true); setErr(null)
+    try {
+      const r = await fetch(`/api/missions/${missionId}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ [field]: next }) })
+      if (!r.ok) { const j = await r.json().catch(() => ({})); throw new Error(j.error || `HTTP ${r.status}`) }
+      await onSaved()
+    } catch (e: any) { setErr(String(e.message || e)) } finally { setBusy(false) }
+  }
+  return (
+    <span className="inline-flex items-center gap-1">
+      <select value={value || ''} disabled={busy} onChange={e => change(e.target.value)} title={label}
+        className="border rounded px-1.5 py-0.5 bg-surface text-ink text-xs max-w-[220px]">
+        {!value && <option value="">—</option>}
+        {!options.some(o => o[0] === value) && value && <option value={value}>{value}</option>}
+        {options.map(([k, l]) => <option key={k} value={k}>{l}</option>)}
+      </select>
+      {err && <span className="text-red-600">⚠ {err}</span>}
+    </span>
+  )
+}
+
+// ── Date et heure modifiables (intervention / RDV) ─────────────────────────
+function EditableDateTime({ value, missionId, field, onSaved }: { value: string | null; missionId: string; field: string; onSaved: () => void | Promise<void> }) {
+  const [editing, setEditing] = useState(false)
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState<string | null>(null)
+  const toLocal = (iso: string | null) => { if (!iso) return ''; const d = new Date(iso); const p = (n: number) => String(n).padStart(2, '0'); return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}` }
+  const [v, setV] = useState(toLocal(value))
+  useEffect(() => { if (!editing) setV(toLocal(value)) }, [value, editing])
+  const save = async () => {
+    const next = v ? new Date(v).toISOString() : null
+    if ((next || '') === (value ? new Date(value).toISOString() : '')) { setEditing(false); return }
+    setBusy(true); setErr(null)
+    try {
+      const r = await fetch(`/api/missions/${missionId}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ [field]: next }) })
+      if (!r.ok) { const j = await r.json().catch(() => ({})); throw new Error(j.error || `HTTP ${r.status}`) }
+      setEditing(false); await onSaved()
+    } catch (e: any) { setErr(String(e.message || e)) } finally { setBusy(false) }
+  }
+  if (!editing) return (
+    <button type="button" onClick={() => setEditing(true)} title="Date et heure d’intervention — toucher pour modifier"
+      className={`text-left rounded px-1 -mx-1 hover:bg-brand/10 hover:ring-1 hover:ring-brand/30 ${value ? 'text-ink' : 'text-ink-faint italic'}`}>
+      🕒 {value ? new Date(value).toLocaleString('fr-BE', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : 'date d’intervention'}{err && <span className="ml-1 text-red-600 not-italic">⚠ {err}</span>}
+    </button>
+  )
+  return (
+    <span className="inline-flex items-center gap-1">
+      <input type="datetime-local" autoFocus value={v} disabled={busy} onChange={e => setV(e.target.value)} onBlur={save}
+        onKeyDown={e => { if (e.key === 'Enter') save(); if (e.key === 'Escape') { setV(toLocal(value)); setEditing(false) } }}
+        className="border rounded px-1.5 py-0.5 bg-surface text-ink text-xs" />
+    </span>
   )
 }
 
