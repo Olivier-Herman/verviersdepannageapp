@@ -221,7 +221,18 @@ export async function getExitControlState(sb: any, missionId: string): Promise<E
 
   // Une ligne de contrôle existante fait foi même si la source de la fiche a
   // été modifiée entre-temps (sinon changer la source désarmerait le verrou).
-  let { data: control } = await sb.from('mission_exit_control').select('*').eq('mission_id', missionId).maybeSingle()
+  const ctl = await sb.from('mission_exit_control').select('*').eq('mission_id', missionId).maybeSingle()
+  let control = ctl.data
+  // Fermé par défaut : une erreur BDD (grant manquant, schéma…) ne doit JAMAIS
+  // laisser sortir une épave Police – Accident. 2026-09-07 : les tables sans
+  // grant ont rendu le verrou inopérant pendant 2 jours, en silence.
+  if (ctl.error && isExitControlSource(mission.source)) {
+    console.error('[exit-control] lecture mission_exit_control KO:', ctl.error.message)
+    return {
+      ...empty(), armed: true, allowed: false,
+      reason: `Contrôle de sortie indisponible (erreur technique : ${ctl.error.message}). Préviens Olivier.`,
+    }
+  }
   if (!control && !isExitControlSource(mission.source)) return empty()
 
   const expertVisits = await listExpertVisits(sb, missionId)
