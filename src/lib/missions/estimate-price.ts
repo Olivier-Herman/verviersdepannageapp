@@ -115,6 +115,40 @@ async function touringRouteFromNearestDepot(
  *
  * Pour DSP / réparation sur place / trajet_vide : pas de chargé, totalKm = aller/retour depot.
  */
+// Date de SORTIE du parc d'une fiche (null = encore au parc). Sert à borner
+// le décompte des jours de gardiennage. Avant le 07/09/2026, le mode « lignes »
+// (tarifs police) comptait jusqu'à AUJOURD'HUI même après la sortie : 2EST201
+// (accident police, sorti le 03/08) affichait 37 jours de gardiennage (740 €)
+// au lieu de 2. Ordre :
+//   1. fiche gardiennage rattachée (Vue dossier) → parc_exit_at ;
+//   2. relivraison enfant chargée après la mise en parc → loaded_at ;
+//      (une REL enfant PAS encore chargée = véhicule toujours au parc)
+//   3. la fiche repart livrer elle-même (REM+REL) → delivering_at ;
+//   4. encore 'parked' → null ;
+//   5. terminée sans relivraison (restitution, facturation) → completed_at.
+async function parcExitRef(sb: ReturnType<typeof createAdminClient>, mission: any): Promise<string | null> {
+  const parkedAt: string | null = mission.parked_at || null
+  if (!parkedAt) return null
+  if (mission.id) {
+    try {
+      const { data: leg } = await sb.from('incoming_missions').select('parc_exit_at')
+        .eq('parc_origin_mission_id', mission.id).eq('dossier_leg', true)
+        .order('parked_at', { ascending: false }).limit(1).maybeSingle()
+      if (leg) return (leg as any).parc_exit_at || null
+      const { data: kids } = await sb.from('incoming_missions').select('loaded_at, status')
+        .eq('parent_mission_id', mission.id).eq('dossier_leg', false)
+        .not('status', 'in', '("cancelled","ignored")')
+      const loaded = (kids || []).map((k: any) => k.loaded_at).filter((d: string | null) => d && d > parkedAt).sort()
+      if (loaded.length) return loaded[0]
+      if ((kids || []).some((k: any) => !k.loaded_at)) return null   // REL en attente : toujours au parc
+    } catch {}
+  }
+  if (mission.delivering_at && mission.delivering_at > parkedAt) return mission.delivering_at
+  if (mission.status === 'parked') return null
+  if (['completed', 'to_invoice', 'invoiced'].includes(String(mission.status || '')) && mission.completed_at && mission.completed_at > parkedAt) return mission.completed_at
+  return null
+}
+
 async function computeMissionKm(missionId: string): Promise<{ chargedKm: number | null; totalKm: number | null }> {
   const sb = createAdminClient()
   const { data: m } = await sb
@@ -526,9 +560,10 @@ export async function estimateMissionPrice(mission: MissionLike, opts?: { skipRe
     parcEur   = forfaitParc
   } else if (mission.parked_at && tariff.parc_day_price && !mission.storage_waived) {
     const parcStart = new Date(mission.parked_at)
-    const refEnd    = (mission as any).delivering_at
-                   || (mission as any).completed_at
-                   || new Date().toISOString()
+    // Fin = sortie réelle du parc (fiche gardiennage, REL chargée, livraison,
+    // clôture) — plus completed_at seul, qui tombe à la création de la REL
+    // alors que le véhicule est encore au parc.
+    const refEnd    = (await parcExitRef(sb, mission)) || new Date().toISOString()
     const parcEnd   = new Date(refEnd)
     const diffMs    = Math.max(0, parcEnd.getTime() - parcStart.getTime())
     parcJours       = Math.floor(diffMs / (1000 * 60 * 60 * 24))
@@ -740,9 +775,10 @@ async function estimateBrackets(
     parcEur   = forfaitParc
   } else if (mission.parked_at && tariff.parc_day_price && !mission.storage_waived) {
     const parcStart = new Date(mission.parked_at)
-    const refEnd    = (mission as any).delivering_at
-                   || (mission as any).completed_at
-                   || new Date().toISOString()
+    // Fin = sortie réelle du parc (fiche gardiennage, REL chargée, livraison,
+    // clôture) — plus completed_at seul, qui tombe à la création de la REL
+    // alors que le véhicule est encore au parc.
+    const refEnd    = (await parcExitRef(sb, mission)) || new Date().toISOString()
     const parcEnd   = new Date(refEnd)
     const diffMs    = Math.max(0, parcEnd.getTime() - parcStart.getTime())
     parcJours       = Math.floor(diffMs / (1000 * 60 * 60 * 24))
@@ -860,8 +896,10 @@ async function estimateLinesTemplate(
     const diffMs = Math.max(0, end - start)
     return Math.floor(diffMs / (1000 * 60 * 60 * 24))
   }
-  const autoParcJoursParked       = joursPleinsEcoules(mission.parked_at || mission.received_at)
-  const autoParcJoursIntervention = joursPleinsEcoules(mission.intervention_date || mission.received_at)
+  // Sortie du parc (null = encore au parc → on compte jusqu'à maintenant).
+  const parcExit = await parcExitRef(sb, mission)
+  const autoParcJoursParked       = joursPleinsBetween(mission.parked_at || mission.received_at, parcExit)
+  const autoParcJoursIntervention = joursPleinsBetween(mission.intervention_date || mission.received_at, parcExit)
   let autoKm = 0
   if (mission.total_km != null || mission.charged_km != null) {
     // Preview cote dispatch : on choisit la bonne valeur selon tariff.km_basis.
@@ -970,21 +1008,23 @@ async function estimateLinesTemplate(
           // Gardiennage hors période saisie (20 €/j) : uniquement en cas de
           // levée (propriétaire récupère). Pas applicable si remise au Domaine.
           const startRef = mission.temp_returned_at || leveeDate
-          autoQty = (startRef && !domaineDate) ? Math.max(0, joursPleinsEcoules(startRef) - freeDays) : 0
+          autoQty = (startRef && !domaineDate) ? Math.max(0, joursPleinsBetween(startRef, parcExit) - freeDays) : 0
           parcFrom = startRef || null
-          parcTo   = (startRef && !domaineDate) ? nowIso : null
+          parcTo   = (startRef && !domaineDate) ? (parcExit || nowIso) : null
         } else if (cutoff) {
           const startRef = l.parc_count_from === 'intervention_date'
             ? (mission.intervention_date || mission.received_at)
             : laterOf(mission.parked_at || mission.received_at, parquetBilledTo)
-          autoQty = Math.max(0, joursPleinsBetween(startRef, cutoff) - freeDays)
+          // Sortie avant la coupure (levée / Domaine) : c'est la sortie qui borne.
+          const endRef = parcExit && String(parcExit).slice(0, 10) < String(cutoff).slice(0, 10) ? parcExit : cutoff
+          autoQty = Math.max(0, joursPleinsBetween(startRef, endRef) - freeDays)
           parcFrom = startRef || null
-          parcTo   = cutoff
+          parcTo   = endRef
         } else if (parquetBilledTo && l.parc_count_from !== 'intervention_date') {
           // Période déjà facturée au Parquet → le client repart de la coupe.
-          autoQty  = Math.max(0, joursPleinsEcoules(parquetBilledTo) - freeDays)
+          autoQty  = Math.max(0, joursPleinsBetween(parquetBilledTo, parcExit) - freeDays)
           parcFrom = parquetBilledTo
-          parcTo   = nowIso
+          parcTo   = parcExit || nowIso
         } else {
           const ref = l.parc_count_from === 'intervention_date'
             ? autoParcJoursIntervention
@@ -993,7 +1033,7 @@ async function estimateLinesTemplate(
           parcFrom = l.parc_count_from === 'intervention_date'
             ? (mission.intervention_date || mission.received_at || null)
             : (mission.parked_at || mission.received_at || null)
-          parcTo   = nowIso
+          parcTo   = parcExit || nowIso
         }
       }
       if (l.kind === 'SERV-KM'   && kmHorsForfait > 0) autoQty = Math.ceil(kmHorsForfait)

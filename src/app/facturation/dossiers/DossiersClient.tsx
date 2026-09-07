@@ -75,6 +75,7 @@ export default function DossiersClient({ initial, autoById, isSuperadmin, capped
   // raisonne par fiche ; la racine porte la règle source/type).
   const autoInfo = (d: Dossier): AutoInfo | undefined => autoElig?.byMission?.[d.root_id]
   const isAuto = (d: Dossier) => {
+    if (isDone(d)) return false   // déjà facturé / auto-facturé : plus jamais « éligible »
     const ai = autoInfo(d)
     if (ai) return ai.status === 'eligible' || (ai.status === 'waiting' && !!ai.eligibleAt && new Date(ai.eligibleAt).getTime() <= now)
     return !d.state.open && !isDone(d) && ready(d).length > 0 && !!autoById[d.root_id] && rest(d) <= AUTO_MAX
@@ -227,7 +228,13 @@ export default function DossiersClient({ initial, autoById, isSuperadmin, capped
                 ))}
               </div>
               <div className="text-right font-semibold tabular-nums text-ink text-sm">{hasUnknown(d) ? <span className="text-ink-muted font-normal">{rest(d) > 0 ? eur(rest(d)) + ' + ' : ''}à calculer</span> : eur(rest(d))}<span className="block text-[10.5px] font-normal text-ink-muted">reste HTVA</span></div>
-              <div><span className={`text-[11px] font-semibold px-2.5 py-1 rounded-full whitespace-nowrap ${badge[0]}`} title={ai?.reason || ''}>{badge[1]}</span></div>
+              <div className="flex flex-wrap items-center gap-1.5">
+                <span className={`text-[11px] font-semibold px-2.5 py-1 rounded-full whitespace-nowrap ${badge[0]}`} title={ai?.reason || ''}>{badge[1]}</span>
+                {d.stamps?.domaine && <span className="px-2 py-0.5 bg-purple-600 text-white text-[11px] rounded-lg font-black uppercase tracking-widest border border-purple-300 shadow -rotate-2 whitespace-nowrap" title={d.stamps.domaine}>🏛 Domaine</span>}
+                {d.stamps?.touring_check && (d.stamps.touring_check.toUpperCase().startsWith('ANWB')
+                  ? <span className="px-2 py-0.5 bg-blue-600 text-white text-[11px] rounded-lg font-black uppercase tracking-widest border border-blue-300 shadow -rotate-2 whitespace-nowrap" title="Prise en charge ANWB (facturer à ANWB)">🇳🇱 {d.stamps.touring_check}</span>
+                  : <span className="px-2 py-0.5 bg-surface-2 border text-ink-secondary text-[11px] rounded-lg font-semibold whitespace-nowrap" title="Check Touring">{d.stamps.touring_check}</span>)}
+              </div>
               <div className="flex gap-1.5">
                 <button disabled={(!rd.length && !d.legs.some(l => canPickLeg(l))) || loadingBill === d.root_id} onClick={e => { e.stopPropagation(); openBilling(d) }} className={`px-3 py-1.5 rounded-lg text-xs font-semibold ${rd.length ? 'bg-brand text-white' : 'border text-ink-secondary'} disabled:opacity-40`}>{loadingBill === d.root_id ? '⏳ Calcul…' : `Facturer${d.state.open && rd.length ? ' (partiel)' : ''}`}</button>
                 <Link href={`/dispatch/dossier/${d.root_id}`} onClick={e => e.stopPropagation()} className="px-2.5 py-1.5 rounded-lg text-xs font-semibold border text-ink-secondary hover:text-ink">Dossier ↗</Link>

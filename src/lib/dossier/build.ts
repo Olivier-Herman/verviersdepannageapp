@@ -73,6 +73,8 @@ export interface Dossier {
   billed_to:      { id: number | null; name: string | null }
   received_at:    string | null
   state:          { open: boolean; reason: string | null }
+  // Tampons de la page Facturation : Domaine (vendu), ANWB / Touring check.
+  stamps:         { domaine: string | null; touring_check: string | null }
   legs:           DossierLeg[]
   events:         DossierEvent[]
   totals:         { estimated: number; billed: number; collected: number; remaining: number }
@@ -248,9 +250,13 @@ export async function buildDossier(anyMissionId: string, opts: { light?: boolean
     const st = statusOf(m, kind)
     const billedItems = itemsBy[m.id] || []
     const billedHtva = r2(billedItems.reduce((s, it) => s + Number(it.amount_htva || 0), 0))
+    // « Auto-facturation » (clôture Allianz Hexalite, compagnie qui se facture
+    // elle-même) : pas de numéro chez nous, mais la fiche est bel et bien
+    // réglée — 0048MLL ressortait « Éligible auto » après coup.
+    const autoFact = String(m.invoice_method || '') === 'auto' && !!m.invoiced_at && !m.invoice_number
     const billedRefs = Array.from(new Set([
       ...billedItems.map(refOf).filter(Boolean),
-      ...(m.invoice_number ? [m.invoice_number] : (m.invoice_odoo_id && !billedItems.length ? [`brouillon Odoo #${m.invoice_odoo_id}`] : [])),
+      ...(m.invoice_number ? [m.invoice_number] : (m.invoice_odoo_id && !billedItems.length ? [`brouillon Odoo #${m.invoice_odoo_id}`] : autoFact ? ['auto-facturation'] : [])),
     ])) as string[]
 
     let amount = 0, note: string | null = null, nothing: string | null = null, days: number | null = null, amountUnknown = false
@@ -399,6 +405,10 @@ export async function buildDossier(anyMissionId: string, opts: { light?: boolean
     billed_to: { id: root.billed_to_id ?? null, name: root.billed_to_name ?? null },
     received_at: root.received_at,
     state, legs, events, light: light || undefined,
+    stamps: {
+      domaine: root.domaine_vente_date ? `Vendu au Domaine${root.domaine_vente_firm ? ' · ' + root.domaine_vente_firm : ''}` : (root.domaine_remise_date ? `Remis au Domaine le ${String(root.domaine_remise_date).slice(0, 10)}` : null),
+      touring_check: root.touring_check_stamp || null,
+    },
     totals: { estimated, billed, collected, remaining: r2(Math.max(0, estimated - billed)) },
     invoices: Object.values(invMap).map(e => ({ ...e, covers: Array.from(e.covers).sort() })),
   }
