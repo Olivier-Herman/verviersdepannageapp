@@ -79,6 +79,47 @@ export default function MissionListClient({
   const { t } = useT()
   const [missions, setMissions] = useState<Mission[]>(initialMissions)
   const [showChoice, setShowChoice] = useState(false)
+  // ── PARC DE RELIVRAISON ───────────────────────────────────────────────────
+  // « Il n'a pas la possibilité de sortir la voiture du parc pour la mettre en
+  // relivraison, sauf en scannant le QR — qui à ce moment-là n'est pas encore
+  // collé sur le véhicule » (Olivier 2026-09-07). Franck, de nuit et sans
+  // mission, veut pouvoir écouler le parc qu'il a lui-même rempli pendant le
+  // rush. Le QR est un raccourci quand on est devant la voiture ; il ne doit pas
+  // être le SEUL chemin.
+  const [showParc, setShowParc] = useState(false)
+  const [parc, setParc] = useState<any[] | null>(null)
+  const [parcBusy, setParcBusy] = useState<string | null>(null)
+  const [parcErr, setParcErr] = useState('')
+  useEffect(() => {
+    if (!showParc || parc) return
+    fetch('/api/relivraison/list?zone=K', { cache: 'no-store' })
+      .then(r => r.json())
+      .then(d => setParc(d.missions || d.rows || []))
+      .catch(() => setParc([]))
+  }, [showParc, parc])
+
+  /** Prendre un véhicule du parc : crée (ou reprend) la relivraison et se
+   *  l'attribue. Même chemin serveur que le scan du QR — on ne double pas la
+   *  règle métier, on lui ouvre une seconde porte. */
+  const prendreRelivraison = async (m: any, confirmer = false) => {
+    setParcBusy(m.id); setParcErr('')
+    try {
+      const r = await fetch(`/api/missions/${m.id}/qr-rel-action`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ confirm_reassign: confirmer }),
+      })
+      const j = await r.json()
+      if (r.status === 409 && j.needs_confirm) {
+        const qui = j.current_assignee_name || 'un autre chauffeur'
+        if (confirm(`Cette relivraison est déjà attribuée à ${qui}. La reprendre ?`)) return prendreRelivraison(m, true)
+        setParcBusy(null); return
+      }
+      if (!r.ok || !j.ok) { setParcErr(j.error || 'Impossible de lancer la relivraison'); setParcBusy(null); return }
+      router.push(j.redirect_url || `/mission/${j.mission_id}`)
+    } catch (e: any) {
+      setParcErr(e?.message || 'Erreur'); setParcBusy(null)
+    }
+  }
 
   // Force refresh à l'ouverture — données toujours fraîches
   useEffect(() => {
@@ -134,6 +175,57 @@ export default function MissionListClient({
           </>
         )}
       </div>
+
+      {/* ── Parc de relivraison ─────────────────────────────────────────── */}
+      <button
+        type="button"
+        onClick={() => setShowParc(true)}
+        className="fixed bottom-6 left-5 h-16 px-5 bg-surface border-2 border-brand rounded-2xl shadow-2xl flex items-center gap-2 text-ink font-semibold transition active:scale-95 z-20">
+        <span className="text-xl">🅿️</span>
+        <span className="text-sm leading-tight text-left">Parc de<br />relivraison</span>
+      </button>
+
+      {showParc && (
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-sm">
+          <div className="bg-surface w-full sm:max-w-lg rounded-t-3xl sm:rounded-3xl max-h-[85vh] flex flex-col">
+            <div className="px-5 pt-4 pb-3 border-b border flex items-center justify-between flex-shrink-0">
+              <div>
+                <p className="text-ink font-bold">🅿️ Parc de relivraison</p>
+                <p className="text-ink-muted text-xs">{parc == null ? 'chargement…' : `${parc.length} véhicule(s) en attente`}</p>
+              </div>
+              <button onClick={() => setShowParc(false)} className="text-ink-muted text-2xl px-2">×</button>
+            </div>
+            {parcErr && <p className="px-5 pt-3 text-red-500 text-sm">⚠ {parcErr}</p>}
+            <div className="flex-1 overflow-y-auto p-4 space-y-2">
+              {parc != null && parc.length === 0 && (
+                <p className="text-ink-muted text-sm text-center py-10">Aucun véhicule à relivrer pour l’instant.</p>
+              )}
+              {(parc || []).map((m: any) => (
+                <div key={m.id} className="border rounded-2xl p-3 bg-surface-2">
+                  <div className="flex items-baseline gap-2">
+                    <span className="font-mono font-bold text-ink">{m.vehicle_plate || '—'}</span>
+                    <span className="text-ink-secondary text-sm truncate">
+                      {[m.vehicle_brand, m.vehicle_model].filter(Boolean).join(' ')}
+                    </span>
+                  </div>
+                  <p className="text-ink-muted text-xs mt-1">
+                    {m.redelivery_address
+                      ? `→ ${m.redelivery_address}`
+                      : '→ adresse de relivraison pas encore connue'}
+                  </p>
+                  <button
+                    type="button"
+                    disabled={parcBusy === m.id || !m.redelivery_address}
+                    onClick={() => prendreRelivraison(m)}
+                    className="mt-2 w-full py-2.5 bg-brand disabled:opacity-40 text-white rounded-xl text-sm font-bold">
+                    {parcBusy === m.id ? 'Création…' : m.redelivery_address ? '🚚 Relivrer ce véhicule' : 'Adresse manquante'}
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── FAB Nouvelle intervention ────────────────────────────────────── */}
       <button
