@@ -246,7 +246,14 @@ function Group({ d, leg, isOpen, onToggle, embedOpen, onToggleEmbed, fiche, shar
               {leg.billing_remarks.map((r, i) => <p key={i}><span className="text-slate-300">📝 Remarque de facturation{r.author ? ' · ' + r.author : ''} : </span><span className="font-semibold whitespace-pre-line">{r.text}</span></p>)}
             </div>
           )}
-          {leg.kind !== 'out' && <BillingRow d={d} leg={leg} onChanged={onChanged} gmKey={shared.googleMapsKey} />}
+          {leg.kind !== 'out' && leg.channel !== 'parquet' && <BillingRow d={d} leg={leg} onChanged={onChanged} gmKey={shared.googleMapsKey} />}
+          {leg.channel === 'parquet' && (
+            <div className="bg-surface-2 border border-dashed rounded-xl px-3 py-2 text-xs text-ink-secondary flex flex-wrap items-center gap-2">
+              <span>Circuit <b>Parquet</b> : réglé par état de frais (module Saisie, JustInvoice), pas par une facture Odoo de ce dossier.</span>
+              {d.parquet?.efs?.length ? <span className="text-ink-muted">{d.parquet.efs.map(e => `EF n°${e.numero ?? '?'} ${e.status === 'refuse' ? 'refusé' : e.liquide_at ? 'liquidé' : (e.status || 'envoyé')}`).join(' · ')}</span> : null}
+              <Link href="/fourriere/saisies" className="ml-auto px-2 py-0.5 rounded-lg border bg-surface text-ink-secondary hover:text-ink font-semibold">Module Saisie ↗</Link>
+            </div>
+          )}
           {leg.kind === 'out' && leg.channel === 'domaine' && <div className="bg-surface-2 border border-dashed rounded-xl px-3 py-2 text-xs text-ink-secondary">Facturé au <b>SPF Finances — Domaine</b> par le relevé trimestriel (Fourrière → Domaine), pas par une facture Odoo de ce dossier.</div>}
 
           <EstimationTable d={d} me={leg.letter} />

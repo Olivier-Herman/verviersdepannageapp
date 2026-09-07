@@ -36,7 +36,11 @@ const inGroup = (source: string | null, g: SourceGroup) =>
 
 type AutoInfo = { status: string; eligibleAt?: string; reason?: string }
 
-const ready  = (d: Dossier) => d.legs.filter(l => (canPickLeg(l) || (l.amount_unknown && !isLegBilled(l) && !l.nothing_to_bill)) && !(l.kind === 'gard' && l.open))
+const isOdoo = (l: DossierLeg) => (l.channel || 'odoo') === 'odoo'
+const ready  = (d: Dossier) => d.legs.filter(l => isOdoo(l) && (canPickLeg(l) || (l.amount_unknown && !isLegBilled(l) && !l.nothing_to_bill)) && !(l.kind === 'gard' && l.open))
+// Dossier « circuit » = ce qui reste à régler passe par le Parquet (états de
+// frais) ou le Domaine (relevé trimestriel), pas par une facture Odoo d'ici.
+const isCircuit = (d: Dossier) => d.legs.some(l => !isOdoo(l) && !isLegBilled(l) && !l.nothing_to_bill) && ready(d).length === 0
 const hasUnknown = (d: Dossier) => d.legs.some(l => l.amount_unknown && !isLegBilled(l))
 // Un groupe au montant INCONNU (tarif introuvable, destination non géocodée…)
 // n'est pas « facturé » : il reste à facturer, avec « à calculer » affiché.
@@ -46,7 +50,7 @@ const rest   = (d: Dossier) => d.totals.remaining
 export default function DossiersClient({ initial, autoById, isSuperadmin, capped }: { initial: Dossier[]; autoById: Record<string, boolean>; isSuperadmin: boolean; capped: boolean }) {
   const router = useRouter()
   const [rows, setRows] = useState<Dossier[]>(initial)
-  const [tab, setTab] = useState<'todo' | 'auto' | 'live' | 'done'>('todo')
+  const [tab, setTab] = useState<'todo' | 'auto' | 'live' | 'circuit' | 'done'>('todo')
   const [group, setGroupState] = useState<string>('all')
   const [src, setSrc] = useState<string>('all')
   const [search, setSearch] = useState('')
@@ -83,9 +87,10 @@ export default function DossiersClient({ initial, autoById, isSuperadmin, capped
 
   const activeGroup = SOURCE_GROUPS.find(g => g.key === group) || SOURCE_GROUPS[0]
   const TABS: Array<[typeof tab, string, (d: Dossier) => boolean]> = [
-    ['todo', 'À facturer', d => !isDone(d)],
+    ['todo', 'À facturer', d => !isDone(d) && !isCircuit(d)],
     ['auto', 'Éligibles auto', d => isAuto(d)],
-    ['live', 'En cours', d => d.state.open && !isDone(d)],
+    ['live', 'En cours', d => d.state.open && !isDone(d) && !isCircuit(d)],
+    ['circuit', 'Parquet / Domaine', d => isCircuit(d) && !isDone(d)],
     ['done', 'Facturées', d => isDone(d)],
   ]
   const inScope = (d: Dossier) => inGroup(d.source, activeGroup) && (src === 'all' || d.source === src)
@@ -100,7 +105,7 @@ export default function DossiersClient({ initial, autoById, isSuperadmin, capped
   const groupCounts = useMemo(() => Object.fromEntries(SOURCE_GROUPS.map(g => [g.key, rows.filter(d => inGroup(d.source, g) && !isDone(d)).length])), [rows])
   const scoped = rows.filter(inScope).filter(matches)
   const visible = scoped.filter(TABS.find(t => t[0] === tab)![2])
-  const todo = scoped.filter(d => !isDone(d))
+  const todo = scoped.filter(d => !isDone(d) && !isCircuit(d))
 
   const refreshOne = async (rootId: string) => {
     try {
@@ -207,7 +212,9 @@ export default function DossiersClient({ initial, autoById, isSuperadmin, capped
       {visible.map(d => {
         const rd = ready(d); const isOpen = open.has(d.root_id); const ai = autoInfo(d)
         const clients = Array.from(new Set(d.legs.filter(l => !isLegBilled(l) && !l.nothing_to_bill).map(l => l.billed_to_name || '—')))
+        const lastEf = d.parquet?.efs?.length ? d.parquet.efs[d.parquet.efs.length - 1] : null
         const badge = isDone(d) ? ['bg-surface-2 text-ink-muted border', 'Facturé']
+          : isCircuit(d) ? ['bg-violet-600 text-white', d.parquet ? (lastEf ? `Parquet · EF n°${lastEf.numero ?? ''} ${lastEf.status === 'refuse' ? 'refusé' : lastEf.liquide_at ? 'liquidé' : 'en attente'}` : 'Parquet · EF à venir') : 'Domaine · relevé']
           : ai?.status === 'hexalite' ? ['bg-blue-600 text-white', '🟦 Clôture Allianz']
           : isAuto(d) ? ['bg-emerald-600 text-white', '🎯 Éligible auto']
           : ai?.status === 'waiting' && ai.eligibleAt ? ['bg-amber-500 text-white', `⏳ auto dans ${countdown(new Date(ai.eligibleAt).getTime() - now)}`]
@@ -236,7 +243,9 @@ export default function DossiersClient({ initial, autoById, isSuperadmin, capped
                   : <span className="px-2 py-0.5 bg-surface-2 border text-ink-secondary text-[11px] rounded-lg font-semibold whitespace-nowrap" title="Check Touring">{d.stamps.touring_check}</span>)}
               </div>
               <div className="flex gap-1.5">
-                <button disabled={(!rd.length && !d.legs.some(l => canPickLeg(l))) || loadingBill === d.root_id} onClick={e => { e.stopPropagation(); openBilling(d) }} className={`px-3 py-1.5 rounded-lg text-xs font-semibold ${rd.length ? 'bg-brand text-white' : 'border text-ink-secondary'} disabled:opacity-40`}>{loadingBill === d.root_id ? '⏳ Calcul…' : `Facturer${d.state.open && rd.length ? ' (partiel)' : ''}`}</button>
+                {isCircuit(d)
+                  ? <Link href={d.parquet ? '/fourriere/saisies' : '/fourriere/domaine'} onClick={e => e.stopPropagation()} className="px-3 py-1.5 rounded-lg text-xs font-semibold border text-ink-secondary hover:text-ink">{d.parquet ? 'Module Saisie ↗' : 'Module Domaine ↗'}</Link>
+                  : <button disabled={(!rd.length && !d.legs.some(l => canPickLeg(l))) || loadingBill === d.root_id} onClick={e => { e.stopPropagation(); openBilling(d) }} className={`px-3 py-1.5 rounded-lg text-xs font-semibold ${rd.length ? 'bg-brand text-white' : 'border text-ink-secondary'} disabled:opacity-40`}>{loadingBill === d.root_id ? '⏳ Calcul…' : `Facturer${d.state.open && rd.length ? ' (partiel)' : ''}`}</button>}
                 <Link href={`/dispatch/dossier/${d.root_id}`} onClick={e => e.stopPropagation()} className="px-2.5 py-1.5 rounded-lg text-xs font-semibold border text-ink-secondary hover:text-ink">Dossier ↗</Link>
               </div>
             </div>
@@ -255,12 +264,18 @@ export default function DossiersClient({ initial, autoById, isSuperadmin, capped
                 </div>
                 <div>
                   <p className="text-[11px] uppercase tracking-wide text-ink-muted font-semibold mb-1">Factures du dossier</p>
+                  {d.parquet?.efs?.map(e => (
+                    <div key={String(e.numero)} className="flex items-center justify-between gap-2 py-1 border-t first:border-t-0">
+                      <span><span className="font-mono">EF n°{e.numero ?? '?'}</span> <span className="text-ink-muted">{e.from?.slice(0, 10)} → {e.to?.slice(0, 10)} · {e.status === 'refuse' ? 'refusé' : e.liquide_at ? 'liquidé le ' + fmtDay(e.liquide_at) : (e.status || 'envoyé')}{e.justinvoice ? ' · JustInvoice ' + e.justinvoice : ''}{e.include_depannage ? ' · dépannage inclus' : ''}</span></span>
+                      <span className="tabular-nums">{eur(e.total_htva)}</span>
+                    </div>
+                  ))}
                   {d.invoices.length ? d.invoices.map(i => (
                     <div key={i.number} className="flex items-center justify-between gap-2 py-1 border-t first:border-t-0">
                       <span>{i.url ? <a href={i.url} target="_blank" rel="noreferrer" className="text-brand font-mono hover:underline">{cleanRef(i.number)}</a> : <span className="font-mono">{cleanRef(i.number)}</span>} <span className="text-ink-muted">couvre {i.covers.join(' ')} · {i.client || '—'}{i.at ? ' · ' + fmtDay(i.at) : ''}</span></span>
                       <span className="tabular-nums">{eur(i.amount)}</span>
                     </div>
-                  )) : <p className="text-ink-muted">Aucune facture pour l'instant.</p>}
+                  )) : (!d.parquet?.efs?.length && <p className="text-ink-muted">Aucune facture pour l'instant.</p>)}
                   {ai?.reason && <p className="mt-2 text-ink-muted border-l-2 pl-2">Auto-facturation : {ai.reason}</p>}
                   {d.state.open && rd.length > 0 && <p className="mt-2 text-ink-muted border-l-2 pl-2">Dossier en cours ({d.state.reason}) : pas de facturation automatique. Tu peux facturer maintenant les groupes prêts ; le reste partira à la sortie du véhicule.</p>}
                   {isAuto(d) && <p className="mt-2 text-ink-muted border-l-2 pl-2">Sera facturé automatiquement au prochain cron : référence « {d.number} {rd.map(l => l.letter).join(' ')} ».</p>}

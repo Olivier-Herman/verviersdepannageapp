@@ -82,6 +82,9 @@ export interface Dossier {
   state:          { open: boolean; reason: string | null }
   // Tampons de la page Facturation : Domaine (vendu), ANWB / Touring check.
   stamps:         { domaine: string | null; touring_check: string | null }
+  // Circuit Parquet / Domaine (module Saisie) : états de frais, jamais de facture Odoo.
+  parquet?:       { recipient: string; state: string | null; ef_number: number | null; billed_to_date: string | null; depannage_billed: boolean;
+                    efs: { numero: number | null; from: string | null; to: string | null; total_htva: number; status: string | null; justinvoice: string | null; liquide_at: string | null; include_depannage: boolean }[] }
   legs:           DossierLeg[]
   events:         DossierEvent[]
   totals:         { estimated: number; billed: number; collected: number; remaining: number }
@@ -255,6 +258,23 @@ export async function buildDossier(anyMissionId: string, opts: { light?: boolean
     dayPriceByRegime[(l as any).mission_type] = { price: Number((l as any).default_price || 0), free: Number((l as any).free_days || 0) }
   }
 
+  // ── Circuit Parquet / Domaine (saisies) : dossier saisie + états de frais ──
+  let parquet: Dossier['parquet'] | undefined
+  if (String(root.source || '') === 'police_saisie' || root.saisie_motif_code) {
+    const { data: sd } = await sb.from('saisie_dossiers').select('id, recipient, state, ef_number, billed_to_date, depannage_billed, justinvoice_ref')
+      .eq('mission_id', root.id).maybeSingle()
+    if (sd) {
+      const { data: efs } = await sb.from('saisie_etats_frais').select('numero, period_from, period_to, total_htva, status, justinvoice_ref, liquide_at, include_depannage')
+        .eq('dossier_id', (sd as any).id).order('numero', { ascending: true })
+      parquet = {
+        recipient: String((sd as any).recipient || 'parquet'), state: (sd as any).state || null, ef_number: (sd as any).ef_number ?? null,
+        billed_to_date: (sd as any).billed_to_date || null, depannage_billed: !!(sd as any).depannage_billed,
+        efs: (efs || []).map((e: any) => ({ numero: e.numero ?? null, from: e.period_from || null, to: e.period_to || null, total_htva: r2(Number(e.total_htva || 0)), status: e.status || null, justinvoice: e.justinvoice_ref || null, liquide_at: e.liquide_at || null, include_depannage: !!e.include_depannage })),
+      }
+    }
+  }
+  const EF_STATUS: Record<string, string> = { envoye: 'envoyé au Parquet', depose: 'déposé (JustInvoice)', refuse: 'refusé', liquide: 'liquidé', brouillon: 'brouillon' }
+
   // Estimation du REM racine (sert de repli pour le prix/jour et donne la part
   // hors gardiennage).
   let rootEst: any = null
@@ -373,6 +393,34 @@ export async function buildDossier(anyMissionId: string, opts: { light?: boolean
       _sort: startKey(m, kind), _rank: kind === 'rem' ? 0 : kind === 'gard' ? 1 : 2,
     } as any)
   }
+  // ── Canal PARQUET : remorquage + gardiennages saisie facturés par état de
+  //    frais (module Saisie), jamais par une facture Odoo du dossier.
+  if (parquet && parquet.recipient !== 'client') {
+    const efDep = parquet.efs.find(e => e.include_depannage)
+    const lastEf = parquet.efs.length ? parquet.efs[parquet.efs.length - 1] : null
+    for (const l of legs as any[]) {
+      if (l.kind === 'rem' && l.mission_id === root.id) {
+        l.channel = 'parquet'
+        const ef = efDep || lastEf
+        if (parquet.depannage_billed || efDep) {
+          l.billed_refs = [`EF n°${ef?.numero ?? parquet.ef_number ?? '?'}`]; l.billed_htva = l.amount_htva
+          l.status_label = `État de frais n°${ef?.numero ?? ''} · ${EF_STATUS[String(ef?.status || '')] || ef?.status || 'envoyé'}`; l.status_tone = ef?.status === 'refuse' ? 'bad' : 'ok'
+        } else { l.status_label = 'À mettre dans l’état de frais Parquet'; l.status_tone = 'warn' }
+        if (!l.billed_to_name) { l.billed_to_name = 'Parquet de Verviers — frais de justice'; l.billed_inherited = false }
+      }
+      if (l.kind === 'gard' && l.regime === 'saisie') {
+        l.channel = 'parquet'
+        const endDay = l.ended_at ? String(l.ended_at).slice(0, 10) : null
+        const covered = !!(parquet.billed_to_date && endDay && String(parquet.billed_to_date).slice(0, 10) >= endDay)
+        const ef = lastEf
+        if (covered && ef) { l.billed_refs = [`EF n°${ef.numero ?? ''}`]; l.billed_htva = l.amount_htva; l.status_label = `État de frais n°${ef.numero ?? ''} · ${EF_STATUS[String(ef.status || '')] || ef.status}`; l.status_tone = ef.status === 'refuse' ? 'bad' : 'ok' }
+        else if (parquet.billed_to_date) { l.status_label = `${l.open ? 'Gardiennage en cours' : 'Terminé'} · Parquet facturé jusqu'au ${String(parquet.billed_to_date).slice(0, 10)}` }
+        else { l.status_label = `${l.open ? 'Gardiennage en cours' : 'Terminé'} · état de frais à venir` }
+        if (!l.billed_to_name) { l.billed_to_name = 'Parquet de Verviers — frais de justice'; l.billed_inherited = false }
+      }
+    }
+  }
+
   // ── Groupe DOMAINE (saisies) : remise → enlèvement, à charge du SPF Finances ─
   // Même règle que le relevé trimestriel (lib/fourriere/domaine-billing) :
   // jours = remise → enlèvement inclus, tarif SERV-PARC saisie (voiture/cyclo).
@@ -509,6 +557,7 @@ export async function buildDossier(anyMissionId: string, opts: { light?: boolean
     billed_to: { id: root.billed_to_id ?? null, name: root.billed_to_name ?? null },
     received_at: root.received_at,
     state, legs, events, light: light || undefined,
+    parquet,
     stamps: {
       domaine: root.domaine_vente_date ? `Vendu au Domaine${root.domaine_vente_firm ? ' · ' + root.domaine_vente_firm : ''}` : (root.domaine_remise_date ? `Remis au Domaine le ${String(root.domaine_remise_date).slice(0, 10)}` : null),
       touring_check: root.touring_check_stamp || null,
