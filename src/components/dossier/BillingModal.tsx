@@ -40,6 +40,22 @@ export default function BillingModal({ d, onClose, onDone }: { d: Dossier; onClo
   const missingClient = chosen.some(l => !l.billed_to_id)
   const runningChosen = chosen.some(l => l.kind === 'gard' && l.open)
 
+  // « Déjà facturé… » (facture faite à la main dans Odoo) et « Ne rien
+  // facturer » (sans frais), sur les groupes cochés.
+  const mark = async (action: 'already_billed' | 'no_charge') => {
+    const value = action === 'already_billed'
+      ? window.prompt(`Numéro de la facture Odoo qui couvre ${chosen.map(l => l.letter).join(' ')} :`, '')
+      : window.prompt(`Ne rien facturer pour ${chosen.map(l => l.letter).join(' ')} — motif :`, '')
+    if (value === null || !value.trim()) return
+    setBusy(true); setError(null)
+    try {
+      const r = await fetch(`/api/dossier/${d.root_id}/mark`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action, mission_ids: chosen.map(l => l.mission_id), invoice_number: action === 'already_billed' ? value.trim() : undefined, reason: action === 'no_charge' ? value.trim() : undefined }) })
+      const j = await r.json()
+      if (!r.ok || !j.ok) throw new Error(j.error || `HTTP ${r.status}`)
+      setResult({ invoices: [], warnings: [action === 'already_billed' ? `Groupes ${j.covers.join(' ')} marqués facturés sur ${value.trim()}${j.invoice ? ' (facture Odoo retrouvée)' : ' (numéro non retrouvé dans Odoo, à vérifier)'}.` : `Groupes ${j.covers.join(' ')} marqués sans frais : ${value.trim()}.`] })
+      await onDone()
+    } catch (e: any) { setError(String(e.message || e)) } finally { setBusy(false) }
+  }
   const remarksOfChosen = () => chosen.flatMap(l => (l.billing_remarks || []).map(r => ({ label: `${d.number}${l.letter}`, ...r })))
   const askOrSubmit = () => { if (remarksOfChosen().length) setRemarkGate(true); else submit() }
   const submit = async () => {
@@ -99,9 +115,13 @@ export default function BillingModal({ d, onClose, onDone }: { d: Dossier; onClo
             {runningChosen && <div className={`rounded-lg px-3 py-2 text-xs ${TONE.warn}`}>Un gardiennage en cours est coché : sa période s'arrête à aujourd'hui et un nouveau groupe s'ouvre sur la suite.</div>}
             {d.state.open && <div className={`rounded-lg px-3 py-2 text-xs ${TONE.live}`}>Dossier en cours ({d.state.reason}) : facturation manuelle autorisée. L'automatique attendra la sortie du véhicule.</div>}
             {error && <div className={`rounded-lg px-3 py-2 text-xs ${TONE.bad}`}>{error}</div>}
-            <div className="flex items-center justify-between gap-3 text-xs">
+            <div className="flex items-center justify-between gap-3 text-xs flex-wrap">
               <span className="text-ink-muted">{chosen.length ? <><b className="text-ink">{chosen.length === allPickable.length ? 'Facture totale' : 'Facture partielle'}</b> · {nInv} facture{nInv > 1 ? 's' : ''} · {eur(total)} HTVA · référence « {d.number} {chosen.map(l => l.letter).join(' ')} »</> : 'Rien de coché'}</span>
-              <button disabled={busy || !chosen.length || missingClient} onClick={askOrSubmit} className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-brand text-white disabled:opacity-40">{busy ? '⏳ Création…' : `Créer ${nInv > 1 ? 'les factures' : 'la facture'}`}</button>
+              <span className="flex items-center gap-1.5">
+                <button disabled={busy || !chosen.length} onClick={() => mark('already_billed')} title="Une facture a été faite à la main dans Odoo : donne son numéro, les groupes cochés sont reliés" className="px-2.5 py-1.5 rounded-lg text-xs font-semibold border text-ink-secondary hover:text-ink disabled:opacity-40">Déjà facturé…</button>
+                <button disabled={busy || !chosen.length} onClick={() => mark('no_charge')} title="Intervention sans frais pour les groupes cochés (motif demandé)" className="px-2.5 py-1.5 rounded-lg text-xs font-semibold border text-ink-secondary hover:text-ink disabled:opacity-40">Ne rien facturer</button>
+                <button disabled={busy || !chosen.length || missingClient} onClick={askOrSubmit} className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-brand text-white disabled:opacity-40">{busy ? '⏳ Création…' : `Créer ${nInv > 1 ? 'les factures' : 'la facture'}`}</button>
+              </span>
             </div>
           </>
         )}
@@ -129,7 +149,9 @@ export default function BillingModal({ d, onClose, onDone }: { d: Dossier; onClo
 
         {result && (
           <div className="space-y-2">
-            <div className={`rounded-lg px-3 py-2 text-xs ${TONE.ok}`}>✓ {result.invoices.length} facture{result.invoices.length > 1 ? 's' : ''} Odoo créée{result.invoices.length > 1 ? 's' : ''} en brouillon et ouverte{result.invoices.length > 1 ? 's' : ''} dans un nouvel onglet. Les groupes couverts sont reliés ; le numéro définitif arrivera quand la facture sera postée dans Odoo.</div>
+            {result.invoices.length > 0
+              ? <div className={`rounded-lg px-3 py-2 text-xs ${TONE.ok}`}>✓ {result.invoices.length} facture{result.invoices.length > 1 ? 's' : ''} Odoo créée{result.invoices.length > 1 ? 's' : ''} en brouillon et ouverte{result.invoices.length > 1 ? 's' : ''} dans un nouvel onglet. Les groupes couverts sont reliés ; le numéro définitif arrivera quand la facture sera postée dans Odoo.</div>
+              : <div className={`rounded-lg px-3 py-2 text-xs ${TONE.ok}`}>✓ Enregistré.</div>}
             {result.invoices.map((i: any) => (
               <div key={i.odoo_id} className="border rounded-xl px-3 py-2 text-xs flex items-center justify-between gap-3">
                 <span><b className="text-ink">{i.client_name}</b> · couvre {i.covers.join(' ')} · {eur(i.total_htva)} HTVA</span>
