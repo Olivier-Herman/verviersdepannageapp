@@ -7,7 +7,6 @@ import Link        from 'next/link'
 import { useRouter }   from 'next/navigation'
 import { createClient } from '@supabase/supabase-js'
 import DriverPickerModal from '@/components/DriverPickerModal'
-import DispatchMap, { type MapMission, type MapDriver } from '@/components/dispatch/DispatchMap'
 import AppShell from '@/components/layout/AppShell'
 import AmbientBackground from '@/components/AmbientBackground'
 import MissionStamp from '@/components/missions/MissionStamp'
@@ -130,7 +129,8 @@ interface Counters {
   vhu: number
 }
 
-type ViewMode = 'list' | 'card' | 'map'
+// Modes « Cartes » et « Carte » retirés le 07/09/2026 (Olivier : jamais utilisés, seule la liste l'est).
+type ViewMode = 'list'
 
 // ── Helpers & Constantes ──────────────────────────────────────────────────────
 
@@ -779,7 +779,7 @@ function MissionCard({ mission, drivers, driverStatuses, sources, onRefresh, onM
 
   return (
     <div
-      onClick={() => router.push(`/dispatch/${mission.id}`)}
+      onClick={() => router.push(userRole === 'superadmin' ? `/dispatch/dossier/${mission.id}` : `/dispatch/${mission.id}`)}
       className={`relative border-2 rounded-2xl p-4 cursor-pointer transition-all overflow-hidden min-w-0 ${cardBg} ${cardBorder} ${cardRing}`}
     >
       <MissionStamp mission={mission} />
@@ -943,7 +943,7 @@ function MissionCard({ mission, drivers, driverStatuses, sources, onRefresh, onM
             <span className="text-green-400 text-xs font-medium">✓ {mission.assigned_user.name}</span>
           )}
         </div>
-        <Link href={`/dispatch/${mission.id}`} onClick={e => e.stopPropagation()}
+        <Link href={userRole === 'superadmin' ? `/dispatch/dossier/${mission.id}` : `/dispatch/${mission.id}`} onClick={e => e.stopPropagation()}
           className="px-3 py-1.5 bg-brand hover:bg-brand-dark text-ink rounded-lg text-xs font-medium transition flex-shrink-0">
           VOIR →
         </Link>
@@ -982,7 +982,6 @@ export default function DispatchClient({
   const [relZoneCounts,  setRelZoneCounts]  = useState<{ K: number; K1: number }>({ K: 0, K1: 0 })
   const [sourceFilter,   setSourceFilter]   = useState('')
   const [missions,       setMissions]       = useState<Mission[]>([])
-  const [mapMissions,    setMapMissions]    = useState<Mission[]>([])
   // Tick toutes les 60s — force le re-render des cards pour que les delais
   // (vert/jaune/orange/rouge selon l'âge depuis received_at) soient à jour
   // sans attendre un poll/realtime data refresh.
@@ -1032,24 +1031,17 @@ export default function DispatchClient({
   const [modeLoading,    setModeLoading]    = useState(false)
   const [myOffline,      setMyOffline]      = useState<boolean | null>(null)
   const [presenceLoading, setPresenceLoading] = useState(false)
-  const [viewMode,       setViewMode]       = useState<ViewMode>('list')
+  const viewMode: ViewMode = 'list'
   const [driverStatuses, setDriverStatuses] = useState<DriverStatus[]>([])
   const [sortMode,       setSortMode]       = useState<SortMode>('intervention_date')
 
   // Charge la préférence de vue + tri sauvegardées
   useEffect(() => {
     try {
-      const saved = localStorage.getItem('vd_dispatch_view') as ViewMode | null
-      if (saved === 'list' || saved === 'card' || saved === 'map') setViewMode(saved)
       const sortSaved = localStorage.getItem('dispatch-sort-mode')
       if (sortSaved === 'received_at') setSortMode('received_at')
     } catch { /* SSR / private browsing */ }
   }, [])
-
-  const switchView = (v: ViewMode) => {
-    setViewMode(v)
-    try { localStorage.setItem('vd_dispatch_view', v) } catch { /* ignore */ }
-  }
 
   const handleSortChange = (mode: SortMode) => {
     setSortMode(mode)
@@ -1101,11 +1093,6 @@ export default function DispatchClient({
         fetch(`/api/missions/list?${params}`),
         fetch('/api/users/driver-status'),
       ]
-      if (viewMode === 'map') {
-        const mapParams = new URLSearchParams({ view: 'map', sort: sortMode })
-        if (reqSource) mapParams.set('source', reqSource)
-        requests.push(fetch(`/api/missions/list?${mapParams}`))
-      }
 
       const responses = await Promise.all(requests)
       const mData = await responses[0].json()
@@ -1122,10 +1109,7 @@ export default function DispatchClient({
       setCounters(mData.counters  || { new: 0, dispatching: 0, assigned: 0, in_progress: 0, parked: 0, completed: 0, rdv: 0, errors: 0, vhu: 0 })
       if (mData.relZoneCounts) setRelZoneCounts(mData.relZoneCounts)
       setDriverStatuses(sData.drivers || [])
-      if (responses[2]) {
-        const mapData = await responses[2].json()
-        setMapMissions(mapData.missions || [])
-      }
+
     } catch (e) {
       console.error(e)
     } finally {
@@ -1392,31 +1376,6 @@ export default function DispatchClient({
               ↻
             </button>
 
-            {/* Toggle vue liste / cartes / carte géographique — masqué sur mobile (cartes forcées) */}
-            <div className="hidden lg:flex items-center bg-surface border border rounded-xl overflow-hidden">
-              <button
-                onClick={() => switchView('list')}
-                className={`px-3 py-2 text-sm font-medium transition ${
-                  viewMode === 'list' ? 'bg-brand text-white' : 'text-ink-secondary hover:text-ink'
-                }`}>
-                ≡ Liste
-              </button>
-              <button
-                onClick={() => switchView('card')}
-                className={`px-3 py-2 text-sm font-medium transition ${
-                  viewMode === 'card' ? 'bg-brand text-white' : 'text-ink-secondary hover:text-ink'
-                }`}>
-                ⊞ Cartes
-              </button>
-              <button
-                onClick={() => switchView('map')}
-                className={`px-3 py-2 text-sm font-medium transition ${
-                  viewMode === 'map' ? 'bg-brand text-white' : 'text-ink-secondary hover:text-ink'
-                }`}>
-                🗺️ Carte
-              </button>
-            </div>
-
             {/* Dispatcher de garde — badge cliquable pour cibler les escalades auto-dispatch */}
             <DispatcherOnDutyBadge userRole={userRole} />
 
@@ -1634,63 +1593,6 @@ export default function DispatchClient({
               <p className="text-4xl mb-4">📋</p>
               <p>Aucune mission dans cette catégorie</p>
             </div>
-          ) : viewMode === 'map' ? (
-
-            /* ── VUE CARTE GÉOGRAPHIQUE ─────────────────────────── */
-            <div className="h-[calc(100vh-360px)] lg:h-[calc(100vh-280px)] min-h-[400px] lg:min-h-[500px] rounded-2xl overflow-hidden border border relative">
-              <DispatchMap
-                missions={mapMissions as unknown as MapMission[]}
-                drivers={driverStatuses as unknown as MapDriver[]}
-                gmKey={process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || ''}
-                onMissionClick={(m) => router.push(`/dispatch/${m.id}`)}
-                onDriverClick={() => { /* hook futur */ }}
-              />
-              {/* Compteur missions affichées vs sans coords */}
-              {(() => {
-                const total    = mapMissions.length
-                const withCoords = mapMissions.filter(m => m.incident_lat != null && m.incident_lng != null).length
-                const withoutCoords = total - withCoords
-                return (
-                  <div className="absolute top-4 right-4 bg-surface/95 backdrop-blur border border rounded-xl px-3 py-2 text-xs">
-                    <p className="text-ink font-semibold">{withCoords} pin{withCoords > 1 ? 's' : ''} · {total} mission{total > 1 ? 's' : ''} active{total > 1 ? 's' : ''}</p>
-                    {withoutCoords > 0 && (
-                      <p className="text-amber-400 mt-0.5">⚠ {withoutCoords} sans coords GPS (ouvre la fiche pour valider l'adresse)</p>
-                    )}
-                  </div>
-                )
-              })()}
-            </div>
-
-          ) : viewMode === 'card' ? (
-
-            /* ── VUE CARTES ─────────────────────────────────────── */
-            <div className="space-y-5">
-              {missionGroups.map(g => (
-                <div key={g.key}>
-                  {g.header && (
-                    <div className={`mb-3 px-3 py-1.5 rounded-lg border text-xs font-bold inline-flex items-center gap-2 ${bandClass(g.tone)}`}>
-                      {g.header} <span className="opacity-70">({g.items.length})</span>
-                    </div>
-                  )}
-                  <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-4">
-                    {g.items.map(m => (
-                      <MissionCard
-                        key={m.id}
-                        mission={m}
-                        drivers={drivers}
-                        driverStatuses={driverStatuses}
-                        sources={sources}
-                        onRefresh={load}
-                        onModalChange={onModalChange}
-                        userRole={userRole}
-                        userModules={userModules}
-                      />
-                    ))}
-                  </div>
-                </div>
-              ))}
-            </div>
-
           ) : (
 
             /* ── VUE LISTE ──────────────────────────────────────── */
@@ -1763,7 +1665,7 @@ export default function DispatchClient({
                           : delai.urgency === 'critical' ? 'bg-red-500/5 hover:bg-surface-2'
                           : 'hover:bg-surface-2'
                         }`}
-                        onClick={() => router.push(`/dispatch/${m.id}`)}>
+                        onClick={() => router.push(userRole === 'superadmin' ? `/dispatch/dossier/${m.id}` : `/dispatch/${m.id}`)}>
                         <td className="px-4 py-3" onClick={e => e.stopPropagation()}>
                           <span className={`px-2 py-0.5 rounded text-xs font-bold text-white ${srcInfo.color}`}>
                             {srcInfo.label}
@@ -1843,7 +1745,7 @@ export default function DispatchClient({
                         </td>
                         )}
                         <td className="px-4 py-3" onClick={e => e.stopPropagation()}>
-                          <Link href={`/dispatch/${m.id}`}
+                          <Link href={userRole === 'superadmin' ? `/dispatch/dossier/${m.id}` : `/dispatch/${m.id}`}
                             className="px-3 py-1.5 bg-brand hover:bg-brand-dark text-ink rounded-lg text-xs font-medium transition inline-block">
                             VOIR
                           </Link>
