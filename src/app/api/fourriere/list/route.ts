@@ -68,17 +68,28 @@ export async function GET(req: Request) {
   let missions: any[] | null = null
   let error: any = null
   if (gardiennageMode) {
+    // Deux requêtes (la jointure parent→enfant de PostgREST renvoie la
+    // relation inverse sur une auto-référence) : les gardiennages ouverts,
+    // puis leurs racines.
     let q2 = sb.from('incoming_missions')
-      .select(`id, parent_mission_id, mission_type, parc_zone_key, parc_row_number, parc_slot_index, parked_at, updated_at, key_location,
-               root:incoming_missions!parent_mission_id(id, mission_number, external_id, vehicle_plate, vehicle_vin, vehicle_brand, vehicle_model, status, source, odoo_vehicle_id, odoo_helpdesk_id, client_name, migration_pending, migration_pending_reason)`)
+      .select('id, parent_mission_id, mission_type, parc_zone_key, parc_row_number, parc_slot_index, parked_at, updated_at, key_location')
       .eq('dossier_leg', true).is('parc_exit_at', null).not('parc_zone_key', 'is', null)
       .order('parc_zone_key', { ascending: true }).limit(2000)
     if (zoneFilter) q2 = q2.eq('parc_zone_key', zoneFilter)
     const r2 = await q2
     error = r2.error
-    missions = (r2.data || []).map((g: any) => ({
-      ...(g.root || {}),
-      id: g.root?.id || g.parent_mission_id,
+    const legs = r2.data || []
+    const rootIds = Array.from(new Set(legs.map((g: any) => g.parent_mission_id).filter(Boolean)))
+    const rootById: Record<string, any> = {}
+    for (let i = 0; i < rootIds.length; i += 200) {
+      const { data: roots } = await sb.from('incoming_missions')
+        .select('id, mission_number, external_id, vehicle_plate, vehicle_vin, vehicle_brand, vehicle_model, status, source, odoo_vehicle_id, odoo_helpdesk_id, client_name, migration_pending, migration_pending_reason')
+        .in('id', rootIds.slice(i, i + 200))
+      for (const r of roots || []) rootById[(r as any).id] = r
+    }
+    missions = legs.map((g: any) => ({
+      ...(rootById[g.parent_mission_id] || {}),
+      id: g.parent_mission_id,
       parc_zone_key: g.parc_zone_key, parc_row_number: g.parc_row_number, parc_slot_index: g.parc_slot_index,
       parked_at: g.parked_at, updated_at: g.updated_at,
       leg_id: g.id, regime: g.mission_type, key_location: g.key_location,
