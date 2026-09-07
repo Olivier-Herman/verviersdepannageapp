@@ -27,7 +27,7 @@ export const EXIT_CONTROL_SOURCES = ['police_accident']
 
 // Sources « police / privé » : une fille REL portant une AUTRE source est une
 // reprise par une assistance (Touring, VAB, Ethias, IMA…).
-const NON_ASSISTANCE_PREFIXES = ['police_', 'prive', 'sia_couvert', 'tgr']
+const NON_ASSISTANCE_PREFIXES = ['police_', 'prive', 'sia_couvert', 'tgr', 'gardiennage']
 
 export type ExitPath = 'informex' | 'autre' | 'assistance'
 export type IdentityRole = 'buyer' | 'mandate' | 'transporter'
@@ -270,6 +270,7 @@ export async function getExitControlState(sb: any, missionId: string): Promise<E
       let q = sb.from('incoming_missions')
         .select('id, source, external_id, status, vehicle_plate, received_at')
         .neq('id', missionId)
+        .eq('dossier_leg', false)
         .not('status', 'in', '("cancelled","ignored")')
         .order('received_at', { ascending: false }).limit(20)
       if (since) q = q.gte('received_at', since)

@@ -74,6 +74,7 @@ export async function POST(req: Request) {
       if (!parentId && mission.vehicle_plate) {
         const { data } = await supabase.from('incoming_missions')
           .select('id, status').eq('vehicle_plate', mission.vehicle_plate)
+          .eq('dossier_leg', false)
           .in('status', ['parked', ...ACTIVE_PARENT]).neq('id', mission_id)
           .order('received_at', { ascending: false }).limit(1).maybeSingle()
         if (data) { parentId = data.id; parentStatus = data.status }

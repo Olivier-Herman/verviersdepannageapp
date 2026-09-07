@@ -284,13 +284,14 @@ export async function importKazeJob(
         let parent: any = null
         if (parent_mission_id) {
           const { data } = await sb.from('incoming_missions')
-            .select('id, status, rel_kaze_job_id').eq('id', parent_mission_id).maybeSingle()
-          if (data?.status === 'parked' && !data.rel_kaze_job_id) parent = data
+            .select('id, status, rel_kaze_job_id, dossier_leg').eq('id', parent_mission_id).maybeSingle()
+          if (data?.status === 'parked' && !data.rel_kaze_job_id && !data.dossier_leg) parent = data
         }
         if (!parent && mapped.vehicle_plate) {
           const { data } = await sb.from('incoming_missions')
             .select('id, status, rel_kaze_job_id')
             .eq('vehicle_plate', mapped.vehicle_plate).eq('status', 'parked')
+            .eq('dossier_leg', false)   // jamais un volet gardiennage (miroir Vue dossier)
             .is('rel_kaze_job_id', null)
             .neq('id', result.mission_id)
             .order('received_at', { ascending: false }).limit(1).maybeSingle()

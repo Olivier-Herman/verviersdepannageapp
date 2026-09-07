@@ -40,6 +40,7 @@ export async function GET(req: Request) {
   if (!relKeys.includes(zone)) zone = relKeys.includes('K') ? 'K' : (relKeys[0] || 'K')
 
   const stdFilters = (q: any) => q
+    .eq('dossier_leg', false)   // miroirs gardiennage (Vue dossier) : jamais à relivrer
     .not('external_id', 'like', 'PROCESSING_%')
     .not('external_id', 'like', 'UNKNOWN_SENDER_%')
     .or('parse_confidence.is.null,parse_confidence.gte.0.3,assigned_to.not.is.null')

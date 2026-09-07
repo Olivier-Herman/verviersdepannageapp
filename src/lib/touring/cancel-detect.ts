@@ -42,6 +42,7 @@ export async function runTouringCancelDetect(sb: any): Promise<CancelDetectSumma
     .select('id, mission_number, dossier_number, vehicle_plate, status, mission_type, loaded_at, completed_at, touring_onroad_at, touring_missing_since')
     .eq('source_format', 'comex')
     .in('status', ACTIVE_STATUSES)
+    .eq('dossier_leg', false)
     .not('dossier_number', 'is', null)
     .limit(500)
   if (!fiches || !fiches.length) return out

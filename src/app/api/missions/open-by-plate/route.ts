@@ -54,6 +54,7 @@ export async function GET(req: Request) {
       received_at, intervention_date, parked_at, created_at
     `)
     .eq('vehicle_plate', plate)
+    .eq('dossier_leg', false)   // volets gardiennage (miroirs Vue dossier) exclus
     .in('status', OPEN_STATUSES)
     .is('archived_at', null)
     .order('created_at', { ascending: false })

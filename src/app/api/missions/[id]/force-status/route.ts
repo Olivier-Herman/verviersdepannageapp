@@ -54,6 +54,22 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   const sb = createAdminClient()
   const now = new Date().toISOString()
 
+  // Fiche « gardiennage » miroir (Vue dossier, dossier_leg) : ce n'est pas un
+  // véhicule, c'est un reflet de facturation. La forcer en parc crée un
+  // fantôme (compteur À Relivrer à 1, relivraison Kaze raccrochée dessus —
+  // 2GWE880, 07/09/2026). On refuse et on renvoie vers la vraie fiche.
+  {
+    const { data: leg } = await sb.from('incoming_missions').select('dossier_leg, parent_mission_id').eq('id', params.id).maybeSingle()
+    if (leg?.dossier_leg) {
+      const { data: root } = leg.parent_mission_id
+        ? await sb.from('incoming_missions').select('mission_number').eq('id', leg.parent_mission_id).maybeSingle()
+        : { data: null }
+      return NextResponse.json({
+        error: `Cette fiche est le volet gardiennage du dossier (facturation), pas le véhicule. Agis sur la fiche principale${root?.mission_number ? ` #${root.mission_number}` : ''}.`,
+      }, { status: 409 })
+    }
+  }
+
   // Contrôle de sortie (épave gérée par un bureau d'expertise) : forcer une
   // fiche EN PARC vers clôturée / à facturer = la faire sortir du parc.
   // Olivier 2026-09-05.
