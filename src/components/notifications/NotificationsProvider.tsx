@@ -148,6 +148,36 @@ export default function NotificationsProvider({
     }
   }, [userId])
 
+  // Popup bloquant en attente alors que l'onglet n'est pas au premier plan
+  // (Jona travaille sur PC, onglet VD Soft parfois derrière autre chose) :
+  // titre d'onglet qui clignote + notification système du navigateur (si
+  // l'utilisateur l'a autorisée dans Mon Profil), clic = retour sur l'onglet.
+  // Olivier 2026-09-07.
+  const blockingPending = pending.find(n => n.payload?.data?.modal)
+  const blockingId = blockingPending?.id || null
+  const blockingTitle = blockingPending?.payload?.title || ''
+  const blockingBody = blockingPending?.payload?.body || ''
+  useEffect(() => {
+    if (!blockingId || typeof document === 'undefined') return
+    const base = document.title
+    let on = false
+    const blink = setInterval(() => {
+      on = !on
+      document.title = on ? `🔔 À TRAITER — ${blockingTitle || 'VD Soft'}` : base
+    }, 1200)
+    let sysNotif: Notification | null = null
+    try {
+      if (document.hidden && typeof Notification !== 'undefined' && Notification.permission === 'granted') {
+        sysNotif = new Notification(blockingTitle || 'VD Soft — réponse attendue', {
+          body: blockingBody || 'Un popup attend ta réponse dans VD Soft.',
+          tag: `vd-blocking-${blockingId}`, requireInteraction: true, icon: '/icons/apple-touch-icon.png',
+        })
+        sysNotif.onclick = () => { try { window.focus() } catch {} sysNotif?.close() }
+      }
+    } catch { /* navigateur sans Notification API */ }
+    return () => { clearInterval(blink); document.title = base; try { sysNotif?.close() } catch {} }
+  }, [blockingId, blockingTitle, blockingBody])
+
   return (
     <NotificationsContext.Provider value={{ dismiss, markRead, pending }}>
       {children}

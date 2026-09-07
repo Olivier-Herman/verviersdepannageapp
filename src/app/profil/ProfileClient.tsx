@@ -477,7 +477,7 @@ export default function ProfileClient({ user }: { user: any }) {
           <div className="bg-surface border border rounded-2xl p-5">
             <h2 className="text-ink font-bold mb-1">Notifications push</h2>
             <p className="text-ink-muted text-xs mb-4">
-              Recevez des alertes pour les documents expirants et les checks véhicules.
+              Alertes sur cet appareil même quand VD Soft n'est pas au premier plan : popups à traiter (accès experts, vérification au parc), documents expirants, checks véhicules. Sur PC, à activer dans le navigateur que tu utilises pour VD Soft.
             </p>
             {pushStatus && <p className="text-ink-secondary text-xs mb-3">{pushStatus}</p>}
             <button onClick={handlePushToggle} disabled={pushLoading}

@@ -109,29 +109,19 @@ async function filterByNotifPref(userIds: string[], notifType?: NotifType): Prom
   return ids
 }
 
+
 /**
- * Envoie une notification push à un utilisateur spécifique sur TOUS ses canaux :
- *   - Web Push (PWA Safari/Chrome) via push_subscriptions
- *   - APNs/FCM (Capacitor iOS/Android + Apple Watch) via device_tokens
- * Supprime automatiquement les abonnements Web Push révoqués (410/404).
- *
- * Si `notifType` est passe et que l user a desactive cette categorie dans
- * ses notif_preferences, on no-op silencieusement.
+ * Web Push seul (push_subscriptions : PWA iOS/Android ET navigateur PC via
+ * « Activer les notifications » dans Mon Profil). Supprime les abonnements
+ * révoqués (410/404). Utilisé par sendPushToUser et par les notifications
+ * in-app (send.ts) pour que les popups atteignent aussi le PC. 2026-09-07.
  */
-export async function sendPushToUser(
-  userId:    string,
-  payload:   PushPayload,
-  notifType?: NotifType,
+export async function sendWebPushToUser(
+  userId:  string,
+  payload: PushPayload,
 ): Promise<{ sent: number; failed: number }> {
-  if (notifType) {
-    const allowed = await filterByNotifPref([userId], notifType)
-    if (allowed.length === 0) return { sent: 0, failed: 0 }
-  }
   const supabase = createAdminClient()
-
   let sent = 0, failed = 0
-
-  // 1. Web Push (PWA)
   const { data: subs } = await supabase
     .from('push_subscriptions')
     .select('*')
@@ -160,6 +150,36 @@ export async function sendPushToUser(
       }
       failed++
     }
+  }
+  return { sent, failed }
+}
+
+/**
+ * Envoie une notification push à un utilisateur spécifique sur TOUS ses canaux :
+ *   - Web Push (PWA Safari/Chrome) via push_subscriptions
+ *   - APNs/FCM (Capacitor iOS/Android + Apple Watch) via device_tokens
+ * Supprime automatiquement les abonnements Web Push révoqués (410/404).
+ *
+ * Si `notifType` est passe et que l user a desactive cette categorie dans
+ * ses notif_preferences, on no-op silencieusement.
+ */
+export async function sendPushToUser(
+  userId:    string,
+  payload:   PushPayload,
+  notifType?: NotifType,
+): Promise<{ sent: number; failed: number }> {
+  if (notifType) {
+    const allowed = await filterByNotifPref([userId], notifType)
+    if (allowed.length === 0) return { sent: 0, failed: 0 }
+  }
+  const supabase = createAdminClient()
+
+  let sent = 0, failed = 0
+
+  // 1. Web Push (PWA / navigateur PC)
+  {
+    const web = await sendWebPushToUser(userId, payload)
+    sent += web.sent; failed += web.failed
   }
 
   // 2. APNs/FCM (Capacitor) — meme payload converti

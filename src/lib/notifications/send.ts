@@ -111,11 +111,22 @@ export async function sendNotification(
       data:       payload.data,
     })
     console.log('[sendNotification] push result =', JSON.stringify(pushRes))
-    if (!pushRes.no_devices) {
+    // Web Push (navigateur PC / PWA) en plus du natif : sans ça, un popup
+    // bloquant n'atteignait jamais un PC dont l'onglet VD Soft est en
+    // arrière-plan (Jona, 2026-09-07). Abonnement = « Activer les
+    // notifications » dans Mon Profil.
+    let webRes = { sent: 0, failed: 0 }
+    try {
+      const { sendWebPushToUser } = await import('@/lib/push')
+      webRes = await sendWebPushToUser(userId, {
+        title: payload.title, body: payload.body, url: payload.action_url || '/', tag: type,
+      })
+    } catch (e: any) { console.error('[sendNotification] web push error:', e.message) }
+    if (!pushRes.no_devices || webRes.sent || webRes.failed) {
       const { error: pushLogErr } = await sb.from('notifications_log').insert({
         user_id:    userId,
         notif_type: type,
-        payload:    { ...payload, push_summary: pushRes } as any,
+        payload:    { ...payload, push_summary: { ...pushRes, web: webRes } } as any,
         channel:    'push',
       })
       if (pushLogErr) console.error('[sendNotification] push log INSERT error:', pushLogErr.message)
