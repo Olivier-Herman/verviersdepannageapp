@@ -38,12 +38,19 @@ export default function BillingModal({ d, onClose, onDone }: { d: Dossier; onClo
 
   const submit = async () => {
     setBusy(true); setError(null)
+    // Les factures s'ouvrent d'elles-mêmes dans un nouvel onglet (Olivier
+    // 07/09 : « pas de clic supplémentaire »). Le navigateur ne laisse ouvrir
+    // un onglet qu'au moment du clic : on les ouvre vides tout de suite, une par
+    // client, puis on y met l'URL Odoo à la réponse.
+    const tabs: (Window | null)[] = Array.from({ length: Math.max(1, nInv) }, () => { try { return window.open('', '_blank') } catch { return null } })
     try {
       const r = await fetch(`/api/dossier/${d.root_id}/invoice`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mission_ids: chosen.map(l => l.mission_id) }) })
       const j = await r.json()
       if (!r.ok || !j.ok) throw new Error(j.error || `HTTP ${r.status}`)
+      ;(j.invoices || []).forEach((inv: any, i: number) => { const t = tabs[i]; if (t && inv.url) { try { t.location.href = inv.url } catch {} } else if (inv.url) { try { window.open(inv.url, '_blank') } catch {} } })
+      tabs.slice((j.invoices || []).length).forEach(t => { try { t?.close() } catch {} })
       setResult(j); await onDone()
-    } catch (e: any) { setError(String(e.message || e)) } finally { setBusy(false) }
+    } catch (e: any) { tabs.forEach(t => { try { t?.close() } catch {} }); setError(String(e.message || e)) } finally { setBusy(false) }
   }
 
   return (
@@ -91,7 +98,7 @@ export default function BillingModal({ d, onClose, onDone }: { d: Dossier; onClo
 
         {result && (
           <div className="space-y-2">
-            <div className={`rounded-lg px-3 py-2 text-xs ${TONE.ok}`}>✓ {result.invoices.length} facture{result.invoices.length > 1 ? 's' : ''} Odoo créée{result.invoices.length > 1 ? 's' : ''} en brouillon. Les groupes couverts sont reliés ; le numéro définitif arrivera quand la facture sera postée dans Odoo.</div>
+            <div className={`rounded-lg px-3 py-2 text-xs ${TONE.ok}`}>✓ {result.invoices.length} facture{result.invoices.length > 1 ? 's' : ''} Odoo créée{result.invoices.length > 1 ? 's' : ''} en brouillon et ouverte{result.invoices.length > 1 ? 's' : ''} dans un nouvel onglet. Les groupes couverts sont reliés ; le numéro définitif arrivera quand la facture sera postée dans Odoo.</div>
             {result.invoices.map((i: any) => (
               <div key={i.odoo_id} className="border rounded-xl px-3 py-2 text-xs flex items-center justify-between gap-3">
                 <span><b className="text-ink">{i.client_name}</b> · couvre {i.covers.join(' ')} · {eur(i.total_htva)} HTVA</span>
