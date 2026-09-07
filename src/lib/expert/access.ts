@@ -23,14 +23,37 @@ export function newDeviceKey(): string {
   return randomBytes(24).toString('hex')
 }
 
-/** Comptes du bureau fourrière : module « fourriere » accordé, actifs ; repli superadmin. */
+/**
+ * Destinataires des popups experts (validation d'accès, visites, questions).
+ * Source : app_settings `expert_access_recipients` = JSON array d'ids users
+ * (paramétrable, zéro hardcode). Repli si vide : comptes bureau (dispatcher /
+ * admin / superadmin) qui ont le module « fourriere » — jamais un chauffeur
+ * seul (le module fourriere leur est donné pour les étiquettes). Repli
+ * ultime : superadmins. Olivier 2026-09-07 : la 1re demande était partie à
+ * 15 comptes et un dispatcher a validé en 18 s.
+ */
 export async function officeUserIds(sb: any): Promise<string[]> {
+  const isActive = (u: any) => u.active !== false
+  const { data: setting } = await sb.from('app_settings').select('value').eq('key', 'expert_access_recipients').maybeSingle()
+  let configured: string[] = []
+  try {
+    const v = setting?.value
+    const parsed = typeof v === 'string' ? JSON.parse(v) : v
+    if (Array.isArray(parsed)) configured = parsed.map(String).filter(Boolean)
+  } catch { /* valeur illisible → repli */ }
+  if (configured.length) {
+    const { data: users } = await sb.from('users').select('id, active').in('id', configured)
+    const active = (users || []).filter(isActive).map((u: any) => u.id)
+    if (active.length) return active
+  }
   const { data: mods } = await sb.from('user_modules').select('user_id').eq('module_id', 'fourriere').eq('granted', true)
   const ids = Array.from(new Set((mods || []).map((m: any) => m.user_id).filter(Boolean))) as string[]
   if (ids.length) {
-    const { data: users } = await sb.from('users').select('id').in('id', ids).eq('active', true)
-    const active = (users || []).map((u: any) => u.id)
-    if (active.length) return active
+    const OFFICE = ['dispatcher', 'admin', 'superadmin']
+    const { data: users } = await sb.from('users').select('id, role, roles, active').in('id', ids)
+    const office = (users || []).filter(isActive).filter((u: any) =>
+      [u.role, ...(Array.isArray(u.roles) ? u.roles : [])].some((r: string) => OFFICE.includes(r)))
+    if (office.length) return office.map((u: any) => u.id)
   }
   const { data: admins } = await sb.from('users').select('id').eq('active', true).or('role.eq.superadmin,roles.cs.{superadmin}')
   return (admins || []).map((u: any) => u.id)
