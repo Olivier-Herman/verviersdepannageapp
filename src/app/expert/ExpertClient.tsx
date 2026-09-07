@@ -208,8 +208,8 @@ export default function ExpertClient() {
         {approved.length === 1 && <p className="text-xs text-ink-muted flex items-center gap-1"><Building2 size={12} /> {approved[0]}</p>}
 
         <div className="flex gap-2">
-          <input value={plate} onChange={e => setPlate(e.target.value.toUpperCase())} onKeyDown={e => { if (e.key === 'Enter') lookup() }}
-            className="flex-1 border rounded-lg px-3 py-3 bg-surface font-mono text-lg tracking-wider" placeholder="Plaque (1-ABC-123)" autoCapitalize="characters" />
+          <input value={plate} onChange={e => setPlate(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, ''))} onKeyDown={e => { if (e.key === 'Enter') lookup() }}
+            className="flex-1 border rounded-lg px-3 py-3 bg-surface font-mono text-lg tracking-wider" placeholder="Plaque, ex. 1ABC123" autoCapitalize="characters" autoCorrect="off" spellCheck={false} />
           <button onClick={lookup} disabled={busy || plate.trim().length < 3 || !useBureau} className="px-4 rounded-lg bg-brand text-white font-semibold disabled:opacity-40"><Search size={18} /></button>
         </div>
 
