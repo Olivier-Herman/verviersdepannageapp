@@ -209,17 +209,21 @@ export default function ExpertClient() {
 
         <div className="flex gap-2">
           <input value={plate} onChange={e => setPlate(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, ''))} onKeyDown={e => { if (e.key === 'Enter') lookup() }}
-            className="flex-1 border rounded-lg px-3 py-3 bg-surface font-mono text-lg tracking-wider" placeholder="Plaque, ex. 1ABC123" autoCapitalize="characters" autoCorrect="off" spellCheck={false} />
+            className="flex-1 border rounded-lg px-3 py-3 bg-surface font-mono text-lg tracking-wider" placeholder="Plaque (1ABC123) ou 5 derniers du châssis" autoCapitalize="characters" autoCorrect="off" spellCheck={false} />
           <button onClick={lookup} disabled={busy || plate.trim().length < 3 || !useBureau} className="px-4 rounded-lg bg-brand text-white font-semibold disabled:opacity-40"><Search size={18} /></button>
         </div>
 
         {result && !result.found && (
-          <div className="bg-warning/10 border border-warning/40 rounded-lg p-3 text-sm">{result.message}</div>
+          <div className="bg-warning/10 border border-warning/40 rounded-lg p-3 text-sm">
+            {result.message}
+            {result.reason === 'none' && plate.length < 5 && <p className="text-xs text-ink-muted mt-1">Pas de plaque ? Encodez les 5 derniers caractères du numéro de châssis.</p>}
+          </div>
         )}
         {v && (
           <div className="border rounded-xl p-3 flex flex-col gap-2 bg-success/5 border-success/40">
             <p className="font-mono text-xl font-bold tracking-wider">{v.plate}</p>
-            <p className="text-sm text-ink-secondary">{[v.brand, v.model].filter(Boolean).join(' ')}{v.parked_at ? ` · en parc depuis le ${fmt(v.parked_at)}` : ''}</p>
+            <p className="text-sm text-ink-secondary">{[v.brand, v.model].filter(Boolean).join(' ')}{v.vin ? ` · châssis …${String(v.vin).slice(-6)}` : ''}{v.parked_at ? ` · en parc depuis le ${fmt(v.parked_at)}` : ''}</p>
+            {result?.via === 'vin' && <p className="text-xs text-warning">Trouvé par la fin du châssis : vérifiez la plaque ci-dessus avant de valider.</p>}
             <p className="text-lg font-bold flex items-center gap-2"><MapPin size={20} className="text-brand" /> Zone {v.zone || '?'}</p>
             {v.photos?.length > 0 ? (
               <div className="grid grid-cols-3 gap-1.5">

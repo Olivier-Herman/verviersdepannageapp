@@ -144,25 +144,45 @@ export async function decideBureauAccess(sb: any, group: string, decisions: Reco
   return { ok: true, results }
 }
 
-/** Fiche Police – Accident en parc pour cette plaque (zone + photos), sinon null. */
-export async function lookupParkedAccident(sb: any, plateRaw: string) {
-  const plate = normalizePlate(plateRaw)
-  if (plate.length < 3) return null
+/**
+ * Fiche Police – Accident en parc pour cette plaque, sinon par la FIN du
+ * numéro de châssis (≥ 5 caractères — l'expert n'a souvent que les derniers
+ * sous les yeux). Plusieurs châssis qui se terminent pareil → on ne devine
+ * pas, renvoi au comptoir. Olivier 2026-09-07.
+ */
+export async function lookupParkedAccident(sb: any, queryRaw: string): Promise<
+  { found: true; vehicle: any; via: 'plate' | 'vin' } | { found: false; reason: 'too_short' | 'none' | 'ambiguous' }
+> {
+  const q = normalizePlate(queryRaw).replace(/[^A-Z0-9]/g, '')
+  if (q.length < 3) return { found: false, reason: 'too_short' }
   const { data: rows } = await sb.from('incoming_missions')
     .select('id, mission_number, vehicle_plate, vehicle_brand, vehicle_model, vehicle_vin, parc_zone_key, parked_at, driver_photos, source, status')
     .eq('status', 'parked').in('source', EXPERT_SOURCES)
     .order('parked_at', { ascending: false }).limit(500)
-  const m = (rows || []).find((r: any) => normalizePlate(String(r.vehicle_plate || '')) === plate)
-  if (!m) return null
+  const list = rows || []
+  let via: 'plate' | 'vin' = 'plate'
+  let m = list.find((r: any) => normalizePlate(String(r.vehicle_plate || '')) === q)
+  if (!m && q.length >= 5) {
+    const vinMatches = list.filter((r: any) => {
+      const vin = String(r.vehicle_vin || '').toUpperCase().replace(/[^A-Z0-9]/g, '')
+      return vin.length >= 5 && vin.endsWith(q)
+    })
+    if (vinMatches.length > 1) return { found: false, reason: 'ambiguous' }
+    if (vinMatches.length === 1) { m = vinMatches[0]; via = 'vin' }
+  }
+  if (!m) return { found: false, reason: 'none' }
   let zoneLabel = m.parc_zone_key || null
   if (m.parc_zone_key) {
     const { data: z } = await sb.from('parc_zones').select('label').eq('key', m.parc_zone_key).maybeSingle()
     if (z?.label) zoneLabel = z.label
   }
   return {
-    id: m.id, mission_number: m.mission_number, plate: m.vehicle_plate, brand: m.vehicle_brand, model: m.vehicle_model,
-    vin: m.vehicle_vin, zone: zoneLabel, parked_at: m.parked_at,
-    photos: Array.isArray(m.driver_photos) ? m.driver_photos.filter((p: any) => typeof p === 'string').slice(0, 6) : [],
+    found: true, via,
+    vehicle: {
+      id: m.id, mission_number: m.mission_number, plate: m.vehicle_plate, brand: m.vehicle_brand, model: m.vehicle_model,
+      vin: m.vehicle_vin, zone: zoneLabel, parked_at: m.parked_at,
+      photos: Array.isArray(m.driver_photos) ? m.driver_photos.filter((p: any) => typeof p === 'string').slice(0, 6) : [],
+    },
   }
 }
 

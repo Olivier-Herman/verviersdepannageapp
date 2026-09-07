@@ -97,10 +97,15 @@ export async function POST(req: Request) {
     case 'lookup': {
       const bureau = String(body.bureau || '').trim()
       if (!approvedFor(bureau)) return json({ error: 'Accès pas encore validé pour ce bureau.' }, 403)
-      const plate = String(body.plate || '').trim()
-      const m = await lookupParkedAccident(sb, plate)
-      if (!m) return json({ ok: true, found: false, message: 'Aucun véhicule accidenté déposé par la police à cette plaque. Adressez-vous au comptoir.' })
-      return json({ ok: true, found: true, vehicle: m })
+      const query = String(body.plate || '').trim()
+      const r = await lookupParkedAccident(sb, query)
+      if (!r.found) {
+        const message = r.reason === 'too_short' ? 'Encodez au moins 3 caractères (plaque) ou les 5 derniers du numéro de châssis.'
+          : r.reason === 'ambiguous' ? 'Plusieurs véhicules ont un châssis qui se termine ainsi : encodez plus de caractères, ou adressez-vous au comptoir.'
+          : 'Aucun véhicule accidenté déposé par la police pour cette plaque ou cette fin de châssis. Adressez-vous au comptoir.'
+        return json({ ok: true, found: false, reason: r.reason, message })
+      }
+      return json({ ok: true, found: true, via: r.via, vehicle: r.vehicle })
     }
     case 'seen': {
       const bureau = String(body.bureau || '').trim()
