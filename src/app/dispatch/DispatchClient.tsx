@@ -1643,7 +1643,7 @@ export default function DispatchClient({
               {/* Desktop : nouvelle liste compacte (superadmin, test) */}
               {compactList && (
                 <div className="hidden lg:block space-y-2">
-                  <div className="grid grid-cols-[150px_56px_140px_minmax(0,1.6fr)_minmax(0,1fr)_minmax(300px,auto)] gap-3 px-4 py-1.5 text-[11px] uppercase tracking-wide text-ink-muted font-medium">
+                  <div className="grid grid-cols-[150px_56px_140px_minmax(0,1.5fr)_minmax(0,1fr)_430px] gap-3 px-4 py-1.5 text-[11px] uppercase tracking-wide text-ink-muted font-medium">
                     <div>Dossier</div><div>Type</div><div>Véhicule</div><div>Intervention → destination</div><div>Client</div><div>{activeTab === 'parked' ? 'Parc' : 'Chauffeur / actions'}</div>
                   </div>
                   {missionGroups.map(g => (
@@ -1662,7 +1662,7 @@ export default function DispatchClient({
                         const href = userRole === 'superadmin' ? `/dispatch/dossier/${m.id}` : `/dispatch/${m.id}`
                         return (
                           <div key={m.id} onClick={() => router.push(href)}
-                            className={`grid grid-cols-[150px_56px_140px_minmax(0,1.6fr)_minmax(0,1fr)_minmax(300px,auto)] gap-3 items-center px-4 py-2.5 border-t first:border-t-0 cursor-pointer transition ${
+                            className={`grid grid-cols-[150px_56px_140px_minmax(0,1.5fr)_minmax(0,1fr)_430px] gap-3 items-center px-4 py-2.5 border-t first:border-t-0 cursor-pointer transition ${
                               isGarage ? 'bg-amber-500/10 hover:bg-amber-500/20' : delai.urgency === 'critical' ? 'bg-red-500/5 hover:bg-surface-2' : 'hover:bg-surface-2'}`}>
                             <div className="min-w-0">
                               <p className="text-ink font-bold font-mono text-xs">{m.mission_number != null ? `#${m.mission_number}` : (m.dossier_number || m.external_id)}</p>
