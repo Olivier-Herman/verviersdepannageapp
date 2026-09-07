@@ -459,7 +459,7 @@ export async function estimateMissionPrice(mission: MissionLike, opts?: { skipRe
     kmTotalRoute = mission.distance_km
   } else if (mission.id) {
     const km = await computeMissionKm(mission.id)
-    if (km.chargedKm == null && kmBasis === 'charged') {
+    if (km.chargedKm == null) {   // quelle que soit la base : la boucle dépôt→…→dépôt est incomplète aussi
       return emptyEstimate(source, String(mission.mission_type || ''), 'kilomètres inconnus : la destination n’est pas géocodée (ouvre la fiche, vérifie l’adresse de destination)')
     }
     kmCharged    = km.chargedKm ?? 0
@@ -668,7 +668,7 @@ async function estimateBrackets(
   } else if (mission.id) {
     const km = await computeMissionKm(mission.id)
     // Tranches = prix PAR KILOMÈTRE : sans km connus, pas de tarif (2ESG097).
-    if (km.chargedKm == null && kmBasis === 'charged') {
+    if (km.chargedKm == null) {   // quelle que soit la base : la boucle dépôt→…→dépôt est incomplète aussi
       return emptyEstimate(source, missionType, 'kilomètres inconnus : la destination n’est pas géocodée (ouvre la fiche, vérifie l’adresse de destination)')
     }
     kmCharged    = km.chargedKm ?? 0
