@@ -77,6 +77,9 @@ export async function GET(req: Request) {
   // Les fiches de test restent invisibles au dispatch — sauf pour le superadmin
   // qui les crée et les déroule (Olivier 2026-08-21 : « pour ne pas perturber
   // les opérations en cours »).
+  // Fiches gardiennage (Vue dossier, étape 1 « miroir ») : jamais dans les
+  // listes dispatch tant que les modules n'ont pas basculé. Olivier 07/09/2026.
+  query = query.eq('dossier_leg', false)
   if (!estSuperadmin) query = query.not('vehicle_plate', 'ilike', 'TEST')
 
   // Seuil RDV : au-delà de +12h, une intervention planifiée va dans l'onglet RDV.

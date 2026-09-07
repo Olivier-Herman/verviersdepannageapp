@@ -56,6 +56,7 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
     .select('id, mission_number, source, status, mission_type, vehicle_plate, vehicle_brand, vehicle_model, client_name, billed_to_name, dossier_number, incident_address, received_at')
     .neq('id', params.id)
     .not('status', 'in', '(cancelled,ignored)')
+    .eq('dossier_leg', false)   // fiches gardiennage (Vue dossier) : jamais candidates à la fusion
     .is('merged_into_mission_id', null)
     .ilike('vehicle_plate', likePattern)
     .order('received_at', { ascending: false })

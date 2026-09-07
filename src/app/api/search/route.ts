@@ -185,7 +185,7 @@ export async function GET(req: Request) {
       `remarks_billing.ilike.${qLike}`,
     ].join(','))
     .order('received_at', { ascending: false })
-    .limit(PER_CATEGORY_LIMIT * 3)
+    .eq('dossier_leg', false).limit(PER_CATEGORY_LIMIT * 3)
 
   // Plaque normalisee : second pass (Supabase ne permet pas REPLACE dans ILIKE)
   let missionsByPlate: any[] = []
@@ -195,7 +195,7 @@ export async function GET(req: Request) {
       .select('id, mission_number, external_id, dossier_number, vehicle_plate, vehicle_vin, vehicle_brand, vehicle_model, client_name, client_phone, incident_address, destination_address, source, status, mission_type, intervention_date, received_at, assigned_to, archived_at, no_charge_at, no_charge_reason, invoice_method, invoice_number')
       .not('vehicle_plate', 'is', null)
       .order('received_at', { ascending: false })
-      .limit(200)
+      .eq('dossier_leg', false).limit(200)
     missionsByPlate = (data || []).filter(m =>
       normalizePlate(m.vehicle_plate || '').includes(qPlate)
     )
@@ -209,7 +209,7 @@ export async function GET(req: Request) {
       .gte('intervention_date', dateRange.from)
       .lte('intervention_date', dateRange.to)
       .order('intervention_date', { ascending: false })
-      .limit(PER_CATEGORY_LIMIT * 2)
+      .eq('dossier_leg', false).limit(PER_CATEGORY_LIMIT * 2)
     missionsByDate = data || []
   }
 
