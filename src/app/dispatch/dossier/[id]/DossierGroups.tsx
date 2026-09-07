@@ -66,8 +66,11 @@ const TONE = {
   muted: 'bg-surface-2 text-ink-muted border',
 } as const
 
-export default function DossierGroups({ initial, fiches, shared, isSuperadmin, openMissionId }: {
+export default function DossierGroups({ initial, fiches, shared, isSuperadmin, openMissionId, compact = false }: {
   initial: Dossier; fiches: Record<string, any>; shared: any; isSuperadmin: boolean; openMissionId: string
+  // compact : rendu dans une ligne dépliée de la liste dispatch — pas de
+  // bandeau preview, pas de bouton Retour, marges réduites.
+  compact?: boolean
 }) {
   const router = useRouter()
   const goBack = () => { if (typeof window !== 'undefined' && window.history.length > 1) router.back(); else router.push('/dispatch') }
@@ -93,9 +96,21 @@ export default function DossierGroups({ initial, fiches, shared, isSuperadmin, o
   const toggle = (l: string) => setOpen(p => { const n = new Set(p); n.has(l) ? n.delete(l) : n.add(l); return n })
   const toggleEmbed = (l: string) => setEmbed(p => { const n = new Set(p); n.has(l) ? n.delete(l) : n.add(l); return n })
 
+  const [refining, setRefining] = useState(false)
   const refresh = async () => {
     try { const j = await fetch(`/api/dossier/${d.root_id}?t=${Date.now()}`, { cache: 'no-store' }).then(r => r.json()); if (j?.dossier) setD(j.dossier) } catch {}
   }
+  // Ouverture immédiate avec les montants figés, puis recalcul des tarifs en
+  // arrière-plan (moteur de prix + itinéraires) pour qui les voit.
+  useEffect(() => {
+    if (!initial.light || !canBill) return
+    let cancelled = false
+    setRefining(true)
+    fetch(`/api/dossier/${initial.root_id}?t=${Date.now()}`, { cache: 'no-store' }).then(r => r.json())
+      .then(j => { if (!cancelled && j?.dossier) setD(j.dossier) }).catch(() => {}).finally(() => { if (!cancelled) setRefining(false) })
+    return () => { cancelled = true }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initial.root_id])
 
   useEffect(() => {
     if (!isSuperadmin) return
@@ -122,9 +137,9 @@ export default function DossierGroups({ initial, fiches, shared, isSuperadmin, o
   const vehicle = [d.vehicle.brand, d.vehicle.model].filter(Boolean).join(' ')
 
   return (
-    <div className="px-3 lg:px-6 py-5 space-y-3 max-w-full overflow-x-hidden">
+    <div className={`${compact ? 'px-2 py-3' : 'px-3 lg:px-6 py-5'} space-y-3 max-w-full overflow-x-hidden`}>
 
-      {isSuperadmin && (
+      {isSuperadmin && !compact && (
         <div className="flex items-center justify-between gap-3 bg-amber-500/10 border border-amber-500/30 rounded-2xl px-4 py-2">
           <span className="text-amber-700 dark:text-amber-300 text-xs font-semibold">🧪 Preview « Vue dossier » — visible par toi seul tant que le flag est sur « Moi »</span>
           <div className="flex items-center gap-1">
@@ -140,7 +155,8 @@ export default function DossierGroups({ initial, fiches, shared, isSuperadmin, o
         <div className="px-5 py-3 grid grid-cols-1 md:grid-cols-[1fr_auto] gap-x-6 gap-y-2 items-start">
           <div>
             <h1 className="text-ink font-bold text-lg flex flex-wrap items-center gap-2">
-              <button onClick={goBack} title="Retour à l'écran précédent" className="px-2.5 py-1 rounded-lg border bg-surface text-ink-secondary hover:text-ink text-sm font-semibold">← <span className="hidden sm:inline">Retour</span></button>
+              {!compact && <button onClick={goBack} title="Retour à l'écran précédent" className="px-2.5 py-1 rounded-lg border bg-surface text-ink-secondary hover:text-ink text-sm font-semibold">← <span className="hidden sm:inline">Retour</span></button>}
+              {compact && <Link href={`/dispatch/dossier/${d.root_id}?open=${openMissionId}`} target="_blank" className="px-2.5 py-1 rounded-lg bg-brand text-white text-xs font-semibold hover:bg-brand-hover">Vue complète ↗</Link>}
               Dossier {d.ref}
               <span className="text-xs font-semibold text-ink-secondary bg-surface-2 border rounded-lg px-2 py-0.5">{d.source_label}</span>
               {d.dossier_number && <span className="text-xs font-mono text-ink-secondary bg-surface-2 border rounded-lg px-2 py-0.5">{d.dossier_number}</span>}
@@ -161,6 +177,7 @@ export default function DossierGroups({ initial, fiches, shared, isSuperadmin, o
               <div>Encaissé<b className="block text-ink text-sm tabular-nums">{eur(d.totals.collected)}</b></div>
               <div>Reste<b className="block text-ink text-sm tabular-nums">{eur(d.totals.remaining)}</b></div>
             </div>
+            {refining && <p className="text-[11px] text-brand mt-1 animate-pulse">⏳ Calcul des tarifs en cours…</p>}
             {d.state.open && <p className="text-[11px] text-ink-faint mt-1">Dossier en cours : pas de facturation automatique avant la sortie du véhicule.</p>}
           </div>}
         </div>
@@ -268,7 +285,9 @@ function Group({ d, leg, canBill, isOpen, onToggle, embedOpen, onToggleEmbed, fi
 
           {leg.kind !== 'out' && (
             <div className="flex flex-wrap gap-1.5">
-              <button onClick={onToggleEmbed} className="px-2.5 py-1 rounded-lg text-xs font-semibold border bg-surface text-ink-secondary hover:text-ink">{embedOpen ? 'Replier la fiche complète' : 'Ouvrir la fiche complète'}</button>
+              {fiche
+                ? <button onClick={onToggleEmbed} className="px-2.5 py-1 rounded-lg text-xs font-semibold border bg-surface text-ink-secondary hover:text-ink">{embedOpen ? 'Replier la fiche complète' : 'Ouvrir la fiche complète'}</button>
+                : <Link href={`/dispatch/dossier/${d.root_id}?open=${leg.mission_id}`} target="_blank" className="px-2.5 py-1 rounded-lg text-xs font-semibold border bg-surface text-ink-secondary hover:text-ink">Ouvrir ce groupe dans le dossier ↗</Link>}
               <Link href={`/dispatch/${leg.mission_id}`} className="px-2.5 py-1 rounded-lg text-xs font-semibold border bg-surface text-ink-secondary hover:text-ink">Fiche seule ↗</Link>
             </div>
           )}

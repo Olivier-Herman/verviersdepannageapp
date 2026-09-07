@@ -30,15 +30,14 @@ export default async function DossierPage({ params, searchParams }: { params: { 
   const allowed = role === 'superadmin' || (await isPreviewOn('dossier_view', role))
   if (!allowed) redirect(`/dispatch/${params.id}`)
 
-  // Sans droit facturation, pas de moteur de prix : le dossier s'ouvre en mode
-  // léger (montants figés), 5 × plus vite. Les chiffres ne sont de toute façon
-  // pas affichés à un dispatcher.
   const modules: string[] = u.modules || []
-  const canBill = ['admin', 'superadmin'].includes(role) || modules.includes('facturation')
   const sb = createAdminClient()
   // Tout ce qui ne dépend pas du dossier part en parallèle avec sa construction.
   const [dossier, { data: drivers }, { data: catalogSources }, meRow] = await Promise.all([
-    buildDossier(params.id, { light: !canBill }),
+    // Léger d'abord (montants figés, 0,6 s) ; les tarifs se recalculent en
+    // arrière-plan une fois la page affichée (Olivier 07/09 : « qu'il ouvre la
+    // fiche et calcule les tarifs quand elle est ouverte »).
+    buildDossier(params.id, { light: true }),
     sb.from('users').select('id, name, avatar_url').eq('active', true)
       .or('role.in.(driver,admin,superadmin),roles.ov.{driver,admin,superadmin}').order('name'),
     sb.from('mission_source_catalog').select('key, label, display_color, group_key').eq('active', true).order('label'),

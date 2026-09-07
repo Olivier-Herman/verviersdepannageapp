@@ -19,8 +19,12 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   const u = session.user as any
   const sb = createAdminClient()
+  const modules: string[] = Array.isArray(u.modules) ? u.modules : []
+  const canBill = ['admin', 'superadmin'].includes(String(u.role || '')) || modules.includes('facturation')
   const [fiche, dossier, meRow] = await Promise.all([
     loadMissionFiche(params.id),
+    // Toujours léger : la ligne se déplie sans attendre le moteur de prix. Les
+    // montants s'affinent ensuite en arrière-plan (DossierGroups → /api/dossier).
     buildDossier(params.id, { light: true }).catch(() => null),
     u.id ? sb.from('users').select('odoo_api_key').eq('id', u.id).maybeSingle().then(r => r.data) : Promise.resolve(null),
   ])
