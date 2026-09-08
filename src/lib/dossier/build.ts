@@ -402,6 +402,7 @@ async function buildDossierUncached(anyMissionId: string, light: boolean): Promi
     ])) as string[]
 
     let amount = 0, note: string | null = null, nothing: string | null = null, days: number | null = null, amountUnknown = false
+    let regimeEff = String(m.mission_type || 'autre')   // régime tarifaire réellement appliqué (saisie → autre après levée)
     const facts: { label: string; value: string }[] = []
     let title = '', subtitle = '', started: string | null = null, ended: string | null = null, open = false
 
@@ -416,7 +417,13 @@ async function buildDossierUncached(anyMissionId: string, light: boolean): Promi
       open = !exit
       // Nuits passées au parc (Olivier 08/09/2026) — plus de Math.ceil qui comptait le jour d'entrée.
       const rawDays = nightsBetween(entry, exit ?? Date.now())
-      const tarif = dayPriceByRegime[regime]
+      // Olivier 08/09/2026 : hors saisie (levée de saisie, période non couverte par
+      // un état de frais), c'est le tarif « autre » du gardiennage qui s'applique.
+      const endDayForCover = exit ? new Date(exit).toISOString().slice(0, 10) : null
+      const coveredByEf = !!(parquet?.billed_to_date && endDayForCover && String(parquet.billed_to_date).slice(0, 10) >= endDayForCover)
+      const levee = !!parquet && parquet.state === 'clos' && parquet.recipient !== 'client'
+      regimeEff = (regime === 'saisie' && levee && !coveredByEf) ? 'autre' : regime
+      const tarif = dayPriceByRegime[regimeEff]
       let dayPrice = tarif?.price || 0
       if (!dayPrice && rootEst?.parc_jours > 0) dayPrice = r2(Number(rootEst.parc_eur) / Number(rootEst.parc_jours))
       days = Math.max(0, rawDays - (tarif?.free || 0))
@@ -428,7 +435,7 @@ async function buildDossierUncached(anyMissionId: string, light: boolean): Promi
       else if (days <= 0 && !open) { amount = 0; nothing = `aucune nuit facturable (${rawDays} nuit${rawDays > 1 ? 's' : ''}${(tarif?.free || 0) > 0 ? `, ${tarif?.free} offerte${(tarif?.free || 0) > 1 ? 's' : ''}` : ''})` }
       else { amount = r2(days * dayPrice); note = dayPrice ? `${days} j × ${dayPrice.toFixed(2)} €` : `${days} j · tarif journalier introuvable` }
       title = 'Gardiennage'
-      subtitle = [`régime ${REGIME_LABEL[regime] || regime}`, m.parc_zone_key ? `zone ${m.parc_zone_key}` : null, m.parc_row_number != null ? `rangée ${m.parc_row_number}` : null].filter(Boolean).join(' · ')
+      subtitle = [regimeEff !== regime ? `régime ${REGIME_LABEL[regime] || regime} → ${REGIME_LABEL[regimeEff] || regimeEff} (levée de saisie)` : `régime ${REGIME_LABEL[regime] || regime}`, m.parc_zone_key ? `zone ${m.parc_zone_key}` : null, m.parc_row_number != null ? `rangée ${m.parc_row_number}` : null].filter(Boolean).join(' · ')
       started = m.parked_at || m.received_at; ended = exit ? new Date(exit).toISOString() : null
       const originName = m.parc_origin_mission_id ? (legRows.find(x => x.id === m.parc_origin_mission_id)) : null
       facts.push({ label: 'Entrée', value: `${fmtD(started)}${originName?.assigned_to ? ' — ' + (nameById[originName.assigned_to] || '') : ''}` })
@@ -504,7 +511,7 @@ async function buildDossierUncached(anyMissionId: string, light: boolean): Promi
       // facturer » quand le tarif arrive après coup (2GSE264, 08/09/2026).
       facts, amount_htva: amount, amount_note: note,
       billed_htva: billedHtva || ((billedRefs.length && (!billedItems.length || (!!m.invoice_number && billedItems.every(it => !Number(it.amount_htva)))) && !amountUnknown) ? amount : 0),   // D9 : un groupe sans tarif n'est jamais « facturé » par une facture sans ligne
-      billed_refs: billedRefs, nothing_to_bill: nothing, days, regime: kind === 'gard' ? String(m.mission_type || 'autre') : null, free_days: kind === 'gard' ? (dayPriceByRegime[String(m.mission_type || 'autre')]?.free || 0) : undefined, redelivery_address: (kind === 'gard' ? root.redelivery_address : m.redelivery_address) || null, amount_unknown: amountUnknown || undefined,
+      billed_refs: billedRefs, nothing_to_bill: nothing, days, regime: kind === 'gard' ? String(m.mission_type || 'autre') : null, free_days: kind === 'gard' ? (dayPriceByRegime[regimeEff]?.free || 0) : undefined, redelivery_address: (kind === 'gard' ? root.redelivery_address : m.redelivery_address) || null, amount_unknown: amountUnknown || undefined,
       // Olivier 07/09/2026 : « tout ce qui est modifiable doit l'être dans la vue 2 ».
       editable: kind === 'gard' ? undefined : {
         client_name: m.client_name || null, client_phone: m.client_phone || null, client_address: m.client_address || null,

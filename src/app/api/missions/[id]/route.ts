@@ -311,6 +311,15 @@ export async function PATCH(
     ) {
       const { relivraisonZoneFor } = await import('@/lib/parc/relivraison-zone')
       const target = await relivraisonZoneFor(supabase, (data as any).redelivery_address)
+      // Olivier 08/09/2026 : l'adresse de relivraison change sur un véhicule déjà en
+      // zone K → l'étiquette est réimprimée (l'ancienne porte l'ancienne adresse).
+      if (target === 'K' && curZone === 'K' && String((data as any).redelivery_address || '').trim()) {
+        try {
+          const { reprintLabelForMission } = await import('@/lib/missions/reprint-label-helper')
+          await reprintLabelForMission({ kind: 'uuid', value: params.id })
+          await supabase.from('mission_logs').insert({ mission_id: params.id, action: 'label_reprinted', notes: `Étiquette réimprimée : nouvelle adresse de relivraison (${String((data as any).redelivery_address).slice(0, 80)})` }).then(() => {}, () => {})
+        } catch (e: any) { console.warn(`[mission PATCH] réimpression étiquette KO mission=${params.id}:`, e?.message) }
+      }
       if (target !== curZone) {
         await supabase
           .from('incoming_missions')
