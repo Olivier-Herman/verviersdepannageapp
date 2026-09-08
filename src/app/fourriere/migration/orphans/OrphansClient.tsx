@@ -64,28 +64,6 @@ export default function OrphansClient({ userRole, userName, userEmail, userModul
 
   useEffect(() => { load() /* eslint-disable-next-line */ }, [showResolved])
 
-  async function retry(orphan: Orphan) {
-    setResolv(orphan.id)
-    try {
-      const r = await fetch('/api/admin/towsoft-migration/orphans/retry', {
-        method:  'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ id: orphan.id }),
-      })
-      const j = await r.json()
-      if (j.ok) {
-        alert(j.message || '✓ Lié avec succès')
-        load()
-      } else {
-        alert(j.message || '⚠ Pas de match VD Soft ni TowSoft. Résolution manuelle nécessaire.')
-      }
-    } catch (e: any) {
-      alert(`Erreur réseau : ${e?.message || e}`)
-    } finally {
-      setResolv(null)
-    }
-  }
-
   async function retryAll() {
     if (!confirm(`Re-tenter automatiquement les ${orphans.length} fantômes ?\n\nPour chacun, on cherche d abord dans TowSoft puis dans incoming_missions par plaque/VIN. Les matches sont liés automatiquement à leur zone, les autres restent fantômes.`)) return
     setResolv('all')

@@ -2025,7 +2025,7 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
   const addPhotos = async (files: FileList | null) => {
     if (!files) return
     const newFiles = Array.from(files)
-    // Ajouter aux previews locaux seulement — l'upload se fait via savePhotos
+    // Ajouter aux previews locaux seulement — l'upload se fait à la clôture
     setPhotos(p => [...p, ...newFiles])
     newFiles.forEach(f => { const r = new FileReader(); r.onload = e => setPreviews(p => [...p, e.target?.result as string]); r.readAsDataURL(f) })
   }
@@ -2553,35 +2553,6 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
   // ══════════════════════════════════════════════════════════════════════════
   // ÉCRANS FULLSCREEN
   // ══════════════════════════════════════════════════════════════════════════
-
-  // ── savePhotos ───────────────────────────────────────────────────────────
-  const savePhotos = async () => {
-    setLoading(true); setErr('')
-    try {
-      let newUrls: string[] = []
-      if (photos.length > 0) {
-        newUrls = await uploadPhotos(photos)
-        if (newUrls.length === 0) {
-          setErr(`Upload échoué — ${photos.length} fichier(s) non envoyés. Vérifiez votre connexion.`)
-          setLoading(false); return
-        }
-      }
-      const allUrls = [...photoUrls, ...newUrls]
-      if (allUrls.length === 0) { setErr('Aucune photo à sauvegarder'); setLoading(false); return }
-      const r = await fetch('/api/missions/driver-action', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ mission_id: M.id, action: 'save_photos', photo_urls: allUrls }),
-      })
-      const j = await r.json()
-      if (!r.ok) { setErr(`Erreur API: ${j.error || r.status}`); setLoading(false); return }
-      setPhotoUrls(allUrls); setPreviews(allUrls); setPhotos([])
-      saveDraft({ photoUrls: allUrls })
-      setLoading(false)
-      // Auto-retour sur l'ecran d'origine apres save (ex: close si on venait
-      // du resume de cloture). Plus besoin de cliquer Retour manuellement.
-      setScreen(photosFrom)
-    } catch (e: any) { setErr(e.message || 'Erreur sauvegarde'); setLoading(false) }
-  }
 
   // ── Écran PLEIN & BLOQUANT « Qu'est-ce qu'on fait ? » (onsiteV2) ───────────
   // Après « Sur place » sur une fiche Siabis : choix du TYPE de mission + du

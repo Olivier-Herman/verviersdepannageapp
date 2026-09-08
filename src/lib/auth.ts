@@ -84,25 +84,6 @@ async function findUserByProviderAccount(
   return data?.user_id || null
 }
 
-async function getAppToken(): Promise<string> {
-  const res = await fetch(
-    `https://login.microsoftonline.com/${process.env.AZURE_AD_TENANT_ID}/oauth2/v2.0/token`,
-    {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: new URLSearchParams({
-        client_id:     process.env.AZURE_AD_CLIENT_ID!,
-        client_secret: process.env.AZURE_AD_CLIENT_SECRET!,
-        grant_type:    'client_credentials',
-        scope:         'https://graph.microsoft.com/.default',
-      })
-    }
-  )
-  const data = await res.json()
-  if (!res.ok) throw new Error(`Token error`)
-  return data.access_token
-}
-
 async function loadModules(userId: string) {
   const supabase = createAdminClient()
   const { data } = await supabase

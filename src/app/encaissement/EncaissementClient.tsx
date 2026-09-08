@@ -1533,15 +1533,6 @@ export default function EncaissementClient({
     setClientVat(p.vat)
   }
 
-  const searchOdooByName = async (): Promise<boolean> => {
-    try {
-      const res = await fetch(`/api/partners?name=${encodeURIComponent(clientName.trim())}`)
-      const data = await res.json()
-      if (data.found) { fillFromOdooPartner(data.partner); return true }
-    } catch {}
-    return false
-  }
-
   const searchOdooByPhone = async (): Promise<boolean> => {
     try {
       const res = await fetch(`/api/partners?phone=${encodeURIComponent(clientPhone.trim())}`)

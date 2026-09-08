@@ -341,16 +341,6 @@ export default function InventaireClient({ userRole, userName, userEmail, userMo
     }
   }
 
-  /** Met a jour next_slot_index cote DB. */
-  function persistNextSlot(value: number) {
-    if (!sessionId) return
-    fetch(`/api/inventaire/sessions/${sessionId}`, {
-      method:  'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body:    JSON.stringify({ next_slot_index: value }),
-    }).catch(() => {})
-  }
-
   async function processScan(raw: string) {
     const trimmed = raw.trim()
     if (!trimmed || processing) return
@@ -873,22 +863,6 @@ export default function InventaireClient({ userRole, userName, userEmail, userMo
     }
   }
 
-  /** Action sur un vehicule manquant : sortir du parc (parc_zone_key = null). */
-  async function actionSortirDuParc(missionId: string) {
-    try {
-      const res = await fetch('/api/parc/place', {
-        method:  'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ mission_id: missionId, zone_key: null }),
-      })
-      const j = await res.json()
-      if (!res.ok) throw new Error(j.error || `Erreur ${res.status}`)
-      setMissing(prev => prev ? prev.filter(m => m.id !== missionId) : prev)
-    } catch (e: any) {
-      alert(`Erreur : ${e.message || e}`)
-    }
-  }
-
   /** Ferme le dialog "manquants" et reset la session locale. */
   function closeMissingDialog() {
     setMissing(null)
@@ -963,31 +937,6 @@ export default function InventaireClient({ userRole, userName, userEmail, userMo
       return
     }
     alert(`✅ Rapport envoyé à ${j.to}`)
-  }
-
-  async function exportXLSX() {
-    // Inclut TOUS les items (y compris reprints + erreurs) pour un rapport complet
-    if (items.length === 0) {
-      alert('Aucun véhicule scanné pour cette session')
-      return
-    }
-    const res = await fetch('/api/inventaire/export', {
-      method:  'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body:    JSON.stringify({
-        items,
-        zoneLabel: selectedZone?.fullName || selectedZone?.label,
-        tagName,
-      }),
-    })
-    if (!res.ok) { alert('Erreur export'); return }
-    const blob = await res.blob()
-    const url  = URL.createObjectURL(blob)
-    const a    = document.createElement('a')
-    a.href     = url
-    a.download = `inventaire-${tagName}.xlsx`
-    a.click()
-    URL.revokeObjectURL(url)
   }
 
   return (
