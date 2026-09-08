@@ -121,7 +121,6 @@ export default function BillingModal({ d, onClose, onDone }: { d: Dossier; onClo
                     <span className={`w-4 h-4 rounded border-[1.5px] flex items-center justify-center text-[10px] ${sel.has(l.mission_id) ? 'bg-brand border-brand text-white' : 'border-ink-muted'}`}>{sel.has(l.mission_id) ? '✓' : (isLegBilled(l) ? '✓' : l.nothing_to_bill ? '–' : '')}</span>
                     <span><span className="font-mono">{l.letter}</span> {l.title}{l.kind === 'gard' && l.days != null ? ` ${l.days} j` : ''}{l.kind === 'gard' && l.open && <span className={`ml-1.5 rounded-full px-1.5 py-0.5 text-[10px] font-semibold ${TONE.live}`}>en cours · arrêté à aujourd'hui si coché</span>}</span>
                     <span className="tabular-nums">{isLegBilled(l) ? `déjà facturé · ${cleanRef(l.billed_refs[0])}` : l.nothing_to_bill ? l.nothing_to_bill : l.channel === 'domaine' ? `${eur(l.amount_htva)} · relevé Domaine` : <>{eur(l.amount_htva)} <span className="text-ink-faint">· {tvac(l.amount_htva)} TVAC</span></>}</span>
-                    )}
                   </button>
                   {l.kind === 'gard' && l.open && sel.has(l.mission_id) && (
                     <div className="ml-6 mb-1 flex flex-wrap items-center gap-2 text-[11px] text-ink-secondary">
