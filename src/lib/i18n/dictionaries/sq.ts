@@ -627,4 +627,14 @@ export const sq: Dictionary = {
     digibox_depannage:   'Digibox Asistencë',
     no_key:              'Pa çelës',
   },
+  vehicle_picker: {
+    brand:      'Marka',
+    model:      'Modeli',
+    pick_brand: 'Zgjidh markën',
+    pick_model: 'Zgjidh modelin',
+    search:     'Shkruaj për të filtruar…',
+    no_match:   'Asnjë përputhje në listë',
+    empty:      'Lista është bosh',
+    other_hint: 'Nuk është në listë → zyra do ta krijojë mjetin',
+  },
 }

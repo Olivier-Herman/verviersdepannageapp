@@ -69,9 +69,12 @@ export async function POST(req: Request) {
     .select('id, vehicle_plate, vehicle_brand, vehicle_model, vehicle_vin, odoo_vehicle_id').single()
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
+  const hint = body.driver_hint ? String(body.driver_hint).slice(0, 300) : ''
+  const other = /^autres?(\s|$)/i.test(String(updates.vehicle_brand || '')) || /^autres?(\s|$)/i.test(String(updates.vehicle_model || ''))
   await sb.from('mission_logs').insert({
     mission_id: missionId, actor_id: actor.id, action: 'update_vehicle',
-    notes: 'Véhicule modifié (chauffeur)', metadata: updates,
+    notes: 'Véhicule modifié (chauffeur)' + (other ? ' — marque/modèle « Autre » : véhicule à créer par le bureau' : '') + (hint ? ` — ${hint}` : ''),
+    metadata: { ...updates, driver_hint: hint || null, vehicle_to_create: other },
   })
 
   return NextResponse.json({ ok: true, mission: updated })

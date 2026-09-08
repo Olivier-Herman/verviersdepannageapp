@@ -11,6 +11,7 @@ import { useState, useRef, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import Script from 'next/script'
 import ScanButton from '@/components/ScanButton'
+import BrandModelPicker, { findOther, OTHER_NAME, type CatalogItem } from '@/components/vehicles/BrandModelPicker'
 import { T } from '@/lib/i18n/T'
 import { normalizePlate } from '@/lib/plate'
 import { parseHighwayAddress } from '@/lib/highways/parse'
@@ -21,8 +22,8 @@ interface OdooVehicle {
   id: number; plate: string; vin: string|false
   brand: string; model: string
 }
-interface Brand { id: number; name: string }
-interface Model { id: number; name: string; brand_id: number }
+type Brand = CatalogItem
+type Model = CatalogItem
 
 // ── Constantes ────────────────────────────────────────────────────────────────
 
@@ -156,6 +157,9 @@ export default function NewDriverMissionClient() {
   const [manualBrand, setManualBrand] = useState('')
   const [manualBrandId, setManualBrandId] = useState<number|null>(null)
   const [manualModel, setManualModel] = useState('')
+  const [pick,        setPick]        = useState<'brand' | 'model' | null>(null)
+  const [loadingCat,  setLoadingCat]  = useState(false)
+  const [vehHints,    setVehHints]    = useState<string[]>([])
   const [manualPlate, setManualPlate] = useState('')
   const [manualVin,   setManualVin]   = useState('')
   const [note,        setNote]        = useState('')
@@ -166,17 +170,19 @@ export default function NewDriverMissionClient() {
 
   // ── Charger marques au montage ────────────────────────────────────────────
 
+  // Olivier 08/09/2026 : liste Odoo (au-dessus du clavier), plus de texte libre ;
+  // hors liste → « Autre », le bureau créera le véhicule. (Avant : l'appel sans
+  // ?type= renvoyait 400 → l'app retombait toujours sur la saisie libre.)
   useEffect(() => {
-    fetch('/api/vehicles')
-      .then(r => r.json())
-      .then(d => {
-        setBrands(d.brands || [])
-        setModels(d.models || [])
-      })
-      .catch(() => {})
+    setLoadingCat(true)
+    fetch('/api/vehicles?type=brands').then(r => r.json()).then(d => setBrands(Array.isArray(d) ? d : [])).catch(() => {}).finally(() => setLoadingCat(false))
   }, [])
-
-  const filteredModels = models.filter(m => !manualBrandId || m.brand_id === manualBrandId)
+  useEffect(() => {
+    if (!manualBrandId) { setModels([]); return }
+    setLoadingCat(true)
+    fetch(`/api/vehicles?type=models&brandId=${manualBrandId}`).then(r => r.json()).then(d => setModels(Array.isArray(d) ? d : [])).catch(() => setModels([])).finally(() => setLoadingCat(false))
+  }, [manualBrandId])
+  const noteTyped = (what: string, typed: string) => { if (typed) setVehHints(h => [...h, `${what} tapé par le chauffeur : ${typed}`]) }
 
   // ── Recherche Odoo ────────────────────────────────────────────────────────
 
@@ -300,7 +306,7 @@ export default function NewDriverMissionClient() {
           vehicle_brand:    brand,
           vehicle_model:    model,
           vehicle_vin:      vin,
-          remarks_general:  note || null,
+          remarks_general:  [note, ...vehHints].filter(Boolean).join('\n') || null,
         }),
       })
       const data = await r.json()
@@ -528,48 +534,29 @@ export default function NewDriverMissionClient() {
                     </div>
                   )}
 
-                  {/* Marque */}
+                  {/* Marque / modèle : liste au-dessus du clavier, « Autre » si absent */}
                   <div>
-                    <label className="block text-ink-muted text-xs mb-1.5">Marque *</label>
-                    {brands.length > 0 ? (
-                      <select
-                        value={manualBrandId ?? ''}
-                        onChange={e => {
-                          const id = parseInt(e.target.value)
-                          const brand = brands.find(b => b.id === id)
-                          setManualBrandId(id || null)
-                          setManualBrand(brand?.name || '')
-                          setManualModel('')
-                        }}
-                        className="w-full bg-surface border border rounded-xl px-3 py-3 text-ink text-sm focus:outline-none focus:border-brand">
-                        <option value="">— Choisir une marque —</option>
-                        {brands.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
-                      </select>
-                    ) : (
-                      <input value={manualBrand} onChange={e => setManualBrand(e.target.value)}
-                        placeholder="BMW, Renault…"
-                        className="w-full bg-surface border border rounded-xl px-3 py-3 text-ink text-sm focus:outline-none focus:border-brand" />
-                    )}
+                    <label className="block text-ink-muted text-xs mb-1.5"><T k="vehicle_picker.brand" /> *</label>
+                    <button type="button" onClick={() => setPick('brand')}
+                      className="w-full bg-surface border border rounded-xl px-3 py-3 text-sm text-left flex items-center justify-between">
+                      <span className={manualBrand ? 'text-ink' : 'text-ink-faint'}>{manualBrand || <T k="vehicle_picker.pick_brand" />}</span><span className="text-ink-faint">▼</span>
+                    </button>
                   </div>
-
-                  {/* Modèle */}
                   <div>
-                    <label className="block text-ink-muted text-xs mb-1.5">Modèle *</label>
-                    {filteredModels.length > 0 ? (
-                      <select
-                        value={manualModel}
-                        onChange={e => setManualModel(e.target.value)}
-                        disabled={!manualBrandId}
-                        className="w-full bg-surface border border rounded-xl px-3 py-3 text-ink text-sm focus:outline-none focus:border-brand disabled:opacity-40">
-                        <option value="">— Choisir un modèle —</option>
-                        {filteredModels.map(m => <option key={m.id} value={m.name}>{m.name}</option>)}
-                      </select>
-                    ) : (
-                      <input value={manualModel} onChange={e => setManualModel(e.target.value)}
-                        placeholder="320d, Clio…"
-                        className="w-full bg-surface border border rounded-xl px-3 py-3 text-ink text-sm focus:outline-none focus:border-brand" />
-                    )}
+                    <label className="block text-ink-muted text-xs mb-1.5"><T k="vehicle_picker.model" /> *</label>
+                    <button type="button" onClick={() => setPick('model')} disabled={!manualBrand}
+                      className="w-full bg-surface border border rounded-xl px-3 py-3 text-sm text-left flex items-center justify-between disabled:opacity-40">
+                      <span className={manualModel ? 'text-ink' : 'text-ink-faint'}>{manualModel || <T k="vehicle_picker.pick_model" />}</span><span className="text-ink-faint">▼</span>
+                    </button>
                   </div>
+                  <BrandModelPicker open={pick === 'brand'} title="Marque" items={brands} loading={loadingCat}
+                    onPick={x => { setManualBrandId(x.id); setManualBrand(x.name); setManualModel(''); setPick(null) }}
+                    onOther={typed => { const o = findOther(brands); setManualBrandId(o?.id ?? null); setManualBrand(OTHER_NAME); setManualModel(OTHER_NAME); noteTyped('Marque', typed); setPick(null) }}
+                    onClose={() => setPick(null)} />
+                  <BrandModelPicker open={pick === 'model'} title={manualBrand} items={models} loading={loadingCat}
+                    onPick={x => { setManualModel(x.name); setPick(null) }}
+                    onOther={typed => { setManualModel(OTHER_NAME); noteTyped('Modèle', typed); setPick(null) }}
+                    onClose={() => setPick(null)} />
 
                   {/* Plaque */}
                   <div>

@@ -480,26 +480,15 @@ export default function AvanceFondsClient({ user }: { user: any }) {
               {m.name}
             </button>
           ))}
-          <div className="mt-2">
-            <input type="text" placeholder="Autre modèle…"
-              value={form.modelName.startsWith('_custom:') ? form.modelName.replace('_custom:', '') : ''}
-              onChange={e => setForm(f => ({ ...f, modelName: `_custom:${e.target.value}` }))}
-              className="w-full bg-surface border border rounded-2xl px-5 py-4
-                         text-ink placeholder-zinc-600 focus:outline-none focus:border-brand text-xl font-bold text-center" />
-          </div>
+          {/* Olivier 08/09/2026 : plus de saisie libre — « Autre », le bureau créera le véhicule */}
+          {!models.some(m => /^autres?$/i.test(m.name.trim())) && (
+            <button onClick={() => { setForm(f => ({ ...f, modelName: 'Autre' })); setError(null); setStep('details') }}
+              className="w-full text-left px-5 py-4 rounded-2xl border border-dashed border bg-surface text-ink-secondary font-medium">
+              Autre <span className="block text-xs font-normal text-ink-muted">Pas dans la liste → le bureau créera le véhicule</span>
+            </button>
+          )}
         </div>
         {error && <ErrorBox message={error} />}
-        <button
-          onClick={() => {
-            const modelVal = form.modelName.startsWith('_custom:')
-              ? form.modelName.replace('_custom:', '').trim()
-              : form.modelName.trim()
-            if (!modelVal) { setError('Veuillez choisir ou saisir un modèle'); return }
-            setForm(f => ({ ...f, modelName: modelVal })); setError(null); setStep('details')
-          }}
-          className="w-full py-4 bg-brand hover:bg-brand/90 text-ink rounded-2xl font-bold text-lg mt-2">
-          Continuer →
-        </button>
       </div>
     </AppShell>
   )

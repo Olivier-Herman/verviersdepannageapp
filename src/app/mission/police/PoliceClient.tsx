@@ -5,6 +5,7 @@ import { useState, useRef, useEffect, useCallback } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { Loader2 } from 'lucide-react'
 import VehiclePlateLookup from '@/components/vehicles/VehiclePlateLookup'
+import BrandModelPicker, { findOther, OTHER_NAME } from '@/components/vehicles/BrandModelPicker'
 import OfficerAutocomplete from '@/components/missions/OfficerAutocomplete'
 import ScanButton from '@/components/ScanButton'
 import type { VehicleMatch } from '@/types/vehicles'
@@ -177,8 +178,7 @@ export default function PoliceClient({ userRole = 'driver' }: { userRole?: strin
   const [loadingBrands,   setLoadingBrands]   = useState(false)
   const [showBrands,      setShowBrands]      = useState(false)
   const [showModels,      setShowModels]      = useState(false)
-  const [brandSearch,     setBrandSearch]     = useState('')
-  const [modelSearch,     setModelSearch]     = useState('')
+  const [loadingModels,   setLoadingModels]   = useState(false)
 
   // Lookup véhicule Odoo par plaque (Phase 1 multi-match via composant partagé)
   const [vehicleFromOdoo, setVehicleFromOdoo] = useState(false)
@@ -224,10 +224,21 @@ export default function PoliceClient({ userRole = 'driver' }: { userRole?: strin
   // Load models when brand changes
   useEffect(() => {
     if (!selectedBrandId) { setModels([]); return }
+    setLoadingModels(true)
     fetch(`/api/vehicles?type=models&brandId=${selectedBrandId}`)
       .then(r => r.json())
-      .then(d => setModels(d || []))
+      .then(d => setModels(Array.isArray(d) ? d : []))
+      .catch(() => setModels([]))
+      .finally(() => setLoadingModels(false))
   }, [selectedBrandId])
+
+  // Olivier 08/09/2026 : le chauffeur ne crée plus de marque/modèle. Hors liste →
+  // « Autre », et ce qu'il avait tapé part dans les remarques pour le bureau.
+  const noteTyped = (what: string, typed: string) => {
+    if (!typed) return
+    const line = `${what} tapé par le chauffeur : ${typed}`
+    setRemarks(r => (r ? `${r}\n${line}` : line))
+  }
 
   // Google Maps autocomplete — réinitialiser quand le formulaire apparaît
   // Olivier 2026-06-02 : zones de police dynamiques (gerees dans /admin/police-zones)
@@ -508,8 +519,6 @@ export default function PoliceClient({ userRole = 'driver' }: { userRole?: strin
     })
   }
 
-  const filteredBrands = brands.filter(b => b.name.toLowerCase().includes(brandSearch.toLowerCase()))
-  const filteredModels = models.filter(m => m.name.toLowerCase().includes(modelSearch.toLowerCase()))
 
   const handleSubmit = async () => {
     // Garde synchrone anti double-soumission : le disabled={loading} ne suffit pas
@@ -936,7 +945,7 @@ export default function PoliceClient({ userRole = 'driver' }: { userRole?: strin
           {/* Marque */}
           <div>
             <label className="block text-ink-secondary text-xs font-medium mb-1">Marque</label>
-            <button onClick={() => { setShowBrands(true); setBrandSearch('') }}
+            <button onClick={() => setShowBrands(true)}
               className="w-full bg-surface border border-strong rounded-xl px-3 py-2.5 text-left text-sm text-ink flex items-center justify-between">
               <span className={brand ? 'text-ink' : 'text-ink-faint'}>{brand || 'Sélectionner une marque'}</span>
               <span className="text-ink-faint">▼</span>
@@ -947,7 +956,7 @@ export default function PoliceClient({ userRole = 'driver' }: { userRole?: strin
           {brand && (
             <div>
               <label className="block text-ink-secondary text-xs font-medium mb-1">Modèle</label>
-              <button onClick={() => { setShowModels(true); setModelSearch('') }}
+              <button onClick={() => setShowModels(true)}
                 className="w-full bg-surface border border-strong rounded-xl px-3 py-2.5 text-left text-sm text-ink flex items-center justify-between">
                 <span className={model ? 'text-ink' : 'text-ink-faint'}>{model || 'Sélectionner un modèle'}</span>
                 <span className="text-ink-faint">▼</span>
@@ -1465,74 +1474,15 @@ export default function PoliceClient({ userRole = 'driver' }: { userRole?: strin
         )
       })()}
 
-      {/* Modal Marques */}
-      {showBrands && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-end">
-          <div className="bg-surface w-full rounded-t-3xl max-h-[80vh] flex flex-col">
-            <div className="p-4 border-b border-gray-100 flex items-center justify-between">
-              <h2 className="font-bold text-ink"><T k="create_mission.select_brand" /></h2>
-              <button onClick={() => setShowBrands(false)} className="text-ink-faint text-xl">✕</button>
-            </div>
-            <div className="px-4 py-2">
-              <input value={brandSearch} onChange={e => setBrandSearch(e.target.value)}
-                placeholder="Rechercher..."
-                className="w-full bg-surface-hover rounded-xl px-3 py-2.5 text-sm text-ink outline-none" autoFocus />
-            </div>
-            <div className="overflow-y-auto flex-1 px-4 pb-4">
-              {filteredBrands.map(b => (
-                <button key={b.id} onClick={() => {
-                  setBrand(b.name); setSelectedBrandId(b.id); setModel(''); setShowBrands(false)
-                }} className="w-full text-left py-3 border-b border-gray-100 text-ink text-sm">
-                  {b.name}
-                </button>
-              ))}
-              {filteredBrands.length === 0 && brandSearch && (
-                <button onClick={() => {
-                  setBrand(brandSearch); setSelectedBrandId(null); setModel(''); setShowBrands(false)
-                }} className="w-full text-left py-3 text-blue-600 text-sm font-medium">
-                  ✚ Utiliser &quot;{brandSearch}&quot;
-                </button>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Modal Modèles */}
-      {showModels && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-end">
-          <div className="bg-surface w-full rounded-t-3xl max-h-[80vh] flex flex-col">
-            <div className="p-4 border-b border-gray-100 flex items-center justify-between">
-              <h2 className="font-bold text-ink">{brand}</h2>
-              <button onClick={() => setShowModels(false)} className="text-ink-faint text-xl">✕</button>
-            </div>
-            <div className="px-4 py-2">
-              <input value={modelSearch} onChange={e => setModelSearch(e.target.value)}
-                placeholder="Rechercher..."
-                className="w-full bg-surface-hover rounded-xl px-3 py-2.5 text-sm text-ink outline-none" autoFocus />
-            </div>
-            <div className="overflow-y-auto flex-1 px-4 pb-4">
-              {filteredModels.map(m => (
-                <button key={m.id} onClick={() => {
-                  setModel(m.name); setShowModels(false)
-                }} className="w-full text-left py-3 border-b border-gray-100 text-ink text-sm">
-                  {m.name}
-                </button>
-              ))}
-              {(filteredModels.length === 0 || modelSearch) && modelSearch && (
-                <button onClick={() => {
-                  setModel(modelSearch); setShowModels(false)
-                }} className="w-full text-left py-3 text-blue-600 text-sm font-medium">
-                  ✚ Utiliser &quot;{modelSearch}&quot;
-                </button>
-              )}
-              {filteredModels.length === 0 && !modelSearch && (
-                <p className="text-ink-faint text-sm py-3">Tapez un modèle dans la recherche</p>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
+      {/* Marque / modèle : liste au-dessus du clavier, jamais de création par le chauffeur */}
+      <BrandModelPicker open={showBrands} title={t('vehicle_picker.pick_brand')} items={brands} loading={loadingBrands}
+        onPick={b => { setBrand(b.name); setSelectedBrandId(b.id); setModel(''); setShowBrands(false) }}
+        onOther={typed => { const o = findOther(brands); setBrand(OTHER_NAME); setSelectedBrandId(o?.id ?? null); setModel(OTHER_NAME); noteTyped('Marque', typed); setShowBrands(false) }}
+        onClose={() => setShowBrands(false)} />
+      <BrandModelPicker open={showModels} title={`${brand} — ${t('vehicle_picker.pick_model')}`} items={models} loading={loadingModels}
+        onPick={m => { setModel(m.name); setShowModels(false) }}
+        onOther={typed => { setModel(OTHER_NAME); noteTyped('Modèle', typed); setShowModels(false) }}
+        onClose={() => setShowModels(false)} />
 
       <VehiclePlateLookup
         plate={plate}

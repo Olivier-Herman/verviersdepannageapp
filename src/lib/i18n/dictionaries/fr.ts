@@ -638,6 +638,16 @@ export const fr = {
     digibox_depannage:   'Digibox Dépannage',
     no_key:              'Pas de clé',
   },
+  vehicle_picker: {
+    brand:      'Marque',
+    model:      'Modèle',
+    pick_brand: 'Choisir la marque',
+    pick_model: 'Choisir le modèle',
+    search:     'Taper pour filtrer…',
+    no_match:   'Aucune correspondance dans la liste',
+    empty:      'Liste vide',
+    other_hint: 'Pas dans la liste → le bureau créera le véhicule',
+  },
 }
 
 export type Dictionary = typeof fr

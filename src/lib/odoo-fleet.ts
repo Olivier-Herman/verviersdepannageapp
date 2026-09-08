@@ -98,6 +98,24 @@ async function getModels(rpc: OdooRpc, brandId: number) {
   return list || []
 }
 
+/** Marque/modèle « Autre » : jamais résolu en création automatique de véhicule (Olivier 08/09/2026). */
+export const isOtherName = (name: string | null | undefined) => /^autres?(\s|$)/i.test(String(name || '').trim())
+
+/** Lecture seule : id de la marque si elle existe, sinon null (jamais de création). */
+export async function lookupBrandId(rpc: OdooRpc, brandName: string): Promise<number | null> {
+  const k0 = brandKey(String(brandName || '').trim()); const key = BRAND_ALIAS[k0] || k0
+  if (!key) return null
+  const matches = (await getBrands(rpc)).filter(b => brandKey(b.name) === key).sort((a, b) => a.id - b.id)
+  return matches[0]?.id ?? null
+}
+/** Lecture seule : id du modèle dans la marque s'il existe, sinon null. */
+export async function lookupModelId(rpc: OdooRpc, brandId: number, modelName: string): Promise<number | null> {
+  const key = modelKey(String(modelName || '').trim())
+  if (!key) return null
+  const matches = (await getModels(rpc, brandId)).filter(m => modelKey(m.name) === key).sort((a, b) => a.id - b.id)
+  return matches[0]?.id ?? null
+}
+
 /**
  * Résout l'id de la marque : match sur clé normalisée (+ alias), réutilise la
  * fiche canonique (id le plus bas). Ne crée qu'en l'absence de correspondance.

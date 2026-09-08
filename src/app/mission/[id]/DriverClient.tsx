@@ -12,6 +12,7 @@ import { DISCHARGE_TYPES, getDischarge as getDischargeFallback, type DischargeEn
 import DamageSchemaPad, { type DamageSchemaUrls } from '@/components/decharges/DamageSchemaPad'
 import OcrScanModal from '@/components/OcrScanModal'
 import VehiclePlateLookup from '@/components/vehicles/VehiclePlateLookup'
+import BrandModelPicker, { isOther, OTHER_NAME, type CatalogItem } from '@/components/vehicles/BrandModelPicker'
 import type { VehicleMatch } from '@/types/vehicles'
 import { KEY_LOCATIONS } from '@/lib/key-location'
 import { KeyTag } from '@/components/missions/KeyInfoCard'
@@ -321,16 +322,42 @@ function VehSheet({ m, onSave, onClose, isNative }: {
   m:        Mission
   // odooId : véhicule Odoo sélectionné dans la liste proposée (lien direct).
   // createNew : aucun ne correspond → créer un nouveau véhicule dans Odoo.
-  onSave:   (p: string, b: string, mo: string, v: string, odooId: number | null, createNew: boolean) => void
+  // hint : ce que le chauffeur avait tapé quand il a dû choisir « Autre » (pour le bureau).
+  onSave:   (p: string, b: string, mo: string, v: string, odooId: number | null, createNew: boolean, hint: string | null) => void
   onClose:  () => void
   isNative: boolean
 }) {
+  const { t } = useT()
   const [p, setP]   = useState(plate(m.vehicle_plate))
   const [b, setB]   = useState(m.vehicle_brand || '')
   const [mo, setMo] = useState(m.vehicle_model || '')
   const [v, setV]   = useState(m.vehicle_vin || '')
   const [scan, setScan] = useState<'plate' | 'vin' | null>(null)
   const [lookupOpen, setLookupOpen] = useState(false)
+
+  // Olivier 08/09/2026 : marque/modèle = liste (au-dessus du clavier), plus de
+  // texte libre ; hors liste → « Autre », le bureau créera le véhicule.
+  const [brands, setBrands]   = useState<CatalogItem[]>([])
+  const [models, setModels]   = useState<CatalogItem[]>([])
+  const [brandId, setBrandId] = useState<number | null>(null)
+  const [pick, setPick]       = useState<'brand' | 'model' | null>(null)
+  const [loadingCat, setLoadingCat] = useState(false)
+  const [hints, setHints]     = useState<string[]>([])
+  useEffect(() => {
+    setLoadingCat(true)
+    fetch('/api/vehicles?type=brands').then(r => r.json()).then(d => {
+      const list: CatalogItem[] = Array.isArray(d) ? d : []
+      setBrands(list)
+      const cur = list.find(x => x.name.trim().toLowerCase() === (m.vehicle_brand || '').trim().toLowerCase())
+      if (cur) setBrandId(cur.id)
+    }).catch(() => {}).finally(() => setLoadingCat(false))
+  }, [m.vehicle_brand])
+  useEffect(() => {
+    if (!brandId) { setModels([]); return }
+    setLoadingCat(true)
+    fetch(`/api/vehicles?type=models&brandId=${brandId}`).then(r => r.json()).then(d => setModels(Array.isArray(d) ? d : [])).catch(() => setModels([])).finally(() => setLoadingCat(false))
+  }, [brandId])
+  const noteTyped = (what: string, typed: string) => { if (typed) setHints(h => [...h, `${what} tapé par le chauffeur : ${typed}`]) }
 
   // Modif détectée vs valeurs initiales → on ne touche à Odoo QUE si modif.
   const isModified =
@@ -368,13 +395,18 @@ function VehSheet({ m, onSave, onClose, isNative }: {
           </div>
         </div>
 
-        <div><p className="text-ink-muted text-xs mb-1.5">Marque</p>
-          <input value={b} onChange={e => setB(e.target.value)}
-            className="w-full bg-surface border border focus:border-brand rounded-xl px-3 py-3 text-ink text-sm outline-none" /></div>
+        <div><p className="text-ink-muted text-xs mb-1.5">{t('vehicle_picker.brand')}</p>
+          <button type="button" onClick={() => setPick('brand')}
+            className="w-full bg-surface border border focus:border-brand rounded-xl px-3 py-3 text-sm text-left flex items-center justify-between">
+            <span className={b ? 'text-ink' : 'text-ink-faint'}>{b || t('vehicle_picker.pick_brand')}</span><span className="text-ink-faint">▼</span>
+          </button></div>
 
-        <div><p className="text-ink-muted text-xs mb-1.5">Modèle</p>
-          <input value={mo} onChange={e => setMo(e.target.value)}
-            className="w-full bg-surface border border focus:border-brand rounded-xl px-3 py-3 text-ink text-sm outline-none" /></div>
+        <div><p className="text-ink-muted text-xs mb-1.5">{t('vehicle_picker.model')}</p>
+          <button type="button" onClick={() => setPick('model')} disabled={!b}
+            className="w-full bg-surface border border focus:border-brand rounded-xl px-3 py-3 text-sm text-left flex items-center justify-between disabled:opacity-40">
+            <span className={mo ? 'text-ink' : 'text-ink-faint'}>{mo || t('vehicle_picker.pick_model')}</span><span className="text-ink-faint">▼</span>
+          </button></div>
+        {(isOther(b) || isOther(mo)) && <p className="text-amber-700 text-xs">{t('vehicle_picker.other_hint')}</p>}
 
         {/* VIN : input + bouton scan */}
         <div>
@@ -403,10 +435,19 @@ function VehSheet({ m, onSave, onClose, isNative }: {
       <VehiclePlateLookup
         plate={plate(p)}
         open={lookupOpen}
-        onSelect={(veh: VehicleMatch) => { setLookupOpen(false); onSave(plate(p), b, mo, v, veh.id, false) }}
-        onCreateNew={() => { setLookupOpen(false); onSave(plate(p), b, mo, v, null, true) }}
+        onSelect={(veh: VehicleMatch) => { setLookupOpen(false); onSave(plate(p), b, mo, v, veh.id, false, hints.join(' · ') || null) }}
+        onCreateNew={() => { setLookupOpen(false); onSave(plate(p), b, mo, v, null, true, hints.join(' · ') || null) }}
         onCancel={() => setLookupOpen(false)}
       />
+
+      <BrandModelPicker open={pick === 'brand'} title={t('vehicle_picker.pick_brand')} items={brands} loading={loadingCat}
+        onPick={x => { setB(x.name); setBrandId(x.id); setMo(''); setPick(null) }}
+        onOther={typed => { const o = brands.find(x => x.name.trim().toLowerCase() === 'autre'); setB(OTHER_NAME); setBrandId(o?.id ?? null); setMo(OTHER_NAME); noteTyped('Marque', typed); setPick(null) }}
+        onClose={() => setPick(null)} />
+      <BrandModelPicker open={pick === 'model'} title={`${b} — ${t('vehicle_picker.pick_model')}`} items={models} loading={loadingCat}
+        onPick={x => { setMo(x.name); setPick(null) }}
+        onOther={typed => { setMo(OTHER_NAME); noteTyped('Modèle', typed); setPick(null) }}
+        onClose={() => setPick(null)} />
 
       {scan && (
         <OcrScanModal
@@ -5309,12 +5350,13 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
       }} />}
 
       {/* Vehicle sheet */}
-      {showVeh && <VehSheet m={M} isNative={isCapacitor} onClose={() => setShowVeh(false)} onSave={async (p, b, mo, v, odooId, createNew) => {
+      {showVeh && <VehSheet m={M} isNative={isCapacitor} onClose={() => setShowVeh(false)} onSave={async (p, b, mo, v, odooId, createNew, hint) => {
         setShowVeh(false)
         try {
           let vehicleId: number | null = odooId
           // Aucun véhicule Odoo correspondant → on en crée un (marque/modèle requis).
-          if (createNew && vehicleId == null) {
+          // « Autre » : pas de création par le chauffeur, le bureau créera le véhicule (Olivier 08/09/2026).
+          if (createNew && vehicleId == null && !isOther(b) && !isOther(mo)) {
             if (!b.trim() || !mo.trim()) throw new Error('Marque et modèle requis pour créer le véhicule')
             const cr = await fetch('/api/odoo/create-vehicle', {
               method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -5326,7 +5368,7 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
           }
           const r = await fetch('/api/missions/update-vehicle', {
             method: 'POST', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ mission_id: M.id, vehicle_plate: p, vehicle_brand: b, vehicle_model: mo, vehicle_vin: v, ...(vehicleId != null ? { odoo_vehicle_id: vehicleId } : {}) }),
+            body: JSON.stringify({ mission_id: M.id, vehicle_plate: p, vehicle_brand: b, vehicle_model: mo, vehicle_vin: v, driver_hint: hint, ...(vehicleId != null ? { odoo_vehicle_id: vehicleId } : {}) }),
           })
           const j = await r.json()
           if (!r.ok) throw new Error(j.error || 'Erreur')

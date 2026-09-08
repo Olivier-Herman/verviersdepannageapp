@@ -3,7 +3,7 @@
 // Séparé du connecteur principal — ne pas modifier odoo.ts
 // ============================================================
 
-import { resolveBrandId, resolveModelId } from '@/lib/odoo-fleet'
+import { resolveBrandId, resolveModelId, isOtherName } from '@/lib/odoo-fleet'
 
 const FSM_URL     = process.env.ODOO_TEST_URL || process.env.ODOO_URL!
 const FSM_DB      = process.env.ODOO_TEST_DB  || process.env.ODOO_DB!
@@ -581,6 +581,12 @@ export async function findOrCreateFsmVehicle(data: {
     let modelId: number | null = null
 
     if (data.brandName && data.modelName) {
+      // Olivier 08/09/2026 : « Autre » (chauffeur hors liste) → pas de fiche Autre/Autre
+      // automatique, c'est le bureau qui crée le véhicule depuis la fiche.
+      if (isOtherName(data.brandName) || isOtherName(data.modelName)) {
+        console.log(`[FSM Fleet] ${plate} : marque/modèle « Autre » — véhicule non créé, à créer par le bureau`)
+        return null
+      }
       // Résolution centralisée anti-doublon — cf. @/lib/odoo-fleet.
       const brandId = await resolveBrandId(rpcFsm, data.brandName)
       modelId       = await resolveModelId(rpcFsm, brandId, data.modelName)
