@@ -63,7 +63,12 @@ export async function acceptKazeProposalBg(
       const { acceptProposal, getJob } = await import('@/lib/kaze/client')
 
       // Statuts qui signifient « c'est déjà à nous, plus rien à accepter ».
-      const DÉJÀ = ['accepted', 'in_progress', 'started', 'completed']
+      // « assigned » (« Assignée » chez Kaze) est L'ÉTAT NORMAL juste après
+      // l'acceptation de la proposition : vérifié le 08/09/2026 sur 2CMX015
+      // (proposed → assigned, puis tout le workflow chauffeur accepté par Kaze
+      // jusqu'à « Terminée »). Sans lui, 3 acceptations réussies ont été
+      // journalisées « NON prise en compte » et le dispatch alerté pour rien.
+      const DÉJÀ = ['assigned', 'accepted', 'in_progress', 'started', 'completed']
       const statutDe = async (): Promise<string | null> => {
         try { return String(((await getJob(jobId)) as any)?.status || '') || null }
         catch { return null }
