@@ -444,11 +444,17 @@ export async function buildDossier(anyMissionId: string, opts: { light?: boolean
   }
   // ── Canal PARQUET : remorquage + gardiennages saisie facturés par état de
   //    frais (module Saisie), jamais par une facture Odoo du dossier.
+  // Levée de saisie (dossier Saisie « clos ») : le Parquet ne paie plus rien
+  // au-delà de ce qu'il a déjà couvert ; le véhicule est récupéré par le
+  // client → ce qui reste se facture au client par Odoo (Olivier 08/09/2026,
+  // 2CLN087 : « la récupération a été faite par le client »).
+  const levee = !!parquet && parquet.state === 'clos'
   if (parquet && parquet.recipient !== 'client') {
     const efDep = parquet.efs.find(e => e.include_depannage)
     const lastEf = parquet.efs.length ? parquet.efs[parquet.efs.length - 1] : null
     for (const l of legs as any[]) {
       if (l.kind === 'rem' && l.mission_id === root.id) {
+        if (levee && !efDep && !parquet.depannage_billed) continue   // rien envoyé au Parquet → client
         l.channel = 'parquet'
         // Les postes « client uniquement » (frais administratifs) ne vont pas
         // au Parquet : on les retire de l'affichage de ce groupe.
@@ -465,9 +471,15 @@ export async function buildDossier(anyMissionId: string, opts: { light?: boolean
         if (!l.billed_to_name) { l.billed_to_name = 'Parquet de Verviers — frais de justice'; l.billed_inherited = false }
       }
       if (l.kind === 'gard' && l.regime === 'saisie') {
-        l.channel = 'parquet'
         const endDay = l.ended_at ? String(l.ended_at).slice(0, 10) : null
         const covered = !!(parquet.billed_to_date && endDay && String(parquet.billed_to_date).slice(0, 10) >= endDay)
+        if (levee && !covered) {   // levée de saisie, période non couverte par un état de frais → client (Odoo)
+          l.channel = 'odoo'
+          l.status_label = `${l.open ? 'Gardiennage en cours' : 'Terminé'} · à facturer au client (levée de saisie${root.levee_saisie_date ? ' du ' + fmtD(String(root.levee_saisie_date)) : ''})`
+          l.status_tone = 'warn'
+          continue
+        }
+        l.channel = 'parquet'
         const ef = lastEf
         if (covered && ef) { l.billed_refs = [`EF n°${ef.numero ?? ''}`]; l.billed_htva = l.amount_htva; l.status_label = `État de frais n°${ef.numero ?? ''} · ${EF_STATUS[String(ef.status || '')] || ef.status}`; l.status_tone = ef.status === 'refuse' ? 'bad' : 'ok' }
         else if (parquet.billed_to_date) { l.status_label = `${l.open ? 'Gardiennage en cours' : 'Terminé'} · Parquet facturé jusqu'au ${String(parquet.billed_to_date).slice(0, 10)}` }
