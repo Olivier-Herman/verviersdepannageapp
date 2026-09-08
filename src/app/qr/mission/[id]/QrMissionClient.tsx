@@ -103,6 +103,29 @@ export default function QrMissionClient({
   // Selecteur chauffeur (dispatcher uniquement) — vide = auto-assign au scanneur
   const [selectedDriverId, setSelectedDriverId] = useState<string>('')
   const [showNoCharge,   setShowNoCharge]   = useState(false)
+  // Restituer (08/09/2026) : montant ouvert du dossier puis sortie du parc.
+  const [restit,    setRestit]    = useState<null | 'loading' | any>(null)
+  const [restitErr, setRestitErr] = useState<string | null>(null)
+  const openRestit = async () => {
+    setRestit('loading'); setRestitErr(null)
+    try {
+      const r = await fetch(`/api/missions/${mission.id}/amount-due`, { cache: 'no-store' })
+      const j = await r.json()
+      if (!r.ok || !j.ok) throw new Error(j.error || `Erreur ${r.status}`)
+      setRestit(j)
+    } catch (e: any) { setRestit(null); setRestitErr(null); setError(e?.message || 'Montant indisponible') }
+  }
+  const doExitParc = async () => {
+    if (!confirm('Le véhicule quitte le parc maintenant : gardiennage arrêté, place libérée. Confirmer ?')) return
+    setWorking(true); setRestitErr(null)
+    try {
+      const r = await fetch(`/api/missions/${mission.id}/exit-parc`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ reason: 'restitution' }) })
+      const j = await r.json().catch(() => ({}))
+      if (!r.ok) throw new Error(j.error || `Erreur ${r.status}`)
+      setToast({ kind: 'ok', msg: 'Véhicule sorti du parc' })
+      setTimeout(() => router.push(permissions.canDossierView ? `/dispatch/dossier/${mission.id}` : `/dispatch/${mission.id}`), 800)
+    } catch (e: any) { setRestitErr(e?.message || 'Sortie impossible'); setWorking(false) }
+  }
   const [noChargeReason, setNoChargeReason] = useState('')
   const [actionMenu,     setActionMenu]     = useState<null | 'transfer' | 'domaine' | 'scratch'>(null)
   const [selectedState,  setSelectedState]  = useState<number | null>(null)
@@ -610,25 +633,43 @@ export default function QrMissionClient({
               </div>
             )}
 
-            {/* Restituer (tous users auth) */}
-            {canRestituer && (
-              <>
-                <button
-                  onClick={() => {
-                    const url = buildEncaissementUrl(mission as any, {
-                      returnTo: `/dispatch/${mission.id}`,
-                    })
-                    window.location.href = url
-                  }}
-                  disabled={working}
-                  className="w-full py-4 bg-emerald-600 hover:bg-emerald-700 text-white rounded-2xl text-base font-bold transition disabled:opacity-40 flex items-center justify-center gap-2 shadow-lg shadow-emerald-600/20">
-                  💳 Restituer (avec paiement)
-                </button>
-                <button onClick={() => setShowNoCharge(true)} disabled={working}
-                  className="w-full py-3 bg-surface border-2 border-amber-400 text-amber-700 hover:bg-amber-50 rounded-2xl text-sm font-bold transition disabled:opacity-40">
-                  🆓 Restituer sans frais
-                </button>
-              </>
+            {/* Restituer (tous users auth) — Olivier 08/09/2026 : un seul bouton.
+                Montant ouvert à 0 → le véhicule sort simplement du parc ; sinon on
+                informe du montant et on demande : facturer + encaisser, ou laisser
+                partir sans facturer (le bureau facturera). */}
+            {canRestituer && !restit && (
+              <button onClick={openRestit} disabled={working}
+                className="w-full py-4 bg-emerald-600 hover:bg-emerald-700 text-white rounded-2xl text-base font-bold transition disabled:opacity-40 flex items-center justify-center gap-2 shadow-lg shadow-emerald-600/20">
+                🚪 Restituer
+              </button>
+            )}
+            {canRestituer && restit && (
+              <div className="bg-surface border-2 border-emerald-500/50 rounded-2xl p-4 space-y-3">
+                {restit === 'loading' ? (
+                  <p className="text-ink-muted text-sm flex items-center gap-2"><Loader2 size={16} className="animate-spin" /> Calcul du montant ouvert…</p>
+                ) : restit.remaining_htva <= 0.01 ? (
+                  <>
+                    <p className="text-ink font-semibold">Rien à facturer{restit.billed_htva > 0 ? ' : tout est déjà facturé' : ''}.</p>
+                    <p className="text-ink-muted text-xs">Le véhicule sort du parc maintenant, le gardiennage s'arrête ici et la place est libérée.</p>
+                    <button onClick={() => doExitParc()} disabled={working} className="w-full py-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-sm font-bold disabled:opacity-40">{working ? '⏳…' : '✓ Sortir le véhicule du parc'}</button>
+                  </>
+                ) : (
+                  <>
+                    <p className="text-ink font-semibold">Montant ouvert : <span className="text-red-700">{restit.remaining_tvac.toFixed(2)} € TVAC</span> <span className="text-ink-muted font-normal text-xs">({restit.remaining_htva.toFixed(2)} € HTVA{restit.billed_to ? ` · client ${restit.billed_to}` : ''})</span></p>
+                    {restit.unknown && <p className="text-amber-700 text-xs">⚠ Un groupe n'a pas de tarif calculable : montant à vérifier sur le dossier.</p>}
+                    <ul className="text-xs text-ink-secondary space-y-0.5">
+                      {restit.legs.map((l: any) => <li key={l.letter}><b className="font-mono">{l.letter}</b> {l.title} · {l.nothing ? l.nothing : `${l.amount_htva.toFixed(2)} € HTVA`}{l.billed ? ' · facturé' : ''}</li>)}
+                    </ul>
+                    <button onClick={() => { window.location.href = buildEncaissementUrl(mission as any, { returnTo: permissions.canDossierView ? `/dispatch/dossier/${mission.id}` : `/dispatch/${mission.id}` }) }} disabled={working}
+                      className="w-full py-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-sm font-bold disabled:opacity-40">💳 Facturer et encaisser maintenant</button>
+                    <button onClick={() => doExitParc()} disabled={working}
+                      className="w-full py-3 bg-surface border-2 border-amber-400 text-amber-700 hover:bg-amber-50 rounded-xl text-sm font-bold disabled:opacity-40">{working ? '⏳…' : '🚪 Laisser partir sans facturer maintenant'}</button>
+                    <p className="text-ink-faint text-[11px]">« Laisser partir » : le véhicule sort du parc, le dossier reste à facturer pour le bureau. Pour une restitution sans frais, utilise <button onClick={() => { setRestit(null); setShowNoCharge(true) }} className="underline">sans frais (motif)</button>.</p>
+                  </>
+                )}
+                {restitErr && <p className="text-red-700 text-xs">⚠ {restitErr}</p>}
+                <button onClick={() => { setRestit(null); setRestitErr(null) }} disabled={working} className="w-full py-2 text-ink-muted text-xs">Annuler</button>
+              </div>
             )}
 
             {/* Ajouter des photos (tous users auth) — Olivier 07/09/2026 :

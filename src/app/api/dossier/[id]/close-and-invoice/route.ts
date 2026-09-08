@@ -15,8 +15,7 @@ import { createAdminClient }    from '@/lib/supabase'
 import { isPreviewOn }          from '@/lib/feature-flags'
 import { buildDossier }         from '@/lib/dossier/build'
 import { invoiceDossierGroups } from '@/lib/dossier/invoice'
-import { assertExitAllowed }    from '@/lib/missions/exit-control'
-import { releaseParcAndShift }  from '@/lib/parc/release'
+import { exitParcNow }          from '@/lib/parc/exit-parc'
 
 export const dynamic     = 'force-dynamic'
 export const maxDuration = 60
@@ -39,33 +38,9 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   const sb = createAdminClient()
   const d0 = await buildDossier(params.id, { light: true })
   if (!d0) return NextResponse.json({ error: 'Dossier introuvable' }, { status: 404 })
-  const { data: root } = await sb.from('incoming_missions').select('id, status, source, snc_scenario, mission_number, parc_zone_key').eq('id', d0.root_id).maybeSingle()
-  if (!root) return NextResponse.json({ error: 'Fiche principale introuvable' }, { status: 404 })
-  if (root.status !== 'parked') return NextResponse.json({ error: `Le véhicule n'est pas au parc (fiche ${root.status}) : rien à clôturer, utilise « Facturer ».` }, { status: 409 })
-  if (['police_snc', 'sia_couvert'].includes(String(root.source || '')) && !root.snc_scenario) {
-    return NextResponse.json({ error: 'Scénario SNC requis avant de clôturer : choisis-le sur la fiche.' }, { status: 409 })
-  }
-  const gate = await assertExitAllowed(sb, root.id)
-  if (!gate.ok) return NextResponse.json({ error: gate.error, exit_control_blocked: true }, { status: 409 })
-
-  // 1. Sortie du parc maintenant : la fiche quitte 'parked' → le trigger ferme
-  //    le gardiennage ouvert (parc_exit_at = now, plus aucune nuit comptée).
-  const now = new Date().toISOString()
-  const { error: upErr } = await sb.from('incoming_missions')
-    .update({ status: 'to_invoice', completed_at: now, updated_at: now })
-    .eq('id', root.id)
-  if (upErr) return NextResponse.json({ error: upErr.message }, { status: 500 })
-  await sb.from('incoming_missions')
-    .update({ parc_exit_reason: 'enlevement_transporteur', updated_at: now })
-    .eq('parent_mission_id', root.id).eq('dossier_leg', true).eq('parc_exit_reason', 'sortie').gte('parc_exit_at', new Date(Date.now() - 120_000).toISOString())
-    .then(() => {}, () => {})
-  let released: any = null
-  try { released = await releaseParcAndShift(sb, root.id) } catch (e: any) { console.warn('[close-and-invoice] libération parc KO (non bloquant):', e?.message) }
-  await sb.from('mission_logs').insert({
-    mission_id: root.id, actor_id: user.id || null, action: 'force_status_to_invoice',
-    notes: `Clôturer et facturer : enlèvement par un transporteur, sortie du parc${root.parc_zone_key ? ` (zone ${root.parc_zone_key})` : ''}, gardiennage arrêté maintenant`,
-    metadata: { via: 'dossier_close_and_invoice', released },
-  }).then(() => {}, () => {})
+  const exit = await exitParcNow(sb, d0.root_id, { id: user.id || null, name: user.name }, 'enlevement_transporteur', 'Clôturer et facturer')
+  if (!exit.ok) return NextResponse.json({ error: exit.error, exit_control_blocked: exit.exit_control_blocked }, { status: exit.status })
+  const root = { id: d0.root_id }
 
   // 2. Facturer : les groupes demandés + tout ce qui est prêt maintenant que le
   //    gardiennage est fermé (le gardiennage lui-même en premier lieu).
