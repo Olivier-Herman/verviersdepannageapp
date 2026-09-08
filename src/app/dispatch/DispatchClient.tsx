@@ -208,7 +208,7 @@ function MobileRow({ m, activeTab, drivers, driverStatuses, sources, onRefresh, 
         <div className="col-span-2" onClick={e => e.stopPropagation()}>
           {!isParked
             ? <div className="flex flex-wrap items-center gap-1.5"><AssignAction mission={m} drivers={drivers} driverStatuses={driverStatuses} onRefresh={onRefresh} onModalChange={onModalChange} userRole={userRole} userModules={userModules} /></div>
-            : <p className="text-ink-muted text-[11px]">{(m as any).parked_at ? `Au parc depuis le ${new Date((m as any).parked_at).toLocaleDateString('fr-BE', { day: '2-digit', month: '2-digit' })}` : ''}</p>}
+            : <div className="flex flex-wrap items-center justify-between gap-2"><p className="text-ink-muted text-[11px]">{(m as any).parked_at ? `Au parc depuis le ${new Date((m as any).parked_at).toLocaleDateString('fr-BE', { day: '2-digit', month: '2-digit' })}` : ''}</p>{m.status === 'parked' && <RelivrerRowButton mission={m} onRefresh={onRefresh} />}</div>}
           {m.auto_dispatch_status && <p className="mt-1 text-brand text-[11px]"><span className="animate-pulse">⚡</span> {m.auto_dispatch_status}</p>}
           {m.has_pending_derogation && <p className="mt-1 text-amber-400 text-[11px]"><span className="animate-pulse">🆘</span> Dérogation à valider</p>}
         </div>
@@ -700,6 +700,61 @@ function AssignDropdown({ mission, drivers, driverStatuses, onAssigned }: {
 // Mission "dispatching" → bouton ⚡ Assigner qui ouvre le modal ETA temps réel.
 // Autres états (assigned/in_progress/...) → dropdown classique pour réassigner.
 // "new" / "completed" → rien (action contextuelle).
+// ── Relivrer depuis la ligne « À Relivrer » (Olivier 08/09/2026 : « je ne
+// trouve pas l'emplacement d'encodage de la REL ») : crée la fiche REL à
+// partir du véhicule en parc, puis ouvre sa fiche avec le sélecteur de
+// chauffeur (?assign=1), comme « Relivrer maintenant » du module Relivraison.
+// Reprise par une assistance (privé / SNC / accident) : choix de la source.
+function RelivrerRowButton({ mission, onRefresh }: { mission: Mission; onRefresh: () => void }) {
+  const router = useRouter()
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState<string | null>(null)
+  const [override, setOverride] = useState('')
+  const [choosing, setChoosing] = useState(false)
+  const [sourcesList, setSourcesList] = useState<{ key: string; label: string }[]>([])
+  const src = String(mission.source || '').toLowerCase()
+  const needsSource = ['prive', 'police_snc', 'police_accident'].includes(src)
+  const hasAddress = !!(mission.redelivery_address || '').trim()
+  const go = async () => {
+    if (!hasAddress) { setErr('Renseigne d’abord l’adresse de relivraison (déplie la ligne → Relivraison).'); return }
+    if (needsSource && !override) {
+      if (!choosing) {
+        setChoosing(true)
+        fetch('/api/missions/sources').then(r => r.json()).then(d => {
+          const excluded = new Set([src, 'police_mg', 'police_rodeo', 'police_avp', 'police_saisie'])
+          setSourcesList((Array.isArray(d?.sources) ? d.sources : []).filter((x: any) => !excluded.has(String(x.key || '').toLowerCase())))
+        }).catch(() => {})
+      }
+      return
+    }
+    setBusy(true); setErr(null)
+    try {
+      const r = await fetch(`/api/missions/${mission.id}/relivrer`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ source_override: override || null }) })
+      const j = await r.json().catch(() => ({}))
+      if (!r.ok) { setErr(j.error || `Erreur ${r.status}`); return }
+      if (j.mission_id) { router.push(`/dispatch/${j.mission_id}?assign=1`); return }
+      onRefresh()
+    } catch (e: any) { setErr(e?.message || 'Erreur réseau') } finally { setBusy(false) }
+  }
+  return (
+    <span className="inline-flex flex-wrap items-center gap-1.5 min-w-0">
+      {choosing && needsSource && !override && (
+        <select value={override} onChange={e => setOverride(e.target.value)} className="border rounded-lg px-2 py-1 text-xs bg-surface text-ink max-w-[180px]">
+          <option value="">Reprise par… (garder {mission.source})</option>
+          <option value="__same__">Même source</option>
+          {sourcesList.map(x => <option key={x.key} value={x.key}>{x.label}</option>)}
+        </select>
+      )}
+      <button type="button" disabled={busy} onClick={() => { if (override === '__same__') setOverride(''); go() }}
+        title={hasAddress ? 'Créer la relivraison et choisir le chauffeur' : 'Adresse de relivraison manquante'}
+        className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition disabled:opacity-50 ${hasAddress ? 'bg-emerald-600 border-emerald-600 text-white hover:bg-emerald-700' : 'bg-surface border-amber-500/50 text-amber-700'}`}>
+        {busy ? '⏳ Création…' : '🚚 Relivrer'}
+      </button>
+      {err && <span className="text-red-600 text-[11px]">{err}</span>}
+    </span>
+  )
+}
+
 function AssignAction({ mission, drivers, driverStatuses, onRefresh, onModalChange, userRole, userModules }: {
   mission:        Mission
   drivers:        Driver[]
@@ -1845,7 +1900,7 @@ export default function DispatchClient({
               {/* Desktop : nouvelle liste compacte (superadmin, test) */}
               {compactList && (
                 <div className="hidden lg:block space-y-2">
-                  <div className={`grid ${activeTab === 'parked' ? 'grid-cols-[150px_56px_140px_minmax(0,1.5fr)_minmax(0,1fr)_120px]' : 'grid-cols-[150px_56px_140px_minmax(0,1.5fr)_minmax(0,1fr)_430px]'} gap-3 px-4 py-1.5 text-[11px] uppercase tracking-wide text-ink-muted font-medium`}>
+                  <div className={`grid ${activeTab === 'parked' ? 'grid-cols-[150px_56px_140px_minmax(0,1.5fr)_minmax(0,1fr)_230px]' : 'grid-cols-[150px_56px_140px_minmax(0,1.5fr)_minmax(0,1fr)_430px]'} gap-3 px-4 py-1.5 text-[11px] uppercase tracking-wide text-ink-muted font-medium`}>
                     <div>Dossier</div><div>Type</div><div>Véhicule</div><div>Intervention → destination</div><div>Client</div><div>{activeTab === 'parked' ? 'Parc' : 'Chauffeur / actions'}</div>
                   </div>
                   {missionGroups.map(g => (
@@ -1865,7 +1920,7 @@ export default function DispatchClient({
                         return (
                           <div key={m.id} className={`border-t first:border-t-0 ${expandedId === m.id ? 'ring-1 ring-brand/40' : ''}`}>
                           <div onClick={() => onRowClick(m.id)} onDoubleClick={() => onRowDblClick(href)} title="Clic : déplier · double clic : dossier complet dans un nouvel onglet"
-                            className={`grid ${activeTab === 'parked' ? 'grid-cols-[150px_56px_140px_minmax(0,1.5fr)_minmax(0,1fr)_120px]' : 'grid-cols-[150px_56px_140px_minmax(0,1.5fr)_minmax(0,1fr)_430px]'} gap-3 items-center px-4 py-2.5 cursor-pointer transition ${
+                            className={`grid ${activeTab === 'parked' ? 'grid-cols-[150px_56px_140px_minmax(0,1.5fr)_minmax(0,1fr)_230px]' : 'grid-cols-[150px_56px_140px_minmax(0,1.5fr)_minmax(0,1fr)_430px]'} gap-3 items-center px-4 py-2.5 cursor-pointer transition ${
                               expandedId === m.id ? 'bg-brand/5' : isGarage ? 'bg-amber-500/10 hover:bg-amber-500/20' : delai.urgency === 'critical' ? 'bg-red-500/5 hover:bg-surface-2' : 'hover:bg-surface-2'}`}>
                             <div className="min-w-0">
                               <p className="text-ink font-bold font-mono text-xs">{m.mission_number != null ? `#${m.mission_number}` : (m.dossier_number || m.external_id)}</p>
@@ -1895,7 +1950,7 @@ export default function DispatchClient({
                               <div className="flex flex-wrap items-center gap-1.5">
                                 {activeTab !== 'parked'
                                   ? <AssignAction mission={m} drivers={drivers} driverStatuses={driverStatuses} onRefresh={load} onModalChange={onModalChange} userRole={userRole} userModules={userModules} />
-                                  : <span className="inline-flex items-center gap-2"><span className="w-8 h-8 rounded-lg bg-amber-500 text-white font-bold font-mono text-sm flex items-center justify-center" title="Zone de parc">{(m as any).parc_zone_key || '?'}</span><span className="text-ink-muted text-[11px]">{(m as any).parked_at ? new Date((m as any).parked_at).toLocaleDateString('fr-BE', { day: '2-digit', month: '2-digit' }) : ''}</span></span>}
+                                  : <span className="inline-flex items-center gap-2"><span className="w-8 h-8 rounded-lg bg-amber-500 text-white font-bold font-mono text-sm flex items-center justify-center" title="Zone de parc">{(m as any).parc_zone_key || '?'}</span><span className="text-ink-muted text-[11px]">{(m as any).parked_at ? new Date((m as any).parked_at).toLocaleDateString('fr-BE', { day: '2-digit', month: '2-digit' }) : ''}</span>{m.status === 'parked' && <RelivrerRowButton mission={m} onRefresh={load} />}</span>}
                                 <Link href={href} title="Ouvrir le dossier entier" className="px-3 py-1.5 border border-brand/40 text-brand hover:bg-brand/10 rounded-lg text-xs font-semibold transition inline-block">VOIR</Link>
                               </div>
                               {m.auto_dispatch_status && <p className="mt-1 text-brand text-[11px]"><span className="animate-pulse">⚡</span> {m.auto_dispatch_status}</p>}
