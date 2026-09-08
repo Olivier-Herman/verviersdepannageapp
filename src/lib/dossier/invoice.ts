@@ -135,15 +135,19 @@ export async function invoiceDossierGroups(input: { anyMissionId: string; missio
     // 08/09/2026 : « inclure la ligne gardiennage sur la facture à 0 »).
     if (perLeg.length) {
       for (const z of d.legs) {
-        if (z.kind !== 'gard' || z.open || Number(z.billed_to_id) !== clientId || z.billed_refs.length || perLeg.some(p => p.leg.mission_id === z.mission_id)) continue
-        if (!/aucune nuit/i.test(String(z.nothing_to_bill || ''))) continue
+        if (z.kind === 'out' || z.open || Number(z.billed_to_id) !== clientId || z.billed_refs.length || perLeg.some(p => p.leg.mission_id === z.mission_id)) continue
+        const zeroGard = z.kind === 'gard' && /aucune nuit/i.test(String(z.nothing_to_bill || ''))
+        const zeroFiche = z.kind !== 'gard' && !z.nothing_to_bill && !z.amount_unknown && z.amount_htva === 0   // ex. relivraison avortée, 0 km
+        if (!zeroGard && !zeroFiche) continue
         const zr = rowById[z.mission_id] || (await sb.from('incoming_missions').select('*').eq('id', z.mission_id).maybeSingle()).data
         if (!zr) continue
         rowById[z.mission_id] = zr
         const zf = zr.parked_at || zr.received_at, zt = zr.parc_exit_at || nowIso
-        const zl: QuoteLine[] = [{ kind: 'SERV-PARC', name: `Gardiennage (${z.regime}) — zone ${zr.parc_zone_key || '?'} du ${fmtDay(zf)} au ${fmtDay(zt)} : ${z.nothing_to_bill}`, qty: 1, price_unit: 0 }]
-        sections.push({ section_label: `${d.number}${z.letter} — Gardiennage${zr.parc_zone_key ? ' zone ' + zr.parc_zone_key : ''}`, lines: zl })
-        perLeg.push({ leg: z, lines: zl, period_from: zf, period_to: zt })
+        const zl: QuoteLine[] = z.kind === 'gard'
+          ? [{ kind: 'SERV-PARC', name: `Gardiennage (${z.regime}) — zone ${zr.parc_zone_key || '?'} du ${fmtDay(zf)} au ${fmtDay(zt)} : ${z.nothing_to_bill}`, qty: 1, price_unit: 0 }]
+          : [{ kind: 'SERV-PEC', name: `${z.title} — ${z.amount_note || 'rien à facturer (0 km)'}`, qty: 1, price_unit: 0 }]
+        sections.push({ section_label: z.kind === 'gard' ? `${d.number}${z.letter} — Gardiennage${zr.parc_zone_key ? ' zone ' + zr.parc_zone_key : ''}` : `${d.number}${z.letter} — ${z.title} — 0 €`, lines: zl })
+        perLeg.push({ leg: z, lines: zl, period_from: z.kind === 'gard' ? zf : null, period_to: z.kind === 'gard' ? zt : null })
       }
     }
     if (!perLeg.length) continue

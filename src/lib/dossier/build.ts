@@ -488,8 +488,9 @@ async function buildDossierUncached(anyMissionId: string, light: boolean): Promi
       letter: '', kind, mission_id: m.id, mission_number: m.mission_number, external_id: m.external_id,
       dossier_number: m.dossier_number || null, title, subtitle, status: m.status,
       // Gardiennage réglé sans facture (0 nuit facturable, sans frais, offert) : plus « à facturer » (Olivier 08/09/2026).
-      status_label: (kind === 'gard' && nothing && !open && !m.invoice_number) ? (nothing.startsWith('aucune nuit') ? 'Rien à facturer · 0 nuit' : nothing.startsWith('sans frais') ? 'Sans frais' : 'Offert') : st.label,
-      status_tone: (kind === 'gard' && nothing && !open && !m.invoice_number) ? 'ok' : st.tone, started_at: started, ended_at: ended, open,
+      status_label: (kind === 'gard' && nothing && !open && !m.invoice_number) ? (nothing.startsWith('aucune nuit') ? 'Rien à facturer · 0 nuit' : nothing.startsWith('sans frais') ? 'Sans frais' : 'Offert')
+        : (kind !== 'gard' && !open && !nothing && !amountUnknown && amount === 0 && !billedRefs.length && m.status === 'to_invoice') ? 'Rien à facturer · 0 €' : st.label,
+      status_tone: ((kind === 'gard' && nothing && !open && !m.invoice_number) || (kind !== 'gard' && !open && !nothing && !amountUnknown && amount === 0 && !billedRefs.length && m.status === 'to_invoice')) ? 'ok' : st.tone, started_at: started, ended_at: ended, open,
       driver_name: m.assigned_to ? (nameById[m.assigned_to] || null) : null,
       billed_to_id: payer(m).id, billed_to_name: payer(m).name,
       billed_inherited: payer(m).id === payer(root).id,
