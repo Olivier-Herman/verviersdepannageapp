@@ -174,8 +174,30 @@ function startKey(m: any, kind: LegKind): number {
 // `light` : pour les LISTES — pas de moteur de prix (routage), on prend le
 // montant figé de la fiche (special_tarif_htva / estimated_htva) ; pas de
 // recherche d'orphelins par plaque.
-export async function buildDossier(anyMissionId: string, opts: { light?: boolean } = {}): Promise<Dossier | null> {
+// Cache mémoire des dossiers légers pour la LISTE Facturation par dossier
+// (Olivier 08/09/2026 : « l'affichage de la page facturation est très long »).
+// Uniquement sur demande (opts.cache) : les routes qui décident (facturer,
+// marquer, clôturer) lisent toujours frais. Une construction complète
+// rafraîchit l'entrée.
+const LIGHT_CACHE = new Map<string, { at: number; d: Dossier }>()
+const LIGHT_TTL_MS = 90_000
+export function invalidateDossierCache(rootId?: string) { if (rootId) LIGHT_CACHE.delete(rootId); else LIGHT_CACHE.clear() }
+
+export async function buildDossier(anyMissionId: string, opts: { light?: boolean; cache?: boolean } = {}): Promise<Dossier | null> {
   const light = !!opts.light
+  if (light && opts.cache) {
+    const hit = LIGHT_CACHE.get(anyMissionId)
+    if (hit && Date.now() - hit.at < LIGHT_TTL_MS) return hit.d
+  }
+  const built = await buildDossierUncached(anyMissionId, light)
+  if (built) {
+    if (light && opts.cache) LIGHT_CACHE.set(anyMissionId, { at: Date.now(), d: built })
+    else LIGHT_CACHE.delete(built.root_id)   // une lecture fraîche remplace l'entrée
+  }
+  return built
+}
+
+async function buildDossierUncached(anyMissionId: string, light: boolean): Promise<Dossier | null> {
   const sb = createAdminClient()
 
   const { data: m0, error: e0 } = await sb.from('incoming_missions').select('*').eq('id', anyMissionId).maybeSingle()
@@ -321,6 +343,11 @@ export async function buildDossier(anyMissionId: string, opts: { light?: boolean
         billed_to_date: (sd as any).billed_to_date || null, depannage_billed: !!(sd as any).depannage_billed,
         efs: (efs || []).map((e: any) => ({ numero: e.numero ?? null, from: e.period_from || null, to: e.period_to || null, total_htva: r2(Number(e.total_htva || 0)), status: e.status || null, justinvoice: e.justinvoice_ref || null, liquide_at: e.liquide_at || null, include_depannage: !!e.include_depannage })),
       }
+    } else {
+      // Saisie sans dossier Saisie (fiches historiques) : le circuit reste le
+      // Parquet / Domaine, jamais une facture Odoo au client (Olivier 08/09/2026 :
+      // « pourquoi la liste affiche des dossiers en Domaine ? »).
+      parquet = { recipient: 'parquet', state: null, ef_number: null, billed_to_date: null, depannage_billed: false, efs: [] } as any
     }
   }
   const EF_STATUS: Record<string, string> = { envoye: 'envoyé au Parquet', depose: 'déposé (JustInvoice)', refuse: 'refusé', liquide: 'liquidé', brouillon: 'brouillon' }
