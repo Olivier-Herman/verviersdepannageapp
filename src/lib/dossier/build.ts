@@ -421,7 +421,11 @@ async function buildDossierUncached(anyMissionId: string, light: boolean): Promi
       // un état de frais), c'est le tarif « autre » du gardiennage qui s'applique.
       const endDayForCover = exit ? new Date(exit).toISOString().slice(0, 10) : null
       const coveredByEf = !!(parquet?.billed_to_date && endDayForCover && String(parquet.billed_to_date).slice(0, 10) >= endDayForCover)
-      const levee = !!parquet && parquet.state === 'clos' && parquet.recipient !== 'client'
+      // Levée de saisie : le dossier Parquet clos, OU la levée posée sur la fiche
+      // sans aucun état de frais parti (le dossier n'est pas encore clôturé —
+      // il l'est à la levée depuis le 08/09, et par le cron du matin avant).
+      const levee = !!parquet && parquet.recipient !== 'client'
+        && (parquet.state === 'clos' || (!!(root.levee_saisie_at || root.levee_saisie_date) && root.levee_saisie_type !== 'temporaire' && !parquet.ef_number && !(parquet.efs || []).length))
       regimeEff = (regime === 'saisie' && levee && !coveredByEf) ? 'autre' : regime
       const tarif = dayPriceByRegime[regimeEff]
       let dayPrice = tarif?.price || 0
@@ -543,7 +547,8 @@ async function buildDossierUncached(anyMissionId: string, light: boolean): Promi
   // au-delà de ce qu'il a déjà couvert ; le véhicule est récupéré par le
   // client → ce qui reste se facture au client par Odoo (Olivier 08/09/2026,
   // 2CLN087 : « la récupération a été faite par le client »).
-  const levee = !!parquet && parquet.state === 'clos'
+  const levee = !!parquet && (parquet.state === 'clos'
+    || (!!(root.levee_saisie_at || root.levee_saisie_date) && root.levee_saisie_type !== 'temporaire' && !parquet.ef_number && !(parquet.efs || []).length))
   if (parquet && parquet.recipient !== 'client') {
     const efDep = parquet.efs.find(e => e.include_depannage)
     const lastEf = parquet.efs.length ? parquet.efs[parquet.efs.length - 1] : null

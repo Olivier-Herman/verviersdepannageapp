@@ -54,6 +54,37 @@ export interface SaisieCronSummary {
   actions: { plate: string; kind: string }[]; errors: string[]
 }
 
+/**
+ * Clôture IMMÉDIATE du dossier Parquet d'une fiche qui sort du circuit
+ * (levée de saisie, restitution / facturation directe). Même règle que le
+ * cron du matin — mais appelée au moment de l'événement, sinon la Vue dossier
+ * affiche « état de frais à venir » jusqu'au lendemain 7h30 alors que le
+ * gardiennage est à facturer au client (Olivier 08/09/2026, WW907HL).
+ * Ne clôture pas si un état de frais est déjà parti au Parquet.
+ */
+export async function closeSaisieDossierIfOutOfScope(sb: any, missionId: string): Promise<boolean> {
+  const { data: d } = await sb.from('saisie_dossiers').select('*').eq('mission_id', missionId).neq('state', 'clos').maybeSingle()
+  if (!d) return false
+  const { data: mission } = await sb.from('incoming_missions')
+    .select('source, status, domaine_remise_date, domaine_enlevement_date, levee_saisie_at, levee_saisie_date')
+    .eq('id', missionId).maybeSingle()
+  if (!mission) return false
+  const scope = outOfParquetScope({ ...mission, levee_saisie_at: mission.levee_saisie_at || mission.levee_saisie_date || d.levee_date })
+  const leveeClose = scope.out && !!(mission.levee_saisie_at || mission.levee_saisie_date || d.levee_date) && !d.ef_number
+  const sortieClose = scope.out && ['completed', 'to_invoice', 'cancelled'].includes(String(mission.status))
+  if (!(leveeClose || sortieClose) || ['justinvoice', 'liquide', 'facture', 'gardiennage_recurrent'].includes(d.state)) return false
+  await sb.from('saisie_dossiers').update({
+    state: 'clos', pending_action: null, pending_action_at: null,
+    levee_date: (mission.levee_saisie_at || mission.levee_saisie_date)
+      ? String(mission.levee_saisie_at || mission.levee_saisie_date).slice(0, 10) : d.levee_date,
+    notes: leveeClose
+      ? `Clôturé à la levée : ${scope.reason} Gardiennage éventuel à facturer au client.`
+      : 'Clôturé à la sortie : restitution / facturation directe (hors Parquet/Domaine).',
+    updated_at: new Date().toISOString(),
+  }).eq('id', d.id)
+  return true
+}
+
 export async function runSaisieCron(sb: any): Promise<SaisieCronSummary> {
   const auto = await getAutoSend(sb)
   const today = belgianToday()

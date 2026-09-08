@@ -119,5 +119,18 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     metadata:   { type, date, has_doc: !!firstPath },
   })
 
+  // Levée DÉFINITIVE : le dossier Parquet sort du circuit tout de suite (sinon
+  // la Vue dossier affiche « état de frais à venir » jusqu'au cron du matin).
+  if (type !== 'temporaire') {
+    try {
+      const { closeSaisieDossierIfOutOfScope } = await import('@/lib/missions/saisie-cron')
+      const closed = await closeSaisieDossierIfOutOfScope(sb, params.id)
+      if (closed) {
+        const { invalidateDossierCache } = await import('@/lib/dossier/build')
+        invalidateDossierCache(params.id)
+      }
+    } catch (e: any) { console.warn('[levee-saisie] clôture dossier Parquet KO :', e?.message) }
+  }
+
   return NextResponse.json({ ok: true })
 }
