@@ -117,7 +117,12 @@ export default function QrMissionClient({
   }
 
   const brandModel = [mission.vehicle_brand, mission.vehicle_model].filter(Boolean).join(' ')
-  const address    = [mission.destination_address, mission.destination_city].filter(Boolean).join(', ')
+  // Olivier 08/09/2026 : l'écran affichait la DESTINATION du remorquage sous le
+  // titre « Destination relivraison » (Lefin 12 Pepinster au lieu de K.M. Cars
+  // Seraing). La relivraison, c'est redelivery_address ; la destination d'origine
+  // n'est montrée qu'à défaut, avec son vrai libellé.
+  const address      = (mission.redelivery_address || '').trim() || [mission.destination_address, mission.destination_city].filter(Boolean).join(', ')
+  const addressLabel = (mission.redelivery_address || '').trim() ? 'Adresse de relivraison' : 'Destination d’origine (pas d’adresse de relivraison)'
   const entryDate  = mission.parked_at || mission.intervention_date || mission.received_at
   // Adresse de relivraison connue ? Sinon, si zone rel/accident, saisie au scan.
   const relAddress       = mission.redelivery_address || ''
@@ -341,7 +346,7 @@ export default function QrMissionClient({
 
           {address && (
             <div className="pt-2 border-t">
-              <p className="text-ink-muted text-xs uppercase tracking-wider">Destination relivraison</p>
+              <p className="text-ink-muted text-xs uppercase tracking-wider">{addressLabel}</p>
               <p className="text-ink mt-0.5 leading-tight text-sm">{address}</p>
             </div>
           )}
