@@ -90,7 +90,7 @@ export async function POST(req: Request) {
         invoiced_by:    userId,
         auto_invoiced:  isInternal,   // cron → compte dans « Système (auto) » ; manuel → attribué à l'user
         updated_at:     now,
-      }).eq('id', vdsoftMissionId)
+      }).eq('id', vdsoftMissionId).eq('dossier_leg', false)
       if (updErr) throw new Error(updErr.message)
       try { await releaseParcAndShift(sb, vdsoftMissionId) } catch { /* hors parc : ok */ }
       await sb.from('mission_logs').insert({

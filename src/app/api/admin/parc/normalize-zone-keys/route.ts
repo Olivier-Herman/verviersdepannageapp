@@ -51,6 +51,7 @@ export async function POST(req: Request) {
   const { data: missions } = await sb
     .from('incoming_missions')
     .select('parc_zone_key')
+    .eq('dossier_leg', false)
     .not('parc_zone_key', 'is', null)
   const usedKeys = new Set<string>()
   for (const m of (missions || [])) {
@@ -73,6 +74,7 @@ export async function POST(req: Request) {
     const { count } = await sb
       .from('incoming_missions')
       .select('id', { count: 'exact', head: true })
+      .eq('dossier_leg', false)
       .eq('parc_zone_key', map.from)
     const n = count || 0
     updates.push({ table: 'incoming_missions', from: map.from, to: map.to, count: n })

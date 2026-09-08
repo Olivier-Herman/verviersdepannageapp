@@ -77,6 +77,7 @@ export async function POST(req: Request) {
   const { data: vehicles, error: vErr } = await sb
     .from('incoming_missions')
     .select('id, vehicle_plate, parc_zone_key, parc_row_number, parc_slot_index, status, external_id')
+    .eq('dossier_leg', false)   // fiches Gardiennage (dossier_leg) : jamais (audit 08/09/2026)
     .eq('parc_zone_key', zoneKey)
     .order('parc_row_number')
     .order('parc_slot_index')

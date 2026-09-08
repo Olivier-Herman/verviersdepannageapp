@@ -54,6 +54,7 @@ export async function reprintLabelForMission(
       billed_to_name, client_name,
       parc_zone_key
     `)
+    .eq('dossier_leg', false)   // fiches Gardiennage (dossier_leg) : jamais (audit 08/09/2026)
   const { data: mission, error } =
       sel.kind === 'uuid'           ? await baseQuery.eq('id',              sel.value).maybeSingle()
     : sel.kind === 'mission_number' ? await baseQuery.eq('mission_number',  sel.value).maybeSingle()

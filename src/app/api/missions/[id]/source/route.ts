@@ -76,7 +76,7 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
   const { data: mission } = idIsNumeric
     ? await supabase.from('incoming_missions')
         .select('id, mission_number, external_id, dossier_number, source, sender_email, received_at, intervention_date, client_name, vehicle_plate, raw_content, assigned_to')
-        .eq('mission_number', Number(params.id)).single()
+        .eq('mission_number', Number(params.id)).eq('dossier_leg', false).single()
     : await supabase.from('incoming_missions')
         .select('id, mission_number, external_id, dossier_number, source, sender_email, received_at, intervention_date, client_name, vehicle_plate, raw_content, assigned_to')
         .eq('id', params.id).single()

@@ -116,6 +116,7 @@ export async function runAxaImport({ mode = 'preview' }: { mode?: ImportMode } =
       .from('incoming_missions')
       .select(ENRICH_COLS)
       .or(orFilter)
+      .eq('dossier_leg', false)   // fiches Gardiennage (dossier_leg) : jamais (audit 08/09/2026)
       .not('status', 'in', '(cancelled,ignored)')
     for (const r of data || []) {
       const dn = String(r.dossier_number || '')
@@ -249,6 +250,7 @@ async function reconcileAxaCancellations(sb: ReturnType<typeof createAdminClient
     .from('incoming_missions')
     .select('id, axa_mission_order_id, status, assigned_to, mission_type, mission_number')
     .not('axa_mission_order_id', 'is', null)
+    .eq('dossier_leg', false)
     .not('status', 'in', `(${AXA_TERMINAL_STATUSES.join(',')})`)
   if (!openFiches?.length) return
 

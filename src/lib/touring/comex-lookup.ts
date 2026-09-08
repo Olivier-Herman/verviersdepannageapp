@@ -91,6 +91,7 @@ export async function importComexByRefs(opts: {
     const { data: lineage } = await supabase.from('incoming_missions')
       .select('id, status, mission_number, raw_content')
       .eq('dossier_number', String(match.CID_DOS))
+      .eq('dossier_leg', false)   // fiches Gardiennage (dossier_leg) : jamais (audit 08/09/2026)
       .not('status', 'in', '(cancelled,completed,to_invoice,invoiced,ignored,deleted)')
       .order('updated_at', { ascending: false })
       .limit(1).maybeSingle()

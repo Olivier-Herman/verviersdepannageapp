@@ -109,9 +109,10 @@ export async function attachRequisitoire(
   if (intake.status === 'attached') return { ok: false, error: 'Déjà rattaché' }
 
   const { data: mission, error: mErr } = await sb
-    .from('incoming_missions').select('id, dossier_number, vehicle_plate, vehicle_vin, incident_at').eq('id', missionId).maybeSingle()
+    .from('incoming_missions').select('id, dossier_number, vehicle_plate, vehicle_vin, incident_at, dossier_leg').eq('id', missionId).maybeSingle()
   if (mErr)     return { ok: false, error: mErr.message }
   if (!mission) return { ok: false, error: 'Fiche introuvable' }
+  if ((mission as any).dossier_leg) return { ok: false, error: 'Cette fiche est le volet Gardiennage du dossier : rattache le réquisitoire à la fiche principale.' }
 
   const ex = (intake.extracted || {}) as RequisitoireExtract
   const isLevee = intake.doc_type === 'levee_saisie'

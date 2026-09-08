@@ -85,7 +85,7 @@ export async function POST(req: Request) {
     const cols = `id, mission_number, external_id, dossier_number, source, status,
       vehicle_plate, vehicle_vin, vehicle_brand, vehicle_model,
       client_name, billed_to_name, incident_address, destination_address,
-      intervention_date, received_at, invoice_number, amount_to_collect`
+      intervention_date, received_at, invoice_number, amount_to_collect, dossier_leg`
 
     let vdRows: any[] = []
     const like = `%${key}%`
@@ -123,6 +123,8 @@ export async function POST(req: Request) {
 
     // Olivier 2026-07-04 : non-superadmin → pas de missions 'unknown' (placeholder),
     // et 'cancelled' masquées sauf case cochée (body.showCancelled). Superadmin voit tout.
+    // Fiches Gardiennage (dossier_leg) : jamais dans la recherche facturation — elles se facturent depuis le dossier (audit 08/09/2026).
+    vdRows = vdRows.filter(m => !(m as any).dossier_leg)
     const isSuperadmin  = (session!.user as any)?.role === 'superadmin'
     const showCancelled = body.showCancelled === true || body.showCancelled === '1'
     if (!isSuperadmin) {

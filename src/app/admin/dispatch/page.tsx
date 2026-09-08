@@ -23,11 +23,11 @@ export default async function DispatchAdminPage() {
     { count: depotsCount },
     { count: archivedCount },
   ] = await Promise.all([
-    sb.from('incoming_missions').select('id', { count: 'exact', head: true }).is('archived_at', null),
+    sb.from('incoming_missions').select('id', { count: 'exact', head: true }).eq('dossier_leg', false).is('archived_at', null),
     sb.from('mission_source_catalog').select('key', { count: 'exact', head: true }),
     sb.from('surcharge_clients').select('key', { count: 'exact', head: true }),
     sb.from('depots').select('id', { count: 'exact', head: true }),
-    sb.from('incoming_missions').select('id', { count: 'exact', head: true }).not('archived_at', 'is', null),
+    sb.from('incoming_missions').select('id', { count: 'exact', head: true }).eq('dossier_leg', false).not('archived_at', 'is', null),
   ])
 
   const sections = [

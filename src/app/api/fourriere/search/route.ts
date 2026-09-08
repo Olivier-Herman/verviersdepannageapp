@@ -84,6 +84,7 @@ export async function GET(req: Request) {
       parc_zone_key, parc_row_number, parc_slot_index,
       parked_at, loaded_at, received_at, intervention_date, updated_at
     `)
+    .eq('dossier_leg', false)   // fiches Gardiennage (dossier_leg) : jamais (audit 08/09/2026)
     .order('parked_at',  { ascending: false, nullsFirst: false })
     .order('updated_at', { ascending: false })
     .limit(100)

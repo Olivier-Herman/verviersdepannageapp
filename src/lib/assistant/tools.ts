@@ -394,6 +394,7 @@ const missionTools: ToolDef[] = [
       let q = sb().from('incoming_missions')
         .select('id, dossier_number, external_id, source, status, client_name, vehicle_plate, vehicle_brand, vehicle_model, incident_city, intervention_date, received_at')
         .order('received_at', { ascending: false })
+        .eq('dossier_leg', false)   // fiches Gardiennage : jamais (audit 08/09/2026)
         .range(0, limit - 1)
       if (args.status) q = q.eq('status', args.status)
       if (args.source) q = q.eq('source', args.source)

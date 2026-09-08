@@ -67,6 +67,7 @@ export async function normalizeMissionVehicles(sb: Sb, opts: { batch?: number; b
 
   let q = sb.from('incoming_missions')
     .select('id, created_at, vehicle_brand, vehicle_model')
+    .eq('dossier_leg', false)   // fiches Gardiennage (dossier_leg) : jamais (audit 08/09/2026)
     .or('vehicle_brand.not.is.null,vehicle_model.not.is.null')
     .order('created_at', { ascending: false })
     .limit(batch)

@@ -25,6 +25,7 @@ export async function GET(req: Request) {
   // attribution par invoice_created_by OU invoiced_by (historique inclus).
   const { data: rows } = await sb.from('incoming_missions')
     .select('auto_invoiced, invoice_created_by, invoiced_by, invoiced_at, invoice_created_at, source, mission_type')
+    .eq('dossier_leg', false)   // fiches Gardiennage : jamais (audit 08/09/2026)
     .or(`invoiced_at.gte.${since},invoice_created_at.gte.${since}`)
     .limit(20000)
 

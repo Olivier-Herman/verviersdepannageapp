@@ -40,6 +40,7 @@ export async function GET() {
   const { data: missions } = await sb
     .from('incoming_missions')
     .select('source')
+    .eq('dossier_leg', false)
     .not('source', 'is', null)
     .limit(10000)
 

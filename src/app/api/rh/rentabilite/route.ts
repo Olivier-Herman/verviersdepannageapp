@@ -58,6 +58,7 @@ export async function GET(req: Request) {
     let q = sb.from('incoming_missions')
       .select('assigned_to, estimated_htva, mission_type, status, assigned_at')
       .in('assigned_to', userIds).gte('assigned_at', startDate + 'T00:00:00')
+      .eq('dossier_leg', false)
       .not('status', 'in', '(cancelled,ignored,parse_error)')
     if (endDate) q = q.lte('assigned_at', endDate + 'T23:59:59')
     const { data, error } = await q.order('id', { ascending: true }).range(from, from + PAGE - 1)

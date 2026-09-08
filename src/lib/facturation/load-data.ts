@@ -74,6 +74,7 @@ export async function loadFacturationData(
         odoo_quote_id, odoo_quote_url,
         billed_to_id, billed_to_name
       `)
+      .eq('dossier_leg', false)   // voisin de chaîne = REL, pas la fiche Gardiennage (audit 08/09/2026)
       .or([
         parentIds.length > 0 ? `id.in.(${parentIds.join(',')})` : '',
         allIds.size > 0      ? `parent_mission_id.in.(${[...allIds].join(',')})` : '',

@@ -139,6 +139,7 @@ export async function loadPlateIndex(sinceIso: string, force = false): Promise<M
       .from('incoming_missions')
       .select('id, vehicle_plate, invoice_odoo_id, created_at, client_name')
       .not('vehicle_plate', 'is', null)
+      .eq('dossier_leg', false)   // fiches Gardiennage : la facture de gardiennage se rapproche via le dossier, pas ici (audit 08/09/2026)
       .gte('created_at', sinceIso)
       .order('id', { ascending: true })          // tri déterministe : jamais created_at
       .range(offset, offset + 999)

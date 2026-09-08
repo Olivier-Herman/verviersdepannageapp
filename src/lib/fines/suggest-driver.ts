@@ -119,6 +119,7 @@ export async function suggestDriverForFine(
         assigned_user:users!incoming_missions_assigned_to_fkey(id, name)
       `)
       .ilike('vehicle_plate', normalizedPlate)
+      .eq('dossier_leg', false)   // fiches Gardiennage (dossier_leg) : jamais (audit 08/09/2026)
       .or(`completed_at.gte.${before},and(completed_at.is.null,received_at.gte.${before})`)
       .lte('received_at', after)
       .limit(20)

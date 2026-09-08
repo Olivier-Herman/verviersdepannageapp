@@ -122,6 +122,8 @@ async function purgeForSession(sb: ReturnType<typeof createAdminClient>, s: Sess
   //    mission_remarks CASCADE deja, mais mission_logs FK comportement inconnu
   //    sur certaines anciennes tables : on prefere etre explicite.
   if (touchedMissions.length > 0) {
+    // Fiches Gardiennage des missions de test : enfants (dossier_leg) à purger avec elles (audit 08/09/2026).
+    await sb.from('incoming_missions').delete().in('parent_mission_id', touchedMissions).eq('dossier_leg', true)
     await sb.from('mission_logs').delete().in('mission_id', touchedMissions)
     const { error: delErr } = await sb
       .from('incoming_missions')

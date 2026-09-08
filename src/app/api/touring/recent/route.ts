@@ -21,6 +21,7 @@ export async function GET() {
   const sb = createAdminClient()
   const { data } = await sb.from('incoming_missions')
     .select('mission_number, source, source_format, status, dossier_number, external_id, vehicle_plate, created_at, archived_at')
+    .eq('dossier_leg', false)   // fiches Gardiennage (dossier_leg) : jamais (audit 08/09/2026)
     .order('created_at', { ascending: false })
     .limit(20)
 

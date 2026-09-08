@@ -123,6 +123,7 @@ export async function GET(req: Request) {
     ? await sb
         .from('incoming_missions')
         .select('id, parent_mission_id, status, invoiced_at, no_charge_at')
+        .eq('dossier_leg', false)   // fiches Gardiennage : sinon plus AUCUNE chaîne passée par le parc n'est archivée (audit 08/09/2026)
         .or(orClauses)
     : { data: [] as ChainMission[] }
 

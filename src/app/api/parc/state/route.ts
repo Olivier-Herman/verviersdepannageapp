@@ -101,6 +101,7 @@ export async function GET() {
         .from('incoming_missions')
         .select('id, external_id, vehicle_plate, vehicle_brand, vehicle_model, client_name, status, parc_zone_key, parc_row_number, parc_slot_index, mission_type, source, saisie_motif_code, updated_at')
         .in('vehicle_plate', odooPlates)
+        .eq('dossier_leg', false)   // fiches Gardiennage (dossier_leg) : jamais (audit 08/09/2026)
         .order('updated_at', { ascending: false })
     : { data: [] as any[] }
 

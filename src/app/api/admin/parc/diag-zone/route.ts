@@ -100,6 +100,7 @@ export async function GET(req: Request) {
     .from('incoming_missions')
     .select('id, external_id, vehicle_plate, status, parc_zone_key, parc_row_number, parc_slot_index, updated_at')
     .ilike('parc_zone_key', zoneKey)
+    .eq('dossier_leg', false)
     .order('updated_at', { ascending: false })
 
   const odooPlatesList = Array.from(odooPlates)
@@ -108,6 +109,7 @@ export async function GET(req: Request) {
         .from('incoming_missions')
         .select('id, external_id, vehicle_plate, status, parc_zone_key, parc_row_number, parc_slot_index, updated_at')
         .in('vehicle_plate', odooPlatesList)
+        .eq('dossier_leg', false)
         .order('updated_at', { ascending: false })
     : { data: [] as any[] }
 

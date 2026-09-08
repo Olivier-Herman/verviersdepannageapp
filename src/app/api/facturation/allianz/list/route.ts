@@ -66,6 +66,7 @@ export async function GET(req: Request) {
     const { data } = await sb.from('incoming_missions')
       .select(`id, mission_number, external_id, dossier_number, source, status, mission_type, vehicle_plate, destination_address, destination_lat, destination_lng, received_at, completed_at`)
       .in('external_id', numbers)
+      .eq('dossier_leg', false)
       .neq('status', 'cancelled')
     for (const m of (data || [])) if (m.external_id) byNumber.set(String(m.external_id), m)
   }
@@ -73,6 +74,7 @@ export async function GET(req: Request) {
     const { data } = await sb.from('incoming_missions')
       .select(`id, mission_number, external_id, dossier_number, source, status, mission_type, vehicle_plate, destination_address, destination_lat, destination_lng, received_at, completed_at`)
       .not('vehicle_plate', 'is', null)
+      .eq('dossier_leg', false)   // le leg a la même plaque et un received_at plus récent : il volait le rapprochement (audit 08/09/2026)
       .neq('status', 'cancelled')
       .order('received_at', { ascending: false })
       .limit(500)

@@ -128,6 +128,7 @@ async function ficheIdFromOurRef(sb: any, subject: string | null | undefined): P
     .from('incoming_missions')
     .select('id')
     .eq('mission_number', num)
+    .eq('dossier_leg', false)
     .is('archived_at', null)
     .maybeSingle()
   return data?.id ?? null

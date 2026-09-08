@@ -34,13 +34,13 @@ export async function GET(req: NextRequest) {
   if (pk) {
     const frag = pk.slice(-7)   // 7 derniers chiffres → tolère les formats
     const { data } = await sb.from('incoming_missions')
-      .select('id, client_phone').ilike('client_phone', `%${frag}%`)
+      .select('id, client_phone').ilike('client_phone', `%${frag}%`).eq('dossier_leg', false)
       .not('status', 'in', '(cancelled,ignored,parse_error)').limit(40)
     for (const m of (data || [])) if (phoneKey(m.client_phone) === pk) missionIds.add(m.id)
   }
   if (ek) {
     const { data } = await sb.from('incoming_missions')
-      .select('id').ilike('client_email', ek)
+      .select('id').ilike('client_email', ek).eq('dossier_leg', false)
       .not('status', 'in', '(cancelled,ignored,parse_error)').limit(20)
     for (const m of (data || [])) missionIds.add(m.id)
   }
@@ -49,7 +49,7 @@ export async function GET(req: NextRequest) {
 
   const { data: ms } = await sb.from('incoming_missions')
     .select('id, mission_number, vehicle_plate, vehicle_brand, vehicle_model, status, parc_zone_key, created_at')
-    .in('id', [...missionIds]).order('created_at', { ascending: false }).limit(8)
+    .in('id', [...missionIds]).eq('dossier_leg', false).order('created_at', { ascending: false }).limit(8)
 
   const RANK: Record<string, number> = { parked: 6, to_invoice: 5, delivering: 4, in_progress: 3, accepted: 2, completed: 1 }
   const results = (ms || [])

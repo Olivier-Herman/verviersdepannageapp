@@ -51,10 +51,12 @@ export async function GET(req: Request) {
 
   const [{ data: users }, { data: missions }] = await Promise.all([
     actorIds.length   ? sb.from('users').select('id, name, email').in('id', actorIds) : Promise.resolve({ data: [] as any[] }),
-    missionIds.length ? sb.from('incoming_missions').select('id, mission_number, vehicle_plate, source').in('id', missionIds) : Promise.resolve({ data: [] as any[] }),
+    missionIds.length ? sb.from('incoming_missions').select('id, mission_number, vehicle_plate, source, dossier_leg').in('id', missionIds) : Promise.resolve({ data: [] as any[] }),
   ])
   const uMap = new Map((users || []).map((u: any) => [u.id, u]))
   const mMap = new Map((missions || []).map((m: any) => [m.id, m]))
+  // Logs écrits sur une fiche Gardiennage : on les affiche sous la plaque avec la mention « gardiennage » plutôt que de les confondre avec la mission (audit 08/09/2026).
+  for (const m of mMap.values()) if ((m as any).dossier_leg) (m as any).source = 'gardiennage'
 
   const items = rows.map(r => {
     const u = r.actor_id ? uMap.get(r.actor_id) : null

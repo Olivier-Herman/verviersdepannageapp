@@ -38,6 +38,7 @@ export async function GET(req: NextRequest) {
   const { data } = await sb.from('incoming_missions')
     .select('id, mission_number, vehicle_plate, vehicle_brand, vehicle_model, status, parc_zone_key, external_id, dossier_number, created_at')
     .or(parts.join(','))
+    .eq('dossier_leg', false)   // fiches Gardiennage (dossier_leg) : jamais (audit 08/09/2026)
     .not('status', 'in', '(cancelled,ignored,parse_error)')
     .order('created_at', { ascending: false })
     .limit(60)

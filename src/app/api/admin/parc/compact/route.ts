@@ -61,6 +61,7 @@ export async function POST(req: Request) {
   let q = sb
     .from('incoming_missions')
     .select('id, vehicle_plate, parc_zone_key, parc_row_number, parc_slot_index, status')
+    .eq('dossier_leg', false)   // sinon les fiches Gardiennage passent pour des fantômes et perdent leur position (audit 08/09/2026)
     .not('parc_zone_key',   'is', null)
     .not('parc_row_number', 'is', null)
     .not('parc_slot_index', 'is', null)

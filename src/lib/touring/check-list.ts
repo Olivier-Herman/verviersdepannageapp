@@ -179,6 +179,7 @@ export async function buildTouringCheckList(sb: any): Promise<CheckItem[]> {
   const { data: chainRows } = await sb
     .from('incoming_missions')
     .select(COLS)
+    .eq('dossier_leg', false)   // fiches Gardiennage (dossier_leg) : jamais (audit 08/09/2026)
     .or(`id.in.(${rootArr.join(',')}),parent_mission_id.in.(${rootArr.join(',')})`)
   const chain: any[] = chainRows || []
   const byRoot = new Map<string, any[]>()

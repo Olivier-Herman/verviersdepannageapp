@@ -53,14 +53,14 @@ export async function POST(req: NextRequest) {
     const pick = (arr: any[]) => (arr || []).filter(Boolean).sort((a, b) => (RANK[b.status] || 0) - (RANK[a.status] || 0))[0]
     // 1) par plaque normalisée
     const { data: byPlate } = await sb.from('incoming_missions')
-      .select('id, vehicle_plate, status').ilike('vehicle_plate', `%${clean}%`).limit(30)
+      .select('id, vehicle_plate, status').ilike('vehicle_plate', `%${clean}%`).eq('dossier_leg', false).limit(30)
     let hit = pick((byPlate || []).filter(m => normPlate(m.vehicle_plate) === pk))
     // 2) sinon par n° de mission / réf externe / n° de dossier
     if (!hit && clean) {
       const parts = [`external_id.ilike.%${clean}%`, `dossier_number.ilike.%${clean}%`]
       if (/^\d+$/.test(clean)) parts.unshift(`mission_number.eq.${clean}`)
       const { data: byRef } = await sb.from('incoming_missions')
-        .select('id, status').or(parts.join(',')).limit(30)
+        .select('id, status').or(parts.join(',')).eq('dossier_leg', false).limit(30)
       hit = pick(byRef || [])
     }
     if (hit) missionId = hit.id

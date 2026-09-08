@@ -244,6 +244,7 @@ export async function POST(req: Request) {
     const { data: currentOccupant } = await sb
       .from('incoming_missions')
       .select('id, vehicle_plate, parc_zone_key, parc_row_number, parc_slot_index')
+      .eq('dossier_leg', false)   // la fiche Gardiennage partage zone/rangée/slot avec sa racine (audit 08/09/2026)
       .eq('parc_zone_key', finalZone)
       .eq('parc_row_number', finalRow)
       .eq('parc_slot_index', finalSlot)

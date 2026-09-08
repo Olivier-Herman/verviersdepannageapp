@@ -65,6 +65,7 @@ export async function findDossierConflicts(
     const { data } = await sb
       .from('incoming_missions')
       .select('id, mission_number, dossier_number, vehicle_plate, source, parent_mission_id, status')
+      .eq('dossier_leg', false)   // fiches Gardiennage (dossier_leg) : jamais (audit 08/09/2026)
       .or(ors)
     if (data) rows.push(...data)
   }

@@ -49,8 +49,8 @@ export default async function CmrPage({ params }: { params: { id: string } }) {
   const sb = createAdminClient()
   const isNum = /^\d+$/.test(params.id)
   const { data: m } = isNum
-    ? await sb.from('incoming_missions').select('*').eq('mission_number', Number(params.id)).single()
-    : await sb.from('incoming_missions').select('*').eq('id', params.id).single()
+    ? await sb.from('incoming_missions').select('*').eq('mission_number', Number(params.id)).eq('dossier_leg', false).single()
+    : await sb.from('incoming_missions').select('*').eq('id', params.id).eq('dossier_leg', false).single()
   if (!m) redirect('/dispatch')
 
   const mm: any = m

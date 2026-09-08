@@ -32,7 +32,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   // Rattachement manuel par n° de fiche : on résout l'id.
   if (!missionId && missionNumber) {
     const { data: m } = await sb.from('incoming_missions')
-      .select('id').eq('mission_number', missionNumber).maybeSingle()
+      .select('id').eq('mission_number', missionNumber).eq('dossier_leg', false).maybeSingle()
     if (!m) return NextResponse.json({ error: `Aucune fiche n° ${missionNumber}` }, { status: 404 })
     missionId = m.id
   }

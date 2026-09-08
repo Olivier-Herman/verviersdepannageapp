@@ -108,9 +108,9 @@ export async function GET(req: Request) {
       .eq('status', 'parked').not('parc_zone_key', 'is', null),
     // Du jour : terminées (completed_at aujourd'hui) / facturées (invoiced_at aujourd'hui).
     sb.from('incoming_missions').select('*', { count: 'exact', head: true })
-      .gte('completed_at', startToday).not('status', 'in', '(cancelled,ignored,parse_error)'),
+      .gte('completed_at', startToday).eq('dossier_leg', false).not('status', 'in', '(cancelled,ignored,parse_error)'),
     sb.from('incoming_missions').select('*', { count: 'exact', head: true })
-      .gte('invoiced_at', startToday),
+      .gte('invoiced_at', startToday).eq('dossier_leg', false),
   ])
 
   // « À relivrer » (= onglet dispatch À Relivrer, K+K1) : parked en zone K/K1
