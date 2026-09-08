@@ -2,7 +2,6 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
-import { useRouter }  from 'next/navigation'
 import AppShell          from '@/components/layout/AppShell'
 import AmbientBackground from '@/components/AmbientBackground'
 
@@ -66,7 +65,6 @@ function initPlacesAutocomplete(
 
 // ── Composant principal ────────────────────────────────────
 export default function TGRClient({ user }: { user: any }) {
-  const router   = useRouter()
   const userRole    = (user as any)?.role ?? 'partner'
   const userName    = user?.name ?? ''
   const userModules = ((user as any)?.modules ?? []) as string[]

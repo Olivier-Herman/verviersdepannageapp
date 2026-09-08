@@ -19,7 +19,6 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   const u = session.user as any
   const sb = createAdminClient()
-  const modules: string[] = Array.isArray(u.modules) ? u.modules : []
   const [fiche, dossier, meRow] = await Promise.all([
     loadMissionFiche(params.id),
     // Toujours léger : la ligne se déplie sans attendre le moteur de prix. Les

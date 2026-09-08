@@ -30,7 +30,6 @@ export default async function DossierPage({ params, searchParams }: { params: { 
   const allowed = role === 'superadmin' || (await isPreviewOn('dossier_view', role, u.id))
   if (!allowed) redirect(`/dispatch/${params.id}`)
 
-  const modules: string[] = u.modules || []
   const sb = createAdminClient()
   // Tout ce qui ne dépend pas du dossier part en parallèle avec sa construction.
   const [dossier, { data: drivers }, { data: catalogSources }, meRow] = await Promise.all([

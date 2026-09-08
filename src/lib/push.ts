@@ -172,7 +172,6 @@ export async function sendPushToUser(
     const allowed = await filterByNotifPref([userId], notifType)
     if (allowed.length === 0) return { sent: 0, failed: 0 }
   }
-  const supabase = createAdminClient()
 
   let sent = 0, failed = 0
 

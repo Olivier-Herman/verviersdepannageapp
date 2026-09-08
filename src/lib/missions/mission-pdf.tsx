@@ -171,13 +171,6 @@ interface DocProps {
 
 // ── Helpers d'affichage ───────────────────────────────────────
 
-function fmtDate(s: string | null): string {
-  if (!s) return '—'
-  try {
-    return new Date(s).toLocaleDateString('fr-BE', { day: '2-digit', month: '2-digit', year: 'numeric' })
-  } catch { return '—' }
-}
-
 function fmtDateTime(s: string | null): string {
   if (!s) return '—'
   try {

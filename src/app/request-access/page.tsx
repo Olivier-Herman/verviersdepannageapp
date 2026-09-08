@@ -2,14 +2,12 @@
 
 import { useState, Suspense } from 'react'
 import { signIn } from 'next-auth/react'
-import { useRouter } from 'next/navigation'
 import Image from 'next/image'
 import Link from 'next/link'
 import { Input } from '@/components/ui/Input'
 import { Button } from '@/components/ui/Button'
 
 function RequestContent() {
-  const router = useRouter()
   const [step, setStep] = useState<'method' | 'email_form' | 'done'>('method')
   const [email, setEmail] = useState('')
   const [name, setName] = useState('')

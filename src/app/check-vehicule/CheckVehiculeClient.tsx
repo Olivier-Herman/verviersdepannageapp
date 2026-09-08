@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { ClipboardCheck, Clock, CheckCircle2, AlertCircle, ChevronRight, Truck } from 'lucide-react'
+import { ClipboardCheck, CheckCircle2, ChevronRight, Truck } from 'lucide-react'
 import type { Session } from 'next-auth'
 import type { VehicleCheck } from '@/types'
 import AmbientBackground from '@/components/AmbientBackground'
