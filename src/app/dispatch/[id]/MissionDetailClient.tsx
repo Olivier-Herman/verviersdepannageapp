@@ -1241,6 +1241,7 @@ export default function MissionDetailClient({
   parcZoneType = null,
   flux2Mission = false,
   embed = false,
+  dossierView = false,
 }: {
   mission:       Mission
   logs:          MissionLog[]
@@ -1260,6 +1261,7 @@ export default function MissionDetailClient({
   /** Mission suivie en flux 2 → forçage réservé au superadmin. */
   flux2Mission?: boolean
   embed?: boolean
+  dossierView?: boolean   // l'utilisateur a la Vue dossier (D15 : la facture partielle y est remplacée)
 }) {
   const router = useRouter()
 
@@ -4348,7 +4350,8 @@ export default function MissionDetailClient({
 
               {/* Facture partielle — véhicule en parc : facturer le dépannage /
                   une tranche de gardiennage sans sortir le véhicule du parc. */}
-              {status === 'parked' && (
+              {/* D15 (audit 08/09/2026) : remplacée par la période de gardiennage de la Vue dossier pour qui l'a. */}
+              {status === 'parked' && !dossierView && (
                 <button
                   onClick={() => setShowPartialInvoice(true)}
                   className="w-full py-2.5 bg-surface-2 hover:bg-surface border rounded-2xl text-ink-secondary text-sm font-medium transition">

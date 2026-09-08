@@ -59,6 +59,8 @@ export default function DossiersClient({ initial, autoById, comexById = {}, isSu
   const [open, setOpen] = useState<Set<string>>(new Set())
   const [billing, setBilling] = useState<Dossier | null>(null)
   const [loadingBill, setLoadingBill] = useState<string | null>(null)
+  const [verifying, setVerifying] = useState<string | null>(null)
+  const [importing, setImporting] = useState<string | null>(null)
   const [busy, setBusy] = useState<null | 'verify' | 'siabis'>(null)
   const [report, setReport] = useState<string | null>(null)
   const [reportLinks, setReportLinks] = useState<{ label: string; url: string }[]>([])
@@ -270,7 +272,9 @@ export default function DossiersClient({ initial, autoById, comexById = {}, isSu
                   <span><span className="font-mono">{r.plate || '—'}</span> {[r.brand, r.model].filter(Boolean).join(' ')}<span className="block text-ink-muted">{r.type || ''}{r.date_iso ? ' · ' + fmtDay(r.date_iso) : ''}</span></span>
                   <span className="text-ink-secondary">{r.client || '—'}<span className="block text-ink-muted truncate" title={r.lieu || ''}>{r.lieu || ''}</span></span>
                   <span className="text-ink-secondary">{r.invoice_number ? `facture ${r.invoice_number}` : (r.status || '')}{r.montant_ttc != null ? <span className="block tabular-nums">{eur(Number(r.montant_ttc))} TTC</span> : null}</span>
-                  <span>{r.source === 'vdsoft' && r.vdsoft_id ? <Link href={`/dispatch/dossier/${r.vdsoft_id}`} className="px-2.5 py-1 rounded-lg border text-brand font-semibold hover:bg-brand/10">Dossier ↗</Link> : <span className="text-ink-faint">consultation</span>}</span>
+                  <span>{r.source === 'vdsoft' && r.vdsoft_id ? <Link href={`/dispatch/dossier/${r.vdsoft_id}`} className="px-2.5 py-1 rounded-lg border text-brand font-semibold hover:bg-brand/10">Dossier ↗</Link>
+                    : r.source === 'towsoft' && r.towsoft_num ? <button disabled={importing === String(r.towsoft_num)} onClick={async () => { setImporting(String(r.towsoft_num)); try { const rr = await fetch('/api/facturation/import-towsoft', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ towsoft_num: r.towsoft_num }) }); const jj = await rr.json().catch(() => ({})); if (!rr.ok) throw new Error(jj.error || 'Import KO'); router.push(`/dispatch/dossier/${jj.mission_id}?open=none`) } catch (e: any) { setAdvErr('Import TowSoft : ' + (e?.message || e)) } finally { setImporting(null) } }} title="Importe la fiche TowSoft dans VD Soft (à facturer) et ouvre son dossier" className="px-2.5 py-1 rounded-lg border text-brand font-semibold hover:bg-brand/10 disabled:opacity-50">{importing === String(r.towsoft_num) ? '⏳ Import…' : '⬇ Importer + facturer'}</button>
+                    : <span className="text-ink-faint">consultation</span>}</span>
                 </div>
               ))}
             </div>
@@ -331,6 +335,9 @@ export default function DossiersClient({ initial, autoById, comexById = {}, isSu
                 {isCircuit(d)
                   ? <Link href={inComex(d) ? '/touring-comex' : d.parquet ? '/fourriere/saisies' : '/fourriere/domaine'} onClick={e => e.stopPropagation()} className="px-3 py-1.5 rounded-lg text-xs font-semibold border text-ink-secondary hover:text-ink">{inComex(d) ? 'Touring COMEX ↗' : d.parquet ? 'Module Saisie ↗' : 'Module Domaine ↗'}</Link>
                   : <button disabled={(!rd.length && !d.legs.some(l => canPickLeg(l))) || loadingBill === d.root_id} onClick={e => { e.stopPropagation(); openBilling(d) }} className={`px-3 py-1.5 rounded-lg text-xs font-semibold ${rd.length ? 'bg-brand text-white' : 'border text-ink-secondary'} disabled:opacity-40`}>{loadingBill === d.root_id ? '⏳ Calcul…' : `Facturer${d.state.open && rd.length ? ' (partiel)' : ''}`}</button>}
+                {d.legs.some(l => l.billed_refs.some(r => /^brouillon Odoo/i.test(r))) && (
+                  <button disabled={verifying === d.root_id} onClick={async e => { e.stopPropagation(); setVerifying(d.root_id); try { const r = await fetch(`/api/dossier/${d.root_id}/verify-invoices`, { method: 'POST' }); const j = await r.json().catch(() => ({})); setReport(j.message || j.error || `Erreur ${r.status}`); await refreshOne(d.root_id) } finally { setVerifying(null) } }} title="Relit Odoo : si le brouillon est confirmé, le numéro remplace le tampon" className="px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-emerald-600 hover:bg-emerald-700 text-white disabled:opacity-50">{verifying === d.root_id ? '⏳' : '✓ Facturation OK'}</button>
+                )}
                 <Link href={`/dispatch/dossier/${d.root_id}`} onClick={e => e.stopPropagation()} className="px-2.5 py-1.5 rounded-lg text-xs font-semibold border text-ink-secondary hover:text-ink">Dossier ↗</Link>
               </div>
             </div>

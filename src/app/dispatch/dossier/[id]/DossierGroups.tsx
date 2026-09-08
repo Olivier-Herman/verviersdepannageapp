@@ -414,7 +414,7 @@ function Group({ d, leg, canBill, isOpen, onToggle, embedOpen, onToggleEmbed, fi
                 linkedParent={fiche.linkedParent} linkedChild={fiche.linkedChild}
                 userName={shared.userName} userEmail={shared.userEmail} userId={shared.userId} userRole={shared.userRole}
                 userModules={shared.userModules} userHasOdooAccess={shared.userHasOdooAccess} googleMapsKey={shared.googleMapsKey}
-                autoDispatchStatus={fiche.autoDispatchStatus} parcZoneType={fiche.parcZoneType} embed
+                autoDispatchStatus={fiche.autoDispatchStatus} parcZoneType={fiche.parcZoneType} embed dossierView
               />
             </div>
           )}

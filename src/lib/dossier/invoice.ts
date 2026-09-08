@@ -18,7 +18,7 @@ import { createAdminClient }        from '@/lib/supabase'
 import { buildDossier, type Dossier, type DossierLeg } from '@/lib/dossier/build'
 import { buildInterventionDescription } from '@/lib/missions/build-quote-lines'
 import { actionLines }              from '@/lib/dossier/lines'
-import { createDraftInvoice, findFleetVehicleByPlate, type QuoteLine, type QuoteSection } from '@/lib/odoo-quote'
+import { createDraftInvoice, createSaleOrder, findFleetVehicleByPlate, type QuoteLine, type QuoteSection } from '@/lib/odoo-quote'
 import { withOdooActor, attachFileToInvoice } from '@/lib/odoo'
 
 export interface DossierInvoiceResult {
@@ -49,7 +49,10 @@ function actionDescription(leg: DossierLeg, m: any): string {
 // groupe se crée pour la période 05/09 à … »). Absent = jusqu'à maintenant.
 // linesOverride : lignes vérifiées/modifiées dans la modale (D1, audit 08/09/2026),
 // par fiche ; elles remplacent le calcul et sont purgées des brouillons après envoi.
-export async function invoiceDossierGroups(input: { anyMissionId: string; missionIds: string[]; actorUserId: string | null; dryRun?: boolean; periodTo?: Record<string, string>; linesOverride?: Record<string, QuoteLine[]> }): Promise<DossierInvoiceResult> {
+// asQuote (D11) : un DEVIS Odoo (sale.order) par client au lieu d'une facture ;
+// rien n'est marqué facturé, on ne coupe pas le gardiennage, odoo_quote_id est
+// posé sur les fiches. La facture partira ensuite d'Odoo ou du dossier.
+export async function invoiceDossierGroups(input: { anyMissionId: string; missionIds: string[]; actorUserId: string | null; dryRun?: boolean; periodTo?: Record<string, string>; linesOverride?: Record<string, QuoteLine[]>; asQuote?: boolean }): Promise<DossierInvoiceResult> {
   const sb = createAdminClient()
   const d = await buildDossier(input.anyMissionId)
   if (!d) throw new Error('Dossier introuvable')
@@ -66,7 +69,7 @@ export async function invoiceDossierGroups(input: { anyMissionId: string; missio
   }
 }
 
-async function invoiceDossierGroupsLocked(sb: any, d: Dossier, input: { anyMissionId: string; missionIds: string[]; actorUserId: string | null; dryRun?: boolean; periodTo?: Record<string, string>; linesOverride?: Record<string, QuoteLine[]> }): Promise<DossierInvoiceResult> {
+async function invoiceDossierGroupsLocked(sb: any, d: Dossier, input: { anyMissionId: string; missionIds: string[]; actorUserId: string | null; dryRun?: boolean; periodTo?: Record<string, string>; linesOverride?: Record<string, QuoteLine[]>; asQuote?: boolean }): Promise<DossierInvoiceResult> {
   const cleanLines = (raw: any[]): QuoteLine[] => raw.map((l: any) => ({ kind: (['SERV-PEC', 'SERV-KM', 'SERV-PARC', 'SERV-MAJ', 'SERV-DIV'].includes(l.kind) ? l.kind : 'SERV-DIV') as any, name: String(l.name || '').trim(), qty: Number(l.qty || 0), price_unit: Number(l.price_unit || 0) })).filter(l => l.name && l.qty > 0)
   const override = (id: string): QuoteLine[] | null => input.linesOverride && Array.isArray(input.linesOverride[id]) ? cleanLines(input.linesOverride[id]) : null
 
@@ -186,7 +189,7 @@ async function invoiceDossierGroupsLocked(sb: any, d: Dossier, input: { anyMissi
         total_htva: r2(perLeg.reduce((s, p) => s + p.lines.reduce((t, l) => t + l.qty * l.price_unit, 0), 0)) })
       continue
     }
-    const created = await withOdooActor(input.actorUserId, () => createDraftInvoice({
+    const created = await withOdooActor(input.actorUserId, () => (input.asQuote ? createSaleOrder : createDraftInvoice)({
       partner_id:       clientId,
       origin,
       client_order_ref: d.dossier_number || root?.external_id || undefined,
@@ -195,6 +198,15 @@ async function invoiceDossierGroupsLocked(sb: any, d: Dossier, input: { anyMissi
       description:      buildInterventionDescription(root || {}),
     }))
 
+    if (input.asQuote) {
+      // Devis : trace sur les fiches + log, rien d'autre (pas de poste facturé, pas de coupe de gardiennage).
+      for (const p of perLeg) {
+        await sb.from('incoming_missions').update({ odoo_quote_id: created.id, odoo_quote_url: created.url, odoo_quoted_at: nowIso, updated_at: nowIso }).eq('id', p.leg.mission_id)
+        await sb.from('mission_logs').insert({ mission_id: p.leg.mission_id, actor_id: input.actorUserId, action: 'dossier_quote', notes: `Devis Odoo créé depuis le dossier ${d.ref} (${origin}) → ${clientName}`, metadata: { odoo_quote_id: created.id, url: created.url, covers, client_id: clientId } }).then(() => {}, () => {})
+      }
+      result.invoices.push({ odoo_id: created.id, url: created.url, client_id: clientId, client_name: clientName, covers, sections, total_htva: r2(perLeg.reduce((s, p) => s + p.lines.reduce((t, l) => t + l.qty * l.price_unit, 0), 0)) })
+      continue
+    }
     // D1 : les brouillons de lignes des fiches facturées sont purgés (comme le module classique).
     await sb.from('mission_invoice_drafts').delete().in('mission_id', perLeg.map(p => p.leg.mission_id)).then(() => {}, () => {})
     // D6 (audit 08/09/2026) : mêmes pièces et même chatter que le module classique.

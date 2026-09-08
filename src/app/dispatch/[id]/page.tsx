@@ -31,7 +31,8 @@ export default async function MissionDetailPage({ params, searchParams }: { para
   // ?fiche=1 (bouton « Fiche seule », forcer en parc) et ?assign=1 (REL créée →
   // sélecteur de chauffeur).
   const sp = searchParams || {}
-  const wantsDossier = !sp.fiche && !sp.assign && (await isPreviewOn('dossier_view', user.role, user.id))
+  const hasDossierView = await isPreviewOn('dossier_view', user.role, user.id)
+  const wantsDossier = !sp.fiche && !sp.assign && hasDossierView
 
   const supabase = createAdminClient()
 
@@ -168,6 +169,7 @@ export default async function MissionDetailPage({ params, searchParams }: { para
 
   return (
     <MissionDetailClient
+      dossierView={hasDossierView}
       mission={mission}
       logs={logs || []}
       drivers={drivers || []}

@@ -5,6 +5,7 @@
 
 import React, { useState } from 'react'
 import type { Dossier, DossierLeg } from '@/lib/dossier/build'
+import PushToScreenButton from '@/components/caisse/PushToScreenButton'
 
 const eur = (n: number) => n.toLocaleString('fr-BE', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' €'
 // TVAC = HTVA × 1,21 (TVA belge 21 %), arrondi au cent — affiché à côté du HTVA (Olivier 08/09/2026).
@@ -108,7 +109,8 @@ export default function BillingModal({ d, onClose, onDone }: { d: Dossier; onClo
     setCloseMode(true)
     if (remarksOfChosen().length || (openGard?.billing_remarks || []).length) setRemarkGate(true); else submit(true)
   }
-  const submit = async (close = closeMode) => {
+  const [asQuote, setAsQuote] = useState(false)
+  const submit = async (close = closeMode, quote = false) => {
     setRemarkGate(false)
     setBusy(true); setError(null)
     // Les factures s'ouvrent d'elles-mêmes dans un nouvel onglet (Olivier
@@ -119,7 +121,7 @@ export default function BillingModal({ d, onClose, onDone }: { d: Dossier; onClo
     const tabs: (Window | null)[] = Array.from({ length: Math.max(1, nTabs) }, () => { try { return window.open('', '_blank') } catch { return null } })
     try {
       const ids = close ? Array.from(new Set([...chosen.map(l => l.mission_id), ...(openGard ? [openGard.mission_id] : [])])) : chosen.map(l => l.mission_id)
-      const r = await fetch(`/api/dossier/${d.root_id}/${close ? 'close-and-invoice' : 'invoice'}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mission_ids: ids, period_to: close ? undefined : periodTo, lines_override: preview ? edited : undefined }) })
+      const r = await fetch(`/api/dossier/${d.root_id}/${close ? 'close-and-invoice' : 'invoice'}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mission_ids: ids, period_to: close ? undefined : periodTo, lines_override: preview ? edited : undefined, quote: quote || undefined }) })
       const j = await r.json()
       if (!r.ok || !j.ok) throw new Error(j.error || `HTTP ${r.status}`)
       ;(j.invoices || []).forEach((inv: any, i: number) => { const t = tabs[i]; if (t && inv.url) { try { t.location.href = inv.url } catch {} } else if (inv.url) { try { window.open(inv.url, '_blank') } catch {} } })
@@ -170,9 +172,14 @@ export default function BillingModal({ d, onClose, onDone }: { d: Dossier; onClo
             {preview.warnings.length > 0 && <div className={`rounded-lg px-3 py-2 text-xs ${TONE.warn}`}>{preview.warnings.map((w, i) => <div key={i}>⚠ {w}</div>)}</div>}
             {error && <div className={`rounded-lg px-3 py-2 text-xs ${TONE.bad}`}>{error}</div>}
             <div className="flex items-center justify-between gap-2 flex-wrap">
-              <button disabled={busy} onClick={() => { setPreview(null); setCloseMode(false) }} className="px-3 py-1.5 rounded-lg text-xs font-semibold border">← Retour aux groupes</button>
+              <span className="flex items-center gap-1.5">
+                <button disabled={busy} onClick={() => { setPreview(null); setCloseMode(false) }} className="px-3 py-1.5 rounded-lg text-xs font-semibold border">← Retour aux groupes</button>
+                {(() => { const all = preview.invoices.flatMap(inv => (inv.sections || []).flatMap(sec => (sec.mission_id && edited[sec.mission_id]) || sec.lines)); const ht = all.reduce((s, l) => s + Number(l.qty) * Number(l.price_unit), 0); const ttc = Math.round(ht * 121) / 100
+                  return ttc > 0 ? <PushToScreenButton compact amount={ttc} client={d.client.name} plate={d.vehicle.plate} brand={d.vehicle.brand} model={d.vehicle.model} reference={d.ref} lines={all.filter(l => Number(l.qty) * Number(l.price_unit) !== 0).map(l => ({ label: l.name || l.kind, amount: Math.round(Number(l.qty) * Number(l.price_unit) * 121) / 100 }))} /> : null })()}
+              </span>
               <span className="flex items-center gap-1.5">
                 <button disabled={busy || savingDraft} onClick={saveDrafts} title="Garde ces lignes pour plus tard sans créer la facture" className="px-2.5 py-1.5 rounded-lg text-xs font-semibold border bg-surface text-ink-secondary hover:text-ink">{savingDraft ? '⏳…' : '💾 Sauver en brouillon'}</button>
+                {!closeMode && <button disabled={busy} onClick={() => submit(false, true)} title="Un devis Odoo par client, sans rien marquer facturé ; la facture partira du devis dans Odoo ou d'ici plus tard" className="px-2.5 py-1.5 rounded-lg text-xs font-semibold border bg-surface text-ink-secondary hover:text-ink">📄 Devis</button>}
                 <button disabled={busy} onClick={closeMode ? askClose : askOrSubmit} className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-brand text-white disabled:opacity-40">{busy ? '⏳ Création…' : closeMode ? '🏁 Clôturer et créer la facture' : `Créer ${preview.invoices.length > 1 ? 'les factures' : 'la facture'}`}</button>
               </span>
             </div>
