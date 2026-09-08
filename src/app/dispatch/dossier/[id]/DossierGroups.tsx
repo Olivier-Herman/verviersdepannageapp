@@ -181,6 +181,11 @@ export default function DossierGroups({ initial, fiches, shared, isSuperadmin, o
               <span className="text-xs font-semibold text-ink-secondary bg-surface-2 border rounded-lg px-2 py-0.5">{d.source_label}</span>
               {d.dossier_number && <span className="text-xs font-mono text-ink-secondary bg-surface-2 border rounded-lg px-2 py-0.5">{d.dossier_number}</span>}
               <span className={`text-xs font-bold rounded-lg px-2.5 py-0.5 shadow-sm ${d.state.open ? TONE.live : TONE.ok}`}>{d.state.open ? `En cours · ${d.state.reason}` : 'Terminé'}</span>
+              {!d.state.open && d.last_parc && (
+                <span className="text-xs font-semibold rounded-lg px-2.5 py-0.5 bg-amber-500/15 text-amber-800 dark:text-amber-300 border border-amber-500/40" title={`Groupe ${d.last_parc.letter}${d.last_parc.reason ? ' · motif : ' + d.last_parc.reason.replace(/_/g, ' ') : ''}`}>
+                  🅿 Était en zone {d.last_parc.zone || '?'}{d.last_parc.exited_at ? ` · sorti le ${fmt(d.last_parc.exited_at)}` : ''}
+                </span>
+              )}
             </h1>
             <p className="text-ink-secondary text-sm mt-0.5">{vehicle}{d.vehicle.plate ? <> · <span className="font-mono">{d.vehicle.plate}</span></> : null}{d.vehicle.vin ? <span className="text-ink-faint"> · VIN <span className="font-mono">{d.vehicle.vin}</span></span> : null}</p>
             <p className="text-ink-muted text-xs mt-0.5">{d.client.name ? `Client sur place : ${d.client.name}${d.client.phone ? ' · ' + d.client.phone : ''}` : 'Client sur place : —'} · reçu le {fmt(d.received_at)}</p>

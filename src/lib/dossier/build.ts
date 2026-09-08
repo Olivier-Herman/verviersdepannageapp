@@ -95,6 +95,8 @@ export interface Dossier {
   billed_to:      { id: number | null; name: string | null }
   received_at:    string | null
   state:          { open: boolean; reason: string | null }
+  // Dernier séjour au parc, même après la sortie (Olivier 08/09/2026 : « on ne voit plus dans quel parc elle était »).
+  last_parc?:     { zone: string | null; entered_at: string | null; exited_at: string | null; reason: string | null; letter: string } | null
   // Tampons de la page Facturation : Domaine (vendu), ANWB / Touring check.
   stamps:         { domaine: string | null; touring_check: string | null }
   // Circuit Parquet / Domaine (module Saisie) : états de frais, jamais de facture Odoo.
@@ -599,8 +601,12 @@ export async function buildDossier(anyMissionId: string, opts: { light?: boolean
     : relPending ? { open: true, reason: 'relivraison en cours' }
     : legs.some(l => l.open) ? { open: true, reason: 'intervention en cours' }
     : { open: false, reason: null }
+  const lastGard = [...legs].reverse().find(l => l.kind === 'gard')
+  const lastGardRow = lastGard ? legRows.find(r => r.id === lastGard.mission_id) : null
+  const last_parc = lastGard ? { zone: lastGardRow?.parc_zone_key || root.parc_zone_key || null, entered_at: lastGard.started_at, exited_at: lastGard.ended_at, reason: lastGardRow?.parc_exit_reason || null, letter: lastGard.letter } : null
 
   return {
+    last_parc,
     root_id: root.id,
     ref: root.mission_number != null ? `#${root.mission_number}` : (root.dossier_number || root.external_id || root.id.slice(0, 8)),
     number: root.mission_number ?? null,
