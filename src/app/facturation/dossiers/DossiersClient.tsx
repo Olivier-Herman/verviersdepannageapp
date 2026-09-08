@@ -6,29 +6,11 @@
 // Siabis-ANWB. « Facturer » ouvre la modale partagée. Olivier 07/09/2026.
 
 import { useEffect, useMemo, useState } from 'react'
-import dynamic from 'next/dynamic'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import type { Dossier, DossierLeg } from '@/lib/dossier/build'
 import BillingModal, { cleanRef, isLegBilled, canPickLeg } from '@/components/dossier/BillingModal'
 
-// Vue dossier incrustée dans la ligne (Olivier 08/09/2026 : « je ne sais pas
-// développer le dossier pour voir pourquoi il ne donne pas de calcul »).
-const DossierGroupsEmbed = dynamic(() => import('@/app/dispatch/dossier/[id]/DossierGroups'), { ssr: false, loading: () => <p className="p-4 text-ink-muted text-sm">⏳ Chargement du dossier…</p> })
-function EmbedDossier({ rootId }: { rootId: string }) {
-  const [data, setData] = useState<any>(null)
-  const [err, setErr] = useState<string | null>(null)
-  useEffect(() => {
-    let dead = false
-    fetch(`/api/missions/${rootId}/fiche?t=${Date.now()}`, { cache: 'no-store' }).then(r => r.json())
-      .then(j => { if (dead) return; if (j?.ok) setData(j); else setErr(j?.error || 'Chargement impossible') })
-      .catch(e => { if (!dead) setErr(String(e?.message || e)) })
-    return () => { dead = true }
-  }, [rootId])
-  if (err) return <p className="px-4 py-3 text-sm text-red-600">⚠ {err}</p>
-  if (!data?.dossier) return <p className="px-4 py-3 text-sm text-ink-muted">⏳ Chargement du dossier…</p>
-  return <div className="border-t bg-page"><DossierGroupsEmbed initial={data.dossier} fiches={{ [rootId]: data.fiche }} shared={{ drivers: [], sources: [], userName: data.user.name, userEmail: data.user.email || undefined, userId: data.user.id || undefined, userRole: data.user.role, userModules: data.user.modules || [], userHasOdooAccess: data.userHasOdooAccess, googleMapsKey: data.googleMapsKey }} isSuperadmin={false} openMissionId={rootId} compact /></div>
-}
 
 const eur = (n: number) => n.toLocaleString('fr-BE', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' €'
 const fmtDay = (v: string | null) => v ? new Date(v).toLocaleDateString('fr-BE', { timeZone: 'Europe/Brussels', day: '2-digit', month: '2-digit' }) : ''
@@ -77,7 +59,6 @@ export default function DossiersClient({ initial, autoById, comexById = {}, isSu
   const [open, setOpen] = useState<Set<string>>(new Set())
   const [billing, setBilling] = useState<Dossier | null>(null)
   const [loadingBill, setLoadingBill] = useState<string | null>(null)
-  const [embedId, setEmbedId] = useState<string | null>(null)
   const [busy, setBusy] = useState<null | 'verify' | 'siabis'>(null)
   const [report, setReport] = useState<string | null>(null)
   const [reportLinks, setReportLinks] = useState<{ label: string; url: string }[]>([])
@@ -323,7 +304,8 @@ export default function DossiersClient({ initial, autoById, comexById = {}, isSu
           : ['bg-emerald-500/15 text-emerald-700 dark:text-emerald-300', 'Prêt · manuel']
         return (
           <div key={d.root_id} className="bg-surface border rounded-2xl overflow-hidden">
-            <div onClick={() => setOpen(p => { const n = new Set(p); n.has(d.root_id) ? n.delete(d.root_id) : n.add(d.root_id); return n })}
+            {/* Olivier 08/09/2026 : un clic ouvre le dossier (groupes repliés) ; on facture depuis là. */}
+            <div onClick={() => router.push(`/dispatch/dossier/${d.root_id}?open=none`)} title="Ouvrir le dossier"
               className="grid grid-cols-1 md:grid-cols-[minmax(200px,1.2fr)_minmax(160px,1fr)_minmax(200px,1.3fr)_110px_170px_auto] gap-3 items-center px-4 py-2.5 cursor-pointer hover:bg-surface-2/60">
               <div className="text-ink font-bold text-sm flex items-start gap-2">
                 {lotEligible(d) && <input type="checkbox" checked={lot.has(d.root_id)} onClick={e => e.stopPropagation()} onChange={() => setLot(p => { const n = new Set(p); n.has(d.root_id) ? n.delete(d.root_id) : n.add(d.root_id); return n })} className="mt-0.5 accent-[var(--tw-brand,#1f4fd8)]" title="Ajouter au lot à facturer" />}
@@ -365,10 +347,6 @@ export default function DossiersClient({ initial, autoById, comexById = {}, isSu
                     </div>
                   ))}
                 </div>
-                <div className="md:col-span-2 -mt-2">
-                  <button onClick={e => { e.stopPropagation(); setEmbedId(embedId === d.root_id ? null : d.root_id) }} className="px-2.5 py-1 rounded-lg border text-[11px] font-semibold text-brand hover:bg-brand/10">{embedId === d.root_id ? 'Replier la vue dossier' : '🔍 Ouvrir la vue dossier ici (tarifs, motifs, modifications)'}</button>
-                </div>
-                {embedId === d.root_id && <div className="md:col-span-2 -mx-4 -mb-3" onClick={e => e.stopPropagation()}><EmbedDossier rootId={d.root_id} /></div>}
                 <div>
                   <p className="text-[11px] uppercase tracking-wide text-ink-muted font-semibold mb-1">Factures du dossier</p>
                   {d.parquet?.efs?.map(e => (
