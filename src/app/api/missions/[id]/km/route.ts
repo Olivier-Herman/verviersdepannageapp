@@ -14,7 +14,6 @@ import { authOptions }       from '@/lib/auth'
 import { getDrivingRoute }   from '@/lib/routing/ors'
 import { createAdminClient } from '@/lib/supabase'
 
-const GMAPS_KEY = process.env.GOOGLE_GEOCODING || process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY!
 
 type Coord = { lat: number; lng: number }
 

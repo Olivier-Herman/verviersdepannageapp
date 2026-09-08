@@ -5,7 +5,6 @@
 import { getServerSession } from 'next-auth'
 import { redirect }         from 'next/navigation'
 import { authOptions }      from '@/lib/auth'
-import { createAdminClient } from '@/lib/supabase'
 import AideClient            from './AideClient'
 
 export const dynamic = 'force-dynamic'

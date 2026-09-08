@@ -88,7 +88,6 @@ export async function GET(req: Request) {
       const missionLabel = `Mission ${mission?.dossier_number || a.mission_id.slice(0, 8)}${mission?.incident_city ? ' — ' + mission.incident_city : ''}`
 
       // Liste tous candidates via API (interne cron)
-      const baseUrl = process.env.NEXTAUTH_URL || 'https://app.verviersdepannage.com'
       // NB: ici on n'a pas de session user — on appelle driver-eta directement en SQL
       // (ou via une variante interne). Pour simplifier, on lookup les drivers actifs
       // qui ne sont pas dans la liste deja essayee.

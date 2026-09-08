@@ -2085,9 +2085,6 @@ export default function MissionDetailClient({
         setM(prev => ({ ...prev, ...updated }))
         if (updated.status) setStatus(updated.status)
         // Mettre à jour uniquement les champs chauffeur (pas les champs du formulaire dispatch)
-        const driverFields = ['driver_photos', 'discharge_data', 'client_signature',
-          'closing_notes', 'on_way_at', 'on_site_at', 'completed_at',
-          'accepted_at', 'assigned_at', 'parked_at', 'extra_addresses']
         const formUpdates: Partial<typeof form> = {}
         if (updated.vehicle_plate && updated.vehicle_plate !== form.vehicle_plate) formUpdates.vehicle_plate = updated.vehicle_plate
         if (updated.vehicle_brand && updated.vehicle_brand !== form.vehicle_brand) formUpdates.vehicle_brand = updated.vehicle_brand
@@ -2510,7 +2507,6 @@ export default function MissionDetailClient({
   const statusInfo = mergedInto
     ? { label: 'Fusionnée', color: 'text-ink-muted' }
     : (STATUS_LABELS[status] || { label: status, color: 'text-ink-muted' })
-  const canEdit    = ['new', 'dispatching'].includes(status)
 
   return (
     <AppShell

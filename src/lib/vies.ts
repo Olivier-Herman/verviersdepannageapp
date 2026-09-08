@@ -36,10 +36,6 @@ export async function checkVat(vatNumber: string): Promise<ViesResponse> {
   //   - si ça ne se confirme toujours pas → unverified (≠ invalide), on ne
   //     dit jamais « TVA invalide » sur un numéro qu'on n'a pas pu vérifier.
   // Un userError = 'INVALID' (ou un 404) reste le SEUL vrai « numéro invalide ».
-  const TRANSIENT = new Set([
-    'MS_MAX_CONCURRENT_REQ', 'GLOBAL_MAX_CONCURRENT_REQ', 'MS_UNAVAILABLE',
-    'SERVICE_UNAVAILABLE', 'TIMEOUT', 'SERVER_BUSY', 'BATCH_INTERNAL_ERROR',
-  ])
   const MAX_ATTEMPTS = 3
   let lastTransient: string | null = null
 

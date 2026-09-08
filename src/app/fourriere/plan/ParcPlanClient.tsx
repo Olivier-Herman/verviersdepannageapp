@@ -14,7 +14,7 @@ import {
   DndContext, PointerSensor, TouchSensor, useSensor, useSensors,
   useDraggable, useDroppable, DragOverlay, type DragEndEvent,
 } from '@dnd-kit/core'
-import { RefreshCw, Car, AlertTriangle, Edit3, Check, Search, X, Ban, Link2, Unlink, Unlock, Sparkles, ArrowLeft, Building2 } from 'lucide-react'
+import { RefreshCw, Car, Edit3, Check, Search, X, Ban, Link2, Unlock, Sparkles, ArrowLeft, Building2 } from 'lucide-react'
 import Link from 'next/link'
 import AppShell from '@/components/layout/AppShell'
 import { createClient } from '@supabase/supabase-js'

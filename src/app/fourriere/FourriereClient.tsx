@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import AppShell from '@/components/layout/AppShell'
 import AmbientBackground from '@/components/AmbientBackground'
-import { ArrowRightLeft, RefreshCw, X, ExternalLink, ScanLine, Map as MapIcon, MapPin, AlertCircle, AlertTriangle, ArrowLeft, Building2, Eye, Trash2 } from 'lucide-react'
+import { ArrowRightLeft, RefreshCw, X, ExternalLink, ScanLine, Map as MapIcon, AlertCircle, AlertTriangle, ArrowLeft, Building2, Eye, Trash2 } from 'lucide-react'
 import Link from 'next/link'
 
 interface Zone {

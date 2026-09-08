@@ -5,7 +5,6 @@ import { useState, useEffect, useRef } from 'react'
 import { useRouter }  from 'next/navigation'
 import AppShell          from '@/components/layout/AppShell'
 import AmbientBackground from '@/components/AmbientBackground'
-import Image             from 'next/image'
 
 // ── Types ──────────────────────────────────────────────────
 interface Brand  { id: number; name: string }

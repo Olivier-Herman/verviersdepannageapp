@@ -7,14 +7,7 @@ import type { Session } from 'next-auth'
 import type { VehicleCheck } from '@/types'
 import AmbientBackground from '@/components/AmbientBackground'
 import { T }    from '@/lib/i18n/T'
-import { useT } from '@/lib/i18n/I18nProvider'
 
-const STATUS_CONFIG = {
-  scheduled:     { label: 'Planifié',                   color: 'text-zinc-400',  bg: 'bg-zinc-800',        icon: Clock         },
-  pending_claim: { label: 'En attente de prise charge', color: 'text-yellow-400',bg: 'bg-yellow-900/30',   icon: AlertCircle   },
-  in_progress:   { label: 'En cours',                   color: 'text-blue-400',  bg: 'bg-blue-900/30',     icon: ClipboardCheck},
-  completed:     { label: 'Terminé',                    color: 'text-green-400', bg: 'bg-green-900/30',    icon: CheckCircle2  },
-}
 
 export default function CheckVehiculeClient({ session }: { session: Session }) {
   const router = useRouter()

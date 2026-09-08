@@ -6,12 +6,12 @@
 // Bouton "Acceder aux parcs" en haut → modale tuiles → /fourriere/parc/[id].
 // Clic sur un resultat → fiche vehicule complete (sheet a droite).
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import AppShell from '@/components/layout/AppShell'
 import AmbientBackground from '@/components/AmbientBackground'
 import { parcZoneLabel } from '@/lib/parc/zone-label'
-import { Search, Loader2, X, MapPin, Calendar, FileText, Car, Hash, Building2, AlertTriangle, MapIcon, ScanLine, Trash2 } from 'lucide-react'
+import { Search, Loader2, X, MapPin, Calendar, FileText, Car, Hash, Building2, AlertTriangle, MapIcon, Trash2 } from 'lucide-react'
 import VehicleFicheSheet from './VehicleFicheSheet'
 import DepotsTilesModal from './DepotsTilesModal'
 import { normalizePlate } from '@/lib/plate'
@@ -54,11 +54,6 @@ interface Props {
   userModules: string[]
 }
 
-function fmtDate(d: string | null): string {
-  if (!d) return '—'
-  try { return new Date(d).toLocaleDateString('fr-BE', { day: '2-digit', month: '2-digit', year: 'numeric' }) }
-  catch { return d }
-}
 
 function fmtDateTime(d: string | null): string {
   if (!d) return '—'

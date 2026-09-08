@@ -127,7 +127,6 @@ export async function POST(req: Request) {
   // Gardiennage JAMAIS facturé (décision Axel 2026-07-26) → toujours 0, quoi que
   // demande le client (serveur autoritaire, protège les anciens APK).
   const gDays      = 0
-  const gardTvac   = 0
   const totalTvac  = baseTvac
 
   // 1. Partner Odoo (créé/retrouvé) — actor-aware (clé perso si présente).

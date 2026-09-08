@@ -9,7 +9,7 @@
 
 import React from 'react'
 import {
-  Document, Page, Text, View, StyleSheet, Image, Link,
+  Document, Page, Text, View, StyleSheet, Image, 
 } from '@react-pdf/renderer'
 
 const COLOR_BRAND  = '#E11D2E'

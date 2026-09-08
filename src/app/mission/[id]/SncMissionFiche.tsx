@@ -20,7 +20,7 @@
 //   9. Bouton "Gerer les photos" (redirige vers DriverClient via ?legacy=1)
 //  10. Actions principales selon scenario+status
 
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@supabase/supabase-js'
 import { Loader2 } from 'lucide-react'

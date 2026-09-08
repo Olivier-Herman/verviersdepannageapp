@@ -7,7 +7,6 @@ import AppShell from '@/components/layout/AppShell'
 import { CalendarClock, Upload, Trash2, Check, Loader2, Pencil, X } from 'lucide-react'
 
 const MONTHS = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre']
-const fmtDay = (iso: string) => { const d = new Date(iso); return `${d.getDate()} ${MONTHS[d.getMonth()]} ${d.getFullYear()}` }
 const fmtTime = (iso: string) => new Date(iso).toLocaleTimeString('fr-BE', { hour: '2-digit', minute: '2-digit' })
 const daysTo = (iso: string) => Math.ceil((new Date(iso).getTime() - Date.now()) / 86400000)
 

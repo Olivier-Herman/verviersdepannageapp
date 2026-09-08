@@ -79,7 +79,6 @@ export default async function FacturationDossiersPage() {
   // (page /touring-comex), pas de facture Odoo d'ici tant que ce n'est pas accepté.
   const comexById: Record<string, { verdict: string | null; montant: number | null; accepted_at: string | null; dossier: string | null }> = {}
   if (dossiers.length) {
-    const allIds = dossiers.flatMap(d => d.legs.map(l => l.mission_id))
     const { data: cx } = await sb.from('touring_comex_dossiers').select('mission_id, mission_ids, verdict, montant, accepted_at, dossier, in_comex').eq('in_comex', true)
     for (const c of cx || []) {
       const ids = [(c as any).mission_id, ...(Array.isArray((c as any).mission_ids) ? (c as any).mission_ids : [])].filter(Boolean)

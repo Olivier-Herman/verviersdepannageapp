@@ -17,7 +17,6 @@ import { isInDaySchedule, isInNightSchedule, isAutoDispatchNight }    from '@/li
 import { ensureScheduleLoaded } from '@/lib/schedule-server'
 import { getDrivingMatrix } from '@/lib/routing/ors'
 
-const GMAPS_KEY = process.env.GOOGLE_GEOCODING || process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY!
 
 // Plage "actif" : ping recent dans les N minutes
 const ACTIVE_WINDOW_MIN = 30

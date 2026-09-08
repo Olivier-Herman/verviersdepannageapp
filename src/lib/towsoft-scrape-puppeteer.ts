@@ -110,10 +110,6 @@ function pickById(html: string, id: string): string | null {
   return m ? m[1].trim() : null
 }
 
-function pickByName(html: string, name: string): string | null {
-  const m = html.match(new RegExp(`<input[^>]+name="${name}"[^>]*value="([^"]*)"`, 'i'))
-  return m ? m[1].trim() : null
-}
 
 /**
  * Parser best-effort. Les TowSoft templates sont stables : on tape sur
@@ -189,7 +185,6 @@ function parseTowsoftHtml(missionNum: string, html: string): TowsoftMissionInfo 
 
   // Source / type intervention
   const serviceMatch = text.match(/Nom du service\s*:?\s*([^\n]{3,80})/i)
-  const natureMatch  = text.match(/Nature de l'intervention\s*:?\s*([^\n]{3,80})/i)
 
   // Owner / Client sur la route
   const ownerSection = text.match(/Client sur la route\s+([^\n]{2,80})/i)

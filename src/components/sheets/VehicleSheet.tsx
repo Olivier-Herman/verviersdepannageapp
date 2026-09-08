@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { useSheetStack } from './SheetStackProvider'
-import { X, ExternalLink, Loader2, FileText, Calendar, User as UserIcon, MapPin, Gauge, Fuel, Settings, FileCheck, Wrench } from 'lucide-react'
+import { X, ExternalLink, Loader2, FileText, Calendar, User as UserIcon, Gauge, Fuel, Settings, FileCheck, Wrench } from 'lucide-react'
 
 interface Props {
   id:            number

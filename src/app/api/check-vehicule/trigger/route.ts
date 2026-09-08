@@ -4,18 +4,6 @@ import { authOptions, isAdminOrDispatcher } from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase'
 import { sendPushToUser } from '@/lib/push'
 
-function getRandomScheduledDate(): string {
-  const today = new Date()
-  const candidates: Date[] = []
-  for (let i = 1; i <= 14 && candidates.length < 3; i++) {
-    const d   = new Date(today)
-    d.setDate(today.getDate() + i)
-    const day = d.getDay() // 2=Mar, 3=Mer, 4=Jeu
-    if (day >= 2 && day <= 4) candidates.push(d)
-  }
-  const chosen = candidates[Math.floor(Math.random() * candidates.length)]
-  return chosen.toISOString().split('T')[0]
-}
 
 export async function POST(req: NextRequest) {
   const session = await getServerSession(authOptions)

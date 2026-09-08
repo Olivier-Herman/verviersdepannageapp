@@ -17,7 +17,7 @@ import bcrypt                from 'bcryptjs'
 export const dynamic    = 'force-dynamic'
 export const fetchCache = 'force-no-store'
 
-const fmt = (d: string) => { const [y, m, j] = (d || '').split('-'); return j ? `${j}/${m}` : d }
+const fmt = (d: string) => { const [, m, j] = (d || '').split('-'); return j ? `${j}/${m}` : d }
 
 export async function GET() {
   const session = await getServerSession(authOptions)

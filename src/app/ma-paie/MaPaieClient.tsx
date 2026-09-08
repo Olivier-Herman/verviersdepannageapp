@@ -13,7 +13,7 @@ import { hoursForRange } from '@/lib/conges/apply'
 import MyCalendar from '@/components/personnel/MyCalendar'
 
 const CONGE_TYPE_LABEL: Record<string, string> = { conge: 'Congé légal', recup: 'Récupération', sans_solde: 'Congé sans solde' }
-const fmtDate = (d: string) => { const [y, m, j] = (d || '').split('-'); return j ? `${j}/${m}` : d }
+const fmtDate = (d: string) => { const [, m, j] = (d || '').split('-'); return j ? `${j}/${m}` : d }
 // Lundi (ISO) de la semaine d'une date 'YYYY-MM-DD' — pour réafficher le vrai
 // début d'une semaine de garde en cours (la liste démarre à aujourd'hui).
 const mondayISO = (ds: string) => { const d = new Date(ds + 'T00:00:00'); const off = (d.getDay() + 6) % 7; d.setDate(d.getDate() - off); const p = (n: number) => String(n).padStart(2, '0'); return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}` }

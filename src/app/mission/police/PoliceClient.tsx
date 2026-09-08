@@ -86,7 +86,6 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 }
 
 export default function PoliceClient({ userRole = 'driver' }: { userRole?: string }) {
-  const isSuperAdmin = userRole === 'superadmin'
   const router = useRouter()
   const { t } = useT()
   const [selectedType, setSelectedType] = useState<MissionType | null>(null)

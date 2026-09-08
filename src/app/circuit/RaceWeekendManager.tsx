@@ -17,7 +17,6 @@ const suppHours = (from?: string, to?: string): number => {
   let diff = mins(to) - mins(from); if (diff < 0) diff += 1440
   return Math.round((diff / 60) * 100) / 100
 }
-const dayHours = (d: Day) => (d.supps || []).reduce((a, s) => a + suppHours(s.from, s.to), 0)
 
 export default function RaceWeekendManager({ userRole, userName, userEmail, userModules }: {
   userRole: string; userName: string; userEmail: string; userModules: string[]

@@ -1,7 +1,7 @@
 'use client'
 
-import { useEffect, useState } from 'react'
-import { X, Loader2, Truck, AlertTriangle, ArrowRight, Building2, Trash2 } from 'lucide-react'
+import { useState } from 'react'
+import { X, Loader2, Truck, ArrowRight, Building2, Trash2 } from 'lucide-react'
 
 interface Mission {
   id:             string

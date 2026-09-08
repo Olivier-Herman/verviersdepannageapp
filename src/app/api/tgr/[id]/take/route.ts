@@ -5,7 +5,6 @@ import { authOptions }               from '@/lib/auth'
 import { createAdminClient }         from '@/lib/supabase'
 import { sendPushToUser }            from '@/lib/push'
 
-const APP_URL    = process.env.NEXT_PUBLIC_APP_URL!
 const FROM_EMAIL = 'administration@verviersdepannage.com'
 
 async function getAppToken(): Promise<string> {

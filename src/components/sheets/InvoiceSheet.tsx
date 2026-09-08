@@ -76,10 +76,6 @@ function fmtDate(d: string | null): string {
 const STATE_LABEL: Record<string, string> = {
   draft: 'Brouillon', posted: 'Comptabilisée', cancel: 'Annulée',
 }
-const PAYMENT_STATE_LABEL: Record<string, string> = {
-  not_paid: 'Non payée', paid: 'Payée', in_payment: 'En paiement',
-  partial: 'Partielle', reversed: 'Annulée par avoir', invoicing_legacy: 'Legacy',
-}
 
 function paymentBadge(state: string | null): { label: string; cls: string } {
   if (state === 'paid' || state === 'in_payment') return { label: 'Payée', cls: 'bg-success/15 text-success border-success/30' }

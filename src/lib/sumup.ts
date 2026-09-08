@@ -8,14 +8,6 @@ const SUMUP_API_KEY      = process.env.SUMUP_API_KEY!
 const SUMUP_MERCHANT_CODE = process.env.SUMUP_MERCHANT_CODE!
 const APP_URL            = process.env.NEXT_PUBLIC_APP_URL!
 
-interface SumUpCheckout {
-  id: string
-  checkout_reference: string
-  amount: number
-  currency: string
-  pay_to_email: string
-  status: string
-}
 
 // ============================================================
 // Créer un checkout SumUp

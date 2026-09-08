@@ -47,7 +47,6 @@ export async function GET(req: Request) {
   }
 
   const nowMs  = Date.now()
-  const cutoff = new Date(nowMs - delayH * 3600_000).toISOString()
 
   // Toutes les missions to_invoice des sources actives, pas encore facturées.
   const { data: rows } = await sb.from('incoming_missions')

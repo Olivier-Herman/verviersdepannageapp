@@ -46,7 +46,6 @@ function isIpaMajoredHour(date: Date): boolean {
   return false
 }
 
-const GMAPS_KEY = process.env.GOOGLE_GEOCODING || process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY
 
 type Coord = { lat: number; lng: number }
 
@@ -934,9 +933,6 @@ async function estimateLinesTemplate(
   // sources sans parc_count_from ou avec 'parked_at'). Les lignes avec
   // parc_count_from='intervention_date' recalculent autoQty plus bas.
   // 08/09/2026 : « jours pleins » → NUITS passées au parc (cf lib/parc/nights).
-  function joursPleinsEcoules(ref: string | null | undefined): number {
-    return nightsBetween(ref, null)
-  }
   // Jours pleins entre deux dates (end = now si non fourni). Sert au split
   // gardiennage Saisie (parked_at -> date de levée).
   function joursPleinsBetween(startRef: string | null | undefined, endRef: string | null | undefined): number {

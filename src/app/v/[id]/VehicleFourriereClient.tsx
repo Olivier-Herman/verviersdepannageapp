@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import Link from 'next/link'
 import { ArrowLeft, Printer, RefreshCw, Truck, Building2, AlertOctagon, ExternalLink, MapPin, Calendar, FileText, Loader2 } from 'lucide-react'
 import { FOURRIERE_ZONES, SCRATCH_STATE_ID } from '@/lib/fourriere'
 

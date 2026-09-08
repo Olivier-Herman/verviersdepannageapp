@@ -16,10 +16,6 @@ interface Item {
   token: string | null; stop: boolean; reminder_count: number; last_reminder_at: string | null
 }
 
-const fmt = (iso?: string | null) => {
-  if (!iso) return '—'
-  try { return new Date(iso).toLocaleDateString('fr-BE', { day: '2-digit', month: '2-digit', year: '2-digit' }) } catch { return '—' }
-}
 const daysSince = (iso?: string | null) => {
   if (!iso) return null
   const d = Math.floor((Date.now() - new Date(iso).getTime()) / 86400000)

@@ -10,7 +10,7 @@
 // Pattern copie de sendAdvancePurchaseEmail (lib/emails.ts:322).
 
 import {
-  BRAND_RED, FROM_EMAIL, getAppToken,
+  FROM_EMAIL, getAppToken,
   emailLayout, infoRow, badge, divider,
 } from '@/lib/emails'
 import { formatEur }          from '@/lib/format'

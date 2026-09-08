@@ -8,7 +8,7 @@
 import { useEffect, useState, useCallback, useRef } from 'react'
 import AppShell from '@/components/layout/AppShell'
 import PersonnelTabs from '@/components/layout/PersonnelTabs'
-import { Users, Mail, Upload, Download, RefreshCw, Trash2, FileText, Link2, AlertTriangle, Eye, X, Building2, Send, Check } from 'lucide-react'
+import { Users, Mail, Upload, Download, RefreshCw, Trash2, FileText, AlertTriangle, Eye, X, Building2, Send, Check } from 'lucide-react'
 
 const COMPANIES: Record<string, string> = { '438': 'Verviers Dépannage', '3068': 'DGJ VHU' }
 const coLabel = (c: string) => COMPANIES[c] || c || '—'

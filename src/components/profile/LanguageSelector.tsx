@@ -8,7 +8,6 @@
 
 import { useI18n }   from '@/lib/i18n/I18nProvider'
 import { LANGUAGES } from '@/lib/i18n/types'
-import { T }         from '@/lib/i18n/T'
 
 export function LanguageSelector() {
   const { lang, setLang } = useI18n()

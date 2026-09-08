@@ -6,7 +6,7 @@ import dynamic from 'next/dynamic'
 import AppShell from '@/components/layout/AppShell'
 import AmbientBackground from '@/components/AmbientBackground'
 import {
-  Trash2, Camera, RefreshCw, ArrowLeft, Check, Loader2, AlertTriangle, Mail,
+  Trash2, Camera, RefreshCw, ArrowLeft, Check, Loader2, AlertTriangle, 
 } from 'lucide-react'
 
 const QRScanner = dynamic(() => import('@/components/fourriere/QRScanner'), { ssr: false })

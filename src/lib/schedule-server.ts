@@ -5,7 +5,7 @@
 // SERVER-ONLY : import createAdminClient → next/headers.
 
 import { createAdminClient } from '@/lib/supabase'
-import { setScheduleConfig, getScheduleConfig, type PeriodConfig } from '@/lib/schedule'
+import { setScheduleConfig, type PeriodConfig } from '@/lib/schedule'
 
 let lastLoadAt = 0
 // Olivier 2026-06-03 : TTL court (5s) car Vercel = multi-instances. Chaque

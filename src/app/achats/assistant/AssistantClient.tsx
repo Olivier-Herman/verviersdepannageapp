@@ -6,7 +6,7 @@
 
 import { useEffect, useRef, useState } from 'react'
 import AppShell from '@/components/layout/AppShell'
-import { ShoppingCart, ArrowLeft, Send, Loader2, Sparkles, Trash2 } from 'lucide-react'
+import { ArrowLeft, Send, Loader2, Sparkles, Trash2 } from 'lucide-react'
 
 const SUGGESTIONS = [
   'Où puis-je économiser le plus en ce moment ?',

@@ -3,7 +3,7 @@
 // Supervision des conversations « La tête à Matthieu » (superadmin).
 
 import { useEffect, useState } from 'react'
-import { Wrench, RefreshCw, X } from 'lucide-react'
+import { Wrench, RefreshCw } from 'lucide-react'
 
 const fmt = (s: string) => { try { return new Date(s).toLocaleString('fr-BE', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) } catch { return s } }
 

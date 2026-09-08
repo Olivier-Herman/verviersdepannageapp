@@ -1,8 +1,8 @@
 'use client'
 
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect } from 'react'
 import { TEST_CATALOG, TOTAL_TESTS, type TestFunction } from '@/lib/evaluations/test-catalog'
-import { Send, CheckCircle2, AlertTriangle, XCircle, SkipForward, Loader2, ChevronDown, ChevronRight } from 'lucide-react'
+import { Send, Loader2, ChevronDown, ChevronRight } from 'lucide-react'
 
 type Status = 'success' | 'partial' | 'failed' | 'skipped'
 

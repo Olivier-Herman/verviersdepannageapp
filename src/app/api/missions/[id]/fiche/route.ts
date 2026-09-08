@@ -20,7 +20,6 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
   const u = session.user as any
   const sb = createAdminClient()
   const modules: string[] = Array.isArray(u.modules) ? u.modules : []
-  const canBill = ['admin', 'superadmin'].includes(String(u.role || '')) || modules.includes('facturation')
   const [fiche, dossier, meRow] = await Promise.all([
     loadMissionFiche(params.id),
     // Toujours léger : la ligne se déplie sans attendre le moteur de prix. Les

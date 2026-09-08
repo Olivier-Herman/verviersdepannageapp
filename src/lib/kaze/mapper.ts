@@ -295,7 +295,6 @@ export function mapKazeJobToMission(job: KazeJob): MappedKazeMission {
 
   // Destination (livraison)
   const dest_raw   = s(w('delivery_address'))
-  const dest_parts = parseAddress(dest_raw)
   // Heuristique : si la premiere virgule sépare un nom de garage de l adresse,
   // on capture le nom — ex "CAR AV NISSAN VERVIERS, Rue Vovegnez 33, ..."
   // On considere que le premier element est le nom si la 2eme partie ressemble

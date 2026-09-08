@@ -6,7 +6,7 @@
 
 import { useEffect, useRef, useState } from 'react'
 import AppShell from '@/components/layout/AppShell'
-import { ShoppingCart, ArrowLeft, Plus, Upload, Loader2, Trash2, Sparkles, FileText, Trophy, X, Mail, Send } from 'lucide-react'
+import { ArrowLeft, Plus, Upload, Loader2, Trash2, Sparkles, FileText, Trophy, X, Mail, Send } from 'lucide-react'
 
 const eur = (n: number | null) => n == null ? '—' : n.toLocaleString('fr-BE', { maximumFractionDigits: 0 }) + ' €'
 

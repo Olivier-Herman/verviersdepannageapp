@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState, useCallback } from 'react'
-import { Plus, RefreshCw, Trash2, ExternalLink, Check, X, Loader2, CalendarDays, Users, MapPin, Pencil, Flag } from 'lucide-react'
+import { Plus, RefreshCw, Trash2, ExternalLink, Check, X, Loader2, Users, Pencil, Flag } from 'lucide-react'
 
 interface Prestation {
   id:                   string

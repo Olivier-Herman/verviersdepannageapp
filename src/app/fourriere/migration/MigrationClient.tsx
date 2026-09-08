@@ -16,7 +16,6 @@ import dynamic from 'next/dynamic'
 import Link from 'next/link'
 import AppShell from '@/components/layout/AppShell'
 import { ArrowLeft, RefreshCw, Loader2, ScanLine, Check, X, AlertTriangle, Building2, Printer, BarChart3, Ghost, Archive, Camera } from 'lucide-react'
-import { normalizePlate } from '@/lib/plate'
 import TransitCleanupPanel from './TransitCleanupPanel'
 
 // QRScanner = camera + auto-detection rafale (dedup 3.5s, bip), Capacitor compatible

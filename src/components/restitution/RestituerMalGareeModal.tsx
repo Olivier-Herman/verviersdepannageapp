@@ -2,8 +2,8 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import {
-  X, Search, UserPlus, AlertTriangle, ShieldAlert, Check, Loader2,
-  Banknote, CreditCard, Truck, Trash2, Plus, ScrollText,
+  X, Search, UserPlus, ShieldAlert, Check, Loader2,
+  Trash2, Plus, ScrollText,
 } from 'lucide-react'
 
 // Tarification commune fourriere (constantes synchro avec /api/missions/[id]/restitute)

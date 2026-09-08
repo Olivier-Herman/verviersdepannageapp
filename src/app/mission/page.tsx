@@ -14,13 +14,6 @@ export const dynamic = 'force-dynamic'
 
 // Début du jour courant (Europe/Brussels) en ISO UTC — pour compter les missions
 // « du jour » du chauffeur (easter egg). Robuste été/hiver via l'offset courant.
-function belgianTodayStartISO(): string {
-  const now = new Date()
-  const [y, m, d] = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Brussels' }).format(now).split('-').map(Number)
-  const offsetMs = new Date(now.toLocaleString('en-US', { timeZone: 'Europe/Brussels' })).getTime()
-                 - new Date(now.toLocaleString('en-US', { timeZone: 'UTC' })).getTime()
-  return new Date(Date.UTC(y, m - 1, d, 0, 0, 0) - offsetMs).toISOString()
-}
 
 const STATUS_LABELS: Record<string, { label: string; color: string }> = {
   assigned:    { label: 'À accepter',  color: 'text-blue-400'   },

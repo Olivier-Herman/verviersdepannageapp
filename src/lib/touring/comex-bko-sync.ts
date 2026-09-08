@@ -10,7 +10,7 @@
 //   - Touring < VD Soft au-delà de la tolérance      → 'verify' (risque sous-paiement)
 //   - pas de fiche VD Soft rapprochée                → 'no_match'
 
-import { listAllComexBko, type BkoDossier } from '@/lib/touring/comex-bko'
+import { listAllComexBko } from '@/lib/touring/comex-bko'
 import { estimateMissionPrice }             from '@/lib/missions/estimate-price'
 
 export const ACCEPT_TOL_PCT = 0.05   // 5 % (Olivier 2026-08-09, était 3 %)

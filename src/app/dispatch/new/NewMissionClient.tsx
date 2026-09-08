@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useRouter }   from 'next/navigation'
 import Link            from 'next/link'
 import AppShell from '@/components/layout/AppShell'
@@ -75,7 +75,6 @@ const GARDIENNAGE_TYPES = ['Assistance', 'Saisie', 'Siabis', 'Autre']
 const POLICE_PURE_SOURCES = new Set([
   'police_accident', 'police_saisie', 'police_mg', 'police_rodeo', 'police_avp',
 ])
-const SIABIS_SOURCES = new Set(['police_snc', 'sia_couvert'])
 
 function getAvailableMissionTypes(src: string) {
   const key = (src || '').toLowerCase()

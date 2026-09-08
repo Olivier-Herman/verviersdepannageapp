@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
 import AppShell from '@/components/layout/AppShell'
 import { FOURRIERE_ZONES } from '@/lib/fourriere'
-import { Loader2, CheckCircle2, AlertCircle, Printer, Plus, RefreshCw, Download, Settings, ScanLine, Camera, Mail, MapPin, ArrowRight, X, FileSpreadsheet, Car } from 'lucide-react'
+import { Loader2, CheckCircle2, AlertCircle, Printer, Settings, ScanLine, Camera, Mail, MapPin, ArrowRight, X } from 'lucide-react'
 import { playWinSound, playLoseSound } from '@/lib/sounds'
 import dynamic from 'next/dynamic'
 
@@ -1571,7 +1571,6 @@ function HistoryItem({ item, onPrint }: { item: ResultItem; onPrint: (ticketId: 
   const typeColor = item.type === 'created' ? 'text-brand' : item.type === 'reprint' ? 'text-purple-500' : item.type === 'updated' ? 'text-info' : 'text-ink-faint'
 
   // Plaque (titre), marque/modele, VIN, ticket #
-  const hasMarque = !!item.marque
   const detailLine = [
     item.marque && item.modele ? `${item.marque} ${item.modele}` : (item.marque || ''),
     item.vin ? `VIN ${item.vin}` : '',

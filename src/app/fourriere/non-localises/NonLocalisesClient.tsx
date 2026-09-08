@@ -37,15 +37,6 @@ interface Props {
   userModules: string[]
 }
 
-function fmtDate(d: string | null): string {
-  if (!d) return '—'
-  try {
-    return new Date(d).toLocaleDateString('fr-BE', {
-      day: '2-digit', month: '2-digit', year: 'numeric',
-      hour: '2-digit', minute: '2-digit',
-    })
-  } catch { return d }
-}
 
 function fmtDateOnly(d: string | null): string {
   if (!d) return '—'

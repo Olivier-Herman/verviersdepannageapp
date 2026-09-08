@@ -24,7 +24,7 @@ import { useT } from '@/lib/i18n/I18nProvider'
 import TouringCloseModal from '@/components/touring/TouringCloseModal'
 import SigPad from '@/components/mission/SigPad'
 import ActionScreen, { type OutcomeKey, type PriseEnCharge } from '@/components/cloture/ActionScreen'
-import CloseScreen, { type CloseCommon } from '@/components/cloture/CloseScreen'
+import CloseScreen from '@/components/cloture/CloseScreen'
 import {
   startForMission, updateForMission, endForMission,
   missionToLAState, isActiveMissionStatus,

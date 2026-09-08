@@ -16,7 +16,7 @@
 //     trois codes VIDES — il n'y a pas eu de panne constatée.
 
 import { loginComex, getComexMissionDetail, closeTouringMission } from '@/lib/touring/comex'
-import { findMotif, catchAllOf } from '@/lib/cloture/motifs'
+import { findMotif } from '@/lib/cloture/motifs'
 import { branchOf, outcomeIsRem, OUTCOMES, type Outcome } from '@/lib/cloture/outcomes'
 import { splitAddress } from '@/lib/address-parts'
 

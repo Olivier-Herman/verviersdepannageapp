@@ -3,8 +3,6 @@
 
 import { useState, useRef, useEffect }  from 'react'
 import { useRouter, useSearchParams }    from 'next/navigation'
-import Link                   from 'next/link'
-import Image                  from 'next/image'
 import AppShell               from '@/components/layout/AppShell'
 import { formatEur }           from '@/lib/format'
 import VehiclePlateLookup     from '@/components/vehicles/VehiclePlateLookup'

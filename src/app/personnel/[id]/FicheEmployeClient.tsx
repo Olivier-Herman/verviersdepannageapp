@@ -3,7 +3,7 @@
 
 import { useEffect, useState, useCallback } from 'react'
 import AppShell from '@/components/layout/AppShell'
-import { ArrowLeft, User, Save, FileText, Eye, Download, X, CalendarClock, Building2, CheckCircle2, AlertTriangle } from 'lucide-react'
+import { ArrowLeft, Save, FileText, Eye, Download, X, CalendarClock, Building2, CheckCircle2, AlertTriangle } from 'lucide-react'
 import { normalizeEtatCivil } from '@/lib/paie/compare-infos'
 
 const COMPANIES: Record<string, string> = { '438': 'Verviers Dépannage', '3068': 'DGJ VHU' }

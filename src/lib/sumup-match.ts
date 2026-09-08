@@ -29,7 +29,7 @@ import {
 } from '@/lib/sumup-payouts'
 import { loadTokenIndex, readInvoices, resolveSumupReference } from '@/lib/sumup-resolve'
 import { isRefund, signedTotal, type Confidence } from '@/lib/paynovate-resolve'
-import type { MatchedTx, MatchedPayout, MatchReport, MatchState } from '@/lib/paynovate-match'
+import type { MatchedTx, MatchReport, MatchState } from '@/lib/paynovate-match'
 import {
   round2,
   invoicesByName,

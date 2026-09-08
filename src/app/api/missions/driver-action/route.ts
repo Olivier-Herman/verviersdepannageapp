@@ -26,10 +26,6 @@ const ACTION_TO_FSM_STAGE: Record<string, string | null> = {
   completed:         'Terminé',
 }
 
-type DriverAction = 'accept' | 'on_way' | 'on_site' | 'completed' | 'park' | 'load_vehicle'
-  | 'start_delivery' | 'arrive_stop' | 'complete_delivery'
-  | 'change_type' | 'update_address' | 'update_stops'
-
 const ACTION_MAP: Record<string, { status?: string; timestampField?: string; logMessage: string }> = {
   accept:           { status: 'accepted',    timestampField: 'accepted_at',   logMessage: 'Mission acceptée par le chauffeur' },
   on_way:           { status: 'in_progress', timestampField: 'on_way_at',     logMessage: 'Chauffeur en route' },

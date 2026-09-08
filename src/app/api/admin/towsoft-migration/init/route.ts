@@ -49,7 +49,6 @@ export async function POST(_req: Request) {
 
   // 2. Upsert en batch (idempotent par towsoft_num)
   let inserted = 0
-  let updated  = 0
   let errors   = 0
   const errorDetails: Array<{ towsoft_num: string; error: string }> = []
 

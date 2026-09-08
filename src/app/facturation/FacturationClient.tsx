@@ -216,9 +216,6 @@ export default function FacturationClient({
     }
     return map
   }, [advances])
-  const hasAdvances = (mid: string) => (advancesByMission.get(mid)?.length || 0) > 0
-  const totalAdvanceFor = (mid: string) =>
-    (advancesByMission.get(mid) || []).reduce((s, a) => s + Number(a.amount_htva || 0), 0)
   // Olivier 2026-06-04 : pre-filtre via ?q= (utilise par bouton 'Restituer
   // et facturer' de la fiche vehicule fourriere pour pointer directement
   // sur un numero de mission specifique).

@@ -63,13 +63,6 @@ export default function AdminVisitesClient({
       setMotifs(motifs.map(x => x.id === m.id ? item : x)); router.refresh()
     } catch (e: any) { setError(e.message) } finally { setBusy(false) }
   }
-  async function patchBureau(b: Bureau, patch: Partial<Bureau>) {
-    setBusy(true); setError(null)
-    try {
-      const item = await call('bureaux', 'PATCH', b.id, patch)
-      setBureaux(bureaux.map(x => x.id === b.id ? item : x)); router.refresh()
-    } catch (e: any) { setError(e.message) } finally { setBusy(false) }
-  }
 
   async function toggleActive(cat: 'motifs' | 'bureaux', item: Motif | Bureau) {
     if (item.active && !confirm('Désactiver cet élément ? Il ne sera plus proposé (historique conservé).')) return

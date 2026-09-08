@@ -62,7 +62,6 @@ export async function sendClientReceipt(data: {
   sumupTransactionRef?: string
 }): Promise<void> {
   const FROM_EMAIL = 'administration@verviersdepannage.com'
-  const paymentLabel = PAYMENT_MODE_LABELS[data.paymentMode] || data.paymentMode
   const nextWorkDay = getNextWorkingDay()
   const isPaid = data.paymentMode !== 'unpaid'
   const amountTvac = formatEur(data.amount)
