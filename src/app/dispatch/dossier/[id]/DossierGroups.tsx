@@ -270,6 +270,15 @@ function Group({ d, leg, canBill, isOpen, onToggle, embedOpen, onToggleEmbed, fi
 
       {isOpen && (
         <div className={`border-t px-3 md:px-3.5 py-3 ${mobile ? '' : 'md:pl-[70px]'} space-y-3 min-w-0 max-w-full overflow-x-hidden`}>
+          {/* Gardiennage en cours = c'est ici que vit la relivraison (adresse + action).
+              Olivier 08/09/2026 : « donc tu n'affiches le bloc relivraison que dans A ? » */}
+          {leg.kind === 'gard' && leg.open && (
+            <div className="grid grid-cols-1 gap-y-1 text-xs bg-surface-2 border rounded-xl px-3 py-2">
+              <div className="grid grid-cols-[92px_minmax(0,1fr)] md:grid-cols-[110px_1fr] gap-2 items-center"><dt className="text-ink-muted">Relivraison</dt><dd>
+                <EditableAddress value={leg.redelivery_address} field="redelivery" missionId={d.root_id} gmKey={shared.googleMapsKey} onSaved={onChanged} placeholder="adresse de relivraison à définir" /></dd></div>
+              <div className="grid grid-cols-[92px_minmax(0,1fr)] md:grid-cols-[110px_1fr] gap-2 items-center"><dt className="text-ink-muted">Action</dt><dd><RelivrerFromDossier d={d} leg={leg} /></dd></div>
+            </div>
+          )}
           {leg.editable && (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-1 text-xs bg-surface-2 border rounded-xl px-3 py-2">
               {/* Olivier 07/09/2026 : tout ce qui est modifiable l'est ici, sans ouvrir la fiche. */}
@@ -304,7 +313,7 @@ function Group({ d, leg, canBill, isOpen, onToggle, embedOpen, onToggleEmbed, fi
               <div className="grid grid-cols-[92px_minmax(0,1fr)] md:grid-cols-[110px_1fr] gap-2 items-center"><dt className="text-ink-muted">{leg.kind === 'rel' ? 'Livrer à' : 'Destination'}</dt><dd className="space-y-0.5">
                 <EditableText value={leg.editable.destination_name} placeholder="nom du lieu (garage, hôtel…)" missionId={leg.mission_id} field="destination_name" onSaved={onChanged} />
                 <EditableAddress value={leg.editable.destination_address} field="destination" missionId={leg.mission_id} gmKey={shared.googleMapsKey} onSaved={onChanged} placeholder={/d[ée]pannage|sur place/i.test(leg.title) ? 'sur place' : 'à définir'} /></dd></div>
-              {leg.kind !== 'rel' && (leg.editable.redelivery_address || leg.open) && (
+              {leg.kind !== 'rel' && !d.legs.some(l => l.kind === 'gard' && l.open) && (leg.editable.redelivery_address || leg.open) && (
                 <div className="grid grid-cols-[92px_minmax(0,1fr)] md:grid-cols-[110px_1fr] gap-2 items-center"><dt className="text-ink-muted">Relivraison</dt><dd>
                   <EditableAddress value={leg.editable.redelivery_address} field="redelivery" missionId={leg.mission_id} gmKey={shared.googleMapsKey} onSaved={onChanged} placeholder="adresse de relivraison à définir" /></dd></div>
               )}
@@ -467,6 +476,35 @@ function EditableAddress({ value, field, missionId, gmKey, onSaved, placeholder 
       </div>
       {err && <p className="text-red-600 text-xs">⚠ {err}</p>}
     </div>
+  )
+}
+
+// ── Relivrer depuis le groupe Gardiennage ──────────────────────────────────
+function RelivrerFromDossier({ d, leg }: { d: Dossier; leg: DossierLeg }) {
+  const router = useRouter()
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState<string | null>(null)
+  const relOpen = d.legs.find(l => l.kind === 'rel' && l.open)
+  if (relOpen) return <span className="text-ink-secondary">Relivraison en cours : groupe <b className="font-mono">{relOpen.letter}</b>{relOpen.driver_name ? ` · ${relOpen.driver_name}` : ''}</span>
+  const hasAddress = !!(leg.redelivery_address || '').trim()
+  const go = async () => {
+    if (!hasAddress) { setErr('Renseigne d’abord l’adresse de relivraison ci-dessus.'); return }
+    setBusy(true); setErr(null)
+    try {
+      const r = await fetch(`/api/missions/${d.root_id}/relivrer`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({}) })
+      const j = await r.json().catch(() => ({}))
+      if (!r.ok) { setErr(j.error || `Erreur ${r.status}`); return }
+      if (j.mission_id) router.push(`/dispatch/${j.mission_id}?assign=1`)
+    } catch (e: any) { setErr(e?.message || 'Erreur réseau') } finally { setBusy(false) }
+  }
+  return (
+    <span className="inline-flex flex-wrap items-center gap-2">
+      <button type="button" disabled={busy} onClick={go} title={hasAddress ? 'Créer la relivraison et choisir le chauffeur' : 'Adresse de relivraison manquante'}
+        className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition disabled:opacity-50 ${hasAddress ? 'bg-emerald-600 border-emerald-600 text-white hover:bg-emerald-700' : 'bg-surface border-amber-500/50 text-amber-700'}`}>
+        {busy ? '⏳ Création…' : '🚚 Relivrer'}
+      </button>
+      {err && <span className="text-red-600">{err}</span>}
+    </span>
   )
 }
 

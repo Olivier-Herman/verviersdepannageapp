@@ -46,6 +46,9 @@ export interface DossierLeg {
   nothing_to_bill: string | null
   days:            number | null
   regime:          string | null
+  // Adresse de relivraison : portée par la mise en parc (Olivier 07/09 : « c'est la
+  // mise en parc qui contient les infos de relivraison ») — lue sur la racine.
+  redelivery_address: string | null
   // Mode léger : pas de montant figé sur la fiche → à calculer (moteur de prix).
   amount_unknown?: boolean
   // Canal de facturation : Odoo (défaut), relevé trimestriel Domaine, état de
@@ -415,7 +418,7 @@ export async function buildDossier(anyMissionId: string, opts: { light?: boolean
       billed_to_id: m.billed_to_id ?? null, billed_to_name: m.billed_to_name ?? null,
       billed_inherited: (m.billed_to_id ?? null) === (root.billed_to_id ?? null),
       facts, amount_htva: amount, amount_note: note, billed_htva: billedHtva || (billedRefs.length && !billedItems.length ? amount : 0),
-      billed_refs: billedRefs, nothing_to_bill: nothing, days, regime: kind === 'gard' ? String(m.mission_type || 'autre') : null, amount_unknown: amountUnknown || undefined,
+      billed_refs: billedRefs, nothing_to_bill: nothing, days, regime: kind === 'gard' ? String(m.mission_type || 'autre') : null, redelivery_address: (kind === 'gard' ? root.redelivery_address : m.redelivery_address) || null, amount_unknown: amountUnknown || undefined,
       // Olivier 07/09/2026 : « tout ce qui est modifiable doit l'être dans la vue 2 ».
       editable: kind === 'gard' ? undefined : {
         client_name: m.client_name || null, client_phone: m.client_phone || null, client_address: m.client_address || null,
