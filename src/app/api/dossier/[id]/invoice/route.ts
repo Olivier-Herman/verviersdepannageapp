@@ -33,7 +33,8 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   try {
     const periodTo: Record<string, string> = {}
     if (body.period_to && typeof body.period_to === 'object') for (const [k, v] of Object.entries(body.period_to)) if (typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v)) periodTo[k] = v
-    const result = await invoiceDossierGroups({ anyMissionId: params.id, missionIds, actorUserId: user.id || null, dryRun: body.dry_run === true, periodTo })
+    const linesOverride: Record<string, any[]> | undefined = body.lines_override && typeof body.lines_override === 'object' ? body.lines_override : undefined
+    const result = await invoiceDossierGroups({ anyMissionId: params.id, missionIds, actorUserId: user.id || null, dryRun: body.dry_run === true, periodTo, linesOverride })
     invalidateDossierCache()   // la liste (cache 90 s) doit refléter la facture
     return NextResponse.json({ ok: true, ...result })
   } catch (e: any) {

@@ -46,6 +46,7 @@ export interface DossierLeg {
   nothing_to_bill: string | null
   days:            number | null
   regime:          string | null
+  alerts?:         string[]        // D10 : alertes du module classique (montant à 0 sur place, écart encaissé, multi-paiements, Siabis non tranché)
   free_days?:      number          // jours offerts du tarif gardiennage (pour couper une période sans les recompter)
   // Adresse de relivraison : portée par la mise en parc (Olivier 07/09 : « c'est la
   // mise en parc qui contient les infos de relivraison ») — lue sur la racine.
@@ -105,7 +106,7 @@ export interface Dossier {
                     efs: { numero: number | null; from: string | null; to: string | null; total_htva: number; status: string | null; justinvoice: string | null; liquide_at: string | null; include_depannage: boolean }[] }
   legs:           DossierLeg[]
   events:         DossierEvent[]
-  totals:         { estimated: number; billed: number; collected: number; remaining: number }
+  totals:         { estimated: number; billed: number; collected: number; remaining: number; due_tvac: number }   // collected est TVAC (encaissé sur place) ; due_tvac = estimé TVAC − encaissé
   light?:         boolean
   invoices:       { number: string; covers: string[]; client: string | null; amount: number; at: string | null; url: string | null }[]
 }
@@ -519,6 +520,13 @@ async function buildDossierUncached(anyMissionId: string, light: boolean): Promi
         ...(m.remarks_billing && !(Array.isArray(m.billing_remarks) && m.billing_remarks.some((r: any) => r.text === m.remarks_billing)) ? [{ text: String(m.remarks_billing), author: null, at: null }] : []),
       ].filter(r => r.text.trim()),
       payments: (payBy[m.id] || []).map((pz: any) => ({ amount: r2(Number(pz.amount || 0)), mode: pz.payment_mode || null, at: pz.created_at || null, driver: pz.driver_id ? (nameById[pz.driver_id] || null) : null })),
+      alerts: (() => { const a: string[] = []; if (kind === 'gard') return a
+        const paid = (payBy[m.id] || []).reduce((t: number, pz: any) => t + Number(pz.amount || 0), 0)
+        if (Number(m.amount_to_collect) <= 0 && m.amount_to_collect_manual) a.push(`Montant mis à 0 sur place par le chauffeur (estimation ${amount.toFixed(2)} € HTVA)`)
+        if (paid > 0 && amount > 0 && Math.abs(paid - amount * 1.21) >= 0.5) a.push(`Écart : ${paid.toFixed(2)} € encaissés sur place vs ${(amount * 1.21).toFixed(2)} € TVAC à facturer`)
+        if ((payBy[m.id] || []).length > 1) a.push(`${(payBy[m.id] || []).length} paiements encaissés : à encoder dans Odoo`)
+        if (m.needs_siabis_decision) a.push('Siabis autoroute : couvert / non couvert pas encore tranché')
+        return a })(),
       _sort: startKey(m, kind), _rank: kind === 'rem' ? 0 : kind === 'gard' ? 1 : 2,
     } as any)
   }
@@ -646,7 +654,21 @@ async function buildDossierUncached(anyMissionId: string, light: boolean): Promi
 
   legs.sort((a: any, b: any) => (a._sort - b._sort) || (a._rank - b._rank))
   const LETTERS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'
-  legs.forEach((l: any, i) => { l.letter = LETTERS[i] || String(i + 1); delete l._sort; delete l._rank })
+  // D4 : une lettre figée à la première apparition (colonne dossier_letter) ; les
+  // nouveaux groupes prennent les lettres libres suivantes dans l'ordre. Les
+  // pseudo-groupes (Domaine, Sortie) ne se figent pas.
+  const storedById = new Map<string, string>(legRows.filter(r => r.dossier_letter).map(r => [r.id, String(r.dossier_letter)]))
+  const used = new Set<string>(storedById.values())
+  let next = 0
+  const toPersist: { id: string; letter: string }[] = []
+  legs.forEach((l: any) => {
+    const stored = l.kind !== 'out' ? storedById.get(l.mission_id) : undefined
+    if (stored) { l.letter = stored }
+    else { while (used.has(LETTERS[next] || String(next + 1))) next++; l.letter = LETTERS[next] || String(next + 1); used.add(l.letter); next++
+      if (l.kind !== 'out' && legRows.some(r => r.id === l.mission_id)) toPersist.push({ id: l.mission_id, letter: l.letter }) }
+    delete l._sort; delete l._rank
+  })
+  if (toPersist.length && !light) for (const t of toPersist) sb.from('incoming_missions').update({ dossier_letter: t.letter }).eq('id', t.id).is('dossier_letter', null).then(() => {}, () => {})
 
   // ── Événements (mails sans action) ───────────────────────────────────────
   const events: DossierEvent[] = eventRows.map((e: any): DossierEvent => ({
@@ -717,7 +739,7 @@ async function buildDossierUncached(anyMissionId: string, light: boolean): Promi
       domaine: root.domaine_vente_date ? `Vendu au Domaine${root.domaine_vente_firm ? ' · ' + root.domaine_vente_firm : ''}` : (root.domaine_remise_date ? `Remis au Domaine le ${String(root.domaine_remise_date).slice(0, 10)}` : null),
       touring_check: root.touring_check_stamp || null,
     },
-    totals: { estimated, billed, collected, remaining: r2(Math.max(0, estimated - billed)) },
+    totals: { estimated, billed, collected, remaining: r2(Math.max(0, estimated - billed)), due_tvac: r2(Math.max(0, estimated * 1.21 - collected)) },   // D13 : collected est TVAC (encaissé sur place)
     invoices: Object.values(invMap).map(e => ({ ...e, covers: Array.from(e.covers).sort() })),
   }
 }

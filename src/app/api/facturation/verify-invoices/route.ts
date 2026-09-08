@@ -57,7 +57,7 @@ export async function POST(req: Request) {
 
   // Fiches à facturer ayant une facture liée (directe ou via devis).
   let q = sb.from('incoming_missions')
-    .select('id, external_id, vehicle_plate, status, invoice_odoo_id, odoo_quote_id')
+    .select('id, external_id, vehicle_plate, status, invoice_odoo_id, odoo_quote_id, invoice_method')
     .eq('status', 'to_invoice')
     .or('invoice_odoo_id.not.is.null,odoo_quote_id.not.is.null')
   if (onlyIds) q = q.in('id', onlyIds)
@@ -111,7 +111,20 @@ export async function POST(req: Request) {
       .filter(mv => mv.move_type === 'out_invoice' || mv.state === 'missing' || !mv.move_type)
 
     const posted = moves.find(mv => mv.state === 'posted' && mv.name && mv.name !== '/')
-    if (posted) {
+    if (posted && (m as any).invoice_method === 'dossier') {
+      // D14 : facture créée depuis le dossier — on ramène le numéro ; la fiche ne
+      // passe « terminée » (et la place n'est libérée) que si tout le dossier est couvert.
+      await sb.from('incoming_missions').update({ invoice_number: posted.name, invoice_odoo_id: posted.id, invoice_url: invoiceUrl(posted.id), invoiced_at: now, invoiced_by: user.id || null }).eq('id', m.id).is('invoice_number', null)
+      await sb.from('mission_billed_items').update({ invoice_number: posted.name }).eq('invoice_odoo_id', posted.id).is('invoice_number', null)
+      let allCovered = false
+      try { const { buildDossier } = await import('@/lib/dossier/build'); const dd = await buildDossier(m.id, { light: true }); allCovered = !!dd && !dd.state.open && dd.legs.filter(l => l.kind !== 'out').every(l => (l.billed_refs.length && l.billed_htva >= l.amount_htva - 0.01) || !!l.nothing_to_bill || (l.amount_htva === 0 && !l.amount_unknown)) } catch {}
+      if (!allCovered) { draft.push({ id: m.id, ref: m.external_id, plate: m.vehicle_plate, note: `n° ${posted.name} repris, dossier pas encore couvert en totalité` } as any); continue }
+      const { error: updErr } = await sb.from('incoming_missions').update({ status: 'completed', updated_at: now }).eq('id', m.id)
+      if (updErr) { none.push({ id: m.id, ref: m.external_id, plate: m.vehicle_plate, reason: updErr.message }); continue }
+      try { await releaseParcAndShift(sb, m.id) } catch (e: any) { console.error('[verify-invoices] release parc KO:', e.message) }
+      await sb.from('mission_logs').insert({ mission_id: m.id, actor_id: user.id || null, action: 'invoiced', notes: `Facturée n° ${posted.name} (dossier entièrement couvert — vérification Odoo groupée)` }).then(() => {}, () => {})
+      completed.push({ id: m.id, ref: m.external_id, plate: m.vehicle_plate, number: posted.name })
+    } else if (posted) {
       // Complète la fiche (idem « Facturation OK »).
       const { error: updErr } = await sb.from('incoming_missions').update({
         status:          'completed',

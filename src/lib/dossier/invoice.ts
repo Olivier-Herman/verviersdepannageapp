@@ -47,7 +47,9 @@ function actionDescription(leg: DossierLeg, m: any): string {
 // inclus) choisi dans la modale ; la période suivante s'ouvre le lendemain à
 // minuit (Olivier 08/09/2026 : « on facture du 27/08 au 04/09, un nouveau
 // groupe se crée pour la période 05/09 à … »). Absent = jusqu'à maintenant.
-export async function invoiceDossierGroups(input: { anyMissionId: string; missionIds: string[]; actorUserId: string | null; dryRun?: boolean; periodTo?: Record<string, string> }): Promise<DossierInvoiceResult> {
+// linesOverride : lignes vérifiées/modifiées dans la modale (D1, audit 08/09/2026),
+// par fiche ; elles remplacent le calcul et sont purgées des brouillons après envoi.
+export async function invoiceDossierGroups(input: { anyMissionId: string; missionIds: string[]; actorUserId: string | null; dryRun?: boolean; periodTo?: Record<string, string>; linesOverride?: Record<string, QuoteLine[]> }): Promise<DossierInvoiceResult> {
   const sb = createAdminClient()
   const d = await buildDossier(input.anyMissionId)
   if (!d) throw new Error('Dossier introuvable')
@@ -64,7 +66,9 @@ export async function invoiceDossierGroups(input: { anyMissionId: string; missio
   }
 }
 
-async function invoiceDossierGroupsLocked(sb: any, d: Dossier, input: { anyMissionId: string; missionIds: string[]; actorUserId: string | null; dryRun?: boolean; periodTo?: Record<string, string> }): Promise<DossierInvoiceResult> {
+async function invoiceDossierGroupsLocked(sb: any, d: Dossier, input: { anyMissionId: string; missionIds: string[]; actorUserId: string | null; dryRun?: boolean; periodTo?: Record<string, string>; linesOverride?: Record<string, QuoteLine[]> }): Promise<DossierInvoiceResult> {
+  const cleanLines = (raw: any[]): QuoteLine[] => raw.map((l: any) => ({ kind: (['SERV-PEC', 'SERV-KM', 'SERV-PARC', 'SERV-MAJ', 'SERV-DIV'].includes(l.kind) ? l.kind : 'SERV-DIV') as any, name: String(l.name || '').trim(), qty: Number(l.qty || 0), price_unit: Number(l.price_unit || 0) })).filter(l => l.name && l.qty > 0)
+  const override = (id: string): QuoteLine[] | null => input.linesOverride && Array.isArray(input.linesOverride[id]) ? cleanLines(input.linesOverride[id]) : null
 
   const wanted = new Set(input.missionIds)
   const legs = d.legs.filter(l => wanted.has(l.mission_id))
@@ -79,6 +83,8 @@ async function invoiceDossierGroupsLocked(sb: any, d: Dossier, input: { anyMissi
     if (l.amount_unknown) { warnings.push(`${d.number ?? d.ref}${l.letter} : tarif non calculable (${l.amount_note || 'à vérifier sur la fiche'}) — groupe non facturé`); return false }
     // Parquet : état de frais, jamais Odoo — on écarte ce groupe sans bloquer les autres clients.
     if ((l.channel || 'odoo') === 'parquet' || /parquet|frais de justice|fdj\b/i.test(String(l.billed_to_name || ''))) { warnings.push(`${d.number ?? d.ref}${l.letter} : Parquet — passe par l'état de frais du module Saisie`); return false }
+    // D10 : intervention autoroute Siabis dont la tarification (couvert / non couvert) n'est pas tranchée.
+    if ((l.alerts || []).some(a => /Siabis autoroute/i.test(a))) { warnings.push(`${d.number ?? d.ref}${l.letter} : Siabis autoroute non tranché — décide couvert / non couvert sur la fiche avant de facturer`); return false }
     if (l.billed_refs.length && l.billed_htva >= l.amount_htva - 0.01) { warnings.push(`${d.number}${l.letter} : déjà facturé (${l.billed_refs.join(', ')})`); return false }
     return true
   })
@@ -138,12 +144,15 @@ async function invoiceDossierGroupsLocked(sb: any, d: Dossier, input: { anyMissi
         } else {
           warnings.push(`${d.number}${leg.letter} : 0 jour facturable, groupe ignoré`); continue
         }
-        sections.push({ section_label: `${d.number}${leg.letter} — Gardiennage${m.parc_zone_key ? ' zone ' + m.parc_zone_key : ''}`, lines })
-        perLeg.push({ leg, lines, period_from: from, period_to: to })
+        const ov = override(leg.mission_id); const finalLines = ov ?? lines
+        sections.push({ section_label: `${d.number}${leg.letter} — Gardiennage${m.parc_zone_key ? ' zone ' + m.parc_zone_key : ''}`, lines: finalLines, mission_id: leg.mission_id })
+        perLeg.push({ leg, lines: finalLines, period_from: from, period_to: to })
       } else {
-        const { lines, has_tariff } = await actionLines(m, draftById[leg.mission_id], hasGardLegs)
+        const ov = override(leg.mission_id)
+        const { lines: calc, has_tariff: calcOk } = ov ? { lines: ov, has_tariff: true } : await actionLines(m, draftById[leg.mission_id], hasGardLegs)
+        const lines = calc, has_tariff = calcOk
         if (!has_tariff || !lines.length) { warnings.push(`${d.number}${leg.letter} : tarif introuvable, section à compléter dans Odoo`) }
-        sections.push({ section_label: `${d.number}${leg.letter} — ${leg.title} — ${actionDescription(leg, m)}${has_tariff ? '' : ' (à compléter)'}`, lines })
+        sections.push({ section_label: `${d.number}${leg.letter} — ${leg.title} — ${actionDescription(leg, m)}${has_tariff ? '' : ' (à compléter)'}`, lines, mission_id: leg.mission_id })
         perLeg.push({ leg, lines, period_from: null, period_to: null })
       }
     }
@@ -163,7 +172,7 @@ async function invoiceDossierGroupsLocked(sb: any, d: Dossier, input: { anyMissi
         const zl: QuoteLine[] = z.kind === 'gard'
           ? [{ kind: 'SERV-PARC', name: `Gardiennage (${z.regime}) — zone ${zr.parc_zone_key || '?'} du ${fmtDay(zf)} au ${fmtDay(zt)} : ${z.nothing_to_bill}`, qty: 1, price_unit: 0 }]
           : [{ kind: 'SERV-PEC', name: `${z.title} — ${z.amount_note || 'rien à facturer (0 km)'}`, qty: 1, price_unit: 0 }]
-        sections.push({ section_label: z.kind === 'gard' ? `${d.number}${z.letter} — Gardiennage${zr.parc_zone_key ? ' zone ' + zr.parc_zone_key : ''}` : `${d.number}${z.letter} — ${z.title} — 0 €`, lines: zl })
+        sections.push({ section_label: z.kind === 'gard' ? `${d.number}${z.letter} — Gardiennage${zr.parc_zone_key ? ' zone ' + zr.parc_zone_key : ''}` : `${d.number}${z.letter} — ${z.title} — 0 €`, lines: zl, mission_id: z.mission_id })
         perLeg.push({ leg: z, lines: zl, period_from: z.kind === 'gard' ? zf : null, period_to: z.kind === 'gard' ? zt : null })
       }
     }
@@ -185,6 +194,29 @@ async function invoiceDossierGroupsLocked(sb: any, d: Dossier, input: { anyMissi
       sections,
       description:      buildInterventionDescription(root || {}),
     }))
+
+    // D1 : les brouillons de lignes des fiches facturées sont purgés (comme le module classique).
+    await sb.from('mission_invoice_drafts').delete().in('mission_id', perLeg.map(p => p.leg.mission_id)).then(() => {}, () => {})
+    // D6 (audit 08/09/2026) : mêmes pièces et même chatter que le module classique.
+    try {
+      const realRows = perLeg.filter(p => p.leg.kind !== 'gard').map(p => rowById[p.leg.mission_id]).filter(Boolean)
+      // Grille officielle (Siabis, saisie) : seulement si TOUTES les fiches de la facture y ont droit.
+      const { grilleAJoindre, lireGrilleBase64, nomFichier } = await import('@/lib/tarifs/grille-officielle')
+      const grilles = realRows.map(r => grilleAJoindre(r as any))
+      if (realRows.length && grilles.every(Boolean)) {
+        const g = grilles[0]!
+        const b64 = await lireGrilleBase64(g)
+        if (b64) { const { attachToOdoo } = await import('@/lib/odoo-attachment'); await attachToOdoo({ resModel: 'account.move', resId: created.id, filename: nomFichier(g), base64Data: b64, description: g.mention }) }
+      }
+      // Chatter : paiements encaissés sur place (mode, montant, date, chauffeur).
+      const { postChatterMessage } = await import('@/lib/odoo')
+      const PM: Record<string, string> = { cash: 'Espèces', bancontact: 'Bancontact', sumup: 'Sumup', terminal: 'Sumup Terminal', qr: 'QR Code', qr_transfer: 'QR virement', tap: 'Tap to Pay', sumup_manual: 'Sumup', email: 'Lien email', unpaid: 'Non payé', a_verifier: 'À vérifier' }
+      const pays = perLeg.flatMap(p => (p.leg.payments || []).map(pz => `<li><b>${PM[String(pz.mode || '')] || pz.mode || '—'}</b> — ${Number(pz.amount || 0).toFixed(2)} € · ${pz.at ? new Date(pz.at).toLocaleString('fr-BE', { timeZone: 'Europe/Brussels' }) : '—'}${pz.driver ? ` · encaissé par ${pz.driver}` : ''} · groupe ${p.leg.letter}</li>`))
+      await postChatterMessage('account.move', created.id, pays.length ? `<p>💳 <b>Paiement (VD Soft)</b></p><ul>${pays.join('')}</ul>` : `<p>💳 <b>Paiement (VD Soft)</b> : aucun encaissement sur place enregistré.</p>`)
+      // PDF de mission → helpdesk + véhicule Odoo (jamais sur la facture : l'export comptable prendrait le rapport).
+      const { attachMissionPdf } = await import('@/lib/missions/attach-mission-pdf')
+      for (const r of realRows) attachMissionPdf(r.id, { targets: ['helpdesk', 'vehicle'] }).catch((e: any) => console.warn('[dossier/invoice] PDF mission KO (non bloquant):', e?.message))
+    } catch (e: any) { console.warn('[dossier/invoice] pièces / chatter KO (non bloquant):', e?.message) }
 
     // Justificatifs des avances de fonds joints à la facture (best-effort,
     // comme la route /quote).
@@ -217,6 +249,7 @@ async function invoiceDossierGroupsLocked(sb: any, d: Dossier, input: { anyMissi
       const m = rowById[p.leg.mission_id]
       const upd: Record<string, any> = { invoice_created_at: nowIso, updated_at: nowIso }
       if (!m.invoice_odoo_id) upd.invoice_odoo_id = created.id
+      if (!m.invoice_method) upd.invoice_method = 'dossier'   // D14 : facture issue du dossier (la vérification Odoo ne clôture la fiche que si tout est couvert)
       await sb.from('incoming_missions').update(upd).eq('id', p.leg.mission_id)
       await sb.from('mission_logs').insert({
         mission_id: p.leg.mission_id, actor_id: input.actorUserId, action: 'dossier_invoice',

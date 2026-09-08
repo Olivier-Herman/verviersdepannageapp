@@ -52,7 +52,8 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     // Les groupes cochés passent tels quels (invoiceDossierGroups vérifie et explique) ; on y ajoute le gardiennage qui vient de se fermer.
     const ids = Array.from(new Set([...wanted, ...pickable.filter(l => l.kind === 'gard' || wanted.length === 0).map(l => l.mission_id)]))
     if (!ids.length) return NextResponse.json({ ok: true, closed: true, invoices: [], warnings: ['Dossier clôturé, mais rien à facturer (tout est déjà facturé ou sans frais).'] })
-    const result = await invoiceDossierGroups({ anyMissionId: root.id, missionIds: ids, actorUserId: user.id || null })
+    const linesOverride: Record<string, any[]> | undefined = body.lines_override && typeof body.lines_override === 'object' ? body.lines_override : undefined
+    const result = await invoiceDossierGroups({ anyMissionId: root.id, missionIds: ids, actorUserId: user.id || null, linesOverride })
     invalidateDossierCache()   // la liste (cache 90 s) doit refléter la facture
     return NextResponse.json({ ok: true, closed: true, ...result })
   } catch (e: any) {

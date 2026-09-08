@@ -88,6 +88,8 @@ export interface QuoteSection {
    *  Si fourni, on prefixe les lignes par un display_type='line_section' Odoo. */
   section_label?: string
   lines:          QuoteLine[]
+  /** Fiche VD Soft à l'origine de la section (Vue dossier : édition des lignes avant envoi). */
+  mission_id?:    string
 }
 
 export interface CreateQuoteInput {
