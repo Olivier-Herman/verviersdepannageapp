@@ -255,6 +255,22 @@ export async function buildDossier(anyMissionId: string, opts: { light?: boolean
   const { data: items } = await sb.from('mission_billed_items')
     .select('mission_id, kind, label, amount_htva, invoice_number, billed_to_name, billed_at, odoo_quote_id, invoice_odoo_id, dossier_letter')
     .in('mission_id', ids)
+  // Brouillons Odoo devenus factures : on ramène le numéro posté maintenant
+  // (best effort, 4 s max) plutôt que d'attendre le cron. Olivier 08/09/2026.
+  if (!light) {
+    const draftIds = Array.from(new Set([
+      ...legRows.filter(r => r.invoice_odoo_id && !r.invoice_number).map(r => Number(r.invoice_odoo_id)),
+      ...(items || []).filter((it: any) => it.invoice_odoo_id && !it.invoice_number).map((it: any) => Number(it.invoice_odoo_id)),
+    ]))
+    if (draftIds.length) {
+      try {
+        const { syncDraftInvoiceNumbers } = await import('@/lib/odoo-invoice')
+        const names = await Promise.race([syncDraftInvoiceNumbers(sb, draftIds), new Promise<Record<number, string>>(res => setTimeout(() => res({}), 4000))])
+        for (const r of legRows) if (r.invoice_odoo_id && !r.invoice_number && names[Number(r.invoice_odoo_id)]) r.invoice_number = names[Number(r.invoice_odoo_id)]
+        for (const it of (items || []) as any[]) if (it.invoice_odoo_id && !it.invoice_number && names[Number(it.invoice_odoo_id)]) it.invoice_number = names[Number(it.invoice_odoo_id)]
+      } catch { /* le cron repassera */ }
+    }
+  }
   // Une facture Odoo encore en brouillon n'a pas de numéro : on la désigne par
   // son id Odoo jusqu'à ce que le cron verify-invoices ramène le numéro posté.
   const refOf = (it: any) => it.invoice_number || (it.invoice_odoo_id ? `brouillon Odoo #${it.invoice_odoo_id}` : null)
