@@ -170,6 +170,15 @@ export default function DossierGroups({ initial, fiches, shared, isSuperadmin, o
             </h1>
             <p className="text-ink-secondary text-sm mt-0.5">{vehicle}{d.vehicle.plate ? <> · <span className="font-mono">{d.vehicle.plate}</span></> : null}{d.vehicle.vin ? <span className="text-ink-faint"> · VIN <span className="font-mono">{d.vehicle.vin}</span></span> : null}</p>
             <p className="text-ink-muted text-xs mt-0.5">{d.client.name ? `Client sur place : ${d.client.name}${d.client.phone ? ' · ' + d.client.phone : ''}` : 'Client sur place : —'} · reçu le {fmt(d.received_at)}</p>
+            {/* Olivier 08/09/2026 : bloc relivraison en tête de dossier, entre le client
+                sur place et le fil de suivi. Même adresse (racine) que dans les groupes. */}
+            {(() => { const rootLeg = d.legs.find(l => l.mission_id === d.root_id) || d.legs[0]; return rootLeg && rootLeg.kind !== 'rel' && rootLeg.kind !== 'out' ? (
+              <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs bg-surface-2 border rounded-xl px-3 py-1.5">
+                <span className="text-ink-muted font-semibold">🚚 Relivraison</span>
+                <span className="min-w-0 flex-1"><EditableAddress value={rootLeg.redelivery_address} field="redelivery" missionId={d.root_id} gmKey={shared.googleMapsKey} onSaved={refresh} placeholder="adresse de relivraison à définir" /></span>
+                <RelivrerFromDossier d={d} leg={rootLeg} />
+              </div>
+            ) : null })()}
           </div>
           {canBill && <div className="md:text-right">
             <div className="flex md:justify-end items-center gap-2 flex-wrap">
