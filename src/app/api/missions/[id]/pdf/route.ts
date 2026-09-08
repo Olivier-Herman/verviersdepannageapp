@@ -40,6 +40,7 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
         .from('incoming_missions')
         .select('id')
         .or(`id.eq.${baseId},parent_mission_id.eq.${baseId}`)
+        .eq('dossier_leg', false)
       missionIds = (chain || []).map(c => c.id)
     }
   }

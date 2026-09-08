@@ -124,7 +124,7 @@ export async function GET(req: Request) {
   let aRelivrer = kk1Ids.length
   if (kk1Ids.length) {
     const { data: kids } = await sb.from('incoming_missions').select('parent_mission_id')
-      .in('parent_mission_id', kk1Ids).not('status', 'in', '("cancelled","ignored")')
+      .in('parent_mission_id', kk1Ids).eq('dossier_leg', false).not('status', 'in', '("cancelled","ignored")')
     const withChild = new Set((kids || []).map(k => k.parent_mission_id).filter(Boolean))
     aRelivrer = kk1Ids.filter(id => !withChild.has(id)).length
   }

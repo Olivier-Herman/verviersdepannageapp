@@ -261,6 +261,7 @@ export async function getExitControlState(sb: any, missionId: string): Promise<E
       const { data: kids } = await sb.from('incoming_missions')
         .select('id, source, external_id, status')
         .or(`parent_mission_id.eq.${missionId},merged_into_mission_id.eq.${missionId}`)
+        .eq('dossier_leg', false)
         .not('status', 'in', '("cancelled")')
       assist = (kids || []).find((k: any) => isAssistanceSource(k.source)) || null
     }

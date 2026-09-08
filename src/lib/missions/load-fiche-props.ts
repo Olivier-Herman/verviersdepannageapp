@@ -69,6 +69,7 @@ export async function loadMissionFiche(missionId: string): Promise<MissionFicheD
       .from('incoming_missions')
       .select('id, mission_number, external_id, dossier_number, status, vehicle_plate, assigned_to, received_at, intervention_date')
       .eq('parent_mission_id', (mission as any).id)
+      .eq('dossier_leg', false)   // la fiche Gardiennage n'est pas une REL liée
       .not('status', 'in', '("cancelled","ignored")')
       .order('received_at', { ascending: false })
       .limit(1)

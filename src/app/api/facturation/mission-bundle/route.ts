@@ -51,7 +51,7 @@ export async function GET(req: Request) {
   const sibFilters: string[] = []
   if ((mission as any).parent_mission_id) sibFilters.push(`id.eq.${(mission as any).parent_mission_id}`)
   sibFilters.push(`parent_mission_id.eq.${id}`)
-  const { data: siblings } = await sb.from('incoming_missions').select(COLS).or(sibFilters.join(','))
+  const { data: siblings } = await sb.from('incoming_missions').select(COLS).or(sibFilters.join(',')).eq('dossier_leg', false)
 
   const all = [mission, ...(siblings || [])]
   const allIds = all.map((m: any) => m.id)

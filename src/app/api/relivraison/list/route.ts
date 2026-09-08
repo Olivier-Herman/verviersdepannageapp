@@ -89,6 +89,7 @@ export async function GET(req: Request) {
       .from('incoming_missions')
       .select('parent_mission_id')
       .in('parent_mission_id', ids)
+      .eq('dossier_leg', false)   // fiches Gardiennage ≠ REL (08/09/2026)
       .not('status', 'in', '("cancelled","ignored")')
     const withChild = new Set((kids || []).map((k: any) => k.parent_mission_id).filter(Boolean))
     missions = missions.filter((m: any) => !withChild.has(m.id))

@@ -79,6 +79,7 @@ export async function createRelivraisonMission(input: RelivraisonInput): Promise
     .from('incoming_missions')
     .select('id, status, mission_number')
     .eq('parent_mission_id', input.parentMissionId)
+    .eq('dossier_leg', false)
     .eq('external_id', externalId)
     .maybeSingle()
   if (existing && !['cancelled', 'ignored'].includes(String((existing as any).status))) {

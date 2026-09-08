@@ -27,6 +27,7 @@ export async function syncParcVehicleTerminated(sb: any, missionId: string): Pro
     const { data: chain } = await sb.from('incoming_missions')
       .select('id, status, odoo_vehicle_id')
       .or(`id.eq.${root},parent_mission_id.eq.${root}`)
+      .eq('dossier_leg', false)
     const fiches: any[] = (chain && chain.length) ? chain : [m]
 
     // Véhicule Odoo lié (celui de la fiche courante, sinon n'importe lequel du dossier).

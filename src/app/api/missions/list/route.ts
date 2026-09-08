@@ -173,6 +173,7 @@ export async function GET(req: Request) {
       .from('incoming_missions')
       .select('parent_mission_id')
       .in('parent_mission_id', parkedIds)
+      .eq('dossier_leg', false)   // fiches Gardiennage = enfants du dossier, pas des REL (08/09/2026 : tout le parc disparaissait)
       .not('status', 'in', '("cancelled","ignored")')
     for (const kk of (kids || [])) if (kk.parent_mission_id) parkedWithChild.add(kk.parent_mission_id)
   }

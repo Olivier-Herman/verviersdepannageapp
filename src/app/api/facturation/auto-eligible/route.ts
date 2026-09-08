@@ -124,7 +124,7 @@ export async function GET(req: Request) {
       } else {
         // Mission sèche (pas d'enfant relivraison).
         const { count: childCount } = await sb.from('incoming_missions')
-          .select('id', { count: 'exact', head: true }).eq('parent_mission_id', m.id)
+          .select('id', { count: 'exact', head: true }).eq('parent_mission_id', m.id).eq('dossier_leg', false)
         if (childCount) {
           reason = 'combinée (relivraison liée)'
         } else {
