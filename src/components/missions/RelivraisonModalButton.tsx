@@ -30,6 +30,7 @@ export default function RelivraisonModalButton({
   onDone,
   saisieWarning = false,
   parentSource = '',
+  compact = false,
 }: {
   missionId:      string
   currentAddress?: string
@@ -41,6 +42,8 @@ export default function RelivraisonModalButton({
   saisieWarning?: boolean
   /** Source de la mission parente (pour la bascule de source REL). */
   parentSource?:  string
+  /** Vue dossier (audit B7, 08/09/2026) : juste le bouton « Relivrer », l'adresse vit à côté. */
+  compact?:       boolean
 }) {
   const router = useRouter()
   const ps = (parentSource || '').toLowerCase()
@@ -161,6 +164,12 @@ export default function RelivraisonModalButton({
 
   return (
     <>
+      {compact ? (
+        <button type="button" onClick={openModal} title={currentAddress ? 'Relivrer : assistance qui reprend, instructions, tarif' : 'Adresse de relivraison manquante'}
+          className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition ${currentAddress ? 'bg-emerald-600 border-emerald-600 text-white hover:bg-emerald-700' : 'bg-surface border-amber-500/50 text-amber-700'}`}>
+          🚚 Relivrer
+        </button>
+      ) : (
       <div className="bg-blue-50 border-2 border-blue-200 rounded-2xl p-4 md-card-enter">
         <button
           type="button"
@@ -184,6 +193,7 @@ export default function RelivraisonModalButton({
         </button>
         {printMsg && <p className="text-blue-800 text-xs mt-1 text-center">{printMsg}</p>}
       </div>
+      )}
 
       {open && (
         <div className="fixed inset-0 bg-black/60 z-[60] flex items-center justify-center p-4">

@@ -39,13 +39,19 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   // une redelivery_address déjà définie (= ancienne destination).
   const { data: parent } = await sb
     .from('incoming_missions')
-    .select('id, status, destination_address, destination_lat, destination_lng, redelivery_address, park_stage_name')
+    .select('id, status, source, destination_address, destination_lat, destination_lng, redelivery_address, park_stage_name')
     .eq('id', params.id)
     .single()
   if (!parent) return NextResponse.json({ error: 'Mission introuvable' }, { status: 404 })
 
   if (parent.status !== 'parked') {
     return NextResponse.json({ error: 'La mission n\'est pas en parc' }, { status: 422 })
+  }
+  // Siabis (couvert / non couvert) ne se facture jamais une relivraison : la REL
+  // est reprise par une assistance, choisie OBLIGATOIREMENT (règle de la fiche,
+  // Olivier 2026-07-06 ; imposée côté serveur depuis l'audit dispatch B7, 08/09/2026).
+  if (['police_snc', 'sia_couvert'].includes(String((parent as any).source || '').toLowerCase()) && !body.source_override) {
+    return NextResponse.json({ error: 'Choisis l\'assistance qui reprend la relivraison : une REL ne peut pas rester Siabis.' }, { status: 422 })
   }
   // Contrôle de sortie (épave gérée par un bureau d'expertise) : la REL est
   // une sortie du parc → chemin « autre sortie » / « assistance » requis.

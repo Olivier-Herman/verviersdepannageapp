@@ -1,9 +1,10 @@
 'use client'
 
-import { useState, useEffect, useRef }    from 'react'
+import { useState, useEffect, useRef, useMemo } from 'react'
 import { useRouter }   from 'next/navigation'
 import Link            from 'next/link'
 import { buildEncaissementUrl } from '@/lib/missions/encaissement-url'
+import { notifyMissionChanged } from '@/lib/missions/changed-event'
 import { createClient } from '@supabase/supabase-js'
 import { Pencil } from 'lucide-react'
 import { DriverTimeline } from '@/components/missions/DriverTimeline'
@@ -1263,7 +1264,12 @@ export default function MissionDetailClient({
   embed?: boolean
   dossierView?: boolean   // l'utilisateur a la Vue dossier (D15 : la facture partielle y est remplacée)
 }) {
-  const router = useRouter()
+  // Audit dispatch B8 (08/09/2026) : chaque router.refresh() de la fiche signale
+  // aussi « cette fiche a changé » aux lignes dépliées / dossiers qui l'embarquent.
+  const nextRouter = useRouter()
+  const router = useMemo(() => Object.assign(Object.create(nextRouter), {
+    refresh: () => { nextRouter.refresh(); notifyMissionChanged(initialMission.id) },
+  }) as typeof nextRouter, [nextRouter, initialMission.id])
 
   // Combiner rue + ville/CP en une seule adresse complète si la ville n'y est pas déjà.
   // Le parser email écrit incident_address (rue) et incident_city séparément. L'UI a un seul
@@ -1643,6 +1649,13 @@ export default function MissionDetailClient({
       const url = new URL(window.location.href)
       url.searchParams.delete('assign')
       window.history.replaceState({}, '', url.toString())   // évite la ré-ouverture au refresh
+    }
+    // ?park=1 (« Forcer en parc… » de la liste mobile, audit B10) → ouvre la modale dépôt + zone.
+    if (sp.get('park') === '1' && initialMission.status !== 'parked') {
+      setShowForceParkModal(true)
+      const url = new URL(window.location.href)
+      url.searchParams.delete('park')
+      window.history.replaceState({}, '', url.toString())
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])

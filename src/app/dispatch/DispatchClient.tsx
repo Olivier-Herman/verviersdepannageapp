@@ -20,6 +20,7 @@ import AutoDispatchButton from '@/components/dispatch/AutoDispatchButton'
 import { HighwaySiabisModal, shouldOfferSiabis } from './HighwaySiabisModal'
 import { parseHighwayAddress } from '@/lib/highways/parse'
 import { isJudicialSaisie } from '@/lib/missions/judicial'
+import { onMissionChanged } from '@/lib/missions/changed-event'
 import { verifyAddressViaPlaces } from '@/components/AddressField'
 import {
   DndContext, closestCenter, PointerSensor, useSensor, useSensors,
@@ -152,6 +153,8 @@ function MobileRow({ m, activeTab, drivers, driverStatuses, sources, onRefresh, 
 }) {
   const [forceOpen, setForceOpen] = useState(false)
   const [forcing,   setForcing]   = useState(false)
+  const [siabisOpen, setSiabisOpen] = useState(false)
+  const judicial = isJudicialSaisie(m)
   const delai   = getDelai(m.intervention_date, m.status)
   const srcInfo = { label: getSourceLabel(m.source, sources), color: getSourceColor(m.source, sources) }
   const typeLbl = getTypeLabel(m)
@@ -163,7 +166,9 @@ function MobileRow({ m, activeTab, drivers, driverStatuses, sources, onRefresh, 
   const isGarage = !!m.requested_by_garage_id
   const ref = m.dossier_number || (m.mission_number != null ? m.external_id : null)
 
-  const force = async (status: 'dispatching' | 'completed', question: string) => {
+  // Audit dispatch B1 (08/09/2026) : « Clôturer sans pointage » = à facturer, comme
+  // sur la fiche — jamais « terminé » (la fiche sortirait de la file de facturation).
+  const force = async (status: 'dispatching' | 'to_invoice', question: string) => {
     if (!confirm(question)) return
     setForcing(true)
     try {
@@ -177,10 +182,26 @@ function MobileRow({ m, activeTab, drivers, driverStatuses, sources, onRefresh, 
   return (
     <div className={`bg-surface border rounded-2xl overflow-hidden max-w-full min-w-0 ${expanded ? 'ring-1 ring-brand/40' : ''} ${isGarage ? 'border-amber-500/40' : delai.urgency === 'critical' ? 'border-red-500/40' : ''}`}>
       <div onClick={onToggle} className={`px-3 py-2.5 grid grid-cols-[1fr_auto] gap-x-3 gap-y-1 ${expanded ? 'bg-brand/5' : ''}`}>
-        <div className="flex items-center gap-2 min-w-0">
+        {/* Audit dispatch B14 (08/09/2026) : les alertes des anciennes cartes téléphone. */}
+        {judicial && (
+          <div className="col-span-2 flex items-center gap-2 rounded-lg bg-red-600 text-white px-3 py-1.5 text-xs font-black uppercase tracking-wide animate-pulse"><span className="text-base leading-none">⚠️</span> Attention — Saisie Judiciaire</div>
+        )}
+        {m.needs_siabis_decision && (
+          <button onClick={e => { e.stopPropagation(); setSiabisOpen(true) }} className="col-span-2 px-3 py-2 rounded-lg bg-red-600 text-white text-xs font-bold flex items-center justify-center gap-1.5 animate-pulse">🛣️ AUTOROUTE — tarification à trancher →</button>
+        )}
+        {siabisOpen && (
+          <div className="col-span-2" onClick={e => e.stopPropagation()}>
+            <HighwaySiabisModal missionId={m.id} highwayRef={parseHighwayAddress(m.incident_address || '').highwayRef} onClose={() => { setSiabisOpen(false); onRefresh() }} />
+          </div>
+        )}
+        <div className="flex items-center gap-2 min-w-0 flex-wrap">
           <span className="text-ink font-bold font-mono text-sm">{m.mission_number != null ? `#${m.mission_number}` : (m.dossier_number || m.external_id)}</span>
           <span className={`px-1.5 py-0.5 rounded-md text-[10.5px] font-extrabold text-white tracking-wide ${kindCls}`} title={typeLbl}>{kind}</span>
           <span className={`px-1.5 py-0.5 rounded text-[10.5px] font-bold text-white ${srcInfo.color}`}>{srcInfo.label}</span>
+          {m.source === 'touring' && (m.source_format === 'comex'
+            ? <span className="px-1.5 py-0.5 rounded text-[10.5px] font-bold bg-sky-100 text-sky-800" title="Importée depuis COMEX">🚗 COMEX</span>
+            : <span className="px-1.5 py-0.5 rounded text-[10.5px] font-bold bg-amber-100 text-amber-800" title="Parsée depuis un email Touring">📧 Mail</span>)}
+          {m.kaze_cancelled_after_accept && <span className="px-1.5 py-0.5 rounded text-[10.5px] font-bold bg-red-100 text-red-800">⚠ Annulé Kaze — trajet à vide</span>}
         </div>
         <div className="justify-self-end self-start">
           {isParked
@@ -202,8 +223,8 @@ function MobileRow({ m, activeTab, drivers, driverStatuses, sources, onRefresh, 
           {m.warnings && m.warnings.length > 0 && <p className="text-red-600 text-[11px] font-semibold">⚠ {m.warnings[0]}{m.warnings.length > 1 ? ` (+${m.warnings.length - 1})` : ''}</p>}
         </div>
         <div className="col-span-2 flex items-center justify-between gap-2 text-[12px]">
-          <span className="text-ink-muted truncate">{m.client_name || '—'}</span>
-          {m.client_phone && <a href={`tel:${m.client_phone}`} onClick={e => e.stopPropagation()} className="text-brand font-medium shrink-0">{m.client_phone}</a>}
+          <span className="text-ink-muted truncate">{m.client_name || (m.assisted_name ? <>{m.assisted_name} <span className="text-[10.5px]">(sur place)</span></> : '—')}</span>
+          {(m.client_phone || m.assisted_phone) && <a href={`tel:${m.client_phone || m.assisted_phone}`} onClick={e => e.stopPropagation()} className="text-brand font-medium shrink-0">{m.client_phone || m.assisted_phone}</a>}
         </div>
         <div className="col-span-2" onClick={e => e.stopPropagation()}>
           {!isParked
@@ -230,11 +251,11 @@ function MobileRow({ m, activeTab, drivers, driverStatuses, sources, onRefresh, 
                     className="px-3 py-2 rounded-lg border bg-surface text-ink text-sm text-left disabled:opacity-50">↩ Réinitialiser en attente <span className="text-ink-muted text-xs">(désassigne le chauffeur)</span></button>
                 )}
                 {!['completed', 'to_invoice', 'parked'].includes(m.status) && (
-                  <button disabled={forcing} onClick={() => force('completed', 'Clôturer cette fiche sans pointage ni photos du chauffeur ?')}
-                    className="px-3 py-2 rounded-lg border bg-surface text-ink text-sm text-left disabled:opacity-50">✓ Clôturer sans pointage</button>
+                  <button disabled={forcing} onClick={() => force('to_invoice', 'Clôturer cette fiche sans pointage ni photos du chauffeur ? Elle passe « à facturer ».')}
+                    className="px-3 py-2 rounded-lg border bg-surface text-ink text-sm text-left disabled:opacity-50">✓ Clôturer sans pointage <span className="text-ink-muted text-xs">(→ à facturer)</span></button>
                 )}
                 {!isParked && (
-                  <Link href={`/dispatch/${m.id}?fiche=1#actions`} className="px-3 py-2 rounded-lg border bg-surface text-ink text-sm text-left">🅿 Forcer en parc… <span className="text-ink-muted text-xs">(dépôt + zone, sur la fiche)</span></Link>
+                  <Link href={`/dispatch/${m.id}?fiche=1&park=1`} className="px-3 py-2 rounded-lg border bg-surface text-ink text-sm text-left">🅿 Forcer en parc… <span className="text-ink-muted text-xs">(dépôt + zone)</span></Link>
                 )}
               </div>
             )}
@@ -248,14 +269,21 @@ function MobileRow({ m, activeTab, drivers, driverStatuses, sources, onRefresh, 
 function ExpandedRow({ missionId, drivers, sources, mobile = false }: { missionId: string; drivers: Driver[]; sources: CatalogSource[]; mobile?: boolean }) {
   const [data, setData] = useState<any>(null)
   const [err, setErr] = useState<string | null>(null)
+  const [reloadKey, setReloadKey] = useState(0)
   useEffect(() => {
     let cancelled = false
-    setData(null); setErr(null)
+    if (reloadKey === 0) { setData(null); setErr(null) }   // rechargement silencieux ensuite (audit B8)
     fetch(`/api/missions/${missionId}/fiche?t=${Date.now()}`, { cache: 'no-store' }).then(r => r.json())
       .then(j => { if (cancelled) return; if (j?.ok) setData(j); else setErr(j?.error || 'Chargement impossible') })
       .catch(e => { if (!cancelled) setErr(String(e?.message || e)) })
     return () => { cancelled = true }
-  }, [missionId])
+  }, [missionId, reloadKey])
+  // Audit dispatch B8 (08/09/2026) : une action dans la fiche embarquée (mise en
+  // parc, transfert, assignation…) → la ligne dépliée se recharge.
+  useEffect(() => onMissionChanged(id => {
+    const ids: string[] = [missionId, ...((data?.dossier?.legs || []).map((l: any) => l.mission_id))]
+    if (ids.includes(id)) setReloadKey(k => k + 1)
+  }), [missionId, data])
   if (err) return <div className="px-4 py-3 text-sm text-red-600">⚠ {err}</div>
   if (!data) return <div className="px-4 py-3 text-sm text-ink-muted">⏳ Chargement du dossier…</div>
   if (!data.dossier) return <div className="px-4 py-3 text-sm text-red-600">⚠ Dossier introuvable</div>

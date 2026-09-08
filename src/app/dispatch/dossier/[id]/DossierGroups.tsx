@@ -15,6 +15,9 @@ import EidImportButton, { type EidData } from '@/components/caisse/EidImportButt
 import ManualInfoButton, { type ManualClientData } from '@/components/caisse/ManualInfoButton'
 import IdPhotoButton from '@/components/caisse/IdPhotoButton'
 import { loadGoogleMaps } from '@/components/AddressField'
+import RelivraisonModalButton from '@/components/missions/RelivraisonModalButton'
+import RemarksAddModal from '@/components/missions/RemarksAddModal'
+import { onMissionChanged } from '@/lib/missions/changed-event'
 
 // Pays lu sur la carte d'identité → code ISO pour Odoo (même règle que la fiche).
 const countryToIso = (name?: string | null) => {
@@ -54,6 +57,17 @@ function Stamp({ refs, small }: { refs: string[]; small?: boolean }) {
     </span>
   )
 }
+
+// Types proposés selon la source — même règle que la fiche (audit B5, 08/09/2026).
+const MISSION_TYPE_OPTIONS: [string, string][] = [
+  ['remorquage', 'REM — remorquage'], ['depannage', 'DSP — dépannage sur place'], ['transport', 'Transport'],
+  ['trajet_vide', 'TVD — trajet à vide'], ['reparation_place', 'RPL — réparation sur place'], ['relivraison', 'REL — relivraison'], ['autre', 'Autre'],
+]
+const GARDIENNAGE_TYPE_OPTIONS: [string, string][] = [
+  ['assistance', '🛟 Assistance — 3 premiers jours inclus'], ['saisie', '⚖️ Saisie — tarif parquet'], ['siabis', '🛣️ Siabis — 20 € TVAC/jour'], ['autre', '📦 Autre — gardiennage standard'],
+]
+const typeOptionsFor = (src: string | null) => String(src || '').toLowerCase() === 'gardiennage' ? GARDIENNAGE_TYPE_OPTIONS : MISSION_TYPE_OPTIONS
+const isSncSource = (src: string | null) => ['police_snc', 'sia_couvert'].includes(String(src || '').toLowerCase())
 
 const KIND = {
   rem:  { label: 'Remorquage / dépannage', head: 'bg-blue-600/15 border-l-4 border-l-blue-600',       dot: 'bg-blue-600 text-white border-blue-700' },
@@ -132,6 +146,8 @@ export default function DossierGroups({ initial, fiches, shared, isSuperadmin, o
     legs: prev.legs.map(l => ids.includes(l.mission_id) ? { ...l, billed_to_id: c.id, billed_to_name: c.name, billed_inherited: ids.includes(prev.root_id) || (c.id ?? null) === (prev.billed_to.id ?? null) } : l),
   }))
   const [refining, setRefining] = useState(false)
+  // Audit B8 : une action dans une fiche embarquée (mise en parc, transfert…) → le dossier se recharge.
+  useEffect(() => onMissionChanged(id => { if (d.legs.some(l => l.mission_id === id)) refresh() }), [d.legs])   // eslint-disable-line react-hooks/exhaustive-deps
   const refresh = async () => {
     try { const r = await fetch(`/api/dossier/${d.root_id}?t=${Date.now()}`, { cache: 'no-store' }); const j = await r.json(); if (j?.dossier) setD(j.dossier); else console.warn('[dossier] refresh KO', r.status, j?.error) } catch (e) { console.warn('[dossier] refresh KO', e) }
   }
@@ -210,7 +226,7 @@ export default function DossierGroups({ initial, fiches, shared, isSuperadmin, o
               <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs bg-surface-2 border rounded-xl px-3 py-1.5">
                 <span className="text-ink-muted font-semibold">🚚 Relivraison</span>
                 <span className="min-w-0 flex-1"><EditableAddress value={rootLeg.redelivery_address} field="redelivery" missionId={d.root_id} gmKey={shared.googleMapsKey} onSaved={refresh} placeholder="adresse de relivraison à définir" /></span>
-                <RelivrerFromDossier d={d} leg={rootLeg} />
+                <RelivrerFromDossier d={d} leg={rootLeg} gmKey={shared.googleMapsKey} onDone={refresh} />
               </div>
             ) : null })()}
           </div>
@@ -327,7 +343,7 @@ function Group({ d, leg, canBill, isOpen, onToggle, embedOpen, onToggleEmbed, fi
             <div className="grid grid-cols-1 gap-y-1 text-xs bg-surface-2 border rounded-xl px-3 py-2">
               <div className="grid grid-cols-[92px_minmax(0,1fr)] md:grid-cols-[110px_1fr] gap-2 items-center"><dt className="text-ink-muted">Relivraison</dt><dd>
                 <EditableAddress value={leg.redelivery_address} field="redelivery" missionId={d.root_id} gmKey={shared.googleMapsKey} onSaved={onChanged} placeholder="adresse de relivraison à définir" /></dd></div>
-              <div className="grid grid-cols-[92px_minmax(0,1fr)] md:grid-cols-[110px_1fr] gap-2 items-center"><dt className="text-ink-muted">Action</dt><dd><RelivrerFromDossier d={d} leg={leg} /></dd></div>
+              <div className="grid grid-cols-[92px_minmax(0,1fr)] md:grid-cols-[110px_1fr] gap-2 items-center"><dt className="text-ink-muted">Action</dt><dd><RelivrerFromDossier d={d} leg={leg} gmKey={shared.googleMapsKey} onDone={onChanged} /></dd></div>
             </div>
           )}
           {leg.editable && (
@@ -335,9 +351,13 @@ function Group({ d, leg, canBill, isOpen, onToggle, embedOpen, onToggleEmbed, fi
               {/* Olivier 07/09/2026 : tout ce qui est modifiable l'est ici, sans ouvrir la fiche. */}
               <div className="grid grid-cols-[92px_minmax(0,1fr)] md:grid-cols-[110px_1fr] gap-2 items-center"><dt className="text-ink-muted">Type</dt><dd className="flex flex-wrap gap-x-2 gap-y-0.5 items-center">
                 <EditableSelect value={leg.editable.mission_type} missionId={leg.mission_id} field="mission_type" onSaved={onChanged}
-                  options={[['remorquage', 'REM — remorquage'], ['depannage', 'DSP — dépannage sur place'], ['relivraison', 'REL — relivraison'], ['transport', 'Transport'], ['trajet_vide', 'TVD — trajet à vide']]} />
+                  options={typeOptionsFor(leg.editable.source)} />
                 <EditableSelect value={leg.editable.source} missionId={leg.mission_id} field="source" onSaved={onChanged}
                   options={(shared.sources || []).map((x: any) => [x.key, x.label])} /></dd></div>
+              {isSncSource(leg.editable.source) && (
+                <div className="grid grid-cols-[92px_minmax(0,1fr)] md:grid-cols-[110px_1fr] gap-2 items-center md:col-span-2"><dt className="text-ink-muted">Scénario SNC</dt><dd>
+                  <SncScenarioInline missionId={leg.mission_id} source={leg.editable.source} scenario={fiche?.mission?.snc_scenario ?? null} balisage={!!fiche?.mission?.snc_requires_balisage} onSaved={onChanged} /></dd></div>
+              )}
               <div className="grid grid-cols-[92px_minmax(0,1fr)] md:grid-cols-[110px_1fr] gap-2 items-center"><dt className="text-ink-muted">Réf. assistance</dt><dd className="flex flex-wrap gap-x-2 gap-y-0.5 items-center">
                 <EditableText value={leg.editable.dossier_number} placeholder="référence du dossier assistance" missionId={leg.mission_id} field="dossier_number" onSaved={onChanged} mono />
                 <EditableDateTime value={leg.editable.intervention_date} missionId={leg.mission_id} field="intervention_date" onSaved={onChanged} /></dd></div>
@@ -364,8 +384,12 @@ function Group({ d, leg, canBill, isOpen, onToggle, embedOpen, onToggleEmbed, fi
               <div className="grid grid-cols-[92px_minmax(0,1fr)] md:grid-cols-[110px_1fr] gap-2 items-center"><dt className="text-ink-muted">{leg.kind === 'rel' ? 'Livrer à' : 'Destination'}</dt><dd className="space-y-0.5">
                 <EditableText value={leg.editable.destination_name} placeholder="nom du lieu (garage, hôtel…)" missionId={leg.mission_id} field="destination_name" onSaved={onChanged} />
                 <EditableAddress value={leg.editable.destination_address} field="destination" missionId={leg.mission_id} gmKey={shared.googleMapsKey} onSaved={onChanged} placeholder={/d[ée]pannage|sur place/i.test(leg.title) ? 'sur place' : 'à définir'} /></dd></div>
-              <div className="grid grid-cols-[92px_minmax(0,1fr)] md:grid-cols-[110px_1fr] gap-2 items-center md:col-span-2"><dt className="text-ink-muted">Remarque</dt><dd>
-                <EditableText value={leg.editable.remarks_general} placeholder="remarque dispatch" missionId={leg.mission_id} field="remarks_general" onSaved={onChanged} /></dd></div>
+              {/* Audit B2 (08/09/2026) : les remarques de la SOURCE (mail assistance, checklist
+                  Touring) ne se modifient pas ici — elles sont affichées au chauffeur. Une
+                  remarque dispatch passe par le module de remarques (auteur, type, PJ). */}
+              <div className="grid grid-cols-[92px_minmax(0,1fr)] md:grid-cols-[110px_1fr] gap-2 items-start md:col-span-2"><dt className="text-ink-muted pt-0.5">Remarques</dt><dd className="min-w-0">
+                {leg.editable.remarks_general && <p className="text-ink-secondary whitespace-pre-wrap break-words"><span className="text-ink-muted">source : </span>{leg.editable.remarks_general}</p>}
+                <AddRemarkInline missionId={leg.mission_id} onAdded={onChanged} /></dd></div>
             </div>
           )}
           {!mobile && <dl className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-1 text-xs">
@@ -527,34 +551,68 @@ function EditableAddress({ value, field, missionId, gmKey, onSaved, placeholder 
 }
 
 // ── Relivrer depuis le groupe Gardiennage ──────────────────────────────────
-function RelivrerFromDossier({ d, leg }: { d: Dossier; leg: DossierLeg }) {
-  const router = useRouter()
-  const [busy, setBusy] = useState(false)
-  const [err, setErr] = useState<string | null>(null)
+// Audit B7 (08/09/2026) : même modale que la fiche (assistance qui reprend —
+// obligatoire pour Siabis —, instructions chauffeur, tarif imposé). « Au parc »
+// se lit sur le statut de la racine, pas seulement sur un volet gardiennage.
+function RelivrerFromDossier({ d, leg, gmKey, onDone }: { d: Dossier; leg: DossierLeg; gmKey: string; onDone: () => void }) {
   const relOpen = d.legs.find(l => l.kind === 'rel' && l.open)
   if (relOpen) return <span className="text-ink-secondary">Relivraison en cours : groupe <b className="font-mono">{relOpen.letter}</b>{relOpen.driver_name ? ` · ${relOpen.driver_name}` : ''}</span>
   const relDone = [...d.legs].reverse().find(l => l.kind === 'rel')
-  const atParc = d.legs.some(l => l.kind === 'gard' && l.open)
+  const rootLeg = d.legs.find(l => l.mission_id === d.root_id)
+  const atParc = d.legs.some(l => l.kind === 'gard' && l.open) || rootLeg?.status === 'parked'
   if (!atParc) return <span className="text-ink-muted">{relDone ? `Relivrée · groupe ${relDone.letter}${relDone.driver_name ? ' · ' + relDone.driver_name : ''}` : 'Véhicule pas au parc : rien à relivrer pour l’instant'}</span>
-  const hasAddress = !!(leg.redelivery_address || '').trim()
-  const go = async () => {
-    if (!hasAddress) { setErr('Renseigne d’abord l’adresse de relivraison ci-dessus.'); return }
+  const saisieWarning = String(d.source || '') === 'police_saisie' && !!d.parquet && d.parquet.state !== 'clos'
+  return (
+    <span className="inline-flex flex-wrap items-center gap-2">
+      <RelivraisonModalButton compact missionId={d.root_id} currentAddress={leg.redelivery_address || ''} gmKey={gmKey} onDone={onDone} parentSource={d.source || ''} saisieWarning={saisieWarning} />
+      {!(leg.redelivery_address || '').trim() && <span className="text-amber-700 text-[11px]">adresse à renseigner d’abord</span>}
+    </span>
+  )
+}
+
+// ── Scénario SNC + balisage (audit B5) ─────────────────────────────────────
+function SncScenarioInline({ missionId, source, scenario, balisage, onSaved }: { missionId: string; source: string | null; scenario: string | null; balisage: boolean; onSaved: () => void | Promise<void> }) {
+  const [cur, setCur] = useState(scenario || '')
+  const [bal, setBal] = useState(balisage)
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState<string | null>(null)
+  useEffect(() => { setCur(scenario || '') }, [scenario])
+  useEffect(() => { setBal(balisage) }, [balisage])
+  const src = String(source || '').toLowerCase()
+  const opts: [string, string][] = [
+    ['', '🤷 Laisser le chauffeur choisir'], ['dsp', '🔧 DSP — dépannage sur place'],
+    ...(src === 'police_snc' ? [['rem_client', '🚛 REM client — paiement immédiat'] as [string, string]] : []),
+    ...(src === 'sia_couvert' ? [['rem_direct', '🚛 REM directe'] as [string, string]] : []),
+    ['rem_depot', '🏢 REM dépôt Pepinster'],
+  ]
+  const save = async (body: Record<string, any>) => {
     setBusy(true); setErr(null)
     try {
-      const r = await fetch(`/api/missions/${d.root_id}/relivrer`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({}) })
-      const j = await r.json().catch(() => ({}))
-      if (!r.ok) { setErr(j.error || `Erreur ${r.status}`); return }
-      if (j.mission_id) router.push(`/dispatch/${j.mission_id}?assign=1`)
-    } catch (e: any) { setErr(e?.message || 'Erreur réseau') } finally { setBusy(false) }
+      const r = await fetch(`/api/missions/${missionId}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+      if (!r.ok) { const j = await r.json().catch(() => ({})); throw new Error(j.error || `HTTP ${r.status}`) }
+      await onSaved()
+    } catch (e: any) { setErr(String(e.message || e)) } finally { setBusy(false) }
   }
   return (
     <span className="inline-flex flex-wrap items-center gap-2">
-      <button type="button" disabled={busy} onClick={go} title={hasAddress ? 'Créer la relivraison et choisir le chauffeur' : 'Adresse de relivraison manquante'}
-        className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition disabled:opacity-50 ${hasAddress ? 'bg-emerald-600 border-emerald-600 text-white hover:bg-emerald-700' : 'bg-surface border-amber-500/50 text-amber-700'}`}>
-        {busy ? '⏳ Création…' : '🚚 Relivrer'}
-      </button>
-      {err && <span className="text-red-600">{err}</span>}
+      <select value={cur} disabled={busy} onChange={e => { const k = e.target.value; setCur(k); save({ snc_scenario: k || null, ...(k === 'dsp' ? { mission_type: 'depannage' } : k.startsWith('rem_') ? { mission_type: 'remorquage' } : {}) }) }}
+        className="border rounded px-1.5 py-0.5 bg-surface text-ink text-xs max-w-[240px]">
+        {opts.map(([k, l]) => <option key={k || 'none'} value={k}>{l}</option>)}
+      </select>
+      <label className="inline-flex items-center gap-1 text-xs text-ink-secondary"><input type="checkbox" checked={bal} disabled={busy} onChange={e => { setBal(e.target.checked); save({ snc_requires_balisage: e.target.checked }) }} /> balisage (SIABAL)</label>
+      {err && <span className="text-red-600">⚠ {err}</span>}
     </span>
+  )
+}
+
+// ── Ajouter une remarque (audit B2) ────────────────────────────────────────
+function AddRemarkInline({ missionId, onAdded }: { missionId: string; onAdded: () => void | Promise<void> }) {
+  const [open, setOpen] = useState(false)
+  return (
+    <>
+      <button type="button" onClick={() => setOpen(true)} className="mt-0.5 px-2 py-0.5 rounded border bg-surface text-ink-secondary text-[11px] font-semibold hover:text-ink">➕ Remarque</button>
+      {open && <RemarksAddModal missionId={missionId} onClose={() => setOpen(false)} onAdded={() => { setOpen(false); onAdded() }} />}
+    </>
   )
 }
 
