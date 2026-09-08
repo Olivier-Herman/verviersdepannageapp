@@ -367,7 +367,10 @@ export async function buildDossier(anyMissionId: string, opts: { light?: boolean
       let dayPrice = tarif?.price || 0
       if (!dayPrice && rootEst?.parc_jours > 0) dayPrice = r2(Number(rootEst.parc_eur) / Number(rootEst.parc_jours))
       days = Math.max(0, rawDays - (tarif?.free || 0))
-      if (m.storage_waived) { amount = 0; nothing = 'gardiennage offert (abandon volontaire)' }
+      // « Sans frais » depuis le dossier (motif) ≠ abandon volontaire : les deux mettent le gardiennage à zéro,
+      // mais le libellé doit dire lequel (Olivier 08/09/2026, 2CLN087 « OK Momo »).
+      if (m.no_charge_at) { amount = 0; nothing = `sans frais${m.no_charge_reason ? ' : ' + String(m.no_charge_reason) : ''}` }
+      else if (m.storage_waived) { amount = 0; nothing = 'gardiennage offert (abandon volontaire)' }
       else if (Number(m.storage_flat_htva) > 0) { amount = r2(Number(m.storage_flat_htva)); note = 'forfait gardiennage' }
       else { amount = r2(days * dayPrice); note = dayPrice ? `${days} j × ${dayPrice.toFixed(2)} €` : `${days} j · tarif journalier introuvable` }
       title = 'Gardiennage'
