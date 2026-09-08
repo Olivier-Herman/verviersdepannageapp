@@ -184,8 +184,7 @@ export default function DossierGroups({ initial, fiches, shared, isSuperadmin, o
           </div>
           {canBill && <div className="md:text-right">
             <div className="flex md:justify-end items-center gap-2 flex-wrap">
-              <span className="text-ink-muted text-xs">Client du dossier</span>
-              <span className="text-ink text-sm font-medium border rounded-lg px-2.5 py-1 bg-surface-2">{d.billed_to.name || '—'}</span>
+              {(() => { const rootLeg = d.legs.find(l => l.mission_id === d.root_id) || d.legs[0]; return rootLeg ? <BillingRow d={d} leg={rootLeg} onChanged={refresh} gmKey={shared.googleMapsKey} allLegs /> : null })()}
               <button disabled={!billable.length} onClick={() => setBilling(true)} title={billable.length ? 'Une facture Odoo par client, créée directement' : 'Rien à facturer'} className={`px-3 py-1.5 rounded-lg text-xs font-semibold bg-brand text-white ${billable.length ? 'hover:bg-brand-hover' : 'opacity-40 cursor-not-allowed'}`}>Facturer{billable.length ? ` (${billable.length})` : ''}</button>
             </div>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-x-4 gap-y-1 mt-2 text-[11px] text-ink-muted md:justify-items-end">
@@ -614,7 +613,10 @@ function EditableText({ value, placeholder, missionId, field, onSaved, mono, upp
 }
 
 // ── Client de facturation du groupe (hérité du dossier, modifiable) ───────
-function BillingRow({ d, leg, onChanged, gmKey }: { d: Dossier; leg: DossierLeg; onChanged: () => void | Promise<void>; gmKey?: string }) {
+// allLegs : depuis l'en-tête du dossier, le client choisi s'applique à TOUS les
+// groupes d'un coup ; un groupe se corrige ensuite sur sa propre ligne
+// (Olivier 08/09/2026).
+function BillingRow({ d, leg, onChanged, gmKey, allLegs = false }: { d: Dossier; leg: DossierLeg; onChanged: () => void | Promise<void>; gmKey?: string; allLegs?: boolean }) {
   const [q, setQ] = useState('')
   const [results, setResults] = useState<{ id: number; name: string }[]>([])
   const [searching, setSearching] = useState(false)
@@ -649,25 +651,29 @@ function BillingRow({ d, leg, onChanged, gmKey }: { d: Dossier; leg: DossierLeg;
       finally { setSearching(false) }
     }, 300)
   }, [q])
-  const shownId   = local ? local.id : leg.billed_to_id
-  const shownName = local ? local.name : leg.billed_to_name
-  const inherited = (shownId ?? null) === (d.billed_to.id ?? null)
+  const shownId   = local ? local.id : (allLegs ? d.billed_to.id : leg.billed_to_id)
+  const shownName = local ? local.name : (allLegs ? d.billed_to.name : leg.billed_to_name)
+  const inherited = allLegs || (shownId ?? null) === (d.billed_to.id ?? null)
+  const targets   = allLegs ? d.legs.filter(l => l.kind !== 'out' && l.channel !== 'parquet').map(l => l.mission_id) : [leg.mission_id]
   const save = async (c: { id: number | null; name: string | null }) => {
     setBusy(true); setErr(null)
     try {
-      const r = await fetch(`/api/missions/${leg.mission_id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ billed_to_id: c.id, billed_to_name: c.name }) })
-      if (!r.ok) { const j = await r.json().catch(() => ({})); throw new Error(j.error || `HTTP ${r.status}`) }
+      const rs = await Promise.all(targets.map(id => fetch(`/api/missions/${id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ billed_to_id: c.id, billed_to_name: c.name }) })))
+      const bad = rs.find(r => !r.ok)
+      if (bad) { const j = await bad.json().catch(() => ({})); throw new Error(j.error || `HTTP ${bad.status}`) }
       setLocal(c); setEditing(false); setQ(''); setResults([])
       await onChanged()
     } catch (e: any) { setErr(String(e.message || e)) } finally { setBusy(false) }
   }
   return (
-    <div className="flex flex-wrap items-center gap-2 bg-surface-2 border border-dashed rounded-xl px-3 py-2 text-xs">
-      <span className="text-ink-muted">Facturer à</span>
+    <div className={`flex flex-wrap items-center gap-2 text-xs ${allLegs ? '' : 'bg-surface-2 border border-dashed rounded-xl px-3 py-2'}`}>
+      <span className="text-ink-muted">{allLegs ? 'Client du dossier' : 'Facturer à'}</span>
       {!editing ? (
         <>
           <button disabled={busy} onClick={() => setEditing(true)} className="border rounded-lg px-2.5 py-1 bg-surface text-ink font-medium min-w-[200px] text-left hover:border-brand/50">{busy ? '⏳ ' : ''}{shownName || '— à définir'} <span className="text-ink-faint float-right">▾</span></button>
-          {inherited
+          {allLegs
+            ? <span className="text-ink-faint text-[11px]" title="Choisir ici applique le client à tous les groupes ; un groupe se corrige sur sa ligne">→ tous les groupes</span>
+            : inherited
             ? <span className="text-ink-faint text-[11px]">= client du dossier</span>
             : <span className="text-amber-700 dark:text-amber-300 text-[11px] font-semibold">⚠ différent du dossier ({d.billed_to.name || '—'})</span>}
           {!inherited && d.billed_to.id != null && (

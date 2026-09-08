@@ -17,7 +17,7 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
   const session = await getServerSession(authOptions)
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   const role = (session.user as any)?.role || ''
-  if (role !== 'superadmin' && !(await isPreviewOn('dossier_view', role))) {
+  if (role !== 'superadmin' && !(await isPreviewOn('dossier_view', role, (session.user as any)?.id))) {   // pilotes (Jona) aussi — 08/09 : 403 → montants à 0
     return NextResponse.json({ error: 'Accès refusé' }, { status: 403 })
   }
   const dossier = await buildDossier(params.id)

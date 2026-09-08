@@ -23,7 +23,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   if (!['admin', 'superadmin'].includes(role) && !modules.includes('facturation')) {
     return NextResponse.json({ error: 'Accès réservé à la facturation.' }, { status: 403 })
   }
-  if (role !== 'superadmin' && !(await isPreviewOn('dossier_view', role))) {
+  if (role !== 'superadmin' && !(await isPreviewOn('dossier_view', role, (session.user as any)?.id))) {
     return NextResponse.json({ error: 'Vue dossier non ouverte à ton rôle.' }, { status: 403 })
   }
   const body = await req.json().catch(() => ({}))
