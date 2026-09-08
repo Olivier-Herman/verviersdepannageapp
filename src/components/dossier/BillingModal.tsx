@@ -57,17 +57,30 @@ export default function BillingModal({ d, onClose, onDone }: { d: Dossier; onClo
     } catch (e: any) { setError(String(e.message || e)) } finally { setBusy(false) }
   }
   const remarksOfChosen = () => chosen.flatMap(l => (l.billing_remarks || []).map(r => ({ label: `${d.number}${l.letter}`, ...r })))
-  const askOrSubmit = () => { if (remarksOfChosen().length) setRemarkGate(true); else submit() }
-  const submit = async () => {
+  const askOrSubmit = () => { setCloseMode(false); if (remarksOfChosen().length) setRemarkGate(true); else submit(false) }
+  // « Clôturer et facturer » (Olivier 08/09/2026) : un transporteur vient
+  // chercher le véhicule → sortie du parc maintenant (le gardiennage s'arrête
+  // là), fiche à facturer, puis toutes les factures du dossier d'un coup.
+  const openGard = d.legs.find(l => l.kind === 'gard' && l.open)
+  const canCloseAndBill = !!openGard && d.legs.some(l => l.mission_id === d.root_id)
+  const [closeMode, setCloseMode] = useState(false)
+  const askClose = () => {
+    if (!window.confirm(`Clôturer le dossier ${d.ref} maintenant ?\n\nLe véhicule ${d.vehicle.plate || ''} sort du parc à l'instant (enlèvement par un transporteur), le gardiennage s'arrête ici, la place est libérée, puis les factures sont créées, gardiennage compris.`)) return
+    setCloseMode(true)
+    if (remarksOfChosen().length || (openGard?.billing_remarks || []).length) setRemarkGate(true); else submit(true)
+  }
+  const submit = async (close = closeMode) => {
     setRemarkGate(false)
     setBusy(true); setError(null)
     // Les factures s'ouvrent d'elles-mêmes dans un nouvel onglet (Olivier
     // 07/09 : « pas de clic supplémentaire »). Le navigateur ne laisse ouvrir
     // un onglet qu'au moment du clic : on les ouvre vides tout de suite, une par
     // client, puis on y met l'URL Odoo à la réponse.
-    const tabs: (Window | null)[] = Array.from({ length: Math.max(1, nInv) }, () => { try { return window.open('', '_blank') } catch { return null } })
+    const nTabs = close ? new Set([...chosen, ...(openGard ? [openGard] : [])].map(l => l.billed_to_id ?? 'none')).size : nInv
+    const tabs: (Window | null)[] = Array.from({ length: Math.max(1, nTabs) }, () => { try { return window.open('', '_blank') } catch { return null } })
     try {
-      const r = await fetch(`/api/dossier/${d.root_id}/invoice`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mission_ids: chosen.map(l => l.mission_id) }) })
+      const ids = close ? Array.from(new Set([...chosen.map(l => l.mission_id), ...(openGard ? [openGard.mission_id] : [])])) : chosen.map(l => l.mission_id)
+      const r = await fetch(`/api/dossier/${d.root_id}/${close ? 'close-and-invoice' : 'invoice'}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mission_ids: ids }) })
       const j = await r.json()
       if (!r.ok || !j.ok) throw new Error(j.error || `HTTP ${r.status}`)
       ;(j.invoices || []).forEach((inv: any, i: number) => { const t = tabs[i]; if (t && inv.url) { try { t.location.href = inv.url } catch {} } else if (inv.url) { try { window.open(inv.url, '_blank') } catch {} } })
@@ -120,6 +133,11 @@ export default function BillingModal({ d, onClose, onDone }: { d: Dossier; onClo
               <span className="flex items-center gap-1.5">
                 <button disabled={busy || !chosen.length} onClick={() => mark('already_billed')} title="Une facture a été faite à la main dans Odoo : donne son numéro, les groupes cochés sont reliés" className="px-2.5 py-1.5 rounded-lg text-xs font-semibold border text-ink-secondary hover:text-ink disabled:opacity-40">Déjà facturé…</button>
                 <button disabled={busy || !chosen.length} onClick={() => mark('no_charge')} title="Intervention sans frais pour les groupes cochés (motif demandé)" className="px-2.5 py-1.5 rounded-lg text-xs font-semibold border text-ink-secondary hover:text-ink disabled:opacity-40">Ne rien facturer</button>
+                {canCloseAndBill && (
+                  <button disabled={busy || missingClient || !openGard?.billed_to_id} onClick={askClose}
+                    title="Le véhicule est enlevé par un transporteur : sortie du parc maintenant, gardiennage arrêté, fiche clôturée, puis toutes les factures du dossier"
+                    className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-white disabled:opacity-40">🏁 Clôturer et facturer</button>
+                )}
                 <button disabled={busy || !chosen.length || missingClient} onClick={askOrSubmit} className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-brand text-white disabled:opacity-40">{busy ? '⏳ Création…' : `Créer ${nInv > 1 ? 'les factures' : 'la facture'}`}</button>
               </span>
             </div>
@@ -140,8 +158,8 @@ export default function BillingModal({ d, onClose, onDone }: { d: Dossier; onClo
                 ))}
               </div>
               <div className="flex gap-2 pt-1">
-                <button type="button" disabled={busy} onClick={() => setRemarkGate(false)} className="flex-1 py-2.5 bg-surface-2 border text-ink-secondary rounded-xl text-sm">Annuler</button>
-                <button type="button" disabled={busy} onClick={submit} className="flex-1 py-2.5 bg-slate-700 hover:bg-slate-600 text-white rounded-xl text-sm font-semibold">{busy ? '⏳…' : 'Oui, pris en compte — facturer'}</button>
+                <button type="button" disabled={busy} onClick={() => { setRemarkGate(false); setCloseMode(false) }} className="flex-1 py-2.5 bg-surface-2 border text-ink-secondary rounded-xl text-sm">Annuler</button>
+                <button type="button" disabled={busy} onClick={() => submit(closeMode)} className="flex-1 py-2.5 bg-slate-700 hover:bg-slate-600 text-white rounded-xl text-sm font-semibold">{busy ? '⏳…' : closeMode ? 'Oui, pris en compte — clôturer et facturer' : 'Oui, pris en compte — facturer'}</button>
               </div>
             </div>
           </div>
