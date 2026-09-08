@@ -143,7 +143,7 @@ export default function BillingModal({ d, onClose, onDone }: { d: Dossier; onClo
                     title="Le véhicule est enlevé par un transporteur : sortie du parc maintenant, gardiennage arrêté, fiche clôturée, puis toutes les factures du dossier"
                     className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-white disabled:opacity-40">🏁 Clôturer et facturer</button>
                 )}
-                <button disabled={busy || !chosen.length || missingClient} onClick={askOrSubmit} className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-brand text-white disabled:opacity-40">{busy ? '⏳ Création…' : `Créer ${nInv > 1 ? 'les factures' : 'la facture'}`}</button>
+                <button disabled={busy || !chosen.length || missingClient} onClick={askOrSubmit} className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-brand text-white disabled:opacity-40">{busy ? '⏳ Création…' : `Créer ${nInv > 1 ? 'les factures' : 'la facture'}${openGard ? ' et continuer le gardiennage' : ''}`}</button>
               </span>
             </div>
           </>
