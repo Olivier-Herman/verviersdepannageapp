@@ -53,7 +53,7 @@ export default async function MissionDetailPage({ params, searchParams }: { para
 
   if (!mission) redirect('/dispatch')
   // (après la lecture : params.id peut être un numéro de fiche, le dossier veut l'UUID)
-  if (wantsDossier && !(mission as any).dossier_leg) redirect(`/dispatch/dossier/${mission.id}`)
+  if (wantsDossier && !(mission as any).dossier_leg) redirect(`/dispatch/dossier/${mission.id}${sp.collapsed ? '?open=none' : ''}`)
 
   // Touring : le dépôt de départ = dépôt VD le plus proche du lieu d'intervention.
   // On le pose si absent (mute mission.depot_depart_id pour l'affichage immédiat).

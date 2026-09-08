@@ -64,10 +64,11 @@ export default async function DossierPage({ params, searchParams }: { params: { 
 
   // ?open=<mission_id> (QR étiquette → gardiennage en cours) ; sinon le dernier groupe.
   const openId = searchParams?.open || params.id
+  const startCollapsed = searchParams?.open === 'none'   // recherche : tous les groupes repliés
 
   return (
     <AppShell title={`Dossier ${dossier.ref}`} userName={u.name || ''} userEmail={u.email || undefined} userId={u.id} userRole={role} userModules={u.modules || []}>
-      <DossierGroups initial={dossier} fiches={fiches} shared={shared} isSuperadmin={role === 'superadmin'} openMissionId={openId} />
+      <DossierGroups initial={dossier} fiches={fiches} shared={shared} isSuperadmin={role === 'superadmin'} openMissionId={startCollapsed ? params.id : openId} startCollapsed={startCollapsed} />
     </AppShell>
   )
 }

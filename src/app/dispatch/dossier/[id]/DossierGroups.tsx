@@ -67,7 +67,7 @@ const TONE = {
   muted: 'bg-surface-2 text-ink-muted border',
 } as const
 
-export default function DossierGroups({ initial, fiches, shared, isSuperadmin, openMissionId, compact = false, mobile = false }: {
+export default function DossierGroups({ initial, fiches, shared, isSuperadmin, openMissionId, compact = false, mobile = false, startCollapsed = false }: {
   initial: Dossier; fiches: Record<string, any>; shared: any; isSuperadmin: boolean; openMissionId: string
   // compact : rendu dans une ligne dépliée de la liste dispatch — pas de
   // bandeau preview, pas de bouton Retour, marges réduites.
@@ -76,6 +76,8 @@ export default function DossierGroups({ initial, fiches, shared, isSuperadmin, o
   // champs modifiables, « Facturer à » ; PAS de fiche complète dépliée, pas de
   // légende ni de faits secondaires. Tout tient dans la largeur de l'écran.
   mobile?: boolean
+  // startCollapsed : arrivée depuis la recherche → aucun groupe déplié (Olivier 08/09/2026).
+  startCollapsed?: boolean
 }) {
   const router = useRouter()
   const goBack = () => { if (typeof window !== 'undefined' && window.history.length > 1) router.back(); else router.push('/dispatch') }
@@ -91,9 +93,9 @@ export default function DossierGroups({ initial, fiches, shared, isSuperadmin, o
   // fiche réelle avec son embed.
   const initialTarget = initial.legs.find(l => l.mission_id === openMissionId) || initial.legs[initial.legs.length - 1]
   const lastFiche = [...initial.legs].reverse().find(l => l.kind !== 'out')
-  const [open, setOpen] = useState<Set<string>>(() => new Set([initialTarget?.letter, initialTarget?.kind === 'out' ? lastFiche?.letter : undefined].filter(Boolean) as string[]))
+  const [open, setOpen] = useState<Set<string>>(() => startCollapsed ? new Set() : new Set([initialTarget?.letter, initialTarget?.kind === 'out' ? lastFiche?.letter : undefined].filter(Boolean) as string[]))
   const [embed, setEmbed] = useState<Set<string>>(() => {
-    if (mobile) return new Set()
+    if (mobile || startCollapsed) return new Set()
     const t = initialTarget && initialTarget.kind !== 'out' ? initialTarget : lastFiche
     return new Set(t ? [t.letter] : [])
   })

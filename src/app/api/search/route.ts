@@ -272,7 +272,7 @@ export async function GET(req: Request) {
       title:    `${archivedPrefix}${m.mission_number != null ? `#${m.mission_number}` : (m.external_id || m.dossier_number || m.id.slice(0, 8))} · ${plate}`,
       subtitle: [m.client_name, veh, m.incident_address].filter(Boolean).join(' · '),
       meta:     `${m.source || ''}${typeLbl ? ' · ' + typeLbl : ''} · ${m.status}${extrasStr} · ${fmtDateShort(m.intervention_date || m.received_at)}`.trim(),
-      href:     `/dispatch/${m.id}`,
+      href:     `/dispatch/${m.id}?collapsed=1`,   // Olivier 08/09 : depuis la recherche, dossier avec tous les groupes repliés
     })
   }
   } // /wants('mission')

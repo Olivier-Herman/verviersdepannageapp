@@ -107,14 +107,15 @@ async function fetchRelData(missionId: string) {
       id, dossier_number,
       vehicle_plate, vehicle_brand, vehicle_model,
       billed_to_name,
-      destination_address, destination_city
+      destination_address, destination_city, redelivery_address
     `)
     .eq('id', missionId)
     .single()
   if (error || !m) throw new Error(`Mission ${missionId} introuvable`)
 
   const brandModel = [m.vehicle_brand, m.vehicle_model].filter(Boolean).join(' ').toUpperCase()
-  const fullAddress = [m.destination_address, m.destination_city].filter(Boolean).join(', ')
+  // Relivraison = redelivery_address ; la destination du remorquage n'est qu'un repli (08/09/2026).
+  const fullAddress = String((m as any).redelivery_address || '').trim() || [m.destination_address, m.destination_city].filter(Boolean).join(', ')
 
   // Le QR REL pointe vers la page landing /qr/mission/[id] de VD Soft. Quand
   // un chauffeur scanne l etiquette dans le parc, il peut choisir entre
