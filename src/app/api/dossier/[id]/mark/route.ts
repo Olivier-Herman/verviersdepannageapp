@@ -1,6 +1,9 @@
 // src/app/api/dossier/[id]/mark/route.ts
 //
-// POST { action: 'already_billed' | 'no_charge', mission_ids, invoice_number?, reason? }
+// POST { action: 'already_billed' | 'no_charge' | 'auto_billed', mission_ids, invoice_number?, reason? }
+//   • auto_billed (Olivier 08/09/2026) : mission Touring validée par nous dans COMEX
+//     → Touring s'autofacture ; même marquage que le cron COMEX BKO
+//     (completed + invoice_method='auto'), sans numéro de facture Odoo.
 // Les deux actions « à côté » de la facturation par dossier (Olivier 07/09/2026) :
 //   • Déjà facturé… : une facture faite à la main dans Odoo — on donne le numéro
 //     et les groupes couverts (même effet que « Facturation OK » du module).
@@ -35,7 +38,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   if (!ids.length) return NextResponse.json({ error: 'Aucun groupe coché' }, { status: 400 })
   if (action === 'already_billed' && !number) return NextResponse.json({ error: 'Numéro de facture requis' }, { status: 400 })
   if (action === 'no_charge' && !reason) return NextResponse.json({ error: 'Motif requis pour « ne rien facturer »' }, { status: 400 })
-  if (!['already_billed', 'no_charge'].includes(action)) return NextResponse.json({ error: 'action invalide' }, { status: 400 })
+  if (!['already_billed', 'no_charge', 'auto_billed'].includes(action)) return NextResponse.json({ error: 'action invalide' }, { status: 400 })
 
   const d = await buildDossier(params.id, { light: true })
   if (!d) return NextResponse.json({ error: 'Dossier introuvable' }, { status: 404 })
@@ -70,6 +73,15 @@ export async function POST(req: Request, { params }: { params: { id: string } })
         dossier_letter: l.letter, billed_by: user.id, billed_to_id: l.billed_to_id, billed_to_name: l.billed_to_name,
       })
       await sb.from('mission_logs').insert({ mission_id: l.mission_id, actor_id: user.id, action: 'invoiced', notes: `Déjà facturé n° ${number} (dossier ${d.ref}, groupe ${l.letter})${resolved ? ' · lien Odoo résolu' : ''}`, metadata: { invoice_number: number, invoice_odoo_id: resolved?.id ?? null, dossier_letter: l.letter } })
+    } else if (action === 'auto_billed') {
+      if (r.dossier_leg) {
+        await sb.from('incoming_missions').update({ invoice_method: 'auto', invoiced_at: now, invoiced_by: user.id, updated_at: now }).eq('id', l.mission_id)
+      } else {
+        await sb.from('incoming_missions').update({ status: 'completed', invoice_method: 'auto', invoiced_at: now, invoiced_by: user.id, completed_at: r.status === 'completed' ? undefined : now, updated_at: now }).eq('id', l.mission_id)
+        if (!stillParked) { try { await releaseParcAndShift(sb, l.mission_id) } catch {} }
+      }
+      // Pas de ligne mission_billed_items : comme le cron COMEX, invoice_method='auto' + invoiced_at suffit (le dossier affiche « auto-facturation »).
+      await sb.from('mission_logs').insert({ mission_id: l.mission_id, actor_id: user.id, action: 'invoiced', notes: `Autofacturé — validé dans COMEX (dossier ${d.ref}, groupe ${l.letter})`, metadata: { method: 'auto', dossier_letter: l.letter } })
     } else {
       if (r.dossier_leg) {
         await sb.from('incoming_missions').update({ storage_waived: true, no_charge_at: now, no_charge_reason: reason, no_charge_by: user.id, updated_at: now }).eq('id', l.mission_id)
@@ -81,7 +93,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     }
     done.push(l.letter)
   }
-  await sb.from('mission_logs').insert({ mission_id: d.root_id, actor_id: user.id, action: action === 'already_billed' ? 'invoiced' : 'no_charge',
-    notes: action === 'already_billed' ? `Dossier ${d.ref} : groupes ${done.join(' ')} déjà facturés sur ${number}` : `Dossier ${d.ref} : groupes ${done.join(' ')} sans frais — ${reason}` }).then(() => {}, () => {})
+  await sb.from('mission_logs').insert({ mission_id: d.root_id, actor_id: user.id, action: action === 'no_charge' ? 'no_charge' : 'invoiced',
+    notes: action === 'already_billed' ? `Dossier ${d.ref} : groupes ${done.join(' ')} déjà facturés sur ${number}` : action === 'auto_billed' ? `Dossier ${d.ref} : groupes ${done.join(' ')} autofacturés (validé COMEX)` : `Dossier ${d.ref} : groupes ${done.join(' ')} sans frais — ${reason}` }).then(() => {}, () => {})
   return NextResponse.json({ ok: true, covers: done, invoice: resolved })
 }

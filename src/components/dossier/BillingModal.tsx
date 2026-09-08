@@ -42,17 +42,19 @@ export default function BillingModal({ d, onClose, onDone }: { d: Dossier; onClo
 
   // « Déjà facturé… » (facture faite à la main dans Odoo) et « Ne rien
   // facturer » (sans frais), sur les groupes cochés.
-  const mark = async (action: 'already_billed' | 'no_charge') => {
+  const mark = async (action: 'already_billed' | 'no_charge' | 'auto_billed') => {
     const value = action === 'already_billed'
       ? window.prompt(`Numéro de la facture Odoo qui couvre ${chosen.map(l => l.letter).join(' ')} :`, '')
-      : window.prompt(`Ne rien facturer pour ${chosen.map(l => l.letter).join(' ')} — motif :`, '')
+      : action === 'auto_billed'
+        ? (window.confirm(`Marquer ${chosen.map(l => l.letter).join(' ')} comme autofacturé ?\n\nÀ utiliser quand la mission a été validée par nous dans COMEX : Touring s'autofacture, aucune facture Odoo n'est créée.`) ? 'auto' : null)
+        : window.prompt(`Ne rien facturer pour ${chosen.map(l => l.letter).join(' ')} — motif :`, '')
     if (value === null || !value.trim()) return
     setBusy(true); setError(null)
     try {
       const r = await fetch(`/api/dossier/${d.root_id}/mark`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action, mission_ids: chosen.map(l => l.mission_id), invoice_number: action === 'already_billed' ? value.trim() : undefined, reason: action === 'no_charge' ? value.trim() : undefined }) })
       const j = await r.json()
       if (!r.ok || !j.ok) throw new Error(j.error || `HTTP ${r.status}`)
-      setResult({ invoices: [], warnings: [action === 'already_billed' ? `Groupes ${j.covers.join(' ')} marqués facturés sur ${value.trim()}${j.invoice ? ' (facture Odoo retrouvée)' : ' (numéro non retrouvé dans Odoo, à vérifier)'}.` : `Groupes ${j.covers.join(' ')} marqués sans frais : ${value.trim()}.`] })
+      setResult({ invoices: [], warnings: [action === 'auto_billed' ? `Groupes ${j.covers.join(' ')} marqués autofacturés (validé COMEX).` : action === 'already_billed' ? `Groupes ${j.covers.join(' ')} marqués facturés sur ${value.trim()}${j.invoice ? ' (facture Odoo retrouvée)' : ' (numéro non retrouvé dans Odoo, à vérifier)'}.` : `Groupes ${j.covers.join(' ')} marqués sans frais : ${value.trim()}.`] })
       await onDone()
     } catch (e: any) { setError(String(e.message || e)) } finally { setBusy(false) }
   }
@@ -132,6 +134,9 @@ export default function BillingModal({ d, onClose, onDone }: { d: Dossier; onClo
               <span className="text-ink-muted">{chosen.length ? <><b className="text-ink">{chosen.length === allPickable.length ? 'Facture totale' : 'Facture partielle'}</b> · {nInv} facture{nInv > 1 ? 's' : ''} · {eur(total)} HTVA · référence « {d.number} {chosen.map(l => l.letter).join(' ')} »</> : 'Rien de coché'}</span>
               <span className="flex items-center gap-1.5">
                 <button disabled={busy || !chosen.length} onClick={() => mark('already_billed')} title="Une facture a été faite à la main dans Odoo : donne son numéro, les groupes cochés sont reliés" className="px-2.5 py-1.5 rounded-lg text-xs font-semibold border text-ink-secondary hover:text-ink disabled:opacity-40">Déjà facturé…</button>
+                {String(d.source || '').toLowerCase() === 'touring' && (
+                  <button disabled={busy || !chosen.length} onClick={() => mark('auto_billed')} title="Mission validée par nous dans COMEX : Touring s'autofacture, pas de facture Odoo" className="px-2.5 py-1.5 rounded-lg text-xs font-semibold border bg-surface text-ink-secondary hover:text-ink">⚡ Autofacturé</button>
+                )}
                 <button disabled={busy || !chosen.length} onClick={() => mark('no_charge')} title="Intervention sans frais pour les groupes cochés (motif demandé)" className="px-2.5 py-1.5 rounded-lg text-xs font-semibold border text-ink-secondary hover:text-ink disabled:opacity-40">Ne rien facturer</button>
                 {canCloseAndBill && (
                   <button disabled={busy || missingClient || !openGard?.billed_to_id} onClick={askClose}
