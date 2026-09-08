@@ -114,6 +114,7 @@ export default async function MissionDetailPage({ params, searchParams }: { para
       .from('incoming_missions')
       .select('id, mission_number, external_id, dossier_number, status, vehicle_plate, assigned_to, received_at, intervention_date')
       .eq('parent_mission_id', mission.id)
+      .eq('dossier_leg', false)   // la fiche Gardiennage n'est pas une REL : elle cachait le bloc Relivraison (Momo, 08/09/2026)
       .not('status', 'in', '("cancelled","ignored")')
       .order('received_at', { ascending: false })
       .limit(1)

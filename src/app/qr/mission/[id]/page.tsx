@@ -62,6 +62,7 @@ export default async function QrMissionPage({ params }: { params: { id: string }
     .from('incoming_missions')
     .select('id, mission_number, external_id, status, assigned_to, dossier_number')
     .eq('parent_mission_id', mission.id)
+    .eq('dossier_leg', false)   // fiche Gardiennage ≠ REL (08/09/2026)
     .eq('incident_type', 'relivraison')
     .maybeSingle()
 
