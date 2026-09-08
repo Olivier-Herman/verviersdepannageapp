@@ -30,6 +30,8 @@ const countryToIso = (name?: string | null) => {
 import type { Dossier, DossierLeg } from '@/lib/dossier/build'
 
 const eur = (n: number) => n.toLocaleString('fr-BE', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' €'
+// TVAC = HTVA × 1,21, arrondi au cent — affiché à côté du HTVA (Olivier 08/09/2026).
+const tvac = (n: number) => eur(Math.round(Number(n || 0) * 121) / 100)
 const fmt = (v: string | null) => v ? new Date(v).toLocaleString('fr-BE', { timeZone: 'Europe/Brussels', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : ''
 const fmtDay = (v: string | null) => v ? new Date(v).toLocaleDateString('fr-BE', { timeZone: 'Europe/Brussels', day: '2-digit', month: '2-digit' }) : ''
 
@@ -205,10 +207,10 @@ export default function DossierGroups({ initial, fiches, shared, isSuperadmin, o
               <button disabled={!billable.length || openingBilling} onClick={async () => { if (d.light || refining) { setOpeningBilling(true); try { await refresh() } finally { setOpeningBilling(false) } } setBilling(true) }} title={billable.length ? 'Une facture Odoo par client, créée directement' : 'Rien à facturer'} className={`px-3 py-1.5 rounded-lg text-xs font-semibold bg-brand text-white ${billable.length ? 'hover:bg-brand-hover' : 'opacity-40 cursor-not-allowed'}`}>Facturer{billable.length ? ` (${billable.length})` : ''}</button>
             </div>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-x-4 gap-y-1 mt-2 text-[11px] text-ink-muted md:justify-items-end">
-              <div>Estimé HTVA<b className="block text-ink text-sm tabular-nums">{eur(d.totals.estimated)}</b></div>
-              <div>Facturé<b className="block text-ink text-sm tabular-nums">{eur(d.totals.billed)}</b></div>
-              <div>Encaissé<b className="block text-ink text-sm tabular-nums">{eur(d.totals.collected)}</b></div>
-              <div>Reste<b className="block text-ink text-sm tabular-nums">{eur(d.totals.remaining)}</b></div>
+              <div>Estimé<b className="block text-ink text-sm tabular-nums">{eur(d.totals.estimated)} <span className="text-[10px] font-normal text-ink-muted">HTVA</span></b><span className="block text-ink-secondary text-xs tabular-nums">{tvac(d.totals.estimated)} <span className="text-[10px]">TVAC</span></span></div>
+              <div>Facturé<b className="block text-ink text-sm tabular-nums">{eur(d.totals.billed)} <span className="text-[10px] font-normal text-ink-muted">HTVA</span></b><span className="block text-ink-secondary text-xs tabular-nums">{tvac(d.totals.billed)} <span className="text-[10px]">TVAC</span></span></div>
+              <div>Encaissé<b className="block text-ink text-sm tabular-nums">{eur(d.totals.collected)} <span className="text-[10px] font-normal text-ink-muted">HTVA</span></b><span className="block text-ink-secondary text-xs tabular-nums">{tvac(d.totals.collected)} <span className="text-[10px]">TVAC</span></span></div>
+              <div>Reste<b className="block text-ink text-sm tabular-nums">{eur(d.totals.remaining)} <span className="text-[10px] font-normal text-ink-muted">HTVA</span></b><span className="block text-ink-secondary text-xs tabular-nums">{tvac(d.totals.remaining)} <span className="text-[10px]">TVAC</span></span></div>
             </div>
             {refining && <p className="text-[11px] text-brand mt-1 animate-pulse">⏳ Calcul des tarifs en cours…</p>}
             {d.state.open && <p className="text-[11px] text-ink-faint mt-1">Dossier en cours : pas de facturation automatique avant la sortie du véhicule.</p>}
@@ -284,7 +286,7 @@ function Group({ d, leg, canBill, isOpen, onToggle, embedOpen, onToggleEmbed, fi
           <span className="block text-ink text-sm font-semibold truncate">{leg.title}{leg.subtitle && <span className="text-ink-muted font-normal"> · {leg.subtitle}</span>}</span>
           <span className="block text-ink-secondary text-xs truncate">
             {leg.driver_name ? `${leg.driver_name} · ` : ''}{fmt(leg.started_at)}{leg.ended_at ? ` → ${fmt(leg.ended_at)}` : ''}{leg.days != null ? ` · ${leg.days} j` : ''}
-            {canBill ? (leg.nothing_to_bill ? ` · ${leg.nothing_to_bill}` : ` · ${eur(leg.amount_htva)} HTVA`) : ''}
+            {canBill ? (leg.nothing_to_bill ? ` · ${leg.nothing_to_bill}` : ` · ${eur(leg.amount_htva)} HTVA · ${tvac(leg.amount_htva)} TVAC`) : ''}
           </span>
         </span>
         <span className="flex items-center gap-2 flex-shrink-0 max-w-[45%] md:max-w-none">
@@ -731,7 +733,7 @@ function BillingRow({ d, leg, onChanged, gmKey, allLegs = false, onApplied }: { 
 function EstimationTable({ d, me }: { d: Dossier; me: string }) {
   return (
     <div className="border rounded-xl overflow-x-auto text-xs max-w-full">
-      <div className="bg-surface-2 px-3 py-1.5 font-semibold text-ink-secondary flex justify-between"><span>Estimation du dossier {d.ref}</span><span>HTVA</span></div>
+      <div className="bg-surface-2 px-3 py-1.5 font-semibold text-ink-secondary flex justify-between"><span>Estimation du dossier {d.ref}</span><span>HTVA · <span className="font-normal">TVAC</span></span></div>
       <table className="w-full min-w-[420px]">
         <tbody>
           {d.legs.map(l => {
@@ -746,12 +748,12 @@ function EstimationTable({ d, me }: { d: Dossier; me: string }) {
                   {!l.billed_inherited && <span className={`ml-1.5 rounded-full px-1.5 py-0.5 text-[10px] font-semibold ${TONE.warn}`}>→ {l.billed_to_name || '?'}</span>}
                   {l.nothing_to_bill && <span className="ml-1.5 text-ink-faint">({l.nothing_to_bill})</span>}
                 </td>
-                <td className="px-3 py-1 text-right tabular-nums whitespace-nowrap">{eur(l.amount_htva)}</td>
+                <td className="px-3 py-1 text-right tabular-nums whitespace-nowrap">{eur(l.amount_htva)} <span className="text-ink-muted font-normal">· {tvac(l.amount_htva)}</span></td>
               </tr>
             )
           })}
-          <tr className="border-t bg-surface-2 text-ink font-bold"><td className="px-3 py-1">Total du dossier</td><td className="px-3 py-1 text-right tabular-nums">{eur(d.totals.estimated)}</td></tr>
-          <tr className="border-t bg-surface-2 text-ink font-bold"><td className="px-3 py-1">Reste à facturer</td><td className="px-3 py-1 text-right tabular-nums">{eur(d.totals.remaining)}</td></tr>
+          <tr className="border-t bg-surface-2 text-ink font-bold"><td className="px-3 py-1">Total du dossier</td><td className="px-3 py-1 text-right tabular-nums">{eur(d.totals.estimated)} <span className="text-ink-muted font-normal">· {tvac(d.totals.estimated)}</span></td></tr>
+          <tr className="border-t bg-surface-2 text-ink font-bold"><td className="px-3 py-1">Reste à facturer</td><td className="px-3 py-1 text-right tabular-nums">{eur(d.totals.remaining)} <span className="text-ink-muted font-normal">· {tvac(d.totals.remaining)}</span></td></tr>
         </tbody>
       </table>
       {d.invoices.length > 0 && (

@@ -6,10 +6,29 @@
 // Siabis-ANWB. « Facturer » ouvre la modale partagée. Olivier 07/09/2026.
 
 import { useEffect, useMemo, useState } from 'react'
+import dynamic from 'next/dynamic'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import type { Dossier, DossierLeg } from '@/lib/dossier/build'
 import BillingModal, { cleanRef, isLegBilled, canPickLeg } from '@/components/dossier/BillingModal'
+
+// Vue dossier incrustée dans la ligne (Olivier 08/09/2026 : « je ne sais pas
+// développer le dossier pour voir pourquoi il ne donne pas de calcul »).
+const DossierGroupsEmbed = dynamic(() => import('@/app/dispatch/dossier/[id]/DossierGroups'), { ssr: false, loading: () => <p className="p-4 text-ink-muted text-sm">⏳ Chargement du dossier…</p> })
+function EmbedDossier({ rootId }: { rootId: string }) {
+  const [data, setData] = useState<any>(null)
+  const [err, setErr] = useState<string | null>(null)
+  useEffect(() => {
+    let dead = false
+    fetch(`/api/missions/${rootId}/fiche?t=${Date.now()}`, { cache: 'no-store' }).then(r => r.json())
+      .then(j => { if (dead) return; if (j?.ok) setData(j); else setErr(j?.error || 'Chargement impossible') })
+      .catch(e => { if (!dead) setErr(String(e?.message || e)) })
+    return () => { dead = true }
+  }, [rootId])
+  if (err) return <p className="px-4 py-3 text-sm text-red-600">⚠ {err}</p>
+  if (!data?.dossier) return <p className="px-4 py-3 text-sm text-ink-muted">⏳ Chargement du dossier…</p>
+  return <div className="border-t bg-page"><DossierGroupsEmbed initial={data.dossier} fiches={{ [rootId]: data.fiche }} shared={{ drivers: [], sources: [], userName: data.user.name, userEmail: data.user.email || undefined, userId: data.user.id || undefined, userRole: data.user.role, userModules: data.user.modules || [], userHasOdooAccess: data.userHasOdooAccess, googleMapsKey: data.googleMapsKey }} isSuperadmin={false} openMissionId={rootId} compact /></div>
+}
 
 const eur = (n: number) => n.toLocaleString('fr-BE', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' €'
 const fmtDay = (v: string | null) => v ? new Date(v).toLocaleDateString('fr-BE', { timeZone: 'Europe/Brussels', day: '2-digit', month: '2-digit' }) : ''
@@ -58,6 +77,7 @@ export default function DossiersClient({ initial, autoById, comexById = {}, isSu
   const [open, setOpen] = useState<Set<string>>(new Set())
   const [billing, setBilling] = useState<Dossier | null>(null)
   const [loadingBill, setLoadingBill] = useState<string | null>(null)
+  const [embedId, setEmbedId] = useState<string | null>(null)
   const [busy, setBusy] = useState<null | 'verify' | 'siabis'>(null)
   const [report, setReport] = useState<string | null>(null)
   const [reportLinks, setReportLinks] = useState<{ label: string; url: string }[]>([])
@@ -340,11 +360,15 @@ export default function DossiersClient({ initial, autoById, comexById = {}, isSu
                     <div key={l.letter} className="grid grid-cols-[24px_1fr_auto_auto] gap-2 items-center py-1 border-t first:border-t-0 text-ink-secondary">
                       <span className="font-mono">{l.letter}</span>
                       <span>{l.title}{l.kind === 'gard' && l.days != null ? ` ${l.days} j` : ''}{l.billed_to_name !== d.billed_to.name ? <span className="text-ink-muted"> · → {l.billed_to_name || '?'}</span> : null}</span>
-                      <span className="tabular-nums">{l.amount_unknown && !isLegBilled(l) ? <span className="text-ink-muted">à calculer</span> : eur(l.amount_htva)}</span>
+                      <span className="tabular-nums">{l.amount_unknown && !isLegBilled(l) ? <span className="text-amber-700" title={l.amount_note || ''}>à calculer{l.amount_note ? ` · ${l.amount_note}` : ''}</span> : eur(l.amount_htva)}</span>
                       <span>{isLegBilled(l) ? <span className="px-1.5 py-0.5 rounded-full bg-surface border text-ink-muted font-mono">{cleanRef(l.billed_refs[0])}</span> : l.nothing_to_bill ? <span className="text-ink-faint">{l.nothing_to_bill}</span> : l.open && l.kind === 'gard' ? <span className="px-1.5 py-0.5 rounded-full bg-blue-600 text-white">en cours</span> : <span className="px-1.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-700 dark:text-emerald-300">prêt</span>}</span>
                     </div>
                   ))}
                 </div>
+                <div className="md:col-span-2 -mt-2">
+                  <button onClick={e => { e.stopPropagation(); setEmbedId(embedId === d.root_id ? null : d.root_id) }} className="px-2.5 py-1 rounded-lg border text-[11px] font-semibold text-brand hover:bg-brand/10">{embedId === d.root_id ? 'Replier la vue dossier' : '🔍 Ouvrir la vue dossier ici (tarifs, motifs, modifications)'}</button>
+                </div>
+                {embedId === d.root_id && <div className="md:col-span-2 -mx-4 -mb-3" onClick={e => e.stopPropagation()}><EmbedDossier rootId={d.root_id} /></div>}
                 <div>
                   <p className="text-[11px] uppercase tracking-wide text-ink-muted font-semibold mb-1">Factures du dossier</p>
                   {d.parquet?.efs?.map(e => (

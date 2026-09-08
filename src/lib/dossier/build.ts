@@ -372,6 +372,7 @@ export async function buildDossier(anyMissionId: string, opts: { light?: boolean
       if (m.no_charge_at) { amount = 0; nothing = `sans frais${m.no_charge_reason ? ' : ' + String(m.no_charge_reason) : ''}` }
       else if (m.storage_waived) { amount = 0; nothing = 'gardiennage offert (abandon volontaire)' }
       else if (Number(m.storage_flat_htva) > 0) { amount = r2(Number(m.storage_flat_htva)); note = 'forfait gardiennage' }
+      else if (days <= 0 && !open) { amount = 0; nothing = `aucune nuit facturable (${rawDays} nuit${rawDays > 1 ? 's' : ''}${(tarif?.free || 0) > 0 ? `, ${tarif?.free} offerte${(tarif?.free || 0) > 1 ? 's' : ''}` : ''})` }
       else { amount = r2(days * dayPrice); note = dayPrice ? `${days} j × ${dayPrice.toFixed(2)} €` : `${days} j · tarif journalier introuvable` }
       title = 'Gardiennage'
       subtitle = [`régime ${REGIME_LABEL[regime] || regime}`, m.parc_zone_key ? `zone ${m.parc_zone_key}` : null, m.parc_row_number != null ? `rangée ${m.parc_row_number}` : null].filter(Boolean).join(' · ')
