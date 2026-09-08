@@ -346,7 +346,9 @@ async function buildDossierUncached(anyMissionId: string, light: boolean): Promi
     } else {
       // Saisie sans dossier Saisie (fiches historiques) : le circuit reste le
       // Parquet / Domaine, jamais une facture Odoo au client (Olivier 08/09/2026 :
-      // « pourquoi la liste affiche des dossiers en Domaine ? »).
+      // « pourquoi la liste affiche des dossiers en Domaine ? »). Vendue au
+      // Domaine → archivée sans facturation, seul le relevé Domaine s'applique
+      // (décision Olivier 08/09/2026).
       parquet = { recipient: 'parquet', state: null, ef_number: null, billed_to_date: null, depannage_billed: false, efs: [] } as any
     }
   }
