@@ -6,6 +6,7 @@
 // Ouvert depuis FourriereSearchClient au clic sur une card resultat.
 
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { nightsBetween } from '@/lib/parc/nights'
 import { useRouter } from 'next/navigation'
 import { X, Car, FileText, ShieldAlert, MapPin, Calculator, ExternalLink, Loader2, Building2, Clock, User, Wrench, Hash, Receipt } from 'lucide-react'
 import Link from 'next/link'
@@ -428,5 +429,5 @@ function fmtDateTime(d: string | null): string {
 
 function daysAgo(d: string | null): number {
   if (!d) return 0
-  return Math.max(0, Math.floor((Date.now() - new Date(d).getTime()) / 86400000))
+  return nightsBetween(d)   // nuits passées au parc (08/09/2026)
 }

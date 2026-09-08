@@ -14,6 +14,7 @@ import { getServerSession }        from 'next-auth'
 import { authOptions }             from '@/lib/auth'
 import { createAdminClient }       from '@/lib/supabase'
 import { FOURRIERE_ZONES }         from '@/lib/fourriere'
+import { nightsBetween }           from '@/lib/parc/nights'
 import { isPreviewOn }             from '@/lib/feature-flags'
 
 export const dynamic     = 'force-dynamic'
@@ -122,7 +123,7 @@ export async function GET(req: Request) {
       parked_at:        m.parked_at || null,
       leg_id:           m.leg_id || null,
       regime:           m.regime || null,
-      days:             m.parked_at ? Math.max(0, Math.floor((Date.now() - new Date(m.parked_at).getTime()) / 86_400_000)) : null,
+      days:             m.parked_at ? nightsBetween(m.parked_at) : null,   // nuits passées (08/09/2026)
       source:           m.source,
       external_id:      m.external_id,
       migration_pending: m.migration_pending || false,

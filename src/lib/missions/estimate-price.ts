@@ -10,6 +10,7 @@
 import { createAdminClient } from '@/lib/supabase'
 import { getDrivingRoute } from '@/lib/routing/ors'
 import { getApplicableSurcharges, isBelgianHoliday } from '@/lib/surcharges'
+import { nightsBetween } from '@/lib/parc/nights'
 import { normalizeType, isRemorquage, isDsp, isTrajetVide, isRelivraison, isRemRel } from '@/lib/missions/mission-types'
 
 /**
@@ -579,9 +580,8 @@ export async function estimateMissionPrice(mission: MissionLike, opts?: { skipRe
     // clôture) — plus completed_at seul, qui tombe à la création de la REL
     // alors que le véhicule est encore au parc.
     const refEnd    = (await parcExitRef(sb, mission)) || new Date().toISOString()
-    const parcEnd   = new Date(refEnd)
-    const diffMs    = Math.max(0, parcEnd.getTime() - parcStart.getTime())
-    parcJours       = Math.floor(diffMs / (1000 * 60 * 60 * 24))
+    // Nuits passées au parc (Olivier 08/09/2026), plus les jours pleins de 24 h.
+    parcJours       = nightsBetween(parcStart, refEnd)
     parcEur         = parcJours * Number(tariff.parc_day_price || 0)
   }
 
@@ -832,9 +832,8 @@ async function estimateBrackets(
     // clôture) — plus completed_at seul, qui tombe à la création de la REL
     // alors que le véhicule est encore au parc.
     const refEnd    = (await parcExitRef(sb, mission)) || new Date().toISOString()
-    const parcEnd   = new Date(refEnd)
-    const diffMs    = Math.max(0, parcEnd.getTime() - parcStart.getTime())
-    parcJours       = Math.floor(diffMs / (1000 * 60 * 60 * 24))
+    // Nuits passées au parc (Olivier 08/09/2026), plus les jours pleins de 24 h.
+    parcJours       = nightsBetween(parcStart, refEnd)
     parcEur         = parcJours * Number(tariff.parc_day_price || 0)
   }
 
@@ -934,20 +933,14 @@ async function estimateLinesTemplate(
   // Le calcul global ci-dessous reste base sur parked_at (utilise par les
   // sources sans parc_count_from ou avec 'parked_at'). Les lignes avec
   // parc_count_from='intervention_date' recalculent autoQty plus bas.
+  // 08/09/2026 : « jours pleins » → NUITS passées au parc (cf lib/parc/nights).
   function joursPleinsEcoules(ref: string | null | undefined): number {
-    if (!ref) return 0
-    const start = new Date(ref).getTime()
-    const diffMs = Math.max(0, Date.now() - start)
-    return Math.floor(diffMs / (1000 * 60 * 60 * 24))
+    return nightsBetween(ref, null)
   }
   // Jours pleins entre deux dates (end = now si non fourni). Sert au split
   // gardiennage Saisie (parked_at -> date de levée).
   function joursPleinsBetween(startRef: string | null | undefined, endRef: string | null | undefined): number {
-    if (!startRef) return 0
-    const start = new Date(startRef).getTime()
-    const end   = endRef ? new Date(endRef).getTime() : Date.now()
-    const diffMs = Math.max(0, end - start)
-    return Math.floor(diffMs / (1000 * 60 * 60 * 24))
+    return nightsBetween(startRef, endRef || null)
   }
   // Sortie du parc (null = encore au parc → on compte jusqu'à maintenant).
   const parcExit = await parcExitRef(sb, mission)

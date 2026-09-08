@@ -107,6 +107,8 @@ export interface Dossier {
   invoices:       { number: string; covers: string[]; client: string | null; amount: number; at: string | null; url: string | null }[]
 }
 
+import { nightsBetween } from '@/lib/parc/nights'
+
 const DAY_MS = 86_400_000
 const ts  = (v: string | null | undefined) => (v ? new Date(v).getTime() : null)
 const r2  = (n: number) => Math.round(n * 100) / 100
@@ -341,7 +343,8 @@ export async function buildDossier(anyMissionId: string, opts: { light?: boolean
       const exitRaw = ts(m.parc_exit_at)
       const exit  = remiseTs && remiseTs > entry && (!exitRaw || remiseTs < exitRaw) ? remiseTs : exitRaw
       open = !exit
-      const rawDays = Math.max(1, Math.ceil(((exit ?? Date.now()) - entry) / DAY_MS))
+      // Nuits passées au parc (Olivier 08/09/2026) — plus de Math.ceil qui comptait le jour d'entrée.
+      const rawDays = nightsBetween(entry, exit ?? Date.now())
       const tarif = dayPriceByRegime[regime]
       let dayPrice = tarif?.price || 0
       if (!dayPrice && rootEst?.parc_jours > 0) dayPrice = r2(Number(rootEst.parc_eur) / Number(rootEst.parc_jours))
