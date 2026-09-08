@@ -234,7 +234,7 @@ function MobileRow({ m, activeTab, drivers, driverStatuses, sources, onRefresh, 
                     className="px-3 py-2 rounded-lg border bg-surface text-ink text-sm text-left disabled:opacity-50">✓ Clôturer sans pointage</button>
                 )}
                 {!isParked && (
-                  <Link href={`/dispatch/${m.id}#actions`} className="px-3 py-2 rounded-lg border bg-surface text-ink text-sm text-left">🅿 Forcer en parc… <span className="text-ink-muted text-xs">(dépôt + zone, sur la fiche)</span></Link>
+                  <Link href={`/dispatch/${m.id}?fiche=1#actions`} className="px-3 py-2 rounded-lg border bg-surface text-ink text-sm text-left">🅿 Forcer en parc… <span className="text-ink-muted text-xs">(dépôt + zone, sur la fiche)</span></Link>
                 )}
               </div>
             )}

@@ -358,7 +358,7 @@ function Group({ d, leg, canBill, isOpen, onToggle, embedOpen, onToggleEmbed, fi
               {fiche
                 ? <button onClick={onToggleEmbed} className="px-2.5 py-1 rounded-lg text-xs font-semibold border bg-surface text-ink-secondary hover:text-ink">{embedOpen ? 'Replier la fiche complète' : 'Ouvrir la fiche complète'}</button>
                 : <Link href={`/dispatch/dossier/${d.root_id}?open=${leg.mission_id}`} target="_blank" className="px-2.5 py-1 rounded-lg text-xs font-semibold border bg-surface text-ink-secondary hover:text-ink">Ouvrir ce groupe dans le dossier ↗</Link>}
-              <Link href={`/dispatch/${leg.mission_id}`} className="px-2.5 py-1 rounded-lg text-xs font-semibold border bg-surface text-ink-secondary hover:text-ink">Fiche seule ↗</Link>
+              <Link href={`/dispatch/${leg.mission_id}?fiche=1`} className="px-2.5 py-1 rounded-lg text-xs font-semibold border bg-surface text-ink-secondary hover:text-ink">Fiche seule ↗</Link>
             </div>
           )}
           {leg.kind === 'out' && leg.channel === 'domaine' && (

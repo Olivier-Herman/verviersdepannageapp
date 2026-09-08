@@ -1,6 +1,7 @@
 // src/app/dispatch/[id]/page.tsx
 
 import { getServerSession }  from 'next-auth'
+import { isPreviewOn }       from '@/lib/feature-flags'
 import { redirect }          from 'next/navigation'
 import { authOptions }       from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase'
@@ -14,7 +15,7 @@ import { isFlux2Enabled, flux2AssistanceOf } from '@/lib/cloture/gating'
 export const dynamic    = 'force-dynamic'
 export const revalidate = 0
 
-export default async function MissionDetailPage({ params }: { params: { id: string } }) {
+export default async function MissionDetailPage({ params, searchParams }: { params: { id: string }; searchParams?: Record<string, string | string[] | undefined> }) {
   const session = await getServerSession(authOptions)
   if (!session) redirect('/login')
 
@@ -23,6 +24,14 @@ export default async function MissionDetailPage({ params }: { params: { id: stri
     (user.roles || [user.role]).includes(r)
   )
   if (!hasAccess) redirect('/dashboard?error=access_denied')
+
+  // Olivier 08/09/2026 : la Vue dossier est l'écran PAR DÉFAUT pour ceux qui
+  // l'ont (flag dossier_view : superadmin, pilotes, ou tous). Tout lien vers la
+  // fiche y arrive, sauf les écrans qui ont besoin de la fiche seule :
+  // ?fiche=1 (bouton « Fiche seule », forcer en parc) et ?assign=1 (REL créée →
+  // sélecteur de chauffeur).
+  const sp = searchParams || {}
+  const wantsDossier = !sp.fiche && !sp.assign && (await isPreviewOn('dossier_view', user.role, user.id))
 
   const supabase = createAdminClient()
 
@@ -43,6 +52,8 @@ export default async function MissionDetailPage({ params }: { params: { id: stri
     : await baseQuery.eq('id', params.id).single()
 
   if (!mission) redirect('/dispatch')
+  // (après la lecture : params.id peut être un numéro de fiche, le dossier veut l'UUID)
+  if (wantsDossier && !(mission as any).dossier_leg) redirect(`/dispatch/dossier/${mission.id}`)
 
   // Touring : le dépôt de départ = dépôt VD le plus proche du lieu d'intervention.
   // On le pose si absent (mute mission.depot_depart_id pour l'affichage immédiat).
