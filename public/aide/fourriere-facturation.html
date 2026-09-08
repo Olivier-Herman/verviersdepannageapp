@@ -97,6 +97,7 @@
  <table>
  <tr><td>125</td><td>Annexer un réquisitoire</td><td>p. 13</td></tr>
  <tr><td>126</td><td>Enregistrer une levée de saisie (définitive / temporaire)</td><td>p. 14</td></tr>
+ <tr><td>126b</td><td>Saisie : facturer le propriétaire sans levée ; effets de la levée</td><td>p. 14</td></tr>
  <tr><td>127</td><td>Levée temporaire : sortie garagiste puis retour parc</td><td>p. 14</td></tr>
  <tr><td>128</td><td>Remise au Domaine (État)</td><td>p. 14</td></tr>
  </table>
@@ -542,6 +543,25 @@
  </ol>
  <div class="tip">💡 Effet sur le gardiennage : jusqu'à la date de levée = tarif Parquet/saisie ; les jours <strong>au-delà</strong> de la date de levée = 20 €/jour (« hors période saisie »). Le détail est visible dans l'estimation tarif en bas de la fiche.</div>
  <div class="warn">⚠️ Il faut un document <strong>ou</strong> un commentaire <strong>et</strong> une date pour que le blocage police soit retiré.</div>
+</div>
+
+<div class="function">
+ <h3><span class="num">126b</span>Saisie : facturer le propriétaire sans levée, et ce que change la levée</h3>
+ <p class="desc">Règles du 08/09/2026. On peut <b>toujours</b> facturer le propriétaire d'un véhicule saisi, même sans levée de saisie (le policier exige parfois le paiement avant la levée ; le véhicule reste en parc). Seule la <b>restitution</b> exige la levée.</p>
+ <p class="label">Facturer le propriétaire (Vue dossier)</p>
+ <ol>
+ <li>Ouvre la Vue dossier, choisis le propriétaire comme « Facturer à » sur le groupe gardiennage (par défaut il est au Parquet).</li>
+ <li>« Facturer » : coche le dépannage et/ou le gardiennage, avec la date jusqu'où le client paie. La facture Odoo part au client, le véhicule reste en parc.</li>
+ <li>Ce qui est payé par le client sort de l'état de frais : le Parquet ne reçoit que le solde (dépannage non payé, gardiennage au-delà de la date payée).</li>
+ <li>Facture déjà faite à la main dans Odoo ? « Déjà facturé… » avec son numéro fait la même chose (période couverte = jusqu'à la date choisie ou la fin du gardiennage).</li>
+ </ol>
+ <p class="label">À la levée de saisie</p>
+ <ol>
+ <li>Le dossier Parquet <b>s'arrête immédiatement</b> : plus d'état de frais, tout ce qui reste se facture au client.</li>
+ <li>Si un état de frais est déjà parti au Parquet, il passe « À ANNULER » dans le cockpit Saisies et la facturation reçoit une notification : note de crédit au Parquet, puis « Note de crédit envoyée → annulé ». La période est refacturée au client.</li>
+ <li>« Clôturer et facturer » (restitution) refuse une saisie sans levée : utilise « Facturer » pour encaisser sans sortir le véhicule.</li>
+ </ol>
+ <div class="tip">💡 Le groupe gardiennage indique « payé par le propriétaire jusqu'au … · solde au Parquet » quand une facture client couvre une partie de la période.</div>
 </div>
 
 <div class="function">

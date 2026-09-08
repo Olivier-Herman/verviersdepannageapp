@@ -19,7 +19,10 @@ const TONE = {
 } as const
 
 export const isLegBilled = (l: DossierLeg) => l.billed_refs.length > 0 && l.billed_htva >= l.amount_htva - 0.01
-export const canPickLeg  = (l: DossierLeg) => !l.nothing_to_bill && !isLegBilled(l) && l.amount_htva > 0 && (l.channel || 'odoo') === 'odoo'
+// Groupe Parquet (saisie) : cochable dès qu'un client (le propriétaire) est choisi — on peut facturer
+// le propriétaire sans levée de saisie ; seule la restitution l'exige (Olivier 08/09/2026).
+export const canPickLeg  = (l: DossierLeg) => !l.nothing_to_bill && !isLegBilled(l) && l.amount_htva > 0
+  && ((l.channel || 'odoo') === 'odoo' || (!!l.billed_to_id && !/parquet|frais de justice|fdj\b/i.test(String(l.billed_to_name || ''))))
 
 export default function BillingModal({ d, onClose, onDone }: { d: Dossier; onClose: () => void; onDone: (result?: { invoices: any[]; warnings: string[] }) => Promise<void> | void }) {
   // Olivier 08/09/2026 : TOUT coché par défaut, gardiennage en cours compris ;
@@ -88,7 +91,7 @@ export default function BillingModal({ d, onClose, onDone }: { d: Dossier; onClo
     if (value === null || !value.trim()) return
     setBusy(true); setError(null)
     try {
-      const r = await fetch(`/api/dossier/${d.root_id}/mark`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action, mission_ids: chosen.map(l => l.mission_id), invoice_number: action === 'already_billed' ? value.trim() : undefined, reason: action === 'no_charge' ? value.trim() : undefined }) })
+      const r = await fetch(`/api/dossier/${d.root_id}/mark`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action, mission_ids: chosen.map(l => l.mission_id), invoice_number: action === 'already_billed' ? value.trim() : undefined, period_to: action === 'already_billed' ? periodTo : undefined, reason: action === 'no_charge' ? value.trim() : undefined }) })
       const j = await r.json()
       if (!r.ok || !j.ok) throw new Error(j.error || `HTTP ${r.status}`)
       setResult({ invoices: [], warnings: [action === 'auto_billed' ? `Groupes ${j.covers.join(' ')} marqués autofacturés (validé COMEX).` : action === 'already_billed' ? `Groupes ${j.covers.join(' ')} marqués facturés sur ${value.trim()}${j.invoice ? ' (facture Odoo retrouvée)' : ' (numéro non retrouvé dans Odoo, à vérifier)'}.` : `Groupes ${j.covers.join(' ')} marqués sans frais : ${value.trim()}.`] })

@@ -39,9 +39,9 @@ export function resolveRecipientEmail(recipient: SaisieRecipient, motifCode?: st
 // À partir de la date `saisie_autointegrate_since` (app_settings), toute mission
 // police_saisie en parc crée automatiquement son dossier. Le parc antérieur reste
 // intégré à la main (tri). Olivier 2026-08-10.
-const SAISIE_MISSION_SNAP = 'id, dossier_number, vehicle_plate, vehicle_brand, vehicle_model, parked_at, received_at, status, levee_saisie_at, levee_saisie_date, domaine_remise_date, domaine_enlevement_date, saisie_motif_code, saisie_motif_label'
+export const SAISIE_MISSION_SNAP = 'id, dossier_number, vehicle_plate, vehicle_brand, vehicle_model, parked_at, received_at, status, levee_saisie_at, levee_saisie_date, domaine_remise_date, domaine_enlevement_date, saisie_motif_code, saisie_motif_label'
 
-function snapshotSaisieMission(m: any) {
+export function snapshotSaisieMission(m: any) {
   return {
     mission_id:    m.id,
     vehicle_plate: m.vehicle_plate || null,
@@ -209,13 +209,14 @@ export async function generateEtatFrais(
   else if (hasDomaine && remiseDate) billingTo = String(remiseDate).slice(0, 10)
   else if (!d.billed_to_date) billingTo = firstBillableDate(d.parked_at)
   else billingTo = addMonthsISO(d.billed_to_date, 2)
-  const billingFrom = d.billed_to_date || d.parked_at
+  // Le propriétaire a déjà payé (facture client) jusqu'à une date → le Parquet ne paie que le solde.
+  const billingFrom = [d.billed_to_date, d.client_billed_to_date, d.parked_at].filter(Boolean).map((x: any) => String(x).slice(0, 10)).sort().pop() || d.parked_at
   // GARDE-FOU : une coupe antérieure au début de période (ex. Date IN Domaine
   // encodée avant l'entrée en parc) produirait un état de frais absurde.
   if (billingFrom && billingTo < String(billingFrom).slice(0, 10)) {
     throw new Error(`Date de coupe incohérente (${fmtFR(billingTo)} avant le début de période ${fmtFR(String(billingFrom))}) — vérifier la Date IN / l'entrée en parc sur la fiche.`)
   }
-  const includeDepannage = !d.depannage_billed
+  const includeDepannage = !d.depannage_billed && !d.depannage_billed_client   // dépannage déjà payé par le propriétaire → pas au Parquet
   // km facturés = au-delà de 30 km aller-retour (franchise). Priorité à une
   // valeur déjà calculée (chargedKmBeyond), sinon on dérive des km aller-retour.
   const km = opts.chargedKmBeyond != null ? opts.chargedKmBeyond

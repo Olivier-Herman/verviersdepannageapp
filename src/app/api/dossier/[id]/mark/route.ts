@@ -35,6 +35,8 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   const ids: string[] = Array.isArray(body.mission_ids) ? body.mission_ids.filter((x: any) => typeof x === 'string') : []
   const number = String(body.invoice_number || '').trim()
   const reason = String(body.reason || '').trim()
+  // Gardiennage : jusqu'à quelle date la facture couvre-t-elle ? (défaut : fin de la période, sinon aujourd'hui)
+  const periodTo: Record<string, string> = body.period_to && typeof body.period_to === 'object' ? body.period_to : {}
   if (!ids.length) return NextResponse.json({ error: 'Aucun groupe coché' }, { status: 400 })
   if (action === 'already_billed' && !number) return NextResponse.json({ error: 'Numéro de facture requis' }, { status: 400 })
   if (action === 'no_charge' && !reason) return NextResponse.json({ error: 'Motif requis pour « ne rien facturer »' }, { status: 400 })
@@ -57,6 +59,29 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     try { const { resolveInvoiceByNumber } = await import('@/lib/odoo-invoice'); resolved = await resolveInvoiceByNumber(number) } catch { resolved = null }
   }
 
+  // Saisie facturée au propriétaire : le Parquet ne paie que le solde. On note
+  // la période payée sur le dossier Saisie (créé s'il n'existe pas encore —
+  // fiche d'avant l'intégration auto, ex. APPARTC 08/09/2026).
+  if (action === 'already_billed') {
+    const { data: r0 } = await sb.from('incoming_missions').select('id, source, saisie_motif_code').eq('id', d.root_id).maybeSingle()
+    if (r0 && (String(r0.source || '') === 'police_saisie' || r0.saisie_motif_code)) {
+      let { data: sd } = await sb.from('saisie_dossiers').select('id, client_billed_to_date, depannage_billed_client').eq('mission_id', d.root_id).maybeSingle()
+      if (!sd) {
+        const { SAISIE_MISSION_SNAP, snapshotSaisieMission } = await import('@/lib/missions/saisie-dossier')
+        const { data: full } = await sb.from('incoming_missions').select(SAISIE_MISSION_SNAP).eq('id', d.root_id).maybeSingle()
+        if (full) { const r = await sb.from('saisie_dossiers').insert(snapshotSaisieMission(full)).select('id, client_billed_to_date, depannage_billed_client').single(); sd = r.data }
+      }
+      if (sd) {
+        const gardTo = legs.filter(l => l.kind === 'gard').map(l => periodTo[l.mission_id] || (l.ended_at ? String(l.ended_at).slice(0, 10) : now.slice(0, 10))).sort().pop() || null
+        const remBilled = legs.some(l => l.kind === 'rem' && l.mission_id === d.root_id)
+        const upd: Record<string, any> = { updated_at: now }
+        if (gardTo && (!sd.client_billed_to_date || gardTo > String(sd.client_billed_to_date))) upd.client_billed_to_date = gardTo
+        if (remBilled && !sd.depannage_billed_client) upd.depannage_billed_client = true
+        if (Object.keys(upd).length > 1) await sb.from('saisie_dossiers').update(upd).eq('id', sd.id)
+      }
+    }
+  }
+
   const done: string[] = []
   for (const l of legs) {
     const r = rowById[l.mission_id]; if (!r) continue
@@ -68,9 +93,12 @@ export async function POST(req: Request, { params }: { params: { id: string } })
         await sb.from('incoming_missions').update({ ...(stillParked ? {} : { status: 'completed', completed_at: r.status === 'completed' ? undefined : now }), invoice_method: 'manual', invoice_number: number, invoice_odoo_id: resolved?.id ?? null, invoice_url: resolved?.url ?? null, invoiced_at: now, invoiced_by: user.id, updated_at: now }).eq('id', l.mission_id)
         if (!stillParked) { try { await releaseParcAndShift(sb, l.mission_id) } catch {} }
       }
+      const pTo = l.kind === 'gard' ? (periodTo[l.mission_id] || (l.ended_at ? String(l.ended_at).slice(0, 10) : now.slice(0, 10))) : null
+      const pFrom = l.kind === 'gard' && l.started_at ? String(l.started_at).slice(0, 10) : null
       await sb.from('mission_billed_items').insert({
         mission_id: l.mission_id, kind: l.kind === 'gard' ? 'SERV-PARC' : 'SERV-PEC', label: `${l.title} — déjà facturé (n° ${number})`,
         qty: 1, price_unit: l.amount_htva, amount_htva: l.amount_htva, invoice_number: number, invoice_odoo_id: resolved?.id ?? null,
+        period_from: pFrom, period_to: pTo,
         dossier_letter: l.letter, billed_by: user.id, billed_to_id: l.billed_to_id, billed_to_name: l.billed_to_name,
       })
       await sb.from('mission_logs').insert({ mission_id: l.mission_id, actor_id: user.id, action: 'invoiced', notes: `Déjà facturé n° ${number} (dossier ${d.ref}, groupe ${l.letter})${resolved ? ' · lien Odoo résolu' : ''}`, metadata: { invoice_number: number, invoice_odoo_id: resolved?.id ?? null, dossier_letter: l.letter } })
