@@ -496,7 +496,11 @@ async function buildDossierUncached(anyMissionId: string, light: boolean): Promi
       driver_name: m.assigned_to ? (nameById[m.assigned_to] || null) : null,
       billed_to_id: payer(m).id, billed_to_name: payer(m).name,
       billed_inherited: payer(m).id === payer(root).id,
-      facts, amount_htva: amount, amount_note: note, billed_htva: billedHtva || (billedRefs.length && !billedItems.length ? amount : 0),
+      // Groupe marqué « déjà facturé » alors que son montant n'était pas encore
+      // calculé (ligne à 0 €) : il est réglé, on ne ressort pas un « reste à
+      // facturer » quand le tarif arrive après coup (2GSE264, 08/09/2026).
+      facts, amount_htva: amount, amount_note: note,
+      billed_htva: billedHtva || ((billedRefs.length && (!billedItems.length || (!!m.invoice_number && billedItems.every(it => !Number(it.amount_htva))))) ? amount : 0),
       billed_refs: billedRefs, nothing_to_bill: nothing, days, regime: kind === 'gard' ? String(m.mission_type || 'autre') : null, redelivery_address: (kind === 'gard' ? root.redelivery_address : m.redelivery_address) || null, amount_unknown: amountUnknown || undefined,
       // Olivier 07/09/2026 : « tout ce qui est modifiable doit l'être dans la vue 2 ».
       editable: kind === 'gard' ? undefined : {
