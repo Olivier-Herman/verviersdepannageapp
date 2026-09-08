@@ -181,15 +181,29 @@ export async function buildDossier(anyMissionId: string, opts: { light?: boolean
   const { data: m0, error: e0 } = await sb.from('incoming_missions').select('*').eq('id', anyMissionId).maybeSingle()
   if (e0) console.error('[dossier/build]', e0.message)
   if (!m0) return null
+  // Racine = on remonte la chaîne des parents (une REL de REL a pour parent une
+  // REL, pas le remorquage : 2ERT632, 08/09/2026).
   let root: any = m0
-  if ((m0 as any).parent_mission_id) {
-    const { data: p } = await sb.from('incoming_missions').select('*').eq('id', (m0 as any).parent_mission_id).maybeSingle()
-    if (p) root = p
+  for (let hop = 0; hop < 6 && root?.parent_mission_id; hop++) {
+    const { data: p } = await sb.from('incoming_missions').select('*').eq('id', root.parent_mission_id).maybeSingle()
+    if (!p) break
+    root = p
   }
 
-  const { data: kidsRaw } = await sb.from('incoming_missions').select('*')
-    .eq('parent_mission_id', root.id).order('received_at', { ascending: true })
-  const kids: any[] = kidsRaw || []
+  // Descendants à tous les niveaux : REL du REM, REL de la REL (remise en parc
+  // puis nouvelle relivraison), fiches Gardiennage… — pas seulement les enfants directs.
+  const kids: any[] = []
+  {
+    let frontier = [root.id]
+    const seen = new Set<string>([root.id])
+    for (let depth = 0; depth < 6 && frontier.length; depth++) {
+      const { data: lvl } = await sb.from('incoming_missions').select('*').in('parent_mission_id', frontier).order('received_at', { ascending: true })
+      const next: string[] = []
+      for (const k of lvl || []) { if (seen.has(k.id)) continue; seen.add(k.id); kids.push(k); next.push(k.id) }
+      frontier = next
+    }
+    kids.sort((a, b) => String(a.received_at || '').localeCompare(String(b.received_at || '')))
+  }
 
   const DEAD = new Set(['cancelled', 'ignored', 'parse_error', 'duplicate'])
   const legRows: any[] = [root, ...kids.filter(k => k.dossier_leg || !DEAD.has(k.status))]
