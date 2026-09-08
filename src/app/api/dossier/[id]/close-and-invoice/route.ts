@@ -45,11 +45,12 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   // 2. Facturer : les groupes demandés + tout ce qui est prêt maintenant que le
   //    gardiennage est fermé (le gardiennage lui-même en premier lieu).
   try {
-    const d = await buildDossier(root.id, { light: true })
+    const d = await buildDossier(root.id)   // COMPLET : en léger, un remorquage non figé vaut 0 € et sortait de la sélection (2GUV245, 08/09)
     if (!d) throw new Error('Dossier illisible après clôture')
     const pickable = d.legs.filter(l => !l.nothing_to_bill && l.amount_htva > 0 && (l.channel || 'odoo') === 'odoo' && l.kind !== 'out'
       && !(l.billed_refs.length > 0 && l.billed_htva >= l.amount_htva - 0.01))
-    const ids = Array.from(new Set([...wanted.filter(id => pickable.some(l => l.mission_id === id)), ...pickable.filter(l => l.kind === 'gard' || wanted.length === 0).map(l => l.mission_id)]))
+    // Les groupes cochés passent tels quels (invoiceDossierGroups vérifie et explique) ; on y ajoute le gardiennage qui vient de se fermer.
+    const ids = Array.from(new Set([...wanted, ...pickable.filter(l => l.kind === 'gard' || wanted.length === 0).map(l => l.mission_id)]))
     if (!ids.length) return NextResponse.json({ ok: true, closed: true, invoices: [], warnings: ['Dossier clôturé, mais rien à facturer (tout est déjà facturé ou sans frais).'] })
     const result = await invoiceDossierGroups({ anyMissionId: root.id, missionIds: ids, actorUserId: user.id || null })
     return NextResponse.json({ ok: true, closed: true, ...result })

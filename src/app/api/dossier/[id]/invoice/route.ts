@@ -30,7 +30,9 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   const missionIds: string[] = Array.isArray(body.mission_ids) ? body.mission_ids.filter((x: any) => typeof x === 'string') : []
   if (!missionIds.length) return NextResponse.json({ error: 'Aucun groupe coché' }, { status: 400 })
   try {
-    const result = await invoiceDossierGroups({ anyMissionId: params.id, missionIds, actorUserId: user.id || null, dryRun: body.dry_run === true })
+    const periodTo: Record<string, string> = {}
+    if (body.period_to && typeof body.period_to === 'object') for (const [k, v] of Object.entries(body.period_to)) if (typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v)) periodTo[k] = v
+    const result = await invoiceDossierGroups({ anyMissionId: params.id, missionIds, actorUserId: user.id || null, dryRun: body.dry_run === true, periodTo })
     return NextResponse.json({ ok: true, ...result })
   } catch (e: any) {
     const msg = String(e?.message || e)

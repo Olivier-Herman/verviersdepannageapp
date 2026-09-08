@@ -3,7 +3,7 @@
 // par client créée directement en brouillon. Partagée entre la Vue dossier et
 // le module Facturation par dossier. Olivier 07/09/2026.
 
-import { useState } from 'react'
+import React, { useState } from 'react'
 import type { Dossier, DossierLeg } from '@/lib/dossier/build'
 
 const eur = (n: number) => n.toLocaleString('fr-BE', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' €'
@@ -21,9 +21,13 @@ export const isLegBilled = (l: DossierLeg) => l.billed_refs.length > 0 && l.bill
 export const canPickLeg  = (l: DossierLeg) => !l.nothing_to_bill && !isLegBilled(l) && l.amount_htva > 0 && (l.channel || 'odoo') === 'odoo'
 
 export default function BillingModal({ d, onClose, onDone }: { d: Dossier; onClose: () => void; onDone: () => Promise<void> | void }) {
-  // Par défaut : tout ce qui est prêt. Un gardiennage EN COURS n'est pas coché :
-  // le cocher arrête sa période à aujourd'hui et en ouvre une nouvelle.
-  const [sel, setSel] = useState<Set<string>>(() => new Set(d.legs.filter(l => canPickLeg(l) && !(l.kind === 'gard' && l.open)).map(l => l.mission_id)))
+  // Olivier 08/09/2026 : TOUT coché par défaut, gardiennage en cours compris ;
+  // on décoche ce qu'on ne veut pas facturer. Pour un gardiennage en cours, on
+  // choisit le dernier jour facturé : la période se ferme là et une nouvelle
+  // s'ouvre le lendemain pour le solde.
+  const [sel, setSel] = useState<Set<string>>(() => new Set(d.legs.filter(canPickLeg).map(l => l.mission_id)))
+  const today = new Date().toLocaleDateString('en-CA', { timeZone: 'Europe/Brussels' })
+  const [periodTo, setPeriodTo] = useState<Record<string, string>>(() => Object.fromEntries(d.legs.filter(l => l.kind === 'gard' && l.open).map(l => [l.mission_id, today])))
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [result, setResult] = useState<{ invoices: any[]; warnings: string[] } | null>(null)
@@ -84,7 +88,7 @@ export default function BillingModal({ d, onClose, onDone }: { d: Dossier; onClo
     const tabs: (Window | null)[] = Array.from({ length: Math.max(1, nTabs) }, () => { try { return window.open('', '_blank') } catch { return null } })
     try {
       const ids = close ? Array.from(new Set([...chosen.map(l => l.mission_id), ...(openGard ? [openGard.mission_id] : [])])) : chosen.map(l => l.mission_id)
-      const r = await fetch(`/api/dossier/${d.root_id}/${close ? 'close-and-invoice' : 'invoice'}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mission_ids: ids }) })
+      const r = await fetch(`/api/dossier/${d.root_id}/${close ? 'close-and-invoice' : 'invoice'}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mission_ids: ids, period_to: close ? undefined : periodTo }) })
       const j = await r.json()
       if (!r.ok || !j.ok) throw new Error(j.error || `HTTP ${r.status}`)
       ;(j.invoices || []).forEach((inv: any, i: number) => { const t = tabs[i]; if (t && inv.url) { try { t.location.href = inv.url } catch {} } else if (inv.url) { try { window.open(inv.url, '_blank') } catch {} } })
@@ -112,11 +116,23 @@ export default function BillingModal({ d, onClose, onDone }: { d: Dossier; onClo
               {legs.map(l => {
                 const pick = canPickLeg(l)
                 return (
-                  <button key={l.mission_id} disabled={!pick} onClick={() => toggle(l.mission_id)} className={`w-full grid grid-cols-[22px_1fr_auto] gap-2 items-center py-1 text-left text-xs ${pick ? 'text-ink-secondary' : 'opacity-50 cursor-default'}`}>
+                  <React.Fragment key={l.mission_id}>
+                  <button disabled={!pick} onClick={() => toggle(l.mission_id)} className={`w-full grid grid-cols-[22px_1fr_auto] gap-2 items-center py-1 text-left text-xs ${pick ? 'text-ink-secondary' : 'opacity-50 cursor-default'}`}>
                     <span className={`w-4 h-4 rounded border-[1.5px] flex items-center justify-center text-[10px] ${sel.has(l.mission_id) ? 'bg-brand border-brand text-white' : 'border-ink-muted'}`}>{sel.has(l.mission_id) ? '✓' : (isLegBilled(l) ? '✓' : l.nothing_to_bill ? '–' : '')}</span>
                     <span><span className="font-mono">{l.letter}</span> {l.title}{l.kind === 'gard' && l.days != null ? ` ${l.days} j` : ''}{l.kind === 'gard' && l.open && <span className={`ml-1.5 rounded-full px-1.5 py-0.5 text-[10px] font-semibold ${TONE.live}`}>en cours · arrêté à aujourd'hui si coché</span>}</span>
                     <span className="tabular-nums">{isLegBilled(l) ? `déjà facturé · ${cleanRef(l.billed_refs[0])}` : l.nothing_to_bill ? l.nothing_to_bill : l.channel === 'domaine' ? `${eur(l.amount_htva)} · relevé Domaine` : <>{eur(l.amount_htva)} <span className="text-ink-faint">· {tvac(l.amount_htva)} TVAC</span></>}</span>
+                    )}
                   </button>
+                  {l.kind === 'gard' && l.open && sel.has(l.mission_id) && (
+                    <div className="ml-6 mb-1 flex flex-wrap items-center gap-2 text-[11px] text-ink-secondary">
+                      <span>Gardiennage facturé jusqu'au</span>
+                      <input type="date" value={periodTo[l.mission_id] || today} max={today} min={l.started_at ? String(l.started_at).slice(0, 10) : undefined}
+                        onChange={e => setPeriodTo(p => ({ ...p, [l.mission_id]: e.target.value || today }))}
+                        className="border rounded px-1.5 py-0.5 bg-surface text-ink text-[11px]" />
+                      <span className="text-ink-faint">inclus · le solde continue dans un nouveau groupe dès le lendemain</span>
+                    </div>
+                  )}
+                  </React.Fragment>
                 )
               })}
               {legs.some(l => (l.billing_remarks || []).length) && legs.flatMap(l => (l.billing_remarks || []).map((r, i) => (

@@ -100,6 +100,9 @@ export default function DossierGroups({ initial, fiches, shared, isSuperadmin, o
     return new Set(t ? [t.letter] : [])
   })
   const [billing, setBilling] = useState(false)
+  // Ne jamais ouvrir Facturer sur des montants légers/non recalculés : un remorquage
+  // non figé y vaut 0 € et n'est pas cochable (2GUV245, Jona, 08/09/2026).
+  const [openingBilling, setOpeningBilling] = useState(false)
   const billable = d.legs.filter(l => !l.nothing_to_bill && !(l.billed_refs.length && l.billed_htva >= l.amount_htva - 0.01) && l.amount_htva > 0)
   const toggle = (l: string) => setOpen(p => { const n = new Set(p); n.has(l) ? n.delete(l) : n.add(l); return n })
   const toggleEmbed = (l: string) => setEmbed(p => { const n = new Set(p); n.has(l) ? n.delete(l) : n.add(l); return n })
@@ -194,7 +197,7 @@ export default function DossierGroups({ initial, fiches, shared, isSuperadmin, o
           {canBill && <div className="md:text-right">
             <div className="flex md:justify-end items-center gap-2 flex-wrap">
               {(() => { const rootLeg = d.legs.find(l => l.mission_id === d.root_id) || d.legs[0]; return rootLeg ? <BillingRow d={d} leg={rootLeg} onChanged={refresh} gmKey={shared.googleMapsKey} allLegs onApplied={applyBilledTo} /> : null })()}
-              <button disabled={!billable.length} onClick={() => setBilling(true)} title={billable.length ? 'Une facture Odoo par client, créée directement' : 'Rien à facturer'} className={`px-3 py-1.5 rounded-lg text-xs font-semibold bg-brand text-white ${billable.length ? 'hover:bg-brand-hover' : 'opacity-40 cursor-not-allowed'}`}>Facturer{billable.length ? ` (${billable.length})` : ''}</button>
+              <button disabled={!billable.length || openingBilling} onClick={async () => { if (d.light || refining) { setOpeningBilling(true); try { await refresh() } finally { setOpeningBilling(false) } } setBilling(true) }} title={billable.length ? 'Une facture Odoo par client, créée directement' : 'Rien à facturer'} className={`px-3 py-1.5 rounded-lg text-xs font-semibold bg-brand text-white ${billable.length ? 'hover:bg-brand-hover' : 'opacity-40 cursor-not-allowed'}`}>Facturer{billable.length ? ` (${billable.length})` : ''}</button>
             </div>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-x-4 gap-y-1 mt-2 text-[11px] text-ink-muted md:justify-items-end">
               <div>Estimé HTVA<b className="block text-ink text-sm tabular-nums">{eur(d.totals.estimated)}</b></div>

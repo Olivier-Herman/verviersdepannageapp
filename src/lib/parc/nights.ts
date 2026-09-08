@@ -21,6 +21,17 @@ export function brusselsDayIndex(at: string | number | Date): number {
   return Math.floor(Date.UTC(y, m - 1, day) / DAY_MS)
 }
 
+/** Instant ISO du minuit belge qui SUIT la date (YYYY-MM-DD) : fin d'une période facturée « jusqu'au JJ/MM inclus ». */
+export function brusselsMidnightAfter(dateStr: string): string {
+  const [y, m, d] = dateStr.split('-').map(Number)
+  const target = Math.floor(Date.UTC(y, m - 1, d + 1) / DAY_MS)   // index du lendemain
+  for (const offH of [2, 1, 0, 3]) {                                // CEST, CET, garde-fous
+    const t = Date.UTC(y, m - 1, d + 1, 0) - offH * 3_600_000
+    if (brusselsDayIndex(t) === target && brusselsDayIndex(t - 1000) === target - 1) return new Date(t).toISOString()
+  }
+  return new Date(Date.UTC(y, m - 1, d + 1, 0) - 2 * 3_600_000).toISOString()
+}
+
 /** Nuits passées entre l'entrée et la sortie (sortie absente = maintenant). Jamais négatif. */
 export function nightsBetween(start: string | number | Date | null | undefined, end?: string | number | Date | null): number {
   if (!start) return 0

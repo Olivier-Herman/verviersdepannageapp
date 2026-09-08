@@ -13,6 +13,7 @@
 // Gardiennage en cours coché : la période s'arrête à maintenant (parc_exit_at,
 // motif 'facturation') et un nouveau groupe s'ouvre sur la période suivante.
 
+import { nightsBetween, brusselsMidnightAfter } from '@/lib/parc/nights'
 import { createAdminClient }        from '@/lib/supabase'
 import { buildDossier, type Dossier, type DossierLeg } from '@/lib/dossier/build'
 import { buildInterventionDescription } from '@/lib/missions/build-quote-lines'
@@ -42,7 +43,11 @@ function actionDescription(leg: DossierLeg, m: any): string {
     : `Remorquage d'un véhicule dont référence ci-dessus de "${lieu}" à "${dest}"`
 }
 
-export async function invoiceDossierGroups(input: { anyMissionId: string; missionIds: string[]; actorUserId: string | null; dryRun?: boolean }): Promise<DossierInvoiceResult> {
+// periodTo : pour un gardiennage EN COURS, dernier jour facturé (YYYY-MM-DD,
+// inclus) choisi dans la modale ; la période suivante s'ouvre le lendemain à
+// minuit (Olivier 08/09/2026 : « on facture du 27/08 au 04/09, un nouveau
+// groupe se crée pour la période 05/09 à … »). Absent = jusqu'à maintenant.
+export async function invoiceDossierGroups(input: { anyMissionId: string; missionIds: string[]; actorUserId: string | null; dryRun?: boolean; periodTo?: Record<string, string> }): Promise<DossierInvoiceResult> {
   const sb = createAdminClient()
   const d = await buildDossier(input.anyMissionId)
   if (!d) throw new Error('Dossier introuvable')
@@ -96,13 +101,23 @@ export async function invoiceDossierGroups(input: { anyMissionId: string; missio
       const m = rowById[leg.mission_id]
       if (leg.kind === 'gard') {
         const from = m.parked_at || m.received_at
-        const to   = m.parc_exit_at || nowIso
+        // Fin de période : sortie réelle, sinon la date choisie (minuit belge du lendemain), sinon maintenant.
+        const chosen = !m.parc_exit_at && input.periodTo?.[leg.mission_id] ? brusselsMidnightAfter(input.periodTo[leg.mission_id]) : null
+        if (chosen && (new Date(chosen).getTime() > Date.now() || new Date(chosen).getTime() <= new Date(from).getTime())) {
+          throw new Error(`${d.number}${leg.letter} : la date de fin de gardiennage doit être entre l'entrée (${fmtDay(from)}) et aujourd'hui`)
+        }
+        const to   = m.parc_exit_at || chosen || nowIso
+        // Jours facturables sur la période : nuits(entrée → fin) − jours gratuits du tarif
+        // (déduits de ce que le dossier a déjà retiré sur la période complète).
+        const rawAll  = nightsBetween(from, m.parc_exit_at || nowIso)
+        const freeDays = Math.max(0, rawAll - (leg.days || 0))
+        const days = chosen ? Math.max(0, nightsBetween(from, to) - freeDays) : (leg.days || 0)
         const lines: QuoteLine[] = []
         if (Number(m.storage_flat_htva) > 0 && !m.storage_waived) {
           lines.push({ kind: 'SERV-PARC', name: `Forfait gardiennage — zone ${m.parc_zone_key || '?'} du ${fmtDay(from)} au ${fmtDay(to)}`, qty: 1, price_unit: r2(Number(m.storage_flat_htva)) })
-        } else if ((leg.days || 0) > 0 && leg.amount_htva > 0) {
+        } else if (days > 0 && leg.amount_htva > 0 && (leg.days || 0) > 0) {
           const pu = r2(leg.amount_htva / (leg.days as number))
-          lines.push({ kind: 'SERV-PARC', name: `Gardiennage (${leg.regime}) — zone ${m.parc_zone_key || '?'} du ${fmtDay(from)} au ${fmtDay(to)} : ${leg.days} jour${(leg.days || 0) > 1 ? 's' : ''}`, qty: leg.days as number, price_unit: pu })
+          lines.push({ kind: 'SERV-PARC', name: `Gardiennage (${leg.regime}) — zone ${m.parc_zone_key || '?'} du ${fmtDay(from)} au ${fmtDay(new Date(new Date(to).getTime() - 1000).toISOString())} : ${days} jour${days > 1 ? 's' : ''}`, qty: days, price_unit: pu })
         } else {
           warnings.push(`${d.number}${leg.letter} : 0 jour facturable, groupe ignoré`); continue
         }
@@ -173,9 +188,10 @@ export async function invoiceDossierGroups(input: { anyMissionId: string; missio
       }).then(() => {}, () => {})
       // Gardiennage en cours : la période s'arrête ici, une nouvelle s'ouvre.
       if (p.leg.kind === 'gard' && !m.parc_exit_at) {
-        await sb.from('incoming_missions').update({ parc_exit_at: nowIso, parc_exit_reason: 'facturation', updated_at: nowIso }).eq('id', p.leg.mission_id)
+        const cutIso = p.period_to || nowIso   // fin choisie (minuit belge) ou maintenant
+        await sb.from('incoming_missions').update({ parc_exit_at: cutIso, parc_exit_reason: 'facturation', updated_at: nowIso }).eq('id', p.leg.mission_id)
         if (m.parc_origin_mission_id) {
-          const { error: rpcErr } = await sb.rpc('dossier_gardiennage_open', { p_mission_id: m.parc_origin_mission_id, p_from: nowIso })
+          const { error: rpcErr } = await sb.rpc('dossier_gardiennage_open', { p_mission_id: m.parc_origin_mission_id, p_from: cutIso })
           if (rpcErr) { console.error('[dossier/invoice] réouverture gardiennage KO:', rpcErr.message); warnings.push(`${d.number}${p.leg.letter} : période clôturée mais la suivante n'a pas pu s'ouvrir (${rpcErr.message})`) }
         }
       }
