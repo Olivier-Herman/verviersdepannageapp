@@ -104,9 +104,18 @@ export default function DossierGroups({ initial, fiches, shared, isSuperadmin, o
   const toggle = (l: string) => setOpen(p => { const n = new Set(p); n.has(l) ? n.delete(l) : n.add(l); return n })
   const toggleEmbed = (l: string) => setEmbed(p => { const n = new Set(p); n.has(l) ? n.delete(l) : n.add(l); return n })
 
+  // Client de facturation : mise à jour IMMÉDIATE de l'état du dossier après le
+  // PATCH (le bouton Facturer et la modale lisent `d`), puis recalcul en fond.
+  // Olivier 08/09/2026 : « qu'on ne doive pas faire de refresh pour que le
+  // bouton Facturer affiche les infos modifiées ».
+  const applyBilledTo = (ids: string[], c: { id: number | null; name: string | null }) => setD(prev => ({
+    ...prev,
+    billed_to: ids.includes(prev.root_id) ? { ...prev.billed_to, id: c.id, name: c.name } : prev.billed_to,
+    legs: prev.legs.map(l => ids.includes(l.mission_id) ? { ...l, billed_to_id: c.id, billed_to_name: c.name, billed_inherited: ids.includes(prev.root_id) || (c.id ?? null) === (prev.billed_to.id ?? null) } : l),
+  }))
   const [refining, setRefining] = useState(false)
   const refresh = async () => {
-    try { const j = await fetch(`/api/dossier/${d.root_id}?t=${Date.now()}`, { cache: 'no-store' }).then(r => r.json()); if (j?.dossier) setD(j.dossier) } catch {}
+    try { const r = await fetch(`/api/dossier/${d.root_id}?t=${Date.now()}`, { cache: 'no-store' }); const j = await r.json(); if (j?.dossier) setD(j.dossier); else console.warn('[dossier] refresh KO', r.status, j?.error) } catch (e) { console.warn('[dossier] refresh KO', e) }
   }
   // Ouverture immédiate avec les montants figés, puis recalcul des tarifs en
   // arrière-plan (moteur de prix + itinéraires) pour qui les voit.
@@ -184,7 +193,7 @@ export default function DossierGroups({ initial, fiches, shared, isSuperadmin, o
           </div>
           {canBill && <div className="md:text-right">
             <div className="flex md:justify-end items-center gap-2 flex-wrap">
-              {(() => { const rootLeg = d.legs.find(l => l.mission_id === d.root_id) || d.legs[0]; return rootLeg ? <BillingRow d={d} leg={rootLeg} onChanged={refresh} gmKey={shared.googleMapsKey} allLegs /> : null })()}
+              {(() => { const rootLeg = d.legs.find(l => l.mission_id === d.root_id) || d.legs[0]; return rootLeg ? <BillingRow d={d} leg={rootLeg} onChanged={refresh} gmKey={shared.googleMapsKey} allLegs onApplied={applyBilledTo} /> : null })()}
               <button disabled={!billable.length} onClick={() => setBilling(true)} title={billable.length ? 'Une facture Odoo par client, créée directement' : 'Rien à facturer'} className={`px-3 py-1.5 rounded-lg text-xs font-semibold bg-brand text-white ${billable.length ? 'hover:bg-brand-hover' : 'opacity-40 cursor-not-allowed'}`}>Facturer{billable.length ? ` (${billable.length})` : ''}</button>
             </div>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-x-4 gap-y-1 mt-2 text-[11px] text-ink-muted md:justify-items-end">
@@ -244,7 +253,7 @@ export default function DossierGroups({ initial, fiches, shared, isSuperadmin, o
         </div>
       ) : (
         <Group key={it.leg!.letter} d={d} leg={it.leg!} canBill={canBill} isOpen={open.has(it.leg!.letter)} onToggle={() => toggle(it.leg!.letter)}
-          embedOpen={embed.has(it.leg!.letter)} onToggleEmbed={() => toggleEmbed(it.leg!.letter)} fiche={fiches[it.leg!.mission_id]} shared={shared} onChanged={refresh} mobile={mobile} />
+          embedOpen={embed.has(it.leg!.letter)} onToggleEmbed={() => toggleEmbed(it.leg!.letter)} fiche={fiches[it.leg!.mission_id]} shared={shared} onChanged={refresh} mobile={mobile} onApplied={applyBilledTo} />
       ))}
 
       {!mobile && <p className="text-[11px] text-ink-faint px-1 pt-2">Les fiches Gardiennage sont créées automatiquement à la mise en parc et n'apparaissent que sur cet écran. « Facturer » crée directement les factures Odoo en brouillon, une par client.</p>}
@@ -255,8 +264,8 @@ export default function DossierGroups({ initial, fiches, shared, isSuperadmin, o
 }
 
 // ── Un groupe ─────────────────────────────────────────────────────────────
-function Group({ d, leg, canBill, isOpen, onToggle, embedOpen, onToggleEmbed, fiche, shared, onChanged, mobile = false }: {
-  d: Dossier; leg: DossierLeg; canBill: boolean; isOpen: boolean; onToggle: () => void; embedOpen: boolean; onToggleEmbed: () => void; fiche: any; shared: any; onChanged: () => void; mobile?: boolean
+function Group({ d, leg, canBill, isOpen, onToggle, embedOpen, onToggleEmbed, fiche, shared, onChanged, mobile = false, onApplied }: {
+  d: Dossier; leg: DossierLeg; canBill: boolean; isOpen: boolean; onToggle: () => void; embedOpen: boolean; onToggleEmbed: () => void; fiche: any; shared: any; onChanged: () => void; mobile?: boolean; onApplied?: (ids: string[], c: { id: number | null; name: string | null }) => void
 }) {
   const k = KIND[leg.kind]
   return (
@@ -342,7 +351,7 @@ function Group({ d, leg, canBill, isOpen, onToggle, embedOpen, onToggleEmbed, fi
               {leg.billing_remarks.map((r, i) => <p key={i}><span className="text-slate-300">📝 Remarque de facturation{r.author ? ' · ' + r.author : ''} : </span><span className="font-semibold whitespace-pre-line">{r.text}</span></p>)}
             </div>
           )}
-          {canBill && leg.kind !== 'out' && leg.channel !== 'parquet' && <BillingRow d={d} leg={leg} onChanged={onChanged} gmKey={shared.googleMapsKey} />}
+          {canBill && leg.kind !== 'out' && leg.channel !== 'parquet' && <BillingRow d={d} leg={leg} onChanged={onChanged} gmKey={shared.googleMapsKey} onApplied={onApplied} />}
           {canBill && leg.channel === 'parquet' && (
             <div className="bg-surface-2 border border-dashed rounded-xl px-3 py-2 text-xs text-ink-secondary flex flex-wrap items-center gap-2">
               <span>Circuit <b>Parquet</b> : réglé par état de frais (module Saisie, JustInvoice), pas par une facture Odoo de ce dossier.</span>
@@ -616,7 +625,7 @@ function EditableText({ value, placeholder, missionId, field, onSaved, mono, upp
 // allLegs : depuis l'en-tête du dossier, le client choisi s'applique à TOUS les
 // groupes d'un coup ; un groupe se corrige ensuite sur sa propre ligne
 // (Olivier 08/09/2026).
-function BillingRow({ d, leg, onChanged, gmKey, allLegs = false }: { d: Dossier; leg: DossierLeg; onChanged: () => void | Promise<void>; gmKey?: string; allLegs?: boolean }) {
+function BillingRow({ d, leg, onChanged, gmKey, allLegs = false, onApplied }: { d: Dossier; leg: DossierLeg; onChanged: () => void | Promise<void>; gmKey?: string; allLegs?: boolean; onApplied?: (ids: string[], c: { id: number | null; name: string | null }) => void }) {
   const [q, setQ] = useState('')
   const [results, setResults] = useState<{ id: number; name: string }[]>([])
   const [searching, setSearching] = useState(false)
@@ -662,6 +671,7 @@ function BillingRow({ d, leg, onChanged, gmKey, allLegs = false }: { d: Dossier;
       const bad = rs.find(r => !r.ok)
       if (bad) { const j = await bad.json().catch(() => ({})); throw new Error(j.error || `HTTP ${bad.status}`) }
       setLocal(c); setEditing(false); setQ(''); setResults([])
+      onApplied?.(targets, c)
       await onChanged()
     } catch (e: any) { setErr(String(e.message || e)) } finally { setBusy(false) }
   }
