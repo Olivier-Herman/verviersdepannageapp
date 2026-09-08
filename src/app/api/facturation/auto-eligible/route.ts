@@ -123,9 +123,12 @@ export async function GET(req: Request) {
         waiting++
       } else {
         // Mission sèche (pas d'enfant relivraison).
-        const { count: childCount } = await sb.from('incoming_missions')
-          .select('id', { count: 'exact', head: true }).eq('parent_mission_id', m.id).eq('dossier_leg', false)
-        if (childCount) {
+        const { data: kids } = await sb.from('incoming_missions').select('id, dossier_leg, parc_exit_at, status, loaded_at').eq('parent_mission_id', m.id)
+        const childCount = (kids || []).filter((k: any) => !k.dossier_leg).length
+        const enCours = (kids || []).some((k: any) => k.dossier_leg ? !k.parc_exit_at : (!k.loaded_at && !['cancelled', 'ignored', 'completed', 'to_invoice'].includes(String(k.status))))
+        if (enCours) {
+          reason = 'dossier en cours (véhicule au parc / relivraison)'   // même règle que le robot (D8)
+        } else if (childCount) {
           reason = 'combinée (relivraison liée)'
         } else {
           // Vrai tarif présent ?

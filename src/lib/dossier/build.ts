@@ -46,6 +46,7 @@ export interface DossierLeg {
   nothing_to_bill: string | null
   days:            number | null
   regime:          string | null
+  free_days?:      number          // jours offerts du tarif gardiennage (pour couper une période sans les recompter)
   // Adresse de relivraison : portée par la mise en parc (Olivier 07/09 : « c'est la
   // mise en parc qui contient les infos de relivraison ») — lue sur la racine.
   redelivery_address: string | null
@@ -491,8 +492,9 @@ async function buildDossierUncached(anyMissionId: string, light: boolean): Promi
       dossier_number: m.dossier_number || null, title, subtitle, status: m.status,
       // Gardiennage réglé sans facture (0 nuit facturable, sans frais, offert) : plus « à facturer » (Olivier 08/09/2026).
       status_label: (kind === 'gard' && nothing && !open && !m.invoice_number) ? (nothing.startsWith('aucune nuit') ? 'Rien à facturer · 0 nuit' : nothing.startsWith('sans frais') ? 'Sans frais' : 'Offert')
-        : (kind !== 'gard' && !open && !nothing && !amountUnknown && amount === 0 && !billedRefs.length && m.status === 'to_invoice') ? 'Rien à facturer · 0 €' : st.label,
-      status_tone: ((kind === 'gard' && nothing && !open && !m.invoice_number) || (kind !== 'gard' && !open && !nothing && !amountUnknown && amount === 0 && !billedRefs.length && m.status === 'to_invoice')) ? 'ok' : st.tone, started_at: started, ended_at: ended, open,
+        : (kind !== 'gard' && !open && !nothing && !amountUnknown && amount === 0 && !billedRefs.length && m.status === 'to_invoice') ? 'Rien à facturer · 0 €'
+        : (amountUnknown && billedRefs.length && !billedItems.length) ? 'Facture sans ligne · à vérifier' : st.label,
+      status_tone: ((kind === 'gard' && nothing && !open && !m.invoice_number) || (kind !== 'gard' && !open && !nothing && !amountUnknown && amount === 0 && !billedRefs.length && m.status === 'to_invoice')) ? 'ok' : (amountUnknown && billedRefs.length && !billedItems.length) ? 'warn' : st.tone, started_at: started, ended_at: ended, open,
       driver_name: m.assigned_to ? (nameById[m.assigned_to] || null) : null,
       billed_to_id: payer(m).id, billed_to_name: payer(m).name,
       billed_inherited: payer(m).id === payer(root).id,
@@ -500,8 +502,8 @@ async function buildDossierUncached(anyMissionId: string, light: boolean): Promi
       // calculé (ligne à 0 €) : il est réglé, on ne ressort pas un « reste à
       // facturer » quand le tarif arrive après coup (2GSE264, 08/09/2026).
       facts, amount_htva: amount, amount_note: note,
-      billed_htva: billedHtva || ((billedRefs.length && (!billedItems.length || (!!m.invoice_number && billedItems.every(it => !Number(it.amount_htva))))) ? amount : 0),
-      billed_refs: billedRefs, nothing_to_bill: nothing, days, regime: kind === 'gard' ? String(m.mission_type || 'autre') : null, redelivery_address: (kind === 'gard' ? root.redelivery_address : m.redelivery_address) || null, amount_unknown: amountUnknown || undefined,
+      billed_htva: billedHtva || ((billedRefs.length && (!billedItems.length || (!!m.invoice_number && billedItems.every(it => !Number(it.amount_htva)))) && !amountUnknown) ? amount : 0),   // D9 : un groupe sans tarif n'est jamais « facturé » par une facture sans ligne
+      billed_refs: billedRefs, nothing_to_bill: nothing, days, regime: kind === 'gard' ? String(m.mission_type || 'autre') : null, free_days: kind === 'gard' ? (dayPriceByRegime[String(m.mission_type || 'autre')]?.free || 0) : undefined, redelivery_address: (kind === 'gard' ? root.redelivery_address : m.redelivery_address) || null, amount_unknown: amountUnknown || undefined,
       // Olivier 07/09/2026 : « tout ce qui est modifiable doit l'être dans la vue 2 ».
       editable: kind === 'gard' ? undefined : {
         client_name: m.client_name || null, client_phone: m.client_phone || null, client_address: m.client_address || null,

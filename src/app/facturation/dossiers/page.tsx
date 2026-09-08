@@ -36,7 +36,8 @@ export default async function FacturationDossiersPage() {
   // Racines candidates : fiches à facturer + gardiennages terminés pas encore
   // facturés + fiches facturées récemment (onglet « Facturées »).
   const since30 = new Date(Date.now() - 30 * 86_400_000).toISOString()
-  const [{ data: toInv }, { data: legsDone }, { data: recent }] = await Promise.all([
+  const since7 = new Date(Date.now() - 7 * 86_400_000).toISOString()
+  const [{ data: toInv }, { data: legsDone }, { data: recent }, { data: legsOpen }] = await Promise.all([
     sb.from('incoming_missions').select('id, parent_mission_id, completed_at')
       .eq('status', 'to_invoice').eq('dossier_leg', false).is('archived_at', null)
       .not('external_id', 'like', 'PROCESSING_%').order('completed_at', { ascending: false }).limit(300),
@@ -45,11 +46,14 @@ export default async function FacturationDossiersPage() {
       .order('parc_exit_at', { ascending: false }).limit(200),
     sb.from('incoming_missions').select('id, parent_mission_id, invoiced_at')
       .eq('dossier_leg', false).gte('invoiced_at', since30).order('invoiced_at', { ascending: false }).limit(120),
+    // Gardiennages ouverts depuis 7 nuits ou plus : à ne pas oublier (onglet En cours, facturation partielle).
+    sb.from('incoming_missions').select('id, parent_mission_id, parked_at')
+      .eq('dossier_leg', true).is('parc_exit_at', null).lte('parked_at', since7).order('parked_at', { ascending: true }).limit(60),
   ])
   const rootOf = (m: any) => m.parent_mission_id || m.id
   const seen = new Set<string>()
   const roots: string[] = []
-  for (const m of [...(toInv || []), ...(legsDone || []), ...(recent || [])]) {
+  for (const m of [...(toInv || []), ...(legsDone || []), ...(recent || []), ...(legsOpen || [])]) {
     const r = rootOf(m); if (seen.has(r)) continue; seen.add(r); roots.push(r)
     if (roots.length >= MAX_DOSSIERS) break
   }

@@ -45,7 +45,7 @@ const isCircuitLegs = (d: Dossier) => d.legs.some(l => !isOdoo(l) && !isLegBille
 const hasUnknown = (d: Dossier) => d.legs.some(l => l.amount_unknown && !isLegBilled(l))
 // Un groupe au montant INCONNU (tarif introuvable, destination non géocodée…)
 // n'est pas « facturé » : il reste à facturer, avec « à calculer » affiché.
-const isDone = (d: Dossier) => d.legs.every(l => isLegBilled(l) || !!l.nothing_to_bill || (l.amount_htva === 0 && !l.amount_unknown))
+const isDone = (d: Dossier) => !d.state.open && d.legs.every(l => isLegBilled(l) || !!l.nothing_to_bill || (l.amount_htva === 0 && !l.amount_unknown))
 const rest   = (d: Dossier) => d.totals.remaining
 
 type ComexInfo = { verdict: string | null; montant: number | null; accepted_at: string | null; dossier: string | null }

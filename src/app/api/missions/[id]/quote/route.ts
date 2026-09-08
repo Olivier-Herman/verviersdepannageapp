@@ -270,6 +270,13 @@ export async function POST(req: Request, { params }: { params: { id: string } })
         fleetVehicleId = await findFleetVehicleByPlate(mission.vehicle_plate)
       }
       const sections: QuoteSection[] = [{ lines }]
+      // D8 (audit 08/09/2026) : le parc se facture par les groupes Gardiennage du
+      // dossier ; la facture du remorquage (robot ou module classique) ne le
+      // recompte pas.
+      {
+        const { count: nLegs } = await sb.from('incoming_missions').select('id', { count: 'exact', head: true }).eq('parent_mission_id', mission.id).eq('dossier_leg', true)
+        if ((nLegs || 0) > 0) lines = lines.filter(l => l.kind !== 'SERV-PARC')
+      }
       const commonInput = {
         partner_id:       mission.billed_to_id as number,
         origin:           missionRef,

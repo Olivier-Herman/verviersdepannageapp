@@ -65,6 +65,23 @@ export async function actionLines(mission: any, draftLines: any[] | undefined, d
     }
   }
   if (dropParc) lines = lines.filter(l => l.kind !== 'SERV-PARC')
+  // D2 (audit 08/09/2026) : ce qu'une facture partielle du module classique a
+  // déjà réglé ne repart pas. Postes ponctuels facturés → retirés ; jours de
+  // parc facturés → déduits de la quantité (seulement si le dossier n'a pas
+  // ses groupes gardiennage, sinon le parc est géré par eux).
+  if (mission.id) {
+    try {
+      const sb = createAdminClient()
+      const { data: billed } = await sb.from('mission_billed_items').select('kind, qty, amount_htva, dossier_letter').eq('mission_id', mission.id)
+      const items = (billed || []).filter((b: any) => !b.dossier_letter)   // les postes issus du dossier couvrent déjà tout le groupe
+      if (items.length) {
+        const oneOff = new Set(items.filter((b: any) => b.kind !== 'SERV-PARC' && Number(b.amount_htva) > 0).map((b: any) => b.kind))
+        lines = lines.filter(l => !oneOff.has(l.kind))
+        const parcDays = items.filter((b: any) => b.kind === 'SERV-PARC').reduce((s: number, b: any) => s + Number(b.qty || 0), 0)
+        if (parcDays > 0) lines = lines.map(l => l.kind === 'SERV-PARC' ? { ...l, qty: Math.max(0, l.qty - parcDays), name: `${l.name} (dont ${parcDays} déjà facturés)` } : l).filter(l => l.qty > 0)
+      }
+    } catch {}
+  }
   // Avances de fonds liées à la fiche : une ligne SERV-DIV chacune (même règle
   // que la modale Facturer). Le devis groupé les oubliait. Olivier 07/09/2026.
   if (mission.id && !lines.some(l => /^Avance de fonds/i.test(l.name))) {

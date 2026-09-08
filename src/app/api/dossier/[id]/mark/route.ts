@@ -64,7 +64,8 @@ export async function POST(req: Request, { params }: { params: { id: string } })
       if (r.dossier_leg) {
         await sb.from('incoming_missions').update({ invoice_number: number, invoice_odoo_id: resolved?.id ?? null, invoice_url: resolved?.url ?? null, invoiced_at: now, invoiced_by: user.id, invoice_method: 'manual', updated_at: now }).eq('id', l.mission_id)
       } else {
-        await sb.from('incoming_missions').update({ status: 'completed', invoice_method: 'manual', invoice_number: number, invoice_odoo_id: resolved?.id ?? null, invoice_url: resolved?.url ?? null, invoiced_at: now, invoiced_by: user.id, completed_at: r.status === 'completed' ? undefined : now, updated_at: now }).eq('id', l.mission_id)
+        // D5 (audit 08/09/2026) : véhicule encore au parc → champs de facturation seulement, la fiche reste « parked » et le gardiennage continue ; la sortie passe par Restituer / Clôturer.
+        await sb.from('incoming_missions').update({ ...(stillParked ? {} : { status: 'completed', completed_at: r.status === 'completed' ? undefined : now }), invoice_method: 'manual', invoice_number: number, invoice_odoo_id: resolved?.id ?? null, invoice_url: resolved?.url ?? null, invoiced_at: now, invoiced_by: user.id, updated_at: now }).eq('id', l.mission_id)
         if (!stillParked) { try { await releaseParcAndShift(sb, l.mission_id) } catch {} }
       }
       await sb.from('mission_billed_items').insert({
@@ -77,7 +78,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
       if (r.dossier_leg) {
         await sb.from('incoming_missions').update({ invoice_method: 'auto', invoiced_at: now, invoiced_by: user.id, updated_at: now }).eq('id', l.mission_id)
       } else {
-        await sb.from('incoming_missions').update({ status: 'completed', invoice_method: 'auto', invoiced_at: now, invoiced_by: user.id, completed_at: r.status === 'completed' ? undefined : now, updated_at: now }).eq('id', l.mission_id)
+        await sb.from('incoming_missions').update({ ...(stillParked ? {} : { status: 'completed', completed_at: r.status === 'completed' ? undefined : now }), invoice_method: 'auto', invoiced_at: now, invoiced_by: user.id, updated_at: now }).eq('id', l.mission_id)   // D5
         if (!stillParked) { try { await releaseParcAndShift(sb, l.mission_id) } catch {} }
       }
       // Pas de ligne mission_billed_items : comme le cron COMEX, invoice_method='auto' + invoiced_at suffit (le dossier affiche « auto-facturation »).
@@ -86,7 +87,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
       if (r.dossier_leg) {
         await sb.from('incoming_missions').update({ storage_waived: true, no_charge_at: now, no_charge_reason: reason, no_charge_by: user.id, updated_at: now }).eq('id', l.mission_id)
       } else {
-        await sb.from('incoming_missions').update({ status: 'completed', no_charge_at: now, no_charge_reason: reason, no_charge_by: user.id, completed_at: r.status === 'completed' ? undefined : now, updated_at: now }).eq('id', l.mission_id)
+        await sb.from('incoming_missions').update({ ...(stillParked ? {} : { status: 'completed', completed_at: r.status === 'completed' ? undefined : now }), no_charge_at: now, no_charge_reason: reason, no_charge_by: user.id, updated_at: now }).eq('id', l.mission_id)   // D5
         if (!stillParked) { try { await releaseParcAndShift(sb, l.mission_id) } catch {} }
       }
       await sb.from('mission_logs').insert({ mission_id: l.mission_id, actor_id: user.id, action: 'no_charge', notes: `Intervention sans frais : ${reason} (dossier ${d.ref}, groupe ${l.letter})`, metadata: { reason, dossier_letter: l.letter } })

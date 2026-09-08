@@ -51,6 +51,20 @@ export async function invoiceDossierGroups(input: { anyMissionId: string; missio
   const sb = createAdminClient()
   const d = await buildDossier(input.anyMissionId)
   if (!d) throw new Error('Dossier introuvable')
+  // D7 : un seul « Facturer » à la fois par dossier (double clic, deux utilisateurs).
+  if (!input.dryRun) {
+    const { data: got, error: lockErr } = await sb.rpc('dossier_lock_acquire', { p_root: d.root_id, p_by: input.actorUserId, p_ttl_seconds: 90 })
+    if (lockErr) console.warn('[dossier/invoice] verrou indisponible :', lockErr.message)
+    else if (got === false) throw new Error('Une facturation est déjà en cours sur ce dossier (autre onglet ou autre utilisateur) : attends quelques secondes puis recharge.')
+  }
+  try {
+    return await invoiceDossierGroupsLocked(sb, d, input)
+  } finally {
+    if (!input.dryRun) await sb.rpc('dossier_lock_release', { p_root: d.root_id }).then(() => {}, () => {})
+  }
+}
+
+async function invoiceDossierGroupsLocked(sb: any, d: Dossier, input: { anyMissionId: string; missionIds: string[]; actorUserId: string | null; dryRun?: boolean; periodTo?: Record<string, string> }): Promise<DossierInvoiceResult> {
 
   const wanted = new Set(input.missionIds)
   const legs = d.legs.filter(l => wanted.has(l.mission_id))
@@ -60,18 +74,17 @@ export async function invoiceDossierGroups(input: { anyMissionId: string; missio
 
   const warnings: string[] = []
   const billable = legs.filter(l => {
-    if (l.nothing_to_bill) { warnings.push(`${d.number}${l.letter} : rien à facturer (${l.nothing_to_bill})`); return false }
+    if (l.nothing_to_bill) { warnings.push(`${d.number ?? d.ref}${l.letter} : rien à facturer (${l.nothing_to_bill})`); return false }
+    // D9 : jamais de facture sans ligne pour un groupe dont le tarif n'est pas calculable.
+    if (l.amount_unknown) { warnings.push(`${d.number ?? d.ref}${l.letter} : tarif non calculable (${l.amount_note || 'à vérifier sur la fiche'}) — groupe non facturé`); return false }
+    // Parquet : état de frais, jamais Odoo — on écarte ce groupe sans bloquer les autres clients.
+    if ((l.channel || 'odoo') === 'parquet' || /parquet|frais de justice|fdj\b/i.test(String(l.billed_to_name || ''))) { warnings.push(`${d.number ?? d.ref}${l.letter} : Parquet — passe par l'état de frais du module Saisie`); return false }
     if (l.billed_refs.length && l.billed_htva >= l.amount_htva - 0.01) { warnings.push(`${d.number}${l.letter} : déjà facturé (${l.billed_refs.join(', ')})`); return false }
     return true
   })
   if (!billable.length) throw new Error('Rien à facturer dans la sélection')
   const noClient = billable.filter(l => !l.billed_to_id)
   if (noClient.length) throw new Error(`Client de facturation à définir sur ${noClient.map(l => `${d.number}${l.letter}`).join(', ')}`)
-  // Le Parquet (frais de justice) ne reçoit pas de facture Odoo : c'est un état
-  // de frais bimensuel via JustInvoice / Peppol (module Saisie). On refuse ici
-  // plutôt que de créer une facture qui ne partira jamais.
-  const parquet = billable.filter(l => /parquet|frais de justice|fdj\b/i.test(String(l.billed_to_name || '')))
-  if (parquet.length) throw new Error(`${parquet.map(l => `${d.number}${l.letter}`).join(', ')} : client Parquet — passe par l'état de frais du module Saisie, pas par une facture Odoo`)
 
   // Lignes de la fiche (pour l'estimation) + brouillons persistants.
   const ids = billable.map(l => l.mission_id)
@@ -113,8 +126,8 @@ export async function invoiceDossierGroups(input: { anyMissionId: string; missio
         const to   = m.parc_exit_at || chosen || nowIso
         // Jours facturables sur la période : nuits(entrée → fin) − jours gratuits du tarif
         // (déduits de ce que le dossier a déjà retiré sur la période complète).
-        const rawAll  = nightsBetween(from, m.parc_exit_at || nowIso)
-        const freeDays = Math.max(0, rawAll - (leg.days || 0))
+        // Jours gratuits = ceux du tarif (leg.free_days), pas une différence qui se trompe quand la période est bornée par le Domaine.
+        const freeDays = leg.free_days ?? Math.max(0, nightsBetween(from, m.parc_exit_at || nowIso) - (leg.days || 0))
         const days = chosen ? Math.max(0, nightsBetween(from, to) - freeDays) : (leg.days || 0)
         const lines: QuoteLine[] = []
         if (Number(m.storage_flat_htva) > 0 && !m.storage_waived) {
@@ -214,7 +227,9 @@ export async function invoiceDossierGroups(input: { anyMissionId: string; missio
       if (p.leg.kind === 'gard' && !m.parc_exit_at) {
         const cutIso = p.period_to || nowIso   // fin choisie (minuit belge) ou maintenant
         await sb.from('incoming_missions').update({ parc_exit_at: cutIso, parc_exit_reason: 'facturation', updated_at: nowIso }).eq('id', p.leg.mission_id)
-        if (m.parc_origin_mission_id) {
+        // On ne rouvre une période que si le véhicule est encore au parc (la RPC le vérifie aussi).
+        const { data: origin } = m.parc_origin_mission_id ? await sb.from('incoming_missions').select('status').eq('id', m.parc_origin_mission_id).maybeSingle() : { data: null }
+        if (m.parc_origin_mission_id && origin?.status === 'parked') {
           const { error: rpcErr } = await sb.rpc('dossier_gardiennage_open', { p_mission_id: m.parc_origin_mission_id, p_from: cutIso })
           if (rpcErr) { console.error('[dossier/invoice] réouverture gardiennage KO:', rpcErr.message); warnings.push(`${d.number}${p.leg.letter} : période clôturée mais la suivante n'a pas pu s'ouvrir (${rpcErr.message})`) }
         }
