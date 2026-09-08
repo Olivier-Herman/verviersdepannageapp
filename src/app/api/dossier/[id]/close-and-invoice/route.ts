@@ -13,7 +13,7 @@ import { getServerSession }     from 'next-auth'
 import { authOptions }          from '@/lib/auth'
 import { createAdminClient }    from '@/lib/supabase'
 import { isPreviewOn }          from '@/lib/feature-flags'
-import { buildDossier }         from '@/lib/dossier/build'
+import { buildDossier, invalidateDossierCache }         from '@/lib/dossier/build'
 import { invoiceDossierGroups } from '@/lib/dossier/invoice'
 import { exitParcNow }          from '@/lib/parc/exit-parc'
 
@@ -53,6 +53,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     const ids = Array.from(new Set([...wanted, ...pickable.filter(l => l.kind === 'gard' || wanted.length === 0).map(l => l.mission_id)]))
     if (!ids.length) return NextResponse.json({ ok: true, closed: true, invoices: [], warnings: ['Dossier clôturé, mais rien à facturer (tout est déjà facturé ou sans frais).'] })
     const result = await invoiceDossierGroups({ anyMissionId: root.id, missionIds: ids, actorUserId: user.id || null })
+    invalidateDossierCache()   // la liste (cache 90 s) doit refléter la facture
     return NextResponse.json({ ok: true, closed: true, ...result })
   } catch (e: any) {
     const msg = String(e?.message || e)

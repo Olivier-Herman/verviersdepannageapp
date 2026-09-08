@@ -102,9 +102,13 @@ export async function invoiceDossierGroups(input: { anyMissionId: string; missio
       if (leg.kind === 'gard') {
         const from = m.parked_at || m.received_at
         // Fin de période : sortie réelle, sinon la date choisie (minuit belge du lendemain), sinon maintenant.
-        const chosen = !m.parc_exit_at && input.periodTo?.[leg.mission_id] ? brusselsMidnightAfter(input.periodTo[leg.mission_id]) : null
-        if (chosen && (new Date(chosen).getTime() > Date.now() || new Date(chosen).getTime() <= new Date(from).getTime())) {
-          throw new Error(`${d.number}${leg.letter} : la date de fin de gardiennage doit être entre l'entrée (${fmtDay(from)}) et aujourd'hui`)
+        // « jusqu'au JJ inclus » = minuit suivant JJ ; si JJ est aujourd'hui, la nuit n'est pas
+        // encore passée → on coupe MAINTENANT (audit 08/09 : la date du jour faisait échouer).
+        let chosen: string | null = null
+        if (!m.parc_exit_at && input.periodTo?.[leg.mission_id]) {
+          const midnight = brusselsMidnightAfter(input.periodTo[leg.mission_id])
+          chosen = new Date(midnight).getTime() > Date.now() ? nowIso : midnight
+          if (new Date(chosen).getTime() <= new Date(from).getTime()) throw new Error(`${d.number ?? d.ref}${leg.letter} : la date de fin de gardiennage doit être après l'entrée (${fmtDay(from)})`)
         }
         const to   = m.parc_exit_at || chosen || nowIso
         // Jours facturables sur la période : nuits(entrée → fin) − jours gratuits du tarif
@@ -135,7 +139,7 @@ export async function invoiceDossierGroups(input: { anyMissionId: string; missio
     // 08/09/2026 : « inclure la ligne gardiennage sur la facture à 0 »).
     if (perLeg.length) {
       for (const z of d.legs) {
-        if (z.kind === 'out' || z.open || Number(z.billed_to_id) !== clientId || z.billed_refs.length || perLeg.some(p => p.leg.mission_id === z.mission_id)) continue
+        if (z.kind === 'out' || z.open || (z.channel || 'odoo') !== 'odoo' || Number(z.billed_to_id) !== clientId || z.billed_refs.length || perLeg.some(p => p.leg.mission_id === z.mission_id)) continue
         const zeroGard = z.kind === 'gard' && /aucune nuit/i.test(String(z.nothing_to_bill || ''))
         const zeroFiche = z.kind !== 'gard' && !z.nothing_to_bill && !z.amount_unknown && z.amount_htva === 0   // ex. relivraison avortée, 0 km
         if (!zeroGard && !zeroFiche) continue

@@ -1,3 +1,4 @@
+import { invalidateDossierCache } from '@/lib/dossier/build'
 // src/app/api/dossier/[id]/invoice/route.ts
 //
 // POST { mission_ids: string[] } — facture les groupes cochés du dossier :
@@ -33,6 +34,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     const periodTo: Record<string, string> = {}
     if (body.period_to && typeof body.period_to === 'object') for (const [k, v] of Object.entries(body.period_to)) if (typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v)) periodTo[k] = v
     const result = await invoiceDossierGroups({ anyMissionId: params.id, missionIds, actorUserId: user.id || null, dryRun: body.dry_run === true, periodTo })
+    invalidateDossierCache()   // la liste (cache 90 s) doit refléter la facture
     return NextResponse.json({ ok: true, ...result })
   } catch (e: any) {
     const msg = String(e?.message || e)

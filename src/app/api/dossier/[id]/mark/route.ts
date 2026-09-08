@@ -16,7 +16,7 @@ import { NextResponse }        from 'next/server'
 import { getServerSession }    from 'next-auth'
 import { authOptions }         from '@/lib/auth'
 import { createAdminClient }   from '@/lib/supabase'
-import { buildDossier }        from '@/lib/dossier/build'
+import { buildDossier, invalidateDossierCache } from '@/lib/dossier/build'
 import { releaseParcAndShift } from '@/lib/parc/release'
 
 export const dynamic = 'force-dynamic'
@@ -95,5 +95,6 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   }
   await sb.from('mission_logs').insert({ mission_id: d.root_id, actor_id: user.id, action: action === 'no_charge' ? 'no_charge' : 'invoiced',
     notes: action === 'already_billed' ? `Dossier ${d.ref} : groupes ${done.join(' ')} déjà facturés sur ${number}` : action === 'auto_billed' ? `Dossier ${d.ref} : groupes ${done.join(' ')} autofacturés (validé COMEX)` : `Dossier ${d.ref} : groupes ${done.join(' ')} sans frais — ${reason}` }).then(() => {}, () => {})
+  invalidateDossierCache()
   return NextResponse.json({ ok: true, covers: done, invoice: resolved })
 }

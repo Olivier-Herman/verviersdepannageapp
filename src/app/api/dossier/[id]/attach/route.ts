@@ -27,7 +27,8 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   const sb = createAdminClient()
   const { data: any0 } = await sb.from('incoming_missions').select('id, parent_mission_id, mission_number, vehicle_plate').eq('id', params.id).maybeSingle()
   if (!any0) return NextResponse.json({ error: 'Dossier introuvable' }, { status: 404 })
-  const rootId = (any0 as any).parent_mission_id || (any0 as any).id
+  let rootId = (any0 as any).parent_mission_id || (any0 as any).id
+  for (let hop = 0; hop < 6; hop++) { const { data: p } = await sb.from('incoming_missions').select('id, parent_mission_id').eq('id', rootId).maybeSingle(); if (!p?.parent_mission_id) break; rootId = p.parent_mission_id }   // REL de REL → sommet de la chaîne
   const { data: root } = await sb.from('incoming_missions').select('id, mission_number, vehicle_plate').eq('id', rootId).maybeSingle()
   const { data: m } = await sb.from('incoming_missions').select('id, status, parent_mission_id, dossier_leg, vehicle_plate, mission_number, source').eq('id', missionId).maybeSingle()
   if (!m || !root) return NextResponse.json({ error: 'Fiche introuvable' }, { status: 404 })
