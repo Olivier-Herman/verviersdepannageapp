@@ -190,7 +190,7 @@ export default function DossiersClient({ initial, autoById, comexById = {}, isSu
       {isSuperadmin && (
         <div className="bg-amber-500/10 border border-amber-500/30 rounded-2xl px-4 py-2 text-xs text-amber-700 dark:text-amber-300 font-semibold flex flex-wrap justify-between gap-2">
           <span>🧪 Preview « Facturation par dossier » — visible par toi seul. Le module Facturation actuel n'est pas modifié.</span>
-          <Link href="/facturation" className="underline">← Facturation actuelle</Link>
+          <Link href="/facturation?classic=1" className="underline">← Facturation classique</Link>
         </div>
       )}
 

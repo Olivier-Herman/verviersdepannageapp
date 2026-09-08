@@ -333,6 +333,14 @@ export async function buildDossier(anyMissionId: string, opts: { light?: boolean
   rootEst = pre.get(root.id)?.est ?? null
 
   // ── Construction des groupes ─────────────────────────────────────────────
+  // Siabis NON couvert (source police_snc) : Touring est posé par défaut sur la
+  // fiche mais c'est le client sur place qui paie ; on ne montre donc pas
+  // Touring comme client à facturer (Olivier 08/09/2026, #10133979). Le couvert
+  // (sia_couvert) garde Touring.
+  const payer = (r: any): { id: number | null; name: string | null } =>
+    String(root.source || '') === 'police_snc' && /touring/i.test(String(r?.billed_to_name || ''))
+      ? { id: null, name: null }
+      : { id: r?.billed_to_id ?? null, name: r?.billed_to_name ?? null }
   const legs: DossierLeg[] = []
   for (const m of legRows) {
     const kind = kindOf(m)
@@ -442,8 +450,8 @@ export async function buildDossier(anyMissionId: string, opts: { light?: boolean
       status_label: (kind === 'gard' && nothing && !open && !m.invoice_number) ? (nothing.startsWith('aucune nuit') ? 'Rien à facturer · 0 nuit' : nothing.startsWith('sans frais') ? 'Sans frais' : 'Offert') : st.label,
       status_tone: (kind === 'gard' && nothing && !open && !m.invoice_number) ? 'ok' : st.tone, started_at: started, ended_at: ended, open,
       driver_name: m.assigned_to ? (nameById[m.assigned_to] || null) : null,
-      billed_to_id: m.billed_to_id ?? null, billed_to_name: m.billed_to_name ?? null,
-      billed_inherited: (m.billed_to_id ?? null) === (root.billed_to_id ?? null),
+      billed_to_id: payer(m).id, billed_to_name: payer(m).name,
+      billed_inherited: payer(m).id === payer(root).id,
       facts, amount_htva: amount, amount_note: note, billed_htva: billedHtva || (billedRefs.length && !billedItems.length ? amount : 0),
       billed_refs: billedRefs, nothing_to_bill: nothing, days, regime: kind === 'gard' ? String(m.mission_type || 'autre') : null, redelivery_address: (kind === 'gard' ? root.redelivery_address : m.redelivery_address) || null, amount_unknown: amountUnknown || undefined,
       // Olivier 07/09/2026 : « tout ce qui est modifiable doit l'être dans la vue 2 ».
@@ -651,7 +659,7 @@ export async function buildDossier(anyMissionId: string, opts: { light?: boolean
     source: root.source, source_label: sourceLabel(root.source),
     vehicle: { plate: root.vehicle_plate, brand: root.vehicle_brand, model: root.vehicle_model, vin: root.vehicle_vin },
     client: { name: root.client_name, phone: root.client_phone },
-    billed_to: { id: root.billed_to_id ?? null, name: root.billed_to_name ?? null },
+    billed_to: payer(root),
     received_at: root.received_at,
     state, legs, events, light: light || undefined,
     parquet,
