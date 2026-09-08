@@ -15,13 +15,34 @@
 
 export type NavApp = 'gmaps' | 'waze' | 'apple'
 
+/**
+ * Adresse texte lisible par une app de navigation (Olivier 08/09/2026, mission
+ * de Franck : « Rue Chapuis 4, VERVIERS, 4800, BEL » → Waze ne trouvait rien).
+ * On retire le code pays (BEL / BE), on remet « code postal ville » dans l'ordre
+ * belge et on termine par « Belgique ».
+ */
+export function cleanNavAddress(addr: string | null | undefined): string {
+  let a = String(addr || '').replace(/\s+/g, ' ').trim()
+  if (!a) return ''
+  a = a.replace(/,?\s*\b(BEL|BE|Belgium|Belgique|België)\b\.?(?=\s*(,|$))/gi, '').replace(/,\s*,/g, ',').trim()
+  // La fiche chauffeur ajoute la ville en fin d'adresse : on ne la garde qu'une fois.
+  const segs = a.split(',').map(s => s.trim()).filter(Boolean)
+  if (segs.length > 1 && segs.slice(0, -1).some(s => s.toLowerCase().includes(segs[segs.length - 1].toLowerCase()))) segs.pop()
+  a = segs.join(', ')
+  // « VERVIERS, 4800 » → « 4800 VERVIERS »
+  a = a.replace(/,\s*([^,]+?)\s*,\s*(\d{4})\s*$/, (_m, city, zip) => `, ${zip} ${String(city).trim()}`)
+  a = a.replace(/,\s*$/, '')
+  return `${a}, Belgique`
+}
+
 /** URL https historique (iOS / web / ancien APK). */
 export function navHttpsUrl(app: NavApp, lat?: number | null, lng?: number | null, addr?: string | null): string | null {
-  const q = (lat != null && lng != null)
-    ? `${lat},${lng}`
-    : (addr ? encodeURIComponent(addr) : '')
+  const hasCoord = lat != null && lng != null
+  const q = hasCoord ? `${lat},${lng}` : (addr ? encodeURIComponent(cleanNavAddress(addr)) : '')
   if (!q) return null
-  if (app === 'waze')  return `https://waze.com/ul?ll=${q}&navigate=yes`
+  // Waze : `ll=` n'accepte QUE des coordonnées ; une adresse texte passe par `q=`
+  // (avant, le texte partait dans ll= → « aucune correspondance », copier-coller obligé).
+  if (app === 'waze')  return hasCoord ? `https://waze.com/ul?ll=${q}&navigate=yes` : `https://waze.com/ul?q=${q}&navigate=yes`
   if (app === 'apple') return `https://maps.apple.com/?daddr=${q}&dirflg=d`
   return `https://www.google.com/maps/dir/?api=1&destination=${q}`
 }
@@ -39,10 +60,10 @@ export function openNavigation(app: NavApp, lat?: number | null, lng?: number | 
     if (app === 'waze') {
       scheme = hasCoord
         ? `waze://?ll=${lat},${lng}&navigate=yes`
-        : `waze://?q=${encodeURIComponent(addr || '')}&navigate=yes`
+        : `waze://?q=${encodeURIComponent(cleanNavAddress(addr))}&navigate=yes`
     } else {
       // gmaps (et apple → gmaps sur Android) : navigation turn-by-turn.
-      scheme = `google.navigation:q=${hasCoord ? `${lat},${lng}` : encodeURIComponent(addr || '')}`
+      scheme = `google.navigation:q=${hasCoord ? `${lat},${lng}` : encodeURIComponent(cleanNavAddress(addr))}`
     }
     window.location.href = scheme
     return

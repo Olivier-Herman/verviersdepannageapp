@@ -18,7 +18,7 @@ import { KEY_LOCATIONS } from '@/lib/key-location'
 import { KeyTag } from '@/components/missions/KeyInfoCard'
 import { TtsButton } from '@/components/audio/TtsButton'
 import { openNavigation } from '@/lib/open-navigation'
-import AddressField from '@/components/AddressField'
+import AddressField, { verifyAddressViaPlaces } from '@/components/AddressField'
 import { T }    from '@/lib/i18n/T'
 import { useT } from '@/lib/i18n/I18nProvider'
 import TouringCloseModal from '@/components/touring/TouringCloseModal'
@@ -606,6 +606,27 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
   const [loading, setLoading]   = useState(false)
   const [err, setErr]           = useState('')
   const [navApp, setNavApp]     = useState<NavApp>(initNav || 'gmaps')
+  // Olivier 08/09/2026 (mission de Franck) : une fiche sans coordonnées (Kaze en
+  // donne une fois sur deux) envoyait un texte à Waze, qui ne trouvait rien. On
+  // géocode dans le navigateur juste avant d'ouvrir la navigation, on garde les
+  // coordonnées sur la fiche, et l'app de navigation reçoit un point précis.
+  const navTo = async (app: NavApp, lat: number | null | undefined, lng: number | null | undefined, addr: string | null | undefined, fieldRaw?: string) => {
+    const field = fieldRaw === 'incident' || fieldRaw === 'destination' || fieldRaw === 'redelivery' ? fieldRaw : undefined   // stops : pas de colonne à persister
+    if ((lat == null || lng == null) && addr && process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY) {
+      try {
+        const r = await Promise.race([verifyAddressViaPlaces(addr, process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY), new Promise<null>(res => setTimeout(() => res(null), 4000))])
+        if (r) {
+          lat = r.lat; lng = r.lng
+          if (field) {
+            const body = { [`${field}_lat`]: r.lat, [`${field}_lng`]: r.lng }
+            fetch(`/api/missions/${M.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }).catch(() => {})
+            setM(m => ({ ...m, ...body } as any))
+          }
+        }
+      } catch { /* on ouvre avec le texte nettoyé */ }
+    }
+    openNavigation(app, lat, lng, addr)
+  }
   const [showNav, setShowNav]   = useState(false)
   const [showVeh, setShowVeh]   = useState(false)
   const [showGrid, setShowGrid] = useState(false)
@@ -5291,7 +5312,7 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
       {addrModal && (
         <AddrActionModal
           title={addrModal.title} address={addrModal.address}
-          onNavigate={() => { openNavigation(navApp, addrModal.lat, addrModal.lng, addrModal.address); setAddrModal(null) }}
+          onNavigate={() => { navTo(navApp, addrModal.lat, addrModal.lng, addrModal.address, addrModal.field); setAddrModal(null) }}
           onModify={addrModal.field ? () => {
             const f = addrModal.field!
             if (f.startsWith('stop:')) {
@@ -5316,7 +5337,7 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
       {showNav && <NavModal onPick={async app => {
         setNavApp(app); setShowNav(false)
         await fetch('/api/users/nav-preference', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ nav_app: app }) })
-        openNavigation(app, M.incident_lat, M.incident_lng, M.incident_address)
+        navTo(app, M.incident_lat, M.incident_lng, M.incident_address, 'incident')
         api('on_way')
       }} />}
 
