@@ -53,6 +53,16 @@ export async function actionLines(mission: any, draftLines: any[] | undefined, d
     const est = await estimateMissionPrice(mission)
     if (!est.ok) return { lines: [], has_tariff: false, reason: est.reason }
     lines = buildLinesFromEstimate(est, mission)
+    // Tarif trouvé mais rien à facturer : on explique POURQUOI plutôt que
+    // « tarif introuvable » (2ERT632, 08/09/2026 : relivraison livrée à
+    // l'adresse du parc → 0 km → 0 €).
+    if (!lines.length) {
+      const sameAddr = mission.incident_address && mission.destination_address && String(mission.incident_address).trim().toLowerCase() === String(mission.destination_address).trim().toLowerCase()
+      const reason = Number(est.km_charged || 0) === 0 && /reliv/i.test(String(mission.mission_type || ''))
+        ? `0 km : l'adresse de livraison${sameAddr ? ' est celle du départ (le parc)' : ' n\u2019est pas calculable'} — corrige « Livrer à » sur la fiche`
+        : `montant calculé à 0 € (${est.breakdown?.[0]?.note || 'forfait 0, aucun km'})`
+      return { lines: [], has_tariff: false, reason }
+    }
   }
   if (dropParc) lines = lines.filter(l => l.kind !== 'SERV-PARC')
   // Avances de fonds liées à la fiche : une ligne SERV-DIV chacune (même règle
