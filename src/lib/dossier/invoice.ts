@@ -130,6 +130,22 @@ export async function invoiceDossierGroups(input: { anyMissionId: string; missio
         perLeg.push({ leg, lines, period_from: null, period_to: null })
       }
     }
+    // Gardiennage à 0 nuit facturable, même client, pas encore couvert : ligne à
+    // 0 € sur la facture pour qu'il soit « facturé » avec le dossier (Olivier
+    // 08/09/2026 : « inclure la ligne gardiennage sur la facture à 0 »).
+    if (perLeg.length) {
+      for (const z of d.legs) {
+        if (z.kind !== 'gard' || z.open || Number(z.billed_to_id) !== clientId || z.billed_refs.length || perLeg.some(p => p.leg.mission_id === z.mission_id)) continue
+        if (!/aucune nuit/i.test(String(z.nothing_to_bill || ''))) continue
+        const zr = rowById[z.mission_id] || (await sb.from('incoming_missions').select('*').eq('id', z.mission_id).maybeSingle()).data
+        if (!zr) continue
+        rowById[z.mission_id] = zr
+        const zf = zr.parked_at || zr.received_at, zt = zr.parc_exit_at || nowIso
+        const zl: QuoteLine[] = [{ kind: 'SERV-PARC', name: `Gardiennage (${z.regime}) — zone ${zr.parc_zone_key || '?'} du ${fmtDay(zf)} au ${fmtDay(zt)} : ${z.nothing_to_bill}`, qty: 1, price_unit: 0 }]
+        sections.push({ section_label: `${d.number}${z.letter} — Gardiennage${zr.parc_zone_key ? ' zone ' + zr.parc_zone_key : ''}`, lines: zl })
+        perLeg.push({ leg: z, lines: zl, period_from: zf, period_to: zt })
+      }
+    }
     if (!perLeg.length) continue
     const covers = perLeg.map(p => p.leg.letter)
     const origin = `${d.number ?? d.ref} ${covers.join(' ')}`

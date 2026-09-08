@@ -438,7 +438,9 @@ export async function buildDossier(anyMissionId: string, opts: { light?: boolean
     legs.push({
       letter: '', kind, mission_id: m.id, mission_number: m.mission_number, external_id: m.external_id,
       dossier_number: m.dossier_number || null, title, subtitle, status: m.status,
-      status_label: st.label, status_tone: st.tone, started_at: started, ended_at: ended, open,
+      // Gardiennage réglé sans facture (0 nuit facturable, sans frais, offert) : plus « à facturer » (Olivier 08/09/2026).
+      status_label: (kind === 'gard' && nothing && !open && !m.invoice_number) ? (nothing.startsWith('aucune nuit') ? 'Rien à facturer · 0 nuit' : nothing.startsWith('sans frais') ? 'Sans frais' : 'Offert') : st.label,
+      status_tone: (kind === 'gard' && nothing && !open && !m.invoice_number) ? 'ok' : st.tone, started_at: started, ended_at: ended, open,
       driver_name: m.assigned_to ? (nameById[m.assigned_to] || null) : null,
       billed_to_id: m.billed_to_id ?? null, billed_to_name: m.billed_to_name ?? null,
       billed_inherited: (m.billed_to_id ?? null) === (root.billed_to_id ?? null),

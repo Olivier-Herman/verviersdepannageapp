@@ -105,6 +105,19 @@ export default function DossierGroups({ initial, fiches, shared, isSuperadmin, o
   // Ne jamais ouvrir Facturer sur des montants légers/non recalculés : un remorquage
   // non figé y vaut 0 € et n'est pas cochable (2GUV245, Jona, 08/09/2026).
   const [openingBilling, setOpeningBilling] = useState(false)
+  // Bandeau après création de facture / « Facturation OK » (Olivier 08/09/2026).
+  const [banner, setBanner] = useState<{ tone: 'ok' | 'warn'; text: string; links?: { url: string; label: string }[] } | null>(null)
+  const [verifying, setVerifying] = useState(false)
+  const hasDrafts = d.legs.some(l => l.billed_refs.some(r => /^brouillon Odoo/i.test(r)))
+  const verifyInvoices = async () => {
+    setVerifying(true)
+    try {
+      const r = await fetch(`/api/dossier/${d.root_id}/verify-invoices`, { method: 'POST' })
+      const j = await r.json().catch(() => ({}))
+      setBanner({ tone: r.ok && Object.keys(j.synced || {}).length ? 'ok' : 'warn', text: j.message || j.error || `Erreur ${r.status}` })
+      await refresh()
+    } finally { setVerifying(false) }
+  }
   const billable = d.legs.filter(l => !l.nothing_to_bill && !(l.billed_refs.length && l.billed_htva >= l.amount_htva - 0.01) && l.amount_htva > 0)
   const toggle = (l: string) => setOpen(p => { const n = new Set(p); n.has(l) ? n.delete(l) : n.add(l); return n })
   const toggleEmbed = (l: string) => setEmbed(p => { const n = new Set(p); n.has(l) ? n.delete(l) : n.add(l); return n })
@@ -204,6 +217,7 @@ export default function DossierGroups({ initial, fiches, shared, isSuperadmin, o
           {canBill && <div className="md:text-right">
             <div className="flex md:justify-end items-center gap-2 flex-wrap">
               {(() => { const rootLeg = d.legs.find(l => l.mission_id === d.root_id) || d.legs[0]; return rootLeg ? <BillingRow d={d} leg={rootLeg} onChanged={refresh} gmKey={shared.googleMapsKey} allLegs onApplied={applyBilledTo} /> : null })()}
+              {hasDrafts && <button disabled={verifying} onClick={verifyInvoices} title="Lit l'état des brouillons dans Odoo : s'ils sont confirmés, le numéro de facture remplace le tampon brouillon" className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-emerald-600 hover:bg-emerald-700 text-white disabled:opacity-50">{verifying ? '⏳ Vérification…' : '✓ Facturation OK'}</button>}
               <button disabled={!billable.length || openingBilling} onClick={async () => { if (d.light || refining) { setOpeningBilling(true); try { await refresh() } finally { setOpeningBilling(false) } } setBilling(true) }} title={billable.length ? 'Une facture Odoo par client, créée directement' : 'Rien à facturer'} className={`px-3 py-1.5 rounded-lg text-xs font-semibold bg-brand text-white ${billable.length ? 'hover:bg-brand-hover' : 'opacity-40 cursor-not-allowed'}`}>Facturer{billable.length ? ` (${billable.length})` : ''}</button>
             </div>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-x-4 gap-y-1 mt-2 text-[11px] text-ink-muted md:justify-items-end">
@@ -216,6 +230,13 @@ export default function DossierGroups({ initial, fiches, shared, isSuperadmin, o
             {d.state.open && <p className="text-[11px] text-ink-faint mt-1">Dossier en cours : pas de facturation automatique avant la sortie du véhicule.</p>}
           </div>}
         </div>
+        {banner && (
+          <div className={`mx-3 md:mx-5 mb-2 rounded-xl px-3 py-2 text-xs flex flex-wrap items-center gap-2 ${banner.tone === 'ok' ? 'bg-emerald-600/10 border border-emerald-600/40 text-emerald-800 dark:text-emerald-300' : 'bg-amber-500/10 border border-amber-500/40 text-amber-800 dark:text-amber-300'}`}>
+            <span className="flex-1 min-w-0">{banner.text}</span>
+            {banner.links?.map((l, i) => l.url ? <a key={i} href={l.url} target="_blank" rel="noreferrer" className="underline font-semibold">{l.label} ↗</a> : null)}
+            <button onClick={() => setBanner(null)} className="text-ink-faint">✕</button>
+          </div>
+        )}
         {/* Frise */}
         <div className="border-t px-3 md:px-5 py-2.5 flex items-center overflow-x-auto gap-0 max-w-full">
           {timeline.map((it, i) => it.leg ? (
@@ -268,7 +289,7 @@ export default function DossierGroups({ initial, fiches, shared, isSuperadmin, o
 
       {!mobile && <p className="text-[11px] text-ink-faint px-1 pt-2">Les fiches Gardiennage sont créées automatiquement à la mise en parc et n'apparaissent que sur cet écran. « Facturer » crée directement les factures Odoo en brouillon, une par client.</p>}
 
-      {billing && <BillingModal d={d} onClose={() => setBilling(false)} onDone={async () => { await refresh() }} />}
+      {billing && <BillingModal d={d} onClose={() => setBilling(false)} onDone={async (res) => { if (res?.invoices?.length) { setBilling(false); setBanner({ tone: 'ok', text: `✓ ${res.invoices.length} facture${res.invoices.length > 1 ? 's' : ''} brouillon créée${res.invoices.length > 1 ? 's' : ''} dans Odoo et ouverte${res.invoices.length > 1 ? 's' : ''} dans un nouvel onglet. Confirme-la dans Odoo, puis clique « Facturation OK » ici (ou attends le cron, 20 min).`, links: res.invoices.map((i: any) => ({ url: i.url, label: `${i.client_name} · ${Number(i.total_htva).toFixed(2)} € HTVA` })) }) } await refresh() }} />}
     </div>
   )
 }

@@ -20,7 +20,7 @@ const TONE = {
 export const isLegBilled = (l: DossierLeg) => l.billed_refs.length > 0 && l.billed_htva >= l.amount_htva - 0.01
 export const canPickLeg  = (l: DossierLeg) => !l.nothing_to_bill && !isLegBilled(l) && l.amount_htva > 0 && (l.channel || 'odoo') === 'odoo'
 
-export default function BillingModal({ d, onClose, onDone }: { d: Dossier; onClose: () => void; onDone: () => Promise<void> | void }) {
+export default function BillingModal({ d, onClose, onDone }: { d: Dossier; onClose: () => void; onDone: (result?: { invoices: any[]; warnings: string[] }) => Promise<void> | void }) {
   // Olivier 08/09/2026 : TOUT coché par défaut, gardiennage en cours compris ;
   // on décoche ce qu'on ne veut pas facturer. Pour un gardiennage en cours, on
   // choisit le dernier jour facturé : la période se ferme là et une nouvelle
@@ -93,7 +93,7 @@ export default function BillingModal({ d, onClose, onDone }: { d: Dossier; onClo
       if (!r.ok || !j.ok) throw new Error(j.error || `HTTP ${r.status}`)
       ;(j.invoices || []).forEach((inv: any, i: number) => { const t = tabs[i]; if (t && inv.url) { try { t.location.href = inv.url } catch {} } else if (inv.url) { try { window.open(inv.url, '_blank') } catch {} } })
       tabs.slice((j.invoices || []).length).forEach(t => { try { t?.close() } catch {} })
-      setResult(j); await onDone()
+      setResult(j); await onDone(j)
     } catch (e: any) { tabs.forEach(t => { try { t?.close() } catch {} }); setError(String(e.message || e)) } finally { setBusy(false) }
   }
 

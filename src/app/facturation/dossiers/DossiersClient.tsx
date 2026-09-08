@@ -373,7 +373,7 @@ export default function DossiersClient({ initial, autoById, comexById = {}, isSu
       })}
 
       {capped && <p className="text-[11px] text-ink-faint px-1">Liste limitée aux 80 dossiers les plus récents. Pour une autre fiche, la recherche VD Soft + TowSoft reste sur la page Facturation actuelle.</p>}
-      {billing && <BillingModal d={billing} onClose={() => setBilling(null)} onDone={() => refreshOne(billing.root_id)} />}
+      {billing && <BillingModal d={billing} onClose={() => setBilling(null)} onDone={async (res) => { const id = billing.root_id; if (res?.invoices?.length) { setBilling(null); setReport(`✓ ${res.invoices.length} facture(s) brouillon créée(s) dans Odoo pour le dossier — confirme-la(les) dans Odoo, le numéro remontera (bouton « Facturation OK » du dossier ou cron).`) } await refreshOne(id) }} />}
     </div>
   )
 }
