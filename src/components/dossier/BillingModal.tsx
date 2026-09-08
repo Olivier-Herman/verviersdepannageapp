@@ -134,7 +134,8 @@ export default function BillingModal({ d, onClose, onDone }: { d: Dossier; onClo
               <span className="text-ink-muted">{chosen.length ? <><b className="text-ink">{chosen.length === allPickable.length ? 'Facture totale' : 'Facture partielle'}</b> · {nInv} facture{nInv > 1 ? 's' : ''} · {eur(total)} HTVA · référence « {d.number} {chosen.map(l => l.letter).join(' ')} »</> : 'Rien de coché'}</span>
               <span className="flex items-center gap-1.5">
                 <button disabled={busy || !chosen.length} onClick={() => mark('already_billed')} title="Une facture a été faite à la main dans Odoo : donne son numéro, les groupes cochés sont reliés" className="px-2.5 py-1.5 rounded-lg text-xs font-semibold border text-ink-secondary hover:text-ink disabled:opacity-40">Déjà facturé…</button>
-                {String(d.source || '').toLowerCase() === 'touring' && (
+                {/* Visible partout (Olivier 08/09 : « je ne vois pas le bouton ») — la confirmation rappelle le cas d'usage COMEX. */}
+                {(
                   <button disabled={busy || !chosen.length} onClick={() => mark('auto_billed')} title="Mission validée par nous dans COMEX : Touring s'autofacture, pas de facture Odoo" className="px-2.5 py-1.5 rounded-lg text-xs font-semibold border bg-surface text-ink-secondary hover:text-ink">⚡ Autofacturé</button>
                 )}
                 <button disabled={busy || !chosen.length} onClick={() => mark('no_charge')} title="Intervention sans frais pour les groupes cochés (motif demandé)" className="px-2.5 py-1.5 rounded-lg text-xs font-semibold border text-ink-secondary hover:text-ink disabled:opacity-40">Ne rien facturer</button>
