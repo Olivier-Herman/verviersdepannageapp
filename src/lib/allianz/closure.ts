@@ -194,6 +194,38 @@ function brusselsIso(d: Date): string {
 
 export interface ClosureTimes { start: string; arrival: string; end: string }
 
+// ─── Heures réelles du chauffeur (Olivier 08/09/2026) ────────────────────
+// « Au lieu d'inventer des heures pour respecter les règles d'Allianz, on pointe
+// les heures réelles du chauffeur. » Pointages VD Soft (stockés en UTC) :
+//   début = on_way_at (en route) · arrivée = on_site_at (sur place)
+//   fin   = completed_at (terminé) ou parked_at (mise en parc)
+// Rendus en heure de Bruxelles avec l'offset réel (+01:00 / +02:00). Un pointage
+// manquant est comblé à partir des voisins (jamais réordonné : début ≤ arrivée ≤ fin).
+export interface RealTimes { on_way_at?: string | null; on_site_at?: string | null; completed_at?: string | null; parked_at?: string | null }
+
+export function resolveClosureTimes(receivedIso: string, real?: RealTimes | null, rand: () => number = Math.random): { times: ClosureTimes; source: 'pointages' | 'mixte' | 'generees'; detail: string } {
+  const toDate = (v?: string | null) => { if (!v) return null; const d = new Date(v); return isFinite(d.getTime()) ? d : null }
+  let start   = toDate(real?.on_way_at)
+  let arrival = toDate(real?.on_site_at)
+  let end     = toDate(real?.completed_at) || toDate(real?.parked_at)
+  const have = [start, arrival, end].filter(Boolean).length
+  if (have === 0) {
+    const t = generateClosureTimes(receivedIso, rand)
+    return { times: t, source: 'generees', detail: 'aucun pointage chauffeur : heures générées depuis la réception' }
+  }
+  const M = 60_000
+  const missing: string[] = []
+  if (!start)   { missing.push('en route');  start   = arrival ? new Date(arrival.getTime() - 20 * M) : new Date(end!.getTime() - 35 * M) }
+  if (!arrival) { missing.push('sur place'); arrival = end ? new Date(Math.max(start.getTime() + M, end.getTime() - 15 * M)) : new Date(start.getTime() + 20 * M) }
+  if (!end)     { missing.push('fin');       end     = new Date(arrival.getTime() + 15 * M) }
+  // Ordre chronologique garanti (un pointage hors ordre = corrigé à la minute suivante).
+  if (arrival.getTime() < start.getTime()) arrival = new Date(start.getTime() + M)
+  if (end.getTime() < arrival.getTime())   end     = new Date(arrival.getTime() + M)
+  const hm = (d: Date) => d.toLocaleTimeString('fr-BE', { timeZone: 'Europe/Brussels', hour: '2-digit', minute: '2-digit' })
+  const detail = `pointages chauffeur (Europe/Brussels) : en route ${hm(start)} · sur place ${hm(arrival)} · fin ${hm(end)}` + (missing.length ? ` — ${missing.join(', ')} non pointé, complété` : '')
+  return { times: { start: brusselsIso(start), arrival: brusselsIso(arrival), end: brusselsIso(end) }, source: missing.length ? 'mixte' : 'pointages', detail }
+}
+
 export function generateClosureTimes(receivedIso: string, rand: () => number = Math.random): ClosureTimes {
   const base = new Date(receivedIso)
   if (!isFinite(base.getTime())) throw new Error('received_at invalide')
@@ -268,7 +300,8 @@ export interface CloseInput {
   caseId:           string
   assignmentId:     string
   providedService:  string                       // 'T' | 'R' | 'D'
-  receivedIso:      string                        // heure de mission Hexalite (1ère colonne) — base des heures générées
+  receivedIso:      string                        // heure de mission Hexalite (1ère colonne) — base des heures générées si aucun pointage
+  realTimes?:       RealTimes | null                // pointages réels du chauffeur (VD Soft) — prioritaires (Olivier 08/09/2026)
   distanceKm?:      number                         // km total (VD Soft). Si absent + towsoftNum fourni, résolu via TowSoft.
   towsoftNum?:      string | null                  // fallback : récupère distance + destination depuis TowSoft
   plate?:           string | null                  // pour regrouper les fiches TowSoft d un même dossier (REM via dépôt)
@@ -302,7 +335,9 @@ export async function closeAllianzAssignment(input: CloseInput): Promise<CloseRe
   try { token = await getValidAllianzToken() }
   catch (e: any) { return { ok: false, dryRun, steps, error: e.message } }
 
-  const times = generateClosureTimes(input.receivedIso)
+  const resolved = resolveClosureTimes(input.receivedIso, input.realTimes)
+  const times = resolved.times
+  steps.push({ step: 'heures', ok: true, detail: resolved.detail })
 
   // Résolution distance + destination depuis TowSoft si pas fournies (fallback hors VD Soft).
   // Cas REM via dépôt : 2 fiches TowSoft pour le même dossier → on SOMME les km

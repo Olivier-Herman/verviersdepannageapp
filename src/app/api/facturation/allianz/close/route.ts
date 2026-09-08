@@ -14,7 +14,7 @@
 import { NextResponse }      from 'next/server'
 import { getServerSession }  from 'next-auth'
 import { authOptions }       from '@/lib/auth'
-import { closeAllianzAssignment, ALLIANZ_PROVIDED_SERVICE } from '@/lib/allianz/closure'
+import { closeAllianzAssignment, ALLIANZ_PROVIDED_SERVICE, type RealTimes } from '@/lib/allianz/closure'
 
 export const dynamic     = 'force-dynamic'
 export const maxDuration = 60
@@ -53,11 +53,22 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'distanceKm ou towsoftNum requis' }, { status: 400 })
   }
 
+  // Olivier 08/09/2026 : heures = pointages réels du chauffeur sur la fiche VD Soft
+  // liée (en route / sur place / fin), plus des heures inventées.
+  let realTimes: RealTimes | null = null
+  const vdsoftMissionId = body.vdsoftMissionId ? String(body.vdsoftMissionId) : null
+  if (vdsoftMissionId) {
+    const { createAdminClient } = await import('@/lib/supabase')
+    const { data: m } = await createAdminClient().from('incoming_missions').select('on_way_at, on_site_at, completed_at, parked_at').eq('id', vdsoftMissionId).maybeSingle()
+    if (m) realTimes = m as RealTimes
+  }
+
   const result = await closeAllianzAssignment({
     caseId,
     assignmentId,
     providedService,
     receivedIso,
+    realTimes,
     distanceKm,
     towsoftNum,
     plate:             body.plate ? String(body.plate) : null,
@@ -75,7 +86,6 @@ export async function POST(req: Request) {
   // fiche VD Soft liée en AUTO-FACTURATION pour clôturer notre dossier
   // (équivalent de l'action /api/missions/invoice method=auto). Best-effort :
   // n'impacte pas la réponse de clôture Hexalite si ça échoue.
-  const vdsoftMissionId = body.vdsoftMissionId ? String(body.vdsoftMissionId) : null
   if (result.ok && !body.dryRun && vdsoftMissionId) {
     try {
       const { createAdminClient } = await import('@/lib/supabase')
@@ -96,7 +106,7 @@ export async function POST(req: Request) {
       await sb.from('mission_logs').insert({
         mission_id: vdsoftMissionId, actor_id: userId, action: 'invoiced',
         notes: 'Auto-facturation (clôture Allianz Hexalite)',
-        metadata: { method: 'auto', allianz: true, assignmentId },
+        metadata: { method: 'auto', allianz: true, assignmentId, heures: result.steps.find(st => st.step === 'heures')?.detail || null },
       }).then(() => {}, () => {})
       ;(result as any).vdsoft_autofactured = true
     } catch (e: any) {
