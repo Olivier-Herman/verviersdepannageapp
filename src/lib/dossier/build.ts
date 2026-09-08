@@ -494,8 +494,11 @@ export async function buildDossier(anyMissionId: string, opts: { light?: boolean
         const covered = !!(parquet.billed_to_date && endDay && String(parquet.billed_to_date).slice(0, 10) >= endDay)
         if (levee && !covered) {   // levée de saisie, période non couverte par un état de frais → client (Odoo)
           l.channel = 'odoo'
-          l.status_label = `${l.open ? 'Gardiennage en cours' : 'Terminé'} · à facturer au client (levée de saisie${root.levee_saisie_date ? ' du ' + fmtD(String(root.levee_saisie_date)) : ''})`
-          l.status_tone = 'warn'
+          // Déjà réglé (facturé, sans frais, offert) : on garde son état, on ne le réécrit pas.
+          if (!l.nothing_to_bill && !l.billed_refs.length) {
+            l.status_label = `${l.open ? 'Gardiennage en cours' : 'Terminé'} · à facturer au client (levée de saisie${root.levee_saisie_date ? ' du ' + fmtD(String(root.levee_saisie_date)) : ''})`
+            l.status_tone = 'warn'
+          }
           continue
         }
         l.channel = 'parquet'
