@@ -272,7 +272,8 @@ function Group({ d, leg, canBill, isOpen, onToggle, embedOpen, onToggleEmbed, fi
         <div className={`border-t px-3 md:px-3.5 py-3 ${mobile ? '' : 'md:pl-[70px]'} space-y-3 min-w-0 max-w-full overflow-x-hidden`}>
           {/* Gardiennage en cours = c'est ici que vit la relivraison (adresse + action).
               Olivier 08/09/2026 : « donc tu n'affiches le bloc relivraison que dans A ? » */}
-          {leg.kind === 'gard' && leg.open && (
+          {/* Olivier 08/09 : « le module relivraison présent sur toutes les fiches des groupes ». */}
+          {leg.kind !== 'rel' && leg.kind !== 'out' && (
             <div className="grid grid-cols-1 gap-y-1 text-xs bg-surface-2 border rounded-xl px-3 py-2">
               <div className="grid grid-cols-[92px_minmax(0,1fr)] md:grid-cols-[110px_1fr] gap-2 items-center"><dt className="text-ink-muted">Relivraison</dt><dd>
                 <EditableAddress value={leg.redelivery_address} field="redelivery" missionId={d.root_id} gmKey={shared.googleMapsKey} onSaved={onChanged} placeholder="adresse de relivraison à définir" /></dd></div>
@@ -313,10 +314,6 @@ function Group({ d, leg, canBill, isOpen, onToggle, embedOpen, onToggleEmbed, fi
               <div className="grid grid-cols-[92px_minmax(0,1fr)] md:grid-cols-[110px_1fr] gap-2 items-center"><dt className="text-ink-muted">{leg.kind === 'rel' ? 'Livrer à' : 'Destination'}</dt><dd className="space-y-0.5">
                 <EditableText value={leg.editable.destination_name} placeholder="nom du lieu (garage, hôtel…)" missionId={leg.mission_id} field="destination_name" onSaved={onChanged} />
                 <EditableAddress value={leg.editable.destination_address} field="destination" missionId={leg.mission_id} gmKey={shared.googleMapsKey} onSaved={onChanged} placeholder={/d[ée]pannage|sur place/i.test(leg.title) ? 'sur place' : 'à définir'} /></dd></div>
-              {leg.kind !== 'rel' && !d.legs.some(l => l.kind === 'gard' && l.open) && (leg.editable.redelivery_address || leg.open) && (
-                <div className="grid grid-cols-[92px_minmax(0,1fr)] md:grid-cols-[110px_1fr] gap-2 items-center"><dt className="text-ink-muted">Relivraison</dt><dd>
-                  <EditableAddress value={leg.editable.redelivery_address} field="redelivery" missionId={leg.mission_id} gmKey={shared.googleMapsKey} onSaved={onChanged} placeholder="adresse de relivraison à définir" /></dd></div>
-              )}
               <div className="grid grid-cols-[92px_minmax(0,1fr)] md:grid-cols-[110px_1fr] gap-2 items-center md:col-span-2"><dt className="text-ink-muted">Remarque</dt><dd>
                 <EditableText value={leg.editable.remarks_general} placeholder="remarque dispatch" missionId={leg.mission_id} field="remarks_general" onSaved={onChanged} /></dd></div>
             </div>
@@ -486,6 +483,9 @@ function RelivrerFromDossier({ d, leg }: { d: Dossier; leg: DossierLeg }) {
   const [err, setErr] = useState<string | null>(null)
   const relOpen = d.legs.find(l => l.kind === 'rel' && l.open)
   if (relOpen) return <span className="text-ink-secondary">Relivraison en cours : groupe <b className="font-mono">{relOpen.letter}</b>{relOpen.driver_name ? ` · ${relOpen.driver_name}` : ''}</span>
+  const relDone = [...d.legs].reverse().find(l => l.kind === 'rel')
+  const atParc = d.legs.some(l => l.kind === 'gard' && l.open)
+  if (!atParc) return <span className="text-ink-muted">{relDone ? `Relivrée · groupe ${relDone.letter}${relDone.driver_name ? ' · ' + relDone.driver_name : ''}` : 'Véhicule pas au parc : rien à relivrer pour l’instant'}</span>
   const hasAddress = !!(leg.redelivery_address || '').trim()
   const go = async () => {
     if (!hasAddress) { setErr('Renseigne d’abord l’adresse de relivraison ci-dessus.'); return }
