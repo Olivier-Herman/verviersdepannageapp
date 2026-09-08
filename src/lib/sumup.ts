@@ -97,11 +97,10 @@ export async function getTransactionByForeignId(foreignId: string): Promise<{
     // L'endpoint renvoie soit la transaction, soit une liste selon le filtre.
     tx = Array.isArray(data?.items) ? data.items[0] : (Array.isArray(data) ? data[0] : data)
   } else if (res.status !== 404) throw new Error(`SumUp tx lookup error (${res.status})`)
-  // ⚠️ Les paiements faits dans l'APP SumUp (terminal / Tap to Pay) n'ont PAS de
-  // foreign_transaction_id chez SumUp — seul le TITRE porte notre référence (vu
-  // le 08/09/2026 sur tout l'historique : 2GNM127 payé 272,70 € à 15h18, jamais
-  // retrouvé par référence → la fiche restait « à payer »). Repli : l'historique
-  // récent, par titre.
+  // Repli (08/09/2026) : si la recherche par référence ne rend rien (latence
+  // SumUp, ancien paiement), on relit l'historique récent par TITRE — le titre
+  // porte aussi notre référence. La recherche par référence fonctionne bien en
+  // temps normal (vérifié sur les paiements du 07 et 08/09).
   if (!tx || !tx.status) {
     try {
       const h = await fetch('https://api.sumup.com/v0.1/me/transactions/history?limit=50&order=descending', { headers: { 'Authorization': `Bearer ${SUMUP_API_KEY}` } })
