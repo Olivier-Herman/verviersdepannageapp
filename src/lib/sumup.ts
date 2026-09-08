@@ -91,12 +91,27 @@ export async function getTransactionByForeignId(foreignId: string): Promise<{
     { headers: { 'Authorization': `Bearer ${SUMUP_API_KEY}` } },
   )
   // Pas encore de transaction pour cette référence → paiement pas (encore) fait.
-  if (res.status === 404) return { status: 'PENDING' }
-  if (!res.ok) throw new Error(`SumUp tx lookup error (${res.status})`)
-
-  const data = await res.json()
-  // L'endpoint renvoie soit la transaction, soit une liste selon le filtre.
-  const tx = Array.isArray(data?.items) ? data.items[0] : (Array.isArray(data) ? data[0] : data)
+  let tx: any = null
+  if (res.ok) {
+    const data = await res.json()
+    // L'endpoint renvoie soit la transaction, soit une liste selon le filtre.
+    tx = Array.isArray(data?.items) ? data.items[0] : (Array.isArray(data) ? data[0] : data)
+  } else if (res.status !== 404) throw new Error(`SumUp tx lookup error (${res.status})`)
+  // ⚠️ Les paiements faits dans l'APP SumUp (terminal / Tap to Pay) n'ont PAS de
+  // foreign_transaction_id chez SumUp — seul le TITRE porte notre référence (vu
+  // le 08/09/2026 sur tout l'historique : 2GNM127 payé 272,70 € à 15h18, jamais
+  // retrouvé par référence → la fiche restait « à payer »). Repli : l'historique
+  // récent, par titre.
+  if (!tx || !tx.status) {
+    try {
+      const h = await fetch('https://api.sumup.com/v0.1/me/transactions/history?limit=50&order=descending', { headers: { 'Authorization': `Bearer ${SUMUP_API_KEY}` } })
+      if (h.ok) {
+        const hj = await h.json()
+        const items: any[] = Array.isArray(hj?.items) ? hj.items : []
+        tx = items.find(t => String(t.product_summary || '').trim() === foreignId || String(t.foreign_transaction_id || '') === foreignId) || null
+      }
+    } catch { /* l'historique est un repli */ }
+  }
   if (!tx || !tx.status) return { status: 'PENDING' }
 
   const s = String(tx.status).toUpperCase()

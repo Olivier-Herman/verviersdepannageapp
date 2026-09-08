@@ -13,6 +13,7 @@ import { normalizePlate } from '@/lib/plate'
 import { formatEur } from '@/lib/format'
 import { buildEncaissementUrl } from '@/lib/missions/encaissement-url'
 import QRCode from 'qrcode'
+import { savePending, loadPending, clearPending, checkPaid, submitPending, type SumupPending } from '@/lib/sumup-pending'
 import { buildEpcQrPayload, bankConfigFromEnv } from '@/lib/payments/epc-qr'
 import { useT } from '@/lib/i18n/I18nProvider'
 import { T }    from '@/lib/i18n/T'
@@ -225,6 +226,43 @@ export default function EncaissementClient({
     )
   }, [prefill])
 
+  // ── Paiement SumUp en attente d'enregistrement (retour d'app sans la page) ──
+  const [sumupPending, setSumupPending] = useState<SumupPending | null>(null)
+  const [pendingBusy, setPendingBusy] = useState(false)
+  const [pendingMsg, setPendingMsg] = useState<string | null>(null)
+  useEffect(() => {
+    const p = loadPending()
+    if (!p) return
+    setSumupPending(p)
+    // Vérification automatique : transaction retrouvée chez SumUp → enregistrée sans rien demander.
+    ;(async () => {
+      setPendingBusy(true)
+      const s = await checkPaid(p.ref)
+      if (s === 'PAID') {
+        const r = await submitPending(p, 'Retour dans le module : transaction SumUp retrouvée')
+        setPendingMsg(r.ok ? `✅ Paiement SumUp ${p.amount.toFixed(2)} € (réf. ${p.ref}) retrouvé et enregistré.` : `⚠ Paiement retrouvé mais enregistrement impossible : ${r.error}`)
+        if (r.ok) { setSumupPending(null); if (p.return_to) setTimeout(() => { window.location.href = p.return_to! }, 2000) }
+      } else if (s === 'FAILED') { clearPending(); setSumupPending(null) }
+      setPendingBusy(false)
+    })()
+  }, [])
+  const sumupPendingBanner = useMemo(() => {
+    if (!sumupPending && !pendingMsg) return null
+    return (
+      <div className="rounded-xl border border-warning/50 bg-warning/10 px-3 py-2 text-sm flex flex-col gap-2">
+        {pendingMsg && <p className="font-semibold">{pendingMsg}</p>}
+        {sumupPending && (<>
+          <p><b>Paiement SumUp en attente d'enregistrement</b> : {sumupPending.amount.toFixed(2)} € · réf. {sumupPending.ref}{sumupPending.payload?.plate ? ` · ${sumupPending.payload.plate}` : ''}. {pendingBusy ? 'Vérification chez SumUp…' : 'Pas encore visible chez SumUp.'}</p>
+          <div className="flex flex-wrap gap-2">
+            <button disabled={pendingBusy} onClick={async () => { setPendingBusy(true); const r = await submitPending(sumupPending, 'Validé manuellement au retour dans le module'); setPendingBusy(false); if (r.ok) { setPendingMsg('✅ Paiement enregistré.'); setSumupPending(null); if (sumupPending.return_to) setTimeout(() => { window.location.href = sumupPending.return_to! }, 1500) } else setPendingMsg(`⚠ ${r.error}`) }} className="px-3 py-1.5 rounded-lg bg-success text-white text-xs font-semibold disabled:opacity-50">✅ Le paiement est fait — enregistrer</button>
+            <button disabled={pendingBusy} onClick={async () => { setPendingBusy(true); const s = await checkPaid(sumupPending.ref); if (s === 'PAID') { const r = await submitPending(sumupPending, 'Transaction SumUp retrouvée'); if (r.ok) { setPendingMsg('✅ Paiement retrouvé et enregistré.'); setSumupPending(null) } else setPendingMsg(`⚠ ${r.error}`) } else setPendingMsg(s === 'FAILED' ? 'SumUp indique un paiement refusé/annulé.' : 'Toujours pas visible chez SumUp.'); setPendingBusy(false) }} className="px-3 py-1.5 rounded-lg border text-xs font-semibold disabled:opacity-50">🔄 Revérifier</button>
+            <button disabled={pendingBusy} onClick={() => { if (window.confirm('Abandonner ce paiement en attente ? (à ne faire que s\'il n\'a pas eu lieu)')) { clearPending(); setSumupPending(null) } }} className="px-3 py-1.5 rounded-lg border text-xs text-ink-muted disabled:opacity-50">Abandonner</button>
+          </div>
+        </>)}
+      </div>
+    )
+  }, [sumupPending, pendingBusy, pendingMsg])
+
   // Wrapper local stable : injecte les props utilisateur dans BaseShell
   // Mémoisé pour garder la même identité de composant entre rendus (sinon les
   // enfants — inputs du wizard — seraient remontés à chaque render et perdraient le focus).
@@ -232,9 +270,9 @@ export default function EncaissementClient({
     return function Shell(props: {
       children: React.ReactNode; title: string; page: number; totalPages: number; onBack?: () => void
     }) {
-      return <BaseShell {...props} topNotice={fourriereBanner} userRole={userRole} userName={userName} userModules={userModules} />
+      return <BaseShell {...props} topNotice={(fourriereBanner || sumupPendingBanner) ? <>{sumupPendingBanner}{fourriereBanner}</> : undefined} userRole={userRole} userName={userName} userModules={userModules} />
     }
-  }, [userRole, userName, userModules, fourriereBanner])
+  }, [userRole, userName, userModules, fourriereBanner, sumupPendingBanner])
 
   // Auto-redirect après sauvegarde
   //  - return_to explicite (passe en query) prime
@@ -791,6 +829,7 @@ export default function EncaissementClient({
         })
       })
       if (!res.ok) { const d = await res.json(); setError(d.error || 'Erreur'); return }
+      clearPending()
       setSaved(true)
     } finally { setSaving(false) }
   }
@@ -1125,6 +1164,23 @@ export default function EncaissementClient({
       const data = await res.json()
       if (!res.ok) throw new Error(data.error)
       setSumupData(data)
+
+      // Terminal / Tap : on quitte VD Soft pour l'app SumUp. Si la page ne
+      // survit pas au retour, ce brouillon permet d'enregistrer quand même.
+      if (mode === 'terminal' || mode === 'tap') {
+        const client = selectedClient || { name: clientName, phone: clientPhone, email: clientEmail, address: clientAddress, street: clientStreet, zip: clientZip, city: clientCity, countryCode: clientCountryCode, vat: clientVat }
+        savePending({
+          ref: reference, amount: parseFloat(amount), started_at: new Date().toISOString(), return_to: prefill?.return_to || null,
+          payload: {
+            service_type: 'encaissement', plate, mission_id: prefill?.mission_id || openMission?.id || null,
+            brand_id: null, model_id: null, brand_text: selectedBrand, model_text: selectedModel === 'Autre' ? (modelOther || 'Autre') : selectedModel,
+            motif_id: motif, motif_text: motifLabel, motif_precision: motifPrecision || null, location_address: location,
+            client_id: selectedClient?.id || createdClientId || null, client_vat: client.vat, client_name: client.name,
+            client_address: client.address, client_street: client.street, client_zip: client.zip, client_city: client.city,
+            client_country_code: client.countryCode, client_phone: client.phone, client_email: client.email, notes,
+          },
+        })
+      }
 
       if (mode === 'terminal') {
         window.location.href = data.terminalDeepLink

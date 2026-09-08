@@ -40,8 +40,10 @@ export async function POST(req: NextRequest) {
       qrUrl: `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(checkoutUrl)}`,
       // foreign-tx-id = notre référence → permet de réconcilier la transaction
       // faite dans l'app SumUp via l'API Transactions (cf. GET ?ref=).
-      terminalDeepLink: `sumupmerchant://pay?affiliate-key=${process.env.SUMUP_AFFILIATE_KEY}&amount=${amount}&currency=EUR&title=${encodeURIComponent(reference)}&foreign-tx-id=${encodeURIComponent(reference)}`,
-      tapToPayDeepLink: `sumupmerchant://pay?affiliate-key=${process.env.SUMUP_AFFILIATE_KEY}&amount=${amount}&currency=EUR&title=${encodeURIComponent(reference)}&foreign-tx-id=${encodeURIComponent(reference)}&tap-to-pay=true`,
+      // callback : l'app SumUp revient sur notre page de retour (smp-status=success|failed),
+      // qui retrouve le brouillon mémorisé et ENREGISTRE l'encaissement (08/09/2026).
+      terminalDeepLink: `sumupmerchant://pay?affiliate-key=${process.env.SUMUP_AFFILIATE_KEY}&amount=${amount}&currency=EUR&title=${encodeURIComponent(reference)}&foreign-tx-id=${encodeURIComponent(reference)}&callback=${encodeURIComponent(`${process.env.NEXT_PUBLIC_APP_URL}/encaissement/payment-callback?ref=${reference}`)}`,
+      tapToPayDeepLink: `sumupmerchant://pay?affiliate-key=${process.env.SUMUP_AFFILIATE_KEY}&amount=${amount}&currency=EUR&title=${encodeURIComponent(reference)}&foreign-tx-id=${encodeURIComponent(reference)}&tap-to-pay=true&callback=${encodeURIComponent(`${process.env.NEXT_PUBLIC_APP_URL}/encaissement/payment-callback?ref=${reference}`)}`,
       sumupReference: reference,
     })
 
