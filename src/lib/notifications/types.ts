@@ -23,6 +23,14 @@ export interface NotificationType {
 export const NOTIFICATION_TYPES: readonly NotificationType[] = [
   // ── Dispatcher (et admin/superadmin) ────────────────────────────────
   {
+    key:             'garage_cancel_request',
+    label:           'Annulation demandée par un garage',
+    description:     'Un garage demande l’annulation d’une mission déjà acceptée : à décider dans Annulations garages.',
+    category:        'dispatcher',
+    applicableRoles: ['dispatcher', 'admin', 'superadmin'],
+    defaultEnabled:  true,
+  },
+  {
     key:             'new_mission_received',
     label:           'Nouvelle mission entrante',
     description:     'Mission VAB/email/manuelle reçue, en attente de dispatch.',

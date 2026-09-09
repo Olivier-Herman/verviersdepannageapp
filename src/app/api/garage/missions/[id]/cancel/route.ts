@@ -10,6 +10,7 @@ import { NextResponse }      from 'next/server'
 import { getServerSession }  from 'next-auth'
 import { authOptions }       from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase'
+import { sendNotificationToRoles } from '@/lib/notifications/send'
 
 export const dynamic = 'force-dynamic'
 
@@ -27,7 +28,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
 
   const sb = createAdminClient()
   const { data: m } = await sb.from('incoming_missions')
-    .select('id, status, requested_by_garage_id')
+    .select('id, status, requested_by_garage_id, mission_number, vehicle_plate')
     .eq('id', params.id)
     .maybeSingle()
   if (!m) return NextResponse.json({ error: 'Mission introuvable' }, { status: 404 })
@@ -86,7 +87,14 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   })
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
-  // TODO Phase 1.7 : envoyer notif push aux dispatchers
+  // Chantier « Annulation garage — notification » (09/09/2026) : les dispatchers
+  // sont prévenus tout de suite, la décision se prend dans /admin/garage-cancellations.
+  await sendNotificationToRoles(['dispatcher', 'admin', 'superadmin'], 'garage_cancel_request', {
+    title:      '🛑 Annulation demandée par un garage',
+    body:       `Mission #${m.mission_number ?? m.id.slice(0, 8)}${m.vehicle_plate ? ' · ' + m.vehicle_plate : ''} — ${reason || 'sans motif'}. À décider.`,
+    action_url: '/admin/garage-cancellations',
+    mission_id: m.id,
+  }).catch(() => {})
 
   return NextResponse.json({
     ok: true,
