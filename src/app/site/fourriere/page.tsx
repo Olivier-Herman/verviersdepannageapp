@@ -1,6 +1,11 @@
 import Link from 'next/link'
 import { getSiteTariffs } from '@/lib/tarifs/site-tariffs'
 
+// Grille tarifaire lue en base (source_tariff_lines, no-store) : la page ne peut
+// pas être générée statiquement au build — 09/09/2026, deux déploiements en
+// erreur « Dynamic server usage » après le lot B « sans valeurs en dur ».
+export const dynamic = 'force-dynamic'
+
 export const metadata = {
   title: 'Fourrière — récupérer un véhicule saisi',
   description:
