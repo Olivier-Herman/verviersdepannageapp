@@ -469,7 +469,13 @@ async function buildDossierUncached(anyMissionId: string, light: boolean, price 
       // Levée de saisie : le dossier Parquet clos, OU la levée posée sur la fiche
       // sans aucun état de frais parti (le dossier n'est pas encore clôturé —
       // il l'est à la levée depuis le 08/09, et par le cron du matin avant).
-      const levee = !!parquet && parquet.recipient !== 'client' && !isFraisDeJustice
+      // La levée coupe la période saisie MÊME en frais de justice : « si le
+      // client vient rechercher la voiture après, il paie le gardiennage hors
+      // saisie au tarif autres depuis le lendemain de la fin de saisie jusqu'à
+      // la date où il vient le rechercher » (Olivier 09/09/2026). Ce qui reste
+      // propre aux frais de justice, c'est le DÉPANNAGE, qui lui part en état
+      // de frais (plus bas).
+      const levee = !!parquet && parquet.recipient !== 'client'
         && (parquet.state === 'clos' || (!!(root.levee_saisie_at || root.levee_saisie_date) && root.levee_saisie_type !== 'temporaire' && !parquet.ef_number && !(parquet.efs || []).length))
       regimeEff = (regime === 'saisie' && levee && !coveredByEf) ? 'autre' : regime
       const tarif = dayPriceByRegime[regimeEff]
@@ -601,14 +607,15 @@ async function buildDossierUncached(anyMissionId: string, light: boolean, price 
   // au-delà de ce qu'il a déjà couvert ; le véhicule est récupéré par le
   // client → ce qui reste se facture au client par Odoo (Olivier 08/09/2026,
   // 2CLN087 : « la récupération a été faite par le client »).
-  const levee = !!parquet && !isFraisDeJustice && (parquet.state === 'clos'
+  const levee = !!parquet && (parquet.state === 'clos'
     || (!!(root.levee_saisie_at || root.levee_saisie_date) && root.levee_saisie_type !== 'temporaire' && !parquet.ef_number && !(parquet.efs || []).length))
   if (parquet && parquet.recipient !== 'client') {
     const efDep = parquet.efs.find(e => e.include_depannage)
     const lastEf = parquet.efs.length ? parquet.efs[parquet.efs.length - 1] : null
     for (const l of legs as any[]) {
       if (l.kind === 'rem' && l.mission_id === root.id) {
-        if (levee && !efDep && !parquet.depannage_billed) continue   // rien envoyé au Parquet → client
+        // Frais de justice : le dépannage part en état de frais, levée ou pas.
+        if (levee && !isFraisDeJustice && !efDep && !parquet.depannage_billed) continue   // rien envoyé au Parquet → client
         l.channel = 'parquet'
         // Les postes « client uniquement » (frais administratifs) ne vont pas
         // au Parquet : on les retire de l'affichage de ce groupe.
