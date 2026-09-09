@@ -8,7 +8,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import Link from 'next/link'
 import AppShell from '@/components/layout/AppShell'
-import { businessFallback } from '@/lib/settings/business-registry'
 
 type Recipient = 'parquet' | 'domaine' | 'client'
 interface Dossier {
@@ -59,10 +58,12 @@ const PENDING: Record<string, { label: string; cls: string }> = {
 }
 
 // Boîte destinataire selon destinataire + motif (miroir du serveur, pour l'UI).
+// Boîtes lues dans les réglages métier via /api/settings/business (posées au chargement).
+let MAILS = { parquet: 'Parquet (réglage métier)', frais_justice: 'Frais de justice (réglage métier)' }
+if (typeof window !== 'undefined') fetch('/api/settings/business?keys=mail_parquet,mail_frais_justice').then(r => r.json()).then(j => { if (j?.values?.mail_parquet) MAILS = { parquet: j.values.mail_parquet, frais_justice: j.values.mail_frais_justice || MAILS.frais_justice } }).catch(() => {})
 function targetMail(recipient: Recipient, motifCode?: string | null): string {
   if (recipient === 'parquet')
-    return String(motifCode || '').toUpperCase() === 'SAISIE_JUDICIAIRE'
-      ? String(businessFallback('mail_frais_justice')) : String(businessFallback('mail_parquet'))
+    return String(motifCode || '').toUpperCase() === 'SAISIE_JUDICIAIRE' ? MAILS.frais_justice : MAILS.parquet
   if (recipient === 'client') return 'e-mail de la fiche'
   return 'Domaine : via le tableau de Rosemarie (module Domaine)'
 }

@@ -20,9 +20,8 @@ import Anthropic from '@anthropic-ai/sdk'
 import { ANTHROPIC_MODEL } from '@/lib/anthropic-model'
 import type { MailHandler, RejectEntity, RejectExtraction } from './types'
 import { getBusinessList } from '@/lib/settings/business'
-import { businessFallback } from '@/lib/settings/business-registry'
 
-export let AWP_SENDERS: string[] = (businessFallback('mail_awp_rejets') as string[]).slice()
+export let AWP_SENDERS: string[] = []
 
 export const AWP_DONE_FOLDER = 'MONDIAL Automatic Dispatch'
 
@@ -69,7 +68,8 @@ async function readPdf(base64: string): Promise<any | null> {
 }
 
 // Liste rafraîchie depuis les réglages métier (mail_awp_rejets) ; repli = liste ci-dessus.
-getBusinessList('mail_awp_rejets').then(l => { if (l.length) AWP_SENDERS = l.map(x => x.toLowerCase()) }).catch(() => {})
+export async function refreshAwpSenders(): Promise<void> { AWP_SENDERS = (await getBusinessList('mail_awp_rejets')).map(x => x.toLowerCase()) }
+refreshAwpSenders().catch(e => console.error('[mail-agent] mail_awp_rejets :', e?.message))
 
 export function detect(fromEmail: string, subject: string): boolean {
   if (!AWP_SENDERS.includes((fromEmail || '').toLowerCase())) return false

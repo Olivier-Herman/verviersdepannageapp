@@ -11,7 +11,6 @@ import { renderEtatFraisPdf } from '@/lib/missions/saisie-etat-frais-pdf'
 import { sendEmail, emailLayout, button, infoRow, divider } from '@/lib/emails'
 import { hasValidRequisitoire, isRequisitoireDoc, REQUISITOIRE_DOC_ERROR } from '@/lib/requisitoire/doc'
 import { getBusinessText } from '@/lib/settings/business'
-import { businessFallback } from '@/lib/settings/business-registry'
 
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://app.verviersdepannage.com'
 const FOURRIERE_FROM = 'fourriere@verviersdepannage.be'
@@ -93,9 +92,9 @@ export const SAISIE_STATES = [
 export type SaisieState = typeof SAISIE_STATES[number]
 
 // Bloc destinataire pour le PDF (adresse + e-mail routé + TVA).
-export function resolveDestinataire(recipient: SaisieRecipient, mission?: any, email?: string | null): { name: string; lines: string[] } {
+export async function resolveDestinataire(recipient: SaisieRecipient, mission?: any, email?: string | null): Promise<{ name: string; lines: string[] }> {
   if (recipient === 'parquet')
-    return { name: 'Parquet', lines: ['Quai d\'Arona 4, 4500 Huy', email || String(businessFallback('mail_parquet')), 'TVA BE 0308.357.753'] }
+    return { name: 'Parquet', lines: ['Quai d\'Arona 4, 4500 Huy', email || await getBusinessText('mail_parquet'), 'TVA BE 0308.357.753'] }
   if (recipient === 'domaine')
     return { name: 'SPF Finances — Domaine', lines: ['Recette des domaines', email || ''].filter(Boolean) }
   // client : personne sur place / propriétaire
@@ -302,7 +301,7 @@ export async function generateEtatFrais(
     numero,
     dateEmission: billingTo,
     recipient,
-    destinataire: resolveDestinataire(recipient, mission, destEmail),
+    destinataire: await resolveDestinataire(recipient, mission, destEmail),
     pv: d.dossier_ref,
     dateSaisie: mission?.received_at || d.parked_at,
     parkedAt: d.parked_at,
@@ -351,7 +350,7 @@ export async function renderEtatFraisFromRow(sb: any, dossierId: string, efRowId
     numero: ef.numero,
     dateEmission: ef.period_to || (ef.created_at ? String(ef.created_at).slice(0, 10) : belgianToday()),
     recipient,
-    destinataire: resolveDestinataire(recipient, mission, destEmail),
+    destinataire: await resolveDestinataire(recipient, mission, destEmail),
     pv: d.dossier_ref,
     dateSaisie: mission?.received_at || d.parked_at,
     parkedAt: d.parked_at,

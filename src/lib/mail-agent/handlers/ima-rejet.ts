@@ -20,11 +20,10 @@
 // est celle du dossier réel (payement), la recherche est insensible à la casse.
 export const IMA_DONE_FOLDER = 'ima payement'
 
-export let IMA_SENDERS: string[] = (businessFallback('mail_ima_rejets') as string[]).slice()
+export let IMA_SENDERS: string[] = []
 
 import type { MailHandler, RejectEntity, RejectExtraction } from './types'
 import { getBusinessList } from '@/lib/settings/business'
-import { businessFallback } from '@/lib/settings/business-registry'
 
 export type ImaEntityKey = 'pv' | 'ima_fr' | 'ima_be'
 
@@ -36,7 +35,8 @@ export const IMA_ENTITIES: Record<ImaEntityKey, RejectEntity> = {
 
 /** Ce mail est-il un rejet de facture IMA ? */
 // Liste rafraîchie depuis les réglages métier (mail_ima_rejets) ; repli = liste ci-dessus.
-getBusinessList('mail_ima_rejets').then(l => { if (l.length) IMA_SENDERS = l.map(x => x.toLowerCase()) }).catch(() => {})
+export async function refreshImaSenders(): Promise<void> { IMA_SENDERS = (await getBusinessList('mail_ima_rejets')).map(x => x.toLowerCase()) }
+refreshImaSenders().catch(e => console.error('[mail-agent] mail_ima_rejets :', e?.message))
 
 export function detect(fromEmail: string, subject: string): boolean {
   if (!IMA_SENDERS.includes((fromEmail || '').toLowerCase())) return false

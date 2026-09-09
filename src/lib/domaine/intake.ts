@@ -12,10 +12,9 @@ import { createAdminClient } from '@/lib/supabase'
 import { searchMessages, getMessageBody } from '@/lib/requisitoire/graph'
 import { parseDatesIn } from './parse-dates-in'
 import { getBusinessText } from '@/lib/settings/business'
-import { businessFallback } from '@/lib/settings/business-registry'
 
 export const DOMAINE_MAILBOX = 'fourriere@verviersdepannage.be'
-let DOMAINE_SENDER = String(businessFallback('mail_domaine_agent'))   // rafraîchi depuis les réglages métier (mail_domaine_agent)
+let DOMAINE_SENDER = ''   // posé depuis les réglages métier (mail_domaine_agent) avant chaque lecture
 const SUBJECT_KEY = 'dates in'
 
 // Saisies à considérer : nouvelles fiches (police_saisie) + fiches historiques

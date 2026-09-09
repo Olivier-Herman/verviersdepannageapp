@@ -99,7 +99,7 @@ export async function sendEfRelance(sb: any, dossierId: string, efId: string): P
   const link = d.validation_token ? validationLink(d.validation_token) : `${APP_URL}/fourriere/saisies`
   const pdf = await renderEtatFraisPdf({
     numero: ef.numero, dateEmission: ef.period_to, recipient,
-    destinataire: resolveDestinataire(recipient, mission, dest.email),
+    destinataire: await resolveDestinataire(recipient, mission, dest.email),
     pv: d.dossier_ref, dateSaisie: mission?.received_at || d.parked_at, parkedAt: d.parked_at,
     periodFrom: ef.period_from, periodTo: ef.period_to,
     plate: d.vehicle_plate || '', vehicle: [d.vehicle_brand, d.vehicle_model].filter(Boolean).join(' '),

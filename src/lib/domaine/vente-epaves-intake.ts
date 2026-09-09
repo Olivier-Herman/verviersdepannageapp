@@ -14,10 +14,9 @@ import { createAdminClient } from '@/lib/supabase'
 import { searchMessages, getMessageBody } from '@/lib/requisitoire/graph'
 import { parseVenteEpaves } from './parse-vente-epaves'
 import { getBusinessText } from '@/lib/settings/business'
-import { businessFallback } from '@/lib/settings/business-registry'
 
 export const VENTE_MAILBOX = 'fourriere@verviersdepannage.be'
-let VENTE_SENDER = String(businessFallback('mail_domaine_agent'))   // rafraîchi depuis les réglages métier (mail_domaine_agent)
+let VENTE_SENDER = ''   // posé depuis les réglages métier (mail_domaine_agent) avant chaque lecture
 const SUBJECT_KEY = 'paves'   // « Vente d'épaves » (comparé sans accent)
 
 // Saisies à considérer : nouvelles fiches (police_saisie) + fiches historiques

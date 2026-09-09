@@ -133,7 +133,7 @@ export default function SettingsClient({
       settings.achats_rfq_mailbox = rfqMailbox.trim()
       for (const d of BUSINESS_SETTINGS) {
         const raw = (biz[d.key] || '').trim()
-        if (!raw) { settings[d.key] = null; continue }
+        if (!raw) { setParamsError(`« ${d.label} » est obligatoire (valeur d'origine : ${Array.isArray(d.seed) ? d.seed.join(', ') : String(d.seed)}).`); return }
         if (d.kind === 'number') { const n = Number(raw.replace(',', '.')); if (!Number.isFinite(n) || n <= 0) { setParamsError(`« ${d.label} » : nombre attendu.`); return } settings[d.key] = n }
         else if (d.kind === 'emails') settings[d.key] = raw.split(/[,;\s]+/).map(x => x.trim()).filter(Boolean)
         else settings[d.key] = raw
@@ -251,13 +251,13 @@ export default function SettingsClient({
           {(['Odoo', 'Boîtes mail', 'Montants'] as const).map(group => (
             <div key={group} className="bg-surface-2 border border rounded-2xl p-4">
               <p className="text-ink-muted text-xs font-semibold uppercase tracking-widest mb-1">Réglages métier — {group}</p>
-              <p className="text-ink-faint text-xs mb-3">Vide = valeur d'origine entre parenthèses. Pris en compte dans la minute, sans déploiement.</p>
+              <p className="text-ink-faint text-xs mb-3">Obligatoire — la valeur d'origine est rappelée entre parenthèses. Pris en compte dans la minute, sans déploiement.</p>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 {BUSINESS_SETTINGS.filter(d => d.group === group).map(d => (
                   <label key={d.key} className="block">
-                    <span className="block text-ink-secondary text-xs font-medium mb-1">{d.label} <span className="text-ink-faint font-normal">({Array.isArray(d.fallback) ? d.fallback.join(', ') : String(d.fallback)})</span></span>
+                    <span className="block text-ink-secondary text-xs font-medium mb-1">{d.label} <span className="text-ink-faint font-normal">({Array.isArray(d.seed) ? d.seed.join(', ') : String(d.seed)})</span></span>
                     <input type="text" inputMode={d.kind === 'number' ? 'decimal' : undefined} value={biz[d.key] || ''} onChange={e => setBiz(b => ({ ...b, [d.key]: e.target.value }))}
-                      placeholder={Array.isArray(d.fallback) ? d.fallback.join(', ') : String(d.fallback)}
+                      placeholder={Array.isArray(d.seed) ? d.seed.join(', ') : String(d.seed)}
                       className="w-full bg-surface-hover border border-strong rounded-xl px-3 py-2 text-ink text-sm outline-none focus:border-brand" />
                     {d.help && <span className="block text-ink-faint text-[11px] mt-0.5">{d.help}</span>}
                   </label>
