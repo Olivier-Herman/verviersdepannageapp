@@ -44,7 +44,7 @@ GRANT  ALL ON TABLE chantiers, chantier_logs TO service_role, postgres;
 INSERT INTO chantiers (key, title, tag, status, note, position) VALUES
   -- En cours
   ('vue-dossier',   'Vue dossier & Facturation par dossier', 'Dossier',     'cours',   'Le chantier principal des trois dernières semaines : 68 commits depuis le 26/08. Fiche unifiée, modale Facturer partagée, audit de parité. Flag dossier_view encore dans le code.', 10),
-  ('flux2',         'Flux 2 — clôture unifiée',              'Chauffeur',   'cours',   'Activation par la grille chauffeur × assistance (/admin/flux2). L''ancien flux reste dans le code comme repli : il n''est pas remplacé tant qu''une case n''est pas cochée.', 20),
+  ('flux2-legacy',  'Flux 2 — retirer l''ancien flux de clôture', 'Chauffeur', 'attente', 'Déploiement terminé (grille 11/11 partout). L''ancien écran reste dans le code comme repli inutilisé : 19 branchements dans DriverClient + la grille. À décider : on le retire, ou on garde le repli.', 20),
   ('onsite',        'Refonte du flux sur place',             'Chauffeur',   'cours',   'Écran « Qu''est-ce qu''on fait ? ». Toujours derrière le drapeau driver_onsite_v2. Encaissement privé à valider en réel.', 30),
   ('vab',           'VAB — fiabilisation',                   'Intégration', 'cours',   '16 commits depuis le 26/08, dernier le 07/09 : filet, clôtures multiples, actions par AssignmentId.', 40),
   ('saisies',       'Fourrière — saisies & Parquet',         'Saisie',      'cours',   'Dernier le 09/09 : un mail de refus du Parquet n''est plus lu comme un accord ; bouton « Renvoyer corrigé ».', 50),
@@ -62,6 +62,7 @@ INSERT INTO chantiers (key, title, tag, status, note, position) VALUES
   ('etiquettes',    'Étiquettes parc',                       'Fourrière',   'attente', 'Migration partielle : mal garée en chargement, rodéo et AVP restent à basculer.', 90),
   ('garage-notif',  'Annulation garage — notification',      'Garage',      'attente', 'La notification aux dispatchers n''est pas branchée.', 100),
   -- Terminé
+  ('flux2',         'Flux 2 — clôture unifiée',              'Chauffeur',   'fini',    'Déployé chez tous les chauffeurs, toutes assistances : grille /admin/flux2 à 11/11 partout (vérifié le 09/09). Les appels police restent hors périmètre, par conception.', 5),
   ('extraits',      'Éclatement des extraits bancaires',     'Finance',     'fini',    'Fonctionne (Olivier 09/09). Dernier correctif le 31/08.', 10),
   ('requisitoire',  'Réquisitoires — étanchéité gardiennage','Fourrière',   'fini',    'Audit complet du 08/09 : 44 lecteurs de missions rendus étanches aux fiches Gardiennage.', 20),
   ('tvac',          'Montant TVAC sur les cartes',           'Facturation', 'fini',    'Par groupe, par dossier et sur le total. TVA 21 %.', 30),
