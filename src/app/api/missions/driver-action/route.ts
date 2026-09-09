@@ -199,9 +199,16 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Mission déjà mise en parc — la clôture se fait après relivraison, pas ici.' }, { status: 422 })
   }
 
-  // save_photos est toujours permis (pas de changement de statut). La ré-clôture
-  // bypasse la garde ALLOWED (validée ci-dessus par la fenêtre 6h + non facturée).
-  if (action !== 'save_photos' && !isReclose) {
+  // Mission clôturée = définitive, photos comprises (Olivier 09/09/2026 : « comment
+  // veux-tu qu'ils ajoutent des photos si on les masque ? » → on ferme aussi ce
+  // chemin ; le minimum de 3 photos est déjà bloquant à la clôture, une photo à
+  // ajouter après coup passe par le dispatch). Avant, save_photos restait permis
+  // quel que soit le statut.
+  if (action === 'save_photos' && ['completed', 'to_invoice'].includes(mission.status)) {
+    return NextResponse.json({ error: 'Mission clôturée : les photos ne se modifient plus. Pour en ajouter une, préviens le dispatch.' }, { status: 422 })
+  }
+  // save_photos reste permis sur une mission active ou en parc (pas de changement de statut).
+  if (action !== 'save_photos') {
     const allowed = ALLOWED[mission.status] ?? []
     if (!allowed.includes(action)) {
       return NextResponse.json({ error: `Action '${action}' non permise depuis '${mission.status}'` }, { status: 422 })
@@ -215,7 +222,6 @@ export async function POST(req: Request) {
   if (mapping.status)         updatePayload.status     = mapping.status
   if (mapping.timestampField) updatePayload[mapping.timestampField] = now
   // Ré-clôture : garder la date de clôture d'origine (fenêtre 6h non réinitialisée).
-  if (isReclose) delete updatePayload.completed_at
 
   // Sources internes sans facturation (ex. Car Parts & Recycling) : la mission
   // clôturée par le chauffeur est archivée directement (completed), pas envoyée

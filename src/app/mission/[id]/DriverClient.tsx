@@ -4927,15 +4927,10 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
             </button>
           )}
 
-          {/* Mission TERMINÉE (completed/to_invoice) : accès direct aux photos pour
-              en supprimer/corriger une (ex. mauvaise photo). Le serveur autorise
-              save_photos quel que soit le statut. Olivier 2026-07-14. */}
-          {(M.status === 'completed' || M.status === 'to_invoice') && M.mission_type !== 'trajet_vide' && (
-            <button onClick={() => goPhotos('main')}
-              className="w-full py-3 bg-surface border border hover:border-zinc-600 text-ink-secondary hover:text-ink font-medium rounded-2xl text-sm flex items-center justify-center gap-2">
-              📷 <T k="mission_detail.action_photos" />
-            </button>
-          )}
+          {/* Mission TERMINÉE : plus d'accès aux photos (Olivier 09/09/2026 — la
+              clôture est définitive, photos comprises ; le minimum de 3 photos est
+              déjà bloquant à la clôture). Une photo à ajouter après coup passe par
+              le dispatch, depuis la fiche. (Du 14/07 au 09/09 : bouton 📷 ici.) */}
         </div>
       )}
 
