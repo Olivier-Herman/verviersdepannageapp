@@ -1,0 +1,4 @@
+-- Chantier « Admin sans valeurs en dur » : lot B / zones de parc livré (09/09/2026 soir).
+INSERT INTO chantier_logs (chantier_id, actor, text)
+SELECT id, 'Claude', 'Lot B — zones : la table codée des 17 zones + identifiants Odoo est retirée ; parc_zones est la seule source (sélecteurs, transferts, plan, recherche, liste fourrière). Routes de transfert par état Odoo et outils d''initialisation depuis Odoo supprimés ; /v/{ticket} redirige vers la fiche QR. Reste du lot B : libellés et listes de sources, dépôts par drapeau, tarifs affichés.' FROM chantiers WHERE key = 'hardcode';
+UPDATE chantiers SET note = replace(note, 'Reste : lot B (zones de parc, libellés de sources', 'Lot B zones livré le 09/09. Reste : lot B (libellés de sources'), updated_at = now(), updated_by = 'Claude' WHERE key = 'hardcode';

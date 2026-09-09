@@ -13,7 +13,6 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { FileText, Loader2, Paperclip, CheckCircle2, Unlock, Wrench, Warehouse, Landmark } from 'lucide-react'
-import { FOURRIERE_ZONES } from '@/lib/fourriere'
 import ScanToFicheButton from '@/components/missions/ScanToFicheButton'
 
 // Jours pleins entre deux dates (end = aujourd'hui si absent)
@@ -443,6 +442,8 @@ function TemporaireCycleSection({ mission, onDone }: { mission: SaisieMission; o
   const [error, setError] = useState<string | null>(null)
   const [pickZone, setPickZone] = useState(false)
   const [zone,  setZone]  = useState('')
+  const [zoneList, setZoneList] = useState<{ key: string; label: string }[]>([])
+  useEffect(() => { if (!pickZone) return; fetch('/api/parc/zones-and-depots').then(r => r.json()).then(j => setZoneList(Array.isArray(j?.zones) ? j.zones : [])).catch(() => {}) }, [pickZone])
 
   const atGarage = !!mission.temp_garage_out_at && !mission.temp_returned_at
   const returned = !!mission.temp_returned_at
@@ -482,12 +483,12 @@ function TemporaireCycleSection({ mission, onDone }: { mission: SaisieMission; o
             <div className="space-y-2">
               <span className="text-ink-secondary text-xs font-medium">Zone de ré-entrée</span>
               <div className="grid grid-cols-4 gap-1.5">
-                {FOURRIERE_ZONES.map(z => (
-                  <button key={z.code} type="button" onClick={() => setZone(z.code)}
+                {zoneList.map(z => (
+                  <button key={z.key} type="button" onClick={() => setZone(z.key)}
                     className={`p-2 rounded-lg border text-center transition ${
-                      zone === z.code ? 'bg-brand text-white border-brand' : 'bg-surface hover:bg-surface-hover border-strong text-ink'
+                      zone === z.key ? 'bg-brand text-white border-brand' : 'bg-surface hover:bg-surface-hover border-strong text-ink'
                     }`}>
-                    <div className="font-display font-bold text-sm">{z.code}</div>
+                    <div className="font-display font-bold text-sm">{z.key}</div>
                   </button>
                 ))}
               </div>

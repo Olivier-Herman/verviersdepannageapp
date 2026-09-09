@@ -13,7 +13,7 @@ import { NextResponse }            from 'next/server'
 import { getServerSession }        from 'next-auth'
 import { authOptions }             from '@/lib/auth'
 import { createAdminClient }       from '@/lib/supabase'
-import { FOURRIERE_ZONES }         from '@/lib/fourriere'
+import { listParcZones }           from '@/lib/parc/zones'
 import { nightsBetween }           from '@/lib/parc/nights'
 import { isPreviewOn }             from '@/lib/feature-flags'
 
@@ -102,9 +102,11 @@ export async function GET(req: Request) {
   }
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
+  const parcZones = await listParcZones()
+  const zoneByKey = new Map(parcZones.map(z => [z.key.toLowerCase(), z]))
   const enriched = (missions || []).map((m: any) => {
-    // Cherche le libelle de zone (pour affichage)
-    const zoneConf = FOURRIERE_ZONES.find(z => z.code === m.parc_zone_key)
+    // Libellé de zone depuis parc_zones (plus d'état Odoo — 09/09/2026)
+    const zoneConf = m.parc_zone_key ? zoneByKey.get(String(m.parc_zone_key).toLowerCase()) : null
     return {
       id:               m.odoo_vehicle_id ?? null,    // pour rétrocompat front (col `id`)
       mission_id:       m.id,
@@ -114,7 +116,7 @@ export async function GET(req: Request) {
       brand:            m.vehicle_brand || '',
       model:            m.vehicle_model || '',
       driver:           m.client_name || null,        // ancienne notion "client" exposee comme driver pour rétrocompat front
-      state_id:         zoneConf?.state_id || null,
+      state_id:         null,
       zone_code:        m.parc_zone_key,
       zone_label:       zoneConf?.label || m.parc_zone_key,
       parc_row_number:  m.parc_row_number ?? null,
@@ -139,7 +141,7 @@ export async function GET(req: Request) {
 
   return NextResponse.json({
     vehicles: enriched,
-    zones:    FOURRIERE_ZONES,
+    zones:    parcZones.map(z => ({ state_id: null, code: z.key, label: z.label, full_name: z.label })),
     source:   gardiennageMode ? 'gardiennage' : 'vd_soft',
   })
 }

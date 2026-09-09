@@ -1,10 +1,9 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { Eye, Truck, Loader2, AlertTriangle, CheckCircle2, Building2, AlertOctagon, Printer, ExternalLink, MapPin, Calendar, FileText } from 'lucide-react'
-import { FOURRIERE_ZONES, SCRATCH_STATE_ID } from '@/lib/fourriere'
 import { buildEncaissementUrl } from '@/lib/missions/encaissement-url'
 import { parcZoneLabel } from '@/lib/parc/zone-label'
 import AddressField from '@/components/AddressField'
@@ -69,7 +68,8 @@ interface Permissions {
   canDossierView?: boolean          // Vue dossier (flag dossier_view : superadmin, pilotes, tous)
 }
 
-const DOMAINE_STATE_ID = 13   // Zone I — Domaine
+const DOMAINE_ZONE_KEY = 'I'   // Zone I — Domaine
+const SCRATCH_ACTION = '__scratch__'
 
 const fmtDate = (iso: string | null) => {
   if (!iso) return '—'
@@ -128,7 +128,10 @@ export default function QrMissionClient({
   }
   const [noChargeReason, setNoChargeReason] = useState('')
   const [actionMenu,     setActionMenu]     = useState<null | 'transfer' | 'domaine' | 'scratch'>(null)
-  const [selectedState,  setSelectedState]  = useState<number | null>(null)
+  const [selectedState,  setSelectedState]  = useState<string | null>(null)
+  // Zones de parc : parc_zones via l'API (plus de table codée ni d'état Odoo — 09/09/2026).
+  const [zoneList, setZoneList] = useState<{ key: string; label: string }[]>([])
+  useEffect(() => { fetch('/api/parc/zones-and-depots').then(r => r.json()).then(j => setZoneList(Array.isArray(j?.zones) ? j.zones : [])).catch(() => {}) }, [])
   // Saisie de l'adresse de relivraison au scan (véhicule sans adresse, zone rel/accident)
   const [relAddr, setRelAddr] = useState(mission.redelivery_address || '')
   const [relLat,  setRelLat]  = useState<number | null>(null)
@@ -230,13 +233,13 @@ export default function QrMissionClient({
 
   // Olivier 2026-06-08 : transfert de zone via VD Soft (transfer-parc) au
   // lieu d Odoo helpdesk. Plus de blocage 'ticket Odoo absent'. Le mapping
-  // state_id Odoo -> zone_key VD Soft est fait via FOURRIERE_ZONES local.
+  // state_id Odoo -> zone_key VD Soft n'existe plus : on envoie la clé parc_zones.
   // L action 'Scratch / Mettre en epave' reste sur l ancien endpoint helpdesk
   // car c est un changement d etat metier different (a migrer ulterieurement).
-  async function doMoveZone(toStateId: number) {
+  async function doMoveZone(toZone: string) {
     // Cas Scratch / Épave : endpoint VD Soft dédié (status='completed' +
     // libère parc + log + sync Odoo best-effort si fleet.vehicle dispo).
-    if (toStateId === SCRATCH_STATE_ID) {
+    if (toZone === SCRATCH_ACTION) {
       if (!confirm('Mettre ce véhicule en épave ? Il sortira du parc et passera en statut clôturé.')) {
         setActionMenu(null); setSelectedState(null)
         return
@@ -257,23 +260,17 @@ export default function QrMissionClient({
       return
     }
 
-    // Cas Transferer vers zone / Envoyer au Domaine : VD Soft transfer-parc
-    const zoneConf = FOURRIERE_ZONES.find(z => z.state_id === toStateId)
-    if (!zoneConf) {
-      showToast('err', `Zone introuvable (state_id=${toStateId})`)
-      setActionMenu(null); setSelectedState(null)
-      return
-    }
+    // Cas Transferer vers zone / Envoyer au Domaine : VD Soft transfer-parc (clé parc_zones)
     setWorking(true)
     try {
       const r = await fetch(`/api/missions/${mission.id}/transfer-parc`, {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ zone_key: zoneConf.code }),
+        body:    JSON.stringify({ zone_key: toZone }),
       })
       const j = await r.json()
       if (!r.ok) { showToast('err', j.error || 'Erreur transfert'); return }
-      showToast('ok', `Véhicule transféré vers zone ${zoneConf.label}`)
+      showToast('ok', `Véhicule transféré vers zone ${toZone}`)
       setActionMenu(null); setSelectedState(null)
       // Recharge la page pour voir les nouvelles infos
       setTimeout(() => window.location.reload(), 1500)
@@ -538,19 +535,19 @@ export default function QrMissionClient({
           </div>
         )}
 
-        {/* Modal Transférer zone (sélection FOURRIERE_ZONES) */}
+        {/* Modal Transférer zone (sélection parc_zones) */}
         {actionMenu === 'transfer' && (
           <div className="bg-surface border-2 border-brand/30 rounded-2xl p-4 space-y-3">
             <p className="font-semibold text-ink text-sm">🚛 Transférer vers une zone</p>
             <div className="grid grid-cols-3 gap-2">
-              {FOURRIERE_ZONES.map(z => (
-                <button key={z.state_id}
-                  onClick={() => setSelectedState(z.state_id)}
+              {zoneList.map(z => (
+                <button key={z.key}
+                  onClick={() => setSelectedState(z.key)}
                   className={`p-3 rounded-xl border text-center transition ${
-                    selectedState === z.state_id ? 'bg-brand text-white border-brand shadow' : 'bg-surface-2 hover:bg-surface-hover border-surface-hover'
+                    selectedState === z.key ? 'bg-brand text-white border-brand shadow' : 'bg-surface-2 hover:bg-surface-hover border-surface-hover'
                   }`}>
-                  <div className="font-display font-bold text-lg">{z.code}</div>
-                  <div className="text-[10px] text-ink-faint truncate">{z.description || z.label}</div>
+                  <div className="font-display font-bold text-lg">{z.key}</div>
+                  <div className="text-[10px] text-ink-faint truncate">{z.label !== z.key ? z.label : ''}</div>
                 </button>
               ))}
             </div>
@@ -578,7 +575,7 @@ export default function QrMissionClient({
                 className="flex-1 py-2 bg-surface border text-ink-secondary rounded-xl text-sm font-medium">
                 Annuler
               </button>
-              <button onClick={() => doMoveZone(DOMAINE_STATE_ID)} disabled={working}
+              <button onClick={() => doMoveZone(DOMAINE_ZONE_KEY)} disabled={working}
                 className="flex-1 py-2 bg-amber-500 hover:bg-amber-600 text-white rounded-xl text-sm font-bold">
                 {working ? '...' : 'Confirmer'}
               </button>
@@ -596,7 +593,7 @@ export default function QrMissionClient({
                 className="flex-1 py-2 bg-surface border text-ink-secondary rounded-xl text-sm font-medium">
                 Annuler
               </button>
-              <button onClick={() => doMoveZone(SCRATCH_STATE_ID)} disabled={working}
+              <button onClick={() => doMoveZone(SCRATCH_ACTION)} disabled={working}
                 className="flex-1 py-2 bg-red-600 hover:bg-red-700 text-white rounded-xl text-sm font-bold">
                 {working ? '...' : 'Confirmer scratch'}
               </button>

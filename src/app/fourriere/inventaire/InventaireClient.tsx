@@ -3,7 +3,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
 import AppShell from '@/components/layout/AppShell'
-import { FOURRIERE_ZONES } from '@/lib/fourriere'
 import { Loader2, CheckCircle2, AlertCircle, Printer, Settings, ScanLine, Camera, Mail, MapPin, ArrowRight, X } from 'lucide-react'
 import { playWinSound, playLoseSound } from '@/lib/sounds'
 import dynamic from 'next/dynamic'
@@ -110,6 +109,9 @@ function parseQR(raw: string): ParsedQR | null {
 export default function InventaireClient({ userRole, userName, userEmail, userModules }: Props) {
   const [step, setStep]                 = useState<'setup' | 'scan'>('setup')
   const [selectedZone, setSelectedZone] = useState<{ stateId: number; code: string; label: string; fullName: string } | null>(null)
+  // Catalogue des zones = parc_zones (API), plus de table codée ni d'état Odoo (09/09/2026). state_id gardé à 0 pour les sessions.
+  const [zoneCatalog, setZoneCatalog] = useState<{ state_id: number; code: string; label: string; full_name: string; description?: string }[]>([])
+  useEffect(() => { fetch('/api/parc/zones-and-depots').then(r => r.json()).then(j => setZoneCatalog((Array.isArray(j?.zones) ? j.zones : []).map((z: any) => ({ state_id: 0, code: String(z.key), label: String(z.label || z.key), full_name: String(z.label || z.key) })))).catch(() => {}) }, [])
   const tagName                         = currentTag()
   const [scanInput, setScanInput]       = useState('')
   const [processing, setProcessing]     = useState(false)
@@ -136,7 +138,7 @@ export default function InventaireClient({ userRole, userName, userEmail, userMo
   const scanRef = useRef<HTMLInputElement>(null)
   const missingLabelPhotoRef = useRef<HTMLInputElement>(null)
 
-  // Mapping FOURRIERE_ZONES.code -> parc_zones.key (case insensitive)
+  // Mapping zoneCatalog.code -> parc_zones.key (case insensitive)
   const parcZoneKey = useMemo(() => {
     if (!selectedZone) return null
     const code = selectedZone.code.toLowerCase()
@@ -819,7 +821,7 @@ export default function InventaireClient({ userRole, userName, userEmail, userMo
       // restantes, dans l ordre alphabetique). Si l user accepte, on switch sans
       // retour au setup. Sinon, on lui laisse choisir.
       const currentZoneCode = selectedZone.code
-      const remainingZones = FOURRIERE_ZONES.filter(z => {
+      const remainingZones = zoneCatalog.filter(z => {
         // Zones deja balayees pendant cette session : on regarde les codes
         // utilises dans items (zone, ou parc_zone_key des items)
         const balayed = items.some(it => {
@@ -1006,9 +1008,9 @@ export default function InventaireClient({ userRole, userName, userEmail, userMo
               <label className="text-xs font-semibold text-ink-faint uppercase tracking-wider">Zone à inventorier</label>
               <p className="text-xs text-ink-muted mb-2">Les véhicules scannés seront mis dans cette zone (en plus du tag mensuel).</p>
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                {FOURRIERE_ZONES.filter(z => allowedZoneKeys.size === 0 || allowedZoneKeys.has(z.code.toLowerCase())).map(z => (
+                {zoneCatalog.filter(z => allowedZoneKeys.size === 0 || allowedZoneKeys.has(z.code.toLowerCase())).map(z => (
                   <button
-                    key={z.state_id}
+                    key={z.code}
                     onClick={() => {
                       updateZone({
                         stateId:  z.state_id,
@@ -1021,7 +1023,7 @@ export default function InventaireClient({ userRole, userName, userEmail, userMo
                       setNextSlot(1)
                     }}
                     className={`p-3 rounded-xl border text-left transition ${
-                      selectedZone?.stateId === z.state_id
+                      selectedZone?.code === z.code
                         ? 'bg-brand text-white border-brand shadow-md'
                         : 'bg-surface-2 hover:bg-surface-hover border-surface-hover'
                     }`}

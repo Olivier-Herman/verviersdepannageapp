@@ -14,7 +14,7 @@ import { getServerSession }  from 'next-auth'
 import { authOptions }       from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase'
 import { getMissionTypeLabel } from '@/lib/missions/mission-types'
-import { FOURRIERE_ZONE_BY_ID } from '@/lib/fourriere'
+import { listParcZones } from '@/lib/parc/zones'
 import { searchAllMailboxes, isGraphConfigured, SEARCH_MAILBOXES } from '@/lib/graph-mail-search'
 
 export const dynamic     = 'force-dynamic'
@@ -61,7 +61,8 @@ interface SearchResult {
   fourriere?: {
     zone_code:  string
     zone_label: string
-    ticket_id:  number | null   // helpdesk.ticket le plus recent lie (pour /v/{id} + date entree)
+    ticket_id:  number | null   // ancien ticket Odoo (plus alimenté depuis le 09/09/2026)
+    mission_id: string | null   // fiche VD Soft au parc (→ /qr/mission/{id})
     entry_date: string | null
     days:       number | null   // nb jours depuis entry_date
   }
@@ -481,54 +482,33 @@ export async function GET(req: Request) {
         for (const m of models) modelMap.set(m.id, m.name)
       }
 
-      // Pour les vehicules EN FOURRIERE, on recupere en batch le helpdesk.ticket
-      // le plus recent lie (pour le ticket_id + entry_date). Permet ensuite de
-      // proposer le bouton "Restituer" prerempli avec la duree de garde.
-      const vehiclesInFourriere = vehiclesFound.filter(v => {
-        const stateId = v.state_id?.[0]
-        return stateId && FOURRIERE_ZONE_BY_ID[stateId]
-      })
-      const ticketsByVehicle = new Map<number, { id: number; date_entree: string | null }>()
-      if (vehiclesInFourriere.length > 0) {
-        try {
-          const vIds = vehiclesInFourriere.map(v => v.id)
-          const tickets = await odooCall<any[]>('helpdesk.ticket', 'search_read', [
-            [['x_studio_fiche_vehicule', 'in', vIds]],
-          ], {
-            fields: ['id', 'x_studio_fiche_vehicule', 'x_studio_date_dentree', 'create_date'],
-            order:  'create_date desc',
-            limit:  vehiclesInFourriere.length * 5,
-          })
-          // Garde le plus recent par vehicule
-          for (const t of tickets || []) {
-            const fleetId = typeof t.x_studio_fiche_vehicule === 'number' ? t.x_studio_fiche_vehicule : null
-            if (!fleetId || ticketsByVehicle.has(fleetId)) continue
-            ticketsByVehicle.set(fleetId, {
-              id:          t.id,
-              date_entree: t.x_studio_date_dentree || t.create_date || null,
-            })
-          }
-        } catch (e: any) {
-          console.warn('[search] helpdesk tickets fourriere fail (non bloquant):', e.message)
+      // EN FOURRIÈRE = fiche VD Soft au parc pour cette plaque (plus d'état Odoo — 09/09/2026).
+      const parkedByPlate = new Map<string, any>()
+      try {
+        const plates = Array.from(new Set(vehiclesFound.map((v: any) => String(v.license_plate || '').trim().toUpperCase()).filter(Boolean)))
+        if (plates.length) {
+          const sbp = createAdminClient()
+          const { data: parked } = await sbp.from('incoming_missions').select('id, vehicle_plate, parc_zone_key, parked_at').in('vehicle_plate', plates).eq('status', 'parked').eq('dossier_leg', false)
+          for (const m of parked || []) parkedByPlate.set(String(m.vehicle_plate || '').trim().toUpperCase(), m)
         }
-      }
+      } catch (e: any) { console.warn('[search] parc lookup fail (non bloquant):', e.message) }
+      const zoneLabels = new Map((await listParcZones()).map(z => [z.key.toLowerCase(), z.label]))
 
       const today = new Date()
       for (const v of vehiclesFound) {
         const brand = v.brand_id?.[1] || ''
         const model = v.model_id?.[0] ? (modelMap.get(v.model_id[0]) || v.model_id[1] || '') : ''
-        const stateId = v.state_id?.[0]
-        const fourriereZone = stateId ? FOURRIERE_ZONE_BY_ID[stateId] : null
+        const parked = parkedByPlate.get(String(v.license_plate || '').trim().toUpperCase()) || null
+        const fourriereZone = parked ? { code: String(parked.parc_zone_key || '?'), label: zoneLabels.get(String(parked.parc_zone_key || '').toLowerCase()) || String(parked.parc_zone_key || 'zone ?'), full_name: `Zone ${parked.parc_zone_key || '?'}` } : null
         const fourrierePrefix = fourriereZone ? `🚓 ${fourriereZone.label} · ` : ''
 
         // Enrichissement fourriere si applicable
         let fourriereMeta: SearchResult['fourriere'] | undefined
         let daysExtra = ''
-        if (fourriereZone) {
-          const ticket = ticketsByVehicle.get(v.id) || null
+        if (fourriereZone && parked) {
           let days: number | null = null
-          if (ticket?.date_entree) {
-            const entry = new Date(ticket.date_entree)
+          if (parked.parked_at) {
+            const entry = new Date(parked.parked_at)
             const diffMs = Math.max(0, today.getTime() - entry.getTime())
             days = Math.ceil(diffMs / (1000 * 60 * 60 * 24))
             daysExtra = ` · ${days} jour${days > 1 ? 's' : ''}`
@@ -536,8 +516,9 @@ export async function GET(req: Request) {
           fourriereMeta = {
             zone_code:  fourriereZone.code,
             zone_label: fourriereZone.label,
-            ticket_id:  ticket?.id || null,
-            entry_date: ticket?.date_entree || null,
+            ticket_id:  null,
+            mission_id: parked.id,
+            entry_date: parked.parked_at || null,
             days,
           }
         }

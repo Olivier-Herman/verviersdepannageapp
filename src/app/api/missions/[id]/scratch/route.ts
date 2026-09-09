@@ -17,7 +17,7 @@ import { getServerSession }  from 'next-auth'
 import { authOptions }       from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase'
 import { withOdooActor, odooRpc } from '@/lib/odoo'
-import { SCRATCH_STATE_ID }  from '@/lib/fourriere'
+import { FLEET_STATES }      from '@/lib/odoo-fsm'
 import { assertExitAllowed } from '@/lib/missions/exit-control'
 
 export const dynamic = 'force-dynamic'
@@ -88,13 +88,13 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     },
   }).then(() => {}, e => console.warn(`[scratch] log KO mission=${params.id}:`, e?.message))
 
-  // 4. Best-effort Odoo : si vehicle_id present, update state_id=24 (Scratch)
+  // 4. Best-effort Odoo : si vehicle_id present, état « Terminé » (les zones Odoo ne sont plus tenues — 09/09/2026)
   let odooUpdated = false
   let odooError: string | null = null
   if (mission.odoo_vehicle_id) {
     try {
       await withOdooActor(actor?.id, async () => {
-        await odooRpc('fleet.vehicle', 'write', [[mission.odoo_vehicle_id], { state_id: SCRATCH_STATE_ID }])
+        await odooRpc('fleet.vehicle', 'write', [[mission.odoo_vehicle_id], { state_id: FLEET_STATES.termine }])
       })
       odooUpdated = true
     } catch (e: any) {

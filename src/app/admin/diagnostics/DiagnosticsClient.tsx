@@ -42,7 +42,6 @@ const GROUPS: Group[] = [
     { id: 'delay', label: 'Délai moyen à facturer', desc: 'Moyenne, médiane et tranches du délai clôture → facture, sur la même fenêtre que le tableau de bord.', method: 'GET', path: '/api/admin/facturation-delay' },
   ]},
   { title: 'Parc & trajets', tools: [
-    { id: 'zone', label: 'Diagnostic d’une zone de parc', desc: 'Places, occupants et incohérences d’une zone.', method: 'GET', path: '/api/admin/parc/diag-zone', params: [{ name: 'zone_key', label: 'Clé de zone', placeholder: 'K', required: true }] },
     { id: 'depot', label: 'Dépôt le plus proche (SNC)', desc: 'Quel dépôt le calcul retient pour un point donné, et pourquoi.', method: 'GET', path: '/api/admin/debug/snc-nearest-depot', params: [{ name: 'lat', label: 'Latitude', placeholder: '50.59', required: true }, { name: 'lng', label: 'Longitude', placeholder: '5.86', required: true }] },
   ]},
   { title: 'Canaux', tools: [

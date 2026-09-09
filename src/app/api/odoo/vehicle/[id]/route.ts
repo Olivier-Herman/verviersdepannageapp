@@ -9,7 +9,8 @@ import { NextResponse }      from 'next/server'
 import { getServerSession }  from 'next-auth'
 import { authOptions }       from '@/lib/auth'
 import { odooRpc }           from '@/lib/odoo'
-import { FOURRIERE_ZONE_BY_ID } from '@/lib/fourriere'
+import { createAdminClient } from '@/lib/supabase'
+import { parcZoneLabelOf } from '@/lib/parc/zones'
 
 export const dynamic     = 'force-dynamic'
 export const maxDuration = 20
@@ -114,8 +115,10 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
       console.warn('[vehicle] services n/a:', e.message)
     }
 
-    const stateId = v.state_id?.[0]
-    const fourriereZone = stateId ? FOURRIERE_ZONE_BY_ID[stateId] : null
+    // Zone de parc = fiche VD Soft au parc pour ce véhicule (plus d'état Odoo — 09/09/2026).
+    const { data: parkedRow } = await createAdminClient().from('incoming_missions').select('parc_zone_key').eq('odoo_vehicle_id', v.id).eq('status', 'parked').eq('dossier_leg', false).limit(1).maybeSingle()
+    const zoneKey = (parkedRow as any)?.parc_zone_key || null
+    const fourriereZone = zoneKey ? { label: await parcZoneLabelOf(zoneKey), full_name: `Zone ${zoneKey}` } : null
 
     return NextResponse.json({
       vehicle: {

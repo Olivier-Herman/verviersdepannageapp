@@ -14,33 +14,12 @@ import { authOptions }       from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase'
 import { parseScanInput }    from '@/lib/towsoft-migration/parse-scan'
 import { odooRpc, withOdooActor } from '@/lib/odoo'
-import { FOURRIERE_ZONES }   from '@/lib/fourriere'
 
 // Olivier 2026-06-04 : helper local de transfert state Odoo (meme logique
 // que dans scan/route.ts mais inline ici pour pas creer encore un fichier).
-async function transferOdooState(input: {
-  plate: string | null; vin: string | null; zoneKey: string; userId: string
-}): Promise<void> {
-  const zoneConf = FOURRIERE_ZONES.find(z => z.code.toUpperCase() === input.zoneKey.toUpperCase())
-  if (!zoneConf) return
-  await withOdooActor(input.userId, async () => {
-    let vehicleId: number | null = null
-    if (input.vin) {
-      const r = await odooRpc<any[]>('fleet.vehicle', 'search_read', [
-        [['vin_sn', '=', String(input.vin).toUpperCase()]],
-      ], { fields: ['id'], limit: 1 })
-      if (r && r.length > 0) vehicleId = r[0].id
-    }
-    if (!vehicleId && input.plate) {
-      const r = await odooRpc<any[]>('fleet.vehicle', 'search_read', [
-        [['license_plate', '=', String(input.plate).toUpperCase()]],
-      ], { fields: ['id'], limit: 1 })
-      if (r && r.length > 0) vehicleId = r[0].id
-    }
-    if (vehicleId) {
-      await odooRpc('fleet.vehicle', 'write', [[vehicleId], { state_id: zoneConf.state_id }])
-    }
-  })
+// Olivier 09/09/2026 : les zones de parc ne sont plus synchronisées vers Odoo (VD Soft = source de vérité).
+async function transferOdooState(_input: { plate: string | null; vin: string | null; zoneKey: string; userId: string }): Promise<any> {
+  return undefined
 }
 
 export const dynamic = 'force-dynamic'

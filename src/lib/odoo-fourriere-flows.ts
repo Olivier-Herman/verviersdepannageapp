@@ -451,9 +451,7 @@ export async function reprintInventoryLabel(params: ReprintParams): Promise<Repr
   // 2. MAJ state_id et tag mensuel sur le vehicule
   let tagged = false
   if (fleetId) {
-    if (params.stateId) {
-      await odooRpc('fleet.vehicle', 'write', [[fleetId], { state_id: params.stateId }])
-    }
+    // (plus de state_id Odoo poussé — 09/09/2026)
     if (params.tagName) {
       const tagId = await ensureFleetTag(params.tagName)
       tagged = await addTagToVehicle(fleetId, tagId)
@@ -609,11 +607,8 @@ export async function processTowsoftInventory(params: ProcessTowsoftParams): Pro
   })
 
   // 2. MAJ state_id si different
-  let stateUpdated = false
-  if (params.stateId && vehicle.stateId !== params.stateId) {
-    await odooRpc('fleet.vehicle', 'write', [[vehicle.vehicleId], { state_id: params.stateId }])
-    stateUpdated = true
-  }
+  // Olivier 09/09/2026 : les zones de parc ne sont plus poussées vers Odoo (VD Soft = source de vérité).
+  const stateUpdated = false
 
   // 3. Tag mensuel inventaire (si fourni)
   let tagged = false

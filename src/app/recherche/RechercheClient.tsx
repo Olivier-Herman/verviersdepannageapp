@@ -23,6 +23,7 @@ interface SearchResult {
     zone_code:  string
     zone_label: string
     ticket_id:  number | null
+    mission_id?: string | null
     entry_date: string | null
     days:       number | null
   }
@@ -520,9 +521,9 @@ export default function RechercheClient({ initialQuery, userRole, userName, user
                             )}
                             {r.fourriere && (
                               <div className="flex items-center gap-1.5 mt-2 pt-2 border-t">
-                                {r.fourriere.ticket_id && (
+                                {r.fourriere.mission_id && (
                                   <a
-                                    href={`/v/${r.fourriere.ticket_id}`}
+                                    href={`/qr/mission/${r.fourriere.mission_id}`}
                                     onClick={e => e.stopPropagation()}
                                     className="inline-flex items-center gap-1 px-2 py-1 text-[11px] bg-surface-2 hover:bg-surface text-ink-secondary hover:text-ink border rounded-md transition"
                                   >

@@ -7,7 +7,7 @@ import { ArrowRightLeft, RefreshCw, X, ExternalLink, ScanLine, Map as MapIcon, A
 import Link from 'next/link'
 
 interface Zone {
-  state_id:    number
+  state_id:    number | null
   code:        string
   label:       string
   full_name:   string
@@ -431,23 +431,21 @@ function MoveModal({
   onClose: () => void
   onSaved: () => void
 }) {
-  const [targetStateId, setTargetStateId] = useState<number | null>(null)
+  const [targetZone, setTargetZone] = useState<string | null>(null)
   const [notes, setNotes] = useState('')
   const [saving, setSaving] = useState(false)
   const [error, setError]   = useState<string | null>(null)
 
   async function save() {
-    if (!targetStateId) { setError('Sélectionne une zone'); return }
+    if (!targetZone) { setError('Sélectionne une zone'); return }
+    if (!vehicle.mission_id) { setError('Pas de fiche VD Soft pour ce véhicule : déplace-le depuis le plan du parc.'); return }
     setSaving(true); setError(null)
     try {
-      const res = await fetch('/api/fourriere/move', {
+      // Transfert VD Soft (parc_zones) — plus d'état Odoo (09/09/2026).
+      const res = await fetch(`/api/missions/${vehicle.mission_id}/transfer-parc`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({
-          odoo_vehicle_id: vehicle.id,
-          to_state_id:     targetStateId,
-          notes:           notes.trim() || undefined,
-        }),
+        body:    JSON.stringify({ zone_key: targetZone, reason: notes.trim() || undefined }),
       })
       const j = await res.json()
       if (!res.ok) { setError(j.error || 'Erreur'); return }
@@ -480,14 +478,14 @@ function MoveModal({
         <div>
           <label className="block text-ink-muted text-xs mb-2">Zone destination</label>
           <div className="grid grid-cols-3 sm:grid-cols-4 gap-1.5">
-            {zones.filter(z => z.state_id !== vehicle.state_id).map(z => {
-              const active = targetStateId === z.state_id
+            {zones.filter(z => z.code !== vehicle.zone_code).map(z => {
+              const active = targetZone === z.code
               const colorClass = ZONE_COLOR[z.code] || ''
               return (
                 <button
-                  key={z.state_id}
+                  key={z.code}
                   type="button"
-                  onClick={() => setTargetStateId(z.state_id)}
+                  onClick={() => setTargetZone(z.code)}
                   title={z.description || z.label}
                   className={`px-2 py-2 rounded-lg text-xs font-bold border transition ${
                     active ? `${colorClass} scale-105 shadow` : 'bg-surface-2 text-ink-secondary border hover:bg-surface-hover'
@@ -516,7 +514,7 @@ function MoveModal({
             className="flex-1 py-2 bg-surface-2 hover:bg-surface-hover border text-ink-secondary rounded-xl text-sm transition">
             Annuler
           </button>
-          <button onClick={save} disabled={saving || !targetStateId}
+          <button onClick={save} disabled={saving || !targetZone}
             className="flex-1 py-2 bg-brand hover:bg-brand-hover disabled:opacity-50 text-white rounded-xl text-sm font-semibold transition">
             {saving ? '⏳…' : 'Confirmer'}
           </button>
