@@ -158,7 +158,16 @@ async function computeMissionKm(missionId: string): Promise<{ chargedKm: number 
     .maybeSingle()
   if (!m) return { chargedKm: null, totalKm: null }
 
-  if (m.incident_lat == null || m.incident_lng == null) return { chargedKm: null, totalKm: null }
+  // Un dépannage sur place ou un trajet vide ne facture AUCUN kilomètre : son
+  // prix est le forfait. Sans coordonnées d'intervention, on répondait pourtant
+  // « kilomètres inconnus » et le dossier restait « à calculer » alors que la
+  // fiche, elle, chiffrait bien (Olivier 09/09/2026, 2CMX015 et 1DMC939 —
+  // Kaze dépannage simple). 0 km facturé est la bonne réponse, pas « inconnu ».
+  const typeEarly  = (m.mission_type || '').toLowerCase()
+  const nonTowEarly = isDsp(typeEarly) || isTrajetVide(typeEarly)
+  if (m.incident_lat == null || m.incident_lng == null) {
+    return { chargedKm: nonTowEarly ? 0 : null, totalKm: null }
+  }
   const incident: Coord = { lat: Number(m.incident_lat), lng: Number(m.incident_lng) }
 
   // Depot : celui de la mission ou le defaut
@@ -494,7 +503,7 @@ export async function estimateMissionPrice(mission: MissionLike, opts?: { skipRe
   } else if (mission.id) {
     const km = await computeMissionKm(mission.id)
     if (km.chargedKm == null) {   // quelle que soit la base : la boucle dépôt→…→dépôt est incomplète aussi
-      return emptyEstimate(source, String(mission.mission_type || ''), 'kilomètres inconnus : la destination n’est pas géocodée (ouvre la fiche, vérifie l’adresse de destination)')
+      return emptyEstimate(source, String(mission.mission_type || ''), 'kilomètres inconnus : l’adresse d’intervention ou de destination n’est pas géocodée (ouvre la fiche et resélectionne l’adresse dans les suggestions)')
     }
     kmCharged    = km.chargedKm ?? 0
     kmTotalRoute = km.totalKm   ?? 0
@@ -756,7 +765,7 @@ async function estimateBrackets(
     const km = await computeMissionKm(mission.id)
     // Tranches = prix PAR KILOMÈTRE : sans km connus, pas de tarif (2ESG097).
     if (km.chargedKm == null) {   // quelle que soit la base : la boucle dépôt→…→dépôt est incomplète aussi
-      return emptyEstimate(source, missionType, 'kilomètres inconnus : la destination n’est pas géocodée (ouvre la fiche, vérifie l’adresse de destination)')
+      return emptyEstimate(source, missionType, 'kilomètres inconnus : l’adresse d’intervention ou de destination n’est pas géocodée (ouvre la fiche et resélectionne l’adresse dans les suggestions)')
     }
     kmCharged    = km.chargedKm ?? 0
     kmTotalRoute = km.totalKm   ?? 0
