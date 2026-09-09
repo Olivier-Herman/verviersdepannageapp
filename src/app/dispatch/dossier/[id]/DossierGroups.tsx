@@ -140,16 +140,32 @@ export default function DossierGroups({ initial, fiches, shared, isSuperadmin, o
   // PATCH (le bouton Facturer et la modale lisent `d`), puis recalcul en fond.
   // Olivier 08/09/2026 : « qu'on ne doive pas faire de refresh pour que le
   // bouton Facturer affiche les infos modifiées ».
-  const applyBilledTo = (ids: string[], c: { id: number | null; name: string | null }) => setD(prev => ({
-    ...prev,
-    billed_to: ids.includes(prev.root_id) ? { ...prev.billed_to, id: c.id, name: c.name } : prev.billed_to,
-    legs: prev.legs.map(l => ids.includes(l.mission_id) ? { ...l, billed_to_id: c.id, billed_to_name: c.name, billed_inherited: ids.includes(prev.root_id) || (c.id ?? null) === (prev.billed_to.id ?? null) } : l),
-  }))
+  // Une reponse de dossier partie AVANT la derniere ecriture est perimee : elle
+  // porte l'etat d'avant et ecraserait ce qu'on vient d'enregistrer. Le
+  // recalcul de fond (2 a 4 s) le faisait systematiquement quand on choisissait
+  // le client dans la foulee de l'ouverture — d'ou « je dois l'encoder deux
+  // fois » (Olivier 09/09/2026). Chaque ecriture incremente ce compteur ; une
+  // reponse ne s'applique que si le compteur n'a pas bouge depuis son depart.
+  const writeSeq = useRef(0)
+  const applyBilledTo = (ids: string[], c: { id: number | null; name: string | null }) => {
+    writeSeq.current++
+    setD(prev => ({
+      ...prev,
+      billed_to: ids.includes(prev.root_id) ? { ...prev.billed_to, id: c.id, name: c.name } : prev.billed_to,
+      legs: prev.legs.map(l => ids.includes(l.mission_id) ? { ...l, billed_to_id: c.id, billed_to_name: c.name, billed_inherited: ids.includes(prev.root_id) || (c.id ?? null) === (prev.billed_to.id ?? null) } : l),
+    }))
+  }
   const [refining, setRefining] = useState(false)
   // Audit B8 : une action dans une fiche embarquée (mise en parc, transfert…) → le dossier se recharge.
   useEffect(() => onMissionChanged(id => { if (d.legs.some(l => l.mission_id === id)) refresh() }), [d.legs])   // eslint-disable-line react-hooks/exhaustive-deps
   const refresh = async () => {
-    try { const r = await fetch(`/api/dossier/${d.root_id}?t=${Date.now()}`, { cache: 'no-store' }); const j = await r.json(); if (j?.dossier) setD(j.dossier); else console.warn('[dossier] refresh KO', r.status, j?.error) } catch (e) { console.warn('[dossier] refresh KO', e) }
+    const seq = ++writeSeq.current
+    try {
+      const r = await fetch(`/api/dossier/${d.root_id}?t=${Date.now()}`, { cache: 'no-store' })
+      const j = await r.json()
+      if (!j?.dossier) { console.warn('[dossier] refresh KO', r.status, j?.error); return }
+      if (writeSeq.current === seq) setD(j.dossier)   // une ecriture est passee depuis : sa version est plus fraiche
+    } catch (e) { console.warn('[dossier] refresh KO', e) }
   }
   // Ouverture immédiate avec les montants figés, puis recalcul des tarifs en
   // arrière-plan (moteur de prix + itinéraires) pour qui les voit.
@@ -157,8 +173,9 @@ export default function DossierGroups({ initial, fiches, shared, isSuperadmin, o
     if (!initial.light || !canBill) return
     let cancelled = false
     setRefining(true)
+    const seq = writeSeq.current
     fetch(`/api/dossier/${initial.root_id}?t=${Date.now()}`, { cache: 'no-store' }).then(r => r.json())
-      .then(j => { if (!cancelled && j?.dossier) setD(j.dossier) }).catch(() => {}).finally(() => { if (!cancelled) setRefining(false) })
+      .then(j => { if (!cancelled && j?.dossier && writeSeq.current === seq) setD(j.dossier) }).catch(() => {}).finally(() => { if (!cancelled) setRefining(false) })
     return () => { cancelled = true }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initial.root_id])
@@ -752,7 +769,13 @@ function BillingRow({ d, leg, onChanged, gmKey, allLegs = false, onApplied }: { 
   const shownId   = local ? local.id : (allLegs ? d.billed_to.id : leg.billed_to_id)
   const shownName = local ? local.name : (allLegs ? d.billed_to.name : leg.billed_to_name)
   const inherited = allLegs || (shownId ?? null) === (d.billed_to.id ?? null)
-  const targets   = allLegs ? d.legs.filter(l => l.kind !== 'out' && l.channel !== 'parquet').map(l => l.mission_id) : [leg.mission_id]
+  // « Client du dossier » se lit sur la fiche RACINE : si elle sort de la liste
+  // (groupe facturé au Parquet), le choix n'est écrit nulle part et l'écran
+  // revient à « à définir » au rechargement. La racine en fait donc toujours
+  // partie. Olivier 09/09/2026.
+  const targets   = allLegs
+    ? Array.from(new Set([d.root_id, ...d.legs.filter(l => l.kind !== 'out' && l.channel !== 'parquet').map(l => l.mission_id)]))
+    : [leg.mission_id]
   const save = async (c: { id: number | null; name: string | null }) => {
     setBusy(true); setErr(null)
     try {
@@ -771,7 +794,7 @@ function BillingRow({ d, leg, onChanged, gmKey, allLegs = false, onApplied }: { 
         <>
           <button disabled={busy} onClick={() => setEditing(true)} className="border rounded-lg px-2.5 py-1 bg-surface text-ink font-medium min-w-[200px] text-left hover:border-brand/50">{busy ? '⏳ ' : ''}{shownName || '— à définir'} <span className="text-ink-faint float-right">▾</span></button>
           {allLegs
-            ? <span className="text-ink-faint text-[11px]" title="Choisir ici applique le client à tous les groupes ; un groupe se corrige sur sa ligne">→ tous les groupes</span>
+            ? <span className="text-ink-faint text-[11px]" title={`Choisir ici applique le client à tous les groupes${d.legs.some(l => l.channel === 'parquet') ? ' sauf ceux facturés au Parquet (état de frais)' : ''} ; un groupe se corrige sur sa ligne`}>→ tous les groupes{d.legs.some(l => l.channel === 'parquet') ? ' (hors Parquet)' : ''}</span>
             : inherited
             ? <span className="text-ink-faint text-[11px]">= client du dossier</span>
             : <span className="text-amber-700 dark:text-amber-300 text-[11px] font-semibold">⚠ différent du dossier ({d.billed_to.name || '—'})</span>}

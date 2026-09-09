@@ -57,6 +57,13 @@ const ready  = (d: Dossier) => d.legs.filter(l => isOdoo(l) && (canPickLeg(l) ||
 // frais) ou le Domaine (relevé trimestriel), pas par une facture Odoo d'ici.
 const isCircuitLegs = (d: Dossier) => d.legs.some(l => !isOdoo(l) && !isLegBilled(l) && !l.nothing_to_bill) && ready(d).length === 0
 const hasUnknown = (d: Dossier) => d.legs.some(l => l.amount_unknown && !isLegBilled(l))
+// Pourquoi le moteur n'a pas su chiffrer : la raison vit sur le groupe
+// (amount_note). Sans elle, « à calculer » ne dit pas quoi corriger — il faut
+// ouvrir le dossier pour la lire (Olivier 09/09/2026, 2CMX015 et 1DMC939).
+const unknownLegs  = (d: Dossier) => d.legs.filter(l => l.amount_unknown && !isLegBilled(l))
+const unknownWhy   = (d: Dossier) => unknownLegs(d).map(l => l.amount_note || 'raison inconnue')
+const unknownTitle = (d: Dossier) => unknownLegs(d)
+  .map(l => `${l.letter} · ${l.title} : ${l.amount_note || 'raison inconnue'}`).join('\n')
 // Un groupe au montant INCONNU (tarif introuvable, destination non géocodée…)
 // n'est pas « facturé » : il reste à facturer, avec « à calculer » affiché.
 const isDone = (d: Dossier) => !d.state.open && d.legs.every(l => isLegBilled(l) || !!l.nothing_to_bill || (l.amount_htva === 0 && !l.amount_unknown))
@@ -338,9 +345,13 @@ export default function DossiersClient({ initial, autoById, comexById = {}, isSu
                 ))}
               </div>
               <div className="text-right tabular-nums text-sm">
-                <span className="font-semibold text-ink">{hasUnknown(d) ? <span className="text-ink-muted font-normal">{rest(d) > 0 ? eur(rest(d)) + ' + ' : ''}à calculer</span> : eur(rest(d))}</span>
+                <span className="font-semibold text-ink">{hasUnknown(d)
+                  ? <span className="text-amber-700 dark:text-amber-300 font-normal" title={unknownTitle(d)}>{rest(d) > 0 ? eur(rest(d)) + ' + ' : ''}à calculer</span>
+                  : eur(rest(d))}</span>
                 <span className="block text-[10.5px] font-normal text-ink-muted">reste HTVA</span>
-                {!hasUnknown(d) && <span className="block text-[12px] font-semibold text-ink-secondary" title="TVA 21 %">{eurTvac(rest(d))} TVAC</span>}
+                {hasUnknown(d)
+                  ? <span className="block text-[10.5px] font-normal text-amber-700 dark:text-amber-300 whitespace-normal leading-tight" title={unknownTitle(d)}>{unknownWhy(d)[0]}</span>
+                  : <span className="block text-[12px] font-semibold text-ink-secondary" title="TVA 21 %">{eurTvac(rest(d))} TVAC</span>}
               </div>
               <div className="flex flex-wrap items-center gap-1.5">
                 <span className={`text-[11px] font-semibold px-2.5 py-1 rounded-full whitespace-nowrap ${badge[0]}`} title={ai?.reason || ''}>{badge[1]}</span>
