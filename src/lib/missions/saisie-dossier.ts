@@ -305,6 +305,54 @@ export async function generateEtatFrais(
   return { pdf, numero, totalHtva: billing.totalHtva, totalTvac: billing.totalTvac, efRowId }
 }
 
+// ── Re-génération du PDF d'un état de frais EXISTANT ─────────────────────────
+// Même numéro, mêmes période / lignes / montants (repris de la ligne
+// saisie_etats_frais), mais infos véhicule et destinataire ACTUELS de la fiche.
+// Cas d'usage : marque/modèle/châssis corrigés après émission (Olivier
+// 2026-09-09, 90698 / EDF-2026-0053 déjà validé et déposé). Ne consomme rien,
+// n'avance rien, n'envoie rien.
+export async function renderEtatFraisFromRow(sb: any, dossierId: string, efRowId: string): Promise<{ pdf: Buffer; numero: string }> {
+  const [{ data: d }, { data: ef }] = await Promise.all([
+    sb.from('saisie_dossiers').select('*').eq('id', dossierId).maybeSingle(),
+    sb.from('saisie_etats_frais').select('*').eq('id', efRowId).eq('dossier_id', dossierId).maybeSingle(),
+  ])
+  if (!d) throw new Error('Dossier introuvable')
+  if (!ef) throw new Error('État de frais introuvable pour ce dossier')
+  const mission = d.mission_id
+    ? (await sb.from('incoming_missions')
+        .select('client_name, billed_to_name, incident_address, incident_city, vehicle_class, vehicle_vin, vehicle_plate, vehicle_brand, vehicle_model, client_email, received_at, domaine_remise_date')
+        .eq('id', d.mission_id).maybeSingle()).data
+    : null
+  const recipient = (ef.recipient || d.recipient || 'parquet') as SaisieRecipient
+  const lines = Array.isArray(ef.lines_json) ? ef.lines_json : []
+  const billing = {
+    lines,
+    totalHtva: Number(ef.total_htva ?? lines.reduce((t: number, l: any) => t + Number(l.total || 0), 0)),
+    totalTvac: Number(ef.total_tvac ?? 0),
+    recipient,
+  }
+  const destEmail = resolveRecipientEmail(recipient, d.motif_code, mission?.client_email)?.email || null
+  const qrUrl = d.validation_token ? validationLink(d.validation_token) : `${APP_URL}/fourriere/saisies`
+  const pdf = await renderEtatFraisPdf({
+    numero: ef.numero,
+    dateEmission: ef.period_to || (ef.created_at ? String(ef.created_at).slice(0, 10) : belgianToday()),
+    recipient,
+    destinataire: resolveDestinataire(recipient, mission, destEmail),
+    pv: d.dossier_ref,
+    dateSaisie: mission?.received_at || d.parked_at,
+    parkedAt: d.parked_at,
+    periodFrom: ef.period_from || d.parked_at,
+    periodTo: ef.period_to,
+    plate: mission?.vehicle_plate || d.vehicle_plate,
+    vehicle: [mission?.vehicle_brand || d.vehicle_brand, mission?.vehicle_model || d.vehicle_model].filter(Boolean).join(' '),
+    vin: mission?.vehicle_vin || null,
+    motif: d.motif_label || null,
+    billing,
+    qrUrl,
+  })
+  return { pdf, numero: ef.numero }
+}
+
 // ── Envoi de l'état de frais au destinataire (mail + lien de dépôt validation) ─
 export interface SendEfResult { ok: boolean; email?: string; numero?: string; error?: string }
 

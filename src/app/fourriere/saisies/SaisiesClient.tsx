@@ -41,6 +41,8 @@ const EF_STATUS: Record<string, { label: string; cls: string }> = {
   depose:  { label: 'Déposé — attente taxation',    cls: 'bg-indigo-100 text-indigo-800 border-indigo-300' },
   liquide: { label: 'Liquidation OK — à facturer',  cls: 'bg-purple-100 text-purple-800 border-purple-300' },
   facture: { label: 'Facturé',                      cls: 'bg-teal-100 text-teal-800 border-teal-300' },
+  a_annuler: { label: 'À ANNULER (levée de saisie) — note de crédit au Parquet', cls: 'bg-red-600 text-white border-red-700' },
+  annule:    { label: 'Annulé (note de crédit)',    cls: 'bg-slate-200 text-slate-700 border-slate-400' },
 }
 // Alerte forclusion (6 mois à dater de la prestation — AR 15/12/2019 art. 41).
 const FORCLUSION: Record<number, { cls: string }> = {
@@ -190,7 +192,7 @@ export default function SaisiesClient({ userRole, userName, userEmail, userModul
     } finally { setBusy(null) }
   }
 
-  async function efStatus(id: string, efId: string, status: 'accepte' | 'refuse') {
+  async function efStatus(id: string, efId: string, status: 'accepte' | 'refuse' | 'annule') {
     setBusy(id); setMsg(null)
     try {
       const r = await fetch(`/api/fourriere/saisies/${id}/ef-status`, {
@@ -198,7 +200,7 @@ export default function SaisiesClient({ userRole, userName, userEmail, userModul
       })
       const j = await r.json().catch(() => ({}))
       if (!r.ok) { setMsg(`⚠ ${j.error || 'Erreur'}`); return }
-      setMsg(status === 'refuse' ? 'Marqué refusé' : '✓ Marqué validé'); await load()
+      setMsg(status === 'refuse' ? 'Marqué refusé' : status === 'annule' ? '✓ Marqué annulé (note de crédit)' : '✓ Marqué validé'); await load()
     } finally { setBusy(null) }
   }
 
@@ -526,7 +528,7 @@ function DossierCard({ d, busy, onGenerate, onRecipient, onState, onRemove, onRe
   onJustInvoice: (efId: string) => void
   onUpload: (efId: string, f: File) => void
   onFacture: (efId: string) => void
-  onEfStatus: (efId: string, status: 'accepte' | 'refuse') => void
+  onEfStatus: (efId: string, status: 'accepte' | 'refuse' | 'annule') => void
   onEfRelance: (efId: string, numero: string) => void
 }) {
   const st = STATE[d.state] || { label: d.state, cls: 'bg-slate-100 text-slate-700 border-slate-300', rank: 8 }
@@ -684,6 +686,9 @@ function DossierCard({ d, busy, onGenerate, onRecipient, onState, onRemove, onRe
                       </span>
                     )}
                     <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full border ${st.cls}`}>{st.label}</span>
+                    <a href={`/api/fourriere/saisies/${d.id}/etat-frais/${ef.id}`} target="_blank" rel="noreferrer"
+                      title="PDF de cet état de frais : même numéro, mêmes jours et montants, infos véhicule actuelles de la fiche"
+                      className="px-2 py-0.5 bg-surface hover:bg-surface-hover border text-ink-secondary rounded-lg text-[11px] font-semibold">📄 PDF</a>
                   </div>
                 </div>
                 {ef.status_note && !['liquide', 'facture'].includes(ef.status) && (
@@ -708,6 +713,10 @@ function DossierCard({ d, busy, onGenerate, onRecipient, onState, onRemove, onRe
                     <button disabled={busy} onClick={() => onEfStatus(ef.id, 'refuse')}
                       className="px-2.5 py-1 bg-red-100 hover:bg-red-200 text-red-800 border border-red-300 rounded-lg text-xs font-semibold">✕ Refusé</button>
                   </>}
+                  {ef.status === 'a_annuler' && (
+                    <button disabled={busy} onClick={() => { if (window.confirm('La note de crédit a été envoyée au Parquet pour cet état de frais ?')) onEfStatus(ef.id, 'annule') }}
+                      className="px-2.5 py-1 bg-red-600 hover:bg-red-700 text-white rounded-lg text-xs font-semibold">✓ Note de crédit envoyée → annulé</button>
+                  )}
                   {ef.status === 'accepte' && (
                     <button disabled={busy} onClick={() => onJustInvoice(ef.id)}
                       className="px-2.5 py-1 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-semibold">📤 Déposer sur JustInvoice</button>
