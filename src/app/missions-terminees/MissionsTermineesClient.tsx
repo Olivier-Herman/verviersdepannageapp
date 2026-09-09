@@ -1,5 +1,6 @@
 'use client'
 
+import { statusFr } from '@/lib/missions/status-label'
 import { useCallback, useEffect, useState } from 'react'
 import Link from 'next/link'
 import AppShell from '@/components/layout/AppShell'
@@ -145,7 +146,7 @@ function MissionStatusBadge({ m }: { m: TerminatedMission }) {
   if (m.invoice_method === 'auto') {
     return <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-info-soft text-info" title="Facturée par l'assistance (Clôture Allianz / Touring BKO)">⚡ Autofacturée (assistance)</span>
   }
-  return <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-ink-faint/15 text-ink-muted">{m.status}</span>
+  return <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-ink-faint/15 text-ink-muted">{statusFr(m.status)}</span>
 }
 
 interface Props {

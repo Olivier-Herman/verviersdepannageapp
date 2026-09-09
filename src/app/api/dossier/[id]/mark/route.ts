@@ -125,5 +125,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   await sb.from('mission_logs').insert({ mission_id: d.root_id, actor_id: user.id, action: action === 'no_charge' ? 'no_charge' : 'invoiced',
     notes: action === 'already_billed' ? `Dossier ${d.ref} : groupes ${done.join(' ')} déjà facturés sur ${number}` : action === 'auto_billed' ? `Dossier ${d.ref} : groupes ${done.join(' ')} autofacturés (validé COMEX)` : `Dossier ${d.ref} : groupes ${done.join(' ')} sans frais — ${reason}` }).then(() => {}, () => {})
   invalidateDossierCache()
+  try { const { settleRootIfDone } = await import('@/lib/dossier/settle'); await settleRootIfDone(sb, d.root_id, user.id || null) } catch (e: any) { console.warn('[dossier/mark] settle KO:', e?.message) }
+  invalidateDossierCache()
   return NextResponse.json({ ok: true, covers: done, invoice: resolved })
 }

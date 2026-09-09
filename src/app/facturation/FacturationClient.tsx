@@ -1,5 +1,6 @@
 'use client'
 
+import { statusFr } from '@/lib/missions/status-label'
 import { useMemo, useState, useEffect, useRef } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { createClient } from '@supabase/supabase-js'
@@ -773,7 +774,7 @@ export default function FacturationClient({
                       </div>
                       <div className="text-ink-muted text-[11px] mt-0.5 truncate">
                         {r.ref} · {r.client || '—'} · {r.dossier || '—'}
-                        {r.status ? ` · ${r.status}` : ''}
+                        {r.status ? ` · ${statusFr(r.status)}` : ''}
                         {r.montant_ttc != null ? ` · ${Number(r.montant_ttc).toFixed(2)} € TTC` : ''}
                         {r.date_iso ? ` · ${fmtDate(r.date_iso)}` : ''}
                       </div>

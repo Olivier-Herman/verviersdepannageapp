@@ -34,6 +34,7 @@ export async function POST(_req: Request, { params }: { params: { id: string } }
   if (!draftIds.length) return NextResponse.json({ ok: true, synced: {}, pending: [] , message: 'Aucun brouillon en attente sur ce dossier.' })
   const synced = await syncDraftInvoiceNumbers(sb, draftIds)
   invalidateDossierCache()
+  if (Object.keys(synced).length) { try { const { settleRootIfDone } = await import('@/lib/dossier/settle'); await settleRootIfDone(sb, params.id, null); invalidateDossierCache() } catch (e: any) { console.warn('[dossier/verify] settle KO:', e?.message) } }
   const pending = draftIds.filter(id => !synced[id])
   return NextResponse.json({ ok: true, synced, pending,
     message: Object.keys(synced).length

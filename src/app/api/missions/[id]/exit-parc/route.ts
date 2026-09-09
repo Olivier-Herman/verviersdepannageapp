@@ -38,5 +38,8 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   }
   const res = await exitParcNow(sb, params.id, { id: acc.id || null, name: (session?.user as any)?.name || null }, reason, String(body.note || '').trim() || undefined)
   if (!res.ok) return NextResponse.json({ error: res.error, exit_control_blocked: res.exit_control_blocked }, { status: res.status })
-  return NextResponse.json({ ok: true, released: res.released })
+  // Tout déjà facturé (facture partielle / dossier) ? → la fiche est terminée, pas « à facturer ».
+  let settled = false
+  try { const { settleRootIfDone } = await import('@/lib/dossier/settle'); settled = (await settleRootIfDone(sb, params.id, acc.id || null)).settled } catch (e: any) { console.warn('[exit-parc] settle KO:', e?.message) }
+  return NextResponse.json({ ok: true, released: res.released, settled })
 }
