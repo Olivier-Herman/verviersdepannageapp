@@ -18,6 +18,12 @@ interface Mission {
   vehicle_brand:      string | null
   vehicle_model:      string | null
   client_name:        string | null
+  client_phone?:      string | null
+  assisted_phone?:    string | null
+  billed_to_name?:    string | null
+  parked_at?:         string | null
+  /** Relivraison déjà existante (groupes « en cours » / « à sortir du parc »). */
+  rel?: { id: string; mission_number: number | null; status: string; driver: string | null; completed_at: string | null; created_at: string | null }
   redelivery_address: string | null
   redelivery_lat:     number | null
   redelivery_lng:     number | null
@@ -67,6 +73,24 @@ export default function RelivraisonClient({ userRole, userName, userEmail, userM
   const zoneRef = useRef(zone)
   useEffect(() => { zoneRef.current = zone }, [zone])
   const [moving, setMoving] = useState<string | null>(null)
+  const [pending, setPending] = useState<Mission[]>([])
+  const [stale, setStale]     = useState<Mission[]>([])
+  const [exiting, setExiting] = useState<string | null>(null)
+  const daysSince = (iso?: string | null) => iso ? Math.max(0, Math.floor((Date.now() - new Date(iso).getTime()) / 86_400_000)) : null
+  const fmtD = (iso?: string | null) => iso ? new Date(iso).toLocaleDateString('fr-BE', { day: '2-digit', month: '2-digit' }) : ''
+  const REL_STATUS: Record<string, string> = { dispatching: 'à assigner', assigned: 'assignée', accepted: 'acceptée', on_way: 'en route', on_site: 'sur place', in_progress: 'en cours', delivering: 'en livraison' }
+  // Régularise une fiche mère restée « en parc » après une relivraison terminée.
+  const exitParent = useCallback(async (m: Mission) => {
+    if (!confirm(`Sortir ${m.vehicle_plate || 'ce véhicule'} du parc ?\nSa relivraison #${m.rel?.mission_number ?? ''} est terminée${m.rel?.completed_at ? ' le ' + fmtD(m.rel.completed_at) : ''} : la fiche sort du parc à cette date et passe à facturer si rien n'a été facturé.`)) return
+    setExiting(m.id)
+    try {
+      const res = await fetch('/api/relivraison/exit-parent', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mission_id: m.id }) })
+      const j = await res.json()
+      if (!res.ok) throw new Error(j.error || 'Erreur')
+      await load(zoneRef.current, true)
+    } catch (e: any) { alert(e.message || 'Sortie impossible') } finally { setExiting(null) }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   const load = useCallback(async (z: string, silent = false) => {
     if (!silent) setLoading(true)
@@ -78,6 +102,8 @@ export default function RelivraisonClient({ userRole, userName, userEmail, userM
       if (zoneRef.current !== z) return
       setZones(j.zones || [])
       setMissions(j.missions || [])
+      setPending(j.pending || [])
+      setStale(j.stale || [])
       setError('')
     } catch (e: any) {
       setError(e.message || 'Erreur réseau')
@@ -251,8 +277,10 @@ export default function RelivraisonClient({ userRole, userName, userEmail, userM
           <p className="text-ink-muted py-8 text-center">Chargement…</p>
         ) : error ? (
           <p className="text-critical py-8 text-center">⚠ {error}</p>
-        ) : missions.length === 0 ? (
+        ) : missions.length === 0 && pending.length === 0 && stale.length === 0 ? (
           <div className="text-center py-16 text-ink-muted">Aucun véhicule à relivrer dans cette zone 🎉</div>
+        ) : missions.length === 0 ? (
+          <div className="text-center py-8 text-ink-muted">Rien à créer : toutes les relivraisons de cette zone existent déjà.</div>
         ) : (
           <div className="space-y-2">
             {missions.map(m => (
@@ -282,7 +310,13 @@ export default function RelivraisonClient({ userRole, userName, userEmail, userM
                         )
                       })()}
                     </div>
-                    <p className="text-ink-muted text-xs mt-0.5">{m.client_name || '—'}</p>
+                    <p className="text-ink-muted text-xs mt-0.5">
+                      {[m.client_name, m.billed_to_name && m.billed_to_name !== m.client_name ? m.billed_to_name : null].filter(Boolean).join(' · ') || '—'}
+                      {(m.client_phone || m.assisted_phone) && <a href={`tel:${m.client_phone || m.assisted_phone}`} onClick={e => e.stopPropagation()} className="ml-2 text-brand hover:underline">☎ {m.client_phone || m.assisted_phone}</a>}
+                    </p>
+                    {m.parked_at && (() => { const d = daysSince(m.parked_at); return (
+                      <p className={`text-xs mt-0.5 ${d != null && d >= 7 ? 'text-amber-600 font-medium' : 'text-ink-faint'}`}>Au parc depuis le {fmtD(m.parked_at)}{d != null ? ` · ${d} j` : ''}</p>
+                    ) })()}
                     <span className="text-ink-faint text-xs mt-1 inline-block">VOIR la fiche →</span>
                   </div>
                   <div className="flex flex-col items-end gap-1.5 flex-shrink-0 max-w-[60%]">
@@ -315,6 +349,48 @@ export default function RelivraisonClient({ userRole, userName, userEmail, userM
               </Link>
             ))}
           </div>
+        )}
+
+        {/* Relivraisons déjà créées : on sait où en est le véhicule, rien à faire ici. */}
+        {!loading && !error && pending.length > 0 && (
+          <section className="mt-6">
+            <h2 className="text-ink-secondary text-xs font-semibold uppercase tracking-widest mb-2">Relivraison en cours · {pending.length}</h2>
+            <div className="space-y-2">
+              {pending.map(m => (
+                <Link key={m.id} href={m.rel?.id ? `/dispatch/${m.rel.id}` : `/dispatch/${m.id}`} className="block bg-surface-2 border rounded-xl p-3 hover:border-brand/40 transition">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <p className="text-ink font-bold font-mono text-sm">{m.vehicle_plate || '—'}<span className="text-ink-secondary font-normal font-sans"> {[m.vehicle_brand, m.vehicle_model].filter(Boolean).join(' ')}</span></p>
+                    <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase text-white ${getSourceColor(m.source, sources)}`}>{getSourceLabel(m.source, sources)}</span>
+                    <span className="ml-auto text-xs text-ink-secondary">🔁 #{m.rel?.mission_number ?? ''} · {REL_STATUS[m.rel?.status || ''] || m.rel?.status}{m.rel?.driver ? ` à ${m.rel.driver}` : ''}</span>
+                  </div>
+                  <p className="text-ink-muted text-xs mt-0.5">{m.client_name || '—'}{m.redelivery_address ? ` · 📍 ${m.redelivery_address}` : ''}</p>
+                </Link>
+              ))}
+            </div>
+          </section>
+        )}
+
+        {/* Incohérences : relivraison terminée, fiche encore « en parc » (véhicule parti). */}
+        {!loading && !error && stale.length > 0 && (
+          <section className="mt-6">
+            <h2 className="text-amber-700 dark:text-amber-300 text-xs font-semibold uppercase tracking-widest mb-1">À sortir du parc · {stale.length}</h2>
+            <p className="text-ink-muted text-xs mb-2">La relivraison de ces véhicules est terminée, mais la fiche est restée « en parc » (remise en parc après coup). Le bouton la sort du parc à la date de la relivraison et la passe à facturer si rien n'a été facturé.</p>
+            <div className="space-y-2">
+              {stale.map(m => (
+                <div key={m.id} className="bg-amber-500/5 border border-amber-500/30 rounded-xl p-3 flex items-center gap-3 flex-wrap">
+                  <div className="min-w-0 flex-1">
+                    <p className="text-ink font-bold font-mono text-sm">{m.vehicle_plate || '—'}<span className="text-ink-secondary font-normal font-sans"> {[m.vehicle_brand, m.vehicle_model].filter(Boolean).join(' ')}</span></p>
+                    <p className="text-ink-muted text-xs mt-0.5">Relivraison #{m.rel?.mission_number ?? ''} terminée{m.rel?.completed_at ? ` le ${fmtD(m.rel.completed_at)}` : ''}{m.rel?.driver ? ` par ${m.rel.driver}` : ''}{m.parked_at ? ` · au parc depuis le ${fmtD(m.parked_at)}` : ''}</p>
+                  </div>
+                  <Link href={`/dispatch/${m.id}`} className="text-xs text-ink-faint hover:text-ink">Voir la fiche →</Link>
+                  <button type="button" disabled={exiting === m.id} onClick={() => exitParent(m)}
+                    className="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-xs font-semibold transition disabled:opacity-50">
+                    {exiting === m.id ? '⏳' : 'Sortir du parc'}
+                  </button>
+                </div>
+              ))}
+            </div>
+          </section>
         )}
       </main>
 

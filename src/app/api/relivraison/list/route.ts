@@ -13,9 +13,9 @@ import { isPreviewOn }       from '@/lib/feature-flags'
 export const dynamic = 'force-dynamic'
 
 const SELECT = `id, mission_number, external_id, source, mission_type, incident_type,
-  client_name, vehicle_plate, vehicle_brand, vehicle_model,
+  client_name, client_phone, assisted_phone, billed_to_name, vehicle_plate, vehicle_brand, vehicle_model,
   redelivery_address, redelivery_lat, redelivery_lng,
-  parc_zone_key, received_at, intervention_date, status, garage_reopen_date`
+  parc_zone_key, parked_at, received_at, intervention_date, status, garage_reopen_date`
 
 
 export async function GET(req: Request) {
@@ -46,14 +46,22 @@ export async function GET(req: Request) {
     .or('parse_confidence.is.null,parse_confidence.gte.0.3,assigned_to.not.is.null')
     .is('archived_at', null)
 
-  // Compteurs par zone (badge onglet) — brut (peut inclure quelques parents reliés).
+  // Compteurs par zone (badge onglet) = ce que l'onglet AFFICHE : les fiches
+  // dont la relivraison existe déjà (en cours ou terminée) n'y sont plus.
+  // Olivier 09/09/2026 : « ça dit 7 mais ça affiche deux » — le compteur
+  // comptait tout ce qui était garé en K, l'onglet cachait 5 fiches dont la
+  // relivraison était faite depuis des semaines (fiche remise en parc à la main).
   const counts: Record<string, number> = {}
   await Promise.all(relZones.map(async z => {
-    const { count } = await stdFilters(
-      sb.from('incoming_missions').select('*', { count: 'exact', head: true })
-        .eq('status', 'parked').eq('parc_zone_key', z.key)
+    const { data: parkedIds } = await stdFilters(
+      sb.from('incoming_missions').select('id').eq('status', 'parked').eq('parc_zone_key', z.key)
     )
-    counts[z.key] = count || 0
+    const ids: string[] = (parkedIds || []).map((r: any) => String(r.id))
+    if (!ids.length) { counts[z.key] = 0; return }
+    const { data: kids } = await sb.from('incoming_missions').select('parent_mission_id')
+      .in('parent_mission_id', ids).eq('dossier_leg', false).not('status', 'in', '("cancelled","ignored")')
+    const withChild = new Set((kids || []).map((k: any) => k.parent_mission_id))
+    counts[z.key] = ids.filter(id => !withChild.has(id)).length
   }))
 
   // Missions de la zone active.
@@ -81,17 +89,39 @@ export async function GET(req: Request) {
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   let missions = rows || []
 
-  // Exclure les parents ayant déjà une REL enfant active.
+  // Les parents qui ont déjà une relivraison ne sont plus « à relivrer » :
+  //  - relivraison EN COURS (à assigner / assignée / en route…) → groupe « en cours »,
+  //    affiché en dessous, sans bouton : on sait où en est le véhicule ;
+  //  - relivraison TERMINÉE mais fiche encore « en parc » → incohérence (véhicule
+  //    parti, fiche remise en parc à la main) → groupe « à sortir du parc », avec
+  //    le bouton qui régularise. Olivier 09/09/2026.
   const ids = missions.map((m: any) => m.id)
+  const pending: any[] = [], stale: any[] = []
   if (ids.length > 0) {
     const { data: kids } = await sb
       .from('incoming_missions')
-      .select('parent_mission_id')
+      .select('id, parent_mission_id, mission_number, status, assigned_to, completed_at, created_at')
       .in('parent_mission_id', ids)
       .eq('dossier_leg', false)   // fiches Gardiennage ≠ REL (08/09/2026)
       .not('status', 'in', '("cancelled","ignored")')
-    const withChild = new Set((kids || []).map((k: any) => k.parent_mission_id).filter(Boolean))
-    missions = missions.filter((m: any) => !withChild.has(m.id))
+      .order('created_at', { ascending: false })
+    const driverIds = Array.from(new Set((kids || []).map((k: any) => k.assigned_to).filter(Boolean)))
+    const names: Record<string, string> = {}
+    if (driverIds.length) {
+      const { data: us } = await sb.from('users').select('id, name').in('id', driverIds)
+      for (const u of (us || []) as any[]) names[u.id] = u.name
+    }
+    const byParent = new Map<string, any>()
+    for (const k of (kids || []) as any[]) if (!byParent.has(k.parent_mission_id)) byParent.set(k.parent_mission_id, k)
+    const DONE = new Set(['completed', 'to_invoice', 'invoiced'])
+    const rest: any[] = []
+    for (const m of missions) {
+      const k = byParent.get(m.id)
+      if (!k) { rest.push(m); continue }
+      const rel = { id: k.id, mission_number: k.mission_number, status: k.status, driver: k.assigned_to ? (names[k.assigned_to] || null) : null, completed_at: k.completed_at, created_at: k.created_at }
+      if (DONE.has(k.status)) stale.push({ ...m, rel }); else pending.push({ ...m, rel })
+    }
+    missions = rest
   }
 
   // Tri par tournée (plus proche voisin depuis le dépôt) sur coords en cache.
@@ -127,6 +157,8 @@ export async function GET(req: Request) {
     zone,
     zones: relZones.map(z => ({ key: z.key, label: z.label, count: counts[z.key] || 0 })),
     missions,
+    pending,
+    stale,
     source: gardiennageMode ? 'gardiennage' : 'vd_soft',
   })
 }
