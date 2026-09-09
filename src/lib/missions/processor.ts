@@ -790,7 +790,9 @@ export async function processEmailMessage(messageId: string): Promise<ProcessRes
       // mission arrive par le webhook — donc ils ne créent aucune fiche et ne
       // doivent PAS spammer le superadmin avec « Expéditeur inconnu ».
       // Olivier 2026-07-25.
-      const IGNORED_SENDER_DOMAINS = ['kaze.so', 'ima.eu']
+      // + aprovall.com (Olivier 09/09/2026) : rappels administratifs de la plateforme
+      //   Aprovall adressés à Axel — jamais une mission.
+      const IGNORED_SENDER_DOMAINS = ['kaze.so', 'ima.eu', 'aprovall.com']
       const senderDomain = String(fromEmail || '').toLowerCase().split('@').pop() || ''
       const ignored = IGNORED_SENDER_DOMAINS.some(d => senderDomain === d || senderDomain.endsWith('.' + d))
       if (ignored) {
