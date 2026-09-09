@@ -187,7 +187,19 @@ export default function DossiersClient({ initial, autoById, comexById = {}, isSu
   }
   const sources = useMemo(() => Array.from(new Set(rows.filter(d => inGroup(d, activeGroup)).map(d => d.source || ''))).filter(Boolean).sort(), [rows, activeGroup])
   const sourceLabel = (k: string) => rows.find(d => d.source === k)?.source_label || k
-  const groupCounts = useMemo(() => Object.fromEntries(SOURCE_GROUPS.map(g => [g.key, rows.filter(d => inGroup(d, g) && !isDone(d)).length])), [rows])
+  // Le compteur d'un groupe annonce ce qu'on verra en cliquant dessus : même
+  // onglet, même source, même recherche. Avant, il comptait TOUT le groupe hors
+  // facturé, onglets confondus — « Toutes (hors Touring) 18 » au-dessus d'une
+  // liste de 9, parce que 9 autres partaient par le Parquet / Domaine / COMEX
+  // (Olivier 09/09/2026).
+  const tabPredicate = TABS.find(t => t[0] === tab)![2]
+  const groupCounts = useMemo(
+    () => Object.fromEntries(SOURCE_GROUPS.map(g => [g.key, rows.filter(d =>
+      inGroup(d, g) && (src === 'all' || d.source === src) && matches(d) && tabPredicate(d),
+    ).length])),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [rows, tab, src, search],
+  )
   const scoped = rows.filter(inScope).filter(matches)
   const visible = scoped.filter(TABS.find(t => t[0] === tab)![2])
   const todo = scoped.filter(d => !isDone(d) && !isCircuit(d))
@@ -293,7 +305,7 @@ export default function DossiersClient({ initial, autoById, comexById = {}, isSu
         <div className="flex flex-wrap gap-2">
           {SOURCE_GROUPS.map(g => (
             <button key={g.key} onClick={() => setGroup(g.key)} className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition ${group === g.key ? 'bg-brand text-white border-brand' : 'bg-surface-2 text-ink-secondary hover:text-ink'}`}>
-              {g.label}<span className={`ml-1.5 px-1.5 py-0.5 rounded-full text-[10px] ${group === g.key ? 'bg-white/25' : 'bg-black/10 text-ink-muted'}`}>{groupCounts[g.key] ?? 0}</span>
+              {g.label}<span title={`Dossiers de ce groupe dans l'onglet « ${TABS.find(t => t[0] === tab)![1]} »`} className={`ml-1.5 px-1.5 py-0.5 rounded-full text-[10px] ${group === g.key ? 'bg-white/25' : 'bg-black/10 text-ink-muted'}`}>{groupCounts[g.key] ?? 0}</span>
             </button>
           ))}
         </div>
