@@ -95,6 +95,34 @@ export async function syncDraftInvoiceNumbers(sb: any, odooIds: number[]): Promi
   return out
 }
 
+/**
+ * Postes d'une facture PARTIELLE classique : ils ne portent que le devis Odoo
+ * (odoo_quote_id) ; quand le devis est facturé et la facture postée, on
+ * ramène son numéro et son id sur les postes — sinon la Vue dossier ne voit
+ * pas que le poste est réglé (HSAV6087, 09/09/2026 : « tarif introuvable »
+ * alors que la facture 2026/09/148 existait).
+ */
+export async function syncQuoteInvoiceNumbers(sb: any, limit = 200): Promise<number> {
+  const { data: items } = await sb.from('mission_billed_items').select('id, odoo_quote_id').not('odoo_quote_id', 'is', null).is('invoice_number', null).limit(limit)
+  const quoteIds = Array.from(new Set((items || []).map((i: any) => Number(i.odoo_quote_id)).filter((n: number) => n > 0)))
+  if (!quoteIds.length) return 0
+  let orders: any[] = []
+  try { orders = await rpc<any[]>('sale.order', 'read', [quoteIds], { fields: ['id', 'invoice_ids'] }) } catch (e: any) { console.warn('[odoo-invoice] sync devis KO:', e?.message); return 0 }
+  const moveIds = Array.from(new Set(orders.flatMap(o => Array.isArray(o.invoice_ids) ? o.invoice_ids : [])))
+  if (!moveIds.length) return 0
+  let moves: any[] = []
+  try { moves = await rpc<any[]>('account.move', 'read', [moveIds], { fields: ['id', 'name', 'state', 'move_type'] }) } catch { return 0 }
+  const posted = new Map<number, any>(moves.filter(m => m.state === 'posted' && m.name && m.name !== '/' && m.move_type === 'out_invoice').map(m => [m.id, m]))
+  let n = 0
+  for (const o of orders) {
+    const mv = (Array.isArray(o.invoice_ids) ? o.invoice_ids : []).map((id: number) => posted.get(id)).find(Boolean)
+    if (!mv) continue
+    const { count } = await sb.from('mission_billed_items').update({ invoice_number: mv.name, invoice_odoo_id: mv.id }, { count: 'exact' }).eq('odoo_quote_id', o.id).is('invoice_number', null)
+    n += count || 0
+  }
+  return n
+}
+
 export function buildInvoiceUrl(id: number, _moveType?: string): string {
   // Format universel qui fonctionne en Odoo 17/18/19 (legacy web client)
   return `${ODOO_URL}/web#id=${id}&model=account.move&view_type=form`

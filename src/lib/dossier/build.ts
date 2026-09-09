@@ -310,7 +310,7 @@ async function buildDossierUncached(anyMissionId: string, light: boolean, price 
     for (const u of us2 || []) nameById[(u as any).id] = (u as any).name
   }
   const { data: items } = await sb.from('mission_billed_items')
-    .select('mission_id, kind, label, amount_htva, invoice_number, billed_to_name, billed_at, odoo_quote_id, invoice_odoo_id, dossier_letter')
+    .select('mission_id, kind, label, qty, amount_htva, period_from, period_to, invoice_number, billed_to_name, billed_at, odoo_quote_id, invoice_odoo_id, dossier_letter')
     .in('mission_id', ids)
   // Brouillons Odoo devenus factures : on ramène le numéro posté maintenant
   // (best effort, 4 s max) plutôt que d'attendre le cron. Olivier 08/09/2026.
@@ -330,11 +330,29 @@ async function buildDossierUncached(anyMissionId: string, light: boolean, price 
   }
   // Une facture Odoo encore en brouillon n'a pas de numéro : on la désigne par
   // son id Odoo jusqu'à ce que le cron verify-invoices ramène le numéro posté.
-  const refOf = (it: any) => it.invoice_number || (it.invoice_odoo_id ? `brouillon Odoo #${it.invoice_odoo_id}` : null)
+  const refOf = (it: any) => it.invoice_number || (it.invoice_odoo_id ? `brouillon Odoo #${it.invoice_odoo_id}` : it.odoo_quote_id ? `devis Odoo #${it.odoo_quote_id}` : null)
   const ODOO_URL = process.env.ODOO_URL || ''
   const draftUrl = (id: number) => ODOO_URL ? `${ODOO_URL}/web#id=${id}&model=account.move&view_type=form` : null
   const itemsBy: Record<string, any[]> = {}
   for (const it of items || []) (itemsBy[(it as any).mission_id] ||= []).push(it)
+  // Facture partielle du module classique : ses jours de parc (SERV-PARC, sans
+  // lettre de groupe) sont posés sur la fiche racine. Quand le dossier a ses
+  // groupes gardiennage, on les rattache au groupe dont la période les couvre,
+  // sinon le gardiennage ressort « à facturer » alors qu'il l'est (HSAV6087, 09/09/2026).
+  const gardLegs = legRows.filter(r => r.dossier_leg)
+  if (gardLegs.length) {
+    for (const rootId0 of Object.keys(itemsBy)) {
+      const keep: any[] = []
+      for (const it of itemsBy[rootId0]) {
+        if (it.kind !== 'SERV-PARC' || it.dossier_letter || !it.period_from) { keep.push(it); continue }
+        const from = ts(`${String(it.period_from).slice(0, 10)}T12:00:00Z`)!
+        const leg = gardLegs.find(g => g.parc_origin_mission_id === rootId0 || g.parent_mission_id === rootId0)
+          && gardLegs.filter(g => (ts(g.parked_at) || 0) <= from + 86_400_000 && (!g.parc_exit_at || ts(g.parc_exit_at)! >= from - 86_400_000)).sort((a, b) => (ts(b.parked_at) || 0) - (ts(a.parked_at) || 0))[0]
+        if (leg) (itemsBy[leg.id] ||= []).push({ ...it, dossier_letter: null }); else keep.push(it)
+      }
+      itemsBy[rootId0] = keep
+    }
+  }
 
   // ── Tarif journalier du gardiennage par régime (lignes SERV-PARC) ────────
   // Deux lignes par régime : voiture et cyclo (« cyclo » dans le libellé). On
@@ -532,6 +550,12 @@ async function buildDossierUncached(anyMissionId: string, light: boolean, price 
           const fige = Number(m.special_tarif_htva) > 0 ? Number(m.special_tarif_htva) : Number(m.estimated_htva) || 0
           if (fige > 0) { amount = r2(fige); note = `calcul indisponible — montant figé (${built.reason || 'erreur du moteur'})` }
           else { amount = 0; amountUnknown = true; note = `calcul indisponible : ${built.reason || 'erreur du moteur'}` }
+        } else if (billedRefs.length) {
+          // Rien à calculer parce que tout est DÉJÀ réglé (facture partielle du
+          // module classique, n° d'accord, auto-facturation) : les postes ont été
+          // déduits (D2) et il ne reste rien — ce n'est pas « à calculer ».
+          // HSAV6087 et 1HVS176, 09/09/2026.
+          amount = billedHtva; amountUnknown = false; note = billedHtva > 0 ? 'postes déjà facturés' : `déjà réglé (${billedRefs[0]})`
         } else {
           // Pas de tarif calculable : on le DIT (montant inconnu), on ne
           // ressort pas une estimation figée par l'ancien calcul (2AVA116 :

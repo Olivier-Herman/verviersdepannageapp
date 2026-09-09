@@ -11,7 +11,7 @@ export const maxDuration = 60
 
 import { NextResponse }            from 'next/server'
 import { createAdminClient }       from '@/lib/supabase'
-import { resolveInvoiceByNumber, syncDraftInvoiceNumbers }  from '@/lib/odoo-invoice'
+import { resolveInvoiceByNumber, syncDraftInvoiceNumbers, syncQuoteInvoiceNumbers }  from '@/lib/odoo-invoice'
 
 const BATCH_SIZE = 50
 
@@ -44,6 +44,8 @@ export async function GET(req: Request) {
       .not('invoice_odoo_id', 'is', null).is('invoice_number', null).order('updated_at', { ascending: false }).limit(100)
     const ids = Array.from(new Set((drafts || []).map((r: any) => Number(r.invoice_odoo_id)).filter(Boolean)))
     if (ids.length) draftsSynced = Object.keys(await syncDraftInvoiceNumbers(sb, ids)).length
+    // Postes d'une facture partielle classique (devis) : ramener le numéro de la facture postée (09/09/2026).
+    try { const nq = await syncQuoteInvoiceNumbers(sb); if (nq) console.log(`[sync-invoice-urls] ${nq} poste(s) de devis rattaché(s) à leur facture`) } catch (e: any) { console.warn('[sync-invoice-urls] sync devis KO:', e?.message) }
   } catch (e: any) { console.warn('[cron sync-invoice-urls] brouillons:', e?.message) }
   let resolved = 0
   let failed   = 0
