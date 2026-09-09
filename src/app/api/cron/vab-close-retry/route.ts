@@ -79,7 +79,7 @@ export async function GET(req: Request) {
 
     const sb = createAdminClient()
     const { data: fiches } = await sb.from('incoming_missions')
-      .select('id, vehicle_plate, external_id, status, assigned_to, mission_type, vab_assignment_ids, vab_closed_at')
+      .select('id, vehicle_plate, external_id, status, assigned_to, mission_type, vab_assignment_ids, vab_closed_at, source')
       .overlaps('vab_assignment_ids', ouverts)
       .in('status', TERMINÉES)
       // ⚠️ PAS de filtre sur vab_closed_at : une fiche porte plusieurs actions VAB
@@ -96,7 +96,20 @@ export async function GET(req: Request) {
     // venait d'être sorti du flux 2 — le filet l'ignorait alors qu'il savait le
     // traiter. Garde-fou inchangé : une destination illisible laisse le dossier
     // OUVERT plutôt que de partir de travers.
-    const candidats: any[] = (fiches || []) as any[]
+    // ── FICHE REQUALIFIÉE (VAB → Siabis…) : VAB S'EN OCCUPE ─────────────────
+    // Olivier 2026-09-09 (2JPR337) : quand un dépannage VAB est requalifié chez
+    // nous (Siabis couvert…), VAB clôture lui-même sa fiche dépannage et nous
+    // envoie ensuite le remorquage — que le poll rattache et que le filet solde
+    // comme d'habitude. On ne touche donc pas à leur dépannage : le filet
+    // tournait dans le vide toutes les 15 min (70 échecs en une nuit).
+    const requalifiées = ((fiches || []) as any[]).filter(f => String(f.source || '').toLowerCase() !== 'vab')
+    for (const f of requalifiées) {
+      const { data: déjà } = await sb.from('mission_logs').select('id').eq('mission_id', f.id).eq('action', 'vab_close_skipped').ilike('notes', '%VAB clôture lui-même%').limit(1)
+      if (!(déjà || []).length) {
+        await sb.from('mission_logs').insert({ mission_id: f.id, action: 'vab_close_skipped', notes: `VAB : fiche requalifiée « ${f.source} » — VAB clôture lui-même son dépannage et enverra le remorquage ; le filet n'y touche plus.`, metadata: { source: f.source, assignmentIds: f.vab_assignment_ids } }).then(() => {}, () => {})
+      }
+    }
+    const candidats: any[] = ((fiches || []) as any[]).filter(f => String(f.source || '').toLowerCase() === 'vab')
     if (candidats.length === 0) {
       await trace({ ok: true, ouverts: ouverts.length, vrIgnorés: vr.length, aTraiter: 0 })
       return NextResponse.json({ ok: true, ouverts: ouverts.length, vrIgnorés: vr.length, aTraiter: 0 })
