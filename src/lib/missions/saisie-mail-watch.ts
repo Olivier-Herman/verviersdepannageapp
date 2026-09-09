@@ -110,6 +110,19 @@ async function handleRetour(sb: any, msg: GraphMessage, out: SaisieMailWatchSumm
   const pdfs = await getPdfAttachments(FOURRIERE_MAILBOX, msg.id)
   if (pdfs.length === 0) { await recordEvent(sb, msg, 'ignore', null, 'pas de PDF'); out.ignored++; return }
 
+  // Le TEXTE du mail prime sur la pièce jointe. Le 03/09/2026 (90698, EDF-2026-0053)
+  // le Parquet a RENVOYÉ notre PDF non signé avec « la facture ne correspond pas
+  // au réquisitoire… je vous retourne le tout » : la page, sans mention de refus
+  // dessus, a été lue comme un accord et déposée sur JustInvoice. Un refus écrit
+  // dans le corps du mail force le refus de tout ce qui est reconnu, et aucun
+  // dépôt automatique n'est fait si le mail est négatif ou si une pièce n'est
+  // pas reconnue (réquisitoire renvoyé = signe de retour, pas d'accord).
+  let mailText = ''
+  try { const b = await getMessageBody(FOURRIERE_MAILBOX, msg.id); mailText = b.contentType === 'html' ? stripHtml(b.content) : b.content } catch { /* sans corps → prudence ci-dessous */ }
+  const RE_REFUS = /ne correspond(ent)? pas|retourne le tout|vous retourne|refus|rejet|ne l[’']imprime pas|pi[eè]ces ad[eé]quates|incorrect|erron[eé]|manquant|ne peut (pas )?[eê]tre (accept|trait)|à corriger|a corriger|non conforme/i
+  const mailRefus = RE_REFUS.test(mailText)
+  const mailRefusExcerpt = mailRefus ? (mailText.match(new RegExp(`.{0,80}${RE_REFUS.source}.{0,120}`, 'i'))?.[0] || '').replace(/\s+/g, ' ').trim().slice(0, 240) : ''
+
   let attached = 0, refused = 0, unmatched = 0
   const notes: string[] = []
   const deposited: string[] = []
@@ -117,9 +130,21 @@ async function handleRetour(sb: any, msg: GraphMessage, out: SaisieMailWatchSumm
     const res = await splitAndDispatch(sb, Buffer.from(pdf.contentBytes, 'base64'), null)
     attached += res.attached; refused += res.refused; unmatched += res.unmatched
     for (const r of res.results) {
+      // Refus écrit dans le mail → l'état reconnu est REFUSÉ, quoi que dise la page.
+      if (mailRefus && r.matched && !r.refus && r.dossierId && r.numero) {
+        const now = new Date().toISOString()
+        const note = `Refus par mail du Parquet (${msg.subject || ''}) : « ${mailRefusExcerpt} »`
+        await sb.from('saisie_etats_frais').update({ status: 'refuse', status_note: note, validation_at: now }).eq('numero', r.numero)
+        await sb.from('saisie_dossiers').update({ state: 'refuse', notes: note, updated_at: now }).eq('id', r.dossierId)
+        const { data: dd } = await sb.from('saisie_dossiers').select('mission_id').eq('id', r.dossierId).maybeSingle()
+        if (dd?.mission_id) await sb.from('mission_remarks').insert({ mission_id: dd.mission_id, text: `❌ Refus Parquet par mail — état de frais ${r.numero} : « ${mailRefusExcerpt} »` }).then(() => {}, () => {})
+        r.refus = true; r.note = `Refusé (mail) (${r.numero})`
+        attached = Math.max(0, attached - 1); refused++
+      }
       notes.push(`p${r.page} ${r.numero || '?'} ${r.note}`)
-      // Mode Auto : accepté ⇒ dépôt JustInvoice immédiat.
-      if (auto && r.matched && !r.refus && r.dossierId && r.numero) {
+      // Mode Auto : accepté ⇒ dépôt JustInvoice immédiat — seulement si le mail
+      // n'est pas négatif et que TOUTES les pièces sont reconnues.
+      if (auto && r.matched && !r.refus && r.dossierId && r.numero && !mailRefus && res.unmatched === 0) {
         const { data: ef } = await sb.from('saisie_etats_frais').select('id').eq('numero', r.numero).maybeSingle()
         if (ef) {
           const dep = await depositEtatFrais(sb, r.dossierId, ef.id)

@@ -353,6 +353,54 @@ export async function renderEtatFraisFromRow(sb: any, dossierId: string, efRowId
   return { pdf, numero: ef.numero }
 }
 
+// ── RENVOI d'un état de frais existant (corrigé) ─────────────────────────────
+// Même numéro, PDF reconstruit avec les données véhicule actuelles (cf.
+// renderEtatFraisFromRow) + réquisitoire, au même destinataire. Cas : le
+// Parquet a retourné l'état parce que marque / châssis / PVI ne collaient pas
+// avec le réquisitoire (90698, 03/09/2026). L'état repasse « envoyé ».
+export async function resendEtatFrais(sb: any, dossierId: string, efRowId: string, userId?: string | null): Promise<SendEfResult> {
+  const { data: d } = await sb.from('saisie_dossiers').select('*').eq('id', dossierId).maybeSingle()
+  if (!d) return { ok: false, error: 'Dossier introuvable' }
+  const { data: ef } = await sb.from('saisie_etats_frais').select('id, numero, recipient, total_tvac').eq('id', efRowId).eq('dossier_id', dossierId).maybeSingle()
+  if (!ef) return { ok: false, error: 'État de frais introuvable' }
+  const recipient = (ef.recipient || d.recipient || 'parquet') as SaisieRecipient
+  let clientEmail: string | null = null, vin: string | null = null, reqDocPath: string | null = null, plate: string | null = d.vehicle_plate
+  if (d.mission_id) {
+    const { data: m } = await sb.from('incoming_missions').select('client_email, vehicle_vin, vehicle_plate, requisitoire_doc_path').eq('id', d.mission_id).maybeSingle()
+    clientEmail = m?.client_email || null; vin = m?.vehicle_vin || null; reqDocPath = m?.requisitoire_doc_path || null; plate = m?.vehicle_plate || plate
+  }
+  const dest = resolveRecipientEmail(recipient, d.motif_code, clientEmail)
+  if (!dest) return { ok: false, error: recipient === 'client' ? "Email du client inconnu (compléter la fiche)" : 'Destinataire non configuré' }
+  let gen: { pdf: Buffer; numero: string }
+  try { gen = await renderEtatFraisFromRow(sb, dossierId, efRowId) }
+  catch (e: any) { return { ok: false, error: e?.message || 'Génération échouée' } }
+  let token = d.validation_token
+  if (!token) { token = randomUUID().replace(/-/g, ''); await sb.from('saisie_dossiers').update({ validation_token: token }).eq('id', dossierId) }
+  const attachments: { name: string; contentType: string; contentBytes: string }[] = [
+    { name: `etat-de-frais-${gen.numero}.pdf`, contentType: 'application/pdf', contentBytes: gen.pdf.toString('base64') },
+  ]
+  if (reqDocPath && isRequisitoireDoc(reqDocPath)) {
+    try {
+      const { data: blob } = await sb.storage.from('mission-remarks').download(reqDocPath)
+      if (blob) {
+        const buf = Buffer.from(await blob.arrayBuffer())
+        const ext = (reqDocPath.split('.').pop() || 'pdf').toLowerCase()
+        const ct = ext === 'pdf' ? 'application/pdf' : ext === 'png' ? 'image/png' : (ext === 'jpg' || ext === 'jpeg') ? 'image/jpeg' : 'application/octet-stream'
+        attachments.push({ name: `requisitoire-${plate || 'vehicule'}.${ext}`, contentType: ct, contentBytes: buf.toString('base64') })
+      }
+    } catch (e: any) { console.warn('[saisie] réquisitoire non joint :', e?.message) }
+  }
+  const subject = `État de frais ${gen.numero} — ${plate || 'véhicule'} (version corrigée)`
+  try {
+    await sendEmail(dest.email, subject, buildEfEmailHtml(d, gen.numero, Number(ef.total_tvac || 0), validationLink(token), vin), dest.label, undefined, attachments, FOURRIERE_FROM)
+  } catch (e: any) { return { ok: false, error: `Envoi impossible : ${e?.message || e}` } }
+  const now = new Date().toISOString()
+  await sb.from('saisie_etats_frais').update({ status: 'envoye', validation_doc_path: null, validation_at: null, status_note: `Renvoyé corrigé le ${now.slice(0, 10)} à ${dest.email}` }).eq('id', efRowId)
+  await sb.from('saisie_dossiers').update({ sent_to: dest.email, sent_at: now, state: 'ef_envoye', updated_at: now }).eq('id', dossierId)
+  if (d.mission_id) await sb.from('mission_remarks').insert({ mission_id: d.mission_id, created_by: userId || null, text: `📧 État de frais ${gen.numero} RENVOYÉ corrigé (même numéro, données véhicule à jour) à ${dest.email}.` }).then(() => {}, () => {})
+  return { ok: true, email: dest.email, numero: gen.numero }
+}
+
 // ── Envoi de l'état de frais au destinataire (mail + lien de dépôt validation) ─
 export interface SendEfResult { ok: boolean; email?: string; numero?: string; error?: string }
 

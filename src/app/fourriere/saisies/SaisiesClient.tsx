@@ -236,6 +236,17 @@ export default function SaisiesClient({ userRole, userName, userEmail, userModul
   }
 
   // Relance MANUELLE d'un état de frais (jamais automatique — le Parquet n'apprécie pas).
+  // Renvoi d'un état de frais existant, corrigé (même numéro). Olivier 2026-09-09.
+  async function resendEf(dossierId: string, efId: string) {
+    setBusy(dossierId)
+    try {
+      const r = await fetch(`/api/fourriere/saisies/${dossierId}/etat-frais/${efId}/renvoyer`, { method: 'POST' })
+      const j = await r.json().catch(() => ({}))
+      if (!r.ok) { setMsg(`⚠ ${j.error || 'Renvoi échoué'}`); return }
+      setMsg(`✓ État de frais ${j.numero} renvoyé à ${j.email}`)
+      await load()
+    } finally { setBusy('') }
+  }
   async function relanceEf(id: string, efId: string, numero: string) {
     if (!confirm(`Renvoyer l'état de frais ${numero} au Parquet avec un rappel courtois ?\n\nÀ réserver aux cas proches de la forclusion.`)) return
     setBusy(id); setMsg(null)
@@ -434,7 +445,8 @@ export default function SaisiesClient({ userRole, userName, userEmail, userModul
                 onUpload={(efId, f) => uploadValidation(d.id, efId, f)}
                 onFacture={(efId) => factureOdoo(d.id, efId)}
                 onEfStatus={(efId, s) => efStatus(d.id, efId, s)}
-                onEfRelance={(efId, numero) => relanceEf(d.id, efId, numero)} />
+                onEfRelance={(efId, numero) => relanceEf(d.id, efId, numero)}
+                onEfResend={(efId) => resendEf(d.id, efId)} />
             ))}
           </div>
         )}
@@ -518,7 +530,7 @@ function ScanModal({ onClose, onDone }: { onClose: () => void; onDone: () => voi
 }
 
 // ── Carte dossier ────────────────────────────────────────────────────────────
-function DossierCard({ d, busy, onGenerate, onRecipient, onState, onRemove, onRelance, onJustInvoice, onUpload, onFacture, onEfStatus, onEfRelance }: {
+function DossierCard({ d, busy, onGenerate, onRecipient, onState, onRemove, onRelance, onJustInvoice, onUpload, onFacture, onEfStatus, onEfRelance, onEfResend }: {
   d: Dossier; busy: boolean
   onGenerate: () => void
   onRecipient: (r: Recipient) => void
@@ -530,6 +542,7 @@ function DossierCard({ d, busy, onGenerate, onRecipient, onState, onRemove, onRe
   onFacture: (efId: string) => void
   onEfStatus: (efId: string, status: 'accepte' | 'refuse' | 'annule') => void
   onEfRelance: (efId: string, numero: string) => void
+  onEfResend: (efId: string) => void
 }) {
   const st = STATE[d.state] || { label: d.state, cls: 'bg-slate-100 text-slate-700 border-slate-300', rank: 8 }
   const days = daysSince(d.parked_at)
@@ -689,6 +702,11 @@ function DossierCard({ d, busy, onGenerate, onRecipient, onState, onRemove, onRe
                     <a href={`/api/fourriere/saisies/${d.id}/etat-frais/${ef.id}`} target="_blank" rel="noreferrer"
                       title="PDF de cet état de frais : même numéro, mêmes jours et montants, infos véhicule actuelles de la fiche"
                       className="px-2 py-0.5 bg-surface hover:bg-surface-hover border text-ink-secondary rounded-lg text-[11px] font-semibold">📄 PDF</a>
+                    {['envoye', 'refuse', 'accepte', 'depose'].includes(ef.status) && (
+                      <button disabled={busy} onClick={() => { if (window.confirm(`Renvoyer l'état de frais ${ef.numero} (même numéro, données véhicule à jour) au destinataire, avec le réquisitoire ?`)) onEfResend(ef.id) }}
+                        title="Après correction de la fiche : renvoie ce même état de frais, régénéré, au destinataire"
+                        className="px-2 py-0.5 bg-surface hover:bg-surface-hover border text-ink-secondary rounded-lg text-[11px] font-semibold">📧 Renvoyer corrigé</button>
+                    )}
                   </div>
                 </div>
                 {ef.status_note && !['liquide', 'facture'].includes(ef.status) && (
