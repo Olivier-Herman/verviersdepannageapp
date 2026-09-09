@@ -351,6 +351,17 @@ async function buildDossierUncached(anyMissionId: string, light: boolean, price 
     dayPriceByRegime[(l as any).mission_type] = { price: Number((l as any).default_price || 0), free: Number((l as any).free_days || 0) }
   }
 
+  // ── Frais de justice : la levée de saisie ne sort pas le dossier de l'EDF ──
+  // Règle Olivier 09/09/2026 : « si un dossier a une levée de saisie, il quitte
+  // le modèle EDF SAUF si ce sont des frais de justice (saisie judiciaire pour
+  // vol par exemple) ; il est déterminé parce que le client facturé devient
+  // Frais de justice ». C'est donc le PAYEUR qui tranche, pas le motif : tant
+  // qu'il est « Frais de justice », tout continue de partir en état de frais —
+  // tarif de gardiennage saisie compris — et rien ne bascule vers une facture
+  // Odoo au client.
+  const isFraisDeJustice = [root, ...legRows].some(r =>
+    /frais\s*de\s*justice/i.test(String((r as any)?.billed_to_name || '')))
+
   // ── Circuit Parquet / Domaine (saisies) : dossier saisie + états de frais ──
   let parquet: Dossier['parquet'] | undefined
   if (String(root.source || '') === 'police_saisie' || root.saisie_motif_code) {
@@ -447,7 +458,7 @@ async function buildDossierUncached(anyMissionId: string, light: boolean, price 
       // Levée de saisie : le dossier Parquet clos, OU la levée posée sur la fiche
       // sans aucun état de frais parti (le dossier n'est pas encore clôturé —
       // il l'est à la levée depuis le 08/09, et par le cron du matin avant).
-      const levee = !!parquet && parquet.recipient !== 'client'
+      const levee = !!parquet && parquet.recipient !== 'client' && !isFraisDeJustice
         && (parquet.state === 'clos' || (!!(root.levee_saisie_at || root.levee_saisie_date) && root.levee_saisie_type !== 'temporaire' && !parquet.ef_number && !(parquet.efs || []).length))
       regimeEff = (regime === 'saisie' && levee && !coveredByEf) ? 'autre' : regime
       const tarif = dayPriceByRegime[regimeEff]
@@ -579,7 +590,7 @@ async function buildDossierUncached(anyMissionId: string, light: boolean, price 
   // au-delà de ce qu'il a déjà couvert ; le véhicule est récupéré par le
   // client → ce qui reste se facture au client par Odoo (Olivier 08/09/2026,
   // 2CLN087 : « la récupération a été faite par le client »).
-  const levee = !!parquet && (parquet.state === 'clos'
+  const levee = !!parquet && !isFraisDeJustice && (parquet.state === 'clos'
     || (!!(root.levee_saisie_at || root.levee_saisie_date) && root.levee_saisie_type !== 'temporaire' && !parquet.ef_number && !(parquet.efs || []).length))
   if (parquet && parquet.recipient !== 'client') {
     const efDep = parquet.efs.find(e => e.include_depannage)
