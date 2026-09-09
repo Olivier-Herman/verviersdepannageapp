@@ -34,6 +34,12 @@ async function googleDrivingRoute(a: Coord, b: Coord): Promise<RouteResult | nul
         'Content-Type':     'application/json',
         'X-Goog-Api-Key':   GMAPS_KEY,
         'X-Goog-FieldMask': 'routes.distanceMeters,routes.duration',
+        // La clé est celle du navigateur, restreinte par domaine (referrer) :
+        // sans cet en-tête, Google répond 403 « Requests from referer <empty>
+        // are blocked » et le repli n'a JAMAIS marché (09/09/2026 : dossiers
+        // « à calculer » dès qu'ORS ratait). Vérifié en curl : avec le Referer
+        // de l'app, 200.
+        'Referer':          `${(process.env.NEXT_PUBLIC_APP_URL || process.env.NEXTAUTH_URL || 'https://app.verviersdepannage.com').replace(/\/$/, '')}/`,
       },
       body: JSON.stringify({
         origin:      { location: { latLng: { latitude: a.lat, longitude: a.lng } } },

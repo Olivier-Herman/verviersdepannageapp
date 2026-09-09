@@ -352,6 +352,23 @@ function canonicalType(t: string | null): string | null {
   return normalizeType(t)
 }
 
+
+// Pourquoi les kilomètres sont inconnus : adresse sans coordonnées (à corriger
+// sur la fiche) ou itinéraire indisponible (service de routage en erreur —
+// ça se résout tout seul, il suffit de recalculer). Les deux se soignaient
+// avec le même message « adresse non géocodée », faux dans le 2e cas
+// (1F0M890, 09/09/2026 : coordonnées présentes, ORS en échec).
+function kmUnknownReason(mission: MissionLike): string {
+  const m: any = mission
+  const noIncident = m.incident_lat == null || m.incident_lng == null
+  const hasDestAddr = !!String(m.destination_address || '').trim()
+  const noDest = hasDestAddr && (m.destination_lat == null || m.destination_lng == null)
+  if (noIncident || noDest) {
+    return `kilomètres inconnus : l’adresse ${noIncident ? 'd’intervention' : 'de destination'} n’est pas géocodée (ouvre la fiche et resélectionne l’adresse dans les suggestions)`
+  }
+  return 'kilomètres inconnus : itinéraire indisponible pour le moment (service de calcul de distance en erreur) — recalcule dans quelques minutes'
+}
+
 export async function estimateMissionPrice(mission: MissionLike, opts?: { skipRelShortcut?: boolean; noChainKm?: boolean }): Promise<PriceEstimate> {
   const source = (mission.source || '').toLowerCase().trim()
   const missionType = canonicalType(mission.mission_type)
@@ -499,7 +516,7 @@ export async function estimateMissionPrice(mission: MissionLike, opts?: { skipRe
   } else if (mission.id) {
     const km = await computeMissionKm(mission.id)
     if (km.chargedKm == null) {   // quelle que soit la base : la boucle dépôt→…→dépôt est incomplète aussi
-      return emptyEstimate(source, String(mission.mission_type || ''), 'kilomètres inconnus : l’adresse d’intervention ou de destination n’est pas géocodée (ouvre la fiche et resélectionne l’adresse dans les suggestions)')
+      return emptyEstimate(source, String(mission.mission_type || ''), kmUnknownReason(mission))
     }
     kmCharged    = km.chargedKm ?? 0
     kmTotalRoute = km.totalKm   ?? 0
@@ -761,7 +778,7 @@ async function estimateBrackets(
     const km = await computeMissionKm(mission.id)
     // Tranches = prix PAR KILOMÈTRE : sans km connus, pas de tarif (2ESG097).
     if (km.chargedKm == null) {   // quelle que soit la base : la boucle dépôt→…→dépôt est incomplète aussi
-      return emptyEstimate(source, missionType, 'kilomètres inconnus : l’adresse d’intervention ou de destination n’est pas géocodée (ouvre la fiche et resélectionne l’adresse dans les suggestions)')
+      return emptyEstimate(source, missionType, kmUnknownReason(mission))
     }
     kmCharged    = km.chargedKm ?? 0
     kmTotalRoute = km.totalKm   ?? 0
