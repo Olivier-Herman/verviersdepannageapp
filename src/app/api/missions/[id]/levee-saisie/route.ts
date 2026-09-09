@@ -72,7 +72,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
 
   const { data: mission, error: mErr } = await sb
     .from('incoming_missions')
-    .select('id, source')
+    .select('id, source, parent_mission_id')
     .eq('id', params.id)
     .maybeSingle()
   if (mErr)     return NextResponse.json({ error: mErr.message }, { status: 500 })
@@ -143,6 +143,48 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     notes:      remarkText,
     metadata:   { type, date, has_doc: !!firstPath, payer: payer || null },
   })
+
+  // ── Levée définitive : on coupe le gardiennage en deux groupes ────────────
+  // « Une fois qu'une levée de saisie est encodée avec une date, on crée un
+  // nouveau groupe pour la facturation supplémentaire » (Olivier 09/09/2026).
+  // La période saisie s'arrête à la date de levée (état de frais) ; une
+  // nouvelle s'ouvre le LENDEMAIN, au tarif « autre », à charge du client qui
+  // vient rechercher le véhicule. Même mécanique que la facturation partielle
+  // d'un gardiennage en cours (lib/dossier/invoice).
+  if (type !== 'temporaire' && mission.source === 'police_saisie') {
+    try {
+      const rootId = (mission as any).parent_mission_id || params.id
+      const { data: openLeg } = await sb.from('incoming_missions')
+        .select('id, parked_at, parc_origin_mission_id')
+        .eq('parent_mission_id', rootId).eq('dossier_leg', true).is('parc_exit_at', null)
+        .order('parked_at', { ascending: false }).limit(1).maybeSingle()
+      const cutIso  = `${date}T23:59:59.000Z`                       // fin du jour de levée
+      const nextIso = `${date}T23:59:59.001Z`                       // le lendemain commence ici
+      // On ne coupe que si la période courante a commencé AVANT la levée :
+      // sinon il n'y a rien à facturer au Parquet et le groupe unique suffit.
+      if (openLeg && (!openLeg.parked_at || openLeg.parked_at < cutIso)) {
+        await sb.from('incoming_missions')
+          .update({ parc_exit_at: cutIso, parc_exit_reason: 'levee_saisie', updated_at: new Date().toISOString() })
+          .eq('id', openLeg.id)
+        const originId = openLeg.parc_origin_mission_id || rootId
+        const { data: origin } = await sb.from('incoming_missions').select('status').eq('id', originId).maybeSingle()
+        // Le véhicule est-il encore au parc ? Sinon il n'y a pas de suite à facturer.
+        if (origin?.status === 'parked') {
+          const { data: newLegId, error: rpcErr } = await sb.rpc('dossier_gardiennage_open', { p_mission_id: originId, p_from: nextIso })
+          if (rpcErr) console.error('[levee-saisie] nouveau groupe gardiennage KO:', rpcErr.message)
+          else if (newLegId) {
+            // Hors saisie : tarif « autre », et surtout PAS le payeur du volet
+            // saisie (Frais de justice / Parquet) — c'est le client qui règle
+            // ces jours-là. On laisse le client à définir plutôt que d'en
+            // inventer un.
+            await sb.from('incoming_missions')
+              .update({ mission_type: 'autre', billed_to_id: null, billed_to_name: null, updated_at: new Date().toISOString() })
+              .eq('id', newLegId)
+          }
+        }
+      }
+    } catch (e: any) { console.error('[levee-saisie] découpe du gardiennage KO :', e?.message) }
+  }
 
   // Levée DÉFINITIVE : le dossier Parquet sort du circuit tout de suite (sinon
   // la Vue dossier affiche « état de frais à venir » jusqu'au cron du matin).
