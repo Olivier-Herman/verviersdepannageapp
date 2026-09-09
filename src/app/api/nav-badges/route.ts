@@ -26,7 +26,7 @@ export async function GET() {
   if (!u?.id) return NextResponse.json({ badges: {}, flags: { nav_menu_v2: false } })
   const sb = createAdminClient()
   const badges: Record<string, number> = {}
-  const flags = { nav_menu_v2: await isPreviewOn('nav_menu_v2', u.role) }
+  const flags = { nav_menu_v2: await isPreviewOn('nav_menu_v2', u.role, u.id) }   // u.id : les pilotes nommés (Jona) voient le menu v3
 
   // Gestion du personnel : congés en attente de traitement (pending + annulation demandée).
   if (isPersonnelStaff(u)) {

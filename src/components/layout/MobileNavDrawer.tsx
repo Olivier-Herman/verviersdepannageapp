@@ -26,9 +26,10 @@ interface Props {
   navNow?:      string[]
   navFavs?:     string[]
   onToggleFavorite?: (href: string) => void
+  onOpenPalette?: () => void
 }
 
-export default function MobileNavDrawer({ open, onClose, userName, userRole, userEmail, userId, userModules, navBadges = {}, navV2 = false, navNow = [], navFavs = [], onToggleFavorite }: Props) {
+export default function MobileNavDrawer({ open, onClose, userName, userRole, userEmail, userId, userModules, navBadges = {}, navV2 = false, navNow = [], navFavs = [], onToggleFavorite, onOpenPalette }: Props) {
   const pathname = usePathname()
   const { data: session } = useSession()
   const userNavOrder = (session?.user as any)?.navOrder as string[] | null | undefined
@@ -94,6 +95,7 @@ export default function MobileNavDrawer({ open, onClose, userName, userRole, use
             now={navNow}
             favorites={navFavs}
             onToggleFavorite={onToggleFavorite}
+            onOpenPalette={onOpenPalette}
             variant="drawer"
             onNavigate={onClose}
           />

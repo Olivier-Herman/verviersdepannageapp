@@ -15,6 +15,7 @@ import { filterNavItems } from './nav-items'
 import AppNavV2 from './AppNavV2'
 import { useNavV2 } from './useNavV2'
 import MobileNavDrawer from './MobileNavDrawer'
+import NavPalette from './NavPalette'
 import GlobalSearch from '@/components/GlobalSearch'
 import { TruckSwitcherIcon } from '@/components/trucks/TruckSwitcherIcon'
 import DispatchAlertBadge from '@/components/notifications/DispatchAlertBadge'
@@ -100,6 +101,16 @@ export default function AppShell({
     return () => { alive = false; clearInterval(iv) }
   }, [])
   const navV2 = useNavV2(navV2Flag)
+  // Palette « Aller à » (menu v3, lot 2) : ⌘K / Ctrl K, ou le champ du menu.
+  const [paletteOpen, setPaletteOpen] = useState(false)
+  useEffect(() => {
+    if (!navV2) return
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && !e.altKey && e.key.toLowerCase() === 'k') { e.preventDefault(); setPaletteOpen(o => !o) }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [navV2])
   const { theme, toggleTheme, mounted } = useTheme()
   const { onDuty, setOnDuty, isLockedByDuty } = useOnDutyPing()
   // GPS piloté par les attributions (économie batterie) — monté UNE seule fois
@@ -168,6 +179,7 @@ export default function AppShell({
             now={navNow}
             favorites={navFavs}
             onToggleFavorite={toggleFavorite}
+            onOpenPalette={() => setPaletteOpen(true)}
           />
         ) : (
         <nav className={`flex-1 py-4 overflow-y-auto flex flex-col gap-0.5 ${collapsed ? 'px-2' : 'px-3'}`}>
@@ -261,7 +273,12 @@ export default function AppShell({
           navNow={navNow}
           navFavs={navFavs}
           onToggleFavorite={toggleFavorite}
+          onOpenPalette={() => { setDrawerOpen(false); setPaletteOpen(true) }}
         />
+        {navV2 && (
+          <NavPalette open={paletteOpen} onClose={() => setPaletteOpen(false)}
+            items={visibleNav} userRole={userRole} userModules={userModules} now={navNow} badges={navBadges} />
+        )}
 
         {/* Header desktop */}
         <div className="hidden lg:block bg-surface border-b px-8 py-5 sticky top-0 z-20">

@@ -40,13 +40,15 @@ interface Props {
   now?:       string[]
   favorites?: string[]
   onToggleFavorite?: (href: string) => void
+  /** Lot 2 : le champ du menu ouvre la palette « Aller à » (⌘K) au lieu de filtrer sur place. */
+  onOpenPalette?: () => void
 }
 
 const RECENTS_KEY = 'vd_nav_recents'
 const readRecents = (): string[] => { try { const v = JSON.parse(localStorage.getItem(RECENTS_KEY) || '[]'); return Array.isArray(v) ? v : [] } catch { return [] } }
 
 export default function AppNavV2({
-  items, userRole, userModules, badges = {}, variant = 'sidebar', onNavigate, now = [], favorites = [], onToggleFavorite,
+  items, userRole, userModules, badges = {}, variant = 'sidebar', onNavigate, now = [], favorites = [], onToggleFavorite, onOpenPalette,
 }: Props) {
   const pathname = usePathname()
   const modules  = useMemo(() => buildNavTree(items, userRole, userModules), [items, userRole, userModules])
@@ -239,8 +241,10 @@ export default function AppNavV2({
           type="text"
           value={query}
           onChange={e => setQuery(e.target.value)}
-          placeholder="Rechercher un menu…"
-          aria-label="Rechercher dans le menu"
+          onFocus={onOpenPalette ? (e => { e.currentTarget.blur(); onOpenPalette() }) : undefined}
+          readOnly={!!onOpenPalette}
+          placeholder={onOpenPalette ? 'Page, plaque, n° de fiche…  ⌘K' : 'Rechercher un menu…'}
+          aria-label={onOpenPalette ? 'Ouvrir la palette Aller à' : 'Rechercher dans le menu'}
           className="w-full rounded-md border bg-surface-2 text-sm text-ink placeholder:text-ink-muted pl-8 pr-8 py-2 focus:outline-none focus:border-brand"
         />
         {query && (
