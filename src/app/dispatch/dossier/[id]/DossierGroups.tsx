@@ -261,10 +261,7 @@ export default function DossierGroups({ initial, fiches, shared, isSuperadmin, o
               return (
                 <>
                   {isSaisie && rootFiche && (
-                    <div className="mt-2 text-xs bg-surface-2 border rounded-xl px-3 py-2">
-                      <p className="text-ink-muted font-semibold mb-1.5">🚔 Saisie — réquisitoire · levée · sortie</p>
-                      <SaisiePanel mission={rootFiche} onChanged={onChanged} forceSaisie={rootZoneType === 'saisie' && !['police_saisie', 'police_mg', 'police_rodeo', 'police_avp'].includes(String(rootFiche.source || ''))} />
-                    </div>
+                    <SaisieHeaderBlock fiche={rootFiche} zoneType={rootZoneType} onChanged={onChanged} />
                   )}
                   {isSaisie && !rootFiche && (
                     <p className="mt-2 text-xs text-ink-muted">🚔 Saisie : réquisitoire et levée depuis la <Link href={`/dispatch/${d.root_id}?fiche=1`} className="text-brand underline">fiche</Link>.</p>
@@ -592,6 +589,39 @@ function EditableAddress({ value, field, missionId, gmKey, onSaved, placeholder 
         {value && <button type="button" disabled={busy} onClick={() => save('', null, null)} className="px-2.5 py-1 rounded-lg border bg-surface text-red-700 disabled:opacity-50">Effacer</button>}
       </div>
       {err && <p className="text-red-600 text-xs">⚠ {err}</p>}
+    </div>
+  )
+}
+
+// ── Saisie dans l'en-tête : une ligne de résumé, le panneau au dépliage ──────
+// Olivier 09/09/2026 : « quelque chose de plus discret, ça prend quasi tout
+// l'écran ». Replié par défaut ; le résumé dit l'essentiel (réquisitoire,
+// levée, parc) et les actions sont à un clic.
+function SaisieHeaderBlock({ fiche, zoneType, onChanged }: { fiche: any; zoneType: string | null; onChanged: () => void | Promise<void> }) {
+  const [open, setOpen] = useState(false)
+  const fmtD = (iso?: string | null) => iso ? new Date(iso).toLocaleDateString('fr-BE', { day: '2-digit', month: '2-digit', year: 'numeric' }) : null
+  const req = fiche.requisitoire_at ? `réquisitoire ${fmtD(fiche.requisitoire_at)}` : 'réquisitoire manquant'
+  const levee = (fiche.levee_saisie_at || fiche.levee_saisie_date)
+    ? `levée ${fiche.levee_saisie_type === 'temporaire' ? 'temporaire' : 'définitive'} ${fmtD(fiche.levee_saisie_date || fiche.levee_saisie_at)}${fiche.levee_saisie_payer === 'frais_justice' ? ' · frais de justice' : fiche.levee_saisie_payer === 'client' ? ' · à charge du client' : ''}`
+    : 'pas de levée'
+  const parc = fiche.status === 'parked' ? 'au parc' : fiche.status === 'to_invoice' || fiche.status === 'completed' ? 'sorti du parc' : null
+  const todo = !fiche.requisitoire_at ? 'réquisitoire à annexer' : !(fiche.levee_saisie_at || fiche.levee_saisie_date) ? null : fiche.status === 'parked' && fiche.levee_saisie_type !== 'temporaire' ? 'véhicule à sortir du parc' : null
+  return (
+    <div className="mt-2 text-xs bg-surface-2 border rounded-xl px-3 py-1.5">
+      <button type="button" onClick={() => setOpen(o => !o)} className="w-full flex flex-wrap items-center gap-x-2 gap-y-0.5 text-left">
+        <span className="text-ink-muted font-semibold">🚔 Saisie</span>
+        <span className={fiche.requisitoire_at ? 'text-ink-secondary' : 'text-red-700 font-semibold'}>{req}</span>
+        <span className="text-ink-faint">·</span>
+        <span className="text-ink-secondary">{levee}</span>
+        {parc && <><span className="text-ink-faint">·</span><span className="text-ink-secondary">{parc}</span></>}
+        {todo && <span className="ml-1 px-2 py-0.5 rounded-full bg-amber-100 text-amber-900 font-semibold">{todo}</span>}
+        <span className="ml-auto text-brand font-semibold">{open ? 'Replier ▴' : 'Actions ▾'}</span>
+      </button>
+      {open && (
+        <div className="mt-2 pt-2 border-t">
+          <SaisiePanel mission={fiche} onChanged={onChanged} forceSaisie={zoneType === 'saisie' && !['police_saisie', 'police_mg', 'police_rodeo', 'police_avp'].includes(String(fiche.source || ''))} />
+        </div>
+      )}
     </div>
   )
 }
