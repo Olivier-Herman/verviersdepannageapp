@@ -44,10 +44,23 @@ const SOURCE_GROUPS: SourceGroup[] = [
   { key: 'kaze',    label: 'Kaze · Ethias · P&V · IMA', sources: ['kaze', 'ethias', 'pv', 'pv_assistance', 'ima'] },
   { key: 'mondial', label: 'Mondial (hors Hexalite)',   sources: ['mondial'] },
   { key: 'axa',     label: 'AXA',                       sources: ['axa'] },
-  { key: 'touring', label: 'Touring',                   sources: ['touring', 'tgr_touring'] },
+  { key: 'touring', label: 'Touring (tout ce qui lui est facturé)', sources: ['touring', 'tgr_touring'] },
 ]
-const inGroup = (source: string | null, g: SourceGroup) =>
-  g.sources === null ? (source || '').toLowerCase() !== 'touring' : !!source && g.sources.includes(source.toLowerCase())
+// « Touring » se juge sur QUI on facture, pas sur la source (Olivier 09/09/2026 :
+// « hors Touring = hors tout ce qui est facturé à Touring »). Un Siabis Couvert
+// a sa propre source mais part chez Touring : il appartient au groupe Touring.
+// Un Siabis NON couvert payé par le client sur place n'a pas Touring comme
+// payeur (build.ts le retire) — il reste donc dans « Toutes ».
+const isTouringBilled = (d: Dossier) =>
+  /touring/i.test(String(d.billed_to.name || ''))
+  || d.legs.some(l => /touring/i.test(String(l.billed_to_name || '')))
+const inGroup = (d: Dossier, g: SourceGroup) => {
+  const source = (d.source || '').toLowerCase()
+  const touring = source === 'touring' || source === 'tgr_touring' || isTouringBilled(d)
+  return g.sources === null ? !touring
+    : g.key === 'touring' ? touring
+    : !!source && g.sources.includes(source)
+}
 
 type AutoInfo = { status: string; eligibleAt?: string; reason?: string }
 
@@ -162,16 +175,16 @@ export default function DossiersClient({ initial, autoById, comexById = {}, isSu
     ['circuit', 'Parquet / Domaine / COMEX', d => isCircuit(d) && !isDone(d)],
     ['done', 'Facturées', d => isDone(d)],
   ]
-  const inScope = (d: Dossier) => inGroup(d.source, activeGroup) && (src === 'all' || d.source === src)
+  const inScope = (d: Dossier) => inGroup(d, activeGroup) && (src === 'all' || d.source === src)
   const matches = (d: Dossier) => {
     const q = search.trim().toLowerCase(); if (!q) return true
     const hay = [d.ref, String(d.number ?? ''), d.vehicle.plate, d.vehicle.brand, d.vehicle.model, d.client.name, d.billed_to.name, d.dossier_number, d.source_label,
       ...d.legs.map(l => l.billed_to_name), ...d.legs.flatMap(l => l.billed_refs), ...d.legs.map(l => l.external_id)].filter(Boolean).join(' ').toLowerCase()
     return hay.includes(q) || hay.replace(/[-\s]/g, '').includes(q.replace(/[-\s]/g, ''))
   }
-  const sources = useMemo(() => Array.from(new Set(rows.filter(d => inGroup(d.source, activeGroup)).map(d => d.source || ''))).filter(Boolean).sort(), [rows, activeGroup])
+  const sources = useMemo(() => Array.from(new Set(rows.filter(d => inGroup(d, activeGroup)).map(d => d.source || ''))).filter(Boolean).sort(), [rows, activeGroup])
   const sourceLabel = (k: string) => rows.find(d => d.source === k)?.source_label || k
-  const groupCounts = useMemo(() => Object.fromEntries(SOURCE_GROUPS.map(g => [g.key, rows.filter(d => inGroup(d.source, g) && !isDone(d)).length])), [rows])
+  const groupCounts = useMemo(() => Object.fromEntries(SOURCE_GROUPS.map(g => [g.key, rows.filter(d => inGroup(d, g) && !isDone(d)).length])), [rows])
   const scoped = rows.filter(inScope).filter(matches)
   const visible = scoped.filter(TABS.find(t => t[0] === tab)![2])
   const todo = scoped.filter(d => !isDone(d) && !isCircuit(d))
