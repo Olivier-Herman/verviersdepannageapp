@@ -36,13 +36,18 @@ export async function GET(req: Request) {
   // sia_couvert / police_snc couverts Touring, sinon la fiche du chauffeur en
   // Siabis couvert est exclue et sa notif VR se perd), actif, VR pas encore capté.
   const { data: missions } = await sb.from('incoming_missions')
-    .select('id, mission_number, raw_content, assigned_to, touring_vr, status')
+    .select('id, mission_number, raw_content, assigned_to, touring_vr, status, touring_vr_requested_at')
     .eq('source_format', 'comex')
     .in('status', ACTIVE_STATUSES)
     .is('touring_vr_location', null)
 
-  // Filtre « VR demandé » (drapeaux COMEX). On ne martèle COMEX que pour ceux-là.
+  // Filtre « VR demandé » : drapeaux COMEX (VR demandé par Touring sur l'action)
+  // OU demande partie depuis l'app (touring_vr_requested_at). Olivier 09/09/2026,
+  // Franck 2HCP710 : la demande était partie de l'app sur une première action
+  // (drapeaux à 0), Touring avait réservé, et le scan ne regardait pas la fiche
+  // → pas de notification au chauffeur.
   const candidates = (missions || []).filter(m => {
+    if ((m as any).touring_vr_requested_at) return true
     const v: any = m.touring_vr || {}
     return Number(v.vr) >= 1 || Number(v.vr_taxi) >= 1 || Number(v.shuttle_vr) >= 1
   })
