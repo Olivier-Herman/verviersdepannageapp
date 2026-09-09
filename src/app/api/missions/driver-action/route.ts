@@ -180,16 +180,16 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Scénario SNC / Siabis couvert requis avant clôture (DSP / REM…).' }, { status: 400 })
   }
 
-  // Modification de clôture par le chauffeur : ré-exécuter 'completed' sur une
-  // mission déjà clôturée (to_invoice/completed) est autorisé < 6h après la
-  // clôture ET si la mission n'est PAS encore facturée. Olivier 2026-07-01.
-  const RECLOSE_WINDOW_MS = 6 * 60 * 60 * 1000
+  // Clôture DÉFINITIVE (Olivier 09/09/2026). Du 01/07 au 09/09, le chauffeur
+  // pouvait rejouer 'completed' pendant 6 h. Depuis les synchros en direct
+  // (Touring, VAB, Allianz, AXA), la clôture externe part une seule fois : une
+  // correction chez nous ne repartait pas chez l'assisteur, la fenêtre promettait
+  // donc une correction qui n'en était pas une. Et les garde-fous à la clôture
+  // (photos, champs obligatoires) font que tout est déjà là. Une vraie erreur se
+  // corrige par le dispatch (annuler le dernier pointage, superadmin).
   const isReclose = action === 'completed' && ['to_invoice', 'completed'].includes(mission.status)
   if (isReclose) {
-    const within6h = (mission as any).completed_at && (Date.now() - new Date((mission as any).completed_at).getTime()) < RECLOSE_WINDOW_MS
-    if (!within6h) return NextResponse.json({ error: 'La clôture n’est modifiable que dans les 6h.' }, { status: 422 })
-    const invoiced = !!((mission as any).invoice_number || (mission as any).invoice_odoo_id || (mission as any).odoo_quote_id)
-    if (invoiced) return NextResponse.json({ error: 'Mission déjà facturée : clôture non modifiable.' }, { status: 422 })
+    return NextResponse.json({ error: 'Cette mission est clôturée : la clôture n’est plus modifiable. Pour une correction, préviens le dispatch.' }, { status: 422 })
   }
 
   // Une mission déjà mise en parc ne se clôture pas côté chauffeur (message clair

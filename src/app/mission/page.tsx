@@ -42,7 +42,6 @@ export default async function MissionListPage() {
   // liste pour que le chauffeur voie ce qu'il vient de finir. Le bouton
   // « Modifier une clôture » côté chauffeur a été retiré le 09/08/2026 ; une
   // correction se fait depuis le dispatch.
-  const sixHAgo = new Date(Date.now() - 6 * 60 * 60 * 1000).toISOString()
 
   const { data: missions } = await supabase
     .from('incoming_missions')
@@ -51,26 +50,15 @@ export default async function MissionListPage() {
     // Olivier 2026-06-17 : une mission 'parked' est en parc (fourrière) → elle
     // sort de la liste active du chauffeur. On garde le cas awaiting_payment
     // (mission à encaisser) même si parked.
-    // + missions terminées (to_invoice/completed) des 6 dernières heures :
-    // clôture encore modifiable par le chauffeur.
-    // + missions MISES EN PARC dans les 6 dernières heures : une mise en parc
-    //   fait sortir la mission de la liste à la seconde même. Le 29/08, Fred a
-    //   montré un écran VIDE à Jona après une mission qu'il venait de faire —
-    //   elle avait été forcée en parc entre-temps, et plus rien ne prouvait à
-    //   l'écran qu'il l'avait faite. Un chauffeur doit voir sa journée finir.
-    //   (Olivier 2026-08-31, cas 1BIL216.)
-    .or(`status.in.(assigned,accepted,in_progress,delivering),awaiting_payment.eq.true,and(status.in.(to_invoice,completed),completed_at.gte.${sixHAgo}),and(status.eq.parked,parked_at.gte.${sixHAgo})`)
+    // Olivier 09/09/2026 : les missions clôturées et les mises en parc sont
+    // MASQUÉES au chauffeur, tout simplement — le résumé de clôture est son
+    // double check, la clôture est définitive. (Du 31/08 au 09/09 elles
+    // restaient visibles 6 h.) Le compteur du jour continue de les compter.
+    .or('status.in.(assigned,accepted,in_progress,delivering),awaiting_payment.eq.true')
     .order('assigned_at', { ascending: false })
     .limit(20)
 
-  // Olivier 09/09/2026 : une mise en parc n'est plus « en cours » — elle rejoint
-  // les terminées (visible 6 h, étiquette « En dépôt »), sauf si elle reste à
-  // encaisser. Avant, elle restait dans la liste active et avait l'air d'être
-  // encore à faire.
-  const CLOSED    = ['to_invoice', 'completed']
-  const isClosed  = (m: any) => CLOSED.includes(m.status) || (m.status === 'parked' && !m.awaiting_payment)
-  const active    = missions?.filter(m => !isClosed(m)) || []
-  const recent    = missions?.filter(m => isClosed(m)) || []
+  const active    = missions || []
 
   // Easter egg : missions du chauffeur AUJOURD'HUI + RECORD PERSO (meilleure journée).
   // On récupère les dates d'assignation (léger : timestamps only), on groupe par
@@ -110,14 +98,7 @@ export default async function MissionListPage() {
           {/* Easter egg discret : date du jour → 3 taps = compteur du jour + record perso */}
           <MissionsDuJourEasterEgg count={todayCount} record={record} newRecord={newRecord} firstName={(user.name || '').split(' ')[0]} />
 
-          {active.length === 0 && recent.length > 0 && (
-            <div className="text-center py-8 text-ink-faint">
-              <p className="text-3xl mb-2">🚗</p>
-              <p className="font-medium text-ink mb-1">Rien en cours</p>
-              <p className="text-sm">Les missions te seront notifiées automatiquement.</p>
-            </div>
-          )}
-          {active.length === 0 && recent.length === 0 && (
+          {active.length === 0 && (
             <div className="text-center py-16 text-ink-faint">
               <p className="text-4xl mb-4">🚗</p>
               <p className="font-medium text-ink mb-1">Aucune mission assignée</p>
@@ -142,31 +123,6 @@ export default async function MissionListPage() {
                       <p className="text-ink font-semibold">{m.client_name || 'Client inconnu'}</p>
                       <p className="text-ink-secondary text-sm">{m.vehicle_brand} {m.vehicle_model} — {m.vehicle_plate}</p>
                       <p className="text-ink-muted text-xs mt-1">{m.incident_address}{m.incident_city ? `, ${m.incident_city}` : ''}</p>
-                    </Link>
-                  )
-                })}
-              </div>
-            </div>
-          )}
-
-          {/* Terminées et mises en parc des 6 dernières heures : le chauffeur voit sa
-              journée finir, et une clôture reste corrigeable pendant 6 h. */}
-          {recent.length > 0 && (
-            <div>
-              <h2 className="text-ink-muted text-xs font-semibold uppercase tracking-widest mb-3">Terminées · 6 dernières heures</h2>
-              <div className="space-y-2">
-                {recent.map(m => {
-                  const st = m.status === 'parked'
-                    ? { label: '🅿️ En dépôt', color: 'text-purple-400' }
-                    : { label: '✅ Terminée', color: 'text-emerald-500' }
-                  return (
-                    <Link key={m.id} href={`/mission/${m.id}`}
-                      className="block bg-surface-2 border rounded-2xl p-3 opacity-80 hover:opacity-100 hover:border-brand/40 transition-all">
-                      <div className="flex items-center justify-between mb-1">
-                        <span className="text-ink-secondary text-xs font-mono">{(m as any).mission_number != null ? `#${(m as any).mission_number}` : (m.dossier_number || m.external_id)}</span>
-                        <span className={`text-xs font-semibold ${st.color}`}>{st.label}</span>
-                      </div>
-                      <p className="text-ink text-sm font-semibold">{m.client_name || 'Client inconnu'}<span className="text-ink-secondary font-normal"> — {m.vehicle_brand} {m.vehicle_model} {m.vehicle_plate}</span></p>
                     </Link>
                   )
                 })}
