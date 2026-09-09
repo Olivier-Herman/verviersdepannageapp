@@ -9,7 +9,7 @@ export type BusinessSettingKind = 'number' | 'text' | 'emails' | 'list'
 export interface BusinessSettingDef {
   key:      string
   label:    string
-  group:    'Odoo' | 'Boîtes mail' | 'Montants' | 'Menu'
+  group:    'Odoo' | 'Boîtes mail' | 'Montants' | 'Menu' | 'Dispatch'
   kind:     BusinessSettingKind
   seed:     number | string | string[]
   help?:    string
@@ -39,6 +39,8 @@ export const BUSINESS_SETTINGS: BusinessSettingDef[] = [
   { key: 'touring_check_cc',        label: 'Check Touring — copie du rappel mensuel',         group: 'Boîtes mail', kind: 'emails', seed: ['Andre.ANGELIQUE@touring.be'] },
   // ── Montants ────────────────────────────────────────────────────────────
   { key: 'forfait_parc_accident_tvac', label: 'Forfait gardiennage accident Ethias / Kaze (TVAC)', group: 'Montants', kind: 'number', seed: 220, help: 'Écrit en HTVA sur la fiche à la coche ; les anciens dossiers gardent le leur.' },
+  // ── Dispatch ──────────────────────────────────────────────────────────────
+  { key: 'momo_market_fresh_minutes', label: 'Momo Market — fenêtre d’affichage (minutes)', group: 'Dispatch', kind: 'number', seed: 45, help: 'Une mission reste sur l’étal tant qu’elle est arrivée depuis moins de ce nombre de minutes et n’est pas attribuée. 30 min jusqu’au 09/09/2026, 45 depuis (Olivier).' },
   // ── Menu : zone « Maintenant » par rôle (lot 1 du menu v3, 09/09/2026) ──
   // Chemins de pages, séparés par des virgules, dans l'ordre d'affichage.
   { key: 'nav_now_dispatcher',  label: 'Menu « Maintenant » — dispatchers',              group: 'Menu', kind: 'list', seed: ['/dispatch', '/relivraison', '/fourriere', '/fourriere/saisies', '/missions-terminees'], help: 'Pages toujours visibles en haut du menu pour les dispatchers (rôle dispatcher ou module missions).' },

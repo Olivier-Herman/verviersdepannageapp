@@ -6,7 +6,6 @@ import { createClient }        from '@supabase/supabase-js'
 
 const sb = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!)
 
-const FRESH_MINUTES = 30   // Olivier 2026-06-18 : fenêtre Momo Market portée à 30 min
 // Statuts visibles sur l'étal : "En commande" (new) + "En attente" (dispatching).
 const ELIGIBLE_STATUSES = ['new', 'dispatching']
 
@@ -38,7 +37,9 @@ function fmtAge(iso: string, now: number): string {
   return `il y a ${ageMin} min`
 }
 
-export default function SelfServiceClient({ initialMissions, currentUserId }: { initialMissions: Mission[]; currentUserId: string }) {
+export default function SelfServiceClient({ initialMissions, currentUserId, freshMinutes }: { initialMissions: Mission[]; currentUserId: string; freshMinutes: number }) {
+  // Fenêtre d'affichage = réglage métier (momo_market_fresh_minutes), passé par la page.
+  const FRESH_MINUTES = freshMinutes
   const router = useRouter()
   const [missions, setMissions] = useState<Mission[]>(initialMissions)
   const [now, setNow]           = useState<number>(Date.now())

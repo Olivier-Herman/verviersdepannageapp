@@ -1,4 +1,4 @@
-// Page Momo Market (ex Self-Service) : missions disponibles depuis < 30 min,
+// Page Momo Market (ex Self-Service) : missions disponibles depuis < N min (réglage métier momo_market_fresh_minutes),
 // non assignees. Le chauffeur clique "Je la prends" pour se l attribuer.
 // Olivier 2026-06-02 : pas de notif push (le dispatch appelle le chauffeur).
 // Olivier 2026-06-02 PM : renomme en "Momo Market" :-p
@@ -9,6 +9,7 @@ import { redirect }          from 'next/navigation'
 import { createAdminClient } from '@/lib/supabase'
 import AppShell              from '@/components/layout/AppShell'
 import SelfServiceClient     from './SelfServiceClient'
+import { getBusinessNumber } from '@/lib/settings/business'
 
 export const dynamic = 'force-dynamic'
 
@@ -31,10 +32,12 @@ export default async function MissionsDispoPage() {
   if (!canAccess) redirect('/dashboard?error=access_denied')
 
   const sb = createAdminClient()
-  // Olivier 2026-06-18 : fenêtre portée à 30 min, et on inclut les missions
-  // "En commande" (new) ET "En attente" (dispatching, confirmées mais pas encore
-  // assignées) pour que le chauffeur puisse les prendre dans les deux cas.
-  const thirtyMinAgo = new Date(Date.now() - 30 * 60 * 1000).toISOString()
+  // Olivier 2026-06-18 : on inclut les missions "En commande" (new) ET
+  // "En attente" (dispatching, confirmées mais pas encore assignées) pour que
+  // le chauffeur puisse les prendre dans les deux cas. Fenêtre = réglage métier
+  // (30 min jusqu'au 09/09/2026, 45 depuis — Olivier), modifiable dans Réglages.
+  const freshMinutes = await getBusinessNumber('momo_market_fresh_minutes')
+  const thirtyMinAgo = new Date(Date.now() - freshMinutes * 60 * 1000).toISOString()
   const { data: missions } = await sb
     .from('incoming_missions')
     .select(`
@@ -64,7 +67,7 @@ export default async function MissionsDispoPage() {
       userId={user.id}
       userModules={user.modules || []}
     >
-      <SelfServiceClient initialMissions={(missions || []) as any} currentUserId={user.id} />
+      <SelfServiceClient initialMissions={(missions || []) as any} currentUserId={user.id} freshMinutes={freshMinutes} />
     </AppShell>
   )
 }
