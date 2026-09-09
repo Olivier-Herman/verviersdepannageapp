@@ -1,0 +1,7 @@
+-- Flux 2 — retrait de l'ancien écran : audit du 09/09/2026, retrait impossible en l'état.
+INSERT INTO chantiers (key, title, status, note, updated_at, updated_by) VALUES
+  ('flux2-legacy', 'Flux 2 — retirer l''ancien flux de clôture', 'attente',
+   'Audit 09/09 : l''ancien écran n''est pas un repli, c''est la SECONDE MOITIÉ du Flux 2 — CloseScreen renvoie toujours sur l''écran historique, qui seul passe la mission en terminé / parc (driver-action). Le retirer casse 100 % des clôtures. Hors périmètre Flux 2 par conception : 5 appels police, fiche brouillon SNC/SC, relivraisons, missions sans source, garages partenaires, chauffeur absent de la grille (repli silencieux). Retirables tout de suite : 3 drapeaux flux2_* morts, paramètres ?legacy=1 jamais lus. Avant tout retrait : instrumenter (log quand le gating retombe en ancien flux) + 30 jours de mesure, puis rapatrier statut/parc/photos/encaissement/Odoo/Kaze/AXA/COMEX/GPS dans Flux 2 (3-5 j) et décider des appels police.', now(), 'Claude')
+ON CONFLICT (key) DO UPDATE SET status = EXCLUDED.status, note = EXCLUDED.note, updated_at = now(), updated_by = 'Claude';
+INSERT INTO chantier_logs (chantier_id, actor, text)
+SELECT id, 'Claude', 'Audit : retrait « risque zéro » impossible — l''écran historique est la sortie obligatoire du Flux 2. Proposition : instrumentation + 30 j de mesure d''abord.' FROM chantiers WHERE key = 'flux2-legacy';
