@@ -82,7 +82,11 @@ export async function GET(req: Request) {
       .select('id, vehicle_plate, external_id, status, assigned_to, mission_type, vab_assignment_ids, vab_closed_at')
       .overlaps('vab_assignment_ids', ouverts)
       .in('status', TERMINÉES)
-      .is('vab_closed_at', null)
+      // ⚠️ PAS de filtre sur vab_closed_at : une fiche porte plusieurs actions VAB
+      // (dépannage puis remorquage). Clôturer la première posait vab_closed_at et
+      // la fiche sortait du filet alors que la seconde restait OUVERTE chez VAB
+      // (2KAX587 : dépannage 56361254 clos le 07/09 21h07, remorquage 56362042
+      // ouvert jusqu'au 09/09). La liste ouverte de VAB est la seule vérité.
       .order('id', { ascending: true })
 
     // ⚠️ PLUS de filtre flux 2 (Olivier 2026-08-16 : « tout ce que tu peux

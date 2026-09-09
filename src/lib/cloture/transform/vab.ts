@@ -204,7 +204,21 @@ export async function runVabTowClose(input: VabTowCloseInput): Promise<void> {
   if (!assignmentId) { await log('vab_close_skipped', 'VAB : AssignmentId introuvable dans external_id', { externalId: input.externalId }); return }
 
   const { data: m } = await sb.from('incoming_missions').select('vab_closed_at').eq('id', input.missionId).maybeSingle()
-  if ((m as any)?.vab_closed_at) { await log('vab_close_skipped', 'VAB : déjà clôturée chez eux, on ne rejoue pas', { assignmentId }); return }
+  if ((m as any)?.vab_closed_at) {
+    // Une fiche porte PLUSIEURS actions VAB (dépannage puis remorquage). Clôturer
+    // la première posait vab_closed_at et on refusait de rejouer — la seconde
+    // restait ouverte chez VAB (2KAX587 : remorquage 56362042 ouvert du 07 au
+    // 09/09). On ne saute donc que si CETTE action n'est plus dans leur liste
+    // ouverte, la seule vérité. Olivier 2026-09-09.
+    let stillOpen = false
+    try {
+      const { loginVab: lv0, listVabMissions: lm0 } = await import('@/lib/vab/scraper')
+      const { missions } = await lm0(await lv0())
+      stillOpen = missions.some((x: any) => String(x.detailHref || '').includes(`AssignmentId=${assignmentId}`))
+    } catch { /* liste illisible : on garde l'ancien comportement (skip) */ }
+    if (!stillOpen) { await log('vab_close_skipped', 'VAB : déjà clôturée chez eux, on ne rejoue pas', { assignmentId }); return }
+    await log('vab_close_retry', `VAB : action ${assignmentId} encore OUVERTE chez eux alors qu'une autre action de la fiche est soldée — on la clôture.`, { assignmentId })
+  }
 
   // ── LES VÉHICULES DE REMPLACEMENT NE SE CLÔTURENT PAS TOUT SEULS ──────────
   // « Il ne faut pas traiter la clôture de ces missions car il y a des infos du
