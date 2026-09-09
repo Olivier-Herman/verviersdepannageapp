@@ -29,6 +29,7 @@
 import Anthropic            from '@anthropic-ai/sdk'
 import { ANTHROPIC_MODEL }  from '@/lib/anthropic-model'
 import { getAppOnlyToken }  from '@/lib/graph-mail-search'
+import { getBusinessText } from '@/lib/settings/business'
 
 export type AdviceProvider = 'ima' | 'awp'
 
@@ -350,10 +351,12 @@ function emptyAdvice(provider: AdviceProvider, mail: MailRef, warnings: string[]
 // que ce qu'il n'a jamais vu.
 
 /** Où les avis arrivent, et à quoi on les reconnaît. */
-const SOURCES = [
-  { provider: 'ima' as const, sender: 'dfc@imabenelux.com',         subject: /avis de paiement/i },
-  { provider: 'awp' as const, sender: 'accountancy.be@allianz.com', subject: /payment advice note/i },
-]
+async function adviceSources() {
+  return [
+    { provider: 'ima' as const, sender: await getBusinessText('mail_ima_avis_paiement'), subject: /avis de paiement/i },
+    { provider: 'awp' as const, sender: await getBusinessText('mail_awp_avis_paiement'), subject: /payment advice note/i },
+  ]
+}
 
 export interface AdviceMailRef {
   provider:   AdviceProvider
@@ -370,7 +373,7 @@ export async function listAdviceMails(sinceIso: string): Promise<AdviceMailRef[]
   if (!token) throw new Error('Microsoft Graph non configuré (AZURE_AD_*)')
 
   const out: AdviceMailRef[] = []
-  for (const src of SOURCES) {
+  for (const src of await adviceSources()) {
     const mails = (await mailsFrom(src.sender, token))
       .filter(m => m.receivedDateTime >= sinceIso && src.subject.test(m.subject))
     for (const m of mails) {

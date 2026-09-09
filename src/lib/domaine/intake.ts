@@ -11,9 +11,11 @@
 import { createAdminClient } from '@/lib/supabase'
 import { searchMessages, getMessageBody } from '@/lib/requisitoire/graph'
 import { parseDatesIn } from './parse-dates-in'
+import { getBusinessText } from '@/lib/settings/business'
+import { businessFallback } from '@/lib/settings/business-registry'
 
 export const DOMAINE_MAILBOX = 'fourriere@verviersdepannage.be'
-export const DOMAINE_SENDER  = 'rosemarie.lehnen@minfin.fed.be'
+let DOMAINE_SENDER = String(businessFallback('mail_domaine_agent'))   // rafraîchi depuis les réglages métier (mail_domaine_agent)
 const SUBJECT_KEY = 'dates in'
 
 // Saisies à considérer : nouvelles fiches (police_saisie) + fiches historiques
@@ -49,6 +51,7 @@ export async function pollDomaineDatesIn(): Promise<DomaineIntakeSummary> {
 
   let msgs: any[] = []
   try {
+    DOMAINE_SENDER = (await getBusinessText('mail_domaine_agent')).toLowerCase()
     msgs = await searchMessages(DOMAINE_MAILBOX, `from:${DOMAINE_SENDER} ${SUBJECT_KEY}`, 50)
   } catch (e: any) {
     console.error('[domaine dates-in] recherche mail KO:', e?.message)

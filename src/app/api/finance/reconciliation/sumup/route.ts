@@ -23,6 +23,7 @@ import { saveOverride, removeOverride } from '@/lib/paynovate-resolve'
 import { markUnallocated, clearUnallocated } from '@/lib/payout-unallocated'
 import { paymentsForInvoices, humanOdooError } from '@/lib/reconcile-odoo'
 import { resolveSumupReference, loadTokenIndex, readInvoices } from '@/lib/sumup-resolve'
+import { getBusinessNumber } from '@/lib/settings/business'
 
 export const dynamic     = 'force-dynamic'
 export const maxDuration = 120
@@ -224,7 +225,7 @@ export async function POST(req: NextRequest) {
         continue
       }
 
-      const plan = buildSumupPostingPlan(payout)
+      const plan = buildSumupPostingPlan(payout, await getBusinessNumber('odoo_partner_sumup'))
       try {
         const { odMoveId } = await postPlan(plan)
 

@@ -30,9 +30,10 @@
 import { ACC, type MissingPayment, type PostingPlan } from '@/lib/paynovate-post'
 import { unallocatedOdLines, roundingOdLines, splitCounterpart } from '@/lib/reconcile-odoo'
 import type { MatchedPayout } from '@/lib/paynovate-match'
+import { businessFallback } from '@/lib/settings/business-registry'
 
 /** res.partner « SumUp Ltd - German Branch » — celui que porte la seule facture SumUp encodée. */
-export const SUMUP_PARTNER = 1221
+const SUMUP_PARTNER_FALLBACK = Number(businessFallback('odoo_partner_sumup'))
 
 /**
  * Où enregistrer un paiement SumUp manquant.
@@ -50,7 +51,7 @@ const r2 = (n: number) => Math.round(n * 100) / 100
  * Traduit un versement SumUp rapproché en écritures. Aucun appel Odoo : c'est
  * du calcul pur, affichable tel quel avant validation.
  */
-export function buildSumupPostingPlan(p: MatchedPayout): PostingPlan {
+export function buildSumupPostingPlan(p: MatchedPayout, partnerId: number = SUMUP_PARTNER_FALLBACK): PostingPlan {
   const warnings: string[] = []
 
   // « lost » est rapprochable : il manque juste le paiement, qu'on va créer.
@@ -138,7 +139,7 @@ export function buildSumupPostingPlan(p: MatchedPayout): PostingPlan {
 
   return {
     payoutId:   p.paymentId,
-    partnerId:  SUMUP_PARTNER,
+    partnerId,
     bankLineId: p.bankLineId,
     bankMove:   p.bankMoveName,
     net:        p.bankAmount,

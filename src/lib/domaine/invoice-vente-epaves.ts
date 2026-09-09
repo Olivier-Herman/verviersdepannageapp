@@ -10,12 +10,9 @@ import { withOdooActor, odooRpc } from '@/lib/odoo'
 import { attachToOdoo } from '@/lib/odoo-attachment'
 import { computeVenteEpavesRegister } from '@/lib/domaine/vente-epaves-register'
 import { buildVenteEpavesXlsxBuffer } from '@/lib/fourriere/domaine-xlsx'
+import { getBusinessNumber } from '@/lib/settings/business'
 
-// Paramètres Odoo (facture de référence 2026/01/248).
-const DOMAINE_PARTNER_ID = 83   // Service Public Fédéral Finances
-const DOMAINE_JOURNAL_ID = 7    // Sales
-const DOMAINE_PRODUCT_ID = 5    // [FORFAIT] Forfait
-const DOMAINE_TAX_ID     = 5    // TVA 21%
+// Paramètres Odoo (facture de référence 2026/01/248) : réglages métier, repli 83/7/5/5.
 
 export interface DomaineInvoiceResult {
   ok: boolean
@@ -53,16 +50,16 @@ export async function createDomaineQuarterInvoice(input: {
       // 1) Facture brouillon, une seule ligne forfait = total HTVA.
       const moveId = await odooRpc<number>('account.move', 'create', [{
         move_type:    'out_invoice',
-        partner_id:   DOMAINE_PARTNER_ID,
-        journal_id:   DOMAINE_JOURNAL_ID,
+        partner_id:   await getBusinessNumber('odoo_partner_spf_finances'),
+        journal_id:   await getBusinessNumber('odoo_journal_ventes_domaine'),
         invoice_date: dateOnly(),
         ...(ref ? { ref: String(ref) } : {}),
         invoice_line_ids: [[0, 0, {
-          product_id: DOMAINE_PRODUCT_ID,
+          product_id: await getBusinessNumber('odoo_product_forfait'),
           name:       `[FORFAIT] Forfait\n${label} suivant tableau en annexe`,
           quantity:   1,
           price_unit: Math.round(total * 100) / 100,
-          tax_ids:    [[6, 0, [DOMAINE_TAX_ID]]],
+          tax_ids:    [[6, 0, [await getBusinessNumber('odoo_tax_21')]]],
         }]],
       }])
 

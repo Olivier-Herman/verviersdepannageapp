@@ -10,8 +10,9 @@ import { createAdminClient } from '@/lib/supabase'
 import { reconcileHorsComexWithAccords } from '@/lib/touring/accord-reconcile'
 import { buildTouringCheckList } from '@/lib/touring/check-list'
 import { persistCheckList } from '@/lib/touring/check-persist'
-import { getCheckToken, getCheckEmail, checkLink, CHECK_EMAIL_CC, CHECK_EMAIL_BCC } from '@/lib/touring/check-config'
+import { getCheckToken, getCheckEmail, checkLink, CHECK_EMAIL_BCC } from '@/lib/touring/check-config'
 import { sendEmail, emailLayout } from '@/lib/emails'
+import { getBusinessList } from '@/lib/settings/business'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 120
@@ -53,7 +54,7 @@ export async function GET(req: Request) {
     const [token, email] = await Promise.all([getCheckToken(sb), getCheckEmail(sb)])
     const now = new Date()
     const mois = `${MONTHS_FR[now.getMonth()]} ${now.getFullYear()}`
-    await sendEmail(email, `Dossiers Touring à vérifier — ${mois}`, buildHtml(items.length, checkLink(token)), 'Touring BKO', CHECK_EMAIL_CC, undefined, undefined, CHECK_EMAIL_BCC)
+    await sendEmail(email, `Dossiers Touring à vérifier — ${mois}`, buildHtml(items.length, checkLink(token)), 'Touring BKO', await getBusinessList('touring_check_cc'), undefined, undefined, CHECK_EMAIL_BCC)
 
     return NextResponse.json({ ok: true, reconciled: reconcile.reconciled, count: items.length, mailed: true, to: email })
   } catch (e: any) {

@@ -27,6 +27,7 @@ import {
   buildDestructionXlsx, buildDestructionPdf, computeDestructionFees,
   type DestructionVehicle,
 } from '@/lib/fourriere/destruction-report'
+import { getRestitutionGrid } from '@/lib/fourriere/restitution-grid'
 
 export const dynamic     = 'force-dynamic'
 export const maxDuration = 60
@@ -66,6 +67,7 @@ function checkAccess(session: any): { ok: boolean; user?: any } {
 
 // ─── GET : liste eligibles (≥ 60 jours) ─────────────────────────────────
 export async function GET() {
+  const grid = (await getRestitutionGrid('police_avp')) || undefined
   const session = await getServerSession(authOptions)
   const access = checkAccess(session)
   if (!access.ok) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
@@ -93,7 +95,7 @@ export async function GET() {
     .map(m => {
       const entry = entryDate(m)
       const days  = daysSince(entry)
-      const fees  = computeDestructionFees(entry, nowIso)
+      const fees  = computeDestructionFees(entry, nowIso, grid)
       return {
         ...m,
         entry_date:   entry,
@@ -120,6 +122,7 @@ export async function GET() {
 
 // ─── POST : valider la sortie AVP (epave) + rapport + email ──────────────
 export async function POST(req: Request) {
+  const grid = (await getRestitutionGrid('police_avp')) || undefined
   const session = await getServerSession(authOptions)
   const access = checkAccess(session)
   if (!access.ok) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
@@ -257,7 +260,7 @@ export async function POST(req: Request) {
       const monthLabel = new Date().toLocaleDateString('fr-BE', { month: 'long', year: 'numeric' })
 
       const htmlList = vehicles.map(v => {
-        const fees = computeDestructionFees(v.entryIso, v.exitIso)
+        const fees = computeDestructionFees(v.entryIso, v.exitIso, grid)
         return `
         <tr style="border-bottom:1px solid #ddd">
           <td style="padding:6px"><strong>${v.plate || 'SANS PLAQUE'}</strong></td>

@@ -13,9 +13,11 @@
 import { createAdminClient } from '@/lib/supabase'
 import { searchMessages, getMessageBody } from '@/lib/requisitoire/graph'
 import { parseVenteEpaves } from './parse-vente-epaves'
+import { getBusinessText } from '@/lib/settings/business'
+import { businessFallback } from '@/lib/settings/business-registry'
 
 export const VENTE_MAILBOX = 'fourriere@verviersdepannage.be'
-export const VENTE_SENDER  = 'rosemarie.lehnen@minfin.fed.be'
+let VENTE_SENDER = String(businessFallback('mail_domaine_agent'))   // rafraîchi depuis les réglages métier (mail_domaine_agent)
 const SUBJECT_KEY = 'paves'   // « Vente d'épaves » (comparé sans accent)
 
 // Saisies à considérer : nouvelles fiches (police_saisie) + fiches historiques
@@ -55,6 +57,7 @@ export async function pollVenteEpaves(): Promise<VenteEpavesSummary> {
     // Recherche sur l'expéditeur seul : « épaves » est indexé accentué par Graph,
     // le terme « epaves » ne matcherait pas. Le filtre sujet (sans accent) se fait
     // en code juste après.
+    VENTE_SENDER = (await getBusinessText('mail_domaine_agent')).toLowerCase()
     msgs = await searchMessages(VENTE_MAILBOX, `from:${VENTE_SENDER}`, 100)
     s.msgsSeen = msgs.length
   } catch (e: any) {

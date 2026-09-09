@@ -14,10 +14,12 @@
 
 import { odooRpc } from '@/lib/odoo'
 import { createAdminClient } from '@/lib/supabase'
+import { getBusinessNumber } from '@/lib/settings/business'
 
 // Journal dédié créé dans Odoo (Verviers Depannage, type Achats). Voir mémoire
 // project_module_paie. Exclu de Gestion Achat (cf. odoo-spend + cron achats-parse).
-export const PAIE_JOURNAL_ID = 45
+/** Journal des fiches de paie — réglage métier odoo_journal_paie (repli 45). */
+export const paieJournalId = () => getBusinessNumber('odoo_journal_paie')
 // Compte de charge selon le STATUT de la personne (personnel.statut) :
 //   ouvrier → 620300 (Hourly Employees) · employe → 620200 (Salaried) · gerant → 620000 (Directors).
 // Défaut = ouvrier (la majorité). Aligne aussi le default_account_id du journal (620300).
@@ -98,7 +100,7 @@ export async function pushPayslipToOdoo(payslipId: string, opts: { force?: boole
   const moveId = await odooRpc<number>('account.move', 'create', [{
     move_type:    isRefund ? 'in_refund' : 'in_invoice',
     partner_id:   Number(person.odoo_partner_id),
-    journal_id:   PAIE_JOURNAL_ID,
+    journal_id:   await paieJournalId(),
     invoice_date: invoiceDate,
     ref,
     invoice_line_ids: [[0, 0, {

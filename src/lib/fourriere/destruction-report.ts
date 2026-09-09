@@ -17,10 +17,10 @@ import {
   Document, Page, Text, View, StyleSheet,
 } from '@react-pdf/renderer'
 
-// Tarifs alignes sur src/app/api/missions/[id]/restitute/route.ts
-export const AVP_FORFAIT_HTVA      = 165.29   // forfait enlevement AVP (= 200 EUR TVAC)
-export const GARDIENNAGE_PRICE_HTVA = 20      // EUR/jour
-const TVA_RATE = 0.21
+// Tarifs : la grille de restitution AVP (source_tariff_lines), passée par l'appelant ;
+// repli = valeurs codées (lot A, 09/09/2026).
+import { RESTITUTION_FALLBACK, TVA_RATE } from '@/lib/fourriere/restitution-grid-data'
+export type DestructionGrid = { forfaitHtva: number; parcDayHtva: number }
 
 export interface DestructionVehicle {
   plate:        string | null
@@ -52,14 +52,14 @@ export function computeGardiennageDays(entryIso: string | null, exitIso: string)
 }
 
 /** Frais arretes a la date de sortie : forfait AVP + gardiennage journalier. */
-export function computeDestructionFees(entryIso: string | null, exitIso: string): DestructionFees {
+export function computeDestructionFees(entryIso: string | null, exitIso: string, grid: DestructionGrid = RESTITUTION_FALLBACK.police_avp): DestructionFees {
   const days        = computeGardiennageDays(entryIso, exitIso)
-  const gardienHtva = days * GARDIENNAGE_PRICE_HTVA
-  const totalHtva   = AVP_FORFAIT_HTVA + gardienHtva
+  const gardienHtva = days * grid.parcDayHtva
+  const totalHtva   = grid.forfaitHtva + gardienHtva
   const totalTvac   = totalHtva * (1 + TVA_RATE)
   return {
     days,
-    forfaitHtva: AVP_FORFAIT_HTVA,
+    forfaitHtva: grid.forfaitHtva,
     gardienHtva,
     totalHtva:   Number(totalHtva.toFixed(2)),
     totalTvac:   Number(totalTvac.toFixed(2)),

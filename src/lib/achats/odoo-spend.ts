@@ -11,7 +11,7 @@
 // ============================================================
 
 import { achatsRpc as odooRpc, getGroupCompanyPartnerIds } from './odoo-rpc'   // connecteur multi-société dédié Achats
-import { PAIE_JOURNAL_ID } from '@/lib/paie/push-odoo'   // journal des fiches de paie (regroupé en « Salaires » dans les fournisseurs)
+import { paieJournalId } from '@/lib/paie/push-odoo'   // journal des fiches de paie (regroupé en « Salaires » dans les fournisseurs)
 
 /** 1er jour du mois, `monthsBack` mois en arrière (fenêtre glissante). */
 function periodStart(monthsBack: number): string {
@@ -69,7 +69,7 @@ export async function analyzeAchats(monthsBack = 12, config: SupplierConfig = { 
 
   // Fournisseurs : on EXCLUT les fiches de paie (chaque chauffeur = un fournisseur
   // encombrerait la liste) et on les regroupe en une seule ligne « Salaires ».
-  const notPaie = [['journal_id', '!=', PAIE_JOURNAL_ID]]
+  const notPaie = [['journal_id', '!=', await paieJournalId()]]
   const [overviewRows, draftRows, monthRows, supplierRows, catRows, bills] = await Promise.all([
     odooRpc<any[]>('account.move', 'read_group', [billDom, ['amount_untaxed:sum'], []]),
     odooRpc<any[]>('account.move', 'read_group', [[['move_type', '=', 'in_invoice'], ['state', '=', 'draft']], ['amount_untaxed:sum'], []]),

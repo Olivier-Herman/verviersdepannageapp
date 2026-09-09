@@ -11,6 +11,8 @@ const LIST_TYPES = [
   { key: 'payment_mode', label: 'Modes de paiement' },
 ]
 
+import { BUSINESS_SETTINGS } from '@/lib/settings/business-registry'
+
 export default function SettingsClient({
   listItems,
   callShortcuts,
@@ -40,6 +42,12 @@ export default function SettingsClient({
   const [rfqMailbox,  setRfqMailbox]  = useState(String(appSettings['achats_rfq_mailbox'] ?? ''))
   const [paramsError, setParamsError] = useState<string | null>(null)
   const [savingParams,   setSavingParams]   = useState(false)
+  // Réglages métier (lot A « admin sans valeurs en dur », 09/09/2026) : texte tel que saisi ;
+  // vide = repli du registre (la valeur qui était codée).
+  const [biz, setBiz] = useState<Record<string, string>>(() => Object.fromEntries(BUSINESS_SETTINGS.map(d => {
+    const v = (appSettings as any)[d.key]
+    return [d.key, v == null ? '' : Array.isArray(v) ? v.join(', ') : String(v)]
+  })))
   const [paramsSaved,    setParamsSaved]    = useState(false)
 
   const items = listItems.filter(i => i.list_type === activeTab)
@@ -123,6 +131,13 @@ export default function SettingsClient({
       if (rfqMailbox.trim() && !rfqMailbox.includes('@')) { setParamsError('Boîte des demandes de prix invalide.'); return }
       settings.tgr_info_email = tgrEmail.trim()
       settings.achats_rfq_mailbox = rfqMailbox.trim()
+      for (const d of BUSINESS_SETTINGS) {
+        const raw = (biz[d.key] || '').trim()
+        if (!raw) { settings[d.key] = null; continue }
+        if (d.kind === 'number') { const n = Number(raw.replace(',', '.')); if (!Number.isFinite(n) || n <= 0) { setParamsError(`« ${d.label} » : nombre attendu.`); return } settings[d.key] = n }
+        else if (d.kind === 'emails') settings[d.key] = raw.split(/[,;\s]+/).map(x => x.trim()).filter(Boolean)
+        else settings[d.key] = raw
+      }
       const r = await fetch('/api/admin/settings', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
@@ -232,6 +247,24 @@ export default function SettingsClient({
               className="w-full bg-surface-hover border border-strong rounded-xl px-4 py-2.5 text-ink text-sm outline-none focus:border-brand" />
             <p className="text-ink-faint text-xs mt-1.5">Boîte qui envoie et reçoit les appels d'offre du module Achats. Vide = administration@. La boîte doit être autorisée côté Microsoft avant de basculer.</p>
           </div>
+
+          {(['Odoo', 'Boîtes mail', 'Montants'] as const).map(group => (
+            <div key={group} className="bg-surface-2 border border rounded-2xl p-4">
+              <p className="text-ink-muted text-xs font-semibold uppercase tracking-widest mb-1">Réglages métier — {group}</p>
+              <p className="text-ink-faint text-xs mb-3">Vide = valeur d'origine entre parenthèses. Pris en compte dans la minute, sans déploiement.</p>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                {BUSINESS_SETTINGS.filter(d => d.group === group).map(d => (
+                  <label key={d.key} className="block">
+                    <span className="block text-ink-secondary text-xs font-medium mb-1">{d.label} <span className="text-ink-faint font-normal">({Array.isArray(d.fallback) ? d.fallback.join(', ') : String(d.fallback)})</span></span>
+                    <input type="text" inputMode={d.kind === 'number' ? 'decimal' : undefined} value={biz[d.key] || ''} onChange={e => setBiz(b => ({ ...b, [d.key]: e.target.value }))}
+                      placeholder={Array.isArray(d.fallback) ? d.fallback.join(', ') : String(d.fallback)}
+                      className="w-full bg-surface-hover border border-strong rounded-xl px-3 py-2 text-ink text-sm outline-none focus:border-brand" />
+                    {d.help && <span className="block text-ink-faint text-[11px] mt-0.5">{d.help}</span>}
+                  </label>
+                ))}
+              </div>
+            </div>
+          ))}
 
           {paramsError && <p className="text-red-700 text-sm">{paramsError}</p>}
 

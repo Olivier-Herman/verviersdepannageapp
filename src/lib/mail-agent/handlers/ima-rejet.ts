@@ -20,12 +20,11 @@
 // est celle du dossier réel (payement), la recherche est insensible à la casse.
 export const IMA_DONE_FOLDER = 'ima payement'
 
-export const IMA_SENDERS = [
-  'facturation.prestataires@ima.eu',
-  'hub@imabenelux.com',
-]
+export let IMA_SENDERS: string[] = (businessFallback('mail_ima_rejets') as string[]).slice()
 
 import type { MailHandler, RejectEntity, RejectExtraction } from './types'
+import { getBusinessList } from '@/lib/settings/business'
+import { businessFallback } from '@/lib/settings/business-registry'
 
 export type ImaEntityKey = 'pv' | 'ima_fr' | 'ima_be'
 
@@ -36,6 +35,9 @@ export const IMA_ENTITIES: Record<ImaEntityKey, RejectEntity> = {
 }
 
 /** Ce mail est-il un rejet de facture IMA ? */
+// Liste rafraîchie depuis les réglages métier (mail_ima_rejets) ; repli = liste ci-dessus.
+getBusinessList('mail_ima_rejets').then(l => { if (l.length) IMA_SENDERS = l.map(x => x.toLowerCase()) }).catch(() => {})
+
 export function detect(fromEmail: string, subject: string): boolean {
   if (!IMA_SENDERS.includes((fromEmail || '').toLowerCase())) return false
   return /votre facture n[°o]/i.test(subject || '')

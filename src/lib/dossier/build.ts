@@ -15,6 +15,7 @@ import { createAdminClient }   from '@/lib/supabase'
 import { estimateMissionPrice } from '@/lib/missions/estimate-price'
 import { actionLines, linesTotal } from '@/lib/dossier/lines'
 import { getMissionTypeLabel }  from '@/lib/missions/mission-types'
+import { getBusinessNumber } from '@/lib/settings/business'
 
 export type LegKind = 'rem' | 'gard' | 'rel' | 'out'
 
@@ -381,7 +382,7 @@ async function buildDossierUncached(anyMissionId: string, light: boolean, price 
   // Verviers) ». On accepte aussi le nom : un id Odoo ne survit pas à un
   // changement d'instance, alors que le libellé, si (même raison que les
   // relances, qui matchent l'étiquette par son nom).
-  const FRAIS_JUSTICE_ODOO_ID = 67
+  const FRAIS_JUSTICE_ODOO_ID = await getBusinessNumber('odoo_partner_frais_justice')
   // La levée pose désormais la question « frais de justice ou client ? » et
   // enregistre la réponse : elle fait foi. Les levées antérieures n'ont rien
   // enregistré — on retombe alors sur le client facturé, comme avant.

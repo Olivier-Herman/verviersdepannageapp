@@ -31,42 +31,10 @@ import { assertExitAllowed }       from '@/lib/missions/exit-control'
 export const dynamic     = 'force-dynamic'
 export const maxDuration = 30
 
-const GARDIENNAGE_PRICE_HTVA = 20       // EUR/jour (commun a tous les types fourriere)
-
-// Configuration par source fourriere : forfait + min jours gardiennage + produit Odoo.
-// A etendre pour chaque nouveau type police (SIABIS, AVP, etc.)
-interface SourceConfig {
-  label:           string
-  forfaitHtva:     number          // forfait enlevement HTVA
-  forfaitOdooCode: string          // default_code produit Odoo pour le forfait
-  forfaitName:     (ref: string) => string
-  minDays:         number          // minimum jours gardiennage factures
-}
-const SOURCE_CONFIGS: Record<string, SourceConfig> = {
-  police_mg: {
-    label:           'Mal Garée',
-    forfaitHtva:     165.29,                      // = 200 EUR TVAC
-    forfaitOdooCode: 'PECMG',
-    forfaitName:     (ref) => `Forfait enlèvement Mal Garée — ${ref}`,
-    minDays:         0,
-  },
-  police_rodeo: {
-    label:           'Rodéo',
-    forfaitHtva:     165.29,                      // = 200 EUR TVAC (a confirmer)
-    forfaitOdooCode: 'PECRODEO',
-    forfaitName:     (ref) => `Forfait enlèvement Rodéo — ${ref}`,
-    minDays:         3,                           // minimum 3 jours factures
-  },
-  police_avp: {
-    label:           'AVP',
-    forfaitHtva:     165.29,                      // = 200 EUR TVAC (tarif identique MG)
-    forfaitOdooCode: 'PECAVP',
-    forfaitName:     (ref) => `Forfait enlèvement AVP — ${ref}`,
-    minDays:         0,
-    // AVP : police_blocked=true par defaut a la creation, donc la modal
-    // restitution forcera la verification "Proprio est-il passe a la police ?"
-  },
-}
+// Grille de restitution : lue dans source_tariff_lines (lot A « admin sans
+// valeurs en dur », 09/09/2026) — forfait, code Odoo, minimum de jours, €/jour.
+import { getRestitutionGrid } from '@/lib/fourriere/restitution-grid'
+import { RESTITUTION_FALLBACK } from '@/lib/fourriere/restitution-grid-data'
 
 interface PaymentLine {
   mode:      'cash' | 'bancontact' | 'driver_encaissement'
@@ -153,10 +121,10 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   if (mErr || !mission) return NextResponse.json({ error: 'Mission introuvable' }, { status: 404 })
 
   // 2. Verifications business
-  const sourceConfig = SOURCE_CONFIGS[mission.source]
-  if (!sourceConfig) {
+  const grid = await getRestitutionGrid(mission.source)
+  if (!grid) {
     return NextResponse.json({
-      error: `Source mission "${mission.source}" non supportee par la restitution fourriere. Sources possibles : ${Object.keys(SOURCE_CONFIGS).join(', ')}.`,
+      error: `Source mission "${mission.source}" non supportee par la restitution fourriere. Sources possibles : ${Object.keys(RESTITUTION_FALLBACK).join(', ')}.`,
     }, { status: 409 })
   }
   if (mission.status !== 'parked') {
@@ -200,7 +168,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   // Olivier 2026-08-20.
   const days     = (mission as any).storage_waived
     ? 0
-    : Math.max(rawDays, sourceConfig.minDays)
+    : Math.max(rawDays, grid.minDays)
 
   // 4. Branche selon mode
   // ─── 4a. NO_CHARGE : motif requis, status -> completed, pas de devis ────────
@@ -220,7 +188,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
       mission_id: missionId,
       actor_id:   user.id,
       action:     'no_charge',
-      notes:      `Restitution sans frais (${sourceConfig.label}) : ${reason}`,
+      notes:      `Restitution sans frais (${grid.label}) : ${reason}`,
       metadata:   { reason, source: mission.source },
     })
 
@@ -242,8 +210,8 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   }
 
   // Calcul total HTVA et TTC pour validation (utilise config selon source)
-  const forfaitHtva  = sourceConfig.forfaitHtva
-  const gardienHtva  = GARDIENNAGE_PRICE_HTVA * days
+  const forfaitHtva  = grid.forfaitHtva
+  const gardienHtva  = grid.parcDayHtva * days
   const totalHtva    = forfaitHtva + gardienHtva
   const totalTvac    = Math.round(totalHtva * 1.21 * 100) / 100
   const sumPaid      = payments.reduce((s, p) => s + (Number(p.amount) || 0), 0)
@@ -281,17 +249,17 @@ export async function POST(req: Request, { params }: { params: { id: string } })
       lines = override
     } else {
       lines = [{
-        kind:       sourceConfig.forfaitOdooCode as any,
-        name:       sourceConfig.forfaitName(ref),
+        kind:       grid.forfaitOdooCode as any,
+        name:       `${grid.forfaitLabel} — ${ref}`,
         qty:        1,
-        price_unit: sourceConfig.forfaitHtva,
+        price_unit: grid.forfaitHtva,
       }]
       if (days > 0) {
         lines.push({
           kind:       'GARDIENNAGE' as any,
           name:       `Gardiennage parc fourrière (${days} jour${days > 1 ? 's' : ''})`,
           qty:        days,
-          price_unit: GARDIENNAGE_PRICE_HTVA,
+          price_unit: grid.parcDayHtva,
         })
       }
     }

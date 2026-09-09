@@ -6,34 +6,9 @@ import {
   Trash2, Plus, ScrollText,
 } from 'lucide-react'
 
-// Tarification commune fourriere (constantes synchro avec /api/missions/[id]/restitute)
-const GARDIENNAGE_PRICE_HTVA = 20
-const TVA_RATE               = 0.21
-
-// Configuration par source (alignee avec SOURCE_CONFIGS du backend)
-interface SourceConfig {
-  label:              string
-  forfaitHtva:        number
-  forfaitLabel:       string
-  minDays:            number
-  requiresLeveeSaisie: boolean
-}
-const SOURCE_CONFIGS: Record<string, SourceConfig> = {
-  police_mg: {
-    label:              'Mal Garée',
-    forfaitHtva:        165.29,
-    forfaitLabel:       'Forfait enlèvement Mal Garée',
-    minDays:            0,
-    requiresLeveeSaisie: false,
-  },
-  police_rodeo: {
-    label:              'Rodéo',
-    forfaitHtva:        165.29,
-    forfaitLabel:       'Forfait enlèvement Rodéo',
-    minDays:            3,
-    requiresLeveeSaisie: true,
-  },
-}
+// Grille de restitution : la modale la demande au serveur (source_tariff_lines) ;
+// en attendant la réponse elle affiche le repli codé. Lot A, 09/09/2026.
+import { RESTITUTION_FALLBACK, TVA_RATE, type RestitutionGrid } from '@/lib/fourriere/restitution-grid-data'
 
 interface Mission {
   id:                     string
@@ -86,12 +61,18 @@ function computeDays(entryIso: string | null, nowDate: Date): number {
 }
 
 export default function RestituerMalGareeModal({ mission, userHasOdooAccess, onClose, onSuccess }: Props) {
-  // Lookup config selon source ; fallback Mal Garee si inconnue
-  const sourceConfig: SourceConfig = SOURCE_CONFIGS[mission.source] || SOURCE_CONFIGS.police_mg
+  // Grille selon la source : repli immédiat, puis valeur du catalogue.
+  const [grid, setGrid] = useState<RestitutionGrid>(RESTITUTION_FALLBACK[mission.source] || RESTITUTION_FALLBACK.police_mg)
+  useEffect(() => {
+    fetch(`/api/fourriere/restitution-grid?source=${encodeURIComponent(mission.source)}`).then(r => r.json())
+      .then(j => { if (j?.grid?.forfaitHtva > 0) setGrid(j.grid) }).catch(() => {})
+  }, [mission.source])
+  // Levée de saisie requise pour les Rodéos (règle métier, pas un tarif).
+  const requiresLeveeSaisie = mission.source === 'police_rodeo'
 
   // Levee de saisie : requise pour les Rodeos.
   // Si deja cochee a la creation (police_levee_saisie_ok=true), on skip l etape verif.
-  const needsLeveeSaisieCheck = sourceConfig.requiresLeveeSaisie && !mission.police_levee_saisie_ok
+  const needsLeveeSaisieCheck = requiresLeveeSaisie && !mission.police_levee_saisie_ok
 
   // ──────────── Etat machine ────────────
   // Step 1 : verif blocage police OU levee de saisie (selon source)
@@ -132,10 +113,10 @@ export default function RestituerMalGareeModal({ mission, userHasOdooAccess, onC
 
   // Tarification live (applique minDays selon source)
   const rawDays    = useMemo(() => computeDays(mission.parked_at || mission.received_at, new Date()), [mission])
-  const days       = Math.max(rawDays, sourceConfig.minDays)
+  const days       = Math.max(rawDays, grid.minDays)
   const minApplied = days > rawDays  // affichage : "minimum N jours applique"
-  const forfait    = sourceConfig.forfaitHtva
-  const gardien    = GARDIENNAGE_PRICE_HTVA * days
+  const forfait    = grid.forfaitHtva
+  const gardien    = grid.parcDayHtva * days
   const totalHtva  = forfait + gardien
   const totalTvac  = Math.round(totalHtva * (1 + TVA_RATE) * 100) / 100
 
@@ -301,9 +282,9 @@ export default function RestituerMalGareeModal({ mission, userHasOdooAccess, onC
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-3 border-b">
           <div>
-            <h2 className="text-ink font-bold">Restituer le véhicule — {sourceConfig.label}</h2>
+            <h2 className="text-ink font-bold">Restituer le véhicule — {grid.label}</h2>
             <p className="text-ink-muted text-xs mt-0.5">
-              {mission.vehicle_plate} {mission.vehicle_brand} {mission.vehicle_model} · {days} jour{days !== 1 ? 's' : ''} de gardiennage{minApplied ? ` (min ${sourceConfig.minDays}j)` : ''}
+              {mission.vehicle_plate} {mission.vehicle_brand} {mission.vehicle_model} · {days} jour{days !== 1 ? 's' : ''} de gardiennage{minApplied ? ` (min ${grid.minDays}j)` : ''}
             </p>
           </div>
           <button onClick={onClose} className="p-1.5 hover:bg-surface-hover rounded-lg text-ink-muted hover:text-ink transition">
@@ -522,14 +503,14 @@ export default function RestituerMalGareeModal({ mission, userHasOdooAccess, onC
                     <>
                       <div className="bg-surface-2 border rounded-xl p-3 space-y-1.5 text-sm">
                         <div className="flex justify-between text-ink-secondary">
-                          <span>{sourceConfig.forfaitLabel}</span>
+                          <span>{grid.forfaitLabel}</span>
                           <span>{forfait.toFixed(2)} € HT</span>
                         </div>
                         <div className="flex justify-between text-ink-secondary">
                           <span>
                             Gardiennage ({days} jour{days !== 1 ? 's' : ''} × 20€)
                             {minApplied && (
-                              <span className="ml-1 text-rose-500 text-xs font-medium">(min {sourceConfig.minDays}j)</span>
+                              <span className="ml-1 text-rose-500 text-xs font-medium">(min {grid.minDays}j)</span>
                             )}
                           </span>
                           <span>{gardien.toFixed(2)} € HT</span>

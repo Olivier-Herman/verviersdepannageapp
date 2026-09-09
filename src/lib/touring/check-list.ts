@@ -12,6 +12,7 @@
 //      (listComexMissions, COD_STATUT_MTR != '07').
 
 import { loginComex, listComexMissions } from './comex'
+import { getBusinessNumber } from '@/lib/settings/business'
 
 const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000   // seuil « clôturé récent » (Olivier 2026-08-09, était 15 j)
 
@@ -23,7 +24,7 @@ const COLS =
   'billed_to_id, billed_to_name'
 
 // Partenaire Odoo « Touring » (facturé à Touring).
-const TOURING_BILLED_ID = 14
+let TOURING_BILLED_ID = 14   // rafraîchi depuis les réglages métier à chaque construction de la liste
 
 /**
  * Une mission entre dans la file Check Touring si :
@@ -161,6 +162,7 @@ function addr(a?: string | null, city?: string | null): string | null {
  * @param sb client Supabase admin (service_role)
  */
 export async function buildTouringCheckList(sb: any): Promise<CheckItem[]> {
+  TOURING_BILLED_ID = await getBusinessNumber('odoo_partner_touring')
   // 1. Missions Touring en attente de facturation.
   const { data: queue, error } = await sb
     .from('incoming_missions')

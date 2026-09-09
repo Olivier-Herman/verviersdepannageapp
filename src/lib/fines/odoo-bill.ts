@@ -11,9 +11,8 @@
 // Olivier 2026-07-01. Cf [[project_amendes_odoo_facture_fournisseur]].
 
 import { odooRpc } from '@/lib/odoo'
+import { getBusinessNumber } from '@/lib/settings/business'
 
-const FINE_ODOO_PARTNER_ID = 79   // Police Fédérale
-const FINE_ODOO_JOURNAL_ID = 8    // Journal « Achats » (préfixe BILL)
 
 function fmtDateBE(iso: string | null): string {
   if (!iso) return ''
@@ -64,8 +63,8 @@ export async function createFineVendorBill(
   try {
     moveId = await odooRpc<number>('account.move', 'create', [{
       move_type:  'in_invoice',
-      partner_id: FINE_ODOO_PARTNER_ID,
-      journal_id: FINE_ODOO_JOURNAL_ID,
+      partner_id: await getBusinessNumber('odoo_partner_police_federale'),
+      journal_id: await getBusinessNumber('odoo_journal_achats'),
       invoice_date: dateOnlyBE(f.infraction_date),   // date de facturation = date de l'infraction
       ref:        f.infraction_ref || f.identification_code || null,
       invoice_line_ids: [[0, 0, {

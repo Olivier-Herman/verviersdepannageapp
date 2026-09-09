@@ -8,6 +8,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import Link from 'next/link'
 import AppShell from '@/components/layout/AppShell'
+import { businessFallback } from '@/lib/settings/business-registry'
 
 type Recipient = 'parquet' | 'domaine' | 'client'
 interface Dossier {
@@ -61,7 +62,7 @@ const PENDING: Record<string, { label: string; cls: string }> = {
 function targetMail(recipient: Recipient, motifCode?: string | null): string {
   if (recipient === 'parquet')
     return String(motifCode || '').toUpperCase() === 'SAISIE_JUDICIAIRE'
-      ? 'frais.justice.verviers@just.fgov.be' : 'fdj.pplge@just.fgov.be'
+      ? String(businessFallback('mail_frais_justice')) : String(businessFallback('mail_parquet'))
   if (recipient === 'client') return 'e-mail de la fiche'
   return 'Domaine : via le tableau de Rosemarie (module Domaine)'
 }

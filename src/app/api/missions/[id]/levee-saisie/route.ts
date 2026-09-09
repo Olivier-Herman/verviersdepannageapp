@@ -16,6 +16,7 @@ import { NextResponse }      from 'next/server'
 import { getServerSession }  from 'next-auth'
 import { authOptions }       from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase'
+import { getBusinessNumber } from '@/lib/settings/business'
 
 export const dynamic     = 'force-dynamic'
 export const maxDuration = 60
@@ -24,7 +25,6 @@ const MAX_FILE_SIZE = 10 * 1024 * 1024 // 10 MB
 
 // Frais de Justice Verviers — le partenaire Odoo qui paie quand la levée
 // répond « frais de justice » (Olivier 09/09/2026 : « l'id 67 »).
-const FRAIS_JUSTICE_ODOO_ID = 67
 const FRAIS_JUSTICE_NAME    = 'Frais de Justice Verviers'
 
 async function getActor() {
@@ -85,6 +85,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   }
 
   const payerLabel = payer === 'frais_justice' ? 'frais de justice' : payer === 'client' ? 'à charge du client' : null
+  const FRAIS_JUSTICE_ODOO_ID = await getBusinessNumber('odoo_partner_frais_justice')
   const typeLabel = type === 'definitive' ? 'définitive' : 'temporaire'
   const dateFr = date.split('-').reverse().join('/')
   const remarkText = `🔓 Levée de saisie ${typeLabel} (date : ${dateFr})${payerLabel ? ` — ${payerLabel}` : ''}${note ? ` — ${note}` : ''}`

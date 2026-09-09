@@ -93,7 +93,7 @@ export async function sendEfRelance(sb: any, dossierId: string, efId: string): P
       .select('client_name, billed_to_name, incident_address, incident_city, vehicle_vin, client_email, received_at')
       .eq('id', d.mission_id).maybeSingle()).data
   }
-  const dest = resolveRecipientEmail(recipient, d.motif_code, mission?.client_email)
+  const dest = await resolveRecipientEmail(recipient, d.motif_code, mission?.client_email)
   if (!dest) return { ok: false, error: 'Destinataire sans adresse e-mail' }
 
   const link = d.validation_token ? validationLink(d.validation_token) : `${APP_URL}/fourriere/saisies`

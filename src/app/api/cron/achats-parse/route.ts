@@ -12,7 +12,7 @@ import { authOptions }          from '@/lib/auth'
 import { createAdminClient }    from '@/lib/supabase'
 import { achatsRpc as odooRpc, getGroupCompanyPartnerIds } from '@/lib/achats/odoo-rpc'   // connecteur multi-société dédié Achats
 import { categorizeInvoiceDoc } from '@/lib/achats/parse-invoice'
-import { PAIE_JOURNAL_ID }      from '@/lib/paie/push-odoo'   // journal fiches de paie → jamais synchronisé dans les achats
+import { paieJournalId }        from '@/lib/paie/push-odoo'   // journal fiches de paie → jamais synchronisé dans les achats
 import { ANTHROPIC_MODEL }      from '@/lib/anthropic-model'
 
 export const dynamic     = 'force-dynamic'
@@ -56,7 +56,7 @@ export async function GET(req: Request) {
     const companyPartners = await getGroupCompanyPartnerIds()   // neutralise l'intercompagnie
     const bills = await odooRpc<any[]>('account.move', 'search_read', [
       [['move_type', '=', 'in_invoice'], ['state', '=', 'posted'], ['invoice_date', '>=', iso(months)],
-        ['journal_id', '!=', PAIE_JOURNAL_ID],
+        ['journal_id', '!=', await paieJournalId()],
         ...(companyPartners.length ? [['commercial_partner_id', 'not in', companyPartners]] : [])],
       ['id', 'partner_id', 'invoice_date', 'amount_untaxed', 'amount_total', 'ref', 'message_main_attachment_id'],
     ], { limit: 6000 })

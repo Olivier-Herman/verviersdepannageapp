@@ -20,11 +20,11 @@ import { odooRpc }          from '@/lib/odoo'
 import { searchMailbox, fetchMailFull, fetchAttachmentBytes, SEARCH_MAILBOXES, isGraphConfigured } from '@/lib/graph-mail-search'
 import Anthropic            from '@anthropic-ai/sdk'
 import { ANTHROPIC_MODELS, createWithModelFallback } from '@/lib/anthropic-model'
+import { getBusinessNumber } from '@/lib/settings/business'
 
 export const dynamic     = 'force-dynamic'
 export const maxDuration = 300
 
-const ANWB_PARTNER_ID   = 56
 const ANWB_PARTNER_NAME = 'ANWB'
 const normPlate = (s: string) => (s || '').replace(/[-.\s]/g, '').toUpperCase()
 
@@ -152,7 +152,7 @@ export async function POST() {
         if (anwb) {
           await sb.from('incoming_missions').update({
             dossier_number:  anwb.dossier,
-            billed_to_id:    ANWB_PARTNER_ID,
+            billed_to_id:    await getBusinessNumber('odoo_partner_anwb'),
             billed_to_name:  ANWB_PARTNER_NAME,
             touring_check_stamp: `ANWB ${anwb.dossier}`,
             updated_at: new Date().toISOString(),

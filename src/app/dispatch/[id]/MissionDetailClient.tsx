@@ -933,7 +933,13 @@ export default function MissionDetailClient({
   // ⚠️ 220 € TVAC (Olivier 2026-09-02), et la colonne stocke de l'HTVA — c'est
   // ce que lisent le devis et la facture. On convertit ici, une fois, plutôt que
   // de laisser chacun se tromper : 220 / 1,21 = 181,82 € HTVA.
-  const FORFAIT_PARC_TVAC = 220
+  // Montant lu dans les réglages métier (repli 220) — lot A, 09/09/2026.
+  const [forfaitParcTvac, setForfaitParcTvac] = useState(220)
+  useEffect(() => {
+    fetch('/api/settings/business?keys=forfait_parc_accident_tvac').then(r => r.json())
+      .then(j => { const v = Number(j?.values?.forfait_parc_accident_tvac); if (v > 0) setForfaitParcTvac(v) }).catch(() => {})
+  }, [])
+  const FORFAIT_PARC_TVAC = forfaitParcTvac
   const FORFAIT_PARC_HTVA = Math.round((FORFAIT_PARC_TVAC / 1.21) * 100) / 100
   const forfaitParcApplicable =
     (form.source || initialMission.source) === 'police_accident'
