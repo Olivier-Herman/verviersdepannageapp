@@ -389,12 +389,16 @@ export default function DossiersClient({ initial, autoById, comexById = {}, isSu
                 ))}
               </div>
               <div className="text-right tabular-nums text-sm">
-                <span className="font-semibold text-ink">{hasUnknown(d)
+                <span className={`font-semibold text-ink ${isPending(d) ? 'opacity-40' : ''}`}>{hasUnknown(d)
                   ? <span className="text-amber-700 dark:text-amber-300 font-normal" title={unknownTitle(d)}>{rest(d) > 0 ? eur(rest(d)) + ' + ' : ''}à calculer</span>
                   : eur(rest(d))}</span>
-                <span className="block text-[10.5px] font-normal text-ink-muted">reste HTVA</span>
+                <span className={`block text-[10.5px] font-normal text-ink-muted ${isPending(d) ? 'opacity-40' : ''}`}>reste HTVA</span>
                 {isPending(d)
-                  ? <span className="block text-[10.5px] font-normal text-ink-faint" title="Montant figé — le tarif exact arrive">⏳ calcul…</span>
+                  ? <span className="mt-0.5 inline-flex items-center gap-1 rounded-full bg-brand/10 px-2 py-0.5 text-[10.5px] font-semibold text-brand motion-safe:animate-pulse"
+                      title="Le montant affiché est le dernier connu — le tarif exact est en train d'être calculé">
+                      <span className="inline-block h-1.5 w-1.5 rounded-full bg-brand motion-safe:animate-ping" />
+                      Calcul en cours
+                    </span>
                   : hasUnknown(d)
                   ? <span className="block text-[10.5px] font-normal text-amber-700 dark:text-amber-300 whitespace-normal leading-tight" title={unknownTitle(d)}>{unknownWhy(d)[0]}</span>
                   : <span className="block text-[12px] font-semibold text-ink-secondary" title="TVA 21 %">{eurTvac(rest(d))} TVAC</span>}
