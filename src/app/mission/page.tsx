@@ -63,8 +63,14 @@ export default async function MissionListPage() {
     .order('assigned_at', { ascending: false })
     .limit(20)
 
+  // Olivier 09/09/2026 : une mise en parc n'est plus « en cours » — elle rejoint
+  // les terminées (visible 6 h, étiquette « En dépôt »), sauf si elle reste à
+  // encaisser. Avant, elle restait dans la liste active et avait l'air d'être
+  // encore à faire.
   const CLOSED    = ['to_invoice', 'completed']
-  const active    = missions?.filter(m => !CLOSED.includes(m.status)) || []
+  const isClosed  = (m: any) => CLOSED.includes(m.status) || (m.status === 'parked' && !m.awaiting_payment)
+  const active    = missions?.filter(m => !isClosed(m)) || []
+  const recent    = missions?.filter(m => isClosed(m)) || []
 
   // Easter egg : missions du chauffeur AUJOURD'HUI + RECORD PERSO (meilleure journée).
   // On récupère les dates d'assignation (léger : timestamps only), on groupe par
@@ -104,7 +110,14 @@ export default async function MissionListPage() {
           {/* Easter egg discret : date du jour → 3 taps = compteur du jour + record perso */}
           <MissionsDuJourEasterEgg count={todayCount} record={record} newRecord={newRecord} firstName={(user.name || '').split(' ')[0]} />
 
-          {active.length === 0 && (
+          {active.length === 0 && recent.length > 0 && (
+            <div className="text-center py-8 text-ink-faint">
+              <p className="text-3xl mb-2">🚗</p>
+              <p className="font-medium text-ink mb-1">Rien en cours</p>
+              <p className="text-sm">Les missions te seront notifiées automatiquement.</p>
+            </div>
+          )}
+          {active.length === 0 && recent.length === 0 && (
             <div className="text-center py-16 text-ink-faint">
               <p className="text-4xl mb-4">🚗</p>
               <p className="font-medium text-ink mb-1">Aucune mission assignée</p>
@@ -129,6 +142,31 @@ export default async function MissionListPage() {
                       <p className="text-ink font-semibold">{m.client_name || 'Client inconnu'}</p>
                       <p className="text-ink-secondary text-sm">{m.vehicle_brand} {m.vehicle_model} — {m.vehicle_plate}</p>
                       <p className="text-ink-muted text-xs mt-1">{m.incident_address}{m.incident_city ? `, ${m.incident_city}` : ''}</p>
+                    </Link>
+                  )
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* Terminées et mises en parc des 6 dernières heures : le chauffeur voit sa
+              journée finir, et une clôture reste corrigeable pendant 6 h. */}
+          {recent.length > 0 && (
+            <div>
+              <h2 className="text-ink-muted text-xs font-semibold uppercase tracking-widest mb-3">Terminées · 6 dernières heures</h2>
+              <div className="space-y-2">
+                {recent.map(m => {
+                  const st = m.status === 'parked'
+                    ? { label: '🅿️ En dépôt', color: 'text-purple-400' }
+                    : { label: '✅ Terminée', color: 'text-emerald-500' }
+                  return (
+                    <Link key={m.id} href={`/mission/${m.id}`}
+                      className="block bg-surface-2 border rounded-2xl p-3 opacity-80 hover:opacity-100 hover:border-brand/40 transition-all">
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="text-ink-secondary text-xs font-mono">{(m as any).mission_number != null ? `#${(m as any).mission_number}` : (m.dossier_number || m.external_id)}</span>
+                        <span className={`text-xs font-semibold ${st.color}`}>{st.label}</span>
+                      </div>
+                      <p className="text-ink text-sm font-semibold">{m.client_name || 'Client inconnu'}<span className="text-ink-secondary font-normal"> — {m.vehicle_brand} {m.vehicle_model} {m.vehicle_plate}</span></p>
                     </Link>
                   )
                 })}
