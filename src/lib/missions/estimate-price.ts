@@ -158,16 +158,11 @@ async function computeMissionKm(missionId: string): Promise<{ chargedKm: number 
     .maybeSingle()
   if (!m) return { chargedKm: null, totalKm: null }
 
-  // Un dépannage sur place ou un trajet vide ne facture AUCUN kilomètre : son
-  // prix est le forfait. Sans coordonnées d'intervention, on répondait pourtant
-  // « kilomètres inconnus » et le dossier restait « à calculer » alors que la
-  // fiche, elle, chiffrait bien (Olivier 09/09/2026, 2CMX015 et 1DMC939 —
-  // Kaze dépannage simple). 0 km facturé est la bonne réponse, pas « inconnu ».
-  const typeEarly  = (m.mission_type || '').toLowerCase()
-  const nonTowEarly = isDsp(typeEarly) || isTrajetVide(typeEarly)
-  if (m.incident_lat == null || m.incident_lng == null) {
-    return { chargedKm: nonTowEarly ? 0 : null, totalKm: null }
-  }
+  // Sans coordonnées d'intervention, AUCUN type ne se chiffre — dépannage sur
+  // place compris : un DSP facture les km au-delà des inclus sur le trajet
+  // dépôt → intervention → dépôt (Olivier 09/09/2026). Répondre 0 km ici le
+  // facturerait au seul forfait, en avalant les km additionnels en silence.
+  if (m.incident_lat == null || m.incident_lng == null) return { chargedKm: null, totalKm: null }
   const incident: Coord = { lat: Number(m.incident_lat), lng: Number(m.incident_lng) }
 
   // Depot : celui de la mission ou le defaut
