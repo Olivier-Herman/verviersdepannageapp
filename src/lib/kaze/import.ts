@@ -195,6 +195,15 @@ export async function importKazeJob(
     incident_address:     mapped.incident_address,
     incident_city:        mapped.incident_city,
     incident_country:     mapped.incident_country || 'BE',
+    // Kaze donne les coordonnées du lieu d'intervention (work_order_address
+    // .location) : le mapper les lisait, l'insertion les oubliait — elles ne
+    // survivaient que dans parsed_data. Une fiche Kaze naissait donc sans
+    // coordonnées, et son tarif restait « à calculer » faute de kilomètres,
+    // alors qu'un DSP les facture au-delà des inclus (Olivier 09/09/2026,
+    // 2CMX015 et 1DMC939). Attention au nom : `incident_lon` côté mapper,
+    // `incident_lng` en base — c'est cet écart qui les a fait tomber.
+    incident_lat:         mapped.incident_lat,
+    incident_lng:         mapped.incident_lon,
     destination_name:     mapped.destination_name,
     destination_address:  mapped.destination_address,
     vehicle_plate:        mapped.vehicle_plate,
