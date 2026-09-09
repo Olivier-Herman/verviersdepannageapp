@@ -109,6 +109,32 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     update.completed_at = now
   }
 
+  // Garde (Olivier 09/09/2026) : on ne remet PAS « en parc » une fiche dont la
+  // relivraison existe déjà. Mesuré sur 138 forçages depuis juin : 133 usages
+  // normaux (le chauffeur a clôturé au lieu de parquer, le bureau corrige puis
+  // crée la relivraison — aucune relivraison n'existe encore) et 5 cas où la
+  // relivraison existait déjà : la voiture est partie, la fiche mère reste
+  // comptée « en parc » pendant des semaines (2JEM405, 2DEA702, 1KRB589…).
+  // Les fiches annulées ou en réserve (ignored) ne comptent pas.
+  if (body.status === 'parked') {
+    const { data: rels } = await sb.from('incoming_missions')
+      .select('mission_number, status, mission_type')
+      .eq('parent_mission_id', params.id).eq('dossier_leg', false)
+      .not('status', 'in', '("cancelled","ignored")')
+      .order('created_at', { ascending: false }).limit(1)
+    const rel = (rels || [])[0] as any
+    if (rel) {
+      const DONE = ['completed', 'to_invoice', 'invoiced'].includes(String(rel.status))
+      return NextResponse.json({
+        error: `Impossible de remettre cette fiche en parc : sa relivraison #${rel.mission_number ?? ''} existe déjà (${DONE ? 'terminée' : 'en cours : ' + rel.status}). `
+             + (DONE
+                ? 'Le véhicule est parti. Si la fiche doit être corrigée, passe par la fiche de la relivraison.'
+                : 'Si le véhicule doit vraiment rester au parc, annule d’abord cette relivraison, puis réessaie.'),
+        rel_exists: true,
+      }, { status: 409 })
+    }
+  }
+
   // Si on force "parked" → set parked_at + (optionnel) depot + zone parc
   let m: any = null
   if (body.status === 'parked') {
