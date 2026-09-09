@@ -12,6 +12,7 @@ import { getDrivingRoute } from '@/lib/routing/ors'
 import { getApplicableSurcharges, isBelgianHoliday } from '@/lib/surcharges'
 import { nightsBetween } from '@/lib/parc/nights'
 import { normalizeType, isRemorquage, isDsp, isTrajetVide, isRelivraison, isRemRel } from '@/lib/missions/mission-types'
+import { sourcesWithTag } from '@/lib/missions/source-catalog'
 
 /**
  * Determine si une date/heure tombe dans la plage "majorée" IPA :
@@ -1289,9 +1290,9 @@ async function estimateRelivraisonPrice(
     }
   }
   const parentIsPoliceOuSnc = parentSource.startsWith('police')
-    || ['sia_couvert', 'police_snc'].includes(parentSource)
+    || (await sourcesWithTag('siabis')).includes(parentSource)
     || !!parentSnc
-  const REL_AU_TARIF_REM = new Set(['axa', 'ardenne', 'mondial'])
+  const REL_AU_TARIF_REM = new Set(await sourcesWithTag('rel_tarif_rem'))
 
   if (REL_AU_TARIF_REM.has(source) || parentIsPoliceOuSnc) {
     // Source dont la REL se facture au tarif remorquage. Pour AXA/Ardenne/Allianz

@@ -11,6 +11,7 @@ import { isRelEligibleSource } from '@/lib/missions/rel-eligible'
 import { isRemorquage }        from '@/lib/missions/mission-types'
 import { KEY_LOCATION_LABELS }  from '@/lib/key-location'
 import { lockedFieldsIn }        from '@/lib/touring/tariff-lock'
+import { sourcesWithTag } from '@/lib/missions/source-catalog'
 
 // Le PATCH peut calculer un tarif SNC (routing dépôt) → marge de temps.
 export const maxDuration = 30
@@ -151,7 +152,7 @@ export async function PATCH(
   // pas SC), on retire AUSSI billed_to_name + billed_to_id. En SNC c est le
   // client final qui paie en direct, pas l assurance/assistance d origine.
   // SC garde billed_to (l assistance facture).
-  const SNC_SOURCES = new Set(['police_snc', 'sia_couvert'])
+  const SNC_SOURCES = new Set(await sourcesWithTag('siabis'))
   if ('source' in updates) {
     const newSource = updates.source as string | null
     if (!newSource || !SNC_SOURCES.has(newSource)) {

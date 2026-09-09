@@ -12,6 +12,7 @@ import { createAdminClient } from '@/lib/supabase'
 import { loadFacturationData } from '@/lib/facturation/load-data'
 import { isPreviewOn }  from '@/lib/feature-flags'
 import FacturationClient     from './FacturationClient'
+import { billingGroups } from '@/lib/missions/source-catalog'
 
 export const dynamic = 'force-dynamic'
 
@@ -45,6 +46,7 @@ export default async function FacturationPage({ searchParams }: { searchParams?:
       advances={advances}
       billingRemarks={billingRemarks}
       sourceLabels={sourceLabels}
+      billingGroups={await billingGroups()}
       userRole={role}
       dossierView={role === 'superadmin' || await isPreviewOn('dossier_view', role, user.id)}
       userName={user.name || ''}

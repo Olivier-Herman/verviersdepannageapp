@@ -7,7 +7,7 @@ import { authOptions }       from '@/lib/auth'
 import { redirect }          from 'next/navigation'
 import { createAdminClient } from '@/lib/supabase'
 import { odooRpc }           from '@/lib/odoo'
-import { RELANCE_SOURCES }   from '@/lib/requisitoire/relance'
+import { sourcesWithTag }    from '@/lib/missions/source-catalog'
 import RelanceRequisitoireClient from './RelanceRequisitoireClient'
 
 export const dynamic = 'force-dynamic'
@@ -29,7 +29,7 @@ export default async function RelanceRequisitoirePage() {
   const sb = createAdminClient()
   const { data: rows } = await sb.from('incoming_missions')
     .select('id, mission_number, vehicle_plate, vehicle_brand, vehicle_model, incident_address, created_at, saisie_motif_label, police_pv_number, police_zone, officer_name, officer_partner_id, requisitoire_token, requisitoire_stop, requisitoire_last_reminder_at, requisitoire_reminder_count')
-    .in('source', RELANCE_SOURCES)
+    .in('source', await sourcesWithTag('requisitoire'))
     .is('requisitoire_at', null)
     .in('status', PARC_STATUSES)
     .order('created_at', { ascending: true })

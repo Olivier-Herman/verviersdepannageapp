@@ -106,6 +106,7 @@ interface Props {
   advances?:   AdvanceRow[]
   billingRemarks?: Record<string, { text: string; author_name: string | null; created_at: string | null }[]>
   sourceLabels?: Record<string, string>
+  billingGroups?: Record<string, string[]>
   userRole:    string
   dossierView?: boolean
   userName:    string
@@ -114,14 +115,6 @@ interface Props {
   variant?:    'general' | 'touring'
 }
 
-const SOURCE_LABEL: Record<string, string> = {
-  touring: 'Touring', allianz: 'Allianz', vab: 'VAB',
-  axa: 'AXA', ethias: 'Ethias', police: 'Police',
-}
-function fmtSource(s: string | null): string {
-  if (!s) return '—'
-  return SOURCE_LABEL[s.toLowerCase()] || s
-}
 
 // Groupes de sources pour la facturation semi-automatique (Olivier 2026-07-25).
 // Étape 1 : isoler les missions par groupe assureur. Les clés correspondent aux
@@ -129,13 +122,9 @@ function fmtSource(s: string | null): string {
 // NB : « Mondial (hors Hexalite) » = les missions source 'mondial' de la liste
 // générale ; les clôtures Hexalite/Allianz ont leur page dédiée /facturation/allianz.
 interface SourceGroup { key: string; label: string; sources: string[] | null }
-const SOURCE_GROUPS: SourceGroup[] = [
-  { key: 'all',     label: 'Toutes',                    sources: null },
-  { key: 'vab',     label: 'VAB',                       sources: ['vab'] },
-  { key: 'kaze',    label: 'Kaze · Ethias · P&V · IMA', sources: ['kaze', 'ethias', 'pv', 'pv_assistance', 'ima'] },
-  { key: 'mondial', label: 'Mondial (hors Hexalite)',   sources: ['mondial'] },
-  { key: 'axa',     label: 'AXA',                       sources: ['axa'] },
-]
+// Groupes de la page : libellés ici, APPARTENANCE dans le catalogue (billing_group) — lot B, 09/09/2026.
+const GROUP_LABELS: Record<string, string> = { vab: 'VAB', kaze: 'Kaze · Ethias · P&V · IMA', mondial: 'Mondial (hors Hexalite)', axa: 'AXA' }
+const buildGroups = (bg: Record<string, string[]>): SourceGroup[] => [{ key: 'all', label: 'Toutes', sources: null }, ...Object.keys(GROUP_LABELS).map(k => ({ key: k, label: GROUP_LABELS[k], sources: bg[k] || [] }))]
 const missionInGroup = (source: string | null, g: SourceGroup): boolean =>
   g.sources === null ? true : !!source && g.sources.includes(source.toLowerCase())
 
@@ -194,15 +183,16 @@ function AutoFactBadge({ info, now }: { info?: AutoInfo; now: number }) {
 }
 
 export default function FacturationClient({
-  missions, siblings, payments, drivers, advances = [], billingRemarks = {}, sourceLabels = {},
+  missions, siblings, payments, drivers, advances = [], billingRemarks = {}, sourceLabels = {}, billingGroups = {},
   userRole, userName, userEmail, userModules, variant = 'general', dossierView = false,
 }: Props) {
   const isTouring = variant === 'touring'
+  const SOURCE_GROUPS = useMemo(() => buildGroups(billingGroups), [billingGroups])
 
   // Dénomination de source : catalog (ex. garage_14528a → « Centracar ») en
   // priorité, puis libellés connus, puis la clé brute en dernier recours.
   const fmtSource = (s: string | null): string =>
-    !s ? '—' : (sourceLabels[s] || SOURCE_LABEL[s.toLowerCase()] || s)
+    !s ? '—' : (sourceLabels[s] || s)
 
   // Olivier 2026-06-01 : map mission_id -> avances liees, pour highlight des
   // cartes "A facturer" qui contiennent une avance de fonds (attention requise).

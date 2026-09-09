@@ -9,6 +9,7 @@
 import { NextResponse }      from 'next/server'
 import { createAdminClient } from '@/lib/supabase'
 import { isPoliceNoPointage, loadDepots } from '@/lib/perf/police-trip'
+import { sourcesWithTag } from '@/lib/missions/source-catalog'
 
 export const dynamic     = 'force-dynamic'
 export const fetchCache   = 'force-no-store'
@@ -134,7 +135,7 @@ export async function GET(req: Request) {
   // On EXCLUT les dossiers Touring qui ne passent PAS par COMEX BKO : ils sont
   // facturés via un circuit lent/manuel et faussent la moyenne. Les Touring
   // COMEX BKO (auto-facturation) restent comptés.
-  const TOURING_SOURCES = ['touring', 'tgr_touring']
+  const TOURING_SOURCES = await sourcesWithTag('touring')
   // Tous les appels police (police_saisie, police_accident, police_snc, police_avp,
   // police_mg…) : facturation en lot / procédure longue → ils patientent en
   // « à facturer » et faussent le délai. Écartés du calcul.

@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import AddressField from '@/components/AddressField'
+import { useSourceCatalog, sourceHasTagClient } from '@/lib/missions/source-tags-client'
 
 /**
  * Bouton « 🔁 Relivraison » + modal : adresse de relivraison pré-remplie
@@ -12,14 +13,7 @@ import AddressField from '@/components/AddressField'
  *                                          fiche REL prête à assigner
  * Utilisé sur la fiche dispatch (et alignable avec le module Relivraison).
  */
-// Sources SIABIS (couvert / non couvert) : la REL ne peut PAS rester SIABIS,
-// elle doit être facturée à l'assistance qui reprend la relivraison → choix
-// OBLIGATOIRE. Olivier 2026-07-06.
-const SIABIS_SOURCES = new Set(['sia_couvert', 'police_snc'])
-// Sources où le dispatcher PEUT (optionnel) basculer la REL vers une assistance.
-const OVERRIDE_SOURCES = new Set(['sia_couvert', 'police_snc', 'prive', 'police_accident'])
-// Sources jamais proposées comme « assistance qui reprend » (police / siabis / inconnu).
-const NON_ASSIST = new Set(['police_mg', 'police_rodeo', 'police_avp', 'police_saisie', 'police_snc', 'sia_couvert', 'unknown'])
+// Familles de sources lues dans le catalogue (tags « siabis », « rel_reprise », « assistance ») — lot B, 09/09/2026.
 
 export default function RelivraisonModalButton({
   missionId,
@@ -47,8 +41,9 @@ export default function RelivraisonModalButton({
 }) {
   const router = useRouter()
   const ps = (parentSource || '').toLowerCase()
-  const requiresSource = SIABIS_SOURCES.has(ps)   // SIABIS → assistance obligatoire
-  const allowsSource   = OVERRIDE_SOURCES.has(ps) // affiche le sélecteur
+  const catalog = useSourceCatalog()
+  const requiresSource = sourceHasTagClient(catalog, ps, 'siabis')       // SIABIS → assistance obligatoire
+  const allowsSource   = sourceHasTagClient(catalog, ps, 'rel_reprise')  // affiche le sélecteur
   const [open, setOpen] = useState(false)
   const [addr, setAddr] = useState(currentAddress || '')
   const [lat,  setLat]  = useState<number | null>(currentLat)
@@ -81,7 +76,7 @@ export default function RelivraisonModalButton({
         if (!Array.isArray(d?.sources)) return
         setSourcesList(
           d.sources
-            .filter((s: any) => { const k = (s.key || '').toLowerCase(); return k && k !== ps && !NON_ASSIST.has(k) })
+            .filter((s: any) => { const k = (s.key || '').toLowerCase(); return k && k !== ps && Array.isArray(s.tags) && s.tags.includes('assistance') })
             .map((s: any) => ({ key: s.key, label: s.label || s.key })),
         )
       })

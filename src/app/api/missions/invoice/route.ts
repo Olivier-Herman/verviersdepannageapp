@@ -17,6 +17,7 @@ import { authOptions }             from '@/lib/auth'
 import { createAdminClient }       from '@/lib/supabase'
 import { resolveInvoiceByNumber }  from '@/lib/odoo-invoice'
 import { releaseParcAndShift }     from '@/lib/parc/release'
+import { primeSourceCatalog } from '@/lib/missions/source-catalog'
 
 export const dynamic     = 'force-dynamic'
 export const maxDuration = 60   // PDF + push Odoo via waitUntil peut prendre 30s+
@@ -108,6 +109,7 @@ export async function POST(req: Request) {
   // facturation. Olivier 2026-08-21.
   if (invoice_odoo_id) {
     const { grilleAJoindre, lireGrilleBase64, nomFichier } = await import('@/lib/tarifs/grille-officielle')
+    await primeSourceCatalog()   // grilleAJoindre lit les tags du catalogue (synchrone)
     const eligibles = (rows || []).filter(r => grilleAJoindre(r as any))
     const grille = eligibles.length ? grilleAJoindre(eligibles[0] as any) : null
     // Une facture groupee ne part avec la grille que si TOUTES ses missions en relevent.

@@ -9,6 +9,7 @@ import { authOptions }         from '@/lib/auth'
 import { createAdminClient }   from '@/lib/supabase'
 import { loadFacturationData } from '@/lib/facturation/load-data'
 import FacturationClient       from '../FacturationClient'
+import { billingGroups } from '@/lib/missions/source-catalog'
 
 export const dynamic = 'force-dynamic'
 
@@ -34,6 +35,7 @@ export default async function FacturationTouringPage() {
       drivers={drivers}
       advances={advances}
       sourceLabels={sourceLabels}
+      billingGroups={await billingGroups()}
       userRole={role}
       userName={user.name || ''}
       userEmail={user.email}

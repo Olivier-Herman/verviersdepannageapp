@@ -21,6 +21,7 @@ import { createAdminClient } from '@/lib/supabase'
 import { odooRpc }           from '@/lib/odoo'
 import { getLabelTemplate }  from '@/lib/print/zpl-templates'
 import { printZPLRaw }       from '@/lib/print/zebra-raw'
+import { sourcesWithTag } from '@/lib/missions/source-catalog'
 
 export const maxDuration = 300  // 5 min : ~25 missions x 800ms + appels Odoo
 
@@ -28,9 +29,6 @@ const QR_BASE = process.env.NEXT_PUBLIC_APP_URL
   ? `${process.env.NEXT_PUBLIC_APP_URL.replace(/\/$/, '')}/v`
   : 'https://verviers-qr.vercel.app/v'
 
-const DEFAULT_SOURCES = [
-  'police_mg', 'police_rodeo', 'police_avp', 'police_saisie', 'police_accident',
-]
 
 export async function POST(req: Request) {
   const session = await getServerSession(authOptions)
@@ -48,7 +46,7 @@ export async function POST(req: Request) {
   }
   const fromIso = new Date(body.from).toISOString()
   const toIso   = body.to ? new Date(body.to).toISOString() : new Date().toISOString()
-  const sources = Array.isArray(body.sources) && body.sources.length > 0 ? body.sources : DEFAULT_SOURCES
+  const sources = Array.isArray(body.sources) && body.sources.length > 0 ? body.sources : await sourcesWithTag('etiquette')
   const dryRun  = body.dry_run === true
 
   const sb = createAdminClient()

@@ -38,14 +38,9 @@ const AUTO_MAX = 500
 // assureur pour la facturation semi-auto). « Toutes » exclut Touring, qui a son
 // propre groupe ici au lieu d'une page à part.
 interface SourceGroup { key: string; label: string; sources: string[] | null }
-const SOURCE_GROUPS: SourceGroup[] = [
-  { key: 'all',     label: 'Toutes (hors Touring)',     sources: null },
-  { key: 'vab',     label: 'VAB',                       sources: ['vab'] },
-  { key: 'kaze',    label: 'Kaze · Ethias · P&V · IMA', sources: ['kaze', 'ethias', 'pv', 'pv_assistance', 'ima'] },
-  { key: 'mondial', label: 'Mondial (hors Hexalite)',   sources: ['mondial'] },
-  { key: 'axa',     label: 'AXA',                       sources: ['axa'] },
-  { key: 'touring', label: 'Touring (tout ce qui lui est facturé)', sources: ['touring', 'tgr_touring'] },
-]
+// Groupes : libellés ici, appartenance dans le catalogue (billing_group) — lot B, 09/09/2026.
+const GROUP_LABELS: Record<string, string> = { vab: 'VAB', kaze: 'Kaze · Ethias · P&V · IMA', mondial: 'Mondial (hors Hexalite)', axa: 'AXA', touring: 'Touring (tout ce qui lui est facturé)' }
+const buildGroups = (bg: Record<string, string[]>): SourceGroup[] => [{ key: 'all', label: 'Toutes (hors Touring)', sources: null }, ...Object.keys(GROUP_LABELS).map(k => ({ key: k, label: GROUP_LABELS[k], sources: bg[k] || [] }))]
 // « Touring » se juge sur QUI on facture, pas sur la source (Olivier 09/09/2026 :
 // « hors Touring = hors tout ce qui est facturé à Touring »). Un Siabis Couvert
 // a sa propre source mais part chez Touring : il appartient au groupe Touring.
@@ -86,8 +81,9 @@ const isDone = (d: Dossier) => !d.state.open && d.legs.every(l => isLegBilled(l)
 const rest   = (d: Dossier) => d.totals.remaining
 
 type ComexInfo = { verdict: string | null; montant: number | null; accepted_at: string | null; dossier: string | null }
-export default function DossiersClient({ initial, autoById, comexById = {}, isSuperadmin, capped }: { initial: Dossier[]; autoById: Record<string, boolean>; comexById?: Record<string, ComexInfo>; isSuperadmin: boolean; capped: boolean }) {
+export default function DossiersClient({ initial, autoById, comexById = {}, isSuperadmin, capped, billingGroups = {} }: { initial: Dossier[]; autoById: Record<string, boolean>; comexById?: Record<string, ComexInfo>; isSuperadmin: boolean; billingGroups?: Record<string, string[]>; capped: boolean }) {
   const router = useRouter()
+  const SOURCE_GROUPS = useMemo(() => buildGroups(billingGroups), [billingGroups])
   const [rows, setRows] = useState<Dossier[]>(initial)
   const [tab, setTab] = useState<'todo' | 'auto' | 'live' | 'circuit' | 'done'>('todo')
   const [group, setGroupState] = useState<string>('all')

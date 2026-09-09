@@ -17,6 +17,7 @@ import { NextResponse }      from 'next/server'
 import { getServerSession }  from 'next-auth'
 import { authOptions }       from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase'
+import { sourcesWithTag } from '@/lib/missions/source-catalog'
 
 export const dynamic     = 'force-dynamic'
 export const maxDuration = 20
@@ -28,7 +29,7 @@ const VALID_PINS = [
 
 /** Sources dont la clôture part VRAIMENT chez un tiers. Ailleurs, un dossier non
  *  clôturé n'existe pas : il n'y a personne à qui parler. */
-const ENVOI_REEL = ['touring', 'vab', 'axa']
+let ENVOI_REEL: string[] = []   // tag « cloture_externe » du catalogue, posé à chaque appel
 
 const bxlDayStartISO = (daysAgo = 0) => {
   const now = new Date()
@@ -39,6 +40,7 @@ const bxlDayStartISO = (daysAgo = 0) => {
 }
 
 export async function GET(req: Request) {
+  ENVOI_REEL = await sourcesWithTag('cloture_externe')
   const pin = req.headers.get('x-dashboard-pin') || new URL(req.url).searchParams.get('pin') || ''
   if (!VALID_PINS.includes(pin)) {
     // Fallback : session SUPERADMIN (pour le module d'historique /journal).

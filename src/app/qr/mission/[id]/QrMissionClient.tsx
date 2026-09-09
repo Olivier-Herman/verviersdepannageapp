@@ -8,6 +8,7 @@ import { buildEncaissementUrl } from '@/lib/missions/encaissement-url'
 import { parcZoneLabel } from '@/lib/parc/zone-label'
 import AddressField from '@/components/AddressField'
 import AddPhotosButton from '@/components/qr/AddPhotosButton'
+import { useSourcesWithTag } from '@/lib/missions/source-tags-client'
 
 const GM_KEY = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || ''
 
@@ -162,8 +163,8 @@ export default function QrMissionClient({
   const existingTakenByOther = existingRel?.assigned_to && existingRel.assigned_to !== currentUser.id
 
   // Sources fourriere : possibilite d encaisser via Restituer
-  const RESTITUABLE_SOURCES = ['police_mg', 'police_rodeo', 'police_avp', 'police_snc', 'sia_couvert', 'prive']
-  const canRestituer = mission.status === 'parked' && RESTITUABLE_SOURCES.includes(mission.source || '') && !exitBlocked
+  const restituableSources = useSourcesWithTag('auto_restitute') || []   // catalogue (tag)
+  const canRestituer = mission.status === 'parked' && restituableSources.includes(mission.source || '') && !exitBlocked
 
   async function doRelivrer(confirmReassign: boolean = false) {
     // En mode dispatcher : selection chauffeur obligatoire

@@ -19,19 +19,6 @@ export const dynamic = 'force-dynamic'
 // alignee avec SOURCE_LABELS dans DispatchClient.tsx). Permet de proposer
 // VAB, Ethias, etc. dans le picker meme si on n'a pas encore recu de
 // mission historique de cette source.
-const KNOWN_SOURCES: Record<string, string> = {
-  touring:                 'Touring',
-  allianz:                 'Allianz',
-  ethias:                  'Ethias',
-  vivium:                  'Vivium',
-  axa:                     'AXA',
-  ardenne:                 'Ardenne Assistance',
-  mondial:                 'Mondial Assistance',
-  vab:                     'VAB',
-  appel_police_accident:   'Appel Police - Accident',
-  prive:                   'Privé',
-  garage:                  'Garage',
-}
 
 export async function GET() {
   const session = await getServerSession(authOptions)
@@ -88,7 +75,7 @@ export async function GET() {
   // Resultat : sources connues canoniques + celles trouvees dans missions
   // + celles trouvees dans mission_sources, excluant celles deja dans surcharge_clients
   const allSources = new Set<string>([
-    ...Object.keys(KNOWN_SOURCES),
+    ...(catalog || []).map((c: any) => c.key),
     ...counts.keys(),
     ...mappingMap.keys(),
     ...catalogMap.keys(),
@@ -100,7 +87,7 @@ export async function GET() {
       source,
       // Priorité d'affichage : catalog (dénomination canonique) > mission_sources
       // > sources connues > capitalize. Évite "Touring"/ID pour un garage.
-      label:           catalogMap.get(source) || mappingMap.get(source)?.label || KNOWN_SOURCES[source] || capitalize(source),
+      label:           catalogMap.get(source) || mappingMap.get(source)?.label || capitalize(source),
       odoo_partner_id: mappingMap.get(source)?.odoo_partner_id || null,
       mission_count:   counts.get(source) || 0,
     }))

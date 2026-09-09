@@ -3,6 +3,7 @@
 // ============================================================
 
 import { formatEur } from '@/lib/format'
+import { primeSourceCatalog } from '@/lib/missions/source-catalog'
 
 export const BRAND_RED = '#CC2222'
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://app.verviersdepannage.com'
@@ -186,6 +187,7 @@ export async function sendClientReceipt(data: {
   // Un tarif retouché à la main ne colle plus à la grille — la joindre donnerait
   // au client de quoi contester ligne par ligne. Olivier 2026-08-21.
   const { grilleAJoindre, lireGrilleBase64, nomFichier } = await import('@/lib/tarifs/grille-officielle')
+  await primeSourceCatalog()   // grilleAJoindre lit les tags du catalogue (synchrone)
   const grille = grilleAJoindre({
     source:                   data.missionSource,
     amount_to_collect_manual: data.amountToCollectManual,

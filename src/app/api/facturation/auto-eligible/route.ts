@@ -16,11 +16,12 @@ import { createAdminClient } from '@/lib/supabase'
 import { getAutoInvoiceRules, getAutoInvoiceDelayHours, checkAutoInvoiceEligible, autoInvoiceType, AUTO_INVOICE_TYPES } from '@/lib/facturation/auto-invoice'
 import { getValidAllianzToken, listAllianzToAssign } from '@/lib/allianz/closure'
 import { estimateMissionPrice } from '@/lib/missions/estimate-price'
+import { sourcesWithTag } from '@/lib/missions/source-catalog'
 
 export const dynamic     = 'force-dynamic'
 export const maxDuration = 60
 
-const HEXALITE_SOURCES = new Set(['allianz', 'mondial'])
+let HEXALITE_SOURCES = new Set<string>()   // tag « hexalite » du catalogue, posé à chaque appel
 const assignNo = (v: string | null | undefined) => String(v || '').split('/')[0].trim()
 
 export async function GET(req: Request) {
@@ -59,6 +60,7 @@ export async function GET(req: Request) {
     .limit(300)
 
   // Liste Hexalite « à clôturer » (une seule fois) si une source Allianz active.
+  HEXALITE_SOURCES = new Set(await sourcesWithTag('hexalite'))
   const needHexalite = activeSources.some(s => HEXALITE_SOURCES.has(s))
   let hexaliteNumbers: Set<string> | null = null
   let hexaliteUnavailable = false

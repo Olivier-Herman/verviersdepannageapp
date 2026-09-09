@@ -18,6 +18,7 @@ import { createAdminClient } from '@/lib/supabase'
 import { listInboxMessages, searchMessages, getPdfAttachments, getMessageBody, type GraphMessage, type GraphMessageBody } from './graph'
 import { extractRequisitoireFromPdf, extractRequisitoireFromText } from './extract'
 import { findRequisitoireCandidates } from './match'
+import { sourcesWithTag } from '@/lib/missions/source-catalog'
 
 export const FOURRIERE_MAILBOX = 'fourriere@verviersdepannage.be'
 const BUCKET       = 'mission-remarks'
@@ -265,7 +266,6 @@ async function processMessage(
 // n° PV dans les DEUX boîtes (info@ + fourriere@, $search couvre TOUS les dossiers)
 // et laisse processMessage extraire + matcher + attacher. Olivier 2026-08-10.
 export const RECONCILE_MAILBOXES = ['info@verviersdepannage.com', FOURRIERE_MAILBOX]
-const RECONCILE_SAISIE_SOURCES = ['police_saisie', 'police_rodeo', 'police_avp']
 
 export interface ReconcileSummary extends IntakeSummary {
   fichesScanned: number; searchTerms: number; messagesFound: number; budgetLeft: number
@@ -278,7 +278,7 @@ export async function reconcileRequisitoires(opts?: { maxClaude?: number }): Pro
 
   const { data: fiches } = await sb.from('incoming_missions')
     .select('id, vehicle_plate, vehicle_vin, police_pv_number')
-    .in('source', RECONCILE_SAISIE_SOURCES).eq('status', 'parked').is('requisitoire_at', null).limit(3000)
+    .in('source', await sourcesWithTag('requisitoire')).eq('status', 'parked').is('requisitoire_at', null).limit(3000)
 
   const seenMsg = new Set<string>()
   for (const f of (fiches || [])) {

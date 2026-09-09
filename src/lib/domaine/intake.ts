@@ -12,6 +12,7 @@ import { createAdminClient } from '@/lib/supabase'
 import { searchMessages, getMessageBody } from '@/lib/requisitoire/graph'
 import { parseDatesIn } from './parse-dates-in'
 import { getBusinessText } from '@/lib/settings/business'
+import { sourcesWithTag } from '@/lib/missions/source-catalog'
 
 export const DOMAINE_MAILBOX = 'fourriere@verviersdepannage.be'
 let DOMAINE_SENDER = ''   // posé depuis les réglages métier (mail_domaine_agent) avant chaque lecture
@@ -19,7 +20,7 @@ const SUBJECT_KEY = 'dates in'
 
 // Saisies à considérer : nouvelles fiches (police_saisie) + fiches historiques
 // migrées de TowSoft/Odoo (legacy_odoo). Olivier 2026-07-29.
-const SAISIE_SOURCES = ['police_saisie', 'legacy_odoo']
+let SAISIE_SOURCES: string[] = []   // tag « saisie_scope » du catalogue
 
 // Bornes anti-timeout : chaque étiquette peut attendre jusqu'à 10 s si le PC
 // d'impression est lent. On ne remonte pas trop loin et on plafonne le nb de
@@ -95,7 +96,7 @@ export async function pollDomaineDatesIn(): Promise<DomaineIntakeSummary> {
         // Saisies actives (parked en pratique) pas encore vendues, non annulées/archivées.
         const { data: hits } = await sb.from('incoming_missions')
           .select('id, mission_number, source, vehicle_vin, vehicle_plate, vehicle_brand, vehicle_model, parc_zone_key, domaine_remise_date')
-          .in('source', SAISIE_SOURCES)
+          .in('source', await sourcesWithTag('saisie_scope'))
           .is('domaine_vente_date', null)
           .is('archived_at', null)
           .neq('status', 'cancelled')

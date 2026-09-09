@@ -12,6 +12,7 @@ import { NextResponse }      from 'next/server'
 import { createAdminClient } from '@/lib/supabase'
 import { getAutoInvoiceRules, getAutoInvoiceDelayHours, checkAutoInvoiceEligible, AUTO_INVOICE_TYPES } from '@/lib/facturation/auto-invoice'
 import { getValidAllianzToken, listAllianzToAssign } from '@/lib/allianz/closure'
+import { sourcesWithTag } from '@/lib/missions/source-catalog'
 
 export const dynamic     = 'force-dynamic'
 export const maxDuration = 120
@@ -21,7 +22,7 @@ const BATCH = 25   // borne par passe (chaque facture = ~2-3s Odoo)
 // Sources gérées via Hexalite (Allianz). Une mission encore présente dans la liste
 // Hexalite "à clôturer" NE doit PAS être auto-facturée par nous : elle sera
 // auto-facturée à la clôture Hexalite (onglet "Clôture Allianz"). Olivier 2026-07-27.
-const HEXALITE_SOURCES = new Set(['allianz', 'mondial'])
+let HEXALITE_SOURCES = new Set<string>()   // tag « hexalite » du catalogue, posé à chaque appel
 const assignNo = (v: string | null | undefined) => String(v || '').split('/')[0].trim()
 
 // Garde-fou : empêche un appel externe lent (Hexalite) de faire timeout tout le cron.
@@ -53,6 +54,7 @@ export async function GET(req: Request) {
   // Exclusion Hexalite : si une source Allianz (allianz/mondial) est active, on
   // récupère une fois la liste Hexalite "à clôturer" et on refuse d'auto-facturer
   // toute mission qui y figure encore (même filtre que l'onglet Clôture Allianz).
+  HEXALITE_SOURCES = new Set(await sourcesWithTag('hexalite'))
   const needHexalite = activeSources.some(s => HEXALITE_SOURCES.has(s))
   let hexaliteNumbers: Set<string> | null = null
   let hexaliteUnavailable = false

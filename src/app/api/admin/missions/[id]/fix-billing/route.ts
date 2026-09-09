@@ -14,11 +14,8 @@ import { createAdminClient } from '@/lib/supabase'
 import { findOrCreatePartner, withOdooActor } from '@/lib/odoo'
 import { releaseParcAndShift } from '@/lib/parc/release'
 import { parseAddressForOdoo } from '@/app/api/interventions/route'
+import { sourcesWithTag } from '@/lib/missions/source-catalog'
 
-const FOURRIERE_AUTO_RESTITUTE_SOURCES = [
-  'police_mg', 'police_avp', 'police_rodeo', 'police_accident',
-  'police_saisie', 'police_snc', 'sia_couvert', 'prive',
-]
 
 export const dynamic = 'force-dynamic'
 
@@ -84,7 +81,7 @@ export async function POST(_req: Request, { params }: { params: { id: string } }
   }
 
   // 2. Auto-restituer si encore en parked + source fourriere
-  if (mission.status === 'parked' && FOURRIERE_AUTO_RESTITUTE_SOURCES.includes(mission.source || '')) {
+  if (mission.status === 'parked' && (await sourcesWithTag('auto_restitute')).includes(mission.source || '')) {
     // Contrôle de sortie (épave gérée par un bureau d'expertise). 2026-09-07.
     const { assertExitAllowed } = await import('@/lib/missions/exit-control')
     const gate = await assertExitAllowed(sb, params.id)

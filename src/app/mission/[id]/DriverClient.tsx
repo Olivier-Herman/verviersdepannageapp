@@ -31,6 +31,7 @@ import {
 } from '@/lib/native/liveActivity'
 import { canUseMatthieu } from '@/lib/mecano/access'
 import { cleanVin, isPlausibleVin } from '@/lib/mecano/vin'
+import { useSourceLabel } from '@/lib/missions/source-tags-client'
 
 const sb = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!)
 
@@ -519,20 +520,10 @@ function ScreenWrap({ title, sub, back, children }: { title: string; sub?: strin
 // ─── Briefing audio : un seul bouton qui lit l essentiel de la mission ─────
 // (type + adresse + vehicule + montant + alertes). Utile pour conduite,
 // gants, ou chauffeur non-lecteur.
-const SOURCE_TTS_LABELS: Record<string, string> = {
-  police_mg:       'Mal Garée',
-  police_rodeo:    'Rodéo',
-  police_avp:      'Accident voie publique',
-  police_accident: 'Accident',
-  police_saisie:   'Saisie',
-  police_snc:      'Siabis non couvert',
-  sia_couvert:     'Siabis couvert',
-  prive:           'Appel privé',
-}
 
 function BriefingTtsButton({ mission }: { mission: Mission }) {
   const parts: string[] = []
-  const typeLabel = SOURCE_TTS_LABELS[mission.source || ''] || mission.source || 'Mission'
+  const typeLabel = useSourceLabel(mission.source, 'tts') || mission.source || 'Mission'
   parts.push(`Mission ${typeLabel}.`)
   const addr = [mission.incident_address, mission.incident_city].filter(Boolean).join(', ')
   if (addr) parts.push(`Adresse : ${addr}.`)

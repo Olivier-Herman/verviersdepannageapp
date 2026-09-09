@@ -10,6 +10,7 @@ import { getServerSession }  from 'next-auth'
 import { authOptions }       from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase'
 import { invalidateFlux2Cache } from '@/lib/cloture/gating'
+import { sourcesWithTag } from '@/lib/missions/source-catalog'
 
 export const dynamic = 'force-dynamic'
 
@@ -20,7 +21,7 @@ export const dynamic = 'force-dynamic'
 // La grille expose donc TOUTES les sources actives du catalogue, pas une liste
 // figée — ajouter une assistance ne demande plus de toucher au code. Les
 // intégrations qui poussent vraiment chez l'assisteur restent en tête.
-const PRIORITY = ['touring', 'vab', 'axa', 'kaze', 'mondial'] as const
+let PRIORITY: string[] = []   // tag « integration » du catalogue (ordre du catalogue)
 
 // Exclues du flux 2 :
 //   • `allianz` — même assistance que `mondial` (cf. alias dans gating.ts) ;
@@ -65,7 +66,8 @@ export async function GET() {
 
   const keys = (cat || []).map((c: any) => c.key).filter((k: string) => !EXCLUDED(k))
   const labels = new Map((cat || []).map((c: any) => [c.key, c.label]))
-  const rank = (k: string) => { const i = (PRIORITY as readonly string[]).indexOf(k); return i < 0 ? 99 : i }
+  PRIORITY = await sourcesWithTag('integration')
+  const rank = (k: string) => { const i = PRIORITY.indexOf(k); return i < 0 ? 99 : i }
   const assistances = keys
     .sort((x: string, y: string) => rank(x) - rank(y) || String(labels.get(x)).localeCompare(String(labels.get(y))))
     .map((k: string) => ({ key: k, label: LABEL_OVERRIDES[k] || labels.get(k) || k, integrated: rank(k) < 99 }))

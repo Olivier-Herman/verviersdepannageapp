@@ -14,6 +14,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { FileText, Loader2, Paperclip, CheckCircle2, Unlock, Wrench, Warehouse, Landmark } from 'lucide-react'
 import ScanToFicheButton from '@/components/missions/ScanToFicheButton'
+import { useSourcesWithTag } from '@/lib/missions/source-tags-client'
 
 // Jours pleins entre deux dates (end = aujourd'hui si absent)
 function joursEntre(start?: string | null, end?: string | null): number {
@@ -65,13 +66,13 @@ const fmtDate = (iso: string | null | undefined) => {
 //   - police_rodeo  : Réquisitoire + Levée (+ cycle temporaire)
 //   - police_mg     : Réquisitoire seulement
 //   - police_avp    : Réquisitoire + Levée (Olivier 2026-06-17)
-const SAISIE_SOURCES = ['police_saisie', 'police_mg', 'police_rodeo', 'police_avp']
 // forceSaisie : véhicule placé dans une zone de parc de type "saisie" mais dont
 // la source n'est pas une source police (Olivier 2026-06-29). On affiche alors
 // le workflow saisie complet (réquisitoire + levée + Domaine) piloté par la zone.
 export default function SaisiePanel({ mission, onChanged, forceSaisie = false }: { mission: SaisieMission; onChanged?: () => void; forceSaisie?: boolean }) {
   const src = mission.source || ''
-  if (!SAISIE_SOURCES.includes(src) && !forceSaisie) return null
+  const saisieSources = useSourcesWithTag('panneau_saisie')   // catalogue (tag), null tant que pas chargé
+  if (!forceSaisie && (!saisieSources || !saisieSources.includes(src))) return null
   // Rafraîchit la vue après une action : callback fourni (rafraîchit sur place,
   // ex. fiche véhicule en modale) sinon reload complet (fiche dispatch).
   const done = onChanged ?? (() => { if (typeof window !== 'undefined') window.location.reload() })

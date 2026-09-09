@@ -14,6 +14,7 @@
 // (mail, scan fiche) et par le rattrapage.
 
 import type { RequisitoireExtract } from './extract'
+import { sourceLabel } from '@/lib/missions/source-catalog'
 
 export const SOURCE_BY_MOTIF: Partial<Record<NonNullable<RequisitoireExtract['motif']>, string>> = {
   abandon_voie_publique: 'police_avp',
@@ -25,7 +26,6 @@ export const SOURCE_BY_MOTIF: Partial<Record<NonNullable<RequisitoireExtract['mo
 }
 // Sources police entre lesquelles la requalification est permise.
 const POLICE_SOURCES = ['police_saisie', 'police_avp', 'police_mg', 'police_rodeo']
-const SOURCE_LABEL: Record<string, string> = { police_avp: 'Police AVP (abandon voie publique)', police_mg: 'Police Mal garée', police_rodeo: 'Police Rodéo', police_saisie: 'Police Saisie' }
 const MOTIF_LABEL: Record<string, string> = {
   abandon_voie_publique: 'Abandon voie publique', stationnement: 'Stationnement', rodeo: 'Rodéo',
   non_assurance: 'Non-assurance', accident: 'Accident', vol: 'Véhicule volé', degrade_incendie: 'Véhicule dégradé ou incendié',
@@ -68,7 +68,7 @@ export async function requalifySourceFromRequisitoire(
   if (m.source === target) return { changed: false, reason: 'déjà bonne source' }
 
   const motif = ex!.motif as string
-  const note = `Source « ${SOURCE_LABEL[m.source] || m.source} » → « ${SOURCE_LABEL[target] || target} » : case « ${MOTIF_LABEL[motif] || motif} » cochée sur le réquisitoire ${target === 'police_saisie' ? 'judiciaire' : 'administratif'} (${opts.origin}).`
+  const note = `Source « ${await sourceLabel(m.source)} » → « ${await sourceLabel(target)} » : case « ${MOTIF_LABEL[motif] || motif} » cochée sur le réquisitoire ${target === 'police_saisie' ? 'judiciaire' : 'administratif'} (${opts.origin}).`
 
   // Dossier saisie lié ?
   let dossierAction: RequalifyResult['dossierAction'] = 'none'
@@ -90,7 +90,7 @@ export async function requalifySourceFromRequisitoire(
     } else {
       await sb.from('saisie_dossiers').update({
         state: 'clos', pending_action: null, pending_action_at: null, updated_at: new Date().toISOString(),
-        notes: `⚠ REQUALIFIÉ ${SOURCE_LABEL[target] || target} (motif « ${MOTIF_LABEL[motif] || motif} ») alors qu'un état de frais ${d.ef_number} est déjà parti au Parquet — à régulariser à la main.`,
+        notes: `⚠ REQUALIFIÉ ${await sourceLabel(target)} (motif « ${MOTIF_LABEL[motif] || motif} ») alors qu'un état de frais ${d.ef_number} est déjà parti au Parquet — à régulariser à la main.`,
       }).eq('id', d.id)
       dossierAction = 'closed_ef_sent'
     }

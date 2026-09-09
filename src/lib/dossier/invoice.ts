@@ -20,6 +20,7 @@ import { buildInterventionDescription } from '@/lib/missions/build-quote-lines'
 import { actionLines }              from '@/lib/dossier/lines'
 import { createDraftInvoice, createSaleOrder, findFleetVehicleByPlate, type QuoteLine, type QuoteSection } from '@/lib/odoo-quote'
 import { withOdooActor, attachFileToInvoice } from '@/lib/odoo'
+import { primeSourceCatalog } from '@/lib/missions/source-catalog'
 
 export interface DossierInvoiceResult {
   invoices: { odoo_id: number; url: string; client_id: number; client_name: string; covers: string[]; total_htva: number; sections?: QuoteSection[] }[]
@@ -214,6 +215,7 @@ async function invoiceDossierGroupsLocked(sb: any, d: Dossier, input: { anyMissi
       const realRows = perLeg.filter(p => p.leg.kind !== 'gard').map(p => rowById[p.leg.mission_id]).filter(Boolean)
       // Grille officielle (Siabis, saisie) : seulement si TOUTES les fiches de la facture y ont droit.
       const { grilleAJoindre, lireGrilleBase64, nomFichier } = await import('@/lib/tarifs/grille-officielle')
+      await primeSourceCatalog()   // grilleAJoindre lit les tags du catalogue (synchrone)
       const grilles = realRows.map(r => grilleAJoindre(r as any))
       if (realRows.length && grilles.every(Boolean)) {
         const g = grilles[0]!

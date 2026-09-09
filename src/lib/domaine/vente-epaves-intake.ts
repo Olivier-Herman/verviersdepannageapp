@@ -14,6 +14,7 @@ import { createAdminClient } from '@/lib/supabase'
 import { searchMessages, getMessageBody } from '@/lib/requisitoire/graph'
 import { parseVenteEpaves } from './parse-vente-epaves'
 import { getBusinessText } from '@/lib/settings/business'
+import { sourcesWithTag } from '@/lib/missions/source-catalog'
 
 export const VENTE_MAILBOX = 'fourriere@verviersdepannage.be'
 let VENTE_SENDER = ''   // posé depuis les réglages métier (mail_domaine_agent) avant chaque lecture
@@ -21,7 +22,7 @@ const SUBJECT_KEY = 'paves'   // « Vente d'épaves » (comparé sans accent)
 
 // Saisies à considérer : nouvelles fiches (police_saisie) + fiches historiques
 // migrées de TowSoft/Odoo (legacy_odoo).
-export const SAISIE_SOURCES = ['police_saisie', 'legacy_odoo']
+export let SAISIE_SOURCES: string[] = []   // tag « saisie_scope » du catalogue
 
 // Bornes anti-timeout (chaque étiquette peut attendre jusqu'à 10 s si le PC
 // d'impression est lent) : fenêtre récente + plafonds par passe. Le re-scan
@@ -101,7 +102,7 @@ export async function pollVenteEpaves(): Promise<VenteEpavesSummary> {
 
         const { data: hits } = await sb.from('incoming_missions')
           .select('id, mission_number, source, vehicle_vin, vehicle_plate, vehicle_brand, vehicle_model, parc_zone_key, domaine_vente_date, domaine_vente_firm, domaine_remise_date, domaine_enlevement_date')
-          .in('source', SAISIE_SOURCES)
+          .in('source', await sourcesWithTag('saisie_scope'))
           .is('archived_at', null)
           .neq('status', 'cancelled')
           .ilike('vehicle_vin', `%${v.vinTail}`)

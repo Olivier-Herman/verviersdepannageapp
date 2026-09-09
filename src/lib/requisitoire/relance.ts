@@ -12,7 +12,6 @@ import { createAdminClient } from '@/lib/supabase'
 import { odooRpc }           from '@/lib/odoo'
 import { sendEmail, emailLayout, button, infoRow, divider } from '@/lib/emails'
 
-export const RELANCE_SOURCES = ['police_saisie', 'police_rodeo', 'police_avp']
 
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://app.verviersdepannage.com'
 const FOURRIERE_FROM = 'fourriere@verviersdepannage.be'

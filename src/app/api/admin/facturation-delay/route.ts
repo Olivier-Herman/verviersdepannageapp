@@ -9,13 +9,14 @@ import { NextResponse }      from 'next/server'
 import { getServerSession }  from 'next-auth'
 import { authOptions }       from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase'
+import { sourcesWithTag } from '@/lib/missions/source-catalog'
 
 export const dynamic    = 'force-dynamic'
 export const fetchCache  = 'force-no-store'
 export const maxDuration = 30
 
 const PERIOD_DAYS = 7
-const TOURING_SOURCES = ['touring', 'tgr_touring']
+let TOURING_SOURCES: string[] = []   // tag « touring » du catalogue, posé à chaque appel
 
 function bxlDayStartISO(daysAgo = 0): string {
   const now = new Date()
@@ -28,6 +29,7 @@ function bxlDayStartISO(daysAgo = 0): string {
 }
 
 export async function GET(req: Request) {
+  TOURING_SOURCES = await sourcesWithTag('touring')
   const session = await getServerSession(authOptions)
   if ((session?.user as any)?.role !== 'superadmin') {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })

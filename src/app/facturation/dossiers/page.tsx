@@ -16,6 +16,7 @@ import { buildDossier, type Dossier } from '@/lib/dossier/build'
 import { getAutoInvoiceRules, checkAutoInvoiceEligible } from '@/lib/facturation/auto-invoice'
 import AppShell              from '@/components/layout/AppShell'
 import DossiersClient        from './DossiersClient'
+import { billingGroups } from '@/lib/missions/source-catalog'
 
 export const dynamic = 'force-dynamic'
 
@@ -93,7 +94,7 @@ export default async function FacturationDossiersPage() {
 
   return (
     <AppShell title="Facturation par dossier" userName={u.name || ''} userEmail={u.email || undefined} userId={u.id} userRole={role} userModules={modules}>
-      <DossiersClient initial={dossiers} autoById={autoById} comexById={comexById} isSuperadmin={role === 'superadmin'} capped={roots.length >= MAX_DOSSIERS} />
+      <DossiersClient initial={dossiers} autoById={autoById} comexById={comexById} isSuperadmin={role === 'superadmin'} billingGroups={await billingGroups()} capped={roots.length >= MAX_DOSSIERS} />
     </AppShell>
   )
 }

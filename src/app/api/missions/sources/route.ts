@@ -20,7 +20,7 @@ export async function GET() {
 
   const { data, error } = await sb
     .from('mission_source_catalog')
-    .select('key, label, active, sort_order, display_color, display_color_hex, group_key')
+    .select('key, label, active, sort_order, display_color, display_color_hex, group_key, tags, label_tts, label_etiquette, label_encaissement, billing_group')
     .eq('active', true)
     .order('sort_order')
     .order('label')
@@ -36,6 +36,11 @@ export async function GET() {
     display_color:     s.display_color,
     display_color_hex: s.display_color_hex,
     group_key:         s.group_key,
+    tags:              Array.isArray((s as any).tags) ? (s as any).tags : [],
+    label_tts:         (s as any).label_tts ?? null,
+    label_etiquette:   (s as any).label_etiquette ?? null,
+    label_encaissement: (s as any).label_encaissement ?? null,
+    billing_group:     (s as any).billing_group ?? null,
   }))
   return NextResponse.json({ ok: true, sources })
 }

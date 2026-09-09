@@ -1,4 +1,5 @@
 // src/lib/tarifs/grille-officielle.ts
+import { sourceHasTagSync } from '@/lib/missions/source-catalog'
 //
 // Faut-il joindre la grille tarifaire officielle au document qu'on envoie au
 // client ? Une seule fonction décide, pour le reçu comme pour la facture.
@@ -47,10 +48,8 @@ export const GRILLES: Record<GrilleKey, GrilleOfficielle> = {
   },
 }
 
-/** Sources relevant du régime SIABIS+ sur le réseau structurant wallon. */
-const SOURCES_SIABIS = ['police_snc', 'sia_couvert']
-/** Sources relevant du tarif des frais de justice. */
-const SOURCES_SAISIE = ['police_saisie']
+// Familles lues dans le catalogue des sources (tags « siabis » / « saisie_scope ») :
+// l'appelant appelle primeSourceCatalog() avant, la fonction reste synchrone.
 
 export interface MissionTarif {
   source?:                   string | null
@@ -70,8 +69,8 @@ export function grilleAJoindre(m: MissionTarif): GrilleOfficielle | null {
   const source = (m.source || '').toLowerCase().trim()
 
   const key: GrilleKey | null =
-    SOURCES_SIABIS.includes(source) ? 'siabis'
-    : SOURCES_SAISIE.includes(source) ? 'saisie'
+    sourceHasTagSync(source, 'siabis') ? 'siabis'
+    : sourceHasTagSync(source, 'saisie_scope') && source !== 'legacy_odoo' ? 'saisie'
     : null
   if (!key) return null
 

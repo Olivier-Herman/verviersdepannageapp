@@ -12,26 +12,12 @@ import { createAdminClient }      from '@/lib/supabase'
 import { printVdSoftParcLabel }   from '@/lib/missions/print-parc-label'
 import { buildRelLabelZPL }       from '@/lib/print/zpl-templates/rel'
 import { printZPLRaw }            from '@/lib/print/zebra-raw'
+import { sourceLabel } from '@/lib/missions/source-catalog'
 
 type Selector = { kind: 'uuid'; value: string }
               | { kind: 'mission_number'; value: number }
               | { kind: 'odoo_ticket_id'; value: number }
 
-const MOTIF_LABELS: Record<string, string> = {
-  'police_mg':       'MAL GAREE',
-  'police_rodeo':    'RODEO',
-  'police_avp':      'AVP',
-  'police_accident': 'ACCIDENT',
-  'police_saisie':   'SAISIE',
-  'police_snc':      'SIABIS NON COUVERT',
-  'sia_couvert':     'SIABIS COUVERT',
-  'prive':           'APPEL PRIVE',
-  // Olivier 2026-06-07 : labels courts pour les sources legacy (sinon
-  // wrap sur 3+ lignes et debordent sur la zone plaque).
-  'legacy_odoo':              'MIGRATION ODOO',
-  'legacy_odoo_migration':    'MIGRATION ODOO',
-  'legacy_towsoft_migration': 'MIGRATION TOWSOFT',
-}
 
 export async function reprintLabelForMission(
   sel: Selector,
@@ -65,7 +51,7 @@ export async function reprintLabelForMission(
   }
 
   // Motif de base
-  let motif = MOTIF_LABELS[mission.source] || String(mission.source || '').toUpperCase()
+  let motif = await sourceLabel(mission.source, 'etiquette')
   if (mission.source === 'police_saisie' && (mission as any).saisie_motif_label) {
     motif = String((mission as any).saisie_motif_label).toUpperCase()
   }

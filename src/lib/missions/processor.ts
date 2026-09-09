@@ -5,6 +5,7 @@ import { detectSource, extractContent } from './extractor'
 import { parseMissionContent }          from './parser'
 import { sendPushToRole, sendPushToUser } from '@/lib/push'
 import { sendNotification, sendNotificationToRoles } from '@/lib/notifications/send'
+import { sourcesWithTag } from '@/lib/missions/source-catalog'
 
 const MISSIONS_EMAIL = process.env.MISSIONS_EMAIL!
 
@@ -1036,7 +1037,7 @@ export async function processEmailMessage(messageId: string): Promise<ProcessRes
     // → la PRIORITÉ KAZE était sautée → un doublon Ethias était créé juste après
     // l'acceptation Kaze (le mail IMA arrive ~1 min après). Règle : dossier
     // Ethias/PV == dossier Kaze ⇒ pas de 2e fiche.
-    const isImaLikeSrc = ['ethias', 'vivium', 'p&v', 'ima'].includes(source)
+    const isImaLikeSrc = (await sourcesWithTag('ima_family')).includes(source)
     // Olivier 2026-07-01 : VAB — le dossier est la valeur AVANT le "/" (dossier
     // stable). La valeur APRÈS le "/" est la référence de l'ACTION (dépannage,
     // remorquage...). Une 2e action (ex: dépannage → remorquage) arrive donc avec
@@ -1086,7 +1087,7 @@ export async function processEmailMessage(messageId: string): Promise<ProcessRes
     }
 
     if (dossierGroup) {
-      const isImaLike = ['ethias', 'vivium', 'p&v', 'ima'].includes(source)
+      const isImaLike = isImaLikeSrc
       const existing = await findExisting(q =>
         isImaLike  ? q.ilike('dossier_number', `${dossierGroup}%`)
         : isVabSrc ? q.or(`dossier_number.ilike.${dossierGroup}/%,dossier_number.eq.${dossierGroup}`)
