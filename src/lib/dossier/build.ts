@@ -359,8 +359,14 @@ async function buildDossierUncached(anyMissionId: string, light: boolean, price 
   // qu'il est « Frais de justice », tout continue de partir en état de frais —
   // tarif de gardiennage saisie compris — et rien ne bascule vers une facture
   // Odoo au client.
+  // Olivier 09/09/2026 : « si le client facturé est l'id 67 (Frais de Justice
+  // Verviers) ». On accepte aussi le nom : un id Odoo ne survit pas à un
+  // changement d'instance, alors que le libellé, si (même raison que les
+  // relances, qui matchent l'étiquette par son nom).
+  const FRAIS_JUSTICE_ODOO_ID = 67
   const isFraisDeJustice = [root, ...legRows].some(r =>
-    /frais\s*de\s*justice/i.test(String((r as any)?.billed_to_name || '')))
+    Number((r as any)?.billed_to_id) === FRAIS_JUSTICE_ODOO_ID
+    || /frais\s*de\s*justice/i.test(String((r as any)?.billed_to_name || '')))
 
   // ── Circuit Parquet / Domaine (saisies) : dossier saisie + états de frais ──
   let parquet: Dossier['parquet'] | undefined
