@@ -234,6 +234,27 @@ export async function PATCH(
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
+  // Volet gardiennage (Vue dossier, dossier_leg) : il n'a pas de données véhicule
+  // propres. Une correction plaque / marque / modèle / châssis faite depuis le
+  // volet est propagée à la fiche RACINE — le 09/09/2026, Olivier a corrigé
+  // 407 → 307 sur le volet #10135238 et l'état de frais (lu sur la fiche
+  // #10069724) restait faux.
+  {
+    const VEHICLE_FIELDS = ['vehicle_plate', 'vehicle_brand', 'vehicle_model', 'vehicle_vin', 'vehicle_color', 'vehicle_class', 'vehicle_fuel', 'vehicle_gearbox', 'vehicle_mileage']
+    const changed = Object.fromEntries(VEHICLE_FIELDS.filter(k => k in updates).map(k => [k, updates[k]]))
+    if ((data as any)?.dossier_leg && (data as any)?.parent_mission_id && Object.keys(changed).length) {
+      const rootId = (data as any).parent_mission_id as string
+      const { error: pErr } = await supabase.from('incoming_missions').update({ ...changed, updated_at: new Date().toISOString() }).eq('id', rootId)
+      if (!pErr) {
+        await supabase.from('mission_logs').insert({
+          mission_id: rootId, actor_id: (session.user as any)?.id || null, action: 'updated',
+          notes: `Véhicule mis à jour depuis le volet gardiennage #${(data as any).mission_number} : ${Object.entries(changed).map(([k, v]) => `${k.replace('vehicle_', '')}=${v ?? '—'}`).join(', ')}`,
+          metadata: { from_leg: params.id, ...changed },
+        }).then(() => {}, () => {})
+      }
+    }
+  }
+
   // Olivier 2026-06-18 : historiser les modifications de clés.
   const keyActorId = (session.user as any)?.id as string | undefined
   if ('key_location' in updates) {
