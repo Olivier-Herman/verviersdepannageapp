@@ -16,6 +16,8 @@ import AppNavV2 from './AppNavV2'
 import { useNavV2 } from './useNavV2'
 import MobileNavDrawer from './MobileNavDrawer'
 import NavPalette from './NavPalette'
+import AppNavMini from './AppNavMini'
+import MobileTabBar from './MobileTabBar'
 import GlobalSearch from '@/components/GlobalSearch'
 import { TruckSwitcherIcon } from '@/components/trucks/TruckSwitcherIcon'
 import DispatchAlertBadge from '@/components/notifications/DispatchAlertBadge'
@@ -181,6 +183,9 @@ export default function AppShell({
             onToggleFavorite={toggleFavorite}
             onOpenPalette={() => setPaletteOpen(true)}
           />
+        ) : navV2 && collapsed ? (
+          // Lot 3 : la barre réduite garde le menu v3 (pictogrammes + volets), plus de retour en v1.
+          <AppNavMini items={visibleNav} userRole={userRole} userModules={userModules} badges={navBadges} onOpenPalette={() => setPaletteOpen(true)} />
         ) : (
         <nav className={`flex-1 py-4 overflow-y-auto flex flex-col gap-0.5 ${collapsed ? 'px-2' : 'px-3'}`}>
           {visibleNav.map(item => {
@@ -279,6 +284,10 @@ export default function AppShell({
           <NavPalette open={paletteOpen} onClose={() => setPaletteOpen(false)}
             items={visibleNav} userRole={userRole} userModules={userModules} now={navNow} badges={navBadges} />
         )}
+        {navV2 && navNow.length > 0 && (
+          // Lot 3 : barre du bas sur téléphone — les 4 pages « Maintenant » du rôle + Menu.
+          <MobileTabBar items={visibleNav} userRole={userRole} userModules={userModules} now={navNow} badges={navBadges} onOpenMenu={() => setDrawerOpen(true)} />
+        )}
 
         {/* Header desktop */}
         <div className="hidden lg:block bg-surface border-b px-8 py-5 sticky top-0 z-20">
@@ -299,7 +308,7 @@ export default function AppShell({
         <FinesMonthlyRecap />
 
         {/* Contenu */}
-        <main className="flex-1 overflow-y-auto">
+        <main className={`flex-1 overflow-y-auto ${navV2 && navNow.length > 0 ? 'pb-20 lg:pb-0' : ''}`}>
           {children}
         </main>
       </div>
