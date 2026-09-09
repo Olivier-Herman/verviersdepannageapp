@@ -44,6 +44,10 @@ export default async function FacturationDossiersPage() {
       .not('external_id', 'like', 'PROCESSING_%').order('completed_at', { ascending: false }).limit(300),
     sb.from('incoming_missions').select('id, parent_mission_id, parc_exit_at')
       .eq('dossier_leg', true).not('parc_exit_at', 'is', null).is('invoice_odoo_id', null).is('invoice_number', null)
+      // Un volet « sans frais » ou archivé n'a plus rien à facturer : il ne
+      // doit pas ramener son dossier dans la liste (Olivier 09/09/2026 : les
+      // 16 fiches de migration sorties du parc revenaient dans « À facturer »).
+      .is('no_charge_at', null).is('archived_at', null)
       .order('parc_exit_at', { ascending: false }).limit(200),
     sb.from('incoming_missions').select('id, parent_mission_id, invoiced_at')
       .eq('dossier_leg', false).gte('invoiced_at', since30).order('invoiced_at', { ascending: false }).limit(120),
