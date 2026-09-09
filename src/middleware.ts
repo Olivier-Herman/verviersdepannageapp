@@ -94,7 +94,11 @@ export default withAuth(
 
     return NextResponse.next()
   },
-  { callbacks: { authorized: ({ token, req }) => req.nextUrl.pathname.startsWith('/caisse/ecran') || !!token } }
+  // /garage : la garde est dans le layout du groupe (app) (getServerSession,
+  // côté serveur). Le middleware ne renvoie plus un garage vers /login : le
+  // 09/09/2026, le jeton d'un client n'était pas lu ici mais l'était par le
+  // serveur → boucle /garage → /login → /garage à chaque « Nouvelle demande ».
+  { callbacks: { authorized: ({ token, req }) => req.nextUrl.pathname.startsWith('/caisse/ecran') || req.nextUrl.pathname.startsWith('/garage') || !!token } }
 )
 
 export const config = {

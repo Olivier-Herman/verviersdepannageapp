@@ -1,27 +1,10 @@
-// Layout commun aux pages /garage (sauf login/activate qui sont publics).
-// Inclut header avec logo, selecteur d entite et menu user.
-// Olivier 2026-06-02.
-
-import { getServerSession }  from 'next-auth'
-import { authOptions }       from '@/lib/auth'
-import GarageHeader          from './GarageHeader'
+// Layout racine /garage : simple passe-plat. Les pages publiques (login,
+// activate) et set-password vivent ici sans garde ; les pages protégées sont
+// dans le groupe (app), dont le layout vérifie la session côté serveur.
+// Olivier 2026-06-02, revu 2026-09-09.
 
 export const dynamic = 'force-dynamic'
 
-export default async function GarageLayout({ children }: { children: React.ReactNode }) {
-  const session = await getServerSession(authOptions)
-  // login + activate gerent leur propre auth — pas de redirection ici car
-  // le middleware s en occupe. Mais on garde une garde additionnelle :
-  if (!session) {
-    // Redirect ne se declenche que si la page est protegee (cf middleware)
-    return <>{children}</>
-  }
-  return (
-    <div className="min-h-screen bg-gray-50">
-      <GarageHeader userName={session.user?.name || session.user?.email || ''} />
-      <main className="max-w-3xl mx-auto px-4 sm:px-6 py-6">
-        {children}
-      </main>
-    </div>
-  )
+export default function GarageLayout({ children }: { children: React.ReactNode }) {
+  return <>{children}</>
 }
