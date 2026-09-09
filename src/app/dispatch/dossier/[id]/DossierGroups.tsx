@@ -251,9 +251,11 @@ export default function DossierGroups({ initial, fiches, shared, isSuperadmin, o
                 DANS l'en-tête — « comme ça on ne doit pas chaque fois ouvrir toute
                 la fiche pour les compléter ». Même panneau que la fiche (racine). */}
             {(() => {
-              const rootFiche = fiches[d.root_id]
+              // fiches[id] = enveloppe { mission, logs, parcZoneType, … } (load-fiche-props) : le panneau veut la fiche.
+              const rootFiche = fiches[d.root_id]?.mission || null
+              const rootZoneType = fiches[d.root_id]?.parcZoneType || null
               const rootLeg = d.legs.find(l => l.mission_id === d.root_id) || d.legs[0]
-              const isSaisie = String(d.source || '') === 'police_saisie' || !!rootFiche?.saisie_motif_code
+              const isSaisie = String(d.source || '') === 'police_saisie' || !!rootFiche?.saisie_motif_code || rootZoneType === 'saisie'
               const atParc = rootLeg?.status === 'parked' || d.legs.some(l => l.kind === 'gard' && l.open)
               const onChanged = async () => { await refresh(); router.refresh() }
               return (
@@ -261,7 +263,7 @@ export default function DossierGroups({ initial, fiches, shared, isSuperadmin, o
                   {isSaisie && rootFiche && (
                     <div className="mt-2 text-xs bg-surface-2 border rounded-xl px-3 py-2">
                       <p className="text-ink-muted font-semibold mb-1.5">🚔 Saisie — réquisitoire · levée · sortie</p>
-                      <SaisiePanel mission={rootFiche} onChanged={onChanged} />
+                      <SaisiePanel mission={rootFiche} onChanged={onChanged} forceSaisie={rootZoneType === 'saisie' && !['police_saisie', 'police_mg', 'police_rodeo', 'police_avp'].includes(String(rootFiche.source || ''))} />
                     </div>
                   )}
                   {isSaisie && !rootFiche && (
