@@ -7,6 +7,7 @@ import IdPhotoButton from '@/components/caisse/IdPhotoButton'
 import CreateClientModal from '@/components/CreateClientModal'
 import { HighwaySiabisModal } from '@/app/dispatch/HighwaySiabisModal'
 import { parseHighwayAddress } from '@/lib/highways/parse'
+import { useGardiennageRegimeLabels } from '@/lib/tarifs/gardiennage-labels-client'
 
 interface BaseMission {
   id: string
@@ -98,10 +99,6 @@ const KIND_COLOR: Record<string, string> = {
   AUTRE: 'bg-ink-faint',
 }
 
-const SOURCE_LABEL: Record<string, string> = {
-  touring: 'Touring', allianz: 'Allianz', vab: 'VAB',
-  axa: 'AXA', ethias: 'Ethias', police: 'Police',
-}
 
 // Types d'intervention (= mission_type) — aligne MISSION_TYPES du dispatch.
 const MISSION_TYPE_LABELS: Record<string, string> = {
@@ -116,20 +113,14 @@ const MISSION_TYPE_LABELS: Record<string, string> = {
 
 // Source Gardiennage : le type ne décrit pas un déplacement mais le régime de
 // gardiennage appliqué (grille /admin/tarifs). Olivier 2026-08-26.
-const GARDIENNAGE_TYPE_LABELS: Record<string, string> = {
-  assistance: 'Assistance — 3 premiers jours inclus',
-  saisie:     'Saisie — tarif parquet',
-  siabis:     'Siabis — 20 € TVAC/jour',
-  autre:      'Autre — gardiennage standard',
-}
 
 /** Types proposés pour une source donnée. */
-function typeLabelsForSource(src: string): Record<string, string> {
-  return (src || '').toLowerCase() === 'gardiennage' ? GARDIENNAGE_TYPE_LABELS : MISSION_TYPE_LABELS
+function typeLabelsForSource(src: string, gardiennageLabels: Record<string, string>): Record<string, string> {
+  return (src || '').toLowerCase() === 'gardiennage' ? gardiennageLabels : MISSION_TYPE_LABELS
 }
 function fmtSource(s: string | null): string {
   if (!s) return '—'
-  return SOURCE_LABEL[s.toLowerCase()] || s
+  return s.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
 }
 
 function Copyable({ value, label, mono }: { value: string; label?: string; mono?: boolean }) {
@@ -1069,6 +1060,7 @@ function MissionBlock({
 export default function FacturerModal({
   mission, siblings, payments, driverName, onClose, onUpdated,
 }: Props) {
+  const gardiennageLabels = useGardiennageRegimeLabels(false)
   const [busy, setBusy]               = useState(false)
   const [error, setError]             = useState<string | null>(null)
   const [numberPrompt, setNumberPrompt] = useState<{ ids: string[]; label: string } | null>(null)
@@ -1417,7 +1409,7 @@ export default function FacturerModal({
                       value={edit.source}
                       onChange={e => setEdit(s => {
                         const src = e.target.value
-                        const allowed = Object.keys(typeLabelsForSource(src))
+                        const allowed = Object.keys(typeLabelsForSource(src, gardiennageLabels))
                         return { ...s, source: src, mission_type: allowed.includes((s.mission_type || '').toLowerCase()) ? s.mission_type : '' }
                       })}
                       className="w-full bg-surface-2 border rounded-xl px-3 py-2 text-ink text-sm focus:outline-none focus:border-brand"
@@ -1436,7 +1428,7 @@ export default function FacturerModal({
                       className="w-full bg-surface-2 border rounded-xl px-3 py-2 text-ink text-sm focus:outline-none focus:border-brand"
                     >
                       <option value="">— Choisir un type —</option>
-                      {Object.entries(typeLabelsForSource(edit.source)).map(([val, label]) => (
+                      {Object.entries(typeLabelsForSource(edit.source, gardiennageLabels)).map(([val, label]) => (
                         <option key={val} value={val}>{label}</option>
                       ))}
                     </select>

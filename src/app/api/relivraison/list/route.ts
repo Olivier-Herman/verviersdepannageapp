@@ -17,7 +17,6 @@ const SELECT = `id, mission_number, external_id, source, mission_type, incident_
   redelivery_address, redelivery_lat, redelivery_lng,
   parc_zone_key, received_at, intervention_date, status, garage_reopen_date`
 
-const DEPOT = { lat: 50.5703357, lng: 5.8216501 } // Pepinster (dépôt par défaut)
 
 export async function GET(req: Request) {
   const session = await getServerSession(authOptions)
@@ -106,7 +105,10 @@ export async function GET(req: Request) {
     const pool = missions.filter(has)
     const without = missions.filter((m: any) => !has(m))
     const ordered: any[] = []
-    let cursor = DEPOT
+    // Point de départ de la tournée = parc par défaut (table depots), plus de coordonnées codées.
+    const { data: depotRow } = await sb.from('depots').select('lat, lng').eq('active', true).or('is_default_parc.eq.true,is_default.eq.true').order('is_default_parc', { ascending: false }).limit(1).maybeSingle()
+    if (!depotRow?.lat || !depotRow?.lng) return NextResponse.json({ error: 'Aucun dépôt par défaut avec coordonnées dans la table des dépôts.' }, { status: 500 })
+    let cursor = { lat: Number(depotRow.lat), lng: Number(depotRow.lng) }
     while (pool.length) {
       let bi = 0, bd = Infinity
       for (let i = 0; i < pool.length; i++) {

@@ -52,6 +52,7 @@ import { parcZoneLabel } from '@/lib/parc/zone-label'
 import { useGarageClosure } from '@/lib/useGarageClosures'
 import Flux2ClosureCard from '@/components/dispatch/Flux2ClosureCard'
 import PointagesCard from '@/components/dispatch/PointagesCard'
+import { useGardiennageRegimeLabels } from '@/lib/tarifs/gardiennage-labels-client'
 
 const sb = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -247,12 +248,7 @@ const MISSION_TYPES = ['remorquage', 'depannage', 'transport', 'trajet_vide', 'r
 // décrit donc pas une intervention mais le régime de gardiennage appliqué —
 // c'est lui qui pilote la grille /admin/tarifs. Olivier 2026-08-26.
 const GARDIENNAGE_TYPES = ['assistance', 'saisie', 'siabis', 'autre']
-const GARDIENNAGE_TYPE_LABELS: Record<string, string> = {
-  assistance: '🛟 Assistance — 3 premiers jours inclus',
-  saisie:     '⚖️ Saisie — tarif parquet',
-  siabis:     '🛣️ Siabis — 20 € TVAC/jour',
-  autre:      '📦 Autre — gardiennage standard',
-}
+// Libellés des régimes de gardiennage : construits depuis la grille (hook useGardiennageRegimeLabels) — lot B, 09/09/2026.
 /** Types proposés pour une source donnée. */
 function typesForSource(src: string | null): string[] {
   return (src || '').toLowerCase() === 'gardiennage' ? GARDIENNAGE_TYPES : MISSION_TYPES
@@ -852,6 +848,7 @@ export default function MissionDetailClient({
   // Audit dispatch B8 (08/09/2026) : chaque router.refresh() de la fiche signale
   // aussi « cette fiche a changé » aux lignes dépliées / dossiers qui l'embarquent.
   const nextRouter = useRouter()
+  const gardiennageLabels = useGardiennageRegimeLabels()
   const router = useMemo(() => Object.assign(Object.create(nextRouter), {
     refresh: () => { nextRouter.refresh(); notifyMissionChanged(initialMission.id) },
   }) as typeof nextRouter, [nextRouter, initialMission.id])
@@ -3181,7 +3178,7 @@ export default function MissionDetailClient({
                       <Field label="Type de mission">
                         <Select value={form.mission_type} onChange={f('mission_type')}
                           options={typesForSource(form.source)}
-                          optionLabels={(form.source || '').toLowerCase() === 'gardiennage' ? GARDIENNAGE_TYPE_LABELS : undefined} />
+                          optionLabels={(form.source || '').toLowerCase() === 'gardiennage' ? gardiennageLabels : undefined} />
                       </Field>
                     )}
                     {(form.source === 'police_snc' || form.source === 'sia_couvert') && (

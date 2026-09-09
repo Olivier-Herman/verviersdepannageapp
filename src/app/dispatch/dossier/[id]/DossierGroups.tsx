@@ -32,6 +32,7 @@ const countryToIso = (name?: string | null) => {
   return undefined
 }
 import type { Dossier, DossierLeg } from '@/lib/dossier/build'
+import { useGardiennageRegimeLabels } from '@/lib/tarifs/gardiennage-labels-client'
 
 const eur = (n: number) => n.toLocaleString('fr-BE', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' €'
 // TVAC = HTVA × 1,21, arrondi au cent — affiché à côté du HTVA (Olivier 08/09/2026).
@@ -64,10 +65,8 @@ const MISSION_TYPE_OPTIONS: [string, string][] = [
   ['remorquage', 'REM — remorquage'], ['depannage', 'DSP — dépannage sur place'], ['transport', 'Transport'],
   ['trajet_vide', 'TVD — trajet à vide'], ['reparation_place', 'RPL — réparation sur place'], ['relivraison', 'REL — relivraison'], ['autre', 'Autre'],
 ]
-const GARDIENNAGE_TYPE_OPTIONS: [string, string][] = [
-  ['assistance', '🛟 Assistance — 3 premiers jours inclus'], ['saisie', '⚖️ Saisie — tarif parquet'], ['siabis', '🛣️ Siabis — 20 € TVAC/jour'], ['autre', '📦 Autre — gardiennage standard'],
-]
-const typeOptionsFor = (src: string | null) => String(src || '').toLowerCase() === 'gardiennage' ? GARDIENNAGE_TYPE_OPTIONS : MISSION_TYPE_OPTIONS
+// Régimes de gardiennage : libellés construits depuis la grille (hook) — lot B, 09/09/2026.
+const typeOptionsFor = (src: string | null, gard: Record<string, string>): [string, string][] => String(src || '').toLowerCase() === 'gardiennage' ? (['assistance', 'saisie', 'siabis', 'autre'] as const).map(k => [k, gard[k] || k] as [string, string]) : MISSION_TYPE_OPTIONS
 const isSncSource = (src: string | null) => ['police_snc', 'sia_couvert'].includes(String(src || '').toLowerCase())
 
 const KIND = {
@@ -357,6 +356,7 @@ export default function DossierGroups({ initial, fiches, shared, isSuperadmin, o
 function Group({ d, leg, canBill, isOpen, onToggle, embedOpen, onToggleEmbed, fiche, shared, onChanged, mobile = false, onApplied }: {
   d: Dossier; leg: DossierLeg; canBill: boolean; isOpen: boolean; onToggle: () => void; embedOpen: boolean; onToggleEmbed: () => void; fiche: any; shared: any; onChanged: () => void; mobile?: boolean; onApplied?: (ids: string[], c: { id: number | null; name: string | null }) => void
 }) {
+  const gardiennageLabels = useGardiennageRegimeLabels()
   const k = KIND[leg.kind]
   return (
     <div id={`grp-${leg.letter}`} className={`border rounded-2xl overflow-hidden bg-surface ${leg.open ? 'border-brand/50' : ''}`}>
@@ -394,7 +394,7 @@ function Group({ d, leg, canBill, isOpen, onToggle, embedOpen, onToggleEmbed, fi
               {/* Olivier 07/09/2026 : tout ce qui est modifiable l'est ici, sans ouvrir la fiche. */}
               <div className="grid grid-cols-[92px_minmax(0,1fr)] md:grid-cols-[110px_1fr] gap-2 items-center"><dt className="text-ink-muted">Type</dt><dd className="flex flex-wrap gap-x-2 gap-y-0.5 items-center">
                 <EditableSelect value={leg.editable.mission_type} missionId={leg.mission_id} field="mission_type" onSaved={onChanged}
-                  options={typeOptionsFor(leg.editable.source)} />
+                  options={typeOptionsFor(leg.editable.source, gardiennageLabels)} />
                 <EditableSelect value={leg.editable.source} missionId={leg.mission_id} field="source" onSaved={onChanged}
                   options={(shared.sources || []).map((x: any) => [x.key, x.label])} /></dd></div>
               {isSncSource(leg.editable.source) && (

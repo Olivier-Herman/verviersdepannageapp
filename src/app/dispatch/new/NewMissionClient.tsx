@@ -10,6 +10,7 @@ import EidImportButton, { type EidData } from '@/components/caisse/EidImportButt
 import IdPhotoButton from '@/components/caisse/IdPhotoButton'
 import DriverPickerModal from '@/components/DriverPickerModal'
 import ScanButton from '@/components/ScanButton'
+import { useGardiennageRegimeLabels } from '@/lib/tarifs/gardiennage-labels-client'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -53,10 +54,11 @@ const MISSION_TYPES = [
   // Source Gardiennage (Olivier 2026-08-26) : le véhicule entre au parc sans
   // déplacement facturé. Le type ne décrit pas une intervention mais le régime
   // de gardiennage appliqué — il pilote la grille /admin/tarifs.
-  { value: 'Assistance', label: '🛟 Assistance — gardiennage tarif police' },
-  { value: 'Saisie',     label: '⚖️ Saisie — gardiennage tarif parquet' },
-  { value: 'Siabis',     label: '🛣️ Siabis — gardiennage 20 € TVAC/jour' },
-  { value: 'Autre',      label: '📦 Autre — gardiennage standard' },
+  // Régimes de gardiennage : le libellé avec montant vient de la grille (gardiennageLabel ci-dessous).
+  { value: 'Assistance', label: '🛟 Assistance' },
+  { value: 'Saisie',     label: '⚖️ Saisie' },
+  { value: 'Siabis',     label: '🛣️ Siabis' },
+  { value: 'Autre',      label: '📦 Autre' },
 ]
 const GARDIENNAGE_TYPES = ['Assistance', 'Saisie', 'Siabis', 'Autre']
 // VR (Vehicule de Remplacement) retire de partout (Olivier 2026-05-25 :
@@ -222,6 +224,7 @@ export default function NewMissionClient({
   drivers: Driver[]; warnings: Warning[]; sources: Array<{ key: string; label: string; display_color?: string | null; group_key?: string | null }>;
   userName: string; userRole: string; userModules?: string[]; userEmail?: string; userId?: string; googleMapsKey: string
 }) {
+  const gardiennageLabels = useGardiennageRegimeLabels(false)
   // Sub-types Police : sources du catalog avec group_key='police'.
   // Plus de liste hardcodee : ajouter une source avec group_key='police' dans
   // /admin/sources la fait apparaitre automatiquement comme sub-type.
@@ -1109,10 +1112,10 @@ export default function NewMissionClient({
                       DPR: 'Déplacement pour rien — mission annulée par police',
                     },
                     gardiennage: {
-                      Assistance: 'Tarif gardiennage police — les 3 premiers jours sont inclus',
-                      Saisie:     'Tarif gardiennage parquet — le jour d\'entrée n\'est pas compté',
-                      Siabis:     '20 € TVAC/jour — à partir du lendemain de l\'entrée en parc',
-                      Autre:      'Gardiennage standard — à partir du lendemain de l\'entrée en parc',
+                      Assistance: gardiennageLabels.assistance,
+                      Saisie:     `${gardiennageLabels.saisie} — le jour d'entrée n'est pas compté`,
+                      Siabis:     `${gardiennageLabels.siabis} — à partir du lendemain de l'entrée en parc`,
+                      Autre:      `${gardiennageLabels.autre} — à partir du lendemain de l'entrée en parc`,
                     },
                     default: {
                       DSP:       'Dépannage sur place — réparation directe au véhicule',

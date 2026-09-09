@@ -10,7 +10,8 @@
 // téléchargement, c'est lui qu'on sort au comptoir. Olivier 2026-08-21.
 
 import Link from 'next/link'
-import { TEL, TEL_HREF, TARIF_MAL_GAREE } from '../_data'
+import { TEL, TEL_HREF } from '../_data'
+import { getSiteTariffs } from '@/lib/tarifs/site-tariffs'
 
 export const metadata = {
   title: 'Tarifs officiels — saisies judiciaires et SIABIS+',
@@ -114,7 +115,8 @@ function Grille({ lignes, colA, colB }: { lignes: Ligne[]; colA: string; colB?: 
   )
 }
 
-export default function Tarifs() {
+export default async function Tarifs() {
+  const { malGaree: TARIF_MAL_GAREE } = await getSiteTariffs()
   return (
     <>
       <section className="dark page-head">

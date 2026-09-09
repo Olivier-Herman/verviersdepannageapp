@@ -1,0 +1,7 @@
+-- Chantier « Admin sans valeurs en dur » : lot B terminé (09/09/2026 soir). Reste le lot C (types, statuts) avec le relooking.
+INSERT INTO chantiers (key, title, status, note, updated_at, updated_by) VALUES
+  ('hardcode', 'Admin sans valeurs en dur', 'attente',
+   'Lots A et B livrés le 09/09 : réglages métier en base (repli retiré, écran obligatoire), grille de restitution dans les tarifs, familles de sources en tags du catalogue, libellés variants en colonnes, zones de parc dans parc_zones seule, dépôts par drapeau (is_snc_hub / is_balisage), tarifs affichés (écrans, site public, prompt assistant) construits depuis la grille, ligne camionnette mal garée ajoutée. Garde-fou au build. Reste — lot C avec le relooking : types de mission et statuts (10 dictionnaires), motif d''encaissement (encaissement-url ↔ list_items), types de formulaire police (police-mapping), listes du site public (dépôts, assisteurs, communes). api/interventions/route.ts en lecture seule sur le disque.', now(), 'Claude')
+ON CONFLICT (key) DO UPDATE SET status = EXCLUDED.status, note = EXCLUDED.note, updated_at = now(), updated_by = 'Claude';
+INSERT INTO chantier_logs (chantier_id, actor, text)
+SELECT id, 'Claude', 'Lot B terminé : dépôts par drapeau, tarifs affichés depuis la grille (site public + assistant + 5 écrans), camionnette mal garée en ligne de tarif. Passe en attente du lot C (relooking).' FROM chantiers WHERE key = 'hardcode';

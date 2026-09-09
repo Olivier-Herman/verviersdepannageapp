@@ -1,5 +1,5 @@
 import Link from 'next/link'
-import { TARIF_FOURRIERE, TARIF_MAL_GAREE } from '../_data'
+import { getSiteTariffs } from '@/lib/tarifs/site-tariffs'
 
 export const metadata = {
   title: 'Fourrière — récupérer un véhicule saisi',
@@ -8,7 +8,8 @@ export const metadata = {
   + 'au tarif officiel des frais de justice. Pepinster, du lundi au vendredi de 9h à 17h.',
 }
 
-export default function Fourriere() {
+export default async function Fourriere() {
+  const { fourriere: TARIF_FOURRIERE, malGaree: TARIF_MAL_GAREE } = await getSiteTariffs()
   return (
     <>
       <section className="dark page-head">

@@ -33,6 +33,8 @@ export interface SncDepot {
   name:     string
   lat:      number
   lng:      number
+  is_snc_hub?:  boolean   // dépôt de référence Siabis (drapeau depots.is_snc_hub)
+  is_balisage?: boolean   // véhicule de balisage disponible (drapeau depots.is_balisage)
 }
 
 export interface SncDepotKey {
@@ -176,7 +178,7 @@ export async function getSncDepots(): Promise<SncDepot[]> {
   const sb = createAdminClient()
   const { data } = await sb
     .from('depots')
-    .select('id, name, lat, lng')
+    .select('id, name, lat, lng, is_snc_hub, is_balisage')
     .eq('active', true)
     .not('lat', 'is', null)
     .not('lng', 'is', null)
@@ -239,15 +241,14 @@ export async function findNearestDepotByRoute(lat: number, lng: number, depots: 
   }
 }
 
-/** Cherche le depot Pepinster parmi la liste (case-insensitive sur name). */
+/** Dépôt de référence Siabis : drapeau depots.is_snc_hub (plus de recherche sur le mot « Pepinster » — lot B, 09/09/2026). */
 export function findPepinster(depots: SncDepot[]): SncDepot | null {
-  return depots.find(d => /pepinster/i.test(d.name)) || null
+  return depots.find(d => d.is_snc_hub) || null
 }
 
-/** Cherche les depots BALISAGE : uniquement Pepinster et Aywaille (les autres
- *  depots n ont pas de vehicule de securite/balisage). */
+/** Dépôts avec véhicule de balisage : drapeau depots.is_balisage. */
 export function findBalisageDepots(depots: SncDepot[]): SncDepot[] {
-  return depots.filter(d => /pepinster|aywaille/i.test(d.name))
+  return depots.filter(d => d.is_balisage)
 }
 
 /** Calcule km route via Google Maps Distance Matrix. Fallback haversine si echec. */

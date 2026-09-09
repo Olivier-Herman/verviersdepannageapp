@@ -1,0 +1,3 @@
+-- Chantier « Admin sans valeurs en dur » : lot B / familles de sources livré (09/09/2026 soir).
+INSERT INTO chantier_logs (chantier_id, actor, text)
+SELECT id, 'Claude', 'Lot B — sources : 26 listes codées → tags sur mission_source_catalog (hexalite, touring, siabis, saisie_scope, requisitoire, panneau_saisie, rel_reprise, assistance, auto_restitute, rel_tarif_rem, ima_family, cloture_externe, integration, etiquette) ; 6 dictionnaires de libellés → colonnes label_tts / label_etiquette / label_encaissement ; groupes Facturation → billing_group. Reste : dépôts par drapeau (colonnes posées), tarifs affichés (écrans, site public, prompt assistant), puis lot C.' FROM chantiers WHERE key = 'hardcode';

@@ -18,8 +18,9 @@ import { NextResponse } from 'next/server'
 import Anthropic        from '@anthropic-ai/sdk'
 import { ANTHROPIC_MODELS } from '@/lib/anthropic-model'
 import { createAdminClient } from '@/lib/supabase'
-import { TEL, TARIF_FOURRIERE, TARIF_MAL_GAREE, DEPOTS, ASSISTEURS, COMMUNES } from '@/app/site/_data'
+import { TEL, DEPOTS, ASSISTEURS, COMMUNES } from '@/app/site/_data'
 import { SALE_CONDITIONS, SALE_MODES, type SaleMode } from '@/lib/ventes/types'
+import { getSiteTariffs, type SiteTarifLine } from '@/lib/tarifs/site-tariffs'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 30
@@ -69,7 +70,8 @@ async function lotsEnVente() {
   } catch { return 'Liste indisponible pour le moment.' }
 }
 
-function systemPrompt(lots: string) {
+function systemPrompt(lots: string, tarifs: { fourriere: SiteTarifLine[]; malGaree: SiteTarifLine[] }) {
+  const TARIF_FOURRIERE = tarifs.fourriere, TARIF_MAL_GAREE = tarifs.malGaree
   return `Tu es « le standard » de Verviers Dépannage, une entreprise de dépannage et de remorquage basée à Pepinster, en Belgique. Tu réponds aux visiteurs du site public.
 
 TON : direct, concret, chaleureux sans familiarité. Phrases courtes. Vouvoiement. Tu parles au nom de l'entreprise (« nous »). Réponses de 2 à 6 phrases, listes à puces quand ça aide. Jamais d'emoji.
@@ -170,7 +172,7 @@ export async function POST(req: Request) {
       const res = await getClient().messages.create({
         model,
         max_tokens: 700,
-        system: systemPrompt(await lotsEnVente()),
+        system: systemPrompt(await lotsEnVente(), await getSiteTariffs()),
         messages,
       })
       const reply = res.content

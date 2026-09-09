@@ -15,6 +15,7 @@ import { useEffect, useRef, useState } from 'react'
 import { FileText, Loader2, Paperclip, CheckCircle2, Unlock, Wrench, Warehouse, Landmark } from 'lucide-react'
 import ScanToFicheButton from '@/components/missions/ScanToFicheButton'
 import { useSourcesWithTag } from '@/lib/missions/source-tags-client'
+import { useGardiennageRegimes } from '@/lib/tarifs/gardiennage-labels-client'
 
 // Jours pleins entre deux dates (end = aujourd'hui si absent)
 function joursEntre(start?: string | null, end?: string | null): number {
@@ -255,6 +256,7 @@ function RequisitoireSection({ mission, onDone }: { mission: SaisieMission; onDo
 
 // ── Levée de saisie ──────────────────────────────────────────────────────────
 function LeveeSaisieSection({ mission, onDone }: { mission: SaisieMission; onDone: () => void }) {
+  const autreRegime = (useGardiennageRegimes() || []).find(r => r.regime === 'autre') || null
   const [open,  setOpen]  = useState(false)
   const [type,  setType]  = useState<'definitive' | 'temporaire'>('definitive')
   // Qui paie après la levée ? La question décide du circuit : état de frais
@@ -314,7 +316,7 @@ function LeveeSaisieSection({ mission, onDone }: { mission: SaisieMission; onDon
             <p className="text-emerald-900/80 text-xs mt-1 italic">« {mission.levee_saisie_note} »</p>
           )}
           <p className="text-ink-muted text-[11px] mt-1">
-            🔓 Blocage police levé.{mission.source === 'police_saisie' ? ' Gardiennage « hors période saisie » (20 €/j) compté à partir de la date de levée.' : ''}
+            🔓 Blocage police levé.{mission.source === 'police_saisie' ? ` Gardiennage « hors période saisie » (${autreRegime ? autreRegime.price_tvac.toFixed(2).replace('.', ',') + ' € TVAC/j' : 'tarif autre'}) compté à partir de la date de levée.` : ''}
           </p>
           {mission.levee_saisie_type === 'temporaire' && !mission.temp_returned_at && (
             <p className="text-amber-700 text-[11px] mt-1">

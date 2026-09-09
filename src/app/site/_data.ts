@@ -62,26 +62,8 @@ export const ASSISTEURS = [
  *  Le gardiennage change de nature après la levée de saisie : tant que la
  *  saisie court il relève des frais de justice (1,56 €), au-delà le véhicule
  *  occupe une place chez nous à nos conditions (20 €). Olivier 2026-08-21. */
-export const TARIF_FOURRIERE = [
-  { poste: 'Prise en charge du véhicule (enlèvement), 15 km inclus',
-    base: 'forfait, une fois', htva: '94,06 €', tvac: '113,81 €' },
-  { poste: 'Kilomètre au-delà des 15 km inclus',
-    base: 'par kilomètre',     htva: '1,57 €',  tvac: '1,90 €'   },
-  { poste: 'Gardiennage pendant la saisie',
-    base: 'par jour entamé',   htva: '1,56 €',  tvac: '1,89 €'   },
-  { poste: 'Frais administratifs',
-    base: 'forfait, une fois', htva: '37,67 €', tvac: '45,58 €'  },
-  { poste: 'Gardiennage après la levée de saisie',
-    base: 'par jour entamé',   htva: '20,00 €', tvac: '24,20 €'  },
-]
-
-/** Mal garée : ce n'est PAS une saisie, et ce n'est pas moins cher pour autant.
- *  Olivier 2026-08-21 — la page disait « frais plus limités », c'était faux. */
-export const TARIF_MAL_GAREE = [
-  { poste: 'Enlèvement d’une voiture',    base: 'forfait, une fois', htva: '165,29 €', tvac: '200,00 €' },
-  { poste: 'Enlèvement d’une camionnette', base: 'forfait, une fois', htva: '206,61 €', tvac: '250,00 €' },
-  { poste: 'Gardiennage',                  base: 'par jour entamé',   htva: '20,00 €',  tvac: '24,20 €'  },
-]
+// Les grilles tarifaires (frais de justice, mal garée) ne sont plus copiées ici :
+// elles se construisent depuis source_tariff_lines — lib/tarifs/site-tariffs.ts.
 
 export const NAV = [
   { href: '/site',            label: 'Accueil' },
