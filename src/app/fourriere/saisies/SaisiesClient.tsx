@@ -15,7 +15,7 @@ interface Dossier {
   id: string; mission_id: string | null; ef_number: string | null; state: string
   recipient: Recipient; vehicle_plate: string | null; vehicle_brand: string | null
   vehicle_model: string | null; dossier_ref: string | null; parked_at: string | null
-  levee_date: string | null; billed_to_date: string | null; depannage_billed: boolean
+  levee_date: string | null; levee_payer?: 'frais_justice' | 'client' | null; billed_to_date: string | null; depannage_billed: boolean
   justinvoice_ref: string | null; odoo_invoice_id: number | null; last_ef_at: string | null; notes: string | null
   motif_code: string | null; motif_label: string | null; sent_to: string | null
   sent_at: string | null; validation_at: string | null
@@ -99,7 +99,10 @@ const addMonthsStr = (ymd: string, n: number) => { const dt = new Date(String(ym
 // Un état de frais est-il établissable MAINTENANT ? (miroir du bouton de la carte)
 function canEstablishEf(d: Dossier): boolean {
   if (!d.requisitoire_ok || d.state === 'clos' || d.recipient === 'domaine') return false
-  // Levée de saisie = plus de facturation au Parquet (tant qu'aucun EF n'est parti).
+  // Levée de saisie = plus de facturation au Parquet (tant qu'aucun EF n'est parti)
+  // — SAUF levée « frais de justice » : état de frais final jusqu'à la levée.
+  const leveeFJ = !!d.levee_date && d.levee_payer === 'frais_justice'
+  if (leveeFJ) return d.requisitoire_ok && (!d.billed_to_date || String(d.billed_to_date).slice(0, 10) < String(d.levee_date).slice(0, 10))
   if (d.levee_date && !d.ef_number && !d.domaine_remise_date) return false
   if (!d.ef_number) {  // 1er état de frais
     const billableFrom = firstBillable(d.parked_at)
@@ -558,8 +561,9 @@ function DossierCard({ d, busy, onGenerate, onRecipient, onState, onRemove, onRe
   const clotureDue = !!d.domaine_remise_date && (!d.billed_to_date || String(d.billed_to_date).slice(0, 10) < String(d.domaine_remise_date).slice(0, 10))
   const newEfDue = !!d.pending_action || recurringDue || clotureDue
   // Levée de saisie → hors circuit Parquet : plus rien à établir ici.
-  const leveeBlocked = !!d.levee_date && isFirstEf && !d.domaine_remise_date
-  const canEstablish = d.requisitoire_ok && !leveeBlocked && (isFirstEf ? !notYetBillable : newEfDue)
+  const leveeFJ = !!d.levee_date && d.levee_payer === 'frais_justice'
+  const leveeBlocked = !!d.levee_date && isFirstEf && !d.domaine_remise_date && !leveeFJ
+  const canEstablish = d.requisitoire_ok && !leveeBlocked && (leveeFJ ? (!d.billed_to_date || String(d.billed_to_date).slice(0, 10) < String(d.levee_date).slice(0, 10)) : (isFirstEf ? !notYetBillable : newEfDue))
 
   return (
     <div className="rounded-2xl border bg-surface p-4">
@@ -619,7 +623,9 @@ function DossierCard({ d, busy, onGenerate, onRecipient, onState, onRemove, onRe
       {/* Levée de saisie → plus de facturation au Parquet (Olivier 2026-08-24) */}
       {d.levee_date && (
         <div className="mt-3 rounded-xl border border-orange-300 bg-orange-50 px-3 py-2 text-sm text-orange-900">
-          {leveeBlocked ? <>
+          {leveeFJ ? <>
+            ⚖️ <b>Levée de saisie le {fmt(d.levee_date)}</b> — <b>frais de justice</b> : l'état de frais final couvre jusqu'à cette date (dépannage + gardiennage) et part au SPF Justice. Le véhicule sort du parc depuis la fiche (« Véhicule repris par le propriétaire »).
+          </> : leveeBlocked ? <>
             ⚖️ <b>Levée de saisie le {fmt(d.levee_date)}</b> — <b>plus de facturation au Parquet</b>. Le gardiennage éventuel à partir de cette date se facture au client : ce dossier n'a plus à être traité ici (clôture automatique).
           </> : <>
             ⚠️ <b>Levée de saisie le {fmt(d.levee_date)}</b> — un état de frais est déjà parti au Parquet : on le suit jusqu'au bout. Aucun nouvel état de frais Parquet après la levée. <b>Pas d'envoi automatique.</b>

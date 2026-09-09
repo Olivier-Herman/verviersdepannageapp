@@ -1,27 +1,30 @@
 // src/app/api/missions/[id]/exit-parc/route.ts
 //
-// POST { reason?: 'restitution' | 'enlevement_transporteur', note? } — le
-// véhicule quitte le parc maintenant, SANS facturer (le dossier reste « à
-// facturer » pour le bureau, ou est déjà réglé). Utilisé par « Restituer » de
-// l'écran QR (Olivier 08/09/2026 : « si le montant à payer est à 0, juste
-// sortir la voiture du parc ; sinon … laisser partir sans facturation »).
+// POST { reason?: 'restitution' | 'enlevement_transporteur' | 'sortie', note? }
+// Sortie du parc MAINTENANT sans facturation Odoo : le véhicule a été repris
+// (propriétaire, transporteur), le gardiennage s'arrête, la place est libérée.
+// Cas d'usage : saisie levée « frais de justice » (1AJP474, Olivier 09/09/2026)
+// — la facturation passe par l'état de frais, pas par « Clôturer et facturer ».
+// Gardes de exitParcNow : contrôle de sortie, scénario SNC.
+// Accès : dispatcher / admin / superadmin + modules fourriere / facturation.
 
 import { NextResponse }      from 'next/server'
 import { getServerSession }  from 'next-auth'
 import { authOptions }       from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase'
+import { sessionAccess }     from '@/lib/access'
 import { exitParcNow, type ExitReason } from '@/lib/parc/exit-parc'
 
 export const dynamic = 'force-dynamic'
 
 export async function POST(req: Request, { params }: { params: { id: string } }) {
   const session = await getServerSession(authOptions)
-  if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  const user = session.user as any
-  const body = await req.json().catch(() => ({}))
-  const reason: ExitReason = body.reason === 'enlevement_transporteur' ? 'enlevement_transporteur' : 'restitution'
+  const acc = sessionAccess(session, { roles: ['admin', 'superadmin', 'dispatcher'], modules: ['fourriere', 'facturation'] })
+  if (!acc.ok) return NextResponse.json({ error: 'Accès refusé' }, { status: 403 })
+  const body = await req.json().catch(() => ({})) as { reason?: string; note?: string }
+  const reason: ExitReason = (['restitution', 'enlevement_transporteur', 'sortie'] as const).includes(body.reason as any) ? (body.reason as ExitReason) : 'restitution'
   const sb = createAdminClient()
-  const r = await exitParcNow(sb, params.id, { id: user.id || null, name: user.name }, reason, typeof body.note === 'string' ? body.note.trim() : undefined)
-  if (!r.ok) return NextResponse.json({ error: r.error, exit_control_blocked: r.exit_control_blocked }, { status: r.status })
-  return NextResponse.json({ ok: true, released: r.released })
+  const res = await exitParcNow(sb, params.id, { id: acc.id || null, name: (session?.user as any)?.name || null }, reason, String(body.note || '').trim() || undefined)
+  if (!res.ok) return NextResponse.json({ error: res.error, exit_control_blocked: res.exit_control_blocked }, { status: res.status })
+  return NextResponse.json({ ok: true, released: res.released })
 }

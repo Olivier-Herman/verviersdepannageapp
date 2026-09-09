@@ -42,6 +42,7 @@ export interface SaisieMission {
   levee_saisie_at?:       string | null
   levee_saisie_date?:     string | null
   levee_saisie_type?:     string | null
+  levee_saisie_payer?:    string | null
   levee_saisie_note?:     string | null
   police_levee_saisie_ok?: boolean | null
   temp_garage_out_at?:    string | null
@@ -323,6 +324,29 @@ function LeveeSaisieSection({ mission, onDone }: { mission: SaisieMission; onDon
           <button onClick={() => { setOpen(o => !o); setType('definitive') }} className="text-emerald-700 text-xs underline mt-1">
             Modifier / corriger la levée
           </button>
+          {/* Sortie physique du véhicule après une levée définitive : le propriétaire
+              est venu le rechercher. Pas de facture Odoo ici — frais de justice = état
+              de frais final au SPF Justice ; à charge du client = « Facturer » dans la
+              Vue dossier. Olivier 09/09/2026 (1AJP474). */}
+          {mission.levee_saisie_type !== 'temporaire' && (mission as any).status === 'parked' && (
+            <div className="mt-2 pt-2 border-t border-emerald-200">
+              <button disabled={busy}
+                onClick={async () => {
+                  if (!window.confirm(`Le propriétaire a repris le véhicule ${(mission as any).vehicle_plate || ''} ?\n\nLa fiche sort du parc maintenant : le gardiennage s'arrête, la place est libérée. Aucune facture n'est créée ici (${mission.levee_saisie_payer === 'frais_justice' ? 'frais de justice → état de frais final' : 'facturation depuis la Vue dossier'}).`)) return
+                  setBusy(true); setError(null)
+                  try {
+                    const r = await fetch(`/api/missions/${mission.id}/exit-parc`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ reason: 'restitution', note: 'Véhicule repris par le propriétaire (levée de saisie)' }) })
+                    const j = await r.json().catch(() => ({}))
+                    if (!r.ok) throw new Error(j.error || 'Sortie impossible')
+                    window.location.reload()
+                  } catch (e: any) { setError(e.message); setBusy(false) }
+                }}
+                className="w-full py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold disabled:opacity-50">
+                🚗 Véhicule repris par le propriétaire — sortie du parc
+              </button>
+              <p className="text-ink-muted text-[11px] mt-1">{mission.levee_saisie_payer === 'frais_justice' ? 'Frais de justice : la facturation se fait par l\'état de frais final (Fourrière → Saisies), jusqu\'à la date de levée.' : 'À charge du client : facture depuis Facturation → par dossier.'}</p>
+            </div>
+          )}
         </div>
       ) : (
         <div className="flex items-center justify-between gap-2">

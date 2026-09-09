@@ -129,6 +129,9 @@ export function outOfParquetScope(m: any): { out: boolean; reason: string } {
   if (!m) return { out: false, reason: '' }
   if (m.domaine_remise_date || m.domaine_enlevement_date) return { out: false, reason: '' }
   const levee = m.levee_saisie_at || m.levee_saisie_date
+  // Levée « frais de justice » (Olivier 09/09/2026, 1AJP474) : le dossier RESTE
+  // au Parquet, l'état de frais final s'arrête à la date de levée.
+  if (levee && m.levee_saisie_payer === 'frais_justice') return { out: false, reason: '' }
   if (levee) return { out: true, reason: `Levée de saisie du ${fmtFR(String(levee))} — plus de facturation au Parquet.` }
   if (['completed', 'to_invoice', 'cancelled'].includes(String(m.status || '')))
     return { out: true, reason: 'Véhicule sorti / facturé hors circuit Parquet-Domaine.' }
@@ -172,7 +175,7 @@ export async function generateEtatFrais(
 
   const mission = d.mission_id
     ? (await sb.from('incoming_missions')
-        .select('client_name, billed_to_name, incident_address, incident_city, vehicle_class, vehicle_vin, client_email, received_at, requisitoire_at, requisitoire_doc_path, domaine_remise_date, dossier_number, vehicle_plate, vehicle_brand, vehicle_model')
+        .select('client_name, billed_to_name, incident_address, incident_city, vehicle_class, vehicle_vin, client_email, received_at, requisitoire_at, requisitoire_doc_path, domaine_remise_date, dossier_number, vehicle_plate, vehicle_brand, vehicle_model, levee_saisie_date, levee_saisie_at, levee_saisie_type, levee_saisie_payer')
         .eq('id', d.mission_id).maybeSingle()).data
     : null
   // La fiche fait foi pour le n° de PV et le véhicule (corrigés après coup — 90698, 09/09/2026).
@@ -186,11 +189,15 @@ export async function generateEtatFrais(
     throw new Error(REQUISITOIRE_DOC_ERROR)
   }
 
+  // Levée définitive « frais de justice » : état de frais FINAL jusqu'à la date
+  // de levée (comme la clôture Domaine), sans attendre la 1re période.
+  const leveeFJDate = mission?.levee_saisie_payer === 'frais_justice' && mission?.levee_saisie_type !== 'temporaire'
+    ? (String(mission.levee_saisie_date || mission.levee_saisie_at || '').slice(0, 10) || null) : null
   const hasDomaine = !!(mission?.domaine_remise_date || d.domaine_remise_date)
   // RÈGLE : le 1er état de frais n'est possible qu'à partir du dernier jour du
   // mois SUIVANT la saisie — SAUF s'il y a une remise Domaine (état de clôture).
   // Olivier 2026-08-10.
-  if (persist && !d.billed_to_date && !hasDomaine && d.parked_at) {
+  if (persist && !d.billed_to_date && !hasDomaine && !leveeFJDate && d.parked_at) {
     const billable = firstBillableDate(d.parked_at)
     if (belgianToday() < billable) {
       throw new Error(`Première période non atteinte — état de frais facturable à partir du ${fmtFR(billable)}`)
@@ -213,6 +220,7 @@ export async function generateEtatFrais(
   let billingTo: string
   if (opts.billingTo) billingTo = opts.billingTo.slice(0, 10)
   else if (hasDomaine && remiseDate) billingTo = String(remiseDate).slice(0, 10)
+  else if (leveeFJDate) billingTo = leveeFJDate
   else if (!d.billed_to_date) billingTo = firstBillableDate(d.parked_at)
   else billingTo = addMonthsISO(d.billed_to_date, 2)
   // Le propriétaire a déjà payé (facture client) jusqu'à une date → le Parquet ne paie que le solde.

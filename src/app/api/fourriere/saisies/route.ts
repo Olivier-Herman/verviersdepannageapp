@@ -66,7 +66,7 @@ export async function GET() {
   const leveeByMission = new Map<string, string | null>()   // levée réelle (la fiche fait foi)
   const liveByMission = new Map<string, any>()               // n° dossier / véhicule / motif : la fiche fait foi
   if (missionIds.length) {
-    const { data: ms } = await sb.from('incoming_missions').select('id, requisitoire_at, requisitoire_doc_path, levee_saisie_at, levee_saisie_date, dossier_number, vehicle_plate, vehicle_brand, vehicle_model, saisie_motif_code, saisie_motif_label').in('id', missionIds)
+    const { data: ms } = await sb.from('incoming_missions').select('id, requisitoire_at, requisitoire_doc_path, levee_saisie_at, levee_saisie_date, levee_saisie_payer, dossier_number, vehicle_plate, vehicle_brand, vehicle_model, saisie_motif_code, saisie_motif_label').in('id', missionIds)
     // Réquisitoire valable = date posée + document PDF/JPG (jamais une capture de mail).
     for (const m of (ms || [])) { reqOk.set(m.id, hasValidRequisitoire(m)); leveeByMission.set(m.id, m.levee_saisie_at || m.levee_saisie_date || null); liveByMission.set(m.id, m) }
     // ── LA FICHE FAIT FOI (Olivier 09/09/2026, dossier 90698) : le n° de dossier,
@@ -102,6 +102,7 @@ export async function GET() {
     requisitoire_ok: d.mission_id ? (reqOk.get(d.mission_id) ?? false) : true,  // dossier manuel sans fiche = pas de blocage
     // Levée : la fiche fait foi (le snapshot du dossier peut être antérieur).
     levee_date: (d.mission_id ? leveeByMission.get(d.mission_id) : null) || d.levee_date || null,
+    levee_payer: (d.mission_id ? (liveByMission.get(d.mission_id) as any)?.levee_saisie_payer : null) || null,
     etats: (efByDossier.get(d.id) || []).map((e: any) => {
       // Forclusion (6 mois à dater de la prestation) tant que l'EF n'est pas déposé.
       const forclusion_at = forclusionDate(e, d.parked_at)

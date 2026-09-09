@@ -66,7 +66,7 @@ export async function closeSaisieDossierIfOutOfScope(sb: any, missionId: string)
   const { data: d } = await sb.from('saisie_dossiers').select('*').eq('mission_id', missionId).neq('state', 'clos').maybeSingle()
   if (!d) return false
   const { data: mission } = await sb.from('incoming_missions')
-    .select('source, status, domaine_remise_date, domaine_enlevement_date, levee_saisie_at, levee_saisie_date')
+    .select('source, status, domaine_remise_date, domaine_enlevement_date, levee_saisie_at, levee_saisie_date, levee_saisie_payer')
     .eq('id', missionId).maybeSingle()
   if (!mission) return false
   const scope = outOfParquetScope({ ...mission, levee_saisie_at: mission.levee_saisie_at || mission.levee_saisie_date || d.levee_date })
