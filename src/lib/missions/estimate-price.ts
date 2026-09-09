@@ -1113,6 +1113,27 @@ async function estimateLinesTemplate(
     }
   })
 
+  // ── FORFAIT / SANS FRAIS DE GARDIENNAGE en mode « lignes » ────────────────
+  // Les modes forfait et brackets lisaient déjà storage_flat_htva /
+  // storage_waived ; pas celui-ci — le panneau « Estimation tarif » d'une
+  // fiche Police – Accident / Ethias comptait 34 j × 20 € = 680 € alors que
+  // le dossier affichait le forfait 181,82 € (2EHM996, Olivier 09/09/2026 :
+  // « il serait bien que tous les tarifs soient synchro »).
+  {
+    const flat = Number((mission as any).storage_flat_htva) > 0 ? Number((mission as any).storage_flat_htva) : null
+    if (mission.storage_waived) {
+      for (const l of templateLines) if (l.kind === 'SERV-PARC') { l.default_qty = 0; l.parc_from = null; l.parc_to = null }
+    } else if (flat) {
+      const first = templateLines.findIndex(l => l.kind === 'SERV-PARC')
+      if (first >= 0) {
+        const keep = templateLines[first]
+        keep.name = 'Forfait gardiennage'; keep.default_qty = 1; keep.default_price = flat; keep.apply_surcharges = false
+        keep.parc_from = null; keep.parc_to = null
+        for (let i = templateLines.length - 1; i > first; i--) if (templateLines[i].kind === 'SERV-PARC') templateLines.splice(i, 1)
+      }
+    }
+  }
+
   if (templateLines.length === 0) {
     return emptyEstimate(source, missionType,
       `Aucune ligne configuree pour ${source}/${missionType} en mode "lines". Ajoute des lignes dans /admin/tarifs.`)
