@@ -254,6 +254,11 @@ export default function DossiersClient({ initial, autoById, comexById = {}, isSu
     } catch {}
   }
   const openBilling = async (d: Dossier) => {
+    // Ligne déjà tarifée (calcul progressif terminé) : la modale s'ouvre tout de
+    // suite. Olivier 09/09/2026 : « Facturer ouvre le dossier et je dois
+    // recliquer » — pendant le « Calcul… » le bouton était désactivé et le second
+    // toucher tombait sur la ligne, qui ouvre le dossier.
+    if (!d.light) { setBilling(d); return }
     setLoadingBill(d.root_id)
     try { const j = await fetch(`/api/dossier/${d.root_id}?t=${Date.now()}`, { cache: 'no-store' }).then(r => r.json()); setBilling(j?.dossier || d) }
     catch { setBilling(d) } finally { setLoadingBill(null) }
@@ -408,7 +413,7 @@ export default function DossiersClient({ initial, autoById, comexById = {}, isSu
         return (
           <div key={d.root_id} className="bg-surface border rounded-2xl overflow-hidden">
             {/* Olivier 08/09/2026 : un clic ouvre le dossier (groupes repliés) ; on facture depuis là. */}
-            <div onClick={() => router.push(`/dispatch/dossier/${d.root_id}?open=none`)} title="Ouvrir le dossier"
+            <div onClick={() => { if (loadingBill || billing) return; router.push(`/dispatch/dossier/${d.root_id}?open=none`) }} title="Ouvrir le dossier"
               className="grid grid-cols-1 md:grid-cols-[minmax(200px,1.2fr)_minmax(160px,1fr)_minmax(200px,1.3fr)_130px_170px_auto] gap-3 items-center px-4 py-2.5 cursor-pointer hover:bg-surface-2/60">
               <div className="text-ink font-bold text-sm flex items-start gap-2">
                 {lotEligible(d) && <input type="checkbox" checked={lot.has(d.root_id)} onClick={e => e.stopPropagation()} onChange={() => setLot(p => { const n = new Set(p); n.has(d.root_id) ? n.delete(d.root_id) : n.add(d.root_id); return n })} className="mt-0.5 accent-[var(--tw-brand,#1f4fd8)]" title="Ajouter au lot à facturer" />}
@@ -453,7 +458,7 @@ export default function DossiersClient({ initial, autoById, comexById = {}, isSu
               <div className="flex gap-1.5">
                 {isCircuit(d)
                   ? <Link href={inComex(d) ? '/touring-comex' : d.parquet ? '/fourriere/saisies' : '/fourriere/domaine'} onClick={e => e.stopPropagation()} className="px-3 py-1.5 rounded-lg text-xs font-semibold border text-ink-secondary hover:text-ink">{inComex(d) ? 'Touring COMEX ↗' : d.parquet ? 'Module Saisie ↗' : 'Module Domaine ↗'}</Link>
-                  : <button disabled={(!rd.length && !d.legs.some(l => canPickLeg(l))) || loadingBill === d.root_id} onClick={e => { e.stopPropagation(); openBilling(d) }} className={`px-3 py-1.5 rounded-lg text-xs font-semibold ${rd.length ? 'bg-brand text-white' : 'border text-ink-secondary'} disabled:opacity-40`}>{loadingBill === d.root_id ? '⏳ Calcul…' : `Facturer${d.state.open && rd.length ? ' (partiel)' : ''}`}</button>}
+                  : <button disabled={!rd.length && !d.legs.some(l => canPickLeg(l))} aria-busy={loadingBill === d.root_id} onClick={e => { e.stopPropagation(); if (loadingBill) return; openBilling(d) }} className={`px-3 py-1.5 rounded-lg text-xs font-semibold ${rd.length ? 'bg-brand text-white' : 'border text-ink-secondary'} disabled:opacity-40`}>{loadingBill === d.root_id ? '⏳ Calcul…' : `Facturer${d.state.open && rd.length ? ' (partiel)' : ''}`}</button>}
                 {d.legs.some(l => l.billed_refs.some(r => /^brouillon Odoo/i.test(r))) && (
                   <button disabled={verifying === d.root_id} onClick={async e => { e.stopPropagation(); setVerifying(d.root_id); try { const r = await fetch(`/api/dossier/${d.root_id}/verify-invoices`, { method: 'POST' }); const j = await r.json().catch(() => ({})); setReport(j.message || j.error || `Erreur ${r.status}`); await refreshOne(d.root_id) } finally { setVerifying(null) } }} title="Relit Odoo : si le brouillon est confirmé, le numéro remplace le tampon" className="px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-emerald-600 hover:bg-emerald-700 text-white disabled:opacity-50">{verifying === d.root_id ? '⏳' : '✓ Facturation OK'}</button>
                 )}
