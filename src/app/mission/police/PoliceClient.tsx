@@ -162,6 +162,11 @@ export default function PoliceClient({ userRole = 'driver' }: { userRole?: strin
   const [previewError, setPreviewError] = useState<string | null>(null)
   const [photos,         setPhotos]         = useState<File[]>([])
   const [previews,       setPreviews]       = useState<string[]>([])
+  // App native (Capacitor) : rafale photo — Matthieu 09/09/2026 : « pouvoir faire
+  // toutes les photos à la suite et indiquer juste quand toutes sont prises ».
+  const [isNative,       setIsNative]       = useState(false)
+  const [shooting,       setShooting]       = useState(false)
+  useEffect(() => { import('@capacitor/core').then(({ Capacitor }) => setIsNative(Capacitor.isNativePlatform())).catch(() => {}) }, [])
   const [loading,        setLoading]        = useState(false)
   const submittingRef = useRef(false)   // garde synchrone anti double-soumission
   const [err,            setErr]            = useState('')
@@ -516,6 +521,45 @@ export default function PoliceClient({ userRole = 'driver' }: { userRole?: strin
       setPhotos(p => [...p, compressed])
       setPreviews(p => [...p, preview])
     })
+  }
+
+  // Rafale : l'appareil photo natif se rouvre après chaque cliché ; « Annuler »
+  // (ou Terminer) dans l'appareil = toutes les photos sont prises. Même boucle
+  // que la clôture chauffeur (DriverClient).
+  const dataUrlToFile = (dataUrl: string, name: string): File => {
+    const [meta, b64] = dataUrl.split(',')
+    const mime = meta.match(/data:(.*?);base64/)?.[1] || 'image/jpeg'
+    const bin = atob(b64); const arr = new Uint8Array(bin.length)
+    for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i)
+    return new File([arr], name, { type: mime })
+  }
+  const shootBurst = async (source: 'camera' | 'gallery') => {
+    if (!isNative) { photoRef.current?.click(); return }
+    setShooting(true)
+    try {
+      const { Camera, CameraResultType, CameraSource } = await import('@capacitor/camera')
+      let taken = 0
+      while (true) {
+        let dataUrl: string | undefined
+        try {
+          const photo = await Camera.getPhoto({
+            source: source === 'camera' ? CameraSource.Camera : CameraSource.Photos,
+            resultType: CameraResultType.DataUrl, quality: 85, saveToGallery: false, allowEditing: false, correctOrientation: true,
+          })
+          dataUrl = photo.dataUrl
+        } catch { break }   // Annuler = fin de la rafale
+        if (!dataUrl) break
+        const raw = dataUrlToFile(dataUrl, `police-${Date.now()}.jpg`)
+        const { blob, preview } = await compressPhoto(raw)
+        setPhotos(p => [...p, new File([blob], raw.name, { type: 'image/jpeg' })])
+        setPreviews(p => [...p, preview])
+        taken++
+        if (source === 'gallery' && taken >= 30) break
+      }
+    } catch (e: any) {
+      const msg = String(e?.message || '').toLowerCase()
+      if (!/cancel|dismiss|no image/.test(msg)) setErr(`Appareil photo : ${e?.message || 'indisponible'}`)
+    } finally { setShooting(false) }
   }
 
 
@@ -1423,12 +1467,28 @@ export default function PoliceClient({ userRole = 'driver' }: { userRole?: strin
             </div>
           )}
           <input ref={photoRef} type="file" accept="image/*" multiple className="hidden" onChange={e => addPhotos(e.target.files)} />
-          <button onClick={() => photoRef.current?.click()}
-            className={`w-full py-3 border-2 border-dashed rounded-xl text-sm ${
-              photos.length < 3 ? 'border-amber-400 text-amber-600 hover:border-amber-500' : 'border-strong text-ink-faint hover:border-gray-400'
-            }`}>
-            📷 Ajouter des photos
-          </button>
+          {isNative ? (
+            <div className="space-y-1.5">
+              <div className="flex gap-2">
+                <button type="button" disabled={shooting} onClick={() => shootBurst('camera')}
+                  className={`flex-1 py-3 border-2 border-dashed rounded-xl text-sm font-semibold disabled:opacity-50 ${
+                    photos.length < 3 ? 'border-amber-400 text-amber-600' : 'border-strong text-ink-secondary'
+                  }`}>
+                  {shooting ? '📷 Rafale en cours…' : '📷 Prendre les photos'}
+                </button>
+                <button type="button" disabled={shooting} onClick={() => shootBurst('gallery')}
+                  className="px-4 py-3 border-2 border-dashed border-strong rounded-xl text-sm text-ink-secondary disabled:opacity-50">🖼️</button>
+              </div>
+              <p className="text-ink-faint text-xs text-center">Une photo après l'autre, sans revenir ici. Appuie sur <b>Annuler</b> dans l'appareil quand toutes les photos sont prises.</p>
+            </div>
+          ) : (
+            <button onClick={() => photoRef.current?.click()}
+              className={`w-full py-3 border-2 border-dashed rounded-xl text-sm ${
+                photos.length < 3 ? 'border-amber-400 text-amber-600 hover:border-amber-500' : 'border-strong text-ink-faint hover:border-gray-400'
+              }`}>
+              📷 Ajouter des photos
+            </button>
+          )}
           {photos.length < 3 && (
             <p className="text-amber-600 text-xs mt-1.5 text-center">
               ⚠️ {3 - photos.length} photo(s) encore requise(s) — minimum 3 pour créer la fiche.
