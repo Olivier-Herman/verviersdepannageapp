@@ -8,9 +8,13 @@
 // progressive des sources parc depuis le callback Odoo vers VD Soft direct.
 //   - Appel Prive REM depot : migre (Fix 5, 26/05)
 //   - SNC / SC rem_depot    : migre via cet helper (Chantier 2, 26/05)
-//   - Mal Garee chargement  : TODO (a migrer dans une iteration future)
-//   - Rodeo                 : TODO
-//   - AVP                   : TODO
+//   - Mal Garee, Rodeo, AVP, Saisie : passent aussi par ici depuis que TOUTE
+//     entree en parc imprime via reprintLabelForMission (driver-action, 02/09) ;
+//     la note par source (blocage police, J+3 rodeo, AVP +60 j, zone/officier
+//     saisie) est choisie dans reprint-label-helper.ts.
+// Chaque impression laisse une ligne dans mission_logs (label_printed /
+// label_print_failed) : un PC Zebra eteint se voit dans la fiche, pas dans les
+// logs serveur (09/09/2026).
 //
 // Note conditionnelle gere selon source/contexte :
 //   - AVP : "AVP DD-MM-YYYY" (date+60j eligibilite destruction)
@@ -21,6 +25,7 @@
 
 import { buildParcLabelZPL } from '@/lib/print/zpl-templates/parc-label'
 import { printZPLRaw }       from '@/lib/print/zebra-raw'
+import { createAdminClient } from '@/lib/supabase'
 
 export interface PrintParcLabelInput {
   missionId:        string                          // id VD Soft (UUID, fallback URL)
@@ -107,6 +112,14 @@ export async function printVdSoftParcLabel(input: PrintParcLabelInput): Promise<
     })
 
     const res = await printZPLRaw(zpl)
+    try {
+      await createAdminClient().from('mission_logs').insert({
+        mission_id: input.missionId,
+        action:     res.ok ? 'label_printed' : 'label_print_failed',
+        notes:      res.ok ? `Étiquette parc imprimée — ${input.motif}${note ? ' · ' + note : ''}` : `Étiquette parc NON imprimée : ${res.error || 'erreur inconnue'} — ${input.motif}`,
+        metadata:   { source: input.source, motif: input.motif, note: note || null, ok: res.ok, error: res.ok ? null : (res.error || null) },
+      })
+    } catch { /* le journal ne doit pas bloquer l'impression */ }
     if (res.ok) {
       console.log(`[printVdSoftParcLabel] OK mission=${input.missionId} source=${input.source}`)
       return { ok: true }
