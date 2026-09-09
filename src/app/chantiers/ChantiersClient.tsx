@@ -9,8 +9,11 @@
 // qu'on revient dessus. Les tables sont server-only : pas de realtime Supabase
 // depuis le navigateur, on repasse par l'API.
 
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { Fragment, useCallback, useEffect, useRef, useState } from 'react'
 import { CHANTIER_COLUMNS, type Chantier, type ChantierLog, type ChantierStatus } from '@/lib/chantiers'
+import type { ChantierMetrics } from '@/lib/chantiers-metrics'
+
+const METRIC_TONE = { ok: 'text-emerald-700 dark:text-emerald-300', warn: 'text-amber-700 dark:text-amber-300', muted: 'text-ink-secondary' } as const
 
 const POLL_MS = 8_000
 
@@ -25,9 +28,10 @@ const fmtDay = (v: string | null | undefined) =>
 const fmtWhen = (v: string) =>
   new Date(v).toLocaleString('fr-BE', { timeZone: 'Europe/Brussels', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
 
-export default function ChantiersClient({ initial, initialLogs, dbError = null }: { initial: Chantier[]; initialLogs: ChantierLog[]; dbError?: string | null }) {
+export default function ChantiersClient({ initial, initialLogs, initialMetrics = {}, dbError = null }: { initial: Chantier[]; initialLogs: ChantierLog[]; initialMetrics?: ChantierMetrics; dbError?: string | null }) {
   const [rows, setRows] = useState<Chantier[]>(initial)
   const [logs, setLogs] = useState<ChantierLog[]>(initialLogs)
+  const [metrics, setMetrics] = useState<ChantierMetrics>(initialMetrics)
   const [syncedAt, setSyncedAt] = useState<number>(Date.now())
   const [now, setNow] = useState<number>(Date.now())
   const inflight = useRef(false)
@@ -38,7 +42,7 @@ export default function ChantiersClient({ initial, initialLogs, dbError = null }
     try {
       const r = await fetch(`/api/chantiers?t=${Date.now()}`, { cache: 'no-store' })
       const j = await r.json()
-      if (r.ok && Array.isArray(j.chantiers)) { setRows(j.chantiers); setLogs(j.logs || []); setSyncedAt(Date.now()) }
+      if (r.ok && Array.isArray(j.chantiers)) { setRows(j.chantiers); setLogs(j.logs || []); if (j.metrics) setMetrics(j.metrics); setSyncedAt(Date.now()) }
     } catch { /* on garde l'état courant, la prochaine passe réessaiera */ }
     finally { inflight.current = false }
   }, [])
@@ -95,6 +99,16 @@ export default function ChantiersClient({ initial, initialLogs, dbError = null }
                   </div>
                   <h3 className="text-sm font-semibold text-ink leading-snug">{c.title}</h3>
                   {c.note && <p className="text-xs text-ink-secondary mt-1 leading-relaxed">{c.note}</p>}
+                  {c.key && metrics[c.key]?.length ? (
+                    <dl className="mt-2 pt-2 border-t border-dashed grid grid-cols-[1fr_auto] gap-x-3 gap-y-0.5 text-[11px]">
+                      {metrics[c.key].map(m => (
+                        <Fragment key={m.label}>
+                          <dt className="text-ink-muted">{m.label}</dt>
+                          <dd className={`font-semibold tabular-nums text-right ${METRIC_TONE[m.tone || 'muted']}`}>{m.value}</dd>
+                        </Fragment>
+                      ))}
+                    </dl>
+                  ) : null}
                 </article>
               ))}
             </section>

@@ -9,6 +9,7 @@ import { withOdooActor }       from '@/lib/odoo'
 import { isRelEligibleSource } from '@/lib/missions/rel-eligible'
 import { isRemorquage }        from '@/lib/missions/mission-types'
 import { getDefaultParcZone }  from '@/lib/missions/parc-default'
+import { flux2Enabled }        from '@/lib/cloture/gating'
 
 export const maxDuration = 60   // hook PDF via waitUntil peut prendre 30s+
 
@@ -575,9 +576,26 @@ export async function POST(req: Request) {
     })
   }
 
+  // Mesure Flux 2 (Olivier 09/09/2026, 30 jours avant de retirer l'ancien écran) :
+  // chaque clôture dit par où elle est passée. « flux2 » = un journal Flux 2
+  // (flux2_closed / flux2_close_failed / flux2_retry_ok) précède la clôture ;
+  // « legacy » = l'ancien écran seul. `flux2_gate` dit si la grille chauffeur ×
+  // assistance était ouverte : legacy + grille ouverte = un trou de gating à
+  // comprendre, legacy + grille fermée = simple déploiement pas encore fait.
+  let closure: Record<string, any> = {}
+  if (['completed', 'complete_delivery'].includes(action)) {
+    try {
+      const [{ data: f2 }, gate] = await Promise.all([
+        supabase.from('mission_logs').select('id').eq('mission_id', mission_id)
+          .in('action', ['flux2_closed', 'flux2_close_failed', 'flux2_retry_ok']).limit(1),
+        flux2Enabled(actor as any, mission as any),
+      ])
+      closure = { closure_path: (f2 || []).length ? 'flux2' : 'legacy', flux2_gate: gate ? 'on' : 'off' }
+    } catch { closure = { closure_path: 'unknown' } }
+  }
   await supabase.from('mission_logs').insert({
     mission_id, actor_id: actor.id, action, notes: mapping.logMessage,
-    metadata: { action, status: mapping.status || mission.status },
+    metadata: { action, status: mapping.status || mission.status, ...closure },
   })
 
   // ── Live Activity : synchro à CHAQUE transition ───────────────────────────

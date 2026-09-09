@@ -11,6 +11,7 @@ import { getServerSession }  from 'next-auth'
 import { authOptions }       from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase'
 import { CHANTIER_STATUSES, isSuperadminSession, type ChantierStatus } from '@/lib/chantiers'
+import { chantierMetrics } from '@/lib/chantiers-metrics'
 
 export const dynamic = 'force-dynamic'
 
@@ -19,14 +20,15 @@ export async function GET() {
   if (!isSuperadminSession(session)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   const sb = createAdminClient()
-  const [{ data: chantiers, error: e1 }, { data: logs, error: e2 }] = await Promise.all([
+  const [{ data: chantiers, error: e1 }, { data: logs, error: e2 }, metrics] = await Promise.all([
     sb.from('chantiers').select('id, key, title, tag, status, note, position, created_at, updated_at, updated_by')
       .order('status').order('position').order('created_at'),
     sb.from('chantier_logs').select('id, chantier_id, at, actor, text').order('at', { ascending: false }).limit(40),
+    chantierMetrics(sb),
   ])
   if (e1) return NextResponse.json({ error: e1.message }, { status: 500 })
   if (e2) return NextResponse.json({ error: e2.message }, { status: 500 })
-  return NextResponse.json({ chantiers: chantiers || [], logs: logs || [] })
+  return NextResponse.json({ chantiers: chantiers || [], logs: logs || [], metrics })
 }
 
 export async function POST(req: Request) {
