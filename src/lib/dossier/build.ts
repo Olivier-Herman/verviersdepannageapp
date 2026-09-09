@@ -477,7 +477,10 @@ async function buildDossierUncached(anyMissionId: string, light: boolean, price 
       // de frais (plus bas).
       const levee = !!parquet && parquet.recipient !== 'client'
         && (parquet.state === 'clos' || (!!(root.levee_saisie_at || root.levee_saisie_date) && root.levee_saisie_type !== 'temporaire' && !parquet.ef_number && !(parquet.efs || []).length))
-      regimeEff = (regime === 'saisie' && levee && !coveredByEf) ? 'autre' : regime
+      // Frais de justice (test à blanc du 09/09 après-midi) : la période SOUS saisie reste au
+      // tarif saisie et part en état de frais ; seule la période ouverte après la levée
+      // (mission_type « autre », créée par la levée) est au tarif « autre », à charge du client.
+      regimeEff = (regime === 'saisie' && levee && !coveredByEf && !isFraisDeJustice) ? 'autre' : regime
       const tarif = dayPriceByRegime[regimeEff]
       let dayPrice = tarif?.price || 0
       if (!dayPrice && rootEst?.parc_jours > 0) dayPrice = r2(Number(rootEst.parc_eur) / Number(rootEst.parc_jours))
@@ -634,11 +637,11 @@ async function buildDossierUncached(anyMissionId: string, light: boolean, price 
       if (l.kind === 'gard' && l.regime === 'saisie') {
         const endDay = l.ended_at ? String(l.ended_at).slice(0, 10) : null
         const covered = !!(parquet.billed_to_date && endDay && String(parquet.billed_to_date).slice(0, 10) >= endDay)
-        if (levee && !covered) {   // levée de saisie, période non couverte par un état de frais → client (Odoo)
+        if (levee && !covered && !isFraisDeJustice) {   // levée de saisie, période non couverte par un état de frais → client (Odoo) — sauf frais de justice : état de frais
           l.channel = 'odoo'
           // Déjà réglé (facturé, sans frais, offert) : on garde son état, on ne le réécrit pas.
           if (!l.nothing_to_bill && !l.billed_refs.length) {
-            l.status_label = `${l.open ? 'Gardiennage en cours' : 'Terminé'} · à facturer au client (levée de saisie${root.levee_saisie_date ? ' du ' + fmtD(String(root.levee_saisie_date)) : ''})`
+            l.status_label = `${l.open ? 'Gardiennage en cours' : 'Terminé'} · à facturer au client (levée de saisie${root.levee_saisie_date ? ' du ' + String(root.levee_saisie_date).slice(8, 10) + '/' + String(root.levee_saisie_date).slice(5, 7) : ''})`
             l.status_tone = 'warn'
           }
           continue
