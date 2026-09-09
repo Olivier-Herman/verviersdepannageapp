@@ -51,6 +51,7 @@
     { "path": "/api/cron/pin-reminder",              "schedule": "0 9 * * *"    },
     { "path": "/api/cron/touring-deroulement-sync",  "schedule": "0 5 * * *"    },
     { "path": "/api/cron/payment-advices",           "schedule": "0 5,12 * * *" },
-    { "path": "/api/cron/mail-agent",               "schedule": "*/15 * * * *" }
+    { "path": "/api/cron/mail-agent",               "schedule": "*/15 * * * *" },
+    { "path": "/api/cron/purge-invisible-fiches",    "schedule": "30 4 * * 1"   }
   ]
 }
