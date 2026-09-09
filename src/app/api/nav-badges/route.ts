@@ -14,6 +14,8 @@ import { authOptions }       from '@/lib/auth'
 import { createAdminClient }  from '@/lib/supabase'
 import { isPersonnelStaff }   from '@/lib/rh-access'
 import { isPreviewOn }        from '@/lib/feature-flags'
+import { getBusinessList }    from '@/lib/settings/business'
+import { sourcesWithTag }     from '@/lib/missions/source-catalog'
 
 export const dynamic    = 'force-dynamic'
 export const fetchCache = 'force-no-store'
@@ -75,5 +77,59 @@ export async function GET() {
     if (count) badges['/dispatch'] = count
   }
 
-  return NextResponse.json({ badges, flags })
+  // ── Menu v3, lot 1 (09/09/2026) : compteurs sur les pages de décision ──────
+  const isFourriere = roles.some((r: string) => ['admin', 'superadmin'].includes(r)) || (u.modules || []).includes('fourriere')
+  const isDispatch  = (u.modules || []).includes('missions') || roles.some((r: string) => ['dispatcher', 'admin', 'superadmin'].includes(r))
+  const isFactu     = (u.modules || []).includes('facturation') || roles.some((r: string) => ['admin', 'superadmin'].includes(r))
+  try {
+    if (isDispatch) {
+      // À relivrer : véhicules au parc dans une zone de relivraison (K, K1, SNC…).
+      const { data: zones } = await sb.from('parc_zones').select('key').eq('active', true).eq('zone_type', 'relivraison')
+      const keys = (zones || []).map((z: any) => z.key)
+      if (keys.length) {
+        const { count } = await sb.from('incoming_missions').select('id', { count: 'exact', head: true })
+          .eq('status', 'parked').eq('dossier_leg', false).in('parc_zone_key', keys)
+        if (count) badges['/relivraison'] = count
+      }
+    }
+    if (isFourriere) {
+      // Réquisitoires à relancer : sources à réquisitoire, sans réquisitoire reçu, véhicule au parc.
+      const reqSources = await sourcesWithTag('requisitoire')
+      if (reqSources.length) {
+        const { count } = await sb.from('incoming_missions').select('id', { count: 'exact', head: true })
+          .in('source', reqSources).is('requisitoire_at', null).eq('status', 'parked').eq('dossier_leg', false)
+        if (count) badges['/fourriere/relance-requisitoire'] = count
+      }
+      // Sortie AVP : abandons au parc depuis 60 jours ou plus (même seuil que la page).
+      const limit = new Date(Date.now() - 60 * 86_400_000).toISOString()
+      const { count } = await sb.from('incoming_missions').select('id', { count: 'exact', head: true })
+        .eq('source', 'police_avp').in('status', ['parked', 'delivering']).eq('dossier_leg', false).lte('intervention_date', limit)
+      if (count) badges['/fourriere/destruction'] = count
+    }
+    if (isFactu) {
+      // À facturer : fiches terminées en attente de facture (même filtre que la Facturation par dossier).
+      const { count } = await sb.from('incoming_missions').select('id', { count: 'exact', head: true })
+        .eq('status', 'to_invoice').eq('dossier_leg', false).is('archived_at', null).not('external_id', 'like', 'PROCESSING_%')
+      if (count) { badges['/facturation'] = count; badges['/facturation/dossiers'] = count }
+    }
+  } catch (e: any) {
+    console.warn('[nav-badges] compteurs menu v3 :', e?.message || e)
+  }
+
+  // ── Zone « Maintenant » (réglage par rôle) + favoris de l'utilisateur ───────
+  let now: string[] = []
+  try {
+    if (roles.includes('superadmin')) now = await getBusinessList('nav_now_superadmin')
+    else if (isDispatch) now = await getBusinessList('nav_now_dispatcher')
+    else if ((u.modules || []).includes('facturation')) now = await getBusinessList('nav_now_facturation')
+  } catch (e: any) {
+    console.warn('[nav-badges] réglage « Maintenant » manquant :', e?.message || e)
+  }
+  let favorites: string[] = []
+  try {
+    const { data: me } = await sb.from('users').select('nav_favorites').eq('id', u.id).maybeSingle()
+    favorites = Array.isArray((me as any)?.nav_favorites) ? (me as any).nav_favorites : []
+  } catch { /* colonne absente → pas de favoris */ }
+
+  return NextResponse.json({ badges, flags, nav: { now, favorites } })
 }

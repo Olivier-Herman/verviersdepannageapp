@@ -75,6 +75,16 @@ export default function AppShell({
   // Flag `nav_menu_v2` (menu navigable) — résolu serveur, transporté par la même
   // route que les badges (undefined tant que le fetch n'a pas répondu).
   const [navV2Flag, setNavV2Flag] = useState<boolean | undefined>(undefined)
+  // Menu v3 (lot 1) : zone « Maintenant » du rôle + favoris de l'utilisateur.
+  const [navNow, setNavNow]   = useState<string[]>([])
+  const [navFavs, setNavFavs] = useState<string[]>([])
+  const toggleFavorite = (href: string) => {
+    setNavFavs(prev => {
+      const next = prev.includes(href) ? prev.filter(h => h !== href) : [...prev, href]
+      fetch('/api/users/nav-preference', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ nav_favorites: next }) }).catch(() => {})
+      return next
+    })
+  }
   useEffect(() => {
     let alive = true
     const load = () => fetch('/api/nav-badges', { cache: 'no-store' }).then(r => r.json())
@@ -82,6 +92,8 @@ export default function AppShell({
         if (!alive) return
         setNavBadges(d.badges || {})
         setNavV2Flag(!!d.flags?.nav_menu_v2)
+        if (Array.isArray(d.nav?.now)) setNavNow(d.nav.now)
+        if (Array.isArray(d.nav?.favorites)) setNavFavs(d.nav.favorites)
       }).catch(() => {})
     load()
     const iv = setInterval(load, 60000)   // rafraîchit toutes les minutes
@@ -153,6 +165,9 @@ export default function AppShell({
             userRole={userRole}
             userModules={userModules}
             badges={navBadges}
+            now={navNow}
+            favorites={navFavs}
+            onToggleFavorite={toggleFavorite}
           />
         ) : (
         <nav className={`flex-1 py-4 overflow-y-auto flex flex-col gap-0.5 ${collapsed ? 'px-2' : 'px-3'}`}>
@@ -243,6 +258,9 @@ export default function AppShell({
           userModules={userModules}
           navBadges={navBadges}
           navV2={navV2}
+          navNow={navNow}
+          navFavs={navFavs}
+          onToggleFavorite={toggleFavorite}
         />
 
         {/* Header desktop */}

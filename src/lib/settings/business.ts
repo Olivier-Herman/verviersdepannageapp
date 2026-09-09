@@ -52,7 +52,7 @@ export async function getBusinessList(key: string): Promise<string[]> {
 export async function getBusinessSettings(): Promise<Record<string, number | string | string[] | null>> {
   const out: Record<string, number | string | string[] | null> = {}
   for (const s of BUSINESS_SETTINGS) {
-    try { out[s.key] = s.kind === 'number' ? await getBusinessNumber(s.key) : s.kind === 'emails' ? await getBusinessList(s.key) : await getBusinessText(s.key) }
+    try { out[s.key] = s.kind === 'number' ? await getBusinessNumber(s.key) : (s.kind === 'emails' || s.kind === 'list') ? await getBusinessList(s.key) : await getBusinessText(s.key) }
     catch { out[s.key] = null }
   }
   return out

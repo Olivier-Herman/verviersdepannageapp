@@ -135,7 +135,7 @@ export default function SettingsClient({
         const raw = (biz[d.key] || '').trim()
         if (!raw) { setParamsError(`« ${d.label} » est obligatoire (valeur d'origine : ${Array.isArray(d.seed) ? d.seed.join(', ') : String(d.seed)}).`); return }
         if (d.kind === 'number') { const n = Number(raw.replace(',', '.')); if (!Number.isFinite(n) || n <= 0) { setParamsError(`« ${d.label} » : nombre attendu.`); return } settings[d.key] = n }
-        else if (d.kind === 'emails') settings[d.key] = raw.split(/[,;\s]+/).map(x => x.trim()).filter(Boolean)
+        else if (d.kind === 'emails' || d.kind === 'list') settings[d.key] = raw.split(/[,;\s]+/).map(x => x.trim()).filter(Boolean)
         else settings[d.key] = raw
       }
       const r = await fetch('/api/admin/settings', {

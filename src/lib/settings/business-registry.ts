@@ -5,11 +5,11 @@
 // PLUS (retrait du repli, Olivier 09/09/2026) : la base est la seule source. Fichier SANS import
 // serveur : il est lu par l'écran d'admin (client) et par lib/settings/business.ts.
 
-export type BusinessSettingKind = 'number' | 'text' | 'emails'
+export type BusinessSettingKind = 'number' | 'text' | 'emails' | 'list'
 export interface BusinessSettingDef {
   key:      string
   label:    string
-  group:    'Odoo' | 'Boîtes mail' | 'Montants'
+  group:    'Odoo' | 'Boîtes mail' | 'Montants' | 'Menu'
   kind:     BusinessSettingKind
   seed:     number | string | string[]
   help?:    string
@@ -39,6 +39,11 @@ export const BUSINESS_SETTINGS: BusinessSettingDef[] = [
   { key: 'touring_check_cc',        label: 'Check Touring — copie du rappel mensuel',         group: 'Boîtes mail', kind: 'emails', seed: ['Andre.ANGELIQUE@touring.be'] },
   // ── Montants ────────────────────────────────────────────────────────────
   { key: 'forfait_parc_accident_tvac', label: 'Forfait gardiennage accident Ethias / Kaze (TVAC)', group: 'Montants', kind: 'number', seed: 220, help: 'Écrit en HTVA sur la fiche à la coche ; les anciens dossiers gardent le leur.' },
+  // ── Menu : zone « Maintenant » par rôle (lot 1 du menu v3, 09/09/2026) ──
+  // Chemins de pages, séparés par des virgules, dans l'ordre d'affichage.
+  { key: 'nav_now_dispatcher',  label: 'Menu « Maintenant » — dispatchers',              group: 'Menu', kind: 'list', seed: ['/dispatch', '/relivraison', '/fourriere', '/fourriere/saisies', '/missions-terminees'], help: 'Pages toujours visibles en haut du menu pour les dispatchers (rôle dispatcher ou module missions).' },
+  { key: 'nav_now_facturation', label: 'Menu « Maintenant » — facturation',              group: 'Menu', kind: 'list', seed: ['/facturation/dossiers', '/facturation', '/facturation/allianz', '/facturation/touring', '/admin/amendes'], help: 'Pour les utilisateurs du module facturation qui ne sont pas dispatchers.' },
+  { key: 'nav_now_superadmin',  label: 'Menu « Maintenant » — superadmins',              group: 'Menu', kind: 'list', seed: ['/dispatch', '/relivraison', '/fourriere', '/facturation/dossiers', '/chantiers'] },
 ]
 
 export const BUSINESS_SETTING_KEYS = new Set(BUSINESS_SETTINGS.map(s => s.key))

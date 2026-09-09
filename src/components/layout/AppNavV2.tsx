@@ -16,7 +16,7 @@
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useEffect, useMemo, useState } from 'react'
-import { ChevronRight, Search, X } from 'lucide-react'
+import { ChevronRight, Search, Star, X } from 'lucide-react'
 import { T } from '@/lib/i18n/T'
 import { type NavItem } from './nav-items'
 import {
@@ -36,13 +36,64 @@ interface Props {
   variant?:    'sidebar' | 'drawer'
   /** Appelé à chaque navigation (ferme le drawer mobile). */
   onNavigate?: () => void
+  /** Menu v3 (lot 1) : pages « Maintenant » du rôle (réglage admin), favoris de l'utilisateur. */
+  now?:       string[]
+  favorites?: string[]
+  onToggleFavorite?: (href: string) => void
 }
 
+const RECENTS_KEY = 'vd_nav_recents'
+const readRecents = (): string[] => { try { const v = JSON.parse(localStorage.getItem(RECENTS_KEY) || '[]'); return Array.isArray(v) ? v : [] } catch { return [] } }
+
 export default function AppNavV2({
-  items, userRole, userModules, badges = {}, variant = 'sidebar', onNavigate,
+  items, userRole, userModules, badges = {}, variant = 'sidebar', onNavigate, now = [], favorites = [], onToggleFavorite,
 }: Props) {
   const pathname = usePathname()
   const modules  = useMemo(() => buildNavTree(items, userRole, userModules), [items, userRole, userModules])
+
+  // ── Zone « Maintenant » : réglage du rôle + favoris + 3 dernières pages ─────
+  // Une page n'y figure que si elle existe dans le menu de CET utilisateur
+  // (mêmes permissions que le reste : rien de gagné, rien de perdu).
+  type Quick = { href: string; label: React.ReactNode; icon: React.ReactNode; badge: number }
+  const resolveQuick = (href: string): Quick | null => {
+    for (const mod of modules) {
+      if (mod.href === href) return { href, label: mod.i18nKey ? <T k={mod.i18nKey} /> : mod.label, icon: <span className="text-base leading-none">{mod.icon}</span>, badge: badges[href] || 0 }
+      const sec = mod.visibleSections.find(s => s.href === href)
+      if (sec) { const Icon = sec.icon; return { href, label: sec.i18nKey ? <T k={sec.i18nKey} /> : sec.label, icon: Icon ? <Icon size={16} className="opacity-70" /> : <span className="text-base leading-none">{mod.icon}</span>, badge: badges[href] || 0 } }
+    }
+    return null
+  }
+  const [recents, setRecents] = useState<string[]>([])
+  useEffect(() => { setRecents(readRecents()) }, [])
+  useEffect(() => {
+    if (!pathname || !resolveQuick(pathname)) return
+    const next = [pathname, ...readRecents().filter(h => h !== pathname)].slice(0, 6)
+    try { localStorage.setItem(RECENTS_KEY, JSON.stringify(next)) } catch { /* stockage indisponible */ }
+    setRecents(next)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pathname, modules])
+  const quick = useMemo(() => {
+    const seen = new Set<string>(); const out: (Quick & { kind: 'now' | 'fav' | 'recent' })[] = []
+    const push = (h: string, kind: 'now' | 'fav' | 'recent') => { if (seen.has(h)) return; const q = resolveQuick(h); if (!q) return; seen.add(h); out.push({ ...q, kind }) }
+    now.forEach(h => push(h, 'now'))
+    favorites.forEach(h => push(h, 'fav'))
+    recents.filter(h => !seen.has(h)).slice(0, 3).forEach(h => push(h, 'recent'))
+    return out
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [now, favorites, recents, modules, badges])
+  const isFav = (href: string) => favorites.includes(href)
+  const StarBtn = ({ href, label }: { href: string; label: string }) => onToggleFavorite ? (
+    <button
+      type="button"
+      onClick={e => { e.preventDefault(); e.stopPropagation(); onToggleFavorite(href) }}
+      aria-label={isFav(href) ? `Retirer ${label} des favoris` : `Épingler ${label}`}
+      aria-pressed={isFav(href)}
+      title={isFav(href) ? 'Retirer des favoris' : 'Épingler en haut du menu'}
+      className={`flex-shrink-0 p-0.5 rounded transition-opacity ${isFav(href) ? 'text-amber-500 opacity-100' : 'opacity-0 group-hover:opacity-60 hover:!opacity-100 text-ink-muted'}`}
+    >
+      <Star size={13} fill={isFav(href) ? 'currentColor' : 'none'} />
+    </button>
+  ) : null
   const { pinned, rest } = useMemo(() => splitPinned(modules), [modules])
   const active   = useMemo(() => findActiveModule(modules, pathname), [modules, pathname])
 
@@ -112,6 +163,7 @@ export default function AppNavV2({
           <span className="text-base">{mod.icon}</span>
           <span className="flex-1 min-w-0 truncate">{label}</span>
           {badge > 0 && <Badge n={badge} />}
+          {!hasKids && <StarBtn href={href} label={mod.label} />}
           {hasKids && (
             // Le chevron seul déplie/replie sans naviguer.
             <button
@@ -150,7 +202,7 @@ export default function AppNavV2({
                       href={section.href}
                       onClick={onNavigate}
                       tabIndex={expanded ? undefined : -1}
-                      className={`flex items-center gap-2.5 rounded-md text-[13px] font-medium transition-colors ${
+                      className={`group flex items-center gap-2.5 rounded-md text-[13px] font-medium transition-colors ${
                         variant === 'drawer' ? 'px-3 py-2.5' : 'px-3 py-2'
                       } ${
                         isActive ? 'bg-brand-soft text-brand' : 'text-ink-secondary hover:text-ink hover:bg-surface-hover'
@@ -161,6 +213,7 @@ export default function AppNavV2({
                         {section.i18nKey ? <T k={section.i18nKey} /> : section.label}
                       </span>
                       {sBadge > 0 && <Badge n={sBadge} />}
+                      <StarBtn href={section.href} label={section.label} />
                     </Link>
                   )
                 })}
@@ -202,6 +255,31 @@ export default function AppNavV2({
         )}
       </div>
 
+      {/* ── MAINTENANT : pages du rôle + favoris + récents ──────
+          Menu v3, lot 1 (Olivier 09/09/2026 : « ce qu'on ouvre chaque jour à un clic »). */}
+      {!searching && quick.length > 0 && (
+        <div className="flex-shrink-0 max-h-[45%] overflow-y-auto pb-2 mb-2 border-b">
+          <p className="px-3 pb-1 text-[10px] font-semibold uppercase tracking-widest text-ink-faint">Maintenant</p>
+          <div className="flex flex-col gap-0.5">
+            {quick.map(q => {
+              const isActive = pathname === q.href || (q.href !== '/' && pathname.startsWith(q.href + '/'))
+              return (
+                <Link key={q.href} href={q.href} onClick={onNavigate}
+                  className={`group flex items-center gap-2.5 rounded-md text-[13px] font-medium transition-colors ${rowPad} ${
+                    isActive ? 'bg-brand-soft text-brand' : 'text-ink-secondary hover:text-ink hover:bg-surface-hover'
+                  }`}>
+                  <span className="flex-shrink-0 w-5 flex items-center justify-center">{q.icon}</span>
+                  <span className="flex-1 min-w-0 truncate">{q.label}</span>
+                  {q.kind === 'recent' && <span className="text-[10px] text-ink-faint uppercase tracking-wide">récent</span>}
+                  {q.badge > 0 && <Badge n={q.badge} />}
+                  <StarBtn href={q.href} label={typeof q.label === 'string' ? q.label : q.href} />
+                </Link>
+              )
+            })}
+          </div>
+        </div>
+      )}
+
       {/* ── RACCOURCIS ÉPINGLÉS ─────────────────────────────
           Zone fixe : ce qu'on utilise tout le temps, toujours en haut. */}
       {shownPinned.length > 0 && (
@@ -212,6 +290,7 @@ export default function AppNavV2({
 
       {/* ── MODULES ────────────────────────────────────── */}
       <div className="flex-1 min-h-0 overflow-y-auto flex flex-col gap-0.5">
+        {!searching && quick.length > 0 && <p className="px-3 pb-1 text-[10px] font-semibold uppercase tracking-widest text-ink-faint">Modules</p>}
         {shownRest.map(mod => <ModuleBlock key={mod.key} mod={mod} />)}
         {noResult && (
           <p className="px-3 py-4 text-sm text-ink-muted">Aucun menu ne correspond à « {query.trim()} ».</p>

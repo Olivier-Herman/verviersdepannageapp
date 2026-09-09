@@ -82,7 +82,8 @@ export const NAV_TREE: NavModule[] = [
   {
     key: 'facturation', label: 'Facturation', icon: '🧾',
     sections: [
-      { href: '/facturation',         label: 'Facturation',     icon: Receipt,       requires: '/facturation' },
+      { href: '/facturation',          label: 'Facturation',            icon: Receipt,       requires: '/facturation' },
+      { href: '/facturation/dossiers', label: 'Facturation par dossier', icon: FolderCheck,   requires: '/facturation', superadminOnly: true },
       { href: '/facturation/allianz', label: 'Clôture Allianz', icon: ShieldCheck,   requires: '/facturation' },
       { href: '/facturation/touring', label: 'Touring',         icon: Shield,        requires: '/facturation' },
       { href: '/admin/amendes',       label: 'Amendes',         icon: AlertTriangle, requires: '/admin/amendes' },
