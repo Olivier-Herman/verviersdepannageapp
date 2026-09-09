@@ -268,7 +268,7 @@ export default function RelivraisonClient({ userRole, userName, userEmail, userM
               <span className={`ml-2 ${zone === z.key ? 'text-white/80' : 'text-ink-faint'}`}>{z.count}</span>
             </button>
           ))}
-          <span className="ml-auto bg-emerald-500/10 border border-emerald-500/30 rounded-lg px-3 py-1.5 text-emerald-300 text-xs font-medium">
+          <span className="ml-auto hidden sm:inline-block bg-emerald-500/10 border border-emerald-500/30 rounded-lg px-3 py-1.5 text-emerald-300 text-xs font-medium">
             🗺️ Tri par tournée
           </span>
         </div>
@@ -289,7 +289,8 @@ export default function RelivraisonClient({ userRole, userName, userEmail, userM
                 href={`/dispatch/${m.id}`}
                 className="block bg-surface border rounded-xl p-4 hover:border-brand/40 transition"
               >
-                <div className="flex items-start justify-between gap-3 flex-wrap">
+                {/* Téléphone : une seule colonne, boutons côte à côte en pleine largeur (Olivier 09/09). Écran large : deux colonnes. */}
+                <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
                   <div className="min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
                       <p className="text-ink font-bold font-mono text-sm">
@@ -317,13 +318,14 @@ export default function RelivraisonClient({ userRole, userName, userEmail, userM
                     {m.parked_at && (() => { const d = daysSince(m.parked_at); return (
                       <p className={`text-xs mt-0.5 ${d != null && d >= 7 ? 'text-amber-600 font-medium' : 'text-ink-faint'}`}>Au parc depuis le {fmtD(m.parked_at)}{d != null ? ` · ${d} j` : ''}</p>
                     ) })()}
-                    <span className="text-ink-faint text-xs mt-1 inline-block">VOIR la fiche →</span>
+                    <span className="text-ink-faint text-xs mt-1 hidden sm:inline-block">VOIR la fiche →</span>
                   </div>
-                  <div className="flex flex-col items-end gap-1.5 flex-shrink-0 max-w-[60%]">
+                  <div className="flex flex-col gap-2 sm:items-end sm:flex-shrink-0 sm:max-w-[60%]">
+                  <div className="flex gap-2 sm:flex-col sm:items-end">
                     <button
                       type="button"
                       onClick={(e) => { e.preventDefault(); e.stopPropagation(); openModal(m) }}
-                      className="px-3 py-1.5 bg-brand hover:bg-brand-hover text-white rounded-lg text-xs font-semibold transition"
+                      className="flex-1 sm:flex-none px-3 py-2.5 sm:py-1.5 bg-brand hover:bg-brand-hover text-white rounded-lg text-sm sm:text-xs font-semibold transition"
                     >
                       🔁 Relivraison
                     </button>
@@ -333,16 +335,17 @@ export default function RelivraisonClient({ userRole, userName, userEmail, userM
                         type="button"
                         disabled={moving === m.id}
                         onClick={(e) => { e.preventDefault(); e.stopPropagation(); moveZone(m.id, zone === 'K1' ? 'K' : 'K1') }}
-                        className="px-3 py-1.5 bg-surface-2 hover:bg-surface-hover border text-ink-secondary hover:text-ink rounded-lg text-xs font-medium transition disabled:opacity-50"
+                        className="flex-1 sm:flex-none px-3 py-2.5 sm:py-1.5 bg-surface-2 hover:bg-surface-hover border text-ink-secondary hover:text-ink rounded-lg text-sm sm:text-xs font-medium transition disabled:opacity-50"
                       >
                         {moving === m.id ? '⏳' : zone === 'K1' ? '→ Relivraison' : '⏳ En attente'}
                       </button>
                     )}
-                    {/* Sous le bouton : adresse de relivraison connue, ou "En attente d'adresse" */}
+                    </div>
+                    {/* Sous les boutons : adresse de relivraison connue, ou "En attente d'adresse" */}
                     {m.redelivery_address ? (
-                      <p className="text-ink-secondary text-xs text-right leading-snug">📍 {m.redelivery_address}</p>
+                      <p className="text-ink-secondary text-xs sm:text-right leading-snug">📍 {m.redelivery_address}</p>
                     ) : (
-                      <p className="text-amber-500 text-xs text-right font-medium">⏳ En attente d&apos;adresse</p>
+                      <p className="text-amber-500 text-xs sm:text-right font-medium">⏳ En attente d&apos;adresse</p>
                     )}
                   </div>
                 </div>
@@ -377,14 +380,14 @@ export default function RelivraisonClient({ userRole, userName, userEmail, userM
             <p className="text-ink-muted text-xs mb-2">La relivraison de ces véhicules est terminée, mais la fiche est restée « en parc » (remise en parc après coup). Le bouton la sort du parc à la date de la relivraison et la passe à facturer si rien n'a été facturé.</p>
             <div className="space-y-2">
               {stale.map(m => (
-                <div key={m.id} className="bg-amber-500/5 border border-amber-500/30 rounded-xl p-3 flex items-center gap-3 flex-wrap">
+                <div key={m.id} className="bg-amber-500/5 border border-amber-500/30 rounded-xl p-3 flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3">
                   <div className="min-w-0 flex-1">
                     <p className="text-ink font-bold font-mono text-sm">{m.vehicle_plate || '—'}<span className="text-ink-secondary font-normal font-sans"> {[m.vehicle_brand, m.vehicle_model].filter(Boolean).join(' ')}</span></p>
                     <p className="text-ink-muted text-xs mt-0.5">Relivraison #{m.rel?.mission_number ?? ''} terminée{m.rel?.completed_at ? ` le ${fmtD(m.rel.completed_at)}` : ''}{m.rel?.driver ? ` par ${m.rel.driver}` : ''}{m.parked_at ? ` · au parc depuis le ${fmtD(m.parked_at)}` : ''}</p>
                   </div>
                   <Link href={`/dispatch/${m.id}`} className="text-xs text-ink-faint hover:text-ink">Voir la fiche →</Link>
                   <button type="button" disabled={exiting === m.id} onClick={() => exitParent(m)}
-                    className="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-xs font-semibold transition disabled:opacity-50">
+                    className="w-full sm:w-auto px-3 py-2.5 sm:py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-sm sm:text-xs font-semibold transition disabled:opacity-50">
                     {exiting === m.id ? '⏳' : 'Sortir du parc'}
                   </button>
                 </div>

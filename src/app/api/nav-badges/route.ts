@@ -87,9 +87,17 @@ export async function GET() {
       const { data: zones } = await sb.from('parc_zones').select('key').eq('active', true).eq('zone_type', 'relivraison')
       const keys = (zones || []).map((z: any) => z.key)
       if (keys.length) {
-        const { count } = await sb.from('incoming_missions').select('id', { count: 'exact', head: true })
-          .eq('status', 'parked').eq('dossier_leg', false).in('parc_zone_key', keys)
-        if (count) badges['/relivraison'] = count
+        // Même règle que l'onglet Relivraison : une fiche dont la relivraison existe déjà ne compte plus.
+        const { data: parked } = await sb.from('incoming_missions').select('id')
+          .eq('status', 'parked').eq('dossier_leg', false).in('parc_zone_key', keys).is('archived_at', null)
+        const ids: string[] = (parked || []).map((r: any) => String(r.id))
+        if (ids.length) {
+          const { data: kids } = await sb.from('incoming_missions').select('parent_mission_id')
+            .in('parent_mission_id', ids).eq('dossier_leg', false).not('status', 'in', '("cancelled","ignored")')
+          const withChild = new Set((kids || []).map((k: any) => k.parent_mission_id))
+          const n = ids.filter(id => !withChild.has(id)).length
+          if (n) badges['/relivraison'] = n
+        }
       }
     }
     if (isFourriere) {
