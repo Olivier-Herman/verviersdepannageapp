@@ -69,7 +69,10 @@ const ready  = (d: Dossier) => d.legs.filter(l => isOdoo(l) && (canPickLeg(l) ||
 // Dossier « circuit » = ce qui reste à régler passe par le Parquet (états de
 // frais) ou le Domaine (relevé trimestriel), pas par une facture Odoo d'ici.
 const isCircuitLegs = (d: Dossier) => d.legs.some(l => !isOdoo(l) && !isLegBilled(l) && !l.nothing_to_bill) && ready(d).length === 0
-const hasUnknown = (d: Dossier) => d.legs.some(l => l.amount_unknown && !isLegBilled(l))
+// Une ligne pas encore tarifée (montants figés) n'a rien à dire sur le tarif :
+// elle affiche son montant figé et un sablier, jamais « à calculer ».
+const isPending  = (d: Dossier) => !!d.light
+const hasUnknown = (d: Dossier) => !d.light && d.legs.some(l => l.amount_unknown && !isLegBilled(l))
 // Pourquoi le moteur n'a pas su chiffrer : la raison vit sur le groupe
 // (amount_note). Sans elle, « à calculer » ne dit pas quoi corriger — il faut
 // ouvrir le dossier pour la lire (Olivier 09/09/2026, 2CMX015 et 1DMC939).
@@ -103,7 +106,7 @@ export default function DossiersClient({ initial, autoById, comexById = {}, isSu
   // bouton crée leurs factures à la suite (tous les groupes prêts de chacun).
   const [lot, setLot] = useState<Set<string>>(new Set())
   const [lotBusy, setLotBusy] = useState(false)
-  const lotEligible = (d: Dossier) => !d.state.open && !isDone(d) && !isCircuit(d) && ready(d).length > 0 && !d.legs.some(l => l.amount_unknown && !isLegBilled(l))
+  const lotEligible = (d: Dossier) => !isPending(d) && !d.state.open && !isDone(d) && !isCircuit(d) && ready(d).length > 0 && !d.legs.some(l => l.amount_unknown && !isLegBilled(l))
   const runLot = async () => {
     const targets = rows.filter(d => lot.has(d.root_id))
     if (!targets.length) return
@@ -188,6 +191,33 @@ export default function DossiersClient({ initial, autoById, comexById = {}, isSu
   const scoped = rows.filter(inScope).filter(matches)
   const visible = scoped.filter(TABS.find(t => t[0] === tab)![2])
   const todo = scoped.filter(d => !isDone(d) && !isCircuit(d))
+
+  // Tarification progressive : la page arrive avec les montants figés (2 s), on
+  // demande ensuite le vrai montant dossier par dossier et on remplace la ligne
+  // dès qu'il arrive. Par petits paquets, pour ne pas noyer le serveur.
+  // Olivier 09/09/2026 : « 24 sec pour que la page facturation s'affiche ».
+  const [pricing, setPricing] = useState(0)   // nombre de dossiers encore à tarifer
+  useEffect(() => {
+    const todoIds = initial.filter(d => d.light).map(d => d.root_id)
+    if (!todoIds.length) return
+    let cancelled = false
+    setPricing(todoIds.length)
+    ;(async () => {
+      for (let i = 0; i < todoIds.length; i += 6) {
+        if (cancelled) return
+        const batch = todoIds.slice(i, i + 6)
+        await Promise.all(batch.map(async id => {
+          try {
+            const j = await fetch(`/api/dossier/${id}?mode=list`, { cache: 'no-store' }).then(r => r.json())
+            if (!cancelled && j?.dossier) setRows(p => p.map(d => d.root_id === id ? j.dossier : d))
+          } catch { /* la ligne garde son montant figé */ }
+          if (!cancelled) setPricing(n => Math.max(0, n - 1))
+        }))
+      }
+    })()
+    return () => { cancelled = true }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   const refreshOne = async (rootId: string) => {
     try {
@@ -277,7 +307,8 @@ export default function DossiersClient({ initial, autoById, comexById = {}, isSu
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-        <Kpi label="Reste à facturer" value={eur(todo.reduce((s, d) => s + rest(d), 0))} sub={`${eurTvac(todo.reduce((s, d) => s + rest(d), 0))} TVAC`} />
+        <Kpi label="Reste à facturer" value={eur(todo.reduce((s, d) => s + rest(d), 0))}
+          sub={pricing > 0 ? `⏳ ${pricing} dossier(s) en cours de calcul` : `${eurTvac(todo.reduce((s, d) => s + rest(d), 0))} TVAC`} />
         <Kpi label="Éligibles au prochain cron" value={String(scoped.filter(isAuto).length)} />
         <Kpi label="Dossiers en cours (parc / relivraison)" value={String(scoped.filter(d => d.state.open && !isDone(d)).length)} />
         <Kpi label="Partiel possible maintenant" value={String(scoped.filter(d => d.state.open && ready(d).length > 0).length)} />
@@ -362,7 +393,9 @@ export default function DossiersClient({ initial, autoById, comexById = {}, isSu
                   ? <span className="text-amber-700 dark:text-amber-300 font-normal" title={unknownTitle(d)}>{rest(d) > 0 ? eur(rest(d)) + ' + ' : ''}à calculer</span>
                   : eur(rest(d))}</span>
                 <span className="block text-[10.5px] font-normal text-ink-muted">reste HTVA</span>
-                {hasUnknown(d)
+                {isPending(d)
+                  ? <span className="block text-[10.5px] font-normal text-ink-faint" title="Montant figé — le tarif exact arrive">⏳ calcul…</span>
+                  : hasUnknown(d)
                   ? <span className="block text-[10.5px] font-normal text-amber-700 dark:text-amber-300 whitespace-normal leading-tight" title={unknownTitle(d)}>{unknownWhy(d)[0]}</span>
                   : <span className="block text-[12px] font-semibold text-ink-secondary" title="TVA 21 %">{eurTvac(rest(d))} TVAC</span>}
               </div>
