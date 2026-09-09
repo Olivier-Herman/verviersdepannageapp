@@ -22,6 +22,11 @@ export const maxDuration = 60
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024 // 10 MB
 
+// Frais de Justice Verviers — le partenaire Odoo qui paie quand la levée
+// répond « frais de justice » (Olivier 09/09/2026 : « l'id 67 »).
+const FRAIS_JUSTICE_ODOO_ID = 67
+const FRAIS_JUSTICE_NAME    = 'Frais de Justice Verviers'
+
 async function getActor() {
   const session = await getServerSession(authOptions)
   if (!session?.user?.email) return null
@@ -38,6 +43,10 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   const type = String(formData.get('type') || '').trim()
   const date = String(formData.get('date') || '').trim()           // YYYY-MM-DD
   const note = String(formData.get('note') || '').trim()
+  // Qui paie après la levée ? Posé à la levée plutôt que déduit après coup
+  // (Olivier 09/09/2026) : « frais de justice » garde le dossier en état de
+  // frais, « client » l'envoie vers une facture Odoo.
+  const payer = String(formData.get('payer') || '').trim()
   const files = (formData.getAll('files') as File[]).filter(f => f && f.size > 0)
 
   if (type !== 'definitive' && type !== 'temporaire') {
@@ -45,6 +54,9 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   }
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
     return NextResponse.json({ error: 'Date de levée requise (format AAAA-MM-JJ).' }, { status: 400 })
+  }
+  if (payer && payer !== 'frais_justice' && payer !== 'client') {
+    return NextResponse.json({ error: 'Réponse invalide : frais de justice ou client.' }, { status: 400 })
   }
   // Déblocage : document OU commentaire obligatoire
   if (files.length === 0 && !note) {
@@ -66,9 +78,16 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   if (mErr)     return NextResponse.json({ error: mErr.message }, { status: 500 })
   if (!mission) return NextResponse.json({ error: 'Mission introuvable' }, { status: 404 })
 
+  // Sur une saisie, une levée DÉFINITIVE doit dire où va la suite : c'est elle
+  // qui décide entre l'état de frais et la facture au client.
+  if (mission.source === 'police_saisie' && type === 'definitive' && !payer) {
+    return NextResponse.json({ error: 'Indique qui paie les frais : frais de justice, ou le client.' }, { status: 400 })
+  }
+
+  const payerLabel = payer === 'frais_justice' ? 'frais de justice' : payer === 'client' ? 'à charge du client' : null
   const typeLabel = type === 'definitive' ? 'définitive' : 'temporaire'
   const dateFr = date.split('-').reverse().join('/')
-  const remarkText = `🔓 Levée de saisie ${typeLabel} (date : ${dateFr})${note ? ` — ${note}` : ''}`
+  const remarkText = `🔓 Levée de saisie ${typeLabel} (date : ${dateFr})${payerLabel ? ` — ${payerLabel}` : ''}${note ? ` — ${note}` : ''}`
   const { data: remark, error: insErr } = await sb
     .from('mission_remarks')
     .insert({ mission_id: params.id, text: remarkText, created_by: actor.id })
@@ -107,6 +126,12 @@ export async function POST(req: Request, { params }: { params: { id: string } })
       levee_saisie_doc_path:  firstPath,
       levee_saisie_by:        actor.id,
       police_levee_saisie_ok: true,
+      ...(payer ? { levee_saisie_payer: payer } : {}),
+      // Frais de justice : on pose le payeur tout de suite, pour que la
+      // facturation n'ait pas à le deviner.
+      ...(payer === 'frais_justice'
+        ? { billed_to_id: FRAIS_JUSTICE_ODOO_ID, billed_to_name: FRAIS_JUSTICE_NAME }
+        : {}),
     })
     .eq('id', params.id)
   if (updErr) return NextResponse.json({ error: updErr.message }, { status: 500 })
@@ -116,7 +141,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     actor_id:   actor.id,
     action:     'levee_saisie',
     notes:      remarkText,
-    metadata:   { type, date, has_doc: !!firstPath },
+    metadata:   { type, date, has_doc: !!firstPath, payer: payer || null },
   })
 
   // Levée DÉFINITIVE : le dossier Parquet sort du circuit tout de suite (sinon

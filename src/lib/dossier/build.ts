@@ -364,9 +364,14 @@ async function buildDossierUncached(anyMissionId: string, light: boolean, price 
   // changement d'instance, alors que le libellé, si (même raison que les
   // relances, qui matchent l'étiquette par son nom).
   const FRAIS_JUSTICE_ODOO_ID = 67
-  const isFraisDeJustice = [root, ...legRows].some(r =>
-    Number((r as any)?.billed_to_id) === FRAIS_JUSTICE_ODOO_ID
-    || /frais\s*de\s*justice/i.test(String((r as any)?.billed_to_name || '')))
+  // La levée pose désormais la question « frais de justice ou client ? » et
+  // enregistre la réponse : elle fait foi. Les levées antérieures n'ont rien
+  // enregistré — on retombe alors sur le client facturé, comme avant.
+  const isFraisDeJustice = root.levee_saisie_payer
+    ? root.levee_saisie_payer === 'frais_justice'
+    : [root, ...legRows].some(r =>
+        Number((r as any)?.billed_to_id) === FRAIS_JUSTICE_ODOO_ID
+        || /frais\s*de\s*justice/i.test(String((r as any)?.billed_to_name || '')))
 
   // ── Circuit Parquet / Domaine (saisies) : dossier saisie + états de frais ──
   let parquet: Dossier['parquet'] | undefined

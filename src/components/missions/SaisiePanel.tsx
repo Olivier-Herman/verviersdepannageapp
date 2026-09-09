@@ -256,6 +256,10 @@ function RequisitoireSection({ mission, onDone }: { mission: SaisieMission; onDo
 function LeveeSaisieSection({ mission, onDone }: { mission: SaisieMission; onDone: () => void }) {
   const [open,  setOpen]  = useState(false)
   const [type,  setType]  = useState<'definitive' | 'temporaire'>('definitive')
+  // Qui paie après la levée ? La question décide du circuit : état de frais
+  // (SPF Justice) ou facture Odoo au client. Aucune valeur par défaut — c'est
+  // une décision, pas un réglage (Olivier 09/09/2026).
+  const [payer, setPayer] = useState<'frais_justice' | 'client' | null>(null)
   const [date,  setDate]  = useState(todayYmd())
   const [note,  setNote]  = useState('')
   const [busy,  setBusy]  = useState(false)
@@ -264,6 +268,7 @@ function LeveeSaisieSection({ mission, onDone }: { mission: SaisieMission; onDon
   const fileRef = useRef<HTMLInputElement>(null)
 
   const hasLevee = !!mission.levee_saisie_at
+  const isSaisie = mission.source === 'police_saisie'
   const leveeTypeLabel = mission.levee_saisie_type === 'temporaire' ? 'temporaire' : 'définitive'
 
   async function submit() {
@@ -274,11 +279,16 @@ function LeveeSaisieSection({ mission, onDone }: { mission: SaisieMission; onDon
       return
     }
     if (!date) { setError('Date de levée requise.'); return }
+    if (isSaisie && type === 'definitive' && !payer) {
+      setError('Indique qui paie les frais : frais de justice, ou le client.')
+      return
+    }
     setBusy(true)
     try {
       const fd = new FormData()
       fd.append('type', type)
       fd.append('date', date)
+      if (payer) fd.append('payer', payer)
       if (note.trim()) fd.append('note', note.trim())
       if (files) for (const f of Array.from(files)) fd.append('files', f)
       for (const f of scanned) fd.append('files', f)
@@ -345,6 +355,24 @@ function LeveeSaisieSection({ mission, onDone }: { mission: SaisieMission; onDon
               ))}
             </div>
           </div>
+
+          {isSaisie && type === 'definitive' && (
+            <div>
+              <span className="text-ink-secondary text-xs font-medium">Qui paie les frais ?</span>
+              <div className="grid grid-cols-2 gap-2 mt-1">
+                {([['frais_justice', 'Frais de justice', 'État de frais au SPF Justice — le dossier finit à la date de levée'],
+                   ['client', 'Le client paie', 'Facture Odoo au client ; le parc suivant passe au tarif « autre »']] as const).map(([val, label, hint]) => (
+                  <button key={val} type="button" onClick={() => { setPayer(val); setError(null) }}
+                    className={`p-2 rounded-lg border text-left transition ${
+                      payer === val ? 'bg-rose-600 text-white border-rose-600' : 'bg-surface hover:bg-surface-hover border-strong text-ink'
+                    }`}>
+                    <div className="text-xs font-bold">{label}</div>
+                    <div className={`text-[10px] ${payer === val ? 'text-white/80' : 'text-ink-muted'}`}>{hint}</div>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
 
           <label className="block">
             <span className="text-ink-secondary text-xs font-medium">Date de levée</span>
