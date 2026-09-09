@@ -24,6 +24,18 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   const body = await req.json().catch(() => ({})) as { reason?: string; note?: string }
   const reason: ExitReason = (['restitution', 'enlevement_transporteur', 'sortie'] as const).includes(body.reason as any) ? (body.reason as ExitReason) : 'restitution'
   const sb = createAdminClient()
+  // Saisie : pas de sortie sans levée de saisie (règle Olivier 08/09/2026 —
+  // « c'est la restitution uniquement qui ne peut être effectuée sans levée »).
+  {
+    const { data: m } = await sb.from('incoming_missions').select('source, saisie_motif_code, status, police_levee_saisie_ok, levee_saisie_at, levee_saisie_type, vehicle_plate').eq('id', params.id).maybeSingle()
+    const saisie = m && (String(m.source || '') === 'police_saisie' || !!m.saisie_motif_code)
+    if (saisie && m.status === 'parked' && !m.police_levee_saisie_ok && !m.levee_saisie_at) {
+      return NextResponse.json({ error: `Saisie ${m.vehicle_plate || ''} : la sortie du parc exige la levée de saisie. Enregistre-la sur la fiche (encadré Saisie).` }, { status: 409 })
+    }
+    if (saisie && m.levee_saisie_type === 'temporaire') {
+      return NextResponse.json({ error: 'Levée temporaire : la sortie passe par « Sortie vers garagiste » (encadré Saisie), la sortie définitive attend la levée définitive.' }, { status: 409 })
+    }
+  }
   const res = await exitParcNow(sb, params.id, { id: acc.id || null, name: (session?.user as any)?.name || null }, reason, String(body.note || '').trim() || undefined)
   if (!res.ok) return NextResponse.json({ error: res.error, exit_control_blocked: res.exit_control_blocked }, { status: res.status })
   return NextResponse.json({ ok: true, released: res.released })

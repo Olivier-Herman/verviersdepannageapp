@@ -16,6 +16,7 @@ import ManualInfoButton, { type ManualClientData } from '@/components/caisse/Man
 import IdPhotoButton from '@/components/caisse/IdPhotoButton'
 import { loadGoogleMaps } from '@/components/AddressField'
 import RelivraisonModalButton from '@/components/missions/RelivraisonModalButton'
+import SaisiePanel from '@/components/missions/SaisiePanel'
 import RemarksAddModal from '@/components/missions/RemarksAddModal'
 import { onMissionChanged } from '@/lib/missions/changed-event'
 
@@ -246,6 +247,32 @@ export default function DossierGroups({ initial, fiches, shared, isSuperadmin, o
                 <RelivrerFromDossier d={d} leg={rootLeg} gmKey={shared.googleMapsKey} onDone={refresh} />
               </div>
             ) : null })()}
+            {/* Olivier 09/09/2026 : réquisitoire, levée de saisie et sortie du parc
+                DANS l'en-tête — « comme ça on ne doit pas chaque fois ouvrir toute
+                la fiche pour les compléter ». Même panneau que la fiche (racine). */}
+            {(() => {
+              const rootFiche = fiches[d.root_id]
+              const rootLeg = d.legs.find(l => l.mission_id === d.root_id) || d.legs[0]
+              const isSaisie = String(d.source || '') === 'police_saisie' || !!rootFiche?.saisie_motif_code
+              const atParc = rootLeg?.status === 'parked' || d.legs.some(l => l.kind === 'gard' && l.open)
+              const onChanged = async () => { await refresh(); router.refresh() }
+              return (
+                <>
+                  {isSaisie && rootFiche && (
+                    <div className="mt-2 text-xs bg-surface-2 border rounded-xl px-3 py-2">
+                      <p className="text-ink-muted font-semibold mb-1.5">🚔 Saisie — réquisitoire · levée · sortie</p>
+                      <SaisiePanel mission={rootFiche} onChanged={onChanged} />
+                    </div>
+                  )}
+                  {isSaisie && !rootFiche && (
+                    <p className="mt-2 text-xs text-ink-muted">🚔 Saisie : réquisitoire et levée depuis la <Link href={`/dispatch/${d.root_id}?fiche=1`} className="text-brand underline">fiche</Link>.</p>
+                  )}
+                  {!isSaisie && atParc && rootLeg && rootLeg.kind !== 'rel' && (
+                    <ExitParcFromDossier d={d} onDone={onChanged} />
+                  )}
+                </>
+              )
+            })()}
           </div>
           {canBill && <div className="md:text-right">
             <div className="flex md:justify-end items-center gap-2 flex-wrap">
@@ -563,6 +590,35 @@ function EditableAddress({ value, field, missionId, gmKey, onSaved, placeholder 
         {value && <button type="button" disabled={busy} onClick={() => save('', null, null)} className="px-2.5 py-1 rounded-lg border bg-surface text-red-700 disabled:opacity-50">Effacer</button>}
       </div>
       {err && <p className="text-red-600 text-xs">⚠ {err}</p>}
+    </div>
+  )
+}
+
+// ── Sortie du parc depuis l'en-tête (véhicule restitué / enlevé) ─────────────
+// Olivier 09/09/2026. Pas de facture ici : la facturation se fait par
+// « Facturer » (Odoo) ou par l'état de frais. Gardes serveur : contrôle de
+// sortie des épaves, scénario SNC, levée de saisie.
+function ExitParcFromDossier({ d, onDone }: { d: Dossier; onDone: () => void | Promise<void> }) {
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState<string | null>(null)
+  const go = async (reason: 'restitution' | 'enlevement_transporteur') => {
+    const who = reason === 'restitution' ? 'restitué au client / propriétaire' : 'enlevé par un transporteur'
+    if (!window.confirm(`Le véhicule ${d.vehicle.plate || ''} est ${who} ?\n\nLa fiche sort du parc maintenant : le gardiennage s'arrête, la place est libérée. Aucune facture n'est créée ici.`)) return
+    setBusy(true); setErr(null)
+    try {
+      const r = await fetch(`/api/missions/${d.root_id}/exit-parc`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ reason }) })
+      const j = await r.json().catch(() => ({}))
+      if (!r.ok) throw new Error(j.error || 'Sortie impossible')
+      await onDone()
+    } catch (e: any) { setErr(e.message) } finally { setBusy(false) }
+  }
+  return (
+    <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs bg-surface-2 border rounded-xl px-3 py-1.5">
+      <span className="text-ink-muted font-semibold">🅿 Sortie du parc</span>
+      <button disabled={busy} onClick={() => go('restitution')} className="px-2.5 py-1 rounded-lg border bg-surface text-ink font-medium hover:border-brand/50 disabled:opacity-50">🔑 Restitué au client</button>
+      <button disabled={busy} onClick={() => go('enlevement_transporteur')} className="px-2.5 py-1 rounded-lg border bg-surface text-ink font-medium hover:border-brand/50 disabled:opacity-50">🚛 Enlevé par un transporteur</button>
+      <span className="text-ink-faint">gardiennage arrêté, place libérée, pas de facture ici</span>
+      {err && <span className="text-red-600">⚠ {err}</span>}
     </div>
   )
 }
