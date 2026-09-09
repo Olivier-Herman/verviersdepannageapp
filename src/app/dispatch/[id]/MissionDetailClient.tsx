@@ -935,12 +935,9 @@ export default function MissionDetailClient({
   // de laisser chacun se tromper : 220 / 1,21 = 181,82 € HTVA.
   const FORFAIT_PARC_TVAC = 220
   const FORFAIT_PARC_HTVA = Math.round((FORFAIT_PARC_TVAC / 1.21) * 100) / 100
-  // Olivier 2026-09-09 : « dès que le client facturé est Ethias ou Kaze »,
-  // quelle que soit la source (police_accident, ethias, kaze…). La règle du
-  // 31/08 limitait à Police – Accident : les fiches Ethias/Kaze directes en
-  // parc n'avaient pas la case.
   const forfaitParcApplicable =
-    /ethias|kaze/i.test(String(form.billed_to_name || initialMission.billed_to_name || ''))
+    (form.source || initialMission.source) === 'police_accident'
+    && /ethias|kaze/i.test(String(form.billed_to_name || initialMission.billed_to_name || ''))
 
   // Nombre de remarques de facturation (pour l'alerte en haut de fiche).
   const [billingRemarkCount, setBillingRemarkCount] = useState(0)
@@ -3543,12 +3540,12 @@ export default function MissionDetailClient({
                       </span>
                     </span>
                   </label>
-                  {/* ── FORFAIT GARDIENNAGE (Olivier 2026-08-31, élargi 09/09) ──
-                      Client facturé Ethias ou Kaze : forfait 220 € TVAC, fixe,
-                      on ne compte plus le gardiennage par jour. Depuis le 09/09
-                      la case apparaît quelle que soit la source (plus seulement
-                      Police – Accident) ; elle reste absente pour les autres
-                      clients. */}
+                  {/* ── FORFAIT GARDIENNAGE (Olivier 2026-08-31) ──────────────
+                      « Lorsque la source est police accident et que le client
+                      est Ethias ou Kaze : forfait 220 € HTVA, fixe. Donc on ne
+                      compte plus le gardiennage par jour. » La case n'apparaît
+                      que dans ce cas précis — proposée partout, elle finirait
+                      par être cochée là où elle ne s'applique pas. */}
                   {forfaitParcApplicable && !storageWaived && (
                     <label className={`flex items-start gap-2 mb-3 p-2.5 rounded-xl border cursor-pointer ${
                       storageFlat ? 'border-emerald-500 bg-emerald-50' : 'border-dashed bg-surface-2'
