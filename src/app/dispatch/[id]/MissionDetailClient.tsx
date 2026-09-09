@@ -480,7 +480,7 @@ function ForceParkModal({ missionId, currentDepotId, currentZone, onClose, onDon
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  async function submit() {
+  async function submit(extra: Record<string, any> = {}) {
     if (!depotId) { setError('Sélectionne un dépôt'); return }
     setSubmitting(true); setError(null)
     try {
@@ -493,9 +493,22 @@ function ForceParkModal({ missionId, currentDepotId, currentZone, onClose, onDon
           // Zone optionnelle : null si dépôt sans zones (uniquement Pepinster
           // a des zones aujourd hui ; les autres entrepots deposent sans zone).
           parc_zone_key:   zoneKey || null,
+          ...extra,
         }),
       })
       const j = await r.json()
+      // Une relivraison existe déjà : on le PROPOSE au dispatch au lieu de refuser (Olivier 09/09/2026).
+      if (r.status === 409 && j.rel_exists && j.rel) {
+        const n = j.rel.mission_number ?? ''
+        if (j.rel.done) {
+          if (confirm(`La relivraison #${n} est terminée : le véhicule est parti.\nLe remettre quand même au parc (le véhicule est bien revenu) ?`)) { setSubmitting(false); return submit({ override_rel: true }) }
+        } else if (j.rel.back) {
+          if (confirm(`Le véhicule est déjà revenu au parc sous la relivraison #${n} (relivraison impossible).\nC'est cette fiche-là qu'il faut relivrer. Remettre quand même la fiche mère en parc ?`)) { setSubmitting(false); return submit({ override_rel: true }) }
+        } else {
+          if (confirm(`Une relivraison #${n} est en cours (${j.rel.status}).\nL'annuler et remettre le véhicule au parc ?`)) { setSubmitting(false); return submit({ cancel_rel: true }) }
+        }
+        setSubmitting(false); return
+      }
       if (!r.ok) throw new Error(j.error || 'Erreur')
       onDone()
     } catch (e: any) {
@@ -567,7 +580,7 @@ function ForceParkModal({ missionId, currentDepotId, currentZone, onClose, onDon
                 className="flex-1 py-2.5 bg-surface-2 border text-ink-secondary rounded-xl text-sm font-medium">
                 Annuler
               </button>
-              <button onClick={submit} disabled={submitting || !depotId}
+              <button onClick={() => submit()} disabled={submitting || !depotId}
                 className="flex-1 py-2.5 bg-amber-500 hover:bg-amber-600 disabled:opacity-50 text-white rounded-xl text-sm font-bold">
                 {submitting ? '⏳ ...' : 'Mettre en Parc'}
               </button>
@@ -4874,7 +4887,7 @@ function TransferParcModal({
             Annuler
           </button>
           <button
-            onClick={submit}
+            onClick={() => submit()}
             disabled={submitting || loading || !selectedZone}
             className="px-4 py-2 bg-brand hover:bg-brand-dark text-white rounded-lg text-sm font-semibold transition disabled:opacity-50"
           >

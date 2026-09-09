@@ -39,7 +39,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
 
   const body = await req.json() as {
     status?:           string
-    reset_assignment?: boolean
+    reset_assignment?: boolean; cancel_rel?: boolean; override_rel?: boolean
     // Olivier 2026-05-28 : pour "Forcer en parc", le dispatcher choisit
     // explicitement le depot de depart et la zone du parc.
     depot_depart_id?:  string | null
@@ -125,13 +125,30 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     const rel = (rels || [])[0] as any
     if (rel) {
       const DONE = ['completed', 'to_invoice', 'invoiced'].includes(String(rel.status))
-      return NextResponse.json({
-        error: `Impossible de remettre cette fiche en parc : sa relivraison #${rel.mission_number ?? ''} existe déjà (${DONE ? 'terminée' : 'en cours : ' + rel.status}). `
-             + (DONE
-                ? 'Le véhicule est parti. Si la fiche doit être corrigée, passe par la fiche de la relivraison.'
-                : 'Si le véhicule doit vraiment rester au parc, annule d’abord cette relivraison, puis réessaie.'),
-        rel_exists: true,
-      }, { status: 409 })
+      const BACK = String(rel.status) === 'parked'   // « relivraison impossible » : le véhicule est revenu, sous la fiche de relivraison
+      // Olivier 09/09 : « on le propose au dispatch » — l'écran pose la question
+      // et renvoie avec cancel_rel (annuler la relivraison en cours) ou
+      // override_rel (le véhicule est bien revenu : remettre en parc quand même).
+      if (body.cancel_rel && !DONE && !BACK) {
+        const nowIso = new Date().toISOString()
+        await sb.from('incoming_missions').update({ status: 'cancelled', cancelled_at: nowIso, cancelled_reason: 'Remise en parc par le dispatch (relivraison annulée)', cancelled_by: (session.user as any)?.id ?? null, updated_at: nowIso })
+          .eq('parent_mission_id', params.id).eq('dossier_leg', false).eq('mission_number', rel.mission_number)
+        await sb.from('mission_logs').insert([
+          { mission_id: params.id, actor_id: (session.user as any)?.id ?? null, action: 'rel_cancelled_for_park', notes: `Relivraison #${rel.mission_number ?? ''} annulée pour remettre le véhicule au parc (choix du dispatch).`, metadata: { rel_mission_number: rel.mission_number } },
+        ]).then(() => {}, () => {})
+      } else if (body.override_rel) {
+        await sb.from('mission_logs').insert({
+          mission_id: params.id, actor_id: (session.user as any)?.id ?? null, action: 'force_status_parked_override',
+          notes: `Remise en parc CONFIRMÉE malgré la relivraison #${rel.mission_number ?? ''} (${DONE ? 'terminée' : BACK ? 'véhicule revenu sous la relivraison' : rel.status}) — choix du dispatch.`,
+          metadata: { rel_mission_number: rel.mission_number, rel_status: rel.status },
+        }).then(() => {}, () => {})
+      } else {
+        return NextResponse.json({
+          error: `Cette fiche a déjà une relivraison #${rel.mission_number ?? ''} (${DONE ? 'terminée' : BACK ? 'véhicule revenu au parc sous la relivraison' : 'en cours : ' + rel.status}).`,
+          rel_exists: true,
+          rel: { mission_number: rel.mission_number, status: rel.status, done: DONE, back: BACK },
+        }, { status: 409 })
+      }
     }
   }
 
