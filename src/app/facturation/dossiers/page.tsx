@@ -61,9 +61,14 @@ export default async function FacturationDossiersPage() {
   // Un gardiennage terminé mais sans facture ne vaut une ligne que si les
   // postes n'ont pas déjà été réglés par une facture partielle.
   const dossiers: Dossier[] = []
-  // Tout en parallèle + cache mémoire 90 s : 80 dossiers en ~2 s au lieu de ~9 s (08/09/2026).
+  // Tout en parallèle + cache mémoire 90 s (08/09/2026).
+  // `price: true` : c'est de CET écran qu'on facture, donc le montant affiché
+  // doit être celui que la facture portera — jamais l'estimation figée, qui
+  // pouvait être vide ou à 0 et sortait « à calculer » (Olivier 09/09/2026).
+  // On garde les autres raccourcis du mode léger (pas de recherche d'orphelins
+  // par plaque, pas de relecture Odoo) : ils ne changent aucun montant.
   for (const batch of chunk(roots, 40)) {
-    const built = await Promise.all(batch.map(id => buildDossier(id, { light: true, cache: true }).catch(() => null)))
+    const built = await Promise.all(batch.map(id => buildDossier(id, { light: true, price: true, cache: true }).catch(() => null)))
     for (const d of built) if (d) dossiers.push(d)
   }
 

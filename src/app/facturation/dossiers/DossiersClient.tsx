@@ -13,6 +13,20 @@ import BillingModal, { cleanRef, isLegBilled, canPickLeg } from '@/components/do
 
 
 const eur = (n: number) => n.toLocaleString('fr-BE', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' €'
+// TVA 21 % — même conversion que les totaux du dossier (due_tvac).
+const TVA = 1.21
+const eurTvac = (n: number) => eur(Math.round(n * TVA * 100) / 100)
+// Encaissements chauffeur du dossier (table interventions) — TVAC, déjà payé
+// sur place. Olivier 09/09/2026 : « il y a un encaissement mais je ne le vois
+// pas sur la carte » — sans lui on refacture au client ce qu'il a déjà réglé.
+const allPayments = (d: Dossier) => d.legs.flatMap(l => l.payments || [])
+const paidLabel = (d: Dossier) => {
+  const ps = allPayments(d)
+  // Repli : le total peut venir du montant payé porté par la fiche, sans ligne
+  // d'encaissement enregistrée — on le dit plutôt que d'afficher un vide.
+  if (!ps.length) return 'montant payé porté par la fiche (aucun encaissement détaillé)'
+  return ps.map(p => `${eur(p.amount)}${p.mode ? ' · ' + p.mode : ''}${p.driver ? ' · ' + p.driver : ''}${p.at ? ' · ' + new Date(p.at).toLocaleDateString('fr-BE') : ''}`).join('\n')
+}
 const fmtDay = (v: string | null) => v ? new Date(v).toLocaleDateString('fr-BE', { timeZone: 'Europe/Brussels', day: '2-digit', month: '2-digit' }) : ''
 const L_KIND: Record<DossierLeg['kind'], string> = {
   rem: 'bg-blue-600 text-white border-blue-700', gard: 'bg-amber-500 text-white border-amber-600',
@@ -243,7 +257,7 @@ export default function DossiersClient({ initial, autoById, comexById = {}, isSu
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-        <Kpi label="Reste à facturer" value={eur(todo.reduce((s, d) => s + rest(d), 0))} />
+        <Kpi label="Reste à facturer" value={eur(todo.reduce((s, d) => s + rest(d), 0))} sub={`${eurTvac(todo.reduce((s, d) => s + rest(d), 0))} TVAC`} />
         <Kpi label="Éligibles au prochain cron" value={String(scoped.filter(isAuto).length)} />
         <Kpi label="Dossiers en cours (parc / relivraison)" value={String(scoped.filter(d => d.state.open && !isDone(d)).length)} />
         <Kpi label="Partiel possible maintenant" value={String(scoped.filter(d => d.state.open && ready(d).length > 0).length)} />
@@ -310,7 +324,7 @@ export default function DossiersClient({ initial, autoById, comexById = {}, isSu
           <div key={d.root_id} className="bg-surface border rounded-2xl overflow-hidden">
             {/* Olivier 08/09/2026 : un clic ouvre le dossier (groupes repliés) ; on facture depuis là. */}
             <div onClick={() => router.push(`/dispatch/dossier/${d.root_id}?open=none`)} title="Ouvrir le dossier"
-              className="grid grid-cols-1 md:grid-cols-[minmax(200px,1.2fr)_minmax(160px,1fr)_minmax(200px,1.3fr)_110px_170px_auto] gap-3 items-center px-4 py-2.5 cursor-pointer hover:bg-surface-2/60">
+              className="grid grid-cols-1 md:grid-cols-[minmax(200px,1.2fr)_minmax(160px,1fr)_minmax(200px,1.3fr)_130px_170px_auto] gap-3 items-center px-4 py-2.5 cursor-pointer hover:bg-surface-2/60">
               <div className="text-ink font-bold text-sm flex items-start gap-2">
                 {lotEligible(d) && <input type="checkbox" checked={lot.has(d.root_id)} onClick={e => e.stopPropagation()} onChange={() => setLot(p => { const n = new Set(p); n.has(d.root_id) ? n.delete(d.root_id) : n.add(d.root_id); return n })} className="mt-0.5 accent-[var(--tw-brand,#1f4fd8)]" title="Ajouter au lot à facturer" />}
                 <span>{d.ref} · <span className="font-mono">{d.vehicle.plate}</span>
@@ -323,9 +337,19 @@ export default function DossiersClient({ initial, autoById, comexById = {}, isSu
                     className={`w-6 h-6 rounded-md border inline-flex items-center justify-center text-[11px] font-bold font-mono ${L_KIND[l.kind]} ${isLegBilled(l) ? 'opacity-35 line-through' : ''} ${l.open && l.kind === 'gard' ? 'border-dashed !bg-transparent !text-amber-700 dark:!text-amber-300' : ''} ${l.nothing_to_bill ? 'opacity-45' : ''}`}>{l.letter}</span>
                 ))}
               </div>
-              <div className="text-right font-semibold tabular-nums text-ink text-sm">{hasUnknown(d) ? <span className="text-ink-muted font-normal">{rest(d) > 0 ? eur(rest(d)) + ' + ' : ''}à calculer</span> : eur(rest(d))}<span className="block text-[10.5px] font-normal text-ink-muted">reste HTVA</span></div>
+              <div className="text-right tabular-nums text-sm">
+                <span className="font-semibold text-ink">{hasUnknown(d) ? <span className="text-ink-muted font-normal">{rest(d) > 0 ? eur(rest(d)) + ' + ' : ''}à calculer</span> : eur(rest(d))}</span>
+                <span className="block text-[10.5px] font-normal text-ink-muted">reste HTVA</span>
+                {!hasUnknown(d) && <span className="block text-[12px] font-semibold text-ink-secondary" title="TVA 21 %">{eurTvac(rest(d))} TVAC</span>}
+              </div>
               <div className="flex flex-wrap items-center gap-1.5">
                 <span className={`text-[11px] font-semibold px-2.5 py-1 rounded-full whitespace-nowrap ${badge[0]}`} title={ai?.reason || ''}>{badge[1]}</span>
+                {d.totals.collected > 0 && (
+                  <span className="text-[11px] font-semibold px-2.5 py-1 rounded-full whitespace-nowrap bg-warning-soft border border-warning text-warning"
+                    title={`Déjà encaissé par le chauffeur (TVAC) — à déduire avant de facturer :\n${paidLabel(d)}`}>
+                    💶 {eur(d.totals.collected)} encaissé
+                  </span>
+                )}
                 {d.stamps?.domaine && <span className="px-2 py-0.5 bg-purple-600 text-white text-[11px] rounded-lg font-black uppercase tracking-widest border border-purple-300 shadow -rotate-2 whitespace-nowrap" title={d.stamps.domaine}>🏛 Domaine</span>}
                 {d.stamps?.touring_check && (d.stamps.touring_check.toUpperCase().startsWith('ANWB')
                   ? <span className="px-2 py-0.5 bg-blue-600 text-white text-[11px] rounded-lg font-black uppercase tracking-widest border border-blue-300 shadow -rotate-2 whitespace-nowrap" title="Prise en charge ANWB (facturer à ANWB)">🇳🇱 {d.stamps.touring_check}</span>
@@ -349,10 +373,28 @@ export default function DossiersClient({ initial, autoById, comexById = {}, isSu
                     <div key={l.letter} className="grid grid-cols-[24px_1fr_auto_auto] gap-2 items-center py-1 border-t first:border-t-0 text-ink-secondary">
                       <span className="font-mono">{l.letter}</span>
                       <span>{l.title}{l.kind === 'gard' && l.days != null ? ` ${l.days} j` : ''}{l.billed_to_name !== d.billed_to.name ? <span className="text-ink-muted"> · → {l.billed_to_name || '?'}</span> : null}</span>
-                      <span className="tabular-nums">{l.amount_unknown && !isLegBilled(l) ? <span className="text-amber-700" title={l.amount_note || ''}>à calculer{l.amount_note ? ` · ${l.amount_note}` : ''}</span> : eur(l.amount_htva)}</span>
+                      <span className="tabular-nums text-right">{l.amount_unknown && !isLegBilled(l)
+                        ? <span className="text-amber-700" title={l.amount_note || ''}>à calculer{l.amount_note ? ` · ${l.amount_note}` : ''}</span>
+                        : <>{eur(l.amount_htva)}<span className="block text-[10.5px] text-ink-muted" title="TVA 21 %">{eurTvac(l.amount_htva)} TVAC</span></>}</span>
                       <span>{isLegBilled(l) ? <span className="px-1.5 py-0.5 rounded-full bg-surface border text-ink-muted font-mono">{cleanRef(l.billed_refs[0])}</span> : l.nothing_to_bill ? <span className="text-ink-faint">{l.nothing_to_bill}</span> : l.open && l.kind === 'gard' ? <span className="px-1.5 py-0.5 rounded-full bg-blue-600 text-white">en cours</span> : <span className="px-1.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-700 dark:text-emerald-300">prêt</span>}</span>
                     </div>
                   ))}
+                  <div className="mt-1.5 pt-1.5 border-t flex items-center justify-between gap-2 text-ink-secondary">
+                    <span className="font-semibold">Total à facturer</span>
+                    <span className="tabular-nums text-right font-semibold">{hasUnknown(d) ? <span className="text-amber-700">à calculer</span> : <>{eur(rest(d))}<span className="block text-[10.5px] font-normal text-ink-muted">{eurTvac(rest(d))} TVAC</span></>}</span>
+                  </div>
+                  {allPayments(d).length > 0 && (
+                    <>
+                      <p className="text-[11px] uppercase tracking-wide text-ink-muted font-semibold mt-3 mb-1">Encaissé sur place (TVAC)</p>
+                      {allPayments(d).map((p, i) => (
+                        <div key={i} className="flex items-center justify-between gap-2 py-1 border-t first:border-t-0 text-ink-secondary">
+                          <span>{p.mode || 'paiement'}{p.driver ? <span className="text-ink-muted"> · {p.driver}</span> : null}{p.at ? <span className="text-ink-muted"> · {fmtDay(p.at)}</span> : null}</span>
+                          <span className="tabular-nums">{eur(p.amount)}</span>
+                        </div>
+                      ))}
+                      <p className="mt-1 text-ink-muted">Déjà réglé par le client : à déduire de ce qu'on facture.</p>
+                    </>
+                  )}
                 </div>
                 <div>
                   <p className="text-[11px] uppercase tracking-wide text-ink-muted font-semibold mb-1">Factures du dossier</p>
@@ -391,6 +433,6 @@ function countdown(ms: number): string {
   return h > 0 ? `${h}h${String(mn).padStart(2, '0')}` : `${mn}:${String(s).padStart(2, '0')}`
 }
 
-function Kpi({ label, value }: { label: string; value: string }) {
-  return <div className="bg-surface border rounded-xl px-3.5 py-2.5 text-[11px] text-ink-muted">{label}<b className="block text-lg text-ink tabular-nums font-semibold">{value}</b></div>
+function Kpi({ label, value, sub }: { label: string; value: string; sub?: string }) {
+  return <div className="bg-surface border rounded-xl px-3.5 py-2.5 text-[11px] text-ink-muted">{label}<b className="block text-lg text-ink tabular-nums font-semibold">{value}</b>{sub && <span className="block tabular-nums text-ink-secondary font-medium">{sub}</span>}</div>
 }

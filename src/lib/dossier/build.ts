@@ -51,7 +51,9 @@ export interface DossierLeg {
   // Adresse de relivraison : portée par la mise en parc (Olivier 07/09 : « c'est la
   // mise en parc qui contient les infos de relivraison ») — lue sur la racine.
   redelivery_address: string | null
-  // Mode léger : pas de montant figé sur la fiche → à calculer (moteur de prix).
+  // Montant que le moteur de facturation ne sait pas produire (km inconnus,
+  // destination non géocodée, tarif introuvable) → « à calculer », avec la
+  // raison dans amount_note. En mode léger pur, dit aussi « pas de montant figé ».
   amount_unknown?: boolean
   // Canal de facturation : Odoo (défaut), relevé trimestriel Domaine, état de
   // frais Parquet. Seul 'odoo' passe par la modale « Facturer » du dossier.
@@ -173,33 +175,49 @@ function startKey(m: any, kind: LegKind): number {
   return ts(m.received_at) || ts(m.intervention_date) || 0
 }
 
-// `light` : pour les LISTES — pas de moteur de prix (routage), on prend le
-// montant figé de la fiche (special_tarif_htva / estimated_htva) ; pas de
-// recherche d'orphelins par plaque.
-// Cache mémoire des dossiers légers pour la LISTE Facturation par dossier
+// `light` : ouverture rapide de la FICHE — pas de moteur de prix (routage), on
+// prend le montant figé (special_tarif_htva / estimated_htva) ; pas de recherche
+// d'orphelins par plaque, pas de relecture Odoo. La fiche recalcule ensuite en
+// arrière-plan.
+// `price` : garde les raccourcis du léger MAIS calcule quand même les montants
+// avec le moteur de facturation. C'est le mode de la LISTE Facturation par
+// dossier : c'est de là qu'on facture, donc le montant doit être le vrai
+// (Olivier 09/09/2026 : 2JAK599 / 2CMX015 / 1DMC939 affichaient « à calculer »
+// alors que la fiche calculait bien — le figé estimated_htva était vide ou 0).
+// Cache mémoire pour la LISTE Facturation par dossier
 // (Olivier 08/09/2026 : « l'affichage de la page facturation est très long »).
 // Uniquement sur demande (opts.cache) : les routes qui décident (facturer,
 // marquer, clôturer) lisent toujours frais. Une construction complète
-// rafraîchit l'entrée.
+// rafraîchit l'entrée. La clé porte le mode : un dossier tarifé ne doit jamais
+// être servi à la place d'un dossier figé, ni l'inverse.
 const LIGHT_CACHE = new Map<string, { at: number; d: Dossier }>()
 const LIGHT_TTL_MS = 90_000
-export function invalidateDossierCache(rootId?: string) { if (rootId) LIGHT_CACHE.delete(rootId); else LIGHT_CACHE.clear() }
+const cacheKeyFor = (id: string, price: boolean) => `${id}|${price ? 'p' : 'l'}`
+export function invalidateDossierCache(rootId?: string) {
+  if (rootId) { LIGHT_CACHE.delete(cacheKeyFor(rootId, true)); LIGHT_CACHE.delete(cacheKeyFor(rootId, false)) }
+  else LIGHT_CACHE.clear()
+}
 
-export async function buildDossier(anyMissionId: string, opts: { light?: boolean; cache?: boolean } = {}): Promise<Dossier | null> {
+export async function buildDossier(anyMissionId: string, opts: { light?: boolean; price?: boolean; cache?: boolean } = {}): Promise<Dossier | null> {
   const light = !!opts.light
+  const price = !!opts.price
+  const key   = cacheKeyFor(anyMissionId, price)
   if (light && opts.cache) {
-    const hit = LIGHT_CACHE.get(anyMissionId)
+    const hit = LIGHT_CACHE.get(key)
     if (hit && Date.now() - hit.at < LIGHT_TTL_MS) return hit.d
   }
-  const built = await buildDossierUncached(anyMissionId, light)
+  const built = await buildDossierUncached(anyMissionId, light, price)
   if (built) {
-    if (light && opts.cache) LIGHT_CACHE.set(anyMissionId, { at: Date.now(), d: built })
-    else LIGHT_CACHE.delete(built.root_id)   // une lecture fraîche remplace l'entrée
+    if (light && opts.cache) LIGHT_CACHE.set(key, { at: Date.now(), d: built })
+    else invalidateDossierCache(built.root_id)   // une lecture fraîche remplace l'entrée
   }
   return built
 }
 
-async function buildDossierUncached(anyMissionId: string, light: boolean): Promise<Dossier | null> {
+async function buildDossierUncached(anyMissionId: string, light: boolean, price = false): Promise<Dossier | null> {
+  // Montants calculés par le moteur de facturation : toujours, sauf en mode
+  // léger pur (ouverture rapide de la fiche).
+  const priced = !light || price
   const sb = createAdminClient()
 
   const { data: m0, error: e0 } = await sb.from('incoming_missions').select('*').eq('id', anyMissionId).maybeSingle()
@@ -276,7 +294,8 @@ async function buildDossierUncached(anyMissionId: string, light: boolean): Promi
   // ── Facturé / encaissé ───────────────────────────────────────────────────
   const ids = legRows.map(r => r.id)
   const draftsBy: Record<string, any[]> = {}
-  if (!light) {
+  // Les brouillons priment sur tout le reste : dès qu'on tarife, il faut les lire.
+  if (priced) {
     const { data: drafts } = await sb.from('mission_invoice_drafts').select('mission_id, lines').in('mission_id', ids)
     for (const dr of drafts || []) if (Array.isArray((dr as any).lines) && (dr as any).lines.length) draftsBy[(dr as any).mission_id] = (dr as any).lines
   }
@@ -367,7 +386,7 @@ async function buildDossierUncached(anyMissionId: string, light: boolean): Promi
   // groupes mettait 4 s à s'ouvrir (Olivier 07/09 : « fort long »).
   const pre = new Map<string, { est: any; built: { lines: any[]; has_tariff: boolean; reason?: string } | null }>()
   await Promise.all(legRows.map(async (m) => {
-    if (kindOf(m) === 'gard' || light) { pre.set(m.id, { est: null, built: null }); return }
+    if (kindOf(m) === 'gard' || !priced) { pre.set(m.id, { est: null, built: null }); return }
     const [est, built] = await Promise.all([
       (m.id === root.id && rootEst) ? Promise.resolve(rootEst) : estimateMissionPrice(m).catch(() => null),
       actionLines(m, draftsBy[m.id], legRows.some(r => r.dossier_leg)).catch((e: any) => ({ lines: [], has_tariff: false, reason: e?.message })),
@@ -461,7 +480,7 @@ async function buildDossierUncached(anyMissionId: string, light: boolean): Promi
       // exclu quand le dossier a ses groupes gardiennage. L'estimation générale
       // ne sert plus qu'aux km affichés.
       const est: any = pre.get(m.id)?.est ?? null
-      if (light) {
+      if (!priced) {
         if (Number(m.special_tarif_htva) > 0) { amount = r2(Number(m.special_tarif_htva)); note = 'prix convenu' }
         else { amount = r2(Number(m.estimated_htva) || 0); note = Number(m.estimated_htva) > 0 ? 'estimation figée' : 'estimation à calculer'; if (!(Number(m.estimated_htva) > 0)) amountUnknown = true }
       } else {
@@ -745,7 +764,9 @@ async function buildDossierUncached(anyMissionId: string, light: boolean): Promi
     client: { name: root.client_name, phone: root.client_phone },
     billed_to: payer(root),
     received_at: root.received_at,
-    state, legs, events, light: light || undefined,
+    // `light` signale au client « montants figés, recalcule en fond » : un
+    // dossier tarifé n'en est pas un, même construit avec les raccourcis.
+    state, legs, events, light: (light && !priced) || undefined,
     parquet,
     stamps: {
       domaine: root.domaine_vente_date ? `Vendu au Domaine${root.domaine_vente_firm ? ' · ' + root.domaine_vente_firm : ''}` : (root.domaine_remise_date ? `Remis au Domaine le ${String(root.domaine_remise_date).slice(0, 10)}` : null),
