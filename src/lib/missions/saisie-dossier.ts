@@ -169,9 +169,12 @@ export async function generateEtatFrais(
 
   const mission = d.mission_id
     ? (await sb.from('incoming_missions')
-        .select('client_name, billed_to_name, incident_address, incident_city, vehicle_class, vehicle_vin, client_email, received_at, requisitoire_at, requisitoire_doc_path, domaine_remise_date')
+        .select('client_name, billed_to_name, incident_address, incident_city, vehicle_class, vehicle_vin, client_email, received_at, requisitoire_at, requisitoire_doc_path, domaine_remise_date, dossier_number, vehicle_plate, vehicle_brand, vehicle_model')
         .eq('id', d.mission_id).maybeSingle()).data
     : null
+  // La fiche fait foi pour le n° de PV et le véhicule (corrigés après coup — 90698, 09/09/2026).
+  if (mission?.dossier_number && mission.dossier_number !== d.dossier_ref) { d.dossier_ref = mission.dossier_number; await sb.from('saisie_dossiers').update({ dossier_ref: mission.dossier_number }).eq('id', d.id).then(() => {}, () => {}) }
+  if (mission?.vehicle_plate) { d.vehicle_plate = mission.vehicle_plate; d.vehicle_brand = mission.vehicle_brand || d.vehicle_brand; d.vehicle_model = mission.vehicle_model || d.vehicle_model }
 
   // RÈGLE : on n'établit un état de frais que si le réquisitoire est au dossier —
   // un vrai document PDF/JPG, pas une capture de mail (Olivier 2026-09-03).
@@ -453,7 +456,7 @@ export async function sendEtatFrais(
   let vin: string | null = null
   let reqDocPath: string | null = null
   if (d.mission_id) {
-    const { data: m } = await sb.from('incoming_missions').select('client_email, vehicle_vin, requisitoire_doc_path').eq('id', d.mission_id).maybeSingle()
+    const { data: m } = await sb.from('incoming_missions').select('client_email, vehicle_vin, requisitoire_doc_path, dossier_number, vehicle_plate, vehicle_brand, vehicle_model').eq('id', d.mission_id).maybeSingle()
     clientEmail = m?.client_email || null
     vin = m?.vehicle_vin || null
     reqDocPath = m?.requisitoire_doc_path || null

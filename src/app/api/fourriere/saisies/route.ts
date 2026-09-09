@@ -64,10 +64,25 @@ export async function GET() {
   const missionIds = Array.from(new Set((dossiersRaw || []).map((d: any) => d.mission_id).filter(Boolean)))
   const reqOk = new Map<string, boolean>()
   const leveeByMission = new Map<string, string | null>()   // levée réelle (la fiche fait foi)
+  const liveByMission = new Map<string, any>()               // n° dossier / véhicule / motif : la fiche fait foi
   if (missionIds.length) {
-    const { data: ms } = await sb.from('incoming_missions').select('id, requisitoire_at, requisitoire_doc_path, levee_saisie_at, levee_saisie_date').in('id', missionIds)
+    const { data: ms } = await sb.from('incoming_missions').select('id, requisitoire_at, requisitoire_doc_path, levee_saisie_at, levee_saisie_date, dossier_number, vehicle_plate, vehicle_brand, vehicle_model, saisie_motif_code, saisie_motif_label').in('id', missionIds)
     // Réquisitoire valable = date posée + document PDF/JPG (jamais une capture de mail).
-    for (const m of (ms || [])) { reqOk.set(m.id, hasValidRequisitoire(m)); leveeByMission.set(m.id, m.levee_saisie_at || m.levee_saisie_date || null) }
+    for (const m of (ms || [])) { reqOk.set(m.id, hasValidRequisitoire(m)); leveeByMission.set(m.id, m.levee_saisie_at || m.levee_saisie_date || null); liveByMission.set(m.id, m) }
+    // ── LA FICHE FAIT FOI (Olivier 09/09/2026, dossier 90698) : le n° de dossier,
+    //    le véhicule et le motif corrigés sur la fiche doivent apparaître ici et
+    //    sur les états de frais. Le snapshot du dossier est resynchronisé.
+    for (const d of (dossiersRaw || []) as any[]) {
+      const m = d.mission_id ? liveByMission.get(d.mission_id) : null
+      if (!m) continue
+      const upd: Record<string, any> = {}
+      if (m.dossier_number && m.dossier_number !== d.dossier_ref) upd.dossier_ref = m.dossier_number
+      if (m.vehicle_plate && m.vehicle_plate !== d.vehicle_plate) upd.vehicle_plate = m.vehicle_plate
+      if ((m.vehicle_brand || null) !== (d.vehicle_brand || null)) upd.vehicle_brand = m.vehicle_brand || null
+      if ((m.vehicle_model || null) !== (d.vehicle_model || null)) upd.vehicle_model = m.vehicle_model || null
+      if ((m.saisie_motif_code || null) !== (d.motif_code || null)) { upd.motif_code = m.saisie_motif_code || null; upd.motif_label = m.saisie_motif_label || null }
+      if (Object.keys(upd).length) { Object.assign(d, upd); await sb.from('saisie_dossiers').update({ ...upd, updated_at: new Date().toISOString() }).eq('id', d.id).then(() => {}, () => {}) }
+    }
   }
   // États de frais (devis) par dossier — pour les actions par état de frais.
   const dIds = (dossiersRaw || []).map((d: any) => d.id)
