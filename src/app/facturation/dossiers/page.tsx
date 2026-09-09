@@ -67,7 +67,11 @@ export default async function FacturationDossiersPage() {
   // pouvait être vide ou à 0 et sortait « à calculer » (Olivier 09/09/2026).
   // On garde les autres raccourcis du mode léger (pas de recherche d'orphelins
   // par plaque, pas de relecture Odoo) : ils ne changent aucun montant.
-  for (const batch of chunk(roots, 40)) {
+  // 8 et non 40 : chaque dossier tarifé enchaîne requêtes et calculs
+  // d'itinéraire ; en rafale de 40, une requête qui tombe faisait passer une
+  // fiche pour « à calculer » alors qu'elle est parfaitement chiffrable
+  // (Olivier 09/09/2026). Le cache 90 s absorbe le surcoût des rechargements.
+  for (const batch of chunk(roots, 8)) {
     const built = await Promise.all(batch.map(id => buildDossier(id, { light: true, price: true, cache: true }).catch(() => null)))
     for (const d of built) if (d) dossiers.push(d)
   }

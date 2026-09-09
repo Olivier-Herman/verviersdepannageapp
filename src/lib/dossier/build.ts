@@ -384,12 +384,16 @@ async function buildDossierUncached(anyMissionId: string, light: boolean, price 
   // ── Précalcul en parallèle (lignes de facturation + estimation par action) ──
   // En série, chaque fiche coûtait 1 à 2 s de routage ; un dossier à trois
   // groupes mettait 4 s à s'ouvrir (Olivier 07/09 : « fort long »).
-  const pre = new Map<string, { est: any; built: { lines: any[]; has_tariff: boolean; reason?: string } | null }>()
+  const pre = new Map<string, { est: any; built: { lines: any[]; has_tariff: boolean; reason?: string; failed?: boolean } | null }>()
   await Promise.all(legRows.map(async (m) => {
     if (kindOf(m) === 'gard' || !priced) { pre.set(m.id, { est: null, built: null }); return }
     const [est, built] = await Promise.all([
       (m.id === root.id && rootEst) ? Promise.resolve(rootEst) : estimateMissionPrice(m).catch(() => null),
-      actionLines(m, draftsBy[m.id], legRows.some(r => r.dossier_leg)).catch((e: any) => ({ lines: [], has_tariff: false, reason: e?.message })),
+      // Une EXCEPTION (requête qui tombe, moteur indisponible) n'est pas un
+      // verdict tarifaire : `failed` la distingue d'un « pas de tarif », pour
+      // ne pas afficher « à calculer » sur une fiche parfaitement chiffrable.
+      actionLines(m, draftsBy[m.id], legRows.some(r => r.dossier_leg))
+        .catch((e: any) => ({ lines: [], has_tariff: false, reason: e?.message, failed: true })),
     ])
     pre.set(m.id, { est, built })
   }))
@@ -484,10 +488,19 @@ async function buildDossierUncached(anyMissionId: string, light: boolean, price 
         if (Number(m.special_tarif_htva) > 0) { amount = r2(Number(m.special_tarif_htva)); note = 'prix convenu' }
         else { amount = r2(Number(m.estimated_htva) || 0); note = Number(m.estimated_htva) > 0 ? 'estimation figée' : 'estimation à calculer'; if (!(Number(m.estimated_htva) > 0)) amountUnknown = true }
       } else {
-        const built: { lines: any[]; has_tariff: boolean; reason?: string } = pre.get(m.id)?.built || { lines: [], has_tariff: false }
+        const built: { lines: any[]; has_tariff: boolean; reason?: string; failed?: boolean } = pre.get(m.id)?.built || { lines: [], has_tariff: false }
         if (built.has_tariff && built.lines.length) {
           amount = linesTotal(built.lines)
           note = built.lines.map(l => `${l.name.replace(/\s+—.*$/, '').slice(0, 40)}${l.qty !== 1 ? ` ×${l.qty}` : ''} ${Number(l.qty * l.price_unit).toFixed(2)} €`).join(' · ')
+        } else if (built.failed) {
+          // Le moteur n'a pas répondu (exception). On ne prétend pas que la
+          // fiche est incalculable — on montre le dernier montant figé quand il
+          // existe, en disant d'où il vient. Olivier 09/09/2026 : 2CMX015 est
+          // sorti au bon tarif en facturation auto alors que la liste le
+          // donnait « à calculer ».
+          const fige = Number(m.special_tarif_htva) > 0 ? Number(m.special_tarif_htva) : Number(m.estimated_htva) || 0
+          if (fige > 0) { amount = r2(fige); note = `calcul indisponible — montant figé (${built.reason || 'erreur du moteur'})` }
+          else { amount = 0; amountUnknown = true; note = `calcul indisponible : ${built.reason || 'erreur du moteur'}` }
         } else {
           // Pas de tarif calculable : on le DIT (montant inconnu), on ne
           // ressort pas une estimation figée par l'ancien calcul (2AVA116 :
