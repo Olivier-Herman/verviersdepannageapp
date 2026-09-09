@@ -1438,6 +1438,15 @@ export async function processEmailMessage(messageId: string): Promise<ProcessRes
       console.log(`[Processor] Placeholder supprimé: ${placeholderId}`)
     }
 
+    // Remorquage d'un véhicule déjà au parc chez nous → réserve sur le dossier
+    // (règle commune à toutes les assistances, lib/missions/reserve-rel.ts).
+    // Seulement pour une fiche NEUVE : une mise à jour d'une fiche existante
+    // n'est pas une nouvelle commande.
+    if (!existingMissionId && targetId) {
+      const { reserveTowForParkedVehicle } = await import('@/lib/missions/reserve-rel')
+      await reserveTowForParkedVehicle({ sb: supabase, missionId: targetId, actorName: `rattaché automatiquement à la réception du mail ${source}` })
+    }
+
     await markAsRead(token, messageId)
 
     await supabase.from('mission_logs').insert({

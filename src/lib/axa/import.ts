@@ -205,6 +205,14 @@ export async function runAxaImport({ mode = 'preview' }: { mode?: ImportMode } =
       if (error) { errors.push(`${m.missionOrderId}: ${error.message}`); continue }
       imported++
 
+      // Remorquage d'un véhicule déjà au parc chez nous → réserve sur le dossier
+      // (règle commune à toutes les assistances, lib/missions/reserve-rel.ts).
+      if (created?.id) {
+        const { reserveTowForParkedVehicle } = await import('@/lib/missions/reserve-rel')
+        const r = await reserveTowForParkedVehicle({ sb, missionId: created.id, actorName: 'rattaché automatiquement à l’arrivée de l’ordre AXA' })
+        if (r.reserved) continue   // pas de notif « à valider » : rien à dispatcher maintenant
+      }
+
       // Notif dispatch UNIQUEMENT pour les `New` (fenêtre d'acceptation courte —
       // il faut valider vite). Les `AwaitingDispatch` sont déjà validées → pas d'urgence.
       if (item.axaStatus === 'New' && created?.id) {

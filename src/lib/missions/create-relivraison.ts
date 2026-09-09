@@ -103,6 +103,46 @@ export async function createRelivraisonMission(input: RelivraisonInput): Promise
     return { id: existing.id }
   }
 
+  // ── FICHE ASSISTEUR EN RÉSERVE ───────────────────────────────────────────
+  // Olivier 09/09/2026 (2JPR337, puis toutes les assistances) : un remorquage
+  // arrivé pendant que le véhicule était au parc a été mis en réserve sur le
+  // dossier (status ignored, type REL, lib/missions/reserve-rel.ts). La relivraison, c'est CETTE fiche : on la
+  // réveille au lieu d'en créer une autre — même n° VAB, même AssignmentId,
+  // même dossier Odoo, donc clôture VAB et facturation à VAB inchangées.
+  const { data: reserve } = await sb
+    .from('incoming_missions')
+    .select('id, status, mission_number, source, external_id')
+    .eq('parent_mission_id', input.parentMissionId)
+    .eq('dossier_leg', false)
+    .eq('mission_type', 'REL')
+    .eq('status', 'ignored')
+    .eq('incident_type', 'relivraison')
+    .neq('external_id', externalId)
+    .order('received_at', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+  if (reserve) {
+    const now = new Date().toISOString()
+    await sb.from('incoming_missions').update({
+      status:               'dispatching',
+      incident_address:     input.parkAddress || null,
+      incident_lat:         input.parkLat ?? null,
+      incident_lng:         input.parkLng ?? null,
+      destination_address:  input.redeliveryAddress || null,
+      incident_description: `Relivraison après mise en parc — Mission parent : ${parent.external_id || parent.id.slice(0, 8)} (fiche ${String((reserve as any).source || '').toUpperCase()} ${(reserve as any).external_id || ''} reprise)`,
+      special_tarif_htva:   input.imposedHtva && input.imposedHtva > 0 ? input.imposedHtva : null,
+      assigned_to:          null,
+      updated_at:           now,
+    }).eq('id', reserve.id)
+    await sb.from('mission_logs').insert({
+      mission_id: reserve.id, actor_id: input.actorId ?? null, action: 'received',
+      notes: `Relivraison créée depuis « À relivrer » : la fiche ${String((reserve as any).source || '').toUpperCase()} ${(reserve as any).external_id || ''} en réserve est reprise telle quelle (départ ${input.parkAddress || '?'} → ${input.redeliveryAddress || '?'}).`,
+      metadata: { revived_reserve: true },
+    }).then(() => {}, () => {})
+    console.log(`[REL] Fiche assisteur en réserve reprise pour parent ${input.parentMissionId}: ${reserve.id}`)
+    return { id: reserve.id }
+  }
+
   // Insertion de la nouvelle mission REL
   const relTs = new Date().toISOString()
   const { data: rel, error: insErr } = await sb

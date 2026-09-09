@@ -205,13 +205,19 @@ export async function runTouringImport(opts: { mode: TouringImportMode }): Promi
       payload.dispatch_mode = 'manual'
       payload.raw_content   = comexRaw           // clés COMEX garanties pour l'accept
 
-      const { error } = await sb.from('incoming_missions').insert(payload)
+      const { data: ins, error } = await sb.from('incoming_missions').insert(payload).select('id').single()
       if (error) {
         results.push({ dossier: m.CID_DOS, plaque: m.NUM_PLAQUE, action: 'failed', external_id: externalId, error: error.message })
         failed++
       } else {
         results.push({ dossier: m.CID_DOS, plaque: m.NUM_PLAQUE, action: 'created', external_id: externalId })
         created++
+        // Remorquage d'un véhicule déjà au parc chez nous → réserve sur le dossier
+        // (règle commune à toutes les assistances, lib/missions/reserve-rel.ts).
+        if (ins?.id) {
+          const { reserveTowForParkedVehicle } = await import('@/lib/missions/reserve-rel')
+          await reserveTowForParkedVehicle({ sb, missionId: ins.id, actorName: 'rattaché automatiquement à l’arrivée du dossier COMEX' })
+        }
       }
     } catch (e: any) {
       results.push({ dossier: m.CID_DOS, plaque: m.NUM_PLAQUE, action: 'failed', error: e?.message || 'erreur' })

@@ -11,6 +11,7 @@
 import { createAdminClient } from '@/lib/supabase'
 import { loginVab, listVabMissions, fetchVabMissionDetail } from './scraper'
 import { sendPushToRole, sendPushToUser } from '@/lib/push'
+import { reserveTowForParkedVehicle } from '@/lib/missions/reserve-rel'
 
 export type VabImportMode = 'preview' | 'send'
 
@@ -358,7 +359,7 @@ export async function runVabImport(opts: { mode: VabImportMode }): Promise<VabIm
         incidentAddress = detail.fromLocationFreeText
       }
 
-      const { error: insertErr } = await sb.from('incoming_missions').insert({
+      const { data: insertedRow, error: insertErr } = await sb.from('incoming_missions').insert({
         external_id:        assignmentId || detail.missionNumber,
         dossier_number:     fullDossier,
         source:             'vab',
@@ -401,7 +402,7 @@ export async function runVabImport(opts: { mode: VabImportMode }): Promise<VabIm
           billed_to_id:   defaultBilledToId,
           billed_to_name: defaultBilledToName,
         } : {}),
-      })
+      }).select('id, external_id, destination_name, destination_address').single()
 
       if (insertErr) {
         results.push({ missionNumber: item.missionNumber, ok: false, action: 'failed', error: `INSERT: ${insertErr.message}` })
@@ -409,6 +410,16 @@ export async function runVabImport(opts: { mode: VabImportMode }): Promise<VabIm
       } else {
         results.push({ missionNumber: item.missionNumber, ok: true, action: 'inserted' })
         inserted++
+
+        // Remorquage d'un véhicule déjà au parc chez nous → réserve sur le dossier
+        // (règle commune à toutes les assistances, lib/missions/reserve-rel.ts).
+        if (insertedRow?.id) {
+          const r = await reserveTowForParkedVehicle({ sb, missionId: insertedRow.id, actorName: 'rattaché automatiquement à l’arrivée de l’action VAB' })
+          if (r.reserved) {
+            results[results.length - 1] = { missionNumber: item.missionNumber, ok: true, action: 'merged', mergedInto: r.parentNumber != null ? `#${r.parentNumber}` : r.parentId }
+            inserted--; merged++
+          }
+        }
       }
     } catch (e: any) {
       results.push({ missionNumber: item.missionNumber, ok: false, action: 'failed', error: e.message || 'Erreur' })

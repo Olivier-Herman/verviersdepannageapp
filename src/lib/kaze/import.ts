@@ -329,6 +329,16 @@ export async function importKazeJob(
       }
     }
 
+    // Remorquage d'un véhicule déjà au parc chez nous → réserve sur le dossier
+    // (règle commune à toutes les assistances, lib/missions/reserve-rel.ts).
+    // Ne concerne que les fiches restées « new » (la fusion relivraison
+    // ci-dessus les a déjà passées en ignored → le helper ne fait rien).
+    if (result.action === 'insert' && result.mission_id) {
+      const { reserveTowForParkedVehicle } = await import('@/lib/missions/reserve-rel')
+      const r = await reserveTowForParkedVehicle({ sb, missionId: result.mission_id, actorName: 'rattaché automatiquement à l’arrivée du job Kaze' })
+      if (r.reserved) warnings.push(`Remorquage mis en réserve sur la fiche en parc #${r.parentNumber ?? ''} (zone ${r.zone})`)
+    }
+
     // Log mission
     await sb.from('mission_logs').insert({
       mission_id: result.mission_id,

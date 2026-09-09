@@ -148,5 +148,11 @@ export async function importComexByRefs(opts: {
   }
 
   const { data: ins } = await supabase.from('incoming_missions').insert(payload).select('id').single()
+  // Remorquage d'un véhicule déjà au parc chez nous → réserve sur le dossier
+  // (règle commune à toutes les assistances, lib/missions/reserve-rel.ts).
+  if (ins?.id) {
+    const { reserveTowForParkedVehicle } = await import('@/lib/missions/reserve-rel')
+    await reserveTowForParkedVehicle({ sb: supabase, missionId: ins.id, actorName: 'rattaché automatiquement à la réception du mail Touring' })
+  }
   return { matched: true, missionId: ins?.id, externalId, action: 'created' }
 }
