@@ -111,6 +111,13 @@ export default function DossiersClient({ initial, autoById, comexById = {}, isSu
     const targets = rows.filter(d => lot.has(d.root_id))
     if (!targets.length) return
     if (!window.confirm(`Créer les factures Odoo de ${targets.length} dossier(s) ? Une facture par client, tous les groupes prêts.`)) return
+    // Onglets Odoo pré-ouverts MAINTENANT (dans le clic) : un window.open après
+    // un await est bloqué par le navigateur — le lot ne montrait que des petits
+    // liens et Olivier allait chercher les brouillons dans Odoo (09/09/2026).
+    // Un onglet par dossier ; s'il y a plus de factures que d'onglets, on tente
+    // l'ouverture directe ; les onglets en trop sont refermés.
+    const tabs: (Window | null)[] = Array.from({ length: targets.length }, () => { try { return window.open('', '_blank') } catch { return null } })
+    let tabIdx = 0
     setLotBusy(true); setReport(`🧾 Facturation du lot : 0/${targets.length}…`); setReportLinks([])
     let okN = 0; const links: { label: string; url: string }[] = []; const errs: string[] = []
     for (const d of targets) {
@@ -121,14 +128,23 @@ export default function DossiersClient({ initial, autoById, comexById = {}, isSu
         if (!ids.length) { errs.push(`${dd.ref} : rien de prêt`); continue }
         const r = await fetch(`/api/dossier/${dd.root_id}/invoice`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mission_ids: ids }) })
         const j = await r.json(); if (!r.ok || !j.ok) throw new Error(j.error || `HTTP ${r.status}`)
-        okN++; for (const inv of j.invoices || []) links.push({ label: `${dd.ref} → ${inv.client_name}`, url: inv.url })
+        okN++
+        for (const inv of j.invoices || []) {
+          if (!inv.url) continue
+          links.push({ label: `${dd.ref} → ${inv.client_name}`, url: inv.url })
+          const t = tabs[tabIdx++]
+          if (t) { try { t.location.href = inv.url } catch {} } else { try { window.open(inv.url, '_blank') } catch {} }
+        }
         await refreshOne(dd.root_id)
       } catch (e: any) { errs.push(`${d.ref} : ${String(e.message || e)}`) }
       setReport(`🧾 Facturation du lot : ${okN}/${targets.length}…`)
     }
-    setReport(`✓ Lot terminé : ${okN} dossier(s) facturé(s)${errs.length ? ` · ${errs.length} en erreur — ${errs.join(' | ')}` : ''}`)
+    for (let i = tabIdx; i < tabs.length; i++) { try { tabs[i]?.close() } catch {} }   // onglets non utilisés
+    setReport(`✓ Lot terminé : ${okN} dossier(s) facturé(s), ${links.length} facture(s) Odoo en brouillon${errs.length ? ` · ${errs.length} en erreur — ${errs.join(' | ')}` : ''}`)
     setReportLinks(links); setLot(new Set()); setLotBusy(false)
   }
+  // « Tout ouvrir » : dans le clic, une fenêtre par facture (autorisé par le navigateur).
+  const openAllLinks = () => { for (const l of reportLinks) { try { window.open(l.url, '_blank') } catch {} } }
   // Recherche avancée VD Soft + TowSoft (même API que la page Facturation).
   const [advType, setAdvType] = useState<'immatriculation' | 'niv' | 'num_dossier' | 'id_appel' | 'num_facture'>('immatriculation')
   const [advKey, setAdvKey] = useState('')
@@ -296,7 +312,13 @@ export default function DossiersClient({ initial, autoById, comexById = {}, isSu
       {report && (
         <div className="bg-surface border rounded-xl px-4 py-2 text-xs text-ink-secondary">
           {report}
-          {reportLinks.length > 0 && <span className="ml-2">{reportLinks.map(l => <a key={l.url} href={l.url} target="_blank" rel="noreferrer" className="text-brand hover:underline mr-2">{l.label}</a>)}</span>}
+          {reportLinks.length > 0 && (
+            <div className="mt-2 flex flex-wrap items-center gap-2">
+              <span className="font-semibold text-ink">Factures créées :</span>
+              {reportLinks.map(l => <a key={l.url} href={l.url} target="_blank" rel="noreferrer" className="px-2 py-1 rounded-lg border bg-surface-2 text-brand hover:underline">🧾 {l.label}</a>)}
+              {reportLinks.length > 1 && <button onClick={openAllLinks} className="px-2 py-1 rounded-lg bg-brand text-white font-semibold">Tout ouvrir dans Odoo</button>}
+            </div>
+          )}
         </div>
       )}
 
