@@ -46,13 +46,12 @@ export async function POST(_req: Request, { params }: { params: { id: string } }
     return NextResponse.json({ ok: true, déjàDemandé: true, at: (m as any).touring_vr_requested_at })
   }
 
-  // Éligibilité : Touring dit 9 = proposable, 0 = non. On ne demande pas un VR
-  // là où il n'y a pas de droit — le refus reviendrait sans explication.
-  const vr = (m as any).touring_vr || {}
-  const éligible = [vr.vr, vr.vr_taxi, vr.shuttle_vr].some(v => Number(v) === 9)
-  if (!éligible && !estBureau) {
-    return NextResponse.json({ error: 'Pas de véhicule de remplacement prévu sur ce dossier' }, { status: 400 })
-  }
+  // Plus de filtre d'« éligibilité » côté chauffeur (Olivier 09/09/2026, Franck
+  // sur un REM direct Touring : « Demande VR » refusée chez nous, disponible dans
+  // COMEX). Les drapeaux FL_DEMANDE_VR* ne disent pas le DROIT au VR : ils disent
+  // si un VR a déjà été DEMANDÉ sur l'action (9) — sur une première action ils
+  // valent 0, ce qui bloquait tout chauffeur. COMEX propose le bouton quoi qu'il
+  // en soit : on envoie, et c'est la réponse de Touring qui fait foi.
 
   const r = await requestTouringVr(keys)
 
@@ -61,7 +60,7 @@ export async function POST(_req: Request, { params }: { params: { id: string } }
     action: r.ok ? 'touring_vr_requested' : 'touring_vr_failed',
     notes: r.ok
       ? 'Touring : véhicule de remplacement demandé'
-      : `Touring : demande de VR refusée — ${r.error || 'raison inconnue'}`,
+      : `Touring : demande de VR refusée — ${r.error || 'raison inconnue'}`,   // la raison remonte telle quelle au chauffeur
     metadata: { ...keys, ok: r.ok, error: r.error ?? null },
   }).then(() => {}, () => {})
 
