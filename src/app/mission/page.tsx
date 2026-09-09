@@ -54,7 +54,10 @@ export default async function MissionListPage() {
     // MASQUÉES au chauffeur, tout simplement — le résumé de clôture est son
     // double check, la clôture est définitive. (Du 31/08 au 09/09 elles
     // restaient visibles 6 h.) Le compteur du jour continue de les compter.
-    .or('status.in.(assigned,accepted,in_progress,delivering),awaiting_payment.eq.true')
+    // « À encaisser » ne peut retenir qu'une fiche NON clôturée (en parc, en
+    // attente de paiement) : un drapeau oublié sur une fiche terminée ramenait
+    // une mission de juillet chez Franck (09/09/2026).
+    .or('status.in.(assigned,accepted,in_progress,delivering),and(awaiting_payment.eq.true,status.not.in.(completed,to_invoice,invoiced,cancelled,ignored))')
     .order('assigned_at', { ascending: false })
     .limit(20)
 
