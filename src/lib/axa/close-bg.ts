@@ -19,6 +19,7 @@
 // client le traduit déjà en `ok:false`, on journalise le message tel quel.
 
 import { closeMissionAuto, postReport, getMission, postInterventionStep, reportMovementForNothing } from '@/lib/axa/goassist'
+import { computeMissionKm } from '@/lib/missions/estimate-price'
 
 export interface AxaCloseBgResult {
   ok: boolean
@@ -55,7 +56,7 @@ export function axaMissionOrderId(id: string | null | undefined): string | null 
  * que d'inventer un objet : on ne remplit que ce qu'on connaît, le reste garde
  * les valeurs de la mission. Schéma imbriqué imposé par leur API.
  */
-function buildReport(axaMission: any, m: any): any {
+function buildReport(axaMission: any, m: any, totalKm: number | null = null): any {
   const base = axaMission?.report ? JSON.parse(JSON.stringify(axaMission.report)) : {}
 
   const arrival = m.on_site_at || m.on_way_at || null
@@ -65,13 +66,29 @@ function buildReport(axaMission: any, m: any): any {
   base.missionStatement = {
     ...(base.missionStatement || {}),
     ...(arrival ? { actualArrivalTime: new Date(arrival).toISOString().replace('Z', '+00:00') } : {}),
+    // AXA refuse le rapport sans distance : « If the Break Down Distance is not
+    // completed then the Total Distance is Mandatory » (10/09/2026). Total =
+    // dépôt → intervention (→ destination) → dépôt, même chaîne que l'estimation.
+    ...(totalKm != null && totalKm > 0 ? { totalDistance: { value: Math.max(1, Math.round(totalKm)), unit: 'km' } } : {}),
   }
 
+  // Le code panne est CELUI D'AXA (référentiel go&assist) : nos motifs VD Soft
+  // (accident, batt_boost, crevaison_roue…) sont refusés « doesn't exists »
+  // (10/09/2026). On ne l'envoie que s'il figure dans la liste de la mission ;
+  // sinon on garde le code déjà posé par AXA et on met notre motif en description.
+  const allowedCodes = new Set<string>()
+  const collect = (o: any, path = '') => {
+    if (!o || typeof o !== 'object') return
+    if (Array.isArray(o)) { if (/problem/i.test(path)) for (const x of o) { const c = typeof x === 'string' ? x : (x?.key ?? x?.code ?? x?.value); if (c) allowedCodes.add(String(c)) } ; return }
+    for (const k of Object.keys(o)) collect(o[k], k)
+  }
+  collect(axaMission)
+  const codeOk = problemCode && allowedCodes.has(String(problemCode))
   base.case = {
     ...(base.case || {}),
     problemContext: {
       ...(base.case?.problemContext || {}),
-      ...(problemCode  ? { problemCode }        : {}),
+      ...(codeOk ? { problemCode } : {}),
       ...(problemLabel ? { problemDescription: String(problemLabel).slice(0, 500) } : {}),
     },
   }
@@ -194,10 +211,19 @@ export async function closeAxaBg(
     // Rapport final : c'est LUI qui solde la mission chez AXA.
     let reported = false
     try {
+      // Distance totale : chaîne dépôt → intervention (→ destination) → dépôt ;
+      // à défaut les km remorqués pointés par le chauffeur.
+      let totalKm: number | null = null
+      try { totalKm = (await computeMissionKm(missionId)).totalKm } catch {}
+      if (totalKm == null && Number(m?.snc_km_total) > 0) totalKm = Number(m.snc_km_total)
+      if (totalKm == null) {
+        await log('axa_sync_error', 'AXA : rapport non envoyé — distance inconnue (fiche sans coordonnées). Ouvrir la fiche au dispatch pour géocoder, puis « Repousser ».', {})
+      }
       const axaMission = await getMission(missionOrderId)
-      const rep = await postReport(missionOrderId, buildReport(axaMission, m || {}), { isSendingToAxa: true })
+      const rep = totalKm == null ? { ok: false, data: { message: 'distance inconnue' }, status: 0 } as any
+        : await postReport(missionOrderId, buildReport(axaMission, m || {}, totalKm), { isSendingToAxa: true })
       reported = rep.ok
-      if (!rep.ok) await log('axa_sync_error', `AXA : étapes OK mais rapport refusé — ${rep.data?.message || rep.status}`, { report: rep.data })
+      if (!rep.ok && totalKm != null) await log('axa_sync_error', `AXA : étapes OK mais rapport refusé — ${rep.data?.message || rep.status}`, { report: rep.data })
     } catch (e: any) {
       await log('axa_sync_error', `AXA : étapes OK mais rapport en erreur — ${e?.message || e}`, {})
     }

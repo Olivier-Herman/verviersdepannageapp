@@ -150,7 +150,7 @@ async function parcExitRef(sb: ReturnType<typeof createAdminClient>, mission: an
   return null
 }
 
-async function computeMissionKm(missionId: string): Promise<{ chargedKm: number | null; totalKm: number | null }> {
+export async function computeMissionKm(missionId: string): Promise<{ chargedKm: number | null; totalKm: number | null }> {
   const sb = createAdminClient()
   const { data: m } = await sb
     .from('incoming_missions')
