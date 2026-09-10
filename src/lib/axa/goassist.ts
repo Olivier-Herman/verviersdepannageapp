@@ -124,14 +124,9 @@ export async function technicianAuth0Id(): Promise<string> {
   } catch {}
   try {
     const me = await getMe()
-    // Compte assistance@ (10/09/2026) : rôles complets mais canBeAssigned=false
-    // tant que « peut être affecté » n'est pas activé chez AXA → on affecte
-    // au technicien de repli (info@) plutôt que d'essuyer un refus.
-    if (me?.auth0Id && me.canBeAssigned !== false) { techCache = { id: me.auth0Id, at: Date.now() }; return me.auth0Id }
-    if (me?.auth0Id && TECH_AUTH0_ID_FALLBACK) {
-      console.warn(`[axa] ${me.email || me.auth0Id} n'est pas assignable → technicien de repli ${TECH_AUTH0_ID_FALLBACK}`)
-      techCache = { id: TECH_AUTH0_ID_FALLBACK, at: Date.now() }; return TECH_AUTH0_ID_FALLBACK
-    }
+    // canBeAssigned=false n'empêche PAS l'affectation (prouvé 10/09/2026 avec
+    // mobi@ : dispatch 200 + toutes les étapes pointées). Le compte du jeton
+    // est donc toujours un technicien valable.
     if (me?.auth0Id) { techCache = { id: me.auth0Id, at: Date.now() }; return me.auth0Id }
   } catch {}
   if (!TECH_AUTH0_ID_FALLBACK) throw new Error('AXA : impossible de déterminer le technicien (user/me KO et AXA_TECHNICIAN_AUTH0_ID absent)')

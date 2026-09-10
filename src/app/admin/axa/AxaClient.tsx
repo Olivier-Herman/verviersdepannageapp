@@ -79,7 +79,8 @@ export default function AxaClient() {
               <p className="text-ink"><b>Compte du jeton :</b> {me.email || me.auth0Id || '—'}{me.providerId ? ` · prestataire ${me.providerId}` : ''}</p>
               <p className="text-ink-secondary">Rôles : {me.roles.join(', ') || '—'}</p>
               {missing.length > 0 && <p className="text-red-800 mt-1">⚠️ Il manque {missing.join(' + ')} : {missing.includes('Technician') ? 'les clôtures échoueront' : 'les affectations peuvent échouer'}. À corriger chez AXA.</p>}
-              {me.canBeAssigned === false && <p className="text-amber-800 mt-1">⚠️ Ce compte n'est pas « assignable » comme technicien chez AXA. Les affectations passent par le technicien de repli (info@) tant que ce n'est pas activé dans les réglages utilisateur go&assist.</p>}
+              <p className="text-ink-muted mt-1">Règle AXA : seul le technicien affecté peut pointer les étapes. Le compte du jeton doit donc être le technicien choisi ci-dessous.</p>
+              {me.canBeAssigned === false && <p className="text-ink-muted mt-1">Indicateur « assignable » à non chez AXA : sans effet, l'affectation et les pointages passent quand même (vérifié le 10/09/2026).</p>}
             </div>
           )
         })()}
