@@ -204,9 +204,11 @@ export function getCancelReasons(jobId: string): Promise<any> {
 }
 
 export function cancelJob(jobId: string, reasonId?: string, comment?: string): Promise<any> {
+  // Kaze répond 422 « Param is missing or value is empty: job » sans l'enveloppe `job`
+  // (audit du 10/09/2026 : 24 annulations refusées). Les deux formes sont envoyées.
   return kazeFetch(`/jobs/${jobId}/cancel.json`, {
     method: 'PUT',
-    body:   JSON.stringify({ cancel_reason_id: reasonId, comment }),
+    body:   JSON.stringify({ job: { cancel_reason_id: reasonId, comment }, cancel_reason_id: reasonId, comment }),
   })
 }
 
