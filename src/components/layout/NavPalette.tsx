@@ -131,7 +131,7 @@ export default function NavPalette({ open, onClose, items, userRole, userModules
           ))}
         </div>
         <div className="px-4 py-2 border-t text-[11px] text-ink-faint flex flex-wrap gap-x-4 gap-y-1">
-          <span>↑↓ choisir</span><span>Entrée ouvrir</span><span>⌘ Entrée nouvel onglet</span><span>Échap fermer</span><span className="ml-auto">⌘K / Ctrl K depuis n'importe quel écran</span>
+          <span>↑↓ choisir</span><span>Entrée ouvrir</span><span>⌘ Entrée nouvel onglet</span><span>Échap fermer</span><span className="ml-auto">⌘K ouvre la Recherche complète dans un nouvel onglet</span>
         </div>
       </div>
     </div>

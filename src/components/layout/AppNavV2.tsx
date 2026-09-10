@@ -243,7 +243,7 @@ export default function AppNavV2({
           onChange={e => setQuery(e.target.value)}
           onFocus={onOpenPalette ? (e => { e.currentTarget.blur(); onOpenPalette() }) : undefined}
           readOnly={!!onOpenPalette}
-          placeholder={onOpenPalette ? 'Page, plaque, n° de fiche…  ⌘K' : 'Rechercher un menu…'}
+          placeholder={onOpenPalette ? 'Page, plaque, n° de fiche…' : 'Rechercher un menu…'}
           aria-label={onOpenPalette ? 'Ouvrir la palette Aller à' : 'Rechercher dans le menu'}
           className="w-full rounded-md border bg-surface-2 text-sm text-ink placeholder:text-ink-muted pl-8 pr-8 py-2 focus:outline-none focus:border-brand"
         />

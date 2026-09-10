@@ -103,12 +103,15 @@ export default function AppShell({
     return () => { alive = false; clearInterval(iv) }
   }, [])
   const navV2 = useNavV2(navV2Flag)
-  // Palette « Aller à » (menu v3, lot 2) : ⌘K / Ctrl K, ou le champ du menu.
+  // Palette « Aller à » (menu v3, lot 2) : ouverte par le champ du menu.
+  // ⌘K / Ctrl K (Olivier 10/09/2026) : ouvre la page Recherche complète dans un
+  // NOUVEL onglet — l'écran courant reste en place. window.open est appelé dans
+  // le geste clavier lui-même, jamais après un await (sinon bloqué en pop-up).
   const [paletteOpen, setPaletteOpen] = useState(false)
   useEffect(() => {
     if (!navV2) return
     const onKey = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && !e.altKey && e.key.toLowerCase() === 'k') { e.preventDefault(); setPaletteOpen(o => !o) }
+      if ((e.metaKey || e.ctrlKey) && !e.altKey && e.key.toLowerCase() === 'k') { e.preventDefault(); window.open('/recherche', '_blank', 'noopener') }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
