@@ -28,7 +28,9 @@ const CATEGORY_META: Record<string, { label: string; emoji: string; color: strin
 
 const CATEGORY_ORDER = ['mission', 'encaissement', 'avance', 'invoice', 'vehicle']
 
-export default function GlobalSearch() {
+// Olivier 10/09/2026 : quand le menu v3 est actif, ⌘K appartient à la palette
+// « Aller à » (NavPalette) — la loupe de l'en-tête garde son bouton, pas le raccourci.
+export default function GlobalSearch({ shortcut = true }: { shortcut?: boolean } = {}) {
   const router = useRouter()
   const { data: session } = useSession()
   const hasOdooAccess = !!(session?.user as any)?.hasOdooAccess
@@ -65,9 +67,10 @@ export default function GlobalSearch() {
         setOpen(false)
       }
     }
+    if (!shortcut) return
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [open])
+  }, [open, shortcut])
 
   // Lock scroll + focus input
   useEffect(() => {

@@ -258,7 +258,7 @@ export default function AppShell({
             <DispatchAlertBadge userRole={userRole} />
             <TruckSwitcherIcon />
             <CobrowseUserBridge />
-            <GlobalSearch />
+            <GlobalSearch shortcut={!navV2} />
           </div>
           <h1 className="font-display text-ink font-bold text-lg">{title}</h1>
           {headerExtra}
@@ -297,7 +297,7 @@ export default function AppShell({
             <DispatchAlertBadge userRole={userRole} />
             <TruckSwitcherIcon />
             <CobrowseUserBridge />
-            <GlobalSearch />
+            <GlobalSearch shortcut={!navV2} />
           </div>
         </div>
 
