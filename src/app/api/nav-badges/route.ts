@@ -16,6 +16,7 @@ import { isPersonnelStaff }   from '@/lib/rh-access'
 import { isPreviewOn }        from '@/lib/feature-flags'
 import { getBusinessList }    from '@/lib/settings/business'
 import { sourcesWithTag }     from '@/lib/missions/source-catalog'
+import { readTodoCount }      from '@/lib/dossier/todo-count'
 
 export const dynamic    = 'force-dynamic'
 export const fetchCache = 'force-no-store'
@@ -123,7 +124,13 @@ export async function GET() {
       const { data: rows } = await sb.from('incoming_missions').select('id, source, billed_to_name')
         .eq('status', 'to_invoice').eq('dossier_leg', false).is('archived_at', null).not('external_id', 'like', 'PROCESSING_%').limit(2000)
       const n = (rows || []).filter((r: any) => !touringSources.includes(String(r.source || '')) && !/touring/i.test(String(r.billed_to_name || ''))).length
-      if (n) { badges['/facturation'] = n; badges['/facturation/dossiers'] = n }
+      if (n) badges['/facturation'] = n
+      // Facturation par dossier : LE chiffre de la puce « Toutes (hors Touring) »
+      // de la page, calculé par son moteur et mis en cache (page + cron 15 min).
+      // Olivier 10/09/2026 : la pastille disait 17 (fiches brutes) là où la puce
+      // disait 3 (dossiers, déjà facturés par postes et circuits Parquet écartés).
+      const cached = await readTodoCount(sb)
+      if (cached && cached.count > 0) badges['/facturation/dossiers'] = cached.count
     }
   } catch (e: any) {
     console.warn('[nav-badges] compteurs menu v3 :', e?.message || e)
