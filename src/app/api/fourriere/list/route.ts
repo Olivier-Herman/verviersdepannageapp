@@ -125,7 +125,9 @@ export async function GET(req: Request) {
       parked_at:        m.parked_at || null,
       leg_id:           m.leg_id || null,
       regime:           m.regime || null,
-      days:             m.parked_at ? nightsBetween(m.parked_at) : null,   // nuits passées (08/09/2026)
+      // Nuits passées (08/09/2026). Repli sur la date d'intervention puis la réception :
+      // une fiche mère sans parked_at affichait un vide là où la fiche comptait juste (WW734QC, 10/09).
+      days:             (m.parked_at || m.intervention_date || m.received_at) ? nightsBetween(m.parked_at || m.intervention_date || m.received_at) : null,
       source:           m.source,
       external_id:      m.external_id,
       migration_pending: m.migration_pending || false,
