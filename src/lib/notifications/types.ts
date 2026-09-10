@@ -71,6 +71,22 @@ export const NOTIFICATION_TYPES: readonly NotificationType[] = [
     defaultEnabled:  true,
   },
   {
+    key:             'axa_poll_down',
+    label:           'go&assist déconnecté',
+    description:     'Le poll AXA go&assist échoue depuis 3 tours : réamorcer le jeton dans Admin › AXA go&assist. Rappel toutes les 6 h.',
+    category:        'admin',
+    applicableRoles: ['superadmin'],
+    defaultEnabled:  true,
+  },
+  {
+    key:             'axa_poll_up',
+    label:           'go&assist reconnecté',
+    description:     'Le poll AXA go&assist fonctionne à nouveau après une panne.',
+    category:        'admin',
+    applicableRoles: ['superadmin'],
+    defaultEnabled:  true,
+  },
+  {
     key:             'axa_cancelled_after_start',
     label:           'Mission AXA annulée (chauffeur parti)',
     description:     'Une mission AXA a été annulée alors que le chauffeur était en route → trajet à vide à facturer.',
