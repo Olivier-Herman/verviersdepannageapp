@@ -85,10 +85,41 @@ export async function getMe(): Promise<{ auth0Id: string | null; email: string |
   }
 }
 
+export const AXA_TECH_SETTING = 'axa_technician_auth0_id'
+
+/** Techniciens que go&assist a déjà vus affectés sur nos missions (+ le compte du jeton). */
+export async function listKnownTechnicians(): Promise<Array<{ auth0Id: string; email: string | null; name: string; missions: number; last: string | null; isToken: boolean; canBeAssigned: boolean | null }>> {
+  const [all, me] = await Promise.all([getMissions(), getMe().catch(() => null)])
+  const seen = new Map<string, { auth0Id: string; email: string | null; name: string; missions: number; last: string | null; isToken: boolean; canBeAssigned: boolean | null }>()
+  for (const m of all) {
+    const u = m.dispatchInfo?.user; if (!u?.auth0Id) continue
+    const e = seen.get(u.auth0Id) || { auth0Id: u.auth0Id, email: u.email || null, name: `${u.firstName || ''} ${u.lastName || ''}`.trim(), missions: 0, last: null, isToken: false, canBeAssigned: null }
+    e.missions++; const d = m.missionSendingDate || null; if (d && (!e.last || d > e.last)) e.last = d
+    seen.set(u.auth0Id, e)
+  }
+  if (me?.auth0Id) {
+    const e = seen.get(me.auth0Id) || { auth0Id: me.auth0Id, email: me.email, name: 'Compte du jeton', missions: 0, last: null, isToken: true, canBeAssigned: me.canBeAssigned }
+    e.isToken = true; e.canBeAssigned = me.canBeAssigned; if (!e.email) e.email = me.email
+    seen.set(me.auth0Id, e)
+  }
+  return [...seen.values()].sort((a, b) => (b.last || '').localeCompare(a.last || ''))
+}
+
 let techCache: { id: string; at: number } | null = null
-/** auth0Id du technicien à affecter = utilisateur du jeton (cache 1 h), repli env. */
+/**
+ * auth0Id du technicien à affecter. Ordre : réglage métier `axa_technician_auth0_id`
+ * (choisi sur /admin/axa, zéro hardcode) → utilisateur du jeton s'il est assignable
+ * → repli env. Cache 1 h.
+ */
 export async function technicianAuth0Id(): Promise<string> {
   if (techCache && Date.now() - techCache.at < 3600_000) return techCache.id
+  try {
+    const { createAdminClient } = await import('@/lib/supabase')
+    const { data } = await createAdminClient().from('app_settings').select('value').eq('key', AXA_TECH_SETTING).maybeSingle()
+    let chosen: string | null = null
+    try { chosen = data?.value ? JSON.parse(data.value) : null } catch { chosen = data?.value || null }
+    if (chosen && typeof chosen === 'string' && chosen.startsWith('auth0|')) { techCache = { id: chosen, at: Date.now() }; return chosen }
+  } catch {}
   try {
     const me = await getMe()
     // Compte assistance@ (10/09/2026) : rôles complets mais canBeAssigned=false

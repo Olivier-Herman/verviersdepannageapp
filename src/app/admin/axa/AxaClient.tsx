@@ -4,7 +4,8 @@ import { useCallback, useEffect, useState } from 'react'
 
 type Health = { ok: boolean; at: string; last_ok_at: string | null; error: string | null; consecutive_failures: number; awaiting?: number } | null
 type Me = { auth0Id: string | null; email: string | null; roles: string[]; canBeAssigned: boolean | null; providerId: string | null } | null
-type Closure = { id: string; mission_number: number; vehicle_plate: string | null; mission_type: string | null; completed_at: string | null; status: string }
+type Closure = { id: string; mission_number: number; vehicle_plate: string | null; mission_type: string | null; completed_at: string | null; status: string; ga_status?: string | null }
+type Tech = { auth0Id: string; email: string | null; name: string; missions: number; last: string | null; isToken: boolean; canBeAssigned: boolean | null }
 
 const fmt = (iso: string | null | undefined) => iso ? new Date(iso).toLocaleString('fr-BE', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '—'
 
@@ -13,6 +14,8 @@ export default function AxaClient() {
   const [closures, setClosures] = useState<Closure[]>([])
   const [tokenAt, setTokenAt]   = useState<string | null>(null)
   const [me, setMe]             = useState<Me>(null)
+  const [techs, setTechs]       = useState<Tech[]>([])
+  const [tech, setTech]         = useState<string | null>(null)
   const [token, setToken]       = useState('')
   const [busy, setBusy]         = useState<string | null>(null)
   const [msg, setMsg]           = useState<{ ok: boolean; text: string } | null>(null)
@@ -22,7 +25,7 @@ export default function AxaClient() {
     const r = await fetch('/api/admin/axa', { cache: 'no-store' })
     if (!r.ok) return
     const j = await r.json()
-    setHealth(j.health); setClosures(j.failed_closures || []); setTokenAt(j.token_updated_at); setMe(j.me || null); setLoaded(true)
+    setHealth(j.health); setClosures(j.failed_closures || []); setTokenAt(j.token_updated_at); setMe(j.me || null); setTechs(j.technicians || []); setTech(j.technician || null); setLoaded(true)
   }, [])
   useEffect(() => { load() }, [load])
 
@@ -36,8 +39,9 @@ export default function AxaClient() {
       else if (action === 'test') setMsg({ ok: true, text: `Poll OK : ${j.awaiting} mission(s) à traiter, dont ${j.news} nouvelle(s) à valider.` })
       else if (action === 'retry_closures') {
         const okN = (j.results || []).filter((x: any) => x.ok).length
-        setMsg({ ok: okN === j.tried, text: `${okN}/${j.tried} clôture(s) poussée(s) vers AXA.${okN < j.tried ? ' Les autres restent listées avec leur erreur dans le journal de la fiche.' : ''}` })
+        setMsg({ ok: okN === j.tried, text: `${okN}/${j.tried} clôture(s) poussée(s) vers AXA${j.autoclosed ? `, ${j.autoclosed} déjà clôturée(s) par AXA (retirées de la liste)` : ''}.${okN < j.tried ? ' Les autres restent listées avec leur erreur dans le journal de la fiche.' : ''}` })
       }
+      else if (action === 'set_technician') setMsg({ ok: true, text: 'Technicien enregistré. Pris en compte dans l’heure.' })
     } catch (e: any) { setMsg({ ok: false, text: e?.message || 'Erreur réseau' }) }
     setBusy(null); load()
   }
@@ -102,12 +106,29 @@ export default function AxaClient() {
         </button>
       </section>
 
+      {health?.ok && (
+        <section className="rounded-xl border border-border bg-surface p-4 space-y-2">
+          <h2 className="font-semibold text-ink">Technicien affecté chez AXA</h2>
+          <p className="text-sm text-ink-secondary">Utilisateur go&assist auquel nos missions sont affectées. Sans choix, c'est le compte du jeton s'il est assignable. Un technicien n'apparaît ici qu'après avoir été affecté au moins une fois depuis le portail.</p>
+          <div className="space-y-1">
+            <label className="flex items-center gap-2 text-sm text-ink"><input type="radio" name="tech" checked={!tech} onChange={() => post('set_technician', { auth0Id: '' })} /> Automatique (compte du jeton)</label>
+            {techs.map(t => (
+              <label key={t.auth0Id} className="flex items-center gap-2 text-sm text-ink">
+                <input type="radio" name="tech" checked={tech === t.auth0Id} onChange={() => post('set_technician', { auth0Id: t.auth0Id })} />
+                <span>{t.email || t.name}{t.isToken ? ' (compte du jeton)' : ''}</span>
+                <span className="text-ink-muted">· {t.missions} mission{t.missions > 1 ? 's' : ''}{t.last ? `, dernière ${fmt(t.last)}` : ''}{t.canBeAssigned === false ? ' · non assignable' : ''}</span>
+              </label>
+            ))}
+          </div>
+        </section>
+      )}
+
       <section className="rounded-xl border border-border bg-surface p-4 space-y-3">
         <div className="flex items-center justify-between gap-3">
           <h2 className="font-semibold text-ink">Clôtures non poussées vers AXA <span className="text-ink-muted font-normal">({closures.length})</span></h2>
           <button onClick={() => post('retry_closures')} disabled={!!busy || !closures.length || !!down}
             className="px-3 py-1.5 rounded-lg bg-brand text-white text-sm font-medium disabled:opacity-50">
-            {busy === 'retry_closures' ? 'Envoi…' : 'Repousser (10 max)'}
+            {busy === 'retry_closures' ? 'Envoi…' : 'Repousser / rapprocher'}
           </button>
         </div>
         {!closures.length ? <p className="text-sm text-ink-muted">Rien en attente.</p> : (
@@ -115,7 +136,7 @@ export default function AxaClient() {
             {closures.map(c => (
               <li key={c.id} className="py-1.5 flex items-center justify-between gap-3">
                 <a href={`/dispatch/${c.id}`} className="text-brand font-medium">#{c.mission_number}</a>
-                <span className="text-ink flex-1 truncate">{c.vehicle_plate || '—'} · {c.mission_type || '—'}</span>
+                <span className="text-ink flex-1 truncate">{c.vehicle_plate || '—'} · {c.mission_type || '—'}{c.ga_status ? <span className={`ml-2 text-xs ${/^(New|AwaitingDispatch|Dispatched|InProgress|Accepted|Started)$/i.test(c.ga_status) ? 'text-emerald-700' : 'text-ink-muted'}`}>AXA : {c.ga_status}</span> : null}</span>
                 <span className="text-ink-muted">{fmt(c.completed_at)}</span>
               </li>
             ))}

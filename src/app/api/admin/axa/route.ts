@@ -16,7 +16,7 @@ import { getServerSession }  from 'next-auth'
 import { authOptions }       from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase'
 import { setAxaRefreshToken, getAxaAccessToken } from '@/lib/axa/auth'
-import { getMissions, getMe } from '@/lib/axa/goassist'
+import { getMissions, getMe, listKnownTechnicians, AXA_TECH_SETTING } from '@/lib/axa/goassist'
 import { runAxaImport }      from '@/lib/axa/import'
 import { closeAxaBg }        from '@/lib/axa/close-bg'
 import { readAxaHealth, recordAxaPollResult } from '@/lib/axa/health'
@@ -50,9 +50,19 @@ export async function GET() {
   ])
   let tokenUpdatedAt: string | null = null
   try { tokenUpdatedAt = JSON.parse(tok.data?.value || '{}')?.updated_at || null } catch {}
-  let me: any = null
-  if (health?.ok) { try { me = await getMe() } catch {} }
-  return NextResponse.json({ health, failed_closures: closures, token_updated_at: tokenUpdatedAt, me })
+  let me: any = null, technicians: any[] = [], gaStatus = new Map<string, string>()
+  if (health?.ok) {
+    try { me = await getMe() } catch {}
+    try { technicians = await listKnownTechnicians() } catch {}
+    try { for (const m of await getMissions()) if (m.missionOrderId) gaStatus.set(m.missionOrderId, m.status) } catch {}
+  }
+  const { data: techRow } = await sb.from('app_settings').select('value').eq('key', AXA_TECH_SETTING).maybeSingle()
+  let technician: string | null = null
+  try { technician = techRow?.value ? JSON.parse(techRow.value) : null } catch { technician = techRow?.value || null }
+  // Statut go&assist de chaque clôture en attente : AXA auto-clôture à 3 j →
+  // celles déjà « Completed/Closed » chez eux n'ont plus rien à recevoir.
+  const withStatus = closures.map((c: any) => ({ ...c, ga_status: gaStatus.get(c.axa_mission_order_id) || null }))
+  return NextResponse.json({ health, failed_closures: withStatus, token_updated_at: tokenUpdatedAt, me, technicians, technician })
 }
 
 export async function POST(req: Request) {
@@ -87,15 +97,36 @@ export async function POST(req: Request) {
     }
   }
 
+  if (body.action === 'set_technician') {
+    const id = String(body.auth0Id || '').trim()
+    if (id && !id.startsWith('auth0|')) return NextResponse.json({ error: 'Identifiant invalide.' }, { status: 400 })
+    if (id) await sb.from('app_settings').upsert({ key: AXA_TECH_SETTING, value: JSON.stringify(id) }, { onConflict: 'key' })
+    else await sb.from('app_settings').delete().eq('key', AXA_TECH_SETTING)
+    return NextResponse.json({ ok: true, technician: id || null })
+  }
+
   if (body.action === 'retry_closures') {
-    const list = (await failedClosures(sb)).slice(0, 10)
+    const all = await failedClosures(sb)
     const actorId = (session as any)?.user?.id || null
+    // Statut côté AXA : une mission déjà terminée/clôturée chez eux (auto-clôture
+    // à 3 j) ne peut plus recevoir de pointage → on la marque et on passe.
+    const gaStatus = new Map<string, string>()
+    try { for (const m of await getMissions()) if (m.missionOrderId) gaStatus.set(m.missionOrderId, m.status) } catch {}
     const results: any[] = []
-    for (const m of list) {
+    let autoclosed = 0, tried = 0
+    for (const m of all) {
+      const st = gaStatus.get(m.axa_mission_order_id) || null
+      if (st && !/^(New|AwaitingDispatch|Dispatched|InProgress|Accepted|Started)$/i.test(st)) {
+        await sb.from('incoming_missions').update({ axa_closed_at: new Date().toISOString() }).eq('id', m.id)
+        await sb.from('mission_logs').insert({ mission_id: m.id, actor_id: actorId, action: 'axa_synced', notes: `AXA : mission déjà « ${st} » côté go&assist (auto-clôture) — plus rien à pousser.`, metadata: { ga_status: st } }).then(() => {}, () => {})
+        autoclosed++; continue
+      }
+      if (tried >= 10) break
+      tried++
       const r = await closeAxaBg(m.id, m.axa_mission_order_id, actorId, sb).catch((e: any) => ({ ok: false, error: e?.message }))
-      results.push({ mission_number: m.mission_number, ...r })
+      results.push({ mission_number: m.mission_number, ga_status: st, ...r })
     }
-    return NextResponse.json({ ok: true, tried: results.length, results })
+    return NextResponse.json({ ok: true, tried, autoclosed, results })
   }
 
   return NextResponse.json({ error: 'action inconnue' }, { status: 400 })
