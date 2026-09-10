@@ -23,6 +23,8 @@ export default function NouveauClient() {
   const [scanning, setScanning] = useState(false)
   const [q, setQ] = useState(''); const [cands, setCands] = useState<Cand[]>([]); const [searching, setSearching] = useState(false)
   const [zone, setZone] = useState(''); const [enteredAt, setEnteredAt] = useState('')
+  // QR TowSoft sans fiche VD Soft : l'archive TowSoft préremplit le dossier « sans fiche ».
+  const [archive, setArchive] = useState<any>(null)
   // 2. photos
   const [isNative, setIsNative] = useState(false)
   const [photos, setPhotos] = useState<{ file: File; preview: string }[]>([])
@@ -43,6 +45,13 @@ export default function NouveauClient() {
   const resolveQr = async (raw: string) => {
     setErr('')
     const r = await fetch(`/api/fourriere/destruction-dossiers/resolve?qr=${encodeURIComponent(raw)}`); const j = await r.json()
+    if (r.ok && j.archive && !j.missions?.length) {
+      // Fiche TowSoft archivée, jamais migrée : véhicule « sans fiche », prérempli.
+      setArchive(j.archive); setMission(null); setNoFiche(true); setQrScanned(true)
+      if (j.archive.date_appel) setEnteredAt(String(j.archive.date_appel).slice(0, 10))
+      setDesc(d => ({ ...d, vin: j.archive.vin || d.vin, plate: j.archive.plate || d.plate, brand: j.archive.brand || d.brand, model: j.archive.model || d.model }))
+      return
+    }
     if (!r.ok || !j.missions?.length) { setErr(j.error || 'QR non reconnu'); return }
     const m: Cand = j.missions[0]
     if (!(m as any).in_parc) { setErr(`La fiche #${m.mission_number ?? ''} n'est pas en parc.`); return }
@@ -114,7 +123,8 @@ export default function NouveauClient() {
     setSaving(true); setErr('')
     try {
       const body: any = { mission_id: mission?.id || null, qr_scanned: qrScanned, photos: urls, vin: desc.vin, vin_image: desc.vin_image, plate: desc.plate, brand: desc.brand, model: desc.model, color: desc.color, condition: desc.condition,
-        parc_zone_key: mission?.parc_zone_key || zone || null, entered_at: mission ? undefined : (enteredAt ? `${enteredAt}T12:00:00.000Z` : undefined), force: withForce }
+        parc_zone_key: mission?.parc_zone_key || zone || null, entered_at: mission ? undefined : (enteredAt ? `${enteredAt}T12:00:00.000Z` : undefined), force: withForce,
+        notes: archive ? `Fiche TowSoft n° ${archive.towsoft_num}${archive.motif ? ' · ' + archive.motif : ''}${archive.client_name ? ' · ' + archive.client_name : ''}` : undefined }
       const r = await fetch('/api/fourriere/destruction-dossiers', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }); const j = await r.json()
       if (r.status === 409 && j.blocked) { setForce({ reason: '', pin: '' }); setErr(j.reason ? `Sortie bloquée : ${j.reason}` : j.error); return }
       if (!r.ok) throw new Error(j.error || 'Erreur')
@@ -164,6 +174,12 @@ export default function NouveauClient() {
             </div>
           </div>
           <button type="button" onClick={() => { setNoFiche(true); setMission(null); setQrScanned(false) }} className={`w-full py-3 rounded-2xl border text-sm font-semibold ${noFiche ? 'border-brand bg-brand-soft text-brand' : 'bg-surface text-ink-secondary'}`}>Véhicule sans fiche connue</button>
+          {noFiche && archive && (
+            <div className="bg-sky-600/10 border border-sky-600/30 rounded-2xl p-3 text-sm">
+              <p className="text-ink font-semibold">QR TowSoft n° {archive.towsoft_num} — fiche archivée, pas de fiche VD Soft</p>
+              <p className="text-ink-secondary">{[archive.brand, archive.model].filter(Boolean).join(' ') || 'Véhicule'}{archive.plate ? ` · ${archive.plate}` : ''}{archive.vin ? ` · VIN ${archive.vin}` : ''}{archive.date_appel ? ` · appel du ${fmtD(archive.date_appel)}` : ''}{archive.motif ? ` · ${archive.motif}` : ''}</p>
+            </div>
+          )}
           {noFiche && (
             <div className="bg-surface border rounded-2xl p-4 grid grid-cols-2 gap-2">
               <label className="block"><span className="block text-ink-muted text-[11px] uppercase tracking-wide mb-1">Zone du parc</span><input value={zone} onChange={e => setZone(e.target.value)} className="w-full bg-surface-hover border rounded-xl px-3 py-2 text-ink" /></label>

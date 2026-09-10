@@ -27,7 +27,25 @@ export async function GET(req: Request) {
       const r = await sb.from('incoming_missions').select(SELECT).eq('odoo_helpdesk_id', Number(v[1])).eq('dossier_leg', false).limit(1)
       rows = r.data || []
     }
-    if (!rows.length) return NextResponse.json({ error: 'QR non reconnu : ce n’est pas une étiquette VD Soft.', missions: [] }, { status: 404 })
+    // QR TowSoft (Olivier 10/09/2026 : « certains QR sur les véhicules sont liés à TowSoft ») :
+    // URL appel.php?num=NNN, ou simple numéro. → fiche migrée « TS-NNN » si elle existe,
+    // sinon l'archive TowSoft (marque, modèle, VIN, plaque, date d'appel) pour préremplir
+    // un dossier « sans fiche ».
+    let archive: any = null
+    if (!rows.length) {
+      const ts = qr.match(/towsoft[^0-9]*?num=([0-9]{3,8})/i) || qr.match(/^\s*(?:TS-?)?([0-9]{3,8})\s*$/i)
+      if (ts) {
+        const num = ts[1]
+        const r = await sb.from('incoming_missions').select(SELECT).eq('external_id', `TS-${num}`).eq('dossier_leg', false).limit(1)
+        rows = r.data || []
+        if (!rows.length) {
+          const { data: a } = await sb.from('towsoft_archive').select('towsoft_num, plate, vin, brand, model, motif, client_name, date_appel, appel_status, is_cancelled').eq('towsoft_num', num).maybeSingle()
+          if (a) archive = a
+        }
+      }
+    }
+    if (!rows.length && archive) return NextResponse.json({ missions: [], archive })
+    if (!rows.length) return NextResponse.json({ error: 'QR non reconnu : ni étiquette VD Soft, ni référence TowSoft connue.', missions: [] }, { status: 404 })
   } else if (q) {
     const like = `%${q.replace(/[%_]/g, '')}%`
     const { data } = await sb.from('incoming_missions').select(SELECT).eq('status', 'parked').eq('dossier_leg', false)
