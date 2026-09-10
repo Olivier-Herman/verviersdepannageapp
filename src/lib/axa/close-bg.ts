@@ -56,7 +56,16 @@ export function axaMissionOrderId(id: string | null | undefined): string | null 
  * que d'inventer un objet : on ne remplit que ce qu'on connaît, le reste garde
  * les valeurs de la mission. Schéma imbriqué imposé par leur API.
  */
-function buildReport(axaMission: any, m: any, totalKm: number | null = null): any {
+export const AXA_PROBLEM_MAP_SETTING = 'axa_problem_code_map'
+export const AXA_PROBLEM_CODES_SETTING = 'axa_problem_codes'
+
+/** Réglage métier : motif VD Soft → code panne AXA (édité sur /admin/axa). */
+export async function readProblemCodeMap(sb: any): Promise<Record<string, string>> {
+  const { data } = await sb.from('app_settings').select('value').eq('key', AXA_PROBLEM_MAP_SETTING).maybeSingle()
+  try { const v = data?.value ? JSON.parse(data.value) : null; return v && typeof v === 'object' ? v : {} } catch { return {} }
+}
+
+function buildReport(axaMission: any, m: any, totalKm: number | null = null, codeMap: Record<string, string> = {}): any {
   const base = axaMission?.report ? JSON.parse(JSON.stringify(axaMission.report)) : {}
 
   const arrival = m.on_site_at || m.on_way_at || null
@@ -83,12 +92,16 @@ function buildReport(axaMission: any, m: any, totalKm: number | null = null): an
     for (const k of Object.keys(o)) collect(o[k], k)
   }
   collect(axaMission)
-  const codeOk = problemCode && allowedCodes.has(String(problemCode))
+  // 1) code AXA choisi pour ce motif dans le réglage ; 2) sinon le motif brut
+  // s'il est lui-même un code AXA ; 3) sinon on garde le code posé par AXA.
+  const mapped = problemCode ? codeMap[String(problemCode)] : null
+  const axaCode = mapped && allowedCodes.has(mapped) ? mapped
+    : (problemCode && allowedCodes.has(String(problemCode)) ? String(problemCode) : null)
   base.case = {
     ...(base.case || {}),
     problemContext: {
       ...(base.case?.problemContext || {}),
-      ...(codeOk ? { problemCode } : {}),
+      ...(axaCode ? { problemCode: axaCode } : {}),
       ...(problemLabel ? { problemDescription: String(problemLabel).slice(0, 500) } : {}),
     },
   }
@@ -220,8 +233,9 @@ export async function closeAxaBg(
         await log('axa_sync_error', 'AXA : rapport non envoyé — distance inconnue (fiche sans coordonnées). Ouvrir la fiche au dispatch pour géocoder, puis « Repousser ».', {})
       }
       const axaMission = await getMission(missionOrderId)
+      const codeMap = await readProblemCodeMap(sb).catch(() => ({}))
       const rep = totalKm == null ? { ok: false, data: { message: 'distance inconnue' }, status: 0 } as any
-        : await postReport(missionOrderId, buildReport(axaMission, m || {}, totalKm), { isSendingToAxa: true })
+        : await postReport(missionOrderId, buildReport(axaMission, m || {}, totalKm, codeMap), { isSendingToAxa: true })
       reported = rep.ok
       if (!rep.ok && totalKm != null) await log('axa_sync_error', `AXA : étapes OK mais rapport refusé — ${rep.data?.message || rep.status}`, { report: rep.data })
     } catch (e: any) {

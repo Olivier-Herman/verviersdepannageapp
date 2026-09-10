@@ -5,6 +5,7 @@ import { useCallback, useEffect, useState } from 'react'
 type Health = { ok: boolean; at: string; last_ok_at: string | null; error: string | null; consecutive_failures: number; awaiting?: number } | null
 type Me = { auth0Id: string | null; email: string | null; roles: string[]; canBeAssigned: boolean | null; providerId: string | null } | null
 type Closure = { id: string; mission_number: number; vehicle_plate: string | null; mission_type: string | null; completed_at: string | null; status: string; ga_status?: string | null }
+type Motif = { key: string; label: string; branch: string }
 type Tech = { auth0Id: string; email: string | null; name: string; missions: number; last: string | null; isToken: boolean; canBeAssigned: boolean | null }
 
 const fmt = (iso: string | null | undefined) => iso ? new Date(iso).toLocaleString('fr-BE', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '—'
@@ -16,6 +17,9 @@ export default function AxaClient() {
   const [me, setMe]             = useState<Me>(null)
   const [techs, setTechs]       = useState<Tech[]>([])
   const [tech, setTech]         = useState<string | null>(null)
+  const [codes, setCodes]       = useState<string[]>([])
+  const [pmap, setPmap]         = useState<Record<string, string>>({})
+  const [motifs, setMotifs]     = useState<Motif[]>([])
   const [token, setToken]       = useState('')
   const [busy, setBusy]         = useState<string | null>(null)
   const [msg, setMsg]           = useState<{ ok: boolean; text: string } | null>(null)
@@ -25,7 +29,7 @@ export default function AxaClient() {
     const r = await fetch('/api/admin/axa', { cache: 'no-store' })
     if (!r.ok) return
     const j = await r.json()
-    setHealth(j.health); setClosures(j.failed_closures || []); setTokenAt(j.token_updated_at); setMe(j.me || null); setTechs(j.technicians || []); setTech(j.technician || null); setLoaded(true)
+    setHealth(j.health); setClosures(j.failed_closures || []); setTokenAt(j.token_updated_at); setMe(j.me || null); setTechs(j.technicians || []); setTech(j.technician || null); setCodes(j.problem_codes || []); setPmap(j.problem_map || {}); setMotifs(j.motifs || []); setLoaded(true)
   }, [])
   useEffect(() => { load() }, [load])
 
@@ -42,6 +46,7 @@ export default function AxaClient() {
         setMsg({ ok: okN === j.tried, text: `${okN}/${j.tried} clôture(s) poussée(s) vers AXA${j.autoclosed ? `, ${j.autoclosed} déjà clôturée(s) par AXA (retirées de la liste)` : ''}.${okN < j.tried ? ' Les autres restent listées avec leur erreur dans le journal de la fiche.' : ''}` })
       }
       else if (action === 'set_technician') setMsg({ ok: true, text: 'Technicien enregistré. Pris en compte dans l’heure.' })
+      else if (action === 'set_problem_code') { setPmap(j.problem_map || {}); setMsg({ ok: true, text: 'Correspondance enregistrée.' }) }
     } catch (e: any) { setMsg({ ok: false, text: e?.message || 'Erreur réseau' }) }
     setBusy(null); load()
   }
@@ -145,6 +150,31 @@ export default function AxaClient() {
         )}
         {down && !!closures.length && <p className="text-xs text-amber-800">Réamorce d'abord la connexion, puis repousse.</p>}
       </section>
+
+      {motifs.length > 0 && (
+        <section className="rounded-xl border border-border bg-surface p-4 space-y-3">
+          <h2 className="font-semibold text-ink">Codes panne → AXA</h2>
+          <p className="text-sm text-ink-secondary">Le rapport final envoyé à AXA porte un code de leur référentiel ({codes.length} codes). Chaque motif de clôture VD Soft est traduit ici. Sans correspondance, le code posé par AXA à l'ouverture du dossier est conservé.</p>
+          {!codes.length && <p className="text-xs text-amber-800">Référentiel AXA pas encore chargé : il se remplit au premier affichage avec la connexion active.</p>}
+          {(['mobilite', 'remorquage'] as const).map(br => (
+            <div key={br}>
+              <h3 className="text-xs uppercase tracking-wide text-ink-muted mt-2 mb-1">{br === 'mobilite' ? 'Dépannage (le véhicule repart)' : 'Remorquage'}</h3>
+              <div className="divide-y divide-border">
+                {motifs.filter(m => m.branch === br).map(m => (
+                  <div key={m.key} className="py-1.5 flex items-center gap-3 text-sm">
+                    <span className="text-ink flex-1 truncate">{m.label}</span>
+                    <select value={pmap[m.key] || ''} onChange={e => post('set_problem_code', { motif: m.key, code: e.target.value })} disabled={!!busy}
+                      className={`rounded-lg border px-2 py-1 text-sm bg-page ${pmap[m.key] ? 'border-border text-ink' : 'border-amber-300 text-amber-800'}`}>
+                      <option value="">— code AXA du dossier —</option>
+                      {codes.map(c => <option key={c} value={c}>{c}</option>)}
+                    </select>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))}
+        </section>
+      )}
 
       {msg && <p className={`text-sm rounded-lg px-3 py-2 ${msg.ok ? 'bg-emerald-50 text-emerald-800' : 'bg-red-50 text-red-800'}`}>{msg.text}</p>}
     </div>

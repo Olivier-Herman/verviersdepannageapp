@@ -18,7 +18,9 @@ import { createAdminClient } from '@/lib/supabase'
 import { setAxaRefreshToken, getAxaAccessToken } from '@/lib/axa/auth'
 import { getMissions, getMe, listKnownTechnicians, acceptMission, dispatchMission, resetTechnicianCache, AXA_TECH_SETTING } from '@/lib/axa/goassist'
 import { runAxaImport }      from '@/lib/axa/import'
-import { closeAxaBg }        from '@/lib/axa/close-bg'
+import { closeAxaBg, readProblemCodeMap, AXA_PROBLEM_MAP_SETTING, AXA_PROBLEM_CODES_SETTING } from '@/lib/axa/close-bg'
+import { MOTIFS }            from '@/lib/cloture/motifs'
+import { getMission }        from '@/lib/axa/goassist'
 import { readAxaHealth, recordAxaPollResult } from '@/lib/axa/health'
 
 function isSuperadmin(session: any): boolean {
@@ -62,7 +64,27 @@ export async function GET() {
   // Statut go&assist de chaque clôture en attente : AXA auto-clôture à 3 j →
   // celles déjà « Completed/Closed » chez eux n'ont plus rien à recevoir.
   const withStatus = closures.map((c: any) => ({ ...c, ga_status: gaStatus.get(c.axa_mission_order_id) || null }))
-  return NextResponse.json({ health, failed_closures: withStatus, token_updated_at: tokenUpdatedAt, me, technicians, technician })
+
+  // Codes panne : référentiel AXA (lu sur la mission la plus récente, mis en
+  // cache) + réglage motif VD Soft → code AXA.
+  let problemCodes: string[] = []
+  const { data: pcRow } = await sb.from('app_settings').select('value').eq('key', AXA_PROBLEM_CODES_SETTING).maybeSingle()
+  try { problemCodes = pcRow?.value ? JSON.parse(pcRow.value) : [] } catch {}
+  if (health?.ok && !problemCodes.length) {
+    try {
+      const all = await getMissions()
+      const latest = all.filter(m => m.missionOrderId).sort((a, b) => String(b.missionSendingDate || '').localeCompare(String(a.missionSendingDate || '')))[0]
+      const d = latest ? await getMission(latest.missionOrderId) : null
+      const list = d?.report?.case?.problemContext?.problemCodeList
+      if (Array.isArray(list) && list.length) {
+        problemCodes = list.map((x: any) => x?.key).filter(Boolean)
+        await sb.from('app_settings').upsert({ key: AXA_PROBLEM_CODES_SETTING, value: JSON.stringify(problemCodes) }, { onConflict: 'key' })
+      }
+    } catch {}
+  }
+  const problemMap = await readProblemCodeMap(sb)
+  const motifs = Object.entries(MOTIFS).flatMap(([branch, list]) => list.map(m => ({ key: m.key, label: m.label, branch })))
+  return NextResponse.json({ health, failed_closures: withStatus, token_updated_at: tokenUpdatedAt, me, technicians, technician, problem_codes: problemCodes, problem_map: problemMap, motifs })
 }
 
 export async function POST(req: Request) {
@@ -104,6 +126,15 @@ export async function POST(req: Request) {
     else await sb.from('app_settings').delete().eq('key', AXA_TECH_SETTING)
     resetTechnicianCache()
     return NextResponse.json({ ok: true, technician: id || null })
+  }
+
+  if (body.action === 'set_problem_code') {
+    const motif = String(body.motif || '').trim(), code = String(body.code || '').trim()
+    if (!motif) return NextResponse.json({ error: 'Motif manquant.' }, { status: 400 })
+    const map = await readProblemCodeMap(sb)
+    if (code) map[motif] = code; else delete map[motif]
+    await sb.from('app_settings').upsert({ key: AXA_PROBLEM_MAP_SETTING, value: JSON.stringify(map) }, { onConflict: 'key' })
+    return NextResponse.json({ ok: true, problem_map: map })
   }
 
   if (body.action === 'retry_closures') {
