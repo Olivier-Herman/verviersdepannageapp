@@ -47,14 +47,21 @@ export async function reserveTowForParkedVehicle(opts: { sb: Sb; missionId: stri
   const actorId = opts.actorId ?? null
   try {
     const { data: m } = await sb.from('incoming_missions')
-      .select('id, mission_number, source, status, mission_type, vehicle_plate, dossier_leg, parent_mission_id, external_id, destination_name, destination_address, destination_lat, destination_lng')
+      .select('id, mission_number, source, source_format, billed_to_name, status, mission_type, vehicle_plate, dossier_leg, parent_mission_id, external_id, destination_name, destination_address, destination_lat, destination_lng')
       .eq('id', missionId).maybeSingle()
     if (!m) return { reserved: false, reason: 'fiche introuvable' }
     if (m.status !== 'new' || m.dossier_leg || m.parent_mission_id) return { reserved: false, reason: 'pas une commande neuve' }
     if (!['remorquage', 'REM+REL'].includes(String(m.mission_type || ''))) return { reserved: false, reason: 'pas un remorquage' }
     const plate = String(m.vehicle_plate || '').replace(/\s/g, '').toUpperCase()
     if (!plate) return { reserved: false, reason: 'plaque inconnue' }
-    if (!(await sourceHasTag(m.source, 'assistance'))) return { reserved: false, reason: 'source hors assistance' }
+    // Assistance = source taguée « assistance » au catalogue, OU dossier COMEX (Touring
+    // couvre aussi les Siabis couverts, source sia_couvert), OU fiche facturée à une
+    // assistance. Cas 2EMF957 (10/09/2026) : l'action Touring de livraison depuis notre
+    // parc arrivait en sia_couvert, non taguée → elle échappait à la réserve.
+    const assistanceLike = (await sourceHasTag(m.source, 'assistance'))
+      || String((m as any).source_format || '') === 'comex'
+      || /touring|vab|axa|allianz|mondial|ethias|kaze|europ|ima\b/i.test(String((m as any).billed_to_name || ''))
+    if (!assistanceLike) return { reserved: false, reason: 'source hors assistance' }
 
     const { data: parked } = await sb.from('incoming_missions')
       .select('id, mission_number, depot_depart_id, redelivery_address')
