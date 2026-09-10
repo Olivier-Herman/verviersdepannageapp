@@ -106,6 +106,8 @@ export async function listKnownTechnicians(): Promise<Array<{ auth0Id: string; e
 }
 
 let techCache: { id: string; at: number } | null = null
+/** À appeler quand le réglage change (sinon l'instance garde l'ancien choix 1 h). */
+export function resetTechnicianCache() { techCache = null }
 /**
  * auth0Id du technicien à affecter. Ordre : réglage métier `axa_technician_auth0_id`
  * (choisi sur /admin/axa, zéro hardcode) → utilisateur du jeton s'il est assignable

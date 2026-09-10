@@ -16,7 +16,7 @@ import { getServerSession }  from 'next-auth'
 import { authOptions }       from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase'
 import { setAxaRefreshToken, getAxaAccessToken } from '@/lib/axa/auth'
-import { getMissions, getMe, listKnownTechnicians, AXA_TECH_SETTING } from '@/lib/axa/goassist'
+import { getMissions, getMe, listKnownTechnicians, acceptMission, dispatchMission, resetTechnicianCache, AXA_TECH_SETTING } from '@/lib/axa/goassist'
 import { runAxaImport }      from '@/lib/axa/import'
 import { closeAxaBg }        from '@/lib/axa/close-bg'
 import { readAxaHealth, recordAxaPollResult } from '@/lib/axa/health'
@@ -102,6 +102,7 @@ export async function POST(req: Request) {
     if (id && !id.startsWith('auth0|')) return NextResponse.json({ error: 'Identifiant invalide.' }, { status: 400 })
     if (id) await sb.from('app_settings').upsert({ key: AXA_TECH_SETTING, value: JSON.stringify(id) }, { onConflict: 'key' })
     else await sb.from('app_settings').delete().eq('key', AXA_TECH_SETTING)
+    resetTechnicianCache()
     return NextResponse.json({ ok: true, technician: id || null })
   }
 
@@ -123,6 +124,19 @@ export async function POST(req: Request) {
       }
       if (tried >= 10) break
       tried++
+      // Mission jamais prise en charge côté go&assist (poll mort pendant un mois) :
+      // valider si « New », affecter à notre technicien, puis seulement pointer.
+      // AXA n'accepte les étapes que du technicien affecté (refus 10/09 : « not
+      // the dispatched technician »).
+      if (st && /^(New|AwaitingDispatch)$/i.test(st)) {
+        if (/^New$/i.test(st)) {
+          const a = await acceptMission(m.axa_mission_order_id).catch((e: any) => ({ ok: false, data: { message: e?.message } }))
+          if (!a.ok) { results.push({ mission_number: m.mission_number, ga_status: st, ok: false, error: `validation refusée : ${a.data?.message || 'inconnue'}` }); continue }
+        }
+        const d = await dispatchMission(m.axa_mission_order_id).catch((e: any) => ({ ok: false, data: { message: e?.message } }))
+        await sb.from('mission_logs').insert({ mission_id: m.id, actor_id: actorId, action: d.ok ? 'axa_synced' : 'axa_sync_error', notes: d.ok ? 'AXA ↗ mission affectée à notre technicien (rattrapage)' : `AXA ↗ affectation (rattrapage) : échec — ${d.data?.message || 'inconnue'}`, metadata: { mission_order_id: m.axa_mission_order_id } }).then(() => {}, () => {})
+        if (!d.ok) { results.push({ mission_number: m.mission_number, ga_status: st, ok: false, error: `affectation refusée : ${d.data?.message || 'inconnue'}` }); continue }
+      }
       const r = await closeAxaBg(m.id, m.axa_mission_order_id, actorId, sb).catch((e: any) => ({ ok: false, error: e?.message }))
       results.push({ mission_number: m.mission_number, ga_status: st, ...r })
     }
