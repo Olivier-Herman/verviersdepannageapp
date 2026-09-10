@@ -499,17 +499,40 @@ async function buildDossierUncached(anyMissionId: string, light: boolean, price 
       // Frais de justice (test à blanc du 09/09 après-midi) : la période SOUS saisie reste au
       // tarif saisie et part en état de frais ; seule la période ouverte après la levée
       // (mission_type « autre », créée par la levée) est au tarif « autre », à charge du client.
-      regimeEff = (regime === 'saisie' && levee && !coveredByEf && !isFraisDeJustice) ? 'autre' : regime
+      // Olivier 10/09/2026 (WW734QC) : la période SOUS saisie reste au tarif saisie
+      // (1,56 €), quel que soit le payeur ; seules les nuits APRÈS le jour de la levée
+      // sont au tarif « autre » (20 €). Avant, une levée posée sans état de frais
+      // basculait TOUT le volet à 20 € (28 nuits = 560 € au lieu de 43,68 €).
+      // Normalement la levée coupe le volet et en ouvre un « autre » le lendemain ;
+      // ce partage ne sert que si le volet n'a pas été coupé (levée du jour, ancien
+      // dossier) — coveredByEf reste informatif.
+      regimeEff = regime
       const tarif = dayPriceByRegime[regimeEff]
       let dayPrice = tarif?.price || 0
       if (!dayPrice && rootEst?.parc_jours > 0) dayPrice = r2(Number(rootEst.parc_eur) / Number(rootEst.parc_jours))
       days = Math.max(0, rawDays - (tarif?.free || 0))
+      let split: { saisie: number; autre: number; autrePrice: number } | null = null
+      if (regime === 'saisie' && levee && root.levee_saisie_date) {
+        const cut = ts(`${String(root.levee_saisie_date).slice(0, 10)}T23:59:59Z`)!
+        const endTs = exit ?? Date.now()
+        if (endTs > cut) {
+          const nightsSaisie = nightsBetween(entry, cut)
+          const nightsAutre  = nightsBetween(cut, endTs)
+          split = { saisie: nightsSaisie, autre: nightsAutre, autrePrice: dayPriceByRegime['autre']?.price || 0 }
+          days = nightsSaisie + nightsAutre
+        }
+      }
+      void coveredByEf
       // « Sans frais » depuis le dossier (motif) ≠ abandon volontaire : les deux mettent le gardiennage à zéro,
       // mais le libellé doit dire lequel (Olivier 08/09/2026, 2CLN087 « OK Momo »).
       if (m.no_charge_at) { amount = 0; nothing = `sans frais${m.no_charge_reason ? ' : ' + String(m.no_charge_reason) : ''}` }
       else if (m.storage_waived) { amount = 0; nothing = 'gardiennage offert (abandon volontaire)' }
       else if (Number(m.storage_flat_htva) > 0) { amount = r2(Number(m.storage_flat_htva)); note = 'forfait gardiennage' }
       else if (days <= 0 && !open) { amount = 0; nothing = `aucune nuit facturable (${rawDays} nuit${rawDays > 1 ? 's' : ''}${(tarif?.free || 0) > 0 ? `, ${tarif?.free} offerte${(tarif?.free || 0) > 1 ? 's' : ''}` : ''})` }
+      else if (split) {
+        amount = r2(split.saisie * dayPrice + split.autre * split.autrePrice)
+        note = `${split.saisie} j × ${dayPrice.toFixed(2)} € (saisie)${split.autre ? ` + ${split.autre} j × ${split.autrePrice.toFixed(2)} € (hors saisie, après la levée)` : ''}`
+      }
       else { amount = r2(days * dayPrice); note = dayPrice ? `${days} j × ${dayPrice.toFixed(2)} €` : `${days} j · tarif journalier introuvable` }
       title = 'Gardiennage'
       subtitle = [regimeEff !== regime ? `régime ${REGIME_LABEL[regime] || regime} → ${REGIME_LABEL[regimeEff] || regimeEff} (levée de saisie)` : `régime ${REGIME_LABEL[regime] || regime}`, m.parc_zone_key ? `zone ${m.parc_zone_key}` : null, m.parc_row_number != null ? `rangée ${m.parc_row_number}` : null].filter(Boolean).join(' · ')
