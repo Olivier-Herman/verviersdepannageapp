@@ -69,6 +69,11 @@ async function linkAndEnrich(sb: ReturnType<typeof createAdminClient>, fiche: an
   fill('incident_city',      fiche.incident_city,      addr.locality)
   fill('destination_name',   fiche.destination_name,   dest?.name || (dest?.category ? 'Garage partenaire' : null))
   fill('destination_address', fiche.destination_address, dest?.address?.streetAddress)
+  // Coordonnées go&assist (données AXA, pas un géocodage) : comblent une fiche
+  // mail sans GPS → distance du rapport final calculable, ETA/Waze corrects.
+  const ic = dc.incidentLocation?.coordinates, dcoord = dest?.coordinates
+  if (fiche.incident_lat == null && ic?.latitude != null && ic?.longitude != null) { upd.incident_lat = Number(ic.latitude); upd.incident_lng = Number(ic.longitude) }
+  if (fiche.destination_lat == null && dcoord?.latitude != null && dcoord?.longitude != null) { upd.destination_lat = Number(dcoord.latitude); upd.destination_lng = Number(dcoord.longitude) }
   // « Prévue » trompeur : si l'intervention_date est une ÉCHÉANCE future (heure
   // limite d'arrivée AXA parsée du mail), on la remplace par l'heure de réception
   // — une mission d'assistance go&assist n'a pas de rendez-vous. (Olivier 2026-08-13)
@@ -107,7 +112,7 @@ export async function runAxaImport({ mode = 'preview' }: { mode?: ImportMode } =
   // ⚠️ La réf VD Soft peut CONTENIR le n° AXA sans y être égale : un accident
   // repris par AXA a une réf combinée « ACC-4347 / 0126551053-REL ». → match
   // « CONTIENT le numéro » (ilike), pas égalité stricte. (Olivier 2026-08-13)
-  const ENRICH_COLS = 'id, dossier_number, axa_mission_order_id, received_at, intervention_date, vehicle_plate, vehicle_brand, vehicle_model, vehicle_vin, client_name, client_phone, incident_address, incident_city, destination_name, destination_address'
+  const ENRICH_COLS = 'id, dossier_number, axa_mission_order_id, received_at, intervention_date, vehicle_plate, vehicle_brand, vehicle_model, vehicle_vin, client_name, client_phone, incident_lat, destination_lat, incident_address, incident_city, destination_name, destination_address'
   const caseIds = Array.from(new Set<string>(awaiting.map(m => m.case?.caseId).filter(Boolean)))
   const fichesByCaseId = new Map<string, any[]>() // caseId → fiches VD Soft ouvertes portant ce n°
   if (caseIds.length) {
@@ -194,6 +199,10 @@ export async function runAxaImport({ mode = 'preview' }: { mode?: ImportMode } =
         incident_city:     addr.locality || null,
         destination_name:  dest?.name || (dest?.category ? 'Garage partenaire' : null),
         destination_address: dest?.address?.streetAddress || null,
+        incident_lat:      dc.incidentLocation?.coordinates?.latitude ?? null,
+        incident_lng:      dc.incidentLocation?.coordinates?.longitude ?? null,
+        destination_lat:   dest?.coordinates?.latitude ?? null,
+        destination_lng:   dest?.coordinates?.longitude ?? null,
         received_at:       m.missionSendingDate || new Date().toISOString(),
         // ⚠️ PAS maximumDelayOfArrivalDate : c'est une heure LIMITE d'arrivée
         // (échéance), pas un rendez-vous → on prend l'heure de réception, sinon
