@@ -1066,6 +1066,7 @@ export async function processEmailMessage(messageId: string): Promise<ProcessRes
     let existingMissionId: string | null = null
     let existingKazeJobId: string | null = null
     let existingStatus:    string | null = null
+    let existingAxaLinked = false   // fiche déjà alimentée par go&assist (API) → priorité à ses données
 
     // Olivier 2026-06-18 : PRIORITÉ KAZE robuste. On ne prend plus seulement la
     // fiche la plus récente — on récupère TOUS les candidats du même dossier et,
@@ -1076,7 +1077,7 @@ export async function processEmailMessage(messageId: string): Promise<ProcessRes
     const findExisting = async (apply: (q: any) => any) => {
       let q = supabase
         .from('incoming_missions')
-        .select('id, external_id, status, kaze_job_id')
+        .select('id, external_id, status, kaze_job_id, axa_mission_order_id')
         .not('id', 'eq', placeholderId || '')
         .eq('dossier_leg', false)   // fiches Gardiennage (dossier_leg) : jamais (audit 08/09/2026)
         .not('status', 'in', '("ignored","cancelled","completed")')
@@ -1097,6 +1098,7 @@ export async function processEmailMessage(messageId: string): Promise<ProcessRes
         existingMissionId = existing.id
         existingKazeJobId = (existing as any).kaze_job_id || null
         existingStatus    = (existing as any).status || null
+        existingAxaLinked = !!(existing as any).axa_mission_order_id
         console.log(`[Processor] Dossier existant trouvé (dossier_number): ${existing.external_id} (${existing.id}) → mise à jour`)
       }
     }
@@ -1109,6 +1111,7 @@ export async function processEmailMessage(messageId: string): Promise<ProcessRes
         existingMissionId = existing.id
         existingKazeJobId = (existing as any).kaze_job_id || null
         existingStatus    = (existing as any).status || null
+        existingAxaLinked = !!(existing as any).axa_mission_order_id
         console.log(`[Processor] Dossier existant trouvé (external_id): ${existing.external_id} (${existing.id}) → mise à jour`)
       }
     }
@@ -1404,7 +1407,29 @@ export async function processEmailMessage(messageId: string): Promise<ProcessRes
         updatePayload.closing_notes = `Mail sans élément de mission (ni plaque, ni lieu, ni dossier) et extraction peu sûre (${Math.round((parsed.confidence ?? 0) * 100)} %) — classé sans suite à l'arrivée. À rouvrir si c'était bien une mission.`
       }
     }
+    // ── Priorité go&assist (Olivier 10/09/2026 : « les infos API sont plus
+    // fiables ») : si la fiche vient de l'API AXA, le mail ne fait que COMBLER
+    // les vides (description, langue, sous-sol, rendez-vous, nom du garage…),
+    // jamais écraser plaque, client, adresses ou coordonnées déjà posées.
+    let mergedFromMail: string[] = []
+    if (existingMissionId && existingAxaLinked) {
+      const ALWAYS = new Set(['raw_content', 'parsed_data', 'parse_confidence', 'sender_email', 'updated_at', 'source_format'])
+      const cols = Object.keys(updatePayload).filter(k => !ALWAYS.has(k))
+      const { data: cur } = await supabase.from('incoming_missions').select(cols.join(', ')).eq('id', existingMissionId).maybeSingle()
+      for (const k of cols) {
+        const v = (cur as any)?.[k]
+        if (v != null && v !== '') delete updatePayload[k]
+        else if (updatePayload[k] != null && updatePayload[k] !== '') mergedFromMail.push(k)
+      }
+    }
     const { error: finalUpdErr } = await supabase.from('incoming_missions').update(updatePayload).eq('id', targetId)
+    if (!finalUpdErr && existingMissionId && existingAxaLinked) {
+      await supabase.from('mission_logs').insert({
+        mission_id: existingMissionId, action: 'email_merged_axa_priority',
+        notes:      `Mail ${source.toUpperCase()} rattaché : données go&assist conservées${mergedFromMail.length ? ', complété par le mail (' + mergedFromMail.join(', ') + ')' : ', rien à compléter'}.`,
+        metadata:   { source_email_id: messageId, from: fromEmail, filled: mergedFromMail },
+      }).then(() => {}, () => {})
+    }
 
     // Olivier 2026-06-16 : supabase.update() ne LÈVE PAS d'exception en cas
     // d'erreur — il renvoie { error }. Sans ce check, un UPDATE qui échoue
