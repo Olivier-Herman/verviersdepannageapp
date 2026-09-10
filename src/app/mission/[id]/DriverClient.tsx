@@ -2536,7 +2536,24 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
             setCloseType('dpr'); setScreen('close'); return
           }
           if (r.outcome === 'delivered') { setCloseType('rem');  setScreen('close'); return }
-          if (r.outcome === 'park')      { continuePark(); return }
+          if (r.outcome === 'park') {
+            // Olivier 10/09/2026 (2EMF957) : la mise en parc VD Soft est
+            // enregistrée TOUT DE SUITE (dépôt et zone par défaut de la source,
+            // photos, signature, clé déjà saisis ici) — si le chauffeur quitte
+            // l'écran suivant, la voiture est quand même au parc chez nous comme
+            // chez l'assistance. L'écran parc qui suit ne fait que compléter
+            // (dépôt/zone, roulant, clé) : le serveur le traite en complément.
+            await apiSilent('park', {
+              park_data:    { key_location: r.common.keyLocation || undefined },
+              closing_data: {
+                final_mission_type: mType,
+                photo_urls: photoUrls.length ? photoUrls : undefined,
+                signature:  r.common.signaturePng || undefined,
+                closing_notes: r.common.remark || undefined,
+              },
+            })
+            continuePark(); return
+          }
           if (r.outcome === 'rem' || r.outcome === 'rem_vr') {
             // ── LE CHARGEMENT DÉCOULE DE LA DÉCISION (Olivier 2026-08-21) ────
             // « La validation de l'adresse et de la demande de REM active

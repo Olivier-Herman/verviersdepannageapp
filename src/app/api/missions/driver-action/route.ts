@@ -59,7 +59,7 @@ const ALLOWED: Record<string, string[]> = {
   // 'completed' retiré → évite le cas "mise en parc → saute en terminé" (double
   // action / bouton Terminer resté accessible). La relivraison passe par
   // start_delivery → complete_delivery, pas par 'completed' depuis parked.
-  parked:      ['start_delivery', 'change_type', 'save_photos', 'mark_photo_category', 'set_amount_to_collect'],
+  parked:      ['start_delivery', 'change_type', 'save_photos', 'mark_photo_category', 'set_amount_to_collect', 'park'],   // 'park' = complément (clé, roulant, photos) — voir isParkUpdate
   // Olivier 2026-06-18 : update_address autorisé en livraison (REL). Le chauffeur
   // doit pouvoir corriger l'adresse de relivraison une fois en route (ex: client
   // change de garage). Avant : "Action 'update_address' non permise depuis 'delivering'".
@@ -218,9 +218,16 @@ export async function POST(req: Request) {
   const mapping = ACTION_MAP[action]
   const now     = new Date().toISOString()
 
+  // Mise en parc IMMÉDIATE à la clôture Flux 2 (Olivier 10/09/2026, 2EMF957) :
+  // l'app enregistre le parc dès la clôture assisteur « mise en parc » ; l'écran
+  // parc qui suit ne fait que COMPLÉTER (dépôt/zone, clé, roulant, photos). Un
+  // 'park' sur une fiche déjà en parc est donc un complément : mêmes champs,
+  // pas de nouvelle transition, pas de 2e étiquette ni de 2e journal « mis en dépôt ».
+  const isParkUpdate = action === 'park' && mission.status === 'parked'
+
   const updatePayload: Record<string, unknown> = { updated_at: now }
-  if (mapping.status)         updatePayload.status     = mapping.status
-  if (mapping.timestampField) updatePayload[mapping.timestampField] = now
+  if (mapping.status && !isParkUpdate)         updatePayload.status     = mapping.status
+  if (mapping.timestampField && !isParkUpdate) updatePayload[mapping.timestampField] = now
   // Ré-clôture : garder la date de clôture d'origine (fenêtre 6h non réinitialisée).
 
   // Sources internes sans facturation (ex. Car Parts & Recycling) : la mission
@@ -600,7 +607,8 @@ export async function POST(req: Request) {
     } catch { closure = { closure_path: 'unknown' } }
   }
   await supabase.from('mission_logs').insert({
-    mission_id, actor_id: actor.id, action, notes: mapping.logMessage,
+    mission_id, actor_id: actor.id, action: isParkUpdate ? 'park_completed' : action,
+    notes: isParkUpdate ? 'Mise en parc complétée (dépôt / clé / roulant / photos)' : mapping.logMessage,
     metadata: { action, status: mapping.status || mission.status, ...closure },
   })
 
@@ -943,7 +951,7 @@ export async function POST(req: Request) {
   // L'étiquette elle-même n'a pas à changer : le helper choisit déjà le bon
   // modèle — REL pour la zone K (avec l'adresse de relivraison et son QR),
   // parc-entrée pour toutes les autres. Il suffisait de l'appeler.
-  if (action === 'park' && (updated as any)?.parc_zone_key) {
+  if (action === 'park' && !isParkUpdate && (updated as any)?.parc_zone_key) {
     try {
       const { reprintLabelForMission } = await import('@/lib/missions/reprint-label-helper')
       await reprintLabelForMission({ kind: 'uuid', value: mission_id })
