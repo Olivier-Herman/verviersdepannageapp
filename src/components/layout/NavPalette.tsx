@@ -82,13 +82,21 @@ export default function NavPalette({ open, onClose, items, userRole, userModules
 
   useEffect(() => { setSel(0) }, [q, fiches.length])
 
-  const go = (h: Hit) => { onClose(); router.push(h.href) }
+  // Olivier 10/09/2026 : ⌘ Entrée / Ctrl Entrée (ou ⌘ clic / Ctrl clic) ouvre le
+  // résultat dans un NOUVEL onglet — l'écran courant (dispatch, fiche) reste en place.
+  // window.open est appelé dans le geste lui-même, jamais après un await (sinon
+  // le navigateur le bloque comme pop-up).
+  const go = (h: Hit, newTab = false) => {
+    onClose()
+    if (newTab) { window.open(h.href, '_blank', 'noopener'); return }
+    router.push(h.href)
+  }
 
   const onKey = (e: React.KeyboardEvent) => {
     if (e.key === 'Escape') { e.preventDefault(); onClose() }
     else if (e.key === 'ArrowDown') { e.preventDefault(); setSel(s => Math.min(s + 1, hits.length - 1)) }
     else if (e.key === 'ArrowUp') { e.preventDefault(); setSel(s => Math.max(s - 1, 0)) }
-    else if (e.key === 'Enter') { e.preventDefault(); const h = hits[sel]; if (h) go(h) }
+    else if (e.key === 'Enter') { e.preventDefault(); const h = hits[sel]; if (h) go(h, e.metaKey || e.ctrlKey) }
   }
 
   if (!open) return null
@@ -109,7 +117,8 @@ export default function NavPalette({ open, onClose, items, userRole, userModules
           {hits.length === 0 && <p className="px-3 py-4 text-sm text-ink-muted">Tape une page du menu, une plaque ou un numéro de fiche.</p>}
           {hits.map((h, i) => (
             <button key={h.key} type="button" role="option" aria-selected={i === sel}
-              onMouseEnter={() => setSel(i)} onClick={() => go(h)}
+              onMouseEnter={() => setSel(i)} onClick={e => go(h, e.metaKey || e.ctrlKey)}
+              onAuxClick={e => { if (e.button === 1) { e.preventDefault(); go(h, true) } }}
               className={`w-full flex items-center gap-3 rounded-lg px-3 py-2 text-left ${i === sel ? 'bg-brand-soft text-brand' : 'text-ink hover:bg-surface-hover'}`}>
               <span className="w-5 flex items-center justify-center flex-shrink-0">{h.icon}</span>
               <span className="flex-1 min-w-0">
@@ -122,7 +131,7 @@ export default function NavPalette({ open, onClose, items, userRole, userModules
           ))}
         </div>
         <div className="px-4 py-2 border-t text-[11px] text-ink-faint flex flex-wrap gap-x-4 gap-y-1">
-          <span>↑↓ choisir</span><span>Entrée ouvrir</span><span>Échap fermer</span><span className="ml-auto">⌘K / Ctrl K depuis n'importe quel écran</span>
+          <span>↑↓ choisir</span><span>Entrée ouvrir</span><span>⌘ Entrée nouvel onglet</span><span>Échap fermer</span><span className="ml-auto">⌘K / Ctrl K depuis n'importe quel écran</span>
         </div>
       </div>
     </div>
