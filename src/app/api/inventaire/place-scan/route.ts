@@ -39,6 +39,9 @@ export async function POST(req: Request) {
   const plaque     = body.plaque     != null ? String(body.plaque).trim().toUpperCase() : ''
   const ticketId   = body.ticket_id  != null ? Number(body.ticket_id) : null
   const missionNum = body.mission_num != null ? String(body.mission_num).trim() : ''
+  // Nouvelles étiquettes VD Soft : le QR pointe vers /qr/mission/<n° ou uuid> (Olivier 10/09/2026).
+  const missionId  = body.mission_id  != null ? String(body.mission_id).trim() : ''
+  const missionNo  = body.mission_number != null ? Number(body.mission_number) : NaN
   const zoneKey    = body.zone_key   != null ? String(body.zone_key).trim() : ''
   const rowNumber  = body.row_number != null ? Number(body.row_number) : NaN
   const slotIndex  = body.slot_index != null ? Number(body.slot_index) : NaN
@@ -51,8 +54,8 @@ export async function POST(req: Request) {
   const hasPrecisePlacement =
     Number.isInteger(rowNumber) && rowNumber > 0 &&
     Number.isInteger(slotIndex) && slotIndex > 0
-  if (!plaque && !missionNum) {
-    return NextResponse.json({ error: 'plaque ou mission_num requis' }, { status: 400 })
+  if (!plaque && !missionNum && !missionId && !Number.isFinite(missionNo) && !ticketId) {
+    return NextResponse.json({ error: 'plaque, mission_num, mission_id ou ticket_id requis' }, { status: 400 })
   }
 
   const sb = createAdminClient()
@@ -75,9 +78,15 @@ export async function POST(req: Request) {
     }
   }
 
-  // 2. Resolution incoming_missions : plaque > external_id (= mission_num) > ticket_id.
+  // 2. Resolution incoming_missions : mission_id / n° (nouvelle étiquette) > plaque > external_id (= mission_num) > ticket_id.
   let mission: any = null
-  if (plaque) {
+  if (missionId || Number.isFinite(missionNo)) {
+    const q = sb.from('incoming_missions').select('id, vehicle_plate, parc_zone_key, parc_row_number, parc_slot_index, status').eq('dossier_leg', false)
+    const { data } = missionId ? await q.eq('id', missionId).maybeSingle() : await q.eq('mission_number', missionNo).maybeSingle()
+    mission = data
+    if (!mission) return NextResponse.json({ ok: false, placed: false, error: 'Fiche VD Soft introuvable pour cette étiquette.' }, { status: 404 })
+  }
+  if (!mission && plaque) {
     const { data } = await sb
       .from('incoming_missions')
       .select('id, vehicle_plate, parc_zone_key, parc_row_number, parc_slot_index, status')
@@ -146,9 +155,7 @@ export async function POST(req: Request) {
         error: `Creation mission VD Soft echouee : ${createErr.message}`,
       }, { status: 500 })
     }
-    return NextResponse.json({
-      ok: true,
-      placed: true,
+    return NextResponse.json({ ok: true, placed: true, plate: plaque || null,
       mission_id: created.id,
       created: true,
       was_at: null,
@@ -241,9 +248,7 @@ export async function POST(req: Request) {
     wasAt.slot_index !== slotIndex
   )
 
-  return NextResponse.json({
-    ok:          true,
-    placed:      true,
+  return NextResponse.json({ ok: true, placed: true, plate: mission.vehicle_plate,
     mission_id:  mission.id,
     was_at:      wasAt,
     transferred: Boolean(transferred),

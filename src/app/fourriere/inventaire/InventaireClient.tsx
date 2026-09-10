@@ -17,9 +17,11 @@ interface Props {
 }
 
 interface ParsedQR {
-  type:      'ours' | 'towsoft'
+  type:      'ours' | 'towsoft' | 'mission'
   ticketId?: string
   missionNum?: string
+  /** Nouvelle étiquette VD Soft : /qr/mission/<n° ou uuid> (Olivier 10/09/2026 : « QR non reconnu » à l'inventaire). */
+  missionKey?: string
 }
 
 interface ResultItem {
@@ -97,6 +99,9 @@ function parseQR(raw: string): ParsedQR | null {
 
   const oursMatch = trimmed.match(/(?:verviers-qr\.vercel\.app|verviersapp-omega\.vercel\.app|app\.verviersdepannage\.com)\/v\/(\d+)/i)
   if (oursMatch) return { type: 'ours', ticketId: oursMatch[1] }
+
+  const missionMatch = trimmed.match(/\/qr\/mission\/([A-Za-z0-9-]+)/i)
+  if (missionMatch) return { type: 'mission', missionKey: missionMatch[1] }
 
   const tsMatch = trimmed.match(/towsoft\.ca\/appel\.php\?num=(\d+)/i)
   if (tsMatch) return { type: 'towsoft', missionNum: tsMatch[1] }
@@ -312,7 +317,7 @@ export default function InventaireClient({ userRole, userName, userEmail, userMo
 
   /** Appelle place-scan : positionne la voiture sur le plan au slot courant.
    *  Retourne null si offline / pas de rangee / erreur (loguee dans la console). */
-  async function placeOnPlan(payload: { plaque?: string; ticket_id?: number; mission_num?: string }): Promise<PlaceScanResult | null> {
+  async function placeOnPlan(payload: { plaque?: string; ticket_id?: number; mission_num?: string; mission_id?: string; mission_number?: number }): Promise<PlaceScanResult | null> {
     // Olivier 2026-06-03 : en mode bordel (strict_capacity=false) on n a pas de
     // row/slot, mais on update quand meme parc_zone_key pour que le vehicule
     // apparaisse dans la zone du parc.
@@ -362,6 +367,33 @@ export default function InventaireClient({ userRole, userName, userEmail, userMo
 
     setProcessing(true)
     try {
+      if (parsed.type === 'mission') {
+        // Nouvelle étiquette VD Soft (/qr/mission/<n°|uuid>) : la fiche existe déjà →
+        // placement dans la zone, puis réimpression de son étiquette si demandé.
+        const key = String(parsed.missionKey || '')
+        setCurrentItem({ status: 'loading', label: `Fiche ${/^\d+$/.test(key) ? '#' + key : key.slice(0, 8)} — placement…` })
+        const place = await placeOnPlan(/^\d+$/.test(key) ? { mission_number: Number(key) } : { mission_id: key })
+        if (!place || place.placed === false) throw new Error((place as any)?.reason || (place as any)?.error || 'Fiche introuvable ou non placée')
+        let printed = false
+        const mid = (place as any).mission_id as string | undefined
+        if (autoPrint && mid) {
+          try { const rp = await fetch(`/api/missions/${mid}/reprint-label`, { method: 'POST' }); printed = rp.ok } catch { printed = false }
+        }
+        playWinSound()
+        const placedHere = parcRowNumber != null ? `${parcZoneKey}${parcRowNumber}-${nextSlot}` : `${parcZoneKey} (bordel)`
+        const transferFrom = place?.transferred && place.was_at ? `${place.was_at.zone_key}${place.was_at.row_number}-${place.was_at.slot_index}` : undefined
+        const result: ResultItem = {
+          status: 'ok', type: 'reprint',
+          label: (place as any).plate || `Fiche ${/^\d+$/.test(key) ? '#' + key : key.slice(0, 8)}`,
+          printed, zone: placedHere || selectedZone?.label, plaque: (place as any).plate || undefined,
+          msg: transferFrom ? `↔ Transféré de ${transferFrom}` : undefined,
+        }
+        setCurrentItem(result)
+        setItems(prev => [result, ...prev])
+        setStats(prev => ({ ...prev, total: prev.total + 1, updated: prev.updated + 1, reprinted: prev.reprinted + (printed ? 1 : 0) }))
+        persistItem(result)
+        return
+      }
       if (parsed.type === 'ours') {
         // Cas 1 : QR Verviers-QR / verviers-app
         // Olivier 2026-06-03 : ORDRE IMPORTANT : place-scan AVANT reprint.

@@ -83,7 +83,7 @@ export async function GET() {
       vehicle_vin, client_name, billed_to_name,
       parc_zone_key, parc_row_number, parc_slot_index,
       parked_at, received_at, intervention_date,
-      driver_photos, odoo_helpdesk_id, status
+      driver_photos, odoo_helpdesk_id, status, mission_number
     `)
     .eq('source', 'police_avp')
     .in('status', ['parked', 'delivering'])

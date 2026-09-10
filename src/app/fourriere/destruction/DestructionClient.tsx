@@ -22,6 +22,7 @@ interface Fees {
 
 interface Eligible {
   id:                string
+  mission_number?:   number | null
   external_id:       string | null
   dossier_number:    string | null
   vehicle_plate:     string | null
@@ -111,20 +112,26 @@ export default function DestructionClient({ userRole, userName, userEmail, userM
   /** Scan QR : extract helpdesk_id depuis l URL /v/<id>, retrouve la mission dans la liste, coche. */
   function handleQrScan(payload: string) {
     const text = (payload || '').trim()
-    // Patterns possibles : "https://app.../v/123", "/v/123", "123"
-    let helpdeskId: number | null = null
-    const matchUrl = text.match(/\/v\/(\d+)/)
-    if (matchUrl) helpdeskId = parseInt(matchUrl[1], 10)
-    else if (/^\d+$/.test(text)) helpdeskId = parseInt(text, 10)
-
-    if (!helpdeskId) {
-      alert(`QR non reconnu : ${text.slice(0, 100)}`)
-      return
+    // Nouvelle étiquette VD Soft : /qr/mission/<n° ou uuid> (Olivier 10/09/2026 : « QR non
+    // reconnu » sur une étiquette imprimée par l'app). Anciens formats : /v/<ticket>, ou un n° seul.
+    const mm = text.match(/\/qr\/mission\/([A-Za-z0-9-]+)/i)
+    let found: Eligible | undefined
+    let what = ''
+    if (mm) {
+      const key = mm[1]
+      found = /^\d+$/.test(key) ? eligibles.find(e => String(e.mission_number ?? '') === key) : eligibles.find(e => e.id === key)
+      what = /^\d+$/.test(key) ? `Fiche #${key}` : `Fiche ${key.slice(0, 8)}`
+    } else {
+      let helpdeskId: number | null = null
+      const matchUrl = text.match(/\/v\/(\d+)/)
+      if (matchUrl) helpdeskId = parseInt(matchUrl[1], 10)
+      else if (/^\d+$/.test(text)) helpdeskId = parseInt(text, 10)
+      if (!helpdeskId) { alert(`QR non reconnu : ${text.slice(0, 100)}`); return }
+      found = eligibles.find(e => e.odoo_helpdesk_id === helpdeskId) || eligibles.find(e => e.mission_number === helpdeskId)
+      what = `Ticket #${helpdeskId}`
     }
-
-    const found = eligibles.find(e => e.odoo_helpdesk_id === helpdeskId)
     if (!found) {
-      alert(`Ticket #${helpdeskId} non trouvé dans la liste des AVP éligibles à la destruction.`)
+      alert(`${what} non trouvé dans la liste des AVP éligibles à la destruction (plus de 60 jours, source AVP).`)
       return
     }
 
