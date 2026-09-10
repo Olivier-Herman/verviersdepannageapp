@@ -17,7 +17,12 @@ import { getAxaAccessToken } from './auth'
 
 const API_BASE      = process.env.AXA_API_BASE            || 'https://go-and-assist-api-pra.axapartners.com'
 const API_KEY       = process.env.AXA_API_KEY             || '313453E64B6BAFA757717DEF6C29C'
-const TECH_AUTH0_ID = process.env.AXA_TECHNICIAN_AUTH0_ID || 'auth0|62c5457e120ef14810015750'
+// Technicien à affecter = l'UTILISATEUR DU JETON (c'est lui qui pointera les
+// étapes, go&assist exige que le technicien assigné soit celui qui clôture).
+// Lu sur /user/me, cache 1 h. L'env AXA_TECHNICIAN_AUTH0_ID ne sert plus que
+// de repli si /user/me ne répond pas. Olivier 10/09/2026 : compte dédié
+// « assistance » à créer chez AXA → aucun id figé dans le code.
+const TECH_AUTH0_ID_FALLBACK = process.env.AXA_TECHNICIAN_AUTH0_ID || ''
 
 /** ISO avec offset (format attendu par go&assist, ex "2026-08-11T20:49:20.107+00:00"). */
 export const axaNow = () => new Date().toISOString().replace('Z', '+00:00')
@@ -64,6 +69,32 @@ export async function getMissions(): Promise<any[]> {
 export async function getMission(missionOrderId: string): Promise<any | null> {
   const r = await api(`/v1.0/mission/${encodeURIComponent(missionOrderId)}`)
   return r.data?.data || r.data || null
+}
+
+/** Profil du compte porteur du jeton (email, rôles, auth0Id, provider). GET /v1.0/user/me. */
+export async function getMe(): Promise<{ auth0Id: string | null; email: string | null; roles: string[]; canBeAssigned: boolean | null; providerId: string | null } | null> {
+  const r = await api('/v1.0/user/me')
+  const d = r.data?.data || r.data
+  if (!r.ok || !d) return null
+  return {
+    auth0Id:       d.auth0Id || null,
+    email:         d.email || d.userEmail || d.login || null,
+    roles:         Array.isArray(d.userRoles) ? d.userRoles : [],
+    canBeAssigned: typeof d.canBeAssigned === 'boolean' ? d.canBeAssigned : null,
+    providerId:    d.providerId != null ? String(d.providerId) : (d.provider?.id != null ? String(d.provider.id) : null),
+  }
+}
+
+let techCache: { id: string; at: number } | null = null
+/** auth0Id du technicien à affecter = utilisateur du jeton (cache 1 h), repli env. */
+export async function technicianAuth0Id(): Promise<string> {
+  if (techCache && Date.now() - techCache.at < 3600_000) return techCache.id
+  try {
+    const me = await getMe()
+    if (me?.auth0Id) { techCache = { id: me.auth0Id, at: Date.now() }; return me.auth0Id }
+  } catch {}
+  if (!TECH_AUTH0_ID_FALLBACK) throw new Error('AXA : impossible de déterminer le technicien (user/me KO et AXA_TECHNICIAN_AUTH0_ID absent)')
+  return TECH_AUTH0_ID_FALLBACK
 }
 
 // Statuts go&assist « actionnables » chez nous (onglets NOUVEAU + À AFFECTER).
@@ -136,7 +167,7 @@ export async function dispatchMission(missionOrderId: string, opts: { appointmen
       plateNumber: opts.plateNumber ?? (m.case?.registrationPlateNumber || ''),
       updatedAt:   m.updatedAt,
       executedAt:  axaNow(),
-      user:        { auth0Id: TECH_AUTH0_ID },
+      user:        { auth0Id: await technicianAuth0Id() },
       appointmentAt,
     },
   })
@@ -269,4 +300,3 @@ function buildDestinationFromIncident(m: any): any {
   }
 }
 
-export const AXA_TECHNICIAN_AUTH0_ID = TECH_AUTH0_ID

@@ -16,7 +16,7 @@ import { getServerSession }  from 'next-auth'
 import { authOptions }       from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase'
 import { setAxaRefreshToken, getAxaAccessToken } from '@/lib/axa/auth'
-import { getMissions }       from '@/lib/axa/goassist'
+import { getMissions, getMe } from '@/lib/axa/goassist'
 import { runAxaImport }      from '@/lib/axa/import'
 import { closeAxaBg }        from '@/lib/axa/close-bg'
 import { readAxaHealth, recordAxaPollResult } from '@/lib/axa/health'
@@ -50,7 +50,9 @@ export async function GET() {
   ])
   let tokenUpdatedAt: string | null = null
   try { tokenUpdatedAt = JSON.parse(tok.data?.value || '{}')?.updated_at || null } catch {}
-  return NextResponse.json({ health, failed_closures: closures, token_updated_at: tokenUpdatedAt })
+  let me: any = null
+  if (health?.ok) { try { me = await getMe() } catch {} }
+  return NextResponse.json({ health, failed_closures: closures, token_updated_at: tokenUpdatedAt, me })
 }
 
 export async function POST(req: Request) {
@@ -66,8 +68,9 @@ export async function POST(req: Request) {
     try {
       await getAxaAccessToken('web')          // échange + rotation persistée
       const missions = await getMissions()
+      const me = await getMe().catch(() => null)
       await recordAxaPollResult({ ok: true, awaiting: undefined })
-      return NextResponse.json({ ok: true, missions: missions.length })
+      return NextResponse.json({ ok: true, missions: missions.length, me })
     } catch (e: any) {
       return NextResponse.json({ error: `Jeton refusé par AXA : ${e?.message || e}` }, { status: 400 })
     }

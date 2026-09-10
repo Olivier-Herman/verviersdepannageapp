@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from 'react'
 
 type Health = { ok: boolean; at: string; last_ok_at: string | null; error: string | null; consecutive_failures: number; awaiting?: number } | null
+type Me = { auth0Id: string | null; email: string | null; roles: string[]; canBeAssigned: boolean | null; providerId: string | null } | null
 type Closure = { id: string; mission_number: number; vehicle_plate: string | null; mission_type: string | null; completed_at: string | null; status: string }
 
 const fmt = (iso: string | null | undefined) => iso ? new Date(iso).toLocaleString('fr-BE', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '—'
@@ -11,6 +12,7 @@ export default function AxaClient() {
   const [health, setHealth]     = useState<Health>(null)
   const [closures, setClosures] = useState<Closure[]>([])
   const [tokenAt, setTokenAt]   = useState<string | null>(null)
+  const [me, setMe]             = useState<Me>(null)
   const [token, setToken]       = useState('')
   const [busy, setBusy]         = useState<string | null>(null)
   const [msg, setMsg]           = useState<{ ok: boolean; text: string } | null>(null)
@@ -20,7 +22,7 @@ export default function AxaClient() {
     const r = await fetch('/api/admin/axa', { cache: 'no-store' })
     if (!r.ok) return
     const j = await r.json()
-    setHealth(j.health); setClosures(j.failed_closures || []); setTokenAt(j.token_updated_at); setLoaded(true)
+    setHealth(j.health); setClosures(j.failed_closures || []); setTokenAt(j.token_updated_at); setMe(j.me || null); setLoaded(true)
   }, [])
   useEffect(() => { load() }, [load])
 
@@ -30,7 +32,7 @@ export default function AxaClient() {
       const r = await fetch('/api/admin/axa', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action, ...extra }) })
       const j = await r.json()
       if (!r.ok) setMsg({ ok: false, text: j.error || 'Échec' })
-      else if (action === 'seed') { setToken(''); setMsg({ ok: true, text: `Connexion rétablie. ${j.missions} missions visibles côté go&assist.` }) }
+      else if (action === 'seed') { setToken(''); setMsg({ ok: true, text: `Connexion rétablie${j.me?.email ? ' avec ' + j.me.email : ''}. ${j.missions} missions visibles côté go&assist.` }) }
       else if (action === 'test') setMsg({ ok: true, text: `Poll OK : ${j.awaiting} mission(s) à traiter, dont ${j.news} nouvelle(s) à valider.` })
       else if (action === 'retry_closures') {
         const okN = (j.results || []).filter((x: any) => x.ok).length
@@ -65,6 +67,18 @@ export default function AxaClient() {
           </dl>
         )}
         {down && health?.error && <p className="mt-2 text-xs text-red-800 break-words">{health.error}</p>}
+        {me && (() => {
+          const need = ['Manager', 'Dispatcher', 'Technician']
+          const missing = need.filter(r => !me.roles.includes(r))
+          return (
+            <div className="mt-3 text-sm">
+              <p className="text-ink"><b>Compte du jeton :</b> {me.email || me.auth0Id || '—'}{me.providerId ? ` · prestataire ${me.providerId}` : ''}</p>
+              <p className="text-ink-secondary">Rôles : {me.roles.join(', ') || '—'}</p>
+              {missing.length > 0 && <p className="text-red-800 mt-1">⚠️ Il manque {missing.join(' + ')} : {missing.includes('Technician') ? 'les clôtures échoueront' : 'les affectations peuvent échouer'}. À corriger chez AXA.</p>}
+              {me.canBeAssigned === false && <p className="text-red-800 mt-1">⚠️ Ce compte n'est pas assignable comme technicien (canBeAssigned = non).</p>}
+            </div>
+          )
+        })()}
         <div className="mt-3 flex gap-2">
           <button onClick={() => post('test')} disabled={!!busy} className="px-3 py-1.5 rounded-lg bg-surface border border-border text-sm text-ink hover:bg-surface-hover disabled:opacity-50">
             {busy === 'test' ? 'Test…' : 'Tester la connexion'}
@@ -75,7 +89,7 @@ export default function AxaClient() {
       <section className="rounded-xl border border-border bg-surface p-4 space-y-3">
         <h2 className="font-semibold text-ink">Réamorcer la connexion</h2>
         <ol className="list-decimal pl-5 text-sm text-ink-secondary space-y-1">
-          <li>Ouvre une <b>fenêtre privée</b>, va sur le portail go&assist, ouvre les outils de développement (F12) onglet <b>Network</b>, puis connecte-toi.</li>
+          <li>Ouvre une <b>fenêtre privée</b>, va sur le portail go&assist <b>web</b> (pas l'app mobile), ouvre les outils de développement (F12) onglet <b>Network</b>, puis connecte-toi avec le compte réservé au serveur. Ce compte doit porter les rôles Manager + Dispatcher + Technicien : c'est lui qui sera affecté et qui clôturera.</li>
           <li>Cherche la requête <b>oauth/token</b> (domaine auth0.com). Dans sa réponse, copie la valeur de <b>refresh_token</b> (commence par <code>v1.</code>).</li>
           <li>Colle-la ci-dessous et clique sur Réamorcer. La connexion est vérifiée immédiatement.</li>
           <li><b>Ferme la fenêtre privée sans rien faire d'autre.</b> Si cette session est réutilisée ensuite, AXA révoque notre jeton et on revient ici.</li>
