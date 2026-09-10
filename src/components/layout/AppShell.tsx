@@ -4,7 +4,7 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useSession } from 'next-auth/react'
 import { signOutCascade } from '@/lib/auth-signout'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useLayoutEffect } from 'react'
 import { Moon, Sun, LogOut, Menu, ChevronRight, ChevronLeft } from 'lucide-react'
 import VehicleCheckBanner from '@/components/check-vehicule/VehicleCheckBanner'
 import FinesMonthlyRecap  from '@/components/FinesMonthlyRecap'
@@ -81,10 +81,27 @@ export default function AppShell({
   // Menu v3 (lot 1) : zone « Maintenant » du rôle + favoris de l'utilisateur.
   const [navNow, setNavNow]   = useState<string[]>([])
   const [navFavs, setNavFavs] = useState<string[]>([])
+  // Olivier 10/09/2026 : « le menu bouge beaucoup, il recharge à chaque fois son
+  // ordre ». L'AppShell est remonté à chaque page : compteurs, zone « Maintenant »
+  // et favoris arrivaient après coup et réorganisaient le menu sous les yeux.
+  // On applique la dernière réponse connue AVANT le premier affichage (layout
+  // effect, même patron que useNavV2), puis le fetch rafraîchit en silence.
+  const useIsoLayoutEffect = typeof window === 'undefined' ? useEffect : useLayoutEffect
+  useIsoLayoutEffect(() => {
+    try {
+      const c = JSON.parse(window.localStorage.getItem('vd_nav_cache') || 'null')
+      if (c && typeof c === 'object') {
+        if (c.badges && typeof c.badges === 'object') setNavBadges(c.badges)
+        if (Array.isArray(c.now)) setNavNow(c.now)
+        if (Array.isArray(c.favorites)) setNavFavs(c.favorites)
+      }
+    } catch { /* stockage indisponible : on attend le fetch */ }
+  }, [])
   const toggleFavorite = (href: string) => {
     setNavFavs(prev => {
       const next = prev.includes(href) ? prev.filter(h => h !== href) : [...prev, href]
       fetch('/api/users/nav-preference', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ nav_favorites: next }) }).catch(() => {})
+      try { const c = JSON.parse(window.localStorage.getItem('vd_nav_cache') || '{}'); window.localStorage.setItem('vd_nav_cache', JSON.stringify({ ...c, favorites: next })) } catch {}
       return next
     })
   }
@@ -97,6 +114,7 @@ export default function AppShell({
         setNavV2Flag(!!d.flags?.nav_menu_v2)
         if (Array.isArray(d.nav?.now)) setNavNow(d.nav.now)
         if (Array.isArray(d.nav?.favorites)) setNavFavs(d.nav.favorites)
+        try { window.localStorage.setItem('vd_nav_cache', JSON.stringify({ badges: d.badges || {}, now: d.nav?.now || [], favorites: d.nav?.favorites || [] })) } catch {}
       }).catch(() => {})
     load()
     const iv = setInterval(load, 60000)   // rafraîchit toutes les minutes

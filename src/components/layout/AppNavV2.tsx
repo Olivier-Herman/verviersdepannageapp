@@ -15,7 +15,7 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useState } from 'react'
 import { ChevronRight, Search, Star, X } from 'lucide-react'
 import { T } from '@/lib/i18n/T'
 import { type NavItem } from './nav-items'
@@ -45,6 +45,8 @@ interface Props {
 }
 
 const RECENTS_KEY = 'vd_nav_recents'
+const OPEN_KEY    = 'vd_nav_open'   // module déplié, conservé d'une page à l'autre (sessionStorage)
+const useIsoLayoutEffect = typeof window === 'undefined' ? useEffect : useLayoutEffect
 const readRecents = (): string[] => { try { const v = JSON.parse(localStorage.getItem(RECENTS_KEY) || '[]'); return Array.isArray(v) ? v : [] } catch { return [] } }
 
 export default function AppNavV2({
@@ -66,7 +68,8 @@ export default function AppNavV2({
     return null
   }
   const [recents, setRecents] = useState<string[]>([])
-  useEffect(() => { setRecents(readRecents()) }, [])
+  // Appliqués avant le premier affichage : pas de ligne qui apparaît après coup.
+  useIsoLayoutEffect(() => { setRecents(readRecents()) }, [])
   useEffect(() => {
     if (!pathname || !resolveQuick(pathname)) return
     const next = [pathname, ...readRecents().filter(h => h !== pathname)].slice(0, 6)
@@ -103,9 +106,16 @@ export default function AppNavV2({
   // l'accordéon à chaque re-render de l'AppShell).
   const activeKey = active && active.visibleSections.length > 0 ? active.key : null
 
-  // Un seul module déplié à la fois — celui de la page courante par défaut.
-  const [openKey, setOpenKey] = useState<string | null>(activeKey)
-  useEffect(() => { if (activeKey) setOpenKey(activeKey) }, [activeKey])
+  // Un seul module déplié à la fois — celui de la page courante par défaut ;
+  // sinon le dernier déplié (mémorisé), pour que le menu ne se replie pas à
+  // chaque changement de page (Olivier 10/09/2026 : « il bouge beaucoup »).
+  const [openKey, setOpenKeyState] = useState<string | null>(activeKey)
+  const setOpenKey = (k: string | null) => { setOpenKeyState(k); try { if (k) window.sessionStorage.setItem(OPEN_KEY, k); else window.sessionStorage.removeItem(OPEN_KEY) } catch {} }
+  useIsoLayoutEffect(() => {
+    if (activeKey) { setOpenKey(activeKey); return }
+    try { const k = window.sessionStorage.getItem(OPEN_KEY); if (k && modules.some(m => m.key === k)) setOpenKeyState(k) } catch {}
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeKey])
 
   // ── Recherche : filtre le menu en direct (module OU une de ses sections). ──
   const [query, setQuery] = useState('')
