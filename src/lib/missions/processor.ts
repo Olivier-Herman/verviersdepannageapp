@@ -1113,6 +1113,47 @@ export async function processEmailMessage(messageId: string): Promise<ProcessRes
       }
     }
 
+    // ── Mail tardif sur un dossier DÉJÀ CLÔTURÉ chez nous ──────────────────
+    // Cas réel (audit AXA 10/09/2026) : fiche créée à la main à l'appel
+    // téléphonique, intervention faite, puis le mail de l'assisteur arrive
+    // après la clôture → il créait une 2e fiche (10132246 / 10132381). Règle :
+    // même dossier, fiche terminée depuis < 72 h, et soit pas de N° mission
+    // sur la fiche (manuelle), soit le même → on RATTACHE (log + N° mission)
+    // et on ne crée rien. Un N° mission DIFFÉRENT = 2e intervention légitime.
+    if (!existingMissionId && dossierGroup) {
+      const since = new Date(Date.now() - 72 * 3600e3).toISOString()
+      let qc = supabase.from('incoming_missions')
+        .select('id, external_id, status, mission_number, received_at')
+        .eq('dossier_leg', false)
+        .in('status', ['completed', 'to_invoice', 'invoiced'])
+        .gte('received_at', since)
+        .order('received_at', { ascending: false })
+        .limit(5)
+      qc = isImaLikeSrc ? qc.ilike('dossier_number', `${dossierGroup}%`)
+         : isVabSrc    ? qc.or(`dossier_number.ilike.${dossierGroup}/%,dossier_number.eq.${dossierGroup}`)
+         : qc.eq('dossier_number', dossierGroup)
+      const { data: closedRows } = await qc
+      const extId = parsed.external_id && !parsed.external_id.startsWith('UNKNOWN_') && !parsed.external_id.startsWith('ERR_') ? parsed.external_id : null
+      const late = (closedRows || []).find((r: any) => !r.external_id || (extId && r.external_id === extId))
+      if (late) {
+        await markAsRead(token, messageId)
+        if (placeholderId && placeholderId !== late.id) {
+          await supabase.from('incoming_missions').delete().eq('id', placeholderId)
+        }
+        const fix: Record<string, any> = { updated_at: new Date().toISOString() }
+        if (!late.external_id && extId) fix.external_id = extId
+        await supabase.from('incoming_missions').update(fix).eq('id', late.id)
+        await supabase.from('mission_logs').insert({
+          mission_id: late.id,
+          action:     'email_late_attached',
+          notes:      `Mail ${source.toUpperCase()} reçu après la clôture : rattaché à la fiche #${late.mission_number ?? ''} (dossier ${dossierGroup}), pas de nouvelle fiche.`,
+          metadata:   { source_email_id: messageId, from: fromEmail, status: late.status, external_id: extId },
+        })
+        console.log(`[Processor] Mail tardif ${source} dossier ${dossierGroup} → rattaché à ${late.id} (${late.status})`)
+        return { status: 'duplicate', externalId: parsed.external_id, source }
+      }
+    }
+
     // Protection Kaze : si la mission existante vient deja de l API Kaze (IMA),
     // les donnees Kaze sont plus fiables que le parsing email. On marque juste
     // le mail comme lu + log + on ne touche pas aux champs business.
@@ -1274,6 +1315,12 @@ export async function processEmailMessage(messageId: string): Promise<ProcessRes
     const finalSource  = is2026BX ? 'touring'   : source
     const finalType    = is2026BX ? 'transport' : parsed.mission_type
 
+    const scheduledAt = (parsed.scheduled_at && !isNaN(Date.parse(String(parsed.scheduled_at)))) ? new Date(String(parsed.scheduled_at)).toISOString() : null
+    const LANG_LABEL: Record<string, string> = { nl: 'néerlandais', de: 'allemand', en: 'anglais' }
+    const incidentInfo = [
+      parsed.underground ? 'Véhicule en sous-sol' : null,
+      parsed.client_language && parsed.client_language !== 'fr' ? `Client parle ${LANG_LABEL[parsed.client_language] || parsed.client_language}` : null,
+    ].filter(Boolean).join(' · ') || null
     const updatePayload: Record<string, unknown> = {
       external_id:          parsed.external_id,
       // Olivier 2026-06-18 : si l'assistance n'a pas de N° Dossier distinct, on
@@ -1304,6 +1351,11 @@ export async function processEmailMessage(messageId: string): Promise<ProcessRes
       // rejet Postgres (timestamptz) qui ferait échouer TOUT l'UPDATE. On la
       // valide : si non parseable → null. (Olivier 2026-06-16)
       incident_at:          (parsed.incident_at && !isNaN(Date.parse(String(parsed.incident_at)))) ? parsed.incident_at : null,
+      // Rendez-vous fixé par l'assisteur (AXA « Date et heure programmée ») et
+      // infos terrain (sous-sol, langue du client) → posés SEULEMENT si présents,
+      // pour ne pas écraser ce que le dispatch a saisi. Audit AXA 10/09/2026.
+      ...(scheduledAt ? { rdv_at: scheduledAt } : {}),
+      ...(incidentInfo ? { incident_info: incidentInfo } : {}),
       received_at:          receivedAt,
       // status/dispatch_mode : set UNIQUEMENT pour nouvelles missions (cf. block
       // conditionnel ci-dessous). Sinon les emails redondants Touring/IMA/etc.
@@ -1326,7 +1378,9 @@ export async function processEmailMessage(messageId: string): Promise<ProcessRes
     // Mise à jour d'un dossier existant → ne pas écraser ces valeurs (le
     // dispatcher peut avoir deja confirme/assigne/complete la mission).
     if (!existingMissionId) {
-      updatePayload.intervention_date = receivedAt
+      // Un rendez-vous fixé par l'assisteur prime sur l'heure de réception
+      // (avant : dossier 10132071 programmé 11h00 affiché « prévue 07h13 »).
+      updatePayload.intervention_date = scheduledAt || receivedAt
       // ── UN MAIL QUI N'EST PAS UNE MISSION N'EN DEVIENT PAS UNE ──────────────
       // 45 fiches « nouveau » dormaient dans le dispatch, dont vingt Ethias et
       // dix-sept Mondial sans type, sans véhicule et sans lieu — la plus vieille

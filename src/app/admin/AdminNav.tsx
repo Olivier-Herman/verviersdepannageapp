@@ -52,6 +52,7 @@ const GROUPS: NavGroup[] = [
   {
     title: 'Workflow',
     items: [
+      { href: '/admin/axa',       label: 'AXA',       icon: Radio },
       { href: '/admin/dispatch',      label: 'Dispatch',      icon: Radio },
       { href: '/admin/notifications', label: 'Notifications', icon: Bell },
       { href: '/admin/decharges',     label: 'Décharges',     icon: ShieldCheck },

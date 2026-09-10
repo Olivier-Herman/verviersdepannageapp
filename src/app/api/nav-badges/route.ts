@@ -14,6 +14,7 @@ import { authOptions }       from '@/lib/auth'
 import { createAdminClient }  from '@/lib/supabase'
 import { isPersonnelStaff }   from '@/lib/rh-access'
 import { isPreviewOn }        from '@/lib/feature-flags'
+import { readAxaHealth }      from '@/lib/axa/health'
 import { getBusinessList }    from '@/lib/settings/business'
 import { sourcesWithTag }     from '@/lib/missions/source-catalog'
 import { readTodoCount }      from '@/lib/dossier/todo-count'
@@ -27,6 +28,11 @@ export async function GET() {
   if (!u?.id) return NextResponse.json({ badges: {}, flags: { nav_menu_v2: false } })
   const sb = createAdminClient()
   const badges: Record<string, number> = {}
+  // go&assist déconnecté → pastille sur Admin › AXA (superadmin). Audit 10/09/2026.
+  if (u.role === 'superadmin' || (Array.isArray(u.roles) && u.roles.includes('superadmin'))) {
+    const h = await readAxaHealth().catch(() => null)
+    if (h && !h.ok && h.consecutive_failures >= 3) badges['/admin/axa'] = 1
+  }
   const flags = { nav_menu_v2: await isPreviewOn('nav_menu_v2', u.role, u.id) }   // u.id : les pilotes nommés (Jona) voient le menu v3
 
   // Gestion du personnel : congés en attente de traitement (pending + annulation demandée).

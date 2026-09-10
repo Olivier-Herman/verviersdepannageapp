@@ -27,6 +27,12 @@ export interface ParsedMission {
   destination_address:  string | null
   amount_guaranteed:    number | null
   incident_at:          string | null
+  /** Rendez-vous fixé par l'assisteur (début du créneau, ISO UTC). AXA « Date et heure programmée ». Audit 10/09/2026. */
+  scheduled_at:         string | null
+  /** Langue du client (fr/nl/de/en) quand la source la donne. */
+  client_language:      string | null
+  /** Véhicule en sous-sol / parking souterrain (plateau impossible). */
+  underground:          boolean | null
   confidence:           number
 }
 
@@ -81,7 +87,12 @@ RÈGLES D'EXTRACTION:
 - vehicle_brand = "Marque", vehicle_model = "Modèle"
 - vehicle_fuel = "Carburant", vehicle_gearbox = "Type de boîte de vitesse"
 - "Lieu de survenance" = incident_address + incident_city + incident_country
-- "Lieu de livraison" = destination_address`,
+- "Lieu de livraison" = destination_address ; le NOM du garage est souvent dans "Information additionnelle" → destination_name
+- "Date et heure programmée" : si un créneau est renseigné (ex "2026-09-04T11:00:00 2026-09-04T11:30:00", heure de Bruxelles), scheduled_at = DÉBUT du créneau converti en UTC ; sinon null
+- "Langue parlée" → client_language : French→fr, Dutch/Nederlands→nl, German/Deutsch→de, English→en
+- "Est en sous-sol" : OUI → underground = true, NON → false
+- "Diagnostique" contient des codes internes AXA (COUNTRIES, CASE_SOURCE…) : à IGNORER
+- "Prix de l'intervention" = "Selon prix d'application" : pas un montant, amount_guaranteed = null`,
 
   ardenne: `SOURCE: L'Ardenne Prévoyante via Inter Partner Assistance. Format identique à AXA.
 RÈGLES D'EXTRACTION: identiques à AXA.`,
@@ -189,6 +200,9 @@ Extrais les données de cette mission et retourne ce JSON (null si absent):
   "destination_address": "adresse complète de destination",
   "amount_guaranteed": null,
   "incident_at": "ISO 8601 UTC datetime ou null",
+  "scheduled_at": "rendez-vous fixé par l'assisteur, ISO 8601 UTC, sinon null",
+  "client_language": "fr|nl|de|en ou null",
+  "underground": null,
   "confidence": 0.9
 }
 
@@ -303,6 +317,9 @@ export async function parseMissionContent(
                             ? parseFloat(String(parsed.amount_guaranteed)) || null
                             : null,
     incident_at:          (parsed.incident_at          as string | null) || null,
+    scheduled_at:         (parsed.scheduled_at         as string | null) || null,
+    client_language:      (() => { const l = String(parsed.client_language || '').toLowerCase().slice(0, 2); return ['fr', 'nl', 'de', 'en'].includes(l) ? l : null })(),
+    underground:          typeof parsed.underground === 'boolean' ? parsed.underground : null,
     confidence:           parseFloat(String(parsed.confidence))          || 0.5,
   }
 }

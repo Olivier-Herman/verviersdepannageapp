@@ -11,6 +11,7 @@ import Link from 'next/link'
 import { getServerSession }  from 'next-auth'
 import { authOptions }       from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase'
+import { readAxaHealth, axaDownSince } from '@/lib/axa/health'
 import { redirect }          from 'next/navigation'
 import {
   DollarSign, Truck, FileText, Wallet, Settings,
@@ -76,6 +77,8 @@ export default async function AdminPage() {
   if (!isAdmin) redirect('/dashboard?error=access_denied')
 
   const sb = createAdminClient()
+  const axaHealth = await readAxaHealth(sb).catch(() => null)
+  const axaWarn = axaHealth && !axaHealth.ok ? `Déconnecté ${axaDownSince(axaHealth)} — réamorcer le jeton` : null
 
   // Stats minimales en parallele pour eviter d allonger le TTFB
   const [
@@ -157,6 +160,8 @@ export default async function AdminPage() {
       </Group>
 
       <Group title="Workflow & Communication">
+        <Card href="/admin/axa" icon={Radio} label="AXA go&assist" warn={axaWarn}
+          desc="Connexion au portail AXA : état du poll, réamorçage du jeton, clôtures à repousser." />
         <Card href="/admin/dispatch" icon={Radio} label="Dispatch"
           desc="Règles auto-dispatch (jour/nuit), répartition chauffeurs." />
         <Card href="/admin/garde-schedule" icon={Radio} label="Plages de garde"

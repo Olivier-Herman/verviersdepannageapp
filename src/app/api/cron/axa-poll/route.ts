@@ -11,6 +11,7 @@ export const maxDuration = 60
 
 import { NextResponse } from 'next/server'
 import { runAxaImport } from '@/lib/axa/import'
+import { recordAxaPollResult } from '@/lib/axa/health'
 
 export async function GET(req: Request) {
   const authHeader = req.headers.get('authorization')
@@ -24,9 +25,12 @@ export async function GET(req: Request) {
   try {
     const result = await runAxaImport({ mode: 'send' })
     console.log(`[cron axa-poll] awaiting=${result.awaiting} imported=${result.imported} skipped=${result.skipped} errors=${result.errors.length}`)
+    // Santé visible à l'écran (audit 10/09/2026 : un mois d'échecs muets).
+    await recordAxaPollResult({ ok: true, awaiting: result.awaiting }).catch(() => {})
     return NextResponse.json(result)
   } catch (e: any) {
     console.error('[cron axa-poll]', e.message)
+    await recordAxaPollResult({ ok: false, error: e?.message }).catch(() => {})
     return NextResponse.json({ error: e.message }, { status: 500 })
   }
 }
