@@ -892,7 +892,15 @@ function AssignAction({ mission, drivers, driverStatuses, onRefresh, onModalChan
   }
   // La question Siabis passe AVANT l'assignation (le chauffeur doit partir avec la
   // bonne consigne d'encaissement).
-  const assign = (driverId: string) => withSiabisGate(() => doAssign(driverId))
+  // Olivier 10/09/2026 : « le bouton Assigner ouvre la liste mais on ne sait
+  // sélectionner personne » — sur une mission autoroute, la question Siabis
+  // s'ouvrait DERRIÈRE le sélecteur de chauffeur (z-index), qui restait affiché :
+  // rien ne semblait se passer. On ferme le sélecteur dès que la question
+  // s'ouvre ; la décision prise, l'assignation au chauffeur choisi se poursuit.
+  const assign = (driverId: string) => {
+    if (shouldOfferSiabis(mission.source, mission.incident_address).offer) closeModal()
+    withSiabisGate(() => doAssign(driverId))
+  }
 
   if (mission.status === 'completed') {
     return <span className="text-green-400 text-xs font-medium">{mission.assigned_user?.name || '—'}</span>
