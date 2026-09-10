@@ -5,6 +5,7 @@ import Link from 'next/link'
 import dynamic from 'next/dynamic'
 import AppShell from '@/components/layout/AppShell'
 import AmbientBackground from '@/components/AmbientBackground'
+import PhotoLightbox from '@/components/ui/PhotoLightbox'
 import {
   Trash2, Camera, RefreshCw, ArrowLeft, Check, Loader2, AlertTriangle, 
 } from 'lucide-react'
@@ -62,6 +63,9 @@ function fmtEur(n: number | null | undefined): string {
 
 export default function DestructionClient({ userRole, userName, userEmail, userModules }: Props) {
   const [eligibles, setEligibles] = useState<Eligible[]>([])
+  // Olivier 10/09/2026 : les photos s'ouvrent dans la visionneuse in-app (‹ › /
+  // swipe), plus dans un onglet du navigateur qui n'en montrait qu'une.
+  const [gallery, setGallery] = useState<string[] | null>(null)
   const [checked, setChecked]     = useState<Set<string>>(new Set())
   const [loading, setLoading]     = useState(true)
   const [err, setErr]             = useState<string | null>(null)
@@ -332,10 +336,10 @@ export default function DestructionClient({ userRole, userName, userEmail, userM
                           </td>
                           <td className="px-3 py-2.5 text-center">
                             {e.photo_count > 0 ? (
-                              <a href={e.driver_photos?.[0] || '#'} target="_blank" rel="noopener" onClick={ev => ev.stopPropagation()}
+                              <button type="button" onClick={ev => { ev.stopPropagation(); setGallery(e.driver_photos || []) }}
                                 className="text-brand hover:underline text-xs">
-                                {e.photo_count} photo{e.photo_count > 1 ? 's' : ''}
-                              </a>
+                                📷 {e.photo_count} photo{e.photo_count > 1 ? 's' : ''}
+                              </button>
                             ) : (
                               <span className="text-ink-muted text-xs">—</span>
                             )}
@@ -414,6 +418,7 @@ export default function DestructionClient({ userRole, userName, userEmail, userM
           )}
 
         </div>
+      {gallery && gallery.length > 0 && <PhotoLightbox photos={gallery} startIndex={0} onClose={() => setGallery(null)} />}
       </AmbientBackground>
 
       {cameraOpen && (
