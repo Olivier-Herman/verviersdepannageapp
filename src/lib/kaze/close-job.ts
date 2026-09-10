@@ -305,6 +305,25 @@ interface StepSignedIds {
   realSignatureSignedId:   string | null               // signature client (peut etre null)
 }
 
+/**
+ * Kaze répond parfois 409 « Conflit de mise à jour simultanée » sur le PUT d'un step
+ * (traitement des pièces jointes encore en cours de leur côté), même avec
+ * skip_version_check. C'est ce qui laissait des clôtures à moitié faites — 12 jobs
+ * ouverts depuis des semaines à l'audit du 10/09/2026. On attend et on réessaie.
+ */
+async function withConflictRetry<T>(what: string, fn: () => Promise<T>): Promise<T> {
+  const waits = [1500, 3000, 6000]
+  for (let i = 0; ; i++) {
+    try { return await fn() }
+    catch (e: any) {
+      const conflict = e?.status === 409 || /conflit|simultan|conflict/i.test(String(e?.message || ''))
+      if (!conflict || i >= waits.length) throw e
+      console.warn(`[kaze-close] ${what} : conflit Kaze (409), nouvel essai dans ${waits[i]} ms`)
+      await new Promise(r => setTimeout(r, waits[i]))
+    }
+  }
+}
+
 /** Remplit les widgets requis d un step + le marque comme completed. */
 async function fillAndCompleteStep(
   jobId:    string,
@@ -363,14 +382,14 @@ async function fillAndCompleteStep(
 
   // PUT widgets s il y en a
   if (Object.keys(widgetsData).length > 0) {
-    await performerUpdateTemplate(jobId, stepId, widgetsData, location)
+    await withConflictRetry(`widgets ${stepType}`, () => performerUpdateTemplate(jobId, stepId, widgetsData, location))
   }
 
   // 2) Marquer le step comme completed (sauf si deja avance par le PUT precedent)
   // On tente toujours — si le step est deja completed Kaze renverra 422
   // que l on attrape silencieusement.
   try {
-    await performerCompleteStep(jobId, stepId, location)
+    await withConflictRetry(`completed ${stepType}`, () => performerCompleteStep(jobId, stepId, location))
   } catch (e: any) {
     if (!/forbidden|cannot be modified|deja|already/i.test(e.message)) {
       throw e

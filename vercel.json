@@ -31,6 +31,7 @@
     { "path": "/api/cron/axa-poll",                  "schedule": "* * * * *"    },
     { "path": "/api/cron/touring-comex-poll",        "schedule": "* * * * *"    },
     { "path": "/api/cron/touring-vr-scan",           "schedule": "* * * * *"    },
+    { "path": "/api/cron/kaze-close-retry",          "schedule": "15,45 * * * *" },
     { "path": "/api/cron/poll-comex-bko",            "schedule": "*/3 * * * *"  },
     { "path": "/api/cron/touring-accord-reconcile",  "schedule": "0 8 * * 3"    },
     { "path": "/api/cron/touring-check-reminder",    "schedule": "0 13 5 * *"   },
