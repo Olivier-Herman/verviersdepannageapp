@@ -115,10 +115,15 @@ export async function GET() {
       if (count) badges['/fourriere/destruction'] = count
     }
     if (isFactu) {
-      // À facturer : fiches terminées en attente de facture (même filtre que la Facturation par dossier).
-      const { count } = await sb.from('incoming_missions').select('id', { count: 'exact', head: true })
-        .eq('status', 'to_invoice').eq('dossier_leg', false).is('archived_at', null).not('external_id', 'like', 'PROCESSING_%')
-      if (count) { badges['/facturation'] = count; badges['/facturation/dossiers'] = count }
+      // À facturer : fiches terminées en attente de facture (même filtre que la
+      // Facturation par dossier), SANS ce qui se facture via Touring COMEX
+      // (Olivier 10/09/2026 : « on est dépendant de Touring, il ne faut pas les
+      // compter ») — sources Touring et fiches facturées à Touring (Siabis couvert).
+      const touringSources = await sourcesWithTag('touring')
+      const { data: rows } = await sb.from('incoming_missions').select('id, source, billed_to_name')
+        .eq('status', 'to_invoice').eq('dossier_leg', false).is('archived_at', null).not('external_id', 'like', 'PROCESSING_%').limit(2000)
+      const n = (rows || []).filter((r: any) => !touringSources.includes(String(r.source || '')) && !/touring/i.test(String(r.billed_to_name || ''))).length
+      if (n) { badges['/facturation'] = n; badges['/facturation/dossiers'] = n }
     }
   } catch (e: any) {
     console.warn('[nav-badges] compteurs menu v3 :', e?.message || e)
