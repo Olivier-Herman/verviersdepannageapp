@@ -23,15 +23,21 @@ import { importKazeJob, cancelKazeJob }     from '@/lib/kaze/import'
 
 export const dynamic     = 'force-dynamic'
 export const runtime     = 'nodejs'
-export const maxDuration = 14   // < 15s limite Kaze
+export const maxDuration = 60   // la réponse part en < 1 s ; le traitement continue en arrière-plan (waitUntil)
 
 /**
  * Detecte l action a partir de l event_type (champ francais ou anglais).
  * Robuste a la casse et aux variations FR/NL/EN.
  */
-function detectAction(eventType: string | null): 'import' | 'cancel' | 'skip' {
+function detectAction(eventType: string | null): 'import' | 'cancel' | 'accepted' | 'step' | 'invoice' | 'skip' {
   if (!eventType) return 'skip'
   const e = eventType.toLowerCase()
+
+  // Nouveaux déclencheurs activables chez Kaze (Olivier 10/09/2026) : acceptation
+  // confirmée, étape complétée, factures — journalisés sur la fiche, sans ré-import.
+  if (/invoice|factur/.test(e)) return 'invoice'
+  if (/proposal_accepted|proposition.*accept|accept.*proposal/.test(e)) return 'accepted'
+  if (/step_completed|etape|step/.test(e)) return 'step'
 
   // Annulations : prioritaire (peut contenir aussi "mission" ou "task")
   if (/cancel|annul|reject|rejet|expir|verlop/.test(e)) return 'cancel'
@@ -119,9 +125,25 @@ export async function POST(req: NextRequest, { params }: { params: { secret: str
   // pour pouvoir accepter ensuite via l'appli web (/job_proposals/{id}/accept).
   const proposalId = inner?.proposal_id || payload?.proposal_id || null
 
+  // Kaze attend une réponse 20x en moins de 10 s, sinon il désactive le webhook
+  // (bandeau de leur écran, 10/09/2026). L'import d'un job (lecture Kaze +
+  // création de fiche + géocodage) peut dépasser : on répond tout de suite, le
+  // traitement continue en arrière-plan (waitUntil), l'événement est déjà en base.
+  const work = (async () => {
   if (action !== 'skip' && kazeJobId) {
     try {
-      if (action === 'import') {
+      if (action === 'accepted' || action === 'step' || action === 'invoice') {
+        const sb3 = createAdminClient()
+        const { data: m } = await sb3.from('incoming_missions').select('id, mission_number').eq('kaze_job_id', kazeJobId).eq('dossier_leg', false).maybeSingle()
+        if (m) {
+          const st = String(inner?.status || payload?.status || '')
+          const notes = action === 'accepted' ? 'Kaze ↙ proposition acceptée confirmée par Kaze'
+            : action === 'step' ? `Kaze ↙ étape complétée${inner?.step_name || inner?.step ? ' : ' + (inner?.step_name || inner?.step) : ''}${st ? ' (statut ' + st + ')' : ''}`
+            : `Kaze ↙ facture : ${eventType}${inner?.number || inner?.reference ? ' ' + (inner?.number || inner?.reference) : ''}${inner?.amount ? ' · ' + inner.amount : ''}`
+          await sb3.from('mission_logs').insert({ mission_id: m.id, action: action === 'invoice' ? 'kaze_invoice' : action === 'step' ? 'kaze_step' : 'kaze_synced', notes, metadata: { event_type: eventType, webhook_event_id: eventId ?? null } }).then(() => {}, () => {})
+          if (eventId) await sb3.from('kaze_webhook_events').update({ mission_id: m.id, processed_at: new Date().toISOString() }).eq('id', eventId).then(() => {}, () => {})
+        }
+      } else if (action === 'import') {
         result.import = await importKazeJob(kazeJobId, { webhookEventId: eventId })
         // Stocke le proposal_id sur la mission importée (best-effort).
         const importedId = (result.import as any)?.mission_id
@@ -146,11 +168,11 @@ export async function POST(req: NextRequest, { params }: { params: { secret: str
   } else if (action !== 'skip' && !kazeJobId) {
     console.warn(`[kaze-webhook] action=${action} mais kazeJobId manquant — skip`)
   }
+  console.log(`[kaze-webhook] event=${eventType ?? 'unknown'} job=${kazeJobId ?? 'none'} action=${action} ${Date.now() - t0}ms`)
+  })()
+  try { const { waitUntil } = await import('@vercel/functions'); waitUntil(work) } catch { await work }
 
-  const durationMs = Date.now() - t0
-  console.log(`[kaze-webhook] event=${eventType ?? 'unknown'} job=${kazeJobId ?? 'none'} action=${action} ${durationMs}ms`)
-
-  return NextResponse.json({ ok: true, ...result }, { status: 200 })
+  return NextResponse.json({ ok: true, ...result, background: true }, { status: 200 })
 }
 
 // Kaze peut envoyer en POST ou PUT (cf UI : Request Method = post|put).
