@@ -141,11 +141,21 @@ export async function GET(req: Request) {
   // « à facturer » et faussent le délai. Écartés du calcul.
   const isPoliceSource = (s: string) => String(s || '').startsWith('police')
   const comexBkoIds = new Set<string>()
+  // Touring COMEX BKO : on ne peut facturer qu'une fois le dossier PUBLIÉ par
+  // Touring (first_seen_at), en général le lendemain matin vers 8 h. Mesuré le
+  // 10/09/2026 sur 7 j : clôture → publication 15,5 h de médiane, publication →
+  // acceptation 0 h, acceptation → facture 0 h. Le délai « à facturer » compte
+  // donc depuis la publication, sinon la tuile mesure Touring, pas nous.
+  const comexSeenAt = new Map<string, number>()
   {
-    const { data: bkoRows } = await sb.from('touring_comex_dossiers').select('mission_id, mission_ids')
+    const { data: bkoRows } = await sb.from('touring_comex_dossiers').select('mission_id, mission_ids, first_seen_at')
     for (const r of (bkoRows || [])) {
-      if (r.mission_id) comexBkoIds.add(r.mission_id as string)
-      if (Array.isArray(r.mission_ids)) for (const id of r.mission_ids) if (id) comexBkoIds.add(id as string)
+      const seen = r.first_seen_at ? Date.parse(r.first_seen_at as string) : NaN
+      const ids = [r.mission_id, ...(Array.isArray(r.mission_ids) ? r.mission_ids : [])].filter(Boolean) as string[]
+      for (const id of ids) {
+        comexBkoIds.add(id)
+        if (!Number.isNaN(seen)) comexSeenAt.set(id, Math.max(comexSeenAt.get(id) || 0, seen))
+      }
     }
   }
   // MÉDIANE (pas moyenne) : la distribution est très asymétrique — une poignée
@@ -156,7 +166,7 @@ export async function GET(req: Request) {
   // enfant via parent_mission_id). On le compte UNE fois, et la borne « prêt à
   // facturer » = le completed_at de la DERNIÈRE fiche clôturée du dossier (max),
   // pas le completed_at précoce du parent (qui a attendu l'enfant).
-  interface Grp { completed: number; invoiced: number; police: boolean; touring: boolean; comexBko: boolean; imported: boolean }
+  interface Grp { completed: number; invoiced: number; police: boolean; touring: boolean; comexBko: boolean; imported: boolean; ready: number }
   const groups = new Map<string, Grp>()
   for (let page = 0; page < 15; page++) {
     const { data: chunk } = await sb.from('incoming_missions')
@@ -170,8 +180,9 @@ export async function GET(req: Request) {
       const end = m.invoiced_at || m.no_charge_at
       if (!end || !m.completed_at) continue
       const root = (m.parent_mission_id as string) || (m.id as string)   // clé dossier
-      const g = groups.get(root) || { completed: -Infinity, invoiced: -Infinity, police: false, touring: false, comexBko: false, imported: false }
+      const g = groups.get(root) || { completed: -Infinity, invoiced: -Infinity, police: false, touring: false, comexBko: false, imported: false, ready: -Infinity }
       g.completed = Math.max(g.completed, Date.parse(m.completed_at))     // dernière fiche clôturée
+      if (comexSeenAt.has(m.id)) g.ready = Math.max(g.ready, comexSeenAt.get(m.id)!)   // publication BKO Touring
       g.invoiced  = Math.max(g.invoiced,  Date.parse(end))
       if (isPoliceSource(m.source)) g.police = true
       if (TOURING_SOURCES.includes(m.source)) g.touring = true
@@ -186,7 +197,9 @@ export async function GET(req: Request) {
     if (g.police) continue                              // appels police écartés
     if (g.touring && !g.comexBko) continue              // Touring hors COMEX BKO écarté
     if (g.imported) continue                            // imports TowSoft écartés
-    const d = g.invoiced - g.completed
+    // Départ = dernière clôture, ou publication BKO Touring si plus tardive.
+    const start = g.comexBko && g.ready > g.completed ? g.ready : g.completed
+    const d = g.invoiced - start
     if (d >= 0) durs.push(d)
   }
   durs.sort((a, b) => a - b)
