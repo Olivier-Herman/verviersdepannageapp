@@ -51,13 +51,14 @@ export interface AxaImportResult {
  * Lie une fiche VD Soft existante à sa mission go&assist (axa_mission_order_id)
  * et COMBLE ses champs manquants depuis go&assist (sans écraser l'existant).
  */
-async function linkAndEnrich(sb: ReturnType<typeof createAdminClient>, fiche: any, missionOrderId: string, d: any): Promise<void> {
+async function linkAndEnrich(sb: ReturnType<typeof createAdminClient>, fiche: any, missionOrderId: string, d: any, billedTo: { id: number; name: string | null } | null = null): Promise<void> {
   const dc = d?.case || {}
   const veh = d?.vehicle || dc.vehicle || {}
   const addr = dc.incidentLocation?.address || {}
   const dest = dc.service?.serviceDestination || null
   const ct = (d?.contacts || []).find((c: any) => c?.firstName || c?.lastName) || {}
   const upd: Record<string, any> = { axa_mission_order_id: missionOrderId, updated_at: new Date().toISOString() }
+  if (fiche.billed_to_id == null && billedTo) { upd.billed_to_id = billedTo.id; upd.billed_to_name = billedTo.name }
   const fill = (col: string, cur: any, val: any) => { if ((cur == null || cur === '') && val != null && val !== '') upd[col] = val }
   fill('vehicle_plate',      fiche.vehicle_plate,      dc.registrationPlateNumber)
   fill('vehicle_brand',      fiche.vehicle_brand,      veh.brand)
@@ -106,13 +107,17 @@ export async function runAxaImport({ mode = 'preview' }: { mode?: ImportMode } =
   const all = await getMissions()
   const awaiting = filterActionable(all)
 
+  // Client à facturer par défaut de la source « axa » (mission_source_catalog).
+  const { data: srcCat } = await sb.from('mission_source_catalog').select('default_billed_to_id, default_billed_to_name').eq('key', 'axa').maybeSingle()
+  const billedTo = srcCat?.default_billed_to_id ? { id: Number(srcCat.default_billed_to_id), name: srcCat.default_billed_to_name || null } : null
+
   // Dédup par NUMÉRO DE DOSSIER (caseId), TOUTES sources confondues : un dossier
   // AXA peut déjà exister dans VD Soft via une autre source (ex. mail). On ne le
   // recrée pas ; on ne propose à la création que les dossiers ABSENTS.
   // ⚠️ La réf VD Soft peut CONTENIR le n° AXA sans y être égale : un accident
   // repris par AXA a une réf combinée « ACC-4347 / 0126551053-REL ». → match
   // « CONTIENT le numéro » (ilike), pas égalité stricte. (Olivier 2026-08-13)
-  const ENRICH_COLS = 'id, dossier_number, axa_mission_order_id, received_at, intervention_date, vehicle_plate, vehicle_brand, vehicle_model, vehicle_vin, client_name, client_phone, incident_lat, destination_lat, incident_address, incident_city, destination_name, destination_address'
+  const ENRICH_COLS = 'id, dossier_number, axa_mission_order_id, billed_to_id, received_at, intervention_date, vehicle_plate, vehicle_brand, vehicle_model, vehicle_vin, client_name, client_phone, incident_lat, destination_lat, incident_address, incident_city, destination_name, destination_address'
   const caseIds = Array.from(new Set<string>(awaiting.map(m => m.case?.caseId).filter(Boolean)))
   const fichesByCaseId = new Map<string, any[]>() // caseId → fiches VD Soft ouvertes portant ce n°
   if (caseIds.length) {
@@ -160,7 +165,7 @@ export async function runAxaImport({ mode = 'preview' }: { mode?: ImportMode } =
         if (fiches.length) {
           try {
             const detail = await getMission(m.missionOrderId)
-            for (const f of fiches) { await linkAndEnrich(sb, f, m.missionOrderId, detail); linked++ }
+            for (const f of fiches) { await linkAndEnrich(sb, f, m.missionOrderId, detail, billedTo); linked++ }
           } catch (e: any) { errors.push(`link ${m.missionOrderId}: ${e?.message || 'exception'}`) }
         }
       }
@@ -208,7 +213,10 @@ export async function runAxaImport({ mode = 'preview' }: { mode?: ImportMode } =
         // (échéance), pas un rendez-vous → on prend l'heure de réception, sinon
         // la fiche affiche « Prévue HH:MM » trompeur. (Olivier 2026-08-13)
         intervention_date: m.missionSendingDate || new Date().toISOString(),
-        billed_to_name:    'AXA',
+        // Client à facturer = celui du catalogue de la source (Olivier 11/09/2026 :
+        // partner Odoo réf. 007928 « Dossier 01 ou 34 »), jamais un nom en dur.
+        billed_to_id:      billedTo?.id ?? null,
+        billed_to_name:    billedTo?.name ?? null,
       }
       const { data: created, error } = await sb.from('incoming_missions').insert(row).select('id').single()
       if (error) { errors.push(`${m.missionOrderId}: ${error.message}`); continue }
