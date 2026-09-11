@@ -86,7 +86,11 @@ async function invoiceDossierGroupsLocked(sb: any, d: Dossier, input: { anyMissi
     // D9 : jamais de facture sans ligne pour un groupe dont le tarif n'est pas calculable.
     if (l.amount_unknown) { warnings.push(`${d.number ?? d.ref}${l.letter} : tarif non calculable (${l.amount_note || 'à vérifier sur la fiche'}) — groupe non facturé`); return false }
     // Parquet : état de frais, jamais Odoo — on écarte ce groupe sans bloquer les autres clients.
-    if ((l.channel || 'odoo') === 'parquet' || /parquet|frais de justice|fdj\b/i.test(String(l.billed_to_name || ''))) { warnings.push(`${d.number ?? d.ref}${l.letter} : Parquet — passe par l'état de frais du module Saisie`); return false }
+    // MAIS une saisie dont le client est un tiers (propriétaire à la levée, assureur…)
+    // se facture bien dans Odoo : même règle que l'écran (canPickLeg). 2FVG435,
+    // Olivier 11/09/2026 : « pourquoi ça dit qu'il n'y a rien à facturer ? »
+    const parquetName = /parquet|frais de justice|fdj\b/i.test(String(l.billed_to_name || ''))
+    if (parquetName || ((l.channel || 'odoo') === 'parquet' && !l.billed_to_id)) { warnings.push(`${d.number ?? d.ref}${l.letter} : Parquet — passe par l'état de frais du module Saisie`); return false }
     // D10 : intervention autoroute Siabis dont la tarification (couvert / non couvert) n'est pas tranchée.
     if ((l.alerts || []).some(a => /Siabis autoroute/i.test(a))) { warnings.push(`${d.number ?? d.ref}${l.letter} : Siabis autoroute non tranché — décide couvert / non couvert sur la fiche avant de facturer`); return false }
     if (l.billed_refs.length && l.billed_htva >= l.amount_htva - 0.01) { warnings.push(`${d.number}${l.letter} : déjà facturé (${l.billed_refs.join(', ')})`); return false }
