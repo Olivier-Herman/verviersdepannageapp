@@ -112,8 +112,13 @@ export default function NouveauClient() {
       setUrls(uj.urls || [])
       const oc = await fetch('/api/fourriere/destruction-dossiers/ocr', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ photos: uj.urls }) })
       const oj = await oc.json()
-      if (oc.ok) setDesc({ ...oj, vin: oj.vin || mission?.vehicle_vin || null, brand: oj.brand || mission?.vehicle_brand || null, model: oj.model || mission?.vehicle_model || null, condition: oj.condition || {} })
-      else setDesc(d => ({ ...d, vin: mission?.vehicle_vin || null, brand: mission?.vehicle_brand || null, model: mission?.vehicle_model || null }))
+      // Fusion : l'OCR d'abord, puis la fiche VD Soft, puis l'archive TowSoft
+      // (Olivier 11/09/2026 : « étiquette TowSoft : il l'indique mais ne
+      // reprend pas les données » — l'OCR écrasait ce que le QR avait rempli).
+      const fb = (k: 'vin' | 'plate' | 'brand' | 'model', ocr: any) =>
+        ocr || (k === 'vin' ? mission?.vehicle_vin : k === 'plate' ? mission?.vehicle_plate : k === 'brand' ? mission?.vehicle_brand : mission?.vehicle_model) || archive?.[k] || desc[k] || null
+      if (oc.ok) setDesc({ ...oj, vin: fb('vin', oj.vin), plate: fb('plate', oj.plate), brand: fb('brand', oj.brand), model: fb('model', oj.model) })
+      else setDesc(d => ({ ...d, vin: fb('vin', null), plate: fb('plate', null), brand: fb('brand', null), model: fb('model', null) }))
       setStep(3)
     } catch (e: any) { setErr(e.message) } finally { setReading(false) }
   }
