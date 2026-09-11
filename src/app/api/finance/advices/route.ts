@@ -19,7 +19,7 @@ import { buildAdviceReport }         from '@/lib/advice-match'
 import { syncAdvices }               from '@/lib/advice-cache'
 import { buildAdvicePlan, summarizeAdvicePlans, postAdvicePlan } from '@/lib/advice-post'
 import { markUnallocated, clearUnallocated } from '@/lib/payout-unallocated'
-import { odooRpc } from '@/lib/odoo'
+import { odooRpc, postChatterMessage } from '@/lib/odoo'
 import { humanOdooError } from '@/lib/reconcile-odoo'
 
 export const dynamic     = 'force-dynamic'
@@ -163,27 +163,39 @@ export async function PATCH(req: NextRequest) {
 
   const body    = await req.json().catch(() => ({}))
 
-  // Reprise d'une facture déjà réglée (Olivier 11/09/2026) : on extourne en
-  // NOTE DE CRÉDIT BROUILLON dans Odoo — c'est elle qui portera la déduction de
-  // l'assureur au lettrage. Rien n'est posté : Olivier valide (ou conteste).
-  if (body.creditNote?.invoiceId) {
-    const invoiceId = Number(body.creditNote.invoiceId)
-    if (!Number.isFinite(invoiceId)) return NextResponse.json({ error: 'Facture invalide' }, { status: 400 })
+  // Reprise d'une facture déjà réglée (Olivier 11/09/2026 : « pas de note de
+  // crédit, il faut que la facture se rouvre ») : on DÉLETTRE le paiement
+  // d'origine → la facture redevient due ; la ligne négative de l'avis devient
+  // une créance rouverte (OD sur 206) lettrée avec le crédit libéré au moment
+  // du rapprochement du virement. Rien d'autre ne bouge dans Odoo.
+  if (body.reopen?.invoiceId) {
+    const invoiceId = Number(body.reopen.invoiceId)
+    const linkKey   = String(body.reopen.linkKey || '').trim()
+    const amount    = Number(body.reopen.amount)
+    if (!Number.isFinite(invoiceId) || !linkKey || !Number.isFinite(amount) || amount >= 0) {
+      return NextResponse.json({ error: 'Reprise invalide' }, { status: 400 })
+    }
     try {
-      const [inv] = await odooRpc<any[]>('account.move', 'read', [[invoiceId]], { fields: ['name', 'ref', 'journal_id', 'reversal_move_ids', 'move_type'] })
+      const [inv] = await odooRpc<any[]>('account.move', 'read', [[invoiceId]], { fields: ['name', 'ref', 'payment_state', 'amount_total', 'move_type'] })
       if (!inv || inv.move_type !== 'out_invoice') return NextResponse.json({ error: 'Facture introuvable' }, { status: 404 })
-      if (inv.reversal_move_ids?.length) return NextResponse.json({ error: 'Une note de crédit existe déjà pour cette facture' }, { status: 409 })
-      const reason = `Reprise par l'assureur${body.creditNote.adviceRef ? ` — avis ${body.creditNote.adviceRef}` : ''}${inv.ref ? ` — ${inv.ref}` : ''}`
-      const wizardId = await odooRpc<number>('account.move.reversal', 'create', [{
-        move_ids: [[6, 0, [invoiceId]]], date: new Date().toISOString().slice(0, 10), reason,
-        journal_id: inv.journal_id ? inv.journal_id[0] : false,
-      }])
-      await odooRpc('account.move.reversal', 'reverse_moves', [[wizardId]])
-      const [fresh] = await odooRpc<any[]>('account.move', 'read', [[invoiceId]], { fields: ['reversal_move_ids'] })
-      const cnId = fresh?.reversal_move_ids?.[0] || null
-      let name: string | null = null
-      if (cnId) { const [cn] = await odooRpc<any[]>('account.move', 'read', [[cnId]], { fields: ['name'] }); name = (cn?.name && cn.name !== '/') ? cn.name : `Brouillon #${cnId}` }
-      return NextResponse.json({ ok: true, creditNote: { id: cnId, name } })
+      if (Math.abs(Number(inv.amount_total) + amount) > 0.02) return NextResponse.json({ error: `La reprise (${Math.abs(amount).toFixed(2)} €) ne correspond pas à la facture (${Number(inv.amount_total).toFixed(2)} €)` }, { status: 400 })
+      const recv = await odooRpc<any[]>('account.move.line', 'search_read', [[['move_id', '=', invoiceId], ['account_id', '=', 206]]], { fields: ['id', 'reconciled', 'matched_credit_ids'], limit: 1 })
+      const line = recv[0]
+      if (!line) return NextResponse.json({ error: 'Ligne de créance introuvable' }, { status: 404 })
+      let creditLineId: number | null = null
+      if (line.reconciled && line.matched_credit_ids?.length) {
+        const partials = await odooRpc<any[]>('account.partial.reconcile', 'read', [line.matched_credit_ids], { fields: ['credit_move_id', 'amount'] })
+        creditLineId = partials[0]?.credit_move_id?.[0] ?? null
+        await odooRpc('account.move.line', 'remove_move_reconcile', [[line.id]])
+      }
+      const saved = await markUnallocated({
+        provider: 'assureur', linkKey, amount,
+        reason:   `Reprise ${body.reopen.adviceRef ? `avis ${body.reopen.adviceRef} ` : ''}— facture ${inv.name} rouverte`,
+        userId:   access.id, accountId: 206,
+        meta:     { invoice_id: invoiceId, invoice_name: inv.name, credit_line_id: creditLineId },
+      })
+      await postChatterMessage('account.move', invoiceId, `Reprise par l'assureur${body.reopen.adviceRef ? ` (avis ${body.reopen.adviceRef})` : ''} : paiement délettré, facture rouverte depuis VD Soft.`).catch(() => {})
+      return NextResponse.json({ ok: true, reopened: { invoice: inv.name, creditLineId }, unallocated: { amount: saved.amount, reason: saved.reason } })
     } catch (e: any) {
       return NextResponse.json({ error: String(e?.message || e).slice(0, 300) }, { status: 400 })
     }

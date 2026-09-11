@@ -65,7 +65,7 @@ export interface MatchedInvoice {
    * cesse de bloquer le virement : une OD dédiée apportera son débit 542, avec
    * le commentaire saisi en libellé.
    */
-  unallocated?: { amount: number; reason: string } | null
+  unallocated?: { amount: number; reason: string; accountId?: number; meta?: Record<string, any> | null; reopened?: boolean } | null
   /** Clé de la décision — stable : la ligne bancaire ne bouge pas. */
   linkKey?: string
 }
@@ -284,7 +284,7 @@ export async function buildAdviceReport(
       x.linkKey = `${bank.id}:${x.ref}`
       const od = findUnallocated(unallocated, x.linkKey, x.amount)
       if (od) {
-        x.unallocated = { amount: od.amount, reason: od.reason }
+        x.unallocated = { amount: od.amount, reason: od.reason, accountId: od.accountId, meta: od.meta ?? null, reopened: od.accountId === 206 }
         x.issue = null            // elle ne bloque plus : l'OD apportera son débit
       }
     }

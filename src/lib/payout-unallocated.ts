@@ -27,6 +27,8 @@ export interface Unallocated {
   accountId: number
   reason:    string
   createdAt: string
+  /** Reprise rouverte : { invoice_id, invoice_name, credit_line_id }. */
+  meta?:     Record<string, any> | null
 }
 
 const cents = (n: number) => Math.round(n * 100) / 100
@@ -49,7 +51,7 @@ export async function loadUnallocated(
   const sb = createAdminClient()
   const { data } = await sb
     .from('payout_unallocated_lines')
-    .select('link_key, amount, account_id, reason, created_at')
+    .select('link_key, amount, account_id, reason, created_at, meta')
     .eq('provider', provider)
     .in('link_key', wanted)
     .order('id', { ascending: true })          // tri déterministe
@@ -61,6 +63,7 @@ export async function loadUnallocated(
       accountId: Number(r.account_id) || ACC_UNALLOCATED,
       reason:    String(r.reason || ''),
       createdAt: String(r.created_at || ''),
+      meta:      r.meta ?? null,
     })
   }
   return out
@@ -78,7 +81,7 @@ export async function loadAllUnallocated(provider: Provider): Promise<Map<string
   const sb = createAdminClient()
   const { data } = await sb
     .from('payout_unallocated_lines')
-    .select('link_key, amount, account_id, reason, created_at')
+    .select('link_key, amount, account_id, reason, created_at, meta')
     .eq('provider', provider)
     .order('id', { ascending: true })
 
@@ -89,6 +92,7 @@ export async function loadAllUnallocated(provider: Provider): Promise<Map<string
       accountId: Number(r.account_id) || ACC_UNALLOCATED,
       reason:    String(r.reason || ''),
       createdAt: String(r.created_at || ''),
+      meta:      r.meta ?? null,
     })
   }
   return out
@@ -114,6 +118,9 @@ export async function markUnallocated(args: {
   amount:   number
   reason:   string
   userId:   string | null
+  /** Compte de contrepartie : 265 (attente) par défaut, 206 (créance) pour une reprise rouverte. */
+  accountId?: number
+  meta?:    Record<string, any> | null
 }): Promise<Unallocated> {
   const linkKey = args.linkKey.trim()
   const reason  = args.reason.trim()
@@ -132,11 +139,12 @@ export async function markUnallocated(args: {
       provider:   args.provider,
       link_key:   linkKey,
       amount:     cents(args.amount),
-      account_id: ACC_UNALLOCATED,
+      account_id: args.accountId ?? ACC_UNALLOCATED,
       reason,
       created_by: args.userId,
+      meta:       args.meta ?? null,
     }, { onConflict: 'provider,link_key,amount' })
-    .select('link_key, amount, account_id, reason, created_at')
+    .select('link_key, amount, account_id, reason, created_at, meta')
     .single()
 
   if (error) throw new Error(`Passage en OD non enregistré : ${error.message}`)
@@ -146,6 +154,7 @@ export async function markUnallocated(args: {
     accountId: Number(data.account_id),
     reason:    String(data.reason || ''),
     createdAt: String(data.created_at || ''),
+    meta:      (data as any).meta ?? null,
   }
 }
 

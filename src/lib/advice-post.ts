@@ -57,7 +57,7 @@ export interface AdvicePostingPlan {
    * LIGNE, chacune avec son commentaire — pour qu'on sache six mois plus tard
    * à quoi correspond chaque montant resté en compte d'attente.
    */
-  unallocated: { ref: string; amount: number; reason: string }[]
+  unallocated: { ref: string; amount: number; reason: string; accountId?: number; creditLineId?: number | null }[]
   warnings:    string[]
 }
 
@@ -81,7 +81,7 @@ export function buildAdvicePlan(item: MatchedAdvicePayment): AdvicePostingPlan {
   // viendra de leur propre écriture.
   const unallocated = item.invoices
     .filter(i => i.unallocated)
-    .map(i => ({ ref: i.invoiceName || i.ref, amount: r2(i.unallocated!.amount || i.amount), reason: i.unallocated!.reason }))
+    .map(i => ({ ref: i.invoiceName || i.ref, amount: r2(i.unallocated!.amount || i.amount), reason: i.unallocated!.reason, accountId: i.unallocated!.accountId, creditLineId: i.unallocated!.meta?.credit_line_id ?? null }))
 
   const utiles = item.invoices.filter(i => !i.neutralisee && !i.unallocated)
   const withInvoice = utiles.filter(i => i.invoiceId)
@@ -601,10 +601,14 @@ async function postNeutralisationOd(
  */
 async function postUnallocatedOd(
   plan: AdvicePostingPlan,
-  u: { ref: string; amount: number; reason: string },
+  u: { ref: string; amount: number; reason: string; accountId?: number; creditLineId?: number | null },
 ): Promise<{ moveId: number; lineId: number }> {
+  // Reprise rouverte (Olivier 11/09/2026) : la contrepartie n'est pas le compte
+  // d'attente mais la CRÉANCE client (206) — la facture redevient due, et le
+  // crédit libéré par le délettrage du paiement d'origine est lettré ici.
+  const counterAcc = u.accountId || UNALLOCATED_ACC
   const label =
-    `${u.amount >= 0 ? 'Encaissement' : 'Reprise'} non affecté${u.amount >= 0 ? '' : 'e'} — ${plan.payerLabel}${plan.adviceRef ? ` ${plan.adviceRef}` : ''}`
+    `${u.accountId === RECEIVABLE ? 'Reprise — facture rouverte' : u.amount >= 0 ? 'Encaissement non affecté' : 'Reprise non affectée'} — ${plan.payerLabel}${plan.adviceRef ? ` ${plan.adviceRef}` : ''}`
     + ` · réf. ${u.ref} · virement ${plan.bankMove} du ${plan.bankDate} — ${u.reason}`
 
   const [moveId] = await odooRpc<number[]>('account.move', 'create', [[{
@@ -615,11 +619,11 @@ async function postUnallocatedOd(
     // Une reprise ou un double paiement vient EN DÉDUCTION du virement : le
     // sens de l'écriture s'inverse, sinon Odoo refuse un débit négatif.
     line_ids: u.amount >= 0 ? [
-      [0, 0, { account_id: OUTSTANDING,     partner_id: plan.partnerId, name: label, debit: u.amount, credit: 0 }],
-      [0, 0, { account_id: UNALLOCATED_ACC, partner_id: plan.partnerId, name: label, debit: 0, credit: u.amount }],
+      [0, 0, { account_id: OUTSTANDING, partner_id: plan.partnerId, name: label, debit: u.amount, credit: 0 }],
+      [0, 0, { account_id: counterAcc,  partner_id: plan.partnerId, name: label, debit: 0, credit: u.amount }],
     ] : [
-      [0, 0, { account_id: UNALLOCATED_ACC, partner_id: plan.partnerId, name: label, debit: -u.amount, credit: 0 }],
-      [0, 0, { account_id: OUTSTANDING,     partner_id: plan.partnerId, name: label, debit: 0, credit: -u.amount }],
+      [0, 0, { account_id: counterAcc,  partner_id: plan.partnerId, name: label, debit: -u.amount, credit: 0 }],
+      [0, 0, { account_id: OUTSTANDING, partner_id: plan.partnerId, name: label, debit: 0, credit: -u.amount }],
     ],
   }]])
   await odooRpc('account.move', 'action_post', [[moveId]])
@@ -628,6 +632,12 @@ async function postUnallocatedOd(
     ['move_id', '=', moveId], ['account_id', '=', OUTSTANDING],
   ]], { fields: ['id'], limit: 1 })
   if (!line) throw new Error(`OD ${u.ref} créée mais sa ligne 542 est introuvable`)
+  // Créance rouverte : son débit 206 se lettre avec le crédit libéré (paiement
+  // d'origine délettré) → les deux virements sont soldés, la facture reste due.
+  if (counterAcc === RECEIVABLE && u.creditLineId) {
+    const [recv] = await odooRpc<any[]>('account.move.line', 'search_read', [[['move_id', '=', moveId], ['account_id', '=', RECEIVABLE]]], { fields: ['id'], limit: 1 })
+    if (recv) await odooRpc('account.move.line', 'reconcile', [[recv.id, u.creditLineId]]).catch((e: any) => console.warn('[advice-post] relettrage du crédit libéré :', e?.message))
+  }
   return { moveId, lineId: line.id }
 }
 

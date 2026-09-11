@@ -24,7 +24,7 @@ interface Invoice {
   /** Clé de la décision « passer en OD » — posée par le serveur. */
   linkKey?: string
   /** Ligne passée en OD sur le compte d'attente, avec son commentaire. */
-  unallocated?: { amount: number; reason: string } | null
+  unallocated?: { amount: number; reason: string; reopened?: boolean } | null
 }
 
 interface Item {
@@ -291,9 +291,9 @@ export default function AdvicesClient() {
 
                       {x.unallocated && (
                         <div className="mt-1.5 flex flex-wrap items-baseline gap-2 rounded-btn border-l-2 border-info bg-info-soft px-3 py-2 text-[12.5px]">
-                          <span className="font-semibold text-info">Passée en OD — compte d&apos;attente 499000</span>
+                          <span className="font-semibold text-info">{x.unallocated.reopened ? 'Facture rouverte — déduite du virement' : 'Passée en OD — compte d\u0027attente 499000'}</span>
                           <span className="text-ink-secondary">« {x.unallocated.reason} »</span>
-                          <button
+                          {!x.unallocated.reopened && <button
                             onClick={async () => {
                               const r = await fetch('/api/finance/advices', {
                                 method: 'PATCH', headers: { 'Content-Type': 'application/json' },
@@ -303,35 +303,31 @@ export default function AdvicesClient() {
                             }}
                             className="text-[11.5px] font-semibold text-brand hover:underline">
                             Annuler
-                          </button>
+                          </button>}
                         </div>
                       )}
 
-                      {/* Reprise d'une facture déjà réglée : la sortie propre est
-                          une note de crédit (brouillon Odoo), pas un lettrage. */}
-                      {x.issue === 'reprise' && (
+                      {/* Reprise d'une facture déjà réglée : « il faut que la facture se
+                          rouvre tout simplement » (Olivier 11/09/2026). Pas de note de crédit. */}
+                      {x.issue === 'reprise' && !x.unallocated && (
                         <div className="mt-1.5 flex flex-wrap items-center gap-2 rounded-btn border-l-2 border-alert bg-alert-soft px-3 py-2 text-[12.5px]">
-                          {x.creditNote
-                            ? <span className="text-ink-secondary">Note de crédit <b className="font-mono">{x.creditNote.name}</b> · {x.creditNote.state === 'posted' ? 'validée' : 'brouillon à valider dans Odoo'}</span>
-                            : <>
-                                <span className="text-ink-secondary">Déjà réglée par l'assureur, reprise ici.</span>
-                                <button
-                                  onClick={async () => {
-                                    if (!window.confirm(`Créer dans Odoo une note de crédit BROUILLON sur ${x.invoiceName} (${Math.abs(x.amount).toFixed(2)} €) ? Rien n'est validé : tu la contrôles avant de la poster.`)) return
-                                    const r = await fetch('/api/finance/advices', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ creditNote: { invoiceId: x.invoiceId, adviceRef: i.advice?.reference || null } }) })
-                                    const j = await r.json().catch(() => ({}))
-                                    if (r.ok) { setToast(`Note de crédit ${j.creditNote?.name || ''} créée en brouillon`); load(true) } else setToast(j.error || `Erreur ${r.status}`)
-                                  }}
-                                  className="rounded-btn border border-strong bg-surface px-2.5 py-1 text-[12px] font-semibold text-ink hover:border-brand">
-                                  Créer la note de crédit (brouillon)
-                                </button>
-                              </>}
+                          <span className="text-ink-secondary">Déjà réglée par l'assureur, reprise ici.</span>
+                          <button
+                            onClick={async () => {
+                              if (!window.confirm(`Rouvrir ${x.invoiceName} (${Math.abs(x.amount).toFixed(2)} €) ? Le paiement d'origine est délettré dans Odoo : la facture redevient due, et la reprise se lettre avec le virement.`)) return
+                              const r = await fetch('/api/finance/advices', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ reopen: { invoiceId: x.invoiceId, linkKey: x.linkKey, amount: x.amount, adviceRef: i.advice?.reference || null } }) })
+                              const j = await r.json().catch(() => ({}))
+                              if (r.ok) { setToast(`${j.reopened?.invoice || x.invoiceName} rouverte`); load(true) } else setToast(j.error || `Erreur ${r.status}`)
+                            }}
+                            className="rounded-btn border border-strong bg-surface px-2.5 py-1 text-[12px] font-semibold text-ink hover:border-brand">
+                            Rouvrir la facture
+                          </button>
                         </div>
                       )}
 
                       {/* Dernier recours, ligne par ligne : l'assureur a bien
                           viré l'argent, mais on ne retrouve pas la facture. */}
-                      {!x.unallocated && x.issue && x.linkKey && (
+                      {!x.unallocated && x.issue && x.issue !== 'reprise' && x.linkKey && (
                         <OdLine
                           linkKey={x.linkKey}
                           label={x.invoiceName || x.ref}
