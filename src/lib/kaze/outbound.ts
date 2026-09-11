@@ -12,7 +12,7 @@
 //      workflow IMA (PUT /jobs/:id/cells/:cell_id.json) pour cocher
 //      les etapes officiellement + uploader les photos.
 
-import { addNote }            from '@/lib/kaze/client'
+import { addNote, getJob }    from '@/lib/kaze/client'
 
 interface MissionLite {
   id:                   string
@@ -92,6 +92,10 @@ export async function notifyKazeOfAction(
   }
 
   try {
+    // Job déjà terminé/annulé chez Kaze (ex. complément de mise en parc après la
+    // clôture) : ni note, ni avancement — chaque note déclenche un mail Kaze
+    // aux deux adresses du bureau (Olivier 11/09/2026).
+    if (await kazeJobTerminal(mission.kaze_job_id)) return { ok: true, sent: false }
     await addNote(mission.kaze_job_id, label)
     console.log(`[kaze-outbound] Note envoyee a Kaze (${mission.kaze_job_id}): ${label.slice(0, 80)}`)
     return { ok: true, sent: true }
@@ -116,6 +120,17 @@ export async function notifyKazeOfAction(
  *
  * Non bloquant : si Kaze plante on log mais on n empeche pas l action VD Soft.
  */
+const terminalCache = new Map<string, { v: boolean; at: number }>()
+/** true si le job Kaze est déjà completed / cancelled (cache 60 s). Best-effort : false si l'API ne répond pas. */
+async function kazeJobTerminal(jobId: string): Promise<boolean> {
+  const c = terminalCache.get(jobId)
+  if (c && Date.now() - c.at < 60_000) return c.v
+  let v = false
+  try { const j: any = await getJob(jobId); v = /^(completed|cancelled|canceled|closed)$/i.test(String(j?.status || '')) } catch {}
+  terminalCache.set(jobId, { v, at: Date.now() })
+  return v
+}
+
 export async function advanceKazeMissionForAction(
   mission: MissionLite,
   action:  string,
@@ -130,6 +145,9 @@ export async function advanceKazeMissionForAction(
     if (targetIdx < 0) {
       return { ok: true, status: null }   // action sans avancement Kaze
     }
+    // Job déjà completed/cancelled : rien à avancer (évitait un « Reassign 403 »
+    // sur le 2e park de 2FFB195 le 11/09/2026).
+    if (await kazeJobTerminal(mission.kaze_job_id)) return { ok: true, status: 'terminal' }
 
     const r = await advanceKazeJob(mission.kaze_job_id, targetIdx, {
       driverPhotos: mission.driver_photos || undefined,
