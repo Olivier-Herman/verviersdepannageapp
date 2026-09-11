@@ -27,12 +27,18 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
   if (!canAccess(session)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   const sb = createAdminClient()
+  // Racine d'un dossier : le gardiennage est facturé sur ses VOLETS (miroirs
+  // A/B/C), pas sur elle. Sans eux, la fiche annonçait « reste 1,56 € » pour un
+  // jour déjà sur la facture (2FVG435, Olivier 11/09/2026).
+  const { data: legs } = await sb.from('incoming_missions').select('id')
+    .eq('dossier_leg', true).or(`parc_origin_mission_id.eq.${params.id},parent_mission_id.eq.${params.id}`)
+  const ids = [params.id, ...(legs || []).map((l: any) => l.id)]
   // select('*') pour rester résilient si la migration invoice_number n'est pas
   // encore appliquée (une colonne absente ferait planter un select explicite).
   const { data, error } = await sb
     .from('mission_billed_items')
     .select('*')
-    .eq('mission_id', params.id)
+    .in('mission_id', ids)
     .order('billed_at', { ascending: true })
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
