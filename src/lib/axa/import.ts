@@ -242,10 +242,42 @@ export async function runAxaImport({ mode = 'preview' }: { mode?: ImportMode } =
   if (mode === 'send') {
     try { await reconcileAxaCancellations(sb, all) }
     catch (e: any) { errors.push(`reconcile: ${e?.message || 'exception'}`) }
+    try { await reconcileAxaValidations(sb, all) }
+    catch (e: any) { errors.push(`reconcile-validation: ${e?.message || 'exception'}`) }
   }
 
   const news = awaiting.filter(m => m.status === 'New').length
   return { ok: errors.length === 0, mode, awaiting: awaiting.length, news, items, imported, skipped, linked, errors }
+}
+
+/**
+ * Validation faite DANS go&assist (Olivier 11/09/2026) : une fiche encore
+ * « En commande » (new) chez nous dont la mission AXA n'est plus « New »
+ * (validée au portail ou par AXA après rappel téléphonique) passe « En attente »
+ * (dispatching = validée, à assigner). Le sens VD Soft → AXA existe déjà
+ * (accept à la validation) ; ceci est le retour.
+ */
+async function reconcileAxaValidations(sb: ReturnType<typeof createAdminClient>, missions: any[]): Promise<void> {
+  const gaStatus = new Map<string, string>()
+  for (const m of missions) if (m.missionOrderId) gaStatus.set(m.missionOrderId, m.status)
+  const { data: fresh } = await sb
+    .from('incoming_missions')
+    .select('id, axa_mission_order_id, mission_number')
+    .not('axa_mission_order_id', 'is', null)
+    .eq('dossier_leg', false)
+    .eq('status', 'new')
+  for (const f of fresh || []) {
+    const gs = gaStatus.get(f.axa_mission_order_id)
+    if (!gs || gs === 'New' || gs === 'Cancelled' || gs === 'Refused') continue
+    await sb.from('incoming_missions')
+      .update({ status: 'dispatching', dispatch_mode: 'manual', updated_at: new Date().toISOString() })
+      .eq('id', f.id).eq('status', 'new')
+    await sb.from('mission_logs').insert({
+      mission_id: f.id, action: 'axa_validated_in_portal',
+      notes: `Validée dans go&assist (statut AXA : ${gs}) → En attente d'assignation.`,
+      metadata: { mission_order_id: f.axa_mission_order_id, ga_status: gs },
+    }).then(() => {}, () => {})
+  }
 }
 
 /**
