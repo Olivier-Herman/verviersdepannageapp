@@ -776,6 +776,9 @@ export default function EncaissementClient({
   }
 
   const handleSubmit = async () => {
+    // Jamais « non payé » par défaut : sans moyen choisi ni SumUp confirmé, on
+    // renvoie au choix du paiement (Matthieu 11/09/2026).
+    if (!paymentMode && sumupStatus !== 'PAID') { setError('Choisis un moyen de paiement'); setPage(4); return }
     setSaving(true); setError('')
     const client = selectedClient || {
       name: clientName, phone: clientPhone, email: clientEmail,
@@ -810,8 +813,8 @@ export default function EncaissementClient({
           // qu'il a été tapé dans la case. Olivier 2026-08-12.
           location_address: location,
           amount: (paymentMode === 'unpaid' && dueAmount > 0) ? String(dueAmount) : amount,
-          payment_mode: paymentMode || (sumupStatus === 'PAID' ? 'sumup' : 'unpaid'),
-          payment_reference: sumupData?.sumupReference || undefined,
+          payment_mode: paymentMode || 'sumup',
+          payment_reference: (paymentMode === 'sumup' || sumupStatus === 'PAID') ? (sumupData?.sumupReference || undefined) : undefined,
           // Preuve du virement (photo de la confirmation client) → référence + notes.
           payment_proof_url: paymentMode === 'virement_qr' ? (bankProofUrl || undefined) : undefined,
           // Olivier 2026-05-26 : si client Odoo selectionne, on le remonte pour
@@ -1214,6 +1217,9 @@ export default function EncaissementClient({
           setSumupStatus(status.status)
           clearInterval(interval); sumupIntervalRef.current = null
           setSumupPolling(false)
+          // Refus : on revient au choix du moyen (pas de mode retenu, pas de référence).
+          setSumupData(null); setSumupMode(null); setPaymentMode('')
+          clearPending()
         }
       }, 3000)
       sumupIntervalRef.current = interval
@@ -1393,8 +1399,12 @@ export default function EncaissementClient({
           </div>
         )}
 
+        {/* Matthieu 11/09/2026 (1AYD205) : un paiement SumUp REFUSÉ laissait passer
+            « Continuer » (sumupStatus = FAILED est vrai) et l'encaissement partait en
+            « Non payé — à facturer » avec la référence SumUp. Un refus ramène au
+            choix du moyen de paiement, rien d'autre. */}
         <BigBtn label="Continuer →" onClick={() => setPage(9)}
-          disabled={!amount || (!paymentMode && !sumupStatus)} />
+          disabled={!amount || (!paymentMode && sumupStatus !== 'PAID')} />
       </div>
 
       {/* Easter egg : QR virement bancaire (plan B SumUp down). Photo de la

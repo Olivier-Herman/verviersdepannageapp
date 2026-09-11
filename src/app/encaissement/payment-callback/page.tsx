@@ -46,7 +46,9 @@ function PaymentCallbackContent() {
           if (r.ok) { setStatus('recorded'); setTimeout(() => goBack(p), 2500); return }
           setError(r.error || 'Enregistrement impossible'); setStatus('error'); return
         }
-        if (paid === 'FAILED' || saidKo) { setStatus('failed'); return }
+        // Refus / annulation : le brouillon ne doit pas resurgir en « paiement en
+        // attente d'enregistrement » (validation manuelle d'un paiement raté).
+        if (paid === 'FAILED' || saidKo) { clearPending(); setStatus('failed'); return }
         setStatus('unverified'); return
       }
       // 2. Pas de brouillon (checkout en ligne, ou page ouverte à froid).
@@ -103,8 +105,8 @@ function PaymentCallbackContent() {
       {status === 'failed' && (<>
         <div className="text-6xl mb-6">❌</div>
         <p className="text-white text-2xl font-bold mb-2">Paiement non complété</p>
-        <p className="text-zinc-500 text-sm mb-8">Le paiement a été annulé ou refusé.</p>
-        <button onClick={() => router.push(pending?.return_to || '/encaissement')} className="bg-brand text-white font-bold rounded-xl py-3 px-8 mb-3">Réessayer</button>
+        <p className="text-zinc-500 text-sm mb-8">Le paiement a été annulé ou refusé. Rien n'a été enregistré : choisis un autre moyen de paiement ou réessaie.</p>
+        <button onClick={() => router.push(pending?.return_to || '/encaissement')} className="bg-brand text-white font-bold rounded-xl py-3 px-8 mb-3">Choisir un moyen de paiement</button>
         <Link href="/dashboard" className="text-zinc-500 text-sm">← Dashboard</Link>
       </>)}
       {status === 'error' && (<>
