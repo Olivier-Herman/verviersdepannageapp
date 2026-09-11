@@ -7,7 +7,7 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { useMemo } from 'react'
+import { useMemo, useEffect, useRef } from 'react'
 import { Menu } from 'lucide-react'
 import { T } from '@/lib/i18n/T'
 import { type NavItem } from './nav-items'
@@ -30,9 +30,23 @@ export default function MobileTabBar({ items, userRole, userModules, now, badges
     }
     return out
   }, [now, modules])
+  // Olivier 11/09/2026 : les barres d'action « fixed bottom-0 » des pages
+  // (destruction, encaissement…) passaient SOUS la barre d'onglets. On publie
+  // sa hauteur réelle (safe-area comprise) en variable CSS + classe sur <html> ;
+  // globals.css remonte d'autant toute barre fixe en bas (voir .vd-tabbar).
+  const navRef = useRef<HTMLElement | null>(null)
+  useEffect(() => {
+    const el = navRef.current
+    if (!el || tabs.length === 0) return
+    const root = document.documentElement
+    const apply = () => { root.style.setProperty('--vd-tabbar-h', `${el.getBoundingClientRect().height}px`); root.classList.add('vd-tabbar') }
+    apply()
+    const ro = new ResizeObserver(apply); ro.observe(el)
+    return () => { ro.disconnect(); root.classList.remove('vd-tabbar'); root.style.removeProperty('--vd-tabbar-h') }
+  }, [tabs.length])
   if (tabs.length === 0) return null
   return (
-    <nav className="lg:hidden fixed bottom-0 inset-x-0 z-30 bg-surface border-t safe-bottom" aria-label="Raccourcis">
+    <nav ref={navRef} className="vd-tabbar-el lg:hidden fixed bottom-0 inset-x-0 z-30 bg-surface border-t safe-bottom" aria-label="Raccourcis">
       <div className="grid gap-0.5 px-1 pt-1.5 pb-2" style={{ gridTemplateColumns: `repeat(${tabs.length + 1}, minmax(0, 1fr))` }}>
         {tabs.map(t => {
           const active = pathname === t.href || (t.href !== '/' && pathname.startsWith(t.href + '/'))

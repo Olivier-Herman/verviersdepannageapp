@@ -234,3 +234,9 @@ body {
    et bloquait même l'écran de login (avant connexion, donc impossible à gater
    par rôle). Les tablettes peuvent désormais s'utiliser en portrait comme en
    paysage. Le smartphone reste incité au portrait (règle ci-dessus). */
+
+/* Barre d'onglets mobile (menu v3) : toute barre d'action fixée en bas de page
+   remonte au-dessus d'elle. La variable est posée par MobileTabBar. */
+@media (max-width: 1023px) {
+  html.vd-tabbar .fixed.bottom-0:not(.vd-tabbar-el) { bottom: var(--vd-tabbar-h, 0px); }
+}
