@@ -65,3 +65,33 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
 
   return NextResponse.json({ ok: true, urls, total: all.length })
 }
+
+
+// Retirer une photo du dossier (Olivier 11/09/2026 : « uniquement pour
+// superadmin et sans passage par l'historique »). L'URL est retirée de la fiche
+// et le fichier supprimé du stockage ; aucune ligne de journal.
+export async function DELETE(req: NextRequest, { params }: { params: { id: string } }) {
+  const session = await getServerSession(authOptions)
+  if (!session) return NextResponse.json({ error: 'Non autorisé' }, { status: 401 })
+  const user = session.user as any
+  const roles: string[] = Array.isArray(user.roles) ? user.roles : [user.role].filter(Boolean)
+  if (!roles.includes('superadmin')) {
+    return NextResponse.json({ error: 'Réservé au superadmin' }, { status: 403 })
+  }
+  const body = await req.json().catch(() => ({}))
+  const url = String(body.url || '').trim()
+  if (!url) return NextResponse.json({ error: 'Photo non indiquée' }, { status: 400 })
+
+  const sb = createAdminClient()
+  const { data: m } = await sb.from('incoming_missions').select('id, mission_number, driver_photos').eq('id', params.id).maybeSingle()
+  if (!m) return NextResponse.json({ error: 'Fiche introuvable' }, { status: 404 })
+  const current: string[] = Array.isArray((m as any).driver_photos) ? (m as any).driver_photos : []
+  if (!current.includes(url)) return NextResponse.json({ error: 'Cette photo n\'est pas sur la fiche' }, { status: 404 })
+  const next = current.filter(u => u !== url)
+  const { error } = await sb.from('incoming_missions').update({ driver_photos: next, updated_at: new Date().toISOString() }).eq('id', params.id)
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  // Fichier supprimé du stockage aussi (Olivier : « sans passage par l'historique »).
+  const path = url.split('/object/public/mission-photos/')[1]
+  if (path) await sb.storage.from('mission-photos').remove([decodeURIComponent(path)]).catch(() => {})
+  return NextResponse.json({ ok: true, driver_photos: next })
+}

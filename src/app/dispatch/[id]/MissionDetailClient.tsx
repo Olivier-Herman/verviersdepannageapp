@@ -405,6 +405,7 @@ function AddressReviewModal({
 // son assignation. Réservé dispatch/admin/fourrière (cf /api/missions/reprocess).
 function ReparseButton({ missionId }: { missionId: string }) {
   const router = useRouter()
+
   const [busy, setBusy] = useState(false)
   const [msg,  setMsg]  = useState<string | null>(null)
   const run = async () => {
@@ -861,6 +862,17 @@ export default function MissionDetailClient({
   // Audit dispatch B8 (08/09/2026) : chaque router.refresh() de la fiche signale
   // aussi « cette fiche a changé » aux lignes dépliées / dossiers qui l'embarquent.
   const nextRouter = useRouter()
+
+  // Olivier 11/09/2026 : retirer une photo du dossier — superadmin seulement,
+  // sans trace dans l'historique. Le fichier est aussi supprimé du stockage.
+  const canRemovePhoto = userRole === 'superadmin'
+  const removePhoto = async (url: string, index: number) => {
+    if (!window.confirm(`Supprimer définitivement la photo ${index + 1} de ce dossier ?`)) return
+    const r = await fetch(`/api/missions/${initialMission.id}/photos-add`, { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ url }) })
+    const j = await r.json().catch(() => ({}))
+    if (!r.ok) { alert(j.error || `Erreur ${r.status}`); return }
+    nextRouter.refresh(); notifyMissionChanged(initialMission.id)
+  }
   const gardiennageLabels = useGardiennageRegimeLabels()
   const router = useMemo(() => Object.assign(Object.create(nextRouter), {
     refresh: () => { nextRouter.refresh(); notifyMissionChanged(initialMission.id) },
@@ -3658,7 +3670,7 @@ export default function MissionDetailClient({
                     {initialMission.driver_photos && initialMission.driver_photos.length > 0 && (
                       <div>
                         <p className="text-ink-muted text-xs mb-2">Photos ({initialMission.driver_photos.length})</p>
-                        <PhotoGrid photos={initialMission.driver_photos} />
+                        <PhotoGrid photos={initialMission.driver_photos} onRemove={canRemovePhoto ? removePhoto : undefined} />
                       </div>
                     )}
                     {/* Décharges */}
@@ -4307,7 +4319,7 @@ export default function MissionDetailClient({
                   <h3 className="text-ink-muted text-xs font-medium uppercase tracking-wide mb-3">
                     📷 Photos chauffeur ({M.driver_photos.length})
                   </h3>
-                  <PhotoGrid photos={M.driver_photos} />
+                  <PhotoGrid photos={M.driver_photos} onRemove={canRemovePhoto ? removePhoto : undefined} />
                   {/* OCR manuel : uniquement si VIN OU plaque manque, ET pas déjà tenté
                       (une seule tentative par fiche — le superadmin peut outrepasser). */}
                   {(!(M.vehicle_plate || '').trim() || !((M as any).vehicle_vin || '').trim())

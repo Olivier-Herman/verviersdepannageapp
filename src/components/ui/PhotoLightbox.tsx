@@ -20,10 +20,13 @@ export function PhotoGrid({
   photos,
   cols = 3,
   thumbClassName = '',
+  onRemove,
 }: {
   photos: string[]
   cols?: 2 | 3 | 4
   thumbClassName?: string
+  /** Olivier 11/09/2026 : le bureau peut retirer une photo d'un dossier (✕ sur la vignette). */
+  onRemove?: (url: string, index: number) => void
 }) {
   const [open, setOpen] = useState<number | null>(null)
   if (!photos?.length) return null
@@ -32,15 +35,20 @@ export function PhotoGrid({
     <>
       <div className={`grid ${colClass} gap-2`}>
         {photos.map((url, i) => (
-          <button
-            key={i}
-            type="button"
-            onClick={() => setOpen(i)}
-            className={`aspect-square rounded-xl overflow-hidden block ${thumbClassName}`}
-          >
-            <img src={url} alt={`Photo ${i + 1}`} draggable={false}
-              className="w-full h-full object-cover hover:opacity-80 transition" />
-          </button>
+          <div key={i} className="relative">
+            <button
+              type="button"
+              onClick={() => setOpen(i)}
+              className={`aspect-square rounded-xl overflow-hidden block w-full ${thumbClassName}`}
+            >
+              <img src={url} alt={`Photo ${i + 1}`} draggable={false}
+                className="w-full h-full object-cover hover:opacity-80 transition" />
+            </button>
+            {onRemove && (
+              <button type="button" onClick={e => { e.stopPropagation(); onRemove(url, i) }} title="Retirer cette photo du dossier"
+                className="absolute top-1 right-1 w-6 h-6 rounded-full bg-black/60 text-white text-xs font-bold flex items-center justify-center hover:bg-red-600">✕</button>
+            )}
+          </div>
         ))}
       </div>
       {open !== null && (
