@@ -662,7 +662,12 @@ async function buildDossierUncached(anyMissionId: string, light: boolean, price 
   // 2CLN087 : « la récupération a été faite par le client »).
   const levee = !!parquet && (parquet.state === 'clos'
     || (!!(root.levee_saisie_at || root.levee_saisie_date) && root.levee_saisie_type !== 'temporaire' && !parquet.ef_number && !(parquet.efs || []).length))
-  if (parquet && parquet.recipient !== 'client') {
+  // Un client de facturation RÉEL posé sur la racine (propriétaire à la levée,
+  // assureur…) = le dossier se facture à lui, dans Odoo, frais administratifs
+  // compris — pas au Parquet. 2FVG435 (11/09/2026) : facture 2026/09/227 au
+  // propriétaire avec 37,67 € de frais, que le dossier affichait sans.
+  const rootClientReel = !!root.billed_to_id && !/parquet|frais de justice|fdj\b/i.test(String(root.billed_to_name || ''))
+  if (parquet && parquet.recipient !== 'client' && !rootClientReel) {
     const efDep = parquet.efs.find(e => e.include_depannage)
     const lastEf = parquet.efs.length ? parquet.efs[parquet.efs.length - 1] : null
     for (const l of legs as any[]) {
