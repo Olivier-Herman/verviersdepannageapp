@@ -288,7 +288,8 @@ async function extractAwpPdf(pdf: Buffer): Promise<{
     lines: (Array.isArray(raw.lines) ? raw.lines : [])
       .filter((l: any) => l?.invoiceRef)
       .map((l: any) => ({
-        invoiceRef:  String(l.invoiceRef).trim(),
+        // « 2026/08/396. » (IMA, 08/09/2026) : la ponctuation finale n'est pas la référence.
+        invoiceRef:  String(l.invoiceRef).trim().replace(/[.,;:\s]+$/, ''),
         amount:      r2(Number(l.amount) || 0),
         theirRef:    l.theirRef ? String(l.theirRef) : null,
         invoiceDate: l.invoiceDate ? String(l.invoiceDate).slice(0, 10) : null,

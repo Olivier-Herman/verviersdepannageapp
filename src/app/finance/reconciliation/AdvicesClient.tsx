@@ -18,7 +18,9 @@ interface Invoice {
   invoiceTotal: number | null
   paymentState: string | null
   matchedBy: string | null
-  issue: 'introuvable' | 'écart' | 'déjà soldée' | null
+  issue: 'introuvable' | 'écart' | 'déjà soldée' | 'reprise' | null
+  invoiceId?: number | null
+  creditNote?: { id: number; name: string; state: string } | null
   /** Clé de la décision « passer en OD » — posée par le serveur. */
   linkKey?: string
   /** Ligne passée en OD sur le compte d'attente, avec son commentaire. */
@@ -302,6 +304,28 @@ export default function AdvicesClient() {
                             className="text-[11.5px] font-semibold text-brand hover:underline">
                             Annuler
                           </button>
+                        </div>
+                      )}
+
+                      {/* Reprise d'une facture déjà réglée : la sortie propre est
+                          une note de crédit (brouillon Odoo), pas un lettrage. */}
+                      {x.issue === 'reprise' && (
+                        <div className="mt-1.5 flex flex-wrap items-center gap-2 rounded-btn border-l-2 border-alert bg-alert-soft px-3 py-2 text-[12.5px]">
+                          {x.creditNote
+                            ? <span className="text-ink-secondary">Note de crédit <b className="font-mono">{x.creditNote.name}</b> · {x.creditNote.state === 'posted' ? 'validée' : 'brouillon à valider dans Odoo'}</span>
+                            : <>
+                                <span className="text-ink-secondary">Déjà réglée par l'assureur, reprise ici.</span>
+                                <button
+                                  onClick={async () => {
+                                    if (!window.confirm(`Créer dans Odoo une note de crédit BROUILLON sur ${x.invoiceName} (${Math.abs(x.amount).toFixed(2)} €) ? Rien n'est validé : tu la contrôles avant de la poster.`)) return
+                                    const r = await fetch('/api/finance/advices', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ creditNote: { invoiceId: x.invoiceId, adviceRef: i.advice?.reference || null } }) })
+                                    const j = await r.json().catch(() => ({}))
+                                    if (r.ok) { setToast(`Note de crédit ${j.creditNote?.name || ''} créée en brouillon`); load(true) } else setToast(j.error || `Erreur ${r.status}`)
+                                  }}
+                                  className="rounded-btn border border-strong bg-surface px-2.5 py-1 text-[12px] font-semibold text-ink hover:border-brand">
+                                  Créer la note de crédit (brouillon)
+                                </button>
+                              </>}
                         </div>
                       )}
 

@@ -51,7 +51,13 @@ export interface MatchedInvoice {
   residual:     number | null
   paymentState: string | null
   matchedBy:    'numéro' | 'référence interne' | null
-  issue:        'introuvable' | 'écart' | 'déjà soldée' | null
+  issue:        'introuvable' | 'écart' | 'déjà soldée' | 'reprise' | null
+  /**
+   * Reprise : l'assureur déduit une facture qu'il avait déjà réglée (IMA,
+   * 2026/06/055 payée le 01/07, reprise sur l'avis du 08/09). Sortie propre =
+   * note de crédit (ou contestation), pas un lettrage.
+   */
+  creditNote?:  { id: number; name: string; state: string } | null
   /** L'assureur règle puis reprend la même facture dans le même avis : effet nul. */
   neutralisee?: boolean
   /**
@@ -97,6 +103,8 @@ export interface AdviceReport {
 }
 
 const r2 = (n: number) => Math.round(n * 100) / 100
+/** Référence telle qu'Odoo la connaît : sans ponctuation ni espace de fin (avis déjà en cache compris). */
+const normRef = (r: string | null | undefined) => String(r ?? '').trim().replace(/[.,;:\s]+$/, '')
 const daysBetween = (a: string, b: string) =>
   Math.round((new Date(b).getTime() - new Date(a).getTime()) / 86_400_000)
 
@@ -127,15 +135,23 @@ async function insurerBankLines(sinceIso: string) {
  */
 async function invoicesByRefs(refs: string[]): Promise<Map<string, any>> {
   const map = new Map<string, any>()
-  const wanted = [...new Set(refs.map(r => r.trim()).filter(Boolean))]
+  const wanted = [...new Set(refs.map(r => normRef(r)).filter(Boolean))]
   if (!wanted.length) return map
 
   const rows = await odooRpc<any[]>('account.move', 'search_read', [[
     '|', ['name', 'in', wanted], ['ref', 'in', wanted],
   ]], {
-    fields: ['id', 'name', 'ref', 'amount_total', 'amount_residual', 'payment_state', 'move_type'],
+    fields: ['id', 'name', 'ref', 'amount_total', 'amount_residual', 'payment_state', 'move_type', 'reversal_move_ids'],
     limit: wanted.length * 2 + 50,
   })
+  // Notes de crédit déjà créées sur ces factures (reprises traitées).
+  const cnIds = [...new Set(rows.flatMap((r: any) => r.reversal_move_ids || []))] as number[]
+  const cnById = new Map<number, { id: number; name: string; state: string }>()
+  if (cnIds.length) {
+    const cns = await odooRpc<any[]>('account.move', 'read', [cnIds], { fields: ['name', 'state'] })
+    for (const c of cns || []) cnById.set(c.id, { id: c.id, name: (c.name && c.name !== '/') ? c.name : `Brouillon #${c.id}`, state: c.state })
+  }
+  for (const r of rows) r._creditNote = (r.reversal_move_ids || []).map((id: number) => cnById.get(id)).find(Boolean) || null
 
   for (const r of rows) {
     if (r.name && wanted.includes(r.name)) map.set(r.name, { ...r, _by: 'numéro' })
@@ -156,19 +172,19 @@ async function invoicesByRefs(refs: string[]): Promise<Map<string, any>> {
 function resolveLines(advice: PaymentAdvice, invoices: Map<string, any>): MatchedInvoice[] {
   const parLigne = new Map<string, number>()
   for (const l of advice.lines) {
-    const ref = l.invoiceRef.trim()
+    const ref = normRef(l.invoiceRef)
     parLigne.set(ref, r2((parLigne.get(ref) ?? 0) + l.amount))
   }
 
   const vues = new Set<string>()
   return advice.lines.filter(l => {
-    const ref = l.invoiceRef.trim()
+    const ref = normRef(l.invoiceRef)
     if (vues.has(ref)) return false
     vues.add(ref)
     return true
   }).map(l0 => {
-    const l = { ...l0, amount: parLigne.get(l0.invoiceRef.trim()) ?? l0.amount }
-    const inv = invoices.get(l.invoiceRef.trim())
+    const l = { ...l0, invoiceRef: normRef(l0.invoiceRef), amount: parLigne.get(normRef(l0.invoiceRef)) ?? l0.amount }
+    const inv = invoices.get(l.invoiceRef)
 
     // Réglée puis reprise : rien à lettrer, la facture reste due.
     if (Math.abs(l.amount) < 0.005) {
@@ -193,6 +209,9 @@ function resolveLines(advice: PaymentAdvice, invoices: Map<string, any>): Matche
     const signed = inv.move_type === 'out_refund' ? -Number(inv.amount_total) : Number(inv.amount_total)
     const fits   = Math.abs(signed - l.amount) < 0.02
     const paid   = inv.payment_state === 'paid'
+    // Reprise : montant négatif égal à une facture que l'assureur a déjà réglée
+    // (dans un avis précédent). Rien à lettrer ici : note de crédit ou contestation.
+    const reprise = l.amount < 0 && inv.move_type !== 'out_refund' && paid && Math.abs(signed + l.amount) < 0.02
 
     return {
       ref: l.invoiceRef, amount: l.amount,
@@ -200,7 +219,8 @@ function resolveLines(advice: PaymentAdvice, invoices: Map<string, any>): Matche
       invoiceTotal: r2(signed), residual: r2(Number(inv.amount_residual)),
       paymentState: inv.payment_state,
       matchedBy: inv._by,
-      issue: !fits ? 'écart' : paid ? 'déjà soldée' : null,
+      issue: reprise ? 'reprise' : !fits ? 'écart' : paid ? 'déjà soldée' : null,
+      creditNote: inv._creditNote || null,
     }
   })
 }
@@ -273,6 +293,7 @@ export async function buildAdviceReport(
     for (const x of resolved) {
       if (x.neutralisee || x.unallocated) continue   // réglée puis reprise, ou passée en OD
       if (x.issue === 'introuvable') blocking.push(`Aucune facture pour la référence ${x.ref}`)
+      if (x.issue === 'reprise')     blocking.push(`${x.invoiceName} : l'assureur reprend ${Math.abs(x.amount).toFixed(2)} € d'une facture déjà réglée${x.creditNote ? ` — note de crédit ${x.creditNote.name} (${x.creditNote.state === 'posted' ? 'validée' : 'brouillon'})` : ' — note de crédit à créer, ou à contester'}`)
       if (x.issue === 'écart')       blocking.push(`${x.invoiceName} : ${x.amount.toFixed(2)} € annoncés pour une facture de ${(x.invoiceTotal ?? 0).toFixed(2)} €`)
       if (x.issue === 'déjà soldée') blocking.push(`${x.invoiceName} est déjà soldée dans Odoo`)
     }
