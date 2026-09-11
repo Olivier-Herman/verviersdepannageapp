@@ -19,6 +19,8 @@ import RelivraisonModalButton from '@/components/missions/RelivraisonModalButton
 import SaisiePanel from '@/components/missions/SaisiePanel'
 import RemarksAddModal from '@/components/missions/RemarksAddModal'
 import { onMissionChanged } from '@/lib/missions/changed-event'
+import NotifyDriverButton from '@/app/dispatch/NotifyDriverButton'
+import { isHighwayAddress } from '@/lib/highways/parse'
 
 // Pays lu sur la carte d'identité → code ISO pour Odoo (même règle que la fiche).
 const countryToIso = (name?: string | null) => {
@@ -356,6 +358,8 @@ export default function DossierGroups({ initial, fiches, shared, isSuperadmin, o
 function Group({ d, leg, canBill, isOpen, onToggle, embedOpen, onToggleEmbed, fiche, shared, onChanged, mobile = false, onApplied }: {
   d: Dossier; leg: DossierLeg; canBill: boolean; isOpen: boolean; onToggle: () => void; embedOpen: boolean; onToggleEmbed: () => void; fiche: any; shared: any; onChanged: () => void; mobile?: boolean; onApplied?: (ids: string[], c: { id: number | null; name: string | null }) => void
 }) {
+  // B6 (P2) : plaque modifiée en ligne → proposer le véhicule Odoo correspondant.
+  const [plateEdited, setPlateEdited] = useState<string | null>(null)
   const gardiennageLabels = useGardiennageRegimeLabels()
   const k = KIND[leg.kind]
   return (
@@ -412,21 +416,24 @@ function Group({ d, leg, canBill, isOpen, onToggle, embedOpen, onToggleEmbed, fi
                 <EditableText value={leg.editable.assisted_name} placeholder="nom de l’assisté (si ≠ client)" missionId={leg.mission_id} field="assisted_name" onSaved={onChanged} />
                 <EditableText value={leg.editable.assisted_phone} placeholder="téléphone" missionId={leg.mission_id} field="assisted_phone" onSaved={onChanged} mono /></dd></div>
               <div className="grid grid-cols-[92px_minmax(0,1fr)] md:grid-cols-[110px_1fr] gap-2 items-center"><dt className="text-ink-muted">Véhicule</dt><dd className="flex flex-wrap gap-x-2 gap-y-0.5 items-center">
-                <EditableText value={leg.editable.vehicle_plate} placeholder="plaque" missionId={leg.mission_id} field="vehicle_plate" onSaved={onChanged} mono upper />
+                <EditableText value={leg.editable.vehicle_plate} placeholder="plaque" missionId={leg.mission_id} field="vehicle_plate" onSaved={onChanged} onSavedValue={v => setPlateEdited(v)} mono upper />
                 <EditableText value={leg.editable.vehicle_brand} placeholder="marque" missionId={leg.mission_id} field="vehicle_brand" onSaved={onChanged} />
                 <EditableText value={leg.editable.vehicle_model} placeholder="modèle" missionId={leg.mission_id} field="vehicle_model" onSaved={onChanged} />
                 <EditableText value={leg.editable.vehicle_vin} placeholder="VIN" missionId={leg.mission_id} field="vehicle_vin" onSaved={onChanged} mono upper />
                 <EditableText value={leg.editable.vehicle_fuel} placeholder="carburant" missionId={leg.mission_id} field="vehicle_fuel" onSaved={onChanged} />
                 <EditableText value={leg.editable.vehicle_gearbox} placeholder="boîte" missionId={leg.mission_id} field="vehicle_gearbox" onSaved={onChanged} />
-                <EditableText value={leg.editable.vehicle_mileage} placeholder="km" missionId={leg.mission_id} field="vehicle_mileage" onSaved={onChanged} mono /></dd></div>
+                <EditableText value={leg.editable.vehicle_mileage} placeholder="km" missionId={leg.mission_id} field="vehicle_mileage" onSaved={onChanged} mono numeric /></dd></div>
+              {plateEdited && (
+                <div className="md:col-span-2"><OdooVehicleSuggest missionId={leg.mission_id} plate={plateEdited} current={{ brand: leg.editable.vehicle_brand, model: leg.editable.vehicle_model, vin: leg.editable.vehicle_vin }} onDone={async () => { setPlateEdited(null); await onChanged() }} /></div>
+              )}
               <div className="grid grid-cols-[92px_minmax(0,1fr)] md:grid-cols-[110px_1fr] gap-2 items-center"><dt className="text-ink-muted">Incident</dt><dd className="flex flex-wrap gap-x-2 gap-y-0.5 items-center">
                 <EditableText value={leg.editable.incident_type} placeholder="type d’incident" missionId={leg.mission_id} field="incident_type" onSaved={onChanged} />
                 <EditableText value={leg.editable.incident_description} placeholder="description" missionId={leg.mission_id} field="incident_description" onSaved={onChanged} /></dd></div>
               <div className="grid grid-cols-[92px_minmax(0,1fr)] md:grid-cols-[110px_1fr] gap-2 items-center"><dt className="text-ink-muted">{leg.kind === 'rel' ? 'Départ' : 'Intervention'}</dt><dd>
-                <EditableAddress value={leg.editable.incident_address} field="incident" missionId={leg.mission_id} gmKey={shared.googleMapsKey} onSaved={onChanged} /></dd></div>
+                <EditableAddress value={leg.editable.incident_address} field="incident" missionId={leg.mission_id} gmKey={shared.googleMapsKey} hasCoords={!!leg.editable.incident_has_coords} onSaved={onChanged} /></dd></div>
               <div className="grid grid-cols-[92px_minmax(0,1fr)] md:grid-cols-[110px_1fr] gap-2 items-center"><dt className="text-ink-muted">{leg.kind === 'rel' ? 'Livrer à' : 'Destination'}</dt><dd className="space-y-0.5">
                 <EditableText value={leg.editable.destination_name} placeholder="nom du lieu (garage, hôtel…)" missionId={leg.mission_id} field="destination_name" onSaved={onChanged} />
-                <EditableAddress value={leg.editable.destination_address} field="destination" missionId={leg.mission_id} gmKey={shared.googleMapsKey} onSaved={onChanged} placeholder={/d[ée]pannage|sur place/i.test(leg.title) ? 'sur place' : 'à définir'} /></dd></div>
+                <EditableAddress value={leg.editable.destination_address} field="destination" missionId={leg.mission_id} gmKey={shared.googleMapsKey} hasCoords={!!leg.editable.destination_has_coords} onSaved={onChanged} placeholder={/d[ée]pannage|sur place/i.test(leg.title) ? 'sur place' : 'à définir'} /></dd></div>
               {/* Audit B2 (08/09/2026) : les remarques de la SOURCE (mail assistance, checklist
                   Touring) ne se modifient pas ici — elles sont affichées au chauffeur. Une
                   remarque dispatch passe par le module de remarques (auteur, type, PJ). */}
@@ -467,6 +474,13 @@ function Group({ d, leg, canBill, isOpen, onToggle, embedOpen, onToggleEmbed, fi
                 ? <button onClick={onToggleEmbed} className="px-2.5 py-1 rounded-lg text-xs font-semibold border bg-surface text-ink-secondary hover:text-ink">{embedOpen ? 'Replier la fiche complète' : 'Ouvrir la fiche complète'}</button>
                 : <Link href={`/dispatch/dossier/${d.root_id}?open=${leg.mission_id}`} target="_blank" className="px-2.5 py-1 rounded-lg text-xs font-semibold border bg-surface text-ink-secondary hover:text-ink">Ouvrir ce groupe dans le dossier ↗</Link>}
               <Link href={`/dispatch/${leg.mission_id}?fiche=1`} className="px-2.5 py-1 rounded-lg text-xs font-semibold border bg-surface text-ink-secondary hover:text-ink">Fiche seule ↗</Link>
+              <NotifyDriverButton missionId={leg.mission_id} status={leg.status} compact />
+            </div>
+          )}
+          {leg.kind !== 'out' && mobile && (
+            <div className="flex flex-wrap gap-1.5">
+              <NotifyDriverButton missionId={leg.mission_id} status={leg.status} compact />
+              <Link href={`/dispatch/${leg.mission_id}?fiche=1`} className="px-2.5 py-1 rounded-lg text-xs font-semibold border bg-surface text-ink-secondary">Fiche seule ↗</Link>
             </div>
           )}
           {leg.kind === 'out' && leg.channel === 'domaine' && (
@@ -495,8 +509,10 @@ function Group({ d, leg, canBill, isOpen, onToggle, embedOpen, onToggleEmbed, fi
 // adresse dans la liste, ça redirige sur la fiche complète, c'est pas
 // friendly ») : même recherche Google que la fiche, coordonnées persistées
 // (géocodage = navigateur), le moteur de prix se recalcule côté API.
-function EditableAddress({ value, field, missionId, gmKey, onSaved, placeholder = 'adresse à définir' }: {
+function EditableAddress({ value, field, missionId, gmKey, onSaved, placeholder = 'adresse à définir', hasCoords = false }: {
   value: string | null; field: 'incident' | 'destination' | 'redelivery'; missionId: string; gmKey?: string; onSaved: () => void | Promise<void>; placeholder?: string
+  /** B4 (P2) : la fiche a déjà des coordonnées → on ne les efface pas sans confirmation. */
+  hasCoords?: boolean
 }) {
   const [editing, setEditing] = useState(false)
   const [v, setV] = useState(value || '')
@@ -541,24 +557,55 @@ function EditableAddress({ value, field, missionId, gmKey, onSaved, placeholder 
       if (status !== g.maps.places.PlacesServiceStatus.OK || !p?.geometry) { setBusy(false); setErr('Adresse introuvable chez Google'); return }
       const addr = p.formatted_address || ''
       const isEstab = (p.types || []).some((t: string) => t === 'establishment' || t === 'point_of_interest')
-      const display = isEstab && p.name && !addr.startsWith(p.name) ? `${p.name}, ${addr}` : addr
+      // B4 (P2) : pour la destination, le nom de l'établissement Google va dans
+      // le champ « nom du lieu », pas collé dans l'adresse (doublons dans la liste).
+      const display = field !== 'destination' && isEstab && p.name && !addr.startsWith(p.name) ? `${p.name}, ${addr}` : addr
       const cityComp = (p.address_components || []).find((c: any) => c.types.includes('locality')) || (p.address_components || []).find((c: any) => c.types.includes('postal_town'))
       setV(display); setPreds([])
-      save(display, p.geometry.location.lat(), p.geometry.location.lng(), cityComp?.long_name)
+      save(display, p.geometry.location.lat(), p.geometry.location.lng(), cityComp?.long_name, { placeName: field === 'destination' && isEstab && p.name ? p.name : undefined })
     })
   }
-  const save = async (addr: string, lat: number | null, lng: number | null, city?: string) => {
+  const save = async (addr: string, lat: number | null, lng: number | null, city?: string, extra: { placeName?: string; borne?: string | null; sens?: string | null; keepCoords?: boolean } = {}) => {
     setBusy(true); setErr(null)
     try {
+      // B4 (P2) : une adresse qui change remet la borne autoroute à zéro (sauf si on
+      // vient d'en résoudre une) ; « keepCoords » = texte inchangé, on ne touche pas au GPS.
+      const coords = extra.keepCoords ? {} : field === 'incident' ? { incident_lat: lat, incident_lng: lng } : field === 'destination' ? { destination_lat: lat, destination_lng: lng } : { redelivery_lat: lat, redelivery_lng: lng }
+      const borne = field === 'incident' ? { incident_borne_km: extra.borne ?? null, incident_sens: extra.sens ?? null }
+        : field === 'destination' ? { destination_borne_km: extra.borne ?? null, destination_sens: extra.sens ?? null } : {}
       const body: Record<string, any> = field === 'incident'
-        ? { incident_address: addr || null, incident_lat: lat, incident_lng: lng, ...(city ? { incident_city: city } : {}) }
+        ? { incident_address: addr || null, ...coords, ...borne, ...(city ? { incident_city: city } : {}) }
         : field === 'destination'
-          ? { destination_address: addr || null, destination_lat: lat, destination_lng: lng }
-          : { redelivery_address: addr || null, redelivery_lat: lat, redelivery_lng: lng }
+          ? { destination_address: addr || null, ...coords, ...borne, ...(extra.placeName ? { destination_name: extra.placeName } : {}) }
+          : { redelivery_address: addr || null, ...coords }
       const r = await fetch(`/api/missions/${missionId}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
       if (!r.ok) { const j = await r.json().catch(() => ({})); throw new Error(j.error || `HTTP ${r.status}`) }
       setEditing(false); setPreds([]); await onSaved()
     } catch (e: any) { setErr(String(e.message || e)) } finally { setBusy(false) }
+  }
+  // « Garder le texte tel quel » (B4, P2) : texte inchangé → on ferme sans toucher
+  // au GPS ; autoroute (« A27 BK22.3 ») → borne SPW → coordonnées + borne + sens,
+  // comme la fiche ; sinon, si la fiche a des coordonnées, on demande avant de
+  // les effacer (le recalcul SNC tournerait à vide).
+  const keepAsIs = async () => {
+    const text = v.trim()
+    if (text === (value || '').trim()) { setEditing(false); setPreds([]); return }
+    if (isHighwayAddress(text)) {
+      setBusy(true)
+      try {
+        const r = await fetch(`/api/highways/resolve-bk?address=${encodeURIComponent(text)}`)
+        const j = await r.json().catch(() => ({}))
+        if (r.ok && j?.ok && j.lat != null && j.lng != null) {
+          const label = `${j.highway} BK ${j.borneLabel}${j.direction ? ' dir. ' + j.direction : ''}`
+          setV(label)
+          await save(label, j.lat, j.lng, undefined, { borne: j.borneLabel || null, sens: j.direction || null })
+          return
+        }
+        setErr(j?.error || 'Borne introuvable — adresse gardée sans coordonnées')
+      } catch { setErr('Résolution autoroute impossible') } finally { setBusy(false) }
+    }
+    if (hasCoords && !window.confirm('Cette adresse a des coordonnées GPS. Garder le texte tel quel les efface (le recalcul de distance ne pourra plus se faire). Continuer ?')) return
+    await save(text, null, null)
   }
   if (!editing) return (
     <button type="button" onClick={() => setEditing(true)} title="Toucher pour modifier"
@@ -584,7 +631,7 @@ function EditableAddress({ value, field, missionId, gmKey, onSaved, placeholder 
       )}
       <div className="flex flex-wrap gap-1.5 text-xs">
         <button type="button" disabled={busy} onClick={() => { setV(value || ''); setPreds([]); setEditing(false); setErr(null) }} className="px-2.5 py-1 rounded-lg border bg-surface text-ink-secondary">Annuler</button>
-        <button type="button" disabled={busy || !v.trim()} onClick={() => save(v.trim(), null, null)} title="Sans suggestion Google : l’adresse est gardée telle quelle, sans coordonnées"
+        <button type="button" disabled={busy || !v.trim()} onClick={() => keepAsIs()} title="Sans suggestion Google : l’adresse est gardée telle quelle, sans coordonnées"
           className="px-2.5 py-1 rounded-lg border bg-surface text-ink-secondary disabled:opacity-50">{busy ? '…' : 'Garder le texte tel quel'}</button>
         {value && <button type="button" disabled={busy} onClick={() => save('', null, null)} className="px-2.5 py-1 rounded-lg border bg-surface text-red-700 disabled:opacity-50">Effacer</button>}
       </div>
@@ -784,8 +831,10 @@ function EditableDateTime({ value, missionId, field, onSaved }: { value: string 
 }
 
 // ── Valeur modifiable d'un clic (client, véhicule…) ────────────────────────
-function EditableText({ value, placeholder, missionId, field, onSaved, mono, upper }: {
-  value: string | null; placeholder: string; missionId: string; field: string; onSaved: () => void | Promise<void>; mono?: boolean; upper?: boolean
+function EditableText({ value, placeholder, missionId, field, onSaved, onSavedValue, mono, upper, numeric }: {
+  value: string | null; placeholder: string; missionId: string; field: string; onSaved: () => void | Promise<void>; onSavedValue?: (v: string) => void; mono?: boolean; upper?: boolean
+  /** B6 (P2) : kilométrage en nombre entier (la colonne est un integer). */
+  numeric?: boolean
 }) {
   const [editing, setEditing] = useState(false)
   const [v, setV] = useState(value || '')
@@ -793,13 +842,14 @@ function EditableText({ value, placeholder, missionId, field, onSaved, mono, upp
   const [err, setErr] = useState<string | null>(null)
   useEffect(() => { if (!editing) setV(value || '') }, [value, editing])
   const save = async () => {
-    const next = upper ? v.trim().toUpperCase() : v.trim()
+    const next = numeric ? v.replace(/[^\d]/g, '') : upper ? v.trim().toUpperCase() : v.trim()
     if (next === (value || '')) { setEditing(false); return }
     setBusy(true); setErr(null)
     try {
-      const r = await fetch(`/api/missions/${missionId}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ [field]: next || null }) })
+      const payload = numeric ? (next ? Number(next) : null) : next
+      const r = await fetch(`/api/missions/${missionId}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ [field]: payload }) })
       if (!r.ok) { const j = await r.json().catch(() => ({})); throw new Error(j.error || `HTTP ${r.status}`) }
-      setEditing(false); await onSaved()
+      setEditing(false); onSavedValue?.(next); await onSaved()
     } catch (e: any) { setErr(String(e.message || e)) } finally { setBusy(false) }
   }
   if (!editing) return (
@@ -809,7 +859,7 @@ function EditableText({ value, placeholder, missionId, field, onSaved, mono, upp
     </button>
   )
   return (
-    <input autoFocus value={v} disabled={busy} onChange={e => setV(e.target.value)} placeholder={placeholder}
+    <input autoFocus value={v} disabled={busy} onChange={e => setV(e.target.value)} placeholder={placeholder} inputMode={numeric ? 'numeric' : undefined} pattern={numeric ? '[0-9]*' : undefined}
       onBlur={save} onKeyDown={e => { if (e.key === 'Enter') save(); if (e.key === 'Escape') { setV(value || ''); setEditing(false) } }}
       className={`border rounded px-1.5 py-0.5 bg-surface text-ink text-xs w-full max-w-[260px] min-w-0 ${mono ? 'font-mono' : ''}`} />
   )
@@ -951,6 +1001,47 @@ function EstimationTable({ d, me }: { d: Dossier; me: string }) {
           Factures : {d.invoices.map(i => <span key={i.number} className="mr-3 inline-flex items-center gap-1.5">{i.url ? <a href={i.url} target="_blank" rel="noreferrer" title={i.number}><Stamp refs={[i.number]} small /></a> : <Stamp refs={[i.number]} small />}<span className="text-ink-faint">{refKind(i.number)} · couvre {i.covers.join(' ')} · {eur(i.amount)}</span></span>)}
         </div>
       )}
+    </div>
+  )
+}
+
+
+// ── B6 (P2, 11/09/2026) : plaque modifiée en ligne → proposer le véhicule Odoo ──
+// La fiche relance la recherche à chaque plaque et relie l'identifiant Odoo ; en
+// ligne, l'ancien identifiant restait et le parc Odoo pointait sur le mauvais
+// véhicule. Ici : proposition après la sauvegarde, lien en un clic, champs vides
+// complétés depuis Odoo (source de vérité), jamais écrasés.
+function OdooVehicleSuggest({ missionId, plate, current, onDone }: {
+  missionId: string; plate: string; current: { brand: string | null; model: string | null; vin: string | null }; onDone: () => void | Promise<void>
+}) {
+  const [list, setList] = useState<any[] | null>(null)
+  const [busy, setBusy] = useState(false)
+  useEffect(() => {
+    let dead = false
+    fetch(`/api/odoo/search-vehicle?q=${encodeURIComponent(plate)}`).then(r => r.json()).then(j => { if (!dead) setList(j.vehicles || []) }).catch(() => { if (!dead) setList([]) })
+    return () => { dead = true }
+  }, [plate])
+  const link = async (v: any) => {
+    setBusy(true)
+    try {
+      const body: Record<string, any> = { odoo_vehicle_id: v.id }
+      if (!current.brand && v.brand) body.vehicle_brand = v.brand
+      if (!current.model && v.model) body.vehicle_model = v.model
+      if (!current.vin && v.vin) body.vehicle_vin = v.vin
+      await fetch(`/api/missions/${missionId}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+      await onDone()
+    } finally { setBusy(false) }
+  }
+  if (list === null) return <p className="text-[11px] text-ink-muted">Recherche du véhicule dans le parc Odoo…</p>
+  return (
+    <div className="flex flex-wrap items-center gap-1.5 text-[11px] bg-surface-2 border rounded-lg px-2 py-1.5">
+      <span className="text-ink-muted">{list.length ? 'Véhicule Odoo pour cette plaque :' : 'Aucun véhicule Odoo pour cette plaque — il sera créé à la facturation.'}</span>
+      {list.slice(0, 3).map(v => (
+        <button key={v.id} type="button" disabled={busy} onClick={() => link(v)} className="px-2 py-0.5 rounded border bg-surface text-ink font-semibold hover:bg-brand/10 disabled:opacity-50">
+          🔗 {v.plate} {[v.brand, v.model].filter(Boolean).join(' ')}
+        </button>
+      ))}
+      <button type="button" disabled={busy} onClick={() => onDone()} className="px-2 py-0.5 rounded border bg-surface text-ink-secondary">Ignorer</button>
     </div>
   )
 }

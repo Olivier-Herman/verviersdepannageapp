@@ -18,6 +18,7 @@ import DispatcherOnDutyBadge from '@/components/dispatch/DispatcherOnDutyBadge'
 import { getSourceLabel, getSourceColor, type SourceDisplay as CatalogSource } from '@/lib/missions/source-display'
 import AutoDispatchButton from '@/components/dispatch/AutoDispatchButton'
 import { HighwaySiabisModal, shouldOfferSiabis } from './HighwaySiabisModal'
+import NotifyDriverButton from './NotifyDriverButton'
 import { parseHighwayAddress } from '@/lib/highways/parse'
 import { isJudicialSaisie } from '@/lib/missions/judicial'
 import { onMissionChanged } from '@/lib/missions/changed-event'
@@ -208,9 +209,23 @@ function MobileRow({ m, activeTab, drivers, driverStatuses, sources, onRefresh, 
             ? <span className="w-9 h-9 rounded-lg bg-amber-500 text-white font-bold font-mono text-base flex items-center justify-center" title="Zone de parc">{(m as any).parc_zone_key || '?'}</span>
             : showDelai ? <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[11px] font-medium ${delai.bgColor} ${delai.color} ${delai.pulse ? 'animate-pulse' : ''}`}>{delai.label}</span> : null}
         </div>
-        <div className="col-span-2 flex items-center gap-2 min-w-0">
+        <div className="col-span-2 flex items-center gap-2 min-w-0 flex-wrap">
           <span className="text-ink font-bold font-mono text-[13px]">{m.vehicle_plate || '—'}</span>
           <span className="text-ink-secondary text-[12.5px] truncate">{[m.vehicle_brand, m.vehicle_model].filter(Boolean).join(' ')}</span>
+          {/* Lot P2 (11/09/2026) : roulant, ETA et « déjà en parc » comme sur les anciennes cartes. */}
+          {m.is_rollable != null && <RollableMini v={m.is_rollable} />}
+          {(() => {
+            const etaFresh = m.driver_eta_at != null && (Date.now() - new Date(m.driver_eta_at).getTime() < 4 * 60 * 1000)
+            return etaFresh && m.driver_eta_minutes != null && m.assigned_to
+              ? <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10.5px] font-bold bg-emerald-100 text-emerald-800" title="Temps d'arrivée estimé du chauffeur">🚚 {m.driver_eta_minutes} min</span>
+              : null
+          })()}
+          {m.vehicule_deja_en_parc && (
+            <Link href={`/dispatch/${m.vehicule_deja_en_parc.mission_id}`} onClick={e => e.stopPropagation()}
+              className={`px-1.5 py-0.5 rounded text-[10px] font-bold border ${m.vehicule_deja_en_parc.piste === 'relivraison' ? 'bg-blue-100 border-blue-400 text-blue-800' : 'bg-amber-100 border-amber-400 text-amber-900'}`}>
+              {m.vehicule_deja_en_parc.piste === 'relivraison' ? '🔄 déjà en parc — relivraison ?' : '⚠ déjà en parc — doublon ?'} #{m.vehicule_deja_en_parc.mission_number}
+            </Link>
+          )}
         </div>
         {ref && <p className="col-span-2 text-ink-muted font-mono text-[11px] truncate">{ref}</p>}
         <div className="col-span-2 text-[12.5px] leading-snug">
@@ -240,10 +255,12 @@ function MobileRow({ m, activeTab, drivers, driverStatuses, sources, onRefresh, 
           <div className="border-t px-3 py-2.5 space-y-2" onClick={e => e.stopPropagation()}>
             <div className="flex gap-2">
               <Link href={href} className="flex-1 text-center px-3 py-2.5 rounded-xl bg-brand text-white text-sm font-semibold">Dossier complet</Link>
+              <Link href={`/dispatch/${m.id}?fiche=1`} className="px-3 py-2.5 rounded-xl border bg-surface text-ink text-sm font-semibold" title="La fiche seule, sans le dossier">Fiche</Link>
               {['admin', 'superadmin', 'dispatcher'].includes(userRole) && (
                 <button onClick={() => setForceOpen(v => !v)} className={`flex-1 px-3 py-2.5 rounded-xl border text-sm font-semibold ${forceOpen ? 'bg-amber-500/15 border-amber-500/40 text-amber-700 dark:text-amber-300' : 'bg-surface text-ink'}`}>Forcer un statut</button>
               )}
             </div>
+            <NotifyDriverButton missionId={m.id} status={m.status} className="w-full" />
             {forceOpen && (
               <div className="grid grid-cols-1 gap-1.5">
                 {m.status !== 'dispatching' && m.status !== 'new' && (

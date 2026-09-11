@@ -70,6 +70,7 @@ export interface DossierLeg {
     incident_address: string | null; destination_address: string | null; destination_name: string | null; redelivery_address: string | null
     mission_type: string | null; source: string | null; dossier_number: string | null; intervention_date: string | null
     incident_type: string | null; incident_description: string | null; remarks_general: string | null
+      incident_has_coords?: boolean; destination_has_coords?: boolean; redelivery_has_coords?: boolean
   }
   // Remarques de facturation (dispatch) : à confirmer AVANT de facturer.
   billing_remarks: { text: string; author: string | null; at: string | null }[]
@@ -634,6 +635,7 @@ async function buildDossierUncached(anyMissionId: string, light: boolean, price 
         vehicle_plate: m.vehicle_plate || null, vehicle_brand: m.vehicle_brand || null, vehicle_model: m.vehicle_model || null, vehicle_vin: m.vehicle_vin || null,
         vehicle_fuel: m.vehicle_fuel || null, vehicle_gearbox: m.vehicle_gearbox || null, vehicle_mileage: m.vehicle_mileage != null ? String(m.vehicle_mileage) : null,
         incident_address: m.incident_address || null, destination_address: m.destination_address || null, destination_name: m.destination_name || null, redelivery_address: m.redelivery_address || null,
+        incident_has_coords: m.incident_lat != null && m.incident_lng != null, destination_has_coords: m.destination_lat != null && m.destination_lng != null, redelivery_has_coords: m.redelivery_lat != null && m.redelivery_lng != null,
         mission_type: m.mission_type || null, source: m.source || null, dossier_number: m.dossier_number || null, intervention_date: m.intervention_date || null,
         incident_type: m.incident_type || null, incident_description: m.incident_description || null, remarks_general: m.remarks_general || null,
       },

@@ -4107,6 +4107,8 @@ export default function MissionDetailClient({
                   missionId={initialMission.id}
                   className="w-full py-3 bg-red-600 hover:bg-red-700 text-white rounded-2xl text-sm font-semibold transition"
                   onCancelled={() => {
+                    // B13 (P2) : fiche intégrée au dossier → on reste sur le dossier et on le rafraîchit.
+                    if (embed) { router.refresh(); notifyMissionChanged(initialMission.id); return }
                     if (typeof window !== 'undefined' && window.history.length > 1) router.back()
                     else router.push('/dispatch')
                   }}
