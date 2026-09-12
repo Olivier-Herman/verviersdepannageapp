@@ -179,9 +179,16 @@ export async function PATCH(
     const fScenario = ('snc_scenario' in updates ? updates.snc_scenario : before?.snc_scenario) as string | null
     const closed    = CLOSED_STATUSES.includes(String((before as any)?.status || ''))
     if (fSource && SNC_SOURCES.has(fSource) && closed && !fScenario && ('source' in updates || 'snc_scenario' in updates)) {
+      // Olivier 12/09 : « c'est de la logique » — dépannage = DSP ; remorquage
+      // passé par le dépôt = REM dépôt ; remorquage livré sans dépôt = REM
+      // directe (couvert) / REM client (non couvert). Modale seulement si
+      // le type ne dit rien (trajet à vide, autre…).
       const fType = String(('mission_type' in updates ? updates.mission_type : before?.mission_type) || '').toLowerCase()
-      const inferred = ['depannage', 'dsp', 'reparation_place'].includes(fType) ? 'dsp'
-        : (before as any)?.parked_at ? 'rem_depot'
+      const isDep = ['depannage', 'dsp', 'reparation_place'].includes(fType)
+      const isRem = /remorquage|rem/.test(fType) && !/trajet|vide/.test(fType)
+      const inferred = isDep ? 'dsp'
+        : isRem && (before as any)?.parked_at ? 'rem_depot'
+        : isRem ? (fSource === 'police_snc' ? 'rem_client' : 'rem_direct')
         : null
       if (inferred) updates.snc_scenario = inferred
       else return NextResponse.json({ error: 'Scénario Siabis obligatoire sur une fiche clôturée : choisis REM directe / REM client / REM dépôt.', need_scenario: true }, { status: 400 })

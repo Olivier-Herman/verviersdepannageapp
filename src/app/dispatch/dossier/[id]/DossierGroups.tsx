@@ -777,11 +777,20 @@ function SourceSelectInline({ value, options, missionId, closed, scenario, onSav
       setPending(null); setSc(''); await onSaved()
     } catch (e: any) { setErr(String(e.message || e)) } finally { setBusy(false) }
   }
-  const change = (next: string) => {
+  // Le serveur déduit le scénario quand la clôture le dit (DSP / REM dépôt /
+  // REM directe) ; il ne renvoie need_scenario qu'en cas d'hésitation → modale.
+  const change = async (next: string) => {
     if (!next || next === value) return
-    if (isSncSource(next) && closed && !scenario) { setPending(next); setSc(''); return }
-    patch({ source: next })
+    setBusy(true); setErr(null)
+    try {
+      const r = await fetch(`/api/missions/${missionId}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ source: next }) })
+      const j = await r.json().catch(() => ({}))
+      if (r.ok) { await onSaved(); return }
+      if (j.need_scenario) { setPending(next); setSc(''); return }
+      throw new Error(j.error || `HTTP ${r.status}`)
+    } catch (e: any) { setErr(String(e.message || e)) } finally { setBusy(false) }
   }
+  void closed; void scenario
   const scOpts: [string, string][] = pending === 'police_snc'
     ? [['dsp', '🔧 DSP — dépannage sur place'], ['rem_client', '🚛 REM client — paiement immédiat'], ['rem_depot', '🏢 REM dépôt Pepinster']]
     : [['dsp', '🔧 DSP — dépannage sur place'], ['rem_direct', '🚛 REM directe'], ['rem_depot', '🏢 REM dépôt Pepinster']]
