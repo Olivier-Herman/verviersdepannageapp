@@ -152,6 +152,13 @@ async function parcExitRef(sb: ReturnType<typeof createAdminClient>, mission: an
 
 export async function computeMissionKm(missionId: string): Promise<{ chargedKm: number | null; totalKm: number | null }> {
   const sb = createAdminClient()
+  // Coordonnées manquantes → tentative de géocodage serveur (ORS), persistée.
+  // Un tiers des fiches VAB n'étaient jamais géocodées (jamais ouvertes dans
+  // un navigateur avant clôture) → « kilomètres inconnus » en facturation.
+  try {
+    const { ensureMissionCoords } = await import('@/lib/geocode/server')
+    await ensureMissionCoords(sb, missionId)
+  } catch { /* best-effort */ }
   const { data: m } = await sb
     .from('incoming_missions')
     .select('mission_type, incident_lat, incident_lng, destination_lat, destination_lng, destination_address, extra_addresses, depot_depart_id, parked_at')

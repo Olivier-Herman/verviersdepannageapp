@@ -414,6 +414,8 @@ export async function runVabImport(opts: { mode: VabImportMode }): Promise<VabIm
         // Remorquage d'un véhicule déjà au parc chez nous → réserve sur le dossier
         // (règle commune à toutes les assistances, lib/missions/reserve-rel.ts).
         if (insertedRow?.id) {
+// Coordonnées dès l'arrivée (ORS) : sans elles, un tiers des fiches VAB finissaient « à calculer ». Best-effort.
+try { const { ensureMissionCoords } = await import('@/lib/geocode/server'); await ensureMissionCoords(sb, insertedRow.id) } catch {}
           const r = await reserveTowForParkedVehicle({ sb, missionId: insertedRow.id, actorName: 'rattaché automatiquement à l’arrivée de l’action VAB' })
           if (r.reserved) {
             results[results.length - 1] = { missionNumber: item.missionNumber, ok: true, action: 'merged', mergedInto: r.parentNumber != null ? `#${r.parentNumber}` : r.parentId }
