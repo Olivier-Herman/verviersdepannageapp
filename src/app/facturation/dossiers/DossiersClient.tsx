@@ -222,10 +222,20 @@ export default function DossiersClient({ initial, autoById, comexById = {}, isSu
   // Olivier 09/09/2026 : « 24 sec pour que la page facturation s'affiche ».
   const [pricing, setPricing] = useState(0)   // nombre de dossiers encore à tarifer
   useEffect(() => {
-    const todoIds = initial.filter(d => d.light).map(d => d.root_id)
+    // Olivier 12/09/2026 : « pourquoi il calcule 74 dossiers pour 12 affichés ? »
+    // On tarifait TOUT ce qui était chargé, factures des 30 jours comprises.
+    // Désormais : d'abord ce qui reste à facturer (À facturer + En cours), puis
+    // les circuits Parquet / Domaine / COMEX ; les dossiers déjà facturés ne sont
+    // jamais recalculés (leur montant figé suffit). Le sablier ne compte que le
+    // premier groupe — celui dont dépend « Reste à facturer ».
+    const light = initial.filter(d => d.light)
+    const first = light.filter(d => !isDone(d) && !isCircuit(d)).map(d => d.root_id)
+    const then  = light.filter(d => !isDone(d) && isCircuit(d)).map(d => d.root_id)
+    const todoIds = [...first, ...then]
+    const counted = new Set(first)
     if (!todoIds.length) return
     let cancelled = false
-    setPricing(todoIds.length)
+    setPricing(first.length)
     ;(async () => {
       for (let i = 0; i < todoIds.length; i += 6) {
         if (cancelled) return
@@ -235,7 +245,7 @@ export default function DossiersClient({ initial, autoById, comexById = {}, isSu
             const j = await fetch(`/api/dossier/${id}?mode=list`, { cache: 'no-store' }).then(r => r.json())
             if (!cancelled && j?.dossier) setRows(p => p.map(d => d.root_id === id ? j.dossier : d))
           } catch { /* la ligne garde son montant figé */ }
-          if (!cancelled) setPricing(n => Math.max(0, n - 1))
+          if (!cancelled && counted.has(id)) setPricing(n => Math.max(0, n - 1))
         }))
       }
     })()
