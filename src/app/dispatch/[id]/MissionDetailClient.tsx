@@ -3211,7 +3211,7 @@ export default function MissionDetailClient({
                         <Field label="Scénario SNC (optionnel — modifiable par le chauffeur)">
                           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                             {([
-                              { key: '',           label: '🤷 Laisser le chauffeur choisir', desc: 'Aucune pré-indication — le chauffeur décide selon ce qu\'il constate.' },
+                              ...(['completed', 'to_invoice', 'invoiced'].includes(String(initialMission.status || '')) ? [] : [{ key: '',           label: '🤷 Laisser le chauffeur choisir', desc: 'Aucune pré-indication — le chauffeur décide selon ce qu\'il constate.' }]),
                               { key: 'dsp',        label: '🔧 DSP — Dépannage sur place',  desc: 'Réparation sur autoroute.' },
                               ...(form.source === 'police_snc' ? [{
                                 key: 'rem_client', label: '🚛 REM client',                 desc: 'Remorquage vers destination du client, paiement immédiat.',

@@ -399,11 +399,11 @@ function Group({ d, leg, canBill, isOpen, onToggle, embedOpen, onToggleEmbed, fi
               <div className="grid grid-cols-[92px_minmax(0,1fr)] md:grid-cols-[110px_1fr] gap-2 items-center"><dt className="text-ink-muted">Type</dt><dd className="flex flex-wrap gap-x-2 gap-y-0.5 items-center">
                 <EditableSelect value={leg.editable.mission_type} missionId={leg.mission_id} field="mission_type" onSaved={onChanged}
                   options={typeOptionsFor(leg.editable.source, gardiennageLabels)} />
-                <EditableSelect value={leg.editable.source} missionId={leg.mission_id} field="source" onSaved={onChanged}
+                <SourceSelectInline value={leg.editable.source} missionId={leg.mission_id} closed={['completed', 'to_invoice', 'invoiced'].includes(String(leg.status || ''))} scenario={fiche?.mission?.snc_scenario ?? null} onSaved={onChanged}
                   options={(shared.sources || []).map((x: any) => [x.key, x.label])} /></dd></div>
               {isSncSource(leg.editable.source) && (
                 <div className="grid grid-cols-[92px_minmax(0,1fr)] md:grid-cols-[110px_1fr] gap-2 items-center md:col-span-2"><dt className="text-ink-muted">Scénario SNC</dt><dd>
-                  <SncScenarioInline missionId={leg.mission_id} source={leg.editable.source} scenario={fiche?.mission?.snc_scenario ?? null} balisage={!!fiche?.mission?.snc_requires_balisage} onSaved={onChanged} /></dd></div>
+                  <SncScenarioInline missionId={leg.mission_id} source={leg.editable.source} closed={['completed', 'to_invoice', 'invoiced'].includes(String(leg.status || ''))} scenario={fiche?.mission?.snc_scenario ?? null} balisage={!!fiche?.mission?.snc_requires_balisage} onSaved={onChanged} /></dd></div>
               )}
               <div className="grid grid-cols-[92px_minmax(0,1fr)] md:grid-cols-[110px_1fr] gap-2 items-center"><dt className="text-ink-muted">Réf. assistance</dt><dd className="flex flex-wrap gap-x-2 gap-y-0.5 items-center">
                 <EditableText value={leg.editable.dossier_number} placeholder="référence du dossier assistance" missionId={leg.mission_id} field="dossier_number" onSaved={onChanged} mono />
@@ -723,7 +723,7 @@ function RelivrerFromDossier({ d, leg, gmKey, onDone }: { d: Dossier; leg: Dossi
 }
 
 // ── Scénario SNC + balisage (audit B5) ─────────────────────────────────────
-function SncScenarioInline({ missionId, source, scenario, balisage, onSaved }: { missionId: string; source: string | null; scenario: string | null; balisage: boolean; onSaved: () => void | Promise<void> }) {
+function SncScenarioInline({ missionId, source, scenario, balisage, onSaved, closed = false }: { missionId: string; source: string | null; scenario: string | null; balisage: boolean; onSaved: () => void | Promise<void>; closed?: boolean }) {
   const [cur, setCur] = useState(scenario || '')
   const [bal, setBal] = useState(balisage)
   const [busy, setBusy] = useState(false)
@@ -731,8 +731,9 @@ function SncScenarioInline({ missionId, source, scenario, balisage, onSaved }: {
   useEffect(() => { setCur(scenario || '') }, [scenario])
   useEffect(() => { setBal(balisage) }, [balisage])
   const src = String(source || '').toLowerCase()
+  // Fiche clôturée : plus de chauffeur pour choisir — le scénario est obligatoire.
   const opts: [string, string][] = [
-    ['', '🤷 Laisser le chauffeur choisir'], ['dsp', '🔧 DSP — dépannage sur place'],
+    ...(closed ? [] : [['', '🤷 Laisser le chauffeur choisir'] as [string, string]]), ['dsp', '🔧 DSP — dépannage sur place'],
     ...(src === 'police_snc' ? [['rem_client', '🚛 REM client — paiement immédiat'] as [string, string]] : []),
     ...(src === 'sia_couvert' ? [['rem_direct', '🚛 REM directe'] as [string, string]] : []),
     ['rem_depot', '🏢 REM dépôt Pepinster'],
@@ -752,6 +753,58 @@ function SncScenarioInline({ missionId, source, scenario, balisage, onSaved }: {
         {opts.map(([k, l]) => <option key={k || 'none'} value={k}>{l}</option>)}
       </select>
       <label className="inline-flex items-center gap-1 text-xs text-ink-secondary"><input type="checkbox" checked={bal} disabled={busy} onChange={e => { setBal(e.target.checked); save({ snc_requires_balisage: e.target.checked }) }} /> balisage (SIABAL)</label>
+      {err && <span className="text-red-600">⚠ {err}</span>}
+    </span>
+  )
+}
+
+// ── Source : vers un Siabis sur une fiche clôturée, le scénario est demandé ──
+// dans la foulée (Olivier 12/09/2026 : scénario obligatoire, jamais « non
+// sélectionné » en facturation). Le serveur refuse sinon.
+function SourceSelectInline({ value, options, missionId, closed, scenario, onSaved }: {
+  value: string | null; options: [string, string][]; missionId: string; closed: boolean; scenario: string | null; onSaved: () => void | Promise<void>
+}) {
+  const [pending, setPending] = useState<string | null>(null)
+  const [sc, setSc] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState<string | null>(null)
+  const label = options.find(o => o[0] === value)?.[1] || value || '—'
+  const patch = async (body: Record<string, any>) => {
+    setBusy(true); setErr(null)
+    try {
+      const r = await fetch(`/api/missions/${missionId}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+      if (!r.ok) { const j = await r.json().catch(() => ({})); throw new Error(j.error || `HTTP ${r.status}`) }
+      setPending(null); setSc(''); await onSaved()
+    } catch (e: any) { setErr(String(e.message || e)) } finally { setBusy(false) }
+  }
+  const change = (next: string) => {
+    if (!next || next === value) return
+    if (isSncSource(next) && closed && !scenario) { setPending(next); setSc(''); return }
+    patch({ source: next })
+  }
+  const scOpts: [string, string][] = pending === 'police_snc'
+    ? [['dsp', '🔧 DSP — dépannage sur place'], ['rem_client', '🚛 REM client — paiement immédiat'], ['rem_depot', '🏢 REM dépôt Pepinster']]
+    : [['dsp', '🔧 DSP — dépannage sur place'], ['rem_direct', '🚛 REM directe'], ['rem_depot', '🏢 REM dépôt Pepinster']]
+  return (
+    <span className="inline-flex flex-wrap items-center gap-1">
+      <select value={pending || value || ''} disabled={busy} onChange={e => change(e.target.value)} title={label}
+        className="border rounded px-1.5 py-0.5 bg-surface text-ink text-xs max-w-[220px]">
+        {!value && <option value="">—</option>}
+        {!options.some(o => o[0] === value) && value && <option value={value}>{value}</option>}
+        {options.map(([k, l]) => <option key={k} value={k}>{l}</option>)}
+      </select>
+      {pending && (
+        <span className="inline-flex items-center gap-1 rounded-lg border border-amber-300 bg-amber-50 px-2 py-1 text-xs">
+          <span className="text-amber-900 font-semibold">Scénario Siabis obligatoire :</span>
+          <select value={sc} disabled={busy} onChange={e => setSc(e.target.value)} className="border rounded px-1.5 py-0.5 bg-surface text-ink text-xs">
+            <option value="">— choisir —</option>
+            {scOpts.map(([k, l]) => <option key={k} value={k}>{l}</option>)}
+          </select>
+          <button type="button" disabled={busy || !sc} onClick={() => patch({ source: pending, snc_scenario: sc, mission_type: sc === 'dsp' ? 'depannage' : 'remorquage' })}
+            className="px-2 py-0.5 rounded border bg-brand text-white font-semibold disabled:opacity-50">Valider</button>
+          <button type="button" disabled={busy} onClick={() => { setPending(null); setSc('') }} className="px-2 py-0.5 rounded border bg-surface text-ink-secondary">Annuler</button>
+        </span>
+      )}
       {err && <span className="text-red-600">⚠ {err}</span>}
     </span>
   )

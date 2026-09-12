@@ -42,6 +42,8 @@ export async function GET(
   return NextResponse.json({ mission })
 }
 
+const CLOSED_STATUSES = ['completed', 'to_invoice', 'invoiced']
+
 export async function PATCH(
   req: Request,
   { params }: { params: { id: string } }
@@ -113,7 +115,7 @@ export async function PATCH(
   // On charge l etat actuel pour comparer (source avant change + verrou tarifaire).
   const { data: before } = await supabase
     .from('incoming_missions')
-    .select('source, snc_scenario, mission_type, incident_type, amount_to_collect, amount_to_collect_manual, amount_guaranteed, special_tarif_htva, incident_lat, incident_lng, incident_address, incident_city, incident_country, incident_borne_km, incident_sens, incident_at, destination_lat, destination_lng, destination_name, destination_address, destination_borne_km, destination_sens, redelivery_address, redelivery_lat, redelivery_lng, depot_depart_id, depot_depart_locked, snc_requires_balisage, intervention_date, parked_at, delivering_at, received_at, extra_addresses, billed_to_id, billed_to_name, tariff_locked')
+    .select('status, source, snc_scenario, mission_type, incident_type, amount_to_collect, amount_to_collect_manual, amount_guaranteed, special_tarif_htva, incident_lat, incident_lng, incident_address, incident_city, incident_country, incident_borne_km, incident_sens, incident_at, destination_lat, destination_lng, destination_name, destination_address, destination_borne_km, destination_sens, redelivery_address, redelivery_lat, redelivery_lng, depot_depart_id, depot_depart_locked, snc_requires_balisage, intervention_date, parked_at, delivering_at, received_at, extra_addresses, billed_to_id, billed_to_name, tariff_locked')
     .eq('id', params.id)
     .maybeSingle()
 
@@ -163,6 +165,26 @@ export async function PATCH(
       // l ancienne assistance (Touring, IMA, etc.) n est plus le payeur.
       updates.billed_to_name = null
       updates.billed_to_id   = null
+    }
+  }
+
+  // Olivier 12/09/2026 (1YEN885) : « le scénario doit être obligatoire — comment
+  // arrive-t-il en facturation non sélectionné ? » Réponse : fiche VAB clôturée
+  // par le chauffeur, puis requalifiée Siabis après coup — personne n'a choisi.
+  // Sur une fiche CLÔTURÉE, un Siabis sans scénario est refusé ; quand la
+  // clôture le dit sans ambiguïté, on le déduit (dépannage → DSP, passée au
+  // dépôt → REM dépôt), sinon il faut choisir.
+  {
+    const fSource   = ('source' in updates ? updates.source : before?.source) as string | null
+    const fScenario = ('snc_scenario' in updates ? updates.snc_scenario : before?.snc_scenario) as string | null
+    const closed    = CLOSED_STATUSES.includes(String((before as any)?.status || ''))
+    if (fSource && SNC_SOURCES.has(fSource) && closed && !fScenario && ('source' in updates || 'snc_scenario' in updates)) {
+      const fType = String(('mission_type' in updates ? updates.mission_type : before?.mission_type) || '').toLowerCase()
+      const inferred = ['depannage', 'dsp', 'reparation_place'].includes(fType) ? 'dsp'
+        : (before as any)?.parked_at ? 'rem_depot'
+        : null
+      if (inferred) updates.snc_scenario = inferred
+      else return NextResponse.json({ error: 'Scénario Siabis obligatoire sur une fiche clôturée : choisis REM directe / REM client / REM dépôt.', need_scenario: true }, { status: 400 })
     }
   }
 
