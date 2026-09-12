@@ -56,11 +56,17 @@ export default function CobrowseUserBridge() {
     } catch {}
   }, [])
 
+  // Au repos (aucune demande d'aide) : une vérification par minute suffit —
+  // 5 s pour chaque utilisateur connecté, toute la journée, c'était plusieurs
+  // millions d'appels par mois pour un module « très rarement utilisé »
+  // (audit Vercel, Olivier 12/09/2026). Dès qu'une demande est en attente ou
+  // qu'une session est active, on repasse à 5 s pour réagir vite.
+  const live = status?.status === 'pending' || status?.status === 'active'
   useEffect(() => {
     fetchStatus()
-    const iv = setInterval(fetchStatus, 5000)
+    const iv = setInterval(fetchStatus, live ? 5000 : 60_000)
     return () => clearInterval(iv)
-  }, [fetchStatus])
+  }, [fetchStatus, live])
 
   // -----------------------------------------------------------------
   // Recorder rrweb (uniquement quand status active).
