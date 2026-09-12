@@ -88,9 +88,14 @@ const ORDER: VabStep[] = ['accept', 'depart', 'arrive']
  * Best-effort : ne throw jamais vers l'appelant. Olivier 2026-08-09.
  */
 export async function syncVabStep(sb: any, missionId: string, upToStep: VabStep): Promise<boolean> {
-  const { data: m } = await sb.from('incoming_missions').select('id, external_id, source').eq('id', missionId).maybeSingle()
-  if (!m || String(m.source).toLowerCase() !== 'vab') return false
-  const aid = String(m.external_id || '').match(/\d+/)?.[0]
+  const { data: m } = await sb.from('incoming_missions').select('id, external_id, source, vab_assignment_ids').eq('id', missionId).maybeSingle()
+  // Une fiche requalifiée (VAB → Siabis couvert) garde son dossier VAB : ses
+  // pointages doivent continuer d'y partir, sinon le dossier reste à « Départ
+  // domicile » et la clôture ne trouve jamais l'écran sur place (2JPR337,
+  // 12/09/2026). Le critère est l'existence d'un AssignmentId, pas la source.
+  const ids: string[] = Array.isArray(m?.vab_assignment_ids) ? m.vab_assignment_ids : []
+  if (!m || (String(m.source).toLowerCase() !== 'vab' && !ids.length)) return false
+  const aid = String(m.external_id || '').match(/\d+/)?.[0] || ids[0]
   if (!aid) return false
   const upTo = ORDER.indexOf(upToStep)
 

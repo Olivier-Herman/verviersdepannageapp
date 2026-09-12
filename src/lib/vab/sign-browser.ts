@@ -11,6 +11,15 @@
 
 import type { Browser, Page } from 'puppeteer-core'
 
+/** Tableau d'étapes qui s'écrit aussi sur la console quand VAB_TRACE=1 (mise au point). */
+function traceSteps(): string[] {
+  const arr: string[] = []
+  if (process.env.VAB_TRACE !== '1') return arr
+  const push = arr.push.bind(arr)
+  arr.push = (...items: string[]) => { for (const it of items) console.log(`[vab/trace ${new Date().toISOString().slice(11, 19)}] ${it}`); return push(...items) }
+  return arr
+}
+
 const BASE = 'https://comet.vab.be'
 // ⚠️ UA desktop OBLIGATOIRE : avec l'UA headless par défaut, VAB renvoie le
 // navigateur sur www.vab.be/404 en boucle (jamais le formulaire de login).
@@ -408,7 +417,7 @@ export async function closeVabTowInBrowser(opts: {
   /** Où le véhicule a été laissé — champ libre. */
   vehicleLocation?: string | null
 }): Promise<{ ok: boolean; steps: string[]; error?: string }> {
-  const steps: string[] = []
+  const steps: string[] = traceSteps()
   let browser: Browser | null = null
   try {
     const { loginVab } = await import('./scraper')
@@ -525,7 +534,7 @@ export async function vabCloseOnSiteBrowser(opts: {
   /** Fourni → on enchaîne sur l'écran de codes et on confirme. */
   codes?: VabCodes
 }): Promise<VabBrowserResult> {
-  const steps: string[] = []
+  const steps: string[] = traceSteps()
   let browser: Browser | null = null
   let cookieHeader = ''
   try {
@@ -1081,7 +1090,7 @@ export async function vabConfirmCodesBrowser(opts: {
   assignmentId: string
   codes: VabCodes
 }): Promise<VabBrowserResult> {
-  const steps: string[] = []
+  const steps: string[] = traceSteps()
   let browser: Browser | null = null
   try {
     browser = await launchBrowser()
