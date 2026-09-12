@@ -83,14 +83,70 @@ export async function getAxaAccessToken(ctx: AxaContext = 'web'): Promise<string
   if (!state?.refresh_token) {
     throw new Error(`AXA : aucun refresh_token amorcé pour '${ctx}'. Capture une session et appelle setAxaRefreshToken('${ctx}', …).`)
   }
-  if (state.access_token && state.expires_at && state.expires_at - Date.now() > 60_000) {
+  // Rafraîchissement PROACTIF (12/09/2026) : le jeton est mort pile 24 h après
+  // l'amorçage, au premier échange. L'access token vit 24 h, donc on n'avait
+  // jamais touché au refresh token entre-temps — et Auth0 l'expire s'il reste
+  // inactif. Le portail web le fait tourner en permanence, nous pas. Désormais
+  // on l'échange toutes les REFRESH_EVERY_MS même si l'access token est valide.
+  const rotatedAt = state.updated_at ? Date.parse(state.updated_at) : 0
+  const stale = !rotatedAt || Date.now() - rotatedAt > REFRESH_EVERY_MS
+  if (state.access_token && state.expires_at && state.expires_at - Date.now() > 60_000 && !stale) {
     return state.access_token
   }
 
+  // Un seul échange à la fois (cron chaque minute + scripts) : deux échanges
+  // du même refresh token = réutilisation détectée par Auth0 = famille révoquée.
+  const locked = await acquireRefreshLock(sb, ctx)
+  if (!locked) {
+    // Quelqu'un rafraîchit : on rend l'access token courant s'il est encore bon.
+    if (state.access_token && state.expires_at && state.expires_at - Date.now() > 60_000) return state.access_token
+    await new Promise(r => setTimeout(r, 2500))
+    const again = await readState(sb, ctx)
+    if (again?.access_token && again.expires_at && again.expires_at - Date.now() > 60_000) return again.access_token
+    throw new Error('AXA : rafraîchissement du jeton en cours ailleurs — réessayer')
+  }
+  try {
+    // Relire : un autre appel a pu rafraîchir entre la lecture et le verrou.
+    const fresh = await readState(sb, ctx)
+    if (fresh?.refresh_token && fresh.refresh_token !== state.refresh_token && fresh.access_token && fresh.expires_at && fresh.expires_at - Date.now() > 60_000) {
+      return fresh.access_token
+    }
+    return await exchangeRefreshToken(sb, ctx, clientId, fresh?.refresh_token || state.refresh_token)
+  } finally {
+    await releaseRefreshLock(sb, ctx)
+  }
+}
+
+const REFRESH_EVERY_MS = 6 * 3600 * 1000
+const LOCK_TTL_MS = 30_000
+const lockKey = (ctx: AxaContext) => `axa_auth_lock_${ctx}`
+
+/** Verrou court en base (compare-and-set sur app_settings). */
+async function acquireRefreshLock(sb: any, ctx: AxaContext): Promise<boolean> {
+  const now = Date.now()
+  const { data: cur } = await sb.from('app_settings').select('value').eq('key', lockKey(ctx)).maybeSingle()
+  let until = 0
+  try { until = Number(JSON.parse(cur?.value || '0')) || 0 } catch { until = 0 }
+  if (until > now) return false
+  if (!cur) {
+    const { error } = await sb.from('app_settings').insert({ key: lockKey(ctx), value: JSON.stringify(now + LOCK_TTL_MS) })
+    return !error
+  }
+  const { data: upd } = await sb.from('app_settings')
+    .update({ value: JSON.stringify(now + LOCK_TTL_MS) })
+    .eq('key', lockKey(ctx)).eq('value', cur.value)
+    .select('key')
+  return !!(upd && upd.length)
+}
+async function releaseRefreshLock(sb: any, ctx: AxaContext): Promise<void> {
+  await sb.from('app_settings').update({ value: JSON.stringify(0) }).eq('key', lockKey(ctx)).then(() => {}, () => {})
+}
+
+async function exchangeRefreshToken(sb: any, ctx: AxaContext, clientId: string, refreshToken: string): Promise<string> {
   const res = await fetch(TOKEN_URL, {
     method:  'POST',
     headers: { 'Content-Type': 'application/json' },
-    body:    JSON.stringify({ grant_type: 'refresh_token', client_id: clientId, refresh_token: state.refresh_token }),
+    body:    JSON.stringify({ grant_type: 'refresh_token', client_id: clientId, refresh_token: refreshToken }),
   })
   if (!res.ok) {
     const txt = await res.text().catch(() => '')
@@ -98,7 +154,7 @@ export async function getAxaAccessToken(ctx: AxaContext = 'web'): Promise<string
   }
   const j = await res.json() as { access_token: string; refresh_token?: string; expires_in?: number }
   await writeState(sb, ctx, {
-    refresh_token: j.refresh_token || state.refresh_token,
+    refresh_token: j.refresh_token || refreshToken,
     access_token:  j.access_token,
     expires_at:    Date.now() + (Number(j.expires_in || 3600) * 1000),
   })
