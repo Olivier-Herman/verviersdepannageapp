@@ -5,7 +5,7 @@
 // Allianz, liens Touring / Allianz / COMEX / Check, vérification Odoo, check
 // Siabis-ANWB. « Facturer » ouvre la modale partagée. Olivier 07/09/2026.
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, useRef } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import type { Dossier, DossierLeg } from '@/lib/dossier/build'
@@ -221,37 +221,37 @@ export default function DossiersClient({ initial, autoById, comexById = {}, isSu
   // dès qu'il arrive. Par petits paquets, pour ne pas noyer le serveur.
   // Olivier 09/09/2026 : « 24 sec pour que la page facturation s'affiche ».
   const [pricing, setPricing] = useState(0)   // nombre de dossiers encore à tarifer
+  // Olivier 12/09/2026 : « Parquet et Domaine n'ont pas besoin de calcul, les
+  // Touring non plus tant qu'on n'ouvre pas leur onglet ». On ne tarife donc que
+  // les dossiers À facturer / En cours DU GROUPE AFFICHÉ (« Toutes (hors
+  // Touring) » par défaut). Changer de groupe tarife ce qui manque pour lui,
+  // une seule fois par dossier. Circuits Parquet / Domaine / COMEX et dossiers
+  // facturés : jamais — leur montant figé suffit.
+  const refinedRef = useRef<Set<string>>(new Set())
   useEffect(() => {
-    // Olivier 12/09/2026 : « pourquoi il calcule 74 dossiers pour 12 affichés ? »
-    // On tarifait TOUT ce qui était chargé, factures des 30 jours comprises.
-    // Désormais : d'abord ce qui reste à facturer (À facturer + En cours), puis
-    // les circuits Parquet / Domaine / COMEX ; les dossiers déjà facturés ne sont
-    // jamais recalculés (leur montant figé suffit). Le sablier ne compte que le
-    // premier groupe — celui dont dépend « Reste à facturer ».
-    const light = initial.filter(d => d.light)
-    const first = light.filter(d => !isDone(d) && !isCircuit(d)).map(d => d.root_id)
-    const then  = light.filter(d => !isDone(d) && isCircuit(d)).map(d => d.root_id)
-    const todoIds = [...first, ...then]
-    const counted = new Set(first)
-    if (!todoIds.length) return
+    const targets = initial
+      .filter(d => d.light && !isDone(d) && !isCircuit(d) && inGroup(d, activeGroup) && !refinedRef.current.has(d.root_id))
+      .map(d => d.root_id)
+    if (!targets.length) return
+    targets.forEach(id => refinedRef.current.add(id))
     let cancelled = false
-    setPricing(first.length)
+    setPricing(n => n + targets.length)
     ;(async () => {
-      for (let i = 0; i < todoIds.length; i += 6) {
+      for (let i = 0; i < targets.length; i += 6) {
         if (cancelled) return
-        const batch = todoIds.slice(i, i + 6)
+        const batch = targets.slice(i, i + 6)
         await Promise.all(batch.map(async id => {
           try {
             const j = await fetch(`/api/dossier/${id}?mode=list`, { cache: 'no-store' }).then(r => r.json())
             if (!cancelled && j?.dossier) setRows(p => p.map(d => d.root_id === id ? j.dossier : d))
           } catch { /* la ligne garde son montant figé */ }
-          if (!cancelled && counted.has(id)) setPricing(n => Math.max(0, n - 1))
+          if (!cancelled) setPricing(n => Math.max(0, n - 1))
         }))
       }
     })()
     return () => { cancelled = true }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, [activeGroup.key])
 
   const refreshOne = async (rootId: string) => {
     try {
