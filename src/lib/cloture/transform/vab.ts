@@ -331,11 +331,23 @@ export async function runVabTowClose(input: VabTowCloseInput): Promise<void> {
     const { closeVabCodeScreen } = await import('@/lib/vab/close-codes')
 
     const { data: f } = await sb.from('incoming_missions')
-      .select('vehicle_mileage, vehicle_vin, mission_type, destination_name, destination_address, panne_motif')
+      .select('vehicle_mileage, vehicle_vin, mission_type, destination_name, destination_address, panne_motif, parked_at, status, depot_depart_id')
       .eq('id', input.missionId).maybeSingle()
     const km  = String((f as any)?.vehicle_mileage ?? '').replace(/\D+/g, '')
     const vin = String((f as any)?.vehicle_vin ?? '').trim()
-    const tow = /remorquage|rem\b/i.test(String((f as any)?.mission_type || ''))
+    // Fiche au parc (REM vers notre dépôt, relivraison plus tard) : chez VAB
+    // c'est un remorquage livré à NOTRE dépôt (Olivier 12/09/2026 : « tu fais
+    // rem avec adresse dépôt »).
+    const auParc = !!(f as any)?.parked_at || (f as any)?.status === 'parked'
+    const tow = auParc || /remorquage|rem\b/i.test(String((f as any)?.mission_type || ''))
+    let destName = String((f as any)?.destination_name || '')
+    let destAddr = String((f as any)?.destination_address || '')
+    if (auParc) {
+      const { data: dep } = (f as any)?.depot_depart_id
+        ? await sb.from('depots').select('name, address').eq('id', (f as any).depot_depart_id).maybeSingle()
+        : await sb.from('depots').select('name, address').eq('is_default', true).eq('active', true).maybeSingle()
+      if (dep?.address) { destName = `Dépôt ${dep.name || ''}`.trim(); destAddr = dep.address }
+    }
 
     // ── LE MOTIF DE LA FICHE DEVIENT LE CODE PANNE DE VAB ────────────────────
     // Sans ça, toute clôture partait en « Divers — Autre problème » alors que le
@@ -417,8 +429,8 @@ export async function runVabTowClose(input: VabTowCloseInput): Promise<void> {
       assignmentId, cookieHeader: s.cookieHeader, tow,
       breakdown:   brk?.panne1,
       breakdownL2: brk?.panne2,
-      destinationName:    (f as any)?.destination_name || '',
-      destinationAddress: (f as any)?.destination_address || '',
+      destinationName:    destName,
+      destinationAddress: destAddr,
       keyLocation: input.keyRecovered === false
         ? undefined
         : (KEY_LOCATION_VAB[String(input.keyLocation || '')] || KEY_LOCATION_FALLBACK),

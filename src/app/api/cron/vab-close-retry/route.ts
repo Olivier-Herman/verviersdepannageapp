@@ -102,14 +102,10 @@ export async function GET(req: Request) {
     // envoie ensuite le remorquage — que le poll rattache et que le filet solde
     // comme d'habitude. On ne touche donc pas à leur dépannage : le filet
     // tournait dans le vide toutes les 15 min (70 échecs en une nuit).
-    const requalifiées = ((fiches || []) as any[]).filter(f => String(f.source || '').toLowerCase() !== 'vab')
-    for (const f of requalifiées) {
-      const { data: déjà } = await sb.from('mission_logs').select('id').eq('mission_id', f.id).eq('action', 'vab_close_skipped').ilike('notes', '%VAB clôture lui-même%').limit(1)
-      if (!(déjà || []).length) {
-        await sb.from('mission_logs').insert({ mission_id: f.id, action: 'vab_close_skipped', notes: `VAB : fiche requalifiée « ${f.source} » — VAB clôture lui-même son dépannage et enverra le remorquage ; le filet n'y touche plus.`, metadata: { source: f.source, assignmentIds: f.vab_assignment_ids } }).then(() => {}, () => {})
-      }
-    }
-    const candidats: any[] = ((fiches || []) as any[]).filter(f => String(f.source || '').toLowerCase() === 'vab')
+    // Olivier 12/09/2026 : une fiche requalifiée Siabis couvert garde sa panne
+    // OUVERTE chez VAB (1YEN885, 2JPR337 : VAB ne la clôture pas lui-même).
+    // On la clôture donc comme les autres.
+    const candidats: any[] = (fiches || []) as any[]
     if (candidats.length === 0) {
       await trace({ ok: true, ouverts: ouverts.length, vrIgnorés: vr.length, aTraiter: 0 })
       return NextResponse.json({ ok: true, ouverts: ouverts.length, vrIgnorés: vr.length, aTraiter: 0 })
@@ -128,7 +124,19 @@ export async function GET(req: Request) {
       .in('action', ['vab_close_failed', 'vab_close_skipped'])
       .order('created_at', { ascending: false })
     const dernierEssai = new Map<string, string>()
-    for (const l of (essais || []) as any[]) if (!dernierEssai.has(l.mission_id)) dernierEssai.set(l.mission_id, l.created_at)
+    const nbEssais = new Map<string, number>()
+    for (const l of (essais || []) as any[]) {
+      if (!dernierEssai.has(l.mission_id)) dernierEssai.set(l.mission_id, l.created_at)
+      nbEssais.set(l.mission_id, (nbEssais.get(l.mission_id) || 0) + 1)
+    }
+    // Recul : après 3 échecs, on n'insiste qu'une fois par heure (le compte VAB
+    // était mobilisé toutes les 15 min pour rien, 12/09/2026).
+    const RECUL_MS = 60 * 60 * 1000
+    for (let i = candidats.length - 1; i >= 0; i--) {
+      const c = candidats[i]
+      const dernier = dernierEssai.get(c.id)
+      if ((nbEssais.get(c.id) || 0) >= 3 && dernier && Date.now() - Date.parse(dernier) < RECUL_MS) candidats.splice(i, 1)
+    }
     candidats.sort((a, b) => (dernierEssai.get(a.id) || '').localeCompare(dernierEssai.get(b.id) || ''))
 
     // ── PLUSIEURS DOSSIERS PAR PASSAGE, À LA FILE ────────────────────────────

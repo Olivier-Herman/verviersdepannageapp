@@ -830,7 +830,20 @@ export async function vabCloseOnSiteBrowser(opts: {
       // bloquait ensuite sur un champ obligatoire vide, sans le dire. Vu le 16/08
       // sur 2HDJ908, dont le châssis était pourtant sur la fiche. On tape au
       // clavier plutôt que d'écrire la valeur : OutSystems écoute la frappe.
-      if (opts.vinFull) {
+      // Olivier 12/09/2026 : « utilise VIN inconnu ». Quand VAB ne connaît pas le
+      // châssis, on a coché « Unknown VIN » plus haut : retaper le châssis complet
+      // ensuite contredisait la case et bloquait « Fin lieu de la panne »
+      // (2CFD437, HHXO8785). On ne retape donc rien sur cette voie, et on
+      // s'assure que la case est bien restée cochée avant d'envoyer.
+      const vinInconnu = steps.includes('vin+verifier+unknownvin')
+      if (vinInconnu) {
+        await page.evaluate(() => {
+          const cb = document.querySelector('input[type=checkbox][id*="wt436_wt20"], input[type=checkbox][id*="_wt20"]') as HTMLInputElement | null
+          if (cb && !cb.checked) cb.click()
+        }).catch(() => {})
+        steps.push('VIN inconnu conservé')
+      }
+      if (opts.vinFull && !vinInconnu) {
         const vide = await page.evaluate(() => {
           const c = document.querySelector('input[id*="wtChassisNumberInput"]') as HTMLInputElement | null
           return !!c && (c.value || '').length <= 5
