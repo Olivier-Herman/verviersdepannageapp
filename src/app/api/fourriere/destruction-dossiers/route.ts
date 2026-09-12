@@ -87,7 +87,11 @@ export async function POST(req: Request) {
       ...(row.vin && !mission.vehicle_vin ? { vehicle_vin: row.vin } : {}),
     }).eq('id', mission.id)
     await sb.from('incoming_missions').update({ parc_exit_at: now, parc_exit_reason: 'destruction', no_charge_at: now, no_charge_reason: `Destruction (dossier ${row.dossier_number})`, updated_at: now })
-      .eq('parc_origin_mission_id', mission.id).eq('dossier_leg', true).is('parc_exit_at', null)
+      // Tous les volets du dossier pas encore « sans frais » — même déjà sortis
+      // (12/09/2026 : 7 destructions revenues dans Facturation par dossier avec
+      // 11 903 € de gardiennage parce que les volets, sortis en « sortie »
+      // juste avant, échappaient au filtre parc_exit_at IS NULL).
+      .or(`parc_origin_mission_id.eq.${mission.id},parent_mission_id.eq.${mission.id}`).eq('dossier_leg', true).is('no_charge_at', null)
     try { await releaseParcAndShift(sb, mission.id) } catch { /* non bloquant */ }
     await sb.from('mission_logs').insert({
       mission_id: mission.id, actor_id: u.id, action: 'destruction',

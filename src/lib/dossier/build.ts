@@ -588,6 +588,10 @@ async function buildDossierUncached(anyMissionId: string, light: boolean, price 
           amount = 0; amountUnknown = true; note = built.reason || est?.reason || 'tarif introuvable'
         }
       }
+      // « Sans frais » posé sur la fiche (destruction, décision bureau) : vaut pour
+      // le remorquage aussi, pas seulement le gardiennage (12/09/2026 : 7
+      // destructions revenues à facturer avec leur remorquage à 383,85 €).
+      if (m.no_charge_at) { amount = 0; amountUnknown = false; nothing = `sans frais${m.no_charge_reason ? ' : ' + String(m.no_charge_reason) : ''}` }
       if (kind === 'rel' && amount === 0 && (m.status === 'cancelled')) nothing = 'annulée'
       if (kind === 'rel' && m.parked_at && ts(m.parked_at)! > (ts(m.loaded_at) || 0) && !m.completed_at) nothing = nothing || null
 

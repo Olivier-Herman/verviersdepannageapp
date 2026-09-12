@@ -438,6 +438,41 @@ export async function estimateMissionPrice(mission: MissionLike, opts?: { skipRe
   // Pas de forfait saisi -> on bascule sur le tarif police_accident
   // (avec ses majorations horaires). La source originale 'prive' reste
   // preservee dans l estimate retourne pour le tracking.
+  // Siabis (SNC / SC) : moteur SÉPARÉ (lib/snc/pricing), jamais source_tariffs.
+  // La fiche l'utilisait déjà (price-estimate), pas la liste Facturation par
+  // dossier, qui répondait « Aucun tarif sia_couvert/remorquage en vigueur »
+  // (1YEN885, Olivier 12/09/2026 : « dans la fiche il a le tarif et pas ici »).
+  if (source === 'police_snc' || source === 'sia_couvert') {
+    const mm = mission as any
+    const variant: 'snc' | 'sc' = source === 'sia_couvert' ? 'sc' : 'snc'
+    if (!mm.snc_scenario) {
+      return emptyEstimate(source, missionType, `${variant === 'sc' ? 'Siabis couvert' : 'Siabis non couvert'} : scénario à choisir sur la fiche (DSP / REM directe / REM dépôt), le tarif se calcule ensuite`)
+    }
+    if (mm.incident_lat == null || mm.incident_lng == null) return emptyEstimate(source, missionType, kmUnknownReason(mission))
+    const { computeSncMetrics, buildSncQuoteLines } = await import('@/lib/snc/pricing')
+    const rawStops: any[] = Array.isArray(mm.extra_addresses) ? mm.extra_addresses : []
+    const stops = [...rawStops].sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0)).map(st => ({ lat: st.lat, lng: st.lng, label: st.label || st.address }))
+    const metrics = await computeSncMetrics({
+      scenario: mm.snc_scenario, requiresBalisage: Boolean(mm.snc_requires_balisage),
+      interventionLat: Number(mm.incident_lat), interventionLng: Number(mm.incident_lng),
+      destinationLat: mm.destination_lat, destinationLng: mm.destination_lng,
+      interventionAt: mission.intervention_date || mission.received_at, variant,
+      billedToId: mm.billed_to_id, billedToName: mm.billed_to_name, stops,
+    } as any)
+    if (!metrics) return emptyEstimate(source, missionType, 'Siabis : dépôts non configurés ou coordonnées invalides')
+    const missionRef = mm.external_id || mm.dossier_number || `M-${String(mm.id || '').slice(0, 8)}`
+    const sncLines = buildSncQuoteLines({ metrics, requiresBalisage: Boolean(mm.snc_requires_balisage), missionRef, variant })
+    const total = Math.round(sncLines.reduce((t, l) => t + l.qty * l.price_unit, 0) * 100) / 100
+    return {
+      ok: true, source, mission_type: missionType, pricing_mode: 'lines', forfait: null,
+      km_charged: Number((metrics as any).km_total ?? (metrics as any).km_charged ?? 0) || 0, km_inclus: 0, km_extra: 0, km_extra_eur: 0,
+      parc_jours: 0, parc_eur: 0, subtotal_eur: total, surcharge_pct: 0, surcharge_eur: 0, total_eur: total,
+      is_autofac: false, tariff_id: `${source}-siabis`, tariff_doc_path: null, tariff_doc_name: null,
+      breakdown: sncLines.map(l => ({ label: l.name, amount: Math.round(l.qty * l.price_unit * 100) / 100 })),
+      template_lines: sncLines.map(l => ({ kind: 'SERV-DIV' as const, name: l.name, default_qty: l.qty, default_price: l.price_unit, apply_surcharges: false })),
+    }
+  }
+
   if (source === 'prive') {
     const fallback = await estimateMissionPrice({ ...mission, source: 'police_accident' })
     return {
