@@ -1,5 +1,6 @@
 'use client'
 
+import { pollWhenVisible } from '@/lib/client/poll'
 import { useEffect, useRef, useState } from 'react'
 import { createClient } from '@supabase/supabase-js'
 
@@ -50,9 +51,9 @@ export function useMissionGpsTracking(userId?: string | null) {
       }, () => { refresh() })
       .subscribe()
     // Repli si le realtime rate un événement (réseau instable).
-    const poll = setInterval(refresh, FALLBACK_POLL_MS)
+    const stopPoll = pollWhenVisible(refresh, FALLBACK_POLL_MS, { immediate: false })
 
-    return () => { cancelled = true; sb.removeChannel(ch); clearInterval(poll) }
+    return () => { cancelled = true; sb.removeChannel(ch); stopPoll() }
   }, [userId])
 
   // ── 2. GPS : actif UNIQUEMENT tant que `tracking` ─────────────────────────

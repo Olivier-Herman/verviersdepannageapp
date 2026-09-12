@@ -7,6 +7,7 @@
 //
 // A monter dans AppShell (englobe toutes les pages connectees).
 
+import { pollWhenVisible } from '@/lib/client/poll'
 import { useEffect, useState, useCallback, useRef, createContext, useContext } from 'react'
 import { createClient as createSupabaseClient } from '@supabase/supabase-js'
 import { playNotificationSound } from '@/lib/notifications/sounds'
@@ -135,7 +136,7 @@ export default function NotificationsProvider({
       } catch {}
     }
     pollUnread()  // tick immediat
-    const pollId = setInterval(pollUnread, 15_000)
+    const stopPoll = pollWhenVisible(pollUnread, 15_000, { immediate: false })
     // Tant qu'un popup bloquant est affiché : 4 s (pour le fermer vite quand
     // quelqu'un d'autre a répondu).
     const fastId = setInterval(() => { if (pendingRef.current.some(n => n.payload?.data?.modal)) pollUnread() }, 4_000)
@@ -143,7 +144,7 @@ export default function NotificationsProvider({
     return () => {
       clearInterval(fastId)
       cancelled = true
-      clearInterval(pollId)
+      stopPoll()
       sb.removeChannel(channel)
     }
   }, [userId])

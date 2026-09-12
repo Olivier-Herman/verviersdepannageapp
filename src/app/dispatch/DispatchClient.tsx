@@ -2,6 +2,7 @@
 // src/app/dispatch/DispatchClient.tsx
 // P6 — toggle liste/carte + panel statut chauffeurs + cartes colorées par urgence
 
+import { pollWhenVisible } from '@/lib/client/poll'
 import { useState, useEffect, useCallback, useRef, Fragment } from 'react'
 import Link        from 'next/link'
 import dynamic     from 'next/dynamic'
@@ -1268,8 +1269,8 @@ export default function DispatchClient({
     // tous les autres dispatchers (allège la charge et le temps de chargement).
     if (userRole !== 'superadmin') return
     loadErrorCount()
-    const t = setInterval(loadErrorCount, 60000)
-    return () => clearInterval(t)
+    const stopErr = pollWhenVisible(loadErrorCount, 60000, { immediate: false })
+    return () => stopErr()
   }, [loadErrorCount, userRole])
   async function relaunchParsing() {
     setReparsing(true)
@@ -1469,10 +1470,10 @@ export default function DispatchClient({
 
   // ── Polling 20s : filet de securite si un event realtime est rate. ────────
   useEffect(() => {
-    const id = setInterval(() => {
+    const stop = pollWhenVisible(() => {
       if (modalOpenCountRef.current === 0) loadRef.current({ silent: true })
-    }, 20_000)
-    return () => clearInterval(id)
+    }, 20_000, { immediate: false })
+    return () => stop()
   }, [])
 
   // ── Tick 60s : recalcule les delais des cards (couleur urgence + label) ──

@@ -6,6 +6,7 @@
 // page (dashboard, missions, etc) tant qu une demande pending existe — un
 // chauffeur attend une reponse pour avancer, il faut une vraie alerte.
 
+import { pollWhenVisible } from '@/lib/client/poll'
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { createClient as createSupabaseClient } from '@supabase/supabase-js'
@@ -42,8 +43,8 @@ export default function DispatchAlertBadge({ userRole }: Props) {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'payment_derogations' }, () => refresh())
       .subscribe()
     // Polling de secours toutes les 30s si Realtime ne fire pas
-    const id = setInterval(refresh, 30_000)
-    return () => { sb.removeChannel(ch); clearInterval(id) }
+    const stop = pollWhenVisible(refresh, 30_000, { immediate: false })
+    return () => { sb.removeChannel(ch); stop() }
   }, [isDispatcher])
 
   if (!isDispatcher || count === 0 || !firstMissionId) return null

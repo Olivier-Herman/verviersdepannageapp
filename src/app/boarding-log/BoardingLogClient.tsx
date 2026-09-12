@@ -13,6 +13,7 @@
 // Rien ne clignote et rien ne défile tout seul : un écran mural qui bouge sans
 // raison finit par ne plus être regardé.
 
+import { pollWhenVisible } from '@/lib/client/poll'
 import { useCallback, useEffect, useRef, useState } from 'react'
 
 const POLL_MS = 15000
@@ -69,9 +70,9 @@ export default function BoardingLogClient() {
   useEffect(() => {
     if (!authed) return
     fetchAll()
-    const t = setInterval(fetchAll, POLL_MS)
+    const stopT = pollWhenVisible(fetchAll, POLL_MS, { immediate: false })
     const s = setInterval(() => setStale(true), POLL_MS * 4)
-    return () => { clearInterval(t); clearInterval(s) }
+    return () => { stopT(); clearInterval(s) }
   }, [authed, fetchAll])
 
   const submit = async (code: string) => {

@@ -1,5 +1,6 @@
 'use client'
 
+import { pollWhenVisible } from '@/lib/client/poll'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useSession } from 'next-auth/react'
@@ -117,8 +118,8 @@ export default function AppShell({
         try { window.localStorage.setItem('vd_nav_cache', JSON.stringify({ badges: d.badges || {}, now: d.nav?.now || [], favorites: d.nav?.favorites || [] })) } catch {}
       }).catch(() => {})
     load()
-    const iv = setInterval(load, 60000)   // rafraîchit toutes les minutes
-    return () => { alive = false; clearInterval(iv) }
+    const stop = pollWhenVisible(load, 60000, { immediate: false })   // toutes les minutes, onglet visible seulement
+    return () => { alive = false; stop() }
   }, [])
   const navV2 = useNavV2(navV2Flag)
   // Palette « Aller à » (menu v3, lot 2) : ouverte par le champ du menu.
