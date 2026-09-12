@@ -117,7 +117,12 @@ export async function getAxaAccessToken(ctx: AxaContext = 'web'): Promise<string
   }
 }
 
-const REFRESH_EVERY_MS = 6 * 3600 * 1000
+// 12/09/2026 15:39 : le jeton était DÉJÀ invalide au premier échange, 6 h après
+// l'amorçage (rotation 07:38 → invalid_grant 13:39). Donc pas « 24 h » : la durée
+// de vie d'un refresh token inactif chez AXA est plus courte encore. On échange
+// toutes les 50 min — le portail web, lui, l'échange en continu et ne tombe jamais.
+// Si ça retombe malgré ce rythme, ce n'est plus l'inactivité : demander à AXA.
+const REFRESH_EVERY_MS = 50 * 60 * 1000
 const LOCK_TTL_MS = 30_000
 const lockKey = (ctx: AxaContext) => `axa_auth_lock_${ctx}`
 
@@ -158,5 +163,12 @@ async function exchangeRefreshToken(sb: any, ctx: AxaContext, clientId: string, 
     access_token:  j.access_token,
     expires_at:    Date.now() + (Number(j.expires_in || 3600) * 1000),
   })
+  // Trace de chaque échange réussi : c'est elle qui dira à quel âge un jeton meurt.
+  try {
+    const { data: cur } = await sb.from('app_settings').select('value').eq('key', `axa_refresh_log_${ctx}`).maybeSingle()
+    let arr: string[] = []; try { arr = cur?.value ? JSON.parse(cur.value) : [] } catch {}
+    arr.push(new Date().toISOString()); arr = arr.slice(-48)
+    await sb.from('app_settings').upsert({ key: `axa_refresh_log_${ctx}`, value: JSON.stringify(arr) }, { onConflict: 'key' })
+  } catch {}
   return j.access_token
 }
