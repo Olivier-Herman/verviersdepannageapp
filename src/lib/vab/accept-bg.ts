@@ -39,7 +39,12 @@ export async function acceptVabBg(
   actorId:   string | null,
   supabase:  ReturnType<typeof createAdminClient>,
 ) {
-  if (String(source || '').toLowerCase() !== 'vab') return
+  // Le LIEN fait foi (Olivier 13/09/2026) : une fiche requalifiée (Siabis…)
+  // qui porte un AssignmentId VAB doit quand même être acceptée chez Comet.
+  if (String(source || '').toLowerCase() !== 'vab') {
+    const { data: m } = await supabase.from('incoming_missions').select('vab_assignment_ids').eq('id', missionId).maybeSingle()
+    if (!Array.isArray((m as any)?.vab_assignment_ids) || !(m as any).vab_assignment_ids.length) return
+  }
 
   const run = (async () => {
     try {

@@ -785,7 +785,10 @@ export async function POST(req: Request) {
   // VD Soft, il laisse une trace `axa_sync_error` exploitable au dispatch.
   // Gate : la case (chauffeur, axa) de /admin/flux2 — activation progressive.
   // Olivier 2026-08-11.
-  if ((mission as any).source === 'axa' && ['completed', 'park', 'complete_delivery'].includes(action)) {
+  // Olivier 13/09/2026 : « à partir du moment où la fiche a un id de liaison,
+  // que la source soit A ou B, elle est liée : l'acceptation et le déroulé
+  // doivent se passer ». Le lien fait foi, pas la source du moment.
+  if (((mission as any).source === 'axa' || !!(mission as any).axa_mission_order_id) && ['completed', 'park', 'complete_delivery'].includes(action)) {
     const axaBg = (async () => {
       try {
         const { isFlux2Enabled } = await import('@/lib/cloture/gating')
@@ -839,7 +842,7 @@ export async function POST(req: Request) {
   // en fire-and-forget (ne bloque pas la réponse). accept→Accepter, on_way→Départ
   // domicile, on_site→Arrivé. Transitions simples = fiables headless. La CLÔTURE
   // (on-site→codes) n'est PAS encore auto (à cracker). Olivier 2026-08-09.
-  if (String(mission.source).toLowerCase() === 'vab' && ['accept', 'on_way', 'on_site'].includes(action)) {
+  if ((String(mission.source).toLowerCase() === 'vab' || (Array.isArray((mission as any).vab_assignment_ids) && (mission as any).vab_assignment_ids.length > 0)) && ['accept', 'on_way', 'on_site'].includes(action)) {
     const vabBackground = (async () => {
       try {
         const { syncVabStep } = await import('@/lib/vab/sync')
