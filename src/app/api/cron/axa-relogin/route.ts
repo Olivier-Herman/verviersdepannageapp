@@ -6,7 +6,7 @@
 // qu'un jeton est refusé. Résultat tracé dans app_settings.axa_relogin_last.
 
 export const dynamic     = 'force-dynamic'
-export const maxDuration = 120
+export const maxDuration = 300
 
 import { NextResponse } from 'next/server'
 import { runAxaRelogin } from '@/lib/axa/relogin-run'

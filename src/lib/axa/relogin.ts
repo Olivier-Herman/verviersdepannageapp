@@ -32,11 +32,16 @@ async function readRefreshToken(page: any): Promise<string | null> {
   }).catch(() => null)
 }
 
-export async function reloginAxa(): Promise<AxaReloginResult> {
+export async function reloginAxa(onStep?: (steps: string[]) => Promise<void> | void): Promise<AxaReloginResult> {
   const email = process.env.AXA_PORTAL_EMAIL, password = process.env.AXA_PORTAL_PASSWORD
-  const steps: string[] = []
+  const raw: string[] = []
+  // Chaque étape est écrite tout de suite (console + trace) : si la fonction est
+  // tuée par le délai Vercel, on sait où elle en était.
+  const steps = new Proxy(raw, { get(t, k) { if (k === 'push') return (...items: string[]) => { const n = t.push(...items); for (const it of items) console.log('[axa/relogin]', it); try { void onStep?.(t.slice()) } catch {} ; return n }; return (t as any)[k] } }) as string[]
   if (!email || !password) return { ok: false, steps, error: 'AXA_PORTAL_EMAIL / AXA_PORTAL_PASSWORD absents' }
+  steps.push('lancement du navigateur')
   const browser = await launchBrowser()
+  steps.push('navigateur prêt')
   try {
     const page = await browser.newPage()
     page.setDefaultTimeout(30000)

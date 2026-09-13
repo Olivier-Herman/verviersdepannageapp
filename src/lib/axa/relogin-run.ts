@@ -29,7 +29,9 @@ export async function runAxaRelogin(trigger: 'cron' | 'poll' | 'manual'): Promis
     if (l?.running_since && Date.now() - Date.parse(l.running_since) < 3 * 60_000) return { ok: false, steps: [], error: 'reconnexion déjà en cours', at }
   } catch {}
   await sb.from('app_settings').upsert({ key: AXA_RELOGIN_KEY, value: JSON.stringify({ running_since: at, trigger }) }, { onConflict: 'key' })
-  const r = await reloginAxa()
+  const r = await reloginAxa(async steps => {
+    await sb.from('app_settings').upsert({ key: AXA_RELOGIN_KEY, value: JSON.stringify({ running_since: at, trigger, steps }) }, { onConflict: 'key' }).then(() => {}, () => {})
+  })
   const out = { ok: r.ok, steps: r.steps, error: r.error, at, trigger, email: r.email ?? null }
   await sb.from('app_settings').upsert({ key: AXA_RELOGIN_KEY, value: JSON.stringify(out) }, { onConflict: 'key' })
   if (r.ok) await recordAxaPollResult({ ok: true }).catch(() => {})

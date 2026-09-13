@@ -7,7 +7,7 @@
 // (convention VAB/Touring). Actif par défaut.
 
 export const dynamic     = 'force-dynamic'
-export const maxDuration = 120
+export const maxDuration = 300
 
 import { NextResponse } from 'next/server'
 import { runAxaImport } from '@/lib/axa/import'
