@@ -115,7 +115,7 @@ export async function PATCH(
   // On charge l etat actuel pour comparer (source avant change + verrou tarifaire).
   const { data: before } = await supabase
     .from('incoming_missions')
-    .select('status, source, snc_scenario, mission_type, incident_type, amount_to_collect, amount_to_collect_manual, amount_guaranteed, special_tarif_htva, incident_lat, incident_lng, incident_address, incident_city, incident_country, incident_borne_km, incident_sens, incident_at, destination_lat, destination_lng, destination_name, destination_address, destination_borne_km, destination_sens, redelivery_address, redelivery_lat, redelivery_lng, depot_depart_id, depot_depart_locked, snc_requires_balisage, intervention_date, parked_at, delivering_at, received_at, extra_addresses, billed_to_id, billed_to_name, tariff_locked')
+    .select('status, source, external_id, snc_scenario, mission_type, incident_type, amount_to_collect, amount_to_collect_manual, amount_guaranteed, special_tarif_htva, incident_lat, incident_lng, incident_address, incident_city, incident_country, incident_borne_km, incident_sens, incident_at, destination_lat, destination_lng, destination_name, destination_address, destination_borne_km, destination_sens, redelivery_address, redelivery_lat, redelivery_lng, depot_depart_id, depot_depart_locked, snc_requires_balisage, intervention_date, parked_at, delivering_at, received_at, extra_addresses, billed_to_id, billed_to_name, tariff_locked')
     .eq('id', params.id)
     .maybeSingle()
 
@@ -261,6 +261,20 @@ export async function PATCH(
     .eq('id', params.id)
     .select()
     .single()
+  // Changement de source qui heurte (source, external_id) : une AUTRE fiche porte
+  // déjà cette référence sous la source cible — presque toujours un doublon
+  // (Mondial 10143710 vs sa jumelle requalifiée Siabis 10143620, 13/09/2026).
+  // On le dit avec les numéros au lieu du texte brut de la contrainte.
+  if (error && 'source' in updates && (/(23505)/.test(String((error as any).code || '')) || /source_external_id_key|duplicate key/i.test(error.message || ''))) {
+    const { data: twin } = await supabase.from('incoming_missions')
+      .select('mission_number, status, source').eq('source', String(updates.source)).eq('external_id', before?.external_id || '').neq('id', params.id).maybeSingle()
+    return NextResponse.json({
+      error: twin
+        ? `La référence ${before?.external_id} est déjà portée par la fiche #${twin.mission_number} (${twin.source}, ${twin.status}). Cette fiche-ci est un doublon : ignore-la ou fusionne-la, plutôt que de la basculer.`
+        : `Une autre fiche porte déjà la référence ${before?.external_id} sous la source ${updates.source}.`,
+      duplicate_of: twin?.mission_number ?? null,
+    }, { status: 409 })
+  }
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 

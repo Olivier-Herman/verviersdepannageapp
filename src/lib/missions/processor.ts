@@ -1106,7 +1106,10 @@ export async function processEmailMessage(messageId: string): Promise<ProcessRes
     // Repli : pas de rapprochement par dossier → tenter par external_id
     // (N° Commande). Évite le doublon quand le LLM n'a pas extrait le dossier.
     if (!existingMissionId && parsed.external_id && !parsed.external_id.startsWith('UNKNOWN_') && !parsed.external_id.startsWith('ERR_')) {
-      const existing = await findExisting(q => q.eq('external_id', parsed.external_id).eq('source', source))
+      // Même référence assisteur, même source — OU la fiche a été requalifiée
+      // Siabis entre-temps (13/09/2026 : mail Mondial re-reçu → 2e fiche alors
+      // que la première, passée sia_couvert, était en cours).
+      const existing = await findExisting(q => q.eq('external_id', parsed.external_id).or(`source.eq.${source},source.in.(police_snc,sia_couvert)`))
       if (existing) {
         existingMissionId = existing.id
         existingKazeJobId = (existing as any).kaze_job_id || null
