@@ -163,7 +163,12 @@ export async function POST(req: Request) {
     await acceptVabBg(mission_id, mission?.source || null, actor?.id || null, supabase)
 
     // Mission Allianz/mondial → accepter l'affectation dans Hexalite (API, arrière-plan).
-    if (mission?.source === 'mondial') {
+    // Une fiche Allianz requalifiée (Siabis couvert…) AVANT sa validation n'était
+    // jamais acceptée chez Hexalite : Allianz annulait l'affectation (CANCA) et
+    // renvoyait le dossier (1YCJ102, 13/09/2026). L'origine Allianz se lit sur la
+    // demande OTP mémorisée, pas sur la source courante.
+    const { data: otpAllianz } = await supabase.from('allianz_otp_pending').select('id').eq('mission_id', mission_id).limit(1)
+    if (mission?.source === 'mondial' || (otpAllianz || []).length > 0) {
       await acceptAllianzBg(mission_id, mission?.dossier_number || mission?.external_id || null, actor?.id || null, supabase)
     }
 
