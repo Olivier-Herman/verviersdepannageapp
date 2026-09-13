@@ -189,6 +189,9 @@ export default function SncMissionFiche({
     }
 
     const ctrl = new AbortController()
+    // Délai maximal : sans lui, un aperçu qui ne répond pas laissait l'écran
+    // « en cours » jusqu'à la fermeture de l'app.
+    const guard = setTimeout(() => ctrl.abort(), 20000)
     const handler = setTimeout(async () => {
       setPreviewLoading(true); setPreviewError(null)
       try {
@@ -226,10 +229,11 @@ export default function SncMissionFiche({
           setPreviewError(e.message || 'Erreur reseau')
         }
       } finally {
+        clearTimeout(guard)
         setPreviewLoading(false)
       }
     }, 500)
-    return () => { clearTimeout(handler); ctrl.abort() }
+    return () => { clearTimeout(handler); clearTimeout(guard); ctrl.abort() }
   }, [
     M.snc_scenario, M.snc_requires_balisage, variant,
     M.incident_lat, M.incident_lng,
@@ -497,7 +501,11 @@ export default function SncMissionFiche({
     && variant !== 'sc'
     && !isFullyPaid
     && M.status !== 'completed' && M.status !== 'to_invoice'
-  const canEncaisser = remaining > 0 && !previewLoading && sncSaving === null && !savingDest
+  // Sébastien, nuit du 12 au 13/09 (2ESN178) : « Calcul du tarif en cours… » figé
+  // alors que le montant (561,54 €) était en base — l'aperçu tarifaire, purement
+  // informatif, ne répondait pas et bloquait le bouton. Un montant connu suffit
+  // pour encaisser ; l'aperçu n'est plus un péage.
+  const canEncaisser = remaining > 0 && sncSaving === null && !savingDest
 
   // SC rem_direct : pas d encaissement chauffeur (facturation assistance)
   // mais pas non plus de mise en parc (livraison directe). Le bouton Finaliser
@@ -915,7 +923,7 @@ export default function SncMissionFiche({
               className={`w-full block text-center py-4 ${headerBg} text-white font-bold rounded-2xl text-base disabled:opacity-50 disabled:cursor-not-allowed`}
             >
               {!canEncaisser
-                ? '⏳ Calcul du tarif en cours...'
+                ? (remaining > 0 ? '⏳ Enregistrement…' : '⏳ Calcul du tarif en cours...')
                 : `💰 Encaisser (${formatEur(remaining, { suffix: false })} €)`}
             </button>
           )}
