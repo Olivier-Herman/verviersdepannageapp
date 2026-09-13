@@ -17,6 +17,7 @@ export default function AxaClient() {
   const [me, setMe]             = useState<Me>(null)
   const [techs, setTechs]       = useState<Tech[]>([])
   const [tech, setTech]         = useState<string | null>(null)
+  const [relogin, setRelogin]   = useState<{ configured: boolean; last: any } | null>(null)
   const [codes, setCodes]       = useState<string[]>([])
   const [pmap, setPmap]         = useState<Record<string, string>>({})
   const [motifs, setMotifs]     = useState<Motif[]>([])
@@ -29,7 +30,7 @@ export default function AxaClient() {
     const r = await fetch('/api/admin/axa', { cache: 'no-store' })
     if (!r.ok) return
     const j = await r.json()
-    setHealth(j.health); setClosures(j.failed_closures || []); setTokenAt(j.token_updated_at); setMe(j.me || null); setTechs(j.technicians || []); setTech(j.technician || null); setCodes(j.problem_codes || []); setPmap(j.problem_map || {}); setMotifs(j.motifs || []); setLoaded(true)
+    setHealth(j.health); setClosures(j.failed_closures || []); setTokenAt(j.token_updated_at); setMe(j.me || null); setTechs(j.technicians || []); setTech(j.technician || null); setCodes(j.problem_codes || []); setPmap(j.problem_map || {}); setMotifs(j.motifs || []); setRelogin(j.relogin || null); setLoaded(true)
   }, [])
   useEffect(() => { load() }, [load])
 
@@ -46,6 +47,7 @@ export default function AxaClient() {
         setMsg({ ok: okN === j.tried, text: `${okN}/${j.tried} clôture(s) poussée(s) vers AXA${j.autoclosed ? `, ${j.autoclosed} déjà clôturée(s) par AXA (retirées de la liste)` : ''}.${okN < j.tried ? ' Les autres restent listées avec leur erreur dans le journal de la fiche.' : ''}` })
       }
       else if (action === 'set_technician') setMsg({ ok: true, text: 'Technicien enregistré. Pris en compte dans l’heure.' })
+      else if (action === 'relogin') setMsg({ ok: true, text: `Reconnecté automatiquement (${(j.steps || []).join(' → ')}).` })
       else if (action === 'set_problem_code') { setPmap(j.problem_map || {}); setMsg({ ok: true, text: 'Correspondance enregistrée.' }) }
     } catch (e: any) { setMsg({ ok: false, text: e?.message || 'Erreur réseau' }) }
     setBusy(null); load()
@@ -94,6 +96,21 @@ export default function AxaClient() {
             {busy === 'test' ? 'Test…' : 'Tester la connexion'}
           </button>
         </div>
+      </section>
+
+      <section className="rounded-xl border border-border bg-surface p-4 space-y-2">
+        <h2 className="font-semibold text-ink">Reconnexion automatique</h2>
+        {!relogin ? null : !relogin.configured ? (
+          <p className="text-sm text-amber-800">Identifiants du portail absents dans Vercel (AXA_PORTAL_EMAIL / AXA_PORTAL_PASSWORD). Tant qu'ils manquent, la connexion dépend d'un réamorçage manuel.</p>
+        ) : (
+          <p className="text-sm text-ink-secondary">
+            Le serveur se reconnecte lui-même à go&assist deux fois par jour, et dès qu'un jeton est refusé.
+            {relogin.last?.at && <> Dernière tentative {fmt(relogin.last.at)} · {relogin.last.ok ? <span className="text-emerald-700 font-semibold">réussie</span> : <span className="text-red-700 font-semibold">échec : {relogin.last.error}</span>}</>}
+          </p>
+        )}
+        <button onClick={() => post('relogin')} disabled={!!busy || !relogin?.configured} className="px-3 py-1.5 rounded-lg bg-brand text-white text-sm font-medium disabled:opacity-50">
+          {busy === 'relogin' ? 'Connexion en cours (1 min)…' : 'Reconnecter maintenant'}
+        </button>
       </section>
 
       <section className="rounded-xl border border-border bg-surface p-4 space-y-3">

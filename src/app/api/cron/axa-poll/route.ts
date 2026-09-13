@@ -7,11 +7,25 @@
 // (convention VAB/Touring). Actif par défaut.
 
 export const dynamic     = 'force-dynamic'
-export const maxDuration = 60
+export const maxDuration = 120
 
 import { NextResponse } from 'next/server'
 import { runAxaImport } from '@/lib/axa/import'
 import { recordAxaPollResult } from '@/lib/axa/health'
+import { runAxaRelogin, axaReloginConfigured } from '@/lib/axa/relogin-run'
+
+// Jeton refusé (invalid_grant = les 24 h sont passées) → on se reconnecte
+// tout de suite avec les identifiants du portail, puis on rejoue le tour.
+async function runAxaImportWithRelogin() {
+  try {
+    return await runAxaImport({ mode: 'send' })
+  } catch (e: any) {
+    if (!/invalid_grant|re-login requis|aucun refresh_token/i.test(String(e?.message || '')) || !axaReloginConfigured()) throw e
+    const r = await runAxaRelogin('poll')
+    if (!r.ok) throw new Error(`${e?.message} — reconnexion automatique : ${r.error || 'échec'}`)
+    return await runAxaImport({ mode: 'send' })
+  }
+}
 
 export async function GET(req: Request) {
   const authHeader = req.headers.get('authorization')
@@ -23,7 +37,7 @@ export async function GET(req: Request) {
   }
 
   try {
-    const result = await runAxaImport({ mode: 'send' })
+    const result = await runAxaImportWithRelogin()
     console.log(`[cron axa-poll] awaiting=${result.awaiting} imported=${result.imported} skipped=${result.skipped} errors=${result.errors.length}`)
     // Santé visible à l'écran (audit 10/09/2026 : un mois d'échecs muets).
     await recordAxaPollResult({ ok: true, awaiting: result.awaiting }).catch(() => {})

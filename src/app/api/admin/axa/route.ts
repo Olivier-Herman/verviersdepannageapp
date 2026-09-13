@@ -9,7 +9,7 @@
 // Le jeton n'est jamais journalisé ni renvoyé.
 
 export const dynamic     = 'force-dynamic'
-export const maxDuration = 60
+export const maxDuration = 120
 
 import { NextResponse }      from 'next/server'
 import { getServerSession }  from 'next-auth'
@@ -22,6 +22,7 @@ import { closeAxaBg, readProblemCodeMap, AXA_PROBLEM_MAP_SETTING, AXA_PROBLEM_CO
 import { MOTIFS }            from '@/lib/cloture/motifs'
 import { getMission }        from '@/lib/axa/goassist'
 import { readAxaHealth, recordAxaPollResult } from '@/lib/axa/health'
+import { runAxaRelogin, readAxaReloginLast, axaReloginConfigured } from '@/lib/axa/relogin-run'
 
 function isSuperadmin(session: any): boolean {
   return session?.user?.role === 'superadmin'
@@ -84,7 +85,8 @@ export async function GET() {
   }
   const problemMap = await readProblemCodeMap(sb)
   const motifs = Object.entries(MOTIFS).flatMap(([branch, list]) => list.map(m => ({ key: m.key, label: m.label, branch })))
-  return NextResponse.json({ health, failed_closures: withStatus, token_updated_at: tokenUpdatedAt, me, technicians, technician, problem_codes: problemCodes, problem_map: problemMap, motifs })
+  const relogin = { configured: axaReloginConfigured(), last: await readAxaReloginLast(sb) }
+  return NextResponse.json({ health, failed_closures: withStatus, token_updated_at: tokenUpdatedAt, me, technicians, technician, problem_codes: problemCodes, problem_map: problemMap, motifs, relogin })
 }
 
 export async function POST(req: Request) {
@@ -106,6 +108,11 @@ export async function POST(req: Request) {
     } catch (e: any) {
       return NextResponse.json({ error: `Jeton refusé par AXA : ${e?.message || e}` }, { status: 400 })
     }
+  }
+
+  if (body.action === 'relogin') {
+    const r = await runAxaRelogin('manual')
+    return NextResponse.json(r, { status: r.ok ? 200 : 400 })
   }
 
   if (body.action === 'test') {
