@@ -48,8 +48,21 @@ export async function reloginAxa(onStep?: (steps: string[]) => Promise<void> | v
     await page.setUserAgent('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36')
     await page.goto(PORTAL, { waitUntil: 'domcontentloaded', timeout: 45000 })
     steps.push('portail ouvert')
-    // Le portail redirige vers Auth0 (Universal Login). On attend un champ identifiant.
+    // Page d'accueil du portail : bandeau cookies (OneTrust), case de consentement,
+    // bouton « SIGN IN » (#authentication-login-button) → redirection Auth0.
     const idSel = 'input[name="username"], input[name="email"], input#username, input[type="email"]'
+    await new Promise(r => setTimeout(r, 2500))
+    const clicked = await page.evaluate(() => {
+      const ot = document.querySelector('#onetrust-accept-btn-handler, #onetrust-reject-all-handler') as HTMLElement | null
+      if (ot) ot.click()
+      const cb = document.querySelector('form input[type=checkbox], input[type=checkbox]') as HTMLInputElement | null
+      if (cb && !cb.checked) cb.click()
+      const btn = (document.querySelector('#authentication-login-button') as HTMLElement | null)
+        || [...document.querySelectorAll('button, a')].find(e => /sign in|se connecter|connexion|login/i.test((e as HTMLElement).innerText || '')) as HTMLElement | undefined
+      if (btn) { btn.click(); return true }
+      return false
+    }).catch(() => false)
+    if (clicked) steps.push('SIGN IN cliqué')
     try { await page.waitForSelector(idSel, { timeout: 30000 }) } catch {
       // Déjà connecté (session Auth0 vivante) ? Alors le token est peut-être là.
       const tok = await readRefreshToken(page)
@@ -60,13 +73,23 @@ export async function reloginAxa(onStep?: (steps: string[]) => Promise<void> | v
     await page.type(idSel, email, { delay: 20 })
     // Deux gabarits : identifiant + mot de passe sur la même page, ou en deux temps.
     const pwdSel = 'input[name="password"], input#password, input[type="password"]'
-    const hasPwd = await page.$(pwdSel)
-    if (!hasPwd) {
-      await page.keyboard.press('Enter')
-      await page.waitForSelector(pwdSel, { timeout: 20000 })
+    // Universal Login « identifiant d'abord » : la page porte un champ mot de passe
+    // CACHÉ. On ne s'y fie pas : seul un champ visible compte.
+    const pwdVisible = async () => page.$$eval(pwdSel, els => els.some(e => { const r = (e as HTMLElement).getBoundingClientRect(); return r.width > 0 && r.height > 0 })).catch(() => false)
+    if (!(await pwdVisible())) {
+      await Promise.all([
+        page.waitForNavigation({ waitUntil: 'domcontentloaded', timeout: 30000 }).catch(() => {}),
+        page.keyboard.press('Enter'),
+      ])
+      for (let i = 0; i < 20 && !(await pwdVisible()); i++) await new Promise(r => setTimeout(r, 1000))
+      if (!(await pwdVisible())) {
+        const txt = await page.evaluate(() => document.body?.innerText?.replace(/\s+/g, ' ').slice(0, 200) || '').catch(() => '')
+        return { ok: false, steps, error: `pas de champ mot de passe après l'identifiant (${page.url()}) : ${txt}` }
+      }
       steps.push('identifiant validé')
     }
-    await page.type(pwdSel, password, { delay: 20 })
+    await page.evaluate((sel: string) => { const el = [...document.querySelectorAll(sel)].find(e => { const r = (e as HTMLElement).getBoundingClientRect(); return r.width > 0 && r.height > 0 }) as HTMLInputElement | undefined; el?.focus() }, pwdSel)
+    await page.keyboard.type(password, { delay: 20 })
     await Promise.all([
       page.waitForNavigation({ waitUntil: 'domcontentloaded', timeout: 45000 }).catch(() => {}),
       page.keyboard.press('Enter'),
