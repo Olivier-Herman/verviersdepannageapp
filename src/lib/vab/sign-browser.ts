@@ -660,7 +660,20 @@ export async function vabCloseOnSiteBrowser(opts: {
         return !!(c && c.value && c.value.length > 5)
       })
       if (!chassisOk) {
-        if (await clearAndType(page, 'input[id*="wtLastDigitInputField"]', String(opts.vinLastDigits).slice(-3))) {
+        // Le champ n'accepte que des CHIFFRES (max 3) : une lettre est perdue à la
+        // frappe et le champ reste incomplet — VAB ne vérifie alors jamais (1YEN885,
+        // châssis « …2877D » → « 77 »). On tape les 3 derniers chiffres ; si le
+        // champ n'en retient pas 3, on repasse 3 chiffres aléatoires, ce qui
+        // déclenche la pop-up de non-concordance puis la case « VIN inconnu ».
+        let troisChiffres = String(opts.vinLastDigits || '').replace(/\D+/g, '').slice(-3)
+        if (troisChiffres.length < 3) troisChiffres = String(100 + Math.floor(Math.random() * 900))
+        if (await clearAndType(page, 'input[id*="wtLastDigitInputField"]', troisChiffres)) {
+          const retenu = await page.evaluate(() => (document.querySelector('input[id*="wtLastDigitInputField"]') as HTMLInputElement | null)?.value || '').catch(() => '')
+          if (retenu.length < 3) {
+            troisChiffres = String(100 + Math.floor(Math.random() * 900))
+            await clearAndType(page, 'input[id*="wtLastDigitInputField"]', troisChiffres)
+            steps.push(`châssis : champ n'a retenu que ${JSON.stringify(retenu)} → 3 chiffres aléatoires`)
+          }
           await page.evaluate(() => {
             const v = document.querySelector('input[id*="wtLastDigitInputField"]') as HTMLInputElement
             v && v.dispatchEvent(new Event('change', { bubbles: true }))
@@ -707,7 +720,19 @@ export async function vabCloseOnSiteBrowser(opts: {
             if (cb && !cb.checked) cb.click()
           })
           await new Promise(r => setTimeout(r, 2000))
-          steps.push('vin+verifier+unknownvin')
+          // ── CE QUE LE CHAMP A VRAIMENT RETENU (Olivier 14/09/2026) ────────
+          // 1YEN885 : châssis « …2877D », on tapait « 77D », VAB ne gardait que
+          // « 77 » — et ce pas disait « vin+verifier+unknownvin » quoi qu'il
+          // arrive. Trente échecs « raison inconnue » avant de regarder le champ.
+          // On note donc la valeur retenue, si la pop-up a été acquittée et si
+          // la case « VIN inconnu » existe — l'étape ne ment plus.
+          const étatVin = await page.evaluate(() => {
+            const v = document.querySelector('input[id*="wtLastDigitInputField"]') as HTMLInputElement | null
+            const cb = document.querySelector('input[type=checkbox][id*="wt436_wt20"], input[type=checkbox][id*="_wt20"]') as HTMLInputElement | null
+            const attrs = v ? [v.type, v.maxLength > 0 ? `max${v.maxLength}` : '', v.getAttribute('pattern') || '', v.getAttribute('inputmode') || ''].filter(Boolean).join('/') : 'absent'
+            return `champ=${JSON.stringify(v?.value ?? null)} [${attrs}] · case VIN inconnu=${cb ? (cb.checked ? 'cochée' : 'présente non cochée') : 'absente'}`
+          }).catch(() => '?')
+          steps.push(`vin+verifier+unknownvin (tapé ${JSON.stringify(troisChiffres)} · pop-up ${clickedOui ? 'acquittée' : 'NON vue'} · ${étatVin})`)
         }
       } else {
         // ── REMPLI N'EST PAS VÉRIFIÉ (Olivier 2026-08-31) ───────────────────
@@ -844,7 +869,7 @@ export async function vabCloseOnSiteBrowser(opts: {
       // ensuite contredisait la case et bloquait « Fin lieu de la panne »
       // (2CFD437, HHXO8785). On ne retape donc rien sur cette voie, et on
       // s'assure que la case est bien restée cochée avant d'envoyer.
-      const vinInconnu = steps.includes('vin+verifier+unknownvin')
+      const vinInconnu = steps.some(x => x.startsWith('vin+verifier+unknownvin'))
       if (vinInconnu) {
         await page.evaluate(() => {
           const cb = document.querySelector('input[type=checkbox][id*="wt436_wt20"], input[type=checkbox][id*="_wt20"]') as HTMLInputElement | null

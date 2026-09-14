@@ -374,10 +374,17 @@ export async function runVabTowClose(input: VabTowCloseInput): Promise<void> {
     // pop-up de non-concordance n'apparaissait pas, et la case « VIN inconnu »
     // non plus — le champ restait obligatoire pour toujours. Vu sur 1XGJ912 le
     // 20/08, bloqué là après plusieurs reprises. Olivier 2026-08-20.
+    // ⚠️ « 3 derniers CHIFFRES », pas caractères (Olivier 14/09/2026). Le champ
+    // VAB refuse les lettres : sur 1YEN885 (châssis « …2877D ») on tapait « 77D »,
+    // il gardait « 77 », leur « Vérifier » ne validait jamais et la case « VIN
+    // inconnu » n'apparaissait pas — trente échecs « Chassis Number must be
+    // checked ». On envoie les 3 derniers chiffres du châssis ; s'il n'en a pas
+    // assez, 3 chiffres aléatoires (voie « VIN inconnu », qui aboutit).
+    const chiffresVin = vin.replace(/\D+/g, '')
     const argsOnsite = (kmValeur: string) => ({
       assignmentId,
       km: kmValeur,
-      vinLastDigits: vin ? vin.slice(-3) : String(100 + Math.floor(Math.random() * 900)),
+      vinLastDigits: chiffresVin.length >= 3 ? chiffresVin.slice(-3) : String(100 + Math.floor(Math.random() * 900)),
       vinFull: vin || undefined,
     })
 
