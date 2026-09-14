@@ -47,7 +47,7 @@ import RestituerEtFacturerModal from '@/components/fourriere/RestituerEtFacturer
 import GererSncDepotModal from '@/components/restitution/GererSncDepotModal'
 import AppShell from '@/components/layout/AppShell'
 import { getSourceLabel, getSourceColor, type SourceDisplay as CatalogSource } from '@/lib/missions/source-display'
-import { getMissionTypeLabel } from '@/lib/missions/mission-types'
+import { getMissionTypeLabel, typesForSource, isSansDestination } from '@/lib/missions/mission-types'
 import { parcZoneLabel } from '@/lib/parc/zone-label'
 import { useGarageClosure } from '@/lib/useGarageClosures'
 import Flux2ClosureCard from '@/components/dispatch/Flux2ClosureCard'
@@ -243,16 +243,9 @@ function RollableTag({ rollable, onClick }: { rollable: boolean | null | undefin
     : content
 }
 
-const MISSION_TYPES = ['remorquage', 'depannage', 'transport', 'trajet_vide', 'reparation_place', 'relivraison', 'autre']
-// Source Gardiennage : le véhicule entre au parc sans déplacement. Le type ne
-// décrit donc pas une intervention mais le régime de gardiennage appliqué —
-// c'est lui qui pilote la grille /admin/tarifs. Olivier 2026-08-26.
-const GARDIENNAGE_TYPES = ['assistance', 'saisie', 'siabis', 'autre']
-// Libellés des régimes de gardiennage : construits depuis la grille (hook useGardiennageRegimeLabels) — lot B, 09/09/2026.
-/** Types proposés pour une source donnée. */
-function typesForSource(src: string | null): string[] {
-  return (src || '').toLowerCase() === 'gardiennage' ? GARDIENNAGE_TYPES : MISSION_TYPES
-}
+// Types proposés selon la source : catalogue `lib/missions/mission-types`
+// (audit P3, 14/09/2026). Libellés des régimes de gardiennage : construits
+// depuis la grille (hook useGardiennageRegimeLabels) — lot B, 09/09/2026.
 const FUEL_TYPES    = ['Autre', 'Diesel', 'Électrique', 'Essence', 'GPL', 'Hybride']
 const GEARBOX_TYPES = ['Automatique', 'Manuelle', 'Semi-automatique']
 
@@ -835,7 +828,6 @@ export default function MissionDetailClient({
   googleMapsKey,
   autoDispatchStatus,
   parcZoneType = null,
-  flux2Mission = false,
   embed = false,
   dossierView = false,
 }: {
@@ -854,8 +846,6 @@ export default function MissionDetailClient({
   googleMapsKey: string
   autoDispatchStatus?: string | null
   parcZoneType?: string | null
-  /** Mission suivie en flux 2 → forçage réservé au superadmin. */
-  flux2Mission?: boolean
   embed?: boolean
   dossierView?: boolean   // l'utilisateur a la Vue dossier (D15 : la facture partielle y est remplacée)
 }) {
@@ -3300,7 +3290,7 @@ export default function MissionDetailClient({
                 //  - DSP / Réparation sur place : pas de remorquage
                 //  - Trajet vide / DPR (déplacement) : la destination est le prochain point
                 //    d'intervention, géré séparément
-                const noDestination = ['depannage', 'dsp', 'reparation_place', 'trajet_vide'].includes((form.mission_type || '').toLowerCase().trim())
+                const noDestination = isSansDestination(form.mission_type)
                 return (
               <div className="bg-surface border rounded-2xl p-5 hover:border-brand/30 transition md-card-enter">
                 <h2 className="text-ink font-semibold text-sm mb-4 flex items-center gap-2">
@@ -3442,7 +3432,7 @@ export default function MissionDetailClient({
               })()}
 
               {/* Stops intermédiaires (REM uniquement) */}
-              {!['depannage', 'dsp', 'reparation_place', 'trajet_vide'].includes((form.mission_type || '').toLowerCase().trim()) && (
+              {!isSansDestination(form.mission_type) && (
                 <div className="bg-surface border rounded-2xl p-5 hover:border-brand/30 transition md-card-enter">
                   <div className="flex items-center justify-between mb-4">
                     <h2 className="text-ink font-semibold text-sm flex items-center gap-2">
@@ -4220,7 +4210,9 @@ export default function MissionDetailClient({
               </div>
               )}
 
-              {/* ── Actions admin (dispatcher peut forcer le statut sans pointage chauffeur) ── */}
+              {/* ── Actions admin (dispatcher peut forcer le statut sans pointage chauffeur) ──
+                  Le garde-fou « flux 2 = superadmin seulement » (16/08) a été RETIRÉ le
+                  jour même (05c33763) : le dispatch garde le forçage, cf. force-status. */}
               {['admin', 'superadmin', 'dispatcher'].includes(userRole) && (
                 <div className="bg-surface border border-amber-500/30 rounded-2xl p-5 md-card-enter">
                   <h3 className="text-ink-muted text-xs font-medium uppercase tracking-wide mb-3">

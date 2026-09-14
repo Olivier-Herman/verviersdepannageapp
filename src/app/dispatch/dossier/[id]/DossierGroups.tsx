@@ -6,6 +6,7 @@
 // embed. Les mails sans action sont des lignes fines. Olivier 07/09/2026.
 
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { MISSION_TYPE_KEYS, GARDIENNAGE_TYPE_KEYS, TYPE_LABEL_SELECT } from '@/lib/missions/mission-types'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import MissionDetailClient from '@/app/dispatch/[id]/MissionDetailClient'
@@ -63,12 +64,9 @@ function Stamp({ refs, small }: { refs: string[]; small?: boolean }) {
 }
 
 // Types proposés selon la source — même règle que la fiche (audit B5, 08/09/2026).
-const MISSION_TYPE_OPTIONS: [string, string][] = [
-  ['remorquage', 'REM — remorquage'], ['depannage', 'DSP — dépannage sur place'], ['transport', 'Transport'],
-  ['trajet_vide', 'TVD — trajet à vide'], ['reparation_place', 'RPL — réparation sur place'], ['relivraison', 'REL — relivraison'], ['autre', 'Autre'],
-]
+const MISSION_TYPE_OPTIONS: [string, string][] = MISSION_TYPE_KEYS.map(k => [k, TYPE_LABEL_SELECT[k] || k])
 // Régimes de gardiennage : libellés construits depuis la grille (hook) — lot B, 09/09/2026.
-const typeOptionsFor = (src: string | null, gard: Record<string, string>): [string, string][] => String(src || '').toLowerCase() === 'gardiennage' ? (['assistance', 'saisie', 'siabis', 'autre'] as const).map(k => [k, gard[k] || k] as [string, string]) : MISSION_TYPE_OPTIONS
+const typeOptionsFor = (src: string | null, gard: Record<string, string>): [string, string][] => String(src || '').toLowerCase() === 'gardiennage' ? GARDIENNAGE_TYPE_KEYS.map(k => [k, gard[k] || k] as [string, string]) : MISSION_TYPE_OPTIONS
 const isSncSource = (src: string | null) => ['police_snc', 'sia_couvert'].includes(String(src || '').toLowerCase())
 
 const KIND = {

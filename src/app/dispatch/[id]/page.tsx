@@ -7,7 +7,6 @@ import { authOptions }       from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase'
 import { ensureTouringDepartDepot } from '@/lib/depots/nearest'
 import MissionDetailClient   from './MissionDetailClient'
-import { isFlux2Enabled, flux2AssistanceOf } from '@/lib/cloture/gating'
 
 // Olivier 2026-06-18 : force le rendu dynamique → la fiche relit toujours la base
 // (sinon, après un re-parse, un reload pouvait servir une version cachée et le
@@ -162,11 +161,6 @@ export default async function MissionDetailPage({ params, searchParams }: { para
     parcZoneType = (pz?.zone_type as string) || null
   }
 
-  // Le forçage de statut est retiré du dispatch sur une mission suivie en flux 2
-  // (Olivier 2026-08-16) : il casse le suivi chez l'assistance, et tant que le
-  // bouton reste visible il continue d'être utilisé.
-  const flux2Mission = await isFlux2Enabled((mission as any)?.assigned_to, flux2AssistanceOf(mission as any))
-
   return (
     <MissionDetailClient
       dossierView={hasDossierView}
@@ -185,7 +179,6 @@ export default async function MissionDetailPage({ params, searchParams }: { para
       googleMapsKey={process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || ''}
       autoDispatchStatus={autoDispatchStatus}
       parcZoneType={parcZoneType}
-      flux2Mission={flux2Mission}
     />
   )
 }

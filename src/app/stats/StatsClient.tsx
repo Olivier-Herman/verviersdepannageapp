@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState, useMemo } from 'react'
+import { TYPE_LABEL_SELECT } from '@/lib/missions/mission-types'
 import AppShell from '@/components/layout/AppShell'
 import {
   ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid,
@@ -181,11 +182,8 @@ export default function StatsClient({ catalogSources, ...props }: StatsClientPro
 
   // Sources : lues depuis le catalog (passe en prop server-side)
   const sources = catalogSources.map(s => s.key)
-  const types: { value: string; label: string }[] = [
-    { value: 'remorquage',  label: 'Remorquage (REM)' },
-    { value: 'depannage',   label: 'Dépannage (DSP)' },
-    { value: 'trajet_vide', label: 'Trajet à vide' },
-  ]
+  // Types filtrables : libellés du catalogue (audit P3, 14/09/2026).
+  const types = (['remorquage', 'depannage', 'trajet_vide'] as const).map(k => ({ value: k, label: TYPE_LABEL_SELECT[k] || k }))
 
   return (
     <AppShell

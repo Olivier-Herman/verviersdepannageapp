@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState, useRef } from 'react'
+import { MISSION_TYPE_KEYS, GARDIENNAGE_TYPE_KEYS, TYPE_LABEL_LONG } from '@/lib/missions/mission-types'
 import AppShell from '@/components/layout/AppShell'
 import RulesPanel from './RulesPanel'
 
@@ -95,10 +96,12 @@ interface ExtractedTariff {
 
 // 'relivraison' = valeur canonique attendue par source_tariffs pour une REL
 // (voir canonicalType() dans lib/missions/estimate-price). Olivier 2026-07-14.
-const MISSION_TYPES = ['remorquage', 'depannage', 'relivraison', 'transport', 'trajet_vide', 'parc']
+// Types du catalogue (sans l'alias `reparation_place` ni « autre », qui n'ont pas de tarif)
+// + « parc », propre à la grille (mise en parc). Audit P3, 14/09/2026.
+const MISSION_TYPES = [...MISSION_TYPE_KEYS.filter(k => k !== 'reparation_place' && k !== 'autre'), 'parc']
 
 const TYPE_LABELS: Record<string, string> = {
-  remorquage: '🚛 Remorquage', depannage: '🔧 Dépannage', relivraison: '🔁 Relivraison', transport: '🚐 Transport (rapatriement)', trajet_vide: '📍 Trajet vide', parc: '🅿️ Mise en parc',
+  ...TYPE_LABEL_LONG, transport: '🚐 Transport (rapatriement)', parc: '🅿️ Mise en parc',
   // Source Gardiennage : le véhicule entre au parc sans intervention facturée.
   // Le « type » ne désigne plus un déplacement mais le régime de gardiennage
   // appliqué (Olivier 2026-08-26).
@@ -107,11 +110,9 @@ const TYPE_LABELS: Record<string, string> = {
 
 // Types d'intervention propres à la source Gardiennage (pas de REM/DSP : rien
 // n'est remorqué, seule la grille de gardiennage change).
-const GARDIENNAGE_TYPES = ['assistance', 'saisie', 'siabis', 'autre']
-
 /** Liste des types proposés pour une source donnée. */
 function typesForSource(src: string): string[] {
-  return (src || '').toLowerCase() === 'gardiennage' ? GARDIENNAGE_TYPES : MISSION_TYPES
+  return (src || '').toLowerCase() === 'gardiennage' ? [...GARDIENNAGE_TYPE_KEYS] : MISSION_TYPES
 }
 
 export default function TarifsClient(props: Props) {

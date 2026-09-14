@@ -93,3 +93,46 @@ export const getMissionTypeLabel = (
   const dict = format === 'short' ? TYPE_LABEL_SHORT : TYPE_LABEL_LONG
   return dict[norm] || t || '—'
 }
+
+// ── CATALOGUE DES TYPES (audit dispatch P3, 14/09/2026) ─────────────────────
+// Les listes de types vivaient en dur dans sept écrans (fiche, dossier, tarifs,
+// stats, facturation…), chacune à sa façon. Elles se lisent ici et nulle part
+// ailleurs — cf [[project_admin_zero_hardcode]].
+
+/** Types proposés dans les sélecteurs (fiche dispatch, Vue dossier). */
+export const MISSION_TYPE_KEYS = ['remorquage', 'depannage', 'transport', 'trajet_vide', 'reparation_place', 'relivraison', 'autre'] as const
+/** Source Gardiennage : le véhicule entre au parc sans déplacement, le « type »
+ *  désigne le régime de gardiennage appliqué (grille /admin/tarifs). Olivier 2026-08-26. */
+export const GARDIENNAGE_TYPE_KEYS = ['assistance', 'saisie', 'siabis', 'autre'] as const
+
+/** Types proposés pour une source donnée. */
+export const typesForSource = (src: string | null | undefined): string[] =>
+  normalizeType(src) === 'gardiennage' ? [...GARDIENNAGE_TYPE_KEYS] : [...MISSION_TYPE_KEYS]
+
+/** Libellé de sélecteur (« REM — remorquage »). */
+export const TYPE_LABEL_SELECT: Record<string, string> = {
+  remorquage:       'REM — remorquage',
+  depannage:        'DSP — dépannage sur place',
+  transport:        'Transport',
+  trajet_vide:      'TVD — trajet à vide',
+  reparation_place: 'RPL — réparation sur place',
+  relivraison:      'REL — relivraison',
+  autre:            'Autre',
+}
+
+/** Intervention SANS destination : dépannage sur place, réparation sur place, trajet à vide. */
+export const isSansDestination = (t: string | null | undefined): boolean =>
+  isDsp(t) || isTrajetVide(t)
+
+export type MissionKind = 'REL' | 'REM' | 'DSP' | 'DPR' | 'AUTRE'
+
+/** Famille d'une mission pour les listes (Missions terminées, Facturation, modale Facturer).
+ *  REL : type relivraison, OU incident_type='relivraison' (Kaze), OU fiche enfant (parent_mission_id). */
+export function missionKind(m: { mission_type?: string | null; incident_type?: string | null; parent_mission_id?: string | null }): MissionKind {
+  const it = normalizeType(m.incident_type)
+  if (isRelivraison(m.mission_type) || it === 'relivraison' || m.parent_mission_id) return 'REL'
+  if (it === 'dpr')                       return 'DPR'
+  if (isRemorquage(m.mission_type))       return 'REM'
+  if (isSansDestination(m.mission_type))  return 'DSP'
+  return 'AUTRE'
+}

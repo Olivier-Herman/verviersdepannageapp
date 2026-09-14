@@ -18,15 +18,23 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
   const session = await getServerSession(authOptions)
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   const u = session.user as any
+  // ── MÊME PORTE QUE LA PAGE (audit dispatch B9, 14/09/2026) ─────────────
+  // Cette API rendait la fiche et le dossier léger (montants figés) à toute
+  // session connectée. La page /dispatch, elle, exige admin/superadmin/dispatcher.
+  // Même règle ici. Le dossier LÉGER (montants figés, sans moteur de prix) reste
+  // servi à tout le staff : la ligne dépliée du dispatch en vit, pilote ou non.
+  const rolesU: string[] = [u.role, ...(Array.isArray(u.roles) ? u.roles : [])].filter(Boolean)
+  const staff = rolesU.some(r => ['admin', 'superadmin', 'dispatcher'].includes(r))
+  if (!staff) return NextResponse.json({ error: 'Accès refusé' }, { status: 403 })
   const sb = createAdminClient()
-  const [fiche, dossier, meRow] = await Promise.all([
-    loadMissionFiche(params.id),
+  const fiche = await loadMissionFiche(params.id)
+  if (!fiche) return NextResponse.json({ error: 'Mission introuvable' }, { status: 404 })
+  const [dossier, meRow] = await Promise.all([
     // Toujours léger : la ligne se déplie sans attendre le moteur de prix. Les
     // montants s'affinent ensuite en arrière-plan (DossierGroups → /api/dossier).
     buildDossier(params.id, { light: true }).catch(() => null),
     u.id ? sb.from('users').select('odoo_api_key').eq('id', u.id).maybeSingle().then(r => r.data) : Promise.resolve(null),
   ])
-  if (!fiche) return NextResponse.json({ error: 'Mission introuvable' }, { status: 404 })
   return NextResponse.json({
     ok: true, fiche, dossier,
     user: { id: u.id || null, name: u.name || '', email: u.email || null, role: u.role || '', modules: u.modules || [] },

@@ -1,6 +1,7 @@
 'use client'
 
 import { statusFr } from '@/lib/missions/status-label'
+import { missionKind } from '@/lib/missions/mission-types'
 import { useCallback, useEffect, useState } from 'react'
 import Link from 'next/link'
 import AppShell from '@/components/layout/AppShell'
@@ -58,19 +59,7 @@ function fmtDate(d: string | null): string {
   return new Date(d).toLocaleDateString('fr-BE', { day: '2-digit', month: '2-digit', year: 'numeric' })
 }
 
-function missionKind(m: { mission_type: string | null; incident_type: string | null; parent_mission_id: string | null }): 'REL' | 'REM' | 'DSP' | 'DPR' | 'AUTRE' {
-  const it = (m.incident_type || '').toLowerCase()
-  const mt = (m.mission_type   || '').toLowerCase()
-  // REL : mission_type='relivraison'/'rel' (cree manuellement par dispatcher)
-  // OU incident_type='relivraison' (Kaze) OU parent_mission_id non null
-  // (auto-cree depuis mission parc).
-  if (mt === 'relivraison' || mt === 'rel'
-      || it === 'relivraison' || m.parent_mission_id) return 'REL'
-  if (it === 'dpr')                                 return 'DPR'
-  if (mt === 'remorquage')                          return 'REM'
-  if (['depannage', 'reparation_place', 'trajet_vide'].includes(mt)) return 'DSP'
-  return 'AUTRE'
-}
+// missionKind : famille REL/REM/DSP/DPR/AUTRE — une seule définition, dans le catalogue (audit P3, 14/09/2026).
 
 const KIND_COLOR: Record<string, string> = {
   REM: 'bg-amber-500',

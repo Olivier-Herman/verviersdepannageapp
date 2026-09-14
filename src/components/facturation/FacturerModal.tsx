@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import { missionKind } from '@/lib/missions/mission-types'
 import PushToScreenButton from '@/components/caisse/PushToScreenButton'
 import EidImportButton, { type EidData } from '@/components/caisse/EidImportButton'
 import IdPhotoButton from '@/components/caisse/IdPhotoButton'
@@ -81,15 +82,7 @@ function fmtDateTime(d: string | null): string {
   return new Date(d).toLocaleString('fr-BE', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })
 }
 
-function missionKind(m: { mission_type: string | null; incident_type: string | null; parent_mission_id: string | null }): 'REL' | 'REM' | 'DSP' | 'DPR' | 'AUTRE' {
-  const it = (m.incident_type || '').toLowerCase()
-  const mt = (m.mission_type   || '').toLowerCase()
-  if (it === 'relivraison' || m.parent_mission_id) return 'REL'
-  if (it === 'dpr')                                 return 'DPR'
-  if (mt === 'remorquage')                          return 'REM'
-  if (['depannage', 'reparation_place', 'trajet_vide'].includes(mt)) return 'DSP'
-  return 'AUTRE'
-}
+// missionKind : famille REL/REM/DSP/DPR/AUTRE — une seule définition, dans le catalogue (audit P3, 14/09/2026).
 
 const KIND_COLOR: Record<string, string> = {
   REM: 'bg-amber-500',
