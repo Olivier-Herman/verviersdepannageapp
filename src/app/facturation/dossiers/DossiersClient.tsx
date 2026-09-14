@@ -412,6 +412,11 @@ export default function DossiersClient({ initial, autoById, comexById = {}, isSu
           : inComex(d) ? ['bg-sky-600 text-white', `🅣 COMEX · ${comexById[d.root_id]?.verdict === 'verify' ? 'à vérifier' : 'à valider chez Touring'}`]
           : isCircuit(d) ? ['bg-violet-600 text-white', d.parquet ? (lastEf ? `Parquet · EF n°${lastEf.numero ?? ''} ${lastEf.status === 'refuse' ? 'refusé' : lastEf.liquide_at ? 'liquidé' : 'en attente'}` : 'Parquet · EF à venir') : 'Domaine · relevé']
           : ai?.status === 'hexalite' ? ['bg-blue-600 text-white', '🟦 Clôture Allianz']
+          // Éligible par la règle, mais SANS tarif calculable : le cron refusera
+          // (« no_tariff »). Afficher « auto dans 53 min » laissait croire que le
+          // tarif était connu (1ULW878, Olivier 14/09/2026).
+          : (isAuto(d) || (ai?.status === 'waiting' && ai.eligibleAt)) && d.legs.some(l => l.amount_unknown && !isLegBilled(l) && !l.nothing_to_bill)
+            ? ['bg-red-600 text-white', '⚠ Auto bloquée : tarif à calculer']
           : isAuto(d) ? ['bg-emerald-600 text-white', '🎯 Éligible auto']
           : ai?.status === 'waiting' && ai.eligibleAt ? ['bg-amber-500 text-white', `⏳ auto dans ${countdown(new Date(ai.eligibleAt).getTime() - now)}`]
           : d.state.open ? ['bg-blue-600 text-white', 'En cours']
