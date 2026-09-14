@@ -10,7 +10,7 @@
 import { assertExitAllowed }   from '@/lib/missions/exit-control'
 import { releaseParcAndShift } from '@/lib/parc/release'
 
-export type ExitReason = 'enlevement_transporteur' | 'restitution' | 'sortie'
+export type ExitReason = 'enlevement_transporteur' | 'restitution' | 'sortie' | 'abandon'
 
 export async function exitParcNow(sb: any, rootId: string, actor: { id: string | null; name?: string | null }, reason: ExitReason, note?: string): Promise<{ ok: true; released: any } | { ok: false; error: string; status: number; exit_control_blocked?: boolean }> {
   const { data: root } = await sb.from('incoming_missions').select('id, status, source, snc_scenario, mission_number, parc_zone_key, dossier_leg').eq('id', rootId).maybeSingle()
@@ -35,7 +35,7 @@ export async function exitParcNow(sb: any, rootId: string, actor: { id: string |
     .then(() => {}, () => {})
   let released: any = null
   try { released = await releaseParcAndShift(sb, root.id) } catch (e: any) { console.warn('[exit-parc] libération parc KO (non bloquant):', e?.message) }
-  const label = reason === 'enlevement_transporteur' ? 'enlèvement par un transporteur' : reason === 'restitution' ? 'restitution au client' : 'sortie'
+  const label = reason === 'enlevement_transporteur' ? 'enlèvement par un transporteur' : reason === 'restitution' ? 'restitution au client' : reason === 'abandon' ? 'abandon volontaire du véhicule' : 'sortie'
   await sb.from('mission_logs').insert({
     mission_id: root.id, actor_id: actor.id || null, action: 'force_status_to_invoice',
     notes: `Sortie du parc : ${label}${root.parc_zone_key ? ` (zone ${root.parc_zone_key})` : ''}, gardiennage arrêté maintenant${note ? ` — ${note}` : ''}`,

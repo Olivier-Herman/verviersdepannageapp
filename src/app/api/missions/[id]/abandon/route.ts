@@ -24,6 +24,7 @@ import { NextResponse }      from 'next/server'
 import { getServerSession }  from 'next-auth'
 import { authOptions }       from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase'
+import { exitParcNow }       from '@/lib/parc/exit-parc'
 
 export const dynamic = 'force-dynamic'
 
@@ -63,7 +64,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   const sb = createAdminClient()
   const { data: mission } = await sb
     .from('incoming_missions')
-    .select('id, mission_number, external_id, dossier_number, source, vehicle_brand, vehicle_model, vehicle_plate, vehicle_vin, abandon_at')
+    .select('id, mission_number, external_id, dossier_number, source, vehicle_brand, vehicle_model, vehicle_plate, vehicle_vin, abandon_at, status, dossier_leg, parent_mission_id')
     .eq('id', params.id)
     .maybeSingle()
   if (!mission) return NextResponse.json({ error: 'Mission introuvable' }, { status: 404 })
@@ -126,7 +127,23 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     metadata:   { waive_storage: waive, identity_source: abandon.identity_source, signed: !!abandon.signature },
   }).then(() => {}, () => {})
 
-  return NextResponse.json({ ok: true, abandon, doc_url: `/api/missions/${params.id}/abandon-doc` })
+  // ── ABANDON = SORTIE DU PARC (Olivier 14/09/2026) : « vu qu'on a un abandon,
+  // il n'y a plus de raison d'avoir un gardiennage en cours. Le véhicule passe
+  // en sortie de parc et le dépannage passe à facturer. » Même mécanique que
+  // « Clôturer et facturer » : fiche → to_invoice, volet Gardiennage fermé
+  // (motif « abandon »), place libérée. Si la sortie est refusée (scénario SNC
+  // manquant, contrôle de sortie), l'abandon reste enregistré et on le dit.
+  // Le bouton vit sur le VOLET Gardiennage du dossier : l'abandon est posé sur
+  // le volet, la sortie se fait sur la fiche principale (parent).
+  let exitWarning: string | null = null
+  const rootId: string = (mission as any).dossier_leg ? String((mission as any).parent_mission_id || '') : params.id
+  const { data: root } = rootId ? await sb.from('incoming_missions').select('id, status').eq('id', rootId).maybeSingle() : { data: null as any }
+  if (root?.status === 'parked') {
+    const ex = await exitParcNow(sb, root.id, { id: actor.id, name: actor.name }, 'abandon', 'abandon volontaire du véhicule')
+    if (!ex.ok) exitWarning = `Abandon enregistré, mais le véhicule n'a pas pu sortir du parc : ${ex.error}`
+  }
+
+  return NextResponse.json({ ok: true, abandon, doc_url: `/api/missions/${params.id}/abandon-doc`, exit_warning: exitWarning })
 }
 
 export async function DELETE(req: Request, { params }: { params: { id: string } }) {

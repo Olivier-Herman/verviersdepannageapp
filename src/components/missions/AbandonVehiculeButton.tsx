@@ -168,6 +168,9 @@ export default function AbandonVehiculeButton({
       if (!r.ok) throw new Error(j?.error || 'Enregistrement impossible.')
       window.open(docUrl, '_blank', 'noopener')
       setOpen(false); reset(); router.refresh()
+      // Abandon = sortie du parc + dépannage à facturer (Olivier 14/09/2026).
+      // Si la sortie a été refusée (scénario SNC manquant, contrôle de sortie), on le dit.
+      if (j?.exit_warning) window.alert(j.exit_warning)
     } catch (e: any) {
       setErr(e?.message || 'Erreur')
     } finally { setBusy(false) }
