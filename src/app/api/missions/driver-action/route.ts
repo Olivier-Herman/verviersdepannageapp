@@ -9,6 +9,7 @@ import { withOdooActor }       from '@/lib/odoo'
 import { isRelEligibleSource } from '@/lib/missions/rel-eligible'
 import { isRemorquage }        from '@/lib/missions/mission-types'
 import { getDefaultParcZone }  from '@/lib/missions/parc-default'
+import { releaseParcAndShift } from '@/lib/parc/release'
 import { flux2Enabled }        from '@/lib/cloture/gating'
 
 export const maxDuration = 60   // hook PDF via waitUntil peut prendre 30s+
@@ -534,6 +535,34 @@ export async function POST(req: Request) {
   if (updateError) {
     console.error('[driver-action]', updateError)
     return NextResponse.json({ error: 'Erreur mise à jour' }, { status: 500 })
+  }
+
+  // ── RELIVRAISON TERMINÉE = LE VÉHICULE N'EST PLUS AU PARC (Olivier 14/09/2026) ──
+  // Le trigger dossier_gardiennage_rel_exit ferme le gardiennage et passe la
+  // fiche principale à facturer ; la PLACE de parc, elle, se libère ici (JS).
+  // 2JPR337, 2FFB195 : fiche « au parc » et place occupée alors que la REL
+  // était livrée. On remonte les parents (une REL peut avoir une REL pour parent).
+  if (['completed', 'complete_delivery'].includes(action) && (mission as any).parent_mission_id) {
+    try {
+      let rootId: string | null = (mission as any).parent_mission_id
+      for (let i = 0; i < 3 && rootId; i++) {
+        const { data: p } = await supabase.from('incoming_missions').select('id, parent_mission_id, status, parc_zone_key').eq('id', rootId).maybeSingle()
+        if (!p) break
+        if (!p.parent_mission_id) {
+          const { data: encore } = await supabase.from('incoming_missions').select('id').eq('parent_mission_id', p.id).eq('dossier_leg', true).is('parc_exit_at', null).limit(1)
+          if (!encore?.length) {
+            const released = await releaseParcAndShift(supabase, p.id).catch(() => null)
+            await supabase.from('mission_logs').insert({
+              mission_id: p.id, actor_id: (session?.user as any)?.id || null, action: 'parc_released_after_rel',
+              notes: `Relivraison ${mission.external_id || mission.dossier_number || ''} livrée : véhicule sorti du parc${p.parc_zone_key ? ` (zone ${p.parc_zone_key})` : ''}, place libérée.`,
+              metadata: { rel_id: mission_id, released },
+            }).then(() => {}, () => {})
+          }
+          break
+        }
+        rootId = p.parent_mission_id
+      }
+    } catch (e: any) { console.warn('[driver-action] libération parc après REL KO (non bloquant):', e?.message) }
   }
 
   // Montant à encaisser fixé/modifié par le chauffeur (geste 5-tap sur dossier) :
