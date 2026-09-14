@@ -42,12 +42,18 @@ export async function loadFacturationDossiers(sb: Sb): Promise<{ dossiers: Dossi
     const r = rootOf(m); if (seen.has(r)) continue; seen.add(r); roots.push(r)
     if (roots.length >= MAX_DOSSIERS) break
   }
+  // ⚠️ `rootOf` ne remonte que d'un niveau. Une relivraison créée depuis une
+  // relivraison revenue au parc (1UAU876 : REL E → parent REL C → parent REM)
+  // donnait une seconde « racine », donc le même dossier construit deux fois et
+  // la plaque en double dans la liste (Olivier 14/09/2026). buildDossier, lui,
+  // remonte jusqu'à la vraie racine : on dédoublonne sur ce qu'il renvoie.
   const dossiers: Dossier[] = []
+  const rootsSeen = new Set<string>()
   for (let i = 0; i < roots.length; i += 40) {
     const built = await Promise.all(roots.slice(i, i + 40).map(id => buildDossier(id, { light: true, cache: true }).catch(() => null)))
-    for (const d of built) if (d) dossiers.push(d)
+    for (const d of built) if (d && !rootsSeen.has(d.root_id)) { rootsSeen.add(d.root_id); dossiers.push(d) }
   }
-  return { dossiers, roots }
+  return { dossiers, roots: dossiers.map(d => d.root_id) }
 }
 
 /** Dossiers présents dans COMEX BKO (circuit « validation Touring »). */
