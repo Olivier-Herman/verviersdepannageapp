@@ -164,9 +164,11 @@ async function invoiceDossierGroupsLocked(sb: any, d: Dossier, input: { anyMissi
         perLeg.push({ leg, lines, period_from: null, period_to: null })
       }
     }
-    // Gardiennage à 0 nuit facturable, même client, pas encore couvert : ligne à
-    // 0 € sur la facture pour qu'il soit « facturé » avec le dossier (Olivier
-    // 08/09/2026 : « inclure la ligne gardiennage sur la facture à 0 »).
+    // Groupes à 0 € (gardiennage sans nuit facturable, relivraison revenue au
+    // parc…), même client, pas encore couverts : ils sont COUVERTS par la
+    // facture du dossier (ils en sortent, poste marqué, journal) mais SANS
+    // ligne à 0 € dessus. Olivier 14/09/2026 : « les groupes à 0 € on ne les
+    // affiche pas sur la facture » — remplace la règle du 08/09 (ligne à 0).
     if (perLeg.length) {
       for (const z of d.legs) {
         if (z.kind === 'out' || z.open || (z.channel || 'odoo') !== 'odoo' || Number(z.billed_to_id) !== clientId || z.billed_refs.length || perLeg.some(p => p.leg.mission_id === z.mission_id)) continue
@@ -177,14 +179,13 @@ async function invoiceDossierGroupsLocked(sb: any, d: Dossier, input: { anyMissi
         if (!zr) continue
         rowById[z.mission_id] = zr
         const zf = zr.parked_at || zr.received_at, zt = zr.parc_exit_at || nowIso
-        const zl: QuoteLine[] = z.kind === 'gard'
-          ? [{ kind: 'SERV-PARC', name: `Gardiennage (${z.regime}) — zone ${zr.parc_zone_key || '?'} du ${fmtDay(zf)} au ${fmtDay(zt)} : ${z.nothing_to_bill}`, qty: 1, price_unit: 0 }]
-          : [{ kind: 'SERV-PEC', name: `${z.title} — ${z.amount_note || 'rien à facturer (0 km)'}`, qty: 1, price_unit: 0 }]
-        sections.push({ section_label: z.kind === 'gard' ? `${d.number}${z.letter} — Gardiennage${zr.parc_zone_key ? ' zone ' + zr.parc_zone_key : ''}` : `${d.number}${z.letter} — ${z.title} — 0 €`, lines: zl, mission_id: z.mission_id })
-        perLeg.push({ leg: z, lines: zl, period_from: z.kind === 'gard' ? zf : null, period_to: z.kind === 'gard' ? zt : null })
+        // Aucune section ni ligne Odoo : le groupe est seulement couvert.
+        perLeg.push({ leg: z, lines: [], period_from: z.kind === 'gard' ? zf : null, period_to: z.kind === 'gard' ? zt : null })
       }
     }
     if (!perLeg.length) continue
+    // Tous les groupes de ce client sont à 0 € : pas de facture vide.
+    if (!sections.length) { warnings.push(`${d.number ?? d.ref} : rien à facturer à ${group[0].billed_to_name || 'ce client'} (groupes ${perLeg.map(p => p.leg.letter).join(' ')} à 0 €)`); continue }
     const covers = perLeg.map(p => p.leg.letter)
     const origin = `${d.number ?? d.ref} ${covers.join(' ')}`
     const clientName = group[0].billed_to_name || ''
