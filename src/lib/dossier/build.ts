@@ -575,6 +575,10 @@ async function buildDossierUncached(anyMissionId: string, light: boolean, price 
           const fige = Number(m.special_tarif_htva) > 0 ? Number(m.special_tarif_htva) : Number(m.estimated_htva) || 0
           if (fige > 0) { amount = r2(fige); note = `calcul indisponible — montant figé (${built.reason || 'erreur du moteur'})` }
           else { amount = 0; amountUnknown = true; note = `calcul indisponible : ${built.reason || 'erreur du moteur'}` }
+        } else if (built.has_tariff && !built.lines.length && built.reason) {
+          // Le moteur a répondu « rien à facturer » et dit pourquoi (relivraison
+          // revenue au parc, 0 km) : ce n'est ni un échec ni « à calculer ».
+          amount = 0; amountUnknown = false; nothing = built.reason
         } else if (billedRefs.length) {
           // Rien à calculer parce que tout est DÉJÀ réglé (facture partielle du
           // module classique, n° d'accord, auto-facturation) : les postes ont été

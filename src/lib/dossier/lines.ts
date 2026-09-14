@@ -58,6 +58,13 @@ export async function actionLines(mission: any, draftLines: any[] | undefined, d
     // l'adresse du parc → 0 km → 0 €).
     if (!lines.length) {
       const sameAddr = mission.incident_address && mission.destination_address && String(mission.incident_address).trim().toLowerCase() === String(mission.destination_address).trim().toLowerCase()
+      // Relivraison REVENUE AU PARC (client absent, refus…) : le véhicule est
+      // reparti du parc et y est rentré, un nouveau séjour de gardiennage a
+      // commencé. 0 km, 0 € : c'est vrai, pas « à calculer » (1UAU876 volet C,
+      // Olivier 14/09/2026). Preuve = parked_at postérieur au chargement.
+      const revenueAuParc = /reliv/i.test(String(mission.mission_type || '')) && Number(est.km_charged || 0) === 0
+        && !!mission.parked_at && (!mission.loaded_at || Date.parse(mission.parked_at) >= Date.parse(mission.loaded_at))
+      if (revenueAuParc) return { lines: [], has_tariff: true, reason: 'relivraison revenue au parc — 0 km, rien à facturer' }
       const reason = Number(est.km_charged || 0) === 0 && /reliv/i.test(String(mission.mission_type || ''))
         ? `0 km : l'adresse de livraison${sameAddr ? ' est celle du départ (le parc)' : ' n\u2019est pas calculable'} — corrige « Livrer à » sur la fiche`
         : `montant calculé à 0 € (${est.breakdown?.[0]?.note || 'forfait 0, aucun km'})`
