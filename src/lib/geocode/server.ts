@@ -47,6 +47,31 @@ export async function geocodeAddressServer(raw: string | null | undefined): Prom
   return null
 }
 
+/** « Rue de la Cité 22a, 4800 Verviers » → « rue de la cite 22a 4800 verviers ». */
+const norm = (s: string) => String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]+/g, ' ').trim()
+
+/**
+ * NOS DÉPÔTS N'ONT PAS BESOIN DE GÉOCODEUR (Olivier 14/09/2026, 2EGQ442) : un
+ * remorquage livré chez nous porte « Verviers Depannage Sa, Rue de la Cité 22a,
+ * 4800 Verviers » — le géocodeur prudent refuse la raison sociale en tête, et
+ * la facturation attendait « destination non géocodée » jusqu'à ce qu'on ouvre
+ * la fiche. Si l'adresse contient la rue + numéro d'un dépôt actif, ce sont ses
+ * coordonnées, point.
+ */
+export async function depotCoordsFor(sb: any, address: string | null | undefined): Promise<GeocodeHit | null> {
+  const a = norm(cleanAddressForGeocode(address))
+  if (a.length < 6) return null
+  const { data: depots } = await sb.from('depots').select('name, address, lat, lng').eq('active', true)
+  for (const d of (depots || []) as any[]) {
+    if (d.lat == null || d.lng == null) continue
+    const street = norm(String(d.address || '').split(',')[0])   // « rue de la cite 22 »
+    if (street.length >= 6 && a.includes(street)) {
+      return { lat: Number(d.lat), lng: Number(d.lng), label: `dépôt ${d.name}`, confidence: 1, layer: 'depot' }
+    }
+  }
+  return null
+}
+
 /**
  * Pose les coordonnées manquantes d'une fiche (intervention, destination) et
  * le journalise. Best-effort : renvoie ce qui a été rempli.
@@ -60,11 +85,11 @@ export async function ensureMissionCoords(sb: any, missionId: string): Promise<{
   const upd: Record<string, any> = {}
   const notes: string[] = []
   if ((m.incident_lat == null || m.incident_lng == null) && m.incident_address) {
-    const h = await geocodeAddressServer(m.incident_address)
+    const h = (await depotCoordsFor(sb, m.incident_address)) || (await geocodeAddressServer(m.incident_address))
     if (h) { upd.incident_lat = h.lat; upd.incident_lng = h.lng; out.incident = true; notes.push(`intervention → ${h.label}`) }
   }
   if ((m.destination_lat == null || m.destination_lng == null) && m.destination_address) {
-    const h = await geocodeAddressServer(m.destination_address)
+    const h = (await depotCoordsFor(sb, m.destination_address)) || (await geocodeAddressServer(m.destination_address))
     if (h) { upd.destination_lat = h.lat; upd.destination_lng = h.lng; out.destination = true; notes.push(`destination → ${h.label}`) }
   }
   if (!Object.keys(upd).length) return out

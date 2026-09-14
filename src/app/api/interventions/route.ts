@@ -230,6 +230,17 @@ export async function POST(req: NextRequest) {
         .update(updatePayload)
         .eq('id', body.mission_id)
 
+      // « Une fois que le client a payé par l'encaissement chauffeur, le prix ne
+      // peut plus varier » (Olivier 14/09/2026) : les lignes de facturation sont
+      // figées au montant payé (détail Siabis conservé). Cf freeze-collected.ts.
+      if (sum > 0) {
+        try {
+          const { freezeCollectedPrice } = await import('@/lib/facturation/freeze-collected')
+          const fr = await freezeCollectedPrice(body.mission_id, (session.user as any).id || null)
+          if (!fr.frozen) console.log(`[interventions] prix non figé pour ${body.mission_id} : ${fr.reason}`)
+        } catch (e: any) { console.warn('[interventions] figeage du prix KO :', e?.message) }
+      }
+
       // Olivier 2026-06-03 : auto-restitution si mission en parked + source
       // fourriere (police_*, sia_couvert, prive). L encaissement equivaut a
       // une restitution : on passe en to_invoice + libere la position parc.
