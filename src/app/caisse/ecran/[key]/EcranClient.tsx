@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import QRCode from 'qrcode'
 import { createClient } from '@supabase/supabase-js'
 import EcranIdleSlideshow from '@/components/caisse/EcranIdleSlideshow'
+import SigPad from '@/components/mission/SigPad'
 
 interface Payload {
   // Mode facture (par défaut)
@@ -11,7 +12,9 @@ interface Payload {
   reference?: string; amount?: number; amountTotal?: number | null; lines?: { label: string; amount: number }[]
   sumupQrUrl?: string | null; sumupCheckoutId?: string | null; epcPayload?: string | null
   // Mode eID (lecture carte → création client) / manual (saisie coordonnées)
-  mode?: 'facture' | 'eid' | 'visitor' | 'manual'; request_id?: string; step?: 'consent' | 'form' | 'done'
+  mode?: 'facture' | 'eid' | 'visitor' | 'manual' | 'signature'; request_id?: string; step?: 'consent' | 'form' | 'done'
+  // Mode signature (abandon volontaire…) : titre + texte d'engagement affichés au-dessus du pad
+  title?: string; text?: string
   // Mode visitor (registre de visite véhicule en parc)
   mission_id?: string
   motifs?: { label: string; is_expert: boolean }[]
@@ -118,6 +121,9 @@ export default function EcranClient({ displayKey }: { displayKey: string }) {
   const [eidError, setEidError]     = useState<string | null>(null)
   // ── Mode manual (saisie coordonnées au comptoir) ──
   const [manStep, setManStep]   = useState<'form' | 'sending' | 'done'>('form')
+  // Mode « signature » (abandon volontaire…) : le client signe au comptoir.
+  const [sigStep, setSigStep]   = useState<'form' | 'sending' | 'done'>('form')
+  const [sigError, setSigError] = useState<string | null>(null)
   const [manLang, setManLang]   = useState<ManLang>('fr')  // FR par défaut ; reset à chaque nouvelle demande
   const [manType, setManType]   = useState<'prive' | 'pro' | null>(null)  // null = écran de choix Particulier/Pro
   const [manVat, setManVat]     = useState('')
@@ -264,6 +270,7 @@ export default function EcranClient({ displayKey }: { displayKey: string }) {
       manReqRef.current = payload.request_id
       manAcRef.current = null
       setManStep('form'); setManLang('fr'); setManType(null)
+      setSigStep('form'); setSigError(null)
       setManName(''); setManStreet(''); setManZip(''); setManCity('')
       setManCountry(''); setManCountryCode(''); setManEmail(''); setManPhone(''); setManError(null)
       setManVat(''); setManVatBusy(false); setManVatMsg(null)
@@ -631,6 +638,57 @@ export default function EcranClient({ displayKey }: { displayKey: string }) {
   }
 
   // ── ÉCRAN MODE manual (saisie des coordonnées au comptoir) ────────────────
+  // ── Mode SIGNATURE : le client signe au comptoir (abandon volontaire…) ──────
+  if (active && payload?.mode === 'signature') {
+    const sigDone = sigStep === 'done' || payload.step === 'done'
+    const submitSignature = async (d: string) => {
+      if (!payload?.request_id) return
+      setSigStep('sending'); setSigError(null)
+      try {
+        const r = await fetch('/api/caisse/ecran', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'signature_submit', key: displayKey, request_id: payload.request_id, data: { signature: d } }),
+        })
+        if (!r.ok) throw new Error('envoi')
+        setSigStep('done')
+      } catch {
+        setSigError('Envoi impossible. Réessayez ou signalez-le au comptoir.')
+        setSigStep('form')
+      }
+    }
+    if (sigDone) {
+      return (
+        <div style={S.wrap}>
+          <div style={{ textAlign: 'center' }}>
+            <div style={{ fontSize: 'min(9vw, 13vh)' }}>✅</div>
+            <div style={{ fontSize: 'min(4.4vw, 6.5vh)', fontWeight: 800, color: '#16a34a' }}>Merci</div>
+            <div style={{ fontSize: 'min(2vw, 3vh)', color: '#64748b', marginTop: '1vh' }}>Votre signature a bien été transmise.</div>
+          </div>
+        </div>
+      )
+    }
+    return (
+      <div style={S.wrap}>
+        <div style={{ ...E.card, maxWidth: 'min(88vw, 980px)', gap: 'min(1.6vh, 1.2vw)' }}>
+          <div style={E.title}>✍️ {payload.title || 'Signature'}</div>
+          {(payload.client || payload.plate) && (
+            <div style={{ fontSize: 'min(2vw, 3vh)', fontWeight: 700, color: '#0b1120' }}>
+              {[payload.client, payload.plate].filter(Boolean).join(' · ')}
+            </div>
+          )}
+          {payload.text && (
+            <div style={{ fontSize: 'min(1.8vw, 2.7vh)', color: '#334155', textAlign: 'center', lineHeight: 1.35 }}>{payload.text}</div>
+          )}
+          <div style={{ fontSize: 'min(1.5vw, 2.2vh)', color: '#64748b' }}>Signez dans le cadre avec le doigt ou le stylet, puis appuyez sur « Valider ».</div>
+          <div style={{ width: '100%', opacity: sigStep === 'sending' ? .5 : 1, pointerEvents: sigStep === 'sending' ? 'none' : 'auto' }}>
+            <SigPad onSave={submitSignature} />
+          </div>
+          {sigError && <div style={{ color: '#dc2626', fontSize: 'min(1.6vw, 2.4vh)', fontWeight: 700 }}>{sigError}</div>}
+        </div>
+      </div>
+    )
+  }
+
   if (active && payload?.mode === 'manual') {
     const T = MAN_T[manLang]
     // Styles compacts pour le formulaire (tient sur la hauteur de l'écran comptoir).

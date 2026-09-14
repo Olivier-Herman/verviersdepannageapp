@@ -220,6 +220,32 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: true })
   }
 
+  // ── signature_submit : RENVOI de la signature tracée au comptoir (PUBLIC) ───
+  // Abandon volontaire (Olivier 14/09/2026 : « la signature s'affiche de mon
+  // côté au lieu de signer sur l'écran comptoir »). Même corrélation forte que
+  // manual_submit : mode signature, request_id attendu, non expiré.
+  if (body.action === 'signature_submit') {
+    const reqId = String(body.request_id || '')
+    const { data: cur } = await sb.from('customer_display')
+      .select('payload, expires_at').eq('key', key).maybeSingle()
+    const p: any = cur?.payload || null
+    const live = cur?.expires_at && new Date(cur.expires_at).getTime() > now
+    if (!p || p.mode !== 'signature' || !live || !reqId || p.request_id !== reqId) {
+      return NextResponse.json({ error: 'Aucune demande de signature active pour cet écran.' }, { status: 409 })
+    }
+    const sig = String(body.data?.signature || '')
+    if (!/^data:image\/png;base64,[A-Za-z0-9+/=]+$/.test(sig) || sig.length > 600_000) {
+      return NextResponse.json({ error: 'Signature illisible.' }, { status: 400 })
+    }
+    await sb.from('customer_display').update({
+      payload: { ...p, step: 'done' },
+      expires_at: new Date(now + 10_000).toISOString(),
+      response: { request_id: reqId, mode: 'signature', signature: sig },
+      response_at: new Date().toISOString(), updated_at: new Date().toISOString(),
+    }).eq('key', key)
+    return NextResponse.json({ ok: true })
+  }
+
   // ── vies : recherche TVA depuis le kiosque (PUBLIC) ─────────────────────────
   // Le client professionnel au comptoir tape son n° de TVA → on interroge VIES.
   // Accepté seulement si l'écran est en mode manual actif (corrélation forte).
@@ -335,6 +361,33 @@ export async function POST(req: Request) {
   // ── manual : COMMANDE « saisie manuelle des coordonnées » depuis la fiche ─────
   // Affiche sur l'écran comptoir un formulaire de coordonnées (nom, adresse avec
   // autocomplete, email, tél) + choix de langue. request_id corrèle la réponse.
+  // ── signature : COMMANDE « faire signer au comptoir » ──────────────────────
+  // Le bureau envoie le titre, le texte de l'engagement et le client ; l'écran
+  // affiche un pad, la signature revient par signature_submit.
+  if (body.action === 'signature') {
+    const reqId = String(body.request_id || '').slice(0, 80) || `sig-${now}`
+    if (!body.force) {
+      const { data: cur } = await sb.from('customer_display').select('payload, expires_at').eq('key', key).maybeSingle()
+      const active = cur?.payload && cur.expires_at && new Date(cur.expires_at).getTime() > now
+      if (active) {
+        const occ: any = cur!.payload
+        return NextResponse.json({ occupied: true, occupant: { client: occ.client || null, plate: occ.plate || null, mode: occ.mode || 'facture' } }, { status: 409 })
+      }
+    }
+    const expires_at = new Date(now + 5 * 60_000).toISOString()
+    await sb.from('customer_display').upsert(
+      { key, payload: {
+          mode: 'signature', request_id: reqId, step: 'form',
+          title:  String(body.title || 'Signature').slice(0, 120),
+          text:   String(body.text || '').slice(0, 500),
+          client: body.client ? String(body.client).slice(0, 120) : null,
+          plate:  body.plate  ? String(body.plate).slice(0, 20)   : null,
+        }, expires_at, response: null, response_at: null, updated_at: new Date().toISOString(), updated_by: user.id || null },
+      { onConflict: 'key' },
+    )
+    return NextResponse.json({ ok: true, request_id: reqId, expires_at })
+  }
+
   if (body.action === 'manual') {
     const reqId = String(body.request_id || '').slice(0, 80) || `man-${now}`
     if (!body.force) {

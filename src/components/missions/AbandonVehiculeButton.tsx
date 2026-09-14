@@ -19,10 +19,16 @@
 // `police_saisie` ; l'API refuse aussi, un garde-fou client ne suffit pas.
 // Olivier 2026-08-20.
 
-import { useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
+import { createClient } from '@supabase/supabase-js'
 import EidImportButton, { type EidData } from '@/components/caisse/EidImportButton'
 import SigPad from '@/components/mission/SigPad'
+
+const newRequestId = () => {
+  try { return (crypto as any)?.randomUUID?.() as string } catch { /* noop */ }
+  return `sig-${Date.now()}-${Math.floor(Math.random() * 1e6)}`
+}
 
 export interface AbandonData {
   last_name?: string | null
@@ -69,6 +75,60 @@ export default function AbandonVehiculeButton({
   const [signature, setSignature] = useState<string | null>(null)
   const [showSig,   setShowSig]   = useState(false)
 
+  // ── Signature SUR L'ÉCRAN COMPTOIR (Olivier 14/09/2026 : « la signature
+  // s'affiche de mon côté au lieu de signer sur l'écran comptoir »). Même
+  // patron que « Info manuelle » : commande POST action:'signature', puis la
+  // signature revient par realtime sur customer_display. Le pad local reste en
+  // repli (« signer ici »).
+  const [sigStatus, setSigStatus] = useState<'idle' | 'waiting' | 'error'>('idle')
+  const [sigErr,    setSigErr]    = useState<string | null>(null)
+  const reqIdRef = useRef<string | null>(null)
+  const chanRef  = useRef<any>(null)
+  const sb = useMemo(() => createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!), [])
+  const sigCleanup = () => {
+    if (chanRef.current) { sb.removeChannel(chanRef.current); chanRef.current = null }
+    reqIdRef.current = null
+  }
+  useEffect(() => sigCleanup, []) // eslint-disable-line react-hooks/exhaustive-deps
+  const startCounterSig = async (force = false) => {
+    setSigErr(null)
+    const reqId = force ? reqIdRef.current! : newRequestId()
+    const who = [firstName.trim(), lastName.trim()].filter(Boolean).join(' ')
+    try {
+      const r = await fetch('/api/caisse/ecran', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'signature', key: screenKey, request_id: reqId, force,
+          title:  'Abandon volontaire du véhicule',
+          text:   `${who ? `Je soussigné(e) ${who} déclare` : 'Je déclare'} abandonner volontairement le véhicule ${[brand, model].filter(Boolean).join(' ')}${plate ? ` (${plate})` : ''} à Verviers Dépannage${waive ? ', en échange des frais de gardiennage' : ''}.`,
+          client: who || null, plate: plate || null,
+        }),
+      })
+      if (r.status === 409) {
+        const j = await r.json().catch(() => ({}))
+        const occ = j?.occupant?.client ? ` (${j.occupant.client})` : ''
+        if (window.confirm(`L'écran comptoir affiche déjà quelque chose${occ}. Le remplacer par la signature ?`)) { reqIdRef.current = reqId; return startCounterSig(true) }
+        return
+      }
+      if (!r.ok) { setSigStatus('error'); setSigErr('Impossible de commander l’écran comptoir.'); return }
+      reqIdRef.current = reqId
+      setSigStatus('waiting')
+      if (chanRef.current) sb.removeChannel(chanRef.current)
+      chanRef.current = sb.channel('abandon-sig-' + screenKey)
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'customer_display', filter: `key=eq.${screenKey}` }, (p: any) => {
+          const resp = p?.new?.response
+          if (!resp || !reqIdRef.current || resp.request_id !== reqIdRef.current || !resp.signature) return
+          setSignature(String(resp.signature)); setShowSig(false)
+          sigCleanup(); setSigStatus('idle')
+        })
+        .subscribe()
+    } catch { setSigStatus('error'); setSigErr('Réseau indisponible.') }
+  }
+  const cancelCounterSig = async () => {
+    sigCleanup(); setSigStatus('idle'); setSigErr(null)
+    try { await fetch('/api/caisse/ecran', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'clear', key: screenKey }) }) } catch { /* ignore */ }
+  }
+
   const docUrl = `/api/missions/${missionId}/abandon-doc`
 
   const onEid = (d: EidData) => {
@@ -86,6 +146,7 @@ export default function AbandonVehiculeButton({
   const reset = () => {
     setFirstName(''); setLastName(''); setBirthDate(''); setStreet(''); setZip(''); setCity('')
     setNationalNumber(''); setIdSource('manual'); setWaive(true); setSignature(null); setShowSig(false)
+    sigCleanup(); setSigStatus('idle'); setSigErr(null)
     setErr(null)
   }
 
@@ -242,13 +303,25 @@ export default function AbandonVehiculeButton({
                 </span>
               </label>
 
-              {/* Signature à l'écran (facultative) */}
+              {/* Signature : sur l'ÉCRAN COMPTOIR d'abord, pad local en repli (facultatif) */}
               <div>
-                {!showSig && !signature && (
-                  <button type="button" onClick={() => setShowSig(true)}
-                    className="text-brand text-xs hover:underline">✍️ Faire signer à l&apos;écran (facultatif)</button>
+                {!signature && sigStatus === 'waiting' && (
+                  <div className="flex items-center gap-2 px-3 py-2 bg-info-soft border border-info rounded-xl text-xs">
+                    <span className="inline-block w-3 h-3 border-2 border-info border-t-transparent rounded-full animate-spin" />
+                    <span className="text-info font-medium">Signature en cours au comptoir…</span>
+                    <button type="button" onClick={cancelCounterSig} className="ml-auto text-ink-muted hover:text-critical">Annuler</button>
+                  </div>
                 )}
-                {showSig && !signature && (
+                {!signature && sigStatus !== 'waiting' && !showSig && (
+                  <div className="flex flex-wrap items-center gap-3">
+                    <button type="button" onClick={() => startCounterSig(false)}
+                      className="px-3 py-2 bg-brand text-white rounded-xl text-xs font-semibold hover:opacity-90">🖥️ Faire signer sur l&apos;écran comptoir</button>
+                    <button type="button" onClick={() => setShowSig(true)}
+                      className="text-ink-muted text-xs hover:underline">ou signer ici</button>
+                  </div>
+                )}
+                {sigStatus === 'error' && sigErr && <p className="text-critical text-xs mt-1">⚠ {sigErr}</p>}
+                {showSig && !signature && sigStatus !== 'waiting' && (
                   <div className="mt-2">
                     <p className="text-xs text-ink-muted mb-2">Le client signe ci-dessous, puis « Valider ».</p>
                     <SigPad onSave={d => { setSignature(d); setShowSig(false) }} />
@@ -258,11 +331,13 @@ export default function AbandonVehiculeButton({
                 {signature && (
                   <div className="flex items-center gap-3 mt-2">
                     <img src={signature} alt="Signature" className="h-12 border border-app rounded-lg bg-white" />
+                    <button type="button" onClick={() => { setSignature(null); startCounterSig(false) }}
+                      className="text-xs text-ink-muted hover:underline">Refaire au comptoir</button>
                     <button type="button" onClick={() => { setSignature(null); setShowSig(true) }}
-                      className="text-xs text-ink-muted hover:underline">Refaire</button>
+                      className="text-xs text-ink-muted hover:underline">Refaire ici</button>
                   </div>
                 )}
-                {!signature && (
+                {!signature && sigStatus !== 'waiting' && (
                   <p className="text-ink-muted text-xs mt-1.5">
                     Sans signature à l&apos;écran, le document s&apos;imprime avec une ligne à signer au stylo.
                   </p>
