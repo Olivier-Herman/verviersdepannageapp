@@ -207,7 +207,13 @@ function resolveLines(advice: PaymentAdvice, invoices: Map<string, any>): Matche
     }
     // Un avoir porte un montant positif dans Odoo mais se déduit du virement.
     const signed = inv.move_type === 'out_refund' ? -Number(inv.amount_total) : Number(inv.amount_total)
+    // Le montant annoncé rapproche s'il vaut le TOTAL de la facture — ou son
+    // SOLDE restant dû : une facture déjà réglée en partie (acompte, premier
+    // avis) est payée pour ce qui reste. 2026/04/162 (14/09/2026) : 840,19 €
+    // annoncés, facture de 972,08 € dont 840,19 € encore dus → « écart » à tort.
+    const residual = Number(inv.amount_residual || 0)
     const fits   = Math.abs(signed - l.amount) < 0.02
+      || (residual > 0 && inv.move_type !== 'out_refund' && Math.abs(residual - l.amount) < 0.02)
     const paid   = inv.payment_state === 'paid'
     // Reprise : montant négatif égal à une facture que l'assureur a déjà réglée
     // (dans un avis précédent). Rien à lettrer ici : note de crédit ou contestation.
@@ -294,7 +300,7 @@ export async function buildAdviceReport(
       if (x.neutralisee || x.unallocated) continue   // réglée puis reprise, ou passée en OD
       if (x.issue === 'introuvable') blocking.push(`Aucune facture pour la référence ${x.ref}`)
       if (x.issue === 'reprise')     blocking.push(`${x.invoiceName} : l'assureur reprend ${Math.abs(x.amount).toFixed(2)} € d'une facture déjà réglée${x.creditNote ? ` — note de crédit ${x.creditNote.name} (${x.creditNote.state === 'posted' ? 'validée' : 'brouillon'})` : ' — note de crédit à créer, ou à contester'}`)
-      if (x.issue === 'écart')       blocking.push(`${x.invoiceName} : ${x.amount.toFixed(2)} € annoncés pour une facture de ${(x.invoiceTotal ?? 0).toFixed(2)} €`)
+      if (x.issue === 'écart')       blocking.push(`${x.invoiceName} : ${x.amount.toFixed(2)} € annoncés pour une facture de ${(x.invoiceTotal ?? 0).toFixed(2)} €${x.residual != null && Math.abs((x.residual ?? 0) - (x.invoiceTotal ?? 0)) >= 0.02 ? ` (solde restant dû ${(x.residual ?? 0).toFixed(2)} €)` : ''}`)
       if (x.issue === 'déjà soldée') blocking.push(`${x.invoiceName} est déjà soldée dans Odoo`)
     }
     for (const w of advice.warnings) blocking.push(w)
