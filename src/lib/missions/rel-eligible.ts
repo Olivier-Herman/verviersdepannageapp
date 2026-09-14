@@ -47,3 +47,32 @@ export function isRelEligibleSource(
   }
   return true
 }
+
+/**
+ * L'ASSISTANCE D'ORIGINE d'un dossier requalifié Siabis (Olivier 14/09/2026,
+ * 1YCJ102) : « la relivraison n'est plus une source Siabis étant donné que c'est
+ * repris par Allianz, donc la source devient Mondial et le type relivraison ».
+ *
+ * Un dossier Siabis couvert vient presque toujours d'une assistance (mail
+ * Mondial, Kaze, Comet, COMEX…) puis a été requalifié. La REL est payée par
+ * cette assistance : on la retrouve dans le journal — la source de création
+ * (« Fiche créée automatiquement — mondial ») ou le point de départ du premier
+ * changement de source (« mondial → sia_couvert »). Rien de trouvé → null, et
+ * l'appelant demande le choix à la main (route relivrer).
+ */
+export async function originalAssistanceSource(sb: any, missionId: string): Promise<string | null> {
+  const { data: logs } = await sb.from('mission_logs')
+    .select('action, notes').eq('mission_id', missionId).in('action', ['received', 'source_changed'])
+    .order('created_at', { ascending: true }).limit(20)
+  const { isAssistanceSource } = await import('@/lib/missions/exit-control')
+  const siabis = (s: string) => ['police_snc', 'sia_couvert'].includes(s)
+  for (const l of (logs || []) as any[]) {
+    const n = String(l.notes || '')
+    const m = l.action === 'received'
+      ? n.match(/Fiche créée automatiquement — ([a-z0-9_]+)/i)
+      : n.match(/Source changée : ([a-z0-9_]+) →/i)
+    const s = m?.[1]?.toLowerCase()
+    if (s && !siabis(s) && isAssistanceSource(s)) return s
+  }
+  return null
+}

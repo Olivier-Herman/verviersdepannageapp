@@ -20,7 +20,7 @@ import { authOptions }               from '@/lib/auth'
 import { createAdminClient }         from '@/lib/supabase'
 import { createRelivraisonMission }  from '@/lib/missions/create-relivraison'
 import { sendPushToUser }            from '@/lib/push'
-import { isRelEligibleSource }       from '@/lib/missions/rel-eligible'
+import { isRelEligibleSource, originalAssistanceSource } from '@/lib/missions/rel-eligible'
 import { assertExitAllowed }         from '@/lib/missions/exit-control'
 
 export async function POST(req: Request, { params }: { params: { id: string } }) {
@@ -197,12 +197,34 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     }
   } else {
     // 4. Pas de REL fille : creation via le helper existant
+    // ── UNE REL NE RESTE JAMAIS SIABIS (Olivier 14/09/2026, 1YCJ102) ──────
+    // La route « Relivrer » du dispatch impose le choix de l'assistance ; le scan
+    // QR recopiait la source du parent et la REL sortait « sia_couvert », donc
+    // sans tarif (« aucun tarif kilométrique pour sia_couvert »). Ici on prend
+    // l'assistance d'ORIGINE du dossier (mail Mondial, Kaze…) ; sans assistance
+    // connue, le scan refuse et renvoie vers la fiche.
+    let sourceOverride: string | null = null
+    if (['police_snc', 'sia_couvert'].includes(String(parent.source || '').toLowerCase())) {
+      sourceOverride = await originalAssistanceSource(sb, parent.id)
+      if (!sourceOverride) {
+        return NextResponse.json({
+          ok: false,
+          error: 'Relivraison d\'un dossier Siabis : l\'assistance qui la reprend doit être choisie sur la fiche (bouton Relivrer) avant le scan.',
+        }, { status: 422 })
+      }
+    }
+    // La REL DÉMARRE DU PARC, pas du lieu de la panne (Olivier 14/09/2026,
+    // 1YCJ102 : « tu as mis en adresse d'incident l'adresse où était la panne
+    // mais la REL démarre de chez nous »). Le véhicule est au parc : le parent
+    // a livré à sa destination (dépôt) — même règle que la route Relivrer.
+    const parkFromDest = !!parent.destination_address && parent.destination_lat != null && parent.destination_lng != null
     const result = await createRelivraisonMission({
       parentMissionId:    parent.id,
-      parkAddress:        parent.incident_address || '',
-      parkLat:            parent.incident_lat,
-      parkLng:            parent.incident_lng,
+      parkAddress:        (parkFromDest ? parent.destination_address : parent.incident_address) || '',
+      parkLat:            parkFromDest ? parent.destination_lat : parent.incident_lat,
+      parkLng:            parkFromDest ? parent.destination_lng : parent.incident_lng,
       redeliveryAddress: parent.redelivery_address || [parent.destination_address, parent.destination_city].filter(Boolean).join(', '),
+      sourceOverride,
     })
     if (!result.id) {
       return NextResponse.json({ ok: false, error: result.error || 'Echec creation REL' }, { status: 500 })
