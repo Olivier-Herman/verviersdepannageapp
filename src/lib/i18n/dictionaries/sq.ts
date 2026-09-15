@@ -618,6 +618,10 @@ export const sq: Dictionary = {
     choose_depot:        '🅿️ Zgjidh depon',
     park_zone:           '🅿️ Zona e parkingut',
     park_zone_desc:      'Mjeti shkon në zonën {zone} (e përcaktuar për këtë burim).',
+    judicial_zone_title: 'Sekuestrim gjyqësor — ku ta vendos?',
+    judicial_zone_desc:  'Zgjidh vendin. Nëse është laboratori, etiketa do ta tregojë me shkronja të mëdha.',
+    judicial_zone_j:     '🅿️ Parkingu i sekuestrimit (zona J)',
+    judicial_zone_labo:  '🔬 Zona LABO',
   },
 
   key_loc: {

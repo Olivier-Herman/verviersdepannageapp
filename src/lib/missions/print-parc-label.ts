@@ -45,6 +45,8 @@ export interface PrintParcLabelInput {
    *  normale). Ex: 'Migration VD Soft OK' pour les etiquettes imprimees pendant
    *  la migration zone-par-zone. Si une note existe deja, on ajoute la mention. */
   noteAppend?:      string
+  /** Bandeau inversé (ex. 'ZONE\\&LABO'). */
+  banner?:          string
 }
 
 /**
@@ -101,6 +103,7 @@ export async function printVdSoftParcLabel(input: PrintParcLabelInput): Promise<
     // fallback UUID sinon.
     const qrTarget = `/qr/mission/${input.missionNumber != null ? input.missionNumber : input.missionId}`
     const zpl = buildParcLabelZPL({
+      banner: input.banner,
       qrUrl: `${baseUrl}${qrTarget}`,
       motif: input.motif,
       date:  dateStr,

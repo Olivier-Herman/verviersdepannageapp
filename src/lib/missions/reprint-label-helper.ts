@@ -150,6 +150,9 @@ export async function reprintLabelForMission(
     isAvp,
     noteOverride,
     noteAppend: opts?.noteAppend,
+    // Saisie judiciaire rangée au labo : ça se voit avant même de lire la
+    // plaque. Olivier 15/09/2026.
+    banner: (mission as any).parc_zone_key === 'LABO' ? 'ZONE\\&LABO' : undefined,
   })
 
   if (!result.ok) return { ok: false, error: result.error || 'Impression echec', mission_id: mission.id }

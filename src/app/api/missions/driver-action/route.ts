@@ -160,7 +160,7 @@ export async function POST(req: Request) {
 
   const { data: mission, error: fetchError } = await supabase
     .from('incoming_missions')
-    .select('id, status, assigned_to, external_id, vehicle_plate, vehicle_vin, vehicle_brand, vehicle_model, amount_to_collect, source, source_format, extra_addresses, driver_photos, odoo_task_id, odoo_vehicle_id, mission_type, photo_categories_covered, kaze_job_id, axa_mission_order_id, dossier_number, client_signature, snc_scenario, snc_requires_balisage, incident_lat, incident_lng, destination_address, destination_lat, destination_lng, billed_to_id, billed_to_name, redelivery_address, truck_id, intervention_date, received_at, completed_at, invoice_number, invoice_odoo_id, odoo_quote_id')
+    .select('id, status, assigned_to, external_id, vehicle_plate, vehicle_vin, vehicle_brand, vehicle_model, amount_to_collect, source, source_format, saisie_motif_code, extra_addresses, driver_photos, odoo_task_id, odoo_vehicle_id, mission_type, photo_categories_covered, kaze_job_id, axa_mission_order_id, dossier_number, client_signature, snc_scenario, snc_requires_balisage, incident_lat, incident_lng, destination_address, destination_lat, destination_lng, billed_to_id, billed_to_name, redelivery_address, truck_id, intervention_date, received_at, completed_at, invoice_number, invoice_odoo_id, odoo_quote_id')
     .eq('id', mission_id).single()
 
   if (fetchError || !mission) return NextResponse.json({ error: 'Mission introuvable' }, { status: 404 })
@@ -368,7 +368,14 @@ export async function POST(req: Request) {
     // de vérité unique. Repli sur la zone envoyée par l'app si le catalog n'en
     // définit pas. (Serveur autoritaire → correct même sur d'anciens builds.)
     const catalogZone = await getDefaultParcZone(mission.source, supabase)
-    const parkZone = catalogZone || park_data?.zone_key || null
+    let parkZone = catalogZone || park_data?.zone_key || null
+    // Saisie JUDICIAIRE : le chauffeur choisit entre le parking fourrière (J)
+    // et la zone LABO — un véhicule qui part au labo ne se range pas en J. Le
+    // choix vient d'un modal une touche dans l'app ; tout autre zone envoyée
+    // reste ignorée, le catalogue garde la main. Olivier 15/09/2026.
+    const { isJudicialSaisie } = await import('@/lib/missions/judicial')
+    const zoneChoice = String(park_data?.zone_key || '').toUpperCase()
+    if (isJudicialSaisie(mission as any) && (zoneChoice === 'J' || zoneChoice === 'LABO')) parkZone = zoneChoice
     if (parkZone) updatePayload.parc_zone_key = parkZone
     if (park_data?.key_location) updatePayload.key_location  = park_data.key_location
     // Roulant / non roulant — obligatoire (demande Axel 2026-07-05).

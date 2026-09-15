@@ -48,6 +48,7 @@ interface Mission {
   incident_type?: string                                       // 'relivraison' = REL
   parent_mission_id?: string | null                            // si REL, lien vers la mission parente parc
   key_location?: string | null; saisie_key_hook?: string | null // emplacement clé (hérité du parc pour une REL)
+  saisie_motif_code?: string | null   // 'SAISIE_JUDICIAIRE' → choix J / LABO à la mise en parc
   client_name?: string; client_phone?: string
   billed_to_name?: string; source?: string; dossier_number?: string; external_id?: string
   vehicle_brand?: string; vehicle_model?: string; vehicle_plate?: string; vehicle_vin?: string
@@ -1019,6 +1020,9 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
   // Override manuel de la zone (Saisie : J par defaut, mais le chauffeur peut
   // basculer en Transit s il n y a plus de place en J).
   const [parkZoneOverride,  setParkZoneOverride]  = useState<string | null>(null)
+  // Saisie judiciaire : avant de parquer, le chauffeur choisit J ou LABO dans
+  // un modal une touche. On mémorise le dépôt visé le temps du choix.
+  const [judicialPrompt,    setJudicialPrompt]    = useState<VrLoc | null>(null)
   // Emplacement de la clé à la mise en parc (Olivier 2026-06-18).
   // Défaut « Dans le véhicule » (cas le plus fréquent).
   const [keyLocation,       setKeyLocation]       = useState<string>('in_vehicle')
@@ -2224,9 +2228,13 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
   const suggestedZoneKey: string | null = defaultParcZone ?? null
 
   // ── Mise en parc ──────────────────────────────────────────────────────────
-  const doPark = async (vr: VrLoc) => {
+  const isJudicial = M.source === 'police_saisie' && M.saisie_motif_code === 'SAISIE_JUDICIAIRE'
+  const doPark = async (vr: VrLoc, zoneChoice?: string) => {
     // Roulant / non roulant OBLIGATOIRE (demande Axel 2026-07-05).
     if (isRollable === null) { setErr(t('mission_detail.rollable_required')); return }
+    // Saisie judiciaire : parking fourrière (J) ou zone LABO — une touche, pas
+    // de liste. Olivier 15/09/2026.
+    if (isJudicial && !zoneChoice) { setJudicialPrompt(vr); return }
     setLoading(true); setErr('')
     try {
       // Best-effort : si le réseau est KO pile à la mise en parc, on ne bloque
@@ -2263,7 +2271,7 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
           },
           park_data: {
             stage_name:         vr.name,
-            zone_key:           suggestedZoneKey || undefined,
+            zone_key:           zoneChoice || parkZoneOverride || suggestedZoneKey || undefined,
             // Roulant/non roulant : désormais pour TOUTES les mises en parc.
             is_rollable:        isRollable != null ? isRollable : undefined,
             is_right_direction: isPoliceAccident ? !!isRightDirection : undefined,
@@ -5102,6 +5110,27 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
       )}
 
       {/* ── Modal Adresse de destination (DSP→REM, SNC/SC REM) ───────────── */}
+      {judicialPrompt && (
+        <div className="fixed inset-0 bg-black/80 z-[70] flex items-end">
+          <div className="bg-surface w-full rounded-t-3xl p-6 space-y-4" onClick={e => e.stopPropagation()}>
+            <div className="flex justify-between items-center">
+              <h2 className="text-ink font-semibold text-lg"><T k="close.judicial_zone_title" /></h2>
+              <button onClick={() => setJudicialPrompt(null)} className="text-ink-muted text-2xl">×</button>
+            </div>
+            <p className="text-ink-muted text-sm"><T k="close.judicial_zone_desc" /></p>
+            <button disabled={loading}
+              onClick={() => { const vr = judicialPrompt; setJudicialPrompt(null); setParkZoneOverride('J'); doPark(vr, 'J') }}
+              className="w-full py-5 bg-blue-600 hover:bg-blue-700 text-white rounded-2xl text-base font-bold transition disabled:opacity-50">
+              <T k="close.judicial_zone_j" />
+            </button>
+            <button disabled={loading}
+              onClick={() => { const vr = judicialPrompt; setJudicialPrompt(null); setParkZoneOverride('LABO'); doPark(vr, 'LABO') }}
+              className="w-full py-5 bg-amber-500 hover:bg-amber-600 text-black rounded-2xl text-base font-bold transition disabled:opacity-50">
+              <T k="close.judicial_zone_labo" />
+            </button>
+          </div>
+        </div>
+      )}
       {destPrompt && (
         <div className="fixed inset-0 bg-black/70 z-50 flex items-end">
           <div className="bg-surface w-full rounded-t-3xl p-6 space-y-4 max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>

@@ -33,6 +33,10 @@ export interface ParcLabelData {
   model?: string  // Modele vehicule (ex: "5")
   plate?: string  // Immatriculation (ex: "1LPK879")
   vin?:   string  // VIN vehicule (optionnel, ligne sautee si vide)
+  /** Bandeau en vidéo inversée sous le VIN (ex. 'ZONE\\&LABO' — \\& = saut de
+   *  ligne ^FB). Réservé à ce qui doit sauter aux yeux au premier regard :
+   *  un véhicule judiciaire au labo ne se range pas en J. Olivier 15/09/2026. */
+  banner?: string
 }
 
 /**
@@ -117,6 +121,13 @@ export function buildParcLabelZPL(data: ParcLabelData): string {
   // Note pied (sautee si vide)
   const noteBlock = note ? `^FO15,555\n^A0N,24,24\n^FB780,1,0,L,0\n^FD${note}^FS\n` : ''
 
+  // Bandeau inversé : boîte pleine 240x120 entre le VIN (fin y=342) et la note
+  // (y=555), texte blanc centré sur deux lignes. ^FR = inversion sur fond noir.
+  const banner = data.banner ? escapeZPL(data.banner).replace('\\\\&', '\\&') : ''
+  const bannerBlock = banner
+    ? `^FO560,370\n^GB240,120,120^FS\n^FO560,380\n^A0N,52,52\n^FB240,2,4,C,0\n^FR\n^FD${banner}^FS\n`
+    : ''
+
   // ^LH16,0 = decale TOUT le label de 16 dots (= 2mm @ 8dpmm) vers la droite.
   // Olivier 2026-05-28 : marge gauche supplementaire pour ne pas etre limite
   // quand le rouleau est legerement decentre (couvrait le bord gauche du QR).
@@ -152,7 +163,7 @@ export function buildParcLabelZPL(data: ParcLabelData): string {
 ^FB240,1,0,L,0
 ^FD${plate}^FS
 
-${vinLine}${noteBlock}^XZ`
+${vinLine}${bannerBlock}${noteBlock}^XZ`
 }
 
 /**

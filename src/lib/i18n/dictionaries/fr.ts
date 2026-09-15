@@ -629,6 +629,10 @@ export const fr = {
     choose_depot:        '🅿️ Choisir le dépôt',
     park_zone:           '🅿️ Zone de parc',
     park_zone_desc:      'Le véhicule va en zone {zone} (définie pour cette source).',
+    judicial_zone_title: 'Saisie judiciaire — où le mettre ?',
+    judicial_zone_desc:  'Choisis l’emplacement. Si c’est le labo, l’étiquette le dira en gros.',
+    judicial_zone_j:     '🅿️ Parking fourrière (zone J)',
+    judicial_zone_labo:  '🔬 Zone LABO',
   },
 
   key_loc: {
