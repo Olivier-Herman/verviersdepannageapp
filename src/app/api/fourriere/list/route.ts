@@ -48,7 +48,8 @@ export async function GET(req: Request) {
       parc_zone_key, parc_row_number, parc_slot_index,
       status, source, parked_at, updated_at,
       odoo_vehicle_id, odoo_helpdesk_id,
-      client_name, migration_pending, migration_pending_reason
+      client_name, migration_pending, migration_pending_reason,
+      officer_name, police_zone
     `)
     .eq('status', 'parked')
     .not('parc_zone_key', 'is', null)
@@ -118,6 +119,10 @@ export async function GET(req: Request) {
       driver:           m.client_name || null,        // ancienne notion "client" exposee comme driver pour rétrocompat front
       state_id:         null,
       zone_code:        m.parc_zone_key,
+      // Policier requérant (appels police) : filtre par nom dans l'inventaire.
+      // Olivier 15/09/2026.
+      officer:          m.officer_name || null,
+      police_zone:      m.police_zone || null,
       zone_label:       zoneConf?.label || m.parc_zone_key,
       parc_row_number:  m.parc_row_number ?? null,
       parc_slot_index:  m.parc_slot_index ?? null,

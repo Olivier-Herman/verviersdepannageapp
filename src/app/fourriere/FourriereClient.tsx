@@ -25,6 +25,8 @@ interface Vehicle {
   driver:           string | null
   state_id:         number | null
   zone_code:        string | null
+  officer?:         string | null   // policier requérant (appels police)
+  police_zone?:     string | null
   zone_label:       string | null
   parc_row_number:  number | null
   parc_slot_index:  number | null
@@ -83,6 +85,16 @@ export default function FourriereClient({ userRole, userName, userEmail, userMod
   const [loading, setLoading]     = useState(true)
   const [filter, setFilter]       = useState<string>('')         // recherche libre
   const [zoneFilter, setZoneFilter] = useState<string>('all')    // code zone ou 'all'
+  // Filtre par nom de policier (appels police). Les noms sont saisis librement,
+  // « Nom Prénom » ou « Prénom Nom » selon la fiche : on compare mot à mot, sans
+  // accents ni casse, dans n'importe quel ordre. Olivier 15/09/2026.
+  const [officerFilter, setOfficerFilter] = useState<string>('')
+  const normName = (x: string | null | undefined) =>
+    String(x || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+  const matchOfficer = (name: string | null | undefined, q: string) => {
+    const n = normName(name); if (!n) return false
+    return normName(q).split(/\s+/).filter(Boolean).every(tok => n.includes(tok))
+  }
   const [onlyToPlace, setOnlyToPlace] = useState<boolean>(false) // toggle "À placer"
   const [moving, setMoving]       = useState<Vehicle | null>(null)
   const [unlocatedCount, setUnlocatedCount] = useState<number>(0)
@@ -138,6 +150,7 @@ export default function FourriereClient({ userRole, userName, userEmail, userMod
     let res = scopedVehicles
     if (onlyToPlace) res = res.filter(needsPlacement)
     if (zoneFilter !== 'all') res = res.filter(v => v.zone_code === zoneFilter)
+    if (officerFilter.trim()) res = res.filter(v => matchOfficer(v.officer, officerFilter))
     const q = filter.toLowerCase().trim()
     if (q) {
       res = res.filter(v =>
@@ -149,7 +162,15 @@ export default function FourriereClient({ userRole, userName, userEmail, userMod
       )
     }
     return res
-  }, [scopedVehicles, filter, zoneFilter, onlyToPlace])
+  }, [scopedVehicles, filter, zoneFilter, onlyToPlace, officerFilter])
+
+  // Noms de policiers présents dans le parc affiché : suggestions du champ, pas
+  // une liste imposée (178 orthographes en base, l'ordre nom/prénom varie).
+  const officerNames = useMemo(() => {
+    const set = new Set<string>()
+    for (const v of scopedVehicles) if (v.officer) set.add(v.officer.trim())
+    return Array.from(set).sort((a, b) => a.localeCompare(b, 'fr'))
+  }, [scopedVehicles])
 
   const countsByZone = useMemo(() => {
     const m = new Map<string, number>()
@@ -297,13 +318,31 @@ export default function FourriereClient({ userRole, userName, userEmail, userMod
           </div>
         </div>
 
-        {/* Recherche */}
-        <input
-          value={filter}
-          onChange={e => setFilter(e.target.value)}
-          placeholder="Rechercher plaque, VIN, marque, modèle, chauffeur..."
-          className="w-full bg-surface-2 border rounded-xl px-3 py-2 text-ink text-sm focus:outline-none focus:border-brand placeholder:text-ink-faint"
-        />
+        {/* Recherche + filtre policier */}
+        <div className="flex flex-col sm:flex-row gap-2">
+          <input
+            value={filter}
+            onChange={e => setFilter(e.target.value)}
+            placeholder="Rechercher plaque, VIN, marque, modèle, chauffeur..."
+            className="flex-1 bg-surface-2 border rounded-xl px-3 py-2 text-ink text-sm focus:outline-none focus:border-brand placeholder:text-ink-faint"
+          />
+          <div className="relative sm:w-72">
+            <input
+              value={officerFilter}
+              onChange={e => setOfficerFilter(e.target.value)}
+              list="fourriere-officers"
+              placeholder="🚔 Policier (nom ou prénom)"
+              className="w-full bg-surface-2 border rounded-xl px-3 py-2 pr-8 text-ink text-sm focus:outline-none focus:border-brand placeholder:text-ink-faint"
+            />
+            {officerFilter && (
+              <button type="button" onClick={() => setOfficerFilter('')} aria-label="Effacer le filtre policier"
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-ink-muted hover:text-ink text-lg leading-none">×</button>
+            )}
+            <datalist id="fourriere-officers">
+              {officerNames.map(n => <option key={n} value={n} />)}
+            </datalist>
+          </div>
+        </div>
 
         {/* Tableau */}
         {loading ? (
@@ -375,6 +414,7 @@ export default function FourriereClient({ userRole, userName, userEmail, userMod
                       <td className="px-3 py-2">
                         <p className="text-ink">{[v.brand, v.model].filter(Boolean).join(' ') || '—'}</p>
                         {v.driver && <p className="text-ink-muted text-xs">{v.driver}</p>}
+                        {v.officer && <p className="text-ink-muted text-xs">🚔 {v.officer}{v.police_zone ? ` · ${v.police_zone}` : ''}</p>}
                       </td>
                       <td className="px-3 py-2 font-mono text-xs text-ink-secondary">{v.vin || '—'}</td>
                       <td className="px-3 py-2 text-xs text-ink-muted">{fmtDate(v.last_update)}</td>
