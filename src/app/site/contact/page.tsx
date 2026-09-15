@@ -1,6 +1,9 @@
+import { Suspense } from 'react'
 import { TEL, TEL_HREF, DEPOTS } from '../_data'
+import ContactForm from '../_components/ContactForm'
 
 export const metadata = {
+  alternates: { canonical: '/contact' },
   title: 'Contact & dépôts',
   description:
     'Un seul numéro 24h/24 : 087 35 18 20. Dépôts de Pepinster, Verviers et Aywaille. '
@@ -38,10 +41,23 @@ export default function Contact() {
               </div>
             ))}
           </div>
-          <div className="ph" style={{ aspectRatio: '21 / 9', borderRadius: 16 }}>
-            <span className="ph-label">
-              Carte interactive — les 3 dépôts, plans d’accès, itinéraire en un clic
-            </span>
+          <div className="lot-detail" id="ecrire">
+            <div className="stack g16">
+              <div className="sec-head" style={{ marginBottom: 0 }}>
+                <span className="borne">Nous écrire</span>
+                <h2>Pour tout ce qui n’est pas urgent</h2>
+                <p>
+                  Un rendez-vous, un devis, un transport à planifier, une couverture d’événement.
+                  On répond pendant les heures de bureau, en général le jour même.
+                </p>
+              </div>
+              <div className="ph" style={{ aspectRatio: '16 / 9', borderRadius: 16 }}>
+                <span className="ph-label">Carte — les 3 dépôts, plans d’accès, itinéraire en un clic</span>
+              </div>
+            </div>
+            <div className="bidbox" style={{ position: 'static' }}>
+              <Suspense fallback={null}><ContactForm /></Suspense>
+            </div>
           </div>
         </div>
       </section>

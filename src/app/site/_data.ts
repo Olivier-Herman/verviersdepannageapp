@@ -7,6 +7,20 @@
 // Le jour où on veut des compteurs qui se recalculent tout seuls, c'est ce
 // fichier qui devient une requête. Olivier 2026-08-21.
 
+/**
+ * Base des liens du site.
+ *   · tant que le site vit sous app.verviersdepannage.com/site : '/site'
+ *   · une fois verviersdepannage.be branché (rewrite par hôte dans next.config) :
+ *     NEXT_PUBLIC_SITE_BASE='' → les liens deviennent /fourriere, /tarifs…
+ * Une variable d'env, pas un if sur le hostname : les pages restent statiques.
+ * Olivier 2026-09-15.
+ */
+export const SITE_BASE = process.env.NEXT_PUBLIC_SITE_BASE ?? '/site'
+export const p = (path: string) => `${SITE_BASE}${path === '/' ? '' : path}` || '/'
+
+/** Adresse canonique du site public — les balises canonical/OG pointent là. */
+export const SITE_URL = 'https://verviersdepannage.be'
+
 export const TEL         = '087 35 18 20'
 export const TEL_HREF    = 'tel:+3287351820'
 export const PERIODE     = 'du 1er juin au 20 août 2026'
@@ -66,11 +80,11 @@ export const ASSISTEURS = [
 // elles se construisent depuis source_tariff_lines — lib/tarifs/site-tariffs.ts.
 
 export const NAV = [
-  { href: '/site',            label: 'Accueil' },
-  { href: '/site/depannage',  label: 'Dépannage' },
-  { href: '/site/fourriere',  label: 'Fourrière' },
-  { href: '/site/circuit',    label: 'Circuit & événements' },
-  { href: '/site/vente',      label: 'Véhicules à vendre' },
-  { href: '/site/pros',       label: 'Pros' },
-  { href: '/site/contact',    label: 'Contact' },
+  { href: p('/'),                label: 'Accueil' },
+  { href: p('/depannage'),       label: 'Dépannage' },
+  { href: p('/fourriere'),       label: 'Fourrière' },
+  { href: p('/circuit'),         label: 'Circuit & événements' },
+  { href: p('/vente'),           label: 'Véhicules à vendre' },
+  { href: p('/pros'),            label: 'Pros' },
+  { href: p('/contact'),         label: 'Contact' },
 ]

@@ -1,4 +1,8 @@
+import Link from 'next/link'
+import { p } from '../_data'
+
 export const metadata = {
+  alternates: { canonical: '/pros' },
   title: 'Garages, assureurs & assisteurs',
   description:
     'Transport de véhicules roulants et non roulants, dépôt-reprise, gardiennage en parc fermé, '
@@ -52,6 +56,11 @@ export default function Pros() {
                 <li>États de frais au tarif officiel, transmis dans les formes.</li>
               </ul>
             </div></div>
+          </div>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'center' }}>
+            <Link className="big-tel" href={p('/contact?motif=pro#ecrire')} style={{ fontSize: '1.2rem' }}>
+              Décrire mon besoin →
+            </Link>
           </div>
         </div>
       </section>

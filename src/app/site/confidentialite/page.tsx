@@ -12,6 +12,7 @@
 import { TEL, TEL_HREF } from '../_data'
 
 export const metadata = {
+  alternates: { canonical: '/confidentialite' },
   title: 'Politique de confidentialité',
   description: 'Quelles données nous collectons sur ce site, pourquoi, combien de temps, et quels sont vos droits.',
   robots: { index: false },

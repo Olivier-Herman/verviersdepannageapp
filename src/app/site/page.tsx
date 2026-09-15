@@ -1,10 +1,11 @@
 import Link from 'next/link'
 import {
   TEL, TEL_HREF, CHIFFRES, TICKER,
-  COMMUNES, COMMUNES_AUTRES, DEPOTS, ASSISTEURS,
+  COMMUNES, COMMUNES_AUTRES, DEPOTS, ASSISTEURS, p,
 } from './_data'
 
 export const metadata = {
+  alternates: { canonical: '/' },
   title: 'Verviers Dépannage — dépannage et remorquage 24h/24',
   description:
     'Une panne, un accident, une voiture immobilisée ? Dépannage et remorquage 24h/24 dans la région '
@@ -35,19 +36,19 @@ export default function SiteAccueil() {
 
         <div className="wrap">
           <div className="paths">
-            <Link className="path" href="/site/depannage">
+            <Link className="path" href={p('/depannage')}>
               <span className="num">01</span>
               <h3>Je suis en panne ou accidenté</h3>
               <p>Vous êtes sur la route, on vous prend en charge et on vous dit dans combien de temps on est là.</p>
               <span className="go">Ce qui se passe →</span>
             </Link>
-            <Link className="path" href="/site/fourriere">
+            <Link className="path" href={p('/fourriere')}>
               <span className="num">02</span>
               <h3>Ma voiture a été enlevée</h3>
               <p>Véhicule saisi ou déplacé par la police&nbsp;: la procédure, les documents, les frais officiels.</p>
               <span className="go">La marche à suivre →</span>
             </Link>
-            <Link className="path" href="/site/pros">
+            <Link className="path" href={p('/pros')}>
               <span className="num">03</span>
               <h3>Je suis un pro</h3>
               <p>Garage, assureur, assisteur, organisateur d’événement. Transport, missions, couverture.</p>
@@ -97,7 +98,7 @@ export default function SiteAccueil() {
                   Batterie, crevaison, panne sèche, clés enfermées&nbsp;: près d’un tiers de nos interventions
                   se règlent au bord de la route. Sinon, on remorque vers le garage de votre choix.
                 </p>
-                <Link className="card-link" href="/site/depannage">Comment ça se passe →</Link>
+                <Link className="card-link" href={p('/depannage')}>Comment ça se passe →</Link>
               </div>
             </div>
             <div className="card">
@@ -108,7 +109,7 @@ export default function SiteAccueil() {
                   Nous assurons la fourrière pour les zones de police de la région. Parc fermé et surveillé,
                   frais au tarif officiel des frais de justice.
                 </p>
-                <Link className="card-link" href="/site/fourriere">Récupérer mon véhicule →</Link>
+                <Link className="card-link" href={p('/fourriere')}>Récupérer mon véhicule →</Link>
               </div>
             </div>
             <div className="card">
@@ -119,7 +120,7 @@ export default function SiteAccueil() {
                   Spa-Francorchamps, Francofolies, grandes manifestations. Un point d’appui à Francorchamps
                   et l’habitude des véhicules qui n’aiment pas les sangles ordinaires.
                 </p>
-                <Link className="card-link" href="/site/circuit">Notre activité circuit →</Link>
+                <Link className="card-link" href={p('/circuit')}>Notre activité circuit →</Link>
               </div>
             </div>
             <div className="card">
@@ -130,7 +131,7 @@ export default function SiteAccueil() {
                   Nous mettons régulièrement des véhicules en vente, roulants ou pour pièces. Photos,
                   kilométrage, état&nbsp;: vous déposez votre offre en ligne.
                 </p>
-                <Link className="card-link" href="/site/vente">Voir les véhicules →</Link>
+                <Link className="card-link" href={p('/vente')}>Voir les véhicules →</Link>
               </div>
             </div>
           </div>

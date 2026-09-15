@@ -12,10 +12,12 @@ import {
   type SaleMode, type BidStatus,
 } from '@/lib/ventes/types'
 import Countdown from '../_components/Countdown'
+import { p } from '../_data'
 
 export const dynamic = 'force-dynamic'
 
 export const metadata = {
+  alternates: { canonical: '/vente' },
   title: 'Véhicules à vendre',
   description:
     'Voitures et utilitaires à vendre en l’état, au plus offrant ou à prix fixe. Photos, kilométrage, '
@@ -82,7 +84,7 @@ export default async function VenteListe() {
                 const offers = publicBidSummary(l.sale_mode as SaleMode, byId[l.id] || [])
                 const annee  = l.first_registration ? new Date(l.first_registration).getFullYear() : null
                 return (
-                  <Link className="lot" key={l.id} href={`/site/vente/${l.reference}`}>
+                  <Link className="lot" key={l.id} href={p(`/vente/${l.reference}`)}>
                     <div className="lot-ph">
                       <span className={`badge ${l.condition}`}>
                         {SALE_CONDITIONS[l.condition as keyof typeof SALE_CONDITIONS] || l.condition}

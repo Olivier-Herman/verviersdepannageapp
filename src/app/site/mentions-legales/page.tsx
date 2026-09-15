@@ -9,6 +9,7 @@
 import { TEL, TEL_HREF } from '../_data'
 
 export const metadata = {
+  alternates: { canonical: '/mentions-legales' },
   title: 'Mentions légales',
   description: 'Éditeur, hébergement, propriété intellectuelle et responsabilité du site verviersdepannage.be.',
   robots: { index: false },

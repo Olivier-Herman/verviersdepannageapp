@@ -1,6 +1,6 @@
 import Link  from 'next/link'
 import Image from 'next/image'
-import { TEL, TEL_HREF, DEPOTS } from '../_data'
+import { TEL, TEL_HREF, DEPOTS, p } from '../_data'
 
 export default function SiteFooter() {
   return (
@@ -23,11 +23,11 @@ export default function SiteFooter() {
           <div>
             <h4>Services</h4>
             <ul>
-              <li><Link href="/site/depannage">Dépannage &amp; remorquage</Link></li>
-              <li><Link href="/site/fourriere">Fourrière</Link></li>
-              <li><Link href="/site/circuit">Circuit &amp; événements</Link></li>
-              <li><Link href="/site/vente">Véhicules à vendre</Link></li>
-              <li><Link href="/site/pros">Garages &amp; assisteurs</Link></li>
+              <li><Link href={p('/depannage')}>Dépannage &amp; remorquage</Link></li>
+              <li><Link href={p('/fourriere')}>Fourrière</Link></li>
+              <li><Link href={p('/circuit')}>Circuit &amp; événements</Link></li>
+              <li><Link href={p('/vente')}>Véhicules à vendre</Link></li>
+              <li><Link href={p('/pros')}>Garages &amp; assisteurs</Link></li>
             </ul>
           </div>
           <div>
@@ -39,11 +39,11 @@ export default function SiteFooter() {
           <div>
             <h4>Infos</h4>
             <ul>
-              <li><Link href="/site/contact">Contact</Link></li>
-              <li><Link href="/site/mentions-legales">Mentions légales</Link></li>
-              <li><Link href="/site/confidentialite">Politique de confidentialité</Link></li>
-              <li><Link href="/site/tarifs">Tarifs officiels</Link></li>
-              <li><Link href="/site/vente">Conditions de vente</Link></li>
+              <li><Link href={p('/contact')}>Contact</Link></li>
+              <li><Link href={p('/mentions-legales')}>Mentions légales</Link></li>
+              <li><Link href={p('/confidentialite')}>Politique de confidentialité</Link></li>
+              <li><Link href={p('/tarifs')}>Tarifs officiels</Link></li>
+              <li><Link href={p('/vente')}>Conditions de vente</Link></li>
             </ul>
           </div>
         </div>

@@ -1,4 +1,5 @@
 import Link from 'next/link'
+import { p } from '../_data'
 import { getSiteTariffs } from '@/lib/tarifs/site-tariffs'
 
 // Grille tarifaire lue en base (source_tariff_lines, no-store) : la page ne peut
@@ -7,6 +8,7 @@ import { getSiteTariffs } from '@/lib/tarifs/site-tariffs'
 export const dynamic = 'force-dynamic'
 
 export const metadata = {
+  alternates: { canonical: '/fourriere' },
   title: 'Fourrière — récupérer un véhicule saisi',
   description:
     'Votre véhicule a été enlevé par la police ? Procédure, documents à apporter, horaires et frais '
@@ -113,7 +115,7 @@ export default async function Fourriere() {
               soit +50&nbsp;% sur l’enlèvement.
             </p>
             <p style={{ fontSize: '.95rem' }}>
-              <Link className="card-link" href="/site/tarifs">Voir la grille officielle complète →</Link>
+              <Link className="card-link" href={p('/tarifs')}>Voir la grille officielle complète →</Link>
             </p>
           </div>
 

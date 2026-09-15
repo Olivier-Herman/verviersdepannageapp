@@ -1,6 +1,7 @@
 import { TEL, TEL_HREF } from '../_data'
 
 export const metadata = {
+  alternates: { canonical: '/depannage' },
   title: 'Dépannage & remorquage 24h/24',
   description:
     'Panne, accident, crevaison, batterie : intervention sur place ou remorquage vers le garage de votre '

@@ -10,7 +10,7 @@
 // téléchargement, c'est lui qu'on sort au comptoir. Olivier 2026-08-21.
 
 import Link from 'next/link'
-import { TEL, TEL_HREF } from '../_data'
+import { TEL, TEL_HREF, p } from '../_data'
 import { getSiteTariffs } from '@/lib/tarifs/site-tariffs'
 
 // Grille tarifaire lue en base (source_tariff_lines, no-store) : la page ne peut
@@ -19,6 +19,7 @@ import { getSiteTariffs } from '@/lib/tarifs/site-tariffs'
 export const dynamic = 'force-dynamic'
 
 export const metadata = {
+  alternates: { canonical: '/tarifs' },
   title: 'Tarifs officiels — saisies judiciaires et SIABIS+',
   description:
     'Les grilles réglementées appliquées aux enlèvements judiciaires (circulaire 131/13) et aux '
@@ -202,7 +203,7 @@ export default async function Tarifs() {
             <strong>Une fois la saisie levée, le compteur change.</strong> Le tarif ci-dessus ne
             s’applique que tant que la saisie court. Si le véhicule reste chez nous après la levée,
             il occupe une place à nos conditions&nbsp;: 20 € HTVA par jour. Voir la
-            page <Link href="/site/fourriere">Fourrière</Link>.
+            page <Link href={p('/fourriere')}>Fourrière</Link>.
           </div>
 
           <p>

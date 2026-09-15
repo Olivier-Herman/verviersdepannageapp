@@ -12,7 +12,7 @@ import {
   SALE_CONDITIONS, SALE_DESTINATIONS,
   type SaleMode, type BidStatus,
 } from '@/lib/ventes/types'
-import { TEL } from '../../_data'
+import { TEL, p } from '../../_data'
 import Countdown from '../../_components/Countdown'
 import Gallery   from '../../_components/Gallery'
 import BidForm   from '../../_components/BidForm'
@@ -84,7 +84,7 @@ export default async function FicheVehicule({ params }: { params: { ref: string 
   return (
     <section style={{ paddingTop: 34 }}>
       <div className="wrap" style={{ marginBottom: 22 }}>
-        <Link className="card-link" href="/site/vente">← Tous les véhicules</Link>
+        <Link className="card-link" href={p('/vente')}>← Tous les véhicules</Link>
       </div>
 
       <div className="wrap lot-detail">

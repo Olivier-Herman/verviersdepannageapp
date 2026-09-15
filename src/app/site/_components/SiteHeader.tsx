@@ -3,19 +3,19 @@
 import Link              from 'next/link'
 import Image             from 'next/image'
 import { usePathname }   from 'next/navigation'
-import { NAV, TEL, TEL_HREF } from '../_data'
+import { NAV, TEL, TEL_HREF, p } from '../_data'
 
 export default function SiteHeader() {
   const path = usePathname()
   // '/site/vente/VD-2026-001' doit garder « Véhicules à vendre » actif : on
   // compare sur le préfixe, sauf pour l'accueil qui serait actif partout.
   const isActive = (href: string) =>
-    href === '/site' ? path === '/site' : path.startsWith(href)
+    href === p('/') ? path === p('/') : path.startsWith(href)
 
   return (
     <header className="vdsite-top">
       <div className="wrap vdsite-topbar">
-        <Link href="/site" className="vdsite-brand" aria-label="Verviers Dépannage — accueil">
+        <Link href={p('/')} className="vdsite-brand" aria-label="Verviers Dépannage — accueil">
           <Image src="/vd-logo.png" alt="Verviers Dépannage" width={820} height={456}
             priority style={{ height: 46, width: 'auto' }} />
         </Link>

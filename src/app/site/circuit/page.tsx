@@ -1,6 +1,8 @@
-import { TEL, TEL_HREF } from '../_data'
+import Link from 'next/link'
+import { TEL, TEL_HREF, p } from '../_data'
 
 export const metadata = {
+  alternates: { canonical: '/circuit' },
   title: 'Circuit & grands événements',
   description:
     'Spa-Francorchamps, Francofolies, grandes manifestations : dépannage de véhicules de sport et de '
@@ -80,9 +82,10 @@ export default function Circuit() {
               </p>
             </div>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'center' }}>
-              <a className="big-tel" href={TEL_HREF} style={{ fontSize: '1.2rem' }}>
-                ☎ <span className="num">{TEL}</span>
-              </a>
+              <Link className="big-tel" href={p('/contact?motif=evenement#ecrire')} style={{ fontSize: '1.2rem' }}>
+                Décrire mon événement →
+              </Link>
+              <a className="tel-btn" href={TEL_HREF}>ou {TEL}</a>
             </div>
           </div>
         </div>
