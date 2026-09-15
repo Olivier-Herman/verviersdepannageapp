@@ -85,6 +85,20 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     status:     body.status,
     updated_at: now,
   }
+  // Forcer une fiche EN PARC vers clôturée : elle sort du parc pour de bon. La
+  // place est libérée par le contrôle de sortie, mais la zone restait sur la
+  // fiche — et une réimpression d'étiquette repartait en modèle relivraison
+  // (zone K). 2HMM525, 15/09/2026 : le chauffeur avait parqué au lieu de
+  // clôturer, le bureau a forcé, la fiche gardait « K ».
+  if ((body.status === 'completed' || body.status === 'to_invoice') && body.parc_zone_key === undefined) {
+    const { data: cur2 } = await sb.from('incoming_missions').select('status, parc_exit_at').eq('id', params.id).maybeSingle()
+    if (cur2?.status === 'parked') {
+      update.parc_zone_key   = null
+      update.parc_row_number = null
+      update.parc_slot_index = null
+      if (!cur2.parc_exit_at) update.parc_exit_at = now
+    }
+  }
 
   // Si on réinitialise à "dispatching" ou "new" → désassigner le chauffeur
   if (body.status === 'dispatching' || body.status === 'new' || body.reset_assignment) {
