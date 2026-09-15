@@ -114,6 +114,17 @@ export async function reprintLabelForMission(
         address:     addressText,
       })
       const relResult = await printZPLRaw(relZpl)
+      // Même trace que l'étiquette parc : une impression qui ne laisse rien dans
+      // la fiche est introuvable après coup. 2HMM525 (15/09/2026) : étiquette REL
+      // sortie à la mise en parc, et rien dans le journal pour le dire.
+      await sb.from('mission_logs').insert({
+        mission_id: mission.id,
+        action:     relResult.ok ? 'label_printed' : 'label_print_failed',
+        notes:      relResult.ok
+          ? `Étiquette relivraison imprimée — ${addressText}`
+          : `Étiquette relivraison NON imprimée : ${relResult.error || 'erreur inconnue'}`,
+        metadata:   { kind: 'rel', source: mission.source, address: cleanAddr || null, ok: relResult.ok, error: relResult.ok ? null : (relResult.error || null) },
+      }).then(() => {}, () => {})
       if (!relResult.ok) {
         return { ok: false, error: `Impression REL echec : ${relResult.error}`, mission_id: mission.id }
       }
