@@ -31,9 +31,13 @@ export async function GET(req: Request) {
     .order('completed_at', { ascending: false, nullsFirst: false })
     .limit(BATCH)
 
-  let computed = 0, zero = 0, skipped = 0
+  let computed = 0, zero = 0, skipped = 0, deferred = 0
   const now = new Date().toISOString()
   for (const m of (missions || [])) {
+    // Service de distance ou de géocodage saturé : inutile d'enchaîner les 14
+    // autres fiches, chaque essai consomme du quota et rallonge la panne.
+    // On rend la main, la passe suivante (10 min) reprendra. 15/09/2026.
+    if (deferred) break
     // Mêmes lignes que la facturation (brouillon > montants forcés > moteur
     // Siabis > estimation) : avant, le moteur général seul figeait 0 sur les
     // Siabis et une tranche 0 km sur les destinations non géocodées (2ESG097,
@@ -42,7 +46,10 @@ export async function GET(req: Request) {
     try {
       const built = await actionLines(m as any, undefined, false)
       if (built.has_tariff && built.lines.length) htva = linesTotal(built.lines)
-      else unknown = /kilom|géocod/i.test(String(built.reason || ''))
+      else {
+        unknown = /kilom|géocod/i.test(String(built.reason || ''))
+        if (unknown && /indisponible|quota|service/i.test(String(built.reason || ''))) { deferred++; continue }
+      }
     } catch { htva = 0 }
     if (unknown) { skipped++; continue }   // km inconnus : on réessaiera quand la fiche aura ses coordonnées
     // On fige même 0 (estimated_htva_at) pour ne pas re-tenter en boucle.
@@ -52,5 +59,5 @@ export async function GET(req: Request) {
     if (htva > 0) computed++; else zero++
   }
 
-  return NextResponse.json({ ok: true, processed: (missions || []).length, computed, zero, skipped, more: (missions || []).length >= BATCH })
+  return NextResponse.json({ ok: true, processed: (missions || []).length, computed, zero, skipped, deferred, more: (missions || []).length >= BATCH })
 }

@@ -9,6 +9,7 @@
 
 import { createAdminClient } from '@/lib/supabase'
 import { getDrivingRoute } from '@/lib/routing/ors'
+import { wasTransientGeocodeFailure } from '@/lib/geocode/server'
 import { getApplicableSurcharges, isBelgianHoliday } from '@/lib/surcharges'
 import { nightsBetween } from '@/lib/parc/nights'
 import { normalizeType, isRemorquage, isDsp, isTrajetVide, isRelivraison, isRemRel } from '@/lib/missions/mission-types'
@@ -370,6 +371,13 @@ function kmUnknownReason(mission: MissionLike): string {
   const noIncident = m.incident_lat == null || m.incident_lng == null
   const hasDestAddr = !!String(m.destination_address || '').trim()
   const noDest = hasDestAddr && (m.destination_lat == null || m.destination_lng == null)
+  // Coordonnées absentes parce que le géocodeur serveur était SATURÉ (quota
+  // ORS, réseau) : ce n'est pas une adresse à corriger, c'est un service qui
+  // reviendra. Le dire faux envoyait le bureau « ouvrir la fiche » pour rien
+  // (10147028, 15/09/2026).
+  if ((noIncident || noDest) && wasTransientGeocodeFailure(m.id)) {
+    return 'kilomètres inconnus : service de géocodage indisponible pour le moment (quota) — la fiche sera recalculée automatiquement'
+  }
   if (noIncident || noDest) {
     return `kilomètres inconnus : l’adresse ${noIncident ? 'd’intervention' : 'de destination'} n’est pas géocodée (ouvre la fiche et resélectionne l’adresse dans les suggestions)`
   }

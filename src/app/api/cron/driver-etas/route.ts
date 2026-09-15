@@ -39,7 +39,7 @@ export async function GET(req: Request) {
 
   const { data: missions, error } = await sb
     .from('incoming_missions')
-    .select('id, status, assigned_to, incident_lat, incident_lng, destination_lat, destination_lng')
+    .select('id, status, assigned_to, incident_lat, incident_lng, destination_lat, destination_lng, driver_eta_at')
     .in('status', ACTIVE)
     .not('assigned_to', 'is', null)
     .limit(300)
@@ -74,6 +74,13 @@ export async function GET(req: Request) {
       skipped++
       continue
     }
+    // Position inchangée depuis le dernier ETA : le même itinéraire donnerait
+    // le même résultat. Ce cron seul brûlait ~2 900 appels ORS par jour pour
+    // 6 missions actives (quota gratuit : 2 000) et affamait la facturation.
+    // 15/09/2026.
+    const lastEta = (m as any).driver_eta_at ? new Date((m as any).driver_eta_at).getTime() : 0
+    const posAt   = now - pos.age
+    if (lastEta && posAt <= lastEta) { skipped++; continue }
     try {
       const r = await getDrivingRoute(pos, target)
       const mins = truckCapMinutes(r)
