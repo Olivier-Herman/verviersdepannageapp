@@ -33,8 +33,8 @@ export interface ParcLabelData {
   model?: string  // Modele vehicule (ex: "5")
   plate?: string  // Immatriculation (ex: "1LPK879")
   vin?:   string  // VIN vehicule (optionnel, ligne sautee si vide)
-  /** Bandeau en vidéo inversée sous le VIN (ex. 'ZONE\\&LABO' — \\& = saut de
-   *  ligne ^FB). Réservé à ce qui doit sauter aux yeux au premier regard :
+  /** Bandeau en vidéo inversée sous le VIN, deux lignes max séparées par '\\n'
+   *  (ex. 'ZONE\\nLABO'). Réservé à ce qui doit sauter aux yeux au premier regard :
    *  un véhicule judiciaire au labo ne se range pas en J. Olivier 15/09/2026. */
   banner?: string
 }
@@ -123,7 +123,10 @@ export function buildParcLabelZPL(data: ParcLabelData): string {
 
   // Bandeau inversé : boîte pleine 240x120 entre le VIN (fin y=342) et la note
   // (y=555), texte blanc centré sur deux lignes. ^FR = inversion sur fond noir.
-  const banner = data.banner ? escapeZPL(data.banner).replace('\\\\&', '\\&') : ''
+  // Deux lignes séparées par un saut de ligne réel ; escapeZPL mangerait un
+  // \& (il remplace la barre oblique inverse), donc on échappe chaque ligne
+  // puis on les joint avec le saut de ligne ^FB.
+  const banner = data.banner ? data.banner.split('\n').map(l => escapeZPL(l)).join('\\&') : ''
   const bannerBlock = banner
     ? `^FO560,370\n^GB240,120,120^FS\n^FO560,380\n^A0N,52,52\n^FB240,2,4,C,0\n^FR\n^FD${banner}^FS\n`
     : ''

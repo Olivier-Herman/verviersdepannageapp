@@ -45,7 +45,7 @@ export interface PrintParcLabelInput {
    *  normale). Ex: 'Migration VD Soft OK' pour les etiquettes imprimees pendant
    *  la migration zone-par-zone. Si une note existe deja, on ajoute la mention. */
   noteAppend?:      string
-  /** Bandeau inversé (ex. 'ZONE\\&LABO'). */
+  /** Bandeau inversé, deux lignes séparées par '\\n' (ex. 'ZONE\\nLABO'). */
   banner?:          string
 }
 
