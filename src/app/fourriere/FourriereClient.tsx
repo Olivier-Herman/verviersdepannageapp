@@ -154,8 +154,7 @@ export default function FourriereClient({ userRole, userName, userEmail, userMod
     if (onlyToPlace) res = res.filter(needsPlacement)
     if (zoneFilter !== 'all') res = res.filter(v => v.zone_code === zoneFilter)
     // Contact Odoo choisi → filtre exact sur la liaison ; texte libre → nom.
-    if (officerPartnerId) res = res.filter(v => v.officer_partner_id === officerPartnerId)
-    else if (officerFilter.trim()) res = res.filter(v => matchOfficer(v.officer, officerFilter))
+    if (officerFilter.trim()) res = res.filter(v => (officerPartnerId != null && v.officer_partner_id === officerPartnerId) || matchOfficer(v.officer, officerFilter))
     const q = filter.toLowerCase().trim()
     if (q) {
       res = res.filter(v =>

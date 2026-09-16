@@ -108,8 +108,14 @@ export async function GET(req: Request) {
   if (pv)       q = q.ilike('police_pv_number', `%${escapeIlike(pv)}%`)
   // Policier : « Dupont », « Jean Dupont » ou « dupont jean » → chaque mot doit
   // apparaître dans officer_name (ET), l'ordre n'importe pas.
-  if (officerPartnerId) q = q.eq('officer_partner_id', officerPartnerId)
-  else if (officer) for (const w of officer.split(/\s+/).filter(Boolean)) q = q.ilike('officer_name', `%${escapeIlike(w)}%`)
+  // 16/09/2026 : 51 fiches sur 400 seulement portent la liaison Odoo (les
+  // chauffeurs tapent souvent le nom sans choisir) → le contact choisi vaut
+  // liaison OU nom ; le nom est comparé mot par mot, ordre libre
+  // (« Debroux Romain » en Odoo, « Romain Debroux » sur la fiche).
+  const officerWords = officer.split(/\s+/).filter(Boolean).map(w => `officer_name.ilike.%${escapeIlike(w)}%`)
+  if (officerPartnerId && officerWords.length) q = q.or(`officer_partner_id.eq.${officerPartnerId},and(${officerWords.join(',')})`)
+  else if (officerPartnerId) q = q.eq('officer_partner_id', officerPartnerId)
+  else if (officerWords.length) for (const w of officerWords) q = q.or(w)
   if (vehicle) {
     const v = escapeIlike(vehicle)
     q = q.or(`vehicle_brand.ilike.%${v}%,vehicle_model.ilike.%${v}%`)
