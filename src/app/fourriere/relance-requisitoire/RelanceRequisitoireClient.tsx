@@ -29,7 +29,7 @@ const fmtDT = (iso?: string | null) => {
 
 type Send = { at: string; email: string | null }
 
-export default function RelanceRequisitoireClient({ initialItems, appUrl }: { initialItems: Item[]; appUrl: string }) {
+export default function RelanceRequisitoireClient({ initialItems, appUrl, embedded = false }: { initialItems: Item[]; appUrl: string; embedded?: boolean }) {
   const [items, setItems]     = useState<Item[]>(initialItems)
   const [showStop, setShowStop] = useState(false)
   const [busy, setBusy]       = useState<string | null>(null)
@@ -201,8 +201,8 @@ export default function RelanceRequisitoireClient({ initialItems, appUrl }: { in
   const inputCls = 'w-full bg-surface-2 border border-app rounded-lg px-2.5 py-1.5 text-xs text-ink outline-none focus:border-brand'
 
   return (
-    <div className="min-h-screen bg-surface max-w-5xl mx-auto flex flex-col">
-      <div className="bg-surface-2 border-b border-app px-5 pt-12 pb-4">
+    <div className={`${embedded ? '' : 'min-h-screen'} bg-surface max-w-5xl mx-auto flex flex-col`}>
+      {!embedded && <div className="bg-surface-2 border-b border-app px-5 pt-12 pb-4">
         <div className="flex items-center gap-3">
           <Link href="/fourriere" className="w-10 h-10 flex items-center justify-center bg-surface-hover rounded-xl text-ink text-lg">←</Link>
           <div className="flex-1">
@@ -210,7 +210,7 @@ export default function RelanceRequisitoireClient({ initialItems, appUrl }: { in
             <p className="text-ink-muted text-xs">Saisies sans réquisitoire reçu. Relance par mail au policier (depuis fourriere@) + lien de dépôt.</p>
           </div>
         </div>
-      </div>
+      </div>}
 
       <div className="flex-1 px-5 py-5 space-y-3">
         <div className="flex items-center justify-between flex-wrap gap-2">

@@ -80,7 +80,6 @@ export const NAV_TREE_ESPACES: NavModule[] = [
     sections: [
       { href: '/fourriere',                      label: 'Parc',                   icon: Search,        requires: '/fourriere' },
       { href: '/fourriere/requisitoires',        label: 'Réquisitoires',          icon: FileText,      requires: '/fourriere', heading: 'Documents' },
-      { href: '/fourriere/relance-requisitoire', label: 'Relance réquisitoires',  icon: Mail,          requires: '/fourriere' },
       { href: '/fourriere/saisies',              label: 'États de frais',         icon: FileWarning,   requires: '/fourriere', heading: 'Facturation' },
       { href: '/fourriere/destruction',          label: 'Sortie AVP',             icon: Trash2,        requires: '/fourriere', heading: 'Sorties' },
       { href: '/fourriere/destruction/dossiers', label: 'Dossiers de destruction', icon: FolderCheck,  requires: '/fourriere' },

@@ -52,6 +52,8 @@ function fmtDate(s: string | null): string {
 
 export default function RequisitoiresClient(props: {
   userRole: string; userName: string; userEmail: string; userModules: string[]
+  /** Embarqué dans l'écran Documents (16/09/2026) : pas d'AppShell, pas de titre. */
+  embedded?: boolean
 }) {
   const [tab, setTab]         = useState('pending')
   const [items, setItems]     = useState<Item[]>([])
@@ -137,16 +139,15 @@ export default function RequisitoiresClient(props: {
     else setMsg(`⚠ ${j.error || 'Échec de la création'}`)
   }
 
-  return (
-    <AppShell title="Réquisitoires" userRole={props.userRole} userName={props.userName} userEmail={props.userEmail || undefined} userModules={props.userModules}>
-      <AmbientBackground>
-        <div className="p-4 lg:p-6 space-y-4 ambient-fade-up max-w-5xl mx-auto">
+  const body = (
+        <div className={`p-4 lg:p-6 space-y-4 max-w-5xl mx-auto ${props.embedded ? 'pt-2' : 'ambient-fade-up'}`}>
 
           <div className="flex items-center justify-between flex-wrap gap-3">
-            <div className="flex items-center gap-2">
+            {!props.embedded && <div className="flex items-center gap-2">
               <FileText size={20} className="text-brand" />
               <h1 className="font-display text-xl font-bold text-ink">Documents police (réquisitoires & levées)</h1>
-            </div>
+            </div>}
+            {props.embedded && <div />}
             <div className="flex items-center gap-2">
               <button onClick={moveAttached} disabled={running}
                 title="Déplacer vers « Mail auto-géré » les mails des documents déjà rattachés (nettoyage)"
@@ -161,11 +162,11 @@ export default function RequisitoiresClient(props: {
             </div>
           </div>
 
-          <p className="text-sm text-ink-secondary">
+          {!props.embedded && <p className="text-sm text-ink-secondary">
             Les <strong>réquisitoires</strong> et <strong>levées de saisie</strong> arrivés dans la boîte fourrière sont lus
             automatiquement (y compris les levées reçues par simple mail, sans document). Vérifie la fiche proposée puis
             rattache : le réquisitoire ajoute le n° de PV au dossier ; la levée lève le blocage police (pense à vérifier la date).
-          </p>
+          </p>}
 
           {msg && <div className="text-sm bg-surface-2 border rounded-xl px-4 py-2 text-ink">{msg}</div>}
 
@@ -192,7 +193,11 @@ export default function RequisitoiresClient(props: {
             </div>
           )}
         </div>
-      </AmbientBackground>
+  )
+  if (props.embedded) return body
+  return (
+    <AppShell title="Réquisitoires" userRole={props.userRole} userName={props.userName} userEmail={props.userEmail || undefined} userModules={props.userModules}>
+      <AmbientBackground>{body}</AmbientBackground>
     </AppShell>
   )
 }
