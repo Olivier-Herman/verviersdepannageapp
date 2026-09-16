@@ -102,7 +102,7 @@ export async function runSaisieCron(sb: any): Promise<SaisieCronSummary> {
     out.checked++
     const mission = d.mission_id
       ? (await sb.from('incoming_missions')
-          .select('source, status, domaine_remise_date, domaine_enlevement_date, levee_saisie_at, levee_saisie_date, requisitoire_at, requisitoire_doc_path, requisitoire_last_reminder_at, officer_partner_id')
+          .select('source, status, domaine_remise_date, domaine_enlevement_date, levee_saisie_at, levee_saisie_date, levee_saisie_payer, levee_saisie_type, requisitoire_at, requisitoire_doc_path, requisitoire_last_reminder_at, officer_partner_id')
           .eq('id', d.mission_id).maybeSingle()).data
       : null
     const remise = mission?.domaine_remise_date ? String(mission.domaine_remise_date).slice(0, 10) : null

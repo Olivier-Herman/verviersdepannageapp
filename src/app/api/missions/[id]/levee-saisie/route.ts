@@ -145,6 +145,25 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     metadata:   { type, date, has_doc: !!firstPath, payer: payer || null },
   })
 
+  // ── Levée « frais de justice » ⇒ le dossier DOIT passer dans les états de frais,
+  // même s'il est antérieur au périmètre saisie_scope_from (GG036SD, entrée
+  // 29/01/2026, Olivier 16/09/2026). Sans ligne saisie_dossiers, le cron
+  // n'établit jamais l'état de frais final.
+  if (payer === 'frais_justice' && type !== 'temporaire' && mission.source === 'police_saisie') {
+    try {
+      const { data: existing } = await sb.from('saisie_dossiers').select('id').eq('mission_id', params.id).maybeSingle()
+      if (!existing) {
+        const { snapshotSaisieMission, SAISIE_MISSION_SNAP } = await import('@/lib/missions/saisie-dossier')
+        const { data: snap } = await sb.from('incoming_missions').select(SAISIE_MISSION_SNAP).eq('id', params.id).maybeSingle()
+        if (snap) {
+          const { error: sdErr } = await sb.from('saisie_dossiers').insert(snapshotSaisieMission(snap))
+          if (sdErr) console.error('[levee-saisie] dossier Parquet KO:', sdErr.message)
+          else await sb.from('mission_logs').insert({ mission_id: params.id, actor_id: actor.id, action: 'saisie_dossier_created', notes: 'Dossier Parquet créé à la levée « frais de justice » (fiche hors périmètre automatique).' })
+        }
+      }
+    } catch (e: any) { console.error('[levee-saisie] dossier Parquet:', e?.message) }
+  }
+
   // ── Levée définitive : on coupe le gardiennage en deux groupes ────────────
   // « Une fois qu'une levée de saisie est encodée avec une date, on crée un
   // nouveau groupe pour la facturation supplémentaire » (Olivier 09/09/2026).
