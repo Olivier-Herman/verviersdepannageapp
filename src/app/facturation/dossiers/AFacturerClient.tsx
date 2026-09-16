@@ -109,7 +109,6 @@ function readDossier(d: Dossier, ai: AutoInfo | undefined, comex: ComexInfo | un
   }
   if (ai?.status === 'hexalite') return { ...base, who: 'nous', headline: 'Dans Hexalite — à clôturer via Clôture Allianz', detail: 'La facture part par la clôture Hexalite, pas d\'ici.', primary: { label: 'Clôture Allianz', kind: 'link', href: '/facturation/allianz', tone: 'sky' } }
   if (d.state.open) return { ...base, who: 'veille', headline: `${d.state.reason || 'Dossier en cours'} — on facture à la clôture`, detail: rd.length ? `Groupe${rd.length > 1 ? 's' : ''} ${rd.map(l => l.letter).join(', ')} déjà prêt${rd.length > 1 ? 's' : ''} : tu peux facturer maintenant, le reste partira à la sortie.` : 'Combiné : tout part ensemble quand le dernier groupe est clos.', primary: rd.length ? { label: 'Facturer les groupes prêts', kind: 'bill_ready', tone: 'ghost' } : undefined }
-  if (pending) return { ...base, who: 'veille', headline: 'Calcul du montant en cours…', detail: 'Le tarif exact arrive dans quelques secondes.' }
   if (unknown) {
     const why = unknownLegs(d).map(l => l.amount_note || 'raison inconnue')[0]
     const transient = /réessaie|robot|passager|indisponible|quota/i.test(why)
