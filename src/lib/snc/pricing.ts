@@ -313,18 +313,23 @@ export async function computeSncMetrics(input: SncCalcInput): Promise<SncCalcOut
   const depots = await getSncDepots()
   if (depots.length === 0) return null
 
-  // Choix depot de depart pour la depanneuse : toujours le plus proche du lieu
-  // d intervention parmi TOUS les depots actifs (regle Olivier).
+  // Choix depot de depart pour la depanneuse : SNC = Pepinster (16/09/2026) ;
+  // SC = le plus proche du lieu d intervention parmi TOUS les depots actifs.
   // Olivier 2026-06-02 PM : utilise Distance Matrix Google (route reelle)
   // au lieu de haversine. Sur A27 Jalhay, haversine pouvait donner Pepinster
   // alors que Tiege est plus proche par route. Fallback haversine si Google
   // echoue (pas de cle, quota, etc.).
   // Le depot retour = depot de depart pour la depanneuse, MEME en REM depot
   // (la depanneuse revient a son depot d origine apres avoir depose a Pepinster).
-  const depart = await findNearestDepotByRoute(input.interventionLat, input.interventionLng, depots)
-  if (!depart) return null
-
+  // Olivier 16/09/2026 : pour le SNC (Siabis NON couvert), la dépanneuse part
+  // TOUJOURS du dépôt de référence (Pepinster, drapeau is_snc_hub). Le dépôt le
+  // plus proche de l'intervention ne vaut plus que pour le Siabis COUVERT (SC).
   const pepinster = findPepinster(depots)
+  const variantIn = input.variant || 'snc'
+  const depart = variantIn === 'snc' && pepinster
+    ? pepinster
+    : await findNearestDepotByRoute(input.interventionLat, input.interventionLng, depots)
+  if (!depart) return null
 
   // Calcul km depanneuse selon scenario
   // d1 et dRetour calcules separement car les routes aller != retour
