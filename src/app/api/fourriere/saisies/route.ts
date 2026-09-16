@@ -54,9 +54,11 @@ export async function GET() {
 
   const scopeFrom = await saisieScopeFrom(sb)
 
-  // Dossiers suivis (périmètre juin 2026+ ; masque l'ancien parc).
+  // Dossiers suivis : TOUS ceux qui existent. Le périmètre (juin 2026+) ne
+  // sert qu'à proposer les saisies pas encore intégrées, plus à cacher un
+  // dossier créé exprès (GG036SD, entrée 29/01, levée frais de justice — Olivier
+  // 16/09/2026 : « je ne retrouve pas le GG036SD dans la liste »).
   const { data: dossiersRaw, error } = await sb.from('saisie_dossiers').select('*')
-    .or(`parked_at.gte.${scopeFrom},parked_at.is.null`)
     .order('parked_at', { ascending: true }).order('id', { ascending: true })
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
