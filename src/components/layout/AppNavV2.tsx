@@ -15,7 +15,7 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { useEffect, useLayoutEffect, useMemo, useState } from 'react'
+import { Fragment, useEffect, useLayoutEffect, useMemo, useState } from 'react'
 import { ChevronRight, Search, Star, X } from 'lucide-react'
 import { T } from '@/lib/i18n/T'
 import { type NavItem } from './nav-items'
@@ -211,8 +211,12 @@ export default function AppNavV2({
                   const sBadge   = badges[section.href] || 0
                   const Icon     = section.icon
                   return (
+                    <Fragment key={section.href}>
+                    {/* Intertitre de groupe (menu Espaces : Parc, Documents, Sorties…) */}
+                    {section.heading && (
+                      <div className="pt-2 pb-0.5 px-3 text-[10px] font-semibold uppercase tracking-[.12em] text-ink-faint select-none">{section.heading}</div>
+                    )}
                     <Link
-                      key={section.href}
                       href={section.href}
                       onClick={onNavigate}
                       tabIndex={expanded ? undefined : -1}
@@ -229,6 +233,7 @@ export default function AppNavV2({
                       {sBadge > 0 && <Badge n={sBadge} />}
                       <StarBtn href={section.href} label={section.label} />
                     </Link>
+                    </Fragment>
                   )
                 })}
               </div>
