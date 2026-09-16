@@ -281,7 +281,7 @@ export async function GET(req: Request) {
   // Missions actives (assignées / en cours) détaillées, avec le point de départ
   // du compteur (assignation).
   const { data: active } = await sb.from('incoming_missions')
-    .select('id, mission_number, assigned_to, vehicle_plate, vehicle_brand, vehicle_model, mission_type, incident_city, assigned_at, accepted_at, status, on_way_at, on_site_at, arrived_at, loaded_at, delivering_at')
+    .select('id, mission_number, assigned_to, vehicle_plate, vehicle_brand, vehicle_model, mission_type, incident_city, assigned_at, accepted_at, status, on_way_at, on_site_at, loaded_at, delivering_at')
     .in('status', ['assigned', 'accepted', 'in_progress', 'delivering'])
     .order('assigned_at', { ascending: true })
     .limit(200)
@@ -412,12 +412,12 @@ export async function GET(req: Request) {
     const steps: [string, string | null][] = [
       ['En route vers destination', m.delivering_at],
       ['Véhicule chargé',           m.loaded_at],
-      ['Sur place',                 m.on_site_at || m.arrived_at],
+      ['Sur place',                 m.on_site_at],
       ['En route vers le lieu',     m.on_way_at],
     ]
     const t = (v: string | null) => v ? new Date(v).getTime() : 0
     const best = steps.filter(([, v]) => !!v).sort((a, b) => t(b[1]) - t(a[1]))[0]
-    if (best) return { label: m.status === 'delivering' && best[0] !== 'En route vers destination' ? 'En route vers destination' : best[0], at: best[1] }
+    if (best) return { label: best[0], at: best[1] }
     return { label: STATUS_LBL[m.status] || m.status, at: null }
   }
   const enCoursDetail = (active || []).map((m: any) => {
