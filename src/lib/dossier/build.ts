@@ -628,6 +628,12 @@ async function buildDossierUncached(anyMissionId: string, light: boolean, price 
       if (m.cancelled_reason) facts.push({ label: 'Motif', value: m.cancelled_reason })
     }
 
+    // Gardiennage SORTI dont une ligne facturée couvre la période jusqu'au jour de
+    // sortie : le volet est réglé, même si le bureau a facturé moins que le calcul
+    // (1AOG371, 16/09/2026 : 1 jour facturé sur 2 → 16,53 € restaient « à facturer »
+    // pour toujours). Une facture partielle arrêtée AVANT la sortie garde son solde.
+    const gardPeriodBilled = kind === 'gard' && !!m.parc_exit_at && !amountUnknown
+      && billedItems.some((it: any) => it.kind === 'SERV-PARC' && it.period_to && ts(`${String(it.period_to).slice(0, 10)}T23:59:59Z`)! >= ts(m.parc_exit_at)!)
     legs.push({
       letter: '', kind, mission_id: m.id, mission_number: m.mission_number, external_id: m.external_id,
       dossier_number: m.dossier_number || null, title, subtitle, status: m.status,
@@ -643,7 +649,7 @@ async function buildDossierUncached(anyMissionId: string, light: boolean, price 
       // calculé (ligne à 0 €) : il est réglé, on ne ressort pas un « reste à
       // facturer » quand le tarif arrive après coup (2GSE264, 08/09/2026).
       facts, amount_htva: amount, amount_note: note,
-      billed_htva: billedHtva || ((billedRefs.length && (!billedItems.length || (!!m.invoice_number && billedItems.every(it => !Number(it.amount_htva)))) && !amountUnknown) ? amount : 0),   // D9 : un groupe sans tarif n'est jamais « facturé » par une facture sans ligne
+      billed_htva: gardPeriodBilled ? Math.max(billedHtva || 0, amount) : billedHtva || ((billedRefs.length && (!billedItems.length || (!!m.invoice_number && billedItems.every(it => !Number(it.amount_htva)))) && !amountUnknown) ? amount : 0),   // D9 : un groupe sans tarif n'est jamais « facturé » par une facture sans ligne
       billed_refs: billedRefs, nothing_to_bill: nothing, days, regime: kind === 'gard' ? String(m.mission_type || 'autre') : null, free_days: kind === 'gard' ? (dayPriceByRegime[regimeEff]?.free || 0) : undefined, redelivery_address: (kind === 'gard' ? root.redelivery_address : m.redelivery_address) || null, amount_unknown: amountUnknown || undefined,
       // Olivier 07/09/2026 : « tout ce qui est modifiable doit l'être dans la vue 2 ».
       editable: kind === 'gard' ? undefined : {
