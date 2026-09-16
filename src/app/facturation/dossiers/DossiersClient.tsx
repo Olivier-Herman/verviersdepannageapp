@@ -55,7 +55,7 @@ const inGroup = (d: Dossier, g: SourceGroup) => {
   // il reste dans la liste générale, pas dans le groupe Touring (COMEX). Règle
   // Olivier 08/08, déjà appliquée dans la liste classique — pas ici (16/09).
   const isTransport = String(d.root_type || '').toLowerCase() === 'transport'
-  const touring = (source === 'touring' || source === 'tgr_touring' || isTouringBilled(d)) && !(source === 'touring' && isTransport)
+  const touring = (source === 'touring' || source === 'tgr_touring' || (isTouringBilled(d) && source !== 'police_snc')) && !(source === 'touring' && isTransport)   // SNC facturé à Touring = liste générale (16/09)
   return g.sources === null ? !touring
     : g.key === 'touring' ? touring
     : !!source && g.sources.includes(source)

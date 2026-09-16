@@ -37,7 +37,10 @@ const isTouringBilled = (d: Dossier) => /touring/i.test(String(d.billed_to.name 
 const inGroup = (d: Dossier, g: SourceGroup) => {
   const source = (d.source || '').toLowerCase()
   const isTransport = String(d.root_type || '').toLowerCase() === 'transport'
-  const touring = (source === 'touring' || source === 'tgr_touring' || isTouringBilled(d)) && !(source === 'touring' && isTransport)
+  // Groupe Touring = le circuit COMEX (source touring / TGR) et le Siabis couvert.
+  // Un Siabis NON couvert facturé à Touring (client remis à la main, 16/09/2026,
+  // 2JEM405) reste dans la liste générale : ce n'est pas un dossier COMEX.
+  const touring = (source === 'touring' || source === 'tgr_touring' || (isTouringBilled(d) && source !== 'police_snc')) && !(source === 'touring' && isTransport)
   return g.sources === null ? !touring : g.key === 'touring' ? touring : !!source && g.sources.includes(source)
 }
 
