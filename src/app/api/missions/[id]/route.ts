@@ -220,6 +220,13 @@ export async function PATCH(
     const PRICING_FIELDS = ['source', 'snc_scenario', 'mission_type', 'incident_lat', 'incident_lng', 'destination_lat', 'destination_lng', 'snc_requires_balisage', 'extra_addresses']
     const pricingTouched  = PRICING_FIELDS.some(f => f in updates)
     const sourceBecameSnc = 'source' in updates && updates.source === 'police_snc' && before?.source !== 'police_snc'
+    // Olivier 16/09/2026 : « on efface l'assistance quand on passe en SNC, et dès
+    // qu'on remet un client dans le client facturé, on le conserve ». L'effacement
+    // se fait ICI, au passage — plus jamais après coup (build.ts ne filtre plus).
+    if (sourceBecameSnc && !('billed_to_id' in updates) && !('billed_to_name' in updates)) {
+      updates.billed_to_id = null
+      updates.billed_to_name = null
+    }
 
     if (finalSource === 'police_snc' && !lockedManual && (pricingTouched || sourceBecameSnc)) {
       if (finalScenario === 'rem_depot') {

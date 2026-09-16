@@ -447,21 +447,13 @@ async function buildDossierUncached(anyMissionId: string, light: boolean, price 
   rootEst = pre.get(root.id)?.est ?? null
 
   // ── Construction des groupes ─────────────────────────────────────────────
-  // Siabis NON couvert (source police_snc) : Touring est posé par défaut sur la
-  // fiche mais c'est le client sur place qui paie ; on ne montre donc pas
-  // Touring comme client à facturer (Olivier 08/09/2026, #10133979). Le couvert
-  // (sia_couvert) garde Touring.
-  // 16/09/2026 (#10130105, 2JEM405) : SAUF si Touring est effectivement
-  // intervenu sur le dossier — une relivraison (ou un volet) de source Touring /
-  // TGR / Siabis couvert : Touring a repris le véhicule, c'est lui qu'on facture
-  // (Olivier : « je vois bien un client de facturation dans le dossier »). Le cas
-  // du 08/09 (10133979, client inconnu, aucun volet Touring) reste sans payeur.
-  const touringTookOver = legRows.some((r: any) => /^(touring|tgr_touring|sia_couvert)$/i.test(String(r.source || '')) && r.id !== root.id)
-  const sncStripTouring = String(root.source || '') === 'police_snc' && !touringTookOver
+  // Payeur = ce que la fiche dit. Règle Olivier 16/09/2026 : « on efface
+  // l'assistance quand on passe en SNC, et dès qu'on remet un client dans le
+  // client facturé, on le conserve — Touring ou un autre ». L'effacement se fait
+  // au passage en SNC (PATCH fiche, import COMEX), plus ici : l'ancien filtre
+  // (08/09, #10133979) cachait aussi un payeur remis exprès (#10130105).
   const payer = (r: any): { id: number | null; name: string | null } =>
-    sncStripTouring && /touring/i.test(String(r?.billed_to_name || ''))
-      ? { id: null, name: null }
-      : { id: r?.billed_to_id ?? null, name: r?.billed_to_name ?? null }
+    ({ id: r?.billed_to_id ?? null, name: r?.billed_to_name ?? null })
   const legs: DossierLeg[] = []
   for (const m of legRows) {
     const kind = kindOf(m)

@@ -124,6 +124,10 @@ export async function runTouringImport(opts: { mode: TouringImportMode }): Promi
           // l'a déjà reclassée à la main, on ne repasse pas derrière lui.
           if (comexVehiculeNonCouvert(detail) && String((existing as any).source) === 'touring') {
             contentUpd.source = 'police_snc'
+            // Passage en SNC = l'assistance s'efface (Olivier 16/09/2026) ; le bureau
+            // remettra un client facturé s'il y a lieu, et on le conservera.
+            contentUpd.billed_to_id = null
+            contentUpd.billed_to_name = null
           }
           if (Object.keys(contentUpd).length > 0) {
             const { error: cErr } = await sb.from('incoming_missions').update(contentUpd).eq('id', (existing as any).id)
