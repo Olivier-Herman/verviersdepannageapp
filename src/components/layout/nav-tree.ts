@@ -152,8 +152,8 @@ export const NAV_TREE_ESPACES: NavModule[] = [
     ],
   },
 ]
-/** Raccourcis épinglés du menu « Espaces » : accueil + les deux écrans chauffeur + la recherche. */
-export const PINNED_ESPACES: string[] = ['/dashboard', '/recherche', '/mission', '/missions-dispo']
+/** Raccourcis épinglés du menu « Espaces » : accueil, recherche, Dispatch (Olivier 16/09/2026), les deux écrans chauffeur. */
+export const PINNED_ESPACES: string[] = ['/dashboard', '/recherche', '/dispatch', '/mission', '/missions-dispo']
 
 /** Modules à sections. Les modules plats sont dérivés automatiquement de NAV_ITEMS. */
 export const NAV_TREE: NavModule[] = [
@@ -360,7 +360,23 @@ export function landingHref(mod: BuiltModule): string | undefined {
  * qui glissent). Les raccourcis sortent dans l'ordre de PINNED_HREFS.
  */
 export function splitPinned(modules: BuiltModule[], espaces = false): { pinned: BuiltModule[]; rest: BuiltModule[] } {
-  const PIN = espaces ? PINNED_ESPACES : PINNED_HREFS
+  // Menu « Espaces » : un raccourci épinglé peut viser une SECTION (ex. /dispatch
+  // dans Opérations) — on fabrique alors un lien direct sans retirer l'espace de
+  // la liste. Un module plat épinglé (Dashboard, Recherche…) monte tel quel.
+  if (espaces) {
+    const pinned: BuiltModule[] = []
+    const used = new Set<string>()
+    for (const h of PINNED_ESPACES) {
+      const flat = modules.find(m => m.href === h)
+      if (flat) { pinned.push(flat); used.add(flat.key); continue }
+      for (const m of modules) {
+        const sec = m.visibleSections.find(x => x.href === h)
+        if (sec) { pinned.push({ key: `pin:${h}`, label: sec.label, i18nKey: sec.i18nKey, icon: m.icon, href: h, visibleSections: [] }); break }
+      }
+    }
+    return { pinned, rest: modules.filter(m => !used.has(m.key)) }
+  }
+  const PIN = PINNED_HREFS
   const isPinned = (mod: BuiltModule) => {
     const href = landingHref(mod)
     return !!href && PIN.includes(href)
