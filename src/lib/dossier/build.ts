@@ -101,6 +101,8 @@ export interface Dossier {
   billed_to:      { id: number | null; name: string | null }
   received_at:    string | null
   state:          { open: boolean; reason: string | null }
+  /** Type de la fiche principale (transport, remorquage…) : la liste s'en sert pour router un rapatriement Touring en facturation normale. */
+  root_type?:     string | null
   /** Tous les groupes annulés (ou réglés) et la fiche principale annulée : le dossier est annulé, plus « à facturer ». */
   cancelled?:     boolean
   // Dernier séjour au parc, même après la sortie (Olivier 08/09/2026 : « on ne voit plus dans quel parc elle était »).
@@ -875,6 +877,7 @@ async function buildDossierUncached(anyMissionId: string, light: boolean, price 
     number: root.mission_number ?? null,
     dossier_number: root.dossier_number || null,
     source: root.source, source_label: sourceLabel(root.source),
+    root_type: root.mission_type || null,
     vehicle: { plate: root.vehicle_plate, brand: root.vehicle_brand, model: root.vehicle_model, vin: root.vehicle_vin },
     client: { name: root.client_name, phone: root.client_phone },
     billed_to: payer(root),

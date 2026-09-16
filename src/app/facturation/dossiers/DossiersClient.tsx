@@ -51,7 +51,11 @@ const isTouringBilled = (d: Dossier) =>
   || d.legs.some(l => /touring/i.test(String(l.billed_to_name || '')))
 const inGroup = (d: Dossier, g: SourceGroup) => {
   const source = (d.source || '').toLowerCase()
-  const touring = source === 'touring' || source === 'tgr_touring' || isTouringBilled(d)
+  // Rapatriement Touring (dossier …BX, type transport) = facturation NORMALE :
+  // il reste dans la liste générale, pas dans le groupe Touring (COMEX). Règle
+  // Olivier 08/08, déjà appliquée dans la liste classique — pas ici (16/09).
+  const isTransport = String(d.root_type || '').toLowerCase() === 'transport'
+  const touring = (source === 'touring' || source === 'tgr_touring' || isTouringBilled(d)) && !(source === 'touring' && isTransport)
   return g.sources === null ? !touring
     : g.key === 'touring' ? touring
     : !!source && g.sources.includes(source)
