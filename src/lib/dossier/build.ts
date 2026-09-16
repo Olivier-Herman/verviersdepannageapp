@@ -882,7 +882,7 @@ async function buildDossierUncached(anyMissionId: string, light: boolean, price 
     // `light` signale au client « montants figés, recalcule en fond » : un
     // dossier tarifé n'en est pas un, même construit avec les raccourcis.
     state, legs, events, light: (light && !priced) || undefined,
-    cancelled: root.status === 'cancelled' && legs.every(l => !!l.nothing_to_bill || !!l.invoice_number || l.status === 'cancelled') || undefined,
+    cancelled: root.status === 'cancelled' && legs.every(l => !!l.nothing_to_bill || (l.billed_refs || []).length > 0 || l.status === 'cancelled') || undefined,
     parquet,
     stamps: {
       domaine: root.domaine_vente_date ? `Vendu au Domaine${root.domaine_vente_firm ? ' · ' + root.domaine_vente_firm : ''}` : (root.domaine_remise_date ? `Remis au Domaine le ${String(root.domaine_remise_date).slice(0, 10)}` : null),

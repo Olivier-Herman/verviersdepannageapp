@@ -34,7 +34,7 @@ export default function CancelMissionButton({
       const r = await fetch(`/api/dossier/${missionId}`, { cache: 'no-store' })
       const j = await r.json().catch(() => ({}))
       const legs: any[] = j?.dossier?.legs || []
-      const alive = legs.filter(l => l.mission_id !== missionId && l.status !== 'cancelled' && !l.nothing_to_bill && !l.invoice_number)
+      const alive = legs.filter(l => l.mission_id !== missionId && l.status !== 'cancelled' && !l.nothing_to_bill && !(l.billed_refs || []).length)
       setOthers(alive.length)
     } catch { setOthers(0) }
   }
