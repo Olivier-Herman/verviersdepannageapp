@@ -1317,7 +1317,11 @@ export async function processEmailMessage(messageId: string): Promise<ProcessRes
     // TRANSPORTS (rapatriements frontaliers) → source=touring + type=transport,
     // facturation NORMALE (jamais COMEX ni Touring Check ; ils arrivent par mail).
     const finalDossier = String(parsed.dossier_number || parsed.external_id || '').trim()
-    const is2026BX     = /^2026BX/i.test(finalDossier)
+    // Rapatriement Touring : le numéro de dossier finit par BX — 2026052145BX,
+    // pas 2026BX… : les chiffres sont AU MILIEU. L'ancien motif ^2026BX ne
+    // matchait aucun dossier réel, et six rapatriements sont partis en
+    // remorquage / REM+REL au lieu de transport (Olivier 16/09/2026).
+    const is2026BX     = /^\d{4}\d*BX$/i.test(finalDossier.trim())
     const finalSource  = is2026BX ? 'touring'   : source
     const finalType    = is2026BX ? 'transport' : parsed.mission_type
 
