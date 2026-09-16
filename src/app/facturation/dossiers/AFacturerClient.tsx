@@ -66,7 +66,7 @@ interface Reading {
   who: Who
   headline: string
   detail?: string
-  primary?: { label: string; kind: 'bill' | 'bill_ready' | 'link' | 'dossier' | 'odoo' | 'verify'; href?: string; tone?: 'brand' | 'ghost' | 'sky' }
+  primary?: { label: string; kind: 'bill' | 'bill_ready' | 'link' | 'dossier' | 'odoo' | 'verify' | 'allianz'; href?: string; tone?: 'brand' | 'ghost' | 'sky' }
   steps: Step[]
 }
 
@@ -107,7 +107,7 @@ function readDossier(d: Dossier, ai: AutoInfo | undefined, comex: ComexInfo | un
       ? { ...base, who: 'eux', headline: ef ? `Parquet — état de frais n°${ef.numero ?? ''} ${ef.status === 'refuse' ? 'refusé' : ef.liquide_at ? 'liquidé' : 'en attente'}` : 'Parquet — état de frais à venir', detail: 'Circuit états de frais : rien ne se facture d\'ici.', primary: { label: 'États de frais', kind: 'link', href: '/fourriere/saisies', tone: 'ghost' } }
       : { ...base, who: 'eux', headline: 'Domaine — relevé trimestriel', detail: 'Facturé via le module Domaine.', primary: { label: 'Domaine', kind: 'link', href: '/fourriere/domaine', tone: 'ghost' } }
   }
-  if (ai?.status === 'hexalite') return { ...base, who: 'nous', headline: 'Dans Hexalite — à clôturer via Clôture Allianz', detail: 'La facture part par la clôture Hexalite, pas d\'ici.', primary: { label: 'Clôture Allianz', kind: 'link', href: '/facturation/allianz', tone: 'sky' } }
+  if (ai?.status === 'hexalite') return { ...base, who: 'nous', headline: 'Dans Hexalite — clôture Allianz à faire', detail: 'Un clic : affectation + tarifs + soumission du résultat dans Hexalite avec les pointages réels, puis facture automatique. Action réelle.', primary: { label: 'Clôturer dans Allianz', kind: 'allianz', tone: 'sky' } }
   if (d.state.open) {
     const gardOpen = d.legs.find(l => l.kind === 'gard' && l.open)
     const relOpen  = d.legs.find(l => l.kind === 'rel' && l.open)
@@ -263,7 +263,36 @@ export default function AFacturerClient({ initial, autoById, comexById = {}, isS
     if (p.kind === 'bill') openBilling(d)
     else if (p.kind === 'bill_ready') openBilling(d)
     else if (p.kind === 'dossier') router.push(`/dispatch/dossier/${d.root_id}`)
+    else if (p.kind === 'allianz') closeAllianz(d)
     else if ((p.kind === 'link' || p.kind === 'odoo') && p.href) { if (p.kind === 'odoo') window.open(p.href, '_blank'); else router.push(p.href) }
+  }
+  // Clôture Hexalite depuis la carte (Olivier 16/09 : « autant qu'en cliquant
+  // dessus, la clôture se fasse »). Même appel que la page Clôture Allianz :
+  // rapprochement Hexalite → km de la fiche → POST close (heures réelles côté serveur).
+  const closeAllianz = async (d: Dossier) => {
+    setBusy(d.root_id); setReport(null)
+    try {
+      const lst = await fetch('/api/facturation/allianz/list', { cache: 'no-store' }).then(async r => ({ ok: r.ok, j: await r.json().catch(() => ({})) }))
+      if (!lst.ok) { if (lst.j?.needsAuth) { setReport('⚠ Connexion Allianz à refaire (OTP) — ouvre Clôture Allianz.'); router.push('/facturation/allianz') } else setReport(`⚠ ${lst.j?.error || 'Listing Allianz impossible'}`); return }
+      const row = (lst.j.rows || []).find((r: any) => r.vdsoft?.id === d.root_id)
+      if (!row) { setReport(`⚠ ${d.ref} n'est pas (ou plus) dans la liste Hexalite à clôturer — vérifie dans Clôture Allianz.`); return }
+      const km = await fetch(`/api/missions/${d.root_id}/km`).then(r => r.json()).then(j => typeof j.total_km === 'number' ? j.total_km : null).catch(() => null)
+      const mt = String(row.vdsoft.mission_type || '').toLowerCase()
+      const isTow = !/depannage|dsp|reparation|trajet_vide|dpr/.test(mt)
+      if (!window.confirm(`Clôturer ${d.ref} · ${d.vehicle.plate || ''} dans Allianz (Hexalite) ?\n\nMission ${row.assignmentNumber} · ${km != null ? km + ' km' : 'km inconnus'} · ${isTow ? 'remorquage' : mt}. Action réelle et irréversible ; la facture suit automatiquement.`)) return
+      const body: any = {
+        assignmentId: row.assignmentId, caseId: row.caseId, missionType: row.vdsoft.mission_type,
+        receivedIso: row.dispatchTime || row.vdsoft.received_at,
+        tariffZip: row.breakdown?.zipCode || null, tariffLat: row.breakdown?.latitude || null, tariffLng: row.breakdown?.longitude || null,
+        distanceKm: km ?? undefined, vdsoftMissionId: d.root_id, dryRun: false,
+      }
+      if (isTow && row.vdsoft.destination_address) body.destination = { name: row.vdsoft.destination_address, countryCode: 'BE', countryName: 'Belgique', latitude: row.vdsoft.destination_lat ?? undefined, longitude: row.vdsoft.destination_lng ?? undefined }
+      const res = await fetch('/api/facturation/allianz/close', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+      const j = await res.json().catch(() => ({}))
+      if (!res.ok || !j.ok) { setReport(`⚠ Clôture Allianz refusée : ${j.error || `HTTP ${res.status}`}${j.detail ? ' — ' + String(j.detail).slice(0, 200) : ''}`); return }
+      setReport(`✓ ${d.ref} clôturé dans Allianz${j.amount != null ? ` · ${eur(Number(j.amount))}` : ''}${j.invoice ? ' · facture créée' : ''}`)
+      await refreshOne(d.root_id); router.refresh()
+    } catch (e: any) { setReport(`⚠ ${e?.message || 'Erreur'}`) } finally { setBusy(null) }
   }
   const verifyAll = async () => {
     setBusy('verify'); setShowTools(false); setReport('🔎 Vérification des factures…')
