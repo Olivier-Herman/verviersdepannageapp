@@ -42,6 +42,8 @@ interface Props {
   onToggleFavorite?: (href: string) => void
   /** Lot 2 : le champ du menu ouvre la palette « Aller à » (⌘K) au lieu de filtrer sur place. */
   onOpenPalette?: () => void
+  /** Menu « Espaces » (flag nav_espaces, pilotes). */
+  espaces?: boolean
 }
 
 const RECENTS_KEY = 'vd_nav_recents'
@@ -50,10 +52,10 @@ const useIsoLayoutEffect = typeof window === 'undefined' ? useEffect : useLayout
 const readRecents = (): string[] => { try { const v = JSON.parse(localStorage.getItem(RECENTS_KEY) || '[]'); return Array.isArray(v) ? v : [] } catch { return [] } }
 
 export default function AppNavV2({
-  items, userRole, userModules, badges = {}, variant = 'sidebar', onNavigate, now = [], favorites = [], onToggleFavorite, onOpenPalette,
+  items, userRole, userModules, badges = {}, variant = 'sidebar', onNavigate, now = [], favorites = [], onToggleFavorite, onOpenPalette, espaces = false,
 }: Props) {
   const pathname = usePathname()
-  const modules  = useMemo(() => buildNavTree(items, userRole, userModules), [items, userRole, userModules])
+  const modules  = useMemo(() => buildNavTree(items, userRole, userModules, espaces), [items, userRole, userModules, espaces])
 
   // ── Zone « Maintenant » : réglage du rôle + favoris + 3 dernières pages ─────
   // Une page n'y figure que si elle existe dans le menu de CET utilisateur
@@ -99,7 +101,7 @@ export default function AppNavV2({
       <Star size={13} fill={isFav(href) ? 'currentColor' : 'none'} />
     </button>
   ) : null
-  const { pinned, rest } = useMemo(() => splitPinned(modules), [modules])
+  const { pinned, rest } = useMemo(() => splitPinned(modules, espaces), [modules, espaces])
   const active   = useMemo(() => findActiveModule(modules, pathname), [modules, pathname])
 
   // Module de l'URL courante, s'il a des sections (clé stable : évite de replier

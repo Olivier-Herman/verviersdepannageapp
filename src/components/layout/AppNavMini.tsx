@@ -14,11 +14,11 @@ import { T } from '@/lib/i18n/T'
 import { type NavItem } from './nav-items'
 import { buildNavTree, landingHref, findActiveModule, findActiveSectionHref, type BuiltModule } from './nav-tree'
 
-export default function AppNavMini({ items, userRole, userModules, badges = {}, onOpenPalette }: {
-  items: NavItem[]; userRole: string; userModules: string[]; badges?: Record<string, number>; onOpenPalette?: () => void
+export default function AppNavMini({ items, userRole, userModules, badges = {}, onOpenPalette, espaces = false }: {
+  items: NavItem[]; userRole: string; userModules: string[]; badges?: Record<string, number>; onOpenPalette?: () => void; espaces?: boolean
 }) {
   const pathname = usePathname()
-  const modules  = useMemo(() => buildNavTree(items, userRole, userModules), [items, userRole, userModules])
+  const modules  = useMemo(() => buildNavTree(items, userRole, userModules, espaces), [items, userRole, userModules, espaces])
   const active   = useMemo(() => findActiveModule(modules, pathname), [modules, pathname])
   const [openKey, setOpenKey] = useState<string | null>(null)
   const [top, setTop] = useState(0)

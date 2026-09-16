@@ -15,6 +15,7 @@ import WatchPairingBridge from '@/components/watch/WatchPairingBridge'
 import { filterNavItems } from './nav-items'
 import AppNavV2 from './AppNavV2'
 import { useNavV2 } from './useNavV2'
+import { useNavEspaces } from './useNavEspaces'
 import MobileNavDrawer from './MobileNavDrawer'
 import NavPalette from './NavPalette'
 import AppNavMini from './AppNavMini'
@@ -78,6 +79,7 @@ export default function AppShell({
   // Flag `nav_menu_v2` (menu navigable) — résolu serveur, transporté par la même
   // route que les badges (undefined tant que le fetch n'a pas répondu).
   const [navV2Flag, setNavV2Flag] = useState<boolean | undefined>(undefined)
+  const [navEspacesFlag, setNavEspacesFlag] = useState<boolean | undefined>(undefined)
   // Menu v3 (lot 1) : zone « Maintenant » du rôle + favoris de l'utilisateur.
   const [navNow, setNavNow]   = useState<string[]>([])
   const [navFavs, setNavFavs] = useState<string[]>([])
@@ -112,6 +114,7 @@ export default function AppShell({
         if (!alive) return
         setNavBadges(d.badges || {})
         setNavV2Flag(!!d.flags?.nav_menu_v2)
+        setNavEspacesFlag(!!d.flags?.nav_espaces)
         if (Array.isArray(d.nav?.now)) setNavNow(d.nav.now)
         if (Array.isArray(d.nav?.favorites)) setNavFavs(d.nav.favorites)
         try { window.localStorage.setItem('vd_nav_cache', JSON.stringify({ badges: d.badges || {}, now: d.nav?.now || [], favorites: d.nav?.favorites || [] })) } catch {}
@@ -121,6 +124,7 @@ export default function AppShell({
     return () => { alive = false; stop() }
   }, [])
   const navV2 = useNavV2(navV2Flag)
+  const navEspaces = useNavEspaces(navEspacesFlag) && navV2   // les espaces sont une variante du menu navigable
   // Palette « Aller à » (menu v3, lot 2) : ouverte par le champ du menu.
   // ⌘K / Ctrl K (Olivier 10/09/2026) : ouvre la page Recherche complète dans un
   // NOUVEL onglet — l'écran courant reste en place. window.open est appelé dans
@@ -194,6 +198,7 @@ export default function AppShell({
             Sidebar repliée → on garde la version icônes ci-dessous, inchangée. */}
         {navV2 && !collapsed ? (
           <AppNavV2
+            espaces={navEspaces}
             items={visibleNav}
             userRole={userRole}
             userModules={userModules}
@@ -205,7 +210,7 @@ export default function AppShell({
           />
         ) : navV2 && collapsed ? (
           // Lot 3 : la barre réduite garde le menu v3 (pictogrammes + volets), plus de retour en v1.
-          <AppNavMini items={visibleNav} userRole={userRole} userModules={userModules} badges={navBadges} onOpenPalette={() => setPaletteOpen(true)} />
+          <AppNavMini items={visibleNav} userRole={userRole} userModules={userModules} badges={navBadges} onOpenPalette={() => setPaletteOpen(true)} espaces={navEspaces} />
         ) : (
         <nav className={`flex-1 py-4 overflow-y-auto flex flex-col gap-0.5 ${collapsed ? 'px-2' : 'px-3'}`}>
           {visibleNav.map(item => {
@@ -295,18 +300,19 @@ export default function AppShell({
           userModules={userModules}
           navBadges={navBadges}
           navV2={navV2}
+          espaces={navEspaces}
           navNow={navNow}
           navFavs={navFavs}
           onToggleFavorite={toggleFavorite}
           onOpenPalette={() => { setDrawerOpen(false); setPaletteOpen(true) }}
         />
         {navV2 && (
-          <NavPalette open={paletteOpen} onClose={() => setPaletteOpen(false)}
+          <NavPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} espaces={navEspaces}
             items={visibleNav} userRole={userRole} userModules={userModules} now={navNow} badges={navBadges} />
         )}
         {navV2 && navNow.length > 0 && (
           // Lot 3 : barre du bas sur téléphone — les 4 pages « Maintenant » du rôle + Menu.
-          <MobileTabBar items={visibleNav} userRole={userRole} userModules={userModules} now={navNow} badges={navBadges} onOpenMenu={() => setDrawerOpen(true)} />
+          <MobileTabBar items={visibleNav} userRole={userRole} userModules={userModules} now={navNow} badges={navBadges} onOpenMenu={() => setDrawerOpen(true)} espaces={navEspaces} />
         )}
 
         {/* Header desktop */}

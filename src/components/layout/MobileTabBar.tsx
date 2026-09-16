@@ -13,11 +13,11 @@ import { T } from '@/lib/i18n/T'
 import { type NavItem } from './nav-items'
 import { buildNavTree } from './nav-tree'
 
-export default function MobileTabBar({ items, userRole, userModules, now, badges = {}, onOpenMenu }: {
-  items: NavItem[]; userRole: string; userModules: string[]; now: string[]; badges?: Record<string, number>; onOpenMenu: () => void
+export default function MobileTabBar({ items, userRole, userModules, now, badges = {}, onOpenMenu, espaces = false }: {
+  items: NavItem[]; userRole: string; userModules: string[]; now: string[]; badges?: Record<string, number>; onOpenMenu: () => void; espaces?: boolean
 }) {
   const pathname = usePathname()
-  const modules = useMemo(() => buildNavTree(items, userRole, userModules), [items, userRole, userModules])
+  const modules = useMemo(() => buildNavTree(items, userRole, userModules, espaces), [items, userRole, userModules, espaces])
   const tabs = useMemo(() => {
     const out: { href: string; label: React.ReactNode; icon: React.ReactNode }[] = []
     for (const h of now) {

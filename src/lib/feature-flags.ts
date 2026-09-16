@@ -54,7 +54,11 @@ export async function getFlagMode(key: string): Promise<FlagMode> {
 /** Le user voit-il le preview de ce flag ? (superadmin toujours prioritaire). */
 export function previewVisible(mode: FlagMode, role: string | null | undefined, userId?: string | null, pilots?: string[]): boolean {
   if (mode === 'all') return true
-  if (mode === 'superadmin') return role === 'superadmin' || (!!userId && !!pilots && pilots.includes(String(userId)))
+  // Pilotes nommés : ils voient la préversion quel que soit le mode — permet un
+  // essai « Olivier + Jona seulement » sans ouvrir à tous les superadmins
+  // (menu Espaces, 16/09/2026).
+  if (!!userId && !!pilots && pilots.includes(String(userId))) return true
+  if (mode === 'superadmin') return role === 'superadmin'
   return false
 }
 
