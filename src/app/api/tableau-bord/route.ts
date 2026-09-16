@@ -281,7 +281,7 @@ export async function GET(req: Request) {
   // Missions actives (assignées / en cours) détaillées, avec le point de départ
   // du compteur (assignation).
   const { data: active } = await sb.from('incoming_missions')
-    .select('id, mission_number, assigned_to, vehicle_plate, vehicle_brand, vehicle_model, mission_type, incident_city, assigned_at, accepted_at, status')
+    .select('id, mission_number, assigned_to, vehicle_plate, vehicle_brand, vehicle_model, mission_type, incident_city, assigned_at, accepted_at, status, on_way_at, on_site_at, arrived_at, loaded_at, delivering_at')
     .in('status', ['assigned', 'accepted', 'in_progress', 'delivering'])
     .order('assigned_at', { ascending: true })
     .limit(200)
@@ -406,13 +406,31 @@ export async function GET(req: Request) {
     .not('prepare_at', 'is', null).is('sortie_reelle_date', null)
 
   const STATUS_LBL: Record<string, string> = { assigned: 'Assignée', accepted: 'Acceptée', in_progress: 'En cours', delivering: 'Livraison' }
-  const enCoursDetail = (active || []).map((m: any) => ({
-    id: m.id, missionNumber: m.mission_number, driver: dn.get(m.assigned_to) || '—',
-    plate: m.vehicle_plate || '', vehicle: [m.vehicle_brand, m.vehicle_model].filter(Boolean).join(' '),
-    category: catOf(m.mission_type), city: m.incident_city || '',
-    statusLabel: STATUS_LBL[m.status] || m.status,
-    since: m.assigned_at || m.accepted_at || null,
-  }))
+  // Olivier 16/09/2026 : le mur affiche l'ÉTAPE du chauffeur (dernier pointage),
+  // pas le statut brut « En cours » — en route, sur place, chargé, vers destination.
+  const stepOf = (m: any): { label: string; at: string | null } => {
+    const steps: [string, string | null][] = [
+      ['En route vers destination', m.delivering_at],
+      ['Véhicule chargé',           m.loaded_at],
+      ['Sur place',                 m.on_site_at || m.arrived_at],
+      ['En route vers le lieu',     m.on_way_at],
+    ]
+    const t = (v: string | null) => v ? new Date(v).getTime() : 0
+    const best = steps.filter(([, v]) => !!v).sort((a, b) => t(b[1]) - t(a[1]))[0]
+    if (best) return { label: m.status === 'delivering' && best[0] !== 'En route vers destination' ? 'En route vers destination' : best[0], at: best[1] }
+    return { label: STATUS_LBL[m.status] || m.status, at: null }
+  }
+  const enCoursDetail = (active || []).map((m: any) => {
+    const step = stepOf(m)
+    return {
+      id: m.id, missionNumber: m.mission_number, driver: dn.get(m.assigned_to) || '—',
+      plate: m.vehicle_plate || '', vehicle: [m.vehicle_brand, m.vehicle_model].filter(Boolean).join(' '),
+      category: catOf(m.mission_type), city: m.incident_city || '',
+      statusLabel: step.label,
+      stepAt: step.at,
+      since: m.assigned_at || m.accepted_at || null,
+    }
+  })
 
   return NextResponse.json({
     ok: true,
