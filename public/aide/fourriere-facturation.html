@@ -96,6 +96,7 @@
  <h2>D4. Police Saisie — gestion judiciaire</h2>
  <table>
  <tr><td>125</td><td>Annexer un réquisitoire</td><td>p. 13</td></tr>
+ <tr><td>125b</td><td>Relancer les policiers — portail par policier</td><td>p. 13</td></tr>
  <tr><td>126</td><td>Enregistrer une levée de saisie (définitive / temporaire)</td><td>p. 14</td></tr>
  <tr><td>126b</td><td>Saisie : facturer le propriétaire sans levée ; effets de la levée</td><td>p. 14</td></tr>
  <tr><td>127</td><td>Levée temporaire : sortie garagiste puis retour parc</td><td>p. 14</td></tr>
@@ -532,7 +533,18 @@
 </div>
 
 <div class="function">
- <h3><span class="num">126</span>Enregistrer une levée de saisie</h3>
+ 
+ <h3><span class="num">125b</span>Relancer les policiers — portail par policier</h3>
+ <p class="desc">Depuis le 16/09/2026, on ne relance plus véhicule par véhicule : chaque policier reçoit <strong>un seul mail</strong> avec la liste de ses réquisitoires manquants et un lien vers <strong>son espace</strong> (valable 90 jours).</p>
+ <ol>
+  <li>Menu Fourrière → « Relance réquisitoires »</li>
+  <li>Bloc « 🚔 Par policier — portail » en haut : un policier = une ligne, avec le nombre de véhicules et son e-mail</li>
+  <li>« ✉ Portail » envoie le mail groupé ; « 🔗 » copie le lien de son espace (à coller dans un mail ou un SMS)</li>
+ </ol>
+ <p class="desc">Dans son espace, le policier peut : déposer chaque réquisitoire (PDF ou photo) ; voir ceux déjà reçus ; et <strong>s'attribuer une saisie sans policier identifié</strong> (« C'est mon dossier ») pour y déposer le réquisitoire. Chaque attribution apparaît dans les Remarques de la fiche et déclenche une notification au bureau.</p>
+ <div class="tip">💡 Le bouton n'est actif que si le contact Odoo du policier a un e-mail. Sans contact lié (⚠️ policier non lié à Odoo), lie-le d'abord via « ✏️ Modifier » sur la carte du véhicule. Le rappel automatique (7 jours) envoie lui aussi un mail groupé par policier.</div>
+
+<h3><span class="num">126</span>Enregistrer une levée de saisie</h3>
  <p class="desc">Quand la saisie est levée, on l'enregistre. Cela débloque le véhicule côté police et fixe la date qui sert au calcul du gardiennage.</p>
  <p class="label">Comment faire</p>
  <ol>

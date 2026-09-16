@@ -22,7 +22,7 @@
 
 import { sendEtatFrais, autoIntegrateNewSaisies, saisieScopeFrom, outOfParquetScope } from '@/lib/missions/saisie-dossier'
 import { forclusionDate, daysUntil, forclusionLevel, FORCLUSION_STOPS } from '@/lib/missions/saisie-relance'
-import { sendRequisitoireRelance } from '@/lib/requisitoire/relance'
+import { sendOfficerPortalMail } from '@/lib/requisitoire/officer-portal'
 import { hasValidRequisitoire } from '@/lib/requisitoire/doc'
 import { sendNotificationToRoles } from '@/lib/notifications/send'
 
@@ -88,6 +88,7 @@ export async function closeSaisieDossierIfOutOfScope(sb: any, missionId: string)
 export async function runSaisieCron(sb: any): Promise<SaisieCronSummary> {
   const auto = await getAutoSend(sb)
   const today = belgianToday()
+  const duePartners = new Map<number, string[]>()   // policier → plaques à relancer (mail groupé)
   const out: SaisieCronSummary = { auto, checked: 0, prepared: 0, sent: 0, relances: 0, actions: [], errors: [], integrated: 0, closed: 0, forclusionAlerts: 0 }
 
   // 0) Intègre automatiquement les nouvelles saisies en parc.
@@ -101,7 +102,7 @@ export async function runSaisieCron(sb: any): Promise<SaisieCronSummary> {
     out.checked++
     const mission = d.mission_id
       ? (await sb.from('incoming_missions')
-          .select('source, status, domaine_remise_date, domaine_enlevement_date, levee_saisie_at, levee_saisie_date, requisitoire_at, requisitoire_doc_path, requisitoire_last_reminder_at')
+          .select('source, status, domaine_remise_date, domaine_enlevement_date, levee_saisie_at, levee_saisie_date, requisitoire_at, requisitoire_doc_path, requisitoire_last_reminder_at, officer_partner_id')
           .eq('id', d.mission_id).maybeSingle()).data
       : null
     const remise = mission?.domaine_remise_date ? String(mission.domaine_remise_date).slice(0, 10) : null
@@ -201,9 +202,11 @@ export async function runSaisieCron(sb: any): Promise<SaisieCronSummary> {
     //    JustInvoice → on relance le policier (throttle 7 j) sur TOUT dossier
     //    ouvert, action due ou non. Olivier 2026-08-09 / 2026-09-03. ─────────────
     if (mission && !hasValidRequisitoire(mission)) {
-      if (d.mission_id && daysSince(mission.requisitoire_last_reminder_at) >= 7) {
-        const r = await sendRequisitoireRelance(d.mission_id)
-        if (r.ok) { out.relances++; out.actions.push({ plate: d.vehicle_plate || '—', kind: 'relance réquisitoire' }) }
+      // Relance GROUPÉE : un mail par policier (portail), pas un par véhicule
+      // (Olivier 16/09/2026). Sans contact Odoo lié → pas d'email → rien.
+      if (d.mission_id && mission.officer_partner_id && daysSince(mission.requisitoire_last_reminder_at) >= 7) {
+        const arr = duePartners.get(mission.officer_partner_id) || []
+        arr.push(d.vehicle_plate || '—'); duePartners.set(mission.officer_partner_id, arr)
       }
       continue
     }
@@ -228,6 +231,14 @@ export async function runSaisieCron(sb: any): Promise<SaisieCronSummary> {
       await sb.from('saisie_dossiers').update(patch).eq('id', d.id)
       out.prepared++; out.actions.push({ plate: d.vehicle_plate || '—', kind: action.kind })
     }
+  }
+
+  // Relances réquisitoire : un mail par policier avec TOUS ses manquants.
+  for (const [pid, plates] of duePartners) {
+    const r = await sendOfficerPortalMail(pid)
+    if (r.ok) { out.relances++; out.actions.push({ plate: plates.join('/'), kind: `relance réquisitoire (${r.count})` }) }
+    // Email inconnu = déjà visible dans l'écran Relance (⚠️) : pas une erreur de cron.
+    else if (!/Email du policier inconnu/.test(r.error || '')) out.errors.push(`Relance policier ${pid} (${plates.join(', ')}) : ${r.error}`)
   }
 
   // Alerte (une notif récap aux admins/superadmins).

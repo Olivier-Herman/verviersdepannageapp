@@ -71,6 +71,7 @@ export default async function RelanceRequisitoirePage() {
     officer_name: m.officer_name,
     officer_email: m.officer_partner_id ? (emailMap[m.officer_partner_id] || null) : null,
     officer_linked: !!m.officer_partner_id,
+    officer_partner_id: m.officer_partner_id ?? null,
     token: m.requisitoire_token,
     stop: m.requisitoire_stop,
     reminder_count: m.requisitoire_reminder_count || 0,

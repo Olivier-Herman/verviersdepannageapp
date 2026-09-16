@@ -13,6 +13,7 @@ interface Item {
   location: string | null; saisie_at: string | null; zone: string | null
   zone_company_id: number | null
   officer_name: string | null; officer_email: string | null; officer_linked: boolean
+  officer_partner_id: number | null
   token: string | null; stop: boolean; reminder_count: number; last_reminder_at: string | null
 }
 
@@ -47,6 +48,43 @@ export default function RelanceRequisitoireClient({ initialItems, appUrl }: { in
     total: items.filter(i => !i.stop).length,
     sansEmail: items.filter(i => !i.stop && !i.officer_email).length,
   }), [items])
+
+  // Portail : un mail par POLICIER (tous ses réquisitoires manquants + lien vers
+  // son espace). Groupes = fiches liées à un contact Odoo, non stoppées.
+  // Olivier 16/09/2026.
+  const byOfficer = useMemo(() => {
+    const m = new Map<number, { pid: number; name: string; email: string | null; items: Item[] }>()
+    for (const it of items) {
+      if (it.stop || !it.officer_partner_id) continue
+      const g = m.get(it.officer_partner_id) || { pid: it.officer_partner_id, name: it.officer_name || '—', email: it.officer_email, items: [] }
+      g.items.push(it); m.set(it.officer_partner_id, g)
+    }
+    return [...m.values()].sort((a, b) => b.items.length - a.items.length)
+  }, [items])
+  const [officerBusy, setOfficerBusy] = useState<number | null>(null)
+  const [officerFlash, setOfficerFlash] = useState<{ pid: number; msg: string; ok: boolean } | null>(null)
+  const sendPortal = async (pid: number) => {
+    setOfficerBusy(pid)
+    try {
+      const r = await fetch('/api/fourriere/relance-requisitoire/officer', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ partner_id: pid }) })
+      const j = await r.json()
+      if (!r.ok) throw new Error(j?.error || 'Erreur')
+      const now = new Date().toISOString()
+      setItems(prev => prev.map(i => i.officer_partner_id === pid && !i.stop ? { ...i, reminder_count: i.reminder_count + 1, last_reminder_at: now } : i))
+      setOfficerFlash({ pid, msg: `${j.count} véhicule(s) → ${j.email}`, ok: true })
+    } catch (e: any) { setOfficerFlash({ pid, msg: e?.message || 'Envoi impossible', ok: false }) }
+    finally { setOfficerBusy(null); setTimeout(() => setOfficerFlash(f => f?.pid === pid ? null : f), 5000) }
+  }
+  const copyPortal = async (pid: number) => {
+    try {
+      const r = await fetch(`/api/fourriere/relance-requisitoire/officer?partner_id=${pid}`)
+      const j = await r.json()
+      if (!r.ok) throw new Error(j?.error || 'Erreur')
+      await navigator.clipboard.writeText(j.link)
+      setOfficerFlash({ pid, msg: 'Lien du portail copié', ok: true })
+    } catch (e: any) { setOfficerFlash({ pid, msg: e?.message || 'Copie impossible', ok: false }) }
+    setTimeout(() => setOfficerFlash(f => f?.pid === pid ? null : f), 4000)
+  }
 
   const note = (id: string, msg: string, ok: boolean) => { setFlash({ id, msg, ok }); setTimeout(() => setFlash(f => f?.id === id ? null : f), 4000) }
 
@@ -185,6 +223,37 @@ export default function RelanceRequisitoireClient({ initialItems, appUrl }: { in
             Afficher les stoppés
           </label>
         </div>
+
+        {byOfficer.length > 0 && (
+          <div className="bg-surface-2 border border-app rounded-2xl p-3">
+            <div className="flex items-center justify-between gap-2 flex-wrap mb-2">
+              <div>
+                <div className="text-sm font-semibold text-ink">🚔 Par policier — portail</div>
+                <div className="text-xs text-ink-muted">Un seul mail par policier : ses réquisitoires manquants + son espace de dépôt (il peut aussi s'attribuer une saisie sans policier).</div>
+              </div>
+            </div>
+            <div className="grid gap-1.5 sm:grid-cols-2">
+              {byOfficer.map(g => (
+                <div key={g.pid} className="flex items-center justify-between gap-2 bg-surface border border-app rounded-xl px-3 py-2">
+                  <div className="min-w-0">
+                    <div className="text-sm text-ink font-medium truncate">{g.name} <span className="text-ink-muted font-normal">· {g.items.length} véh.</span></div>
+                    <div className="text-[11px] truncate">
+                      {g.email ? <span className="text-emerald-700">{g.email}</span> : <span className="text-amber-700">⚠️ contact Odoo sans email</span>}
+                      {officerFlash?.pid === g.pid && <span className={officerFlash.ok ? 'text-emerald-600' : 'text-critical'}> · {officerFlash.ok ? '✓' : '⚠'} {officerFlash.msg}</span>}
+                    </div>
+                  </div>
+                  <div className="flex gap-1 shrink-0">
+                    <button onClick={() => sendPortal(g.pid)} disabled={officerBusy === g.pid || !g.email}
+                      className="px-2.5 py-1.5 bg-brand text-white rounded-lg text-xs font-semibold disabled:opacity-40" title={g.email ? 'Envoyer le mail groupé' : 'Email inconnu'}>
+                      {officerBusy === g.pid ? '…' : '✉ Portail'}
+                    </button>
+                    <button onClick={() => copyPortal(g.pid)} className="px-2 py-1.5 bg-surface-2 border border-app rounded-lg text-xs text-ink-secondary" title="Copier le lien du portail">🔗</button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         {visible.length === 0 ? (
           <p className="text-sm text-ink-muted italic py-8 text-center">Aucune saisie en attente de réquisitoire. 🎉</p>
