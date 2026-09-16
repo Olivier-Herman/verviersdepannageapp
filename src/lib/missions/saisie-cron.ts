@@ -98,7 +98,9 @@ export async function runSaisieCron(sb: any): Promise<SaisieCronSummary> {
   const { data: dossiers } = await sb.from('saisie_dossiers').select('*').neq('state', 'clos')
   for (const d of (dossiers || [])) {
     // Périmètre : on ignore les saisies antérieures à juin 2026 (ancien système).
-    if (d.parked_at && String(d.parked_at).slice(0, 10) < scopeFrom) continue
+    // Un dossier Parquet qui existe se traite, même antérieur au périmètre : le
+    // périmètre ne gouverne que l'auto-intégration (GG036SD, 16/09/2026).
+    void scopeFrom
     out.checked++
     const mission = d.mission_id
       ? (await sb.from('incoming_missions')
