@@ -22,6 +22,22 @@ export default function CancelMissionButton({
   const [reason,  setReason]  = useState('')
   const [busy,    setBusy]    = useState(false)
   const [err,     setErr]     = useState('')
+  // Groupes encore vivants dans le dossier (hors celui-ci) : s'il y en a, on
+  // demande si on annule tout le dossier ou seulement cette action.
+  // Olivier 16/09/2026.
+  const [others,  setOthers]  = useState<number | null>(null)
+  const [scope,   setScope]   = useState<'leg' | 'dossier'>('leg')
+
+  const loadOthers = async () => {
+    setOthers(null)
+    try {
+      const r = await fetch(`/api/dossier/${missionId}`, { cache: 'no-store' })
+      const j = await r.json().catch(() => ({}))
+      const legs: any[] = j?.dossier?.legs || []
+      const alive = legs.filter(l => l.mission_id !== missionId && l.status !== 'cancelled' && !l.nothing_to_bill && !l.invoice_number)
+      setOthers(alive.length)
+    } catch { setOthers(0) }
+  }
 
   const submit = async () => {
     const r = reason.trim()
@@ -31,7 +47,7 @@ export default function CancelMissionButton({
       const res = await fetch(`/api/missions/${missionId}/cancel`, {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ reason: r }),
+        body:    JSON.stringify({ reason: r, scope }),
       })
       const data = await res.json().catch(() => ({}))
       if (!res.ok) { setErr(data.error || 'Échec de l\'annulation.'); setBusy(false); return }
@@ -46,7 +62,7 @@ export default function CancelMissionButton({
     <>
       <button
         type="button"
-        onClick={() => { setOpen(true); setErr(''); setReason('') }}
+        onClick={() => { setOpen(true); setErr(''); setReason(''); setScope('leg'); loadOthers() }}
         className={className || 'w-full py-3 bg-red-600 hover:bg-red-700 text-white font-semibold rounded-xl text-sm transition'}
       >
         {label}
@@ -61,6 +77,20 @@ export default function CancelMissionButton({
                 La fiche sera masquée de l&apos;app mais conservée en base. Indiquez le motif.
               </p>
             </div>
+
+            {others != null && others > 0 && (
+              <div className="grid grid-cols-2 gap-2">
+                <button type="button" onClick={() => setScope('leg')}
+                  className={`py-3 rounded-xl text-sm font-semibold border transition ${scope === 'leg' ? 'bg-red-600 text-white border-red-600' : 'bg-surface-2 text-ink border'}`}>
+                  Uniquement cette action
+                </button>
+                <button type="button" onClick={() => setScope('dossier')}
+                  className={`py-3 rounded-xl text-sm font-semibold border transition ${scope === 'dossier' ? 'bg-red-600 text-white border-red-600' : 'bg-surface-2 text-ink border'}`}>
+                  Tout le dossier ({others + 1} groupes)
+                </button>
+              </div>
+            )}
+            {others === null && <p className="text-ink-faint text-xs">Lecture du dossier…</p>}
 
             <textarea
               value={reason}
@@ -88,7 +118,7 @@ export default function CancelMissionButton({
                 disabled={busy || !reason.trim()}
                 className="flex-1 py-2.5 bg-red-600 hover:bg-red-700 text-white rounded-xl text-sm font-semibold disabled:opacity-50"
               >
-                {busy ? 'Annulation…' : 'Confirmer l\'annulation'}
+                {busy ? 'Annulation…' : scope === 'dossier' ? 'Annuler tout le dossier' : 'Confirmer l\'annulation'}
               </button>
             </div>
           </div>

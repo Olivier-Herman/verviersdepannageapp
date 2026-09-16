@@ -101,6 +101,8 @@ export interface Dossier {
   billed_to:      { id: number | null; name: string | null }
   received_at:    string | null
   state:          { open: boolean; reason: string | null }
+  /** Tous les groupes annulés (ou réglés) et la fiche principale annulée : le dossier est annulé, plus « à facturer ». */
+  cancelled?:     boolean
   // Dernier séjour au parc, même après la sortie (Olivier 08/09/2026 : « on ne voit plus dans quel parc elle était »).
   last_parc?:     { zone: string | null; entered_at: string | null; exited_at: string | null; reason: string | null; letter: string } | null
   // Tampons de la page Facturation : Domaine (vendu), ANWB / Touring check.
@@ -597,6 +599,11 @@ async function buildDossierUncached(anyMissionId: string, light: boolean, price 
       // destructions revenues à facturer avec leur remorquage à 383,85 €).
       if (m.no_charge_at) { amount = 0; amountUnknown = false; nothing = `sans frais${m.no_charge_reason ? ' : ' + String(m.no_charge_reason) : ''}` }
       if (kind === 'rel' && amount === 0 && (m.status === 'cancelled')) nothing = 'annulée'
+      // Une fiche ANNULÉE ne se facture pas, quel que soit le groupe : le montant
+      // figé à la clôture (247,94 € sur 10132675) ne doit pas survivre à
+      // l'annulation. Sauf si une facture existe déjà — là c'est un avoir, pas
+      // un oubli. Olivier 16/09/2026.
+      if (m.status === 'cancelled' && !billedRefs.length) { amount = 0; amountUnknown = false; nothing = nothing || `annulée${m.cancelled_reason ? ' : ' + String(m.cancelled_reason) : ''}` }
       if (kind === 'rel' && m.parked_at && ts(m.parked_at)! > (ts(m.loaded_at) || 0) && !m.completed_at) nothing = nothing || null
 
       title = getMissionTypeLabel(m.mission_type, 'long')
@@ -875,6 +882,7 @@ async function buildDossierUncached(anyMissionId: string, light: boolean, price 
     // `light` signale au client « montants figés, recalcule en fond » : un
     // dossier tarifé n'en est pas un, même construit avec les raccourcis.
     state, legs, events, light: (light && !priced) || undefined,
+    cancelled: root.status === 'cancelled' && legs.every(l => !!l.nothing_to_bill || !!l.invoice_number || l.status === 'cancelled') || undefined,
     parquet,
     stamps: {
       domaine: root.domaine_vente_date ? `Vendu au Domaine${root.domaine_vente_firm ? ' · ' + root.domaine_vente_firm : ''}` : (root.domaine_remise_date ? `Remis au Domaine le ${String(root.domaine_remise_date).slice(0, 10)}` : null),

@@ -75,7 +75,7 @@ const canPickLeg   = (l: DossierLeg) => !l.nothing_to_bill && !isLegBilled(l) &&
   && (isOdoo(l) || (!!l.billed_to_id && !/parquet|frais de justice|fdj\b/i.test(String(l.billed_to_name || ''))))
 const ready        = (d: Dossier) => d.legs.filter(l => isOdoo(l) && (canPickLeg(l) || (l.amount_unknown && !isLegBilled(l) && !l.nothing_to_bill)) && !(l.kind === 'gard' && l.open))
 const isCircuitLegs = (d: Dossier) => d.legs.some(l => !isOdoo(l) && !isLegBilled(l) && !l.nothing_to_bill) && ready(d).length === 0
-const isDone       = (d: Dossier) => !d.state.open && d.legs.every(l => isLegBilled(l) || !!l.nothing_to_bill || (l.amount_htva === 0 && !l.amount_unknown))
+const isDone       = (d: Dossier) => !!d.cancelled || (!d.state.open && d.legs.every(l => isLegBilled(l) || !!l.nothing_to_bill || (l.amount_htva === 0 && !l.amount_unknown)))
 const isTouringBilled = (d: Dossier) => /touring/i.test(String(d.billed_to.name || '')) || d.legs.some(l => /touring/i.test(String(l.billed_to_name || '')))
 const isTouring    = (d: Dossier) => { const s = (d.source || '').toLowerCase(); return s === 'touring' || s === 'tgr_touring' || isTouringBilled(d) }
 
