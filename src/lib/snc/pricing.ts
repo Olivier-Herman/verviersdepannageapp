@@ -442,7 +442,12 @@ export async function computeSncMetrics(input: SncCalcInput): Promise<SncCalcOut
   let balisageDepotInfo: { name: string; id: number | string } | null = null
   if (input.requiresBalisage) {
     const balisageDepots = findBalisageDepots(depots)
-    const balisageDepot = await findNearestDepotByRoute(input.interventionLat, input.interventionLng, balisageDepots)
+    // Demande de Momo, transmise par Olivier le 16/09/2026 : en SNC (non couvert),
+    // le balisage part aussi UNIQUEMENT de Pepinster (dépôt de référence). Le
+    // dépôt de balisage le plus proche ne vaut plus que pour le Siabis couvert.
+    const balisageDepot = variantIn === 'snc' && pepinster
+      ? pepinster
+      : await findNearestDepotByRoute(input.interventionLat, input.interventionLng, balisageDepots)
     if (balisageDepot) {
       balisageDepotInfo = { name: balisageDepot.name, id: balisageDepot.id }
       const bal1 = await calculateRouteKm(balisageDepot.lat, balisageDepot.lng, input.interventionLat, input.interventionLng)
