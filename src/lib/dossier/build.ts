@@ -451,8 +451,14 @@ async function buildDossierUncached(anyMissionId: string, light: boolean, price 
   // fiche mais c'est le client sur place qui paie ; on ne montre donc pas
   // Touring comme client à facturer (Olivier 08/09/2026, #10133979). Le couvert
   // (sia_couvert) garde Touring.
+  // 16/09/2026 (#10130105, 2JEM405) : ça ne vaut que pour les scénarios payés
+  // SUR PLACE (dépannage, remorquage client). En « mise en dépôt » (rem_depot),
+  // le payeur se décide après coup au bureau (client, Touring qui reprend la
+  // relivraison, ANWB…) : on garde ce que la fiche dit — Olivier « je vois bien
+  // un client de facturation dans le dossier ».
+  const sncStripTouring = String(root.source || '') === 'police_snc' && String(root.snc_scenario || '') !== 'rem_depot'
   const payer = (r: any): { id: number | null; name: string | null } =>
-    String(root.source || '') === 'police_snc' && /touring/i.test(String(r?.billed_to_name || ''))
+    sncStripTouring && /touring/i.test(String(r?.billed_to_name || ''))
       ? { id: null, name: null }
       : { id: r?.billed_to_id ?? null, name: r?.billed_to_name ?? null }
   const legs: DossierLeg[] = []
