@@ -278,7 +278,8 @@ export default function AppNavV2({
 
       {/* ── MAINTENANT : pages du rôle + favoris + récents ──────
           Menu v3, lot 1 (Olivier 09/09/2026 : « ce qu'on ouvre chaque jour à un clic »). */}
-      {!searching && quick.length > 0 && (
+      {/* Menu Espaces (Olivier 16/09/2026) : la zone « Maintenant » n'a plus d'intérêt — les raccourcis épinglés la remplacent. */}
+      {!searching && !espaces && quick.length > 0 && (
         <div className="flex-shrink-0 max-h-[45%] overflow-y-auto pb-2 mb-2 border-b">
           <p className="px-3 pb-1 text-[10px] font-semibold uppercase tracking-widest text-ink-faint">Maintenant</p>
           <div className="flex flex-col gap-0.5">
@@ -311,7 +312,7 @@ export default function AppNavV2({
 
       {/* ── MODULES ────────────────────────────────────── */}
       <div className="flex-1 min-h-0 overflow-y-auto flex flex-col gap-0.5">
-        {!searching && quick.length > 0 && <p className="px-3 pb-1 text-[10px] font-semibold uppercase tracking-widest text-ink-faint">Modules</p>}
+        {!searching && (espaces || quick.length > 0) && <p className="px-3 pb-1 text-[10px] font-semibold uppercase tracking-widest text-ink-faint">{espaces ? 'Espaces' : 'Modules'}</p>}
         {shownRest.map(mod => <ModuleBlock key={mod.key} mod={mod} />)}
         {noResult && (
           <p className="px-3 py-4 text-sm text-ink-muted">Aucun menu ne correspond à « {query.trim()} ».</p>
