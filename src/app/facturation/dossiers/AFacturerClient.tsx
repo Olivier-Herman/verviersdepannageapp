@@ -108,7 +108,12 @@ function readDossier(d: Dossier, ai: AutoInfo | undefined, comex: ComexInfo | un
       : { ...base, who: 'eux', headline: 'Domaine — relevé trimestriel', detail: 'Facturé via le module Domaine.', primary: { label: 'Domaine', kind: 'link', href: '/fourriere/domaine', tone: 'ghost' } }
   }
   if (ai?.status === 'hexalite') return { ...base, who: 'nous', headline: 'Dans Hexalite — à clôturer via Clôture Allianz', detail: 'La facture part par la clôture Hexalite, pas d\'ici.', primary: { label: 'Clôture Allianz', kind: 'link', href: '/facturation/allianz', tone: 'sky' } }
-  if (d.state.open) return { ...base, who: 'veille', headline: `${d.state.reason || 'Dossier en cours'} — on facture à la clôture`, detail: rd.length ? `Groupe${rd.length > 1 ? 's' : ''} ${rd.map(l => l.letter).join(', ')} déjà prêt${rd.length > 1 ? 's' : ''} : tu peux facturer maintenant, le reste partira à la sortie.` : 'Combiné : tout part ensemble quand le dernier groupe est clos.', primary: rd.length ? { label: 'Facturer les groupes prêts', kind: 'bill_ready', tone: 'ghost' } : undefined }
+  if (d.state.open) {
+    const gardOpen = d.legs.find(l => l.kind === 'gard' && l.open)
+    const relOpen  = d.legs.find(l => l.kind === 'rel' && l.open)
+    const why = relOpen ? `Relivraison ${relOpen.letter} en cours` : gardOpen ? `Véhicule au parc (${gardOpen.subtitle || 'gardiennage'} · ${gardOpen.days ?? 0} j)` : (d.state.reason || 'Dossier en cours')
+    return { ...base, who: 'veille', headline: `${why} — on facture à la clôture`, detail: rd.length ? `Groupe${rd.length > 1 ? 's' : ''} ${rd.map(l => l.letter).join(', ')} déjà prêt${rd.length > 1 ? 's' : ''} : tu peux facturer maintenant, le reste partira à la sortie.` : 'Tout part ensemble quand le dernier groupe est clos (combiné = manuel).', primary: rd.length ? { label: 'Facturer les groupes prêts', kind: 'bill_ready', tone: 'ghost' } : undefined }
+  }
   if (unknown) {
     const why = unknownLegs(d).map(l => l.amount_note || 'raison inconnue')[0]
     const transient = /réessaie|robot|passager|indisponible|quota/i.test(why)
@@ -125,7 +130,9 @@ function readDossier(d: Dossier, ai: AutoInfo | undefined, comex: ComexInfo | un
     const why = ai?.reason ? ` · hors robot : ${ai.reason}` : ''
     return { ...base, who: 'nous', headline: `Facturer à ${clients.join(' + ')}`, detail: `${d.legs.length > 1 ? `${rd.length} groupe(s) prêt(s) sur ${d.legs.length} · ` : ''}${eur(rest(d))} HTVA · ${eurTvac(rest(d))} TVAC${d.totals.collected > 0 ? ` · ${eur(d.totals.collected)} déjà encaissé sur place` : ''}${remarksN ? ` · ${remarksN} remarque(s) à lire` : ''}${why}`, primary: { label: 'Facturer', kind: 'bill', tone: 'brand' } }
   }
-  return { ...base, who: 'veille', headline: 'Rien à facturer pour l\'instant', detail: ai?.reason }
+  // Rien de prêt et rien d'ouvert : on dit POURQUOI, groupe par groupe.
+  const why = d.legs.map(l => `${l.letter} : ${isLegBilled(l) ? 'facturé' : l.nothing_to_bill ? l.nothing_to_bill : l.amount_htva === 0 ? '0 €' : l.status_label}`).join(' · ')
+  return { ...base, who: 'veille', headline: pending ? 'Montant en cours de calcul' : 'Rien à facturer pour l\'instant', detail: [ai?.reason, why].filter(Boolean).join(' — ') }
 }
 
 const WHO: Record<Who, { label: string; cls: string; dot: string }> = {
@@ -133,7 +140,7 @@ const WHO: Record<Who, { label: string; cls: string; dot: string }> = {
   robot:  { label: 'Robot',    cls: 'bg-violet-50 border-violet-300 text-violet-900', dot: 'bg-violet-500' },
   eux:    { label: 'Chez eux', cls: 'bg-sky-50 border-sky-300 text-sky-900',         dot: 'bg-sky-500' },
   client: { label: 'Client',   cls: 'bg-teal-50 border-teal-300 text-teal-900',      dot: 'bg-teal-500' },
-  veille: { label: 'En cours', cls: 'bg-slate-50 border-slate-200 text-slate-700',   dot: 'bg-slate-400' },
+  veille: { label: 'Pas prêt', cls: 'bg-slate-50 border-slate-200 text-slate-700',   dot: 'bg-slate-400' },
   fini:   { label: 'Terminé',  cls: 'bg-slate-50 border-slate-200 text-slate-500',   dot: 'bg-slate-300' },
 }
 const TONE = { brand: 'bg-brand hover:bg-brand-hover text-white', ghost: 'bg-surface hover:bg-surface-hover border text-ink', sky: 'bg-sky-600 hover:bg-sky-700 text-white' }
@@ -226,13 +233,16 @@ export default function AFacturerClient({ initial, autoById, comexById = {}, isS
     targets.forEach(id => refinedRef.current.add(id))
     const drop = (id: string) => setPricingIds(p => { if (!p.has(id)) return p; const n = new Set(p); n.delete(id); return n })
     setPricingIds(p => new Set([...p, ...targets]))
+    const got = new Set<string>()
+    const one = async (id: string) => {
+      try { const j = await fetch(`/api/dossier/${id}?mode=list`, { cache: 'no-store' }).then(r => r.ok ? r.json() : null); if (j?.dossier) { got.add(id); setRows(p => p.map(d => d.root_id === id ? j.dossier : d)) } } catch {}
+    }
     ;(async () => {
-      for (let i = 0; i < targets.length; i += 6) {
-        await Promise.all(targets.slice(i, i + 6).map(async id => {
-          try { const j = await fetch(`/api/dossier/${id}?mode=list`, { cache: 'no-store' }).then(r => r.json()); if (j?.dossier) setRows(p => p.map(d => d.root_id === id ? j.dossier : d)) } catch {}
-          drop(id)
-        }))
-      }
+      for (let i = 0; i < targets.length; i += 6) await Promise.all(targets.slice(i, i + 6).map(one))
+      // Seconde passe pour ceux qui n'ont pas répondu (Olivier 16/09 : « il n'arrive pas à tout calculer »).
+      const missing = targets.filter(id => !got.has(id))
+      for (let i = 0; i < missing.length; i += 3) await Promise.all(missing.slice(i, i + 3).map(one))
+      targets.forEach(drop)
     })()
     // Pas d'annulation : une réponse qui arrive après un changement de pastille
     // reste bonne à prendre (la ligne se met à jour où qu'elle soit).
@@ -296,7 +306,7 @@ export default function AFacturerClient({ initial, autoById, comexById = {}, isS
 
   const TABS: { key: Filter; label: string; dot?: string }[] = [
     { key: 'nous', label: 'À nous', dot: WHO.nous.dot }, { key: 'robot', label: 'Robot', dot: WHO.robot.dot }, { key: 'eux', label: 'Chez eux', dot: WHO.eux.dot },
-    { key: 'veille', label: 'En cours', dot: WHO.veille.dot }, { key: 'client', label: 'Facturées', dot: WHO.client.dot }, { key: 'all', label: 'Tous' },
+    { key: 'veille', label: 'Pas prêt', dot: WHO.veille.dot }, { key: 'client', label: 'Facturées', dot: WHO.client.dot }, { key: 'all', label: 'Tous' },
   ]
 
   return (
@@ -389,7 +399,7 @@ export default function AFacturerClient({ initial, autoById, comexById = {}, isS
               <div className="flex items-center gap-3">
                 <div className="text-right tabular-nums">
                   <div className={`font-bold text-ink text-lg leading-tight ${isPending(d) ? 'opacity-40' : ''}`}>{hasUnknown(d) ? <span className="text-amber-700 text-sm font-semibold">à calculer</span> : rest(d) > 0 ? eur(rest(d)) : d.invoices.length ? eur(d.invoices.reduce((s, i) => s + i.amount, 0)) : '—'}</div>
-                  <div className="text-[10.5px] text-ink-faint">{isPending(d) ? 'calcul en cours' : rest(d) > 0 ? `HTVA · ${eurTvac(rest(d))} TVAC` : d.invoices.length ? 'HTVA facturé' : ''}</div>
+                  <div className="text-[10.5px] text-ink-faint">{isPending(d) ? (pricing > 0 ? 'calcul en cours' : <button onClick={() => refreshOne(d.root_id)} className="underline hover:text-ink">montant figé · recalculer</button>) : rest(d) > 0 ? `HTVA · ${eurTvac(rest(d))} TVAC` : d.invoices.length ? 'HTVA facturé' : ''}</div>
                 </div>
                 <span className={`inline-flex items-center gap-1.5 text-[11px] font-bold px-2.5 py-1 rounded-full border ${who.cls}`}><span className={`w-1.5 h-1.5 rounded-full ${who.dot}`} />{who.label}</span>
               </div>
