@@ -196,15 +196,21 @@ export default function AFacturerClient({ initial, autoById, comexById = {}, isS
 
   useEffect(() => { try { const g = localStorage.getItem('fact_group_filter'); if (g && SOURCE_GROUPS.some(x => x.key === g)) setGroupState(g) } catch {} }, [SOURCE_GROUPS])
   const setGroup = (k: string) => { setGroupState(k); try { localStorage.setItem('fact_group_filter', k) } catch {} }
-  useEffect(() => {
-    const load = () => fetch('/api/facturation/auto-eligible').then(r => r.ok ? r.json() : null).then(j => { if (j) setAutoElig(j) }).catch(() => {})
-    load(); const t = setInterval(load, 60_000); return () => clearInterval(t)
-  }, [])
+  const loadAuto = () => fetch('/api/facturation/auto-eligible', { cache: 'no-store' }).then(r => r.ok ? r.json() : null).then(j => { if (j) setAutoElig(j) }).catch(() => {})
+  useEffect(() => { loadAuto(); const t = setInterval(loadAuto, 60_000); return () => clearInterval(t) }, [])
+  // Dossiers clôturés dans Allianz depuis la carte : la facture se crée derrière
+  // (asynchrone) — on le montre tout de suite au lieu de laisser le bouton.
+  const [allianzClosed, setAllianzClosed] = useState<Set<string>>(new Set())
   useEffect(() => { const t = setInterval(() => setNow(Date.now()), 15_000); return () => clearInterval(t) }, [])
   useEffect(() => { if (!report) return; const t = setTimeout(() => { setReport(null); setReportLinks([]) }, 12_000); return () => clearTimeout(t) }, [report])
 
   const activeGroup = SOURCE_GROUPS.find(g => g.key === group) || SOURCE_GROUPS[0]
-  const readings = useMemo(() => new Map(rows.map(d => [d.root_id, readDossier(d, autoElig?.byMission?.[d.root_id], comexById[d.root_id], !!autoById[d.root_id], now)] as const)), [rows, autoElig, comexById, autoById, now])
+  const readings = useMemo(() => new Map(rows.map(d => {
+    const r = readDossier(d, autoElig?.byMission?.[d.root_id], comexById[d.root_id], !!autoById[d.root_id], now)
+    if (allianzClosed.has(d.root_id) && r.who !== 'client' && r.who !== 'fini')
+      return [d.root_id, { ...r, who: 'robot' as Who, headline: 'Clôturé dans Allianz — la facture se crée', detail: 'Quelques secondes ; la carte passe ensuite dans « Facturées ».', primary: undefined }] as const
+    return [d.root_id, r] as const
+  })), [rows, autoElig, comexById, autoById, now, allianzClosed])
   const norm = (s: string) => s.toLowerCase().replace(/[\s.-]/g, '')
   const matches = (d: Dossier) => {
     const q = norm(search); if (!q) return true
@@ -290,8 +296,12 @@ export default function AFacturerClient({ initial, autoById, comexById = {}, isS
       const res = await fetch('/api/facturation/allianz/close', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
       const j = await res.json().catch(() => ({}))
       if (!res.ok || !j.ok) { setReport(`⚠ Clôture Allianz refusée : ${j.error || `HTTP ${res.status}`}${j.detail ? ' — ' + String(j.detail).slice(0, 200) : ''}`); return }
-      setReport(`✓ ${d.ref} clôturé dans Allianz${j.amount != null ? ` · ${eur(Number(j.amount))}` : ''}${j.invoice ? ' · facture créée' : ''}`)
-      await refreshOne(d.root_id); router.refresh()
+      setReport(`✓ ${d.ref} clôturé dans Allianz${j.amount != null ? ` · ${eur(Number(j.amount))}` : ''}${j.invoice ? ' · facture créée' : ' · facture en cours de création'}`)
+      setAllianzClosed(p => new Set(p).add(d.root_id))
+      await refreshOne(d.root_id); loadAuto()
+      // La facture arrive quelques secondes après la clôture : on repasse deux fois.
+      setTimeout(() => { refreshOne(d.root_id); loadAuto() }, 4000)
+      setTimeout(() => { refreshOne(d.root_id); loadAuto() }, 12000)
     } catch (e: any) { setReport(`⚠ ${e?.message || 'Erreur'}`) } finally { setBusy(null) }
   }
   const verifyAll = async () => {
