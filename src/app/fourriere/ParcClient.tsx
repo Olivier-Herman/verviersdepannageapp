@@ -8,8 +8,10 @@
 // Liste / Plan / Scanner / Non localisés sont des VUES du même parc (liens vers
 // les écrans existants, intacts). Décisions Olivier 16/09 : tout est « au cas par
 // cas » → chaque carte porte ses propres boutons, aucune action de masse.
-// Hypothèses réversibles : legacy = « à qualifier », Transit = zone comme les
-// autres, > 60 j = badge seulement, restitution = flux actuel (QR / chauffeur).
+// Hypothèses réversibles : legacy = « à qualifier », > 60 j = badge seulement,
+// restitution = flux actuel (QR / chauffeur). Transit (Olivier 16/09) = zone de
+// transit ACCIDENT : le chauffeur y dépose, le bureau traite vers Relivraison ou
+// zone A ; tout autre véhicule en Transit est à placer dans sa zone.
 
 import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
@@ -88,6 +90,13 @@ function readVehicle(v: V): Reading {
 
   if (v.unlocated) return { ...base, who: 'nous', headline: 'Introuvable au dernier inventaire', detail: 'Retrouve-le au scanner, ou déclare-le sorti si le véhicule n\'est plus là.', primary: { label: 'Localiser', kind: 'locate', href: '/fourriere/non-localises', tone: 'brand' } }
   if (!v.zone || v.row == null) return { ...base, who: 'nous', headline: !v.zone ? 'Arrivé — à placer' : `En ${v.zone_label || v.zone} — rangée à définir`, detail: 'La zone proposée vient de la source ; choisis la rangée sur le plan.', primary: { label: 'Placer', kind: 'place', href: '/fourriere/plan', tone: 'brand' } }
+  // Transit = zone de transit ACCIDENT (Olivier 16/09/2026) : déposé par le
+  // chauffeur, à traiter par le bureau vers la relivraison ou la zone A. Un
+  // véhicule d'une autre source en Transit n'est pas à sa place.
+  if (String(v.zone || '').toLowerCase() === 'transit') {
+    if (fam === 'accident') return { ...base, who: 'nous', headline: `Accident en transit depuis ${v.nights} j — à traiter : relivraison ou zone A`, detail: `${v.client_name ? `${v.client_name} · ` : ''}${v.redelivery_address ? `adresse de relivraison : ${v.redelivery_address}` : 'pas encore d\'adresse de relivraison'}. Programme la relivraison, ou place-le en zone A s'il reste.`, primary: { label: 'Traiter', kind: 'link', href: `/dispatch/dossier/${v.id}`, tone: 'brand' } }
+    if (!legacy) return { ...base, who: 'nous', headline: `${srcLabel(v.source)} en Transit — à placer dans sa zone`, detail: 'Transit est la zone de transit accident ; ce véhicule attend une vraie place.', primary: { label: 'Placer', kind: 'place', href: '/fourriere/plan', tone: 'brand' } }
+  }
   if (legacy) return { ...base, who: 'nous', headline: 'Fiche d\'avant VD Soft — à qualifier', detail: `Entré le ${fmtY(v.entered_at)} (${v.nights} nuits). Saisie, AVP, épave, ou déjà sorti ? Le choix se fait sur la fiche (source), le véhicule entre alors dans son circuit.`, primary: { label: 'Qualifier', kind: 'qualify', href: `/dispatch/${v.id}`, tone: 'brand' } }
   if (v.destruction) return { ...base, who: 'nous', headline: `Dossier de destruction ${v.destruction.status ? `· ${v.destruction.status}` : 'ouvert'}`, detail: 'Présentation, frais à la date de présentation, épaviste.', primary: { label: 'Ouvrir le dossier', kind: 'destruction', href: '/fourriere/destruction/dossiers', tone: 'ghost' } }
   if (v.domaine_remise_date) return { ...base, who: 'eux', headline: `Remis au Domaine le ${fmtY(v.domaine_remise_date)} — enlèvement attendu`, detail: v.domaine_enlevement_date ? `Enlèvement prévu le ${fmtY(v.domaine_enlevement_date)}.` : 'Date d\'enlèvement pas encore connue.', primary: { label: 'Domaine', kind: 'link', href: '/fourriere/domaine', tone: 'ghost' } }
