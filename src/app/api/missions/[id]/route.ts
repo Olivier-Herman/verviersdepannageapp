@@ -115,7 +115,7 @@ export async function PATCH(
   // On charge l etat actuel pour comparer (source avant change + verrou tarifaire).
   const { data: before } = await supabase
     .from('incoming_missions')
-    .select('status, source, external_id, snc_scenario, mission_type, incident_type, amount_to_collect, amount_to_collect_manual, amount_guaranteed, special_tarif_htva, incident_lat, incident_lng, incident_address, incident_city, incident_country, incident_borne_km, incident_sens, incident_at, destination_lat, destination_lng, destination_name, destination_address, destination_borne_km, destination_sens, redelivery_address, redelivery_lat, redelivery_lng, depot_depart_id, depot_depart_locked, snc_requires_balisage, intervention_date, parked_at, delivering_at, received_at, extra_addresses, billed_to_id, billed_to_name, tariff_locked')
+    .select('redelivery_address, status, source, external_id, snc_scenario, mission_type, incident_type, amount_to_collect, amount_to_collect_manual, amount_guaranteed, special_tarif_htva, incident_lat, incident_lng, incident_address, incident_city, incident_country, incident_borne_km, incident_sens, incident_at, destination_lat, destination_lng, destination_name, destination_address, destination_borne_km, destination_sens, redelivery_address, redelivery_lat, redelivery_lng, depot_depart_id, depot_depart_locked, snc_requires_balisage, intervention_date, parked_at, delivering_at, received_at, extra_addresses, billed_to_id, billed_to_name, tariff_locked')
     .eq('id', params.id)
     .maybeSingle()
 
@@ -378,7 +378,12 @@ export async function PATCH(
       const target = await relivraisonZoneFor(supabase, (data as any).redelivery_address)
       // Olivier 08/09/2026 : l'adresse de relivraison change sur un véhicule déjà en
       // zone K → l'étiquette est réimprimée (l'ancienne porte l'ancienne adresse).
-      if (target === 'K' && curZone === 'K' && String((data as any).redelivery_address || '').trim()) {
+      // 16/09/2026 (4838H) : « change » = VRAIMENT différente de l'ancienne. Le
+      // formulaire d'affectation renvoie l'adresse inchangée à chaque PATCH →
+      // une étiquette partait à chaque affectation de chauffeur sur la REL.
+      const normAddr = (v: any) => String(v || '').replace(/\s+/g, ' ').trim().toLowerCase()
+      const addrChanged = normAddr((data as any).redelivery_address) !== normAddr((before as any)?.redelivery_address)
+      if (target === 'K' && curZone === 'K' && addrChanged && String((data as any).redelivery_address || '').trim()) {
         try {
           const { reprintLabelForMission } = await import('@/lib/missions/reprint-label-helper')
           await reprintLabelForMission({ kind: 'uuid', value: params.id })
