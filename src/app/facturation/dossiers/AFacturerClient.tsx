@@ -19,6 +19,7 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import type { Dossier, DossierLeg } from '@/lib/dossier/build'
 import BillingModal, { cleanRef, isLegBilled, canPickLeg } from '@/components/dossier/BillingModal'
+import TabLegend from '@/components/ui/TabLegend'
 
 const eur = (n: number) => n.toLocaleString('fr-BE', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' €'
 const TVA = 1.21
@@ -343,9 +344,13 @@ export default function AFacturerClient({ initial, autoById, comexById = {}, isS
     setReportLinks(links); setBusy(null)
   }
 
-  const TABS: { key: Filter; label: string; dot?: string }[] = [
-    { key: 'nous', label: 'À nous', dot: WHO.nous.dot }, { key: 'robot', label: 'Robot', dot: WHO.robot.dot }, { key: 'eux', label: 'Chez eux', dot: WHO.eux.dot },
-    { key: 'veille', label: 'Pas prêt', dot: WHO.veille.dot }, { key: 'client', label: 'Facturées', dot: WHO.client.dot }, { key: 'all', label: 'Tous' },
+  const TABS: { key: Filter; label: string; dot?: string; help: string }[] = [
+    { key: 'nous', label: 'À nous', dot: WHO.nous.dot, help: 'à facturer ou à corriger par le bureau, un seul bouton' },
+    { key: 'robot', label: 'Robot', dot: WHO.robot.dot, help: 'auto-facturation programmée, heure annoncée' },
+    { key: 'eux', label: 'Chez eux', dot: WHO.eux.dot, help: 'on attend l\'assisteur (COMEX, Hexalite, Comet, Kaze), le Parquet ou le Domaine' },
+    { key: 'veille', label: 'Pas prêt', dot: WHO.veille.dot, help: 'véhicule au parc ou relivraison en cours : on facture à la clôture' },
+    { key: 'client', label: 'Facturées', dot: WHO.client.dot, help: 'facture émise, paiement suivi dans Odoo' },
+    { key: 'all', label: 'Tous', help: 'tout le suivi' },
   ]
 
   return (
@@ -386,11 +391,12 @@ export default function AFacturerClient({ initial, autoById, comexById = {}, isS
       {/* Onglets = qui a la main */}
       <div className="flex items-center gap-1.5 flex-wrap">
         {TABS.map(t => (
-          <button key={t.key} onClick={() => setFilter(t.key)} className={`px-3 py-1.5 rounded-xl text-sm font-semibold border transition flex items-center gap-1.5 ${filter === t.key ? 'bg-ink text-surface border-ink' : 'bg-surface-2 text-ink-secondary hover:bg-surface-hover'}`}>
+          <button key={t.key} onClick={() => setFilter(t.key)} title={t.help} className={`px-3 py-1.5 rounded-xl text-sm font-semibold border transition flex items-center gap-1.5 ${filter === t.key ? 'bg-ink text-surface border-ink' : 'bg-surface-2 text-ink-secondary hover:bg-surface-hover'}`}>
             {t.dot && <span className={`inline-block w-2 h-2 rounded-full ${t.dot}`} />}{t.label} <span className={filter === t.key ? 'opacity-80' : 'text-ink-faint'}>{counts[t.key] || 0}</span>
           </button>
         ))}
       </div>
+      <TabLegend items={TABS.filter(t => t.dot).map(t => ({ dot: t.dot, label: t.label, text: t.help }))} />
       {/* Assisteurs */}
       <div className="flex items-center gap-1.5 flex-wrap text-xs">
         {SOURCE_GROUPS.map(g => (

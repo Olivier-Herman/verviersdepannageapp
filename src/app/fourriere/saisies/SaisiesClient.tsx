@@ -16,6 +16,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import Link from 'next/link'
 import AppShell from '@/components/layout/AppShell'
+import TabLegend from '@/components/ui/TabLegend'
 
 type Recipient = 'parquet' | 'domaine' | 'client'
 interface Dossier {
@@ -287,12 +288,12 @@ export default function SaisiesClient({ userRole, userName, userEmail, userModul
   }, [dossiers, readings, filter, q])
   const sendableNow = visible.filter(d => readings.get(d.id)!.canEstablish && !d.levee_date && !d.pending_action?.startsWith('cloture')).map(d => d.id)
 
-  const TABS: { key: Filter; label: string; n: number; dot?: string }[] = [
-    { key: 'nous', label: 'À nous', n: counts.nous, dot: WHO.nous.dot },
-    { key: 'eux', label: 'Chez eux', n: counts.eux, dot: WHO.eux.dot },
-    { key: 'rien', label: 'En veille', n: counts.rien, dot: WHO.rien.dot },
-    { key: 'closed', label: 'Clôturés', n: counts.closed },
-    { key: 'all', label: 'Tous', n: counts.all },
+  const TABS: { key: Filter; label: string; n: number; dot?: string; help: string }[] = [
+    { key: 'nous', label: 'À nous', n: counts.nous, dot: WHO.nous.dot, help: 'une action à faire par le bureau, un seul bouton' },
+    { key: 'eux', label: 'Chez eux', n: counts.eux, dot: WHO.eux.dot, help: 'on attend le Parquet, un policier, JustInvoice ou le Domaine' },
+    { key: 'rien', label: 'En veille', n: counts.rien, dot: WHO.rien.dot, help: 'rien à faire avant une date connue, le robot s\'en charge' },
+    { key: 'closed', label: 'Clôturés', n: counts.closed, help: 'dossiers terminés' },
+    { key: 'all', label: 'Tous', n: counts.all, help: 'tout le suivi' },
   ]
   const cronAgeH = cronLast?.at ? (Date.now() - new Date(cronLast.at).getTime()) / 3600000 : null
   const cronSilent = cronAgeH == null || cronAgeH > 36
@@ -342,7 +343,7 @@ export default function SaisiesClient({ userRole, userName, userEmail, userModul
         {/* Onglets = qui a la main */}
         <div className="flex items-center gap-1.5 flex-wrap">
           {TABS.map(t => (
-            <button key={t.key} onClick={() => setFilter(t.key)}
+            <button key={t.key} onClick={() => setFilter(t.key)} title={t.help}
               className={`px-3 py-1.5 rounded-xl text-sm font-semibold border transition flex items-center gap-1.5 ${filter === t.key ? 'bg-ink text-surface border-ink' : 'bg-surface-2 text-ink-secondary hover:bg-surface-hover'}`}>
               {t.dot && <span className={`inline-block w-2 h-2 rounded-full ${t.dot}`} />}
               {t.label} <span className={filter === t.key ? 'opacity-80' : 'text-ink-faint'}>{t.n}</span>
@@ -350,6 +351,7 @@ export default function SaisiesClient({ userRole, userName, userEmail, userModul
           ))}
           {counts.forclusion > 0 && <span className="ml-auto text-xs font-bold px-2.5 py-1 rounded-full bg-red-600 text-white">⏳ {counts.forclusion} forclusion proche</span>}
         </div>
+        <TabLegend items={TABS.filter(t => t.dot).map(t => ({ dot: t.dot, label: t.label, text: t.help }))} />
 
         {msg && <div className="text-sm px-4 py-2.5 rounded-xl bg-surface-2 border text-ink">{msg}</div>}
 

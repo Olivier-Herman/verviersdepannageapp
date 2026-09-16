@@ -16,6 +16,7 @@ import Link from 'next/link'
 import AppShell from '@/components/layout/AppShell'
 import OfficerAutocomplete from '@/components/missions/OfficerAutocomplete'
 import VehicleFicheSheet from './VehicleFicheSheet'
+import TabLegend from '@/components/ui/TabLegend'
 
 interface V {
   id: string; mission_number: number | null; external_id: string | null; dossier_number: string | null
@@ -209,8 +210,12 @@ export default function ParcClient({ userRole, userName, userEmail, userModules 
     else if (p.href) window.location.href = p.href
   }
 
-  const TABS: { key: Filter; label: string; dot?: string }[] = [
-    { key: 'nous', label: 'À nous', dot: WHO.nous.dot }, { key: 'robot', label: 'Robot', dot: WHO.robot.dot }, { key: 'eux', label: 'Chez eux', dot: WHO.eux.dot }, { key: 'veille', label: 'En veille', dot: WHO.veille.dot }, { key: 'all', label: 'Tous' },
+  const TABS: { key: Filter; label: string; dot?: string; help: string }[] = [
+    { key: 'nous', label: 'À nous', dot: WHO.nous.dot, help: 'placer, localiser, identifier le policier, qualifier, sortir : un bouton' },
+    { key: 'robot', label: 'Robot', dot: WHO.robot.dot, help: 'relances, états de frais, bascule AVP à 60 j : rien à faire' },
+    { key: 'eux', label: 'Chez eux', dot: WHO.eux.dot, help: 'on attend un policier, le Parquet, le Domaine, une assistance ou le propriétaire' },
+    { key: 'veille', label: 'En veille', dot: WHO.veille.dot, help: 'rien avant une date connue (relivraison programmée, dossier en pause)' },
+    { key: 'all', label: 'Tous', help: 'tout le parc' },
   ]
 
   return (
@@ -241,11 +246,12 @@ export default function ParcClient({ userRole, userName, userEmail, userModules 
 
         <div className="flex items-center gap-1.5 flex-wrap">
           {TABS.map(t => (
-            <button key={t.key} onClick={() => setFilter(t.key)} className={`px-3 py-1.5 rounded-xl text-sm font-semibold border transition flex items-center gap-1.5 ${filter === t.key ? 'bg-ink text-surface border-ink' : 'bg-surface-2 text-ink-secondary hover:bg-surface-hover'}`}>
+            <button key={t.key} onClick={() => setFilter(t.key)} title={t.help} className={`px-3 py-1.5 rounded-xl text-sm font-semibold border transition flex items-center gap-1.5 ${filter === t.key ? 'bg-ink text-surface border-ink' : 'bg-surface-2 text-ink-secondary hover:bg-surface-hover'}`}>
               {t.dot && <span className={`inline-block w-2 h-2 rounded-full ${t.dot}`} />}{t.label} <span className={filter === t.key ? 'opacity-80' : 'text-ink-faint'}>{counts[t.key] || 0}</span>
             </button>
           ))}
         </div>
+        <TabLegend items={TABS.filter(t => t.dot).map(t => ({ dot: t.dot, label: t.label, text: t.help }))} />
         <div className="flex items-center gap-1.5 flex-wrap text-xs">
           <button onClick={() => setFam('all')} className={`px-2.5 py-1 rounded-full border ${fam === 'all' ? 'bg-surface-2 text-ink border-strong font-semibold' : 'bg-surface text-ink-muted hover:text-ink'}`}>Toutes <span className="opacity-60">{famCounts.all}</span></button>
           {FAMILY.map(f => famCounts[f.key] ? <button key={f.key} onClick={() => setFam(f.key)} className={`px-2.5 py-1 rounded-full border ${fam === f.key ? 'bg-surface-2 text-ink border-strong font-semibold' : 'bg-surface text-ink-muted hover:text-ink'}`}>{f.label} <span className="opacity-60">{famCounts[f.key]}</span></button> : null)}
