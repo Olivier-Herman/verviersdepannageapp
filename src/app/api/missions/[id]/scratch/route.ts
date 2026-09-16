@@ -70,10 +70,27 @@ export async function POST(req: Request, { params }: { params: { id: string } })
       closing_notes:   reason
         ? `Mis en épave : ${reason}`
         : 'Mis en épave',
+      // Une épave ne se facture pas au client : même marque « sans frais » que
+      // le module de destruction, sinon la fiche revient dans Facturation par
+      // dossier avec tout son gardiennage (4 véhicules le 14/09/2026, jusqu'à
+      // 2 225 € HTVA — le correctif du 12/09 ne couvrait que l'autre porte).
+      // Le circuit Parquet (saisies) ne lit pas cette marque : il continue.
+      no_charge_at:     nowIso,
+      no_charge_reason: reason ? `Mis en épave : ${reason}` : 'Mis en épave (scratch)',
+      parc_exit_at:     nowIso,
+      parc_exit_reason: 'epave',
       updated_at:      nowIso,
     })
     .eq('id', params.id)
   if (upErr) return NextResponse.json({ error: `Update KO : ${upErr.message}` }, { status: 500 })
+
+  // Les volets gardiennage du dossier suivent : sortis, sans frais.
+  await sb.from('incoming_missions')
+    .update({ parc_exit_at: nowIso, parc_exit_reason: 'epave', no_charge_at: nowIso,
+              no_charge_reason: 'Mis en épave (scratch)', updated_at: nowIso })
+    .or(`parc_origin_mission_id.eq.${params.id},parent_mission_id.eq.${params.id}`)
+    .eq('dossier_leg', true).is('no_charge_at', null)
+    .then(() => {}, (e: any) => console.warn(`[scratch] volets gardiennage KO mission=${params.id}:`, e?.message))
 
   // 3. Log mission_logs
   await sb.from('mission_logs').insert({
