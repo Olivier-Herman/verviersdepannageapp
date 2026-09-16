@@ -13,6 +13,7 @@ import AmbientBackground from '@/components/AmbientBackground'
 import { parcZoneLabel } from '@/lib/parc/zone-label'
 import { Search, Loader2, X, MapPin, Calendar, FileText, Car, Hash, Building2, AlertTriangle, MapIcon, Trash2 } from 'lucide-react'
 import VehicleFicheSheet from './VehicleFicheSheet'
+import OfficerAutocomplete from '@/components/missions/OfficerAutocomplete'
 import DepotsTilesModal from './DepotsTilesModal'
 import { normalizePlate } from '@/lib/plate'
 
@@ -72,6 +73,8 @@ export default function FourriereSearchClient({ userRole, userName, userEmail, u
   const [plate,    setPlate]    = useState('')
   const [vin,      setVin]      = useState('')
   const [pv,       setPv]       = useState('')
+  const [officer,  setOfficer]  = useState('')
+  const [officerPartnerId, setOfficerPartnerId] = useState<number | null>(null)   // contact Odoo choisi
   const [vehicle,  setVehicle]  = useState('')
   const [address,  setAddress]  = useState('')
   const [dateFrom, setDateFrom] = useState('')
@@ -92,7 +95,7 @@ export default function FourriereSearchClient({ userRole, userName, userEmail, u
     const t = setTimeout(() => { runSearch() }, 350)
     return () => clearTimeout(t)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [plate, vin, pv, vehicle, address, dateFrom, dateTo, includeHistory, showCancelled])
+  }, [plate, vin, pv, officer, officerPartnerId, vehicle, address, dateFrom, dateTo, includeHistory, showCancelled])
 
   async function runSearch() {
     setLoading(true); setSearched(true)
@@ -101,6 +104,8 @@ export default function FourriereSearchClient({ userRole, userName, userEmail, u
       if (plate)    sp.set('plate', plate)
       if (vin)      sp.set('vin', vin)
       if (pv)       sp.set('pv', pv)
+      if (officerPartnerId) sp.set('officer_partner_id', String(officerPartnerId))
+      else if (officer)     sp.set('officer', officer)
       if (vehicle)  sp.set('vehicle', vehicle)
       if (address)  sp.set('address', address)
       if (dateFrom) sp.set('date_from', dateFrom)
@@ -119,7 +124,7 @@ export default function FourriereSearchClient({ userRole, userName, userEmail, u
   }
 
   function clearAll() {
-    setPlate(''); setVin(''); setPv(''); setVehicle(''); setAddress('')
+    setPlate(''); setVin(''); setPv(''); setOfficer(''); setOfficerPartnerId(null); setVehicle(''); setAddress('')
     setDateFrom(''); setDateTo(''); setIncludeHistory(false); setShowCancelled(false)
     setResults([]); setSearched(false)
   }
@@ -197,6 +202,12 @@ export default function FourriereSearchClient({ userRole, userName, userEmail, u
                 <input value={pv} onChange={e => setPv(e.target.value)}
                   placeholder="ex : VE.32.LA.12345"
                   className="w-full bg-surface-2 border rounded-md px-3 py-2 text-sm text-ink placeholder:text-ink-faint focus:outline-none focus:border-brand" />
+              </Field>
+
+              <Field label="Policier" icon={<FileText size={14} />}>
+                {/* Même sélecteur que la fiche chauffeur : contacts Odoo des zones de police (Olivier 16/09/2026). */}
+                <OfficerAutocomplete compact allZones label="Policier (contact de la zone)" value={officer} companyId={null}
+                  onChange={setOfficer} onPickPartner={setOfficerPartnerId} />
               </Field>
 
               <Field label="VIN" icon={<Car size={14} />}>
@@ -356,6 +367,7 @@ function ResultCard({ r, onOpen }: { r: SearchResult; onOpen: () => void }) {
           <div className="flex items-center gap-3 mt-1 flex-wrap text-xs text-ink-muted">
             {r.vin && <span className="font-mono">VIN <span className="text-ink-secondary">…{r.vin.slice(-6)}</span></span>}
             {r.police_pv_number && <span className="font-mono">PV {r.police_pv_number}</span>}
+            {r.officer_name && <span>🚔 {r.officer_name}{r.police_zone ? ` (${r.police_zone})` : ''}</span>}
             {r.client_name && <span>{r.client_name}</span>}
           </div>
           <div className="flex items-center gap-3 mt-1 flex-wrap text-xs text-ink-muted">

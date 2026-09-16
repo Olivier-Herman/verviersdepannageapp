@@ -4,6 +4,8 @@
 //   ?plate=...       (ilike vehicle_plate)
 //   ?vin=...         (ilike vehicle_vin)
 //   ?pv=...          (ilike police_pv_number)
+//   ?officer=...     (ilike officer_name, chaque mot — Olivier 16/09/2026)
+//   ?officer_partner_id=<int>  (contact Odoo choisi dans le sélecteur — prime sur ?officer)
 //   ?vehicle=...     (ilike vehicle_brand OR vehicle_model)
 //   ?address=...     (ilike incident_address OR client_address)
 //   ?date_from=YYYY-MM-DD
@@ -43,6 +45,8 @@ export async function GET(req: Request) {
   const plate   = (url.searchParams.get('plate')   || '').trim()
   const vin     = (url.searchParams.get('vin')     || '').trim()
   const pv      = (url.searchParams.get('pv')      || '').trim()
+  const officer = (url.searchParams.get('officer')      || '').trim()
+  const officerPartnerId = Number(url.searchParams.get('officer_partner_id') || 0) || null
   const vehicle = (url.searchParams.get('vehicle') || '').trim()
   const address = (url.searchParams.get('address') || '').trim()
   const dateFrom = (url.searchParams.get('date_from') || '').trim()
@@ -102,6 +106,10 @@ export async function GET(req: Request) {
   if (plate)    q = q.ilike('vehicle_plate', `%${escapeIlike(plate.replace(/[-.\s]/g, '').toUpperCase())}%`)
   if (vin)      q = q.ilike('vehicle_vin',   `%${escapeIlike(vin.toUpperCase())}%`)
   if (pv)       q = q.ilike('police_pv_number', `%${escapeIlike(pv)}%`)
+  // Policier : « Dupont », « Jean Dupont » ou « dupont jean » → chaque mot doit
+  // apparaître dans officer_name (ET), l'ordre n'importe pas.
+  if (officerPartnerId) q = q.eq('officer_partner_id', officerPartnerId)
+  else if (officer) for (const w of officer.split(/\s+/).filter(Boolean)) q = q.ilike('officer_name', `%${escapeIlike(w)}%`)
   if (vehicle) {
     const v = escapeIlike(vehicle)
     q = q.or(`vehicle_brand.ilike.%${v}%,vehicle_model.ilike.%${v}%`)
