@@ -70,7 +70,7 @@ export const NAV_TREE: NavModule[] = [
     key: 'fourriere', label: 'Fourrière', icon: '🚓',
     sections: [
       { href: '/fourriere',                     label: 'Recherche & parcs',     icon: Search,        requires: '/fourriere' },
-      { href: '/fourriere/saisies',             label: 'Saisies',               icon: FileWarning,   requires: '/fourriere' },
+      { href: '/fourriere/saisies',             label: 'États de frais',        icon: FileWarning,   requires: '/fourriere' },
       { href: '/fourriere/requisitoires',       label: 'Réquisitoires',         icon: FileText,      requires: '/fourriere' },
       { href: '/fourriere/relance-requisitoire', label: 'Relance réquisitoires', icon: Mail,         requires: '/fourriere' },
       { href: '/fourriere/destruction',         label: 'Sortie AVP',            icon: Trash2,        requires: '/fourriere' },

@@ -197,6 +197,12 @@ export async function runSaisieCron(sb: any): Promise<SaisieCronSummary> {
       action = { kind: 'gardiennage', cut: addMonths(d.billed_to_date, 2) }           // dernière coupe + 2 mois
     }
 
+    // Levée « frais de justice » : la série finale part jusqu'à la levée, sans
+    // attendre la 1re période (Olivier 16/09/2026 : « le robot envoie tout seul »).
+    const leveeFJ = mission?.levee_saisie_payer === 'frais_justice' && mission?.levee_saisie_type !== 'temporaire'
+      ? String(mission.levee_saisie_date || mission.levee_saisie_at || '').slice(0, 10) : ''
+    if (!action && leveeFJ && (!d.billed_to_date || String(d.billed_to_date).slice(0, 10) < leveeFJ)) action = { kind: 'facturer', cut: leveeFJ }
+
     await checkForclusion(sb, d, out)
 
     // ── GATE réquisitoire : un réquisitoire = document PDF/JPG (jamais une
@@ -215,10 +221,9 @@ export async function runSaisieCron(sb: any): Promise<SaisieCronSummary> {
     if (!action) continue
 
     // ── Exécute l'action (Auto = envoie ; sinon Prépare + Alerte) ─────────────
-    // Exception : levée de saisie → gardiennage hors saisie → JAMAIS d'envoi auto,
-    // le dossier doit être vérifié à la main. Olivier 2026-08-10.
-    const manualOnly = !!d.levee_date
-    if (auto && !manualOnly) {
+    // Olivier 16/09/2026 : le robot envoie seul, levée comprise (la série finale
+    // s'arrête à la levée — l'ancienne exception « manuel » du 10/08 est levée).
+    if (auto) {
       // Clôture Domaine = état final au Parquet ; sinon on respecte le destinataire
       // du dossier (client possible), jamais « domaine » (module Domaine).
       const recipient = action.kind === 'cloture_domaine' ? 'parquet' : (d.recipient === 'client' ? 'client' : 'parquet')
