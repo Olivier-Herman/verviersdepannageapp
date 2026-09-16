@@ -62,7 +62,7 @@ function fmtEur(n: number | null | undefined): string {
   return n.toLocaleString('fr-BE', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' €'
 }
 
-export default function DestructionClient({ userRole, userName, userEmail, userModules }: Props) {
+export default function DestructionClient({ userRole, userName, userEmail, userModules, embedded = false }: Props & { embedded?: boolean }) {
   const [eligibles, setEligibles] = useState<Eligible[]>([])
   // Olivier 10/09/2026 : les photos s'ouvrent dans la visionneuse in-app (‹ › /
   // swipe), plus dans un onglet du navigateur qui n'en montrait qu'une.
@@ -190,24 +190,23 @@ export default function DestructionClient({ userRole, userName, userEmail, userM
 
   const allChecked = useMemo(() => eligibles.length > 0 && eligibles.every(e => checked.has(e.id)), [eligibles, checked])
 
-  return (
-    <AppShell title="Sortie AVP" userRole={userRole} userName={userName} userEmail={userEmail || undefined} userModules={userModules}>
-      <AmbientBackground>
-        <div className="p-4 lg:p-6 space-y-4 ambient-fade-up max-w-4xl mx-auto">
+  const body = (
+    <>
+        <div className={`p-4 lg:p-6 space-y-4 max-w-4xl mx-auto ${embedded ? 'pt-2' : 'ambient-fade-up'}`}>
 
           {/* Header */}
           <div className="flex items-center justify-between flex-wrap gap-3">
             <div className="flex items-center gap-3">
-              <Link href="/fourriere"
+              {!embedded && <Link href="/fourriere"
                 className="flex items-center gap-2 px-3 py-2 bg-surface-2 hover:bg-surface-hover border rounded-xl text-ink-secondary hover:text-ink text-sm transition">
                 <ArrowLeft size={14} />
                 Fourrière
-              </Link>
+              </Link>}
               <div>
-                <h1 className="text-lg font-semibold text-ink flex items-center gap-2">
+                {!embedded && <h1 className="text-lg font-semibold text-ink flex items-center gap-2">
                   <Trash2 size={18} className="text-critical" />
                   Sortie AVP
-                </h1>
+                </h1>}
                 <p className="text-ink-muted text-sm">
                   Véhicules AVP en parc depuis ≥ 60 jours. Mise en épave + rapport (frais arrêtés) envoyé à la Ville.
                 </p>
@@ -426,7 +425,6 @@ export default function DestructionClient({ userRole, userName, userEmail, userM
 
         </div>
       {gallery && gallery.length > 0 && <PhotoLightbox photos={gallery} startIndex={0} onClose={() => setGallery(null)} />}
-      </AmbientBackground>
 
       {cameraOpen && (
         <QRScanner
@@ -438,6 +436,12 @@ export default function DestructionClient({ userRole, userName, userEmail, userM
           }}
         />
       )}
+    </>
+  )
+  if (embedded) return body
+  return (
+    <AppShell title="Sortie AVP" userRole={userRole} userName={userName} userEmail={userEmail || undefined} userModules={userModules}>
+      <AmbientBackground>{body}</AmbientBackground>
     </AppShell>
   )
 }

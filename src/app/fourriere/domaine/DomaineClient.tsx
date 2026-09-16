@@ -14,7 +14,7 @@ interface Row {
 interface Group { vente: string; firm: string; rows: Row[]; days: number; amount: number }
 const fmt = (ymd: string) => (ymd ? ymd.split('-').reverse().join('/') : '')
 
-export default function DomaineClient({ userRole, userName, userEmail, userModules }: {
+export default function DomaineClient({ userRole, userName, userEmail, userModules, embedded = false }: { embedded?: boolean;
   userRole: string; userName: string; userEmail: string; userModules: string[]
 }) {
   const now = new Date()
@@ -174,15 +174,14 @@ export default function DomaineClient({ userRole, userName, userEmail, userModul
     } catch { setMsg('⚠ Erreur réseau') } finally { setCompleting(false) }
   }
 
-  return (
-    <AppShell title="Domaine — Vente d'épaves" userRole={userRole} userName={userName} userEmail={userEmail} userModules={userModules}>
-      <main className="p-4 lg:p-6 max-w-7xl mx-auto space-y-4">
+  const body = (
+      <main className={`p-4 lg:p-6 max-w-7xl mx-auto space-y-4 ${embedded ? 'pt-2' : ''}`}>
         <div className="flex items-center justify-between gap-3 flex-wrap">
-          <Link href="/fourriere" className="text-ink-muted text-sm">← Fourrière</Link>
+          {embedded ? <span /> : <Link href="/fourriere" className="text-ink-muted text-sm">← Fourrière</Link>}
           <Link href="/fourriere/domaine/dates-in" className="text-sm font-semibold text-indigo-700 dark:text-indigo-300 hover:underline">📅 Dates IN (remises) →</Link>
         </div>
         <div>
-          <h1 className="text-ink text-xl font-bold">🏛️ Vente d'épaves — Registre Domaine</h1>
+          {!embedded && <h1 className="text-ink text-xl font-bold">🏛️ Vente d'épaves — Registre Domaine</h1>}
           <p className="text-ink-muted text-sm">Reflet fidèle des tableaux de Rosemarie (toutes les lignes, rapprochées ou non). Gardiennage = Date IN → Date OUT au tarif parc saisie. <span className="text-amber-600 font-semibold">Orange = non rapproché à une fiche VD Soft</span> (mais compté).</p>
         </div>
 
@@ -337,6 +336,11 @@ export default function DomaineClient({ userRole, userName, userEmail, userModul
           </div>
         ))}
       </main>
+  )
+  if (embedded) return body
+  return (
+    <AppShell title="Domaine — Vente d'épaves" userRole={userRole} userName={userName} userEmail={userEmail} userModules={userModules}>
+      {body}
     </AppShell>
   )
 }

@@ -67,8 +67,8 @@ const inputCls = 'w-full bg-surface border border-app rounded-xl px-3 py-2 text-
 const labelCls = 'block text-xs text-ink-muted mb-1'
 
 export default function AdminVentesClient({
-  initialSales, abandons,
-}: { initialSales: Sale[]; abandons: Abandon[] }) {
+  initialSales, abandons, embedded = false,
+}: { initialSales: Sale[]; abandons: Abandon[]; embedded?: boolean }) {
   const router = useRouter()
   const [sales, setSales]     = useState<Sale[]>(initialSales)
   const [open, setOpen]       = useState<Sale | null>(null)
@@ -150,10 +150,10 @@ export default function AdminVentesClient({
   }
 
   return (
-    <div className="p-4 md:p-6 max-w-7xl mx-auto space-y-5">
+    <div className={`p-4 md:p-6 max-w-7xl mx-auto space-y-5 ${embedded ? 'pt-2' : ''}`}>
       <div className="flex flex-wrap items-center gap-3">
-        <Link href="/admin" className="text-sm text-ink-muted hover:text-ink">← Admin</Link>
-        <h1 className="text-xl font-bold text-ink">🚗 Ventes de véhicules</h1>
+        {!embedded && <Link href="/admin" className="text-sm text-ink-muted hover:text-ink">← Admin</Link>}
+        {!embedded && <h1 className="text-xl font-bold text-ink">🚗 Ventes de véhicules</h1>}
         <div className="ml-auto flex gap-2">
           <button onClick={() => setPickAbandon(true)} disabled={busy}
             className="px-3 py-2 bg-surface-2 hover:bg-surface border border-app rounded-xl text-sm font-medium text-ink disabled:opacity-50">

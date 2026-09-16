@@ -8,7 +8,7 @@ import { useRouter } from 'next/navigation'
 interface Row { id: string; dossier_number: string; vin: string | null; plate: string | null; brand: string | null; model: string | null; color: string | null; photos: string[]; parc_zone_key: string | null; entered_at: string | null; exited_at: string; forced: boolean; epaviste: string | null; cost_snapshot: any }
 const fmtD = (iso?: string | null) => iso ? new Date(iso).toLocaleDateString('fr-BE', { day: '2-digit', month: '2-digit', year: 'numeric' }) : '—'
 
-export default function DossiersClient() {
+export default function DossiersClient({ embedded = false }: { embedded?: boolean } = {}) {
   const router = useRouter()
   const [q, setQ] = useState(''); const [from, setFrom] = useState(''); const [to, setTo] = useState('')
   const [rows, setRows] = useState<Row[]>([]); const [loading, setLoading] = useState(true); const [err, setErr] = useState('')
@@ -22,10 +22,10 @@ export default function DossiersClient() {
   }
   useEffect(() => { load() /* eslint-disable-line react-hooks/exhaustive-deps */ }, [])
   return (
-    <main className="p-4 lg:p-8 max-w-5xl mx-auto">
+    <main className={`p-4 lg:p-8 max-w-5xl mx-auto ${embedded ? 'pt-2' : ''}`}>
       <div className="flex flex-wrap items-start justify-between gap-3 mb-4">
         <div>
-          <h1 className="text-ink text-xl font-bold">🗂️ Dossiers de destruction</h1>
+          {!embedded && <h1 className="text-ink text-xl font-bold">🗂️ Dossiers de destruction</h1>}
           <p className="text-ink-muted text-sm">Un dossier par véhicule parti à la casse : photos, état constaté, frais à n'importe quelle date. Rien n'est envoyé à la commune.</p>
         </div>
         <Link href="/fourriere/destruction/dossiers/nouveau" className="px-4 py-2.5 bg-brand hover:bg-brand-hover text-white rounded-xl text-sm font-semibold">📷 Nouveau dossier</Link>
