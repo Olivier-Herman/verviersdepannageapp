@@ -68,6 +68,8 @@ export const NAV_TREE_ESPACES: NavModule[] = [
       { href: '/reception',          label: 'Réception',          icon: Contact,     requires: '/reception' },
       { href: '/garde',              label: 'Planning de garde',  icon: ShieldCheck, requires: '/garde' },
       { href: '/francofolies',       label: 'Francofolies',       icon: CalendarDays, requires: '/francofolies' },
+      // Agent mécano : outil de terrain, pas un réglage (Jona le voyait à plat).
+      { href: '/matthieu',           label: 'La tête à Matthieu', icon: Bot,         requires: '/matthieu' },
     ],
   },
   {
@@ -145,7 +147,6 @@ export const NAV_TREE_ESPACES: NavModule[] = [
       { href: '/chantiers',    label: 'Chantiers',           icon: ClipboardList, requires: '/chantiers', superadminOnly: true },
       { href: '/admin/flux2',  label: 'Flux 2',              icon: Settings,  requires: '/admin/flux2', superadminOnly: true },
       { href: '/mail-agent',   label: 'Agent Mail',          icon: Mail,      requires: '/mail-agent',  superadminOnly: true },
-      { href: '/matthieu',     label: 'La tête à Matthieu',  icon: Bot,       requires: '/matthieu' },
       { href: '/assistant',    label: 'Assistant IA',        icon: Bot,       requires: '/assistant',   superadminOnly: true },
       { href: '/admin/axa',    label: 'AXA go&assist',       icon: Shield,    requires: '/dispatch',    superadminOnly: true },
     ],
