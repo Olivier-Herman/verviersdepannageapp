@@ -74,18 +74,18 @@ export const NAV_TREE_ESPACES: NavModule[] = [
   },
   {
     key: 'fourriere', label: 'Fourrière', icon: '🚓',
+    // 16/09/2026 : 10 sections → 4 (Parc · Documents · Facturation · Sorties).
+    // Plan, Scanner, Non localisés et la recherche avancée sont des VUES de Parc
+    // (barre en haut de l'écran), plus des entrées de menu.
     sections: [
-      { href: '/fourriere',                      label: 'Parc',                   icon: Search,        requires: '/fourriere', heading: 'Parc' },
-      { href: '/fourriere/plan',                 label: 'Plan du parc',           icon: MapIcon,       requires: '/fourriere' },
-      { href: '/fourriere/inventaire',           label: 'Inventaire',             icon: ScanLine,      requires: '/fourriere' },
-      { href: '/fourriere/non-localises',        label: 'Non-localisés',          icon: AlertTriangle, requires: '/fourriere' },
-      { href: '/fourriere/saisies',              label: 'États de frais',         icon: FileWarning,   requires: '/fourriere', heading: 'Documents' },
-      { href: '/fourriere/requisitoires',        label: 'Réquisitoires',          icon: FileText,      requires: '/fourriere' },
+      { href: '/fourriere',                      label: 'Parc',                   icon: Search,        requires: '/fourriere' },
+      { href: '/fourriere/requisitoires',        label: 'Réquisitoires',          icon: FileText,      requires: '/fourriere', heading: 'Documents' },
       { href: '/fourriere/relance-requisitoire', label: 'Relance réquisitoires',  icon: Mail,          requires: '/fourriere' },
+      { href: '/fourriere/saisies',              label: 'États de frais',         icon: FileWarning,   requires: '/fourriere', heading: 'Facturation' },
       { href: '/fourriere/destruction',          label: 'Sortie AVP',             icon: Trash2,        requires: '/fourriere', heading: 'Sorties' },
       { href: '/fourriere/destruction/dossiers', label: 'Dossiers de destruction', icon: FolderCheck,  requires: '/fourriere' },
       { href: '/fourriere/domaine',              label: 'Domaine',                icon: Landmark,      requires: '/fourriere', superadminOnly: true },
-      { href: '/admin/ventes',                   label: 'Ventes de véhicules',    icon: Store,         requires: '/admin/ventes', heading: 'Ventes' },
+      { href: '/admin/ventes',                   label: 'Ventes de véhicules',    icon: Store,         requires: '/admin/ventes' },
     ],
   },
   {
