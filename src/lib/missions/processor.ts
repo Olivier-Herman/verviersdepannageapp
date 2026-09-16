@@ -1406,12 +1406,20 @@ export async function processEmailMessage(messageId: string): Promise<ProcessRes
       // dont l'IA elle-même doute, part en `ignored` plutôt que d'aller encombrer
       // la file à valider. Rien n'est perdu : la fiche existe, avec son mail
       // complet, et le dispatch peut la ressortir.
-      const aucunePrise = !parsed.vehicle_plate && !parsed.incident_address && !parsed.dossier_number
-      const iaDoute     = typeof parsed.confidence === 'number' && parsed.confidence < 0.3
-      updatePayload.status            = (aucunePrise && iaDoute) ? 'ignored' : 'new'
+      // Un numéro de dossier FABRIQUÉ par le parseur (UNKNOWN_<timestamp>, faute
+      // de référence dans le mail) n'est pas une prise : deux mails Touring au
+      // corps vide sont restés en « En commande » grâce à lui (16/09/2026).
+      const dossierReel = !!parsed.dossier_number && !/^UNKNOWN_/i.test(String(parsed.dossier_number))
+      const aucunePrise = !parsed.vehicle_plate && !parsed.incident_address && !dossierReel
+      // Rien à dispatcher — ni plaque, ni lieu, ni dossier — c'est « ignoré »,
+      // quelle que soit la confiance : une lettre d'accompagnement Ethias à 0,3
+      // ou un corps vide Touring à 0,5 encombraient la file et le bureau les
+      // archivait à la main (29 en 90 jours). La fiche existe toujours, avec
+      // son mail complet, dans l'onglet Ignorés.
+      updatePayload.status            = aucunePrise ? 'ignored' : 'new'
       updatePayload.dispatch_mode     = 'manual'
       if (updatePayload.status === 'ignored') {
-        updatePayload.closing_notes = `Mail sans élément de mission (ni plaque, ni lieu, ni dossier) et extraction peu sûre (${Math.round((parsed.confidence ?? 0) * 100)} %) — classé sans suite à l'arrivée. À rouvrir si c'était bien une mission.`
+        updatePayload.closing_notes = `Mail sans élément de mission (ni plaque, ni lieu, ni dossier) — confiance ${Math.round((parsed.confidence ?? 0) * 100)} %. Rien à dispatcher : ignoré automatiquement.`
       }
     }
     // ── Priorité go&assist (Olivier 10/09/2026 : « les infos API sont plus
