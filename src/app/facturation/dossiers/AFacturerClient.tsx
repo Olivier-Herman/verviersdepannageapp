@@ -118,7 +118,8 @@ function readDossier(d: Dossier, ai: AutoInfo | undefined, comex: ComexInfo | un
   if (autoEligible) return { ...base, who: 'robot', headline: 'Le robot facture au prochain passage', detail: `${eur(rest(d))} HTVA → ${d.billed_to.name || '—'}${remarksN ? ` · ${remarksN} remarque(s) de facturation à lire` : ''}.`, primary: { label: 'Facturer maintenant', kind: 'bill', tone: 'ghost' } }
   if (autoWaiting) return { ...base, who: 'robot', headline: `Le robot facture à ${fmtHM(ai!.eligibleAt)}`, detail: `${eur(rest(d))} HTVA → ${d.billed_to.name || '—'} · délai après clôture.${remarksN ? ` ${remarksN} remarque(s) à lire.` : ''}`, primary: { label: 'Facturer maintenant', kind: 'bill', tone: 'ghost' } }
   if (rd.length) {
-    const clients = Array.from(new Set(rd.map(l => l.billed_to_name || d.billed_to.name || '—')))
+    // Payeur inconnu (Siabis non couvert avant décision, particulier sans fiche client) : on nomme la personne sur place, sinon on le dit.
+    const clients = Array.from(new Set(rd.map(l => l.billed_to_name || d.billed_to.name || d.client.name || 'client à préciser')))
     const why = ai?.reason ? ` · hors robot : ${ai.reason}` : ''
     return { ...base, who: 'nous', headline: `Facturer à ${clients.join(' + ')}`, detail: `${d.legs.length > 1 ? `${rd.length} groupe(s) prêt(s) sur ${d.legs.length} · ` : ''}${eur(rest(d))} HTVA · ${eurTvac(rest(d))} TVAC${d.totals.collected > 0 ? ` · ${eur(d.totals.collected)} déjà encaissé sur place` : ''}${remarksN ? ` · ${remarksN} remarque(s) à lire` : ''}${why}`, primary: { label: 'Facturer', kind: 'bill', tone: 'brand' } }
   }
@@ -373,7 +374,7 @@ export default function AFacturerClient({ initial, autoById, comexById = {}, isS
                 <div className="text-ink-muted text-xs mt-1 flex items-center gap-x-3 gap-y-0.5 flex-wrap">
                   <span>{d.source_label}{d.root_type ? ` · ${d.root_type}` : ''}</span>
                   <span>{d.legs.length} groupe{d.legs.length > 1 ? 's' : ''} {d.legs.map(l => l.letter).join('')}</span>
-                  <span>→ {d.billed_to.name || '—'}</span>
+                  <span>→ {d.billed_to.name || (d.client.name ? `${d.client.name} (client)` : 'payeur à préciser')}</span>
                   {d.totals.collected > 0 && <span className="text-amber-700">💶 {eur(d.totals.collected)} encaissé sur place</span>}
                   {d.stamps?.touring_check && <span className="text-sky-700">{d.stamps.touring_check}</span>}
                 </div>

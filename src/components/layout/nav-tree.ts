@@ -92,7 +92,7 @@ export const NAV_TREE_ESPACES: NavModule[] = [
     key: 'facturation', label: 'Facturation', icon: '🧾',
     sections: [
       { href: '/facturation/dossiers', label: 'À facturer',               icon: FolderCheck,  requires: '/facturation' },
-      { href: '/facturation',          label: 'Facturation',              icon: Receipt,      requires: '/facturation' },
+      { href: '/facturation',          label: 'Liste par fiche (ancienne)', icon: Receipt,    requires: '/facturation' },
       { href: '/missions-terminees',   label: 'Missions terminées',       icon: FolderCheck,  i18nKey: 'nav.finished', requires: '/missions-terminees' },
       { href: '/admin/amendes',        label: 'Amendes',                  icon: AlertTriangle, requires: '/admin/amendes' },
       { href: '/facturation/touring',  label: 'Touring',                  icon: Shield,       requires: '/facturation', heading: 'Assisteurs' },
