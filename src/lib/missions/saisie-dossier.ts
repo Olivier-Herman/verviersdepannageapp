@@ -153,6 +153,12 @@ export interface GenerateEfResult {
   totalHtva: number
   totalTvac: number
   efRowId: string
+  periodFrom: string
+  periodTo: string
+  /** La coupe visée (levée, Date IN…) dépassait une période : cet EF s'arrête à la
+   *  période standard, un suivant est encore dû (rattrapage). */
+  capped: boolean
+  target: string
 }
 
 /**
@@ -224,6 +230,16 @@ export async function generateEtatFrais(
   else billingTo = addMonthsISO(d.billed_to_date, 2)
   // Le propriétaire a déjà payé (facture client) jusqu'à une date → le Parquet ne paie que le solde.
   const billingFrom = [d.billed_to_date, d.client_billed_to_date, d.parked_at].filter(Boolean).map((x: any) => String(x).slice(0, 10)).sort().pop() || d.parked_at
+  // JAMAIS plus d'une période par état de frais (Olivier 16/09/2026, GG036SD :
+  // « on ne peut pas avoir 225 jours sur un état de frais »). Si la coupe visée
+  // (levée frais de justice, Date IN, rattrapage d'un dossier intégré tard)
+  // dépasse la période standard — 1er EF : dernier jour du mois suivant l'entrée ;
+  // suivants : dernière coupe + 2 mois — on s'arrête à la période standard et
+  // sendEtatFrais enchaîne les EF suivants jusqu'à la coupe visée.
+  const target = billingTo
+  const standardTo = d.parked_at ? (!d.billed_to_date ? firstBillableDate(d.parked_at) : addMonthsISO(d.billed_to_date, 2)) : null
+  let capped = false
+  if (standardTo && billingTo > standardTo && standardTo > String(billingFrom || '').slice(0, 10)) { billingTo = standardTo; capped = true }
   // GARDE-FOU : une coupe antérieure au début de période (ex. Date IN Domaine
   // encodée avant l'entrée en parc) produirait un état de frais absurde.
   if (billingFrom && billingTo < String(billingFrom).slice(0, 10)) {
@@ -315,7 +331,7 @@ export async function generateEtatFrais(
     qrUrl,
   })
 
-  return { pdf, numero, totalHtva: billing.totalHtva, totalTvac: billing.totalTvac, efRowId }
+  return { pdf, numero, totalHtva: billing.totalHtva, totalTvac: billing.totalTvac, efRowId, periodFrom: String(billingFrom || d.parked_at || '').slice(0, 10), periodTo: billingTo, capped, target }
 }
 
 // ── Re-génération du PDF d'un état de frais EXISTANT ─────────────────────────
@@ -415,7 +431,7 @@ export async function resendEtatFrais(sb: any, dossierId: string, efRowId: strin
 }
 
 // ── Envoi de l'état de frais au destinataire (mail + lien de dépôt validation) ─
-export interface SendEfResult { ok: boolean; email?: string; numero?: string; error?: string }
+export interface SendEfResult { ok: boolean; email?: string; numero?: string; error?: string; count?: number }
 
 export function validationLink(token: string): string { return `${APP_URL}/saisie-validation/${token}` }
 
@@ -475,10 +491,20 @@ export async function sendEtatFrais(
   if (!dest) return { ok: false, error: recipient === 'client' ? "Email du client inconnu (compléter la fiche)" : 'Destinataire Domaine non configuré' }
 
   // Génère (persiste) l'état de frais.
-  let gen
+  // Ou LA SÉRIE d'états de frais quand la coupe visée dépasse une période
+  // (rattrapage / levée / Date IN) : un EF par période, tous dans le même mail.
+  const gens: GenerateEfResult[] = []
   try {
-    gen = await generateEtatFrais(sb, dossierId, { ...opts, recipient, persist: true }, userId)
-  } catch (e: any) { return { ok: false, error: e?.message || 'Génération échouée' } }
+    for (let i = 0; i < 24; i++) {
+      const g = await generateEtatFrais(sb, dossierId, { ...opts, recipient, persist: true }, userId)
+      gens.push(g)
+      if (!g.capped) break
+    }
+  } catch (e: any) {
+    if (!gens.length) return { ok: false, error: e?.message || 'Génération échouée' }
+    console.error('[saisie] série EF interrompue après', gens.length, ':', e?.message)
+  }
+  const gen = gens[gens.length - 1]
 
   // Token de dépôt de la validation : generateEtatFrais l'a garanti → on le relit.
   let token = d.validation_token
@@ -492,9 +518,11 @@ export async function sendEtatFrais(
   }
 
   // Pièces jointes : l'état de frais + le RÉQUISITOIRE (téléchargé du bucket).
-  const attachments: { name: string; contentType: string; contentBytes: string }[] = [
-    { name: `etat-de-frais-${gen.numero}.pdf`, contentType: 'application/pdf', contentBytes: gen.pdf.toString('base64') },
-  ]
+  const attachments: { name: string; contentType: string; contentBytes: string }[] = gens.map(g => (
+    { name: `etat-de-frais-${g.numero}.pdf`, contentType: 'application/pdf', contentBytes: g.pdf.toString('base64') }
+  ))
+  const numeroLabel = gens.length > 1 ? `${gens[0].numero} → ${gen.numero}` : gen.numero
+  const totalTvacAll = Math.round(gens.reduce((tot, g) => tot + g.totalTvac, 0) * 100) / 100
   if (reqDocPath && isRequisitoireDoc(reqDocPath)) {
     try {
       const { data: blob } = await sb.storage.from('mission-remarks').download(reqDocPath)
@@ -507,10 +535,10 @@ export async function sendEtatFrais(
     } catch (e: any) { console.warn('[saisie] réquisitoire non joint :', e?.message) }
   }
 
-  const subject = `État de frais ${gen.numero} — ${d.vehicle_plate || 'véhicule'}`
+  const subject = `${gens.length > 1 ? `États de frais ${numeroLabel}` : `État de frais ${gen.numero}`} — ${d.vehicle_plate || 'véhicule'}`
   try {
     await sendEmail(
-      dest.email, subject, buildEfEmailHtml(d, gen.numero, gen.totalTvac, validationLink(token), vin),
+      dest.email, subject, buildEfEmailHtml(d, numeroLabel, totalTvacAll, validationLink(token), vin),
       dest.label,
       undefined,       // cc
       attachments,
@@ -528,5 +556,5 @@ export async function sendEtatFrais(
     updated_at: new Date().toISOString(),
   }).eq('id', dossierId)
 
-  return { ok: true, email: dest.email, numero: gen.numero }
+  return { ok: true, email: dest.email, numero: numeroLabel, count: gens.length }
 }
