@@ -236,11 +236,11 @@ export async function PATCH(
         try {
           const { computeSncAmountToCollect } = await import('@/lib/snc/amount')
           const pick = (k: string) => (k in updates ? (updates as any)[k] : (before as any)?.[k])
-          // Scénario : réel s'il est choisi, sinon inféré du type (dépannage → dsp,
-          // sinon remorquage → rem_direct) pour pouvoir chiffrer dès la conversion.
-          const scenario = ['dsp', 'rem_client', 'rem_direct'].includes(String(finalScenario || ''))
-            ? (finalScenario as any)
-            : (['depannage', 'dsp', 'reparation_place'].includes(String(finalType || '').toLowerCase()) ? 'dsp' : 'rem_direct')
+          // Olivier 16/09/2026 (2JWT144) : « impossible de calculer un montant si on
+          // n'a pas de scénario défini ». Plus d'inférence depuis le type : sans
+          // scénario choisi, pas de montant à réclamer (le chauffeur le choisit sur place).
+          const scenario = ['dsp', 'rem_client', 'rem_direct'].includes(String(finalScenario || '')) ? (finalScenario as any) : null
+          if (!scenario) { updates.amount_to_collect = null; throw new Error('scenario_missing') }
           const amt = await computeSncAmountToCollect({
             source:                'police_snc',
             incident_lat:          pick('incident_lat'),
@@ -256,8 +256,9 @@ export async function PATCH(
           }, scenario)
           if (amt != null && amt > 0) updates.amount_to_collect = amt
         } catch (e: any) {
+          if (e?.message === 'scenario_missing') { /* pas de scénario choisi : pas de montant */ } else {
           console.warn('[mission PATCH] auto-calcul montant SNC KO (non bloquant):', e?.message)
-        }
+        }}
       }
     }
   }

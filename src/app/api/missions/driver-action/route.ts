@@ -293,9 +293,9 @@ export async function POST(req: Request) {
       const { computeSncAmountToCollect } = await import('@/lib/snc/amount')
       const pick = (k: string) => (k in updatePayload ? (updatePayload as any)[k] : (mission as any)[k])
       const sc = String((mission as any).snc_scenario || '')
-      const scenario = ['dsp', 'rem_client', 'rem_direct'].includes(sc)
-        ? sc
-        : (['depannage', 'dsp', 'reparation_place'].includes(String((mission as any).mission_type || '').toLowerCase()) ? 'dsp' : 'rem_direct')
+      // Pas de scénario choisi → pas de montant (Olivier 16/09/2026, 2JWT144).
+      const scenario = ['dsp', 'rem_client', 'rem_direct'].includes(sc) ? sc : null
+      if (!scenario) throw new Error('scenario_missing')
       const amt = await computeSncAmountToCollect({
         source:                'police_snc',
         incident_lat:          pick('incident_lat'),
