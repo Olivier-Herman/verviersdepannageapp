@@ -16,6 +16,7 @@ import { loadFacturationDossiers, loadComexById, refreshTodoCountFrom, MAX_DOSSI
 import { getAutoInvoiceRules, checkAutoInvoiceEligible } from '@/lib/facturation/auto-invoice'
 import AppShell              from '@/components/layout/AppShell'
 import DossiersClient        from './DossiersClient'
+import AFacturerClient       from './AFacturerClient'
 import { billingGroups } from '@/lib/missions/source-catalog'
 
 export const dynamic = 'force-dynamic'
@@ -57,9 +58,16 @@ export default async function FacturationDossiersPage() {
   const refresh = refreshTodoCountFrom(sb, dossiers, comexById).catch(() => {})
   try { const { waitUntil } = await import('@vercel/functions'); waitUntil(refresh) } catch { /* hors Vercel : la promesse suit son cours */ }
 
+  // Refonte « À facturer » (16/09/2026) : frise + prochaine action + qui a la
+  // main — pilote Olivier + Jona (flag facturation_v2). Les autres gardent la
+  // liste par dossier telle quelle.
+  const v2 = await isPreviewOn('facturation_v2', role, u.id)
+  const groups = await billingGroups()
   return (
-    <AppShell title="Facturation par dossier" userName={u.name || ''} userEmail={u.email || undefined} userId={u.id} userRole={role} userModules={modules}>
-      <DossiersClient initial={dossiers} autoById={autoById} comexById={comexById} isSuperadmin={role === 'superadmin'} billingGroups={await billingGroups()} capped={roots.length >= MAX_DOSSIERS} />
+    <AppShell title={v2 ? 'À facturer' : 'Facturation par dossier'} userName={u.name || ''} userEmail={u.email || undefined} userId={u.id} userRole={role} userModules={modules}>
+      {v2
+        ? <AFacturerClient initial={dossiers} autoById={autoById} comexById={comexById} isSuperadmin={role === 'superadmin'} billingGroups={groups} capped={roots.length >= MAX_DOSSIERS} />
+        : <DossiersClient initial={dossiers} autoById={autoById} comexById={comexById} isSuperadmin={role === 'superadmin'} billingGroups={groups} capped={roots.length >= MAX_DOSSIERS} />}
     </AppShell>
   )
 }
