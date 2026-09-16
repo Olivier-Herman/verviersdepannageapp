@@ -97,6 +97,7 @@
  <table>
  <tr><td>125</td><td>Annexer un réquisitoire</td><td>p. 13</td></tr>
  <tr><td>125b</td><td>Relancer les policiers — portail par policier</td><td>p. 13</td></tr>
+ <tr><td>125c</td><td>Suivre un dossier Parquet — écran « États de frais »</td><td>p. 13</td></tr>
  <tr><td>126</td><td>Enregistrer une levée de saisie (définitive / temporaire)</td><td>p. 14</td></tr>
  <tr><td>126b</td><td>Saisie : facturer le propriétaire sans levée ; effets de la levée</td><td>p. 14</td></tr>
  <tr><td>127</td><td>Levée temporaire : sortie garagiste puis retour parc</td><td>p. 14</td></tr>
@@ -543,6 +544,17 @@
  </ol>
  <p class="desc">Dans son espace, le policier peut : déposer chaque réquisitoire (PDF ou photo) ; voir ceux déjà reçus ; et <strong>s'attribuer une saisie sans policier identifié</strong> (« C'est mon dossier ») pour y déposer le réquisitoire. Chaque attribution apparaît dans les Remarques de la fiche et déclenche une notification au bureau.</p>
  <div class="tip">💡 Le bouton n'est actif que si le contact Odoo du policier a un e-mail. Sans contact lié (⚠️ policier non lié à Odoo), lie-le d'abord via « ✏️ Modifier » sur la carte du véhicule. Le rappel automatique (7 jours) envoie lui aussi un mail groupé par policier.</div>
+
+
+ <h3><span class="num">125c</span>Suivre un dossier Parquet — écran « États de frais »</h3>
+ <p class="desc">Menu Fourrière → <strong>États de frais</strong> (nouvel écran du 16/09/2026). Chaque véhicule saisi a une <strong>frise</strong> : Entrée → Réquisitoire → États de frais → Parquet → JustInvoice → Facture (+ Levée ou Domaine). Sous la frise, une seule phrase dit la <strong>prochaine action</strong> et un badge dit qui a la main :</p>
+ <ul>
+  <li><strong>À nous</strong> (orange) : une action à faire, un seul bouton (déposer sur JustInvoice, créer la facture, refaire un état de frais, clôturer…).</li>
+  <li><strong>Chez eux</strong> (bleu) : on attend le Parquet, un policier (réquisitoire), JustInvoice ou le Domaine. Rien à faire, sauf déposer le retour signé quand il arrive.</li>
+  <li><strong>En veille</strong> (gris) : la date du prochain état de frais est connue, le robot s'en charge.</li>
+ </ul>
+ <p class="desc">Le <strong>robot du matin</strong> établit et envoie seul les états de frais dus : premier état le dernier jour du mois suivant l'entrée, puis tous les deux mois, jamais plus d'une période par état ; à une levée « frais de justice », il envoie la série complète jusqu'à la levée dans un seul mail. Il ne part jamais rien sans réquisitoire annexé (PDF/JPG).</p>
+ <div class="tip">💡 « Détails » sur une carte montre les états de frais (PDF, renvoyer corrigé, retour signé, refusé, rappel Parquet près de la forclusion) et les réglages du dossier. Le menu ⋯ en haut à droite garde le scan groupé des retours signés.</div>
 
 <h3><span class="num">126</span>Enregistrer une levée de saisie</h3>
  <p class="desc">Quand la saisie est levée, on l'enregistre. Cela débloque le véhicule côté police et fixe la date qui sert au calcul du gardiennage.</p>
