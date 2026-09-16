@@ -213,24 +213,29 @@ export default function AFacturerClient({ initial, autoById, comexById = {}, isS
   const totalNous = scoped.filter(d => readings.get(d.root_id)!.who === 'nous').reduce((s, d) => s + rest(d), 0)
 
   // Tarification progressive (identique à la liste par dossier) : montants figés d'abord, vrai montant ensuite.
-  const [pricing, setPricing] = useState(0)
+  // Compteur « en cours de calcul » = ensemble des dossiers dont la requête est
+  // partie et pas revenue. Un simple entier se bloquait quand on changeait de
+  // pastille en plein calcul : le nettoyage de l'effet annulait les retours
+  // sans décompter (Olivier 16/09 : « les calculs plantent sur 9 »).
+  const [pricingIds, setPricingIds] = useState<Set<string>>(new Set())
+  const pricing = pricingIds.size
   const refinedRef = useRef<Set<string>>(new Set())
   useEffect(() => {
     const targets = initial.filter(d => d.light && !isDone(d) && !isCircuitLegs(d) && inGroup(d, activeGroup) && !refinedRef.current.has(d.root_id)).map(d => d.root_id)
     if (!targets.length) return
     targets.forEach(id => refinedRef.current.add(id))
-    let cancelled = false
-    setPricing(n => n + targets.length)
+    const drop = (id: string) => setPricingIds(p => { if (!p.has(id)) return p; const n = new Set(p); n.delete(id); return n })
+    setPricingIds(p => new Set([...p, ...targets]))
     ;(async () => {
       for (let i = 0; i < targets.length; i += 6) {
-        if (cancelled) return
         await Promise.all(targets.slice(i, i + 6).map(async id => {
-          try { const j = await fetch(`/api/dossier/${id}?mode=list`, { cache: 'no-store' }).then(r => r.json()); if (!cancelled && j?.dossier) setRows(p => p.map(d => d.root_id === id ? j.dossier : d)) } catch {}
-          if (!cancelled) setPricing(n => Math.max(0, n - 1))
+          try { const j = await fetch(`/api/dossier/${id}?mode=list`, { cache: 'no-store' }).then(r => r.json()); if (j?.dossier) setRows(p => p.map(d => d.root_id === id ? j.dossier : d)) } catch {}
+          drop(id)
         }))
       }
     })()
-    return () => { cancelled = true }
+    // Pas d'annulation : une réponse qui arrive après un changement de pastille
+    // reste bonne à prendre (la ligne se met à jour où qu'elle soit).
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeGroup.key])
 
