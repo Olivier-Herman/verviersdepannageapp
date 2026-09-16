@@ -321,7 +321,8 @@ export async function computeSncMetrics(input: SncCalcInput): Promise<SncCalcOut
   // echoue (pas de cle, quota, etc.).
   // Le depot retour = depot de depart pour la depanneuse, MEME en REM depot
   // (la depanneuse revient a son depot d origine apres avoir depose a Pepinster).
-  // Olivier 16/09/2026 : pour le SNC (Siabis NON couvert), la dépanneuse part
+  // Demande de Momo, transmise par Olivier le 16/09/2026 : pour le SNC (Siabis
+  // NON couvert), la dépanneuse part
   // TOUJOURS du dépôt de référence (Pepinster, drapeau is_snc_hub). Le dépôt le
   // plus proche de l'intervention ne vaut plus que pour le Siabis COUVERT (SC).
   const pepinster = findPepinster(depots)
