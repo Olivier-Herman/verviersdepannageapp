@@ -47,6 +47,11 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
   }
   if (body.levee_date !== undefined)       patch.levee_date = body.levee_date || null
   if (body.notes !== undefined)            patch.notes = body.notes || null
+  // Pause par dossier (temps 3, 16/09/2026) : le robot n'envoie ni ne dépose rien.
+  if (body.paused !== undefined) {
+    if (body.paused) { patch.paused_at = new Date().toISOString(); patch.paused_reason = String(body.paused_reason || '').slice(0, 300) || null; patch.paused_by = (session!.user as any).id || null }
+    else { patch.paused_at = null; patch.paused_reason = null; patch.paused_by = null }
+  }
   if (body.justinvoice_ref !== undefined)  patch.justinvoice_ref = body.justinvoice_ref || null
   if (body.odoo_invoice_id !== undefined)  patch.odoo_invoice_id = body.odoo_invoice_id || null
 

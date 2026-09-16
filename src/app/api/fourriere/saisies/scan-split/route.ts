@@ -10,6 +10,7 @@ import { getServerSession }  from 'next-auth'
 import { authOptions }       from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase'
 import { splitAndDispatch }  from '@/lib/missions/saisie-scan-split'
+import { autoDepositIfAuto } from '@/lib/justinvoice/deposit'
 
 export const dynamic     = 'force-dynamic'
 export const maxDuration = 300
@@ -34,7 +35,17 @@ export async function POST(req: Request) {
     const buf = Buffer.from(await file.arrayBuffer())
     const sb = createAdminClient()
     const summary = await splitAndDispatch(sb, buf, userId)
-    return NextResponse.json({ ok: true, ...summary })
+    // Temps 3 : chaque page validée part sur JustInvoice (robot en mode envoi).
+    const deposited: string[] = []
+    for (const r of summary.results) {
+      if (!r.matched || r.refus || !r.dossierId || !r.numero) continue
+      const { data: ef } = await sb.from('saisie_etats_frais').select('id').eq('numero', r.numero).maybeSingle()
+      if (!ef) continue
+      const dep = await autoDepositIfAuto(sb, r.dossierId, ef.id)
+      if (dep?.ok) { deposited.push(r.numero); r.note = `${r.note} · déposé sur JustInvoice${dep.ref ? ` (${dep.ref})` : ''}` }
+      else if (dep && !dep.ok) r.note = `${r.note} · ⚠ dépôt JustInvoice : ${dep.error}`
+    }
+    return NextResponse.json({ ok: true, ...summary, deposited })
   } catch (e: any) {
     return NextResponse.json({ error: e?.message || 'Découpe échouée' }, { status: 500 })
   }

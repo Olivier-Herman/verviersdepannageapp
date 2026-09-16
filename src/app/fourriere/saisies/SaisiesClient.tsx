@@ -28,6 +28,7 @@ interface Dossier {
   sent_at: string | null; validation_at: string | null
   pending_action: string | null; pending_action_at: string | null; domaine_remise_date: string | null
   requisitoire_ok: boolean
+  paused_at?: string | null; paused_reason?: string | null
   etats: EtatFrais[]
 }
 interface EtatFrais {
@@ -88,7 +89,7 @@ interface Reading {
   who: Who
   headline: string          // la prochaine action, en une phrase
   detail?: string           // précision (date, délai, destinataire)
-  primary?: { label: string; kind: 'generate' | 'relance' | 'justinvoice' | 'facture' | 'close' | 'upload' | 'annule'; efId?: string; tone?: 'brand' | 'green' | 'indigo' | 'teal' | 'red' | 'neutral' }
+  primary?: { label: string; kind: 'generate' | 'relance' | 'justinvoice' | 'facture' | 'close' | 'upload' | 'annule' | 'resume'; efId?: string; tone?: 'brand' | 'green' | 'indigo' | 'teal' | 'red' | 'neutral' }
   steps: Step[]
   latest?: EtatFrais
   canEstablish: boolean
@@ -142,6 +143,8 @@ function readDossier(d: Dossier): Reading {
 
   // Prochaine action — un seul cas gagne, dans l'ordre d'urgence.
   if (d.state === 'clos') return { ...base, who: 'rien', headline: 'Dossier clôturé' }
+  if (d.paused_at)
+    return { ...base, who: 'rien', headline: `En pause depuis le ${fmt(d.paused_at)}${d.paused_reason ? ` — ${d.paused_reason}` : ''}`, detail: 'Le robot n\'envoie ni ne dépose rien pour ce dossier tant qu\'il est en pause.', primary: { label: 'Reprendre', kind: 'resume', tone: 'neutral' } }
   if (d.recipient === 'domaine')
     return { ...base, who: 'eux', headline: `Remis au Domaine le ${fmt(d.domaine_remise_date)}`, detail: 'La suite du gardiennage se facture via le module Domaine.', primary: closable ? { label: 'Clôturer', kind: 'close', tone: 'neutral' } : undefined }
   if (latest?.status === 'a_annuler')
@@ -256,6 +259,7 @@ export default function SaisiesClient({ userRole, userName, userEmail, userModul
     else if (p.kind === 'justinvoice' && p.efId) depotJustInvoice(d.id, p.efId, d.vehicle_plate || '—')
     else if (p.kind === 'facture' && p.efId) factureOdoo(d.id, p.efId)
     else if (p.kind === 'close') patch(d.id, { state: 'clos' }, '✓ Dossier clôturé')
+    else if (p.kind === 'resume') patch(d.id, { paused: false }, '▶ Dossier repris — le robot s\'en occupe à nouveau')
     else if (p.kind === 'annule' && p.efId) { if (confirm('La note de crédit a été envoyée au Parquet pour cet état de frais ?')) efStatus(d.id, p.efId, 'annule') }
     // 'upload' : géré par l'input fichier du bouton
   }
@@ -386,6 +390,7 @@ export default function SaisiesClient({ userRole, userName, userEmail, userModul
                 onGenerate={() => setGen(d)}
                 onRecipient={(rc) => patch(d.id, { recipient: rc }, '✓ Destinataire mis à jour')}
                 onClose={() => patch(d.id, { state: 'clos' }, '✓ Dossier clôturé')}
+                onPause={() => { if (d.paused_at) patch(d.id, { paused: false }, '▶ Dossier repris'); else { const why = prompt('Mettre ce dossier en pause — pourquoi ? (le robot n\'enverra plus rien)'); if (why !== null) patch(d.id, { paused: true, paused_reason: why }, '⏸ Dossier en pause') } }}
                 onRemove={() => remove(d.id, d.vehicle_plate || '—')}
                 onRelance={() => relanceReq(d.mission_id, d.id)}
                 onJustInvoice={(efId) => depotJustInvoice(d.id, efId, d.vehicle_plate || '—')}
@@ -438,13 +443,14 @@ function Timeline({ steps }: { steps: Step[] }) {
 }
 
 // ── Carte dossier ────────────────────────────────────────────────────────────
-function DossierCard({ d, r, busy, onPrimary, onUpload, onGenerate, onRecipient, onClose, onRemove, onRelance, onJustInvoice, onFacture, onEfStatus, onEfRelance, onEfResend }: {
+function DossierCard({ d, r, busy, onPrimary, onUpload, onGenerate, onRecipient, onClose, onPause, onRemove, onRelance, onJustInvoice, onFacture, onEfStatus, onEfRelance, onEfResend }: {
   d: Dossier; r: Reading; busy: boolean
   onPrimary: () => void
   onUpload: (efId: string, f: File) => void
   onGenerate: () => void
   onRecipient: (rc: Recipient) => void
   onClose: () => void
+  onPause: () => void
   onRemove: () => void
   onRelance: () => void
   onJustInvoice: (efId: string) => void
@@ -454,6 +460,12 @@ function DossierCard({ d, r, busy, onPrimary, onUpload, onGenerate, onRecipient,
   onEfResend: (efId: string, numero: string) => void
 }) {
   const [open, setOpen] = useState(false)
+  const [journal, setJournal] = useState<null | 'loading' | { at: string; icon: string; text: string; by: string | null; source: string }[]>(null)
+  const loadJournal = async () => {
+    setJournal('loading')
+    try { const res = await fetch(`/api/fourriere/saisies/${d.id}/journal`, { cache: 'no-store' }); const j = await res.json(); setJournal(Array.isArray(j.entries) ? j.entries : []) }
+    catch { setJournal([]) }
+  }
   const who = WHO[r.who]
   const days = daysSince(d.parked_at)
   const p = r.primary
@@ -531,6 +543,7 @@ function DossierCard({ d, r, busy, onPrimary, onUpload, onGenerate, onRecipient,
               {r.canEstablish && d.recipient !== 'domaine' && !p?.kind.startsWith('generate') && <button disabled={busy} onClick={onGenerate} className="px-2.5 py-1 bg-surface border rounded-lg text-ink-secondary hover:text-ink font-semibold">📄 Nouvel état de frais</button>}
               {!d.requisitoire_ok && p?.kind !== 'relance' && <button disabled={busy} onClick={onRelance} className="px-2.5 py-1 bg-surface border rounded-lg text-ink-secondary hover:text-ink font-semibold">📨 Relancer le policier</button>}
               {(['facture', 'gardiennage_recurrent', 'liquide'].includes(d.state) || d.recipient === 'domaine') && d.state !== 'clos' && p?.kind !== 'close' && <button disabled={busy} onClick={onClose} className="px-2.5 py-1 bg-surface border rounded-lg text-ink-secondary hover:text-ink font-semibold">Clôturer</button>}
+              <button disabled={busy} onClick={onPause} className={`px-2.5 py-1 border rounded-lg font-semibold ${d.paused_at ? 'bg-amber-100 text-amber-900 border-amber-300' : 'bg-surface text-ink-secondary hover:text-ink'}`}>{d.paused_at ? '▶ Reprendre' : '⏸ Pause'}</button>
               <button disabled={busy} onClick={onRemove} className="px-2.5 py-1 bg-surface border rounded-lg text-ink-faint hover:text-red-700 hover:bg-red-50">Retirer du suivi</button>
             </span>
           </div>
@@ -582,7 +595,24 @@ function DossierCard({ d, r, busy, onPrimary, onUpload, onGenerate, onRecipient,
               </table>
             </div>
           )}
-          {d.sent_at && <p className="text-[11px] text-ink-faint">Dernier envoi le {fmt(d.sent_at)}{d.sent_to ? ` → ${d.sent_to}` : ''}{d.validation_at ? ` · validé le ${fmt(d.validation_at)}` : ''}</p>}
+          {/* Journal : tout ce que le robot et le bureau ont fait sur ce dossier */}
+          <div>
+            <button onClick={() => journal == null ? loadJournal() : setJournal(null)} className="text-xs text-ink-secondary hover:text-ink font-semibold">{journal == null ? '▸' : '▾'} Journal du dossier</button>
+            {journal === 'loading' && <p className="text-[11px] text-ink-faint mt-1">Chargement…</p>}
+            {Array.isArray(journal) && (
+              journal.length === 0 ? <p className="text-[11px] text-ink-faint mt-1">Rien d'enregistré.</p> : (
+                <ol className="mt-1.5 space-y-1 border-l-2 border-app ml-1.5 pl-3">
+                  {journal.map((e, i) => (
+                    <li key={i} className="text-[12px] text-ink-secondary flex gap-2">
+                      <span className="text-ink-faint tabular-nums shrink-0 w-[92px]">{new Date(e.at).toLocaleString('fr-BE', { timeZone: 'Europe/Brussels', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</span>
+                      <span className="shrink-0">{e.icon}</span>
+                      <span className="min-w-0">{e.text}{e.by ? <span className="text-ink-faint"> — {e.by}</span> : e.source === 'robot' ? <span className="text-ink-faint"> — robot</span> : ''}</span>
+                    </li>
+                  ))}
+                </ol>
+              )
+            )}
+          </div>
         </div>
       )}
     </div>

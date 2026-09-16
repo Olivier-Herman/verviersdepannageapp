@@ -7,6 +7,7 @@
 
 import { NextResponse }      from 'next/server'
 import { createAdminClient } from '@/lib/supabase'
+import { autoDepositIfAuto } from '@/lib/justinvoice/deposit'
 
 export const dynamic     = 'force-dynamic'
 export const maxDuration = 60
@@ -58,6 +59,11 @@ export async function POST(req: Request, { params }: { params: { token: string }
   }
   if (!firstPath) return NextResponse.json({ error: "Échec de l'enregistrement du fichier." }, { status: 500 })
 
+  // L'état de frais le plus ancien encore « envoyé » est validé (le lien est
+  // par dossier) — puis dépôt JustInvoice automatique (temps 3, 16/09/2026).
+  const { data: efRow } = await sb.from('saisie_etats_frais').select('id, numero').eq('dossier_id', d.id).eq('status', 'envoye').order('created_at', { ascending: true }).limit(1).maybeSingle()
+  if (efRow) await sb.from('saisie_etats_frais').update({ status: 'accepte', validation_doc_path: firstPath, validation_at: new Date().toISOString() }).eq('id', efRow.id)
+
   await sb.from('saisie_dossiers').update({
     validation_doc_path: firstPath,
     validation_at:       new Date().toISOString(),
@@ -72,6 +78,8 @@ export async function POST(req: Request, { params }: { params: { token: string }
       .insert({ mission_id: d.mission_id, text: `✅ Validation état de frais ${d.ef_number || ''} reçue (lien public)${note ? ` — ${note}` : ''}`, created_by: null })
       .then(() => {}, () => {})
   }
+
+  if (efRow) await autoDepositIfAuto(sb, d.id, efRow.id).catch(() => null)
 
   return NextResponse.json({ ok: true })
 }

@@ -50,7 +50,10 @@ export async function depositEtatFrais(sb: any, dossierId: string, efId?: string
     etatFraisName: `etat-de-frais-${efRow.numero || d.vehicle_plate || 'saisie'}.pdf`,
     requisitoireName: `requisitoire-${d.vehicle_plate || 'saisie'}.${requisitoireDocExt(reqPath)}`,
   })
-  if (!res.ok) return { ok: false, error: res.error || 'Dépôt refusé', raw: res.raw }
+  if (!res.ok) {
+    if (d.mission_id) await sb.from('mission_logs').insert({ mission_id: d.mission_id, action: 'justinvoice_ko', notes: `Dépôt JustInvoice de ${efRow.numero} refusé : ${res.error || 'erreur'}` }).then(() => {}, () => {})
+    return { ok: false, error: res.error || 'Dépôt refusé', raw: res.raw }
+  }
 
   const now = new Date().toISOString()
   await sb.from('saisie_etats_frais').update({ status: 'depose', justinvoice_ref: res.ref || null }).eq('id', efRow.id)
@@ -59,6 +62,24 @@ export async function depositEtatFrais(sb: any, dossierId: string, efId?: string
     await sb.from('mission_remarks')
       .insert({ mission_id: d.mission_id, text: `📤 État de frais ${efRow.numero} déposé sur JustInvoice${res.ref ? ` — dossier ${res.ref}` : ''}` })
       .then(() => {}, () => {})
+    await sb.from('mission_logs').insert({ mission_id: d.mission_id, action: 'justinvoice_depose', notes: `${efRow.numero} déposé sur JustInvoice${res.ref ? ` — dossier ${res.ref}` : ''}`, metadata: { ef_id: efRow.id, ref: res.ref } }).then(() => {}, () => {})
   }
   return { ok: true, ref: res.ref, numero: efRow.numero }
+}
+
+/**
+ * Dépôt AUTOMATIQUE après une validation (lien public, mail, scan groupé, dépôt
+ * manuel) : si le robot est en mode envoi (saisie_auto_send), et si le dossier
+ * n'est pas en pause, l'état de frais accepté part sur JustInvoice dans la
+ * foulée. Olivier 16/09/2026 (temps 3). Renvoie null si rien n'a été tenté.
+ */
+export async function autoDepositIfAuto(sb: any, dossierId: string, efId: string): Promise<DepositResult | null> {
+  const { data: cfg } = await sb.from('app_settings').select('value').eq('key', 'saisie_auto_send').maybeSingle()
+  let auto = false
+  try { auto = cfg?.value ? JSON.parse(cfg.value) === true : false } catch { auto = false }
+  if (!auto) return null
+  const { data: d } = await sb.from('saisie_dossiers').select('paused_at').eq('id', dossierId).maybeSingle()
+  if (d?.paused_at) return null
+  try { return await depositEtatFrais(sb, dossierId, efId) }
+  catch (e: any) { return { ok: false, error: e?.message || 'Dépôt échoué' } }
 }

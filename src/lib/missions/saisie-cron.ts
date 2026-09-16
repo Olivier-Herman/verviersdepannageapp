@@ -102,6 +102,8 @@ export async function runSaisieCron(sb: any): Promise<SaisieCronSummary> {
     // périmètre ne gouverne que l'auto-intégration (GG036SD, 16/09/2026).
     void scopeFrom
     out.checked++
+    // Pause par dossier (remplace l'ancienne bascule globale) : rien ne part.
+    if (d.paused_at) continue
     const mission = d.mission_id
       ? (await sb.from('incoming_missions')
           .select('source, status, domaine_remise_date, domaine_enlevement_date, levee_saisie_at, levee_saisie_date, levee_saisie_payer, levee_saisie_type, requisitoire_at, requisitoire_doc_path, requisitoire_last_reminder_at, officer_partner_id')

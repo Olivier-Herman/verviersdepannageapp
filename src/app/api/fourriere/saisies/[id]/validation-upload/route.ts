@@ -9,6 +9,7 @@ import { NextResponse }      from 'next/server'
 import { getServerSession }  from 'next-auth'
 import { authOptions }       from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase'
+import { autoDepositIfAuto } from '@/lib/justinvoice/deposit'
 
 export const dynamic     = 'force-dynamic'
 export const maxDuration = 30
@@ -66,5 +67,8 @@ export async function POST(req: Request, { params }: { params: { id: string } })
       .then(() => {}, () => {})
   }
 
-  return NextResponse.json({ ok: true })
+  // Temps 3 : validé ⇒ dépôt JustInvoice dans la foulée (robot en mode envoi).
+  let deposit: any = null
+  if (!refus && efRow) deposit = await autoDepositIfAuto(sb, d.id, efRow.id)
+  return NextResponse.json({ ok: true, deposit })
 }

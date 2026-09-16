@@ -556,5 +556,6 @@ export async function sendEtatFrais(
     updated_at: new Date().toISOString(),
   }).eq('id', dossierId)
 
+  if (d.mission_id) await sb.from('mission_logs').insert({ mission_id: d.mission_id, action: 'etat_frais_envoye', notes: `${gens.length > 1 ? 'États de frais' : 'État de frais'} ${numeroLabel} envoyé${gens.length > 1 ? 's' : ''} à ${dest.email} (${totalTvacAll.toFixed(2).replace('.', ',')} € TVAC)`, actor_id: userId || null, metadata: { numeros: gens.map(g => g.numero), email: dest.email } }).then(() => {}, () => {})
   return { ok: true, email: dest.email, numero: numeroLabel, count: gens.length }
 }
