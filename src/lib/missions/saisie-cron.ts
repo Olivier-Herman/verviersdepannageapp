@@ -287,7 +287,13 @@ async function checkForclusion(sb: any, d: any, out: SaisieCronSummary): Promise
     const days = daysUntil(fd)
     await sendNotificationToRoles(['admin', 'superadmin'], 'saisie_facturation', {
       title: `⏳ Forclusion ${days != null && days < 0 ? 'DÉPASSÉE' : `dans ${days} j`} — ${d.vehicle_plate || ''}`,
-      body: `${ef.numero} (${ef.status}) doit être déposé sur JustInvoice avant le ${fmtFR(fd)} (6 mois à dater de la prestation).`,
+      // Dire QUI a la main (Olivier 17/09/2026 : « l'envoi JustInvoice n'était pas
+      // automatique ? ») : en 'envoye' on attend le retour signé du Parquet — le
+      // dépôt JustInvoice suit tout seul dès la validation ; en 'accepte' le dépôt
+      // est en cours ou en échec.
+      body: ef.status === 'envoye'
+        ? `${ef.numero} : en attente du retour signé du Parquet — dès validation, dépôt automatique sur JustInvoice. Limite ${fmtFR(fd)} (6 mois à dater de la prestation)${days != null && days < 0 ? ' — DÉPASSÉE : contacte le Parquet' : ' — un rappel manuel au Parquet est possible'}.`
+        : `${ef.numero} (${ef.status}) : dépôt JustInvoice à faire avant le ${fmtFR(fd)} (6 mois à dater de la prestation) — vérifie l'état de frais signé sur le dossier.`,
       action_url: '/fourriere/saisies',
     }).catch(() => {})
   }
