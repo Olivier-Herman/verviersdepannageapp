@@ -13,6 +13,7 @@ import { normalizePlate } from '@/lib/plate'
 import { formatEur } from '@/lib/format'
 import { buildEncaissementUrl } from '@/lib/missions/encaissement-url'
 import QRCode from 'qrcode'
+import ClientQrModal, { watchClientCapture, type ClientCaptureData } from '@/components/encaissement/ClientQrModal'
 import { savePending, loadPending, clearPending, checkPaid, submitPending, type SumupPending } from '@/lib/sumup-pending'
 import { buildEpcQrPayload, bankConfigFromEnv } from '@/lib/payments/epc-qr'
 import { useT } from '@/lib/i18n/I18nProvider'
@@ -452,6 +453,25 @@ export default function EncaissementClient({
   const [clientPhone, setClientPhone] = useState('')
   const [clientEmail, setClientEmail] = useState('')
   const [notes, setNotes] = useState('')
+  // QR client (Olivier 19/09/2026) : le client remplit ses coordonnées sur son
+  // téléphone ; le formulaire les reçoit même si la modale est fermée.
+  const [clientQrOpen, setClientQrOpen] = useState(false)
+  const [clientQrToken, setClientQrToken] = useState<string | null>(null)
+  const [clientQrReceived, setClientQrReceived] = useState(false)
+  const applyClientCapture = (d: ClientCaptureData) => {
+    setClientName(`${d.first_name} ${d.last_name}`.trim())
+    if (d.street || d.address) { setClientAddress(d.address || [d.street, [d.zip, d.city].filter(Boolean).join(' ')].filter(Boolean).join(', ')); setClientStreet(d.street); setClientZip(d.zip); setClientCity(d.city); setClientCountryCode(d.country_code || 'BE') }
+    if (d.email) setClientEmail(d.email)
+    if (d.phone) setClientPhone(d.phone)
+    setClientQrReceived(true)
+    // Le client a tout donné : on saute la recherche par nom et on montre les coordonnées reçues.
+    setPage(p => (p === 7 || p === 14) ? 8 : p)
+  }
+  useEffect(() => {
+    if (!clientQrToken || clientQrReceived || clientQrOpen) return   // la modale écoute déjà tant qu'elle est ouverte
+    return watchClientCapture(clientQrToken, applyClientCapture)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [clientQrToken, clientQrOpen, clientQrReceived])
 
   // Auto-prefill complet depuis la mission : si mission_id est fourni, on
   // fetch /api/missions/[id] au mount pour recuperer brand, model, client,
@@ -1575,6 +1595,13 @@ export default function EncaissementClient({
   if (page === 7) return (
     <Shell title={t('encaissement.step_client_name')} page={7} totalPages={TOTAL} onBack={() => setPage(6)}>
       <div className="mt-4">
+        {/* QR client : le client remplit lui-même (FR/NL/EN/DE) — ne bloque pas le chauffeur. */}
+        <button type="button" onClick={() => setClientQrOpen(true)}
+          className={`w-full mb-4 flex items-center justify-center gap-2 px-4 py-3 rounded-xl border-2 font-semibold text-sm ${clientQrToken && !clientQrReceived ? 'border-brand/60 bg-brand/5 text-brand' : 'border-dashed border-strong bg-surface-2 text-ink-secondary hover:text-ink'}`}>
+          {clientQrReceived ? '✓ Coordonnées reçues du client' : clientQrToken ? '⏳ QR affiché — en attente du client (revoir le QR)' : '📱 QR client — il remplit ses coordonnées lui-même'}
+        </button>
+        {clientQrOpen && <ClientQrModal missionId={prefill?.mission_id || openMission?.id || null} plate={plate || null}
+          onClose={() => setClientQrOpen(false)} onToken={setClientQrToken} onDone={applyClientCapture} />}
         <input
           value={clientName}
           onChange={e => setClientName(e.target.value)}
