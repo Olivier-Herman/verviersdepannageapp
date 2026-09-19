@@ -497,6 +497,7 @@ export default function EncaissementClient({
         if (cname)               setClientName(prev => prev || cname)
         if (m.client_phone)      setClientPhone(prev => prev || m.client_phone)
         if (m.client_email)      setClientEmail(prev => prev || m.client_email)
+        if (m.client_address)    setClientAddress(prev => prev || m.client_address)   // QR client posé sur place (19/09)
         // Lieu d intervention : pre-remplit le champ location avec
         // l adresse de l incident concatenee (rue + ville).
         const loc = [m.incident_address, m.incident_city].filter(Boolean).join(', ')

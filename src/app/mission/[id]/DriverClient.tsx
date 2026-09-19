@@ -2,6 +2,7 @@
 // DriverClient v4 — spec figée — DSP/REM, stops, mise en parc, realtime
 
 import { useState, useRef, useEffect, useCallback } from 'react'
+import ClientQrModal from '@/components/encaissement/ClientQrModal'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@supabase/supabase-js'
 import { formatEur } from '@/lib/format'
@@ -49,7 +50,7 @@ interface Mission {
   parent_mission_id?: string | null                            // si REL, lien vers la mission parente parc
   key_location?: string | null; saisie_key_hook?: string | null // emplacement clé (hérité du parc pour une REL)
   saisie_motif_code?: string | null   // 'SAISIE_JUDICIAIRE' → choix J / LABO à la mise en parc
-  client_name?: string; client_phone?: string
+  client_name?: string; client_phone?: string; client_address?: string | null; client_email?: string | null; billed_to_id?: number | null
   billed_to_name?: string; source?: string; dossier_number?: string; external_id?: string
   vehicle_brand?: string; vehicle_model?: string; vehicle_plate?: string; vehicle_vin?: string
   incident_address?: string; incident_city?: string; incident_lat?: number; incident_lng?: number
@@ -2366,6 +2367,7 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
   }
 
   // Recharge la fiche (cache-bust) — extrait pour être réutilisé après le popup Touring.
+  const [clientQr, setClientQr] = useState(false)   // QR client sur place
   const reloadMission = () => {
     const __url = new URL(window.location.href)
     __url.searchParams.set('t', String(Date.now()))
@@ -3639,6 +3641,28 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
           </div>
         </div>
         <h1 className="text-ink font-semibold text-lg truncate mt-1">{M.client_name || 'Client inconnu'}</h1>
+        {/* QR client sur place (Olivier 19/09/2026) : lier le client AVANT l'encaissement.
+            Visible une fois sur place, quand un client doit payer (pas d'assisteur payeur
+            ou montant à encaisser) et tant qu'il n'est pas connu (nom + adresse ou e-mail). */}
+        {onSite && !isReadOnly && (!M.billed_to_id || (M.amount_to_collect ?? 0) > 0 || M.source === 'police_snc')
+          && !(M.client_name && (M.client_address || M.client_email)) && (
+          <button type="button" onClick={() => setClientQr(true)}
+            className="mt-2 w-full flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl border-2 border-dashed border-strong bg-surface-2 text-ink-secondary text-sm font-semibold">
+            📱 <T k="mission_detail.client_qr" />
+          </button>
+        )}
+        {clientQr && <ClientQrModal missionId={M.id} plate={M.vehicle_plate || null} onClose={() => setClientQr(false)} onToken={() => {}}
+          onDone={async d => {
+            // Pose le client sur la fiche → l'encaissement le reprend tel quel.
+            try {
+              await fetch(`/api/missions/${M.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
+                client_name: `${d.first_name} ${d.last_name}`.trim(),
+                client_address: d.address || [d.street, [d.zip, d.city].filter(Boolean).join(' ')].filter(Boolean).join(', ') || null,
+                client_email: d.email || null, ...(d.phone ? { client_phone: d.phone } : {}),
+              }) })
+            } catch { /* le formulaire d'encaissement le redemandera */ }
+            setClientQr(false); reloadMission()
+          }} />}
         {M.client_phone && (
           <a href={`tel:${M.client_phone}`} className="inline-flex items-center gap-1.5 mt-1 bg-red-500/10 border border-red-500/20 rounded-lg px-2.5 py-1 text-red-400 text-sm font-medium">
             📞 {M.client_phone}

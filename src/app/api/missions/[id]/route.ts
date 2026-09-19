@@ -60,7 +60,7 @@ export async function PATCH(
     'mission_type', 'incident_type', 'incident_description',
     'billed_to_name', 'billed_to_id',
     'odoo_vehicle_id',
-    'client_name', 'client_phone', 'client_address',
+    'client_name', 'client_phone', 'client_address', 'client_email',
     'assisted_name', 'assisted_phone',
     'vehicle_plate', 'vehicle_brand', 'vehicle_model', 'vehicle_vin',
     'vehicle_fuel', 'vehicle_gearbox', 'vehicle_mileage',
