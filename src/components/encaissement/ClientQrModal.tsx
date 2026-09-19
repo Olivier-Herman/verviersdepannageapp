@@ -10,6 +10,7 @@
 // toutes les 3 s (au cas où le realtime ne passe pas — 4G, cache, etc.).
 
 import { useEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import QRCode from 'qrcode'
 import { createClient } from '@supabase/supabase-js'
 import { X, Loader2, Smartphone, Check } from 'lucide-react'
@@ -67,8 +68,11 @@ export default function ClientQrModal({ missionId, plate, onClose, onToken, onDo
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4">
+  // Portail sur <body> : le formulaire d'encaissement a un bandeau collant (z-20)
+  // qui coupait le haut du QR (Olivier 19/09).
+  if (typeof document === 'undefined') return null
+  return createPortal(
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 px-4 overflow-y-auto">
       <div className="w-full max-w-sm bg-surface border rounded-2xl shadow-xl p-5 text-center">
         <div className="flex items-center justify-between mb-2">
           <h3 className="text-ink font-bold text-base flex items-center gap-2"><Smartphone size={18} /> Le client remplit ses coordonnées</h3>
@@ -86,6 +90,7 @@ export default function ClientQrModal({ missionId, plate, onClose, onToken, onDo
           ) : <p className="text-ink-muted text-sm py-10 flex items-center justify-center gap-2"><Loader2 size={16} className="animate-spin" /> Préparation du QR…</p>}
         {done && <button onClick={onClose} className="mt-2 px-4 py-2 bg-brand text-white rounded-xl text-sm font-semibold">Continuer</button>}
       </div>
-    </div>
+    </div>,
+    document.body,
   )
 }
