@@ -465,7 +465,7 @@ export default function EncaissementClient({
     if (d.phone) setClientPhone(d.phone)
     setClientQrReceived(true)
     // Le client a tout donné : on saute la recherche par nom et on montre les coordonnées reçues.
-    setPage(p => (p === 7 || p === 14) ? 8 : p)
+    setPage(p => (p === 6 || p === 7 || p === 14) ? 8 : p)
   }
   useEffect(() => {
     if (!clientQrToken || clientQrReceived || clientQrOpen) return   // la modale écoute déjà tant qu'elle est ouverte
@@ -1530,7 +1530,15 @@ export default function EncaissementClient({
               : '✗ TVA invalide ou introuvable'}
           </div>
         )}
-        <p className="text-ink-muted text-xs text-center mb-8">Pour un particulier, passe directement</p>
+        <p className="text-ink-muted text-xs text-center mb-6">Pour un particulier, passe directement</p>
+        {/* QR client dès cet écran (Olivier 19/09) : le client remplit ses coordonnées
+            pendant que le chauffeur continue — ne bloque rien. */}
+        <button type="button" onClick={() => setClientQrOpen(true)}
+          className={`w-full mb-4 flex items-center justify-center gap-2 px-4 py-3 rounded-xl border-2 font-semibold text-sm ${clientQrToken && !clientQrReceived ? 'border-brand/60 bg-brand/5 text-brand' : clientQrReceived ? 'border-success bg-success-soft text-success' : 'border-dashed border-strong bg-surface-2 text-ink-secondary hover:text-ink'}`}>
+          {clientQrReceived ? '✓ Coordonnées reçues du client' : clientQrToken ? '⏳ QR affiché — en attente du client (revoir le QR)' : '📱 QR client — il remplit ses coordonnées lui-même'}
+        </button>
+        {clientQrOpen && <ClientQrModal missionId={prefill?.mission_id || openMission?.id || null} plate={plate || null}
+          onClose={() => setClientQrOpen(false)} onToken={setClientQrToken} onDone={applyClientCapture} />}
         <div className="flex flex-col gap-3">
           <BigBtn
             label={viesLoading ? 'Vérification…' : 'Continuer →'}
@@ -1596,13 +1604,7 @@ export default function EncaissementClient({
   if (page === 7) return (
     <Shell title={t('encaissement.step_client_name')} page={7} totalPages={TOTAL} onBack={() => setPage(6)}>
       <div className="mt-4">
-        {/* QR client : le client remplit lui-même (FR/NL/EN/DE) — ne bloque pas le chauffeur. */}
-        <button type="button" onClick={() => setClientQrOpen(true)}
-          className={`w-full mb-4 flex items-center justify-center gap-2 px-4 py-3 rounded-xl border-2 font-semibold text-sm ${clientQrToken && !clientQrReceived ? 'border-brand/60 bg-brand/5 text-brand' : 'border-dashed border-strong bg-surface-2 text-ink-secondary hover:text-ink'}`}>
-          {clientQrReceived ? '✓ Coordonnées reçues du client' : clientQrToken ? '⏳ QR affiché — en attente du client (revoir le QR)' : '📱 QR client — il remplit ses coordonnées lui-même'}
-        </button>
-        {clientQrOpen && <ClientQrModal missionId={prefill?.mission_id || openMission?.id || null} plate={plate || null}
-          onClose={() => setClientQrOpen(false)} onToken={setClientQrToken} onDone={applyClientCapture} />}
+        {clientQrToken && !clientQrReceived && <p className="mb-3 text-xs text-brand font-semibold">⏳ QR client affiché — ses coordonnées arriveront ici toutes seules.</p>}
         <input
           value={clientName}
           onChange={e => setClientName(e.target.value)}
