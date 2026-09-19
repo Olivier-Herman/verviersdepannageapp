@@ -16,6 +16,7 @@ import { createClient } from '@supabase/supabase-js'
 import { X, Loader2, Smartphone, Check } from 'lucide-react'
 
 export interface ClientCaptureData {
+  kind?: 'private' | 'pro'; company?: string; vat?: string; vies_valid?: boolean
   first_name: string; last_name: string; street: string; zip: string; city: string; country_code: string
   address: string; email: string; phone: string
 }

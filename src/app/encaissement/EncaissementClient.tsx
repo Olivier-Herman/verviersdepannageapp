@@ -459,7 +459,13 @@ export default function EncaissementClient({
   const [clientQrToken, setClientQrToken] = useState<string | null>(null)
   const [clientQrReceived, setClientQrReceived] = useState(false)
   const applyClientCapture = (d: ClientCaptureData) => {
-    setClientName(`${d.first_name} ${d.last_name}`.trim())
+    const contact = `${d.first_name} ${d.last_name}`.trim()
+    if (d.kind === 'pro' && d.company) {
+      // Pro : la société est le client facturé (TVA vérifiée VIES côté client) ; la personne va en note.
+      setClientName(d.company); setClientVat(d.vat || '')
+      if (d.vat) setViesResult({ valid: !!d.vies_valid, name: d.company, odooFound: false })
+      if (contact) setNotes(n => n ? `${n} · contact : ${contact}` : `Contact : ${contact}`)
+    } else setClientName(contact)
     if (d.street || d.address) { setClientAddress(d.address || [d.street, [d.zip, d.city].filter(Boolean).join(' ')].filter(Boolean).join(', ')); setClientStreet(d.street); setClientZip(d.zip); setClientCity(d.city); setClientCountryCode(d.country_code || 'BE') }
     if (d.email) setClientEmail(d.email)
     if (d.phone) setClientPhone(d.phone)

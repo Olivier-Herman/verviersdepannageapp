@@ -7,10 +7,10 @@ import { useEffect, useRef, useState } from 'react'
 
 type Lang = 'fr' | 'nl' | 'en' | 'de'
 const T: Record<Lang, Record<string, string>> = {
-  fr: { title: 'Vos coordonnées', intro: 'Merci de compléter vos coordonnées pour l\'intervention sur le véhicule', first: 'Prénom', last: 'Nom', address: 'Adresse', address_ph: 'Rue, numéro, code postal, ville', email: 'E-mail', phone: 'Téléphone', optional: 'facultatif', send: 'Envoyer', sending: 'Envoi…', done_t: 'Merci !', done: 'Vos coordonnées ont été transmises au dépanneur.', invalid_t: 'Lien invalide', invalid: 'Ce lien n\'est plus valable. Demandez un nouveau QR au dépanneur.', err_name: 'Prénom et nom sont obligatoires.', err_email: 'Adresse e-mail invalide.', err_addr: 'Choisissez une adresse dans la liste.', privacy: 'Ces données servent uniquement à établir la facture de l\'intervention.', loading: 'Chargement…' },
-  nl: { title: 'Uw gegevens', intro: 'Vul uw gegevens in voor de interventie aan het voertuig', first: 'Voornaam', last: 'Naam', address: 'Adres', address_ph: 'Straat, nummer, postcode, gemeente', email: 'E-mail', phone: 'Telefoon', optional: 'optioneel', send: 'Verzenden', sending: 'Bezig…', done_t: 'Bedankt!', done: 'Uw gegevens zijn doorgegeven aan de takelaar.', invalid_t: 'Ongeldige link', invalid: 'Deze link is niet meer geldig. Vraag een nieuwe QR aan de takelaar.', err_name: 'Voornaam en naam zijn verplicht.', err_email: 'Ongeldig e-mailadres.', err_addr: 'Kies een adres uit de lijst.', privacy: 'Deze gegevens dienen enkel om de factuur van de interventie op te maken.', loading: 'Laden…' },
-  en: { title: 'Your details', intro: 'Please fill in your details for the roadside service on vehicle', first: 'First name', last: 'Last name', address: 'Address', address_ph: 'Street, number, postcode, city', email: 'E-mail', phone: 'Phone', optional: 'optional', send: 'Send', sending: 'Sending…', done_t: 'Thank you!', done: 'Your details have been sent to the tow operator.', invalid_t: 'Invalid link', invalid: 'This link is no longer valid. Ask the tow operator for a new QR code.', err_name: 'First and last name are required.', err_email: 'Invalid e-mail address.', err_addr: 'Please pick an address from the list.', privacy: 'This information is used only to issue the invoice for the service.', loading: 'Loading…' },
-  de: { title: 'Ihre Angaben', intro: 'Bitte geben Sie Ihre Daten für den Einsatz am Fahrzeug ein', first: 'Vorname', last: 'Nachname', address: 'Adresse', address_ph: 'Straße, Hausnummer, PLZ, Ort', email: 'E-Mail', phone: 'Telefon', optional: 'optional', send: 'Senden', sending: 'Wird gesendet…', done_t: 'Vielen Dank!', done: 'Ihre Angaben wurden an den Abschleppdienst übermittelt.', invalid_t: 'Ungültiger Link', invalid: 'Dieser Link ist nicht mehr gültig. Bitten Sie den Abschleppdienst um einen neuen QR-Code.', err_name: 'Vor- und Nachname sind Pflichtfelder.', err_email: 'Ungültige E-Mail-Adresse.', err_addr: 'Bitte wählen Sie eine Adresse aus der Liste.', privacy: 'Diese Daten dienen ausschließlich der Rechnungsstellung für den Einsatz.', loading: 'Laden…' },
+  fr: { private: 'Particulier', pro: 'Entreprise', company: 'Société', vat: 'N° de TVA', vat_ph: 'BE0123456789', vat_check: 'Vérifier', vat_ok: 'TVA valide — coordonnées reprises du registre', vat_ko: 'TVA introuvable — vérifiez le numéro', contact: 'Personne de contact', err_company: 'Le nom de la société est obligatoire.', title: 'Vos coordonnées', intro: 'Merci de compléter vos coordonnées pour l\'intervention sur le véhicule', first: 'Prénom', last: 'Nom', address: 'Adresse', address_ph: 'Rue, numéro, code postal, ville', email: 'E-mail', phone: 'Téléphone', optional: 'facultatif', send: 'Envoyer', sending: 'Envoi…', done_t: 'Merci !', done: 'Vos coordonnées ont été transmises au dépanneur.', invalid_t: 'Lien invalide', invalid: 'Ce lien n\'est plus valable. Demandez un nouveau QR au dépanneur.', err_name: 'Prénom et nom sont obligatoires.', err_email: 'Adresse e-mail invalide.', err_addr: 'Choisissez une adresse dans la liste.', privacy: 'Ces données servent uniquement à établir la facture de l\'intervention.', loading: 'Chargement…' },
+  nl: { private: 'Particulier', pro: 'Bedrijf', company: 'Bedrijf', vat: 'BTW-nummer', vat_ph: 'BE0123456789', vat_check: 'Controleren', vat_ok: 'BTW geldig — gegevens uit het register overgenomen', vat_ko: 'BTW niet gevonden — controleer het nummer', contact: 'Contactpersoon', err_company: 'De bedrijfsnaam is verplicht.', title: 'Uw gegevens', intro: 'Vul uw gegevens in voor de interventie aan het voertuig', first: 'Voornaam', last: 'Naam', address: 'Adres', address_ph: 'Straat, nummer, postcode, gemeente', email: 'E-mail', phone: 'Telefoon', optional: 'optioneel', send: 'Verzenden', sending: 'Bezig…', done_t: 'Bedankt!', done: 'Uw gegevens zijn doorgegeven aan de takelaar.', invalid_t: 'Ongeldige link', invalid: 'Deze link is niet meer geldig. Vraag een nieuwe QR aan de takelaar.', err_name: 'Voornaam en naam zijn verplicht.', err_email: 'Ongeldig e-mailadres.', err_addr: 'Kies een adres uit de lijst.', privacy: 'Deze gegevens dienen enkel om de factuur van de interventie op te maken.', loading: 'Laden…' },
+  en: { private: 'Private', pro: 'Company', company: 'Company', vat: 'VAT number', vat_ph: 'BE0123456789', vat_check: 'Check', vat_ok: 'VAT valid — details taken from the register', vat_ko: 'VAT not found — check the number', contact: 'Contact person', err_company: 'Company name is required.', title: 'Your details', intro: 'Please fill in your details for the roadside service on vehicle', first: 'First name', last: 'Last name', address: 'Address', address_ph: 'Street, number, postcode, city', email: 'E-mail', phone: 'Phone', optional: 'optional', send: 'Send', sending: 'Sending…', done_t: 'Thank you!', done: 'Your details have been sent to the tow operator.', invalid_t: 'Invalid link', invalid: 'This link is no longer valid. Ask the tow operator for a new QR code.', err_name: 'First and last name are required.', err_email: 'Invalid e-mail address.', err_addr: 'Please pick an address from the list.', privacy: 'This information is used only to issue the invoice for the service.', loading: 'Loading…' },
+  de: { private: 'Privat', pro: 'Unternehmen', company: 'Firma', vat: 'USt-IdNr.', vat_ph: 'BE0123456789', vat_check: 'Prüfen', vat_ok: 'USt-IdNr. gültig — Daten aus dem Register übernommen', vat_ko: 'USt-IdNr. nicht gefunden — bitte prüfen', contact: 'Ansprechpartner', err_company: 'Der Firmenname ist erforderlich.', title: 'Ihre Angaben', intro: 'Bitte geben Sie Ihre Daten für den Einsatz am Fahrzeug ein', first: 'Vorname', last: 'Nachname', address: 'Adresse', address_ph: 'Straße, Hausnummer, PLZ, Ort', email: 'E-Mail', phone: 'Telefon', optional: 'optional', send: 'Senden', sending: 'Wird gesendet…', done_t: 'Vielen Dank!', done: 'Ihre Angaben wurden an den Abschleppdienst übermittelt.', invalid_t: 'Ungültiger Link', invalid: 'Dieser Link ist nicht mehr gültig. Bitten Sie den Abschleppdienst um einen neuen QR-Code.', err_name: 'Vor- und Nachname sind Pflichtfelder.', err_email: 'Ungültige E-Mail-Adresse.', err_addr: 'Bitte wählen Sie eine Adresse aus der Liste.', privacy: 'Diese Daten dienen ausschließlich der Rechnungsstellung für den Einsatz.', loading: 'Laden…' },
 }
 const LANGS: Lang[] = ['fr', 'nl', 'en', 'de']
 const detectLang = (): Lang => { const l = (typeof navigator !== 'undefined' ? navigator.language : 'fr').slice(0, 2).toLowerCase(); return (LANGS as string[]).includes(l) ? (l as Lang) : 'fr' }
@@ -22,6 +22,8 @@ export default function ClientCaptureClient({ token, gmKey }: { token: string; g
   const [state, setState] = useState<'loading' | 'ready' | 'invalid' | 'done'>('loading')
   const [plate, setPlate] = useState<string | null>(null)
   const [first, setFirst] = useState(''); const [last, setLast] = useState('')
+  const [kind, setKind] = useState<'private' | 'pro'>('private')
+  const [company, setCompany] = useState(''); const [vat, setVat] = useState(''); const [vies, setVies] = useState<null | 'checking' | 'ok' | 'ko'>(null)
   const [address, setAddress] = useState(''); const [parts, setParts] = useState<{ street: string; zip: string; city: string; country: string } | null>(null)
   const [email, setEmail] = useState(''); const [phone, setPhone] = useState('')
   const [busy, setBusy] = useState(false); const [err, setErr] = useState<string | null>(null)
@@ -58,14 +60,33 @@ export default function ClientCaptureClient({ token, gmKey }: { token: string; g
     } else { const iv = setInterval(() => { if (window.google?.maps?.places) { clearInterval(iv); init() } }, 300); return () => clearInterval(iv) }
   }, [state, gmKey, lang])
 
+  // VIES : nom + adresse officiels du registre (parsing = celui du formulaire chauffeur).
+  const checkVies = async () => {
+    const v = vat.replace(/[\s.-]/g, '').toUpperCase(); if (v.length < 5) return
+    setVies('checking')
+    try {
+      const j = await fetch(`/api/client-capture/${token}/vies?vat=${encodeURIComponent(v)}`).then(r => r.json())
+      if (!j.valid) { setVies('ko'); return }
+      setVies('ok'); setVat(v)
+      if (j.name) setCompany(j.name)
+      if (j.address) {
+        const lines = String(j.address).split('\n').map((l: string) => l.trim()).filter(Boolean)
+        const cap = (x: string) => x.charAt(0) + x.slice(1).toLowerCase()
+        const zc = lines[1]?.match(/^(\d{4,5})\s+(.+)$/)
+        if (lines.length >= 2 && zc) { setParts({ street: cap(lines[0]), zip: zc[1], city: cap(zc[2]), country: v.slice(0, 2) }); setAddress(`${cap(lines[0])}, ${zc[1]} ${cap(zc[2])}`) }
+        else { setAddress(lines.join(', ')); setParts(null) }
+      }
+    } catch { setVies('ko') }
+  }
+
   const submit = async () => {
     setErr(null)
-    if (!first.trim() || !last.trim()) { setErr(t.err_name); return }
+    if (kind === 'pro' ? !company.trim() : (!first.trim() || !last.trim())) { setErr(kind === 'pro' ? t.err_company : t.err_name); return }
     if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { setErr(t.err_email); return }
     if (address && !parts && gmKey) { setErr(t.err_addr); return }
     setBusy(true)
     try {
-      const r = await fetch(`/api/client-capture/${token}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ lang, first_name: first, last_name: last, address, street: parts?.street || '', zip: parts?.zip || '', city: parts?.city || '', country_code: parts?.country || 'BE', email, phone }) })
+      const r = await fetch(`/api/client-capture/${token}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ lang, kind, company, vat, vies_valid: vies === 'ok', first_name: first, last_name: last, address, street: parts?.street || '', zip: parts?.zip || '', city: parts?.city || '', country_code: parts?.country || 'BE', email, phone }) })
       if (!r.ok) { const j = await r.json().catch(() => ({})); throw new Error(j.error === 'email_invalid' ? t.err_email : j.error === 'name_required' ? t.err_name : t.invalid) }
       setState('done')
     } catch (e: any) { setErr(e.message || t.invalid) } finally { setBusy(false) }
@@ -86,6 +107,24 @@ export default function ClientCaptureClient({ token, gmKey }: { token: string; g
             <>
               <h1 style={S.h1}>{t.title}</h1>
               <p style={S.muted}>{t.intro}{plate ? <> <b style={{ fontFamily: 'ui-monospace,Menlo,monospace', color: '#0b1120' }}>{plate}</b></> : ''}.</p>
+              <div style={S.seg}>
+                <button type="button" onClick={() => setKind('private')} style={{ ...S.segBtn, ...(kind === 'private' ? S.segOn : {}) }}>{t.private}</button>
+                <button type="button" onClick={() => setKind('pro')} style={{ ...S.segBtn, ...(kind === 'pro' ? S.segOn : {}) }}>{t.pro}</button>
+              </div>
+              {kind === 'pro' && (
+                <>
+                  <label style={S.field}><span style={S.label}>{t.vat}</span>
+                    <div style={{ display: 'flex', gap: 8 }}>
+                      <input style={{ ...S.input, flex: 1, textTransform: 'uppercase' }} value={vat} onChange={e => { setVat(e.target.value); setVies(null) }} onBlur={checkVies} placeholder={t.vat_ph} autoComplete="off" autoCapitalize="characters" />
+                      <button type="button" onClick={checkVies} disabled={vies === 'checking'} style={S.btnSm}>{vies === 'checking' ? '…' : t.vat_check}</button>
+                    </div>
+                  </label>
+                  {vies === 'ok' && <div style={S.parsed}>✓ {t.vat_ok}</div>}
+                  {vies === 'ko' && <div style={{ ...S.parsed, color: '#b91c1c', background: '#fef2f2', borderColor: '#fecaca' }}>{t.vat_ko}</div>}
+                  <label style={S.field}><span style={S.label}>{t.company}</span><input style={S.input} value={company} onChange={e => setCompany(e.target.value)} autoComplete="organization" /></label>
+                  <div style={{ ...S.label, marginTop: 4 }}>{t.contact}</div>
+                </>
+              )}
               <div style={S.row2}>
                 <label style={S.field}><span style={S.label}>{t.first}</span><input style={S.input} value={first} onChange={e => setFirst(e.target.value)} autoComplete="given-name" autoCapitalize="words" /></label>
                 <label style={S.field}><span style={S.label}>{t.last}</span><input style={S.input} value={last} onChange={e => setLast(e.target.value)} autoComplete="family-name" autoCapitalize="words" /></label>
@@ -115,6 +154,10 @@ const S: Record<string, React.CSSProperties> = {
   h1: { fontSize: 22, fontWeight: 800, margin: '0 0 6px' },
   muted: { fontSize: 14, color: '#64748b', lineHeight: 1.55, margin: '0 0 16px' },
   row2: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 },
+  seg: { display: 'flex', background: '#eef1f4', borderRadius: 10, padding: 3, marginBottom: 14 },
+  segBtn: { flex: 1, border: 'none', background: 'transparent', borderRadius: 8, padding: '9px 10px', fontSize: 14, fontWeight: 600, color: '#64748b', cursor: 'pointer' },
+  segOn: { background: '#fff', color: '#0b1120', boxShadow: '0 1px 2px rgba(0,0,0,.08)' },
+  btnSm: { border: '1px solid #cbd5e1', background: '#f8fafc', borderRadius: 10, padding: '0 14px', fontSize: 14, fontWeight: 600, color: '#0b1120', cursor: 'pointer' },
   field: { display: 'block', marginBottom: 12 },
   label: { display: 'block', fontSize: 12, fontWeight: 700, color: '#334155', marginBottom: 5 },
   input: { width: '100%', boxSizing: 'border-box', border: '1px solid #cbd5e1', borderRadius: 10, padding: '12px 12px', fontSize: 16, background: '#fff', color: '#0b1120' },

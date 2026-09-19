@@ -29,11 +29,14 @@ export async function POST(req: Request, { params }: { params: { token: string }
 
   const b = await req.json().catch(() => ({})) as Record<string, unknown>
   const s = (k: string, max = 200) => String(b[k] ?? '').trim().slice(0, max)
+  const kind = s('kind', 10) === 'pro' ? 'pro' : 'private'
+  const company = s('company', 120), vat = s('vat', 20).replace(/[\s.-]/g, '').toUpperCase()
   const first = s('first_name', 80), last = s('last_name', 80)
   const email = s('email', 120).toLowerCase()
-  if (!first || !last) return NextResponse.json({ error: 'name_required' }, { status: 400 })
+  if (kind === 'pro' ? !company : (!first || !last)) return NextResponse.json({ error: 'name_required' }, { status: 400 })
   if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return NextResponse.json({ error: 'email_invalid' }, { status: 400 })
   const data = {
+    kind, company: kind === 'pro' ? company : '', vat: kind === 'pro' ? vat : '', vies_valid: kind === 'pro' && b.vies_valid === true,
     first_name: first, last_name: last,
     street: s('street'), zip: s('zip', 20), city: s('city', 100), country_code: (s('country_code', 2) || 'BE').toUpperCase(),
     address: s('address', 300), email, phone: s('phone', 40),
