@@ -334,6 +334,7 @@ export const fr = {
     btn_loaded_truck:    '🚛 Véhicule chargé sur le camion',
     btn_loaded_park:     '🚛 Véhicule chargé au parc',
     btn_refuse_dpr:      '❌ Refus / Impossible — Convertir en DPR',
+    client_qr:           '📱 QR client — il complète ses coordonnées lui-même',
     btn_arrived_dest:    '📍 Arrivé à destination',
     btn_park:            '🅿️ Mise en parc',
     btn_dest_refused:    '❌ Garage refusé / fermé → retour parc',

@@ -326,6 +326,7 @@ export const sq: Dictionary = {
     btn_loaded_truck:    '🚛 Mjeti i ngarkuar në kamion',
     btn_loaded_park:     '🚛 Mjeti i ngarkuar në parking',
     btn_refuse_dpr:      '❌ Refuzim / I pamundur — Konverto në DPR',
+    client_qr:           '📱 QR klienti — ai plotëson vetë të dhënat e tij',
     btn_arrived_dest:    '📍 Mbërrita në destinacion',
     btn_park:            '🅿️ Vendos në parking',
     btn_dest_refused:    '❌ Garazhi refuzoi / mbyllur → kthim në parking',
