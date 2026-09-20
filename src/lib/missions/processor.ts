@@ -1384,6 +1384,25 @@ export async function processEmailMessage(messageId: string): Promise<ProcessRes
       updatePayload.billed_to_name = defaultBilledToName
     }
 
+    // NON COUVERT annoncé par l'assistance (audit Olivier 20/09/2026) : même
+    // traitement que Touring « véhicule pas couvert » → Siabis non couvert, le
+    // client paie sur place, l'assistance s'efface du client facturé (le bureau
+    // remettra un payeur s'il y a lieu). Nouvelle fiche uniquement : si un
+    // dispatcher a déjà reclassé, on ne repasse pas derrière lui.
+    //  - IMA (Ethias/P&V/Vivium/Fidelia) : « Si le conducteur est présent, veuillez
+    //    lui présenter la facture pour acquittement » (SOFICO = objets sur PV).
+    //  - AXA / Ardenne (IPA) : « FRAIS … A CHARGE DU CLIENT », convention
+    //    « SIABIS REMORQUAGE NON COUVERT », « en aucun cas nous ne prendrons en charge la facture ».
+    const nonCouvert = detectNonCouvert(finalSource, content.textContent || '')
+    if (!existingMissionId && nonCouvert && !is2026BX) {
+      console.log(`[Processor] ${finalSource}: NON COUVERT annoncé (« ${nonCouvert} ») → police_snc`)
+      updatePayload.source         = 'police_snc'
+      updatePayload.billed_to_id   = null
+      updatePayload.billed_to_name = null
+      const note = `NON COUVERT selon ${String(finalSource).toUpperCase()} : « ${nonCouvert} » — le client paie sur place et se fait rembourser par son assurance/assistance.`
+      updatePayload.remarks_billing = [note, (updatePayload.remarks_billing as string) || ''].filter(Boolean).join('\n')
+    }
+
     // Nouvelle mission (placeholder) → init intervention_date + status + dispatch_mode.
     // Mise à jour d'un dossier existant → ne pas écraser ces valeurs (le
     // dispatcher peut avoir deja confirme/assigne/complete la mission).
@@ -1581,4 +1600,37 @@ export async function processEmailMessage(messageId: string): Promise<ProcessRes
     }
     return { status: 'error', error: err.message, missionId: placeholderId }
   }
+}
+
+/**
+ * L'assistance annonce-t-elle que le client n'est PAS couvert ? Rend l'extrait
+ * qui l'a décidé (pour la remarque), sinon null. Sources mail uniquement —
+ * Touring passe par comexVehiculeNonCouvert (COMEX).
+ */
+export function detectNonCouvert(source: string, text: string): string | null {
+  const t = String(text || '').replace(/\s+/g, ' ')
+  const rules: Record<string, RegExp[]> = {
+    ima: [
+      /pr[ée]senter la facture pour acquittement/i,
+      /facture[^.]{0,60}pour acquittement/i,
+      /(?:non|pas) couvert/i,
+    ],
+    axa: [
+      /[àa] (?:la )?charge du (?:client|b[ée]n[ée]ficiaire)/i,
+      /non[ _-]?couvert/i,
+      /en aucun cas nous ne prendrons en charge/i,
+      /facturer directement et exclusivement au b[ée]n[ée]ficiaire/i,
+    ],
+  }
+  const key = ['ethias', 'vivium', 'pv_assistance', 'ima', 'fidelia'].includes(source) ? 'ima'
+            : ['axa', 'ardenne'].includes(source) ? 'axa' : null
+  if (!key) return null
+  for (const re of rules[key]) {
+    const m = t.match(re)
+    if (m) {
+      const i = Math.max(0, (m.index || 0) - 40)
+      return t.slice(i, (m.index || 0) + m[0].length + 40).trim()
+    }
+  }
+  return null
 }

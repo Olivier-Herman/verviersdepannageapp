@@ -578,8 +578,48 @@ export interface VabMissionDetail {
   vehicleCategory:  string | null
   /** Texte libre "Localisation du véhicule" (ex: "E25 PARKING HARRE (OUEST) --> DIRECTION LIEGE") */
   fromLocationFreeText: string | null
+  // ── Couverture (Olivier 20/09/2026) ────────────────────────────────────────
+  // « VAB : c'est soit dans l'onglet Description qu'ils indiquent non couvert,
+  // ou alors il faut cliquer sur le bouton Contrat et lire si couvert en
+  // dépannage, remorquage, autoroute, etc. » Une mission non couverte = Siabis
+  // non couvert : le client paie sur place.
+  /** Texte libre du panneau « Informations supplémentaires » / Description / remarques (null si absent) */
+  descriptionText:  string | null
+  /** ProductCode du lien « Contrat » (ex: BMW-I001) — null si pas de lien */
+  contractProductCode: string | null
+  /** Couverture lue sur ContractsInfo.aspx — null si le contrat n'a pas pu être lu (best effort) */
+  contractCoverage: VabContractCoverage | null
+  /** Verdict : mission NON couverte par VAB → SNC, le client paie sur place */
+  nonCouvert:       { value: boolean; reason: string | null }
   // Raw HTML dump for debug
   rawSnippet:       string
+}
+
+/**
+ * Couverture d'un contrat VAB, lue sur la page « Contrat » (ContractsInfo.aspx).
+ * Structure réelle vue le 20/09/2026 : panneau « Assistance autorisé » avec des
+ * lignes `<div class="Bold ThemeGrid_Width7">Remorquage?</div>` suivies d'une
+ * coche `<div class="Text_green"><span class="fa fa-check">` (oui) ou
+ * `<div class="Text_red"><span class="fa fa-times">` (non) ; panneau « Frais »
+ * avec la sous-ligne « Paiement des coûts/frais » → « contractant (factures) »
+ * ou « conducteur (sur place) ».
+ */
+export interface VabContractCoverage {
+  depannage:  boolean | null
+  remorquage: boolean | null
+  /** Pas de ligne « autoroute » vue sur les contrats du 20/09/2026 : reste null tant que VAB ne l'affiche pas */
+  autoroute:  boolean | null
+  /**
+   * « Paiement des coûts/frais » : contractant (factures) ou conducteur (sur place).
+   * ATTENTION (vu en réel le 20/09/2026) : cette ligne est la sous-ligne de
+   * « Placement des petites fournitures autorisé ? » dans le panneau « Frais »
+   * (liste de prix des pièces) — elle dit qui paie les FOURNITURES, pas le
+   * remorquage. Sur les contrats constructeur (KIA, Land Rover) elle vaut
+   * « conducteur » alors que dépannage et remorquage sont couverts.
+   */
+  paiement:   'contractant' | 'conducteur' | null
+  /** Lignes lues (hors liste de prix des pièces), « Label: oui/non/valeur », pour la trace et le debug */
+  raw:        string
 }
 
 /**
@@ -683,6 +723,110 @@ export async function vabDetailUrl(session: SessionCookies, assignmentId: string
     } catch { /* on essaie l'autre */ }
   }
   return candidates[0]
+}
+
+/**
+ * Lit la page « Contrat » d'une mission VAB (ContractsInfo.aspx) et en tire la
+ * couverture. Olivier 20/09/2026.
+ *
+ * `contractRef` = le href du lien « Contrat » tel qu'il figure sur le détail
+ * (`ContractsInfo.aspx?BreakdownReasonCode=…&ProductCode=…&AssignmentIds=…`),
+ * ou à défaut un simple ProductCode (on reconstruit alors l'URL avec ce seul
+ * paramètre — moins précis : la couverture peut dépendre du code de panne).
+ *
+ * BEST EFFORT : timeout 10 s, jamais d'exception → null si la page est
+ * inaccessible. L'import ne doit jamais bloquer sur ce GET.
+ */
+export async function fetchVabContractCoverage(
+  session:     SessionCookies,
+  contractRef: string,
+): Promise<VabContractCoverage | null> {
+  if (!contractRef) return null
+  let url: string
+  if (/^https?:\/\//i.test(contractRef)) url = contractRef
+  else if (/ContractsInfo\.aspx/i.test(contractRef)) url = `${VAB_BASE}/Comet/${contractRef.replace(/^\/?(Comet\/)?/i, '')}`
+  else url = `${VAB_BASE}/Comet/ContractsInfo.aspx?ProductCode=${encodeURIComponent(contractRef)}`
+
+  try {
+    const res = await fetch(url, {
+      method: 'GET',
+      redirect: 'follow',
+      signal: AbortSignal.timeout(10000),
+      headers: {
+        'User-Agent':      REAL_UA,
+        'Accept':          'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        'Accept-Language': 'fr-BE,fr;q=0.9,en;q=0.8',
+        'Cookie':          session.cookieHeader,
+      },
+    })
+    if (res.status !== 200) {
+      console.warn(`[vab/contrat] GET ${url} → status ${res.status}`)
+      return null
+    }
+    const html = await res.text()
+    const $ = cheerio.load(html)
+    // Une page de login / sans permission renvoie aussi 200 : on exige le titre
+    // du bloc « Assistance autorisé » (FR) ou son équivalent NL/EN.
+    const bodyTxt = $('body').text().replace(/\s+/g, ' ')
+    if (!/Assistance autoris|Toegestane|Allowed assistance|Remorquage\s*\?|Sleep\w*\s*\?|Towing\s*\?/i.test(bodyTxt)) {
+      console.warn(`[vab/contrat] page inattendue (pas de bloc « Assistance autorisé ») : ${url}`)
+      return null
+    }
+
+    const cov: VabContractCoverage = { depannage: null, remorquage: null, autoroute: null, paiement: null, raw: '' }
+    const rawLines: string[] = []
+    // Le panneau « Liste de prix de pièce de rechange » (chambres à air, câbles…)
+    // n'a rien à voir avec la couverture : on l'ignore.
+    const inPriceList = (el: any): boolean => {
+      const title = $(el).closest('.Panel').find('.Panel__title').first().text()
+      return /liste de prix|prijslijst|price list/i.test(title)
+    }
+
+    // Lignes « Question ? » + coche verte/rouge dans le conteneur frère.
+    $('.Bold').each((_i, el) => {
+      if (inPriceList(el)) return
+      const $lbl = $(el)
+      const label = $lbl.text().replace(/\s+/g, ' ').trim()
+      if (!label) return
+      const $val = $lbl.next()
+      const cls  = ($val.attr('class') || '') + ' ' + $val.find('[class]').map((_j, c) => $(c).attr('class') || '').get().join(' ')
+      let yes: boolean | null = null
+      if (/Text_green|fa-check/.test(cls)) yes = true
+      else if (/Text_red|fa-times|fa-close|fa-remove|fa-ban/.test(cls)) yes = false
+      rawLines.push(`${label.replace(/\s*\?$/, '')}: ${yes === null ? '?' : yes ? 'oui' : 'non'}`)
+      const l = label.toLowerCase()
+      // FR + NL (best effort — seuls les libellés FR ont été vus en réel)
+      if (/d[ée]pannage|pechverhelping|pechhulp|breakdown/.test(l) && cov.depannage === null) cov.depannage = yes
+      else if (/remorquage|sleep|takel|towing/.test(l) && cov.remorquage === null) cov.remorquage = yes
+      else if (/autoroute|snelweg|highway|motorway/.test(l) && cov.autoroute === null) cov.autoroute = yes
+    })
+
+    // Sous-lignes « • Libellé → valeur » (procédure, nb de jours, paiement des frais…)
+    $('.ListRecordsCometRow').each((_i, row) => {
+      if (inPriceList(row)) return
+      const $row = $(row)
+      const label = $row.find('.ListRecordsCometLabel').first().text().replace(/[•\u00a0]/g, ' ').replace(/\s+/g, ' ').trim()
+      const value = $row.children().not('.ListRecordsCometLabel').first().text().replace(/\s+/g, ' ').trim()
+      if (!label) return
+      rawLines.push(`${label}: ${value || '∅'}`)
+      const l = label.toLowerCase(), v = value.toLowerCase()
+      if (/paiement|betaling|payment/.test(l) && cov.paiement === null) {
+        if (/conducteur|bestuurder|driver|sur place|ter plaatse|on site/.test(v)) cov.paiement = 'conducteur'
+        else if (/contractant|contract|factur|invoice|factuur/.test(v)) cov.paiement = 'contractant'
+      }
+      // Une éventuelle ligne « autoroute » exprimée en sous-ligne (non vue à ce jour)
+      if (/autoroute|snelweg|highway|motorway/.test(l) && cov.autoroute === null) {
+        if (/^(oui|ja|yes)\b/.test(v)) cov.autoroute = true
+        else if (/^(non|nee|neen|no)\b/.test(v)) cov.autoroute = false
+      }
+    })
+
+    cov.raw = rawLines.join(' | ').slice(0, 1500)
+    return cov
+  } catch (e: any) {
+    console.warn(`[vab/contrat] lecture impossible (${e?.name === 'TimeoutError' ? 'timeout 10 s' : e?.message || e}) : ${url}`)
+    return null
+  }
 }
 
 export async function fetchVabMissionDetail(
@@ -907,6 +1051,63 @@ export async function fetchVabMissionDetail(
     if (m) { dossierBase = m[1]; dossierNumber = m[2] }
   })
 
+  // ── Description / remarques (Olivier 20/09/2026) ─────────────────────────
+  // Vu en réel : sur « Détails de la panne » le texte libre est dans le panneau
+  // « Informations supplémentaires » (<div class="FormColumn">TEXTE<br>…</div>).
+  // Les pages « livraison VR » n'ont pas ce panneau. On accepte aussi les
+  // intitulés Description / Remarque et leurs équivalents NL.
+  let descriptionText: string | null = null
+  {
+    const descPanel = findPanelByTitle([
+      'Informations supplémentaires', 'Informations supplementaires', 'Description',
+      'Remarque', 'Commentaire', 'Omschrijving', 'Opmerking', 'Bijkomende informatie', 'Aanvullende informatie',
+    ])
+    if (descPanel && descPanel.length > 0) {
+      const $d = descPanel.clone()
+      $d.find('br').replaceWith('\n')
+      $d.find('label').remove()
+      const lines = $d.text().split('\n').map((l: string) => l.replace(/\s+/g, ' ').trim()).filter(Boolean)
+      // VAB répète la ligne véhicule autant de fois qu'il y a d'actions : on dédoublonne.
+      const uniq = lines.filter((l: string, i: number) => lines.indexOf(l) === i)
+      descriptionText = uniq.join('\n') || null
+    }
+  }
+
+  // ── Contrat : lien « Contrat » → ContractsInfo.aspx?…&ProductCode=… ───────
+  const contractHref = $('a[href*="ContractsInfo"]').first().attr('href') || null
+  const contractProductCode = contractHref ? (contractHref.match(/[?&]ProductCode=([^&]+)/i)?.[1] || null) : null
+  // Best effort (timeout 10 s, jamais bloquant) : null si illisible.
+  const contractCoverage = contractHref ? await fetchVabContractCoverage(session, contractHref) : null
+
+  // ── Verdict NON COUVERT ───────────────────────────────────────────────────
+  // 1) Le texte libre le dit explicitement.
+  // 2) Sinon le contrat : remorquage refusé, ou autoroute refusée quand la
+  //    mission est sur autoroute.
+  // 3) Sinon « paiement des coûts/frais : conducteur (sur place) » — MAIS
+  //    seulement si le contrat n'affirme pas par ailleurs que dépannage /
+  //    remorquage sont couverts : en réel (20/09/2026, KIAPL-0001 et LANDR-I001)
+  //    cette ligne parle des fournitures (panneau « Frais ») et cohabite avec
+  //    remorquage = oui. Sans ce garde-fou, deux missions couvertes sur trois
+  //    seraient parties en SNC le jour même.
+  const nonCouvert: { value: boolean; reason: string | null } = { value: false, reason: null }
+  const NC_TEXT = /non couvert|niet gedekt|not covered|pas couvert|à charge du client|a charge du client|klant betaalt|ten laste van de klant/i
+  const surAutoroute = /\b(E\d{2,3}|A27|R\d{1,2})\b|autoroute|snelweg|highway|motorway/i
+    .test([fromFields['Localisation du véhicule'] || fromFields['Localisation du vehicule'] || '', codesDePanne || '', fromFields['Rue'] || ''].join(' '))
+  if (descriptionText && NC_TEXT.test(descriptionText)) {
+    nonCouvert.value = true
+    nonCouvert.reason = `mention dans la description VAB : « ${(descriptionText.match(/[^\n]*(?:non couvert|niet gedekt|not covered|pas couvert|charge du client|klant betaalt|ten laste van de klant)[^\n]*/i)?.[0] || descriptionText).trim().slice(0, 200)} »`
+  } else if (contractCoverage && contractCoverage.remorquage === false) {
+    nonCouvert.value = true
+    nonCouvert.reason = `contrat ${contractProductCode || ''} : remorquage non couvert`.replace(/\s+:/, ' :')
+  } else if (contractCoverage && contractCoverage.autoroute === false && surAutoroute) {
+    nonCouvert.value = true
+    nonCouvert.reason = `contrat ${contractProductCode || ''} : autoroute non couverte (mission sur autoroute)`.replace(/\s+:/, ' :')
+  } else if (contractCoverage && contractCoverage.paiement === 'conducteur'
+             && contractCoverage.remorquage !== true && contractCoverage.depannage !== true) {
+    nonCouvert.value = true
+    nonCouvert.reason = 'paiement des frais par le conducteur sur place'
+  }
+
   const detail: VabMissionDetail = {
     missionNumber,
     assignmentId,
@@ -943,6 +1144,11 @@ export async function fetchVabMissionDetail(
     vehicleTraction: vehicleFields['Traction'] || null,
     vehicleCategory: vehicleCategorie,
 
+    descriptionText,
+    contractProductCode,
+    contractCoverage,
+    nonCouvert,
+
     rawSnippet: [
       `taskType=${taskTypeRaw} codes=${codesDePanne || 'n/a'}`,
       `from(${Object.keys(fromFields).length}): ${JSON.stringify(fromFields)}`,
@@ -950,6 +1156,9 @@ export async function fetchVabMissionDetail(
       `gen(${Object.keys(generalFields).length}): ${JSON.stringify(generalFields)}`,
       `veh(${Object.keys(vehicleFields).length}): ${JSON.stringify(vehicleFields)}`,
       `phones: from=${fromPhoneFinal || '∅'} to=${toPhoneFinal || '∅'} gen=${generalPhoneFinal || '∅'}`,
+      `description: ${descriptionText ? JSON.stringify(descriptionText.slice(0, 300)) : '∅'}`,
+      `contrat: ${contractProductCode || '∅'} ${contractCoverage ? `dep=${contractCoverage.depannage} rem=${contractCoverage.remorquage} auto=${contractCoverage.autoroute} paie=${contractCoverage.paiement}` : '(non lu)'}`,
+      `nonCouvert: ${nonCouvert.value}${nonCouvert.reason ? ' — ' + nonCouvert.reason : ''}`,
     ].join('\n').slice(0, 3000),
   }
 

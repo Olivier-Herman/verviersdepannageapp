@@ -307,7 +307,37 @@ export async function extractContent(
     return { textContent: bodyText, sourceFormat: 'email_plain', rawContent: bodyText }
   }
 
-  // === IMA, AXA, ARDENNE → corps email ===
-  const bodyText = extractEmailBody(graphMessage.body)
-  return { textContent: bodyText, sourceFormat: 'email_plain', rawContent: bodyText }
+  // === IMA (Ethias / P&V / Vivium / Fidelia) → PJ HTML si le corps n'est qu'un renvoi ===
+  // Audit Olivier 20/09/2026 : les SIABIS+ IMA (balisage PEREX) arrivent avec un
+  // corps « Le(s) document(s) en pièce(s) jointe(s) demande(nt) votre attention »
+  // et TOUT (plaque, lieu, modalités de facturation) dans une PJ HTML
+  // « tmp<ref>_1.html ». Elle n'était jamais lue → 25 mails / 90 j en fiches
+  // vides ou ignorées. On lit la PJ HTML comme un corps de mail.
+  {
+    const bodyText = extractEmailBody(graphMessage.body)
+    const bodyIsPointer = bodyText.length < 600 || /pi[èe]ce\(s\)?\s+jointe|pieces?\s+jointes?|bijlage/i.test(bodyText.slice(0, 400))
+    if (bodyIsPointer) {
+      const htmlAtt = attachments.find(a =>
+        a.contentBytes &&
+        (a.name?.toLowerCase().endsWith('.html') || a.name?.toLowerCase().endsWith('.htm') ||
+         a.contentType?.toLowerCase().includes('text/html'))
+      )
+      if (htmlAtt?.contentBytes) {
+        try {
+          const buf = Buffer.from(htmlAtt.contentBytes, 'base64')
+          // IMA envoie ces PJ en latin-1 (« Li�ge ») : si l'UTF-8 produit des
+          // caractères de remplacement ou si le charset est déclaré 8859/1252, on relit en latin1.
+          let html = buf.toString('utf8')
+          if (html.includes('\uFFFD') || /charset=["']?(?:iso-8859-1|windows-1252)/i.test(html)) html = buf.toString('latin1')
+          const text = htmlToText(html)
+          if (text.length > 100) {
+            console.log(`[Extractor] ${source}: corps = renvoi → PJ HTML ${htmlAtt.name} (${text.length} chars)`)
+            return { textContent: text, sourceFormat: 'email_plain', rawContent: text.slice(0, 15000) }
+          }
+        } catch (e) { console.error('[Extractor] PJ HTML illisible:', e) }
+      }
+    }
+    // === IMA, AXA, ARDENNE → corps email ===
+    return { textContent: bodyText, sourceFormat: 'email_plain', rawContent: bodyText }
+  }
 }

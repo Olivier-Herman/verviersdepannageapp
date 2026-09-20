@@ -59,11 +59,17 @@ export async function runVabImport(opts: { mode: VabImportMode }): Promise<VabIm
   // d'une fiche VAB, OU s'il figure dans vab_assignment_ids (action secondaire
   // rattachée à une fiche existante : relivraison, dépannage→remorquage…). Sans
   // le second critère, ces actions réapparaissaient en boucle « à importer ».
+  //
+  // « Fiche VAB » = source vab OU source_format vab-scraper : une fiche non
+  // couverte est créée/basculée en police_snc (Olivier 20/09/2026) et une fiche
+  // reclassée par un dispatcher change aussi de source ; sans ce 2e critère,
+  // le même AssignmentId serait ré-importé à chaque poll (fiche fantôme/heure).
+  const VAB_FICHE = 'source.ilike.vab,source_format.eq.vab-scraper'
   const existingSet = new Set<string>()
   if (assignmentIds.length > 0) {
     const [byExt, byArr] = await Promise.all([
-      sb.from('incoming_missions').select('external_id, vab_assignment_ids').ilike('source', 'vab').in('external_id', assignmentIds),
-      sb.from('incoming_missions').select('external_id, vab_assignment_ids').ilike('source', 'vab').overlaps('vab_assignment_ids', assignmentIds),
+      sb.from('incoming_missions').select('external_id, vab_assignment_ids').or(VAB_FICHE).in('external_id', assignmentIds),
+      sb.from('incoming_missions').select('external_id, vab_assignment_ids').or(VAB_FICHE).overlaps('vab_assignment_ids', assignmentIds),
     ])
     for (const row of [...(byExt.data || []), ...(byArr.data || [])]) {
       if (row.external_id) existingSet.add(row.external_id)
@@ -174,6 +180,19 @@ export async function runVabImport(opts: { mode: VabImportMode }): Promise<VabIm
                         : 'depannage'
       const destAddr = [detail.toStreet, detail.toZip, detail.toCity].filter(Boolean).join(', ') || null
 
+      // ── NON COUVERT selon VAB (Olivier 20/09/2026) ─────────────────────────
+      // « Soit l'onglet Description indique non couvert, soit le bouton Contrat
+      // dit si couvert en dépannage, remorquage, autoroute… » Une mission non
+      // couverte = Siabis non couvert : le client paie sur place, même traitement
+      // que Touring (« véhicule pas couvert » → police_snc, assistance effacée).
+      // Le verdict est calculé dans fetchVabMissionDetail (description + contrat).
+      const ncVab = detail.nonCouvert?.value === true
+      const NC_TAG = 'NON COUVERT selon VAB'
+      const ncRemark = ncVab
+        ? `${NC_TAG} : ${detail.nonCouvert.reason || 'couverture refusée'} — le client paie sur place et se fait rembourser par son assurance/assistance.`
+        : null
+      if (ncVab) console.log(`[VAB] ${item.missionNumber} (${assignmentId}) NON COUVERT → SNC : ${detail.nonCouvert.reason}`)
+
       // ── Anti-doublon / enrichissement par DOSSIER (Olivier 2026-07-01) ──────
       // Le dossier VAB = la valeur AVANT le "/" (dossier stable). La valeur APRÈS
       // le "/" est la référence de l'ACTION. Quand un dépannage devient un
@@ -187,7 +206,7 @@ export async function runVabImport(opts: { mode: VabImportMode }): Promise<VabIm
         // action VAB sur un dossier dont la fiche est déjà terminée (completed /
         // to_invoice) ou annulée/ignorée doit créer une NOUVELLE fiche, pas être
         // avalée dans l'ancienne (sinon la mission n'arrive jamais dans le dispatch).
-        const FICHE_COLS = 'id, mission_type, destination_name, destination_address, redelivery_address, status, assigned_to, mission_number, vab_assignment_ids, vehicle_plate'
+        const FICHE_COLS = 'id, mission_type, destination_name, destination_address, redelivery_address, status, assigned_to, mission_number, vab_assignment_ids, vehicle_plate, source, remarks_billing'
         const incomingPlate = detail.vehiclePlate?.replace(/\s/g, '').toUpperCase() || null
         const { data: existingRows } = await sb.from('incoming_missions')
           .select(FICHE_COLS)
@@ -268,6 +287,33 @@ export async function runVabImport(opts: { mode: VabImportMode }): Promise<VabIm
         }
 
         if (fiche) {
+          // Bascule SNC sur une fiche EXISTANTE : uniquement si elle est encore
+          // `source = 'vab'` et pas encore partie (new/dispatching). Si un
+          // dispatcher l'a déjà reclassée, on ne repasse pas derrière lui.
+          // Indépendant de la fusion ci-dessous (c'est la fiche qui est non
+          // couverte, qu'on la fusionne ou non). Olivier 20/09/2026.
+          if (ncVab && String(fiche.source || '').toLowerCase() === 'vab' && ['new', 'dispatching'].includes(String(fiche.status))) {
+            const prevRemark = String(fiche.remarks_billing || '').trim()
+            const ncUpd: Record<string, any> = {
+              source: 'police_snc',
+              billed_to_id: null,
+              billed_to_name: null,
+              remarks_billing: prevRemark.includes(NC_TAG) ? prevRemark : [prevRemark, ncRemark].filter(Boolean).join('\n'),
+              updated_at: new Date().toISOString(),
+            }
+            const { error: ncErr } = await sb.from('incoming_missions').update(ncUpd).eq('id', fiche.id)
+            if (ncErr) console.warn(`[VAB] fiche ${fiche.id} : bascule NON COUVERT → SNC KO : ${ncErr.message}`)
+            else {
+              console.log(`[VAB] fiche ${fiche.id} (#${fiche.mission_number ?? '?'}) encore vab/${fiche.status} → police_snc (${detail.nonCouvert.reason})`)
+              await sb.from('mission_logs').insert({
+                mission_id: fiche.id, action: 'vab_non_couvert',
+                notes: `VAB : ${ncRemark}`,
+                metadata: { external_id: assignmentId, dossier_base: dossierBase, reason: detail.nonCouvert.reason, contract: detail.contractProductCode, auto: true },
+              }).then(() => {}, () => {})
+              fiche.source = 'police_snc'
+            }
+          }
+
           const wasUpgrade = fiche.mission_type !== 'remorquage' && desiredType === 'remorquage'
           const upd: Record<string, any> = {}
           if (wasUpgrade) upd.mission_type = 'remorquage'
@@ -362,7 +408,10 @@ export async function runVabImport(opts: { mode: VabImportMode }): Promise<VabIm
       const { data: insertedRow, error: insertErr } = await sb.from('incoming_missions').insert({
         external_id:        assignmentId || detail.missionNumber,
         dossier_number:     fullDossier,
-        source:             'vab',
+        // Non couvert selon VAB → Siabis non couvert (police_snc), sans assistance
+        // facturée ; remarque de facturation explicite. Olivier 20/09/2026.
+        source:             ncVab ? 'police_snc' : 'vab',
+        ...(ncVab ? { remarks_billing: ncRemark } : {}),
         source_format:      'vab-scraper',
         status:             'new',
         // Olivier 2026-06-04 : defaut DSP (depannage) si type non identifie
@@ -398,7 +447,9 @@ export async function runVabImport(opts: { mode: VabImportMode }): Promise<VabIm
         intervention_date:  interventionIso || new Date().toISOString(),
         // Mémorise l'AssignmentId pour la dédup future (fin de la boucle d'import).
         vab_assignment_ids: assignmentId ? [assignmentId] : [],
-        ...(defaultBilledToId ? {
+        // Passage en SNC = l'assistance s'efface (billed_to null) ; le bureau
+        // remettra un client facturé s'il y a lieu.
+        ...(defaultBilledToId && !ncVab ? {
           billed_to_id:   defaultBilledToId,
           billed_to_name: defaultBilledToName,
         } : {}),
@@ -410,6 +461,14 @@ export async function runVabImport(opts: { mode: VabImportMode }): Promise<VabIm
       } else {
         results.push({ missionNumber: item.missionNumber, ok: true, action: 'inserted' })
         inserted++
+        if (ncVab && insertedRow?.id) {
+          console.log(`[VAB] fiche ${insertedRow.id} créée en police_snc (NON COUVERT : ${detail.nonCouvert.reason})`)
+          await sb.from('mission_logs').insert({
+            mission_id: insertedRow.id, action: 'vab_non_couvert',
+            notes: `VAB : ${ncRemark}`,
+            metadata: { external_id: assignmentId, dossier_base: dossierBase, reason: detail.nonCouvert.reason, contract: detail.contractProductCode, auto: true },
+          }).then(() => {}, () => {})
+        }
 
         // Remorquage d'un véhicule déjà au parc chez nous → réserve sur le dossier
         // (règle commune à toutes les assistances, lib/missions/reserve-rel.ts).
