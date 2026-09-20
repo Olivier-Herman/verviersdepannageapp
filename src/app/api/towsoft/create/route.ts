@@ -75,6 +75,11 @@ export async function POST(req: Request) {
   if (!type || !date || !time || !location) {
     return NextResponse.json({ error: 'Champs requis manquants' }, { status: 400 })
   }
+  // Siabis : scénario obligatoire (Olivier 20/09/2026) — le chauffeur qui crée
+  // sur place le connaît ; sans scénario ni montant ni clôture ne sont possibles.
+  if ((type === 'snc' || type === 'sc') && !['dsp', 'rem_client', 'rem_depot', 'rem_direct'].includes(String(sncScenario || ''))) {
+    return NextResponse.json({ error: 'Scénario Siabis requis (DSP, REM client, REM dépôt)' }, { status: 400 })
+  }
 
   const supabase = createAdminClient()
   const user = session.user as any

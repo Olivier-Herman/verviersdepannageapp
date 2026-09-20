@@ -580,6 +580,11 @@ export default function PoliceClient({ userRole = 'driver' }: { userRole?: strin
       if (!policeZone.trim())  { setErr('La zone de police est obligatoire'); return }
       if (!officerName.trim()) { setErr('Le nom du policier est obligatoire'); return }
     }
+    // Siabis (SNC / SC) : le scénario est obligatoire — sans lui, pas de montant
+    // ni de clôture possible (Olivier 20/09/2026, 10154068 créée sans scénario).
+    if ((selectedType === 'snc' || selectedType === 'sc') && !sncScenario) {
+      setErr('Choisis le scénario Siabis (DSP, REM client, REM dépôt) avant de créer la fiche'); return
+    }
     // Saisie : motif obligatoire (demande Franck 2026-06-01).
     if (selectedType === 'saisie' && !saisieMotifCode) {
       setErr('Le motif de la saisie est obligatoire'); return

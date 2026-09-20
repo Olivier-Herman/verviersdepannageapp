@@ -242,6 +242,17 @@ async function runTouringStepRepair(
   const statusByKey = new Map<string, string>()
   for (const m of missions) statusByKey.set(`${String(m.CID_DOS).toUpperCase()}|${m.CID_SEQ_ACTION}`, m.COD_STATUT_MTR)
 
+  // Garde-fous (20/09/2026, 10154067 : 35 « en route » poussés en 35 min) :
+  //  • une action DÉPASSÉE (le même dossier a une séquence plus récente sur une
+  //    autre fiche) ne se répare pas — COMEX ne la fera jamais avancer ;
+  //  • au plus UNE réparation par fiche et par heure (on lit les logs).
+  const newestSeq = new Map<string, number>()
+  for (const m of missions) { const k = String(m.CID_DOS).toUpperCase(); const n = Number(m.CID_SEQ_ACTION) || 0; if (n > (newestSeq.get(k) || 0)) newestSeq.set(k, n) }
+  const hourAgo = new Date(Date.now() - 60 * 60_000).toISOString()
+  const { data: recent } = await sb.from('mission_logs').select('mission_id').eq('action', 'touring_synced').gte('created_at', hourAgo).ilike('notes', '%↗%')
+  const pushedRecently = new Map<string, number>()
+  for (const l of recent || []) pushedRecently.set(l.mission_id, (pushedRecently.get(l.mission_id) || 0) + 1)
+
   let repaired = 0
   for (const row of data as any[]) {
     let cid: any; try { cid = JSON.parse(row.raw_content) } catch { continue }
@@ -250,6 +261,8 @@ async function runTouringStepRepair(
     if (!CID_DOS || !CID_SEQ_ACTION) continue
     const st = statusByKey.get(`${CID_DOS.toUpperCase()}|${CID_SEQ_ACTION}`)
     if (!st || st === '07') continue
+    if ((Number(CID_SEQ_ACTION) || 0) < (newestSeq.get(CID_DOS.toUpperCase()) || 0)) continue   // action dépassée
+    if ((pushedRecently.get(row.id) || 0) >= 2) continue                                        // déjà (re)poussé cette heure
 
     try {
       // On croit « sur place » mais COMEX n'y est pas (≠ 06) → re-pousser onRoad+onSpot.
