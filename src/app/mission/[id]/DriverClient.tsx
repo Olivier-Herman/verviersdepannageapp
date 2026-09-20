@@ -113,9 +113,13 @@ const isREM = (t: string | null | undefined = '') => {
 // adapte (skip "Sur place", on demarre du parc charge).
 const isRELMission = (m: Mission) => {
   const mt = (m.mission_type || '').toLowerCase().trim()
+  // Une fiche enfant n'est une relivraison QUE si son type ne dit pas le contraire :
+  // le chaînage Touring rattache aussi une 2e intervention (REM après DSP clôturé)
+  // à la 1re — HL617PH, 20/09/2026 : Franck voyait « véhicule déjà en parc ».
+  const explicitOther = ['remorquage', 'rem', 'depannage', 'dsp', 'reparation_place', 'transport', 'trajet_vide', 'rem+rel'].includes(mt)
   return mt === 'relivraison' || mt === 'rel'
       || m.incident_type === 'relivraison'
-      || !!m.parent_mission_id
+      || (!!m.parent_mission_id && !explicitOther)
 }
 // Olivier 2026-06-16 : capture GPS au moment d'un pointage (lieu de pointage
 // sur la carte trajet dispatch). STRICTEMENT non bloquant : cap ~2s, renvoie
