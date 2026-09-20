@@ -140,19 +140,22 @@ export default function PoliceClient({ userRole = 'driver' }: { userRole?: strin
   // Siabis couvert (Olivier 20/09/2026) : jamais créé à la main. La PLAQUE décide :
   // fiche de l'assistance dans Momo Market (3 h) → on la prend ; aucune → Siabis
   // non couvert, le client paie et se fait rembourser par son assurance/assistance.
-  const [scCheck, setScCheck] = useState<null | 'loading' | { rows: any[]; covered: number; uncovered: number }>(null)
+  const [scCheck, setScCheck] = useState<null | 'loading' | 'error' | { rows: any[]; mine?: any[]; others?: any[]; covered: number; uncovered: number }>(null)
   const [siabisAuto, setSiabisAuto] = useState(false)     // « Siabis » sans fiche reçue → basculé en non couvert
   const [claiming, setClaiming] = useState<string | null>(null)
-  const runScCheck = async (): Promise<{ rows: any[]; covered: number; uncovered: number } | null> => {
+  const runScCheck = async (): Promise<{ rows: any[]; mine?: any[]; others?: any[]; covered: number; uncovered: number } | null> => {
     if (!plate || plate.replace(/[-.\s_/]/g, '').length < 4) { setScCheck(null); return null }
     setScCheck('loading')
-    try { const r = await fetch(`/api/missions/dispo-summary?plate=${encodeURIComponent(plate)}`, { cache: 'no-store' }); const j = await r.json(); setScCheck(j); return j }
-    catch { const j = { rows: [], covered: 0, uncovered: 0 }; setScCheck(j); return j }
+    try {
+      const r = await fetch(`/api/missions/dispo-summary?plate=${encodeURIComponent(plate)}`, { cache: 'no-store' })
+      if (!r.ok) { setScCheck('error'); return null }              // erreur ≠ « aucune fiche » : on ne bascule pas
+      const j = await r.json(); setScCheck(j); return j
+    } catch { setScCheck('error'); return null }
   }
   useEffect(() => { if (selectedType === 'siabis' || selectedType === 'sc') { setScCheck(null); const t = setTimeout(runScCheck, 500); return () => clearTimeout(t) } }, [selectedType, plate])   // eslint-disable-line react-hooks/exhaustive-deps
   // Bouton « Siabis » : aucune fiche reçue pour la plaque → non couvert, sans clic de plus.
   useEffect(() => {
-    if (selectedType === 'siabis' && scCheck && scCheck !== 'loading' && scCheck.rows.length === 0) { setSelectedType('snc'); setSiabisAuto(true); setErr('') }
+    if (selectedType === 'siabis' && scCheck && scCheck !== 'loading' && scCheck !== 'error' && scCheck.rows.length === 0 && !(scCheck.mine?.length) && !(scCheck.others?.length)) { setSelectedType('snc'); setSiabisAuto(true); setErr('') }
   }, [selectedType, scCheck])   // eslint-disable-line react-hooks/exhaustive-deps
   // Prendre la fiche reçue de l'assistance (Momo Market, fenêtre 3 h depuis cet écran) → fiche pré-remplie.
   const claimFiche = async (id: string) => {
@@ -615,9 +618,9 @@ export default function PoliceClient({ userRole = 'driver' }: { userRole?: strin
     // ni de clôture possible (Olivier 20/09/2026, 10154068 créée sans scénario).
     // Siabis couvert : jamais à la main. Fiche existante → la prendre ; sinon → SNC.
     if (selectedType === 'sc' || selectedType === 'siabis') {
-      const j = scCheck && scCheck !== 'loading' ? scCheck : await runScCheck()
-      if (!j) { setErr(t('create_mission.sc_need_plate')); return }
-      if (j.rows.length > 0) { setErr(t('create_mission.sc_take_existing')); return }
+      const j = scCheck && scCheck !== 'loading' && scCheck !== 'error' ? scCheck : await runScCheck()
+      if (!j) { setErr(scCheck === 'error' ? t('create_mission.siabis_check_error') : t('create_mission.sc_need_plate')); return }
+      if (j.rows.length > 0 || j.mine?.length || j.others?.length) { setErr(t('create_mission.sc_take_existing')); return }
       setSelectedType('snc' as MissionType); setSiabisAuto(true); setErr(selectedType === 'sc' ? t('create_mission.sc_refused') : ''); return
     }
     if (selectedType === 'snc' && !sncScenario) {
@@ -1009,7 +1012,25 @@ export default function PoliceClient({ userRole = 'driver' }: { userRole?: strin
             <p className="text-xs"><T k="create_mission.siabis_body" /></p>
             {(!plate || plate.replace(/[-.\s_/]/g, '').length < 4) && <p className="text-xs font-semibold">👇 {t('create_mission.sc_need_plate')}</p>}
             {scCheck === 'loading' && <p className="text-xs">⏳ {t('create_mission.sc_checking')}</p>}
-            {scCheck && scCheck !== 'loading' && scCheck.rows.length > 0 && (
+            {scCheck === 'error' && (
+              <div className="rounded-lg bg-white/70 border border-red-300 p-2 text-xs space-y-1">
+                <p className="font-bold text-red-700">{t('create_mission.siabis_check_error')}</p>
+                <button type="button" onClick={runScCheck} className="px-3 py-1.5 rounded-lg bg-amber-600 text-white font-bold">{t('create_mission.siabis_retry')}</button>
+              </div>
+            )}
+            {scCheck && scCheck !== 'loading' && scCheck !== 'error' && !!scCheck.mine?.length && (
+              <div className="rounded-lg bg-white/70 border border-green-400 p-2 text-xs space-y-1">
+                <p className="font-bold text-green-800">{t('create_mission.siabis_mine')}</p>
+                {scCheck.mine!.map((r: any) => <a key={r.id} href={`/mission/${r.id}`} className="block underline font-semibold">#{r.mission_number} · {String(r.source || '').toUpperCase()}{r.city ? ` · ${r.city}` : ''} →</a>)}
+              </div>
+            )}
+            {scCheck && scCheck !== 'loading' && scCheck !== 'error' && !!scCheck.others?.length && (
+              <div className="rounded-lg bg-white/70 border border-red-300 p-2 text-xs space-y-1">
+                <p className="font-bold text-red-700">{t('create_mission.siabis_others')}</p>
+                {scCheck.others!.map((r: any) => <p key={r.id}>#{r.mission_number} · {String(r.source || '').toUpperCase()} · {r.driver || '?'}{r.city ? ` · ${r.city}` : ''}</p>)}
+              </div>
+            )}
+            {scCheck && scCheck !== 'loading' && scCheck !== 'error' && scCheck.rows.length > 0 && (
               <div className="space-y-2">
                 <p className="font-bold text-xs">{t('create_mission.siabis_found')}</p>
                 {scCheck.rows.map((r: any) => (
