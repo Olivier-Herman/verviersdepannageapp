@@ -13,15 +13,19 @@ import { useT } from '@/lib/i18n/I18nProvider'
 import { T }    from '@/lib/i18n/T'
 import { normalizePlate } from '@/lib/plate'
 
-type MissionType = 'accident' | 'saisie' | 'rodeo' | 'mal_garee' | 'snc' | 'sc' | 'appel_prive' | 'avp'
+type MissionType = 'accident' | 'saisie' | 'rodeo' | 'mal_garee' | 'snc' | 'sc' | 'siabis' | 'appel_prive' | 'avp'
 
-const TYPE_CONFIG: Record<MissionType, { label: string; icon: string; color: string; colorLight: string; hidePolice?: boolean; hideOwner?: boolean }> = {
+const TYPE_CONFIG: Record<MissionType, { label: string; icon: string; color: string; colorLight: string; hidePolice?: boolean; hideOwner?: boolean; hidden?: boolean }> = {
   accident:    { label: 'Police Accident',    icon: '🚨', color: 'bg-red-600',    colorLight: 'bg-red-50 border-red-200' },
   saisie:      { label: 'Saisie',             icon: '⚖️', color: 'bg-purple-600', colorLight: 'bg-purple-50 border-purple-200' },
   rodeo:       { label: 'Rodéo',              icon: '🏎️', color: 'bg-rose-600',   colorLight: 'bg-rose-50 border-rose-200' },
   mal_garee:   { label: 'Mal Garée',          icon: '🚫', color: 'bg-amber-600',  colorLight: 'bg-amber-50 border-amber-200' },
-  snc:         { label: 'Siabis Non Couvert', icon: '🛣️', color: 'bg-blue-600',   colorLight: 'bg-blue-50 border-blue-200' },
-  sc:          { label: 'Siabis Couvert',     icon: '🛣️', color: 'bg-cyan-600',   colorLight: 'bg-cyan-50 border-cyan-200', hidePolice: true, hideOwner: true },
+  // Olivier 20/09/2026 : UN SEUL bouton « Siabis » visible — la plaque décide
+  // (fiche reçue d'une assistance → on la prend, couverte ou non ; aucune → non
+  // couvert). SNC / SC restent en masqué (hidden) pour revenir en arrière facilement.
+  siabis:      { label: 'Siabis',             icon: '🛣️', color: 'bg-blue-600',   colorLight: 'bg-blue-50 border-blue-200' },
+  snc:         { label: 'Siabis Non Couvert', icon: '🛣️', color: 'bg-blue-600',   colorLight: 'bg-blue-50 border-blue-200', hidden: true },
+  sc:          { label: 'Siabis Couvert',     icon: '🛣️', color: 'bg-cyan-600',   colorLight: 'bg-cyan-50 border-cyan-200', hidePolice: true, hideOwner: true, hidden: true },
   appel_prive: { label: 'Appel Privé',        icon: '📞', color: 'bg-green-800',  colorLight: 'bg-green-50 border-green-200', hidePolice: true },
   avp:         { label: 'AVP',                icon: '🔲', color: 'bg-black',     colorLight: 'bg-gray-50 border-gray-200',  hideOwner: true },
 }
@@ -137,13 +141,29 @@ export default function PoliceClient({ userRole = 'driver' }: { userRole?: strin
   // fiche de l'assistance dans Momo Market (3 h) → on la prend ; aucune → Siabis
   // non couvert, le client paie et se fait rembourser par son assurance/assistance.
   const [scCheck, setScCheck] = useState<null | 'loading' | { rows: any[]; covered: number; uncovered: number }>(null)
+  const [siabisAuto, setSiabisAuto] = useState(false)     // « Siabis » sans fiche reçue → basculé en non couvert
+  const [claiming, setClaiming] = useState<string | null>(null)
   const runScCheck = async (): Promise<{ rows: any[]; covered: number; uncovered: number } | null> => {
     if (!plate || plate.replace(/[-.\s_/]/g, '').length < 4) { setScCheck(null); return null }
     setScCheck('loading')
     try { const r = await fetch(`/api/missions/dispo-summary?plate=${encodeURIComponent(plate)}`, { cache: 'no-store' }); const j = await r.json(); setScCheck(j); return j }
     catch { const j = { rows: [], covered: 0, uncovered: 0 }; setScCheck(j); return j }
   }
-  useEffect(() => { if (selectedType === 'sc') { setScCheck(null); const t = setTimeout(runScCheck, 500); return () => clearTimeout(t) } }, [selectedType, plate])   // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if (selectedType === 'siabis' || selectedType === 'sc') { setScCheck(null); const t = setTimeout(runScCheck, 500); return () => clearTimeout(t) } }, [selectedType, plate])   // eslint-disable-line react-hooks/exhaustive-deps
+  // Bouton « Siabis » : aucune fiche reçue pour la plaque → non couvert, sans clic de plus.
+  useEffect(() => {
+    if (selectedType === 'siabis' && scCheck && scCheck !== 'loading' && scCheck.rows.length === 0) { setSelectedType('snc'); setSiabisAuto(true); setErr('') }
+  }, [selectedType, scCheck])   // eslint-disable-line react-hooks/exhaustive-deps
+  // Prendre la fiche reçue de l'assistance (Momo Market, fenêtre 3 h depuis cet écran) → fiche pré-remplie.
+  const claimFiche = async (id: string) => {
+    setClaiming(id); setErr('')
+    try {
+      const r = await fetch(`/api/missions/${id}/claim`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ via: 'siabis' }) })
+      const j = await r.json().catch(() => ({}))
+      if (!r.ok) { setErr(j.error || t('create_mission.siabis_take_error')); return }
+      router.push(`/mission/${id}`)
+    } catch { setErr(t('create_mission.siabis_take_error')) } finally { setClaiming(null) }
+  }
   // Appel Prive : forfait TVAC negocie au tel (optionnel). Si vide, la
   // facturation appliquera le fallback tarif police_accident + majorations.
   const [amountToCollect, setAmountToCollect] = useState('')
@@ -594,10 +614,11 @@ export default function PoliceClient({ userRole = 'driver' }: { userRole?: strin
     // Siabis (SNC / SC) : le scénario est obligatoire — sans lui, pas de montant
     // ni de clôture possible (Olivier 20/09/2026, 10154068 créée sans scénario).
     // Siabis couvert : jamais à la main. Fiche existante → la prendre ; sinon → SNC.
-    if (selectedType === 'sc') {
+    if (selectedType === 'sc' || selectedType === 'siabis') {
       const j = scCheck && scCheck !== 'loading' ? scCheck : await runScCheck()
-      if (j && j.rows.length > 0) { setErr(t('create_mission.sc_take_existing')); return }
-      setSelectedType('snc' as MissionType); setErr(t('create_mission.sc_refused')); return
+      if (!j) { setErr(t('create_mission.sc_need_plate')); return }
+      if (j.rows.length > 0) { setErr(t('create_mission.sc_take_existing')); return }
+      setSelectedType('snc' as MissionType); setSiabisAuto(true); setErr(selectedType === 'sc' ? t('create_mission.sc_refused') : ''); return
     }
     if (selectedType === 'snc' && !sncScenario) {
       setErr('Choisis le scénario Siabis (DSP, REM client, REM dépôt) avant de créer la fiche'); return
@@ -945,7 +966,7 @@ export default function PoliceClient({ userRole = 'driver' }: { userRole?: strin
       <h1 className="text-ink text-2xl font-bold mb-1"><T k="create_mission.title_create" /></h1>
       <p className="text-ink-muted text-sm mb-8"><T k="create_mission.scenario" /></p>
       <div className="space-y-3">
-        {(Object.entries(TYPE_CONFIG) as [MissionType, typeof TYPE_CONFIG[MissionType]][]).map(([type, conf]) => (
+        {(Object.entries(TYPE_CONFIG) as [MissionType, typeof TYPE_CONFIG[MissionType]][]).filter(([, conf]) => !conf.hidden).map(([type, conf]) => (
           <button key={type} onClick={() => setSelectedType(type)}
             className={`w-full flex items-center gap-4 p-5 ${conf.color} rounded-2xl text-left active:scale-[0.98] transition shadow-md`}>
             <span className="text-3xl">{conf.icon}</span>
@@ -979,6 +1000,36 @@ export default function PoliceClient({ userRole = 'driver' }: { userRole?: strin
         {/* Véhicule — plaque et VIN sur 2 lignes separees pour laisser de la
             place aux boutons appareil photo (etaient ecrases en grid-cols-2).
             Olivier 2026-05-27. */}
+        {/* Bouton « Siabis » (Olivier 20/09/2026) : la plaque décide. Fiche reçue d'une
+            assistance (3 h) → on la PREND (couverte ou non), jamais de doublon ; aucune →
+            bascule automatique en non couvert (le client paie, se fait rembourser). */}
+        {(selectedType === 'siabis' || selectedType === 'sc') && (
+          <div className="rounded-xl border border-amber-400 bg-amber-50 px-3 py-3 text-sm text-amber-900 space-y-2">
+            <p className="font-semibold"><T k="create_mission.siabis_title" /></p>
+            <p className="text-xs"><T k="create_mission.siabis_body" /></p>
+            {(!plate || plate.replace(/[-.\s_/]/g, '').length < 4) && <p className="text-xs font-semibold">👇 {t('create_mission.sc_need_plate')}</p>}
+            {scCheck === 'loading' && <p className="text-xs">⏳ {t('create_mission.sc_checking')}</p>}
+            {scCheck && scCheck !== 'loading' && scCheck.rows.length > 0 && (
+              <div className="space-y-2">
+                <p className="font-bold text-xs">{t('create_mission.siabis_found')}</p>
+                {scCheck.rows.map((r: any) => (
+                  <div key={r.id} className={`rounded-lg border-2 p-2.5 bg-white ${r.covered ? 'border-green-500' : 'border-red-400'}`}>
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="font-mono font-bold text-base text-slate-900">{r.vehicle_plate}</span>
+                      <span className={`px-2 py-0.5 rounded-full text-[11px] font-bold ${r.covered ? 'bg-green-600 text-white' : 'bg-red-600 text-white'}`}>{r.covered ? '✅ ' + t('create_mission.sc_covered') : '⚠️ ' + t('create_mission.sc_uncovered')}</span>
+                    </div>
+                    <p className="text-xs text-slate-700 mt-1">#{r.mission_number} · {String(r.source || '').toUpperCase()} · {[r.brand, r.model].filter(Boolean).join(' ')}{r.city ? ` · ${r.city}` : ''}</p>
+                    {!r.covered && <p className="text-[11px] text-red-700 mt-1">{t('create_mission.siabis_uncovered_hint')}</p>}
+                    <button type="button" disabled={!!claiming} onClick={() => claimFiche(r.id)}
+                      className="mt-2 w-full py-2.5 rounded-lg bg-blue-600 text-white text-sm font-bold disabled:opacity-50">
+                      {claiming === r.id ? t('create_mission.siabis_taking') : t('create_mission.siabis_take')}
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
         <Section title={t('create_mission.section_vehicle')}>
           <div>
             <label className="block text-ink-secondary text-xs font-medium mb-1">
@@ -1335,33 +1386,9 @@ export default function PoliceClient({ userRole = 'driver' }: { userRole?: strin
         {(selectedType === 'snc' || selectedType === 'sc') && (
           <Section title={selectedType === 'sc' ? t('create_mission.section_sia_covered') : t('create_mission.section_snc')}>
             <div className="space-y-3">
-              {/* Siabis couvert : la plaque décide (Olivier 20/09/2026) — jamais créé à la main */}
-              {selectedType === 'sc' && (
-                <div className="rounded-xl border border-amber-400 bg-amber-50 px-3 py-3 text-sm text-amber-900 space-y-2">
-                  <p className="font-semibold"><T k="create_mission.sc_notice_title" /></p>
-                  <p className="text-xs"><T k="create_mission.sc_notice_body" /></p>
-                  {(!plate || plate.replace(/[-.\s_/]/g, '').length < 4) && <p className="text-xs font-semibold">{t('create_mission.sc_need_plate')}</p>}
-                  {scCheck === 'loading' && <p className="text-xs">⏳ {t('create_mission.sc_checking')}</p>}
-                  {scCheck && scCheck !== 'loading' && (
-                    scCheck.rows.length > 0 ? (
-                      <div className="rounded-lg bg-white/70 border border-amber-200 p-2 text-xs space-y-1">
-                        <p className="font-bold">{scCheck.covered > 0 ? '✅ ' + t('create_mission.sc_found_covered') : '⚠️ ' + t('create_mission.sc_found_uncovered')}</p>
-                        {scCheck.rows.map((r: any) => (
-                          <div key={r.id} className="flex items-center justify-between gap-2">
-                            <span className="truncate">#{r.mission_number} · {String(r.source || '').toUpperCase()} · {r.city || ''} · {r.covered ? t('create_mission.sc_covered') : t('create_mission.sc_uncovered')}</span>
-                            <a href="/missions-dispo" className="shrink-0 underline font-semibold">{t('create_mission.sc_open_market')}</a>
-                          </div>
-                        ))}
-                      </div>
-                    ) : (
-                      <div className="rounded-lg bg-white/70 border border-amber-200 p-2 text-xs space-y-2">
-                        <p className="font-bold">{t('create_mission.sc_none_title')}</p>
-                        <p>{t('create_mission.sc_none_body')}</p>
-                        <button type="button" onClick={() => { setSelectedType('snc' as MissionType); setErr('') }}
-                          className="px-3 py-2 rounded-lg bg-amber-600 text-white text-xs font-bold">{t('create_mission.sc_go_snc')}</button>
-                      </div>
-                    )
-                  )}
+              {siabisAuto && (
+                <div className="rounded-xl border border-blue-300 bg-blue-50 px-3 py-2 text-xs text-blue-900">
+                  <T k="create_mission.siabis_auto_snc" />
                 </div>
               )}
 

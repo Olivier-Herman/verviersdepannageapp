@@ -7,13 +7,19 @@ import { NextResponse }      from 'next/server'
 import { getServerSession }  from 'next-auth'
 import { authOptions }       from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase'
+import { getBusinessNumber } from '@/lib/settings/business'
 
 export const dynamic = 'force-dynamic'
 
-const FRESH_MINUTES = 30   // Olivier 2026-06-18 : aligné sur Momo Market (30 min)
+// Fenêtre de fraîcheur = réglage métier momo_market_fresh_minutes (45 min depuis le
+// 09/09/2026) ; 3 h quand le chauffeur prend la fiche depuis le bouton « Siabis »
+// de la création (Olivier 20/09/2026 : « on ne sait jamais »).
+const SIABIS_FRESH_MINUTES = 180
 const CLAIMABLE_STATUSES = ['new', 'dispatching']   // "En commande" + "En attente"
 
-export async function POST(_req: Request, { params }: { params: { id: string } }) {
+export async function POST(req: Request, { params }: { params: { id: string } }) {
+  const body = await req.json().catch(() => ({})) as { via?: string }
+  const FRESH_MINUTES = body?.via === 'siabis' ? SIABIS_FRESH_MINUTES : await getBusinessNumber('momo_market_fresh_minutes').catch(() => 45)
   const session = await getServerSession(authOptions)
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
@@ -67,7 +73,7 @@ export async function POST(_req: Request, { params }: { params: { id: string } }
     mission_id: params.id,
     actor_id:   userId,
     action:     'claimed_self_service',
-    notes:      'Mission auto-attribuee via self-service',
+    notes:      body?.via === 'siabis' ? 'Fiche prise depuis le bouton Siabis (création chauffeur, plaque reconnue)' : 'Mission auto-attribuee via self-service',
   })
 
   // Olivier 2026-06-18 : prendre une mission via Momo Market doit aussi créer le
