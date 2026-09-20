@@ -239,4 +239,10 @@ body {
    remonte au-dessus d'elle. La variable est posée par MobileTabBar. */
 @media (max-width: 1023px) {
   html.vd-tabbar .fixed.bottom-0:not(.vd-tabbar-el) { bottom: var(--vd-tabbar-h, 0px); }
+  /* Boutons flottants des pages chauffeur (« + Nouvelle intervention », « Parc de… »),
+     posés en bottom-6 / bottom-4 : remontés eux aussi au-dessus de la barre d'onglets
+     (Olivier 20/09/2026 : « le nouvel affichage cache des boutons »). */
+  html.vd-tabbar .fixed.bottom-6:not(.vd-tabbar-el) { bottom: calc(var(--vd-tabbar-h, 0px) + 1.5rem); }
+  html.vd-tabbar .fixed.bottom-4:not(.vd-tabbar-el) { bottom: calc(var(--vd-tabbar-h, 0px) + 1rem); }
+  html.vd-tabbar .fixed.bottom-5:not(.vd-tabbar-el) { bottom: calc(var(--vd-tabbar-h, 0px) + 1.25rem); }
 }
