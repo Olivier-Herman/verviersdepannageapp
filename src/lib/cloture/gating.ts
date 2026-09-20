@@ -55,6 +55,10 @@ export function flux2AssistanceOf(
 ): string | null {
   if (!mission) return null
   if (mission.source_format === 'comex') return 'touring'
+  // Même logique pour VAB (Olivier 20/09/2026 : « même pour un pas couvert,
+  // Touring veut une clôture, idem VAB et les autres ») : une fiche née Siabis
+  // non couvert depuis Comet garde ses AssignmentIds → clôture chez VAB.
+  if (mission.source_format === 'vab-scraper') return 'vab'
   const key = mission.source || null
   return key ? (ASSISTANCE_ALIASES[key] || key) : null
 }
