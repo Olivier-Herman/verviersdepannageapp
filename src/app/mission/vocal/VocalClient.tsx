@@ -14,7 +14,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { nativeSpeechAvailable, nativeListen, nativeStop } from '@/lib/native/speech'
+import { nativeSpeechAvailable, nativeListen, nativeStop, lastNativeError } from '@/lib/native/speech'
 
 type Active = { id: string; plate: string; status: string; label: string }
 type Fields = {
@@ -82,7 +82,7 @@ export default function VocalClient({ zones, active, firstName }: { zones: strin
   const listen = (): Promise<string> => new Promise(resolve => {
     setPhase('listening'); pendingResolve.current = resolve
     if (mode === 'ios') {
-      nativeListen({ silenceMs: 1500, maxMs: 12000 }).then(t => { pendingResolve.current = null; resolve(t) })
+      nativeListen({ silenceMs: 1500, maxMs: 12000 }).then(t => { pendingResolve.current = null; if (!t && lastNativeError) setErr('Reconnaissance Apple : ' + lastNativeError); resolve(t) })
     } else if (mode === 'native') {
       const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
       const rec = new SR(); recRef.current = rec
@@ -128,7 +128,7 @@ export default function VocalClient({ zones, active, firstName }: { zones: strin
       await say(i === 0 ? question : 'Je n\'ai pas compris. ' + question)
       const t = await listen()
       if (cancelledRef.current) return null
-      if (!t) continue
+      if (!t) { setLog(l => [...l, { who: 'toi', text: '(rien entendu)' }]); continue }
       heard(t)
       let d: Record<string, any>
       try { d = await interpret(step, t, context) } catch (e: any) { setErr(e.message || 'Serveur injoignable'); await say('Problème de réseau, je réessaie.'); continue }

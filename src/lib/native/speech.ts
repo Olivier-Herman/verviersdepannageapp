@@ -41,11 +41,15 @@ export async function nativeSpeechAvailable(): Promise<boolean> {
 }
 
 /** Écoute une phrase et rend le texte (vide si rien entendu). */
+/** Dernière erreur du plugin natif (affichée à l'écran pour comprendre une écoute vide). */
+export let lastNativeError = ''
+
 export async function nativeListen(opts: { silenceMs?: number; maxMs?: number } = {}): Promise<string> {
   await ensure()
   if (!_plugin) return ''
+  lastNativeError = ''
   try { const r = await _plugin.start({ language: 'fr-BE', silenceMs: opts.silenceMs ?? 1500, maxMs: opts.maxMs ?? 12000 }); return String(r?.text || '') }
-  catch { return '' }
+  catch (e: any) { lastNativeError = String(e?.message || e || 'erreur plugin'); return '' }
 }
 
 export async function nativeStop(): Promise<void> {
