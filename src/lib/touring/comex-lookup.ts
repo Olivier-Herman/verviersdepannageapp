@@ -89,7 +89,7 @@ export async function importComexByRefs(opts: {
   // Olivier 2026-08-13.
   if (match.CID_DOS) {
     const { data: lineage } = await supabase.from('incoming_missions')
-      .select('id, status, mission_number, raw_content')
+      .select('id, status, mission_number, raw_content, touring_actions, snc_requires_balisage')
       .eq('dossier_number', String(match.CID_DOS))
       .eq('dossier_leg', false)   // fiches Gardiennage (dossier_leg) : jamais (audit 08/09/2026)
       .not('status', 'in', '(cancelled,completed,to_invoice,invoiced,ignored,deleted)')
@@ -97,6 +97,18 @@ export async function importComexByRefs(opts: {
       .limit(1).maybeSingle()
     if (lineage && (lineage as any).id !== placeholderId) {
       const lin: any = lineage
+      // SIGNALISATION (Olivier 20/09/2026) : action parallèle → balisage coché, seq
+      // gardé dans touring_actions, action active inchangée. Même règle que le poll.
+      if (/signalisation|balisage/i.test(String(detail.LIB_GAR || ''))) {
+        const actions: any[] = Array.isArray(lin.touring_actions) ? [...lin.touring_actions] : []
+        if (!actions.some(a => String(a.seq) === String(match.CID_SEQ_ACTION))) {
+          actions.push({ seq: String(match.CID_SEQ_ACTION), external_id: externalId, role: 'signalisation', received_at: new Date().toISOString(), raw: comexRaw })
+          await supabase.from('incoming_missions').update({ snc_requires_balisage: true, touring_actions: actions, updated_at: new Date().toISOString() }).eq('id', lin.id)
+          await supabase.from('mission_logs').insert({ mission_id: lin.id, action: 'touring_synced', notes: `Touring : action ${match.CID_SEQ_ACTION} « Signalisation » ouverte sur le dossier → balisage coché (clôturée avec la fiche).`, metadata: { cid_dos: match.CID_DOS, seq: match.CID_SEQ_ACTION, external_id: externalId, kind: 'signalisation', via: 'mail' } }).then(() => {}, () => {})
+        }
+        if (placeholderId) await supabase.from('incoming_missions').delete().eq('id', placeholderId)
+        return { matched: true, missionId: lin.id, externalId, action: 'linked' }
+      }
       let curSeq = -1
       try { curSeq = parseInt(String(JSON.parse(lin.raw_content || '{}').CID_SEQ_ACTION || ''), 10) } catch { /* raw non-JSON */ }
       const newSeq = parseInt(String(match.CID_SEQ_ACTION), 10)

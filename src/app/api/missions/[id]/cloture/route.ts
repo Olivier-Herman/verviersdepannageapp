@@ -19,7 +19,7 @@ import { createAdminClient } from '@/lib/supabase'
 import { flux2Enabled, flux2AssistanceOf } from '@/lib/cloture/gating'
 import { availableOutcomes, outcomeIsRem, DPR_END_CODES, OUTCOMES, type Outcome } from '@/lib/cloture/outcomes'
 import { parseComexKeys, transformTouring } from '@/lib/cloture/transform/touring'
-import { loginComex, getComexProviders } from '@/lib/touring/comex'
+import { loginComex, getComexProviders, closeTouringMission } from '@/lib/touring/comex'
 import { findMotif } from '@/lib/cloture/motifs'
 import { enqueueClose, isRetryable } from '@/lib/cloture/queue'
 import { runVabOnSite, runVabTowClose } from '@/lib/cloture/transform/vab'
@@ -33,7 +33,7 @@ export const maxDuration = 300
 
 const MISSION_COLS = 'id, source, source_format, raw_content, external_id, mission_type, status, loaded_at, vr_proposed, assigned_to, parent_mission_id, ' +
   'vehicle_vin, vehicle_vin_partial, vehicle_mileage, incident_description, vehicle_brand, vehicle_model, panne_motif, ' +
-  'destination_address, destination_name, destination_lat, destination_lng'
+  'destination_address, destination_name, destination_lat, destination_lng, touring_actions'
 
 
 /**
@@ -354,6 +354,22 @@ export async function POST(req: Request, { params }: { params: { id: string } })
       ficheDestinationLng:  patch.destination_lng  ?? (m as any)?.destination_lng  ?? null,
     }
     result = await transformTouring(keys, input)
+
+    // Actions « Signalisation » ouvertes par Touring sur le même dossier (balisage) :
+    // Touring veut leur clôture aussi (Olivier 20/09/2026). Best effort, mêmes codes.
+    if (result.ok && result.codes) {
+      const sigs = (Array.isArray((m as any).touring_actions) ? (m as any).touring_actions : []).filter((a: any) => a?.role === 'signalisation' && String(a.seq) !== String(keys.CID_SEQ_ACTION) && !a.closed_at)
+      for (const a of sigs) {
+        try {
+          const r2 = await closeTouringMission({ CID_DOS: keys.CID_DOS, CID_SEQ_ACTION: String(a.seq) }, { finCode: '00', ...result.codes, vin, comment: 'Signalisation' })
+          await sb.from('mission_logs').insert({ mission_id: (m as any).id, actor_id: (actor as any)?.id ?? null, action: r2.ok ? 'touring_closed' : 'assistance_close_error', notes: r2.ok ? `Clôture Touring action ${a.seq} (Signalisation) — code 00` : `Signalisation ${a.seq} : clôture Touring KO — ${r2.error || '?'}`, metadata: { seq: String(a.seq), kind: 'signalisation', ...(r2.ok ? { finCode: '00', ...result.codes } : { error: r2.error }) } }).then(() => {}, () => {})
+          if (r2.ok) {
+            const upd = ((m as any).touring_actions as any[]).map((x: any) => String(x.seq) === String(a.seq) ? { ...x, closed_at: new Date().toISOString() } : x)
+            await sb.from('incoming_missions').update({ touring_actions: upd }).eq('id', (m as any).id).then(() => {}, () => {})
+          }
+        } catch (e: any) { console.warn('[cloture] signalisation', a.seq, e?.message) }
+      }
+    }
 
     // ── UNE APPLICATION TIERCE NE BLOQUE JAMAIS LE CHAUFFEUR (Olivier 2026-08-11).
     // Panne / session refusée / timeout → on MÉMORISE la clôture et on laisse le

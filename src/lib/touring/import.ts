@@ -153,7 +153,7 @@ export async function runTouringImport(opts: { mode: TouringImportMode }): Promi
       // valider »). Olivier 2026-08-09 — cf project_touring_lifecycle_chainage.
       if (m.CID_DOS) {
         const { data: lineage } = await sb.from('incoming_missions')
-          .select('id, status, mission_number, raw_content')
+          .select('id, status, mission_number, raw_content, touring_actions, snc_requires_balisage')
           .eq('dossier_number', m.CID_DOS)
           .eq('dossier_leg', false)   // fiches Gardiennage (dossier_leg) : jamais (audit 08/09/2026)
           .not('status', 'in', '(cancelled,completed,to_invoice,invoiced,ignored,deleted)')
@@ -162,6 +162,24 @@ export async function runTouringImport(opts: { mode: TouringImportMode }): Promi
           .maybeSingle()
         if (lineage) {
           const lin = lineage as any
+          // SIGNALISATION (Olivier 20/09/2026) : quand Touring ouvre une action
+          // « Signalisation » sur le dossier, ce n'est pas la jambe suivante mais
+          // une action PARALLÈLE → on coche le balisage sur notre fiche, on garde
+          // le seq dans touring_actions (clôturé avec la fiche), sans toucher à
+          // l'action active (raw_content / external_id).
+          if (/signalisation|balisage/i.test(String(m.LIB_GAR || detail.LIB_GAR || ''))) {
+            const actions: any[] = Array.isArray(lin.touring_actions) ? [...lin.touring_actions] : []
+            const already = actions.some(a => String(a.seq) === String(m.CID_SEQ_ACTION))
+            if (mode === 'preview') { results.push({ dossier: m.CID_DOS, plaque: m.NUM_PLAQUE, action: 'would_link', external_id: externalId, reason: `signalisation → balisage sur fiche #${lin.mission_number}` }); continue }
+            if (!already) {
+              actions.push({ seq: String(m.CID_SEQ_ACTION), external_id: externalId, role: 'signalisation', received_at: new Date().toISOString(), raw: comexRaw })
+              await sb.from('incoming_missions').update({ snc_requires_balisage: true, touring_actions: actions, updated_at: new Date().toISOString() }).eq('id', lin.id)
+              await sb.from('mission_logs').insert({ mission_id: lin.id, action: 'touring_synced', notes: `Touring : action ${m.CID_SEQ_ACTION} « Signalisation » ouverte sur le dossier → balisage coché (clôturée avec la fiche).`, metadata: { cid_dos: m.CID_DOS, seq: m.CID_SEQ_ACTION, external_id: externalId, kind: 'signalisation' } }).then(() => {}, () => {})
+            }
+            results.push({ dossier: m.CID_DOS, plaque: m.NUM_PLAQUE, action: already ? 'skipped' : 'linked', external_id: externalId, reason: already ? 'signalisation déjà notée' : `signalisation → balisage coché (fiche #${lin.mission_number})` })
+            if (already) skipped++; else linked++
+            continue
+          }
           let curSeq = -1
           try { curSeq = parseInt(String(JSON.parse(lin.raw_content || '{}').CID_SEQ_ACTION || ''), 10) } catch { /* raw_content non-JSON */ }
           const newSeq = parseInt(String(m.CID_SEQ_ACTION), 10)
