@@ -9,6 +9,7 @@ import AmbientBackground from '@/components/AmbientBackground'
 import NewInterventionButton from '@/components/mission/NewInterventionButton'
 import ParcRelivraisonButton from '@/components/mission/ParcRelivraisonButton'
 import MissionsDuJourEasterEgg from '@/components/mission/MissionsDuJourEasterEgg'
+import { isPreviewOn } from '@/lib/feature-flags'
 
 export const dynamic = 'force-dynamic'
 
@@ -62,6 +63,8 @@ export default async function MissionListPage() {
     .limit(20)
 
   const active    = missions || []
+  // Assistant vocal (Olivier 20/09/2026) — pilote Franck via le flag voice_assistant.
+  const voiceOn = await isPreviewOn('voice_assistant', String((session.user as any).role || ''), user.id)
 
   // Easter egg : missions du chauffeur AUJOURD'HUI + RECORD PERSO (meilleure journée).
   // On récupère les dates d'assignation (léger : timestamps only), on groupe par
@@ -100,6 +103,9 @@ export default async function MissionListPage() {
 
           {/* Easter egg discret : date du jour → 3 taps = compteur du jour + record perso */}
           <MissionsDuJourEasterEgg count={todayCount} record={record} newRecord={newRecord} firstName={(user.name || '').split(' ')[0]} />
+          {voiceOn && (
+            <Link href="/mission/vocal" className="block w-full rounded-2xl bg-brand text-white text-center font-bold py-4 shadow-md active:scale-[0.98]">🎙️ Dicter une fiche ou un pointage</Link>
+          )}
 
           {active.length === 0 && (
             <div className="text-center py-16 text-ink-faint">
