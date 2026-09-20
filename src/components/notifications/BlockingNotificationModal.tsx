@@ -18,7 +18,58 @@ interface NotifEvent {
 
 export default function BlockingNotificationModal({ notif, onDone }: { notif: NotifEvent; onDone: () => void }) {
   if (notif.notif_type === 'expert_access') return <ExpertAccessModal notif={notif} onDone={onDone} />
+  if (notif.notif_type === 'siabis_couvert_request') return <SiabisCouvertModal notif={notif} onDone={onDone} />
   return <ParcVerificationModal notif={notif} onDone={onDone} />
+}
+
+// ── Siabis couvert sur demande chauffeur : Confirmer / Refuser (Olivier 20/09/2026) ──
+// Sans mission reçue de l'assistance, la facture sera refusée → on perd. Le premier qui répond décide.
+function SiabisCouvertModal({ notif, onDone }: { notif: NotifEvent; onDone: () => void }) {
+  const d = notif.payload?.data || {}
+  const candidates: { mission_number: number; source: string; status: string; received_at: string }[] = d.candidates || []
+  const [sending, setSending] = useState<null | 'approve' | 'refuse'>(null)
+  const [err, setErr] = useState<string | null>(null)
+  async function decide(decision: 'approve' | 'refuse') {
+    setSending(decision); setErr(null)
+    try {
+      const r = await fetch(`/api/notifications/${notif.id}/respond`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ siabis_decision: decision }) })
+      const j = await r.json().catch(() => ({}))
+      if (!r.ok) { setErr(j.error || 'Envoi impossible'); return }
+      onDone()
+    } catch { setErr('Erreur réseau') } finally { setSending(null) }
+  }
+  return (
+    <div className="fixed inset-0 z-[400] flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
+      <div className="w-full max-w-lg rounded-2xl bg-white border-4 border-amber-500 shadow-2xl overflow-hidden" onClick={e => e.stopPropagation()}>
+        <div className="bg-amber-500 text-white px-5 py-4 flex items-center gap-3">
+          <span className="text-3xl">🛣️</span>
+          <div>
+            <p className="text-lg font-bold leading-tight">Passage en Siabis COUVERT demandé</p>
+            <p className="text-sm opacity-90">Réponse obligatoire — le premier qui répond décide.</p>
+          </div>
+        </div>
+        <div className="px-5 py-5 space-y-3">
+          <p className="text-slate-900"><b>{d.driver_name || 'Un chauffeur'}</b> demande de passer la fiche <b>#{d.mission_number}</b> en couvert.</p>
+          <div className="rounded-xl bg-slate-50 border px-4 py-3">
+            <div className="font-mono text-2xl font-bold text-slate-900">{d.plate || 'sans plaque'}</div>
+            <div className="text-sm text-slate-700">{d.vehicle}{d.city ? ` · ${d.city}` : ''}{d.origin_source ? ` · reçue via ${String(d.origin_source).toUpperCase()}` : ''}</div>
+          </div>
+          <div className="rounded-xl border px-4 py-3 text-sm">
+            <p className="font-semibold text-slate-900 mb-1">Missions reçues d'une assistance pour cette plaque (24 h) :</p>
+            {candidates.length === 0
+              ? <p className="text-red-700 font-semibold">Aucune. Sans mission reçue, l'assistance refusera la facture.</p>
+              : <ul className="space-y-1">{candidates.map(c => <li key={c.mission_number} className="text-slate-800">#{c.mission_number} · {String(c.source).toUpperCase()} · {c.status} · {new Date(c.received_at).toLocaleTimeString('fr-BE', { hour: '2-digit', minute: '2-digit' })}</li>)}</ul>}
+          </div>
+          <p className="text-xs text-slate-500">Confirmer = facturé à l'assistance, plus d'encaissement client. Refuser = reste non couvert, le client paie sur place et se fait rembourser.</p>
+          {err && <p className="text-red-600 text-sm">⚠ {err}</p>}
+        </div>
+        <div className="px-5 py-4 border-t bg-slate-50 flex items-center justify-end gap-3">
+          <button type="button" disabled={!!sending} onClick={() => decide('refuse')} className="px-4 py-2.5 rounded-xl bg-white border-2 border-red-500 text-red-700 font-bold disabled:opacity-40">{sending === 'refuse' ? 'Envoi…' : '✕ Refuser (reste non couvert)'}</button>
+          <button type="button" disabled={!!sending} onClick={() => decide('approve')} className="px-4 py-2.5 rounded-xl bg-green-600 hover:bg-green-700 text-white font-bold disabled:opacity-40">{sending === 'approve' ? 'Envoi…' : '✓ Confirmer couvert'}</button>
+        </div>
+      </div>
+    </div>
+  )
 }
 
 // ── Accès expert : Valider / Refuser (le premier qui répond décide) ──────────

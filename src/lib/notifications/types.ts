@@ -311,6 +311,22 @@ export const NOTIFICATION_TYPES: readonly NotificationType[] = [
     defaultEnabled:  true,
   },
   {
+    key:             'siabis_couvert_request',
+    label:           'Demande de passage en Siabis couvert',
+    description:     'Un chauffeur demande de passer une fiche non couverte en couvert : popup obligatoire, le dispatch confirme ou refuse.',
+    category:        'dispatcher',
+    applicableRoles: ['dispatcher', 'admin', 'superadmin'],
+    defaultEnabled:  true,
+  },
+  {
+    key:             'siabis_couvert_decided',
+    label:           'Réponse du dispatch (Siabis couvert)',
+    description:     'Le dispatch a confirmé ou refusé le passage en Siabis couvert.',
+    category:        'driver',
+    applicableRoles: ['driver'],
+    defaultEnabled:  true,
+  },
+  {
     key:             'question_equipe',
     label:           'Question de la direction',
     description:     'Une question à laquelle on répond d’un bouton (ex. Utile / Pas utile). Revient toutes les 10 min tant qu’on n’a pas répondu.',

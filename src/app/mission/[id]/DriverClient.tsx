@@ -46,6 +46,7 @@ interface Stop {
 }
 interface Mission {
   id: string; status: string; mission_type?: string
+  siabis_couvert_requested_at?: string | null; siabis_couvert_decided_at?: string | null; siabis_couvert_decision?: string | null   // demande couvert → dispatch (20/09/2026)
   incident_type?: string                                       // 'relivraison' = REL
   parent_mission_id?: string | null                            // si REL, lien vers la mission parente parc
   key_location?: string | null; saisie_key_hook?: string | null // emplacement clé (hérité du parc pour une REL)
@@ -1899,6 +1900,22 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
       __url.searchParams.set('t', String(Date.now()))
       window.location.href = __url.toString()
     } catch (e: any) { setErr(e.message || 'Échec de la reclassification Siabis') }
+    finally { setLoading(false) }
+  }
+
+  // ── Demander le passage en Siabis couvert (Olivier 20/09/2026) ─────────────
+  // Jamais de bascule directe non couvert → couvert par le chauffeur : le dispatch
+  // confirme via popup obligatoire (facture refusée par l'assistance sinon).
+  const scPending = !!M.siabis_couvert_requested_at && (!M.siabis_couvert_decided_at || M.siabis_couvert_decided_at < M.siabis_couvert_requested_at)
+  const scRefused = !scPending && M.siabis_couvert_decision === 'refused'
+  const requestSiabisCouvert = async () => {
+    setShowGrid(false); setLoading(true); setErr('')
+    try {
+      const r = await fetch(`/api/missions/${M.id}/siabis-couvert-request`, { method: 'POST' })
+      const j = await r.json().catch(() => ({}))
+      if (!r.ok) throw new Error(j.error || 'Erreur')
+      setM(prev => ({ ...prev, siabis_couvert_requested_at: j.requested_at || new Date().toISOString(), siabis_couvert_decided_at: null, siabis_couvert_decision: null }))
+    } catch (e: any) { setErr(e.message || 'Demande impossible') }
     finally { setLoading(false) }
   }
 
@@ -5096,11 +5113,21 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
                   <span className="text-sm font-medium text-orange-400 text-center leading-tight">Siabis NON couvert</span>
                 </button>
               )}
-              {!flux2 && M.source !== 'sia_couvert' && (
+              {!flux2 && M.source !== 'sia_couvert' && M.source !== 'police_snc' && (
                 <button onClick={() => setSiabisSource('sia_couvert')} disabled={loading}
                   className="rounded-2xl py-5 flex flex-col items-center justify-center gap-2 border bg-teal-600/10 border-teal-600/30 transition active:scale-95 disabled:opacity-50">
                   <span className="text-2xl">🚨</span>
                   <span className="text-sm font-medium text-teal-400 text-center leading-tight">Siabis couvert</span>
+                </button>
+              )}
+              {/* Non couvert → couvert : DEMANDE au dispatch, jamais direct (Olivier 20/09/2026) */}
+              {!flux2 && M.source === 'police_snc' && (
+                <button onClick={requestSiabisCouvert} disabled={loading || scPending}
+                  className="rounded-2xl py-5 flex flex-col items-center justify-center gap-2 border bg-teal-600/10 border-teal-600/30 transition active:scale-95 disabled:opacity-60">
+                  <span className="text-2xl">{scPending ? '⏳' : '🛡️'}</span>
+                  <span className="text-sm font-medium text-teal-400 text-center leading-tight">
+                    {scPending ? t('mission_detail.siabis_request_pending') : scRefused ? t('mission_detail.siabis_request_refused') : t('mission_detail.siabis_request_btn')}
+                  </span>
                 </button>
               )}
               {/* Mise en parc (REM uniquement) */}

@@ -28,6 +28,8 @@ export const NOTIFICATION_SOUNDS: Record<string, string> = {
   verification_parc:            '/sounds/warning-alarm-buzzer.wav',
   // Question à l'équipe (bandeau avec boutons) — chime doux
   question_equipe:              '/sounds/positive-notification.wav',
+  siabis_couvert_request:       '/sounds/warning-alarm-buzzer.wav',
+  siabis_couvert_decided:       '/sounds/positive-notification.wav',
   question_reponse:             '/sounds/positive-notification.wav',
 }
 

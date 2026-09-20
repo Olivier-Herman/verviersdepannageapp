@@ -155,6 +155,15 @@ export async function PATCH(
   // client final qui paie en direct, pas l assurance/assistance d origine.
   // SC garde billed_to (l assistance facture).
   const SNC_SOURCES = new Set(await sourcesWithTag('siabis'))
+  // Olivier 20/09/2026 : non couvert → couvert n'est JAMAIS un clic chauffeur (sans
+  // mission reçue de l'assistance, la facture est refusée). Le chauffeur DEMANDE
+  // (bouton sur la fiche) et le dispatch confirme via popup. Le bureau garde la main.
+  if ('source' in updates && updates.source === 'sia_couvert' && before?.source === 'police_snc') {
+    const sRole = String((session.user as any).role || '')
+    const sRoles: string[] = Array.isArray((session.user as any).roles) ? (session.user as any).roles : []
+    const office = ['dispatcher', 'admin', 'superadmin'].some(r => r === sRole || sRoles.includes(r))
+    if (!office) return NextResponse.json({ error: 'Passage en Siabis couvert : demande-le au dispatch depuis la fiche (bouton « Demander Siabis couvert »).' }, { status: 403 })
+  }
   if ('source' in updates) {
     const newSource = updates.source as string | null
     if (!newSource || !SNC_SOURCES.has(newSource)) {

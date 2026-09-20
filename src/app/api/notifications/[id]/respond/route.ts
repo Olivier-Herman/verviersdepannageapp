@@ -10,6 +10,7 @@ import { authOptions }       from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase'
 import { applyParcVerificationResponse } from '@/lib/missions/parc-verification'
 import { decideBureauAccess } from '@/lib/expert/access'
+import { decideSiabisCouvert } from '@/lib/missions/siabis-couvert-request'
 
 export const dynamic = 'force-dynamic'
 
@@ -34,6 +35,12 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     if (Object.keys(decisions).length !== allowed.size) return NextResponse.json({ error: 'Une décision par bureau est requise.' }, { status: 400 })
     const r = await decideBureauAccess(sb, String(d.request_group || ''), decisions, userId)
     return NextResponse.json({ ok: true, results: r.results })
+  }
+  // Passage en Siabis couvert : { siabis_decision: 'approve' | 'refuse' } — le premier qui répond décide. 20/09/2026.
+  if (body?.siabis_decision === 'approve' || body?.siabis_decision === 'refuse') {
+    const r = await decideSiabisCouvert(sb, params.id, userId, body.siabis_decision)
+    if (!r.ok) return NextResponse.json({ error: r.error }, { status: 400 })
+    return NextResponse.json({ ok: true, already: !!r.already })
   }
   // Question à l'équipe : { choice, comment } → responded_at + réponse aux demandeurs. 20/09/2026.
   if (typeof body?.choice === 'string') {
