@@ -35,6 +35,32 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     const r = await decideBureauAccess(sb, String(d.request_group || ''), decisions, userId)
     return NextResponse.json({ ok: true, results: r.results })
   }
+  // Question à l'équipe : { choice, comment } → responded_at + réponse aux demandeurs. 20/09/2026.
+  if (typeof body?.choice === 'string') {
+    const { data: n } = await sb.from('notifications_log').select('id, notif_type, payload, responded_at').eq('id', params.id).eq('user_id', userId).maybeSingle()
+    const d = n?.payload?.data || {}
+    if (!n || d.question !== true) return NextResponse.json({ error: 'Notification inconnue' }, { status: 404 })
+    const choice = (d.choices || []).find((c: any) => c.key === body.choice)
+    if (!choice) return NextResponse.json({ error: 'Réponse inconnue' }, { status: 400 })
+    if (n.responded_at) return NextResponse.json({ ok: true, already: true })
+    const comment = String(body.comment || '').trim().slice(0, 1000)
+    const now = new Date().toISOString()
+    const { error } = await sb.from('notifications_log')
+      .update({ responded_at: now, read_at: now, payload: { ...n.payload, data: { ...d, answer: { choice: choice.key, label: choice.label, comment, at: now } } } })
+      .eq('id', params.id).is('responded_at', null)
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+    const { data: me } = await sb.from('users').select('name').eq('id', userId).maybeSingle()
+    const { sendNotification } = await import('@/lib/notifications/send')
+    for (const uid of (d.notify_user_ids || []) as string[]) {
+      if (!uid || uid === userId) continue
+      await sendNotification(uid, 'question_reponse', {
+        title: `${me?.name || 'Un collègue'} a répondu : ${choice.label}`,
+        body: `« ${n.payload?.title || ''} »${comment ? ` — ${comment}` : ''}`,
+        data: { question_id: params.id, choice: choice.key, comment },
+      })
+    }
+    return NextResponse.json({ ok: true })
+  }
   const res = await applyParcVerificationResponse(sb, params.id, userId, answers)
   if (!res.ok) return NextResponse.json({ error: res.error }, { status: 400 })
   return NextResponse.json({ ok: true, present: res.present, absent: res.absent })

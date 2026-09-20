@@ -71,9 +71,14 @@ export default function NotificationsProvider({
     fetch(`/api/notifications/${id}/read`, { method: 'POST' }).catch(() => {})
   }
 
+  // Question à l'équipe (payload.data.question) : fermer ne « lit » pas — le
+  // bandeau revient 10 min plus tard tant qu'il n'y a pas de réponse (Olivier 20/09).
+  const QUESTION_SNOOZE_MS = 10 * 60_000
   const dismiss = useCallback((id: string) => {
+    const q = pendingRef.current.find(n => n.id === id)?.payload?.data?.question
     seen.current.add(id)
     setPending(prev => prev.filter(n => n.id !== id))
+    if (q) { setTimeout(() => seen.current.delete(id), QUESTION_SNOOZE_MS); return }
     persistRead(id)
   }, [])
 
@@ -94,7 +99,7 @@ export default function NotificationsProvider({
     const handleNewNotif = (row: NotifEvent) => {
       if (row.channel && row.channel !== 'in_app') return
       // Popup bloquant : reste tant qu'il n'y a pas de RÉPONSE (même si « lu »).
-      const blocking = !!row.payload?.data?.modal
+      const blocking = !!row.payload?.data?.modal || !!row.payload?.data?.question
       if (blocking ? row.responded_at : row.read_at) return   // déjà traitée en base
       if (seen.current.has(row.id)) return       // déjà affichée/fermée cette session
       let added = false
@@ -132,7 +137,7 @@ export default function NotificationsProvider({
         // Popup bloquant répondu AILLEURS (premier qui répond) : il n'est plus
         // dans la liste des non-répondus → on le retire ici aussi. 2026-09-05.
         const stillOpen = new Set(((j.notifications || []) as NotifEvent[]).map(n => n.id))
-        setPending(prev => prev.filter(n => !n.payload?.data?.modal || stillOpen.has(n.id)))
+        setPending(prev => prev.filter(n => !(n.payload?.data?.modal || n.payload?.data?.question) || stillOpen.has(n.id)))
       } catch {}
     }
     pollUnread()  // tick immediat

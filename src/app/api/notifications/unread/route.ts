@@ -54,6 +54,20 @@ export async function GET() {
     .limit(5)
   for (const b of (blocking || [])) if (!notifs.some(n => n.id === b.id)) notifs.push(b)
 
+  // QUESTIONS à l'équipe (payload.data.question) : bandeau non bloquant avec
+  // boutons de réponse ; on le renvoie tant que responded_at est vide (le client
+  // le ré-affiche toutes les 10 min). Olivier 20/09/2026.
+  const { data: questions } = await sb
+    .from('notifications_log')
+    .select('id, user_id, notif_type, payload, channel, created_at, read_at, responded_at')
+    .eq('user_id', me.id)
+    .eq('channel', 'in_app')
+    .is('responded_at', null)
+    .eq('payload->data->>question', 'true')
+    .order('created_at', { ascending: false })
+    .limit(5)
+  for (const q of (questions || [])) if (!notifs.some(n => n.id === q.id)) notifs.push(q)
+
   // Notifs « nouvelle mission » : inutiles si la mission a deja ete prise en
   // charge (acceptee / demarree / cloturee...). On les retire du toast ET on
   // les marque lues pour qu'elles ne reviennent plus.

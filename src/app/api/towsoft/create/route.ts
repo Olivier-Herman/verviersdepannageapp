@@ -77,6 +77,11 @@ export async function POST(req: Request) {
   }
   // Siabis : scénario obligatoire (Olivier 20/09/2026) — le chauffeur qui crée
   // sur place le connaît ; sans scénario ni montant ni clôture ne sont possibles.
+  // Siabis couvert : jamais créé à la main par le chauffeur (Olivier 20/09/2026).
+  // La fiche de l'assistance existe (dispatch / Momo Market) ou c'est un non couvert.
+  if (type === 'sc') {
+    return NextResponse.json({ error: "Aucune mission couverte reçue d'une assistance pour ce véhicule : crée un Siabis NON couvert — le client paie et se fait rembourser par son assurance / assistance." }, { status: 400 })
+  }
   if ((type === 'snc' || type === 'sc') && !['dsp', 'rem_client', 'rem_depot', 'rem_direct'].includes(String(sncScenario || ''))) {
     return NextResponse.json({ error: 'Scénario Siabis requis (DSP, REM client, REM dépôt)' }, { status: 400 })
   }

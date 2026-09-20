@@ -133,6 +133,17 @@ export default function PoliceClient({ userRole = 'driver' }: { userRole?: strin
   const [sncScenario, setSncScenario] = useState<'dsp' | 'rem_client' | 'rem_depot' | ''>('')
   // SC uniquement : nom de l assistance qui paye (Touring, Ethias, VAB, etc.)
   const [scAssistanceName, setScAssistanceName] = useState('')
+  // Siabis couvert (Olivier 20/09/2026) : jamais créé à la main. La PLAQUE décide :
+  // fiche de l'assistance dans Momo Market (3 h) → on la prend ; aucune → Siabis
+  // non couvert, le client paie et se fait rembourser par son assurance/assistance.
+  const [scCheck, setScCheck] = useState<null | 'loading' | { rows: any[]; covered: number; uncovered: number }>(null)
+  const runScCheck = async (): Promise<{ rows: any[]; covered: number; uncovered: number } | null> => {
+    if (!plate || plate.replace(/[-.\s_/]/g, '').length < 4) { setScCheck(null); return null }
+    setScCheck('loading')
+    try { const r = await fetch(`/api/missions/dispo-summary?plate=${encodeURIComponent(plate)}`, { cache: 'no-store' }); const j = await r.json(); setScCheck(j); return j }
+    catch { const j = { rows: [], covered: 0, uncovered: 0 }; setScCheck(j); return j }
+  }
+  useEffect(() => { if (selectedType === 'sc') { setScCheck(null); const t = setTimeout(runScCheck, 500); return () => clearTimeout(t) } }, [selectedType, plate])   // eslint-disable-line react-hooks/exhaustive-deps
   // Appel Prive : forfait TVAC negocie au tel (optionnel). Si vide, la
   // facturation appliquera le fallback tarif police_accident + majorations.
   const [amountToCollect, setAmountToCollect] = useState('')
@@ -582,7 +593,13 @@ export default function PoliceClient({ userRole = 'driver' }: { userRole?: strin
     }
     // Siabis (SNC / SC) : le scénario est obligatoire — sans lui, pas de montant
     // ni de clôture possible (Olivier 20/09/2026, 10154068 créée sans scénario).
-    if ((selectedType === 'snc' || selectedType === 'sc') && !sncScenario) {
+    // Siabis couvert : jamais à la main. Fiche existante → la prendre ; sinon → SNC.
+    if (selectedType === 'sc') {
+      const j = scCheck && scCheck !== 'loading' ? scCheck : await runScCheck()
+      if (j && j.rows.length > 0) { setErr(t('create_mission.sc_take_existing')); return }
+      setSelectedType('snc' as MissionType); setErr(t('create_mission.sc_refused')); return
+    }
+    if (selectedType === 'snc' && !sncScenario) {
       setErr('Choisis le scénario Siabis (DSP, REM client, REM dépôt) avant de créer la fiche'); return
     }
     // Saisie : motif obligatoire (demande Franck 2026-06-01).
@@ -702,7 +719,7 @@ export default function PoliceClient({ userRole = 'driver' }: { userRole?: strin
         policeBlocked,
         sncRequiresBalisage,
         sncScenario:             sncScenario || null,
-        scAssistanceName:        selectedType === 'sc' ? scAssistanceName.trim() || null : null,
+        scAssistanceName:        null,   // le SC chauffeur n'est jamais soumis (refus plus haut)
         // Coordonnees GPS (depuis autocomplete) pour SNC + calcul tarif futur
         incidentLat:             locationLat,
         incidentLng:             locationLng,
@@ -1318,21 +1335,33 @@ export default function PoliceClient({ userRole = 'driver' }: { userRole?: strin
         {(selectedType === 'snc' || selectedType === 'sc') && (
           <Section title={selectedType === 'sc' ? t('create_mission.section_sia_covered') : t('create_mission.section_snc')}>
             <div className="space-y-3">
-              {/* Nom assistance (SC uniquement) */}
+              {/* Siabis couvert : la plaque décide (Olivier 20/09/2026) — jamais créé à la main */}
               {selectedType === 'sc' && (
-                <div>
-                  <label className="text-xs font-medium text-ink-secondary mb-1.5 block">
-                    Assistance qui prend en charge *
-                  </label>
-                  <input
-                    value={scAssistanceName}
-                    onChange={e => setScAssistanceName(e.target.value)}
-                    placeholder="Ex: Touring, Ethias, VAB, IMA, AXA..."
-                    className="w-full bg-surface border border-strong rounded-xl px-3 py-3 text-ink text-sm outline-none focus:border-cyan-500"
-                  />
-                  <p className="text-xs text-ink-muted mt-1">
-                    L&apos;assistance paye la facture (aucun encaissement client). Sera utilisée comme client facturé sur le devis Odoo.
-                  </p>
+                <div className="rounded-xl border border-amber-400 bg-amber-50 px-3 py-3 text-sm text-amber-900 space-y-2">
+                  <p className="font-semibold"><T k="create_mission.sc_notice_title" /></p>
+                  <p className="text-xs"><T k="create_mission.sc_notice_body" /></p>
+                  {(!plate || plate.replace(/[-.\s_/]/g, '').length < 4) && <p className="text-xs font-semibold">{t('create_mission.sc_need_plate')}</p>}
+                  {scCheck === 'loading' && <p className="text-xs">⏳ {t('create_mission.sc_checking')}</p>}
+                  {scCheck && scCheck !== 'loading' && (
+                    scCheck.rows.length > 0 ? (
+                      <div className="rounded-lg bg-white/70 border border-amber-200 p-2 text-xs space-y-1">
+                        <p className="font-bold">{scCheck.covered > 0 ? '✅ ' + t('create_mission.sc_found_covered') : '⚠️ ' + t('create_mission.sc_found_uncovered')}</p>
+                        {scCheck.rows.map((r: any) => (
+                          <div key={r.id} className="flex items-center justify-between gap-2">
+                            <span className="truncate">#{r.mission_number} · {String(r.source || '').toUpperCase()} · {r.city || ''} · {r.covered ? t('create_mission.sc_covered') : t('create_mission.sc_uncovered')}</span>
+                            <a href="/missions-dispo" className="shrink-0 underline font-semibold">{t('create_mission.sc_open_market')}</a>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="rounded-lg bg-white/70 border border-amber-200 p-2 text-xs space-y-2">
+                        <p className="font-bold">{t('create_mission.sc_none_title')}</p>
+                        <p>{t('create_mission.sc_none_body')}</p>
+                        <button type="button" onClick={() => { setSelectedType('snc' as MissionType); setErr('') }}
+                          className="px-3 py-2 rounded-lg bg-amber-600 text-white text-xs font-bold">{t('create_mission.sc_go_snc')}</button>
+                      </div>
+                    )
+                  )}
                 </div>
               )}
 

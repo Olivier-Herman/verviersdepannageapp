@@ -26,6 +26,9 @@ export const NOTIFICATION_SOUNDS: Record<string, string> = {
   escalation_call:              '/sounds/emergency-siren-alert.wav',
   // Vérification physique au parc (popup bloquant) — alarme
   verification_parc:            '/sounds/warning-alarm-buzzer.wav',
+  // Question à l'équipe (bandeau avec boutons) — chime doux
+  question_equipe:              '/sounds/positive-notification.wav',
+  question_reponse:             '/sounds/positive-notification.wav',
 }
 
 /**

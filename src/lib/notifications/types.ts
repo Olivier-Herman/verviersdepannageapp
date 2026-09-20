@@ -311,6 +311,22 @@ export const NOTIFICATION_TYPES: readonly NotificationType[] = [
     defaultEnabled:  true,
   },
   {
+    key:             'question_equipe',
+    label:           'Question de la direction',
+    description:     'Une question à laquelle on répond d’un bouton (ex. Utile / Pas utile). Revient toutes les 10 min tant qu’on n’a pas répondu.',
+    category:        'driver',
+    applicableRoles: ['driver', 'dispatcher', 'admin', 'superadmin'],
+    defaultEnabled:  true,
+  },
+  {
+    key:             'question_reponse',
+    label:           'Réponse à une question posée',
+    description:     'Un membre de l’équipe a répondu à une question de la direction.',
+    category:        'admin',
+    applicableRoles: ['admin', 'superadmin'],
+    defaultEnabled:  true,
+  },
+  {
     key:             'feature_announcement',
     label:           'Nouveautés de l\'app',
     description:     'Annonce d\'une nouvelle fonctionnalité.',

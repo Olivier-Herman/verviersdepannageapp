@@ -64,6 +64,21 @@ export default function NotificationBanner({
 }) {
   const { t } = useT()
   const [enter, setEnter] = useState(false)
+  // Question à l'équipe : boutons de réponse + commentaire facultatif (20/09/2026)
+  const qd = notif.payload?.data
+  const isQuestion = qd?.question === true
+  const [choice, setChoice] = useState<string | null>(null)
+  const [comment, setComment] = useState('')
+  const [sending, setSending] = useState(false)
+  const [qErr, setQErr] = useState<string | null>(null)
+  const answer = async (key: string) => {
+    setSending(true); setQErr(null)
+    try {
+      const r = await fetch(`/api/notifications/${notif.id}/respond`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ choice: key, comment }) })
+      if (!r.ok) { const j = await r.json().catch(() => ({})); setQErr(j.error || 'Envoi impossible'); return }
+      onMarkRead()
+    } catch { setQErr('Erreur réseau') } finally { setSending(false) }
+  }
 
   // Animation slide-in
   useEffect(() => {
@@ -73,7 +88,7 @@ export default function NotificationBanner({
 
   // Auto-dismiss timer (sauf pour les escalades qui restent jusqu'au clic)
   useEffect(() => {
-    const ms = notif.notif_type === 'escalation_call'
+    const ms = (notif.notif_type === 'escalation_call' || isQuestion)
       ? AUTO_DISMISS_ESCALATION
       : AUTO_DISMISS_MS
     if (ms === 0) return
@@ -82,7 +97,7 @@ export default function NotificationBanner({
       setTimeout(onDismiss, 200)  // attend la fin de l'anim sortie
     }, ms)
     return () => clearTimeout(t)
-  }, [notif.notif_type, onDismiss])
+  }, [notif.notif_type, onDismiss, isQuestion])
 
   const typeMeta  = NOTIFICATION_TYPES.find(t => t.key === notif.notif_type)
   const title     = notif.payload?.title || typeMeta?.label || t('banner.fallback_title')
@@ -101,7 +116,25 @@ export default function NotificationBanner({
         <div className="flex-shrink-0 mt-0.5">{iconFor(notif.notif_type)}</div>
         <div className="flex-1 min-w-0">
           <p className="text-ink text-sm font-semibold truncate">{title}</p>
-          {body && <p className="text-ink-secondary text-xs mt-0.5 line-clamp-3">{body}</p>}
+          {body && <p className={`text-ink-secondary text-xs mt-0.5 ${isQuestion ? 'whitespace-pre-line' : 'line-clamp-3'}`}>{body}</p>}
+          {isQuestion && (
+            <div className="mt-2 space-y-2">
+              {qd?.comment !== false && (
+                <textarea value={comment} onChange={e => setComment(e.target.value)} rows={2} placeholder={t('banner.question_comment')}
+                  className="w-full bg-surface border rounded-lg px-2 py-1.5 text-xs text-ink outline-none focus:border-brand" />
+              )}
+              <div className="flex flex-wrap gap-2">
+                {((qd?.choices || []) as { key: string; label: string; tone?: string }[]).map(c => (
+                  <button key={c.key} type="button" disabled={sending} onClick={() => { setChoice(c.key); answer(c.key) }}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold border-2 disabled:opacity-50 ${
+                      c.tone === 'green' ? 'bg-green-600 border-green-700 text-white' : c.tone === 'red' ? 'bg-red-600 border-red-700 text-white' : 'bg-brand border-brand text-white'
+                    } ${choice === c.key ? 'ring-2 ring-offset-1 ring-brand' : ''}`}>{c.label}</button>
+                ))}
+              </div>
+              {qErr && <p className="text-critical text-xs">⚠ {qErr}</p>}
+              <p className="text-ink-faint text-[10px]">{t('banner.question_hint')}</p>
+            </div>
+          )}
 
           {actionUrl && (
             <Link
