@@ -144,7 +144,7 @@ export default function PoliceClient({ userRole = 'driver' }: { userRole?: strin
   const [siabisAuto, setSiabisAuto] = useState(false)     // « Siabis » sans fiche reçue → basculé en non couvert
   const [claiming, setClaiming] = useState<string | null>(null)
   const runScCheck = async (): Promise<{ rows: any[]; mine?: any[]; others?: any[]; covered: number; uncovered: number } | null> => {
-    if (!plate || plate.replace(/[-.\s_/]/g, '').length < 4) { setScCheck(null); return null }
+    if (!plate || plate.replace(/[-.\s_/]/g, '').length < 6) { setScCheck(null); return null }   // plaque complète seulement (KKAS → bascule prématurée, Franck 20/09)
     setScCheck('loading')
     try {
       const r = await fetch(`/api/missions/dispo-summary?plate=${encodeURIComponent(plate)}`, { cache: 'no-store' })
@@ -152,11 +152,10 @@ export default function PoliceClient({ userRole = 'driver' }: { userRole?: strin
       const j = await r.json(); setScCheck(j); return j
     } catch { setScCheck('error'); return null }
   }
-  useEffect(() => { if (selectedType === 'siabis' || selectedType === 'sc') { setScCheck(null); const t = setTimeout(runScCheck, 500); return () => clearTimeout(t) } }, [selectedType, plate])   // eslint-disable-line react-hooks/exhaustive-deps
-  // Bouton « Siabis » : aucune fiche reçue pour la plaque → non couvert, sans clic de plus.
-  useEffect(() => {
-    if (selectedType === 'siabis' && scCheck && scCheck !== 'loading' && scCheck !== 'error' && scCheck.rows.length === 0 && !(scCheck.mine?.length) && !(scCheck.others?.length)) { setSelectedType('snc'); setSiabisAuto(true); setErr('') }
-  }, [selectedType, scCheck])   // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if (selectedType === 'siabis' || selectedType === 'sc') { setScCheck(null); const t = setTimeout(runScCheck, 1200); return () => clearTimeout(t) } }, [selectedType, plate])   // eslint-disable-line react-hooks/exhaustive-deps
+  // Bouton « Siabis » : aucune fiche reçue → le chauffeur CONFIRME d'un bouton
+  // (plus de bascule automatique : elle partait sur une plaque à moitié tapée, Franck 20/09).
+  const scNone = !!scCheck && scCheck !== 'loading' && scCheck !== 'error' && scCheck.rows.length === 0 && !(scCheck.mine?.length) && !(scCheck.others?.length)
   // Prendre la fiche reçue de l'assistance (Momo Market, fenêtre 3 h depuis cet écran) → fiche pré-remplie.
   const claimFiche = async (id: string) => {
     setClaiming(id); setErr('')
@@ -1010,7 +1009,15 @@ export default function PoliceClient({ userRole = 'driver' }: { userRole?: strin
           <div className="rounded-xl border border-amber-400 bg-amber-50 px-3 py-3 text-sm text-amber-900 space-y-2">
             <p className="font-semibold"><T k="create_mission.siabis_title" /></p>
             <p className="text-xs"><T k="create_mission.siabis_body" /></p>
-            {(!plate || plate.replace(/[-.\s_/]/g, '').length < 4) && <p className="text-xs font-semibold">👇 {t('create_mission.sc_need_plate')}</p>}
+            {(!plate || plate.replace(/[-.\s_/]/g, '').length < 6) && <p className="text-xs font-semibold">👇 {t('create_mission.sc_need_plate')}</p>}
+            {scNone && (
+              <div className="rounded-lg bg-white/70 border border-amber-200 p-2 text-xs space-y-2">
+                <p className="font-bold">{t('create_mission.sc_none_title')}</p>
+                <p>{t('create_mission.sc_none_body')}</p>
+                <button type="button" onClick={() => { setSelectedType('snc' as MissionType); setSiabisAuto(true); setErr('') }}
+                  className="w-full py-2.5 rounded-lg bg-amber-600 text-white text-sm font-bold">{t('create_mission.sc_go_snc')}</button>
+              </div>
+            )}
             {scCheck === 'loading' && <p className="text-xs">⏳ {t('create_mission.sc_checking')}</p>}
             {scCheck === 'error' && (
               <div className="rounded-lg bg-white/70 border border-red-300 p-2 text-xs space-y-1">
