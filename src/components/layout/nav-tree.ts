@@ -88,6 +88,7 @@ export const NAV_TREE_ESPACES: NavModule[] = [
     key: 'facturation', label: 'Facturation', icon: '🧾',
     sections: [
       { href: '/facturation/dossiers', label: 'À facturer',               icon: FolderCheck,  requires: '/facturation' },
+      { href: '/admin/facturation-auto', label: 'Stats facturation auto', icon: BarChart3,  requires: '/admin' },   // taux robot / manuel (Olivier 20/09 : introuvable depuis le menu)
       { href: '/facturation',          label: 'Liste par fiche (ancienne)', icon: Receipt,    requires: '/facturation' },
       { href: '/missions-terminees',   label: 'Missions terminées',       icon: FolderCheck,  i18nKey: 'nav.finished', requires: '/missions-terminees' },
       { href: '/admin/amendes',        label: 'Amendes',                  icon: AlertTriangle, requires: '/admin/amendes' },
