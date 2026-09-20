@@ -556,6 +556,9 @@ export async function POST(req: Request) {
         const { data: p } = await supabase.from('incoming_missions').select('id, parent_mission_id, status, parc_zone_key').eq('id', rootId).maybeSingle()
         if (!p) break
         if (!p.parent_mission_id) {
+          // Parent jamais au parc (DSP clôturé + 2e intervention chaînée, HL617PH
+          // 20/09/2026) : rien à libérer, et pas de faux « sorti du parc » au journal.
+          if (!p.parc_zone_key && p.status !== 'parked') break
           const { data: encore } = await supabase.from('incoming_missions').select('id').eq('parent_mission_id', p.id).eq('dossier_leg', true).is('parc_exit_at', null).limit(1)
           if (!encore?.length) {
             const released = await releaseParcAndShift(supabase, p.id).catch(() => null)
