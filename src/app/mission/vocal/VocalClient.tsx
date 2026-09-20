@@ -38,9 +38,10 @@ function speakText(text: string): Promise<void> {
       const v = voices.find(x => x.lang === 'fr-BE') || voices.find(x => x.lang?.startsWith('fr'))
       if (v) u.voice = v
       u.lang = v?.lang || 'fr-FR'; u.rate = 1.02
-      u.onend = () => resolve(); u.onerror = () => resolve()
+      let done = false; const fin = () => { if (done) return; done = true; setTimeout(resolve, 350) }   // 350 ms de silence avant d'ouvrir le micro
+      u.onend = fin; u.onerror = fin
       synth.speak(u)
-      setTimeout(resolve, 1500 + text.length * 70)   // filet si onend ne vient pas (iOS)
+      setTimeout(fin, 2500 + text.length * 95)   // filet si onend ne vient pas (iOS)
     } catch { resolve() }
   })
 }
@@ -129,9 +130,10 @@ export default function VocalClient({ zones, active, firstName }: { zones: strin
       if (cancelledRef.current) return null
       if (!t) continue
       heard(t)
-      const d = await interpret(step, t, context)
+      let d: Record<string, any>
+      try { d = await interpret(step, t, context) } catch (e: any) { setErr(e.message || 'Serveur injoignable'); await say('Problème de réseau, je réessaie.'); continue }
       if (d.understood !== false) return d
-      if (d.ask) { await say(d.ask); const t2 = await listen(); if (!t2) continue; heard(t2); const d2 = await interpret(step, t2, context); if (d2.understood !== false) return d2 }
+      if (d.ask) { await say(d.ask); const t2 = await listen(); if (!t2) continue; heard(t2); let d2: Record<string, any>; try { d2 = await interpret(step, t2, context) } catch { continue } if (d2.understood !== false) return d2 }
     }
     await say('On reprendra ça sur le formulaire.')
     return null
@@ -260,6 +262,7 @@ export default function VocalClient({ zones, active, firstName }: { zones: strin
         <Link href="/mission" className="text-white/80 text-sm">‹ Missions</Link>
         <h1 className="text-2xl font-bold mt-1">🎙️ Assistant vocal</h1>
         <p className="text-white/80 text-sm">Dis ta fiche, je relis, tu confirmes. Rien n'est créé sans ton oui.</p>
+        <p className="text-white/60 text-[11px] mt-1">Écoute : {mode === 'ios' ? 'reconnaissance Apple (app)' : mode === 'native' ? 'reconnaissance du navigateur' : mode === 'server' ? 'enregistrement + transcription serveur' : 'indisponible'}</p>
       </div>
       <div className="px-4 py-4 max-w-lg mx-auto space-y-4">
         {mode === 'none' && <p className="rounded-xl bg-red-50 border border-red-200 text-red-800 text-sm px-3 py-2">Pas de reconnaissance vocale sur cet appareil. <Link href="/mission/police" className="underline font-semibold">Formulaire classique</Link>.</p>}

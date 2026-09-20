@@ -30,6 +30,7 @@ Règles générales :
 - Adresses : autoroutes E40, E42, E25, A27, A3 ; bornes kilométriques « borne 12 », « BK 12,5 » ; direction (Liège, Aachen, Bruxelles, Luxembourg) ; sorties ; ou rue + commune. Rends une adresse normalisée courte et la commune si connue (Battice, Verviers, Herve, Pepinster, Spa, Malmedy…).
 - Zones de police : choisis dans la liste fournie quand il y en a une (Vesdre, Fagnes, Pays de Herve, Stavelot-Malmedy…), sinon rends ce qui est dit.
 - Destination : « dépôt », « Pepinster », « chez nous » → depot ; sinon adresse dite.
+- POINTAGES (étape intent) : « je suis en route », « je pars », « j'y vais » → pointage on_way ; « je suis sur place », « j'arrive », « arrivé » → on_site ; « chargé », « véhicule chargé », « je repars avec » → load_vehicle ; « terminé », « fini », « livré » → completed. Dans ce cas intent = "pointage", understood = true.
 - Si la phrase est vide, inaudible ou hors sujet : "understood": false et un "ask" court pour redemander.
 
 Formats par étape :
