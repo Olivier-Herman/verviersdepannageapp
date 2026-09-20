@@ -14,6 +14,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
+import { nativeSpeechAvailable, nativeListen, nativeStop } from '@/lib/native/speech'
 
 type Active = { id: string; plate: string; status: string; label: string }
 type Fields = {
@@ -50,7 +51,7 @@ export default function VocalClient({ zones, active, firstName }: { zones: strin
   const [phase, setPhase] = useState<'idle' | 'listening' | 'thinking' | 'speaking' | 'done'>('idle')
   const [log, setLog] = useState<Line[]>([])
   const [err, setErr] = useState('')
-  const [mode, setMode] = useState<'native' | 'server' | 'none'>('none')
+  const [mode, setMode] = useState<'ios' | 'native' | 'server' | 'none'>('none')
   const [fields, setFields] = useState<Fields>({ type: null, plate: null, plateSpoken: null, brand: null, model: null, address: null, city: null, zone: null, officer: null, destination: null, destinationAddress: null })
   const fieldsRef = useRef(fields); fieldsRef.current = fields
   const recRef = useRef<any>(null)
@@ -59,11 +60,18 @@ export default function VocalClient({ zones, active, firstName }: { zones: strin
   const pendingResolve = useRef<((t: string) => void) | null>(null)
 
   useEffect(() => {
-    const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
-    if (SR) setMode('native')
-    else if (typeof MediaRecorder !== 'undefined' && typeof navigator.mediaDevices?.getUserMedia === 'function') setMode('server')
-    else setMode('none')
+    let alive = true
+    ;(async () => {
+      // 1) reconnaissance Apple du wrapper iOS (build ≥ 25) ; 2) celle du navigateur ;
+      // 3) enregistrement + transcription serveur ; 4) rien.
+      if (await nativeSpeechAvailable()) { if (alive) setMode('ios'); return }
+      const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
+      if (SR) setMode('native')
+      else if (typeof MediaRecorder !== 'undefined' && typeof navigator.mediaDevices?.getUserMedia === 'function') setMode('server')
+      else setMode('none')
+    })()
     try { window.speechSynthesis?.getVoices() } catch {}
+    return () => { alive = false }
   }, [])
 
   const say = async (text: string) => { setLog(l => [...l, { who: 'assistant', text }]); setPhase('speaking'); await speakText(text) }
@@ -72,7 +80,9 @@ export default function VocalClient({ zones, active, firstName }: { zones: strin
   // ── Écoute ──────────────────────────────────────────────────────────────────
   const listen = (): Promise<string> => new Promise(resolve => {
     setPhase('listening'); pendingResolve.current = resolve
-    if (mode === 'native') {
+    if (mode === 'ios') {
+      nativeListen({ silenceMs: 1500, maxMs: 12000 }).then(t => { pendingResolve.current = null; resolve(t) })
+    } else if (mode === 'native') {
       const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
       const rec = new SR(); recRef.current = rec
       rec.lang = 'fr-BE'; rec.interimResults = false; rec.maxAlternatives = 1; rec.continuous = false
@@ -100,7 +110,7 @@ export default function VocalClient({ zones, active, firstName }: { zones: strin
       }).catch(() => { setErr('Micro refusé'); resolve('') })
     } else { setErr('Pas de reconnaissance vocale sur cet appareil'); resolve('') }
   })
-  const stopListening = () => { try { recRef.current?.stop() } catch {} try { if (mediaRef.current?.rec.state === 'recording') mediaRef.current.rec.stop() } catch {} }
+  const stopListening = () => { try { recRef.current?.stop() } catch {} try { if (mediaRef.current?.rec.state === 'recording') mediaRef.current.rec.stop() } catch {} if (mode === 'ios') nativeStop().catch(() => {}) }
 
   const interpret = async (step: string, transcript: string, context: any = {}) => {
     setPhase('thinking')
@@ -264,7 +274,7 @@ export default function VocalClient({ zones, active, firstName }: { zones: strin
             <div className={`flex-1 rounded-2xl px-4 py-4 text-center font-semibold ${phase === 'listening' ? 'bg-red-600 text-white animate-pulse' : phase === 'thinking' ? 'bg-amber-100 text-amber-900' : phase === 'speaking' ? 'bg-blue-100 text-blue-900' : 'bg-surface border text-ink'}`}>
               {phase === 'listening' ? '🔴 Je t\'écoute…' : phase === 'thinking' ? '⏳ Je réfléchis…' : phase === 'speaking' ? '🔊 …' : 'Terminé'}
             </div>
-            {phase === 'listening' && mode === 'server' && <button onClick={stopListening} className="px-4 py-4 rounded-2xl bg-ink text-white font-bold">Stop</button>}
+            {phase === 'listening' && (mode === 'server' || mode === 'ios') && <button onClick={stopListening} className="px-4 py-4 rounded-2xl bg-ink text-white font-bold">Stop</button>}
             {phase !== 'done' ? <button onClick={cancel} className="px-4 py-4 rounded-2xl border text-ink">Annuler</button> : <button onClick={start} className="px-4 py-4 rounded-2xl bg-brand text-white font-bold">Recommencer</button>}
           </div>
         )}
