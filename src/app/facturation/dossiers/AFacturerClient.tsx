@@ -46,7 +46,7 @@ const inGroup = (d: Dossier, g: SourceGroup) => {
 }
 
 type AutoInfo = { status: string; eligibleAt?: string; reason?: string }
-type ComexInfo = { verdict: string | null; montant: number | null; accepted_at: string | null; dossier: string | null }
+type ComexInfo = { id: string; verdict: string | null; montant: number | null; accepted_at: string | null; dossier: string | null }
 
 const isOdoo = (l: DossierLeg) => (l.channel || 'odoo') === 'odoo'
 const ready  = (d: Dossier) => d.legs.filter(l => isOdoo(l) && (canPickLeg(l) || (l.amount_unknown && !isLegBilled(l) && !l.nothing_to_bill)) && !(l.kind === 'gard' && l.open))
@@ -67,7 +67,7 @@ interface Reading {
   who: Who
   headline: string
   detail?: string
-  primary?: { label: string; kind: 'bill' | 'bill_ready' | 'link' | 'dossier' | 'odoo' | 'verify' | 'allianz'; href?: string; tone?: 'brand' | 'ghost' | 'sky' }
+  primary?: { label: string; kind: 'bill' | 'bill_ready' | 'link' | 'dossier' | 'odoo' | 'verify' | 'allianz' | 'comex'; href?: string; tone?: 'brand' | 'ghost' | 'sky' }
   steps: Step[]
 }
 
@@ -112,7 +112,22 @@ function readDossier(d: Dossier, ai: AutoInfo | undefined, comex: ComexInfo | un
     }
     return { ...base, who: 'fini', headline: 'Rien à facturer', detail: d.legs.map(l => l.nothing_to_bill).filter(Boolean)[0] || undefined }
   }
-  if (inComex) return { ...base, who: 'eux', headline: `Chez Touring (COMEX BKO) — ${comex!.verdict === 'verify' ? 'à vérifier' : 'en attente de validation'}`, detail: `Dossier ${comex!.dossier || '—'}${comex!.montant != null ? ` · montant Touring ${eur(Number(comex!.montant))}` : ''}. Pas de facture avant l'accord Touring.`, primary: { label: 'Ouvrir COMEX', kind: 'link', href: '/touring-comex', tone: 'ghost' } }
+  if (inComex) {
+    // Comparaison des deux montants, comme dans le module COMEX : c'est elle qui
+    // décide si on valide sans regarder. L'écart est vu du côté Touring : positif
+    // = Touring paie plus que ce qu'on demande.
+    const tm = comex!.montant != null ? Number(comex!.montant) : null
+    const nous = rest(d)
+    const ecart = tm != null ? tm - nous : null
+    const cmp = tm != null
+      ? `Touring ${eur(tm)} · nous ${eur(nous)} · ${ecart! >= 0.01 ? `+${eur(ecart!)} en notre faveur` : ecart! <= -0.01 ? `${eur(ecart!)} de manque` : 'montants identiques'}`
+      : 'Montant Touring pas encore publié'
+    const accord = comex!.verdict === 'verify' ? 'Écart à regarder avant de valider.' : 'Prêt à valider.'
+    return { ...base, who: 'eux',
+      headline: `Chez Touring (COMEX BKO) — ${comex!.verdict === 'verify' ? 'à vérifier' : 'en attente de validation'}`,
+      detail: `Dossier ${comex!.dossier || '—'} · ${cmp}. ${accord} La validation écrit chez Touring et crée la facture.`,
+      primary: { label: 'Valider et facturer', kind: 'comex', tone: comex!.verdict === 'verify' ? 'ghost' : 'sky' } }
+  }
   if (isCircuitLegs(d)) {
     const ef = d.parquet?.efs?.length ? d.parquet.efs[d.parquet.efs.length - 1] : null
     return d.parquet
@@ -282,7 +297,27 @@ export default function AFacturerClient({ initial, autoById, comexById = {}, isS
     else if (p.kind === 'bill_ready') openBilling(d)
     else if (p.kind === 'dossier') router.push(`/dispatch/dossier/${d.root_id}`)
     else if (p.kind === 'allianz') closeAllianz(d)
+    else if (p.kind === 'comex') acceptComex(d)
     else if ((p.kind === 'link' || p.kind === 'odoo') && p.href) { if (p.kind === 'odoo') window.open(p.href, '_blank'); else router.push(p.href) }
+  }
+  // Validation COMEX BKO depuis la carte : même appel que le module Touring
+  // COMEX (écriture chez Touring + auto-facturation). Olivier 21/09 : la
+  // comparaison des montants et la validation doivent rester ici.
+  const acceptComex = async (d: Dossier) => {
+    const c = comexById[d.root_id]
+    if (!c?.id) { setReport('⚠ Dossier COMEX introuvable — passe par le module Touring COMEX.'); return }
+    const tm = c.montant != null ? Number(c.montant) : null
+    const ecart = tm != null ? tm - rest(d) : null
+    if (!window.confirm(`Valider ${d.ref} · ${d.vehicle.plate || ''} chez Touring ?\n\nDossier ${c.dossier || '—'}${tm != null ? `\nTouring ${eur(tm)} · nous ${eur(rest(d))}${ecart != null ? ` · écart ${eur(ecart)}` : ''}` : ''}\n\nÉcriture réelle chez Touring, puis facture automatique.`)) return
+    setBusy(d.root_id); setReport(null)
+    try {
+      const res = await fetch('/api/touring/comex-bko/accept', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ids: [c.id] }) })
+      const j = await res.json().catch(() => ({}))
+      if (!res.ok || !j?.accepted) { setReport(`⚠ Validation refusée : ${j?.error || (j?.results || []).map((x: any) => x.error).filter(Boolean)[0] || `HTTP ${res.status}`}`); return }
+      setReport(`✓ ${d.ref} validé chez Touring · facture en cours de création`)
+      await refreshOne(d.root_id); loadAuto()
+      setTimeout(() => { refreshOne(d.root_id); loadAuto() }, 5000)
+    } catch (e: any) { setReport(`⚠ ${e?.message || 'Erreur'}`) } finally { setBusy(null) }
   }
   // Clôture Hexalite depuis la carte (Olivier 16/09 : « autant qu'en cliquant
   // dessus, la clôture se fasse »). Même appel que la page Clôture Allianz :
@@ -469,6 +504,7 @@ export default function AFacturerClient({ initial, autoById, comexById = {}, isS
               <button onClick={() => setOpen(s => { const n = new Set(s); n.has(d.root_id) ? n.delete(d.root_id) : n.add(d.root_id); return n })} className="text-ink-secondary hover:text-ink font-semibold">{isOpen ? '▾' : '▸'} Détails · {d.legs.length} groupe{d.legs.length > 1 ? 's' : ''}{d.invoices.length ? ` · ${d.invoices.length} facture${d.invoices.length > 1 ? 's' : ''}` : ''}</button>
               <span className="ml-auto flex items-center gap-3">
                 {d.legs.some(l => l.billed_refs.some(x => /^brouillon Odoo/i.test(x))) && <button disabled={busy === d.root_id} onClick={async () => { setBusy(d.root_id); try { await fetch(`/api/dossier/${d.root_id}/verify-invoices`, { method: 'POST' }); await refreshOne(d.root_id) } finally { setBusy(null) } }} className="text-ink-secondary hover:text-ink">Vérifier la facture</button>}
+                {comexById[d.root_id] && !comexById[d.root_id].accepted_at && <Link href="/touring-comex" className="text-ink-secondary hover:text-ink">Ouvrir COMEX ↗</Link>}
                 <Link href={`/dispatch/dossier/${d.root_id}`} className="text-ink-secondary hover:text-ink">Vue dossier ↗</Link>
               </span>
             </div>
