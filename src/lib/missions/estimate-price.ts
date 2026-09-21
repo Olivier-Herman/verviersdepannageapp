@@ -397,7 +397,7 @@ function kmUnknownReason(mission: MissionLike): string {
   return 'kilomètres inconnus : itinéraire indisponible pour le moment (service de calcul de distance en erreur) — recalcule dans quelques minutes'
 }
 
-export async function estimateMissionPrice(mission: MissionLike, opts?: { skipRelShortcut?: boolean; noChainKm?: boolean }): Promise<PriceEstimate> {
+export async function estimateMissionPrice(mission: MissionLike, opts?: { skipRelShortcut?: boolean; noChainKm?: boolean; relAfterIncluded?: boolean }): Promise<PriceEstimate> {
   const source = (mission.source || '').toLowerCase().trim()
   const missionType = canonicalType(mission.mission_type)
 
@@ -630,12 +630,14 @@ export async function estimateMissionPrice(mission: MissionLike, opts?: { skipRe
 
   let kmInclus = Number(tariff.km_inclus || 0)
   let chainInclusNote = ''
-  // Olivier 07/09/2026 — Touring compte les km additionnels sur le TOTAL du
-  // dossier : (km remorquage + km relivraison) − km inclus du forfait. Une REL
-  // Touring hérite donc de ce que le remorquage n'a pas consommé du forfait
-  // (20 km inclus, REM de 12 km → la REL a encore 8 km inclus). Avant, la REL
-  // partait de 0 km inclus et surfacturait ces km-là.
-  if (source === 'touring' && missionType === 'relivraison' && mission.id && !opts?.noChainKm) {
+  // Olivier 07/09/2026 — Touring (et VAB depuis le 21/09) compte les km
+  // additionnels sur le TOTAL du dossier : (km remorquage + km relivraison) −
+  // km inclus du forfait. Une REL hérite donc de ce que le remorquage n'a pas
+  // consommé du forfait (20 km inclus, REM de 12 km → la REL a encore 8 km
+  // inclus). Avant, la REL partait de 0 km inclus et surfacturait ces km-là.
+  // Olivier 21/09/2026 : règle « km après les inclus du dossier » de la ligne
+  // relivraison (Touring, VAB), plus une exception codée sur la source.
+  if (opts?.relAfterIncluded && missionType === 'relivraison' && mission.id && !opts?.noChainKm) {
     const left = await dossierIncludedKmLeft(sb, mission).catch(() => null)
     if (left) {
       kmInclus = left.km
@@ -1339,9 +1341,10 @@ async function estimateRelivraisonPrice(
   // « Pour la grille relivraison, ça dépend de chaque assistance. » La ligne
   // relivraison de source_tariffs porte la règle (rel_mode + rel_depart), plus
   // aucune exception par assisteur dans le code :
-  //   • forfait    → calcul standard forfait + km inclus + prix du km (Ethias,
-  //                  Kaze, P&V, VAB, Touring — Touring garde le dépôt le plus
-  //                  proche et le report des km inclus du dossier, dans ce calcul)
+  //   • forfait    → calcul standard forfait + km inclus + prix du km
+  //   • after_included → idem, mais les km inclus du dossier (ce que le
+  //                  remorquage a laissé) se déduisent des km de la relivraison :
+  //                  un seul forfait, un seul lot de km inclus (Touring, VAB)
   //   • rem_tariff → même calcul qu'un remorquage (tranches AXA / Ardenne)
   //   • all_km     → km aller-retour × prix du km, sans prise en charge
   //                  (Mondial/Allianz, Vivium, TGR)
@@ -1355,11 +1358,13 @@ async function estimateRelivraisonPrice(
     .lte('effective_from', today)
     .order('effective_from', { ascending: false })
   const relRow = (relRows || []).find(t => !t.effective_to || t.effective_to >= today) || null
-  const relMode: 'forfait' | 'rem_tariff' | 'all_km' | null = relRow ? ((relRow.rel_mode as any) || 'forfait') : null
+  const relMode: 'forfait' | 'after_included' | 'rem_tariff' | 'all_km' | null = relRow ? ((relRow.rel_mode as any) || 'forfait') : null
   const relDepart: 'parc' | 'nearest_depot' = relRow?.rel_depart === 'nearest_depot' ? 'nearest_depot' : 'parc'
 
-  if (relMode === 'forfait') {
-    return await estimateMissionPrice(mission, { skipRelShortcut: true })
+  if (relMode === 'forfait' || relMode === 'after_included') {
+    // Calcul standard de la grille ; after_included = les km inclus du dossier
+    // (ce que le remorquage a laissé) se déduisent des km de la relivraison.
+    return await estimateMissionPrice(mission, { skipRelShortcut: true, relAfterIncluded: relMode === 'after_included' })
   }
 
   let parentSource = source

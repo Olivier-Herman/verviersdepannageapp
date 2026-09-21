@@ -36,7 +36,7 @@ interface Tariff {
   // Mode brackets (IPA: AXA + Ardenne Prevoyante) | lines (lignes pre-configurees)
   pricing_mode:          'forfait' | 'brackets' | 'lines'
   // Lignes relivraison (Olivier 21/09/2026) : la règle par assisteur vit ici.
-  rel_mode?:             'all_km' | 'rem_tariff' | 'forfait' | null
+  rel_mode?:             'all_km' | 'after_included' | 'rem_tariff' | 'forfait' | null
   rel_depart?:           'parc' | 'nearest_depot'
   beyond_max_km:         number | null
   beyond_max_step_km:    number | null
@@ -106,11 +106,12 @@ interface ExtractedTariff {
 // grille forfait saisie ici serait ignorée par le moteur. Le libellé reste pour
 // afficher d'éventuelles anciennes lignes.
 const REL_MODE_LABELS: Record<string, string> = {
-  all_km:     'Tous les km — km aller-retour × prix du km, sans prise en charge',
+  all_km:         'Tous les km — km aller-retour × prix du km, sans prise en charge',
+  after_included: 'Km après les inclus du dossier — un seul forfait et un seul lot de km inclus par dossier, la relivraison facture les km au-delà',
   rem_tariff: 'Tarif remorquage — même calcul qu\'un remorquage (tranches)',
   forfait:    'Forfait + km inclus — prise en charge, km inclus, prix du km',
 }
-const REL_MODE_SHORT: Record<string, string> = { all_km: 'Tous les km', rem_tariff: 'Tarif remorquage', forfait: 'Forfait + km inclus' }
+const REL_MODE_SHORT: Record<string, string> = { all_km: 'Tous les km', after_included: 'Km après les inclus du dossier', rem_tariff: 'Tarif remorquage', forfait: 'Forfait + km inclus' }
 const REL_DEPART_LABELS: Record<string, string> = { parc: 'Parc', nearest_depot: 'Dépôt le plus proche du lieu d\'origine' }
 const MISSION_TYPES = [...MISSION_TYPE_KEYS.filter(k => k !== 'reparation_place' && k !== 'autre' && k !== 'transport'), 'parc']
 
@@ -944,16 +945,16 @@ export default function TarifsClient(props: Props) {
                         La relivraison se calcule avec la grille <strong>Remorquage</strong> de cette source. Rien d'autre à régler ici.
                       </div>
                     )}
-                    {editTariff.source === 'touring' && (
+                    {(editTariff.rel_mode || 'forfait') === 'after_included' && (
                       <div className="col-span-2 bg-brand/5 border border-brand/20 rounded p-2 text-xs text-ink-faint">
-                        Touring : les km inclus du dossier sont reportés sur la relivraison (ce que le remorquage n'a pas consommé). Règle fixe.
+                        Le forfait est facturé sur le remorquage ; la relivraison ne facture que les km au-delà des km inclus que le remorquage n'a pas consommés (total du dossier).
                       </div>
                     )}
                   </>
                 )}
 
                 {/* Champs forfait — masques si mode brackets, ou si la relivraison n'est pas en mode forfait */}
-                {(editTariff.pricing_mode || 'forfait') === 'forfait' && !(editTariff.mission_type === 'relivraison' && (editTariff.rel_mode || 'forfait') !== 'forfait') && (
+                {(editTariff.pricing_mode || 'forfait') === 'forfait' && !(editTariff.mission_type === 'relivraison' && !['forfait', 'after_included'].includes(editTariff.rel_mode || 'forfait')) && (
                   <>
                     <FieldNumber label="Forfait €" value={editTariff.unit_price ?? null} onChange={v => setEditTariff(p => ({ ...p!, unit_price: v }))} />
                     <FieldNumber label="Km inclus" value={editTariff.km_inclus ?? 0} onChange={v => setEditTariff(p => ({ ...p!, km_inclus: v ?? 0 }))} />
