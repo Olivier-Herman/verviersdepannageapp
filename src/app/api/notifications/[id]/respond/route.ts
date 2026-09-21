@@ -56,6 +56,16 @@ export async function POST(req: Request, { params }: { params: { id: string } })
       .update({ responded_at: now, read_at: now, payload: { ...n.payload, data: { ...d, answer: { choice: choice.key, label: choice.label, comment, at: now } } } })
       .eq('id', params.id).is('responded_at', null)
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+    // Le premier qui répond décide : fermeture chez les autres destinataires du groupe.
+    if (d.request_group) {
+      await sb.from('notifications_log').update({ responded_at: now, read_at: now })
+        .eq('notif_type', 'question_equipe').is('responded_at', null).eq('payload->data->>request_group', d.request_group)
+    }
+    // Action métier attachée à la question (ex. doublon Touring : annuler / garder). 21/09/2026.
+    if (d.on_answer?.kind) {
+      try { const { applyQuestionAnswer } = await import('@/lib/notifications/question-actions'); await applyQuestionAnswer(sb, d.on_answer, choice.key, userId) }
+      catch (e: any) { console.error('[respond] action question KO:', e?.message) }
+    }
     const { data: me } = await sb.from('users').select('name').eq('id', userId).maybeSingle()
     const { sendNotification } = await import('@/lib/notifications/send')
     for (const uid of (d.notify_user_ids || []) as string[]) {

@@ -99,7 +99,36 @@ export async function neutralizeTouringDuplicates(sb: any): Promise<{ ignored: n
       continue
     }
 
-    // Sinon : vrai doublon de ré-affectation → neutralisation (comportement d'origine).
+    // Sœur déjà CLÔTURÉE (intervention faite) : ce n'est pas forcément un doublon —
+    // Touring renvoie parfois une VRAIE seconde intervention sur le même dossier
+    // (HL617PH 20/09 : REM après un DSP clôturé, ignorée à tort). Olivier 21/09/2026 :
+    // « la question doit être posée au dispatch ». On garde la fiche en `new` et on
+    // demande : doublon à annuler, ou nouvelle mission ? (une seule fois par fiche)
+    if (['completed', 'to_invoice', 'invoiced', 'parked'].includes(String(sibling.status))) {
+      const { data: full } = await sb.from('incoming_missions').select('id, mission_number, vehicle_plate, vehicle_brand, vehicle_model, incident_city, incident_address, dup_question_at').eq('id', n.id).maybeSingle()
+      if (full?.dup_question_at) { refs.push(`#${n.mission_number} (question posée)`); continue }
+      const { data: sib } = await sb.from('incoming_missions').select('mission_number, mission_type, completed_at, on_site_at, assigned_to').eq('id', sibling.id).maybeSingle()
+      let who = 'un chauffeur'
+      if (sib?.assigned_to) { const { data: u } = await sb.from('users').select('name').eq('id', sib.assigned_to).maybeSingle(); who = u?.name || who }
+      const when = sib?.completed_at || sib?.on_site_at
+      const whenTxt = when ? new Date(when).toLocaleString('fr-BE', { timeZone: 'Europe/Brussels', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : 'récemment'
+      const { askTeamQuestion, dispatchUserIds } = await import('@/lib/notifications/question')
+      const ids = await dispatchUserIds(sb)
+      const vehicle = [full?.vehicle_brand, full?.vehicle_model].filter(Boolean).join(' ')
+      await askTeamQuestion(ids, {
+        title: `Touring renvoie ${full?.vehicle_plate || 'un véhicule'} (dossier ${n.dossier_number}) : doublon ou nouvelle mission ?`,
+        body: `${vehicle ? vehicle + ' · ' : ''}${full?.incident_city || full?.incident_address || ''}\nUne intervention a déjà eu lieu sur ce dossier le ${whenTxt} par ${who} (fiche #${sib?.mission_number}, ${sib?.mission_type || ''}). Touring vient d'envoyer la fiche #${n.mission_number}.\nDoublon → elle est annulée. Nouvelle mission → elle reste à dispatcher.`,
+        choices: [{ key: 'doublon', label: '🗑️ Doublon, annuler', tone: 'red' }, { key: 'nouvelle', label: '🚛 Nouvelle mission, garder', tone: 'green' }],
+        allowComment: false, group: `touring-dup-${n.id}`, actionUrl: `/dispatch/${n.id}`,
+        onAnswer: { kind: 'touring_duplicate', mission_id: n.id, sibling_mission_number: sib?.mission_number || null },
+      })
+      await sb.from('incoming_missions').update({ dup_question_at: now, updated_at: now }).eq('id', n.id)
+      await sb.from('mission_logs').insert({ mission_id: n.id, action: 'note', notes: `Dossier Touring déjà intervenu (fiche #${sib?.mission_number} par ${who}, ${whenTxt}) — question posée au dispatch : doublon ou nouvelle mission ?`, metadata: { dedup_question: true, sibling: sib?.mission_number || null } }).then(() => {}, () => {})
+      refs.push(`#${n.mission_number} (question au dispatch)`)
+      continue
+    }
+
+    // Sinon (sœur encore en cours) : vrai doublon de ré-affectation → neutralisation (comportement d'origine).
     const { error } = await sb.from('incoming_missions')
       .update({ status: 'ignored', updated_at: now }).eq('id', n.id)
     if (error) continue

@@ -18,17 +18,29 @@ export interface QuestionChoice { key: string; label: string; tone?: 'green' | '
 export async function askTeamQuestion(userIds: string[], q: {
   title: string; body: string; choices: QuestionChoice[]
   notifyUserIds?: string[]; askedBy?: string | null; allowComment?: boolean
+  /** Même question posée à plusieurs : le premier qui répond ferme chez les autres. */
+  group?: string | null
+  /** Action métier appliquée par le serveur à la réponse (cf. respond/route.ts → applyQuestionAnswer). */
+  onAnswer?: Record<string, any> | null
+  actionUrl?: string | null
 }): Promise<{ sent: number; ids: string[] }> {
   const ids: string[] = []
   for (const userId of userIds) {
     const r = await sendNotification(userId, 'question_equipe', {
-      title: q.title, body: q.body,
+      title: q.title, body: q.body, action_url: q.actionUrl || undefined,
       data: {
         question: true, choices: q.choices, comment: q.allowComment !== false,
         notify_user_ids: q.notifyUserIds || [], asked_by: q.askedBy || null,
+        request_group: q.group || null, on_answer: q.onAnswer || null,
       },
     })
     if (r.ok && r.log_id) ids.push(r.log_id)
   }
   return { sent: ids.length, ids }
+}
+
+/** Destinataires « dispatch » d'une question : dispatchers + admins + superadmins actifs. */
+export async function dispatchUserIds(sb: any): Promise<string[]> {
+  const { data } = await sb.from('users').select('id, role, roles, active').eq('active', true)
+  return (data || []).filter((u: any) => [u.role, ...(Array.isArray(u.roles) ? u.roles : [])].some((r: string) => ['dispatcher', 'admin', 'superadmin'].includes(r))).map((u: any) => u.id)
 }
