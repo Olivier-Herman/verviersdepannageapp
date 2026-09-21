@@ -160,7 +160,7 @@ export async function POST(req: Request) {
 
   const { data: mission, error: fetchError } = await supabase
     .from('incoming_missions')
-    .select('id, status, assigned_to, external_id, vehicle_plate, vehicle_vin, vehicle_brand, vehicle_model, amount_to_collect, source, source_format, saisie_motif_code, extra_addresses, driver_photos, odoo_task_id, odoo_vehicle_id, mission_type, photo_categories_covered, kaze_job_id, axa_mission_order_id, dossier_number, client_signature, snc_scenario, snc_requires_balisage, incident_lat, incident_lng, destination_address, destination_lat, destination_lng, billed_to_id, billed_to_name, redelivery_address, truck_id, intervention_date, received_at, completed_at, invoice_number, invoice_odoo_id, odoo_quote_id')
+    .select('id, status, assigned_to, external_id, vehicle_plate, vehicle_vin, vehicle_mileage, vehicle_brand, vehicle_model, amount_to_collect, source, source_format, saisie_motif_code, extra_addresses, driver_photos, odoo_task_id, odoo_vehicle_id, mission_type, photo_categories_covered, kaze_job_id, axa_mission_order_id, dossier_number, client_signature, snc_scenario, snc_requires_balisage, incident_lat, incident_lng, destination_address, destination_lat, destination_lng, billed_to_id, billed_to_name, redelivery_address, truck_id, intervention_date, received_at, completed_at, invoice_number, invoice_odoo_id, odoo_quote_id')
     .eq('id', mission_id).single()
 
   if (fetchError || !mission) return NextResponse.json({ error: 'Mission introuvable' }, { status: 404 })
@@ -693,22 +693,35 @@ export async function POST(req: Request) {
   // fiche part complète (inventaire + facturation). Repli plaque = 5 derniers du
   // VIN si aucune plaque lisible. Olivier 2026-07-13 / clôture 2026-07-14 (cas
   // 10064044 : clôturée sans VIN alors que le VIN est sur les photos).
-  if (['park', 'completed', 'complete_delivery'].includes(action)) {
+  // Olivier 21/09/2026 (2JDX629, Fred Bovy) : « pourquoi ça ne se complète pas
+  // sur sa mise en parc ? » — la lecture ne partait qu'à la mise en parc / clôture
+  // et ne lisait jamais le COMPTEUR ; entre le chargement et la clôture la fiche
+  // restait sans châssis ni km pendant plus d'une heure. Désormais : dès que des
+  // photos arrivent (save_photos, chargement, mise en parc, clôture), on lit
+  // châssis + plaque + kilométrage et on complète UNIQUEMENT ce qui manque.
+  if (['save_photos', 'load_vehicle', 'park', 'completed', 'complete_delivery'].includes(action)) {
     const plateEmpty = !((mission.vehicle_plate || '').trim())
     const vinEmpty   = !(((mission as any).vehicle_vin || '').trim())
-    const ocrPhotos: string[] = (closing_data?.photo_urls?.length ? closing_data.photo_urls : mission.driver_photos) || []
-    if ((plateEmpty || vinEmpty) && ocrPhotos.length > 0) {
-      const ctx = action === 'park' ? 'mise en parc' : 'clôture'
+    const kmEmpty    = (mission as any).vehicle_mileage == null && updatePayload.vehicle_mileage == null
+    const ocrPhotos: string[] = (closing_data?.photo_urls?.length ? closing_data.photo_urls
+      : (action === 'save_photos' && Array.isArray(body.photo_urls) && body.photo_urls.length) ? body.photo_urls
+      : mission.driver_photos) || []
+    if ((plateEmpty || vinEmpty || kmEmpty) && ocrPhotos.length > 0) {
+      const ctx = action === 'park' ? 'mise en parc' : action === 'save_photos' ? 'photos' : action === 'load_vehicle' ? 'chargement' : 'clôture'
       const ocrBg = (async () => {
         try {
           const { detectVehicleFromImages } = await import('@/lib/ocr/vehicle-detect')
-          const { plate, vin } = await detectVehicleFromImages(ocrPhotos.slice(0, 6))
+          // Les dernières photos d'abord (compteur et châssis sont souvent pris en dernier), 12 max.
+          const { plate, vin, mileage } = await detectVehicleFromImages([...ocrPhotos].reverse().slice(0, 12))
+          // Relecture juste avant d'écrire : un autre passage (clôture flux 2) a pu remplir entre-temps.
+          const { data: fresh } = await supabase.from('incoming_missions').select('vehicle_plate, vehicle_vin, vehicle_mileage').eq('id', mission_id).maybeSingle()
           const upd: Record<string, any> = {}
-          if (vinEmpty   && vin?.value)   upd.vehicle_vin   = vin.value
-          if (plateEmpty && plate?.value) upd.vehicle_plate = plate.value
+          if (!((fresh?.vehicle_vin || '').trim()) && vin?.value)        upd.vehicle_vin     = vin.value
+          if (!((fresh?.vehicle_plate || '').trim()) && plate?.value)    upd.vehicle_plate   = plate.value
+          if (fresh?.vehicle_mileage == null && mileage?.value != null)  upd.vehicle_mileage = mileage.value
           // Repli : aucune plaque lisible mais VIN connu → 5 derniers du châssis.
-          if (plateEmpty && !upd.vehicle_plate) {
-            const knownVin = (vin?.value || (mission as any).vehicle_vin || '').trim()
+          if (!((fresh?.vehicle_plate || '').trim()) && !upd.vehicle_plate) {
+            const knownVin = (vin?.value || fresh?.vehicle_vin || '').trim()
             if (knownVin.length >= 5) upd.vehicle_plate = knownVin.slice(-5)
           }
           if (Object.keys(upd).length > 0) {
@@ -716,7 +729,11 @@ export async function POST(req: Request) {
             await supabase.from('incoming_missions').update(upd).eq('id', mission_id)
             await supabase.from('mission_logs').insert({
               mission_id, actor_id: actor.id, action: 'vehicle_ocr_autofill',
-              notes: `VIN/plaque complété(s) auto depuis les photos (${ctx}) : ${Object.entries(upd).filter(([k]) => k !== 'updated_at').map(([k, v]) => `${k}=${v}`).join(', ')}`,
+              notes: `Lu sur les photos (${ctx}) : ${[
+                upd.vehicle_vin ? `châssis ${upd.vehicle_vin}` : null,
+                upd.vehicle_plate ? `plaque ${upd.vehicle_plate}` : null,
+                upd.vehicle_mileage != null ? `${upd.vehicle_mileage} km` : null,
+              ].filter(Boolean).join(' · ')}`,
               metadata: { source: `${action}_ocr`, filled: upd },
             }).then(() => {}, () => {})
           }

@@ -39,6 +39,14 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   const photos: string[] = ((m as any).driver_photos as string[]) || []
   if (photos.length === 0) return NextResponse.json({ vin: null, km: null, photos: 0 })
 
+  // Olivier 21/09/2026 (2JDX629) : la fiche a déjà les deux valeurs (lues en
+  // arrière-plan aux photos, ou tapées) → on les rend tout de suite, sans
+  // relancer une lecture de 12 photos qui pouvait dépasser le délai et laisser
+  // les cases vides à l'écran.
+  if ((m as any).vehicle_vin && (m as any).vehicle_mileage != null) {
+    return NextResponse.json({ vin: (m as any).vehicle_vin, km: (m as any).vehicle_mileage, read: { vin: false, km: false }, photos: photos.length, cached: true })
+  }
+
   try {
     // ⚠️ On ratisse TOUT le lot, pas seulement la fin. « Elles seront toujours
     // classées "autre" : les chauffeurs n'utilisent pas les catégories. Il faut
