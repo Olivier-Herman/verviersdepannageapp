@@ -25,6 +25,14 @@ const FOURRIERE_FROM = 'fourriere@verviersdepannage.be'
  *  « quand ce sont des frais de justice, on doit envoyer à une adresse spécifique »).
  *  Avant, seule la saisie judiciaire était routée vers cette boîte : une levée
  *  « frais de justice » sur un motif SAISIE partait au Parquet (#10143374, 19/09). */
+/** Libellé véhicule pour l'objet du mail et le nom des pièces : plaque, sinon châssis (plaque « ????? » à la saisie, 10143374). */
+export function vehicleLabel(plate?: string | null, vin?: string | null): string {
+  const p = String(plate || '').trim()
+  if (p && !/^[?\-_.\s]+$/.test(p)) return p
+  const v = String(vin || '').trim()
+  return v || 'véhicule'
+}
+
 export function isFraisDeJustice(motifCode?: string | null, leveePayer?: string | null): boolean {
   return String(motifCode || '').toUpperCase() === 'SAISIE_JUDICIAIRE' || String(leveePayer || '') === 'frais_justice'
 }
@@ -425,11 +433,11 @@ export async function resendEtatFrais(sb: any, dossierId: string, efRowId: strin
         const buf = Buffer.from(await blob.arrayBuffer())
         const ext = (reqDocPath.split('.').pop() || 'pdf').toLowerCase()
         const ct = ext === 'pdf' ? 'application/pdf' : ext === 'png' ? 'image/png' : (ext === 'jpg' || ext === 'jpeg') ? 'image/jpeg' : 'application/octet-stream'
-        attachments.push({ name: `requisitoire-${plate || 'vehicule'}.${ext}`, contentType: ct, contentBytes: buf.toString('base64') })
+        attachments.push({ name: `requisitoire-${vehicleLabel(plate, vin)}.${ext}`, contentType: ct, contentBytes: buf.toString('base64') })
       }
     } catch (e: any) { console.warn('[saisie] réquisitoire non joint :', e?.message) }
   }
-  const subject = `État de frais ${gen.numero} — ${plate || 'véhicule'} (version corrigée)`
+  const subject = `État de frais ${gen.numero} — ${vehicleLabel(plate, vin)} (version corrigée)`
   try {
     await sendEmail(dest.email, subject, buildEfEmailHtml(d, gen.numero, Number(ef.total_tvac || 0), validationLink(token), vin), dest.label, undefined, attachments, FOURRIERE_FROM)
   } catch (e: any) { return { ok: false, error: `Envoi impossible : ${e?.message || e}` } }
@@ -542,12 +550,12 @@ export async function sendEtatFrais(
         const buf = Buffer.from(await blob.arrayBuffer())
         const ext = (reqDocPath.split('.').pop() || 'pdf').toLowerCase()
         const ct = ext === 'pdf' ? 'application/pdf' : ext === 'png' ? 'image/png' : (ext === 'jpg' || ext === 'jpeg') ? 'image/jpeg' : 'application/octet-stream'
-        attachments.push({ name: `requisitoire-${d.vehicle_plate || 'vehicule'}.${ext}`, contentType: ct, contentBytes: buf.toString('base64') })
+        attachments.push({ name: `requisitoire-${vehicleLabel(d.vehicle_plate, vin)}.${ext}`, contentType: ct, contentBytes: buf.toString('base64') })
       }
     } catch (e: any) { console.warn('[saisie] réquisitoire non joint :', e?.message) }
   }
 
-  const subject = `${gens.length > 1 ? `États de frais ${numeroLabel}` : `État de frais ${gen.numero}`} — ${d.vehicle_plate || 'véhicule'}`
+  const subject = `${gens.length > 1 ? `États de frais ${numeroLabel}` : `État de frais ${gen.numero}`} — ${vehicleLabel(d.vehicle_plate, vin)}`
   try {
     await sendEmail(
       dest.email, subject, buildEfEmailHtml(d, numeroLabel, totalTvacAll, validationLink(token), vin),
