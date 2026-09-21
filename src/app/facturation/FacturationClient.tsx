@@ -111,6 +111,8 @@ interface Props {
   billingGroups?: Record<string, string[]>
   userRole:    string
   dossierView?: boolean
+  /** Flag facturation_v2 actif pour ce user : l'écran est remplacé par « À facturer » (bandeau, temps 3 — Olivier 16-21/09/2026). */
+  replacedByV2?: boolean
   userName:    string
   userEmail?:  string | null
   userModules: string[]
@@ -176,7 +178,7 @@ function AutoFactBadge({ info, now }: { info?: AutoInfo; now: number }) {
 
 export default function FacturationClient({
   missions, siblings, payments, drivers, advances = [], billingRemarks = {}, sourceLabels = {}, billingGroups = {},
-  userRole, userName, userEmail, userModules, variant = 'general', dossierView = false,
+  userRole, userName, userEmail, userModules, variant = 'general', dossierView = false, replacedByV2 = false,
 }: Props) {
   const isTouring = variant === 'touring'
   const SOURCE_GROUPS = useMemo(() => buildGroups(billingGroups), [billingGroups])
@@ -585,6 +587,18 @@ export default function FacturationClient({
     <AppShell title={isTouring ? 'Facturation Touring' : 'Facturation'} userRole={userRole} userName={userName} userEmail={userEmail || undefined} userModules={userModules}>
       <AmbientBackground>
       <div className="p-4 lg:p-6 space-y-4">
+
+        {/* Extinction de la liste par fiche (temps 3, Olivier 16-21/09/2026) : la page
+            reste accessible par URL, mais les pilotes « À facturer » sont invités à y aller. */}
+        {replacedByV2 && !isTouring && (
+          <div className="ambient-fade-up flex items-center justify-between gap-3 flex-wrap rounded-2xl border border-amber-300 bg-amber-50 px-4 py-3">
+            <div className="text-sm text-amber-900">
+              <span className="font-bold">Cet écran est remplacé par « À facturer ».</span>{' '}
+              <span className="text-amber-800">Une frise par dossier, une seule prochaine action, le paiement lu tout seul. Cette liste par fiche reste consultable mais n'évolue plus.</span>
+            </div>
+            <a href="/facturation/dossiers" className="px-3.5 py-2 rounded-xl bg-brand hover:bg-brand-hover text-white text-sm font-bold shrink-0">Ouvrir « À facturer » →</a>
+          </div>
+        )}
 
         {/* Hero header */}
         <div className="ambient-fade-up flex items-start gap-3 mb-2">

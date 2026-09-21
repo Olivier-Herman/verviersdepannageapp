@@ -19,9 +19,9 @@ interface Hit { key: string; href: string; title: string; subtitle?: string; met
 
 const fold = (s: string) => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase()
 
-export default function NavPalette({ open, onClose, items, userRole, userModules, now = [], badges = {}, espaces = false }: {
+export default function NavPalette({ open, onClose, items, userRole, userModules, now = [], badges = {}, espaces = false, flags = {} }: {
   open: boolean; onClose: () => void
-  items: NavItem[]; userRole: string; userModules: string[]; espaces?: boolean
+  items: NavItem[]; userRole: string; userModules: string[]; espaces?: boolean; flags?: Record<string, boolean>
   now?: string[]; badges?: Record<string, number>
 }) {
   const router = useRouter()
@@ -31,7 +31,7 @@ export default function NavPalette({ open, onClose, items, userRole, userModules
   const [fiches, setFiches] = useState<Hit[]>([])
   const [loading, setLoading] = useState(false)
 
-  const modules = useMemo(() => buildNavTree(items, userRole, userModules, espaces), [items, userRole, userModules, espaces])
+  const modules = useMemo(() => buildNavTree(items, userRole, userModules, espaces, flags), [items, userRole, userModules, espaces, flags])
   const pages = useMemo<Hit[]>(() => {
     const out: Hit[] = []
     for (const m of modules) {

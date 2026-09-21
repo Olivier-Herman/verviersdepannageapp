@@ -24,13 +24,14 @@ interface Props {
   /** Flag `nav_menu_v2` résolu par l'AppShell (évite un second fetch). */
   navV2?:       boolean
   espaces?:     boolean
+  flags?:       Record<string, boolean>
   navNow?:      string[]
   navFavs?:     string[]
   onToggleFavorite?: (href: string) => void
   onOpenPalette?: () => void
 }
 
-export default function MobileNavDrawer({ open, onClose, userName, userRole, userEmail, userId, userModules, navBadges = {}, navV2 = false, espaces = false, navNow = [], navFavs = [], onToggleFavorite, onOpenPalette }: Props) {
+export default function MobileNavDrawer({ open, onClose, userName, userRole, userEmail, userId, userModules, navBadges = {}, navV2 = false, espaces = false, flags = {}, navNow = [], navFavs = [], onToggleFavorite, onOpenPalette }: Props) {
   const pathname = usePathname()
   const { data: session } = useSession()
   const userNavOrder = (session?.user as any)?.navOrder as string[] | null | undefined
@@ -98,6 +99,7 @@ export default function MobileNavDrawer({ open, onClose, userName, userRole, use
             onToggleFavorite={onToggleFavorite}
             onOpenPalette={onOpenPalette}
             espaces={espaces}
+            flags={flags}
             variant="drawer"
             onNavigate={onClose}
           />

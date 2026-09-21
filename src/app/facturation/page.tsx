@@ -49,6 +49,7 @@ export default async function FacturationPage({ searchParams }: { searchParams?:
       billingGroups={await billingGroups()}
       userRole={role}
       dossierView={role === 'superadmin' || await isPreviewOn('dossier_view', role, user.id)}
+      replacedByV2={await isPreviewOn('facturation_v2', role, user.id)}
       userName={user.name || ''}
       userEmail={user.email}
       userModules={modules}

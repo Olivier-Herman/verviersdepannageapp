@@ -86,19 +86,30 @@ function readDossier(d: Dossier, ai: AutoInfo | undefined, comex: ComexInfo | un
   const invoices = d.invoices || []
   const lastEnded = d.legs.map(l => l.ended_at).filter(Boolean).sort().pop() || null
   const mainInv = invoices[0]
+  // Temps 3 (Olivier 16-21/09/2026) : le statut « payée » est lu dans Odoo par le
+  // robot (paid_at) ; les relances J+15 / J+30 partent seules. Rien à cliquer ici.
+  const paid = !!d.paid
+  const lastReminder = invoices.map(i => i.reminder_30_at ? { at: i.reminder_30_at, level: 30 } : i.reminder_15_at ? { at: i.reminder_15_at, level: 15 } : null).filter(Boolean).sort((a, b) => String(b!.at).localeCompare(String(a!.at)))[0] || null
+  const partial = !paid && invoices.some(i => i.payment_state === 'partial')
+  const payNote = paid ? `payée le ${fmtDay(d.paid_at)}` : lastReminder ? `relancé le ${fmtDay(lastReminder.at)} (J+${lastReminder.level})` : partial ? 'partiellement payée' : 'suivi dans Odoo'
 
   const steps: Step[] = [
     { key: 'int', label: 'Intervention', state: 'done', note: fmtDay(d.received_at) },
     { key: 'clo', label: 'Clôture', state: d.state.open ? 'now' : 'done', note: d.state.open ? (d.state.reason || 'en cours') : fmtDT(lastEnded) },
     { key: 'amt', label: 'Montant', state: pending ? 'wait' : unknown ? 'bad' : 'done', note: pending ? 'calcul…' : unknown ? 'à calculer' : (rest(d) > 0 || invoices.length ? eur(rest(d) > 0 ? rest(d) : (invoices.reduce((s, i) => s + i.amount, 0))) + ' HTVA' : '0 €') },
     { key: 'fac', label: 'Facture', state: done && invoices.length ? 'done' : done ? 'done' : circuit ? 'wait' : (rd.length ? 'now' : 'todo'), note: done && invoices.length ? cleanRef(mainInv.number) : done ? (d.cancelled ? 'annulé' : 'rien à facturer') : circuit ? (inComex ? 'COMEX' : d.parquet ? 'Parquet' : 'Domaine') : undefined },
-    { key: 'pay', label: 'Payé', state: done && invoices.length ? 'now' : 'todo', note: done && invoices.length ? 'suivi dans Odoo' : d.totals.collected > 0 ? `${eur(d.totals.collected)} sur place` : undefined },
+    { key: 'pay', label: 'Payé', state: done && invoices.length ? (paid ? 'done' : 'now') : 'todo', note: done && invoices.length ? payNote : d.totals.collected > 0 ? `${eur(d.totals.collected)} sur place` : undefined },
   ]
   const base = { steps }
 
   if (d.cancelled) return { ...base, who: 'fini', headline: 'Dossier annulé' }
   if (done) {
-    if (invoices.length) return { ...base, who: 'client', headline: `Facture ${invoices.map(i => cleanRef(i.number)).join(', ')} émise${mainInv.at ? ` le ${fmtDay(mainInv.at)}` : ''}`, detail: `${eur(invoices.reduce((s, i) => s + i.amount, 0))} HTVA · ${invoices.map(i => i.client).filter(Boolean).join(', ')} · le paiement se suit dans Odoo.`, primary: mainInv.url ? { label: 'Ouvrir dans Odoo', kind: 'odoo', href: mainInv.url, tone: 'ghost' } : undefined }
+    if (invoices.length && paid) return { ...base, who: 'fini', headline: `Payée le ${fmtDay(d.paid_at)} — dossier terminé`, detail: `Facture ${invoices.map(i => cleanRef(i.number)).join(', ')} · ${eur(invoices.reduce((s, i) => s + i.amount, 0))} HTVA · ${invoices.map(i => i.client).filter(Boolean).join(', ')}.`, primary: mainInv.url ? { label: 'Ouvrir dans Odoo', kind: 'odoo', href: mainInv.url, tone: 'ghost' } : undefined }
+    if (invoices.length) {
+      const openDays = daysSince(mainInv.at)
+      const follow = lastReminder ? `Relancé le ${fmtDay(lastReminder.at)} (J+${lastReminder.level})${lastReminder.level === 15 ? ' · seconde relance à J+30' : ''}.` : 'Relance client à J+15 puis J+30 après l\'échéance.'
+      return { ...base, who: 'client', headline: `Facture ${invoices.map(i => cleanRef(i.number)).join(', ')} émise${mainInv.at ? ` le ${fmtDay(mainInv.at)}` : ''}${openDays != null && openDays > 0 ? ` — ouverte depuis ${openDays} j` : ''}`, detail: `${eur(invoices.reduce((s, i) => s + i.amount, 0))} HTVA · ${invoices.map(i => i.client).filter(Boolean).join(', ')}${partial ? ' · partiellement payée' : ''} · le paiement se lit dans Odoo, le dossier se ferme seul. ${follow}`, primary: mainInv.url ? { label: 'Ouvrir dans Odoo', kind: 'odoo', href: mainInv.url, tone: 'ghost' } : undefined }
+    }
     return { ...base, who: 'fini', headline: 'Rien à facturer', detail: d.legs.map(l => l.nothing_to_bill).filter(Boolean)[0] || undefined }
   }
   if (inComex) return { ...base, who: 'eux', headline: `Chez Touring (COMEX BKO) — ${comex!.verdict === 'verify' ? 'à vérifier' : 'en attente de validation'}`, detail: `Dossier ${comex!.dossier || '—'}${comex!.montant != null ? ` · montant Touring ${eur(Number(comex!.montant))}` : ''}. Pas de facture avant l'accord Touring.`, primary: { label: 'Ouvrir COMEX', kind: 'link', href: '/touring-comex', tone: 'ghost' } }
@@ -349,7 +360,7 @@ export default function AFacturerClient({ initial, autoById, comexById = {}, isS
     { key: 'robot', label: 'Robot', dot: WHO.robot.dot, help: 'auto-facturation programmée, heure annoncée' },
     { key: 'eux', label: 'Chez eux', dot: WHO.eux.dot, help: 'on attend l\'assisteur (COMEX, Hexalite, Comet, Kaze), le Parquet ou le Domaine' },
     { key: 'veille', label: 'Pas prêt', dot: WHO.veille.dot, help: 'véhicule au parc ou relivraison en cours : on facture à la clôture' },
-    { key: 'client', label: 'Facturées', dot: WHO.client.dot, help: 'facture émise, paiement suivi dans Odoo' },
+    { key: 'client', label: 'Facturées', dot: WHO.client.dot, help: 'facture émise, en attente du paiement (lu dans Odoo) — relancé le … si un rappel est parti' },
     { key: 'all', label: 'Tous', help: 'tout le suivi' },
   ]
 
@@ -396,7 +407,7 @@ export default function AFacturerClient({ initial, autoById, comexById = {}, isS
           </button>
         ))}
       </div>
-      <TabLegend items={TABS.filter(t => t.dot).map(t => ({ dot: t.dot, label: t.label, text: t.help }))} />
+      <TabLegend items={[...TABS.filter(t => t.dot).map(t => ({ dot: t.dot, label: t.label, text: t.help })), { dot: 'bg-green-500', label: 'Payé', text: 'lu dans Odoo toutes les 2 h → le dossier passe « Terminé » seul ; le client est relancé à J+15 puis J+30 après l\'échéance (jamais le Parquet ni les assisteurs)' }]} />
       {/* Assisteurs */}
       <div className="flex items-center gap-1.5 flex-wrap text-xs">
         {SOURCE_GROUPS.map(g => (
@@ -480,7 +491,11 @@ export default function AFacturerClient({ initial, autoById, comexById = {}, isS
                   <p className="text-[11px] uppercase tracking-wide text-ink-muted font-semibold mb-1">Factures & encaissements</p>
                   {d.invoices.length ? d.invoices.map(i => (
                     <div key={i.number} className="flex items-center justify-between gap-2 py-1 border-t first:border-t-0">
-                      <span>{i.url ? <a href={i.url} target="_blank" rel="noreferrer" className="text-brand font-mono hover:underline">{cleanRef(i.number)}</a> : <span className="font-mono">{cleanRef(i.number)}</span>} <span className="text-ink-muted">{i.covers.join('')} · {i.client || '—'}{i.at ? ` · ${fmtDay(i.at)}` : ''}</span></span>
+                      <span>{i.url ? <a href={i.url} target="_blank" rel="noreferrer" className="text-brand font-mono hover:underline">{cleanRef(i.number)}</a> : <span className="font-mono">{cleanRef(i.number)}</span>} <span className="text-ink-muted">{i.covers.join('')} · {i.client || '—'}{i.at ? ` · ${fmtDay(i.at)}` : ''}</span>
+                        {i.paid_at ? <span className="ml-2 px-1.5 py-0.5 rounded-full bg-green-50 border border-green-300 text-green-800 font-semibold">payée le {fmtDay(i.paid_at)}</span>
+                          : i.reminder_30_at ? <span className="ml-2 px-1.5 py-0.5 rounded-full bg-amber-50 border border-amber-300 text-amber-800">relancé le {fmtDay(i.reminder_30_at)} (J+30)</span>
+                          : i.reminder_15_at ? <span className="ml-2 px-1.5 py-0.5 rounded-full bg-amber-50 border border-amber-300 text-amber-800">relancé le {fmtDay(i.reminder_15_at)} (J+15)</span>
+                          : i.payment_state === 'partial' ? <span className="ml-2 text-amber-700">partiellement payée</span> : null}</span>
                       <span className="tabular-nums">{eur(i.amount)}</span>
                     </div>
                   )) : <p className="text-ink-muted">Aucune facture pour l'instant.</p>}

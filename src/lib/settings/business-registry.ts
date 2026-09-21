@@ -9,7 +9,7 @@ export type BusinessSettingKind = 'number' | 'text' | 'emails' | 'list'
 export interface BusinessSettingDef {
   key:      string
   label:    string
-  group:    'Odoo' | 'Boîtes mail' | 'Montants' | 'Menu' | 'Dispatch' | 'Fourrière'
+  group:    'Odoo' | 'Boîtes mail' | 'Montants' | 'Facturation' | 'Menu' | 'Dispatch' | 'Fourrière'
   kind:     BusinessSettingKind
   seed:     number | string | string[]
   help?:    string
@@ -39,6 +39,10 @@ export const BUSINESS_SETTINGS: BusinessSettingDef[] = [
   { key: 'touring_check_cc',        label: 'Check Touring — copie du rappel mensuel',         group: 'Boîtes mail', kind: 'emails', seed: ['Andre.ANGELIQUE@touring.be'] },
   // ── Montants ────────────────────────────────────────────────────────────
   { key: 'forfait_parc_accident_tvac', label: 'Forfait gardiennage accident Ethias / Kaze (TVAC)', group: 'Montants', kind: 'number', seed: 220, help: 'Écrit en HTVA sur la fiche à la coche ; les anciens dossiers gardent le leur.' },
+  // ── Facturation : relances clients sur factures ouvertes (temps 3, Olivier 16-21/09/2026) ──
+  { key: 'relance_facture_j1_jours', label: 'Relance facture — 1er rappel (jours après l’échéance)', group: 'Facturation', kind: 'number', seed: 15, help: 'Mail courtois au client facturé, une fois par facture. Jamais vers le Parquet, le Domaine ni les assisteurs qui ont leur propre circuit.' },
+  { key: 'relance_facture_j2_jours', label: 'Relance facture — 2e rappel (jours après l’échéance)', group: 'Facturation', kind: 'number', seed: 30, help: 'Mail plus ferme, au plus tôt 7 jours après le premier rappel.' },
+  { key: 'relance_facture_mode',     label: 'Relances automatiques (off / on)',                        group: 'Facturation', kind: 'text',   seed: 'off', help: '« off » : le robot lit les paiements mais n’envoie aucun mail. « on » : relances envoyées depuis administration@.' },
   // ── Dispatch ──────────────────────────────────────────────────────────────
   { key: 'momo_market_fresh_minutes', label: 'Momo Market — fenêtre d’affichage (minutes)', group: 'Dispatch', kind: 'number', seed: 45, help: 'Une mission reste sur l’étal tant qu’elle est arrivée depuis moins de ce nombre de minutes et n’est pas attribuée. 30 min jusqu’au 09/09/2026, 45 depuis (Olivier).' },
   // ── Fourrière ─────────────────────────────────────────────────────────────

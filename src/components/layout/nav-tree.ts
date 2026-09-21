@@ -39,6 +39,9 @@ export interface NavSection {
   superadminOnly?: boolean
   /** Intertitre affiché au-dessus de cette section (regroupement visuel). */
   heading?: string
+  /** Masquée quand ce feature flag est actif pour le user (extinction progressive d'un ancien écran :
+   *  la page reste accessible par URL, seule l'entrée du menu disparaît). Facturation temps 3, 21/09/2026. */
+  hiddenWhenFlag?: string
 }
 
 export interface NavModule {
@@ -89,7 +92,7 @@ export const NAV_TREE_ESPACES: NavModule[] = [
     sections: [
       { href: '/facturation/dossiers', label: 'À facturer',               icon: FolderCheck,  requires: '/facturation' },
       { href: '/admin/facturation-auto', label: 'Stats facturation auto', icon: BarChart3,  requires: '/admin' },   // taux robot / manuel (Olivier 20/09 : introuvable depuis le menu)
-      { href: '/facturation',          label: 'Liste par fiche (ancienne)', icon: Receipt,    requires: '/facturation' },
+      { href: '/facturation',          label: 'Liste par fiche (ancienne)', icon: Receipt,    requires: '/facturation', hiddenWhenFlag: 'facturation_v2' },   // s'éteint pour les pilotes « À facturer » (Olivier 16-21/09/2026)
       { href: '/missions-terminees',   label: 'Missions terminées',       icon: FolderCheck,  i18nKey: 'nav.finished', requires: '/missions-terminees' },
       { href: '/admin/amendes',        label: 'Amendes',                  icon: AlertTriangle, requires: '/admin/amendes' },
       { href: '/facturation/touring',  label: 'Touring',                  icon: Shield,       requires: '/facturation', heading: 'Assisteurs' },
@@ -277,7 +280,7 @@ export interface BuiltModule extends NavModule {
  * Construit le menu à 2 niveaux à partir des items DÉJÀ filtrés par filterNavItems().
  * `visible` doit être le résultat de filterNavItems() (ordre personnalisé inclus).
  */
-export function buildNavTree(visible: NavItem[], userRole: string, userModules: string[] = [], espaces = false): BuiltModule[] {
+export function buildNavTree(visible: NavItem[], userRole: string, userModules: string[] = [], espaces = false, flags: Record<string, boolean> = {}): BuiltModule[] {
   const TREE    = espaces ? NAV_TREE_ESPACES : NAV_TREE
   const covered = espaces ? COVERED_ESPACES : COVERED
   const isSuperadmin = userRole === 'superadmin'
@@ -294,6 +297,7 @@ export function buildNavTree(visible: NavItem[], userRole: string, userModules: 
     const sections = (mod.sections || []).filter(s =>
       visibleHrefs.has(s.requires)
       && (!s.superadminOnly || isSuperadmin)
+      && (!s.hiddenWhenFlag || !flags[s.hiddenWhenFlag])
       && (!s.requiresModules || isAdmin || s.requiresModules.some(m => userModules.includes(m))),
     )
     if (sections.length === 0) continue

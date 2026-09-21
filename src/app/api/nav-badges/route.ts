@@ -33,7 +33,7 @@ export async function GET() {
     const h = await readAxaHealth().catch(() => null)
     if (h && !h.ok && h.consecutive_failures >= 3) badges['/admin/axa'] = 1
   }
-  const flags = { nav_menu_v2: await isPreviewOn('nav_menu_v2', u.role, u.id), nav_espaces: await isPreviewOn('nav_espaces', u.role, u.id) }   // espaces : pilotes Olivier + Jona (16/09/2026)   // u.id : les pilotes nommés (Jona) voient le menu v3
+  const flags = { nav_menu_v2: await isPreviewOn('nav_menu_v2', u.role, u.id), nav_espaces: await isPreviewOn('nav_espaces', u.role, u.id), facturation_v2: await isPreviewOn('facturation_v2', u.role, u.id) }   // facturation_v2 : éteint « Liste par fiche (ancienne) » dans le menu (temps 3, 21/09/2026)   // espaces : pilotes Olivier + Jona (16/09/2026)   // u.id : les pilotes nommés (Jona) voient le menu v3
 
   // Gestion du personnel : congés en attente de traitement (pending + annulation demandée).
   if (isPersonnelStaff(u)) {

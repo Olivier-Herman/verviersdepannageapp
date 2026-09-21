@@ -80,6 +80,8 @@ export default function AppShell({
   // route que les badges (undefined tant que le fetch n'a pas répondu).
   const [navV2Flag, setNavV2Flag] = useState<boolean | undefined>(undefined)
   const [navEspacesFlag, setNavEspacesFlag] = useState<boolean | undefined>(undefined)
+  // Autres flags du user (nav-badges) : masquent les sections `hiddenWhenFlag` (ex. facturation_v2 → « Liste par fiche (ancienne) »).
+  const [navFlags, setNavFlags] = useState<Record<string, boolean>>({})
   // Menu v3 (lot 1) : zone « Maintenant » du rôle + favoris de l'utilisateur.
   const [navNow, setNavNow]   = useState<string[]>([])
   const [navFavs, setNavFavs] = useState<string[]>([])
@@ -115,6 +117,7 @@ export default function AppShell({
         setNavBadges(d.badges || {})
         setNavV2Flag(!!d.flags?.nav_menu_v2)
         setNavEspacesFlag(!!d.flags?.nav_espaces)
+        setNavFlags(d.flags && typeof d.flags === 'object' ? d.flags : {})
         if (Array.isArray(d.nav?.now)) setNavNow(d.nav.now)
         if (Array.isArray(d.nav?.favorites)) setNavFavs(d.nav.favorites)
         try { window.localStorage.setItem('vd_nav_cache', JSON.stringify({ badges: d.badges || {}, now: d.nav?.now || [], favorites: d.nav?.favorites || [] })) } catch {}
@@ -199,6 +202,7 @@ export default function AppShell({
         {navV2 && !collapsed ? (
           <AppNavV2
             espaces={navEspaces}
+            flags={navFlags}
             items={visibleNav}
             userRole={userRole}
             userModules={userModules}
@@ -210,7 +214,7 @@ export default function AppShell({
           />
         ) : navV2 && collapsed ? (
           // Lot 3 : la barre réduite garde le menu v3 (pictogrammes + volets), plus de retour en v1.
-          <AppNavMini items={visibleNav} userRole={userRole} userModules={userModules} badges={navBadges} onOpenPalette={() => setPaletteOpen(true)} espaces={navEspaces} />
+          <AppNavMini items={visibleNav} userRole={userRole} userModules={userModules} badges={navBadges} onOpenPalette={() => setPaletteOpen(true)} espaces={navEspaces} flags={navFlags} />
         ) : (
         <nav className={`flex-1 py-4 overflow-y-auto flex flex-col gap-0.5 ${collapsed ? 'px-2' : 'px-3'}`}>
           {visibleNav.map(item => {
@@ -301,18 +305,19 @@ export default function AppShell({
           navBadges={navBadges}
           navV2={navV2}
           espaces={navEspaces}
+          flags={navFlags}
           navNow={navNow}
           navFavs={navFavs}
           onToggleFavorite={toggleFavorite}
           onOpenPalette={() => { setDrawerOpen(false); setPaletteOpen(true) }}
         />
         {navV2 && (
-          <NavPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} espaces={navEspaces}
+          <NavPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} espaces={navEspaces} flags={navFlags}
             items={visibleNav} userRole={userRole} userModules={userModules} now={navNow} badges={navBadges} />
         )}
         {navV2 && navNow.length > 0 && (
           // Lot 3 : barre du bas sur téléphone — les 4 pages « Maintenant » du rôle + Menu.
-          <MobileTabBar items={visibleNav} userRole={userRole} userModules={userModules} now={navNow} badges={navBadges} onOpenMenu={() => setDrawerOpen(true)} espaces={navEspaces} />
+          <MobileTabBar items={visibleNav} userRole={userRole} userModules={userModules} now={navNow} badges={navBadges} onOpenMenu={() => setDrawerOpen(true)} espaces={navEspaces} flags={navFlags} />
         )}
 
         {/* Header desktop */}

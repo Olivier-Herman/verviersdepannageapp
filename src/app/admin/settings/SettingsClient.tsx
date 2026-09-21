@@ -248,7 +248,7 @@ export default function SettingsClient({
             <p className="text-ink-faint text-xs mt-1.5">Boîte qui envoie et reçoit les appels d'offre du module Achats. Vide = administration@. La boîte doit être autorisée côté Microsoft avant de basculer.</p>
           </div>
 
-          {(['Odoo', 'Boîtes mail', 'Montants'] as const).map(group => (
+          {(['Odoo', 'Boîtes mail', 'Montants', 'Facturation'] as const).map(group => (
             <div key={group} className="bg-surface-2 border border rounded-2xl p-4">
               <p className="text-ink-muted text-xs font-semibold uppercase tracking-widest mb-1">Réglages métier — {group}</p>
               <p className="text-ink-faint text-xs mb-3">Obligatoire — la valeur d'origine est rappelée entre parenthèses. Pris en compte dans la minute, sans déploiement.</p>

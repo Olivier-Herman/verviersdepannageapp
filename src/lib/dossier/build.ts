@@ -116,7 +116,19 @@ export interface Dossier {
   events:         DossierEvent[]
   totals:         { estimated: number; billed: number; collected: number; remaining: number; due_tvac: number }   // collected est TVAC (encaissé sur place) ; due_tvac = estimé TVAC − encaissé
   light?:         boolean
-  invoices:       { number: string; covers: string[]; client: string | null; amount: number; at: string | null; url: string | null }[]
+  invoices:       DossierInvoice[]
+  /** Temps 3 (Olivier 16-21/09/2026) : toutes les factures du dossier soldées dans Odoo (lu par le cron facturation-paiements). */
+  paid?:          boolean
+  paid_at?:       string | null
+}
+
+export interface DossierInvoice {
+  number: string; covers: string[]; client: string | null; amount: number; at: string | null; url: string | null
+  /** Paiement lu dans Odoo (paid_at posé par le cron) + relances J+15 / J+30 envoyées au client. */
+  paid_at:        string | null
+  payment_state:  string | null
+  reminder_15_at: string | null
+  reminder_30_at: string | null
 }
 
 import { nightsBetween } from '@/lib/parc/nights'
@@ -845,24 +857,37 @@ async function buildDossierUncached(anyMissionId: string, light: boolean, price 
     const enc = (payBy[m.id] || []).reduce((t: number, pz: any) => t + Number(pz.amount || 0), 0)
     return s + (enc > 0 ? enc : Number(m.payment_amount || m.amount_collected || 0))
   }, 0))
-  const invMap: Record<string, { number: string; covers: Set<string>; client: string | null; amount: number; at: string | null; url: string | null }> = {}
+  // Paiement / relances : portés par la fiche qui a la facture (le cron
+  // facturation-paiements pose paid_at sur toutes les fiches d'une même facture).
+  const PAY0 = { paid_at: null as string | null, payment_state: null as string | null, reminder_15_at: null as string | null, reminder_30_at: null as string | null }
+  const payOf = (number: string | null, odooId: number | null) => {
+    const carriers = legRows.filter(x => (number && x.invoice_number === number) || (odooId && Number(x.invoice_odoo_id) === Number(odooId)))
+    const first = (k: string) => carriers.map(x => x[k]).filter(Boolean).sort()[0] || null
+    return { paid_at: first('paid_at'), payment_state: carriers.map(x => x.payment_state_odoo).filter(Boolean)[0] || null, reminder_15_at: first('reminder_15_at'), reminder_30_at: first('reminder_30_at') }
+  }
+  const invMap: Record<string, { number: string; covers: Set<string>; client: string | null; amount: number; at: string | null; url: string | null } & typeof PAY0> = {}
   for (const l of legs) {
     const m = legRows.find(x => x.id === l.mission_id)
     for (const it of itemsBy[l.mission_id] || []) {
       const ref = refOf(it); if (!ref) continue
-      const e = (invMap[ref] ||= { number: ref, covers: new Set(), client: it.billed_to_name || null, amount: 0, at: it.billed_at || null, url: it.invoice_odoo_id ? draftUrl(it.invoice_odoo_id) : null })
+      const e = (invMap[ref] ||= { number: ref, covers: new Set(), client: it.billed_to_name || null, amount: 0, at: it.billed_at || null, url: it.invoice_odoo_id ? draftUrl(it.invoice_odoo_id) : null, ...payOf(it.invoice_number || null, it.invoice_odoo_id ? Number(it.invoice_odoo_id) : null) })
       e.covers.add(l.letter); e.amount = r2(e.amount + Number(it.amount_htva || 0))
     }
     const items0 = itemsBy[l.mission_id] || []
     if (m?.invoice_number && !items0.some((it: any) => it.invoice_number === m.invoice_number)) {
-      const e = (invMap[m.invoice_number] ||= { number: m.invoice_number, covers: new Set(), client: m.billed_to_name || null, amount: 0, at: m.invoiced_at || null, url: m.invoice_url || (m.invoice_odoo_id ? draftUrl(m.invoice_odoo_id) : null) })
+      const e = (invMap[m.invoice_number] ||= { number: m.invoice_number, covers: new Set(), client: m.billed_to_name || null, amount: 0, at: m.invoiced_at || null, url: m.invoice_url || (m.invoice_odoo_id ? draftUrl(m.invoice_odoo_id) : null), ...payOf(m.invoice_number, m.invoice_odoo_id ? Number(m.invoice_odoo_id) : null) })
       e.covers.add(l.letter); e.amount = r2(e.amount + l.amount_htva); if (!e.url && m.invoice_url) e.url = m.invoice_url
     } else if (!m?.invoice_number && m?.invoice_odoo_id && !items0.length) {
       const ref = `brouillon Odoo #${m.invoice_odoo_id}`
-      const e = (invMap[ref] ||= { number: ref, covers: new Set(), client: m.billed_to_name || null, amount: 0, at: m.invoice_created_at || null, url: draftUrl(m.invoice_odoo_id) })
+      const e = (invMap[ref] ||= { number: ref, covers: new Set(), client: m.billed_to_name || null, amount: 0, at: m.invoice_created_at || null, url: draftUrl(m.invoice_odoo_id), ...PAY0 })
       e.covers.add(l.letter); e.amount = r2(e.amount + l.amount_htva)
     }
   }
+  const invoicesOut = Object.values(invMap).map(e => ({ ...e, covers: Array.from(e.covers).sort() }))
+  // Dossier payé = au moins une facture et toutes soldées (les brouillons ne comptent pas comme factures).
+  const realInv = invoicesOut.filter(i => !/^brouillon Odoo/i.test(i.number))
+  const allPaid = realInv.length > 0 && realInv.every(i => !!i.paid_at)
+  const paidAt = allPaid ? realInv.map(i => i.paid_at!).sort().pop() || null : null
 
   const domaineOpen = legs.find(l => l.kind === 'out' && l.channel === 'domaine' && l.open)
   const openLeg = legs.find(l => l.kind === 'gard' && l.open) || domaineOpen
@@ -897,6 +922,7 @@ async function buildDossierUncached(anyMissionId: string, light: boolean, price 
       touring_check: root.touring_check_stamp || null,
     },
     totals: { estimated, billed, collected, remaining: r2(Math.max(0, estimated - billed)), due_tvac: r2(Math.max(0, estimated * 1.21 - collected)) },   // D13 : collected est TVAC (encaissé sur place)
-    invoices: Object.values(invMap).map(e => ({ ...e, covers: Array.from(e.covers).sort() })),
+    invoices: invoicesOut,
+    paid: allPaid || undefined, paid_at: paidAt,
   }
 }

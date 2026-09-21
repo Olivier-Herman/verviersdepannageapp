@@ -44,6 +44,8 @@ interface Props {
   onOpenPalette?: () => void
   /** Menu « Espaces » (flag nav_espaces, pilotes). */
   espaces?: boolean
+  /** Feature flags du user (nav-badges) : masque les sections `hiddenWhenFlag`. */
+  flags?: Record<string, boolean>
 }
 
 const RECENTS_KEY = 'vd_nav_recents'
@@ -52,10 +54,10 @@ const useIsoLayoutEffect = typeof window === 'undefined' ? useEffect : useLayout
 const readRecents = (): string[] => { try { const v = JSON.parse(localStorage.getItem(RECENTS_KEY) || '[]'); return Array.isArray(v) ? v : [] } catch { return [] } }
 
 export default function AppNavV2({
-  items, userRole, userModules, badges = {}, variant = 'sidebar', onNavigate, now = [], favorites = [], onToggleFavorite, onOpenPalette, espaces = false,
+  items, userRole, userModules, badges = {}, variant = 'sidebar', onNavigate, now = [], favorites = [], onToggleFavorite, onOpenPalette, espaces = false, flags = {},
 }: Props) {
   const pathname = usePathname()
-  const modules  = useMemo(() => buildNavTree(items, userRole, userModules, espaces), [items, userRole, userModules, espaces])
+  const modules  = useMemo(() => buildNavTree(items, userRole, userModules, espaces, flags), [items, userRole, userModules, espaces, flags])
 
   // ── Zone « Maintenant » : réglage du rôle + favoris + 3 dernières pages ─────
   // Une page n'y figure que si elle existe dans le menu de CET utilisateur
