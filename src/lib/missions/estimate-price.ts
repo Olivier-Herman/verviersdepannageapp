@@ -636,7 +636,7 @@ export async function estimateMissionPrice(mission: MissionLike, opts?: { skipRe
   // (20 km inclus, REM de 12 km → la REL a encore 8 km inclus). Avant, la REL
   // partait de 0 km inclus et surfacturait ces km-là.
   if (source === 'touring' && missionType === 'relivraison' && mission.id && !opts?.noChainKm) {
-    const left = await touringIncludedKmLeft(sb, mission).catch(() => null)
+    const left = await dossierIncludedKmLeft(sb, mission).catch(() => null)
     if (left) {
       kmInclus = left.km
       chainInclusNote = left.km > 0
@@ -797,7 +797,7 @@ export async function estimateMissionPrice(mission: MissionLike, opts?: { skipRe
  * − km des relivraisons précédentes du même dossier. null si la chaîne ne
  * remonte pas à une fiche Touring tarifée (la REL garde alors son tarif seul).
  */
-async function touringIncludedKmLeft(sb: any, mission: MissionLike): Promise<{ km: number; remNumber: number | null; remKm: number; remInclus: number; relBefore: number } | null> {
+async function dossierIncludedKmLeft(sb: any, mission: MissionLike): Promise<{ km: number; remNumber: number | null; remKm: number; remInclus: number; relBefore: number } | null> {
   let cur: any = mission
   let root: any = null
   for (let i = 0; i < 4 && cur?.parent_mission_id; i++) {
@@ -808,7 +808,7 @@ async function touringIncludedKmLeft(sb: any, mission: MissionLike): Promise<{ k
     const t = canonicalType((data as any).mission_type)
     if (t === 'remorquage' || t === 'depannage') { root = data; break }
   }
-  if (!root || String(root.source || '').toLowerCase().trim() !== 'touring') return null
+  if (!root) return null
   const remEst = await estimateMissionPrice(root, { noChainKm: true })
   if (!remEst.ok || !(remEst.km_inclus > 0)) return null
   let left = Math.max(0, remEst.km_inclus - remEst.km_charged)
@@ -1383,7 +1383,33 @@ async function estimateRelivraisonPrice(
     || !!parentSnc
   const REL_AU_TARIF_REM = new Set(await sourcesWithTag('rel_tarif_rem'))
 
+  // Olivier 21/09/2026, dossier 1RPJ089 : « tu comptes deux fois la prise en
+  // charge. On ne peut pas : c'est total kilomètre, une prise en charge + km −
+  // nombre de km inclus. Pour la relivraison, c'est tous les kilomètres tout
+  // simplement. » Quand la grille remorquage de la source est un FORFAIT (prise
+  // en charge + km inclus + prix du km), la relivraison ne refacture donc PAS le
+  // forfait : elle facture ses kilomètres, après avoir consommé ce que le
+  // remorquage a laissé des km inclus. Les grilles par tranches (AXA, Ardenne)
+  // gardent leur calcul : la tranche n'est pas séparable en forfait + km.
+  let forfaitKmPrice: number | null = null
+  let forfaitSource  = ''
+  let forfaitLabel   = ''
   if (REL_AU_TARIF_REM.has(source) || parentIsPoliceOuSnc) {
+    const remSrc = REL_AU_TARIF_REM.has(source) ? source : parentSource
+    const { data: remTariffs } = await sb
+      .from('source_tariffs')
+      .select('unit_price, km_inclus, km_price, pricing_mode, effective_to')
+      .eq('source', remSrc).eq('mission_type', 'remorquage')
+      .lte('effective_from', today).order('effective_from', { ascending: false })
+    const remT = (remTariffs || []).find(t => !t.effective_to || t.effective_to >= today)
+    if (remT && String(remT.pricing_mode || 'forfait') === 'forfait'
+        && Number(remT.unit_price || 0) > 0 && Number(remT.km_price || 0) > 0) {
+      forfaitKmPrice = Number(remT.km_price)
+      forfaitSource  = remSrc
+    }
+  }
+
+  if ((REL_AU_TARIF_REM.has(source) || parentIsPoliceOuSnc) && forfaitKmPrice == null) {
     // Source dont la REL se facture au tarif remorquage. Pour AXA/Ardenne/Allianz
     // on garde leur propre source ; pour le cas police/SNC on prend la source
     // d'origine (police_…) qui porte la grille remorquage applicable.
@@ -1402,6 +1428,10 @@ async function estimateRelivraisonPrice(
     }
     // Si pas de grille remorquage trouvée, on retombe sur le calcul km ci-dessous.
   }
+
+  // Prix du km : celui de la grille remorquage quand on facture la REL en km
+  // purs sur un forfait (voir plus haut), sinon le SERV-KM de la source.
+  if (forfaitKmPrice != null) forfaitLabel = `Kilomètres relivraison (tarif ${forfaitSource})`
 
   // 1. Lookup prix km via source_tariff_lines (kind=SERV-KM)
   const { data: kmLinesRaw } = await sb
@@ -1433,6 +1463,8 @@ async function estimateRelivraisonPrice(
       kmPriceNormal = Number(t.km_extra_price)
     }
   }
+
+  if (forfaitKmPrice != null) { kmPriceNormal = forfaitKmPrice; kmPriceMajored = null; priceLabel = forfaitLabel }
 
   if (kmPriceNormal == null || kmPriceNormal <= 0) {
     return emptyEstimate(source, 'relivraison',
@@ -1497,6 +1529,19 @@ async function estimateRelivraisonPrice(
 
   km = Math.max(0, Math.ceil(km))
 
+  // Km inclus restants du forfait : le dossier n'en a qu'un seul lot.
+  let inclusNote = ''
+  if (forfaitKmPrice != null && mission.id) {
+    const left = await dossierIncludedKmLeft(sb, mission).catch(() => null)
+    if (left) {
+      const avant = km
+      km = Math.max(0, km - left.km)
+      inclusNote = left.km > 0
+        ? `${avant} km parcourus − ${left.km} km inclus restants du remorquage #${left.remNumber ?? '?'} (${left.remKm} km sur ${left.remInclus} inclus${left.relBefore > 0 ? `, ${left.relBefore} km déjà repris par une relivraison précédente` : ''})`
+        : `forfait épuisé par le remorquage #${left.remNumber ?? '?'} (${left.remKm} km sur ${left.remInclus} inclus${left.relBefore > 0 ? ` + ${left.relBefore} km de relivraison précédente` : ''})`
+    }
+  }
+
   const total = Math.round(km * kmPrice * 100) / 100
 
   // 5. Si la ligne SERV-KM avait un prix majore distinct, la majoration est
@@ -1530,6 +1575,7 @@ async function estimateRelivraisonPrice(
     tariff_doc_name: null,
     breakdown: [
       { label: priceLabel, amount: total, note: `${km} km (${touringRelDepot ? `aller-retour dépôt ${touringRelDepot} ↔ destination` : 'aller-retour parc ↔ relivraison'}) × ${kmPrice.toFixed(4)} €${isMajored && hasOwnMajorPrice ? ' (tarif majoré)' : ''}` },
+      ...(inclusNote ? [{ label: 'Prise en charge déjà facturée sur le remorquage', amount: null, note: inclusNote }] : []),
       ...(surchargeEur > 0 ? [{ label: `Majoration horaire (+${surchargePct}%)`, amount: surchargeEur, note: surchargeNote }] : []),
     ],
   }
