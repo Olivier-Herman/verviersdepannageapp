@@ -14,7 +14,7 @@
 // Le reste de la maquette : une couleur par étape (le geste du chauffeur), une
 // couleur par source (celle du catalogue, jamais en dur), la navette qui balaie
 // l'étape en cours, la barre d'avancement de la mission, et à droite le rythme
-// du jour et les chauffeurs.
+// du jour et les chauffeurs du jour.
 
 import { pollWhenVisible } from '@/lib/client/poll'
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
@@ -275,11 +275,6 @@ export default function BoardingLogClient() {
             </div>
           </section>
 
-          <section className="bl-card" style={{ ['--hc' as any]: '#7A3BD6' }}>
-            <h2>Rythme du jour</h2>
-            <Rythme rythme={rythme} heure={heure} />
-          </section>
-
           <section className="bl-card" style={{ ['--hc' as any]: '#C2700A' }}>
             <h2>Chauffeurs aujourd’hui</h2>
             <div className="bl-podium">
@@ -340,12 +335,13 @@ function Kpi({ label, val, txt, sub, color, tint, children }:
   )
 }
 
-/** Mini-histogramme du bandeau : même série que le rythme du jour. */
+/** Clôtures par heure, sous le nombre de missions terminées : la matinée se lit
+ *  d'un coup d'œil, sans qu'un bloc entier lui soit consacré (Olivier 21/09). */
 function Trend({ rythme, heure }: { rythme: { h: number; n: number }[]; heure: number }) {
   const slice = rythme.filter(r => r.h >= 5 && r.h <= 21)
   const max = Math.max(1, ...slice.map(r => r.n))
   return (
-    <span className="bl-trend">
+    <span className="bl-trend" title="Clôtures par heure, de 5 h à 21 h">
       {slice.map(r => (
         <i key={r.h} style={{
           height: `${Math.max(2, r.n / max * 15)}px`,
@@ -353,41 +349,6 @@ function Trend({ rythme, heure }: { rythme: { h: number; n: number }[]; heure: n
         }} />
       ))}
     </span>
-  )
-}
-
-/** Clôtures par heure : on voit la matinée, et si l'heure en cours suit. */
-function Rythme({ rythme, heure }: { rythme: { h: number; n: number }[]; heure: number }) {
-  const slice = rythme.filter(r => r.h >= 5 && r.h <= 21)
-  const max = Math.max(1, ...slice.map(r => r.n))
-  const W = 230, H = 92, PADL = 16, PADB = 16
-  const bw = (W - PADL - 6) / Math.max(1, slice.length)
-  return (
-    <div className="bl-chart">
-      <svg viewBox={`0 0 ${W} ${H}`} role="img" aria-label="Missions clôturées par heure">
-        <line x1={PADL} y1={8} x2={W - 4} y2={8} stroke="#E6ECF3" strokeWidth="1" />
-        <line x1={PADL} y1={H - PADB} x2={W - 4} y2={H - PADB} stroke="#D3DDE8" strokeWidth="1" />
-        <text x={0} y={12} fill="#96A4B4" fontSize="9" fontFamily="ui-monospace, monospace">{max}</text>
-        <text x={0} y={H - PADB} fill="#96A4B4" fontSize="9" fontFamily="ui-monospace, monospace">0</text>
-        {slice.map((r, i) => {
-          const bh = r.n / max * (H - PADB - 8)
-          const x = PADL + i * bw
-          const fill = r.h === heure ? '#E11D2E' : r.h < heure ? '#1B57C9' : '#E6ECF3'
-          return (
-            <g key={r.h}>
-              <rect x={x + 1} y={r.n ? H - PADB - bh : H - PADB - 2} width={Math.max(1, bw - 3)}
-                    height={r.n ? bh : 2} rx="2" fill={fill} />
-              {r.h % 3 === 0 && (
-                <text x={x + bw / 2} y={H - 4} textAnchor="middle" fill="#96A4B4" fontSize="9" fontFamily="ui-monospace, monospace">{r.h}h</text>
-              )}
-              {r.h === heure && r.n > 0 && (
-                <text x={x + bw / 2} y={H - PADB - bh - 4} textAnchor="middle" fill="#E11D2E" fontSize="10" fontWeight="700">{r.n}</text>
-              )}
-            </g>
-          )
-        })}
-      </svg>
-    </div>
   )
 }
 
@@ -493,9 +454,7 @@ body { margin:0; background:#E6EBF2; color:#111820;
   padding:2px 9px; background:#fff; text-decoration:none; }
 .bl-open:hover { background:#1B57C9; color:#fff; }
 
-/* ── rythme / chauffeurs ── */
-.bl-chart { padding:10px 12px 6px; }
-.bl-chart svg { width:100%; height:auto; display:block; }
+/* ── chauffeurs ── */
 .bl-podium { padding:5px 0; display:flex; flex-direction:column; }
 .bl-prow { display:grid; grid-template-columns:18px 1fr auto; gap:9px; align-items:center; padding:5px 14px; }
 .bl-rank { font-size:13px; font-weight:800; color:var(--pc); text-align:right; }
