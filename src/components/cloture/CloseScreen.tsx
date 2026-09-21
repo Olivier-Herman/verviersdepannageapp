@@ -81,6 +81,7 @@ export default function CloseScreen({
   const branch = BRANCH_OF[outcome] || null
   const isRem  = outcome === 'rem' || outcome === 'rem_vr'
   const isDpr  = outcome === 'dpr'
+  const fullOrLast5 = (v: unknown) => { const u = String(v || '').trim().toUpperCase(); return u.length === 17 ? u : u.slice(-5) }
   // Livraison : les codes ont été encodés sur la jambe dépannage, on les reprend
   // côté serveur → aucun motif à re-choisir. Restent signature, véhicule, clé, km.
   const isDelivered = outcome === 'delivered'
@@ -185,7 +186,8 @@ export default function CloseScreen({
 
   // Repli VIN / km depuis la fiche.
   useEffect(() => {
-    if (fallbackVin) setVin(String(fallbackVin).slice(-5).toUpperCase())
+    // Olivier 21/09/2026 : VIN entier quand on l'a (fiche ou photos), 5 derniers sinon.
+    if (fallbackVin) setVin(fullOrLast5(fallbackVin))
     if (fallbackKm !== '' && fallbackKm != null) setKm(String(fallbackKm))
   }, [fallbackVin, fallbackKm])
 
@@ -200,7 +202,7 @@ export default function CloseScreen({
       .then(r => r.json())
       .then(d => {
         if (!alive) return
-        if (d.vin) setVin(prev => prev || String(d.vin).slice(-5).toUpperCase())
+        if (d.vin) setVin(prev => prev || fullOrLast5(d.vin))
         if (d.km != null) setKm(prev => prev || String(d.km))
         setOcrGot(d.read || null)
         setOcrPhotos(typeof d.photos === 'number' ? d.photos : null)
@@ -492,8 +494,8 @@ export default function CloseScreen({
           <div id="f2-releves" className="space-y-2 pt-1">
             <p className={sectCls}>{t('cloture.vin_km')}</p>
             <div className="grid grid-cols-2 gap-2">
-              <input value={vin} onChange={e => setVin(e.target.value.toUpperCase())} placeholder={t('cloture.vin_ph')}
-                className="w-full border rounded-xl px-3 py-2.5 text-sm bg-surface font-mono tracking-wider" />
+              <input value={vin} onChange={e => setVin(e.target.value.toUpperCase())} placeholder={t('cloture.vin_ph')} maxLength={17}
+                className={`w-full border rounded-xl px-3 py-2.5 bg-surface font-mono ${vin.length > 8 ? 'text-xs tracking-normal' : 'text-sm tracking-wider'}`} />
               <input value={km} onChange={e => setKm(e.target.value)} inputMode="numeric" placeholder={t('cloture.km_ph')}
                 className="w-full border rounded-xl px-3 py-2.5 text-sm bg-surface font-mono" />
             </div>

@@ -271,7 +271,7 @@ export const fr = {
     key_title:           'Clé du véhicule',
     key_where:           'Où as-tu mis la clé ?',
     vin_km:              'Châssis & kilométrage',
-    vin_ph:              '5 derniers du VIN',
+    vin_ph:              'VIN ou 5 derniers',
     km_ph:               'Kilométrage',
     ocr_reading:         '✨ Je lis tes photos (châssis, compteur)…',
     ocr_found:           'Lu sur tes photos',

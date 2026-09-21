@@ -266,7 +266,7 @@ export const sq: Dictionary = {
     key_title:           'Çelësi i automjetit',
     key_where:           'Ku e le çelësin?',
     vin_km:              'Shasia & kilometrazhi',
-    vin_ph:              '5 shifrat e fundit të VIN',
+    vin_ph:              'VIN ose 5 e fundit',
     km_ph:               'Kilometrazhi',
     ocr_reading:         '✨ Po lexoj fotot e tua (shasia, kilometrazhi)…',
     ocr_found:           'Lexuar nga fotot e tua',
