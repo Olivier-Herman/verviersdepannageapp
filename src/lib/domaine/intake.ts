@@ -16,7 +16,8 @@ import { sourcesWithTag } from '@/lib/missions/source-catalog'
 
 export const DOMAINE_MAILBOX = 'fourriere@verviersdepannage.be'
 let DOMAINE_SENDER = ''   // posé depuis les réglages métier (mail_domaine_agent) avant chaque lecture
-const SUBJECT_KEY = 'dates in'
+// « Dates IN » ou « Date IN » (Rosemarie écrit parfois au singulier — mail du 03/09/2026 ignoré).
+const SUBJECT_RE = /\bdates?\s*in\b/i
 
 // Saisies à considérer : nouvelles fiches (police_saisie) + fiches historiques
 // migrées de TowSoft/Odoo (legacy_odoo). Olivier 2026-07-29.
@@ -52,7 +53,7 @@ export async function pollDomaineDatesIn(): Promise<DomaineIntakeSummary> {
   let msgs: any[] = []
   try {
     DOMAINE_SENDER = (await getBusinessText('mail_domaine_agent')).toLowerCase()
-    msgs = await searchMessages(DOMAINE_MAILBOX, `from:${DOMAINE_SENDER} ${SUBJECT_KEY}`, 50)
+    msgs = await searchMessages(DOMAINE_MAILBOX, `from:${DOMAINE_SENDER}`, 50)
   } catch (e: any) {
     console.error('[domaine dates-in] recherche mail KO:', e?.message)
     return s
@@ -61,7 +62,7 @@ export async function pollDomaineDatesIn(): Promise<DomaineIntakeSummary> {
   // Filtre strict (le $search est flou) : bon expéditeur + sujet « Dates IN ».
   const candidates = msgs.filter(m =>
     (m.from || '').toLowerCase() === DOMAINE_SENDER &&
-    (m.subject || '').toLowerCase().includes(SUBJECT_KEY),
+    SUBJECT_RE.test(m.subject || ''),
   )
   // Fenêtre récente + mails les plus récents d'abord + plafond par passe.
   const cutoff = lookbackCutoff()

@@ -18,7 +18,7 @@ import { sourcesWithTag } from '@/lib/missions/source-catalog'
 
 export const VENTE_MAILBOX = 'fourriere@verviersdepannage.be'
 let VENTE_SENDER = ''   // posé depuis les réglages métier (mail_domaine_agent) avant chaque lecture
-const SUBJECT_KEY = 'paves'   // « Vente d'épaves » (comparé sans accent)
+const SUBJECT_KEY = 'pave'    // « Vente d'épaves » ou « Vente d'épave » au singulier (18/09/2026), comparé sans accent
 
 // Saisies à considérer : nouvelles fiches (police_saisie) + fiches historiques
 // migrées de TowSoft/Odoo (legacy_odoo).
