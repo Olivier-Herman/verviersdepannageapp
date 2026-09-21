@@ -85,6 +85,7 @@ export const NAV_TREE_ESPACES: NavModule[] = [
       { href: '/fourriere/requisitoires',        label: 'Réquisitoires',          icon: FileText,      requires: '/fourriere', heading: 'Documents' },
       { href: '/fourriere/saisies',              label: 'États de frais',         icon: FileWarning,   requires: '/fourriere', heading: 'Facturation' },
       { href: '/fourriere/sorties',              label: 'Sorties',                icon: Trash2,        requires: '/fourriere', heading: 'Sorties' },
+      { href: '/fourriere/domaine',              label: 'Domaine',                icon: Landmark,      requires: '/fourriere', superadminOnly: true },   // Olivier 21/09 : le tableau Domaine doit avoir sa propre entrée, pas seulement l'onglet de Sorties
     ],
   },
   {
