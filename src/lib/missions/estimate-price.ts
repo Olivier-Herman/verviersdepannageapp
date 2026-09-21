@@ -12,8 +12,10 @@ import { getDrivingRoute } from '@/lib/routing/ors'
 import { wasTransientGeocodeFailure } from '@/lib/geocode/server'
 import { getApplicableSurcharges, isBelgianHoliday } from '@/lib/surcharges'
 import { nightsBetween } from '@/lib/parc/nights'
-import { normalizeType, isRemorquage, isDsp, isTrajetVide, isRelivraison, isRemRel } from '@/lib/missions/mission-types'
-import { sourcesWithTag } from '@/lib/missions/source-catalog'
+import { normalizeType, isRemorquage, isDsp, isTrajetVide, isRelivraison, isRemRel, isTransport } from '@/lib/missions/mission-types'
+import { sourcesWithTag, sourceLabel } from '@/lib/missions/source-catalog'
+import { getTransportPricePerKm } from '@/lib/tarifs/transport-tariffs'
+import { isTransportVehicleCategory, transportGabaritLabel, transportQuoteLineName } from '@/lib/tarifs/transport-gabarits'
 
 /**
  * Determine si une date/heure tombe dans la plage "majorée" IPA :
@@ -290,6 +292,10 @@ export interface PriceEstimate {
   breakdown:     { label: string; amount: number | null; note?: string }[]
   // Mode 'lines' uniquement : lignes pre-configurees a editer cote UI
   template_lines?: TemplateLine[]
+  // Transport / rapatriement (Olivier 21/09/2026) : km aller-retour dépôt et
+  // prix/km retenus — affichage fiche + ligne de devis (build-quote-lines).
+  km_total?:     number
+  transport?:    { category: string; category_label: string; price_per_km_htva: number; km_total: number; manual_price: boolean }
 }
 
 interface MissionLike {
@@ -341,6 +347,10 @@ interface MissionLike {
   storage_waived?:    boolean | null
   /** Forfait qui REMPLACE le comptage au jour (NULL = comptage normal). */
   storage_flat_htva?: number | null
+  // Transport / rapatriement (Olivier 21/09/2026) : gabarit du véhicule
+  // (voiture / monospace / l1h1 / l2h2 / autre) et prix/km HTVA manuel (« autre »).
+  transport_vehicle_category?:  string | null
+  transport_price_per_km_htva?: number | null
 }
 
 /** Map mission_type DB vers le canonical attendu en source_tariffs (lowercase). */
@@ -356,6 +366,9 @@ function canonicalType(t: string | null): string | null {
   if (isRemorquage(t))  return 'remorquage'
   if (isDsp(t))         return 'depannage'
   if (isTrajetVide(t))  return 'trajet_vide'
+  // Transport / rapatriement : branche dédiée (estimateTransportPrice). Avant le
+  // 21/09/2026, retombait dans normalizeType + calcul générique source_tariffs.
+  if (isTransport(t))   return 'transport'
   if (!t) return null
   return normalizeType(t)
 }
@@ -447,6 +460,15 @@ export async function estimateMissionPrice(mission: MissionLike, opts?: { skipRe
         { label: 'Forfait négocié', amount: amountHt, note: `${amountTvac.toFixed(2)} € TVAC saisi à la création (remplace le tarif ${source})` },
       ],
     }
+  }
+
+  // === TRANSPORT / RAPATRIEMENT (Olivier 21/09/2026, grille par gabarit) ===
+  // Prix = prix/km HTVA (source × gabarit, ou saisi sur la fiche pour « Autre »)
+  // × km aller-retour depuis le dépôt. Sans forfait, sans prise en charge, sans
+  // majoration. Sans gabarit → pas de montant (le robot ne facture jamais sans).
+  // Placé APRÈS le forfait négocié : un montant saisi par le dispatch reste souverain.
+  if (missionType === 'transport') {
+    return await estimateTransportPrice(mission, source)
   }
 
   // === SOURCE 'prive' (Appel Privé) — fallback sans forfait ===
@@ -1509,6 +1531,89 @@ async function estimateRelivraisonPrice(
     breakdown: [
       { label: priceLabel, amount: total, note: `${km} km (${touringRelDepot ? `aller-retour dépôt ${touringRelDepot} ↔ destination` : 'aller-retour parc ↔ relivraison'}) × ${kmPrice.toFixed(4)} €${isMajored && hasOwnMajorPrice ? ' (tarif majoré)' : ''}` },
       ...(surchargeEur > 0 ? [{ label: `Majoration horaire (+${surchargePct}%)`, amount: surchargeEur, note: surchargeNote }] : []),
+    ],
+  }
+}
+
+/**
+ * Transport / rapatriement — Olivier 21/09/2026 (grille par gabarit, préalable
+ * robot transports). Une seule ligne : km aller-retour dépôt × prix/km HTVA.
+ *   • gabarit voiture / monospace / l1h1 / l2h2 → prix/km de transport_tariffs (source × gabarit)
+ *   • gabarit autre → prix/km HTVA saisi sur la fiche (transport_price_per_km_htva)
+ *   • gabarit absent, prix absent, km inconnus → estimate KO avec la raison lisible
+ * Retourné en mode 'lines' (template_lines) pour que la modale Facturer et
+ * build-quote-lines produisent exactement la même ligne.
+ */
+async function estimateTransportPrice(mission: MissionLike, source: string): Promise<PriceEstimate> {
+  const cat = String(mission.transport_vehicle_category || '').toLowerCase().trim()
+  if (!cat) {
+    return emptyEstimate(source, 'transport', 'Transport : gabarit du véhicule à choisir sur la fiche (Voiture / Monospace / Camionnette L1/H1 / L2/H2 / Autre) — le prix se calcule ensuite')
+  }
+  if (!isTransportVehicleCategory(cat)) {
+    return emptyEstimate(source, 'transport', `Transport : gabarit « ${cat} » inconnu — rechoisis-le sur la fiche`)
+  }
+  const label = transportGabaritLabel(cat)
+  let pricePerKm: number | null
+  let priceNote: string
+  if (cat === 'autre') {
+    const manual = mission.transport_price_per_km_htva != null ? Number(mission.transport_price_per_km_htva) : NaN
+    if (!Number.isFinite(manual) || manual <= 0) {
+      return emptyEstimate(source, 'transport', 'Transport « Autre » : indique le prix au km HTVA sur la fiche — le prix se calcule ensuite')
+    }
+    pricePerKm = manual
+    priceNote  = 'prix/km saisi sur la fiche'
+  } else {
+    pricePerKm = await getTransportPricePerKm(source, cat)
+    if (pricePerKm == null) {
+      return emptyEstimate(source, 'transport', `Transport : pas de prix au km pour ${await sourceLabel(source)} × ${label} — à saisir dans Administration › Tarifs transport`)
+    }
+    priceNote = `grille ${await sourceLabel(source)}`
+  }
+  // Kilomètres = boucle complète depuis le dépôt (computeMissionKm totalKm),
+  // sauf aperçu dispatch qui fournit total_km / distance_km avant insertion.
+  let kmTotal: number | null = null
+  if (mission.total_km != null)         kmTotal = Number(mission.total_km)
+  else if (mission.distance_km != null) kmTotal = Number(mission.distance_km)
+  else if (mission.id) {
+    const km = await computeMissionKm(mission.id)
+    kmTotal = km.totalKm
+  }
+  if (kmTotal == null || !Number.isFinite(kmTotal)) {
+    return emptyEstimate(source, 'transport', kmUnknownReason(mission))
+  }
+  const km    = Math.round(kmTotal * 10) / 10
+  const total = Math.round(km * pricePerKm * 100) / 100
+  const transport = { category: cat, category_label: label, price_per_km_htva: pricePerKm, km_total: km, manual_price: cat === 'autre' }
+  const m: any = mission
+  const missionRef: string | null = m.external_id || m.dossier_number || null
+  return {
+    ok:            true,
+    source,
+    mission_type:  'transport',
+    pricing_mode:  'lines',
+    forfait:       null,
+    km_charged:    km,
+    km_inclus:     0,
+    km_extra:      0,
+    km_extra_eur:  0,
+    parc_jours:    0,
+    parc_eur:      0,
+    subtotal_eur:  total,
+    surcharge_pct: 0,
+    surcharge_eur: 0,
+    total_eur:     total,
+    is_autofac:    false,
+    tariff_id:     `${source}-transport-${cat}`,
+    tariff_doc_path: null,
+    tariff_doc_name: null,
+    km_total:      km,
+    transport,
+    template_lines: [{
+      kind: 'SERV-KM', name: transportQuoteLineName(transport, missionRef),
+      default_qty: km, default_price: pricePerKm, apply_surcharges: false,
+    }],
+    breakdown: [
+      { label: `Transport / rapatriement — ${label}`, amount: total, note: `${km} km aller-retour depuis le dépôt × ${pricePerKm.toFixed(4)} € HTVA/km (${priceNote})` },
     ],
   }
 }

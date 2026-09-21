@@ -33,7 +33,8 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
       snc_scenario, snc_requires_balisage,
       billed_to_id, billed_to_name, special_tarif_htva,
       extra_addresses,
-      external_id, dossier_number
+      external_id, dossier_number,
+      transport_vehicle_category, transport_price_per_km_htva
     `)
     .eq('id', params.id)
     .single()
@@ -75,6 +76,9 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
     special_tarif_htva:      ovNum('special_tarif_htva')  ?? (missionDb as any).special_tarif_htva,
     parked_at:               ov('parked_at')              ?? (missionDb as any).parked_at,
     delivering_at:           ov('delivering_at')          ?? (missionDb as any).delivering_at,
+    // Transport / rapatriement (Olivier 21/09/2026) : gabarit + prix/km « autre » du form.
+    transport_vehicle_category:  ov('transport_vehicle_category')     ?? (missionDb as any).transport_vehicle_category,
+    transport_price_per_km_htva: ovNum('transport_price_per_km_htva') ?? (missionDb as any).transport_price_per_km_htva,
   }
 
   // Olivier 2026-06-02 PM : tarif special HTVA → court-circuit total.

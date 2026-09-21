@@ -47,6 +47,9 @@ interface Props {
     special_tarif_htva?:    number | null
     parked_at?:             string | null
     delivering_at?:         string | null
+    // Transport / rapatriement (Olivier 21/09/2026) : gabarit + prix/km « autre ».
+    transport_vehicle_category?:  string | null
+    transport_price_per_km_htva?: number | null
   }
 }
 

@@ -12,6 +12,7 @@ import { isRemorquage }        from '@/lib/missions/mission-types'
 import { KEY_LOCATION_LABELS }  from '@/lib/key-location'
 import { lockedFieldsIn }        from '@/lib/touring/tariff-lock'
 import { sourcesWithTag } from '@/lib/missions/source-catalog'
+import { isTransportVehicleCategory } from '@/lib/tarifs/transport-gabarits'
 
 // Le PATCH peut calculer un tarif SNC (routing dépôt) → marge de temps.
 export const maxDuration = 30
@@ -110,12 +111,15 @@ export async function PATCH(
     'is_rollable',
     // Chantier Siabis : le dispatch a tranché la question autoroute → lève le drapeau.
     'needs_siabis_decision', 'siabis_reviewed',
+    // Olivier 21/09/2026 (grille par gabarit, préalable robot transports) :
+    // gabarit du véhicule + prix/km HTVA manuel (gabarit « autre »).
+    'transport_vehicle_category', 'transport_price_per_km_htva',
   ]
 
   // On charge l etat actuel pour comparer (source avant change + verrou tarifaire).
   const { data: before } = await supabase
     .from('incoming_missions')
-    .select('redelivery_address, status, source, external_id, snc_scenario, mission_type, incident_type, amount_to_collect, amount_to_collect_manual, amount_guaranteed, special_tarif_htva, incident_lat, incident_lng, incident_address, incident_city, incident_country, incident_borne_km, incident_sens, incident_at, destination_lat, destination_lng, destination_name, destination_address, destination_borne_km, destination_sens, redelivery_address, redelivery_lat, redelivery_lng, depot_depart_id, depot_depart_locked, snc_requires_balisage, intervention_date, parked_at, delivering_at, received_at, extra_addresses, billed_to_id, billed_to_name, tariff_locked')
+    .select('redelivery_address, status, source, external_id, snc_scenario, mission_type, incident_type, amount_to_collect, amount_to_collect_manual, amount_guaranteed, special_tarif_htva, incident_lat, incident_lng, incident_address, incident_city, incident_country, incident_borne_km, incident_sens, incident_at, destination_lat, destination_lng, destination_name, destination_address, destination_borne_km, destination_sens, redelivery_address, redelivery_lat, redelivery_lng, depot_depart_id, depot_depart_locked, snc_requires_balisage, intervention_date, parked_at, delivering_at, received_at, extra_addresses, billed_to_id, billed_to_name, tariff_locked, transport_vehicle_category, transport_price_per_km_htva')
     .eq('id', params.id)
     .maybeSingle()
 
@@ -123,13 +127,43 @@ export async function PATCH(
   for (const key of allowed) {
     if (key in body) {
       // Convertir les strings vides en null pour les champs numériques
-      if (['amount_guaranteed', 'amount_to_collect', 'special_tarif_htva', 'incident_lat', 'incident_lng', 'destination_lat', 'destination_lng', 'billed_to_id', 'odoo_vehicle_id'].includes(key)) {
+      if (['amount_guaranteed', 'amount_to_collect', 'special_tarif_htva', 'incident_lat', 'incident_lng', 'destination_lat', 'destination_lng', 'billed_to_id', 'odoo_vehicle_id', 'transport_price_per_km_htva'].includes(key)) {
         updates[key] = body[key] === '' || body[key] == null ? null : Number(body[key]) || null
       } else {
         updates[key] = body[key] === '' ? null : body[key]
       }
     }
   }
+
+  // Transport / rapatriement (Olivier 21/09/2026, grille par gabarit) : le
+  // gabarit doit être une valeur connue ; le prix/km manuel n'existe que pour
+  // « Autre » (remis à NULL sinon, pour qu'aucun vieux prix ne traîne).
+  if ('transport_vehicle_category' in updates) {
+    const cat = updates.transport_vehicle_category == null ? null : String(updates.transport_vehicle_category).toLowerCase().trim()
+    if (cat && !isTransportVehicleCategory(cat)) {
+      return NextResponse.json({ error: `Gabarit transport inconnu : ${cat} (voiture, monospace, l1h1, l2h2, autre)` }, { status: 400 })
+    }
+    updates.transport_vehicle_category = cat || null
+    if (cat !== 'autre') updates.transport_price_per_km_htva = null
+  } else if ('transport_price_per_km_htva' in updates && (before as any)?.transport_vehicle_category !== 'autre') {
+    updates.transport_price_per_km_htva = null   // prix manuel réservé au gabarit « autre »
+  }
+  if (updates.transport_price_per_km_htva != null && Number(updates.transport_price_per_km_htva) < 0) {
+    return NextResponse.json({ error: 'Prix au km transport invalide' }, { status: 400 })
+  }
+  // « Touché » = la valeur CHANGE vraiment. La fiche dispatch envoie tout son
+  // formulaire à chaque « Enregistrer » (gabarit vide inclus, sur n'importe quelle
+  // mission) : comparer à l'état d'avant évite de remettre à zéro le montant figé
+  // d'une REM à chaque sauvegarde.
+  const numOrNull = (v: unknown) => (v == null || v === '' ? null : Number(v))
+  const beforeCat   = (before as any)?.transport_vehicle_category ?? null
+  const beforePrice = numOrNull((before as any)?.transport_price_per_km_htva)
+  const finalCat    = 'transport_vehicle_category'  in updates ? (updates.transport_vehicle_category ?? null) : beforeCat
+  const finalPrice  = 'transport_price_per_km_htva' in updates ? numOrNull(updates.transport_price_per_km_htva) : beforePrice
+  const transportTouched = finalCat !== beforeCat || finalPrice !== beforePrice
+  // Le montant figé à la clôture (estimated_htva) ne vaut plus rien si le
+  // gabarit change : remis à zéro ici, recalculé juste après l'UPDATE.
+  if (transportTouched) { updates.estimated_htva = null; updates.estimated_htva_at = null }
 
   // Verrou tarifaire : si Touring a répondu, on refuse toute modif d'un champ qui
   // ferait bouger le tarif (adresses, dates, type, source, montant, scénario…).
@@ -294,6 +328,22 @@ export async function PATCH(
   }
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+
+  // Transport : recalcul immédiat du montant figé sur une fiche clôturée (le
+  // gabarit se choisit souvent au moment de facturer, après la clôture). Meilleur
+  // effort : si le moteur ne répond pas, le cron fill-estimated-htva reprendra
+  // (estimated_htva remis à NULL plus haut). Olivier 21/09/2026.
+  if (transportTouched && data && CLOSED_STATUSES.includes(String((data as any).status || ''))) {
+    try {
+      const { actionLines, linesTotal } = await import('@/lib/dossier/lines')
+      const built = await actionLines(data as any, undefined, false)
+      if (built.has_tariff && built.lines.length) {
+        await supabase.from('incoming_missions')
+          .update({ estimated_htva: linesTotal(built.lines), estimated_htva_at: new Date().toISOString() })
+          .eq('id', params.id)
+      }
+    } catch (e: any) { console.warn('[mission PATCH] recalcul transport KO (non bloquant):', e?.message) }
+  }
 
   // Volet gardiennage (Vue dossier, dossier_leg) : il n'a pas de données véhicule
   // propres. Une correction plaque / marque / modèle / châssis faite depuis le

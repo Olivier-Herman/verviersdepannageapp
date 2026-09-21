@@ -310,6 +310,10 @@ export const fr = {
   },
   mission_detail: {
     prive_no_amount: "⚠️ Aucun montant encodé par le dispatch — tape ici pour saisir celui qu'on t'a communiqué.",
+    // Transport / rapatriement (21/09/2026) : bandeau infos mission
+    transport_title:           'Transport / rapatriement',
+    transport_gabarit:         'Gabarit du véhicule',
+    transport_gabarit_missing: 'à choisir par le bureau',
     // statut header
     status_parked:       'En dépôt',
     status_on_site:      'Sur place',

@@ -98,7 +98,11 @@ interface ExtractedTariff {
 // (voir canonicalType() dans lib/missions/estimate-price). Olivier 2026-07-14.
 // Types du catalogue (sans l'alias `reparation_place` ni « autre », qui n'ont pas de tarif)
 // + « parc », propre à la grille (mise en parc). Audit P3, 14/09/2026.
-const MISSION_TYPES = [...MISSION_TYPE_KEYS.filter(k => k !== 'reparation_place' && k !== 'autre'), 'parc']
+// « transport » retiré le 21/09/2026 (Olivier, grille par gabarit) : les rapatriements
+// se tarifent dans /admin/tarifs-transport (prix/km par source × gabarit) ; une
+// grille forfait saisie ici serait ignorée par le moteur. Le libellé reste pour
+// afficher d'éventuelles anciennes lignes.
+const MISSION_TYPES = [...MISSION_TYPE_KEYS.filter(k => k !== 'reparation_place' && k !== 'autre' && k !== 'transport'), 'parc']
 
 const TYPE_LABELS: Record<string, string> = {
   ...TYPE_LABEL_LONG, transport: '🚐 Transport (rapatriement)', parc: '🅿️ Mise en parc',

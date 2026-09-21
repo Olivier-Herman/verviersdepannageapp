@@ -146,6 +146,9 @@ export default async function AdminPage() {
         <Card href="/admin/tarifs" icon={Receipt} label="Tarifs assurance"
           desc="Grilles forfait + km par source (Touring, Ethias, etc.). Modes forfait/brackets/lines."
           count={tarifs} />
+        {/* Olivier 21/09/2026 : grille transport / rapatriement par gabarit (préalable robot transports). */}
+        <Card href="/admin/tarifs-transport" icon={Truck} label="Tarifs transport"
+          desc="Rapatriements : prix au km HTVA par assisteur et par gabarit (voiture, monospace, camionnette L1/H1, L2/H2)." />
         <Card href="/admin/surcharges" icon={DollarSign} label="Surcharges horaires"
           desc="Majorations selon plages horaires (nuit, weekend, jours fériés)."
           count={surcharges} />

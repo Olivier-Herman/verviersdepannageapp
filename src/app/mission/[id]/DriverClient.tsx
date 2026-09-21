@@ -21,6 +21,8 @@ import { TtsButton } from '@/components/audio/TtsButton'
 import { openNavigation } from '@/lib/open-navigation'
 import AddressField, { verifyAddressViaPlaces } from '@/components/AddressField'
 import { T }    from '@/lib/i18n/T'
+import { isTransport } from '@/lib/missions/mission-types'
+import { transportGabaritLabel } from '@/lib/tarifs/transport-gabarits'
 import { useT } from '@/lib/i18n/I18nProvider'
 import TouringCloseModal from '@/components/touring/TouringCloseModal'
 import SigPad from '@/components/mission/SigPad'
@@ -73,6 +75,8 @@ interface Mission {
   snc_requires_balisage?: boolean | null
   police_blocked?: boolean | null
   remarks_billing?: string | null
+  // Transport / rapatriement (Olivier 21/09/2026) : gabarit choisi par le bureau.
+  transport_vehicle_category?: string | null
   destination_address?: string; destination_name?: string; destination_lat?: number; destination_lng?: number; redelivery_address?: string
   destination_borne_km?: string | null
   destination_sens?:     string | null
@@ -4371,13 +4375,20 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
 
         {/* Bandeau infos mission : véhicule classe, distance, SNC scenario,
             balisage, remarques facturation. Affichage conditionnel. */}
-        {(M.vehicle_class === 'moto' || M.distance_km || M.snc_scenario || M.snc_requires_balisage || M.remarks_billing) && (
+        {(M.vehicle_class === 'moto' || M.distance_km || M.snc_scenario || M.snc_requires_balisage || M.remarks_billing || isTransport(M.mission_type)) && (
           <div className="bg-surface border rounded-2xl p-3 space-y-2">
             <p className="text-ink-muted text-xs uppercase tracking-widest font-medium">Infos mission</p>
             {M.vehicle_class === 'moto' && (
               <div className="flex items-center gap-2 text-sm">
                 <span>🏍️</span>
                 <span className="text-ink font-medium">Véhicule : Moto / 2 roues</span>
+              </div>
+            )}
+            {/* Transport / rapatriement (Olivier 21/09/2026) : le gabarit est choisi par le bureau, le chauffeur le voit. */}
+            {isTransport(M.mission_type) && (
+              <div className="flex items-center gap-2 text-sm">
+                <span>🚐</span>
+                <span className="text-ink"><T k="mission_detail.transport_title" /> · <T k="mission_detail.transport_gabarit" /> : <strong>{M.transport_vehicle_category ? transportGabaritLabel(M.transport_vehicle_category) : t('mission_detail.transport_gabarit_missing')}</strong></span>
               </div>
             )}
             {(M.distance_km != null && M.distance_km > 0) && (

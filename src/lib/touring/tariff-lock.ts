@@ -18,6 +18,8 @@ export const TARIFF_FIELDS: ReadonlySet<string> = new Set([
   'special_tarif_htva', 'amount_guaranteed', 'amount_to_collect',
   'intervention_date', 'parked_at', 'delivering_at',
   'snc_scenario', 'snc_requires_balisage',
+  // Transport / rapatriement : le gabarit et le prix/km manuel font le prix. Olivier 21/09/2026.
+  'transport_vehicle_category', 'transport_price_per_km_htva',
 ])
 
 /** Retourne les clés « tarifaires » présentes dans un payload de modification. */

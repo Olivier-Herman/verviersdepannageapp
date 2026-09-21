@@ -304,6 +304,9 @@ export const sq: Dictionary = {
   },
   mission_detail: {
     prive_no_amount: '⚠️ Dispeceria nuk ka vendosur asnjë shumë — prek këtu për të shkruar sumën që të komunikuan.',
+    transport_title:           'Transport / riatdhesim',
+    transport_gabarit:         'Madhësia e automjetit',
+    transport_gabarit_missing: 'zgjidhet nga zyra',
     status_parked:       'Në depo',
     status_on_site:      'Në vend',
     status_on_way:       'Në rrugë',

@@ -11,6 +11,7 @@
 import type { QuoteLine } from '@/lib/odoo-quote'
 import type { PriceEstimate } from '@/lib/missions/estimate-price'
 import { isDsp, isTrajetVide } from '@/lib/missions/mission-types'
+import { transportQuoteLineName } from '@/lib/tarifs/transport-gabarits'
 
 /**
  * Descriptif d'intervention affiché en tête de chaque facture (note Odoo) :
@@ -188,6 +189,21 @@ export function buildLinesFromEstimate(
   // estimate-pipeline (SNC, restitute).
   const override = buildOverrideLines(mission)
   if (override) return override
+
+  // Transport / rapatriement (Olivier 21/09/2026, grille par gabarit) : UNE
+  // ligne SERV-KM = km aller-retour depuis le dépôt × prix/km HTVA du gabarit
+  // (ou prix/km saisi sur la fiche pour « Autre »). Ni forfait, ni prise en
+  // charge, ni majoration. Les avances de fonds liées s'ajoutent comme partout
+  // (lines.ts / FacturerModal), ce n'est pas ici que ça se décide.
+  if (estimate.transport && estimate.transport.km_total > 0 && estimate.transport.price_per_km_htva > 0) {
+    lines.push({
+      kind:       'SERV-KM',
+      name:       transportQuoteLineName(estimate.transport, missionRef),
+      qty:        Math.round(estimate.transport.km_total * 10) / 10,
+      price_unit: Math.round(estimate.transport.price_per_km_htva * 10000) / 10000,
+    })
+    return lines
+  }
 
   if (estimate.pricing_mode === 'lines' && Array.isArray(estimate.template_lines)) {
     // Mode 'lines' (Police Accident, Saisie, etc.) : expose chaque ligne

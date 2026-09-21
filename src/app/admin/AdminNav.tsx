@@ -45,6 +45,7 @@ const GROUPS: NavGroup[] = [
     title: 'Tarification',
     items: [
       { href: '/admin/tarifs',     label: 'Tarifs',     icon: Receipt },
+      { href: '/admin/tarifs-transport', label: 'Tarifs transport', icon: Truck },
       { href: '/admin/surcharges', label: 'Surcharges', icon: DollarSign },
       { href: '/admin/facturation-auto', label: 'Facturation auto', icon: Receipt },
     ],

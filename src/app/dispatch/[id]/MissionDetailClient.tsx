@@ -47,7 +47,8 @@ import RestituerEtFacturerModal from '@/components/fourriere/RestituerEtFacturer
 import GererSncDepotModal from '@/components/restitution/GererSncDepotModal'
 import AppShell from '@/components/layout/AppShell'
 import { getSourceLabel, getSourceColor, type SourceDisplay as CatalogSource } from '@/lib/missions/source-display'
-import { getMissionTypeLabel, typesForSource, isSansDestination } from '@/lib/missions/mission-types'
+import { getMissionTypeLabel, typesForSource, isSansDestination, isTransport } from '@/lib/missions/mission-types'
+import { TRANSPORT_VEHICLE_CATEGORIES, TRANSPORT_GABARIT_LABELS, TRANSPORT_GABARIT_HELP, transportGabaritLabel } from '@/lib/tarifs/transport-gabarits'
 import { parcZoneLabel } from '@/lib/parc/zone-label'
 import { useGarageClosure } from '@/lib/useGarageClosures'
 import Flux2ClosureCard from '@/components/dispatch/Flux2ClosureCard'
@@ -158,6 +159,9 @@ interface Mission {
   special_tarif_htva?:   number | null
   storage_waived?:       boolean | null
   storage_flat_htva?:    number | null
+  // Transport / rapatriement (Olivier 21/09/2026) : gabarit + prix/km manuel (« autre »).
+  transport_vehicle_category?:  string | null
+  transport_price_per_km_htva?: number | null
 }
 
 interface Stop {
@@ -927,6 +931,9 @@ export default function MissionDetailClient({
     snc_requires_balisage: Boolean(initialMission.snc_requires_balisage),
     // Olivier 2026-06-02 PM : tarif special HTVA (ecrase calcul automatique)
     special_tarif_htva:   initialMission.special_tarif_htva != null ? String(initialMission.special_tarif_htva) : '',
+    // Transport / rapatriement (Olivier 21/09/2026) : gabarit + prix/km HTVA (« autre »).
+    transport_vehicle_category:  (initialMission.transport_vehicle_category || '') as string,
+    transport_price_per_km_htva: initialMission.transport_price_per_km_htva != null ? String(initialMission.transport_price_per_km_htva) : '',
     // Olivier 2026-06-02 PM : dates parc modifiables (correction gardiennage)
     // Olivier 2026-06-03 : defaults explicites si non setes par le chauffeur :
     //   - parked_at vide  -> date de creation de la mission (par defaut historique)
@@ -1803,6 +1810,22 @@ export default function MissionDetailClient({
     return () => clearTimeout(t)
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [form.special_tarif_htva])
+
+  // Transport / rapatriement (Olivier 21/09/2026) : le gabarit et le prix/km
+  // « Autre » se choisissent souvent au moment de facturer, sur une fiche déjà
+  // clôturée → enregistrés tout de suite (sans « Enregistrer »), l'estimation
+  // en bas de fiche suit en direct (overrides PriceEstimateCard).
+  useEffect(() => {
+    const cat = form.transport_vehicle_category || null
+    const p   = form.transport_price_per_km_htva === '' || form.transport_price_per_km_htva == null ? null : Number(form.transport_price_per_km_htva)
+    const origCat = initialMission.transport_vehicle_category || null
+    const origP   = initialMission.transport_price_per_km_htva != null ? Number(initialMission.transport_price_per_km_htva) : null
+    if (cat === origCat && p === origP) return
+    if (p != null && !Number.isFinite(p)) return
+    const t = setTimeout(() => silentPatch({ transport_vehicle_category: cat, transport_price_per_km_htva: cat === 'autre' ? p : null }), 700)
+    return () => clearTimeout(t)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [form.transport_vehicle_category, form.transport_price_per_km_htva])
 
   useEffect(() => {
     const v = form.amount_guaranteed
@@ -2852,7 +2875,7 @@ export default function MissionDetailClient({
         {/* Bandeau infos additionnelles (Olivier 2026-05-26) : agrege les
             infos utiles non editables ailleurs sur la fiche. */}
         {(initialMission.vehicle_class === 'moto' || initialMission.distance_km
-          || initialMission.snc_scenario || initialMission.snc_requires_balisage) && (
+          || initialMission.snc_scenario || initialMission.snc_requires_balisage || isTransport(form.mission_type)) && (
           <div className="px-4 lg:px-8 pt-4">
             <div className="bg-surface border rounded-xl p-4 space-y-2">
               <p className="text-ink-muted text-xs uppercase tracking-widest font-semibold">Infos mission</p>
@@ -2860,6 +2883,15 @@ export default function MissionDetailClient({
                 {initialMission.vehicle_class === 'moto' && (
                   <div className="flex items-center gap-2">
                     <span>🏍️</span><span>Véhicule : <strong>Moto / 2 roues</strong></span>
+                  </div>
+                )}
+                {/* Transport / rapatriement (Olivier 21/09/2026) : gabarit lisible en tête de fiche. */}
+                {isTransport(form.mission_type) && (
+                  <div className="flex items-center gap-2 md:col-span-2">
+                    <span>🚐</span>
+                    <span>Transport / rapatriement · gabarit : <strong className={form.transport_vehicle_category ? '' : 'text-amber-700'}>{form.transport_vehicle_category ? transportGabaritLabel(form.transport_vehicle_category) : 'à choisir'}</strong>
+                      {form.transport_vehicle_category === 'autre' && form.transport_price_per_km_htva ? ` · ${form.transport_price_per_km_htva} € HTVA/km` : ''}
+                      {' '}· prix = km aller-retour depuis le dépôt × prix/km (détail dans l&apos;estimation en bas de fiche)</span>
                   </div>
                 )}
                 {(initialMission.distance_km != null && initialMission.distance_km > 0) && (
@@ -3195,6 +3227,37 @@ export default function MissionDetailClient({
                           options={typesForSource(form.source)}
                           optionLabels={(form.source || '').toLowerCase() === 'gardiennage' ? gardiennageLabels : undefined} />
                       </Field>
+                    )}
+                    {/* Transport / rapatriement (Olivier 21/09/2026, grille par gabarit) :
+                        le gabarit fait le prix (prix/km de l'assisteur × km aller-retour
+                        dépôt). « Autre » = prix/km HTVA tapé ici. Enregistré tout de suite. */}
+                    {isTransport(form.mission_type) && (
+                      <div className="col-span-2 space-y-2">
+                        <Field label="Gabarit du véhicule (transport / rapatriement)">
+                          <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
+                            {TRANSPORT_VEHICLE_CATEGORIES.map(cat => {
+                              const active = (form.transport_vehicle_category || '') === cat
+                              return (
+                                <button key={cat} type="button"
+                                  onClick={() => setForm(prev => ({ ...prev, transport_vehicle_category: cat, transport_price_per_km_htva: cat === 'autre' ? prev.transport_price_per_km_htva : '' }))}
+                                  className={`p-2.5 rounded-xl border-2 text-left transition ${active ? 'bg-blue-100 border-blue-600 ring-2 ring-blue-300' : 'bg-surface border hover:border-blue-400'}`}>
+                                  <div className="text-ink font-semibold text-sm">{TRANSPORT_GABARIT_LABELS[cat]}</div>
+                                  <div className="text-ink-muted text-[11px] leading-tight mt-0.5">{TRANSPORT_GABARIT_HELP[cat]}</div>
+                                </button>
+                              )
+                            })}
+                          </div>
+                        </Field>
+                        {form.transport_vehicle_category === 'autre' && (
+                          <Field label="Prix au km HTVA convenu (gabarit Autre)">
+                            <Input value={form.transport_price_per_km_htva} onChange={fNum('transport_price_per_km_htva')} placeholder="ex. 1,25" />
+                          </Field>
+                        )}
+                        <p className="text-ink-faint text-[11px]">
+                          Prix = prix/km du gabarit (grille de l&apos;assisteur, Administration › Tarifs transport) × km aller-retour depuis le dépôt, sans forfait.
+                          {!form.transport_vehicle_category && <> <b className="text-amber-700">Sans gabarit, pas de montant</b> : la fiche reste « à calculer » en facturation.</>}
+                        </p>
+                      </div>
                     )}
                     {(form.source === 'police_snc' || form.source === 'sia_couvert') && (
                       <div className="col-span-2 space-y-2">
@@ -4448,6 +4511,8 @@ export default function MissionDetailClient({
               special_tarif_htva:     form.special_tarif_htva ? Number(form.special_tarif_htva) : null,
               parked_at:              localDtToIso(form.parked_at),
               delivering_at:          localDtToIso(form.delivering_at),
+              transport_vehicle_category:  form.transport_vehicle_category || null,
+              transport_price_per_km_htva: form.transport_price_per_km_htva ? Number(form.transport_price_per_km_htva) : null,
             }}
           />
         </div>

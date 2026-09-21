@@ -16,11 +16,14 @@ import { isDsp, isRemorquage, isTrajetVide, isTransport, isRelivraison, isRemRel
 
 // Types activables individuellement par source (Olivier 2026-07-27).
 export type AutoInvoiceType = 'dsp' | 'rem' | 'trajet_vide' | 'transport' | 'relivraison'
-export const AUTO_INVOICE_TYPES: { key: AutoInvoiceType; label: string }[] = [
+// manualOnly : le type reste à la main quoi que dise la règle (l'écran affiche « manuel »).
+export const AUTO_INVOICE_TYPES: { key: AutoInvoiceType; label: string; manualOnly?: boolean; help?: string }[] = [
   { key: 'dsp',         label: 'DSP' },
   { key: 'rem',         label: 'REM' },
   { key: 'trajet_vide', label: 'Trajet vide' },
-  { key: 'transport',   label: 'Transport' },
+  // Olivier 21/09/2026 : grille par gabarit en rodage → transports facturés à la
+  // main (montant proposé, bouton Facturer). Le robot les reprendra sur son feu vert.
+  { key: 'transport',   label: 'Transport', manualOnly: true, help: 'Transports / rapatriements : facturation manuelle tant que la grille par gabarit est en rodage (Olivier 21/09/2026).' },
   { key: 'relivraison', label: 'Relivraison' },
 ]
 export type AutoInvoiceRules = Record<string, Partial<Record<AutoInvoiceType, boolean>>>
@@ -86,6 +89,10 @@ export function checkAutoInvoiceEligible(
 ): AutoInvoiceCheck {
   const type = autoInvoiceType(mission.mission_type)
   if (!type) return { eligible: false, reason: 'type hors périmètre (DSP/REM only)' }
+  // Transport / rapatriement : MANUEL tant qu'Olivier n'a pas validé la grille par
+  // gabarit (21/09/2026). Le montant est proposé, le bouton Facturer reste à la
+  // main — jamais dans les « missions sèches » du robot, même règle activée.
+  if (type === 'transport') return { eligible: false, type, reason: 'transport : facturation manuelle (grille par gabarit en rodage)' }
   if (mission.parent_mission_id) return { eligible: false, type, reason: 'mission liée (combinée)' }
   const src = String(mission.source || '')
   // Règle spécifique (Olivier 2026-07-29) : Siabis couvert facturé à Touring →

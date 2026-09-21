@@ -183,7 +183,7 @@ export default function FacturationAutoClient(props: {
             <div className="min-w-[560px]">
               <div className="flex items-center gap-3 px-4 py-2 border-b text-ink-muted text-xs uppercase tracking-wide">
                 <span className="flex-1">Source</span>
-                {AUTO_INVOICE_TYPES.map(t => <span key={t.key} className="w-16 text-center">{t.label}</span>)}
+                {AUTO_INVOICE_TYPES.map(t => <span key={t.key} className="w-16 text-center" title={t.help}>{t.label}</span>)}
               </div>
               {visible.map(s => {
                 const r = rules[s.key] || {}
@@ -195,7 +195,9 @@ export default function FacturationAutoClient(props: {
                     </div>
                     {AUTO_INVOICE_TYPES.map(t => (
                       <div key={t.key} className="w-16 flex justify-center">
-                        <Switch on={!!r[t.key]} disabled={busy === `${s.key}:${t.key}`} onClick={() => toggle(s.key, t.key, !r[t.key])} />
+                        {t.manualOnly
+                          ? <span className="text-ink-faint text-[11px] italic" title={t.help}>manuel</span>
+                          : <Switch on={!!r[t.key]} disabled={busy === `${s.key}:${t.key}`} onClick={() => toggle(s.key, t.key, !r[t.key])} />}
                       </div>
                     ))}
                   </div>
