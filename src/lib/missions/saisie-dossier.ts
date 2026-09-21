@@ -21,11 +21,19 @@ const FOURRIERE_FROM = 'fourriere@verviersdepannage.be'
 // Boîtes lues dans les réglages métier (mail_parquet / mail_frais_justice), repli = valeurs historiques.
 
 /** Boîte destinataire selon le destinataire + le motif. null si inconnue (ex client sans email). */
-export async function resolveRecipientEmail(recipient: SaisieRecipient, motifCode?: string | null, clientEmail?: string | null): Promise<{ email: string; label: string } | null> {
+/** Frais de justice = saisie judiciaire OU levée aux frais de justice (Olivier 21/09/2026 :
+ *  « quand ce sont des frais de justice, on doit envoyer à une adresse spécifique »).
+ *  Avant, seule la saisie judiciaire était routée vers cette boîte : une levée
+ *  « frais de justice » sur un motif SAISIE partait au Parquet (#10143374, 19/09). */
+export function isFraisDeJustice(motifCode?: string | null, leveePayer?: string | null): boolean {
+  return String(motifCode || '').toUpperCase() === 'SAISIE_JUDICIAIRE' || String(leveePayer || '') === 'frais_justice'
+}
+
+export async function resolveRecipientEmail(recipient: SaisieRecipient, motifCode?: string | null, clientEmail?: string | null, leveePayer?: string | null): Promise<{ email: string; label: string } | null> {
   const MAIL_PARQUET = await getBusinessText('mail_parquet')
   const MAIL_FRAIS_JUSTICE = await getBusinessText('mail_frais_justice')
   if (recipient === 'parquet') {
-    const judiciaire = String(motifCode || '').toUpperCase() === 'SAISIE_JUDICIAIRE'
+    const judiciaire = isFraisDeJustice(motifCode, leveePayer)
     return judiciaire
       ? { email: MAIL_FRAIS_JUSTICE, label: 'Frais de justice (Verviers)' }
       : { email: MAIL_PARQUET, label: 'Parquet' }
@@ -93,8 +101,10 @@ export type SaisieState = typeof SAISIE_STATES[number]
 
 // Bloc destinataire pour le PDF (adresse + e-mail routé + TVA).
 export async function resolveDestinataire(recipient: SaisieRecipient, mission?: any, email?: string | null): Promise<{ name: string; lines: string[] }> {
-  if (recipient === 'parquet')
-    return { name: 'Parquet', lines: ['Quai d\'Arona 4, 4500 Huy', email || await getBusinessText('mail_parquet'), 'TVA BE 0308.357.753'] }
+  if (recipient === 'parquet') {
+    const fj = isFraisDeJustice(mission?.saisie_motif_code, mission?.levee_saisie_payer)
+    return { name: fj ? 'Frais de justice — Parquet de Verviers' : 'Parquet', lines: ['Quai d\'Arona 4, 4500 Huy', email || await getBusinessText(fj ? 'mail_frais_justice' : 'mail_parquet'), 'TVA BE 0308.357.753'] }
+  }
   if (recipient === 'domaine')
     return { name: 'SPF Finances — Domaine', lines: ['Recette des domaines', email || ''].filter(Boolean) }
   // client : personne sur place / propriétaire
@@ -311,7 +321,7 @@ export async function generateEtatFrais(
   }
   const qrUrl = valToken ? validationLink(valToken) : `${APP_URL}/fourriere/saisies`
 
-  const destEmail = (await resolveRecipientEmail(recipient, d.motif_code, mission?.client_email))?.email || null
+  const destEmail = (await resolveRecipientEmail(recipient, d.motif_code, mission?.client_email, mission?.levee_saisie_payer))?.email || null
 
   const pdf = await renderEtatFraisPdf({
     numero,
@@ -360,7 +370,7 @@ export async function renderEtatFraisFromRow(sb: any, dossierId: string, efRowId
     totalTvac: Number(ef.total_tvac ?? 0),
     recipient,
   }
-  const destEmail = (await resolveRecipientEmail(recipient, d.motif_code, mission?.client_email))?.email || null
+  const destEmail = (await resolveRecipientEmail(recipient, d.motif_code, mission?.client_email, mission?.levee_saisie_payer))?.email || null
   const qrUrl = d.validation_token ? validationLink(d.validation_token) : `${APP_URL}/fourriere/saisies`
   const pdf = await renderEtatFraisPdf({
     numero: ef.numero,
@@ -393,12 +403,12 @@ export async function resendEtatFrais(sb: any, dossierId: string, efRowId: strin
   const { data: ef } = await sb.from('saisie_etats_frais').select('id, numero, recipient, total_tvac').eq('id', efRowId).eq('dossier_id', dossierId).maybeSingle()
   if (!ef) return { ok: false, error: 'État de frais introuvable' }
   const recipient = (ef.recipient || d.recipient || 'parquet') as SaisieRecipient
-  let clientEmail: string | null = null, vin: string | null = null, reqDocPath: string | null = null, plate: string | null = d.vehicle_plate
+  let clientEmail: string | null = null, vin: string | null = null, reqDocPath: string | null = null, plate: string | null = d.vehicle_plate, leveePayer: string | null = null
   if (d.mission_id) {
-    const { data: m } = await sb.from('incoming_missions').select('client_email, vehicle_vin, vehicle_plate, requisitoire_doc_path').eq('id', d.mission_id).maybeSingle()
-    clientEmail = m?.client_email || null; vin = m?.vehicle_vin || null; reqDocPath = m?.requisitoire_doc_path || null; plate = m?.vehicle_plate || plate
+    const { data: m } = await sb.from('incoming_missions').select('client_email, vehicle_vin, vehicle_plate, requisitoire_doc_path, levee_saisie_payer').eq('id', d.mission_id).maybeSingle()
+    clientEmail = m?.client_email || null; vin = m?.vehicle_vin || null; reqDocPath = m?.requisitoire_doc_path || null; plate = m?.vehicle_plate || plate; leveePayer = m?.levee_saisie_payer || null
   }
-  const dest = await resolveRecipientEmail(recipient, d.motif_code, clientEmail)
+  const dest = await resolveRecipientEmail(recipient, d.motif_code, clientEmail, leveePayer)
   if (!dest) return { ok: false, error: recipient === 'client' ? "Email du client inconnu (compléter la fiche)" : 'Destinataire non configuré' }
   let gen: { pdf: Buffer; numero: string }
   try { gen = await renderEtatFraisFromRow(sb, dossierId, efRowId) }
@@ -481,13 +491,15 @@ export async function sendEtatFrais(
   let clientEmail: string | null = null
   let vin: string | null = null
   let reqDocPath: string | null = null
+  let leveePayer: string | null = null
   if (d.mission_id) {
-    const { data: m } = await sb.from('incoming_missions').select('client_email, vehicle_vin, requisitoire_doc_path, dossier_number, vehicle_plate, vehicle_brand, vehicle_model').eq('id', d.mission_id).maybeSingle()
+    const { data: m } = await sb.from('incoming_missions').select('client_email, vehicle_vin, requisitoire_doc_path, dossier_number, vehicle_plate, vehicle_brand, vehicle_model, levee_saisie_payer').eq('id', d.mission_id).maybeSingle()
     clientEmail = m?.client_email || null
     vin = m?.vehicle_vin || null
     reqDocPath = m?.requisitoire_doc_path || null
+    leveePayer = m?.levee_saisie_payer || null
   }
-  const dest = await resolveRecipientEmail(recipient, d.motif_code, clientEmail)
+  const dest = await resolveRecipientEmail(recipient, d.motif_code, clientEmail, leveePayer)
   if (!dest) return { ok: false, error: recipient === 'client' ? "Email du client inconnu (compléter la fiche)" : 'Destinataire Domaine non configuré' }
 
   // Génère (persiste) l'état de frais.
