@@ -35,6 +35,9 @@ interface Tariff {
   created_at:            string
   // Mode brackets (IPA: AXA + Ardenne Prevoyante) | lines (lignes pre-configurees)
   pricing_mode:          'forfait' | 'brackets' | 'lines'
+  // Lignes relivraison (Olivier 21/09/2026) : la règle par assisteur vit ici.
+  rel_mode?:             'all_km' | 'rem_tariff' | 'forfait' | null
+  rel_depart?:           'parc' | 'nearest_depot'
   beyond_max_km:         number | null
   beyond_max_step_km:    number | null
   beyond_max_step_price: number | null
@@ -102,6 +105,13 @@ interface ExtractedTariff {
 // se tarifent dans /admin/tarifs-transport (prix/km par source × gabarit) ; une
 // grille forfait saisie ici serait ignorée par le moteur. Le libellé reste pour
 // afficher d'éventuelles anciennes lignes.
+const REL_MODE_LABELS: Record<string, string> = {
+  all_km:     'Tous les km — km aller-retour × prix du km, sans prise en charge',
+  rem_tariff: 'Tarif remorquage — même calcul qu\'un remorquage (tranches)',
+  forfait:    'Forfait + km inclus — prise en charge, km inclus, prix du km',
+}
+const REL_MODE_SHORT: Record<string, string> = { all_km: 'Tous les km', rem_tariff: 'Tarif remorquage', forfait: 'Forfait + km inclus' }
+const REL_DEPART_LABELS: Record<string, string> = { parc: 'Parc', nearest_depot: 'Dépôt le plus proche du lieu d\'origine' }
 const MISSION_TYPES = [...MISSION_TYPE_KEYS.filter(k => k !== 'reparation_place' && k !== 'autre' && k !== 'transport'), 'parc']
 
 const TYPE_LABELS: Record<string, string> = {
@@ -618,7 +628,15 @@ export default function TarifsClient(props: Props) {
                     <tr key={t.id} className="border-t border-surface-hover hover:bg-surface-hover/50 cursor-pointer"
                         onClick={() => isBrackets ? openBrackets(t) : isLines ? openLines(t) : setEditTariff(t)}>
                       <td className="p-2 font-medium">{SOURCE_LABELS[t.source] || t.source}</td>
-                      <td className="p-2">{TYPE_LABELS[t.mission_type] || t.mission_type}</td>
+                      <td className="p-2">
+                        {TYPE_LABELS[t.mission_type] || t.mission_type}
+                        {t.mission_type === 'relivraison' && (
+                          <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-semibold bg-success/15 text-success border border-success/30"
+                                title={REL_MODE_LABELS[t.rel_mode || 'forfait']}>
+                            {REL_MODE_SHORT[t.rel_mode || 'forfait']}{t.rel_depart === 'nearest_depot' ? ' · dépôt le plus proche' : ''}
+                          </span>
+                        )}
+                      </td>
                       {isBrackets ? (
                         <td colSpan={5} className="p-2 text-center">
                           <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-info/15 text-info border border-info/30 rounded-md text-xs font-semibold">
@@ -895,8 +913,47 @@ export default function TarifsClient(props: Props) {
                   </div>
                 </div>
 
-                {/* Champs forfait — masques si mode brackets */}
-                {(editTariff.pricing_mode || 'forfait') === 'forfait' && (
+                {/* Relivraison : la règle par assisteur (Olivier 21/09/2026) */}
+                {editTariff.mission_type === 'relivraison' && (
+                  <>
+                    <div className="col-span-2">
+                      <label className="text-[10px] text-ink-faint uppercase tracking-wider">Relivraison — mode de facturation</label>
+                      <select
+                        value={editTariff.rel_mode || 'forfait'}
+                        onChange={e => setEditTariff(p => ({ ...p!, rel_mode: e.target.value as any }))}
+                        className="w-full px-2 py-1 bg-surface-hover rounded text-sm"
+                      >
+                        {Object.entries(REL_MODE_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+                      </select>
+                    </div>
+                    <div className="col-span-2">
+                      <label className="text-[10px] text-ink-faint uppercase tracking-wider">Départ des km</label>
+                      <select
+                        value={editTariff.rel_depart || 'parc'}
+                        onChange={e => setEditTariff(p => ({ ...p!, rel_depart: e.target.value as any }))}
+                        className="w-full px-2 py-1 bg-surface-hover rounded text-sm"
+                      >
+                        {Object.entries(REL_DEPART_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+                      </select>
+                    </div>
+                    {(editTariff.rel_mode || 'forfait') === 'all_km' && (
+                      <FieldNumber label="€/km (tous les km)" value={editTariff.km_price ?? null} onChange={v => setEditTariff(p => ({ ...p!, km_price: v }))} />
+                    )}
+                    {(editTariff.rel_mode || 'forfait') === 'rem_tariff' && (
+                      <div className="col-span-2 bg-brand/5 border border-brand/20 rounded p-2 text-xs text-ink-faint">
+                        La relivraison se calcule avec la grille <strong>Remorquage</strong> de cette source. Rien d'autre à régler ici.
+                      </div>
+                    )}
+                    {editTariff.source === 'touring' && (
+                      <div className="col-span-2 bg-brand/5 border border-brand/20 rounded p-2 text-xs text-ink-faint">
+                        Touring : les km inclus du dossier sont reportés sur la relivraison (ce que le remorquage n'a pas consommé). Règle fixe.
+                      </div>
+                    )}
+                  </>
+                )}
+
+                {/* Champs forfait — masques si mode brackets, ou si la relivraison n'est pas en mode forfait */}
+                {(editTariff.pricing_mode || 'forfait') === 'forfait' && !(editTariff.mission_type === 'relivraison' && (editTariff.rel_mode || 'forfait') !== 'forfait') && (
                   <>
                     <FieldNumber label="Forfait €" value={editTariff.unit_price ?? null} onChange={v => setEditTariff(p => ({ ...p!, unit_price: v }))} />
                     <FieldNumber label="Km inclus" value={editTariff.km_inclus ?? 0} onChange={v => setEditTariff(p => ({ ...p!, km_inclus: v ?? 0 }))} />

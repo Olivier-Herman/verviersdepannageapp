@@ -1335,36 +1335,37 @@ async function estimateRelivraisonPrice(
   const sb = createAdminClient()
   const today = new Date().toISOString().slice(0, 10)
 
-  // ── Tarif RELIVRAISON explicite (Olivier 2026-07-14) ─────────────────────
-  // Si un tarif source_tariffs de type 'relivraison' est configuré pour cette
-  // source (dans /admin/tarifs), il PRIME : on utilise la logique standard
-  // (forfait + km inclus + km extra + surcharges) avec ce tarif, au lieu du
-  // km pur / tarif remorquage par défaut. Cas Ethias Relivraison (10063880).
-  {
-    const { data: relTariffs } = await sb
-      .from('source_tariffs')
-      .select('id, effective_to')
-      .eq('source', source)
-      .eq('mission_type', 'relivraison')
-      .lte('effective_from', today)
-      .order('effective_from', { ascending: false })
-    const hasRel = (relTariffs || []).some(t => !t.effective_to || t.effective_to >= today)
-    if (hasRel) {
-      return await estimateMissionPrice(mission, { skipRelShortcut: true })
-    }
+  // ── Règle relivraison de la source (Olivier 21/09/2026) ─────────────────
+  // « Pour la grille relivraison, ça dépend de chaque assistance. » La ligne
+  // relivraison de source_tariffs porte la règle (rel_mode + rel_depart), plus
+  // aucune exception par assisteur dans le code :
+  //   • forfait    → calcul standard forfait + km inclus + prix du km (Ethias,
+  //                  Kaze, P&V, VAB, Touring — Touring garde le dépôt le plus
+  //                  proche et le report des km inclus du dossier, dans ce calcul)
+  //   • rem_tariff → même calcul qu'un remorquage (tranches AXA / Ardenne)
+  //   • all_km     → km aller-retour × prix du km, sans prise en charge
+  //                  (Mondial/Allianz, Vivium, TGR)
+  //   • pas de ligne → relivraison d'un appel police / Siabis : grille remorquage
+  //                  de la source d'origine ; sinon « à choisir dans Tarifs ».
+  const { data: relRows } = await sb
+    .from('source_tariffs')
+    .select('id, rel_mode, rel_depart, km_price, effective_to')
+    .eq('source', source)
+    .eq('mission_type', 'relivraison')
+    .lte('effective_from', today)
+    .order('effective_from', { ascending: false })
+  const relRow = (relRows || []).find(t => !t.effective_to || t.effective_to >= today) || null
+  const relMode: 'forfait' | 'rem_tariff' | 'all_km' | null = relRow ? ((relRow.rel_mode as any) || 'forfait') : null
+  const relDepart: 'parc' | 'nearest_depot' = relRow?.rel_depart === 'nearest_depot' ? 'nearest_depot' : 'parc'
+
+  if (relMode === 'forfait') {
+    return await estimateMissionPrice(mission, { skipRelShortcut: true })
   }
 
-  // ── Règles de tarif REL par source (Olivier 2026-06-18) ──────────────────
-  //   • AXA, Ardenne, Allianz(mondial) → la relivraison se facture au tarif
-  //     REMORQUAGE (forfait + km supplémentaires), pas au km pur.
-  //   • Touring → km total × prix km (comportement par défaut ci-dessous),
-  //     SAUF si la mission d'origine (parent) est un appel police ou Siabis
-  //     non couvert → alors tarif REMORQUAGE de cette source d'origine.
-  //   • Autres sources → km pur (inchangé).
   let parentSource = source
   let parentSnc: string | null = null
-  // Coords du lieu d'intervention d'origine (parent) : pour Touring, déterminent
-  // le dépôt VD utilisé pour TOUT le dossier (cf touringRouteFromNearestDepot).
+  // Coords du lieu d'intervention d'origine (parent) : déterminent le dépôt VD
+  // de départ quand la ligne relivraison dit « dépôt le plus proche ».
   let originIncident: Coord | null = null
   if (mission.parent_mission_id) {
     const { data: parent } = await sb
@@ -1381,57 +1382,61 @@ async function estimateRelivraisonPrice(
   const parentIsPoliceOuSnc = parentSource.startsWith('police')
     || (await sourcesWithTag('siabis')).includes(parentSource)
     || !!parentSnc
-  const REL_AU_TARIF_REM = new Set(await sourcesWithTag('rel_tarif_rem'))
 
-  // Olivier 21/09/2026, dossier 1RPJ089 : « tu comptes deux fois la prise en
-  // charge. On ne peut pas : c'est total kilomètre, une prise en charge + km −
-  // nombre de km inclus. Pour la relivraison, c'est tous les kilomètres tout
-  // simplement. » Quand la grille remorquage de la source est un FORFAIT (prise
-  // en charge + km inclus + prix du km), la relivraison ne refacture donc PAS le
-  // forfait : elle facture ses kilomètres, après avoir consommé ce que le
-  // remorquage a laissé des km inclus. Les grilles par tranches (AXA, Ardenne)
-  // gardent leur calcul : la tranche n'est pas séparable en forfait + km.
+  // Prix du km « tous les km » : ligne relivraison (all_km), ou grille remorquage
+  // de la source d'origine pour un appel police / Siabis à forfait (une seule
+  // prise en charge par dossier, f2584537).
   let forfaitKmPrice: number | null = null
-  let forfaitSource  = ''
-  let forfaitLabel   = ''
-  if (REL_AU_TARIF_REM.has(source) || parentIsPoliceOuSnc) {
-    const remSrc = REL_AU_TARIF_REM.has(source) ? source : parentSource
-    const { data: remTariffs } = await sb
-      .from('source_tariffs')
-      .select('unit_price, km_inclus, km_price, pricing_mode, effective_to')
-      .eq('source', remSrc).eq('mission_type', 'remorquage')
-      .lte('effective_from', today).order('effective_from', { ascending: false })
-    const remT = (remTariffs || []).find(t => !t.effective_to || t.effective_to >= today)
-    if (remT && String(remT.pricing_mode || 'forfait') === 'forfait'
-        && Number(remT.unit_price || 0) > 0 && Number(remT.km_price || 0) > 0) {
-      forfaitKmPrice = Number(remT.km_price)
-      forfaitSource  = remSrc
+  let forfaitSource  = source
+
+  if (relMode === 'rem_tariff' || (!relRow && parentIsPoliceOuSnc)) {
+    // Même calcul qu'un remorquage : la source elle-même (AXA, Ardenne), ou la
+    // source d'origine (police_…, Siabis) qui porte la grille applicable.
+    const remSource = relMode === 'rem_tariff' ? source : parentSource
+    let useFullRem = relMode === 'rem_tariff'
+    if (!useFullRem) {
+      // Police / Siabis : grille à forfait → la relivraison ne refacture pas la
+      // prise en charge, elle facture tous ses km au prix du km ; grille par
+      // tranches → calcul remorquage complet.
+      const { data: remTariffs } = await sb
+        .from('source_tariffs')
+        .select('unit_price, km_inclus, km_price, pricing_mode, effective_to')
+        .eq('source', remSource).eq('mission_type', 'remorquage')
+        .lte('effective_from', today).order('effective_from', { ascending: false })
+      const remT = (remTariffs || []).find(t => !t.effective_to || t.effective_to >= today)
+      if (remT && String(remT.pricing_mode || 'forfait') === 'forfait'
+          && Number(remT.unit_price || 0) > 0 && Number(remT.km_price || 0) > 0) {
+        forfaitKmPrice = Number(remT.km_price); forfaitSource = remSource
+      } else useFullRem = true
+    }
+    if (useFullRem) {
+      const remEstimate = await estimateMissionPrice({ ...mission, source: remSource, mission_type: 'remorquage' })
+      if (remEstimate.ok) {
+        return {
+          ...remEstimate,
+          mission_type: 'relivraison',
+          tariff_id:    `${remSource}-relivraison-tarif-remorquage`,
+          breakdown: [
+            ...remEstimate.breakdown,
+            { label: 'Relivraison', amount: null, note: `Facturée au tarif remorquage (${remSource})` },
+          ],
+        }
+      }
+      // Si pas de grille remorquage trouvée, on retombe sur le calcul km ci-dessous.
     }
   }
 
-  if ((REL_AU_TARIF_REM.has(source) || parentIsPoliceOuSnc) && forfaitKmPrice == null) {
-    // Source dont la REL se facture au tarif remorquage. Pour AXA/Ardenne/Allianz
-    // on garde leur propre source ; pour le cas police/SNC on prend la source
-    // d'origine (police_…) qui porte la grille remorquage applicable.
-    const remSource = REL_AU_TARIF_REM.has(source) ? source : parentSource
-    const remEstimate = await estimateMissionPrice({ ...mission, source: remSource, mission_type: 'remorquage' })
-    if (remEstimate.ok) {
-      return {
-        ...remEstimate,
-        mission_type: 'relivraison',
-        tariff_id:    `${remSource}-relivraison-tarif-remorquage`,
-        breakdown: [
-          ...remEstimate.breakdown,
-          { label: 'Relivraison', amount: null, note: `Facturée au tarif remorquage (${remSource})` },
-        ],
-      }
-    }
-    // Si pas de grille remorquage trouvée, on retombe sur le calcul km ci-dessous.
+  if (relMode === 'all_km' && relRow?.km_price != null && Number(relRow.km_price) > 0) {
+    forfaitKmPrice = Number(relRow.km_price); forfaitSource = source
   }
+  // Sans ligne relivraison ni cas police : km purs au SERV-KM de la source
+  // (comportement historique, privé / garages). Sans prix du km → message
+  // « à régler dans Tarifs » plus bas.
+  const forfaitLabel = `Kilomètres relivraison (tarif ${forfaitSource})`
+
 
   // Prix du km : celui de la grille remorquage quand on facture la REL en km
   // purs sur un forfait (voir plus haut), sinon le SERV-KM de la source.
-  if (forfaitKmPrice != null) forfaitLabel = `Kilomètres relivraison (tarif ${forfaitSource})`
 
   // 1. Lookup prix km via source_tariff_lines (kind=SERV-KM)
   const { data: kmLinesRaw } = await sb
@@ -1468,7 +1473,7 @@ async function estimateRelivraisonPrice(
 
   if (kmPriceNormal == null || kmPriceNormal <= 0) {
     return emptyEstimate(source, 'relivraison',
-      `Aucun tarif kilometrique configure pour la source ${source}. Ajoute une ligne SERV-KM dans /admin/tarifs pour cette source.`)
+      `Relivraison ${source} : règle à choisir dans Tarifs (ligne « Relivraison » de cette source : tous les km, tarif remorquage ou forfait).`)
   }
 
   // 3. Determine le prix km a appliquer selon majoration horaire eventuelle
@@ -1513,11 +1518,12 @@ async function estimateRelivraisonPrice(
     } catch {}
   }
 
-  // Olivier 2026-06-29 — Touring : la REL se facture en aller-retour depuis le
-  // dépôt VD le plus proche du lieu d'intervention D'ORIGINE (parent), pas depuis
-  // le parc : Dépôt → destination → Dépôt. Override du calcul parc↔relivraison.
+  // Départ « dépôt le plus proche » (ligne relivraison, rel_depart) : aller-retour
+  // depuis le dépôt VD le plus proche du lieu d'intervention D'ORIGINE (parent),
+  // pas depuis le parc : Dépôt → destination → Dépôt. (Règle Touring 2026-06-29,
+  // désormais réglable par assisteur.)
   let touringRelDepot = ''
-  if (source === 'touring' && mission.id && originIncident) {
+  if (relDepart === 'nearest_depot' && mission.id && originIncident) {
     const { data: c } = await sb.from('incoming_missions')
       .select('destination_lat, destination_lng').eq('id', mission.id).maybeSingle()
     if (c?.destination_lat != null && c?.destination_lng != null) {

@@ -65,6 +65,8 @@ export async function POST(req: Request) {
     km_inclus:             Number(t.km_inclus || 0),
     km_price:              t.km_price ?? null,
     km_basis:              t.km_basis === 'total' ? 'total' : 'charged',
+    rel_mode:              String(t.mission_type || '').toLowerCase().trim() === 'relivraison' ? (['all_km', 'rem_tariff', 'forfait'].includes(t.rel_mode) ? t.rel_mode : 'forfait') : null,
+    rel_depart:            t.rel_depart === 'nearest_depot' ? 'nearest_depot' : 'parc',
     parc_day_price:        t.parc_day_price ?? null,
     beyond_max_km:         t.beyond_max_km ?? null,
     beyond_max_step_km:    t.beyond_max_step_km ?? null,

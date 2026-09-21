@@ -9,7 +9,7 @@ import { createAdminClient } from '@/lib/supabase'
 
 export type SourceTag =
   | 'hexalite' | 'touring' | 'integration' | 'cloture_externe' | 'saisie_scope' | 'requisitoire'
-  | 'panneau_saisie' | 'siabis' | 'rel_reprise' | 'assistance' | 'auto_restitute' | 'rel_tarif_rem'
+  | 'panneau_saisie' | 'siabis' | 'rel_reprise' | 'assistance' | 'auto_restitute'
   | 'ima_family' | 'etiquette'
 
 export interface SourceCatalogRow {

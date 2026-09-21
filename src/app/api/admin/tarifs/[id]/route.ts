@@ -33,10 +33,14 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
     'effective_from', 'effective_to', 'notes',
     // Champs mode "brackets" (tarif par tranches)
     'pricing_mode', 'beyond_max_km', 'beyond_max_step_km', 'beyond_max_step_price',
+    // Lignes relivraison (Olivier 21/09/2026) : mode + point de départ
+    'rel_mode', 'rel_depart',
   ]) {
     if (body[key] !== undefined) allowed[key] = body[key]
   }
   if (allowed.km_basis !== undefined) allowed.km_basis = allowed.km_basis === 'total' ? 'total' : 'charged'
+  if (allowed.rel_mode !== undefined) allowed.rel_mode = ['all_km', 'rem_tariff', 'forfait'].includes(allowed.rel_mode) ? allowed.rel_mode : null
+  if (allowed.rel_depart !== undefined) allowed.rel_depart = allowed.rel_depart === 'nearest_depot' ? 'nearest_depot' : 'parc'
   if (allowed.pricing_mode !== undefined) {
     allowed.pricing_mode = allowed.pricing_mode === 'brackets' ? 'brackets' : 'forfait'
   }
