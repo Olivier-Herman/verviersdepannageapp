@@ -17,7 +17,7 @@ import { NextResponse }      from 'next/server'
 import { getServerSession }  from 'next-auth'
 import { authOptions }       from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase'
-import { sourcesWithTag } from '@/lib/missions/source-catalog'
+import { sourcesWithTag, listSourceCatalog } from '@/lib/missions/source-catalog'
 
 export const dynamic     = 'force-dynamic'
 export const maxDuration = 20
@@ -199,7 +199,8 @@ export async function GET(req: Request) {
       ph.text = ph.text.replace(/[.\s]*$/, '') + ` · ${srcLbl}`
     }
     return {
-      at:      l.created_at,
+      at:        l.created_at,
+      missionId: l.mission_id as string | null,
       action:  l.action,
       text:    ph.text,
       ton:     ph.ton,
@@ -218,7 +219,7 @@ export async function GET(req: Request) {
 
   // ── Anomalies ────────────────────────────────────────────────────────────
   // Chacune vient d'un incident constaté, pas d'une idée de tableau de bord.
-  const anomalies: { level: 'rouge' | 'ambre'; titre: string; detail: string; at: string }[] = []
+  const anomalies: { missionId?: string | null; level: 'rouge' | 'ambre'; titre: string; detail: string; at: string }[] = []
 
   // 1. Terminée chez nous, jamais clôturée chez l'assisteur (KRAA728, 1EYJ678).
   // Fenêtre de 7 JOURS, pas 24 h : un dossier oublié chez l'assisteur ne se
@@ -245,6 +246,7 @@ export async function GET(req: Request) {
     if (!ok) {
       const jours = Math.floor((Date.now() - Date.parse(m.completed_at)) / 86400000)
       anomalies.push({
+        missionId: m.id,
         level: 'rouge',
         titre: `#${m.mission_number} ${m.vehicle_plate || ''} — pas clôturée chez ${SRC_LBL[m.source] || m.source}`
           + (jours >= 1 ? ` (depuis ${jours} j)` : ''),
@@ -263,6 +265,7 @@ export async function GET(req: Request) {
     const m = missions.get(l.mission_id)
     if (m && ENVOI_REEL.includes(m.source)) {
       anomalies.push({
+        missionId: l.mission_id,
         level: 'ambre',
         titre: `#${m.mission_number} ${m.vehicle_plate || ''} — statut forcé (${m.source})`,
         detail: 'Le forçage ne prévient pas l’assisteur : à clôturer chez eux.',
@@ -277,6 +280,7 @@ export async function GET(req: Request) {
   for (const e of events) {
     if (/error|failed/i.test(e.action)) {
       anomalies.push({
+        missionId: e.missionId,
         level: 'rouge',
         titre: `#${e.number ?? '?'} ${e.plate || ''} — ${e.action.replace(/_/g, ' ')}`
           + (e.repeats > 1 ? ` (${e.repeats}×)` : ''),
@@ -288,13 +292,14 @@ export async function GET(req: Request) {
 
   // 4. Motif fourre-tout là où le code part vraiment chez l'assisteur.
   const { data: catchAll } = await sb.from('incoming_missions')
-    .select('mission_number, vehicle_plate, source, panne_motif, panne_motif_label, completed_at')
+    .select('id, mission_number, vehicle_plate, source, panne_motif, panne_motif_label, completed_at')
     .in('source', ENVOI_REEL)
     .gte('completed_at', today)
     .like('panne_motif', '%autre%')
     .limit(50)
   for (const m of (catchAll || [])) {
     anomalies.push({
+      missionId: m.id,
       level: 'ambre',
       titre: `#${m.mission_number} ${m.vehicle_plate || ''} — motif « ${m.panne_motif_label || 'Autre'} »`,
       detail: `Code fourre-tout envoyé à ${m.source}.`,
@@ -304,10 +309,49 @@ export async function GET(req: Request) {
 
   anomalies.sort((a, b) => String(b.at).localeCompare(String(a.at)))
 
+  // ── Rythme du jour : clôtures chauffeur, heure par heure ─────────────────
+  // Sert la petite courbe du journal de bord : on voit tout de suite si la
+  // matinée a été chargée et si l'heure en cours suit. Olivier 21/09/2026.
+  const { data: doneToday } = await sb.from('incoming_missions')
+    .select('completed_at').gte('completed_at', today).limit(1000)
+  const rythme = Array.from({ length: 24 }, (_, h) => ({ h, n: 0 }))
+  for (const m of (doneToday || [])) {
+    if (!m.completed_at) continue
+    const bxl = new Date(new Date(m.completed_at as string).toLocaleString('en-US', { timeZone: 'Europe/Brussels' }))
+    rythme[bxl.getHours()].n++
+  }
+  const heureBxl = new Date(new Date().toLocaleString('en-US', { timeZone: 'Europe/Brussels' })).getHours()
+
+  // ── Connecteurs : est-ce que ça remonte encore chez l'assisteur ? ─────────
+  // Déduit des logs des dernières 24 h — un succès de synchro/clôture remet le
+  // compteur à zéro, un échec allume le voyant. La liste des sources et leurs
+  // couleurs viennent du catalogue, jamais d'une table en dur.
+  const catalog = await listSourceCatalog()
+  const catOf = new Map(catalog.map(c => [c.key, c]))
+  const connMap = new Map<string, { key: string; label: string; hex: string | null; lastOkAt: string | null; fails: number; lastFailAt: string | null }>()
+  for (const key of ENVOI_REEL) {
+    const c = catOf.get(key)
+    connMap.set(key, { key, label: c?.label || key, hex: c?.display_color_hex || null, lastOkAt: null, fails: 0, lastFailAt: null })
+  }
+  for (const l of (rawLogs || [])) {
+    const m = missions.get(l.mission_id)
+    const c = m && connMap.get(m.source)
+    if (!c) continue
+    if (/error|failed/i.test(l.action)) {
+      c.fails++
+      if (!c.lastFailAt) c.lastFailAt = l.created_at
+    } else if (/_(synced|closed)$/.test(l.action)) {
+      if (!c.lastOkAt) c.lastOkAt = l.created_at
+    }
+  }
+  const connecteurs = [...connMap.values()].sort((a, b) => a.label.localeCompare(b.label))
+
   return NextResponse.json({
     ok: true,
     at: new Date().toISOString(),
     events,
     anomalies: anomalies.slice(0, 40),
+    rythme, heureBxl,
+    connecteurs,
   })
 }

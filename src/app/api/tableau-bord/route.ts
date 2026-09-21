@@ -192,6 +192,27 @@ export async function GET(req: Request) {
     }
     if (chunk.length < 1000) break
   }
+  // Deux séries SÉPARÉES, mesurées depuis la clôture chauffeur (Olivier
+  // 21/09/2026 : « délai médian d'1 min j'ai du doute »). En comptant les
+  // dossiers COMEX depuis la PUBLICATION du BKO, le départ et l'arrivée sont le
+  // même événement — le cron qui voit le BKO facture dans la foulée — et la
+  // tuile mesurait la latence de notre cron (0,1 min sur 95 dossiers/7 j), pas
+  // le délai de facturation. On sépare donc ce qu'on maîtrise (toutes sources
+  // hors Touring : médiane ~1 h 15) de l'attente Touring (publication du BKO le
+  // lendemain matin).
+  const dursNonTouring: number[] = []
+  const dursTouring:    number[] = []
+  for (const g of groups.values()) {
+    if (g.police || g.imported) continue
+    const d = g.invoiced - g.completed
+    if (d < 0) continue
+    if (g.touring) { if (g.comexBko) dursTouring.push(d) }
+    else dursNonTouring.push(d)
+  }
+  const med = (arr: number[]) => arr.length
+    ? Math.round([...arr].sort((a, b) => a - b)[Math.floor(arr.length / 2)] / 60000)
+    : null
+
   const durs: number[] = []
   for (const g of groups.values()) {
     if (g.police) continue                              // appels police écartés
@@ -281,7 +302,7 @@ export async function GET(req: Request) {
   // Missions actives (assignées / en cours) détaillées, avec le point de départ
   // du compteur (assignation).
   const { data: active } = await sb.from('incoming_missions')
-    .select('id, mission_number, assigned_to, vehicle_plate, vehicle_brand, vehicle_model, mission_type, incident_city, assigned_at, accepted_at, status, on_way_at, on_site_at, loaded_at, delivering_at')
+    .select('id, mission_number, assigned_to, vehicle_plate, vehicle_brand, vehicle_model, mission_type, incident_city, assigned_at, accepted_at, status, on_way_at, on_site_at, loaded_at, delivering_at, parked_at, source')
     .in('status', ['assigned', 'accepted', 'in_progress', 'delivering'])
     .order('assigned_at', { ascending: true })
     .limit(200)
@@ -422,6 +443,7 @@ export async function GET(req: Request) {
   }
   const enCoursDetail = (active || []).map((m: any) => {
     const step = stepOf(m)
+    const c = catMap.get(m.source)
     return {
       id: m.id, missionNumber: m.mission_number, driver: dn.get(m.assigned_to) || '—',
       plate: m.vehicle_plate || '', vehicle: [m.vehicle_brand, m.vehicle_model].filter(Boolean).join(' '),
@@ -429,6 +451,22 @@ export async function GET(req: Request) {
       statusLabel: step.label,
       stepAt: step.at,
       since: m.assigned_at || m.accepted_at || null,
+      // Source affichée : libellé et couleur viennent du catalogue, jamais d'une
+      // table en dur côté écran.
+      source: m.source || null,
+      sourceLabel: c?.label || m.source || '',
+      sourceHex: c?.hex || null,
+      // Heures de chaque pointage : le journal de bord les affiche sous les
+      // étapes du chauffeur (Olivier 21/09/2026).
+      steps: {
+        assigned:   m.assigned_at   || null,
+        accepted:   m.accepted_at   || null,
+        on_way:     m.on_way_at     || null,
+        on_site:    m.on_site_at    || null,
+        loaded:     m.loaded_at     || null,
+        delivering: m.delivering_at || null,
+        parked:     m.parked_at     || null,
+      },
     }
   })
 
@@ -452,6 +490,10 @@ export async function GET(req: Request) {
       // tire la moyenne très haut et masque le comportement réel.
       // Olivier 2026-08-14.
       dureeMedMin: durs.length ? Math.round(durs[Math.floor(durs.length / 2)] / 60000) : null,
+      // Clôture chauffeur → facture, séparément : ce qu'on maîtrise, et l'attente
+      // Touring. Le journal de bord affiche les deux.
+      dureeMedHorsTouringMin: med(dursNonTouring), dureeMedHorsTouringN: dursNonTouring.length,
+      dureeMedTouringMin:     med(dursTouring),    dureeMedTouringN:     dursTouring.length,
     },
     sources: {
       parSource,

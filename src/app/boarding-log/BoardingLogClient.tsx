@@ -1,25 +1,41 @@
 'use client'
 // src/app/boarding-log/BoardingLogClient.tsx
 //
-// JOURNAL DE BORD — écran à laisser allumé (Olivier 2026-08-14).
+// JOURNAL DE BORD — écran à laisser allumé (Olivier 2026-08-14, refondu le
+// 2026-09-21 d'après la maquette qu'il a validée).
 //
-// « Je peux l'afficher en permanence devant moi et je vois toutes tes infos en
-// direct plutôt que de l'avoir perdu dans nos échanges. » D'où trois zones, de
-// la plus petite à la plus grande :
-//   · une ligne de chiffres, discrète, qui ne bouge presque pas ;
-//   · les missions en cours ;
-//   · le journal en direct, avec les ANOMALIES d'abord.
+// Trois règles données par Olivier, dans cet ordre :
+//   1. « Je veux toujours voir TOUTES les missions en cours » → les cartes sont
+//      dimensionnées en em et la taille de base est calculée à l'écran pour que
+//      la liste rentre entièrement, sans scroll (fitMissions).
+//   2. Sous chaque étape du chauffeur, l'HEURE du pointage en petit.
+//   3. Le journal se limite à deux lignes visibles, scrollable pour le reste.
 //
-// Rien ne clignote et rien ne défile tout seul : un écran mural qui bouge sans
-// raison finit par ne plus être regardé.
+// Le reste de la maquette : une couleur par étape (le geste du chauffeur), une
+// couleur par source (celle du catalogue, jamais en dur), la navette qui balaie
+// l'étape en cours, la barre d'avancement de la mission, et à droite le rythme
+// du jour, les chauffeurs et l'état des connecteurs.
 
 import { pollWhenVisible } from '@/lib/client/poll'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 
 const POLL_MS = 15000
 
-interface Ev { at: string; action: string; text: string; ton: 'info' | 'ok' | 'alerte'; notes: string; number: number | null; plate: string | null; source: string | null; driver: string | null; repeats?: number }
-interface Ano { level: 'rouge' | 'ambre'; titre: string; detail: string; at: string }
+interface Ev { at: string; missionId: string | null; action: string; text: string; ton: 'info' | 'ok' | 'alerte'; notes: string; number: number | null; plate: string | null; source: string | null; driver: string | null; repeats?: number }
+interface Ano { missionId?: string | null; level: 'rouge' | 'ambre'; titre: string; detail: string; at: string }
+interface Conn { key: string; label: string; hex: string | null; lastOkAt: string | null; fails: number; lastFailAt: string | null }
+interface LogData { events: Ev[]; anomalies: Ano[]; rythme?: { h: number; n: number }[]; heureBxl?: number; connecteurs?: Conn[] }
+
+/** Les six gestes du terrain, dans l'ordre, avec la couleur de chacun. */
+const STEPS: { key: string; label: string; color: string; soft: string }[] = [
+  { key: 'assigned',   label: 'Assignée',  color: '#7A8AA0', soft: '#EBEFF5' },
+  { key: 'on_way',     label: 'En route',  color: '#1B57C9', soft: '#E2EAFB' },
+  { key: 'on_site',    label: 'Sur place', color: '#7A3BD6', soft: '#EEE6FC' },
+  { key: 'loaded',     label: 'Chargé',    color: '#C2700A', soft: '#FCEFD9' },
+  { key: 'delivering', label: 'Livraison', color: '#0B7F55', soft: '#DCF3EA' },
+]
+const PODIUM = ['#E11D2E', '#C2700A', '#1B57C9', '#0F7B6C', '#7A3BD6']
+const NEUTRE = { color: '#647385', soft: '#EEF1F5' }
 
 const ICONS: Record<string, string> = {
   accept: '🤝', on_way: '🚚', on_site: '📍', load_vehicle: '⬆️', park: '🅿️',
@@ -29,12 +45,29 @@ const ICONS: Record<string, string> = {
   force_status_to_invoice: '✋', force_status_parked: '✋', force_status_completed: '✋',
 }
 
-const hm = (s: string) => new Date(s).toLocaleTimeString('fr-BE', { timeZone: 'Europe/Brussels', hour: '2-digit', minute: '2-digit' })
+const hm = (s: string | null) => s ? new Date(s).toLocaleTimeString('fr-BE', { timeZone: 'Europe/Brussels', hour: '2-digit', minute: '2-digit' }) : ''
 const dur = (min: number | null | undefined) => min == null ? '—' : min < 60 ? `${min} min` : `${Math.floor(min / 60)} h ${String(min % 60).padStart(2, '0')}`
-const depuis = (iso: string | null) => {
-  if (!iso) return ''
-  const m = Math.round((Date.now() - Date.parse(iso)) / 60000)
+const depuis = (iso: string | null, nowMs: number) => {
+  if (!iso) return '—'
+  const s = Math.max(0, Math.floor((nowMs - Date.parse(iso)) / 1000))
+  const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60)
+  return h ? `${h}:${String(m).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}` : `${m}:${String(s % 60).padStart(2, '0')}`
+}
+const age = (iso: string, nowMs: number) => {
+  const m = Math.max(0, Math.round((nowMs - Date.parse(iso)) / 60000))
   return m < 60 ? `${m} min` : `${Math.floor(m / 60)} h ${String(m % 60).padStart(2, '0')}`
+}
+/** Étape atteinte = dernier pointage renseigné. */
+function stepIndex(steps: Record<string, string | null> | undefined): number {
+  if (!steps) return 0
+  let last = 0
+  STEPS.forEach((s, i) => { if (steps[s.key]) last = i })
+  return last
+}
+function stepAt(steps: Record<string, string | null> | undefined, key: string): string | null {
+  if (!steps) return null
+  if (key === 'assigned') return steps.assigned || steps.accepted || null
+  return steps[key] || null
 }
 
 export default function BoardingLogClient() {
@@ -42,9 +75,12 @@ export default function BoardingLogClient() {
   const [pin, setPin]       = useState('')
   const [pinErr, setPinErr] = useState(false)
   const [tb, setTb]         = useState<any>(null)
-  const [log, setLog]       = useState<{ events: Ev[]; anomalies: Ano[] } | null>(null)
+  const [log, setLog]       = useState<LogData | null>(null)
   const [stale, setStale]   = useState(false)
-  const savedPin = useRef('')
+  const [nowMs, setNowMs]   = useState(() => Date.now())
+  const savedPin  = useRef('')
+  const missionsRef = useRef<HTMLDivElement | null>(null)
+  const feedRef     = useRef<HTMLDivElement | null>(null)
 
   const fetchAll = useCallback(async () => {
     const p = savedPin.current
@@ -74,6 +110,43 @@ export default function BoardingLogClient() {
     const s = setInterval(() => setStale(true), POLL_MS * 4)
     return () => { stopT(); clearInterval(s) }
   }, [authed, fetchAll])
+
+  // Horloge + chronos : une seconde suffit, le DOM de l'écran est petit.
+  useEffect(() => {
+    if (!authed) return
+    const t = setInterval(() => setNowMs(Date.now()), 1000)
+    return () => clearInterval(t)
+  }, [authed])
+
+  // ── Tout doit tenir à l'écran ────────────────────────────────────────────
+  // Le journal garde deux lignes, les missions se réduisent jusqu'à rentrer.
+  // On mesure après chaque rendu : aucune donnée n'est touchée, donc pas de
+  // boucle de rendu.
+  const fitAll = useCallback(() => {
+    const f = feedRef.current
+    if (f) {
+      const first = f.querySelector('.bl-ev') as HTMLElement | null
+      if (first) {
+        const h = first.getBoundingClientRect().height
+        if (h) f.style.height = `${Math.round(h * 2)}px`
+      }
+    }
+    const box = missionsRef.current
+    if (box) {
+      let px = 16, guard = 0
+      box.style.fontSize = `${px}px`
+      while (box.scrollHeight > box.clientHeight + 1 && px > 8 && guard++ < 40) {
+        px -= 0.5
+        box.style.fontSize = `${px}px`
+      }
+    }
+  }, [])
+
+  useLayoutEffect(() => { fitAll() })
+  useEffect(() => {
+    window.addEventListener('resize', fitAll)
+    return () => window.removeEventListener('resize', fitAll)
+  }, [fitAll])
 
   const submit = async (code: string) => {
     try {
@@ -109,68 +182,147 @@ export default function BoardingLogClient() {
   const ops = tb?.ops || {}
   const fa  = tb?.facturation || {}
   const enCours: any[] = tb?.enCours || []
+  const anomalies = log?.anomalies || []
+  const conns = log?.connecteurs || []
+  const jour: any[] = (tb?.chauffeurs?.jour || []).slice().sort((a: any, b: any) => b.total - a.total).slice(0, 5)
+  const rythme = log?.rythme || []
+  const heure  = log?.heureBxl ?? new Date().getHours()
 
   return (
     <div className="bl">
-      {/* ── Ligne de chiffres, volontairement petite ─────────────────── */}
+      {/* ── Bandeau : les chiffres du jour ──────────────────────────── */}
       <div className="bl-kpis">
-        <Kpi label="À facturer"        val={ops.aFacturer} />
-        <Kpi label="Terminées aujourd’hui" val={ops.termineesJour} />
-        <Kpi label="Facturées aujourd’hui" val={ops.factureesJour} />
-        <Kpi label="Délai médian à facturer" txt={dur(fa.dureeMedMin)} />
-        <Kpi label="Touring · BKO à valider"  txt={`${tb?.sources?.touring?.bko ?? '—'} / ${tb?.sources?.touring?.total ?? '—'}`} />
-        <Kpi label="Allianz · à clôturer"     txt={`${tb?.sources?.allianz?.cloture ?? '—'} / ${tb?.sources?.allianz?.total ?? '—'}`} />
-        <span className="bl-clock">
-          {new Date().toLocaleTimeString('fr-BE', { timeZone: 'Europe/Brussels', hour: '2-digit', minute: '2-digit' })}
-          {stale && <span className="bl-stale"> · données figées</span>}
+        <Kpi label="À facturer" val={ops.aFacturer} color="#E11D2E" tint="#FFE6E9" sub={`${ops.factureesJour ?? 0} parties aujourd’hui`} />
+        <Kpi label="Terminées"  val={ops.termineesJour} color="#0B7F55" tint="#DCF3EA">
+          <Trend rythme={rythme} heure={heure} />
+        </Kpi>
+        <Kpi label="Facturées"  val={ops.factureesJour} color="#1B57C9" tint="#E2EAFB" />
+        <Kpi label="Délai médian à facturer" txt={dur(fa.dureeMedHorsTouringMin)} color="#7A3BD6" tint="#EEE6FC"
+             sub={`Touring ${dur(fa.dureeMedTouringMin)} — attente du BKO`} />
+        <Kpi label="Touring · BKO à valider" txt={`${tb?.sources?.touring?.bko ?? '—'} / ${tb?.sources?.touring?.total ?? '—'}`} color="#0F7B6C" tint="#DBF1EE" />
+        <Kpi label="Allianz · à clôturer"    txt={`${tb?.sources?.allianz?.cloture ?? '—'} / ${tb?.sources?.allianz?.total ?? '—'}`} color="#C2700A" tint="#FCEFD9" />
+        <span className="bl-clockbox">
+          <span className="bl-clock">{new Date(nowMs).toLocaleTimeString('fr-BE', { timeZone: 'Europe/Brussels', hour: '2-digit', minute: '2-digit', second: '2-digit' })}</span>
+          {stale
+            ? <span className="bl-stale">données figées</span>
+            : <span className="bl-live"><i /> en direct</span>}
         </span>
       </div>
 
       <div className="bl-cols">
-        {/* ── Missions en cours ───────────────────────────────────────── */}
-        <section className="bl-card">
+        {/* ── Missions en cours ────────────────────────────────────── */}
+        <section className="bl-card" style={{ ['--hc' as any]: '#1B57C9' }}>
           <h2>Missions en cours <span>{enCours.length}</span></h2>
-          <div className="bl-scroll">
-            <table className="bl-tbl">
-              <tbody>
-                {enCours.length === 0 && <tr><td className="bl-empty">Aucune mission en cours.</td></tr>}
-                {enCours.map((m: any) => (
-                  <tr key={m.id}>
-                    <td className="bl-num">#{m.missionNumber}</td>
-                    <td className="bl-plate">{m.plate}</td>
-                    <td className="bl-veh">{m.vehicle}<span>{m.city}</span></td>
-                    <td className="bl-drv">{m.driver}</td>
-                    <td className="bl-st">{m.statusLabel}</td>
-                    <td className="bl-since">{depuis(m.since)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+          <div className="bl-missions" ref={missionsRef}>
+            {enCours.length === 0 && <p className="bl-empty">Aucune mission en cours.</p>}
+            {enCours.map((m: any) => {
+              const si = stepIndex(m.steps)
+              const st = STEPS[si] || STEPS[0]
+              const src = m.sourceHex ? { color: m.sourceHex, soft: m.sourceHex + '1A' } : NEUTRE
+              return (
+                <article key={m.id} className="bl-mission"
+                  style={{
+                    ['--sc' as any]: src.color, ['--scs' as any]: src.soft,
+                    ['--ec' as any]: st.color, ['--ecs' as any]: st.soft,
+                    ['--prog' as any]: `${Math.round(si / (STEPS.length - 1) * 100)}%`,
+                  }}>
+                  <span className="bl-plate">{m.plate || `#${m.missionNumber}`}</span>
+                  <div className="bl-mid">
+                    <div className="bl-veh">{m.vehicle || '—'}</div>
+                    <div className="bl-meta">
+                      <span className="bl-who"><span className="bl-face">{initials(m.driver)}</span>{m.driver}</span>
+                      {m.city && <span className="bl-town">{m.city}</span>}
+                      {m.sourceLabel && <span className="bl-tag">{m.sourceLabel}</span>}
+                    </div>
+                  </div>
+                  <div className="bl-right">
+                    <span className="bl-step">{m.statusLabel}</span>
+                    <span className={`bl-timer ${timerTone(m.since, nowMs)}`}>{depuis(m.since, nowMs)}</span>
+                  </div>
+                  <div className="bl-rail" style={{ gridTemplateColumns: `repeat(${STEPS.length}, 1fr)` }}>
+                    {STEPS.map((s, i) => {
+                      const at = stepAt(m.steps, s.key)
+                      const cls = i < si ? 'done' : i === si ? 'now' : 'todo'
+                      return (
+                        <span key={s.key} className={`bl-leg ${cls}`} style={{ ['--c' as any]: s.color, ['--cs' as any]: s.soft }}>
+                          <span className="bl-bar" />
+                          <span className="bl-lb">{s.label}</span>
+                          <span className="bl-at">{at ? hm(at) : '·'}</span>
+                        </span>
+                      )
+                    })}
+                  </div>
+                </article>
+              )
+            })}
           </div>
         </section>
 
-        {/* ── Anomalies ───────────────────────────────────────────────── */}
-        <section className="bl-card">
-          <h2>À regarder <span className={log?.anomalies?.length ? 'warn' : ''}>{log?.anomalies?.length ?? 0}</span></h2>
+        {/* ── Anomalies ────────────────────────────────────────────── */}
+        <section className="bl-card" style={{ ['--hc' as any]: '#C61D22' }}>
+          <h2>À regarder <span className={anomalies.length ? 'warn' : ''}>{anomalies.length}</span></h2>
           <div className="bl-scroll">
-            {(!log?.anomalies || log.anomalies.length === 0) && (
-              <p className="bl-empty">Rien à signaler sur les dernières 24 h.</p>
-            )}
-            {(log?.anomalies || []).map((a, i) => (
+            {anomalies.length === 0 && <p className="bl-empty">Rien à signaler sur les dernières 24 h.</p>}
+            {anomalies.map((a, i) => (
               <div key={i} className={`bl-ano ${a.level}`}>
                 <p className="bl-anot">{a.titre}</p>
                 <p className="bl-anod">{a.detail}</p>
-                <p className="bl-anoh">{hm(a.at)}</p>
+                <p className="bl-anoh">
+                  depuis {age(a.at, nowMs)}
+                  {a.missionId && <a className="bl-open" href={`/mission/${a.missionId}`} target="_blank" rel="noreferrer">Ouvrir la fiche</a>}
+                </p>
               </div>
             ))}
           </div>
         </section>
+
+        {/* ── Rythme, chauffeurs, connecteurs ──────────────────────── */}
+        <div className="bl-rail-col">
+          <section className="bl-card" style={{ ['--hc' as any]: '#7A3BD6' }}>
+            <h2>Rythme du jour</h2>
+            <Rythme rythme={rythme} heure={heure} />
+          </section>
+
+          <section className="bl-card" style={{ ['--hc' as any]: '#C2700A' }}>
+            <h2>Chauffeurs aujourd’hui</h2>
+            <div className="bl-podium">
+              {jour.length === 0 && <p className="bl-empty">Aucune mission clôturée.</p>}
+              {jour.map((d: any, i: number) => (
+                <div key={d.driver} className="bl-prow" style={{ ['--pc' as any]: PODIUM[i] || NEUTRE.color }}>
+                  <span className="bl-rank">{i + 1}</span>
+                  <span>
+                    <span className="bl-pname">{d.driver}</span>
+                    <span className="bl-pbar" style={{ width: `${Math.round(d.total / Math.max(1, jour[0].total) * 100)}%` }} />
+                  </span>
+                  <span className="bl-pnum">{d.total}</span>
+                </div>
+              ))}
+            </div>
+          </section>
+
+          <section className="bl-card bl-grow" style={{ ['--hc' as any]: '#0B7F55' }}>
+            <h2>Connecteurs</h2>
+            <div className="bl-conn">
+              {conns.length === 0 && <p className="bl-empty">Aucun échange sur 24 h.</p>}
+              {conns.map(c => (
+                <div key={c.key} className={`bl-crow ${c.fails ? 'bad' : ''}`}
+                     style={{ ['--cc' as any]: c.fails ? '#C61D22' : (c.hex || '#0B7F55') }}>
+                  <span className="bl-dot" />
+                  <span className="bl-cname">{c.label}</span>
+                  <span className="bl-cwhen">
+                    {c.fails ? `${c.fails} échec${c.fails > 1 ? 's' : ''}` : c.lastOkAt ? `à ${hm(c.lastOkAt)}` : '—'}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </section>
+        </div>
       </div>
 
-      {/* ── Journal en direct ─────────────────────────────────────────── */}
-      <section className="bl-card bl-feed">
-        <h2>Journal — 24 dernières heures</h2>
-        <div className="bl-scroll">
+      {/* ── Journal : deux lignes visibles, le reste au scroll ───────── */}
+      <section className="bl-card bl-feed" style={{ ['--hc' as any]: '#7A8AA0' }}>
+        <h2>Journal <span>24 dernières heures</span></h2>
+        <div className="bl-scroll" ref={feedRef}>
           {(log?.events || []).map((e, i) => (
             <p key={i} className={`bl-ev ${e.ton}`}>
               <span className="bl-evh">{hm(e.at)}</span>
@@ -187,12 +339,75 @@ export default function BoardingLogClient() {
   )
 }
 
-function Kpi({ label, val, txt }: { label: string; val?: number; txt?: string }) {
+function initials(n: string | null) {
+  return String(n || '—').split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase()
+}
+function timerTone(since: string | null, nowMs: number) {
+  if (!since) return ''
+  const min = (nowMs - Date.parse(since)) / 60000
+  return min >= 120 ? 'red' : min >= 60 ? 'amber' : ''
+}
+
+function Kpi({ label, val, txt, sub, color, tint, children }:
+  { label: string; val?: number; txt?: string; sub?: string; color: string; tint: string; children?: React.ReactNode }) {
   return (
-    <span className="bl-kpi">
+    <span className="bl-kpi" style={{ ['--kc' as any]: color, ['--kcs' as any]: tint }}>
       <span className="bl-kpil">{label}</span>
-      <span className="bl-kpiv">{txt ?? (val ?? '—')}</span>
+      <b className="bl-kpiv">{txt ?? (val ?? '—')}</b>
+      {sub && <span className="bl-kpis2">{sub}</span>}
+      {children}
     </span>
+  )
+}
+
+/** Mini-histogramme du bandeau : même série que le rythme du jour. */
+function Trend({ rythme, heure }: { rythme: { h: number; n: number }[]; heure: number }) {
+  const slice = rythme.filter(r => r.h >= 5 && r.h <= 21)
+  const max = Math.max(1, ...slice.map(r => r.n))
+  return (
+    <span className="bl-trend">
+      {slice.map(r => (
+        <i key={r.h} style={{
+          height: `${Math.max(2, r.n / max * 15)}px`,
+          background: r.h === heure ? '#E11D2E' : r.h < heure ? '#0B7F55' : '#D3DDE8',
+        }} />
+      ))}
+    </span>
+  )
+}
+
+/** Clôtures par heure : on voit la matinée, et si l'heure en cours suit. */
+function Rythme({ rythme, heure }: { rythme: { h: number; n: number }[]; heure: number }) {
+  const slice = rythme.filter(r => r.h >= 5 && r.h <= 21)
+  const max = Math.max(1, ...slice.map(r => r.n))
+  const W = 230, H = 92, PADL = 16, PADB = 16
+  const bw = (W - PADL - 6) / Math.max(1, slice.length)
+  return (
+    <div className="bl-chart">
+      <svg viewBox={`0 0 ${W} ${H}`} role="img" aria-label="Missions clôturées par heure">
+        <line x1={PADL} y1={8} x2={W - 4} y2={8} stroke="#E6ECF3" strokeWidth="1" />
+        <line x1={PADL} y1={H - PADB} x2={W - 4} y2={H - PADB} stroke="#D3DDE8" strokeWidth="1" />
+        <text x={0} y={12} fill="#96A4B4" fontSize="9" fontFamily="ui-monospace, monospace">{max}</text>
+        <text x={0} y={H - PADB} fill="#96A4B4" fontSize="9" fontFamily="ui-monospace, monospace">0</text>
+        {slice.map((r, i) => {
+          const bh = r.n / max * (H - PADB - 8)
+          const x = PADL + i * bw
+          const fill = r.h === heure ? '#E11D2E' : r.h < heure ? '#1B57C9' : '#E6ECF3'
+          return (
+            <g key={r.h}>
+              <rect x={x + 1} y={r.n ? H - PADB - bh : H - PADB - 2} width={Math.max(1, bw - 3)}
+                    height={r.n ? bh : 2} rx="2" fill={fill} />
+              {r.h % 3 === 0 && (
+                <text x={x + bw / 2} y={H - 4} textAnchor="middle" fill="#96A4B4" fontSize="9" fontFamily="ui-monospace, monospace">{r.h}h</text>
+              )}
+              {r.h === heure && r.n > 0 && (
+                <text x={x + bw / 2} y={H - PADB - bh - 4} textAnchor="middle" fill="#E11D2E" fontSize="10" fontWeight="700">{r.n}</text>
+              )}
+            </g>
+          )
+        })}
+      </svg>
+    </div>
   )
 }
 
@@ -200,65 +415,146 @@ const CSS = `
 /* Écran clair : la page reste allumée toute la journée dans un bureau éclairé —
    le sombre y est moins lisible et fatigue plus vite. Olivier 2026-08-14. */
 :root { color-scheme: light; }
-body { margin:0; background:#F4F1EC; color:#1F1A17;
+body { margin:0; background:#E6EBF2; color:#111820;
   font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif; -webkit-font-smoothing:antialiased; }
 .bl { display:flex; flex-direction:column; gap:10px; height:100vh; padding:10px 12px; box-sizing:border-box; }
+.bl *, .bl *::before, .bl *::after { box-sizing:border-box; }
 
-.bl-kpis { display:flex; align-items:center; gap:20px; flex-wrap:wrap;
-  padding:7px 14px; background:#fff; border:1px solid #E3DDD6; border-radius:10px; }
-.bl-kpi { display:flex; align-items:baseline; gap:7px; }
-.bl-kpil { font-size:11px; color:#8A7F74; text-transform:uppercase; letter-spacing:.06em; font-weight:700; }
-.bl-kpiv { font-size:16px; font-weight:800; font-variant-numeric:tabular-nums; color:#1F1A17; }
-.bl-clock { margin-left:auto; font-size:13px; font-weight:800; color:#8A7F74; font-variant-numeric:tabular-nums; }
-.bl-stale { color:#C2410C; font-weight:700; }
+/* ── bandeau ── */
+.bl-kpis { display:flex; align-items:stretch; background:#fff; border:1px solid #D3DDE8;
+  border-radius:14px; overflow:hidden; box-shadow:0 6px 18px -12px rgba(17,24,32,.4); }
+.bl-kpi { flex:1; min-width:0; display:flex; flex-direction:column; gap:2px; padding:8px 14px 9px;
+  border-top:3px solid var(--kc); background:linear-gradient(180deg,var(--kcs) 0%,transparent 46%); }
+.bl-kpi + .bl-kpi { border-left:1px solid #E6ECF3; }
+.bl-kpil { font-size:11px; color:#647385; text-transform:uppercase; letter-spacing:.08em; font-weight:700;
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.bl-kpiv { font-size:clamp(20px,1.7vw,32px); font-weight:800; line-height:1; color:var(--kc);
+  font-variant-numeric:tabular-nums; letter-spacing:-.02em; }
+.bl-kpis2 { font-size:11px; color:#96A4B4; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.bl-trend { display:flex; align-items:flex-end; gap:2px; height:15px; margin-top:3px; }
+.bl-trend i { width:5px; border-radius:1px; display:block; }
+.bl-clockbox { padding:8px 16px; display:flex; flex-direction:column; justify-content:center; align-items:flex-end;
+  gap:3px; border-left:1px solid #E6ECF3; background:#F3F6FA; }
+.bl-clock { font-size:clamp(20px,1.7vw,32px); font-weight:800; font-variant-numeric:tabular-nums; line-height:1; }
+.bl-live { display:flex; align-items:center; gap:6px; font-size:11px; font-weight:700; color:#0B7F55;
+  text-transform:uppercase; letter-spacing:.08em; }
+.bl-live i { width:8px; height:8px; border-radius:50%; background:#0B7F55; animation:bl-blip 2s ease-in-out infinite; }
+@keyframes bl-blip { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:.3;transform:scale(.8)} }
+.bl-stale { font-size:11px; font-weight:700; color:#C2410C; text-transform:uppercase; letter-spacing:.08em; }
 
-.bl-cols { display:grid; grid-template-columns:1.3fr 1fr; gap:10px; min-height:0; flex:0 0 38%; }
-.bl-card { background:#fff; border:1px solid #E3DDD6; border-radius:12px;
-  display:flex; flex-direction:column; min-height:0; overflow:hidden; }
-.bl-card h2 { margin:0; padding:9px 14px; font-size:12px; text-transform:uppercase; letter-spacing:.07em;
-  color:#6B625A; border-bottom:1px solid #EDE8E2; display:flex; gap:8px; align-items:center; font-weight:800; }
-.bl-card h2 span { background:#F1EDE7; color:#4A413C; border-radius:999px; padding:1px 8px; font-size:11px; }
-.bl-card h2 span.warn { background:#FEE2E2; color:#B91C1C; }
+/* ── colonnes ── */
+.bl-cols { display:grid; grid-template-columns:1.75fr 1.05fr .78fr; gap:10px; flex:1; min-height:0; }
+.bl-card { background:#fff; border:1px solid #D3DDE8; border-radius:14px;
+  display:flex; flex-direction:column; min-height:0; overflow:hidden; box-shadow:0 6px 18px -12px rgba(17,24,32,.4); }
+.bl-card h2 { margin:0; padding:9px 14px; font-size:11px; text-transform:uppercase; letter-spacing:.1em;
+  color:#647385; border-bottom:1px solid #E6ECF3; display:flex; gap:8px; align-items:center; font-weight:800; flex:0 0 auto; }
+.bl-card h2::before { content:""; width:7px; height:7px; border-radius:50%; background:var(--hc,#1B57C9); flex:0 0 auto; }
+.bl-card h2 span { background:#F3F6FA; color:#39485A; border-radius:999px; padding:1px 8px; font-size:11px; }
+.bl-card h2 span.warn { background:#FDE5E5; color:#C61D22; }
 .bl-scroll { overflow-y:auto; flex:1; min-height:0; }
-.bl-empty { color:#A89E92; font-size:13px; padding:14px; margin:0; }
+.bl-scroll::-webkit-scrollbar, .bl-missions::-webkit-scrollbar { width:7px; }
+.bl-scroll::-webkit-scrollbar-thumb, .bl-missions::-webkit-scrollbar-thumb { background:#D3DDE8; border-radius:4px; }
+.bl-empty { color:#96A4B4; font-size:13px; padding:14px; margin:0; }
+.bl-rail-col { display:flex; flex-direction:column; gap:10px; min-height:0; }
+.bl-rail-col .bl-card { flex:0 0 auto; }
+.bl-rail-col .bl-grow { flex:1 1 auto; }
 
-.bl-tbl { width:100%; border-collapse:collapse; font-size:13.5px; }
-.bl-tbl td { padding:7px 10px; border-bottom:1px solid #F1EDE7; vertical-align:middle; white-space:nowrap; }
-.bl-num { color:#A89E92; font-variant-numeric:tabular-nums; }
-.bl-plate { font-weight:800; letter-spacing:.03em; }
-.bl-veh { color:#6B625A; white-space:normal; }
-.bl-veh span { display:block; color:#A89E92; font-size:11.5px; }
-.bl-drv { color:#1F1A17; font-weight:600; }
-.bl-st { color:#1D4ED8; font-weight:700; font-size:12px; }
-.bl-since { color:#A89E92; text-align:right; font-variant-numeric:tabular-nums; }
+/* ── missions : tout doit tenir, donc tout est en em ── */
+.bl-missions { overflow-y:auto; flex:1; min-height:0; font-size:15px; }
+.bl-mission { position:relative; display:grid; grid-template-columns:auto 1fr auto; gap:.55em .8em;
+  align-items:center; padding:.5em .9em .7em .65em; border-bottom:1px solid #E6ECF3;
+  border-left:4px solid var(--sc); background:linear-gradient(90deg,var(--scs) 0%,transparent 34%); }
+.bl-mission:last-child { border-bottom:0; }
+.bl-mission::after { content:""; position:absolute; left:0; bottom:0; height:3px; width:var(--prog,0%);
+  background:var(--ec); transition:width 1s cubic-bezier(.2,.9,.3,1); }
+.bl-plate { font-family:ui-monospace,'SF Mono',Menlo,monospace; font-weight:600; font-size:1em; letter-spacing:.04em;
+  background:#F3F6FA; border:1px solid #D3DDE8; border-radius:.32em; padding:.16em .52em; white-space:nowrap; }
+.bl-mid { min-width:0; }
+.bl-veh { font-size:1em; font-weight:600; line-height:1.25; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.bl-meta { display:flex; align-items:center; gap:.5em; margin-top:.16em; flex-wrap:wrap; }
+.bl-who { display:flex; align-items:center; gap:.4em; font-size:.82em; color:#39485A; font-weight:600; }
+.bl-face { font-size:.62em; width:1.9em; height:1.9em; border-radius:50%; background:var(--sc); color:#fff;
+  font-weight:800; display:grid; place-items:center; flex:0 0 auto; }
+.bl-town { font-size:.7em; color:#96A4B4; font-weight:600; text-transform:uppercase; letter-spacing:.06em; }
+.bl-tag { font-size:.7em; font-weight:700; padding:.1em .6em; border-radius:999px;
+  background:var(--scs); color:var(--sc); border:1px solid var(--sc); white-space:nowrap; }
+.bl-right { text-align:right; display:flex; flex-direction:column; align-items:flex-end; gap:.18em; }
+.bl-timer { font-family:ui-monospace,'SF Mono',Menlo,monospace; font-size:1em; font-weight:600;
+  font-variant-numeric:tabular-nums; color:#647385; }
+.bl-timer.amber { color:#B4680A; } .bl-timer.red { color:#C61D22; }
+.bl-step { font-size:.7em; font-weight:700; color:var(--ec); text-transform:uppercase; letter-spacing:.05em;
+  background:var(--ecs); border-radius:999px; padding:.15em .6em; white-space:nowrap; }
+.bl-rail { grid-column:1/-1; display:grid; gap:.25em; margin-top:.05em; }
+.bl-leg { min-width:0; }
+.bl-bar { display:block; height:.46em; border-radius:.23em; background:#E6ECF3; position:relative; overflow:hidden; }
+.bl-leg.done .bl-bar { background:var(--c); }
+.bl-leg.now .bl-bar { background:var(--cs); box-shadow:inset 0 0 0 1px var(--c); }
+.bl-leg.now .bl-bar::after { content:""; position:absolute; top:0; bottom:0; left:0; width:48%; border-radius:.23em;
+  background:var(--c); box-shadow:0 0 9px var(--c); animation:bl-slide 1.25s linear infinite; }
+@keyframes bl-slide { 0%{transform:translateX(-105%)} 100%{transform:translateX(215%)} }
+.bl-lb { display:block; font-size:.6em; letter-spacing:.05em; text-transform:uppercase; font-weight:700;
+  color:#96A4B4; margin-top:.3em; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.bl-at { display:block; font-family:ui-monospace,'SF Mono',Menlo,monospace; font-size:.64em; font-weight:600;
+  color:#96A4B4; line-height:1.2; }
+.bl-leg.done .bl-lb, .bl-leg.now .bl-lb { color:var(--c); }
+.bl-leg.done .bl-at { color:#39485A; }
+.bl-leg.now .bl-at { color:var(--c); }
+.bl-leg.todo .bl-at { color:transparent; }
 
-.bl-ano { padding:9px 14px; border-bottom:1px solid #F1EDE7; border-left:3px solid transparent; }
-.bl-ano.rouge { border-left-color:#DC2626; background:#FEF2F2; }
-.bl-ano.ambre { border-left-color:#D97706; background:#FFFBEB; }
-.bl-anot { margin:0; font-weight:800; font-size:13.5px; color:#1F1A17; }
-.bl-anod { margin:2px 0 0; color:#6B625A; font-size:12.5px; }
-.bl-anoh { margin:2px 0 0; color:#A89E92; font-size:11px; font-variant-numeric:tabular-nums; }
+/* ── anomalies ── */
+.bl-ano { padding:9px 14px 10px; border-bottom:1px solid #E6ECF3; border-left:4px solid transparent; }
+.bl-ano.rouge { border-left-color:#C61D22; background:#FDE5E5; }
+.bl-ano.ambre { border-left-color:#B4680A; background:#FDEFD9; }
+.bl-anot { margin:0; font-weight:800; font-size:13.5px; }
+.bl-ano.rouge .bl-anot { color:#C61D22; } .bl-ano.ambre .bl-anot { color:#B4680A; }
+.bl-anod { margin:3px 0 0; color:#39485A; font-size:12.5px; line-height:1.4; }
+.bl-anoh { margin:5px 0 0; color:#647385; font-size:11px; font-weight:600; display:flex; align-items:center; gap:8px; }
+.bl-open { margin-left:auto; font-weight:700; color:#1B57C9; border:1px solid #1B57C9; border-radius:7px;
+  padding:2px 9px; background:#fff; text-decoration:none; }
+.bl-open:hover { background:#1B57C9; color:#fff; }
 
-/* Le journal : des phrases, pas un tableau. */
-.bl-feed { flex:1; min-height:0; }
-.bl-ev { display:flex; gap:10px; align-items:baseline; margin:0;
-  padding:6px 16px; border-bottom:1px solid #F5F1EC; font-size:14.5px; line-height:1.45; }
-.bl-ev.ok     .bl-evt { color:#15803D; }
-.bl-ev.alerte { background:#FEF2F2; }
-.bl-ev.alerte .bl-evt { color:#B91C1C; font-weight:600; }
-.bl-evh { color:#A89E92; font-variant-numeric:tabular-nums; font-size:12.5px; flex:0 0 42px; font-weight:700; }
-.bl-evi { flex:0 0 20px; }
-.bl-evt { color:#1F1A17; }
+/* ── rythme / chauffeurs / connecteurs ── */
+.bl-chart { padding:10px 12px 6px; }
+.bl-chart svg { width:100%; height:auto; display:block; }
+.bl-podium { padding:5px 0; display:flex; flex-direction:column; }
+.bl-prow { display:grid; grid-template-columns:18px 1fr auto; gap:9px; align-items:center; padding:5px 14px; }
+.bl-rank { font-size:13px; font-weight:800; color:var(--pc); text-align:right; }
+.bl-pname { font-size:13px; font-weight:600; }
+.bl-pbar { display:block; height:6px; border-radius:3px; background:var(--pc); margin-top:4px; transition:width .9s ease; }
+.bl-pnum { font-size:15px; font-weight:800; font-variant-numeric:tabular-nums; color:var(--pc); }
+.bl-conn { display:flex; flex-direction:column; padding:4px 0; }
+.bl-crow { display:flex; align-items:center; gap:9px; padding:5px 14px; font-size:13px; }
+.bl-dot { width:9px; height:9px; border-radius:50%; flex:0 0 auto; background:var(--cc); }
+.bl-crow.bad .bl-dot { animation:bl-blip 1.2s ease-in-out infinite; }
+.bl-cname { font-weight:600; }
+.bl-cwhen { margin-left:auto; font-size:11px; color:#647385; font-family:ui-monospace,'SF Mono',Menlo,monospace; }
+.bl-crow.bad .bl-cwhen { color:#C61D22; font-weight:700; }
 
+/* ── journal : deux lignes visibles, le reste au scroll ── */
+.bl-feed { flex:0 0 auto; }
+.bl-feed .bl-scroll { flex:0 0 auto; }
+.bl-ev { display:grid; grid-template-columns:48px 20px 1fr; gap:10px; align-items:baseline; margin:0;
+  padding:6px 16px; border-bottom:1px solid #EEF2F7; font-size:14.5px; line-height:1.45;
+  border-left:3px solid transparent; }
+.bl-ev.ok { border-left-color:#0B7F55; }
+.bl-ev.ok .bl-evt { color:#0B7F55; font-weight:600; }
+.bl-ev.info { border-left-color:#1B57C9; }
+.bl-ev.alerte { background:#FDE5E5; border-left-color:#C61D22; }
+.bl-ev.alerte .bl-evt { color:#C61D22; font-weight:600; }
+.bl-evh { color:#96A4B4; font-variant-numeric:tabular-nums; font-size:12.5px; font-weight:700; }
+.bl-evt { color:#111820; }
+
+/* ── PIN ── */
 .bl-pin { height:100vh; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:18px; }
 .bl-pintitle { font-size:20px; font-weight:800; margin:0; }
-.bl-pindots { font-size:34px; letter-spacing:.35em; margin:0; color:#8A7F74; }
-.bl-pindots.err { color:#DC2626; }
+.bl-pindots { font-size:34px; letter-spacing:.35em; margin:0; color:#647385; }
+.bl-pindots.err { color:#C61D22; }
 .bl-pad { display:grid; grid-template-columns:repeat(3,86px); gap:12px; }
 .bl-pad button { height:74px; font-size:26px; font-weight:800; border-radius:14px;
-  background:#fff; border:1px solid #E3DDD6; color:#1F1A17; cursor:pointer; }
+  background:#fff; border:1px solid #D3DDE8; color:#111820; cursor:pointer; }
 .bl-pad button:disabled { opacity:0; cursor:default; }
-.bl-pad button:active { background:#F1EDE7; }
+.bl-pad button:active { background:#F3F6FA; }
 
-@media (max-width:1100px) { .bl-cols { grid-template-columns:1fr; flex:0 0 auto; } }
+@media (prefers-reduced-motion:reduce) { .bl * { animation:none !important; transition:none !important; } }
+@media (max-width:1150px) { .bl-cols { grid-template-columns:1fr; } .bl-rail-col { flex-direction:row; } .bl-rail-col .bl-card { flex:1; } }
 `
