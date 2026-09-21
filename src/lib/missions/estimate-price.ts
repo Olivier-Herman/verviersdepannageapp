@@ -1561,7 +1561,9 @@ async function estimateRelivraisonPrice(
     source,
     mission_type:  'relivraison',
     pricing_mode:  'forfait',
-    forfait:       total,
+    // Pas de prise en charge : tout est dans les km. (forfait = total doublait
+    // les lignes de facture : PEC 42 € + km 42 € sur 1RPJ089, 21/09/2026.)
+    forfait:       0,
     km_charged:    km,
     km_inclus:     0,
     km_extra:      km,

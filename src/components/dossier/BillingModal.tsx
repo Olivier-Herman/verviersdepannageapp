@@ -24,12 +24,18 @@ export const isLegBilled = (l: DossierLeg) => l.billed_refs.length > 0 && l.bill
 export const canPickLeg  = (l: DossierLeg) => !l.nothing_to_bill && !isLegBilled(l) && l.amount_htva > 0
   && ((l.channel || 'odoo') === 'odoo' || (!!l.billed_to_id && !/parquet|frais de justice|fdj\b/i.test(String(l.billed_to_name || ''))))
 
-export default function BillingModal({ d, onClose, onDone }: { d: Dossier; onClose: () => void; onDone: (result?: { invoices: any[]; warnings: string[] }) => Promise<void> | void }) {
+export default function BillingModal({ d, onClose, onDone, initialSelection }: { d: Dossier; onClose: () => void; onDone: (result?: { invoices: any[]; warnings: string[] }) => Promise<void> | void; initialSelection?: string[] }) {
   // Olivier 08/09/2026 : TOUT coché par défaut, gardiennage en cours compris ;
   // on décoche ce qu'on ne veut pas facturer. Pour un gardiennage en cours, on
   // choisit le dernier jour facturé : la période se ferme là et une nouvelle
   // s'ouvre le lendemain pour le solde.
-  const [sel, setSel] = useState<Set<string>>(() => new Set(d.legs.filter(canPickLeg).map(l => l.mission_id)))
+  // Écran « Facturation du dossier » (Olivier 21/09/2026) : la sélection se fait
+  // sur l'écran, la modale la reprend telle quelle.
+  const [sel, setSel] = useState<Set<string>>(() => new Set(
+    initialSelection
+      ? initialSelection.filter(id => d.legs.some(l => l.mission_id === id && canPickLeg(l)))
+      : d.legs.filter(canPickLeg).map(l => l.mission_id),
+  ))
   const today = new Date().toLocaleDateString('en-CA', { timeZone: 'Europe/Brussels' })
   const [periodTo, setPeriodTo] = useState<Record<string, string>>(() => Object.fromEntries(d.legs.filter(l => l.kind === 'gard' && l.open).map(l => [l.mission_id, today])))
   const [busy, setBusy] = useState(false)

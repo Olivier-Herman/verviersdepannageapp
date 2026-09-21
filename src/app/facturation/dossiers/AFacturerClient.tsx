@@ -505,6 +505,7 @@ export default function AFacturerClient({ initial, autoById, comexById = {}, isS
               <span className="ml-auto flex items-center gap-3">
                 {d.legs.some(l => l.billed_refs.some(x => /^brouillon Odoo/i.test(x))) && <button disabled={busy === d.root_id} onClick={async () => { setBusy(d.root_id); try { await fetch(`/api/dossier/${d.root_id}/verify-invoices`, { method: 'POST' }); await refreshOne(d.root_id) } finally { setBusy(null) } }} className="text-ink-secondary hover:text-ink">Vérifier la facture</button>}
                 {comexById[d.root_id] && !comexById[d.root_id].accepted_at && <Link href="/touring-comex" className="text-ink-secondary hover:text-ink">Ouvrir COMEX ↗</Link>}
+                <Link href={`/facturation/dossiers/${d.root_id}`} className="text-brand hover:underline font-semibold">Facturation du dossier</Link>
                 <Link href={`/dispatch/dossier/${d.root_id}`} className="text-ink-secondary hover:text-ink">Vue dossier ↗</Link>
               </span>
             </div>

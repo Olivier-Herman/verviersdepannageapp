@@ -240,9 +240,13 @@ export function buildLinesFromEstimate(
 
     if (estimate.km_extra > 0 && estimate.km_extra_eur > 0) {
       const pu = estimate.km_extra_eur / estimate.km_extra
+      // Relivraison « tous les km » : une seule ligne, nommée pour ce qu'elle est.
+      const relKm = String(estimate.mission_type || '') === 'relivraison' && /-relivraison-km$/.test(String(estimate.tariff_id || ''))
       lines.push({
         kind:       'SERV-KM',
-        name:       `Km supplémentaires (${estimate.km_extra} km au-delà de ${estimate.km_inclus} inclus)`,
+        name:       relKm
+          ? `Kilomètres relivraison (${estimate.km_extra} km aller-retour) — ${missionRef}`
+          : `Km supplémentaires (${estimate.km_extra} km au-delà de ${estimate.km_inclus} inclus)`,
         qty:        estimate.km_extra,
         // Olivier 2026-06-03 : 4 decimales (Odoo Decimal Precision configure
         // a 4 pour Product Price, utilise par tarif Saisie/Parquet et autres).
