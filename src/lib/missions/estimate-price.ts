@@ -1529,18 +1529,15 @@ async function estimateRelivraisonPrice(
 
   km = Math.max(0, Math.ceil(km))
 
-  // Km inclus restants du forfait : le dossier n'en a qu'un seul lot.
-  let inclusNote = ''
-  if (forfaitKmPrice != null && mission.id) {
-    const left = await dossierIncludedKmLeft(sb, mission).catch(() => null)
-    if (left) {
-      const avant = km
-      km = Math.max(0, km - left.km)
-      inclusNote = left.km > 0
-        ? `${avant} km parcourus − ${left.km} km inclus restants du remorquage #${left.remNumber ?? '?'} (${left.remKm} km sur ${left.remInclus} inclus${left.relBefore > 0 ? `, ${left.relBefore} km déjà repris par une relivraison précédente` : ''})`
-        : `forfait épuisé par le remorquage #${left.remNumber ?? '?'} (${left.remKm} km sur ${left.remInclus} inclus${left.relBefore > 0 ? ` + ${left.relBefore} km de relivraison précédente` : ''})`
-    }
-  }
+  // Olivier 21/09/2026 (Mondial, 1RPJ089, précision après f2584537) : « 1re
+  // intervention : prise en charge. Relivraison facturée au tarif kilométrique,
+  // TOUS les km facturés. » Les km inclus du remorquage ne se reportent donc pas
+  // sur la relivraison : elle facture tous ses km au prix du km de la grille.
+  // (Le report des km inclus reste propre à Touring, cf. dossierIncludedKmLeft
+  // dans la branche REM+REL Touring.)
+  const inclusNote = forfaitKmPrice != null
+    ? 'Prise en charge facturée une seule fois, sur le remorquage. La relivraison facture tous ses kilomètres.'
+    : ''
 
   const total = Math.round(km * kmPrice * 100) / 100
 
@@ -1575,7 +1572,7 @@ async function estimateRelivraisonPrice(
     tariff_doc_name: null,
     breakdown: [
       { label: priceLabel, amount: total, note: `${km} km (${touringRelDepot ? `aller-retour dépôt ${touringRelDepot} ↔ destination` : 'aller-retour parc ↔ relivraison'}) × ${kmPrice.toFixed(4)} €${isMajored && hasOwnMajorPrice ? ' (tarif majoré)' : ''}` },
-      ...(inclusNote ? [{ label: 'Prise en charge déjà facturée sur le remorquage', amount: null, note: inclusNote }] : []),
+      ...(inclusNote ? [{ label: 'Prise en charge', amount: null, note: inclusNote }] : []),
       ...(surchargeEur > 0 ? [{ label: `Majoration horaire (+${surchargePct}%)`, amount: surchargeEur, note: surchargeNote }] : []),
     ],
   }
