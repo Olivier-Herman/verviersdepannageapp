@@ -14,7 +14,7 @@
 // Le reste de la maquette : une couleur par étape (le geste du chauffeur), une
 // couleur par source (celle du catalogue, jamais en dur), la navette qui balaie
 // l'étape en cours, la barre d'avancement de la mission, et à droite le rythme
-// du jour, les chauffeurs et l'état des connecteurs.
+// du jour et les chauffeurs.
 
 import { pollWhenVisible } from '@/lib/client/poll'
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
@@ -23,8 +23,7 @@ const POLL_MS = 15000
 
 interface Ev { at: string; missionId: string | null; action: string; text: string; ton: 'info' | 'ok' | 'alerte'; notes: string; number: number | null; plate: string | null; source: string | null; driver: string | null; repeats?: number }
 interface Ano { missionId?: string | null; level: 'rouge' | 'ambre'; titre: string; detail: string; at: string }
-interface Conn { key: string; label: string; hex: string | null; lastOkAt: string | null; fails: number; lastFailAt: string | null }
-interface LogData { events: Ev[]; anomalies: Ano[]; rythme?: { h: number; n: number }[]; heureBxl?: number; connecteurs?: Conn[] }
+interface LogData { events: Ev[]; anomalies: Ano[]; rythme?: { h: number; n: number }[]; heureBxl?: number }
 
 /** Les six gestes du terrain, dans l'ordre, avec la couleur de chacun. */
 const STEPS: { key: string; label: string; color: string; soft: string }[] = [
@@ -183,7 +182,6 @@ export default function BoardingLogClient() {
   const fa  = tb?.facturation || {}
   const enCours: any[] = tb?.enCours || []
   const anomalies = log?.anomalies || []
-  const conns = log?.connecteurs || []
   const jour: any[] = (tb?.chauffeurs?.jour || []).slice().sort((a: any, b: any) => b.total - a.total).slice(0, 5)
   const rythme = log?.rythme || []
   const heure  = log?.heureBxl ?? new Date().getHours()
@@ -258,26 +256,25 @@ export default function BoardingLogClient() {
           </div>
         </section>
 
-        {/* ── Anomalies ────────────────────────────────────────────── */}
-        <section className="bl-card" style={{ ['--hc' as any]: '#C61D22' }}>
-          <h2>À regarder <span className={anomalies.length ? 'warn' : ''}>{anomalies.length}</span></h2>
-          <div className="bl-scroll">
-            {anomalies.length === 0 && <p className="bl-empty">Rien à signaler sur les dernières 24 h.</p>}
-            {anomalies.map((a, i) => (
-              <div key={i} className={`bl-ano ${a.level}`}>
-                <p className="bl-anot">{a.titre}</p>
-                <p className="bl-anod">{a.detail}</p>
-                <p className="bl-anoh">
-                  depuis {age(a.at, nowMs)}
-                  {a.missionId && <a className="bl-open" href={`/mission/${a.missionId}`} target="_blank" rel="noreferrer">Ouvrir la fiche</a>}
-                </p>
-              </div>
-            ))}
-          </div>
-        </section>
+        {/* ── Colonne de droite : ce qui cloche, puis le tempo du jour ── */}
+        <div className="bl-side">
+          <section className="bl-card bl-grow" style={{ ['--hc' as any]: '#C61D22' }}>
+            <h2>À regarder <span className={anomalies.length ? 'warn' : ''}>{anomalies.length}</span></h2>
+            <div className="bl-scroll">
+              {anomalies.length === 0 && <p className="bl-empty">Rien à signaler sur les dernières 24 h.</p>}
+              {anomalies.map((a, i) => (
+                <div key={i} className={`bl-ano ${a.level}`}>
+                  <p className="bl-anot">{a.titre}</p>
+                  <p className="bl-anod">{a.detail}</p>
+                  <p className="bl-anoh">
+                    depuis {age(a.at, nowMs)}
+                    {a.missionId && <a className="bl-open" href={`/mission/${a.missionId}`} target="_blank" rel="noreferrer">Ouvrir la fiche</a>}
+                  </p>
+                </div>
+              ))}
+            </div>
+          </section>
 
-        {/* ── Rythme, chauffeurs, connecteurs ──────────────────────── */}
-        <div className="bl-rail-col">
           <section className="bl-card" style={{ ['--hc' as any]: '#7A3BD6' }}>
             <h2>Rythme du jour</h2>
             <Rythme rythme={rythme} heure={heure} />
@@ -295,23 +292,6 @@ export default function BoardingLogClient() {
                     <span className="bl-pbar" style={{ width: `${Math.round(d.total / Math.max(1, jour[0].total) * 100)}%` }} />
                   </span>
                   <span className="bl-pnum">{d.total}</span>
-                </div>
-              ))}
-            </div>
-          </section>
-
-          <section className="bl-card bl-grow" style={{ ['--hc' as any]: '#0B7F55' }}>
-            <h2>Connecteurs</h2>
-            <div className="bl-conn">
-              {conns.length === 0 && <p className="bl-empty">Aucun échange sur 24 h.</p>}
-              {conns.map(c => (
-                <div key={c.key} className={`bl-crow ${c.fails ? 'bad' : ''}`}
-                     style={{ ['--cc' as any]: c.fails ? '#C61D22' : (c.hex || '#0B7F55') }}>
-                  <span className="bl-dot" />
-                  <span className="bl-cname">{c.label}</span>
-                  <span className="bl-cwhen">
-                    {c.fails ? `${c.fails} échec${c.fails > 1 ? 's' : ''}` : c.lastOkAt ? `à ${hm(c.lastOkAt)}` : '—'}
-                  </span>
                 </div>
               ))}
             </div>
@@ -443,7 +423,7 @@ body { margin:0; background:#E6EBF2; color:#111820;
 .bl-stale { font-size:11px; font-weight:700; color:#C2410C; text-transform:uppercase; letter-spacing:.08em; }
 
 /* ── colonnes ── */
-.bl-cols { display:grid; grid-template-columns:1.75fr 1.05fr .78fr; gap:10px; flex:1; min-height:0; }
+.bl-cols { display:grid; grid-template-columns:2.9fr 1fr; gap:10px; flex:1; min-height:0; }
 .bl-card { background:#fff; border:1px solid #D3DDE8; border-radius:14px;
   display:flex; flex-direction:column; min-height:0; overflow:hidden; box-shadow:0 6px 18px -12px rgba(17,24,32,.4); }
 .bl-card h2 { margin:0; padding:9px 14px; font-size:11px; text-transform:uppercase; letter-spacing:.1em;
@@ -455,9 +435,9 @@ body { margin:0; background:#E6EBF2; color:#111820;
 .bl-scroll::-webkit-scrollbar, .bl-missions::-webkit-scrollbar { width:7px; }
 .bl-scroll::-webkit-scrollbar-thumb, .bl-missions::-webkit-scrollbar-thumb { background:#D3DDE8; border-radius:4px; }
 .bl-empty { color:#96A4B4; font-size:13px; padding:14px; margin:0; }
-.bl-rail-col { display:flex; flex-direction:column; gap:10px; min-height:0; }
-.bl-rail-col .bl-card { flex:0 0 auto; }
-.bl-rail-col .bl-grow { flex:1 1 auto; }
+.bl-side { display:flex; flex-direction:column; gap:10px; min-height:0; }
+.bl-side .bl-card { flex:0 0 auto; }
+.bl-side .bl-grow { flex:1 1 auto; min-height:0; }
 
 /* ── missions : tout doit tenir, donc tout est en em ── */
 .bl-missions { overflow-y:auto; flex:1; min-height:0; font-size:15px; }
@@ -513,7 +493,7 @@ body { margin:0; background:#E6EBF2; color:#111820;
   padding:2px 9px; background:#fff; text-decoration:none; }
 .bl-open:hover { background:#1B57C9; color:#fff; }
 
-/* ── rythme / chauffeurs / connecteurs ── */
+/* ── rythme / chauffeurs ── */
 .bl-chart { padding:10px 12px 6px; }
 .bl-chart svg { width:100%; height:auto; display:block; }
 .bl-podium { padding:5px 0; display:flex; flex-direction:column; }
@@ -522,13 +502,6 @@ body { margin:0; background:#E6EBF2; color:#111820;
 .bl-pname { font-size:13px; font-weight:600; }
 .bl-pbar { display:block; height:6px; border-radius:3px; background:var(--pc); margin-top:4px; transition:width .9s ease; }
 .bl-pnum { font-size:15px; font-weight:800; font-variant-numeric:tabular-nums; color:var(--pc); }
-.bl-conn { display:flex; flex-direction:column; padding:4px 0; }
-.bl-crow { display:flex; align-items:center; gap:9px; padding:5px 14px; font-size:13px; }
-.bl-dot { width:9px; height:9px; border-radius:50%; flex:0 0 auto; background:var(--cc); }
-.bl-crow.bad .bl-dot { animation:bl-blip 1.2s ease-in-out infinite; }
-.bl-cname { font-weight:600; }
-.bl-cwhen { margin-left:auto; font-size:11px; color:#647385; font-family:ui-monospace,'SF Mono',Menlo,monospace; }
-.bl-crow.bad .bl-cwhen { color:#C61D22; font-weight:700; }
 
 /* ── journal : deux lignes visibles, le reste au scroll ── */
 .bl-feed { flex:0 0 auto; }
@@ -556,5 +529,5 @@ body { margin:0; background:#E6EBF2; color:#111820;
 .bl-pad button:active { background:#F3F6FA; }
 
 @media (prefers-reduced-motion:reduce) { .bl * { animation:none !important; transition:none !important; } }
-@media (max-width:1150px) { .bl-cols { grid-template-columns:1fr; } .bl-rail-col { flex-direction:row; } .bl-rail-col .bl-card { flex:1; } }
+@media (max-width:1150px) { .bl-cols { grid-template-columns:1fr; } }
 `

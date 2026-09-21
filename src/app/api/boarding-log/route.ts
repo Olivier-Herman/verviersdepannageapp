@@ -17,7 +17,7 @@ import { NextResponse }      from 'next/server'
 import { getServerSession }  from 'next-auth'
 import { authOptions }       from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase'
-import { sourcesWithTag, listSourceCatalog } from '@/lib/missions/source-catalog'
+import { sourcesWithTag } from '@/lib/missions/source-catalog'
 
 export const dynamic     = 'force-dynamic'
 export const maxDuration = 20
@@ -322,36 +322,11 @@ export async function GET(req: Request) {
   }
   const heureBxl = new Date(new Date().toLocaleString('en-US', { timeZone: 'Europe/Brussels' })).getHours()
 
-  // ── Connecteurs : est-ce que ça remonte encore chez l'assisteur ? ─────────
-  // Déduit des logs des dernières 24 h — un succès de synchro/clôture remet le
-  // compteur à zéro, un échec allume le voyant. La liste des sources et leurs
-  // couleurs viennent du catalogue, jamais d'une table en dur.
-  const catalog = await listSourceCatalog()
-  const catOf = new Map(catalog.map(c => [c.key, c]))
-  const connMap = new Map<string, { key: string; label: string; hex: string | null; lastOkAt: string | null; fails: number; lastFailAt: string | null }>()
-  for (const key of ENVOI_REEL) {
-    const c = catOf.get(key)
-    connMap.set(key, { key, label: c?.label || key, hex: c?.display_color_hex || null, lastOkAt: null, fails: 0, lastFailAt: null })
-  }
-  for (const l of (rawLogs || [])) {
-    const m = missions.get(l.mission_id)
-    const c = m && connMap.get(m.source)
-    if (!c) continue
-    if (/error|failed/i.test(l.action)) {
-      c.fails++
-      if (!c.lastFailAt) c.lastFailAt = l.created_at
-    } else if (/_(synced|closed)$/.test(l.action)) {
-      if (!c.lastOkAt) c.lastOkAt = l.created_at
-    }
-  }
-  const connecteurs = [...connMap.values()].sort((a, b) => a.label.localeCompare(b.label))
-
   return NextResponse.json({
     ok: true,
     at: new Date().toISOString(),
     events,
     anomalies: anomalies.slice(0, 40),
     rythme, heureBxl,
-    connecteurs,
   })
 }
