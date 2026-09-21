@@ -4,6 +4,8 @@
 // quand un véhicule est remis au Domaine (mail « Dates IN »). Reprend : titre
 // DOMAINE, date de remise, véhicule + plaque, châssis, ZONE (si dispo), PV de
 // remise, + QR vers la fiche. Olivier 2026-07-29.
+// 2026-09-21 : QR ramené à x=500 / grossissement 5 — à 560/6 il dépassait
+// le bord droit (812 dots) et sortait coupé.
 
 export interface DomaineLabelData {
   missionId:      string
@@ -34,7 +36,7 @@ export function buildDomaineLabelZPL(d: DomaineLabelData): string {
 
   // Plaque : ligne dédiée et bien visible dès qu'elle est connue sur la fiche.
   const plateBlock = plate
-    ? `^FO20,205\n^A0N,50,50\n^FB772,1,0,L,0\n^FDPlaque: ${plate}^FS\n\n`
+    ? `^FO20,225\n^A0N,50,50\n^FB772,1,0,L,0\n^FDPlaque: ${plate}^FS\n\n`
     : ''
 
   return `^XA
@@ -54,30 +56,30 @@ export function buildDomaineLabelZPL(d: DomaineLabelData): string {
 ^FB540,1,0,L,0
 ^FDRemise: ${dateStr}^FS
 
-^FO560,20
-^BQN,2,6
+^FO500,12
+^BQN,2,5
 ^FDLB,${qrUrl}^FS
 
 ^FO20,155
 ^A0N,34,34
-^FB772,1,0,L,0
+^FB470,1,0,L,0
 ^FD${vehicle}^FS
 
-${plateBlock}^FO20,270
+${plateBlock}^FO20,285
 ^A0N,26,26
 ^FB772,1,0,L,0
 ^FDChassis: ${vin || '—'}^FS
 
-^FO20,320
+^FO20,330
 ^A0N,54,54
 ^FDZONE: ${zone}^FS
 
-^FO20,392
+^FO20,400
 ^A0N,26,26
 ^FB772,2,0,L,0
 ^FDPV de remise: ${pv}^FS
 
-^FO20,460
+^FO20,468
 ^A0N,24,24
 ^FD${ficheLine}^FS
 

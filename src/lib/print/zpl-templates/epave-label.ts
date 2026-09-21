@@ -60,7 +60,7 @@ export function buildEpaveLabelZPL(d: EpaveLabelData): string {
 ^FB500,2,0,L,0
 ^FDFirme: ${firm}^FS
 
-^FO540,14
+^FO500,14
 ^BQN,2,5
 ^FDLB,${qrUrl}^FS
 
@@ -71,7 +71,7 @@ export function buildEpaveLabelZPL(d: EpaveLabelData): string {
 
 ^FO20,200
 ^A0N,32,32
-^FB772,1,0,L,0
+^FB470,1,0,L,0
 ^FD${vehicle}^FS
 
 ${plateBlock}^FO20,308
