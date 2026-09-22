@@ -46,7 +46,7 @@ const PER_CATEGORY_LIMIT_DEFAULT = 8
 const PER_CATEGORY_LIMIT_FULL    = 30
 
 interface SearchResult {
-  category:     'mission' | 'encaissement' | 'avance' | 'invoice' | 'driver' | 'user' | 'vehicle'
+  category:     'mission' | 'chauffeur' | 'encaissement' | 'avance' | 'invoice' | 'driver' | 'user' | 'vehicle'
               | 'archive'
               | 'email_info' | 'email_fourriere' | 'email_administration'
   id:           string
