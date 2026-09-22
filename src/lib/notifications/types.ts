@@ -105,6 +105,22 @@ export const NOTIFICATION_TYPES: readonly NotificationType[] = [
 
   // ── Chauffeur ────────────────────────────────────────────────────────
   {
+    key:             'fiche_ouverte_rappel',
+    label:           'Fiche à clôturer',
+    description:     'Une de tes fiches est ouverte depuis trop longtemps : clôture-la ou mets-la en parc.',
+    category:        'driver',
+    applicableRoles: ['driver'],
+    defaultEnabled:  true,
+  },
+  {
+    key:             'fiche_ouverte_dispatch',
+    label:           'Fiche chauffeur ouverte depuis trop longtemps',
+    description:     'Un chauffeur n\'a pas clôturé une fiche malgré les rappels.',
+    category:        'dispatcher',
+    applicableRoles: ['dispatcher', 'admin', 'superadmin'],
+    defaultEnabled:  true,
+  },
+  {
     key:             'mission_assigned_manual',
     label:           'Nouvelle mission assignée',
     description:     'Le dispatcher t\'a assigné manuellement une mission.',
