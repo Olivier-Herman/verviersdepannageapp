@@ -4,7 +4,8 @@
 // ni mise en parc. Olivier 22/09/2026 : « il faudrait créer un système de
 // rappel pour les chauffeurs qui ont une fiche assignée depuis plus de x
 // heures. Fred Palm a une fiche qui aura bientôt 50 h, il faut qu'il la clôture. »
-//   • 1er rappel après `rappel_fiche_ouverte_heures` (réglages, 24 h) ;
+//   • 1er rappel après `rappel_fiche_ouverte_heures` (réglages, 12 h — Olivier 22/09) ;
+//   • les transports / rapatriements sont exclus : ils peuvent prendre plusieurs jours ;
 //   • puis toutes les `rappel_fiche_ouverte_repeat_heures` (12 h) tant que la
 //     fiche reste ouverte ; à partir du 2e rappel le dispatch est prévenu aussi ;
 //   • une fiche au parc n'est pas concernée (le véhicule est chez nous, la
@@ -29,7 +30,7 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
   const sb = createAdminClient()
-  const firstH  = Math.max(1, await getBusinessNumber('rappel_fiche_ouverte_heures') || 24)
+  const firstH  = Math.max(1, await getBusinessNumber('rappel_fiche_ouverte_heures') || 12)
   const repeatH = Math.max(1, await getBusinessNumber('rappel_fiche_ouverte_repeat_heures') || 12)
   const now = Date.now()
   const assignedBefore = new Date(now - firstH * 3600_000).toISOString()
@@ -41,6 +42,7 @@ export async function GET(req: Request) {
     .in('status', OPEN_STATUSES)
     .eq('dossier_leg', false)
     .not('assigned_to', 'is', null)
+    .not('mission_type', 'ilike', '%transport%')   // rapatriements : plusieurs jours, pas de rappel
     .lt('assigned_at', assignedBefore)
     .or(`open_reminder_at.is.null,open_reminder_at.lt.${remindBefore}`)
     .limit(100)
