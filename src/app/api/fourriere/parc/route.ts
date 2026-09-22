@@ -25,7 +25,7 @@ const PARC_STATUSES = ['parked', 'delivering', 'unlocated', 'awaiting_payment']
 const SELECT = `
   id, mission_number, external_id, dossier_number, source, status, mission_type,
   vehicle_plate, vehicle_vin, vehicle_brand, vehicle_model, vehicle_class,
-  parc_zone_key, parc_row_number, parc_slot_index, parked_at, received_at, intervention_date, updated_at,
+  parc_zone_key, parc_row_number, parc_slot_index, parked_at, received_at, intervention_date, updated_at, redelivery_known_at,
   client_name, client_phone, officer_name, officer_partner_id, police_zone, police_pv_number,
   saisie_motif_code, saisie_motif_label,
   requisitoire_at, requisitoire_doc_path, requisitoire_last_reminder_at, requisitoire_reminder_count, requisitoire_stop,
@@ -78,7 +78,10 @@ export async function GET() {
 
   const vehicles = (ms || []).map((m: any) => {
     const entry = m.parked_at || m.intervention_date || m.received_at
-    const nights = entry ? nightsBetween(entry) : 0
+    // Olivier 22/09/2026 : dès que l'adresse de relivraison réelle est connue, le
+    // gardiennage s'arrête (le délai de livraison est le nôtre).
+    const stopAt = m.redelivery_known_at && entry && String(m.redelivery_known_at) > String(entry) ? m.redelivery_known_at : null
+    const nights = entry ? nightsBetween(entry, stopAt ?? undefined) : 0
     const regime = regimeOf(m.source)
     const r = rate[regime] || { car: 0, moto: 0, free: 0 }
     const isMoto = String(m.vehicle_class || '').toLowerCase() === 'moto'
