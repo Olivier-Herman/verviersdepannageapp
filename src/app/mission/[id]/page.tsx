@@ -31,6 +31,14 @@ export default async function MissionDriverPage({ params, searchParams }: Props)
     .from('users').select('id, role, nav_app').eq('email', session.user.email!).single()
   if (!currentUser) redirect('/dashboard')
 
+  // Écrans de clôture Touring côté chauffeur : toujours en bêta (superadmin +
+  // Franck). Olivier 22/09/2026 : « les écrans étaient déjà présents et les
+  // clôtures se faisaient bien chez Touring, il n'y a que le VR qu'ils ne
+  // voyaient pas » — la remontée chez Touring se fait côté serveur à la clôture,
+  // ces écrans ne sont qu'un parcours alternatif encore en rodage.
+  const touringBeta = (currentUser as any).role === 'superadmin'
+    || (session.user.email || '').toLowerCase() === 'bose4845@gmail.com'
+
   // params.id accepte UUID OU mission_number numerique (Olivier 2026-05-26).
   const idIsNumeric = /^\d+$/.test(params.id)
   const { data: mission } = idIsNumeric
@@ -138,6 +146,7 @@ export default async function MissionDriverPage({ params, searchParams }: Props)
         isReadOnly={isStaff && !isDriverOfMission}
         navApp={currentUser.nav_app || 'gmaps'}
         defaultParcZone={defaultParcZone}
+        touringBeta={touringBeta}
         flux2={flux2}
         onsiteV2={onsiteV2}
         parentPanne={parentPanne}

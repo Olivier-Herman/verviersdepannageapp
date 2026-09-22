@@ -94,7 +94,7 @@ interface Mission {
   awaiting_payment?: boolean | null
 }
 interface VrLoc { id: string; name: string; address: string; lat: number | null; lng: number | null; is_default?: boolean }
-interface Props { mission: Mission; currentUserId?: string; userRole?: string; isReadOnly?: boolean; navApp?: NavApp; defaultParcZone?: string | null; flux2?: boolean; onsiteV2?: boolean; parentClosingNote?: string | null; parentPanne?: string | null }
+interface Props { mission: Mission; currentUserId?: string; userRole?: string; isReadOnly?: boolean; navApp?: NavApp; defaultParcZone?: string | null; touringBeta?: boolean; flux2?: boolean; onsiteV2?: boolean; parentClosingNote?: string | null; parentPanne?: string | null }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 // Olivier 2026-06-18 : null-safe. Le defaut `= ''` ne couvre QUE undefined ;
@@ -565,7 +565,7 @@ function BriefingTtsButton({ mission }: { mission: Mission }) {
 }
 
 // ─── Composant principal ──────────────────────────────────────────────────────
-export default function DriverClient({ mission: init, currentUserId, userRole, isReadOnly = false, navApp: initNav, defaultParcZone = null, flux2 = false, onsiteV2 = false, parentClosingNote = null, parentPanne = null }: Props) {
+export default function DriverClient({ mission: init, currentUserId, userRole, isReadOnly = false, navApp: initNav, defaultParcZone = null, touringBeta = false, flux2 = false, onsiteV2 = false, parentClosingNote = null, parentPanne = null }: Props) {
   const canMatthieu = canUseMatthieu(userRole, currentUserId)
   const router = useRouter()
   const { t, lang } = useT()   // traductions FR/albanais pour les messages d'erreur (strings)
@@ -1278,16 +1278,16 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
   const rem      = isREM(mType)
   const rel      = isRELMission(M)         // REL = relivraison depuis le parc
   const onSite   = !!M.on_site_at
-  // Touring COMEX — ouvert à TOUS les chauffeurs depuis le 22/09/2026 (Olivier :
-  // « on ouvre à tous les chauffeurs »). C'était une bêta réservée à Franck et aux
-  // superadmins depuis le 06/08, et Fred Bovy n'avait donc pas le bouton « Demander
-  // un VR » sur le 2HKJ698. Pas de bouton « Clôturer chez Touring » : le popup DSP
-  // fait partie de la clôture (mandaté après Terminer), et le VR se demande via
-  // bouton/tuile dédiés sur les missions REM.
-  const isTouringComex = (M as any).source_format === 'comex'
-  // « Demander un VR » : missions REM Touring dont le contrat accorde un VR (vr_proposed).
-  // On masque le déclencheur si VR ≠ OUI — inutile de proposer un VR non couvert.
-  const canTouringVr   = isTouringComex && rem && (M as any).vr_proposed === true
+  // ÉCRANS de clôture Touring (fin technique dépôt 05, DSP fin 00, DSP→REM 02/03,
+  // clôture d'une action de suivi) : encore en bêta, Franck + superadmins. La
+  // remontée chez Touring d'une clôture ordinaire se fait côté serveur, sans eux.
+  const isTouringComex = touringBeta && (M as any).source_format === 'comex'
+  // « Demander un VR » : missions REM Touring dont le contrat accorde un VR
+  // (vr_proposed). Ouvert à TOUS les chauffeurs depuis le 22/09/2026 — il était
+  // coincé derrière la bêta des écrans de clôture, et Fred Bovy ne l'avait donc
+  // pas sur le 2HKJ698. La demande part chez Touring sans toucher au statut de la
+  // mission : elle ne dépend pas du parcours de clôture.
+  const canTouringVr   = (M as any).source_format === 'comex' && rem && (M as any).vr_proposed === true
   // Action de suivi Touring (2e tracking : même dossier, seq incrémenté). Quand
   // elle existe, le « Terminer » à l'arrivée destination doit clôturer CETTE action
   // chez Touring (sinon elle reste ouverte). Olivier 2026-08-07.
