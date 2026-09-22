@@ -4,7 +4,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import AppShell from '@/components/layout/AppShell'
-import MissionStamp from '@/components/missions/MissionStamp'
 import { statusFr } from '@/lib/missions/status-label'
 import { missionKind } from '@/lib/missions/mission-types'
 import { getSourceLabel, type SourceDisplay } from '@/lib/missions/source-display'
@@ -95,7 +94,15 @@ export default function ChauffeurMissionsClient({ drivers, catalogSources, initi
                         <td className="px-3 py-2 whitespace-nowrap text-ink-secondary">{getSourceLabel(m.source, catalogSources)}</td>
                         <td className="px-3 py-2"><span className="font-mono font-semibold text-ink">{m.vehicle_plate || '—'}</span>{(m.vehicle_brand || m.vehicle_model) && <span className="block text-xs text-ink-secondary">{[m.vehicle_brand, m.vehicle_model].filter(Boolean).join(' ')}</span>}</td>
                         <td className="px-3 py-2 text-ink-secondary max-w-[320px]"><span className="block truncate">{m.client_name || '—'}</span><span className="block text-xs truncate text-ink-muted">{m.incident_city || m.incident_address || ''}{m.destination_address ? ` → ${m.destination_address}` : ''}</span></td>
-                        <td className="px-3 py-2 whitespace-nowrap"><span className="text-xs text-ink-secondary mr-2">{statusFr(m.status)}</span><MissionStamp mission={m} size="small" /></td>
+                        <td className="px-3 py-2 whitespace-nowrap"><span className="text-xs text-ink-secondary">{statusFr(m.status)}</span>{(() => {
+                          // Badge en ligne (le tampon MissionStamp est en position absolue, fait pour une carte).
+                          const b = m.status === 'cancelled' ? ['Annulée', 'text-red-700 dark:text-red-300 border-red-600/50']
+                            : m.status === 'to_invoice' ? ['À facturer', 'text-amber-800 dark:text-amber-300 border-amber-500/60']
+                            : m.status === 'completed' && m.invoice_number ? [m.invoice_number, 'text-emerald-700 dark:text-emerald-300 border-emerald-600/60']
+                            : m.status === 'completed' && m.invoice_method === 'auto' ? ['Autofacturée', 'text-blue-700 dark:text-blue-300 border-blue-600/50']
+                            : null
+                          return b ? <span className={`ml-2 inline-block font-mono text-[10.5px] font-semibold rounded-md px-1.5 py-0.5 border ${b[1]}`}>{b[0]}</span> : null
+                        })()}</td>
                       </tr>
                     )
                   })}
