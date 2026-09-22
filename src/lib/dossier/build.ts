@@ -11,6 +11,7 @@
 // LECTURE SEULE. Calculs d'estimation par groupe pour que chaque fiche montre
 // le total du dossier sans additionner à la main.
 
+import { sourcesWithTag } from '@/lib/missions/source-catalog'
 import { createAdminClient }   from '@/lib/supabase'
 import { estimateMissionPrice } from '@/lib/missions/estimate-price'
 import { actionLines, linesTotal } from '@/lib/dossier/lines'
@@ -411,7 +412,15 @@ async function buildDossierUncached(anyMissionId: string, light: boolean, price 
 
   // ── Circuit Parquet / Domaine (saisies) : dossier saisie + états de frais ──
   let parquet: Dossier['parquet'] | undefined
-  if (String(root.source || '') === 'police_saisie' || root.saisie_motif_code) {
+  // Le circuit Parquet suit la SOURCE, pas le motif de saisie. Une fiche
+  // requalifiée d'après le réquisitoire (abandon → AVP, stationnement → Mal
+  // garée, rodéo) garde son `saisie_motif_code` d'origine : en la routant sur ce
+  // motif, on la renvoyait vers l'état de frais alors qu'elle n'est plus une
+  // saisie judiciaire, et elle restait bloquée « passe par le module Saisie »
+  // sans jamais pouvoir être facturée. Olivier 22/09/2026 : « les AVP ne doivent
+  // pas partir en EDF. » Le périmètre vient du tag `saisie_scope` du catalogue.
+  const SAISIE_SOURCES = await sourcesWithTag('saisie_scope')
+  if (SAISIE_SOURCES.includes(String(root.source || ''))) {
     const { data: sd } = await sb.from('saisie_dossiers').select('id, recipient, state, ef_number, billed_to_date, depannage_billed, justinvoice_ref')
       .eq('mission_id', root.id).maybeSingle()
     if (sd) {

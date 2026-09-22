@@ -14,6 +14,7 @@ import { getServerSession }  from 'next-auth'
 import { authOptions }       from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase'
 import { autoIntegrateNewSaisies, saisieScopeFrom, outOfParquetScope, sendEtatFrais } from '@/lib/missions/saisie-dossier'
+import { sourcesWithTag } from '@/lib/missions/source-catalog'
 import { forclusionDate, daysUntil, forclusionLevel } from '@/lib/missions/saisie-relance'
 import { hasValidRequisitoire } from '@/lib/requisitoire/doc'
 
@@ -26,7 +27,7 @@ function canAccess(session: any): boolean {
   return ['admin', 'superadmin'].includes(u.role || '') || (u.modules || []).includes('fourriere')
 }
 
-const SNAP = 'id, dossier_number, vehicle_plate, vehicle_brand, vehicle_model, client_name, parked_at, received_at, status, levee_saisie_at, levee_saisie_date, domaine_remise_date, domaine_enlevement_date, requisitoire_at, saisie_motif_code, saisie_motif_label'
+const SNAP = 'id, source, dossier_number, vehicle_plate, vehicle_brand, vehicle_model, client_name, parked_at, received_at, status, levee_saisie_at, levee_saisie_date, domaine_remise_date, domaine_enlevement_date, requisitoire_at, saisie_motif_code, saisie_motif_label'
 
 function snapshotFromMission(m: any) {
   return {
@@ -188,6 +189,13 @@ export async function POST(req: Request) {
   if (!missionId) return NextResponse.json({ error: 'mission_id requis' }, { status: 400 })
   const { data: m } = await sb.from('incoming_missions').select(SNAP).eq('id', missionId).maybeSingle()
   if (!m) return NextResponse.json({ error: 'Mission introuvable' }, { status: 404 })
+  // Ajout manuel : la fiche doit être une SAISIE JUDICIAIRE. Une AVP, une mal
+  // garée ou un rodéo n'a rien à faire dans un état de frais, même si elle porte
+  // encore le motif de saisie d'avant sa requalification. Olivier 22/09/2026.
+  const SAISIE_SOURCES = await sourcesWithTag('saisie_scope')
+  if (!SAISIE_SOURCES.includes(String((m as any).source || ''))) {
+    return NextResponse.json({ error: `Cette fiche est « ${(m as any).source} », pas une saisie judiciaire : elle ne part pas en état de frais.` }, { status: 400 })
+  }
   const scope = outOfParquetScope(m)
   if (scope.out) return NextResponse.json({ error: `${scope.reason} Ce dossier n'a pas à être traité au Parquet.` }, { status: 400 })
 
