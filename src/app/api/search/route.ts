@@ -165,6 +165,33 @@ export async function GET(req: Request) {
   const sb = createAdminClient()
   const out: SearchResult[] = []
 
+  // ── Chauffeurs (Olivier 22/09/2026 : « je sélectionne le chauffeur et tu
+  // m'affiches toutes ses missions, la plus récente au-dessus ») ───────────
+  // Un nom qui matche → le chauffeur, son nombre de missions, la dernière ;
+  // le clic ouvre /missions/chauffeur?driver=… (liste complète, paginée).
+  if (wants('chauffeur') && q.length >= 2 && !qNum) {
+    try {
+      const { data: drivers } = await sb.from('users').select('id, name, active')
+        .or('role.in.(driver),roles.ov.{driver}').ilike('name', `%${q}%`).order('name').limit(5)
+      for (const d of drivers || []) {
+        const [{ count }, { data: last }] = await Promise.all([
+          sb.from('incoming_missions').select('id', { count: 'exact', head: true }).eq('assigned_to', d.id).eq('dossier_leg', false),
+          sb.from('incoming_missions').select('assigned_at, received_at, vehicle_plate, mission_type').eq('assigned_to', d.id).eq('dossier_leg', false)
+            .order('assigned_at', { ascending: false, nullsFirst: false }).limit(1).maybeSingle(),
+        ])
+        const lastAt = (last as any)?.assigned_at || (last as any)?.received_at || null
+        out.push({
+          category: 'chauffeur',
+          id:       d.id,
+          title:    `${d.name}${d.active === false ? ' (inactif)' : ''}`,
+          subtitle: 'Toutes ses missions, la plus récente en haut',
+          meta:     `${count ?? 0} mission${(count ?? 0) > 1 ? 's' : ''}${lastAt ? ` · dernière ${fmtDateShort(lastAt)}${(last as any)?.vehicle_plate ? ' · ' + (last as any).vehicle_plate : ''}` : ''}`,
+          href:     `/missions/chauffeur?driver=${d.id}`,
+        })
+      }
+    } catch (e: any) { console.error('[search] chauffeurs fail (non bloquant):', e?.message) }
+  }
+
   // ── Missions ───────────────────────────────────────────────
   if (wants('mission')) {
     const missionsQuery = sb

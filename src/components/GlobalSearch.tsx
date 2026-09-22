@@ -19,6 +19,7 @@ interface SearchResult {
 }
 
 const CATEGORY_META: Record<string, { label: string; emoji: string; color: string; accent: string }> = {
+  chauffeur:    { label: 'Chauffeurs',       emoji: '👤', color: 'text-brand',   accent: 'bg-brand/15 border-brand/30 text-brand' },
   mission:      { label: 'Missions',         emoji: '🚗', color: 'text-info',    accent: 'bg-info/15 border-info/30 text-info' },
   encaissement: { label: 'Encaissements',    emoji: '💳', color: 'text-success', accent: 'bg-success/15 border-success/30 text-success' },
   avance:       { label: 'Avances de fonds', emoji: '📄', color: 'text-warning', accent: 'bg-warning/15 border-warning/30 text-warning' },
@@ -26,7 +27,7 @@ const CATEGORY_META: Record<string, { label: string; emoji: string; color: strin
   vehicle:      { label: 'Véhicules',        emoji: '🚘', color: 'text-critical', accent: 'bg-critical/15 border-critical/30 text-critical' },
 }
 
-const CATEGORY_ORDER = ['mission', 'encaissement', 'avance', 'invoice', 'vehicle']
+const CATEGORY_ORDER = ['chauffeur', 'mission', 'encaissement', 'avance', 'invoice', 'vehicle']
 
 // Olivier 10/09/2026 : quand le menu v3 est actif, ⌘K appartient à la palette
 // « Aller à » (NavPalette) — la loupe de l'en-tête garde son bouton, pas le raccourci.

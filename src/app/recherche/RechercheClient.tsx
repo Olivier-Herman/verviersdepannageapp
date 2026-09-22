@@ -37,6 +37,7 @@ const CATEGORY_META: Record<string, {
   ring:     string
   text:     string
 }> = {
+  chauffeur:    { label: 'Chauffeurs',       emoji: '👤', gradient: 'from-brand/30   to-brand/5',      accent: 'bg-brand/15 text-brand border-brand/30',       ring: 'ring-brand/40',    text: 'text-brand' },
   mission:      { label: 'Missions',         emoji: '🚗', gradient: 'from-info/30    to-info/5',       accent: 'bg-info/15 text-info border-info/30',         ring: 'ring-info/40',     text: 'text-info' },
   encaissement: { label: 'Encaissements',    emoji: '💳', gradient: 'from-success/30 to-success/5',    accent: 'bg-success/15 text-success border-success/30', ring: 'ring-success/40',  text: 'text-success' },
   avance:       { label: 'Avances de fonds', emoji: '📄', gradient: 'from-warning/30 to-warning/5',    accent: 'bg-warning/15 text-warning border-warning/30', ring: 'ring-warning/40',  text: 'text-warning' },
@@ -47,7 +48,7 @@ const CATEGORY_META: Record<string, {
   email_administration: { label: 'Email · Administration', emoji: '📧', gradient: 'from-teal-500/30 to-teal-500/5',   accent: 'bg-teal-500/15 text-teal-500 border-teal-500/30',     ring: 'ring-teal-500/40',   text: 'text-teal-500' },
 }
 
-const CATEGORY_ORDER = ['mission', 'encaissement', 'avance', 'invoice', 'vehicle', 'email_info', 'email_fourriere', 'email_administration']
+const CATEGORY_ORDER = ['chauffeur', 'mission', 'encaissement', 'avance', 'invoice', 'vehicle', 'email_info', 'email_fourriere', 'email_administration']
 
 const RECENT_KEY     = 'verviers:recent-searches'
 const RECENT_MAX     = 8

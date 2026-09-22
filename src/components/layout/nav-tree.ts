@@ -68,6 +68,7 @@ export const NAV_TREE_ESPACES: NavModule[] = [
       { href: '/dispatch',           label: 'Dispatch',           icon: Radio,       requires: '/dispatch' },
       { href: '/dispatch/new',       label: 'Nouvelle mission',   icon: Plus,        requires: '/dispatch' },
       { href: '/relivraison',        label: 'Relivraison',        icon: Repeat,      requires: '/relivraison' },
+      { href: '/missions/chauffeur', label: 'Missions par chauffeur', icon: Users,    requires: '/dispatch' },   // Olivier 22/09/2026
       { href: '/reception',          label: 'Réception',          icon: Contact,     requires: '/reception' },
       { href: '/garde',              label: 'Planning de garde',  icon: ShieldCheck, requires: '/garde' },
       { href: '/francofolies',       label: 'Francofolies',       icon: CalendarDays, requires: '/francofolies' },
@@ -165,6 +166,7 @@ export const NAV_TREE: NavModule[] = [
       { href: '/dispatch/new',       label: 'Nouvelle mission',   icon: Plus,        requires: '/dispatch' },
       { href: '/relivraison',        label: 'Relivraison',        icon: Repeat,      requires: '/relivraison' },
       { href: '/missions-terminees', label: 'Missions terminées', icon: FolderCheck, i18nKey: 'nav.finished', requires: '/missions-terminees' },
+      { href: '/missions/chauffeur', label: 'Missions par chauffeur', icon: Users,  requires: '/dispatch' },
       { href: '/journal',            label: 'Journal',            icon: FileText,    requires: '/dispatch', superadminOnly: true },
       { href: '/admin/axa',           label: 'AXA go&assist',      icon: Shield,      requires: '/dispatch', superadminOnly: true },
     ],
