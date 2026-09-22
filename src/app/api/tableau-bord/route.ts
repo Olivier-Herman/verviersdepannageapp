@@ -328,7 +328,12 @@ export async function GET(req: Request) {
     const drv = new Map<string, any>()
     for (const m of (monthMissions || [])) {
       if (excludedDrivers.has(m.assigned_to)) continue
-      const inP = (m.assigned_at && m.assigned_at >= sinceISO) || (m.completed_at && m.completed_at >= sinceISO)
+      // Olivier 22/09/2026 (2BDJ715) : une mission compte pour son chauffeur le
+      // jour où elle lui est ATTRIBUÉE. La clôture d'une fiche mère REM+REL
+      // arrive quand un autre chauffeur fait la relivraison : elle gonflait le
+      // compteur du premier ce jour-là. completed_at ne sert que sans assigned_at.
+      const anchor = m.assigned_at || m.completed_at
+      const inP = !!anchor && anchor >= sinceISO
       if (!inP) continue
       const d = drv.get(m.assigned_to) || { total: 0, forced: 0, REM: 0, DSP: 0, REL: 0, Transport: 0, DPR: 0, Autre: 0, durSum: 0, durN: 0, km: 0 }
       d.total++; d[catOf(m.mission_type)]++
