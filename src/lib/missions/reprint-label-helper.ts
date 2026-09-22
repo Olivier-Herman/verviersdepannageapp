@@ -97,9 +97,10 @@ export async function reprintLabelForMission(
       const baseUrl = process.env.NEXT_PUBLIC_APP_URL || ''
       const qrTarget = `/qr/mission/${mission.mission_number ?? mission.id}`
       const cleanAddr = (redeliveryAddr || '').trim()
-      const addressText = cleanAddr
+      const { isPlaceholderAddress } = await import('@/lib/parc/relivraison-zone')
+      const addressText = cleanAddr && !isPlaceholderAddress(cleanAddr)
         ? cleanAddr
-        : 'En attente d info adresse de relivraison'
+        : cleanAddr ? 'Adresse à confirmer avec le client' : 'En attente d info adresse de relivraison'
       const assistance = String(
         (mission as any).billed_to_name
         || (mission as any).client_name

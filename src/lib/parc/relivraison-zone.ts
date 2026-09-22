@@ -12,6 +12,15 @@ import type { createAdminClient } from '@/lib/supabase'
 const norm = (s: string | null | undefined) =>
   (s || '').toLowerCase().replace(/[\s,.\-]+/g, ' ').trim()
 
+/** Texte qui tient lieu d'adresse sans en être une : « Choix du client – Keuze »
+ *  (Touring laisse le client choisir son garage), « à définir », « à confirmer »…
+ *  Olivier 22/09/2026 (2GLN102) : ce n'est pas une adresse → K1, et le
+ *  gardiennage ne s'arrête pas dessus. */
+export function isPlaceholderAddress(addr: string | null | undefined): boolean {
+  const a = norm(addr).normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+  if (!a) return false
+  return /choix du client|keuze|a definir|a confirmer|a preciser|inconnu|non communique|en attente/.test(a)
+}
 /** L'adresse correspond-elle à un de NOS dépôts (donc pas une vraie destination) ? */
 export async function isOwnDepotAddress(
   sb: ReturnType<typeof createAdminClient>,
@@ -33,6 +42,6 @@ export async function relivraisonZoneFor(
   sb: ReturnType<typeof createAdminClient>,
   addr: string | null | undefined,
 ): Promise<'K' | 'K1'> {
-  if (!norm(addr)) return 'K1'
+  if (!norm(addr) || isPlaceholderAddress(addr)) return 'K1'
   return (await isOwnDepotAddress(sb, addr)) ? 'K1' : 'K'
 }
