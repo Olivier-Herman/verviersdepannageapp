@@ -24,7 +24,6 @@ import { T }    from '@/lib/i18n/T'
 import { isTransport } from '@/lib/missions/mission-types'
 import { transportGabaritLabel } from '@/lib/tarifs/transport-gabarits'
 import { useT } from '@/lib/i18n/I18nProvider'
-import TouringCloseModal from '@/components/touring/TouringCloseModal'
 import SigPad from '@/components/mission/SigPad'
 import ActionScreen, { type OutcomeKey, type PriseEnCharge } from '@/components/cloture/ActionScreen'
 import CloseScreen from '@/components/cloture/CloseScreen'
@@ -94,7 +93,7 @@ interface Mission {
   awaiting_payment?: boolean | null
 }
 interface VrLoc { id: string; name: string; address: string; lat: number | null; lng: number | null; is_default?: boolean }
-interface Props { mission: Mission; currentUserId?: string; userRole?: string; isReadOnly?: boolean; navApp?: NavApp; defaultParcZone?: string | null; touringBeta?: boolean; flux2?: boolean; onsiteV2?: boolean; parentClosingNote?: string | null; parentPanne?: string | null }
+interface Props { mission: Mission; currentUserId?: string; userRole?: string; isReadOnly?: boolean; navApp?: NavApp; defaultParcZone?: string | null; flux2?: boolean; onsiteV2?: boolean; parentClosingNote?: string | null; parentPanne?: string | null }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 // Olivier 2026-06-18 : null-safe. Le defaut `= ''` ne couvre QUE undefined ;
@@ -565,7 +564,7 @@ function BriefingTtsButton({ mission }: { mission: Mission }) {
 }
 
 // ─── Composant principal ──────────────────────────────────────────────────────
-export default function DriverClient({ mission: init, currentUserId, userRole, isReadOnly = false, navApp: initNav, defaultParcZone = null, touringBeta = false, flux2 = false, onsiteV2 = false, parentClosingNote = null, parentPanne = null }: Props) {
+export default function DriverClient({ mission: init, currentUserId, userRole, isReadOnly = false, navApp: initNav, defaultParcZone = null, flux2 = false, onsiteV2 = false, parentClosingNote = null, parentPanne = null }: Props) {
   const canMatthieu = canUseMatthieu(userRole, currentUserId)
   const router = useRouter()
   const { t, lang } = useT()   // traductions FR/albanais pour les messages d'erreur (strings)
@@ -1278,21 +1277,12 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
   const rem      = isREM(mType)
   const rel      = isRELMission(M)         // REL = relivraison depuis le parc
   const onSite   = !!M.on_site_at
-  // ÉCRANS de clôture Touring (fin technique dépôt 05, DSP fin 00, DSP→REM 02/03,
-  // clôture d'une action de suivi) : encore en bêta, Franck + superadmins. La
-  // remontée chez Touring d'une clôture ordinaire se fait côté serveur, sans eux.
-  const isTouringComex = touringBeta && (M as any).source_format === 'comex'
   // « Demander un VR » : missions REM Touring dont le contrat accorde un VR
   // (vr_proposed). Ouvert à TOUS les chauffeurs depuis le 22/09/2026 — il était
   // coincé derrière la bêta des écrans de clôture, et Fred Bovy ne l'avait donc
   // pas sur le 2HKJ698. La demande part chez Touring sans toucher au statut de la
   // mission : elle ne dépend pas du parcours de clôture.
   const canTouringVr   = (M as any).source_format === 'comex' && rem && (M as any).vr_proposed === true
-  // Action de suivi Touring (2e tracking : même dossier, seq incrémenté). Quand
-  // elle existe, le « Terminer » à l'arrivée destination doit clôturer CETTE action
-  // chez Touring (sinon elle reste ouverte). Olivier 2026-08-07.
-  const hasTouringFollowup = isTouringComex && Array.isArray((M as any).touring_actions) && (M as any).touring_actions.length > 1
-  const [showTouringClose, setShowTouringClose] = useState(false)
   const [vrEnvoi, setVrEnvoi] = useState(false)
   // Écran supplémentaire Touring (vrai écran, source COMEX). Trois actions :
   //  • 'dsp'     : clôture de la fiche dépannage (fin 00) AVANT la clôture VD Soft
@@ -1303,7 +1293,6 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
   //  • 'remclose': REM à l'arrivée destination avec action de suivi non clôturée →
   //                on clôture le seq actif chez Touring (écran pré-rempli) avant la
   //                clôture VD Soft.
-  const [touringAction, setTouringAction] = useState<'dsp' | 'dsp2rem' | 'vr' | 'park' | 'remclose' | null>(null)
   const loaded   = !!M.loaded_at || M.status === 'delivering' || M.status === 'parked'
 
   // Refonte flux sur place (onsiteV2) : dès que le chauffeur est SUR PLACE sur une
@@ -2403,65 +2392,22 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
   }
 
 
-  // Modal Touring (vrai écran). Effet de bord à la validation selon l'action :
-  //  • 'dsp'     → clôture VD Soft DSP (setScreen('close')).
-  //  • 'dsp2rem' → transformation VD Soft en REM (adresse + change_type).
-  //  • 'vr'      → mission déjà REM : simple rafraîchissement.
-  // Enchaîne le flux « mise en parc » VD Soft (après la clôture Touring 05).
+  // Suite du flux « mise en parc » : dépôt par défaut si aucun n'est choisi, puis
+  // l'écran de parc VD Soft (ou la demande d'adresse pour un REM dispatché).
+  // Appelée par le flux 2 après un résultat « parked ».
   const continuePark = () => {
     if (!parkDepot) { const def = vrLocs.find(v => (v as any).is_default) || vrLocs[0]; if (def) setParkDepot(def) }
     if (isDispatchRem) { openDestPrompt('park') }
     else { setCloseType('park'); setScreen('close') }
   }
-  const onTouringDone = async (result?: { finCode: string; destination?: { address: string; lat?: number; lng?: number } }) => {
-    const act = touringAction
-    setShowTouringClose(false); setTouringAction(null)
-    if (act === 'dsp')  { setCloseType('dsp'); setScreen('close'); return }
-    if (act === 'remclose') { setCloseType('rem'); setScreen('close'); return } // seq suivi clôturé → clôture VD Soft
-    if (act === 'vr')   { reloadMission(); return }
-    if (act === 'park') { continuePark(); return }   // 05 clôturé chez Touring → parc VD Soft
-    if (act === 'dsp2rem') {
-      const dest = result?.destination
-      if (dest?.address) {
-        // Adresse déjà choisie dans la liste Touring → on la reprend directement dans
-        // la fiche VD Soft (pas de double saisie), puis on transforme en REM.
-        try {
-          const body: any = { destination_address: dest.address }
-          if (dest.lat != null) body.destination_lat = dest.lat
-          if (dest.lng != null) body.destination_lng = dest.lng
-          await fetch(`/api/missions/${M.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
-        } catch { /* non bloquant : on demandera l'adresse si besoin */ }
-        await changeType('REM')   // recharge la fiche
-      } else {
-        openDestPrompt('rem')     // pas d'adresse Touring (liste vide) → on la demande
-      }
-    }
-  }
-  const onTouringCancel = () => {
-    const act = touringAction
-    setShowTouringClose(false); setTouringAction(null)
-    // Sur les gates à sortie bloquée (DSP, park), la ✕ est masquée : onClose n'arrive
-    // que via l'échappatoire « Continuer sans clôturer Touring » (COMEX pas prêt) →
-    // on enchaîne quand même sur la suite VD Soft.
-    if (act === 'dsp')  { setCloseType('dsp'); setScreen('close') }
-    if (act === 'park') { continuePark() }
-  }
-  const touringModalEl = showTouringClose ? (
-    <TouringCloseModal
-      missionId={M.id}
-      mode="driver"
-      mandatory
-      blockExit={touringAction === 'dsp' || touringAction === 'park'}
-      leg={touringAction === 'dsp' ? 'dsp' : 'rem'}
-      forcedFin={touringAction === 'park' ? '05' : ''}
-      vrAllowed={touringAction !== 'park' && (M as any).vr_proposed === true}
-      initialVr={touringAction === 'vr'}
-      fallbackVin={(M as any).vehicle_vin || (M as any).vehicle_vin_partial || ''}
-      fallbackKm={(M as any).vehicle_mileage ?? ''}
-      onClose={onTouringCancel}
-      onDone={onTouringDone}
-    />
-  ) : null
+
+  // L'ancien parcours de clôture Touring côté chauffeur (écrans fin technique
+  // dépôt 05, DSP fin 00, DSP→REM 02/03, clôture d'action de suivi) a été RETIRÉ
+  // le 22/09/2026. Le flux 2 est actif pour tous les chauffeurs sur Touring
+  // depuis le 13/08 et c'est le serveur qui écrit chez Touring à la clôture :
+  // ces écrans n'avaient plus servi une seule fois en 40 jours (545 clôtures
+  // Touring en septembre, toutes par le flux unifié). Le bureau garde le même
+  // écran sur la fiche dispatch pour rattraper une clôture manquée.
 
   // Éviter l'hydratation mismatch (localStorage vs SSR)
   if (!mounted) return null
@@ -4267,12 +4213,6 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
           </button>
         )}
 
-        {/* Touring COMEX — pas de bouton « Clôturer chez Touring » générique (décision
-            Olivier). Le modal (variable partagée touringModalEl, rendue aussi sur
-            l'écran « mission terminée ») sert à : popup DSP obligatoire post-clôture,
-            transformation DSP→REM (tuiles d'action existantes) et demande de VR. */}
-        {touringModalEl}
-
         {/* La tête à Matthieu — assistant mécano (accès restreint Matthieu + superadmin en test) */}
         {canMatthieu && (
           <button onClick={openMatthieu}
@@ -4840,10 +4780,6 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
                   // FLUX 2 : la jambe livraison se clôture aussi dans le flux unifié —
                   // on migre des SCÉNARIOS ENTIERS, pas des bouts (Olivier 2026-08-11).
                   if (flux2 && !rel) { setF2Outcome('delivered'); setF2Screen('close'); return }
-                  // REM Touring avec action de suivi non clôturée : écran de clôture
-                  // Touring (pré-rempli, seq actif) AVANT le résumé de clôture VD Soft.
-                  // Olivier 2026-08-07.
-                  if (hasTouringFollowup && !rel) { setTouringAction('remclose'); setShowTouringClose(true); return }
                   setCloseType(rel ? 'rel' : 'rem'); setScreen('close')
                 }} disabled={loading}
                 className={`w-full py-4 disabled:opacity-50 text-ink font-bold rounded-2xl text-base flex items-center justify-center gap-2 ${sncPaymentDue ? 'bg-amber-500' : 'bg-green-600'}`}>
@@ -4876,9 +4812,6 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
                         const def = vrLocs.find(v => (v as any).is_default) || vrLocs[0]
                         if (def) setParkDepot(def)
                       }
-                      // Touring : mise en parc = fin technique dépôt (05) chez Touring
-                      // AVANT le parc VD Soft. continuePark enchaîne après validation.
-                      if (isTouringComex) { setTouringAction('park'); setShowTouringClose(true); return }
                       // Dispatch REM : on confirme d'abord l'adresse de relivraison.
                       // Police / SIABIS : parc direct (fourrière, pas de relivraison).
                       if (isDispatchRem) { openDestPrompt('park') }
@@ -4979,12 +4912,6 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
                 <button onClick={() => {
                     // Siabis non couvert direct : encaissement obligatoire avant clôture.
                     if (sncPaymentDue) { setScreen('encaissement'); return }
-                    // Source Touring (DSP) : écran supplémentaire de clôture Touring
-                    // AVANT la clôture VD Soft. Tant qu'il n'est pas validé, on n'entre
-                    // pas dans l'écran de clôture VD Soft. onTouringDone enchaîne.
-                    if (isTouringComex && M.mission_type !== 'trajet_vide') {
-                      setTouringAction('dsp'); setShowTouringClose(true); return
-                    }
                     setCloseType(M.mission_type === 'trajet_vide' ? 'dpr' : 'dsp'); setScreen('close')
                   }}
                   className="w-full py-4 bg-green-600 text-ink font-bold rounded-2xl text-base">
@@ -5104,12 +5031,8 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
                   <span className="text-sm font-medium text-indigo-400"><T k="mission_detail.action_advance" /></span>
                 </a>
               )}
-              {/* DSP↔REM. Pour un DSP source Touring : on clôture d'abord la fiche
-                  dépannage +REM (02) / +REM+VR (03) chez Touring (vrai écran), la jambe
-                  remorquage part au dispatch ; onTouringDone enchaîne sur le change_type. */}
               {!flux2 && <button onClick={() => {
                   if (rem) { changeType('DSP'); return }
-                  if (isTouringComex) { setTouringAction('dsp2rem'); setShowTouringClose(true); return }
                   openDestPrompt('rem')
                 }} disabled={loading}
                 className="rounded-2xl py-5 flex flex-col items-center justify-center gap-2 border bg-blue-600/10 border-blue-600/30 transition active:scale-95 disabled:opacity-50">
@@ -5146,7 +5069,7 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
               )}
               {/* Mise en parc (REM uniquement) */}
               {!flux2 && rem && (
-                <button onClick={() => { setShowGrid(false); if (isTouringComex) { setTouringAction('park'); setShowTouringClose(true); return } if (isDispatchRem) { openDestPrompt('park') } else { setShowPark(true) } }}
+                <button onClick={() => { setShowGrid(false); if (isDispatchRem) { openDestPrompt('park') } else { setShowPark(true) } }}
                   className="rounded-2xl py-5 flex flex-col items-center justify-center gap-2 border bg-amber-600/10 border-amber-600/30 transition active:scale-95">
                   <span className="text-2xl">🅿️</span>
                   <span className="text-sm font-medium text-amber-400"><T k="mission_detail.action_park" /></span>
