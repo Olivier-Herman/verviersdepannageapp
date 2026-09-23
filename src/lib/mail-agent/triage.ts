@@ -133,3 +133,25 @@ export async function triageMail(sb: any, mailbox: string, msg: AgentMessage): P
     proposals: [...(PROPOSALS[family] || []), ...COMMON_PROPOSALS],
   }
 }
+
+// ── Automatisation par famille (jour 3) ─────────────────────────────────────
+// Réglage `mail_agent_auto` = { famille: action | null }. Une famille en
+// automatique voit son action exécutée dès le triage (avec le mode draft/auto
+// courant), sans clic. Suggestion : dix décisions humaines identiques sur une
+// famille → l'écran propose de passer en automatique.
+export async function readAutoFamilies(sb: any): Promise<Record<string, string | null>> {
+  const { data } = await sb.from('app_settings').select('value').eq('key', 'mail_agent_auto').maybeSingle()
+  try { const v = data?.value ? JSON.parse(data.value) : {}; return v && typeof v === 'object' ? v : {} } catch { return {} }
+}
+export async function autoStats(sb: any): Promise<Record<string, { action: string; count: number }[]>> {
+  const { data } = await sb.from('mail_agent_items').select('extracted').eq('handler', 'triage').eq('status', 'decided').limit(2000)
+  const acc: Record<string, Record<string, number>> = {}
+  for (const it of data || []) {
+    const x: any = it.extracted || {}; const f = x.family, a = x.decision?.action
+    if (!f || !a || x.decision?.by === 'agent' || a === 'laisser' || a === 'fait_ailleurs') continue
+    ;(acc[f] ||= {})[a] = ((acc[f] || {})[a] || 0) + 1
+  }
+  const out: Record<string, { action: string; count: number }[]> = {}
+  for (const [f, m] of Object.entries(acc)) out[f] = Object.entries(m).map(([action, count]) => ({ action, count })).sort((a, b) => b.count - a.count)
+  return out
+}

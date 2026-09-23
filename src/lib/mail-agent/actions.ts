@@ -19,6 +19,7 @@ import { fetchInvoicePdfFromOdoo } from '@/lib/relances/odoo'
 import { sendEmail, type EmailAttachment } from '@/lib/emails'
 import { getAppOnlyToken } from '@/lib/graph-mail-search'
 import { getMessageText, forwardMessage, findFolderIdByName, moveMessage } from './graph'
+import { readAutoFamilies } from './triage'
 import { COMPANIES, type CompanyKey } from './handlers/fournisseur'
 
 export const OUT_MAILBOX = 'administration@verviersdepannage.com'
@@ -57,7 +58,7 @@ async function writeReply(item: any, intent: string, extra: string): Promise<{ s
   const r = await claude().messages.create({ model: ANTHROPIC_MODEL, max_tokens: 900, messages: [{ role: 'user', content: `Tu rédiges, pour Verviers Dépannage SA (société belge de dépannage, service administratif), la réponse à un mail reçu. Intention : ${intent}. ${extra}
 Faits vérifiés dans nos systèmes :
 ${facts || '(aucun)'}
-Règles : français courtois et sobre, tutoiement interdit, pas de promesse non couverte par les faits, pas de mention d'outil interne, ne pas inventer de montant ni de date. Termine sans signature (elle est ajoutée). Réponds STRICTEMENT en JSON : {"subject":"<objet, commençant par RE: si c'est une réponse>","html":"<corps en HTML simple, paragraphes <p>>"}
+Règles : français courtois et sobre, tutoiement interdit, pas de promesse non couverte par les faits, pas de mention d'outil interne, ne pas inventer de montant ni de date. Termine par le dernier paragraphe utile : PAS de formule de politesse finale ni de signature (elles sont ajoutées après). Réponds STRICTEMENT en JSON : {"subject":"<objet, commençant par RE: si c'est une réponse>","html":"<corps en HTML simple, paragraphes <p>>"}
 
 Mail reçu :
 De : ${item.from_email}

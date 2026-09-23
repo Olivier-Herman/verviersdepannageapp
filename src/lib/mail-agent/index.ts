@@ -22,7 +22,8 @@ import { findFolderIdByName, listFolderMessages, listAllFolders, getMessageText,
 import { refreshAwpSenders } from './handlers/awp-rejet'
 import { refreshImaSenders } from './handlers/ima-rejet'
 import { isSupplierCandidate, processSupplierMail } from './handlers/fournisseur'
-import { triageMail, isNoise, isAssistanceMission, twinInQueue } from './triage'
+import { triageMail, isNoise, isAssistanceMission, twinInQueue, readAutoFamilies } from './triage'
+import { executeDecision } from './actions'
 import { handlerFor, handlerById } from './handlers'
 import { findInvoiceByName, resolveTargetPartner, runChecks, creditAndRebill } from './odoo'
 import type { RejectEntity } from './handlers/types'
@@ -120,6 +121,21 @@ export async function scanFolder(opts: { mailbox?: string; folder?: string; fold
             }
             await upsert(sb, base, { status: 'to_decide', blocked_reason: t.asked || null, extracted: t })
             report.captured++; report.toDecide = (report.toDecide || 0) + 1
+            // Famille en automatique (jour 3) : l'action part tout de suite, avec le mode courant.
+            const autoAction = (await readAutoFamilies(sb))[t.family]
+            if (autoAction) {
+              const { data: fresh } = await sb.from('mail_agent_items').select('*').eq('mailbox', mailbox).eq('message_id', msg.id).eq('handler', 'triage').maybeSingle()
+              if (fresh) {
+                const mode = await getMode(sb)
+                const res = await executeDecision({ sb, item: fresh, actor: 'agent', mode, odooBase: process.env.ODOO_URL || '' }, autoAction)
+                const now = new Date().toISOString()
+                if (res.ok) {
+                  let moved = false; try { const fid = await findFolderIdByName(mailbox, MAIL_AGENT_DONE_FOLDER); if (fid) moved = (await moveMessage(mailbox, msg.id, fid)).ok } catch {}
+                  await sb.from('mail_agent_items').update({ status: 'decided', mail_moved: moved, extracted: { ...t, decision: { action: autoAction, by: 'agent', at: now, result: res.note, links: res.links || [] } }, applied_at: now, applied_by: 'agent', updated_at: now }).eq('id', fresh.id)
+                  report.applied++; report.toDecide = (report.toDecide || 1) - 1
+                } else await sb.from('mail_agent_items').update({ error: `automatique refusé : ${res.error}`, updated_at: now }).eq('id', fresh.id)
+              }
+            }
           } catch (e: any) { report.errors.push(`${msg.subject} : ${e?.message || String(e)}`) }
           continue
         }

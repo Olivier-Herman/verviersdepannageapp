@@ -113,6 +113,14 @@ export const NOTIFICATION_TYPES: readonly NotificationType[] = [
     defaultEnabled:  true,
   },
   {
+    key:             'mail_agent_digest',
+    label:           'Courrier à décider (matin)',
+    description:     'Chaque matin à 8 h 30, le nombre de mails qui attendent une décision dans Agent Mail.',
+    category:        'admin',
+    applicableRoles: ['admin', 'superadmin'],
+    defaultEnabled:  true,
+  },
+  {
     key:             'fiche_ouverte_dispatch',
     label:           'Fiche chauffeur ouverte depuis trop longtemps',
     description:     'Un chauffeur n\'a pas clôturé une fiche malgré les rappels.',

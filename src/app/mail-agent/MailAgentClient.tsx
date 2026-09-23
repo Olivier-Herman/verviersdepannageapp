@@ -131,6 +131,14 @@ export default function MailAgentClient({
     setFlash(r.ok ? (action === 'classer' ? `Mail classé dans « ${folder} »` : action === 'laisser' ? 'Laissé' : action === 'fait_ailleurs' ? 'Marqué fait ailleurs' : `✓ ${r.note}`) : `Refusé : ${r.error}`)
     load()
   }
+  const [auto, setAuto] = useState<{ auto: Record<string, string | null>; stats: Record<string, { action: string; count: number }[]>; families: Record<string, string>; proposals: Record<string, { key: string; label: string }[]> } | null>(null)
+  const [autoOpen, setAutoOpen] = useState(false)
+  const loadAuto = async () => { try { const j = await (await fetch('/api/mail-agent/auto', { cache: 'no-store' })).json(); if (!j.error) setAuto(j) } catch {} }
+  useEffect(() => { loadAuto() }, [])
+  const setAutoFamily = async (family: string, action: string | null) => {
+    const r = await (await fetch('/api/mail-agent/auto', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ family, action }) })).json()
+    if (r.error) setFlash(`Refusé : ${r.error}`); else { setFlash(action ? `${auto?.families[family]} : automatique (${action})` : `${auto?.families[family]} : manuel`); loadAuto() }
+  }
   const toggleMode = async () => {
     const next = mode === 'draft' ? 'auto' : 'draft'
     const r = await (await fetch('/api/mail-agent/mode', {
@@ -196,6 +204,31 @@ export default function MailAgentClient({
           ))}
         </div>
 
+        {auto && (
+          <div className="border border-slate-200 rounded-xl bg-white">
+            <button onClick={() => setAutoOpen(o => !o)} className="w-full text-left px-4 py-2.5 text-sm font-medium text-slate-800 flex justify-between items-center">
+              <span>Automatisation par famille {Object.values(auto.auto).filter(Boolean).length ? `· ${Object.values(auto.auto).filter(Boolean).length} en automatique` : '· tout en manuel'}</span><span className="text-slate-400">{autoOpen ? '▾' : '▸'}</span>
+            </button>
+            {autoOpen && (
+              <div className="px-4 pb-3 grid sm:grid-cols-2 gap-x-6 gap-y-2 text-sm">
+                {Object.entries(auto.families).filter(([k]) => k !== 'info').map(([k, label]) => {
+                  const st = auto.stats[k] || []; const top = st[0]; const cur = auto.auto[k] || ''
+                  const opts = [...(auto.proposals[k] || []), { key: 'classer', label: 'Classer (Mail auto-géré)' }]
+                  return (
+                    <div key={k} className="flex items-center justify-between gap-2 border-b border-slate-100 py-1.5">
+                      <div className="min-w-0"><p className="text-slate-800">{label}</p><p className="text-xs text-slate-500">{top ? `${top.count} décision${top.count > 1 ? 's' : ''} « ${opts.find(o => o.key === top.action)?.label || top.action} »${top.count >= 10 && !cur ? ' · prêt pour l\'automatique' : ''}` : 'aucune décision encore'}</p></div>
+                      <select value={cur} disabled={!isSuperadmin} onChange={e => setAutoFamily(k, e.target.value || null)} className="border rounded-lg px-2 py-1 text-xs bg-white disabled:opacity-60">
+                        <option value="">Manuel</option>
+                        {opts.map(o => <option key={o.key} value={o.key}>Auto : {o.label}</option>)}
+                      </select>
+                    </div>
+                  )
+                })}
+                <p className="sm:col-span-2 text-xs text-slate-500">En automatique, l'action part au triage avec le mode courant ({mode === 'auto' ? 'envoi direct' : 'brouillons'}). Les réponses rédigées restent toujours des brouillons.</p>
+              </div>
+            )}
+          </div>
+        )}
         {loading ? (
           <p className="text-sm text-slate-500 py-8 text-center">Chargement…</p>
         ) : items.length === 0 ? (
