@@ -74,9 +74,14 @@ export default function RelivraisonModalButton({
       .then(r => r.json())
       .then(d => {
         if (!Array.isArray(d?.sources)) return
+        // Olivier 23/09/2026 : la reprise peut aussi être un Privé ou un garage
+        // (le client ou son garage paie la relivraison). Assistances d'abord,
+        // puis Privé, puis les garages.
+        const rank = (s: any) => { const k = (s.key || '').toLowerCase(); return Array.isArray(s.tags) && s.tags.includes('assistance') ? 0 : k === 'prive' ? 1 : k === 'garage' ? 2 : 3 }
         setSourcesList(
           d.sources
-            .filter((s: any) => { const k = (s.key || '').toLowerCase(); return k && k !== ps && Array.isArray(s.tags) && s.tags.includes('assistance') })
+            .filter((s: any) => { const k = (s.key || '').toLowerCase(); return k && k !== ps && ((Array.isArray(s.tags) && s.tags.includes('assistance')) || k === 'prive' || k.startsWith('garage')) })
+            .sort((a: any, b: any) => rank(a) - rank(b) || String(a.label || a.key).localeCompare(String(b.label || b.key)))
             .map((s: any) => ({ key: s.key, label: s.label || s.key })),
         )
       })
@@ -222,14 +227,14 @@ export default function RelivraisonModalButton({
             {allowsSource && (
               <div>
                 <label className="block text-ink-secondary text-xs font-semibold mb-1.5">
-                  Assistance qui reprend la relivraison {requiresSource ? <span className="text-red-500">*</span> : <span className="text-ink-faint font-normal">(optionnel)</span>}
+                  Qui reprend la relivraison (assistance, privé ou garage) {requiresSource ? <span className="text-red-500">*</span> : <span className="text-ink-faint font-normal">(optionnel)</span>}
                 </label>
                 <select
                   value={sourceOverride}
                   onChange={e => setSourceOverride(e.target.value)}
                   className={`w-full px-3 py-2.5 bg-surface border rounded-xl text-sm text-ink ${requiresSource && !sourceOverride ? 'border-red-400' : ''}`}
                 >
-                  <option value="">{requiresSource ? '— Choisir l\'assistance —' : '— Garder la source d\'origine —'}</option>
+                  <option value="">{requiresSource ? '— Choisir qui reprend —' : '— Garder la source d\'origine —'}</option>
                   {sourcesList.map(s => <option key={s.key} value={s.key}>{s.label}</option>)}
                 </select>
                 <p className="text-ink-faint text-xs mt-1">
