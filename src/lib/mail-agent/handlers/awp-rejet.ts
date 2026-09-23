@@ -73,7 +73,9 @@ refreshAwpSenders().catch(e => console.error('[mail-agent] mail_awp_rejets :', e
 
 export function detect(fromEmail: string, subject: string): boolean {
   if (!AWP_SENDERS.includes((fromEmail || '').toLowerCase())) return false
-  return /afwijzing\s+factuur|rejet\s+de\s+facture|rejection\s+invoice/i.test(subject || '')
+  // « Rejet facture 2026/09/318 » (sans « de ») est la forme réelle d'Allianz —
+  // 12 rejets dormaient dans « 0 - Scan Facturation » (Olivier 23/09/2026).
+  return /afwijzing\s+factuur|rejet\s+(de\s+)?(la\s+)?facture|rejection\s+(of\s+)?invoice/i.test(subject || '')
 }
 
 /** Le rejet porte-t-il sur une de NOS factures ? (sinon on est en simple copie) */

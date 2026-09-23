@@ -18,7 +18,9 @@
 // zéro modification ici.
 
 import { createAdminClient } from '@/lib/supabase'
-import { findFolderIdByName, listFolderMessages, getMessageText, getPdfAttachments, moveMessage } from './graph'
+import { findFolderIdByName, listFolderMessages, listAllFolders, getMessageText, getPdfAttachments, moveMessage } from './graph'
+import { refreshAwpSenders } from './handlers/awp-rejet'
+import { refreshImaSenders } from './handlers/ima-rejet'
 import { handlerFor, handlerById } from './handlers'
 import { findInvoiceByName, resolveTargetPartner, runChecks, creditAndRebill } from './odoo'
 import type { RejectEntity } from './handlers/types'
@@ -61,13 +63,16 @@ export interface ScanReport {
  * dupliqué (index unique mailbox+message_id+handler), et un item déjà appliqué
  * n'est plus touché.
  */
-export async function scanFolder(opts: { mailbox?: string; folder?: string; limit?: number } = {}): Promise<ScanReport> {
+export async function scanFolder(opts: { mailbox?: string; folder?: string; folderId?: string; limit?: number } = {}): Promise<ScanReport> {
   const sb      = createAdminClient()
   const mailbox = opts.mailbox || MAIL_AGENT_MAILBOX
   const folder  = opts.folder  || MAIL_AGENT_FOLDER
   const report: ScanReport = { scanned: 0, captured: 0, ready: 0, blocked: 0, toVerify: 0, skipped: 0, applied: 0, errors: [] }
 
-  const folderId = await findFolderIdByName(mailbox, folder)
+  // Listes d'expéditeurs lues AVANT de détecter (au démarrage à froid la lecture
+  // asynchrone n'était pas finie et tout passait en « skipped »).
+  await Promise.all([refreshAwpSenders(), refreshImaSenders()]).catch(() => {})
+  const folderId = opts.folderId || await findFolderIdByName(mailbox, folder)
   if (!folderId) {
     report.errors.push(`Dossier Outlook « ${folder} » introuvable dans ${mailbox}`)
     return report
@@ -130,6 +135,25 @@ export async function scanFolder(opts: { mailbox?: string; folder?: string; limi
         continue
       }
 
+      // Doublon (Olivier 23/09/2026 : « Allianz envoie souvent en double ») : le
+      // même rejet, même n° de facture, déjà capturé sous un autre mail → on
+      // l'ignore, on ne crée pas deux fois l'avoir.
+      const { data: twin } = await sb.from('mail_agent_items').select('id, status, message_id, folder')
+        .eq('mailbox', mailbox).eq('handler', handler.id).neq('message_id', msg.id)
+        .eq('extracted->>invoiceNumber', parsed.invoiceNumber)
+        .in('status', ['ready', 'applied', 'blocked', 'to_verify']).limit(1).maybeSingle()
+      if (twin) {
+        await upsert(sb, base, {
+          status: 'ignored',
+          blocked_reason: `Doublon : le rejet de la facture ${parsed.invoiceNumber} est déjà capturé (${twin.status}, dossier « ${twin.folder} »).`,
+          extracted: { invoiceNumber: parsed.invoiceNumber, reason: parsed.reason, duplicateOf: twin.id },
+        })
+        // Classé avec les rejets traités (Olivier 23/09 : « classer les mails dans
+        // les bons dossiers une fois traités ») : le doublon ne traîne pas.
+        try { const doneId = await findFolderIdByName(mailbox, handler.doneFolder || MAIL_AGENT_DONE_FOLDER); if (doneId) await moveMessage(mailbox, msg.id, doneId) } catch {}
+        report.skipped++
+        continue
+      }
       const inv    = await findInvoiceByName(parsed.invoiceNumber)
       const target = await resolveTargetPartner(parsed.entity)
       const checks = await runChecks(inv, target, parsed.amount)
@@ -172,6 +196,31 @@ export async function scanFolder(opts: { mailbox?: string; folder?: string; limi
   }
 
   return report
+}
+
+// Dossiers où l'agent ne regarde PAS : ses propres dossiers « fait », et les
+// dossiers système. Tout le reste est scanné (Olivier 23/09/2026 : « l'agent
+// mail doit avoir une vue partout »).
+const SKIP_FOLDERS = [
+  MAIL_AGENT_DONE_FOLDER.toLowerCase(), 'mondial automatic dispatch', 'ima payement',
+  'éléments envoyés', 'elements envoyes', 'sent items', 'éléments supprimés', 'elements supprimes', 'deleted items',
+  'courrier indésirable', 'courrier indesirable', 'junk email', 'junk e-mail', 'brouillons', 'drafts', 'boîte d\'envoi', 'boite d\'envoi', 'outbox',
+  'archive', 'historique des conversations', 'conversation history', 'notes', 'journal', 'rss feeds', 'flux rss',
+]
+export async function scanAllFolders(opts: { mailbox?: string; limit?: number } = {}): Promise<ScanReport & { folders: string[] }> {
+  const mailbox = opts.mailbox || MAIL_AGENT_MAILBOX
+  const total: ScanReport & { folders: string[] } = { scanned: 0, captured: 0, ready: 0, blocked: 0, toVerify: 0, skipped: 0, applied: 0, errors: [], folders: [] }
+  let folders: { id: string; name: string; path: string }[] = []
+  try { folders = await listAllFolders(mailbox) } catch (e: any) { total.errors.push(`liste des dossiers : ${e?.message}`); return total }
+  for (const f of folders) {
+    const lname = f.name.trim().toLowerCase()
+    if (SKIP_FOLDERS.some(sk => lname === sk)) continue
+    const r = await scanFolder({ mailbox, folder: f.path.replace(/^\//, ''), folderId: f.id, limit: opts.limit })
+    total.folders.push(f.path)
+    total.scanned += r.scanned; total.captured += r.captured; total.ready += r.ready; total.blocked += r.blocked
+    total.toVerify += r.toVerify; total.skipped += r.skipped; total.applied += r.applied; total.errors.push(...r.errors)
+  }
+  return total
 }
 
 async function upsert(sb: any, base: Record<string, any>, patch: Record<string, any>) {

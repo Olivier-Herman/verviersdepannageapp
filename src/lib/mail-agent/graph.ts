@@ -55,6 +55,23 @@ function guardMailbox(mailbox: string) {
   if (!isAllowedMailbox(mailbox)) throw new Error(`Mailbox non autorisée : ${mailbox}`)
 }
 
+/** Tous les dossiers de la boîte (récursif), avec leur chemin lisible. */
+export async function listAllFolders(mailbox: string): Promise<{ id: string; name: string; path: string }[]> {
+  guardMailbox(mailbox)
+  const out: { id: string; name: string; path: string }[] = []
+  const walk = async (path: string, label: string, depth: number) => {
+    if (depth > 6) return
+    const j = await authedGet(`${path}?$top=200&$select=id,displayName,childFolderCount`)
+    for (const f of j.value || []) {
+      const p = `${label}/${f.displayName}`
+      out.push({ id: f.id, name: String(f.displayName || ''), path: p })
+      if (f.childFolderCount > 0) await walk(`/users/${encodeURIComponent(mailbox)}/mailFolders/${f.id}/childFolders`, p, depth + 1)
+    }
+  }
+  await walk(`/users/${encodeURIComponent(mailbox)}/mailFolders`, '', 0)
+  return out
+}
+
 /**
  * Retrouve un dossier Outlook par son nom affiché, y compris les sous-dossiers
  * de la boîte de réception (nos dossiers métier y vivent tous : « 0 - Jona et
