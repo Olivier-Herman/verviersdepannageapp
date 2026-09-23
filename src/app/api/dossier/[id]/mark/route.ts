@@ -64,7 +64,10 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   // fiche d'avant l'intégration auto, ex. APPARTC 08/09/2026).
   if (action === 'already_billed') {
     const { data: r0 } = await sb.from('incoming_missions').select('id, source, saisie_motif_code').eq('id', d.root_id).maybeSingle()
-    if (r0 && (String(r0.source || '') === 'police_saisie' || r0.saisie_motif_code)) {
+    // Olivier 23/09/2026 : seule la source police_saisie entre dans le circuit
+    // des états de frais — un motif de saisie hérité sur une fiche requalifiée
+    // (AVP, mal garée) ne suffit plus.
+    if (r0 && String(r0.source || '') === 'police_saisie') {
       let { data: sd } = await sb.from('saisie_dossiers').select('id, client_billed_to_date, depannage_billed_client').eq('mission_id', d.root_id).maybeSingle()
       if (!sd) {
         const { SAISIE_MISSION_SNAP, snapshotSaisieMission } = await import('@/lib/missions/saisie-dossier')
