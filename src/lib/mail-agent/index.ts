@@ -210,7 +210,7 @@ const SKIP_FOLDERS = [
 export async function scanAllFolders(opts: { mailbox?: string; limit?: number; sinceDays?: number } = {}): Promise<ScanReport & { folders: string[] }> {
   const mailbox = opts.mailbox || MAIL_AGENT_MAILBOX
   // Incrémental : par défaut les 45 derniers jours (bouton Scanner) ; le cron
-  // passe 7 jours toutes les 15 min, un rejet ne reste jamais plus d'un quart
+  // passe J-1 toutes les 15 min (Olivier 23/09), un rejet ne reste jamais plus d'un quart
   // d'heure sans être vu. Sans borne, 185 dossiers × 11 000 mails = plus de 10 min.
   const since = new Date(Date.now() - (opts.sinceDays ?? 45) * 86400_000).toISOString()
   const total: ScanReport & { folders: string[] } = { scanned: 0, captured: 0, ready: 0, blocked: 0, toVerify: 0, skipped: 0, applied: 0, errors: [], folders: [] }
