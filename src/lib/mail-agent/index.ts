@@ -105,14 +105,14 @@ export async function scanFolder(opts: { mailbox?: string; folder?: string; fold
         }
         // Triage quotidien (jour 1, Olivier 23/09/2026) : tout le reste, sauf le
         // bruit et les ordres de mission, devient une carte de décision.
-        if (opts.triage && !isNoise(msg) && !isAssistanceMission(msg)) {
+        if (opts.triage && !isNoise(msg) && !isAssistanceMission(msg, folder)) {
           const { data: seen } = await sb.from('mail_agent_items').select('id, status').eq('mailbox', mailbox).eq('message_id', msg.id).eq('handler', 'triage').maybeSingle()
           if (seen) { report.skipped++; continue }
           const base = { handler: 'triage', mailbox, message_id: msg.id, folder, received_at: msg.receivedAt || null, from_email: msg.fromEmail, subject: msg.subject, updated_at: new Date().toISOString() }
           try {
             const t = await triageMail(sb, mailbox, msg)
             if (!t) { report.skipped++; continue }
-            if (t.family === 'info' && !t.invoice_numbers.length && !t.plates.length) {
+            if (t.family === 'info') {
               await upsert(sb, base, { status: 'skipped', blocked_reason: 'Information sans demande — rien à décider', extracted: t })
               report.skipped++; continue
             }
@@ -260,7 +260,7 @@ export async function scanAllFolders(opts: { mailbox?: string; limit?: number; s
     const r = await scanFolder({ mailbox, folder: f.path.replace(/^\//, ''), folderId: f.id, limit: opts.limit ?? 50, since, triage: opts.triage })
     total.folders.push(f.path)
     total.scanned += r.scanned; total.captured += r.captured; total.ready += r.ready; total.blocked += r.blocked
-    total.toVerify += r.toVerify; total.skipped += r.skipped; total.applied += r.applied; total.errors.push(...r.errors)
+    total.toVerify += r.toVerify; total.skipped += r.skipped; total.applied += r.applied; total.toDecide = (total.toDecide || 0) + (r.toDecide || 0); total.errors.push(...r.errors)
   }
   return total
 }

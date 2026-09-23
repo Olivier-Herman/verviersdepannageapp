@@ -50,8 +50,8 @@ export const COMMON_PROPOSALS = [
 /** Dossiers de classement proposés au clic « Classer ». */
 export const FILE_FOLDERS = ['0 - Jona et Mobi', 'Fournisseur Divers', 'Mail auto-géré', 'clients divers', 'comptable thg']
 
-const NOISE_FROM = /no-?reply@kaze|circlekeur|scrada\.be|mailer-daemon|postmaster|noreply@(google|microsoft|linkedin|facebook|apple)|calendar-notification|notifications@github|no-reply@accounts|newsletter|marketing@|info@scrada/i
-const NOISE_SUBJECT = /^(accepté|accepted|refusé|declined|annulé|canceled|invitation|réunion|meeting)\s*:|undeliverable|non remis|out of office|absence du bureau|automatic reply|réponse automatique|CODA livre de caisse|Anomalies FleetCards|Fichier de Facturation \(TID\)|A new note was added/i
+const NOISE_FROM = /no-?reply@kaze|circlekeur|scrada\.be|mailer-daemon|postmaster|noreply@(google|microsoft|linkedin|facebook|apple)|calendar-notification|notifications@github|no-reply@accounts|newsletter|marketing@|info@scrada|loyaltek|ticket@|aprovall|verviersdepannage\.(be|com)|towsoft\.ca|lemans\.org/i
+const NOISE_SUBJECT = /^(accepté|accepted|refusé|declined|annulé|canceled|invitation|réunion|meeting)\s*:|undeliverable|non remis|out of office|absence du bureau|automatic reply|réponse automatique|CODA livre de caisse|Anomalies FleetCards|Fichier de Facturation \(TID\)|A new note was added|EMAIL TICKET|Towing Report|Confirmation d'intervention|Interventie goedgekeurd|^Mail IMA -|PRISE EN CHARGE|INTER PARTNER ASSISTANCE|🚫|Mal Garée —|Caisse Agent|clefs dans le digi/i
 // Ordres de mission d'assisteurs : l'intake s'en charge déjà.
 const MISSION_FROM = /imabenelux|ima\.eu|kaze\.so|touring\.be|vab\.be|allianz|awp|axa|eurocross|europ-assistance|ethias|hexalite|comex|anwb|ipa/i
 const MISSION_SUBJECT = /demande d'intervention|assignation|mission|dossier n°|opdracht|intervention n°/i
@@ -59,9 +59,13 @@ const MISSION_SUBJECT = /demande d'intervention|assignation|mission|dossier n°|
 export function isNoise(msg: AgentMessage): boolean {
   return NOISE_FROM.test(msg.fromEmail || '') || NOISE_SUBJECT.test(msg.subject || '')
 }
-export function isAssistanceMission(msg: AgentMessage): boolean {
-  return MISSION_FROM.test(msg.fromEmail || '') && MISSION_SUBJECT.test(msg.subject || '') && !/facture|invoice|factuur|note de crédit|creditnota/i.test(msg.subject || '')
+/** Un assisteur qui écrit sans parler de facture/avoir/paiement = un ordre de mission (intake). */
+export function isAssistanceMission(msg: AgentMessage, folder = ''): boolean {
+  if (/mission|encaissements chauffeur|paiement chauffeur|ticket bancontact|spam/i.test(folder)) return true
+  if (!MISSION_FROM.test(msg.fromEmail || '')) return false
+  return !/facture|invoice|factuur|note de cr|creditnota|paiement|payment|rappel|reminder|rejet|afwijzing/i.test(msg.subject || '')
 }
+void MISSION_SUBJECT
 
 let _client: Anthropic | null = null
 const client = () => (_client ??= new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY! }))
