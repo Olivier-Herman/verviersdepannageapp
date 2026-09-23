@@ -271,7 +271,7 @@ const SKIP_FOLDERS = [
   'courrier indésirable', 'courrier indesirable', 'junk email', 'junk e-mail', 'brouillons', 'drafts', 'boîte d\'envoi', 'boite d\'envoi', 'outbox',
   'archive', 'historique des conversations', 'conversation history', 'notes', 'journal', 'rss feeds', 'flux rss',
 ]
-export async function scanAllFolders(opts: { mailbox?: string; limit?: number; sinceDays?: number; triage?: boolean } = {}): Promise<ScanReport & { folders: string[] }> {
+export async function scanAllFolders(opts: { mailbox?: string; limit?: number; sinceDays?: number; triage?: boolean; onlyFolders?: string[] } = {}): Promise<ScanReport & { folders: string[] }> {
   const mailbox = opts.mailbox || MAIL_AGENT_MAILBOX
   // Incrémental : par défaut les 45 derniers jours (bouton Scanner) ; le cron
   // passe J-1 toutes les 15 min (Olivier 23/09), un rejet ne reste jamais plus d'un quart
@@ -283,6 +283,9 @@ export async function scanAllFolders(opts: { mailbox?: string; limit?: number; s
   for (const f of folders) {
     const lname = f.name.trim().toLowerCase()
     if (SKIP_FOLDERS.some(sk => lname === sk)) continue
+    // Périmètre restreint (info@ : « 0 - Jona et Mobi » et « 0 - Scan Facturation »
+    // avec leurs sous-dossiers, Olivier 23/09/2026 — « pour ne pas être noyés »).
+    if (opts.onlyFolders?.length && !opts.onlyFolders.some(o => f.path.toLowerCase().includes('/' + o.toLowerCase()))) continue
     const r = await scanFolder({ mailbox, folder: f.path.replace(/^\//, ''), folderId: f.id, limit: opts.limit ?? 50, since, triage: opts.triage })
     total.folders.push(f.path)
     total.scanned += r.scanned; total.captured += r.captured; total.ready += r.ready; total.blocked += r.blocked
@@ -293,13 +296,18 @@ export async function scanAllFolders(opts: { mailbox?: string; limit?: number; s
 
 /** Les deux boîtes administratives, triage compris (Olivier 23/09/2026). */
 export const TRIAGE_MAILBOXES = ['info@verviersdepannage.com', 'administration@verviersdepannage.com']
+/** info@ : seulement ce que le bureau contrôle (Olivier 23/09/2026) ; administration@ : toute la boîte. */
+export const MAILBOX_SCOPE: Record<string, string[] | undefined> = {
+  'info@verviersdepannage.com': ['0 - Jona et Mobi', '0 - Scan Facturation'],
+  'administration@verviersdepannage.com': undefined,
+}
 export async function scanMailboxes(opts: { sinceDays?: number; limit?: number } = {}): Promise<ScanReport & { folders: string[] }> {
   const sb = createAdminClient()
   const { data: st } = await sb.from('app_settings').select('value').eq('key', 'mail_agent_triage').maybeSingle()
   let triage = true; try { triage = st?.value ? JSON.parse(st.value) !== 'off' : true } catch {}
   const total: ScanReport & { folders: string[] } = { scanned: 0, captured: 0, ready: 0, blocked: 0, toVerify: 0, skipped: 0, applied: 0, toDecide: 0, errors: [], folders: [] }
   for (const mailbox of TRIAGE_MAILBOXES) {
-    const r = await scanAllFolders({ ...opts, mailbox, triage })
+    const r = await scanAllFolders({ ...opts, mailbox, triage, onlyFolders: MAILBOX_SCOPE[mailbox] })
     total.scanned += r.scanned; total.captured += r.captured; total.ready += r.ready; total.blocked += r.blocked; total.toVerify += r.toVerify
     total.skipped += r.skipped; total.applied += r.applied; total.toDecide = (total.toDecide || 0) + (r.toDecide || 0); total.errors.push(...r.errors); total.folders.push(...r.folders.map(f => `${mailbox}:${f}`))
   }
