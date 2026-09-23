@@ -22,6 +22,7 @@ import { findFolderIdByName, listFolderMessages, listAllFolders, getMessageText,
 import { refreshAwpSenders } from './handlers/awp-rejet'
 import { refreshImaSenders } from './handlers/ima-rejet'
 import { isSupplierCandidate, processSupplierMail } from './handlers/fournisseur'
+import { triageMail, isNoise, isAssistanceMission } from './triage'
 import { handlerFor, handlerById } from './handlers'
 import { findInvoiceByName, resolveTargetPartner, runChecks, creditAndRebill } from './odoo'
 import type { RejectEntity } from './handlers/types'
@@ -48,6 +49,7 @@ export async function getMode(sb: any): Promise<MailAgentMode> {
 }
 
 export interface ScanReport {
+  toDecide?: number
   scanned:   number
   captured:  number
   ready:     number
@@ -64,7 +66,7 @@ export interface ScanReport {
  * dupliqué (index unique mailbox+message_id+handler), et un item déjà appliqué
  * n'est plus touché.
  */
-export async function scanFolder(opts: { mailbox?: string; folder?: string; folderId?: string; limit?: number; since?: string } = {}): Promise<ScanReport> {
+export async function scanFolder(opts: { mailbox?: string; folder?: string; folderId?: string; limit?: number; since?: string; triage?: boolean } = {}): Promise<ScanReport> {
   const sb      = createAdminClient()
   const mailbox = opts.mailbox || MAIL_AGENT_MAILBOX
   const folder  = opts.folder  || MAIL_AGENT_FOLDER
@@ -98,6 +100,24 @@ export async function scanFolder(opts: { mailbox?: string; folder?: string; fold
             if (out.status === 'applied') { report.captured++; report.applied++ }
             else if (out.status === 'to_verify') { report.captured++; report.toVerify++ }
             else report.skipped++
+          } catch (e: any) { report.errors.push(`${msg.subject} : ${e?.message || String(e)}`) }
+          continue
+        }
+        // Triage quotidien (jour 1, Olivier 23/09/2026) : tout le reste, sauf le
+        // bruit et les ordres de mission, devient une carte de décision.
+        if (opts.triage && !isNoise(msg) && !isAssistanceMission(msg)) {
+          const { data: seen } = await sb.from('mail_agent_items').select('id, status').eq('mailbox', mailbox).eq('message_id', msg.id).eq('handler', 'triage').maybeSingle()
+          if (seen) { report.skipped++; continue }
+          const base = { handler: 'triage', mailbox, message_id: msg.id, folder, received_at: msg.receivedAt || null, from_email: msg.fromEmail, subject: msg.subject, updated_at: new Date().toISOString() }
+          try {
+            const t = await triageMail(sb, mailbox, msg)
+            if (!t) { report.skipped++; continue }
+            if (t.family === 'info' && !t.invoice_numbers.length && !t.plates.length) {
+              await upsert(sb, base, { status: 'skipped', blocked_reason: 'Information sans demande — rien à décider', extracted: t })
+              report.skipped++; continue
+            }
+            await upsert(sb, base, { status: 'to_decide', blocked_reason: t.asked || null, extracted: t })
+            report.captured++; report.toDecide = (report.toDecide || 0) + 1
           } catch (e: any) { report.errors.push(`${msg.subject} : ${e?.message || String(e)}`) }
           continue
         }
@@ -225,7 +245,7 @@ const SKIP_FOLDERS = [
   'courrier indésirable', 'courrier indesirable', 'junk email', 'junk e-mail', 'brouillons', 'drafts', 'boîte d\'envoi', 'boite d\'envoi', 'outbox',
   'archive', 'historique des conversations', 'conversation history', 'notes', 'journal', 'rss feeds', 'flux rss',
 ]
-export async function scanAllFolders(opts: { mailbox?: string; limit?: number; sinceDays?: number } = {}): Promise<ScanReport & { folders: string[] }> {
+export async function scanAllFolders(opts: { mailbox?: string; limit?: number; sinceDays?: number; triage?: boolean } = {}): Promise<ScanReport & { folders: string[] }> {
   const mailbox = opts.mailbox || MAIL_AGENT_MAILBOX
   // Incrémental : par défaut les 45 derniers jours (bouton Scanner) ; le cron
   // passe J-1 toutes les 15 min (Olivier 23/09), un rejet ne reste jamais plus d'un quart
@@ -237,10 +257,25 @@ export async function scanAllFolders(opts: { mailbox?: string; limit?: number; s
   for (const f of folders) {
     const lname = f.name.trim().toLowerCase()
     if (SKIP_FOLDERS.some(sk => lname === sk)) continue
-    const r = await scanFolder({ mailbox, folder: f.path.replace(/^\//, ''), folderId: f.id, limit: opts.limit ?? 50, since })
+    const r = await scanFolder({ mailbox, folder: f.path.replace(/^\//, ''), folderId: f.id, limit: opts.limit ?? 50, since, triage: opts.triage })
     total.folders.push(f.path)
     total.scanned += r.scanned; total.captured += r.captured; total.ready += r.ready; total.blocked += r.blocked
     total.toVerify += r.toVerify; total.skipped += r.skipped; total.applied += r.applied; total.errors.push(...r.errors)
+  }
+  return total
+}
+
+/** Les deux boîtes administratives, triage compris (Olivier 23/09/2026). */
+export const TRIAGE_MAILBOXES = ['info@verviersdepannage.com', 'administration@verviersdepannage.com']
+export async function scanMailboxes(opts: { sinceDays?: number; limit?: number } = {}): Promise<ScanReport & { folders: string[] }> {
+  const sb = createAdminClient()
+  const { data: st } = await sb.from('app_settings').select('value').eq('key', 'mail_agent_triage').maybeSingle()
+  let triage = true; try { triage = st?.value ? JSON.parse(st.value) !== 'off' : true } catch {}
+  const total: ScanReport & { folders: string[] } = { scanned: 0, captured: 0, ready: 0, blocked: 0, toVerify: 0, skipped: 0, applied: 0, toDecide: 0, errors: [], folders: [] }
+  for (const mailbox of TRIAGE_MAILBOXES) {
+    const r = await scanAllFolders({ ...opts, mailbox, triage })
+    total.scanned += r.scanned; total.captured += r.captured; total.ready += r.ready; total.blocked += r.blocked; total.toVerify += r.toVerify
+    total.skipped += r.skipped; total.applied += r.applied; total.toDecide = (total.toDecide || 0) + (r.toDecide || 0); total.errors.push(...r.errors); total.folders.push(...r.folders.map(f => `${mailbox}:${f}`))
   }
   return total
 }

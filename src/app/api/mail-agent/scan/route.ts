@@ -5,7 +5,7 @@ import { NextResponse }     from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions }      from '@/lib/auth'
 import { sessionAccess }    from '@/lib/access'
-import { scanAllFolders }   from '@/lib/mail-agent'
+import { scanMailboxes }   from '@/lib/mail-agent'
 
 export const dynamic     = 'force-dynamic'
 export const maxDuration = 120
@@ -16,7 +16,7 @@ export async function POST() {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
   try {
-    return NextResponse.json({ ok: true, ...(await scanAllFolders()) })
+    return NextResponse.json({ ok: true, ...(await scanMailboxes({ sinceDays: 45, limit: 100 })) })
   } catch (e: any) {
     return NextResponse.json({ error: e?.message || 'Erreur' }, { status: 500 })
   }

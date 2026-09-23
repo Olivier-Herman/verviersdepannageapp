@@ -12,7 +12,7 @@ export const dynamic = 'force-dynamic'
 
 export async function GET(req: Request) {
   const session = await getServerSession(authOptions)
-  if (!sessionAccess(session, { roles: ['superadmin'] }).ok) {
+  if (!sessionAccess(session, { roles: ['admin', 'superadmin'] }).ok) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
   const status = new URL(req.url).searchParams.get('status') || 'all'

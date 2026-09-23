@@ -3,7 +3,7 @@
 // il n'écrit dans Odoo que si le mode 'auto' a été activé explicitement.
 
 import { NextResponse } from 'next/server'
-import { scanAllFolders } from '@/lib/mail-agent'
+import { scanMailboxes } from '@/lib/mail-agent'
 import { refreshAwpSenders } from '@/lib/mail-agent/handlers/awp-rejet'
 import { refreshImaSenders } from '@/lib/mail-agent/handlers/ima-rejet'
 
@@ -18,7 +18,7 @@ export async function GET(req: Request) {
     // Expéditeurs des rejets = réglages métier, relus à chaque passage (plus de liste codée).
     await Promise.all([refreshAwpSenders(), refreshImaSenders()])
     // Olivier 23/09/2026 : toutes les 15 min, relire J-1 suffit.
-    return NextResponse.json({ ok: true, ...(await scanAllFolders({ sinceDays: 1, limit: 50 })) })
+    return NextResponse.json({ ok: true, ...(await scanMailboxes({ sinceDays: 1, limit: 50 })) })
   } catch (err: any) {
     console.error('[cron mail-agent] KO:', err?.message)
     return NextResponse.json({ error: err?.message || 'Erreur' }, { status: 500 })

@@ -12,6 +12,8 @@ import AppShell from '@/components/layout/AppShell'
 
 interface Item {
   id: string
+  handler?: string
+  mailbox?: string
   status: string
   subject: string | null
   from_email: string | null
@@ -29,14 +31,18 @@ interface Item {
 }
 
 const TABS: { key: string; label: string }[] = [
+  { key: 'to_decide', label: 'À décider' },
   { key: 'ready',     label: 'À valider' },
   { key: 'blocked',   label: 'Bloqués' },
   { key: 'to_verify', label: 'À vérifier' },
   { key: 'applied',   label: 'Traités' },
+  { key: 'decided',   label: 'Décidés' },
   { key: 'all',       label: 'Tous' },
 ]
 
 const BADGE: Record<string, string> = {
+  to_decide: 'bg-violet-100 text-violet-800',
+  decided:   'bg-slate-200 text-slate-800',
   ready:     'bg-emerald-100 text-emerald-800',
   blocked:   'bg-amber-100 text-amber-800',
   to_verify: 'bg-sky-100 text-sky-800',
@@ -47,7 +53,7 @@ const BADGE: Record<string, string> = {
 }
 
 const LABEL: Record<string, string> = {
-  ready: 'Prêt', blocked: 'Bloqué', to_verify: 'À vérifier',
+  to_decide: 'À décider', decided: 'Décidé', ready: 'Prêt', blocked: 'Bloqué', to_verify: 'À vérifier',
   applied: 'Traité', ignored: 'Ignoré', error: 'Erreur', pending: 'En attente',
 }
 
@@ -70,7 +76,7 @@ interface Props {
 export default function MailAgentClient({
   isSuperadmin, canApply, odooBase, userRole, userName, userEmail, userModules,
 }: Props) {
-  const [tab, setTab]         = useState('ready')
+  const [tab, setTab]         = useState('to_decide')
   const [items, setItems]     = useState<Item[]>([])
   const [counts, setCounts]   = useState<Record<string, number>>({})
   const [mode, setMode]       = useState<'draft' | 'auto'>('draft')
@@ -92,7 +98,7 @@ export default function MailAgentClient({
     const r = await (await fetch('/api/mail-agent/scan', { method: 'POST' })).json()
     setBusy(null)
     setFlash(r.error ? `Erreur : ${r.error}`
-      : `${r.scanned} mails lus · ${r.captured} pris en charge · ${r.ready} prêts · ${r.blocked} bloqués · ${r.toVerify} à vérifier`)
+      : `${r.scanned} mails lus · ${r.captured} pris en charge · ${r.toDecide || 0} à décider · ${r.ready} prêts · ${r.blocked} bloqués · ${r.toVerify} à vérifier`)
     load()
   }
 
@@ -113,6 +119,16 @@ export default function MailAgentClient({
     setBusy(null); load()
   }
 
+  const FAMILY_LABEL: Record<string, string> = { demande_avoir: 'Demande de note de crédit', demande_document: 'Demande de facture ou de document', double_paiement: 'Double paiement / remboursement', rappel_paiement: 'Rappel de paiement reçu', question_compta: 'Question comptable', reclamation: 'Réclamation client', contestation: 'Contestation de facture', info: 'Information', autre: 'Autre' }
+  const FILE_FOLDERS = ['0 - Jona et Mobi', 'Fournisseur Divers', 'Mail auto-géré', 'clients divers', 'comptable thg']
+  const [folderFor, setFolderFor] = useState<string | null>(null)
+  const decide = async (id: string, action: string, folder?: string) => {
+    setBusy(id); setFlash(null)
+    const r = await (await fetch(`/api/mail-agent/${id}/decide`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action, folder }) })).json()
+    setBusy(null); setFolderFor(null)
+    setFlash(r.ok ? (action === 'classer' ? `Mail classé dans « ${folder} »` : action === 'laisser' ? 'Laissé' : 'Marqué fait ailleurs') : `Refusé : ${r.error}`)
+    load()
+  }
   const toggleMode = async () => {
     const next = mode === 'draft' ? 'auto' : 'draft'
     const r = await (await fetch('/api/mail-agent/mode', {
@@ -198,6 +214,41 @@ export default function MailAgentClient({
                   {LABEL[it.status] || it.status}
                 </span>
               </div>
+
+              {it.handler === 'triage' && (
+                <div className="space-y-2 text-sm">
+                  <p><span className="px-2 py-0.5 rounded-md text-xs font-semibold bg-violet-50 text-violet-800 border border-violet-200">{FAMILY_LABEL[x.family] || x.family}</span>{x.urgent && <span className="ml-2 px-2 py-0.5 rounded-md text-xs font-semibold bg-red-50 text-red-700 border border-red-200">urgent</span>}{it.mailbox && <span className="ml-2 text-xs text-slate-500">{it.mailbox.split('@')[0]}@</span>}</p>
+                  <p className="text-slate-800">{x.summary}</p>
+                  {x.asked && <p className="text-slate-600">Attendu : <strong className="text-slate-900">{x.asked}</strong></p>}
+                  {(x.facts?.invoices || []).length > 0 && (
+                    <ul className="text-slate-700 list-disc pl-5">
+                      {x.facts.invoices.map((i: any, k: number) => <li key={k}>{i.missing ? <>Facture <strong>{i.name}</strong> : introuvable dans Odoo</> : <>Facture <strong>{i.name}</strong> · {i.partner} · {eur(i.amount_total)} · {i.state === 'posted' ? (i.payment_state === 'paid' ? 'payée' : i.payment_state === 'reversed' ? 'annulée par avoir' : 'impayée') : i.state}{i.has_credit_note ? ' · avoir existant' : ''}{i.plate ? ` · ${i.plate}` : ''}{odooLink(i.id) ? <> · <a className="underline" href={odooLink(i.id)!} target="_blank" rel="noreferrer">Odoo</a></> : null}</>}</li>)}
+                    </ul>
+                  )}
+                  {(x.facts?.fiches || []).length > 0 && (
+                    <ul className="text-slate-700 list-disc pl-5">
+                      {x.facts.fiches.map((f: any, k: number) => <li key={k}>{f.plate} · <a className="underline" href={`/dispatch/${f.id}`} target="_blank" rel="noreferrer">fiche {f.number}</a> · {f.source} · {f.status}{f.invoice ? ` · facture ${f.invoice}` : ''}{f.client ? ` · ${f.client}` : ''}</li>)}
+                    </ul>
+                  )}
+                  {(x.facts?.invoices || []).length === 0 && (x.facts?.fiches || []).length === 0 && <p className="text-xs text-slate-500">Aucune facture ni fiche reconnue dans ce mail.</p>}
+                  {it.status === 'to_decide' && (
+                    <div className="flex flex-wrap gap-2 pt-1">
+                      {(x.proposals || []).map((p: any) => p.key === 'classer' ? (
+                        folderFor === it.id ? (
+                          <span key="classer" className="flex flex-wrap gap-1 items-center">
+                            {FILE_FOLDERS.map(f => <button key={f} onClick={() => decide(it.id, 'classer', f)} disabled={busy === it.id} className="px-2.5 py-1.5 rounded-lg text-xs font-medium bg-slate-800 text-white disabled:opacity-50">→ {f}</button>)}
+                            <button onClick={() => setFolderFor(null)} className="px-2 py-1.5 text-xs text-slate-500">annuler</button>
+                          </span>
+                        ) : <button key="classer" onClick={() => setFolderFor(it.id)} disabled={busy === it.id} className="px-3 py-1.5 rounded-lg text-sm font-medium bg-slate-100 text-slate-700 disabled:opacity-50">Classer…</button>
+                      ) : (
+                        <button key={p.key} onClick={() => p.ready && decide(it.id, p.key)} disabled={!p.ready || busy === it.id} title={p.ready ? '' : 'Disponible au jour 2'}
+                          className={`px-3 py-1.5 rounded-lg text-sm font-medium disabled:opacity-40 ${p.key === 'laisser' || p.key === 'fait_ailleurs' ? 'bg-slate-100 text-slate-700' : 'bg-emerald-600 text-white'}`}>{p.label}{p.ready ? '' : ' (bientôt)'}</button>
+                      ))}
+                    </div>
+                  )}
+                  {it.status === 'decided' && x.decision && <p className="text-xs text-slate-500">Décision : {x.decision.action}{x.decision.folder ? ` → ${x.decision.folder}` : ''} · {x.decision.by} · {fmt(x.decision.at)}</p>}
+                </div>
+              )}
 
               {x.invoiceNumber && (
                 <div className="grid sm:grid-cols-2 gap-x-6 gap-y-1 text-sm">
