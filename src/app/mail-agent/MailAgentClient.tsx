@@ -122,11 +122,13 @@ export default function MailAgentClient({
   const FAMILY_LABEL: Record<string, string> = { demande_avoir: 'Demande de note de crédit', demande_document: 'Demande de facture ou de document', double_paiement: 'Double paiement / remboursement', rappel_paiement: 'Rappel de paiement reçu', question_compta: 'Question comptable', reclamation: 'Réclamation client', contestation: 'Contestation de facture', info: 'Information', autre: 'Autre' }
   const FILE_FOLDERS = ['0 - Jona et Mobi', 'Fournisseur Divers', 'Mail auto-géré', 'clients divers', 'comptable thg']
   const [folderFor, setFolderFor] = useState<string | null>(null)
+  const [invFor, setInvFor] = useState<Record<string, string>>({})
+  const [coFor, setCoFor] = useState<Record<string, string>>({})
   const decide = async (id: string, action: string, folder?: string) => {
     setBusy(id); setFlash(null)
-    const r = await (await fetch(`/api/mail-agent/${id}/decide`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action, folder }) })).json()
+    const r = await (await fetch(`/api/mail-agent/${id}/decide`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action, folder, invoice: invFor[id] || null, company: coFor[id] || null }) })).json()
     setBusy(null); setFolderFor(null)
-    setFlash(r.ok ? (action === 'classer' ? `Mail classé dans « ${folder} »` : action === 'laisser' ? 'Laissé' : 'Marqué fait ailleurs') : `Refusé : ${r.error}`)
+    setFlash(r.ok ? (action === 'classer' ? `Mail classé dans « ${folder} »` : action === 'laisser' ? 'Laissé' : action === 'fait_ailleurs' ? 'Marqué fait ailleurs' : `✓ ${r.note}`) : `Refusé : ${r.error}`)
     load()
   }
   const toggleMode = async () => {
@@ -231,6 +233,21 @@ export default function MailAgentClient({
                     </ul>
                   )}
                   {(x.facts?.invoices || []).length === 0 && (x.facts?.fiches || []).length === 0 && <p className="text-xs text-slate-500">Aucune facture ni fiche reconnue dans ce mail.</p>}
+                  {it.status === 'to_decide' && (x.facts?.invoices || []).filter((i: any) => !i.missing).length > 1 && (
+                    <label className="text-xs text-slate-600 flex items-center gap-2">Facture concernée
+                      <select value={invFor[it.id] || ''} onChange={e => setInvFor(p => ({ ...p, [it.id]: e.target.value }))} className="border rounded-lg px-2 py-1 text-xs bg-white">
+                        <option value="">— choisir —</option>
+                        {x.facts.invoices.filter((i: any) => !i.missing).map((i: any) => <option key={i.name} value={i.name}>{i.name} · {eur(i.amount_total)}</option>)}
+                      </select>
+                    </label>
+                  )}
+                  {it.status === 'to_decide' && (x.proposals || []).some((p: any) => p.key === 'encoder') && (
+                    <label className="text-xs text-slate-600 flex items-center gap-2">Société
+                      <select value={coFor[it.id] || 'vd'} onChange={e => setCoFor(p => ({ ...p, [it.id]: e.target.value }))} className="border rounded-lg px-2 py-1 text-xs bg-white">
+                        <option value="vd">Verviers Dépannage</option><option value="riga">Dépannage Riga</option><option value="dgj">DGJ VHU</option>
+                      </select>
+                    </label>
+                  )}
                   {it.status === 'to_decide' && (
                     <div className="flex flex-wrap gap-2 pt-1">
                       {(x.proposals || []).map((p: any) => p.key === 'classer' ? (
@@ -241,12 +258,17 @@ export default function MailAgentClient({
                           </span>
                         ) : <button key="classer" onClick={() => setFolderFor(it.id)} disabled={busy === it.id} className="px-3 py-1.5 rounded-lg text-sm font-medium bg-slate-100 text-slate-700 disabled:opacity-50">Classer…</button>
                       ) : (
-                        <button key={p.key} onClick={() => p.ready && decide(it.id, p.key)} disabled={!p.ready || busy === it.id} title={p.ready ? '' : 'Disponible au jour 2'}
-                          className={`px-3 py-1.5 rounded-lg text-sm font-medium disabled:opacity-40 ${p.key === 'laisser' || p.key === 'fait_ailleurs' ? 'bg-slate-100 text-slate-700' : 'bg-emerald-600 text-white'}`}>{p.label}{p.ready ? '' : ' (bientôt)'}</button>
+                        <button key={p.key} onClick={() => decide(it.id, p.key)} disabled={busy === it.id} title={mode === 'auto' ? 'Mode automatique : envoi direct' : 'Mode brouillon : rien ne part sans relecture'}
+                          className={`px-3 py-1.5 rounded-lg text-sm font-medium disabled:opacity-40 ${p.key === 'laisser' || p.key === 'fait_ailleurs' ? 'bg-slate-100 text-slate-700' : 'bg-emerald-600 text-white'}`}>{busy === it.id ? '…' : p.label}</button>
                       ))}
                     </div>
                   )}
-                  {it.status === 'decided' && x.decision && <p className="text-xs text-slate-500">Décision : {x.decision.action}{x.decision.folder ? ` → ${x.decision.folder}` : ''} · {x.decision.by} · {fmt(x.decision.at)}</p>}
+                  {it.status === 'decided' && x.decision && (
+                    <p className="text-xs text-slate-600">Décision : <strong>{x.decision.action}</strong>{x.decision.folder ? ` → ${x.decision.folder}` : ''} · {x.decision.by} · {fmt(x.decision.at)}
+                      {x.decision.result && <span className="block text-slate-800 mt-0.5">{x.decision.result}</span>}
+                      {(x.decision.links || []).map((l: any, k: number) => l.url ? <a key={k} className="underline mr-2" href={l.url} target="_blank" rel="noreferrer">{l.label}</a> : null)}
+                    </p>
+                  )}
                 </div>
               )}
 

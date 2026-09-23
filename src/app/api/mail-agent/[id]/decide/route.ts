@@ -12,6 +12,8 @@ import { sessionAccess }     from '@/lib/access'
 import { createAdminClient } from '@/lib/supabase'
 import { findFolderIdByName, moveMessage } from '@/lib/mail-agent/graph'
 import { FILE_FOLDERS } from '@/lib/mail-agent/triage'
+import { executeDecision } from '@/lib/mail-agent/actions'
+import { getMode } from '@/lib/mail-agent'
 
 export const dynamic = 'force-dynamic'
 
@@ -41,5 +43,16 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     await sb.from('mail_agent_items').update({ status: 'decided', mail_moved: true, extracted: { ...(item.extracted || {}), decision }, updated_at: now }).eq('id', item.id)
     return NextResponse.json({ ok: true, status: 'decided', moved: true })
   }
-  return NextResponse.json({ error: `Action « ${action} » pas encore exécutable — elle arrive au jour 2. Choisis Laisser, Fait ailleurs ou Classer.` }, { status: 400 })
+  // Jour 2 : les actions métier. Résultat tracé sur l'item ; le mail est classé
+  // dans « Mail auto-géré » quand le geste a abouti.
+  const mode = await getMode(sb)
+  const res = await executeDecision({ sb, item, actor, mode, odooBase: process.env.ODOO_URL || '' }, action, { invoice: body.invoice || null, company: body.company || null })
+  if (!res.ok) {
+    await sb.from('mail_agent_items').update({ error: res.error || 'échec', updated_at: now }).eq('id', item.id)
+    return NextResponse.json({ error: res.error || 'échec' }, { status: 400 })
+  }
+  let moved = false
+  if (action !== 'encoder') { try { const fid = await findFolderIdByName(item.mailbox, 'Mail auto-géré'); if (fid) moved = (await moveMessage(item.mailbox, item.message_id, fid)).ok } catch {} }
+  await sb.from('mail_agent_items').update({ status: 'decided', mail_moved: moved || action === 'encoder', error: null, extracted: { ...(item.extracted || {}), decision: { ...decision, result: res.note, links: res.links || [] } }, updated_at: now, applied_at: now, applied_by: actor }).eq('id', item.id)
+  return NextResponse.json({ ok: true, status: 'decided', note: res.note, links: res.links || [] })
 }

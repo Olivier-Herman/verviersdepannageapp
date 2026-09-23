@@ -30,15 +30,15 @@ export const FAMILIES: Record<string, string> = {
   autre:             'Autre',
 }
 
-// Propositions par famille. `ready` = exécutable dès le jour 1.
+// Propositions par famille. `ready` = exécutable (jour 2 : toutes).
 export const PROPOSALS: Record<string, { key: string; label: string; ready: boolean }[]> = {
-  demande_avoir:    [{ key: 'avoir', label: 'Créer l\'avoir et répondre', ready: false }, { key: 'contester', label: 'Contester', ready: false }],
-  demande_document: [{ key: 'envoyer_doc', label: 'Envoyer le document demandé', ready: false }, { key: 'repondre', label: 'Répondre', ready: false }],
-  double_paiement:  [{ key: 'rembourser', label: 'Confirmer le remboursement', ready: false }],
-  rappel_paiement:  [{ key: 'encoder', label: 'Transférer pour encodage', ready: false }, { key: 'repondre_paye', label: 'Répondre : déjà payé', ready: false }],
-  question_compta:  [{ key: 'brouillon', label: 'Préparer un brouillon de réponse', ready: false }],
-  reclamation:      [{ key: 'brouillon', label: 'Préparer un brouillon de réponse', ready: false }],
-  contestation:     [{ key: 'brouillon', label: 'Préparer un brouillon de réponse', ready: false }, { key: 'avoir', label: 'Créer l\'avoir', ready: false }],
+  demande_avoir:    [{ key: 'avoir', label: 'Créer l\'avoir et répondre', ready: true }, { key: 'contester', label: 'Contester', ready: true }],
+  demande_document: [{ key: 'envoyer_doc', label: 'Envoyer le document demandé', ready: true }, { key: 'repondre', label: 'Répondre', ready: true }],
+  double_paiement:  [{ key: 'rembourser', label: 'Confirmer le remboursement', ready: true }],
+  rappel_paiement:  [{ key: 'encoder', label: 'Transférer pour encodage', ready: true }, { key: 'repondre_paye', label: 'Répondre : déjà payé', ready: true }],
+  question_compta:  [{ key: 'brouillon', label: 'Préparer un brouillon de réponse', ready: true }],
+  reclamation:      [{ key: 'brouillon', label: 'Préparer un brouillon de réponse', ready: true }],
+  contestation:     [{ key: 'brouillon', label: 'Préparer un brouillon de réponse', ready: true }, { key: 'avoir', label: 'Créer l\'avoir', ready: true }],
   info:             [],
   autre:            [],
 }
@@ -86,6 +86,16 @@ export interface TriageResult {
   family: string; summary: string; asked: string | null; invoice_numbers: string[]; plates: string[]; amount: number | null; urgent: boolean
   facts: { invoices: any[]; fiches: any[] }
   proposals: { key: string; label: string; ready: boolean }[]
+}
+
+/** Même fil déjà en attente (info@ et administration@ reçoivent souvent le même mail) ? */
+export async function twinInQueue(sb: any, msg: AgentMessage): Promise<{ id: string; mailbox: string } | null> {
+  const norm = String(msg.subject || '').replace(/^\s*((re|tr|fw|fwd|aw|wg)\s*:\s*)+/i, '').trim().toLowerCase()
+  if (!norm) return null
+  const since = new Date(Date.now() - 7 * 86400_000).toISOString()
+  const { data } = await sb.from('mail_agent_items').select('id, mailbox, subject').eq('handler', 'triage').eq('from_email', msg.fromEmail).eq('status', 'to_decide').neq('message_id', msg.id).gte('received_at', since).limit(20)
+  for (const d of data || []) if (String(d.subject || '').replace(/^\s*((re|tr|fw|fwd|aw|wg)\s*:\s*)+/i, '').trim().toLowerCase() === norm) return { id: d.id, mailbox: d.mailbox }
+  return null
 }
 
 export async function triageMail(sb: any, mailbox: string, msg: AgentMessage): Promise<TriageResult | null> {

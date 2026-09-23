@@ -22,7 +22,7 @@ import { findFolderIdByName, listFolderMessages, listAllFolders, getMessageText,
 import { refreshAwpSenders } from './handlers/awp-rejet'
 import { refreshImaSenders } from './handlers/ima-rejet'
 import { isSupplierCandidate, processSupplierMail } from './handlers/fournisseur'
-import { triageMail, isNoise, isAssistanceMission } from './triage'
+import { triageMail, isNoise, isAssistanceMission, twinInQueue } from './triage'
 import { handlerFor, handlerById } from './handlers'
 import { findInvoiceByName, resolveTargetPartner, runChecks, creditAndRebill } from './odoo'
 import type { RejectEntity } from './handlers/types'
@@ -110,6 +110,8 @@ export async function scanFolder(opts: { mailbox?: string; folder?: string; fold
           if (seen) { report.skipped++; continue }
           const base = { handler: 'triage', mailbox, message_id: msg.id, folder, received_at: msg.receivedAt || null, from_email: msg.fromEmail, subject: msg.subject, updated_at: new Date().toISOString() }
           try {
+            const twin = await twinInQueue(sb, msg)
+            if (twin) { await upsert(sb, base, { status: 'skipped', blocked_reason: `Même fil déjà à décider (${twin.mailbox.split('@')[0]}@)`, extracted: { duplicateOf: twin.id } }); report.skipped++; continue }
             const t = await triageMail(sb, mailbox, msg)
             if (!t) { report.skipped++; continue }
             if (t.family === 'info') {
