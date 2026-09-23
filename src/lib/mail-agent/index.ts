@@ -22,7 +22,7 @@ import { findFolderIdByName, listFolderMessages, listAllFolders, getMessageText,
 import { refreshAwpSenders } from './handlers/awp-rejet'
 import { refreshImaSenders } from './handlers/ima-rejet'
 import { isSupplierCandidate, processSupplierMail } from './handlers/fournisseur'
-import { triageMail, isNoise, isAssistanceMission, twinInQueue, readAutoFamilies } from './triage'
+import { triageMail, isNoise, isAssistanceMission, isHandledElsewhere, twinInQueue, readAutoFamilies } from './triage'
 import { executeDecision } from './actions'
 import { handlerFor, handlerById } from './handlers'
 import { findInvoiceByName, resolveTargetPartner, runChecks, creditAndRebill } from './odoo'
@@ -106,7 +106,7 @@ export async function scanFolder(opts: { mailbox?: string; folder?: string; fold
         }
         // Triage quotidien (jour 1, Olivier 23/09/2026) : tout le reste, sauf le
         // bruit et les ordres de mission, devient une carte de décision.
-        if (opts.triage && !isNoise(msg) && !isAssistanceMission(msg, folder)) {
+        if (opts.triage && !isNoise(msg) && !isAssistanceMission(msg, folder) && !isHandledElsewhere(msg, folder)) {
           const { data: seen } = await sb.from('mail_agent_items').select('id, status').eq('mailbox', mailbox).eq('message_id', msg.id).eq('handler', 'triage').maybeSingle()
           if (seen) { report.skipped++; continue }
           const base = { handler: 'triage', mailbox, message_id: msg.id, folder, received_at: msg.receivedAt || null, from_email: msg.fromEmail, subject: msg.subject, updated_at: new Date().toISOString() }
@@ -295,11 +295,12 @@ export async function scanAllFolders(opts: { mailbox?: string; limit?: number; s
 }
 
 /** Les deux boîtes administratives, triage compris (Olivier 23/09/2026). */
-export const TRIAGE_MAILBOXES = ['info@verviersdepannage.com', 'administration@verviersdepannage.com']
+export const TRIAGE_MAILBOXES = ['info@verviersdepannage.com', 'administration@verviersdepannage.com', 'fourriere@verviersdepannage.be']
 /** info@ : seulement ce que le bureau contrôle (Olivier 23/09/2026) ; administration@ : toute la boîte. */
 export const MAILBOX_SCOPE: Record<string, string[] | undefined> = {
   'info@verviersdepannage.com': ['0 - Jona et Mobi', '0 - Scan Facturation'],
   'administration@verviersdepannage.com': undefined,
+  'fourriere@verviersdepannage.be': undefined,   // tout, sauf ce que les modules Saisie / Domaine traitent (cf. isHandledElsewhere)
 }
 export async function scanMailboxes(opts: { sinceDays?: number; limit?: number } = {}): Promise<ScanReport & { folders: string[] }> {
   const sb = createAdminClient()

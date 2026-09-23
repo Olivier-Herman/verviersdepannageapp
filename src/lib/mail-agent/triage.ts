@@ -67,6 +67,20 @@ export function isAssistanceMission(msg: AgentMessage, folder = ''): boolean {
 }
 void MISSION_SUBJECT
 
+/** Déjà pris en charge par un autre module : réquisitoires et levées de saisie
+ *  (module Saisie), Dates IN et ventes d'épaves (module Domaine), relances
+ *  réquisitoire (portail policier). Olivier 23/09/2026. */
+const ELSEWHERE_SUBJECT = /r[ée]quisitoire|lev[ée]e de saisie|mainlev[ée]e|\bdates?\s*in\b|vente d'[ée]paves?|epave|convocation|proc[èe]s.verbal|\bPV\b/i
+const ELSEWHERE_FROM = /minfin\.fed\.be|police\.belgium\.eu|@police\.be|\.police\.|parquet|just\.fgov\.be/i
+export function isHandledElsewhere(msg: AgentMessage, folder = ''): boolean {
+  if (/r[ée]quisitoire|parquet|police|domaine|dates in|saisie/i.test(folder)) return true
+  if (ELSEWHERE_SUBJECT.test(msg.subject || '')) return true
+  // Parquet / police / Domaine : leurs mails sont lus par les modules dédiés, sauf
+  // quand ils parlent de facture ou d'état de frais (ça, c'est du courrier à décider).
+  if (ELSEWHERE_FROM.test(msg.fromEmail || '') && !/facture|état de frais|etat de frais|EDF|invoice|paiement/i.test(msg.subject || '')) return true
+  return false
+}
+
 let _client: Anthropic | null = null
 const client = () => (_client ??= new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY! }))
 const OUR_INVOICE_RE = /\b(20\d{2}\/\d{2}\/\d{3,4})\b/g
