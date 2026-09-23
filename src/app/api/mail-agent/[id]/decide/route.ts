@@ -28,7 +28,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   const { data: item } = await sb.from('mail_agent_items').select('*').eq('id', params.id).maybeSingle()
   if (!item) return NextResponse.json({ error: 'Item introuvable' }, { status: 404 })
   const now = new Date().toISOString()
-  const decision = { action, by: actor, at: now, folder: body.folder || null }
+  const decision = { action, by: actor, at: now, folder: body.folder || null, instruction: typeof body.instruction === 'string' && body.instruction.trim() ? body.instruction.trim().slice(0, 1000) : null }
   if (action === 'laisser' || action === 'fait_ailleurs') {
     await sb.from('mail_agent_items').update({ status: 'decided', extracted: { ...(item.extracted || {}), decision }, updated_at: now }).eq('id', item.id)
     return NextResponse.json({ ok: true, status: 'decided' })
@@ -46,7 +46,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   // Jour 2 : les actions métier. Résultat tracé sur l'item ; le mail est classé
   // dans « Mail auto-géré » quand le geste a abouti.
   const mode = await getMode(sb)
-  const res = await executeDecision({ sb, item, actor, mode, odooBase: process.env.ODOO_URL || '' }, action, { invoice: body.invoice || null, company: body.company || null })
+  const res = await executeDecision({ sb, item, actor, mode, odooBase: process.env.ODOO_URL || '' }, action, { invoice: body.invoice || null, company: body.company || null, instruction: typeof body.instruction === 'string' ? body.instruction.slice(0, 1000) : null })
   if (!res.ok) {
     await sb.from('mail_agent_items').update({ error: res.error || 'échec', updated_at: now }).eq('id', item.id)
     return NextResponse.json({ error: res.error || 'échec' }, { status: 400 })

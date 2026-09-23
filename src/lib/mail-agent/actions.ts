@@ -85,11 +85,14 @@ function pickInvoice(item: any, wanted?: string | null) {
 
 let _claude: Anthropic | null = null
 const claude = () => (_claude ??= new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY! }))
-async function writeReply(item: any, intent: string, extra: string): Promise<{ subject: string; html: string }> {
+async function writeReply(item: any, intent: string, extra: string, instruction?: string | null): Promise<{ subject: string; html: string }> {
   const text = (await getMessageText(item.mailbox, item.message_id)).slice(0, 6000)
   const x = item.extracted || {}
   const facts = [...(x.facts?.invoices || []).map((i: any) => i.missing ? `facture ${i.name} : introuvable chez nous` : `facture ${i.name} du ${i.date} : ${i.partner}, ${i.amount_total} € TVAC, ${i.state === 'posted' ? (i.payment_state === 'paid' ? 'payée' : i.payment_state === 'reversed' ? 'annulée par avoir' : 'impayée') : i.state}${i.has_credit_note ? ', avoir existant' : ''}`), ...(x.facts?.fiches || []).map((f: any) => `fiche ${f.number} (${f.plate}) : ${f.type} ${f.source}, ${f.status}${f.invoice ? ', facturée ' + f.invoice : ''}`)].join('\n')
-  const r = await claude().messages.create({ model: ANTHROPIC_MODEL, max_tokens: 900, messages: [{ role: 'user', content: `Tu rédiges, pour Verviers Dépannage SA (société belge de dépannage, service administratif), la réponse à un mail reçu. Intention : ${intent}. ${extra}
+  const guide = instruction && instruction.trim() ? `
+CONSIGNE DU BUREAU (prioritaire sur tout le reste, à suivre fidèlement) : ${instruction.trim()}
+` : ''
+  const r = await claude().messages.create({ model: ANTHROPIC_MODEL, max_tokens: 900, messages: [{ role: 'user', content: `Tu rédiges, pour Verviers Dépannage SA (société belge de dépannage, service administratif), la réponse à un mail reçu. Intention : ${intent}. ${extra}${guide}
 Faits vérifiés dans nos systèmes :
 ${facts || '(aucun)'}
 Règles : français courtois et sobre, tutoiement interdit, pas de promesse non couverte par les faits, pas de mention d'outil interne, ne pas inventer de montant ni de date. Termine par le dernier paragraphe utile : PAS de formule de politesse finale ni de signature (elles sont ajoutées après). Réponds STRICTEMENT en JSON : {"subject":"<objet, commençant par RE: si c'est une réponse>","html":"<corps en HTML simple, paragraphes <p>>"}
@@ -104,7 +107,7 @@ ${text}` }] })
   return { subject: String(j.subject || `RE: ${item.subject}`).slice(0, 200), html: String(j.html) + SIGNATURE }
 }
 
-export async function executeDecision(ctx: Ctx, action: string, params: { invoice?: string | null; company?: CompanyKey | null; folder?: string | null } = {}): Promise<ActionResult> {
+export async function executeDecision(ctx: Ctx, action: string, params: { invoice?: string | null; company?: CompanyKey | null; folder?: string | null; instruction?: string | null } = {}): Promise<ActionResult> {
   const { sb, item, mode, odooBase } = ctx
   const to = String(item.from_email || '')
   const x = item.extracted || {}
@@ -147,13 +150,13 @@ export async function executeDecision(ctx: Ctx, action: string, params: { invoic
       return { ok: true, note: `${inv.name} payée · ${sent}` }
     }
     if (action === 'rembourser') {
-      const r = await writeReply(item, 'confirmer que le remboursement demandé sera effectué par virement dans les prochains jours, sans donner de date précise', 'Reprendre le montant et le compte bancaire cités dans le mail s\'ils y sont.')
+      const r = await writeReply(item, 'confirmer que le remboursement demandé sera effectué par virement dans les prochains jours, sans donner de date précise', 'Reprendre le montant et le compte bancaire cités dans le mail s\'ils y sont.', params.instruction)
       const sent = await replyMail(mode, item, r.html)
       return { ok: true, note: `Confirmation de remboursement · ${sent} · le virement reste à faire par le bureau` }
     }
     if (action === 'brouillon' || action === 'repondre' || action === 'contester') {
       const intent = action === 'contester' ? 'contester poliment la demande en s\'appuyant uniquement sur les faits vérifiés' : 'répondre à la demande en s\'appuyant sur les faits vérifiés ; si une information manque, dire qu\'elle est en cours de vérification'
-      const r = await writeReply(item, intent, '')
+      const r = await writeReply(item, intent, '', params.instruction)
       const sent = await replyMail('draft', item, r.html)   // toujours en brouillon : une réponse rédigée se relit
       return { ok: true, note: `Réponse rédigée · ${sent} (à relire avant envoi)` }
     }

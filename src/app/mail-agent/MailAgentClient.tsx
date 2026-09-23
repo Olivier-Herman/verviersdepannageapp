@@ -124,9 +124,10 @@ export default function MailAgentClient({
   const [folderFor, setFolderFor] = useState<string | null>(null)
   const [invFor, setInvFor] = useState<Record<string, string>>({})
   const [coFor, setCoFor] = useState<Record<string, string>>({})
+  const [noteFor, setNoteFor] = useState<Record<string, string>>({})
   const decide = async (id: string, action: string, folder?: string) => {
     setBusy(id); setFlash(null)
-    const r = await (await fetch(`/api/mail-agent/${id}/decide`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action, folder, invoice: invFor[id] || null, company: coFor[id] || null }) })).json()
+    const r = await (await fetch(`/api/mail-agent/${id}/decide`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action, folder, invoice: invFor[id] || null, company: coFor[id] || null, instruction: noteFor[id] || null }) })).json()
     setBusy(null); setFolderFor(null)
     setFlash(r.ok ? (action === 'classer' ? `Mail classé dans « ${folder} »` : action === 'laisser' ? 'Laissé' : action === 'fait_ailleurs' ? 'Marqué fait ailleurs' : `✓ ${r.note}`) : `Refusé : ${r.error}`)
     load()
@@ -281,6 +282,11 @@ export default function MailAgentClient({
                       </select>
                     </label>
                   )}
+                  {it.status === 'to_decide' && (x.proposals || []).some((p: any) => ['brouillon', 'repondre', 'contester', 'rembourser'].includes(p.key)) && (
+                    <label className="block text-xs text-slate-600">Sens de la réponse <span className="text-slate-400">(facultatif : ce que tu veux dire, l'agent rédige)</span>
+                      <textarea value={noteFor[it.id] || ''} onChange={e => setNoteFor(p => ({ ...p, [it.id]: e.target.value }))} rows={2} placeholder="ex. : on accepte l'avoir sur le balisage mais pas sur les km ; proposer un rendez-vous pour restituer les clés…" className="mt-1 w-full border rounded-lg px-2 py-1.5 text-sm bg-white" />
+                    </label>
+                  )}
                   {it.status === 'to_decide' && (
                     <div className="flex flex-wrap gap-2 pt-1">
                       {(x.proposals || []).map((p: any) => p.key === 'classer' ? (
@@ -298,6 +304,7 @@ export default function MailAgentClient({
                   )}
                   {it.status === 'decided' && x.decision && (
                     <p className="text-xs text-slate-600">Décision : <strong>{x.decision.action}</strong>{x.decision.folder ? ` → ${x.decision.folder}` : ''} · {x.decision.by} · {fmt(x.decision.at)}
+                      {x.decision.instruction && <span className="block text-slate-500 mt-0.5 italic">Consigne : {x.decision.instruction}</span>}
                       {x.decision.result && <span className="block text-slate-800 mt-0.5">{x.decision.result}</span>}
                       {(x.decision.links || []).map((l: any, k: number) => l.url ? <a key={k} className="underline mr-2" href={l.url} target="_blank" rel="noreferrer">{l.label}</a> : null)}
                     </p>
