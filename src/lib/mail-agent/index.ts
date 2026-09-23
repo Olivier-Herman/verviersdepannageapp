@@ -21,6 +21,7 @@ import { createAdminClient } from '@/lib/supabase'
 import { findFolderIdByName, listFolderMessages, listAllFolders, getMessageText, getPdfAttachments, moveMessage } from './graph'
 import { refreshAwpSenders } from './handlers/awp-rejet'
 import { refreshImaSenders } from './handlers/ima-rejet'
+import { isSupplierCandidate, processSupplierMail } from './handlers/fournisseur'
 import { handlerFor, handlerById } from './handlers'
 import { findInvoiceByName, resolveTargetPartner, runChecks, creditAndRebill } from './odoo'
 import type { RejectEntity } from './handlers/types'
@@ -84,7 +85,24 @@ export async function scanFolder(opts: { mailbox?: string; folder?: string; fold
   for (const msg of messages) {
     try {
       const handler = handlerFor(msg.fromEmail, msg.subject)
-      if (!handler) { report.skipped++; continue }
+      if (!handler) {
+        // Facture fournisseur ? (Olivier 23/09/2026) — lue, vérifiée dans Odoo
+        // par société, classée ou envoyée pour encodage. Jamais deux fois.
+        if (isSupplierCandidate(msg)) {
+          const { data: seen } = await sb.from('mail_agent_items').select('id, status').eq('mailbox', mailbox).eq('message_id', msg.id).eq('handler', 'fournisseur').maybeSingle()
+          if (seen && ['applied', 'ignored', 'skipped', 'to_verify'].includes(seen.status)) { report.skipped++; continue }
+          const base = { handler: 'fournisseur', mailbox, message_id: msg.id, folder, received_at: msg.receivedAt || null, from_email: msg.fromEmail, subject: msg.subject, updated_at: new Date().toISOString() }
+          try {
+            const out = await processSupplierMail(sb, mailbox, msg, base)
+            await upsert(sb, base, { status: out.status, blocked_reason: out.note, extracted: out.extracted })
+            if (out.status === 'applied') { report.captured++; report.applied++ }
+            else if (out.status === 'to_verify') { report.captured++; report.toVerify++ }
+            else report.skipped++
+          } catch (e: any) { report.errors.push(`${msg.subject} : ${e?.message || String(e)}`) }
+          continue
+        }
+        report.skipped++; continue
+      }
 
       // Un item déjà traité ne doit pas être rejoué.
       const { data: existing } = await sb.from('mail_agent_items')
@@ -202,7 +220,7 @@ export async function scanFolder(opts: { mailbox?: string; folder?: string; fold
 // dossiers système. Tout le reste est scanné (Olivier 23/09/2026 : « l'agent
 // mail doit avoir une vue partout »).
 const SKIP_FOLDERS = [
-  MAIL_AGENT_DONE_FOLDER.toLowerCase(), 'mondial automatic dispatch', 'ima payement',
+  MAIL_AGENT_DONE_FOLDER.toLowerCase(), 'mondial automatic dispatch', 'ima payement', 'fournisseur divers', '01 - total - anomalie détectée',
   'éléments envoyés', 'elements envoyes', 'sent items', 'éléments supprimés', 'elements supprimes', 'deleted items',
   'courrier indésirable', 'courrier indesirable', 'junk email', 'junk e-mail', 'brouillons', 'drafts', 'boîte d\'envoi', 'boite d\'envoi', 'outbox',
   'archive', 'historique des conversations', 'conversation history', 'notes', 'journal', 'rss feeds', 'flux rss',

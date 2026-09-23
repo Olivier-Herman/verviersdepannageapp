@@ -173,6 +173,17 @@ export async function getPdfAttachments(mailbox: string, messageId: string): Pro
  * Déplace un message vers un dossier. Retourne ok:false plutôt que de lever :
  * un mail non déplacé ne doit JAMAIS annuler un traitement comptable déjà fait.
  */
+/** Transfère un mail (avec ses PJ) à une adresse — boîte d'encodage Odoo. */
+export async function forwardMessage(mailbox: string, messageId: string, to: string, comment = ''): Promise<{ ok: boolean; error?: string }> {
+  guardMailbox(mailbox)
+  const res = await authedFetch(`/users/${encodeURIComponent(mailbox)}/messages/${messageId}/forward`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ comment, toRecipients: [{ emailAddress: { address: to } }] }),
+  })
+  if (res.status === 202) return { ok: true }
+  return { ok: false, error: `Graph forward ${res.status}: ${(await res.text()).slice(0, 160)}` }
+}
+
 export async function moveMessage(mailbox: string, messageId: string, folderId: string): Promise<{ ok: boolean; error?: string }> {
   try {
     guardMailbox(mailbox)
