@@ -17,7 +17,8 @@ export async function GET(req: Request) {
   try {
     // Expéditeurs des rejets = réglages métier, relus à chaque passage (plus de liste codée).
     await Promise.all([refreshAwpSenders(), refreshImaSenders()])
-    return NextResponse.json({ ok: true, ...(await scanAllFolders({ sinceDays: 1, limit: 50 })   // Olivier 23/09 : toutes les 15 min, J-1 suffit) })
+    // Olivier 23/09/2026 : toutes les 15 min, relire J-1 suffit.
+    return NextResponse.json({ ok: true, ...(await scanAllFolders({ sinceDays: 1, limit: 50 })) })
   } catch (err: any) {
     console.error('[cron mail-agent] KO:', err?.message)
     return NextResponse.json({ error: err?.message || 'Erreur' }, { status: 500 })
