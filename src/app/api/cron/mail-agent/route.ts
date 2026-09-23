@@ -8,7 +8,7 @@ import { refreshAwpSenders } from '@/lib/mail-agent/handlers/awp-rejet'
 import { refreshImaSenders } from '@/lib/mail-agent/handlers/ima-rejet'
 
 export const dynamic     = 'force-dynamic'
-export const maxDuration = 120
+export const maxDuration = 300   // scan incrémental de toute la boîte (185 dossiers)
 
 export async function GET(req: Request) {
   if (req.headers.get('authorization') !== `Bearer ${process.env.CRON_SECRET}`) {
@@ -17,7 +17,7 @@ export async function GET(req: Request) {
   try {
     // Expéditeurs des rejets = réglages métier, relus à chaque passage (plus de liste codée).
     await Promise.all([refreshAwpSenders(), refreshImaSenders()])
-    return NextResponse.json({ ok: true, ...(await scanAllFolders()) })
+    return NextResponse.json({ ok: true, ...(await scanAllFolders({ sinceDays: 7, limit: 50 })) })
   } catch (err: any) {
     console.error('[cron mail-agent] KO:', err?.message)
     return NextResponse.json({ error: err?.message || 'Erreur' }, { status: 500 })

@@ -63,7 +63,7 @@ export interface ScanReport {
  * dupliqué (index unique mailbox+message_id+handler), et un item déjà appliqué
  * n'est plus touché.
  */
-export async function scanFolder(opts: { mailbox?: string; folder?: string; folderId?: string; limit?: number } = {}): Promise<ScanReport> {
+export async function scanFolder(opts: { mailbox?: string; folder?: string; folderId?: string; limit?: number; since?: string } = {}): Promise<ScanReport> {
   const sb      = createAdminClient()
   const mailbox = opts.mailbox || MAIL_AGENT_MAILBOX
   const folder  = opts.folder  || MAIL_AGENT_FOLDER
@@ -78,7 +78,7 @@ export async function scanFolder(opts: { mailbox?: string; folder?: string; fold
     return report
   }
 
-  const messages = await listFolderMessages(mailbox, folderId, opts.limit || 100)
+  const messages = await listFolderMessages(mailbox, folderId, opts.limit || 100, opts.since)
   report.scanned = messages.length
 
   for (const msg of messages) {
@@ -207,15 +207,19 @@ const SKIP_FOLDERS = [
   'courrier indésirable', 'courrier indesirable', 'junk email', 'junk e-mail', 'brouillons', 'drafts', 'boîte d\'envoi', 'boite d\'envoi', 'outbox',
   'archive', 'historique des conversations', 'conversation history', 'notes', 'journal', 'rss feeds', 'flux rss',
 ]
-export async function scanAllFolders(opts: { mailbox?: string; limit?: number } = {}): Promise<ScanReport & { folders: string[] }> {
+export async function scanAllFolders(opts: { mailbox?: string; limit?: number; sinceDays?: number } = {}): Promise<ScanReport & { folders: string[] }> {
   const mailbox = opts.mailbox || MAIL_AGENT_MAILBOX
+  // Incrémental : par défaut les 45 derniers jours (bouton Scanner) ; le cron
+  // passe 7 jours toutes les 15 min, un rejet ne reste jamais plus d'un quart
+  // d'heure sans être vu. Sans borne, 185 dossiers × 11 000 mails = plus de 10 min.
+  const since = new Date(Date.now() - (opts.sinceDays ?? 45) * 86400_000).toISOString()
   const total: ScanReport & { folders: string[] } = { scanned: 0, captured: 0, ready: 0, blocked: 0, toVerify: 0, skipped: 0, applied: 0, errors: [], folders: [] }
   let folders: { id: string; name: string; path: string }[] = []
   try { folders = await listAllFolders(mailbox) } catch (e: any) { total.errors.push(`liste des dossiers : ${e?.message}`); return total }
   for (const f of folders) {
     const lname = f.name.trim().toLowerCase()
     if (SKIP_FOLDERS.some(sk => lname === sk)) continue
-    const r = await scanFolder({ mailbox, folder: f.path.replace(/^\//, ''), folderId: f.id, limit: opts.limit })
+    const r = await scanFolder({ mailbox, folder: f.path.replace(/^\//, ''), folderId: f.id, limit: opts.limit ?? 50, since })
     total.folders.push(f.path)
     total.scanned += r.scanned; total.captured += r.captured; total.ready += r.ready; total.blocked += r.blocked
     total.toVerify += r.toVerify; total.skipped += r.skipped; total.applied += r.applied; total.errors.push(...r.errors)

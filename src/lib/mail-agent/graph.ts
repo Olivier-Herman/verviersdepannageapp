@@ -110,10 +110,14 @@ const person = (p: any) => ({
 })
 
 /** Liste les messages d'un dossier, du plus récent au plus ancien. */
-export async function listFolderMessages(mailbox: string, folderId: string, top = 100): Promise<AgentMessage[]> {
+export async function listFolderMessages(mailbox: string, folderId: string, top = 100, sinceIso?: string): Promise<AgentMessage[]> {
   guardMailbox(mailbox)
+  // `sinceIso` : ne lire que les mails reçus depuis cette date (scan incrémental
+  // de toute la boîte — 185 dossiers, on ne relit pas 11 000 mails tous les
+  // quarts d'heure).
+  const filter = sinceIso ? `&$filter=receivedDateTime ge ${encodeURIComponent(sinceIso)}` : ''
   const url = `/users/${encodeURIComponent(mailbox)}/mailFolders/${folderId}/messages`
-    + `?$top=${top}&$orderby=receivedDateTime desc`
+    + `?$top=${top}&$orderby=receivedDateTime desc${filter}`
     + `&$select=id,subject,from,toRecipients,ccRecipients,receivedDateTime,bodyPreview,hasAttachments`
   const data = await authedGet(url)
   return (data.value || []).map((m: any) => ({
