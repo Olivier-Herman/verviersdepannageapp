@@ -28,6 +28,7 @@ interface LogData { events: Ev[]; anomalies: Ano[]; rythme?: { h: number; n: num
 /** Les six gestes du terrain, dans l'ordre, avec la couleur de chacun. */
 const STEPS: { key: string; label: string; color: string; soft: string }[] = [
   { key: 'assigned',   label: 'Assignée',  color: '#7A8AA0', soft: '#EBEFF5' },
+  { key: 'accepted',   label: 'Acceptée',  color: '#0F7B6C', soft: '#DDF1EC' },   // Olivier 23/09/2026 : l'acceptation par le chauffeur en clair
   { key: 'on_way',     label: 'En route',  color: '#1B57C9', soft: '#E2EAFB' },
   { key: 'on_site',    label: 'Sur place', color: '#7A3BD6', soft: '#EEE6FC' },
   { key: 'loaded',     label: 'Chargé',    color: '#C2700A', soft: '#FCEFD9' },
@@ -66,6 +67,7 @@ function stepIndex(steps: Record<string, string | null> | undefined): number {
 function stepAt(steps: Record<string, string | null> | undefined, key: string): string | null {
   if (!steps) return null
   if (key === 'assigned') return steps.assigned || steps.accepted || null
+  if (key === 'accepted') return steps.accepted || null
   return steps[key] || null
 }
 
