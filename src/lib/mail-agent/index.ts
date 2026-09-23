@@ -112,7 +112,15 @@ export async function scanFolder(opts: { mailbox?: string; folder?: string; fold
           const base = { handler: 'triage', mailbox, message_id: msg.id, folder, received_at: msg.receivedAt || null, from_email: msg.fromEmail, subject: msg.subject, updated_at: new Date().toISOString() }
           try {
             const twin = await twinInQueue(sb, msg)
-            if (twin) { await upsert(sb, base, { status: 'skipped', blocked_reason: `Même fil déjà à décider (${twin.mailbox.split('@')[0]}@)`, extracted: { duplicateOf: twin.id } }); report.skipped++; continue }
+            if (twin) {
+              // Même fil dans les deux boîtes : on garde la copie d'administration@,
+              // c'est de là que partent les réponses (Olivier 23/09/2026).
+              if (mailbox.toLowerCase() === 'administration@verviersdepannage.com' && twin.mailbox.toLowerCase() !== mailbox.toLowerCase()) {
+                await sb.from('mail_agent_items').update({ status: 'skipped', blocked_reason: 'Même fil repris depuis administration@ (réponse dans le fil)', updated_at: new Date().toISOString() }).eq('id', twin.id)
+              } else {
+                await upsert(sb, base, { status: 'skipped', blocked_reason: `Même fil déjà à décider (${twin.mailbox.split('@')[0]}@)`, extracted: { duplicateOf: twin.id } }); report.skipped++; continue
+              }
+            }
             const t = await triageMail(sb, mailbox, msg)
             if (!t) { report.skipped++; continue }
             if (t.family === 'info') {

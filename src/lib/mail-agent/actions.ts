@@ -40,6 +40,40 @@ async function outMail(mode: Mode, to: string, subject: string, html: string, at
   if (r.status !== 201) throw new Error(`brouillon refusé (${r.status}) : ${(await r.text()).slice(0, 160)}`)
   return `brouillon prêt dans administration@ pour ${to}`
 }
+/**
+ * RÉPONDRE dans le fil (Olivier 23/09/2026) : on utilise la fonction Répondre
+ * de la boîte sur le mail reçu — même conversation, mail d'origine cité — au
+ * lieu d'un mail neuf. Expéditeur forcé à administration@ quand la boîte le
+ * permet. draft = le brouillon reste dans la boîte ; auto = envoyé.
+ */
+async function replyMail(mode: Mode, item: any, html: string, attachments: EmailAttachment[] = [], cc?: string): Promise<string> {
+  const token = await getAppOnlyToken()
+  const H = { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }
+  const base = `${G}/users/${encodeURIComponent(item.mailbox)}/messages/${item.message_id}`
+  const r = await fetch(`${base}/createReply`, { method: 'POST', headers: H, body: JSON.stringify({}) })
+  if (r.status !== 201) throw new Error(`Répondre refusé (${r.status}) : ${(await r.text()).slice(0, 160)}`)
+  const draft: any = await r.json()
+  const quoted = String(draft.body?.content || '')
+  const patch: any = { body: { contentType: 'HTML', content: html + quoted } }
+  if (cc) patch.ccRecipients = [{ emailAddress: { address: cc } }]
+  const p1 = await fetch(`${base.replace(item.message_id, draft.id)}`, { method: 'PATCH', headers: H, body: JSON.stringify(patch) })
+  if (!p1.ok) throw new Error(`corps de réponse refusé (${p1.status})`)
+  // Expéditeur administration@ (Olivier 23/09) — si la boîte refuse, le brouillon reste au nom de la boîte.
+  let fromNote = ''
+  if (item.mailbox.toLowerCase() !== OUT_MAILBOX) {
+    const p2 = await fetch(`${base.replace(item.message_id, draft.id)}`, { method: 'PATCH', headers: H, body: JSON.stringify({ from: { emailAddress: { address: OUT_MAILBOX } } }) })
+    fromNote = p2.ok ? '' : ` (expéditeur ${item.mailbox.split('@')[0]}@ : la boîte n'accepte pas l'envoi au nom d'administration@)`
+  }
+  for (const a of attachments) {
+    await fetch(`${base.replace(item.message_id, draft.id)}/attachments`, { method: 'POST', headers: H, body: JSON.stringify({ '@odata.type': '#microsoft.graph.fileAttachment', name: a.name, contentType: a.contentType, contentBytes: a.contentBytes }) })
+  }
+  if (mode === 'auto') {
+    const s = await fetch(`${base.replace(item.message_id, draft.id)}/send`, { method: 'POST', headers: H })
+    if (s.status !== 202) throw new Error(`envoi refusé (${s.status}) : ${(await s.text()).slice(0, 160)}`)
+    return `réponse envoyée dans le fil${fromNote}`
+  }
+  return `réponse en brouillon dans le fil, boîte ${item.mailbox.split('@')[0]}@${fromNote}`
+}
 const pdfOf = async (invId: number, name: string): Promise<EmailAttachment> => ({ name: `${name.replace(/\//g, '-')}.pdf`, contentType: 'application/pdf', contentBytes: (await fetchInvoicePdfFromOdoo(invId)).toString('base64') })
 const odooLink = (base: string, id: number) => base ? `${base}/web#id=${id}&model=account.move&view_type=form` : ''
 
@@ -90,7 +124,7 @@ export async function executeDecision(ctx: Ctx, action: string, params: { invoic
       const atts: EmailAttachment[] = []
       if (mode === 'auto') { await odooRpc('account.move', 'action_post', [[ncId]]); const nc = await odooRpc<any[]>('account.move', 'read', [[ncId]], { fields: ['name'] }); ncName = nc?.[0]?.name || ncName; atts.push(await pdfOf(ncId, ncName)) }
       const html = `<p>Bonjour,</p><p>Suite à votre message, vous trouverez ${mode === 'auto' ? 'ci-joint' : 'ci-après'} la note de crédit <b>${ncName}</b> qui annule notre facture ${inv.name} du ${inv.date} (${inv.amount_total.toLocaleString('fr-BE', { minimumFractionDigits: 2 })} € TVAC).</p>${SIGNATURE}`
-      const sent = await outMail(mode, to, `Note de crédit — facture ${inv.name}`, html, atts)
+      const sent = await replyMail(mode, item, html, atts)
       return { ok: true, note: `Avoir ${ncName} sur ${inv.name} (${mode === 'auto' ? 'comptabilisé' : 'en brouillon, à valider puis joindre au mail'}) · ${sent}`, links: [{ label: `Avoir ${ncName}`, url: odooLink(odooBase, ncId) }] }
     }
     if (action === 'envoyer_doc') {
@@ -99,7 +133,7 @@ export async function executeDecision(ctx: Ctx, action: string, params: { invoic
       if (!chosen.length) return { ok: false, note: '', error: 'Aucune facture reconnue à envoyer.' }
       const atts = await Promise.all(chosen.map(i => pdfOf(i.id, i.name)))
       const html = `<p>Bonjour,</p><p>Comme demandé, vous trouverez ci-joint ${chosen.length > 1 ? 'les documents suivants' : 'le document suivant'} : ${chosen.map(i => `facture ${i.name} du ${i.date}, ${i.amount_total.toLocaleString('fr-BE', { minimumFractionDigits: 2 })} € TVAC`).join(' ; ')}.</p>${SIGNATURE}`
-      const sent = await outMail(mode, to, `RE: ${item.subject}`.slice(0, 200), html, atts)
+      const sent = await replyMail(mode, item, html, atts)
       return { ok: true, note: `${chosen.map(i => i.name).join(', ')} · ${sent}` }
     }
     if (action === 'repondre_paye') {
@@ -109,18 +143,18 @@ export async function executeDecision(ctx: Ctx, action: string, params: { invoic
       const paid = inv.payment_state === 'paid' || pays?.[0]?.payment_state === 'paid'
       if (!paid) return { ok: false, note: '', error: `Odoo ne montre pas ${inv.name} comme payée (${inv.payment_state}).` }
       const html = `<p>Bonjour,</p><p>Notre facture ${inv.name} du ${inv.date} (${inv.amount_total.toLocaleString('fr-BE', { minimumFractionDigits: 2 })} € TVAC) apparaît réglée dans nos livres. Si un justificatif vous est utile, nous vous le transmettons volontiers.</p>${SIGNATURE}`
-      const sent = await outMail(mode, to, `RE: ${item.subject}`.slice(0, 200), html)
+      const sent = await replyMail(mode, item, html)
       return { ok: true, note: `${inv.name} payée · ${sent}` }
     }
     if (action === 'rembourser') {
       const r = await writeReply(item, 'confirmer que le remboursement demandé sera effectué par virement dans les prochains jours, sans donner de date précise', 'Reprendre le montant et le compte bancaire cités dans le mail s\'ils y sont.')
-      const sent = await outMail(mode, to, r.subject, r.html)
+      const sent = await replyMail(mode, item, r.html)
       return { ok: true, note: `Confirmation de remboursement · ${sent} · le virement reste à faire par le bureau` }
     }
     if (action === 'brouillon' || action === 'repondre' || action === 'contester') {
       const intent = action === 'contester' ? 'contester poliment la demande en s\'appuyant uniquement sur les faits vérifiés' : 'répondre à la demande en s\'appuyant sur les faits vérifiés ; si une information manque, dire qu\'elle est en cours de vérification'
       const r = await writeReply(item, intent, '')
-      const sent = await outMail('draft', to, r.subject, r.html)   // toujours en brouillon : une réponse rédigée se relit
+      const sent = await replyMail('draft', item, r.html)   // toujours en brouillon : une réponse rédigée se relit
       return { ok: true, note: `Réponse rédigée · ${sent} (à relire avant envoi)` }
     }
     if (action === 'encoder') {
