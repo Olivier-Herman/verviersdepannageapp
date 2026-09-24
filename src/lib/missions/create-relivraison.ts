@@ -143,6 +143,29 @@ export async function createRelivraisonMission(input: RelivraisonInput): Promise
     return { id: reserve.id }
   }
 
+  // ── LIEN COMEX : LA RELIVRAISON EST L'ACTION DE TRANSFERT DE TOURING ──────
+  // Quand on met un véhicule Touring en parc, la clôture (code 05) fait créer par
+  // Touring une action de TRANSFERT sur le même dossier, que le chaînage rattache
+  // à la fiche REM. Mais c'est la fiche REL qui va rouler : si elle n'a pas ce
+  // lien, ses pointages (en route / sur place) et sa clôture ne partent jamais
+  // chez Touring — 7 transferts restés ouverts dans COMEX au 24/09/2026 (étape 3
+  // du chaînage, cf project_touring_lifecycle_chainage). La REL hérite donc de
+  // l'action COMEX active du parent ; les marqueurs de pointage repartent à zéro
+  // (nouvelle action) et touring_accepted_at reste vide : le SLA auto ne doit pas
+  // inventer un « sur place » sur une relivraison qui peut attendre des jours.
+  let comexLink: Record<string, any> = { source_format: 'auto_rel' }
+  if ((parent as any).source_format === 'comex') {
+    try {
+      const c = JSON.parse((parent as any).raw_content || '{}')
+      if (c?.CID_DOS && c?.CID_SEQ_ACTION) {
+        comexLink = {
+          source_format: 'comex', raw_content: (parent as any).raw_content,
+          touring_accepted_at: null, touring_onroad_at: null, touring_onspot_at: null,
+        }
+      }
+    } catch { /* raw_content non-JSON : pas de lien */ }
+  }
+
   // Insertion de la nouvelle mission REL
   const relTs = new Date().toISOString()
   const { data: rel, error: insErr } = await sb
@@ -153,7 +176,7 @@ export async function createRelivraisonMission(input: RelivraisonInput): Promise
       source:                input.sourceOverride && input.sourceOverride.trim()
                                ? input.sourceOverride.trim()
                                : parent.source,
-      source_format:         'auto_rel',
+      ...comexLink,
       // Privé : montant HTVA imposé (tarif spécial) — l'estimation n'est pas recalculée.
       special_tarif_htva:    input.imposedHtva && input.imposedHtva > 0 ? input.imposedHtva : null,
       // Olivier 2026-05-28 : la mission REL a son propre type 'REL' (et son

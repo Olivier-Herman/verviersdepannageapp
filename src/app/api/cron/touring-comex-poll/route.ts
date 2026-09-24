@@ -38,6 +38,11 @@ const SLA_ONSPOT_AFTER_MIN = 50
 const SLA_ONROAD_AFTER_MIN = 10
 // Statuts « morts » : on ne force PAS le sur place/en route dessus (annulée, doublon…).
 const DEAD_STATUSES = ['cancelled', 'rejected', 'deleted', 'ignored', 'duplicate', 'error', 'parse_error', 'not_requisitoire', 'not_created']
+// Balayages de pointage (en route / sur place / réparation) : une fiche en parc ou
+// terminée ne roule plus — l'action de transfert que Touring y a chaînée est
+// portée par la REL. Pousser dessus = 25 COMEX 500 par nuit et par dossier
+// (1AKA208 le 21/09, 2GWT316 le 23/09). Olivier 2026-09-24.
+const NOT_ROLLING = [...DEAD_STATUSES, 'parked', 'completed', 'to_invoice', 'invoiced']
 
 // Auto-EN ROUTE proactif : missions Touring acceptées ≥10 min sans en route ni sur
 // place → on pousse onRoad (backdaté) pour tenir le SLA « démarré ». Mode import.
@@ -56,7 +61,7 @@ async function runTouringOnRoadSweep(
     .is('touring_onspot_at', null)
     .lte('touring_accepted_at', cutoff)
     .gte('touring_accepted_at', floor)
-    .not('status', 'in', `(${DEAD_STATUSES.join(',')})`)
+    .not('status', 'in', `(${NOT_ROLLING.join(',')})`)
   if (error || !Array.isArray(data) || data.length === 0) return { scanned: 0, pushed: 0, skipped: 0 }
 
   // ⚠️ Ne JAMAIS pousser « en route » sur un dossier que COMEX a déjà dépassé.
@@ -117,7 +122,7 @@ async function runTouringSlaSweep(): Promise<{ scanned: number; pushed: number }
     .is('touring_onspot_at', null)
     .lte('touring_accepted_at', cutoff)
     .gte('touring_accepted_at', floor)
-    .not('status', 'in', `(${DEAD_STATUSES.join(',')})`)
+    .not('status', 'in', `(${NOT_ROLLING.join(',')})`)
   if (error || !Array.isArray(data) || data.length === 0) return { scanned: 0, pushed: 0 }
 
   const { syncTouringOnSpot } = await import('@/lib/touring/sync')
@@ -236,7 +241,7 @@ async function runTouringStepRepair(
     .eq('source_format', 'comex')
     .not('touring_accepted_at', 'is', null)
     .gte('received_at', floor)
-    .not('status', 'in', `(${DEAD_STATUSES.join(',')})`)
+    .not('status', 'in', `(${NOT_ROLLING.join(',')})`)
   if (!Array.isArray(data) || data.length === 0) return { scanned: 0, repaired: 0 }
 
   const statusByKey = new Map<string, string>()

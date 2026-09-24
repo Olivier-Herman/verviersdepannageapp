@@ -154,7 +154,9 @@ export async function runTouringImport(opts: { mode: TouringImportMode }): Promi
       if (m.CID_DOS) {
         const { data: lineage } = await sb.from('incoming_missions')
           .select('id, status, mission_number, raw_content, touring_actions, snc_requires_balisage')
-          .eq('dossier_number', m.CID_DOS)
+          // La REL du dossier (dossier_number « …-REL ») compte aussi : une fois
+          // le REM en parc (to_invoice), c'est elle qui porte l'action de transfert.
+          .in('dossier_number', [m.CID_DOS, `${m.CID_DOS}-REL`])
           .eq('dossier_leg', false)   // fiches Gardiennage (dossier_leg) : jamais (audit 08/09/2026)
           .not('status', 'in', '(cancelled,completed,to_invoice,invoiced,ignored,deleted)')
           .order('updated_at', { ascending: false })

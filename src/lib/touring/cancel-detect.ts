@@ -53,7 +53,9 @@ export async function runTouringCancelDetect(sb: any): Promise<CancelDetectSumma
   const now = Date.now()
   for (const f of fiches) {
     out.checked++
-    const cid = String(f.dossier_number || '').toUpperCase()
+    // La REL d'un dossier Touring porte « …-REL » (create-relivraison) mais vit
+    // sur la même commande COMEX : on compare sur la commande. 24/09/2026.
+    const cid = String(f.dossier_number || '').toUpperCase().replace(/-REL$/, '')
     if (!cid) continue
 
     if (live.has(cid)) {                                   // toujours vivante

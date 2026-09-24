@@ -50,6 +50,9 @@ export interface TransformInput {
   ficheDestinationName?: string | null
   ficheDestinationLat?: number | null
   ficheDestinationLng?: number | null
+  /** Heure réelle de la clôture (ISO) quand on rejoue après coup — file de
+   *  retry, rattrapage. Vide = maintenant. */
+  at?: string | null
 }
 
 export interface TransformResult {
@@ -184,6 +187,7 @@ export async function transformTouring(keys: ComexKeys, input: TransformInput): 
     comment,
     toCidIntv: input.toCidIntv || null,
     toAddress,
+    at: input.at ? new Date(input.at) : undefined,
   })
 
   return {
