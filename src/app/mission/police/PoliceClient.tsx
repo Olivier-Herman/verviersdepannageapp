@@ -622,9 +622,8 @@ export default function PoliceClient({ userRole = 'driver' }: { userRole?: strin
       if (j.rows.length > 0 || j.mine?.length || j.others?.length) { setErr(t('create_mission.sc_take_existing')); return }
       setSelectedType('snc' as MissionType); setSiabisAuto(true); setErr(selectedType === 'sc' ? t('create_mission.sc_refused') : ''); return
     }
-    if (selectedType === 'snc' && !sncScenario) {
-      setErr('Choisis le scénario Siabis (DSP, REM client, REM dépôt) avant de créer la fiche'); return
-    }
+    // SNC : plus de scénario à la création (Olivier 24/09/2026) — il se choisit
+    // sur la fiche, sur place, avec l'encaissement ou la mise en parc qui suit.
     // Saisie : motif obligatoire (demande Franck 2026-06-01).
     if (selectedType === 'saisie' && !saisieMotifCode) {
       setErr('Le motif de la saisie est obligatoire'); return
@@ -674,8 +673,7 @@ export default function PoliceClient({ userRole = 'driver' }: { userRole?: strin
     // bouton "Encaisser solde" puis "Finaliser" quand solde = 0.
     const needsImmediatePaymentLocal =
       (selectedType === 'mal_garee' && malGareeScenario === 'deplacement_paye') ||
-      (selectedType === 'appel_prive' && (appelPriveType === 'DSP' || (appelPriveType === 'REM' && appelPriveDestination === 'client'))) ||
-      (selectedType === 'snc' && (sncScenario === 'dsp' || sncScenario === 'rem_client'))
+      (selectedType === 'appel_prive' && (appelPriveType === 'DSP' || (appelPriveType === 'REM' && appelPriveDestination === 'client')))
 
     // Olivier 2026-06-03 (audit J-2 W3 high) : try/catch/finally global pour
     // les 2 fetch police. Avant, si le serveur renvoyait du HTML (500 non-JSON)
@@ -772,6 +770,9 @@ export default function PoliceClient({ userRole = 'driver' }: { userRole?: strin
     const data = await res.json()
 
     if (data.ok) {
+      // SNC : droit sur la fiche, où l'écran « Qu'est-ce qu'on fait ? » attend le
+      // chauffeur (DSP / REM client / REM dépôt → encaissement ou parc). 24/09/2026.
+      if (selectedType === 'snc' && data.missionId) { router.push(`/mission/${data.missionId}`); return }
       setCreatedMissionId(data.missionId || null)
       setDone(true)
       // Olivier 2026-05-27 : sources avec encaissement OBLIGATOIRE (Mal Garee
@@ -1420,7 +1421,10 @@ export default function PoliceClient({ userRole = 'driver' }: { userRole?: strin
                 </div>
               )}
 
-              <div>
+              <div className="rounded-xl border border-blue-300 bg-blue-50 px-3 py-2 text-xs text-blue-900">
+                Le scénario (DSP, remorquage vers le client ou vers le dépôt) se choisit sur la fiche, une fois la fiche créée : tu es déjà « sur place ».
+              </div>
+              <div hidden>
                 <label className="text-xs font-medium text-ink-secondary mb-1.5 block">
                   Scénario d&apos;intervention
                 </label>

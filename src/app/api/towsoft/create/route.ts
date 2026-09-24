@@ -82,9 +82,12 @@ export async function POST(req: Request) {
   if (type === 'sc') {
     return NextResponse.json({ error: "Aucune mission couverte reçue d'une assistance pour ce véhicule : crée un Siabis NON couvert — le client paie et se fait rembourser par son assurance / assistance." }, { status: 400 })
   }
-  if ((type === 'snc' || type === 'sc') && !['dsp', 'rem_client', 'rem_depot', 'rem_direct'].includes(String(sncScenario || ''))) {
-    return NextResponse.json({ error: 'Scénario Siabis requis (DSP, REM client, REM dépôt)' }, { status: 400 })
-  }
+  // Siabis non couvert créé par le chauffeur (Olivier 24/09/2026) : la fiche naît
+  // « sur place », SANS scénario. C'est l'écran « Qu'est-ce qu'on fait ? » de la
+  // fiche qui impose ensuite DSP / REM client / REM dépôt, avec l'encaissement
+  // et la mise en parc qui vont avec. Avant, un REM dépôt créait la fiche
+  // directement en parc, sans jamais proposer le paiement : le dispatch devait la
+  // réinitialiser et la réattribuer. Un scénario encore envoyé est ignoré.
 
   const supabase = createAdminClient()
   const user = session.user as any
@@ -341,9 +344,9 @@ export async function POST(req: Request) {
     //   - dsp        -> depannage
     //   - rem_client -> remorquage (livraison directe)
     //   - rem_depot  -> remorquage (mise en parc Transit)
-    const sncMissionType = isSnc
-      ? (sncScenario === 'dsp' ? 'depannage' : 'remorquage')
-      : null
+    // SNC chauffeur : type provisoire « remorquage », le scénario choisi sur la
+    // fiche le corrige (pickSncScenario → PATCH mission_type).
+    const sncMissionType = isSnc ? 'remorquage' : null
 
     // Appel Prive : DSP -> depannage, REM -> remorquage. Defaut remorquage
     // si pas precise (compat retro avec les anciens clients qui n envoient
@@ -361,7 +364,7 @@ export async function POST(req: Request) {
     //   - police fourriere classique (mal_garee chargement / rodeo / avp) -> parked
     const isMalGareeDeplacementPaye = type === 'mal_garee' && malGareeScenario === 'deplacement_paye'
     const computedStatus = isSnc
-      ? (sncScenario === 'rem_depot' ? 'parked' : 'in_progress')
+      ? 'in_progress'
       : isAppelPrive
         ? (appelPriveDestination === 'depot' ? 'parked' : 'in_progress')
         : isMalGareeDeplacementPaye
@@ -390,6 +393,9 @@ export async function POST(req: Request) {
         // appelle cet endpoint, donc pas de risque d'auto-assigner un dispatcher.
         assigned_to:        dbUser.id || null,
         assigned_at:        nowIso,
+        // SNC chauffeur : il est déjà sur place → la fiche s'ouvre sur le choix
+        // du scénario (écran bloquant onsiteV2, déclenché par on_site_at).
+        ...(isSnc ? { accepted_at: nowIso, on_way_at: nowIso, on_site_at: nowIso } : {}),
         parc_zone_key:      vdZone,
         // Olivier 2026-06-03 (audit J-2 W11) : fallback plaque vide -> 5
         // derniers chars du VIN (evite "PAS DE PLAQUE" generique).
@@ -425,7 +431,7 @@ export async function POST(req: Request) {
         police_levee_saisie_doc_url:  policeLeveeSaisieDocUrl || null,
         // SNC-specifiques
         snc_requires_balisage: isSnc ? Boolean(sncRequiresBalisage) : false,
-        snc_scenario:          isSnc ? (sncScenario || null) : null,
+        snc_scenario:          null,   // SNC : choisi sur la fiche, jamais à la création (24/09/2026)
         // Saisie : motif obligatoire + label snapshot (demande Franck 2026-06-01)
         saisie_motif_code:     type === 'saisie' ? (saisieMotifCode  || null) : null,
         saisie_motif_label:    type === 'saisie' ? (saisieMotifLabel || null) : null,
