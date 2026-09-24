@@ -343,6 +343,9 @@ export async function POST(req: Request, { params }: { params: { id: string } })
       toCidIntv: body?.toCidIntv ?? null,
       manualAddress: body?.manualAddress ?? null,
       comment: body?.comment ?? null,
+      // Siabis non couvert (police_snc) : mise en parc = fin de tâche (00) chez
+      // Touring, pas dépôt (05). Olivier 2026-09-24.
+      nonCouvert: String((m as any)?.source || '') === 'police_snc',
       // Filet de destination : sur la LIVRAISON, le chauffeur ne rechoisit pas
       // une adresse déjà connue de la fiche — sans ça, Touring ne recevait rien
       // et nous la redemandait par mail.

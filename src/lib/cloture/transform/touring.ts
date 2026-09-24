@@ -53,6 +53,11 @@ export interface TransformInput {
   /** Heure réelle de la clôture (ISO) quand on rejoue après coup — file de
    *  retry, rattrapage. Vide = maintenant. */
   at?: string | null
+  /** Siabis NON couvert (source police_snc) : Touring ne paie ni le transfert
+   *  ni la relivraison. Une mise en parc se clôture chez eux en « Fin de
+   *  tâche » (00), jamais en dépôt (05) — le 05 leur fait ouvrir une action de
+   *  transfert qui reste orpheline (2FPK433, 20/09). Olivier 2026-09-24. */
+  nonCouvert?: boolean
 }
 
 export interface TransformResult {
@@ -114,6 +119,10 @@ export async function transformTouring(keys: ComexKeys, input: TransformInput): 
 
   // ── Code de fin de mission ────────────────────────────────────────────────
   let finCode = def.fin || ''
+  // Non couvert + mise en parc → fin de tâche : le véhicule est chez nous, mais
+  // la suite (parc, relivraison) se règle avec le client, pas avec Touring.
+  const parcNonCouvert = input.outcome === 'park' && input.nonCouvert === true
+  if (parcNonCouvert) finCode = '00'
   if (input.outcome === 'dpr') {
     finCode = String(input.dprCode || '').trim()
     if (!finCode) return { ok: false, error: 'Motif de déplacement pour rien manquant' }
@@ -152,7 +161,10 @@ export async function transformTouring(keys: ComexKeys, input: TransformInput): 
   // automatisations. Quand ils sont vides, Touring inscrit « CHECK ADDRESS » et
   // nous écrit. Le commentaire reste, mais en doublure lisible, pas en substitut.
   let toAddress: ComexToAddress | null = null
-  if (déplaceLeVéhicule && !input.toCidIntv) {
+  if (parcNonCouvert) {
+    // Fin de tâche chez nous : on leur dit quand même où est le véhicule.
+    toAddress = { nom: 'VERVIERS DÉPANNAGE', rue: 'Rue de la Cité', numRue: '22a', cp: '4800', loc: 'VERVIERS' }
+  } else if (déplaceLeVéhicule && !input.toCidIntv) {
     const a = input.manualAddress
     if (a && (a.rue || a.cp || a.loc)) {
       toAddress = {
