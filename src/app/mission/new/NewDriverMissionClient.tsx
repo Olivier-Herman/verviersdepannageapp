@@ -366,7 +366,11 @@ export default function NewDriverMissionClient() {
               <div className="grid grid-cols-2 gap-3">
                 {SOURCES.map(s => (
                   <button key={s.value}
-                    onClick={() => { setSource(s.value); setStep(2) }}
+                    // « Police » = parcours dédié (Police / Saisie / Mal Garée / Siabis) :
+                    // l'écran Police crée la fiche avec la bonne source et son parcours
+                    // (étiquette, encaissement, scénario Siabis). Une source brute
+                    // `police` ici ne passait par aucun d'eux. Olivier 24/09/2026.
+                    onClick={() => { if (s.value === 'police') { router.push('/mission/police'); return } setSource(s.value); setStep(2) }}
                     className={`flex flex-col items-center justify-center py-7 rounded-2xl border-2 text-ink font-bold transition active:scale-95 ${
                       source === s.value ? s.color : 'bg-surface border'
                     }`}>
