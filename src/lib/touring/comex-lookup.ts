@@ -8,7 +8,7 @@
 // Gaté en amont par TOURING_COMEX_MODE=import (l'appelant vérifie).
 
 import { loginComex, listComexMissions, getComexMissionDetail } from './comex'
-import { mapComexToMission } from './map-mission'
+import { mapComexToMission, comexActionAdoption } from './map-mission'
 
 // Champs de CONTENU que COMEX (maître) écrase sur une fiche mail déjà « à valider ».
 // Exclut tout l'opérationnel (id, status, mission_number, assigned_*, dates, parc…).
@@ -89,7 +89,7 @@ export async function importComexByRefs(opts: {
   // Olivier 2026-08-13.
   if (match.CID_DOS) {
     const { data: lineage } = await supabase.from('incoming_missions')
-      .select('id, status, mission_number, raw_content, touring_actions, snc_requires_balisage')
+      .select('id, status, mission_number, raw_content, touring_actions, snc_requires_balisage, mission_type, loaded_at, destination_address')
       .in('dossier_number', [String(match.CID_DOS), `${match.CID_DOS}-REL`])   // la REL du dossier aussi (transfert)
       .eq('dossier_leg', false)   // fiches Gardiennage (dossier_leg) : jamais (audit 08/09/2026)
       .not('status', 'in', '(cancelled,completed,to_invoice,invoiced,ignored,deleted)')
@@ -114,13 +114,14 @@ export async function importComexByRefs(opts: {
       const newSeq = parseInt(String(match.CID_SEQ_ACTION), 10)
       // On n'avance QUE vers une action plus récente — jamais de retour en arrière.
       if (Number.isFinite(newSeq) && (curSeq < 0 || newSeq > curSeq)) {
+        const adoption = comexActionAdoption(detail, lin)
         await supabase.from('incoming_missions').update({
           source_format: 'comex', raw_content: comexRaw, external_id: externalId,
-          updated_at: new Date().toISOString(),
+          ...adoption.patch, updated_at: new Date().toISOString(),
         }).eq('id', lin.id)
         await supabase.from('mission_logs').insert({
           mission_id: lin.id, action: 'touring_synced',
-          notes: `Touring : action ${match.CID_SEQ_ACTION} rattachée à cette fiche (séquence ${curSeq} → ${newSeq}) — pas de 2e fiche.`,
+          notes: `Touring : action ${match.CID_SEQ_ACTION} rattachée à cette fiche (séquence ${curSeq} → ${newSeq}) — pas de 2e fiche.${adoption.note ? ' ' + adoption.note + '.' : ''}`,
           metadata: { cid_dos: match.CID_DOS, seq_from: curSeq, seq_to: newSeq, external_id: externalId, via: 'mail' },
         }).then(() => {}, () => {})
         if (placeholderId) await supabase.from('incoming_missions').delete().eq('id', placeholderId)

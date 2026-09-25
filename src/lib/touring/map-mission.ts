@@ -197,3 +197,36 @@ export function mapComexToMission(input: ComexMapInput): Record<string, any> {
 }
 
 // force deploy 1783451560
+
+/**
+ * UNE ACTION « REMORQUAGE » RATTACHÉE À UNE FICHE DÉPANNAGE LA TRANSFORME
+ * (Olivier 26/09/2026, 2KAL372). Touring ouvre parfois lui-même la séquence
+ * remorquage (+ VR) avant le diagnostic du chauffeur. Le chaînage liait
+ * l'action mais laissait la fiche en « dépannage » : la liste des codes de fin
+ * de l'action 201 (celle d'un remorquage : 00, 07, 20… sans 02) filtrait
+ * « Transformer en remorquage », et la fiche dépannage ne proposait ni
+ * « livré » ni « mise en parc ». Seba ne pouvait plus rien faire.
+ *
+ * Ici : action remorquage + fiche encore dépannage (rien de chargé) → la fiche
+ * devient remorquage, et prend la destination de l'action si elle n'en a pas.
+ */
+export function comexActionAdoption(
+  detail: Record<string, any>,
+  lin: { mission_type?: string | null; loaded_at?: string | null; destination_address?: string | null },
+): { patch: Record<string, any>; note: string | null } {
+  const patch: Record<string, any> = {}
+  const newType = comexMissionType(detail.LIB_GAR)
+  const cur = String(lin.mission_type || '').toLowerCase()
+  const curIsRem = /remorquage|rem\b/.test(cur) || cur === 'rem+rel' || cur === 'rem'
+  if (newType !== 'remorquage' || curIsRem || lin.loaded_at) return { patch, note: null }
+  patch.mission_type = 'remorquage'
+  const notes = ['dépannage → remorquage (action Remorquage ouverte chez Touring)']
+  if (!String(lin.destination_address || '').trim()) {
+    const m = mapComexToMission({ detail, status: 'new', billedToId: null, billedToName: null })
+    for (const f of ['destination_name', 'destination_address', 'destination_lat', 'destination_lng'] as const) {
+      if (m[f] !== undefined && m[f] !== null && m[f] !== '') patch[f] = m[f]
+    }
+    if (patch.destination_address) notes.push(`destination ${patch.destination_name ? patch.destination_name + ', ' : ''}${patch.destination_address}`)
+  }
+  return { patch, note: notes.join(' · ') }
+}

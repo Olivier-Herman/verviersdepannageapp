@@ -12,7 +12,7 @@
 
 import { createAdminClient } from '@/lib/supabase'
 import { loginComex, listComexMissions, getComexMissionDetail } from './comex'
-import { mapComexToMission, comexVehiculeNonCouvert, comexVrPropose } from './map-mission'
+import { mapComexToMission, comexVehiculeNonCouvert, comexVrPropose, comexActionAdoption } from './map-mission'
 import { mapComexVr } from './vr'
 
 export type TouringImportMode = 'preview' | 'send'
@@ -153,7 +153,7 @@ export async function runTouringImport(opts: { mode: TouringImportMode }): Promi
       // valider »). Olivier 2026-08-09 — cf project_touring_lifecycle_chainage.
       if (m.CID_DOS) {
         const { data: lineage } = await sb.from('incoming_missions')
-          .select('id, status, mission_number, raw_content, touring_actions, snc_requires_balisage')
+          .select('id, status, mission_number, raw_content, touring_actions, snc_requires_balisage, mission_type, loaded_at, destination_address')
           // La REL du dossier (dossier_number « …-REL ») compte aussi : une fois
           // le REM en parc (to_invoice), c'est elle qui porte l'action de transfert.
           .in('dossier_number', [m.CID_DOS, `${m.CID_DOS}-REL`])
@@ -205,6 +205,8 @@ export async function runTouringImport(opts: { mode: TouringImportMode }): Promi
           }
           const vrProp = comexVrPropose(detail)
           if (vrProp !== null) adoptPayload.vr_proposed = vrProp
+          const adoption = comexActionAdoption(detail, lin as any)
+          Object.assign(adoptPayload, adoption.patch)
           const { error: adoptErr } = await sb.from('incoming_missions')
             .update(adoptPayload)
             .eq('id', lin.id)
@@ -212,7 +214,8 @@ export async function runTouringImport(opts: { mode: TouringImportMode }): Promi
             results.push({ dossier: m.CID_DOS, plaque: m.NUM_PLAQUE, action: 'failed', external_id: externalId, error: adoptErr.message })
             failed++
           } else {
-            results.push({ dossier: m.CID_DOS, plaque: m.NUM_PLAQUE, action: 'linked', external_id: externalId, reason: `action ${m.CID_SEQ_ACTION} rattachée à la commande (fiche #${lin.mission_number}, séq ${curSeq}→${newSeq})` })
+            results.push({ dossier: m.CID_DOS, plaque: m.NUM_PLAQUE, action: 'linked', external_id: externalId, reason: `action ${m.CID_SEQ_ACTION} rattachée à la commande (fiche #${lin.mission_number}, séq ${curSeq}→${newSeq})${adoption.note ? ' — ' + adoption.note : ''}` })
+            if (adoption.note) await sb.from('mission_logs').insert({ mission_id: lin.id, action: 'touring_synced', notes: `Touring : action ${m.CID_SEQ_ACTION} rattachée (séquence ${curSeq} → ${newSeq}) — ${adoption.note}.`, metadata: { cid_dos: m.CID_DOS, seq_from: curSeq, seq_to: newSeq, external_id: externalId, adoption: adoption.patch } }).then(() => {}, () => {})
             linked++
           }
           continue
