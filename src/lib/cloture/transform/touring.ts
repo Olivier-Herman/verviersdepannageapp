@@ -208,3 +208,18 @@ export async function transformTouring(keys: ComexKeys, input: TransformInput): 
     error: r.ok ? undefined : (r.error || 'Clôture refusée par Touring'),
   }
 }
+
+/**
+ * TOURING A OUVERT LUI-MÊME LE REMORQUAGE : LEUR DÉPANNAGE D'ORIGINE RESTE
+ * OUVERT (2KAL372, 26/09/2026). On a essayé de le solder avec le code 02
+ * « transformé en remorquage » : trente secondes plus tard, leur automate
+ * (GESTIONBO) a ouvert une NOUVELLE action remorquage (séquence 204), doublon
+ * de la 201 qu'ils avaient déjà créée. Un code de fin déclenche des
+ * automatismes chez eux — on ne solde donc RIEN d'ici. On constate, et le
+ * dispatch le voit dans le journal : à régler avec leur dispatch.
+ */
+export function previousActionStillOpen(oldDetail: Record<string, any>): string | null {
+  const statut = String(oldDetail.COD_STATUT_MTR_ACT || '')
+  if (String(oldDetail.COD_FIN_MISSION || '').trim() || statut === '07' || !statut) return null
+  return `séquence ${String(oldDetail.CID_SEQ_ACTION || '?')} « ${String(oldDetail.LIB_GAR || 'Dépannage')} » encore ouverte chez Touring (statut ${statut}) — à faire annuler par leur dispatch, ne pas la clôturer d'ici (un code de fin rouvre un remorquage chez eux)`
+}

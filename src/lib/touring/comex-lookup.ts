@@ -89,7 +89,7 @@ export async function importComexByRefs(opts: {
   // Olivier 2026-08-13.
   if (match.CID_DOS) {
     const { data: lineage } = await supabase.from('incoming_missions')
-      .select('id, status, mission_number, raw_content, touring_actions, snc_requires_balisage, mission_type, loaded_at, destination_address')
+      .select('id, status, mission_number, raw_content, touring_actions, snc_requires_balisage, mission_type, loaded_at, destination_address, vehicle_vin, vehicle_mileage')
       .in('dossier_number', [String(match.CID_DOS), `${match.CID_DOS}-REL`])   // la REL du dossier aussi (transfert)
       .eq('dossier_leg', false)   // fiches Gardiennage (dossier_leg) : jamais (audit 08/09/2026)
       .not('status', 'in', '(cancelled,completed,to_invoice,invoiced,ignored,deleted)')
@@ -125,6 +125,15 @@ export async function importComexByRefs(opts: {
           metadata: { cid_dos: match.CID_DOS, seq_from: curSeq, seq_to: newSeq, external_id: externalId, via: 'mail' },
         }).then(() => {}, () => {})
         if (placeholderId) await supabase.from('incoming_missions').delete().eq('id', placeholderId)
+        // Touring a converti lui-même : leur dépannage d'origine reste ouvert. On le DIT, on ne le clôture pas.
+        if (adoption.patch.mission_type === 'remorquage' && curSeq >= 0) {
+          try {
+            const { previousActionStillOpen } = await import('@/lib/cloture/transform/touring')
+            let oldDetail: any = {}; try { oldDetail = JSON.parse(lin.raw_content || '{}') } catch { /* raw non JSON */ }
+            const warn = previousActionStillOpen(oldDetail)
+            if (warn) await supabase.from('mission_logs').insert({ mission_id: lin.id, action: 'touring_synced', notes: `⚠️ Touring : ${warn}.`, metadata: { via: 'mail', seq_open: curSeq, seq_new: newSeq } }).then(() => {}, () => {})
+          } catch (e: any) { console.warn('[touring] constat ancienne action KO :', e?.message) }
+        }
         return { matched: true, missionId: lin.id, externalId, action: 'linked' }
       }
     }
