@@ -139,6 +139,37 @@ export async function GET(req: Request) {
     }
     candidats.sort((a, b) => (dernierEssai.get(a.id) || '').localeCompare(dernierEssai.get(b.id) || ''))
 
+    // ── LE WORKER DU VPS, S'IL BAT, FAIT LE TRAVAIL ──────────────────────────
+    // Olivier 27/09/2026 : la clôture pilote un Chromium ; sur Vercel c'est un
+    // Chromium serverless dans une fonction bornée, et la BMW 1LRN341 a fait
+    // échouer le filet 130 fois. Le VPS porte le même code avec un vrai Chrome
+    // et sans limite de temps. Ici on ne fait que POSER les demandes ; la
+    // décision (quoi clôturer, recul après 3 échecs) reste celle d'au-dessus.
+    // Worker silencieux → on continue en dessous, exactement comme avant.
+    const { workerHeartbeat, enqueueJob, reclaimForLocal } = await import('@/lib/worker/queue')
+    const hb = await workerHeartbeat(sb)
+    if (hb.alive) {
+      const enfilés: { plaque: string; assignmentId: string; nouveau: boolean }[] = []
+      for (const cible of candidats) {
+        const aidOuvert = (cible.vab_assignment_ids || []).find((a: string) => ouverts.includes(a)) || cible.external_id
+        if (!aidOuvert) continue
+        const r = await enqueueJob(sb, {
+          kind: 'vab_close', dedupeKey: `vab_close:${aidOuvert}`, missionId: cible.id,
+          payload: { missionId: cible.id, externalId: aidOuvert, actorId: null },
+          createdBy: 'cron:vab-close-retry',
+        })
+        enfilés.push({ plaque: cible.vehicle_plate, assignmentId: aidOuvert, nouveau: r.queued })
+      }
+      console.log(`[cron vab-close-retry] worker ${hb.host} vivant → ${enfilés.filter(e => e.nouveau).length} demande(s) posée(s), ${enfilés.filter(e => !e.nouveau).length} déjà en file`)
+      const bilan = { ok: true, mode: 'vps', worker: hb.host, ouverts: ouverts.length, vrIgnorés: vr.length, aTraiter: candidats.length, enfilés }
+      await trace(bilan)
+      return NextResponse.json(bilan)
+    }
+    // Worker mort : ce qu'il avait en file ne sera pas fait, on le solde pour
+    // qu'il ne rejoue pas à son retour ce que Vercel va faire maintenant.
+    const repris = await reclaimForLocal(sb, 'vab_close')
+    if (repris.cancelled || repris.lost) console.log(`[cron vab-close-retry] worker silencieux → ${repris.cancelled} demande(s) annulée(s), ${repris.lost} perdue(s) ; Vercel reprend`)
+
     // ── PLUSIEURS DOSSIERS PAR PASSAGE, À LA FILE ────────────────────────────
     // Une clôture prend 80 à 110 s. À un dossier par quart d'heure, huit dossiers
     // en retard demandaient deux heures. On enchaîne donc tant qu'il reste de
@@ -172,7 +203,7 @@ export async function GET(req: Request) {
     const soldés = résultats.filter(r => r.abouti).length
     console.log(`[cron vab-close-retry] ${résultats.length} traité(s), ${soldés} soldé(s) · reste ${candidats.length - résultats.length}`)
     const bilan = {
-      ok: true, ouverts: ouverts.length, vrIgnorés: vr.length, aTraiter: candidats.length,
+      ok: true, mode: 'local', ouverts: ouverts.length, vrIgnorés: vr.length, aTraiter: candidats.length,
       traités: résultats, soldés, reste: candidats.length - résultats.length,
     }
     await trace(bilan)

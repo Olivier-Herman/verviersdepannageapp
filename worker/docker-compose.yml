@@ -1,0 +1,20 @@
+# worker/docker-compose.yml — worker persistant VD Soft sur le VPS.
+#   cd verviers-app && docker compose -f worker/docker-compose.yml up -d --build
+services:
+  vdsoft-worker:
+    build:
+      context: ..
+      dockerfile: worker/Dockerfile
+      args:
+        WORKER_VERSION: ${WORKER_VERSION:-dev}
+    container_name: vdsoft-worker
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      # Chrome sous Docker : pas de bac à sable (le conteneur l'est déjà).
+      PUPPETEER_ARGS: "--no-sandbox --disable-setuid-sandbox --disable-dev-shm-usage"
+      WORKER_NAME: ${WORKER_NAME:-vps-hostinger}
+    shm_size: "1gb"
+    logging:
+      driver: json-file
+      options: { max-size: "20m", max-file: "5" }

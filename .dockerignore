@@ -1,0 +1,18 @@
+# Contexte de build du worker (worker/Dockerfile) : on n'embarque que le code.
+node_modules
+.next
+out
+build
+.git
+.env
+.env.*
+worker/.env
+!worker/.env.example
+ios
+android
+public
+scratchpad*
+*.mjs
+*.patch
+supabase/.temp
+.claude

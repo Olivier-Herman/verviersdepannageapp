@@ -102,7 +102,10 @@ export async function launchBrowser(): Promise<Browser> {
     }) as unknown as Browser
   }
   const puppeteer = (await import('puppeteer')).default as any
-  return puppeteer.launch({ headless: 'new', defaultViewport: { width: 1400, height: 1000 } })
+  // PUPPETEER_ARGS : options Chrome pour le worker Docker du VPS (« --no-sandbox »,
+  // Chrome refuse de démarrer en conteneur sans elles). Vide ailleurs. 27/09/2026.
+  const args = String(process.env.PUPPETEER_ARGS || '').split(/\s+/).filter(Boolean)
+  return puppeteer.launch({ headless: 'new', args, defaultViewport: { width: 1400, height: 1000 } })
 }
 
 /** Login natif dans le navigateur (plus fiable que l'injection de cookies). */

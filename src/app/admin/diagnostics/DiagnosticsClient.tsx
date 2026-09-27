@@ -37,6 +37,9 @@ const GROUPS: Group[] = [
     { id: 'vab-detail', label: 'Détail VAB', desc: 'Lecture du détail d’un dossier VAB tel que le connecteur le voit.', method: 'GET', path: '/api/vab/debug-detail', slow: true },
     { id: 'vab-scrape', label: 'Lecture complète VAB', desc: 'Lance le lecteur VAB synchrone et renvoie tout ce qu’il trouve. Long (30 s et plus).', method: 'GET', path: '/api/admin/debug/vab-scrape', slow: true },
   ]},
+  { title: 'Worker VPS', tools: [
+    { id: 'worker', label: 'État du worker', desc: 'Le worker du VPS bat-il (dernier signal), que reste-t-il dans sa file, et ses derniers résultats. S’il se tait, Vercel clôture lui-même : c’est ce que dit le verdict.', method: 'GET', path: '/api/admin/debug/worker-status' },
+  ]},
   { title: 'Odoo & facturation', tools: [
     { id: 'helpdesk', label: 'Champs d’un ticket helpdesk', desc: 'Tous les champs d’un ticket Odoo, pour vérifier un mapping.', method: 'GET', path: '/api/admin/odoo-helpdesk-debug', params: [{ name: 'id', label: 'ID ticket', placeholder: '2033', required: true }] },
     { id: 'delay', label: 'Délai moyen à facturer', desc: 'Moyenne, médiane et tranches du délai clôture → facture, sur la même fenêtre que le tableau de bord.', method: 'GET', path: '/api/admin/facturation-delay' },

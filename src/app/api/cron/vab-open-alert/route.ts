@@ -85,10 +85,20 @@ export async function GET(req: Request) {
       vr.length ? `${vr.length} véhicule(s) de remplacement à clôturer À LA MAIN (infos conducteur)` : '',
     ].filter(Boolean).join(' · ')
 
+    // Le worker du VPS est censé faire ces clôtures : s'il se tait, autant le
+    // dire dans la même alerte plutôt que de chercher pourquoi le filet rame.
+    let workerMot = ''
+    try {
+      const { workerHeartbeat } = await import('@/lib/worker/queue')
+      const hb = await workerHeartbeat(sb)
+      if (!hb.alive) workerMot = hb.at ? ` · worker VPS silencieux depuis ${Math.round((hb.ageMs || 0) / 3600000)} h` : ' · worker VPS jamais vu'
+    } catch { /* l'état du worker est un plus */ }
+    const corpsComplet = corps + workerMot
+
     const { sendNotificationToRoles } = await import('@/lib/notifications/send')
     const envoi = await sendNotificationToRoles(['superadmin'], 'vab_dossiers_ouverts', {
       title:      `🚨 VAB : ${ouverts.length} dossier(s) encore ouvert(s)`,
-      body:       corps.length > 180 ? corps.slice(0, 177) + '…' : corps,
+      body:       corpsComplet.length > 180 ? corpsComplet.slice(0, 177) + '…' : corpsComplet,
       action_url: '/dispatch',
     })
 
