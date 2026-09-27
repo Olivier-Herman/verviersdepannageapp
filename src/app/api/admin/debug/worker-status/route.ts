@@ -33,6 +33,8 @@ export async function GET() {
       ...hb,
       verdict: hb.alive
         ? `vivant (${hb.host}, version ${hb.version}, dernier signal il y a ${Math.round((hb.ageMs || 0) / 1000)} s)${hb.busy ? ' — occupé' : ''}`
+        : hb.chromeOk === false && hb.at && (hb.ageMs || 0) < 2 * 60 * 1000
+          ? `bat mais Chrome ne démarre pas chez lui (${hb.host}) → Vercel clôture lui-même`
         : hb.at ? `silencieux depuis ${Math.round((hb.ageMs || 0) / 60000)} min → Vercel clôture lui-même`
                 : 'jamais vu → Vercel clôture lui-même',
     },

@@ -28,20 +28,28 @@ export interface WorkerHeartbeat {
   version: string | null
   busy:    string | null   // id de la demande en cours, s'il y en a une
   ageMs:   number | null
+  /** Le worker a vérifié que Chrome démarre chez lui (false = il se déclare inapte). */
+  chromeOk: boolean | null
 }
 
-/** Le worker bat-il encore ? (lecture seule) */
+/**
+ * Le worker bat-il encore, ET est-il apte ? (lecture seule)
+ * Un worker qui bat mais dont Chrome ne démarre plus se déclare inapte
+ * (chromeOk=false) : on le traite comme mort, Vercel reprend. Sans ça, toutes
+ * les demandes lui seraient confiées et échoueraient en silence.
+ */
 export async function workerHeartbeat(sb: SupabaseClient): Promise<WorkerHeartbeat> {
-  const none: WorkerHeartbeat = { alive: false, at: null, host: null, version: null, busy: null, ageMs: null }
+  const none: WorkerHeartbeat = { alive: false, at: null, host: null, version: null, busy: null, ageMs: null, chromeOk: null }
   try {
     const { data } = await sb.from('app_settings').select('value').eq('key', HEARTBEAT_KEY).maybeSingle()
     if (!data?.value) return none
     const v = JSON.parse(String((data as any).value) || '{}')   // app_settings.value = TEXTE JSON
     if (!v?.at) return none
     const ageMs = Date.now() - Date.parse(v.at)
+    const chromeOk: boolean | null = typeof v.chromeOk === 'boolean' ? v.chromeOk : null
     return {
-      alive: Number.isFinite(ageMs) && ageMs >= 0 && ageMs < HEARTBEAT_MAX_MS,
-      at: v.at, host: v.host || null, version: v.version || null, busy: v.busy || null, ageMs,
+      alive: Number.isFinite(ageMs) && ageMs >= 0 && ageMs < HEARTBEAT_MAX_MS && chromeOk !== false,
+      at: v.at, host: v.host || null, version: v.version || null, busy: v.busy || null, ageMs, chromeOk,
     }
   } catch { return none }
 }

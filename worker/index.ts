@@ -37,15 +37,35 @@ const sb = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPAB
 
 let busy: string | null = null
 let stopping = false
+/** Chrome démarre-t-il ici ? null = pas encore vérifié. false = on se déclare
+ *  inapte dans le battement : Vercel reprend les clôtures, au lieu de nous
+ *  confier des demandes qui échoueraient toutes en silence. */
+let chromeOk: boolean | null = null
+const CHROME_CHECK_MS = 10 * 60 * 1000
 const log = (msg: string) => console.log(`[worker ${new Date().toISOString()}] ${msg}`)
 
 async function heartbeat() {
   try {
     await sb.from('app_settings').upsert(
-      { key: 'worker_vps_heartbeat', value: JSON.stringify({ at: new Date().toISOString(), host: HOST, version: VERSION, busy }), updated_at: new Date().toISOString() },
+      { key: 'worker_vps_heartbeat', value: JSON.stringify({ at: new Date().toISOString(), host: HOST, version: VERSION, busy, chromeOk }), updated_at: new Date().toISOString() },
       { onConflict: 'key' },
     )
   } catch (e: any) { log(`heartbeat KO : ${e?.message || e}`) }
+}
+
+async function checkChrome() {
+  if (busy) return   // jamais deux Chrome en même temps
+  try {
+    const { launchBrowser } = await import('@/lib/vab/sign-browser')
+    const b = await launchBrowser()
+    try { const p = await b.newPage(); await p.goto('about:blank'); await p.close() } finally { await b.close().catch(() => {}) }
+    if (chromeOk !== true) log('Chrome OK')
+    chromeOk = true
+  } catch (e: any) {
+    chromeOk = false
+    log(`Chrome KO — on se déclare inapte, Vercel reprend : ${e?.message || e}`)
+  }
+  await heartbeat()
 }
 
 /** Vercel vient-il de clôturer lui-même (worker jugé mort) ? Alors on attend. */
@@ -96,6 +116,9 @@ async function runJob(job: any) {
   } catch (e: any) {
     await finish(job, false, {}, e?.message || String(e))
     log(`✖ ${job.dedupe_key || job.id} : ${e?.message || e}`)
+    // Un navigateur qui ne démarre plus n'est pas un échec de dossier : on
+    // se retire tout de suite, la vérification périodique nous ramènera.
+    if (/launch the browser|browser process|Chrome|chromium/i.test(String(e?.message || ''))) chromeOk = false
   } finally {
     busy = null
     await heartbeat()
@@ -105,13 +128,17 @@ async function runJob(job: any) {
 async function main() {
   log(`démarrage — hôte ${HOST}, version ${VERSION}, types ${KINDS.join(', ')}`)
   await heartbeat()
+  await checkChrome()
   setInterval(heartbeat, HEARTBEAT_MS).unref()
+  setInterval(checkChrome, CHROME_CHECK_MS).unref()
   process.on('SIGTERM', () => { stopping = true; log('SIGTERM : on termine la demande en cours puis on sort') })
   process.on('SIGINT',  () => { stopping = true; log('SIGINT : on termine la demande en cours puis on sort') })
 
   while (!stopping) {
     try {
-      if (await vercelWorkingLocally()) {
+      if (chromeOk === false) {
+        // Inapte : on ne prend rien (Vercel a repris), on réessaie Chrome à l'heure dite.
+      } else if (await vercelWorkingLocally()) {
         log('Vercel clôture lui-même en ce moment : on attend')
       } else {
         const job = await claim()
