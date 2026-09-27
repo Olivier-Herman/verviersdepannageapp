@@ -16,10 +16,23 @@ const ODOO_DB      = process.env.ODOO_DB!
 const ODOO_UID     = parseInt(process.env.ODOO_UID || '8')
 const ODOO_API_KEY = process.env.ODOO_API_KEY!
 // CLOISONNEMENT : le connecteur principal est verrouillé sur Verviers Dépannage.
-// L'utilisateur Odoo a désormais aussi accès à Dépannage Riga (pour le module
-// Achats uniquement) — sans ce verrou, missions/facturation/amendes verraient
-// Riga par défaut. Seul @/lib/achats/odoo-rpc élargit le périmètre.
+// L'utilisateur Odoo a aussi accès à Dépannage Riga — sans ce verrou,
+// missions/facturation/amendes verraient Riga par défaut.
+//
+// Pour lire ou écrire dans UNE AUTRE société du groupe, on le dit
+// explicitement : `odooRpcCompany(ODOO_COMPANIES.riga, …)` pour un appel, ou
+// `withOdooCompany(ODOO_COMPANIES.riga, fn)` pour une chaîne d'appels. Le
+// 27/09/2026, faute de ce paramètre, Riga paraissait vide dans Odoo alors
+// qu'elle y porte toute sa comptabilité (541 factures fournisseurs, 2 comptes
+// ING) — Olivier : « il est en multi-company, il faut regarder sur la société
+// id 2 ». @/lib/achats/odoo-rpc reste le connecteur consolidé du module Achats.
 const ODOO_MAIN_COMPANY_ID = parseInt(process.env.ODOO_MAIN_COMPANY_ID || '1')
+/** Sociétés du groupe telles qu'Odoo les numérote (surchargeables en env). */
+export const ODOO_COMPANIES = {
+  vd:   ODOO_MAIN_COMPANY_ID,
+  riga: parseInt(process.env.ODOO_RIGA_COMPANY_ID || '2'),
+  vhu:  parseInt(process.env.ODOO_VHU_COMPANY_ID  || '3'),
+} as const
 
 // Champs custom sale.order
 const FIELD_PLAQUE     = 'x_studio_many2one_field_78n_1j6fmmeom'
@@ -50,6 +63,19 @@ export function withOdooActor<T>(actorUserId: string | null | undefined, fn: () 
 
 function currentActor(): string | null | undefined {
   return actorStore.getStore()
+}
+
+// Même mécanique pour la SOCIÉTÉ : par défaut le verrou Verviers Dépannage,
+// et un contexte explicite pour viser Riga ou DGJ VHU le temps d'un traitement.
+const companyStore = new AsyncLocalStorage<number>()
+
+/** Exécute `fn` en visant la société `companyId` pour tous les rpc() qu'elle déclenche. */
+export function withOdooCompany<T>(companyId: number, fn: () => Promise<T>): Promise<T> {
+  return companyStore.run(companyId, fn)
+}
+
+function currentCompany(): number {
+  return companyStore.getStore() ?? ODOO_MAIN_COMPANY_ID
 }
 
 // Cache simple (par process) des creds users pour eviter une query Supabase
@@ -109,14 +135,22 @@ export async function odooRpcAs<T = any>(actorUserId: string | null | undefined,
   return rpc<T>(model, method, args, kwargs, creds)
 }
 
-async function rpc<T = any>(model: string, method: string, args: any[] = [], kwargs: object = {}, credsOverride?: OdooCreds): Promise<T> {
+/** Version explicite : un appel qui vise une autre société du groupe (ex. `ODOO_COMPANIES.riga`). */
+export async function odooRpcCompany<T = any>(companyId: number, model: string, method: string, args: any[] = [], kwargs: object = {}): Promise<T> {
+  return rpc<T>(model, method, args, kwargs, undefined, companyId)
+}
+
+async function rpc<T = any>(model: string, method: string, args: any[] = [], kwargs: object = {}, credsOverride?: OdooCreds, companyOverride?: number): Promise<T> {
   const creds = credsOverride || await resolveOdooCreds(currentActor())
+  const companyId = companyOverride ?? currentCompany()
   // Olivier 2026-06-03 (audit J-2 W6) : timeout + retry. Avant un Odoo
   // lent bloquait la Vercel function jusqu au timeout 5 min. Retry sur
   // 429/5xx transients (Odoo restart, surcharge ponctuelle).
   const { fetchWithRetry } = await import('@/lib/fetch-with-retry')
-  // Force la société Verviers Dépannage sur TOUTES les requêtes (cf. verrou plus haut).
-  const scopedKwargs = { ...kwargs, context: { ...((kwargs as any).context || {}), allowed_company_ids: [ODOO_MAIN_COMPANY_ID] } }
+  // Verrou société (cf. plus haut) : Verviers Dépannage sauf demande explicite
+  // via withOdooCompany / odooRpcCompany. Un `allowed_company_ids` passé dans
+  // kwargs.context est volontairement ignoré : c'est le paramètre qui décide.
+  const scopedKwargs = { ...kwargs, context: { ...((kwargs as any).context || {}), allowed_company_ids: [companyId] } }
   const res = await fetchWithRetry(`${ODOO_URL}/jsonrpc`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
