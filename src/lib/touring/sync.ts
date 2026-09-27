@@ -29,6 +29,36 @@ interface TouringFiche {
   touring_accepted_at:  string | null
   touring_onroad_at:    string | null
   touring_onspot_at:    string | null
+  on_way_at?:           string | null
+}
+
+/**
+ * TGR / TRANSFERT : LE VÉHICULE EST DÉJÀ CHEZ NOUS — PAS DE SLA (Olivier 27/09/2026).
+ *
+ * « Le TGR Touring n'est pas soumis à la règle de départ / sur place : pour un
+ * TGR, on suit le vrai pointage chauffeur. » La règle SLA (en route ≤ accept+10,
+ * sur place = accept+20..45, poussés par le cron même sans chauffeur) ne vaut
+ * que pour une mission d'assistance sur la route. Une commande dont le point de
+ * départ est NOTRE dépôt (TGR ouvert par Touring, ou jambe de transfert créée
+ * après une mise en parc) n'a rien à « rejoindre » : on ne pousse chez COMEX
+ * que ce que le chauffeur pointe réellement, à l'heure réelle.
+ *
+ * 2GLN102 : le 21/09 le cron a poussé en route/sur place sur la commande TGR le
+ * jour de sa réception, la voiture toujours au parc → commande partie en BKO
+ * « faite » six jours avant la livraison, puis fausse annulation le 27/09.
+ *
+ * Reconnaissance sur l'enregistrement COMEX : COD_ADRESSE 'TRF' (jambe de
+ * transfert), ou point de départ nommé « Verviers Dépannage » (TGR ouvert à la
+ * main chez eux, COD_ADRESSE 'ROA'). ⚠️ Pas sur « D68267 » : c'est NOTRE code
+ * prestataire, il préfixe le NOM de toutes nos missions (vérifié 27/09 : 60/60).
+ */
+export function isComexDepotStart(raw: string | null | undefined): boolean {
+  if (!raw) return false
+  let c: any
+  try { c = JSON.parse(raw) } catch { return false }
+  if (String(c?.COD_ADRESSE || '').toUpperCase() === 'TRF') return true
+  const nom = String(c?.NOM || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toUpperCase()
+  return /VERVIERS\s+DEPANNAGE/.test(nom)
 }
 
 /** true si la synchro COMEX réelle est activée (kill-switch global). */
@@ -56,7 +86,7 @@ function comexKeys(f: TouringFiche): { CID_DOS: string; CID_SEQ_ACTION: string }
 
 async function loadFiche(supabase: Sb, missionId: string): Promise<TouringFiche | null> {
   const { data } = await supabase.from('incoming_missions')
-    .select('id, source, source_format, raw_content, touring_accepted_at, touring_onroad_at, touring_onspot_at')
+    .select('id, source, source_format, raw_content, touring_accepted_at, touring_onroad_at, touring_onspot_at, on_way_at')
     .eq('id', missionId).maybeSingle()
   return (data as TouringFiche) || null
 }
@@ -106,8 +136,12 @@ export async function syncTouringOnRoad(
   if (!keys) return false
   if (f.touring_onroad_at) return false   // déjà poussé (idempotent)
 
+  // TGR / transfert : seul le pointage réel du chauffeur compte, à l'heure réelle.
+  const depotStart = isComexDepotStart(f.raw_content)
+  if (depotStart && !opts?.at) return false
+
   const accept = f.touring_accepted_at ? new Date(f.touring_accepted_at) : null
-  const at = clampOnRoad(opts?.at || new Date(), accept)
+  const at = depotStart ? opts!.at! : clampOnRoad(opts?.at || new Date(), accept)
   const r = await setTouringOnRoad(keys, { at })
   if (r.ok) {
     await supabase.from('incoming_missions').update({ touring_onroad_at: new Date().toISOString() }).eq('id', missionId)
@@ -134,12 +168,20 @@ export async function syncTouringOnSpot(
   if (!keys) return false
   if (f.touring_onspot_at) return false   // déjà poussé (idempotent)
 
+  // TGR / transfert : pas de « sur place » automatique, pas de clamp — le
+  // pointage réel du chauffeur, et rien d'autre.
+  const depotStart = isComexDepotStart(f.raw_content)
+  if (depotStart && !opts?.at) return false
+
   const accept = f.touring_accepted_at ? new Date(f.touring_accepted_at) : null
-  const spotAt = opts?.at ? clampOnSpot(opts.at, accept) : autoOnSpot(accept)
+  const spotAt = depotStart ? opts!.at! : (opts?.at ? clampOnSpot(opts.at, accept) : autoOnSpot(accept))
 
   // COMEX exige onRoad avant onSpot : le pousser (backdaté) s'il manque.
   if (!f.touring_onroad_at) {
-    const roadAt = onRoadBefore(spotAt, accept)
+    // TGR : l'heure de départ réelle du chauffeur si on l'a, sinon juste avant l'arrivée.
+    const roadAt = depotStart
+      ? (f.on_way_at && Date.parse(f.on_way_at) < spotAt.getTime() - MIN ? new Date(f.on_way_at) : new Date(spotAt.getTime() - 2 * MIN))
+      : onRoadBefore(spotAt, accept)
     const rr = await setTouringOnRoad(keys, { at: roadAt })
     if (rr.ok) {
       await supabase.from('incoming_missions').update({ touring_onroad_at: new Date().toISOString() }).eq('id', missionId)
