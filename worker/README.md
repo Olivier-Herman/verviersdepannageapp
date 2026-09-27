@@ -19,19 +19,21 @@ pas une copie.
 
 Une demande à la fois : le compte VAB est partagé.
 
-## Installation sur le VPS (une fois)
+## Installation sur le VPS (faite le 27/09/2026)
+
+Le VPS n'a pas de clé sur le dépôt : le code y arrive par archive git, avec
+`worker/deploy-vps.sh` lancé depuis le poste de dev (dossier `/docker/vdsoft-worker`
+sur le VPS).
 
 ```bash
-# 1. Le dépôt (privé) : clé de déploiement GitHub en lecture seule, ou jeton.
-git clone git@github.com:olivier-herman/verviersdepannageapp.git ~/verviers-app
-cd ~/verviers-app
+# 1. Depuis le poste de dev : archive de HEAD → VPS → construction de l'image
+./worker/deploy-vps.sh
 
-# 2. Les secrets (mêmes valeurs que sur Vercel)
-cp worker/.env.example worker/.env
-nano worker/.env
+# 2. Sur le VPS, une fois : les secrets (mêmes valeurs que sur Vercel)
+nano /docker/vdsoft-worker/worker/.env
 
-# 3. Construction + démarrage (redémarre seul après un reboot)
-WORKER_VERSION=$(git rev-parse --short HEAD) docker compose -f worker/docker-compose.yml up -d --build
+# 3. Sur le VPS : démarrage (redémarre seul après un reboot)
+cd /docker/vdsoft-worker && docker compose -f worker/docker-compose.yml up -d
 
 # 4. Vérifier
 docker compose -f worker/docker-compose.yml logs -f --tail 50
@@ -43,17 +45,20 @@ la file et les derniers résultats.
 ## Mise à jour (à chaque déploiement qui touche `src/lib/vab`, `src/lib/cloture` ou `worker/`)
 
 ```bash
-cd ~/verviers-app && git pull && WORKER_VERSION=$(git rev-parse --short HEAD) docker compose -f worker/docker-compose.yml up -d --build
+./worker/deploy-vps.sh      # depuis le poste de dev, sur le commit à déployer
 ```
 
 Le conteneur reçoit SIGTERM, termine la demande en cours, puis repart sur la
 nouvelle image. Pendant la reconstruction (2 à 4 min), Vercel reprend la main
-tout seul si un cron tombe pendant ce trou.
+tout seul si un cron tombe pendant ce trou. Le worker n'a besoin de personne
+pour tourner : le poste de dev ne sert qu'à envoyer une nouvelle version.
 
-## Arrêt
+## Arrêt / journal (sur le VPS)
 
 ```bash
-docker compose -f worker/docker-compose.yml down
+cd /docker/vdsoft-worker
+docker compose -f worker/docker-compose.yml logs -f --tail 50
+docker compose -f worker/docker-compose.yml down     # Vercel reprend dans le quart d'heure
 ```
 
 Vercel reprend les clôtures dans le quart d'heure.
