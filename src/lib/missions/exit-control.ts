@@ -326,6 +326,18 @@ export async function assertExitAllowed(
   sb: any, missionId: string, opts: { via?: 'restitution' | 'relivraison' } = {},
 ): Promise<{ ok: true; state: ExitControlState } | { ok: false; error: string; state: ExitControlState }> {
   const state = await getExitControlState(sb, missionId)
+  // Saisie / rodéo : pas de sortie (restitution ni relivraison, même par une
+  // assistance) sans levée au dossier, sauf dérogation d'un responsable
+  // (Olivier 28/09/2026). Domaine / destruction ne passent pas « via » et ne
+  // sont pas concernés : ce sont justement des sorties sans levée.
+  if (opts.via) {
+    const { data: sm } = await sb.from('incoming_missions').select('source, saisie_motif_code, police_levee_saisie_ok, levee_saisie_at').eq('id', missionId).maybeSingle()
+    const saisieLike = !!sm && (['police_saisie', 'police_rodeo'].includes(String(sm.source || '')) || !!sm.saisie_motif_code)
+    if (saisieLike && !(sm.police_levee_saisie_ok || sm.levee_saisie_at)) {
+      const { data: dg } = await sb.from('derogation_requests').select('id').eq('mission_id', missionId).eq('kind', 'levee').eq('status', 'approved').limit(1)
+      if (!dg?.length) return { ok: false, state, error: '🔒 Véhicule saisi : pas de sortie sans levée de saisie au dossier (ou dérogation d’un responsable). Joignez la levée depuis « Restituer ».' }
+    }
+  }
   if (state.allowed) return { ok: true, state }
   if (opts.via === 'relivraison' && ['autre', 'assistance'].includes(state.control?.path || '')) return { ok: true, state }
   return {

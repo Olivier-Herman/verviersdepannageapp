@@ -128,6 +128,10 @@ export default async function QrMissionPage({ params }: { params: { id: string }
   const canConsulterDossier = isAdmin || isDispatcher          // Olivier 2026-05-27
   const canRelivrerAsDispatcher = isAdmin || isDispatcher      // Olivier 2026-05-28 : dispatcher peut creer REL + assigner driver
   const canDossierView = await isPreviewOn('dossier_view', user.role, user.id)   // Vue dossier (superadmin, pilotes, ou tout le monde)
+  // Restitution unifiée (pilote) : un bouton vers le parcours complet.
+  const restitutionV2 = await isPreviewOn('restitution_v2', user.role, user.id)
+  const rolesQr: string[] = [user.role, ...(Array.isArray(user.roles) ? user.roles : [])].filter(Boolean)
+  const canRestitutionV2 = restitutionV2 && (rolesQr.some(r => ['admin', 'superadmin', 'dispatcher'].includes(r)) || (user.modules || []).includes('fourriere') || mission.source === 'police_mg')
 
   // Si dispatcher : charge la liste des drivers actifs pour le selecteur d assignation REL
   let activeDrivers: { id: string; name: string }[] = []
@@ -203,6 +207,7 @@ export default async function QrMissionPage({ params }: { params: { id: string }
         canOpenOdoo,
         canConsulterDossier,
         canDossierView,
+        canRestitutionV2,
         canRelivrerAsDispatcher,
       }}
       activeDrivers={activeDrivers}

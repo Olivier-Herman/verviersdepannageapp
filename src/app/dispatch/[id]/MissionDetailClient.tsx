@@ -836,6 +836,7 @@ export default function MissionDetailClient({
   parcZoneType = null,
   embed = false,
   dossierView = false,
+  restitutionV2 = false,
 }: {
   mission:       Mission
   logs:          MissionLog[]
@@ -854,6 +855,7 @@ export default function MissionDetailClient({
   parcZoneType?: string | null
   embed?: boolean
   dossierView?: boolean   // l'utilisateur a la Vue dossier (D15 : la facture partielle y est remplacée)
+  restitutionV2?: boolean // restitution unifiée (pilote, Olivier 28/09/2026)
 }) {
   // Audit dispatch B8 (08/09/2026) : chaque router.refresh() de la fiche signale
   // aussi « cette fiche a changé » aux lignes dépliées / dossiers qui l'embarquent.
@@ -4090,7 +4092,17 @@ export default function MissionDetailClient({
                 />
               )}
 
-              {status === 'parked' && ['police_mg', 'police_rodeo', 'police_accident', 'police_saisie', 'police_avp', 'police_snc', 'sia_couvert'].includes(initialMission.source) && (
+              {/* Restitution unifiée (Olivier 28/09/2026) : UN bouton pour tout véhicule
+                  au parc, parcours adapté à la source. Dispatch / fourrière / admins :
+                  toutes les sources ; chauffeurs : mal garées seulement. */}
+              {restitutionV2 && status === 'parked' && !(initialMission as any).dossier_leg
+                && (['admin', 'superadmin', 'dispatcher'].includes(userRole) || userModules.includes('fourriere') || initialMission.source === 'police_mg') && (
+                <a href={`/restitution/${initialMission.id}`}
+                  className="w-full min-h-[48px] py-3 bg-brand hover:bg-brand-hover text-white rounded-2xl text-sm font-semibold transition flex items-center justify-center gap-2 shadow-brand">
+                  🚪 Restituer le véhicule
+                </a>
+              )}
+              {!restitutionV2 && status === 'parked' && ['police_mg', 'police_rodeo', 'police_accident', 'police_saisie', 'police_avp', 'police_snc', 'sia_couvert'].includes(initialMission.source) && (
                 <>
                   {policeBlocked && (
                     <div className="bg-warning/10 border border-warning/40 rounded-2xl p-3 flex items-start gap-2">

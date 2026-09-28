@@ -31,6 +31,7 @@ export default async function MissionDetailPage({ params, searchParams }: { para
   // sélecteur de chauffeur).
   const sp = searchParams || {}
   const hasDossierView = await isPreviewOn('dossier_view', user.role, user.id)
+  const hasRestitutionV2 = await isPreviewOn('restitution_v2', user.role, user.id)
   const wantsDossier = !sp.fiche && !sp.assign && hasDossierView
 
   const supabase = createAdminClient()
@@ -164,6 +165,7 @@ export default async function MissionDetailPage({ params, searchParams }: { para
   return (
     <MissionDetailClient
       dossierView={hasDossierView}
+      restitutionV2={hasRestitutionV2}
       mission={mission}
       logs={logs || []}
       drivers={drivers || []}

@@ -1,0 +1,196 @@
+// src/lib/restitution/server.ts
+//
+// Restitution unifiée (Olivier 28/09/2026 — maquette validée :
+// https://claude.ai/artifact/F14wwMHQwPtrkR5BHRW9Zd).
+//
+// Un seul parcours pour TOUT véhicule au parc :
+//   1. qui vient le reprendre (+ pièce d'identité → client Odoo)
+//   2. peut-il sortir ? (contrôles selon la source et selon qui vient)
+//   3. qui paie quoi ? (saisie / rodéo repris par le client)
+//   4. montant et paiement (facture Odoo ouverte dans Odoo, ou encaissement chauffeur)
+//   5. signature et photos (facultatif), puis sortie du parc.
+// Chaque geste laisse une ligne « restitution_* » dans mission_logs, avec son
+// auteur. Une règle bloquante ne se contourne que par une dérogation validée
+// par un responsable, avec son code, sur son téléphone.
+//
+// Règles d'Olivier (28/09/2026) :
+//   - dispatch, fourrière, admins : toutes les sources ; chauffeurs : mal garées seulement ;
+//   - partir sans payer : dérogation, sauf reprise par un garage ou une assistance ;
+//   - véhicule bloqué (police) : seul un responsable le débloque ;
+//   - saisie et rodéo : levée obligatoire (définitive, ou levée temporaire vers un garagiste) ;
+//   - saisie reprise par le client : on demande qui paie le dépannage, le gardiennage
+//     jusqu'à la levée et après la levée (client, Parquet, frais de justice) ;
+//   - reprise par une assistance en relivraison (REL) : pas de restitution au comptoir,
+//     seul le contrôle de levée (si saisi) s'applique à la sortie.
+
+import { buildDossier, type DossierLeg } from '@/lib/dossier/build'
+import { getExitControlState, isAssistanceSource } from '@/lib/missions/exit-control'
+import { sourceLabel } from '@/lib/missions/source-catalog'
+
+export type WhoKind = 'owner' | 'mandate' | 'garage' | 'assistance' | 'transport'
+export type Payer = 'client' | 'parquet' | 'fdj'
+export type Poste = 'dep' | 'avant' | 'apres'
+export type DerogKind = 'blk' | 'levee' | 'exit_control' | 'identite' | 'montant' | 'paiement'
+
+export const WHO_LABELS: Record<WhoKind, string> = {
+  owner: 'le propriétaire', mandate: 'un mandataire', garage: 'un garage', assistance: 'une assistance', transport: 'un transporteur',
+}
+export const DEROG_LABELS: Record<DerogKind, string> = {
+  blk: 'déblocage du véhicule (blocage police)',
+  levee: 'sortie sans levée de saisie',
+  exit_control: 'contrôle de sortie accident incomplet',
+  identite: 'pièce d’identité manquante',
+  montant: 'montant modifié',
+  paiement: 'départ sans paiement',
+}
+export const POSTE_LABELS: Record<Poste, string> = {
+  dep: 'Dépannage', avant: 'Gardiennage jusqu’à la levée', apres: 'Gardiennage après la levée',
+}
+export const PAYER_LABELS: Record<Payer, string> = { client: 'Client', parquet: 'Parquet', fdj: 'Frais de justice' }
+
+const r2 = (n: number) => Math.round(n * 100) / 100
+
+export function isSaisieLike(m: { source?: string | null; saisie_motif_code?: string | null }): boolean {
+  return ['police_saisie', 'police_rodeo'].includes(String(m.source || '')) || !!m.saisie_motif_code
+}
+
+export function leveeOk(m: any): { ok: boolean; temporaire: boolean; label: string } {
+  const has = !!(m.police_levee_saisie_ok || m.levee_saisie_at)
+  const temporaire = m.levee_saisie_type === 'temporaire'
+  if (!has) return { ok: false, temporaire: false, label: 'Pas de levée de saisie au dossier.' }
+  const d = m.levee_saisie_date ? new Date(m.levee_saisie_date).toLocaleDateString('fr-BE') : null
+  return { ok: true, temporaire, label: `Levée ${temporaire ? 'temporaire' : 'définitive'}${d ? ` du ${d}` : ''} au dossier.` }
+}
+
+/** Accès au bouton « Restituer » : dispatch / fourrière / admins partout ; chauffeurs sur les mal garées. */
+export function restitutionAccess(session: any, source: string | null | undefined): { ok: boolean; driverOnly: boolean } {
+  const u = session?.user || {}
+  const roles: string[] = [u.role, ...(Array.isArray(u.roles) ? u.roles : [])].filter(Boolean)
+  const modules: string[] = Array.isArray(u.modules) ? u.modules : []
+  if (roles.some(r => ['admin', 'superadmin', 'dispatcher'].includes(r)) || modules.includes('fourriere')) return { ok: true, driverOnly: false }
+  if (roles.some(r => ['driver', 'chauffeur'].includes(r)) && source === 'police_mg') return { ok: true, driverOnly: true }
+  return { ok: false, driverOnly: false }
+}
+
+/** Reprise par une assistance en relivraison : REL d'assisteur rattachée à la fiche. */
+export async function findAssistanceRel(sb: any, m: any): Promise<{ id: string | null; label: string } | null> {
+  if (m.rel_kaze_job_id) return { id: null, label: `relivraison Kaze (job ${m.rel_kaze_job_id})` }
+  const { data: kids } = await sb.from('incoming_missions')
+    .select('id, source, mission_number, mission_type, status, dossier_leg')
+    .or(`parent_mission_id.eq.${m.id},merged_into_mission_id.eq.${m.id}`)
+    .eq('dossier_leg', false)
+  const rel = (kids || []).find((k: any) => isAssistanceSource(k.source) && !['cancelled', 'ignored'].includes(String(k.status)))
+  if (!rel) return null
+  return { id: rel.id, label: `${await sourceLabel(rel.source)} · fiche ${rel.mission_number ?? ''}`.trim() }
+}
+
+export interface Check { id: string; title: string; detail: string; state: 'ok' | 'ko' | 'warn'; derog?: DerogKind; derogBy?: string | null; actions?: string[] }
+
+const MISSION_COLS = 'id, mission_number, status, source, saisie_motif_code, vehicle_plate, vehicle_brand, vehicle_model, vehicle_vin, parc_zone_key, parked_at, received_at, police_blocked, police_levee_saisie_ok, levee_saisie_at, levee_saisie_date, levee_saisie_type, levee_saisie_payer, temp_garage_out_at, temp_returned_at, snc_scenario, rel_kaze_job_id, billed_to_id, billed_to_name, client_name, client_phone, client_email, client_address, invoice_odoo_id, dossier_leg'
+
+export async function loadMission(sb: any, id: string) {
+  const { data } = await sb.from('incoming_missions').select(MISSION_COLS).eq('id', id).maybeSingle()
+  return data
+}
+
+export async function approvedDerogations(sb: any, missionId: string, restitutionId: string | null) {
+  let q = sb.from('derogation_requests').select('id, kind, reason, status, responsable_id, requested_by, created_at, decided_at, amount_tvac, restitution_id').eq('mission_id', missionId).order('created_at', { ascending: false })
+  // Une dérogation vaut pour SA restitution ; seul le déblocage (blk) reste acquis.
+  q = restitutionId ? q.or(`restitution_id.eq.${restitutionId},kind.eq.blk`) : q.eq('kind', 'blk')
+  const { data } = await q
+  return (data || []) as any[]
+}
+
+/** Contrôles « peut-il sortir ? » selon la source et qui vient. */
+export async function computeChecks(sb: any, m: any, derogs: any[], names: Record<string, string>): Promise<Check[]> {
+  const ok = (k: DerogKind) => derogs.find(d => d.kind === k && d.status === 'approved')
+  const checks: Check[] = []
+
+  // Blocage police : seul un responsable débloque (la dérogation « blk » lève le blocage).
+  if (m.police_blocked) {
+    const d = ok('blk')
+    checks.push({ id: 'blk', title: 'Blocage police', state: d ? 'ok' : 'ko', derog: 'blk', derogBy: d ? names[d.responsable_id] || null : null,
+      detail: d ? `Débloqué par ${names[d.responsable_id] || 'un responsable'} : ${d.reason}` : 'Véhicule bloqué par la police. Seul un responsable peut le débloquer.' })
+  } else checks.push({ id: 'blk', title: 'Blocage police', state: 'ok', detail: 'Aucun blocage.' })
+
+  // Saisie / rodéo : levée obligatoire.
+  if (isSaisieLike(m)) {
+    const l = leveeOk(m), d = ok('levee')
+    checks.push({ id: 'levee', title: 'Levée de saisie', state: l.ok || d ? 'ok' : 'ko', derog: 'levee', derogBy: d ? names[d.responsable_id] || null : null,
+      detail: l.ok ? l.label + (l.temporaire ? ' Le véhicule part chez un garagiste et revient au parc.' : '') : d ? `Sortie sans levée autorisée par ${names[d.responsable_id] || 'un responsable'} : ${d.reason}` : 'Pas de levée au dossier. Photographiez ou scannez la levée, ou demandez une levée temporaire.',
+      actions: l.ok ? [] : ['levee_capture', 'levee_temporaire'] })
+  }
+
+  // Accident : contrôle de sortie (expert / Informex / identité / attestation).
+  const ec = await getExitControlState(sb, m.id).catch(() => null)
+  if (ec?.armed) {
+    const d = ok('exit_control')
+    checks.push({ id: 'exit_control', title: 'Contrôle de sortie (bureau d’expertise)', state: ec.allowed || d ? 'ok' : 'ko', derog: 'exit_control', derogBy: d ? names[d.responsable_id] || null : null,
+      detail: ec.allowed ? (ec.forced ? 'Sortie autorisée par dérogation.' : 'Procédure de sortie complète.') : (ec.reason || 'Procédure de sortie incomplète.'),
+      actions: ec.allowed ? [] : ['exit_control'] })
+  }
+
+  // SNC : scénario requis avant toute sortie.
+  if (['police_snc', 'sia_couvert'].includes(String(m.source || '')) && !m.snc_scenario) {
+    checks.push({ id: 'snc', title: 'Scénario SNC', state: 'ko', detail: 'Choisissez le scénario sur la fiche avant la sortie.', actions: ['open_fiche'] })
+  }
+  return checks
+}
+
+/** Volets du dossier encore à payer, classés en postes pour une saisie. */
+export async function openLegs(missionId: string, m: any): Promise<{ legs: any[]; dossierRoot: string | null }> {
+  const d = await buildDossier(missionId).catch(() => null)
+  if (!d) return { legs: [], dossierRoot: null }
+  const levee = m.levee_saisie_date ? new Date(m.levee_saisie_date).getTime() : null
+  const legs = d.legs.filter((l: DossierLeg) => l.kind === 'rem' || l.kind === 'gard').map((l: DossierLeg) => {
+    let poste: Poste = l.kind === 'rem' ? 'dep' : 'avant'
+    if (l.kind === 'gard' && levee && l.started_at && new Date(l.started_at).getTime() > levee) poste = 'apres'
+    const due = r2(Math.max(0, (l.amount_htva || 0) - (l.billed_htva || 0)))
+    return {
+      mission_id: l.mission_id, letter: l.letter, kind: l.kind, title: l.title, subtitle: l.subtitle,
+      amount_htva: r2(l.amount_htva || 0), billed_htva: r2(l.billed_htva || 0), billed_refs: l.billed_refs,
+      due_htva: l.nothing_to_bill ? 0 : due, nothing: l.nothing_to_bill, unknown: !!l.amount_unknown, amount_note: l.amount_note,
+      billed_to_id: l.billed_to_id, billed_to_name: l.billed_to_name, channel: l.channel || 'odoo', poste,
+    }
+  })
+  return { legs, dossierRoot: d.root_id }
+}
+
+/** Qui paie chaque volet, selon qui vient et la répartition choisie.
+ *  assistancePartners : partenaires Odoo des assistances (catalogue des sources) —
+ *  un volet déjà facturable à une assistance ne se paie pas au comptoir. */
+export function defaultSplit(m: any): Record<Poste, Payer> {
+  // Par défaut on suit la levée : « frais de justice » → FdJ jusqu'à la levée ; sinon le client.
+  const before: Payer = m?.levee_saisie_payer === 'frais_justice' ? 'fdj' : 'client'
+  return { dep: before, avant: before, apres: 'client' }
+}
+
+export function payerFor(leg: any, who: WhoKind | null, saisie: boolean, split: Partial<Record<Poste, Payer>> | null, assistancePartners: Set<number>, m?: any): Payer | 'other' {
+  if (saisie && (who === 'owner' || who === 'mandate')) return (split && split[leg.poste as Poste]) || defaultSplit(m)[leg.poste as Poste]
+  if (leg.channel === 'parquet') return saisie ? 'parquet' : 'other'
+  if (leg.billed_to_id && assistancePartners.has(Number(leg.billed_to_id))) return 'other'
+  return 'client'
+}
+
+/** Partenaires Odoo des assistances / assureurs (catalogue des sources, hors police, privé, garage, gardiennage). */
+export async function assistancePartnerIds(sb: any): Promise<Set<number>> {
+  const { data } = await sb.from('mission_source_catalog').select('key, default_billed_to_id, accident_billed_to_id').eq('active', true)
+  const ids = new Set<number>()
+  for (const c of data || []) {
+    if (/^(police|prive|garage|gardiennage|sia_couvert)/.test(String(c.key))) continue
+    if (c.default_billed_to_id) ids.add(Number(c.default_billed_to_id))
+    if (c.accident_billed_to_id) ids.add(Number(c.accident_billed_to_id))
+  }
+  return ids
+}
+
+export async function userNames(sb: any, ids: (string | null | undefined)[]): Promise<Record<string, string>> {
+  const u = Array.from(new Set(ids.filter(Boolean))) as string[]
+  if (!u.length) return {}
+  const { data } = await sb.from('users').select('id, name').in('id', u)
+  return Object.fromEntries((data || []).map((x: any) => [x.id, x.name]))
+}
+
+export async function logRestitution(sb: any, missionId: string, actorId: string | null, action: string, notes: string, metadata: any = {}) {
+  await sb.from('mission_logs').insert({ mission_id: missionId, actor_id: actorId, action: `restitution_${action}`, notes, metadata }).then(() => {}, () => {})
+}

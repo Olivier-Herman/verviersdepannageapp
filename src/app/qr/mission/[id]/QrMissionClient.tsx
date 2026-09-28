@@ -67,6 +67,7 @@ interface Permissions {
   canConsulterDossier: boolean   // Consulter le dossier (admin/superadmin/dispatcher)
   canRelivrerAsDispatcher: boolean  // Dispatcher peut creer REL + selectionner chauffeur cible
   canDossierView?: boolean          // Vue dossier (flag dossier_view : superadmin, pilotes, tous)
+  canRestitutionV2?: boolean        // restitution unifiée (pilote, Olivier 28/09/2026)
 }
 
 const DOMAINE_ZONE_KEY = 'I'   // Zone I — Domaine
@@ -635,7 +636,13 @@ export default function QrMissionClient({
                 Montant ouvert à 0 → le véhicule sort simplement du parc ; sinon on
                 informe du montant et on demande : facturer + encaisser, ou laisser
                 partir sans facturer (le bureau facturera). */}
-            {canRestituer && !restit && (
+            {mission.status === 'parked' && permissions.canRestitutionV2 && (
+              <a href={`/restitution/${mission.id}`}
+                className="w-full py-4 bg-emerald-600 hover:bg-emerald-700 text-white rounded-2xl text-base font-bold transition flex items-center justify-center gap-2 shadow-lg shadow-emerald-600/20">
+                🚪 Restituer
+              </a>
+            )}
+            {!permissions.canRestitutionV2 && canRestituer && !restit && (
               <button onClick={openRestit} disabled={working}
                 className="w-full py-4 bg-emerald-600 hover:bg-emerald-700 text-white rounded-2xl text-base font-bold transition disabled:opacity-40 flex items-center justify-center gap-2 shadow-lg shadow-emerald-600/20">
                 🚪 Restituer

@@ -40,6 +40,15 @@ export async function POST(req: Request, { params }: { params: { id: string } })
 
   const sb = createAdminClient()
 
+  // Débloquer = responsables uniquement (Olivier 28/09/2026). Les autres passent
+  // par la restitution : demande au responsable, validée avec son code.
+  if (body.blocked === false) {
+    const { data: me } = await sb.from('users').select('restitution_responsable').eq('id', user.id).maybeSingle()
+    if (!me?.restitution_responsable) {
+      return NextResponse.json({ error: 'Seul un responsable peut débloquer un véhicule. Passez par « Restituer » pour lui demander le déblocage.' }, { status: 403 })
+    }
+  }
+
   // Charge mission pour vérifier source + ancien etat
   const { data: mission, error: mErr } = await sb
     .from('incoming_missions')
