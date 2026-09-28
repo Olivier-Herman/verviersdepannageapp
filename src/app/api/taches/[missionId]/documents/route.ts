@@ -89,14 +89,27 @@ export async function POST(req: Request, { params }: { params: { missionId: stri
     }
   }
   const pageCount = pages.length
+  // Pages déjà scannées auparavant : relues avec les nouvelles, pour que la
+  // reconnaissance porte sur tout le lot (ajout de pages après coup).
+  const { data: earlier } = await sb.from('mission_documents').select('id, file_path, mime_type')
+    .eq('mission_id', m.id).eq('kind', 'parc_scan').order('created_at', { ascending: true })
+  const previous: PageInput[] = []
+  for (const d of (earlier || []).filter(d => !stored.includes(d.id))) {
+    if (previous.length + pages.length >= MAX_PAGES) break
+    const { data: blob } = await sb.storage.from(BUCKET).download(d.file_path)
+    if (blob) previous.push({ base64: Buffer.from(await blob.arrayBuffer()).toString('base64'), mimeType: d.mime_type || blob.type || 'image/jpeg' })
+  }
+  pages.unshift(...previous)
 
   const read = await readVehicleDocuments(pages, { plate: m.vehicle_plate, vin: m.vehicle_vin })
   const now = new Date().toISOString()
   const { data: run } = await sb.from('process_runs').select('answers, status, started_by').eq('mission_id', m.id).eq('process_key', 'accident_police').maybeSingle()
   const answers: Answers = { ...((run?.answers as Answers) || {}), docs: 'oui', scan: 'fait' }
+  // Nouvelle lecture = nouvelle confirmation « Correct ? ».
+  delete (answers as any).check
   const reading = read.ok ? read.reading : null
   await sb.from('process_runs').upsert({ mission_id: m.id, process_key: 'accident_police', status: 'todo', answers, reading, updated_at: now, ...(run ? {} : { started_by: acc.userId }) }, { onConflict: 'mission_id,process_key' })
-  if (stored.length && reading) await sb.from('mission_documents').update({ ocr: reading }).in('id', stored)
+  if (reading) await sb.from('mission_documents').update({ ocr: reading }).eq('mission_id', m.id).eq('kind', 'parc_scan')
 
   // La fiche reçoit ce qu'elle n'avait pas encore — jamais d'écrasement.
   const patch: Record<string, any> = {}

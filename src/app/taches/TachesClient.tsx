@@ -206,11 +206,16 @@ function Wizard({ missionId, gmKey, onBack }: { missionId: string; gmKey: string
     } catch (e: any) { setErr(e?.message || 'Erreur') } finally { setBusy(false) }
   }
 
+  const [addingPages, setAddingPages] = useState(false)
   if (!ctx) return <div className="max-w-2xl mx-auto px-4 py-6 text-sm text-ink-muted">{err || 'Chargement…'}</div>
   const m = ctx.mission, a = ctx.run.answers, reading = ctx.run.reading
   const stepsShown = ctx.steps
   const idx = ctx.next ? stepsShown.indexOf(ctx.next) : stepsShown.length
   const step = ctx.next
+  // Pages de documents ajoutées après coup (Olivier 28/09/2026, 2JDZ143 :
+  // « comment je fais pour rajouter des photos de documents »). Toujours
+  // accessible dès qu'un premier scan existe, même prise en charge finie.
+  const canAddPages = a.scan === 'fait' && step !== 'scan'
 
   return (
     <div className="max-w-2xl mx-auto px-4 py-4">
@@ -222,7 +227,8 @@ function Wizard({ missionId, gmKey, onBack }: { missionId: string; gmKey: string
       {err && <p className="mb-3 text-sm text-critical">{err}</p>}
 
       <div className="bg-surface border border-border rounded-card shadow-md p-4">
-        {!step ? <End ctx={ctx} onBack={onBack} /> : (
+        {addingPages ? <ScanStep append missionId={missionId} busy={busy} setBusy={setBusy} say={say} onDone={async () => { setAddingPages(false); await load() }} onCancel={() => setAddingPages(false)} answer={answer} setErr={setErr} existing={ctx.documents.length} />
+        : !step ? <End ctx={ctx} onBack={onBack} /> : (
           <>
             <div className="flex items-center gap-2 text-xs text-ink-muted mb-2"><span className="rounded-full bg-alert-soft text-alert px-2 py-0.5 font-semibold">Fourrière</span><span className="font-mono">{idx + 1} / {stepsShown.length}</span></div>
             {step === 'label' && <Q title="L’étiquette est-elle collée sur le véhicule ?" known={m.label_printed_at ? `Imprimée à ${fmtTime(m.label_printed_at)} sur la Zebra du parc.` : 'Aucune impression enregistrée pour ce véhicule.'}>
@@ -245,6 +251,9 @@ function Wizard({ missionId, gmKey, onBack }: { missionId: string; gmKey: string
         )}
       </div>
 
+      {canAddPages && !addingPages && (
+        <button type="button" onClick={() => setAddingPages(true)} className="mt-3 w-full min-h-[44px] rounded-xl border border-dashed border-strong bg-surface px-3.5 py-2.5 text-sm font-semibold text-ink-secondary">📄 Ajouter des pages de documents{ctx.documents.length ? ` (${ctx.documents.length} déjà scannée${ctx.documents.length > 1 ? 's' : ''})` : ''}</button>
+      )}
       {Object.keys(a).length > 0 && (
         <details className="mt-3 text-sm"><summary className="cursor-pointer text-xs font-semibold text-ink-muted">Réponses déjà données</summary>
           <ul className="mt-2 flex flex-col gap-1">{stepsShown.filter(s => (a as any)[s] != null).map(s => <li key={s} className="flex justify-between gap-3"><span className="text-ink-muted">{STEP_LABELS[s]}</span><b className="text-right">{answerLabel(s, a)}</b></li>)}</ul>
@@ -326,7 +335,7 @@ type ScanPage = { id: string; preview: string | null; name: string; mime: string
 // Rafale (Olivier 28/09/2026) : autant de pages qu'il faut, prises à la suite.
 // Chaque page est réduite puis envoyée directement au stockage pendant qu'on
 // photographie la suivante ; « Lire » lance une seule lecture pour tout le lot.
-function ScanStep({ missionId, busy, setBusy, say, onDone, answer, setErr }: { missionId: string; busy: boolean; setBusy: (b: boolean) => void; say: (m: string) => void; onDone: () => Promise<void>; answer: (s: StepId, v: any, x?: any) => Promise<void>; setErr: (e: string | null) => void }) {
+function ScanStep({ missionId, busy, setBusy, say, onDone, answer, setErr, append, onCancel, existing = 0 }: { missionId: string; busy: boolean; setBusy: (b: boolean) => void; say: (m: string) => void; onDone: () => Promise<void>; answer: (s: StepId, v: any, x?: any) => Promise<void>; setErr: (e: string | null) => void; append?: boolean; onCancel?: () => void; existing?: number }) {
   const fileRef = useRef<HTMLInputElement>(null)
   const [pages, setPages] = useState<ScanPage[]>([])
   const [camera, setCamera] = useState(false)
@@ -368,7 +377,7 @@ function ScanStep({ missionId, busy, setBusy, say, onDone, answer, setErr }: { m
     } catch (e: any) { setErr(e?.message || 'Lecture impossible') } finally { setBusy(false) }
   }
 
-  return <Q title="Scanner tout ce qui est à bord" hint="Pas de tri à faire : on passe toutes les pages, autant qu’il en faut. La reconnaissance range chaque document ; ce qui n’est pas dans le scan est un document absent.">
+  return <Q title={append ? 'Ajouter des pages de documents' : 'Scanner tout ce qui est à bord'} hint={append ? `Les nouvelles pages sont relues avec ${existing ? `les ${existing} déjà scannée${existing > 1 ? 's' : ''}` : 'celles déjà scannées'} ; vous confirmerez ensuite ce qui a été reconnu.` : 'Pas de tri à faire : on passe toutes les pages, autant qu’il en faut. La reconnaissance range chaque document ; ce qui n’est pas dans le scan est un document absent.'}>
     {camera && <BurstCamera title="Pages" count={pages.length} onShot={b => addBlobs([{ blob: b, name: `page_${pages.length + 1}.jpg` }])} onClose={() => setCamera(false)} />}
     <button type="button" disabled={busy} onClick={() => setCamera(true)} className="w-full min-h-[52px] text-left rounded-xl border border-strong bg-surface px-3.5 py-3 text-base font-semibold text-ink disabled:opacity-60">📷 Photographier en rafale<span className="block text-xs font-normal text-ink-muted">l’appareil reste ouvert : un toucher par page</span></button>
     <ScanToFicheButton label="🖨️ Scanner tout (chargeur)" onScanned={fs => addBlobs(fs.map(f => ({ blob: f, name: f.name })))} />
@@ -391,7 +400,7 @@ function ScanStep({ missionId, busy, setBusy, say, onDone, answer, setErr }: { m
       </div>
       <div className="flex gap-2 mt-1"><Primary onClick={read} disabled={busy || !ready}>{sending ? `Envoi des pages… (${pages.length - sending}/${pages.length})` : failed ? 'Renvoyer les pages en échec' : `Lire les ${pages.length} page${pages.length > 1 ? 's' : ''}`}</Primary></div>
     </>}
-    <div className="flex gap-2 mt-1"><Ghost onClick={() => answer('scan', 'plus_tard')}>Plus tard, le véhicule reste dans la liste</Ghost></div>
+    <div className="flex gap-2 mt-1">{append ? <Ghost onClick={() => { pages.forEach(p => p.preview && URL.revokeObjectURL(p.preview)); onCancel?.() }}>Annuler</Ghost> : <Ghost onClick={() => answer('scan', 'plus_tard')}>Plus tard, le véhicule reste dans la liste</Ghost>}</div>
   </Q>
 }
 
