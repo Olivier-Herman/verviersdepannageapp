@@ -53,6 +53,8 @@ const MAIN_ACTIONS: ActionItem[] = [
   { id: 'missions',        label: 'Dispatch Missions',      subtitle: 'Pipeline temps réel',                href: '/dispatch',       icon: '📡', color: 'info',    i18nKey: 'dashboard.tile_dispatch_label', i18nSubKey: 'dashboard.tile_dispatch_subtitle' },
   { id: 'driver_missions', label: 'Mes Missions',           subtitle: 'Mes interventions du jour',          href: '/mission',        icon: '🚗', color: 'warning', i18nKey: 'dashboard.tile_missions_label', i18nSubKey: 'dashboard.tile_missions_subtitle' },
   { id: 'matthieu',        label: 'La tête à Matthieu',     subtitle: 'Ton mécano de poche 🔧',             href: '/matthieu',       icon: '🔧', color: 'purple' },
+  // Olivier 28/09/2026 : fiche gardiennage quand un transporteur externe dépose un véhicule.
+  { id: 'gardiennage_arrivee', label: 'Véhicule apporté',   subtitle: 'Transporteur externe · gardiennage',  href: '/fourriere/gardiennage/nouveau', icon: '🅿️', color: 'purple' },
   { id: 'avance_fonds',    label: 'Avance de Fonds',        subtitle: 'Demander une avance',                href: '/avance-fonds',   icon: '💰', color: 'success', i18nKey: 'dashboard.tile_advance_label',  i18nSubKey: 'dashboard.tile_advance_subtitle' },
 ]
 
@@ -114,6 +116,7 @@ export default function DashboardClient({
     if (id === 'matthieu')       return userRole !== 'garage' && userRole !== 'partner'   // tout le personnel
     if (id === 'police_mission') return hasTowsoft
     if (id === 'admin')          return isAdmin && userModules.includes('admin')
+    if (id === 'gardiennage_arrivee') return isAdmin || userModules.includes('fourriere')
     if (id === 'encaissement')   return userModules.includes('encaissement')
     if (id === 'finance')        return userModules.includes('encaissements') || userModules.includes('caisse')
     // Olivier 2026-06-08 : module Circuit Spa accessible aux dispatchers + admins
