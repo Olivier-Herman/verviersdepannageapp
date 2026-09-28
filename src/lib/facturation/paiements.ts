@@ -139,6 +139,11 @@ export async function syncInvoicePayments(sb: any): Promise<PaymentSyncSummary> 
           }).then(() => {}, () => {})
           invalidateDossierCache(r.parent_mission_id || r.id)
         }
+        // Mal garée : copie de la facture acquittée au policier (une fois par facture).
+        if (rows?.[0]) {
+          try { const { sendPaidInvoiceToOfficer } = await import('@/lib/restitution/officer-copy'); await sendPaidInvoiceToOfficer((rows[0] as any).parent_mission_id || rows[0].id, mv.id, mv.name) }
+          catch (e: any) { console.warn('[paiements] copie policier KO', e?.message) }
+        }
         out.paid += (rows || []).length
         out.paid_refs.push(mv.name)
       } else if (state && state !== m.payment_state_odoo) {

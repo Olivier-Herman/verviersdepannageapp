@@ -371,6 +371,14 @@ export async function POST(req: Request, { params }: { params: { missionId: stri
         }
         dropLegs(m.id)
         await upd({ status: 'done', settlement, temp_levee: temp, completed_by: actor, completed_at: now })
+        // Mal garée payée dans Odoo : copie de la facture acquittée au policier de la fiche.
+        if (settlement === 'paid_odoo' && rest!.invoice_odoo_id && m.source === 'police_mg') {
+          try {
+            const { sendPaidInvoiceToOfficer } = await import('@/lib/restitution/officer-copy')
+            const name = c.invoice?.name || String(rest!.invoice_odoo_id)
+            await sendPaidInvoiceToOfficer(m.id, rest!.invoice_odoo_id, name)
+          } catch (e: any) { console.warn('[restitution] copie policier KO', e?.message) }
+        }
         await logRestitution(sb, m.id, actor, 'done', temp
           ? `Levée temporaire : véhicule confié au garagiste par ${who_name}, il revient au parc (dossier ouvert).`
           : `Véhicule restitué à ${WHO_LABELS[rest!.who_kind as WhoKind]}${rest!.client?.name ? ` (${rest!.client.name})` : ''} par ${who_name}, zone ${m.parc_zone_key || '?'} libérée. Règlement : ${({ paid_odoo: 'facture payée dans Odoo', driver_cash: 'encaissement chauffeur', later: 'à facturer', nothing_due: 'rien à payer', derogation: 'sans paiement, par dérogation' } as any)[settlement!] || settlement}.`, { settlement, temp })

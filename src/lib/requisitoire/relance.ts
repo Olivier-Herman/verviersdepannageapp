@@ -14,7 +14,7 @@ import { sendEmail, emailLayout, button, infoRow, divider } from '@/lib/emails'
 
 
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://app.verviersdepannage.com'
-const FOURRIERE_FROM = 'fourriere@verviersdepannage.be'
+export const FOURRIERE_FROM = 'fourriere@verviersdepannage.be'
 
 export function depotLink(token: string): string {
   return `${APP_URL}/requisitoire/${token}`
