@@ -197,7 +197,7 @@ export async function GET(req: NextRequest) {
         brand,
         model,
         vin:           v.vin_sn || null,
-        fuel:          v.fuel_type || null,
+        fuel:          null,   // carburant Odoo non fiable (faux « electric » par défaut) — cf. odoo-fuel.ts
         gearbox:       v.transmission || null,
         color:         v.color || null,
         archived:      v.active === false,

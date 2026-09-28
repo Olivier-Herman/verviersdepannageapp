@@ -75,7 +75,7 @@ export async function GET(req: Request) {
       model:        v.model_id?.[0] ? (modelMap.get(v.model_id[0]) || v.model_id[1] || '') : '',
       partner_id:   null,
       partner_name: null,
-      fuel:         v.fuel_type || '',
+      fuel:         '',     // carburant Odoo non fiable — cf. odoo-fuel.ts
       gearbox:      v.transmission || '',
       color:        v.color || '',
     }))

@@ -684,7 +684,7 @@ export default function NewMissionClient({
     setBrand(v.brand)
     setModel(v.model)
     setVin(String(v.vin || ''))
-    setFuel(v.fuel)
+    setFuel(prev => v.fuel || prev)   // carburant Odoo non fiable : garder la saisie
     setGearbox(v.gearbox)
     setOdooVehicleId(v.id)
     if (v.partner_name && !selectedClient) setBilledName(v.partner_name)

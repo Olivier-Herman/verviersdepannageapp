@@ -3,6 +3,7 @@
 // Complète les champs absents (VIN, fuel, transmission) sur un véhicule Odoo
 // existant — sans jamais écraser une valeur déjà saisie côté Odoo.
 
+import { toOdooFuel, shouldWriteFuel } from '@/lib/odoo-fuel'
 import { NextResponse }     from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions }      from '@/lib/auth'
@@ -24,7 +25,8 @@ export async function POST(req: Request) {
 
       const updates: Record<string, any> = {}
       if (vin?.trim()    && !current.vin_sn)       updates.vin_sn       = vin.trim()
-      if (fuel?.trim()   && !current.fuel_type)    updates.fuel_type    = fuel
+      const fuelCode = toOdooFuel(fuel)
+      if (shouldWriteFuel(current.fuel_type, fuelCode)) updates.fuel_type = fuelCode
       if (gearbox?.trim() && !current.transmission) updates.transmission = gearbox
 
       if (Object.keys(updates).length === 0) {

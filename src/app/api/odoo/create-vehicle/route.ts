@@ -1,5 +1,6 @@
 // src/app/api/odoo/create-vehicle/route.ts
 
+import { toOdooFuel } from '@/lib/odoo-fuel'
 import { NextResponse }     from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions }      from '@/lib/auth'
@@ -44,7 +45,7 @@ export async function POST(req: Request) {
       }
 
       if (vin)        vals.vin_sn       = vin.trim()
-      if (fuel)       vals.fuel_type    = fuel
+      if (toOdooFuel(fuel)) vals.fuel_type = toOdooFuel(fuel)
       if (gearbox)    vals.transmission = gearbox
       // Olivier 2026-06-18 : fleet.vehicle n'a PAS de champ partner_id en Odoo 19
       // (le set provoquait "Invalid field 'partner_id'"). On ne le pousse plus.

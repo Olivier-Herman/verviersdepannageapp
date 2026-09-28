@@ -3,6 +3,7 @@
 // Séparé du connecteur principal — ne pas modifier odoo.ts
 // ============================================================
 
+import { toOdooFuel, shouldWriteFuel } from '@/lib/odoo-fuel'
 import { resolveBrandId, resolveModelId, isOtherName } from '@/lib/odoo-fleet'
 
 const FSM_URL     = process.env.ODOO_TEST_URL || process.env.ODOO_URL!
@@ -510,7 +511,8 @@ export async function findOrCreateFsmVehicle(data: {
       if (!current) return
       const updates: Record<string, any> = {}
       if (data.vin?.trim()     && !current.vin_sn)       updates.vin_sn       = data.vin.trim()
-      if (data.fuel?.trim()    && !current.fuel_type)    updates.fuel_type    = data.fuel
+      const fuelCode = toOdooFuel(data.fuel)
+      if (shouldWriteFuel(current.fuel_type, fuelCode)) updates.fuel_type = fuelCode
       if (data.gearbox?.trim() && !current.transmission) updates.transmission = data.gearbox
       if (Object.keys(updates).length > 0) {
         await rpcFsm('fleet.vehicle', 'write', [[vehicleId], updates])

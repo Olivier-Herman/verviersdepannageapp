@@ -128,7 +128,7 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
         brand:          v.brand_id?.[1] || null,
         model:          modelName,
         color:          v.color || null,
-        fuel:           v.fuel_type || null,
+        fuel:           null,  // carburant Odoo non fiable — cf. odoo-fuel.ts
         gearbox:        v.transmission || null,
         modelYear:      v.model_year || null,
         acquisitionDate: v.acquisition_date || null,
