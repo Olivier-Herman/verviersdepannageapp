@@ -18,6 +18,7 @@ import RemarksAddModal from '@/components/missions/RemarksAddModal'
 import MissionInvoicesBanner from '@/components/missions/MissionInvoicesBanner'
 import { KeyTag, KeyControls, isSaisieSource } from '@/components/missions/KeyInfoCard'
 import { PhotoGrid } from '@/components/ui/PhotoLightbox'
+import AddPhotosButton from '@/components/qr/AddPhotosButton'
 import DriverRouteCard from '@/components/dispatch/DriverRouteCard'
 import MergeMissionButton from '@/components/dispatch/MergeMissionButton'
 import CancelMissionButton from '@/components/missions/CancelMissionButton'
@@ -4368,16 +4369,21 @@ export default function MissionDetailClient({
                 </div>
               )}
 
-              {/* Photos chauffeur */}
-              {M.driver_photos && M.driver_photos.length > 0 && (
+              {/* Photos du dossier — toujours visible : le bureau peut en ajouter
+                  en rafale (Olivier 28/09/2026 « que je puisse rajouter des photos
+                  dans un dossier »). Elles rejoignent celles du chauffeur. */}
+              {(
                 <div className="bg-surface border rounded-2xl p-5 hover:border-brand/30 transition md-card-enter">
                   <h3 className="text-ink-muted text-xs font-medium uppercase tracking-wide mb-3">
-                    📷 Photos chauffeur ({M.driver_photos.length})
+                    📷 Photos du dossier ({M.driver_photos?.length || 0})
                   </h3>
-                  <PhotoGrid photos={M.driver_photos} onRemove={canRemovePhoto ? removePhoto : undefined} />
+                  {(M.driver_photos?.length || 0) > 0 && <div className="mb-3"><PhotoGrid photos={M.driver_photos || []} onRemove={canRemovePhoto ? removePhoto : undefined} /></div>}
+                  <AddPhotosButton missionId={M.id} initialCount={M.driver_photos?.length || 0} via="fiche"
+                    onAdded={urls => setM(prev => ({ ...prev, driver_photos: [...(prev.driver_photos || []), ...urls.filter(u => !(prev.driver_photos || []).includes(u))] }))} />
                   {/* OCR manuel : uniquement si VIN OU plaque manque, ET pas déjà tenté
                       (une seule tentative par fiche — le superadmin peut outrepasser). */}
-                  {(!(M.vehicle_plate || '').trim() || !((M as any).vehicle_vin || '').trim())
+                  {(M.driver_photos?.length || 0) > 0
+                    && (!(M.vehicle_plate || '').trim() || !((M as any).vehicle_vin || '').trim())
                     && (!(M as any).vehicle_ocr_attempted_at || userRole === 'superadmin') && (
                     <VehicleOcrFillButton
                       missionId={M.id}

@@ -13,6 +13,7 @@ import AddressField, { verifyAddressViaPlaces } from '@/components/AddressField'
 import ScanToFicheButton from '@/components/missions/ScanToFicheButton'
 import BurstCamera from '@/components/camera/BurstCamera'
 import { compressImage } from '@/lib/image-compress'
+import { usePhotoQueue } from '@/components/qr/AddPhotosButton'
 import { STEP_LABELS, DOCUMENT_LABELS, type Answers, type Reading, type StepId } from '@/lib/taches/accident-steps'
 
 type Vehicle = { id: string; mission_number: number | null; plate: string | null; model: string; zone: string | null; row: number | null; parked_at: string | null; driver: string | null; police: string; status: string; started: boolean; next: StepId | null; next_label: string | null; done: number; total: number; completed_at: string | null }
@@ -416,21 +417,9 @@ function PhotosStep({ missionId, photos, busy, setBusy, say, answer }: { mission
   const fileRef = useRef<HTMLInputElement>(null)
   const [local, setLocal] = useState<string[]>(photos)
   const [camera, setCamera] = useState(false)
-  const [sent, setSent] = useState(0)
-  const [pending, setPending] = useState(0)
-  const [failed, setFailed] = useState(0)
-  // Une photo réduite par envoi : jamais de lot qui dépasse la taille permise.
-  const sendOne = async (blob: Blob) => {
-    setPending(n => n + 1)
-    try {
-      const small = await compressImage(blob, 1600)
-      const fd = new FormData(); fd.append('files', new File([small], `parc_${Date.now()}.jpg`, { type: small.type || 'image/jpeg' }))
-      const r = await fetch(`/api/missions/${missionId}/photos-add`, { method: 'POST', body: fd })
-      if (!r.ok) throw new Error()
-      const j = await r.json().catch(() => ({})); if (Array.isArray(j.driver_photos)) setLocal(j.driver_photos)
-      setSent(n => n + 1)
-    } catch { setFailed(n => n + 1) } finally { setPending(n => n - 1) }
-  }
+  const q = usePhotoQueue(missionId, 'accident', urls => setLocal(l => [...l, ...urls]))
+  const { sent, pending, failed } = q
+  const sendOne = q.enqueue
   const finish = async () => {
     if (pending) return
     setBusy(true); say(`${sent} photo${sent > 1 ? 's' : ''} ajoutée${sent > 1 ? 's' : ''}`); setBusy(false)
