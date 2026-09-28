@@ -474,19 +474,66 @@ function ContactStep({ m, reading, busy, answer }: { m: any; reading: Reading | 
   </Q>
 }
 
+// Fiche d'appel (Olivier 28/09/2026) : « ouvrir le dossier maintenant » —
+// on appelle l'assistance et l'écran montre tout ce qu'elle demande, prêt à
+// dicter ou à copier. Couleur et boîte : lues sur les photos si la fiche ne
+// les a pas.
+function CallSheet({ ctx, missionId }: { ctx: Ctx; missionId: string }) {
+  const m = ctx.mission, r = ctx.run.reading
+  const [look, setLook] = useState<Answers['vehicle_look'] | null>(ctx.run.answers.vehicle_look || null)
+  const [lookState, setLookState] = useState<'idle' | 'reading' | 'none'>(look ? 'idle' : 'reading')
+  const [copied, setCopied] = useState<string | null>(null)
+  useEffect(() => {
+    if (look) return
+    fetch(`/api/taches/${missionId}/vehicle-look`, { method: 'POST' }).then(x => x.json()).then(j => { if (j.look) { setLook(j.look); setLookState('idle') } else setLookState('none') }).catch(() => setLookState('none'))
+  }, [missionId]) // eslint-disable-line react-hooks/exhaustive-deps
+  const when = m.incident_at || m.intervention_date || m.received_at
+  const whenTxt = when ? `${new Date(when).toLocaleDateString('fr-BE', { day: '2-digit', month: '2-digit', year: 'numeric' })} à ${new Date(when).toLocaleTimeString('fr-BE', { hour: '2-digit', minute: '2-digit' })}` : null
+  const reading = lookState === 'reading' ? 'lecture des photos…' : null
+  const rows: [string, string | null][] = [
+    ['Client', [m.client_name || r?.owner?.name, m.client_phone || r?.owner?.phone].filter(Boolean).join(' · ') || null],
+    ['Date et heure de l’accident', whenTxt],
+    ['Plaque', m.vehicle_plate || r?.plate || null],
+    ['Châssis (VIN)', m.vehicle_vin || r?.vin || null],
+    ['Marque et modèle', [m.vehicle_brand || look?.brand, m.vehicle_model || look?.model].filter(Boolean).join(' ') || reading],
+    ['Couleur', look?.color || reading],
+    ['Boîte de vitesses', m.vehicle_gearbox || look?.gearbox || reading],
+    ['Lieu de l’accident', [m.incident_address, m.incident_city].filter(Boolean).join(', ') || null],
+    ['Source', ['Appel police, accident', m.police_zone, m.officer_name ? `agent ${m.officer_name}` : null, m.police_pv_number ? `PV ${m.police_pv_number}` : null].filter(Boolean).join(' · ')],
+  ]
+  const copy = async (label: string, text: string) => {
+    try { await navigator.clipboard.writeText(text); setCopied(label); setTimeout(() => setCopied(null), 1500) } catch {}
+  }
+  const all = rows.filter(x => x[1] && x[1] !== reading).map(([k, v]) => `${k} : ${v}`).join('\n')
+  return <div className="rounded-xl border border-info bg-info-soft/40 p-3 flex flex-col gap-1.5">
+    <div className="flex items-center justify-between gap-2"><div className="text-xs font-bold uppercase tracking-wider text-info">À donner à l’assistance</div>
+      <button type="button" onClick={() => copy('all', all)} className="min-h-[36px] rounded-btn border border-strong bg-surface px-2.5 text-xs font-semibold text-ink">{copied === 'all' ? 'Copié ✓' : 'Tout copier'}</button></div>
+    <div className="rounded-lg bg-surface border border-border divide-y divide-border">
+      {rows.map(([k, v]) => <div key={k} className="flex items-start gap-2 px-3 py-2">
+        <div className="flex-1 min-w-0"><div className="text-[11px] uppercase tracking-wider text-ink-muted">{k}</div>
+          <div className={`text-sm ${v && v !== reading ? 'text-ink font-semibold' : 'text-ink-muted italic'} ${k === 'Plaque' || k.startsWith('Châssis') ? 'font-mono' : ''}`}>{v || (k === 'Couleur' || k === 'Boîte de vitesses' ? 'pas visible sur les photos' : 'inconnu')}</div></div>
+        {v && v !== reading && <button type="button" onClick={() => copy(k, v)} aria-label={`Copier ${k}`} className="min-h-[36px] min-w-[36px] rounded-btn text-xs font-semibold text-ink-secondary hover:bg-surface-hover">{copied === k ? '✓' : 'Copier'}</button>}
+      </div>)}
+    </div>
+  </div>
+}
+
 function AssistanceStep({ ctx, gmKey, busy, answer }: { ctx: Ctx; gmKey: string; busy: boolean; answer: (s: StepId, v: any, x?: any) => Promise<void> }) {
-  const [mode, setMode] = useState<'oui' | 'pas_agree' | null>(null)
+  const [mode, setMode] = useState<'oui' | 'ouvrir' | 'pas_agree' | null>(null)
   const [key, setKey] = useState<string | null>(null); const [ref, setRef] = useState(''); const [free, setFree] = useState('')
   const [addr, setAddr] = useState(ctx.mission.redelivery_address || ''); const [coords, setCoords] = useState<{ lat: number; lng: number } | null>(ctx.mission.redelivery_lat ? { lat: ctx.mission.redelivery_lat, lng: ctx.mission.redelivery_lng } : null)
   const suggested = ctx.run.reading?.assistance || ctx.run.answers.cover_name || (ctx.run.answers.cover === 'ethias_kaze' ? 'Ethias' : '')
   const submitOui = async () => {
     let lat = coords?.lat, lng = coords?.lng
     if (addr.trim() && !coords && gmKey) { const v = await verifyAddressViaPlaces(addr, gmKey).catch(() => null); if (v) { lat = v.lat; lng = v.lng } }
-    await answer('assistance', 'oui', { assistance_key: key, assistance_ref: ref, redelivery_address: addr.trim() || undefined, redelivery_lat: lat, redelivery_lng: lng })
+    await answer('assistance', 'oui', { assistance_key: key, assistance_ref: ref, redelivery_address: addr.trim() || undefined, redelivery_lat: lat, redelivery_lng: lng, opened_now: mode === 'ouvrir' })
   }
   return <Q title="Ouverture d’un dossier d’assistance" known={suggested ? `D’après les documents : ${suggested}.` : undefined}>
-    <Ans onClick={() => setMode('oui')} busy={busy} pressed={mode === 'oui'}>Oui, un dossier est ouvert</Ans>
-    {mode === 'oui' && <div className="rounded-xl border border-border bg-surface-2 p-3 flex flex-col gap-2">
+    <Ans onClick={() => setMode('oui')} busy={busy} pressed={mode === 'oui'}>Oui, un dossier est déjà ouvert</Ans>
+    <Ans onClick={() => setMode('ouvrir')} busy={busy} pressed={mode === 'ouvrir'} sm="on appelle l’assistance">Ouvrir le dossier maintenant</Ans>
+    {mode === 'ouvrir' && <CallSheet ctx={ctx} missionId={ctx.mission.id} />}
+    {(mode === 'oui' || mode === 'ouvrir') && <div className="rounded-xl border border-border bg-surface-2 p-3 flex flex-col gap-2">
+      {mode === 'ouvrir' && <p className="text-xs text-ink-secondary">Une fois l’appel terminé : l’assistance, le n° de dossier qu’elle vous donne, et l’adresse de relivraison si elle en a une.</p>}
       <div className="text-xs font-semibold uppercase tracking-wider text-ink-muted">Assistance</div>
       <div className="flex flex-wrap gap-1.5">{ctx.assisteurs.map(s => <button key={s.key} type="button" onClick={() => setKey(s.key)} aria-pressed={key === s.key} className={`rounded-btn border px-3 py-1.5 text-sm ${key === s.key ? 'border-info bg-info-soft text-info font-semibold' : 'border-strong bg-surface text-ink'}`}>{s.label}</button>)}</div>
       {key && <p className="text-xs text-ink-muted">Client facturable : <b>{ctx.assisteurs.find(s => s.key === key)?.default_billed_to_name || '—'}</b></p>}

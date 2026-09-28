@@ -15,6 +15,8 @@ interface Source {
   has_surcharge: boolean
   default_billed_to_id?:   number | null
   default_billed_to_name?: string | null
+  accident_billed_to_id?:   number | null
+  accident_billed_to_name?: string | null
   default_depot_id?:       string | null
   default_depot_name?:     string | null
   default_parc_zone_key?:  string | null
@@ -212,6 +214,8 @@ function EditModal({ source, depots, zones, onClose, onSaved }: { source: Source
   const [notes, setNotes] = useState(source?.notes || '')
   const [defaultBilledId,   setDefaultBilledId]   = useState<number | null>(source?.default_billed_to_id   || null)
   const [defaultBilledName, setDefaultBilledName] = useState<string>(source?.default_billed_to_name || '')
+  // Client facturable propre aux accidents police (AXA, Ardenne → « Autres »).
+  const [accidentBilled, setAccidentBilled] = useState<{ id: number; name: string } | null>(source?.accident_billed_to_id ? { id: source.accident_billed_to_id, name: source.accident_billed_to_name || String(source.accident_billed_to_id) } : null)
   const [defaultDepotId,    setDefaultDepotId]    = useState<string>(source?.default_depot_id || '')
   const [defaultZoneKey,    setDefaultZoneKey]    = useState<string>(source?.default_parc_zone_key || '')
   const [displayColor, setDisplayColor] = useState<string>(source?.display_color || '')
@@ -264,6 +268,8 @@ function EditModal({ source, depots, zones, onClose, onSaved }: { source: Source
         notes:                  notes.trim() || null,
         default_billed_to_id:   defaultBilledId,
         default_billed_to_name: defaultBilledName || null,
+        accident_billed_to_id:   accidentBilled?.id ?? null,
+        accident_billed_to_name: accidentBilled?.name ?? null,
         default_depot_id:       defaultDepotId || null,
         default_depot_name:     defaultDepotId ? (depots.find(d => d.id === defaultDepotId)?.name || null) : null,
         default_parc_zone_key:  defaultZoneKey || null,
@@ -356,6 +362,14 @@ function EditModal({ source, depots, zones, onClose, onSaved }: { source: Source
               )}
             </div>
           )}
+        </div>
+
+        <div>
+          <label className="block text-ink-muted text-xs mb-1">Client à facturer pour un accident police (optionnel)</label>
+          <p className="text-ink-faint text-[11px] mb-2">
+            Quand un véhicule d'un appel police accident part en dossier chez cette assistance, c'est ce client qui est facturé. Vide : le client par défaut ci-dessus.
+          </p>
+          <OdooClientPick value={accidentBilled} onChange={setAccidentBilled} />
         </div>
 
         <div>
@@ -465,6 +479,37 @@ function EditModal({ source, depots, zones, onClose, onSaved }: { source: Source
           </button>
         </div>
       </div>
+    </div>
+  )
+}
+
+
+// Choix d'un client dans la liste des clients (recherche au clavier, Entrée).
+function OdooClientPick({ value, onChange }: { value: { id: number; name: string } | null; onChange: (v: { id: number; name: string } | null) => void }) {
+  const [q, setQ] = useState('')
+  const [results, setResults] = useState<Array<{ id: number; name: string }>>([])
+  const [busy, setBusy] = useState(false)
+  const search = async () => {
+    if (q.trim().length < 3) { setResults([]); return }
+    setBusy(true)
+    try { const d = await fetch(`/api/odoo/search-client?q=${encodeURIComponent(q)}`).then(r => r.json()); setResults((d.clients || d || []).slice(0, 8)) }
+    catch { setResults([]) } finally { setBusy(false) }
+  }
+  if (value) return (
+    <div className="flex items-center gap-2 px-3 py-2 bg-success-soft border border-success/30 rounded-xl">
+      <span className="text-success text-xs flex-1 truncate">✓ {value.name} <span className="text-ink-muted">(n° {value.id})</span></span>
+      <button onClick={() => onChange(null)} type="button" className="text-ink-muted hover:text-critical text-xs">✕ retirer</button>
+    </div>
+  )
+  return (
+    <div>
+      <input value={q} onChange={e => setQ(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); search() } }}
+        placeholder="Rechercher un client (3 lettres + Entrée)…"
+        className="w-full bg-surface-2 border rounded-xl px-3 py-2 text-ink text-sm focus:outline-none focus:border-brand placeholder:text-ink-faint" />
+      {busy && <p className="text-ink-faint text-xs mt-1">Recherche…</p>}
+      {results.length > 0 && <div className="mt-1 bg-surface border rounded-xl overflow-hidden max-h-56 overflow-y-auto">
+        {results.map(c => <button key={c.id} type="button" onClick={() => { onChange(c); setQ(''); setResults([]) }} className="w-full text-left px-3 py-2 hover:bg-surface-hover text-ink text-sm border-b last:border-b-0">{c.name} <span className="text-ink-muted text-xs">n° {c.id}</span></button>)}
+      </div>}
     </div>
   )
 }

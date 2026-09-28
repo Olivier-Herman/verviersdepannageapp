@@ -19,6 +19,7 @@ import MissionInvoicesBanner from '@/components/missions/MissionInvoicesBanner'
 import { KeyTag, KeyControls, isSaisieSource } from '@/components/missions/KeyInfoCard'
 import { PhotoGrid } from '@/components/ui/PhotoLightbox'
 import AddPhotosButton from '@/components/qr/AddPhotosButton'
+import ScanDocumentsCard from '@/components/missions/ScanDocumentsCard'
 import DriverRouteCard from '@/components/dispatch/DriverRouteCard'
 import MergeMissionButton from '@/components/dispatch/MergeMissionButton'
 import CancelMissionButton from '@/components/missions/CancelMissionButton'
@@ -4393,6 +4394,9 @@ export default function MissionDetailClient({
                   )}
                 </div>
               )}
+
+              {/* Documents du véhicule scannés au parc (page Accident). */}
+              <ScanDocumentsCard missionId={M.id} />
 
               {/* Kilométrage intégré au bloc Lieu/Destination (Olivier 2026-06-14). */}
 

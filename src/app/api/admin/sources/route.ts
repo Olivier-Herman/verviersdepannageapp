@@ -86,6 +86,8 @@ export async function POST(req: Request) {
     notes?: string
     default_billed_to_id?: number | null
     default_billed_to_name?: string | null
+    accident_billed_to_id?: number | null
+    accident_billed_to_name?: string | null
     default_depot_id?: string | null
     default_depot_name?: string | null
     default_parc_zone_key?: string | null
@@ -109,6 +111,8 @@ export async function POST(req: Request) {
       notes:                  body.notes || null,
       default_billed_to_id:   body.default_billed_to_id ?? null,
       default_billed_to_name: body.default_billed_to_name ?? null,
+      accident_billed_to_id:   (body as any).accident_billed_to_id ?? null,
+      accident_billed_to_name: (body as any).accident_billed_to_name ?? null,
       default_depot_id:       body.default_depot_id ?? null,
       default_depot_name:     body.default_depot_name ?? null,
       default_parc_zone_key:  body.default_parc_zone_key ?? null,
@@ -140,6 +144,8 @@ export async function PATCH(req: Request) {
     notes?: string
     default_billed_to_id?: number | null
     default_billed_to_name?: string | null
+    accident_billed_to_id?: number | null
+    accident_billed_to_name?: string | null
     default_depot_id?: string | null
     default_depot_name?: string | null
     default_parc_zone_key?: string | null
@@ -157,6 +163,8 @@ export async function PATCH(req: Request) {
   if (body.notes !== undefined)                  update.notes                  = body.notes
   if (body.default_billed_to_id !== undefined)   update.default_billed_to_id   = body.default_billed_to_id
   if (body.default_billed_to_name !== undefined) update.default_billed_to_name = body.default_billed_to_name
+  if (body.accident_billed_to_id !== undefined)   update.accident_billed_to_id   = body.accident_billed_to_id
+  if (body.accident_billed_to_name !== undefined) update.accident_billed_to_name = body.accident_billed_to_name
   if (body.default_depot_id !== undefined)       update.default_depot_id       = body.default_depot_id || null
   if (body.default_depot_name !== undefined)     update.default_depot_name     = body.default_depot_name || null
   if (body.default_parc_zone_key !== undefined)  update.default_parc_zone_key  = body.default_parc_zone_key || null

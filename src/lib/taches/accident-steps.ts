@@ -37,6 +37,9 @@ export interface Answers {
   assistance_key?:  string
   assistance_name?: string
   assistance_ref?:  string
+  assistance_opened_now?: boolean
+  /** Lu sur les photos du chauffeur pour la fiche d'appel à l'assistance. */
+  vehicle_look?: { color?: string | null; gearbox?: string | null; brand?: string | null; model?: string | null; at?: string }
   redelivery_address?: string
   /** Le propriétaire s'est fait connaître (comptoir, téléphone, police). */
   client?:     boolean

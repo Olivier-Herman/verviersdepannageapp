@@ -17,7 +17,7 @@ import { KEY_LOCATION_LABELS } from '@/lib/key-location'
 
 export const dynamic = 'force-dynamic'
 
-const MISSION_COLS = 'id, mission_number, vehicle_plate, vehicle_brand, vehicle_model, vehicle_vin, parc_zone_key, parc_row_number, parked_at, assigned_to, police_zone, officer_name, client_name, client_phone, client_email, client_address, label_printed_at, key_location, saisie_key_hook, driver_photos, storage_flat_htva, billed_to_id, billed_to_name, dossier_number, redelivery_address, redelivery_lat, redelivery_lng, incident_address'
+const MISSION_COLS = 'id, mission_number, vehicle_plate, vehicle_brand, vehicle_model, vehicle_vin, parc_zone_key, parc_row_number, parked_at, assigned_to, police_zone, officer_name, client_name, client_phone, client_email, client_address, label_printed_at, key_location, saisie_key_hook, driver_photos, storage_flat_htva, billed_to_id, billed_to_name, dossier_number, redelivery_address, redelivery_lat, redelivery_lng, incident_address, incident_city, incident_at, intervention_date, received_at, police_zone, officer_name, police_pv_number, vehicle_gearbox, vehicle_fuel, source'
 
 async function loadContext(sb: any, missionId: string) {
   const { data: m } = await sb.from('incoming_missions').select(MISSION_COLS).eq('id', missionId).maybeSingle()
@@ -26,7 +26,7 @@ async function loadContext(sb: any, missionId: string) {
     sb.from('process_runs').select('*').eq('mission_id', missionId).eq('process_key', 'accident_police').maybeSingle(),
     sb.from('parc_zones').select('key, label, sort_order').eq('active', true).order('sort_order'),
     sb.from('mission_documents').select('id, kind, file_name, mime_type, created_at').eq('mission_id', missionId).eq('kind', 'parc_scan').order('created_at'),
-    sb.from('mission_source_catalog').select('key, label, default_billed_to_id, default_billed_to_name').eq('active', true).not('default_billed_to_id', 'is', null).order('sort_order'),
+    sb.from('mission_source_catalog').select('key, label, default_billed_to_id, default_billed_to_name, accident_billed_to_id, accident_billed_to_name').eq('active', true).not('default_billed_to_id', 'is', null).order('sort_order'),
     m.assigned_to ? sb.from('users').select('name').eq('id', m.assigned_to).maybeSingle() : Promise.resolve({ data: null }),
     sb.from('mission_logs').select('created_at').eq('mission_id', missionId).eq('action', 'label_printed').order('created_at', { ascending: false }).limit(1),
     getBusinessNumber('forfait_parc_accident_tvac'),   // réglage Montants, pas de valeur en dur
@@ -34,7 +34,13 @@ async function loadContext(sb: any, missionId: string) {
   const a: Answers = run?.answers || {}
   const reading: Reading | null = run?.reading || null
   // Assisteurs = les sources du catalogue qui ont un client facturable par défaut, hors police/privé/parc.
-  const assisteurs = ((cat || []) as any[]).filter(c => !/^(police|prive|gardiennage|garage)/.test(c.key))
+  // Accident police : certaines assistances facturent un autre client (AXA,
+  // Ardenne → « Autres »), réglé par source dans Réglages › Sources.
+  const assisteurs = ((cat || []) as any[]).filter(c => !/^(police|prive|gardiennage|garage)/.test(c.key)).map(c => ({
+    key: c.key, label: c.label,
+    default_billed_to_id:   c.accident_billed_to_id   || c.default_billed_to_id,
+    default_billed_to_name: c.accident_billed_to_id ? (c.accident_billed_to_name || c.default_billed_to_name) : c.default_billed_to_name,
+  }))
   return {
     mission: { ...m, driver_name: driver?.name || null, label_printed_at: m.label_printed_at || (labelLog?.[0]?.created_at ?? null), key_label: m.key_location ? KEY_LOCATION_LABELS[m.key_location] : null },
     run: run ? { status: run.status, answers: a, reading, completed_at: run.completed_at } : { status: 'todo', answers: {}, reading: null, completed_at: null },
@@ -127,6 +133,7 @@ export async function POST(req: Request, { params }: { params: { missionId: stri
           answers.assistance_key = x.assistance_key || undefined
           answers.assistance_name = ass?.label || String(x.assistance_name || '').trim() || undefined
           answers.assistance_ref = String(x.assistance_ref || '').trim() || undefined
+          if (x.opened_now) answers.assistance_opened_now = true
           if (ass?.default_billed_to_id) { patch.billed_to_id = ass.default_billed_to_id; patch.billed_to_name = ass.default_billed_to_name }
           if (answers.assistance_ref) patch.dossier_number = answers.assistance_ref
           if (x.redelivery_address) {
