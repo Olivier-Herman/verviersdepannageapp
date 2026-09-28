@@ -20,7 +20,7 @@ import {
   Mail, Trash2, ScanLine, AlertTriangle, Map as MapIcon, Landmark, Receipt, ShieldCheck, Shield,
   ClipboardList, BarChart3, LayoutGrid, CreditCard, Wallet, Users, CalendarDays,
   Megaphone, Contact, TrendingUp, Settings, Store, Building2, Bot, ClipboardCheck,
-  CalendarClock, Send, Link2, type LucideIcon,
+  CalendarClock, Send, Link2, ListChecks, type LucideIcon,
 } from 'lucide-react'
 import { type NavItem } from './nav-items'
 
@@ -83,6 +83,7 @@ export const NAV_TREE_ESPACES: NavModule[] = [
     // (barre en haut de l'écran), plus des entrées de menu.
     sections: [
       { href: '/fourriere',                      label: 'Parc',                   icon: Search,        requires: '/fourriere' },
+      { href: '/taches',                         label: 'Prise en charge',        icon: ListChecks,    requires: '/fourriere' },   // Module Tâches, premier jet (28/09/2026) : véhicules arrivés au parc sur appel police, flag taches_accident
       { href: '/fourriere/requisitoires',        label: 'Réquisitoires',          icon: FileText,      requires: '/fourriere', heading: 'Documents' },
       { href: '/fourriere/saisies',              label: 'États de frais',         icon: FileWarning,   requires: '/fourriere', heading: 'Facturation' },
       { href: '/fourriere/sorties',              label: 'Sorties',                icon: Trash2,        requires: '/fourriere', heading: 'Sorties' },
@@ -177,6 +178,7 @@ export const NAV_TREE: NavModule[] = [
     key: 'fourriere', label: 'Fourrière', icon: '🚓',
     sections: [
       { href: '/fourriere',                     label: 'Recherche & parcs',     icon: Search,        requires: '/fourriere' },
+      { href: '/taches',                        label: 'Prise en charge',       icon: ListChecks,    requires: '/fourriere' },
       { href: '/fourriere/saisies',             label: 'États de frais',        icon: FileWarning,   requires: '/fourriere' },
       { href: '/fourriere/requisitoires',       label: 'Réquisitoires',         icon: FileText,      requires: '/fourriere' },
       { href: '/fourriere/relance-requisitoire', label: 'Relance réquisitoires', icon: Mail,         requires: '/fourriere' },
