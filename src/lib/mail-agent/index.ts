@@ -19,6 +19,7 @@
 
 import { createAdminClient } from '@/lib/supabase'
 import { findFolderIdByName, listFolderMessages, listAllFolders, getMessageText, getPdfAttachments, moveMessage } from './graph'
+import type { AgentMessage } from './graph'
 import { refreshAwpSenders } from './handlers/awp-rejet'
 import { refreshImaSenders } from './handlers/ima-rejet'
 import { isSupplierCandidate, processSupplierMail } from './handlers/fournisseur'
@@ -92,7 +93,7 @@ export async function scanFolder(opts: { mailbox?: string; folder?: string; fold
         // Facture fournisseur ? (Olivier 23/09/2026) — lue, vérifiée dans Odoo
         // par société, classée ou envoyée pour encodage. Jamais deux fois.
         if (isSupplierCandidate(msg)) {
-          const { data: seen } = await sb.from('mail_agent_items').select('id, status').eq('mailbox', mailbox).eq('message_id', msg.id).eq('handler', 'fournisseur').maybeSingle()
+          const seen = await findKnownItem(sb, mailbox, 'fournisseur', msg, folder)
           if (seen && ['applied', 'ignored', 'skipped', 'to_verify'].includes(seen.status)) { report.skipped++; continue }
           const base = { handler: 'fournisseur', mailbox, message_id: msg.id, folder, received_at: msg.receivedAt || null, from_email: msg.fromEmail, subject: msg.subject, updated_at: new Date().toISOString() }
           try {
@@ -107,7 +108,7 @@ export async function scanFolder(opts: { mailbox?: string; folder?: string; fold
         // Triage quotidien (jour 1, Olivier 23/09/2026) : tout le reste, sauf le
         // bruit et les ordres de mission, devient une carte de décision.
         if (opts.triage && !isNoise(msg) && !isAssistanceMission(msg, folder) && !isHandledElsewhere(msg, folder)) {
-          const { data: seen } = await sb.from('mail_agent_items').select('id, status').eq('mailbox', mailbox).eq('message_id', msg.id).eq('handler', 'triage').maybeSingle()
+          const seen = await findKnownItem(sb, mailbox, 'triage', msg, folder)
           if (seen) { report.skipped++; continue }
           const base = { handler: 'triage', mailbox, message_id: msg.id, folder, received_at: msg.receivedAt || null, from_email: msg.fromEmail, subject: msg.subject, updated_at: new Date().toISOString() }
           try {
@@ -151,10 +152,7 @@ export async function scanFolder(opts: { mailbox?: string; folder?: string; fold
       }
 
       // Un item déjà traité ne doit pas être rejoué.
-      const { data: existing } = await sb.from('mail_agent_items')
-        .select('id, status')
-        .eq('mailbox', mailbox).eq('message_id', msg.id).eq('handler', handler.id)
-        .maybeSingle()
+      const existing = await findKnownItem(sb, mailbox, handler.id, msg, folder)
       if (existing && ['applied', 'ignored'].includes(existing.status)) { report.skipped++; continue }
 
       const base = {
@@ -313,6 +311,30 @@ export async function scanMailboxes(opts: { sinceDays?: number; limit?: number }
     total.skipped += r.skipped; total.applied += r.applied; total.toDecide = (total.toDecide || 0) + (r.toDecide || 0); total.errors.push(...r.errors); total.folders.push(...r.folders.map(f => `${mailbox}:${f}`))
   }
   return total
+}
+
+/**
+ * Retrouve un mail déjà connu de l'agent. Outlook donne un NOUVEL identifiant à
+ * un mail déplacé : un mail classé (« Classer », « Mail auto-géré », ou à la
+ * main dans Outlook) réapparaissait comme une nouvelle carte au scan suivant,
+ * puisque le scan relit tous les dossiers (Olivier 28/09/2026). On le
+ * reconnaît donc aussi à sa clé stable — boîte + réception + expéditeur +
+ * objet — et on recale l'identifiant et le dossier sur l'item existant.
+ */
+async function findKnownItem(sb: any, mailbox: string, handler: string, msg: AgentMessage, folder: string): Promise<{ id: string; status: string } | null> {
+  const { data: byId } = await sb.from('mail_agent_items').select('id, status')
+    .eq('mailbox', mailbox).eq('message_id', msg.id).eq('handler', handler).maybeSingle()
+  if (byId) return byId
+  if (!msg.receivedAt) return null
+  let q = sb.from('mail_agent_items').select('id, status')
+    .eq('mailbox', mailbox).eq('handler', handler).eq('received_at', msg.receivedAt)
+  q = msg.fromEmail ? q.eq('from_email', msg.fromEmail) : q.is('from_email', null)
+  q = msg.subject ? q.eq('subject', msg.subject) : q.is('subject', null)
+  const { data: rows } = await q.order('id').limit(1)
+  const moved = rows?.[0]
+  if (!moved) return null
+  await sb.from('mail_agent_items').update({ message_id: msg.id, folder, updated_at: new Date().toISOString() }).eq('id', moved.id)
+  return moved
 }
 
 async function upsert(sb: any, base: Record<string, any>, patch: Record<string, any>) {

@@ -10,7 +10,7 @@ import { getServerSession }  from 'next-auth'
 import { authOptions }       from '@/lib/auth'
 import { sessionAccess }     from '@/lib/access'
 import { createAdminClient } from '@/lib/supabase'
-import { findFolderIdByName, moveMessage } from '@/lib/mail-agent/graph'
+import { findOrCreateFolder, moveMessage } from '@/lib/mail-agent/graph'
 import { FILE_FOLDERS } from '@/lib/mail-agent/triage'
 import { executeDecision } from '@/lib/mail-agent/actions'
 import { getMode } from '@/lib/mail-agent'
@@ -36,11 +36,13 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   if (action === 'classer') {
     const folder = String(body.folder || '')
     if (!FILE_FOLDERS.includes(folder)) return NextResponse.json({ error: 'Dossier de classement inconnu' }, { status: 400 })
-    const fid = await findFolderIdByName(item.mailbox, folder)
-    if (!fid) return NextResponse.json({ error: `Dossier « ${folder} » introuvable dans ${item.mailbox}` }, { status: 400 })
+    const fid = await findOrCreateFolder(item.mailbox, folder)
+    if (!fid) return NextResponse.json({ error: `Impossible de trouver ou créer le dossier « ${folder} » dans ${item.mailbox}` }, { status: 400 })
     const mv = await moveMessage(item.mailbox, item.message_id, fid)
     if (!mv.ok) return NextResponse.json({ error: mv.error || 'Déplacement refusé' }, { status: 502 })
-    await sb.from('mail_agent_items').update({ status: 'decided', mail_moved: true, extracted: { ...(item.extracted || {}), decision }, updated_at: now }).eq('id', item.id)
+    // Nouvel identifiant après déplacement : on le garde, sinon le scan
+    // suivant reprend le mail pour une nouvelle carte.
+    await sb.from('mail_agent_items').update({ status: 'decided', mail_moved: true, ...(mv.newId ? { message_id: mv.newId, folder } : {}), extracted: { ...(item.extracted || {}), decision }, updated_at: now }).eq('id', item.id)
     return NextResponse.json({ ok: true, status: 'decided', moved: true })
   }
   // Jour 2 : les actions métier. Résultat tracé sur l'item ; le mail est classé
@@ -52,7 +54,8 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     return NextResponse.json({ error: res.error || 'échec' }, { status: 400 })
   }
   let moved = false
-  if (action !== 'encoder') { try { const fid = await findFolderIdByName(item.mailbox, 'Mail auto-géré'); if (fid) moved = (await moveMessage(item.mailbox, item.message_id, fid)).ok } catch {} }
-  await sb.from('mail_agent_items').update({ status: 'decided', mail_moved: moved || action === 'encoder', error: null, extracted: { ...(item.extracted || {}), decision: { ...decision, result: res.note, links: res.links || [] } }, updated_at: now, applied_at: now, applied_by: actor }).eq('id', item.id)
+  let newId: string | undefined
+  if (action !== 'encoder') { try { const fid = await findOrCreateFolder(item.mailbox, 'Mail auto-géré'); if (fid) { const mv = await moveMessage(item.mailbox, item.message_id, fid); moved = mv.ok; newId = mv.newId } } catch {} }
+  await sb.from('mail_agent_items').update({ status: 'decided', mail_moved: moved || action === 'encoder', ...(newId ? { message_id: newId, folder: 'Mail auto-géré' } : {}), error: null, extracted: { ...(item.extracted || {}), decision: { ...decision, result: res.note, links: res.links || [] } }, updated_at: now, applied_at: now, applied_by: actor }).eq('id', item.id)
   return NextResponse.json({ ok: true, status: 'decided', note: res.note, links: res.links || [] })
 }

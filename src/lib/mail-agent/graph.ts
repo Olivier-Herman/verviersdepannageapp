@@ -104,6 +104,23 @@ export async function findFolderIdByName(mailbox: string, name: string): Promise
   return walk(`/users/${encodeURIComponent(mailbox)}/mailFolders`, 0)
 }
 
+/**
+ * Comme findFolderIdByName, mais crée le dossier sous la Boîte de réception
+ * s'il n'existe pas. Les dossiers de classement n'existaient que dans info@ :
+ * « Classer » était refusé dans administration@ et fourriere@ et la carte
+ * restait indéfiniment (Olivier 28/09/2026).
+ */
+export async function findOrCreateFolder(mailbox: string, name: string): Promise<string | null> {
+  const found = await findFolderIdByName(mailbox, name)
+  if (found) return found
+  const res = await authedFetch(`/users/${encodeURIComponent(mailbox)}/mailFolders/inbox/childFolders`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ displayName: name.trim() }),
+  })
+  if (!res.ok) return null
+  return (await res.json())?.id || null
+}
+
 const person = (p: any) => ({
   name:  p?.emailAddress?.name || '',
   email: (p?.emailAddress?.address || '').toLowerCase(),
@@ -184,7 +201,7 @@ export async function forwardMessage(mailbox: string, messageId: string, to: str
   return { ok: false, error: `Graph forward ${res.status}: ${(await res.text()).slice(0, 160)}` }
 }
 
-export async function moveMessage(mailbox: string, messageId: string, folderId: string): Promise<{ ok: boolean; error?: string }> {
+export async function moveMessage(mailbox: string, messageId: string, folderId: string): Promise<{ ok: boolean; error?: string; newId?: string }> {
   try {
     guardMailbox(mailbox)
     const res = await authedFetch(`/users/${encodeURIComponent(mailbox)}/messages/${encodeURIComponent(messageId)}/move`, {
@@ -193,7 +210,9 @@ export async function moveMessage(mailbox: string, messageId: string, folderId: 
       body:    JSON.stringify({ destinationId: folderId }),
     })
     if (!res.ok) return { ok: false, error: `Graph move ${res.status}: ${(await res.text()).slice(0, 200)}` }
-    return { ok: true }
+    // Le mail déplacé porte un NOUVEL identifiant Outlook.
+    const moved = await res.json().catch(() => null)
+    return { ok: true, newId: moved?.id || undefined }
   } catch (e: any) {
     return { ok: false, error: e?.message || String(e) }
   }
