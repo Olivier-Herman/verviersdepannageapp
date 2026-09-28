@@ -22,6 +22,37 @@ import { createDraftInvoice, createSaleOrder, findFleetVehicleByPlate, type Quot
 import { withOdooActor, attachFileToInvoice } from '@/lib/odoo'
 import { primeSourceCatalog } from '@/lib/missions/source-catalog'
 
+/** Plaque belge « 1ABC123 » → variantes d'écriture présentes dans Odoo. */
+function plateVariants(raw: string): string[] {
+  const up = String(raw || '').trim().toUpperCase()
+  const bare = up.replace(/[^A-Z0-9]/g, '')
+  const out = [up, bare]
+  const m = bare.match(/^(\d)([A-Z]{3})(\d{3})$/)
+  if (m) out.push(`${m[1]}-${m[2]}-${m[3]}`)
+  return Array.from(new Set(out.filter(Boolean)))
+}
+
+async function resolveInvoiceVehicle(sb: any, root: any): Promise<number | null> {
+  const linked = Number(root.odoo_vehicle_id || root.parsed_data?.odoo_vehicle_id || 0)
+  if (linked) return linked
+  const plate = String(root.vehicle_plate || '').trim()
+  if (!plate) return null
+  const { odooRpc } = await import('@/lib/odoo')
+  const found = await odooRpc<any[]>('fleet.vehicle', 'search_read', [[['license_plate', 'in', plateVariants(plate)]]], { fields: ['id'], limit: 1, context: { active_test: false } }).catch(() => [] as any[])
+  let id: number | null = found?.[0]?.id || (await findFleetVehicleByPlate(plate))
+  if (!id && root.vehicle_brand && !/^test/i.test(plate)) {
+    // Absent d'Odoo : on le crée (le modèle Odoo est obligatoire).
+    const { resolveBrandId, resolveModelId } = await import('@/lib/odoo-fleet')
+    const brandId = await resolveBrandId(odooRpc, root.vehicle_brand)
+    const modelId = await resolveModelId(odooRpc, brandId, root.vehicle_model || root.vehicle_brand)
+    const vals: any = { license_plate: plate.toUpperCase().replace(/[^A-Z0-9-]/g, ''), model_id: modelId, state_id: false }
+    if (root.vehicle_vin) vals.vin_sn = root.vehicle_vin
+    id = await odooRpc<number>('fleet.vehicle', 'create', [vals])
+  }
+  if (id) await sb.from('incoming_missions').update({ odoo_vehicle_id: id }).eq('id', root.id).then(() => {}, () => {})
+  return id
+}
+
 export interface DossierInvoiceResult {
   invoices: { odoo_id: number; url: string; client_id: number; client_name: string; covers: string[]; total_htva: number; sections?: QuoteSection[] }[]
   warnings: string[]
@@ -117,8 +148,11 @@ async function invoiceDossierGroupsLocked(sb: any, d: Dossier, input: { anyMissi
 
   const nowIso = new Date().toISOString()
   const result: DossierInvoiceResult = { invoices: [], warnings, dry_run: !!input.dryRun }
-  const fleetVehicleId = root?.vehicle_plate
-    ? await withOdooActor(input.actorUserId, () => findFleetVehicleByPlate(root.vehicle_plate)).catch(() => null)
+  // Véhicule de la facture (champ Plaque) : fiche Odoo déjà liée, sinon plaque
+  // écrite de plusieurs façons (avec/sans tirets), sinon création du véhicule.
+  // Olivier 28/09/2026 : « la plaque n'a pas été remontée dans la facture ».
+  const fleetVehicleId = (root && !input.dryRun)
+    ? await withOdooActor(input.actorUserId, () => resolveInvoiceVehicle(sb, root)).catch((e: any) => { warnings.push(`Véhicule non rattaché à la facture : ${e?.message || e}`); return null })
     : null
 
   for (const [clientId, group] of byClient) {

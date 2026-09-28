@@ -281,27 +281,25 @@ export async function POST(req: Request, { params }: { params: { missionId: stri
         const res = await withOdooActor(actor, () => invoiceDossierGroups({ anyMissionId: m.id, missionIds: clientLegs.map(l => l.mission_id), actorUserId: actor }))
         const inv = res.invoices.find(i => Number(i.client_id) === Number(rest!.odoo_partner_id)) || res.invoices[0]
         if (!inv) return NextResponse.json({ error: `Aucune facture créée. ${(res.warnings || []).join(' · ')}` }, { status: 409 })
-        // Postée pour pouvoir l'encaisser tout de suite dans Odoo — sauf véhicule de
-        // test (plaque TEST…) : la facture reste en brouillon, supprimable sans avoir.
-        const isTest = /^TEST/i.test(String(m.vehicle_plate || ''))
-        if (!isTest) await withOdooActor(actor, () => odooRpc('account.move', 'action_post', [[inv.odoo_id]])).catch((e: any) => console.warn('[restitution] action_post KO', e?.message))
+        // Facture laissée en BROUILLON (Olivier 28/09/2026) : elle s'ouvre dans Odoo,
+        // on l'adapte si besoin, on la valide et on l'encaisse à la main.
         const total = r2(inv.total_htva || 0)
         await upd({ invoice_odoo_id: inv.odoo_id, invoice_url: inv.url, amount_htva: total, amount_tvac: r2(total * 1.21) })
-        await logRestitution(sb, m.id, actor, 'invoice', `Montant confirmé (${total.toFixed(2)} € HTVA) et facture créée dans Odoo au nom de ${clientName} par ${who_name}${isTest ? ' (véhicule de test : facture laissée en brouillon)' : ''}.`, { invoice_odoo_id: inv.odoo_id, warnings: res.warnings, test: isTest })
+        await logRestitution(sb, m.id, actor, 'invoice', `Montant confirmé (${total.toFixed(2)} € HTVA) et facture créée en brouillon dans Odoo au nom de ${clientName} par ${who_name} (à valider et encaisser dans Odoo).`, { invoice_odoo_id: inv.odoo_id, warnings: res.warnings })
         return done()
       }
 
       case 'check_payment': {
         await ensure()
         if (!rest!.invoice_odoo_id) return NextResponse.json({ error: 'Pas de facture à vérifier.' }, { status: 400 })
-        const [mv] = await odooRpc<any[]>('account.move', 'read', [[rest!.invoice_odoo_id]], { fields: ['name', 'payment_state', 'amount_residual'] })
-        const paid = mv && (['paid', 'in_payment'].includes(mv.payment_state) || Number(mv.amount_residual) <= 0.01)
+        const [mv] = await odooRpc<any[]>('account.move', 'read', [[rest!.invoice_odoo_id]], { fields: ['name', 'state', 'payment_state', 'amount_residual'] })
+        const paid = mv && mv.state === 'posted' && (['paid', 'in_payment'].includes(mv.payment_state) || Number(mv.amount_residual) <= 0.01)
         if (paid) {
           await upd({ settlement: 'paid_odoo' })
           await logRestitution(sb, m.id, actor, 'paid', `Paiement vérifié : facture ${mv.name} payée dans Odoo.`)
         }
         const c: any = await buildContext(sb, session, m.id)
-        return NextResponse.json({ ...c, paymentChecked: paid ? 'paid' : `Pas encore payée (reste ${Number(mv?.amount_residual || 0).toFixed(2)} €).` })
+        return NextResponse.json({ ...c, paymentChecked: paid ? 'paid' : mv?.state === 'draft' ? 'La facture est encore en brouillon : validez-la puis encaissez-la dans Odoo.' : `Pas encore payée (reste ${Number(mv?.amount_residual || 0).toFixed(2)} €).` })
       }
 
       case 'later': {
@@ -353,7 +351,7 @@ export async function POST(req: Request, { params }: { params: { missionId: stri
         let settlement = rest!.settlement as string | null
         if (!settlement) {
           if (c.due.htva <= 0) settlement = 'nothing_due'
-          else if (c.invoice && (['paid', 'in_payment'].includes(c.invoice.payment_state) || Number(c.invoice.residual) <= 0.01)) settlement = 'paid_odoo'
+          else if (c.invoice && c.invoice.state === 'posted' && (['paid', 'in_payment'].includes(c.invoice.payment_state) || Number(c.invoice.residual) <= 0.01)) settlement = 'paid_odoo'
           else if (c.driverCollected >= c.due.tvac - 0.01) settlement = 'driver_cash'
           else if (ap('paiement')) settlement = 'derogation'
         }

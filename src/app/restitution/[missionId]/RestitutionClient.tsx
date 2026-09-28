@@ -77,7 +77,7 @@ export default function RestitutionClient({ missionId, gmKey }: { missionId: str
   const needSplit = m.saisie && (who === 'owner' || who === 'mandate')
   const splitOk = !needSplit || !!R?.split
   const inv = c.invoice
-  const paidOdoo = inv && (['paid', 'in_payment'].includes(inv.payment_state) || Number(inv.residual) <= 0.01)
+  const paidOdoo = inv && inv.state === 'posted' && (['paid', 'in_payment'].includes(inv.payment_state) || Number(inv.residual) <= 0.01)
   const driverPaid = c.due.tvac > 0 && c.driverCollected >= c.due.tvac - 0.01
   const settled = !!R?.settlement || c.due.htva <= 0 || paidOdoo || driverPaid || approved('paiement')
   const signOk = !!R?.signed_at || signSkip
@@ -382,7 +382,7 @@ function AmountStep({ c, R, act, busy, setErr, say, onDerog }: any) {
     </>
   }
   if (!inv) return <>{table}
-    <p className="text-sm text-ink-secondary">En confirmant, la facture de <b>{eur(due.tvac)}</b> est créée dans Odoo au nom du client et s’ouvre dans un nouvel onglet, prête à encaisser.</p>
+    <p className="text-sm text-ink-secondary">En confirmant, la facture de <b>{eur(due.tvac)}</b> est créée en brouillon dans Odoo au nom du client et s’ouvre dans un nouvel onglet : adaptez-la si besoin, validez-la et encaissez-la.</p>
     <div className="flex flex-wrap gap-2">
       <Btn kind="brand" disabled={busy || !R?.odoo_partner_id} onClick={async () => {
         const w = window.open('about:blank', '_blank')   // ouvert dans le clic, sinon le navigateur bloque
@@ -393,9 +393,9 @@ function AmountStep({ c, R, act, busy, setErr, say, onDerog }: any) {
     </div>
     <div className="flex flex-wrap gap-2">{noPay}</div>
   </>
-  const paid = ['paid', 'in_payment'].includes(inv.payment_state) || Number(inv.residual) <= 0.01
+  const paid = inv.state === 'posted' && (['paid', 'in_payment'].includes(inv.payment_state) || Number(inv.residual) <= 0.01)
   return <>{table}
-    <Chk state={paid ? 'ok' : 'warn'} title={`Facture ${inv.name || ''} ${paid ? 'payée' : 'créée dans Odoo'}`}>{paid ? 'Reste à payer : 0 €.' : `Encaissez-la dans Odoo (reste ${eur(inv.residual ?? due.tvac)}), revenez ici et vérifiez.`}</Chk>
+    <Chk state={paid ? 'ok' : 'warn'} title={paid ? `Facture ${inv.name || ''} payée` : inv.state === 'draft' ? 'Facture en brouillon dans Odoo' : `Facture ${inv.name || ''} validée`}>{paid ? 'Reste à payer : 0 €.' : inv.state === 'draft' ? 'Adaptez-la si besoin, validez-la et encaissez-la dans Odoo, puis revenez ici et vérifiez.' : `Encaissez-la dans Odoo (reste ${eur(inv.residual ?? due.tvac)}), revenez ici et vérifiez.`}</Chk>
     <div className="flex flex-wrap gap-2">
       {!paid && <a href={inv.url} target="_blank" rel="noreferrer" className="min-h-[44px] rounded-btn border border-strong bg-surface px-3.5 text-sm font-semibold text-ink inline-flex items-center">Rouvrir la facture dans Odoo</a>}
       {!paid && <Btn kind="brand" disabled={busy} onClick={async () => { const j = await act('check_payment'); if (j && j.paymentChecked !== 'paid') setErr(j.paymentChecked) ; else if (j) say('Facture payée') }}>Vérifier le paiement</Btn>}
