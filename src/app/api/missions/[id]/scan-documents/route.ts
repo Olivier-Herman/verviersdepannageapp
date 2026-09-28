@@ -17,7 +17,10 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   const sb = createAdminClient()
   const [{ data: docs }, { data: run }] = await Promise.all([
-    sb.from('mission_documents').select('id, file_name, mime_type, created_at').eq('mission_id', params.id).eq('kind', 'parc_scan').order('created_at', { ascending: true }),
+    // Toutes les pièces rangées dans le dossier (Olivier 28/09/2026 : « toutes les
+    // photos devront venir s'ajouter au dossier ») : scans du parc, pièce
+    // d'identité, signature, CMR, Informex…
+    sb.from('mission_documents').select('id, kind, file_name, mime_type, created_at').eq('mission_id', params.id).order('created_at', { ascending: true }),
     sb.from('process_runs').select('reading').eq('mission_id', params.id).eq('process_key', 'accident_police').maybeSingle(),
   ])
   const reading: any = run?.reading || null
