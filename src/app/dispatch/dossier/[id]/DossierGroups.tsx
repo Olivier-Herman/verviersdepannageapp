@@ -261,11 +261,6 @@ export default function DossierGroups({ initial, fiches, shared, isSuperadmin, o
               const onChanged = async () => { await refresh(); router.refresh() }
               return (
                 <>
-                  {restitutionV2 && atParc && rootLeg && rootLeg.kind !== 'rel' && (
-                    <a href={`/restitution/${d.root_id}`} className="mt-2 inline-flex items-center justify-center gap-2 min-h-[44px] px-4 rounded-xl bg-brand hover:bg-brand-hover text-white text-sm font-semibold shadow-brand">
-                      🚪 Restituer le véhicule <span className="font-normal opacity-90">· clôt tout le dossier</span>
-                    </a>
-                  )}
                   {isSaisie && rootFiche && (
                     <SaisieHeaderBlock fiche={rootFiche} zoneType={rootZoneType} onChanged={onChanged} />
                   )}
@@ -284,6 +279,10 @@ export default function DossierGroups({ initial, fiches, shared, isSuperadmin, o
               {(() => { const rootLeg = d.legs.find(l => l.mission_id === d.root_id) || d.legs[0]; return rootLeg ? <BillingRow d={d} leg={rootLeg} onChanged={refresh} gmKey={shared.googleMapsKey} allLegs onApplied={applyBilledTo} /> : null })()}
               {hasDrafts && <button disabled={verifying} onClick={verifyInvoices} title="Lit l'état des brouillons dans Odoo : s'ils sont confirmés, le numéro de facture remplace le tampon brouillon" className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-emerald-600 hover:bg-emerald-700 text-white disabled:opacity-50">{verifying ? '⏳ Vérification…' : '✓ Facturation OK'}</button>}
               <button disabled={!billable.length || openingBilling} onClick={async () => { if (d.light || refining) { setOpeningBilling(true); try { await refresh() } finally { setOpeningBilling(false) } } setBilling(true) }} title={billable.length ? 'Une facture Odoo par client, créée directement' : 'Rien à facturer'} className={`px-3 py-1.5 rounded-lg text-xs font-semibold bg-brand text-white ${billable.length ? 'hover:bg-brand-hover' : 'opacity-40 cursor-not-allowed'}`}>Facturer{billable.length ? ` (${billable.length})` : ''}</button>
+              {/* Restitution unifiée (pilote) : à côté de Facturer, elle clôt tout le dossier. */}
+              {restitutionV2 && (() => { const rl = d.legs.find(l => l.mission_id === d.root_id); const parc = rl?.status === 'parked' || d.legs.some(l => l.kind === 'gard' && l.open); return parc && rl && rl.kind !== 'rel' })() && (
+                <a href={`/restitution/${d.root_id}`} title="Restitue le véhicule et clôt tout le dossier" className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-emerald-600 hover:bg-emerald-700 text-white">🚪 Restituer</a>
+              )}
             </div>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-x-4 gap-y-1 mt-2 text-[11px] text-ink-muted md:justify-items-end">
               <div>Estimé<b className="block text-ink text-sm tabular-nums">{eur(d.totals.estimated)} <span className="text-[10px] font-normal text-ink-muted">HTVA</span></b><span className="block text-ink-secondary text-xs tabular-nums">{tvac(d.totals.estimated)} <span className="text-[10px]">TVAC</span></span></div>
