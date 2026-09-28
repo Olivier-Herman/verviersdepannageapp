@@ -35,7 +35,8 @@ const fmtWhen = (iso?: string | null) => {
 type KeyTask = { missionId: string; status: string; since: string; doneAt: string | null; plate: string | null; model: string; digibox: string; slot: string | null; zone: string | null; driver: string | null; rangement: string | null }
 
 export default function TachesClient({ gmKey }: { gmKey: string }) {
-  const [list, setList] = useState<{ todo: Vehicle[]; waiting: Vehicle[]; done: Vehicle[] } | null>(null)
+  const [list, setList] = useState<{ todo: Vehicle[]; stock?: Vehicle[]; waiting: Vehicle[]; done: Vehicle[] } | null>(null)
+  const [showStock, setShowStock] = useState(false)
   const [keys, setKeys] = useState<{ todo: KeyTask[]; done: KeyTask[] }>({ todo: [], done: [] })
   const [cur, setCur] = useState<string | null>(null)
   const [err, setErr] = useState<string | null>(null)
@@ -52,7 +53,7 @@ export default function TachesClient({ gmKey }: { gmKey: string }) {
 
   if (cur) return <Wizard missionId={cur} gmKey={gmKey} onBack={() => { setCur(null); load() }} />
 
-  const todo = list?.todo || [], waiting = list?.waiting || [], done = list?.done || []
+  const todo = list?.todo || [], stock = list?.stock || [], waiting = list?.waiting || [], done = list?.done || []
   return (
     <div className="max-w-2xl mx-auto px-4 py-4">
       <div className="text-[11px] font-semibold uppercase tracking-wider text-ink-muted">Tâches · fourrière</div>
@@ -80,6 +81,15 @@ export default function TachesClient({ gmKey }: { gmKey: string }) {
       <Section title="À traiter" count={todo.length} empty="Rien à prendre en charge. Le prochain véhicule apparaîtra à sa dépose au parc.">
         {todo.map(v => <VehicleCard key={v.id} v={v} onOpen={() => setCur(v.id)} />)}
       </Section>
+      {stock.length > 0 && (
+        <section className="mt-5">
+          <button type="button" onClick={() => setShowStock(s => !s)} className="w-full flex items-center justify-between rounded-card border border-border bg-surface-2 px-3 py-2.5 text-left">
+            <span><span className="font-display text-base font-bold text-ink">Stock au parc avant la mise en route</span><span className="block text-xs text-ink-muted">À reprendre en charge au rythme de la fourrière — hors objectif du jour.</span></span>
+            <span className="flex items-center gap-2"><span className="font-mono text-xs text-ink-muted">{stock.length}</span><span className="text-ink-muted">{showStock ? '▾' : '▸'}</span></span>
+          </button>
+          {showStock && <div className="flex flex-col gap-2 mt-2">{stock.map(v => <VehicleCard key={v.id} v={v} onOpen={() => setCur(v.id)} />)}</div>}
+        </section>
+      )}
       {waiting.length > 0 && (
         <Section title="En attente du propriétaire" count={waiting.length} hint="Pris en charge, mais personne à contacter : le propriétaire et l’assurance viendront des documents ou du client quand il se fera connaître.">
           {waiting.map(v => <VehicleCard key={v.id} v={v} onOpen={() => setCur(v.id)} waiting onKnown={async () => { await fetch(`/api/taches/${v.id}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ step: 'client' }) }); setCur(v.id) }} />)}

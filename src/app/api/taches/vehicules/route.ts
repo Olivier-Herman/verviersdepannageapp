@@ -8,6 +8,7 @@ import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase'
 import { tachesAccess } from '@/lib/taches/access'
 import { nextStep, progress, STEP_LABELS, type Answers, type Reading } from '@/lib/taches/accident-steps'
+import { getFlagAppliesFrom } from '@/lib/feature-flags'
 
 export const dynamic = 'force-dynamic'
 
@@ -20,7 +21,7 @@ export async function GET() {
   const { data: parked, error } = await sb.from('incoming_missions')
     .select('id, mission_number, vehicle_plate, vehicle_brand, vehicle_model, parc_zone_key, parc_row_number, parked_at, assigned_to, police_zone, officer_name, client_phone, client_email, label_printed_at')
     .eq('status', 'parked').eq('source', 'police_accident').eq('dossier_leg', false)
-    .order('parked_at', { ascending: false }).limit(60)
+    .order('parked_at', { ascending: false }).limit(200)
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
   const ids = (parked || []).map(m => m.id)
@@ -46,8 +47,15 @@ export async function GET() {
       completed_at: run?.completed_at || null,
     }
   })
-  const todo = vehicles.filter(v => v.status === 'todo')
+  // Coupure : la date de mise en route du module (réglage « applies_from » du
+  // drapeau taches_accident). Les véhicules déposés AVANT et pas encore pris en
+  // charge forment le STOCK, repris au rythme de la fourrière, hors objectif du
+  // jour — sinon la liste démarre à 58 et ne tombe jamais à zéro (28/09/2026).
+  const cutoff = await getFlagAppliesFrom('taches_accident')
+  const isStock = (v: any) => !v.started && !!cutoff && !!v.parked_at && v.parked_at < cutoff
+  const todo = vehicles.filter(v => v.status === 'todo' && !isStock(v))
+  const stock = vehicles.filter(v => v.status === 'todo' && isStock(v))
   const waiting = vehicles.filter(v => v.status === 'waiting_owner')
   const done = vehicles.filter(v => v.status === 'done')
-  return NextResponse.json({ todo, waiting, done, doneCount7d: (recentDone || []).length })
+  return NextResponse.json({ todo, stock, waiting, done, cutoff, doneCount7d: (recentDone || []).length })
 }
