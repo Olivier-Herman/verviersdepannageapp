@@ -133,6 +133,19 @@ export async function POST(req: Request, { params }: { params: { missionId: stri
             answers.redelivery_address = String(x.redelivery_address)
             patch.redelivery_address = answers.redelivery_address
             if (Number.isFinite(Number(x.redelivery_lat)) && Number.isFinite(Number(x.redelivery_lng))) { patch.redelivery_lat = Number(x.redelivery_lat); patch.redelivery_lng = Number(x.redelivery_lng) }
+            // Même règle que la fiche (PATCH /api/missions/[id]) : une adresse de
+            // relivraison sur un véhicule en parc = bascule en zone K, étiquette
+            // relivraison réimprimée. La question « zone » vient après, sur la
+            // zone réelle — le véhicule ne bouge qu'une fois.
+            try {
+              const { relivraisonZoneFor } = await import('@/lib/parc/relivraison-zone')
+              const target = await relivraisonZoneFor(sb, answers.redelivery_address)
+              if (target && target !== m.parc_zone_key) {
+                patch.parc_zone_key = target; patch.parc_row_number = null; patch.parc_slot_index = null
+                await log('auto_transfer_zone_k', `Bascule auto en zone ${target} (relivraison) après saisie de l’adresse — depuis ${m.parc_zone_key || '?'}`, { from_zone: m.parc_zone_key, to_zone: target, trigger: 'prise_en_charge' })
+                if (target === 'K') { const { reprintLabelForMission } = await import('@/lib/missions/reprint-label-helper'); await reprintLabelForMission({ kind: 'uuid', value: m.id }).catch(() => {}) }
+              }
+            } catch (e: any) { console.warn('[taches] bascule zone K KO', e?.message) }
           }
           await log('process_step', `Prise en charge : dossier ouvert chez ${answers.assistance_name || 'l’assistance'}${answers.assistance_ref ? ` (n° ${answers.assistance_ref})` : ''}${patch.billed_to_name ? ` — client facturable : ${patch.billed_to_name}` : ''}${answers.redelivery_address ? ` — relivraison : ${answers.redelivery_address}` : ''}.`)
         } else if (body.answer === 'pas_agree') {

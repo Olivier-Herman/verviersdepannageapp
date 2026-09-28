@@ -229,7 +229,11 @@ function ZoneStep({ ctx, busy, setBusy, say, answer }: { ctx: Ctx; busy: boolean
     if (!r.ok) { say((await r.json()).error || 'Transfert impossible'); return }
     say(`Transféré en zone ${pick}`); await answer('zone', 'transfer', { zone_key: pick })
   }
-  return <Q title="Zone du parc" known={`Déposé en zone ${m.parc_zone_key || '?'}${m.parc_row_number ? `, rangée ${m.parc_row_number}` : ''}${m.driver_name ? ` par ${m.driver_name}` : ''}.`}>
+  const autoK = !!ctx.run.answers.redelivery_address && /^K/.test(String(m.parc_zone_key || ''))
+  return <Q title="Où ranger le véhicule ?" known={autoK
+      ? `Passé en zone ${m.parc_zone_key} automatiquement : une adresse de relivraison est posée, l’étiquette relivraison est ressortie.`
+      : `En zone ${m.parc_zone_key || '?'}${m.parc_row_number ? `, rangée ${m.parc_row_number}` : ''}${m.driver_name ? `, déposé par ${m.driver_name}` : ''}.`}
+    hint="Dernière question : le véhicule ne bouge qu’une fois.">
     <Ans onClick={() => answer('zone', 'keep')} busy={busy}>Laisser là</Ans>
     <div className="text-xs font-semibold uppercase tracking-wider text-ink-muted mt-1">Ou transférer vers</div>
     <div className="flex flex-wrap gap-1.5">{ctx.zones.filter(z => z.key !== m.parc_zone_key).map(z => <button key={z.key} type="button" onClick={() => setPick(z.key)} aria-pressed={pick === z.key} className={`rounded-btn border px-3 py-1.5 text-sm ${pick === z.key ? 'border-info bg-info-soft text-info font-semibold' : 'border-strong bg-surface text-ink'}`}>{z.key}{z.label && z.label !== z.key ? ` · ${z.label}` : ''}</button>)}</div>
