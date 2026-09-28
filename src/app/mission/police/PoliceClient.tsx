@@ -734,7 +734,9 @@ export default function PoliceClient({ userRole = 'driver' }: { userRole?: strin
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         type: selectedType, date, time, intervention_at: interventionAtIso, plate: finalPlate, vin, brand, model,
-        location, policeZone, officerName,
+        // Policier choisi dans la liste : on garde SON contact (avant, seul le mode
+        // « encaissement immédiat » le transmettait — 2 fiches sur 191 reliées, 28/09/2026).
+        location, policeZone, officerName, officerPartnerId,
         ownerFirstName, ownerLastName, ownerPhone,
         remarks, photoUrls,
         policeBlocked,

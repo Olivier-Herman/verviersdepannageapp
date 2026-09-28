@@ -29,7 +29,8 @@ const close = (t: string, c: string) => t === c || (t.length >= 4 && c.startsWit
  *  quand deux policiers conviennent. */
 export async function findOfficerPartner(name: string, zone?: string | null): Promise<number | null> {
   // Les grades et mentions ne sont pas des noms (« Lieutenant », « Inspecteur », « OPJ »).
-  const RANKS = new Set(['lieutenant', 'commissaire', 'inspecteur', 'inspectrice', 'agent', 'opj', 'brigadier', 'chef', 'principal', 'police', 'zone'])
+  // « lieutenant » n'y est pas : Roger Lieutenant (ZP Fagnes) existe (Olivier 28/09/2026).
+  const RANKS = new Set(['commissaire', 'inspecteur', 'inspectrice', 'agent', 'opj', 'brigadier', 'chef', 'principal', 'police', 'zone'])
   const tokens = norm(String(name).replace(/\(.*?\)/g, ' ')).split(' ').filter(t => t.length > 2 && !RANKS.has(t))
   if (!tokens.length) return null
   const { odooRpc } = await import('@/lib/odoo')
@@ -42,7 +43,11 @@ export async function findOfficerPartner(name: string, zone?: string | null): Pr
   if (tokens.length === 1) {
     const hits = people.filter(c => words(c).includes(tokens[0]))
     const uniq = Array.from(new Map(hits.map(h => [words(h).sort().join(' '), h])).values())
-    return uniq.length === 1 ? (uniq[0] as any).id : null
+    if (uniq.length !== 1) return null
+    // Et de la zone de la fiche quand on la connaît.
+    const zw = zone ? norm(zone).split(' ').filter(w => w.length > 3 && !['police', 'zone'].includes(w)) : []
+    if (zw.length && !zw.some(w => norm((uniq[0] as any).parent_id?.[1] || '').includes(w) || norm((uniq[0] as any).name || '').includes(w))) return null
+    return (uniq[0] as any).id
   }
   const pick = (hits: any[]) => {
     if (hits.length > 1 && zone) {
