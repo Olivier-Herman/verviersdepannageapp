@@ -180,7 +180,10 @@ function WhoStep({ c, R, act, busy, gmKey, setErr, setC, load, missionId, onDero
   const [prefilled, setPrefilled] = useState(false)
   const pcFileRef = useRef<HTMLInputElement>(null)
   const set = (k: string, v: string) => setF((p: any) => ({ ...p, [k]: v }))
-  const who = R?.who_kind
+  // Choix affiché tout de suite, sans attendre le serveur.
+  const [whoLocal, setWhoLocal] = useState<string | null>(R?.who_kind || null)
+  useEffect(() => { if (R?.who_kind) setWhoLocal(R.who_kind) }, [R?.who_kind])
+  const who = whoLocal
   const hasPhoto = !!c.idDoc?.count
   // Téléphone (app ou navigateur mobile) : l'appareil photo s'ouvre ici. PC : on
   // envoie une notification au téléphone de l'utilisateur (Olivier 28/09/2026).
@@ -234,7 +237,7 @@ function WhoStep({ c, R, act, busy, gmKey, setErr, setC, load, missionId, onDero
   const save = () => act('client', { client: { ...f, kind, source: 'manual' } })
 
   return <>
-    <div className="flex flex-wrap gap-2">{WHO.map(([k, l, sub]) => <Opt key={k} on={who === k} onClick={() => act('who', { who: k })} title={l} sub={sub} />)}</div>
+    <div className="flex flex-wrap gap-2">{WHO.map(([k, l, sub]) => <Opt key={k} on={who === k} onClick={() => { setWhoLocal(k); act('who', { who: k }) }} title={l} sub={sub} />)}</div>
     {who && !R?.odoo_partner_id && <div className="rounded-xl bg-surface-2 border border-border p-3 flex flex-col gap-2.5">
       <div className="text-[11px] font-bold uppercase tracking-wider text-ink-muted">Pièce d’identité (obligatoire)</div>
       <div className="flex flex-wrap gap-2">

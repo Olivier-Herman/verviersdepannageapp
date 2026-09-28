@@ -28,6 +28,18 @@ export const dynamic     = 'force-dynamic'
 export const maxDuration = 120
 
 const r2 = (n: number) => Math.round(n * 100) / 100
+// Volets chiffrés du dossier, gardés 60 s par instance tant que la fiche ne
+// bouge pas (statut, levée, parc) : le calcul coûte ~1,5 s.
+const LEGS_CACHE = new Map<string, { at: number; key: string; val: { legs: any[] } }>()
+async function cachedLegs(m: any) {
+  const key = [m.status, m.levee_saisie_at, m.levee_saisie_date, m.parc_zone_key, m.police_blocked].join('|')
+  const hit = LEGS_CACHE.get(m.id)
+  if (hit && hit.key === key && Date.now() - hit.at < 60_000) return hit.val
+  const val = await openLegs(m.id, m)
+  LEGS_CACHE.set(m.id, { at: Date.now(), key, val })
+  return val
+}
+const dropLegs = (id: string) => LEGS_CACHE.delete(id)
 const WHO: WhoKind[] = ['owner', 'mandate', 'garage', 'assistance', 'transport']
 
 async function ctxFor(sb: any, session: any, missionId: string) {
@@ -45,38 +57,34 @@ async function buildContext(sb: any, session: any, missionId: string) {
   const base = await ctxFor(sb, session, missionId)
   if ('error' in base) return base
   const { m, access, rest, me } = base
-  const [{ data: meRow }, { data: resp }] = await Promise.all([
-    sb.from('users').select('id, name, odoo_api_key, restitution_responsable').eq('id', me.id).maybeSingle(),
-    sb.from('users').select('id, name, verify_pin_hash').eq('restitution_responsable', true).eq('active', true).order('name'),
-  ])
   const open = rest?.status === 'open' ? rest : null
-  const derogs = await approvedDerogations(sb, m.id, open?.id || null)
-  const names = await userNames(sb, [...derogs.map(d => d.responsable_id), ...derogs.map(d => d.requested_by), rest?.started_by, rest?.completed_by])
-  const rel = await findAssistanceRel(sb, m)
   const saisie = isSaisieLike(m)
-  const checks = await computeChecks(sb, m, derogs, names)
-  const { legs } = await openLegs(m.id, m)
-  const assist = await assistancePartnerIds(sb)
   const who = (open?.who_kind || null) as WhoKind | null
   const split = (open?.split || null) as Partial<Record<Poste, Payer>> | null
-  const legsOut = legs.map(l => ({ ...l, payer: payerFor(l, who, saisie, split, assist, m) }))
-  const dueHtva = r2(legsOut.filter(l => l.payer === 'client').reduce((t, l) => t + (l.due_htva || 0), 0))
-
-  // Facture de la restitution (ou déjà existante sur la fiche) : état lu dans Odoo.
-  let invoice: any = null
+  // Montants : seulement à partir de l'étape « montant » (client identifié ou
+  // dérogation d'identité), sinon le calcul du dossier (~1,5 s) ralentissait
+  // chaque clic (Olivier 28/09 : « très long dans le changement de page »).
+  const derogs = await approvedDerogations(sb, m.id, open?.id || null)
+  const needLegs = !!open && (!!open.odoo_partner_id || derogs.some(d => d.kind === 'identite' && d.status === 'approved'))
   const invId = open?.invoice_odoo_id || null
-  if (invId) {
-    try {
-      const [mv] = await odooRpc<any[]>('account.move', 'read', [[invId]], { fields: ['name', 'state', 'payment_state', 'amount_total', 'amount_residual'] })
-      if (mv) invoice = { id: invId, name: mv.name, state: mv.state, payment_state: mv.payment_state, total: mv.amount_total, residual: mv.amount_residual, url: open?.invoice_url || buildInvoiceMoveUrl(invId) }
-    } catch { invoice = { id: invId, url: open?.invoice_url || buildInvoiceMoveUrl(invId), unreadable: true } }
-  }
-  // Encaissement chauffeur fait depuis le début de la restitution.
-  let driverCollected = 0
-  if (open) {
-    const { data: iv } = await sb.from('interventions').select('amount, created_at').eq('mission_id', m.id).gte('created_at', open.started_at)
-    driverCollected = r2((iv || []).reduce((t: number, x: any) => t + Number(x.amount || 0), 0))
-  }
+  // Tout le reste en parallèle.
+  const [meR, respR, names, rel, legsR, assist, invoice, ivR] = await Promise.all([
+    sb.from('users').select('id, name, odoo_api_key, restitution_responsable').eq('id', me.id).maybeSingle(),
+    sb.from('users').select('id, name, verify_pin_hash').eq('restitution_responsable', true).eq('active', true).order('name'),
+    userNames(sb, [...derogs.map(d => d.responsable_id), ...derogs.map(d => d.requested_by), rest?.started_by, rest?.completed_by]),
+    findAssistanceRel(sb, m),
+    needLegs ? cachedLegs(m) : Promise.resolve({ legs: [] as any[] }),
+    assistancePartnerIds(sb),
+    invId ? odooRpc<any[]>('account.move', 'read', [[invId]], { fields: ['name', 'state', 'payment_state', 'amount_total', 'amount_residual'] })
+      .then(([mv]) => mv ? { id: invId, name: mv.name, state: mv.state, payment_state: mv.payment_state, total: mv.amount_total, residual: mv.amount_residual, url: open?.invoice_url || buildInvoiceMoveUrl(invId) } : null)
+      .catch(() => ({ id: invId, url: open?.invoice_url || buildInvoiceMoveUrl(invId), unreadable: true })) : Promise.resolve(null),
+    open ? sb.from('interventions').select('amount, created_at').eq('mission_id', m.id).gte('created_at', open.started_at) : Promise.resolve({ data: [] }),
+  ])
+  const meRow = meR.data, resp = respR.data
+  const checks = await computeChecks(sb, m, derogs, names)
+  const legsOut = legsR.legs.map((l: any) => ({ ...l, payer: payerFor(l, who, saisie, split, assist, m) }))
+  const dueHtva = r2(legsOut.filter((l: any) => l.payer === 'client').reduce((t: number, l: any) => t + (l.due_htva || 0), 0))
+  const driverCollected = r2(((ivR as any).data || []).reduce((t: number, x: any) => t + Number(x.amount || 0), 0))
   // Sorti par l'encaissement chauffeur pendant la restitution : on la clôt.
   if (open && m.status !== 'parked' && driverCollected > 0) {
     const now = new Date().toISOString()
@@ -269,6 +277,7 @@ export async function POST(req: Request, { params }: { params: { missionId: stri
           const fdjId = await getBusinessNumber('odoo_partner_frais_justice')
           for (const l of fdj) await sb.from('incoming_missions').update({ billed_to_id: fdjId, billed_to_name: 'Frais de Justice Verviers', updated_at: now }).eq('id', l.mission_id)
         }
+        dropLegs(m.id)
         const res = await withOdooActor(actor, () => invoiceDossierGroups({ anyMissionId: m.id, missionIds: clientLegs.map(l => l.mission_id), actorUserId: actor }))
         const inv = res.invoices.find(i => Number(i.client_id) === Number(rest!.odoo_partner_id)) || res.invoices[0]
         if (!inv) return NextResponse.json({ error: `Aucune facture créée. ${(res.warnings || []).join(' · ')}` }, { status: 409 })
@@ -362,6 +371,7 @@ export async function POST(req: Request, { params }: { params: { missionId: stri
             if (!ex.ok) return NextResponse.json({ error: ex.error }, { status: ex.status })
           }
         }
+        dropLegs(m.id)
         await upd({ status: 'done', settlement, temp_levee: temp, completed_by: actor, completed_at: now })
         await logRestitution(sb, m.id, actor, 'done', temp
           ? `Levée temporaire : véhicule confié au garagiste par ${who_name}, il revient au parc (dossier ouvert).`
