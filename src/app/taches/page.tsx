@@ -11,6 +11,7 @@ import { authOptions }      from '@/lib/auth'
 import { sessionAccess }    from '@/lib/access'
 import { isPreviewOn }      from '@/lib/feature-flags'
 import TachesClient         from './TachesClient'
+import AppShell             from '@/components/layout/AppShell'
 
 export const dynamic = 'force-dynamic'
 
@@ -21,5 +22,12 @@ export default async function TachesPage() {
   if (!a.ok) redirect('/dashboard?error=access_denied')
   const role = (session.user as any)?.role || a.roles[0] || null
   if (!(await isPreviewOn('taches_accident', role, a.id))) redirect('/fourriere')
-  return <TachesClient gmKey={process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || ''} />
+  const u = session.user as any
+  // Dans le cadre VD Soft (menu + en-tête), comme toutes les pages — le premier
+  // jet l'avait oublié et la page s'ouvrait nue (Olivier 28/09/2026).
+  return (
+    <AppShell title="Prise en charge" userName={u.name || ''} userEmail={u.email || undefined} userId={u.id} userRole={u.role || ''} userModules={u.modules || []}>
+      <TachesClient gmKey={process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || ''} />
+    </AppShell>
+  )
 }
