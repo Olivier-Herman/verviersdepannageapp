@@ -93,7 +93,7 @@ interface Mission {
   awaiting_payment?: boolean | null
 }
 interface VrLoc { id: string; name: string; address: string; lat: number | null; lng: number | null; is_default?: boolean }
-interface Props { mission: Mission; currentUserId?: string; userRole?: string; isReadOnly?: boolean; navApp?: NavApp; defaultParcZone?: string | null; flux2?: boolean; onsiteV2?: boolean; parentClosingNote?: string | null; parentPanne?: string | null; parentPhotos?: string[] }
+interface Props { mission: Mission; currentUserId?: string; userRole?: string; isReadOnly?: boolean; navApp?: NavApp; defaultParcZone?: string | null; flux2?: boolean; onsiteV2?: boolean; parentClosingNote?: string | null; parentPanne?: string | null; parentPhotos?: string[]; relKey?: { location: string | null; hook: string | null } | null }
 
 // Photos prises à l'ENLÈVEMENT (mission parente), en lecture seule sur une
 // relivraison : le chauffeur voit l'état du véhicule tel qu'il a été chargé et
@@ -603,7 +603,7 @@ function BriefingTtsButton({ mission }: { mission: Mission }) {
 }
 
 // ─── Composant principal ──────────────────────────────────────────────────────
-export default function DriverClient({ mission: init, currentUserId, userRole, isReadOnly = false, navApp: initNav, defaultParcZone = null, flux2 = false, onsiteV2 = false, parentClosingNote = null, parentPanne = null, parentPhotos = [] }: Props) {
+export default function DriverClient({ mission: init, currentUserId, userRole, isReadOnly = false, navApp: initNav, defaultParcZone = null, flux2 = false, onsiteV2 = false, parentClosingNote = null, parentPanne = null, parentPhotos = [], relKey = null }: Props) {
   const canMatthieu = canUseMatthieu(userRole, currentUserId)
   const router = useRouter()
   const { t, lang } = useT()   // traductions FR/albanais pour les messages d'erreur (strings)
@@ -3645,14 +3645,30 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
         </div>
       )}
 
+      {/* Où est la clé — la première chose à savoir en arrivant au parc pour
+          une relivraison. La fiche du parc fait foi. Olivier 28/09/2026. */}
+      {rel && relKey && (
+        <div className={`mx-4 ${parentClosingNote || parentPanne ? 'mt-1' : 'mt-14'} mb-1 bg-surface border rounded-2xl px-4 py-3 flex items-center gap-3`}>
+          <span className="text-2xl flex-shrink-0">🔑</span>
+          <div className="min-w-0 flex-1">
+            <p className="text-ink-muted text-[11px] font-bold uppercase tracking-wide"><T k="rel_key.title" /></p>
+            <p className="text-ink text-base font-bold leading-snug mt-0.5">
+              {relKey.location ? (KEY_LOCATIONS.find(k => k.value === relKey.location)?.label || relKey.location) : '—'}
+              {relKey.hook ? <> · <T k="rel_key.hook" params={{ n: relKey.hook }} /></> : null}
+            </p>
+          </div>
+          <KeyTag keyLocation={relKey.location} hook={relKey.hook} />
+        </div>
+      )}
+
       {/* Les photos de l'enlèvement, en lecture seule : le chauffeur de la
           relivraison voit l'état du véhicule au chargement. Olivier 28/09/2026. */}
       {parentPhotos.length > 0 && (
-        <ParentPhotosStrip urls={parentPhotos} className={`mx-4 ${parentClosingNote || parentPanne ? 'mt-1' : 'mt-14'} mb-1`} />
+        <ParentPhotosStrip urls={parentPhotos} className={`mx-4 ${parentClosingNote || parentPanne || (rel && relKey) ? 'mt-1' : 'mt-14'} mb-1`} />
       )}
 
       {/* Header avec backdrop-blur pour fondre avec l'ambient */}
-      <div className={`bg-surface/85 backdrop-blur-md border-b px-4 ${parentClosingNote || parentPanne || parentPhotos.length ? 'pt-3' : 'pt-12'} pb-4 sticky top-0 z-20`}>
+      <div className={`bg-surface/85 backdrop-blur-md border-b px-4 ${parentClosingNote || parentPanne || parentPhotos.length || (rel && relKey) ? 'pt-3' : 'pt-12'} pb-4 sticky top-0 z-20`}>
         <div className="flex items-center justify-between mb-1">
           <button onClick={() => router.push('/mission')} className="w-9 h-9 flex items-center justify-center bg-surface-hover rounded-xl text-ink">←</button>
           <div className="flex items-center gap-2">
@@ -4102,12 +4118,12 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
             </p>
             {/* Emplacement de la clé (hérité de la mise en parc) — pour aller
                 chercher la clé avant de charger. Olivier 2026-06-19. */}
-            {M.key_location && (
-              <div className="flex items-center gap-2 mb-3 bg-amber-500/10 border border-amber-500/40 rounded-xl px-3 py-2">
-                <span className="text-amber-200 text-sm font-semibold">
-                  🔑 Clé : {KEY_LOCATIONS.find(k => k.value === M.key_location)?.label || M.key_location}
+            {(relKey?.location || M.key_location) && (
+              <div className="flex items-center gap-2 mb-3 bg-amber-50 border border-amber-300 rounded-xl px-3 py-2">
+                <span className="text-amber-800 text-sm font-semibold">
+                  🔑 Clé : {KEY_LOCATIONS.find(k => k.value === (relKey?.location || M.key_location))?.label || relKey?.location || M.key_location}
                 </span>
-                <KeyTag keyLocation={M.key_location} hook={M.saisie_key_hook} />
+                <KeyTag keyLocation={relKey?.location || M.key_location} hook={relKey?.hook ?? M.saisie_key_hook} />
               </div>
             )}
             {M.parent_mission_id && (

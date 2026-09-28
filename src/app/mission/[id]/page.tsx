@@ -121,10 +121,17 @@ export default async function MissionDriverPage({ params, searchParams }: Props)
   // relivraison voit l'état du véhicule tel qu'il a été chargé ; il n'ajoute que
   // les photos de sa relivraison.
   let parentPhotos: string[] = []
+  // La CLÉ aussi : une relivraison reprise d'une fiche assisteur en réserve
+  // n'hérite pas de key_location, et la fourrière la met à jour sur la fiche du
+  // parc après coup. La fiche du parc fait foi. Olivier 28/09/2026.
+  let relKey: { location: string | null; hook: string | null } | null = null
   if (mission.parent_mission_id) {
     const { data: parent } = await supabase.from('incoming_missions')
-      .select('closing_notes, panne_motif, driver_photos').eq('id', mission.parent_mission_id).maybeSingle()
+      .select('closing_notes, panne_motif, panne_motif_label, driver_photos, key_location, saisie_key_hook').eq('id', mission.parent_mission_id).maybeSingle()
     parentClosingNote = parent?.closing_notes || null
+    const loc = (parent as any)?.key_location || (mission as any).key_location || null
+    const hook = (parent as any)?.saisie_key_hook || (mission as any).saisie_key_hook || null
+    if (loc || hook) relKey = { location: loc, hook }
     const own = new Set<string>(Array.isArray((mission as any).driver_photos) ? (mission as any).driver_photos : [])
     parentPhotos = (Array.isArray((parent as any)?.driver_photos) ? (parent as any).driver_photos as string[] : []).filter(u => u && !own.has(u))
     const key = (parent as any)?.panne_motif || ''
@@ -132,6 +139,9 @@ export default async function MissionDriverPage({ params, searchParams }: Props)
       const { findMotif } = await import('@/lib/cloture/motifs')
       parentPanne = findMotif('remorquage', key)?.label || findMotif('mobilite', key)?.label || null
     }
+    // Motif hors référentiel (déplacement pour rien, code assisteur…) : on
+    // montre le libellé enregistré à la clôture plutôt que rien.
+    if (!parentPanne) parentPanne = (parent as any)?.panne_motif_label || null
   }
 
   return (
@@ -149,6 +159,7 @@ export default async function MissionDriverPage({ params, searchParams }: Props)
         parentPanne={parentPanne}
         parentClosingNote={parentClosingNote}
         parentPhotos={parentPhotos}
+        relKey={relKey}
       />
     </>
   )

@@ -682,4 +682,8 @@ export const sq: Dictionary = {
     more:  '+{n} foto të tjera',
     less:  'Shiko më pak',
   },
+  rel_key: {
+    title: 'Ku është çelësi',
+    hook:  'grepi nr. {n}',
+  },
 }

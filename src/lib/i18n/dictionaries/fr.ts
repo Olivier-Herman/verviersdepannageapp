@@ -694,6 +694,10 @@ export const fr = {
     more:  '+{n} autres photos',
     less:  'Voir moins',
   },
+  rel_key: {
+    title: 'Où est la clé',
+    hook:  'crochet n° {n}',
+  },
 }
 
 export type Dictionary = typeof fr
