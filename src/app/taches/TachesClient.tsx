@@ -11,6 +11,8 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import AddressField, { verifyAddressViaPlaces } from '@/components/AddressField'
 import ScanToFicheButton from '@/components/missions/ScanToFicheButton'
+import BurstCamera from '@/components/camera/BurstCamera'
+import { compressImage } from '@/lib/image-compress'
 import { STEP_LABELS, DOCUMENT_LABELS, type Answers, type Reading, type StepId } from '@/lib/taches/accident-steps'
 
 type Vehicle = { id: string; mission_number: number | null; plate: string | null; model: string; zone: string | null; row: number | null; parked_at: string | null; driver: string | null; police: string; status: string; started: boolean; next: StepId | null; next_label: string | null; done: number; total: number; completed_at: string | null }
@@ -318,23 +320,76 @@ function KeyStep({ busy, answer, current }: { busy: boolean; answer: (s: StepId,
   </Q>
 }
 
+type ScanPage = { id: string; preview: string | null; name: string; mime: string; state: 'sending' | 'ok' | 'error'; path?: string; blob: Blob }
+
+// Rafale (Olivier 28/09/2026) : autant de pages qu'il faut, prises à la suite.
+// Chaque page est réduite puis envoyée directement au stockage pendant qu'on
+// photographie la suivante ; « Lire » lance une seule lecture pour tout le lot.
 function ScanStep({ missionId, busy, setBusy, say, onDone, answer, setErr }: { missionId: string; busy: boolean; setBusy: (b: boolean) => void; say: (m: string) => void; onDone: () => Promise<void>; answer: (s: StepId, v: any, x?: any) => Promise<void>; setErr: (e: string | null) => void }) {
   const fileRef = useRef<HTMLInputElement>(null)
-  const send = async (files: File[]) => {
-    if (!files.length) return
-    setBusy(true); setErr(null); say(`${files.length} page${files.length > 1 ? 's' : ''} reçue${files.length > 1 ? 's' : ''}, lecture en cours…`)
+  const [pages, setPages] = useState<ScanPage[]>([])
+  const [camera, setCamera] = useState(false)
+  const patch = (id: string, p: Partial<ScanPage>) => setPages(ps => ps.map(x => x.id === id ? { ...x, ...p } : x))
+
+  const upload = async (pg: ScanPage) => {
+    patch(pg.id, { state: 'sending' })
     try {
-      const fd = new FormData(); files.forEach(f => fd.append('files', f))
-      const r = await fetch(`/api/taches/${missionId}/documents`, { method: 'POST', body: fd })
+      const sign = await fetch(`/api/taches/${missionId}/documents`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sign: [{ mime: pg.mime }] }) })
+      const sj = await sign.json(); if (!sign.ok || !sj.uploads?.[0]) throw new Error(sj.error || 'adresse d’envoi')
+      const put = await fetch(sj.uploads[0].url, { method: 'PUT', headers: { 'Content-Type': pg.mime, 'x-upsert': 'false' }, body: pg.blob })
+      if (!put.ok) throw new Error(`stockage ${put.status}`)
+      patch(pg.id, { state: 'ok', path: sj.uploads[0].path })
+    } catch { patch(pg.id, { state: 'error' }) }
+  }
+  const addBlobs = async (blobs: { blob: Blob; name: string }[]) => {
+    for (const { blob, name } of blobs) {
+      const small = await compressImage(blob)
+      const mime = small.type || (name.toLowerCase().endsWith('.pdf') ? 'application/pdf' : 'image/jpeg')
+      const pg: ScanPage = { id: Math.random().toString(36).slice(2), preview: mime.startsWith('image/') ? URL.createObjectURL(small) : null, name, mime, state: 'sending', blob: small }
+      setPages(ps => [...ps, pg])
+      upload(pg)
+    }
+  }
+  const remove = (id: string) => setPages(ps => { const x = ps.find(p => p.id === id); if (x?.preview) URL.revokeObjectURL(x.preview); return ps.filter(p => p.id !== id) })
+
+  const sending = pages.filter(p => p.state === 'sending').length
+  const failed = pages.filter(p => p.state === 'error').length
+  const ready = pages.length > 0 && sending === 0 && failed === 0
+
+  const read = async () => {
+    setBusy(true); setErr(null); say(`${pages.length} page${pages.length > 1 ? 's' : ''} envoyée${pages.length > 1 ? 's' : ''}, lecture en cours…`)
+    try {
+      const r = await fetch(`/api/taches/${missionId}/documents`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ read: pages.map(p => ({ path: p.path, name: p.name, mime: p.mime })) }) })
       const j = await r.json(); if (!r.ok) throw new Error(j.error || r.statusText)
       say(j.ok ? 'Documents lus' : `Enregistrés, mais lecture impossible : ${j.error}`)
+      pages.forEach(p => p.preview && URL.revokeObjectURL(p.preview)); setPages([])
       await onDone(); window.scrollTo(0, 0)
-    } catch (e: any) { setErr(e?.message || 'Envoi impossible') } finally { setBusy(false) }
+    } catch (e: any) { setErr(e?.message || 'Lecture impossible') } finally { setBusy(false) }
   }
-  return <Q title="Scanner tout ce qui est à bord" hint="Pas de tri à faire : on passe toutes les pages, la reconnaissance range chaque document. Ce qui n’est pas dans le scan est un document absent.">
-    <ScanToFicheButton label="🖨️ Scanner tout (chargeur)" onScanned={send} />
-    <button type="button" disabled={busy} onClick={() => fileRef.current?.click()} className="w-full text-left rounded-xl border border-strong bg-surface px-3.5 py-3 text-base font-semibold text-ink disabled:opacity-60">📷 Photographier ou choisir des fichiers<span className="block text-xs font-normal text-ink-muted">photos ou PDF, plusieurs pages possibles</span></button>
-    <input ref={fileRef} type="file" accept="image/*,application/pdf" multiple hidden onChange={e => send(Array.from(e.target.files || []))} />
+
+  return <Q title="Scanner tout ce qui est à bord" hint="Pas de tri à faire : on passe toutes les pages, autant qu’il en faut. La reconnaissance range chaque document ; ce qui n’est pas dans le scan est un document absent.">
+    {camera && <BurstCamera title="Pages" count={pages.length} onShot={b => addBlobs([{ blob: b, name: `page_${pages.length + 1}.jpg` }])} onClose={() => setCamera(false)} />}
+    <button type="button" disabled={busy} onClick={() => setCamera(true)} className="w-full min-h-[52px] text-left rounded-xl border border-strong bg-surface px-3.5 py-3 text-base font-semibold text-ink disabled:opacity-60">📷 Photographier en rafale<span className="block text-xs font-normal text-ink-muted">l’appareil reste ouvert : un toucher par page</span></button>
+    <ScanToFicheButton label="🖨️ Scanner tout (chargeur)" onScanned={fs => addBlobs(fs.map(f => ({ blob: f, name: f.name })))} />
+    <button type="button" disabled={busy} onClick={() => fileRef.current?.click()} className="w-full min-h-[44px] text-left rounded-xl border border-border bg-surface px-3.5 py-2.5 text-sm font-semibold text-ink-secondary disabled:opacity-60">🖼️ Choisir des photos ou des PDF</button>
+    <input ref={fileRef} type="file" accept="image/*,application/pdf" multiple hidden onChange={e => { addBlobs(Array.from(e.target.files || []).map(f => ({ blob: f, name: f.name }))); e.target.value = '' }} />
+
+    {pages.length > 0 && <>
+      <div className="text-xs font-semibold uppercase tracking-wider text-ink-muted mt-1">{pages.length} page{pages.length > 1 ? 's' : ''}{sending ? ` · envoi en cours (${sending})` : ''}{failed ? ` · ${failed} en échec` : ''}</div>
+      <div className="grid grid-cols-4 gap-1.5">
+        {pages.map((p, i) => (
+          <div key={p.id} className={`relative aspect-[3/4] overflow-hidden rounded-lg border bg-surface-2 ${p.state === 'error' ? 'border-critical' : 'border-border'}`}>
+            {p.preview ? <img src={p.preview} alt="" className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center text-xs font-semibold text-ink-secondary">PDF</div>}
+            <span className="absolute left-1 top-1 rounded bg-black/60 px-1.5 text-[11px] font-bold text-white">{i + 1}</span>
+            <button type="button" onClick={() => remove(p.id)} aria-label={`Retirer la page ${i + 1}`} className="absolute right-0 top-0 w-8 h-8 flex items-center justify-center text-white text-sm font-bold bg-black/50 rounded-bl-lg">✕</button>
+            {p.state === 'sending' && <div className="absolute inset-x-0 bottom-0 bg-black/55 text-center text-[11px] text-white py-0.5">envoi…</div>}
+            {p.state === 'ok' && <div className="absolute inset-x-0 bottom-0 bg-success-fill/90 text-center text-[11px] text-white py-0.5">✓</div>}
+            {p.state === 'error' && <button type="button" onClick={() => upload(p)} className="absolute inset-x-0 bottom-0 bg-critical-fill text-center text-[11px] font-semibold text-white py-1">Renvoyer</button>}
+          </div>
+        ))}
+      </div>
+      <div className="flex gap-2 mt-1"><Primary onClick={read} disabled={busy || !ready}>{sending ? `Envoi des pages… (${pages.length - sending}/${pages.length})` : failed ? 'Renvoyer les pages en échec' : `Lire les ${pages.length} page${pages.length > 1 ? 's' : ''}`}</Primary></div>
+    </>}
     <div className="flex gap-2 mt-1"><Ghost onClick={() => answer('scan', 'plus_tard')}>Plus tard, le véhicule reste dans la liste</Ghost></div>
   </Q>
 }
@@ -360,21 +415,38 @@ function CheckStep({ reading, busy, answer, missionId }: { reading: Reading | nu
 function PhotosStep({ missionId, photos, busy, setBusy, say, answer }: { missionId: string; photos: string[]; busy: boolean; setBusy: (b: boolean) => void; say: (m: string) => void; answer: (s: StepId, v: any, x?: any) => Promise<void> }) {
   const fileRef = useRef<HTMLInputElement>(null)
   const [local, setLocal] = useState<string[]>(photos)
-  const add = async (files: File[]) => {
-    if (!files.length) return
-    setBusy(true)
-    const fd = new FormData(); files.forEach(f => fd.append('files', f))
-    const r = await fetch(`/api/missions/${missionId}/photos-add`, { method: 'POST', body: fd })
-    setBusy(false)
-    if (!r.ok) { say('Envoi des photos impossible'); return }
-    const j = await r.json().catch(() => ({})); if (Array.isArray(j.driver_photos)) setLocal(j.driver_photos)
-    say(`${files.length} photo${files.length > 1 ? 's' : ''} ajoutée${files.length > 1 ? 's' : ''}`); await answer('photos', 'ajoutees')
+  const [camera, setCamera] = useState(false)
+  const [sent, setSent] = useState(0)
+  const [pending, setPending] = useState(0)
+  const [failed, setFailed] = useState(0)
+  // Une photo réduite par envoi : jamais de lot qui dépasse la taille permise.
+  const sendOne = async (blob: Blob) => {
+    setPending(n => n + 1)
+    try {
+      const small = await compressImage(blob, 1600)
+      const fd = new FormData(); fd.append('files', new File([small], `parc_${Date.now()}.jpg`, { type: small.type || 'image/jpeg' }))
+      const r = await fetch(`/api/missions/${missionId}/photos-add`, { method: 'POST', body: fd })
+      if (!r.ok) throw new Error()
+      const j = await r.json().catch(() => ({})); if (Array.isArray(j.driver_photos)) setLocal(j.driver_photos)
+      setSent(n => n + 1)
+    } catch { setFailed(n => n + 1) } finally { setPending(n => n - 1) }
   }
-  return <Q title="Faut-il ajouter des photos ?" hint={local.length ? `${local.length} photo${local.length > 1 ? 's' : ''} déjà dans le dossier, prises par le chauffeur.` : 'Aucune photo dans le dossier pour l’instant.'}>
-    {local.length > 0 && <div className="grid grid-cols-4 gap-1.5">{local.slice(0, 12).map((u, i) => <a key={i} href={u} target="_blank" rel="noreferrer" className="block aspect-square overflow-hidden rounded-lg border border-border bg-surface-2"><img src={u} alt="" className="w-full h-full object-cover" loading="lazy" /></a>)}</div>}
-    <Ans onClick={() => answer('photos', 'non')} busy={busy}>Non, rien de plus</Ans>
-    <button type="button" disabled={busy} onClick={() => fileRef.current?.click()} className="w-full text-left rounded-xl border border-strong bg-surface px-3.5 py-3 text-base font-semibold text-ink disabled:opacity-60">📷 Oui, prendre des photos<span className="block text-xs font-normal text-ink-muted">dégâts, objets de valeur, état à l’arrivée</span></button>
-    <input ref={fileRef} type="file" accept="image/*" capture="environment" multiple hidden onChange={e => add(Array.from(e.target.files || []))} />
+  const finish = async () => {
+    if (pending) return
+    setBusy(true); say(`${sent} photo${sent > 1 ? 's' : ''} ajoutée${sent > 1 ? 's' : ''}`); setBusy(false)
+    await answer('photos', 'ajoutees')
+  }
+  return <Q title="Faut-il ajouter des photos ?" hint={local.length ? `${local.length} photo${local.length > 1 ? 's' : ''} dans le dossier.` : 'Aucune photo dans le dossier pour l’instant.'}>
+    {camera && <BurstCamera title="Photos" count={sent + pending} onShot={b => sendOne(b)} onClose={() => setCamera(false)} />}
+    {local.length > 0 && <div className="grid grid-cols-4 gap-1.5">{local.slice(-16).map((u, i) => <a key={i} href={u} target="_blank" rel="noreferrer" className="block aspect-square overflow-hidden rounded-lg border border-border bg-surface-2"><img src={u} alt="" className="w-full h-full object-cover" loading="lazy" /></a>)}</div>}
+    {sent + pending + failed === 0 && <Ans onClick={() => answer('photos', 'non')} busy={busy}>Non, rien de plus</Ans>}
+    <button type="button" disabled={busy} onClick={() => setCamera(true)} className="w-full min-h-[52px] text-left rounded-xl border border-strong bg-surface px-3.5 py-3 text-base font-semibold text-ink disabled:opacity-60">📷 {sent ? 'Reprendre des photos' : 'Oui, photographier en rafale'}<span className="block text-xs font-normal text-ink-muted">dégâts, objets de valeur, état à l’arrivée — un toucher par photo</span></button>
+    <button type="button" disabled={busy} onClick={() => fileRef.current?.click()} className="w-full min-h-[44px] text-left rounded-xl border border-border bg-surface px-3.5 py-2.5 text-sm font-semibold text-ink-secondary disabled:opacity-60">🖼️ Choisir des photos</button>
+    <input ref={fileRef} type="file" accept="image/*" multiple hidden onChange={e => { Array.from(e.target.files || []).forEach(f => sendOne(f)); e.target.value = '' }} />
+    {(sent + pending + failed) > 0 && <>
+      <div className="text-sm text-ink-secondary">{sent} envoyée{sent > 1 ? 's' : ''}{pending ? ` · ${pending} en cours` : ''}{failed ? ` · ${failed} en échec, à reprendre` : ''}</div>
+      <div className="flex gap-2"><Primary onClick={finish} disabled={busy || pending > 0 || sent === 0}>{pending ? 'Envoi en cours…' : 'Terminé, question suivante'}</Primary></div>
+    </>}
   </Q>
 }
 

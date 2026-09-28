@@ -53,7 +53,7 @@ export async function readVehicleDocuments(
   content.push({ type: 'text', text: `Véhicule attendu : plaque ${hints.plate || 'inconnue'}, châssis ${hints.vin || 'inconnu'}. Lis toutes les pages et retourne uniquement le JSON.` })
   try {
     const resp = await createWithModelFallback(getClient(), ANTHROPIC_MODELS, {
-      max_tokens: 1200, system: SYSTEM, messages: [{ role: 'user', content }],
+      max_tokens: 2500, system: SYSTEM, messages: [{ role: 'user', content }],
     })
     const text = (resp.content || []).filter((c: any) => c.type === 'text').map((c: any) => c.text).join('')
     const cleaned = text.replace(/^```json\s*/i, '').replace(/^```\s*/i, '').replace(/\s*```$/i, '').trim()

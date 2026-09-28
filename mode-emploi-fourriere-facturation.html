@@ -44,7 +44,7 @@
  <p>Il couvre 7 fonctions communes à tous (Dashboard, recherche, profil...), les fonctions Fourrière (inventaire, actions par véhicule, restitution, gestion judiciaire des saisies) et les fonctions Facturation (validation factures, devis, missions terminées) + l'encaissement bureau.</p>
  <p>📱 Cette interface est utilisable autant sur ordinateur (bureau) que mobile (terrain).</p>
  <p>🆘 <strong>En cas de problème</strong> : contacte un admin ou le dispatcher de garde.</p>
- <p style="margin-top: 20pt; color: #9ca3af; font-size: 9pt;">Version du document : 07/09/2026</p>
+ <p style="margin-top: 20pt; color: #9ca3af; font-size: 9pt;">Version du document : 28/09/2026</p>
  </div>
 </div>
 
@@ -388,6 +388,23 @@
  <li>Formule : (date_jour - date_entrée_parc) × tarif/jour</li>
  <li>Tarifs spécifiques par source (Mal Garée 20€/jour voiture, 10€/jour moto, Rodéo min 3 jours, etc.)</li>
  <li>Pris en compte automatiquement dans le devis facturation</li>
+ </ol>
+</div>
+
+<div class="function">
+ <h3><span class="num">116</span>Prendre en charge un véhicule accidenté (page Accident)</h3>
+ <p class="desc">Dès qu'un véhicule d'un appel police accident est déposé au parc, il apparaît dans la page <b>Accident</b> du menu. On le prend en charge une question à la fois ; le reste se fait dans la fiche d'intervention.</p>
+ <p class="label">Scanner les documents de bord</p>
+ <ol>
+ <li>Touchez « Photographier en rafale » : l'appareil photo reste ouvert.</li>
+ <li>Un toucher sur le gros bouton blanc = une page. Enchaînez toutes les pages, sans limite, puis touchez « Terminé ».</li>
+ <li>Chaque page apparaît en vignette : elle s'envoie pendant que vous photographiez la suivante. Le ✕ retire une page ratée.</li>
+ <li>Quand toutes les vignettes sont cochées, touchez « Lire les pages » : l'app reconnaît chaque document et remplit la fiche.</li>
+ <li>Vous pouvez aussi passer les documents au scanner du bureau ou choisir des photos déjà prises.</li>
+ </ol>
+ <p class="label">Photos du véhicule</p>
+ <ol>
+ <li>Même principe : « Oui, photographier en rafale », un toucher par photo, puis « Terminé, question suivante ».</li>
  </ol>
 </div>
 
