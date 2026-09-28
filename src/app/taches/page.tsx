@@ -26,7 +26,7 @@ export default async function TachesPage() {
   // Dans le cadre VD Soft (menu + en-tête), comme toutes les pages — le premier
   // jet l'avait oublié et la page s'ouvrait nue (Olivier 28/09/2026).
   return (
-    <AppShell title="Prise en charge" userName={u.name || ''} userEmail={u.email || undefined} userId={u.id} userRole={u.role || ''} userModules={u.modules || []}>
+    <AppShell title="Accident" userName={u.name || ''} userEmail={u.email || undefined} userId={u.id} userRole={u.role || ''} userModules={u.modules || []}>
       <TachesClient gmKey={process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || ''} />
     </AppShell>
   )

@@ -56,7 +56,7 @@ export default function TachesClient({ gmKey }: { gmKey: string }) {
   const todo = list?.todo || [], stock = list?.stock || [], waiting = list?.waiting || [], done = list?.done || []
   return (
     <div className="max-w-2xl mx-auto px-4 py-4">
-      <div className="text-[11px] font-semibold uppercase tracking-wider text-ink-muted">Tâches · fourrière</div>
+      <div className="text-[11px] font-semibold uppercase tracking-wider text-ink-muted">Accident · fourrière</div>
       <h1 className="font-display text-2xl font-extrabold text-ink mt-0.5">Véhicules arrivés au parc</h1>
       <p className="text-sm text-ink-muted mt-1">Accident sur appel police. Le chauffeur a fait ses pointages ; ici on prend le véhicule en charge, une question à la fois.</p>
       <div className={`mt-3 flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-semibold ${todo.length + keys.todo.length ? 'bg-warning-soft text-warning' : 'bg-success-soft text-success'}`}>
