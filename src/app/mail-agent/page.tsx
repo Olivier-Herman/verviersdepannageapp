@@ -13,8 +13,10 @@ export default async function MailAgentPage() {
   const session = await getServerSession(authOptions)
   if (!session) redirect('/login')
 
-  // Olivier 23/09/2026 : Olivier et Jona décident.
-  const access = sessionAccess(session, { roles: ['admin', 'superadmin'] })
+  // Olivier 23/09/2026 : Olivier et Jona décident. 28/09 : Jona (dispatcher)
+  // passe par le rôle complémentaire « mail_agent » : il voit et décide ;
+  // appliquer / ignorer / scanner / mode restent superadmin.
+  const access = sessionAccess(session, { roles: ['admin', 'superadmin', 'mail_agent'] })
   if (!access.ok) redirect('/dashboard?error=access_denied')
 
   const user = session.user as any

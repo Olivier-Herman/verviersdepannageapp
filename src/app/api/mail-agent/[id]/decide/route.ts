@@ -19,7 +19,7 @@ export const dynamic = 'force-dynamic'
 
 export async function POST(req: Request, { params }: { params: { id: string } }) {
   const session = await getServerSession(authOptions)
-  const access = sessionAccess(session, { roles: ['admin', 'superadmin'] })
+  const access = sessionAccess(session, { roles: ['admin', 'superadmin', 'mail_agent'] })
   if (!access.ok) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   const body = await req.json().catch(() => ({}))
   const action = String(body.action || '')

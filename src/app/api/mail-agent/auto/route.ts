@@ -9,7 +9,7 @@ import { readAutoFamilies, autoStats, FAMILIES, PROPOSALS } from '@/lib/mail-age
 export const dynamic = 'force-dynamic'
 export async function GET() {
   const session = await getServerSession(authOptions)
-  if (!sessionAccess(session, { roles: ['admin', 'superadmin'] }).ok) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  if (!sessionAccess(session, { roles: ['admin', 'superadmin', 'mail_agent'] }).ok) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   const sb = createAdminClient()
   return NextResponse.json({ auto: await readAutoFamilies(sb), stats: await autoStats(sb), families: FAMILIES, proposals: PROPOSALS })
 }

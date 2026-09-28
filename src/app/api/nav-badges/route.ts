@@ -44,7 +44,7 @@ export async function GET() {
   }
 
   // Agent Mail : cartes à décider + rejets prêts (Olivier 23/09/2026, jour 3).
-  if (roles0.some((r: string) => ['admin', 'superadmin'].includes(r))) {
+  if (roles0.some((r: string) => ['admin', 'superadmin', 'mail_agent'].includes(r))) {
     const { count } = await sb.from('mail_agent_items').select('id', { count: 'exact', head: true }).in('status', ['to_decide', 'ready'])
     if (count) badges['/mail-agent'] = count
   }

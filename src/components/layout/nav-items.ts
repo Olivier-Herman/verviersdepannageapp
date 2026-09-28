@@ -13,7 +13,7 @@ export interface NavItem {
   i18nKey?: string             // Cle dans le dictionnaire i18n (cf src/lib/i18n/dictionaries) pour affichage bilingue en mode sq
   icon:     string
   moduleId: string | null
-  role?:    'dispatcher_or_admin' | 'superadmin' | 'superadmin_or_rh' | 'non_driver'
+  role?:    'dispatcher_or_admin' | 'superadmin' | 'superadmin_or_rh' | 'non_driver' | 'mail_agent'
 }
 
 export const NAV_ITEMS: NavItem[] = [
@@ -44,7 +44,7 @@ export const NAV_ITEMS: NavItem[] = [
   // Olivier 2026-08-31 : Agent Mail en rodage → superadmin uniquement.
   // Le module 'mail_agent' existe déjà en base (désactivé) : pour l'ouvrir à
   // Jona/Momo, réactiver le module et repasser sur moduleId: 'mail_agent'.
-  { href: '/mail-agent',        label: 'Agent Mail',          icon: '📬', moduleId: null, role: 'superadmin' },
+  { href: '/mail-agent',        label: 'Agent Mail',          icon: '📬', moduleId: null, role: 'mail_agent' },   // admin/superadmin + rôle complémentaire « mail_agent » (Jona, 28/09/2026)
   // Olivier 2026-06-02 : Dépanneuses retirée de la sidebar globale (fonction
   // secondaire, accessible via /admin → tuile + AdminNav latérale).
   { href: '/finance',           label: 'Finance',             icon: '💵', moduleId: 'finance' },
@@ -89,6 +89,7 @@ export function filterNavItems(opts: {
   const visible = NAV_ITEMS.filter(item => {
     if (item.role === 'superadmin')          return isSuperadmin
     if (item.role === 'superadmin_or_rh')    return isSuperadmin || isRH
+    if (item.role === 'mail_agent')          return isAdmin || roleList.includes('mail_agent')
     if (item.role === 'dispatcher_or_admin') return isDispatcher
     if (item.role === 'non_driver')          return userRole !== 'driver' && userRole !== 'garage'
     if (item.moduleId === null) return true
