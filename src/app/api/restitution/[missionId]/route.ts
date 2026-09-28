@@ -267,11 +267,13 @@ export async function POST(req: Request, { params }: { params: { missionId: stri
         const res = await withOdooActor(actor, () => invoiceDossierGroups({ anyMissionId: m.id, missionIds: clientLegs.map(l => l.mission_id), actorUserId: actor }))
         const inv = res.invoices.find(i => Number(i.client_id) === Number(rest!.odoo_partner_id)) || res.invoices[0]
         if (!inv) return NextResponse.json({ error: `Aucune facture créée. ${(res.warnings || []).join(' · ')}` }, { status: 409 })
-        // Postée pour pouvoir l'encaisser tout de suite dans Odoo.
-        await withOdooActor(actor, () => odooRpc('account.move', 'action_post', [[inv.odoo_id]])).catch((e: any) => console.warn('[restitution] action_post KO', e?.message))
+        // Postée pour pouvoir l'encaisser tout de suite dans Odoo — sauf véhicule de
+        // test (plaque TEST…) : la facture reste en brouillon, supprimable sans avoir.
+        const isTest = /^TEST/i.test(String(m.vehicle_plate || ''))
+        if (!isTest) await withOdooActor(actor, () => odooRpc('account.move', 'action_post', [[inv.odoo_id]])).catch((e: any) => console.warn('[restitution] action_post KO', e?.message))
         const total = r2(inv.total_htva || 0)
         await upd({ invoice_odoo_id: inv.odoo_id, invoice_url: inv.url, amount_htva: total, amount_tvac: r2(total * 1.21) })
-        await logRestitution(sb, m.id, actor, 'invoice', `Montant confirmé (${total.toFixed(2)} € HTVA) et facture créée dans Odoo au nom de ${clientName} par ${who_name}.`, { invoice_odoo_id: inv.odoo_id, warnings: res.warnings })
+        await logRestitution(sb, m.id, actor, 'invoice', `Montant confirmé (${total.toFixed(2)} € HTVA) et facture créée dans Odoo au nom de ${clientName} par ${who_name}${isTest ? ' (véhicule de test : facture laissée en brouillon)' : ''}.`, { invoice_odoo_id: inv.odoo_id, warnings: res.warnings, test: isTest })
         return done()
       }
 
