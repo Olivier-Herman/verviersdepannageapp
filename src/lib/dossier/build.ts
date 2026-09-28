@@ -132,7 +132,7 @@ export interface DossierInvoice {
   reminder_30_at: string | null
 }
 
-import { nightsBetween } from '@/lib/parc/nights'
+import { nightsBetween, brusselsMidnightAfter } from '@/lib/parc/nights'
 
 const DAY_MS = 86_400_000
 const ts  = (v: string | null | undefined) => (v ? new Date(v).getTime() : null)
@@ -478,6 +478,10 @@ async function buildDossierUncached(anyMissionId: string, light: boolean, price 
   const legs: DossierLeg[] = []
   for (const m of legRows) {
     const kind = kindOf(m)
+    // Détail du gardiennage pour la facture (Olivier 28/09/2026 : la facture doit
+    // refléter le calcul — deux lignes quand la levée coupe la période).
+    let legSplit: { saisie: number; autre: number; saisiePrice: number; autrePrice: number; cut: string } | null = null
+    let legDayPrice: number | null = null
     const st = statusOf(m, kind)
     const billedItems = itemsBy[m.id] || []
     const billedHtva = r2(billedItems.reduce((s, it) => s + Number(it.amount_htva || 0), 0))
@@ -538,11 +542,14 @@ async function buildDossierUncached(anyMissionId: string, light: boolean, price 
       days = Math.max(0, rawDays - (tarif?.free || 0))
       let split: { saisie: number; autre: number; autrePrice: number } | null = null
       if (regime === 'saisie' && levee && root.levee_saisie_date) {
-        const cut = ts(`${String(root.levee_saisie_date).slice(0, 10)}T23:59:59Z`)!
+        // Fin du jour de la levée en heure BELGE (avant : 23:59:59 UTC = 01:59 le lendemain,
+        // une nuit de trop au tarif saisie — facture 2026/09/592, Olivier 28/09/2026).
+        const cut = new Date(brusselsMidnightAfter(String(root.levee_saisie_date).slice(0, 10))).getTime() - 1000
         const endTs = exit ?? Date.now()
         if (endTs > cut) {
-          const nightsSaisie = nightsBetween(entry, cut)
-          const nightsAutre  = nightsBetween(cut, endTs)
+          // Un volet ouvert APRÈS la levée ne compte que depuis sa propre entrée.
+          const nightsSaisie = entry < cut ? nightsBetween(entry, cut) : 0
+          const nightsAutre  = nightsBetween(Math.max(entry, cut), endTs)
           split = { saisie: nightsSaisie, autre: nightsAutre, autrePrice: dayPriceByRegime['autre']?.price || 0 }
           days = nightsSaisie + nightsAutre
         }
@@ -555,10 +562,11 @@ async function buildDossierUncached(anyMissionId: string, light: boolean, price 
       else if (Number(m.storage_flat_htva) > 0) { amount = r2(Number(m.storage_flat_htva)); note = 'forfait gardiennage' }
       else if (days <= 0 && !open) { amount = 0; nothing = `aucune nuit facturable (${rawDays} nuit${rawDays > 1 ? 's' : ''}${(tarif?.free || 0) > 0 ? `, ${tarif?.free} offerte${(tarif?.free || 0) > 1 ? 's' : ''}` : ''})` }
       else if (split) {
+        legSplit = { ...split, saisiePrice: dayPrice, cut: String(root.levee_saisie_date).slice(0, 10) }
         amount = r2(split.saisie * dayPrice + split.autre * split.autrePrice)
         note = `${split.saisie} j × ${dayPrice.toFixed(2)} € (saisie)${split.autre ? ` + ${split.autre} j × ${split.autrePrice.toFixed(2)} € (hors saisie, après la levée)` : ''}`
       }
-      else { amount = r2(days * dayPrice); note = dayPrice ? `${days} j × ${dayPrice.toFixed(2)} €` : `${days} j · tarif journalier introuvable` }
+      else { amount = r2(days * dayPrice); legDayPrice = dayPrice || null; note = dayPrice ? `${days} j × ${dayPrice.toFixed(2)} €` : `${days} j · tarif journalier introuvable` }
       title = 'Gardiennage'
       subtitle = [regimeEff !== regime ? `régime ${REGIME_LABEL[regime] || regime} → ${REGIME_LABEL[regimeEff] || regimeEff} (levée de saisie)` : `régime ${REGIME_LABEL[regime] || regime}`, m.parc_zone_key ? `zone ${m.parc_zone_key}` : null, m.parc_row_number != null ? `rangée ${m.parc_row_number}` : null].filter(Boolean).join(' · ')
       started = m.parked_at || m.received_at; ended = exit ? new Date(exit).toISOString() : null
@@ -695,6 +703,7 @@ async function buildDossierUncached(anyMissionId: string, light: boolean, price 
         if (m.needs_siabis_decision) a.push('Siabis autoroute : couvert / non couvert pas encore tranché')
         return a })(),
       _sort: startKey(m, kind), _rank: kind === 'rem' ? 0 : kind === 'gard' ? 1 : 2,
+      gard_split: legSplit, day_price: legDayPrice,
     } as any)
   }
   // ── Canal PARQUET : remorquage + gardiennages saisie facturés par état de

@@ -146,8 +146,16 @@ async function invoiceDossierGroupsLocked(sb: any, d: Dossier, input: { anyMissi
         const lines: QuoteLine[] = []
         if (Number(m.storage_flat_htva) > 0 && !m.storage_waived) {
           lines.push({ kind: 'SERV-PARC', name: `Forfait gardiennage — zone ${m.parc_zone_key || '?'} du ${fmtDay(from)} au ${fmtDay(to)}`, qty: 1, price_unit: r2(Number(m.storage_flat_htva)) })
+        } else if (!chosen && (leg as any).gard_split && days > 0) {
+          // Levée de saisie au milieu de la période : deux lignes, chacune à son tarif,
+          // exactement comme le calcul du dossier (plus de prix moyen arrondi).
+          const sp = (leg as any).gard_split as { saisie: number; autre: number; saisiePrice: number; autrePrice: number; cut: string }
+          const cutDay = `${sp.cut}T12:00:00Z`, after = new Date(new Date(cutDay).getTime() + 86400000).toISOString()
+          if (sp.saisie > 0) lines.push({ kind: 'SERV-PARC', name: `Gardiennage (saisie) — zone ${m.parc_zone_key || '?'} du ${fmtDay(from)} au ${fmtDay(cutDay)} (jour de la levée) : ${sp.saisie} nuit${sp.saisie > 1 ? 's' : ''}`, qty: sp.saisie, price_unit: r2(sp.saisiePrice) })
+          if (sp.autre > 0) lines.push({ kind: 'SERV-PARC', name: `Gardiennage après la levée de saisie — zone ${m.parc_zone_key || '?'} du ${fmtDay(after)} au ${fmtDay(new Date(new Date(to).getTime() - 1000).toISOString())} : ${sp.autre} nuit${sp.autre > 1 ? 's' : ''}`, qty: sp.autre, price_unit: r2(sp.autrePrice) })
         } else if (days > 0 && leg.amount_htva > 0 && (leg.days || 0) > 0) {
-          const pu = r2(leg.amount_htva / (leg.days as number))
+          // Prix du tarif quand il est connu ; sinon moyenne (forfaits, cas particuliers).
+          const pu = !chosen && (leg as any).day_price && Math.abs((leg as any).day_price * (leg.days as number) - leg.amount_htva) < 0.01 ? r2((leg as any).day_price) : r2(leg.amount_htva / (leg.days as number))
           lines.push({ kind: 'SERV-PARC', name: `Gardiennage (${leg.regime}) — zone ${m.parc_zone_key || '?'} du ${fmtDay(from)} au ${fmtDay(new Date(new Date(to).getTime() - 1000).toISOString())} : ${days} jour${days > 1 ? 's' : ''}`, qty: days, price_unit: pu })
         } else {
           warnings.push(`${d.number}${leg.letter} : 0 jour facturable, groupe ignoré`); continue
