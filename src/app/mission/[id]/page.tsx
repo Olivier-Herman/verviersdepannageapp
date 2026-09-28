@@ -117,10 +117,16 @@ export default async function MissionDriverPage({ params, searchParams }: Props)
   // (Olivier 2026-08-18).
   let parentClosingNote: string | null = null
   let parentPanne: string | null = null
+  // Et les PHOTOS de l'enlèvement (Olivier 28/09/2026) : le chauffeur de la
+  // relivraison voit l'état du véhicule tel qu'il a été chargé ; il n'ajoute que
+  // les photos de sa relivraison.
+  let parentPhotos: string[] = []
   if (mission.parent_mission_id) {
     const { data: parent } = await supabase.from('incoming_missions')
-      .select('closing_notes, panne_motif').eq('id', mission.parent_mission_id).maybeSingle()
+      .select('closing_notes, panne_motif, driver_photos').eq('id', mission.parent_mission_id).maybeSingle()
     parentClosingNote = parent?.closing_notes || null
+    const own = new Set<string>(Array.isArray((mission as any).driver_photos) ? (mission as any).driver_photos : [])
+    parentPhotos = (Array.isArray((parent as any)?.driver_photos) ? (parent as any).driver_photos as string[] : []).filter(u => u && !own.has(u))
     const key = (parent as any)?.panne_motif || ''
     if (key) {
       const { findMotif } = await import('@/lib/cloture/motifs')
@@ -142,6 +148,7 @@ export default async function MissionDriverPage({ params, searchParams }: Props)
         onsiteV2={onsiteV2}
         parentPanne={parentPanne}
         parentClosingNote={parentClosingNote}
+        parentPhotos={parentPhotos}
       />
     </>
   )

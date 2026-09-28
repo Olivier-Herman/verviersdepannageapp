@@ -93,7 +93,46 @@ interface Mission {
   awaiting_payment?: boolean | null
 }
 interface VrLoc { id: string; name: string; address: string; lat: number | null; lng: number | null; is_default?: boolean }
-interface Props { mission: Mission; currentUserId?: string; userRole?: string; isReadOnly?: boolean; navApp?: NavApp; defaultParcZone?: string | null; flux2?: boolean; onsiteV2?: boolean; parentClosingNote?: string | null; parentPanne?: string | null }
+interface Props { mission: Mission; currentUserId?: string; userRole?: string; isReadOnly?: boolean; navApp?: NavApp; defaultParcZone?: string | null; flux2?: boolean; onsiteV2?: boolean; parentClosingNote?: string | null; parentPanne?: string | null; parentPhotos?: string[] }
+
+// Photos prises à l'ENLÈVEMENT (mission parente), en lecture seule sur une
+// relivraison : le chauffeur voit l'état du véhicule tel qu'il a été chargé et
+// n'ajoute que les photos de sa relivraison. Olivier 28/09/2026.
+function ParentPhotosStrip({ urls, className = '' }: { urls: string[]; className?: string }) {
+  const [open, setOpen] = useState(false)
+  const [zoom, setZoom] = useState<string | null>(null)
+  if (!urls.length) return null
+  const shown = open ? urls : urls.slice(0, 6)
+  return (
+    <div className={`bg-surface border rounded-2xl px-4 py-3 ${className}`}>
+      <div className="flex items-center gap-3">
+        <span className="text-2xl flex-shrink-0">📷</span>
+        <div className="min-w-0 flex-1">
+          <p className="text-ink-muted text-[11px] font-bold uppercase tracking-wide"><T k="parent_photos.title" /></p>
+          <p className="text-ink text-sm font-semibold leading-snug mt-0.5"><T k="parent_photos.count" params={{ n: urls.length }} /></p>
+        </div>
+      </div>
+      <div className="grid grid-cols-3 gap-2 mt-3">
+        {shown.map((u, i) => (
+          <button key={i} type="button" onClick={() => setZoom(u)} className="relative aspect-square rounded-xl overflow-hidden bg-surface-2">
+            <img src={u} alt="" loading="lazy" className="w-full h-full object-cover" />
+          </button>
+        ))}
+      </div>
+      {urls.length > 6 && (
+        <button type="button" onClick={() => setOpen(o => !o)} className="mt-2 text-sm font-semibold text-ink-muted underline">
+          {open ? <T k="parent_photos.less" /> : <T k="parent_photos.more" params={{ n: urls.length - 6 }} />}
+        </button>
+      )}
+      {zoom && (
+        <div className="fixed inset-0 z-50 bg-black/90 flex flex-col">
+          <div className="flex justify-end p-4 pt-12"><button type="button" onClick={() => setZoom(null)} className="w-10 h-10 rounded-full bg-white/15 text-white text-xl">✕</button></div>
+          <div className="flex-1 flex items-center justify-center px-2 pb-8"><img src={zoom} alt="" className="max-w-full max-h-full object-contain" /></div>
+        </div>
+      )}
+    </div>
+  )
+}
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 // Olivier 2026-06-18 : null-safe. Le defaut `= ''` ne couvre QUE undefined ;
@@ -564,7 +603,7 @@ function BriefingTtsButton({ mission }: { mission: Mission }) {
 }
 
 // ─── Composant principal ──────────────────────────────────────────────────────
-export default function DriverClient({ mission: init, currentUserId, userRole, isReadOnly = false, navApp: initNav, defaultParcZone = null, flux2 = false, onsiteV2 = false, parentClosingNote = null, parentPanne = null }: Props) {
+export default function DriverClient({ mission: init, currentUserId, userRole, isReadOnly = false, navApp: initNav, defaultParcZone = null, flux2 = false, onsiteV2 = false, parentClosingNote = null, parentPanne = null, parentPhotos = [] }: Props) {
   const canMatthieu = canUseMatthieu(userRole, currentUserId)
   const router = useRouter()
   const { t, lang } = useT()   // traductions FR/albanais pour les messages d'erreur (strings)
@@ -2684,6 +2723,9 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
           }} />
 
         <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3">
+          {/* Relivraison : les photos de l'enlèvement sont déjà au dossier, en
+              lecture seule — on n'ajoute ici que celles de la relivraison. */}
+          {parentPhotos.length > 0 && <ParentPhotosStrip urls={parentPhotos} className="mb-1" />}
           {/* Aperçu des photos déjà prises */}
           {previews.length > 0 && (
             <div className="grid grid-cols-3 gap-2 mb-3">
@@ -3603,8 +3645,14 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
         </div>
       )}
 
+      {/* Les photos de l'enlèvement, en lecture seule : le chauffeur de la
+          relivraison voit l'état du véhicule au chargement. Olivier 28/09/2026. */}
+      {parentPhotos.length > 0 && (
+        <ParentPhotosStrip urls={parentPhotos} className={`mx-4 ${parentClosingNote || parentPanne ? 'mt-1' : 'mt-14'} mb-1`} />
+      )}
+
       {/* Header avec backdrop-blur pour fondre avec l'ambient */}
-      <div className={`bg-surface/85 backdrop-blur-md border-b px-4 ${parentClosingNote || parentPanne ? 'pt-3' : 'pt-12'} pb-4 sticky top-0 z-20`}>
+      <div className={`bg-surface/85 backdrop-blur-md border-b px-4 ${parentClosingNote || parentPanne || parentPhotos.length ? 'pt-3' : 'pt-12'} pb-4 sticky top-0 z-20`}>
         <div className="flex items-center justify-between mb-1">
           <button onClick={() => router.push('/mission')} className="w-9 h-9 flex items-center justify-center bg-surface-hover rounded-xl text-ink">←</button>
           <div className="flex items-center gap-2">

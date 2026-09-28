@@ -676,4 +676,10 @@ export const sq: Dictionary = {
     empty:      'Lista është bosh',
     other_hint: 'Nuk është në listë → zyra do ta krijojë mjetin',
   },
+  parent_photos: {
+    title: 'Fotot e tërheqjes',
+    count: '{n} foto · gjendja e mjetit gjatë ngarkimit',
+    more:  '+{n} foto të tjera',
+    less:  'Shiko më pak',
+  },
 }

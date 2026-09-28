@@ -688,6 +688,12 @@ export const fr = {
     empty:      'Liste vide',
     other_hint: 'Pas dans la liste → le bureau créera le véhicule',
   },
+  parent_photos: {
+    title: 'Photos de l’enlèvement',
+    count: '{n} photo(s) · état du véhicule au chargement',
+    more:  '+{n} autres photos',
+    less:  'Voir moins',
+  },
 }
 
 export type Dictionary = typeof fr
