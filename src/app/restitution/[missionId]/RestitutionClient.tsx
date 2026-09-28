@@ -10,6 +10,7 @@ import EidImportButton, { type EidData } from '@/components/caisse/EidImportButt
 import AddressField from '@/components/AddressField'
 import ScanToFicheButton from '@/components/missions/ScanToFicheButton'
 import { compressImage } from '@/lib/image-compress'
+import PieceCapture from '@/components/restitution/PieceCapture'
 
 type Ctx = any
 const eur = (n: number) => (Number(n) || 0).toLocaleString('fr-BE', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' €'
@@ -131,7 +132,7 @@ export default function RestitutionClient({ missionId, gmKey }: { missionId: str
             </div>
             {s.id === cur && (
               <div className="flex flex-col gap-3 sm:pl-9">
-                {s.id === 'who' && <WhoStep c={c} R={R} act={act} busy={busy} gmKey={gmKey} setErr={setErr} onDerog={() => setDerog({ kind: 'identite', label: 'Pas de pièce d’identité' })} />}
+                {s.id === 'who' && <WhoStep c={c} R={R} act={act} busy={busy} gmKey={gmKey} setErr={setErr} setC={setC} load={load} missionId={m.id} onDerog={() => setDerog({ kind: 'identite', label: 'Pas de pièce d’identité' })} />}
                 {s.id === 'checks' && <ChecksStep c={c} missionId={m.id} load={load} say={say} setErr={setErr} onDerog={(k: string, l: string) => setDerog({ kind: k, label: l })} />}
                 {s.id === 'split' && <SplitStep c={c} R={R} act={act} busy={busy} />}
                 {s.id === 'amount' && <AmountStep c={c} R={R} act={act} busy={busy} setErr={setErr} say={say} onDerog={(k: string, l: string) => setDerog({ kind: k, label: l })} />}
@@ -169,25 +170,54 @@ export default function RestitutionClient({ missionId, gmKey }: { missionId: str
 }
 
 // ── 1. Qui vient + identité ──────────────────────────────────────────────
-function WhoStep({ c, R, act, busy, gmKey, setErr, onDerog }: any) {
+function WhoStep({ c, R, act, busy, gmKey, setErr, setC, load, missionId, onDerog }: any) {
   const [mode, setMode] = useState<'eid' | 'photo' | null>(null)
   const [kind, setKind] = useState<'prive' | 'pro'>('prive')
   const [f, setF] = useState<any>({ first_name: '', last_name: '', street: '', zip: '', city: '', country: 'BE', phone: '', email: '', vat: '', company: '', contact: '' })
   const [vies, setVies] = useState<'idle' | 'checking' | 'ok' | 'ko'>('idle')
   const [addr, setAddr] = useState('')
-  const fileRef = useRef<HTMLInputElement>(null)
+  const [waitPhone, setWaitPhone] = useState(false)
+  const [prefilled, setPrefilled] = useState(false)
+  const pcFileRef = useRef<HTMLInputElement>(null)
   const set = (k: string, v: string) => setF((p: any) => ({ ...p, [k]: v }))
   const who = R?.who_kind
-  const hasPhoto = !!R?.id_document_id
+  const hasPhoto = !!c.idDoc?.count
+  // Téléphone (app ou navigateur mobile) : l'appareil photo s'ouvre ici. PC : on
+  // envoie une notification au téléphone de l'utilisateur (Olivier 28/09/2026).
+  const onPhone = typeof navigator !== 'undefined' && (/VDNav\//.test(navigator.userAgent) || /iPhone|iPad|Android/i.test(navigator.userAgent))
+
+  // En attente de la photo prise sur le téléphone : on regarde toutes les 3 s.
+  useEffect(() => {
+    if (!waitPhone || hasPhoto) { if (hasPhoto) setWaitPhone(false); return }
+    const t = setInterval(load, 3000); return () => clearInterval(t)
+  }, [waitPhone, hasPhoto, load])
+  // Pré-remplissage depuis la lecture de la pièce.
+  useEffect(() => {
+    const o = c.idDoc?.ocr; if (!o || prefilled) return
+    setPrefilled(true)
+    setF((p: any) => ({ ...p, first_name: p.first_name || o.firstName || '', last_name: p.last_name || o.lastName || '', street: p.street || o.street || '', zip: p.zip || o.zip || '', city: p.city || o.city || '' }))
+    if (o.street || o.city) setAddr([o.street, [o.zip, o.city].filter(Boolean).join(' ')].filter(Boolean).join(', '))
+  }, [c.idDoc?.ocr, prefilled])
 
   const fromEid = async (d: EidData) => {
     await act('client', { client: { kind: 'prive', source: 'eid', first_name: d.firstName, last_name: d.lastName, street: d.street, zip: d.zip, city: d.city, country: d.country || 'BE', phone: d.phone, email: d.email, national_number: d.nationalNumber, birth_date: d.birthDate } })
   }
-  const photo = async (file: File) => {
+  // Coordonnées tapées par le client sur l'écran comptoir.
+  const fromCounter = (d: any) => {
+    const isPro = !!d.isCompany || !!d.vat
+    if (isPro) { setKind('pro'); setF((p: any) => ({ ...p, company: d.name || p.company, vat: d.vat || p.vat, street: d.street || p.street, zip: d.zip || p.zip, city: d.city || p.city, country: d.countryCode || p.country, phone: d.phone || p.phone, email: d.email || p.email })); setVies('ko') }
+    else {
+      const parts = String(d.name || '').trim().split(/\s+/)
+      setF((p: any) => ({ ...p, last_name: p.last_name || parts.slice(-1)[0] || '', first_name: p.first_name || parts.slice(0, -1).join(' '), street: d.street || p.street, zip: d.zip || p.zip, city: d.city || p.city, country: d.countryCode || p.country, phone: d.phone || p.phone, email: d.email || p.email }))
+    }
+    setAddr([d.street, [d.zip, d.city].filter(Boolean).join(' ')].filter(Boolean).join(', '))
+  }
+  const pcPhoto = async (file: File) => {
     const small = await compressImage(file, 1800)
-    const fd = new FormData(); fd.append('file', new File([small], 'piece-identite.jpg', { type: small.type || 'image/jpeg' }))
+    const fd = new FormData(); fd.append('files', new File([small], 'piece-identite.jpg', { type: small.type || 'image/jpeg' }))
     await act('id_photo', {}, { multipart: fd })
   }
+  const askPhone = async () => { const j = await act('phone_photo'); if (j) setWaitPhone(true) }
   const checkVies = async () => {
     const vat = f.vat.replace(/\s|\./g, '').toUpperCase(); if (vat.length < 8) return
     setVies('checking')
@@ -208,35 +238,45 @@ function WhoStep({ c, R, act, busy, gmKey, setErr, onDerog }: any) {
     {who && !R?.odoo_partner_id && <div className="rounded-xl bg-surface-2 border border-border p-3 flex flex-col gap-2.5">
       <div className="text-[11px] font-bold uppercase tracking-wider text-ink-muted">Pièce d’identité (obligatoire)</div>
       <div className="flex flex-wrap gap-2">
-        <Btn kind={mode === 'eid' ? 'ok' : 'ghost'} onClick={() => setMode('eid')}>🪪 Lire la carte eID</Btn>
-        <Btn kind={mode === 'photo' ? 'ok' : 'ghost'} onClick={() => { setMode('photo'); if (!hasPhoto) fileRef.current?.click() }}>📷 Photographier la pièce et encoder</Btn>
+        {!onPhone && <Btn kind={mode === 'eid' ? 'ok' : 'ghost'} onClick={() => setMode('eid')}>🪪 Lire la carte eID</Btn>}
+        <Btn kind={mode === 'photo' ? 'ok' : 'ghost'} onClick={() => setMode('photo')}>📷 Photographier la pièce{onPhone ? ' (recto et verso)' : ''}</Btn>
       </div>
-      <input ref={fileRef} type="file" accept="image/*" capture="environment" hidden onChange={e => { const x = e.target.files?.[0]; if (x) photo(x); e.target.value = '' }} />
       {mode === 'eid' && <div className="flex flex-col gap-1.5">
         <p className="text-sm text-ink-secondary">Le client insère sa carte dans le lecteur du comptoir et valide sur l’écran client. Ses données servent à la restitution et à la facture.</p>
         <EidImportButton onImport={fromEid} />
       </div>}
-      {mode === 'photo' && <>
-        {hasPhoto ? <Chk state="ok" title="Photo de la pièce enregistrée">Encodez maintenant les données du client.</Chk> : <Btn onClick={() => fileRef.current?.click()}>📷 Prendre la photo</Btn>}
-        {hasPhoto && <>
-          <div className="flex gap-2"><Opt on={kind === 'prive'} onClick={() => setKind('prive')} title="Privé" /><Opt on={kind === 'pro'} onClick={() => setKind('pro')} title="Pro" /></div>
-          {kind === 'pro' && <>
-            <div className="flex gap-2"><input className={`${input} font-mono flex-1`} placeholder="N° de TVA (BE0123456789)" value={f.vat} onChange={e => { set('vat', e.target.value); setVies('idle') }} aria-label="Numéro de TVA" /><Btn onClick={checkVies} disabled={vies === 'checking'}>{vies === 'checking' ? '…' : 'Vérifier (VIES)'}</Btn></div>
-            {vies === 'ok' && <Chk state="ok" title={`TVA valide : ${f.company}`}>{[f.street, `${f.zip} ${f.city}`].filter(Boolean).join(', ')}</Chk>}
-            {vies === 'ko' && <Chk state="warn" title="TVA non confirmée par VIES">Vérifiez le numéro, ou encodez la société à la main.</Chk>}
-            {(vies === 'ok' || vies === 'ko') && <>
-              <input className={input} placeholder="Nom de la société" value={f.company} onChange={e => set('company', e.target.value)} aria-label="Nom de la société" />
-              {vies === 'ko' && <AddressField value={addr} onChange={setAddr} onParts={p => setF((x: any) => ({ ...x, street: [p.rue, p.num].filter(Boolean).join(' '), zip: p.cp || '', city: p.loc || '' }))} gmKey={gmKey} placeholder="Adresse de la société" />}
-              <input className={input} placeholder="Personne présente (nom et prénom)" value={f.contact} onChange={e => set('contact', e.target.value)} aria-label="Personne présente" />
-            </>}
+      {mode === 'photo' && !hasPhoto && (onPhone
+        ? <PieceCapture missionId={missionId} onSent={(j: any) => setC(j)} />
+        : <div className="flex flex-col gap-2">
+            {waitPhone
+              ? <div className="rounded-xl bg-info-soft px-3 py-2.5 text-sm text-info font-semibold flex items-center gap-2"><span className="inline-block w-3 h-3 border-2 border-info border-t-transparent rounded-full animate-spin" />Notification envoyée sur votre téléphone : photographiez le recto puis le verso. Cet écran se met à jour tout seul.</div>
+              : <Btn kind="brand" disabled={busy} onClick={askPhone}>📱 Prendre la photo avec mon téléphone</Btn>}
+            <button type="button" onClick={() => pcFileRef.current?.click()} className="self-start text-sm font-semibold text-ink-muted underline">ou choisir une photo sur ce PC</button>
+            <input ref={pcFileRef} type="file" accept="image/*" hidden onChange={e => { const x = e.target.files?.[0]; if (x) pcPhoto(x); e.target.value = '' }} />
+          </div>)}
+      {mode === 'photo' && hasPhoto && <>
+        <Chk state="ok" title={`Pièce photographiée (${c.idDoc.count} photo${c.idDoc.count > 1 ? 's' : ''}) et rangée dans le dossier`}>{c.idDoc.ocr?.lastName ? `Lu : ${[c.idDoc.ocr.firstName, c.idDoc.ocr.lastName].filter(Boolean).join(' ')}. Vérifiez et complétez.` : 'Complétez les données du client.'}</Chk>
+        {!onPhone && <div className="flex flex-col gap-1">
+          <EidImportButton mode="manual" label="🖥️ Envoyer à l’écran comptoir pour les coordonnées" onImport={fromCounter} />
+          <p className="text-xs text-ink-muted">Le client tape son adresse, son téléphone et son e-mail sur l’écran du comptoir ; elles arrivent ici.</p>
+        </div>}
+        <div className="flex gap-2"><Opt on={kind === 'prive'} onClick={() => setKind('prive')} title="Privé" /><Opt on={kind === 'pro'} onClick={() => setKind('pro')} title="Pro" /></div>
+        {kind === 'pro' && <>
+          <div className="flex gap-2"><input className={`${input} font-mono flex-1`} placeholder="N° de TVA (BE0123456789)" value={f.vat} onChange={e => { set('vat', e.target.value); setVies('idle') }} aria-label="Numéro de TVA" /><Btn onClick={checkVies} disabled={vies === 'checking'}>{vies === 'checking' ? '…' : 'Vérifier (VIES)'}</Btn></div>
+          {vies === 'ok' && <Chk state="ok" title={`TVA valide : ${f.company}`}>{[f.street, `${f.zip} ${f.city}`].filter(Boolean).join(', ')}</Chk>}
+          {vies === 'ko' && <Chk state="warn" title="TVA non confirmée par VIES">Vérifiez le numéro, ou encodez la société à la main.</Chk>}
+          {(vies === 'ok' || vies === 'ko') && <>
+            <input className={input} placeholder="Nom de la société" value={f.company} onChange={e => set('company', e.target.value)} aria-label="Nom de la société" />
+            {vies === 'ko' && <AddressField value={addr} onChange={setAddr} onParts={p => setF((x: any) => ({ ...x, street: [p.rue, p.num].filter(Boolean).join(' '), zip: p.cp || '', city: p.loc || '' }))} gmKey={gmKey} placeholder="Adresse de la société" />}
+            <input className={input} placeholder="Personne présente (nom et prénom)" value={f.contact} onChange={e => set('contact', e.target.value)} aria-label="Personne présente" />
           </>}
-          {kind === 'prive' && <>
-            <div className="flex gap-2"><input className={input} placeholder="Nom" value={f.last_name} onChange={e => set('last_name', e.target.value)} aria-label="Nom" /><input className={input} placeholder="Prénom" value={f.first_name} onChange={e => set('first_name', e.target.value)} aria-label="Prénom" /></div>
-            <AddressField value={addr} onChange={setAddr} onParts={p => setF((x: any) => ({ ...x, street: [p.rue, p.num].filter(Boolean).join(' '), zip: p.cp || '', city: p.loc || '' }))} gmKey={gmKey} placeholder="Adresse : commencez à taper…" />
-          </>}
-          <div className="flex gap-2"><input className={input} placeholder="Téléphone" inputMode="tel" value={f.phone} onChange={e => set('phone', e.target.value)} aria-label="Téléphone" /><input className={input} placeholder="E-mail pour la facture" inputMode="email" value={f.email} onChange={e => set('email', e.target.value)} aria-label="E-mail" /></div>
-          <div className="flex gap-2"><Btn kind="brand" disabled={busy || (kind === 'pro' ? !(f.company && f.vat) : !(f.last_name && f.first_name))} onClick={save}>Créer le client</Btn></div>
         </>}
+        {kind === 'prive' && <>
+          <div className="flex gap-2"><input className={input} placeholder="Nom" value={f.last_name} onChange={e => set('last_name', e.target.value)} aria-label="Nom" /><input className={input} placeholder="Prénom" value={f.first_name} onChange={e => set('first_name', e.target.value)} aria-label="Prénom" /></div>
+          <AddressField value={addr} onChange={setAddr} onParts={p => setF((x: any) => ({ ...x, street: [p.rue, p.num].filter(Boolean).join(' '), zip: p.cp || '', city: p.loc || '' }))} gmKey={gmKey} placeholder="Adresse : commencez à taper…" />
+        </>}
+        <div className="flex gap-2"><input className={input} placeholder="Téléphone" inputMode="tel" value={f.phone} onChange={e => set('phone', e.target.value)} aria-label="Téléphone" /><input className={input} placeholder="E-mail pour la facture" inputMode="email" value={f.email} onChange={e => set('email', e.target.value)} aria-label="E-mail" /></div>
+        <div className="flex gap-2"><Btn kind="brand" disabled={busy || (kind === 'pro' ? !(f.company && f.vat) : !(f.last_name && f.first_name))} onClick={save}>Créer le client</Btn></div>
       </>}
     </div>}
     {R?.odoo_partner_id && <Chk state="ok" title={`${R.client?.name} · ${R.client?.kind === 'pro' ? 'Pro' : 'Privé'}`}>{[R.client?.street, [R.client?.zip, R.client?.city].filter(Boolean).join(' '), R.client?.phone, R.client?.email].filter(Boolean).join(' · ')} — {R.client?.source === 'eid' ? 'lu sur la carte eID' : 'encodé d’après la pièce photographiée'}.</Chk>}

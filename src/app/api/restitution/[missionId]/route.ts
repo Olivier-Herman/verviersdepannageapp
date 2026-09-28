@@ -16,6 +16,8 @@ import { releaseParcAndShift } from '@/lib/parc/release'
 import { buildEncaissementUrl } from '@/lib/missions/encaissement-url'
 import { getBusinessNumber } from '@/lib/settings/business'
 import { sourceLabel } from '@/lib/missions/source-catalog'
+import { extractJsonFromImages, ID_DOCUMENT_PROMPT } from '@/lib/ocr/vision-json'
+import { sendPushToUser } from '@/lib/push'
 import {
   restitutionAccess, loadMission, findAssistanceRel, approvedDerogations, computeChecks, openLegs, payerFor,
   assistancePartnerIds, userNames, logRestitution, isSaisieLike, leveeOk, defaultSplit,
@@ -82,6 +84,15 @@ async function buildContext(sb: any, session: any, missionId: string) {
     await logRestitution(sb, m.id, me.id, 'done', `Véhicule restitué après l’encaissement chauffeur (${driverCollected.toFixed(2)} €).`, { settlement: 'driver_cash' })
     open.status = 'done'
   }
+  // Pièce d'identité photographiée pendant cette restitution (PC ou téléphone).
+  let idDoc: any = null
+  if (open) {
+    const { data: docs } = await sb.from('mission_documents').select('id, ocr, created_at').eq('mission_id', m.id).eq('kind', 'id_card').gte('created_at', open.started_at).order('created_at', { ascending: true })
+    if (docs?.length) {
+      idDoc = { count: docs.length, ocr: docs.find((d: any) => d.ocr)?.ocr || null, ids: docs.map((d: any) => d.id) }
+      if (!open.id_document_id) { await sb.from('restitutions').update({ id_document_id: docs[0].id }).eq('id', open.id); open.id_document_id = docs[0].id }
+    }
+  }
   const { data: logs } = await sb.from('mission_logs').select('id, action, notes, created_at, actor_id').eq('mission_id', m.id).like('action', 'restitution_%').order('created_at', { ascending: false }).limit(60)
   const logNames = await userNames(sb, (logs || []).map((l: any) => l.actor_id))
   const { data: pending } = open ? await sb.from('derogation_requests').select('id, kind, reason, status, responsable_id, created_at').eq('restitution_id', open.id).eq('status', 'pending').order('created_at', { ascending: false }) : { data: [] }
@@ -99,7 +110,7 @@ async function buildContext(sb: any, session: any, missionId: string) {
     restitution: rest ? { ...rest, started_by_name: names[rest.started_by] || null, completed_by_name: names[rest.completed_by] || null } : null,
     checks,
     legs: legsOut, due: { htva: dueHtva, tvac: r2(dueHtva * 1.21) }, splitDefault: defaultSplit(m),
-    invoice, driverCollected,
+    invoice, driverCollected, idDoc,
     derogations: derogs.map(d => ({ ...d, responsable_name: names[d.responsable_id] || null, requested_by_name: names[d.requested_by] || null })),
     pending: (pending || []).map((p: any) => ({ ...p, responsable_name: pNames[p.responsable_id] || null })),
     responsables: (resp || []).filter((u: any) => u.id !== me.id).map((u: any) => ({ id: u.id, name: u.name, has_pin: !!u.verify_pin_hash })),
@@ -164,18 +175,40 @@ export async function POST(req: Request, { params }: { params: { missionId: stri
       }
 
       case 'id_photo': {
-        const file = form?.get('file')
-        if (!(file instanceof File) || !file.size) return NextResponse.json({ error: 'Photo manquante' }, { status: 400 })
+        // Recto et verso (1 à 2 photos), lues tout de suite pour pré-remplir le client.
+        const files = (form?.getAll('files') || []).filter((f): f is File => f instanceof File && f.size > 0).slice(0, 2)
+        const single = form?.get('file'); if (!files.length && single instanceof File && single.size) files.push(single)
+        if (!files.length) return NextResponse.json({ error: 'Photo manquante' }, { status: 400 })
         await ensure()
-        const buf = Buffer.from(await file.arrayBuffer())
-        const mime = file.type || 'image/jpeg'
-        const path = `${m.id}/id_card/${Date.now()}.${mime.includes('png') ? 'png' : 'jpg'}`
-        const { error: upErr } = await sb.storage.from('mission-documents').upload(path, buf, { contentType: mime, upsert: false })
-        if (upErr) return NextResponse.json({ error: `Photo non enregistrée : ${upErr.message}` }, { status: 500 })
-        const { data: doc } = await sb.from('mission_documents').insert({ mission_id: m.id, kind: 'id_card', file_path: path, file_name: file.name || 'piece-identite.jpg', mime_type: mime, file_size: buf.length, uploaded_by: actor }).select('id').single()
-        await upd({ id_document_id: doc?.id || null })
-        await logRestitution(sb, m.id, actor, 'id_photo', `Pièce d’identité photographiée par ${who_name}.`, { document_id: doc?.id })
+        const images: { base64: string; mimeType: string }[] = []
+        let first: string | null = null
+        for (let i = 0; i < files.length; i++) {
+          const f = files[i]
+          const buf = Buffer.from(await f.arrayBuffer())
+          const mime = f.type || 'image/jpeg'
+          const path = `${m.id}/id_card/${Date.now()}_${i + 1}.${mime.includes('png') ? 'png' : 'jpg'}`
+          const { error: upErr } = await sb.storage.from('mission-documents').upload(path, buf, { contentType: mime, upsert: false })
+          if (upErr) return NextResponse.json({ error: `Photo non enregistrée : ${upErr.message}` }, { status: 500 })
+          const { data: doc } = await sb.from('mission_documents').insert({ mission_id: m.id, kind: 'id_card', file_path: path, file_name: `piece-identite-${i === 0 ? 'recto' : 'verso'}.jpg`, mime_type: mime, file_size: buf.length, uploaded_by: actor }).select('id').single()
+          if (doc && !first) first = doc.id
+          if (/^image\/(jpeg|png|webp)$/.test(mime)) images.push({ base64: buf.toString('base64'), mimeType: mime })
+        }
+        let ocr: any = null
+        try { const r = await extractJsonFromImages(images, ID_DOCUMENT_PROMPT, 'Lis cette pièce d’identité (recto et verso) et retourne uniquement le JSON.'); if (r.ok) ocr = r.data } catch {}
+        if (first && ocr) await sb.from('mission_documents').update({ ocr }).eq('id', first)
+        if (!rest!.id_document_id && first) await upd({ id_document_id: first })
+        const who = ocr ? [ocr.firstName, ocr.lastName].filter(Boolean).join(' ') : ''
+        await logRestitution(sb, m.id, actor, 'id_photo', `Pièce d’identité photographiée (${files.length === 2 ? 'recto et verso' : '1 photo'}) par ${who_name}${who ? ` : ${who}` : ', lecture incomplète'}.`, { document_id: first })
         return done()
+      }
+
+      case 'phone_photo': {
+        // Depuis le PC : la notification ouvre l'appareil photo sur le téléphone de l'utilisateur.
+        await ensure()
+        const push = await sendPushToUser(actor, { title: 'Photo de la pièce d’identité', body: `${m.vehicle_plate || 'Véhicule'} : photographiez le recto puis le verso.`, url: `/restitution/${m.id}/piece`, tag: `restit-piece-${m.id}` }).catch(() => ({ sent: 0 }))
+        await logRestitution(sb, m.id, actor, 'phone_photo', `Photo de la pièce demandée sur le téléphone de ${who_name}${push.sent ? '' : ' (notification non délivrée : ouvrez VD Soft sur le téléphone)'}.`)
+        const c: any = await buildContext(sb, session, m.id)
+        return NextResponse.json({ ...c, notified: push.sent > 0 })
       }
 
       case 'client': {

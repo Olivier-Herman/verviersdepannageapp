@@ -28,10 +28,15 @@ export default function EidImportButton({
   screenKey = 'facturation',
   onImport,
   className,
+  mode = 'eid',
+  label,
 }: {
   screenKey?: string
   onImport: (d: EidData) => void
   className?: string
+  /** 'manual' : le client tape ses coordonnées sur l'écran comptoir (restitution, 28/09/2026). */
+  mode?: 'eid' | 'manual'
+  label?: string
 }) {
   const [status, setStatus] = useState<Status>('idle')
   const [error, setError]   = useState<string | null>(null)
@@ -71,12 +76,12 @@ export default function EidImportButton({
     try {
       const r = await fetch('/api/caisse/ecran', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'eid', key: screenKey, request_id: reqId, force }),
+        body: JSON.stringify({ action: mode, key: screenKey, request_id: reqId, force }),
       })
       if (r.status === 409) {
         const j = await r.json().catch(() => ({}))
         const who = j?.occupant?.client ? ` (${j.occupant.client})` : ''
-        if (window.confirm(`L'écran comptoir affiche déjà quelque chose${who}. Le remplacer par la lecture de carte ?`)) {
+        if (window.confirm(`L'écran comptoir affiche déjà quelque chose${who}. Le remplacer ?`)) {
           reqIdRef.current = reqId
           return start(true)
         }
@@ -107,7 +112,7 @@ export default function EidImportButton({
       <div className={className}>
         <div className="flex items-center gap-2 px-3 py-2 bg-info-soft border border-info rounded-xl text-xs">
           <span className="inline-block w-3 h-3 border-2 border-info border-t-transparent rounded-full animate-spin" />
-          <span className="text-info font-medium">En attente de la carte au comptoir…</span>
+          <span className="text-info font-medium">{mode === 'manual' ? 'En attente des coordonnées au comptoir…' : 'En attente de la carte au comptoir…'}</span>
           <button type="button" onClick={cancel} className="ml-auto text-ink-muted hover:text-critical">Annuler</button>
         </div>
       </div>
@@ -119,7 +124,7 @@ export default function EidImportButton({
       <button type="button" onClick={() => start(false)}
         className="text-xs text-brand hover:underline flex items-center gap-1"
         title="Afficher la demande de carte d'identité sur l'écran comptoir">
-        🪪 Lire une carte d'identité
+        {label || "🪪 Lire une carte d'identité"}
       </button>
       {status === 'error' && error && <p className="text-critical text-xs mt-1">⚠ {error}</p>}
     </div>
