@@ -48,7 +48,7 @@ export default function ProfileClient({ user }: { user: any }) {
   const [navAppLoading, setNavAppLoading] = useState(false)
   const { data: session } = useSession()
   const userNavOrder = (session?.user as any)?.navOrder as string[] | null | undefined
-  const visibleNav = filterNavItems({ userModules, userRole, userNavOrder })
+  const visibleNav = filterNavItems({ userModules, userRole, userNavOrder, userRoles: (session?.user as any)?.roles })
 
   // ── PIN ──────────────────────────────────────────────────
   const [pin1,       setPin1]       = useState('')

@@ -45,7 +45,7 @@ export default function AdminLayoutClient({
         </div>
 
         <nav className="flex-1 px-3 py-4 overflow-y-auto flex flex-col gap-0.5">
-          {filterNavItems({ userModules, userRole, userNavOrder }).map(item => {
+          {filterNavItems({ userModules, userRole, userNavOrder, userRoles: (session?.user as any)?.roles }).map(item => {
             const active = pathname === item.href || pathname.startsWith(item.href + '/')
             return (
               <Link key={item.href} href={item.href}
