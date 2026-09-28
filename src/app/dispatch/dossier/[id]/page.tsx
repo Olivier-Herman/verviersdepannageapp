@@ -28,6 +28,7 @@ export default async function DossierPage({ params, searchParams }: { params: { 
   const role = u.role || ''
 
   const allowed = role === 'superadmin' || (await isPreviewOn('dossier_view', role, u.id))
+  const restitutionV2 = await isPreviewOn('restitution_v2', role, u.id)
   if (!allowed) redirect(`/dispatch/${params.id}`)
 
   const sb = createAdminClient()
@@ -67,7 +68,7 @@ export default async function DossierPage({ params, searchParams }: { params: { 
 
   return (
     <AppShell title={`Dossier ${dossier.ref}`} userName={u.name || ''} userEmail={u.email || undefined} userId={u.id} userRole={role} userModules={u.modules || []}>
-      <DossierGroups initial={dossier} fiches={fiches} shared={shared} isSuperadmin={role === 'superadmin'} openMissionId={startCollapsed ? params.id : openId} startCollapsed={startCollapsed} />
+      <DossierGroups initial={dossier} fiches={fiches} shared={shared} isSuperadmin={role === 'superadmin'} openMissionId={startCollapsed ? params.id : openId} startCollapsed={startCollapsed} restitutionV2={restitutionV2} />
     </AppShell>
   )
 }

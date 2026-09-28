@@ -83,8 +83,10 @@ const TONE = {
   muted: 'bg-surface-2 text-ink-muted border',
 } as const
 
-export default function DossierGroups({ initial, fiches, shared, isSuperadmin, openMissionId, compact = false, mobile = false, startCollapsed = false }: {
+export default function DossierGroups({ initial, fiches, shared, isSuperadmin, openMissionId, compact = false, mobile = false, startCollapsed = false, restitutionV2 = false }: {
   initial: Dossier; fiches: Record<string, any>; shared: any; isSuperadmin: boolean; openMissionId: string
+  // Restitution unifiée (pilote, Olivier 28/09/2026) : la restitution se fait depuis le dossier et le clôt entier.
+  restitutionV2?: boolean
   // compact : rendu dans une ligne dépliée de la liste dispatch — pas de
   // bandeau preview, pas de bouton Retour, marges réduites.
   compact?: boolean
@@ -259,13 +261,18 @@ export default function DossierGroups({ initial, fiches, shared, isSuperadmin, o
               const onChanged = async () => { await refresh(); router.refresh() }
               return (
                 <>
+                  {restitutionV2 && atParc && rootLeg && rootLeg.kind !== 'rel' && (
+                    <a href={`/restitution/${d.root_id}`} className="mt-2 inline-flex items-center justify-center gap-2 min-h-[44px] px-4 rounded-xl bg-brand hover:bg-brand-hover text-white text-sm font-semibold shadow-brand">
+                      🚪 Restituer le véhicule <span className="font-normal opacity-90">· clôt tout le dossier</span>
+                    </a>
+                  )}
                   {isSaisie && rootFiche && (
                     <SaisieHeaderBlock fiche={rootFiche} zoneType={rootZoneType} onChanged={onChanged} />
                   )}
                   {isSaisie && !rootFiche && (
                     <p className="mt-2 text-xs text-ink-muted">🚔 Saisie : réquisitoire et levée depuis la <Link href={`/dispatch/${d.root_id}?fiche=1`} className="text-brand underline">fiche</Link>.</p>
                   )}
-                  {!isSaisie && atParc && rootLeg && rootLeg.kind !== 'rel' && (
+                  {!restitutionV2 && !isSaisie && atParc && rootLeg && rootLeg.kind !== 'rel' && (
                     <ExitParcFromDossier d={d} onDone={onChanged} />
                   )}
                 </>

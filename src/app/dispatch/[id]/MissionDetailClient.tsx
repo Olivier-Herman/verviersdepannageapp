@@ -4097,9 +4097,9 @@ export default function MissionDetailClient({
                   toutes les sources ; chauffeurs : mal garées seulement. */}
               {restitutionV2 && status === 'parked' && !(initialMission as any).dossier_leg
                 && (['admin', 'superadmin', 'dispatcher'].includes(userRole) || userModules.includes('fourriere') || initialMission.source === 'police_mg') && (
-                <a href={`/restitution/${initialMission.id}`}
-                  className="w-full min-h-[48px] py-3 bg-brand hover:bg-brand-hover text-white rounded-2xl text-sm font-semibold transition flex items-center justify-center gap-2 shadow-brand">
-                  🚪 Restituer le véhicule
+                <a href={`/dispatch/dossier/${initialMission.id}`}
+                  className="w-full min-h-[44px] py-2.5 border border-strong bg-surface hover:bg-surface-hover text-ink rounded-2xl text-sm font-semibold transition flex items-center justify-center gap-2">
+                  🚪 Restitution : depuis le dossier
                 </a>
               )}
               {!restitutionV2 && status === 'parked' && ['police_mg', 'police_rodeo', 'police_accident', 'police_saisie', 'police_avp', 'police_snc', 'sia_couvert'].includes(initialMission.source) && (
