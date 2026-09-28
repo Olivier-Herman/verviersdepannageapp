@@ -15,19 +15,48 @@ import { fetchInvoicePdfFromOdoo } from '@/lib/relances/odoo'
 
 const norm = (x: string) => String(x || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z ]/g, ' ').replace(/\s+/g, ' ').trim()
 
-/** Contact Odoo du policier d'après son nom (tous les mots de ≥ 3 lettres doivent y être), départagé par la zone. */
-async function findOfficerPartner(name: string, zone?: string | null): Promise<number | null> {
-  const tokens = norm(name).split(' ').filter(t => t.length > 2)
+const lev = (a: string, b: string): number => {
+  const d: number[][] = Array.from({ length: a.length + 1 }, (_, i) => [i, ...Array(b.length).fill(0)])
+  for (let j = 1; j <= b.length; j++) d[0][j] = j
+  for (let i = 1; i <= a.length; i++) for (let j = 1; j <= b.length; j++) d[i][j] = Math.min(d[i - 1][j] + 1, d[i][j - 1] + 1, d[i - 1][j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1))
+  return d[a.length][b.length]
+}
+/** Un mot tapé « ressemble » à un mot du contact : identique, une faute (deux si mot long), ou abrégé (Greg → Gregory). */
+const close = (t: string, c: string) => t === c || (t.length >= 4 && c.startsWith(t)) || lev(t, c) <= (t.length >= 7 ? 2 : 1)
+
+/** Contact Odoo du policier d'après son nom tapé sur la fiche (Olivier 28/09 : « vérifie si on a quelque
+ *  chose qui ressemble dans Odoo »). Exact d'abord, puis approché ; départagé par la zone ; jamais de choix
+ *  quand deux policiers conviennent. */
+export async function findOfficerPartner(name: string, zone?: string | null): Promise<number | null> {
+  // Les grades et mentions ne sont pas des noms (« Lieutenant », « Inspecteur », « OPJ »).
+  const RANKS = new Set(['lieutenant', 'commissaire', 'inspecteur', 'inspectrice', 'agent', 'opj', 'brigadier', 'chef', 'principal', 'police', 'zone'])
+  const tokens = norm(String(name).replace(/\(.*?\)/g, ' ')).split(' ').filter(t => t.length > 2 && !RANKS.has(t))
   if (!tokens.length) return null
   const { odooRpc } = await import('@/lib/odoo')
-  const cops = await odooRpc<any[]>('res.partner', 'search_read', [[['parent_id.name', 'ilike', 'police zone'], ['email', '!=', false]]], { fields: ['id', 'name', 'parent_id'], limit: 3000 }).catch(() => [] as any[])
-  let hits = cops.filter(c => tokens.every(t => norm(c.name).split(' ').includes(t)))
-  if (hits.length > 1 && zone) {
-    const zw = norm(zone).split(' ').filter(w => w.length > 3 && !['police', 'zone'].includes(w))
-    const inZone = hits.filter(h => zw.some(w => norm(h.parent_id?.[1] || '').includes(w)))
-    if (inZone.length) hits = inZone
+  const cops = await odooRpc<any[]>('res.partner', 'search_read', [['|', ['parent_id.name', 'ilike', 'police'], ['email', 'ilike', 'police.belgium'], ['email', '!=', false]]], { fields: ['id', 'name', 'parent_id'], limit: 5000 }).catch(() => [] as any[])
+  const words = (c: any) => norm(String(c.name || '').replace(/\(.*?\)/g, ' ')).split(' ').filter(Boolean)
+  // Jamais une adresse qui n'est pas une personne (listes, « no reply », boîtes de service).
+  const people = cops.filter(c => !/@|no ?reply|^list|dispatch|fourriere|police f[ée]d[ée]rale|^police|^wpr|^dac/i.test(String(c.name || '')))
+  // Un seul mot tapé (souvent le nom de famille) : exact et UNIQUE parmi tous les policiers,
+  // sans tolérance ni départage par la zone — un prénom ou un grade seul ne suffit pas.
+  if (tokens.length === 1) {
+    const hits = people.filter(c => words(c).includes(tokens[0]))
+    const uniq = Array.from(new Map(hits.map(h => [words(h).sort().join(' '), h])).values())
+    return uniq.length === 1 ? (uniq[0] as any).id : null
   }
-  return hits.length === 1 ? hits[0].id : null
+  const pick = (hits: any[]) => {
+    if (hits.length > 1 && zone) {
+      const zw = norm(zone).split(' ').filter(w => w.length > 3 && !['police', 'zone'].includes(w))
+      const inZone = hits.filter(h => zw.some(w => norm(h.parent_id?.[1] || '').includes(w)))
+      if (inZone.length) hits = inZone
+    }
+    // Même personne encodée deux fois (« Jottard Adrien » et « Jottard Adrien (ZP Vesdre) ») : on garde la plus ancienne.
+    const uniq = Array.from(new Map(hits.map(h => [words(h).sort().join(' '), h])).values())
+    return uniq.length === 1 ? uniq.sort((x: any, y: any) => x.id - y.id)[0].id as number : null
+  }
+  const exact = people.filter(c => tokens.every(t => words(c).includes(t)))
+  if (exact.length) return pick(exact)
+  return pick(people.filter(c => tokens.every(t => words(c).some(w => close(t, w)))))
 }
 
 const fmtD = (iso?: string | null) => iso ? new Date(iso).toLocaleDateString('fr-BE', { timeZone: 'Europe/Brussels', day: '2-digit', month: '2-digit', year: 'numeric' }) : '—'
