@@ -483,6 +483,18 @@ function CallSheet({ ctx, missionId }: { ctx: Ctx; missionId: string }) {
   const [look, setLook] = useState<Answers['vehicle_look'] | null>(ctx.run.answers.vehicle_look || null)
   const [lookState, setLookState] = useState<'idle' | 'reading' | 'none'>(look ? 'idle' : 'reading')
   const [copied, setCopied] = useState<string | null>(null)
+  // Montant du 1er appel police (Olivier 28/09/2026) : même calcul que la
+  // fiche, gardiennage mis à part (il court encore).
+  const [price, setPrice] = useState<{ htva: number; tvac: number; parc: number } | null | 'loading' | 'none'>('loading')
+  useEffect(() => {
+    fetch(`/api/missions/${missionId}/price-estimate`, { cache: 'no-store' }).then(x => x.json()).then(j => {
+      if (!j || j.ok === false || !Number.isFinite(Number(j.total_eur))) { setPrice('none'); return }
+      const parcLines = (j.breakdown || []).filter((b: any) => /^SERV-PARC/.test(String(b.label || '')) && Number.isFinite(Number(b.amount)))
+      const parc = parcLines.length ? parcLines.reduce((t: number, b: any) => t + Number(b.amount), 0) : Number(j.parc_eur || 0)
+      const htva = Math.round((Number(j.total_eur) - parc) * 100) / 100
+      setPrice({ htva, tvac: Math.round(htva * 121) / 100, parc: Math.round(parc * 100) / 100 })
+    }).catch(() => setPrice('none'))
+  }, [missionId])
   useEffect(() => {
     if (look) return
     fetch(`/api/taches/${missionId}/vehicle-look`, { method: 'POST' }).then(x => x.json()).then(j => { if (j.look) { setLook(j.look); setLookState('idle') } else setLookState('none') }).catch(() => setLookState('none'))
@@ -490,6 +502,7 @@ function CallSheet({ ctx, missionId }: { ctx: Ctx; missionId: string }) {
   const when = m.incident_at || m.intervention_date || m.received_at
   const whenTxt = when ? `${new Date(when).toLocaleDateString('fr-BE', { day: '2-digit', month: '2-digit', year: 'numeric' })} à ${new Date(when).toLocaleTimeString('fr-BE', { hour: '2-digit', minute: '2-digit' })}` : null
   const reading = lookState === 'reading' ? 'lecture des photos…' : null
+  const fmtEur = (n: number) => n.toLocaleString('fr-BE', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' €'
   const rows: [string, string | null][] = [
     ['Client', [m.client_name || r?.owner?.name, m.client_phone || r?.owner?.phone].filter(Boolean).join(' · ') || null],
     ['Date et heure de l’accident', whenTxt],
@@ -499,20 +512,21 @@ function CallSheet({ ctx, missionId }: { ctx: Ctx; missionId: string }) {
     ['Couleur', look?.color || reading],
     ['Boîte de vitesses', m.vehicle_gearbox || look?.gearbox || reading],
     ['Lieu de l’accident', [m.incident_address, m.incident_city].filter(Boolean).join(', ') || null],
+    ['Montant du 1er appel police', price === 'loading' ? 'calcul…' : price === 'none' || !price ? null : `${fmtEur(price.htva)} HTVA · ${fmtEur(price.tvac)} TVAC${price.parc > 0 ? ` · gardiennage en plus : ${fmtEur(price.parc)} HTVA à ce jour` : ''}`],
     ['Source', ['Appel police, accident', m.police_zone, m.officer_name ? `agent ${m.officer_name}` : null, m.police_pv_number ? `PV ${m.police_pv_number}` : null].filter(Boolean).join(' · ')],
   ]
   const copy = async (label: string, text: string) => {
     try { await navigator.clipboard.writeText(text); setCopied(label); setTimeout(() => setCopied(null), 1500) } catch {}
   }
-  const all = rows.filter(x => x[1] && x[1] !== reading).map(([k, v]) => `${k} : ${v}`).join('\n')
+  const all = rows.filter(x => x[1] && x[1] !== reading && x[1] !== 'calcul…').map(([k, v]) => `${k} : ${v}`).join('\n')
   return <div className="rounded-xl border border-info bg-info-soft/40 p-3 flex flex-col gap-1.5">
     <div className="flex items-center justify-between gap-2"><div className="text-xs font-bold uppercase tracking-wider text-info">À donner à l’assistance</div>
       <button type="button" onClick={() => copy('all', all)} className="min-h-[36px] rounded-btn border border-strong bg-surface px-2.5 text-xs font-semibold text-ink">{copied === 'all' ? 'Copié ✓' : 'Tout copier'}</button></div>
     <div className="rounded-lg bg-surface border border-border divide-y divide-border">
       {rows.map(([k, v]) => <div key={k} className="flex items-start gap-2 px-3 py-2">
         <div className="flex-1 min-w-0"><div className="text-[11px] uppercase tracking-wider text-ink-muted">{k}</div>
-          <div className={`text-sm ${v && v !== reading ? 'text-ink font-semibold' : 'text-ink-muted italic'} ${k === 'Plaque' || k.startsWith('Châssis') ? 'font-mono' : ''}`}>{v || (k === 'Couleur' || k === 'Boîte de vitesses' ? 'pas visible sur les photos' : 'inconnu')}</div></div>
-        {v && v !== reading && <button type="button" onClick={() => copy(k, v)} aria-label={`Copier ${k}`} className="min-h-[36px] min-w-[36px] rounded-btn text-xs font-semibold text-ink-secondary hover:bg-surface-hover">{copied === k ? '✓' : 'Copier'}</button>}
+          <div className={`text-sm ${v && v !== reading && v !== 'calcul…' ? 'text-ink font-semibold' : 'text-ink-muted italic'} ${k === 'Plaque' || k.startsWith('Châssis') ? 'font-mono' : ''}`}>{v || (k === 'Couleur' || k === 'Boîte de vitesses' ? 'pas visible sur les photos' : k.startsWith('Montant') ? 'pas de tarif trouvé : voir la fiche' : 'inconnu')}</div></div>
+        {v && v !== reading && v !== 'calcul…' && <button type="button" onClick={() => copy(k, v)} aria-label={`Copier ${k}`} className="min-h-[36px] min-w-[36px] rounded-btn text-xs font-semibold text-ink-secondary hover:bg-surface-hover">{copied === k ? '✓' : 'Copier'}</button>}
       </div>)}
     </div>
   </div>
