@@ -180,8 +180,11 @@ export async function POST(req: Request, { params }: { params: { missionId: stri
         const single = form?.get('file'); if (!files.length && single instanceof File && single.size) files.push(single)
         if (!files.length) return NextResponse.json({ error: 'Photo manquante' }, { status: 400 })
         await ensure()
+        // Les photos sont d'abord stockées, puis rattachées au dossier TOUTES
+        // ENSEMBLE après la lecture : le PC qui attend voit recto + verso d'un
+        // coup (avant, il voyait le recto seul et s'arrêtait — Olivier 28/09).
         const images: { base64: string; mimeType: string }[] = []
-        let first: string | null = null
+        const uploaded: { path: string; mime: string; size: number; name: string }[] = []
         for (let i = 0; i < files.length; i++) {
           const f = files[i]
           const buf = Buffer.from(await f.arrayBuffer())
@@ -189,13 +192,15 @@ export async function POST(req: Request, { params }: { params: { missionId: stri
           const path = `${m.id}/id_card/${Date.now()}_${i + 1}.${mime.includes('png') ? 'png' : 'jpg'}`
           const { error: upErr } = await sb.storage.from('mission-documents').upload(path, buf, { contentType: mime, upsert: false })
           if (upErr) return NextResponse.json({ error: `Photo non enregistrée : ${upErr.message}` }, { status: 500 })
-          const { data: doc } = await sb.from('mission_documents').insert({ mission_id: m.id, kind: 'id_card', file_path: path, file_name: `piece-identite-${i === 0 ? 'recto' : 'verso'}.jpg`, mime_type: mime, file_size: buf.length, uploaded_by: actor }).select('id').single()
-          if (doc && !first) first = doc.id
+          uploaded.push({ path, mime, size: buf.length, name: `piece-identite-${i === 0 ? 'recto' : 'verso'}.jpg` })
           if (/^image\/(jpeg|png|webp)$/.test(mime)) images.push({ base64: buf.toString('base64'), mimeType: mime })
         }
         let ocr: any = null
         try { const r = await extractJsonFromImages(images, ID_DOCUMENT_PROMPT, 'Lis cette pièce d’identité (recto et verso) et retourne uniquement le JSON.'); if (r.ok) ocr = r.data } catch {}
-        if (first && ocr) await sb.from('mission_documents').update({ ocr }).eq('id', first)
+        const { data: docs } = await sb.from('mission_documents').insert(uploaded.map((u, i) => ({
+          mission_id: m.id, kind: 'id_card', file_path: u.path, file_name: u.name, mime_type: u.mime, file_size: u.size, uploaded_by: actor, ocr: i === 0 ? ocr : null,
+        }))).select('id')
+        const first: string | null = docs?.[0]?.id || null
         if (!rest!.id_document_id && first) await upd({ id_document_id: first })
         const who = ocr ? [ocr.firstName, ocr.lastName].filter(Boolean).join(' ') : ''
         await logRestitution(sb, m.id, actor, 'id_photo', `Pièce d’identité photographiée (${files.length === 2 ? 'recto et verso' : '1 photo'}) par ${who_name}${who ? ` : ${who}` : ', lecture incomplète'}.`, { document_id: first })
