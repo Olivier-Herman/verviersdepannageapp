@@ -50,6 +50,10 @@ export const NAV_ITEMS: NavItem[] = [
   { href: '/finance',           label: 'Finance',             icon: '💵', moduleId: 'finance' },
   { href: '/stats',             label: 'Statistiques',        icon: '📊', moduleId: 'stats' },
   { href: '/fourriere',     label: 'Fourrière',        icon: '🚓', moduleId: 'fourriere' },
+  // Module Tâches (28/09/2026) : prise en charge accident police + clés en
+  // digibox. En pilote (flag taches_accident) — la page renvoie vers /fourriere
+  // ceux qui ne sont pas pilotes.
+  { href: '/taches',        label: 'Prise en charge',  icon: '✅', moduleId: 'fourriere' },
   { href: '/francofolies',  label: 'Francofolies',     icon: '🎪', moduleId: 'francofolies' },
   { href: '/check-vehicule',label: 'Check Véhicule',   i18nKey: 'nav.check',         icon: '🔧', moduleId: 'check_vehicle' },
   { href: '/garde',         label: 'Garde',            icon: '🛡️', moduleId: null, role: 'dispatcher_or_admin' },
