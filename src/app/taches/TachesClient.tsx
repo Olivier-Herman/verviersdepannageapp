@@ -32,13 +32,20 @@ const fmtWhen = (iso?: string | null) => {
   return sameDay ? fmtTime(iso) : d.toLocaleDateString('fr-BE', { day: '2-digit', month: '2-digit' }) + ' ' + fmtTime(iso)
 }
 
+type KeyTask = { missionId: string; status: string; since: string; doneAt: string | null; plate: string | null; model: string; digibox: string; slot: string | null; zone: string | null; driver: string | null; rangement: string | null }
+
 export default function TachesClient({ gmKey }: { gmKey: string }) {
   const [list, setList] = useState<{ todo: Vehicle[]; waiting: Vehicle[]; done: Vehicle[] } | null>(null)
+  const [keys, setKeys] = useState<{ todo: KeyTask[]; done: KeyTask[] }>({ todo: [], done: [] })
   const [cur, setCur] = useState<string | null>(null)
   const [err, setErr] = useState<string | null>(null)
 
   const load = useCallback(async () => {
-    try { const r = await fetch('/api/taches/vehicules', { cache: 'no-store' }); if (!r.ok) throw new Error((await r.json()).error || r.statusText); setList(await r.json()); setErr(null) }
+    try {
+      const [r, rk] = await Promise.all([fetch('/api/taches/vehicules', { cache: 'no-store' }), fetch('/api/taches/cles', { cache: 'no-store' })])
+      if (!r.ok) throw new Error((await r.json()).error || r.statusText)
+      setList(await r.json()); if (rk.ok) setKeys(await rk.json()); setErr(null)
+    }
     catch (e: any) { setErr(e?.message || 'Chargement impossible') }
   }, [])
   useEffect(() => { load(); const i = setInterval(load, 60_000); return () => clearInterval(i) }, [load])
@@ -51,12 +58,24 @@ export default function TachesClient({ gmKey }: { gmKey: string }) {
       <div className="text-[11px] font-semibold uppercase tracking-wider text-ink-muted">Tâches · fourrière</div>
       <h1 className="font-display text-2xl font-extrabold text-ink mt-0.5">Véhicules arrivés au parc</h1>
       <p className="text-sm text-ink-muted mt-1">Accident sur appel police. Le chauffeur a fait ses pointages ; ici on prend le véhicule en charge, une question à la fois.</p>
-      <div className={`mt-3 flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-semibold ${todo.length ? 'bg-warning-soft text-warning' : 'bg-success-soft text-success'}`}>
+      <div className={`mt-3 flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-semibold ${todo.length + keys.todo.length ? 'bg-warning-soft text-warning' : 'bg-success-soft text-success'}`}>
         <span className="w-2.5 h-2.5 rounded-full bg-current" />
-        <span>{todo.length ? 'Objectif du jour : liste à zéro avant 18 h' : 'Liste du jour à zéro.'}</span>
-        <b className="ml-auto font-mono">{todo.length}</b>
+        <span>{todo.length + keys.todo.length ? 'Objectif du jour : liste à zéro avant 18 h' : 'Liste du jour à zéro.'}</span>
+        <b className="ml-auto font-mono">{todo.length + keys.todo.length}</b>
       </div>
       {err && <p className="mt-3 text-sm text-critical">{err}</p>}
+
+      {(keys.todo.length > 0 || keys.done.length > 0) && (
+        <Section title="Clés à récupérer en digibox" count={keys.todo.length} hint="Un chauffeur a déposé la clé en digibox : la récupérer et la ranger.">
+          {keys.todo.map(k => <DigiboxCard key={k.missionId} k={k} onDone={load} />)}
+          {keys.done.map(k => (
+            <div key={k.missionId} className="bg-surface border border-border rounded-card px-3 py-2 flex items-center gap-2 text-sm opacity-75">
+              <span className="font-mono font-semibold">{k.plate || '—'}</span><span className="text-ink-muted">rangée : {k.rangement}</span>
+              <span className="ml-auto rounded-full bg-success-soft text-success px-2 py-0.5 text-xs font-semibold">✓ {fmtWhen(k.doneAt)}</span>
+            </div>
+          ))}
+        </Section>
+      )}
 
       <Section title="À traiter" count={todo.length} empty="Rien à prendre en charge. Le prochain véhicule apparaîtra à sa dépose au parc.">
         {todo.map(v => <VehicleCard key={v.id} v={v} onOpen={() => setCur(v.id)} />)}
@@ -85,6 +104,43 @@ function Section({ title, count, hint, empty, children }: { title: string; count
         {children}
       </div>
     </section>
+  )
+}
+
+// Une clé en digibox : une question, un clic (sauf le n° de crochet à taper).
+function DigiboxCard({ k, onDone }: { k: KeyTask; onDone: () => void }) {
+  const [hookMode, setHookMode] = useState(false)
+  const [hook, setHook] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState<string | null>(null)
+  const send = async (answer: 'hook' | 'office' | 'in_vehicle') => {
+    setBusy(true); setErr(null)
+    const r = await fetch('/api/taches/cles', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ missionId: k.missionId, answer, hook }) })
+    setBusy(false)
+    if (!r.ok) { setErr((await r.json().catch(() => ({}))).error || 'Enregistrement impossible'); return }
+    onDone()
+  }
+  return (
+    <div className="bg-surface border border-border rounded-card shadow-card p-3">
+      <div className="flex items-start justify-between gap-3">
+        <div><div className="font-mono font-semibold text-lg text-ink tracking-wide">{k.plate || '—'}</div><div className="text-sm text-ink-secondary">{k.model || 'Véhicule'}</div></div>
+        <div className="text-right"><span className="inline-block rounded-full bg-warning-soft text-warning px-2 py-0.5 text-xs font-semibold">📦 {k.digibox}{k.slot ? ` · n° ${k.slot}` : ''}</span><div className="font-mono text-xs text-ink-muted mt-1">{fmtWhen(k.since)}</div></div>
+      </div>
+      <div className="text-xs text-ink-muted mt-1">{k.driver ? `Déposée par ${k.driver}` : 'Déposée en digibox'}{k.zone ? ` · véhicule en zone ${k.zone}` : ''}</div>
+      <div className="font-display font-bold text-ink mt-2">Où ranges-tu la clé ?</div>
+      <div className="grid grid-cols-3 gap-2 mt-2">
+        <button type="button" disabled={busy} onClick={() => setHookMode(true)} aria-pressed={hookMode} className={`rounded-xl border px-2 py-2.5 text-sm font-semibold ${hookMode ? 'border-info bg-info-soft text-info' : 'border-strong bg-surface text-ink'}`}>Au crochet</button>
+        <button type="button" disabled={busy} onClick={() => send('office')} className="rounded-xl border border-strong bg-surface px-2 py-2.5 text-sm font-semibold text-ink disabled:opacity-60">Au bureau</button>
+        <button type="button" disabled={busy} onClick={() => send('in_vehicle')} className="rounded-xl border border-strong bg-surface px-2 py-2.5 text-sm font-semibold text-ink disabled:opacity-60">Dans le véhicule</button>
+      </div>
+      {hookMode && (
+        <div className="flex gap-2 mt-2">
+          <input autoFocus inputMode="numeric" placeholder="N° de crochet" value={hook} onChange={e => setHook(e.target.value)} onKeyDown={e => { if (e.key === 'Enter' && hook.trim()) send('hook') }} className="flex-1 min-w-0 rounded-btn border border-strong bg-surface px-3 py-2.5 font-mono text-ink" />
+          <button type="button" disabled={busy || !hook.trim()} onClick={() => send('hook')} className="rounded-btn bg-brand hover:bg-brand-hover text-white px-4 py-2.5 text-sm font-semibold shadow-brand disabled:opacity-45">Valider</button>
+        </div>
+      )}
+      {err && <p className="text-critical text-xs mt-1">{err}</p>}
+    </div>
   )
 }
 
