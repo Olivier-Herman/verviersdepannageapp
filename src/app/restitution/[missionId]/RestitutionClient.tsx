@@ -172,7 +172,10 @@ export default function RestitutionClient({ missionId, gmKey }: { missionId: str
 
 // ── 1. Qui vient + identité ──────────────────────────────────────────────
 function WhoStep({ c, R, act, busy, gmKey, setErr, setC, load, missionId, onDerog }: any) {
-  const [mode, setMode] = useState<'eid' | 'photo' | null>(null)
+  const [mode, setMode] = useState<'eid' | 'photo' | 'existing' | null>(null)
+  const [q, setQ] = useState('')
+  const [hits, setHits] = useState<any[]>([])
+  const [searching, setSearching] = useState(false)
   const [kind, setKind] = useState<'prive' | 'pro'>('prive')
   const [f, setF] = useState<any>({ first_name: '', last_name: '', street: '', zip: '', city: '', country: 'BE', phone: '', email: '', vat: '', company: '', contact: '' })
   const [vies, setVies] = useState<'idle' | 'checking' | 'ok' | 'ko'>('idle')
@@ -221,6 +224,12 @@ function WhoStep({ c, R, act, busy, gmKey, setErr, setC, load, missionId, onDero
     const fd = new FormData(); fd.append('files', new File([small], 'piece-identite.jpg', { type: small.type || 'image/jpeg' }))
     await act('id_photo', {}, { multipart: fd })
   }
+  const [searched, setSearched] = useState(false)
+  const doSearch = async () => {
+    if (q.trim().length < 3) return
+    setSearching(true)
+    try { const j = await (await fetch(`/api/odoo/search-client?q=${encodeURIComponent(q.trim())}`)).json(); setHits((j.clients || []).slice(0, 10)) } catch { setHits([]) } finally { setSearching(false); setSearched(true) }
+  }
   const askPhone = async () => { const j = await act('phone_photo'); if (j) setWaitPhone(true) }
   const checkVies = async () => {
     const vat = f.vat.replace(/\s|\./g, '').toUpperCase(); if (vat.length < 8) return
@@ -244,7 +253,22 @@ function WhoStep({ c, R, act, busy, gmKey, setErr, setC, load, missionId, onDero
       <div className="flex flex-wrap gap-2">
         {!onPhone && <Btn kind={mode === 'eid' ? 'ok' : 'ghost'} onClick={() => setMode('eid')}>🪪 Lire la carte eID</Btn>}
         <Btn kind={mode === 'photo' ? 'ok' : 'ghost'} onClick={() => setMode('photo')}>📷 Photographier la pièce{onPhone ? ' (recto et verso)' : ''}</Btn>
+        {!onPhone && <Btn kind={mode === 'existing' ? 'ok' : 'ghost'} onClick={() => setMode('existing')}>🔎 Client existant</Btn>}
       </div>
+      {mode === 'existing' && <div className="flex flex-col gap-2">
+        {['owner', 'mandate'].includes(who) && !hasPhoto && <p className="text-sm text-warning font-semibold">Propriétaire ou mandataire : photographiez d’abord la pièce d’identité (bouton ci-dessus), puis choisissez le client.</p>}
+        <div className="flex gap-2">
+          <input className={input} placeholder="Nom, téléphone, e-mail ou n° de TVA (3 lettres min.)" value={q} onChange={e => setQ(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') doSearch() }} aria-label="Rechercher un client" />
+          <Btn onClick={doSearch} disabled={searching || q.trim().length < 3}>{searching ? '…' : 'Rechercher'}</Btn>
+        </div>
+        {hits.length > 0 && <div className="flex flex-col gap-1.5">{hits.map((h: any) => (
+          <button key={h.id} type="button" onClick={() => act('client_existing', { partner_id: h.id })} disabled={busy || (['owner', 'mandate'].includes(who) && !hasPhoto)}
+            className="text-left rounded-xl border border-strong bg-surface px-3 py-2.5 min-h-[48px] disabled:opacity-50">
+            <span className="font-semibold text-ink">{h.name}</span>
+            <span className="block text-xs text-ink-muted">{[h.street, [h.zip, h.city].filter(Boolean).join(' '), h.phone, h.email, h.vat].filter(Boolean).join(' · ') || 'sans coordonnées'}</span>
+          </button>))}</div>}
+        {searched && !hits.length && !searching && <p className="text-sm text-ink-muted">Aucun client trouvé : utilisez la carte eID ou la photo de la pièce pour le créer.</p>}
+      </div>}
       {mode === 'eid' && <div className="flex flex-col gap-1.5">
         <p className="text-sm text-ink-secondary">Le client insère sa carte dans le lecteur du comptoir et valide sur l’écran client. Ses données servent à la restitution et à la facture.</p>
         <EidImportButton onImport={fromEid} />
@@ -283,7 +307,7 @@ function WhoStep({ c, R, act, busy, gmKey, setErr, setC, load, missionId, onDero
         <div className="flex gap-2"><Btn kind="brand" disabled={busy || (kind === 'pro' ? !(f.company && f.vat) : !(f.last_name && f.first_name))} onClick={save}>Créer le client</Btn></div>
       </>}
     </div>}
-    {R?.odoo_partner_id && <Chk state="ok" title={`${R.client?.name} · ${R.client?.kind === 'pro' ? 'Pro' : 'Privé'}`}>{[R.client?.street, [R.client?.zip, R.client?.city].filter(Boolean).join(' '), R.client?.phone, R.client?.email].filter(Boolean).join(' · ')} — {R.client?.source === 'eid' ? 'lu sur la carte eID' : 'encodé d’après la pièce photographiée'}.</Chk>}
+    {R?.odoo_partner_id && <Chk state="ok" title={`${R.client?.name} · ${R.client?.kind === 'pro' ? 'Pro' : 'Privé'}`}>{[R.client?.street, [R.client?.zip, R.client?.city].filter(Boolean).join(' '), R.client?.phone, R.client?.email].filter(Boolean).join(' · ')} — {R.client?.source === 'eid' ? 'lu sur la carte eID' : R.client?.source === 'odoo' ? 'client existant' : 'encodé d’après la pièce photographiée'}.</Chk>}
     {who && !R?.odoo_partner_id && <div><Btn kind="derog" onClick={onDerog}>Pas de pièce : dérogation…</Btn></div>}
   </>
 }

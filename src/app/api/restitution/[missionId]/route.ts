@@ -259,6 +259,23 @@ export async function POST(req: Request, { params }: { params: { missionId: stri
         return done()
       }
 
+      case 'client_existing': {
+        // Client déjà dans Odoo, choisi par le bureau (Olivier 29/09/2026). Propriétaire /
+        // mandataire : la photo de la pièce reste exigée ; garage, assistance, transporteur : non.
+        await ensure()
+        const pid = Number(body.partner_id)
+        if (!pid) return NextResponse.json({ error: 'Client manquant' }, { status: 400 })
+        if (['owner', 'mandate'].includes(rest!.who_kind || '') && !rest!.id_document_id) return NextResponse.json({ error: 'Photographiez d’abord la pièce d’identité.' }, { status: 400 })
+        const [p] = await odooRpc<any[]>('res.partner', 'read', [[pid]], { fields: ['name', 'street', 'zip', 'city', 'phone', 'email', 'vat', 'is_company', 'country_id'] })
+        if (!p) return NextResponse.json({ error: 'Client introuvable dans la facturation' }, { status: 404 })
+        const client = { kind: p.is_company || p.vat ? 'pro' : 'prive', source: 'odoo', name: p.name, company: p.is_company ? p.name : null, vat: p.vat || null, street: p.street || null, zip: p.zip || null, city: p.city || null, country: 'BE', phone: p.phone || null, email: p.email || null }
+        await upd({ client, odoo_partner_id: pid })
+        const address = [p.street, [p.zip, p.city].filter(Boolean).join(' ')].filter(Boolean).join(', ')
+        await sb.from('incoming_missions').update({ client_name: p.name, client_phone: p.phone || m.client_phone, client_email: p.email || m.client_email, client_address: address || m.client_address, updated_at: now }).eq('id', m.id)
+        await logRestitution(sb, m.id, actor, 'client', `Client existant « ${p.name} » choisi par ${who_name} (fiche client n° ${pid}).`, { partner_id: pid, source: 'odoo' })
+        return done()
+      }
+
       case 'split': {
         const s = body.split || {}
         const clean: Record<string, Payer> = {}
