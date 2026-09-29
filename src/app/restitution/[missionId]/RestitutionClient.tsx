@@ -476,6 +476,12 @@ function DerogModal({ c, missionId, kind, label, onClose, onSent }: any) {
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState<string | null>(null)
   const isMe = !!c.responsables.find((r: any) => r.id === resp)?.me
+  // Bouton grisé : dire ce qui manque (Jona 29/09 ne voyait pas pourquoi).
+  const missing = [
+    !resp && 'un responsable',
+    reason.trim().length < 5 && 'le motif (5 caractères minimum)',
+    isMe && pin.length !== 4 && 'votre code à 4 chiffres',
+  ].filter(Boolean) as string[]
   const send = async () => {
     setBusy(true); setErr(null)
     try {
@@ -502,7 +508,8 @@ function DerogModal({ c, missionId, kind, label, onClose, onSent }: any) {
       {kind === 'montant' && <><label className="text-[11px] font-bold uppercase tracking-wider text-ink-muted" htmlFor="dg-amt">Nouveau montant TVAC</label><input id="dg-amt" className={input} inputMode="decimal" value={amount} onChange={e => setAmount(e.target.value)} placeholder="0,00" /></>}
       {isMe && <><label className="text-[11px] font-bold uppercase tracking-wider text-ink-muted" htmlFor="dg-pin">Votre code</label><input id="dg-pin" type="password" inputMode="numeric" maxLength={4} className={`${input} font-mono text-center text-xl tracking-[0.5em]`} value={pin} onChange={e => setPin(e.target.value.replace(/\D/g, '').slice(0, 4))} /></>}
       {err && <p className="text-sm text-critical font-semibold">{err}</p>}
-      <Btn kind="brand" disabled={busy || reason.trim().length < 5 || !resp || (isMe && pin.length !== 4)} onClick={send}>{busy ? 'Envoi…' : isMe ? 'Valider la dérogation' : 'Envoyer la demande'}</Btn>
+      <Btn kind="brand" disabled={busy || missing.length > 0} onClick={send}>{busy ? 'Envoi…' : isMe ? 'Valider la dérogation' : 'Envoyer la demande'}</Btn>
+      {missing.length > 0 && <p className="text-xs text-ink-muted">Il manque : {missing.join(', ')}.{isMe ? ' Pour demander à un autre responsable, choisissez-le dans la liste.' : ''}</p>}
     </div>
   </div>
 }
