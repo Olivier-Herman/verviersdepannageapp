@@ -29,6 +29,27 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   if (!item) return NextResponse.json({ error: 'Item introuvable' }, { status: 404 })
   const now = new Date().toISOString()
   const decision = { action, by: actor, at: now, folder: body.folder || null, instruction: typeof body.instruction === 'string' && body.instruction.trim() ? body.instruction.trim().slice(0, 1000) : null }
+  // Consigne en clair (Olivier 29/09/2026) : gestes compris puis validés (« Faire ça »).
+  if (action === 'consigne') {
+    if (item.status === 'decided') return NextResponse.json({ error: 'Ce mail est déjà traité.' }, { status: 409 })
+    const steps = Array.isArray(body.steps) ? body.steps : []
+    if (!steps.length) return NextResponse.json({ error: 'Aucun geste à faire.' }, { status: 400 })
+    const instruction = String(body.instruction || '').trim().slice(0, 1500)
+    // Identifiant périmé (mail déplacé à la main) → retrouvé avant d'agir.
+    try { const { getMessageText } = await import('@/lib/mail-agent/graph'); await getMessageText(item.mailbox, item.message_id) }
+    catch (e: any) { if (/404|ErrorItemNotFound/.test(e?.message || '')) { const again = await relocateMessage(item.mailbox, { receivedAt: item.received_at, fromEmail: item.from_email, subject: item.subject }); if (again) { item.message_id = again; await sb.from('mail_agent_items').update({ message_id: again }).eq('id', item.id) } } }
+    const { executeMailSteps } = await import('@/lib/mail-agent/consignes')
+    const out = await executeMailSteps({ sb, item, actor, actorId: access.id, mode: await getMode(sb), odooBase: process.env.ODOO_URL || '' }, steps)
+    const note = out.results.map(r => `${r.ok ? '✓' : '✕'} ${r.note}`).join(' · ')
+    await sb.from('mail_agent_items').update({ status: 'decided', error: out.results.some(r => !r.ok) ? note : null, extracted: { ...(item.extracted || {}), decision: { ...decision, action: 'consigne', instruction, steps, result: note, links: out.links } }, updated_at: now, applied_at: now, applied_by: actor }).eq('id', item.id)
+    // Retenir la consigne pour cet expéditeur (proposée d'office la prochaine fois).
+    if (body.keep !== false && instruction && item.from_email) {
+      const key = String(item.from_email).trim().toLowerCase()
+      const { data: prev } = await sb.from('mail_agent_rules').select('used_count').eq('sender_email', key).maybeSingle()
+      await sb.from('mail_agent_rules').upsert({ sender_email: key, instruction, used_count: ((prev as any)?.used_count || 0) + 1, updated_by: access.id, updated_at: now }, { onConflict: 'sender_email' })
+    }
+    return NextResponse.json({ ok: true, status: 'decided', results: out.results })
+  }
   if (action === 'laisser' || action === 'fait_ailleurs') {
     await sb.from('mail_agent_items').update({ status: 'decided', extracted: { ...(item.extracted || {}), decision }, updated_at: now }).eq('id', item.id)
     return NextResponse.json({ ok: true, status: 'decided' })

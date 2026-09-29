@@ -31,5 +31,8 @@ export async function GET(req: Request) {
   const { data: all } = await sb.from('mail_agent_items').select('status')
   for (const r of all || []) counts[r.status] = (counts[r.status] || 0) + 1
 
-  return NextResponse.json({ items: data || [], counts, mode: await getMode(sb) })
+  // Consignes retenues par expéditeur (Agent Mail, 29/09/2026).
+  const senders = Array.from(new Set((data || []).map((i: any) => String(i.from_email || '').trim().toLowerCase()).filter(Boolean)))
+  const { data: rules } = senders.length ? await sb.from('mail_agent_rules').select('sender_email, instruction, used_count').in('sender_email', senders) : { data: [] as any[] }
+  return NextResponse.json({ items: data || [], counts, mode: await getMode(sb), rules: rules || [] })
 }

@@ -88,7 +88,7 @@ export default function MailAgentClient({
     setLoading(true)
     const res = await fetch(`/api/mail-agent/items?status=${t}`, { cache: 'no-store' })
     const j   = await res.json()
-    setItems(j.items || []); setCounts(j.counts || {}); setMode(j.mode || 'draft')
+    setItems(j.items || []); setCounts(j.counts || {}); setMode(j.mode || 'draft'); setRules(Object.fromEntries((j.rules || []).map((r: any) => [r.sender_email, r.instruction])))
     setLoading(false)
   }
   useEffect(() => { load(tab) /* eslint-disable-next-line */ }, [tab])
@@ -125,6 +125,27 @@ export default function MailAgentClient({
   const [invFor, setInvFor] = useState<Record<string, string>>({})
   const [coFor, setCoFor] = useState<Record<string, string>>({})
   const [noteFor, setNoteFor] = useState<Record<string, string>>({})
+  // Consignes en clair (comme le Courrier, 29/09/2026) : l'agent comprend → « Faire ça ».
+  const [rules, setRules] = useState<Record<string, string>>({})
+  const [conFor, setConFor] = useState<Record<string, string>>({})
+  const [keepFor, setKeepFor] = useState<Record<string, boolean>>({})
+  const [planFor, setPlanFor] = useState<Record<string, any>>({})
+  const understand = async (id: string) => {
+    setBusy(id); setFlash(null)
+    try {
+      const r = await fetch(`/api/mail-agent/${id}/consigne`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ instruction: conFor[id] || '' }) })
+      const j = await r.json(); if (!r.ok) throw new Error(j.error)
+      setPlanFor(p => ({ ...p, [id]: j }))
+    } catch (e: any) { setFlash(`Refusé : ${e?.message || 'l’agent n’a pas compris'}`) } finally { setBusy(null) }
+  }
+  const doConsigne = async (id: string) => {
+    setBusy(id); setFlash(null)
+    const r = await (await fetch(`/api/mail-agent/${id}/decide`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'consigne', steps: planFor[id]?.steps || [], instruction: conFor[id] || '', keep: keepFor[id] !== false }) })).json()
+    setBusy(null)
+    setFlash(r.ok ? `✓ ${(r.results || []).map((x: any) => x.note).join(' · ')}` : `Refusé : ${r.error}`)
+    setPlanFor(p => { const n = { ...p }; delete n[id]; return n })
+    load()
+  }
   const decide = async (id: string, action: string, folder?: string) => {
     setBusy(id); setFlash(null)
     const r = await (await fetch(`/api/mail-agent/${id}/decide`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action, folder, invoice: invFor[id] || null, company: coFor[id] || null, instruction: noteFor[id] || null }) })).json()
@@ -302,6 +323,38 @@ export default function MailAgentClient({
                       ))}
                     </div>
                   )}
+                  {it.status === 'to_decide' && (() => {
+                    const rule = rules[String(it.from_email || '').trim().toLowerCase()]
+                    const plan = planFor[it.id]
+                    return (
+                      <div className="mt-2 rounded-xl border border-sky-200 bg-sky-50 p-3 space-y-2">
+                        <p className="text-xs font-semibold text-sky-900 uppercase tracking-wide">Dis à l’agent quoi faire</p>
+                        {rule && !conFor[it.id] && (
+                          <div className="text-xs text-slate-700 bg-white border border-sky-200 rounded-lg px-2 py-1.5 flex items-start gap-2">
+                            <span className="flex-1">Consigne retenue pour cet expéditeur : « {rule} »</span>
+                            <button type="button" onClick={() => setConFor(p => ({ ...p, [it.id]: rule }))} className="shrink-0 underline font-semibold text-sky-800">Utiliser</button>
+                          </div>
+                        )}
+                        <textarea value={conFor[it.id] || ''} onChange={e => { setConFor(p => ({ ...p, [it.id]: e.target.value })); setPlanFor(p => { const n = { ...p }; delete n[it.id]; return n }) }} rows={2}
+                          placeholder="ex. : renvoie l’état de frais aux frais de justice au lieu du parquet · crée une NC liée à la facture 2026/09/195 et refacture-la à AXA Belgium · réponds que c’est payé et classe dans comptable thg"
+                          className="w-full border rounded-lg px-2 py-1.5 text-sm bg-white text-slate-900" aria-label="Consigne pour l’agent" />
+                        <label className="flex items-center gap-2 text-xs text-slate-700 min-h-[32px]"><input type="checkbox" checked={keepFor[it.id] !== false} onChange={e => setKeepFor(p => ({ ...p, [it.id]: e.target.checked }))} className="w-4 h-4" /> Retenir cette consigne pour les prochains mails de {it.from_email}</label>
+                        {!plan && <button type="button" onClick={() => understand(it.id)} disabled={busy === it.id || !(conFor[it.id] || '').trim()} className="px-3 py-1.5 rounded-lg text-sm font-medium bg-sky-700 text-white disabled:opacity-40">{busy === it.id ? 'L’agent réfléchit…' : 'L’agent comprend'}</button>}
+                        {plan && (
+                          <div className="rounded-lg border border-sky-300 bg-white p-2.5 space-y-1.5">
+                            <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Ce que j’ai compris</p>
+                            {plan.understood && <p className="text-sm text-slate-800">{plan.understood}</p>}
+                            <ol className="list-decimal pl-5 text-sm text-slate-900 space-y-0.5">{(plan.steps || []).map((s: any, k: number) => <li key={k}>{s.label}</li>)}</ol>
+                            {plan.impossible && <p className="text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded-md px-2 py-1">Ce que je ne sais pas encore faire : {plan.impossible}</p>}
+                            <div className="flex gap-2 pt-1">
+                              {(plan.steps || []).length > 0 && <button type="button" onClick={() => doConsigne(it.id)} disabled={busy === it.id} className="px-3 py-1.5 rounded-lg text-sm font-semibold bg-emerald-600 text-white disabled:opacity-40">{busy === it.id ? 'En cours…' : 'Faire ça'}</button>}
+                              <button type="button" onClick={() => setPlanFor(p => { const n = { ...p }; delete n[it.id]; return n })} className="px-3 py-1.5 rounded-lg text-sm text-slate-600">Reformuler</button>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )
+                  })()}
                   {it.status === 'decided' && x.decision && (
                     <p className="text-xs text-slate-600">Décision : <strong>{x.decision.action}</strong>{x.decision.folder ? ` → ${x.decision.folder}` : ''} · {x.decision.by} · {fmt(x.decision.at)}
                       {x.decision.instruction && <span className="block text-slate-500 mt-0.5 italic">Consigne : {x.decision.instruction}</span>}
