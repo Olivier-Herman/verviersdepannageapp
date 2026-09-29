@@ -70,8 +70,16 @@ export async function GET(req: Request) {
     }
   }
 
+  // Rapport client (EBAC, Centracar) : facture validée → mail avec facture + rapport.
+  let rapportMail: any = null
+  try {
+    const { emailPostedInvoicesWithRapport } = await import('@/lib/missions/rapport-intervention')
+    rapportMail = await emailPostedInvoicesWithRapport()
+  } catch (e: any) { rapportMail = { error: e?.message || String(e) } }
+
   return NextResponse.json({
     ok:        true,
+    rapport_mail: rapportMail,
     scanned:   (rows || []).length,
     resolved,
     not_found: failed,

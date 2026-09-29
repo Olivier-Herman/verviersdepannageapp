@@ -279,3 +279,51 @@ export async function attachRapportIfRequired(moveId: number, missionIds: string
     return { attached: false, reason: e?.message || 'erreur' }
   }
 }
+
+/**
+ * Facture VALIDÉE dans Odoo + rapport joint → mail au client (adresse e-mail de la
+ * fiche client Odoo), depuis administration@, avec la facture et le rapport. Une
+ * seule fois par facture. Appelé par le cron des factures (toutes les 20 min).
+ * Olivier 29/09/2026 : « avec la facture validée ».
+ */
+export async function emailPostedInvoicesWithRapport(): Promise<{ sent: number; skipped: string[]; errors: string[] }> {
+  const out = { sent: 0, skipped: [] as string[], errors: [] as string[] }
+  const sb = createAdminClient()
+  const { data: rows } = await sb.from('incoming_missions').select('id, report_attached_move_ids, report_emailed_move_ids, vehicle_plate').not('report_attached_move_ids', 'is', null).limit(300)
+  const pending = new Map<number, string[]>()
+  for (const r of (rows || []) as any[]) {
+    for (const mv of r.report_attached_move_ids || []) if (!(r.report_emailed_move_ids || []).includes(mv)) pending.set(mv, [...(pending.get(mv) || []), r.id])
+  }
+  if (!pending.size) return out
+  const moves = await odooRpc<any[]>('account.move', 'read', [Array.from(pending.keys())], { fields: ['id', 'name', 'state', 'partner_id', 'amount_total'] })
+  const { fetchInvoicePdfFromOdoo } = await import('@/lib/relances/odoo')
+  const { sendEmail, emailLayout, FROM_EMAIL } = await import('@/lib/emails')
+  for (const mv of moves || []) {
+    if (mv.state !== 'posted') continue           // brouillon : on attend la validation
+    const ids = pending.get(mv.id) || []
+    try {
+      const partnerId = Array.isArray(mv.partner_id) ? mv.partner_id[0] : null
+      const [p] = partnerId ? await odooRpc<any[]>('res.partner', 'read', [[partnerId]], { fields: ['name', 'email'] }) : [null]
+      const to = p?.email && String(p.email).includes('@') ? String(p.email).split(/[;,]/)[0].trim() : null
+      if (!to) { out.skipped.push(`${mv.name} : client sans e-mail`); continue }
+      const d = await buildRapportData(ids, mv.name)
+      if (!d) { out.skipped.push(`${mv.name} : données absentes`); continue }
+      const [invPdf, repPdf] = await Promise.all([fetchInvoicePdfFromOdoo(mv.id), renderRapportPdf(d)])
+      const html = emailLayout(`<p style="font-size:14px;color:#222">Bonjour,</p>
+        <p style="font-size:14px;color:#222">Veuillez trouver en pièces jointes notre facture <b>${mv.name}</b> ainsi que le rapport d’intervention correspondant${d.vehicle.plate ? ` (véhicule ${d.vehicle.plate})` : ''}.</p>
+        <p style="font-size:14px;color:#222">Nous restons à votre disposition pour toute question.</p>
+        <p style="font-size:14px;color:#222">Cordialement,<br>${d.company.name}</p>`, `Facture ${mv.name}`)
+      await sendEmail(to, `Facture ${mv.name} — rapport d’intervention${d.vehicle.plate ? ` ${d.vehicle.plate}` : ''}`, html, p?.name || undefined, undefined, [
+        { name: `Facture-${String(mv.name).replace(/[^\w-]+/g, '-')}.pdf`, contentType: 'application/pdf', contentBytes: invPdf.toString('base64') },
+        { name: `Rapport-intervention-${d.number.replace(/\s+/g, '')}.pdf`, contentType: 'application/pdf', contentBytes: repPdf.toString('base64') },
+      ], FROM_EMAIL)
+      for (const id of ids) {
+        const { data: m } = await sb.from('incoming_missions').select('report_emailed_move_ids').eq('id', id).single()
+        await sb.from('incoming_missions').update({ report_emailed_move_ids: [...((m as any)?.report_emailed_move_ids || []), mv.id] }).eq('id', id)
+        await sb.from('mission_logs').insert({ mission_id: id, action: 'rapport_facture_mail', notes: `Facture ${mv.name} et rapport d’intervention envoyés à ${p?.name || ''} (${to}).`, metadata: { move_id: mv.id, to } })
+      }
+      out.sent++
+    } catch (e: any) { out.errors.push(`${mv.name} : ${e?.message || e}`) }
+  }
+  return out
+}
