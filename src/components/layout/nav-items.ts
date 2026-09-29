@@ -45,6 +45,9 @@ export const NAV_ITEMS: NavItem[] = [
   // Le module 'mail_agent' existe déjà en base (désactivé) : pour l'ouvrir à
   // Jona/Momo, réactiver le module et repasser sur moduleId: 'mail_agent'.
   { href: '/mail-agent',        label: 'Agent Mail',          icon: '📬', moduleId: null, role: 'mail_agent' },   // admin/superadmin + rôle complémentaire « mail_agent » (Jona, 28/09/2026)
+  // Courrier papier (29/09/2026) : bouton direct dans le menu, demandé par Olivier.
+  // En pilote (flag courrier) — la page renvoie à l'accueil ceux qui ne sont pas pilotes.
+  { href: '/courrier',          label: 'Courrier',            icon: '✉️', moduleId: null, role: 'mail_agent' },
   // Olivier 2026-06-02 : Dépanneuses retirée de la sidebar globale (fonction
   // secondaire, accessible via /admin → tuile + AdminNav latérale).
   { href: '/finance',           label: 'Finance',             icon: '💵', moduleId: 'finance' },

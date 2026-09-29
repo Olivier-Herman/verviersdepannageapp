@@ -150,7 +150,6 @@ export const NAV_TREE_ESPACES: NavModule[] = [
       { href: '/chantiers',    label: 'Chantiers',           icon: ClipboardList, requires: '/chantiers', superadminOnly: true },
       { href: '/admin/flux2',  label: 'Flux 2',              icon: Settings,  requires: '/admin/flux2', superadminOnly: true },
       { href: '/mail-agent',   label: 'Agent Mail',          icon: Mail,      requires: '/mail-agent' },   // Olivier 23/09/2026 : Jona décide aussi
-      { href: '/courrier',     label: 'Courrier',            icon: Send,      requires: '/mail-agent' },   // Module Courrier (29/09/2026) : scan du courrier papier, pilote (flag courrier)
       { href: '/assistant',    label: 'Assistant IA',        icon: Bot,       requires: '/assistant',   superadminOnly: true },
       { href: '/admin/axa',    label: 'AXA go&assist',       icon: Shield,    requires: '/dispatch',    superadminOnly: true },
     ],
