@@ -13,6 +13,7 @@
 //
 // Olivier 2026-06-01.
 
+import { estimateMissionPrice } from '@/lib/missions/estimate-price'
 import { NextResponse }      from 'next/server'
 import { getServerSession }  from 'next-auth'
 import { authOptions }       from '@/lib/auth'
@@ -27,6 +28,13 @@ export const maxDuration = 30
 // W10 : Source / zone / prefix mappings = import depuis lib partagee
 // (avant : duplications avec /api/towsoft/create qui creaient des
 // incoherences subtiles type saisie/accident manquants)
+
+// Mal garée « déplacement payé » : tarif trajet à vide de la grille police_mg, TVAC
+// (plus de montant en dur — 29/09/2026).
+async function mgDeplacementTvac(): Promise<number | null> {
+  const est: any = await estimateMissionPrice({ source: 'police_mg', mission_type: 'trajet_vide', received_at: new Date().toISOString() } as any).catch(() => null)
+  return est?.ok && est.total_eur > 0 ? Math.round(est.total_eur * 1.21 * 100) / 100 : null
+}
 
 export async function POST(req: Request) {
   const session = await getServerSession(authOptions)
@@ -143,7 +151,7 @@ export async function POST(req: Request) {
     isAppelPrive && amountToCollect != null && amountToCollect !== ''
       ? Number(amountToCollect)
       : isMalGareeDeplacementPaye
-        ? 125
+        ? await mgDeplacementTvac()
         : null
 
   // Olivier 2026-06-04 : anti-doublon (double-tap, retry reseau).

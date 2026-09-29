@@ -751,8 +751,10 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
   // facture au garage directement ». Ces sources ne portent pas de montant à
   // encaisser, donc rien ici ne leur en réclame.
   const isPrive = M.source === 'prive'
+  // Mal garée « déplacement payé » (trajet à vide) : le propriétaire paie sur place.
+  const isMgDeplacement = M.source === 'police_mg' && M.mission_type === 'trajet_vide'
   const sncPaymentDue =
-    (isSiabisMission || isPrive)
+    (isSiabisMission || isPrive || isMgDeplacement)
     && M.snc_scenario !== 'rem_depot'
     && requiredAmount > 0
     && !paymentComplete
@@ -4104,6 +4106,32 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
                 {t(M.snc_scenario ? 'cloture.siabis_modify' : 'cloture.siabis_choose')}
               </button>
             )}
+          </div>
+        )}
+
+        {/* Mal garée sur place : enlèvement par défaut ; si le propriétaire revient
+            avant le chargement, « Déplacement payé » (tarif trajet à vide de la
+            grille, TVAC) → encaissement normal puis Terminer. Olivier 29/09/2026. */}
+        {M.source === 'police_mg' && onSite && !loaded && !isReadOnly && ['accepted', 'in_progress'].includes(M.status) && !((M as any).payment_amount > 0) && (
+          <div className="bg-surface border-2 border-amber-500 rounded-2xl p-4 space-y-2">
+            <p className="text-ink font-bold text-sm uppercase tracking-wide">{t('mission_detail.mg_title')}</p>
+            <div className="grid grid-cols-1 gap-2">
+              {([['enlevement', '🚛', 'mission_detail.mg_enlevement', 'mission_detail.mg_enlevement_sub'], ['deplacement', '🚶', 'mission_detail.mg_deplacement', 'mission_detail.mg_deplacement_sub']] as const).map(([k, ico, lab, sub]) => {
+                const on = k === 'deplacement' ? M.mission_type === 'trajet_vide' : M.mission_type !== 'trajet_vide'
+                return <button key={k} type="button" disabled={loading || on} onClick={async () => {
+                    setLoading(true); setErr('')
+                    try {
+                      const r = await fetch(`/api/missions/${M.id}/mg-scenario`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ scenario: k }) })
+                      const j = await r.json(); if (!r.ok) throw new Error(j.error || 'Erreur')
+                      setM(j.mission)
+                    } catch (e: any) { setErr(e.message || 'Erreur') } finally { setLoading(false) }
+                  }}
+                  className={`w-full min-h-[56px] p-3 rounded-xl border text-left text-sm ${on ? 'bg-amber-100 border-amber-600 font-semibold text-gray-900' : 'bg-surface-2 border text-ink-secondary'} disabled:cursor-default`}>
+                  {ico} {t(lab)}{on ? ' ✓' : ''}
+                  <span className={`block text-xs font-normal ${on ? 'text-gray-700' : 'text-ink-muted'}`}>{k === 'deplacement' && M.mission_type === 'trajet_vide' && M.amount_to_collect ? t('mission_detail.mg_deplacement_amount', { amount: Number(M.amount_to_collect).toFixed(2).replace('.', ',') }) : t(sub)}</span>
+                </button>
+              })}
+            </div>
           </div>
         )}
 
