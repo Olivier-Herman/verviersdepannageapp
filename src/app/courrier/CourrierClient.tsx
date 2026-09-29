@@ -24,7 +24,9 @@ const EntChip = ({ e }: { e?: string | null }) => e && e in ENTITIES ? <Chip ton
 const H3 = ({ children }: { children: React.ReactNode }) => <div className="text-[11px] font-bold uppercase tracking-wider text-ink-muted">{children}</div>
 const input = 'w-full rounded-btn border border-strong bg-surface px-3 py-2.5 text-ink'
 
-type Page = { id: string; blob: Blob; mime: string; preview: string | null }
+// group : les pages d'un même courrier. Chaque PDF glissé ou choisi = son propre
+// courrier ; les images d'un même envoi = un courrier (Olivier 29/09/2026).
+type Page = { id: string; blob: Blob; mime: string; preview: string | null; group: string; name: string }
 
 export default function CourrierClient({ initialId }: { initialId: string | null }) {
   const [data, setData] = useState<any>(null)
@@ -140,13 +142,18 @@ function Capture({ onSent }: { onSent: (id: string) => void }) {
   const phone = isPhone()
   const add = async (blobs: Blob[], src: 'scan' | 'photo' | 'fichier') => {
     setSource(s => pages.length ? s : src)
+    const rid = () => Math.random().toString(36).slice(2)
+    // Fichiers : un PDF = un courrier ; les images vont ensemble. Scan et photos : un seul courrier.
+    const imgGroup = src === 'fichier' ? rid() : (pages.find(p => !p.mime.includes('pdf'))?.group || 'main')
     for (const b of blobs) {
       const pdf = b.type === 'application/pdf'
       const small = pdf ? b : await compressImage(b)
       const mime = pdf ? 'application/pdf' : (small.type || 'image/jpeg')
-      setPages(ps => [...ps, { id: Math.random().toString(36).slice(2), blob: small, mime, preview: pdf ? null : URL.createObjectURL(small) }])
+      const name = (b as File).name || (pdf ? 'document.pdf' : 'page.jpg')
+      setPages(ps => [...ps, { id: rid(), blob: small, mime, preview: pdf ? null : URL.createObjectURL(small), group: pdf && src === 'fichier' ? rid() : imgGroup, name }])
     }
   }
+  const groups = Array.from(new Set(pages.map(p => p.group))).map(g => pages.filter(p => p.group === g))
   // Glisser-déposer : les scans déjà enregistrés sur le PC se déposent sur la zone
   // ou n'importe où sur la page (Olivier 29/09/2026). Un dépôt = un courrier.
   const [over, setOver] = useState(false)
@@ -171,17 +178,21 @@ function Capture({ onSent }: { onSent: (id: string) => void }) {
   }, [pages.length])
   const send = async () => {
     setBusy(true); setErr(null)
+    const sentIds = new Set<string>()
     try {
-      const r = await fetch('/api/courrier', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ source, pages: pages.map(p => ({ mime: p.mime })) }) })
-      const j = await r.json(); if (!r.ok) throw new Error(j.error)
-      for (let i = 0; i < j.uploads.length; i++) {
-        const put = await fetch(j.uploads[i].signedUrl, { method: 'PUT', headers: { 'Content-Type': j.uploads[i].mime, 'x-upsert': 'false' }, body: pages[i].blob })
-        if (!put.ok) throw new Error(`Page ${i + 1} non envoyée (${put.status})`)
+      for (const g of groups) {
+        const r = await fetch('/api/courrier', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ source, pages: g.map(p => ({ mime: p.mime })) }) })
+        const j = await r.json(); if (!r.ok) throw new Error(j.error)
+        for (let i = 0; i < j.uploads.length; i++) {
+          const put = await fetch(j.uploads[i].signedUrl, { method: 'PUT', headers: { 'Content-Type': j.uploads[i].mime, 'x-upsert': 'false' }, body: g[i].blob })
+          if (!put.ok) throw new Error(`${g[i].name} non envoyé (${put.status})`)
+        }
+        // Lecture lancée sans attendre : la liste suit l'avancement.
+        fetch(`/api/courrier/${j.id}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'read' }) }).catch(() => {})
+        g.forEach(p => sentIds.add(p.id)); onSent(j.id)
       }
-      // Lecture lancée sans attendre : la liste suit l'avancement.
-      fetch(`/api/courrier/${j.id}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'read' }) }).catch(() => {})
-      setPages([]); onSent(j.id)
-    } catch (e: any) { setErr(e?.message || 'Envoi impossible') } finally { setBusy(false) }
+      setPages([])
+    } catch (e: any) { setPages(ps => ps.filter(p => !sentIds.has(p.id))); setErr(e?.message || 'Envoi impossible') } finally { setBusy(false) }
   }
   return <div className="flex flex-col gap-2">
     {camera && <BurstCamera title="Pages du courrier" count={pages.length} onShot={b => add([b], 'photo')} onClose={() => setCamera(false)} />}
@@ -197,13 +208,16 @@ function Capture({ onSent }: { onSent: (id: string) => void }) {
       <Btn className="flex-1" onClick={() => fileRef.current?.click()}>{phone ? 'Galerie' : 'Fichiers'}</Btn>
     </div>
     {pages.length > 0 && <div className="rounded-card border border-info bg-info-soft p-3 flex flex-col gap-2">
-      <div className="text-sm font-semibold text-info">{pages.length} page{pages.length > 1 ? 's' : ''} prête{pages.length > 1 ? 's' : ''} : un seul courrier</div>
-      <div className="flex gap-1.5 overflow-x-auto">{pages.map((p, i) => <div key={p.id} className="relative shrink-0">
-        {p.preview ? <img src={p.preview} alt={`Page ${i + 1}`} className="w-14 h-20 object-cover rounded-md border border-strong" /> : <div className="w-14 h-20 rounded-md border border-strong bg-surface grid place-items-center text-xs font-bold text-ink-muted">PDF</div>}
-        <button type="button" aria-label={`Retirer la page ${i + 1}`} onClick={() => setPages(ps => ps.filter(x => x.id !== p.id))} className="absolute -top-1.5 -right-1.5 w-6 h-6 rounded-full bg-ink text-surface text-xs">✕</button>
+      <div className="text-sm font-semibold text-info">{groups.length === 1 ? `${pages.length} page${pages.length > 1 ? 's' : ''} prête${pages.length > 1 ? 's' : ''} : un seul courrier` : `${groups.length} courriers prêts (un par PDF)`}</div>
+      <div className="flex flex-col gap-1.5 max-h-72 overflow-y-auto">{groups.map((g, gi) => <div key={g[0].group} className="flex items-center gap-2 rounded-xl bg-surface border border-border p-2">
+        <span className="text-xs font-bold text-ink-muted w-5 text-center shrink-0">{gi + 1}</span>
+        <div className="flex gap-1.5 overflow-x-auto flex-1 min-w-0">{g.map((p, i) => p.preview
+          ? <img key={p.id} src={p.preview} alt={`Page ${i + 1}`} className="w-10 h-14 object-cover rounded border border-strong shrink-0" />
+          : <div key={p.id} className="h-14 px-2 rounded border border-strong bg-surface-2 flex items-center text-xs font-semibold text-ink-secondary shrink-0 max-w-[220px] truncate">📄 {p.name}</div>)}</div>
+        <button type="button" aria-label={`Retirer le courrier ${gi + 1}`} onClick={() => setPages(ps => ps.filter(x => x.group !== g[0].group))} className="w-9 h-9 rounded-full border border-strong text-ink-muted shrink-0">✕</button>
       </div>)}</div>
-      <div className="flex gap-2"><Btn kind="brand" className="flex-1" disabled={busy} onClick={send}>{busy ? 'Envoi…' : 'Envoyer pour lecture'}</Btn><Btn onClick={() => setPages([])} disabled={busy}>Vider</Btn></div>
-      <p className="text-xs text-ink-secondary">Un autre courrier ? Envoyez d’abord celui-ci : chaque envoi = un courrier.</p>
+      <div className="flex gap-2"><Btn kind="brand" className="flex-1" disabled={busy} onClick={send}>{busy ? 'Envoi…' : groups.length > 1 ? `Envoyer les ${groups.length} courriers pour lecture` : 'Envoyer pour lecture'}</Btn><Btn onClick={() => setPages([])} disabled={busy}>Vider</Btn></div>
+      <p className="text-xs text-ink-secondary">Chaque PDF devient un courrier ; les photos d’un même envoi sont les pages d’un seul courrier.</p>
     </div>}
     {err && <p className="text-sm text-critical font-semibold">{err}</p>}
   </div>
