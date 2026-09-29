@@ -237,6 +237,14 @@ export const NOTIFICATION_TYPES: readonly NotificationType[] = [
     defaultEnabled:  true,
   },
   {
+    key:             'courrier_task',
+    label:           'Courrier : tâche ou message pour vous',
+    description:     'Un courrier reçu demande une action de votre part (tâche, rappel, information).',
+    category:        'on_duty',
+    applicableRoles: ['dispatcher', 'admin', 'superadmin'],
+    defaultEnabled:  true,
+  },
+  {
     key:             'payment_derogation_decided',
     label:           'Réponse à dérogation paiement',
     description:     'Le dispatcher de garde a statué sur ta demande de dérogation.',

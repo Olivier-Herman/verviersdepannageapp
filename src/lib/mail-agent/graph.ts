@@ -217,3 +217,24 @@ export async function moveMessage(mailbox: string, messageId: string, folderId: 
     return { ok: false, error: e?.message || String(e) }
   }
 }
+
+/** Brouillon (jamais envoyé) dans une boîte autorisée, avec pièces jointes.
+ *  Module Courrier : réponses préparées dans administration@ (29/09/2026). */
+export async function createDraftMail(mailbox: string, m: {
+  to?: string | null; toName?: string | null; subject: string; html: string
+  attachments?: { name: string; contentType: string; contentBytes: string }[]
+}): Promise<{ ok: boolean; id?: string; webLink?: string; error?: string }> {
+  try {
+    guardMailbox(mailbox)
+    const body: any = {
+      subject: m.subject,
+      body: { contentType: 'HTML', content: m.html },
+      toRecipients: m.to ? [{ emailAddress: { address: m.to, name: m.toName || m.to } }] : [],
+      attachments: (m.attachments || []).map(a => ({ '@odata.type': '#microsoft.graph.fileAttachment', name: a.name, contentType: a.contentType, contentBytes: a.contentBytes })),
+    }
+    const res = await authedFetch(`/users/${encodeURIComponent(mailbox)}/messages`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+    if (!res.ok) return { ok: false, error: `Graph ${res.status}: ${(await res.text()).slice(0, 200)}` }
+    const j = await res.json()
+    return { ok: true, id: j.id, webLink: j.webLink }
+  } catch (e: any) { return { ok: false, error: e?.message || 'brouillon impossible' } }
+}
