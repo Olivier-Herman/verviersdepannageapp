@@ -38,8 +38,11 @@ async function resolveInvoiceVehicle(sb: any, root: any): Promise<number | null>
   const plate = String(root.vehicle_plate || '').trim()
   if (!plate) return null
   const { odooRpc } = await import('@/lib/odoo')
-  const found = await odooRpc<any[]>('fleet.vehicle', 'search_read', [[['license_plate', 'in', plateVariants(plate)]]], { fields: ['id'], limit: 1, context: { active_test: false } }).catch(() => [] as any[])
-  let id: number | null = found?.[0]?.id || (await findFleetVehicleByPlate(plate))
+  // Fiches de test (plaque TEST…) : véhicule Odoo « TEST » gardé exprès par Olivier.
+  const variants = /^test/i.test(plate) ? [...plateVariants(plate), 'TEST'] : plateVariants(plate)
+  const found = await odooRpc<any[]>('fleet.vehicle', 'search_read', [[['license_plate', 'in', variants]]], { fields: ['id', 'license_plate'], order: 'id asc', limit: 5, context: { active_test: false } }).catch(() => [] as any[])
+  const exact = (found || []).find((v: any) => plateVariants(plate).includes(String(v.license_plate || '').toUpperCase()))
+  let id: number | null = exact?.id || found?.[0]?.id || (await findFleetVehicleByPlate(plate))
   if (!id && root.vehicle_brand && !/^test/i.test(plate)) {
     // Absent d'Odoo : on le crée (le modèle Odoo est obligatoire).
     const { resolveBrandId, resolveModelId } = await import('@/lib/odoo-fleet')

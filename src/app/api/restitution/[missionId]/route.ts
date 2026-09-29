@@ -81,6 +81,18 @@ async function buildContext(sb: any, session: any, missionId: string) {
     open ? sb.from('interventions').select('amount, created_at').eq('mission_id', m.id).gte('created_at', open.started_at) : Promise.resolve({ data: [] }),
   ])
   const meRow = meR.data, resp = respR.data
+  // Facture supprimée dans Odoo (brouillon effacé) : on défait le lien et les lignes
+  // « facturées », sinon le dossier croit tout payé et laisse sortir le véhicule
+  // pour 0 € (TEST-MG, 29/09/2026).
+  if (invId && invoice === null) {
+    const now = new Date().toISOString()
+    await sb.from('mission_billed_items').delete().eq('invoice_odoo_id', invId)
+    await sb.from('incoming_missions').update({ invoice_odoo_id: null, updated_at: now }).eq('invoice_odoo_id', invId)
+    await sb.from('restitutions').update({ invoice_odoo_id: null, invoice_url: null, amount_htva: null, amount_tvac: null, updated_at: now }).eq('id', open!.id)
+    await logRestitution(sb, m.id, me.id, 'invoice_deleted', 'La facture de la restitution a été supprimée dans Odoo : montant à nouveau dû, facture à recréer.', { invoice_odoo_id: invId })
+    dropLegs(m.id)
+    return buildContext(sb, session, missionId)
+  }
   const checks = await computeChecks(sb, m, derogs, names)
   const legsOut = legsR.legs.map((l: any) => ({ ...l, payer: payerFor(l, who, saisie, split, assist, m) }))
   const dueHtva = r2(legsOut.filter((l: any) => l.payer === 'client').reduce((t: number, l: any) => t + (l.due_htva || 0), 0))
@@ -311,7 +323,11 @@ export async function POST(req: Request, { params }: { params: { missionId: stri
       }
 
       case 'nothing_due': {
-        await ensure(); await upd({ settlement: 'nothing_due' })
+        await ensure()
+        if (rest!.invoice_odoo_id) return NextResponse.json({ error: 'Une facture existe : elle doit être payée dans Odoo.' }, { status: 409 })
+        const cx: any = await buildContext(sb, session, m.id)
+        if (cx.due?.htva > 0) return NextResponse.json({ error: `Il reste ${cx.due.htva.toFixed(2)} € HTVA à payer.` }, { status: 409 })
+        await upd({ settlement: 'nothing_due' })
         await logRestitution(sb, m.id, actor, 'nothing_due', 'Reste à payer : 0 €, aucune facture à créer.')
         return done()
       }
@@ -349,9 +365,15 @@ export async function POST(req: Request, { params }: { params: { missionId: stri
         if (!rest!.who_kind) blockers.push('Qui vient le reprendre')
         if (!rest!.odoo_partner_id && !ap('identite')) blockers.push('Pièce d’identité et client')
         let settlement = rest!.settlement as string | null
+        // Une facture existe : c'est elle qui fait foi (payée ou non), jamais le « reste à 0 »
+        // du dossier, qui la compte déjà comme facturée.
+        if (settlement === 'nothing_due' && c.invoice) settlement = null
         if (!settlement) {
-          if (c.due.htva <= 0) settlement = 'nothing_due'
-          else if (c.invoice && c.invoice.state === 'posted' && (['paid', 'in_payment'].includes(c.invoice.payment_state) || Number(c.invoice.residual) <= 0.01)) settlement = 'paid_odoo'
+          if (c.invoice) {
+            if (c.invoice.state === 'posted' && (['paid', 'in_payment'].includes(c.invoice.payment_state) || Number(c.invoice.residual) <= 0.01)) settlement = 'paid_odoo'
+            else if (ap('paiement')) settlement = 'derogation'
+          }
+          else if (c.due.htva <= 0) settlement = 'nothing_due'
           else if (c.driverCollected >= c.due.tvac - 0.01) settlement = 'driver_cash'
           else if (ap('paiement')) settlement = 'derogation'
         }

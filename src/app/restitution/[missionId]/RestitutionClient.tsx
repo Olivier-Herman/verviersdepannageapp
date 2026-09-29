@@ -79,7 +79,8 @@ export default function RestitutionClient({ missionId, gmKey }: { missionId: str
   const inv = c.invoice
   const paidOdoo = inv && inv.state === 'posted' && (['paid', 'in_payment'].includes(inv.payment_state) || Number(inv.residual) <= 0.01)
   const driverPaid = c.due.tvac > 0 && c.driverCollected >= c.due.tvac - 0.01
-  const settled = !!R?.settlement || c.due.htva <= 0 || paidOdoo || driverPaid || approved('paiement')
+  // Une facture existe : seule sa situation dans Odoo compte (le dossier la voit déjà « facturée »).
+  const settled = !!R?.settlement || (inv ? paidOdoo : c.due.htva <= 0) || driverPaid || approved('paiement')
   const signOk = !!R?.signed_at || signSkip
 
   const steps = [
