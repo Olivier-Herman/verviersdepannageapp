@@ -39,7 +39,10 @@ export default function GardiennageArrivalClient() {
   const [busy, setBusy] = useState(false)
   const [done, setDone] = useState<Done | null>(null)
   const [camera, setCamera] = useState<null | 'photos' | 'bon'>(null)
-  const [f, setF] = useState({ plate: '', vin: '', brand: '', model: '', transporter: '', cmr: '', from: '', for: 'unknown', assist: '', assistRef: '', client: '', key: '', hook: '', zone: 'Transit', remark: '' })
+  // Date d'entrée au parc : aujourd'hui par défaut, modifiable (véhicule arrivé un
+  // autre jour, fiche encodée après coup). Olivier 29/09/2026.
+  const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Brussels' }).format(new Date())
+  const [f, setF] = useState({ entry: today, plate: '', vin: '', brand: '', model: '', transporter: '', cmr: '', from: '', for: 'unknown', assist: '', assistRef: '', client: '', key: '', hook: '', zone: 'Transit', remark: '' })
   const [shots, setShots] = useState<Shot[]>([])
   const [bon, setBon] = useState<Shot[]>([])
   const galleryRef = useRef<HTMLInputElement>(null)
@@ -237,6 +240,13 @@ export default function GardiennageArrivalClient() {
               : ocr === 'error' ? 'Lecture impossible pour le moment : tapez le numéro ou réessayez.'
               : 'Le numéro est cherché sur les photos dès que vous fermez l’appareil photo.'}
           </p>
+        </Card>
+
+        <Card>
+          <Lbl>Date d’entrée au parc</Lbl>
+          <input type="date" className={input} value={f.entry} max={today} onChange={e => set('entry', e.target.value || today)} aria-label="Date d’entrée au parc" />
+          {f.entry < today && (() => { const n = Math.round((new Date(today).getTime() - new Date(f.entry).getTime()) / 86400000); return <p className="text-xs font-semibold text-warning">Entré il y a {n} jour{n > 1 ? 's' : ''} : {n} nuit{n > 1 ? 's' : ''} de gardiennage déjà comptée{n > 1 ? 's' : ''}.</p> })()}
+          {f.entry === today && <p className="text-xs text-ink-muted">Aujourd’hui. Changez la date si le véhicule est arrivé un autre jour.</p>}
         </Card>
 
         <Card>

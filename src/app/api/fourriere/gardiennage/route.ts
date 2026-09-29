@@ -61,6 +61,13 @@ export async function GET() {
   })
 }
 
+/** Décalage de Bruxelles par rapport à UTC (été +2 h, hiver +1 h) pour un jour donné. */
+function brusselsOffsetMs(day: string): number {
+  const d = new Date(`${day}T12:00:00Z`)
+  const h = Number(new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/Brussels', hour: '2-digit', hour12: false }).format(d))
+  return (h - 12) * 3600000
+}
+
 export async function POST(req: Request) {
   const { session, a } = await access()
   if (!a.ok) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
@@ -112,6 +119,13 @@ export async function POST(req: Request) {
   const hook = b.key === 'hook' ? s(b.hook, 20) || null : null
   const cmr = s(b.cmr, 60), from = s(b.from, 120), remark = s(b.remark, 1000)
   const now = new Date().toISOString()
+  // Date d'entrée au parc choisie (AAAA-MM-JJ) : aujourd'hui → maintenant ; un jour
+  // passé → midi (heure de Bruxelles) ce jour-là. Jamais dans le futur, 1 an max.
+  const todayBxl = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Brussels' }).format(new Date())
+  const entryDay = /^\d{4}-\d{2}-\d{2}$/.test(String(b.entry || '')) ? String(b.entry) : todayBxl
+  if (entryDay > todayBxl) return NextResponse.json({ error: 'La date d’entrée ne peut pas être dans le futur.' }, { status: 400 })
+  if (new Date(entryDay).getTime() < Date.now() - 366 * 86400000) return NextResponse.json({ error: 'Date d’entrée trop ancienne (plus d’un an).' }, { status: 400 })
+  const entryAt = entryDay === todayBxl ? now : new Date(new Date(`${entryDay}T12:00:00Z`).getTime() - brusselsOffsetMs(entryDay)).toISOString()
   const remarks = [`Apporté par ${transporter}${cmr ? ` (bon ${cmr})` : ''}${from ? ` — provenance ${from}` : ''}`, remark].filter(Boolean).join(' · ')
 
   const { data: created, error } = await sb.from('incoming_missions').insert({
@@ -132,9 +146,9 @@ export async function POST(req: Request) {
     parc_zone_key:     zone || null,
     status:            'parked',
     dispatch_mode:     'manual',
-    parked_at:         now,
-    received_at:       now,
-    intervention_date: now,
+    parked_at:         entryAt,
+    received_at:       entryAt,
+    intervention_date: entryAt,
     parse_confidence:  1.0,
     parsed_data:       { confidence: 1.0, created_manually_by: u.name || null, odoo_vehicle_id: Number(b.odooVehicleId) || null },
   }).select('id, mission_number').single()
@@ -143,7 +157,7 @@ export async function POST(req: Request) {
   const who = u.name || u.email || 'utilisateur'
   await sb.from('mission_logs').insert({
     mission_id: created.id, actor_id: a.id, action: 'gardiennage_arrival',
-    notes: `Véhicule déposé au parc par ${transporter}${cmr ? ` (bon ${cmr})` : ''} — gardiennage en attente de décision, pour : ${forLabel}${zone ? ` — zone ${zone}` : ''}${key ? ` — clé : ${KEY_LOCATION_LABELS[key] || key}${hook ? ` n° ${hook}` : ''}` : ''}. Encodé par ${who}.`,
+    notes: `Véhicule déposé au parc${entryDay !== todayBxl ? ` le ${entryDay.split('-').reverse().join('/')}` : ''} par ${transporter}${cmr ? ` (bon ${cmr})` : ''} — gardiennage en attente de décision, pour : ${forLabel}${zone ? ` — zone ${zone}` : ''}${key ? ` — clé : ${KEY_LOCATION_LABELS[key] || key}${hook ? ` n° ${hook}` : ''}` : ''}. Encodé par ${who}.`,
     metadata: { transporter, cmr: cmr || null, from: from || null, for: b.for || 'unknown', billed_to_name: billedToName },
   }).then(() => {}, () => {})
 
