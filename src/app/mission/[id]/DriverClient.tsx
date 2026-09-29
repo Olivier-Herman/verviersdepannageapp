@@ -2526,7 +2526,10 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
         onDprCodes={setF2Dpr}
         onPick={o => { setF2Outcome(o); setF2Screen('close') }}
         onBack={() => setF2Screen('none')}
-        onsiteV2={onsiteV2}
+        // Type Siabis + balisage masqués seulement s'ils ont été décidés sur l'écran
+        // « Sur place » (scénario posé). Sinon on les montre ici : 2CEE863 (Franck,
+        // 29/09/2026) arrivait sans scénario, et sans moyen de déclarer le balisage.
+        onsiteV2={onsiteV2 && !!M.snc_scenario}
       />
     )
   }
