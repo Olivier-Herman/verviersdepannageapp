@@ -38,7 +38,8 @@ export async function POST(req: Request, { params }: { params: { missionId: stri
   if (kind !== 'blk' && !rest) return NextResponse.json({ error: 'Commencez la restitution d’abord.' }, { status: 400 })
   const { data: resp } = await sb.from('users').select('id, name, restitution_responsable, verify_pin_hash').eq('id', body.responsable_id).maybeSingle()
   if (!resp?.restitution_responsable) return NextResponse.json({ error: 'Ce responsable n’est pas habilité.' }, { status: 400 })
-  if (resp.id === me.id) return NextResponse.json({ error: 'Choisissez un autre responsable que vous-même.' }, { status: 400 })
+  // Un responsable peut se demander la dérogation à lui-même : il la valide aussitôt avec son code (Olivier 29/09/2026).
+  const self = resp.id === me.id
   if (!resp.verify_pin_hash) return NextResponse.json({ error: `${resp.name} n’a pas encore de code personnel : choisissez un autre responsable.` }, { status: 400 })
 
   const { data: row, error } = await sb.from('derogation_requests').insert({
@@ -50,12 +51,12 @@ export async function POST(req: Request, { params }: { params: { missionId: stri
   // Notification DANS l'app (bandeau VD Soft, visible sur PC) + push téléphone / navigateur :
   // un responsable sur PC sans appareil enregistré ne recevait rien (Jona, 29/09/2026).
   const { sendNotification } = await import('@/lib/notifications/send')
-  const nres: any = await sendNotification(resp.id, 'restitution_derogation_requested', {
+  const nres: any = self ? { ok: true } : await sendNotification(resp.id, 'restitution_derogation_requested', {
     title: 'Dérogation à valider',
     body: `${me.name || 'Un collègue'} · ${m.vehicle_plate || 'véhicule'} · ${DEROG_LABELS[kind]}`,
     action_url: `/derogation/${row.id}`, mission_id: m.id,
   }).catch((e: any) => ({ ok: false, error: e?.message }))
   const push = { sent: nres?.ok ? 1 : 0 }
-  await logRestitution(sb, m.id, me.id, 'derogation_request', `Dérogation « ${DEROG_LABELS[kind]} » demandée à ${resp.name} par ${me.name || me.email}. Motif : ${reason}${push.sent ? '' : ` (notification non délivrée${nres?.skipped ? ' : ' + nres.skipped : ''} — prévenez-le, lien : /derogation/${row.id})`}`, { derogation_id: row.id, kind, responsable_id: resp.id })
-  return NextResponse.json({ ok: true, id: row.id, notified: push.sent > 0 })
+  await logRestitution(sb, m.id, me.id, 'derogation_request', `Dérogation « ${DEROG_LABELS[kind]} » demandée ${self ? 'par le responsable lui-même' : `à ${resp.name}`} par ${me.name || me.email}. Motif : ${reason}${push.sent ? '' : ` (notification non délivrée${nres?.skipped ? ' : ' + nres.skipped : ''} — prévenez-le, lien : /derogation/${row.id})`}`, { derogation_id: row.id, kind, responsable_id: resp.id })
+  return NextResponse.json({ ok: true, id: row.id, notified: push.sent > 0, self })
 }

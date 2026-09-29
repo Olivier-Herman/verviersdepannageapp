@@ -133,7 +133,7 @@ async function buildContext(sb: any, session: any, missionId: string) {
     invoice, driverCollected, idDoc,
     derogations: derogs.map(d => ({ ...d, responsable_name: names[d.responsable_id] || null, requested_by_name: names[d.requested_by] || null })),
     pending: (pending || []).map((p: any) => ({ ...p, responsable_name: pNames[p.responsable_id] || null })),
-    responsables: (resp || []).filter((u: any) => u.id !== me.id).map((u: any) => ({ id: u.id, name: u.name, has_pin: !!u.verify_pin_hash })),
+    responsables: (resp || []).map((u: any) => ({ id: u.id, name: u.id === me.id ? `${u.name} (moi)` : u.name, has_pin: !!u.verify_pin_hash, me: u.id === me.id })),
     me: { id: me.id, name: meRow?.name || me.name, hasOdoo: !!meRow?.odoo_api_key, driverOnly: access.driverOnly },
     journal: (logs || []).map((l: any) => ({ at: l.created_at, by: logNames[l.actor_id] || null, notes: l.notes, action: l.action })),
     labels: { who: WHO_LABELS, poste: POSTE_LABELS, payer: PAYER_LABELS },

@@ -435,23 +435,30 @@ function SignStep({ act, busy, onSkip, missionId }: any) {
 
 // ── Dérogation : responsable + motif → notification ──────────────────────
 function DerogModal({ c, missionId, kind, label, onClose, onSent }: any) {
-  const [resp, setResp] = useState<string>(c.responsables.find((r: any) => r.has_pin)?.id || '')
+  const [resp, setResp] = useState<string>((c.responsables.find((r: any) => r.me && r.has_pin) || c.responsables.find((r: any) => r.has_pin))?.id || '')
   const [reason, setReason] = useState('')
   const [amount, setAmount] = useState('')
+  const [pin, setPin] = useState('')
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState<string | null>(null)
+  const isMe = !!c.responsables.find((r: any) => r.id === resp)?.me
   const send = async () => {
     setBusy(true); setErr(null)
     try {
       const r = await fetch(`/api/restitution/${missionId}/derogation`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ kind, reason, responsable_id: resp, amount_tvac: amount ? Number(amount.replace(',', '.')) : undefined }) })
       const j = await r.json(); if (!r.ok) throw new Error(j.error || 'Demande non envoyée')
+      // Responsable qui se l'accorde : validation immédiate avec son code.
+      if (isMe) {
+        const d = await fetch(`/api/derogations/${j.id}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ decision: 'approve', pin }) })
+        const dj = await d.json(); if (!d.ok) { await fetch(`/api/restitution/${missionId}/derogation`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ cancel_id: j.id }) }); throw new Error(dj.error || 'Code refusé') }
+      }
       onSent()
     } catch (e: any) { setErr(e?.message) } finally { setBusy(false) }
   }
   return <div className="fixed inset-0 z-50 bg-black/45 flex items-center justify-center p-4" role="dialog" aria-label="Dérogation">
     <div className="bg-surface rounded-card w-full max-w-md p-4 flex flex-col gap-2.5 shadow-md">
       <div className="flex items-center justify-between"><div className="font-display text-lg font-bold text-ink">{label}</div><button type="button" onClick={onClose} aria-label="Fermer" className="min-h-[36px] min-w-[36px] rounded-btn border border-strong">✕</button></div>
-      <p className="text-sm text-ink-secondary">Le responsable reçoit une notification et valide avec son code sur son téléphone.</p>
+      <p className="text-sm text-ink-secondary">{isMe ? 'Vous êtes responsable : validez vous-même avec votre code.' : 'Le responsable reçoit une notification et valide avec son code sur son téléphone ou dans VD Soft.'}</p>
       <label className="text-[11px] font-bold uppercase tracking-wider text-ink-muted" htmlFor="dg-resp">Responsable</label>
       <select id="dg-resp" className={input} value={resp} onChange={e => setResp(e.target.value)}>
         {c.responsables.map((r: any) => <option key={r.id} value={r.id} disabled={!r.has_pin}>{r.name}{r.has_pin ? '' : ' (pas encore de code)'}</option>)}
@@ -459,8 +466,9 @@ function DerogModal({ c, missionId, kind, label, onClose, onSent }: any) {
       <label className="text-[11px] font-bold uppercase tracking-wider text-ink-muted" htmlFor="dg-why">Motif (obligatoire)</label>
       <textarea id="dg-why" rows={3} className={input} value={reason} onChange={e => setReason(e.target.value)} placeholder="Ex. accord de l’agent Dumont par téléphone à 9h40" />
       {kind === 'montant' && <><label className="text-[11px] font-bold uppercase tracking-wider text-ink-muted" htmlFor="dg-amt">Nouveau montant TVAC</label><input id="dg-amt" className={input} inputMode="decimal" value={amount} onChange={e => setAmount(e.target.value)} placeholder="0,00" /></>}
+      {isMe && <><label className="text-[11px] font-bold uppercase tracking-wider text-ink-muted" htmlFor="dg-pin">Votre code</label><input id="dg-pin" type="password" inputMode="numeric" maxLength={4} className={`${input} font-mono text-center text-xl tracking-[0.5em]`} value={pin} onChange={e => setPin(e.target.value.replace(/\D/g, '').slice(0, 4))} /></>}
       {err && <p className="text-sm text-critical font-semibold">{err}</p>}
-      <Btn kind="brand" disabled={busy || reason.trim().length < 5 || !resp} onClick={send}>{busy ? 'Envoi…' : 'Envoyer la demande'}</Btn>
+      <Btn kind="brand" disabled={busy || reason.trim().length < 5 || !resp || (isMe && pin.length !== 4)} onClick={send}>{busy ? 'Envoi…' : isMe ? 'Valider la dérogation' : 'Envoyer la demande'}</Btn>
     </div>
   </div>
 }
