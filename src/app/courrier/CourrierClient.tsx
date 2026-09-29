@@ -147,6 +147,28 @@ function Capture({ onSent }: { onSent: (id: string) => void }) {
       setPages(ps => [...ps, { id: Math.random().toString(36).slice(2), blob: small, mime, preview: pdf ? null : URL.createObjectURL(small) }])
     }
   }
+  // Glisser-déposer : les scans déjà enregistrés sur le PC se déposent sur la zone
+  // ou n'importe où sur la page (Olivier 29/09/2026). Un dépôt = un courrier.
+  const [over, setOver] = useState(false)
+  const accept = (f: File) => /^image\//.test(f.type) || f.type === 'application/pdf' || /\.pdf$/i.test(f.name)
+  useEffect(() => {
+    let depth = 0
+    const hasFiles = (e: DragEvent) => Array.from(e.dataTransfer?.types || []).includes('Files')
+    const enter = (e: DragEvent) => { if (!hasFiles(e)) return; e.preventDefault(); depth++; setOver(true) }
+    const leave = (e: DragEvent) => { if (!hasFiles(e)) return; depth = Math.max(0, depth - 1); if (!depth) setOver(false) }
+    const overF = (e: DragEvent) => { if (hasFiles(e)) e.preventDefault() }
+    const drop = (e: DragEvent) => {
+      if (!hasFiles(e)) return
+      e.preventDefault(); depth = 0; setOver(false)
+      const files = Array.from(e.dataTransfer?.files || [])
+      const ok = files.filter(accept)
+      if (ok.length) add(ok.map(f => f.type ? f : new File([f], f.name, { type: 'application/pdf' })), 'fichier')
+      if (ok.length < files.length) setErr(`${files.length - ok.length} fichier(s) ignoré(s) : seuls les PDF et les images sont acceptés.`)
+    }
+    window.addEventListener('dragenter', enter); window.addEventListener('dragleave', leave); window.addEventListener('dragover', overF); window.addEventListener('drop', drop)
+    return () => { window.removeEventListener('dragenter', enter); window.removeEventListener('dragleave', leave); window.removeEventListener('dragover', overF); window.removeEventListener('drop', drop) }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pages.length])
   const send = async () => {
     setBusy(true); setErr(null)
     try {
@@ -164,6 +186,10 @@ function Capture({ onSent }: { onSent: (id: string) => void }) {
   return <div className="flex flex-col gap-2">
     {camera && <BurstCamera title="Pages du courrier" count={pages.length} onShot={b => add([b], 'photo')} onClose={() => setCamera(false)} />}
     <input ref={fileRef} type="file" accept="image/*,application/pdf" multiple hidden onChange={e => { add(Array.from(e.target.files || []), 'fichier'); e.target.value = '' }} />
+    {over && <div className="fixed inset-0 z-40 bg-info/15 backdrop-blur-[1px] border-4 border-dashed border-info grid place-items-center pointer-events-none">
+      <div className="rounded-card bg-surface px-6 py-4 shadow-md text-center"><div className="font-display text-xl font-bold text-ink">Déposez vos scans</div><div className="text-sm text-ink-muted">PDF ou images · un dépôt = un courrier</div></div></div>}
+    {!phone && <button type="button" onClick={() => fileRef.current?.click()} className={`rounded-card border-2 border-dashed px-4 py-5 text-center ${over ? 'border-info bg-info-soft' : 'border-strong bg-surface'}`}>
+      <div className="font-semibold text-ink">Glissez vos scans ici</div><div className="text-xs text-ink-muted">PDF ou images, depuis le dossier du scanner ou le bureau · ou cliquez pour choisir</div></button>}
     <div className="flex flex-wrap gap-2">
       {!phone && <ScanToFicheButton onScanned={files => add(files, 'scan')} label="🖨️ Scanner" className="flex-1 min-h-[44px] rounded-btn bg-brand text-white font-semibold px-3.5" />}
       <Btn kind={phone ? 'brand' : 'ghost'} className="flex-1" onClick={() => setCamera(true)}>📷 Photographier</Btn>
