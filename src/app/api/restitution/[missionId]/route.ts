@@ -19,8 +19,8 @@ import { sourceLabel } from '@/lib/missions/source-catalog'
 import { extractJsonFromImages, ID_DOCUMENT_PROMPT } from '@/lib/ocr/vision-json'
 import { sendPushToUser } from '@/lib/push'
 import {
-  restitutionAccess, loadMission, findAssistanceRel, approvedDerogations, computeChecks, openLegs, payerFor,
-  assistancePartnerIds, userNames, logRestitution, isSaisieLike, leveeOk, defaultSplit,
+  restitutionAccess, loadMission, findAssistanceRel, approvedDerogations, computeChecks, openLegs, payerContext, resolvePayer,
+  userNames, logRestitution, isSaisieLike, leveeOk, defaultSplit,
   WHO_LABELS, POSTE_LABELS, PAYER_LABELS, type WhoKind, type Payer, type Poste,
 } from '@/lib/restitution/server'
 
@@ -74,7 +74,7 @@ async function buildContext(sb: any, session: any, missionId: string) {
     userNames(sb, [...derogs.map(d => d.responsable_id), ...derogs.map(d => d.requested_by), rest?.started_by, rest?.completed_by]),
     findAssistanceRel(sb, m),
     needLegs ? cachedLegs(m) : Promise.resolve({ legs: [] as any[] }),
-    assistancePartnerIds(sb),
+    payerContext(sb, open),
     invId ? odooRpc<any[]>('account.move', 'read', [[invId]], { fields: ['name', 'state', 'payment_state', 'amount_total', 'amount_residual'] })
       .then(([mv]) => mv ? { id: invId, name: mv.name, state: mv.state, payment_state: mv.payment_state, total: mv.amount_total, residual: mv.amount_residual, url: open?.invoice_url || buildInvoiceMoveUrl(invId) } : null)
       .catch(() => ({ id: invId, url: open?.invoice_url || buildInvoiceMoveUrl(invId), unreadable: true })) : Promise.resolve(null),
@@ -94,7 +94,7 @@ async function buildContext(sb: any, session: any, missionId: string) {
     return buildContext(sb, session, missionId)
   }
   const checks = await computeChecks(sb, m, derogs, names)
-  const legsOut = legsR.legs.map((l: any) => ({ ...l, payer: payerFor(l, who, saisie, split, assist, m) }))
+  const legsOut = legsR.legs.map((l: any) => { const p = resolvePayer(l, who, saisie, split, assist, m); return { ...l, payer: p.payer, payer_partner_id: p.partner_id, payer_partner_name: p.partner_name, payer_chosen: p.chosen } })
   const dueHtva = r2(legsOut.filter((l: any) => l.payer === 'client').reduce((t: number, l: any) => t + (l.due_htva || 0), 0))
   const driverCollected = r2(((ivR as any).data || []).reduce((t: number, x: any) => t + Number(x.amount || 0), 0))
   // Sorti par l'encaissement chauffeur pendant la restitution : on la clôt.
@@ -131,7 +131,7 @@ async function buildContext(sb: any, session: any, missionId: string) {
     restitution: rest ? { ...rest, started_by_name: names[rest.started_by] || null, completed_by_name: names[rest.completed_by] || null } : null,
     checks,
     legs: legsOut, due: { htva: dueHtva, tvac: r2(dueHtva * 1.21) }, splitDefault: defaultSplit(m),
-    invoice, driverCollected, idDoc, transportDocs: transportDocs || 0, photoCount: Array.isArray(m.driver_photos) ? m.driver_photos.length : 0,
+    invoice, driverCollected, idDoc, transportDocs: transportDocs || 0, thirdInvoices: open?.third_invoices || [], photoCount: Array.isArray(m.driver_photos) ? m.driver_photos.length : 0,
     derogations: derogs.map(d => ({ ...d, responsable_name: names[d.responsable_id] || null, requested_by_name: names[d.requested_by] || null })),
     pending: (pending || []).map((p: any) => ({ ...p, responsable_name: pNames[p.responsable_id] || null })),
     responsables: (resp || []).map((u: any) => ({ id: u.id, name: u.id === me.id ? `${u.name} (moi)` : u.name, has_pin: !!u.verify_pin_hash, me: u.id === me.id })),
@@ -303,37 +303,85 @@ export async function POST(req: Request, { params }: { params: { missionId: stri
         return done()
       }
 
+      case 'leg_payer': {
+        // Payeur d'un groupe : par défaut le client de la fiche, modifiable ici
+        // (client présent, un client existant ou un nouveau client).
+        await ensure()
+        const mid = String(body.mission_id || '')
+        const k = String(body.kind || '')
+        const overrides = { ...(rest!.leg_payers || {}) }
+        let label = ''
+        if (k === 'default') { delete overrides[mid]; label = 'le client de la fiche' }
+        else if (k === 'present') { overrides[mid] = { kind: 'present' }; label = `le client présent (${rest!.client?.name || '—'})` }
+        else if (k === 'third' || k === 'new') {
+          let pid = Number(body.partner_id) || 0
+          let name = String(body.name || '').trim()
+          if (k === 'new') {
+            const c = body.client || {}
+            const pro = c.kind === 'pro'
+            name = pro ? String(c.company || '').trim() : [c.first_name, c.last_name].map((x: any) => String(x || '').trim()).filter(Boolean).join(' ')
+            if (name.length < 2) return NextResponse.json({ error: pro ? 'Nom de la société requis.' : 'Nom et prénom requis.' }, { status: 400 })
+            if (pro && !String(c.vat || '').trim()) return NextResponse.json({ error: 'Numéro de TVA requis pour un client pro.' }, { status: 400 })
+            pid = await withOdooActor(actor, () => findOrCreatePartner({
+              name, phone: c.phone || undefined, email: c.email || undefined, vat: pro ? String(c.vat).replace(/\s|\./g, '').toUpperCase() : undefined,
+              street: c.street || undefined, zip: c.zip || undefined, city: c.city || undefined, countryCode: c.country || 'BE',
+            }))
+          }
+          if (!pid) return NextResponse.json({ error: 'Client à choisir.' }, { status: 400 })
+          overrides[mid] = { kind: 'third', partner_id: pid, name }
+          label = `${name || `client n° ${pid}`}${k === 'new' ? ' (nouveau client créé)' : ''}`
+        } else return NextResponse.json({ error: 'Choix inconnu.' }, { status: 400 })
+        await upd({ leg_payers: Object.keys(overrides).length ? overrides : null })
+        const { data: leg } = await sb.from('incoming_missions').select('mission_number').eq('id', mid).maybeSingle()
+        await logRestitution(sb, m.id, actor, 'leg_payer', `Groupe ${leg?.mission_number || ''} facturé à ${label}, choisi par ${who_name}.`, { mission_id: mid, choice: overrides[mid] || 'default' })
+        return done()
+      }
+
       case 'invoice': {
         await ensure()
         const { data: meRow } = await sb.from('users').select('odoo_api_key').eq('id', actor).maybeSingle()
         if (!meRow?.odoo_api_key) return NextResponse.json({ error: 'Pas d’accès Odoo : passez par l’encaissement chauffeur.' }, { status: 403 })
-        if (rest!.invoice_odoo_id) return done()   // déjà créée : on la rouvre
         if (!rest!.odoo_partner_id) return NextResponse.json({ error: 'Client à identifier d’abord (étape 1).' }, { status: 400 })
         const saisie = isSaisieLike(m)
         const { legs } = await openLegs(m.id, m)
-        const assist = await assistancePartnerIds(sb)
-        const tagged = legs.map(l => ({ ...l, payer: payerFor(l, rest!.who_kind, saisie, rest!.split, assist, m) }))
-        const clientLegs = tagged.filter(l => l.payer === 'client' && l.due_htva > 0)
-        if (!clientLegs.length) return NextResponse.json({ error: 'Rien à facturer au client : le reste à payer est à 0 €.' }, { status: 409 })
+        const pctx = await payerContext(sb, rest)
+        const tagged = legs.map(l => { const p = resolvePayer(l, rest!.who_kind, saisie, rest!.split, pctx, m); return { ...l, payer: p.payer, pid: p.partner_id, pname: p.partner_name } })
+        // Facture du client présent déjà créée : on ne refait que celles des autres clients.
+        const clientLegs = rest!.invoice_odoo_id ? [] : tagged.filter(l => l.payer === 'client' && l.due_htva > 0)
+        const thirdLegs = tagged.filter(l => l.payer === 'third' && l.pid && l.due_htva > 0)
+        if (!clientLegs.length && !thirdLegs.length) {
+          if (rest!.invoice_odoo_id) return done()
+          return NextResponse.json({ error: 'Rien à facturer : le reste à payer est à 0 €.' }, { status: 409 })
+        }
         const clientName = rest!.client?.name || 'Client'
-        // Les volets payés par le client passent à son nom ; ceux des frais de justice
-        // au partenaire Frais de Justice (facturés ensuite par le bureau).
+        // Chaque groupe passe au nom de son payeur (client présent ou autre client) ;
+        // ceux des frais de justice au partenaire Frais de Justice (facturés ensuite par le bureau).
         for (const l of clientLegs) await sb.from('incoming_missions').update({ billed_to_id: rest!.odoo_partner_id, billed_to_name: clientName, updated_at: now }).eq('id', l.mission_id)
+        for (const l of thirdLegs) await sb.from('incoming_missions').update({ billed_to_id: l.pid, billed_to_name: l.pname || `Client ${l.pid}`, updated_at: now }).eq('id', l.mission_id)
         const fdj = tagged.filter(l => l.payer === 'fdj')
         if (fdj.length) {
           const fdjId = await getBusinessNumber('odoo_partner_frais_justice')
           for (const l of fdj) await sb.from('incoming_missions').update({ billed_to_id: fdjId, billed_to_name: 'Frais de Justice Verviers', updated_at: now }).eq('id', l.mission_id)
         }
         dropLegs(m.id)
-        const res = await withOdooActor(actor, () => invoiceDossierGroups({ anyMissionId: m.id, missionIds: clientLegs.map(l => l.mission_id), actorUserId: actor }))
-        const inv = res.invoices.find(i => Number(i.client_id) === Number(rest!.odoo_partner_id)) || res.invoices[0]
-        if (!inv) return NextResponse.json({ error: `Aucune facture créée. ${(res.warnings || []).join(' · ')}` }, { status: 409 })
-        // Facture laissée en BROUILLON (Olivier 28/09/2026) : elle s'ouvre dans Odoo,
-        // on l'adapte si besoin, on la valide et on l'encaisse à la main.
-        const total = r2(inv.total_htva || 0)
-        await upd({ invoice_odoo_id: inv.odoo_id, invoice_url: inv.url, amount_htva: total, amount_tvac: r2(total * 1.21) })
-        await logRestitution(sb, m.id, actor, 'invoice', `Montant confirmé (${total.toFixed(2)} € HTVA) et facture créée en brouillon dans Odoo au nom de ${clientName} par ${who_name} (à valider et encaisser dans Odoo).`, { invoice_odoo_id: inv.odoo_id, warnings: res.warnings })
-        return done()
+        const res = await withOdooActor(actor, () => invoiceDossierGroups({ anyMissionId: m.id, missionIds: [...clientLegs, ...thirdLegs].map(l => l.mission_id), actorUserId: actor }))
+        const inv = clientLegs.length ? res.invoices.find(i => Number(i.client_id) === Number(rest!.odoo_partner_id)) : null
+        const others = res.invoices.filter(i => i !== inv)
+        if (!inv && !others.length) return NextResponse.json({ error: `Aucune facture créée. ${(res.warnings || []).join(' · ')}` }, { status: 409 })
+        // Factures laissées en BROUILLON (Olivier 28/09/2026) : elles s'ouvrent dans Odoo,
+        // on les adapte si besoin, on les valide ; seule celle du client présent s'encaisse ici.
+        if (inv) {
+          const total = r2(inv.total_htva || 0)
+          await upd({ invoice_odoo_id: inv.odoo_id, invoice_url: inv.url, amount_htva: total, amount_tvac: r2(total * 1.21) })
+          await logRestitution(sb, m.id, actor, 'invoice', `Montant confirmé (${total.toFixed(2)} € HTVA) et facture créée en brouillon dans Odoo au nom de ${clientName} par ${who_name} (à valider et encaisser dans Odoo).`, { invoice_odoo_id: inv.odoo_id, warnings: res.warnings })
+        }
+        if (others.length) {
+          const list = [...(rest!.third_invoices || []), ...others.map(i => ({ odoo_id: i.odoo_id, url: i.url, client_id: i.client_id, client_name: i.client_name, total_htva: r2(i.total_htva || 0) }))]
+          await upd({ third_invoices: list })
+          await logRestitution(sb, m.id, actor, 'invoice_third', `Facture${others.length > 1 ? 's' : ''} créée${others.length > 1 ? 's' : ''} en brouillon pour ${others.map(i => `${i.client_name} (${r2(i.total_htva || 0).toFixed(2)} € HTVA)`).join(', ')} par ${who_name}, paiement à terme.`, { invoices: others.map(i => i.odoo_id) })
+        }
+        const c: any = await buildContext(sb, session, m.id)
+        return NextResponse.json({ ...c, opened: inv ? inv.url : others[0]?.url || null })
       }
 
       case 'check_payment': {
@@ -362,6 +410,7 @@ export async function POST(req: Request, { params }: { params: { missionId: stri
         if (rest!.invoice_odoo_id) return NextResponse.json({ error: 'Une facture existe : elle doit être payée dans Odoo.' }, { status: 409 })
         const cx: any = await buildContext(sb, session, m.id)
         if (cx.due?.htva > 0) return NextResponse.json({ error: `Il reste ${cx.due.htva.toFixed(2)} € HTVA à payer.` }, { status: 409 })
+        if (cx.legs.some((l: any) => l.payer === 'third' && l.due_htva > 0)) return NextResponse.json({ error: 'Créez d’abord les factures des autres clients.' }, { status: 409 })
         await upd({ settlement: 'nothing_due' })
         await logRestitution(sb, m.id, actor, 'nothing_due', 'Reste à payer : 0 €, aucune facture à créer.')
         return done()
@@ -413,6 +462,7 @@ export async function POST(req: Request, { params }: { params: { missionId: stri
           else if (ap('paiement')) settlement = 'derogation'
         }
         if (!settlement) blockers.push('Paiement')
+        if (c.legs.some((l: any) => l.payer === 'third' && l.due_htva > 0) && !ap('paiement')) blockers.push('Factures des autres clients à créer')
         if (blockers.length) return NextResponse.json({ error: `Il reste à régler : ${blockers.join(', ')}.` }, { status: 409 })
 
         const fresh = await loadMission(sb, m.id)

@@ -26,6 +26,7 @@
 import { buildDossier, type DossierLeg } from '@/lib/dossier/build'
 import { getExitControlState, isAssistanceSource } from '@/lib/missions/exit-control'
 import { sourceLabel } from '@/lib/missions/source-catalog'
+import { getBusinessNumber } from '@/lib/settings/business'
 
 export type WhoKind = 'owner' | 'mandate' | 'garage' | 'assistance' | 'transport'
 export type Payer = 'client' | 'parquet' | 'fdj'
@@ -170,6 +171,52 @@ export function payerFor(leg: any, who: WhoKind | null, saisie: boolean, split: 
   if (leg.channel === 'parquet') return saisie ? 'parquet' : 'other'
   if (leg.billed_to_id && assistancePartners.has(Number(leg.billed_to_id))) return 'other'
   return 'client'
+}
+
+/** Payeur d'un groupe à la restitution (Olivier 29/09/2026) : par défaut le client
+ *  de la fiche, modifiable groupe par groupe (client présent ou un autre client).
+ *  - client : le client présent, payé au comptoir ;
+ *  - third  : facturé ici à un autre client (brouillon, paiement à terme) ;
+ *  - other  : assistance du dossier, facturée par son circuit habituel ;
+ *  - parquet / fdj : saisie. */
+export type LegPayerChoice = { kind: 'present' | 'fiche' | 'third' | 'parquet' | 'fdj'; partner_id?: number; name?: string }
+export type PayerCtx = { assist: Set<number>; notFiche: Set<number>; presentId: number | null; overrides: Record<string, LegPayerChoice> | null }
+export type ResolvedPayer = { payer: Payer | 'other' | 'third'; partner_id: number | null; partner_name: string | null; chosen: boolean }
+
+/** Clients de fiche qui ne sont jamais un payeur par défaut : Client divers, Frais de
+ *  Justice, zones de police (le client présent paie alors, comme avant). */
+export async function payerContext(sb: any, rest: any): Promise<PayerCtx> {
+  const [assist, cat, zones, fdj] = await Promise.all([
+    assistancePartnerIds(sb),
+    sb.from('mission_source_catalog').select('key, default_billed_to_id').eq('key', 'prive').maybeSingle(),
+    sb.from('police_zones').select('odoo_company_id'),
+    getBusinessNumber('odoo_partner_frais_justice').catch(() => null),
+  ])
+  const notFiche = new Set<number>()
+  if (cat.data?.default_billed_to_id) notFiche.add(Number(cat.data.default_billed_to_id))
+  for (const z of zones.data || []) if (z.odoo_company_id) notFiche.add(Number(z.odoo_company_id))
+  if (fdj) notFiche.add(Number(fdj))
+  return { assist, notFiche, presentId: rest?.odoo_partner_id ? Number(rest.odoo_partner_id) : null, overrides: rest?.leg_payers || null }
+}
+
+export function resolvePayer(leg: any, who: WhoKind | null, saisie: boolean, split: Partial<Record<Poste, Payer>> | null, ctx: PayerCtx, m?: any): ResolvedPayer {
+  const r = (payer: ResolvedPayer['payer'], partner_id: number | null = null, partner_name: string | null = null, chosen = false): ResolvedPayer => ({ payer, partner_id, partner_name, chosen })
+  if (leg.channel === 'parquet') return r(saisie ? 'parquet' : 'other')
+  const ov = ctx.overrides?.[leg.mission_id]
+  if (ov) {
+    if (ov.kind === 'present') return r('client', ctx.presentId, null, true)
+    if (ov.kind === 'parquet' || ov.kind === 'fdj') return r(ov.kind, null, null, true)
+    if (ov.kind === 'third' && ov.partner_id) {
+      if (Number(ov.partner_id) === ctx.presentId) return r('client', ctx.presentId, null, true)
+      return r(ctx.assist.has(Number(ov.partner_id)) ? 'other' : 'third', Number(ov.partner_id), ov.name || null, true)
+    }
+  }
+  if (!ov && saisie && (who === 'owner' || who === 'mandate')) return r((split && split[leg.poste as Poste]) || defaultSplit(m)[leg.poste as Poste])
+  const bt = leg.billed_to_id ? Number(leg.billed_to_id) : null
+  const chosen = !!ov
+  if (!bt || ctx.notFiche.has(bt) || bt === ctx.presentId) return r('client', ctx.presentId, null, chosen)
+  if (ctx.assist.has(bt)) return r('other', bt, leg.billed_to_name || null, chosen)
+  return r('third', bt, leg.billed_to_name || null, chosen)
 }
 
 /** Partenaires Odoo des assistances / assureurs (catalogue des sources, hors police, privé, garage, gardiennage). */

@@ -148,7 +148,7 @@ export default function RestitutionClient({ missionId, gmKey }: { missionId: str
                 {s.id === 'who' && <WhoStep c={c} R={R} act={act} busy={busy} gmKey={gmKey} setErr={setErr} setC={setC} load={load} missionId={m.id} onDerog={() => setDerog({ kind: 'identite', label: 'Pas de pièce d’identité' })} />}
                 {s.id === 'checks' && <ChecksStep c={c} missionId={m.id} load={load} say={say} setErr={setErr} onDerog={(k: string, l: string) => setDerog({ kind: k, label: l })} />}
                 {s.id === 'split' && <SplitStep c={c} R={R} act={act} busy={busy} />}
-                {s.id === 'amount' && <AmountStep c={c} R={R} act={act} busy={busy} setErr={setErr} say={say} onDerog={(k: string, l: string) => setDerog({ kind: k, label: l })} />}
+                {s.id === 'amount' && <AmountStep c={c} R={R} act={act} busy={busy} gmKey={gmKey} setErr={setErr} say={say} onDerog={(k: string, l: string) => setDerog({ kind: k, label: l })} />}
                 {s.id === 'sign' && <SignStep act={act} busy={busy} onSkip={() => setSignSkip(true)} missionId={m.id} photoCount={c.photoCount || 0} />}
                 {s.id === 'exit' && <>
                   <p className="text-sm text-ink-secondary">{m.levee.temporaire ? 'Levée temporaire : le véhicule part chez le garagiste, son emplacement est libéré et le dossier reste ouvert jusqu’à son retour.' : `Le véhicule quitte la zone ${m.zone || '?'}, l’emplacement est libéré et la fiche passe en « terminé ».`}</p>
@@ -431,21 +431,37 @@ function SplitStep({ c, R, act, busy }: any) {
 }
 
 // ── 4. Montant et paiement ─────────────────────────────────────────────
-function AmountStep({ c, R, act, busy, setErr, say, onDerog }: any) {
+function AmountStep({ c, R, act, busy, gmKey, setErr, say, onDerog }: any) {
+  const [pick, setPick] = useState<any>(null)
   const inv = c.invoice
   const due = c.due
   const later = ['garage', 'assistance'].includes(R?.who_kind)
   const noPay = later ? <Btn onClick={() => act('later')} disabled={busy}>Part sans payer : à facturer ({R?.who_kind === 'garage' ? 'garage' : 'assistance'})</Btn> : <Btn kind="derog" onClick={() => onDerog('paiement', 'Départ sans paiement')}>Part sans payer : dérogation…</Btn>
-  const payerTxt = (p: string) => p === 'client' ? 'payé ici' : p === 'parquet' ? 'état de frais au Parquet' : p === 'fdj' ? 'facturé aux Frais de justice' : 'facturé à l’assistance ou au tiers'
+  const payerTxt = (l: any) => l.payer === 'client' ? `payé ici${R?.client?.name ? ` par ${R.client.name}` : ''}` : l.payer === 'parquet' ? 'état de frais au Parquet' : l.payer === 'fdj' ? 'facturé aux Frais de justice' : l.payer === 'third' ? `facturé à ${l.payer_partner_name || 'un autre client'} (paiement à terme)` : `facturé à ${l.payer_partner_name || 'l’assistance'} par le circuit habituel`
+  const thirdPending = c.legs.filter((l: any) => l.payer === 'third' && l.due_htva > 0)
+  const thirdTotal = thirdPending.reduce((t: number, l: any) => t + l.due_htva, 0)
   const table = <div className="flex flex-col gap-1.5">
     {c.legs.map((l: any) => <div key={l.mission_id} className="flex justify-between gap-3 border-b border-border pb-1.5 text-sm">
-      <div className="min-w-0"><div className="text-ink">{l.letter ? `${l.letter} · ` : ''}{l.title}</div><div className="text-xs text-ink-muted">{l.nothing ? l.nothing : l.unknown ? `à calculer : ${l.amount_note || 'voir la fiche'}` : payerTxt(l.payer)}{l.billed_refs?.length ? ` · déjà facturé ${l.billed_refs.join(', ')}` : ''}</div></div>
+      <div className="min-w-0"><div className="text-ink">{l.letter ? `${l.letter} · ` : ''}{l.title}</div>
+        <div className="text-xs text-ink-muted">{l.nothing ? l.nothing : l.unknown ? `à calculer : ${l.amount_note || 'voir la fiche'}` : <>Facturé à : <b className="text-ink-secondary">{payerTxt(l)}</b></>}{l.billed_refs?.length ? ` · déjà facturé ${l.billed_refs.join(', ')}` : ''}</div>
+        {l.due_htva > 0 && !l.nothing && <button type="button" onClick={() => setPick(l)} className="mt-0.5 min-h-[32px] text-xs font-semibold text-info underline">Changer le client de ce groupe</button>}
+      </div>
       <div className="font-mono whitespace-nowrap">{eur(l.due_htva)}</div>
     </div>)}
     <div className="flex justify-between gap-3 font-bold text-ink"><span>À payer maintenant</span><span className="font-mono">{eur(due.htva)} HTVA · {eur(due.tvac)} TVAC</span></div>
+    {thirdPending.length > 0 && <div className="flex justify-between gap-3 text-sm text-ink-secondary"><span>Facturé à d’autres clients (paiement à terme)</span><span className="font-mono">{eur(thirdTotal)} HTVA</span></div>}
+    {(c.thirdInvoices || []).length > 0 && <div className="flex flex-col gap-1 pt-1">{c.thirdInvoices.map((t: any) => <div key={t.odoo_id} className="flex flex-wrap items-center justify-between gap-2 text-sm"><span className="text-ink">Facture en brouillon pour <b>{t.client_name}</b> · {eur(t.total_htva)} HTVA</span><a href={t.url} target="_blank" rel="noreferrer" className="min-h-[36px] inline-flex items-center rounded-btn border border-strong px-3 text-xs font-semibold text-ink">Ouvrir dans Odoo</a></div>)}</div>}
+    {pick && <PayerPicker leg={pick} R={R} gmKey={gmKey} busy={busy} onClose={() => setPick(null)} onPick={async (x: any) => { const j = await act('leg_payer', { mission_id: pick.mission_id, ...x }); if (j) { setPick(null); say('Client du groupe modifié') } }} />}
   </div>
+  const invoiceClick = async () => {
+    const w = window.open('about:blank', '_blank')   // ouvert dans le clic, sinon le navigateur bloque
+    const j = await act('invoice')
+    if (j?.opened && w) w.location.href = j.opened
+    else if (w) w.close()
+  }
+  const thirdBtn = thirdPending.length > 0 && <Btn kind="brand" disabled={busy} onClick={invoiceClick}>{busy ? 'Création…' : `Créer la facture des autres clients (${Array.from(new Set(thirdPending.map((l: any) => l.payer_partner_name))).join(', ')})`}</Btn>
   if (c.legs.some((l: any) => l.unknown && l.payer === 'client')) return <>{table}<p className="text-sm text-warning font-semibold">Un montant n’est pas calculable : corrigez la fiche avant de facturer.</p></>
-  if (due.htva <= 0 && !inv) return <>{table}<Chk state="ok" title="Reste à payer : 0 €">Aucune facture à créer.</Chk><div><Btn kind="brand" disabled={busy} onClick={() => act('nothing_due')}>Continuer</Btn></div></>
+  if (due.htva <= 0 && !inv) return <>{table}<Chk state="ok" title="Reste à payer ici : 0 €">{thirdPending.length ? 'Créez d’abord la facture des autres clients (en brouillon, paiement à terme).' : 'Aucune facture à créer.'}</Chk><div className="flex flex-wrap gap-2">{thirdPending.length ? thirdBtn : <Btn kind="brand" disabled={busy} onClick={() => act('nothing_due')}>Continuer</Btn>}</div></>
 
   if (!c.me.hasOdoo) {
     const paid = c.driverCollected >= due.tvac - 0.01
@@ -455,14 +471,9 @@ function AmountStep({ c, R, act, busy, setErr, say, onDerog }: any) {
     </>
   }
   if (!inv) return <>{table}
-    <p className="text-sm text-ink-secondary">En confirmant, la facture de <b>{eur(due.tvac)}</b> est créée en brouillon dans Odoo au nom du client et s’ouvre dans un nouvel onglet : adaptez-la si besoin, validez-la et encaissez-la.</p>
+    <p className="text-sm text-ink-secondary">En confirmant, la facture de <b>{eur(due.tvac)}</b> est créée en brouillon dans Odoo au nom du client et s’ouvre dans un nouvel onglet : adaptez-la si besoin, validez-la et encaissez-la.{thirdPending.length ? ' Les groupes des autres clients sont facturés en même temps, chacun à son nom, en brouillon.' : ''}</p>
     <div className="flex flex-wrap gap-2">
-      <Btn kind="brand" disabled={busy || !R?.odoo_partner_id} onClick={async () => {
-        const w = window.open('about:blank', '_blank')   // ouvert dans le clic, sinon le navigateur bloque
-        const j = await act('invoice')
-        if (j?.invoice?.url && w) w.location.href = j.invoice.url
-        else if (w) w.close()
-      }}>{busy ? 'Création de la facture…' : 'Confirmer, créer la facture et l’ouvrir dans Odoo'}</Btn>
+      <Btn kind="brand" disabled={busy || !R?.odoo_partner_id} onClick={invoiceClick}>{busy ? 'Création de la facture…' : 'Confirmer, créer la facture et l’ouvrir dans Odoo'}</Btn>
     </div>
     <div className="flex flex-wrap gap-2">{noPay}</div>
   </>
@@ -474,8 +485,76 @@ function AmountStep({ c, R, act, busy, setErr, say, onDerog }: any) {
       {!paid && <Btn kind="brand" disabled={busy} onClick={async () => { const j = await act('check_payment'); if (j && j.paymentChecked !== 'paid') setErr(j.paymentChecked) ; else if (j) say('Facture payée') }}>Vérifier le paiement</Btn>}
       {paid && <Btn kind="brand" disabled={busy} onClick={() => act('check_payment')}>Payée, continuer</Btn>}
     </div>
+    {thirdPending.length > 0 && <div className="flex flex-wrap gap-2">{thirdBtn}</div>}
     {!paid && <div className="flex flex-wrap gap-2">{noPay}</div>}
   </>
+}
+
+// Client d'un groupe : celui de la fiche par défaut, ou le client présent, un client
+// existant, un nouveau client (Olivier 29/09/2026).
+function PayerPicker({ leg, R, gmKey, busy, onClose, onPick }: any) {
+  const [q, setQ] = useState('')
+  const [hits, setHits] = useState<any[]>([])
+  const [searching, setSearching] = useState(false)
+  const [searched, setSearched] = useState(false)
+  const [creating, setCreating] = useState(false)
+  const [kind, setKind] = useState<'prive' | 'pro'>('pro')
+  const [f, setF] = useState<any>({ company: '', vat: '', first_name: '', last_name: '', street: '', zip: '', city: '', country: 'BE', phone: '', email: '' })
+  const [addr, setAddr] = useState('')
+  const [vies, setVies] = useState<'idle' | 'checking' | 'ok' | 'ko'>('idle')
+  const set = (k: string, v: string) => setF((p: any) => ({ ...p, [k]: v }))
+  const doSearch = async () => {
+    if (q.trim().length < 3) return
+    setSearching(true)
+    try { const j = await (await fetch(`/api/odoo/search-client?q=${encodeURIComponent(q.trim())}`)).json(); setHits((j.clients || []).slice(0, 10)) } catch { setHits([]) } finally { setSearching(false); setSearched(true) }
+  }
+  const checkVies = async () => {
+    const vat = f.vat.replace(/\s|\./g, '').toUpperCase(); if (vat.length < 8) return
+    setVies('checking')
+    try {
+      const j = await (await fetch(`/api/vies?vat=${encodeURIComponent(vat)}`)).json()
+      if (j.valid) {
+        setVies('ok')
+        const a = String(j.address || '').split('\n').map((x: string) => x.trim()).filter(Boolean)
+        const last = a[a.length - 1] || ''; const mm = last.match(/^(\d{4,5})\s+(.+)$/)
+        setF((p: any) => ({ ...p, vat, company: j.name || p.company, street: a[0] || p.street, zip: mm ? mm[1] : p.zip, city: mm ? mm[2] : p.city, country: j.countryCode || p.country }))
+      } else setVies('ko')
+    } catch { setVies('ko') }
+  }
+  const Row = ({ title, sub, on, onClick }: any) => <button type="button" disabled={busy} onClick={onClick} className={`text-left rounded-xl border px-3 py-2.5 min-h-[48px] disabled:opacity-50 ${on ? 'border-success-fill bg-success-soft' : 'border-strong bg-surface'}`}><span className="font-semibold text-ink">{title}</span>{sub && <span className="block text-xs text-ink-muted">{sub}</span>}</button>
+  return <div className="fixed inset-0 z-50 bg-black/45 flex items-center justify-center p-4" role="dialog" aria-label="Client du groupe">
+    <div className="bg-surface rounded-card w-full max-w-lg max-h-[90vh] overflow-auto p-4 flex flex-col gap-2.5 shadow-md">
+      <div className="flex items-center justify-between gap-2"><div className="font-display text-lg font-bold text-ink">Qui paie : {leg.letter ? `${leg.letter} · ` : ''}{leg.title}</div><button type="button" onClick={onClose} aria-label="Fermer" className="min-h-[36px] min-w-[36px] rounded-btn border border-strong">✕</button></div>
+      <Row title="Client de la fiche" sub={leg.payer_chosen ? 'Revenir au client prévu sur la fiche' : 'Choix actuel'} on={!leg.payer_chosen} onClick={() => onPick({ kind: 'default' })} />
+      {R?.odoo_partner_id && <Row title={`Client présent : ${R.client?.name || '—'}`} sub="Payé ici, au comptoir" on={leg.payer_chosen && leg.payer === 'client'} onClick={() => onPick({ kind: 'present' })} />}
+      <div className="text-[11px] font-bold uppercase tracking-wider text-ink-muted mt-1">Autre client</div>
+      {!creating && <>
+        <div className="flex gap-2">
+          <input className={input} placeholder="Nom, téléphone, e-mail ou n° de TVA (3 lettres min.)" value={q} onChange={e => setQ(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') doSearch() }} aria-label="Rechercher un client" />
+          <Btn onClick={doSearch} disabled={searching || q.trim().length < 3}>{searching ? '…' : 'Rechercher'}</Btn>
+        </div>
+        {hits.map((h: any) => <Row key={h.id} title={h.name} sub={[h.street, [h.zip, h.city].filter(Boolean).join(' '), h.phone, h.email, h.vat].filter(Boolean).join(' · ') || 'sans coordonnées'} on={leg.payer_chosen && Number(leg.payer_partner_id) === Number(h.id)} onClick={() => onPick({ kind: 'third', partner_id: h.id, name: h.name })} />)}
+        {searched && !hits.length && !searching && <p className="text-sm text-ink-muted">Aucun client trouvé.</p>}
+        <div><Btn onClick={() => { setCreating(true); if (q.trim() && !f.company) set('company', q.trim()) }}>+ Nouveau client</Btn></div>
+      </>}
+      {creating && <div className="rounded-xl bg-surface-2 border border-border p-3 flex flex-col gap-2">
+        <div className="flex gap-2"><Opt on={kind === 'pro'} onClick={() => setKind('pro')} title="Pro" /><Opt on={kind === 'prive'} onClick={() => setKind('prive')} title="Privé" /></div>
+        {kind === 'pro' && <>
+          <div className="flex gap-2"><input className={`${input} font-mono flex-1`} placeholder="N° de TVA (BE0123456789)" value={f.vat} onChange={e => { set('vat', e.target.value); setVies('idle') }} aria-label="Numéro de TVA" /><Btn onClick={checkVies} disabled={vies === 'checking'}>{vies === 'checking' ? '…' : 'Vérifier (VIES)'}</Btn></div>
+          {vies === 'ok' && <Chk state="ok" title={`TVA valide : ${f.company}`}>{[f.street, `${f.zip} ${f.city}`].filter(Boolean).join(', ')}</Chk>}
+          {vies === 'ko' && <Chk state="warn" title="TVA non confirmée par VIES">Vérifiez le numéro, ou encodez la société à la main.</Chk>}
+          <input className={input} placeholder="Nom de la société" value={f.company} onChange={e => set('company', e.target.value)} aria-label="Nom de la société" />
+        </>}
+        {kind === 'prive' && <div className="flex gap-2"><input className={input} placeholder="Nom" value={f.last_name} onChange={e => set('last_name', e.target.value)} aria-label="Nom" /><input className={input} placeholder="Prénom" value={f.first_name} onChange={e => set('first_name', e.target.value)} aria-label="Prénom" /></div>}
+        {!(kind === 'pro' && vies === 'ok') && <AddressField value={addr} onChange={setAddr} onParts={p => setF((x: any) => ({ ...x, street: [p.rue, p.num].filter(Boolean).join(' '), zip: p.cp || '', city: p.loc || '' }))} gmKey={gmKey} placeholder="Adresse : commencez à taper…" />}
+        <div className="flex gap-2"><input className={input} placeholder="Téléphone" inputMode="tel" value={f.phone} onChange={e => set('phone', e.target.value)} aria-label="Téléphone" /><input className={input} placeholder="E-mail pour la facture" inputMode="email" value={f.email} onChange={e => set('email', e.target.value)} aria-label="E-mail" /></div>
+        <div className="flex flex-wrap gap-2">
+          <Btn kind="brand" disabled={busy || (kind === 'pro' ? !(f.company && f.vat) : !(f.last_name && f.first_name))} onClick={() => onPick({ kind: 'new', client: { ...f, kind } })}>{busy ? 'Création…' : 'Créer le client et l’attribuer'}</Btn>
+          <Btn onClick={() => setCreating(false)}>Retour à la recherche</Btn>
+        </div>
+      </div>}
+    </div>
+  </div>
 }
 
 // ── 5. Signature (facultatif) ─────────────────────────────────────────────
