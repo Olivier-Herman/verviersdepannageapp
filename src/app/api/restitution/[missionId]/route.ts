@@ -113,6 +113,7 @@ async function buildContext(sb: any, session: any, missionId: string) {
       if (!open.id_document_id) { await sb.from('restitutions').update({ id_document_id: docs[0].id }).eq('id', open.id); open.id_document_id = docs[0].id }
     }
   }
+  const { count: transportDocs } = open ? await sb.from('mission_documents').select('id', { count: 'exact', head: true }).eq('mission_id', m.id).eq('kind', 'cmr').gte('created_at', open.started_at) : { count: 0 }
   const { data: logs } = await sb.from('mission_logs').select('id, action, notes, created_at, actor_id').eq('mission_id', m.id).like('action', 'restitution_%').order('created_at', { ascending: false }).limit(60)
   const logNames = await userNames(sb, (logs || []).map((l: any) => l.actor_id))
   const { data: pending } = open ? await sb.from('derogation_requests').select('id, kind, reason, status, responsable_id, created_at').eq('restitution_id', open.id).eq('status', 'pending').order('created_at', { ascending: false }) : { data: [] }
@@ -130,7 +131,7 @@ async function buildContext(sb: any, session: any, missionId: string) {
     restitution: rest ? { ...rest, started_by_name: names[rest.started_by] || null, completed_by_name: names[rest.completed_by] || null } : null,
     checks,
     legs: legsOut, due: { htva: dueHtva, tvac: r2(dueHtva * 1.21) }, splitDefault: defaultSplit(m),
-    invoice, driverCollected, idDoc,
+    invoice, driverCollected, idDoc, transportDocs: transportDocs || 0, photoCount: Array.isArray(m.driver_photos) ? m.driver_photos.length : 0,
     derogations: derogs.map(d => ({ ...d, responsable_name: names[d.responsable_id] || null, requested_by_name: names[d.requested_by] || null })),
     pending: (pending || []).map((p: any) => ({ ...p, responsable_name: pNames[p.responsable_id] || null })),
     responsables: (resp || []).map((u: any) => ({ id: u.id, name: u.id === me.id ? `${u.name} (moi)` : u.name, has_pin: !!u.verify_pin_hash, me: u.id === me.id })),
@@ -225,6 +226,23 @@ export async function POST(req: Request, { params }: { params: { missionId: stri
         const who = ocr ? [ocr.firstName, ocr.lastName].filter(Boolean).join(' ') : ''
         await logRestitution(sb, m.id, actor, 'id_photo', `Pièce d’identité photographiée (${files.length === 2 ? 'recto et verso' : '1 photo'}) par ${who_name}${who ? ` : ${who}` : ', lecture incomplète'}.`, { document_id: first })
         return done()
+      }
+
+      case 'transport_doc': {
+        // Documents du transporteur (CMR, ordre d'enlèvement, pièce du chauffeur),
+        // en rafale : une photo par appel, rangée au dossier (Olivier 29/09/2026).
+        const f = form?.get('file')
+        if (!(f instanceof File) || !f.size) return NextResponse.json({ error: 'Photo manquante' }, { status: 400 })
+        await ensure()
+        const buf = Buffer.from(await f.arrayBuffer())
+        const mime = f.type || 'image/jpeg'
+        const path = `${m.id}/cmr/${Date.now()}_${Math.random().toString(36).slice(2, 7)}.${mime.includes('png') ? 'png' : 'jpg'}`
+        const { error: upErr } = await sb.storage.from('mission-documents').upload(path, buf, { contentType: mime, upsert: false })
+        if (upErr) return NextResponse.json({ error: `Photo non enregistrée : ${upErr.message}` }, { status: 500 })
+        await sb.from('mission_documents').insert({ mission_id: m.id, kind: 'cmr', file_path: path, file_name: 'document-transporteur.jpg', mime_type: mime, file_size: buf.length, uploaded_by: actor })
+        const { count } = await sb.from('mission_documents').select('id', { count: 'exact', head: true }).eq('mission_id', m.id).eq('kind', 'cmr').gte('created_at', rest!.started_at)
+        if (count === 1) await logRestitution(sb, m.id, actor, 'transport_doc', `Documents du transporteur photographiés par ${who_name}.`)
+        return NextResponse.json({ ok: true, count: count || 0 })
       }
 
       case 'phone_photo': {

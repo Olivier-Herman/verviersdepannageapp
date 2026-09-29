@@ -9,7 +9,7 @@ import { useEffect, useState } from 'react'
 import { DOCUMENT_LABELS } from '@/lib/taches/accident-steps'
 
 type Doc = { id: string; kind: string; file_name: string | null; mime_type: string | null; created_at: string }
-const KIND_LABELS: Record<string, string> = { parc_scan: 'Documents du véhicule', id_card: 'Pièce d’identité', signature: 'Signature', cmr: 'CMR', informex: 'Bon Informex', truck: 'Camion du transporteur' }
+const KIND_LABELS: Record<string, string> = { parc_scan: 'Documents du véhicule', id_card: 'Pièce d’identité', signature: 'Signature', cmr: 'Documents du transporteur (CMR)', informex: 'Bon Informex', truck: 'Camion du transporteur' }
 
 export default function ScanDocumentsCard({ missionId }: { missionId: string }) {
   const [data, setData] = useState<{ documents: Doc[]; recognized: string[]; missing: string[] } | null>(null)

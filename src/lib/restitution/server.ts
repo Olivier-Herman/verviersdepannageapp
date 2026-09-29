@@ -86,7 +86,7 @@ export async function findAssistanceRel(sb: any, m: any): Promise<{ id: string |
 
 export interface Check { id: string; title: string; detail: string; state: 'ok' | 'ko' | 'warn'; derog?: DerogKind; derogBy?: string | null; actions?: string[] }
 
-const MISSION_COLS = 'id, mission_number, status, source, saisie_motif_code, vehicle_plate, vehicle_brand, vehicle_model, vehicle_vin, parc_zone_key, parked_at, received_at, police_blocked, police_levee_saisie_ok, levee_saisie_at, levee_saisie_date, levee_saisie_type, levee_saisie_payer, temp_garage_out_at, temp_returned_at, snc_scenario, rel_kaze_job_id, billed_to_id, billed_to_name, client_name, client_phone, client_email, client_address, invoice_odoo_id, dossier_leg'
+const MISSION_COLS = 'id, mission_number, status, source, saisie_motif_code, vehicle_plate, vehicle_brand, vehicle_model, vehicle_vin, parc_zone_key, parked_at, received_at, police_blocked, police_levee_saisie_ok, levee_saisie_at, levee_saisie_date, levee_saisie_type, levee_saisie_payer, temp_garage_out_at, temp_returned_at, snc_scenario, rel_kaze_job_id, billed_to_id, billed_to_name, client_name, client_phone, client_email, client_address, invoice_odoo_id, dossier_leg, driver_photos'
 
 export async function loadMission(sb: any, id: string) {
   const { data } = await sb.from('incoming_missions').select(MISSION_COLS).eq('id', id).maybeSingle()

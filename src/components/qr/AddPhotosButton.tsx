@@ -12,7 +12,7 @@ import { Camera, ImagePlus, Loader2 } from 'lucide-react'
 import BurstCamera from '@/components/camera/BurstCamera'
 import { compressImage } from '@/lib/image-compress'
 
-export type PhotoVia = 'qr' | 'fiche' | 'accident'
+export type PhotoVia = 'qr' | 'fiche' | 'accident' | 'restitution'
 
 /** File d'envoi séquentielle des photos d'une fiche. */
 export function usePhotoQueue(missionId: string, via: PhotoVia, onAdded?: (urls: string[]) => void) {

@@ -11,6 +11,8 @@ import AddressField from '@/components/AddressField'
 import ScanToFicheButton from '@/components/missions/ScanToFicheButton'
 import { compressImage } from '@/lib/image-compress'
 import PieceCapture from '@/components/restitution/PieceCapture'
+import BurstCamera from '@/components/camera/BurstCamera'
+import AddPhotosButton from '@/components/qr/AddPhotosButton'
 
 type Ctx = any
 const eur = (n: number) => (Number(n) || 0).toLocaleString('fr-BE', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' €'
@@ -147,7 +149,7 @@ export default function RestitutionClient({ missionId, gmKey }: { missionId: str
                 {s.id === 'checks' && <ChecksStep c={c} missionId={m.id} load={load} say={say} setErr={setErr} onDerog={(k: string, l: string) => setDerog({ kind: k, label: l })} />}
                 {s.id === 'split' && <SplitStep c={c} R={R} act={act} busy={busy} />}
                 {s.id === 'amount' && <AmountStep c={c} R={R} act={act} busy={busy} setErr={setErr} say={say} onDerog={(k: string, l: string) => setDerog({ kind: k, label: l })} />}
-                {s.id === 'sign' && <SignStep act={act} busy={busy} onSkip={() => setSignSkip(true)} missionId={m.id} />}
+                {s.id === 'sign' && <SignStep act={act} busy={busy} onSkip={() => setSignSkip(true)} missionId={m.id} photoCount={c.photoCount || 0} />}
                 {s.id === 'exit' && <>
                   <p className="text-sm text-ink-secondary">{m.levee.temporaire ? 'Levée temporaire : le véhicule part chez le garagiste, son emplacement est libéré et le dossier reste ouvert jusqu’à son retour.' : `Le véhicule quitte la zone ${m.zone || '?'}, l’emplacement est libéré et la fiche passe en « terminé ».`}</p>
                   <div className="flex gap-2 flex-wrap"><Btn kind="brand" disabled={busy} onClick={async () => { const j = await act('complete'); if (j) say('Véhicule restitué') }}>{busy ? 'Sortie en cours…' : 'Sortir le véhicule du parc'}</Btn></div>
@@ -318,8 +320,44 @@ function WhoStep({ c, R, act, busy, gmKey, setErr, setC, load, missionId, onDero
       </>}
     </div>}
     {R?.odoo_partner_id && <Chk state="ok" title={`${R.client?.name} · ${R.client?.kind === 'pro' ? 'Pro' : 'Privé'}`}>{[R.client?.street, [R.client?.zip, R.client?.city].filter(Boolean).join(' '), R.client?.phone, R.client?.email].filter(Boolean).join(' · ')} — {R.client?.source === 'eid' ? 'lu sur la carte eID' : R.client?.source === 'odoo' ? 'client existant' : 'encodé d’après la pièce photographiée'}.</Chk>}
+    {who === 'transport' && <TransportDocs missionId={missionId} initial={c.transportDocs || 0} />}
     {who && !R?.odoo_partner_id && <div><Btn kind="derog" onClick={onDerog}>Pas de pièce : dérogation…</Btn></div>}
   </>
+}
+
+// Documents du transporteur (CMR, ordre d'enlèvement…) en rafale, une photo à
+// la fois vers le dossier (Olivier 29/09/2026).
+function TransportDocs({ missionId, initial }: { missionId: string; initial: number }) {
+  const chain = useRef<Promise<void>>(Promise.resolve())
+  const fileRef = useRef<HTMLInputElement>(null)
+  const [camera, setCamera] = useState(false)
+  const [count, setCount] = useState(initial)
+  const [pending, setPending] = useState(0)
+  const [failed, setFailed] = useState(0)
+  useEffect(() => { setCount(n => Math.max(n, initial)) }, [initial])
+  const enqueue = (blob: Blob) => {
+    setPending(n => n + 1)
+    chain.current = chain.current.then(async () => {
+      try {
+        const small = await compressImage(blob, 1800)
+        const fd = new FormData(); fd.append('action', 'transport_doc'); fd.append('file', new File([small], 'document.jpg', { type: small.type || 'image/jpeg' }))
+        const r = await fetch(`/api/restitution/${missionId}`, { method: 'POST', body: fd })
+        const j = await r.json().catch(() => ({})); if (!r.ok) throw new Error(j.error)
+        setCount(j.count ?? (n => n + 1))
+      } catch { setFailed(n => n + 1) } finally { setPending(n => n - 1) }
+    })
+  }
+  return <div className="rounded-xl bg-surface-2 border border-border p-3 flex flex-col gap-2">
+    {camera && <BurstCamera title="Documents du transporteur" count={count + pending} onShot={enqueue} onClose={() => setCamera(false)} />}
+    <input ref={fileRef} type="file" accept="image/*" multiple hidden onChange={e => { Array.from(e.target.files || []).forEach(enqueue); e.target.value = '' }} />
+    <div className="text-[11px] font-bold uppercase tracking-wider text-ink-muted">Documents du transporteur</div>
+    <p className="text-sm text-ink-secondary">CMR, ordre d’enlèvement, carte du chauffeur… Photographiez autant de pages que nécessaire, elles rejoignent le dossier.</p>
+    <div className="flex flex-wrap gap-2">
+      <Btn kind="brand" onClick={() => setCamera(true)}>📷 Photographier les documents</Btn>
+      <Btn onClick={() => fileRef.current?.click()}>Galerie</Btn>
+    </div>
+    <p className="text-xs text-ink-muted">{count === 0 ? 'Aucun document pour l’instant.' : `${count} photo${count > 1 ? 's' : ''} au dossier ✓`}{pending > 0 ? ` · ${pending} en cours d’envoi` : ''}{failed > 0 ? ` · ${failed} en échec, à reprendre` : ''}</p>
+  </div>
 }
 
 // ── 2. Contrôles ─────────────────────────────────────────────────────────
@@ -441,7 +479,7 @@ function AmountStep({ c, R, act, busy, setErr, say, onDerog }: any) {
 }
 
 // ── 5. Signature (facultatif) ─────────────────────────────────────────────
-function SignStep({ act, busy, onSkip, missionId }: any) {
+function SignStep({ act, busy, onSkip, missionId, photoCount = 0 }: any) {
   const ref = useRef<HTMLCanvasElement>(null)
   const [drawn, setDrawn] = useState(false)
   useEffect(() => {
@@ -462,8 +500,9 @@ function SignStep({ act, busy, onSkip, missionId }: any) {
       <Btn kind="brand" disabled={busy || !drawn} onClick={() => act('sign', { signature: ref.current!.toDataURL('image/png') })}>Enregistrer la signature</Btn>
       <Btn onClick={() => { const cv = ref.current!; cv.getContext('2d')!.clearRect(0, 0, cv.width, cv.height); setDrawn(false) }}>Effacer</Btn>
       <Btn onClick={onSkip}>Continuer sans signature</Btn>
-      <Link href={`/dispatch/${missionId}`} target="_blank" className="min-h-[44px] rounded-btn border border-strong bg-surface px-3.5 text-sm font-semibold text-ink inline-flex items-center">📷 Photos de sortie (fiche)</Link>
     </div>
+    <div className="text-[11px] font-bold uppercase tracking-wider text-ink-muted mt-1">Photos diverses (état du véhicule, dégâts, documents…)</div>
+    <AddPhotosButton missionId={missionId} initialCount={photoCount} via="restitution" />
   </>
 }
 

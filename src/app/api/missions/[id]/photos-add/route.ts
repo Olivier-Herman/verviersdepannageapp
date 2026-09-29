@@ -52,8 +52,8 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
 
   const who = user.name || user.email || 'utilisateur'
   // D'où viennent les photos : étiquette QR, fiche (bureau) ou page Accident.
-  const via = ['qr', 'fiche', 'accident'].includes(String(formData.get('via'))) ? String(formData.get('via')) : 'qr'
-  const fromLabel = via === 'fiche' ? 'depuis la fiche' : via === 'accident' ? 'depuis la page Accident' : "depuis l'étiquette QR"
+  const via = ['qr', 'fiche', 'accident', 'restitution'].includes(String(formData.get('via'))) ? String(formData.get('via')) : 'qr'
+  const fromLabel = via === 'fiche' ? 'depuis la fiche' : via === 'accident' ? 'depuis la page Accident' : via === 'restitution' ? 'pendant la restitution' : "depuis l'étiquette QR"
   await sb.from('mission_logs').insert({
     mission_id: params.id, actor_id: user.id || null, action: 'photos_added',
     notes: `${urls.length} photo${urls.length > 1 ? 's' : ''} ajoutée${urls.length > 1 ? 's' : ''} ${fromLabel} par ${who}`,
