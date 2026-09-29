@@ -413,16 +413,17 @@ function AmountStep({ c, R, act, busy, gmKey, setErr, say, onDerog }: any) {
   const later = ['garage', 'assistance'].includes(R?.who_kind)
   const noPay = later ? <Btn onClick={() => act('later')} disabled={busy}>Part sans payer : à facturer ({R?.who_kind === 'garage' ? 'garage' : 'assistance'})</Btn>
     : <Btn kind="derog" onClick={() => onDerog('paiement', 'Départ sans paiement')}>Part sans payer : dérogation…</Btn>
-  // Encaissement direct ou paiement à la facture : coché par le bureau, pré-coché
-  // « à la facture » si le client a des conditions de paiement à terme (Olivier 29/09/2026).
-  const [payMode, setPayMode] = useState<'direct' | 'invoice'>(c.terms?.deferred ? 'invoice' : 'direct')
-  const modePick = !later && c.me.hasOdoo && due.htva > 0 && <div className="flex flex-col gap-1.5">
-    <div className="text-[11px] font-bold uppercase tracking-wider text-ink-muted">Mode de paiement</div>
-    <div className="flex flex-wrap gap-2">
-      <Opt on={payMode === 'direct'} onClick={() => setPayMode('direct')} title="Encaissement direct" sub="Le client paie maintenant" />
-      <Opt on={payMode === 'invoice'} onClick={() => setPayMode('invoice')} title="Paiement à la facture" sub={c.terms?.deferred ? `Conditions du client : ${c.terms.name}` : 'Le client paiera à réception'} />
-    </div>
-  </div>
+  // Encaissement direct par défaut ; « Paiement différé » en option, retenu pour ce
+  // client et coché d'office la fois suivante (Olivier 29/09/2026).
+  const [payMode, setPayMode] = useState<'direct' | 'invoice'>(c.payDeferred ? 'invoice' : 'direct')
+  useEffect(() => { setPayMode(c.payDeferred ? 'invoice' : 'direct') }, [c.payDeferred])
+  const modePick = !later && c.me.hasOdoo && due.htva > 0 && (
+    <label className="flex items-start gap-3 rounded-xl border border-strong bg-surface px-3 py-2.5 min-h-[48px] cursor-pointer">
+      <input type="checkbox" className="mt-1 w-5 h-5" checked={payMode === 'invoice'} disabled={busy}
+        onChange={e => { const v = e.target.checked; setPayMode(v ? 'invoice' : 'direct'); act('pay_pref', { deferred: v }) }} />
+      <span><span className="font-semibold text-ink">Paiement différé</span>
+        <span className="block text-xs text-ink-muted">Le client paiera à réception de la facture ; le véhicule peut partir. Retenu pour ce client la prochaine fois.</span></span>
+    </label>)
   const payerTxt = (l: any) => l.payer === 'client' ? `payé ici${R?.client?.name ? ` par ${R.client.name}` : ''}` : l.payer === 'parquet' ? 'état de frais au Parquet' : l.payer === 'fdj' ? 'facturé aux Frais de justice' : l.payer === 'third' ? `facturé à ${l.payer_partner_name || 'un autre client'} (paiement à terme)` : `facturé à ${l.payer_partner_name || 'l’assistance'} par le circuit habituel`
   const thirdPending = c.legs.filter((l: any) => l.payer === 'third' && l.due_htva > 0)
   const thirdTotal = thirdPending.reduce((t: number, l: any) => t + l.due_htva, 0)
@@ -460,7 +461,7 @@ function AmountStep({ c, R, act, busy, gmKey, setErr, say, onDerog }: any) {
     {modePick}
     <p className="text-sm text-ink-secondary">En confirmant, la facture de <b>{eur(due.tvac)}</b> est créée en brouillon dans Odoo au nom du client et s’ouvre dans un nouvel onglet : adaptez-la si besoin, validez-la{payMode === 'invoice' ? ' ; le client la paiera à réception et le véhicule peut partir' : ' et encaissez-la'}.{thirdPending.length ? ' Les groupes des autres clients sont facturés en même temps, chacun à son nom, en brouillon.' : ''}</p>
     <div className="flex flex-wrap gap-2">
-      <Btn kind="brand" disabled={busy || !R?.odoo_partner_id} onClick={async () => { await invoiceClick(); if (payMode === 'invoice') await act('later', { pay_on_invoice: true }) }}>{busy ? 'Création de la facture…' : payMode === 'invoice' ? 'Confirmer, créer la facture (paiement à réception) et continuer' : 'Confirmer, créer la facture et l’ouvrir dans Odoo'}</Btn>
+      <Btn kind="brand" disabled={busy || !R?.odoo_partner_id} onClick={async () => { await invoiceClick(); if (payMode === 'invoice') await act('later', { pay_on_invoice: true }) }}>{busy ? 'Création de la facture…' : payMode === 'invoice' ? 'Confirmer, créer la facture (paiement différé) et continuer' : 'Confirmer, créer la facture et l’ouvrir dans Odoo'}</Btn>
     </div>
     <div className="flex flex-wrap gap-2">{noPay}</div>
   </>
@@ -474,7 +475,7 @@ function AmountStep({ c, R, act, busy, gmKey, setErr, say, onDerog }: any) {
     </div>
     {thirdPending.length > 0 && <div className="flex flex-wrap gap-2">{thirdBtn}</div>}
     {!paid && modePick}
-    {!paid && payMode === 'invoice' && !later && <div className="flex flex-wrap gap-2"><Btn kind="ok" disabled={busy} onClick={() => act('later', { pay_on_invoice: true })}>Paiement à la facture : continuer</Btn></div>}
+    {!paid && payMode === 'invoice' && !later && <div className="flex flex-wrap gap-2"><Btn kind="ok" disabled={busy} onClick={() => act('later', { pay_on_invoice: true })}>Paiement différé : continuer</Btn></div>}
     {!paid && (payMode === 'direct' || later) && <div className="flex flex-wrap gap-2">{noPay}</div>}
   </>
 }
