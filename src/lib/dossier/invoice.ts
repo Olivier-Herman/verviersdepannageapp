@@ -282,6 +282,13 @@ async function invoiceDossierGroupsLocked(sb: any, d: Dossier, input: { anyMissi
       for (const r of realRows) attachMissionPdf(r.id, { targets: ['helpdesk', 'vehicle'] }).catch((e: any) => console.warn('[dossier/invoice] PDF mission KO (non bloquant):', e?.message))
     } catch (e: any) { console.warn('[dossier/invoice] pièces / chatter KO (non bloquant):', e?.message) }
 
+    // Rapport d'intervention joint à la facture : seulement pour les sources au tag
+    // rapport_facture (EBAC, Centracar — exception à la règle ci-dessus, 29/09/2026).
+    try {
+      const { attachRapportIfRequired } = await import('@/lib/missions/rapport-intervention')
+      await attachRapportIfRequired(created.id, perLeg.filter(p => p.leg.kind !== 'gard').map(p => p.leg.mission_id), (created as any).name || null)
+    } catch (e: any) { console.warn('[dossier/invoice] rapport client KO (non bloquant):', e?.message) }
+
     // Justificatifs des avances de fonds joints à la facture (best-effort,
     // comme la route /quote).
     try {

@@ -110,6 +110,8 @@ export async function POST(req: Request) {
       signature_data?:        string
       signature_name?:        string
       recipient_signature?:   string         // REM : signature destinataire (optionnelle)
+      signer_last_name?:      string         // rapport client (EBAC, Centracar) : nom du signataire
+      signer_first_name?:     string         //   … et son prénom
       closing_notes?:         string
       payment_method?:        string
       amount_collected?:      number
@@ -188,6 +190,25 @@ export async function POST(req: Request) {
   // donc une correction qui n'en était pas une. Et les garde-fous à la clôture
   // (photos, champs obligatoires) font que tout est déjà là. Une vraie erreur se
   // corrige par le dispatch (annuler le dernier pointage, superadmin).
+  // Rapport d'intervention joint à la facture (tag de source `rapport_facture`, EBAC et
+  // Centracar — Olivier 29/09/2026) : pas de clôture DSP/REM/REL sans 4 photos, la
+  // signature, le nom et le prénom du signataire, et l'adresse de livraison si REM/REL.
+  // Le chauffeur ne peut pas y déroger. DPR (trajet à vide) : pas d'intervention, pas de rapport.
+  if (action === 'completed' && closing_data && closing_data.final_mission_type !== 'trajet_vide' && !['to_invoice', 'completed'].includes(mission.status)) {
+    const { sourceHasTag } = await import('@/lib/missions/source-catalog')
+    if (await sourceHasTag(mission.source, 'rapport_facture')) {
+      const photos = new Set([...(Array.isArray(mission.driver_photos) ? mission.driver_photos : []), ...(closing_data.photo_urls || [])])
+      const missing: string[] = []
+      if (photos.size < 4) missing.push(`4 photos du véhicule (${photos.size} reçue${photos.size > 1 ? 's' : ''})`)
+      if (!closing_data.signature && !closing_data.signature_data && !closing_data.recipient_signature && !(mission as any).client_signature) missing.push('la signature')
+      if (!String(closing_data.signer_last_name || '').trim()) missing.push('le nom du signataire')
+      if (!String(closing_data.signer_first_name || '').trim()) missing.push('le prénom du signataire')
+      const t = String(closing_data.final_mission_type || mission.mission_type || '')
+      if (/remorquage|relivraison/.test(t) && !String(closing_data.destination_address || mission.destination_address || '').trim()) missing.push('l’adresse de livraison')
+      if (missing.length) return NextResponse.json({ error: `Rapport client obligatoire : il manque ${missing.join(', ')}.` }, { status: 422 })
+    }
+  }
+
   const isReclose = action === 'completed' && ['to_invoice', 'completed'].includes(mission.status)
   if (isReclose) {
     return NextResponse.json({ error: 'Cette mission est clôturée : la clôture n’est plus modifiable. Pour une correction, préviens le dispatch.' }, { status: 422 })
@@ -454,6 +475,8 @@ export async function POST(req: Request) {
     if (closing_data.signature)               updatePayload.client_signature      = closing_data.signature
     if (closing_data.signature_data)          updatePayload.client_signature      = closing_data.signature_data
     if (closing_data.signature_name)          updatePayload.client_signature_name = closing_data.signature_name
+    if (closing_data.signer_last_name)        updatePayload.signer_last_name      = String(closing_data.signer_last_name).trim().slice(0, 80)
+    if (closing_data.signer_first_name)       updatePayload.signer_first_name     = String(closing_data.signer_first_name).trim().slice(0, 80)
     if (closing_data.closing_notes)           updatePayload.closing_notes         = closing_data.closing_notes
     if (closing_data.payment_method)          updatePayload.payment_method        = closing_data.payment_method
     if (closing_data.amount_collected != null) updatePayload.amount_collected     = closing_data.amount_collected

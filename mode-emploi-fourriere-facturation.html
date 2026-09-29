@@ -926,6 +926,18 @@
  </ol>
 </div>
 
+<h2 class="subsection">E2. Rapport d’intervention (EBAC, Centracar)</h2>
+<div class="function">
+ <h3><span class="num">150b</span>Rapport joint à la facture</h3>
+ <p class="desc">Pour les clients EBAC et Centracar, chaque facture part avec un rapport d’intervention en PDF : véhicule, panne, lieu d’intervention (et dépôt / adresse de livraison en remorquage), constat du chauffeur, 4 photos, nom, prénom et signature de la personne dépannée ou du réceptionnaire.</p>
+ <ol>
+ <li>Le chauffeur ne peut pas clôturer sans ces éléments.</li>
+ <li>Sur la fiche, l’encadré « Rapport d’intervention pour … » permet de <b>voir le rapport</b> avant de facturer.</li>
+ <li>À la création de la facture (dossier, facturation automatique ou rattachement d’une facture), le rapport est joint tout seul dans Odoo, une seule fois. Il ne devient jamais la pièce principale : l’export comptable garde le PDF de la facture.</li>
+ <li>Si le rapport n’a pas pu être joint, le journal de la fiche le dit : joignez-le à la main depuis « Voir le rapport ».</li>
+ </ol>
+</div>
+
 <h2 class="subsection">F. Courrier</h2>
 <div class="function">
  <h3><span class="num">151</span>Traiter le courrier du jour</h3>

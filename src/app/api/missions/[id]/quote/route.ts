@@ -311,6 +311,15 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     return NextResponse.json({ error: `Erreur Odoo : ${e.message}` }, { status: 500 })
   }
 
+  // 4a) Rapport d'intervention joint à la facture (sources au tag rapport_facture :
+  //     EBAC, Centracar — 29/09/2026). Avant l'auto-post, jamais bloquant.
+  if (mode === 'invoice' && (result as any)?.id) {
+    try {
+      const { attachRapportIfRequired } = await import('@/lib/missions/rapport-intervention')
+      await attachRapportIfRequired((result as any).id, [mission.id], null)
+    } catch (e: any) { console.warn('[quote] rapport client KO (non bloquant):', e?.message) }
+  }
+
   // 4b) AUTO-POST : facture AUTOMATISÉE (cron, isInternal) dont le montant HTVA
   //     est dans la bande [min,max] € → comptabilisée automatiquement dans Odoo.
   //     Hors bande → laissée en brouillon pour contrôle humain. Bornes

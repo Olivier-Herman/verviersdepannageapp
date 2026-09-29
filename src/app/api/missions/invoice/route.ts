@@ -132,6 +132,15 @@ export async function POST(req: Request) {
     }
   }
 
+  // Rapport d'intervention joint à la facture (sources au tag rapport_facture —
+  // EBAC, Centracar, 29/09/2026). Une seule fois par facture, jamais bloquant.
+  if (invoice_odoo_id) {
+    try {
+      const { attachRapportIfRequired } = await import('@/lib/missions/rapport-intervention')
+      await attachRapportIfRequired(invoice_odoo_id, ids, cleanedNumber || null)
+    } catch (e: any) { console.warn('[invoice] rapport client KO (non bloquant):', e?.message) }
+  }
+
   const { data: updated, error: updErr } = await sb
     .from('incoming_missions')
     .update(updatePayload)

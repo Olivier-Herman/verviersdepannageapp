@@ -93,7 +93,7 @@ interface Mission {
   awaiting_payment?: boolean | null
 }
 interface VrLoc { id: string; name: string; address: string; lat: number | null; lng: number | null; is_default?: boolean }
-interface Props { mission: Mission; currentUserId?: string; userRole?: string; isReadOnly?: boolean; navApp?: NavApp; defaultParcZone?: string | null; flux2?: boolean; onsiteV2?: boolean; parentClosingNote?: string | null; parentPanne?: string | null; parentPhotos?: string[]; relKey?: { location: string | null; hook: string | null } | null }
+interface Props { mission: Mission; currentUserId?: string; userRole?: string; isReadOnly?: boolean; navApp?: NavApp; defaultParcZone?: string | null; flux2?: boolean; onsiteV2?: boolean; parentClosingNote?: string | null; parentPanne?: string | null; parentPhotos?: string[]; relKey?: { location: string | null; hook: string | null } | null; reportClient?: string | null }
 
 // Photos prises à l'ENLÈVEMENT (mission parente), en lecture seule sur une
 // relivraison : le chauffeur voit l'état du véhicule tel qu'il a été chargé et
@@ -603,7 +603,7 @@ function BriefingTtsButton({ mission }: { mission: Mission }) {
 }
 
 // ─── Composant principal ──────────────────────────────────────────────────────
-export default function DriverClient({ mission: init, currentUserId, userRole, isReadOnly = false, navApp: initNav, defaultParcZone = null, flux2 = false, onsiteV2 = false, parentClosingNote = null, parentPanne = null, parentPhotos = [], relKey = null }: Props) {
+export default function DriverClient({ mission: init, currentUserId, userRole, isReadOnly = false, navApp: initNav, defaultParcZone = null, flux2 = false, onsiteV2 = false, parentClosingNote = null, parentPanne = null, parentPhotos = [], relKey = null, reportClient = null }: Props) {
   const canMatthieu = canUseMatthieu(userRole, currentUserId)
   const router = useRouter()
   const { t, lang } = useT()   // traductions FR/albanais pour les messages d'erreur (strings)
@@ -1091,6 +1091,9 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
 
   // Signature destinataire (REM uniquement, optionnelle)
   const [destSig,         setDestSig]         = useState('')
+  // Rapport client joint à la facture (EBAC, Centracar…) : signataire obligatoire.
+  const [signerLast,  setSignerLast]  = useState<string>(((init as any).signer_last_name as string) || '')
+  const [signerFirst, setSignerFirst] = useState<string>(((init as any).signer_first_name as string) || '')
   const [showDestSigPad,  setShowDestSigPad]  = useState(false)
   const [mounted,   setMounted]   = useState(false)
 
@@ -1314,6 +1317,17 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
 
   const photoRef = useRef<HTMLInputElement>(null)
   const totPh    = photos.length + photoUrls.length
+  // Rapport client (tag de source rapport_facture) : 4 photos, signataire nommé,
+  // signature, adresse de livraison si REM/REL. Pas pour un DPR. 29/09/2026.
+  const reportNeeded = !!reportClient && ['dsp', 'rem', 'rel'].includes(closeType)
+  const minPh = reportNeeded ? 4 : 3
+  const reportMissing: string[] = reportNeeded ? ([
+    totPh < 4 && t('close.report_m_photos', { n: totPh }),
+    !sig && t('close.report_m_sig'),
+    !signerLast.trim() && t('close.report_m_last'),
+    !signerFirst.trim() && t('close.report_m_first'),
+    (closeType === 'rem' || closeType === 'rel') && !M.destination_address && t('close.report_m_delivery'),
+  ].filter(Boolean) as string[]) : []
   const mType    = M.mission_type || ''
   const rem      = isREM(mType)
   const rel      = isRELMission(M)         // REL = relivraison depuis le parc
@@ -2405,6 +2419,9 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
             closing_notes:         closeNote || undefined,
             signature:             sig || undefined,
             recipient_signature:   destSig || undefined,            // REM : signature destinataire
+            signer_last_name:      reportClient && closeType !== 'dpr' ? signerLast.trim() || undefined : undefined,
+            signer_first_name:     reportClient && closeType !== 'dpr' ? signerFirst.trim() || undefined : undefined,
+            signature_name:        reportClient && closeType !== 'dpr' && (signerLast.trim() || signerFirst.trim()) ? `${signerFirst.trim()} ${signerLast.trim()}`.trim() : undefined,
             discharge_data:        disch.length > 0 ? disch : undefined,
             dpr_motif:             closeType === 'dpr' ? (dprMotif || undefined) : undefined,
             dpr_motif_label:       closeType === 'dpr' ? (
@@ -3438,8 +3455,8 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
               className="w-full flex items-center justify-between px-4 py-3 hover:bg-surface-2 transition text-left">
               <span className="text-ink-secondary text-sm"><T k="close.photos" /></span>
               <span className="flex items-center gap-2">
-                <span className={`text-sm font-medium ${totPh >= 3 ? 'text-green-400' : closeType === 'dpr' ? 'text-ink-muted' : 'text-red-400'}`}>
-                  {totPh} {totPh >= 3 ? '✓' : closeType === 'dpr' ? t('close.photos_opt') : t('close.photos_min')}
+                <span className={`text-sm font-medium ${totPh >= minPh ? 'text-green-400' : closeType === 'dpr' ? 'text-ink-muted' : 'text-red-400'}`}>
+                  {totPh} {totPh >= minPh ? '✓' : closeType === 'dpr' ? t('close.photos_opt') : reportNeeded ? t('close.report_photos_min') : t('close.photos_min')}
                 </span>
                 <span className="text-blue-400 text-xs">→</span>
               </span>
@@ -3457,29 +3474,48 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
               </span>
             </button>
 
+            {/* Rapport client joint à la facture (EBAC, Centracar…) : le chauffeur ne peut pas y déroger. */}
+            {reportNeeded && (
+              <div className="px-4 py-3 bg-amber-50 border-y border-amber-300 space-y-2">
+                <p className="text-amber-900 text-xs font-bold uppercase tracking-wide">{t('close.report_title', { client: reportClient || '' })}</p>
+                <p className="text-amber-900 text-xs">{closeType === 'dsp' ? t('close.report_signer_dsp') : t('close.report_signer_rem')}</p>
+                <div className="grid grid-cols-2 gap-2">
+                  <input value={signerLast} onChange={e => setSignerLast(e.target.value)} placeholder={t('close.report_last')} aria-label={t('close.report_last')} autoComplete="off"
+                    className="w-full min-h-[44px] rounded-xl border border-amber-400 bg-white px-3 text-gray-900 text-sm" />
+                  <input value={signerFirst} onChange={e => setSignerFirst(e.target.value)} placeholder={t('close.report_first')} aria-label={t('close.report_first')} autoComplete="off"
+                    className="w-full min-h-[44px] rounded-xl border border-amber-400 bg-white px-3 text-gray-900 text-sm" />
+                </div>
+                {(closeType === 'rem' || closeType === 'rel') && (
+                  <p className={`text-xs ${M.destination_address ? 'text-amber-900' : 'text-red-700 font-semibold'}`}>
+                    {M.destination_address ? t('close.report_delivery', { address: M.destination_address }) : t('close.report_delivery_missing')}
+                  </p>
+                )}
+              </div>
+            )}
+
             {/* Signature client — obligatoire pour les missions Kaze (IMA) */}
             <button
               onClick={() => setScreen('sig')}
               className="w-full flex items-center justify-between px-4 py-3 hover:bg-surface-2 transition text-left"
             >
               <span className="text-ink-secondary text-sm">
-                <T k="close.sig_client" />
-                {M.source === 'kaze' && (
+                {reportNeeded ? (closeType === 'dsp' ? t('close.report_sig_dsp') : t('close.report_sig_rem')) : <T k="close.sig_client" />}
+                {(M.source === 'kaze' || reportNeeded) && (
                   <span className="text-red-400 ml-1">*</span>
                 )}
               </span>
               <span className="flex items-center gap-2">
                 <span className={`text-sm font-medium ${
-                  sig ? 'text-green-400' : (M.source === 'kaze' ? 'text-red-400' : 'text-ink-muted')
+                  sig ? 'text-green-400' : (M.source === 'kaze' || reportNeeded ? 'text-red-400' : 'text-ink-muted')
                 }`}>
-                  {sig ? t('close.signed') : (M.source === 'kaze' ? t('close.sig_required_tag') : '—')}
+                  {sig ? t('close.signed') : (M.source === 'kaze' || reportNeeded ? t('close.sig_required_tag') : '—')}
                 </span>
                 <span className="text-blue-400 text-xs">→</span>
               </span>
             </button>
 
             {/* Signature destinataire — REM uniquement, optionnelle */}
-            {closeType === 'rem' && (
+            {closeType === 'rem' && !reportNeeded && (
               <div className="px-4 py-3">
                 <div className="flex items-center justify-between">
                   <span className="text-ink-secondary text-sm"><T k="close.sig_dest" /> <span className="text-ink-faint text-xs">{t('close.photos_opt')}</span></span>
@@ -3596,9 +3632,13 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
                   {t('close.sig_kaze_required')}
                 </p>
               )}
+              {reportNeeded && reportMissing.length > 0 && (
+                <p className="text-red-400 text-xs text-center mb-2 px-2">{t('close.report_missing', { list: reportMissing.join(', ') })}</p>
+              )}
               <button onClick={doClose} disabled={loading
-                || (closeType !== 'dpr' && (totPh < 3 || !paymentComplete))
-                || (M.source === 'kaze' && !sig)}
+                || (closeType !== 'dpr' && (totPh < minPh || !paymentComplete))
+                || (M.source === 'kaze' && !sig)
+                || (reportNeeded && reportMissing.length > 0)}
                 className="w-full py-4 bg-green-600 disabled:opacity-40 text-ink font-semibold rounded-2xl">
                 {loading ? t('close.sending') : t('close.confirm_close')}
               </button>

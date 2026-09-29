@@ -607,6 +607,23 @@ export const sq: Dictionary = {
 
   // Ekrani i mbylljes / vendosjes në parking (shoferi) — moduli 100% dygjuhësh.
   close: {
+    // Rapport client joint à la facture (EBAC, Centracar — 29/09/2026)
+    report_title: 'Raport për {client}: i detyrueshëm',
+    report_signer_dsp: 'Personi i ndihmuar jep mbiemrin, emrin dhe nënshkruan.',
+    report_signer_rem: 'Marrësi në dorëzim jep mbiemrin, emrin dhe nënshkruan.',
+    report_last: 'Mbiemri',
+    report_first: 'Emri',
+    report_delivery: 'Adresa e dorëzimit: {address}',
+    report_delivery_missing: 'Mungon adresa e dorëzimit: shtoje në fishë para mbylljes.',
+    report_sig_dsp: 'Nënshkrimi i personit të ndihmuar',
+    report_sig_rem: 'Nënshkrimi i marrësit',
+    report_photos_min: 'Minimumi 4 foto',
+    report_missing: 'Nuk mund të mbyllet: mungon {list}.',
+    report_m_photos: '4 foto ({n} të bëra)',
+    report_m_sig: 'nënshkrimi',
+    report_m_last: 'mbiemri',
+    report_m_first: 'emri',
+    report_m_delivery: 'adresa e dorëzimit',
     title_park:          'Vendosje në parking',
     title_close:         'Mbyll misionin',
     depot_label:         'Depoja e dorëzimit',

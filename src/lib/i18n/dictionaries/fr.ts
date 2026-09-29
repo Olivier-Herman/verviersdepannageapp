@@ -620,6 +620,23 @@ export const fr = {
 
   // Écran de clôture / mise en parc (chauffeur) — module 100% bilingue.
   close: {
+    // Rapport client joint à la facture (EBAC, Centracar — 29/09/2026)
+    report_title: 'Rapport pour {client} : obligatoire',
+    report_signer_dsp: 'La personne dépannée donne son nom, son prénom et signe.',
+    report_signer_rem: 'Le réceptionnaire à la livraison donne son nom, son prénom et signe.',
+    report_last: 'Nom',
+    report_first: 'Prénom',
+    report_delivery: 'Adresse de livraison : {address}',
+    report_delivery_missing: 'Adresse de livraison manquante : ajoute-la sur la fiche avant de clôturer.',
+    report_sig_dsp: 'Signature de la personne dépannée',
+    report_sig_rem: 'Signature du réceptionnaire',
+    report_photos_min: '4 photos minimum',
+    report_missing: 'Impossible de clôturer : il manque {list}.',
+    report_m_photos: '4 photos ({n} prises)',
+    report_m_sig: 'la signature',
+    report_m_last: 'le nom',
+    report_m_first: 'le prénom',
+    report_m_delivery: 'l’adresse de livraison',
     title_park:          'Mise en parc',
     title_close:         'Clôturer la mission',
     depot_label:         'Dépôt de dépose',

@@ -1,5 +1,6 @@
 // src/app/dispatch/[id]/page.tsx
 
+import { sourceHasTag, sourceLabel } from '@/lib/missions/source-catalog'
 import { getServerSession }  from 'next-auth'
 import { isPreviewOn }       from '@/lib/feature-flags'
 import { redirect }          from 'next/navigation'
@@ -166,6 +167,7 @@ export default async function MissionDetailPage({ params, searchParams }: { para
     <MissionDetailClient
       dossierView={hasDossierView}
       restitutionV2={hasRestitutionV2}
+      reportClient={(await sourceHasTag((mission as any)?.source, 'rapport_facture')) ? await sourceLabel((mission as any)?.source) : null}
       mission={mission}
       logs={logs || []}
       drivers={drivers || []}

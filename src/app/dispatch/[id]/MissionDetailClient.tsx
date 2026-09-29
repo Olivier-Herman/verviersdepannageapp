@@ -837,6 +837,7 @@ export default function MissionDetailClient({
   embed = false,
   dossierView = false,
   restitutionV2 = false,
+  reportClient = null,
 }: {
   mission:       Mission
   logs:          MissionLog[]
@@ -856,6 +857,7 @@ export default function MissionDetailClient({
   embed?: boolean
   dossierView?: boolean   // l'utilisateur a la Vue dossier (D15 : la facture partielle y est remplacée)
   restitutionV2?: boolean // restitution unifiée (pilote, Olivier 28/09/2026)
+  reportClient?: string | null // rapport d'intervention joint à la facture (EBAC, Centracar — 29/09/2026)
 }) {
   // Audit dispatch B8 (08/09/2026) : chaque router.refresh() de la fiche signale
   // aussi « cette fiche a changé » aux lignes dépliées / dossiers qui l'embarquent.
@@ -4408,6 +4410,18 @@ export default function MissionDetailClient({
               )}
 
               {/* Documents du véhicule scannés au parc (page Accident). */}
+              {reportClient && (
+                <div className="bg-amber-50 border border-amber-300 rounded-2xl p-4 flex flex-wrap items-center gap-3">
+                  <div className="flex-1 min-w-[200px]">
+                    <p className="text-amber-900 text-sm font-bold">📋 Rapport d’intervention pour {reportClient}</p>
+                    <p className="text-amber-800 text-xs">{((M as any).report_attached_move_ids || []).length
+                      ? 'Joint à la facture dans Odoo.'
+                      : 'Joint automatiquement à la facture : 4 photos, adresse(s), nom, prénom et signature du signataire.'}{(M as any).signer_last_name ? ` Signé par ${[(M as any).signer_first_name, (M as any).signer_last_name].filter(Boolean).join(' ')}.` : ''}</p>
+                  </div>
+                  <a href={`/api/missions/${M.id}/rapport-intervention`} target="_blank" rel="noreferrer"
+                    className="min-h-[44px] inline-flex items-center rounded-xl border border-amber-500 bg-white px-3 text-sm font-semibold text-amber-900">Voir le rapport</a>
+                </div>
+              )}
               <ScanDocumentsCard missionId={M.id} />
 
               {/* Kilométrage intégré au bloc Lieu/Destination (Olivier 2026-06-14). */}

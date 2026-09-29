@@ -10,7 +10,9 @@ import { createAdminClient } from '@/lib/supabase'
 export type SourceTag =
   | 'hexalite' | 'touring' | 'integration' | 'cloture_externe' | 'saisie_scope' | 'requisitoire'
   | 'panneau_saisie' | 'siabis' | 'rel_reprise' | 'assistance' | 'auto_restitute'
-  | 'ima_family' | 'etiquette'
+  | 'ima_family' | 'etiquette' | 'rel_tarif_rem'
+  // Rapport d'intervention joint à chaque facture + exigences de clôture (EBAC, Centracar — 29/09/2026).
+  | 'rapport_facture'
 
 export interface SourceCatalogRow {
   key: string; label: string; active: boolean; sort_order: number

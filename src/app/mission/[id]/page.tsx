@@ -8,6 +8,7 @@ import SncMissionFiche       from './SncMissionFiche'
 import { getDefaultParcZone } from '@/lib/missions/parc-default'
 import { flux2Enabled }        from '@/lib/cloture/gating'
 import { flagAppliesToMission } from '@/lib/feature-flags'
+import { sourceHasTag, sourceLabel } from '@/lib/missions/source-catalog'
 
 // Olivier 2026-06-03 : force-dynamic obligatoire — sinon Next.js peut cacher
 // la fiche mission cote serveur, et apres action driver (load_vehicle, etc.)
@@ -160,6 +161,7 @@ export default async function MissionDriverPage({ params, searchParams }: Props)
         parentClosingNote={parentClosingNote}
         parentPhotos={parentPhotos}
         relKey={relKey}
+        reportClient={(await sourceHasTag(mission.source, 'rapport_facture')) ? await sourceLabel(mission.source) : null}
       />
     </>
   )
