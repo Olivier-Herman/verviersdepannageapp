@@ -48,6 +48,15 @@ export default function RestitutionClient({ missionId, gmKey }: { missionId: str
     } catch (e: any) { setErr(e?.message || 'Chargement impossible') }
   }, [missionId])
   useEffect(() => { load() }, [load])
+  // Retour sur l'écran (onglet repris, téléphone déverrouillé) : le navigateur
+  // suspend le suivi en arrière-plan, on recharge pour voir la réponse du
+  // responsable (Olivier 29/09 : dérogation validée, étape restée figée).
+  useEffect(() => {
+    const onBack = () => { if (document.visibilityState === 'visible') load() }
+    document.addEventListener('visibilitychange', onBack)
+    window.addEventListener('focus', onBack)
+    return () => { document.removeEventListener('visibilitychange', onBack); window.removeEventListener('focus', onBack) }
+  }, [load])
   // Une dérogation en attente : on suit la réponse du responsable.
   useEffect(() => {
     if (!c?.pending?.length) return
@@ -71,6 +80,7 @@ export default function RestitutionClient({ missionId, gmKey }: { missionId: str
   if (!c) return <div className="max-w-3xl mx-auto px-4 py-6 text-sm text-ink-muted">{err || 'Chargement…'}</div>
   const m = c.mission, R = c.restitution && c.restitution.status === 'open' ? c.restitution : null
   const approved = (k: string) => c.derogations.some((d: any) => d.kind === k && d.status === 'approved')
+  const derogBy = (k: string) => c.derogations.find((d: any) => d.kind === k && d.status === 'approved')?.responsable_name || (approved(k) ? 'un responsable' : null)
   const who = R?.who_kind || null
   const clientOk = !!R?.odoo_partner_id || approved('identite')
   const blockers = (c.checks || []).filter((k: any) => k.state === 'ko')
@@ -87,7 +97,7 @@ export default function RestitutionClient({ missionId, gmKey }: { missionId: str
     { id: 'who', title: 'Qui vient le reprendre ?', done: !!who && clientOk },
     { id: 'checks', title: 'Peut-il sortir ?', done: !!who && clientOk && blockers.length === 0 },
     ...(needSplit ? [{ id: 'split', title: 'Qui paie quoi ?', done: splitOk }] : []),
-    { id: 'amount', title: 'Montant et paiement', done: settled },
+    { id: 'amount', title: 'Montant et paiement', done: settled, note: !R?.settlement && !paidOdoo && !driverPaid && derogBy('paiement') ? `Départ sans paiement autorisé par ${derogBy('paiement')}` : null },
     { id: 'sign', title: 'Signature et photos (facultatif)', done: signOk },
     { id: 'exit', title: 'Sortie du parc', done: false },
   ]
@@ -129,7 +139,7 @@ export default function RestitutionClient({ missionId, gmKey }: { missionId: str
           <Card key={s.id} tone={s.id === cur ? 'cur' : s.done ? 'done' : undefined}>
             <div className="flex items-center gap-2.5">
               <span className={`w-7 h-7 rounded-full grid place-items-center text-xs font-bold border-2 ${s.done ? 'bg-success-fill border-success-fill text-white' : s.id === cur ? 'border-info-fill text-info' : 'border-strong text-ink-muted'}`}>{s.done ? '✓' : i + 1}</span>
-              <span className="font-display font-bold text-ink flex-1">{s.title}</span>
+              <span className="font-display font-bold text-ink flex-1">{s.title}{(s as any).note && <span className="block text-xs font-semibold text-alert">{(s as any).note}</span>}</span>
             </div>
             {s.id === cur && (
               <div className="flex flex-col gap-3 sm:pl-9">
