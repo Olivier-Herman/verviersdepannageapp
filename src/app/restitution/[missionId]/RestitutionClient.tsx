@@ -228,7 +228,7 @@ function WhoStep({ c, R, act, busy, gmKey, setErr, setC, load, missionId, onDero
   }, [c.idDoc?.ocr, prefilled])
 
   const fromEid = async (d: EidData) => {
-    await act('client', { client: { kind: 'prive', source: 'eid', first_name: d.firstName, last_name: d.lastName, street: d.street, zip: d.zip, city: d.city, country: d.country || 'BE', phone: d.phone, email: d.email, national_number: d.nationalNumber, birth_date: d.birthDate } })
+    await act('client', { client: { kind: 'prive', source: 'eid', first_name: d.firstName, last_name: d.lastName, street: d.street, zip: d.zip, city: d.city, country: d.country || 'BE', phone: d.phone, email: d.email, national_number: d.nationalNumber, birth_date: d.birthDate, photo_path: d.photoPath || null } })
   }
   // Coordonnées tapées par le client sur l'écran comptoir.
   const fromCounter = (d: any) => {
@@ -292,7 +292,7 @@ function WhoStep({ c, R, act, busy, gmKey, setErr, setC, load, missionId, onDero
       </div>}
       {mode === 'eid' && <div className="flex flex-col gap-1.5">
         <p className="text-sm text-ink-secondary">Le client insère sa carte dans le lecteur du comptoir et valide sur l’écran client. Ses données servent à la restitution et à la facture.</p>
-        <EidImportButton onImport={fromEid} />
+        <EidImportButton onImport={fromEid} showPhoto={false} />
       </div>}
       {mode === 'photo' && !hasPhoto && (onPhone
         ? <PieceCapture missionId={missionId} onSent={(j: any) => setC(j)} />
@@ -327,6 +327,10 @@ function WhoStep({ c, R, act, busy, gmKey, setErr, setC, load, missionId, onDero
         <div className="flex gap-2"><input className={input} placeholder="Téléphone" inputMode="tel" value={f.phone} onChange={e => set('phone', e.target.value)} aria-label="Téléphone" /><input className={input} placeholder="E-mail pour la facture" inputMode="email" value={f.email} onChange={e => set('email', e.target.value)} aria-label="E-mail" /></div>
         <div className="flex gap-2"><Btn kind="brand" disabled={busy || (kind === 'pro' ? !(f.company && f.vat) : !(f.last_name && f.first_name))} onClick={save}>Créer le client</Btn></div>
       </>}
+    </div>}
+    {c.holderPhoto && <div className="flex items-center gap-3 rounded-xl border border-strong bg-surface p-2.5">
+      <a href={c.holderPhoto} target="_blank" rel="noreferrer"><img src={c.holderPhoto} alt="Photo du titulaire de la pièce" className="w-24 h-32 object-cover rounded-lg border border-strong" /></a>
+      <div className="text-sm"><div className="font-semibold text-ink">Photo du titulaire</div><div className="text-ink-secondary">Comparez avec la personne présente. Rangée dans la fiche.</div></div>
     </div>}
     {R?.odoo_partner_id && <Chk state="ok" title={`${R.client?.name} · ${R.client?.kind === 'pro' ? 'Pro' : 'Privé'}`}>{[R.client?.street, [R.client?.zip, R.client?.city].filter(Boolean).join(' '), R.client?.phone, R.client?.email].filter(Boolean).join(' · ')} — {R.client?.source === 'eid' ? 'lu sur la carte eID' : R.client?.source === 'odoo' ? 'client existant' : 'encodé d’après la pièce photographiée'}.</Chk>}
     {who === 'transport' && <TransportDocsCapture missionId={missionId} initial={c.transportDocs || 0} pcMode={!onPhone} waiting={waitDocs}

@@ -2,7 +2,7 @@ param([switch]$Dump)
 
 # read-eid.ps1 — Lit la carte d'identité belge via WinSCard (intégré à Windows).
 # Sort un JSON compact sur stdout : { lastName, firstName, street, zip, city,
-# country, nationalNumber, birthDate, nationality }  ou  { error: "..." }.
+# country, nationalNumber, birthDate, nationality, photo (JPEG base64) }  ou  { error: "..." }.
 # Gère T=0 (6CXX → relecture avec la bonne longueur, 61XX → GET RESPONSE).
 # -Dump : ajoute un champ _debug avec les APDU/réponses en hex.
 
@@ -117,6 +117,10 @@ try {
   $id = ParseTlv $idBuf   # 6=NN, 7=nom, 8=prénoms, 10=nationalité, 12=naissance
   $ad = ParseTlv $adBuf   # 1=rue+n°, 2=CP, 3=commune
   $nat = S $id[10]; if (-not $nat) { $nat = 'Belge' }
+  # Photo du titulaire (JPEG ~3 Ko, fichier 4035). Facultative : une carte qui ne
+  # la rend pas n'empêche pas la lecture du reste (Olivier 29/09/2026).
+  $photo = $null
+  try { $phBuf = ReadFile @(0x3F, 0x00, 0xDF, 0x01, 0x40, 0x35); if ($phBuf.Length -gt 100) { $photo = [Convert]::ToBase64String([byte[]]$phBuf) } } catch {}
   $out = [ordered]@{
     lastName       = S $id[7]
     firstName      = S $id[8]
@@ -127,6 +131,7 @@ try {
     zip            = S $ad[2]
     city           = S $ad[3]
     country        = 'Belgique'
+    photo          = $photo
   }
   if ($Dump) { $out._debug = @{ idLen = $idBuf.Length; adLen = $adBuf.Length; steps = $script:dbg.ToArray() } }
   [Console]::Out.Write(($out | ConvertTo-Json -Compress -Depth 5))

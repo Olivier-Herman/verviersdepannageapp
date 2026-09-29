@@ -1436,7 +1436,7 @@ export default function FacturerModal({
                       Client facturé {billedId ? <span className="text-success">· lié (#{billedId})</span> : <span className="text-warning">· non lié</span>}
                     </label>
                     <div className="flex items-center gap-3">
-                      <EidImportButton onImport={onEidImport} />
+                      <EidImportButton onImport={onEidImport} missionId={mission.id} />
                       <IdPhotoButton onImport={onEidImport} />
                     </div>
                   </div>

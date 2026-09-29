@@ -26,6 +26,8 @@ interface EidIdentity {
   lastName?: string | null; firstName?: string | null
   street?: string | null; zip?: string | null; city?: string | null; country?: string | null
   nationalNumber?: string | null; birthDate?: string | null
+  /** Photo du titulaire (JPEG base64) lue sur la puce — renvoyée au comptoir, rangée en privé. */
+  photo?: string | null
 }
 
 const eur = (n: number) => `${Number(n).toFixed(2).replace('.', ',')} €`

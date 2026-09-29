@@ -173,6 +173,15 @@ export async function POST(req: Request) {
       birthDate: d.birthDate ? String(d.birthDate).slice(0, 40)  : null,
       email:     d.email     ? String(d.email).slice(0, 160)     : null,
       phone:     d.phone     ? String(d.phone).slice(0, 40)      : null,
+      photoPath: null as string | null,
+    }
+    // Photo du titulaire lue sur la puce : rangée en stockage PRIVÉ ; seule sa
+    // référence passe par l'écran (la ligne customer_display est lisible par le
+    // kiosque public). Olivier 29/09/2026.
+    if (typeof d.photo === 'string' && d.photo.length > 200 && d.photo.length < 60000 && /^[A-Za-z0-9+/=]+$/.test(d.photo)) {
+      const path = `eid-photos/${reqId.replace(/[^a-zA-Z0-9-]/g, '')}.jpg`
+      const up = await sb.storage.from('mission-documents').upload(path, Buffer.from(d.photo, 'base64'), { contentType: 'image/jpeg', upsert: true })
+      if (!up.error) response.photoPath = path
     }
     // Réponse enregistrée + écran passe en « merci » (bref) puis retombe au repos.
     await sb.from('customer_display').update({

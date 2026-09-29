@@ -14,6 +14,8 @@ export interface EidData {
   street?: string | null; zip?: string | null; city?: string | null; country?: string | null
   nationalNumber?: string | null; birthDate?: string | null
   email?: string | null; phone?: string | null
+  /** Photo du titulaire lue sur la puce, rangée en stockage privé (29/09/2026). */
+  photoPath?: string | null
   request_id?: string
 }
 
@@ -30,6 +32,8 @@ export default function EidImportButton({
   className,
   mode = 'eid',
   label,
+  missionId = null,
+  showPhoto = true,
 }: {
   screenKey?: string
   onImport: (d: EidData) => void
@@ -37,7 +41,14 @@ export default function EidImportButton({
   /** 'manual' : le client tape ses coordonnées sur l'écran comptoir (restitution, 28/09/2026). */
   mode?: 'eid' | 'manual'
   label?: string
+  /** Fiche concernée : la photo du titulaire lue sur la puce y est rangée. */
+  missionId?: string | null
+  /** false : l'écran affiche la photo lui-même (restitution). */
+  showPhoto?: boolean
 }) {
+  // Photo du titulaire (puce eID) : affichée dès réception pour comparer avec la
+  // personne présente, et rangée dans la fiche si l'écran en a une (29/09/2026).
+  const [photo, setPhoto] = useState<{ url: string; saved: boolean } | null>(null)
   const [status, setStatus] = useState<Status>('idle')
   const [error, setError]   = useState<string | null>(null)
   const reqIdRef  = useRef<string | null>(null)
@@ -59,6 +70,10 @@ export default function EidImportButton({
     cleanup()
     setStatus('idle')
     onImport(resp as EidData)
+    if (resp.photoPath && showPhoto) {
+      fetch('/api/eid/photo', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ path: resp.photoPath, mission_id: missionId || undefined }) })
+        .then(r => r.ok ? r.json() : null).then(j => { if (j?.url) setPhoto({ url: j.url, saved: !!j.saved }) }).catch(() => {})
+    }
   }
 
   const listen = () => {
@@ -127,6 +142,10 @@ export default function EidImportButton({
         {label || "🪪 Lire une carte d'identité"}
       </button>
       {status === 'error' && error && <p className="text-critical text-xs mt-1">⚠ {error}</p>}
+      {photo && <div className="mt-2 flex items-center gap-3 rounded-xl border border-info bg-info-soft p-2.5">
+        <a href={photo.url} target="_blank" rel="noreferrer"><img src={photo.url} alt="Photo du titulaire de la carte" className="w-20 h-28 object-cover rounded-lg border border-strong bg-surface" /></a>
+        <div className="text-xs"><div className="font-semibold text-ink text-sm">Photo du titulaire</div><div className="text-ink-secondary">Comparez avec la personne présente.{photo.saved ? ' Rangée dans la fiche.' : ''}</div></div>
+      </div>}
     </div>
   )
 }

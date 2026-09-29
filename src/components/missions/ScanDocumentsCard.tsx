@@ -9,7 +9,7 @@ import { useEffect, useState } from 'react'
 import { DOCUMENT_LABELS } from '@/lib/taches/accident-steps'
 
 type Doc = { id: string; kind: string; file_name: string | null; mime_type: string | null; created_at: string }
-const KIND_LABELS: Record<string, string> = { parc_scan: 'Documents du véhicule', id_card: 'Pièce d’identité', signature: 'Signature', cmr: 'Documents du transporteur (CMR)', informex: 'Bon Informex', truck: 'Camion du transporteur' }
+const KIND_LABELS: Record<string, string> = { parc_scan: 'Documents du véhicule', id_card: 'Pièce d’identité', signature: 'Signature', cmr: 'Documents du transporteur (CMR)', informex: 'Bon Informex', truck: 'Camion du transporteur', id_photo: 'Photo du titulaire', courrier: 'Courrier reçu', requisitoire: 'Réquisitoire (courrier)' }
 
 export default function ScanDocumentsCard({ missionId }: { missionId: string }) {
   const [data, setData] = useState<{ documents: Doc[]; recognized: string[]; missing: string[] } | null>(null)
@@ -26,7 +26,15 @@ export default function ScanDocumentsCard({ missionId }: { missionId: string }) 
           {data.missing.map(t => <span key={t} className="rounded-full bg-warning-soft text-warning px-2 py-0.5 text-xs font-semibold">Absent : {DOCUMENT_LABELS[t] || t}</span>)}
         </div>
       )}
-      {Object.entries(data.documents.reduce((g: Record<string, Doc[]>, d) => { (g[d.kind] = g[d.kind] || []).push(d); return g }, {})).map(([kind, docs]) => (
+      {/* Photo du titulaire de la pièce (puce eID ou portrait découpé) : en grand, en
+          tête, pour vérifier l'identité d'un coup d'œil (Olivier 29/09/2026). */}
+      {(() => { const ph = data.documents.filter(d => d.kind === 'id_photo').slice(-1)[0]; if (!ph) return null
+        const src = `/api/missions/documents/${ph.id}?inline=1`
+        return <div className="mb-4 flex items-center gap-4 rounded-xl border border-info bg-info-soft p-3">
+          <a href={src} target="_blank" rel="noreferrer"><img src={src} alt="Photo du titulaire de la pièce d’identité" className="w-28 h-36 object-cover rounded-lg border border-strong bg-surface" /></a>
+          <div><div className="font-semibold text-ink">Photo du titulaire</div><div className="text-sm text-ink-secondary">Lue sur la pièce d’identité le {new Date(ph.created_at).toLocaleDateString('fr-BE')}. Comparez avec la personne présente.</div></div>
+        </div> })()}
+      {Object.entries(data.documents.filter(d => d.kind !== 'id_photo').reduce((g: Record<string, Doc[]>, d) => { (g[d.kind] = g[d.kind] || []).push(d); return g }, {})).map(([kind, docs]) => (
         <div key={kind} className="mb-3 last:mb-0">
           <div className="text-[11px] font-bold uppercase tracking-wider text-ink-muted mb-1.5">{KIND_LABELS[kind] || kind} ({docs.length})</div>
           <div className="grid grid-cols-4 gap-1.5">

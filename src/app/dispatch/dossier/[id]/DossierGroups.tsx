@@ -1013,7 +1013,7 @@ function BillingRow({ d, leg, onChanged, gmKey, allLegs = false, onApplied }: { 
           <button onClick={() => { setEditing(false); setQ('') }} className="absolute right-1.5 top-1 text-ink-faint text-xs">✕</button>
           <div className="flex items-center gap-3 flex-wrap mt-1.5 text-[11px]">
             <span className="text-ink-faint">ou compléter depuis</span>
-            <EidImportButton onImport={fromEid} />
+            <EidImportButton onImport={fromEid} missionId={d.root_id} />
             <IdPhotoButton onImport={fromEid} />
             <ManualInfoButton onImport={fromManual} />
           </div>

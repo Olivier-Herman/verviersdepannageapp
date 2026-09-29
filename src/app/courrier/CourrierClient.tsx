@@ -188,8 +188,9 @@ function Capture({ onSent }: { onSent: (id: string) => void }) {
     <input ref={fileRef} type="file" accept="image/*,application/pdf" multiple hidden onChange={e => { add(Array.from(e.target.files || []), 'fichier'); e.target.value = '' }} />
     {over && <div className="fixed inset-0 z-40 bg-info/15 backdrop-blur-[1px] border-4 border-dashed border-info grid place-items-center pointer-events-none">
       <div className="rounded-card bg-surface px-6 py-4 shadow-md text-center"><div className="font-display text-xl font-bold text-ink">Déposez vos scans</div><div className="text-sm text-ink-muted">PDF ou images · un dépôt = un courrier</div></div></div>}
-    {!phone && <button type="button" onClick={() => fileRef.current?.click()} className={`rounded-card border-2 border-dashed px-4 py-5 text-center ${over ? 'border-info bg-info-soft' : 'border-strong bg-surface'}`}>
-      <div className="font-semibold text-ink">Glissez vos scans ici</div><div className="text-xs text-ink-muted">PDF ou images, depuis le dossier du scanner ou le bureau · ou cliquez pour choisir</div></button>}
+
+    {!phone && <button type="button" onClick={() => fileRef.current?.click()} className={`rounded-card border-2 border-dashed px-4 py-8 text-center ${over ? 'border-info bg-info-soft' : 'border-strong bg-surface'}`}>
+      <div className="text-3xl">📥</div><div className="font-display text-lg font-bold text-ink">Glissez vos scans ici</div><div className="text-xs text-ink-muted">PDF ou images, depuis le dossier du scanner ou le bureau · ou cliquez pour choisir</div></button>}
     <div className="flex flex-wrap gap-2">
       {!phone && <ScanToFicheButton onScanned={files => add(files, 'scan')} label="🖨️ Scanner" className="flex-1 min-h-[44px] rounded-btn bg-brand text-white font-semibold px-3.5" />}
       <Btn kind={phone ? 'brand' : 'ghost'} className="flex-1" onClick={() => setCamera(true)}>📷 Photographier</Btn>

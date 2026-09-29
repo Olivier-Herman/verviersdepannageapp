@@ -2969,7 +2969,7 @@ export default function MissionDetailClient({
                       <span>🧾</span> Client facturé
                     </h2>
                     <div className="flex items-center gap-3 flex-wrap">
-                      <EidImportButton onImport={handleEidImport} />
+                      <EidImportButton onImport={handleEidImport} missionId={initialMission.id} />
                       <IdPhotoButton onImport={handleEidImport} />
                       <ManualInfoButton onImport={handleManualImport} />
                     </div>

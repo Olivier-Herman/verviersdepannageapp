@@ -17,6 +17,7 @@ import { buildEncaissementUrl } from '@/lib/missions/encaissement-url'
 import { getBusinessNumber } from '@/lib/settings/business'
 import { sourceLabel } from '@/lib/missions/source-catalog'
 import { extractJsonFromImages, ID_DOCUMENT_PROMPT } from '@/lib/ocr/vision-json'
+import { cropPortrait, saveHolderPhoto } from '@/lib/restitution/holder-photo'
 import { sendPushToUser } from '@/lib/push'
 import {
   restitutionAccess, loadMission, findAssistanceRel, approvedDerogations, computeChecks, openLegs, payerContext, resolvePayer,
@@ -114,6 +115,12 @@ async function buildContext(sb: any, session: any, missionId: string) {
       if (!open.id_document_id) { await sb.from('restitutions').update({ id_document_id: docs[0].id }).eq('id', open.id); open.id_document_id = docs[0].id }
     }
   }
+  // Photo du titulaire (puce eID ou portrait découpé) : la plus récente de la fiche.
+  let holderPhoto: string | null = null
+  if (open) {
+    const { data: ph } = await sb.from('mission_documents').select('file_path').eq('mission_id', m.id).eq('kind', 'id_photo').order('created_at', { ascending: false }).limit(1)
+    if (ph?.[0]) holderPhoto = (await sb.storage.from('mission-documents').createSignedUrl(ph[0].file_path, 3600)).data?.signedUrl || null
+  }
   const { count: transportDocs } = open ? await sb.from('mission_documents').select('id', { count: 'exact', head: true }).eq('mission_id', m.id).eq('kind', 'cmr').gte('created_at', open.started_at) : { count: 0 }
   const { data: logs } = await sb.from('mission_logs').select('id, action, notes, created_at, actor_id').eq('mission_id', m.id).like('action', 'restitution_%').order('created_at', { ascending: false }).limit(60)
   const logNames = await userNames(sb, (logs || []).map((l: any) => l.actor_id))
@@ -132,7 +139,7 @@ async function buildContext(sb: any, session: any, missionId: string) {
     restitution: rest ? { ...rest, started_by_name: names[rest.started_by] || null, completed_by_name: names[rest.completed_by] || null } : null,
     checks,
     legs: legsOut, due: { htva: dueHtva, tvac: r2(dueHtva * 1.21) }, splitDefault: defaultSplit(m),
-    invoice, driverCollected, idDoc, transportDocs: transportDocs || 0, payDeferred: terms, thirdInvoices: open?.third_invoices || [], photoCount: Array.isArray(m.driver_photos) ? m.driver_photos.length : 0,
+    invoice, driverCollected, idDoc, transportDocs: transportDocs || 0, holderPhoto, payDeferred: terms, thirdInvoices: open?.third_invoices || [], photoCount: Array.isArray(m.driver_photos) ? m.driver_photos.length : 0,
     derogations: derogs.map(d => ({ ...d, responsable_name: names[d.responsable_id] || null, requested_by_name: names[d.requested_by] || null })),
     pending: (pending || []).map((p: any) => ({ ...p, responsable_name: pNames[p.responsable_id] || null })),
     responsables: (resp || []).map((u: any) => ({ id: u.id, name: u.id === me.id ? `${u.name} (moi)` : u.name, has_pin: !!u.verify_pin_hash, me: u.id === me.id })),
@@ -224,6 +231,8 @@ export async function POST(req: Request, { params }: { params: { missionId: stri
         }))).select('id')
         const first: string | null = docs?.[0]?.id || null
         if (!rest!.id_document_id && first) await upd({ id_document_id: first })
+        // Portrait du titulaire découpé sur le recto → rangé dans la fiche (sans bloquer).
+        if (images[0]) { try { const face = await cropPortrait(Buffer.from(images[0].base64, 'base64'), images[0].mimeType); if (face) await saveHolderPhoto(sb, m.id, face, actor, 'photo') } catch { /* facultatif */ } }
         const who = ocr ? [ocr.firstName, ocr.lastName].filter(Boolean).join(' ') : ''
         await logRestitution(sb, m.id, actor, 'id_photo', `Pièce d’identité photographiée (${files.length === 2 ? 'recto et verso' : '1 photo'}) par ${who_name}${who ? ` : ${who}` : ', lecture incomplète'}.`, { document_id: first })
         return done()
@@ -269,6 +278,11 @@ export async function POST(req: Request, { params }: { params: { missionId: stri
 
       case 'client': {
         const c = body.client || {}
+        // Carte eID : la photo du titulaire (puce) attend en stockage privé → dans la fiche.
+        if (c.source === 'eid' && typeof c.photo_path === 'string' && /^eid-photos\/[a-zA-Z0-9-]+\.jpg$/.test(c.photo_path)) {
+          const { data: f } = await sb.storage.from('mission-documents').download(c.photo_path)
+          if (f) { await saveHolderPhoto(sb, m.id, Buffer.from(await f.arrayBuffer()), actor, 'eid'); await sb.storage.from('mission-documents').remove([c.photo_path]) }
+        }
         const kind = c.kind === 'pro' ? 'pro' : 'prive'
         const src = c.source === 'eid' ? 'eid' : 'manual'
         const name = kind === 'pro' ? String(c.company || '').trim() : [c.first_name, c.last_name].map((x: any) => String(x || '').trim()).filter(Boolean).join(' ')

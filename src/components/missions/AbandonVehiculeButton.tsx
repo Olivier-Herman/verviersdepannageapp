@@ -270,7 +270,7 @@ export default function AbandonVehiculeButton({
               <div>
                 <div className="flex items-center justify-between mb-1.5">
                   <p className="text-xs text-ink-muted uppercase tracking-wide">Client qui abandonne</p>
-                  <EidImportButton screenKey={screenKey} onImport={onEid} />
+                  <EidImportButton screenKey={screenKey} onImport={onEid} missionId={missionId} />
                 </div>
                 {idSource === 'eid' && (
                   <p className="text-emerald-700 text-xs mb-2">🪪 Données lues sur la carte d&apos;identité.</p>
