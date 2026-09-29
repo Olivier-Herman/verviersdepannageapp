@@ -78,6 +78,16 @@ export async function POST(req: Request, { params }: { params: { id: string } })
         const proposal = { entity, entity_conf: rule?.entity ? 99 : reading.entity_conf, doc_type: docType, type_conf: rule?.doc_type ? 99 : reading.type_conf, mission, candidates, plan,
           rule: rule ? { instruction: rule.instruction, validated_count: rule.validated_count } : null, weak: !entity || (!rule && reading.type_conf < 60) }
         await sb.from('courriers').update({ status: 'to_validate', error: null, reading, sender_key: key, proposal, mission_id: mission?.id || null, updated_at: now }).eq('id', c.id)
+        // Contravention reconnue avec assurance : transmise d'office au module Amendes,
+        // qui suit sa procédure ; le courrier est classé « traité » (Olivier 29/09/2026).
+        if (docType === 'amende' && (rule?.doc_type === 'amende' || reading.type_conf >= 80)) {
+          const steps = [{ kind: 'fine' as const, label: 'Transmettre le PV au module Amendes (lecture, chauffeur du jour, brouillon).', params: {} }]
+          const { data: locked } = await sb.from('courriers').update({ status: 'done', decided_at: now, decided_by: c.created_by || a.userId, updated_at: now }).eq('id', c.id).eq('status', 'to_validate').select('id')
+          if (locked?.length) {
+            const results = await executePlan({ ...c, reading }, steps, c.created_by || a.userId, 'VD Soft')
+            await sb.from('courriers').update({ decision: { how: 'automatique', by: null, by_name: 'automatique', at: now, entity, doc_type: docType, mission_id: null, instruction: null, steps, results } }).eq('id', c.id)
+          }
+        }
       } catch (e: any) {
         await sb.from('courriers').update({ status: 'error', error: e?.message || 'Lecture impossible', updated_at: now }).eq('id', c.id)
       }

@@ -23,7 +23,7 @@ export const DOC_TYPES = {
 export type DocType = keyof typeof DOC_TYPES
 
 /** Gestes que l'agent sait faire. Chaque étape porte sa phrase lisible (label). */
-export type StepKind = 'attach_mission' | 'requisitoire_received' | 'task' | 'notify' | 'draft_reply' | 'supplier_invoice' | 'file_only'
+export type StepKind = 'attach_mission' | 'requisitoire_received' | 'task' | 'notify' | 'draft_reply' | 'supplier_invoice' | 'fine' | 'file_only'
 export interface PlanStep {
   kind:   StepKind
   label:  string

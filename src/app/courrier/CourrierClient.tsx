@@ -298,6 +298,7 @@ function Detail({ id, onBack, say, flash }: { id: string; onBack: () => void; sa
         {d.instruction && <p className="text-sm"><b>Consigne :</b> « {d.instruction} »</p>}
         {(d.results || []).length > 0 && <ul className="flex flex-col gap-1">{d.results.map((r: any, i: number) => <li key={i} className={`text-sm ${r.ok ? 'text-success' : 'text-critical'}`}>{r.ok ? '✓' : '✕'} {d.steps?.[i]?.label ? `${d.steps[i].label} — ` : ''}{r.note}</li>)}</ul>}
         {d.mission_id && <Link href={`/dispatch/${d.mission_id}`} className="self-start underline text-sm font-semibold">Ouvrir la fiche</Link>}
+        {(d.steps || []).some((s: any) => s.kind === 'fine') && <Link href="/amendes" className="self-start underline text-sm font-semibold">Ouvrir les amendes</Link>}
       </div>}
 
       {c.status === 'to_validate' && <div className="rounded-card border border-border bg-surface p-4 shadow-md flex flex-col gap-3">

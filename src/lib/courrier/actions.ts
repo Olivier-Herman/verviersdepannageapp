@@ -7,6 +7,7 @@ import { sendEmail } from '@/lib/emails'
 import { createDraftMail } from '@/lib/mail-agent/graph'
 import { OUT_MAILBOX } from '@/lib/mail-agent/actions'
 import { COMPANIES } from '@/lib/mail-agent/handlers/fournisseur'
+import { ingestFineScan } from '@/lib/fines/ingest'
 import type { PlanStep, StepResult } from './types'
 
 type Page = { path: string; mime: string }
@@ -83,6 +84,18 @@ export async function executePlan(courrier: { id: string; pages: Page[]; reading
             `<p>Facture reçue par courrier le ${day}, transmise à l'encodage ${esc(co.label)}.</p>`, undefined, undefined,
             fs.map(f => ({ name: f.name, contentType: f.contentType, contentBytes: f.buf.toString('base64') })), OUT_MAILBOX)
           results.push({ kind: s.kind, ok: true, note: `Transmise à l’encodage des achats ${co.label}.` }); break
+        }
+        case 'fine': {
+          // Module Amendes : même entrée que la capture par lot (lecture, anti-doublon,
+          // chauffeur du jour, brouillon). Un PV = un fichier : on transmet la 1re page
+          // (le PDF entier s'il s'agit d'un PDF).
+          const fs = await getFiles()
+          const f = fs[0]; if (!f) throw new Error('aucune page')
+          const r = await ingestFineScan(sb, { buffer: f.buf, mime: f.contentType, ext: f.contentType.includes('pdf') ? 'pdf' : 'jpg', actorId })
+          if (r.status === 'duplicate') { results.push({ kind: s.kind, ok: true, note: `Déjà dans le module Amendes (PV ${r.ref}) : rien créé en double.` }); break }
+          let who = ''
+          if (r.fine.driver_id) { const { data: u } = await sb.from('users').select('name').eq('id', r.fine.driver_id).maybeSingle(); if (u?.name) who = `, chauffeur du jour : ${u.name}` }
+          results.push({ kind: s.kind, ok: true, note: `Transmise au module Amendes : PV ${r.fine.infraction_ref || 'sans numéro lu'}, plaque ${r.fine.plate}${who}. La suite se fait dans Amendes.` }); break
         }
         case 'file_only': results.push({ kind: s.kind, ok: true, note: 'Classé dans le registre.' }); break
       }

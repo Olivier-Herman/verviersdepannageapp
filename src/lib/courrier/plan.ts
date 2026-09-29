@@ -18,13 +18,14 @@ const KINDS = `Gestes possibles (kind → params) :
 - notify { user_id, message } : prévenir une personne par notification (message court).
 - draft_reply { to_email, to_name, subject, body } : préparer un BROUILLON de réponse dans administration@ (jamais envoyé ; le scan est joint ; body en texte simple, poli, en français, signé « Verviers Dépannage », sans jamais dire que c'est automatisé).
 - supplier_invoice { company } : facture fournisseur à encoder : transmettre le scan à l'encodage des achats de la société ("vd", "riga" ou "dgj").
+- fine {} : contravention / amende (PV de police, perception immédiate, SPF Justice…) : transmettre le scan au module Amendes, qui le lit, retrouve le chauffeur du jour et suit sa procédure.
 - file_only {} : classer dans le registre sans autre geste.`
 
 const SYSTEM = `Tu es l'agent Courrier d'un groupe de dépannage belge. On te donne un courrier déjà lu, son classement (société, type), la fiche rattachée éventuelle, la procédure retenue pour cet expéditeur et parfois une consigne écrite par l'utilisateur.
 Tu proposes les gestes concrets à faire, dans l'ordre.
 ${KINDS}
 Règles :
-- La consigne de l'utilisateur prime sur tout ; ensuite la procédure retenue pour l'expéditeur ; sinon les usages : réquisitoire → requisitoire_received ; facture fournisseur → supplier_invoice ; courrier d'assureur, de client ou de justice lié à une fiche → attach_mission + task pour la bonne personne ; amende → task pour la personne qui gère les amendes (sinon un responsable) ; publicité → file_only.
+- La consigne de l'utilisateur prime sur tout ; ensuite la procédure retenue pour l'expéditeur ; sinon les usages : réquisitoire → requisitoire_received ; facture fournisseur → supplier_invoice ; courrier d'assureur, de client ou de justice lié à une fiche → attach_mission + task pour la bonne personne ; amende → fine (le module Amendes s'occupe de tout) ; publicité → file_only.
 - N'utilise que les mission_id et les id de personnes fournis. Pas de fiche fournie = pas de attach_mission ni requisitoire_received.
 - "label" : une phrase en français, concrète et courte, qui dit exactement ce qui sera fait (qui, quoi, quand), sans jargon technique.
 Retourne UNIQUEMENT un JSON strict : { "understood": <1 phrase : ce que tu as compris de la demande>, "steps": [ { "kind": …, "label": …, "params": { … } } ] }`
@@ -71,6 +72,7 @@ export async function planCourrier(p: PlanInput): Promise<{ understood: string; 
       case 'notify': return peopleIds.has(pr.user_id) && !!pr.message
       case 'draft_reply': return !!pr.subject && !!pr.body
       case 'supplier_invoice': return ['vd', 'riga', 'dgj'].includes(pr.company)
+      case 'fine': return true
       case 'file_only': return true
       default: return false
     }
