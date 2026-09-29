@@ -112,6 +112,9 @@ export async function POST(req: Request) {
       recipient_signature?:   string         // REM : signature destinataire (optionnelle)
       signer_last_name?:      string         // rapport client (EBAC, Centracar) : nom du signataire
       signer_first_name?:     string         //   … et son prénom
+      signer_lat?:            number         //   … lieu de la signature (position du téléphone)
+      signer_lng?:            number
+      signer_place?:          string
       closing_notes?:         string
       payment_method?:        string
       amount_collected?:      number
@@ -477,6 +480,10 @@ export async function POST(req: Request) {
     if (closing_data.signature_name)          updatePayload.client_signature_name = closing_data.signature_name
     if (closing_data.signer_last_name)        updatePayload.signer_last_name      = String(closing_data.signer_last_name).trim().slice(0, 80)
     if (closing_data.signer_first_name)       updatePayload.signer_first_name     = String(closing_data.signer_first_name).trim().slice(0, 80)
+    if (Number.isFinite(Number(closing_data.signer_lat)) && Number.isFinite(Number(closing_data.signer_lng)) && closing_data.signer_lat != null && closing_data.signer_lng != null) {
+      updatePayload.signer_lat = Number(closing_data.signer_lat); updatePayload.signer_lng = Number(closing_data.signer_lng)
+    }
+    if (closing_data.signer_place)            updatePayload.signer_place          = String(closing_data.signer_place).slice(0, 300)
     if (closing_data.closing_notes)           updatePayload.closing_notes         = closing_data.closing_notes
     if (closing_data.payment_method)          updatePayload.payment_method        = closing_data.payment_method
     if (closing_data.amount_collected != null) updatePayload.amount_collected     = closing_data.amount_collected

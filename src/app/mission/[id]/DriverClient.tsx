@@ -1094,6 +1094,22 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
   // Rapport client joint à la facture (EBAC, Centracar…) : signataire obligatoire.
   const [signerLast,  setSignerLast]  = useState<string>(((init as any).signer_last_name as string) || '')
   const [signerFirst, setSignerFirst] = useState<string>(((init as any).signer_first_name as string) || '')
+  // Lieu de la signature : position du téléphone au moment où la personne signe.
+  const [sigGeo, setSigGeo] = useState<{ lat: number; lng: number; place: string | null } | null>(null)
+  const locateSignature = async (fallback?: { lat: number; lng: number } | null) => {
+    const g = fallback || await captureGeo()
+    if (!g) return null
+    let place: string | null = null
+    try {
+      const gm = (window as any).google?.maps
+      if (gm?.Geocoder) place = await new Promise<string | null>(res => {
+        const t = setTimeout(() => res(null), 4000)
+        new gm.Geocoder().geocode({ location: g }, (r: any[], st: string) => { clearTimeout(t); res(st === 'OK' && r?.[0]?.formatted_address ? r[0].formatted_address : null) })
+      })
+    } catch { /* adresse lisible facultative : on garde les coordonnées */ }
+    const v = { lat: g.lat, lng: g.lng, place }
+    setSigGeo(v); return v
+  }
   const [showDestSigPad,  setShowDestSigPad]  = useState(false)
   const [mounted,   setMounted]   = useState(false)
 
@@ -2409,6 +2425,7 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
       // chauffeur se trouvait quand il a déclaré la mission terminée — et c'est
       // précisément ce qu'on cherche à vérifier. Olivier 2026-08-14.
       const geoDone = await captureGeo()
+      const sigLoc = reportNeeded ? (sigGeo || (geoDone ? await locateSignature(geoDone as any) : null)) : null
       const r = await fetch('/api/missions/driver-action', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -2421,6 +2438,9 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
             recipient_signature:   destSig || undefined,            // REM : signature destinataire
             signer_last_name:      reportClient && closeType !== 'dpr' ? signerLast.trim() || undefined : undefined,
             signer_first_name:     reportClient && closeType !== 'dpr' ? signerFirst.trim() || undefined : undefined,
+            signer_lat:            sigLoc?.lat ?? undefined,
+            signer_lng:            sigLoc?.lng ?? undefined,
+            signer_place:          sigLoc?.place ?? undefined,
             signature_name:        reportClient && closeType !== 'dpr' && (signerLast.trim() || signerFirst.trim()) ? `${signerFirst.trim()} ${signerLast.trim()}`.trim() : undefined,
             discharge_data:        disch.length > 0 ? disch : undefined,
             dpr_motif:             closeType === 'dpr' ? (dprMotif || undefined) : undefined,
@@ -3086,7 +3106,7 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
             <p className="text-green-400 text-sm text-center mb-4">✅ Signature enregistrée</p>
             <button onClick={() => setSig('')} className="w-full py-3 bg-surface-hover text-ink-secondary rounded-xl text-sm">Refaire</button>
           </div>
-        ) : <SigPad onSave={d => { setSig(d); saveDraft({ sig: d }) }} />}
+        ) : <SigPad onSave={d => { setSig(d); saveDraft({ sig: d }); if (reportClient) locateSignature() }} />}
       </div>
       {sig && <div className="px-4 py-4 border-t border">
         <button onClick={() => setScreen('close')} className="w-full py-3.5 bg-brand text-white font-semibold rounded-2xl">← Retour</button>

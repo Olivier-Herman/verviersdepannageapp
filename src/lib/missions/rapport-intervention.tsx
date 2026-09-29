@@ -165,7 +165,7 @@ export function RapportDocument({ d }: { d: RapportData }) {
 
 // ── Données ──────────────────────────────────────────────────────────────────
 
-const COLS = 'id, mission_number, source, mission_type, parent_mission_id, vehicle_brand, vehicle_model, vehicle_plate, vehicle_vin, vehicle_mileage, incident_address, incident_description, incident_type, destination_address, destination_name, closing_notes, driver_photos, client_signature, client_signature_name, signer_last_name, signer_first_name, intervention_date, received_at, dossier_number, billed_to_name, created_at'
+const COLS = 'id, mission_number, source, mission_type, parent_mission_id, vehicle_brand, vehicle_model, vehicle_plate, vehicle_vin, vehicle_mileage, incident_address, incident_description, incident_type, destination_address, destination_name, closing_notes, driver_photos, client_signature, client_signature_name, signer_last_name, signer_first_name, signer_lat, signer_lng, signer_place, intervention_date, received_at, dossier_number, billed_to_name, created_at'
 
 async function photoData(url: string): Promise<string | null> {
   try {
@@ -231,7 +231,8 @@ export async function buildRapportData(missionIds: string[], invoiceName: string
       last: signerM.signer_last_name || (nameParts.length > 1 ? nameParts.slice(-1)[0] : ''),
       first: signerM.signer_first_name || (nameParts.length > 1 ? nameParts.slice(0, -1).join(' ') : nameParts[0] || ''),
       role: kind === 'dsp' ? 'Personne dépannée' : 'Réceptionnaire',
-      where: kind === 'dsp' ? (root.incident_address || '') : stops[stops.length - 1].address,
+      // Lieu = position du téléphone au moment de la signature ; à défaut l'adresse de la fiche.
+      where: signerM.signer_place || (signerM.signer_lat != null && signerM.signer_lng != null ? `${Number(signerM.signer_lat).toFixed(5)}, ${Number(signerM.signer_lng).toFixed(5)} (position GPS)` : (kind === 'dsp' ? (root.incident_address || '') : stops[stops.length - 1].address)),
       signature: await signatureData(signerM.client_signature),
     },
   }
@@ -258,7 +259,10 @@ export async function attachRapportIfRequired(moveId: number, missionIds: string
     const d = await buildRapportData(tagged.map(m => m.id), invoiceName)
     if (!d) return { attached: false, reason: 'données absentes' }
     const pdf = await renderRapportPdf(d)
-    const att = await attachToOdoo({ resModel: 'account.move', resId: moveId, filename: `Rapport-intervention-${d.number.replace(/\s+/g, '')}.pdf`, base64Data: pdf.toString('base64'), mimetype: 'application/pdf', description: `Rapport d’intervention (${d.client})` })
+    // Nom « Justificatif … » : l'envoi de facture d'Odoo (bouton Envoyer ET envoi
+    // automatique de 22h) joint les pièces nommées ainsi → le rapport suit la facture
+    // chez le client, sans mail en plus (Olivier 29/09/2026).
+    const att = await attachToOdoo({ resModel: 'account.move', resId: moveId, filename: `Justificatif - Rapport d'intervention ${d.number}.pdf`, base64Data: pdf.toString('base64'), mimetype: 'application/pdf', description: `Rapport d’intervention (${d.client})` })
     // Le rapport ne doit JAMAIS devenir la pièce principale de la facture : l'export
     // vers le comptable prendrait le rapport au lieu du PDF de facture (raison de la
     // règle du 10/06/2026). On rend la place au PDF de facture, ou on la laisse vide
@@ -280,50 +284,3 @@ export async function attachRapportIfRequired(moveId: number, missionIds: string
   }
 }
 
-/**
- * Facture VALIDÉE dans Odoo + rapport joint → mail au client (adresse e-mail de la
- * fiche client Odoo), depuis administration@, avec la facture et le rapport. Une
- * seule fois par facture. Appelé par le cron des factures (toutes les 20 min).
- * Olivier 29/09/2026 : « avec la facture validée ».
- */
-export async function emailPostedInvoicesWithRapport(): Promise<{ sent: number; skipped: string[]; errors: string[] }> {
-  const out = { sent: 0, skipped: [] as string[], errors: [] as string[] }
-  const sb = createAdminClient()
-  const { data: rows } = await sb.from('incoming_missions').select('id, report_attached_move_ids, report_emailed_move_ids, vehicle_plate').not('report_attached_move_ids', 'is', null).limit(300)
-  const pending = new Map<number, string[]>()
-  for (const r of (rows || []) as any[]) {
-    for (const mv of r.report_attached_move_ids || []) if (!(r.report_emailed_move_ids || []).includes(mv)) pending.set(mv, [...(pending.get(mv) || []), r.id])
-  }
-  if (!pending.size) return out
-  const moves = await odooRpc<any[]>('account.move', 'read', [Array.from(pending.keys())], { fields: ['id', 'name', 'state', 'partner_id', 'amount_total'] })
-  const { fetchInvoicePdfFromOdoo } = await import('@/lib/relances/odoo')
-  const { sendEmail, emailLayout, FROM_EMAIL } = await import('@/lib/emails')
-  for (const mv of moves || []) {
-    if (mv.state !== 'posted') continue           // brouillon : on attend la validation
-    const ids = pending.get(mv.id) || []
-    try {
-      const partnerId = Array.isArray(mv.partner_id) ? mv.partner_id[0] : null
-      const [p] = partnerId ? await odooRpc<any[]>('res.partner', 'read', [[partnerId]], { fields: ['name', 'email'] }) : [null]
-      const to = p?.email && String(p.email).includes('@') ? String(p.email).split(/[;,]/)[0].trim() : null
-      if (!to) { out.skipped.push(`${mv.name} : client sans e-mail`); continue }
-      const d = await buildRapportData(ids, mv.name)
-      if (!d) { out.skipped.push(`${mv.name} : données absentes`); continue }
-      const [invPdf, repPdf] = await Promise.all([fetchInvoicePdfFromOdoo(mv.id), renderRapportPdf(d)])
-      const html = emailLayout(`<p style="font-size:14px;color:#222">Bonjour,</p>
-        <p style="font-size:14px;color:#222">Veuillez trouver en pièces jointes notre facture <b>${mv.name}</b> ainsi que le rapport d’intervention correspondant${d.vehicle.plate ? ` (véhicule ${d.vehicle.plate})` : ''}.</p>
-        <p style="font-size:14px;color:#222">Nous restons à votre disposition pour toute question.</p>
-        <p style="font-size:14px;color:#222">Cordialement,<br>${d.company.name}</p>`, `Facture ${mv.name}`)
-      await sendEmail(to, `Facture ${mv.name} — rapport d’intervention${d.vehicle.plate ? ` ${d.vehicle.plate}` : ''}`, html, p?.name || undefined, undefined, [
-        { name: `Facture-${String(mv.name).replace(/[^\w-]+/g, '-')}.pdf`, contentType: 'application/pdf', contentBytes: invPdf.toString('base64') },
-        { name: `Rapport-intervention-${d.number.replace(/\s+/g, '')}.pdf`, contentType: 'application/pdf', contentBytes: repPdf.toString('base64') },
-      ], FROM_EMAIL)
-      for (const id of ids) {
-        const { data: m } = await sb.from('incoming_missions').select('report_emailed_move_ids').eq('id', id).single()
-        await sb.from('incoming_missions').update({ report_emailed_move_ids: [...((m as any)?.report_emailed_move_ids || []), mv.id] }).eq('id', id)
-        await sb.from('mission_logs').insert({ mission_id: id, action: 'rapport_facture_mail', notes: `Facture ${mv.name} et rapport d’intervention envoyés à ${p?.name || ''} (${to}).`, metadata: { move_id: mv.id, to } })
-      }
-      out.sent++
-    } catch (e: any) { out.errors.push(`${mv.name} : ${e?.message || e}`) }
-  }
-  return out
-}
