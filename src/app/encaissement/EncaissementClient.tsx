@@ -1,5 +1,6 @@
 'use client'
 
+import { getPosition } from '@/lib/geo/get-position'
 import { useState, useEffect, useRef, useMemo } from 'react'
 import { createPortal } from 'react-dom'
 import { useRouter } from 'next/navigation'
@@ -784,22 +785,19 @@ export default function EncaissementClient({
     } finally { setViesLoading(false) }
   }
 
-  const getMyLocation = () => {
-    if (!navigator.geolocation) return
+  const getMyLocation = async () => {
     setLocationLoading(true)
-    navigator.geolocation.getCurrentPosition(async (pos) => {
+    try {
+      const { lat, lng } = await getPosition()
+      let label = `${lat.toFixed(6)}, ${lng.toFixed(6)}`
       try {
-        const res = await fetch(
-          `https://nominatim.openstreetmap.org/reverse?lat=${pos.coords.latitude}&lon=${pos.coords.longitude}&format=json`,
-          { headers: { 'Accept-Language': 'fr' } }
-        )
+        const res = await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json`, { headers: { 'Accept-Language': 'fr' } })
         const data = await res.json()
-        setLocation(data.display_name || `${pos.coords.latitude.toFixed(6)}, ${pos.coords.longitude.toFixed(6)}`)
-      } catch {
-        setLocation(`${pos.coords.latitude.toFixed(6)}, ${pos.coords.longitude.toFixed(6)}`)
-      }
-      finally { setLocationLoading(false) }
-    }, () => setLocationLoading(false), { enableHighAccuracy: true, timeout: 10000 })
+        if (data?.display_name) label = data.display_name
+      } catch { /* on garde les coordonnées */ }
+      setLocation(label)
+    } catch (e: any) { alert(e?.message || 'Position introuvable : tape l’adresse.') }
+    finally { setLocationLoading(false) }
   }
 
   const handleSubmit = async () => {

@@ -7,6 +7,7 @@
 // - Marques/modèles depuis /api/vehicles
 // - Status in_progress pour apparaître dans dispatch
 
+import { getPosition } from '@/lib/geo/get-position'
 import { useState, useRef, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import Script from 'next/script'
@@ -220,49 +221,35 @@ export default function NewDriverMissionClient() {
 
   // ── GPS position actuelle ────────────────────────────────────────────────
 
-  const handleGPS = () => {
-    if (!navigator.geolocation) {
-      setError('Géolocalisation non disponible sur cet appareil')
-      return
-    }
+  const handleGPS = async () => {
     setGpsLoading(true)
     setError('')
-    navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        const lat = pos.coords.latitude
-        const lng = pos.coords.longitude
-        const g = (window as any).google
-        if (g?.maps) {
-          new g.maps.Geocoder().geocode({ location: { lat, lng } }, (results: any[], status: string) => {
-            setGpsLoading(false)
-            if (status === 'OK' && results[0]) {
-              const addr = results[0].formatted_address
-              const cityComp = (results[0].address_components || []).find((c: any) =>
-                c.types.includes('locality') || c.types.includes('postal_town')
-              )
-              setAddress(addr)
-              setAddrLat(lat)
-              setAddrLng(lng)
-              setAddrCity(cityComp?.long_name || '')
-            } else {
-              setAddress(`${lat.toFixed(6)}, ${lng.toFixed(6)}`)
-              setAddrLat(lat); setAddrLng(lng)
-            }
-          })
+    let lat: number, lng: number
+    try { ({ lat, lng } = await getPosition()) }
+    catch (e: any) { setGpsLoading(false); setError(e?.message || 'Position indisponible, réessaye'); return }
+    const g = (window as any).google
+    if (g?.maps) {
+      new g.maps.Geocoder().geocode({ location: { lat, lng } }, (results: any[], status: string) => {
+        setGpsLoading(false)
+        if (status === 'OK' && results[0]) {
+          const addr = results[0].formatted_address
+          const cityComp = (results[0].address_components || []).find((c: any) =>
+            c.types.includes('locality') || c.types.includes('postal_town')
+          )
+          setAddress(addr)
+          setAddrLat(lat)
+          setAddrLng(lng)
+          setAddrCity(cityComp?.long_name || '')
         } else {
-          setGpsLoading(false)
           setAddress(`${lat.toFixed(6)}, ${lng.toFixed(6)}`)
           setAddrLat(lat); setAddrLng(lng)
         }
-      },
-      (err) => {
-        setGpsLoading(false)
-        setError(err.code === 1
-          ? 'Accès refusé — autorise la géolocalisation dans les réglages'
-          : 'Position indisponible, réessaye')
-      },
-      { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
-    )
+      })
+    } else {
+      setGpsLoading(false)
+      setAddress(`${lat.toFixed(6)}, ${lng.toFixed(6)}`)
+      setAddrLat(lat); setAddrLng(lng)
+    }
   }
 
   // ── Soumission ────────────────────────────────────────────────────────────

@@ -1,6 +1,7 @@
 'use client'
 // src/app/mission/police/PoliceClient.tsx
 
+import { getPosition } from '@/lib/geo/get-position'
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { Loader2 } from 'lucide-react'
@@ -496,30 +497,25 @@ export default function PoliceClient({ userRole = 'driver' }: { userRole?: strin
     return () => { clearTimeout(handler); ctrl.abort() }
   }, [selectedType, appelPriveType, amountToCollect, date, time])
 
-  const getGPS = useCallback(() => {
-    if (!navigator.geolocation) {
-      alert('Géolocalisation non disponible')
-      return
-    }
-    navigator.geolocation.getCurrentPosition(
-      async pos => {
-        try {
-          const res = await fetch(
-            `https://nominatim.openstreetmap.org/reverse?lat=${pos.coords.latitude}&lon=${pos.coords.longitude}&format=json`,
-            { headers: { 'Accept-Language': 'fr' } }
-          )
-          const data = await res.json()
-          setLocation(data.display_name || `${pos.coords.latitude.toFixed(6)}, ${pos.coords.longitude.toFixed(6)}`)
-        } catch {
-          setLocation(`${pos.coords.latitude.toFixed(6)}, ${pos.coords.longitude.toFixed(6)}`)
-        }
-      },
-      err => {
-        console.error('GPS error:', err.code, err.message)
-        alert('Impossible d\'obtenir votre position')
-      },
-      { enableHighAccuracy: true, timeout: 10000 }
-    )
+  // Position du chauffeur → adresse ET coordonnées de l'intervention (sans les
+  // coordonnées, la fiche partait sans position : tarif et Waze à l'aveugle).
+  // Fred Bovy, 29/09/2026 : « Impossible d'obtenir votre position ».
+  const [gpsBusy, setGpsBusy] = useState(false)
+  const getGPS = useCallback(async () => {
+    setGpsBusy(true)
+    try {
+      const { lat, lng } = await getPosition()
+      setLocationLat(lat); setLocationLng(lng)
+      let label = `${lat.toFixed(6)}, ${lng.toFixed(6)}`
+      try {
+        const res = await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json`, { headers: { 'Accept-Language': 'fr' } })
+        const data = await res.json()
+        if (data?.display_name) label = data.display_name
+      } catch { /* adresse lisible indisponible : on garde les coordonnées */ }
+      setLocation(label)
+    } catch (e: any) {
+      alert(e?.message || 'Position introuvable : tape l’adresse.')
+    } finally { setGpsBusy(false) }
   }, [])
 
   const compressPhoto = (file: File): Promise<{ blob: Blob; preview: string }> => {
@@ -1126,9 +1122,9 @@ export default function PoliceClient({ userRole = 'driver' }: { userRole?: strin
               <input ref={locationRef} value={location} onChange={e => setLocation(e.target.value)}
                 placeholder="Rue, autoroute..."
                 className="flex-1 bg-surface border border-strong rounded-xl px-3 py-2.5 text-ink text-sm outline-none focus:border-blue-500" />
-              <button onClick={getGPS}
-                className="px-3 py-2.5 bg-blue-50 border border-blue-200 rounded-xl text-blue-600 text-sm font-medium">
-                🎯
+              <button onClick={getGPS} disabled={gpsBusy} aria-label="Utiliser ma position"
+                className="min-w-[44px] min-h-[44px] px-3 py-2.5 bg-blue-50 border border-blue-200 rounded-xl text-blue-600 text-sm font-medium disabled:opacity-60">
+                {gpsBusy ? '⏳' : '🎯'}
               </button>
             </div>
           </div>
