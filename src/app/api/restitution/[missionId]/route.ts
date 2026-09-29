@@ -433,12 +433,18 @@ export async function POST(req: Request, { params }: { params: { missionId: stri
 
       case 'later': {
         await ensure()
-        const terms = ['garage', 'assistance'].includes(rest!.who_kind || '') ? null : await clientTerms(rest!.odoo_partner_id)
-        if (!['garage', 'assistance'].includes(rest!.who_kind || '') && !terms?.deferred) return NextResponse.json({ error: 'Partir sans payer demande une dérogation (sauf garage, assistance ou client autorisé à payer après facturation).' }, { status: 403 })
+        // Paiement à la facture : choisi par le bureau pour ce client (Olivier 29/09/2026 :
+        // « il faut qu'on puisse cocher si on laisse le paiement à la facture ou
+        // l'encaissement direct »). La facture est créée (brouillon) avant de continuer.
+        const onInvoice = body.pay_on_invoice === true
+        const assistOrGarage = ['garage', 'assistance'].includes(rest!.who_kind || '')
+        if (!assistOrGarage && !onInvoice) return NextResponse.json({ error: 'Partir sans payer demande une dérogation, ou le choix « paiement à la facture ».' }, { status: 403 })
+        if (onInvoice && !assistOrGarage && !rest!.invoice_odoo_id) return NextResponse.json({ error: 'Créez d’abord la facture : le client la paiera à réception.' }, { status: 409 })
+        const terms = onInvoice ? await clientTerms(rest!.odoo_partner_id) : null
         await upd({ settlement: 'later' })
-        await logRestitution(sb, m.id, actor, 'later', terms?.deferred
-          ? `Part sans payer : ${rest!.client?.name || 'le client'} est autorisé à payer après facturation (${terms.name}), choisi par ${who_name}.`
-          : `Part sans payer : à facturer (${WHO_LABELS[rest!.who_kind as WhoKind]}).`, terms ? { payment_term: terms.name } : {})
+        await logRestitution(sb, m.id, actor, 'later', onInvoice
+          ? `Paiement à la facture choisi par ${who_name} pour ${rest!.client?.name || 'le client'}${terms?.name ? ` (conditions : ${terms.name})` : ''} : le véhicule part, la facture sera payée à réception.`
+          : `Part sans payer : à facturer (${WHO_LABELS[rest!.who_kind as WhoKind]}).`, { pay_on_invoice: onInvoice, payment_term: terms?.name || null })
         return done()
       }
 
@@ -525,7 +531,7 @@ export async function POST(req: Request, { params }: { params: { missionId: stri
         }
         await logRestitution(sb, m.id, actor, 'done', temp
           ? `Levée temporaire : véhicule confié au garagiste par ${who_name}, il revient au parc (dossier ouvert).`
-          : `Véhicule restitué à ${WHO_LABELS[rest!.who_kind as WhoKind]}${rest!.client?.name ? ` (${rest!.client.name})` : ''} par ${who_name}, zone ${m.parc_zone_key || '?'} libérée. Règlement : ${({ paid_odoo: 'facture payée dans Odoo', driver_cash: 'encaissement chauffeur', later: 'à facturer', nothing_due: 'rien à payer', derogation: 'sans paiement, par dérogation' } as any)[settlement!] || settlement}.`, { settlement, temp })
+          : `Véhicule restitué à ${WHO_LABELS[rest!.who_kind as WhoKind]}${rest!.client?.name ? ` (${rest!.client.name})` : ''} par ${who_name}, zone ${m.parc_zone_key || '?'} libérée. Règlement : ${({ paid_odoo: 'facture payée dans Odoo', driver_cash: 'encaissement chauffeur', later: 'à facturer / paiement à la facture', nothing_due: 'rien à payer', derogation: 'sans paiement, par dérogation' } as any)[settlement!] || settlement}.`, { settlement, temp })
         return done()
       }
 
