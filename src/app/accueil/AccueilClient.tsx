@@ -109,7 +109,10 @@ export default function AccueilClient() {
 
   // Géolocalisation SUIVIE en continu : on ré-évalue à chaque déplacement et on
   // re-bloque si le visiteur sort de la zone. Le suivi s'arrête à la fin/fermeture.
-  function startGeo() {
+  // Le GPS précis répond mal à l'intérieur du bâtiment (délai dépassé) : on repasse
+  // alors en position approximative (Wi-Fi / antennes), largement suffisante pour
+  // la zone de l'accueil. Fred Bovy, 29/09/2026 : « Impossible d'obtenir votre position ».
+  function startGeo(precise = true) {
     setGeo('checking')
     if (typeof navigator === 'undefined' || !navigator.geolocation) { setGeo('error'); return }
     if (watchRef.current != null) navigator.geolocation.clearWatch(watchRef.current)
@@ -118,10 +121,18 @@ export default function AccueilClient() {
         const lat = pos.coords.latitude, lng = pos.coords.longitude
         setCoords({ lat, lng })
         const g = cfgRef.current
-        setGeo(distM(lat, lng, g.lat, g.lng) <= g.radius_m ? 'ok' : 'outside')
+        // Précision médiocre (position approximative) : on tolère l'incertitude.
+        const slack = Math.min(pos.coords.accuracy || 0, 150)
+        setGeo(distM(lat, lng, g.lat, g.lng) <= g.radius_m + slack ? 'ok' : 'outside')
       },
-      err => setGeo(err.code === 1 ? 'denied' : 'error'),
-      { enableHighAccuracy: true, timeout: 15000, maximumAge: 10000 },
+      err => {
+        if (err.code === 1) { setGeo('denied'); return }
+        if (precise) { startGeo(false); return }
+        setGeo('error')
+      },
+      precise
+        ? { enableHighAccuracy: true, timeout: 15000, maximumAge: 10000 }
+        : { enableHighAccuracy: false, timeout: 30000, maximumAge: 120000 },
     )
   }
   function stopGeo() {
@@ -278,7 +289,7 @@ export default function AccueilClient() {
                   </span>
                   <h2 className="mt-6 text-2xl font-black" style={{ color: INK }}>{st?.T}</h2>
                   <p className="mt-2 text-[16px] leading-relaxed max-w-sm" style={{ color: INK2 }}>{st?.M}</p>
-                  <button onClick={startGeo} className="mt-7 px-8 py-3.5 rounded-2xl font-bold text-white text-lg active:scale-[.99] transition"
+                  <button onClick={() => startGeo()} className="mt-7 px-8 py-3.5 rounded-2xl font-bold text-white text-lg active:scale-[.99] transition"
                     style={{ background: RED }}>{t.retry}</button>
                 </>
               )}
