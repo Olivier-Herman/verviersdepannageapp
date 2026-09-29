@@ -316,6 +316,17 @@ export async function POST(req: Request, { params }: { params: { missionId: stri
         return done()
       }
 
+      case 'checks_ok': {
+        // « Peut-il sortir ? » relu et validé par « Suivant » (Olivier 29/09/2026).
+        await ensure()
+        const cx: any = await buildContext(sb, session, m.id)
+        const ko = (cx.checks || []).filter((k: any) => k.state === 'ko').map((k: any) => k.title)
+        if (ko.length) return NextResponse.json({ error: `Il reste à régler : ${ko.join(', ')}.` }, { status: 409 })
+        await upd({ checks_validated_at: now, checks_validated_by: actor })
+        await logRestitution(sb, m.id, actor, 'checks_ok', `Contrôles de sortie relus et validés par ${who_name} : rien ne bloque.`)
+        return done()
+      }
+
       case 'pay_pref': {
         // « Paiement différé » coché ou décoché : retenu pour ce client, par défaut
         // la fois suivante (Olivier 29/09/2026).
@@ -479,6 +490,7 @@ export async function POST(req: Request, { params }: { params: { missionId: stri
         for (const k of c.checks) if (k.state === 'ko') blockers.push(k.title)
         const ap = (k: string) => c.derogations.some((d: any) => d.kind === k && d.status === 'approved' && (d.restitution_id === rest!.id || k === 'blk'))
         if (!rest!.who_kind) blockers.push('Qui vient le reprendre')
+        if (!rest!.checks_validated_at) blockers.push('Contrôles de sortie à valider (« Suivant »)')
         if (!rest!.odoo_partner_id && !ap('identite')) blockers.push('Pièce d’identité et client')
         let settlement = rest!.settlement as string | null
         // Une facture existe : c'est elle qui fait foi (payée ou non), jamais le « reste à 0 »

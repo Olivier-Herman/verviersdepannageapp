@@ -98,7 +98,8 @@ export default function RestitutionClient({ missionId, gmKey }: { missionId: str
 
   const steps = [
     { id: 'who', title: 'Qui vient le reprendre ?', done: !!who && clientOk },
-    { id: 'checks', title: 'Peut-il sortir ?', done: !!who && clientOk && blockers.length === 0 },
+    // Validé par « Suivant », même tout au vert (Olivier 29/09/2026).
+    { id: 'checks', title: 'Peut-il sortir ?', done: !!who && clientOk && blockers.length === 0 && !!R?.checks_validated_at },
     ...(needSplit ? [{ id: 'split', title: 'Qui paie quoi ?', done: splitOk }] : []),
     { id: 'amount', title: 'Montant et paiement', done: settled, note: !R?.settlement && !paidOdoo && !driverPaid && derogBy('paiement') ? `Départ sans paiement autorisé par ${derogBy('paiement')}` : null },
     { id: 'sign', title: 'Signature et photos (facultatif)', done: signOk },
@@ -147,7 +148,7 @@ export default function RestitutionClient({ missionId, gmKey }: { missionId: str
             {s.id === cur && (
               <div className="flex flex-col gap-3 sm:pl-9">
                 {s.id === 'who' && <WhoStep c={c} R={R} act={act} busy={busy} gmKey={gmKey} setErr={setErr} setC={setC} load={load} missionId={m.id} onDerog={() => setDerog({ kind: 'identite', label: 'Pas de pièce d’identité' })} />}
-                {s.id === 'checks' && <ChecksStep c={c} missionId={m.id} load={load} say={say} setErr={setErr} onDerog={(k: string, l: string) => setDerog({ kind: k, label: l })} />}
+                {s.id === 'checks' && <ChecksStep c={c} act={act} busy={busy} missionId={m.id} load={load} say={say} setErr={setErr} onDerog={(k: string, l: string) => setDerog({ kind: k, label: l })} />}
                 {s.id === 'split' && <SplitStep c={c} R={R} act={act} busy={busy} />}
                 {s.id === 'amount' && <AmountStep c={c} R={R} act={act} busy={busy} gmKey={gmKey} setErr={setErr} say={say} onDerog={(k: string, l: string) => setDerog({ kind: k, label: l })} />}
                 {s.id === 'sign' && <SignStep act={act} busy={busy} onSkip={() => setSignSkip(true)} missionId={m.id} photoCount={c.photoCount || 0} />}
@@ -336,7 +337,7 @@ function WhoStep({ c, R, act, busy, gmKey, setErr, setC, load, missionId, onDero
 
 
 // ── 2. Contrôles ─────────────────────────────────────────────────────────
-function ChecksStep({ c, missionId, load, say, setErr, onDerog }: any) {
+function ChecksStep({ c, act, busy, missionId, load, say, setErr, onDerog }: any) {
   const [capture, setCapture] = useState<null | 'definitive' | 'temporaire'>(null)
   return <div className="flex flex-col gap-2">
     {c.checks.map((k: any) => <div key={k.id} className="flex flex-col gap-1.5">
@@ -350,7 +351,10 @@ function ChecksStep({ c, missionId, load, say, setErr, onDerog }: any) {
       </div>}
     </div>)}
     {capture && <LeveeCapture missionId={missionId} type={capture} onDone={() => { setCapture(null); say('Levée jointe au dossier'); load() }} setErr={setErr} />}
-    {c.checks.every((k: any) => k.state !== 'ko') && <p className="text-sm text-success font-semibold">Rien ne bloque la sortie.</p>}
+    {c.checks.every((k: any) => k.state !== 'ko') && <>
+      <p className="text-sm text-success font-semibold">Rien ne bloque la sortie.</p>
+      <div><Btn kind="brand" disabled={busy} onClick={() => act('checks_ok')}>Suivant</Btn></div>
+    </>}
   </div>
 }
 
