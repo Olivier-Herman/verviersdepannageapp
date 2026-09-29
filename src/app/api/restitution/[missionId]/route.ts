@@ -245,6 +245,18 @@ export async function POST(req: Request, { params }: { params: { missionId: stri
         return NextResponse.json({ ok: true, count: count || 0 })
       }
 
+      case 'phone_docs': {
+        // Depuis le PC : la notification ouvre l'appareil photo en rafale sur le
+        // téléphone de l'utilisateur (documents du transporteur ou photos diverses).
+        await ensure()
+        const type = body.type === 'divers' ? 'divers' : 'transport'
+        const label = type === 'divers' ? 'Photos du véhicule' : 'Documents du transporteur'
+        const push = await sendPushToUser(actor, { title: label, body: `${m.vehicle_plate || 'Véhicule'} : photographiez en rafale, tout rejoint le dossier.`, url: `/restitution/${m.id}/photos?type=${type}`, tag: `restit-${type}-${m.id}` }).catch(() => ({ sent: 0 }))
+        await logRestitution(sb, m.id, actor, 'phone_docs', `${label} demandés sur le téléphone de ${who_name}${push.sent ? '' : ' (notification non délivrée : ouvrez VD Soft sur le téléphone)'}.`)
+        if (!push.sent) return NextResponse.json({ error: 'Notification non délivrée : ouvrez VD Soft sur votre téléphone, puis réessayez.' }, { status: 409 })
+        return NextResponse.json({ ok: true })
+      }
+
       case 'phone_photo': {
         // Depuis le PC : la notification ouvre l'appareil photo sur le téléphone de l'utilisateur.
         await ensure()

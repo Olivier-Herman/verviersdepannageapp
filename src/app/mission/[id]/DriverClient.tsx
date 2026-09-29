@@ -4084,6 +4084,29 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
 
         {/* 🔊 Briefing audio : lit type + adresse + vehicule + montant + alertes.
             Visible pour tous (utile en conduite/avec gants/non-lecteur). */}
+        {/* Siabis : dit clairement au chauffeur quel type de mission il fait, même
+            quand la fiche vient d'une assistance (VAB, Touring) et garde sa clôture
+            chez elle. Olivier 29/09/2026 (2CEE863 : « aucune info qui parle de Siabis »). */}
+        {(M.source === 'police_snc' || M.source === 'sia_couvert') && (
+          <div className={`rounded-2xl border-2 p-4 flex items-center gap-3 ${M.source === 'sia_couvert' ? 'bg-blue-50 border-blue-600' : 'bg-red-50 border-red-600'}`}>
+            <span className="text-3xl" aria-hidden>{M.source === 'sia_couvert' ? '🔵' : '🔴'}</span>
+            <div className="flex-1 min-w-0">
+              <p className={`font-bold text-base ${M.source === 'sia_couvert' ? 'text-blue-900' : 'text-red-800'}`}>{t(M.source === 'sia_couvert' ? 'cloture.prise_sc' : 'cloture.prise_snc')}</p>
+              <p className={`text-xs ${M.source === 'sia_couvert' ? 'text-blue-800' : 'text-red-700'}`}>{t(M.source === 'sia_couvert' ? 'cloture.siabis_sc_sub' : 'cloture.siabis_snc_sub')}</p>
+              <p className="text-sm font-semibold text-gray-900 mt-1">
+                {M.snc_scenario ? t(`cloture.scen_${M.snc_scenario}`) : t('cloture.siabis_scen_todo')}
+                {M.snc_requires_balisage ? ` · ${t('cloture.siabis_balisage_yes')}` : ''}
+              </p>
+            </div>
+            {onsiteV2 && onSite && !isReadOnly && !['completed', 'to_invoice', 'parked'].includes(M.status) && !M.loaded_at && (
+              <button type="button" onClick={() => { chooserPickedRef.current = false; setScreen('onsite-chooser') }}
+                className={`min-h-[44px] px-3 rounded-xl text-sm font-bold text-white shrink-0 ${M.source === 'sia_couvert' ? 'bg-blue-600' : 'bg-red-600'}`}>
+                {t(M.snc_scenario ? 'cloture.siabis_modify' : 'cloture.siabis_choose')}
+              </button>
+            )}
+          </div>
+        )}
+
         <BriefingTtsButton mission={M} />
 
         {/* ⚠ Particularites du dispatch — bandeau ROUGE bien lisible
@@ -4943,7 +4966,14 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
                 /* Un bouton qui décrit SON geste à lui, pas une question posée
                    trop tôt : il appuie quand il a fini de regarder. L'écran qui
                    s'ouvre, lui, demande « Qu'est-ce qu'on fait ? ». */
-                <button onClick={() => setF2Screen('action')}
+                <button onClick={() => {
+                    // Siabis sans scénario : d'abord l'écran Siabis (type, balisage,
+                    // scénario), la clôture chez l'assistance suit ensuite. 29/09/2026.
+                    if (onsiteV2 && (M.source === 'police_snc' || M.source === 'sia_couvert') && !M.snc_scenario) {
+                      chooserPickedRef.current = false; setScreen('onsite-chooser'); return
+                    }
+                    setF2Screen('action')
+                  }}
                   className="w-full py-4 bg-green-600 text-white font-bold rounded-2xl text-base">
                   <T k="cloture.btn_diagnostic_done" />
                 </button>

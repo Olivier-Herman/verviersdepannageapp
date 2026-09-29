@@ -11,7 +11,8 @@ import AddressField from '@/components/AddressField'
 import ScanToFicheButton from '@/components/missions/ScanToFicheButton'
 import { compressImage } from '@/lib/image-compress'
 import PieceCapture from '@/components/restitution/PieceCapture'
-import BurstCamera from '@/components/camera/BurstCamera'
+import TransportDocsCapture from '@/components/restitution/TransportDocsCapture'
+import { usePhotoQueue } from '@/components/qr/AddPhotosButton'
 import AddPhotosButton from '@/components/qr/AddPhotosButton'
 
 type Ctx = any
@@ -205,6 +206,13 @@ function WhoStep({ c, R, act, busy, gmKey, setErr, setC, load, missionId, onDero
   // envoie une notification au téléphone de l'utilisateur (Olivier 28/09/2026).
   const onPhone = typeof navigator !== 'undefined' && (/VDNav\//.test(navigator.userAgent) || /iPhone|iPad|Android/i.test(navigator.userAgent))
 
+  // Documents du transporteur photographiés sur le téléphone : on suit le compteur.
+  const [waitDocs, setWaitDocs] = useState(false)
+  useEffect(() => {
+    if (!waitDocs) return
+    const t = setInterval(load, 3000); const stop = setTimeout(() => setWaitDocs(false), 10 * 60 * 1000)
+    return () => { clearInterval(t); clearTimeout(stop) }
+  }, [waitDocs, load])
   // En attente de la photo prise sur le téléphone : on regarde toutes les 3 s.
   useEffect(() => {
     if (!waitPhone || hasPhoto) { if (hasPhoto) setWaitPhone(false); return }
@@ -320,45 +328,12 @@ function WhoStep({ c, R, act, busy, gmKey, setErr, setC, load, missionId, onDero
       </>}
     </div>}
     {R?.odoo_partner_id && <Chk state="ok" title={`${R.client?.name} · ${R.client?.kind === 'pro' ? 'Pro' : 'Privé'}`}>{[R.client?.street, [R.client?.zip, R.client?.city].filter(Boolean).join(' '), R.client?.phone, R.client?.email].filter(Boolean).join(' · ')} — {R.client?.source === 'eid' ? 'lu sur la carte eID' : R.client?.source === 'odoo' ? 'client existant' : 'encodé d’après la pièce photographiée'}.</Chk>}
-    {who === 'transport' && <TransportDocs missionId={missionId} initial={c.transportDocs || 0} />}
+    {who === 'transport' && <TransportDocsCapture missionId={missionId} initial={c.transportDocs || 0} pcMode={!onPhone} waiting={waitDocs}
+      onAskPhone={async () => { const j = await act('phone_docs', { type: 'transport' }); if (j) setWaitDocs(true) }} />}
     {who && !R?.odoo_partner_id && <div><Btn kind="derog" onClick={onDerog}>Pas de pièce : dérogation…</Btn></div>}
   </>
 }
 
-// Documents du transporteur (CMR, ordre d'enlèvement…) en rafale, une photo à
-// la fois vers le dossier (Olivier 29/09/2026).
-function TransportDocs({ missionId, initial }: { missionId: string; initial: number }) {
-  const chain = useRef<Promise<void>>(Promise.resolve())
-  const fileRef = useRef<HTMLInputElement>(null)
-  const [camera, setCamera] = useState(false)
-  const [count, setCount] = useState(initial)
-  const [pending, setPending] = useState(0)
-  const [failed, setFailed] = useState(0)
-  useEffect(() => { setCount(n => Math.max(n, initial)) }, [initial])
-  const enqueue = (blob: Blob) => {
-    setPending(n => n + 1)
-    chain.current = chain.current.then(async () => {
-      try {
-        const small = await compressImage(blob, 1800)
-        const fd = new FormData(); fd.append('action', 'transport_doc'); fd.append('file', new File([small], 'document.jpg', { type: small.type || 'image/jpeg' }))
-        const r = await fetch(`/api/restitution/${missionId}`, { method: 'POST', body: fd })
-        const j = await r.json().catch(() => ({})); if (!r.ok) throw new Error(j.error)
-        setCount(j.count ?? (n => n + 1))
-      } catch { setFailed(n => n + 1) } finally { setPending(n => n - 1) }
-    })
-  }
-  return <div className="rounded-xl bg-surface-2 border border-border p-3 flex flex-col gap-2">
-    {camera && <BurstCamera title="Documents du transporteur" count={count + pending} onShot={enqueue} onClose={() => setCamera(false)} />}
-    <input ref={fileRef} type="file" accept="image/*" multiple hidden onChange={e => { Array.from(e.target.files || []).forEach(enqueue); e.target.value = '' }} />
-    <div className="text-[11px] font-bold uppercase tracking-wider text-ink-muted">Documents du transporteur</div>
-    <p className="text-sm text-ink-secondary">CMR, ordre d’enlèvement, carte du chauffeur… Photographiez autant de pages que nécessaire, elles rejoignent le dossier.</p>
-    <div className="flex flex-wrap gap-2">
-      <Btn kind="brand" onClick={() => setCamera(true)}>📷 Photographier les documents</Btn>
-      <Btn onClick={() => fileRef.current?.click()}>Galerie</Btn>
-    </div>
-    <p className="text-xs text-ink-muted">{count === 0 ? 'Aucun document pour l’instant.' : `${count} photo${count > 1 ? 's' : ''} au dossier ✓`}{pending > 0 ? ` · ${pending} en cours d’envoi` : ''}{failed > 0 ? ` · ${failed} en échec, à reprendre` : ''}</p>
-  </div>
-}
 
 // ── 2. Contrôles ─────────────────────────────────────────────────────────
 function ChecksStep({ c, missionId, load, say, setErr, onDerog }: any) {
@@ -490,6 +465,26 @@ function AmountStep({ c, R, act, busy, gmKey, setErr, say, onDerog }: any) {
   </>
 }
 
+// Téléphone (app ou navigateur mobile) : l'appareil photo s'ouvre ici ; PC : on
+// envoie une notification au téléphone de l'utilisateur (Olivier 29/09/2026 :
+// « ça ouvre la caméra du PC au lieu d'envoyer sur le téléphone »).
+const isPhone = () => typeof navigator !== 'undefined' && (/VDNav\//.test(navigator.userAgent) || /iPhone|iPad|Android/i.test(navigator.userAgent))
+
+function PcPhotos({ missionId, photoCount, act }: any) {
+  const fileRef = useRef<HTMLInputElement>(null)
+  const [asked, setAsked] = useState(false)
+  const q = usePhotoQueue(missionId, 'restitution')
+  const count = q.total ?? photoCount + q.sent
+  return <div className="rounded-xl bg-surface-2 border border-border p-3 flex flex-col gap-2">
+    <input ref={fileRef} type="file" accept="image/*" multiple hidden onChange={e => { Array.from(e.target.files || []).forEach(f => q.enqueue(f)); e.target.value = '' }} />
+    <div className="flex flex-wrap gap-2">
+      <Btn kind="brand" disabled={asked} onClick={async () => { const j = await act('phone_docs', { type: 'divers' }); if (j) setAsked(true) }}>{asked ? 'Notification envoyée : photographiez sur le téléphone' : '📱 Photographier avec mon téléphone'}</Btn>
+      <Btn onClick={() => fileRef.current?.click()}>Choisir des fichiers sur ce PC</Btn>
+    </div>
+    <p className="text-xs text-ink-muted">{count === 0 ? 'Aucune photo sur la fiche pour l’instant.' : `${count} photo${count > 1 ? 's' : ''} sur la fiche`}{q.sent ? ` · ${q.sent} ajoutée${q.sent > 1 ? 's' : ''} ✓` : ''}{q.pending ? ` · ${q.pending} en cours` : ''}{q.failed ? ` · ${q.failed} en échec` : ''}</p>
+  </div>
+}
+
 // Client d'un groupe : celui de la fiche par défaut, ou le client présent, un client
 // existant, un nouveau client (Olivier 29/09/2026).
 function PayerPicker({ leg, R, gmKey, busy, onClose, onPick }: any) {
@@ -581,7 +576,7 @@ function SignStep({ act, busy, onSkip, missionId, photoCount = 0 }: any) {
       <Btn onClick={onSkip}>Continuer sans signature</Btn>
     </div>
     <div className="text-[11px] font-bold uppercase tracking-wider text-ink-muted mt-1">Photos diverses (état du véhicule, dégâts, documents…)</div>
-    <AddPhotosButton missionId={missionId} initialCount={photoCount} via="restitution" />
+    {isPhone() ? <AddPhotosButton missionId={missionId} initialCount={photoCount} via="restitution" /> : <PcPhotos missionId={missionId} photoCount={photoCount} act={act} />}
   </>
 }
 

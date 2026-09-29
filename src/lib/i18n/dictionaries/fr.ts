@@ -248,6 +248,17 @@ export const fr = {
     prise_standard:      'Standard',
     prise_sc:            'Siabis couvert',
     prise_snc:           'Siabis non couvert',
+    // Bandeau Siabis sur la fiche (Olivier 29/09/2026 : « il n'a aucune info qui parle de Siabis »)
+    siabis_sc_sub:       'Facturé à l’assistance — rien à encaisser',
+    siabis_snc_sub:      'Le client paie sur place',
+    siabis_scen_todo:    'Scénario à choisir',
+    siabis_choose:       'Choisir',
+    siabis_modify:       'Modifier',
+    siabis_balisage_yes: '🚧 Avec balisage',
+    scen_dsp:            'DSP — dépannage sur place',
+    scen_rem_client:     'REM avec paiement immédiat',
+    scen_rem_direct:     'REM directe',
+    scen_rem_depot:      'REM vers dépôt Pepinster',
 
     // Issues (clés renvoyées par le serveur)
     outcome_dsp:         'Dépannage confirmé',
