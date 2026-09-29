@@ -255,3 +255,29 @@ export async function createDraftMail(mailbox: string, m: {
     return { ok: true, id: j.id, webLink: j.webLink }
   } catch (e: any) { return { ok: false, error: e?.message || 'brouillon impossible' } }
 }
+
+/** Brouillon de RÉPONSE dans le fil du mail reçu (Répondre d'Outlook : même
+ *  conversation, mail d'origine cité), jamais envoyé. Expéditeur forcé à
+ *  `fromMailbox` quand la boîte le permet. Olivier 29/09/2026 : « les brouillons
+ *  doivent être de vraies réponses au mail, pas un nouveau mail avec RE devant ». */
+export async function createReplyDraft(mailbox: string, messageId: string, html: string, opts: {
+  attachments?: { name: string; contentType: string; contentBytes: string }[]; fromMailbox?: string | null; replyAll?: boolean
+} = {}): Promise<{ ok: boolean; id?: string; error?: string }> {
+  try {
+    guardMailbox(mailbox)
+    const base = `/users/${encodeURIComponent(mailbox)}/messages`
+    const r = await authedFetch(`${base}/${encodeURIComponent(messageId)}/${opts.replyAll ? 'createReplyAll' : 'createReply'}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' })
+    if (r.status !== 201) return { ok: false, error: `Répondre refusé (${r.status}) : ${(await r.text()).slice(0, 160)}` }
+    const draft: any = await r.json()
+    const quoted = String(draft.body?.content || '')
+    const p1 = await authedFetch(`${base}/${draft.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ body: { contentType: 'HTML', content: html + quoted } }) })
+    if (!p1.ok) return { ok: false, error: `corps refusé (${p1.status})` }
+    if (opts.fromMailbox && opts.fromMailbox.toLowerCase() !== mailbox.toLowerCase()) {
+      await authedFetch(`${base}/${draft.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ from: { emailAddress: { address: opts.fromMailbox } } }) })
+    }
+    for (const a of opts.attachments || []) {
+      await authedFetch(`${base}/${draft.id}/attachments`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ '@odata.type': '#microsoft.graph.fileAttachment', name: a.name, contentType: a.contentType, contentBytes: a.contentBytes }) })
+    }
+    return { ok: true, id: draft.id }
+  } catch (e: any) { return { ok: false, error: e?.message || 'réponse impossible' } }
+}
