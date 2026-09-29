@@ -969,7 +969,56 @@ export default function EcranClient({ displayKey }: { displayKey: string }) {
   }
 
   // ── ÉCRAN AU REPOS → diaporama publicitaire (défile ; bascule auto sur push) ─
-  return <EcranIdleSlideshow />
+  return <><EcranIdleSlideshow /><AgentUpdateEgg /></>
+}
+
+// ── Easter egg : 7 touches rapides dans le coin supérieur gauche de l'écran au
+//    repos → panneau « Lecteur de carte » : version installée / disponible et
+//    mise à jour de l'agent eID du PC (Olivier 29/09/2026). L'agent ne télécharge
+//    que depuis notre site et vérifie les scripts avant de les remplacer.
+function AgentUpdateEgg() {
+  const taps = useRef<number[]>([])
+  const [open, setOpen] = useState(false)
+  const [installed, setInstalled] = useState<string | null>(null)
+  const [latest, setLatest] = useState<string | null>(null)
+  const [state, setState] = useState<'idle' | 'updating' | 'ok' | 'error' | 'noagent'>('idle')
+  const [msg, setMsg] = useState<string | null>(null)
+  const base = () => (eidAgentUrl() || 'http://localhost:7181/read').replace(/\/read\/?$/, '')
+  const check = async () => {
+    try { const j = await (await fetch('/eid-agent/version.json', { cache: 'no-store' })).json(); setLatest(j.version || null) } catch { setLatest(null) }
+    try { const r = await fetch(`${base()}/health`, { cache: 'no-store' }); const j = await r.json(); setInstalled(j.version || 'ancienne version (sans mise à jour automatique)'); return j.version || null }
+    catch { setInstalled(null); setState('noagent'); return null }
+  }
+  const tap = () => {
+    const now = Date.now(); taps.current = [...taps.current.filter(t => now - t < 4000), now]
+    if (taps.current.length >= 7) { taps.current = []; setOpen(true); setState('idle'); setMsg(null); check() }
+  }
+  const update = async () => {
+    setState('updating'); setMsg(null)
+    try {
+      const r = await fetch(`${base()}/update`, { method: 'POST' })
+      if (r.status === 404) { setState('error'); setMsg('Ce lecteur est trop ancien pour se mettre à jour tout seul : une installation sur le PC est nécessaire une fois.'); return }
+      const j = await r.json().catch(() => ({}))
+      if (!r.ok || !j.ok) { setState('error'); setMsg(j.error || 'Mise à jour refusée'); return }
+      // L'agent redémarre : on attend qu'il réponde avec la nouvelle version.
+      for (let i = 0; i < 15; i++) { await new Promise(res => setTimeout(res, 2000)); const v = await check(); if (v) { setState('ok'); setMsg(`Lecteur mis à jour (version ${v}).`); return } }
+      setState('error'); setMsg('Le lecteur ne répond plus après la mise à jour : redémarrez le PC.')
+    } catch { setState('error'); setMsg('Lecteur injoignable depuis cet écran.') }
+  }
+  return <>
+    <div onClick={tap} aria-hidden style={{ position: 'fixed', left: 0, top: 0, width: 90, height: 90, zIndex: 50 }} />
+    {open && <div style={{ position: 'fixed', inset: 0, zIndex: 60, background: 'rgba(11,17,32,.55)', display: 'grid', placeItems: 'center', fontFamily: 'system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif' }}>
+      <div style={{ background: '#fff', color: '#0b1120', borderRadius: 16, padding: 24, width: 'min(520px, 90vw)', display: 'flex', flexDirection: 'column', gap: 12 }}>
+        <div style={{ display: 'flex', alignItems: 'center' }}><div style={{ fontSize: 22, fontWeight: 800, flex: 1 }}>Lecteur de carte d’identité</div>
+          <button onClick={() => setOpen(false)} aria-label="Fermer" style={{ minWidth: 44, minHeight: 44, borderRadius: 10, border: '1px solid #cbd5e1', background: '#fff', fontSize: 18 }}>✕</button></div>
+        <div style={{ fontSize: 16 }}>Installé sur ce PC : <b>{state === 'noagent' ? 'lecteur injoignable' : installed || '…'}</b></div>
+        <div style={{ fontSize: 16 }}>Dernière version : <b>{latest || '…'}</b></div>
+        {msg && <div style={{ fontSize: 15, fontWeight: 600, color: state === 'ok' ? '#15803d' : '#b91c1c' }}>{msg}</div>}
+        <button onClick={update} disabled={state === 'updating' || state === 'noagent'} style={{ minHeight: 52, borderRadius: 12, border: 0, background: '#e11d2e', color: '#fff', fontSize: 18, fontWeight: 700, opacity: state === 'updating' || state === 'noagent' ? 0.5 : 1 }}>
+          {state === 'updating' ? 'Mise à jour en cours…' : 'Mettre à jour le lecteur'}</button>
+      </div>
+    </div>}
+  </>
 }
 
 // Logos des moyens de paiement (marques d'acceptation, rendues en SVG).
