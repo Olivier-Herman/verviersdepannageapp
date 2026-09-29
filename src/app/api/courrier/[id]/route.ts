@@ -42,7 +42,27 @@ async function missionRef(sb: any, id: string | null | undefined) {
 export async function GET(_req: Request, { params }: { params: { id: string } }) {
   const a = await courrierAccess(); if (!a.ok) return NextResponse.json({ error: 'Accès refusé' }, { status: 403 })
   const sb = createAdminClient()
-  const c = await load(sb, params.id); if (!c) return NextResponse.json({ error: 'Courrier introuvable' }, { status: 404 })
+  let c = await load(sb, params.id); if (!c) return NextResponse.json({ error: 'Courrier introuvable' }, { status: 404 })
+  // La procédure retenue pour l'expéditeur a changé depuis la lecture : on recalcule
+  // les gestes, sinon « C'est ça » ferait l'ANCIENNE proposition alors que l'écran
+  // affiche la nouvelle procédure (SPW Finances, Olivier 29/09/2026).
+  if (c.status === 'to_validate' && c.sender_key && c.reading) {
+    const { data: rule } = await sb.from('courrier_rules').select('*').eq('sender_key', c.sender_key).maybeSingle()
+    const P = c.proposal || {}
+    const readEntity = c.reading.entity && c.reading.entity_conf >= 80 ? c.reading.entity : null
+    if (rule && ((rule.instruction || null) !== (P.rule?.instruction || null) || (!readEntity && rule.entity && rule.entity !== P.entity) || (rule.doc_type && rule.doc_type !== P.doc_type))) {
+      try {
+        const entity = (readEntity || rule.entity || P.entity || null) as EntityKey | null
+        const docType = (rule.doc_type || P.doc_type) as DocType
+        const plan = await planCourrier({ reading: c.reading, entity, docType, mission: P.mission || null, candidates: (P.candidates || []).filter((x: any) => x.id !== P.mission?.id),
+          rule: rule.instruction || null, instruction: null, corrections: [], people: await officePeople(sb), me: { id: a.userId!, name: a.name } })
+        const proposal = { ...P, entity, doc_type: docType, entity_conf: readEntity ? c.reading.entity_conf : 99, type_conf: rule.doc_type ? 99 : P.type_conf, plan,
+          rule: { instruction: rule.instruction, validated_count: rule.validated_count }, weak: !entity }
+        await sb.from('courriers').update({ proposal, updated_at: new Date().toISOString() }).eq('id', c.id).eq('status', 'to_validate')
+        c = await load(sb, c.id)
+      } catch { /* on garde l'ancienne proposition */ }
+    }
+  }
   return NextResponse.json(await context(sb, c))
 }
 
@@ -71,11 +91,13 @@ export async function POST(req: Request, { params }: { params: { id: string } })
         ])
         const rule = (ruleR as any).data
         const candidates = await Promise.all(cands.map(async m => ({ id: m.id, label: await missionLabel(m) })))
-        const entity = (rule?.entity || reading.entity || null) as EntityKey | null
+        // Le destinataire lu sur le courrier prime ; la société retenue pour l'expéditeur
+        // ne sert que si la lecture est incertaine (un même expéditeur écrit à VD et à Riga).
+        const entity = ((reading.entity && reading.entity_conf >= 80 ? reading.entity : rule?.entity) || reading.entity || null) as EntityKey | null
         const docType = (rule?.doc_type || reading.doc_type) as DocType
         const mission = candidates[0] || null
         const plan = await planCourrier({ reading, entity, docType, mission, candidates: candidates.slice(1), rule: rule?.instruction || null, instruction: null, corrections: [], people, me: { id: a.userId, name: a.name } })
-        const proposal = { entity, entity_conf: rule?.entity ? 99 : reading.entity_conf, doc_type: docType, type_conf: rule?.doc_type ? 99 : reading.type_conf, mission, candidates, plan,
+        const proposal = { entity, entity_conf: entity === reading.entity ? reading.entity_conf : 99, doc_type: docType, type_conf: rule?.doc_type ? 99 : reading.type_conf, mission, candidates, plan,
           rule: rule ? { instruction: rule.instruction, validated_count: rule.validated_count } : null, weak: !entity || (!rule && reading.type_conf < 60) }
         await sb.from('courriers').update({ status: 'to_validate', error: null, reading, sender_key: key, proposal, mission_id: mission?.id || null, updated_at: now }).eq('id', c.id)
         // Contravention reconnue avec assurance : transmise d'office au module Amendes,
