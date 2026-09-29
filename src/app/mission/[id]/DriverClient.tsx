@@ -2453,6 +2453,28 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
   // Suite du flux « mise en parc » : dépôt par défaut si aucun n'est choisi, puis
   // l'écran de parc VD Soft (ou la demande d'adresse pour un REM dispatché).
   // Appelée par le flux 2 après un résultat « parked ».
+  // Mise en parc d'un remorquage dont la panne est déjà connue : le véhicule
+  // n'arrive pas au garage, donc pas d'écran « livraison » (réceptionnaire, clé,
+  // signature). On prévient l'assistance en arrière-plan avec la panne déjà
+  // choisie, puis directement l'écran de mise en parc (Olivier 29/09/2026).
+  // Panne inconnue ou assistance qui refuse → l'écran de clôture reste en secours.
+  const quickPark = async (): Promise<boolean> => {
+    const motif = String((M as any).panne_motif || '').trim()
+    if (!motif) return false
+    setLoading(true); setErr('')
+    try {
+      const r = await fetch(`/api/missions/${M.id}/cloture`, { method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ outcome: 'park', motifKey: motif, dprCode: null, common: { signature: null, signaturePng: null, keyRecovered: null, keyLocation: null, vehicleLocation: null, vin: '', km: '', remark: '' } }) })
+      const j = await r.json().catch(() => ({}))
+      if (!r.ok || !j.ok) return false
+      if (j.queued) setErr("Enregistré ✅ — l'assistance est injoignable pour l'instant, on s'en occupe automatiquement dès qu'elle revient.")
+      await apiSilent('park', { closing_data: { final_mission_type: mType, photo_urls: photoUrls.length ? photoUrls : undefined } })
+      setF2Screen('none'); setF2Outcome(null)
+      continuePark()
+      return true
+    } catch { return false } finally { setLoading(false) }
+  }
+
   const continuePark = () => {
     if (!parkDepot) { const def = vrLocs.find(v => (v as any).is_default) || vrLocs[0]; if (def) setParkDepot(def) }
     if (isDispatchRem) { openDestPrompt('park') }
@@ -2543,7 +2565,10 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
         canLoad={rem && !rel && !loaded && M.status === 'in_progress'}
         onLoad={() => { setF2Screen('none'); api('load_vehicle') }}
         onDprCodes={setF2Dpr}
-        onPick={o => { setF2Outcome(o); setF2Screen('close') }}
+        onPick={async o => {
+          if (o === 'park' && await quickPark()) return
+          setF2Outcome(o); setF2Screen('close')
+        }}
         onBack={() => setF2Screen('none')}
         // Type Siabis + balisage masqués seulement s'ils ont été décidés sur l'écran
         // « Sur place » (scénario posé). Sinon on les montre ici : 2CEE863 (Franck,
@@ -5004,7 +5029,7 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
                       const def = vrLocs.find(v => (v as any).is_default) || vrLocs[0]
                       if (def) setParkDepot(def)
                     }
-                    setF2Outcome('park'); setF2Screen('close')
+                    quickPark().then(ok => { if (!ok) { setF2Outcome('park'); setF2Screen('close') } })
                   }}
                   className="w-full py-4 bg-amber-500 text-ink font-bold rounded-2xl text-base">
                   🅿️ <T k="mission_detail.btn_park" />
