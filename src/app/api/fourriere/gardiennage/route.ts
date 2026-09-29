@@ -146,6 +146,7 @@ export async function POST(req: Request) {
     parc_zone_key:     zone || null,
     status:            'parked',
     dispatch_mode:     'manual',
+    created_at:        entryAt,   // date de la fiche = date d'entrée choisie (Olivier 29/09/2026)
     parked_at:         entryAt,
     received_at:       entryAt,
     intervention_date: entryAt,
