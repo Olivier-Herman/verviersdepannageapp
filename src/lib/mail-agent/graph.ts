@@ -218,6 +218,23 @@ export async function moveMessage(mailbox: string, messageId: string, folderId: 
   }
 }
 
+/** Retrouve un mail dont l'identifiant a changé (déplacé à la main dans Outlook) :
+ *  même expéditeur, même heure de réception (± 2 min), même sujet, dans toute la
+ *  boîte. Olivier 29/09/2026 : « quand je tente de classer ce mail, il revient ». */
+export async function relocateMessage(mailbox: string, m: { receivedAt: string; fromEmail: string; subject?: string | null }): Promise<string | null> {
+  try {
+    guardMailbox(mailbox)
+    const t = new Date(m.receivedAt).getTime()
+    const from = new Date(t - 120000).toISOString(), to = new Date(t + 120000).toISOString()
+    const q = `/users/${encodeURIComponent(mailbox)}/messages?$filter=${encodeURIComponent(`receivedDateTime ge ${from} and receivedDateTime le ${to}`)}&$select=id,subject,from,receivedDateTime&$top=50`
+    const data = await authedGet(q)
+    const norm = (s: string | null | undefined) => String(s || '').trim().toLowerCase()
+    const hits = (data.value || []).filter((x: any) => norm(x.from?.emailAddress?.address) === norm(m.fromEmail))
+    const best = hits.find((x: any) => !m.subject || norm(x.subject) === norm(m.subject)) || (hits.length === 1 ? hits[0] : null)
+    return best?.id || null
+  } catch { return null }
+}
+
 /** Brouillon (jamais envoyé) dans une boîte autorisée, avec pièces jointes.
  *  Module Courrier : réponses préparées dans administration@ (29/09/2026). */
 export async function createDraftMail(mailbox: string, m: {
