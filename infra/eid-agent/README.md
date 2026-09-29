@@ -14,6 +14,7 @@ installer** (pas de Node, pas de npm) : 100 % PowerShell natif de Windows.
 ## Mise à jour (depuis le 29/09/2026)
 - **Une seule fois** (agent d'avant le 29/09) : sur le PC du comptoir, ouvrir **PowerShell en administrateur** et coller :
   `iex ((New-Object Net.WebClient).DownloadString('https://app.verviersdepannage.com/eid-agent/install.ps1'))`
+- **Sans taper de commande** : l'easter egg ci-dessous propose « Télécharger la mise à jour du lecteur » (`mettre-a-jour-lecteur.bat`) : l'ouvrir, accepter l'autorisation Windows.
 - **Ensuite** : sur l'écran comptoir au repos, **7 touches rapides dans le coin supérieur gauche** → « Mettre à jour le lecteur ». L'agent télécharge la dernière version depuis app.verviersdepannage.com/eid-agent/, vérifie les scripts et redémarre.
 - Publier une nouvelle version : modifier les scripts ici, les copier dans `public/eid-agent/` et incrémenter `$AgentVersion` (server-eid.ps1) + `public/eid-agent/version.json`.
 

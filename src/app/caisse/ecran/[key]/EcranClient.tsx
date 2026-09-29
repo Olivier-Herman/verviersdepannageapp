@@ -981,7 +981,7 @@ function AgentUpdateEgg() {
   const [open, setOpen] = useState(false)
   const [installed, setInstalled] = useState<string | null>(null)
   const [latest, setLatest] = useState<string | null>(null)
-  const [state, setState] = useState<'idle' | 'updating' | 'ok' | 'error' | 'noagent'>('idle')
+  const [state, setState] = useState<'idle' | 'updating' | 'ok' | 'error' | 'noagent' | 'old'>('idle')
   const [msg, setMsg] = useState<string | null>(null)
   const base = () => (eidAgentUrl() || 'http://localhost:7181/read').replace(/\/read\/?$/, '')
   const check = async () => {
@@ -997,7 +997,7 @@ function AgentUpdateEgg() {
     setState('updating'); setMsg(null)
     try {
       const r = await fetch(`${base()}/update`, { method: 'POST' })
-      if (r.status === 404) { setState('error'); setMsg('Ce lecteur est trop ancien pour se mettre à jour tout seul : une installation sur le PC est nécessaire une fois.'); return }
+      if (r.status === 404) { setState('old'); setMsg('Ce lecteur est trop ancien pour se mettre à jour tout seul. Une seule fois : téléchargez la mise à jour ci-dessous, ouvrez le fichier et acceptez l’autorisation de Windows.'); return }
       const j = await r.json().catch(() => ({}))
       if (!r.ok || !j.ok) { setState('error'); setMsg(j.error || 'Mise à jour refusée'); return }
       // L'agent redémarre : on attend qu'il réponde avec la nouvelle version.
@@ -1016,6 +1016,10 @@ function AgentUpdateEgg() {
         {msg && <div style={{ fontSize: 15, fontWeight: 600, color: state === 'ok' ? '#15803d' : '#b91c1c' }}>{msg}</div>}
         <button onClick={update} disabled={state === 'updating' || state === 'noagent'} style={{ minHeight: 52, borderRadius: 12, border: 0, background: '#e11d2e', color: '#fff', fontSize: 18, fontWeight: 700, opacity: state === 'updating' || state === 'noagent' ? 0.5 : 1 }}>
           {state === 'updating' ? 'Mise à jour en cours…' : 'Mettre à jour le lecteur'}</button>
+        {(state === 'old' || state === 'noagent' || (installed && !/^\d{4}-/.test(installed))) && <a href="/eid-agent/mettre-a-jour-lecteur.bat" download="mettre-a-jour-lecteur.bat"
+          style={{ minHeight: 52, borderRadius: 12, border: '2px solid #e11d2e', color: '#e11d2e', fontSize: 17, fontWeight: 700, display: 'grid', placeItems: 'center', textDecoration: 'none' }}>
+          Télécharger la mise à jour du lecteur</a>}
+        {(state === 'old' || (installed && !/^\d{4}-/.test(installed))) && <div style={{ fontSize: 14, color: '#475569' }}>Une fois téléchargé : ouvrez le fichier, cliquez « Oui » sur la fenêtre de Windows, attendez « Terminé ». Ensuite, ce bouton rouge suffira pour toutes les mises à jour.</div>}
       </div>
     </div>}
   </>
