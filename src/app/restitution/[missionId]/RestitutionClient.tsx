@@ -411,7 +411,11 @@ function AmountStep({ c, R, act, busy, gmKey, setErr, say, onDerog }: any) {
   const inv = c.invoice
   const due = c.due
   const later = ['garage', 'assistance'].includes(R?.who_kind)
-  const noPay = later ? <Btn onClick={() => act('later')} disabled={busy}>Part sans payer : à facturer ({R?.who_kind === 'garage' ? 'garage' : 'assistance'})</Btn> : <Btn kind="derog" onClick={() => onDerog('paiement', 'Départ sans paiement')}>Part sans payer : dérogation…</Btn>
+  // Client autorisé à payer après facturation (conditions de paiement du client) :
+  // on l'indique et on passe à la suite, sans dérogation (Olivier 29/09/2026).
+  const noPay = later ? <Btn onClick={() => act('later')} disabled={busy}>Part sans payer : à facturer ({R?.who_kind === 'garage' ? 'garage' : 'assistance'})</Btn>
+    : c.terms?.deferred ? <Btn kind="ok" onClick={() => act('later')} disabled={busy}>Paiement après facturation (client autorisé : {c.terms.name})</Btn>
+    : <Btn kind="derog" onClick={() => onDerog('paiement', 'Départ sans paiement')}>Part sans payer : dérogation…</Btn>
   const payerTxt = (l: any) => l.payer === 'client' ? `payé ici${R?.client?.name ? ` par ${R.client.name}` : ''}` : l.payer === 'parquet' ? 'état de frais au Parquet' : l.payer === 'fdj' ? 'facturé aux Frais de justice' : l.payer === 'third' ? `facturé à ${l.payer_partner_name || 'un autre client'} (paiement à terme)` : `facturé à ${l.payer_partner_name || 'l’assistance'} par le circuit habituel`
   const thirdPending = c.legs.filter((l: any) => l.payer === 'third' && l.due_htva > 0)
   const thirdTotal = thirdPending.reduce((t: number, l: any) => t + l.due_htva, 0)

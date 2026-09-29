@@ -53,6 +53,27 @@ async function ctxFor(sb: any, session: any, missionId: string) {
   return { m, access, rest, me }
 }
 
+// Conditions de paiement du client dans Odoo : certaines sociétés sont autorisées à
+// payer après facturation (Olivier 29/09/2026). « À terme » = la condition prévoit un
+// délai (15/30/45 jours, fin de mois…), pas le paiement immédiat.
+const TERMS_CACHE = new Map<number, { at: number; v: { deferred: boolean; name: string | null } }>()
+async function clientTerms(partnerId: number | null | undefined): Promise<{ deferred: boolean; name: string | null } | null> {
+  if (!partnerId) return null
+  const hit = TERMS_CACHE.get(partnerId)
+  if (hit && Date.now() - hit.at < 5 * 60_000) return hit.v
+  try {
+    const [p] = await odooRpc<any[]>('res.partner', 'read', [[partnerId]], { fields: ['property_payment_term_id'] })
+    const term = p?.property_payment_term_id
+    let v = { deferred: false, name: null as string | null }
+    if (Array.isArray(term) && term[0]) {
+      const lines = await odooRpc<any[]>('account.payment.term.line', 'search_read', [[['payment_id', '=', term[0]]]], { fields: ['nb_days', 'delay_type'] })
+      v = { deferred: lines.some(l => Number(l.nb_days) > 0 || (l.delay_type && l.delay_type !== 'days_after')), name: String(term[1] || '') || null }
+    }
+    TERMS_CACHE.set(partnerId, { at: Date.now(), v })
+    return v
+  } catch { return null }
+}
+
 async function buildContext(sb: any, session: any, missionId: string) {
   const base = await ctxFor(sb, session, missionId)
   if ('error' in base) return base
@@ -68,7 +89,7 @@ async function buildContext(sb: any, session: any, missionId: string) {
   const needLegs = !!open && (!!open.odoo_partner_id || derogs.some(d => d.kind === 'identite' && d.status === 'approved'))
   const invId = open?.invoice_odoo_id || null
   // Tout le reste en parallèle.
-  const [meR, respR, names, rel, legsR, assist, invoice, ivR] = await Promise.all([
+  const [meR, respR, names, rel, legsR, assist, invoice, ivR, terms] = await Promise.all([
     sb.from('users').select('id, name, odoo_api_key, restitution_responsable').eq('id', me.id).maybeSingle(),
     sb.from('users').select('id, name, verify_pin_hash').eq('restitution_responsable', true).eq('active', true).order('name'),
     userNames(sb, [...derogs.map(d => d.responsable_id), ...derogs.map(d => d.requested_by), rest?.started_by, rest?.completed_by]),
@@ -79,6 +100,7 @@ async function buildContext(sb: any, session: any, missionId: string) {
       .then(([mv]) => mv ? { id: invId, name: mv.name, state: mv.state, payment_state: mv.payment_state, total: mv.amount_total, residual: mv.amount_residual, url: open?.invoice_url || buildInvoiceMoveUrl(invId) } : null)
       .catch(() => ({ id: invId, url: open?.invoice_url || buildInvoiceMoveUrl(invId), unreadable: true })) : Promise.resolve(null),
     open ? sb.from('interventions').select('amount, created_at').eq('mission_id', m.id).gte('created_at', open.started_at) : Promise.resolve({ data: [] }),
+    needLegs ? clientTerms(open?.odoo_partner_id) : Promise.resolve(null),
   ])
   const meRow = meR.data, resp = respR.data
   // Facture supprimée dans Odoo (brouillon effacé) : on défait le lien et les lignes
@@ -131,7 +153,7 @@ async function buildContext(sb: any, session: any, missionId: string) {
     restitution: rest ? { ...rest, started_by_name: names[rest.started_by] || null, completed_by_name: names[rest.completed_by] || null } : null,
     checks,
     legs: legsOut, due: { htva: dueHtva, tvac: r2(dueHtva * 1.21) }, splitDefault: defaultSplit(m),
-    invoice, driverCollected, idDoc, transportDocs: transportDocs || 0, thirdInvoices: open?.third_invoices || [], photoCount: Array.isArray(m.driver_photos) ? m.driver_photos.length : 0,
+    invoice, driverCollected, idDoc, transportDocs: transportDocs || 0, terms, thirdInvoices: open?.third_invoices || [], photoCount: Array.isArray(m.driver_photos) ? m.driver_photos.length : 0,
     derogations: derogs.map(d => ({ ...d, responsable_name: names[d.responsable_id] || null, requested_by_name: names[d.requested_by] || null })),
     pending: (pending || []).map((p: any) => ({ ...p, responsable_name: pNames[p.responsable_id] || null })),
     responsables: (resp || []).map((u: any) => ({ id: u.id, name: u.id === me.id ? `${u.name} (moi)` : u.name, has_pin: !!u.verify_pin_hash, me: u.id === me.id })),
@@ -411,9 +433,12 @@ export async function POST(req: Request, { params }: { params: { missionId: stri
 
       case 'later': {
         await ensure()
-        if (!['garage', 'assistance'].includes(rest!.who_kind || '')) return NextResponse.json({ error: 'Partir sans payer demande une dérogation (sauf garage ou assistance).' }, { status: 403 })
+        const terms = ['garage', 'assistance'].includes(rest!.who_kind || '') ? null : await clientTerms(rest!.odoo_partner_id)
+        if (!['garage', 'assistance'].includes(rest!.who_kind || '') && !terms?.deferred) return NextResponse.json({ error: 'Partir sans payer demande une dérogation (sauf garage, assistance ou client autorisé à payer après facturation).' }, { status: 403 })
         await upd({ settlement: 'later' })
-        await logRestitution(sb, m.id, actor, 'later', `Part sans payer : à facturer (${WHO_LABELS[rest!.who_kind as WhoKind]}).`)
+        await logRestitution(sb, m.id, actor, 'later', terms?.deferred
+          ? `Part sans payer : ${rest!.client?.name || 'le client'} est autorisé à payer après facturation (${terms.name}), choisi par ${who_name}.`
+          : `Part sans payer : à facturer (${WHO_LABELS[rest!.who_kind as WhoKind]}).`, terms ? { payment_term: terms.name } : {})
         return done()
       }
 
