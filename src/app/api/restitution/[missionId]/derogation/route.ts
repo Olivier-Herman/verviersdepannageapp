@@ -9,7 +9,6 @@ import { NextResponse }      from 'next/server'
 import { getServerSession }  from 'next-auth'
 import { authOptions }       from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase'
-import { sendPushToUser }    from '@/lib/push'
 import { restitutionAccess, loadMission, logRestitution, DEROG_LABELS, type DerogKind } from '@/lib/restitution/server'
 
 export const dynamic = 'force-dynamic'
@@ -48,11 +47,15 @@ export async function POST(req: Request, { params }: { params: { missionId: stri
   }).select('id').single()
   if (error || !row) return NextResponse.json({ error: error?.message || 'Demande non enregistrée' }, { status: 500 })
 
-  const push = await sendPushToUser(resp.id, {
+  // Notification DANS l'app (bandeau VD Soft, visible sur PC) + push téléphone / navigateur :
+  // un responsable sur PC sans appareil enregistré ne recevait rien (Jona, 29/09/2026).
+  const { sendNotification } = await import('@/lib/notifications/send')
+  const nres: any = await sendNotification(resp.id, 'restitution_derogation_requested', {
     title: 'Dérogation à valider',
     body: `${me.name || 'Un collègue'} · ${m.vehicle_plate || 'véhicule'} · ${DEROG_LABELS[kind]}`,
-    url: `/derogation/${row.id}`, tag: `derog-${row.id}`,
-  }).catch(() => ({ sent: 0, failed: 1 }))
-  await logRestitution(sb, m.id, me.id, 'derogation_request', `Dérogation « ${DEROG_LABELS[kind]} » demandée à ${resp.name} par ${me.name || me.email}. Motif : ${reason}${push.sent ? '' : ' (notification non délivrée : prévenez-le)'}`, { derogation_id: row.id, kind, responsable_id: resp.id })
+    action_url: `/derogation/${row.id}`, mission_id: m.id,
+  }).catch((e: any) => ({ ok: false, error: e?.message }))
+  const push = { sent: nres?.ok ? 1 : 0 }
+  await logRestitution(sb, m.id, me.id, 'derogation_request', `Dérogation « ${DEROG_LABELS[kind]} » demandée à ${resp.name} par ${me.name || me.email}. Motif : ${reason}${push.sent ? '' : ` (notification non délivrée${nres?.skipped ? ' : ' + nres.skipped : ''} — prévenez-le, lien : /derogation/${row.id})`}`, { derogation_id: row.id, kind, responsable_id: resp.id })
   return NextResponse.json({ ok: true, id: row.id, notified: push.sent > 0 })
 }

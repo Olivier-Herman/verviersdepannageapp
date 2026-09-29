@@ -229,6 +229,14 @@ export const NOTIFICATION_TYPES: readonly NotificationType[] = [
     defaultEnabled:  true,
   },
   {
+    key:             'restitution_derogation_requested',
+    label:           'Dérogation de restitution à valider',
+    description:     'Un collègue demande votre accord (avec votre code) pour débloquer une restitution au parc.',
+    category:        'on_duty',
+    applicableRoles: ['dispatcher', 'admin', 'superadmin'],
+    defaultEnabled:  true,
+  },
+  {
     key:             'payment_derogation_decided',
     label:           'Réponse à dérogation paiement',
     description:     'Le dispatcher de garde a statué sur ta demande de dérogation.',
