@@ -25,8 +25,22 @@ export async function POST(req: Request) {
       for (const event of body.value) {
         const eventType = event?.resourceData?.['@odata.type']
         const state     = event?.resourceData?.state
-        const callId    = event?.resource?.split('/').pop()
-        console.log(`[teams/callback] call=${callId} type=${eventType} state=${state}`)
+        // resource = « /app/calls/<id> » ou « /app/calls/<id>/operations/<op> »
+        const callId    = String(event?.resourceUrl || event?.resource || '').match(/calls\/([^/]+)/)?.[1]
+        console.log(`[teams/callback] call=${callId} type=${eventType} state=${state} status=${event?.resourceData?.status}`)
+        // Propositions de nuit (Olivier 30/09/2026) : décroché → message vocal ;
+        // message terminé → on raccroche. Cf lib/missions/market-proposals.ts.
+        if (!callId) continue
+        try {
+          const { handleProposalCallEvent } = await import('@/lib/missions/market-proposals')
+          if (eventType === '#microsoft.graph.call' && state === 'established') {
+            await handleProposalCallEvent(callId, 'established')
+          } else if (eventType === '#microsoft.graph.playPromptOperation' && event?.resourceData?.status === 'completed') {
+            await handleProposalCallEvent(callId, 'prompt_completed')
+          }
+        } catch (e: any) {
+          console.error('[teams/callback] proposition de nuit :', e?.message)
+        }
       }
     }
 

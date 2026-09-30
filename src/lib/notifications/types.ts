@@ -409,6 +409,24 @@ export const NOTIFICATION_TYPES: readonly NotificationType[] = [
     defaultEnabled:  true,
   },
   {
+    // Propositions de nuit (Olivier 30/09/2026) : « J'accepte » / « Je suis déjà en
+    // mission » ; appel au 1er départ après 2 min. Cf lib/missions/market-proposals.ts.
+    key:             'market_proposal',
+    label:           'Mission proposée (garde de nuit)',
+    description:     'Une mission libre t\'est proposée pendant ta garde de nuit : accepte-la ou dis que tu es déjà en mission.',
+    category:        'driver',
+    applicableRoles: ['driver'],
+    defaultEnabled:  true,
+  },
+  {
+    key:             'market_proposal_update',
+    label:           'Proposition de nuit : suivi',
+    description:     'Mission passée à la réserve, ou libre à dispatcher parce que personne ne l\'a prise.',
+    category:        'dispatcher',
+    applicableRoles: ['dispatcher', 'admin', 'superadmin'],
+    defaultEnabled:  true,
+  },
+  {
     key:             'reserve_notif_toggled',
     label:           'Réserve : notif de nuit désactivée / réactivée',
     description:     'Le chauffeur de réserve a coupé (ou remis) sa notif des missions libres pour la nuit.',

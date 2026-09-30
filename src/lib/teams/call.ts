@@ -179,3 +179,52 @@ export async function initiatePstnCall(params: InitiateCallParams): Promise<Init
     return { ok: false, error: e.message || 'fetch failed' }
   }
 }
+
+// ── Message vocal + raccrocher (propositions de nuit, Olivier 30/09/2026) ──────
+// Le callback Graph signale l'état « established » quand le chauffeur décroche :
+// on joue alors un fichier WAV (16 kHz, mono, 16 bits, servi publiquement depuis
+// /public/sounds), puis on raccroche à la fin du message (playPromptOperation
+// « completed »). Cf /api/teams/callback et lib/missions/market-proposals.ts.
+
+export async function playPromptOnCall(callId: string, audioUrl: string, clientContext?: string): Promise<{ ok: boolean; error?: string }> {
+  let token: string
+  try { token = await getGraphAccessToken() }
+  catch (e: any) { return { ok: false, error: `Token error: ${e.message}` } }
+  try {
+    const res = await fetch(`https://graph.microsoft.com/v1.0/communications/calls/${encodeURIComponent(callId)}/playPrompt`, {
+      method:  'POST',
+      headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+      body: JSON.stringify({
+        clientContext: clientContext || callId,
+        prompts: [{
+          '@odata.type': '#microsoft.graph.mediaPrompt',
+          mediaInfo: { '@odata.type': '#microsoft.graph.mediaInfo', uri: audioUrl, resourceId: crypto.randomUUID() },
+        }],
+      }),
+    })
+    if (!res.ok) {
+      const text = await res.text().catch(() => '')
+      console.error('[teams/playPrompt] Graph error:', res.status, text.slice(0, 300))
+      return { ok: false, error: `HTTP ${res.status}` }
+    }
+    return { ok: true }
+  } catch (e: any) {
+    return { ok: false, error: e.message || 'fetch failed' }
+  }
+}
+
+export async function hangUpCall(callId: string): Promise<{ ok: boolean; error?: string }> {
+  let token: string
+  try { token = await getGraphAccessToken() }
+  catch (e: any) { return { ok: false, error: `Token error: ${e.message}` } }
+  try {
+    const res = await fetch(`https://graph.microsoft.com/v1.0/communications/calls/${encodeURIComponent(callId)}`, {
+      method: 'DELETE', headers: { authorization: `Bearer ${token}` },
+    })
+    // 404 = appel déjà terminé (pas décroché, raccroché par le chauffeur) : rien à faire.
+    if (!res.ok && res.status !== 404) return { ok: false, error: `HTTP ${res.status}` }
+    return { ok: true }
+  } catch (e: any) {
+    return { ok: false, error: e.message || 'fetch failed' }
+  }
+}

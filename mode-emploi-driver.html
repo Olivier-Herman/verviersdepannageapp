@@ -218,7 +218,7 @@
  <tr><td>4</td><td>Changer son mot de passe</td><td>p. 4</td></tr>
  <tr><td>5</td><td>Personnaliser l'ordre du menu de gauche</td><td>p. 5</td></tr>
  <tr><td>6</td><td>Voir ses notifications push reçues</td><td>p. 5</td></tr>
- <tr><td>6b</td><td>Garde de nuit : être prévenu des missions libres (Momo Market)</td><td>p. 5</td></tr>
+ <tr><td>6b</td><td>Garde de nuit : missions proposées (J'accepte / Je suis déjà en mission)</td><td>p. 5</td></tr>
  <tr><td>7</td><td>Scanner un QR d'étiquette parc → Hub mission</td><td>p. 5</td></tr>
  </table>
 
@@ -350,21 +350,24 @@
 </div>
 
 <div class="function">
- <h3><span class="num">6b</span>Garde de nuit : missions libres dans Momo Market</h3>
- <p class="desc">La nuit (de 18 h à 8 h), quand une nouvelle mission arrive et que personne ne l'a encore prise, le chauffeur de garde reçoit une notification avec le type de mission, le véhicule et le lieu. Il peut ainsi enchaîner sans attendre qu'on l'appelle.</p>
- <p class="label">Qui est prévenu</p>
+ <h3><span class="num">6b</span>Garde de nuit : missions proposées</h3>
+ <p class="desc">La nuit (de 18 h à 8 h), quand une nouvelle mission arrive et que personne ne l'a encore prise, elle est proposée au chauffeur de garde. Il peut ainsi enchaîner sans attendre qu'on l'appelle.</p>
+ <p class="label">Qui reçoit la proposition</p>
  <ol>
- <li><strong>Premier départ</strong> de la nuit : prévenu de chaque mission libre.</li>
- <li><strong>Réserve</strong> (garde de la semaine) : prévenue quand le premier départ est déjà sur une mission. L'option « Réserve de nuit : me prévenir des missions libres », sur le tableau de bord, est activée par défaut et se réactive toute seule chaque soir à 18 h. Si tu ne veux pas être prévenu une nuit, désactive-la : le dispatcher de garde en est averti. La notification de la réserve dit aussi où en est le premier départ (par exemple « Franck : sur place à Herve depuis 23:10, ensuite vers Soumagne »), pour savoir s'il en a encore pour longtemps.</li>
+ <li><strong>Premier départ</strong> de la nuit, s'il est libre : la mission lui est proposée. Sans réponse après 2 minutes, il reçoit un appel avec un message vocal (« Une nouvelle mission t'attend dans Momo Market »).</li>
+ <li><strong>Réserve</strong> (garde de la semaine) : la mission lui est proposée si le premier départ est déjà en mission, répond « Je suis déjà en mission », ou ne répond pas dans les 4 minutes. Sa notification dit où en est le premier départ (par exemple « Franck : sur place à Herve depuis 23:10, ensuite vers Soumagne »).</li>
+ <li>L'option « Réserve de nuit : me proposer les missions libres », sur le tableau de bord, est activée par défaut et se réactive toute seule chaque soir à 18 h. Si tu ne veux rien recevoir une nuit, désactive-la : le dispatcher de garde en est averti.</li>
+ <li>Si personne ne prend la mission, le dispatcher de garde est prévenu et l'attribue lui-même.</li>
  </ol>
  <p class="label">Comment faire</p>
  <ol>
- <li>Tape la notification : Momo Market s'ouvre.</li>
- <li>Regarde la mission. Si tu la fais, tape « Je la prends ». Sinon, ne fais rien.</li>
- <li>Dès que quelqu'un prend la mission, l'autre chauffeur prévenu et le dispatcher de garde reçoivent « X a pris la mission ».</li>
+ <li>Tape la notification : la page « Mission proposée » s'ouvre avec la mission.</li>
+ <li>Tu la fais : tape « J'accepte ». Elle t'est attribuée et sa fiche s'ouvre.</li>
+ <li>Tu es déjà sur une intervention (par exemple un appel police dont tu n'as pas encore créé la fiche) : tape « Je suis déjà en mission », puis confirme. La mission part chez la réserve. Pendant 1 h, les missions suivantes iront aussi à la réserve, sauf si tu crées une fiche entre-temps.</li>
+ <li>Dès que quelqu'un prend la mission, les autres chauffeurs prévenus reçoivent « X a pris la mission » : plus rien à faire de leur côté.</li>
  </ol>
- <div class="warn">⚠️ Taper la notification ne prend pas la mission : elle reste libre tant que tu n'as pas tapé « Je la prends ».</div>
- <div class="tip">💡 Tu n'es pas prévenu si tu es en congé ou si tu t'es mis « Hors ligne ».</div>
+ <div class="warn">⚠️ Décrocher l'appel ne prend pas la mission : seul le bouton « J'accepte » te l'attribue. Une mission que le dispatch t'attribue lui-même ne se refuse pas : elle ne passe pas par une proposition.</div>
+ <div class="tip">💡 Pendant la proposition, n'importe quel chauffeur peut encore prendre la mission dans Momo Market. Tu n'es pas sollicité si tu es en congé ou si tu t'es mis « Hors ligne ».</div>
 </div>
 
 <div class="function">

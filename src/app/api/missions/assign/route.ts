@@ -169,6 +169,14 @@ export async function POST(req: Request) {
       mission_id,
     })
 
+    // Propositions de nuit (Olivier 30/09/2026) : une attribution par le dispatch ferme
+    // la proposition en cours, raccroche l'appel et prévient tout de suite le chauffeur
+    // sollicité (« Mission attribuée à X »). Best effort.
+    {
+      const { onMissionTaken } = await import('@/lib/missions/market-proposals')
+      await onMissionTaken(mission_id, driver_id, 'assigned')
+    }
+
     // Update task FSM Odoo : stage → Assigné + chauffeur (best effort, non bloquant)
     if (mission.odoo_task_id) {
       try {

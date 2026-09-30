@@ -73,7 +73,7 @@ export default function GardeBanner() {
           ? <><p className="text-sm font-semibold text-sky-800 dark:text-sky-300">Tu es de garde cette semaine 🛡</p>
               <p className="text-xs text-sky-700/80 dark:text-sky-300/70">Jour + nuit (2e départ) jusqu'au dimanche {info.end}.</p></>
           : <><p className="text-sm font-semibold text-indigo-800 dark:text-indigo-300">Tu es de 1er départ de nuit ce soir 🌙</p>
-              <p className="text-xs text-indigo-700/80 dark:text-indigo-300/70">Tu pars en premier sur les appels de nuit. De 18 h à 8 h, tu es prévenu de chaque mission libre dans Momo Market.</p></>}
+              <p className="text-xs text-indigo-700/80 dark:text-indigo-300/70">Tu pars en premier sur les appels de nuit. De 18 h à 8 h, chaque mission libre t’est proposée ; sans réponse après 2 min, tu reçois un appel.</p></>}
       </div>
       <a href="/ma-paie" className="ml-auto text-xs font-medium text-brand hover:underline flex-shrink-0">Mon calendrier</a>
     </div>
@@ -84,11 +84,11 @@ export default function GardeBanner() {
           className="w-full min-h-[44px] flex items-center gap-3 text-left disabled:opacity-100">
           <BellRing size={18} className={`flex-shrink-0 ${reserveOn ? 'text-sky-600' : 'text-amber-600'}`} />
           <span className="min-w-0 flex-1">
-            <span className={`block text-sm font-semibold ${reserveOn ? 'text-sky-800 dark:text-sky-300' : 'text-amber-800 dark:text-amber-300'}`}>Réserve de nuit : me prévenir des missions libres</span>
+            <span className={`block text-sm font-semibold ${reserveOn ? 'text-sky-800 dark:text-sky-300' : 'text-amber-800 dark:text-amber-300'}`}>Réserve de nuit : me proposer les missions libres</span>
             <span className={`block text-xs ${reserveOn ? 'text-sky-700/80 dark:text-sky-300/70' : 'text-amber-700 dark:text-amber-300/80'}`}>
               {reserveOn
-                ? 'Activé : de 18 h à 8 h, tu es prévenu quand une mission attend dans Momo Market et que le 1er départ est déjà en mission.'
-                : 'Désactivé pour cette nuit : tu n’es pas prévenu. Se réactive tout seul à 18 h, pour la nuit suivante.'}
+                ? 'Activé : de 18 h à 8 h, les missions libres te sont proposées quand le 1er départ est déjà en mission ou ne répond pas.'
+                : 'Désactivé pour cette nuit : aucune mission ne t’est proposée. Se réactive tout seul à 18 h, pour la nuit suivante.'}
             </span>
           </span>
           {saving ? <Loader2 size={18} className="animate-spin text-sky-600 flex-shrink-0" /> : (
@@ -99,7 +99,7 @@ export default function GardeBanner() {
         </button>
         {confirmOff && (
           <div className="mt-2 border-t border-sky-400/30 pt-2">
-            <p className="text-xs font-medium text-slate-800 dark:text-slate-200">Désactiver pour cette nuit ? Le dispatcher de garde sera prévenu que tu ne reçois pas les missions libres.</p>
+            <p className="text-xs font-medium text-slate-800 dark:text-slate-200">Désactiver pour cette nuit ? Le dispatcher de garde sera prévenu qu’aucune mission libre ne te sera proposée.</p>
             <div className="mt-2 flex gap-2">
               <button type="button" onClick={() => saveReserve(false)} disabled={saving}
                 className="flex-1 min-h-[44px] rounded-lg bg-amber-600 text-white text-sm font-semibold disabled:opacity-60">Oui, désactiver</button>

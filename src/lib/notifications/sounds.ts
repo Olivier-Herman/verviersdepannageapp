@@ -12,6 +12,8 @@ export const NOTIFICATION_SOUNDS: Record<string, string> = {
   mission_assigned_manual:      '/sounds/bell-notification.wav',
   market_new_mission:           '/sounds/bell-notification.wav',
   market_claimed:               '/sounds/positive-notification.wav',
+  market_proposal:              '/sounds/warning-alarm-buzzer.wav',
+  market_proposal_update:       '/sounds/positive-notification.wav',
 
   // Demande de dispo auto-dispatch (chauffeur C2+) — alarme urgente
   auto_dispatch_dispo_request:  '/sounds/warning-alarm-buzzer.wav',
