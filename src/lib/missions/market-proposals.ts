@@ -10,9 +10,11 @@
 //     - « Je suis déjà en mission » (appel police, fiche pas encore créée) → proposée
 //       à la réserve tout de suite, et il compte comme occupé pendant 1 h ou jusqu'à
 //       ce qu'il ait une fiche.
-//  2. 1er départ occupé (fiche en cours ou signalé occupé) → il reçoit l'info
-//     (il peut enchaîner ensuite) et la mission est proposée à la réserve, avec où
-//     en est le 1er départ.
+//  2. 1er départ sur une fiche en cours → la proposition va QUAND MÊME d'abord à
+//     lui (il peut enchaîner) ; la réserve reçoit seulement une info avec où en est
+//     le 1er départ (Olivier 30/09/2026 soir). S'il a répondu « Je suis déjà en
+//     mission » il y a moins d'1 h sans fiche depuis → il reçoit l'info et la
+//     proposition part chez la réserve.
 //  3. Réserve : seulement si son toggle de nuit est actif (dashboard). 4 min sans
 //     réponse, ou « déjà en mission » → le dispatcher de garde doit dispatcher.
 //  Le dispatcher de garde est informé à chaque passage à la réserve et quand
@@ -110,11 +112,11 @@ async function missionCtx(sb: Sb, missionId: string): Promise<(MissionCtx & { st
  * Occupé = une fiche en cours (attribuée comprise), ou « Je suis déjà en mission »
  * répondu il y a moins d'1 h sans avoir eu de fiche depuis.
  */
-async function busyLine(sb: Sb, driver: Driver): Promise<string | null> {
+async function busyLine(sb: Sb, driver: Driver): Promise<{ line: string; kind: 'fiche' | 'declared' } | null> {
   const { data: missions } = await sb.from('incoming_missions')
     .select('status, on_way_at, on_site_at, loaded_at, incident_city, incident_address, destination_address')
     .eq('assigned_to', driver.id).in('status', BUSY_STATUSES)
-  if (missions?.length) return describeBusy(driver.name, missions)
+  if (missions?.length) return { line: describeBusy(driver.name, missions), kind: 'fiche' }
 
   const since = new Date(Date.now() - DECLARED_BUSY_MIN * 60_000).toISOString()
   const { data: declared } = await sb.from('market_proposals').select('responded_at')
@@ -125,7 +127,7 @@ async function busyLine(sb: Sb, driver: Driver): Promise<string | null> {
   const { data: fiche } = await sb.from('incoming_missions').select('id')
     .eq('assigned_to', driver.id).gte('assigned_at', at).limit(1)
   if (fiche?.length) return null   // il a eu une fiche depuis : on se fie de nouveau aux fiches
-  return `👤 ${driver.name} : déjà en mission (signalé à ${hhmm(at)})`
+  return { line: `👤 ${driver.name} : déjà en mission (signalé à ${hhmm(at)})`, kind: 'declared' }
 }
 
 async function notifyDispatcher(sb: Sb, missionId: string, title: string, body: string): Promise<void> {
@@ -174,6 +176,21 @@ async function escalateToReserve(sb: Sb, ctx: MissionCtx, duty: GardeNight, reas
   await notifyDispatcher(sb, ctx.id, '⚠️ Mission libre à dispatcher', `${ctx.info} — ${reason} ; ${why}.`)
 }
 
+/** Réserve prévenue (info, sans boutons) qu'une mission est proposée au 1er départ occupé. */
+async function infoToReserve(sb: Sb, ctx: MissionCtx, duty: GardeNight, firstLine: string): Promise<void> {
+  const reserveId = duty.reserve && duty.reserve !== duty.nightFirst ? duty.reserve : null
+  if (!reserveId) return
+  const reserve = (await loadDrivers(sb, [reserveId])).get(reserveId)
+  if (!reserve || !available(reserve) || !reserveNotifOn(reserve.notif_preferences, duty.nightKey)) return
+  await sendNotification(reserve.id, 'market_new_mission', {
+    title:      `${ctx.type} — ${ctx.source} · proposée au 1er départ`,
+    body:       [[ctx.vehicle, ctx.place].filter(Boolean).join(' — ') || 'Nouvelle mission', firstLine, 'Elle te sera proposée s’il ne peut pas la prendre.'].join('\n'),
+    action_url: '/missions-dispo',
+    mission_id: ctx.id,
+    data:       { role: 'reserve' },
+  }).catch(e => console.error('[market-proposals] info réserve échouée', e?.message))
+}
+
 /**
  * Arrivée d'une mission : démarre le déroulé de nuit. Appelé par notifyMarketNewMission
  * (mail, création manuelle, VAB, Touring, Kaze, AXA). Hors nuit : ne fait rien.
@@ -205,11 +222,14 @@ export async function startNightFlow(missionId: string): Promise<void> {
       return
     }
     const busy = await busyLine(sb, first)
-    if (!busy) {
-      await createProposal(sb, ctx, first, 'night_first', null, null)
+    if (!busy || busy.kind === 'fiche') {
+      // Proposition d'abord au 1er départ, même s'il termine une mission (il peut enchaîner).
+      const created = await createProposal(sb, ctx, first, 'night_first', null, null)
+      // 1er départ sur une fiche : la réserve est seulement prévenue (info, sans boutons).
+      if (created && busy) await infoToReserve(sb, ctx, duty, busy.line)
       return
     }
-    // 1er départ occupé : l'info (il peut enchaîner ensuite) + proposition à la réserve.
+    // 1er départ qui a signalé être déjà en mission : l'info + proposition à la réserve.
     await sendNotification(first.id, 'market_new_mission', {
       title:      `${ctx.type} — ${ctx.source} · Momo Market`,
       body:       [ctx.vehicle, ctx.place].filter(Boolean).join(' — ') || 'Nouvelle mission disponible',
@@ -217,7 +237,7 @@ export async function startNightFlow(missionId: string): Promise<void> {
       mission_id: ctx.id,
       data:       { role: 'night_first' },
     }).catch(e => console.error('[market-proposals] info 1er départ échouée', e?.message))
-    await escalateToReserve(sb, ctx, duty, `${first.name} est déjà en mission`, busy)
+    await escalateToReserve(sb, ctx, duty, `${first.name} a signalé être déjà en mission`, busy.line)
   } catch (e: any) {
     console.error('[market-proposals] démarrage échoué (non bloquant):', e?.message)
   }

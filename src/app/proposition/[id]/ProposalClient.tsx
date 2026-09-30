@@ -100,7 +100,7 @@ export default function ProposalClient({ proposal, mission }: { proposal: Propos
         <h1 className="text-ink font-bold text-xl">🌙 Mission proposée</h1>
         <p className="text-ink-muted text-sm mt-1">
           {proposal.step === 'night_first'
-            ? 'Tu es 1er départ cette nuit : cette mission est pour toi si tu es libre.'
+            ? 'Tu es 1er départ cette nuit : cette mission t’est proposée en premier, même si tu termines une intervention. Si tu ne peux pas la prendre, dis-le : elle part chez la réserve.'
             : 'Tu es de réserve cette nuit : le 1er départ n’est pas disponible pour cette mission.'}
         </p>
         {proposal.step === 'reserve' && proposal.reason && (
