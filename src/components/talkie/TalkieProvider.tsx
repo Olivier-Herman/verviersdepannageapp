@@ -211,6 +211,15 @@ export default function TalkieProvider({ children }: { children: React.ReactNode
     }
     document.addEventListener('visibilitychange', onVis)
     window.addEventListener('pagehide', onVis)
+    // Présence côté serveur (c'est elle qui décide des notifs) : signal toutes les 10 s
+    // tant que l'app est à l'écran ; « je pars » en quittant l'écran (sendBeacon part
+    // même pendant la mise en arrière-plan).
+    const beat = () => { if (document.visibilityState === 'visible') fetch('/api/talkie/presence', { method: 'POST', body: JSON.stringify({ visible: true }), keepalive: true }).catch(() => {}) }
+    const away = () => { if (document.visibilityState !== 'visible') { try { navigator.sendBeacon?.('/api/talkie/presence', JSON.stringify({ visible: false })) } catch { /* rien */ } } else beat() }
+    beat()
+    const beatTimer = setInterval(beat, 10_000)
+    document.addEventListener('visibilitychange', away)
+    window.addEventListener('pagehide', away)
     // Parole « coincée » (fin perdue) : libérée au bout de 4 s sans son.
     const guard = setInterval(() => {
       for (const [k, f] of floorRef.current) if (f.id !== myId && Date.now() - f.last > 4000) { floorRef.current.delete(k); setFloorFor(k, null) }
@@ -219,6 +228,9 @@ export default function TalkieProvider({ children }: { children: React.ReactNode
       clearInterval(guard)
       document.removeEventListener('visibilitychange', onVis)
       window.removeEventListener('pagehide', onVis)
+      clearInterval(beatTimer)
+      document.removeEventListener('visibilitychange', away)
+      window.removeEventListener('pagehide', away)
       if (talkRef.current) stopTalking(true)
       for (const ch of subs) sb.removeChannel(ch)
       chansRef.current.clear(); floorRef.current.clear(); onlineRef.current = {}
