@@ -76,6 +76,14 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     notes:      body?.via === 'siabis' ? 'Fiche prise depuis le bouton Siabis (création chauffeur, plaque reconnue)' : 'Mission auto-attribuee via self-service',
   })
 
+  // Olivier 30/09/2026 : « X a pris la mission » aux autres chauffeurs prévenus la
+  // nuit et au dispatcher de garde. Pas pour le bouton Siabis (fiche créée par le
+  // chauffeur lui-même).
+  if (body?.via !== 'siabis') {
+    const { notifyMarketClaim } = await import('@/lib/missions/market-notify')
+    await notifyMarketClaim(params.id, userId)
+  }
+
   // Olivier 2026-06-18 : prendre une mission via Momo Market doit aussi créer le
   // dossier Odoo (helpdesk + tâche FSM + VÉHICULE), comme une assignation
   // classique. Sans ça, une mission prise en self-service arrivait sans dossier

@@ -21,6 +21,8 @@ const ALLOWED_KEYS = [
   'role_driver',
   'role_dispatcher',
   'role_finance',
+  // Opt-in (absent = coupé) : réserve de nuit prévenue des missions Momo Market (toggle du dashboard, GardeBanner)
+  'market_reserve',
   // Retro-compat
   'dispatch_new_mission',
   'driver_assigned',

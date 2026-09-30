@@ -390,6 +390,24 @@ export const NOTIFICATION_TYPES: readonly NotificationType[] = [
     applicableRoles: ['driver', 'dispatcher', 'admin', 'superadmin'],
     defaultEnabled:  true,
   },
+  {
+    // Idée de Franck (Olivier 30/09/2026) : la nuit, le 1er départ (et la réserve
+    // si elle l'a activé) est prévenu d'une mission libre. Cf lib/missions/market-notify.ts.
+    key:             'market_new_mission',
+    label:           'Nouvelle mission dans Momo Market (garde de nuit)',
+    description:     'Une mission attend dans Momo Market pendant ta garde de nuit.',
+    category:        'driver',
+    applicableRoles: ['driver'],
+    defaultEnabled:  true,
+  },
+  {
+    key:             'market_claimed',
+    label:           'Mission prise dans Momo Market',
+    description:     'Un chauffeur a pris une mission dans Momo Market.',
+    category:        'driver',
+    applicableRoles: ['driver', 'dispatcher', 'admin', 'superadmin'],
+    defaultEnabled:  true,
+  },
 ] as const
 
 export const NOTIFICATION_CATEGORY_LABELS: Record<NotificationCategory, string> = {

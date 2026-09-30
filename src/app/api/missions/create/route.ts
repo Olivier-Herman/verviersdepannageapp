@@ -212,6 +212,11 @@ export async function POST(req: Request) {
     tag:   `mission-${mission.id}`,
     icon:  '/icons/apple-touch-icon.png'
   }, 'dispatch_new_mission')
+  // La nuit : 1er départ (et réserve) prévenus si la mission reste libre (Momo Market).
+  {
+    const { notifyMarketNewMission } = await import('@/lib/missions/market-notify')
+    await notifyMarketNewMission(mission.id)
+  }
 
   // Olivier 2026-06-18 : créer le dossier Odoo (helpdesk + tâche FSM) DÈS la
   // création de la fiche — ce qui crée/lie aussi le VÉHICULE dans Odoo

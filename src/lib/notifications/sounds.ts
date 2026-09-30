@@ -10,6 +10,8 @@ export const NOTIFICATION_SOUNDS: Record<string, string> = {
   // Mission entrante "douce" (chauffeur C1) — son court bell
   new_mission_received:         '/sounds/bell-notification.wav',
   mission_assigned_manual:      '/sounds/bell-notification.wav',
+  market_new_mission:           '/sounds/bell-notification.wav',
+  market_claimed:               '/sounds/positive-notification.wav',
 
   // Demande de dispo auto-dispatch (chauffeur C2+) — alarme urgente
   auto_dispatch_dispo_request:  '/sounds/warning-alarm-buzzer.wav',

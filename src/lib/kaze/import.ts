@@ -257,6 +257,9 @@ export async function importKazeJob(
       if (error) throw error
       result.mission_id = data!.id
       result.action     = 'insert'
+      // La nuit : 1er départ (et réserve) prévenus qu'une mission attend dans Momo Market.
+      const { notifyMarketNewMission } = await import('@/lib/missions/market-notify')
+      await notifyMarketNewMission(data!.id)
     }
 
     result.ok = true

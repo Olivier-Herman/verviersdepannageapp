@@ -253,6 +253,9 @@ export async function runTouringImport(opts: { mode: TouringImportMode }): Promi
         if (ins?.id) {
           const { reserveTowForParkedVehicle } = await import('@/lib/missions/reserve-rel')
           await reserveTowForParkedVehicle({ sb, missionId: ins.id, actorName: 'rattaché automatiquement à l’arrivée du dossier COMEX' })
+          // La nuit : 1er départ (et réserve) prévenus qu'une mission attend dans Momo Market.
+          const { notifyMarketNewMission } = await import('@/lib/missions/market-notify')
+          await notifyMarketNewMission(ins.id)
         }
       }
     } catch (e: any) {

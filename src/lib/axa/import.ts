@@ -228,6 +228,9 @@ export async function runAxaImport({ mode = 'preview' }: { mode?: ImportMode } =
         const { reserveTowForParkedVehicle } = await import('@/lib/missions/reserve-rel')
         const r = await reserveTowForParkedVehicle({ sb, missionId: created.id, actorName: 'rattaché automatiquement à l’arrivée de l’ordre AXA' })
         if (r.reserved) continue   // pas de notif « à valider » : rien à dispatcher maintenant
+        // La nuit : 1er départ (et réserve) prévenus qu'une mission attend dans Momo Market.
+        const { notifyMarketNewMission } = await import('@/lib/missions/market-notify')
+        await notifyMarketNewMission(created.id)
       }
 
       // Notif dispatch UNIQUEMENT pour les `New` (fenêtre d'acceptation courte —

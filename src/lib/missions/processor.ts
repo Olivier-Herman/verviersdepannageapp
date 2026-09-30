@@ -1584,6 +1584,11 @@ export async function processEmailMessage(messageId: string): Promise<ProcessRes
       tag:   `mission-${targetId}`,
       icon:  '/icons/apple-touch-icon.png'
     }, 'dispatch_new_mission')
+    // La nuit : 1er départ (et réserve) prévenus qu'une mission attend dans Momo Market.
+    if (!existingMissionId) {
+      const { notifyMarketNewMission } = await import('@/lib/missions/market-notify')
+      await notifyMarketNewMission(targetId)
+    }
 
     const durationMs = Date.now() - t0
     console.log(`[Processor] step=done messageId=${msgIdShort} durationMs=${durationMs} ${source}/${parsed.external_id} (conf: ${parsed.confidence}) ${existingMissionId ? '→ mise à jour dossier existant' : '→ nouveau'}`)

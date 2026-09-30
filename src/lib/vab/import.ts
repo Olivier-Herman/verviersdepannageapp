@@ -479,6 +479,10 @@ try { const { ensureMissionCoords } = await import('@/lib/geocode/server'); awai
           if (r.reserved) {
             results[results.length - 1] = { missionNumber: item.missionNumber, ok: true, action: 'merged', mergedInto: r.parentNumber != null ? `#${r.parentNumber}` : r.parentId }
             inserted--; merged++
+          } else {
+            // La nuit : 1er départ (et réserve) prévenus qu'une mission attend dans Momo Market.
+            const { notifyMarketNewMission } = await import('@/lib/missions/market-notify')
+            await notifyMarketNewMission(insertedRow.id)
           }
         }
       }
