@@ -87,7 +87,7 @@ export default function GardeBanner() {
             <span className={`block text-sm font-semibold ${reserveOn ? 'text-sky-800 dark:text-sky-300' : 'text-amber-800 dark:text-amber-300'}`}>Réserve de nuit : me proposer les missions libres</span>
             <span className={`block text-xs ${reserveOn ? 'text-sky-700/80 dark:text-sky-300/70' : 'text-amber-700 dark:text-amber-300/80'}`}>
               {reserveOn
-                ? 'Activé : de 18 h à 8 h, tu es prévenu quand le 1er départ est déjà en mission, et la mission t’est proposée s’il ne peut pas la prendre ou ne répond pas.'
+                ? 'Activé : de 18 h à 8 h, une mission t’est proposée quand le 1er départ ne peut pas la prendre ou ne répond pas.'
                 : 'Désactivé pour cette nuit : aucune mission ne t’est proposée. Se réactive tout seul à 18 h, pour la nuit suivante.'}
             </span>
           </span>

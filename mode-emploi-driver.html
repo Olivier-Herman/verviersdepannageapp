@@ -354,20 +354,30 @@
  <p class="desc">La nuit (de 18 h à 8 h), quand le dispatch a activé la garde de nuit automatique, une nouvelle mission que personne n'a encore prise est proposée au chauffeur de garde. Quand le dispatch n'est pas en mode automatique, le premier départ reçoit seulement une information. Il peut ainsi enchaîner sans attendre qu'on l'appelle.</p>
  <p class="label">Qui reçoit la proposition</p>
  <ol>
- <li><strong>Premier départ</strong> de la nuit : la mission lui est toujours proposée en premier, même s'il termine une intervention (il peut enchaîner). Sans réponse après 2 minutes, il reçoit un appel avec un message vocal (« Une nouvelle mission t'attend dans Momo Market »).</li>
- <li><strong>Réserve</strong> (garde de la semaine) : si le premier départ est déjà en mission, elle reçoit une simple information, avec où il en est (par exemple « Franck : sur place à Herve depuis 23:10, ensuite vers Soumagne »). La mission lui est proposée si le premier départ répond « Je suis déjà en mission » ou ne répond pas dans les 4 minutes.</li>
- <li>L'option « Réserve de nuit : me proposer les missions libres », sur le tableau de bord, est activée par défaut et se réactive toute seule chaque soir à 18 h. Si tu ne veux rien recevoir une nuit, désactive-la : le dispatcher de garde en est averti.</li>
+ <li><strong>Premier départ</strong> de la nuit : la mission lui est toujours proposée en premier, même s'il termine une intervention. Sans réponse après 2 minutes, il reçoit un appel avec un message vocal (« Une nouvelle mission t'attend dans Momo Market »).</li>
+ <li><strong>Réserve</strong> (garde de la semaine) : elle n'est dérangée que si le premier départ ne peut pas prendre la mission ou ne répond pas dans les 4 minutes. L'option « Réserve de nuit : me proposer les missions libres », sur le tableau de bord, est activée par défaut et se réactive toute seule chaque soir à 18 h.</li>
  <li>Si personne ne prend la mission, le dispatcher de garde est prévenu et l'attribue lui-même.</li>
  </ol>
- <p class="label">Comment faire</p>
+ <p class="label">Premier départ : comment répondre</p>
  <ol>
- <li>Tape la notification : la page « Mission proposée » s'ouvre avec la mission.</li>
- <li>Tu la fais : tape « J'accepte ». Elle t'est attribuée et sa fiche s'ouvre.</li>
- <li>Tu es déjà sur une intervention (par exemple un appel police dont tu n'as pas encore créé la fiche) : tape « Je suis déjà en mission », puis confirme. La mission part chez la réserve. Pendant 1 h, les missions suivantes iront aussi à la réserve, sauf si tu crées une fiche entre-temps.</li>
- <li>Dès que quelqu'un prend la mission, les autres chauffeurs prévenus reçoivent « X a pris la mission » : plus rien à faire de leur côté.</li>
+ <li>Tape la notification : la page « Mission proposée » s'ouvre.</li>
+ <li><strong>« J'accepte »</strong> : la mission t'est attribuée et sa fiche s'ouvre.</li>
+ <li><strong>« Je suis déjà en mission »</strong> : l'app calcule à quelle heure tu pourrais être sur place (fin de ta mission en cours, trajets, déchargement). Si tu n'as pas encore de fiche (appel police…), elle te demande combien de temps tu en as.
+  <ul>
+  <li>Moins d'une heure : « tu pourrais être sur place vers 23:55 ». Tu la prends, ou tu confirmes que tu ne peux pas.</li>
+  <li>Plus d'une heure : « J'appelle le client » compose son numéro. Annonce-lui ton heure d'arrivée, puis dis si le client est d'accord (tu la prends) ou pas (elle part chez la réserve). Tu as 10 minutes.</li>
+  <li>Calcul impossible : l'app te demande si tu es certain de ne pas pouvoir être sur place dans l'heure.</li>
+  </ul></li>
+ <li><strong>« Rappelle-moi dans 15 min »</strong> : la mission te sera reproposée 15 minutes plus tard (une seule fois), le temps de voir où tu en es. La réserve n'est pas dérangée pendant ce temps.</li>
+ <li>Dès que quelqu'un prend la mission, les autres chauffeurs sollicités reçoivent « X a pris la mission » : plus rien à faire de leur côté.</li>
+ </ol>
+ <p class="label">Réserve : comment répondre</p>
+ <ol>
+ <li><strong>« J'accepte »</strong>, ou <strong>« Je suis déjà en mission »</strong> (le dispatch est prévenu).</li>
+ <li><strong>« Appeler »</strong> le premier départ (son nom est sur le bouton) puis, si vous voyez ensemble que c’est faisable pour lui, <strong>« Renvoyer la mission »</strong> : elle lui est reproposée et il doit l’accepter.</li>
  </ol>
  <div class="warn">⚠️ Décrocher l'appel ne prend pas la mission : seul le bouton « J'accepte » te l'attribue. Une mission que le dispatch t'attribue lui-même ne se refuse pas : elle ne passe pas par une proposition.</div>
- <div class="tip">💡 Pendant la proposition, n'importe quel chauffeur peut encore prendre la mission dans Momo Market. Tu n'es pas sollicité si tu es en congé ou si tu t'es mis « Hors ligne ».</div>
+ <div class="tip">💡 Pendant la proposition, n'importe quel chauffeur peut encore prendre la mission dans Momo Market. Tu n'es pas sollicité si tu es en congé ou si tu t'es mis « Hors ligne ». Quand tu réponds « Je suis déjà en mission », l'app utilise ta position du moment pour le calcul.</div>
 </div>
 
 <div class="function">

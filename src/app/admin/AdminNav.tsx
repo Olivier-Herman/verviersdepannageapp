@@ -15,6 +15,7 @@ import {
   FileText, Archive, Wallet, Truck,
   Settings, Home, Printer, LifeBuoy,
   ToggleLeft,
+  Moon,
   type LucideIcon } from 'lucide-react'
 
 type NavItem = { href: string; label: string; icon: LucideIcon }
@@ -55,6 +56,7 @@ const GROUPS: NavGroup[] = [
     items: [
       { href: '/admin/axa',       label: 'AXA',       icon: Radio },
       { href: '/admin/dispatch',      label: 'Dispatch',      icon: Radio },
+      { href: '/admin/garde-nuit',    label: 'Garde de nuit', icon: Moon },
       { href: '/admin/notifications', label: 'Notifications', icon: Bell },
       { href: '/admin/decharges',     label: 'Décharges',     icon: ShieldCheck },
       { href: '/admin/missions',      label: 'Missions',      icon: FileSignature },

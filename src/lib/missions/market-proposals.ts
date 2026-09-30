@@ -2,23 +2,25 @@
 //
 // Propositions de nuit Momo Market (Olivier 30/09/2026, suite de l'idée de Franck).
 //
-// Une mission LIBRE arrive la nuit (18:00 → 08:00, planning de garde) :
-//  1. 1er départ libre → la mission lui est PROPOSÉE : notif qui ouvre
-//     /proposition/<id> avec « J'accepte » / « Je suis déjà en mission ».
-//     - 2 min sans réponse → appel Teams avec message vocal fixe (1er départ seul).
-//     - 2 min de plus sans réponse → proposée à la réserve.
-//     - « Je suis déjà en mission » (appel police, fiche pas encore créée) → proposée
-//       à la réserve tout de suite, et il compte comme occupé pendant 1 h ou jusqu'à
-//       ce qu'il ait une fiche.
-//  2. 1er départ sur une fiche en cours → la proposition va QUAND MÊME d'abord à
-//     lui (il peut enchaîner) ; la réserve reçoit seulement une info avec où en est
-//     le 1er départ (Olivier 30/09/2026 soir). S'il a répondu « Je suis déjà en
-//     mission » il y a moins d'1 h sans fiche depuis → il reçoit l'info et la
-//     proposition part chez la réserve.
-//  3. Réserve : seulement si son toggle de nuit est actif (dashboard). 4 min sans
-//     réponse, ou « déjà en mission » → le dispatcher de garde doit dispatcher.
-//  Le dispatcher de garde est informé à chaque passage à la réserve et quand
-//  personne ne prend.
+// Une mission LIBRE arrive la nuit, « Garde de nuit automatique » activée :
+//  1. Le 1er départ reçoit TOUJOURS la proposition en premier, même en mission
+//     (notif → /proposition/<id>). 2 min sans réponse → appel avec message vocal ;
+//     2 min de plus → réserve. La réserve n'est jamais dérangée tant que le 1er
+//     départ ne l'a pas renvoyée (Olivier 30/09/2026 soir).
+//  2. « Je suis déjà en mission » → garde-fou : estimation de son arrivée
+//     (lib/missions/busy-eta.ts, GPS en direct). Sans fiche (appel police) : « Tu en
+//     as pour combien de temps ? ». Puis :
+//       - ≤ 1 h      : « tu pourrais y être vers HH:MM, tu confirmes ? »
+//       - > 1 h      : « J'appelle le client » (10 min pour dire OK / pas OK)
+//       - impossible : « es-tu certain de ne pas pouvoir y être dans l'heure ? »
+//     et partout « Rappelle-moi dans 15 min » (une seule fois) : la proposition lui
+//     revient 15 min plus tard, la réserve n'est pas dérangée.
+//  3. Réserve : proposition seulement si le 1er refuse ou ne répond pas (et si son
+//     toggle de nuit est actif). Elle peut appeler le 1er et lui RENVOYER la
+//     mission. 4 min sans réponse, ou « déjà en mission » → dispatcher de garde.
+//  Le dispatcher de garde est informé des rappels, des passages à la réserve et
+//  quand personne ne prend. Chaque étape est journalisée (market_proposal_events)
+//  pour la page /admin/garde-nuit.
 //
 // Une mission attribuée par le dispatcher ne se refuse pas : jamais de proposition.
 // Pendant une proposition, la mission reste prenable dans Momo Market par tout
@@ -34,11 +36,16 @@ import {
   gardeNight, nightDutyNow, reserveNotifOn, describeBusy, brusselsNow, hhmm,
   TYPE_LABEL, MARKET_STATUSES, BUSY_STATUSES, HIDDEN_SOURCES, type GardeNight,
 } from '@/lib/missions/market-notify'
+import type { Coord } from '@/lib/routing/ors'
 
 const CALL_AFTER_MIN      = 2    // notif sans réponse → appel au 1er départ
 const ESCALATE_AFTER_MIN  = 4    // … puis 2 min de plus → réserve
 const RESERVE_TIMEOUT_MIN = 4    // réserve sans réponse → dispatcher
-const DECLARED_BUSY_MIN   = 60   // « Je suis déjà en mission » vaut 1 h (ou jusqu'à sa fiche)
+const CONFIRM_TIMEOUT_MIN = 3    // « déjà en mission » sans confirmer l'estimation → réserve
+const CLIENT_CALL_MIN     = 10   // « J'appelle le client » : délai pour donner sa réponse
+const SNOOZE_MIN          = 15   // « Rappelle-moi dans 15 min »
+const MAX_SNOOZES         = 1    // Olivier 30/09/2026 : une seule fois
+export const ETA_OK_MIN   = 60   // arrivée estimée ≤ 1 h : on lui demande de confirmer son refus
 
 export const PROPOSAL_SOUND_PATH = '/sounds/nouvelle-mission.wav'
 
@@ -122,27 +129,10 @@ async function missionCtx(sb: Sb, missionId: string): Promise<(MissionCtx & { st
   }
 }
 
-/**
- * Le chauffeur est-il occupé ? Ligne « 👤 Franck : … » si oui, null s'il est libre.
- * Occupé = une fiche en cours (attribuée comprise), ou « Je suis déjà en mission »
- * répondu il y a moins d'1 h sans avoir eu de fiche depuis.
- */
-async function busyLine(sb: Sb, driver: Driver): Promise<{ line: string; kind: 'fiche' | 'declared' } | null> {
-  const { data: missions } = await sb.from('incoming_missions')
-    .select('status, on_way_at, on_site_at, loaded_at, incident_city, incident_address, destination_address')
-    .eq('assigned_to', driver.id).in('status', BUSY_STATUSES)
-  if (missions?.length) return { line: describeBusy(driver.name, missions), kind: 'fiche' }
-
-  const since = new Date(Date.now() - DECLARED_BUSY_MIN * 60_000).toISOString()
-  const { data: declared } = await sb.from('market_proposals').select('responded_at')
-    .eq('driver_id', driver.id).eq('status', 'busy').eq('is_test', false).gte('responded_at', since)
-    .order('responded_at', { ascending: false }).limit(1)
-  const at = declared?.[0]?.responded_at
-  if (!at) return null
-  const { data: fiche } = await sb.from('incoming_missions').select('id')
-    .eq('assigned_to', driver.id).gte('assigned_at', at).limit(1)
-  if (fiche?.length) return null   // il a eu une fiche depuis : on se fie de nouveau aux fiches
-  return { line: `👤 ${driver.name} : déjà en mission (signalé à ${hhmm(at)})`, kind: 'declared' }
+/** Journal des étapes (page /admin/garde-nuit). Ne jette jamais. */
+async function logEvent(sb: Sb, p: { id?: string | null; mission_id?: string | null; driver_id?: string | null }, kind: string, data?: Record<string, unknown>): Promise<void> {
+  await sb.from('market_proposal_events').insert({ proposal_id: p.id || null, mission_id: p.mission_id || null, driver_id: p.driver_id || null, kind, data: data || null })
+    .then(() => {}, () => {})
 }
 
 async function notifyDispatcher(sb: Sb, missionId: string, title: string, body: string): Promise<void> {
@@ -163,6 +153,7 @@ async function createProposal(sb: Sb, ctx: MissionCtx, driver: Driver, step: 'ni
     if ((error as any)?.code !== '23505') console.error('[market-proposals] création échouée', error?.message)
     return false
   }
+  await logEvent(sb, { id: p.id, mission_id: ctx.id, driver_id: driver.id }, 'proposed', { step, reason })
   await sendNotification(driver.id, 'market_proposal', {
     title:      `${ctx.type} — ${ctx.source} · mission proposée`,
     body:       [[ctx.vehicle, ctx.place].filter(Boolean).join(' — ') || 'Nouvelle mission', firstLine, 'Ouvre pour accepter ou dire que tu es déjà en mission.']
@@ -185,25 +176,11 @@ async function escalateToReserve(sb: Sb, ctx: MissionCtx, duty: GardeNight, reas
     }
     return
   }
+  await logEvent(sb, { mission_id: ctx.id }, 'to_dispatcher', { reason })
   const why = !reserveId ? 'pas de réserve cette nuit'
     : !available(reserve) ? `${reserve?.name || 'la réserve'} (réserve) est hors ligne ou en congé`
     : `${reserve?.name || 'la réserve'} (réserve) a désactivé sa notif de nuit`
   await notifyDispatcher(sb, ctx.id, '⚠️ Mission libre à dispatcher', `${ctx.info} — ${reason} ; ${why}.`)
-}
-
-/** Réserve prévenue (info, sans boutons) qu'une mission est proposée au 1er départ occupé. */
-async function infoToReserve(sb: Sb, ctx: MissionCtx, duty: GardeNight, firstLine: string): Promise<void> {
-  const reserveId = duty.reserve && duty.reserve !== duty.nightFirst ? duty.reserve : null
-  if (!reserveId) return
-  const reserve = (await loadDrivers(sb, [reserveId])).get(reserveId)
-  if (!reserve || !available(reserve) || !reserveNotifOn(reserve.notif_preferences, duty.nightKey)) return
-  await sendNotification(reserve.id, 'market_new_mission', {
-    title:      `${ctx.type} — ${ctx.source} · proposée au 1er départ`,
-    body:       [[ctx.vehicle, ctx.place].filter(Boolean).join(' — ') || 'Nouvelle mission', firstLine, 'Elle te sera proposée s’il ne peut pas la prendre.'].join('\n'),
-    action_url: '/missions-dispo',
-    mission_id: ctx.id,
-    data:       { role: 'reserve' },
-  }).catch(e => console.error('[market-proposals] info réserve échouée', e?.message))
 }
 
 /**
@@ -236,23 +213,9 @@ export async function startNightFlow(missionId: string): Promise<void> {
       await escalateToReserve(sb, ctx, duty, `${first?.name || 'Le 1er départ'} est hors ligne ou en congé`, null)
       return
     }
-    const busy = await busyLine(sb, first)
-    if (!busy || busy.kind === 'fiche') {
-      // Proposition d'abord au 1er départ, même s'il termine une mission (il peut enchaîner).
-      const created = await createProposal(sb, ctx, first, 'night_first', null, null)
-      // 1er départ sur une fiche : la réserve est seulement prévenue (info, sans boutons).
-      if (created && busy) await infoToReserve(sb, ctx, duty, busy.line)
-      return
-    }
-    // 1er départ qui a signalé être déjà en mission : l'info + proposition à la réserve.
-    await sendNotification(first.id, 'market_new_mission', {
-      title:      `${ctx.type} — ${ctx.source} · Momo Market`,
-      body:       [ctx.vehicle, ctx.place].filter(Boolean).join(' — ') || 'Nouvelle mission disponible',
-      action_url: '/missions-dispo',
-      mission_id: ctx.id,
-      data:       { role: 'night_first' },
-    }).catch(e => console.error('[market-proposals] info 1er départ échouée', e?.message))
-    await escalateToReserve(sb, ctx, duty, `${first.name} a signalé être déjà en mission`, busy.line)
+    // Toujours d'abord au 1er départ, même en mission (il peut enchaîner) ; la réserve
+    // n'est pas dérangée.
+    await createProposal(sb, ctx, first, 'night_first', null, null)
   } catch (e: any) {
     console.error('[market-proposals] démarrage échoué (non bloquant):', e?.message)
   }
@@ -299,8 +262,10 @@ export async function closedMessage(sb: Sb, p: any): Promise<string> {
     return '🧪 Test fermé.'
   }
   if (p.status === 'accepted') return 'Tu as accepté cette mission.'
-  if (p.status === 'busy')     return 'Tu as répondu que tu étais déjà en mission.'
+  if (p.closed_reason === 'client_ko') return 'Le client n’a pas accepté ton délai : la mission est passée à la suite.'
+  if (p.status === 'busy')     return 'Tu as confirmé que tu ne pouvais pas la prendre : la mission est passée à la suite.'
   if (p.status === 'timeout')  return 'Délai dépassé : la mission a été passée à la suite.'
+  if (p.closed_reason === 'returned') return 'Tu as renvoyé la mission au 1er départ.'
   if (p.closed_reason === 'claimed' || p.closed_reason === 'assigned') {
     const { data: u } = p.closed_by ? await sb.from('users').select('name').eq('id', p.closed_by).maybeSingle() : { data: null }
     return p.closed_reason === 'claimed' ? `${u?.name || 'Un autre chauffeur'} a pris la mission.` : `Mission attribuée à ${u?.name || 'un autre chauffeur'} par le dispatch.`
@@ -308,21 +273,58 @@ export async function closedMessage(sb: Sb, p: any): Promise<string> {
   return 'Cette mission n’est plus disponible.'
 }
 
-export async function respondProposal(proposalId: string, userId: string, action: 'accept' | 'busy'): Promise<{ ok: boolean; status: number; error?: string; missionId?: string }> {
+export type ProposalAction = 'accept' | 'busy' | 'minutes' | 'confirm_busy' | 'snooze' | 'client_call' | 'client_ok' | 'client_ko' | 'return_first'
+
+export interface RespondResult {
+  ok: boolean; status: number; error?: string; missionId?: string
+  /** Étape suivante à afficher sur la page (garde-fou, rappel, appel client…). */
+  next?: { phase: string; etaMin?: number | null; arrivalAt?: string | null; steps?: string[]; reason?: string; gps?: string; snoozeUntil?: string; snoozesLeft?: number; clientPhone?: string | null }
+}
+
+const etaText = (etaMin: number | null | undefined, arrivalAt: string | null | undefined) =>
+  etaMin != null && arrivalAt ? `arrivée estimée vers ${hhmm(arrivalAt)} (≈ ${etaMin} min)` : 'arrivée impossible à estimer'
+
+async function hangUp(p: any) {
+  if (p.call_id) { const { hangUpCall } = await import('@/lib/teams/call'); await hangUpCall(p.call_id) }
+}
+
+/** Ferme la proposition du 1er départ (refus confirmé) et passe à la réserve. */
+async function firstRefuses(sb: Sb, p: any, name: string, reason: string, closedReason = 'busy'): Promise<boolean> {
+  const { data: closed } = await sb.from('market_proposals')
+    .update({ status: 'busy', responded_at: new Date().toISOString(), closed_reason: closedReason })
+    .eq('id', p.id).eq('status', 'pending').select('id').maybeSingle()
+  if (!closed) return false
+  await hangUp(p)
+  await logEvent(sb, p, closedReason === 'client_ko' ? 'client_ko' : 'refused', { reason })
+  const ctx = await missionCtx(sb, p.mission_id)
+  if (ctx && !ctx.assigned_to && MARKET_STATUSES.includes(ctx.status)) {
+    const duty = await gardeNight(sb)
+    if (duty) await escalateToReserve(sb, ctx, duty, reason, `👤 ${name} : ${reason.replace(new RegExp(`^${name}\\s*`), '')}`)
+  }
+  return true
+}
+
+export async function respondProposal(proposalId: string, userId: string, action: ProposalAction, extra: { minutes?: number; pos?: Coord | null } = {}): Promise<RespondResult> {
   const sb = createAdminClient()
   const { data: p } = await sb.from('market_proposals').select('*').eq('id', proposalId).maybeSingle()
   if (!p || p.driver_id !== userId) return { ok: false, status: 404, error: 'Proposition introuvable' }
   if (p.status !== 'pending') return { ok: false, status: 409, error: await closedMessage(sb, p) }
+  const now = new Date().toISOString()
 
   if (p.is_test) {
     // Test : on enregistre la réponse, rien d'autre (aucune mission, ni réserve ni dispatch).
-    await sb.from('market_proposals').update({ status: action === 'accept' ? 'accepted' : 'busy', responded_at: new Date().toISOString(), closed_reason: 'test' })
+    await sb.from('market_proposals').update({ status: action === 'accept' ? 'accepted' : 'busy', responded_at: now, closed_reason: 'test' })
       .eq('id', p.id).eq('status', 'pending')
-    if (p.call_id) { const { hangUpCall } = await import('@/lib/teams/call'); await hangUpCall(p.call_id) }
+    await hangUp(p)
     return { ok: true, status: 200 }
   }
 
-  if (action === 'accept') {
+  const { data: me } = await sb.from('users').select('name').eq('id', userId).maybeSingle()
+  const name = me?.name || 'Le chauffeur'
+
+  // ── Accepter (proposition, ou client d'accord avec le délai) ──
+  if (action === 'accept' || action === 'client_ok') {
+    if (action === 'client_ok') await logEvent(sb, p, 'client_ok', {})
     const { claimMission } = await import('@/lib/missions/claim')
     const r = await claimMission(p.mission_id, userId, { via: 'proposal', freshMinutes: null })
     if (!r.ok) {
@@ -330,29 +332,103 @@ export async function respondProposal(proposalId: string, userId: string, action
       await sb.from('market_proposals').update({ status: 'cancelled', closed_reason: 'mission_gone' }).eq('id', p.id).eq('status', 'pending')
       return { ok: false, status: r.status, error: r.error }
     }
+    await logEvent(sb, p, 'accepted', { phase: p.phase, eta_min: p.eta_min, snoozes: p.snooze_count, response_s: Math.round((Date.now() - new Date(p.notified_at).getTime()) / 1000) })
     return { ok: true, status: 200, missionId: p.mission_id }
   }
 
-  // « Je suis déjà en mission »
-  const now = new Date().toISOString()
-  const { data: closed } = await sb.from('market_proposals')
-    .update({ status: 'busy', responded_at: now, closed_reason: 'busy' })
-    .eq('id', p.id).eq('status', 'pending').select('id').maybeSingle()
-  if (!closed) return { ok: false, status: 409, error: 'Cette proposition vient d’être fermée.' }
-  if (p.call_id) { const { hangUpCall } = await import('@/lib/teams/call'); await hangUpCall(p.call_id) }
-
-  const ctx = await missionCtx(sb, p.mission_id)
-  const { data: me } = await sb.from('users').select('name').eq('id', userId).maybeSingle()
-  const name = me?.name || 'Le chauffeur'
-  if (ctx && !ctx.assigned_to && MARKET_STATUSES.includes(ctx.status)) {
-    if (p.step === 'night_first') {
-      const duty = await gardeNight(sb)
-      if (duty) await escalateToReserve(sb, ctx, duty, `${name} a répondu : déjà en mission`, `👤 ${name} : déjà en mission (signalé à ${hhmm(now)})`)
-    } else {
-      await notifyDispatcher(sb, ctx.id, '⚠️ Mission libre à dispatcher', `${ctx.info} — ${name} (réserve) est aussi déjà en mission.`)
+  // ── Réserve ──
+  if (p.step === 'reserve') {
+    if (action === 'busy') {
+      const { data: closed } = await sb.from('market_proposals').update({ status: 'busy', responded_at: now, closed_reason: 'busy' })
+        .eq('id', p.id).eq('status', 'pending').select('id').maybeSingle()
+      if (!closed) return { ok: false, status: 409, error: 'Cette proposition vient d’être fermée.' }
+      await logEvent(sb, p, 'refused', { step: 'reserve' })
+      const ctx = await missionCtx(sb, p.mission_id)
+      if (ctx && !ctx.assigned_to && MARKET_STATUSES.includes(ctx.status)) {
+        await notifyDispatcher(sb, ctx.id, '⚠️ Mission libre à dispatcher', `${ctx.info} — ${name} (réserve) est aussi déjà en mission.`)
+        await logEvent(sb, { mission_id: ctx.id }, 'to_dispatcher', { reason: 'réserve en mission' })
+      }
+      return { ok: true, status: 200, missionId: p.mission_id, next: { phase: 'closed' } }
     }
+    if (action === 'return_first') {
+      // La réserve a parlé au 1er départ : c'est faisable pour lui → on lui renvoie.
+      const duty = await gardeNight(sb)
+      const firstId = duty?.nightFirst
+      if (!firstId || firstId === userId) return { ok: false, status: 400, error: 'Pas de 1er départ à qui renvoyer la mission.' }
+      const ctx = await missionCtx(sb, p.mission_id)
+      if (!ctx || ctx.assigned_to || !MARKET_STATUSES.includes(ctx.status)) return { ok: false, status: 409, error: 'Cette mission n’est plus disponible.' }
+      const { data: closed } = await sb.from('market_proposals').update({ status: 'cancelled', responded_at: now, closed_reason: 'returned' })
+        .eq('id', p.id).eq('status', 'pending').select('id').maybeSingle()
+      if (!closed) return { ok: false, status: 409, error: 'Cette proposition vient d’être fermée.' }
+      const first = (await loadDrivers(sb, [firstId])).get(firstId)
+      if (!first) return { ok: false, status: 400, error: '1er départ introuvable.' }
+      await createProposal(sb, ctx, first, 'night_first', `renvoyée par ${name} après discussion`, `↩️ ${name} (réserve) te la renvoie après en avoir parlé avec toi.`)
+      await logEvent(sb, p, 'returned_to_first', { to: firstId })
+      await notifyDispatcher(sb, ctx.id, `↩️ ${name} renvoie la mission à ${first.name}`, `${ctx.info} — après discussion entre eux.`)
+      return { ok: true, status: 200, missionId: p.mission_id, next: { phase: 'closed' } }
+    }
+    return { ok: false, status: 400, error: 'Action impossible pour la réserve.' }
   }
-  return { ok: true, status: 200, missionId: p.mission_id }
+
+  // ── 1er départ : « Je suis déjà en mission » → garde-fou ──
+  if (action === 'busy' || action === 'minutes') {
+    await hangUp(p)
+    const { estimateArrival } = await import('@/lib/missions/busy-eta')
+    if (action === 'busy') {
+      const { data: fiche } = await sb.from('incoming_missions').select('id').eq('assigned_to', userId).in('status', BUSY_STATUSES).limit(1)
+      await logEvent(sb, p, 'busy_declared', { has_fiche: !!fiche?.length })
+      if (!fiche?.length) {
+        // Pas de fiche (appel police…) : on lui demande combien de temps il en a.
+        await sb.from('market_proposals').update({ phase: 'ask_minutes', phase_at: now }).eq('id', p.id).eq('status', 'pending')
+        return { ok: true, status: 200, next: { phase: 'ask_minutes' } }
+      }
+    }
+    const minutes = action === 'minutes' ? Math.max(0, Math.min(240, Number(extra.minutes) || 0)) : null
+    if (extra.pos) {
+      // Position en direct (il vient d'ouvrir l'app) : on la garde aussi pour la carte dispatch.
+      await sb.from('users').update({ last_location_lat: extra.pos.lat, last_location_lng: extra.pos.lng, location_updated_at: now }).eq('id', userId)
+    }
+    const eta = await estimateArrival({ driverId: userId, newMissionId: p.mission_id, livePos: extra.pos || null, declaredMinutes: minutes })
+    await sb.from('market_proposals').update({
+      phase: 'confirm', phase_at: now, busy_minutes: minutes, eta_min: eta.etaMin,
+      eta_detail: { steps: eta.steps, arrivalAt: eta.arrivalAt, reason: eta.reason || null, gps: eta.gps },
+    }).eq('id', p.id).eq('status', 'pending')
+    await logEvent(sb, p, 'eta', { eta_min: eta.etaMin, minutes, gps: eta.gps, reason: eta.reason || null })
+    return { ok: true, status: 200, next: { phase: 'confirm', etaMin: eta.etaMin, arrivalAt: eta.arrivalAt, steps: eta.steps, reason: eta.reason, gps: eta.gps, snoozesLeft: MAX_SNOOZES - (p.snooze_count || 0) } }
+  }
+
+  if (action === 'confirm_busy') {
+    const ok = await firstRefuses(sb, p, name, `${name} ne peut pas la prendre (${etaText(p.eta_min, p.eta_detail?.arrivalAt)})`)
+    return ok ? { ok: true, status: 200, next: { phase: 'closed' } } : { ok: false, status: 409, error: 'Cette proposition vient d’être fermée.' }
+  }
+
+  if (action === 'snooze') {
+    if ((p.snooze_count || 0) >= MAX_SNOOZES) return { ok: false, status: 409, error: 'Tu as déjà demandé un rappel : accepte la mission ou confirme que tu ne peux pas.' }
+    const until = new Date(Date.now() + SNOOZE_MIN * 60_000).toISOString()
+    await sb.from('market_proposals').update({ phase: 'snoozed', phase_at: now, snooze_until: until, snooze_count: (p.snooze_count || 0) + 1 })
+      .eq('id', p.id).eq('status', 'pending')
+    await hangUp(p)
+    await logEvent(sb, p, 'snoozed', { count: (p.snooze_count || 0) + 1, eta_min: p.eta_min })
+    const ctx = await missionCtx(sb, p.mission_id)
+    if (ctx) await notifyDispatcher(sb, ctx.id, `⏰ ${name} : rappel dans ${SNOOZE_MIN} min`, `${ctx.info} — ${etaText(p.eta_min, p.eta_detail?.arrivalAt)}. La réserve n'est pas dérangée pour l'instant.`)
+    return { ok: true, status: 200, next: { phase: 'snoozed', snoozeUntil: until, snoozesLeft: MAX_SNOOZES - (p.snooze_count || 0) - 1 } }
+  }
+
+  if (action === 'client_call') {
+    const { data: m } = await sb.from('incoming_missions').select('client_phone, assisted_phone').eq('id', p.mission_id).maybeSingle()
+    const phone = m?.client_phone || m?.assisted_phone || null
+    if (!phone) return { ok: false, status: 400, error: 'Pas de numéro de client sur la fiche.' }
+    await sb.from('market_proposals').update({ phase: 'client_call', phase_at: now, client_call_at: now }).eq('id', p.id).eq('status', 'pending')
+    await logEvent(sb, p, 'client_call', { eta_min: p.eta_min })
+    return { ok: true, status: 200, next: { phase: 'client_call', clientPhone: phone } }
+  }
+
+  if (action === 'client_ko') {
+    const ok = await firstRefuses(sb, p, name, `le client n'accepte pas le délai de ${name} (${etaText(p.eta_min, p.eta_detail?.arrivalAt)})`, 'client_ko')
+    return ok ? { ok: true, status: 200, next: { phase: 'closed' } } : { ok: false, status: 409, error: 'Cette proposition vient d’être fermée.' }
+  }
+
+  return { ok: false, status: 400, error: 'Action inconnue.' }
 }
 
 // ── Mission prise ou attribuée ────────────────────────────────────────────
@@ -379,6 +455,12 @@ export async function onMissionTaken(missionId: string, takerId: string, kind: '
         ...(mine ? { responded_at: now } : {}),
       }).eq('id', p.id).eq('status', 'pending')
       if (p.call_id) { const { hangUpCall } = await import('@/lib/teams/call'); await hangUpCall(p.call_id) }
+      if (!mine) await logEvent(sb, { id: p.id, mission_id: missionId, driver_id: p.driver_id }, kind === 'claimed' ? 'taken_by_other' : 'assigned_by_dispatch', { by: takerId })
+    }
+    if (!open?.length && kind === 'claimed') {
+      // Prise dans Momo Market sans proposition ouverte (la nuit : utile aux statistiques).
+      const { count } = await sb.from('market_proposals').select('id', { count: 'exact', head: true }).eq('mission_id', missionId)
+      if (count) await logEvent(sb, { mission_id: missionId, driver_id: takerId }, 'claimed_in_market', {})
     }
 
     const [ctx, { data: taker }, { data: notified }, { data: duty }] = await Promise.all([
@@ -432,6 +514,7 @@ async function startCall(sb: Sb, p: any, driver: Driver | undefined): Promise<vo
   const { initiatePstnCall } = await import('@/lib/teams/call')
   const r = await initiatePstnCall({ toPhone: phone, toDisplayName: driver?.name || phone })
   await sb.from('market_proposals').update({ call_at: now, call_id: r.callId || null, call_error: r.ok ? null : (r.error || 'Appel impossible') }).eq('id', p.id)
+  if (!p.is_test) await logEvent(sb, p, 'called', { ok: r.ok, error: r.ok ? null : r.error })
 }
 
 export async function tickProposals(): Promise<{ checked: number; calls: number; escalated: number; closed: number }> {
@@ -462,17 +545,43 @@ export async function tickProposals(): Promise<{ checked: number; calls: number;
         continue
       }
 
-      const ageMin = (Date.now() - new Date(p.notified_at).getTime()) / 60_000
+      const ageMin = (Date.now() - new Date(p.phase_at || p.notified_at).getTime()) / 60_000
       const drivers = await loadDrivers(sb, [p.driver_id])
       const driver  = drivers.get(p.driver_id)
       const name    = driver?.name || 'Le chauffeur'
+      const phase   = p.phase || 'asked'
 
       if (p.step === 'night_first') {
-        if (ageMin >= ESCALATE_AFTER_MIN) {
+        if (phase === 'snoozed') {
+          // « Rappelle-moi dans 15 min » écoulé : la proposition lui revient (notif, puis appel).
+          if (p.snooze_until && Date.now() >= new Date(p.snooze_until).getTime()) {
+            const now = new Date().toISOString()
+            await sb.from('market_proposals').update({ phase: 'asked', phase_at: now, call_at: null, call_id: null, call_error: null })
+              .eq('id', p.id).eq('status', 'pending')
+            await sendNotification(p.driver_id, 'market_proposal', {
+              title:      `⏰ Où en es-tu ? ${ctx.type} — ${ctx.source}`,
+              body:       [[ctx.vehicle, ctx.place].filter(Boolean).join(' — ') || 'La mission', 'Elle t’attend toujours. Peux-tu la prendre ?'].join('\n'),
+              action_url: `/proposition/${p.id}`,
+              mission_id: ctx.id,
+              data:       { proposal_id: p.id, step: p.step, reminder: true },
+            }).catch(() => {})
+            await logEvent(sb, p, 'reminded', { count: p.snooze_count })
+          }
+        } else if (phase === 'confirm' || phase === 'ask_minutes') {
+          // Il a dit « déjà en mission » sans confirmer ni répondre : on passe à la réserve.
+          if (ageMin >= CONFIRM_TIMEOUT_MIN) {
+            if (await firstRefuses(sb, p, name, `${name} a répondu « déjà en mission » sans confirmer (${etaText(p.eta_min, p.eta_detail?.arrivalAt)})`)) stats.escalated++
+          }
+        } else if (phase === 'client_call') {
+          if (ageMin >= CLIENT_CALL_MIN) {
+            if (await firstRefuses(sb, p, name, `${name} n'a pas donné la réponse du client après ${CLIENT_CALL_MIN} min (${etaText(p.eta_min, p.eta_detail?.arrivalAt)})`)) stats.escalated++
+          }
+        } else if (ageMin >= ESCALATE_AFTER_MIN) {
           const { data: c } = await sb.from('market_proposals').update({ status: 'timeout', closed_reason: 'timeout' })
             .eq('id', p.id).eq('status', 'pending').select('id').maybeSingle()
           if (!c) continue
-          if (p.call_id) { const { hangUpCall } = await import('@/lib/teams/call'); await hangUpCall(p.call_id) }
+          await hangUp(p)
+          await logEvent(sb, p, 'timeout', { called: !!p.call_id, call_error: p.call_error || null })
           const duty = await gardeNight(sb)
           const called = p.call_id ? 'notif + appel' : p.call_error ? `notif, appel impossible : ${p.call_error.toLowerCase()}` : 'notif'
           if (duty) await escalateToReserve(sb, ctx, duty, `${name} n'a pas répondu (${called})`, `👤 ${name} : pas de réponse`)
@@ -485,7 +594,9 @@ export async function tickProposals(): Promise<{ checked: number; calls: number;
         const { data: c } = await sb.from('market_proposals').update({ status: 'timeout', closed_reason: 'timeout' })
           .eq('id', p.id).eq('status', 'pending').select('id').maybeSingle()
         if (!c) continue
+        await logEvent(sb, p, 'timeout', { step: 'reserve' })
         await notifyDispatcher(sb, ctx.id, '⚠️ Mission libre à dispatcher', `${ctx.info} — personne n'a répondu (${p.reason ? `${p.reason}, puis ` : ''}${name} en réserve).`)
+        await logEvent(sb, { mission_id: ctx.id }, 'to_dispatcher', { reason: 'réserve sans réponse' })
         stats.escalated++
       }
     } catch (e: any) {

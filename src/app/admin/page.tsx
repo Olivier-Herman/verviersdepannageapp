@@ -18,6 +18,7 @@ import {
   Tag, MapPin, Users, Car, Receipt, AlertTriangle, Radio, ShieldCheck,
   Bell, ClipboardCheck, Map, Archive, FileSignature, Printer, LifeBuoy,
   ToggleLeft,
+  Moon,
   type LucideIcon } from 'lucide-react'
 
 interface CardProps {
@@ -169,6 +170,8 @@ export default async function AdminPage() {
           desc="Règles auto-dispatch (jour/nuit), répartition chauffeurs." />
         <Card href="/admin/garde-schedule" icon={Radio} label="Plages de garde"
           desc="Heures jour/nuit + plage auto-dispatch nuit (modifiables sans déploiement)." />
+        <Card href="/admin/garde-nuit" icon={Moon} label="Garde de nuit"
+          desc="Statistiques des missions proposées la nuit : acceptations, délais, refus, rappels, réserve, dispatch." />
         <Card href="/admin/notifications" icon={Bell} label="Notifications"
           desc="Canaux push, événements déclencheurs, destinataires." />
         {user.role === 'superadmin' && (
