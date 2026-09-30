@@ -960,6 +960,13 @@ export async function processEmailMessage(messageId: string): Promise<ProcessRes
               metadata: { source_email_id: messageId, external_id: r.externalId, comex_first: true },
             }).then(() => {}, () => {})
             console.log(`[Processor] Touring COMEX-first : mission ${r.action} (${r.externalId}) → skip Claude`)
+            // Garde de nuit (Olivier 30/09/2026) : ce retour anticipé sautait le crochet
+            // de fin de traitement → aucune proposition pour les missions Touring. Hors
+            // du délai de 8 s de COMEX, et seulement pour une fiche nouvellement créée.
+            if (r.action === 'created') {
+              const { notifyMarketNewMission } = await import('@/lib/missions/market-notify')
+              await notifyMarketNewMission(r.missionId)
+            }
             return { status: 'inserted', missionId: r.missionId, externalId: r.externalId || '', source }
           }
           console.log('[Processor] Touring COMEX-first : mission absente de COMEX → parsing mail (roue de secours)')
