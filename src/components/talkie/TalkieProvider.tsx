@@ -17,7 +17,10 @@
 //    l'iPhone garde la connexion et personne ne reçoit de notif — constaté le 30/09).
 //  - Haut-parleur : l'API « audio session » de WebKit — « playback » (haut-parleur)
 //    en écoute, « play-and-record » seulement pendant l'appui ; sans elle, après une
-//    prise de parole l'iPhone restait sur l'écouteur.
+//    prise de parole l'iPhone restait sur l'écouteur. Changer de mode peut mettre le
+//    son de l'app en pause (« interrompu ») : on le relance aussitôt, à chaque
+//    réception, et au moindre toucher ; l'état réel est suivi (bandeau « Touche
+//    pour entendre »).
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
 import { useSession } from 'next-auth/react'
@@ -101,16 +104,24 @@ export default function TalkieProvider({ children }: { children: React.ReactNode
       if (!talkRef.current) audioSession('playback')
       if (!ctxRef.current) {
         const C = (window as any).AudioContext || (window as any).webkitAudioContext
-        ctxRef.current = new C()
+        const ctx: AudioContext = new C()
+        ctx.onstatechange = () => setAudioOn(ctx.state === 'running')   // pause iPhone (« interrupted ») visible
+        ctxRef.current = ctx
       }
-      await ctxRef.current!.resume()
+      if (ctxRef.current!.state !== 'running') await ctxRef.current!.resume()
       setAudioOn(ctxRef.current!.state === 'running')
     } catch { /* pas d'audio sur cet appareil */ }
   }, [])
+  /** Relance le son s'il a été mis en pause (changement de mode audio, appel, Siri…). */
+  const ensureRunning = useCallback(() => {
+    const ctx = ctxRef.current
+    if (ctx && ctx.state !== 'running') ctx.resume().then(() => setAudioOn(ctx.state === 'running')).catch(() => {})
+  }, [])
   useEffect(() => {
     if (!channels.length) return
-    const h = () => { enableAudio() }
-    document.addEventListener('pointerdown', h, { once: true, capture: true })
+    // Chaque toucher relance le son s'il est en pause (le premier toucher l'active).
+    const h = () => { if (!ctxRef.current || ctxRef.current.state !== 'running') enableAudio() }
+    document.addEventListener('pointerdown', h, { capture: true })
     return () => document.removeEventListener('pointerdown', h, { capture: true } as any)
   }, [channels.length, enableAudio])
 
@@ -132,7 +143,7 @@ export default function TalkieProvider({ children }: { children: React.ReactNode
     clearTimeout(t.timer)
     try { t.proc?.disconnect(); t.src?.disconnect() } catch { /* déjà débranché */ }
     t.stream?.getTracks().forEach(tr => tr.stop())
-    setTimeout(() => { if (!talkRef.current) audioSession('playback') }, 150)   // retour au haut-parleur
+    setTimeout(() => { if (!talkRef.current) { audioSession('playback'); setTimeout(ensureRunning, 120) } }, 150)   // retour au haut-parleur, son relancé
     const ch = chansRef.current.get(t.key)
     const myId = meRef.current?.id
     ch?.send({ type: 'broadcast', event: 'end', payload: { id: myId } })
@@ -144,7 +155,7 @@ export default function TalkieProvider({ children }: { children: React.ReactNode
     fd.append('key', t.key); fd.append('audio', wav(t.rec), 'talkie.wav'); fd.append('durationMs', String(ms))
     fd.append('online', (onlineRef.current[t.key] || []).map(p => p.id).join(','))
     fetch('/api/talkie/messages', { method: 'POST', body: fd }).then(() => setMsgsVersion(v => v + 1)).catch(() => setError('Message non enregistré (réseau).'))
-  }, [])
+  }, [ensureRunning])
 
   // ── Connexion aux canaux ──
   useEffect(() => {
@@ -168,12 +179,13 @@ export default function TalkieProvider({ children }: { children: React.ReactNode
         setFloorFor(c.key, { id: payload.id, name: payload.name })
         nextRef.current.set(c.key, 0)
         setLastActivity({ key: c.key, id: payload.id, name: payload.name, at: Date.now() })
-        if (!talkRef.current) audioSession('playback')
+        if (!talkRef.current) { audioSession('playback'); ensureRunning() }
         beep(880)
       })
       ch.on('broadcast', { event: 'a' }, ({ payload }: any) => {
         const f = floorRef.current.get(c.key); if (f) f.last = Date.now()
-        const ctx = ctxRef.current; if (!ctx || ctx.state !== 'running') return
+        const ctx = ctxRef.current; if (!ctx) return
+        if (ctx.state !== 'running') { ensureRunning(); return }
         const f32 = muDecode(fromB64(payload.d))
         const buf = ctx.createBuffer(1, f32.length, RATE); buf.getChannelData(0).set(f32)
         const node = ctx.createBufferSource(); node.buffer = buf; node.connect(ctx.destination)
@@ -212,7 +224,7 @@ export default function TalkieProvider({ children }: { children: React.ReactNode
       chansRef.current.clear(); floorRef.current.clear(); onlineRef.current = {}
       setOnline({}); setFloor({})
     }
-  }, [enabled, channels, sb, beep, stopTalking])
+  }, [enabled, channels, sb, beep, stopTalking, ensureRunning])
 
   // ── Prise de parole ──
   const startTalking = useCallback(async (key: string) => {
@@ -248,11 +260,12 @@ export default function TalkieProvider({ children }: { children: React.ReactNode
       }
       src.connect(proc); proc.connect(ctx.destination)
       state.stream = stream; state.src = src; state.proc = proc
+      ensureRunning()
     } catch {
       stopTalking(false)
       setError('Micro indisponible : autorise le micro pour l’app dans les réglages du téléphone.')
     }
-  }, [beep, enableAudio, stopTalking])
+  }, [beep, enableAudio, stopTalking, ensureRunning])
 
   const value: TalkieCtx = {
     me, channels, audioOn, enableAudio, online, floor, talkingKey, startTalking, stopTalking,
