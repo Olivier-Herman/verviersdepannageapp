@@ -100,14 +100,10 @@ export async function POST(req: Request, { params }: { params: { id: string } })
 
     // Mission SNC parente : passe en to_invoice (le devis SNC reste a creer
     // via la facturation classique) et libere la position parc.
-    await sb.from('incoming_missions').update({
-      status:        'to_invoice',
-      released_at:   now,
-      released_by:   user.id,
-      updated_at:    now,
-    }).eq('id', missionId).then(() => {}, async () => {
-      await sb.from('incoming_missions').update({ status: 'to_invoice', updated_at: now }).eq('id', missionId)
-    })
+    // released_at/released_by n'existent pas sur incoming_missions : leur
+    // présence faisait échouer l'écriture en silence (30/09/2026).
+    const { error: upErr } = await sb.from('incoming_missions').update({ status: 'to_invoice', updated_at: now }).eq('id', missionId)
+    if (upErr) return NextResponse.json({ error: `Sortie non enregistrée : ${upErr.message}` }, { status: 500 })
     await releaseParcAndShift(sb, missionId)
     // Parc Odoo : le dossier a maintenant une REL enfant en attente → le helper
     // ne finalisera le véhicule que quand la REL sera aussi to_invoice.
@@ -129,14 +125,8 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     const reason = String(body.abandon_reason || '').trim()
     if (!reason) return NextResponse.json({ error: 'abandon_reason requis' }, { status: 400 })
 
-    await sb.from('incoming_missions').update({
-      status:           'to_invoice',  // devis SNC reste a creer
-      released_at:      now,
-      released_by:      user.id,
-      updated_at:       now,
-    }).eq('id', missionId).then(() => {}, async () => {
-      await sb.from('incoming_missions').update({ status: 'to_invoice', updated_at: now }).eq('id', missionId)
-    })
+    const { error: upErr } = await sb.from('incoming_missions').update({ status: 'to_invoice', updated_at: now }).eq('id', missionId)  // devis SNC reste a creer
+    if (upErr) return NextResponse.json({ error: `Sortie non enregistrée : ${upErr.message}` }, { status: 500 })
     await releaseParcAndShift(sb, missionId)
     { const { syncParcVehicleTerminated } = await import('@/lib/missions/parc-fleet-state'); await syncParcVehicleTerminated(sb, missionId) }
 
@@ -157,14 +147,10 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     const dossier = String(body.assistance_dossier || '').trim()
     if (!name) return NextResponse.json({ error: 'assistance_name requis' }, { status: 400 })
 
-    await sb.from('incoming_missions').update({
-      status:        'to_invoice',
-      released_at:   now,
-      released_by:   user.id,
-      updated_at:    now,
-    }).eq('id', missionId).then(() => {}, async () => {
-      await sb.from('incoming_missions').update({ status: 'to_invoice', updated_at: now }).eq('id', missionId)
-    })
+    // released_at/released_by n'existent pas sur incoming_missions : leur
+    // présence faisait échouer l'écriture en silence (30/09/2026).
+    const { error: upErr } = await sb.from('incoming_missions').update({ status: 'to_invoice', updated_at: now }).eq('id', missionId)
+    if (upErr) return NextResponse.json({ error: `Sortie non enregistrée : ${upErr.message}` }, { status: 500 })
     await releaseParcAndShift(sb, missionId)
     { const { syncParcVehicleTerminated } = await import('@/lib/missions/parc-fleet-state'); await syncParcVehicleTerminated(sb, missionId) }
 

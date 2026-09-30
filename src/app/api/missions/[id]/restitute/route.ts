@@ -176,13 +176,15 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     const reason = String(body.no_charge_reason || '').trim()
     if (!reason) return NextResponse.json({ error: 'Motif requis pour Restitution sans frais' }, { status: 400 })
 
-    await sb.from('incoming_missions').update({
+    // released_at/released_by n'existent pas sur incoming_missions : leur
+    // présence faisait échouer l'écriture en silence (30/09/2026).
+    const { error: ncErr } = await sb.from('incoming_missions').update({
       status:           'completed',
       no_charge_at:     now,
       no_charge_reason: reason,
       no_charge_by:     user.id,
-      released_at:      now,
     }).eq('id', missionId)
+    if (ncErr) return NextResponse.json({ error: `Restitution non enregistrée : ${ncErr.message}` }, { status: 500 })
 
     await sb.from('mission_logs').insert({
       mission_id: missionId,
@@ -294,25 +296,13 @@ export async function POST(req: Request, { params }: { params: { id: string } })
       odoo_quote_id:      quoteId,
       odoo_quote_url:     quoteUrl,
       odoo_quoted_at:     now,
-      released_at:        now,
-      released_by:        user.id,
       completed_at:       now,
     }
     if (mission.source === 'police_rodeo' && body.levee_saisie_verified) {
       updateInvoice.police_levee_saisie_ok = true
     }
-    await sb.from('incoming_missions').update(updateInvoice).eq('id', missionId).then(() => {}, async () => {
-      // Si released_at/by ou completed_at n existent pas en BDD, retry sans
-      await sb.from('incoming_missions').update({
-        status:             'completed',
-        billed_to_id:       body.partner_id,
-        billed_to_name:     partnerName,
-        payment_breakdown:  breakdown,
-        odoo_quote_id:      quoteId,
-        odoo_quote_url:     quoteUrl,
-        odoo_quoted_at:     now,
-      }).eq('id', missionId)
-    })
+    const { error: invErr } = await sb.from('incoming_missions').update(updateInvoice).eq('id', missionId)
+    if (invErr) return NextResponse.json({ error: `Devis #${quoteId} créé mais restitution non enregistrée : ${invErr.message}` }, { status: 500 })
 
     await sb.from('mission_logs').insert({
       mission_id: missionId,
@@ -340,20 +330,12 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     billed_to_id:       body.partner_id,
     billed_to_name:     partnerName,
     payment_breakdown:  breakdown,
-    released_at:        now,
-    released_by:        user.id,
   }
   if (mission.source === 'police_rodeo' && body.levee_saisie_verified) {
     updateDriverCash.police_levee_saisie_ok = true
   }
-  await sb.from('incoming_missions').update(updateDriverCash).eq('id', missionId).then(() => {}, async () => {
-    await sb.from('incoming_missions').update({
-      status:             'to_invoice',
-      billed_to_id:       body.partner_id,
-      billed_to_name:     partnerName,
-      payment_breakdown:  breakdown,
-    }).eq('id', missionId)
-  })
+  const { error: cashErr } = await sb.from('incoming_missions').update(updateDriverCash).eq('id', missionId)
+  if (cashErr) return NextResponse.json({ error: `Restitution non enregistrée : ${cashErr.message}` }, { status: 500 })
 
   await sb.from('mission_logs').insert({
     mission_id: missionId,

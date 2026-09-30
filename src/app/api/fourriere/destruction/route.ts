@@ -167,8 +167,12 @@ export async function POST(req: Request) {
 
   // 1. Update : ANNULE (motif 'Scratch AVP' + date) + tampon EPAVE (scratched_at)
   //    Le vehicule n est pas "termine" mais SORTI/scratch → status='cancelled'.
+  // 30/09/2026 : released_at/released_by n'existent pas → Supabase renvoyait
+  // { error } (pas de rejet), le fallback ne partait jamais et les 5 épaves du
+  // 10/09 sont restées « au parc ». On contrôle l'erreur et on s'arrête AVANT
+  // le rapport : jamais un PV de destruction pour des fiches non sorties.
   const epaveNote = `Scratch AVP — sortie le ${destructionDate}`
-  await sb
+  const { error: upErr } = await sb
     .from('incoming_missions')
     .update({
       status:           'cancelled',
@@ -181,26 +185,10 @@ export async function POST(req: Request) {
       no_charge_at:     now,
       no_charge_reason: 'Sortie AVP en épave (> 60j, accord Ville de Verviers)',
       no_charge_by:     actorId,
-      released_at:      now,
-      released_by:      actorId,
       updated_at:       now,
     })
     .in('id', missionIds)
-    .then(() => {}, async () => {
-      // Fallback minimal si colonnes optionnelles absentes
-      await sb
-        .from('incoming_missions')
-        .update({
-          status:           'cancelled',
-          cancelled_reason: CANCEL_REASON,
-          cancelled_at:     now,
-          cancelled_by:     actorName,
-          scratched_at:     now,
-          scratched_by:     actorId,
-          closing_notes:    epaveNote,
-        })
-        .in('id', missionIds)
-    })
+  if (upErr) return NextResponse.json({ error: `Sortie en épave impossible : ${upErr.message}` }, { status: 500 })
 
   // 2. Libere les positions parc + shift
   for (const id of missionIds) {
