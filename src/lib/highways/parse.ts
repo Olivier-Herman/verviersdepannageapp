@@ -22,7 +22,9 @@ export interface ParsedHighway {
 
 // Autoroute belge : A + 1-3 chiffres (A27, A3, A601...). On accepte aussi un
 // éventuel suffixe (A601a) mais on le garde tel quel.
-const HIGHWAY_RE = /\bA\s?0*(\d{1,3}[a-z]?)\b/i
+// Pas de lettre (accentuée comprise) juste avant : « Straße 132 », « Hermée 203 »
+// ne sont pas des autoroutes (\b ne voit pas ß ni é comme des lettres). 30/09/2026.
+const HIGHWAY_RE = /(?<![\p{L}\d])A\s?0*(\d{1,3}[a-z]?)\b/iu
 
 // Borne : "BK 22.3", "B.K.22,3", "borne 22.3", "PK 22.3", "km 22.3",
 // notation belge "22+300" (= 22 km + 300 m), décimal nu "22.3", ou entier nu
@@ -104,7 +106,7 @@ export function parseHighwayAddress(input: string | null | undefined): ParsedHig
 // parseHighwayAddress) : mot « autoroute », E-number (E40, E42, E411…), bornes
 // BK/PK, et surtout les AIRES d'autoroute (« aire de Polleur », « aire d'... »)
 // + parking/station d'autoroute — cas fréquents où le mot « autoroute » n'apparaît pas.
-const HIGHWAY_HINT_RE = /\bautoroute\b|\bvoie\s+rapide\b|\bbretelle\b|\baire\s+d[e']|\b(?:parking|station|aire)\s+(?:d['e]\s*)?autoroute\b|\bE\s?0*\d{1,3}[a-z]?\b|\b(?:b\.?\s?k|p\.?\s?k)\b\.?\s*\d/i
+const HIGHWAY_HINT_RE = /\bautoroute\b|\bvoie\s+rapide\b|\bbretelle\b|\baire\s+d[e']|\b(?:parking|station|aire)\s+(?:d['e]\s*)?autoroute\b|(?<![\p{L}\d])E\s?0*\d{1,3}[a-z]?\b|\b(?:b\.?\s?k|p\.?\s?k)\b\.?\s*\d/iu
 export function isHighwayAddress(input: string | null | undefined): boolean {
   if (!input) return false
   if (parseHighwayAddress(input).highwayRef) return true

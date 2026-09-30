@@ -915,7 +915,12 @@ function AssignAction({ mission, drivers, driverStatuses, onRefresh, onModalChan
   // s'ouvrait DERRIÈRE le sélecteur de chauffeur (z-index), qui restait affiché :
   // rien ne semblait se passer. On ferme le sélecteur dès que la question
   // s'ouvre ; la décision prise, l'assignation au chauffeur choisi se poursuit.
+  // 30/09/2026 (Momo) : sur une mission déjà validée (« En attente »), la question
+  // n'était pas affichée (pas de fenêtre Siabis dans cette branche) → l'assignation
+  // restait bloquée sans rien dire. La question appartient à la validation, comme
+  // sur la fiche : on ne la pose qu'en assignant une mission encore « nouvelle ».
   const assign = (driverId: string) => {
+    if (mission.status !== 'new') { doAssign(driverId); return }
     if (shouldOfferSiabis(mission.source, mission.incident_address).offer) closeModal()
     withSiabisGate(() => doAssign(driverId))
   }
