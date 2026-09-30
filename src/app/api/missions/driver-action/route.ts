@@ -646,6 +646,16 @@ export async function POST(req: Request) {
     await syncParcVehicleTerminated(supabase, mission_id)
   }
 
+  // Rapport d'intervention envoyé au client dès la clôture chauffeur (EBAC,
+  // Centracar — Olivier 30/09/2026). Non bloquant : le résultat va au journal.
+  if (action === 'completed' && updated && ['to_invoice', 'completed'].includes(updated.status)
+    && closing_data?.final_mission_type !== 'trajet_vide' && !isReclose) {
+    try {
+      const { emailRapportAtClose } = await import('@/lib/missions/rapport-intervention')
+      await emailRapportAtClose(mission_id)
+    } catch (e: any) { console.error('[driver-action] rapport client :', e?.message) }
+  }
+
   // ── Encaissement automatique ─────────────────────────────────────────────
   if (action === 'completed' && closing_data?.amount_collected && closing_data.amount_collected > 0) {
     await supabase.from('interventions').insert({

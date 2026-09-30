@@ -284,3 +284,43 @@ export async function attachRapportIfRequired(moveId: number, missionIds: string
   }
 }
 
+
+/**
+ * Envoie le rapport au client dès la clôture par le chauffeur (EBAC, Centracar —
+ * Olivier 30/09/2026), à son adresse de facturation lue dans Odoo : contact
+ * « facturation » s'il existe, sinon l'adresse principale. Depuis administration@.
+ * La copie jointe à la facture (Justificatif) reste en place. Une seule fois par
+ * mission ; jamais bloquant, le résultat est noté dans le journal de la fiche.
+ */
+export async function emailRapportAtClose(missionId: string): Promise<{ sent: boolean; reason?: string }> {
+  const sb = createAdminClient()
+  const { data: m } = await sb.from('incoming_missions').select('id, source, billed_to_id, mission_number, vehicle_plate, vehicle_brand, vehicle_model, dossier_number').eq('id', missionId).maybeSingle()
+  if (!m || !(await sourceHasTag((m as any).source, 'rapport_facture'))) return { sent: false, reason: 'source sans rapport' }
+  const { data: done } = await sb.from('mission_logs').select('id').eq('mission_id', missionId).eq('action', 'rapport_emailed').limit(1)
+  if ((done || []).length) return { sent: false, reason: 'déjà envoyé' }
+  try {
+    const { data: row } = await sb.from('mission_source_catalog').select('default_billed_to_id').eq('key', (m as any).source).maybeSingle()
+    const partnerId = Number((m as any).billed_to_id) || Number((row as any)?.default_billed_to_id) || 0
+    if (!partnerId) throw new Error('client de facturation inconnu')
+    const [p] = await odooRpc<any[]>('res.partner', 'read', [[partnerId]], { fields: ['name', 'email', 'child_ids'] })
+    const kids = p?.child_ids?.length ? await odooRpc<any[]>('res.partner', 'read', [p.child_ids], { fields: ['type', 'email'] }) : []
+    const to = String(kids.find(k => k.type === 'invoice' && k.email)?.email || p?.email || '').trim().toLowerCase()
+    if (!to) throw new Error(`aucune adresse e-mail de facturation pour ${p?.name || partnerId}`)
+    const d = await buildRapportData([missionId], null)
+    if (!d) throw new Error('données du rapport absentes')
+    const pdf = await renderRapportPdf(d)
+    const { sendEmail, emailLayout } = await import('@/lib/emails')
+    const veh = [d.vehicle.brandModel, d.vehicle.plate].filter(Boolean).join(' — ')
+    const html = emailLayout(`<p>Madame, Monsieur,</p>
+<p>Veuillez trouver ci-joint le rapport de notre intervention du ${d.date}${veh ? ` pour le véhicule ${veh}` : ''}${d.clientRef ? ` (votre référence ${d.clientRef})` : ''} : constat, photos et signature ${d.kind === 'dsp' ? 'de la personne dépannée' : 'du réceptionnaire'}.</p>
+<p>La facture correspondante vous parviendra séparément.</p>
+<p>Bien à vous,<br>Verviers Dépannage</p>`, 'Rapport d’intervention')
+    await sendEmail(to, `Rapport d'intervention ${d.number}${d.vehicle.plate ? ` — ${d.vehicle.plate}` : ''} — ${d.date}`, html, p?.name || undefined, undefined,
+      [{ name: `Rapport d'intervention ${d.number}.pdf`, contentType: 'application/pdf', contentBytes: pdf.toString('base64') }])
+    await sb.from('mission_logs').insert({ mission_id: missionId, action: 'rapport_emailed', notes: `Rapport d’intervention envoyé à ${to} (${d.client}).`, metadata: { to } })
+    return { sent: true }
+  } catch (e: any) {
+    await sb.from('mission_logs').insert({ mission_id: missionId, action: 'rapport_email_error', notes: `Rapport d’intervention NON envoyé au client : ${e?.message || 'erreur'}. À envoyer à la main (bouton « Voir le rapport »).`, metadata: {} })
+    return { sent: false, reason: e?.message || 'erreur' }
+  }
+}
