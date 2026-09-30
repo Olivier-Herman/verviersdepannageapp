@@ -43,14 +43,27 @@ const DECLARED_BUSY_MIN   = 60   // « Je suis déjà en mission » vaut 1 h (ou
 export const PROPOSAL_SOUND_PATH = '/sounds/nouvelle-mission.wav'
 
 /**
- * Interrupteur (app_settings.market_proposals_actif, TEXTE JSON true/false) : tant
- * qu'il n'est pas à true, la nuit reste en simple info (1er départ prévenu, réserve
- * prévenue si le 1er est en mission) ; le mode test fonctionne dans tous les cas.
- * Olivier 30/09/2026 : on active après un test concluant, sans nouveau déploiement.
+ * Interrupteur « Garde de nuit automatique » (app_settings.market_proposals_actif,
+ * TEXTE JSON) : { night: 'YYYY-MM-DD' | null, by, byName, at }. Le dispatcher de
+ * garde (ou un superadmin) l'active depuis le tableau de bord quand il va dormir ;
+ * il ne vaut que pour la nuit où il a été activé → retour à « désactivé » à la fin
+ * de la nuit (8 h). Désactivé : simple info au 1er départ (et à la réserve s'il est
+ * en mission). Le mode test fonctionne dans tous les cas. Olivier 30/09/2026.
+ * (Ancien format : true = toujours actif.)
  */
-async function proposalsEnabled(sb: Sb): Promise<boolean> {
+export interface NightSwitch { on: boolean; night: string | null; by: string | null; byName: string | null; at: string | null; legacy?: boolean }
+
+export async function readNightSwitch(sb: Sb, nightKey: string | null): Promise<NightSwitch> {
   const { data } = await sb.from('app_settings').select('value').eq('key', 'market_proposals_actif').maybeSingle()
-  try { return JSON.parse(String(data?.value ?? 'false')) === true } catch { return false }
+  let v: any = null
+  try { v = JSON.parse(String(data?.value ?? 'null')) } catch { v = null }
+  if (v === true) return { on: true, night: nightKey, by: null, byName: null, at: null, legacy: true }
+  const night = v && typeof v === 'object' ? (v.night || null) : null
+  return { on: !!night && night === nightKey, night, by: v?.by || null, byName: v?.byName || null, at: v?.at || null }
+}
+
+async function proposalsEnabled(sb: Sb, nightKey: string): Promise<boolean> {
+  return (await readNightSwitch(sb, nightKey)).on
 }
 
 type Sb = ReturnType<typeof createAdminClient>
@@ -215,7 +228,7 @@ export async function startNightFlow(missionId: string): Promise<void> {
     ])
     if (prop?.length || notif?.length) return
 
-    if (!(await proposalsEnabled(sb))) { await infoOnlyFlow(sb, ctx, duty); return }
+    if (!(await proposalsEnabled(sb, duty.nightKey))) { await infoOnlyFlow(sb, ctx, duty); return }
 
     const drivers = await loadDrivers(sb, [duty.nightFirst])
     const first   = drivers.get(duty.nightFirst)
