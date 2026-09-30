@@ -1,0 +1,25 @@
+// src/app/api/cron/circlek-foreign-vat/route.ts
+//
+// Cron quotidien : complète les factures Circle K étrangères importées sans leur
+// TVA (non déductible, coût du carburant) et les lettre avec leur prélèvement.
+// Protégé par CRON_SECRET. Olivier 2026-09-30.
+
+import { NextResponse } from 'next/server'
+import { fixCircleKForeignVat } from '@/lib/finance/circlek-foreign-vat'
+
+export const dynamic     = 'force-dynamic'
+export const maxDuration = 120
+
+export async function GET(req: Request) {
+  const authHeader = req.headers.get('authorization')
+  if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  }
+  try {
+    const res = await fixCircleKForeignVat()
+    return NextResponse.json({ ok: true, ...res })
+  } catch (err: any) {
+    console.error('[cron circlek-foreign-vat] KO:', err?.message)
+    return NextResponse.json({ error: err?.message || 'Erreur' }, { status: 500 })
+  }
+}
