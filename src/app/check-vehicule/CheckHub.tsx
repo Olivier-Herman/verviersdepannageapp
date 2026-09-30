@@ -16,6 +16,11 @@ export default function CheckHub() {
         <span className="text-3xl">🔧</span>
         <span><span className="block text-lg font-bold">{t('truck_check.start')}</span><span className="block text-sm opacity-90">{t('truck_check.start_sub')}</span></span>
       </Link>
+      {d?.viewer && <Link href="/check-vehicule/anomalies" className="flex items-center gap-4 rounded-2xl border border-border bg-surface p-4 min-h-[64px]">
+        <span className="text-2xl">🛠️</span>
+        <span className="flex-1"><span className="block font-bold text-ink">Anomalies à traiter</span><span className="block text-sm text-ink-muted">Par camion, la plus grave en premier · « Corrigé » prévient le chauffeur</span></span>
+        {d.openCount > 0 && <span className="rounded-full bg-critical text-white text-sm font-bold px-3 py-1">{d.openCount}</span>}
+      </Link>}
       {d?.recent?.length > 0 && <section className="rounded-2xl border border-border bg-surface p-3">
         <p className="text-xs uppercase tracking-wide text-ink-muted mb-1">{t('truck_check.history')}</p>
         {d.recent.slice(0, d.viewer ? 15 : 6).map((c: any) => <Link key={c.id} href={`/check-vehicule/rapport/${c.id}`} className="flex items-center justify-between gap-2 min-h-[44px] border-b border-border last:border-0 text-sm">

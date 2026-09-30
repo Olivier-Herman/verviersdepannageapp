@@ -21,7 +21,7 @@ export default function RapportClient({ id }: { id: string }) {
   if (err) return <div className="p-6 text-critical">{err}</div>
   if (!d) return <div className="p-6 text-ink-muted">Chargement…</div>
   const c = d.check
-  const open = c.anomalies.filter((a: any) => !a.resolved_at).length
+  const open = c.anomalies.filter((a: any) => !a.resolved_at && a.level > 1).length
   return (
     <div className="max-w-3xl mx-auto p-4 flex flex-col gap-3 pb-20">
       <section className="rounded-2xl border border-border bg-surface p-4">
@@ -39,9 +39,9 @@ export default function RapportClient({ id }: { id: string }) {
       {c.anomalies.map((a: any) => { const l = CHECK_LEVELS.find(x => x.level === a.level)!
         return <section key={a.id} className={`rounded-2xl border bg-surface p-4 ${a.resolved_at ? 'border-border opacity-70' : a.level >= 4 ? 'border-critical' : 'border-border'}`}>
           <div className="flex flex-wrap items-start justify-between gap-2">
-            <div><div className="font-bold text-ink">{l.emoji} {a.title}</div><div className="text-xs text-ink-muted">{LEVEL_LABEL_FR[a.level]}{a.resolved_at ? ` · réglée le ${dt(a.resolved_at)}` : ''}</div></div>
-            {d.viewer && <button type="button" disabled={busy === a.id} onClick={() => resolve(a.id, !a.resolved_at)}
-              className={`min-h-[44px] rounded-xl px-3 text-sm font-semibold ${a.resolved_at ? 'border border-strong text-ink' : 'bg-success text-white'}`}>{a.resolved_at ? 'Rouvrir' : '✓ Anomalie réglée'}</button>}
+            <div><div className="font-bold text-ink">{l.emoji} {a.title}</div><div className="text-xs text-ink-muted">{LEVEL_LABEL_FR[a.level]}{a.level === 1 ? ' · pour information' : ''}{a.resolved_at ? ` · réparée le ${dt(a.resolved_at)}${a.resolution_note ? ` : ${a.resolution_note}` : ''}` : ''}</div></div>
+            {d.viewer && a.level > 1 && <button type="button" disabled={busy === a.id} onClick={() => resolve(a.id, !a.resolved_at)}
+              className={`min-h-[44px] rounded-xl px-3 text-sm font-semibold ${a.resolved_at ? 'border border-strong text-ink' : 'bg-success text-white'}`}>{a.resolved_at ? 'Rouvrir' : '✓ Corrigé (prévient le chauffeur)'}</button>}
           </div>
           {a.description && <p className="text-ink mt-2 whitespace-pre-wrap">{a.description}</p>}
           {a.photo_urls.length > 0 && <div className="flex flex-wrap gap-2 mt-3">{a.photo_urls.map((u: string) =>

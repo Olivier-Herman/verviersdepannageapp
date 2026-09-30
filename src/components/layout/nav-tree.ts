@@ -35,6 +35,8 @@ export interface NavSection {
   /** Modules dont AU MOINS UN est requis, en plus de `requires` (admin/superadmin passent
    *  toujours — même règle que les tuiles de la page concernée). */
   requiresModules?: string[]
+  /** Rôles dont AU MOINS UN est requis, en plus de `requires` (admin/superadmin passent toujours). */
+  requiresRoles?: string[]
   /** Réservé au superadmin, en plus de `requires`. */
   superadminOnly?: boolean
   /** Intertitre affiché au-dessus de cette section (regroupement visuel). */
@@ -129,7 +131,8 @@ export const NAV_TREE_ESPACES: NavModule[] = [
       { href: '/personnel/garde',             label: 'Configuration garde', icon: Settings,      requires: '/personnel' },
       { href: '/ma-paie',                     label: 'Mes prestations',    icon: ClipboardList,  requires: '/ma-paie' },
       { href: '/check-vehicule',              label: 'Check véhicule',     icon: ClipboardCheck, i18nKey: 'nav.check', requires: '/check-vehicule', heading: 'Véhicules' },
-      { href: '/check-vehicule/convocations', label: 'Convocations CT',    icon: CalendarClock,  requires: '/check-vehicule' },
+      { href: '/check-vehicule/anomalies',    label: 'Anomalies à traiter', icon: ListChecks,    requires: '/check-vehicule', requiresRoles: ['dispatcher'] },
+      { href: '/check-vehicule/convocations', label: 'Convocations CT',    icon: CalendarClock,  requires: '/check-vehicule', requiresModules: ['check_vehicle'] },
     ],
   },
   {
@@ -251,7 +254,8 @@ export const NAV_TREE: NavModule[] = [
     key: 'check-vehicule', label: 'Check Véhicule', i18nKey: 'nav.check', icon: '🔧',
     sections: [
       { href: '/check-vehicule',              label: 'Check Véhicule',  icon: ClipboardCheck, i18nKey: 'nav.check', requires: '/check-vehicule' },
-      { href: '/check-vehicule/convocations', label: 'Convocations CT', icon: CalendarClock,  requires: '/check-vehicule' },
+      { href: '/check-vehicule/anomalies',    label: 'Anomalies à traiter', icon: ListChecks,  requires: '/check-vehicule', requiresRoles: ['dispatcher'] },
+      { href: '/check-vehicule/convocations', label: 'Convocations CT', icon: CalendarClock,  requires: '/check-vehicule', requiresModules: ['check_vehicle'] },
     ],
   },
 ]
@@ -302,6 +306,7 @@ export function buildNavTree(visible: NavItem[], userRole: string, userModules: 
     const sections = (mod.sections || []).filter(s =>
       visibleHrefs.has(s.requires)
       && (!s.superadminOnly || isSuperadmin)
+      && (!s.requiresRoles || isAdmin || s.requiresRoles.includes(userRole))
       && (!s.hiddenWhenFlag || !flags[s.hiddenWhenFlag])
       && (!s.requiresModules || isAdmin || s.requiresModules.some(m => userModules.includes(m))),
     )

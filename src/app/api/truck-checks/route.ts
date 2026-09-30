@@ -5,6 +5,7 @@ import { NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase'
+import { openCount } from '@/lib/truck-checks/anomalies'
 import { isReportViewer, dispatchReport } from '@/lib/truck-checks/server'
 
 export const dynamic = 'force-dynamic'
@@ -26,7 +27,7 @@ export async function GET() {
   for (const r of last.data || []) if (r.truck_id && !lastKm[r.truck_id]) lastKm[r.truck_id] = { mileage: r.mileage, at: r.created_at, by: r.driver_name }
   return NextResponse.json({
     trucks: trucks.data || [], myTruckId: me.data?.current_truck_id || me.data?.default_truck_id || null,
-    lastKm, recent: recent.data || [], viewer,
+    lastKm, recent: recent.data || [], viewer, openCount: viewer ? await openCount(sb) : null,
   })
 }
 

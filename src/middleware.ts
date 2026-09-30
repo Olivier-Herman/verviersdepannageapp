@@ -82,7 +82,7 @@ export default withAuth(
     // Check camion (Olivier 30/09/2026) : tout le personnel peut faire un check et voir
     // ses rapports ; les contrôles planifiés (/check-vehicule/<id>, convocations)
     // restent réservés au module check_vehicle. La page d'accueil filtre elle-même.
-    if (path === '/check-vehicule' || path.startsWith('/check-vehicule/nouveau') || path.startsWith('/check-vehicule/rapport')) return NextResponse.next()
+    if (path === '/check-vehicule' || path.startsWith('/check-vehicule/nouveau') || path.startsWith('/check-vehicule/rapport') || path.startsWith('/check-vehicule/anomalies')) return NextResponse.next()
 
     const requiredModule = Object.entries(ROUTE_MODULE_MAP).find(([route]) =>
       path.startsWith(route)
