@@ -115,6 +115,7 @@ export default function DashboardClient({
   const isVisible = (id: string): boolean => {
     if (id === 'matthieu')       return userRole !== 'garage' && userRole !== 'partner'   // tout le personnel
     if (id === 'police_mission') return hasTowsoft
+    if (id === 'check_vehicle')  return userRole !== 'garage' && userRole !== 'partner'   // check camion : tout le personnel (30/09/2026)
     if (id === 'admin')          return isAdmin && userModules.includes('admin')
     if (id === 'gardiennage_arrivee') return isAdmin || userModules.includes('fourriere')
     if (id === 'encaissement')   return userModules.includes('encaissement')

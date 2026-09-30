@@ -13,7 +13,7 @@ export interface NavItem {
   i18nKey?: string             // Cle dans le dictionnaire i18n (cf src/lib/i18n/dictionaries) pour affichage bilingue en mode sq
   icon:     string
   moduleId: string | null
-  role?:    'dispatcher_or_admin' | 'superadmin' | 'superadmin_or_rh' | 'non_driver' | 'mail_agent'
+  role?:    'dispatcher_or_admin' | 'superadmin' | 'superadmin_or_rh' | 'non_driver' | 'mail_agent' | 'staff'
 }
 
 export const NAV_ITEMS: NavItem[] = [
@@ -58,7 +58,7 @@ export const NAV_ITEMS: NavItem[] = [
   // ceux qui ne sont pas pilotes.
   { href: '/taches',        label: 'Accident',  icon: '✅', moduleId: 'fourriere' },
   { href: '/francofolies',  label: 'Francofolies',     icon: '🎪', moduleId: 'francofolies' },
-  { href: '/check-vehicule',label: 'Check Véhicule',   i18nKey: 'nav.check',         icon: '🔧', moduleId: 'check_vehicle' },
+  { href: '/check-vehicule',label: 'Check Véhicule',   i18nKey: 'nav.check',         icon: '🔧', moduleId: null, role: 'staff' },  // tout le personnel (30/09/2026)
   { href: '/garde',         label: 'Garde',            icon: '🛡️', moduleId: null, role: 'dispatcher_or_admin' },
   { href: '/garage-info',   label: 'Garage Info',      icon: 'ℹ️', moduleId: null, role: 'non_driver' },
   { href: '/admin',         label: 'Administration',   icon: '⚙️', moduleId: 'admin' },
@@ -99,6 +99,7 @@ export function filterNavItems(opts: {
     if (item.role === 'mail_agent')          return isAdmin || roleList.includes('mail_agent')
     if (item.role === 'dispatcher_or_admin') return isDispatcher
     if (item.role === 'non_driver')          return userRole !== 'driver' && userRole !== 'garage'
+    if (item.role === 'staff')               return userRole !== 'garage' && userRole !== 'partner'
     if (item.moduleId === null) return true
     if (item.moduleId === 'admin') return isAdmin
     if (item.moduleId === 'finance') {

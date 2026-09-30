@@ -6,6 +6,7 @@ import { redirect } from 'next/navigation'
 import { createAdminClient } from '@/lib/supabase'
 import AppShell from '@/components/layout/AppShell'
 import CheckVehiculeClient from './CheckVehiculeClient'
+import CheckHub from './CheckHub'
 
 export default async function CheckVehiculePage() {
   const session = await getServerSession(authOptions)
@@ -25,7 +26,10 @@ export default async function CheckVehiculePage() {
       userName={session.user.name ?? ''}
       userModules={(userModulesDb || []).map(m => m.module_id)}
     >
-      <CheckVehiculeClient session={session} />
+      {/* Check camion : tout le personnel (Olivier 30/09/2026). Les contrôles
+          planifiés existants restent réservés au module check_vehicle. */}
+      <CheckHub />
+      {(['admin', 'superadmin'].includes((session.user as any).role) || (userModulesDb || []).some(m => m.module_id === 'check_vehicle')) && <CheckVehiculeClient session={session} />}
     </AppShell>
   )
 }

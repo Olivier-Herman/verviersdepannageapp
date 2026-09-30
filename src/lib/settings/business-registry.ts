@@ -36,6 +36,7 @@ export const BUSINESS_SETTINGS: BusinessSettingDef[] = [
   { key: 'mail_awp_avis_paiement',  label: 'Allianz — avis de paiement',                      group: 'Boîtes mail', kind: 'text', seed: 'accountancy.be@allianz.com' },
   { key: 'mail_awp_rejets',         label: 'Allianz — expéditeurs des rejets de facture',     group: 'Boîtes mail', kind: 'emails', seed: ['providers.invoices.be@allianz.com', 'claims.be@allianz.com', 'automotive.be@allianz.com', 'suppliers.be@allianz.com'] },
   { key: 'mail_ima_rejets',         label: 'IMA — expéditeurs des rejets de facture',         group: 'Boîtes mail', kind: 'emails', seed: ['facturation.prestataires@ima.eu', 'hub@imabenelux.com'] },
+  { key: 'check_camion_destinataires', label: 'Check camion — destinataires du rapport',   group: 'Boîtes mail', kind: 'emails', seed: ['info@verviersdepannage.com', 'administration@verviersdepannage.com'], help: 'Reçoivent chaque check camion envoyé par un chauffeur (Olivier 30/09/2026).' },
   { key: 'touring_check_cc',        label: 'Check Touring — copie du rappel mensuel',         group: 'Boîtes mail', kind: 'emails', seed: ['Andre.ANGELIQUE@touring.be'] },
   // ── Montants ────────────────────────────────────────────────────────────
   { key: 'forfait_parc_accident_tvac', label: 'Forfait gardiennage accident Ethias / Kaze (TVAC)', group: 'Montants', kind: 'number', seed: 220, help: 'Écrit en HTVA sur la fiche à la coche ; les anciens dossiers gardent le leur.' },
