@@ -13,6 +13,7 @@ export const NOTIFICATION_SOUNDS: Record<string, string> = {
   market_new_mission:           '/sounds/bell-notification.wav',
   market_claimed:               '/sounds/positive-notification.wav',
   market_proposal:              '/sounds/warning-alarm-buzzer.wav',
+  talkie_message:               '/sounds/bell-notification.wav',
   market_proposal_update:       '/sounds/positive-notification.wav',
 
   // Demande de dispo auto-dispatch (chauffeur C2+) — alarme urgente

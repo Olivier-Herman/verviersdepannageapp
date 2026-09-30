@@ -45,7 +45,8 @@ export default async function GardeNuitStatsPage({ searchParams }: { searchParam
           <h1 className="text-ink font-bold text-xl">🌙 Garde de nuit : statistiques</h1>
           <p className="text-ink-muted text-sm mt-1">Missions proposées la nuit au 1er départ puis à la réserve : réponses, délais, rappels, appels au client, passages au dispatch. Un résumé de la nuit est envoyé chaque matin à 10 h.</p>
         </div>
-        <div className="flex gap-1">
+        <div className="flex gap-1 flex-wrap">
+          {role === 'superadmin' && <Link href="/talkie" className="min-h-[40px] px-3 inline-flex items-center rounded-lg text-sm font-semibold border bg-surface text-ink border-slate-300 dark:border-slate-600">🎧 Écouter le talkie</Link>}
           {[7, 30, 90].map(d => (
             <Link key={d} href={`/admin/garde-nuit?j=${d}`} className={`min-h-[40px] px-3 inline-flex items-center rounded-lg text-sm font-semibold border ${d === days ? 'bg-brand text-white border-brand' : 'bg-surface text-ink border-slate-300 dark:border-slate-600'}`}>{d} jours</Link>
           ))}

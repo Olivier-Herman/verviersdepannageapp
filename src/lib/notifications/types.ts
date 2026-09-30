@@ -427,6 +427,16 @@ export const NOTIFICATION_TYPES: readonly NotificationType[] = [
     defaultEnabled:  true,
   },
   {
+    // Talkie « Garde de nuit » (Olivier 30/09/2026) : message reçu alors que le talkie
+    // n'était pas ouvert. Cf /talkie et /api/talkie/messages.
+    key:             'talkie_message',
+    label:           'Talkie : message de la garde de nuit',
+    description:     'L’autre chauffeur de garde t’a parlé sur le talkie alors qu’il n’était pas ouvert.',
+    category:        'driver',
+    applicableRoles: ['driver'],
+    defaultEnabled:  true,
+  },
+  {
     key:             'reserve_notif_toggled',
     label:           'Réserve : notif de nuit désactivée / réactivée',
     description:     'Le chauffeur de réserve a coupé (ou remis) sa notif des missions libres pour la nuit.',
