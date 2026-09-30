@@ -299,7 +299,9 @@ export async function buildAdviceReport(
     for (const x of resolved) {
       if (x.neutralisee || x.unallocated) continue   // réglée puis reprise, ou passée en OD
       if (x.issue === 'introuvable') blocking.push(`Aucune facture pour la référence ${x.ref}`)
-      if (x.issue === 'reprise')     blocking.push(`${x.invoiceName} : l'assureur reprend ${Math.abs(x.amount).toFixed(2)} € d'une facture déjà réglée${x.creditNote ? ` — note de crédit ${x.creditNote.name} (${x.creditNote.state === 'posted' ? 'validée' : 'brouillon'})` : ' — note de crédit à créer, ou à contester'}`)
+      // Une reprise rouvre la facture : le client s'est remboursé, elle redevient
+      // due (Olivier 11/09 puis 29/09/2026). Pas de note de crédit.
+      if (x.issue === 'reprise')     blocking.push(`${x.invoiceName} : l'assureur reprend ${Math.abs(x.amount).toFixed(2)} € d'une facture déjà réglée — « Rouvrir la facture » pour qu'elle redevienne due`)
       if (x.issue === 'écart')       blocking.push(`${x.invoiceName} : ${x.amount.toFixed(2)} € annoncés pour une facture de ${(x.invoiceTotal ?? 0).toFixed(2)} €${x.residual != null && Math.abs((x.residual ?? 0) - (x.invoiceTotal ?? 0)) >= 0.02 ? ` (solde restant dû ${(x.residual ?? 0).toFixed(2)} €)` : ''}`)
       if (x.issue === 'déjà soldée') blocking.push(`${x.invoiceName} est déjà soldée dans Odoo`)
     }

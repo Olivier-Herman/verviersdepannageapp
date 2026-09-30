@@ -700,8 +700,11 @@ export async function attachFileToOrder(
 
 /** Poste une note dans le chatter d'un objet Odoo (sale.order, account.move…). */
 export async function postChatterMessage(model: string, resId: number, htmlBody: string): Promise<void> {
+  // body_is_html : sans lui, Odoo 19 échappe le corps reçu par RPC et la note
+  // s'affiche avec ses balises en clair (« <p><b>… »). 29/09/2026.
   await rpc(model, 'message_post', [[resId]], {
     body:         htmlBody,
+    body_is_html: true,
     message_type: 'comment',
     subtype_id:   2,
   })
