@@ -1,6 +1,7 @@
 // src/lib/talkie/notify.ts — notif talkie (Olivier 30/09/2026) : aux membres du canal
-// qui n'ont pas l'app à l'écran ; au plus une toutes les 2 min par personne (une
-// conversation ne doit pas déclencher une rafale de notifs).
+// qui n'ont pas l'app à l'écran ; au plus une toutes les 2 min par personne QUI PARLE
+// (Olivier 30/09/2026 : si Franck puis Fred parlent, on est prévenu pour chacun ; mais
+// quelqu'un qui enchaîne plusieurs messages ne déclenche pas une rafale).
 // « À l'écran » = signal de présence reçu il y a moins de 25 s (table talkie_presence,
 // alimentée toutes les 10 s par l'app visible). La liste « connectés » envoyée par le
 // téléphone n'est plus utilisée : sur iPhone, elle restait fausse en arrière-plan.
@@ -20,12 +21,14 @@ export async function notifyTalkie(t: { access: TalkieAccess; ch: TalkieChannel 
   const onScreen = new Set((seen || []).map((x: any) => x.user_id))
   let sent = 0
   for (const m of others.filter(x => !onScreen.has(x.id))) {
-    const { data: recent } = await sb.from('notifications_log').select('id').eq('user_id', m.id).eq('notif_type', 'talkie_message').gte('created_at', since).limit(1)
+    const { data: recent } = await sb.from('notifications_log').select('id').eq('user_id', m.id).eq('notif_type', 'talkie_message')
+      .eq('payload->data->>sender_id', me.id).gte('created_at', since).limit(1)
     if (recent?.length) continue
     await sendNotification(m.id, 'talkie_message', {
       title: `📻 ${me.name} ${when === 'start' ? 'parle en ce moment' : 'a parlé'}${t.ch.kind === 'garde' ? ' sur « Garde de nuit »' : ' sur le talkie'}`,
       body:  when === 'start' ? 'Ouvre l’app pour l’entendre en direct.' : `Message de ${secs || 1} s. Ouvre le talkie pour l’écouter.`,
       action_url: `/talkie?c=${encodeURIComponent(t.ch.key)}`,
+      data:       { sender_id: me.id, channel: t.ch.key },
     }).then(() => { sent++ }, () => {})
   }
   return sent
