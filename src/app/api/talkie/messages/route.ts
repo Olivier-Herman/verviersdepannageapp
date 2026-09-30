@@ -1,14 +1,14 @@
 // /api/talkie/messages — enregistrements du talkie (Olivier 30/09/2026)
 // GET  ?key=garde|direct:<id> → derniers messages du canal (liens d'écoute temporaires)
 // POST (formulaire : key, audio WAV, durationMs, online = ids connectés) → enregistre
-//      la prise de parole ; notif « X te parle sur le talkie » aux membres du canal
-//      qui n'avaient pas le talkie ouvert.
+//      la prise de parole ; notif aux membres qui n'ont pas l'app à l'écran, s'ils
+//      n'ont pas déjà été prévenus au début (lib/talkie/notify.ts).
 import { NextResponse }      from 'next/server'
 import { getServerSession }  from 'next-auth'
 import { authOptions }       from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase'
 import { talkieChannel }     from '@/lib/talkie/session'
-import { sendNotification }  from '@/lib/notifications/send'
+import { notifyTalkie }      from '@/lib/talkie/notify'
 
 export const dynamic = 'force-dynamic'
 
@@ -50,13 +50,7 @@ export async function POST(req: Request) {
   const { error } = await sb.storage.from('talkie').upload(path, Buffer.from(await file.arrayBuffer()), { contentType: 'audio/wav', upsert: false })
   if (error) return NextResponse.json({ error: `Enregistrement impossible : ${error.message}` }, { status: 500 })
   const { data: row } = await sb.from('talkie_messages').insert({ night_key: nightKey, channel_key: key, sender_id: me.id, duration_ms: durationMs, storage_path: path }).select('id').single()
-  const secs = Math.max(1, Math.round(durationMs / 1000))
-  for (const m of t.ch.members.filter(x => x.id !== me.id && !online.has(x.id))) {
-    await sendNotification(m.id, 'talkie_message', {
-      title: `📻 ${me.name} ${t.ch.kind === 'garde' ? 'parle sur « Garde de nuit »' : 'te parle sur le talkie'}`,
-      body:  `Message de ${secs} s. Ouvre le talkie pour l’écouter.`,
-      action_url: `/talkie?c=${encodeURIComponent(key)}`,
-    }).catch(() => {})
-  }
+  // Notif si pas déjà prévenu au début de la prise de parole (au plus une toutes les 2 min).
+  await notifyTalkie(t, online, 'end', Math.max(1, Math.round(durationMs / 1000)))
   return NextResponse.json({ ok: true, id: row?.id })
 }

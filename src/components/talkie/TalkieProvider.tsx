@@ -12,7 +12,12 @@
 //    envoie le son dans l'écouteur au lieu du haut-parleur).
 //  - Le son ne peut démarrer qu'après un geste : le premier toucher dans l'app active
 //    l'audio (sinon le bandeau propose « Toucher pour entendre »).
-//  - Présence : « connecté » = app ouverte → pas de notif pour lui, il entend en direct.
+//  - Présence : « connecté » = app ouverte À L'ÉCRAN → pas de notif pour lui, il entend
+//    en direct. App en arrière-plan : on se retire tout de suite de la présence (sinon
+//    l'iPhone garde la connexion et personne ne reçoit de notif — constaté le 30/09).
+//  - Haut-parleur : l'API « audio session » de WebKit — « playback » (haut-parleur)
+//    en écoute, « play-and-record » seulement pendant l'appui ; sans elle, après une
+//    prise de parole l'iPhone restait sur l'écouteur.
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
 import { useSession } from 'next-auth/react'
@@ -42,6 +47,11 @@ interface TalkieCtx {
 
 const Ctx = createContext<TalkieCtx | null>(null)
 export const useTalkie = () => useContext(Ctx)
+
+/** Sortie audio iPhone : 'playback' = haut-parleur, 'play-and-record' = micro ouvert. */
+function audioSession(type: 'playback' | 'play-and-record') {
+  try { const a = (navigator as any).audioSession; if (a && a.type !== type) a.type = type } catch { /* navigateur sans cette API */ }
+}
 
 const PUBLIC = [/^\/site/, /^\/login/, /^\/garage/, /^\/caisse\/ecran/, /^\/expert/]
 
@@ -88,6 +98,7 @@ export default function TalkieProvider({ children }: { children: React.ReactNode
   // ── Audio : le premier toucher dans l'app l'active ──
   const enableAudio = useCallback(async () => {
     try {
+      if (!talkRef.current) audioSession('playback')
       if (!ctxRef.current) {
         const C = (window as any).AudioContext || (window as any).webkitAudioContext
         ctxRef.current = new C()
@@ -121,6 +132,7 @@ export default function TalkieProvider({ children }: { children: React.ReactNode
     clearTimeout(t.timer)
     try { t.proc?.disconnect(); t.src?.disconnect() } catch { /* déjà débranché */ }
     t.stream?.getTracks().forEach(tr => tr.stop())
+    setTimeout(() => { if (!talkRef.current) audioSession('playback') }, 150)   // retour au haut-parleur
     const ch = chansRef.current.get(t.key)
     const myId = meRef.current?.id
     ch?.send({ type: 'broadcast', event: 'end', payload: { id: myId } })
@@ -156,6 +168,7 @@ export default function TalkieProvider({ children }: { children: React.ReactNode
         setFloorFor(c.key, { id: payload.id, name: payload.name })
         nextRef.current.set(c.key, 0)
         setLastActivity({ key: c.key, id: payload.id, name: payload.name, at: Date.now() })
+        if (!talkRef.current) audioSession('playback')
         beep(880)
       })
       ch.on('broadcast', { event: 'a' }, ({ payload }: any) => {
@@ -173,15 +186,27 @@ export default function TalkieProvider({ children }: { children: React.ReactNode
         beep(660, 70)
         setTimeout(() => setMsgsVersion(v => v + 1), 2500)
       })
-      ch.subscribe(async (s: string) => { if (s === 'SUBSCRIBED') await ch.track({ id: myId, name: myName }) })
+      ch.subscribe(async (s: string) => { if (s === 'SUBSCRIBED' && document.visibilityState === 'visible') await ch.track({ id: myId, name: myName }) })
       subs.push(ch)
     }
+    // App en arrière-plan → plus « connecté » (les autres m'envoient une notif) ;
+    // retour à l'écran → de nouveau connecté, et le son est relancé.
+    const onVis = () => {
+      const visible = document.visibilityState === 'visible'
+      for (const ch of subs) { try { visible ? ch.track({ id: myId, name: myName }) : ch.untrack() } catch { /* canal en reconnexion */ } }
+      if (visible && ctxRef.current) ctxRef.current.resume().then(() => setAudioOn(ctxRef.current?.state === 'running')).catch(() => {})
+      if (!visible && talkRef.current) stopTalking(true)
+    }
+    document.addEventListener('visibilitychange', onVis)
+    window.addEventListener('pagehide', onVis)
     // Parole « coincée » (fin perdue) : libérée au bout de 4 s sans son.
     const guard = setInterval(() => {
       for (const [k, f] of floorRef.current) if (f.id !== myId && Date.now() - f.last > 4000) { floorRef.current.delete(k); setFloorFor(k, null) }
     }, 1000)
     return () => {
       clearInterval(guard)
+      document.removeEventListener('visibilitychange', onVis)
+      window.removeEventListener('pagehide', onVis)
       if (talkRef.current) stopTalking(true)
       for (const ch of subs) sb.removeChannel(ch)
       chansRef.current.clear(); floorRef.current.clear(); onlineRef.current = {}
@@ -207,9 +232,12 @@ export default function TalkieProvider({ children }: { children: React.ReactNode
     setFloorFor(key, { id: myId, name: myName || '' })
     ch.send({ type: 'broadcast', event: 'start', payload: { id: myId, name: myName, ts } })
     beep(1200, 70)
+    audioSession('play-and-record')
+    // Prévenir tout de suite ceux qui n'ont pas l'app à l'écran (« X parle en ce moment »).
+    fetch('/api/talkie/ping', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ key, online: (onlineRef.current[key] || []).map(p => p.id) }) }).catch(() => {})
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } })
-      if (talkRef.current !== state) { stream.getTracks().forEach(tr => tr.stop()); return }   // relâché avant l'ouverture du micro
+      if (talkRef.current !== state) { stream.getTracks().forEach(tr => tr.stop()); audioSession('playback'); return }   // relâché avant l'ouverture du micro
       const src = ctx.createMediaStreamSource(stream)
       const proc = ctx.createScriptProcessor(4096, 1, 1)
       proc.onaudioprocess = (e) => {
