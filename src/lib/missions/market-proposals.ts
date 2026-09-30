@@ -94,12 +94,14 @@ function available(d: Driver | undefined | null): boolean {
 
 async function missionCtx(sb: Sb, missionId: string): Promise<(MissionCtx & { status: string; assigned_to: string | null; received_at: string | null }) | null> {
   const { data: m } = await sb.from('incoming_missions')
-    .select('id, mission_number, status, assigned_to, source, received_at, mission_type, vehicle_brand, vehicle_model, vehicle_plate, incident_city, incident_address')
+    .select('id, mission_number, status, assigned_to, source, received_at, mission_type, vehicle_brand, vehicle_model, vehicle_plate, incident_city, incident_address, touring_missing_since')
     .eq('id', missionId).maybeSingle()
   if (!m) return null
   const source = (m.source || '').toUpperCase()
+  // Absente de COMEX (Touring l'a retirée ou refusée) : plus proposable tant qu'elle n'y revient pas.
+  const masked = !!m.touring_missing_since && ['new', 'dispatching'].includes(m.status)
   return {
-    id: m.id, number: m.mission_number ?? null, source, status: m.status, assigned_to: m.assigned_to, received_at: m.received_at,
+    id: m.id, number: m.mission_number ?? null, source, status: masked ? 'masked' : m.status, assigned_to: m.assigned_to, received_at: m.received_at,
     type:    TYPE_LABEL[(m.mission_type || '').toLowerCase().trim()] || '📋 Mission',
     vehicle: [m.vehicle_brand, m.vehicle_model, m.vehicle_plate].filter(Boolean).join(' '),
     place:   m.incident_city || m.incident_address || '',

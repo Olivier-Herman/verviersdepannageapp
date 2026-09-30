@@ -84,16 +84,16 @@ export async function runTouringCancelDetect(sb: any): Promise<CancelDetectSumma
     }
 
     // Absente des listes COMEX.
-    // Pas encore acceptée (Olivier 30/09/2026) : « dès que la mission n'est plus dans
-    // COMEX elle doit disparaître de VD Soft » — sinon un chauffeur peut la prendre
-    // dans Momo Market. On tranche au premier passage (poll chaque minute).
-    const unaccepted = ['new', 'dispatching'].includes(String(f.status)) && !f.touring_onroad_at
-    if (!f.touring_missing_since && !unaccepted) {          // 1re détection → on démarre le chrono
+    // Mission pas encore acceptée (Olivier 30/09/2026) : dès la 1re absence elle est
+    // MASQUÉE du dispatch et de Momo Market (touring_missing_since posé, cf. filtres
+    // de /api/missions/list et market-proposals) ; si elle revient dans COMEX au passage
+    // suivant, elle réapparaît ; absente 14 min d'affilée → annulée sans frais.
+    if (!f.touring_missing_since) {                         // 1re détection → masquée + chrono
       await sb.from('incoming_missions').update({ touring_missing_since: new Date().toISOString() }).eq('id', f.id)
       out.missingNew++
       continue
     }
-    if (!unaccepted && now - Date.parse(f.touring_missing_since) < CONFIRM_MIN * 60000) continue   // fenêtre pas écoulée
+    if (now - Date.parse(f.touring_missing_since) < CONFIRM_MIN * 60000) continue   // fenêtre pas écoulée
 
     // ── UNE MISSION FAITE NE DEVIENT PAS UN TRAJET À VIDE ───────────────────
     // « On ne peut pas arriver à un trajet à vide si le chauffeur a déjà déposé

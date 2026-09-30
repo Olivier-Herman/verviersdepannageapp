@@ -81,6 +81,9 @@ export async function GET(req: Request) {
   // Fiches gardiennage (Vue dossier, étape 1 « miroir ») : jamais dans les
   // listes dispatch tant que les modules n'ont pas basculé. Olivier 07/09/2026.
   query = query.eq('dossier_leg', false)
+  // Mission Touring pas encore acceptée et absente de COMEX : masquée tant qu'elle
+  // n'y revient pas (annulée après 14 min). Olivier 30/09/2026, cf. touring/cancel-detect.
+  query = query.or('touring_missing_since.is.null,status.not.in.(new,dispatching)')
   if (!estSuperadmin) query = query.not('vehicle_plate', 'ilike', 'TEST')
 
   // Seuil RDV : au-delà de +12h, une intervention planifiée va dans l'onglet RDV.
@@ -320,6 +323,7 @@ export async function GET(req: Request) {
       .not('external_id', 'like', 'PROCESSING_%')
       .not('external_id', 'like', 'UNKNOWN_SENDER_%')
       .or('parse_confidence.is.null,parse_confidence.gte.0.3,assigned_to.not.is.null')
+      .or('touring_missing_since.is.null,status.not.in.(new,dispatching)')   // masquées : absentes de COMEX
       .is('archived_at', null)
     return apply(q)
   }
