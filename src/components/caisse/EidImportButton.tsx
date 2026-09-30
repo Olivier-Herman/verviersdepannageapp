@@ -76,6 +76,23 @@ export default function EidImportButton({
     }
   }
 
+  // Filet de sécurité (Olivier 30/09/2026 : réponse arrivée 43 s après l'envoi) :
+  // le temps réel peut tarder ou se perdre ; pendant l'attente, on relit aussi
+  // l'état de l'écran toutes les 2 s. La première des deux voies qui voit la
+  // réponse l'emporte (handleResponse vide reqIdRef, la seconde est ignorée).
+  useEffect(() => {
+    if (status !== 'waiting') return
+    const started = Date.now()
+    const t = setInterval(async () => {
+      if (!reqIdRef.current || Date.now() - started > 10 * 60_000) { clearInterval(t); return }
+      try {
+        const j = await (await fetch(`/api/caisse/ecran?key=${encodeURIComponent(screenKey)}`, { cache: 'no-store' })).json()
+        if (j?.response?.request_id && j.response.request_id === reqIdRef.current) handleResponse({ response: j.response })
+      } catch { /* réseau : on réessaie au tour suivant */ }
+    }, 2000)
+    return () => clearInterval(t)
+  }, [status, screenKey]) // eslint-disable-line react-hooks/exhaustive-deps
+
   const listen = () => {
     if (chanRef.current) sb.removeChannel(chanRef.current)
     chanRef.current = sb.channel('eid-import-' + screenKey)
