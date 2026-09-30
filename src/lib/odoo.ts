@@ -270,6 +270,60 @@ function invertName(name: string): string {
   return [...parts.slice(1), parts[0]].join(' ')
 }
 
+
+// ── Recherche d'un contact existant (Olivier 30/09/2026, 2DAG453) ───────────
+// Un téléphone incomplet (« 046 ») ou un bout de nom attrapaient le premier
+// contact venu : facture émise au nom d'un inconnu. Désormais :
+//  · téléphone : au moins 9 chiffres, et numéro IDENTIQUE une fois normalisé ;
+//  · nom : nom entier (ordre libre), jamais un morceau ;
+//  · particulier (sans TVA) trouvé par e-mail ou téléphone : repris seulement si
+//    le nom concorde aussi — sinon on crée un nouveau contact.
+export function phoneDigits(p?: string | null): string {
+  let d = String(p || '').replace(/\D/g, '')
+  if (d.startsWith('0032')) d = '0' + d.slice(4)
+  else if (d.startsWith('32') && d.length >= 11) d = '0' + d.slice(2)
+  return d
+}
+function nameTokens(n?: string | null): string[] {
+  return String(n || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().split(/[^a-z0-9]+/).filter(t => t.length >= 2)
+}
+/** Même personne : tous les mots du nom le plus court se retrouvent dans l'autre (ordre libre). */
+export function samePersonName(a?: string | null, b?: string | null): boolean {
+  const ta = nameTokens(a), tb = nameTokens(b)
+  if (!ta.length || !tb.length) return false
+  const [short, long] = ta.length <= tb.length ? [ta, new Set(tb)] : [tb, new Set(ta)]
+  return short.every(t => long.has(t))
+}
+
+const PARTNER_FIELDS = ['id', 'name', 'vat', 'phone', 'email', 'street', 'zip', 'city', 'country_id']
+
+export async function findPartnerMatch(data: { name?: string; phone?: string; email?: string; vat?: string }): Promise<{ partner: any; by: string } | null> {
+  const person = !data.vat
+  const nameOk = (p: any) => !person || !data.name || samePersonName(p.name, data.name)
+  if (data.vat) {
+    const r = await rpc<any[]>('res.partner', 'search_read', [[['vat', '=', data.vat.toUpperCase()]]], { fields: PARTNER_FIELDS, limit: 1 })
+    if (r.length) return { partner: r[0], by: 'TVA' }
+  }
+  if (data.email && /@/.test(data.email)) {
+    const r = await rpc<any[]>('res.partner', 'search_read', [[['email', '=ilike', data.email.trim()]]], { fields: PARTNER_FIELDS, limit: 10 })
+    const hit = r.find(nameOk)
+    if (hit) return { partner: hit, by: 'e-mail' }
+  }
+  const digits = phoneDigits(data.phone)
+  if (digits.length >= 9) {
+    const r = await rpc<any[]>('res.partner', 'search_read', [[['phone', 'like', digits.slice(-8)]]], { fields: PARTNER_FIELDS, limit: 20 })
+    const hit = r.find(p => phoneDigits(p.phone) === digits && nameOk(p))
+    if (hit) return { partner: hit, by: 'téléphone' }
+  }
+  if (data.name && nameTokens(data.name).length) {
+    for (const n of [data.name, invertName(data.name)]) {
+      const r = await rpc<any[]>('res.partner', 'search_read', [[['name', '=ilike', n.trim()]]], { fields: PARTNER_FIELDS, limit: 1 })
+      if (r.length) return { partner: r[0], by: 'nom' }
+    }
+  }
+  return null
+}
+
 export async function findOrCreatePartner(data: {
   name?: string
   phone?: string
@@ -282,52 +336,11 @@ export async function findOrCreatePartner(data: {
 }): Promise<number> {
   const countryId = await getCountryId(data.countryCode || 'BE')
 
-  // 1. Par TVA
-  if (data.vat) {
-    const r = await rpc<any[]>('res.partner', 'search_read',
-      [[['vat', '=', data.vat.toUpperCase()]]], { fields: ['id', 'name', 'street', 'phone', 'email'], limit: 1 })
-    if (r.length > 0) {
-      console.log(`[Odoo] Partner by TVA: ${r[0].name}`)
-      await updatePartnerIfMissing(r[0].id, r[0], data)
-      return r[0].id
-    }
-  }
-
-  // 2. Par email
-  if (data.email) {
-    const r = await rpc<any[]>('res.partner', 'search_read',
-      [[['email', '=', data.email.toLowerCase()]]], { fields: ['id', 'name', 'street', 'phone', 'email'], limit: 1 })
-    if (r.length > 0) {
-      console.log(`[Odoo] Partner by email: ${r[0].name}`)
-      await updatePartnerIfMissing(r[0].id, r[0], data)
-      return r[0].id
-    }
-  }
-
-  // 3. Par téléphone
-  if (data.phone) {
-    const clean = data.phone.replace(/\s/g, '')
-    const r = await rpc<any[]>('res.partner', 'search_read',
-      [[['phone', 'like', clean]]], { fields: ['id', 'name', 'street', 'phone', 'email'], limit: 1 })
-    if (r.length > 0) {
-      console.log(`[Odoo] Partner by phone: ${r[0].name}`)
-      await updatePartnerIfMissing(r[0].id, r[0], data)
-      return r[0].id
-    }
-  }
-
-  // 4. Par nom + nom inversé
-  if (data.name) {
-    const inverted = invertName(data.name)
-    for (const n of [data.name, inverted]) {
-      const r = await rpc<any[]>('res.partner', 'search_read',
-        [[['name', 'ilike', n]]], { fields: ['id', 'name', 'street', 'phone', 'email'], limit: 1 })
-      if (r.length > 0) {
-        console.log(`[Odoo] Partner by name "${n}": ${r[0].name}`)
-        await updatePartnerIfMissing(r[0].id, r[0], data)
-        return r[0].id
-      }
-    }
+  const found = await findPartnerMatch(data)
+  if (found) {
+    console.log(`[Odoo] Partner par ${found.by} : ${found.partner.name}`)
+    await updatePartnerIfMissing(found.partner.id, found.partner, data)
+    return found.partner.id
   }
 
   // 5. Créer
