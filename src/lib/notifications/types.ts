@@ -408,6 +408,14 @@ export const NOTIFICATION_TYPES: readonly NotificationType[] = [
     applicableRoles: ['driver', 'dispatcher', 'admin', 'superadmin'],
     defaultEnabled:  true,
   },
+  {
+    key:             'reserve_notif_toggled',
+    label:           'Réserve : notif de nuit désactivée / réactivée',
+    description:     'Le chauffeur de réserve a coupé (ou remis) sa notif des missions libres pour la nuit.',
+    category:        'dispatcher',
+    applicableRoles: ['dispatcher', 'admin', 'superadmin'],
+    defaultEnabled:  true,
+  },
 ] as const
 
 export const NOTIFICATION_CATEGORY_LABELS: Record<NotificationCategory, string> = {

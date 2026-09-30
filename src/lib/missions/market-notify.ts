@@ -3,9 +3,9 @@
 // Notif « Nouvelle mission dans Momo Market » la nuit (idée de Franck, Olivier 30/09/2026).
 //  - Le 1er départ de la nuit (planning de garde) est prévenu de toute mission libre.
 //  - La réserve (garde de la semaine = 2e départ) est prévenue seulement si le 1er
-//    départ est en mission à ce moment (attribuée compte comme en mission), ET
-//    seulement si elle a ACTIVÉ le toggle « market_reserve » du dashboard (coupé
-//    par défaut).
+//    départ est en mission à ce moment (attribuée compte comme en mission), et
+//    si elle n'a pas coupé sa notif pour la nuit (toggle du dashboard, actif par
+//    défaut et réactivé chaque soir à 18 h ; coupure = alerte aux dispatchers).
 //  - Dès qu'un chauffeur prend la mission, les autres chauffeurs prévenus et le
 //    dispatcher de garde reçoivent « X a pris la mission ».
 //  - Plage = horaires de nuit du planning de garde (18:00 → 08:00 par défaut).
@@ -33,11 +33,19 @@ function brusselsNow(now = new Date()): { dateIso: string; minutes: number } {
   return { dateIso: `${parts.year}-${parts.month}-${parts.day}`, minutes: Number(parts.hour) * 60 + Number(parts.minute) }
 }
 
+export interface GardeNight {
+  nightKey:   string          // date (YYYY-MM-DD) du soir où la nuit commence
+  inNight:    boolean         // maintenant dans la plage de nuit (18:00 → 08:00 par défaut)
+  nightFirst: string | null   // 1er départ de cette nuit
+  reserve:    string | null   // réserve = garde de la semaine (2e départ)
+}
+
 /**
- * Qui est de garde de nuit MAINTENANT : { nightFirst, reserve } ou null hors plage
- * de nuit. Après minuit, c'est la nuit commencée la veille qui compte.
+ * La nuit « courante » : entre minuit et la fin de nuit, c'est celle commencée la
+ * veille ; le reste du temps, celle de ce soir (une réserve qui coupe sa notif à
+ * 15 h la coupe pour la nuit qui vient).
  */
-export async function nightDutyNow(sb = createAdminClient(), now = new Date()): Promise<{ nightFirst: string | null; reserve: string | null } | null> {
+export async function gardeNight(sb = createAdminClient(), now = new Date()): Promise<GardeNight | null> {
   const { data: row } = await sb.from('app_settings').select('value').eq('key', 'garde_config').maybeSingle()
   if (!row?.value) return null
   let cfg: GardeConfig
@@ -47,16 +55,27 @@ export async function nightDutyNow(sb = createAdminClient(), now = new Date()): 
   const start = toMin(cfg.night_start || GARDE_HOURS_DEFAULT.night_start)
   const end   = toMin(cfg.night_end   || GARDE_HOURS_DEFAULT.night_end)
   const { dateIso, minutes } = brusselsNow(now)
-  const evening = minutes >= start
-  const morning = minutes < end
-  if (!evening && !morning) return null
-
   const [y, m, d] = dateIso.split('-').map(Number)
   const day = new Date(y, m - 1, d)
-  if (!evening) day.setDate(day.getDate() - 1)   // entre minuit et la fin de nuit → nuit de la veille
+  if (minutes < end) day.setDate(day.getDate() - 1)   // entre minuit et la fin de nuit → nuit de la veille
   const plan = computeGardePlan(cfg, day, day)[0]
   if (!plan) return null
-  return { nightFirst: plan.night_first, reserve: plan.weekly_garde }
+  return { nightKey: plan.date, inNight: minutes >= start || minutes < end, nightFirst: plan.night_first, reserve: plan.weekly_garde }
+}
+
+/** Qui est de garde de nuit MAINTENANT, ou null hors plage de nuit. */
+export async function nightDutyNow(sb = createAdminClient(), now = new Date()): Promise<GardeNight | null> {
+  const n = await gardeNight(sb, now)
+  return n?.inNight ? n : null
+}
+
+/**
+ * Notif de nuit de la réserve : ACTIVE par défaut, réactivée chaque soir. La
+ * réserve peut la couper pour la nuit courante (notif_preferences.market_reserve_off_night
+ * = nightKey) ; à 18 h c'est une nouvelle nuit → de nouveau active (Olivier 30/09/2026).
+ */
+export function reserveNotifOn(prefs: Record<string, unknown> | null | undefined, nightKey: string): boolean {
+  return (prefs || {}).market_reserve_off_night !== nightKey
 }
 
 const TYPE_LABEL: Record<string, string> = {
@@ -132,7 +151,7 @@ export async function notifyMarketNewMission(missionId: string): Promise<void> {
     }
 
     // Congé en cours, « Hors ligne » manuel ou notifs chauffeur coupées → pas de notif ;
-    // réserve : uniquement si elle a activé le toggle « market_reserve ».
+    // réserve : sauf si elle a coupé sa notif pour cette nuit (toggle du dashboard).
     const todayBxl = brusselsNow().dateIso
     const [{ data: users }, { data: leaves }] = await Promise.all([
       sb.from('users').select('id, active, manual_offline, notif_preferences').in('id', recipients),
@@ -143,7 +162,7 @@ export async function notifyMarketNewMission(missionId: string): Promise<void> {
     const targets = (users || []).filter((u: any) => {
       const pref = (u.notif_preferences || {}) as Record<string, unknown>
       if (!u.active || u.manual_offline === true || onLeave.has(u.id) || pref.role_driver === false) return false
-      if (u.id === duty.reserve && u.id !== duty.nightFirst && pref.market_reserve !== true) return false
+      if (u.id === duty.reserve && u.id !== duty.nightFirst && !reserveNotifOn(pref, duty.nightKey)) return false
       return true
     }).map((u: any) => u.id as string)
     if (!targets.length) return
