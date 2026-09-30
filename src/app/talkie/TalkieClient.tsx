@@ -42,7 +42,7 @@ export default function TalkieClient({ me, channels: initialChannels, initialKey
       <div>
         <h1 className="text-ink font-bold text-xl">📻 Talkie</h1>
         <p className="text-ink-muted text-sm mt-1">
-          {current.kind === 'garde' ? `Garde de nuit : ${current.members.map(m => m.name).join(' et ')}.` : `Canal direct ${current.members[0]?.id === me.id ? `vers ${current.label}` : `avec ${current.label}`}.`}
+          {current.kind === 'garde' ? `Garde de nuit : ${current.members.map(m => m.name).join(', ')}.` : `Canal direct ${current.members[0]?.id === me.id ? `vers ${current.label}` : `avec ${current.label}`}.`}
           {' '}Tu entends aussi le talkie sur les autres pages de l’app.
         </p>
       </div>

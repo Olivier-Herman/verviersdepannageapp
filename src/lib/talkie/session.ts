@@ -58,7 +58,10 @@ export async function talkieAccess(user: { id?: string; role?: string; roles?: s
   // Garde de nuit
   if (nightKey && gardeIds.length && (iAmGarde || isIt)) {   // seul Mobi / IT hors chauffeurs de garde (Olivier)
     const { data: g } = await sb.from('users').select('id, name').in('id', gardeIds)
-    const members = [...new Set(gardeIds)].map(id => ({ id, name: (g || []).find((x: any) => x.id === id)?.name || '—' }))
+    // Membres = les deux chauffeurs de garde + Mobi / IT : tous reçoivent les notifs
+    // quand ils n'ont pas l'app à l'écran (Mobi n'était pas prévenu — Olivier 30/09).
+    const members = [...gardeIds.map(id => ({ id, name: (g || []).find((x: any) => x.id === id)?.name || '—' })),
+      ...dir.filter(d => !gardeIds.includes(d.id))]
     channels.push({ key: 'garde', kind: 'garde', label: 'Garde de nuit', channel: secretName('garde', nightKey), members })
   }
 
