@@ -187,7 +187,7 @@ async function escalateToReserve(sb: Sb, ctx: MissionCtx, duty: GardeNight, reas
  * Arrivée d'une mission : démarre le déroulé de nuit. Appelé par notifyMarketNewMission
  * (mail, création manuelle, VAB, Touring, Kaze, AXA). Hors nuit : ne fait rien.
  */
-export async function startNightFlow(missionId: string): Promise<void> {
+export async function startNightFlow(missionId: string, opts: { fromValidation?: boolean } = {}): Promise<void> {
   try {
     const sb = createAdminClient()
     const duty = await nightDutyNow(sb)
@@ -196,7 +196,8 @@ export async function startNightFlow(missionId: string): Promise<void> {
     const ctx = await missionCtx(sb, missionId)
     if (!ctx || ctx.assigned_to || !MARKET_STATUSES.includes(ctx.status) || HIDDEN_SOURCES.includes(ctx.source.toLowerCase() || 'unknown')) return
     const freshMin = await getBusinessNumber('momo_market_fresh_minutes').catch(() => 45)
-    if (ctx.received_at && Date.now() - new Date(ctx.received_at).getTime() > freshMin * 60_000) return
+    // Lancé par la validation de Momo : la mission est fraîche par définition (validée maintenant).
+    if (!opts.fromValidation && ctx.received_at && Date.now() - new Date(ctx.received_at).getTime() > freshMin * 60_000) return
 
     // Une seule fois par mission (un import peut repasser plusieurs fois).
     const [{ data: prop }, { data: notif }] = await Promise.all([

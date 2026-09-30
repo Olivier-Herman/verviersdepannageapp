@@ -10,7 +10,10 @@
 import { createAdminClient } from '@/lib/supabase'
 import { computeGardePlan, GARDE_HOURS_DEFAULT, type GardeConfig } from '@/lib/garde/plan'
 
-export const MARKET_STATUSES = ['new', 'dispatching']
+// Seules les missions VALIDÉES par le dispatch (« En attente ») partent au cycle de nuit :
+// « il n'y a que Momo qui peut l'accepter et c'est seulement là qu'elle doit alerter le
+// cycle de nuit » (Olivier 01/10/2026, 2GKR944 prise par un chauffeur sans validation Touring).
+export const MARKET_STATUSES = ['dispatching']
 export const BUSY_STATUSES   = ['assigned', 'accepted', 'in_progress', 'delivering']
 export const HIDDEN_SOURCES  = ['garage', 'unknown']
 

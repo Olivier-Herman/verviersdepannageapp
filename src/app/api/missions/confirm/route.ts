@@ -144,6 +144,13 @@ export async function POST(req: Request) {
       .update({ status: newStatus, updated_at: now })
       .eq('id', mission_id)
 
+    // Cycle de nuit (Momo Market) : lancé par CETTE validation, jamais à l'arrivée de la
+    // mission — seul le dispatch accepte (chez Touring : accept COMEX). Olivier 01/10/2026.
+    if (newStatus === 'dispatching') {
+      const { startNightFlow } = await import('@/lib/missions/market-proposals')
+      await startNightFlow(mission_id, { fromValidation: true }).catch(() => {})
+    }
+
     await supabase.from('mission_logs').insert({
       mission_id,
       actor_id: actor?.id || null,

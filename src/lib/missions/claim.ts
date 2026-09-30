@@ -8,7 +8,7 @@
 
 import { createAdminClient } from '@/lib/supabase'
 
-export const CLAIMABLE_STATUSES = ['new', 'dispatching']   // "En commande" + "En attente"
+export const CLAIMABLE_STATUSES = ['dispatching']   // « En attente » seulement : validée par le dispatch (01/10/2026)
 
 export type ClaimVia = 'market' | 'siabis' | 'proposal'
 
@@ -33,6 +33,7 @@ export async function claimMission(missionId: string, userId: string, opts: { vi
   if (!m) return { ok: false, status: 404, error: 'Mission introuvable' }
 
   if (m.assigned_to)                          return { ok: false, status: 409, error: 'Mission deja prise par un autre chauffeur' }
+  if (m.status === 'new') return { ok: false, status: 409, error: 'Mission pas encore validée par le dispatch : appelle le dispatch pour qu’il la valide.' }
   if (!CLAIMABLE_STATUSES.includes(m.status)) return { ok: false, status: 409, error: 'Mission deja traitee' }
 
   if (opts.freshMinutes != null) {
