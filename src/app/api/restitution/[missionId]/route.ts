@@ -21,7 +21,7 @@ import { cropPortrait, saveHolderPhoto } from '@/lib/restitution/holder-photo'
 import { sendPushToUser } from '@/lib/push'
 import {
   restitutionAccess, loadMission, findAssistanceRel, approvedDerogations, computeChecks, openLegs, payerContext, resolvePayer,
-  userNames, logRestitution, isSaisieLike, leveeOk, defaultSplit,
+  userNames, logRestitution, isSaisieLike, leveeOk, defaultSplit, dossierOpenInvoices,
   WHO_LABELS, POSTE_LABELS, PAYER_LABELS, type WhoKind, type Payer, type Poste,
 } from '@/lib/restitution/server'
 
@@ -83,6 +83,13 @@ async function buildContext(sb: any, session: any, missionId: string) {
     needLegs && open?.odoo_partner_id ? sb.from('client_payment_prefs').select('deferred').eq('odoo_partner_id', open.odoo_partner_id).maybeSingle().then((r: any) => !!r.data?.deferred) : Promise.resolve(false),
   ])
   const meRow = meR.data, resp = respR.data
+  // Factures du dossier déjà émises et encore ouvertes : à voir et trancher avant la
+  // sortie (Olivier 30/09/2026). Seulement quand les montants sont calculés.
+  // Facture d'une assistance : payée par son circuit habituel → affichée pour
+  // information, sans décision au comptoir (comme les autres clients tiers).
+  const openInvoices = (needLegs
+    ? await dossierOpenInvoices(sb, [...new Set([m.id, ...legsR.legs.map((l: any) => l.mission_id)])], invId, open?.third_invoices || [])
+    : []).map((i: any) => (assist as any).assist?.has(Number(i.partner_id)) ? { ...i, third: true, circuit: 'assistance' } : i)
   // Facture supprimée dans Odoo (brouillon effacé) : on défait le lien et les lignes
   // « facturées », sinon le dossier croit tout payé et laisse sortir le véhicule
   // pour 0 € (TEST-MG, 29/09/2026).
@@ -139,6 +146,7 @@ async function buildContext(sb: any, session: any, missionId: string) {
     restitution: rest ? { ...rest, started_by_name: names[rest.started_by] || null, completed_by_name: names[rest.completed_by] || null } : null,
     checks,
     legs: legsOut, due: { htva: dueHtva, tvac: r2(dueHtva * 1.21) }, splitDefault: defaultSplit(m),
+    openInvoices, openDecisions: open?.open_decisions || {},
     invoice, driverCollected, idDoc, transportDocs: transportDocs || 0, holderPhoto, payDeferred: terms, thirdInvoices: open?.third_invoices || [], photoCount: Array.isArray(m.driver_photos) ? m.driver_photos.length : 0,
     derogations: derogs.map(d => ({ ...d, responsable_name: names[d.responsable_id] || null, requested_by_name: names[d.requested_by] || null })),
     pending: (pending || []).map((p: any) => ({ ...p, responsable_name: pNames[p.responsable_id] || null })),
@@ -446,6 +454,26 @@ export async function POST(req: Request, { params }: { params: { missionId: stri
         return NextResponse.json({ ...c, paymentChecked: paid ? 'paid' : mv?.state === 'draft' ? 'La facture est encore en brouillon : validez-la puis encaissez-la dans Odoo.' : `Pas encore payée (reste ${Number(mv?.amount_residual || 0).toFixed(2)} €).` })
       }
 
+      case 'refresh': return done()   // relire Odoo (facture encaissée entre-temps)
+
+      case 'open_decide': {
+        // Facture ouverte du dossier : « le client la paiera plus tard » (ou annuler ce
+        // choix). « Payée » ne se déclare pas : l'écran le constate dans Odoo.
+        await ensure()
+        const invId = Number(body.invoice_id)
+        const cx: any = await buildContext(sb, session, m.id)
+        const inv = (cx.openInvoices || []).find((i: any) => i.id === invId)
+        if (!inv) return NextResponse.json({ error: 'Cette facture n’est plus ouverte (déjà payée ?). Rechargez.' }, { status: 409 })
+        const dec = { ...(rest!.open_decisions || {}) }
+        if (body.decision === 'clear') delete dec[invId]
+        else dec[invId] = { decision: 'later', by: actor, by_name: who_name, at: new Date().toISOString() }
+        await upd({ open_decisions: dec })
+        await logRestitution(sb, m.id, actor, 'open_decision', body.decision === 'clear'
+          ? `Décision retirée sur la facture ${inv.name} (reste ${inv.residual.toFixed(2)} €).`
+          : `Facture ${inv.name} (${inv.partner}) laissée ouverte par ${who_name} : reste ${inv.residual.toFixed(2)} € à payer plus tard.`, { invoice_id: invId })
+        return done()
+      }
+
       case 'later': {
         await ensure()
         // Paiement à la facture : choisi par le bureau pour ce client (Olivier 29/09/2026 :
@@ -520,6 +548,8 @@ export async function POST(req: Request, { params }: { params: { missionId: stri
           else if (ap('paiement')) settlement = 'derogation'
         }
         if (!settlement) blockers.push('Paiement')
+        const undecided = (c.openInvoices || []).filter((i: any) => !i.third && !(rest!.open_decisions || {})[i.id] && !ap(`ouvert_${i.id}`))
+        if (undecided.length) blockers.push(`Montants ouverts du dossier sans décision (${undecided.map((i: any) => `${i.name} : ${i.residual.toFixed(2)} €`).join(', ')})`)
         if (c.legs.some((l: any) => l.payer === 'third' && l.due_htva > 0) && !ap('paiement')) blockers.push('Factures des autres clients à créer')
         if (blockers.length) return NextResponse.json({ error: `Il reste à régler : ${blockers.join(', ')}.` }, { status: 409 })
 

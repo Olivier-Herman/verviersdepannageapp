@@ -27,6 +27,8 @@ import { buildDossier, type DossierLeg } from '@/lib/dossier/build'
 import { getExitControlState, isAssistanceSource } from '@/lib/missions/exit-control'
 import { sourceLabel } from '@/lib/missions/source-catalog'
 import { getBusinessNumber } from '@/lib/settings/business'
+import { odooRpc } from '@/lib/odoo'
+import { buildInvoiceMoveUrl } from '@/lib/odoo-quote'
 
 export type WhoKind = 'owner' | 'mandate' | 'garage' | 'assistance' | 'transport'
 export type Payer = 'client' | 'parquet' | 'fdj'
@@ -240,4 +242,27 @@ export async function userNames(sb: any, ids: (string | null | undefined)[]): Pr
 
 export async function logRestitution(sb: any, missionId: string, actorId: string | null, action: string, notes: string, metadata: any = {}) {
   await sb.from('mission_logs').insert({ mission_id: missionId, actor_id: actorId, action: `restitution_${action}`, notes, metadata }).then(() => {}, () => {})
+}
+
+/**
+ * Factures du dossier déjà émises et encore ouvertes (reste dû > 0), hors la facture
+ * de la restitution elle-même. Elles doivent être vues et tranchées avant la sortie
+ * (Olivier 30/09/2026). Les factures créées pendant la restitution pour d'autres
+ * clients (transporteur…) sont marquées `third` : affichées pour information.
+ */
+export async function dossierOpenInvoices(sb: any, missionIds: string[], excludeId: number | null, third: any[]): Promise<any[]> {
+  const [ms, bi] = await Promise.all([
+    sb.from('incoming_missions').select('invoice_odoo_id').in('id', missionIds).not('invoice_odoo_id', 'is', null),
+    sb.from('mission_billed_items').select('invoice_odoo_id').in('mission_id', missionIds).not('invoice_odoo_id', 'is', null),
+  ])
+  const thirdIds = new Set((third || []).map((t: any) => Number(t.odoo_id)).filter(Boolean))
+  const ids = [...new Set([...(ms.data || []), ...(bi.data || [])].map((r: any) => Number(r.invoice_odoo_id)).concat([...thirdIds]))]
+    .filter(id => id && id !== excludeId)
+  if (!ids.length) return []
+  const mv = await odooRpc<any[]>('account.move', 'read', [ids], { fields: ['name', 'partner_id', 'amount_total', 'amount_residual', 'state', 'payment_state', 'invoice_date', 'move_type'] }).catch(() => [] as any[])
+  return mv
+    .filter(x => x.move_type === 'out_invoice' && x.state !== 'cancel' && Number(x.amount_residual) > 0.01)
+    .map(x => ({ id: x.id, name: x.state === 'draft' ? 'Brouillon' : x.name, partner: x.partner_id?.[1] || '', partner_id: x.partner_id?.[0] || null, date: x.invoice_date || null,
+      total: Number(x.amount_total), residual: Number(x.amount_residual), state: x.state, third: thirdIds.has(x.id), url: buildInvoiceMoveUrl(x.id) }))
+    .sort((a, b) => String(a.date || '').localeCompare(String(b.date || '')))
 }

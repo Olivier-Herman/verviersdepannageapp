@@ -93,7 +93,10 @@ export default function RestitutionClient({ missionId, gmKey }: { missionId: str
   const paidOdoo = inv && inv.state === 'posted' && (['paid', 'in_payment'].includes(inv.payment_state) || Number(inv.residual) <= 0.01)
   const driverPaid = c.due.tvac > 0 && c.driverCollected >= c.due.tvac - 0.01
   // Une facture existe : seule sa situation dans Odoo compte (le dossier la voit déjà « facturée »).
-  const settled = !!R?.settlement || (inv ? paidOdoo : c.due.htva <= 0) || driverPaid || approved('paiement')
+  // Factures du dossier déjà émises et encore ouvertes : chacune doit être tranchée
+  // (payée — constaté dans Odoo — ou laissée ouverte, qui décide étant tracé). 30/09/2026.
+  const openLeft = (c.openInvoices || []).filter((i: any) => !i.third && !(c.openDecisions || {})[i.id] && !approved(`ouvert_${i.id}`))
+  const settled = (!!R?.settlement || (inv ? paidOdoo : c.due.htva <= 0) || driverPaid || approved('paiement')) && openLeft.length === 0
   const signOk = !!R?.signed_at || signSkip
 
   const steps = [
@@ -414,6 +417,36 @@ function SplitStep({ c, R, act, busy }: any) {
 }
 
 // ── 4. Montant et paiement ─────────────────────────────────────────────
+/** Factures du dossier déjà émises et pas encore soldées (Olivier 30/09/2026 : « il faut
+ *  absolument les afficher pour qu'on puisse décider de ce qu'on fait des montants ouverts »). */
+function OpenInvoices({ c, R, act, busy }: any) {
+  const list = c.openInvoices || []
+  if (!list.length) return null
+  const dec = c.openDecisions || {}
+  const own = list.filter((i: any) => !i.third)
+  const left = own.filter((i: any) => !dec[i.id])
+  return <div className={`mt-2 rounded-xl border-2 p-3 flex flex-col gap-2 ${left.length ? 'border-warning bg-warning-soft' : 'border-border bg-surface-2'}`}>
+    <div className="font-semibold text-ink">Déjà facturé et encore ouvert sur ce dossier : {eur(list.reduce((t: number, i: any) => t + i.residual, 0))}</div>
+    {left.length > 0 && <div className="text-xs text-ink-secondary">Pour chaque facture : encaissez-la dans Odoo puis « Revérifier », ou laissez-la ouverte si le client la paiera plus tard. Le véhicule ne sort pas tant que chaque montant n’a pas sa décision.</div>}
+    {list.map((i: any) => {
+      const d = dec[i.id]
+      return <div key={i.id} className="rounded-lg bg-surface border border-border p-2.5 flex flex-col gap-1.5">
+        <div className="flex flex-wrap items-baseline justify-between gap-2 text-sm">
+          <span className="text-ink"><b>{i.name}</b>{i.date ? ` · ${new Date(i.date).toLocaleDateString('fr-BE')}` : ''} · {i.partner}{i.third ? (i.circuit === 'assistance' ? ' (assistance, payée par son circuit habituel)' : ' (autre client, paiement à terme)') : ''}</span>
+          <span className="font-mono text-ink">reste <b>{eur(i.residual)}</b>{i.residual < i.total - 0.01 ? <span className="text-ink-muted"> sur {eur(i.total)}</span> : ''}</span>
+        </div>
+        {d ? <div className="flex flex-wrap items-center justify-between gap-2 text-xs"><span className="text-ink-secondary">Laissée ouverte par {d.by_name || '—'}{d.at ? ` le ${new Date(d.at).toLocaleString('fr-BE', { dateStyle: 'short', timeStyle: 'short' })}` : ''} : le client la paiera plus tard.</span>
+            <button type="button" className="min-h-[36px] rounded-btn border border-strong px-3 font-semibold text-ink" disabled={busy} onClick={() => act('open_decide', { invoice_id: i.id, decision: 'clear' })}>Annuler ce choix</button></div>
+          : !i.third && <div className="flex flex-wrap gap-2">
+            <a href={i.url} target="_blank" rel="noreferrer" className="min-h-[44px] inline-flex items-center rounded-btn border border-strong px-3 text-sm font-semibold text-ink">Encaisser dans Odoo</a>
+            <button type="button" className="min-h-[44px] rounded-btn border border-strong px-3 text-sm font-semibold text-ink" disabled={busy} onClick={() => act('refresh')}>Revérifier</button>
+            <button type="button" className="min-h-[44px] rounded-btn bg-warning text-white px-3 text-sm font-semibold" disabled={busy} onClick={() => act('open_decide', { invoice_id: i.id, decision: 'later' })}>Laisser ouverte : payée plus tard</button>
+          </div>}
+      </div>
+    })}
+  </div>
+}
+
 function AmountStep({ c, R, act, busy, gmKey, setErr, say, onDerog }: any) {
   const [pick, setPick] = useState<any>(null)
   const inv = c.invoice
@@ -447,6 +480,7 @@ function AmountStep({ c, R, act, busy, gmKey, setErr, say, onDerog }: any) {
     {thirdPending.length > 0 && <div className="flex justify-between gap-3 text-sm text-ink-secondary"><span>Facturé à d’autres clients (paiement à terme)</span><span className="font-mono">{eur(thirdTotal)} HTVA</span></div>}
     {(c.thirdInvoices || []).length > 0 && <div className="flex flex-col gap-1 pt-1">{c.thirdInvoices.map((t: any) => <div key={t.odoo_id} className="flex flex-wrap items-center justify-between gap-2 text-sm"><span className="text-ink">Facture en brouillon pour <b>{t.client_name}</b> · {eur(t.total_htva)} HTVA</span><a href={t.url} target="_blank" rel="noreferrer" className="min-h-[36px] inline-flex items-center rounded-btn border border-strong px-3 text-xs font-semibold text-ink">Ouvrir dans Odoo</a></div>)}</div>}
     {pick && <PayerPicker leg={pick} R={R} gmKey={gmKey} busy={busy} onClose={() => setPick(null)} onPick={async (x: any) => { const j = await act('leg_payer', { mission_id: pick.mission_id, ...x }); if (j) { setPick(null); say('Client du groupe modifié') } }} />}
+    <OpenInvoices c={c} R={R} act={act} busy={busy} />
   </div>
   const invoiceClick = async () => {
     const w = window.open('about:blank', '_blank')   // ouvert dans le clic, sinon le navigateur bloque
