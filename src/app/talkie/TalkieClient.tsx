@@ -1,6 +1,7 @@
 'use client'
-// Talkie « Garde de nuit » (Olivier 30/09/2026) : talkie-walkie en direct entre le
-// 1er départ et la réserve de la nuit ; les superadmins écoutent sans apparaître.
+// Talkie (Olivier 30/09/2026) : talkie-walkie en direct dans l'app.
+//  - « Garde de nuit » : 1er départ + réserve + superadmins (tous visibles, tous parlent).
+//  - Direct « Mobi / IT » : chaque chauffeur vers Mobi / IT, qui voit un canal par chauffeur.
 //  - Maintenir le bouton pour parler, une seule personne à la fois (comme une radio).
 //  - La voix part en direct par Supabase Realtime (diffusion) : 16 kHz, loi µ
 //    (≈ 16 Ko/s), morceaux d'≈ 85 ms, rejoués avec un petit tampon.
@@ -12,11 +13,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { createClient } from '@supabase/supabase-js'
 
+interface Channel { key: string; kind: 'garde' | 'direct'; label: string; channel: string; members: { id: string; name: string }[] }
 interface Props {
-  role: 'member' | 'listener'
-  channel: string
   me: { id: string; name: string }
-  members: { id: string; name: string }[]
+  channels: Channel[]
+  initialKey: string
 }
 interface Msg { id: string; senderName: string; durationMs: number; at: string; url: string | null }
 
@@ -74,7 +75,11 @@ function wav(chunks: Float32Array[]): Blob {
   return new Blob([buf], { type: 'audio/wav' })
 }
 
-export default function TalkieClient({ role, channel, me, members }: Props) {
+export default function TalkieClient({ me, channels, initialKey }: Props) {
+  const [key, setKey]         = useState(channels.some(c => c.key === initialKey) ? initialKey : channels[0].key)
+  const current = channels.find(c => c.key === key) || channels[0]
+  const channel = current.channel
+  const members = current.members
   const [active, setActive]   = useState(false)
   const [online, setOnline]   = useState<{ id: string; name: string }[]>([])
   const [floor, setFloor]     = useState<{ id: string; name: string } | null>(null)
@@ -89,7 +94,7 @@ export default function TalkieClient({ role, channel, me, members }: Props) {
   const lastAudioRef = useRef(0)
   const talkRef  = useRef<{ ts: number; stream: MediaStream; proc: ScriptProcessorNode; src: MediaStreamAudioSourceNode; rec: Float32Array[]; seq: number; timer: any } | null>(null)
   const onlineRef = useRef<{ id: string; name: string }[]>([])
-  const isMember = role === 'member'
+  const isMember = true   // tout le monde parle et apparaît (pas d'écoute discrète)
 
   const beep = useCallback((freq: number, ms = 90) => {
     const ctx = ctxRef.current; if (!ctx) return
@@ -99,8 +104,8 @@ export default function TalkieClient({ role, channel, me, members }: Props) {
   }, [])
 
   const loadMsgs = useCallback(async () => {
-    try { const r = await fetch('/api/talkie/messages', { cache: 'no-store' }); const j = await r.json(); if (r.ok) setMsgs(j.messages || []) } catch { /* réessai au prochain message */ }
-  }, [])
+    try { const r = await fetch(`/api/talkie/messages?key=${encodeURIComponent(key)}`, { cache: 'no-store' }); const j = await r.json(); if (r.ok) setMsgs(j.messages || []) } catch { /* réessai au prochain message */ }
+  }, [key])
 
   // Connexion au canal (après « Activer » : le son ne peut démarrer qu'après un geste).
   useEffect(() => {
@@ -137,13 +142,18 @@ export default function TalkieClient({ role, channel, me, members }: Props) {
       setTimeout(loadMsgs, 2500)
     })
     ch.subscribe(async (status: string) => {
-      if (status === 'SUBSCRIBED' && isMember) await ch.track({ id: me.id, name: me.name })   // les superadmins n'apparaissent pas
+      if (status === 'SUBSCRIBED') await ch.track({ id: me.id, name: me.name })   // tout le monde apparaît
     })
     // Parole « coincée » (fin perdue) : on libère au bout de 4 s sans son.
     const guard = setInterval(() => { if (floorRef.current && Date.now() - lastAudioRef.current > 4000) { floorRef.current = null; setFloor(null) } }, 1000)
     let lock: any = null
     ;(navigator as any).wakeLock?.request?.('screen').then((l: any) => { lock = l }).catch(() => {})
-    return () => { clearInterval(guard); lock?.release?.().catch?.(() => {}); sb.removeChannel(ch); chRef.current = null }
+    return () => {
+      clearInterval(guard); lock?.release?.().catch?.(() => {})
+      if (talkRef.current) stopTalking(true)
+      sb.removeChannel(ch); chRef.current = null
+      floorRef.current = null; setFloor(null); onlineRef.current = []; setOnline([])
+    }
   }, [active, channel, me.id, me.name, isMember, beep, loadMsgs])
 
   useEffect(() => { loadMsgs() }, [loadMsgs])
@@ -198,31 +208,40 @@ export default function TalkieClient({ role, channel, me, members }: Props) {
     if (!send) return
     const ms = Math.round(t.rec.reduce((a, c) => a + c.length, 0) / RATE * 1000)
     if (ms < 400) return   // appui trop court : rien à garder
-    const peerOnline = onlineRef.current.some(p => p.id !== me.id)
-    const fd = new FormData(); fd.append('audio', wav(t.rec), 'talkie.wav'); fd.append('durationMs', String(ms)); fd.append('peerOnline', peerOnline ? '1' : '0')
+    const fd = new FormData(); fd.append('key', key); fd.append('audio', wav(t.rec), 'talkie.wav'); fd.append('durationMs', String(ms))
+    fd.append('online', onlineRef.current.map(p => p.id).join(','))
     fetch('/api/talkie/messages', { method: 'POST', body: fd }).then(() => loadMsgs()).catch(() => setError('Message non enregistré (réseau).'))
   }
 
-  const others = members.filter(m => m.id !== me.id)
   const busy = !!floor && floor.id !== me.id
 
   return (
     <div className="p-4 max-w-md mx-auto space-y-4">
       <div>
-        <h1 className="text-ink font-bold text-xl">📻 Talkie garde de nuit</h1>
+        <h1 className="text-ink font-bold text-xl">📻 Talkie</h1>
         <p className="text-ink-muted text-sm mt-1">
-          {isMember ? `En direct avec ${others.map(o => o.name).join(', ') || 'l’autre chauffeur de garde'}.` : `Écoute discrète : ${members.map(m => m.name).join(' et ')}.`}
+          {current.kind === 'garde' ? `Garde de nuit : ${members.map(m => m.name).join(' et ')}.` : `Canal direct ${current.members[0]?.id === me.id ? `vers ${current.label}` : `avec ${current.label}`}.`}
         </p>
       </div>
+      {channels.length > 1 && (
+        <div className="flex gap-2 overflow-x-auto pb-1">
+          {channels.map(c => (
+            <button key={c.key} type="button" onClick={() => { if (!talking) { setKey(c.key); setMsgs([]) } }}
+              className={`flex-shrink-0 min-h-[40px] px-3 rounded-full text-sm font-semibold border ${c.key === key ? 'bg-brand text-white border-brand' : 'bg-surface text-ink border-slate-300 dark:border-slate-600'}`}>
+              {c.kind === 'garde' ? '🌙 Garde de nuit' : `👤 ${c.label}`}
+            </button>
+          ))}
+        </div>
+      )}
 
       {!active ? (
         <button type="button" onClick={activate} className="w-full min-h-[64px] rounded-2xl bg-brand hover:bg-brand-hover text-white font-bold text-base">
-          {isMember ? '📻 Activer le talkie' : '🎧 Écouter le canal'}
+          📻 Activer le talkie
         </button>
       ) : (
         <>
           <div className="flex flex-wrap gap-2 text-xs">
-            {members.map(m => {
+            {[...members, ...online.filter(o => !members.some(m => m.id === o.id))].map(m => {
               const on = online.some(o => o.id === m.id)
               return <span key={m.id} className={`px-2.5 py-1 rounded-full font-semibold ${on ? 'bg-green-100 text-green-800 dark:bg-green-500/15 dark:text-green-300' : 'bg-slate-100 text-slate-600 dark:bg-slate-700/50 dark:text-slate-300'}`}>{on ? '🟢' : '⚪'} {m.name}{m.id === me.id ? ' (toi)' : ''}</span>
             })}
@@ -252,7 +271,7 @@ export default function TalkieClient({ role, channel, me, members }: Props) {
       {error && <p className="text-red-700 dark:text-red-300 text-sm bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/30 rounded-xl px-3 py-2">⚠️ {error}</p>}
 
       <div className="bg-surface border rounded-2xl p-3 space-y-2">
-        <p className="text-ink font-semibold text-sm">Messages de la nuit</p>
+        <p className="text-ink font-semibold text-sm">{current.kind === 'garde' ? 'Messages de la nuit' : 'Derniers messages'}</p>
         {!msgs.length ? <p className="text-ink-muted text-xs">Aucun message pour l’instant.</p> : msgs.map(m => (
           <div key={m.id} className="space-y-1">
             <p className="text-xs text-ink-secondary">{new Date(m.at).toLocaleTimeString('fr-BE', { hour: '2-digit', minute: '2-digit' })} · {m.senderName} · {Math.max(1, Math.round(m.durationMs / 1000))} s</p>
@@ -261,7 +280,7 @@ export default function TalkieClient({ role, channel, me, members }: Props) {
         ))}
       </div>
 
-      <p className="text-ink-faint text-[11px] text-center">Canal professionnel, enregistré et susceptible d’être écouté par la direction.</p>
+      <p className="text-ink-faint text-[11px] text-center">Canal professionnel : les messages sont enregistrés.</p>
     </div>
   )
 }
