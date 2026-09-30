@@ -82,8 +82,8 @@ export default function TalkieClient({ me, channels: initialChannels, initialKey
 
           <div className="flex justify-center">
             <button type="button"
-              onPointerDown={e => { e.preventDefault(); t.startTalking(current.key) }}
-              onPointerUp={() => t.stopTalking(true)} onPointerCancel={() => t.stopTalking(true)} onPointerLeave={() => talking && t.stopTalking(true)}
+              onPointerDown={e => { e.preventDefault(); try { e.currentTarget.setPointerCapture(e.pointerId) } catch { /* ignoré */ } t.startTalking(current.key) }}
+              onPointerUp={() => t.stopTalking(true)} onPointerCancel={() => t.stopTalking(true)}
               onContextMenu={e => e.preventDefault()}
               disabled={busy || (!!t.talkingKey && !talking)}
               style={{ touchAction: 'none', WebkitUserSelect: 'none', userSelect: 'none', WebkitTouchCallout: 'none' } as any}
