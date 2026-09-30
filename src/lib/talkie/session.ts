@@ -6,7 +6,6 @@
 //    + leur canal direct vers Mobi / IT. Hors plage ou autres chauffeurs : rien.
 //  - Mobi / IT (réglage « talkie_it ») : toujours visible, jour et nuit — « Garde de
 //    nuit » et le canal direct des deux chauffeurs de garde de la nuit.
-//  - Superadmins : « Garde de nuit » toujours visible.
 //  Tous apparaissent quand ils sont connectés et peuvent parler (pas d'écoute
 //  discrète : Olivier veut apparaître).
 // Le nom du canal temps réel est dérivé de la clé du canal + d'un secret serveur :
@@ -37,7 +36,6 @@ function secretName(key: string, nightKey: string | null): string {
   return `talkie-${createHmac('sha256', secret).update(`talkie:${scope}`).digest('hex').slice(0, 32)}`
 }
 
-const isSuper = (u: any) => u?.role === 'superadmin' || (Array.isArray(u?.roles) && u.roles.includes('superadmin'))
 
 export async function talkieAccess(user: { id?: string; role?: string; roles?: string[] } | null | undefined, now = new Date()): Promise<TalkieAccess> {
   if (!user?.id) return { me: null, nightKey: null, channels: [] }
@@ -58,7 +56,7 @@ export async function talkieAccess(user: { id?: string; role?: string; roles?: s
   const iAmGarde = !!night?.inNight && gardeIds.includes(me.id)   // chauffeurs : de 18 h à 8 h seulement
 
   // Garde de nuit
-  if (nightKey && gardeIds.length && (iAmGarde || isIt || isSuper(user))) {
+  if (nightKey && gardeIds.length && (iAmGarde || isIt)) {   // seul Mobi / IT hors chauffeurs de garde (Olivier)
     const { data: g } = await sb.from('users').select('id, name').in('id', gardeIds)
     const members = [...new Set(gardeIds)].map(id => ({ id, name: (g || []).find((x: any) => x.id === id)?.name || '—' }))
     channels.push({ key: 'garde', kind: 'garde', label: 'Garde de nuit', channel: secretName('garde', nightKey), members })
