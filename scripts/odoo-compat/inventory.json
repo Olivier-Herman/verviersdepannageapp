@@ -1,0 +1,847 @@
+{
+ "generated_at": "2026-09-30T12:19:28.803Z",
+ "models": {
+  "account.bank.statement.line": {
+   "methods": [
+    "read",
+    "search_read"
+   ],
+   "fields": [
+    "amount",
+    "date",
+    "id",
+    "is_reconciled",
+    "journal_id",
+    "journal_id.type",
+    "move_id",
+    "partner_id",
+    "payment_ref"
+   ],
+   "files": [
+    "scripts/advice-rework-payments.ts",
+    "scripts/payout-document-backfill.ts",
+    "scripts/payout-split-backfill.ts",
+    "src/lib/advice-match.ts",
+    "src/lib/advice-post.ts",
+    "src/lib/finance/circlek-foreign-vat.ts",
+    "src/lib/finance/lettrage-detail.ts",
+    "src/lib/paynovate-match.ts",
+    "src/lib/paynovate-post.ts",
+    "src/lib/reconcile-odoo.ts",
+    "src/lib/sumup-match.ts"
+   ]
+  },
+  "account.fiscal.position": {
+   "methods": [
+    "read"
+   ],
+   "fields": [
+    "tax_ids",
+    "tax_map"
+   ],
+   "files": [
+    "src/lib/mail-agent/odoo.ts"
+   ]
+  },
+  "account.journal": {
+   "methods": [
+    "read"
+   ],
+   "fields": [
+    "default_account_id"
+   ],
+   "files": [
+    "scripts/bank-line-per-document.ts",
+    "src/lib/finance/circlek-foreign-vat.ts",
+    "src/lib/finance/lettrage-detail.ts"
+   ]
+  },
+  "account.move": {
+   "methods": [
+    "action_post",
+    "button_cancel",
+    "button_draft",
+    "create",
+    "fields_get",
+    "message_post",
+    "read",
+    "read_group",
+    "search_count",
+    "search_read",
+    "unlink",
+    "write"
+   ],
+   "fields": [
+    "amount_residual",
+    "amount_tax",
+    "amount_total",
+    "amount_untaxed",
+    "commercial_partner_id",
+    "company_id",
+    "date",
+    "fiscal_position_id",
+    "id",
+    "invoice_date",
+    "invoice_date_due",
+    "invoice_line_ids",
+    "invoice_line_ids>account_id",
+    "invoice_line_ids>name",
+    "invoice_line_ids>price_unit",
+    "invoice_line_ids>product_id",
+    "invoice_line_ids>quantity",
+    "invoice_line_ids>tax_ids",
+    "invoice_origin",
+    "invoice_payments_widget",
+    "invoice_pdf_report_id",
+    "journal_id",
+    "line_ids",
+    "line_ids>account_id",
+    "line_ids>amount_currency",
+    "line_ids>credit",
+    "line_ids>debit",
+    "line_ids>name",
+    "line_ids>partner_id",
+    "message_main_attachment_id",
+    "move_type",
+    "name",
+    "narration",
+    "origin_payment_id",
+    "partner_id",
+    "partner_id.name",
+    "payment_reference",
+    "payment_state",
+    "ref",
+    "reversal_move_ids",
+    "state",
+    "x_studio_plaque_1"
+   ],
+   "files": [
+    "scripts/bank-line-per-document.ts",
+    "scripts/payout-split-backfill.ts",
+    "src/app/api/caisse/ecran/route.ts",
+    "src/app/api/caisse/push-odoo/route.ts",
+    "src/app/api/circuit-prestations/route.ts",
+    "src/app/api/cron/achats-parse/route.ts",
+    "src/app/api/cron/sync-cash-payments/route.ts",
+    "src/app/api/facturation/check-siabis-anwb/route.ts",
+    "src/app/api/facturation/verify-invoices/route.ts",
+    "src/app/api/finance/advices/route.ts",
+    "src/app/api/fourriere/domaine/ventes-register/route.ts",
+    "src/app/api/missions/[id]/billed-items/route.ts",
+    "src/app/api/missions/[id]/invoices/route.ts",
+    "src/app/api/missions/[id]/quote/route.ts",
+    "src/app/api/odoo/invoice/[id]/route.ts",
+    "src/app/api/odoo/vehicle/[id]/route.ts",
+    "src/app/api/personnel/route.ts",
+    "src/app/api/restitution/[missionId]/route.ts",
+    "src/app/api/search/route.ts",
+    "src/app/api/stats/driver-revenue/route.ts",
+    "src/lib/achats/odoo-spend.ts",
+    "src/lib/advice-match.ts",
+    "src/lib/advice-post.ts",
+    "src/lib/circuit/invoice.ts",
+    "src/lib/domaine/invoice-vente-epaves.ts",
+    "src/lib/facturation/paiements.ts",
+    "src/lib/finance/circlek-foreign-vat.ts",
+    "src/lib/finance/lettrage-detail.ts",
+    "src/lib/fines/odoo-bill.ts",
+    "src/lib/garage/mission-documents.ts",
+    "src/lib/mail-agent/actions.ts",
+    "src/lib/mail-agent/handlers/fournisseur.ts",
+    "src/lib/mail-agent/odoo.ts",
+    "src/lib/mail-agent/triage.ts",
+    "src/lib/missions/rapport-intervention.tsx",
+    "src/lib/odoo-invoice.ts",
+    "src/lib/odoo-quote.ts",
+    "src/lib/odoo.ts",
+    "src/lib/paie/push-odoo.ts",
+    "src/lib/paynovate-post.ts",
+    "src/lib/paynovate-resolve.ts",
+    "src/lib/reconcile-odoo.ts",
+    "src/lib/relances/odoo.ts",
+    "src/lib/sumup-resolve.ts"
+   ]
+  },
+  "account.move.line": {
+   "methods": [
+    "read",
+    "read_group",
+    "reconcile",
+    "remove_move_reconcile",
+    "search_read",
+    "write"
+   ],
+   "fields": [
+    "account_id",
+    "account_id.account_type",
+    "account_id.internal_group",
+    "amount_residual",
+    "credit",
+    "date",
+    "debit",
+    "discount",
+    "display_type",
+    "id",
+    "matched_credit_ids",
+    "matched_debit_ids",
+    "matching_number",
+    "move_id",
+    "move_id.move_type",
+    "move_id.state",
+    "move_type",
+    "name",
+    "parent_state",
+    "partner_id",
+    "payment_id",
+    "price_subtotal",
+    "price_total",
+    "price_unit",
+    "product_id",
+    "quantity",
+    "reconciled",
+    "tax_ids"
+   ],
+   "files": [
+    "scripts/advice-rework-payments.ts",
+    "scripts/bank-line-per-document.ts",
+    "scripts/payout-document-backfill.ts",
+    "scripts/payout-split-backfill.ts",
+    "src/app/api/caisse/ecran/route.ts",
+    "src/app/api/caisse/push-odoo/route.ts",
+    "src/app/api/facturation/check-siabis-anwb/route.ts",
+    "src/app/api/finance/advices/route.ts",
+    "src/app/api/missions/[id]/billed-items/route.ts",
+    "src/app/api/missions/[id]/invoices/route.ts",
+    "src/app/api/odoo/invoice/[id]/route.ts",
+    "src/lib/achats/odoo-spend.ts",
+    "src/lib/advice-post.ts",
+    "src/lib/finance/circlek-foreign-vat.ts",
+    "src/lib/finance/lettrage-detail.ts",
+    "src/lib/mail-agent/odoo.ts",
+    "src/lib/paynovate-post.ts",
+    "src/lib/reconcile-odoo.ts"
+   ]
+  },
+  "account.move.reversal": {
+   "methods": [
+    "create",
+    "modify_moves",
+    "read",
+    "reverse_moves"
+   ],
+   "fields": [
+    "date",
+    "journal_id",
+    "move_ids",
+    "new_move_ids",
+    "reason"
+   ],
+   "files": [
+    "src/lib/mail-agent/actions.ts",
+    "src/lib/mail-agent/odoo.ts"
+   ]
+  },
+  "account.partial.reconcile": {
+   "methods": [
+    "read"
+   ],
+   "fields": [
+    "amount",
+    "credit_move_id",
+    "debit_move_id",
+    "id",
+    "max_date"
+   ],
+   "files": [
+    "scripts/advice-rework-payments.ts",
+    "scripts/bank-line-per-document.ts",
+    "scripts/payout-split-backfill.ts",
+    "src/app/api/finance/advices/route.ts",
+    "src/lib/finance/lettrage-detail.ts",
+    "src/lib/reconcile-odoo.ts"
+   ]
+  },
+  "account.payment": {
+   "methods": [
+    "action_cancel",
+    "action_draft",
+    "read",
+    "search_read",
+    "unlink"
+   ],
+   "fields": [
+    "amount",
+    "create_date",
+    "create_uid",
+    "date",
+    "id",
+    "invoice_ids",
+    "journal_id",
+    "memo",
+    "move_id",
+    "name",
+    "partner_id",
+    "payment_method_line_id",
+    "reconciled_invoice_ids",
+    "state"
+   ],
+   "files": [
+    "scripts/advice-rework-payments.ts",
+    "scripts/bank-line-per-document.ts",
+    "scripts/payout-split-backfill.ts",
+    "src/app/api/cron/sync-cash-payments/route.ts",
+    "src/app/api/odoo/invoice/[id]/route.ts",
+    "src/lib/paynovate-post.ts",
+    "src/lib/reconcile-odoo.ts"
+   ]
+  },
+  "account.payment.method.line": {
+   "methods": [
+    "search_read"
+   ],
+   "fields": [
+    "id",
+    "journal_id",
+    "name"
+   ],
+   "files": [
+    "src/app/api/cron/sync-cash-payments/route.ts"
+   ]
+  },
+  "account.payment.register": {
+   "methods": [
+    "action_create_payments",
+    "create"
+   ],
+   "fields": [
+    "amount",
+    "communication",
+    "journal_id",
+    "payment_date",
+    "payment_method_line_id"
+   ],
+   "files": [
+    "src/lib/paynovate-post.ts"
+   ]
+  },
+  "account.tax": {
+   "methods": [
+    "read"
+   ],
+   "fields": [
+    "amount",
+    "id",
+    "name",
+    "type_tax_use"
+   ],
+   "files": [
+    "src/lib/mail-agent/odoo.ts"
+   ]
+  },
+  "fleet.vehicle": {
+   "methods": [
+    "create",
+    "fields_get",
+    "read",
+    "search_read",
+    "write"
+   ],
+   "fields": [
+    "brand_id",
+    "color",
+    "fuel_type",
+    "id",
+    "license_plate",
+    "model_id",
+    "name",
+    "state_id",
+    "tag_ids",
+    "transmission",
+    "vin_sn",
+    "x_studio_factures"
+   ],
+   "files": [
+    "src/app/api/admin/missions/recover-odoo-orphans/route.ts",
+    "src/app/api/admin/towsoft-migration/scan/route.ts",
+    "src/app/api/advances/lookup/route.ts",
+    "src/app/api/facturation/check-siabis-anwb/route.ts",
+    "src/app/api/missions/[id]/scratch/route.ts",
+    "src/app/api/odoo/create-vehicle/route.ts",
+    "src/app/api/odoo/invoice/[id]/route.ts",
+    "src/app/api/odoo/search-vehicle/route.ts",
+    "src/app/api/odoo/update-vehicle/route.ts",
+    "src/app/api/odoo/vehicle/[id]/route.ts",
+    "src/app/api/search/route.ts",
+    "src/app/api/vehicles/lookup-by-plate/route.ts",
+    "src/lib/dossier/invoice.ts",
+    "src/lib/odoo-fourriere-flows.ts",
+    "src/lib/odoo-fsm.ts",
+    "src/lib/odoo-quote.ts",
+    "src/lib/odoo.ts",
+    "src/lib/print/zebra.ts",
+    "src/lib/relances/odoo.ts",
+    "src/lib/towsoft-migration-worker.ts"
+   ]
+  },
+  "fleet.vehicle.assignation.log": {
+   "methods": [
+    "search_read"
+   ],
+   "fields": [
+    "date_end",
+    "date_start",
+    "driver_id",
+    "id",
+    "vehicle_id"
+   ],
+   "files": [
+    "src/app/api/odoo/vehicle/[id]/route.ts"
+   ]
+  },
+  "fleet.vehicle.log.contract": {
+   "methods": [
+    "search_read"
+   ],
+   "fields": [
+    "amount",
+    "expiration_date",
+    "id",
+    "name",
+    "start_date",
+    "state",
+    "vehicle_id"
+   ],
+   "files": [
+    "src/app/api/odoo/vehicle/[id]/route.ts"
+   ]
+  },
+  "fleet.vehicle.log.services": {
+   "methods": [
+    "search_read"
+   ],
+   "fields": [
+    "amount",
+    "date",
+    "description",
+    "id",
+    "service_type_id",
+    "state",
+    "vehicle_id"
+   ],
+   "files": [
+    "src/app/api/odoo/vehicle/[id]/route.ts"
+   ]
+  },
+  "fleet.vehicle.model": {
+   "methods": [
+    "create",
+    "read",
+    "search_read"
+   ],
+   "fields": [
+    "brand_id",
+    "id",
+    "name"
+   ],
+   "files": [
+    "src/app/api/advances/lookup/route.ts",
+    "src/app/api/odoo/search-vehicle/route.ts",
+    "src/app/api/odoo/vehicle/[id]/route.ts",
+    "src/app/api/search/route.ts",
+    "src/app/api/vehicles/lookup-by-plate/route.ts",
+    "src/app/api/vehicles/route.ts",
+    "src/lib/fleet/normalize-mission-vehicles.ts",
+    "src/lib/odoo-fleet.ts",
+    "src/lib/odoo-fsm.ts"
+   ]
+  },
+  "fleet.vehicle.model.brand": {
+   "methods": [
+    "create",
+    "search_read"
+   ],
+   "fields": [
+    "id",
+    "name"
+   ],
+   "files": [
+    "src/app/api/vehicles/route.ts",
+    "src/lib/fleet/normalize-mission-vehicles.ts",
+    "src/lib/odoo-fleet.ts"
+   ]
+  },
+  "fleet.vehicle.tag": {
+   "methods": [
+    "create",
+    "search_read"
+   ],
+   "fields": [
+    "id",
+    "name"
+   ],
+   "files": [
+    "src/lib/odoo-fourriere-flows.ts"
+   ]
+  },
+  "helpdesk.tag": {
+   "methods": [
+    "read",
+    "search_read"
+   ],
+   "fields": [
+    "id",
+    "name"
+   ],
+   "files": [
+    "src/app/api/admin/labels/print/route.ts",
+    "src/app/api/admin/labels/reprint-batch/route.ts",
+    "src/app/api/admin/labels/test-print/route.ts",
+    "src/app/api/admin/missions/recover-odoo-orphans/route.ts",
+    "src/app/api/admin/odoo-helpdesk-debug/route.ts",
+    "src/lib/odoo-fourriere-flows.ts",
+    "src/lib/print/zebra.ts"
+   ]
+  },
+  "helpdesk.ticket": {
+   "methods": [
+    "create",
+    "fields_get",
+    "read",
+    "search_read",
+    "unlink",
+    "write"
+   ],
+   "fields": [
+    "create_date",
+    "description",
+    "id",
+    "name",
+    "tag_ids",
+    "team_id",
+    "x_studio_date_dentree",
+    "x_studio_fiche_vehicule",
+    "x_studio_id_supabase",
+    "x_studio_mission_towsoft",
+    "x_studio_note_sur_etiquette",
+    "x_studio_vehicule"
+   ],
+   "files": [
+    "src/app/api/admin/labels/print/route.ts",
+    "src/app/api/admin/labels/reprint-batch/route.ts",
+    "src/app/api/admin/labels/test-print/route.ts",
+    "src/app/api/admin/missions/recover-odoo-orphans/route.ts",
+    "src/app/api/admin/odoo-helpdesk-debug/route.ts",
+    "src/app/api/admin/parc/enrich-batch/route.ts",
+    "src/app/api/admin/parc/refresh-dates/route.ts",
+    "src/app/api/admin/towsoft-migration/scan/route.ts",
+    "src/app/api/towsoft/create/route.ts",
+    "src/lib/missions/odoo-dossier.ts",
+    "src/lib/odoo-fourriere-flows.ts",
+    "src/lib/odoo-fsm.ts",
+    "src/lib/print/zebra.ts",
+    "src/lib/towsoft-migration-worker.ts"
+   ]
+  },
+  "ir.attachment": {
+   "methods": [
+    "copy",
+    "create",
+    "read",
+    "search_read"
+   ],
+   "fields": [
+    "create_date",
+    "datas",
+    "id",
+    "mimetype",
+    "name",
+    "res_id",
+    "res_model",
+    "type"
+   ],
+   "files": [
+    "scripts/bank-line-per-document.ts",
+    "src/app/api/cron/achats-parse/route.ts",
+    "src/lib/advice-post.ts",
+    "src/lib/finance/circlek-foreign-vat.ts",
+    "src/lib/fines/odoo-bill.ts",
+    "src/lib/odoo-attachment.ts",
+    "src/lib/odoo-fsm.ts",
+    "src/lib/odoo.ts",
+    "src/lib/paie/push-odoo.ts",
+    "src/lib/relances/odoo.ts"
+   ]
+  },
+  "ir.model.fields": {
+   "methods": [
+    "search_read"
+   ],
+   "fields": [
+    "model",
+    "name"
+   ],
+   "files": [
+    "src/lib/odoo-fsm.ts"
+   ]
+  },
+  "mail.template": {
+   "methods": [
+    "send_mail"
+   ],
+   "fields": [],
+   "files": [
+    "src/lib/circuit/odoo-quote.ts"
+   ]
+  },
+  "product.product": {
+   "methods": [
+    "read",
+    "search_read"
+   ],
+   "fields": [
+    "default_code",
+    "id",
+    "list_price",
+    "name"
+   ],
+   "files": [
+    "src/app/api/tgr/[id]/route.ts",
+    "src/lib/circuit/odoo-quote.ts",
+    "src/lib/odoo-quote.ts",
+    "src/lib/odoo.ts"
+   ]
+  },
+  "project.project": {
+   "methods": [
+    "search_read"
+   ],
+   "fields": [
+    "id",
+    "is_fsm",
+    "name"
+   ],
+   "files": [
+    "src/lib/odoo-fsm.ts"
+   ]
+  },
+  "project.task": {
+   "methods": [
+    "create",
+    "write"
+   ],
+   "fields": [
+    "stage_id"
+   ],
+   "files": [
+    "src/app/api/missions/assign/route.ts",
+    "src/app/api/missions/driver-action/route.ts",
+    "src/app/api/watch/missions/[id]/assign/route.ts",
+    "src/lib/missions/create-relivraison.ts",
+    "src/lib/missions/odoo-dossier.ts",
+    "src/lib/odoo-fsm.ts"
+   ]
+  },
+  "project.task.type": {
+   "methods": [
+    "search_read"
+   ],
+   "fields": [
+    "id",
+    "name"
+   ],
+   "files": [
+    "src/lib/odoo-fsm.ts"
+   ]
+  },
+  "res.company": {
+   "methods": [
+    "read",
+    "search_read"
+   ],
+   "fields": [
+    "city",
+    "id",
+    "name",
+    "partner_id",
+    "street",
+    "vat",
+    "zip"
+   ],
+   "files": [
+    "src/lib/achats/odoo-rpc.ts",
+    "src/lib/missions/rapport-intervention.tsx",
+    "src/lib/relances/odoo.ts"
+   ]
+  },
+  "res.country": {
+   "methods": [
+    "search_read"
+   ],
+   "fields": [
+    "code",
+    "id"
+   ],
+   "files": [
+    "src/lib/odoo.ts"
+   ]
+  },
+  "res.partner": {
+   "methods": [
+    "create",
+    "read",
+    "search",
+    "search_read",
+    "write"
+   ],
+   "fields": [
+    "active",
+    "category_id",
+    "child_ids",
+    "city",
+    "commercial_partner_id",
+    "company_type",
+    "country_id",
+    "customer_rank",
+    "email",
+    "function",
+    "id",
+    "is_company",
+    "name",
+    "parent_id",
+    "parent_id.name",
+    "phone",
+    "ref",
+    "street",
+    "street2",
+    "supplier_rank",
+    "type",
+    "vat",
+    "zip"
+   ],
+   "files": [
+    "src/app/api/missions/[id]/officer/route.ts",
+    "src/app/api/odoo/create-client/route.ts",
+    "src/app/api/odoo/invoice/[id]/route.ts",
+    "src/app/api/odoo/search-client/route.ts",
+    "src/app/api/odoo/zone-agents/route.ts",
+    "src/app/api/partners/route.ts",
+    "src/app/api/personnel/route.ts",
+    "src/app/api/restitution/[missionId]/route.ts",
+    "src/app/api/vehicles/lookup-by-plate/route.ts",
+    "src/app/cmr/[id]/page.tsx",
+    "src/lib/achats/odoo-rpc.ts",
+    "src/lib/facturation/paiements.ts",
+    "src/lib/mail-agent/consignes.ts",
+    "src/lib/mail-agent/odoo.ts",
+    "src/lib/missions/rapport-intervention.tsx",
+    "src/lib/odoo-fsm.ts",
+    "src/lib/odoo-quote.ts",
+    "src/lib/odoo.ts",
+    "src/lib/paie/push-odoo.ts",
+    "src/lib/relances/odoo.ts",
+    "src/lib/requisitoire/officer-portal.ts",
+    "src/lib/requisitoire/relance-items.ts",
+    "src/lib/requisitoire/relance.ts",
+    "src/lib/restitution/officer-copy.ts"
+   ]
+  },
+  "res.partner.category": {
+   "methods": [
+    "read"
+   ],
+   "fields": [
+    "id",
+    "name"
+   ],
+   "files": [
+    "src/lib/facturation/paiements.ts",
+    "src/lib/relances/odoo.ts"
+   ]
+  },
+  "sale.advance.payment.inv": {
+   "methods": [
+    "create",
+    "create_invoices"
+   ],
+   "fields": [
+    "advance_payment_method"
+   ],
+   "files": [
+    "src/lib/circuit/invoice.ts"
+   ]
+  },
+  "sale.order": {
+   "methods": [
+    "action_cancel",
+    "action_confirm",
+    "action_quotation_sent",
+    "create",
+    "message_post",
+    "read",
+    "search_read",
+    "write"
+   ],
+   "fields": [
+    "amount_tax",
+    "amount_total",
+    "client_order_ref",
+    "date_order",
+    "id",
+    "invoice_ids",
+    "invoice_status",
+    "name",
+    "order_line",
+    "order_line>display_type",
+    "order_line>name",
+    "order_line>price_unit",
+    "order_line>product_id",
+    "order_line>product_uom_qty",
+    "order_line>sequence",
+    "order_line>tax_ids",
+    "partner_id",
+    "payment_term_id",
+    "sale_order_template_id",
+    "state",
+    "x_studio_helpdesk_ticket_id",
+    "x_studio_vehicle_id"
+   ],
+   "files": [
+    "src/app/api/admin/towsoft-migration/check-odoo-invoices/route.ts",
+    "src/app/api/caisse/ecran/route.ts",
+    "src/app/api/circuit-prestations/[id]/route.ts",
+    "src/app/api/cron/circuit-race-invoice/route.ts",
+    "src/app/api/encaissement/delete/route.ts",
+    "src/app/api/facturation/verify-invoices/route.ts",
+    "src/app/api/missions/[id]/billed-items/route.ts",
+    "src/app/api/missions/[id]/invoices/route.ts",
+    "src/app/api/missions/[id]/quote-status/route.ts",
+    "src/app/api/stats/driver-revenue/route.ts",
+    "src/app/api/tgr/[id]/route.ts",
+    "src/app/api/vehicles/lookup-by-plate/route.ts",
+    "src/lib/circuit/invoice.ts",
+    "src/lib/circuit/odoo-quote.ts",
+    "src/lib/garage/mission-documents.ts",
+    "src/lib/odoo-invoice.ts",
+    "src/lib/odoo-quote.ts",
+    "src/lib/odoo.ts",
+    "src/lib/relances/odoo.ts"
+   ]
+  },
+  "sale.order.template.line": {
+   "methods": [
+    "search_read"
+   ],
+   "fields": [
+    "name",
+    "product_id",
+    "sale_order_template_id"
+   ],
+   "files": [
+    "src/lib/odoo.ts"
+   ]
+  }
+ },
+ "dynamic": [
+  "src/lib/odoo-attachment.ts:56  odooRpc(resModel, 'message_post', [[resId]], { body, attachment_ids: [attachmentId], })"
+ ]
+}

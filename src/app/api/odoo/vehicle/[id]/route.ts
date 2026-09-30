@@ -92,7 +92,7 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
       contracts = await odooRpc<any[]>('fleet.vehicle.log.contract', 'search_read', [
         [['vehicle_id', '=', vehicleId]],
       ], {
-        fields: ['id', 'name', 'start_date', 'expiration_date', 'state', 'cost_amount'],
+        fields: ['id', 'name', 'start_date', 'expiration_date', 'state', 'amount'],   // Odoo 19 : cost_amount → amount
         limit:  5,
         order:  'start_date desc',
       })
@@ -168,7 +168,7 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
         startDate:  c.start_date || null,
         expiryDate: c.expiration_date || null,
         state:      c.state || null,
-        amount:     c.cost_amount || 0,
+        amount:     c.amount || 0,
       })),
       services: services.map(s => ({
         id:          s.id,

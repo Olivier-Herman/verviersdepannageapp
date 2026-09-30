@@ -61,7 +61,7 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
       payments = await odooRpc<any[]>('account.payment', 'search_read', [
         [['reconciled_invoice_ids', 'in', [invoiceId]]],
       ], {
-        fields: ['id', 'amount', 'date', 'payment_method_line_id', 'journal_id', 'ref'],
+        fields: ['id', 'amount', 'date', 'payment_method_line_id', 'journal_id', 'memo'],   // Odoo 19 : ref → memo
         limit:  10,
         order:  'date desc',
       })
@@ -138,7 +138,7 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
         date:   p.date || null,
         method: p.payment_method_line_id?.[1] || null,
         journal: p.journal_id?.[1] || null,
-        ref:    p.ref || null,
+        ref:    p.memo || null,
       })),
       linkedVehicle,
     })
