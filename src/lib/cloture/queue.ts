@@ -97,8 +97,10 @@ export async function runAssistanceCloseRetry(limit = 10): Promise<{
 
     const r = await transformTouring(keys, row.payload as TransformInput)
 
-    // Déjà clôturé chez Touring (07) → rien à renvoyer, la ligne est réglée.
-    const alreadyClosed = !r.ok && String(r.error || '').includes('07')
+    // Déjà clôturé chez Touring (statut 07 AVANT l'essai) → rien à renvoyer, la ligne est réglée.
+    // ⚠️ Jamais sur le texte de l'erreur : « codes possibles : 36, 00, 04, 07… » contient
+    // « 07 » et une clôture REFUSÉE passait pour faite (2GKR944, 01/10/2026).
+    const alreadyClosed = !r.ok && String((r as any).statusBefore || '') === '07'
     if (r.ok || alreadyClosed) {
       await sb.from('assistance_close_queue')
         .update({ ...stamp, status: 'done', done_at: new Date().toISOString(), last_error: r.ok ? null : r.error })
