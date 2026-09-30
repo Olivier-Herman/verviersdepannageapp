@@ -23,7 +23,7 @@ export default async function TalkiePage({ searchParams }: { searchParams: { c?:
         <div className="p-4 max-w-md mx-auto">
           <div className="bg-surface border rounded-2xl p-8 text-center space-y-2">
             <p className="text-ink font-semibold">📻 Talkie</p>
-            <p className="text-ink-muted text-sm">Aucun canal pour toi : le canal « Garde de nuit » est réservé au 1er départ et à la réserve de la nuit.</p>
+            <p className="text-ink-muted text-sm">Le talkie est ouvert de 18 h à 8 h, pour le 1er départ et la réserve de la nuit de garde.</p>
           </div>
         </div>
       )}

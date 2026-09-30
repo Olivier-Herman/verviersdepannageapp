@@ -1,11 +1,14 @@
 // src/lib/talkie/session.ts
 //
 // Talkie (Olivier 30/09/2026) : quels canaux pour qui.
-//  - « Garde de nuit » : le 1er départ et la réserve de la nuit de garde en cours
-//    (planning) + les superadmins. Tous visibles quand ils sont connectés, tous
-//    peuvent parler (pas d'écoute discrète : Olivier veut apparaître).
-//  - Direct « Mobi / IT » : chaque chauffeur a un canal vers Mobi / IT (réglage
-//    « talkie_it ») pour signaler un souci ; Mobi / IT voit un canal par chauffeur.
+//  - Chauffeurs : UNIQUEMENT le 1er départ et la réserve de la nuit de garde, et
+//    UNIQUEMENT de 18 h à 8 h (plage de nuit du planning de garde) : « Garde de nuit »
+//    + leur canal direct vers Mobi / IT. Hors plage ou autres chauffeurs : rien.
+//  - Mobi / IT (réglage « talkie_it ») : toujours visible, jour et nuit — « Garde de
+//    nuit » et le canal direct des deux chauffeurs de garde de la nuit.
+//  - Superadmins : « Garde de nuit » toujours visible.
+//  Tous apparaissent quand ils sont connectés et peuvent parler (pas d'écoute
+//  discrète : Olivier veut apparaître).
 // Le nom du canal temps réel est dérivé de la clé du canal + d'un secret serveur :
 // il n'est connu que des personnes autorisées.
 
@@ -36,12 +39,12 @@ function secretName(key: string, nightKey: string | null): string {
 
 const isSuper = (u: any) => u?.role === 'superadmin' || (Array.isArray(u?.roles) && u.roles.includes('superadmin'))
 
-export async function talkieAccess(user: { id?: string; role?: string; roles?: string[] } | null | undefined): Promise<TalkieAccess> {
+export async function talkieAccess(user: { id?: string; role?: string; roles?: string[] } | null | undefined, now = new Date()): Promise<TalkieAccess> {
   if (!user?.id) return { me: null, nightKey: null, channels: [] }
   const sb = createAdminClient()
-  const [night, itEmails] = await Promise.all([gardeNight(sb), getBusinessList('talkie_it').catch(() => [] as string[])])
+  const [night, itEmails] = await Promise.all([gardeNight(sb, now), getBusinessList('talkie_it').catch(() => [] as string[])])
   const [{ data: meRow }, { data: it }] = await Promise.all([
-    sb.from('users').select('id, name, role, roles, towsoft_name').eq('id', user.id).maybeSingle(),
+    sb.from('users').select('id, name').eq('id', user.id).maybeSingle(),
     itEmails.length ? sb.from('users').select('id, name').eq('active', true).in('email', itEmails) : Promise.resolve({ data: [] as any[] }),
   ])
   if (!meRow) return { me: null, nightKey: null, channels: [] }
@@ -49,26 +52,26 @@ export async function talkieAccess(user: { id?: string; role?: string; roles?: s
   const channels: TalkieChannel[] = []
   const nightKey = night?.nightKey || null
 
+  const dir = (it || []) as TalkieMember[]
+  const isIt = dir.some(d => d.id === me.id)
+  const gardeIds = [...new Set([night?.nightFirst, night?.reserve].filter(Boolean) as string[])]
+  const iAmGarde = !!night?.inNight && gardeIds.includes(me.id)   // chauffeurs : de 18 h à 8 h seulement
+
   // Garde de nuit
-  const gardeIds = [night?.nightFirst, night?.reserve].filter(Boolean) as string[]
-  if (nightKey && gardeIds.length && (gardeIds.includes(me.id) || isSuper(user))) {
+  if (nightKey && gardeIds.length && (iAmGarde || isIt || isSuper(user))) {
     const { data: g } = await sb.from('users').select('id, name').in('id', gardeIds)
     const members = [...new Set(gardeIds)].map(id => ({ id, name: (g || []).find((x: any) => x.id === id)?.name || '—' }))
     channels.push({ key: 'garde', kind: 'garde', label: 'Garde de nuit', channel: secretName('garde', nightKey), members })
   }
 
-  // Direct vers Mobi / IT
-  const dir = (it || []) as TalkieMember[]
-  const isIt = dir.some(d => d.id === me.id)
-  const roles: string[] = Array.isArray(meRow.roles) ? meRow.roles : []
-  const isDriver = meRow.role === 'driver' || roles.includes('driver') || roles.includes('chauffeur') || !!meRow.towsoft_name
+  // Direct vers Mobi / IT : les deux chauffeurs de garde de la nuit.
   if (isIt) {
-    const { data: drivers } = await sb.from('users').select('id, name').eq('active', true).not('towsoft_name', 'is', null).neq('towsoft_name', '').order('name')
-    for (const d of (drivers || []) as TalkieMember[]) {
+    const { data: g } = gardeIds.length ? await sb.from('users').select('id, name').in('id', gardeIds) : { data: [] as any[] }
+    for (const d of (g || []) as TalkieMember[]) {
       if (d.id === me.id) continue
       channels.push({ key: `direct:${d.id}`, kind: 'direct', label: d.name, channel: secretName(`direct:${d.id}`, null), members: [d, ...dir] })
     }
-  } else if (isDriver && dir.length) {
+  } else if (iAmGarde && dir.length) {
     channels.push({ key: `direct:${me.id}`, kind: 'direct', label: dir.map(d => d.name).join(', '), channel: secretName(`direct:${me.id}`, null), members: [me, ...dir] })
   }
   return { me, nightKey, channels }

@@ -69,7 +69,8 @@ export default function TalkieProvider({ children }: { children: React.ReactNode
   const meRef     = useRef<TalkieMember | null>(null)
   const talkRef   = useRef<{ key: string; ts: number; stream: MediaStream | null; proc: ScriptProcessorNode | null; src: MediaStreamAudioSourceNode | null; rec: Float32Array[]; seq: number; timer: any } | null>(null)
 
-  // ── Canaux accessibles (rechargés toutes les 10 min : la garde change à 18 h) ──
+  // ── Canaux accessibles (rechargés toutes les 2 min : le talkie des chauffeurs
+  //    s'ouvre à 18 h et se ferme à 8 h) ──
   useEffect(() => {
     if (!enabled) return
     let stop = false
@@ -80,7 +81,7 @@ export default function TalkieProvider({ children }: { children: React.ReactNode
       setChannels(prev => JSON.stringify(prev.map(c => c.channel)) === JSON.stringify(list.map(c => c.channel)) ? prev : list)
     }).catch(() => {})
     load()
-    const t = setInterval(load, 10 * 60_000)
+    const t = setInterval(load, 2 * 60_000)
     return () => { stop = true; clearInterval(t) }
   }, [enabled])
 

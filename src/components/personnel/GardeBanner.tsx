@@ -75,11 +75,7 @@ export default function GardeBanner() {
           : <><p className="text-sm font-semibold text-indigo-800 dark:text-indigo-300">Tu es de 1er départ de nuit ce soir 🌙</p>
               <p className="text-xs text-indigo-700/80 dark:text-indigo-300/70">Tu pars en premier sur les appels de nuit. De 18 h à 8 h, chaque mission libre t’est proposée ; sans réponse après 2 min, tu reçois un appel.</p></>}
       </div>
-      <div className="ml-auto flex flex-col items-end gap-1 flex-shrink-0">
-        {/* Talkie « Garde de nuit » : 1er départ ↔ réserve (Olivier 30/09/2026). */}
-        <a href="/talkie" className="inline-flex items-center min-h-[36px] px-3 rounded-lg bg-brand text-white text-xs font-bold">📻 Talkie</a>
-        <a href="/ma-paie" className="text-xs font-medium text-brand hover:underline">Mon calendrier</a>
-      </div>
+      <a href="/ma-paie" className="ml-auto text-xs font-medium text-brand hover:underline flex-shrink-0">Mon calendrier</a>
     </div>
     )}
     {reserveOn !== null && (
