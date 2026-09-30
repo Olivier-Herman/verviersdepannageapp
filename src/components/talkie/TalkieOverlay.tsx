@@ -43,6 +43,7 @@ export default function TalkieOverlay() {
     if (!h) return
     clearTimeout(h.timer)
     if (h.talking) { t.stopTalking(true); setFabTalking(false) }
+    else if (!t.audioOn) t.enableAudio()   // son pas encore actif : le toucher l'active
     else router.push(`/talkie?c=${encodeURIComponent(fabKey)}`)
   }
 
@@ -78,12 +79,12 @@ export default function TalkieOverlay() {
       )}
       {(fabTalking || (!showReply && !speaking)) && (
         <div style={{ bottom: 'calc(env(safe-area-inset-bottom, 0px) + 84px)' }} className="fixed right-3 z-[60] flex items-center gap-2">
-          <span className={`${fabTalking ? 'inline' : 'hidden sm:inline'} text-[11px] text-ink-muted bg-surface/90 border border-slate-200 dark:border-slate-700 rounded-full px-2 py-0.5`}>{fabTalking ? '🔴' : '📻'} {label(fabKey)}</span>
+          <span className={`${fabTalking || !t.audioOn ? 'inline' : 'hidden sm:inline'} text-[11px] text-ink-muted bg-surface/90 border border-slate-200 dark:border-slate-700 rounded-full px-2 py-0.5`}>{fabTalking ? `🔴 ${label(fabKey)}` : !t.audioOn ? '🔇 Touche pour activer le son' : `📻 ${label(fabKey)}`}</span>
           <button type="button" aria-label={`Talkie : maintenir pour parler sur ${label(fabKey)}, toucher pour ouvrir`}
             onPointerDown={e => { e.preventDefault(); try { e.currentTarget.setPointerCapture(e.pointerId) } catch { /* ignoré */ } fabDown() }} onPointerUp={fabUp} onPointerCancel={fabUp}
             onContextMenu={e => e.preventDefault()}
             style={{ touchAction: 'none', WebkitUserSelect: 'none', userSelect: 'none', WebkitTouchCallout: 'none' } as any}
-            className={`w-14 h-14 rounded-full text-white text-2xl shadow-lg flex items-center justify-center select-none ${fabTalking ? 'bg-red-600 scale-110' : 'bg-brand'}`}>{fabTalking ? '🎙️' : '📻'}</button>
+            className={`w-14 h-14 rounded-full text-white text-2xl shadow-lg flex items-center justify-center select-none ${fabTalking ? 'bg-red-600 scale-110' : !t.audioOn ? 'bg-slate-500' : 'bg-brand'}`}>{fabTalking ? '🎙️' : !t.audioOn ? '🔇' : '📻'}</button>
         </div>
       )}
       {t.error && (

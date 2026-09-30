@@ -119,6 +119,12 @@ export default function TalkieProvider({ children }: { children: React.ReactNode
   }, [])
   useEffect(() => {
     if (!channels.length) return
+    // À l'ouverture : on tente d'activer le son sans attendre de toucher (l'app iPhone
+    // l'autorise souvent) ; sinon le premier toucher l'active (bouton 🔇 en attendant).
+    enableAudio()
+  }, [channels.length, enableAudio])
+  useEffect(() => {
+    if (!channels.length) return
     // Chaque toucher relance le son s'il est en pause (le premier toucher l'active).
     const h = () => { if (!ctxRef.current || ctxRef.current.state !== 'running') enableAudio() }
     document.addEventListener('pointerdown', h, { capture: true })
