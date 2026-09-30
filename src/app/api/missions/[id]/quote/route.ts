@@ -263,10 +263,11 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   }
   // Facture déjà créée dans Odoo mais jamais notée ici (appel coupé après la
   // création, ex. 504 du cron) : on la retrouve par son origine au lieu d'en
-  // créer une de plus. 3 brouillons Ethias identiques le 30/09/2026.
+  // créer une de plus. 3 brouillons Ethias identiques le 30/09/2026. Une facture
+  // extournée ne compte pas : la refacturation reste possible.
   if (mode === 'invoice' && !invoiceUpdateId && missionRef && mission.billed_to_id) {
     const orphan = (await withOdooActor(user?.id, () => odooRpc<any[]>('account.move', 'search_read',
-      [[['move_type', '=', 'out_invoice'], ['invoice_origin', '=', missionRef], ['partner_id', '=', mission.billed_to_id], ['state', '!=', 'cancel']]],
+      [[['move_type', '=', 'out_invoice'], ['invoice_origin', '=', missionRef], ['partner_id', '=', mission.billed_to_id], ['state', '!=', 'cancel'], ['payment_state', '!=', 'reversed']]],
       { fields: ['id'], order: 'id asc', limit: 1 })).catch(() => []))?.[0]
     if (orphan) {
       await sb.from('incoming_missions').update({ invoice_odoo_id: orphan.id }).eq('id', mission.id)
