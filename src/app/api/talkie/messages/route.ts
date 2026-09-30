@@ -50,7 +50,7 @@ export async function POST(req: Request) {
   const { error } = await sb.storage.from('talkie').upload(path, Buffer.from(await file.arrayBuffer()), { contentType: 'audio/wav', upsert: false })
   if (error) return NextResponse.json({ error: `Enregistrement impossible : ${error.message}` }, { status: 500 })
   const { data: row } = await sb.from('talkie_messages').insert({ night_key: nightKey, channel_key: key, sender_id: me.id, duration_ms: durationMs, storage_path: path }).select('id').single()
-  // Notif si pas déjà prévenu au début de la prise de parole (au plus une toutes les 2 min).
+  // Notif si pas déjà prévenu au début de la prise de parole (au plus une par minute et par personne qui parle).
   await notifyTalkie(t, online, 'end', Math.max(1, Math.round(durationMs / 1000)))
   return NextResponse.json({ ok: true, id: row?.id })
 }

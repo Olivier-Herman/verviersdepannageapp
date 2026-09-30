@@ -1,6 +1,6 @@
 // POST /api/talkie/ping { key, online } — début d'une prise de parole (Olivier
 // 30/09/2026) : les membres du canal qui n'ont pas l'app à l'écran reçoivent tout de
-// suite « 📻 X parle en ce moment » (au plus une notif toutes les 2 min par personne).
+// suite « 📻 X parle en ce moment » (au plus une notif par minute et par personne qui parle).
 import { NextResponse }     from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions }      from '@/lib/auth'

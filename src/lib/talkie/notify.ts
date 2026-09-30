@@ -1,5 +1,5 @@
 // src/lib/talkie/notify.ts — notif talkie (Olivier 30/09/2026) : aux membres du canal
-// qui n'ont pas l'app à l'écran ; au plus une toutes les 2 min par personne QUI PARLE
+// qui n'ont pas l'app à l'écran ; au plus une par minute et par personne QUI PARLE
 // (Olivier 30/09/2026 : si Franck puis Fred parlent, on est prévenu pour chacun ; mais
 // quelqu'un qui enchaîne plusieurs messages ne déclenche pas une rafale).
 // « À l'écran » = signal de présence reçu il y a moins de 25 s (table talkie_presence,
@@ -9,7 +9,7 @@ import { createAdminClient } from '@/lib/supabase'
 import { sendNotification }  from '@/lib/notifications/send'
 import type { TalkieAccess, TalkieChannel } from './session'
 
-const DEDUPE_MS = 2 * 60_000
+const DEDUPE_MS = 60_000   // une par minute et par personne qui parle (Olivier 30/09/2026)
 const SEEN_MS   = 25_000
 
 export async function notifyTalkie(t: { access: TalkieAccess; ch: TalkieChannel }, _clientOnline: Set<string>, when: 'start' | 'end', secs?: number): Promise<number> {
