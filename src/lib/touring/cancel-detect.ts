@@ -16,7 +16,6 @@ import { sendNotificationToRoles } from '@/lib/notifications/send'
 // pour toujours. Aucun chauffeur n'est parti → elle passe annulée sans frais.
 const ACTIVE_STATUSES  = ['new', 'dispatching', 'assigned', 'accepted', 'in_progress', 'delivering']
 const CONFIRM_MIN      = 14   // fenêtre de confirmation (≈7 poll cycles) avant de trancher
-const CONFIRM_MIN_UNACCEPTED = 0.9   // mission pas encore acceptée : absente à 2 passages (poll chaque minute)
 
 export interface CancelDetectSummary {
   checked: number; missingNew: number; recovered: number
@@ -53,6 +52,7 @@ export async function runTouringCancelDetect(sb: any): Promise<CancelDetectSumma
 
   const live = await liveDossiers()
   if (!live) return out   // les 2 comptes COMEX sont KO → on ne fait rien ce tour
+  if (live.size === 0) return out   // liste vide = COMEX muet, pas « tout annulé » : on ne tranche pas
 
   // ── UNE RELIVRAISON VIT SUR LE DOSSIER DE SON REMORQUAGE ─────────────────
   // 2GLN102, 27/09/2026 : la relivraison reprenait la commande TGR que Touring
@@ -84,15 +84,16 @@ export async function runTouringCancelDetect(sb: any): Promise<CancelDetectSumma
     }
 
     // Absente des listes COMEX.
-    if (!f.touring_missing_since) {                         // 1re détection → on démarre le chrono
+    // Pas encore acceptée (Olivier 30/09/2026) : « dès que la mission n'est plus dans
+    // COMEX elle doit disparaître de VD Soft » — sinon un chauffeur peut la prendre
+    // dans Momo Market. On tranche au premier passage (poll chaque minute).
+    const unaccepted = ['new', 'dispatching'].includes(String(f.status)) && !f.touring_onroad_at
+    if (!f.touring_missing_since && !unaccepted) {          // 1re détection → on démarre le chrono
       await sb.from('incoming_missions').update({ touring_missing_since: new Date().toISOString() }).eq('id', f.id)
       out.missingNew++
       continue
     }
-    // Pas encore acceptée : deux passages successifs suffisent (≈ 2 min) — sinon elle
-    // reste proposée aux chauffeurs dans Momo Market alors que Touring l'a retirée.
-    const windowMin = ['new', 'dispatching'].includes(String(f.status)) ? CONFIRM_MIN_UNACCEPTED : CONFIRM_MIN
-    if (now - Date.parse(f.touring_missing_since) < windowMin * 60000) continue   // fenêtre pas écoulée
+    if (!unaccepted && now - Date.parse(f.touring_missing_since) < CONFIRM_MIN * 60000) continue   // fenêtre pas écoulée
 
     // ── UNE MISSION FAITE NE DEVIENT PAS UN TRAJET À VIDE ───────────────────
     // « On ne peut pas arriver à un trajet à vide si le chauffeur a déjà déposé
