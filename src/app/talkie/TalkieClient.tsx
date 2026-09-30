@@ -1,247 +1,74 @@
 'use client'
-// Talkie (Olivier 30/09/2026) : talkie-walkie en direct dans l'app.
-//  - « Garde de nuit » : 1er départ + réserve + superadmins (tous visibles, tous parlent).
-//  - Direct « Mobi / IT » : chaque chauffeur vers Mobi / IT, qui voit un canal par chauffeur.
-//  - Maintenir le bouton pour parler, une seule personne à la fois (comme une radio).
-//  - La voix part en direct par Supabase Realtime (diffusion) : 16 kHz, loi µ
-//    (≈ 16 Ko/s), morceaux d'≈ 85 ms, rejoués avec un petit tampon.
-//  - Micro ouvert seulement pendant l'appui : sur iPhone, un micro ouvert en continu
-//    envoie le son dans l'écouteur au lieu du haut-parleur.
-//  - Chaque prise de parole est aussi enregistrée (réécoute, notif si l'autre n'a
-//    pas le talkie ouvert). Étape 2 à venir : réception écran verrouillé (app native).
+// Écran du talkie (Olivier 30/09/2026) : onglets de canaux (Garde de nuit, direct
+// Mobi / IT), qui est connecté, gros bouton « Maintiens pour parler », messages
+// enregistrés. La connexion et le son sont gérés par le moteur commun à toute l'app
+// (components/talkie/TalkieProvider) : on entend aussi le talkie sur les autres pages.
 
-import { useCallback, useEffect, useRef, useState } from 'react'
-import { createClient } from '@supabase/supabase-js'
+import { useEffect, useState } from 'react'
+import { useTalkie, type TalkieChannel, type TalkieMember } from '@/components/talkie/TalkieProvider'
 
-interface Channel { key: string; kind: 'garde' | 'direct'; label: string; channel: string; members: { id: string; name: string }[] }
-interface Props {
-  me: { id: string; name: string }
-  channels: Channel[]
-  initialKey: string
-}
 interface Msg { id: string; senderName: string; durationMs: number; at: string; url: string | null }
 
-const RATE = 16000
-const MAX_TALK_MS = 60_000
-
-// ── Loi µ (G.711) ─────────────────────────────────────────────────────────────
-function muEncode(f32: Float32Array): Uint8Array {
-  const out = new Uint8Array(f32.length)
-  for (let i = 0; i < f32.length; i++) {
-    let s = Math.max(-1, Math.min(1, f32[i])) * 32767
-    const sign = s < 0 ? 0x80 : 0
-    if (s < 0) s = -s
-    s = Math.min(32635, s + 132)
-    let exp = 7
-    for (let mask = 0x4000; (s & mask) === 0 && exp > 0; exp--, mask >>= 1) { /* cherche l'exposant */ }
-    const mant = (s >> (exp + 3)) & 0x0f
-    out[i] = ~(sign | (exp << 4) | mant) & 0xff
-  }
-  return out
-}
-function muDecode(u8: Uint8Array): Float32Array {
-  const out = new Float32Array(u8.length)
-  for (let i = 0; i < u8.length; i++) {
-    const u = ~u8[i] & 0xff
-    const sign = u & 0x80, exp = (u >> 4) & 0x07, mant = u & 0x0f
-    let s = ((mant << 3) + 132) << exp
-    s -= 132
-    out[i] = (sign ? -s : s) / 32768
-  }
-  return out
-}
-function downsample(input: Float32Array, inRate: number): Float32Array {
-  const ratio = inRate / RATE
-  const len = Math.floor(input.length / ratio)
-  const out = new Float32Array(len)
-  for (let i = 0; i < len; i++) {
-    const start = Math.floor(i * ratio), end = Math.min(input.length, Math.floor((i + 1) * ratio))
-    let sum = 0; for (let j = start; j < end; j++) sum += input[j]
-    out[i] = sum / Math.max(1, end - start)
-  }
-  return out
-}
-const toB64 = (u8: Uint8Array) => { let s = ''; for (let i = 0; i < u8.length; i++) s += String.fromCharCode(u8[i]); return btoa(s) }
-const fromB64 = (b: string) => { const s = atob(b); const u8 = new Uint8Array(s.length); for (let i = 0; i < s.length; i++) u8[i] = s.charCodeAt(i); return u8 }
-function wav(chunks: Float32Array[]): Blob {
-  const n = chunks.reduce((a, c) => a + c.length, 0)
-  const buf = new ArrayBuffer(44 + n * 2), v = new DataView(buf)
-  const w = (o: number, s: string) => { for (let i = 0; i < s.length; i++) v.setUint8(o + i, s.charCodeAt(i)) }
-  w(0, 'RIFF'); v.setUint32(4, 36 + n * 2, true); w(8, 'WAVE'); w(12, 'fmt '); v.setUint32(16, 16, true)
-  v.setUint16(20, 1, true); v.setUint16(22, 1, true); v.setUint32(24, RATE, true); v.setUint32(28, RATE * 2, true)
-  v.setUint16(32, 2, true); v.setUint16(34, 16, true); w(36, 'data'); v.setUint32(40, n * 2, true)
-  let o = 44
-  for (const c of chunks) for (let i = 0; i < c.length; i++, o += 2) v.setInt16(o, Math.max(-1, Math.min(1, c[i])) * 32767, true)
-  return new Blob([buf], { type: 'audio/wav' })
-}
-
-export default function TalkieClient({ me, channels, initialKey }: Props) {
-  const [key, setKey]         = useState(channels.some(c => c.key === initialKey) ? initialKey : channels[0].key)
+export default function TalkieClient({ me, channels: initialChannels, initialKey }: { me: TalkieMember; channels: TalkieChannel[]; initialKey: string }) {
+  const t = useTalkie()
+  const channels = t?.channels.length ? t.channels : initialChannels
+  const [key, setKey] = useState(channels.some(c => c.key === initialKey) ? initialKey : channels[0].key)
   const current = channels.find(c => c.key === key) || channels[0]
-  const channel = current.channel
-  const members = current.members
-  const [active, setActive]   = useState(false)
-  const [online, setOnline]   = useState<{ id: string; name: string }[]>([])
-  const [floor, setFloor]     = useState<{ id: string; name: string } | null>(null)
-  const [talking, setTalking] = useState(false)
-  const [msgs, setMsgs]       = useState<Msg[]>([])
-  const [error, setError]     = useState<string | null>(null)
+  const [msgs, setMsgs] = useState<Msg[]>([])
 
-  const ctxRef   = useRef<AudioContext | null>(null)
-  const chRef    = useRef<any>(null)
-  const nextRef  = useRef(0)
-  const floorRef = useRef<{ id: string; ts: number } | null>(null)
-  const lastAudioRef = useRef(0)
-  const talkRef  = useRef<{ ts: number; stream: MediaStream; proc: ScriptProcessorNode; src: MediaStreamAudioSourceNode; rec: Float32Array[]; seq: number; timer: any } | null>(null)
-  const onlineRef = useRef<{ id: string; name: string }[]>([])
-  const isMember = true   // tout le monde parle et apparaît (pas d'écoute discrète)
+  const online = t?.online[current.key] || []
+  const floor  = t?.floor[current.key] || null
+  const talking = t?.talkingKey === current.key
+  const busy = !!floor && floor.id !== me.id
 
-  const beep = useCallback((freq: number, ms = 90) => {
-    const ctx = ctxRef.current; if (!ctx) return
-    const o = ctx.createOscillator(), g = ctx.createGain()
-    o.frequency.value = freq; g.gain.value = 0.08
-    o.connect(g); g.connect(ctx.destination); o.start(); o.stop(ctx.currentTime + ms / 1000)
-  }, [])
-
-  const loadMsgs = useCallback(async () => {
-    try { const r = await fetch(`/api/talkie/messages?key=${encodeURIComponent(key)}`, { cache: 'no-store' }); const j = await r.json(); if (r.ok) setMsgs(j.messages || []) } catch { /* réessai au prochain message */ }
-  }, [key])
-
-  // Connexion au canal (après « Activer » : le son ne peut démarrer qu'après un geste).
   useEffect(() => {
-    if (!active) return
-    const sb = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!)
-    const ch = sb.channel(channel, { config: { broadcast: { self: false, ack: false }, presence: { key: me.id } } })
-    chRef.current = ch
-    ch.on('presence', { event: 'sync' }, () => {
-      const st = ch.presenceState() as Record<string, any[]>
-      const list = Object.values(st).flat().map((p: any) => ({ id: p.id, name: p.name })).filter((p, i, a) => p.id && a.findIndex(x => x.id === p.id) === i)
-      onlineRef.current = list; setOnline(list)
-    })
-    ch.on('broadcast', { event: 'start' }, ({ payload }: any) => {
-      // Deux appuis en même temps : le premier arrivé garde la parole.
-      const mine = talkRef.current
-      if (mine && (payload.ts < mine.ts || (payload.ts === mine.ts && payload.id < me.id))) stopTalking(false)
-      floorRef.current = { id: payload.id, ts: payload.ts }
-      setFloor({ id: payload.id, name: payload.name })
-      nextRef.current = 0; lastAudioRef.current = Date.now()
-      beep(880)
-    })
-    ch.on('broadcast', { event: 'a' }, ({ payload }: any) => {
-      const ctx = ctxRef.current; if (!ctx) return
-      lastAudioRef.current = Date.now()
-      const f32 = muDecode(fromB64(payload.d))
-      const buf = ctx.createBuffer(1, f32.length, RATE); buf.getChannelData(0).set(f32)
-      const node = ctx.createBufferSource(); node.buffer = buf; node.connect(ctx.destination)
-      const t = Math.max(ctx.currentTime + 0.15, nextRef.current)
-      node.start(t); nextRef.current = t + buf.duration
-    })
-    ch.on('broadcast', { event: 'end' }, ({ payload }: any) => {
-      if (floorRef.current?.id === payload.id) { floorRef.current = null; setFloor(null) }
-      beep(660, 70)
-      setTimeout(loadMsgs, 2500)
-    })
-    ch.subscribe(async (status: string) => {
-      if (status === 'SUBSCRIBED') await ch.track({ id: me.id, name: me.name })   // tout le monde apparaît
-    })
-    // Parole « coincée » (fin perdue) : on libère au bout de 4 s sans son.
-    const guard = setInterval(() => { if (floorRef.current && Date.now() - lastAudioRef.current > 4000) { floorRef.current = null; setFloor(null) } }, 1000)
+    let stop = false
+    fetch(`/api/talkie/messages?key=${encodeURIComponent(current.key)}`, { cache: 'no-store' }).then(r => r.json())
+      .then(j => { if (!stop) setMsgs(j.messages || []) }).catch(() => {})
+    return () => { stop = true }
+  }, [current.key, t?.msgsVersion])
+
+  // Écran allumé tant que l'écran du talkie est ouvert (si le téléphone l'autorise).
+  useEffect(() => {
     let lock: any = null
     ;(navigator as any).wakeLock?.request?.('screen').then((l: any) => { lock = l }).catch(() => {})
-    return () => {
-      clearInterval(guard); lock?.release?.().catch?.(() => {})
-      if (talkRef.current) stopTalking(true)
-      sb.removeChannel(ch); chRef.current = null
-      floorRef.current = null; setFloor(null); onlineRef.current = []; setOnline([])
-    }
-  }, [active, channel, me.id, me.name, isMember, beep, loadMsgs])
+    return () => { lock?.release?.().catch?.(() => {}) }
+  }, [])
 
-  useEffect(() => { loadMsgs() }, [loadMsgs])
-
-  async function activate() {
-    try {
-      const Ctx = (window as any).AudioContext || (window as any).webkitAudioContext
-      const ctx: AudioContext = new Ctx()
-      await ctx.resume()
-      ctxRef.current = ctx
-      setActive(true); setError(null)
-    } catch { setError('Le son n’a pas pu démarrer sur ce téléphone.') }
-  }
-
-  async function startTalking() {
-    if (!isMember || talkRef.current || !chRef.current || !ctxRef.current) return
-    if (floorRef.current && floorRef.current.id !== me.id) { navigator.vibrate?.(120); return }
-    const ts = Date.now()
-    setTalking(true); setError(null)
-    chRef.current.send({ type: 'broadcast', event: 'start', payload: { id: me.id, name: me.name, ts } })
-    beep(1200, 70)
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } })
-      const ctx = ctxRef.current
-      const src = ctx.createMediaStreamSource(stream)
-      const proc = ctx.createScriptProcessor(4096, 1, 1)
-      const state = { ts, stream, proc, src, rec: [] as Float32Array[], seq: 0, timer: setTimeout(() => stopTalking(true), MAX_TALK_MS) }
-      proc.onaudioprocess = (e) => {
-        if (talkRef.current !== state) return
-        const down = downsample(e.inputBuffer.getChannelData(0), ctx.sampleRate)
-        state.rec.push(down)
-        chRef.current?.send({ type: 'broadcast', event: 'a', payload: { s: state.seq++, d: toB64(muEncode(down)) } })
-      }
-      src.connect(proc); proc.connect(ctx.destination)
-      talkRef.current = state
-    } catch {
-      setTalking(false)
-      chRef.current?.send({ type: 'broadcast', event: 'end', payload: { id: me.id } })
-      setError('Micro indisponible : autorise le micro pour l’app dans les réglages du téléphone.')
-    }
-  }
-
-  function stopTalking(send = true) {
-    const t = talkRef.current
-    setTalking(false)
-    if (!t) return
-    talkRef.current = null
-    clearTimeout(t.timer)
-    try { t.proc.disconnect(); t.src.disconnect() } catch { /* déjà débranché */ }
-    t.stream.getTracks().forEach(tr => tr.stop())
-    chRef.current?.send({ type: 'broadcast', event: 'end', payload: { id: me.id } })
-    if (!send) return
-    const ms = Math.round(t.rec.reduce((a, c) => a + c.length, 0) / RATE * 1000)
-    if (ms < 400) return   // appui trop court : rien à garder
-    const fd = new FormData(); fd.append('key', key); fd.append('audio', wav(t.rec), 'talkie.wav'); fd.append('durationMs', String(ms))
-    fd.append('online', onlineRef.current.map(p => p.id).join(','))
-    fetch('/api/talkie/messages', { method: 'POST', body: fd }).then(() => loadMsgs()).catch(() => setError('Message non enregistré (réseau).'))
-  }
-
-  const busy = !!floor && floor.id !== me.id
+  const people = [...current.members, ...online.filter(o => !current.members.some(m => m.id === o.id))]
 
   return (
     <div className="p-4 max-w-md mx-auto space-y-4">
       <div>
         <h1 className="text-ink font-bold text-xl">📻 Talkie</h1>
         <p className="text-ink-muted text-sm mt-1">
-          {current.kind === 'garde' ? `Garde de nuit : ${members.map(m => m.name).join(' et ')}.` : `Canal direct ${current.members[0]?.id === me.id ? `vers ${current.label}` : `avec ${current.label}`}.`}
+          {current.kind === 'garde' ? `Garde de nuit : ${current.members.map(m => m.name).join(' et ')}.` : `Canal direct ${current.members[0]?.id === me.id ? `vers ${current.label}` : `avec ${current.label}`}.`}
+          {' '}Tu entends aussi le talkie sur les autres pages de l’app.
         </p>
       </div>
+
       {channels.length > 1 && (
         <div className="flex gap-2 overflow-x-auto pb-1">
-          {channels.map(c => (
-            <button key={c.key} type="button" onClick={() => { if (!talking) { setKey(c.key); setMsgs([]) } }}
-              className={`flex-shrink-0 min-h-[40px] px-3 rounded-full text-sm font-semibold border ${c.key === key ? 'bg-brand text-white border-brand' : 'bg-surface text-ink border-slate-300 dark:border-slate-600'}`}>
-              {c.kind === 'garde' ? '🌙 Garde de nuit' : `👤 ${c.label}`}
-            </button>
-          ))}
+          {channels.map(c => {
+            const live = t?.floor[c.key] && t.floor[c.key]!.id !== me.id
+            return (
+              <button key={c.key} type="button" onClick={() => { if (!t?.talkingKey) { setKey(c.key); setMsgs([]) } }}
+                className={`flex-shrink-0 min-h-[40px] px-3 rounded-full text-sm font-semibold border ${c.key === current.key ? 'bg-brand text-white border-brand' : live ? 'bg-green-100 text-green-800 border-green-400 dark:bg-green-500/15 dark:text-green-300' : 'bg-surface text-ink border-slate-300 dark:border-slate-600'}`}>
+                {live ? '🔊 ' : ''}{c.kind === 'garde' ? '🌙 Garde de nuit' : `👤 ${c.label}`}
+              </button>
+            )
+          })}
         </div>
       )}
 
-      {!active ? (
-        <button type="button" onClick={activate} className="w-full min-h-[64px] rounded-2xl bg-brand hover:bg-brand-hover text-white font-bold text-base">
+      {!t ? null : !t.audioOn ? (
+        <button type="button" onClick={() => t.enableAudio()} className="w-full min-h-[64px] rounded-2xl bg-brand hover:bg-brand-hover text-white font-bold text-base">
           📻 Activer le talkie
         </button>
       ) : (
         <>
           <div className="flex flex-wrap gap-2 text-xs">
-            {[...members, ...online.filter(o => !members.some(m => m.id === o.id))].map(m => {
+            {people.map(m => {
               const on = online.some(o => o.id === m.id)
               return <span key={m.id} className={`px-2.5 py-1 rounded-full font-semibold ${on ? 'bg-green-100 text-green-800 dark:bg-green-500/15 dark:text-green-300' : 'bg-slate-100 text-slate-600 dark:bg-slate-700/50 dark:text-slate-300'}`}>{on ? '🟢' : '⚪'} {m.name}{m.id === me.id ? ' (toi)' : ''}</span>
             })}
@@ -253,22 +80,20 @@ export default function TalkieClient({ me, channels, initialKey }: Props) {
               : <span className="text-ink-muted">Canal libre</span>}
           </div>
 
-          {isMember && (
-            <div className="flex justify-center">
-              <button type="button"
-                onPointerDown={e => { e.preventDefault(); startTalking() }}
-                onPointerUp={() => stopTalking(true)} onPointerCancel={() => stopTalking(true)} onPointerLeave={() => talking && stopTalking(true)}
-                onContextMenu={e => e.preventDefault()}
-                disabled={busy}
-                style={{ touchAction: 'none', WebkitUserSelect: 'none', userSelect: 'none', WebkitTouchCallout: 'none' } as any}
-                className={`w-52 h-52 rounded-full font-bold text-lg text-white shadow-lg transition-transform select-none ${talking ? 'bg-red-600 scale-95' : busy ? 'bg-slate-400' : 'bg-brand hover:bg-brand-hover'}`}>
-                {talking ? 'Relâche pour finir' : busy ? 'Occupé' : 'Maintiens pour parler'}
-              </button>
-            </div>
-          )}
+          <div className="flex justify-center">
+            <button type="button"
+              onPointerDown={e => { e.preventDefault(); t.startTalking(current.key) }}
+              onPointerUp={() => t.stopTalking(true)} onPointerCancel={() => t.stopTalking(true)} onPointerLeave={() => talking && t.stopTalking(true)}
+              onContextMenu={e => e.preventDefault()}
+              disabled={busy || (!!t.talkingKey && !talking)}
+              style={{ touchAction: 'none', WebkitUserSelect: 'none', userSelect: 'none', WebkitTouchCallout: 'none' } as any}
+              className={`w-52 h-52 rounded-full font-bold text-lg text-white shadow-lg transition-transform select-none ${talking ? 'bg-red-600 scale-95' : busy ? 'bg-slate-400' : 'bg-brand hover:bg-brand-hover'}`}>
+              {talking ? 'Relâche pour finir' : busy ? 'Occupé' : 'Maintiens pour parler'}
+            </button>
+          </div>
         </>
       )}
-      {error && <p className="text-red-700 dark:text-red-300 text-sm bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/30 rounded-xl px-3 py-2">⚠️ {error}</p>}
+      {t?.error && <p className="text-red-700 dark:text-red-300 text-sm bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/30 rounded-xl px-3 py-2">⚠️ {t.error}</p>}
 
       <div className="bg-surface border rounded-2xl p-3 space-y-2">
         <p className="text-ink font-semibold text-sm">{current.kind === 'garde' ? 'Messages de la nuit' : 'Derniers messages'}</p>

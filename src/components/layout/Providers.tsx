@@ -9,6 +9,8 @@ import { TruckConfirmModal }           from '@/components/trucks/TruckConfirmMod
 import { I18nProvider }                from '@/lib/i18n/I18nProvider'
 import type { Lang }                   from '@/lib/i18n/types'
 import { PwaNativeGuard }              from '@/components/PwaNativeGuard'
+import TalkieProvider                  from '@/components/talkie/TalkieProvider'
+import TalkieOverlay                   from '@/components/talkie/TalkieOverlay'
 
 function AudioModeMount() {
   const { data: session } = useSession()
@@ -47,7 +49,11 @@ export default function Providers({ children }: { children: React.ReactNode }) {
         <TruckConfirmModal />
         <I18nMount>
           <PwaNativeGuard>
-            <SheetStackProvider>{children}</SheetStackProvider>
+            {/* Talkie : écoute sur toutes les pages, sans couper en changeant de page (Olivier 30/09/2026). */}
+            <TalkieProvider>
+              <SheetStackProvider>{children}</SheetStackProvider>
+              <TalkieOverlay />
+            </TalkieProvider>
           </PwaNativeGuard>
         </I18nMount>
       </SessionProvider>
