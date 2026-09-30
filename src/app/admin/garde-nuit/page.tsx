@@ -43,7 +43,7 @@ export default async function GardeNuitStatsPage({ searchParams }: { searchParam
       <div className="flex items-start justify-between gap-3 flex-wrap">
         <div>
           <h1 className="text-ink font-bold text-xl">🌙 Garde de nuit : statistiques</h1>
-          <p className="text-ink-muted text-sm mt-1">Missions proposées la nuit au 1er départ puis à la réserve : réponses, délais, rappels, appels au client, passages au dispatch. Un résumé de la nuit est envoyé chaque matin à 8 h.</p>
+          <p className="text-ink-muted text-sm mt-1">Missions proposées la nuit au 1er départ puis à la réserve : réponses, délais, rappels, appels au client, passages au dispatch. Un résumé de la nuit est envoyé chaque matin à 10 h.</p>
         </div>
         <div className="flex gap-1">
           {[7, 30, 90].map(d => (

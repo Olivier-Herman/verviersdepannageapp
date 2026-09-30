@@ -1,9 +1,10 @@
 // src/app/api/cron/night-report/route.ts
 //
-// Rapport du matin de la garde de nuit (Olivier 30/09/2026) : chaque jour à 8 h
-// (heure belge), bilan de la nuit (18 h → 8 h) envoyé aux destinataires du réglage
+// Rapport du matin de la garde de nuit (Olivier 30/09/2026) : chaque jour à 10 h
+// (heure belge : le chauffeur de nuit finit à 8 h mais peut déborder sur une
+// mission), bilan de 18 h la veille à 10 h, envoyé aux destinataires du réglage
 // « Garde de nuit — destinataires du rapport du matin ». Vercel planifie en UTC :
-// le cron tourne à 6 h et 7 h UTC, on n'envoie qu'à 8 h à Bruxelles (été comme
+// le cron tourne à 8 h et 9 h UTC, on n'envoie qu'à 10 h à Bruxelles (été comme
 // hiver), une seule fois par jour. ?force=1 (avec le secret) pour renvoyer.
 
 import { NextRequest, NextResponse } from 'next/server'
@@ -25,14 +26,14 @@ export async function GET(req: NextRequest) {
   const now = new Date()
   const parts = Object.fromEntries(new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Brussels', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', hourCycle: 'h23' }).formatToParts(now).map(p => [p.type, p.value]))
   const today = `${parts.year}-${parts.month}-${parts.day}`
-  if (!force && Number(parts.hour) !== 8) return NextResponse.json({ ok: true, skipped: 'pas 8 h à Bruxelles' })
+  if (!force && Number(parts.hour) !== 10) return NextResponse.json({ ok: true, skipped: 'pas 10 h à Bruxelles' })
 
   const sb = createAdminClient()
   const { data: last } = await sb.from('app_settings').select('value').eq('key', 'rapport_garde_nuit_dernier_envoi').maybeSingle()
   if (!force && String(last?.value || '').includes(today)) return NextResponse.json({ ok: true, skipped: 'déjà envoyé aujourd’hui' })
 
   try {
-    const since = new Date(now.getTime() - 14 * 3600_000).toISOString()   // 18 h → 8 h
+    const since = new Date(now.getTime() - 16 * 3600_000).toISOString()   // 18 h la veille → 10 h (débordements compris)
     const stats = await loadNightStats(since, now.toISOString())
     const nightLabel = new Date(now.getTime() - 86400_000).toLocaleDateString('fr-BE', { timeZone: 'Europe/Brussels', weekday: 'long', day: 'numeric', month: 'long' })
     const title = `Garde de nuit du ${nightLabel}`

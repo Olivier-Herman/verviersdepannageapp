@@ -1,7 +1,7 @@
 // src/lib/missions/night-report.ts
 //
 // Statistiques de la garde de nuit (Olivier 30/09/2026), partagées par la page
-// /admin/garde-nuit et le rapport envoyé chaque matin à 8 h. Source : le journal
+// /admin/garde-nuit et le rapport envoyé chaque matin à 10 h. Source : le journal
 // market_proposal_events (écrit par lib/missions/market-proposals.ts).
 //
 // « Annoncé contre réalité » : pour chaque « Je suis déjà en mission », on compare
