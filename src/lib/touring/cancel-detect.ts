@@ -11,7 +11,10 @@
 import { loginComex, listComexMissions } from './comex'
 import { sendNotificationToRoles } from '@/lib/notifications/send'
 
-const ACTIVE_STATUSES  = ['assigned', 'accepted', 'in_progress', 'delivering']
+// 'new' et 'dispatching' aussi (30/09/2026, 2FNN308) : une mission refusée ou
+// retirée dans COMEX AVANT d'être acceptée restait « Nouvelle » dans le dispatch
+// pour toujours. Aucun chauffeur n'est parti → elle passe annulée sans frais.
+const ACTIVE_STATUSES  = ['new', 'dispatching', 'assigned', 'accepted', 'in_progress', 'delivering']
 const CONFIRM_MIN      = 14   // fenêtre de confirmation (≈7 poll cycles) avant de trancher
 
 export interface CancelDetectSummary {
@@ -128,7 +131,9 @@ export async function runTouringCancelDetect(sb: any): Promise<CancelDetectSumma
     out.actions.push({ plate: f.vehicle_plate || '—', kind: departed ? 'déplacement' : 'sans frais' })
     await sb.from('mission_logs').insert({
       mission_id: f.id, action: 'touring_cancelled_detected',
-      notes: `Touring a annulé/réattribué (dossier ${f.dossier_number} absent des listes COMEX). Règle Mondial : ${departed ? 'DÉPLACEMENT — chauffeur parti → trajet à vide à facturer' : 'annulée SANS FRAIS — chauffeur non parti'}.`,
+      notes: ['new', 'dispatching'].includes(String(f.status))
+        ? `Mission refusée ou retirée dans COMEX avant acceptation (dossier ${f.dossier_number} absent des listes) → annulée sans frais.`
+        : `Touring a annulé/réattribué (dossier ${f.dossier_number} absent des listes COMEX). Règle Mondial : ${departed ? 'DÉPLACEMENT — chauffeur parti → trajet à vide à facturer' : 'annulée SANS FRAIS — chauffeur non parti'}.`,
     }).then(() => {}, () => {})
   }
 
