@@ -34,6 +34,10 @@ export interface EtaResult {
   steps:      string[]               // explication lisible, dans l'ordre
   reason?:    string                 // pourquoi le calcul est impossible
   gps:        'live' | 'recent' | 'none'
+  /** Temps estimé pour TERMINER ce qu'il a en cours (sans la route vers la nouvelle
+   *  mission) : comparé plus tard à la fin réelle (statistiques, rapport du matin). */
+  finishMin?: number | null
+  currentMissionIds?: string[]
 }
 
 const truck = (r: { minutes: number; km: number }) => {
@@ -178,8 +182,9 @@ async function estimateArrivalInner(opts: {
   }
 
   if (!cursor) return fail('ta position n’est pas disponible')
+  const finishMin = Math.round(t)
   const last = await drive(cursor, goal); t += last
   steps.push(`puis ${goal ? `route jusqu’à ${goalName}` : 'route'} ≈ ${last} min`)
   const etaMin = Math.round(t)
-  return { etaMin, arrivalAt: new Date(Date.now() + etaMin * 60000).toISOString(), steps, gps }
+  return { etaMin, arrivalAt: new Date(Date.now() + etaMin * 60000).toISOString(), steps, gps, finishMin, currentMissionIds: (current || []).map((m: any) => m.id) }
 }

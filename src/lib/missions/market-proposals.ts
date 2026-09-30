@@ -393,7 +393,11 @@ export async function respondProposal(proposalId: string, userId: string, action
       phase: 'confirm', phase_at: now, busy_minutes: minutes, eta_min: eta.etaMin,
       eta_detail: { steps: eta.steps, arrivalAt: eta.arrivalAt, reason: eta.reason || null, gps: eta.gps },
     }).eq('id', p.id).eq('status', 'pending')
-    await logEvent(sb, p, 'eta', { eta_min: eta.etaMin, minutes, gps: eta.gps, reason: eta.reason || null })
+    await logEvent(sb, p, 'eta', {
+      eta_min: eta.etaMin, minutes, gps: eta.gps, reason: eta.reason || null,
+      // Pour « annoncé contre réalité » : fin estimée de ce qu'il a en cours + ses fiches.
+      finish_min: eta.finishMin ?? null, current_ids: eta.currentMissionIds || [],
+    })
     return { ok: true, status: 200, next: { phase: 'confirm', etaMin: eta.etaMin, arrivalAt: eta.arrivalAt, steps: eta.steps, reason: eta.reason, gps: eta.gps, snoozesLeft: MAX_SNOOZES - (p.snooze_count || 0) } }
   }
 
