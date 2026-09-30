@@ -40,6 +40,17 @@ const DECLARED_BUSY_MIN   = 60   // « Je suis déjà en mission » vaut 1 h (ou
 
 export const PROPOSAL_SOUND_PATH = '/sounds/nouvelle-mission.wav'
 
+/**
+ * Interrupteur (app_settings.market_proposals_actif, TEXTE JSON true/false) : tant
+ * qu'il n'est pas à true, la nuit reste en simple info (1er départ prévenu, réserve
+ * prévenue si le 1er est en mission) ; le mode test fonctionne dans tous les cas.
+ * Olivier 30/09/2026 : on active après un test concluant, sans nouveau déploiement.
+ */
+async function proposalsEnabled(sb: Sb): Promise<boolean> {
+  const { data } = await sb.from('app_settings').select('value').eq('key', 'market_proposals_actif').maybeSingle()
+  try { return JSON.parse(String(data?.value ?? 'false')) === true } catch { return false }
+}
+
 type Sb = ReturnType<typeof createAdminClient>
 
 interface Driver {
@@ -185,6 +196,8 @@ export async function startNightFlow(missionId: string): Promise<void> {
     ])
     if (prop?.length || notif?.length) return
 
+    if (!(await proposalsEnabled(sb))) { await infoOnlyFlow(sb, ctx, duty); return }
+
     const drivers = await loadDrivers(sb, [duty.nightFirst])
     const first   = drivers.get(duty.nightFirst)
     if (!first || !available(first)) {
@@ -207,6 +220,37 @@ export async function startNightFlow(missionId: string): Promise<void> {
     await escalateToReserve(sb, ctx, duty, `${first.name} est déjà en mission`, busy)
   } catch (e: any) {
     console.error('[market-proposals] démarrage échoué (non bloquant):', e?.message)
+  }
+}
+
+/**
+ * Mode « simple info » (propositions désactivées) : le 1er départ est prévenu de la
+ * mission libre ; la réserve aussi si le 1er départ est en mission et si son
+ * toggle de nuit est actif, avec où en est le 1er départ. Tap → Momo Market.
+ */
+async function infoOnlyFlow(sb: Sb, ctx: MissionCtx, duty: GardeNight): Promise<void> {
+  const reserveId = duty.reserve && duty.reserve !== duty.nightFirst ? duty.reserve : null
+  const drivers = await loadDrivers(sb, [duty.nightFirst, reserveId])
+  const first   = duty.nightFirst ? drivers.get(duty.nightFirst) : undefined
+  const reserve = reserveId ? drivers.get(reserveId) : undefined
+  const base = {
+    title:      `${ctx.type} — ${ctx.source} · Momo Market`,
+    body:       [ctx.vehicle, ctx.place].filter(Boolean).join(' — ') || 'Nouvelle mission disponible',
+    action_url: '/missions-dispo',
+    mission_id: ctx.id,
+  }
+  if (first && available(first)) {
+    await sendNotification(first.id, 'market_new_mission', { ...base, data: { role: 'night_first' } })
+      .catch(e => console.error('[market-proposals] info 1er départ échouée', e?.message))
+  }
+  if (first && reserve && available(reserve) && reserveNotifOn(reserve.notif_preferences, duty.nightKey)) {
+    const { data: missions } = await sb.from('incoming_missions')
+      .select('status, on_way_at, on_site_at, loaded_at, incident_city, incident_address, destination_address')
+      .eq('assigned_to', first.id).in('status', BUSY_STATUSES)
+    if (missions?.length) {
+      await sendNotification(reserve.id, 'market_new_mission', { ...base, body: `${base.body}\n${describeBusy(first.name, missions)}`, data: { role: 'reserve' } })
+        .catch(e => console.error('[market-proposals] info réserve échouée', e?.message))
+    }
   }
 }
 
