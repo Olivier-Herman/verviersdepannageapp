@@ -16,6 +16,7 @@ import { sendNotificationToRoles } from '@/lib/notifications/send'
 // pour toujours. Aucun chauffeur n'est parti → elle passe annulée sans frais.
 const ACTIVE_STATUSES  = ['new', 'dispatching', 'assigned', 'accepted', 'in_progress', 'delivering']
 const CONFIRM_MIN      = 14   // fenêtre de confirmation (≈7 poll cycles) avant de trancher
+const CONFIRM_MIN_UNACCEPTED = 0.9   // mission pas encore acceptée : absente à 2 passages (poll chaque minute)
 
 export interface CancelDetectSummary {
   checked: number; missingNew: number; recovered: number
@@ -88,7 +89,10 @@ export async function runTouringCancelDetect(sb: any): Promise<CancelDetectSumma
       out.missingNew++
       continue
     }
-    if (now - Date.parse(f.touring_missing_since) < CONFIRM_MIN * 60000) continue   // fenêtre pas écoulée
+    // Pas encore acceptée : deux passages successifs suffisent (≈ 2 min) — sinon elle
+    // reste proposée aux chauffeurs dans Momo Market alors que Touring l'a retirée.
+    const windowMin = ['new', 'dispatching'].includes(String(f.status)) ? CONFIRM_MIN_UNACCEPTED : CONFIRM_MIN
+    if (now - Date.parse(f.touring_missing_since) < windowMin * 60000) continue   // fenêtre pas écoulée
 
     // ── UNE MISSION FAITE NE DEVIENT PAS UN TRAJET À VIDE ───────────────────
     // « On ne peut pas arriver à un trajet à vide si le chauffeur a déjà déposé
