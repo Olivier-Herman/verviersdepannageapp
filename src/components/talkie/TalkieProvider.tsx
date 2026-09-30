@@ -219,9 +219,12 @@ export default function TalkieProvider({ children }: { children: React.ReactNode
     window.addEventListener('pagehide', onVis)
     // Présence côté serveur (c'est elle qui décide des notifs) : signal toutes les 10 s
     // tant que l'app est à l'écran ; « je pars » en quittant l'écran (sendBeacon part
-    // même pendant la mise en arrière-plan).
-    const beat = () => { if (document.visibilityState === 'visible') fetch('/api/talkie/presence', { method: 'POST', body: JSON.stringify({ visible: true }), keepalive: true }).catch(() => {}) }
-    const away = () => { if (document.visibilityState !== 'visible') { try { navigator.sendBeacon?.('/api/talkie/presence', JSON.stringify({ visible: false })) } catch { /* rien */ } } else beat() }
+    // même pendant la mise en arrière-plan). SEUL un téléphone compte : un ordinateur
+    // resté ouvert sur VD Soft (même compte) ne doit pas empêcher la notif sur le
+    // téléphone (Olivier 30/09/2026 : « j'ai des PC connectés en même temps »).
+    const isPhone = /VDNav\//.test(navigator.userAgent) || /iPhone|iPad|Android/i.test(navigator.userAgent)
+    const beat = () => { if (isPhone && document.visibilityState === 'visible') fetch('/api/talkie/presence', { method: 'POST', body: JSON.stringify({ visible: true }), keepalive: true }).catch(() => {}) }
+    const away = () => { if (!isPhone) return; if (document.visibilityState !== 'visible') { try { navigator.sendBeacon?.('/api/talkie/presence', JSON.stringify({ visible: false })) } catch { /* rien */ } } else beat() }
     beat()
     const beatTimer = setInterval(beat, 10_000)
     document.addEventListener('visibilitychange', away)
