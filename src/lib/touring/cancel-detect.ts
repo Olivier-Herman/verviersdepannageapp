@@ -88,6 +88,23 @@ export async function runTouringCancelDetect(sb: any): Promise<CancelDetectSumma
     // MASQUÉE du dispatch et de Momo Market (touring_missing_since posé, cf. filtres
     // de /api/missions/list et market-proposals) ; si elle revient dans COMEX au passage
     // suivant, elle réapparaît ; absente 14 min d'affilée → annulée sans frais.
+    // ── MISSION DÉJÀ ACCEPTÉE : ON NE TOUCHE JAMAIS À LA FICHE ───────────────
+    // 2GKR944, 01/10/2026 01h28 : acceptée, validée chez Touring (statut 05), Franck
+    // sur place et en pleine clôture — COMEX l'avait retirée de ses DEUX listes
+    // (idem 1SLA516 le 28/09, sur place depuis 22 min). Absente de la liste ne veut
+    // donc PAS dire annulée pour une mission en cours : on prévient le dispatch une
+    // fois, il vérifie chez Touring et décide. Plus aucune conversion automatique.
+    if (!['new', 'dispatching'].includes(String(f.status))) {
+      if (!f.touring_missing_since) {
+        await sb.from('incoming_missions').update({ touring_missing_since: new Date().toISOString() }).eq('id', f.id)
+        await sb.from('mission_logs').insert({ mission_id: f.id, action: 'touring_missing_warning',
+          notes: `Dossier ${f.dossier_number} absent des listes COMEX alors que la mission est en cours — rien n'est modifié, à vérifier chez Touring.` }).then(() => {}, () => {})
+        out.missingNew++
+        out.actions.push({ plate: f.vehicle_plate || '—', kind: 'à vérifier' })
+      }
+      continue
+    }
+
     if (!f.touring_missing_since) {                         // 1re détection → masquée + chrono
       await sb.from('incoming_missions').update({ touring_missing_since: new Date().toISOString() }).eq('id', f.id)
       out.missingNew++
@@ -142,6 +159,14 @@ export async function runTouringCancelDetect(sb: any): Promise<CancelDetectSumma
     }).then(() => {}, () => {})
   }
 
+  const aVerifier = out.actions.filter(a => a.kind === 'à vérifier')
+  if (aVerifier.length) {
+    await sendNotificationToRoles(['admin', 'superadmin', 'dispatcher'], 'touring_cancelled', {
+      title: `Touring : ${aVerifier.length} mission(s) en cours absente(s) de COMEX`,
+      body: `${aVerifier.map(a => a.plate).slice(0, 6).join(', ')} — la fiche n'est pas modifiée ; vérifier chez Touring.`,
+      action_url: '/dispatch',
+    }).catch(() => {})
+  }
   if (out.confirmed > 0) {
     await sendNotificationToRoles(['admin', 'superadmin', 'dispatcher'], 'touring_cancelled', {
       title: `Touring : ${out.confirmed} annulation(s) détectée(s)`,
