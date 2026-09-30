@@ -154,6 +154,8 @@ export const sq: Dictionary = {
     tile_dispatch_subtitle:'Tubacioni në kohë reale',
     tile_missions_label:   'Misionet e mia',
     tile_missions_subtitle:'Ndërhyrjet e mia të ditës',
+    tile_truckcheck_label: 'Bëj një kontroll kamioni',
+    tile_truckcheck_subtitle:'Gjendja e kamionit, kilometrazhi dhe defektet',
     tile_advance_label:    'Paradhënie fondesh',
     tile_advance_subtitle: 'Kërko një paradhënie',
     tile_check_label:      'Kontroll i mjetit',

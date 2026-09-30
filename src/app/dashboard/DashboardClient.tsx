@@ -52,6 +52,8 @@ const MAIN_ACTIONS: ActionItem[] = [
   { id: 'encaissement',    label: 'Encaissement Chauffeur', subtitle: 'Espèces · Carte · Virement',         href: '/encaissement',   icon: '💳', color: 'success', i18nKey: 'dashboard.tile_cash_label',     i18nSubKey: 'dashboard.tile_cash_subtitle' },
   { id: 'missions',        label: 'Dispatch Missions',      subtitle: 'Pipeline temps réel',                href: '/dispatch',       icon: '📡', color: 'info',    i18nKey: 'dashboard.tile_dispatch_label', i18nSubKey: 'dashboard.tile_dispatch_subtitle' },
   { id: 'driver_missions', label: 'Mes Missions',           subtitle: 'Mes interventions du jour',          href: '/mission',        icon: '🚗', color: 'warning', i18nKey: 'dashboard.tile_missions_label', i18nSubKey: 'dashboard.tile_missions_subtitle' },
+  // Raccourci check camion pour tout le personnel (Olivier 30/09/2026).
+  { id: 'truck_check',     label: 'Faire un check camion',  subtitle: 'État du camion, kilométrage et anomalies', href: '/check-vehicule/nouveau', icon: '🔧', color: 'info', i18nKey: 'dashboard.tile_truckcheck_label', i18nSubKey: 'dashboard.tile_truckcheck_subtitle' },
   { id: 'matthieu',        label: 'La tête à Matthieu',     subtitle: 'Ton mécano de poche 🔧',             href: '/matthieu',       icon: '🔧', color: 'purple' },
   // Olivier 28/09/2026 : fiche gardiennage quand un transporteur externe dépose un véhicule.
   { id: 'gardiennage_arrivee', label: 'Véhicule apporté',   subtitle: 'Transporteur externe · gardiennage',  href: '/fourriere/gardiennage/nouveau', icon: '🅿️', color: 'purple' },
@@ -115,7 +117,7 @@ export default function DashboardClient({
   const isVisible = (id: string): boolean => {
     if (id === 'matthieu')       return userRole !== 'garage' && userRole !== 'partner'   // tout le personnel
     if (id === 'police_mission') return hasTowsoft
-    if (id === 'check_vehicle')  return userRole !== 'garage' && userRole !== 'partner'   // check camion : tout le personnel (30/09/2026)
+    if (id === 'check_vehicle' || id === 'truck_check') return userRole !== 'garage' && userRole !== 'partner'   // check camion : tout le personnel (30/09/2026)
     if (id === 'admin')          return isAdmin && userModules.includes('admin')
     if (id === 'gardiennage_arrivee') return isAdmin || userModules.includes('fourriere')
     if (id === 'encaissement')   return userModules.includes('encaissement')

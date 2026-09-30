@@ -151,6 +151,8 @@ export const fr = {
     tile_dispatch_subtitle:'Pipeline temps réel',
     tile_missions_label:   'Mes Missions',
     tile_missions_subtitle:'Mes interventions du jour',
+    tile_truckcheck_label: 'Faire un check camion',
+    tile_truckcheck_subtitle:'État du camion, kilométrage et anomalies',
     tile_advance_label:    'Avance de Fonds',
     tile_advance_subtitle: 'Demander une avance',
     tile_check_label:      'Check Véhicule',
