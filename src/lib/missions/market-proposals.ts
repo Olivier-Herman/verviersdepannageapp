@@ -107,7 +107,7 @@ async function busyLine(sb: Sb, driver: Driver): Promise<string | null> {
 
   const since = new Date(Date.now() - DECLARED_BUSY_MIN * 60_000).toISOString()
   const { data: declared } = await sb.from('market_proposals').select('responded_at')
-    .eq('driver_id', driver.id).eq('status', 'busy').gte('responded_at', since)
+    .eq('driver_id', driver.id).eq('status', 'busy').eq('is_test', false).gte('responded_at', since)
     .order('responded_at', { ascending: false }).limit(1)
   const at = declared?.[0]?.responded_at
   if (!at) return null
@@ -213,6 +213,12 @@ export async function startNightFlow(missionId: string): Promise<void> {
 // ── Réponse du chauffeur ──────────────────────────────────────────────────
 
 export async function closedMessage(sb: Sb, p: any): Promise<string> {
+  if (p.is_test) {
+    if (p.status === 'accepted') return '🧪 Test réussi : en vrai, la mission t’aurait été attribuée et sa fiche se serait ouverte.'
+    if (p.status === 'busy')     return '🧪 Test réussi : en vrai, la mission partirait chez la réserve et le dispatch serait prévenu.'
+    if (p.status === 'timeout')  return '🧪 Test terminé : en vrai, la mission serait maintenant proposée à la réserve.'
+    return '🧪 Test fermé.'
+  }
   if (p.status === 'accepted') return 'Tu as accepté cette mission.'
   if (p.status === 'busy')     return 'Tu as répondu que tu étais déjà en mission.'
   if (p.status === 'timeout')  return 'Délai dépassé : la mission a été passée à la suite.'
@@ -228,6 +234,14 @@ export async function respondProposal(proposalId: string, userId: string, action
   const { data: p } = await sb.from('market_proposals').select('*').eq('id', proposalId).maybeSingle()
   if (!p || p.driver_id !== userId) return { ok: false, status: 404, error: 'Proposition introuvable' }
   if (p.status !== 'pending') return { ok: false, status: 409, error: await closedMessage(sb, p) }
+
+  if (p.is_test) {
+    // Test : on enregistre la réponse, rien d'autre (aucune mission, ni réserve ni dispatch).
+    await sb.from('market_proposals').update({ status: action === 'accept' ? 'accepted' : 'busy', responded_at: new Date().toISOString(), closed_reason: 'test' })
+      .eq('id', p.id).eq('status', 'pending')
+    if (p.call_id) { const { hangUpCall } = await import('@/lib/teams/call'); await hangUpCall(p.call_id) }
+    return { ok: true, status: 200 }
+  }
 
   if (action === 'accept') {
     const { claimMission } = await import('@/lib/missions/claim')
@@ -349,6 +363,7 @@ export async function tickProposals(): Promise<{ checked: number; calls: number;
   for (const p of (open || []) as any[]) {
     stats.checked++
     try {
+      if (p.is_test) { await tickTest(sb, p, stats); continue }
       const ctx = await missionCtx(sb, p.mission_id)
       // Mission attribuée par le dispatch, prise hors de nos crochets, annulée…
       if (!ctx || ctx.assigned_to || !MARKET_STATUSES.includes(ctx.status)) {
@@ -399,6 +414,57 @@ export async function tickProposals(): Promise<{ checked: number; calls: number;
     }
   }
   return stats
+}
+
+// ── Mode test (/proposition/test) ─────────────────────────────────────────
+
+export const TEST_MISSION = {
+  id: 'test', mission_number: null, source: 'vab', mission_type: 'remorquage', client_name: 'Client fictif (test)',
+  vehicle_plate: '1-ABC-123', vehicle_brand: 'Volkswagen', vehicle_model: 'Golf',
+  incident_address: 'Rue de la Station 1', incident_city: 'Dison', destination_address: '4800 Verviers',
+  remarks_general: 'Mission fictive : ce test ne crée aucune vraie mission.', received_at: null,
+}
+
+/**
+ * Un utilisateur teste le déroulé sur SON téléphone : vraie notif, vrai appel avec
+ * le message vocal après 2 min, fin du test après 4 min. Aucune mission réelle,
+ * rien à la réserve ni au dispatcher.
+ */
+export async function startTestProposal(userId: string): Promise<{ ok: boolean; id?: string; error?: string }> {
+  const sb = createAdminClient()
+  const { data: open } = await sb.from('market_proposals').select('id')
+    .eq('driver_id', userId).eq('is_test', true).eq('status', 'pending').limit(1)
+  if (open?.length) return { ok: true, id: open[0].id }   // un test déjà en cours : on le rouvre
+  const { data: p, error } = await sb.from('market_proposals')
+    .insert({ mission_id: null, driver_id: userId, step: 'night_first', is_test: true, reason: 'TEST' })
+    .select('id').single()
+  if (error || !p) return { ok: false, error: error?.message || 'Création impossible' }
+  await sendNotification(userId, 'market_proposal', {
+    title:      '🧪 TEST — 🚛 Remorquage — VAB · mission proposée',
+    body:       'Volkswagen Golf 1-ABC-123 — Dison\nOuvre pour accepter ou dire que tu es déjà en mission.',
+    action_url: `/proposition/${p.id}`,
+    data:       { proposal_id: p.id, step: 'night_first', test: true },
+  }).catch(e => console.error('[market-proposals] notif test échouée', e?.message))
+  return { ok: true, id: p.id }
+}
+
+async function tickTest(sb: Sb, p: any, stats: { calls: number; closed: number }): Promise<void> {
+  const ageMin = (Date.now() - new Date(p.notified_at).getTime()) / 60_000
+  if (ageMin >= ESCALATE_AFTER_MIN) {
+    const { data: c } = await sb.from('market_proposals').update({ status: 'timeout', closed_reason: 'test' })
+      .eq('id', p.id).eq('status', 'pending').select('id').maybeSingle()
+    if (!c) return
+    if (p.call_id) { const { hangUpCall } = await import('@/lib/teams/call'); await hangUpCall(p.call_id) }
+    const call = p.call_id ? 'l’appel est parti' : p.call_error ? `appel impossible : ${String(p.call_error).toLowerCase()}` : 'pas d’appel'
+    await sendNotification(p.driver_id, 'market_proposal_update', {
+      title: '🧪 Test terminé', body: `En vrai, la mission serait maintenant proposée à la réserve (${call}).`, action_url: `/proposition/${p.id}`,
+    }).catch(() => {})
+    stats.closed++
+  } else if (ageMin >= CALL_AFTER_MIN && !p.call_at) {
+    const drivers = await loadDrivers(sb, [p.driver_id])
+    await startCall(sb, p, drivers.get(p.driver_id))
+    stats.calls++
+  }
 }
 
 // ── Appel Teams : message vocal quand il décroche ─────────────────────────

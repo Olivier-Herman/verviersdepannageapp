@@ -8,7 +8,7 @@ import { redirect }          from 'next/navigation'
 import { createAdminClient } from '@/lib/supabase'
 import AppShell              from '@/components/layout/AppShell'
 import ProposalClient        from './ProposalClient'
-import { closedMessage }     from '@/lib/missions/market-proposals'
+import { closedMessage, TEST_MISSION } from '@/lib/missions/market-proposals'
 
 export const dynamic = 'force-dynamic'
 
@@ -20,8 +20,8 @@ export default async function PropositionPage({ params }: { params: { id: string
   const sb = createAdminClient()
   const { data: p } = await sb.from('market_proposals').select('*').eq('id', params.id).maybeSingle()
   const mine = !!p && p.driver_id === user.id
-  const { data: m } = mine
-    ? await sb.from('incoming_missions')
+  const { data: m } = mine && p.is_test ? { data: TEST_MISSION }
+    : mine ? await sb.from('incoming_missions')
         .select('id, mission_number, source, mission_type, client_name, vehicle_plate, vehicle_brand, vehicle_model, incident_address, incident_city, destination_address, remarks_general, received_at')
         .eq('id', p.mission_id).maybeSingle()
     : { data: null }
@@ -30,7 +30,7 @@ export default async function PropositionPage({ params }: { params: { id: string
     <AppShell title="Mission proposée" userRole={user.role || ''} userName={user.name} userEmail={user.email} userId={user.id} userModules={user.modules || []}>
       <ProposalClient
         proposal={mine ? {
-          id: p.id, status: p.status, step: p.step, reason: p.reason, notifiedAt: p.notified_at,
+          id: p.id, status: p.status, step: p.step, reason: p.reason, notifiedAt: p.notified_at, isTest: !!p.is_test,
           message: p.status === 'pending' ? null : await closedMessage(sb, p),
         } : null}
         mission={m as any}

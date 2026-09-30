@@ -10,7 +10,7 @@ import Link                    from 'next/link'
 const ESCALATE_AFTER_MIN  = 4   // mêmes délais que lib/missions/market-proposals.ts
 const RESERVE_TIMEOUT_MIN = 4
 
-interface Proposal { id: string; status: string; step: 'night_first' | 'reserve'; reason: string | null; notifiedAt: string; message: string | null }
+interface Proposal { id: string; status: string; step: 'night_first' | 'reserve'; reason: string | null; notifiedAt: string; message: string | null; isTest?: boolean }
 interface Mission {
   id: string; mission_number: number | null; source: string | null; mission_type: string | null; client_name: string | null
   vehicle_plate: string | null; vehicle_brand: string | null; vehicle_model: string | null
@@ -68,6 +68,13 @@ export default function ProposalClient({ proposal, mission }: { proposal: Propos
         else setError(j.error || 'Réponse non enregistrée, réessaie.')
         return
       }
+      if (proposal!.isTest) {
+        setStatus(action === 'accept' ? 'accepted' : 'busy')
+        setMessage(action === 'accept'
+          ? '🧪 Test réussi : en vrai, la mission t’aurait été attribuée et sa fiche se serait ouverte.'
+          : '🧪 Test réussi : en vrai, la mission partirait chez la réserve et le dispatch serait prévenu.')
+        return
+      }
       if (action === 'accept') { router.replace(`/mission/${mission!.id}`); return }
       setStatus('busy'); setMessage(proposal!.step === 'night_first'
         ? 'C’est noté : la mission est proposée à la réserve et le dispatch est prévenu.'
@@ -84,6 +91,11 @@ export default function ProposalClient({ proposal, mission }: { proposal: Propos
 
   return (
     <div className="p-4 max-w-xl mx-auto space-y-4">
+      {proposal.isTest && (
+        <p className="rounded-xl border-2 border-violet-400 bg-violet-50 dark:bg-violet-500/10 px-3 py-2 text-sm font-semibold text-violet-900 dark:text-violet-200">
+          🧪 TEST — mission fictive, rien n’est envoyé à la réserve ni au dispatch.
+        </p>
+      )}
       <div>
         <h1 className="text-ink font-bold text-xl">🌙 Mission proposée</h1>
         <p className="text-ink-muted text-sm mt-1">
@@ -157,7 +169,9 @@ export default function ProposalClient({ proposal, mission }: { proposal: Propos
       ) : (
         <div className="bg-surface border rounded-2xl p-5 space-y-3 text-center">
           <p className="text-ink font-semibold">{message || 'Cette proposition est fermée.'}</p>
-          {status === 'accepted'
+          {proposal.isTest
+            ? <Link href="/proposition/test" className="inline-flex items-center justify-center min-h-[44px] px-5 rounded-xl bg-brand text-white font-bold text-sm">Refaire un test</Link>
+            : status === 'accepted'
             ? <Link href={`/mission/${mission.id}`} className="inline-flex items-center justify-center min-h-[44px] px-5 rounded-xl bg-brand text-white font-bold text-sm">Ouvrir la mission</Link>
             : <Link href="/missions-dispo" className="inline-flex items-center justify-center min-h-[44px] px-5 rounded-xl bg-brand text-white font-bold text-sm">Ouvrir Momo Market</Link>}
           {status === 'timeout' && <p className="text-ink-muted text-xs">Si elle est encore libre, tu peux toujours la prendre dans Momo Market.</p>}
