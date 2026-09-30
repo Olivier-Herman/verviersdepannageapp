@@ -261,6 +261,22 @@ export async function POST(req: Request, { params }: { params: { id: string } })
       console.log(`[quote] invoice_odoo_id ${(mission as any).invoice_odoo_id} introuvable (supprimée) → recréation`)
     }
   }
+  // Facture déjà créée dans Odoo mais jamais notée ici (appel coupé après la
+  // création, ex. 504 du cron) : on la retrouve par son origine au lieu d'en
+  // créer une de plus. 3 brouillons Ethias identiques le 30/09/2026.
+  if (mode === 'invoice' && !invoiceUpdateId && missionRef && mission.billed_to_id) {
+    const orphan = (await withOdooActor(user?.id, () => odooRpc<any[]>('account.move', 'search_read',
+      [[['move_type', '=', 'out_invoice'], ['invoice_origin', '=', missionRef], ['partner_id', '=', mission.billed_to_id], ['state', '!=', 'cancel']]],
+      { fields: ['id'], order: 'id asc', limit: 1 })).catch(() => []))?.[0]
+    if (orphan) {
+      await sb.from('incoming_missions').update({ invoice_odoo_id: orphan.id }).eq('id', mission.id)
+      const existing = await withOdooActor(user?.id, () => getInvoiceMove(orphan.id)).catch(() => null)
+      if (existing && existing.state !== 'draft') {
+        return NextResponse.json({ ok: true, mode, invoice: existing, already_exists: true, locked: existing.state })
+      }
+      invoiceUpdateId = orphan.id
+    }
+  }
 
   let result: { id: number; url: string }
   try {
@@ -309,6 +325,12 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   } catch (e: any) {
     console.error(`[quote] Odoo push failed (mode=${mode}):`, e.message)
     return NextResponse.json({ error: `Erreur Odoo : ${e.message}` }, { status: 500 })
+  }
+
+  // Lien facture ↔ fiche noté tout de suite : si la suite (rapport, auto-post)
+  // dépasse le délai, le passage suivant ne recrée pas de facture.
+  if (mode === 'invoice' && (result as any)?.id) {
+    await sb.from('incoming_missions').update({ invoice_odoo_id: (result as any).id }).eq('id', mission.id)
   }
 
   // 4a) Rapport d'intervention joint à la facture (sources au tag rapport_facture :
