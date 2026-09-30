@@ -4936,7 +4936,7 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
           {(rem || rel) && M.status === 'delivering' && !M.loaded_at && (
             <button onClick={() => api('load_vehicle')} disabled={loading}
               className="w-full py-4 bg-blue-600 disabled:opacity-50 text-ink font-bold rounded-2xl text-base">
-              {loading ? <T k="mission_detail.loading" /> : <T k="mission_detail.btn_loaded_park" />}
+              {loading ? <T k="mission_detail.loading" /> : <T k={rel ? 'mission_detail.btn_loaded_park' : 'mission_detail.btn_loaded_truck'} />}
             </button>
           )}
 
@@ -5040,7 +5040,9 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
                    Le geste attendu ici, c'est de charger. Olivier 2026-08-21. */
                 <button onClick={() => api('load_vehicle')} disabled={loading}
                   className="w-full py-4 bg-blue-600 disabled:opacity-50 text-white font-bold rounded-2xl text-base">
-                  {loading ? <T k="mission_detail.loading" /> : <>🚛 <T k="mission_detail.btn_loaded_park" /></>}
+                  {/* 1re jambe (sur place) : le véhicule se charge sur le CAMION — « au parc »
+                      ne vaut que pour une relivraison. Franck, 2GKR944, 01/10/2026. */}
+                  {loading ? <T k="mission_detail.loading" /> : <T k="mission_detail.btn_loaded_truck" />}
                 </button>
               ) : totPh === 0 ? (
                 /* ── LES PHOTOS D'ABORD (Olivier 2026-08-21) ─────────────────
