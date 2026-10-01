@@ -10,7 +10,10 @@
 //  - Voix : Supabase Realtime (diffusion), 16 kHz loi µ, morceaux ≈ 170 ms, réserve
 //    d'écoute ≈ 350 ms (moins de coupures en 4G) ; rien n'est envoyé pendant une
 //    reconnexion (sinon chaque morceau part en requête web, en retard et en désordre).
-//    Étape 2 : LiveKit sur le VPS (Opus, UDP) pour la qualité d'un appel.
+//  - Voix PRIORITAIREMENT par LiveKit (serveur vocal sur le VPS, Opus/WebRTC : qualité
+//    d'un appel) — Olivier 01/10/2026. Les morceaux Supabase continuent en parallèle
+//    comme filet : un auditeur connecté à LiveKit les ignore quand l'orateur parle sur
+//    LiveKit ; sans LiveKit (jeton refusé, réseau…), tout passe par Supabase comme avant.
 //  - Micro ouvert seulement pendant l'appui (sur iPhone, un micro ouvert en continu
 //    envoie le son dans l'écouteur au lieu du haut-parleur).
 //  - Le son ne peut démarrer qu'après un geste : le premier toucher dans l'app active
@@ -83,7 +86,11 @@ export default function TalkieProvider({ children }: { children: React.ReactNode
   const floorRef  = useRef<Map<string, { id: string; ts: number; last: number }>>(new Map())
   const onlineRef = useRef<Record<string, TalkieMember[]>>({})
   const meRef     = useRef<TalkieMember | null>(null)
-  const talkRef   = useRef<{ key: string; ts: number; stream: MediaStream | null; proc: ScriptProcessorNode | null; src: MediaStreamAudioSourceNode | null; rec: Float32Array[]; seq: number; timer: any } | null>(null)
+  const talkRef   = useRef<{ key: string; ts: number; stream: MediaStream | null; proc: ScriptProcessorNode | null; src: MediaStreamAudioSourceNode | null; rec: Float32Array[]; seq: number; timer: any; lk: any | null } | null>(null)
+  const lkRef     = useRef<Map<string, any>>(new Map())      // salles LiveKit par canal
+  const lkModRef  = useRef<any>(null)                        // module livekit-client (chargé à la demande)
+  const speakerLkRef = useRef<Map<string, boolean>>(new Map()) // l'orateur du canal parle-t-il sur LiveKit ?
+  const lkConnected = (key: string) => lkRef.current.get(key)?.state === 'connected'
 
   // ── Canaux accessibles (rechargés toutes les 2 min : le talkie des chauffeurs
   //    s'ouvre à 18 h et se ferme à 8 h) ──
@@ -129,7 +136,10 @@ export default function TalkieProvider({ children }: { children: React.ReactNode
   useEffect(() => {
     if (!channels.length) return
     // Chaque toucher relance le son s'il est en pause (le premier toucher l'active).
-    const h = () => { if (!ctxRef.current || ctxRef.current.state !== 'running') enableAudio() }
+    const h = () => {
+      if (!ctxRef.current || ctxRef.current.state !== 'running') enableAudio()
+      for (const r of lkRef.current.values()) if (r && !r.canPlaybackAudio) r.startAudio().catch(() => {})   // lecture LiveKit (autorisée après un geste)
+    }
     document.addEventListener('pointerdown', h, { capture: true })
     return () => document.removeEventListener('pointerdown', h, { capture: true } as any)
   }, [channels.length, enableAudio])
@@ -151,7 +161,11 @@ export default function TalkieProvider({ children }: { children: React.ReactNode
     talkRef.current = null
     clearTimeout(t.timer)
     try { t.proc?.disconnect(); t.src?.disconnect() } catch { /* déjà débranché */ }
-    t.stream?.getTracks().forEach(tr => tr.stop())
+    if (t.lk) {
+      // Micro LiveKit dépublié ET arrêté : l'iPhone repasse sur le haut-parleur.
+      const pub = t.lk.localParticipant?.getTrackPublication?.(lkModRef.current?.Track?.Source?.Microphone)
+      if (pub?.track) t.lk.localParticipant.unpublishTrack(pub.track, true).catch(() => {})
+    } else t.stream?.getTracks().forEach(tr => tr.stop())
     setTimeout(() => { if (!talkRef.current) { audioSession('playback'); setTimeout(ensureRunning, 120) } }, 150)   // retour au haut-parleur, son relancé
     const ch = chansRef.current.get(t.key)
     const myId = meRef.current?.id
@@ -186,6 +200,7 @@ export default function TalkieProvider({ children }: { children: React.ReactNode
         if (mine && mine.key === c.key && (payload.ts < mine.ts || (payload.ts === mine.ts && payload.id < myId))) stopTalking(false)
         floorRef.current.set(c.key, { id: payload.id, ts: payload.ts, last: Date.now() })
         setFloorFor(c.key, { id: payload.id, name: payload.name })
+        speakerLkRef.current.set(c.key, !!payload.lk)
         nextRef.current.set(c.key, 0)
         setLastActivity({ key: c.key, id: payload.id, name: payload.name, at: Date.now() })
         if (!talkRef.current) { audioSession('playback'); ensureRunning() }
@@ -193,6 +208,7 @@ export default function TalkieProvider({ children }: { children: React.ReactNode
       })
       ch.on('broadcast', { event: 'a' }, ({ payload }: any) => {
         const f = floorRef.current.get(c.key); if (f) f.last = Date.now()
+        if (speakerLkRef.current.get(c.key) && lkConnected(c.key)) return   // déjà entendu par LiveKit
         const ctx = ctxRef.current; if (!ctx) return
         if (ctx.state !== 'running') { ensureRunning(); return }
         const f32 = muDecode(fromB64(payload.d))
@@ -253,6 +269,46 @@ export default function TalkieProvider({ children }: { children: React.ReactNode
     }
   }, [enabled, channels, sb, beep, stopTalking, ensureRunning])
 
+  // ── Serveur vocal LiveKit : une salle par canal (repli Supabase si indisponible) ──
+  useEffect(() => {
+    if (!enabled || !channels.length || !meRef.current) return
+    let stop = false
+    const rooms: any[] = []
+    ;(async () => {
+      try {
+        const LK = lkModRef.current || (lkModRef.current = await import('livekit-client'))
+        for (const c of channels) {
+          if (stop) break
+          try {
+            const r = await fetch(`/api/talkie/token?key=${encodeURIComponent(c.key)}`, { cache: 'no-store' })
+            if (!r.ok) continue   // serveur vocal non configuré : Supabase seul
+            const { url, token } = await r.json()
+            const room = new LK.Room({ adaptiveStream: false, dynacast: false, stopLocalTrackOnUnpublish: true })
+            room.on(LK.RoomEvent.TrackSubscribed, (track: any) => {
+              if (track.kind !== 'audio') return
+              const el = track.attach() as HTMLMediaElement
+              el.setAttribute('playsinline', 'true'); el.style.display = 'none'
+              document.body.appendChild(el)
+              if (!talkRef.current) audioSession('playback')
+            })
+            room.on(LK.RoomEvent.TrackUnsubscribed, (track: any) => { track.detach().forEach((el: HTMLElement) => el.remove()) })
+            await room.connect(url, token, { autoSubscribe: true })
+            if (stop) { room.disconnect(); break }
+            rooms.push(room); lkRef.current.set(c.key, room)
+            room.startAudio().catch(() => {})
+          } catch (e: any) {
+            console.warn('[talkie] LiveKit indisponible pour', c.key, '→ voix par Supabase', e?.message)
+          }
+        }
+      } catch (e: any) { console.warn('[talkie] module LiveKit non chargé', e?.message) }
+    })()
+    return () => {
+      stop = true
+      for (const r of rooms) { try { r.disconnect() } catch { /* déjà fermée */ } }
+      lkRef.current.clear(); speakerLkRef.current.clear()
+    }
+  }, [enabled, channels])
+
   // ── Prise de parole ──
   const startTalking = useCallback(async (key: string) => {
     const ch = chansRef.current.get(key)
@@ -264,19 +320,34 @@ export default function TalkieProvider({ children }: { children: React.ReactNode
     const ctx = ctxRef.current
     if (!ctx) { setError('Le son n’a pas pu démarrer sur ce téléphone.'); return }
     const ts = Date.now()
-    const state = { key, ts, stream: null as MediaStream | null, proc: null as ScriptProcessorNode | null, src: null as MediaStreamAudioSourceNode | null, rec: [] as Float32Array[], seq: 0, timer: setTimeout(() => stopTalking(true), MAX_TALK_MS) }
+    const room = lkConnected(key) ? lkRef.current.get(key) : null
+    const state = { key, ts, stream: null as MediaStream | null, proc: null as ScriptProcessorNode | null, src: null as MediaStreamAudioSourceNode | null, rec: [] as Float32Array[], seq: 0, timer: setTimeout(() => stopTalking(true), MAX_TALK_MS), lk: room as any }
     talkRef.current = state
     setTalkingKey(key); setError(null)
     floorRef.current.set(key, { id: myId, ts, last: Date.now() })
     setFloorFor(key, { id: myId, name: myName || '' })
-    ch.send({ type: 'broadcast', event: 'start', payload: { id: myId, name: myName, ts } })
+    ch.send({ type: 'broadcast', event: 'start', payload: { id: myId, name: myName, ts, lk: !!room } })
     beep(1200, 70)
     audioSession('play-and-record')
     // Prévenir tout de suite ceux qui n'ont pas l'app à l'écran (« X parle en ce moment »).
     fetch('/api/talkie/ping', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ key, online: (onlineRef.current[key] || []).map(p => p.id) }) }).catch(() => {})
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } })
-      if (talkRef.current !== state) { stream.getTracks().forEach(tr => tr.stop()); audioSession('playback'); return }   // relâché avant l'ouverture du micro
+      let stream: MediaStream
+      if (room) {
+        // LiveKit : publication du micro (Opus) ; on enregistre depuis la même piste.
+        await room.localParticipant.setMicrophoneEnabled(true, { echoCancellation: true, noiseSuppression: true, autoGainControl: true })
+        const pub = room.localParticipant.getTrackPublication(lkModRef.current.Track.Source.Microphone)
+        const mst: MediaStreamTrack | undefined = pub?.track?.mediaStreamTrack
+        if (!mst) throw new Error('micro LiveKit indisponible')
+        stream = new MediaStream([mst])
+      } else {
+        stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } })
+      }
+      if (talkRef.current !== state) {   // relâché avant l'ouverture du micro
+        if (room) { const pub = room.localParticipant.getTrackPublication(lkModRef.current.Track.Source.Microphone); if (pub?.track) room.localParticipant.unpublishTrack(pub.track, true).catch(() => {}) }
+        else stream.getTracks().forEach(tr => tr.stop())
+        audioSession('playback'); return
+      }
       const src = ctx.createMediaStreamSource(stream)
       const proc = ctx.createScriptProcessor(8192, 1, 1)   // ≈ 170 ms : moitié moins d'envois
       proc.onaudioprocess = (e) => {
