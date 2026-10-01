@@ -7,6 +7,7 @@
 import { createAdminClient } from '@/lib/supabase'
 import { sendApnsPush, type ApnsPayload } from './push-apns'
 import { sendFcmPush, type FcmPayload }   from './push-fcm'
+import { iosSoundFor }                    from './sound-families'
 
 export interface PushPayload {
   title:       string
@@ -58,10 +59,14 @@ export async function sendPushNotification(
     ? `${process.env.APNS_BUNDLE_ID}.watchkitapp`
     : undefined
 
+  // Son iPhone choisi par famille de notification (/admin/sons-notifications).
+  const iosSound = tokens.some(t => t.platform === 'ios') && payload.push_type !== 'background'
+    ? await iosSoundFor(payload.notif_type).catch(() => undefined) : undefined
+
   await Promise.all(tokens.map(async (t) => {
     let res
     if (t.platform === 'ios') {
-      res = await sendApnsPush(t.token, payload as ApnsPayload)
+      res = await sendApnsPush(t.token, { ...(payload as ApnsPayload), sound: iosSound })
     } else if (t.platform === 'watchos') {
       res = await sendApnsPush(t.token, payload as ApnsPayload, { topic: watchTopic })
     } else {

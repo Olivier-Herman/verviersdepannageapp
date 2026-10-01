@@ -59,6 +59,8 @@ export interface ApnsPayload {
    * pour reveiller l app Watch et la faire refetch /api/watch/missions/today.
    */
   push_type?: 'alert' | 'background'
+  /** Fichier son embarqué (ex. vd_mission_1.caf) — choisi par famille, cf sound-families.ts. */
+  sound?: string
 }
 
 export interface ApnsOptions {
@@ -115,7 +117,7 @@ export async function sendApnsPush(
     garde_uncovered:             'sounds.caf',
     talkie_message:              'vd_talkie_1.caf',   // build ≥ 30 ; sinon iOS joue le son par défaut
   }
-  const sound = (payload.notif_type && SOUND_BY_TYPE[payload.notif_type]) || 'sounds.caf'
+  const sound = payload.sound || (payload.notif_type && SOUND_BY_TYPE[payload.notif_type]) || 'sounds.caf'
 
   const isBackground = payload.push_type === 'background'
   const apsBody = isBackground
