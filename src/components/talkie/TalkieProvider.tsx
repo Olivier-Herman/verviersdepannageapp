@@ -27,12 +27,18 @@
 //    son de l'app en pause (« interrompu ») : on le relance aussitôt, à chaque
 //    réception, et au moindre toucher ; l'état réel est suivi (bandeau « Touche
 //    pour entendre »).
+//  - Téléphone verrouillé / app fermée (Olivier 01/10/2026) : sur l'app iPhone qui a le
+//    module natif « TalkiePTT » (cadre Push to Talk d'Apple), la page lui confie les
+//    accès au serveur vocal de chaque canal ; le serveur réveille le téléphone quand
+//    quelqu'un parle et iOS fait entendre la voix. App en arrière-plan avec ce module :
+//    la page se déconnecte du serveur vocal (sinon double son, c'est le natif qui joue).
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
 import { useSession } from 'next-auth/react'
 import { usePathname } from 'next/navigation'
 import { createClient } from '@supabase/supabase-js'
 import { RATE, MAX_TALK_MS, muEncode, muDecode, downsample, toB64, fromB64, wav } from '@/lib/talkie/codec'
+import { talkiePttAvailable, talkiePtt } from '@/lib/native/talkiePtt'
 
 export interface TalkieMember { id: string; name: string }
 export interface TalkieChannel { key: string; kind: 'garde' | 'direct'; label: string; channel: string; members: TalkieMember[] }
@@ -78,12 +84,14 @@ export default function TalkieProvider({ children }: { children: React.ReactNode
   const [lastActivity, setLastActivity] = useState<TalkieActivity | null>(null)
   const [msgsVersion, setMsgsVersion]   = useState(0)
   const [error, setError] = useState<string | null>(null)
+  const [chLoaded, setChLoaded] = useState(false)   // canaux chargés au moins une fois
+  const [lkPaused, setLkPaused] = useState(false)   // app en arrière-plan, le natif prend le relais
 
   const sb = useMemo(() => createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!), [])
   const ctxRef    = useRef<AudioContext | null>(null)
   const chansRef  = useRef<Map<string, any>>(new Map())
   const nextRef   = useRef<Map<string, number>>(new Map())
-  const floorRef  = useRef<Map<string, { id: string; ts: number; last: number }>>(new Map())
+  const floorRef  = useRef<Map<string, { id: string; ts: number; last: number; lk?: boolean }>>(new Map())   // lk : parole depuis l'écran verrouillé (iPhone)
   const onlineRef = useRef<Record<string, TalkieMember[]>>({})
   const meRef     = useRef<TalkieMember | null>(null)
   const talkRef   = useRef<{ key: string; ts: number; stream: MediaStream | null; proc: ScriptProcessorNode | null; src: MediaStreamAudioSourceNode | null; rec: Float32Array[]; seq: number; timer: any; lk: any | null } | null>(null)
@@ -91,6 +99,8 @@ export default function TalkieProvider({ children }: { children: React.ReactNode
   const lkModRef  = useRef<any>(null)                        // module livekit-client (chargé à la demande)
   const speakerLkRef = useRef<Map<string, boolean>>(new Map()) // l'orateur du canal parle-t-il sur LiveKit ?
   const lkConnected = (key: string) => lkRef.current.get(key)?.state === 'connected'
+  const pttReadyRef = useRef(false)                          // module talkie natif présent et canal système rejoint
+  const pttKeysRef  = useRef<string[]>([])
 
   // ── Canaux accessibles (rechargés toutes les 2 min : le talkie des chauffeurs
   //    s'ouvre à 18 h et se ferme à 8 h) ──
@@ -102,6 +112,7 @@ export default function TalkieProvider({ children }: { children: React.ReactNode
       meRef.current = j?.me || null; setMe(j?.me || null)
       const list: TalkieChannel[] = Array.isArray(j?.channels) ? j.channels : []
       setChannels(prev => JSON.stringify(prev.map(c => c.channel)) === JSON.stringify(list.map(c => c.channel)) ? prev : list)
+      setChLoaded(true)
     }).catch(() => {})
     load()
     const t = setInterval(load, 2 * 60_000)
@@ -209,6 +220,7 @@ export default function TalkieProvider({ children }: { children: React.ReactNode
       ch.on('broadcast', { event: 'a' }, ({ payload }: any) => {
         const f = floorRef.current.get(c.key); if (f) f.last = Date.now()
         if (speakerLkRef.current.get(c.key) && lkConnected(c.key)) return   // déjà entendu par LiveKit
+        if (pttReadyRef.current && document.visibilityState !== 'visible') return   // arrière-plan : le module iPhone joue la voix
         const ctx = ctxRef.current; if (!ctx) return
         if (ctx.state !== 'running') { ensureRunning(); return }
         const f32 = muDecode(fromB64(payload.d))
@@ -253,7 +265,9 @@ export default function TalkieProvider({ children }: { children: React.ReactNode
     window.addEventListener('pagehide', away)
     // Parole « coincée » (fin perdue) : libérée au bout de 4 s sans son.
     const guard = setInterval(() => {
-      for (const [k, f] of floorRef.current) if (f.id !== myId && Date.now() - f.last > 4000) { floorRef.current.delete(k); setFloorFor(k, null) }
+      // Parole depuis l'écran verrouillé (pas de morceaux Supabase) : libérée à la fin
+      // de la piste du serveur vocal, ou au plus tard après la durée maximale.
+      for (const [k, f] of floorRef.current) if (f.id !== myId && Date.now() - f.last > (f.lk ? MAX_TALK_MS + 5000 : 4000)) { floorRef.current.delete(k); setFloorFor(k, null) }
     }, 1000)
     return () => {
       clearInterval(guard)
@@ -271,7 +285,7 @@ export default function TalkieProvider({ children }: { children: React.ReactNode
 
   // ── Serveur vocal LiveKit : une salle par canal (repli Supabase si indisponible) ──
   useEffect(() => {
-    if (!enabled || !channels.length || !meRef.current) return
+    if (!enabled || !channels.length || !meRef.current || lkPaused) return
     let stop = false
     const rooms: any[] = []
     ;(async () => {
@@ -284,14 +298,32 @@ export default function TalkieProvider({ children }: { children: React.ReactNode
             if (!r.ok) continue   // serveur vocal non configuré : Supabase seul
             const { url, token } = await r.json()
             const room = new LK.Room({ adaptiveStream: false, dynacast: false, stopLocalTrackOnUnpublish: true })
-            room.on(LK.RoomEvent.TrackSubscribed, (track: any) => {
+            // Orateur sur l'écran verrouillé de son iPhone (identité « …#ptt ») : il
+            // n'envoie pas « je parle » par Supabase → la parole se déduit de sa piste.
+            const nativeSpeaker = (p: any) => String(p?.identity || '').endsWith('#ptt') ? { id: String(p.identity).split('#')[0], name: String(p.name || '') } : null
+            const nativeEnd = (p: any) => {
+              const sp = nativeSpeaker(p); const f = floorRef.current.get(c.key)
+              if (!sp || !f?.lk || f.id !== sp.id) return
+              floorRef.current.delete(c.key); setFloorFor(c.key, null)
+              setLastActivity(a => a && a.key === c.key ? { ...a, at: Date.now() } : a)
+              beep(660, 70)
+            }
+            room.on(LK.RoomEvent.TrackSubscribed, (track: any, _pub: any, participant: any) => {
               if (track.kind !== 'audio') return
               const el = track.attach() as HTMLMediaElement
               el.setAttribute('playsinline', 'true'); el.style.display = 'none'
               document.body.appendChild(el)
               if (!talkRef.current) audioSession('playback')
+              const sp = nativeSpeaker(participant)
+              if (sp && !floorRef.current.get(c.key)) {
+                floorRef.current.set(c.key, { id: sp.id, ts: Date.now(), last: Date.now(), lk: true })
+                setFloorFor(c.key, sp)
+                setLastActivity({ key: c.key, id: sp.id, name: sp.name, at: Date.now() })
+                beep(880)
+              }
             })
-            room.on(LK.RoomEvent.TrackUnsubscribed, (track: any) => { track.detach().forEach((el: HTMLElement) => el.remove()) })
+            room.on(LK.RoomEvent.TrackUnsubscribed, (track: any, _pub: any, participant: any) => { track.detach().forEach((el: HTMLElement) => el.remove()); nativeEnd(participant) })
+            room.on(LK.RoomEvent.ParticipantDisconnected, (participant: any) => nativeEnd(participant))
             await room.connect(url, token, { autoSubscribe: true })
             if (stop) { room.disconnect(); break }
             rooms.push(room); lkRef.current.set(c.key, room)
@@ -307,7 +339,55 @@ export default function TalkieProvider({ children }: { children: React.ReactNode
       for (const r of rooms) { try { r.disconnect() } catch { /* déjà fermée */ } }
       lkRef.current.clear(); speakerLkRef.current.clear()
     }
-  }, [enabled, channels])
+  }, [enabled, channels, lkPaused, beep])
+
+  // ── Talkie téléphone verrouillé : module iPhone natif « TalkiePTT » ──
+  // La page lui confie les accès au serveur vocal de chaque canal (identité « …#ptt »,
+  // renouvelés toutes les heures ; jetons valables 6 h) et remet au serveur le jeton
+  // de réveil du téléphone. Fin de la nuit (plus de canal) → canal système quitté.
+  useEffect(() => {
+    if (!enabled || !chLoaded) return
+    let stop = false, refresh: any = null
+    const subs: { remove: () => void }[] = []
+    const sendToken = (token?: string | null) => {
+      if (!token || stop) return
+      fetch('/api/talkie/ptt-token', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ token, keys: pttKeysRef.current }) }).catch(() => {})
+    }
+    ;(async () => {
+      if (!(await talkiePttAvailable()) || stop) return
+      const p = talkiePtt(); if (!p) return
+      p.addListener('pttToken', ({ token }) => sendToken(token)).then(s => { if (stop) s.remove(); else subs.push(s) }).catch(() => {})
+      const sync = async () => {
+        const want = channels.map(c => c.key)
+        const primary = want.includes('garde') ? 'garde' : want[0]   // la garde de nuit d'abord (bouton de l'écran verrouillé)
+        const st = await p.getState().catch(() => null)
+        for (const k of st?.keys || []) if (!want.includes(k)) await p.leave({ key: k }).catch(() => {})
+        for (const c of channels) {
+          if (stop) return
+          const r = await fetch(`/api/talkie/token?key=${encodeURIComponent(c.key)}&native=1`, { cache: 'no-store' }).catch(() => null)
+          if (!r?.ok) continue
+          const { url, token } = await r.json()
+          await p.join({ key: c.key, name: c.label, url, token, primary: c.key === primary }).catch(() => {})
+        }
+        if (stop) return
+        if (primary) p.setActive({ key: primary }).catch(() => {})
+        pttKeysRef.current = want
+        const now = await p.getState().catch(() => null)
+        pttReadyRef.current = !!now?.joined
+        sendToken(now?.pttToken)
+      }
+      await sync()
+      refresh = setInterval(sync, 60 * 60_000)
+    })()
+    return () => { stop = true; clearInterval(refresh); subs.forEach(s => { try { s.remove() } catch { /* déjà retiré */ } }) }
+  }, [enabled, chLoaded, channels])
+
+  // App en arrière-plan avec le module natif : la page se retire du serveur vocal.
+  useEffect(() => {
+    const h = () => setLkPaused(pttReadyRef.current && document.visibilityState !== 'visible')
+    document.addEventListener('visibilitychange', h)
+    return () => document.removeEventListener('visibilitychange', h)
+  }, [])
 
   // ── Prise de parole ──
   const startTalking = useCallback(async (key: string) => {

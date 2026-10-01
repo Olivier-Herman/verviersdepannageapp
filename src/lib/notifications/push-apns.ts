@@ -138,7 +138,37 @@ export async function sendApnsPush(
         mission_id: payload.mission_id,
         ...payload.data,
       }
-  const bodyBuf = Buffer.from(JSON.stringify(apsBody))
+  return apnsRequest(host, jwt, token, apsBody, {
+    'apns-topic':      topic,
+    'apns-push-type':  isBackground ? 'background' : 'alert',
+    // Background push : priority 5 obligatoire (priority 10 = bloque par Apple).
+    'apns-priority':   isBackground ? '5' : '10',
+  })
+}
+
+/**
+ * Push « Push to Talk » (talkie téléphone verrouillé, Olivier 01/10/2026) : réveille
+ * l'app iPhone qui a rejoint le canal talkie système ; iOS affiche qui parle et l'app
+ * se connecte au serveur vocal. Topic `<bundle>.voip-ptt`, priorité 10, expiration 0
+ * (inutile de livrer une prise de parole en retard). Jeton = jeton éphémère PTT.
+ */
+export async function sendApnsPtt(token: string, data: Record<string, any>): Promise<ApnsResult> {
+  const bundleId = process.env.APNS_BUNDLE_ID
+  if (!bundleId) return { ok: false, status: 0, reason: 'APNS_BUNDLE_ID manquant' }
+  let jwt: string
+  try { jwt = await getApnsJwt() }
+  catch (e: any) { return { ok: false, status: 0, reason: e.message || 'JWT error' } }
+  const host = process.env.APNS_USE_SANDBOX === 'true' ? 'api.sandbox.push.apple.com' : 'api.push.apple.com'
+  return apnsRequest(host, jwt, token, { aps: {}, ...data }, {
+    'apns-topic':      `${bundleId}.voip-ptt`,
+    'apns-push-type':  'pushtotalk',
+    'apns-priority':   '10',
+    'apns-expiration': '0',
+  })
+}
+
+function apnsRequest(host: string, jwt: string, token: string, body: unknown, headers: Record<string, string>): Promise<ApnsResult> {
+  const bodyBuf = Buffer.from(JSON.stringify(body))
 
   return new Promise<ApnsResult>((resolve) => {
     let client: http2.ClientHttp2Session | null = null
@@ -166,10 +196,7 @@ export async function sendApnsPush(
       ':method':         'POST',
       ':path':           `/3/device/${token}`,
       'authorization':   `bearer ${jwt}`,
-      'apns-topic':      topic,
-      'apns-push-type':  isBackground ? 'background' : 'alert',
-      // Background push : priority 5 obligatoire (priority 10 = bloque par Apple).
-      'apns-priority':   isBackground ? '5' : '10',
+      ...headers,
       'content-type':    'application/json',
       'content-length':  bodyBuf.length,
     })
