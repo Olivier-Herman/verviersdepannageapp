@@ -45,6 +45,8 @@ export interface TalkieChannel { key: string; kind: 'garde' | 'direct'; label: s
 export interface TalkieActivity { key: string; id: string; name: string; at: number }
 
 interface TalkieCtx {
+  /** Canal par défaut (la garde la nuit, sinon un canal direct) — choisi par le serveur. */
+  primaryKey: string | null
   me: TalkieMember | null
   channels: TalkieChannel[]
   audioOn: boolean
@@ -101,6 +103,7 @@ export default function TalkieProvider({ children }: { children: React.ReactNode
   const lkConnected = (key: string) => lkRef.current.get(key)?.state === 'connected'
   const pttReadyRef = useRef(false)                          // module talkie natif présent et canal système rejoint
   const pttKeysRef  = useRef<string[]>([])
+  const [primaryKey, setPrimaryKey] = useState<string | null>(null)   // canal du bouton de l'écran verrouillé (serveur)
 
   // ── Canaux accessibles (rechargés toutes les 2 min : le talkie des chauffeurs
   //    s'ouvre à 18 h et se ferme à 8 h) ──
@@ -112,6 +115,7 @@ export default function TalkieProvider({ children }: { children: React.ReactNode
       meRef.current = j?.me || null; setMe(j?.me || null)
       const list: TalkieChannel[] = Array.isArray(j?.channels) ? j.channels : []
       setChannels(prev => JSON.stringify(prev.map(c => c.channel)) === JSON.stringify(list.map(c => c.channel)) ? prev : list)
+      setPrimaryKey(j?.primaryKey || null)
       setChLoaded(true)
     }).catch(() => {})
     load()
@@ -359,7 +363,7 @@ export default function TalkieProvider({ children }: { children: React.ReactNode
       p.addListener('pttToken', ({ token }) => sendToken(token)).then(s => { if (stop) s.remove(); else subs.push(s) }).catch(() => {})
       const sync = async () => {
         const want = channels.map(c => c.key)
-        const primary = want.includes('garde') ? 'garde' : want[0]   // la garde de nuit d'abord (bouton de l'écran verrouillé)
+        const primary = primaryKey && want.includes(primaryKey) ? primaryKey : want.includes('garde') ? 'garde' : want[0]   // la garde la nuit, sinon un canal direct
         const st = await p.getState().catch(() => null)
         for (const k of st?.keys || []) if (!want.includes(k)) await p.leave({ key: k }).catch(() => {})
         for (const c of channels) {
@@ -380,7 +384,7 @@ export default function TalkieProvider({ children }: { children: React.ReactNode
       refresh = setInterval(sync, 60 * 60_000)
     })()
     return () => { stop = true; clearInterval(refresh); subs.forEach(s => { try { s.remove() } catch { /* déjà retiré */ } }) }
-  }, [enabled, chLoaded, channels])
+  }, [enabled, chLoaded, channels, primaryKey])
 
   // App en arrière-plan avec le module natif : la page se retire du serveur vocal.
   useEffect(() => {
@@ -447,7 +451,7 @@ export default function TalkieProvider({ children }: { children: React.ReactNode
   }, [beep, enableAudio, stopTalking, ensureRunning])
 
   const value: TalkieCtx = {
-    me, channels, audioOn, enableAudio, online, floor, talkingKey, startTalking, stopTalking,
+    me, channels, primaryKey, audioOn, enableAudio, online, floor, talkingKey, startTalking, stopTalking,
     lastActivity, msgsVersion, error, clearError: () => setError(null),
   }
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>

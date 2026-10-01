@@ -31,9 +31,11 @@ export default function TalkieOverlay() {
   const act = t.lastActivity && t.lastActivity.id !== t.me.id ? t.lastActivity : null
   const showReply = !fabTalking && (!!t.talkingKey || (!!act && !speaking && now - act.at < REPLY_WINDOW_MS && dismissed !== act.at))
   const replyKey = t.talkingKey || act?.key || null
-  // Bouton permanent : Garde de nuit par défaut, sinon le dernier canal actif récent.
+  // Bouton permanent : le dernier canal actif récent, sinon le canal par défaut (Garde de
+  // nuit la nuit ; le jour, le canal direct d'essai — Olivier 01/10/2026).
   const fabKey = t.talkingKey
     || (t.lastActivity && now - t.lastActivity.at < RECENT_MS ? t.lastActivity.key : null)
+    || (t.primaryKey && t.channels.some(c => c.key === t.primaryKey) ? t.primaryKey : null)
     || t.channels.find(c => c.kind === 'garde')?.key || t.channels[0].key
   const fabDown = () => {
     holdRef.current = { talking: false, timer: setTimeout(() => { if (holdRef.current) { holdRef.current.talking = true; setFabTalking(true); t.startTalking(fabKey) } }, HOLD_MS) }
