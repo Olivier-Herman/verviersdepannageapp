@@ -192,6 +192,12 @@ export async function runVabImport(opts: { mode: VabImportMode }): Promise<VabIm
         ? `${NC_TAG} : ${detail.nonCouvert.reason || 'couverture refusée'} — le client paie sur place et se fait rembourser par son assurance/assistance.`
         : null
       if (ncVab) console.log(`[VAB] ${item.missionNumber} (${assignmentId}) NON COUVERT → SNC : ${detail.nonCouvert.reason}`)
+      // ── MISSION SIABIS TRANSMISE PAR VAB (Olivier 01/10/2026, 2FPM309) ────────
+      // VAB préfixe ses codes de panne par « Siabis » quand l'appel vient de Siabis
+      // (autoroute). Couverte → Siabis couvert d'office : 15 fiches requalifiées à la
+      // main depuis août. Non couverte → reste Siabis non couvert (ci-dessus). Le
+      // dossier VAB reste lié (vab_assignment_ids) : pointages et clôture continuent.
+      const siabisVab = !ncVab && /^\s*siabis|\bsiabis/i.test(String(detail.codesDePanne || ''))
 
       // ── Anti-doublon / enrichissement par DOSSIER (Olivier 2026-07-01) ──────
       // Le dossier VAB = la valeur AVANT le "/" (dossier stable). La valeur APRÈS
@@ -210,7 +216,7 @@ export async function runVabImport(opts: { mode: VabImportMode }): Promise<VabIm
         const incomingPlate = detail.vehiclePlate?.replace(/\s/g, '').toUpperCase() || null
         const { data: existingRows } = await sb.from('incoming_missions')
           .select(FICHE_COLS)
-          .ilike('source', 'vab')
+          .or(VAB_FICHE)   // le LIEN fait foi : une fiche requalifiée en Siabis reste la fiche VAB (01/10/2026)
           .or(`dossier_number.ilike.${dossierBase}/%,dossier_number.eq.${dossierBase}`)
           .not('status', 'in', '("ignored","cancelled","completed","to_invoice")')
           .order('created_at', { ascending: false })
@@ -230,7 +236,7 @@ export async function runVabImport(opts: { mode: VabImportMode }): Promise<VabIm
         if (!fiche && incomingPlate) {
           const { data: byPlate } = await sb.from('incoming_missions')
             .select(FICHE_COLS)
-            .ilike('source', 'vab')
+            .or(VAB_FICHE)
             .eq('vehicle_plate', incomingPlate)
             .eq('dossier_leg', false)
             .not('status', 'in', '("ignored","cancelled","completed","to_invoice")')
@@ -260,7 +266,7 @@ export async function runVabImport(opts: { mode: VabImportMode }): Promise<VabIm
         if (!fiche && incomingPlate && desiredType === 'remorquage' && assignmentId) {
           const { data: finies } = await sb.from('incoming_missions')
             .select(FICHE_COLS + ', completed_at')
-            .ilike('source', 'vab')
+            .or(VAB_FICHE)
             .eq('vehicle_plate', incomingPlate)
             .eq('dossier_leg', false)
             .in('status', ['completed', 'to_invoice'])
@@ -410,7 +416,7 @@ export async function runVabImport(opts: { mode: VabImportMode }): Promise<VabIm
         dossier_number:     fullDossier,
         // Non couvert selon VAB → Siabis non couvert (police_snc), sans assistance
         // facturée ; remarque de facturation explicite. Olivier 20/09/2026.
-        source:             ncVab ? 'police_snc' : 'vab',
+        source:             ncVab ? 'police_snc' : siabisVab ? 'sia_couvert' : 'vab',
         ...(ncVab ? { remarks_billing: ncRemark } : {}),
         source_format:      'vab-scraper',
         status:             'new',
