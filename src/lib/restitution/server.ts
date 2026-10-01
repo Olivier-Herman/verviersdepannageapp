@@ -244,6 +244,31 @@ export async function logRestitution(sb: any, missionId: string, actorId: string
   await sb.from('mission_logs').insert({ mission_id: missionId, actor_id: actorId, action: `restitution_${action}`, notes, metadata }).then(() => {}, () => {})
 }
 
+/** Dérogation « ne pas facturer ce groupe » (chauffeur sans accès facturation, Olivier
+ *  01/10/2026) : kind = `sans_frais:<id de la fiche du groupe>`. */
+export const SANS_FRAIS_PREFIX = 'sans_frais:'
+export const isSansFraisKind = (kind: string) => /^sans_frais:[0-9a-f-]{36}$/.test(kind)
+export function derogLabel(kind: string): string {
+  return (DEROG_LABELS as Record<string, string>)[kind] || (kind.startsWith(SANS_FRAIS_PREFIX) ? 'ne pas facturer un groupe' : kind)
+}
+
+/**
+ * Groupe du dossier non facturé (Olivier 01/10/2026) : mêmes champs que « Ne rien
+ * facturer » du dossier (no_charge_* ; gardiennage : storage_waived). Le véhicule est
+ * encore au parc : ni statut ni place touchés (la sortie le fera). Tracé sur la fiche du
+ * groupe (annulable pendant cette restitution) et au journal de la restitution.
+ */
+export async function markLegNoCharge(sb: any, o: { legId: string; rootMissionId: string; restitutionId: string | null; reason: string; actorId: string; decidedBy: string; letter?: string | null }): Promise<boolean> {
+  const { data: row } = await sb.from('incoming_missions').select('id, mission_number, mission_type, dossier_leg, storage_waived, no_charge_at').eq('id', o.legId).maybeSingle()
+  if (!row || row.no_charge_at) return false
+  const now = new Date().toISOString()
+  await sb.from('incoming_missions').update({ ...(row.dossier_leg ? { storage_waived: true } : {}), no_charge_at: now, no_charge_reason: o.reason, no_charge_by: o.actorId, updated_at: now }).eq('id', o.legId)
+  const ref = `${o.letter ? `${o.letter} ` : ''}(${row.mission_number || row.mission_type || 'fiche'})`
+  await sb.from('mission_logs').insert({ mission_id: o.legId, actor_id: o.actorId, action: 'no_charge', notes: `Intervention sans frais : ${o.reason} (restitution, groupe ${ref})`, metadata: { reason: o.reason, dossier_letter: o.letter || null, restitution_id: o.restitutionId, prev_storage_waived: !!row.storage_waived } })
+  await logRestitution(sb, o.rootMissionId, o.actorId, 'leg_no_charge', `Groupe ${ref} non facturé, décidé par ${o.decidedBy} : ${o.reason}.`, { mission_id: o.legId, reason: o.reason })
+  return true
+}
+
 /**
  * Factures du dossier déjà émises et encore ouvertes (reste dû > 0), hors la facture
  * de la restitution elle-même. Elles doivent être vues et tranchées avant la sortie

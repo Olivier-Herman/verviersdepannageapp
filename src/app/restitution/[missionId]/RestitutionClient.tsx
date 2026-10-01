@@ -481,6 +481,10 @@ function AmountStep({ c, R, act, busy, gmKey, setErr, say, onDerog }: any) {
           <button type="button" onClick={() => setPick(l)} className="mt-0.5 min-h-[32px] text-xs font-semibold text-info underline">Changer le client de ce groupe</button>
           {/* Décider de ne pas facturer un groupe (Olivier 01/10/2026) : facturation seulement, motif obligatoire. */}
           {c.me.hasOdoo && nc?.id !== l.mission_id && <button type="button" onClick={() => setNc({ id: l.mission_id, reason: '' })} className="mt-0.5 min-h-[32px] text-xs font-semibold text-warning underline">Ne pas facturer ce groupe</button>}
+          {/* Sans accès à la facturation (chauffeur) : seulement par dérogation (Olivier 01/10/2026). */}
+          {!c.me.hasOdoo && ((c.pending || []).some((p: any) => p.kind === `sans_frais:${l.mission_id}`)
+            ? <span className="mt-0.5 min-h-[32px] inline-flex items-center text-xs font-semibold text-ink-secondary">Ne pas facturer : dérogation en attente</span>
+            : <button type="button" onClick={() => onDerog(`sans_frais:${l.mission_id}`, `Ne pas facturer : ${l.letter ? `${l.letter} · ` : ''}${l.title}`)} className="mt-0.5 min-h-[32px] text-xs font-semibold text-warning underline">Ne pas facturer ce groupe : dérogation…</button>)}
         </div>}
         {nc && nc.id === l.mission_id && <div className="mt-1.5 rounded-lg border border-warning bg-warning-soft p-2.5 flex flex-col gap-2">
           <label className="text-xs font-semibold text-ink">Pourquoi ce groupe n’est-il pas facturé ? (obligatoire, noté au journal avec votre nom)</label>

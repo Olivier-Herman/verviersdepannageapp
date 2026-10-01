@@ -22,7 +22,7 @@ import { cropPortrait, saveHolderPhoto } from '@/lib/restitution/holder-photo'
 import { sendPushToUser } from '@/lib/push'
 import {
   restitutionAccess, loadMission, findAssistanceRel, approvedDerogations, computeChecks, openLegs, payerContext, resolvePayer,
-  userNames, logRestitution, isSaisieLike, leveeOk, defaultSplit, dossierOpenInvoices,
+  userNames, logRestitution, markLegNoCharge, isSaisieLike, leveeOk, defaultSplit, dossierOpenInvoices,
   WHO_LABELS, POSTE_LABELS, PAYER_LABELS, type WhoKind, type Payer, type Poste,
 } from '@/lib/restitution/server'
 
@@ -33,8 +33,8 @@ const r2 = (n: number) => Math.round(n * 100) / 100
 // Volets chiffrés du dossier, gardés 60 s par instance tant que la fiche ne
 // bouge pas (statut, levée, parc) : le calcul coûte ~1,5 s.
 const LEGS_CACHE = new Map<string, { at: number; key: string; val: { legs: any[] } }>()
-async function cachedLegs(m: any) {
-  const key = [m.status, m.levee_saisie_at, m.levee_saisie_date, m.parc_zone_key, m.police_blocked].join('|')
+async function cachedLegs(m: any, extra = '') {
+  const key = [m.status, m.levee_saisie_at, m.levee_saisie_date, m.parc_zone_key, m.police_blocked, extra].join('|')
   const hit = LEGS_CACHE.get(m.id)
   if (hit && hit.key === key && Date.now() - hit.at < 60_000) return hit.val
   const val = await openLegs(m.id, m)
@@ -75,7 +75,7 @@ async function buildContext(sb: any, session: any, missionId: string) {
     sb.from('users').select('id, name, verify_pin_hash').eq('restitution_responsable', true).eq('active', true).order('name'),
     userNames(sb, [...derogs.map(d => d.responsable_id), ...derogs.map(d => d.requested_by), rest?.started_by, rest?.completed_by]),
     findAssistanceRel(sb, m),
-    needLegs ? cachedLegs(m) : Promise.resolve({ legs: [] as any[] }),
+    needLegs ? cachedLegs(m, derogs.filter(d => d.status === 'approved').map(d => d.id).join(',')) : Promise.resolve({ legs: [] as any[] }),   // une dérogation « sans frais » validée change les montants
     payerContext(sb, open),
     invId ? odooRpc<any[]>('account.move', 'read', [[invId]], { fields: ['name', 'state', 'payment_state', 'amount_total', 'amount_residual'] })
       .then(([mv]) => mv ? { id: invId, name: mv.name, state: mv.state, payment_state: mv.payment_state, total: mv.amount_total, residual: mv.amount_residual, url: open?.invoice_url || buildInvoiceMoveUrl(invId) } : null)
@@ -505,8 +505,9 @@ export async function POST(req: Request, { params }: { params: { missionId: stri
         return done()
       }
 
-      // Décider qu'un groupe n'est pas facturé (Olivier 01/10/2026) : réservé à la
-      // facturation (accès Odoo), motif obligatoire, tracé au journal avec son auteur.
+      // Décider qu'un groupe n'est pas facturé (Olivier 01/10/2026) : direct pour la
+      // facturation (accès Odoo), motif obligatoire, tracé au journal avec son auteur ;
+      // sans cet accès (chauffeur), par dérogation « sans_frais:<groupe> » (route derogation).
       // Mêmes champs que « Ne rien facturer » du dossier (no_charge_* ; gardiennage :
       // storage_waived) ; le véhicule est encore au parc : ni statut ni place touchés.
       case 'leg_no_charge':
@@ -523,10 +524,7 @@ export async function POST(req: Request, { params }: { params: { missionId: stri
         if (action === 'leg_no_charge') {
           const reason = String(body.reason || '').trim()
           if (reason.length < 4) return NextResponse.json({ error: 'Motif requis (au moins 4 caractères).' }, { status: 400 })
-          if (row.no_charge_at) return done()
-          await sb.from('incoming_missions').update({ ...(row.dossier_leg ? { storage_waived: true } : {}), no_charge_at: now, no_charge_reason: reason, no_charge_by: actor, updated_at: now }).eq('id', mid)
-          await sb.from('mission_logs').insert({ mission_id: mid, actor_id: actor, action: 'no_charge', notes: `Intervention sans frais : ${reason} (restitution, groupe ${leg.letter})`, metadata: { reason, dossier_letter: leg.letter, restitution_id: rest!.id, prev_storage_waived: !!row.storage_waived } })
-          await logRestitution(sb, m.id, actor, 'leg_no_charge', `Groupe ${leg.letter} (${row.mission_number || leg.title}) non facturé, décidé par ${who_name} : ${reason}.`, { mission_id: mid, reason })
+          await markLegNoCharge(sb, { legId: mid, rootMissionId: m.id, restitutionId: rest!.id, reason, actorId: actor, decidedBy: who_name, letter: leg.letter })
         } else {
           const { data: lg } = await sb.from('mission_logs').select('metadata').eq('mission_id', mid).eq('action', 'no_charge').eq('metadata->>restitution_id', rest!.id).order('created_at', { ascending: false }).limit(1)
           if (!lg?.length) return NextResponse.json({ error: 'Ce groupe a été mis sans frais en dehors de cette restitution : voyez avec la facturation.' }, { status: 409 })

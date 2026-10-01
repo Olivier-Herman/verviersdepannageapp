@@ -9,7 +9,7 @@ import { NextResponse }      from 'next/server'
 import { getServerSession }  from 'next-auth'
 import { authOptions }       from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase'
-import { restitutionAccess, loadMission, logRestitution, DEROG_LABELS, type DerogKind } from '@/lib/restitution/server'
+import { restitutionAccess, loadMission, logRestitution, openLegs, DEROG_LABELS, isSansFraisKind, SANS_FRAIS_PREFIX, type DerogKind } from '@/lib/restitution/server'
 
 export const dynamic = 'force-dynamic'
 const KINDS = Object.keys(DEROG_LABELS) as DerogKind[]
@@ -33,9 +33,19 @@ export async function POST(req: Request, { params }: { params: { missionId: stri
 
   const kind = String(body.kind) as DerogKind
   const reason = String(body.reason || '').trim().slice(0, 500)
-  if (!KINDS.includes(kind)) return NextResponse.json({ error: 'Type de dérogation inconnu' }, { status: 400 })
+  // « Ne pas facturer ce groupe » sans accès facturation (Olivier 01/10/2026) : kind = sans_frais:<fiche du groupe>.
+  const sansFrais = isSansFraisKind(kind)
+  if (!KINDS.includes(kind) && !sansFrais) return NextResponse.json({ error: 'Type de dérogation inconnu' }, { status: 400 })
   if (reason.length < 5) return NextResponse.json({ error: 'Le motif est obligatoire.' }, { status: 400 })
   if (kind !== 'blk' && !rest) return NextResponse.json({ error: 'Commencez la restitution d’abord.' }, { status: 400 })
+  let label = DEROG_LABELS[kind] || kind
+  if (sansFrais) {
+    const legId = kind.slice(SANS_FRAIS_PREFIX.length)
+    const leg = (await openLegs(m.id, m)).legs.find((l: any) => l.mission_id === legId)
+    if (!leg) return NextResponse.json({ error: 'Groupe introuvable dans ce dossier.' }, { status: 400 })
+    if (!(leg.due_htva > 0)) return NextResponse.json({ error: 'Ce groupe n’a rien à facturer.' }, { status: 409 })
+    label = `ne pas facturer le groupe ${leg.letter ? `${leg.letter} · ` : ''}${leg.title} (${Number(leg.due_htva).toFixed(2)} € HTVA)`
+  }
   const { data: resp } = await sb.from('users').select('id, name, restitution_responsable, verify_pin_hash').eq('id', body.responsable_id).maybeSingle()
   if (!resp?.restitution_responsable) return NextResponse.json({ error: 'Ce responsable n’est pas habilité.' }, { status: 400 })
   // Un responsable peut se demander la dérogation à lui-même : il la valide aussitôt avec son code (Olivier 29/09/2026).
@@ -53,10 +63,10 @@ export async function POST(req: Request, { params }: { params: { missionId: stri
   const { sendNotification } = await import('@/lib/notifications/send')
   const nres: any = self ? { ok: true } : await sendNotification(resp.id, 'restitution_derogation_requested', {
     title: 'Dérogation à valider',
-    body: `${me.name || 'Un collègue'} · ${m.vehicle_plate || 'véhicule'} · ${DEROG_LABELS[kind]}`,
+    body: `${me.name || 'Un collègue'} · ${m.vehicle_plate || 'véhicule'} · ${label}`,
     action_url: `/derogation/${row.id}`, mission_id: m.id,
   }).catch((e: any) => ({ ok: false, error: e?.message }))
   const push = { sent: nres?.ok ? 1 : 0 }
-  await logRestitution(sb, m.id, me.id, 'derogation_request', `Dérogation « ${DEROG_LABELS[kind]} » demandée ${self ? 'par le responsable lui-même' : `à ${resp.name}`} par ${me.name || me.email}. Motif : ${reason}${push.sent ? '' : ` (notification non délivrée${nres?.skipped ? ' : ' + nres.skipped : ''} — prévenez-le, lien : /derogation/${row.id})`}`, { derogation_id: row.id, kind, responsable_id: resp.id })
+  await logRestitution(sb, m.id, me.id, 'derogation_request', `Dérogation « ${label} » demandée ${self ? 'par le responsable lui-même' : `à ${resp.name}`} par ${me.name || me.email}. Motif : ${reason}${push.sent ? '' : ` (notification non délivrée${nres?.skipped ? ' : ' + nres.skipped : ''} — prévenez-le, lien : /derogation/${row.id})`}`, { derogation_id: row.id, kind, responsable_id: resp.id })
   return NextResponse.json({ ok: true, id: row.id, notified: push.sent > 0, self })
 }

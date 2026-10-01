@@ -4,15 +4,15 @@
 //   GET  → la demande (qui, quel véhicule, quoi, pourquoi)
 //   POST { decision: 'approve' | 'refuse', pin } → validée avec SON code.
 // Effets d'une approbation : blocage police levé (blk), contrôle de sortie
-// accident forcé (exit_control) ; les autres dérogations sont lues par la
-// restitution. Olivier 28/09/2026.
+// accident forcé (exit_control), groupe mis sans frais (sans_frais:<fiche>,
+// 01/10/2026) ; les autres dérogations sont lues par la restitution. Olivier 28/09/2026.
 
 import { NextResponse }      from 'next/server'
 import { getServerSession }  from 'next-auth'
 import { authOptions }       from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase'
 import bcrypt                from 'bcryptjs'
-import { logRestitution, DEROG_LABELS, type DerogKind } from '@/lib/restitution/server'
+import { logRestitution, derogLabel, isSansFraisKind, markLegNoCharge, SANS_FRAIS_PREFIX } from '@/lib/restitution/server'
 
 export const dynamic = 'force-dynamic'
 
@@ -24,7 +24,13 @@ async function load(sb: any, id: string) {
     sb.from('users').select('id, name').in('id', [d.requested_by, d.responsable_id].filter(Boolean)),
   ])
   const n = Object.fromEntries((users || []).map((u: any) => [u.id, u.name]))
-  return { d, m, requested_by_name: n[d.requested_by] || null, responsable_name: n[d.responsable_id] || null }
+  // « Ne pas facturer ce groupe » : le responsable voit de quelle fiche il s'agit.
+  let label = derogLabel(d.kind)
+  if (isSansFraisKind(d.kind)) {
+    const { data: leg } = await sb.from('incoming_missions').select('mission_number, mission_type, source').eq('id', d.kind.slice(SANS_FRAIS_PREFIX.length)).maybeSingle()
+    if (leg) label = `ne pas facturer le groupe ${leg.source === 'gardiennage' ? 'gardiennage' : String(leg.mission_type || '').toLowerCase() || 'du dossier'} (fiche ${leg.mission_number || '?'})`
+  }
+  return { d, m, label, requested_by_name: n[d.requested_by] || null, responsable_name: n[d.responsable_id] || null }
 }
 
 export async function GET(_req: Request, { params }: { params: { id: string } }) {
@@ -36,7 +42,7 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
   const me = session.user as any
   return NextResponse.json({
     ok: true, mine: x.d.responsable_id === me.id,
-    request: { id: x.d.id, kind: x.d.kind, label: DEROG_LABELS[x.d.kind as DerogKind] || x.d.kind, reason: x.d.reason, amount_tvac: x.d.amount_tvac, status: x.d.status, created_at: x.d.created_at, decided_at: x.d.decided_at, requested_by_name: x.requested_by_name, responsable_name: x.responsable_name },
+    request: { id: x.d.id, kind: x.d.kind, label: x.label, reason: x.d.reason, amount_tvac: x.d.amount_tvac, status: x.d.status, created_at: x.d.created_at, decided_at: x.d.decided_at, requested_by_name: x.requested_by_name, responsable_name: x.responsable_name },
     mission: x.m,
   })
 }
@@ -63,13 +69,16 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   const status = decision === 'approve' ? 'approved' : 'refused'
   const { data: upd } = await sb.from('derogation_requests').update({ status, decided_at: now }).eq('id', x.d.id).eq('status', 'pending').select('id')
   if (!upd?.length) return NextResponse.json({ error: 'Cette demande vient d’être traitée ailleurs.' }, { status: 409 })
-  const label = DEROG_LABELS[x.d.kind as DerogKind] || x.d.kind
+  const label = x.label
 
   if (status === 'approved' && x.d.kind === 'blk') {
     await sb.from('incoming_missions').update({ police_blocked: false, updated_at: now }).eq('id', x.d.mission_id)
   }
   if (status === 'approved' && x.d.kind === 'exit_control') {
     await sb.from('mission_exit_control').update({ forced_at: now, forced_by: me.id, forced_reason: `Dérogation restitution : ${x.d.reason}`, updated_at: now }).eq('mission_id', x.d.mission_id)
+  }
+  if (status === 'approved' && isSansFraisKind(x.d.kind)) {
+    await markLegNoCharge(sb, { legId: x.d.kind.slice(SANS_FRAIS_PREFIX.length), rootMissionId: x.d.mission_id, restitutionId: x.d.restitution_id, reason: x.d.reason, actorId: me.id, decidedBy: `${me.name || me.email} (dérogation demandée par ${x.requested_by_name || '?'})` })
   }
   await logRestitution(sb, x.d.mission_id, me.id, status === 'approved' ? 'derogation_approved' : 'derogation_refused',
     `Dérogation « ${label} » ${status === 'approved' ? 'autorisée' : 'refusée'} par ${me.name || me.email} avec son code, depuis son téléphone (demandée par ${x.requested_by_name || '?'} : ${x.d.reason}).`,
