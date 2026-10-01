@@ -453,6 +453,7 @@ function OpenInvoices({ c, R, act, busy }: any) {
 
 function AmountStep({ c, R, act, busy, gmKey, setErr, say, onDerog }: any) {
   const [pick, setPick] = useState<any>(null)
+  const [nc, setNc] = useState<{ id: string; reason: string } | null>(null)   // « ne pas facturer ce groupe » en cours
   const inv = c.invoice
   const due = c.due
   const later = ['garage', 'assistance'].includes(R?.who_kind)
@@ -476,7 +477,20 @@ function AmountStep({ c, R, act, busy, gmKey, setErr, say, onDerog }: any) {
     {c.legs.map((l: any) => <div key={l.mission_id} className="flex justify-between gap-3 border-b border-border pb-1.5 text-sm">
       <div className="min-w-0"><div className="text-ink">{l.letter ? `${l.letter} · ` : ''}{l.title}</div>
         <div className="text-xs text-ink-muted">{l.nothing ? l.nothing : l.unknown ? `à calculer : ${l.amount_note || 'voir la fiche'}` : <>Facturé à : <b className="text-ink-secondary">{payerTxt(l)}</b></>}{l.billed_refs?.length ? ` · déjà facturé ${l.billed_refs.join(', ')}` : ''}</div>
-        {l.due_htva > 0 && !l.nothing && <button type="button" onClick={() => setPick(l)} className="mt-0.5 min-h-[32px] text-xs font-semibold text-info underline">Changer le client de ce groupe</button>}
+        {l.due_htva > 0 && !l.nothing && <div className="flex flex-wrap gap-x-4">
+          <button type="button" onClick={() => setPick(l)} className="mt-0.5 min-h-[32px] text-xs font-semibold text-info underline">Changer le client de ce groupe</button>
+          {/* Décider de ne pas facturer un groupe (Olivier 01/10/2026) : facturation seulement, motif obligatoire. */}
+          {c.me.hasOdoo && nc?.id !== l.mission_id && <button type="button" onClick={() => setNc({ id: l.mission_id, reason: '' })} className="mt-0.5 min-h-[32px] text-xs font-semibold text-warning underline">Ne pas facturer ce groupe</button>}
+        </div>}
+        {nc && nc.id === l.mission_id && <div className="mt-1.5 rounded-lg border border-warning bg-warning-soft p-2.5 flex flex-col gap-2">
+          <label className="text-xs font-semibold text-ink">Pourquoi ce groupe n’est-il pas facturé ? (obligatoire, noté au journal avec votre nom)</label>
+          <input autoFocus value={nc.reason} onChange={e => setNc({ id: l.mission_id, reason: e.target.value })} placeholder="Ex. geste commercial, accord avec le client, erreur de fiche…" className="min-h-[44px] rounded-btn border border-strong bg-surface px-3 text-sm text-ink" />
+          <div className="flex flex-wrap gap-2">
+            <Btn kind="brand" disabled={busy || nc.reason.trim().length < 4} onClick={async () => { const j = await act('leg_no_charge', { mission_id: l.mission_id, reason: nc.reason.trim() }); if (j) { setNc(null); say('Groupe non facturé') } }}>Confirmer : ne pas facturer</Btn>
+            <Btn disabled={busy} onClick={() => setNc(null)}>Annuler</Btn>
+          </div>
+        </div>}
+        {c.me.hasOdoo && (c.noChargeHere || []).includes(l.mission_id) && <button type="button" disabled={busy} onClick={async () => { const j = await act('leg_no_charge_undo', { mission_id: l.mission_id }); if (j) say('Groupe à facturer à nouveau') }} className="mt-0.5 min-h-[32px] text-xs font-semibold text-info underline">Facturer à nouveau ce groupe</button>}
       </div>
       <div className="font-mono whitespace-nowrap">{eur(l.due_htva)}</div>
     </div>)}

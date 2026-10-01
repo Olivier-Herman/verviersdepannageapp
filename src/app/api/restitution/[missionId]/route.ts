@@ -10,6 +10,7 @@ import { authOptions }       from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase'
 import { odooRpc, withOdooActor, findOrCreatePartner } from '@/lib/odoo'
 import { invoiceDossierGroups } from '@/lib/dossier/invoice'
+import { invalidateDossierCache } from '@/lib/dossier/build'
 import { buildInvoiceMoveUrl } from '@/lib/odoo-quote'
 import { exitParcNow } from '@/lib/parc/exit-parc'
 import { releaseParcAndShift } from '@/lib/parc/release'
@@ -105,6 +106,9 @@ async function buildContext(sb: any, session: any, missionId: string) {
   const checks = await computeChecks(sb, m, derogs, names)
   const legsOut = legsR.legs.map((l: any) => { const p = resolvePayer(l, who, saisie, split, assist, m); return { ...l, payer: p.payer, payer_partner_id: p.partner_id, payer_partner_name: p.partner_name, payer_chosen: p.chosen } })
   const dueHtva = r2(legsOut.filter((l: any) => l.payer === 'client').reduce((t: number, l: any) => t + (l.due_htva || 0), 0))
+  // Groupes mis « sans frais » pendant CETTE restitution : on peut revenir dessus ici.
+  const ncIds = legsOut.filter((l: any) => String(l.nothing || '').startsWith('sans frais')).map((l: any) => l.mission_id)
+  const { data: ncLogs } = open && ncIds.length ? await sb.from('mission_logs').select('mission_id').in('mission_id', ncIds).eq('action', 'no_charge').eq('metadata->>restitution_id', open.id) : { data: [] as any[] }
   const driverCollected = r2(((ivR as any).data || []).reduce((t: number, x: any) => t + Number(x.amount || 0), 0))
   // Sorti par l'encaissement chauffeur pendant la restitution : on la clôt.
   if (open && m.status !== 'parked' && driverCollected > 0) {
@@ -146,7 +150,7 @@ async function buildContext(sb: any, session: any, missionId: string) {
     restitution: rest ? { ...rest, started_by_name: names[rest.started_by] || null, completed_by_name: names[rest.completed_by] || null } : null,
     checks,
     legs: legsOut, due: { htva: dueHtva, tvac: r2(dueHtva * 1.21) }, splitDefault: defaultSplit(m),
-    openInvoices, openDecisions: open?.open_decisions || {},
+    openInvoices, openDecisions: open?.open_decisions || {}, noChargeHere: [...new Set((ncLogs || []).map((x: any) => x.mission_id))],
     invoice, driverCollected, idDoc, transportDocs: transportDocs || 0, holderPhoto, payDeferred: terms, thirdInvoices: open?.third_invoices || [], photoCount: Array.isArray(m.driver_photos) ? m.driver_photos.length : 0,
     derogations: derogs.map(d => ({ ...d, responsable_name: names[d.responsable_id] || null, requested_by_name: names[d.requested_by] || null })),
     pending: (pending || []).map((p: any) => ({ ...p, responsable_name: pNames[p.responsable_id] || null })),
@@ -498,6 +502,40 @@ export async function POST(req: Request, { params }: { params: { missionId: stri
         if (cx.legs.some((l: any) => l.payer === 'third' && l.due_htva > 0)) return NextResponse.json({ error: 'Créez d’abord les factures des autres clients.' }, { status: 409 })
         await upd({ settlement: 'nothing_due' })
         await logRestitution(sb, m.id, actor, 'nothing_due', 'Reste à payer : 0 €, aucune facture à créer.')
+        return done()
+      }
+
+      // Décider qu'un groupe n'est pas facturé (Olivier 01/10/2026) : réservé à la
+      // facturation (accès Odoo), motif obligatoire, tracé au journal avec son auteur.
+      // Mêmes champs que « Ne rien facturer » du dossier (no_charge_* ; gardiennage :
+      // storage_waived) ; le véhicule est encore au parc : ni statut ni place touchés.
+      case 'leg_no_charge':
+      case 'leg_no_charge_undo': {
+        await ensure()
+        const { data: meRow } = await sb.from('users').select('odoo_api_key').eq('id', actor).maybeSingle()
+        if (!meRow?.odoo_api_key) return NextResponse.json({ error: 'Réservé à la facturation : demandez une dérogation pour un départ sans paiement.' }, { status: 403 })
+        const mid = String(body.mission_id || '')
+        const { legs } = await openLegs(m.id, m)
+        const leg = legs.find(l => l.mission_id === mid)
+        if (!leg) return NextResponse.json({ error: 'Groupe introuvable dans ce dossier.' }, { status: 404 })
+        const { data: row } = await sb.from('incoming_missions').select('id, mission_number, dossier_leg, storage_waived, no_charge_at').eq('id', mid).maybeSingle()
+        if (!row) return NextResponse.json({ error: 'Groupe introuvable.' }, { status: 404 })
+        if (action === 'leg_no_charge') {
+          const reason = String(body.reason || '').trim()
+          if (reason.length < 4) return NextResponse.json({ error: 'Motif requis (au moins 4 caractères).' }, { status: 400 })
+          if (row.no_charge_at) return done()
+          await sb.from('incoming_missions').update({ ...(row.dossier_leg ? { storage_waived: true } : {}), no_charge_at: now, no_charge_reason: reason, no_charge_by: actor, updated_at: now }).eq('id', mid)
+          await sb.from('mission_logs').insert({ mission_id: mid, actor_id: actor, action: 'no_charge', notes: `Intervention sans frais : ${reason} (restitution, groupe ${leg.letter})`, metadata: { reason, dossier_letter: leg.letter, restitution_id: rest!.id, prev_storage_waived: !!row.storage_waived } })
+          await logRestitution(sb, m.id, actor, 'leg_no_charge', `Groupe ${leg.letter} (${row.mission_number || leg.title}) non facturé, décidé par ${who_name} : ${reason}.`, { mission_id: mid, reason })
+        } else {
+          const { data: lg } = await sb.from('mission_logs').select('metadata').eq('mission_id', mid).eq('action', 'no_charge').eq('metadata->>restitution_id', rest!.id).order('created_at', { ascending: false }).limit(1)
+          if (!lg?.length) return NextResponse.json({ error: 'Ce groupe a été mis sans frais en dehors de cette restitution : voyez avec la facturation.' }, { status: 409 })
+          const prev = !!(lg[0].metadata as any)?.prev_storage_waived
+          await sb.from('incoming_missions').update({ ...(row.dossier_leg ? { storage_waived: prev } : {}), no_charge_at: null, no_charge_reason: null, no_charge_by: null, updated_at: now }).eq('id', mid)
+          await sb.from('mission_logs').insert({ mission_id: mid, actor_id: actor, action: 'no_charge_undo', notes: `Sans frais annulé : groupe ${leg.letter} à facturer à nouveau (restitution)`, metadata: { dossier_letter: leg.letter, restitution_id: rest!.id } })
+          await logRestitution(sb, m.id, actor, 'leg_no_charge_undo', `Groupe ${leg.letter} (${row.mission_number || leg.title}) à facturer à nouveau, décidé par ${who_name}.`, { mission_id: mid })
+        }
+        dropLegs(m.id); invalidateDossierCache()
         return done()
       }
 
