@@ -70,6 +70,7 @@ function audioSession(type: 'playback' | 'play-and-record') {
   try { const a = (navigator as any).audioSession; if (a && a.type !== type) a.type = type } catch { /* navigateur sans cette API */ }
 }
 
+const PTT_DISABLED = true   // talkie système iOS abandonné le 01/10/2026 (notif + écoute dans l'app)
 const PUBLIC = [/^\/site/, /^\/login/, /^\/garage/, /^\/caisse\/ecran/, /^\/expert/]
 
 export default function TalkieProvider({ children }: { children: React.ReactNode }) {
@@ -365,6 +366,11 @@ export default function TalkieProvider({ children }: { children: React.ReactNode
         const want = channels.map(c => c.key)
         const primary = primaryKey && want.includes(primaryKey) ? primaryKey : want.includes('garde') ? 'garde' : want[0]   // la garde la nuit, sinon un canal direct
         const st = await p.getState().catch(() => null)
+        // Push to Talk abandonné (Olivier 01/10/2026 : pas de bouton permanent dans la
+        // Dynamic Island) : on quitte le canal système et on ne le rejoint plus.
+        for (const k of st?.keys || []) await p.leave({ key: k }).catch(() => {})
+        pttReadyRef.current = false
+        if (PTT_DISABLED) return
         for (const k of st?.keys || []) if (!want.includes(k)) await p.leave({ key: k }).catch(() => {})
         for (const c of channels) {
           if (stop) return

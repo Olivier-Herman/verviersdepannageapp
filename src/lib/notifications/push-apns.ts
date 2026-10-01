@@ -113,6 +113,7 @@ export async function sendApnsPush(
     check_vehicule_due:          'sounds.caf',
     email_parse_error:           'sounds.caf',
     garde_uncovered:             'sounds.caf',
+    talkie_message:              'vd_talkie_1.caf',   // build ≥ 30 ; sinon iOS joue le son par défaut
   }
   const sound = (payload.notif_type && SOUND_BY_TYPE[payload.notif_type]) || 'sounds.caf'
 

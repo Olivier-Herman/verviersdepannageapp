@@ -10,7 +10,7 @@ import { talkieAccess }      from '@/lib/talkie/session'
 
 export const dynamic = 'force-dynamic'
 
-export default async function TalkiePage({ searchParams }: { searchParams: { c?: string } }) {
+export default async function TalkiePage({ searchParams }: { searchParams: { c?: string; play?: string } }) {
   const session = await getServerSession(authOptions)
   if (!session) redirect('/login')
   const user = session.user as any
@@ -18,7 +18,7 @@ export default async function TalkiePage({ searchParams }: { searchParams: { c?:
   return (
     <AppShell title="Talkie" userRole={user.role || ''} userName={user.name} userEmail={user.email} userId={user.id} userModules={user.modules || []}>
       {a.me && a.channels.length ? (
-        <TalkieClient me={a.me} channels={a.channels} initialKey={searchParams.c || a.channels[0].key} />
+        <TalkieClient me={a.me} channels={a.channels} initialKey={searchParams.c || a.channels[0].key} playSince={Number(searchParams.play) || null} />
       ) : (
         <div className="p-4 max-w-md mx-auto">
           <div className="bg-surface border rounded-2xl p-8 text-center space-y-2">

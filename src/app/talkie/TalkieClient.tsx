@@ -4,12 +4,12 @@
 // enregistrés. La connexion et le son sont gérés par le moteur commun à toute l'app
 // (components/talkie/TalkieProvider) : on entend aussi le talkie sur les autres pages.
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useTalkie, type TalkieChannel, type TalkieMember } from '@/components/talkie/TalkieProvider'
 
-interface Msg { id: string; senderName: string; durationMs: number; at: string; url: string | null }
+interface Msg { id: string; senderId?: string; senderName: string; durationMs: number; at: string; url: string | null }
 
-export default function TalkieClient({ me, channels: initialChannels, initialKey }: { me: TalkieMember; channels: TalkieChannel[]; initialKey: string }) {
+export default function TalkieClient({ me, channels: initialChannels, initialKey, playSince }: { me: TalkieMember; channels: TalkieChannel[]; initialKey: string; playSince?: number | null }) {
   const t = useTalkie()
   const channels = t?.channels.length ? t.channels : initialChannels
   const [key, setKey] = useState(channels.some(c => c.key === initialKey) ? initialKey : channels[0].key)
@@ -27,6 +27,32 @@ export default function TalkieClient({ me, channels: initialChannels, initialKey
       .then(j => { if (!stop) setMsgs(j.messages || []) }).catch(() => {})
     return () => { stop = true }
   }, [current.key, t?.msgsVersion])
+
+  // Ouvert depuis la notif « X te parle » (Olivier 01/10/2026) : on fait écouter son
+  // message dès qu'il est enregistré (il peut être encore en train de parler). Si
+  // l'iPhone bloque la lecture automatique, gros bouton « Écouter ».
+  const [toPlay, setToPlay] = useState<Msg | null>(null)
+  const played = useRef<string | null>(null)
+  const [waiting, setWaiting] = useState(!!playSince)
+  useEffect(() => {
+    if (!playSince) return
+    const t0 = Date.now()
+    const poll = setInterval(() => {
+      if (Date.now() - t0 > 90_000) { setWaiting(false); clearInterval(poll); return }
+      fetch(`/api/talkie/messages?key=${encodeURIComponent(current.key)}`, { cache: 'no-store' }).then(r => r.json()).then(j => {
+        const list: Msg[] = j.messages || []
+        setMsgs(list)
+        const m = list.filter(x => x.senderId !== me.id && new Date(x.at).getTime() >= playSince).pop()   // le plus ancien non écouté
+        if (m && played.current !== m.id && m.url) {
+          played.current = m.id; setWaiting(false); clearInterval(poll)
+          const a = new Audio(m.url)
+          a.play().then(() => setToPlay(null)).catch(() => setToPlay(m))
+        }
+      }).catch(() => {})
+    }, 2000)
+    return () => clearInterval(poll)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [playSince, current.key])
 
   // Écran allumé tant que l'écran du talkie est ouvert (si le téléphone l'autorise).
   useEffect(() => {
@@ -61,6 +87,8 @@ export default function TalkieClient({ me, channels: initialChannels, initialKey
         </div>
       )}
 
+      {toPlay && <button type="button" onClick={() => { new Audio(toPlay.url!).play().catch(() => {}); setToPlay(null) }} className="w-full min-h-[64px] rounded-2xl bg-green-600 text-white font-bold text-base">▶ Écouter le message de {toPlay.senderName}</button>}
+      {waiting && !toPlay && <p className="text-center text-sm font-semibold text-ink-secondary">⏳ Message en cours de réception… il va se jouer tout seul.</p>}
       {!t ? null : !t.audioOn ? (
         <button type="button" onClick={() => t.enableAudio()} className="w-full min-h-[64px] rounded-2xl bg-brand hover:bg-brand-hover text-white font-bold text-base">
           📻 Activer le talkie
