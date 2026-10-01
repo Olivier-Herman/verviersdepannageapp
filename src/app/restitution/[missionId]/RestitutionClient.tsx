@@ -96,7 +96,11 @@ export default function RestitutionClient({ missionId, gmKey }: { missionId: str
   // Factures du dossier déjà émises et encore ouvertes : chacune doit être tranchée
   // (payée — constaté dans Odoo — ou laissée ouverte, qui décide étant tracé). 30/09/2026.
   const openLeft = (c.openInvoices || []).filter((i: any) => !i.third && !(c.openDecisions || {})[i.id] && !approved(`ouvert_${i.id}`))
-  const settled = (!!R?.settlement || (inv ? paidOdoo : c.due.htva <= 0) || driverPaid || approved('paiement')) && openLeft.length === 0
+  // Groupes au nom d'un autre client (paiement à terme) : leur facture doit être créée
+  // avant la sortie, comme l'exige le serveur ; sinon l'étape passait au vert (rien à
+  // payer ici) et la sortie était refusée sans montrer le bouton (Olivier 01/10/2026).
+  const thirdLeft = (c.legs || []).some((l: any) => l.payer === 'third' && l.due_htva > 0) && !approved('paiement')
+  const settled = (!!R?.settlement || (inv ? paidOdoo : c.due.htva <= 0) || driverPaid || approved('paiement')) && openLeft.length === 0 && !thirdLeft
   const signOk = !!R?.signed_at || signSkip
 
   const steps = [
@@ -488,7 +492,9 @@ function AmountStep({ c, R, act, busy, gmKey, setErr, say, onDerog }: any) {
     if (j?.opened && w) w.location.href = j.opened
     else if (w) w.close()
   }
-  const thirdBtn = thirdPending.length > 0 && <Btn kind="brand" disabled={busy} onClick={invoiceClick}>{busy ? 'Création…' : `Créer la facture des autres clients (${Array.from(new Set(thirdPending.map((l: any) => l.payer_partner_name))).join(', ')})`}</Btn>
+  const thirdBtn = thirdPending.length > 0 && (c.me.hasOdoo
+    ? <Btn kind="brand" disabled={busy} onClick={invoiceClick}>{busy ? 'Création…' : `Créer la facture des autres clients (${Array.from(new Set(thirdPending.map((l: any) => l.payer_partner_name))).join(', ')})`}</Btn>
+    : <><p className="text-sm text-warning font-semibold">Une personne qui a l’accès à la facturation doit créer la facture des autres clients sur cette page avant la sortie.</p>{noPay}</>)
   if (c.legs.some((l: any) => l.unknown && l.payer === 'client')) return <>{table}<p className="text-sm text-warning font-semibold">Un montant n’est pas calculable : corrigez la fiche avant de facturer.</p></>
   if (due.htva <= 0 && !inv) return <>{table}<Chk state="ok" title="Reste à payer ici : 0 €">{thirdPending.length ? 'Créez d’abord la facture des autres clients (en brouillon, paiement à terme).' : 'Aucune facture à créer.'}</Chk><div className="flex flex-wrap gap-2">{thirdPending.length ? thirdBtn : <Btn kind="brand" disabled={busy} onClick={() => act('nothing_due')}>Continuer</Btn>}</div></>
 
@@ -497,6 +503,7 @@ function AmountStep({ c, R, act, busy, gmKey, setErr, say, onDerog }: any) {
     return <>{table}
       {paid ? <Chk state="ok" title="Encaissé">{eur(c.driverCollected)} encaissés par l’encaissement chauffeur.</Chk> : <p className="text-sm text-ink-secondary">Vous n’avez pas d’accès Odoo : le paiement se fait dans l’encaissement chauffeur, comme d’habitude, puis vous revenez ici.</p>}
       {!paid && <div className="flex flex-wrap gap-2"><Btn kind="brand" disabled={busy} onClick={async () => { const j = await act('driver_cash', { amount_tvac: due.tvac }); if (j?.url) window.location.href = j.url }}>Confirmer et ouvrir l’encaissement</Btn>{noPay}</div>}
+      {paid && thirdPending.length > 0 && <div className="flex flex-wrap items-center gap-2">{thirdBtn}</div>}
     </>
   }
   if (!inv) return <>{table}
