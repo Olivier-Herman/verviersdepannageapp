@@ -628,16 +628,20 @@ function PrintLabelButton({ missionId }: { missionId: string }) {
 }
 
 function MissionKmInfo({ missionId, refreshKey }: { missionId: string; refreshKey: string }) {
-  const [data, setData]   = useState<{ total_km: number; segments: Array<{ label: string; km: number | null }>; error: string | null } | null>(null)
+  const [data, setData]   = useState<{ total_km: number; segments: Array<{ label: string; km: number | null }>; error: string | null; pending?: boolean } | null>(null)
   const [loading, setLoading] = useState(true)
+  // Calcul à la demande (02/10/2026) : l'ouverture de la fiche lit les trajets
+  // déjà connus ; « Calculer » lance le calcul pour cette version de la fiche.
+  const [calcFor, setCalcFor] = useState<string | null>(null)
+  const calcul = calcFor === refreshKey ? 'oui' : 'memoire'
   useEffect(() => {
     setLoading(true)
-    fetch(`/api/missions/${missionId}/km`).then(r => r.json()).then(d => {
-      if (d.error && !d.segments) setData({ total_km: 0, segments: [], error: d.error })
+    fetch(`/api/missions/${missionId}/km?calcul=${calcul}`).then(r => r.json()).then(d => {
+      if (d.error && !d.segments) setData({ total_km: 0, segments: [], error: d.error, pending: !!d.pending })
       else setData(d)
       setLoading(false)
     }).catch(() => setLoading(false))
-  }, [missionId, refreshKey])
+  }, [missionId, refreshKey, calcul])
 
   return (
     <div className="mt-4 pt-4 border-t border">
@@ -648,7 +652,19 @@ function MissionKmInfo({ missionId, refreshKey }: { missionId: string; refreshKe
         )}
       </div>
       {loading && <p className="text-ink-faint text-xs">Calcul…</p>}
-      {!loading && data?.error && data.segments.length === 0 && (
+      {!loading && data?.pending && data.segments.length === 0 && (
+        <div className="flex items-center justify-between gap-3">
+          <p className="text-ink-faint text-xs">Kilomètres pas encore calculés pour ce trajet.</p>
+          <button
+            type="button"
+            onClick={() => setCalcFor(refreshKey)}
+            className="min-h-[44px] px-4 rounded-lg bg-brand text-white font-semibold text-sm hover:opacity-90"
+          >
+            Calculer
+          </button>
+        </div>
+      )}
+      {!loading && data?.error && !data.pending && data.segments.length === 0 && (
         <p className="text-ink-faint text-xs">⚠ {data.error}</p>
       )}
       {!loading && data?.segments && data.segments.length > 0 && (

@@ -492,7 +492,7 @@ export default function EncaissementClient({
     const missionId = prefill.mission_id
     Promise.all([
       fetch(`/api/missions/${missionId}`).then(r => r.json()).catch(() => null),
-      prefill.amount ? Promise.resolve(null) : fetch(`/api/missions/${missionId}/price-estimate`).then(r => r.json()).catch(() => null),
+      prefill.amount ? Promise.resolve(null) : fetch(`/api/missions/${missionId}/price-estimate?calcul=oui`).then(r => r.json()).catch(() => null),
     ]).then(([m, est]) => {
       if (cancelled) return
       // Mission : plate / brand / model / client / phone / email / lieu

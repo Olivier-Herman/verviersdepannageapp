@@ -329,7 +329,7 @@ export default function AFacturerClient({ initial, autoById, comexById = {}, isS
       if (!lst.ok) { if (lst.j?.needsAuth) { setReport('⚠ Connexion Allianz à refaire (OTP) — ouvre Clôture Allianz.'); router.push('/facturation/allianz') } else setReport(`⚠ ${lst.j?.error || 'Listing Allianz impossible'}`); return }
       const row = (lst.j.rows || []).find((r: any) => r.vdsoft?.id === d.root_id)
       if (!row) { setReport(`⚠ ${d.ref} n'est pas (ou plus) dans la liste Hexalite à clôturer — vérifie dans Clôture Allianz.`); return }
-      const km = await fetch(`/api/missions/${d.root_id}/km`).then(r => r.json()).then(j => typeof j.total_km === 'number' ? j.total_km : null).catch(() => null)
+      const km = await fetch(`/api/missions/${d.root_id}/km?calcul=oui`).then(r => r.json()).then(j => typeof j.total_km === 'number' ? j.total_km : null).catch(() => null)
       const mt = String(row.vdsoft.mission_type || '').toLowerCase()
       const isTow = !/depannage|dsp|reparation|trajet_vide|dpr/.test(mt)
       if (!window.confirm(`Clôturer ${d.ref} · ${d.vehicle.plate || ''} dans Allianz (Hexalite) ?\n\nMission ${row.assignmentNumber} · ${km != null ? km + ' km' : 'km inconnus'} · ${isTow ? 'remorquage' : mt}. Action réelle et irréversible ; la facture suit automatiquement.`)) return

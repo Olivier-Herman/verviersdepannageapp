@@ -297,7 +297,7 @@ function MissionBlock({
     let cancelled = false
     setKmLoading(true)
     setEstimateLoading(true)
-    fetch(`/api/missions/${m.id}/km`)
+    fetch(`/api/missions/${m.id}/km?calcul=oui`)
       .then(r => r.json())
       .then(d => { if (!cancelled) { setKm(d); onKm?.(m.id, { km: d?.total_km ?? null }) } })
       .catch(() => {})
@@ -308,7 +308,7 @@ function MissionBlock({
       .catch(() => {})
     // Charge en parallele : estimate auto + draft sauvegarde + avances liees
     Promise.all([
-      fetch(`/api/missions/${m.id}/price-estimate`).then(r => r.json()),
+      fetch(`/api/missions/${m.id}/price-estimate?calcul=oui`).then(r => r.json()),
       fetch(`/api/missions/${m.id}/invoice-draft`).then(r => r.json()),
       fetch(`/api/advances?mission_id=${m.id}&limit=50`).then(r => r.json()),
       fetch(`/api/missions/${m.id}/billed-items`).then(r => r.json()).catch(() => ({ items: [] })),

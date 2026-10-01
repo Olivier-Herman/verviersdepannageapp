@@ -4,6 +4,7 @@
 // afficher ; POST { action } = un geste du parcours, tracé au journal de la
 // fiche avec son auteur. Règles : src/lib/restitution/server.ts.
 
+import { withRoutingMode } from '@/lib/routing/mode'
 import { NextResponse }      from 'next/server'
 import { getServerSession }  from 'next-auth'
 import { authOptions }       from '@/lib/auth'
@@ -161,7 +162,7 @@ async function buildContext(sb: any, session: any, missionId: string) {
   }
 }
 
-export async function GET(_req: Request, { params }: { params: { missionId: string } }) {
+async function handleGET(_req: Request, { params }: { params: { missionId: string } }) {
   const session = await getServerSession(authOptions)
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   const sb = createAdminClient()
@@ -170,7 +171,7 @@ export async function GET(_req: Request, { params }: { params: { missionId: stri
   return NextResponse.json(c)
 }
 
-export async function POST(req: Request, { params }: { params: { missionId: string } }) {
+async function handlePOST(req: Request, { params }: { params: { missionId: string } }) {
   const session = await getServerSession(authOptions)
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   const sb = createAdminClient()
@@ -626,4 +627,20 @@ export async function POST(req: Request, { params }: { params: { missionId: stri
     console.error('[restitution]', action, e?.message)
     return NextResponse.json({ error: e?.message || 'Erreur' }, { status: 500 })
   }
+}
+
+// Restitution (écran du bureau, client présent) : geste humain, le calcul d'itinéraire peut recourir à Google si
+// OpenRouteService lâche (src/lib/routing/mode.ts, 02/10/2026). Robots : gratuit.
+export async function GET(...args: Parameters<typeof handleGET>) {
+  // Un robot (en-tête interne : facturation auto, Touring) reste gratuit.
+  const internal = !!process.env.NEXTAUTH_SECRET && args[0].headers.get('x-internal-secret') === process.env.NEXTAUTH_SECRET
+  return withRoutingMode(internal ? 'free' : 'paid', () => handleGET(...args))
+}
+
+// Restitution (écran du bureau, client présent) : geste humain, le calcul d'itinéraire peut recourir à Google si
+// OpenRouteService lâche (src/lib/routing/mode.ts, 02/10/2026). Robots : gratuit.
+export async function POST(...args: Parameters<typeof handlePOST>) {
+  // Un robot (en-tête interne : facturation auto, Touring) reste gratuit.
+  const internal = !!process.env.NEXTAUTH_SECRET && args[0].headers.get('x-internal-secret') === process.env.NEXTAUTH_SECRET
+  return withRoutingMode(internal ? 'free' : 'paid', () => handlePOST(...args))
 }

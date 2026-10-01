@@ -8,6 +8,7 @@
 // compris. Mêmes gardes que « Forcer un statut » : contrôle de sortie des
 // épaves gérées par un bureau d'expertise, scénario SNC obligatoire.
 
+import { withRoutingMode } from '@/lib/routing/mode'
 import { NextResponse }         from 'next/server'
 import { getServerSession }     from 'next-auth'
 import { sessionAccess }       from '@/lib/access'
@@ -21,7 +22,7 @@ import { exitParcNow }          from '@/lib/parc/exit-parc'
 export const dynamic     = 'force-dynamic'
 export const maxDuration = 60
 
-export async function POST(req: Request, { params }: { params: { id: string } }) {
+async function handlePOST(req: Request, { params }: { params: { id: string } }) {
   const session = await getServerSession(authOptions)
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   const user = session.user as any
@@ -62,4 +63,11 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     console.error('[dossier/close-and-invoice]', msg)
     return NextResponse.json({ ok: false, closed: true, error: `Dossier clôturé (véhicule sorti du parc) mais facture non créée : ${msg}. Relance « Facturer ».` }, { status: 400 })
   }
+}
+
+// Clôture et facturation d'un dossier : geste humain, le calcul d'itinéraire peut recourir à Google si
+// OpenRouteService lâche (src/lib/routing/mode.ts, 02/10/2026). Robots : gratuit.
+export async function POST(...args: Parameters<typeof handlePOST>) {
+  const internal = !!process.env.NEXTAUTH_SECRET && args[0].headers.get('x-internal-secret') === process.env.NEXTAUTH_SECRET
+  return withRoutingMode(internal ? 'free' : 'paid', () => handlePOST(...args))
 }

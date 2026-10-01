@@ -11,6 +11,7 @@
 // Réservé au staff (admin/superadmin/dispatcher/facturation/fourrière).
 // Olivier 2026-06-17.
 
+import { withRoutingMode } from '@/lib/routing/mode'
 import { NextResponse }      from 'next/server'
 import { getServerSession }  from 'next-auth'
 import { authOptions }       from '@/lib/auth'
@@ -31,7 +32,7 @@ function canAccess(session: any): boolean {
     || modules.includes('facturation') || modules.includes('fourriere')
 }
 
-export async function POST(req: Request, { params }: { params: { id: string } }) {
+async function handlePOST(req: Request, { params }: { params: { id: string } }) {
   const session = await getServerSession(authOptions)
   if (!canAccess(session)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
@@ -207,4 +208,12 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   }
 
   return NextResponse.json({ ok: true, quote_id: result.id, quote_url: result.url, items: rows.length, completed: cloturé })
+}
+
+// Facture partielle : geste humain, le calcul d'itinéraire peut recourir à Google si
+// OpenRouteService lâche (src/lib/routing/mode.ts, 02/10/2026). Robots : gratuit.
+export async function POST(...args: Parameters<typeof handlePOST>) {
+  // Un robot (en-tête interne : facturation auto, Touring) reste gratuit.
+  const internal = !!process.env.NEXTAUTH_SECRET && args[0].headers.get('x-internal-secret') === process.env.NEXTAUTH_SECRET
+  return withRoutingMode(internal ? 'free' : 'paid', () => handlePOST(...args))
 }

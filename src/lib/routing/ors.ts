@@ -9,9 +9,21 @@
 // Repli haversine si ORS indisponible / pas de clé / quota dépassé.
 //
 // Env : ORS_API_KEY. Olivier 2026-07-01.
+//
+// 02/10/2026 — facture Google de 1 330 € en septembre. Deux garde-fous :
+//   1. Mémoire des trajets en base (table route_cache) : un trajet A → B n'est
+//      calculé qu'une fois, par coordonnées à 4 décimales. Une adresse qui
+//      change donne d'autres coordonnées, donc un nouveau calcul.
+//   2. Google seulement sur un geste humain (src/lib/routing/mode.ts) : bouton
+//      « Calculer », facturation, encaissement. Jamais pour un robot ni un
+//      écran qui s'affiche seul.
+
+import { createAdminClient } from '@/lib/supabase'
+import { routingMode, markRoutePending } from '@/lib/routing/mode'
 
 export interface Coord { lat: number; lng: number }
-export interface RouteResult { minutes: number; km: number; approx: boolean }
+/** `pending` : trajet inconnu de la mémoire en mode 'cache' (à calculer). */
+export interface RouteResult { minutes: number; km: number; approx: boolean; pending?: boolean }
 
 const ORS_KEY  = process.env.ORS_API_KEY
 const ORS_BASE = 'https://api.openrouteservice.org'
@@ -80,8 +92,34 @@ const routeCache = new Map<string, { r: RouteResult; exp: number }>()
 const CACHE_TTL_MS = 5 * 60 * 1000
 // La préférence fait partie de la clé : « fastest » (ETA) et « shortest » (tarif)
 // donnent des trajets différents pour la même paire → ne pas les confondre.
+// 4 décimales (~11 m) : deux adresses distinctes ne partagent pas un trajet.
 const cacheKey = (a: Coord, b: Coord, pref: string) =>
-  `${pref}:${a.lat.toFixed(3)},${a.lng.toFixed(3)}>${b.lat.toFixed(3)},${b.lng.toFixed(3)}`
+  `${pref}:${a.lat.toFixed(4)},${a.lng.toFixed(4)}>${b.lat.toFixed(4)},${b.lng.toFixed(4)}`
+
+// Mémoire durable (table route_cache). Un trajet routier ne change pas d'un
+// jour à l'autre ; on le garde 180 jours pour suivre travaux et déviations.
+const STORED_TTL_MS = 180 * 24 * 3600 * 1000
+
+async function readStoredRoute(key: string): Promise<RouteResult | null> {
+  try {
+    const { data } = await createAdminClient()
+      .from('route_cache').select('km, minutes, created_at').eq('key', key).maybeSingle()
+    if (!data) return null
+    if (Date.now() - new Date(data.created_at).getTime() > STORED_TTL_MS) return null
+    return { km: Number(data.km), minutes: Number(data.minutes), approx: false }
+  } catch {
+    return null
+  }
+}
+
+async function storeRoute(key: string, pref: string, r: RouteResult, provider: 'ors' | 'google'): Promise<void> {
+  if (r.approx) return
+  try {
+    await createAdminClient().from('route_cache').upsert({
+      key, preference: pref, km: r.km, minutes: r.minutes, provider, created_at: new Date().toISOString(),
+    }, { onConflict: 'key' })
+  } catch { /* la mémoire est un bonus : un échec d'écriture ne bloque pas le calcul */ }
+}
 
 /**
  * Trajet routier 1→1 (temps min + distance km).
@@ -105,6 +143,18 @@ export async function getDrivingRoute(
   if (hit && hit.exp > Date.now()) return hit.r
   const cache = (r: RouteResult) => { routeCache.set(k, { r, exp: Date.now() + CACHE_TTL_MS }); if (routeCache.size > 2000) routeCache.clear(); return r }
 
+  // 0) Mémoire durable : un trajet déjà calculé ne se paie plus jamais.
+  const stored = await readStoredRoute(k)
+  if (stored) return cache(stored)
+
+  // Affichage seul (ouverture de fiche) : aucun appel réseau. Le prix dira
+  // « à calculer » et le bouton Calculer fera le calcul.
+  const mode = routingMode()
+  if (mode === 'cache') {
+    markRoutePending()
+    return { ...haversineRoute(a, b), pending: true }
+  }
+
   // 1) ORS, sauf si le breaker est ouvert (2 échecs récents).
   const orsAllowed = ORS_KEY && Date.now() >= orsBreakerUntil
   if (orsAllowed) {
@@ -120,7 +170,9 @@ export async function getDrivingRoute(
       const s = j.routes?.[0]?.summary
       if (!s || s.distance == null) throw new Error('no route')
       orsFails = 0
-      return cache({ minutes: Math.max(1, Math.round(s.duration / 60)), km: Math.round(s.distance / 100) / 10, approx: false })
+      const r: RouteResult = { minutes: Math.max(1, Math.round(s.duration / 60)), km: Math.round(s.distance / 100) / 10, approx: false }
+      await storeRoute(k, pref, r, 'ors')
+      return cache(r)
     } catch (e: any) {
       orsFails++
       if (orsFails >= 2) { orsBreakerUntil = Date.now() + ORS_BREAKER_MS; orsFails = 0 }
@@ -128,11 +180,12 @@ export async function getDrivingRoute(
     }
   }
 
-  // 2) Google (précis) quand ORS lâche — UNIQUEMENT pour la facturation
-  //    (opt-in). Le driver-ETA et l'estimation police restent sur haversine.
-  if (opts.googleFallback) {
+  // 2) Google (payant) quand ORS lâche — seulement si l'appelant l'accepte
+  //    (opt-in) ET si la requête vient d'un geste humain (mode 'paid').
+  //    Un robot ou un écran qui s'affiche seul ne paie jamais Google.
+  if (opts.googleFallback && mode === 'paid') {
     const g = await googleDrivingRoute(a, b)
-    if (g) return cache(g)
+    if (g) { await storeRoute(k, pref, g, 'google'); return cache(g) }
   }
 
   // 3) Dernier recours : estimation à vol d'oiseau.

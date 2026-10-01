@@ -9,6 +9,7 @@
 // Acces : admin / superadmin / module 'facturation'.
 // Cf [[facturation-phase2]] pour la vision.
 
+import { withRoutingMode } from '@/lib/routing/mode'
 import { NextResponse }          from 'next/server'
 import { getServerSession }      from 'next-auth'
 import { authOptions }           from '@/lib/auth'
@@ -25,7 +26,7 @@ function fmtEur(n: number): string {
   return `${n.toFixed(2).replace('.', ',')} €`
 }
 
-export async function POST(req: Request, { params }: { params: { id: string } }) {
+async function handlePOST(req: Request, { params }: { params: { id: string } }) {
   // Auth INTERNE (facturation auto depuis driver-action) : header secret, pas de
   // session. Sinon auth session classique. Olivier 2026-07-27.
   const isInternal = req.headers.get('x-internal-secret') === (process.env.NEXTAUTH_SECRET || '__none__')
@@ -497,4 +498,12 @@ export async function POST(req: Request, { params }: { params: { id: string } })
       advances_attached:  advancesAttached,
     },
   })
+}
+
+// Création du devis de facturation : geste humain, le calcul d'itinéraire peut recourir à Google si
+// OpenRouteService lâche (src/lib/routing/mode.ts, 02/10/2026). Robots : gratuit.
+export async function POST(...args: Parameters<typeof handlePOST>) {
+  // Un robot (en-tête interne : facturation auto, Touring) reste gratuit.
+  const internal = !!process.env.NEXTAUTH_SECRET && args[0].headers.get('x-internal-secret') === process.env.NEXTAUTH_SECRET
+  return withRoutingMode(internal ? 'free' : 'paid', () => handlePOST(...args))
 }

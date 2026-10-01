@@ -26,6 +26,7 @@
 // /admin/surcharges (client_key = 'snc' avec rate > 0 ou meme 0 = plage active),
 // on bascule sur les codes MAJ.
 
+import { getDrivingRoute } from '@/lib/routing/ors'
 import { createAdminClient } from '@/lib/supabase'
 
 export interface SncDepot {
@@ -89,7 +90,6 @@ export interface SncCalcOutput {
   km_segments?:           Array<{ label: string; km: number }>
 }
 
-const GMAPS_KEY = process.env.GOOGLE_GEOCODING || process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY
 
 /** Distance haversine en km entre 2 points GPS. */
 function haversineKm(lat1: number, lng1: number, lat2: number, lng2: number): number {
@@ -204,36 +204,26 @@ export function findNearestDepot(lat: number, lng: number, depots: SncDepot[]): 
 }
 
 /**
- * Cherche le depot le plus proche du lieu d intervention via Google Distance
- * Matrix (distance ROUTE, pas vol d oiseau). Fait UN seul appel API avec tous
- * les depots en origins. Fallback haversine si Google echoue.
+ * Cherche le depot le plus proche du lieu d intervention par la ROUTE (pas le
+ * vol d oiseau). Olivier 2026-06-02 PM : "Le dépôt en siabis doit être
+ * dynamique et calculé au plus proche de l'intervention. Donc ici, A27 Jalhay,
+ * il n'aurait pas dû indiquer Pepinster mais bien Tiège".
  *
- * Olivier 2026-06-02 PM : "Le dépôt en siabis doit être dynamique et calculé
- * au plus proche de l'intervention. Donc ici, A27 Jalhay, il n'aurait pas dû
- * indiquer Pepinster mais bien Tiège".
+ * 02/10/2026 : passe par le calcul d'itinéraire commun (mémoire des trajets,
+ * OpenRouteService, Google seulement sur un geste humain) au lieu d'appeler
+ * Google Distance Matrix à chaque calcul Siabis, robots compris.
+ * Fallback vol d oiseau si un trajet manque.
  */
 export async function findNearestDepotByRoute(lat: number, lng: number, depots: SncDepot[]): Promise<SncDepot | null> {
   if (depots.length === 0) return null
   if (depots.length === 1) return depots[0]
-  if (!GMAPS_KEY) return findNearestDepot(lat, lng, depots)
   try {
-    const origins = depots.map(d => `${d.lat},${d.lng}`).join('|')
-    const url = `https://maps.googleapis.com/maps/api/distancematrix/json` +
-                `?origins=${encodeURIComponent(origins)}` +
-                `&destinations=${lat},${lng}` +
-                `&mode=driving&units=metric&key=${GMAPS_KEY}`
-    const res = await fetch(url)
-    const j = await res.json()
-    const rows = Array.isArray(j.rows) ? j.rows : []
-    if (rows.length !== depots.length) return findNearestDepot(lat, lng, depots)
     let best: SncDepot | null = null
-    let bestMeters = Infinity
-    for (let i = 0; i < depots.length; i++) {
-      const meters = rows[i]?.elements?.[0]?.distance?.value
-      if (typeof meters === 'number' && meters < bestMeters) {
-        bestMeters = meters
-        best = depots[i]
-      }
+    let bestKm = Infinity
+    for (const d of depots) {
+      const r = await getDrivingRoute({ lat: d.lat, lng: d.lng }, { lat, lng }, { googleFallback: true, preference: 'fastest' })
+      if (r.approx) return findNearestDepot(lat, lng, depots)
+      if (r.km < bestKm) { bestKm = r.km; best = d }
     }
     return best || findNearestDepot(lat, lng, depots)
   } catch {
@@ -251,22 +241,17 @@ export function findBalisageDepots(depots: SncDepot[]): SncDepot[] {
   return depots.filter(d => d.is_balisage)
 }
 
-/** Calcule km route via Google Maps Distance Matrix. Fallback haversine si echec. */
+/**
+ * Km route d un trajet (calcul d itinéraire commun : mémoire, ORS, Google sur
+ * geste humain seulement). Fallback vol d oiseau x 1.3 si l itinéraire manque,
+ * comme avant quand Google échouait.
+ */
 async function calculateRouteKm(originLat: number, originLng: number, destLat: number, destLng: number): Promise<number> {
-  if (!GMAPS_KEY) return Math.round(haversineKm(originLat, originLng, destLat, destLng) * 1.3) // approximation route
   try {
-    const url = `https://maps.googleapis.com/maps/api/distancematrix/json` +
-      `?origins=${originLat},${originLng}` +
-      `&destinations=${destLat},${destLng}` +
-      `&mode=driving&units=metric&key=${GMAPS_KEY}`
-    const res = await fetch(url)
-    const j = await res.json()
-    const meters = j.rows?.[0]?.elements?.[0]?.distance?.value
-    if (typeof meters === 'number') return Math.round(meters / 1000)
-    return Math.round(haversineKm(originLat, originLng, destLat, destLng) * 1.3)
-  } catch {
-    return Math.round(haversineKm(originLat, originLng, destLat, destLng) * 1.3)
-  }
+    const r = await getDrivingRoute({ lat: originLat, lng: originLng }, { lat: destLat, lng: destLng }, { googleFallback: true, preference: 'fastest' })
+    if (!r.approx) return Math.round(r.km)
+  } catch { /* repli ci-dessous */ }
+  return Math.round(haversineKm(originLat, originLng, destLat, destLng) * 1.3)
 }
 
 /** Verifie si une intervention tombe dans une plage de majoration SNC. */

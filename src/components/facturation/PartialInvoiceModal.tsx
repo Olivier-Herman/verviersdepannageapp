@@ -61,7 +61,7 @@ export default function PartialInvoiceModal({ missionId, parkedSince, onClose, o
   useEffect(() => {
     let cancelled = false
     Promise.all([
-      fetch(`/api/missions/${missionId}/price-estimate`).then(r => r.json()),
+      fetch(`/api/missions/${missionId}/price-estimate?calcul=oui`).then(r => r.json()),
       fetch(`/api/missions/${missionId}/billed-items`).then(r => r.json()),
     ]).then(([est, bi]) => {
       if (cancelled) return

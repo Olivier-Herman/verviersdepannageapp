@@ -986,7 +986,7 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
   // chauffeur sache quel montant proposer au client). Best-effort, silent.
   useEffect(() => {
     let cancelled = false
-    fetch(`/api/missions/${M.id}/price-estimate`)
+    fetch(`/api/missions/${M.id}/price-estimate?calcul=oui`)
       .then(r => r.json())
       .then(j => {
         if (cancelled) return

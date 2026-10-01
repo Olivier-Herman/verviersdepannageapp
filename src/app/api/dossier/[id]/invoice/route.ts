@@ -6,6 +6,7 @@ import { invalidateDossierCache } from '@/lib/dossier/build'
 // Accès : admin / superadmin / module facturation, ET la Vue dossier ouverte au
 // rôle (superadmin seul tant qu'Olivier n'a pas libéré). Olivier 07/09/2026.
 
+import { withRoutingMode } from '@/lib/routing/mode'
 import { NextResponse }        from 'next/server'
 import { getServerSession }    from 'next-auth'
 import { sessionAccess }       from '@/lib/access'
@@ -16,7 +17,7 @@ import { invoiceDossierGroups } from '@/lib/dossier/invoice'
 export const dynamic     = 'force-dynamic'
 export const maxDuration = 60
 
-export async function POST(req: Request, { params }: { params: { id: string } }) {
+async function handlePOST(req: Request, { params }: { params: { id: string } }) {
   const session = await getServerSession(authOptions)
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   const user = session.user as any
@@ -44,4 +45,11 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     console.error('[dossier/invoice]', msg)
     return NextResponse.json({ error: msg }, { status })
   }
+}
+
+// Facturation d'un dossier : geste humain, le calcul d'itinéraire peut recourir à Google si
+// OpenRouteService lâche (src/lib/routing/mode.ts, 02/10/2026). Robots : gratuit.
+export async function POST(...args: Parameters<typeof handlePOST>) {
+  const internal = !!process.env.NEXTAUTH_SECRET && args[0].headers.get('x-internal-secret') === process.env.NEXTAUTH_SECRET
+  return withRoutingMode(internal ? 'free' : 'paid', () => handlePOST(...args))
 }

@@ -7,6 +7,7 @@
 //   - Autres sources : estimateMissionPrice (source_tariffs + surcharges).
 // Visible par tout user authentifie (dispatcher/admin) qui a acces a la mission.
 
+import { withRoutingMode, routingModeFromRequest, routePending } from '@/lib/routing/mode'
 import { NextResponse }      from 'next/server'
 import { getServerSession }  from 'next-auth'
 import { authOptions }       from '@/lib/auth'
@@ -15,7 +16,7 @@ import { estimateMissionPrice } from '@/lib/missions/estimate-price'
 
 export const dynamic = 'force-dynamic'
 
-export async function GET(req: Request, { params }: { params: { id: string } }) {
+async function handleGET(req: Request, { params }: { params: { id: string } }) {
   // Appel interne (écran client) : x-internal-secret. Sinon session requise.
   const internalOk = !!process.env.NEXTAUTH_SECRET && req.headers.get('x-internal-secret') === process.env.NEXTAUTH_SECRET
   const session = internalOk ? null : await getServerSession(authOptions)
@@ -392,5 +393,22 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
     ...estimate,
     guaranteed_eur:      guaranteed || undefined,
     guaranteed_exceeded: guaranteed > 0 && (estimate as any).ok !== false && estTotal > guaranteed,
+  })
+}
+
+// Mode de calcul demandé par l'écran (02/10/2026) : `?calcul=memoire` à
+// l'ouverture d'une fiche (aucun appel réseau, trajet inconnu = « à calculer »),
+// `?calcul=oui` sur un geste humain (bouton Calculer, facturation : Google
+// permis si OpenRouteService lâche), sinon gratuit. Un robot n'a jamais Google.
+export async function GET(...args: Parameters<typeof handleGET>) {
+  const [req] = args
+  const internal = !!process.env.NEXTAUTH_SECRET && req.headers.get('x-internal-secret') === process.env.NEXTAUTH_SECRET
+  const mode = routingModeFromRequest(req, { internal })
+  return withRoutingMode(mode, async () => {
+    const res = await handleGET(...args)
+    if (mode === 'cache' && routePending()) {
+      return NextResponse.json({ ok: false, pending: true, reason: 'à calculer : clique sur « Calculer » pour obtenir le tarif' })
+    }
+    return res
   })
 }

@@ -9,6 +9,7 @@
 
 import { createAdminClient } from '@/lib/supabase'
 import { getDrivingRoute } from '@/lib/routing/ors'
+import { routePending } from '@/lib/routing/mode'
 import { wasTransientGeocodeFailure } from '@/lib/geocode/server'
 import { getApplicableSurcharges, isBelgianHoliday } from '@/lib/surcharges'
 import { nightsBetween } from '@/lib/parc/nights'
@@ -56,7 +57,10 @@ type Coord = { lat: number; lng: number }
 async function routesDistanceKm(origin: Coord, destination: Coord): Promise<number | null> {
   // Distance routière via OpenRouteService (gratuit) au lieu de Google Routes.
   const r = await getDrivingRoute(origin, destination, { googleFallback: true, preference: 'shortest' })
-  return r?.km ?? null
+  // Trajet inconnu de la mémoire à l'ouverture d'une fiche : pas de km
+  // approximatif, le prix attend le bouton « Calculer » (02/10/2026).
+  if (!r || r.pending) return null
+  return r.km
 }
 
 /** Distance à vol d'oiseau (pour départager des dépôts, sans coût API). */
@@ -393,6 +397,9 @@ function kmUnknownReason(mission: MissionLike): string {
   }
   if (noIncident || noDest) {
     return `kilomètres inconnus : l’adresse ${noIncident ? 'd’intervention' : 'de destination'} n’est pas géocodée (ouvre la fiche et resélectionne l’adresse dans les suggestions)`
+  }
+  if (routePending()) {
+    return 'à calculer : clique sur « Calculer » pour obtenir le tarif'
   }
   return 'kilomètres inconnus : itinéraire indisponible pour le moment (service de calcul de distance en erreur) — recalcule dans quelques minutes'
 }

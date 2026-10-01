@@ -5,6 +5,8 @@ import { useEffect, useState } from 'react'
 interface PriceEstimate {
   ok:            boolean
   reason?:       string
+  /** Un trajet n'est pas encore calculé : le bouton « Calculer » le fera. */
+  pending?:      boolean
   source:        string
   mission_type:  string
   forfait:       number | null
@@ -106,23 +108,54 @@ export default function PriceEstimateCard({ missionId, overrides }: Props) {
     return false
   }
 
+  // Calcul à la demande (02/10/2026) : ouvrir ou modifier la fiche ne lance
+  // plus de calcul d'itinéraire. Le tarif s'affiche si les trajets sont déjà
+  // connus ; sinon le bouton « Calculer » fait le calcul, pour CES valeurs-là
+  // de la fiche (une adresse modifiée redemande un calcul).
+  const [calcFor, setCalcFor] = useState<string | null>(null)
+  const calcul = calcFor === qs ? 'oui' : 'memoire'
+
   useEffect(() => {
     setLoading(true)
     const ctrl = new AbortController()
+    const params = new URLSearchParams(qs.replace(/^\?/, ''))
+    params.set('calcul', calcul)
     const handler = setTimeout(() => {
-      fetch(`/api/missions/${missionId}/price-estimate${qs}`, { signal: ctrl.signal })
+      fetch(`/api/missions/${missionId}/price-estimate?${params.toString()}`, { signal: ctrl.signal })
         .then(r => r.json())
         .then(setData)
         .catch(e => { if (e.name !== 'AbortError') setData(null) })
         .finally(() => setLoading(false))
     }, 400)  // debounce : evite de spammer pendant la saisie
     return () => { clearTimeout(handler); ctrl.abort() }
-  }, [missionId, qs])
+  }, [missionId, qs, calcul])
 
   if (loading) {
     return (
       <div className="bg-surface border rounded-xl p-4 text-sm text-ink-faint">
         💰 Calcul estimation tarif…
+      </div>
+    )
+  }
+
+  if (data && !data.ok && data.pending) {
+    return (
+      <div className="bg-surface border rounded-xl p-4 text-sm">
+        <div className="flex items-center justify-between gap-3">
+          <span className="font-semibold flex items-center gap-2">
+            💰 <span>Estimation tarif</span>
+          </span>
+          <button
+            type="button"
+            onClick={() => setCalcFor(qs)}
+            className="min-h-[44px] px-4 rounded-lg bg-brand text-white font-semibold text-sm hover:opacity-90"
+          >
+            Calculer
+          </button>
+        </div>
+        <p className="text-xs text-ink-faint mt-1">
+          Le tarif n’est pas encore calculé pour ce trajet. Il se calcule aussi tout seul au moment de facturer ou de restituer.
+        </p>
       </div>
     )
   }

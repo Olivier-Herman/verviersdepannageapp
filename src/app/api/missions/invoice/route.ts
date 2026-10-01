@@ -11,6 +11,7 @@
 //
 // Verifie acces module 'facturation' ou role admin/superadmin.
 
+import { withRoutingMode } from '@/lib/routing/mode'
 import { NextResponse }            from 'next/server'
 import { getServerSession }        from 'next-auth'
 import { authOptions }             from '@/lib/auth'
@@ -22,7 +23,7 @@ import { primeSourceCatalog } from '@/lib/missions/source-catalog'
 export const dynamic     = 'force-dynamic'
 export const maxDuration = 60   // PDF + push Odoo via waitUntil peut prendre 30s+
 
-export async function POST(req: Request) {
+async function handlePOST(req: Request) {
   const session = await getServerSession(authOptions)
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
@@ -186,4 +187,12 @@ export async function POST(req: Request) {
   }
 
   return NextResponse.json({ ok: true, updated })
+}
+
+// Facturation : geste humain, le calcul d'itinéraire peut recourir à Google si
+// OpenRouteService lâche (src/lib/routing/mode.ts, 02/10/2026). Robots : gratuit.
+export async function POST(...args: Parameters<typeof handlePOST>) {
+  // Un robot (en-tête interne : facturation auto, Touring) reste gratuit.
+  const internal = !!process.env.NEXTAUTH_SECRET && args[0].headers.get('x-internal-secret') === process.env.NEXTAUTH_SECRET
+  return withRoutingMode(internal ? 'free' : 'paid', () => handlePOST(...args))
 }

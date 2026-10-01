@@ -15,7 +15,6 @@ import { authOptions }       from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase'
 import { getAutoInvoiceRules, getAutoInvoiceDelayHours, checkAutoInvoiceEligible, autoInvoiceType, AUTO_INVOICE_TYPES } from '@/lib/facturation/auto-invoice'
 import { getValidAllianzToken, listAllianzToAssign } from '@/lib/allianz/closure'
-import { estimateMissionPrice } from '@/lib/missions/estimate-price'
 import { sourcesWithTag } from '@/lib/missions/source-catalog'
 
 export const dynamic     = 'force-dynamic'
@@ -132,15 +131,13 @@ export async function GET(req: Request) {
         } else if (childCount) {
           reason = 'combinée (relivraison liée)'
         } else {
-          // Vrai tarif présent ?
-          let est: any = null
-          try { est = await estimateMissionPrice(m as any) } catch { /* ignore */ }
-          if (!est || !est.ok || !(Number(est.total_eur) > 0)) {
-            reason = 'pas de tarif'
-          } else {
-            status = 'eligible'
-            eligible++
-          }
+          // Le tarif n'est plus calculé ici (02/10/2026) : cette liste se
+          // rafraîchit toutes les 30 à 60 s et recalculait l'itinéraire de
+          // chaque dossier, ce qui faisait partir les calculs chez Google
+          // (1 330 € en septembre). Le tarif se calcule une seule fois, au
+          // moment de facturer ; un dossier sans tarif y est signalé.
+          status = 'eligible'
+          eligible++
         }
       }
     }

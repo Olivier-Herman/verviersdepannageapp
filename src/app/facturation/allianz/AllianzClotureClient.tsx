@@ -101,7 +101,7 @@ export default function AllianzClotureClient({ userRole, userName, userEmail, us
   // Récupère la distance (km total) de la mission VD Soft liée.
   async function fetchKm(missionId: string): Promise<number | null> {
     try {
-      const r = await fetch(`/api/missions/${missionId}/km`)
+      const r = await fetch(`/api/missions/${missionId}/km?calcul=oui`)
       const j = await r.json()
       return typeof j.total_km === 'number' ? j.total_km : null
     } catch { return null }

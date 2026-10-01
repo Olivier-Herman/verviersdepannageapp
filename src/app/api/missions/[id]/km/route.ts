@@ -8,6 +8,7 @@
 //   séquence. Le dernier stop est l'arrivée. Sinon fallback sur destination_lat/lng
 //   ou destination_address (sans coords → segment manqué + warning).
 
+import { withRoutingMode, routingModeFromRequest, routePending } from '@/lib/routing/mode'
 import { NextResponse }      from 'next/server'
 import { getServerSession }  from 'next-auth'
 import { authOptions }       from '@/lib/auth'
@@ -27,7 +28,7 @@ async function getDistanceKm(origin: Coord, destination: Coord): Promise<number 
   return r?.km ?? null
 }
 
-export async function GET(req: Request, { params }: { params: { id: string } }) {
+async function handleGET(req: Request, { params }: { params: { id: string } }) {
   // Appel interne (crons auto-clôture) : x-internal-secret. Sinon session.
   const isInternal = !!process.env.NEXTAUTH_SECRET && req.headers.get('x-internal-secret') === process.env.NEXTAUTH_SECRET
   if (!isInternal) {
@@ -134,5 +135,22 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
     has_destination: !noDest,
     has_stops:       stopsWithCoords.length > 0,
     error:           allOk ? null : 'Certains segments n\'ont pas pu être calculés',
+  })
+}
+
+// Mode de calcul demandé par l'écran (02/10/2026) : `?calcul=memoire` à
+// l'ouverture d'une fiche (aucun appel réseau, trajet inconnu = « à calculer »),
+// `?calcul=oui` sur un geste humain (bouton Calculer, facturation : Google
+// permis si OpenRouteService lâche), sinon gratuit. Un robot n'a jamais Google.
+export async function GET(...args: Parameters<typeof handleGET>) {
+  const [req] = args
+  const internal = !!process.env.NEXTAUTH_SECRET && req.headers.get('x-internal-secret') === process.env.NEXTAUTH_SECRET
+  const mode = routingModeFromRequest(req, { internal })
+  return withRoutingMode(mode, async () => {
+    const res = await handleGET(...args)
+    if (mode === 'cache' && routePending()) {
+      return NextResponse.json({ pending: true, error: 'Kilomètres à calculer : clique sur « Calculer »' })
+    }
+    return res
   })
 }
