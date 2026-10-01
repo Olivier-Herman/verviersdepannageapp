@@ -7,7 +7,10 @@
 // répondre sans ouvrir l'écran du talkie. Monté dans Providers (racine) : la
 // connexion ne coupe pas en changeant de page. L'écran /talkie utilise ce même
 // moteur (pas de double connexion).
-//  - Voix : Supabase Realtime (diffusion), 16 kHz loi µ, morceaux ≈ 85 ms.
+//  - Voix : Supabase Realtime (diffusion), 16 kHz loi µ, morceaux ≈ 170 ms, réserve
+//    d'écoute ≈ 350 ms (moins de coupures en 4G) ; rien n'est envoyé pendant une
+//    reconnexion (sinon chaque morceau part en requête web, en retard et en désordre).
+//    Étape 2 : LiveKit sur le VPS (Opus, UDP) pour la qualité d'un appel.
 //  - Micro ouvert seulement pendant l'appui (sur iPhone, un micro ouvert en continu
 //    envoie le son dans l'écouteur au lieu du haut-parleur).
 //  - Le son ne peut démarrer qu'après un geste : le premier toucher dans l'app active
@@ -195,7 +198,10 @@ export default function TalkieProvider({ children }: { children: React.ReactNode
         const f32 = muDecode(fromB64(payload.d))
         const buf = ctx.createBuffer(1, f32.length, RATE); buf.getChannelData(0).set(f32)
         const node = ctx.createBufferSource(); node.buffer = buf; node.connect(ctx.destination)
-        const t = Math.max(ctx.currentTime + 0.15, nextRef.current.get(c.key) || 0)
+        // Réserve d'écoute : on démarre 350 ms en avance ; si le réseau a pris du retard
+        // (plus de son en réserve), on reprend proprement avec la même avance.
+        const queued = nextRef.current.get(c.key) || 0
+        const t = queued > ctx.currentTime + 0.03 ? queued : ctx.currentTime + 0.35
         node.start(t); nextRef.current.set(c.key, t + buf.duration)
       })
       ch.on('broadcast', { event: 'end' }, ({ payload }: any) => {
@@ -272,11 +278,12 @@ export default function TalkieProvider({ children }: { children: React.ReactNode
       const stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } })
       if (talkRef.current !== state) { stream.getTracks().forEach(tr => tr.stop()); audioSession('playback'); return }   // relâché avant l'ouverture du micro
       const src = ctx.createMediaStreamSource(stream)
-      const proc = ctx.createScriptProcessor(4096, 1, 1)
+      const proc = ctx.createScriptProcessor(8192, 1, 1)   // ≈ 170 ms : moitié moins d'envois
       proc.onaudioprocess = (e) => {
         if (talkRef.current !== state) return
         const down = downsample(e.inputBuffer.getChannelData(0), ctx.sampleRate)
         state.rec.push(down)
+        if ((ch as any).state !== 'joined') return   // en reconnexion : pas d'envoi (pas de repli en requêtes web)
         ch.send({ type: 'broadcast', event: 'a', payload: { s: state.seq++, d: toB64(muEncode(down)) } })
       }
       src.connect(proc); proc.connect(ctx.destination)
