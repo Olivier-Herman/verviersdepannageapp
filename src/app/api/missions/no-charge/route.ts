@@ -12,6 +12,7 @@
 
 import { NextResponse }     from 'next/server'
 import { getServerSession } from 'next-auth'
+import { sessionAccess }       from '@/lib/access'
 import { authOptions }      from '@/lib/auth'
 import { releaseParcAndShift } from '@/lib/parc/release'
 import { createAdminClient } from '@/lib/supabase'
@@ -25,11 +26,8 @@ export async function POST(req: Request) {
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const user = session.user as any
-  const role: string = user.role || ''
-  const modules: string[] = user.modules || []
-  const hasAccess =
-    ['admin', 'superadmin'].includes(role) ||
-    modules.includes('facturation')
+  // Rôle principal OU rôles secondaires (roles[]) OU module facturation.
+  const hasAccess = sessionAccess(session, { modules: ['facturation'] }).ok
   if (!hasAccess) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   const body = await req.json() as { mission_ids?: string[]; reason?: string }

@@ -14,6 +14,7 @@
 
 import { NextResponse }        from 'next/server'
 import { getServerSession }    from 'next-auth'
+import { sessionAccess }       from '@/lib/access'
 import { authOptions }         from '@/lib/auth'
 import { createAdminClient }   from '@/lib/supabase'
 import { buildDossier, invalidateDossierCache } from '@/lib/dossier/build'
@@ -25,9 +26,8 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   const session = await getServerSession(authOptions)
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   const user = session.user as any
-  const role: string = user.role || ''
-  const modules: string[] = Array.isArray(user.modules) ? user.modules : []
-  if (!['admin', 'superadmin'].includes(role) && !modules.includes('facturation')) {
+  // Rôle principal OU rôles secondaires (roles[]) OU module facturation.
+  if (!sessionAccess(session, { modules: ['facturation'] }).ok) {
     return NextResponse.json({ error: 'Accès réservé à la facturation.' }, { status: 403 })
   }
   const body = await req.json().catch(() => ({}))
