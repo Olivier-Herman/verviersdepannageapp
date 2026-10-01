@@ -48,6 +48,7 @@ export default async function MissionsDispoPage() {
     `)
     .in('status', ['new', 'dispatching'])
     .is('assigned_to', null)
+    .is('touring_missing_since', null)   // retirée chez Touring : masquée (01/10/2026)
     .neq('source', 'garage')
     // Olivier 2026-06-17 : ne montrer QUE les missions correctement sourcées.
     // Les placeholders d'expéditeur inconnu (source 'unknown') ou les missions

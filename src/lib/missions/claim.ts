@@ -8,7 +8,11 @@
 
 import { createAdminClient } from '@/lib/supabase'
 
-export const CLAIMABLE_STATUSES = ['dispatching']   // « En attente » seulement : validée par le dispatch (01/10/2026)
+// « Nouvelle » ET « En attente » (Olivier 01/10/2026) : un chauffeur peut prendre dans
+// Momo Market une mission pas encore validée — la prise VAUT validation (acceptation chez
+// l'assistance comprise, comme « Valider » au dispatch) et attribution. Seul le cycle de
+// nuit (notification au 1er départ) attend la validation du dispatch (cf. confirm).
+export const CLAIMABLE_STATUSES = ['new', 'dispatching']
 
 export type ClaimVia = 'market' | 'siabis' | 'proposal'
 
@@ -27,14 +31,14 @@ export async function claimMission(missionId: string, userId: string, opts: { vi
   const sb = createAdminClient()
 
   const { data: m } = await sb.from('incoming_missions')
-    .select('id, status, assigned_to, received_at, source')
+    .select('id, status, assigned_to, received_at, source, source_format, kaze_proposal_id, dossier_number, external_id, axa_mission_order_id, touring_missing_since')
     .eq('id', missionId)
     .maybeSingle()
   if (!m) return { ok: false, status: 404, error: 'Mission introuvable' }
 
   if (m.assigned_to)                          return { ok: false, status: 409, error: 'Mission deja prise par un autre chauffeur' }
-  if (m.status === 'new') return { ok: false, status: 409, error: 'Mission pas encore validée par le dispatch : appelle le dispatch pour qu’il la valide.' }
   if (!CLAIMABLE_STATUSES.includes(m.status)) return { ok: false, status: 409, error: 'Mission deja traitee' }
+  if ((m as any).touring_missing_since) return { ok: false, status: 410, error: 'Mission retirée par l’assistance' }
 
   if (opts.freshMinutes != null) {
     const ageMs = Date.now() - new Date(m.received_at).getTime()
@@ -62,6 +66,26 @@ export async function claimMission(missionId: string, userId: string, opts: { vi
 
   if (error)    return { ok: false, status: 500, error: error.message }
   if (!claimed) return { ok: false, status: 409, error: 'Mission prise par un autre chauffeur a l instant' }
+
+  // Prise d'une mission pas encore validée : c'est la validation. On accepte chez
+  // l'assistance exactement comme « Valider » au dispatch (même fonctions, arrière-plan).
+  if (m.status === 'new') {
+    await sb.from('mission_logs').insert({ mission_id: missionId, actor_id: userId, action: 'dispatched',
+      notes: 'Mission validée par la prise du chauffeur (Momo Market) — acceptée chez l’assistance' })
+    try {
+      const { acceptTouringBg } = await import('@/lib/touring/accept-bg')
+      const { acceptVabBg } = await import('@/lib/vab/accept-bg')
+      const { acceptKazeProposalBg, acceptAllianzBg } = await import('@/lib/missions/provider-accept-bg')
+      const { acceptAxaBg } = await import('@/lib/axa/affect-bg')
+      const mm: any = m
+      await acceptKazeProposalBg(missionId, mm.kaze_proposal_id, userId, sb)
+      await acceptTouringBg(missionId, mm.source || null, mm.source_format || null, userId, sb)
+      await acceptVabBg(missionId, mm.source || null, userId, sb)
+      const { data: otpAllianz } = await sb.from('allianz_otp_pending').select('id').eq('mission_id', missionId).limit(1)
+      if (mm.source === 'mondial' || (otpAllianz || []).length > 0) await acceptAllianzBg(missionId, mm.dossier_number || mm.external_id || null, userId, sb)
+      if (mm.axa_mission_order_id) await acceptAxaBg(missionId, mm.axa_mission_order_id, userId, sb)
+    } catch (e: any) { console.error('[claim] acceptation assistance (non bloquant):', e?.message) }
+  }
 
   await sb.from('mission_logs').insert({
     mission_id: missionId,

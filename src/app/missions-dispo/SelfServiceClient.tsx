@@ -71,7 +71,7 @@ export default function SelfServiceClient({ initialMissions, currentUserId, fres
           // (source réelle + données parsées). On (re)joue donc l'éligibilité ici :
           // mission fraîche + correctement sourcée → ajout/refresh ; sinon retrait.
           const fresh = (Date.now() - new Date(m.received_at).getTime()) <= FRESH_MINUTES * 60 * 1000
-          const eligible = ELIGIBLE_STATUSES.includes(m.status) && !m.assigned_to
+          const eligible = ELIGIBLE_STATUSES.includes(m.status) && !m.assigned_to && !m.touring_missing_since
             && m.source !== 'garage' && m.source !== 'unknown' && fresh
           if (!eligible) {
             setMissions(prev => prev.filter(x => x.id !== m.id))
