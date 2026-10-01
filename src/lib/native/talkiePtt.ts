@@ -20,6 +20,9 @@ export interface TalkiePttState {
   transmitting: boolean
   speaker: string | null
   pttToken: string | null
+  /** Build ≥ 32 : autorisation micro (le natif ne peut pas la demander téléphone verrouillé). */
+  micPermission?: 'granted' | 'denied' | 'restricted' | 'prompt'
+  version?: string
 }
 
 interface TalkiePttPlugin {
@@ -27,6 +30,7 @@ interface TalkiePttPlugin {
   leave(o: { key: string }): Promise<void>
   setActive(o: { key: string }): Promise<void>
   getState(): Promise<TalkiePttState>
+  requestMicPermission?(): Promise<{ micPermission?: string } | void>
   addListener(ev: 'pttToken', cb: (d: { token: string }) => void): Promise<{ remove: () => void }>
   addListener(ev: 'transmitState', cb: (d: { key: string; active: boolean }) => void): Promise<{ remove: () => void }>
   addListener(ev: 'receiveState', cb: (d: { key: string; speaker: string | null }) => void): Promise<{ remove: () => void }>

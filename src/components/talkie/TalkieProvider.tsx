@@ -379,6 +379,11 @@ export default function TalkieProvider({ children }: { children: React.ReactNode
         const now = await p.getState().catch(() => null)
         pttReadyRef.current = !!now?.joined
         sendToken(now?.pttToken)
+        // Micro : à accorder app ouverte, sinon rien ne part depuis l'écran verrouillé (build ≥ 32).
+        if (now?.micPermission && now.micPermission !== 'granted' && document.visibilityState === 'visible') {
+          if (now.micPermission === 'prompt') p.requestMicPermission?.().catch(() => {})
+          else setError('Talkie écran verrouillé : autorise le micro pour l’app dans Réglages > VD Soft > Micro, sinon on ne t’entend pas.')
+        }
       }
       await sync()
       refresh = setInterval(sync, 60 * 60_000)
