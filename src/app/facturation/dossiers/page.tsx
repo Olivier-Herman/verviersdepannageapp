@@ -38,8 +38,8 @@ export default async function FacturationDossiersPage() {
   // Racines candidates + construction LÉGÈRE : dans lib/dossier/todo-count.ts,
   // partagée avec le cron qui alimente la pastille du menu (même moteur, même
   // chiffre que la puce « Toutes (hors Touring) »). Construction légère : la
-  // page doit s'afficher tout de suite ; le client redemande ensuite chaque
-  // dossier tarifé (mode=list) et remplace les montants au fur et à mesure.
+  // page doit s'afficher tout de suite. Aucun tarif n'est calculé pour la liste :
+  // il s'affiche à l'ouverture du dossier (Olivier 02/10/2026).
   const { dossiers, roots } = await loadFacturationDossiers(sb)
 
   // Éligibilité auto (règles source/type sur la racine) — même moteur que le cron.

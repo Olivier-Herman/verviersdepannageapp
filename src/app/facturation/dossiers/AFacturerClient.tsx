@@ -11,10 +11,12 @@
 // Décisions Olivier 16/09 : le robot ne facture que les missions sèches DSP/REM
 // des assisteurs configurés ; combinés, transports, particuliers, garages =
 // manuel ; l'encaissement bureau se fait dans Odoo (jamais de bouton Encaisser).
-// La mécanique de données (tarification progressive, éligibilité robot, COMEX,
-// modale Facturer) est celle de DossiersClient — inchangée.
+// La mécanique de données (éligibilité robot, COMEX, modale Facturer) est celle
+// de DossiersClient. Aucun tarif calculé dans la liste (Olivier 02/10/2026) :
+// le montant s'affiche à l'ouverture du dossier, seul endroit de calcul. Ne
+// restent que les montants réels (factures, encaissements, montant Touring).
 
-import { useEffect, useMemo, useState, useRef } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import type { Dossier, DossierLeg } from '@/lib/dossier/build'
@@ -22,8 +24,6 @@ import BillingModal, { cleanRef, isLegBilled, canPickLeg } from '@/components/do
 import TabLegend from '@/components/ui/TabLegend'
 
 const eur = (n: number) => n.toLocaleString('fr-BE', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' €'
-const TVA = 1.21
-const eurTvac = (n: number) => eur(Math.round(n * TVA * 100) / 100)
 const fmtDay = (v: string | null | undefined) => v ? new Date(v).toLocaleDateString('fr-BE', { timeZone: 'Europe/Brussels', day: '2-digit', month: '2-digit' }) : ''
 const fmtDT  = (v: string | null | undefined) => v ? new Date(v).toLocaleString('fr-BE', { timeZone: 'Europe/Brussels', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : ''
 const fmtHM  = (v: string | null | undefined) => v ? new Date(v).toLocaleTimeString('fr-BE', { timeZone: 'Europe/Brussels', hour: '2-digit', minute: '2-digit' }) : ''
@@ -51,9 +51,6 @@ type ComexInfo = { id: string; verdict: string | null; montant: number | null; a
 const isOdoo = (l: DossierLeg) => (l.channel || 'odoo') === 'odoo'
 const ready  = (d: Dossier) => d.legs.filter(l => isOdoo(l) && (canPickLeg(l) || (l.amount_unknown && !isLegBilled(l) && !l.nothing_to_bill)) && !(l.kind === 'gard' && l.open))
 const isCircuitLegs = (d: Dossier) => d.legs.some(l => !isOdoo(l) && !isLegBilled(l) && !l.nothing_to_bill) && ready(d).length === 0
-const isPending  = (d: Dossier) => !!d.light
-const unknownLegs = (d: Dossier) => d.legs.filter(l => l.amount_unknown && !isLegBilled(l) && !l.nothing_to_bill)
-const hasUnknown = (d: Dossier) => !d.light && unknownLegs(d).length > 0
 const isDone = (d: Dossier) => !!d.cancelled || (!d.state.open && d.legs.every(l => isLegBilled(l) || !!l.nothing_to_bill || (l.amount_htva === 0 && !l.amount_unknown)))
 const rest   = (d: Dossier) => d.totals.remaining
 const remarks = (d: Dossier) => d.legs.flatMap(l => l.billing_remarks || [])
@@ -76,8 +73,6 @@ function readDossier(d: Dossier, ai: AutoInfo | undefined, comex: ComexInfo | un
   const rd = ready(d)
   const inComex = !!comex && !comex.accepted_at && !done
   const circuit = isCircuitLegs(d) || inComex
-  const unknown = hasUnknown(d)
-  const pending = isPending(d)
   const remarksN = remarks(d).length
   const siabisOpen = alerts(d).some(a => /siabis/i.test(a))
   const autoEligible = !done && (ai ? (ai.status === 'eligible' || (ai.status === 'waiting' && !!ai.eligibleAt && new Date(ai.eligibleAt).getTime() <= now))
@@ -96,7 +91,7 @@ function readDossier(d: Dossier, ai: AutoInfo | undefined, comex: ComexInfo | un
   const steps: Step[] = [
     { key: 'int', label: 'Intervention', state: 'done', note: fmtDay(d.received_at) },
     { key: 'clo', label: 'Clôture', state: d.state.open ? 'now' : 'done', note: d.state.open ? (d.state.reason || 'en cours') : fmtDT(lastEnded) },
-    { key: 'amt', label: 'Montant', state: pending ? 'wait' : unknown ? 'bad' : 'done', note: pending ? 'calcul…' : unknown ? 'à calculer' : (rest(d) > 0 || invoices.length ? eur(rest(d) > 0 ? rest(d) : (invoices.reduce((s, i) => s + i.amount, 0))) + ' HTVA' : '0 €') },
+    { key: 'amt', label: 'Montant', state: invoices.length ? 'done' : 'todo', note: invoices.length ? eur(invoices.reduce((s, i) => s + i.amount, 0)) + ' HTVA' : 'dans le dossier' },
     { key: 'fac', label: 'Facture', state: done && invoices.length ? 'done' : done ? 'done' : circuit ? 'wait' : (rd.length ? 'now' : 'todo'), note: done && invoices.length ? cleanRef(mainInv.number) : done ? (d.cancelled ? 'annulé' : 'rien à facturer') : circuit ? (inComex ? 'COMEX' : d.parquet ? 'Parquet' : 'Domaine') : undefined },
     { key: 'pay', label: 'Payé', state: done && invoices.length ? (paid ? 'done' : 'now') : 'todo', note: done && invoices.length ? payNote : d.totals.collected > 0 ? `${eur(d.totals.collected)} sur place` : undefined },
   ]
@@ -113,15 +108,10 @@ function readDossier(d: Dossier, ai: AutoInfo | undefined, comex: ComexInfo | un
     return { ...base, who: 'fini', headline: 'Rien à facturer', detail: d.legs.map(l => l.nothing_to_bill).filter(Boolean)[0] || undefined }
   }
   if (inComex) {
-    // Comparaison des deux montants, comme dans le module COMEX : c'est elle qui
-    // décide si on valide sans regarder. L'écart est vu du côté Touring : positif
-    // = Touring paie plus que ce qu'on demande.
+    // Montant proposé par Touring et verdict du rapprochement COMEX ; notre
+    // montant se lit dans le dossier (pas de tarif calculé en liste, 02/10/2026).
     const tm = comex!.montant != null ? Number(comex!.montant) : null
-    const nous = rest(d)
-    const ecart = tm != null ? tm - nous : null
-    const cmp = tm != null
-      ? `Touring ${eur(tm)} · nous ${eur(nous)} · ${ecart! >= 0.01 ? `+${eur(ecart!)} en notre faveur` : ecart! <= -0.01 ? `${eur(ecart!)} de manque` : 'montants identiques'}`
-      : 'Montant Touring pas encore publié'
+    const cmp = tm != null ? `Touring ${eur(tm)}` : 'Montant Touring pas encore publié'
     const accord = comex!.verdict === 'verify' ? 'Écart à regarder avant de valider.' : 'Prêt à valider.'
     return { ...base, who: 'eux',
       headline: `Chez Touring (COMEX BKO) — ${comex!.verdict === 'verify' ? 'à vérifier' : 'en attente de validation'}`,
@@ -141,25 +131,18 @@ function readDossier(d: Dossier, ai: AutoInfo | undefined, comex: ComexInfo | un
     const why = relOpen ? `Relivraison ${relOpen.letter} en cours` : gardOpen ? `Véhicule au parc (${gardOpen.subtitle || 'gardiennage'} · ${gardOpen.days ?? 0} j)` : (d.state.reason || 'Dossier en cours')
     return { ...base, who: 'veille', headline: `${why} — on facture à la clôture`, detail: rd.length ? `Groupe${rd.length > 1 ? 's' : ''} ${rd.map(l => l.letter).join(', ')} déjà prêt${rd.length > 1 ? 's' : ''} : tu peux facturer maintenant, le reste partira à la sortie.` : 'Tout part ensemble quand le dernier groupe est clos (combiné = manuel).', primary: rd.length ? { label: 'Facturer les groupes prêts', kind: 'bill_ready', tone: 'ghost' } : undefined }
   }
-  if (unknown) {
-    const why = unknownLegs(d).map(l => l.amount_note || 'raison inconnue')[0]
-    const transient = /réessaie|robot|passager|indisponible|quota/i.test(why)
-    return transient
-      ? { ...base, who: 'robot', headline: 'Km à calculer — le robot réessaie toutes les 10 min', detail: why }
-      : { ...base, who: 'nous', headline: `Montant impossible : ${why}`, detail: 'Corrige la fiche (adresse, tarif) ; le montant se recalcule seul, puis la facturation suit.', primary: { label: 'Corriger la fiche', kind: 'dossier', tone: 'brand' } }
-  }
   if (siabisOpen) return { ...base, who: 'nous', headline: 'Siabis : couvert ou non couvert à trancher', detail: alerts(d).find(a => /siabis/i.test(a)), primary: { label: 'Trancher sur le dossier', kind: 'dossier', tone: 'brand' } }
-  if (autoEligible) return { ...base, who: 'robot', headline: 'Le robot facture au prochain passage', detail: `${eur(rest(d))} HTVA → ${d.billed_to.name || '—'}${remarksN ? ` · ${remarksN} remarque(s) de facturation à lire` : ''}.`, primary: { label: 'Facturer maintenant', kind: 'bill', tone: 'ghost' } }
-  if (autoWaiting) return { ...base, who: 'robot', headline: `Le robot facture à ${fmtHM(ai!.eligibleAt)}`, detail: `${eur(rest(d))} HTVA → ${d.billed_to.name || '—'} · délai après clôture.${remarksN ? ` ${remarksN} remarque(s) à lire.` : ''}`, primary: { label: 'Facturer maintenant', kind: 'bill', tone: 'ghost' } }
+  if (autoEligible) return { ...base, who: 'robot', headline: 'Le robot facture au prochain passage', detail: `→ ${d.billed_to.name || '—'}${remarksN ? ` · ${remarksN} remarque(s) de facturation à lire` : ''}.`, primary: { label: 'Facturer maintenant', kind: 'bill', tone: 'ghost' } }
+  if (autoWaiting) return { ...base, who: 'robot', headline: `Le robot facture à ${fmtHM(ai!.eligibleAt)}`, detail: `→ ${d.billed_to.name || '—'} · délai après clôture.${remarksN ? ` ${remarksN} remarque(s) à lire.` : ''}`, primary: { label: 'Facturer maintenant', kind: 'bill', tone: 'ghost' } }
   if (rd.length) {
     // Payeur inconnu (Siabis non couvert avant décision, particulier sans fiche client) : on nomme la personne sur place, sinon on le dit.
     const clients = Array.from(new Set(rd.map(l => l.billed_to_name || d.billed_to.name || d.client.name || 'client à préciser')))
     const why = ai?.reason ? ` · hors robot : ${ai.reason}` : ''
-    return { ...base, who: 'nous', headline: `Facturer à ${clients.join(' + ')}`, detail: `${d.legs.length > 1 ? `${rd.length} groupe(s) prêt(s) sur ${d.legs.length} · ` : ''}${eur(rest(d))} HTVA · ${eurTvac(rest(d))} TVAC${d.totals.collected > 0 ? ` · ${eur(d.totals.collected)} déjà encaissé sur place` : ''}${remarksN ? ` · ${remarksN} remarque(s) à lire` : ''}${why}`, primary: { label: 'Facturer', kind: 'bill', tone: 'brand' } }
+    return { ...base, who: 'nous', headline: `Facturer à ${clients.join(' + ')}`, detail: `${d.legs.length > 1 ? `${rd.length} groupe(s) prêt(s) sur ${d.legs.length} · ` : ''}montant à l'ouverture du dossier${d.totals.collected > 0 ? ` · ${eur(d.totals.collected)} déjà encaissé sur place` : ''}${remarksN ? ` · ${remarksN} remarque(s) à lire` : ''}${why}`, primary: { label: 'Facturer', kind: 'bill', tone: 'brand' } }
   }
   // Rien de prêt et rien d'ouvert : on dit POURQUOI, groupe par groupe.
   const why = d.legs.map(l => `${l.letter} : ${isLegBilled(l) ? 'facturé' : l.nothing_to_bill ? l.nothing_to_bill : l.amount_htva === 0 ? '0 €' : l.status_label}`).join(' · ')
-  return { ...base, who: 'veille', headline: pending ? 'Montant en cours de calcul' : 'Rien à facturer pour l\'instant', detail: [ai?.reason, why].filter(Boolean).join(' — ') }
+  return { ...base, who: 'veille', headline: 'Rien à facturer pour l\'instant', detail: [ai?.reason, why].filter(Boolean).join(' — ') }
 }
 
 const WHO: Record<Who, { label: string; cls: string; dot: string }> = {
@@ -250,43 +233,12 @@ export default function AFacturerClient({ initial, autoById, comexById = {}, isS
   const visible = useMemo(() => scoped.filter(d => filter === 'all' || readings.get(d.root_id)!.who === filter)
     .sort((a, b) => (rank[readings.get(a.root_id)!.who] - rank[readings.get(b.root_id)!.who]) || String(b.received_at || '').localeCompare(String(a.received_at || ''))), [scoped, filter, readings])
   const groupCounts = useMemo(() => Object.fromEntries(SOURCE_GROUPS.map(g => [g.key, rows.filter(d => inGroup(d, g) && matches(d) && (filter === 'all' || readings.get(d.root_id)!.who === filter)).length])), [rows, SOURCE_GROUPS, filter, search, readings])   // eslint-disable-line react-hooks/exhaustive-deps
-  const totalNous = scoped.filter(d => readings.get(d.root_id)!.who === 'nous').reduce((s, d) => s + rest(d), 0)
-
-  // Tarification progressive (identique à la liste par dossier) : montants figés d'abord, vrai montant ensuite.
-  // Compteur « en cours de calcul » = ensemble des dossiers dont la requête est
-  // partie et pas revenue. Un simple entier se bloquait quand on changeait de
-  // pastille en plein calcul : le nettoyage de l'effet annulait les retours
-  // sans décompter (Olivier 16/09 : « les calculs plantent sur 9 »).
-  const [pricingIds, setPricingIds] = useState<Set<string>>(new Set())
-  const pricing = pricingIds.size
-  const refinedRef = useRef<Set<string>>(new Set())
-  useEffect(() => {
-    const targets = initial.filter(d => d.light && !isDone(d) && !isCircuitLegs(d) && inGroup(d, activeGroup) && !refinedRef.current.has(d.root_id)).map(d => d.root_id)
-    if (!targets.length) return
-    targets.forEach(id => refinedRef.current.add(id))
-    const drop = (id: string) => setPricingIds(p => { if (!p.has(id)) return p; const n = new Set(p); n.delete(id); return n })
-    setPricingIds(p => new Set([...p, ...targets]))
-    const got = new Set<string>()
-    const one = async (id: string) => {
-      try { const j = await fetch(`/api/dossier/${id}?mode=list`, { cache: 'no-store' }).then(r => r.ok ? r.json() : null); if (j?.dossier) { got.add(id); setRows(p => p.map(d => d.root_id === id ? j.dossier : d)) } } catch {}
-    }
-    ;(async () => {
-      for (let i = 0; i < targets.length; i += 6) await Promise.all(targets.slice(i, i + 6).map(one))
-      // Seconde passe pour ceux qui n'ont pas répondu (Olivier 16/09 : « il n'arrive pas à tout calculer »).
-      const missing = targets.filter(id => !got.has(id))
-      for (let i = 0; i < missing.length; i += 3) await Promise.all(missing.slice(i, i + 3).map(one))
-      targets.forEach(drop)
-    })()
-    // Pas d'annulation : une réponse qui arrive après un changement de pastille
-    // reste bonne à prendre (la ligne se met à jour où qu'elle soit).
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeGroup.key])
 
   const refreshOne = async (rootId: string) => {
     try { const j = await fetch(`/api/dossier/${rootId}?t=${Date.now()}`, { cache: 'no-store' }).then(r => r.json()); if (j?.dossier) setRows(p => p.map(d => d.root_id === rootId ? j.dossier : d)) } catch {}
   }
+  // Liste légère : « Facturer » charge le dossier complet, tarifé à ce moment-là.
   const openBilling = async (d: Dossier) => {
-    if (!d.light) { setBilling(d); return }
     setLoadingBill(d.root_id)
     try { const j = await fetch(`/api/dossier/${d.root_id}?t=${Date.now()}`, { cache: 'no-store' }).then(r => r.json()); setBilling(j?.dossier || d) }
     catch { setBilling(d) } finally { setLoadingBill(null) }
@@ -307,8 +259,7 @@ export default function AFacturerClient({ initial, autoById, comexById = {}, isS
     const c = comexById[d.root_id]
     if (!c?.id) { setReport('⚠ Dossier COMEX introuvable — passe par le module Touring COMEX.'); return }
     const tm = c.montant != null ? Number(c.montant) : null
-    const ecart = tm != null ? tm - rest(d) : null
-    if (!window.confirm(`Valider ${d.ref} · ${d.vehicle.plate || ''} chez Touring ?\n\nDossier ${c.dossier || '—'}${tm != null ? `\nTouring ${eur(tm)} · nous ${eur(rest(d))}${ecart != null ? ` · écart ${eur(ecart)}` : ''}` : ''}\n\nÉcriture réelle chez Touring, puis facture automatique.`)) return
+    if (!window.confirm(`Valider ${d.ref} · ${d.vehicle.plate || ''} chez Touring ?\n\nDossier ${c.dossier || '—'}${tm != null ? `\nTouring ${eur(tm)}` : ''}\n\nÉcriture réelle chez Touring, puis facture automatique.`)) return
     setBusy(d.root_id); setReport(null)
     try {
       const res = await fetch('/api/touring/comex-bko/accept', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ids: [c.id] }) })
@@ -361,35 +312,6 @@ export default function AFacturerClient({ initial, autoById, comexById = {}, isS
     try { const r = await fetch('/api/facturation/check-siabis-anwb', { method: 'POST' }); const j = await r.json(); if (!r.ok) throw new Error(j.error || `HTTP ${r.status}`); setReport(j.message || j.report || `✓ Check Siabis / ANWB terminé.`); if (Array.isArray(j.links)) setReportLinks(j.links); router.refresh() }
     catch (e: any) { setReport(`⚠ ${e.message}`) } finally { setBusy(null) }
   }
-  // Lot : tous les dossiers « À nous » prêts (sortis, tout Odoo, montant connu) → une facture par client.
-  const lotTargets = visible.filter(d => readings.get(d.root_id)!.who === 'nous' && readings.get(d.root_id)!.primary?.kind === 'bill' && !isPending(d) && !hasUnknown(d))
-  const runLot = async () => {
-    const targets = lotTargets
-    if (!targets.length) return
-    setShowTools(false)
-    if (!window.confirm(`Créer les factures de ${targets.length} dossier(s) « À nous » prêts ? Une facture par client, tous les groupes prêts.`)) return
-    const tabs: (Window | null)[] = Array.from({ length: targets.length }, () => { try { return window.open('', '_blank') } catch { return null } })
-    let tabIdx = 0, okN = 0; const links: { label: string; url: string }[] = []; const errs: string[] = []
-    setBusy('lot'); setReport(`🧾 Facturation du lot : 0/${targets.length}…`)
-    for (const d of targets) {
-      try {
-        const full = await fetch(`/api/dossier/${d.root_id}?t=${Date.now()}`, { cache: 'no-store' }).then(r => r.json())
-        const dd: Dossier = full?.dossier || d
-        const ids = dd.legs.filter(l => isOdoo(l) && canPickLeg(l) && !(l.kind === 'gard' && l.open)).map(l => l.mission_id)
-        if (!ids.length) { errs.push(`${dd.ref} : rien de prêt`); continue }
-        const r = await fetch(`/api/dossier/${dd.root_id}/invoice`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mission_ids: ids }) })
-        const j = await r.json(); if (!r.ok || !j.ok) throw new Error(j.error || `HTTP ${r.status}`)
-        okN++
-        for (const inv of j.invoices || []) { if (!inv.url) continue; links.push({ label: `${dd.ref} → ${inv.client_name}`, url: inv.url }); const t = tabs[tabIdx++]; if (t) { try { t.location.href = inv.url } catch {} } else { try { window.open(inv.url, '_blank') } catch {} } }
-        await refreshOne(dd.root_id)
-      } catch (e: any) { errs.push(`${d.ref} : ${String(e.message || e)}`) }
-      setReport(`🧾 Facturation du lot : ${okN}/${targets.length}…`)
-    }
-    for (let i = tabIdx; i < tabs.length; i++) { try { tabs[i]?.close() } catch {} }
-    setReport(`✓ Lot terminé : ${okN} dossier(s) facturé(s), ${links.length} facture(s) en brouillon${errs.length ? ` · ${errs.length} en erreur — ${errs.join(' | ')}` : ''}`)
-    setReportLinks(links); setBusy(null)
-  }
-
   const TABS: { key: Filter; label: string; dot?: string; help: string }[] = [
     { key: 'nous', label: 'À nous', dot: WHO.nous.dot, help: 'à facturer ou à corriger par le bureau, un seul bouton' },
     { key: 'robot', label: 'Robot', dot: WHO.robot.dot, help: 'auto-facturation programmée, heure annoncée' },
@@ -406,8 +328,8 @@ export default function AFacturerClient({ initial, autoById, comexById = {}, isS
         <div>
           <h1 className="text-ink text-2xl font-bold leading-tight">🧾 À facturer</h1>
           <p className="text-ink-muted text-sm mt-0.5">
-            <b className="text-ink">{counts.nous || 0}</b> dossier{(counts.nous || 0) > 1 ? 's' : ''} nous attend{(counts.nous || 0) > 1 ? 'ent' : ''}{totalNous > 0 ? ` · ${eur(totalNous)} HTVA` : ''}
-            {counts.robot ? ` · ${counts.robot} au robot` : ''}{counts.eux ? ` · ${counts.eux} chez eux` : ''}{pricing > 0 ? ` · ⏳ ${pricing} en cours de calcul` : ''}
+            <b className="text-ink">{counts.nous || 0}</b> dossier{(counts.nous || 0) > 1 ? 's' : ''} nous attend{(counts.nous || 0) > 1 ? 'ent' : ''}
+            {counts.robot ? ` · ${counts.robot} au robot` : ''}{counts.eux ? ` · ${counts.eux} chez eux` : ''} · le montant s'affiche à l'ouverture du dossier
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -420,7 +342,6 @@ export default function AFacturerClient({ initial, autoById, comexById = {}, isS
             <button onClick={() => setShowTools(s => !s)} className="px-3 py-2 bg-surface-2 hover:bg-surface-hover border rounded-xl text-sm text-ink-secondary" title="Outils">⋯</button>
             {showTools && (
               <div className="absolute right-0 mt-1 w-80 bg-surface border rounded-2xl shadow-xl p-2 z-20 space-y-1">
-                <button onClick={runLot} disabled={!lotTargets.length || !!busy} className="w-full text-left px-3 py-2 rounded-xl hover:bg-surface-hover text-sm text-ink disabled:opacity-40">🧾 Facturer les {lotTargets.length} dossiers « À nous » prêts</button>
                 <button onClick={verifyAll} disabled={!!busy} className="w-full text-left px-3 py-2 rounded-xl hover:bg-surface-hover text-sm text-ink disabled:opacity-40">🔎 Vérifier les factures (numéros, liens)</button>
                 <button onClick={siabis} disabled={!!busy} className="w-full text-left px-3 py-2 rounded-xl hover:bg-surface-hover text-sm text-ink disabled:opacity-40">🇳🇱 Check Siabis / ANWB</button>
                 <Link href="/facturation/allianz" className="block px-3 py-2 rounded-xl hover:bg-surface-hover text-sm text-ink">🟦 Clôture Allianz (Hexalite)</Link>
@@ -488,10 +409,12 @@ export default function AFacturerClient({ initial, autoById, comexById = {}, isS
                 </div>
               </div>
               <div className="flex items-center gap-3">
-                <div className="text-right tabular-nums">
-                  <div className={`font-bold text-ink text-lg leading-tight ${isPending(d) ? 'opacity-40' : ''}`}>{hasUnknown(d) ? <span className="text-amber-700 text-sm font-semibold">à calculer</span> : rest(d) > 0 ? eur(rest(d)) : d.invoices.length ? eur(d.invoices.reduce((s, i) => s + i.amount, 0)) : '—'}</div>
-                  <div className="text-[10.5px] text-ink-faint">{isPending(d) ? (pricing > 0 ? 'calcul en cours' : <button onClick={() => refreshOne(d.root_id)} className="underline hover:text-ink">montant figé · recalculer</button>) : rest(d) > 0 ? `HTVA · ${eurTvac(rest(d))} TVAC` : d.invoices.length ? 'HTVA facturé' : ''}</div>
-                </div>
+                {d.invoices.length > 0 && (
+                  <div className="text-right tabular-nums">
+                    <div className="font-bold text-ink text-lg leading-tight">{eur(d.invoices.reduce((s, i) => s + i.amount, 0))}</div>
+                    <div className="text-[10.5px] text-ink-faint">HTVA facturé</div>
+                  </div>
+                )}
                 <span className={`inline-flex items-center gap-1.5 text-[11px] font-bold px-2.5 py-1 rounded-full border ${who.cls}`}><span className={`w-1.5 h-1.5 rounded-full ${who.dot}`} />{who.label}</span>
               </div>
             </div>
@@ -514,10 +437,9 @@ export default function AFacturerClient({ initial, autoById, comexById = {}, isS
                 <div>
                   <p className="text-[11px] uppercase tracking-wide text-ink-muted font-semibold mb-1">Groupes</p>
                   {d.legs.map(l => (
-                    <div key={l.letter} className="grid grid-cols-[24px_1fr_auto_auto] gap-2 items-center py-1 border-t first:border-t-0 text-ink-secondary">
+                    <div key={l.letter} className="grid grid-cols-[24px_1fr_auto] gap-2 items-center py-1 border-t first:border-t-0 text-ink-secondary">
                       <span className="font-mono font-bold text-ink">{l.letter}</span>
                       <span>{l.title}{l.kind === 'gard' && l.days != null ? ` · ${l.days} j` : ''}{l.billed_to_name && l.billed_to_name !== d.billed_to.name ? <span className="text-ink-muted"> · → {l.billed_to_name}</span> : null}{l.driver_name ? <span className="text-ink-muted"> · {l.driver_name}</span> : null}</span>
-                      <span className="tabular-nums text-right">{l.amount_unknown && !isLegBilled(l) ? <span className="text-amber-700" title={l.amount_note || ''}>à calculer</span> : eur(l.amount_htva)}</span>
                       <span>{isLegBilled(l) ? <span className="px-1.5 py-0.5 rounded-full bg-surface border text-ink-muted font-mono">{cleanRef(l.billed_refs[0])}</span> : l.nothing_to_bill ? <span className="text-ink-faint">{l.nothing_to_bill}</span> : l.open ? <span className="text-sky-700">en cours</span> : <span className="text-green-700">prêt</span>}</span>
                     </div>
                   ))}

@@ -57,7 +57,7 @@ export default function FactureDossierClient({ initial }: { initial: Dossier }) 
   const refresh = async () => {
     setRefreshing(true)
     try {
-      const j = await fetch(`/api/dossier/${d.root_id}?mode=list&t=${Date.now()}`, { cache: 'no-store' }).then(r => r.json())
+      const j = await fetch(`/api/dossier/${d.root_id}?t=${Date.now()}`, { cache: 'no-store' }).then(r => r.json())
       if (j?.dossier) { setD(j.dossier); setSel(s => new Set([...s].filter(id => (j.dossier as Dossier).legs.some(l => l.mission_id === id && canPickLeg(l))))) }
     } catch {} finally { setRefreshing(false) }
   }

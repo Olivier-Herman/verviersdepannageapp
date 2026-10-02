@@ -97,14 +97,16 @@ export async function readTodoCount(sb: Sb): Promise<{ count: number; at: string
 
 /**
  * Comptage PRÉCIS : les candidats retenus par la construction légère sont
- * reconstruits en complet (montants tarifés, postes facturés à jour) avant
- * d'être comptés — c'est ce que fait la page quand elle re-tarife ses lignes.
+ * reconstruits sans cache (postes facturés à jour) avant d'être comptés.
  * Le 10/09, 1DXX318 facturé le matin restait « à facturer » en léger (cache).
  * Peu de candidats (3 à 20), donc peu de constructions complètes.
  */
 export async function countTodoHorsTouringPrecise(dossiers: Dossier[], comexById: ComexById): Promise<number> {
   const candidates = dossiers.filter(d => countTodoHorsTouring([d], comexById) === 1)
-  const full = await Promise.all(candidates.map(d => buildDossier(d.root_id, { light: false, cache: false }).catch(() => d)))
+  // Reconstruction LÉGÈRE sans cache : postes facturés à jour, mais aucun
+  // calcul de tarif ni d'itinéraire — compter n'a pas besoin du montant
+  // (Olivier 02/10/2026 : on ne calcule plus que dans le dossier ouvert).
+  const full = await Promise.all(candidates.map(d => buildDossier(d.root_id, { light: true, cache: false }).catch(() => d)))
   return countTodoHorsTouring(full.filter((d): d is Dossier => !!d), comexById)
 }
 
