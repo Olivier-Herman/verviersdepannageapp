@@ -1,14 +1,17 @@
 // src/lib/notifications/sound-families.ts
 //
-// Sons des notifications iPhone (Olivier 01-02/10/2026) : 45 sons embarqués dans l'app
-// depuis le build 30 — 9 familles × 5 propositions (3 sans voix « 1/2/3 », 2 avec voix
-// « v1/v2 »), fichiers vd_<famille>_<choix>.caf. Chaque type de notification appartient
+// Sons des notifications iPhone (Olivier 01-02/10/2026) : 9 familles × 9 propositions —
+// 3 sans voix « 1/2/3 », 2 avec voix « v1/v2 » (dans l'app depuis le build 30), et la
+// version fun : 2 sans voix « f1/f2 », 2 avec voix « fv1/fv2 » (dans l'app à partir du
+// build 35). Fichiers vd_<famille>_<choix>.caf. Chaque type de notification appartient
 // à une famille ; le son retenu par famille se choisit dans /admin/sons-notifications
 // (app_settings « notif_sons », JSON texte). Build < 30 : fichier absent → son par défaut.
 
 import { createAdminClient } from '@/lib/supabase'
 
-export const SOUND_CHOICES = ['1', '2', '3', 'v1', 'v2'] as const
+export const SOUND_CHOICES = ['1', '2', '3', 'v1', 'v2', 'f1', 'f2', 'fv1', 'fv2'] as const
+/** Version fun : présente dans l'app iPhone à partir du build 35. */
+export const FUN_CHOICES = ['f1', 'f2', 'fv1', 'fv2']
 export type SoundChoice = typeof SOUND_CHOICES[number]
 
 export interface SoundFamily { key: string; label: string; desc: string; types: string[] }
@@ -22,11 +25,11 @@ export const SOUND_FAMILIES: SoundFamily[] = [
     types: ['siabis_couvert_request', 'siabis_couvert_decided'] },
   { key: 'escalade', label: 'Urgent / escalade', desc: 'Appel d’escalade, mission refusée ou sans réponse, annulation par l’assistance, connexion perdue.',
     types: ['escalation_call', 'auto_dispatch_refused', 'auto_dispatch_timeout', 'fiche_ouverte_dispatch', 'mission_cancelled_by_insurer', 'kaze_cancelled_after_start', 'axa_cancelled_after_start', 'touring_cancelled', 'garage_cancel_request', 'comex_login_failed', 'axa_poll_down', 'email_parse_error'] },
-  { key: 'check', label: 'Contrôle / rappel', desc: 'Contrôle véhicule, code personnel, fiche restée ouverte.',
+  { key: 'check', label: 'Contrôle véhicule / rappel', desc: 'Contrôle véhicule, code personnel, fiche restée ouverte.',
     types: ['check_vehicule_due', 'pin_recall_check', 'pin_setup_reminder', 'fiche_ouverte_rappel'] },
   { key: 'parc', label: 'Parc', desc: 'Vérification du parc, dérogation de restitution, expert, saisie.',
     types: ['verification_parc', 'restitution_derogation_requested', 'saisie_facturation', 'expert_access', 'expert_visit'] },
-  { key: 'repare', label: 'Rétabli', desc: 'Un service qui était en panne refonctionne.',
+  { key: 'repare', label: 'Réparé / rétabli', desc: 'Ce qui était en panne refonctionne (connexion AXA rétablie…).',
     types: ['axa_poll_up'] },
   { key: 'talkie', label: 'Talkie', desc: '« X te parle ».',
     types: ['talkie_message'] },

@@ -5,6 +5,7 @@ import { redirect }         from 'next/navigation'
 import { authOptions }      from '@/lib/auth'
 import { sessionAccess }    from '@/lib/access'
 import { SOUND_FAMILIES, loadSoundChoices } from '@/lib/notifications/sound-families'
+import { SOUND_LABELS }     from '@/lib/notifications/sound-labels'
 import SonsClient           from './SonsClient'
 
 export const dynamic = 'force-dynamic'
@@ -14,5 +15,5 @@ export default async function SonsNotificationsPage() {
   if (!session) redirect('/login')
   if (!sessionAccess(session).ok) redirect('/dashboard')
   const choices = await loadSoundChoices(true)
-  return <SonsClient families={SOUND_FAMILIES.map(f => ({ key: f.key, label: f.label, desc: f.desc }))} initial={choices} />
+  return <SonsClient families={SOUND_FAMILIES.map(f => ({ key: f.key, label: f.label, desc: f.desc }))} initial={choices} labels={SOUND_LABELS} />
 }
