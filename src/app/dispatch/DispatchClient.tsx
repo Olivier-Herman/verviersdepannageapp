@@ -90,8 +90,6 @@ interface Mission {
   auto_dispatch_driver_name?: string | null
   has_pending_derogation?: boolean
   invoice_number?: string | null
-  driver_eta_minutes?: number | null        // ETA chauffeur (ORS) rempli par le cron driver-etas
-  driver_eta_at?: string | null
   requested_by_garage_id?: string | null   // commande passée via l'espace client garage
   kaze_cancelled_after_accept?: boolean     // Kaze a annulé après acceptation → trajet à vide
   saisie_motif_code?: string | null          // motif saisie police (SAISIE_JUDICIAIRE → carte rouge)
@@ -215,12 +213,6 @@ function MobileRow({ m, activeTab, drivers, driverStatuses, sources, onRefresh, 
           <span className="text-ink-secondary text-[12.5px] truncate">{[m.vehicle_brand, m.vehicle_model].filter(Boolean).join(' ')}</span>
           {/* Lot P2 (11/09/2026) : roulant, ETA et « déjà en parc » comme sur les anciennes cartes. */}
           {m.is_rollable != null && <RollableMini v={m.is_rollable} />}
-          {(() => {
-            const etaFresh = m.driver_eta_at != null && (Date.now() - new Date(m.driver_eta_at).getTime() < 4 * 60 * 1000)
-            return etaFresh && m.driver_eta_minutes != null && m.assigned_to
-              ? <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10.5px] font-bold bg-emerald-100 text-emerald-800" title="Temps d'arrivée estimé du chauffeur">🚚 {m.driver_eta_minutes} min</span>
-              : null
-          })()}
           {m.vehicule_deja_en_parc && (
             <Link href={`/dispatch/${m.vehicule_deja_en_parc.mission_id}`} onClick={e => e.stopPropagation()}
               className={`px-1.5 py-0.5 rounded text-[10px] font-bold border ${m.vehicule_deja_en_parc.piste === 'relivraison' ? 'bg-blue-100 border-blue-400 text-blue-800' : 'bg-amber-100 border-amber-400 text-amber-900'}`}>
@@ -1090,15 +1082,6 @@ function MissionCard({ mission, drivers, driverStatuses, sources, onRefresh, onM
           )}
         </div>
         <div className="flex items-center gap-1.5 flex-shrink-0">
-          {(() => {
-            const etaFresh = mission.driver_eta_at != null && (Date.now() - new Date(mission.driver_eta_at).getTime() < 4 * 60 * 1000)
-            if (!etaFresh || mission.driver_eta_minutes == null || !mission.assigned_to) return null
-            return (
-              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-bold bg-emerald-100 text-emerald-800" title="Temps d'arrivée estimé du chauffeur (live)">
-                🚚 {mission.driver_eta_minutes} min
-              </span>
-            )
-          })()}
           {showDelai && (
             <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${delai.bgColor} ${delai.color} ${delai.pulse ? 'animate-pulse' : ''}`}>
               {delai.label}
