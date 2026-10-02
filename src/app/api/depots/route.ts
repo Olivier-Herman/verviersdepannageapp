@@ -1,4 +1,5 @@
 // src/app/api/depots/route.ts
+import { countRoutingCall } from '@/lib/routing/usage'
 import { NextResponse }      from 'next/server'
 import { getServerSession }  from 'next-auth'
 import { authOptions }       from '@/lib/auth'
@@ -17,6 +18,7 @@ async function geocodeIfMissing(addr: string, lat: number | null | undefined, ln
   try {
     const url = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(addr)}&key=${GMAPS_KEY}&language=fr`
     const r = await fetch(url)
+    void countRoutingCall('google', 'adresse', !r.ok)
     const j = await r.json()
     const loc = j.results?.[0]?.geometry?.location
     if (loc?.lat != null && loc?.lng != null) {

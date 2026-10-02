@@ -1,6 +1,7 @@
 // src/lib/googlemaps.ts
 // Utilise GOOGLE_MAPS_SERVER_KEY (clé serveur sans restriction HTTP)
 // pour Distance Matrix API côté serveur
+import { countRoutingCall } from '@/lib/routing/usage'
 
 export interface DistanceResult {
   distanceKm:  number
@@ -40,6 +41,7 @@ export async function getRouteDistance(
     }),
   })
 
+  void countRoutingCall('google', 'itineraire', !res.ok)
   if (!res.ok) {
     const text = await res.text()
     throw new Error(`Routes API ${res.status}: ${text.slice(0, 200)}`)

@@ -10,6 +10,7 @@
 // exacte ou lieu nommé, confiance élevée) ; sinon on laisse la fiche telle
 // quelle et la raison « à calculer » reste vraie.
 
+import { countRoutingCall } from '@/lib/routing/usage'
 const ORS_KEY  = process.env.ORS_API_KEY
 const ORS_BASE = 'https://api.openrouteservice.org'
 
@@ -44,9 +45,10 @@ async function geocodeGoogle(text: string): Promise<GeocodeHit | null> {
     + '&region=be&components=country:BE|country:LU|country:FR|country:NL|country:DE&language=fr&key=' + encodeURIComponent(GOOGLE_KEY)
   try {
     const r = await fetch(url, { cache: 'no-store', signal: AbortSignal.timeout(6000) })
-    if (!r.ok) { lastFailure = 'transient'; return null }
+    if (!r.ok) { void countRoutingCall('google', 'adresse', true); lastFailure = 'transient'; return null }
     const j: any = await r.json()
     const status = String(j?.status || '')
+    void countRoutingCall('google', 'adresse', status !== 'OK' && status !== 'ZERO_RESULTS')
     if (status === 'ZERO_RESULTS') { lastFailure = 'not_found'; return null }
     if (status !== 'OK') { lastFailure = 'transient'; console.warn('[geocode] google', status, j?.error_message); return null }
     const res = (j.results || []).find((x: any) => !x.partial_match) || j.results?.[0]
@@ -89,8 +91,9 @@ export async function geocodeAddressServer(raw: string | null | undefined): Prom
   let j: any = null
   try {
     const r = await fetch(url, { cache: 'no-store', signal: AbortSignal.timeout(6000) })
-    if (!r.ok) { lastFailure = 'transient'; return null }
+    if (!r.ok) { void countRoutingCall('ors', 'adresse', true); lastFailure = 'transient'; return null }
     j = await r.json()
+    void countRoutingCall('ors', 'adresse', !!j?.error)
     if (j?.error) { lastFailure = 'transient'; console.warn('[geocode] ors:', j.error); return null }   // « Quota exceeded » arrive en 200
   } catch { lastFailure = 'transient'; return null }
   const feats: any[] = Array.isArray(j?.features) ? j.features : []

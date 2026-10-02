@@ -18,6 +18,7 @@
 // ⚠️ Écrit sur la prod Allianz. dryRun=true s arrête après l étape 2 (aucune
 // écriture) et renvoie le payload expertreports qui SERAIT envoyé.
 
+import { countRoutingCall } from '@/lib/routing/usage'
 import { createAdminClient } from '@/lib/supabase'
 
 const BASE_URL = 'https://global.allianzpartners-providerplatform.com'
@@ -115,6 +116,7 @@ async function geocodeAddress(address: string): Promise<
   if (!key || !addr) return null
   try {
     const r = await fetch(`https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(addr)}&region=be&language=fr&key=${key}`, { signal: AbortSignal.timeout(10000) })
+    void countRoutingCall('google', 'adresse', !r.ok)
     const j = await r.json()
     const res = j.results?.[0]
     if (!res?.geometry?.location) return null

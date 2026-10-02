@@ -20,6 +20,7 @@
 
 import { createAdminClient } from '@/lib/supabase'
 import { routingMode, markRoutePending } from '@/lib/routing/mode'
+import { countRoutingCall } from '@/lib/routing/usage'
 
 export interface Coord { lat: number; lng: number }
 /** `pending` : trajet inconnu de la mémoire en mode 'cache' (à calculer). */
@@ -61,6 +62,7 @@ async function googleDrivingRoute(a: Coord, b: Coord): Promise<RouteResult | nul
       }),
       signal: AbortSignal.timeout(6000),
     })
+    void countRoutingCall('google', 'itineraire', !res.ok)
     if (!res.ok) throw new Error(`Google Routes ${res.status}`)
     const j = await res.json()
     const r = j.routes?.[0]
@@ -145,7 +147,7 @@ export async function getDrivingRoute(
 
   // 0) Mémoire durable : un trajet déjà calculé ne se paie plus jamais.
   const stored = await readStoredRoute(k)
-  if (stored) return cache(stored)
+  if (stored) { void countRoutingCall('memoire', 'itineraire'); return cache(stored) }
 
   // Affichage seul (ouverture de fiche) : aucun appel réseau. Le prix dira
   // « à calculer » et le bouton Calculer fera le calcul.
@@ -165,9 +167,10 @@ export async function getDrivingRoute(
         body:    JSON.stringify({ coordinates: [[a.lng, a.lat], [b.lng, b.lat]], preference: pref }),
         signal:  AbortSignal.timeout(2500),
       })
+      const j = res.ok ? await res.json() : null
+      const s = j?.routes?.[0]?.summary
+      void countRoutingCall('ors', 'itineraire', !res.ok || !s)
       if (!res.ok) throw new Error(`ORS ${res.status}`)
-      const j = await res.json()
-      const s = j.routes?.[0]?.summary
       if (!s || s.distance == null) throw new Error('no route')
       orsFails = 0
       const r: RouteResult = { minutes: Math.max(1, Math.round(s.duration / 60)), km: Math.round(s.distance / 100) / 10, approx: false }
@@ -204,6 +207,7 @@ export async function getDrivingMatrix(origins: Coord[], dest: Coord): Promise<R
       body:    JSON.stringify({ locations, sources: origins.map((_, i) => i), destinations: [destIdx], metrics: ['duration', 'distance'] }),
       signal:  AbortSignal.timeout(10000),
     })
+    void countRoutingCall('ors', 'matrice', !res.ok)
     if (!res.ok) throw new Error(`ORS matrix ${res.status}`)
     const j = await res.json()
     return origins.map((o, i) => {

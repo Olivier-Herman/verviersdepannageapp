@@ -5,6 +5,7 @@
 // Declenche l'auto-dispatch sequentiel sur une mission.
 // Accessible aux users avec module 'auto_dispatch' actif ou role admin/superadmin/dispatcher.
 
+import { countRoutingCall } from '@/lib/routing/usage'
 import { NextResponse }      from 'next/server'
 import { getServerSession }  from 'next-auth'
 import { authOptions }       from '@/lib/auth'
@@ -68,6 +69,7 @@ export async function POST(req: Request) {
     }
     try {
       const geoRes = await fetch(`https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(addr)}&key=${key}&language=fr&region=be`)
+      void countRoutingCall('google', 'adresse', !geoRes.ok)
       const geo = await geoRes.json()
       const loc = geo?.results?.[0]?.geometry?.location
       if (!loc?.lat || !loc?.lng) {
