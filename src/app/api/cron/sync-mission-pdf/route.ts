@@ -16,12 +16,13 @@ export const maxDuration = 300   // 5 min : laisse le temps de batch
 import { NextResponse }      from 'next/server'
 import { createAdminClient } from '@/lib/supabase'
 import { attachMissionPdf }  from '@/lib/missions/attach-mission-pdf'
+import { withAiContext } from '@/lib/ai/usage'
 
 const RECENT_DAYS  = 30
 const BATCH_LIMIT  = 30   // limite stricte par execution pour ne pas timeout
 const MAX_ATTEMPTS = 5
 
-export async function GET(req: Request) {
+async function handleGET(req: Request) {
   const authHeader = req.headers.get('authorization')
   if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -79,4 +80,10 @@ export async function GET(req: Request) {
     failed,
     results,
   })
+}
+
+
+// Les appels d'IA de ce passage sont comptés sous « cron:sync-mission-pdf » (conso_ia).
+export async function GET(...args: Parameters<typeof handleGET>) {
+  return withAiContext({ declencheur: 'cron:sync-mission-pdf' }, () => handleGET(...args))
 }

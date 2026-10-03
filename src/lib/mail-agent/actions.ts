@@ -21,6 +21,7 @@ import { getAppOnlyToken } from '@/lib/graph-mail-search'
 import { getMessageText, forwardMessage, findFolderIdByName, moveMessage } from './graph'
 import { readAutoFamilies } from './triage'
 import { COMPANIES, type CompanyKey } from './handlers/fournisseur'
+import { aiClient } from '@/lib/ai/usage'
 
 export const OUT_MAILBOX = 'administration@verviersdepannage.com'
 const SIGNATURE = `<p>Bien à vous,<br>Verviers Dépannage SA<br>Lefin 12, 4860 Pepinster · 087/35 18 20 · administration@verviersdepannage.com</p>`
@@ -84,7 +85,7 @@ function pickInvoice(item: any, wanted?: string | null) {
 }
 
 let _claude: Anthropic | null = null
-const claude = () => (_claude ??= new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY! }))
+const claude = () => (_claude ??= aiClient('mail-agent/actions', { apiKey: process.env.ANTHROPIC_API_KEY! }))
 async function writeReply(item: any, intent: string, extra: string, instruction?: string | null): Promise<{ subject: string; html: string }> {
   const text = (await getMessageText(item.mailbox, item.message_id)).slice(0, 6000)
   const x = item.extracted || {}

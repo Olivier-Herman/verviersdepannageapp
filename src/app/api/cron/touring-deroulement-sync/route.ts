@@ -11,6 +11,7 @@ import {
   getBkoAccounts, loginComexBko, listBkoAccords,
   listBkoDeroulementForAccord, listBkoDeroulementInWait, type BkoDossierDetail,
 } from '@/lib/touring/comex-bko'
+import { withAiContext } from '@/lib/ai/usage'
 
 export const dynamic     = 'force-dynamic'
 export const maxDuration = 120
@@ -54,7 +55,7 @@ function toRow(d: BkoDossierDetail, account: string, statut: string) {
   }
 }
 
-export async function GET(req: Request) {
+async function handleGET(req: Request) {
   if (!process.env.CRON_SECRET || req.headers.get('authorization') !== `Bearer ${process.env.CRON_SECRET}`) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
@@ -97,4 +98,10 @@ export async function GET(req: Request) {
   summary.upserted = upserted
   console.log('[cron touring-deroulement]', JSON.stringify({ upserted, accounts: summary.accounts }))
   return NextResponse.json(summary)
+}
+
+
+// Les appels d'IA de ce passage sont comptés sous « cron:touring-deroulement-sync » (conso_ia).
+export async function GET(...args: Parameters<typeof handleGET>) {
+  return withAiContext({ declencheur: 'cron:touring-deroulement-sync' }, () => handleGET(...args))
 }

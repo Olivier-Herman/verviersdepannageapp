@@ -25,6 +25,7 @@ export const maxDuration = 300
 
 import { NextResponse }      from 'next/server'
 import { createAdminClient } from '@/lib/supabase'
+import { withAiContext } from '@/lib/ai/usage'
 
 /** Statuts qui signifient « l'intervention est finie chez nous ». */
 const TERMINÉES = ['to_invoice', 'completed', 'parked']
@@ -48,7 +49,7 @@ async function trace(payload: Record<string, unknown>) {
   } catch { /* la trace ne doit jamais faire échouer le cron */ }
 }
 
-export async function GET(req: Request) {
+async function handleGET(req: Request) {
   if (req.headers.get('authorization') !== `Bearer ${process.env.CRON_SECRET}`) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
@@ -213,4 +214,10 @@ export async function GET(req: Request) {
     await trace({ ok: false, error: e?.message || 'erreur' })
     return NextResponse.json({ error: e?.message || 'erreur' }, { status: 500 })
   }
+}
+
+
+// Les appels d'IA de ce passage sont comptés sous « cron:vab-close-retry » (conso_ia).
+export async function GET(...args: Parameters<typeof handleGET>) {
+  return withAiContext({ declencheur: 'cron:vab-close-retry' }, () => handleGET(...args))
 }

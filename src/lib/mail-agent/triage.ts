@@ -17,6 +17,7 @@ import Anthropic from '@anthropic-ai/sdk'
 import { ANTHROPIC_MODEL } from '@/lib/anthropic-model'
 import { odooRpc } from '@/lib/odoo'
 import { getMessageText, type AgentMessage } from './graph'
+import { aiClient } from '@/lib/ai/usage'
 
 export const FAMILIES: Record<string, string> = {
   demande_avoir:     'Demande de note de crédit',
@@ -82,7 +83,7 @@ export function isHandledElsewhere(msg: AgentMessage, folder = ''): boolean {
 }
 
 let _client: Anthropic | null = null
-const client = () => (_client ??= new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY! }))
+const client = () => (_client ??= aiClient('mail-agent/triage', { apiKey: process.env.ANTHROPIC_API_KEY! }))
 const OUR_INVOICE_RE = /\b(20\d{2}\/\d{2}\/\d{3,4})\b/g
 const PLATE_RE = /\b([1-9][A-Z]{3}\d{3}|[A-Z]{3}\d{3}|\d{1,3}[A-Z]{3}\d{1,3}|[A-Z]{2}\d{3}[A-Z]{2})\b/g
 

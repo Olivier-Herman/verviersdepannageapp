@@ -23,6 +23,7 @@ import { createReplyDraft, findFolderIdByName, htmlToText } from '@/lib/mail-age
 import { sendNotification } from '@/lib/notifications/send'
 import { REGLES_COMMUNES, EQUIPE_VD, FICHE, SAVOIR } from './consignes'
 import { renderAbandonPdf, abandonMissingFields, type AbandonLang } from '@/lib/documents/abandon-pdf'
+import { aiClient } from '@/lib/ai/usage'
 
 const MAILBOX = 'info@verviersdepannage.com'
 const GRAPH = 'https://graph.microsoft.com/v1.0'
@@ -223,7 +224,7 @@ async function runTool(name: string, input: any, files: DraftFile[]): Promise<st
 
 async function draftFor(mail: Mail): Promise<{ html: string; summary: string; usage: Usage; files: DraftFile[] }> {
   const docs: DraftFile[] = []
-  const client = new Anthropic()
+  const client = aiClient('mobia/run')
   const usage: Usage = { entree: 0, sortie: 0, cache_lu: 0, cache_ecrit: 0 }
   const { text, files } = await readMessage(MAILBOX, mail.id, true)
   const messages: any[] = [{ role: 'user', content: [

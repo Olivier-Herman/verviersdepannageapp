@@ -12,8 +12,9 @@ export const maxDuration = 60
 
 import { NextResponse } from 'next/server'
 import { reprocessErrorMissions } from '@/lib/missions/reprocess-errors'
+import { withAiContext } from '@/lib/ai/usage'
 
-export async function GET(req: Request) {
+async function handleGET(req: Request) {
   const auth = req.headers.get('authorization')
   if (!process.env.CRON_SECRET || auth !== `Bearer ${process.env.CRON_SECRET}`) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -28,4 +29,10 @@ export async function GET(req: Request) {
     console.error('[CronReprocessErrors]', e.message)
     return NextResponse.json({ error: e.message }, { status: 500 })
   }
+}
+
+
+// Les appels d'IA de ce passage sont comptés sous « cron:reprocess-errors » (conso_ia).
+export async function GET(...args: Parameters<typeof handleGET>) {
+  return withAiContext({ declencheur: 'cron:reprocess-errors' }, () => handleGET(...args))
 }

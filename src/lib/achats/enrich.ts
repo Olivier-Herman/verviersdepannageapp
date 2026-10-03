@@ -9,9 +9,10 @@
 import Anthropic from '@anthropic-ai/sdk'
 import { ANTHROPIC_MODEL } from '@/lib/anthropic-model'
 import { searchAllMailboxes, isGraphConfigured } from '@/lib/graph-mail-search'
+import { aiClient } from '@/lib/ai/usage'
 
 let _client: Anthropic | null = null
-const getClient = () => (_client ??= new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY! }))
+const getClient = () => (_client ??= aiClient('achats/enrich', { apiKey: process.env.ANTHROPIC_API_KEY! }))
 
 export interface SupplierEnrichment { email: string | null; phone: string | null; contact_name: string | null; payment_terms: string | null; source_count: number }
 

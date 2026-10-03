@@ -20,6 +20,7 @@ import Anthropic from '@anthropic-ai/sdk'
 import { ANTHROPIC_CHEAP_MODELS, ANTHROPIC_MODELS, createWithModelFallback } from '@/lib/anthropic-model'
 import { motifsForBranch, suggestByKeywords } from './motifs'
 import type { Branch } from './outcomes'
+import { aiClient } from '@/lib/ai/usage'
 
 const TIMEOUT_MS = 4000
 const MODELS = [...ANTHROPIC_CHEAP_MODELS, ...ANTHROPIC_MODELS]
@@ -28,7 +29,7 @@ let _client: Anthropic | null = null
 function client(): Anthropic | null {
   const apiKey = process.env.ANTHROPIC_API_KEY
   if (!apiKey) return null
-  return (_client ??= new Anthropic({ apiKey }))
+  return (_client ??= aiClient('cloture/suggest', { apiKey }))
 }
 
 export interface SuggestInput {

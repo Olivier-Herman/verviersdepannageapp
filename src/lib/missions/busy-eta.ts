@@ -21,6 +21,7 @@ import Anthropic from '@anthropic-ai/sdk'
 import { createAdminClient } from '@/lib/supabase'
 import { getDrivingRoute, type Coord } from '@/lib/routing/ors'
 import { ANTHROPIC_MODELS, createWithModelFallback } from '@/lib/anthropic-model'
+import { aiClient } from '@/lib/ai/usage'
 
 const BUSY_STATUSES   = ['assigned', 'accepted', 'in_progress', 'delivering']
 const REM_LOAD_MIN    = 25   // sur place → chargé (remorquage), 3 cas sur 4
@@ -67,7 +68,7 @@ async function likelyOutcome(m: any): Promise<'dsp' | 'rem'> {
   const apiKey = process.env.ANTHROPIC_API_KEY
   if (apiKey) {
     try {
-      const client = new Anthropic({ apiKey })
+      const client = aiClient('missions/busy-eta', { apiKey })
       const resp = await Promise.race([
         createWithModelFallback(client, ANTHROPIC_MODELS, {
           max_tokens: 5,

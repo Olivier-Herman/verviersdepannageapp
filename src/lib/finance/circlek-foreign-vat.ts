@@ -7,6 +7,7 @@
 import Anthropic from '@anthropic-ai/sdk'
 import { ANTHROPIC_MODELS, createWithModelFallback } from '@/lib/anthropic-model'
 import { odooRpc } from '@/lib/odoo'
+import { aiClient } from '@/lib/ai/usage'
 
 const SUSPENSE = 265
 const r2 = (n: number) => Math.round(n * 100) / 100
@@ -16,7 +17,7 @@ interface Totals { ht: number; tva: number; ttc: number; rate: number | null; co
 
 /** Lit les totaux sur le PDF de la facture (Claude, document PDF). */
 export async function readTotals(pdfBase64: string): Promise<Totals | null> {
-  const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
+  const client = aiClient('finance/circlek-foreign-vat', { apiKey: process.env.ANTHROPIC_API_KEY })
   const resp = await createWithModelFallback(client, ANTHROPIC_MODELS, {
     max_tokens: 300,
     system: 'Tu lis une facture de carburant Circle K. Réponds UNIQUEMENT par un JSON strict, sans markdown.',

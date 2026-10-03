@@ -11,11 +11,12 @@ import { createAdminClient }    from '@/lib/supabase'
 import { fetchPayslipMails }    from '@/lib/paie/fetch-mail'
 import { extractPayslipPdf, ingestPayslipPdf } from '@/lib/paie/process-batch'
 import { pushEligiblePayslips } from '@/lib/paie/push-odoo'
+import { withAiContext } from '@/lib/ai/usage'
 
 export const dynamic     = 'force-dynamic'
 export const maxDuration = 300
 
-export async function GET(req: Request) {
+async function handleGET(req: Request) {
   const auth = req.headers.get('authorization')
   const okCron = process.env.CRON_SECRET && auth === `Bearer ${process.env.CRON_SECRET}`
   if (!okCron) {
@@ -78,4 +79,10 @@ export async function GET(req: Request) {
     console.error('[paie-fetch]', e.message)
     return NextResponse.json({ error: e.message }, { status: 500 })
   }
+}
+
+
+// Les appels d'IA de ce passage sont comptés sous « cron:paie-fetch » (conso_ia).
+export async function GET(...args: Parameters<typeof handleGET>) {
+  return withAiContext({ declencheur: 'cron:paie-fetch' }, () => handleGET(...args))
 }

@@ -20,6 +20,7 @@ import { runTouringCancelDetect } from '@/lib/touring/cancel-detect'
 import { sendPushToRole } from '@/lib/push'
 import { withOdooActor } from '@/lib/odoo'
 import { createOdooDossierForMission } from '@/lib/missions/odoo-dossier'
+import { withAiContext } from '@/lib/ai/usage'
 
 export const dynamic     = 'force-dynamic'
 export const maxDuration = 60
@@ -288,7 +289,7 @@ async function runTouringStepRepair(
   return { scanned: data.length, repaired }
 }
 
-export async function GET(req: Request) {
+async function handleGET(req: Request) {
   const authHeader = req.headers.get('authorization')
   if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -415,4 +416,10 @@ export async function GET(req: Request) {
     // Les balayages SLA ont déjà tourné (en amont, indépendants) → on les renvoie.
     return NextResponse.json({ ok: false, error: e.message, slaRoad, sla }, { status: 500 })
   }
+}
+
+
+// Les appels d'IA de ce passage sont comptés sous « cron:touring-comex-poll » (conso_ia).
+export async function GET(...args: Parameters<typeof handleGET>) {
+  return withAiContext({ declencheur: 'cron:touring-comex-poll' }, () => handleGET(...args))
 }

@@ -8,6 +8,7 @@
 
 import Anthropic from '@anthropic-ai/sdk'
 import { ANTHROPIC_MODEL } from '@/lib/anthropic-model'
+import { aiClient } from '@/lib/ai/usage'
 
 export interface ExtractedTariff {
   source:                string
@@ -66,7 +67,7 @@ function getClient(): Anthropic {
   if (!apiKey) {
     throw new Error('ANTHROPIC_API_KEY manquant en env vars')
   }
-  cachedClient = new Anthropic({ apiKey })
+  cachedClient = aiClient('anthropic-pdf', { apiKey })
   return cachedClient
 }
 

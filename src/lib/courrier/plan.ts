@@ -7,9 +7,10 @@
 import Anthropic from '@anthropic-ai/sdk'
 import { ANTHROPIC_MODELS, createWithModelFallback } from '@/lib/anthropic-model'
 import { DOC_TYPES, ENTITIES, type CourrierReading, type DocType, type EntityKey, type PlanStep } from './types'
+import { aiClient } from '@/lib/ai/usage'
 
 let client: Anthropic | null = null
-const getClient = () => client || (client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY! }))
+const getClient = () => client || (client = aiClient('courrier/plan', { apiKey: process.env.ANTHROPIC_API_KEY! }))
 
 const KINDS = `Gestes possibles (kind → params) :
 - attach_mission { mission_id } : ranger le scan dans la fiche (documents) et le noter au journal de la fiche.

@@ -13,6 +13,7 @@ import { persistCheckList } from '@/lib/touring/check-persist'
 import { getCheckToken, getCheckEmail, checkLink, CHECK_EMAIL_BCC } from '@/lib/touring/check-config'
 import { sendEmail, emailLayout } from '@/lib/emails'
 import { getBusinessList } from '@/lib/settings/business'
+import { withAiContext } from '@/lib/ai/usage'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 120
@@ -36,7 +37,7 @@ function buildHtml(count: number, link: string): string {
   `, `Dossiers Touring à vérifier — ${mois}`)
 }
 
-export async function GET(req: Request) {
+async function handleGET(req: Request) {
   const auth = req.headers.get('authorization')
   if (!process.env.CRON_SECRET || auth !== `Bearer ${process.env.CRON_SECRET}`) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -60,4 +61,10 @@ export async function GET(req: Request) {
   } catch (e: any) {
     return NextResponse.json({ ok: false, error: e?.message || 'échec' }, { status: 502 })
   }
+}
+
+
+// Les appels d'IA de ce passage sont comptés sous « cron:touring-check-reminder » (conso_ia).
+export async function GET(...args: Parameters<typeof handleGET>) {
+  return withAiContext({ declencheur: 'cron:touring-check-reminder' }, () => handleGET(...args))
 }

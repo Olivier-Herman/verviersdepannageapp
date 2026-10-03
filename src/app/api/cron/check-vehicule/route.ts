@@ -3,8 +3,9 @@ export const dynamic = 'force-dynamic'
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase'
 import { sendPushToUser } from '@/lib/push'
+import { withAiContext } from '@/lib/ai/usage'
 
-export async function GET(req: NextRequest) {
+async function handleGET(req: NextRequest) {
   const authHeader = req.headers.get('authorization')
   if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -48,4 +49,10 @@ export async function GET(req: NextRequest) {
   }
 
   return NextResponse.json({ activated, date: today })
+}
+
+
+// Les appels d'IA de ce passage sont comptés sous « cron:check-vehicule » (conso_ia).
+export async function GET(...args: Parameters<typeof handleGET>) {
+  return withAiContext({ declencheur: 'cron:check-vehicule' }, () => handleGET(...args))
 }

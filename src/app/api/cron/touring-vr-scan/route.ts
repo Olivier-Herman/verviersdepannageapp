@@ -19,6 +19,7 @@ import { NextResponse }         from 'next/server'
 import { createAdminClient }    from '@/lib/supabase'
 import { loginComex, getComexMissionDetail } from '@/lib/touring/comex'
 import { sendPushToUser }       from '@/lib/push'
+import { withAiContext } from '@/lib/ai/usage'
 
 export const dynamic     = 'force-dynamic'
 export const maxDuration = 60
@@ -31,7 +32,7 @@ const ACTIVE_STATUSES = ['new', 'dispatching', 'assigned', 'accepted', 'in_progr
 const AFTER_CLOSE_STATUSES = ['parked', 'completed', 'to_invoice']
 const AFTER_CLOSE_MS = 24 * 3600_000
 
-export async function GET(req: Request) {
+async function handleGET(req: Request) {
   if (!process.env.CRON_SECRET || req.headers.get('authorization') !== `Bearer ${process.env.CRON_SECRET}`) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
@@ -137,4 +138,10 @@ export async function GET(req: Request) {
   }
 
   return NextResponse.json({ ok: true, scanned: candidates.length, captured, results })
+}
+
+
+// Les appels d'IA de ce passage sont comptés sous « cron:touring-vr-scan » (conso_ia).
+export async function GET(...args: Parameters<typeof handleGET>) {
+  return withAiContext({ declencheur: 'cron:touring-vr-scan' }, () => handleGET(...args))
 }

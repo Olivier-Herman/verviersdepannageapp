@@ -8,8 +8,9 @@ export const maxDuration = 60
 
 import { NextResponse } from 'next/server'
 import { runVabImport } from '@/lib/vab/import'
+import { withAiContext } from '@/lib/ai/usage'
 
-export async function GET(req: Request) {
+async function handleGET(req: Request) {
   const authHeader = req.headers.get('authorization')
   if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -54,4 +55,10 @@ async function trace(payload: Record<string, unknown>) {
     runs.push(entry)
     await sb.from('app_settings').upsert({ key: 'vab_poll_runs', value: JSON.stringify(runs.slice(-24)) }, { onConflict: 'key' })
   } catch { /* la trace ne doit jamais faire échouer le cron */ }
+}
+
+
+// Les appels d'IA de ce passage sont comptés sous « cron:vab-poll » (conso_ia).
+export async function GET(...args: Parameters<typeof handleGET>) {
+  return withAiContext({ declencheur: 'cron:vab-poll' }, () => handleGET(...args))
 }

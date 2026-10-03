@@ -9,13 +9,14 @@ import { createAdminClient } from '@/lib/supabase'
 import { getTgrSupervisionData } from '@/lib/tgr/supervision'
 import { buildTgrReportEmail } from '@/lib/tgr/report-email'
 import { sendEmail } from '@/lib/emails'
+import { withAiContext } from '@/lib/ai/usage'
 
 export const dynamic     = 'force-dynamic'
 export const maxDuration = 60
 
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://app.verviersdepannage.com'
 
-export async function GET(req: NextRequest) {
+async function handleGET(req: NextRequest) {
   if (req.headers.get('authorization') !== `Bearer ${process.env.CRON_SECRET}`) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
@@ -40,4 +41,10 @@ export async function GET(req: NextRequest) {
   const { subject, html } = buildTgrReportEmail(s, monthLabel, link)
   await sendEmail(email, subject, html)
   return NextResponse.json({ ok: true, sent_to: email, month: monthLabel, stats: s })
+}
+
+
+// Les appels d'IA de ce passage sont comptés sous « cron:tgr-supervisor-report » (conso_ia).
+export async function GET(...args: Parameters<typeof handleGET>) {
+  return withAiContext({ declencheur: 'cron:tgr-supervisor-report' }, () => handleGET(...args))
 }

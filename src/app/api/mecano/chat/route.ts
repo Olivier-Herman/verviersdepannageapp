@@ -17,6 +17,7 @@ import { canUseMatthieu }    from '@/lib/mecano/access'
 import { cleanVin, isPlausibleVin, decodeVinYear } from '@/lib/mecano/vin'
 import Anthropic             from '@anthropic-ai/sdk'
 import { ANTHROPIC_MODEL }   from '@/lib/anthropic-model'
+import { aiClient } from '@/lib/ai/usage'
 
 export const dynamic     = 'force-dynamic'
 export const maxDuration  = 60
@@ -141,7 +142,7 @@ export async function POST(req: Request) {
 
   const apiKey = process.env.ANTHROPIC_API_KEY
   if (!apiKey) return NextResponse.json({ error: 'IA indisponible (clé manquante)' }, { status: 503 })
-  const client = new Anthropic({ apiKey })
+  const client = aiClient('mecano/chat', { apiKey })
 
   const ctx = `Chauffeur (prénom/surnom à utiliser) : ${firstName || 'inconnu'}\nLangue du chauffeur : ${langName} — RÉPONDS DANS CETTE LANGUE.\n\nContexte véhicule (à CONFIRMER avant toute procédure — le modèle est souvent vague) :\n- Marque : ${brand || 'INCONNUE'}\n- Modèle annoncé sur la fiche : ${model || 'non précisé'}\n- Année : ${year || (vinYear ? `${vinYear} (déduite du VIN)` : 'non communiquée')}\n- VIN : ${vin || 'non communiqué'}${vin ? ` — VIN réel validé${vinYear ? `, année-modèle ${vinYear}` : ''} : sers-t'en pour verrouiller la génération, ne le redemande pas` : ''}\n${generations.length ? `- Générations que tu connais pour ${brand} : ${generations.join(' · ')}` : brand ? `- (pas encore de fiches importées pour ${brand})` : ''}\n\nChaque fiche jointe porte SA génération dans son titre : n'utilise que celle qui colle au véhicule confirmé.`
 

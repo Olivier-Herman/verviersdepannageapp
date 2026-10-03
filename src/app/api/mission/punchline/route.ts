@@ -11,6 +11,7 @@ import { getServerSession } from 'next-auth'
 import { authOptions }      from '@/lib/auth'
 import Anthropic            from '@anthropic-ai/sdk'
 import { ANTHROPIC_CHEAP_MODELS, createWithModelFallback } from '@/lib/anthropic-model'
+import { aiClient } from '@/lib/ai/usage'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 20
@@ -32,7 +33,7 @@ export async function POST(req: Request) {
     : `il en a ${count}, rythme de dingue — encense-le à mort (machine, légende, faut le cloner…)`
 
   try {
-    const client = new Anthropic({ apiKey })
+    const client = aiClient('mission/punchline', { apiKey })
     const msg = await createWithModelFallback(client, ANTHROPIC_CHEAP_MODELS, {
       max_tokens: 60,
       system: `Tu génères UNE punchline très courte (max 14 mots) en français FAMILIER/belge pour un chauffeur-dépanneur, selon son nombre de missions du jour. Ton : drôle, cash, bon esprit, taquin — jamais méchant ni vulgaire. Tu tutoies, tu peux utiliser son prénom. 0 ou 1 emoji max. Réponds UNIQUEMENT la phrase, sans guillemets ni préambule.`,

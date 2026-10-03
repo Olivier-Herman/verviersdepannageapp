@@ -12,6 +12,7 @@ import Anthropic from '@anthropic-ai/sdk'
 import { createAdminClient } from '@/lib/supabase'
 import { TOOLS_BY_NAME, toolsForClaude, ToolContext } from './tools'
 import { ANTHROPIC_MODEL } from '@/lib/anthropic-model'
+import { aiClient } from '@/lib/ai/usage'
 
 const MODEL = ANTHROPIC_MODEL
 const MAX_TOOL_ITERATIONS = 10  // safety : eviter boucle infinie
@@ -21,7 +22,7 @@ function getClient(): Anthropic {
   if (cachedClient) return cachedClient
   const apiKey = process.env.ANTHROPIC_API_KEY
   if (!apiKey) throw new Error('ANTHROPIC_API_KEY manquant en env vars')
-  cachedClient = new Anthropic({ apiKey })
+  cachedClient = aiClient('assistant/claude', { apiKey })
   return cachedClient
 }
 

@@ -10,6 +10,7 @@ import { PDFDocument } from 'pdf-lib'
 import Anthropic from '@anthropic-ai/sdk'
 import { ANTHROPIC_MODEL } from '@/lib/anthropic-model'
 import { normalizeEtatCivil } from '@/lib/paie/compare-infos'
+import { aiClient } from '@/lib/ai/usage'
 
 const stripAccents = (s: string) => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '')
 /** Clé de matching nom : minuscules, sans accent, MOTS TRIÉS (ordre indifférent). */
@@ -34,7 +35,7 @@ interface PayslipRange {
 /** Claude lit le PDF et renvoie une plage de pages par FICHE (un travailleur
  *  peut avoir plusieurs fiches le même mois). */
 async function detectRanges(pdfB64: string): Promise<PayslipRange[]> {
-  const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY! })
+  const client = aiClient('paie/process-batch', { apiKey: process.env.ANTHROPIC_API_KEY! })
   const prompt = `Ce PDF contient PLUSIEURS fiches de paie. ATTENTION : un même travailleur peut avoir PLUSIEURS fiches le même mois (ex : Salaire ordinaire, Prime, Pécule/double pécule de vacances, Congé). Chaque fiche est une entrée distincte.
 Pour CHAQUE fiche, donne le NOM COMPLET du travailleur, le TYPE et sa plage de pages.
 Réponds UNIQUEMENT en JSON valide :

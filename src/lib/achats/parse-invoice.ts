@@ -9,6 +9,7 @@
 
 import Anthropic from '@anthropic-ai/sdk'
 import { ANTHROPIC_MODEL } from '@/lib/anthropic-model'
+import { aiClient } from '@/lib/ai/usage'
 
 // Taxonomie fermée (dépannage / garage). L'IA DOIT choisir dans cette liste.
 export const CATEGORIES = [
@@ -37,7 +38,7 @@ export const CATEGORIES = [
 
 let _client: Anthropic | null = null
 function getClient(): Anthropic {
-  if (!_client) _client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY! })
+  if (!_client) _client = aiClient('achats/parse-invoice', { apiKey: process.env.ANTHROPIC_API_KEY! })
   return _client
 }
 

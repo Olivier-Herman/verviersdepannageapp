@@ -20,6 +20,7 @@ import Anthropic from '@anthropic-ai/sdk'
 import { ANTHROPIC_MODEL } from '@/lib/anthropic-model'
 import type { MailHandler, RejectEntity, RejectExtraction } from './types'
 import { getBusinessList } from '@/lib/settings/business'
+import { aiClient } from '@/lib/ai/usage'
 
 export let AWP_SENDERS: string[] = []
 
@@ -29,7 +30,7 @@ export const AWP_DONE_FOLDER = 'MONDIAL Automatic Dispatch'
 const OUR_INVOICE_RE = /\b(\d{4}\/\d{2}\/\d{3,4})\b/
 
 let _client: Anthropic | null = null
-const getClient = () => (_client ??= new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY! }))
+const getClient = () => (_client ??= aiClient('mail-agent/handlers/awp-rejet', { apiKey: process.env.ANTHROPIC_API_KEY! }))
 
 const PROMPT = `Tu lis un courrier de rejet de facture envoyé par Allianz Partners / AWP (Mondial Assistance) à un prestataire de dépannage belge. Le document est généralement en néerlandais.
 

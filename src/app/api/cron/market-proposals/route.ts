@@ -9,11 +9,12 @@ import { NextRequest, NextResponse } from 'next/server'
 import { tickProposals } from '@/lib/missions/market-proposals'
 import { createAdminClient } from '@/lib/supabase'
 import { sendNotificationToRoles } from '@/lib/notifications/send'
+import { withAiContext } from '@/lib/ai/usage'
 
 export const dynamic    = 'force-dynamic'
 export const fetchCache = 'force-no-store'
 
-export async function GET(req: NextRequest) {
+async function handleGET(req: NextRequest) {
   const auth = req.headers.get('authorization')
   if (!process.env.CRON_SECRET || auth !== `Bearer ${process.env.CRON_SECRET}`) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -40,4 +41,10 @@ export async function GET(req: NextRequest) {
     } catch { /* on a déjà loggé l'erreur d'origine */ }
     return NextResponse.json({ ok: false, error: e?.message }, { status: 500 })
   }
+}
+
+
+// Les appels d'IA de ce passage sont comptés sous « cron:market-proposals » (conso_ia).
+export async function GET(...args: Parameters<typeof handleGET>) {
+  return withAiContext({ declencheur: 'cron:market-proposals' }, () => handleGET(...args))
 }

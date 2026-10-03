@@ -16,6 +16,7 @@ import { getServerSession } from 'next-auth'
 import { authOptions }      from '@/lib/auth'
 import Anthropic            from '@anthropic-ai/sdk'
 import { ANTHROPIC_MODEL }  from '@/lib/anthropic-model'
+import { aiClient } from '@/lib/ai/usage'
 
 export const dynamic     = 'force-dynamic'
 export const maxDuration = 60
@@ -30,7 +31,7 @@ function getClient(): Anthropic {
   if (cachedClient) return cachedClient
   const apiKey = process.env.ANTHROPIC_API_KEY
   if (!apiKey) throw new Error('ANTHROPIC_API_KEY manquant en env vars')
-  cachedClient = new Anthropic({ apiKey })
+  cachedClient = aiClient('advances/ocr', { apiKey })
   return cachedClient
 }
 

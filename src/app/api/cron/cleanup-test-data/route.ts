@@ -13,6 +13,7 @@ export const dynamic = 'force-dynamic'
 
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase'
+import { withAiContext } from '@/lib/ai/usage'
 
 const PURGE_DELAY_HOURS = 6
 const WINDOW_BEFORE_DAYS = 7   // fenetre amont (creation des missions test)
@@ -31,7 +32,7 @@ interface PurgeSummary {
   error?:            string
 }
 
-export async function GET(req: NextRequest) {
+async function handleGET(req: NextRequest) {
   const authHeader = req.headers.get('authorization')
   if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -185,4 +186,10 @@ async function markPurged(
       updated_at:    now,
     })
     .eq('user_id', userId)
+}
+
+
+// Les appels d'IA de ce passage sont comptés sous « cron:cleanup-test-data » (conso_ia).
+export async function GET(...args: Parameters<typeof handleGET>) {
+  return withAiContext({ declencheur: 'cron:cleanup-test-data' }, () => handleGET(...args))
 }

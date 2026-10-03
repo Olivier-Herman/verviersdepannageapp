@@ -6,12 +6,13 @@ import Anthropic from '@anthropic-ai/sdk'
 import { ANTHROPIC_MODELS, createWithModelFallback } from '@/lib/anthropic-model'
 import { COMPANIES } from '@/lib/mail-agent/handlers/fournisseur'
 import { DOC_TYPES, ENTITIES, type CourrierReading, type DocType, type EntityKey } from './types'
+import { aiClient } from '@/lib/ai/usage'
 
 let client: Anthropic | null = null
 const getClient = () => {
   if (client) return client
   if (!process.env.ANTHROPIC_API_KEY) throw new Error('ANTHROPIC_API_KEY manquante')
-  return (client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY }))
+  return (client = aiClient('courrier/read', { apiKey: process.env.ANTHROPIC_API_KEY }))
 }
 
 const PROMPT = `Tu lis un courrier papier reçu par un groupe de dépannage belge (scan ou photo, une ou plusieurs pages, souvent en français, parfois en néerlandais ou allemand).

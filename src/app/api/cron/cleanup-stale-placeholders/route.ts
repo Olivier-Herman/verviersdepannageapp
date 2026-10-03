@@ -19,6 +19,7 @@ export const maxDuration = 30
 import { NextResponse }      from 'next/server'
 import { createAdminClient } from '@/lib/supabase'
 import { sendPushToRole }    from '@/lib/push'
+import { withAiContext } from '@/lib/ai/usage'
 
 const STALE_THRESHOLD_MS = 5 * 60 * 1000         // 5 min
 // Seuil d'alerte : la boîte partagée reçoit des LOTS d'emails (Touring/AXA/IMA/
@@ -70,7 +71,7 @@ async function purgeDeadMissions(supabase: any): Promise<number> {
   return deleted
 }
 
-export async function GET(req: Request) {
+async function handleGET(req: Request) {
   // Olivier 2026-06-03 (audit J-2 W2 KO) : auth Bearer CRON_SECRET.
   const auth = req.headers.get('authorization')
   if (!process.env.CRON_SECRET || auth !== `Bearer ${process.env.CRON_SECRET}`) {
@@ -140,4 +141,10 @@ export async function GET(req: Request) {
   }
 
   return NextResponse.json({ ok: true, cleaned, purged, threshold_ms: STALE_THRESHOLD_MS })
+}
+
+
+// Les appels d'IA de ce passage sont comptés sous « cron:cleanup-stale-placeholders » (conso_ia).
+export async function GET(...args: Parameters<typeof handleGET>) {
+  return withAiContext({ declencheur: 'cron:cleanup-stale-placeholders' }, () => handleGET(...args))
 }

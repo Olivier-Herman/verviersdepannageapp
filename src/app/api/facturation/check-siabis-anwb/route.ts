@@ -21,6 +21,7 @@ import { searchMailbox, fetchMailFull, fetchAttachmentBytes, SEARCH_MAILBOXES, i
 import Anthropic            from '@anthropic-ai/sdk'
 import { ANTHROPIC_MODELS, createWithModelFallback } from '@/lib/anthropic-model'
 import { getBusinessNumber } from '@/lib/settings/business'
+import { aiClient } from '@/lib/ai/usage'
 
 export const dynamic     = 'force-dynamic'
 export const maxDuration = 300
@@ -33,7 +34,7 @@ function anthropic(): Anthropic {
   if (cachedClient) return cachedClient
   const apiKey = process.env.ANTHROPIC_API_KEY
   if (!apiKey) throw new Error('ANTHROPIC_API_KEY manquant')
-  cachedClient = new Anthropic({ apiKey })
+  cachedClient = aiClient('facturation/check-siabis-anwb', { apiKey })
   return cachedClient
 }
 

@@ -21,6 +21,7 @@ import { createAdminClient } from '@/lib/supabase'
 import { TEL, DEPOTS, ASSISTEURS, COMMUNES } from '@/app/site/_data'
 import { SALE_CONDITIONS, SALE_MODES, type SaleMode } from '@/lib/ventes/types'
 import { getSiteTariffs, type SiteTarifLine } from '@/lib/tarifs/site-tariffs'
+import { aiClient } from '@/lib/ai/usage'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 30
@@ -48,7 +49,7 @@ function getClient() {
   if (client) return client
   const apiKey = process.env.ANTHROPIC_API_KEY
   if (!apiKey) throw new Error('ANTHROPIC_API_KEY manquant')
-  client = new Anthropic({ apiKey })
+  client = aiClient('site/assistant', { apiKey })
   return client
 }
 

@@ -4,11 +4,12 @@
 import { NextResponse }      from 'next/server'
 import { createAdminClient } from '@/lib/supabase'
 import { refreshFacturationTodoCount } from '@/lib/dossier/todo-count'
+import { withAiContext } from '@/lib/ai/usage'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 120
 
-export async function GET(req: Request) {
+async function handleGET(req: Request) {
   if (!process.env.CRON_SECRET || req.headers.get('authorization') !== `Bearer ${process.env.CRON_SECRET}`) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
@@ -18,4 +19,10 @@ export async function GET(req: Request) {
   } catch (e: any) {
     return NextResponse.json({ ok: false, error: e?.message || String(e) }, { status: 500 })
   }
+}
+
+
+// Les appels d'IA de ce passage sont comptés sous « cron:facturation-todo-count » (conso_ia).
+export async function GET(...args: Parameters<typeof handleGET>) {
+  return withAiContext({ declencheur: 'cron:facturation-todo-count' }, () => handleGET(...args))
 }

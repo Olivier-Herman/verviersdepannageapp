@@ -5,6 +5,7 @@
 
 import Anthropic from '@anthropic-ai/sdk'
 import { ANTHROPIC_MODEL } from '@/lib/anthropic-model'
+import { aiClient } from '@/lib/ai/usage'
 
 export interface ConvocationExtract {
   plate:          string | null   // immatriculation
@@ -38,7 +39,7 @@ function getClient(): Anthropic {
   if (cached) return cached
   const apiKey = process.env.ANTHROPIC_API_KEY
   if (!apiKey) throw new Error('ANTHROPIC_API_KEY manquante')
-  cached = new Anthropic({ apiKey })
+  cached = aiClient('ct/extract-convocation', { apiKey })
   return cached
 }
 

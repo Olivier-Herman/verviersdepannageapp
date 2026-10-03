@@ -11,6 +11,7 @@
 import Anthropic from '@anthropic-ai/sdk'
 import { ANTHROPIC_CHEAP_MODELS, ANTHROPIC_MODELS, createWithModelFallback } from '@/lib/anthropic-model'
 import { looksLikePlate, looksLikeVin, normalizeOcr } from '@/lib/ocr/vehicle'
+import { aiClient } from '@/lib/ai/usage'
 
 const OCR_MODELS = [process.env.ANTHROPIC_OCR_MODEL, ...ANTHROPIC_CHEAP_MODELS].filter(Boolean) as string[]
 // Les chauffeurs ne classent pas leurs photos — elles arrivent toutes en
@@ -25,7 +26,7 @@ function getClient(): Anthropic {
   if (cachedClient) return cachedClient
   const apiKey = process.env.ANTHROPIC_API_KEY
   if (!apiKey) throw new Error('ANTHROPIC_API_KEY manquant en env vars')
-  cachedClient = new Anthropic({ apiKey })
+  cachedClient = aiClient('ocr/vehicle-detect', { apiKey })
   return cachedClient
 }
 

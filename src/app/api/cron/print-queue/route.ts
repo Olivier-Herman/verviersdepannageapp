@@ -8,6 +8,7 @@
 import { NextResponse }      from 'next/server'
 import { createAdminClient } from '@/lib/supabase'
 import { tryPrintQueueEntry } from '@/lib/print/zebra-raw'
+import { withAiContext } from '@/lib/ai/usage'
 
 export const dynamic     = 'force-dynamic'
 export const maxDuration = 60
@@ -15,7 +16,7 @@ export const maxDuration = 60
 const BATCH_SIZE   = 20
 const MAX_ATTEMPTS = 30  // ~1h avec retry toutes les 2 min
 
-export async function GET(req: Request) {
+async function handleGET(req: Request) {
   const auth = req.headers.get('authorization')
   if (!process.env.CRON_SECRET || auth !== `Bearer ${process.env.CRON_SECRET}`) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -90,4 +91,10 @@ export async function GET(req: Request) {
     failed,
     abandoned,
   })
+}
+
+
+// Les appels d'IA de ce passage sont comptés sous « cron:print-queue » (conso_ia).
+export async function GET(...args: Parameters<typeof handleGET>) {
+  return withAiContext({ declencheur: 'cron:print-queue' }, () => handleGET(...args))
 }

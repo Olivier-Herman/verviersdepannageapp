@@ -13,6 +13,7 @@ export const maxDuration = 60
 
 import { NextResponse }      from 'next/server'
 import { createAdminClient } from '@/lib/supabase'
+import { withAiContext } from '@/lib/ai/usage'
 
 const ARCHIVE_DELAY_DAYS = 7
 
@@ -71,7 +72,7 @@ async function archiveCoquillesVides(sb: any, cutoff: string): Promise<number> {
   return ids.length
 }
 
-export async function GET(req: Request) {
+async function handleGET(req: Request) {
   const authHeader = req.headers.get('authorization')
   if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -187,4 +188,10 @@ export async function GET(req: Request) {
     skipped_chain_incomplete: eligible.length - toArchive.length,
     cutoff_at:  cutoff,
   })
+}
+
+
+// Les appels d'IA de ce passage sont comptés sous « cron:auto-archive » (conso_ia).
+export async function GET(...args: Parameters<typeof handleGET>) {
+  return withAiContext({ declencheur: 'cron:auto-archive' }, () => handleGET(...args))
 }

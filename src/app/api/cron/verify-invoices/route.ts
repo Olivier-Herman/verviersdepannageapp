@@ -8,11 +8,12 @@
 
 import { NextResponse }      from 'next/server'
 import { createAdminClient } from '@/lib/supabase'
+import { withAiContext } from '@/lib/ai/usage'
 
 export const dynamic     = 'force-dynamic'
 export const maxDuration = 120
 
-export async function GET(req: Request) {
+async function handleGET(req: Request) {
   const auth = req.headers.get('authorization')
   if (!process.env.CRON_SECRET || auth !== `Bearer ${process.env.CRON_SECRET}`) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -63,4 +64,10 @@ export async function GET(req: Request) {
     try { const sb = createAdminClient(); await sb.from('app_settings').upsert({ key: 'verify_invoices_last_run', value: summary }, { onConflict: 'key' }) } catch {}
     return NextResponse.json({ ok: false, error: e?.message || 'échec' }, { status: 502 })
   }
+}
+
+
+// Les appels d'IA de ce passage sont comptés sous « cron:verify-invoices » (conso_ia).
+export async function GET(...args: Parameters<typeof handleGET>) {
+  return withAiContext({ declencheur: 'cron:verify-invoices' }, () => handleGET(...args))
 }

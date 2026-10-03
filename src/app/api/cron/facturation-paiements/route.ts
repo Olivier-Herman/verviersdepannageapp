@@ -11,12 +11,13 @@
 import { NextResponse }      from 'next/server'
 import { createAdminClient } from '@/lib/supabase'
 import { syncInvoicePayments, sendInvoiceReminders } from '@/lib/facturation/paiements'
+import { withAiContext } from '@/lib/ai/usage'
 
 export const dynamic     = 'force-dynamic'
 export const fetchCache  = 'force-no-store'   // jamais de snapshot Data Cache sur les lectures PostgREST (même piège que verify-invoices)
 export const maxDuration = 120
 
-export async function GET(req: Request) {
+async function handleGET(req: Request) {
   const auth = req.headers.get('authorization')
   if (!process.env.CRON_SECRET || auth !== `Bearer ${process.env.CRON_SECRET}`) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -32,4 +33,10 @@ export async function GET(req: Request) {
   // app_settings.value est du TEXTE : toujours sérialisé, toujours JSON.parse à la lecture.
   try { await sb.from('app_settings').upsert({ key: 'facturation_paiements_last_run', value: JSON.stringify(summary), updated_at: summary.at }, { onConflict: 'key' }) } catch { /* best-effort */ }
   return NextResponse.json(summary, { status: summary.ok ? 200 : 502 })
+}
+
+
+// Les appels d'IA de ce passage sont comptés sous « cron:facturation-paiements » (conso_ia).
+export async function GET(...args: Parameters<typeof handleGET>) {
+  return withAiContext({ declencheur: 'cron:facturation-paiements' }, () => handleGET(...args))
 }

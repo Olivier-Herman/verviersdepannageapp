@@ -9,6 +9,7 @@
 import { PDFDocument } from 'pdf-lib'
 import Anthropic from '@anthropic-ai/sdk'
 import { ANTHROPIC_MODEL } from '@/lib/anthropic-model'
+import { aiClient } from '@/lib/ai/usage'
 
 const BUCKET = 'mission-remarks'
 
@@ -62,7 +63,7 @@ export interface ScanSplitSummary {
 export async function splitAndDispatch(sb: any, pdfBuffer: Buffer, userId?: string | null): Promise<ScanSplitSummary> {
   const apiKey = process.env.ANTHROPIC_API_KEY
   if (!apiKey) throw new Error('ANTHROPIC_API_KEY manquant')
-  const client = new Anthropic({ apiKey })
+  const client = aiClient('missions/saisie-scan-split', { apiKey })
 
   const src = await PDFDocument.load(pdfBuffer, { ignoreEncryption: true })
   const n = src.getPageCount()

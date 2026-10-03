@@ -16,13 +16,14 @@ import { initiatePstnCall }  from '@/lib/teams/call'
 import { skipToNext }        from '@/lib/auto-dispatch/orchestrator'
 import { isInDaySchedule, isInNightSchedule } from '@/lib/schedule'
 import { ensureScheduleLoaded }                from '@/lib/schedule-server'
+import { withAiContext } from '@/lib/ai/usage'
 
 export const dynamic     = 'force-dynamic'
 export const maxDuration = 60
 
 const TIMEOUT_SEC = 60  // delai d'attente entre push → call_1 → call_2 → skip
 
-export async function GET(req: Request) {
+async function handleGET(req: Request) {
   const authHeader = req.headers.get('authorization')
   if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -145,4 +146,10 @@ export async function GET(req: Request) {
   }
 
   return NextResponse.json({ ok: true, processed: attempts.length, actions })
+}
+
+
+// Les appels d'IA de ce passage sont comptés sous « cron:auto-dispatch-tick » (conso_ia).
+export async function GET(...args: Parameters<typeof handleGET>) {
+  return withAiContext({ declencheur: 'cron:auto-dispatch-tick' }, () => handleGET(...args))
 }

@@ -11,12 +11,13 @@ export const maxDuration = 30
 import { NextResponse }      from 'next/server'
 import { createAdminClient } from '@/lib/supabase'
 import { sendNotification }  from '@/lib/notifications/send'
+import { withAiContext } from '@/lib/ai/usage'
 
 const FIRST_DELAY_MIN = 3   // attendre 3 min après l'assignation avant le 1er rappel
 const INTERVAL_MIN    = 5   // délai minimum entre deux rappels
 const MAX_REMINDERS   = 4   // ~3 + 3×5 = jusqu'à ~18 min de relance
 
-export async function GET(req: Request) {
+async function handleGET(req: Request) {
   const auth = req.headers.get('authorization')
   if (!process.env.CRON_SECRET || auth !== `Bearer ${process.env.CRON_SECRET}`) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -68,4 +69,10 @@ export async function GET(req: Request) {
 
   if (sent) console.log(`[accept-reminders] ${sent} rappel(s) envoyé(s)`)
   return NextResponse.json({ ok: true, sent, checked: (missions || []).length })
+}
+
+
+// Les appels d'IA de ce passage sont comptés sous « cron:accept-reminders » (conso_ia).
+export async function GET(...args: Parameters<typeof handleGET>) {
+  return withAiContext({ declencheur: 'cron:accept-reminders' }, () => handleGET(...args))
 }

@@ -20,11 +20,12 @@ export const maxDuration = 60
 
 import { NextResponse }      from 'next/server'
 import { createAdminClient } from '@/lib/supabase'
+import { withAiContext } from '@/lib/ai/usage'
 
 /** Statuts qui signifient « l'intervention est finie chez nous ». */
 const TERMINÉES = ['to_invoice', 'completed', 'parked']
 
-export async function GET(req: Request) {
+async function handleGET(req: Request) {
   if (req.headers.get('authorization') !== `Bearer ${process.env.CRON_SECRET}`) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
@@ -112,4 +113,10 @@ export async function GET(req: Request) {
     console.error('[cron vab-open-alert]', e?.message)
     return NextResponse.json({ error: e?.message || 'erreur' }, { status: 500 })
   }
+}
+
+
+// Les appels d'IA de ce passage sont comptés sous « cron:vab-open-alert » (conso_ia).
+export async function GET(...args: Parameters<typeof handleGET>) {
+  return withAiContext({ declencheur: 'cron:vab-open-alert' }, () => handleGET(...args))
 }

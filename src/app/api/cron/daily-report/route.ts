@@ -4,6 +4,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase'
 import { sendPushToUser } from '@/lib/push'
 import { formatEur } from '@/lib/format'
+import { withAiContext } from '@/lib/ai/usage'
 
 // Cron déclenché tous les jours ouvrables à 8h (lun-ven)
 // Configuré dans vercel.json
@@ -98,7 +99,7 @@ const PAYMENT_LABELS: Record<string, string> = {
   unpaid: 'Non payé — À facturer',
 }
 
-export async function GET(req: NextRequest) {
+async function handleGET(req: NextRequest) {
   // Vérifier le secret Vercel cron
   const authHeader = req.headers.get('authorization')
   if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
@@ -432,4 +433,10 @@ async function checkDocumentExpiry(graphToken: string): Promise<void> {
       console.error(`[Cron] Erreur alerte document ${doc.id}:`, err.message)
     }
   }
+}
+
+
+// Les appels d'IA de ce passage sont comptés sous « cron:daily-report » (conso_ia).
+export async function GET(...args: Parameters<typeof handleGET>) {
+  return withAiContext({ declencheur: 'cron:daily-report' }, () => handleGET(...args))
 }

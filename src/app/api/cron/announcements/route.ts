@@ -7,11 +7,12 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase'
 import { broadcastAnnouncement } from '@/lib/announcements/broadcast'
+import { withAiContext } from '@/lib/ai/usage'
 
 export const dynamic    = 'force-dynamic'
 export const fetchCache = 'force-no-store'
 
-export async function GET(req: NextRequest) {
+async function handleGET(req: NextRequest) {
   const auth = req.headers.get('authorization')
   if (!process.env.CRON_SECRET || auth !== `Bearer ${process.env.CRON_SECRET}`) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -31,4 +32,10 @@ export async function GET(req: NextRequest) {
     results.push({ id: ann.id, title: ann.title, ...res })
   }
   return NextResponse.json({ ok: true, processed: results.length, results })
+}
+
+
+// Les appels d'IA de ce passage sont comptés sous « cron:announcements » (conso_ia).
+export async function GET(...args: Parameters<typeof handleGET>) {
+  return withAiContext({ declencheur: 'cron:announcements' }, () => handleGET(...args))
 }

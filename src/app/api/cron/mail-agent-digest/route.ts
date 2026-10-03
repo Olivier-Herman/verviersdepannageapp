@@ -5,8 +5,9 @@
 import { NextResponse }      from 'next/server'
 import { createAdminClient } from '@/lib/supabase'
 import { sendNotificationToRoles } from '@/lib/notifications/send'
+import { withAiContext } from '@/lib/ai/usage'
 export const dynamic = 'force-dynamic'
-export async function GET(req: Request) {
+async function handleGET(req: Request) {
   const auth = req.headers.get('authorization')
   if (!process.env.CRON_SECRET || auth !== `Bearer ${process.env.CRON_SECRET}`) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   const sb = createAdminClient()
@@ -24,4 +25,10 @@ export async function GET(req: Request) {
     action_url: '/mail-agent',
   })
   return NextResponse.json({ ok: true, ...res, toDecide, ready, toVerify })
+}
+
+
+// Les appels d'IA de ce passage sont comptés sous « cron:mail-agent-digest » (conso_ia).
+export async function GET(...args: Parameters<typeof handleGET>) {
+  return withAiContext({ declencheur: 'cron:mail-agent-digest' }, () => handleGET(...args))
 }

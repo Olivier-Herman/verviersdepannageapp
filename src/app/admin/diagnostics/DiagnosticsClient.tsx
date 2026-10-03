@@ -7,6 +7,7 @@
 import { useState } from 'react'
 import { Loader2, Play, ChevronDown, ChevronRight, AlertTriangle } from 'lucide-react'
 import RoutingUsagePanel from './RoutingUsagePanel'
+import AiUsagePanel from './AiUsagePanel'
 
 type Param = { name: string; label: string; placeholder?: string; required?: boolean }
 type Tool = {
@@ -100,6 +101,8 @@ export default function DiagnosticsClient() {
         <h1 className="text-ink font-bold text-2xl">Diagnostics</h1>
         <p className="text-ink-muted text-sm mt-1">Un bouton par vérification. Le résultat brut s’affiche sous l’outil. Les outils qui agissent demandent confirmation.</p>
       </header>
+
+      <AiUsagePanel />
 
       <RoutingUsagePanel />
 

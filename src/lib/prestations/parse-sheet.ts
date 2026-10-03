@@ -8,6 +8,7 @@
 import JSZip from 'jszip'
 import Anthropic from '@anthropic-ai/sdk'
 import { ANTHROPIC_MODEL } from '@/lib/anthropic-model'
+import { aiClient } from '@/lib/ai/usage'
 
 /** Extrait le PDF de la feuille de présence d'un ZIP EasyPay. */
 export async function extractPrestationsPdf(zipBuffer: Buffer): Promise<Uint8Array | null> {
@@ -26,7 +27,7 @@ export interface PrestWorker {
 export interface PrestSheet { period: string; company_code: string; workers: PrestWorker[] }
 
 export async function parsePrestationSheet(pdfBytes: Uint8Array): Promise<PrestSheet> {
-  const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY! })
+  const client = aiClient('prestations/parse-sheet', { apiKey: process.env.ANTHROPIC_API_KEY! })
   const pdfB64 = Buffer.from(pdfBytes).toString('base64')
   const prompt = `Ceci est une FEUILLE DE PRESENCE (prestations) du secrétariat social EasyPay, pré-remplie, période mensuelle. Extrais les données en JSON STRICT (aucun texte hors JSON) :
 {

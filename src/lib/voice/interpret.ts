@@ -8,6 +8,7 @@
 // Alphabets radio compris : OTAN (Alpha Bravo…) et français (Anatole Berthe…).
 
 import { ANTHROPIC_CHEAP_MODELS } from '@/lib/anthropic-model'
+import { recordAiUsage } from '@/lib/ai/usage'
 
 export type VoiceStep = 'intent' | 'plate' | 'vehicle' | 'address' | 'zone_agent' | 'destination' | 'yesno' | 'pointage_pick'
 
@@ -61,6 +62,7 @@ export async function interpretUtterance(step: VoiceStep, transcript: string, ct
     })
     if (!res.ok) { lastErr = await res.text(); if (res.status === 404) continue; throw new Error(`Claude ${res.status}: ${lastErr.slice(0, 200)}`) }
     const j = await res.json()
+    await recordAiUsage({ fonction: 'voice/interpret', modele: j.model, usage: j.usage })
     const text: string = (j.content || []).map((c: any) => c.text || '').join('')
     const m = text.match(/\{[\s\S]*\}/)
     if (!m) return { understood: false, ask: 'Je n\'ai pas compris, tu peux répéter ?' }

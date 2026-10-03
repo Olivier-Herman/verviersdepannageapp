@@ -16,6 +16,7 @@ import { NextResponse }      from 'next/server'
 import { createAdminClient } from '@/lib/supabase'
 import { sendNotification, sendNotificationToRoles } from '@/lib/notifications/send'
 import { getBusinessNumber } from '@/lib/settings/business'
+import { withAiContext } from '@/lib/ai/usage'
 
 export const dynamic     = 'force-dynamic'
 export const maxDuration = 60
@@ -24,7 +25,7 @@ const OPEN_STATUSES = ['assigned', 'accepted', 'in_progress', 'delivering']
 
 const fmtH = (h: number) => h >= 48 ? `${Math.round(h / 24)} jours` : `${Math.round(h)} h`
 
-export async function GET(req: Request) {
+async function handleGET(req: Request) {
   const auth = req.headers.get('authorization')
   if (!process.env.CRON_SECRET || auth !== `Bearer ${process.env.CRON_SECRET}`) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -88,4 +89,10 @@ export async function GET(req: Request) {
   }
   if (sent) console.log(`[rappel-fiches-ouvertes] ${sent} rappel(s), ${dispatch} au dispatch`)
   return NextResponse.json({ ok: true, sent, dispatch, checked: (missions || []).length, firstH, repeatH })
+}
+
+
+// Les appels d'IA de ce passage sont comptés sous « cron:rappel-fiches-ouvertes » (conso_ia).
+export async function GET(...args: Parameters<typeof handleGET>) {
+  return withAiContext({ declencheur: 'cron:rappel-fiches-ouvertes' }, () => handleGET(...args))
 }

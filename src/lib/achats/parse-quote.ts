@@ -7,9 +7,10 @@
 
 import Anthropic from '@anthropic-ai/sdk'
 import { ANTHROPIC_MODEL } from '@/lib/anthropic-model'
+import { aiClient } from '@/lib/ai/usage'
 
 let _client: Anthropic | null = null
-const getClient = () => (_client ??= new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY! }))
+const getClient = () => (_client ??= aiClient('achats/parse-quote', { apiKey: process.env.ANTHROPIC_API_KEY! }))
 
 export interface QuoteItem { description: string; qty: number | null; unit_price: number | null; total: number | null }
 export interface ParsedQuote {

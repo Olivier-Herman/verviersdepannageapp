@@ -6,11 +6,12 @@ import { NextResponse } from 'next/server'
 import { scanMailboxes } from '@/lib/mail-agent'
 import { refreshAwpSenders } from '@/lib/mail-agent/handlers/awp-rejet'
 import { refreshImaSenders } from '@/lib/mail-agent/handlers/ima-rejet'
+import { withAiContext } from '@/lib/ai/usage'
 
 export const dynamic     = 'force-dynamic'
 export const maxDuration = 300   // scan incrémental de toute la boîte (185 dossiers)
 
-export async function GET(req: Request) {
+async function handleGET(req: Request) {
   if (req.headers.get('authorization') !== `Bearer ${process.env.CRON_SECRET}`) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
@@ -23,4 +24,10 @@ export async function GET(req: Request) {
     console.error('[cron mail-agent] KO:', err?.message)
     return NextResponse.json({ error: err?.message || 'Erreur' }, { status: 500 })
   }
+}
+
+
+// Les appels d'IA de ce passage sont comptés sous « cron:mail-agent » (conso_ia).
+export async function GET(...args: Parameters<typeof handleGET>) {
+  return withAiContext({ declencheur: 'cron:mail-agent' }, () => handleGET(...args))
 }

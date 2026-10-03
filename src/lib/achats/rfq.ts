@@ -8,9 +8,10 @@
 
 import Anthropic from '@anthropic-ai/sdk'
 import { ANTHROPIC_MODEL } from '@/lib/anthropic-model'
+import { aiClient } from '@/lib/ai/usage'
 
 let _client: Anthropic | null = null
-const getClient = () => (_client ??= new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY! }))
+const getClient = () => (_client ??= aiClient('achats/rfq', { apiKey: process.env.ANTHROPIC_API_KEY! }))
 
 export interface RfqEmail { subject: string; paragraphs: string[] }
 

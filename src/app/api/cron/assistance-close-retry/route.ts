@@ -10,11 +10,12 @@
 
 import { NextResponse } from 'next/server'
 import { runAssistanceCloseRetry } from '@/lib/cloture/queue'
+import { withAiContext } from '@/lib/ai/usage'
 
 export const dynamic     = 'force-dynamic'
 export const maxDuration = 60
 
-export async function GET(req: Request) {
+async function handleGET(req: Request) {
   const auth = req.headers.get('authorization')
   const isCron = process.env.CRON_SECRET && auth === `Bearer ${process.env.CRON_SECRET}`
   const isInternal = process.env.NEXTAUTH_SECRET && req.headers.get('x-internal-secret') === process.env.NEXTAUTH_SECRET
@@ -26,4 +27,10 @@ export async function GET(req: Request) {
   } catch (e: any) {
     return NextResponse.json({ ok: false, error: e?.message || 'erreur' }, { status: 500 })
   }
+}
+
+
+// Les appels d'IA de ce passage sont comptés sous « cron:assistance-close-retry » (conso_ia).
+export async function GET(...args: Parameters<typeof handleGET>) {
+  return withAiContext({ declencheur: 'cron:assistance-close-retry' }, () => handleGET(...args))
 }

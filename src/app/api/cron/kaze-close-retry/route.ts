@@ -7,13 +7,14 @@ import { NextResponse }      from 'next/server'
 import { createAdminClient } from '@/lib/supabase'
 import { listJobs }          from '@/lib/kaze/client'
 import { closeKazeJob }      from '@/lib/kaze/close-job'
+import { withAiContext } from '@/lib/ai/usage'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 300
 
 const CLOSED = ['completed', 'to_invoice', 'invoiced']
 
-export async function GET(req: Request) {
+async function handleGET(req: Request) {
   if (!process.env.CRON_SECRET || req.headers.get('authorization') !== `Bearer ${process.env.CRON_SECRET}`) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
@@ -55,4 +56,10 @@ export async function GET(req: Request) {
   const payload = { ok: true, ouverts: jobs.length, aTraiter: (ms || []).length, clotures: done, results }
   await trace(payload)
   return NextResponse.json(payload)
+}
+
+
+// Les appels d'IA de ce passage sont comptés sous « cron:kaze-close-retry » (conso_ia).
+export async function GET(...args: Parameters<typeof handleGET>) {
+  return withAiContext({ declencheur: 'cron:kaze-close-retry' }, () => handleGET(...args))
 }

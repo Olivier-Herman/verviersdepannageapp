@@ -10,12 +10,13 @@ import { createAdminClient } from '@/lib/supabase'
 import { getAppToken } from '@/lib/emails'
 import { parseQuoteDoc } from '@/lib/achats/parse-quote'
 import { getRfqMailbox } from '@/lib/achats/rfq'
+import { withAiContext } from '@/lib/ai/usage'
 
 export const dynamic     = 'force-dynamic'
 export const fetchCache   = 'force-no-store'
 export const maxDuration  = 120
 
-export async function GET(req: NextRequest) {
+async function handleGET(req: NextRequest) {
   const auth = req.headers.get('authorization')
   if (!process.env.CRON_SECRET || auth !== `Bearer ${process.env.CRON_SECRET}`) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -79,4 +80,10 @@ export async function GET(req: NextRequest) {
   }
 
   return NextResponse.json({ ok: true, scanned: messages.length, matched, created, skipped, results })
+}
+
+
+// Les appels d'IA de ce passage sont comptés sous « cron:achats-rfq-poll » (conso_ia).
+export async function GET(...args: Parameters<typeof handleGET>) {
+  return withAiContext({ declencheur: 'cron:achats-rfq-poll' }, () => handleGET(...args))
 }

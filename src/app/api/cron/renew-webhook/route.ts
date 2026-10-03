@@ -6,8 +6,9 @@ export const dynamic     = 'force-dynamic'
 export const maxDuration = 60
 
 import { NextResponse } from 'next/server'
+import { withAiContext } from '@/lib/ai/usage'
 
-export async function GET(req: Request) {
+async function handleGET(req: Request) {
   const appUrl = process.env.NEXT_PUBLIC_APP_URL!
   const secret = process.env.CRON_SECRET!
 
@@ -30,4 +31,10 @@ export async function GET(req: Request) {
     console.error('[CronRenewWebhook] Exception:', err.message)
     return NextResponse.json({ error: err.message }, { status: 500 })
   }
+}
+
+
+// Les appels d'IA de ce passage sont comptés sous « cron:renew-webhook » (conso_ia).
+export async function GET(...args: Parameters<typeof handleGET>) {
+  return withAiContext({ declencheur: 'cron:renew-webhook' }, () => handleGET(...args))
 }

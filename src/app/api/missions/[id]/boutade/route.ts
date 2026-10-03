@@ -19,6 +19,7 @@ import { createAdminClient } from '@/lib/supabase'
 import { sendNotification }  from '@/lib/notifications/send'
 import Anthropic             from '@anthropic-ai/sdk'
 import { ANTHROPIC_CHEAP_MODELS, createWithModelFallback } from '@/lib/anthropic-model'
+import { aiClient } from '@/lib/ai/usage'
 
 export const dynamic     = 'force-dynamic'
 export const maxDuration = 15
@@ -153,7 +154,7 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
   const km    = (m as any).vehicle_mileage ? Number((m as any).vehicle_mileage).toLocaleString('fr-BE') : null
 
   try {
-    const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY! })
+    const client = aiClient('missions/boutade', { apiKey: process.env.ANTHROPIC_API_KEY! })
     const resp = await createWithModelFallback(client, ANTHROPIC_CHEAP_MODELS, {
       max_tokens: 90,
       system: `Tu écris UNE phrase drôle et courte (20 mots maximum) pour Franck, dépanneur à Verviers, qui démarre une mission.

@@ -8,6 +8,7 @@
 
 import Anthropic from '@anthropic-ai/sdk'
 import { ANTHROPIC_MODEL } from '@/lib/anthropic-model'
+import { aiClient } from '@/lib/ai/usage'
 
 export interface FineExtract {
   plate:            string | null   // plaque du véhicule verbalisé
@@ -48,7 +49,7 @@ function getClient(): Anthropic {
   if (cachedClient) return cachedClient
   const apiKey = process.env.ANTHROPIC_API_KEY
   if (!apiKey) throw new Error('ANTHROPIC_API_KEY manquant en env vars')
-  cachedClient = new Anthropic({ apiKey })
+  cachedClient = aiClient('fines/extract-fine', { apiKey })
   return cachedClient
 }
 

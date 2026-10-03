@@ -12,10 +12,11 @@ export const maxDuration = 60
 import { NextResponse }            from 'next/server'
 import { createAdminClient }       from '@/lib/supabase'
 import { resolveInvoiceByNumber, syncDraftInvoiceNumbers, syncQuoteInvoiceNumbers }  from '@/lib/odoo-invoice'
+import { withAiContext } from '@/lib/ai/usage'
 
 const BATCH_SIZE = 50
 
-export async function GET(req: Request) {
+async function handleGET(req: Request) {
   // Olivier 2026-06-03 (audit J-2 W2 KO) : auth Bearer CRON_SECRET.
   const auth = req.headers.get('authorization')
   if (!process.env.CRON_SECRET || auth !== `Bearer ${process.env.CRON_SECRET}`) {
@@ -77,4 +78,10 @@ export async function GET(req: Request) {
     not_found: failed,
     errors:    errors.slice(0, 10),
   })
+}
+
+
+// Les appels d'IA de ce passage sont comptés sous « cron:sync-invoice-urls » (conso_ia).
+export async function GET(...args: Parameters<typeof handleGET>) {
+  return withAiContext({ declencheur: 'cron:sync-invoice-urls' }, () => handleGET(...args))
 }

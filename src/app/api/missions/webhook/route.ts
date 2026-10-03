@@ -12,6 +12,7 @@
 export const dynamic     = 'force-dynamic'
 export const maxDuration = 60
 
+import { withAiContext } from '@/lib/ai/usage'
 import { waitUntil }           from '@vercel/functions'
 import { processEmailMessage } from '@/lib/missions/processor'
 
@@ -116,7 +117,7 @@ async function processNotificationsBackground(notifications: any[]): Promise<voi
     }
 
     try {
-      const result = await processEmailMessage(messageId)
+      const result = await withAiContext({ declencheur: 'webhook:mail-mission', ref: messageId }, () => processEmailMessage(messageId))
       console.log(`[Webhook] Résultat: ${result.status}`, result)
     } catch (err: any) {
       console.error(`[Webhook] Erreur message ${messageId}:`, err.message)

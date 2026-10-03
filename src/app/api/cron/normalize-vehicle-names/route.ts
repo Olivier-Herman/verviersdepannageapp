@@ -11,11 +11,12 @@ import { getServerSession }           from 'next-auth'
 import { authOptions }                from '@/lib/auth'
 import { createAdminClient }          from '@/lib/supabase'
 import { normalizeMissionVehicles }   from '@/lib/fleet/normalize-mission-vehicles'
+import { withAiContext } from '@/lib/ai/usage'
 
 export const dynamic     = 'force-dynamic'
 export const maxDuration = 120
 
-export async function GET(req: Request) {
+async function handleGET(req: Request) {
   const auth   = req.headers.get('authorization')
   const okCron = process.env.CRON_SECRET && auth === `Bearer ${process.env.CRON_SECRET}`
   if (!okCron) {
@@ -62,4 +63,10 @@ export async function GET(req: Request) {
     console.error('[normalize-vehicle-names]', e.message)
     return NextResponse.json({ error: e.message }, { status: 500 })
   }
+}
+
+
+// Les appels d'IA de ce passage sont comptés sous « cron:normalize-vehicle-names » (conso_ia).
+export async function GET(...args: Parameters<typeof handleGET>) {
+  return withAiContext({ declencheur: 'cron:normalize-vehicle-names' }, () => handleGET(...args))
 }

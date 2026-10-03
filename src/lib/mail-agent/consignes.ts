@@ -9,12 +9,13 @@ import { executeDecision, type ActionResult } from './actions'
 import { FILE_FOLDERS } from './triage'
 import { findOrCreateFolder, moveMessage, relocateMessage } from './graph'
 import { sendNotification } from '@/lib/notifications/send'
+import { aiClient } from '@/lib/ai/usage'
 
 export type MailStepKind = 'reply_draft' | 'avoir' | 'envoyer_doc' | 'repondre_paye' | 'encoder' | 'classer' | 'ef_frais_justice' | 'nc_refacture' | 'notify' | 'rien'
 export interface MailStep { kind: MailStepKind; label: string; params: Record<string, any> }
 
 let client: Anthropic | null = null
-const getClient = () => client || (client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY! }))
+const getClient = () => client || (client = aiClient('mail-agent/consignes', { apiKey: process.env.ANTHROPIC_API_KEY! }))
 
 const SYSTEM = `Tu es l'Agent Mail d'un groupe de dépannage belge (sociétés : Verviers Dépannage "vd", Dépannage Riga "riga", DGJ VHU "dgj"). On te donne un mail reçu déjà analysé (résumé, demande, factures et fiches reconnues) et la consigne écrite par l'utilisateur (ou la consigne retenue pour cet expéditeur).
 Tu traduis la consigne en gestes concrets, dans l'ordre. Gestes possibles (kind → params) :

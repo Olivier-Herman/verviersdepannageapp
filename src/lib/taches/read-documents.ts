@@ -11,6 +11,7 @@
 import Anthropic from '@anthropic-ai/sdk'
 import { ANTHROPIC_MODELS, createWithModelFallback } from '@/lib/anthropic-model'
 import type { Reading } from './accident-steps'
+import { aiClient } from '@/lib/ai/usage'
 
 const EXPECTED = ['certificat_immatriculation', 'carte_verte', 'controle_technique', 'carnet_entretien', 'autre'] as const
 
@@ -36,7 +37,7 @@ function getClient(): Anthropic {
   if (client) return client
   const apiKey = process.env.ANTHROPIC_API_KEY
   if (!apiKey) throw new Error('ANTHROPIC_API_KEY manquante')
-  client = new Anthropic({ apiKey })
+  client = aiClient('taches/read-documents', { apiKey })
   return client
 }
 

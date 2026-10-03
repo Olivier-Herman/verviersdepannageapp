@@ -13,6 +13,7 @@
 import { NextResponse }       from 'next/server'
 import { syncAdvices }        from '@/lib/advice-cache'
 import { createAdminClient }  from '@/lib/supabase'
+import { withAiContext } from '@/lib/ai/usage'
 
 /**
  * Trace de passage, écrite qu'il réussisse ou qu'il échoue.
@@ -37,7 +38,7 @@ export const maxDuration = 300
 /** Profondeur de balayage : au-delà, un avis est de toute façon déjà rapproché. */
 const MONTHS_BACK = 3
 
-export async function GET(req: Request) {
+async function handleGET(req: Request) {
   if (!process.env.CRON_SECRET || req.headers.get('authorization') !== `Bearer ${process.env.CRON_SECRET}`) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
@@ -54,4 +55,10 @@ export async function GET(req: Request) {
     await trace({ ok: false, error: String(e?.message || e).slice(0, 300) })
     return NextResponse.json({ ok: false, error: String(e?.message || e) }, { status: 500 })
   }
+}
+
+
+// Les appels d'IA de ce passage sont comptés sous « cron:payment-advices » (conso_ia).
+export async function GET(...args: Parameters<typeof handleGET>) {
+  return withAiContext({ declencheur: 'cron:payment-advices' }, () => handleGET(...args))
 }

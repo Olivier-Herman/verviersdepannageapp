@@ -7,13 +7,14 @@
 
 import Anthropic from '@anthropic-ai/sdk'
 import { ANTHROPIC_MODELS, createWithModelFallback } from '@/lib/anthropic-model'
+import { aiClient } from '@/lib/ai/usage'
 
 let cachedClient: Anthropic | null = null
 function getClient(): Anthropic {
   if (cachedClient) return cachedClient
   const apiKey = process.env.ANTHROPIC_API_KEY
   if (!apiKey) throw new Error('ANTHROPIC_API_KEY manquante')
-  cachedClient = new Anthropic({ apiKey })
+  cachedClient = aiClient('ocr/vision-json', { apiKey })
   return cachedClient
 }
 

@@ -13,11 +13,12 @@ import { getBusinessList }         from '@/lib/settings/business'
 import { sendEmail }               from '@/lib/emails'
 import { loadNightStats, renderNightReportHtml } from '@/lib/missions/night-report'
 import { sendNotificationToRoles } from '@/lib/notifications/send'
+import { withAiContext } from '@/lib/ai/usage'
 
 export const dynamic    = 'force-dynamic'
 export const fetchCache = 'force-no-store'
 
-export async function GET(req: NextRequest) {
+async function handleGET(req: NextRequest) {
   const auth = req.headers.get('authorization')
   if (!process.env.CRON_SECRET || auth !== `Bearer ${process.env.CRON_SECRET}`) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -52,4 +53,10 @@ export async function GET(req: NextRequest) {
     }).catch(() => {})
     return NextResponse.json({ ok: false, error: e?.message }, { status: 500 })
   }
+}
+
+
+// Les appels d'IA de ce passage sont comptés sous « cron:night-report » (conso_ia).
+export async function GET(...args: Parameters<typeof handleGET>) {
+  return withAiContext({ declencheur: 'cron:night-report' }, () => handleGET(...args))
 }

@@ -13,6 +13,7 @@ import { NextResponse } from 'next/server'
 import { runAxaImport } from '@/lib/axa/import'
 import { recordAxaPollResult } from '@/lib/axa/health'
 import { runAxaRelogin, axaReloginConfigured } from '@/lib/axa/relogin-run'
+import { withAiContext } from '@/lib/ai/usage'
 
 // Jeton refusé (invalid_grant = les 24 h sont passées) → on se reconnecte
 // tout de suite avec les identifiants du portail, puis on rejoue le tour.
@@ -27,7 +28,7 @@ async function runAxaImportWithRelogin() {
   }
 }
 
-export async function GET(req: Request) {
+async function handleGET(req: Request) {
   const authHeader = req.headers.get('authorization')
   if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -47,4 +48,10 @@ export async function GET(req: Request) {
     await recordAxaPollResult({ ok: false, error: e?.message }).catch(() => {})
     return NextResponse.json({ error: e.message }, { status: 500 })
   }
+}
+
+
+// Les appels d'IA de ce passage sont comptés sous « cron:axa-poll » (conso_ia).
+export async function GET(...args: Parameters<typeof handleGET>) {
+  return withAiContext({ declencheur: 'cron:axa-poll' }, () => handleGET(...args))
 }

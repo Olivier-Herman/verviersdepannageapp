@@ -10,6 +10,7 @@ import Anthropic from '@anthropic-ai/sdk'
 import { ANTHROPIC_MODEL } from '@/lib/anthropic-model'
 import { CATEGORIES } from './parse-invoice'
 import type { AchatsAnalysis } from './odoo-spend'
+import { aiClient } from '@/lib/ai/usage'
 
 export interface AchatReco {
   title:                string
@@ -24,7 +25,7 @@ export interface AchatReco {
 const RECO_TYPES = ['consolidation', 'negociation', 'anomalie', 'doublon', 'categorie', 'autre']
 
 let _client: Anthropic | null = null
-const getClient = () => (_client ??= new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY! }))
+const getClient = () => (_client ??= aiClient('achats/ai-recommendations', { apiKey: process.env.ANTHROPIC_API_KEY! }))
 
 // Règles métier fermes injectées dans TOUS les prompts achats.
 const ACHATS_CONTEXT = `CONTEXTE MÉTIER — RÈGLES FERMES (à respecter absolument) :

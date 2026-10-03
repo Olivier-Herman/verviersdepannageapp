@@ -7,6 +7,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase'
 import { sendNotificationToMany } from '@/lib/notifications/send'
+import { withAiContext } from '@/lib/ai/usage'
 
 export const dynamic    = 'force-dynamic'
 export const fetchCache  = 'force-no-store'
@@ -18,7 +19,7 @@ const PAYLOAD = {
   action_url: '/definir-code',
 }
 
-export async function GET(req: NextRequest) {
+async function handleGET(req: NextRequest) {
   const auth = req.headers.get('authorization')
   if (!process.env.CRON_SECRET || auth !== `Bearer ${process.env.CRON_SECRET}`) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -33,4 +34,10 @@ export async function GET(req: NextRequest) {
   if (!ids.length) return NextResponse.json({ ok: true, without_pin: 0, sent: 0 })
   const res = await sendNotificationToMany(ids, 'pin_setup_reminder', PAYLOAD)
   return NextResponse.json({ ok: true, without_pin: ids.length, ...res })
+}
+
+
+// Les appels d'IA de ce passage sont comptés sous « cron:pin-reminder » (conso_ia).
+export async function GET(...args: Parameters<typeof handleGET>) {
+  return withAiContext({ declencheur: 'cron:pin-reminder' }, () => handleGET(...args))
 }

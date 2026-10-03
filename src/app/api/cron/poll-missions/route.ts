@@ -17,6 +17,7 @@ export const dynamic    = 'force-dynamic'
 
 import { NextResponse }          from 'next/server'
 import { getGraphToken, processEmailMessage } from '@/lib/missions/processor'
+import { withAiContext } from '@/lib/ai/usage'
 
 const MISSIONS_EMAIL = process.env.MISSIONS_EMAIL!
 const PAGE_SIZE      = 50       // taille de page (métadonnées, peu coûteux)
@@ -154,7 +155,7 @@ async function collectUntagged(token: string): Promise<Msg[]> {
   return untagged
 }
 
-export async function GET(req: Request) {
+async function handleGET(req: Request) {
   // Protection : seul Vercel cron (avec CRON_SECRET) peut declencher ce endpoint.
   const authHeader = req.headers.get('authorization')
   if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
@@ -210,4 +211,10 @@ export async function GET(req: Request) {
     console.error('[PollMissions] Erreur fatale:', err.message)
     return NextResponse.json({ error: err.message }, { status: 500 })
   }
+}
+
+
+// Les appels d'IA de ce passage sont comptés sous « cron:poll-missions » (conso_ia).
+export async function GET(...args: Parameters<typeof handleGET>) {
+  return withAiContext({ declencheur: 'cron:poll-missions' }, () => handleGET(...args))
 }

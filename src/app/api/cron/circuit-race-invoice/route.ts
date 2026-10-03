@@ -7,6 +7,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase'
 import { odooRpc } from '@/lib/odoo'
 import { invoiceCircuitOrder } from '@/lib/circuit/invoice'
+import { withAiContext } from '@/lib/ai/usage'
 
 export const dynamic     = 'force-dynamic'
 export const fetchCache   = 'force-no-store'
@@ -14,7 +15,7 @@ export const maxDuration  = 120
 
 const DELAI_JOURS = 3
 
-export async function GET(req: NextRequest) {
+async function handleGET(req: NextRequest) {
   const auth = req.headers.get('authorization')
   if (!process.env.CRON_SECRET || auth !== `Bearer ${process.env.CRON_SECRET}`) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -48,4 +49,10 @@ export async function GET(req: NextRequest) {
   }
 
   return NextResponse.json({ ok: true, eligible: eligible.length, invoiced, failed, details })
+}
+
+
+// Les appels d'IA de ce passage sont comptés sous « cron:circuit-race-invoice » (conso_ia).
+export async function GET(...args: Parameters<typeof handleGET>) {
+  return withAiContext({ declencheur: 'cron:circuit-race-invoice' }, () => handleGET(...args))
 }

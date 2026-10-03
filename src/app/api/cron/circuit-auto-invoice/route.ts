@@ -10,11 +10,12 @@
 import { NextResponse }        from 'next/server'
 import { createAdminClient }   from '@/lib/supabase'
 import { invoiceCircuitOrder } from '@/lib/circuit/invoice'
+import { withAiContext } from '@/lib/ai/usage'
 
 export const dynamic     = 'force-dynamic'
 export const maxDuration = 120
 
-export async function GET(req: Request) {
+async function handleGET(req: Request) {
   const auth = req.headers.get('authorization')
   if (!process.env.CRON_SECRET || auth !== `Bearer ${process.env.CRON_SECRET}`) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -65,4 +66,10 @@ export async function GET(req: Request) {
   await sb.from('app_settings').upsert({ key: 'circuit_auto_invoice_last_run', value: summary }, { onConflict: 'key' }).then(() => {}, () => {})
   console.log('[circuit-auto-invoice]', JSON.stringify({ eligible: eligible.length, invoiced, failed }))
   return NextResponse.json({ ok: true, ...summary })
+}
+
+
+// Les appels d'IA de ce passage sont comptés sous « cron:circuit-auto-invoice » (conso_ia).
+export async function GET(...args: Parameters<typeof handleGET>) {
+  return withAiContext({ declencheur: 'cron:circuit-auto-invoice' }, () => handleGET(...args))
 }

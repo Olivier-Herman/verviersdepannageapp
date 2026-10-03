@@ -30,6 +30,7 @@ import Anthropic            from '@anthropic-ai/sdk'
 import { ANTHROPIC_MODEL }  from '@/lib/anthropic-model'
 import { getAppOnlyToken }  from '@/lib/graph-mail-search'
 import { getBusinessText } from '@/lib/settings/business'
+import { aiClient } from '@/lib/ai/usage'
 
 export type AdviceProvider = 'ima' | 'awp'
 
@@ -253,7 +254,7 @@ Règles :
 function anthropic(): Anthropic {
   const apiKey = process.env.ANTHROPIC_API_KEY
   if (!apiKey) throw new Error('ANTHROPIC_API_KEY absente')
-  return new Anthropic({ apiKey })
+  return aiClient('payment-advices', { apiKey })
 }
 
 async function extractAwpPdf(pdf: Buffer): Promise<{

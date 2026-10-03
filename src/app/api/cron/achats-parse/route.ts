@@ -14,6 +14,7 @@ import { achatsRpc as odooRpc, getGroupCompanyPartnerIds } from '@/lib/achats/od
 import { categorizeInvoiceDoc } from '@/lib/achats/parse-invoice'
 import { paieJournalId }        from '@/lib/paie/push-odoo'   // journal fiches de paie → jamais synchronisé dans les achats
 import { ANTHROPIC_MODEL }      from '@/lib/anthropic-model'
+import { withAiContext } from '@/lib/ai/usage'
 
 export const dynamic     = 'force-dynamic'
 export const maxDuration = 300
@@ -23,7 +24,7 @@ function iso(monthsBack: number): string {
   return d.toISOString().slice(0, 10)
 }
 
-export async function GET(req: Request) {
+async function handleGET(req: Request) {
   const auth = req.headers.get('authorization')
   const okCron = process.env.CRON_SECRET && auth === `Bearer ${process.env.CRON_SECRET}`
   if (!okCron) {
@@ -121,4 +122,10 @@ export async function GET(req: Request) {
     .select('*', { count: 'exact', head: true }).is('parsed_at', null).not('attachment_id', 'is', null).is('parse_error', null)
 
   return NextResponse.json({ ok: true, synced, parsed, failed, remaining: remaining ?? null })
+}
+
+
+// Les appels d'IA de ce passage sont comptés sous « cron:achats-parse » (conso_ia).
+export async function GET(...args: Parameters<typeof handleGET>) {
+  return withAiContext({ declencheur: 'cron:achats-parse' }, () => handleGET(...args))
 }

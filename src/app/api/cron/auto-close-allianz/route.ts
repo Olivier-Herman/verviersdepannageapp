@@ -13,6 +13,7 @@ import { NextResponse }      from 'next/server'
 import { createAdminClient } from '@/lib/supabase'
 import { ALLIANZ_PROVIDED_SERVICE } from '@/lib/allianz/closure'
 import { getAutomationEnabled, AUTOMATION_FLAGS } from '@/lib/facturation/automation-flags'
+import { withAiContext } from '@/lib/ai/usage'
 
 export const dynamic     = 'force-dynamic'
 export const maxDuration = 300
@@ -20,7 +21,7 @@ export const maxDuration = 300
 const BATCH = 40            // borne par passe (chaque clôture = quelques appels Hexalite)
 const CLOSE_DELAY_MIN = 60  // fenêtre de vérif : on n'auto-clôture qu'à fin de mission + 60 min
 
-export async function GET(req: Request) {
+async function handleGET(req: Request) {
   const auth = req.headers.get('authorization')
   if (!process.env.CRON_SECRET || auth !== `Bearer ${process.env.CRON_SECRET}`) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -119,4 +120,10 @@ export async function GET(req: Request) {
   await sb.from('app_settings').upsert({ key: 'auto_close_allianz_last_run', value: summary }, { onConflict: 'key' }).then(() => {}, () => {})
   console.log('[auto-close-allianz]', JSON.stringify({ scanned: rows.length, closed, failed, waiting, skipped }))
   return NextResponse.json(summary)
+}
+
+
+// Les appels d'IA de ce passage sont comptés sous « cron:auto-close-allianz » (conso_ia).
+export async function GET(...args: Parameters<typeof handleGET>) {
+  return withAiContext({ declencheur: 'cron:auto-close-allianz' }, () => handleGET(...args))
 }

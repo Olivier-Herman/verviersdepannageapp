@@ -16,6 +16,7 @@ import Anthropic from '@anthropic-ai/sdk'
 import { ANTHROPIC_MODEL } from '@/lib/anthropic-model'
 import { odooRpc } from '@/lib/odoo'
 import { getPdfAttachments, getMessageText, findFolderIdByName, moveMessage, forwardMessage, type AgentMessage } from '../graph'
+import { aiClient } from '@/lib/ai/usage'
 
 export const FOURNISSEUR_DONE_FOLDER = 'Fournisseur Divers'
 
@@ -47,7 +48,7 @@ const PROMPT = `Tu lis un document reçu par une société de dépannage belge. 
 Si ce n'est PAS une facture fournisseur (bon de commande, devis, note de crédit reçue, publicité…), réponds {"not_invoice": true}. N'invente rien : null si absent.`
 
 let _client: Anthropic | null = null
-const client = () => (_client ??= new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY! }))
+const client = () => (_client ??= aiClient('mail-agent/handlers/fournisseur', { apiKey: process.env.ANTHROPIC_API_KEY! }))
 const parseJson = (txt: string) => { const m = txt.match(/\{[\s\S]*\}/); try { return m ? JSON.parse(m[0]) : null } catch { return null } }
 
 export async function extractSupplierInvoice(mailbox: string, msg: AgentMessage): Promise<SupplierExtraction | 'not_invoice' | null> {

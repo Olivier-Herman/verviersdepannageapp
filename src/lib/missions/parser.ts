@@ -4,6 +4,7 @@
 import type { MissionSource, MissionType } from '@/types'
 import type { ExtractedContent }           from './extractor'
 import { ANTHROPIC_MODELS }                from '@/lib/anthropic-model'
+import { recordAiUsage } from '@/lib/ai/usage'
 
 export interface ParsedMission {
   external_id:          string
@@ -277,10 +278,12 @@ export async function parseMissionContent(
   }
 
   if (!res || !res.ok) {
+    await recordAiUsage({ fonction: 'missions/parser', ok: false, erreur: `${res?.status}: ${lastErr.slice(0, 200)}` })
     throw new Error(`Claude API ${res?.status}: ${lastErr.slice(0, 200)}`)
   }
 
   const data    = await res.json()
+  await recordAiUsage({ fonction: 'missions/parser', modele: data.model, usage: data.usage })
   const rawText = (data.content?.[0]?.text as string) || '{}'
   const clean   = rawText.replace(/```json\s*/g, '').replace(/```\s*/g, '').trim()
 

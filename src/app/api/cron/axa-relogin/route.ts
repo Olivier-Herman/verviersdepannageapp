@@ -10,11 +10,18 @@ export const maxDuration = 300
 
 import { NextResponse } from 'next/server'
 import { runAxaRelogin } from '@/lib/axa/relogin-run'
+import { withAiContext } from '@/lib/ai/usage'
 
-export async function GET(req: Request) {
+async function handleGET(req: Request) {
   if (req.headers.get('authorization') !== `Bearer ${process.env.CRON_SECRET}`) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
   const r = await runAxaRelogin('cron')
   return NextResponse.json(r, { status: r.ok ? 200 : 500 })
+}
+
+
+// Les appels d'IA de ce passage sont comptés sous « cron:axa-relogin » (conso_ia).
+export async function GET(...args: Parameters<typeof handleGET>) {
+  return withAiContext({ declencheur: 'cron:axa-relogin' }, () => handleGET(...args))
 }

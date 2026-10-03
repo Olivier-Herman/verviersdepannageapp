@@ -10,9 +10,10 @@ import Anthropic from '@anthropic-ai/sdk'
 import { ANTHROPIC_MODEL } from '@/lib/anthropic-model'
 import { CATEGORIES } from './parse-invoice'
 import { ACHATS_TOOLS } from './ai-recommendations'
+import { aiClient } from '@/lib/ai/usage'
 
 let _client: Anthropic | null = null
-const getClient = () => (_client ??= new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY! }))
+const getClient = () => (_client ??= aiClient('achats/assistant', { apiKey: process.env.ANTHROPIC_API_KEY! }))
 
 const SYSTEM = `Tu es l'ASSISTANT ACHATS dédié de VD Soft (Verviers Dépannage, société belge de dépannage/remorquage). Tu es le conseiller achats personnel du patron, Olivier.
 

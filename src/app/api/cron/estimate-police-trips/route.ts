@@ -11,6 +11,7 @@ import { getServerSession }    from 'next-auth'
 import { authOptions }         from '@/lib/auth'
 import { createAdminClient }   from '@/lib/supabase'
 import { loadDepots, estimatePoliceTripMin } from '@/lib/perf/police-trip'
+import { withAiContext } from '@/lib/ai/usage'
 
 export const dynamic     = 'force-dynamic'
 export const maxDuration = 120
@@ -18,7 +19,7 @@ export const maxDuration = 120
 const BATCH = 40         // borné : ORS ~40 req/min, ~<1 s/route → OK sous maxDuration
 const LOOKBACK_DAYS = 60 // on ne remonte pas indéfiniment
 
-export async function GET(req: Request) {
+async function handleGET(req: Request) {
   // Cron (Bearer CRON_SECRET) OU déclenchement manuel superadmin (URL).
   const auth = req.headers.get('authorization')
   const okCron = process.env.CRON_SECRET && auth === `Bearer ${process.env.CRON_SECRET}`
@@ -57,4 +58,10 @@ export async function GET(req: Request) {
     }
   }
   return NextResponse.json({ ok: true, filled, scanned: missions.length })
+}
+
+
+// Les appels d'IA de ce passage sont comptés sous « cron:estimate-police-trips » (conso_ia).
+export async function GET(...args: Parameters<typeof handleGET>) {
+  return withAiContext({ declencheur: 'cron:estimate-police-trips' }, () => handleGET(...args))
 }

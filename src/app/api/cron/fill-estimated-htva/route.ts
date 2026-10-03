@@ -8,13 +8,14 @@
 import { NextResponse }          from 'next/server'
 import { createAdminClient }     from '@/lib/supabase'
 import { actionLines, linesTotal } from '@/lib/dossier/lines'
+import { withAiContext } from '@/lib/ai/usage'
 
 export const dynamic     = 'force-dynamic'
 export const maxDuration = 120
 
 const BATCH = 15   // borné : ORS ~40 req/min, chaque estimate = quelques routes
 
-export async function GET(req: Request) {
+async function handleGET(req: Request) {
   const auth = req.headers.get('authorization')
   if (!process.env.CRON_SECRET || auth !== `Bearer ${process.env.CRON_SECRET}`) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -60,4 +61,10 @@ export async function GET(req: Request) {
   }
 
   return NextResponse.json({ ok: true, processed: (missions || []).length, computed, zero, skipped, deferred, more: (missions || []).length >= BATCH })
+}
+
+
+// Les appels d'IA de ce passage sont comptés sous « cron:fill-estimated-htva » (conso_ia).
+export async function GET(...args: Parameters<typeof handleGET>) {
+  return withAiContext({ declencheur: 'cron:fill-estimated-htva' }, () => handleGET(...args))
 }

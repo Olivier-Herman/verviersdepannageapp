@@ -6,11 +6,12 @@
 
 import { NextResponse } from 'next/server'
 import { fixCircleKForeignVat } from '@/lib/finance/circlek-foreign-vat'
+import { withAiContext } from '@/lib/ai/usage'
 
 export const dynamic     = 'force-dynamic'
 export const maxDuration = 120
 
-export async function GET(req: Request) {
+async function handleGET(req: Request) {
   const authHeader = req.headers.get('authorization')
   if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -22,4 +23,10 @@ export async function GET(req: Request) {
     console.error('[cron circlek-foreign-vat] KO:', err?.message)
     return NextResponse.json({ error: err?.message || 'Erreur' }, { status: 500 })
   }
+}
+
+
+// Les appels d'IA de ce passage sont comptés sous « cron:circlek-foreign-vat » (conso_ia).
+export async function GET(...args: Parameters<typeof handleGET>) {
+  return withAiContext({ declencheur: 'cron:circlek-foreign-vat' }, () => handleGET(...args))
 }
