@@ -56,7 +56,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     // Les dernières restent en tête : compteur et châssis sont souvent pris à la
     // clôture. Plafond à 12 pour ne pas faire attendre le chauffeur.
     const lot = [...photos].reverse().slice(0, 12)
-    const { vin, mileage } = await detectVehicleFromImages(lot)
+    const { vin, mileage } = await detectVehicleFromImages(lot, { needVin: !(m as any).vehicle_vin })
 
     const patch: Record<string, any> = {}
     if (vin?.value && !(m as any).vehicle_vin) patch.vehicle_vin = vin.value

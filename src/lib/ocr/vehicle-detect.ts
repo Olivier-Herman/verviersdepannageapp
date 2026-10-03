@@ -90,7 +90,7 @@ export interface VehicleOcrResult {
  * déjà uploadées). Retourne { plate, vin } validés (ou null chacun). Ne throw
  * jamais pour un souci de photo : renvoie null. Peut throw si Claude/API échoue.
  */
-export async function detectVehicleFromImages(rawImages: (string | null | undefined)[]): Promise<VehicleOcrResult> {
+export async function detectVehicleFromImages(rawImages: (string | null | undefined)[], opts: { needVin?: boolean } = {}): Promise<VehicleOcrResult> {
   const raw = (rawImages || []).map(s => String(s || '').trim()).filter(Boolean).slice(0, MAX_IMAGES)
   if (raw.length === 0) return { plate: null, vin: null, mileage: null }
 
@@ -188,8 +188,12 @@ export async function detectVehicleFromImages(rawImages: (string | null | undefi
   // modèle, donc la relancer sur le même ne rattrape rien. Elle ne s'exécute que
   // lorsque la première a échoué — le surcoût ne touche que les cas perdus, et un
   // châssis manquant bloque une clôture VAB entière.
+  // Olivier 03/10/2026 (mesure de la conso) : seulement si le VIN MANQUE sur la
+  // fiche (needVin), et sur 3 photos au plus — la relance partait photo par photo
+  // sur le modèle cher à chaque envoi, même quand le châssis était déjà connu.
   const VIN_MODELS = ANTHROPIC_MODELS
-  for (let idx = 0; idx < images.length && !result.vin; idx++) {
+  const VIN_RETRY_MAX = 3
+  for (let idx = 0; opts.needVin !== false && idx < Math.min(images.length, VIN_RETRY_MAX) && !result.vin; idx++) {
     try {
       const retry = await createWithModelFallback(client, VIN_MODELS, {
         max_tokens: 120,

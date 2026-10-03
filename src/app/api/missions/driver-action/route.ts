@@ -752,7 +752,7 @@ export async function POST(req: Request) {
         try {
           const { detectVehicleFromImages } = await import('@/lib/ocr/vehicle-detect')
           // Les dernières photos d'abord (compteur et châssis sont souvent pris en dernier), 12 max.
-          const { plate, vin, mileage } = await detectVehicleFromImages([...ocrPhotos].reverse().slice(0, 12))
+          const { plate, vin, mileage } = await detectVehicleFromImages([...ocrPhotos].reverse().slice(0, 12), { needVin: vinEmpty })
           // Relecture juste avant d'écrire : un autre passage (clôture flux 2) a pu remplir entre-temps.
           const { data: fresh } = await supabase.from('incoming_missions').select('vehicle_plate, vehicle_vin, vehicle_mileage').eq('id', mission_id).maybeSingle()
           const upd: Record<string, any> = {}
