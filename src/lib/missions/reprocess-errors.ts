@@ -39,6 +39,14 @@ const FAILMAP_KEY = 'webhook_refetch_fails'
 // (coût Claude inutile). Olivier 2026-06-16.
 const REPROCESS_WINDOW_HOURS = 72
 
+// Relecture (re-parse) automatique : au plus MAX_REPARSE fois par fiche. Une
+// fiche d'expéditeur inconnu (source unknown / UNKNOWN_SENDER_) garde sa source
+// après une relecture réussie, donc elle restait sélectionnée : un rappel de
+// facture était relu toutes les 5 min pendant 72 h (≈ 864 appels, 03/10/2026).
+// Compteur persistant par fiche dans app_settings, purgé après la fenêtre.
+const MAX_REPARSE = 2
+const REPARSE_KEY = 'reprocess_reparse_attempts'
+
 /**
  * Nombre de missions RÉCENTES réellement bloquées (badge dispatch).
  * Volontairement étroit : uniquement les échecs de traitement récents
@@ -85,17 +93,34 @@ export async function reprocessErrorMissions(opts: { onlyId?: string | null; bat
     // de vieux contenus non parsables).
     q = q
       .or(REPROCESS_FILTER)
+      .not('external_id', 'like', 'TIMEOUT_%')    // abandonnés : n'occupent plus le lot
+      .neq('status', 'cancelled')                 // écartée à la main : jamais relue
       .gte('received_at', new Date(Date.now() - REPROCESS_WINDOW_HOURS * 3600_000).toISOString())
       .order('received_at', { ascending: false })
   }
-  const { data: rows, error } = await q.limit(BATCH + 4)  // marge pour filtrer les in-flight
+  // Marge large : les fiches déjà relues MAX_REPARSE fois sont écartées ci-dessous.
+  const { data: rows, error } = await q.limit(onlyId ? 1 : BATCH + 40)
   if (error) throw new Error(error.message)
+
+  // Compteur de relectures par fiche (lot automatique seulement ; une action
+  // manuelle ciblée relit toujours).
+  let reparseMap: Record<string, { n: number; at: string }> = {}
+  if (!onlyId) {
+    try {
+      const { data: rm } = await sb.from('app_settings').select('value').eq('key', REPARSE_KEY).maybeSingle()
+      const parsed = typeof rm?.value === 'string' ? JSON.parse(rm.value) : rm?.value
+      if (parsed && typeof parsed === 'object') reparseMap = { ...(parsed as any) }
+    } catch { /* best-effort */ }
+    const cutoff = Date.now() - REPROCESS_WINDOW_HOURS * 3600_000
+    for (const [k, v] of Object.entries(reparseMap)) if (!v?.at || new Date(v.at).getTime() < cutoff) delete reparseMap[k]
+  }
 
   // Ne pas toucher aux placeholders PROCESSING_ encore EN COURS de traitement
   // (créés il y a < 4 min) — sauf si on cible un id précis (action manuelle).
   const inFlightCutoff = Date.now() - 4 * 60 * 1000
   const candidates = (rows || []).filter(m => {
     if (onlyId) return true
+    if ((reparseMap[m.id]?.n || 0) >= MAX_REPARSE) return false
     // Emails ABANDONNÉS (timeout chronique) : ne plus jamais les retenter.
     if (String(m.external_id || '').startsWith('TIMEOUT_')) return false
     if (String(m.external_id || '').startsWith('PROCESSING_') && m.received_at) {
@@ -176,6 +201,11 @@ export async function reprocessErrorMissions(opts: { onlyId?: string | null; bat
 
     // Cas 2 : contenu présent → re-parse.
     if (!raw) { failed++; continue }
+    if (!onlyId) {
+      // Compté AVANT l'appel : un passage tué par le délai compte quand même.
+      reparseMap[m.id] = { n: (reparseMap[m.id]?.n || 0) + 1, at: new Date().toISOString() }
+      await sb.from('app_settings').upsert({ key: REPARSE_KEY, value: JSON.stringify(reparseMap), updated_at: new Date().toISOString() }, { onConflict: 'key' }).then(() => {}, () => {})
+    }
     try {
       const parsed = await parseMissionContent(
         (m.source as any) || 'unknown',
