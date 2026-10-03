@@ -21,6 +21,14 @@ export interface NotificationType {
 }
 
 export const NOTIFICATION_TYPES: readonly NotificationType[] = [
+  {
+    key:             'mobia_draft',
+    label:           'Brouillon préparé par Mobia (dossier Claudy)',
+    description:     'Un brouillon de réponse attend dans info@ pour un mail du dossier Claudy. Une seule notification par mail, jamais de rappel.',
+    category:        'dispatcher',
+    applicableRoles: ['dispatcher', 'admin', 'superadmin'],
+    defaultEnabled:  true,
+  },
   // ── Dispatcher (et admin/superadmin) ────────────────────────────────
   {
     key:             'garage_cancel_request',
