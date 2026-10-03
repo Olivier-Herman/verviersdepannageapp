@@ -20,6 +20,8 @@ export type SamAction = { id: string; parametres: Record<string, any>; libelle: 
 export interface SamReply {
   /** Prénom de l'agent qui répond : « Sam » (8 h-20 h) ou « Sonic » (20 h-8 h), donné par le bureau. */
   agent?: string
+  /** Relève en fin de service : message de l'agent qui part, à afficher AVANT la réponse. */
+  transfert?: { agent: string; texte: string; texte_fr?: string } | null
   texte: string
   texte_fr?: string
   boutons?: SamButton[]
@@ -104,7 +106,10 @@ async function callBureau(body: any): Promise<SamReply> {
   })
   if (!r.ok) throw new Error(`Aide indisponible (${r.status}) ${(await r.text().catch(() => '')).slice(0, 200)}`)
   const j = await r.json()
-  return { agent: typeof j.agent === 'string' && j.agent.trim() ? j.agent.trim().slice(0, 20) : agentDuMoment(), texte: String(j.texte || ''), texte_fr: j.texte_fr, boutons: Array.isArray(j.boutons) ? j.boutons.slice(0, 8) : [], action: j.action || null, besoin: j.besoin || null, panne: j.panne || null }
+  const transfert = j.transfert && typeof j.transfert.texte === 'string' && j.transfert.texte.trim()
+    ? { agent: String(j.transfert.agent || '').slice(0, 20) || 'Sam', texte: String(j.transfert.texte), texte_fr: j.transfert.texte_fr }
+    : null
+  return { agent: typeof j.agent === 'string' && j.agent.trim() ? j.agent.trim().slice(0, 20) : agentDuMoment(), transfert, texte: String(j.texte || ''), texte_fr: j.texte_fr, boutons: Array.isArray(j.boutons) ? j.boutons.slice(0, 8) : [], action: j.action || null, besoin: j.besoin || null, panne: j.panne || null }
 }
 
 /** Recherche par plaque, limitée aux missions du chauffeur. */

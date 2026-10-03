@@ -9,7 +9,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useT } from '@/lib/i18n/I18nProvider'
 
-type Msg = { from: 'me' | 'sam'; text: string; photo?: boolean }
+type Msg = { from: 'me' | 'sam'; text: string; photo?: boolean; who?: string }
 type Btn = { libelle: string; valeur: string }
 type Action = { id: string; libelle: string } | null
 
@@ -53,7 +53,8 @@ export default function SamAide({ missionId, ecran }: { missionId?: string | nul
       const j = await r.json().catch(() => ({}))
       if (j.agent) setAgent(j.agent)
       if (!r.ok || !j.ok) { setMsgs(m => [...m, { from: 'sam', text: j.error || t('sam.unavailable', { name: agent }) }]); return }
-      setMsgs(m => [...m, { from: 'sam', text: j.texte || '…' }])
+      // Relève en fin de service : le message de l'agent qui part, puis la réponse de celui qui arrive.
+      setMsgs(m => [...m, ...(j.transfert?.texte ? [{ from: 'sam' as const, text: j.transfert.texte, who: j.transfert.agent }] : []), { from: 'sam', text: j.texte || '…', who: j.agent }])
       setButtons(Array.isArray(j.boutons) ? j.boutons : [])
       setAction(j.action ? { id: j.action.id, libelle: j.action.libelle } : null)
       setOpenUrl(j.open_url || null)
@@ -95,6 +96,7 @@ export default function SamAide({ missionId, ecran }: { missionId?: string | nul
               {msgs.length === 0 && <p className="text-ink-secondary text-sm text-center py-6">{t('sam.intro', { name: agent })}</p>}
               {msgs.map((m, i) => (
                 <div key={i} className={`max-w-[85%] rounded-2xl px-3.5 py-2.5 text-[15px] leading-snug whitespace-pre-wrap ${m.from === 'me' ? 'self-end bg-brand text-white rounded-br-md' : 'self-start bg-surface border text-ink rounded-bl-md'}`}>
+                  {m.from === 'sam' && m.who && <b className="block text-xs text-emerald-800 mb-0.5">{m.who}</b>}
                   {m.text}{m.photo ? ' 📷' : ''}
                 </div>
               ))}

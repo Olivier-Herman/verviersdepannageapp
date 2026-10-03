@@ -31,7 +31,7 @@ export async function POST(req: Request) {
           ecran: b.ecran ? String(b.ecran).slice(0, 300) : null, missionId: b.mission_id || null,
           photo: typeof b.photo === 'string' && b.photo.length < 7_000_000 ? b.photo.replace(/^data:image\/\w+;base64,/, '') : null,
         })
-    return NextResponse.json({ ok: true, agent: turn.reply.agent || agentDuMoment(), texte: turn.reply.texte, boutons: turn.reply.boutons || [], action: turn.reply.action || null, open_url: turn.openUrl || null })
+    return NextResponse.json({ ok: true, agent: turn.reply.agent || agentDuMoment(), transfert: turn.reply.transfert || null, texte: turn.reply.texte, boutons: turn.reply.boutons || [], action: turn.reply.action || null, open_url: turn.openUrl || null })
   } catch (e: any) {
     console.error('[sam/aide]', e?.message || e)
     return NextResponse.json({ ok: false, agent: agentDuMoment(), error: `${agentDuMoment()} n’est pas disponible pour le moment. Si c’est urgent, appelle le dispatch.` }, { status: 502 })

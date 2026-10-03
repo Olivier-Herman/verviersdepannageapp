@@ -22,6 +22,8 @@ async function sendTurn(chatId: number, turn: SamTurn) {
   ;(r.boutons || []).forEach((b, i) => rows.push([{ text: b.libelle, data: `b:${i}` }]))
   if (r.action) rows.push([{ text: 'Oui, fais-le', data: 'a:oui' }, { text: 'Non', data: 'a:non' }])
   if (turn.openUrl) rows.push([{ text: 'Ouvrir dans VD Soft', url: turn.openUrl }])
+  // Relève : le message de l'agent qui termine son service part d'abord, signé de son prénom.
+  if (r.transfert?.texte) await tgSend(chatId, r.transfert.texte, [], r.transfert.agent)
   await tgSend(chatId, r.texte || '…', rows, r.agent || agentDuMoment())
 }
 
