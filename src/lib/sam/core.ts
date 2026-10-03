@@ -50,7 +50,7 @@ async function missionsEnCours(userId: string) {
   const { data } = await createAdminClient().from('incoming_missions')
     .select('id, mission_number, mission_type, vehicle_plate, status')
     .eq('assigned_to', userId).in('status', ACTIVE).order('received_at', { ascending: false }).limit(10)
-  return (data || []).map((m: any) => ({ id: m.id, numero: m.mission_number, type: m.mission_type, plaque: m.vehicle_plate, statut: m.status }))
+  return (data || []).map((m: any) => ({ id: m.id, numero: m.mission_number != null ? String(m.mission_number) : '', type: m.mission_type, plaque: m.vehicle_plate, statut: m.status }))
 }
 
 /** Une mission que le chauffeur a le droit de voir : la sienne (assignée à lui). */
@@ -94,7 +94,7 @@ async function callBureau(body: any): Promise<SamReply> {
     headers: { Authorization: `Bearer ${secret}`, 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   })
-  if (!r.ok) throw new Error(`Aide indisponible (${r.status})`)
+  if (!r.ok) throw new Error(`Aide indisponible (${r.status}) ${(await r.text().catch(() => '')).slice(0, 200)}`)
   const j = await r.json()
   return { texte: String(j.texte || ''), texte_fr: j.texte_fr, boutons: Array.isArray(j.boutons) ? j.boutons.slice(0, 8) : [], action: j.action || null, besoin: j.besoin || null, panne: j.panne || null }
 }
@@ -106,7 +106,7 @@ async function chercherPlaque(userId: string, plaque: string) {
   const { data } = await createAdminClient().from('incoming_missions')
     .select('id, mission_number, mission_type, vehicle_plate, status, received_at')
     .eq('assigned_to', userId).ilike('vehicle_plate', `%${p}%`).order('received_at', { ascending: false }).limit(5)
-  return { trouvees: (data || []).map((m: any) => ({ id: m.id, numero: m.mission_number, type: m.mission_type, plaque: m.vehicle_plate, statut: m.status })) }
+  return { trouvees: (data || []).map((m: any) => ({ id: m.id, numero: m.mission_number != null ? String(m.mission_number) : '', type: m.mission_type, plaque: m.vehicle_plate, statut: m.status })) }
 }
 
 /**
@@ -117,6 +117,12 @@ export async function samTurn(opts: { userId: string; canal: SamCanal; texte: st
   const u = await loadDriver(opts.userId)
   if (!u || !u.active) throw new Error('Compte inactif')
   const state = await getState(opts.userId)
+  // Une action attend : « Oui, fais-le » / « Non » (tapé ou bouton de Sam) vaut réponse à l'action.
+  if (state?.pending_action && opts.resultat === undefined) {
+    const t = String(opts.texte || '').trim().toLowerCase()
+    if (/^(oui|ok|vas-?y|fais-?le|po\b|po,|bëje|yes)/.test(t)) return samConfirm({ userId: opts.userId, canal: opts.canal, oui: true })
+    if (/^(non|jo\b|no\b|je le fais)/.test(t)) return samConfirm({ userId: opts.userId, canal: opts.canal, oui: false })
+  }
   const encours = await missionsEnCours(opts.userId)
   // Mission discutée : celle de l'écran, sinon celle retenue au tour précédent, sinon la seule en cours.
   let missionId = opts.missionId || state?.mission_id || (encours.length === 1 ? encours[0].id : null)
@@ -141,6 +147,12 @@ export async function samTurn(opts: { userId: string; canal: SamCanal; texte: st
   // Action proposée : gardée en attente, seulement si elle est dans la liste blanche.
   const action = reply.action && ACTIONS_POSSIBLES.some(a => a.id === reply!.action!.id) ? reply.action : null
   if (reply.action && !action) reply.action = null
+  if (action) {
+    // Paramètres manquants : la mission de la conversation par défaut.
+    action.parametres = { ...(action.parametres || {}) }
+    if (!action.parametres.mission_id && missionId) action.parametres.mission_id = missionId
+    reply.boutons = (reply.boutons || []).filter(b => !/^(oui|non|po|jo)\b/i.test(b.libelle.trim()))
+  }
   await setState(opts.userId, { mission_id: missionId, buttons: reply.boutons || [], pending_action: action })
   return { reply }
 }
