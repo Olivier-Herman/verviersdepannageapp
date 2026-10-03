@@ -7,7 +7,7 @@
 
 import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase'
-import { samTurn, samConfirm, type SamTurn } from '@/lib/sam/core'
+import { samTurn, samConfirm, agentDuMoment, type SamTurn } from '@/lib/sam/core'
 import { tg, tgSend, tgTyping, tgPhotoBase64 } from '@/lib/sam/telegram'
 
 export const dynamic = 'force-dynamic'
@@ -22,7 +22,7 @@ async function sendTurn(chatId: number, turn: SamTurn) {
   ;(r.boutons || []).forEach((b, i) => rows.push([{ text: b.libelle, data: `b:${i}` }]))
   if (r.action) rows.push([{ text: 'Oui, fais-le', data: 'a:oui' }, { text: 'Non', data: 'a:non' }])
   if (turn.openUrl) rows.push([{ text: 'Ouvrir dans VD Soft', url: turn.openUrl }])
-  await tgSend(chatId, r.texte || '…', rows)
+  await tgSend(chatId, r.texte || '…', rows, r.agent || agentDuMoment())
 }
 
 export async function POST(req: Request) {
@@ -55,8 +55,8 @@ export async function POST(req: Request) {
     const { data: u } = await sb.from('users').select('name, surnom, language').eq('id', c.user_id).maybeSingle()
     const p = String(u?.surnom || u?.name || '').split(/\s+/)[0]
     await tgSend(chatId, u?.language === 'sq'
-      ? `Përshëndetje ${p}, llogaria jote VD Soft është e lidhur. Nëse bllokohesh në aplikacion, më shkruaj këtu ose dërgo një foto të ekranit : përgjigjet Sam.`
-      : `Salut ${p}, ton compte VD Soft est relié. Si tu bloques dans l'app, écris-moi ici ou envoie une photo de ton écran : c'est Sam qui répond.`)
+      ? `Përshëndetje ${p}, llogaria jote VD Soft është e lidhur. Nëse bllokohesh në aplikacion, më shkruaj këtu ose dërgo një foto të ekranit : Sam përgjigjet ditën, Sonic natën.`
+      : `Salut ${p}, ton compte VD Soft est relié. Si tu bloques dans l'app, écris-moi ici ou envoie une photo de ton écran : Sam te répond le jour, Sonic la nuit.`)
     return NextResponse.json({ ok: true })
   }
 
@@ -91,9 +91,10 @@ export async function POST(req: Request) {
     await sendTurn(chatId, turn)
   } catch (e: any) {
     console.error('[telegram/webhook]', e?.message || e)
+    const n = agentDuMoment()
     await tgSend(chatId, user.language === 'sq'
-      ? 'Sam nuk është i disponueshëm për momentin. Nëse është urgjente, telefono dispeçerin.'
-      : 'Sam n’est pas disponible pour le moment. Si c’est urgent, appelle le dispatch.')
+      ? `${n} nuk është i disponueshëm për momentin. Nëse është urgjente, telefono dispeçerin.`
+      : `${n} n’est pas disponible pour le moment. Si c’est urgent, appelle le dispatch.`)
   }
   return NextResponse.json({ ok: true })
 }

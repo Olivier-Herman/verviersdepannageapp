@@ -18,9 +18,9 @@ export async function tg(method: string, body: Record<string, any>): Promise<any
 const esc = (s: string) => String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
 
 /** Message avec boutons (inline). `rows` : lignes de { text, data } ou { text, url }. */
-export async function tgSend(chatId: number, text: string, rows: Array<Array<{ text: string; data?: string; url?: string }>> = []) {
+export async function tgSend(chatId: number, text: string, rows: Array<Array<{ text: string; data?: string; url?: string }>> = [], from?: string) {
   return tg('sendMessage', {
-    chat_id: chatId, text: esc(text).slice(0, 4000), parse_mode: 'HTML', disable_web_page_preview: true,
+    chat_id: chatId, text: ((from ? `<b>${esc(from)}</b>\n` : '') + esc(text)).slice(0, 4000), parse_mode: 'HTML', disable_web_page_preview: true,
     reply_markup: rows.length ? { inline_keyboard: rows.map(r => r.map(b => b.url ? { text: b.text.slice(0, 60), url: b.url } : { text: b.text.slice(0, 60), callback_data: String(b.data).slice(0, 60) })) } : undefined,
   })
 }

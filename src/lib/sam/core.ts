@@ -18,6 +18,8 @@ export type SamCanal = 'app' | 'telegram'
 export type SamButton = { libelle: string; valeur: string }
 export type SamAction = { id: string; parametres: Record<string, any>; libelle: string }
 export interface SamReply {
+  /** Prénom de l'agent qui répond : « Sam » (8 h-20 h) ou « Sonic » (20 h-8 h), donné par le bureau. */
+  agent?: string
   texte: string
   texte_fr?: string
   boutons?: SamButton[]
@@ -28,6 +30,12 @@ export interface SamReply {
 export interface SamTurn { reply: SamReply; openUrl?: string | null }
 
 // Missions « en cours » d'un chauffeur (même liste que sa page de missions).
+/** Sam de 8 h à 20 h, Sonic de 20 h à 8 h (heure de Bruxelles) — Olivier 03/10/2026. */
+export function agentDuMoment(d = new Date()): 'Sam' | 'Sonic' {
+  const h = Number(new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/Brussels', hour: '2-digit', hour12: false }).format(d)) % 24
+  return h >= 8 && h < 20 ? 'Sam' : 'Sonic'
+}
+
 const ACTIVE = ['assigned', 'accepted', 'on_way', 'on_site', 'in_progress', 'delivering']
 const APP_URL = () => (process.env.NEXT_PUBLIC_APP_URL || process.env.NEXTAUTH_URL || 'https://app.verviersdepannage.com').replace(/\/$/, '')
 
@@ -96,7 +104,7 @@ async function callBureau(body: any): Promise<SamReply> {
   })
   if (!r.ok) throw new Error(`Aide indisponible (${r.status}) ${(await r.text().catch(() => '')).slice(0, 200)}`)
   const j = await r.json()
-  return { texte: String(j.texte || ''), texte_fr: j.texte_fr, boutons: Array.isArray(j.boutons) ? j.boutons.slice(0, 8) : [], action: j.action || null, besoin: j.besoin || null, panne: j.panne || null }
+  return { agent: typeof j.agent === 'string' && j.agent.trim() ? j.agent.trim().slice(0, 20) : agentDuMoment(), texte: String(j.texte || ''), texte_fr: j.texte_fr, boutons: Array.isArray(j.boutons) ? j.boutons.slice(0, 8) : [], action: j.action || null, besoin: j.besoin || null, panne: j.panne || null }
 }
 
 /** Recherche par plaque, limitée aux missions du chauffeur. */

@@ -24,8 +24,15 @@ async function compress(file: File): Promise<string | null> {
   } catch { return null }
 }
 
+// Sam de 8 h à 20 h, Sonic de 20 h à 8 h (heure de Bruxelles) ; le bureau confirme dans chaque réponse.
+const agentDuMoment = () => {
+  const h = Number(new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/Brussels', hour: '2-digit', hour12: false }).format(new Date())) % 24
+  return h >= 8 && h < 20 ? 'Sam' : 'Sonic'
+}
+
 export default function SamAide({ missionId, ecran }: { missionId?: string | null; ecran: string }) {
   const { t } = useT()
+  const [agent, setAgent] = useState<string>(agentDuMoment)
   const [open, setOpen] = useState(false)
   const [msgs, setMsgs] = useState<Msg[]>([])
   const [text, setText] = useState('')
@@ -44,12 +51,13 @@ export default function SamAide({ missionId, ecran }: { missionId?: string | nul
     try {
       const r = await fetch('/api/sam/aide', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
       const j = await r.json().catch(() => ({}))
-      if (!r.ok || !j.ok) { setMsgs(m => [...m, { from: 'sam', text: j.error || t('sam.unavailable') }]); return }
+      if (j.agent) setAgent(j.agent)
+      if (!r.ok || !j.ok) { setMsgs(m => [...m, { from: 'sam', text: j.error || t('sam.unavailable', { name: agent }) }]); return }
       setMsgs(m => [...m, { from: 'sam', text: j.texte || '…' }])
       setButtons(Array.isArray(j.boutons) ? j.boutons : [])
       setAction(j.action ? { id: j.action.id, libelle: j.action.libelle } : null)
       setOpenUrl(j.open_url || null)
-    } catch { setMsgs(m => [...m, { from: 'sam', text: t('sam.unavailable') }]) }
+    } catch { setMsgs(m => [...m, { from: 'sam', text: t('sam.unavailable', { name: agent }) }]) }
     finally { setBusy(false) }
   }
 
@@ -78,19 +86,19 @@ export default function SamAide({ missionId, ecran }: { missionId?: string | nul
         <div className="fixed inset-0 z-50 bg-black/40 flex items-end sm:items-center justify-center">
           <div className="bg-surface w-full sm:max-w-md h-[92vh] sm:h-[80vh] rounded-t-3xl sm:rounded-3xl flex flex-col overflow-hidden">
             <div className="bg-ink text-surface px-4 py-3 flex items-center gap-3">
-              <span className="w-10 h-10 rounded-full bg-emerald-700 text-white font-bold flex items-center justify-center">S</span>
-              <span className="flex-1 min-w-0"><b className="block">{t('sam.title')}</b><span className="text-xs opacity-80">{t('sam.subtitle')}</span></span>
+              <span className="w-10 h-10 rounded-full bg-emerald-700 text-white font-bold flex items-center justify-center">{agent[0]}</span>
+              <span className="flex-1 min-w-0"><b className="block">{agent}</b><span className="text-xs opacity-80">{t('sam.subtitle')}</span></span>
               <button type="button" onClick={() => setOpen(false)} aria-label={t('sam.close')} className="w-11 h-11 rounded-full text-xl">✕</button>
             </div>
 
             <div ref={listRef} className="flex-1 overflow-y-auto p-4 flex flex-col gap-2.5 bg-surface-2">
-              {msgs.length === 0 && <p className="text-ink-secondary text-sm text-center py-6">{t('sam.intro')}</p>}
+              {msgs.length === 0 && <p className="text-ink-secondary text-sm text-center py-6">{t('sam.intro', { name: agent })}</p>}
               {msgs.map((m, i) => (
                 <div key={i} className={`max-w-[85%] rounded-2xl px-3.5 py-2.5 text-[15px] leading-snug whitespace-pre-wrap ${m.from === 'me' ? 'self-end bg-brand text-white rounded-br-md' : 'self-start bg-surface border text-ink rounded-bl-md'}`}>
                   {m.text}{m.photo ? ' 📷' : ''}
                 </div>
               ))}
-              {busy && <div className="self-start text-ink-muted text-sm italic px-1">{t('sam.typing')}</div>}
+              {busy && <div className="self-start text-ink-muted text-sm italic px-1">{t('sam.typing', { name: agent })}</div>}
               {!busy && buttons.length > 0 && (
                 <div className="self-stretch flex flex-col gap-2">
                   {buttons.map(b => (
@@ -108,7 +116,7 @@ export default function SamAide({ missionId, ecran }: { missionId?: string | nul
                     <button type="button" onClick={() => { setMsgs(m => [...m, { from: 'me', text: t('sam.no') }]); call({ confirmer: false }) }}
                       className="flex-1 min-h-[48px] rounded-xl bg-surface-2 border text-ink font-semibold">{t('sam.no')}</button>
                   </div>
-                  <span className="text-xs text-ink-secondary">{t('sam.do_it_note')}</span>
+                  <span className="text-xs text-ink-secondary">{t('sam.do_it_note', { name: agent })}</span>
                 </div>
               )}
               {!busy && openUrl && (
@@ -127,9 +135,9 @@ export default function SamAide({ missionId, ecran }: { missionId?: string | nul
                 <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={e => { pickPhoto(e.target.files?.[0]); e.target.value = '' }} />
                 <button type="button" onClick={() => fileRef.current?.click()} aria-label={t('sam.add_photo')}
                   className="w-12 h-12 shrink-0 rounded-full bg-surface-2 border text-xl">📷</button>
-                <label htmlFor="sam-input" className="sr-only">{t('sam.placeholder')}</label>
+                <label htmlFor="sam-input" className="sr-only">{t('sam.placeholder', { name: agent })}</label>
                 <input id="sam-input" value={text} onChange={e => setText(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') send() }}
-                  placeholder={t('sam.placeholder')} className="flex-1 min-w-0 h-12 px-4 rounded-full border bg-surface text-ink text-base" />
+                  placeholder={t('sam.placeholder', { name: agent })} className="flex-1 min-w-0 h-12 px-4 rounded-full border bg-surface text-ink text-base" />
                 <button type="button" onClick={() => send()} disabled={busy || (!text.trim() && !photo)} aria-label={t('sam.send')}
                   className="w-12 h-12 shrink-0 rounded-full bg-brand text-white text-xl disabled:opacity-40">➤</button>
               </div>
