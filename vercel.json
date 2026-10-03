@@ -58,6 +58,7 @@
     { "path": "/api/cron/touring-deroulement-sync",  "schedule": "0 5 * * *"    },
     { "path": "/api/cron/payment-advices",           "schedule": "0 5,12 * * *" },
     { "path": "/api/cron/telegram-bot-photo",       "schedule": "1 * * * *"  },
+    { "path": "/api/cron/sam-conversations",        "schedule": "*/10 * * * *" },
     { "path": "/api/cron/mobia",                    "schedule": "*/15 * * * *" },
     { "path": "/api/cron/mail-agent",               "schedule": "*/15 * * * *" },
     { "path": "/api/cron/mail-agent-digest",        "schedule": "30 6 * * 1-5" },

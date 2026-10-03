@@ -234,6 +234,10 @@ export default async function AdminPage() {
             desc="Un bouton par vérification : mails bloqués, COMEX, VAB, Graph, Odoo, parc, notifications, push, Teams, étiquette de test. Superadmin uniquement." />
         )}
         {user.role === 'superadmin' && (
+          <Card href="/admin/sam-echanges" icon={Radio} label="Échanges Sam / Sonic"
+            desc="Conversations des chauffeurs avec l'aide Sam (le jour) et Sonic (la nuit), avec ou sans mission : résumé et échange complet, traduction française. Superadmin uniquement." />
+        )}
+        {user.role === 'superadmin' && (
           <Card href="/admin/activity" icon={Radio} label="Journal d'activité"
             desc="Mouchard : toutes les actions (qui / quoi / quand / quelle mission) en flux temps réel, filtrable par utilisateur, action, période. Superadmin uniquement." />
         )}

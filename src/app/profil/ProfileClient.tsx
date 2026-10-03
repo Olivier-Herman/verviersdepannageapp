@@ -7,6 +7,7 @@ import AppShell      from '@/components/layout/AppShell'
 import NavOrderEditor from '@/components/profil/NavOrderEditor'
 import AuthProvidersSection from '@/components/profile/AuthProvidersSection'
 import TelegramLinkCard from '@/components/profile/TelegramLinkCard'
+import SamConversations from '@/components/sam/SamConversations'
 import { LanguageSelector } from '@/components/profile/LanguageSelector'
 import { filterNavItems } from '@/components/layout/nav-items'
 
@@ -376,6 +377,8 @@ export default function ProfileClient({ user }: { user: any }) {
 
         {/* Aide de Sam sur Telegram (Olivier 03/10/2026) : chauffeurs. */}
         {(user?.role === 'driver' || (Array.isArray(user?.roles) && user.roles.includes('driver'))) && <TelegramLinkCard />}
+        {/* Onglet « Aide » : mes échanges avec Sam / Sonic (Olivier 03/10/2026). */}
+        {(user?.role === 'driver' || (Array.isArray(user?.roles) && user.roles.includes('driver'))) && <SamConversations mine />}
 
         {/* Personnalisation menu (drag & drop) */}
         {visibleNav.length > 1 && (

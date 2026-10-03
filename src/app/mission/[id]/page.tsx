@@ -54,12 +54,9 @@ export default async function MissionDriverPage({ params, searchParams }: Props)
   const onsiteV2 = await flagAppliesToMission('driver_onsite_v2', (currentUser as any).role, mission as any)
 
   const isDriverOfMission = mission.assigned_to === currentUser.id
-  // Bouton « Aide » (Sam) seulement si le chauffeur a relié Telegram à son
-  // profil ; délier le fait disparaître (Olivier 03/10/2026).
-  const { data: tgLink } = isDriverOfMission
-    ? await supabase.from('telegram_links').select('user_id').eq('user_id', currentUser.id).maybeSingle()
-    : { data: null }
-  const showAide = isDriverOfMission && !!tgLink
+  // Bouton « Aide » (Sam / Sonic) pour tout chauffeur de la mission ; Telegram
+  // n'est qu'une option du profil (Olivier 03/10/2026).
+  const showAide = isDriverOfMission
   const isStaff = ['admin', 'superadmin', 'dispatcher'].includes(currentUser.role)
   if (!isDriverOfMission && !isStaff) redirect('/dashboard')
 

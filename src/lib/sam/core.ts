@@ -13,6 +13,7 @@
 import { createAdminClient } from '@/lib/supabase'
 import { buildEncaissementUrl } from '@/lib/missions/encaissement-url'
 import { geocodeAddressServer } from '@/lib/geocode/server'
+import { recordExchange } from './journal'
 
 export type SamCanal = 'app' | 'telegram'
 export type SamButton = { libelle: string; valeur: string }
@@ -22,6 +23,8 @@ export interface SamReply {
   agent?: string
   /** Relève en fin de service : message de l'agent qui part, à afficher AVANT la réponse. */
   transfert?: { agent: string; texte: string; texte_fr?: string } | null
+  /** Traduction française du message du chauffeur (s'il écrit en albanais). */
+  message_fr?: string | null
   texte: string
   texte_fr?: string
   boutons?: SamButton[]
@@ -109,7 +112,7 @@ async function callBureau(body: any): Promise<SamReply> {
   const transfert = j.transfert && typeof j.transfert.texte === 'string' && j.transfert.texte.trim()
     ? { agent: String(j.transfert.agent || '').slice(0, 20) || 'Sam', texte: String(j.transfert.texte), texte_fr: j.transfert.texte_fr }
     : null
-  return { agent: typeof j.agent === 'string' && j.agent.trim() ? j.agent.trim().slice(0, 20) : agentDuMoment(), transfert, texte: String(j.texte || ''), texte_fr: j.texte_fr, boutons: Array.isArray(j.boutons) ? j.boutons.slice(0, 8) : [], action: j.action || null, besoin: j.besoin || null, panne: j.panne || null }
+  return { agent: typeof j.agent === 'string' && j.agent.trim() ? j.agent.trim().slice(0, 20) : agentDuMoment(), transfert, message_fr: typeof j.message_fr === 'string' ? j.message_fr : null, texte: String(j.texte || ''), texte_fr: j.texte_fr, boutons: Array.isArray(j.boutons) ? j.boutons.slice(0, 8) : [], action: j.action || null, besoin: j.besoin || null, panne: j.panne || null }
 }
 
 /** Recherche par plaque, limitée aux missions du chauffeur. */
@@ -126,7 +129,7 @@ async function chercherPlaque(userId: string, plaque: string) {
  * Un tour de conversation : texte (ou libellé de bouton) du chauffeur → réponse
  * de Sam. `resultat` = résultat d'une action ou d'une recherche à transmettre.
  */
-export async function samTurn(opts: { userId: string; canal: SamCanal; texte: string; photo?: string | null; ecran?: string | null; missionId?: string | null; resultat?: any }): Promise<SamTurn> {
+export async function samTurn(opts: { userId: string; canal: SamCanal; texte: string; photo?: string | null; ecran?: string | null; missionId?: string | null; resultat?: any; endAfter?: 'action' | null }): Promise<SamTurn> {
   const u = await loadDriver(opts.userId)
   if (!u || !u.active) throw new Error('Compte inactif')
   const state = await getState(opts.userId)
@@ -167,6 +170,8 @@ export async function samTurn(opts: { userId: string; canal: SamCanal; texte: st
     reply.boutons = (reply.boutons || []).filter(b => !/^(oui|non|po|jo)\b/i.test(b.libelle.trim()))
   }
   await setState(opts.userId, { mission_id: missionId, buttons: reply.boutons || [], pending_action: action })
+  // Conversation gardée dans VD Soft (fiche de la mission, ou profil du chauffeur).
+  await recordExchange({ userId: opts.userId, missionId, canal: opts.canal, texte: opts.texte, photo: !!opts.photo, reply, endAfter: opts.endAfter || null })
   return { reply }
 }
 
@@ -178,7 +183,8 @@ export async function samConfirm(opts: { userId: string; canal: SamCanal; oui: b
   await setState(opts.userId, { pending_action: null })
   if (!opts.oui) return samTurn({ userId: opts.userId, canal: opts.canal, texte: 'Non', resultat: { action: action.id, fait: false, raison: 'refusée par le chauffeur' } })
   const res = await executeAction(opts.userId, action)
-  const turn = await samTurn({ userId: opts.userId, canal: opts.canal, texte: 'Oui, fais-le', resultat: { action: action.id, ...res.resultat } })
+  // Une action réussie termine la conversation (Olivier 03/10/2026).
+  const turn = await samTurn({ userId: opts.userId, canal: opts.canal, texte: 'Oui, fais-le', resultat: { action: action.id, ...res.resultat }, endAfter: res.resultat?.fait === true ? 'action' : null })
   return { ...turn, openUrl: res.openUrl || null }
 }
 

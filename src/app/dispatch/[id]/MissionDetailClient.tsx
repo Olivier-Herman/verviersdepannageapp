@@ -1,5 +1,6 @@
 'use client'
 
+import SamConversations from '@/components/sam/SamConversations'
 import { useState, useEffect, useRef, useMemo } from 'react'
 import { useRouter }   from 'next/navigation'
 import Link            from 'next/link'
@@ -3900,6 +3901,9 @@ export default function MissionDetailClient({
 
               {/* Contacts & interactions (répertoire + visites/appels/notes) */}
               <FicheContactsPanel missionId={initialMission.id} />
+
+              {/* Échange du chauffeur avec Sam / Sonic sur cette mission (Olivier 03/10/2026). */}
+              <SamConversations missionId={initialMission.id} showDriver />
 
               {/* Historique — Olivier 2026-06-14 : placé sous les Remarques */}
               {logs.length > 0 && (
