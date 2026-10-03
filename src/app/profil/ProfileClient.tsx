@@ -6,6 +6,7 @@ import { signOutCascade as signOut } from '@/lib/auth-signout'
 import AppShell      from '@/components/layout/AppShell'
 import NavOrderEditor from '@/components/profil/NavOrderEditor'
 import AuthProvidersSection from '@/components/profile/AuthProvidersSection'
+import TelegramLinkCard from '@/components/profile/TelegramLinkCard'
 import { LanguageSelector } from '@/components/profile/LanguageSelector'
 import { filterNavItems } from '@/components/layout/nav-items'
 
@@ -372,6 +373,9 @@ export default function ProfileClient({ user }: { user: any }) {
 
         {/* Méthodes de connexion (multi-provider linking) */}
         <AuthProvidersSection />
+
+        {/* Aide de Sam sur Telegram (Olivier 03/10/2026) : chauffeurs. */}
+        {(user?.role === 'driver' || (Array.isArray(user?.roles) && user.roles.includes('driver'))) && <TelegramLinkCard />}
 
         {/* Personnalisation menu (drag & drop) */}
         {visibleNav.length > 1 && (

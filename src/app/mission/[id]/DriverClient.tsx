@@ -623,6 +623,12 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
 
   const [M, setM]               = useState<Mission>(init)
   const [screen, setScreen]     = useState<Screen>('main')
+  // Écran exact transmis à Sam par le bouton Aide (Olivier 03/10/2026).
+  useEffect(() => {
+    const names: Record<string, string> = { main: 'fiche', sig: 'signature', encaissement: 'encaissement', 'add-stop': 'ajout d’un arrêt', 'modify-addr': 'modification d’adresse', close: 'clôture' }
+    ;(window as any).__samEcran = `Fiche mission #${(init as any).mission_number ?? ''} · écran ${names[screen] || screen} · statut ${init.status}`
+    return () => { (window as any).__samEcran = undefined }
+  }, [screen])   // eslint-disable-line react-hooks/exhaustive-deps
   // ── FLUX 2 — clôture unifiée « Action ». Entièrement gaté par la prop `flux2`
   //    (testeur ET assistance ouverte). Faux ⇒ pas un seul de ces écrans ne
   //    s'affiche et tout le flux historique ci-dessous reste inchangé.

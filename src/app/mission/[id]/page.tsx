@@ -4,6 +4,7 @@ import { redirect }          from 'next/navigation'
 import { authOptions }       from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase'
 import DriverClient          from './DriverClient'
+import SamAide               from '@/components/sam/SamAide'
 import SncMissionFiche       from './SncMissionFiche'
 import { getDefaultParcZone } from '@/lib/missions/parc-default'
 import { flux2Enabled }        from '@/lib/cloture/gating'
@@ -102,6 +103,7 @@ export default async function MissionDriverPage({ params, searchParams }: Props)
           isReadOnly={isStaff && !isDriverOfMission}
           navApp={currentUser.nav_app || 'gmaps'}
         />
+      {isDriverOfMission && <SamAide missionId={mission.id} ecran={`Fiche mission #${mission.mission_number ?? ''} (${mission.mission_type || ''}, statut ${mission.status})`} />}
       </>
     )
   }
@@ -163,6 +165,7 @@ export default async function MissionDriverPage({ params, searchParams }: Props)
         relKey={relKey}
         reportClient={(await sourceHasTag(mission.source, 'rapport_facture')) ? await sourceLabel(mission.source) : null}
       />
+      {isDriverOfMission && <SamAide missionId={mission.id} ecran={`Fiche mission #${mission.mission_number ?? ''} (${mission.mission_type || ''}, statut ${mission.status})`} />}
     </>
   )
 }
