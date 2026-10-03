@@ -31,7 +31,7 @@ async function openConversation(userId: string): Promise<Conv | null> {
   return data as Conv
 }
 
-export async function endConversation(id: string, reason: 'inactivite' | 'action' | 'releve') {
+export async function endConversation(id: string, reason: 'inactivite' | 'action' | 'releve' | 'mission_cloturee') {
   await createAdminClient().from('sam_conversations').update({ ended_at: new Date().toISOString(), end_reason: reason }).eq('id', id).is('ended_at', null)
 }
 

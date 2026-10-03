@@ -23,7 +23,7 @@ export default function SamConversations({ missionId, mine, all, showDriver }: {
   }, [missionId, mine, all])
 
   if (!convs || (convs.length === 0 && missionId)) return null
-  const reason = (r: string | null) => r === 'action' ? t('sam.conv_end_action') : r === 'releve' ? t('sam.conv_end_releve') : t('sam.conv_end_idle')
+  const reason = (r: string | null) => r === 'action' ? t('sam.conv_end_action') : r === 'releve' ? t('sam.conv_end_releve') : r === 'mission_cloturee' ? t('sam.conv_end_mission') : t('sam.conv_end_idle')
 
   return (
     <section className="bg-surface border rounded-2xl p-4 flex flex-col gap-3">

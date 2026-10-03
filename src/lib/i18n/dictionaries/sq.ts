@@ -797,6 +797,7 @@ export const sq: Dictionary = {
     conv_purged:   'Biseda u fshi pas 12 muajsh (përmbledhja ruhet).',
     conv_end_action:  'mbaroi pas veprimit',
     conv_end_releve:  'ndërrim turni',
+    conv_end_mission: 'u mbyll me mbylljen e misionit',
     conv_end_idle:    'mbaroi',
     help_tab:      'Ndihmë',
   },

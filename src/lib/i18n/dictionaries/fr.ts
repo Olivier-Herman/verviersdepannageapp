@@ -810,6 +810,7 @@ export const fr = {
     conv_purged:   'Conversation supprimée après 12 mois (le résumé est gardé).',
     conv_end_action:  'terminée après l’action',
     conv_end_releve:  'relève',
+    conv_end_mission: 'close à la clôture de la mission',
     conv_end_idle:    'terminée',
     help_tab:      'Aide',
   },

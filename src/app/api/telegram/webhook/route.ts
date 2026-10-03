@@ -77,6 +77,13 @@ export async function POST(req: Request) {
     if (cbq) {
       await tg('answerCallbackQuery', { callback_query_id: cbq.id })
       const data = String(cbq.data || '')
+      if (data === 'q:oui' || data === 'q:non') {
+        // Réponse à « Je peux clôturer notre conversation ? » (mission clôturée) : pas d'appel à l'agent.
+        const { answerQuestion } = await import('@/lib/sam/cloture')
+        const r = await answerQuestion(user.id, data === 'q:oui', 'telegram')
+        if (r.texte) await tgSend(chatId, r.texte, [], r.agent || agentDuMoment())
+        return NextResponse.json({ ok: true })
+      }
       if (data === 'a:oui' || data === 'a:non') turn = await samConfirm({ userId: user.id, canal: 'telegram', oui: data === 'a:oui' })
       else {
         // Bouton de choix : on renvoie son LIBELLÉ (lisible dans l'historique).

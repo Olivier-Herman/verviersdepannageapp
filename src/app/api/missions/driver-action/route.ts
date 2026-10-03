@@ -1061,5 +1061,15 @@ export async function POST(req: Request) {
     }
   }
 
+  // Conversation Sam / Sonic encore ouverte sur cette mission : l'agent demande au
+  // chauffeur s'il peut la clôturer (Olivier 03/10/2026). En arrière-plan.
+  if (['to_invoice', 'completed'].includes((updated as any)?.status)) {
+    try {
+      const { samMissionClosed } = await import('@/lib/sam/cloture')
+      const p = samMissionClosed(actor.id, mission_id)
+      try { const { waitUntil } = await import('@vercel/functions'); waitUntil(p) } catch { await p }
+    } catch { /* jamais bloquant */ }
+  }
+
   return NextResponse.json({ ok: true, mission: updated })
 }

@@ -51,6 +51,33 @@ export default function SamAide({ missionId, ecran }: { missionId?: string | nul
   const [buttons, setButtons] = useState<Btn[]>([])
   const [action, setAction] = useState<Action>(null)
   const [openUrl, setOpenUrl] = useState<string | null>(null)
+  // Question de fin de conversation, posée par l'agent quand la mission est clôturée
+  // (Olivier 03/10/2026) : la fenêtre s'ouvre d'elle-même pour la poser.
+  const [question, setQuestion] = useState<{ agent: string; texte: string; boutons: { libelle: string; valeur: string }[] } | null>(null)
+  const shownQ = useRef<string | null>(null)
+  useEffect(() => {
+    let stop = false
+    const check = () => fetch('/api/sam/aide', { cache: 'no-store' }).then(r => r.ok ? r.json() : null).then(j => {
+      const q = j?.question
+      if (stop || !q?.texte || shownQ.current === q.texte) return
+      shownQ.current = q.texte
+      setQuestion(q); setAgent(q.agent || agentDuMoment())
+      setMsgs(m => [...m, { from: 'sam', text: q.texte, who: q.agent }])
+      setOpen(true)
+    }).catch(() => {})
+    check(); const id = setInterval(check, 20_000)
+    return () => { stop = true; clearInterval(id) }
+  }, [])
+  const answer = async (b: { libelle: string; valeur: string }) => {
+    setQuestion(null)
+    setMsgs(m => [...m, { from: 'me', text: b.libelle }])
+    setBusy(true)
+    try {
+      const r = await fetch('/api/sam/aide', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ question: b.valeur === 'cloturer_conversation' ? 'oui' : 'non' }) })
+      const j = await r.json().catch(() => ({}))
+      if (j?.texte) setMsgs(m => [...m, { from: 'sam', text: j.texte, who: j.agent }])
+    } catch { /* la conversation se fermera seule après 30 min */ } finally { setBusy(false) }
+  }
   const listRef = useRef<HTMLDivElement>(null)
   const fileRef = useRef<HTMLInputElement>(null)
 
@@ -118,6 +145,14 @@ export default function SamAide({ missionId, ecran }: { missionId?: string | nul
                 </div>
               ))}
               {busy && <div className="self-start text-ink-muted text-sm italic px-1">{t('sam.typing', { name: agent })}</div>}
+              {!busy && question && question.boutons.length > 0 && (
+                <div className="self-stretch flex flex-col gap-2">
+                  {question.boutons.map(b => (
+                    <button key={b.valeur} type="button" onClick={() => answer(b)}
+                      className={`min-h-[48px] text-left px-4 rounded-xl font-semibold ${b.valeur === 'cloturer_conversation' ? 'bg-emerald-700 text-white' : 'border-2 border-emerald-700 bg-surface text-ink'}`}>{b.libelle}</button>
+                  ))}
+                </div>
+              )}
               {!busy && buttons.length > 0 && (
                 <div className="self-stretch flex flex-col gap-2">
                   {buttons.map(b => (

@@ -23,6 +23,12 @@ export async function POST(req: Request) {
   const { data: u } = await createAdminClient().from('users').select('id, active').eq('email', email).maybeSingle()
   if (!u?.active) return NextResponse.json({ error: 'Non autorisé' }, { status: 401 })
   const b = await req.json().catch(() => ({}))
+  // Réponse à la question de fin de conversation (mission clôturée) : pas d'appel à l'agent.
+  if (b.question === 'oui' || b.question === 'non') {
+    const { answerQuestion } = await import('@/lib/sam/cloture')
+    const r = await answerQuestion(u.id, b.question === 'oui', 'app')
+    return NextResponse.json({ ok: true, agent: r.agent || agentDuMoment(), texte: r.texte, boutons: [], action: null, question_close: true })
+  }
   try {
     const turn = typeof b.confirmer === 'boolean'
       ? await samConfirm({ userId: u.id, canal: 'app', oui: b.confirmer })
@@ -36,4 +42,16 @@ export async function POST(req: Request) {
     console.error('[sam/aide]', e?.message || e)
     return NextResponse.json({ ok: false, agent: agentDuMoment(), error: `${agentDuMoment()} n’est pas disponible pour le moment. Si c’est urgent, appelle le dispatch.` }, { status: 502 })
   }
+}
+
+/** Question en attente (fin de conversation à la clôture de la mission), pour la fenêtre Aide. */
+export async function GET() {
+  const session = await getServerSession(authOptions)
+  const email = session?.user?.email
+  if (!email) return NextResponse.json({ error: 'Non autorisé' }, { status: 401 })
+  const { data: u } = await createAdminClient().from('users').select('id, active').eq('email', email).maybeSingle()
+  if (!u?.active) return NextResponse.json({ error: 'Non autorisé' }, { status: 401 })
+  const { pendingQuestion } = await import('@/lib/sam/cloture')
+  const q = await pendingQuestion(u.id)
+  return NextResponse.json({ ok: true, question: q ? { agent: q.agent, texte: q.texte, boutons: q.boutons } : null })
 }
