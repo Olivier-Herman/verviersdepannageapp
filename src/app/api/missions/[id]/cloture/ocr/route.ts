@@ -16,7 +16,7 @@ import { getServerSession }  from 'next-auth'
 import { authOptions }       from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase'
 import { flux2Enabled }      from '@/lib/cloture/gating'
-import { detectVehicleFromImages } from '@/lib/ocr/vehicle-detect'
+import { detectVehicleFromImages, isValidVin } from '@/lib/ocr/vehicle-detect'
 
 export const dynamic     = 'force-dynamic'
 export const maxDuration = 60
@@ -43,7 +43,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   // arrière-plan aux photos, ou tapées) → on les rend tout de suite, sans
   // relancer une lecture de 12 photos qui pouvait dépasser le délai et laisser
   // les cases vides à l'écran.
-  if ((m as any).vehicle_vin && (m as any).vehicle_mileage != null) {
+  if (isValidVin((m as any).vehicle_vin) && (m as any).vehicle_mileage != null) {
     return NextResponse.json({ vin: (m as any).vehicle_vin, km: (m as any).vehicle_mileage, read: { vin: false, km: false }, photos: photos.length, cached: true })
   }
 
@@ -56,10 +56,10 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     // Les dernières restent en tête : compteur et châssis sont souvent pris à la
     // clôture. Plafond à 12 pour ne pas faire attendre le chauffeur.
     const lot = [...photos].reverse().slice(0, 12)
-    const { vin, mileage } = await detectVehicleFromImages(lot, { needVin: !(m as any).vehicle_vin })
+    const { vin, mileage } = await detectVehicleFromImages(lot, { needVin: !isValidVin((m as any).vehicle_vin) })
 
     const patch: Record<string, any> = {}
-    if (vin?.value && !(m as any).vehicle_vin) patch.vehicle_vin = vin.value
+    if (vin?.value && !isValidVin((m as any).vehicle_vin)) patch.vehicle_vin = vin.value   // absent ou incomplet
     if (mileage?.value && (m as any).vehicle_mileage == null) patch.vehicle_mileage = mileage.value
     if (Object.keys(patch).length > 0) {
       patch.updated_at = new Date().toISOString()

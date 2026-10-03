@@ -741,22 +741,24 @@ export async function POST(req: Request) {
   // châssis + plaque + kilométrage et on complète UNIQUEMENT ce qui manque.
   if (['save_photos', 'load_vehicle', 'park', 'completed', 'complete_delivery'].includes(action)) {
     const plateEmpty = !((mission.vehicle_plate || '').trim())
-    const vinEmpty   = !(((mission as any).vehicle_vin || '').trim())
+    // VIN absent OU incomplet / mal formé (Olivier 03/10/2026) : on relit aussi.
+    const vinBad     = !/^[A-HJ-NPR-Z0-9]{17}$/.test((((mission as any).vehicle_vin || '') as string).trim().toUpperCase())
     const kmEmpty    = (mission as any).vehicle_mileage == null && updatePayload.vehicle_mileage == null
     const ocrPhotos: string[] = (closing_data?.photo_urls?.length ? closing_data.photo_urls
       : (action === 'save_photos' && Array.isArray(body.photo_urls) && body.photo_urls.length) ? body.photo_urls
       : mission.driver_photos) || []
-    if ((plateEmpty || vinEmpty || kmEmpty) && ocrPhotos.length > 0) {
+    if ((plateEmpty || vinBad || kmEmpty) && ocrPhotos.length > 0) {
       const ctx = action === 'park' ? 'mise en parc' : action === 'save_photos' ? 'photos' : action === 'load_vehicle' ? 'chargement' : 'clôture'
       const ocrBg = (async () => {
         try {
           const { detectVehicleFromImages } = await import('@/lib/ocr/vehicle-detect')
           // Les dernières photos d'abord (compteur et châssis sont souvent pris en dernier), 12 max.
-          const { plate, vin, mileage } = await detectVehicleFromImages([...ocrPhotos].reverse().slice(0, 12), { needVin: vinEmpty })
+          const { plate, vin, mileage } = await detectVehicleFromImages([...ocrPhotos].reverse().slice(0, 12), { needVin: vinBad })
           // Relecture juste avant d'écrire : un autre passage (clôture flux 2) a pu remplir entre-temps.
           const { data: fresh } = await supabase.from('incoming_missions').select('vehicle_plate, vehicle_vin, vehicle_mileage').eq('id', mission_id).maybeSingle()
           const upd: Record<string, any> = {}
-          if (!((fresh?.vehicle_vin || '').trim()) && vin?.value)        upd.vehicle_vin     = vin.value
+          // Un VIN valide lu remplace un VIN absent OU incomplet (jamais un VIN déjà valide).
+          if (!/^[A-HJ-NPR-Z0-9]{17}$/.test(((fresh?.vehicle_vin || '') as string).trim().toUpperCase()) && vin?.value) upd.vehicle_vin = vin.value
           if (!((fresh?.vehicle_plate || '').trim()) && plate?.value)    upd.vehicle_plate   = plate.value
           if (fresh?.vehicle_mileage == null && mileage?.value != null)  upd.vehicle_mileage = mileage.value
           // Repli : aucune plaque lisible mais VIN connu → 5 derniers du châssis.

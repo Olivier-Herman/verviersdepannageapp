@@ -76,6 +76,11 @@ tableau de bord ou derrière le pare-brise. Carte rose/verte intitulée
 au repère A. Un suffixe entre parenthèses après le VIN — « (01) », « (1) » — est
 un code de contrôle : IGNORE-LE et ne renvoie que les 17 caractères.`
 
+/** VIN complet et bien formé : 17 caractères, lettres et chiffres, jamais I, O ni Q. */
+export function isValidVin(v: string | null | undefined): boolean {
+  return /^[A-HJ-NPR-Z0-9]{17}$/.test(String(v || '').trim().toUpperCase())
+}
+
 export interface VehicleOcrHit { value: string; image: number }
 export interface VehicleOcrKmHit { value: number; image: number }
 export interface VehicleOcrResult {
