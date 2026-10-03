@@ -54,6 +54,12 @@ export default async function MissionDriverPage({ params, searchParams }: Props)
   const onsiteV2 = await flagAppliesToMission('driver_onsite_v2', (currentUser as any).role, mission as any)
 
   const isDriverOfMission = mission.assigned_to === currentUser.id
+  // Bouton « Aide » (Sam) seulement si le chauffeur a relié Telegram à son
+  // profil ; délier le fait disparaître (Olivier 03/10/2026).
+  const { data: tgLink } = isDriverOfMission
+    ? await supabase.from('telegram_links').select('user_id').eq('user_id', currentUser.id).maybeSingle()
+    : { data: null }
+  const showAide = isDriverOfMission && !!tgLink
   const isStaff = ['admin', 'superadmin', 'dispatcher'].includes(currentUser.role)
   if (!isDriverOfMission && !isStaff) redirect('/dashboard')
 
@@ -103,7 +109,7 @@ export default async function MissionDriverPage({ params, searchParams }: Props)
           isReadOnly={isStaff && !isDriverOfMission}
           navApp={currentUser.nav_app || 'gmaps'}
         />
-      {isDriverOfMission && <SamAide missionId={mission.id} ecran={`Fiche mission #${mission.mission_number ?? ''} (${mission.mission_type || ''}, statut ${mission.status})`} />}
+      {showAide && <SamAide missionId={mission.id} ecran={`Fiche mission #${mission.mission_number ?? ''} (${mission.mission_type || ''}, statut ${mission.status})`} />}
       </>
     )
   }
@@ -165,7 +171,7 @@ export default async function MissionDriverPage({ params, searchParams }: Props)
         relKey={relKey}
         reportClient={(await sourceHasTag(mission.source, 'rapport_facture')) ? await sourceLabel(mission.source) : null}
       />
-      {isDriverOfMission && <SamAide missionId={mission.id} ecran={`Fiche mission #${mission.mission_number ?? ''} (${mission.mission_type || ''}, statut ${mission.status})`} />}
+      {showAide && <SamAide missionId={mission.id} ecran={`Fiche mission #${mission.mission_number ?? ''} (${mission.mission_type || ''}, statut ${mission.status})`} />}
     </>
   )
 }
