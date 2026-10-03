@@ -31,9 +31,10 @@ const MAX_TURNS = 14
 const MAX_ATTEMPTS = 3
 const MAX_MAILS_PER_RUN = 3
 // Même service et même modèle que le bureau des agents ; surchargeable sans redéployer.
-const MODEL = process.env.MOBIA_MODEL?.trim() || 'claude-opus-5'
-// Tarifs du service d'IA (USD par million de jetons), donnés par le bureau le 03/10/2026.
-const PRICE = { input: 5, output: 25, cacheRead: 0.5, cacheWrite5m: 6.25 }
+const MODEL = process.env.MOBIA_MODEL?.trim() || 'claude-opus-5-5'   // Opus 5.5 depuis le 03/10/2026 (Olivier)
+// Tarifs Opus 5.5 (USD par million de jetons), donnés par le bureau le 03/10/2026.
+// La réflexion (toujours active sur ce modèle) est facturée en sortie.
+const PRICE = { input: 4, output: 20, cacheRead: 0.2, cacheWrite5m: 5 }
 
 type Usage = { entree: number; sortie: number; cache_lu: number; cache_ecrit: number }
 type Mail = { id: string; key: string; subject: string; fromEmail: string; fromName: string; receivedAt: string }
@@ -233,7 +234,7 @@ async function draftFor(mail: Mail): Promise<{ html: string; summary: string; us
   ] }]
   const system = [{ type: 'text', text: systemPrompt(), cache_control: { type: 'ephemeral' } }]
   for (let turn = 0; turn < MAX_TURNS; turn++) {
-    const res: any = await client.messages.create({ model: MODEL, max_tokens: 4000, system: system as any, tools: TOOLS, messages })
+    const res: any = await client.messages.create({ model: MODEL, max_tokens: 16000, system: system as any, tools: TOOLS, messages })
     usage.entree += res.usage?.input_tokens || 0
     usage.sortie += res.usage?.output_tokens || 0
     usage.cache_lu += res.usage?.cache_read_input_tokens || 0

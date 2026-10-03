@@ -24,18 +24,19 @@ export function withAiContext<T>(ctx: Ctx, fn: () => Promise<T>): Promise<T> {
   return als.run({ ...(als.getStore() || {}), ...ctx }, fn)
 }
 
-// Tarifs du service d'IA, USD par million de jetons (entrée / sortie). Lecture du
-// cache = 10 % de l'entrée, écriture du cache (5 min) = 125 % de l'entrée.
-function price(model: string): { in: number; out: number } {
+// Tarifs du service d'IA, USD par million de jetons : entrée, sortie (réflexion
+// comprise), lecture du cache, écriture du cache (5 min).
+function price(model: string): { in: number; out: number; cr: number; cw: number } {
   const m = String(model || '').toLowerCase()
-  if (m.includes('haiku')) return { in: 1, out: 5 }
-  if (m.includes('sonnet')) return { in: 3, out: 15 }
-  return { in: 5, out: 25 }   // opus et défaut
+  if (m.includes('haiku')) return { in: 1, out: 5, cr: 0.1, cw: 1.25 }
+  if (m.includes('sonnet')) return { in: 3, out: 15, cr: 0.3, cw: 3.75 }
+  if (m.includes('opus-5-5')) return { in: 4, out: 20, cr: 0.2, cw: 5 }
+  return { in: 5, out: 25, cr: 0.5, cw: 6.25 }   // opus 4.8, opus 5 et défaut
 }
 
 export function aiCost(model: string, u: { entree?: number; sortie?: number; cache_lu?: number; cache_ecrit?: number }): number {
   const p = price(model)
-  const usd = ((u.entree || 0) * p.in + (u.sortie || 0) * p.out + (u.cache_lu || 0) * p.in * 0.1 + (u.cache_ecrit || 0) * p.in * 1.25) / 1e6
+  const usd = ((u.entree || 0) * p.in + (u.sortie || 0) * p.out + (u.cache_lu || 0) * p.cr + (u.cache_ecrit || 0) * p.cw) / 1e6
   return Math.round(usd * 100000) / 100000
 }
 
