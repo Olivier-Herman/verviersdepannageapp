@@ -22,6 +22,7 @@ import { getAppOnlyToken, searchAllMailboxes, isAllowedMailbox } from '@/lib/gra
 import { createReplyDraft, findFolderIdByName, htmlToText } from '@/lib/mail-agent/graph'
 import { sendNotification } from '@/lib/notifications/send'
 import { REGLES_COMMUNES, EQUIPE_VD, FICHE, SAVOIR } from './consignes'
+import { renderAbandonPdf, abandonMissingFields, type AbandonLang } from '@/lib/documents/abandon-pdf'
 
 const MAILBOX = 'info@verviersdepannage.com'
 const GRAPH = 'https://graph.microsoft.com/v1.0'
@@ -35,7 +36,7 @@ const PRICE = { input: 5, output: 25, cacheRead: 0.5, cacheWrite5m: 6.25 }
 
 type Usage = { entree: number; sortie: number; cache_lu: number; cache_ecrit: number }
 type Mail = { id: string; key: string; subject: string; fromEmail: string; fromName: string; receivedAt: string }
-export type MobiaResult = { key: string; subject: string; status: 'done' | 'error' | 'dry'; summary?: string; draftHtml?: string; error?: string; cost_usd?: number }
+export type MobiaResult = { key: string; subject: string; status: 'done' | 'error' | 'dry'; summary?: string; draftHtml?: string; attachments?: string[]; error?: string; cost_usd?: number }
 
 // ── Graph (lecture) ──────────────────────────────────────────────────────────
 
@@ -139,7 +140,8 @@ Règles de ce traitement :
 - Uniquement des faits trouvés dans le mail, les autres mails ou les fiches. Tout le reste en **[À COMPLÉTER PAR MOMO : …]** en gras.
 - Pas de conclusion que les faits ne prouvent pas. Vérifie la chronologie : un élément reçu APRÈS l'intervention (nouvelle action de l'assistance, mail du lendemain) ne dit rien de ce qui s'est passé pendant. Dans le doute, donne le fait brut avec sa date, ou mets-le à compléter.
 - Ne nomme pas les membres du personnel (chauffeur, collègues) dans le texte destiné au tiers ; écris « notre dépanneur ». Le nom du chauffeur peut aller dans le résumé pour Momo.
-- Si un document doit être rempli ou produit, écris dans le brouillon **[DOCUMENT À JOINDRE PAR MOMO : …]** avec les données à y mettre ; tu ne peux pas encore produire de fichier.
+- Documents : si le correspondant doit signer un « abandon volontaire de véhicule » (français ou néerlandais selon sa langue), prépare-le avec l'outil preparer_document : il est rempli depuis la fiche et joint au brouillon. Rien n'est signé ni envoyé. Le brouillon dit ce que le client doit signer, rappelle qu'il faut deux signatures (le client et Verviers Dépannage), et met en **[À COMPLÉTER PAR MOMO : …]** chaque champ resté vide. N'utilise preparer_document que si un accord d'abandon est demandé ou déjà évoqué ; un abandon en échange des frais de gardiennage est une décision de Momo : sans accord écrit dans les mails, prépare-le seulement si le correspondant le propose, et signale-le dans le résumé.
+- Un autre document que VD Soft ne sait pas encore produire : décris-le dans le brouillon en **[DOCUMENT À JOINDRE PAR MOMO : …]** avec les données à y mettre.
 - Argent (remise, remboursement, annulation de frais), faute, avocat, police, fraude possible : brouillon neutre d'accusé de réception et alerte dans le résumé.
 - Le résumé pour Momo tient en UNE ligne, sans jargon.
 
@@ -163,12 +165,49 @@ const TOOLS: any[] = [
     input_schema: { type: 'object', properties: { recherche: { type: 'string' } }, required: ['recherche'] } },
   { name: 'lire_fiche', description: 'Lit une fiche mission de VD Soft (heures, adresses, destination, statut, parc, notes, ordre reçu de l’assistance, nombre de photos, chauffeur).',
     input_schema: { type: 'object', properties: { id: { type: 'string' } }, required: ['id'] } },
+  { name: 'preparer_document', description: 'Prépare un document PDF prérempli depuis une fiche VD Soft et le joint au brouillon (jamais signé ni envoyé). Disponible : abandon_volontaire (français ou néerlandais). Les données du propriétaire viennent de la fiche ; complète avec celles écrites dans les mails ; laisse vide ce qui est inconnu.',
+    input_schema: { type: 'object', properties: {
+      document: { type: 'string', enum: ['abandon_volontaire'] },
+      mission_id: { type: 'string', description: 'id de la fiche (outil chercher_fiches)' },
+      langue: { type: 'string', enum: ['fr', 'nl'] },
+      annulation_gardiennage: { type: 'boolean', description: 'Abandon en échange de l’annulation des frais de gardiennage' },
+      proprietaire: { type: 'object', properties: { prenom: { type: 'string' }, nom: { type: 'string' }, date_naissance: { type: 'string' }, rue: { type: 'string' }, code_postal: { type: 'string' }, ville: { type: 'string' }, pays: { type: 'string' } } },
+    }, required: ['document', 'mission_id', 'langue'] } },
   { name: 'ecrire_brouillon', description: 'Termine le traitement : crée le brouillon de réponse dans le fil (jamais envoyé) et donne la ligne de résumé pour Momo.',
     input_schema: { type: 'object', properties: { html: { type: 'string' }, resume_pour_momo: { type: 'string' } }, required: ['html', 'resume_pour_momo'] } },
 ]
 
-async function runTool(name: string, input: any): Promise<string> {
+type DraftFile = { name: string; contentType: string; contentBytes: string }
+
+async function prepareDocument(input: any, files: DraftFile[]): Promise<string> {
+  if (input.document !== 'abandon_volontaire') return 'Document non disponible : décris-le dans le brouillon.'
+  const sb = createAdminClient()
+  const { data: m } = await sb.from('incoming_missions')
+    .select('id, mission_number, external_id, dossier_number, vehicle_plate, vehicle_brand, vehicle_model, vehicle_vin, client_name, abandon_data')
+    .eq('id', String(input.mission_id)).maybeSingle()
+  if (!m) return 'Fiche introuvable.'
+  const a: any = (m as any).abandon_data || {}
+  const p: any = input.proprietaire || {}
+  const pick = (...v: any[]) => { for (const x of v) { const t = String(x ?? '').trim(); if (t && !/^x+$/i.test(t)) return t } return null }
+  const lang: AbandonLang = input.langue === 'nl' ? 'nl' : 'fr'
+  const data = {
+    ref: (m as any).mission_number != null ? `#${(m as any).mission_number}` : ((m as any).external_id || (m as any).dossier_number || null),
+    dateIso: new Date().toISOString(),
+    vehicle: { brand: pick(a.vehicle?.brand, (m as any).vehicle_brand), model: pick(a.vehicle?.model, (m as any).vehicle_model), plate: pick(a.vehicle?.plate, (m as any).vehicle_plate), vin: pick(a.vehicle?.vin, (m as any).vehicle_vin) },
+    owner: { firstName: pick(a.first_name, p.prenom), lastName: pick(a.last_name, p.nom), birthDate: pick(a.birth_date, p.date_naissance), street: pick(a.street, p.rue), zip: pick(a.zip, p.code_postal), city: pick(a.city, p.ville), country: pick(a.country && a.country !== 'Belgique' ? a.country : null, p.pays) },
+    waiveStorage: input.annulation_gardiennage !== false,
+  }
+  const pdf = await renderAbandonPdf(data, lang)
+  const plate = String(data.vehicle.plate || 'vehicule').replace(/[^A-Za-z0-9]/g, '')
+  const name = `${lang === 'nl' ? 'Vrijwillige_afstand' : 'Abandon_volontaire'}_${plate}.pdf`
+  for (let i = files.length - 1; i >= 0; i--) if (files[i].name === name) files.splice(i, 1)   // une seule version par document
+  files.push({ name, contentType: 'application/pdf', contentBytes: Buffer.from(pdf).toString('base64') })
+  return JSON.stringify({ ok: true, fichier: name, joint_au_brouillon: true, champs_vides: abandonMissingFields(data), signatures: 'deux : le client et Verviers Dépannage' })
+}
+
+async function runTool(name: string, input: any, files: DraftFile[]): Promise<string> {
   try {
+    if (name === 'preparer_document') return await prepareDocument(input, files)
     if (name === 'chercher_mails') {
       const hits = await searchAllMailboxes(String(input.recherche || ''), 8)
       return JSON.stringify(hits.map(h => ({ boite: h.category === 'email_info' ? 'info@verviersdepannage.com' : h.category === 'email_fourriere' ? 'fourriere@verviersdepannage.be' : 'administration@verviersdepannage.com', id: h.id, objet: h.subject, de: h.from, date: h.receivedAt, apercu: h.bodyPreview })))
@@ -182,7 +221,8 @@ async function runTool(name: string, input: any): Promise<string> {
 
 // ── Boucle d'agent ───────────────────────────────────────────────────────────
 
-async function draftFor(mail: Mail): Promise<{ html: string; summary: string; usage: Usage }> {
+async function draftFor(mail: Mail): Promise<{ html: string; summary: string; usage: Usage; files: DraftFile[] }> {
+  const docs: DraftFile[] = []
   const client = new Anthropic()
   const usage: Usage = { entree: 0, sortie: 0, cache_lu: 0, cache_ecrit: 0 }
   const { text, files } = await readMessage(MAILBOX, mail.id, true)
@@ -204,14 +244,14 @@ async function draftFor(mail: Mail): Promise<{ html: string; summary: string; us
       let html = String(final.input?.html || '').trim()
       if (!html) throw new Error('Brouillon vide')
       if (!/Momo/.test(html.slice(-300))) html += '<p>Bien cordialement,<br>Momo<br>Verviers Dépannage</p>'
-      return { html, summary: String(final.input?.resume_pour_momo || mail.subject).replace(/\s+/g, ' ').slice(0, 260), usage }
+      return { html, summary: String(final.input?.resume_pour_momo || mail.subject).replace(/\s+/g, ' ').slice(0, 260), usage, files: docs }
     }
     if (!calls.length) {
       messages.push({ role: 'user', content: 'Termine en appelant ecrire_brouillon.' })
       continue
     }
     const results = []
-    for (const c of calls) results.push({ type: 'tool_result', tool_use_id: c.id, content: (await runTool(c.name, c.input)).slice(0, 30_000) })
+    for (const c of calls) results.push({ type: 'tool_result', tool_use_id: c.id, content: (await runTool(c.name, c.input, docs)).slice(0, 30_000) })
     messages.push({ role: 'user', content: results })
   }
   throw new Error('Pas de brouillon après le nombre maximal d’étapes')
@@ -257,7 +297,7 @@ export async function runMobia(opts: { dryKey?: string } = {}): Promise<{ checke
     const m = mails.find(x => x.key === opts.dryKey || x.id === opts.dryKey || x.id.endsWith(opts.dryKey!))
     if (!m) return { checked: mails.length, results: [{ key: opts.dryKey, subject: '', status: 'error', error: 'mail introuvable dans le dossier' }] }
     const d = await draftFor(m)
-    return { checked: mails.length, results: [{ key: m.key, subject: m.subject, status: 'dry', summary: d.summary, draftHtml: d.html, cost_usd: cost(d.usage) }] }
+    return { checked: mails.length, results: [{ key: m.key, subject: m.subject, status: 'dry', summary: d.summary, draftHtml: d.html, attachments: d.files.map(f => f.name), cost_usd: cost(d.usage) }] }
   }
 
   const { data: known } = await sb.from('mobia_mails').select('key, status, attempts, updated_at').in('key', mails.map(m => m.key))
@@ -288,7 +328,7 @@ export async function runMobia(opts: { dryKey?: string } = {}): Promise<{ checke
     try {
       const d = await draftFor(m)
       usage = d.usage
-      const r = await createReplyDraft(MAILBOX, m.id, d.html, { fromMailbox: MAILBOX })
+      const r = await createReplyDraft(MAILBOX, m.id, d.html, { fromMailbox: MAILBOX, attachments: d.files })
       if (!r.ok) throw new Error(`Brouillon refusé : ${r.error || 'erreur inconnue'}`)
       await sb.from('mobia_mails').update({ status: 'done', draft_id: r.id || null, summary: d.summary, usage: d.usage, cost_usd: cost(d.usage), error: null, updated_at: new Date().toISOString() }).eq('key', m.key)
       const ids = await setting<string[]>('mobia_notify_user_ids', [])
@@ -300,7 +340,7 @@ export async function runMobia(opts: { dryKey?: string } = {}): Promise<{ checke
         }).catch(() => null)
       }
       await report(m.subject, d.usage, true)
-      results.push({ key: m.key, subject: m.subject, status: 'done', summary: d.summary, cost_usd: cost(d.usage) })
+      results.push({ key: m.key, subject: m.subject, status: 'done', summary: d.summary, attachments: d.files.map(f => f.name), cost_usd: cost(d.usage) })
     } catch (e: any) {
       const msg = String(e?.message || e).slice(0, 500)
       console.error('[mobia]', m.subject, msg)
