@@ -24,6 +24,43 @@ export default function TalkieOverlay() {
   const [dismissed, setDismissed] = useState<number | null>(null)
   const [fabTalking, setFabTalking] = useState(false)   // parole prise avec le bouton rond
   useEffect(() => { const i = setInterval(() => setNow(Date.now()), 1000); return () => clearInterval(i) }, [])
+  // Place du talkie (Olivier 03/10/2026) : juste AU-DESSUS des boutons fixés en bas de
+  // l'écran (barre d'actions de la fiche, pied des sous-écrans), jamais par-dessus.
+  // Sans barre : 84 px comme avant. Pendant une saisie au clavier, le rond s'efface.
+  const [barSpace, setBarSpace] = useState(0)
+  const [typing, setTyping] = useState(false)
+  useEffect(() => {
+    const measure = () => {
+      const vh = window.innerHeight
+      const zones: HTMLElement[] = [...document.querySelectorAll<HTMLElement>('[data-bottom-bar]')]
+      document.querySelectorAll<HTMLElement>('[data-screen-wrap]').forEach(w => { const last = w.lastElementChild as HTMLElement | null; if (last) zones.push(last) })
+      let space = 0
+      for (const z of zones) {
+        if (!z.offsetParent && getComputedStyle(z).position !== 'fixed') continue
+        const r = z.getBoundingClientRect()
+        if (r.height > 0 && r.bottom >= vh - 4) space = Math.max(space, vh - r.top)
+      }
+      setBarSpace(prev => (Math.abs(prev - space) < 2 ? prev : space))
+    }
+    measure(); const id = setInterval(measure, 500); window.addEventListener('resize', measure)
+    return () => { clearInterval(id); window.removeEventListener('resize', measure) }
+  }, [pathname])
+  useEffect(() => {
+    const isField = (el: any) => !!el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT' || el.isContentEditable)
+    const onIn = (e: FocusEvent) => { if (isField(e.target)) setTyping(true) }
+    const onOut = () => setTimeout(() => setTyping(isField(document.activeElement)), 50)
+    document.addEventListener('focusin', onIn); document.addEventListener('focusout', onOut)
+    return () => { document.removeEventListener('focusin', onIn); document.removeEventListener('focusout', onOut) }
+  }, [])
+  const visible = !!t && !!t.me && !!t.channels.length && !pathname.startsWith('/talkie')
+  // La fiche réserve la hauteur du talkie en bas de page : les derniers champs restent visibles.
+  // Réserve = hauteur du talkie + ce que la barre du bas dépasse des 12rem déjà prévus par la fiche.
+  useEffect(() => {
+    const extra = visible ? 76 + Math.max(0, Math.round(barSpace) - 192) : 0
+    document.documentElement.style.setProperty('--talkie-space', `${extra}px`)
+    return () => { document.documentElement.style.setProperty('--talkie-space', '0px') }
+  }, [visible, barSpace])
+  const bottomPos = barSpace > 0 ? `${Math.round(barSpace + 12)}px` : 'calc(env(safe-area-inset-bottom, 0px) + 84px)'
   if (!t || !t.me || !t.channels.length || pathname.startsWith('/talkie')) return null
 
   const label = (key: string) => { const c = t.channels.find(x => x.key === key); return !c ? '' : c.kind === 'garde' ? 'Garde de nuit' : c.label }
@@ -61,7 +98,7 @@ export default function TalkieOverlay() {
         </button>
       )}
       {showReply && replyKey && (
-        <div style={{ bottom: 'calc(env(safe-area-inset-bottom, 0px) + 84px)' }} className="fixed right-3 z-[60] flex items-center gap-2">
+        <div style={{ bottom: bottomPos }} className="fixed right-3 z-[60] flex items-center gap-2">
           {!t.talkingKey && act && (
             <button type="button" onClick={() => setDismissed(act.at)} aria-label="Fermer"
               className="w-11 h-11 rounded-full bg-surface border border-slate-300 dark:border-slate-600 text-ink shadow">✕</button>
@@ -79,8 +116,8 @@ export default function TalkieOverlay() {
           )}
         </div>
       )}
-      {(fabTalking || (!showReply && !speaking)) && (
-        <div style={{ bottom: 'calc(env(safe-area-inset-bottom, 0px) + 84px)' }} className="fixed right-3 z-[60] flex items-center gap-2">
+      {(fabTalking || (!showReply && !speaking && !typing)) && (
+        <div style={{ bottom: bottomPos }} className="fixed right-3 z-[60] flex items-center gap-2">
           <span className={`${fabTalking || !t.audioOn ? 'inline' : 'hidden sm:inline'} text-[11px] text-ink-muted bg-surface/90 border border-slate-200 dark:border-slate-700 rounded-full px-2 py-0.5`}>{fabTalking ? `🔴 ${label(fabKey)}` : !t.audioOn ? '🔇 Touche pour activer le son' : `📻 ${label(fabKey)}`}</span>
           <button type="button" aria-label={`Talkie : maintenir pour parler sur ${label(fabKey)}, toucher pour ouvrir`}
             onPointerDown={e => { e.preventDefault(); try { e.currentTarget.setPointerCapture(e.pointerId) } catch { /* ignoré */ } fabDown() }} onPointerUp={fabUp} onPointerCancel={fabUp}
@@ -90,7 +127,7 @@ export default function TalkieOverlay() {
         </div>
       )}
       {t.error && (
-        <button type="button" onClick={t.clearError} style={{ bottom: 'calc(env(safe-area-inset-bottom, 0px) + 150px)' }}
+        <button type="button" onClick={t.clearError} style={{ bottom: barSpace > 0 ? `${Math.round(barSpace + 78)}px` : 'calc(env(safe-area-inset-bottom, 0px) + 150px)' }}
           className="fixed right-3 z-[60] max-w-[80vw] px-3 py-2 rounded-xl bg-red-50 dark:bg-red-500/15 border border-red-200 text-red-800 dark:text-red-200 text-xs text-left shadow">
           ⚠️ {t.error} (✕)
         </button>

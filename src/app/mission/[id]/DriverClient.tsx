@@ -552,7 +552,7 @@ function AddrActionModal({ title, address, onNavigate, onModify, onClose }: {
 // ─── Screen wrapper ───────────────────────────────────────────────────────────
 function ScreenWrap({ title, sub, back, children }: { title: string; sub?: string; back: () => void; children: React.ReactNode }) {
   return (
-    <div className="fixed inset-0 bg-surface z-40 flex flex-col">
+    <div data-screen-wrap className="fixed inset-0 bg-surface z-40 flex flex-col">
       <div className="bg-surface border-b border px-4 pt-12 pb-4 flex-shrink-0">
         <div className="flex items-center gap-3">
           <button onClick={back} className="w-9 h-9 flex items-center justify-center bg-surface-hover rounded-xl text-ink">←</button>
@@ -3713,7 +3713,7 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
   // VUE PRINCIPALE
   // ══════════════════════════════════════════════════════════════════════════
   return (
-    <div className="min-h-screen bg-surface pb-48 relative">
+    <div className="min-h-screen bg-surface pb-[calc(12rem+var(--talkie-space,0px))] relative">
       <AmbientBackground variant="light">
 
       {/* Remarque du 1er chauffeur (clôture du REM parent) → alerte OBLIGATOIRE à la
@@ -4825,7 +4825,7 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
           : 'Paiement complet. Tu peux maintenant finaliser la mission.'
 
         return (
-          <div className="fixed bottom-0 left-0 right-0 bg-surface/95 backdrop-blur border-t border px-4 pt-4 pb-[calc(env(safe-area-inset-bottom)+1rem)] space-y-2 z-30">
+          <div data-bottom-bar className="fixed bottom-0 left-0 right-0 bg-surface/95 backdrop-blur border-t border px-4 pt-4 pb-[calc(env(safe-area-inset-bottom)+1rem)] space-y-2 z-30">
             <div className="text-center px-2">
               <p className="text-amber-400 text-xs font-semibold uppercase tracking-wide">
                 ⏸ Mission en attente de paiement
@@ -4870,7 +4870,7 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
 
       {/* Boutons de pointage normaux (uniquement si pas en attente paiement) */}
       {!isReadOnly && !M.awaiting_payment && (
-        <div className="fixed bottom-0 left-0 right-0 bg-surface/95 backdrop-blur border-t border px-4 pt-4 pb-[calc(env(safe-area-inset-bottom)+1rem)] space-y-2 z-30">
+        <div data-bottom-bar className="fixed bottom-0 left-0 right-0 bg-surface/95 backdrop-blur border-t border px-4 pt-4 pb-[calc(env(safe-area-inset-bottom)+1rem)] space-y-2 z-30">
 
           {/* Siabis non couvert direct : rappel encaissement obligatoire avant
               clôture directe (la mise en parc reste possible sans payer). */}
