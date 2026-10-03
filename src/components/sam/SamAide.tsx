@@ -7,7 +7,8 @@
 // le serveur avec les droits du chauffeur. Fermeture par ✕ uniquement.
 
 import { useEffect, useRef, useState } from 'react'
-import { useT } from '@/lib/i18n/I18nProvider'
+import { createPortal } from 'react-dom'
+import { useT, useI18n } from '@/lib/i18n/I18nProvider'
 
 type Msg = { from: 'me' | 'sam'; text: string; photo?: boolean; who?: string }
 type Btn = { libelle: string; valeur: string }
@@ -32,7 +33,16 @@ const agentDuMoment = () => {
 
 export default function SamAide({ missionId, ecran }: { missionId?: string | null; ecran: string }) {
   const { t } = useT()
+  const { parts } = useI18n()
   const [agent, setAgent] = useState<string>(agentDuMoment)
+  // Emplacement dans l'en-tête de la fiche (et des sous-écrans) : le bouton y est
+  // déposé pour ne cacher ni texte ni bouton d'action (Olivier 03/10/2026).
+  // Sans en-tête (écran inconnu) : bouton flottant en repli.
+  const [slot, setSlot] = useState<HTMLElement | null>(null)
+  useEffect(() => {
+    const find = () => { const el = document.getElementById('sam-aide-slot'); setSlot(prev => (prev === el ? prev : el)) }
+    find(); const id = setInterval(find, 400); return () => clearInterval(id)
+  }, [])
   const [open, setOpen] = useState(false)
   const [msgs, setMsgs] = useState<Msg[]>([])
   const [text, setText] = useState('')
@@ -77,11 +87,18 @@ export default function SamAide({ missionId, ecran }: { missionId?: string | nul
 
   return (
     <>
-      <button type="button" onClick={() => setOpen(true)}
-        className="fixed right-4 bottom-24 z-40 min-h-[52px] px-5 rounded-full bg-brand text-white font-bold shadow-lg flex items-center gap-2"
-        aria-label={t('sam.help_button')}>
-        <span aria-hidden>🆘</span>{t('sam.help_button')}
-      </button>
+      {slot
+        ? createPortal(
+            <button type="button" onClick={() => setOpen(true)} aria-label={parts('sam.help_button').primary}
+              className="min-h-[44px] px-3 rounded-xl bg-brand text-white text-sm font-bold flex items-center gap-1.5 whitespace-nowrap">
+              <span aria-hidden>🆘</span>{parts('sam.help_button').primary}
+            </button>, slot)
+        : (
+            <button type="button" onClick={() => setOpen(true)} aria-label={parts('sam.help_button').primary}
+              className="fixed right-4 top-[calc(env(safe-area-inset-top,0px)+0.75rem)] z-40 min-h-[44px] px-4 rounded-full bg-brand text-white font-bold shadow-lg flex items-center gap-2">
+              <span aria-hidden>🆘</span>{parts('sam.help_button').primary}
+            </button>
+          )}
 
       {open && (
         <div className="fixed inset-0 z-50 bg-black/40 flex items-end sm:items-center justify-center">

@@ -558,6 +558,8 @@ function ScreenWrap({ title, sub, back, children }: { title: string; sub?: strin
           <button onClick={back} className="w-9 h-9 flex items-center justify-center bg-surface-hover rounded-xl text-ink">←</button>
           <div className="flex-1 min-w-0"><p className="text-ink font-semibold truncate">{title}</p>
             {sub && <p className="text-ink-muted text-xs truncate">{sub}</p>}</div>
+          {/* Bouton « Aide » (Sam / Sonic) déposé ici : en haut, il ne cache aucun bouton. */}
+          <div id="sam-aide-slot" className="flex-shrink-0" />
         </div>
       </div>
       {children}
@@ -3764,8 +3766,12 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
       {/* Header avec backdrop-blur pour fondre avec l'ambient */}
       <div className={`bg-surface/85 backdrop-blur-md border-b px-4 ${parentClosingNote || parentPanne || parentPhotos.length || (rel && relKey) ? 'pt-3' : 'pt-12'} pb-4 sticky top-0 z-20`}>
         <div className="flex items-center justify-between mb-1">
-          <button onClick={() => router.push('/mission')} className="w-9 h-9 flex items-center justify-center bg-surface-hover rounded-xl text-ink">←</button>
           <div className="flex items-center gap-2">
+            <button onClick={() => router.push('/mission')} className="w-9 h-9 flex items-center justify-center bg-surface-hover rounded-xl text-ink">←</button>
+            {/* Bouton « Aide » (Sam / Sonic) déposé ici : en haut, il ne cache aucun bouton (Olivier 03/10/2026). */}
+            <div id="sam-aide-slot" />
+          </div>
+          <div className="flex items-center gap-2 min-w-0 justify-end flex-wrap">
             <span className={`px-2.5 py-1 rounded-md text-xs font-bold text-ink ${tbg}`}>{tbl}</span>
             <span className={`px-2.5 py-1 rounded-md text-xs font-medium text-ink ${statusBg}`}>
               {statusI18nKey ? <T k={statusI18nKey} /> : statusStr}
