@@ -1579,7 +1579,7 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
       // préparées — une batterie, une crevaison — qui partent une seule fois
       // chacune. C'est la route qui décide et qui tient le compteur ; ici on se
       // contente de demander, et de ne rien afficher quand elle répond null.
-      const BOUTADES_ACTIVES = true
+      const BOUTADES_ACTIVES = false   // arrêtée pour tout le monde (Olivier 03/10/2026)
       if (BOUTADES_ACTIVES && action === 'accept' && currentUserId === 'de9a37aa-41b5-4a56-894b-cc304f601d1a') {
         try {
           const seen = `vd_boutade_${M.id}`
