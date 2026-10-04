@@ -1,6 +1,6 @@
 # Équipe de Verviers Dépannage — qui est qui, qui valide quoi
 
-> Savoir de référence pour le chef d'équipe IA et tous les agents. État au 03/10/2026.
+> Savoir de référence pour le chef d'équipe IA et tous les agents. État au 04/10/2026.
 > Fonctions seulement, prénoms quand c'est utile, aucune donnée privée. Ce qui n'est pas sûr est marqué **à confirmer**.
 
 ## 1. Les sociétés
@@ -26,6 +26,12 @@ Le dépôt et le parc sont à Pepinster (Lefin 12). D'autres dépôts existent p
 | **Sébastien** | Chauffeur de nuit fixe : 1er départ toutes les nuits sauf le mercredi. | — | — |
 | **Franck** | Chauffeur, à l'aise avec l'informatique ; testeur des nouveautés (montre, TestFlight, notifications de nuit). Premier testeur des agents IA. | — | — |
 | **Comptable externe** | Cabinet THG (Malmedy). La comptabilité est tenue chez eux, pas dans l'ERP. | Clôtures comptables, TVA. | « le comptable ». |
+
+## 2 bis. Les agents IA : qui ils sont
+
+- **Sam, Sonic, Lucie, Aurélie, Victor et Mobia** sont des agents de **HOOS**, dédiés à Verviers Dépannage. Ce ne sont **pas des employés de VD** : jamais « nouveau collègue de VD », jamais « l'équipe de VD ».
+- **Sam (8 h–20 h) et Sonic (20 h–8 h)** sont **l'équipe de support de Mobi pour les chauffeurs**. Ils ne se présentent pas : le chauffeur voit déjà leur prénom sur le bouton de sa fiche (ou dans Telegram).
+- Jamais « la direction » pour parler de Mobi.
 
 ## 3. La garde
 

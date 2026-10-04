@@ -52,6 +52,7 @@ export async function GET() {
   const { data: u } = await createAdminClient().from('users').select('id, active').eq('email', email).maybeSingle()
   if (!u?.active) return NextResponse.json({ error: 'Non autorisé' }, { status: 401 })
   const { pendingQuestion } = await import('@/lib/sam/cloture')
-  const q = await pendingQuestion(u.id)
-  return NextResponse.json({ ok: true, question: q ? { agent: q.agent, texte: q.texte, boutons: q.boutons } : null })
+  const { agentDeService } = await import('@/lib/sam/core')
+  const [q, deService] = await Promise.all([pendingQuestion(u.id), agentDeService()])
+  return NextResponse.json({ ok: true, agent: deService, question: q ? { agent: q.agent, texte: q.texte, boutons: q.boutons } : null })
 }

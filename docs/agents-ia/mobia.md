@@ -1,6 +1,6 @@
 # Mobia — assistant de Momo : le dossier « Claudy »
 
-> Savoir de référence pour l'agent Mobia de Verviers Dépannage. État au 03/10/2026.
+> Savoir de référence pour Mobia, agent de HOOS dédié à Verviers Dépannage (pas un employé de VD). État au 04/10/2026.
 > Écrit à partir de la surveillance réellement faite depuis le 30/09/2026. Ce qui n'est pas sûr est marqué **à confirmer**.
 
 ## 1. La mission en une phrase

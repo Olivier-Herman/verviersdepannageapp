@@ -41,6 +41,29 @@ export function agentDuMoment(d = new Date()): 'Sam' | 'Sonic' {
   return h >= 8 && h < 20 ? 'Sam' : 'Sonic'
 }
 
+/**
+ * Agent de service selon le bureau (tient compte de la relève : l'agent qui
+ * recevrait une nouvelle conversation). Repli sur l'horaire local 8 h–20 h.
+ * Mis en cache 60 s : chaque fiche ouverte interroge toutes les 20 s.
+ */
+let deServiceCache: { agent: string; at: number } | null = null
+export async function agentDeService(): Promise<string> {
+  if (deServiceCache && Date.now() - deServiceCache.at < 60_000) return deServiceCache.agent
+  const url = process.env.MOBIOUEB_ADRESSE, secret = process.env.MOBIOUEB_EXTERNE_SECRET
+  let agent: string = agentDuMoment()
+  if (url && secret) {
+    try {
+      const r = await fetch(`${url.replace(/\/$/, '')}/api/externe/sam/de-service`, {
+        cache: 'no-store', signal: AbortSignal.timeout(3_000), headers: { Authorization: `Bearer ${secret}` },
+      })
+      const j = r.ok ? await r.json() : null
+      if (typeof j?.agent === 'string' && j.agent.trim()) agent = j.agent.trim().slice(0, 20)
+    } catch { /* repli horaire */ }
+  }
+  deServiceCache = { agent, at: Date.now() }
+  return agent
+}
+
 const ACTIVE = ['assigned', 'accepted', 'on_way', 'on_site', 'in_progress', 'delivering']
 const APP_URL = () => (process.env.NEXT_PUBLIC_APP_URL || process.env.NEXTAUTH_URL || 'https://app.verviersdepannage.com').replace(/\/$/, '')
 

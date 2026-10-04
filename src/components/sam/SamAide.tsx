@@ -8,7 +8,7 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { useT, useI18n } from '@/lib/i18n/I18nProvider'
+import { useT } from '@/lib/i18n/I18nProvider'
 
 type Msg = { from: 'me' | 'sam'; text: string; photo?: boolean; who?: string }
 type Btn = { libelle: string; valeur: string }
@@ -33,8 +33,10 @@ const agentDuMoment = () => {
 
 export default function SamAide({ missionId, ecran }: { missionId?: string | null; ecran: string }) {
   const { t } = useT()
-  const { parts } = useI18n()
   const [agent, setAgent] = useState<string>(agentDuMoment)
+  // Le bouton porte le prénom de l'agent de service (Sam le jour, Sonic la nuit,
+  // relève comprise) : pas de libellé générique (Olivier 04/10/2026).
+  const [deService, setDeService] = useState<string>(agentDuMoment)
   // Emplacement dans l'en-tête de la fiche (et des sous-écrans) : le bouton y est
   // déposé pour ne cacher ni texte ni bouton d'action (Olivier 03/10/2026).
   // Sans en-tête (écran inconnu) : bouton flottant en repli.
@@ -58,6 +60,7 @@ export default function SamAide({ missionId, ecran }: { missionId?: string | nul
   useEffect(() => {
     let stop = false
     const check = () => fetch('/api/sam/aide', { cache: 'no-store' }).then(r => r.ok ? r.json() : null).then(j => {
+      if (!stop && typeof j?.agent === 'string' && j.agent) setDeService(j.agent)
       const q = j?.question
       if (stop || !q?.texte || shownQ.current === q.texte) return
       shownQ.current = q.texte
@@ -110,20 +113,22 @@ export default function SamAide({ missionId, ecran }: { missionId?: string | nul
     await call({ texte: value || '(photo)', ecran: screen, mission_id: missionId || null, photo: p })
   }
 
+  const openAide = () => { if (msgs.length === 0) setAgent(deService); setOpen(true) }
+
   const pickPhoto = async (f: File | undefined) => { if (f) setPhoto(await compress(f)) }
 
   return (
     <>
       {slot
         ? createPortal(
-            <button type="button" onClick={() => setOpen(true)} aria-label={parts('sam.help_button').primary}
+            <button type="button" onClick={openAide} aria-label={deService}
               className="min-h-[44px] px-3 rounded-xl bg-brand text-white text-sm font-bold flex items-center gap-1.5 whitespace-nowrap">
-              <span aria-hidden>🆘</span>{parts('sam.help_button').primary}
+              <span aria-hidden>🆘</span>{deService}
             </button>, slot)
         : (
-            <button type="button" onClick={() => setOpen(true)} aria-label={parts('sam.help_button').primary}
+            <button type="button" onClick={openAide} aria-label={deService}
               className="fixed right-4 top-[calc(env(safe-area-inset-top,0px)+0.75rem)] z-40 min-h-[44px] px-4 rounded-full bg-brand text-white font-bold shadow-lg flex items-center gap-2">
-              <span aria-hidden>🆘</span>{parts('sam.help_button').primary}
+              <span aria-hidden>🆘</span>{deService}
             </button>
           )}
 

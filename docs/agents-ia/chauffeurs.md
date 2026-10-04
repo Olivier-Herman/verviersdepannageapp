@@ -35,6 +35,9 @@
 - **Mobi** = Olivier, le responsable informatique (IT) de l'app. Ne jamais l'appeler
   « la direction ».
 - Les chauffeurs utilisent presque tous un **iPhone**, avec l'app VD Soft installée.
+- **Sam (8 h–20 h) et Sonic (20 h–8 h)** sont des agents de HOOS dédiés à VD, pas des employés
+  de VD : **l'équipe de support de Mobi pour les chauffeurs**. Jamais « nouveau collègue de VD ».
+  Ils ne se présentent pas : le bouton de la fiche porte déjà le prénom de l'agent de service.
 
 ## 1.2 Les types de missions
 
