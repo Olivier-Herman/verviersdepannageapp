@@ -19,6 +19,9 @@ import { getPdfAttachments, getMessageText, findFolderIdByName, moveMessage, for
 import { aiClient } from '@/lib/ai/usage'
 
 export const FOURNISSEUR_DONE_FOLDER = 'Fournisseur Divers'
+/** Dossier de Justine (Riga) dans info@ et administration@ : les factures Riga y
+ *  sont rangées après traitement, au lieu de « Fournisseur Divers » (Olivier 05/10/2026). */
+export const RIGA_FOLDER = 'Dépannage Riga'
 
 export const COMPANIES = {
   vd:   { id: 1, label: 'Verviers Dépannage', vat: 'BE0460759205', alias: 'purchases@verviers-depannage.odoo.com' },
@@ -29,7 +32,7 @@ export type CompanyKey = keyof typeof COMPANIES
 
 // Expéditeurs qui ne sont jamais des fournisseurs : assisteurs (leurs mails
 // « facture » sont des demandes, pas des factures à encoder) et nos boîtes.
-const NOT_SUPPLIER = /touring\.be|vab\.be|allianz|awp|imabenelux|ima\.eu|axa|ethias|kaze\.so|eurocross|europ-assistance|verviersdepannage|just\.fgov|police|comex/i
+export const NOT_SUPPLIER = /touring\.be|vab\.be|allianz|awp|imabenelux|ima\.eu|axa|ethias|kaze\.so|eurocross|europ-assistance|verviersdepannage|just\.fgov|police|comex/i
 const INVOICE_SUBJECT = /facture|invoice|factuur|rechnung|rappel|reminder|herinnering/i
 
 /** Candidat « facture fournisseur » : une PJ, un sujet de facture, pas un assisteur. */
@@ -113,6 +116,15 @@ export async function findVendorBill(company: CompanyKey, x: SupplierExtraction)
   return null
 }
 
+/** Dossier où ranger le mail traité : « Dépannage Riga » pour Riga (s'il existe dans la boîte), sinon « Fournisseur Divers ». */
+async function doneFolderFor(mailbox: string, company: CompanyKey | null): Promise<{ id: string | null; name: string }> {
+  if (company === 'riga') {
+    const id = await findFolderIdByName(mailbox, RIGA_FOLDER).catch(() => null)
+    if (id) return { id, name: RIGA_FOLDER }
+  }
+  return { id: await findFolderIdByName(mailbox, FOURNISSEUR_DONE_FOLDER), name: FOURNISSEUR_DONE_FOLDER }
+}
+
 export interface SupplierOutcome { status: 'applied' | 'to_verify' | 'ignored' | 'skipped'; note: string; extracted: any }
 
 /**
@@ -134,8 +146,8 @@ export async function processSupplierMail(sb: any, mailbox: string, msg: AgentMe
       .eq('extracted->>invoice_number', x.invoice_number).eq('extracted->>company', COMPANIES[company].label)
       .in('status', ['applied', 'to_verify']).order('id').limit(1).maybeSingle()
     if (twin) {
-      const doneId = await findFolderIdByName(mailbox, FOURNISSEUR_DONE_FOLDER)
-      if (doneId) await moveMessage(mailbox, msg.id, doneId).catch(() => {})
+      const done = await doneFolderFor(mailbox, company)
+      if (done.id) await moveMessage(mailbox, msg.id, done.id).catch(() => {})
       return { status: 'ignored', note: `Doublon : la facture ${x.invoice_number} a déjà été traitée (${twin.status}, boîte ${twin.mailbox}, dossier « ${twin.folder} »).`, extracted: { ...extracted, duplicateOf: twin.id } }
     }
   }
@@ -146,10 +158,11 @@ export async function processSupplierMail(sb: any, mailbox: string, msg: AgentMe
     // ne jamais conclure « absente » → pas de transfert pour encodage, lecture humaine.
     return { status: 'to_verify', note: `Impossible de vérifier dans Odoo si la facture existe déjà (${COMPANIES[company].label}) — vérifier à la main avant d'encoder ou de payer`, extracted: { ...extracted, odooCheckError: String(e?.message || e).slice(0, 200) } }
   }
-  const doneId = await findFolderIdByName(mailbox, FOURNISSEUR_DONE_FOLDER)
+  const done = await doneFolderFor(mailbox, company)
+  const doneId = done.id
   if (bill) {
     if (doneId) await moveMessage(mailbox, msg.id, doneId).catch(() => {})
-    return { status: 'applied', note: `Déjà dans Odoo (${COMPANIES[company].label}) : ${bill.name}${bill.payment_state ? ' · ' + bill.payment_state : ''} → classée dans « ${FOURNISSEUR_DONE_FOLDER} »`, extracted: { ...extracted, odooBill: bill.name } }
+    return { status: 'applied', note: `Déjà dans Odoo (${COMPANIES[company].label}) : ${bill.name}${bill.payment_state ? ' · ' + bill.payment_state : ''} → classée dans « ${done.name} »`, extracted: { ...extracted, odooBill: bill.name } }
   }
   if (x.is_reminder) {
     return { status: 'to_verify', note: `Rappel d'une facture ABSENTE d'Odoo (${COMPANIES[company].label}) : ${x.supplier || '?'} n° ${x.invoice_number || '?'}${x.total != null ? ' · ' + x.total + ' €' : ''} — à encoder et à payer`, extracted }
@@ -158,5 +171,5 @@ export async function processSupplierMail(sb: any, mailbox: string, msg: AgentMe
   const fw = await forwardMessage(mailbox, msg.id, alias, `Encodage automatique (agent mail VD Soft) — ${COMPANIES[company].label} · ${x.supplier || ''} n° ${x.invoice_number || ''}`)
   if (!fw.ok) return { status: 'to_verify', note: `Absente d'Odoo, transfert vers ${alias} refusé (${fw.error || '?'})`, extracted }
   if (doneId) await moveMessage(mailbox, msg.id, doneId).catch(() => {})
-  return { status: 'applied', note: `Absente d'Odoo → transférée pour encodage à ${alias} (${COMPANIES[company].label}), mail classé dans « ${FOURNISSEUR_DONE_FOLDER} »`, extracted: { ...extracted, forwardedTo: alias } }
+  return { status: 'applied', note: `Absente d'Odoo → transférée pour encodage à ${alias} (${COMPANIES[company].label}), mail classé dans « ${done.name} »`, extracted: { ...extracted, forwardedTo: alias } }
 }

@@ -50,6 +50,27 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     }
     return NextResponse.json({ ok: true, status: 'decided', results: out.results })
   }
+  // Mails Riga (Olivier 05/10/2026) : annuler un classement automatique, ou trancher un cas douteux.
+  if (item.handler === 'riga' && ['remettre', 'classer_riga', 'pas_riga'].includes(action)) {
+    if (action === 'pas_riga') {
+      await sb.from('mail_agent_items').update({ status: 'decided', extracted: { ...(item.extracted || {}), decision: { ...decision, result: 'Pas un mail Riga : laissé dans la boîte de réception' } }, updated_at: now }).eq('id', item.id)
+      return NextResponse.json({ ok: true, status: 'decided' })
+    }
+    const { RIGA_FOLDER } = await import('@/lib/mail-agent/riga')
+    const toInbox = action === 'remettre'
+    const fid = toInbox ? 'inbox' : await findOrCreateFolder(item.mailbox, RIGA_FOLDER)
+    if (!fid) return NextResponse.json({ error: `Dossier « ${RIGA_FOLDER} » introuvable dans ${item.mailbox}` }, { status: 400 })
+    let mv = await moveMessage(item.mailbox, item.message_id, fid)
+    if (!mv.ok && /404|ErrorItemNotFound/.test(mv.error || '')) {
+      const again = await relocateMessage(item.mailbox, { receivedAt: item.received_at, fromEmail: item.from_email, subject: item.subject })
+      if (again) mv = await moveMessage(item.mailbox, again, fid)
+    }
+    if (!mv.ok) return NextResponse.json({ error: /404|ErrorItemNotFound/.test(mv.error || '') ? 'Ce mail n’est plus à cet endroit (déplacé ou supprimé à la main).' : (mv.error || 'Déplacement refusé') }, { status: 502 })
+    const folder = toInbox ? 'Boîte de réception' : RIGA_FOLDER
+    const result = toInbox ? 'Remis dans la boîte de réception' : `Classé dans « ${RIGA_FOLDER} »`
+    await sb.from('mail_agent_items').update({ status: 'decided', mail_moved: !toInbox, ...(mv.newId ? { message_id: mv.newId } : {}), folder, extracted: { ...(item.extracted || {}), decision: { ...decision, result } }, updated_at: now }).eq('id', item.id)
+    return NextResponse.json({ ok: true, status: 'decided', moved: true })
+  }
   if (action === 'laisser' || action === 'fait_ailleurs') {
     await sb.from('mail_agent_items').update({ status: 'decided', extracted: { ...(item.extracted || {}), decision }, updated_at: now }).eq('id', item.id)
     return NextResponse.json({ ok: true, status: 'decided' })

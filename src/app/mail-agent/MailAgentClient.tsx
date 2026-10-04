@@ -387,7 +387,22 @@ export default function MailAgentClient({
                 <p className="text-sm bg-red-50 border border-red-200 text-red-800 rounded-lg p-2">{it.error}</p>
               )}
 
-              {it.status === 'applied' && (
+              {it.handler === 'riga' && (
+                <div className="flex flex-wrap items-center gap-2 text-sm">
+                  <span className="px-2 py-0.5 rounded-md text-xs font-semibold bg-indigo-50 text-indigo-800 border border-indigo-200">Dépannage Riga</span>
+                  <span className="text-xs text-slate-500">{it.mailbox?.split('@')[0]}@</span>
+                  {it.status === 'applied' && (
+                    <button onClick={() => decide(it.id, 'remettre')} disabled={busy === it.id} className="min-h-[44px] px-3 rounded-lg text-sm font-medium bg-slate-100 text-slate-800 disabled:opacity-50">{busy === it.id ? '…' : 'Remettre dans la boîte de réception'}</button>
+                  )}
+                  {it.status === 'to_verify' && (<>
+                    <button onClick={() => decide(it.id, 'classer_riga')} disabled={busy === it.id} className="min-h-[44px] px-3 rounded-lg text-sm font-medium bg-indigo-700 text-white disabled:opacity-50">{busy === it.id ? '…' : 'Classer dans « Dépannage Riga »'}</button>
+                    <button onClick={() => decide(it.id, 'pas_riga')} disabled={busy === it.id} className="min-h-[44px] px-3 rounded-lg text-sm font-medium bg-slate-100 text-slate-800 disabled:opacity-50">Pas Riga : laisser</button>
+                  </>)}
+                  {it.status === 'decided' && x.decision?.result && <span className="text-xs text-slate-700">{x.decision.result} · {x.decision.by} · {fmt(x.decision.at)}</span>}
+                </div>
+              )}
+
+              {it.status === 'applied' && !['riga', 'fournisseur'].includes(it.handler || '') && (
                 <p className="text-sm text-slate-700">
                   Note de crédit <strong>{it.credit_note_name || '?'}</strong> ·
                   {' '}nouvelle facture{' '}
@@ -398,7 +413,7 @@ export default function MailAgentClient({
                 </p>
               )}
 
-              {(it.status === 'ready' || it.status === 'blocked' || it.status === 'to_verify') && (
+              {(it.status === 'ready' || it.status === 'blocked' || (it.status === 'to_verify' && it.handler !== 'riga')) && (
                 <div className="flex gap-2 pt-1">
                   {it.status === 'ready' && canApply && (
                     <button onClick={() => apply(it.id)} disabled={busy === it.id}

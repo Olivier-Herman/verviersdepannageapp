@@ -304,7 +304,16 @@ export async function scanMailboxes(opts: { sinceDays?: number; limit?: number }
   const sb = createAdminClient()
   const { data: st } = await sb.from('app_settings').select('value').eq('key', 'mail_agent_triage').maybeSingle()
   let triage = true; try { triage = st?.value ? JSON.parse(st.value) !== 'off' : true } catch {}
-  const total: ScanReport & { folders: string[] } = { scanned: 0, captured: 0, ready: 0, blocked: 0, toVerify: 0, skipped: 0, applied: 0, toDecide: 0, errors: [], folders: [] }
+  const total: ScanReport & { folders: string[]; riga?: any } = { scanned: 0, captured: 0, ready: 0, blocked: 0, toVerify: 0, skipped: 0, applied: 0, toDecide: 0, errors: [], folders: [] }
+  // Mails de Dépannage Riga d'abord (Olivier 05/10/2026) : rangés dans « Dépannage
+  // Riga » avant que le triage n'en fasse des cartes pour le bureau.
+  try {
+    const { sortRigaMailboxes } = await import('./riga')
+    const r = await sortRigaMailboxes()
+    total.riga = { checked: r.checked, moved: r.moved, doubtful: r.doubtful }
+    total.applied += r.moved; total.captured += r.moved + r.doubtful; total.toVerify += r.doubtful
+    total.errors.push(...r.errors)
+  } catch (e: any) { total.errors.push(`Riga : ${e?.message || String(e)}`) }
   for (const mailbox of TRIAGE_MAILBOXES) {
     const r = await scanAllFolders({ ...opts, mailbox, triage, onlyFolders: MAILBOX_SCOPE[mailbox] })
     total.scanned += r.scanned; total.captured += r.captured; total.ready += r.ready; total.blocked += r.blocked; total.toVerify += r.toVerify
