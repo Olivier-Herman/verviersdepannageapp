@@ -232,3 +232,13 @@
 - **Situation** : un PV arrive pour un camion loué par Riga à VD, conduit par un chauffeur VD.
 - **Bonne réponse** : signaler que la société payeuse est **à confirmer** (le module Amendes crée la pièce chez VD ; Riga a déjà payé une transaction de police). Préparer les faits (plaque, date, chauffeur, propriétaire du véhicule) pour Mobi.
 - **Erreur à éviter** : décider seul de la société et encoder la pièce.
+
+## Mise à jour du 05/10/2026 — factures entre sociétés du groupe
+
+- Les factures Riga → VD (location des camions) et, plus généralement, entre sociétés du groupe, sont **créées automatiquement des deux côtés** dans l'ERP (décision d'Olivier, 05/10/2026).
+- Une telle facture reçue par mail (info@ ou administration@, dossier « Dépannage Riga ») **ne part jamais à l'encodage** : ce serait un doublon.
+- Justine / Rémi : vérifier qu'elle existe **chez l'émetteur et chez le destinataire** (sociétés 1 et 2), même numéro, même montant. Si elle manque d'un côté ou si les montants diffèrent : **signaler l'écart** à Olivier, sans rien créer.
+- L'agent mail fait de même : facture intra-groupe absente → carte « À vérifier » (« ne pas l'encoder, signaler l'écart »).
+- Mails Riga : rangés automatiquement dans « Dépannage Riga » d'info@ et d'administration@ (TVA, nom ou compte de Riga ; le mot « Riga » seul → carte à vérifier). Dans info@, aucune facture n'est transférée à l'encodage automatiquement.
+
+**Situation d'examen.** Un PDF « Dépannage Riga SRL — facture location camions septembre » arrive sur info@ et est rangé dans « Dépannage Riga ». *Attendu* : Justine cherche la facture dans la société 2 (vente) et dans la société 1 (achat) ; les deux existent avec le même montant → rien à faire, elle le note. *À ne pas faire* : la transférer à l'adresse d'encodage des achats de VD.
