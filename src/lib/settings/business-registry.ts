@@ -28,6 +28,8 @@ export const BUSINESS_SETTINGS: BusinessSettingDef[] = [
   { key: 'odoo_partner_sumup',           label: 'Partenaire « SumUp »',                     group: 'Odoo', kind: 'number', seed: 1221 },
   { key: 'odoo_partner_touring',         label: 'Partenaire « Touring »',                   group: 'Odoo', kind: 'number', seed: 14 },
   { key: 'odoo_journal_paie',            label: 'Journal des fiches de paie',               group: 'Odoo', kind: 'number', seed: 45, help: 'Exclu des achats et des dépenses.' },
+  { key: 'odoo_journal_paiement_fournisseurs', label: 'Journal bancaire des lots de paiement fournisseurs', group: 'Odoo', kind: 'number', seed: 12, help: 'Verviers Dépannage : les paiements fournisseurs partent toujours d’ING (Olivier 04/10/2026). Utilisé par les lots préparés par les agents.' },
+  { key: 'odoo_methode_virement_sepa',   label: 'Méthode « Virement SEPA » du journal ci-dessus', group: 'Odoo', kind: 'number', seed: 24 },
   // ── Boîtes mail qui engagent un flux ────────────────────────────────────
   { key: 'mail_parquet',            label: 'Parquet de Verviers (états de frais)',            group: 'Boîtes mail', kind: 'text', seed: 'fdj.pplge@just.fgov.be' },
   { key: 'mail_frais_justice',      label: 'Frais de justice Verviers (saisie judiciaire)',    group: 'Boîtes mail', kind: 'text', seed: 'frais.justice.verviers@just.fgov.be' },
@@ -40,7 +42,10 @@ export const BUSINESS_SETTINGS: BusinessSettingDef[] = [
   { key: 'mobia_dossier',           label: 'Mobia — dossier surveillé dans info@',            group: 'Boîtes mail', kind: 'text', seed: 'Claudy', help: 'Mobia prépare un brouillon de réponse (jamais envoyé) pour chaque nouveau mail de ce dossier, de 9 h à 20 h.' },
   { key: 'mobia_notify_user_ids',   label: 'Mobia — qui reçoit « Brouillon prêt »',           group: 'Boîtes mail', kind: 'list', seed: ['e7cbab7f-1d0a-4109-ab60-7b223d088b57'], help: 'Comptes VD Soft (identifiants) prévenus à chaque brouillon. Par défaut : Momo.' },
   { key: 'touring_check_cc',        label: 'Check Touring — copie du rappel mensuel',         group: 'Boîtes mail', kind: 'emails', seed: ['Andre.ANGELIQUE@touring.be'] },
+  { key: 'agents_comptable_destinataires', label: 'Agents — adresses du bureau comptable', group: 'Boîtes mail', kind: 'emails', seed: [], help: 'Seules adresses auxquelles Benoît peut envoyer directement des pièces retrouvées (Olivier 05/10/2026). Vide = aucun envoi direct possible.' },
+  { key: 'agents_copie_envois',     label: 'Agents — copie de chaque envoi direct',           group: 'Boîtes mail', kind: 'emails', seed: ['mobi@verviersdepannage.be'], help: 'Mis en copie de tout mail envoyé directement par un agent.' },
   // ── Montants ────────────────────────────────────────────────────────────
+  { key: 'agents_seuil_riga_htva',  label: 'Agents — seuil de validation directe des achats Riga (HTVA)', group: 'Montants', kind: 'number', seed: 1000, help: 'Rémi valide seul un brouillon Peppol de Dépannage Riga jusqu’à ce montant HTVA ; sans limite entre sociétés du groupe (Olivier 04/10/2026).' },
   { key: 'forfait_parc_accident_tvac', label: 'Forfait gardiennage accident Ethias / Kaze (TVAC)', group: 'Montants', kind: 'number', seed: 220, help: 'Écrit en HTVA sur la fiche à la coche ; les anciens dossiers gardent le leur.' },
   // ── Facturation : relances clients sur factures ouvertes (temps 3, Olivier 16-21/09/2026) ──
   { key: 'relance_facture_j1_jours', label: 'Relance facture — 1er rappel (jours après l’échéance)', group: 'Facturation', kind: 'number', seed: 15, help: 'Mail courtois au client facturé, une fois par facture. Jamais vers le Parquet, le Domaine ni les assisteurs qui ont leur propre circuit.' },

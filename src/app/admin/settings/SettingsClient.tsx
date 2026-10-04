@@ -133,6 +133,8 @@ export default function SettingsClient({
       settings.achats_rfq_mailbox = rfqMailbox.trim()
       for (const d of BUSINESS_SETTINGS) {
         const raw = (biz[d.key] || '').trim()
+        // Liste vide autorisée quand l'origine est vide (talkie permanent, adresses du comptable).
+        if (!raw && Array.isArray(d.seed) && d.seed.length === 0) { settings[d.key] = []; continue }
         if (!raw) { setParamsError(`« ${d.label} » est obligatoire (valeur d'origine : ${Array.isArray(d.seed) ? d.seed.join(', ') : String(d.seed)}).`); return }
         if (d.kind === 'number') { const n = Number(raw.replace(',', '.')); if (!Number.isFinite(n) || n <= 0) { setParamsError(`« ${d.label} » : nombre attendu.`); return } settings[d.key] = n }
         else if (d.kind === 'emails' || d.kind === 'list') settings[d.key] = raw.split(/[,;\s]+/).map(x => x.trim()).filter(Boolean)

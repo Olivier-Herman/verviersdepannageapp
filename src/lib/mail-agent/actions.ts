@@ -24,7 +24,7 @@ import { COMPANIES, type CompanyKey } from './handlers/fournisseur'
 import { aiClient } from '@/lib/ai/usage'
 
 export const OUT_MAILBOX = 'administration@verviersdepannage.com'
-const SIGNATURE = `<p>Bien à vous,<br>Verviers Dépannage SA<br>Lefin 12, 4860 Pepinster · 087/35 18 20 · administration@verviersdepannage.com</p>`
+export const SIGNATURE = `<p>Bien à vous,<br>Verviers Dépannage SA<br>Lefin 12, 4860 Pepinster · 087/35 18 20 · administration@verviersdepannage.com</p>`
 const G = 'https://graph.microsoft.com/v1.0'
 
 export interface ActionResult { ok: boolean; note: string; error?: string; links?: { label: string; url: string }[] }

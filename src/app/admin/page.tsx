@@ -233,6 +233,8 @@ export default async function AdminPage() {
           <Card href="/admin/diagnostics" icon={Radio} label="Diagnostics"
             desc="Un bouton par vérification : mails bloqués, COMEX, VAB, Graph, Odoo, parc, notifications, push, Teams, étiquette de test. Superadmin uniquement." />
         )}
+        <Card href="/admin/agents" icon={Users} label="Propositions des agents"
+          desc="Les agents préparent (lots de paiement, factures d'achat, notes de crédit, pièces pour le comptable), vous validez, VD Soft exécute. Droits, clés et journal de chaque agent." />
         {user.role === 'superadmin' && (
           <Card href="/admin/sam-echanges" icon={Radio} label="Échanges Sam / Sonic"
             desc="Conversations des chauffeurs avec l'aide Sam (le jour) et Sonic (la nuit), avec ou sans mission : résumé et échange complet, traduction française. Superadmin uniquement." />
