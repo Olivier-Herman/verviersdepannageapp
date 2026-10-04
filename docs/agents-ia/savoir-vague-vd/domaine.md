@@ -1,5 +1,7 @@
 # Savoir de l'agent « Domaine » — SPF Finances, de la remise à la facture trimestrielle
 
+> **Décisions d'Olivier du 04/10/2026 : voir [decisions-olivier.md](decisions-olivier.md). Elles priment sur les « à confirmer » de ce document.**
+
 > Date de rédaction : **04/10/2026**
 > Public : **Marion** (agente HOOS dédiée à Verviers Dépannage : remises au Domaine, Dates IN, ventes d'épaves, enlèvements, gardiennage à charge de l'État, facture trimestrielle). En lecture : **Thibault** (circuit Parquet, qui s'arrête là où commence le Domaine), **Raphaël** (fourrière de nuit), **Lucie** (fourrière). Les agents HOOS ne sont pas des employés de VD.
 > Point de départ : `docs/agents-ia/fourriere.md` §2.8 (Lucie). Ce document le **complète** sans le recopier.

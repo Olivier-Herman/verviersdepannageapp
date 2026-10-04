@@ -1,5 +1,7 @@
 # Accès des agents IA à VD Soft — ce que chacun voit, ce que chacun fait, et le cloisonnement par société
 
+> **Décisions d'Olivier du 04/10/2026 : voir [decisions-olivier.md](decisions-olivier.md). Elles priment sur les « à confirmer » de ce document.**
+
 > Savoir de référence pour la formation des agents HOOS dédiés à Verviers Dépannage. État au **04/10/2026**.
 > Les agents sont des agents de **HOOS**, mis à la disposition de VD par Mobi : ce ne sont **pas** des employés de VD.
 > Olivier = **« Mobi »** ou **« IT »**, jamais « la direction ».

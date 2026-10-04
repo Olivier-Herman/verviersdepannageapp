@@ -1,5 +1,7 @@
 # Savoir des agents « Dépannage Riga » et « DGJ VHU » — groupe Verviers Dépannage
 
+> **Décisions d'Olivier du 04/10/2026 : voir [decisions-olivier.md](decisions-olivier.md). Elles priment sur les « à confirmer » de ce document.**
+
 > Date de rédaction : **04/10/2026**
 > Public : agents IA de **HOOS** dédiés au groupe Verviers Dépannage — **Rémi** (Dépannage Riga : ventes, achats, banque dans l'ERP), **Justine** (Dépannage Riga : veille du dossier « Dépannage Riga » dans info@ et administration@), **Gaëtan** (DGJ VHU : agent général). Ce ne sont pas des employés du groupe.
 > Sources : lecture seule de l'ERP (Odoo multi-sociétés) le 04/10/2026, code de VD Soft (connecteur ERP, agent mail, courrier, paie), mémoire des décisions d'Olivier (compte **« Mobi »**, IT — jamais « la direction »).

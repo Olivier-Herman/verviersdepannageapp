@@ -1,5 +1,7 @@
 # Savoir de l'agent « Parquet » — états de frais de A à Z
 
+> **Décisions d'Olivier du 04/10/2026 : voir [decisions-olivier.md](decisions-olivier.md). Elles priment sur les « à confirmer » de ce document.**
+
 > Date de rédaction : **04/10/2026**
 > Public : **Thibault** (agent HOOS dédié à Verviers Dépannage, qui porte seul le circuit des états de frais), et en lecture **Raphaël** (fourrière de nuit) et **Lucie** (fourrière). Les agents HOOS ne sont pas des employés de VD.
 > Point de départ : `docs/agents-ia/fourriere.md` (Lucie, 03/10/2026), sections 2.4 à 2.6. **Ce document ne la recopie pas, il la complète** : ce qui manque pour porter le circuit seul, les contrôles, les chiffres réels et les écarts entre le mode d'emploi et le comportement réel de l'application.

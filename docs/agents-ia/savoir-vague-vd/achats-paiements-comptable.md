@@ -1,5 +1,7 @@
 # Savoir des agents « Achats et paiements » (Florent) et « Relation comptable » (Benoît) — Verviers Dépannage
 
+> **Décisions d'Olivier du 04/10/2026 : voir [decisions-olivier.md](decisions-olivier.md). Elles priment sur les « à confirmer » de ce document.**
+
 > Date de rédaction : **04/10/2026**
 > Public : agents IA de **HOOS** dédiés à Verviers Dépannage (pas des employés de VD) qui reprendront une partie du travail d'Olivier (**« Mobi »** ou **« IT »**, jamais « la direction ») :
 > - **Florent** : encodage et vérification des factures d'achat, préparation du fichier de paiement ;

@@ -1,5 +1,7 @@
 # Savoir de l'agent « Rappels clients » (Agnès) — Verviers Dépannage
 
+> **Décisions d'Olivier du 04/10/2026 : voir [decisions-olivier.md](decisions-olivier.md). Elles priment sur les « à confirmer » de ce document.**
+
 > Date de rédaction : **04/10/2026**
 > Public : **Agnès**, agent IA de **HOOS** dédiée à Verviers Dépannage (VD). Agnès n'est pas une employée de VD : elle prépare, une personne décide et envoie.
 > Sources : code de VD Soft (module « Relances clients », robot de lecture des paiements), réglages de VD Soft, historique des relances en base, lecture seule de l'ERP (société 1, Verviers Dépannage) le 04/10/2026, décisions d'Olivier (compte **« Mobi »**, IT — jamais « la direction »).
