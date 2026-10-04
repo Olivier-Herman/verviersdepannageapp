@@ -14,6 +14,7 @@
 // FCM exige un OAuth2 access_token genere a partir d'un JWT signe RS256 avec
 // la cle privee du Service Account. On cache le token ~50min.
 
+import { pushGroupId } from './stale'
 import { SignJWT, importPKCS8 } from 'jose'
 
 let cachedAccessToken:        string | null = null
@@ -109,6 +110,7 @@ export async function sendFcmPush(token: string, payload: FcmPayload): Promise<F
         notification: {
           sound: 'default',
           channel_id: 'verviers_default',
+          ...(pushGroupId(payload.notif_type, payload.mission_id) ? { tag: pushGroupId(payload.notif_type, payload.mission_id) } : {}),
         },
       },
     },

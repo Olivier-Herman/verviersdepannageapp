@@ -15,6 +15,7 @@
 //   APNS_AUTH_KEY     — contenu complet du .p8 (avec les BEGIN/END PRIVATE KEY)
 //   APNS_USE_SANDBOX  — 'true' pour dev (api.sandbox.push.apple.com), sinon prod
 
+import { pushGroupId } from './stale'
 import { SignJWT, importPKCS8 } from 'jose'
 import http2 from 'node:http2'
 
@@ -141,7 +142,9 @@ export async function sendApnsPush(
         mission_id: payload.mission_id,
         ...payload.data,
       }
+  const collapseId = isBackground ? null : pushGroupId(payload.notif_type, payload.mission_id)
   return apnsRequest(host, jwt, token, apsBody, {
+    ...(collapseId ? { 'apns-collapse-id': collapseId } : {}),
     'apns-topic':      topic,
     'apns-push-type':  isBackground ? 'background' : 'alert',
     // Background push : priority 5 obligatoire (priority 10 = bloque par Apple).
