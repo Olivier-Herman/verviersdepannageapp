@@ -79,6 +79,15 @@ export async function extractSupplierInvoice(mailbox: string, msg: AgentMessage)
   }
 }
 
+/** Société du groupe qui ÉMET la facture (d'après le nom du fournisseur), sinon null. */
+export function supplierCompanyOf(x: SupplierExtraction): CompanyKey | null {
+  const s = (x.supplier || '').toLowerCase()
+  if (/d[ée]pannage\s+riga|\briga\s+s\.?r\.?l|\briga\s+sprl/.test(s)) return 'riga'
+  if (/\bdgj\b|dgj[\s.]*vhu/.test(s)) return 'dgj'
+  if (/verviers\s*d[ée]pannage/.test(s)) return 'vd'
+  return null
+}
+
 /** Société destinataire : la TVA fait foi, sinon le nom. */
 export function companyOf(x: SupplierExtraction): CompanyKey | null {
   const vat = x.addressee_vat || ''
@@ -163,6 +172,13 @@ export async function processSupplierMail(sb: any, mailbox: string, msg: AgentMe
   if (bill) {
     if (doneId) await moveMessage(mailbox, msg.id, doneId).catch(() => {})
     return { status: 'applied', note: `Déjà dans Odoo (${COMPANIES[company].label}) : ${bill.name}${bill.payment_state ? ' · ' + bill.payment_state : ''} → classée dans « ${done.name} »`, extracted: { ...extracted, odooBill: bill.name } }
+  }
+  // Facture ENTRE sociétés du groupe (ex. location Riga → VD) : l'ERP la crée
+  // automatiquement des deux côtés (Olivier 05/10/2026). Jamais d'encodage :
+  // la transférer créerait un doublon. Absente ici = écart à signaler.
+  const issuer = supplierCompanyOf(x)
+  if (issuer && issuer !== company) {
+    return { status: 'to_verify', note: `Facture entre sociétés du groupe (${COMPANIES[issuer].label} → ${COMPANIES[company].label}) introuvable chez ${COMPANIES[company].label} : elle doit exister des deux côtés dans l'ERP (création automatique) — ne pas l'encoder, signaler l'écart`, extracted: { ...extracted, intraGroup: true } }
   }
   if (x.is_reminder) {
     return { status: 'to_verify', note: `Rappel d'une facture ABSENTE d'Odoo (${COMPANIES[company].label}) : ${x.supplier || '?'} n° ${x.invoice_number || '?'}${x.total != null ? ' · ' + x.total + ' €' : ''} — à encoder et à payer`, extracted }
