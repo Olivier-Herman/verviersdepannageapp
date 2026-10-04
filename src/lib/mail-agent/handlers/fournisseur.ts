@@ -14,7 +14,7 @@
 
 import Anthropic from '@anthropic-ai/sdk'
 import { ANTHROPIC_MODEL } from '@/lib/anthropic-model'
-import { odooRpc } from '@/lib/odoo'
+import { odooRpcCompany } from '@/lib/odoo'
 import { getPdfAttachments, getMessageText, findFolderIdByName, moveMessage, forwardMessage, type AgentMessage } from '../graph'
 import { aiClient } from '@/lib/ai/usage'
 
@@ -87,21 +87,27 @@ export function companyOf(x: SupplierExtraction): CompanyKey | null {
   return null
 }
 
-/** La facture est-elle déjà dans Odoo pour cette société ? (numéro, sinon fournisseur + montant) */
+/**
+ * La facture est-elle déjà dans Odoo pour cette société ? (numéro, sinon fournisseur + montant)
+ * L'appel vise la société elle-même (odooRpcCompany) : odooRpc verrouille la
+ * société 1 et ignore tout allowed_company_ids, si bien qu'une facture Riga ou
+ * DGJ n'était jamais trouvée (0 sur 559 pour Riga, 04/10/2026) → retransférée
+ * pour encodage (doublon) ou annoncée « à payer » alors que payée.
+ * Lève une erreur si la société n'est pas consultable (accès Odoo refusé).
+ */
 export async function findVendorBill(company: CompanyKey, x: SupplierExtraction): Promise<{ name: string; ref: string | null; payment_state: string | null } | null> {
-  const ctx = { allowed_company_ids: [1, 2, 3] }
   const fields = ['name', 'ref', 'payment_state']
   const cid = COMPANIES[company].id
   if (x.invoice_number) {
     const num = x.invoice_number.replace(/[^A-Za-z0-9\/\-\.]/g, '')
     if (num.length >= 3) {
-      const r: any[] = await odooRpc('account.move', 'search_read', [[['move_type', 'in', ['in_invoice', 'in_refund']], ['company_id', '=', cid], '|', ['ref', 'ilike', num], ['payment_reference', 'ilike', num]]], { fields, limit: 1, context: ctx }) || []
+      const r: any[] = await odooRpcCompany(cid, 'account.move', 'search_read', [[['move_type', 'in', ['in_invoice', 'in_refund']], ['company_id', '=', cid], '|', ['ref', 'ilike', num], ['payment_reference', 'ilike', num]]], { fields, limit: 1 }) || []
       if (r.length) return r[0]
     }
   }
   if (x.total != null && x.supplier) {
     const tok = x.supplier.split(/\s+/).filter(t => t.length >= 4)[0] || x.supplier.slice(0, 6)
-    const r: any[] = await odooRpc('account.move', 'search_read', [[['move_type', 'in', ['in_invoice', 'in_refund']], ['company_id', '=', cid], ['partner_id', 'ilike', tok], ['amount_total', '>=', Math.abs(x.total) - 0.02], ['amount_total', '<=', Math.abs(x.total) + 0.02]]], { fields, limit: 1, context: ctx }) || []
+    const r: any[] = await odooRpcCompany(cid, 'account.move', 'search_read', [[['move_type', 'in', ['in_invoice', 'in_refund']], ['company_id', '=', cid], ['partner_id', 'ilike', tok], ['amount_total', '>=', Math.abs(x.total) - 0.02], ['amount_total', '<=', Math.abs(x.total) + 0.02]]], { fields, limit: 1 }) || []
     if (r.length) return r[0]
   }
   return null
@@ -120,17 +126,26 @@ export async function processSupplierMail(sb: any, mailbox: string, msg: AgentMe
   const company = companyOf(x)
   const extracted: any = { ...x, company: company ? COMPANIES[company].label : null }
   if (!company) return { status: 'to_verify', note: `Destinataire non reconnu : « ${x.addressee || '?'} » — pour quelle société ?`, extracted }
-  // Doublon : même fournisseur + même numéro déjà traité.
+  // Doublon : même numéro, même société, déjà traité — dans N'IMPORTE QUELLE boîte :
+  // une même facture arrive souvent sur info@ ET administration@ (Verviers Freins,
+  // transférée deux fois pour Riga le 01/10/2026).
   if (x.invoice_number) {
-    const { data: twin } = await sb.from('mail_agent_items').select('id, status, folder').eq('mailbox', mailbox).eq('handler', 'fournisseur').neq('message_id', msg.id)
-      .eq('extracted->>invoice_number', x.invoice_number).in('status', ['applied', 'to_verify']).limit(1).maybeSingle()
+    const { data: twin } = await sb.from('mail_agent_items').select('id, status, folder, mailbox').eq('handler', 'fournisseur').neq('message_id', msg.id)
+      .eq('extracted->>invoice_number', x.invoice_number).eq('extracted->>company', COMPANIES[company].label)
+      .in('status', ['applied', 'to_verify']).order('id').limit(1).maybeSingle()
     if (twin) {
       const doneId = await findFolderIdByName(mailbox, FOURNISSEUR_DONE_FOLDER)
       if (doneId) await moveMessage(mailbox, msg.id, doneId).catch(() => {})
-      return { status: 'ignored', note: `Doublon : la facture ${x.invoice_number} a déjà été traitée (${twin.status}, dossier « ${twin.folder} »).`, extracted: { ...extracted, duplicateOf: twin.id } }
+      return { status: 'ignored', note: `Doublon : la facture ${x.invoice_number} a déjà été traitée (${twin.status}, boîte ${twin.mailbox}, dossier « ${twin.folder} »).`, extracted: { ...extracted, duplicateOf: twin.id } }
     }
   }
-  const bill = await findVendorBill(company, x)
+  let bill: Awaited<ReturnType<typeof findVendorBill>>
+  try { bill = await findVendorBill(company, x) }
+  catch (e: any) {
+    // Société non consultable (ex. DGJ VHU : accès Odoo refusé au compte de l'app) :
+    // ne jamais conclure « absente » → pas de transfert pour encodage, lecture humaine.
+    return { status: 'to_verify', note: `Impossible de vérifier dans Odoo si la facture existe déjà (${COMPANIES[company].label}) — vérifier à la main avant d'encoder ou de payer`, extracted: { ...extracted, odooCheckError: String(e?.message || e).slice(0, 200) } }
+  }
   const doneId = await findFolderIdByName(mailbox, FOURNISSEUR_DONE_FOLDER)
   if (bill) {
     if (doneId) await moveMessage(mailbox, msg.id, doneId).catch(() => {})
