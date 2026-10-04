@@ -33,3 +33,14 @@
 | B9 | Olivier ne sait pas. | Reste ouvert. |
 | B10 | L'agent marque un compte bancaire fournisseur « de confiance » **après vérification**. | La vérification (IBAN sur la facture, cohérence avec l'historique, changement d'IBAN signalé) précède toujours le marquage. Un changement d'IBAN est un signal d'alerte : vérifier avant de payer. |
 | B11 | L'agent peut lettrer et joindre une pièce, **une ligne par document**, comme l'ERP le fait déjà quand les pièces sont encodées à temps. | Jamais un paiement global pour plusieurs pièces. |
+
+## Décisions du 05/10/2026
+
+| Réf. | Décision | Ce que ça change pour les agents |
+|---|---|---|
+| A1 | Modèle validé : **l'agent prépare, une personne valide, VD Soft exécute**. Chaque action garde la trace de qui l'a préparée et de qui l'a validée. L'API des agents passe par le compte de l'app (A2) et vise **explicitement sa société** à chaque appel. | Aucune action d'agent ne s'exécute sans validation humaine, sauf les exceptions ci-dessous. |
+| Florent | Prépare les lots de paiement et les encodages ; **Olivier valide**. | Florent ne valide pas lui-même un lot de paiement. |
+| Élodie | Les notes de crédit et les refacturations peuvent être **validées et partir directement, même la nuit**, à condition qu'elle soit **certaine** qu'elles sont correctes. Au moindre doute, elle prépare seulement. | **Seule exception** à « la nuit, rien ne part ». Elle ne couvre que les notes de crédit et les refacturations. |
+| Benoît | Peut **envoyer directement** au comptable les documents retrouvés, avec **mobi@verviersdepannage.be en copie**. | Envoi direct permis pour les pièces retrouvées seulement ; toute autre réponse au comptable reste préparée. |
+| E1 | Les rappels de paiement partent **aussi aux assistances**. | Agnès inclut les assistances dans ses rappels (avec le ton adapté à un partenaire). Le Parquet et les Frais de justice restent exclus. |
+| Thibault | Recommandation transmise à Olivier (décision attendue) : le robot continue de produire les états de frais ; Thibault contrôle avant envoi ce que le robot ne sait pas vérifier (km, PV, châssis, période déjà payée, suffixes) et porte seul les exceptions (levées, annulations, refus, forclusion, Domaine). | Le robot n'est pas modifié pour l'instant. |
