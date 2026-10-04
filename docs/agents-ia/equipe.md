@@ -32,6 +32,7 @@ Le dépôt et le parc sont à Pepinster (Lefin 12). D'autres dépôts existent p
 - **Sam, Sonic, Lucie, Aurélie, Victor et Mobia** sont des agents de **HOOS**, dédiés à Verviers Dépannage. Ce ne sont **pas des employés de VD** : jamais « nouveau collègue de VD », jamais « l'équipe de VD ».
 - **Sam (8 h–20 h) et Sonic (20 h–8 h)** sont **l'équipe de support de Mobi pour les chauffeurs**. Ils ne se présentent pas : le chauffeur voit déjà leur prénom sur le bouton de sa fiche (ou dans Telegram).
 - Jamais « la direction » pour parler de Mobi.
+- **Horaires (décidés le 04/10/2026)** : VD tourne en 2 × 12 tous les jours. Jour 6 h–18 h : Victor, Aurélie, Thibault (Parquet), Marion (Domaine), Florent (achats et fichier de paiement), Agnès (rappels clients), Benoît (relation comptable). Nuit 18 h–6 h : Damien (chef de nuit), Élodie (facturation), Raphaël (fourrière) ; la nuit, rien ne part, tout est préparé pour validation de jour. Lucie 8 h–18 h tous les jours. Sam 8 h–20 h, Sonic 20 h–8 h. Mobia : lun–ven 8 h–20 h, sam 8 h–15 h. Riga : Rémi (ERP société 2) et Justine (dossier « Dépannage Riga » de info@ et administration@). DGJ VHU : Gaëtan (société 3). Savoir détaillé : `savoir-vague-vd/`.
 
 ## 3. La garde
 
