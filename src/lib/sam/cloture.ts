@@ -52,7 +52,7 @@ export async function samMissionClosed(userId: string, missionId: string): Promi
       method: 'POST', cache: 'no-store', signal: AbortSignal.timeout(20_000),
       headers: { Authorization: `Bearer ${secret}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        chauffeur: { id: userId, prenom: String(u?.surnom || u?.name || '').trim().split(/\s+/)[0] || 'chauffeur', langue: u?.language === 'sq' ? 'sq' : 'fr' },
+        chauffeur: { id: userId, prenom: String(u?.name || '').trim().split(/\s+/)[0] || 'chauffeur', langue: u?.language === 'sq' ? 'sq' : 'fr' },
         canal,
         mission: { id: missionId, numero: m?.mission_number != null ? String(m.mission_number) : undefined, plaque: m?.vehicle_plate || undefined },
       }),

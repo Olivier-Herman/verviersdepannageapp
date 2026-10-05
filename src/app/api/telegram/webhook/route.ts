@@ -68,7 +68,7 @@ export async function POST(req: Request) {
     await sb.from('telegram_links').delete().eq('chat_id', chatId)     // ce téléphone n'appartient plus qu'à un compte
     await sb.from('telegram_links').upsert({ user_id: c.user_id, chat_id: chatId, tg_username: msg?.from?.username || null, linked_at: new Date().toISOString() }, { onConflict: 'user_id' })
     const { data: u } = await sb.from('users').select('name, surnom, language, role, roles').eq('id', c.user_id).maybeSingle()
-    const p = String(u?.surnom || u?.name || '').split(/\s+/)[0]
+    const p = String(u?.name || '').trim().split(/\s+/)[0]   // prénom, jamais le surnom de Matthieu
     if (u && u.role !== 'driver' && !(Array.isArray(u.roles) && u.roles.includes('driver'))) {
       await tgSend(chatId, `Bonjour ${p}, ton compte VD Soft est relié. Tu recevras ici les questions des agents, avec des boutons pour répondre.`)
       return NextResponse.json({ ok: true })

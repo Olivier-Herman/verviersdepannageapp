@@ -80,7 +80,8 @@ async function loadDriver(userId: string) {
   return data
 }
 
-const prenom = (u: any) => String(u?.surnom || u?.name || '').trim().split(/\s+/)[0] || 'chauffeur'
+// Sam et Sonic appellent par le prénom, jamais par le surnom : le surnom (« Gros ») est réservé à Matthieu (Olivier 05/10/2026).
+const prenom = (u: any) => String(u?.name || '').trim().split(/\s+/)[0] || 'chauffeur'
 
 async function missionsEnCours(userId: string) {
   const { data } = await createAdminClient().from('incoming_missions')
