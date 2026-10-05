@@ -28,6 +28,8 @@ export const BUSINESS_SETTINGS: BusinessSettingDef[] = [
   { key: 'odoo_partner_sumup',           label: 'Partenaire « SumUp »',                     group: 'Odoo', kind: 'number', seed: 1221 },
   { key: 'odoo_partner_touring',         label: 'Partenaire « Touring »',                   group: 'Odoo', kind: 'number', seed: 14 },
   { key: 'odoo_journal_paie',            label: 'Journal des fiches de paie',               group: 'Odoo', kind: 'number', seed: 45, help: 'Exclu des achats et des dépenses.' },
+  { key: 'odoo_taxe_achat_21',           label: 'TVA déductible 21 % (taxe d’achat)',       group: 'Odoo', kind: 'number', seed: 23, help: 'Utilisée quand un agent ventile une ligne de banque avec TVA (loyers, frais).' },
+  { key: 'odoo_journal_scrada',          label: 'Journal « Scrada » (livre de caisse)',      group: 'Odoo', kind: 'number', seed: 40, help: 'Reçoit chaque matin les relevés CODA de Scrada.' },
   { key: 'odoo_journal_paiement_fournisseurs', label: 'Journal bancaire des lots de paiement fournisseurs', group: 'Odoo', kind: 'number', seed: 12, help: 'Verviers Dépannage : les paiements fournisseurs partent toujours d’ING (Olivier 04/10/2026). Utilisé par les lots préparés par les agents.' },
   { key: 'odoo_methode_virement_sepa',   label: 'Méthode « Virement SEPA » du journal ci-dessus', group: 'Odoo', kind: 'number', seed: 24 },
   // ── Boîtes mail qui engagent un flux ────────────────────────────────────
@@ -36,6 +38,8 @@ export const BUSINESS_SETTINGS: BusinessSettingDef[] = [
   { key: 'mail_domaine_agent',      label: 'SPF Finances — Domaine (Dates IN, ventes d’épaves)', group: 'Boîtes mail', kind: 'text', seed: 'rosemarie.lehnen@minfin.fed.be' },
   { key: 'mail_ima_avis_paiement',  label: 'IMA — avis de paiement',                          group: 'Boîtes mail', kind: 'text', seed: 'dfc@imabenelux.com' },
   { key: 'mail_awp_avis_paiement',  label: 'Allianz — avis de paiement',                      group: 'Boîtes mail', kind: 'text', seed: 'accountancy.be@allianz.com' },
+  { key: 'mail_scrada_coda',        label: 'Scrada — expéditeur des relevés CODA',            group: 'Boîtes mail', kind: 'text', seed: 'info@scrada.be', help: 'Relevés du livre de caisse importés chaque matin dans le journal Scrada (Olivier 05/10/2026).' },
+  { key: 'mail_scrada_boite',       label: 'Scrada — boîte qui reçoit les relevés',           group: 'Boîtes mail', kind: 'text', seed: 'info@verviersdepannage.com' },
   { key: 'mail_aps_avis_paiement',  label: 'Allianz (AP Solutions) — avis de paiement',       group: 'Boîtes mail', kind: 'text', seed: 'accountancy@allianz-global-assistance.be', help: 'Seconde adresse d’envoi des avis Allianz, au nom d’AP Solutions (Olivier 05/10/2026).' },
   { key: 'mail_awp_rejets',         label: 'Allianz — expéditeurs des rejets de facture',     group: 'Boîtes mail', kind: 'emails', seed: ['providers.invoices.be@allianz.com', 'claims.be@allianz.com', 'automotive.be@allianz.com', 'suppliers.be@allianz.com'] },
   { key: 'mail_ima_rejets',         label: 'IMA — expéditeurs des rejets de facture',         group: 'Boîtes mail', kind: 'emails', seed: ['facturation.prestataires@ima.eu', 'hub@imabenelux.com'] },

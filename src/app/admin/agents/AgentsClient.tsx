@@ -129,6 +129,9 @@ export default function AgentsClient() {
                 {p.why && <p className="text-sm text-slate-800 bg-sky-50 border border-sky-200 rounded-lg px-3 py-2 whitespace-pre-line"><b>Pourquoi :</b> {p.why}</p>}
                 {p.kind === 'envoi_comptable' && <p className="text-sm text-slate-800">À <b>{p.payload?.a}</b> · « {p.payload?.objet} » · pièces : {(p.payload?.pieces || []).join(', ')}</p>}
                 {p.kind === 'note_credit' && <p className="text-sm text-slate-800">Motif : {p.payload?.motif}</p>}
+                {p.kind === 'rapprochement_banque' && (p.payload?.ventilation || []).length > 0 && (
+                  <div className="text-sm text-slate-800"><p className="font-medium">Ventilation proposée :</p><ul className="list-disc pl-5">{p.payload.ventilation.map((l: string, i: number) => <li key={i}>{l}</li>)}</ul></div>
+                )}
                 {p.kind === 'question_olivier' && (
                   <div className="text-sm text-slate-800 space-y-0.5">
                     <p><b>Destinataire :</b> {p.payload?.destinataire}</p>
@@ -258,11 +261,13 @@ export default function AgentsClient() {
   )
 }
 
-const ACTION_LABEL: Record<string, string> = { lot_paiement: 'Valider et créer le lot', facture_achat: 'Valider la facture', note_credit: 'Valider la note de crédit', envoi_comptable: 'Valider et envoyer' }
+const ACTION_LABEL: Record<string, string> = { lot_paiement: 'Valider et créer le lot', facture_achat: 'Valider la facture', note_credit: 'Valider la note de crédit', envoi_comptable: 'Valider et envoyer', rapprochement_bouton: 'Valider et rapprocher', rapprochement_banque: 'Valider et rapprocher' }
 const DIRECT_RULE: Record<string, string> = {
   note_credit: 'Note de crédit / refacturation si certaine (nuit comprise)',
   envoi_comptable: 'Pièces au comptable, depuis la boîte de Mobi (le jour)',
   facture_achat: 'Achat Riga par Peppol sous le seuil, ou entre sociétés du groupe (le jour)',
+  rapprochement_bouton: 'Rapprochements au bouton prêts (Paynovate, SumUp, assureurs) (le jour)',
+  rapprochement_banque: 'Rapprochement d’une ligne de banque (le jour)',
 }
 
 function Stat({ label, value, cls }: { label: string; value: number; cls: string }) {

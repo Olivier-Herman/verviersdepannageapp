@@ -46,6 +46,17 @@ La société est **obligatoire** et vérifiée contre les droits de l'agent. Cha
 | `envoi_comptable` | Benoît | `a` : adresse du comptable ; `objet` ; `message` (tutoiement) ; `facture_ids` : pièces de l'ERP dont le PDF est joint | Mail envoyé **depuis la boîte de Mobi** (jamais administration@), signé « Benoît — Assistant IA de Mobi ». **Envoi direct le jour**, uniquement vers les adresses du comptable réglées par Olivier **et** du domaine du cabinet. |
 
 | `question_olivier` | Florent | `sujet: "facture_nom_prive"`, `facture_id` (facture d'achat), `destinataire` (nom et adresse lus sur la pièce) | Pas d'exécution : VD Soft envoie la question sur le Telegram d'Olivier (validateur désigné de l'agent, sinon les superadmins reliés) avec « Encoder chez VD » / « Privé, ne pas encoder », et l'affiche dans l'écran. **Une seule question par facture.** La réponse revient dans `GET /api/agents/propositions` : `status: "answered"`, `result.choix` (`encoder` ou `prive`), `validated_by`, `validated_at`. « Privé » ne supprime rien : la suite reste la décision d'Olivier. |
+| `rapprochement_bouton` | Florent | `source` : `paynovate`, `sumup` ou `assureur` ; `id` : n° du versement Paynovate / SumUp, ou **ligne de banque** du virement de l'assureur. Le paiement doit être « prêt » dans Finance › Réconciliation. | Exactement le bouton « Rapprocher » (OD, lettrage, trace). **Fait seul, le jour** (Olivier 05/10/2026). Refus : versement introuvable, déjà rapproché, « à trancher » ou pas prêt. Société 1 seulement. |
+| `rapprochement_banque` | Florent | `ligne_id` : ligne de banque non rapprochée ; `parts` : liste, montants **au signe de la ligne** (négatif = sortie), somme = la ligne. Une part : `{ "facture_id": 123, "montant"?: x }` (reste dû entier si pas de montant, sinon partiel) ; `{ "ecriture_ligne_id": 456, "montant"?: x }` (acompte, paiement en suspens, avance…) ; `{ "compte": "610000", "montant": x, "libelle": "…", "partenaire_id"?: n, "tva21"?: true }` (montant TVAC si `tva21`). | La ligne d'attente est remplacée par les parts, l'écriture revalidée, chaque part lettrée. **Validée par Olivier au début** ; il l'activera en direct ensuite. Refus : ligne déjà rapprochée, pièce soldée ou d'une autre société, montant supérieur au reste dû, somme ≠ ligne, compte inconnu, deux parts au même libellé. |
+
+Exemple `rapprochement_banque` (loyer 350 € TVAC) :
+```json
+{ "type": "rapprochement_banque", "societe": 1, "pourquoi": "Ordre permanent « LOYER » Higny, comme chaque mois",
+  "contenu": { "ligne_id": 11494, "parts": [ { "compte": "610000", "montant": -350, "libelle": "Loyer 10/2026", "partenaire_id": 402, "tva21": true } ] } }
+```
+Exemple (une facture soldée et une partielle) : `"parts": [ { "facture_id": 5013 }, { "facture_id": 5008, "montant": -1765 } ]`.
+
+**Import Scrada du matin (sans agent)** : chaque jour à 6 h (Bruxelles), les relevés CODA de Scrada reçus dans info@ sont importés dans le journal « Scrada » ; l'ERP rapproche ce qu'il reconnaît. Un relevé dont le solde de départ ne suit pas le précédent arrête l'import. Résultat dans le journal de l'écran Agents IA (au nom de Florent : « import Scrada »), à lire en début de tournée.
 
 Réponse : `{ ok, id, status }`. `status` vaut `to_validate`, ou `executed` / `failed` en cas d'envoi direct. Le champ `note` donne le résultat, ou explique pourquoi la proposition attend, par exemple « Nuit : rien ne part… ».
 

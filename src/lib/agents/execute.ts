@@ -13,6 +13,7 @@ import { findInvoiceByName, creditAndRebill } from '@/lib/mail-agent/odoo'
 import { sendEmail, type EmailAttachment } from '@/lib/emails'
 import { OUT_MAILBOX, SIGNATURE } from '@/lib/mail-agent/actions'
 import type { AgentAccount, ProposalKind } from './core'
+import { resolveBankParts, postBankParts } from './bank-match'
 
 export interface Prepared {
   title: string
@@ -105,6 +106,27 @@ export async function prepare(kind: ProposalKind, agent: AgentAccount, company: 
     }
   }
 
+  if (kind === 'rapprochement_bouton') {
+    // Exactement le bouton « Rapprocher » de Finance › Réconciliation (lot 2, fait seul).
+    if (company !== 1) throw new Error('Rapprochement au bouton : Verviers Dépannage seulement (societe=1).')
+    const source = String(p.source || '')
+    if (!['paynovate', 'sumup', 'assureur'].includes(source)) throw new Error('contenu.source : paynovate, sumup ou assureur.')
+    const id = Number(p.id)
+    if (!Number.isInteger(id) || id <= 0) throw new Error('contenu.id obligatoire (versement Paynovate / SumUp, ou ligne de banque du virement de l’assureur).')
+    return { title: `${source === 'assureur' ? 'Assureur, ligne de banque' : source === 'sumup' ? 'SumUp' : 'Paynovate'} ${id}`, amount: null, payload: { source, id }, directAllowed: true, directWhy: 'rapprochement au bouton (Olivier 05/10/2026)' }
+  }
+
+  if (kind === 'rapprochement_banque') {
+    const lineId = Number(p.ligne_id)
+    if (!Number.isInteger(lineId) || lineId <= 0) throw new Error('contenu.ligne_id obligatoire (ligne de banque non rapprochée).')
+    const { line, resume } = await resolveBankParts(company, lineId, p.parts)
+    return {
+      title: `${line.journal_id?.[1] || 'Banque'} ${line.date} · ${Number(line.amount).toFixed(2)} € · ${String(line.payment_ref || '').replace(/\s+/g, ' ').slice(0, 60)}`,
+      amount: Number(line.amount), payload: { ligne_id: lineId, parts: p.parts, ventilation: resume },
+      directAllowed: true, directWhy: 'rapprochement de banque (permis quand Olivier l’active)',
+    }
+  }
+
   if (kind === 'question_olivier') {
     // Facture d'achat au nom privé d'une personne (Olivier 05/10/2026) : ni
     // encodée ni écartée d'office, Olivier tranche. Les infos sont lues dans l'ERP.
@@ -150,6 +172,15 @@ async function movePdf(company: number, id: number): Promise<EmailAttachment | n
 
 export async function execute(kind: ProposalKind, company: number, payload: any): Promise<Record<string, any>> {
   if (kind === 'question_olivier') throw new Error('Une question ne s’exécute pas : on y répond.')
+  if (kind === 'rapprochement_bouton') {
+    const { reconcileSource } = await import('./lot2')
+    return { note: await reconcileSource(payload.source, payload.id, null) }
+  }
+  if (kind === 'rapprochement_banque') {
+    const { parts, resume } = await resolveBankParts(company, payload.ligne_id, payload.parts)   // relu : l'ERP a pu bouger depuis le dépôt
+    await postBankParts(company, payload.ligne_id, parts)
+    return { note: `Ligne ${payload.ligne_id} rapprochée : ${resume.join(' ; ')}`.slice(0, 900) }
+  }
   if (kind === 'facture_achat') {
     const b = await readBill(company, payload.facture_id)
     if (!b || b.state !== 'draft') throw new Error('La facture n’est plus en brouillon (validée ou supprimée entre-temps).')
