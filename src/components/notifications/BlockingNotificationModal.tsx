@@ -9,6 +9,7 @@
 
 import { useState } from 'react'
 import { AlertTriangle } from 'lucide-react'
+import { useT } from '@/lib/i18n/I18nProvider'
 
 interface Item { mission_id: string; plate: string; vehicle: string; days: number; zone?: string | null; context?: string | null }
 interface NotifEvent {
@@ -19,7 +20,64 @@ interface NotifEvent {
 export default function BlockingNotificationModal({ notif, onDone }: { notif: NotifEvent; onDone: () => void }) {
   if (notif.notif_type === 'expert_access') return <ExpertAccessModal notif={notif} onDone={onDone} />
   if (notif.notif_type === 'siabis_couvert_request') return <SiabisCouvertModal notif={notif} onDone={onDone} />
+  if (notif.notif_type === 'mission_address_changed') return <AddressChangeModal notif={notif} onDone={onDone} />
   return <ParcVerificationModal notif={notif} onDone={onDone} />
+}
+
+// ── Adresse de livraison modifiée par l'assistance (Olivier 05/10/2026, 2DTV183) ──
+// Dispatch : appliquer la nouvelle adresse ou garder l'actuelle (le premier qui répond décide).
+// Chauffeur : ne pas livrer, appeler le dispatch (texte FR / albanais).
+function AddressChangeModal({ notif, onDone }: { notif: NotifEvent; onDone: () => void }) {
+  const { t } = useT()
+  const d = notif.payload?.data || {}
+  const driver = d.role === 'driver'
+  const [sending, setSending] = useState<null | 'apply' | 'keep' | 'ack'>(null)
+  const [err, setErr] = useState<string | null>(null)
+  async function send(what: 'apply' | 'keep' | 'ack') {
+    setSending(what); setErr(null)
+    try {
+      const r = await fetch(`/api/notifications/${notif.id}/respond`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(what === 'ack' ? { address_ack: true } : { address_decision: what }) })
+      const j = await r.json().catch(() => ({}))
+      if (!r.ok) { setErr(j.error || 'Envoi impossible'); return }
+      onDone()
+    } catch { setErr('Erreur réseau') } finally { setSending(null) }
+  }
+  const newAddr = `${d.new_name ? d.new_name + ', ' : ''}${d.new_address || '—'}`
+  const oldAddr = `${d.old_name ? d.old_name + ', ' : ''}${d.old_address || '—'}`
+  return (
+    <div className="fixed inset-0 z-[400] flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
+      <div className="w-full max-w-lg rounded-2xl bg-white border-4 border-red-600 shadow-2xl overflow-hidden" onClick={e => e.stopPropagation()}>
+        <div className="bg-red-600 text-white px-5 py-4 flex items-center gap-3">
+          <span className="text-3xl">📍</span>
+          <div>
+            <p className="text-lg font-bold leading-tight">{driver ? t('mission_detail.addr_change_title') : 'Nouvelle adresse de livraison reçue'}</p>
+            <p className="text-sm opacity-90">{driver ? t('mission_detail.addr_change_body') : `${d.source || 'L’assistance'} a changé l’adresse — réponse obligatoire, le premier qui répond décide.`}</p>
+          </div>
+        </div>
+        <div className="px-5 py-5 space-y-3">
+          <div className="rounded-xl bg-slate-50 border px-4 py-3">
+            <div className="font-mono text-2xl font-bold text-slate-900">{d.plate || 'sans plaque'}</div>
+            <div className="text-sm text-slate-700">Fiche #{d.mission_number}{!driver && d.vehicle ? ` · ${d.vehicle}` : ''}{!driver && d.driver_name ? ` · chauffeur : ${d.driver_name}` : ''}</div>
+          </div>
+          <div className="rounded-xl border px-4 py-3 text-sm space-y-2">
+            <p className="text-slate-700"><span className="font-semibold text-slate-900">{driver ? t('mission_detail.addr_change_current') : 'Adresse actuelle'} :</span> {oldAddr}</p>
+            <p className="text-red-800"><span className="font-semibold">{driver ? t('mission_detail.addr_change_new') : 'Nouvelle adresse reçue'} :</span> {newAddr}</p>
+            {!driver && d.ref && <p className="text-xs text-slate-500">Référence : {d.ref}</p>}
+          </div>
+          {err && <p className="text-sm font-semibold text-red-700">{err}</p>}
+          {driver ? (
+            <button type="button" disabled={!!sending} onClick={() => send('ack')} className="w-full min-h-[52px] rounded-xl bg-red-600 text-white font-bold">{sending ? '…' : t('mission_detail.addr_change_ok')}</button>
+          ) : (
+            <div className="grid gap-2 sm:grid-cols-2">
+              <button type="button" disabled={!!sending} onClick={() => send('apply')} className="min-h-[52px] rounded-xl bg-red-600 text-white font-bold px-3">{sending === 'apply' ? '…' : 'Appliquer la nouvelle adresse'}</button>
+              <button type="button" disabled={!!sending} onClick={() => send('keep')} className="min-h-[52px] rounded-xl border-2 border-slate-400 text-slate-900 font-bold px-3">{sending === 'keep' ? '…' : 'Garder l’adresse actuelle'}</button>
+            </div>
+          )}
+          {!driver && <p className="text-xs text-slate-600">Le chauffeur est prévenu de ta décision. Pense à l’appeler s’il est déjà en route.</p>}
+        </div>
+      </div>
+    </div>
+  )
 }
 
 // ── Siabis couvert sur demande chauffeur : Confirmer / Refuser (Olivier 20/09/2026) ──

@@ -435,6 +435,17 @@ export const NOTIFICATION_TYPES: readonly NotificationType[] = [
     defaultEnabled:  true,
   },
   {
+    // Changement d'adresse de livraison reçu de l'assistance en cours de mission
+    // (Olivier 05/10/2026, 2DTV183) : popup chauffeur (appeler le dispatch) et popup
+    // dispatch (appliquer / garder). Cf lib/missions/address-change.ts.
+    key:             'mission_address_changed',
+    label:           'Adresse de livraison modifiée par l’assistance',
+    description:     'Chauffeur : ne pas livrer, appeler le dispatch. Dispatch : appliquer la nouvelle adresse ou garder l’actuelle.',
+    category:        'dispatcher',
+    applicableRoles: ['driver', 'dispatcher', 'admin', 'superadmin'],
+    defaultEnabled:  true,
+  },
+  {
     // Talkie « Garde de nuit » (Olivier 30/09/2026) : message reçu alors que le talkie
     // n'était pas ouvert. Cf /talkie et /api/talkie/messages.
     key:             'talkie_message',

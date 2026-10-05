@@ -47,6 +47,7 @@ interface Stop {
 interface Mission {
   id: string; status: string; mission_type?: string
   siabis_couvert_requested_at?: string | null; siabis_couvert_decided_at?: string | null; siabis_couvert_decision?: string | null   // demande couvert → dispatch (20/09/2026)
+  address_change?: { new_address?: string; new_name?: string | null; old_address?: string | null; decided_at?: string | null } | null   // adresse modifiée par l'assistance (05/10/2026)
   incident_type?: string                                       // 'relivraison' = REL
   parent_mission_id?: string | null                            // si REL, lien vers la mission parente parc
   key_location?: string | null; saisie_key_hook?: string | null // emplacement clé (hérité du parc pour une REL)
@@ -3886,6 +3887,18 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
               {formatEur(isToInvoice ? requiredAmount : (M.payment_amount ?? requiredAmount))}
               {!isToInvoice && M.payment_mode ? ` · ${M.payment_mode}` : ''}
             </p>
+          </div>
+        </div>
+      )}
+
+      {/* Adresse de livraison modifiée par l'assistance, en attente du dispatch (Olivier 05/10/2026) */}
+      {M.address_change?.new_address && !M.address_change.decided_at && (
+        <div className="px-4 py-3 flex items-start gap-3 border-b-2 bg-red-600 border-red-700">
+          <span className="text-2xl">📍</span>
+          <div className="flex-1 min-w-0">
+            <p className="text-white font-bold text-sm uppercase tracking-wide"><T k="mission_detail.addr_change_title" /></p>
+            <p className="text-white text-sm font-semibold"><T k="mission_detail.addr_change_body" /></p>
+            <p className="text-white/90 text-xs mt-1"><T k="mission_detail.addr_change_new" /> : {M.address_change.new_name ? `${M.address_change.new_name}, ` : ''}{M.address_change.new_address}</p>
           </div>
         </div>
       )}

@@ -13,6 +13,7 @@
 import { createAdminClient } from '@/lib/supabase'
 import { loginComex, listComexMissions, getComexMissionDetail } from './comex'
 import { mapComexToMission, comexVehiculeNonCouvert, comexVrPropose, comexActionAdoption } from './map-mission'
+import { touringAddressChangeCheck } from './address-change-check'
 import { mapComexVr } from './vr'
 
 export type TouringImportMode = 'preview' | 'send'
@@ -225,6 +226,9 @@ export async function runTouringImport(opts: { mode: TouringImportMode }): Promi
                 if (warn) await sb.from('mission_logs').insert({ mission_id: lin.id, action: 'touring_synced', notes: `⚠️ Touring : ${warn}.`, metadata: { via: 'poll', seq_open: curSeq, seq_new: newSeq } }).then(() => {}, () => {})
               } catch (e: any) { console.warn('[touring] constat ancienne action KO :', e?.message) }
             }
+            // Nouvelle action avec une AUTRE adresse de livraison (2DTV183, 05/10/2026) :
+            // rien d'office, chauffeur + dispatch alertés.
+            await touringAddressChangeCheck(sb, lin, detail, externalId, String(m.CID_DOS)).catch(e => console.warn('[touring] contrôle adresse KO :', e?.message))
             linked++
           }
           continue

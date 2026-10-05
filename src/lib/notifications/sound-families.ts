@@ -24,7 +24,7 @@ export const SOUND_FAMILIES: SoundFamily[] = [
   { key: 'siabis', label: 'Siabis', desc: 'Demande et décision « couvert » Siabis.',
     types: ['siabis_couvert_request', 'siabis_couvert_decided'] },
   { key: 'escalade', label: 'Urgent / escalade', desc: 'Appel d’escalade, mission refusée ou sans réponse, annulation par l’assistance, connexion perdue.',
-    types: ['escalation_call', 'auto_dispatch_refused', 'auto_dispatch_timeout', 'fiche_ouverte_dispatch', 'mission_cancelled_by_insurer', 'kaze_cancelled_after_start', 'axa_cancelled_after_start', 'touring_cancelled', 'garage_cancel_request', 'comex_login_failed', 'axa_poll_down', 'email_parse_error'] },
+    types: ['escalation_call', 'auto_dispatch_refused', 'auto_dispatch_timeout', 'fiche_ouverte_dispatch', 'mission_cancelled_by_insurer', 'kaze_cancelled_after_start', 'axa_cancelled_after_start', 'touring_cancelled', 'garage_cancel_request', 'comex_login_failed', 'axa_poll_down', 'email_parse_error', 'mission_address_changed'] },
   { key: 'check', label: 'Contrôle véhicule / rappel', desc: 'Contrôle véhicule, code personnel, fiche restée ouverte.',
     types: ['check_vehicule_due', 'pin_recall_check', 'pin_setup_reminder', 'fiche_ouverte_rappel'] },
   { key: 'parc', label: 'Parc', desc: 'Vérification du parc, dérogation de restitution, expert, saisie.',

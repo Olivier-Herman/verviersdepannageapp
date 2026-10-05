@@ -11,6 +11,7 @@ import { createAdminClient } from '@/lib/supabase'
 import { applyParcVerificationResponse } from '@/lib/missions/parc-verification'
 import { decideBureauAccess } from '@/lib/expert/access'
 import { decideSiabisCouvert } from '@/lib/missions/siabis-couvert-request'
+import { decideAddressChange, ackAddressChange } from '@/lib/missions/address-change'
 
 export const dynamic = 'force-dynamic'
 
@@ -41,6 +42,18 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     const r = await decideSiabisCouvert(sb, params.id, userId, body.siabis_decision)
     if (!r.ok) return NextResponse.json({ error: r.error }, { status: 400 })
     return NextResponse.json({ ok: true, already: !!r.already })
+  }
+  // Adresse de livraison modifiée par l'assistance (05/10/2026) : dispatch { address_decision: 'apply'|'keep' },
+  // chauffeur { address_ack: true }.
+  if (body?.address_decision === 'apply' || body?.address_decision === 'keep') {
+    const r = await decideAddressChange(sb, params.id, userId, body.address_decision)
+    if (!r.ok) return NextResponse.json({ error: r.error }, { status: 400 })
+    return NextResponse.json({ ok: true, already: !!r.already })
+  }
+  if (body?.address_ack === true) {
+    const r = await ackAddressChange(sb, params.id, userId)
+    if (!r.ok) return NextResponse.json({ error: r.error }, { status: 400 })
+    return NextResponse.json({ ok: true })
   }
   // Question à l'équipe : { choice, comment } → responded_at + réponse aux demandeurs. 20/09/2026.
   if (typeof body?.choice === 'string') {

@@ -8,6 +8,7 @@
 // Gaté en amont par TOURING_COMEX_MODE=import (l'appelant vérifie).
 
 import { loginComex, listComexMissions, getComexMissionDetail } from './comex'
+import { touringAddressChangeCheck } from './address-change-check'
 import { mapComexToMission, comexActionAdoption } from './map-mission'
 
 // Champs de CONTENU que COMEX (maître) écrase sur une fiche mail déjà « à valider ».
@@ -134,6 +135,9 @@ export async function importComexByRefs(opts: {
             if (warn) await supabase.from('mission_logs').insert({ mission_id: lin.id, action: 'touring_synced', notes: `⚠️ Touring : ${warn}.`, metadata: { via: 'mail', seq_open: curSeq, seq_new: newSeq } }).then(() => {}, () => {})
           } catch (e: any) { console.warn('[touring] constat ancienne action KO :', e?.message) }
         }
+        // Nouvelle action avec une AUTRE adresse de livraison (2DTV183, 05/10/2026) : on ne
+        // change rien d'office, le chauffeur et le dispatch sont alertés.
+        await touringAddressChangeCheck(supabase, lin, detail, externalId, String(match.CID_DOS)).catch(e => console.warn('[touring] contrôle adresse KO :', e?.message))
         return { matched: true, missionId: lin.id, externalId, action: 'linked' }
       }
     }

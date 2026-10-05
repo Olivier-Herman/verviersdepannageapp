@@ -380,6 +380,12 @@ export const fr = {
     action_swap_to_rem:  'DSP → REM',
     siabis_request_btn: "Demander Siabis couvert (dispatch)",
     siabis_request_pending: "Demande envoyée au dispatch — en attente",
+    // Adresse de livraison modifiée par l'assistance (05/10/2026)
+    addr_change_title:     "Adresse de livraison modifiée par l’assistance",
+    addr_change_body:      "Ne livre pas : appelle le dispatch, il décide de l’adresse.",
+    addr_change_current:   "Adresse actuelle",
+    addr_change_new:       "Nouvelle adresse reçue",
+    addr_change_ok:        "J’ai compris, j’appelle le dispatch",
     siabis_request_refused: "Refusé par le dispatch — redemander ?",
     action_park:         'Mise en parc',
     action_dpr:          'DPR',
