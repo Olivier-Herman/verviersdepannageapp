@@ -261,7 +261,7 @@ export default function AgentsClient() {
 const ACTION_LABEL: Record<string, string> = { lot_paiement: 'Valider et créer le lot', facture_achat: 'Valider la facture', note_credit: 'Valider la note de crédit', envoi_comptable: 'Valider et envoyer' }
 const DIRECT_RULE: Record<string, string> = {
   note_credit: 'Note de crédit / refacturation si certaine (nuit comprise)',
-  envoi_comptable: 'Pièces au comptable, Mobi en copie (le jour)',
+  envoi_comptable: 'Pièces au comptable, depuis la boîte de Mobi (le jour)',
   facture_achat: 'Achat Riga par Peppol sous le seuil, ou entre sociétés du groupe (le jour)',
 }
 

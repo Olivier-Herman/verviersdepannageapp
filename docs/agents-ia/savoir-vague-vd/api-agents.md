@@ -43,13 +43,17 @@ La société est **obligatoire** et vérifiée contre les droits de l'agent. Cha
 | `lot_paiement` | Florent | `facture_ids` : factures d'achat validées et impayées (société 1 seulement, 100 au plus) | Après validation : paiements SEPA sur le journal ING, puis **lot de paiement** dans l'ERP. Le fichier est ensuite chargé à la banque par Olivier. |
 | `facture_achat` | Florent, Rémi | `facture_id` : brouillon de facture d'achat | Validation du brouillon. VD Soft refuse d'abord tout doublon (même fournisseur et même référence déjà validée). **Envoi direct pour Rémi**, le jour seulement : société 2, et soit arrivée par Peppol sous le seuil HTVA (1 000 €, réglable), soit facture entre sociétés du groupe. |
 | `note_credit` | Élodie | `facture` : numéro de la facture client validée ; `motif` ; `refacturer_partner_id` (facultatif, refacture au bon client) | Note de crédit validée et, si demandée, nouvelle facture validée. **Envoi direct si `certain: true`, même la nuit** : c'est la seule exception de nuit. |
-| `envoi_comptable` | Benoît | `a` : adresse du comptable ; `objet` ; `message` ; `facture_ids` : pièces de l'ERP dont le PDF est joint | Mail envoyé depuis administration@ avec mobi@ en copie. **Envoi direct le jour**, uniquement vers les adresses du comptable réglées par Olivier. |
+| `envoi_comptable` | Benoît | `a` : adresse du comptable ; `objet` ; `message` (tutoiement) ; `facture_ids` : pièces de l'ERP dont le PDF est joint | Mail envoyé **depuis la boîte de Mobi** (jamais administration@), signé « Benoît — Assistant IA de Mobi ». **Envoi direct le jour**, uniquement vers les adresses du comptable réglées par Olivier **et** du domaine du cabinet. |
 
 | `question_olivier` | Florent | `sujet: "facture_nom_prive"`, `facture_id` (facture d'achat), `destinataire` (nom et adresse lus sur la pièce) | Pas d'exécution : VD Soft envoie la question sur le Telegram d'Olivier (validateur désigné de l'agent, sinon les superadmins reliés) avec « Encoder chez VD » / « Privé, ne pas encoder », et l'affiche dans l'écran. **Une seule question par facture.** La réponse revient dans `GET /api/agents/propositions` : `status: "answered"`, `result.choix` (`encoder` ou `prive`), `validated_by`, `validated_at`. « Privé » ne supprime rien : la suite reste la décision d'Olivier. |
 
 Réponse : `{ ok, id, status }`. `status` vaut `to_validate`, ou `executed` / `failed` en cas d'envoi direct. Le champ `note` donne le résultat, ou explique pourquoi la proposition attend, par exemple « Nuit : rien ne part… ».
 
 Un refus au dépôt renvoie une réponse 400 avec un message en clair, par exemple « Doublon : … », « Facture déjà validée » ou « Destinataire non autorisé ».
+
+## Boîte des échanges avec le comptable : `GET /api/agents/lire?quoi=boite_comptable`
+
+**Benoît seulement** (tout autre agent : refus journalisé). Renvoie les mails du dossier « Comptable THG » de la boîte de Mobi et les mails envoyés **uniquement** au cabinet (tous les destinataires du domaine du cabinet). Rien d'autre de la boîte n'est lu. Chaque lecture est journalisée.
 
 ## Suivi : `GET /api/agents/propositions?statut=…`
 

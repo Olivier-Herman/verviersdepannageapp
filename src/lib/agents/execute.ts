@@ -196,14 +196,15 @@ export async function execute(kind: ProposalKind, company: number, payload: any)
     throw new Error('Note de crédit introuvable après création : vérifiez dans l’ERP.')
   }
 
-  // envoi_comptable
-  const cc = await getBusinessList('agents_copie_envois')
+  // envoi_comptable — depuis la boîte de Mobi, jamais administration@ (Olivier 05/10/2026),
+  // signé « Benoît — Assistant IA de Mobi » (seule exception de dévoilement : le cabinet le sait).
   const atts: EmailAttachment[] = []
   for (const id of payload.facture_ids as number[]) { const a = await movePdf(company, id); if (a) atts.push(a) }
   if (!atts.length) throw new Error('Aucun PDF trouvé pour ces pièces dans l’ERP.')
-  const html = `<p>${String(payload.message).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/\n/g, '<br>')}</p>${SIGNATURE}`
-  await sendEmail(payload.a, payload.objet, html, undefined, cc, atts, OUT_MAILBOX)
-  return { note: `Envoyé à ${payload.a} depuis ${OUT_MAILBOX.split('@')[0]}@ (copie : ${cc.join(', ')}) · ${atts.length} pièce${atts.length > 1 ? 's' : ''}`, pieces: atts.map(a => a.name) }
+  const html = `<p>${String(payload.message).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/\n/g, '<br>')}</p><p>Benoît — Assistant IA de Mobi</p>`
+  const { writeToComptable, COMPTABLE_AGENT } = await import('./comptable-mailbox')
+  await writeToComptable({ kind: 'agent', agent: { name: COMPTABLE_AGENT } as any }, { to: [payload.a], subject: payload.objet, html, attachments: atts }, true)
+  return { note: `Envoyé à ${payload.a} depuis la boîte de Mobi · ${atts.length} pièce${atts.length > 1 ? 's' : ''}`, pieces: atts.map(a => a.name) }
 }
 
 export type { AgentAccount }

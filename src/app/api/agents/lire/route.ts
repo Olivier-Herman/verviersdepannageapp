@@ -13,6 +13,13 @@ export async function GET(req: Request) {
   if (!agent) return NextResponse.json({ error: 'Clé d’agent absente, invalide ou désactivée.' }, { status: 401 })
   const q = new URL(req.url).searchParams
   const quoi = String(q.get('quoi') || '') as ReadKind
+  // Boîte des échanges avec le cabinet comptable (Olivier 05/10/2026) : Benoît seul, garde-fous dans comptable-mailbox.
+  if ((quoi as string) === 'boite_comptable') {
+    try {
+      const { listComptableMails } = await import('@/lib/agents/comptable-mailbox')
+      return NextResponse.json({ ok: true, quoi, data: await listComptableMails({ kind: 'agent', agent }) })
+    } catch (e: any) { return NextResponse.json({ error: String(e?.message || e) }, { status: 403 }) }
+  }
   if (!READS.includes(quoi)) return NextResponse.json({ error: `quoi inconnu. Lectures : ${READS.map(r => `${r} (${READ_LABEL[r]})`).join(', ')}.` }, { status: 400 })
   const co = checkCompany(agent, q.get('societe'))
   if (!co.ok) {
