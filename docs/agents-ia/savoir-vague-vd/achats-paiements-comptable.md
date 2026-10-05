@@ -421,4 +421,5 @@ Sources : rôles cibles = consigne d'Olivier pour cette vague (04/10/2026) ; « 
 - **Plaque normalisée** : dans VD Soft, les plaques sont stockées sans tirets, espaces ni points, en majuscules (47-HD-NP → 47HDNP). Toujours normaliser la plaque lue avant de chercher la mission.
 - **Ordre d'une refacturation d'avance de fonds** : 1. plaque recopiée dans « N° Plaque » ; 2. achat validé (par Olivier pendant la mise en route) ; 3. bouton « Refacturer l'avance de fonds » (il ne marche en pratique que sur un achat validé) ; 4. client et numéro de dossier de la mission sur la vente brouillon ; 5. validation de la vente. Jamais de refacturation sur un achat en brouillon.
 - **Client de la refacturation** : toujours l'**assistance** qui a commandé la mission (champ « facturé à » de la mission VD Soft), avec **son numéro de dossier** en référence ; jamais le propriétaire du véhicule.
+- **Champ plaque affiché** sur l'écran d'une facture (achat comme vente) : **« Plaque » = `x_studio_plaque_1`** (véhicule du parc). Le champ texte « Immatriculation » (`x_studio_immatriculation_`) est **masqué** dans l'écran (invisible) : inutile de le remplir.
 
