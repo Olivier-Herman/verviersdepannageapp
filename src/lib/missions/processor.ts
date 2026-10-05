@@ -1503,6 +1503,32 @@ export async function processEmailMessage(messageId: string): Promise<ProcessRes
       const isDupKey = (finalUpdErr as any).code === '23505'
         || /source_external_id_key|duplicate key/i.test(finalUpdErr.message || '')
       if (isDupKey && !existingMissionId) {
+        // AFFECTATION RE-PROPOSÉE (Olivier 05/10/2026, 2GVE807) : Allianz expire une
+        // affectation non acceptée à temps (« Toewijzing verlopen » → fiche annulée), puis
+        // la RE-PROPOSE avec le même numéro. Ce n'est pas un doublon : on rouvre la fiche
+        // annulée (« à valider »), on y rattache l'OTP en cours (enrichissement Hexalite)
+        // et on prévient le dispatch. Avant : mail jeté, mission invisible.
+        const { data: prev } = await supabase.from('incoming_missions')
+          .select('id, status, closing_notes, mission_number').eq('source', source).eq('external_id', parsed.external_id).maybeSingle()
+        if (prev && prev.status === 'cancelled' && /annulée\/expirée côté Allianz/i.test(String(prev.closing_notes || ''))) {
+          const nowIso = new Date().toISOString()
+          await supabase.from('incoming_missions').update({ status: 'new', closing_notes: null, received_at: receivedAt, intervention_date: receivedAt, updated_at: nowIso }).eq('id', prev.id)
+          if (placeholderId) {
+            await supabase.from('allianz_otp_pending').update({ mission_id: prev.id }).eq('mission_id', placeholderId)
+            await supabase.from('incoming_missions').delete().eq('id', placeholderId)
+          }
+          await supabase.from('allianz_otp_pending').update({ mission_id: prev.id }).is('mission_id', null).eq('status', 'waiting').gte('created_at', new Date(Date.now() - 10 * 60_000).toISOString())
+          await markAsRead(token, messageId)
+          await supabase.from('mission_logs').insert({ mission_id: prev.id, action: 'reoffered', notes: `${source.toUpperCase()} : affectation re-proposée après expiration — fiche rouverte « à valider ».`, metadata: { source_email_id: messageId } }).then(() => {}, () => {})
+          await sendPushToRole(['admin', 'superadmin', 'dispatcher'], {
+            title: `🔁 Affectation re-proposée — ${source.toUpperCase()}`,
+            body:  `Fiche #${prev.mission_number} rouverte : ${parsed.vehicle_plate || parsed.client_name || 'à valider'}. À accepter rapidement.`,
+            url:   '/dispatch', tag: `mission-${prev.id}`, icon: '/icons/apple-touch-icon.png',
+          }, 'dispatch_new_mission').catch(() => {})
+          const { notifyMarketNewMission } = await import('@/lib/missions/market-notify')
+          await notifyMarketNewMission(prev.id).catch(() => {})
+          return { status: 'inserted', missionId: prev.id, externalId: parsed.external_id, source }
+        }
         if (placeholderId) await supabase.from('incoming_missions').delete().eq('id', placeholderId)
         await markAsRead(token, messageId)
         console.log(`[Processor] Doublon (${source}/${parsed.external_id}) → placeholder ${placeholderId} jeté, aucune fiche ERR créée.`)
