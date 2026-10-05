@@ -314,6 +314,18 @@ async function reconcileAxaCancellations(sb: ReturnType<typeof createAdminClient
     .not('status', 'in', `(${AXA_TERMINAL_STATUSES.join(',')})`)
   if (!openFiches?.length) return
 
+  // Autre destination go&assist sur une fiche en cours (Olivier 05/10/2026) : jamais
+  // d'office, chauffeur + dispatch alertés (lib/missions/address-change).
+  const byOrder = new Map<string, any>(); for (const m of missions) if (m.missionOrderId) byOrder.set(m.missionOrderId, m)
+  for (const f of openFiches) {
+    if (!f.axa_mission_order_id || ['parked', 'gardiennage'].includes(String(f.status))) continue
+    const dest = byOrder.get(f.axa_mission_order_id)?.case?.service?.serviceDestination
+    const addr = [dest?.address?.streetAddress, dest?.address?.postalCode, dest?.address?.locality].filter(Boolean).join(', ')
+    if (!addr) continue
+    const { flagAddressChange } = await import('@/lib/missions/address-change')
+    await flagAddressChange(sb, f.id, { address: addr, name: dest?.name || null, lat: dest?.coordinates?.latitude != null ? Number(dest.coordinates.latitude) : null, lng: dest?.coordinates?.longitude != null ? Number(dest.coordinates.longitude) : null }, { source: 'AXA', ref: f.axa_mission_order_id }).catch(() => {})
+  }
+
   for (const f of openFiches) {
     if (!f.axa_mission_order_id) continue
     const gs = gaStatus.get(f.axa_mission_order_id)

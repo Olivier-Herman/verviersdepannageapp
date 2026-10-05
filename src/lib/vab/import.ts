@@ -325,6 +325,12 @@ export async function runVabImport(opts: { mode: VabImportMode }): Promise<VabIm
           if (wasUpgrade) upd.mission_type = 'remorquage'
           if (detail.toName && !fiche.destination_name)    upd.destination_name    = detail.toName
           if (destAddr      && !fiche.destination_address)  upd.destination_address = destAddr
+          // Autre destination sur une fiche en cours (Olivier 05/10/2026) : jamais
+          // d'office, chauffeur + dispatch alertés (lib/missions/address-change).
+          if (destAddr && fiche.destination_address && !['parked', 'gardiennage'].includes(String(fiche.status))) {
+            const { flagAddressChange } = await import('@/lib/missions/address-change')
+            await flagAddressChange(sb, fiche.id, { address: destAddr, name: detail.toName || null }, { source: 'VAB', ref: String(assignmentId || dossierBase || '') }).catch(() => {})
+          }
 
           // Véhicule DÉJÀ en parc requalifié en remorquage : la destination VAB
           // est l'adresse de RELIVRAISON (là où relivrer depuis le parc). C'est

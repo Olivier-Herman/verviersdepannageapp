@@ -231,6 +231,18 @@ export async function importKazeJob(
 
   try {
     if (existingId) {
+      // Adresse de livraison changée par IMA sur une fiche en cours (Olivier 05/10/2026) :
+      // jamais d'office — on garde l'adresse actuelle, chauffeur + dispatch alertés.
+      const { data: cur } = await sb.from('incoming_missions').select('status, destination_address').eq('id', existingId).maybeSingle()
+      const inProgress = cur && ['assigned', 'accepted', 'in_progress', 'delivering'].includes(String(cur.status))
+      if (inProgress && cur?.destination_address && payload.destination_address) {
+        const { flagAddressChange, sameAddress } = await import('@/lib/missions/address-change')
+        if (!sameAddress(cur.destination_address, payload.destination_address)) {
+          const next = { address: String(payload.destination_address), name: payload.destination_name ?? null, lat: payload.destination_lat ?? null, lng: payload.destination_lng ?? null }
+          for (const k of ['destination_address', 'destination_name', 'destination_lat', 'destination_lng']) delete payload[k]
+          await flagAddressChange(sb, existingId, next, { source: 'IMA (Kaze)', ref: mapped.dossier_number || String(kazeJobId) }).catch(() => {})
+        }
+      }
       // UPDATE : on n ecrase pas status/dispatch_mode/intervention_date qui
       // peuvent avoir ete modifies par le dispatcher.
       const { error } = await sb

@@ -1202,6 +1202,16 @@ export async function processEmailMessage(messageId: string): Promise<ProcessRes
     // être complétée par un mail ultérieur.
     const LOCKED_STATUSES = ['assigned', 'accepted', 'in_progress', 'delivering', 'parked', 'to_invoice', 'completed']
     if (existingMissionId && existingStatus && LOCKED_STATUSES.includes(existingStatus)) {
+      // Nouvelle adresse de livraison dans un mail sur une mission en cours (Olivier
+      // 05/10/2026) : jamais d'office, chauffeur + dispatch alertés. Sans effet si
+      // l'adresse est la même ou si la fiche n'en avait pas (elle est alors complétée plus bas).
+      if (parsed.destination_address && !['parked', 'to_invoice', 'completed'].includes(existingStatus)) {
+        try {
+          const { flagAddressChange } = await import('@/lib/missions/address-change')
+          const { sourceLabel } = await import('@/lib/missions/source-catalog')
+          await flagAddressChange(supabase, existingMissionId, { address: parsed.destination_address, name: parsed.destination_name || null }, { source: await sourceLabel(source), ref: parsed.external_id || null })
+        } catch (e: any) { console.warn('[Processor] contrôle adresse KO :', e?.message) }
+      }
       // Olivier 2026-07-01 : ESCALADE / ENRICHISSEMENT DÉPANNAGE → REMORQUAGE (Touring/Comex).
       // Un dépannage clôturé côté Comex peut finalement nécessiter un remorquage :
       // Touring renvoie alors un mail REMORQUAGE sur le MÊME dossier. Avant, ce mail
