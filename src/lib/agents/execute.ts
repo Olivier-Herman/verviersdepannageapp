@@ -164,6 +164,46 @@ export async function prepare(kind: ProposalKind, agent: AgentAccount, company: 
     return { title: `${k.partner_id?.[1] || ''} · ${k.ref || k.name} : brouillon ${draftId} annulé, ${k.name || keepId} gardé`, amount: k.amount_total, payload: { brouillon_id: draftId, garde_id: keepId, garde: k.name || k.ref, reference: k.ref }, directAllowed: true, directWhy: 'doublon mail + Peppol (même fournisseur, même montant)' }
   }
 
+  if (kind === 'ticket_achat') {
+    // Ticket glissé par Olivier dans les achats (brouillon) : encodé en « Ticket » (pas de TVA
+    // récupérable sans facture), au vrai nom du commerçant, puis validé. Fait seul (05/10/2026).
+    const id = Number(p.facture_id)
+    if (!Number.isInteger(id) || id <= 0) throw new Error('contenu.facture_id obligatoire (brouillon du ticket).')
+    const b = await readBill(company, id)
+    if (!b || b.company_id?.[0] !== company || !['in_invoice', 'in_receipt'].includes(b.move_type)) throw new Error('Brouillon d’achat introuvable dans cette société.')
+    if (b.state !== 'draft') throw new Error('Ce n’est plus un brouillon.')
+    if (b.peppol_message_uuid) throw new Error('Arrivé par Peppol : c’est une facture, pas un ticket.')
+    const fournisseur = String(p.fournisseur || '').trim().slice(0, 120)
+    if (fournisseur.length < 2) throw new Error('contenu.fournisseur obligatoire (nom du commerçant lu sur le ticket).')
+    const date = String(p.date || '')
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || date > today()) throw new Error('contenu.date obligatoire (AAAA-MM-JJ, pas dans le futur).')
+    const montant = Math.round(Number(p.montant) * 100) / 100
+    if (!(montant > 0)) throw new Error('contenu.montant obligatoire (total payé, TVAC).')
+    const lines: any[] = await odooRpcCompany(company, 'account.move.line', 'search_read', [[['move_id', '=', id], ['display_type', '=', 'product']]], { fields: ['id'] })
+    if (!lines.length) throw new Error('Le brouillon n’a aucune ligne.')
+    return { title: `${fournisseur} · ${date} · ${montant.toFixed(2)} €`, amount: montant, payload: { facture_id: id, fournisseur, date, montant, reference: String(p.reference || '').trim().slice(0, 60) || null }, directAllowed: true, directWhy: 'ticket de caisse (Olivier 05/10/2026)' }
+  }
+
+  if (kind === 'refacturation_avance') {
+    // Circuit Lallemand / ANWB (05/10/2026) : plaque recopiée et achat validé d'abord, puis le bouton
+    // « Refacturer l'avance de fonds », puis l'assistance qui a commandé la mission + son n° de dossier.
+    if (company !== 1) throw new Error('Refacturation d’avance : Verviers Dépannage seulement (societe=1).')
+    const id = Number(p.achat_id), client = Number(p.client_id), dossier = String(p.dossier || '').trim().slice(0, 60)
+    if (!Number.isInteger(id) || id <= 0) throw new Error('contenu.achat_id obligatoire (facture d’achat validée).')
+    if (!Number.isInteger(client) || client <= 0) throw new Error('contenu.client_id obligatoire (l’assistance qui a commandé la mission, jamais le propriétaire).')
+    if (!dossier) throw new Error('contenu.dossier obligatoire (numéro de dossier de l’assistance).')
+    const b = await readBill(company, id)
+    if (!b || b.company_id?.[0] !== company || b.move_type !== 'in_invoice') throw new Error('Facture d’achat introuvable.')
+    if (b.state !== 'posted') throw new Error('L’achat doit d’abord être validé.')
+    const [x]: any[] = await odooRpcCompany(company, 'account.move', 'read', [[id]], { fields: ['x_studio_plaque_1'] })
+    if (!x?.x_studio_plaque_1) throw new Error('Plaque absente sur l’achat : la relier d’abord (plaque_achat).')
+    const deja: any[] = await odooRpcCompany(company, 'account.move', 'search_read', [[['move_type', '=', 'out_invoice'], ['invoice_origin', '=', b.name], ['state', '!=', 'cancel']]], { fields: ['name'], limit: 1 })
+    if (deja.length) throw new Error(`Déjà refacturée (${deja[0].name || 'brouillon'}).`)
+    const [c]: any[] = await odooRpcCompany(company, 'res.partner', 'read', [[client]], { fields: ['name', 'is_company', 'active'] })
+    if (!c?.active) throw new Error('Client introuvable.')
+    return { title: `${b.name} (${b.partner_id?.[1] || ''}) → ${c.name} · dossier ${dossier}`, amount: b.amount_untaxed, payload: { achat_id: id, achat: b.name, garage: b.partner_id?.[1] || null, plaque: x.x_studio_plaque_1[1], client_id: client, client: c.name, dossier, htva: b.amount_untaxed }, directAllowed: true, directWhy: 'refacturation d’avance (quand Olivier l’activera)' }
+  }
+
   if (kind === 'question_olivier') {
     // Facture d'achat au nom privé d'une personne (Olivier 05/10/2026) : ni
     // encodée ni écartée d'office, Olivier tranche. Les infos sont lues dans l'ERP.
@@ -222,6 +262,42 @@ export async function execute(kind: ProposalKind, company: number, payload: any)
     if (cur?.x_studio_plaque_1 && cur.x_studio_plaque_1[0] !== v.id) throw new Error('Un autre véhicule a été relié entre-temps : rien n’est changé.')
     await odooRpcCompany(company, 'account.move', 'write', [[payload.facture_id], { x_studio_plaque_1: v.id }])
     return { note: `${payload.facture} reliée à ${v.name}` }
+  }
+  if (kind === 'ticket_achat') {
+    const b = await readBill(company, payload.facture_id)
+    if (!b || b.state !== 'draft') throw new Error('Le ticket n’est plus en brouillon.')
+    const { ensureSupplier } = await import('./lot2')
+    const sup = await ensureSupplier(company, payload.fournisseur)
+    const lines: any[] = await odooRpcCompany(company, 'account.move.line', 'search_read', [[['move_id', '=', b.id], ['display_type', '=', 'product']]], { fields: ['id'] })
+    await odooRpcCompany(company, 'account.move', 'write', [[b.id], {
+      move_type: 'in_receipt', partner_id: sup.id, invoice_date: payload.date, ...(payload.reference ? { ref: payload.reference } : {}),
+      invoice_line_ids: lines.map(l => [1, l.id, { tax_ids: [[5, 0, 0]] }]),
+    }])
+    let [after]: any[] = await odooRpcCompany(company, 'account.move', 'read', [[b.id]], { fields: ['amount_total', 'move_type'] })
+    if (Math.abs(Number(after.amount_total) - payload.montant) > 0.005) {
+      if (lines.length !== 1) throw new Error(`Total ${after.amount_total} € ≠ ${payload.montant} € et plusieurs lignes : à revoir à la main (rien n’est validé).`)
+      await odooRpcCompany(company, 'account.move', 'write', [[b.id], { invoice_line_ids: [[1, lines[0].id, { quantity: 1, price_unit: payload.montant }]] }])
+      ;[after] = await odooRpcCompany(company, 'account.move', 'read', [[b.id]], { fields: ['amount_total', 'move_type'] })
+      if (Math.abs(Number(after.amount_total) - payload.montant) > 0.005) throw new Error(`Total ${after.amount_total} € au lieu de ${payload.montant} € : rien n’est validé.`)
+    }
+    if (after.move_type !== 'in_receipt') throw new Error('Le type « Ticket » n’a pas pris : rien n’est validé.')
+    await odooRpcCompany(company, 'account.move', 'action_post', [[b.id]])
+    const fresh = await readBill(company, b.id)
+    return { note: `Ticket ${fresh?.name || b.id} : ${payload.fournisseur}${sup.created ? ' (fiche créée)' : ''}, ${payload.montant.toFixed(2)} €, ${payload.date}. À rapprocher de sa ligne de banque.`, ticket: fresh?.name }
+  }
+  if (kind === 'refacturation_avance') {
+    const actionId = await getBusinessNumber('odoo_action_refacturer_avance')
+    const ctx = { context: { active_model: 'account.move', active_ids: [payload.achat_id], active_id: payload.achat_id } }
+    await odooRpcCompany(company, 'ir.actions.server', 'run', [[actionId]], ctx)
+    const sale: any[] = await odooRpcCompany(company, 'account.move', 'search_read', [[['move_type', '=', 'out_invoice'], ['invoice_origin', '=', payload.achat], ['state', '=', 'draft']]], { fields: ['id'], limit: 2 })
+    if (sale.length !== 1) throw new Error('Le bouton « Refacturer l’avance de fonds » n’a pas créé de vente brouillon : à voir dans l’ERP.')
+    const sid = sale[0].id
+    await odooRpcCompany(company, 'account.move', 'write', [[sid], { partner_id: payload.client_id, ref: payload.dossier }])
+    const { remapTaxes } = await import('./lot2')
+    const notes = await remapTaxes(company, sid)
+    await odooRpcCompany(company, 'account.move', 'action_post', [[sid]])
+    const [v]: any[] = await odooRpcCompany(company, 'account.move', 'read', [[sid]], { fields: ['name', 'amount_total'] })
+    return { note: `Vente ${v.name} validée pour ${payload.client} (dossier ${payload.dossier}), ${Number(v.amount_total).toFixed(2)} € TVAC, justificatif joint. Envoi au client : depuis l’ERP (pas encore automatique).`, facture: v.name, avertissements: notes.length ? [`TVA adaptée au client : ${notes.join(' ; ')}`] : [] }
   }
   if (kind === 'annulation_doublon') {
     const d = await readBill(company, payload.brouillon_id)

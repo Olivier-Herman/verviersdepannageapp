@@ -29,6 +29,7 @@ export const BUSINESS_SETTINGS: BusinessSettingDef[] = [
   { key: 'odoo_partner_touring',         label: 'Partenaire « Touring »',                   group: 'Odoo', kind: 'number', seed: 14 },
   { key: 'odoo_journal_paie',            label: 'Journal des fiches de paie',               group: 'Odoo', kind: 'number', seed: 45, help: 'Exclu des achats et des dépenses.' },
   { key: 'odoo_taxe_achat_21',           label: 'TVA déductible 21 % (taxe d’achat)',       group: 'Odoo', kind: 'number', seed: 23, help: 'Utilisée quand un agent ventile une ligne de banque avec TVA (loyers, frais).' },
+  { key: 'odoo_action_refacturer_avance', label: 'Action « Refacturer l’avance de fonds »', group: 'Odoo', kind: 'number', seed: 1227, help: 'Bouton de la facture d’achat que les agents utilisent pour refacturer une avance.' },
   { key: 'odoo_journal_scrada',          label: 'Journal « Scrada » (livre de caisse)',      group: 'Odoo', kind: 'number', seed: 40, help: 'Reçoit chaque matin les relevés CODA de Scrada.' },
   { key: 'odoo_journal_paiement_fournisseurs', label: 'Journal bancaire des lots de paiement fournisseurs', group: 'Odoo', kind: 'number', seed: 12, help: 'Verviers Dépannage : les paiements fournisseurs partent toujours d’ING (Olivier 04/10/2026). Utilisé par les lots préparés par les agents.' },
   { key: 'odoo_methode_virement_sepa',   label: 'Méthode « Virement SEPA » du journal ci-dessus', group: 'Odoo', kind: 'number', seed: 24 },
