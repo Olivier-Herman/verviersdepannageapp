@@ -67,7 +67,8 @@ export async function importScradaCoda(days = 14): Promise<ScradaImportResult> {
     for (const a of atts.value || []) {
       if (!/\.cod$/i.test(a.name || '') || !a.contentBytes) continue
       const bytes = Buffer.from(a.contentBytes, 'base64')
-      codas.push({ ...parseCoda(bytes.toString('latin1')), name: a.name, bytes })
+      try { codas.push({ ...parseCoda(bytes.toString('latin1')), name: a.name, bytes }) }
+      catch (e: any) { throw new Error(`Fichier ${a.name} illisible : ${e?.message || e}`) }
     }
   }
   codas.sort((a, b) => a.number - b.number)
@@ -76,7 +77,14 @@ export async function importScradaCoda(days = 14): Promise<ScradaImportResult> {
   for (const c of codas) {
     const have: any[] = await odooRpc('account.bank.statement', 'search_read', [[['journal_id', '=', journalId], ['name', '=', String(c.number)]]], { fields: ['id'], limit: 1 })
     if (have.length) { res.skipped++; continue }
-    const [last]: any[] = await odooRpc('account.bank.statement', 'search_read', [[['journal_id', '=', journalId]]], { fields: ['name', 'balance_end_real'], order: 'date desc, id desc', limit: 1 })
+    const [last]: any[] = await odooRpc('account.bank.statement', 'search_read', [[['journal_id', '=', journalId]]], { fields: ['name', 'date', 'balance_end_real'], order: 'date desc, id desc', limit: 1 })
+    // Numéro sauté : la suite repart à 1 en janvier, sinon chaque relevé suit le précédent.
+    const newYear = last && c.number === 1 && c.date.slice(0, 4) > String(last.date).slice(0, 4)
+    if (last && !newYear && c.number !== Number(last.name) + 1) {
+      res.stopped = `Relevé ${c.number} reçu alors que le dernier du journal est le ${last.name} : relevé manquant. Import arrêté.`
+      await journal({ agent: AGENT, company: 1, action: 'import Scrada arrêté', detail: res.stopped, ok: false })
+      break
+    }
     if (last && Math.abs(Number(last.balance_end_real) - c.start) > 0.005) {
       res.stopped = `Relevé ${c.number} : solde de départ ${c.start.toFixed(2)} € ≠ solde final du relevé ${last.name} (${Number(last.balance_end_real).toFixed(2)} €). Import arrêté.`
       await journal({ agent: AGENT, company: 1, action: 'import Scrada arrêté', detail: res.stopped, ok: false })
@@ -91,5 +99,8 @@ export async function importScradaCoda(days = 14): Promise<ScradaImportResult> {
     res.imported.push({ number: c.number, date: c.date, lines: ls.length, matched })
     await journal({ agent: AGENT, company: 1, action: 'import Scrada', detail: `Relevé ${c.number} du ${c.date} : ${ls.length} ligne${ls.length > 1 ? 's' : ''}, ${matched} rapprochée${matched > 1 ? 's' : ''} automatiquement (solde ${c.start.toFixed(2)} → ${c.end.toFixed(2)} €)` })
   }
+  // Pas de relevé tous les jours (seulement le lendemain d'un encodage dans le livre, Olivier 05/10/2026) :
+  // rien de neuf n'est pas une erreur, juste une ligne neutre.
+  if (!res.imported.length && !res.stopped) await journal({ agent: AGENT, company: 1, action: 'import Scrada', detail: 'Aucun nouveau relevé.' })
   return res
 }
