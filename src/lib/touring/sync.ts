@@ -10,15 +10,16 @@
 //
 // SLA Touring (depuis touring_accepted_at, posé au « Valider ») :
 //   • démarré (onRoad)   ≤ accept + 10 min  → operDate clampé à 10 min
-//   • sur place (onSpot)  ≤ accept + 45 min  → réel clampé à 45, auto = rand(20..45)
+//   • sur place (onSpot)  ≤ accept + 45 min  → réel clampé à 45, auto = rand(40..45) envoyé à 45
 //   • COMEX exige onRoad AVANT onSpot → on pousse un onRoad backdaté au besoin
 // Cf mémoire project_touring_comex_integration.
 //
 // RÈGLE TOURING (Olivier 05/10/2026, rapport « Délais d'encodage » de septembre) : un
 // pointage peut être rétroactif de 9 min AU PLUS. Sur place à 12 h 31 → l'encodage
 // chez COMEX doit avoir lieu au plus tard à 12 h 40. Toute heure envoyée est donc
-// relevée à « maintenant − 7 min » si elle est plus ancienne (marge 2 min), et le
-// sur place automatique part À l'heure tirée (accept + 20..45), plus 45 min après.
+// relevée à « maintenant − 7 min » si elle est plus ancienne (marge 2 min). Sur place
+// automatique : envoyé à la 45e minute avec une heure tirée entre 40 et 45 min (si le
+// chauffeur pointe avant, c'est son vrai pointage qui part).
 
 import { setTouringOnRoad, setTouringOnSpot } from './comex'
 
@@ -122,13 +123,16 @@ function notTooOld(at: Date, now = Date.now()): Date {
   const floor = now - RETRO_MIN * MIN
   return at.getTime() < floor ? new Date(floor) : at
 }
-/** Heure du sur place automatique : accept + 20..45 min, fixe par mission (même tirage à chaque passage du cron). */
+/** Heure déclarée du sur place automatique : accept + 40..45 min, fixe par mission
+ *  (Olivier 05/10/2026). Envoyée à la 45e minute seulement : si le chauffeur arrive
+ *  avant, c'est son vrai pointage qui part ; sinon notre heure n'a que 0 à 5 min de recul. */
 export function autoOnSpotTarget(missionId: string, accept: Date | null): Date {
   let h = 0
   for (const ch of missionId) h = (h * 31 + ch.charCodeAt(0)) >>> 0
   const base = accept || new Date(Date.now() - 45 * MIN)
-  return new Date(base.getTime() + (20 + (h % 26)) * MIN)
+  return new Date(base.getTime() + (40 + (h % 6)) * MIN)
 }
+const AUTO_ONSPOT_SEND_MIN = 45   // le sur place automatique part à accept + 45 min
 function onRoadBefore(spotAt: Date, accept: Date | null): Date {
   // ≤ accept+10min ET strictement avant l'arrivée (marge 2 min) — mais jamais plus de
   // 8 min dans le passé (règle Touring des 9 min) : au besoin 1 min avant l'arrivée.
@@ -192,9 +196,9 @@ export async function syncTouringOnSpot(
   if (depotStart && !opts?.at) return false
 
   const accept = f.touring_accepted_at ? new Date(f.touring_accepted_at) : null
-  // Auto : on attend l'heure tirée (le cron repasse chaque minute) et on l'envoie à ce
-  // moment-là — avant, elle partait 45 min après l'acceptation avec une heure passée.
-  if (!opts?.at && !depotStart && autoOnSpotTarget(missionId, accept).getTime() > Date.now()) return false
+  // Auto : on attend la 45e minute (le cron repasse chaque minute) et on déclare une
+  // heure entre 40 et 45 min — avant, l'heure tirée était 20..45 et partait à 50 min.
+  if (!opts?.at && !depotStart && accept && accept.getTime() + AUTO_ONSPOT_SEND_MIN * MIN > Date.now()) return false
   const spotAt = notTooOld(depotStart ? opts!.at! : (opts?.at ? clampOnSpot(opts.at, accept) : autoOnSpotTarget(missionId, accept)))
 
   // COMEX exige onRoad avant onSpot : le pousser (backdaté) s'il manque.
