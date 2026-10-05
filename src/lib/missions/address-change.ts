@@ -38,7 +38,9 @@ export async function flagAddressChange(sb: any, missionId: string, next: NewAdd
   if (!m || !next.address) return false
   if (['completed', 'to_invoice', 'invoiced', 'cancelled', 'deleted', 'ignored'].includes(String(m.status))) return false
   if (sameAddress(m.destination_address, next.address)) return false
-  if (isAddressChangePending(m.address_change) && sameAddress(m.address_change.new_address, next.address)) return false   // déjà signalé
+  // Déjà signalée (en attente) ou déjà tranchée par le dispatch (« garder ») : on ne
+  // repropose pas la même adresse à chaque relevé (AXA, VAB, Kaze repassent souvent).
+  if (m.address_change?.new_address && sameAddress(m.address_change.new_address, next.address)) return false
 
   const now = new Date().toISOString()
   const group = `ac-${missionId}-${Date.now()}`
