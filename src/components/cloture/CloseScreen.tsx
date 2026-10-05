@@ -20,6 +20,7 @@ import { useEffect, useState } from 'react'
 import { useT } from '@/lib/i18n/I18nProvider'
 import SigPad from '@/components/mission/SigPad'
 import AddressField from '@/components/AddressField'
+import { splitAddress } from '@/lib/address-parts'
 import type { OutcomeKey } from './ActionScreen'
 
 const GM_KEY = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || ''
@@ -240,7 +241,17 @@ export default function CloseScreen({
   // suffisaient à déclencher le blocage. On garde le rappel visuel, on ne bloque
   // plus quelqu'un qui a fait le travail.
   const needPhotos = !photosDone
-  const destOk = !isRem || (destMode === 'list' ? !!garageCid : !!manual.rue && !!manual.cp)
+  // Adresse tapée sans choisir de suggestion (#10175451, 05/10/2026) : on la découpe nous-mêmes
+  // au lieu de bloquer. Seule une adresse VIDE bloque la clôture (Olivier).
+  const typed = addrText.trim()
+  const effManual = (manual.rue || manual.cp) ? manual : (() => {
+    const p = splitAddress(typed)
+    return { ...manual, rue: p.street || typed, num: p.number, cp: p.zip, loc: p.city }
+  })()
+  const destOk = !isRem || (destMode === 'list' ? !!garageCid : !!(manual.rue || manual.cp || typed))
+  // Sans numéro de maison : simple vérification au clic, jamais un blocage (établissement connu).
+  const [askNoNumber, setAskNoNumber] = useState(false)
+  const noHouseNumber = isRem && destMode === 'manual' && destOk && !String(effManual.num || '').trim()
   const canSubmit = isDpr ? !!dprCode
     : isDelivered ? (hasPrefill !== false || !!motifKey)
     : (!!motifKey && destOk)
@@ -268,9 +279,9 @@ export default function CloseScreen({
 
     if (isRem) {
       if (destMode === 'manual') {
-        body.manualAddress = manual
+        body.manualAddress = effManual
         body.destination = {
-          address: `${manual.rue} ${manual.num}, ${manual.cp} ${manual.loc}`.trim(),
+          address: (manual.rue || manual.cp) ? `${manual.rue} ${manual.num}, ${manual.cp} ${manual.loc}`.trim() : typed,
           ...(coords ? { lat: coords.lat, lng: coords.lng } : {}),
         }
       } else {
@@ -574,12 +585,36 @@ export default function CloseScreen({
             </button>
           </>
         ) : (
-          <button onClick={() => submit()} disabled={busy || !canSubmit}
-            className="w-full py-4 bg-green-600 disabled:opacity-40 text-white font-bold rounded-2xl text-base">
-            {busy ? t('cloture.submitting') : !canSubmit ? (isDpr || !motifKey ? t('cloture.pick_motif') : t('cloture.pick_place')) : t('cloture.submit')}
-          </button>
+          <>
+            {!busy && !canSubmit && (
+              <p className="text-sm font-semibold text-amber-800 dark:text-amber-300 bg-amber-50 dark:bg-amber-500/10 border border-amber-200 rounded-xl px-3 py-2">
+                {isDpr || !motifKey ? t('cloture.pick_motif') : t('cloture.pick_place')}
+              </p>
+            )}
+            <button onClick={() => (noHouseNumber ? setAskNoNumber(true) : submit())} disabled={busy || !canSubmit}
+              className="w-full py-4 bg-green-600 disabled:opacity-40 text-white font-bold rounded-2xl text-base">
+              {busy ? t('cloture.submitting') : !canSubmit ? (isDpr || !motifKey ? t('cloture.pick_motif') : t('cloture.pick_place')) : t('cloture.submit')}
+            </button>
+          </>
         )}
       </div>
+
+      {askNoNumber && (
+        // Vérification, pas un blocage : fermeture par les boutons seulement.
+        <div className="fixed inset-0 z-50 bg-black/50 flex items-end sm:items-center justify-center p-4">
+          <div className="w-full max-w-sm bg-surface rounded-2xl p-4 space-y-3 shadow-xl">
+            <p className="text-ink font-bold">{t('cloture.no_number_title')}</p>
+            <p className="text-ink-secondary text-sm">
+              {[`${effManual.rue} ${effManual.num}`.trim(), `${effManual.cp} ${effManual.loc}`.trim()].filter(Boolean).join(', ') || typed}
+            </p>
+            <p className="text-ink-secondary text-sm">{t('cloture.no_number_text')}</p>
+            <div className="flex flex-col gap-2">
+              <button onClick={() => { setAskNoNumber(false); submit() }} className="w-full min-h-[48px] bg-green-600 text-white font-bold rounded-xl">{t('cloture.close_as_is')}</button>
+              <button onClick={() => { setAskNoNumber(false); scrollTo('f2-dest') }} className="w-full min-h-[48px] border rounded-xl font-semibold text-ink">{t('cloture.add_number')}</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

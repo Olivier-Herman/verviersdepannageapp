@@ -307,6 +307,10 @@ export const fr = {
     submitting:          'Clôture en cours…',
     pick_motif:          'Choisis un motif',
     pick_place:          'Indique où déposer le véhicule',
+    no_number_title:     'Pas de numéro de maison',
+    no_number_text:      'L’adresse de relivraison n’a pas de numéro. Si c’est un établissement connu, tu peux clôturer tel quel.',
+    close_as_is:         'Clôturer tel quel',
+    add_number:          'Ajouter le numéro',
     skip_assistance:     'Continuer sans clôturer',
 
     // Encaissement

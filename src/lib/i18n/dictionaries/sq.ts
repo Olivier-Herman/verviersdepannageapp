@@ -301,6 +301,10 @@ export const sq: Dictionary = {
     submitting:          'Po mbyllet…',
     pick_motif:          'Zgjidh një arsye',
     pick_place:          'Trego ku ta lësh automjetin',
+    no_number_title:     'Mungon numri i shtëpisë',
+    no_number_text:      'Adresa e ridorëzimit nuk ka numër. Nëse është një vend i njohur, mund ta mbyllësh kështu.',
+    close_as_is:         'Mbyll kështu',
+    add_number:          'Shto numrin',
     skip_assistance:     'Vazhdo pa e mbyllur',
 
     pay_title:           'Arkëto pagesën',
