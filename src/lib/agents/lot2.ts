@@ -19,7 +19,12 @@ export async function vehicleForPlate(company: number, plate: string): Promise<{
   const p = normPlate(plate)
   if (p.length < 4) return null
   const v: any[] = await odooRpcCompany(company, 'fleet.vehicle', 'search_read', [[['license_plate', '=', p]]], { fields: ['id', 'display_name'], limit: 2 })
-  return v.length === 1 ? { id: v[0].id, name: v[0].display_name } : null
+  if (v.length === 1) return { id: v[0].id, name: v[0].display_name }
+  if (v.length > 1) return null
+  // Plaque enregistrée avec tirets, points ou espaces (« 1-ABC-123 ») : même plaque une fois normalisée.
+  const loose: any[] = await odooRpcCompany(company, 'fleet.vehicle', 'search_read', [[['license_plate', 'ilike', p.slice(-4)]]], { fields: ['id', 'display_name', 'license_plate'], limit: 50 })
+  const same = loose.filter(x => normPlate(x.license_plate) === p)
+  return same.length === 1 ? { id: same[0].id, name: same[0].display_name } : null
 }
 
 /** Fournisseur au vrai nom : retrouvé, sinon créé (jamais de fournisseur générique — Olivier 05/10/2026). */

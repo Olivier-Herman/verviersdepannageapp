@@ -127,6 +127,43 @@ export async function prepare(kind: ProposalKind, agent: AgentAccount, company: 
     }
   }
 
+  if (kind === 'plaque_achat') {
+    // Le véhicule du parc est retrouvé par VD Soft à partir de la plaque lue sur la pièce (Olivier 05/10/2026 : fait seul).
+    const id = Number(p.facture_id)
+    if (!Number.isInteger(id) || id <= 0) throw new Error('contenu.facture_id obligatoire.')
+    const b = await readBill(company, id)
+    if (!b || b.company_id?.[0] !== company || !['in_invoice', 'in_refund'].includes(b.move_type)) throw new Error('Facture d’achat introuvable dans cette société.')
+    if (b.state === 'cancel') throw new Error('Facture annulée.')
+    const { vehicleForPlate, normPlate } = await import('./lot2')
+    const plaque = normPlate(String(p.plaque || ''))
+    if (plaque.length < 4) throw new Error('contenu.plaque obligatoire (telle que lue sur la pièce).')
+    const v = await vehicleForPlate(company, plaque)
+    const [cur]: any[] = await odooRpcCompany(company, 'account.move', 'read', [[id]], { fields: ['x_studio_plaque_1'] })
+    if (cur?.x_studio_plaque_1 && (!v || cur.x_studio_plaque_1[0] !== v.id)) throw new Error(`Déjà reliée à un autre véhicule (${cur.x_studio_plaque_1[1]}) : rien n’est changé.`)
+    if (v && cur?.x_studio_plaque_1?.[0] === v.id) throw new Error('Ce véhicule est déjà relié à cette facture.')
+    // Plaque introuvable dans le parc : on ne relie rien d'office, Olivier tranche (règle du 05/10/2026).
+    if (!v) return { title: `${b.name || b.ref || id} · plaque ${plaque} introuvable dans le parc : à toi`, amount: b.amount_total, payload: { facture_id: id, facture: b.name || b.ref, plaque, vehicule_id: null, vehicule: null, introuvable: true }, directAllowed: false }
+    return { title: `${b.name || b.ref || id} → ${v.name}`, amount: b.amount_total, payload: { facture_id: id, facture: b.name || b.ref, plaque, vehicule_id: v.id, vehicule: v.name }, directAllowed: true, directWhy: 'véhicule retrouvé par la plaque' }
+  }
+
+  if (kind === 'annulation_doublon') {
+    // Même facture reçue par mail ET par Peppol : on garde Peppol, on annule le brouillon du mail (Olivier 05/10/2026 : automatique).
+    const draftId = Number(p.brouillon_id), keepId = Number(p.garde_id)
+    if (!Number.isInteger(draftId) || !Number.isInteger(keepId) || draftId <= 0 || keepId <= 0 || draftId === keepId) throw new Error('contenu.brouillon_id et contenu.garde_id obligatoires et différents.')
+    const [d, k] = await Promise.all([readBill(company, draftId), readBill(company, keepId)])
+    if (!d || !k || d.company_id?.[0] !== company || k.company_id?.[0] !== company) throw new Error('Pièces introuvables dans cette société.')
+    if (![d, k].every(x => ['in_invoice', 'in_refund'].includes(x.move_type)) || d.move_type !== k.move_type) throw new Error('Deux factures d’achat du même type attendues.')
+    if (d.state !== 'draft') throw new Error('Le doublon à annuler doit être un brouillon.')
+    if (k.state === 'cancel') throw new Error('La pièce à garder est annulée.')
+    if (d.peppol_message_uuid) throw new Error('Le brouillon à annuler est arrivé par Peppol : c’est lui qu’on garde.')
+    if (!k.peppol_message_uuid) throw new Error('La pièce à garder n’est pas arrivée par Peppol.')
+    if (d.partner_id?.[0] && k.partner_id?.[0] && d.partner_id[0] !== k.partner_id[0]) throw new Error('Fournisseurs différents : ce n’est pas un doublon.')
+    if (Math.abs(Number(d.amount_total) - Number(k.amount_total)) > 0.01) throw new Error(`Montants différents (${d.amount_total} € / ${k.amount_total} €) : ce n’est pas un doublon.`)
+    const norm = (s: any) => String(s || '').replace(/[^0-9a-z]/gi, '').toLowerCase()
+    if (d.ref && k.ref && norm(d.ref) !== norm(k.ref)) throw new Error(`Références différentes (${d.ref} / ${k.ref}) : ce n’est pas un doublon.`)
+    return { title: `${k.partner_id?.[1] || ''} · ${k.ref || k.name} : brouillon ${draftId} annulé, ${k.name || keepId} gardé`, amount: k.amount_total, payload: { brouillon_id: draftId, garde_id: keepId, garde: k.name || k.ref, reference: k.ref }, directAllowed: true, directWhy: 'doublon mail + Peppol (même fournisseur, même montant)' }
+  }
+
   if (kind === 'question_olivier') {
     // Facture d'achat au nom privé d'une personne (Olivier 05/10/2026) : ni
     // encodée ni écartée d'office, Olivier tranche. Les infos sont lues dans l'ERP.
@@ -175,6 +212,22 @@ export async function execute(kind: ProposalKind, company: number, payload: any)
   if (kind === 'rapprochement_bouton') {
     const { reconcileSource } = await import('./lot2')
     return { note: await reconcileSource(payload.source, payload.id, null) }
+  }
+  if (kind === 'plaque_achat') {
+    // Relue au moment d'exécuter : un véhicule a pu être créé entre-temps.
+    const { vehicleForPlate } = await import('./lot2')
+    const v = payload.vehicule_id ? { id: payload.vehicule_id, name: payload.vehicule } : await vehicleForPlate(company, payload.plaque)
+    if (!v) throw new Error(`Toujours aucun véhicule avec la plaque ${payload.plaque} dans le parc : créez-le, puis validez à nouveau.`)
+    const [cur]: any[] = await odooRpcCompany(company, 'account.move', 'read', [[payload.facture_id]], { fields: ['x_studio_plaque_1'] })
+    if (cur?.x_studio_plaque_1 && cur.x_studio_plaque_1[0] !== v.id) throw new Error('Un autre véhicule a été relié entre-temps : rien n’est changé.')
+    await odooRpcCompany(company, 'account.move', 'write', [[payload.facture_id], { x_studio_plaque_1: v.id }])
+    return { note: `${payload.facture} reliée à ${v.name}` }
+  }
+  if (kind === 'annulation_doublon') {
+    const d = await readBill(company, payload.brouillon_id)
+    if (!d || d.state !== 'draft') throw new Error('Le brouillon n’est plus en brouillon (validé ou supprimé entre-temps).')
+    await odooRpcCompany(company, 'account.move', 'button_cancel', [[d.id]])
+    return { note: `Brouillon ${d.id} annulé ; on garde ${payload.garde}` }
   }
   if (kind === 'rapprochement_banque') {
     const { parts, resume } = await resolveBankParts(company, payload.ligne_id, payload.parts)   // relu : l'ERP a pu bouger depuis le dépôt

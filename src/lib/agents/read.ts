@@ -8,7 +8,7 @@
 import { createAdminClient } from '@/lib/supabase'
 import { odooRpcCompany } from '@/lib/odoo'
 
-export const READS = ['fiche', 'factures_clients', 'factures_achat', 'banque', 'etats_de_frais', 'domaine'] as const
+export const READS = ['fiche', 'factures_clients', 'factures_achat', 'banque', 'etats_de_frais', 'domaine', 'reconciliation'] as const
 export type ReadKind = typeof READS[number]
 export const READ_LABEL: Record<ReadKind, string> = {
   fiche:            'Fiche de mission (numéro ou plaque)',
@@ -17,9 +17,10 @@ export const READ_LABEL: Record<ReadKind, string> = {
   banque:           'Lignes de banque non rapprochées',
   etats_de_frais:   'États de frais (Parquet)',
   domaine:          'Dossiers Domaine (dates IN, ventes d’épaves)',
+  reconciliation:   'Versements à rapprocher (Paynovate, SumUp, assureurs)',
 }
 /** Lectures qui n'existent que pour Verviers Dépannage. */
-export const VD_ONLY: ReadKind[] = ['fiche', 'etats_de_frais', 'domaine']
+export const VD_ONLY: ReadKind[] = ['fiche', 'etats_de_frais', 'domaine', 'reconciliation']
 
 const LIMIT = 50
 const clean = (s: string | null, max = 60) => (s || '').trim().slice(0, max)
@@ -27,6 +28,29 @@ const clean = (s: string | null, max = 60) => (s || '').trim().slice(0, max)
 export async function runRead(kind: ReadKind, company: number, q: URLSearchParams): Promise<any> {
   const sb = createAdminClient()
   if (VD_ONLY.includes(kind) && company !== 1) throw new Error('Cette lecture n’existe que pour Verviers Dépannage (societe=1).')
+
+  if (kind === 'reconciliation') {
+    // Ce que montre Finance › Réconciliation, en léger (lot 2, 05/10/2026) : de quoi
+    // proposer un rapprochement_bouton, ou comprendre pourquoi un versement est grisé.
+    const [{ buildMatchReport }, { buildSumupMatchReport }, { buildAdviceReport }] = await Promise.all([import('@/lib/paynovate-match'), import('@/lib/sumup-match'), import('@/lib/advice-match')])
+    const [pn, su, adv] = await Promise.all([buildMatchReport(5), buildSumupMatchReport(5), buildAdviceReport(2)])
+    const etat = (s: string) => (s === 'ready' || s === 'lost' ? 'prêt' : 'à trancher')
+    const payouts = (source: 'paynovate' | 'sumup', r: any) => (r.payouts || []).map((p: any) => ({
+      source, id: p.paymentId, date: p.bankDate, montant: p.bankAmount, brut: p.grossAmount, etat: etat(p.state), motif: p.blocking?.[0] || null,
+      references: (p.txs || []).map((t: any) => t.merchantRef?.trim() || `sans référence (${t.transactionCode || '?'})`).slice(0, 30),
+    }))
+    const assureurs = (adv.items || []).filter((i: any) => i.bank && i.state !== 'done').map((i: any) => ({
+      source: 'assureur' as const, id: i.bank.lineId, date: i.bank.date, montant: i.bank.amount, payeur: i.payerLabel, avis: i.advice?.reference || null,
+      etat: i.state === 'ready' ? 'prêt' : 'à trancher', motif: i.blocking?.[0] || null,
+      references: (i.invoices || []).map((x: any) => x.ref).slice(0, 30),
+    }))
+    // Lignes de banque Paynovate / SumUp qu'aucun versement n'explique : pas de bouton possible, à diagnostiquer.
+    const orphelines = ([['paynovate', pn], ['sumup', su]] as const).flatMap(([source, r]: any) => (r.unmatched || []).map((u: any) => ({
+      source, id: null, ligne_id: u.bankLineId, date: u.date, montant: u.amount, etat: 'à trancher', motif: u.reason || 'aucun versement reconnu', references: [u.label].filter(Boolean),
+    })))
+    return [...payouts('paynovate', pn), ...payouts('sumup', su), ...assureurs, ...orphelines]
+      .sort((a, b) => String(b.date).localeCompare(String(a.date))).slice(0, 100)
+  }
 
   if (kind === 'fiche') {
     const numero = clean(q.get('numero'), 20), plaque = clean(q.get('plaque'), 15).replace(/[^A-Za-z0-9]/g, '').toUpperCase()

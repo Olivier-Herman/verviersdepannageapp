@@ -261,13 +261,15 @@ export default function AgentsClient() {
   )
 }
 
-const ACTION_LABEL: Record<string, string> = { lot_paiement: 'Valider et créer le lot', facture_achat: 'Valider la facture', note_credit: 'Valider la note de crédit', envoi_comptable: 'Valider et envoyer', rapprochement_bouton: 'Valider et rapprocher', rapprochement_banque: 'Valider et rapprocher' }
+const ACTION_LABEL: Record<string, string> = { lot_paiement: 'Valider et créer le lot', facture_achat: 'Valider la facture', note_credit: 'Valider la note de crédit', envoi_comptable: 'Valider et envoyer', rapprochement_bouton: 'Valider et rapprocher', rapprochement_banque: 'Valider et rapprocher', plaque_achat: 'Valider et relier', annulation_doublon: 'Valider et annuler' }
 const DIRECT_RULE: Record<string, string> = {
   note_credit: 'Note de crédit / refacturation si certaine (nuit comprise)',
   envoi_comptable: 'Pièces au comptable, depuis la boîte de Mobi (le jour)',
   facture_achat: 'Achat Riga par Peppol sous le seuil, ou entre sociétés du groupe (le jour)',
   rapprochement_bouton: 'Rapprochements au bouton prêts (Paynovate, SumUp, assureurs) (le jour)',
   rapprochement_banque: 'Rapprochement d’une ligne de banque (le jour)',
+  plaque_achat: 'Plaque sur facture d’achat, véhicule retrouvé par VD Soft (le jour)',
+  annulation_doublon: 'Brouillon en double mail + Peppol : on garde Peppol (le jour)',
 }
 
 function Stat({ label, value, cls }: { label: string; value: number; cls: string }) {
