@@ -435,4 +435,5 @@ Sources : rôles cibles = consigne d'Olivier pour cette vague (04/10/2026) ; « 
 - **Banque, paiement sans pièce** : chercher le document et le lier, sinon le redemander au fournisseur. Ticket de caisse introuvable : alerte à Olivier (transférable à Momo) ; « pas de ticket » → ligne sur le fournisseur + « @Maureen pas de ticket » sur la transaction. Virement vers Olivier = sa facture à venir, à lier. Frais bancaires sans document : ligne sur la banque comme fournisseur, la comptable impute.
 - **Ticket retrouvé** : l'encoder comme facture d'achat au commerçant (fiche créée à son vrai nom s'il n'existe pas), avec le ticket en pièce, puis rapprocher avec la ligne de banque. Jamais de fournisseur générique.
 - **Avant 2026 : on n'y touche pas**, sauf demande précise de la comptable. Les listes de travail (banque, brouillons, relances) se limitent à 2026.
+- **Maureen Bastin** (cabinet THG, comptable) : **on la tutoie**. Les questions de Benoît partent depuis administration@, signées Olivier quand c'est lui qui pose la question, sans numéro de téléphone.
 
