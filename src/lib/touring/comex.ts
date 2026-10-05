@@ -745,7 +745,9 @@ export async function closeTouringMission(
     const vin = /^[A-HJ-NPR-Z0-9]{17}$/.test(vinRaw) ? vinRaw : 'X'.repeat(17)
     const mec = input.mecIso || d.D_MEC || '2000-01-01T00:00:00.000'
     const kmMissing = input.km == null || !Number.isFinite(input.km)
-    const operDate = comexOperDate(input.at || new Date())
+    // Règle Touring : 9 min de rétroactivité au plus (Olivier 05/10/2026) — une clôture
+    // rejouée plus tard (file de rattrapage) part à « maintenant − 7 min » au pire.
+    const operDate = comexOperDate(new Date(Math.max((input.at || new Date()).getTime(), Date.now() - 7 * 60_000)))
 
     // Code 05 « Fin Remorquage, + Transfert » = REM mis en parc (dépôt). La fin
     // technique s'arme avec FL_TECH_END_MIS:1 (et non 0) ; la destination est notre

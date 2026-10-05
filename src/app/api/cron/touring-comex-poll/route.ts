@@ -31,8 +31,8 @@ const STATUT_A_VALIDER = '03'
 const KNOWN_STATUTS = new Set(['03', '04', '05', '06', '07'])
 
 // SLA : si le chauffeur n'a pas pointé « sur place » 50 min après l'acceptation,
-// on force le onSpot dans COMEX (operDate = accept + rand(20..45min), backdaté).
-const SLA_ONSPOT_AFTER_MIN = 50
+// on force le onSpot dans COMEX, à l’heure tirée accept + 20..45 min (jamais plus de 9 min de rétroactivité, règle Touring 05/10/2026).
+const SLA_ONSPOT_AFTER_MIN = 20   // sur place auto dès accept + 20 min, envoyé à l’heure tirée (accept + 20..45) — règle Touring des 9 min (05/10/2026)
 // SLA « démarré ≤10 min » : si accepté depuis ≥10 min SANS en route ni sur place,
 // on force un onRoad proactif (backdaté ≤ accept+10min) → COMEX voit le « démarré »
 // quasi en temps réel, sans attendre l'arrivée. Olivier 2026-07-08.
