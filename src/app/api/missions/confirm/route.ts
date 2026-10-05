@@ -143,6 +143,10 @@ export async function POST(req: Request) {
       .from('incoming_missions')
       .update({ status: newStatus, updated_at: now })
       .eq('id', mission_id)
+    // Fiche ressortie des « ignorés » puis complétée (ex. Hexalite) et confirmée : la
+    // note « ignoré automatiquement — confiance 30 % » restait en bandeau (G880XB, 05/10/2026).
+    await supabase.from('incoming_missions').update({ closing_notes: null })
+      .eq('id', mission_id).like('closing_notes', 'Mail sans élément de mission%')
 
     // Cycle de nuit (Momo Market) : lancé par CETTE validation, jamais à l'arrivée de la
     // mission — seul le dispatch accepte (chez Touring : accept COMEX). Olivier 01/10/2026.
