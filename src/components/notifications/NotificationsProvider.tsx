@@ -13,6 +13,7 @@ import { createClient as createSupabaseClient } from '@supabase/supabase-js'
 import { playNotificationSound } from '@/lib/notifications/sounds'
 import { usePushRegistration } from '@/hooks/usePushRegistration'
 import { useClearHandledPushes } from '@/hooks/useClearHandledPushes'
+import { useEndFinishedLiveActivities } from '@/hooks/useEndFinishedLiveActivities'
 import NotificationBanner from './NotificationBanner'
 import BlockingNotificationModal from './BlockingNotificationModal'
 
@@ -66,6 +67,7 @@ export default function NotificationsProvider({
   usePushRegistration(userId)
   // Retire de l'écran du téléphone les notifs devenues sans objet (Olivier 04/10/2026)
   useClearHandledPushes(userId)
+  useEndFinishedLiveActivities(userId)   // Live Activity des missions terminées (05/10/2026)
 
   // Marque la notif comme lue en base (idempotent côté API). Utilisé aussi bien
   // à la fermeture (auto-dismiss / ✕) qu'au clic « Voir » : une notif in_app ne
