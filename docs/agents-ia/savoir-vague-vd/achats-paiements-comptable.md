@@ -406,3 +406,12 @@ Sources : rôles cibles = consigne d'Olivier pour cette vague (04/10/2026) ; « 
 11. Florent / Benoît peuvent-ils lettrer ou joindre une pièce eux-mêmes ?
 12. Benoît répond sous quel nom ; qui valide ; délai attendu par le cabinet ; périmètre Riga/DGJ.
 13. Export de la nuit : liaison exacte (clé « BOB50 » ?), heure, contact en cas d'échec.
+
+## Mise à jour du 05/10/2026 — fournisseurs à validation manuelle et avances de fonds
+
+- **Lemasson** (Garage Dominique Lemasson) : toujours en **validation manuelle par Olivier**. Florent prépare avec son diagnostic : pick-up chez Lemasson = avance de fonds ; trajet A → B correspondant à une de nos missions = sous-traitance. Il cite la mission liée (numéro, plaque, trajet).
+- Une liste de **fournisseurs à validation manuelle**, réglable par Olivier, viendra dans l'API de Florent : pour ces fournisseurs, préparation seulement.
+- **Avance de fonds probable** : facture de garage ou de dépanneur + plaque d'une de nos missions + gardiennage et/ou premier remorquage → ne pas valider, signaler à Olivier avec la mission liée. **All Dépannages n'est jamais une avance de fonds.** En cas de doute : ne pas valider.
+- Exclus de toute validation par l'agent : doublons (même référence, ou même TVA fournisseur + même montant déjà validé), brouillons arrivés par mail tant qu'Olivier ne l'a pas décidé, amendes, avances de fonds, locations Riga absentes ou différentes côté Riga (société 2, même numéro, même montant).
+- Contrôle après validation : numéro attribué, pièce présente, aucun mail créé, comptes des lignes inchangés (jamais d'imputation).
+
