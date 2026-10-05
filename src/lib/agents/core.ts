@@ -13,12 +13,13 @@
 import crypto from 'crypto'
 import { createAdminClient } from '@/lib/supabase'
 
-export type ProposalKind = 'lot_paiement' | 'facture_achat' | 'note_credit' | 'envoi_comptable'
+export type ProposalKind = 'lot_paiement' | 'facture_achat' | 'note_credit' | 'envoi_comptable' | 'question_olivier'
 export const KIND_LABEL: Record<ProposalKind, string> = {
   lot_paiement:    'Lot de paiement fournisseurs',
   facture_achat:   'Valider une facture d’achat',
   note_credit:     'Note de crédit et refacturation',
   envoi_comptable: 'Pièces envoyées au comptable',
+  question_olivier: 'Question à Mobi',
 }
 export const ALL_KINDS = Object.keys(KIND_LABEL) as ProposalKind[]
 export const COMPANY_LABEL: Record<number, string> = { 1: 'Verviers Dépannage', 2: 'Dépannage Riga', 3: 'DGJ VHU' }

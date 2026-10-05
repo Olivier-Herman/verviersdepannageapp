@@ -54,8 +54,12 @@ export async function POST(req: Request) {
     await sb.from('telegram_link_codes').update({ used_at: new Date().toISOString() }).eq('code', code).is('used_at', null)
     await sb.from('telegram_links').delete().eq('chat_id', chatId)     // ce téléphone n'appartient plus qu'à un compte
     await sb.from('telegram_links').upsert({ user_id: c.user_id, chat_id: chatId, tg_username: msg?.from?.username || null, linked_at: new Date().toISOString() }, { onConflict: 'user_id' })
-    const { data: u } = await sb.from('users').select('name, surnom, language').eq('id', c.user_id).maybeSingle()
+    const { data: u } = await sb.from('users').select('name, surnom, language, role, roles').eq('id', c.user_id).maybeSingle()
     const p = String(u?.surnom || u?.name || '').split(/\s+/)[0]
+    if (u && u.role !== 'driver' && !(Array.isArray(u.roles) && u.roles.includes('driver'))) {
+      await tgSend(chatId, `Bonjour ${p}, ton compte VD Soft est relié. Tu recevras ici les questions des agents, avec des boutons pour répondre.`)
+      return NextResponse.json({ ok: true })
+    }
     await tgSend(chatId, u?.language === 'sq'
       ? `Përshëndetje ${p}, llogaria jote VD Soft është e lidhur. Nëse bllokohesh në aplikacion, më shkruaj këtu ose dërgo një foto të ekranit : Sam përgjigjet ditën, Sonic natën.`
       : `Salut ${p}, ton compte VD Soft est relié. Si tu bloques dans l'app, écris-moi ici ou envoie une photo de ton écran : Sam te répond le jour, Sonic la nuit.`)
@@ -64,10 +68,27 @@ export async function POST(req: Request) {
 
   // ── Qui écrit ? ────────────────────────────────────────────────────────
   const { data: link } = await sb.from('telegram_links').select('user_id').eq('chat_id', chatId).maybeSingle()
-  const { data: user } = link ? await sb.from('users').select('id, active, language').eq('id', link.user_id).maybeSingle() : { data: null }
+  const { data: user } = link ? await sb.from('users').select('id, name, active, language, role, roles').eq('id', link.user_id).maybeSingle() : { data: null }
   if (!link || !user?.active) {
     if (cbq) await tg('answerCallbackQuery', { callback_query_id: cbq.id })
     await tgSend(chatId, msg?.from?.language_code === 'sq' ? UNKNOWN_SQ : UNKNOWN)
+    return NextResponse.json({ ok: true })
+  }
+
+  // Réponse à une question d'agent (Olivier 05/10/2026) : « aq:<proposition>:<choix> ».
+  if (cbq && String(cbq.data || '').startsWith('aq:')) {
+    const [, pid, key] = String(cbq.data).split(':')
+    const { answerAgentQuestion } = await import('@/lib/agents/question')
+    const r = await answerAgentQuestion(pid, user.id, String((user as any).name || 'Mobi'), key, 'telegram')
+    await tg('answerCallbackQuery', { callback_query_id: cbq.id, text: r.note.slice(0, 190) })
+    await tgSend(chatId, r.note)
+    return NextResponse.json({ ok: true })
+  }
+  // Compte du bureau (pas chauffeur) : ce canal sert aux questions des agents, pas à Sam.
+  const isDriver = (user as any).role === 'driver' || (Array.isArray((user as any).roles) && (user as any).roles.includes('driver'))
+  if (!isDriver) {
+    if (cbq) await tg('answerCallbackQuery', { callback_query_id: cbq.id })
+    await tgSend(chatId, 'Ici, tu reçois les questions des agents. Réponds avec les boutons sous chaque question ; tout est aussi dans VD Soft, « Propositions des agents ».')
     return NextResponse.json({ ok: true })
   }
 

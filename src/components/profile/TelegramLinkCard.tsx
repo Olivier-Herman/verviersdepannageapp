@@ -7,7 +7,8 @@
 import { useEffect, useState } from 'react'
 import { useT } from '@/lib/i18n/I18nProvider'
 
-export default function TelegramLinkCard() {
+/** `bureau` : compte du bureau (superadmin) — Telegram sert aux questions des agents (05/10/2026). */
+export default function TelegramLinkCard({ bureau = false }: { bureau?: boolean } = {}) {
   const { t } = useT()
   const [linked, setLinked] = useState<boolean | null>(null)
   const [busy, setBusy] = useState(false)
@@ -40,12 +41,12 @@ export default function TelegramLinkCard() {
         </>
       ) : (
         <>
-          <p className="text-ink-secondary text-sm">{t('sam.tg_intro')}</p>
+          <p className="text-ink-secondary text-sm">{bureau ? 'Relie Telegram pour recevoir les questions des agents (par exemple une facture d’achat au nom privé) et y répondre d’un bouton.' : t('sam.tg_intro')}</p>
           <button type="button" onClick={link} disabled={busy || linked === null} className="min-h-[48px] rounded-xl bg-brand text-white font-bold disabled:opacity-50">{t('sam.tg_link')}</button>
           <p className="text-ink-muted text-xs">{hint ? t('sam.tg_open_hint') : t('sam.tg_link_note')}</p>
         </>
       )}
-      <p className="text-ink-muted text-xs">{t('sam.tg_only_help')}</p>
+      <p className="text-ink-muted text-xs">{bureau ? 'Les réponses sont aussi visibles dans « Propositions des agents ».' : t('sam.tg_only_help')}</p>
     </div>
   )
 }

@@ -25,6 +25,12 @@ export async function submitProposal(agent: AgentAccount, body: any): Promise<{ 
   if (!why) throw new Error('pourquoi obligatoire : ce que vous avez vérifié et pourquoi vous le proposez.')
 
   const prep = await prepare(kind, agent, co.company, body)
+  // Une seule question par facture (garde-fou validé par Olivier le 05/10/2026).
+  if (kind === 'question_olivier') {
+    const { data: twin } = await sb.from('agent_proposals').select('id, status').eq('kind', 'question_olivier').eq('company_id', co.company)
+      .eq('payload->>facture_id', String(prep.payload.facture_id)).in('status', ['to_validate', 'answered']).limit(1).maybeSingle()
+    if (twin) throw new Error(`Question déjà posée pour cette facture (${twin.status === 'answered' ? 'réponse disponible' : 'en attente de réponse'}).`)
+  }
   // Envoi direct : permis à cet agent, permis par la règle métier, et jamais la
   // nuit — sauf les notes de crédit / refacturations certaines d'Élodie.
   const night = isNight()
@@ -39,6 +45,12 @@ export async function submitProposal(agent: AgentAccount, body: any): Promise<{ 
   }).select('id').single()
   if (error || !row) throw new Error(error?.message || 'Dépôt impossible')
   await journal({ agent: agent.name, company: co.company, action: direct ? 'envoi direct' : 'proposition', detail: `${KIND_LABEL[kind]} · ${prep.title}${nightNote ? ' · ' + nightNote : ''}`, proposalId: row.id })
+  if (kind === 'question_olivier') {
+    const { data: full } = await sb.from('agent_proposals').select('*').eq('id', row.id).single()
+    const { sendQuestion } = await import('./question')
+    const n = await sendQuestion(full).catch(() => 0)
+    return { id: row.id, status: 'to_validate', note: n ? `Question envoyée sur Telegram (${n} destinataire${n > 1 ? 's' : ''}).` : 'Question visible dans l’écran « Propositions des agents » (aucun Telegram relié pour l’instant).' }
+  }
   if (!direct) return { id: row.id, status: 'to_validate', note: nightNote }
   return runExecution(row.id, `${agent.name} (envoi direct)`)
 }
@@ -70,6 +82,7 @@ export async function decideProposal(id: string, actor: Actor, action: 'valider'
   const sb = createAdminClient()
   const { data: p } = await sb.from('agent_proposals').select('*').eq('id', id).maybeSingle()
   if (!p) throw new Error('Proposition introuvable')
+  if (p.kind === 'question_olivier') throw new Error('Une question se règle avec ses deux boutons de réponse.')
   if (!canDecide(p, actor)) throw new Error('Vous n’êtes pas la personne désignée pour valider les propositions de cet agent.')
   const now = new Date().toISOString()
   const open = p.status === 'to_validate' || p.status === 'failed'

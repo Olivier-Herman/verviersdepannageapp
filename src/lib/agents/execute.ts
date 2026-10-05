@@ -105,6 +105,30 @@ export async function prepare(kind: ProposalKind, agent: AgentAccount, company: 
     }
   }
 
+  if (kind === 'question_olivier') {
+    // Facture d'achat au nom privé d'une personne (Olivier 05/10/2026) : ni
+    // encodée ni écartée d'office, Olivier tranche. Les infos sont lues dans l'ERP.
+    if (String(p.sujet || '') !== 'facture_nom_prive') throw new Error('contenu.sujet : seul « facture_nom_prive » est prévu pour l’instant.')
+    const id = Number(p.facture_id)
+    if (!Number.isInteger(id) || id <= 0) throw new Error('contenu.facture_id obligatoire.')
+    const destinataire = String(p.destinataire || '').trim().slice(0, 300)
+    if (!destinataire) throw new Error('contenu.destinataire obligatoire (nom et adresse lus sur la pièce).')
+    const [b]: any[] = await odooRpcCompany(company, 'account.move', 'read', [[id]], { fields: ['id', 'name', 'ref', 'state', 'move_type', 'company_id', 'partner_id', 'invoice_date', 'amount_untaxed', 'amount_total', 'invoice_source_email'] })
+    if (!b || b.company_id?.[0] !== company || !['in_invoice', 'in_refund'].includes(b.move_type)) throw new Error('Facture d’achat introuvable dans cette société.')
+    const lines: any[] = await odooRpcCompany(company, 'account.move.line', 'search_read', [[['move_id', '=', id], ['display_type', '=', 'product']]], { fields: ['name', 'price_subtotal'] })
+    const mail: any[] = await odooRpcCompany(company, 'mail.message', 'search_read', [[['model', '=', 'account.move'], ['res_id', '=', id], ['message_type', '=', 'email']]], { fields: ['email_from', 'subject', 'date'], limit: 1, order: 'id asc' })
+    const fournisseur = b.partner_id?.[1] || String(p.fournisseur || '').trim().slice(0, 120) || 'fournisseur non reconnu'
+    return {
+      title: `Facture au nom privé · ${fournisseur} · ${b.ref || b.name || id}`, amount: b.amount_total,
+      payload: {
+        sujet: 'facture_nom_prive', facture_id: id, fournisseur, reference: b.ref, date: b.invoice_date, destinataire,
+        htva: b.amount_untaxed, tvac: b.amount_total, lignes: lines.map(l => `${String(l.name || '').replace(/\s+/g, ' ').slice(0, 120)} · ${l.price_subtotal} €`).slice(0, 10),
+        mail: mail[0] ? { de: mail[0].email_from, objet: mail[0].subject, date: mail[0].date } : null,
+      },
+      directAllowed: false,
+    }
+  }
+
   // envoi_comptable
   const to = String(p.a || '').trim().toLowerCase()
   const allowed = (await getBusinessList('agents_comptable_destinataires').catch(() => [] as string[])).map(x => x.toLowerCase())
@@ -125,6 +149,7 @@ async function movePdf(company: number, id: number): Promise<EmailAttachment | n
 }
 
 export async function execute(kind: ProposalKind, company: number, payload: any): Promise<Record<string, any>> {
+  if (kind === 'question_olivier') throw new Error('Une question ne s’exécute pas : on y répond.')
   if (kind === 'facture_achat') {
     const b = await readBill(company, payload.facture_id)
     if (!b || b.state !== 'draft') throw new Error('La facture n’est plus en brouillon (validée ou supprimée entre-temps).')

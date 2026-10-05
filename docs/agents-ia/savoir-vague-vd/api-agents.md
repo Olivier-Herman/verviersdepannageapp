@@ -45,6 +45,8 @@ La société est **obligatoire** et vérifiée contre les droits de l'agent. Cha
 | `note_credit` | Élodie | `facture` : numéro de la facture client validée ; `motif` ; `refacturer_partner_id` (facultatif, refacture au bon client) | Note de crédit validée et, si demandée, nouvelle facture validée. **Envoi direct si `certain: true`, même la nuit** : c'est la seule exception de nuit. |
 | `envoi_comptable` | Benoît | `a` : adresse du comptable ; `objet` ; `message` ; `facture_ids` : pièces de l'ERP dont le PDF est joint | Mail envoyé depuis administration@ avec mobi@ en copie. **Envoi direct le jour**, uniquement vers les adresses du comptable réglées par Olivier. |
 
+| `question_olivier` | Florent | `sujet: "facture_nom_prive"`, `facture_id` (facture d'achat), `destinataire` (nom et adresse lus sur la pièce) | Pas d'exécution : VD Soft envoie la question sur le Telegram d'Olivier (validateur désigné de l'agent, sinon les superadmins reliés) avec « Encoder chez VD » / « Privé, ne pas encoder », et l'affiche dans l'écran. **Une seule question par facture.** La réponse revient dans `GET /api/agents/propositions` : `status: "answered"`, `result.choix` (`encoder` ou `prive`), `validated_by`, `validated_at`. « Privé » ne supprime rien : la suite reste la décision d'Olivier. |
+
 Réponse : `{ ok, id, status }`. `status` vaut `to_validate`, ou `executed` / `failed` en cas d'envoi direct. Le champ `note` donne le résultat, ou explique pourquoi la proposition attend, par exemple « Nuit : rien ne part… ».
 
 Un refus au dépôt renvoie une réponse 400 avec un message en clair, par exemple « Doublon : … », « Facture déjà validée » ou « Destinataire non autorisé ».
@@ -59,7 +61,7 @@ Cet appel renvoie les 50 dernières propositions de l'agent, avec pour chacune :
 
 L'agent relit les refus et les corrections avant de reproposer.
 
-Valeurs de `statut` : `to_validate`, `executed`, `refused`, `returned` (à corriger), `failed`.
+Valeurs de `statut` : `to_validate`, `executed`, `refused`, `returned` (à corriger), `failed`, `answered` (question répondue).
 
 ## Garde-fous dans le code
 

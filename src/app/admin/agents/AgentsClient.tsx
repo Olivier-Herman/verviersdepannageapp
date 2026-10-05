@@ -4,7 +4,8 @@
 import { useCallback, useEffect, useState } from 'react'
 
 const COMPANY: Record<number, string> = { 1: 'Verviers Dépannage', 2: 'Dépannage Riga', 3: 'DGJ VHU' }
-const KIND: Record<string, string> = { lot_paiement: 'Lot de paiement', facture_achat: 'Facture d’achat', note_credit: 'Note de crédit / refacturation', envoi_comptable: 'Envoi au comptable' }
+const KIND: Record<string, string> = { lot_paiement: 'Lot de paiement', facture_achat: 'Facture d’achat', note_credit: 'Note de crédit / refacturation', envoi_comptable: 'Envoi au comptable', question_olivier: 'Question à Mobi' }
+const ANSWERS: Record<string, { key: string; label: string }[]> = { facture_nom_prive: [{ key: 'encoder', label: 'Encoder chez VD' }, { key: 'prive', label: 'Privé, ne pas encoder' }] }
 const STATUS: Record<string, { label: string; cls: string }> = {
   to_validate: { label: 'À valider', cls: 'bg-amber-100 text-amber-900' },
   executing:   { label: 'En cours', cls: 'bg-sky-100 text-sky-900' },
@@ -12,10 +13,11 @@ const STATUS: Record<string, { label: string; cls: string }> = {
   refused:     { label: 'Refusée', cls: 'bg-slate-200 text-slate-800' },
   returned:    { label: 'Renvoyée à l’agent', cls: 'bg-violet-100 text-violet-900' },
   failed:      { label: 'Échec', cls: 'bg-red-100 text-red-800' },
+  answered:    { label: 'Répondue', cls: 'bg-emerald-100 text-emerald-900' },
 }
 const FILTERS = [
   { key: 'to_validate', label: 'À valider' }, { key: 'direct', label: 'Envois directs' }, { key: 'executed', label: 'Exécutées' },
-  { key: 'refused', label: 'Refusées' }, { key: 'failed', label: 'En échec' }, { key: 'all', label: 'Toutes' },
+  { key: 'questions', label: 'Questions' }, { key: 'refused', label: 'Refusées' }, { key: 'failed', label: 'En échec' }, { key: 'all', label: 'Toutes' },
 ]
 const eur = (n: any) => n == null ? '' : Number(n).toLocaleString('fr-BE', { style: 'currency', currency: 'EUR' })
 const fmt = (s?: string | null) => s ? new Date(s).toLocaleString('fr-BE', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : ''
@@ -127,6 +129,15 @@ export default function AgentsClient() {
                 {p.why && <p className="text-sm text-slate-800 bg-sky-50 border border-sky-200 rounded-lg px-3 py-2 whitespace-pre-line"><b>Pourquoi :</b> {p.why}</p>}
                 {p.kind === 'envoi_comptable' && <p className="text-sm text-slate-800">À <b>{p.payload?.a}</b> · « {p.payload?.objet} » · pièces : {(p.payload?.pieces || []).join(', ')}</p>}
                 {p.kind === 'note_credit' && <p className="text-sm text-slate-800">Motif : {p.payload?.motif}</p>}
+                {p.kind === 'question_olivier' && (
+                  <div className="text-sm text-slate-800 space-y-0.5">
+                    <p><b>Destinataire :</b> {p.payload?.destinataire}</p>
+                    <p>{p.payload?.fournisseur} · {p.payload?.reference || 'sans référence'} · {p.payload?.date || 'sans date'} · {eur(p.payload?.htva)} HTVA / {eur(p.payload?.tvac)} TVAC</p>
+                    {(p.payload?.lignes || []).length > 0 && <ul className="list-disc pl-5 text-slate-700">{p.payload.lignes.slice(0, 5).map((l: string, i: number) => <li key={i}>{l}</li>)}</ul>}
+                    <p className="text-slate-600">{p.payload?.mail ? `Mail d’origine : ${p.payload.mail.de} · « ${p.payload.mail.objet || ''} » · ${String(p.payload.mail.date || '').slice(0, 10)}` : 'Pas de mail d’origine.'}</p>
+                    {p.status === 'answered' && <p className="text-emerald-800 font-semibold">Réponse : {p.result?.label} · {p.validated_by} · {fmt(p.validated_at)}{p.result?.canal === 'telegram' ? ' (Telegram)' : ''}</p>}
+                  </div>
+                )}
                 {facts.length > 0 && (
                   <details className="text-sm">
                     <summary className="cursor-pointer text-slate-800 font-medium min-h-[36px] flex items-center underline decoration-slate-400">▸ Voir les {facts.length} factures</summary>
@@ -143,14 +154,22 @@ export default function AgentsClient() {
                 {p.refused_reason && <p className="text-sm text-slate-700">Motif du refus : {p.refused_reason}</p>}
                 {p.correction && <p className="text-sm text-violet-800">Demandé à l’agent : {p.correction}</p>}
 
-                {decidable && !open[p.id] && (
+                {p.kind === 'question_olivier' && p.status === 'to_validate' && canDecide(p) && (
+                  <div className="flex flex-wrap gap-2 pt-1">
+                    {(ANSWERS[p.payload?.sujet] || []).map(a => (
+                      <button key={a.key} type="button" disabled={busy === p.id} onClick={() => post({ op: 'answer', id: p.id, choix: a.key }, p.id)}
+                        className={`min-h-[44px] px-4 rounded-xl text-sm font-semibold disabled:opacity-50 ${a.key === 'encoder' ? 'bg-emerald-600 text-white' : 'bg-white border border-slate-300 text-slate-800'}`}>{busy === p.id ? '…' : a.label}</button>
+                    ))}
+                  </div>
+                )}
+                {decidable && p.kind !== 'question_olivier' && !open[p.id] && (
                   <div className="flex flex-wrap gap-2 pt-1">
                     <button type="button" disabled={busy === p.id} onClick={() => post({ op: 'decide', id: p.id, action: 'valider' }, p.id)} className="min-h-[44px] px-4 rounded-xl text-sm font-semibold bg-emerald-600 text-white disabled:opacity-50">{busy === p.id ? 'Exécution…' : p.status === 'failed' ? 'Réessayer' : ACTION_LABEL[p.kind] || 'Valider'}</button>
                     {p.status === 'to_validate' && <button type="button" onClick={() => setOpen(o => ({ ...o, [p.id]: 'corriger' }))} className="min-h-[44px] px-4 rounded-xl text-sm font-semibold bg-white border border-slate-300 text-slate-800">Corriger…</button>}
                     <button type="button" onClick={() => setOpen(o => ({ ...o, [p.id]: 'refuser' }))} className="min-h-[44px] px-4 rounded-xl text-sm font-semibold bg-white border border-red-300 text-red-700">Refuser…</button>
                   </div>
                 )}
-                {decidable && open[p.id] && (
+                {decidable && p.kind !== 'question_olivier' && open[p.id] && (
                   <div className="space-y-2">
                     <label className="block text-sm text-slate-800">{open[p.id] === 'refuser' ? 'Motif du refus (l’agent le lit pour la prochaine fois)' : 'Ce qu’il faut changer (l’agent refait sa proposition)'}
                       <textarea rows={2} value={text[p.id] || ''} onChange={e => setText(t => ({ ...t, [p.id]: e.target.value }))} className="mt-1 w-full border rounded-lg px-2 py-1.5 text-sm text-slate-900" />

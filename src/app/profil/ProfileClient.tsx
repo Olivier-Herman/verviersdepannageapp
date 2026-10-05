@@ -376,7 +376,9 @@ export default function ProfileClient({ user }: { user: any }) {
         <AuthProvidersSection />
 
         {/* Aide de Sam sur Telegram (Olivier 03/10/2026) : chauffeurs. */}
-        {(user?.role === 'driver' || (Array.isArray(user?.roles) && user.roles.includes('driver'))) && <TelegramLinkCard />}
+        {(user?.role === 'driver' || (Array.isArray(user?.roles) && user.roles.includes('driver')))
+          ? <TelegramLinkCard />
+          : (user?.role === 'superadmin' || (Array.isArray(user?.roles) && user.roles.includes('superadmin'))) && <TelegramLinkCard bureau />}
         {/* Onglet « Aide » : mes échanges avec Sam / Sonic (Olivier 03/10/2026). */}
         {(user?.role === 'driver' || (Array.isArray(user?.roles) && user.roles.includes('driver'))) && <SamConversations mine />}
 

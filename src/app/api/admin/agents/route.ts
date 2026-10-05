@@ -29,6 +29,7 @@ export async function GET(req: Request) {
   let pq = sb.from('agent_proposals').select('*').order('created_at', { ascending: false }).limit(200)
   if (statut === 'direct') pq = pq.eq('direct', true)
   else if (statut === 'open') pq = pq.in('status', ['to_validate', 'failed', 'executing'])
+  else if (statut === 'questions') pq = pq.eq('kind', 'question_olivier')
   else if (statut !== 'all') pq = pq.eq('status', statut)
   const since = new Date(Date.now() - 86400_000).toISOString()
   const [props, agents, jr, validators, open, failed, execToday, direct24] = await Promise.all([
@@ -57,6 +58,12 @@ export async function POST(req: Request) {
     if (body.op === 'decide') {
       if (!['valider', 'refuser', 'corriger'].includes(body.action)) throw new Error('Action inconnue')
       return NextResponse.json({ ok: true, ...(await decideProposal(String(body.id), me, body.action, body.text)) })
+    }
+    if (body.op === 'answer') {
+      const { answerAgentQuestion } = await import('@/lib/agents/question')
+      const r = await answerAgentQuestion(String(body.id), me.id, me.name, String(body.choix || ''), 'ecran')
+      if (!r.ok) throw new Error(r.note)
+      return NextResponse.json({ ok: true, note: r.note })
     }
     if (!me.isSuperadmin) throw new Error('Réservé à Mobi (superadmin).')
     if (body.op === 'agent') {
