@@ -38,7 +38,20 @@ export async function POST(req: Request) {
   const cbq = update.callback_query
   const chatId: number | undefined = msg?.chat?.id ?? cbq?.message?.chat?.id
   if (!chatId) return NextResponse.json({ ok: true })
-  if ((msg?.chat?.type || cbq?.message?.chat?.type) !== 'private') return NextResponse.json({ ok: true })   // jamais dans un groupe
+  const chatType = msg?.chat?.type || cbq?.message?.chat?.type
+  if (chatType !== 'private') {
+    // Groupe de décisions d'Olivier (05/10/2026) : on retient seulement quel groupe
+    // a écrit au bot (id, nom, sujets activés) pour y ouvrir les sujets « Doubles
+    // paiements » et « Espèces ». Aucune réponse n'est jamais envoyée dans un groupe.
+    if (msg?.chat && (chatType === 'group' || chatType === 'supergroup')) {
+      const { data: row } = await sb.from('app_settings').select('value').eq('key', 'telegram_groupes_vus').maybeSingle()
+      let seen: Record<string, any> = {}
+      try { seen = row?.value ? JSON.parse(row.value) : {} } catch { seen = {} }
+      seen[String(msg.chat.id)] = { titre: msg.chat.title || '', sujets: !!msg.chat.is_forum, vu_le: new Date().toISOString() }
+      await sb.from('app_settings').upsert({ key: 'telegram_groupes_vus', value: JSON.stringify(seen) }, { onConflict: 'key' })
+    }
+    return NextResponse.json({ ok: true })
+  }
 
   // ── Liaison : /start <code> ────────────────────────────────────────────
   const text: string = String(msg?.text || msg?.caption || '').trim()
