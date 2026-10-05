@@ -245,7 +245,7 @@ Rends UNIQUEMENT un objet JSON, sans texte autour, de la forme :
 }
 
 Règles :
-- « N° de facture » → invoiceRef, tel quel, sans rien reformater.
+- « N° de facture » → invoiceRef, tel quel, sans rien reformater — sauf l'astérisque et le tiret bas qui l'encadrent parfois (« *2026SELX00000064_ » → « 2026SELX00000064 »), qui ne font pas partie du numéro.
 - « Références » → theirRef ; « Date de facture » → invoiceDate au format ISO.
 - Montants en nombres décimaux avec un point. Une ligne négative reste négative.
 - Reprends TOUTES les lignes du tableau, même s'il y en a beaucoup.
@@ -290,7 +290,8 @@ async function extractAwpPdf(pdf: Buffer): Promise<{
       .filter((l: any) => l?.invoiceRef)
       .map((l: any) => ({
         // « 2026/08/396. » (IMA, 08/09/2026) : la ponctuation finale n'est pas la référence.
-        invoiceRef:  String(l.invoiceRef).trim().replace(/[.,;:\s]+$/, ''),
+        // « *2026SELX00000064_ » (AP Solutions, 30/09/2026) : ni l'astérisque ni le tiret bas.
+        invoiceRef:  String(l.invoiceRef).trim().replace(/^\*+/, '').replace(/[_.,;:\s]+$/, ''),
         amount:      r2(Number(l.amount) || 0),
         theirRef:    l.theirRef ? String(l.theirRef) : null,
         invoiceDate: l.invoiceDate ? String(l.invoiceDate).slice(0, 10) : null,
@@ -357,6 +358,10 @@ async function adviceSources() {
   return [
     { provider: 'ima' as const, sender: await getBusinessText('mail_ima_avis_paiement'), subject: /avis de paiement/i },
     { provider: 'awp' as const, sender: await getBusinessText('mail_awp_avis_paiement'), subject: /payment advice note/i },
+    // Allianz envoie aussi des avis au nom d'AP Solutions depuis une autre adresse
+    // (BEVO492090, 30/09/2026) — même PDF, même lecteur. Seuls ces avis sont lus :
+    // le filtre d'objet écarte tout autre mail de cet expéditeur (missions comprises).
+    { provider: 'awp' as const, sender: await getBusinessText('mail_aps_avis_paiement'), subject: /payment advice note/i },
   ]
 }
 

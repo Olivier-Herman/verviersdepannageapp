@@ -33,11 +33,18 @@ import { loadAllUnallocated, findUnallocated } from '@/lib/payout-unallocated'
 
 export type AdviceState = 'pending' | 'ready' | 'gap' | 'miss' | 'orphan' | 'done'
 
-/** Qui paie, et comment on le reconnaît en banque. */
+/**
+ * Qui paie, et comment on le reconnaît en banque. `partnerIds` : toutes les
+ * fiches au nom desquelles arrivent les virements de ce payeur — Allianz paie
+ * aussi sous « AP Solutions GmbH Belgium Branch » (126), avis BEVO492090 du
+ * 30/09/2026 (Olivier 05/10/2026). `partnerId` reste la fiche principale.
+ */
 export const PAYERS = [
-  { key: 'ima', label: 'IMA Benelux (Ethias)', partnerId: 16, labelMatch: 'IMA BENELUX' },
-  { key: 'awp', label: 'AWP / Mondial',        partnerId: 45, labelMatch: 'AWP' },
+  { key: 'ima', label: 'IMA Benelux (Ethias)', partnerId: 16, partnerIds: [16],      labelMatch: 'IMA BENELUX' },
+  { key: 'awp', label: 'AWP / Mondial',        partnerId: 45, partnerIds: [45, 126], labelMatch: 'AWP' },
 ] as const
+
+const payerOf = (pid: unknown) => PAYERS.find(p => (p.partnerIds as readonly number[]).includes(Number(pid)))
 
 /** Fenêtre d'appariement avis → virement, en jours. */
 const WINDOW_DAYS = 10
@@ -104,7 +111,9 @@ export interface AdviceReport {
 
 const r2 = (n: number) => Math.round(n * 100) / 100
 /** Référence telle qu'Odoo la connaît : sans ponctuation ni espace de fin (avis déjà en cache compris). */
-const normRef = (r: string | null | undefined) => String(r ?? '').trim().replace(/[.,;:\s]+$/, '')
+// « *2026SELX00000064_ » (avis AP Solutions, 30/09/2026) : l'astérisque et le
+// tiret bas qui encadrent le numéro ne font pas partie de la référence.
+const normRef = (r: string | null | undefined) => String(r ?? '').trim().replace(/^\*+/, '').replace(/[_.,;:\s]+$/, '')
 const daysBetween = (a: string, b: string) =>
   Math.round((new Date(b).getTime() - new Date(a).getTime()) / 86_400_000)
 
@@ -116,7 +125,7 @@ const daysBetween = (a: string, b: string) =>
  * « attendu ». On récupère les deux et on distingue ensuite.
  */
 async function insurerBankLines(sinceIso: string) {
-  const partnerIds = PAYERS.map(p => p.partnerId)
+  const partnerIds = PAYERS.flatMap(p => [...p.partnerIds])
   return odooRpc<any[]>('account.bank.statement.line', 'search_read', [[
     ['amount', '>', 0],
     ['date', '>=', sinceIso.slice(0, 10)],
@@ -275,7 +284,7 @@ export async function buildAdviceReport(
     const bank = lines.find(l => {
       if (usedLineIds.has(l.id)) return false
       const pid = Array.isArray(l.partner_id) ? l.partner_id[0] : l.partner_id
-      if (Number(pid) !== payer.partnerId) return false
+      if (payerOf(pid)?.key !== payer.key) return false
       if (Math.abs(Number(l.amount) - linesSum) > 0.02) return false
       const gap = daysBetween(advice.receivedAt.slice(0, 10), l.date)
       return gap >= -2 && gap <= WINDOW_DAYS
@@ -339,7 +348,7 @@ export async function buildAdviceReport(
   for (const l of lines) {
     if (usedLineIds.has(l.id) || l.is_reconciled) continue
     const pid   = Array.isArray(l.partner_id) ? l.partner_id[0] : l.partner_id
-    const payer = PAYERS.find(p => p.partnerId === Number(pid))
+    const payer = payerOf(pid)
     items.push({
       state: 'orphan',
       payer: payer?.key ?? 'inconnu', payerLabel: payer?.label ?? 'Payeur inconnu',
