@@ -87,7 +87,6 @@ const GROUPS: NavGroup[] = [
   {
     title: 'Support',
     items: [
-      { href: '/admin/cobrowse', label: 'Demandes d aide', icon: LifeBuoy },
       { href: '/admin/matthieu', label: 'La tête à Matthieu', icon: LifeBuoy },
     ],
   },

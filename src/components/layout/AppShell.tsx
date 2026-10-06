@@ -24,7 +24,6 @@ import MobileTabBar from './MobileTabBar'
 import GlobalSearch from '@/components/GlobalSearch'
 import { TruckSwitcherIcon } from '@/components/trucks/TruckSwitcherIcon'
 import DispatchAlertBadge from '@/components/notifications/DispatchAlertBadge'
-import CobrowseUserBridge, { CobrowseUserBanner } from '@/components/cobrowse/CobrowseUserBridge'
 import { useTheme } from '@/components/theme/ThemeProvider'
 import { useOnDutyPing } from '@/hooks/useOnDutyPing'
 import { useMissionGpsTracking } from '@/hooks/useMissionGpsTracking'
@@ -163,7 +162,6 @@ export default function AppShell({
   return (
    <NotificationsProvider userId={userId || null}>
     <WatchPairingBridge />
-    <CobrowseUserBanner />
     <FacturationButtonAnnounce userRole={userRole} userModules={userModules} />
     <div className="min-h-screen flex">
 
@@ -287,7 +285,6 @@ export default function AppShell({
             </Link>
             <DispatchAlertBadge userRole={userRole} />
             <TruckSwitcherIcon />
-            <CobrowseUserBridge />
             <GlobalSearch shortcut={!navV2} />
           </div>
           <h1 className="font-display text-ink font-bold text-lg">{title}</h1>
@@ -328,7 +325,6 @@ export default function AppShell({
             {headerExtra && <div className="flex-1 ml-8">{headerExtra}</div>}
             <DispatchAlertBadge userRole={userRole} />
             <TruckSwitcherIcon />
-            <CobrowseUserBridge />
             <GlobalSearch shortcut={!navV2} />
           </div>
         </div>
