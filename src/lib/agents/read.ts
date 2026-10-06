@@ -70,10 +70,31 @@ export async function runRead(kind: ReadKind, company: number, q: URLSearchParam
     if (partenaire) dom.push(['partner_id', 'ilike', partenaire])
     if (['draft', 'posted', 'cancel'].includes(etat)) dom.push(['state', '=', etat])
     if (q.get('impayees') === '1') dom.push(['state', '=', 'posted'], ['payment_state', 'in', ['not_paid', 'partial']])
-    return odooRpcCompany(company, 'account.move', 'search_read', [dom], {
-      fields: ['id', 'name', 'ref', 'move_type', 'state', 'payment_state', 'partner_id', 'invoice_date', 'invoice_date_due', 'amount_untaxed', 'amount_total', 'amount_residual', 'journal_id', 'invoice_origin'],
-      limit: LIMIT, order: 'invoice_date desc, id desc',
+    const one = Number(q.get('id'))
+    if (Number.isInteger(one) && one > 0) dom.push(['id', '=', one])
+    const base = ['id', 'name', 'ref', 'move_type', 'state', 'payment_state', 'partner_id', 'invoice_date', 'invoice_date_due', 'amount_untaxed', 'amount_total', 'amount_residual', 'journal_id', 'invoice_origin']
+    if (kind === 'factures_clients') return odooRpcCompany(company, 'account.move', 'search_read', [dom], { fields: base, limit: LIMIT, order: 'invoice_date desc, id desc' })
+    // Achats (Florent, 06/10/2026) : canal d'arrivée et plaque toujours ; lignes et texte du PDF
+    // seulement pour une facture lue par son id (lecture légère).
+    const rows: any[] = await odooRpcCompany(company, 'account.move', 'search_read', [dom], {
+      fields: [...base, 'peppol_message_uuid', 'invoice_source_email', 'create_uid', 'x_studio_plaque_1'], limit: LIMIT, order: 'invoice_date desc, id desc',
     })
+    const out = rows.map(({ peppol_message_uuid, invoice_source_email, create_uid, x_studio_plaque_1, ...r }) => ({
+      ...r,
+      canal: peppol_message_uuid ? 'Peppol' : invoice_source_email ? 'mail' : create_uid?.[1] === 'VD App' ? 'VD Soft' : 'encodée ou scannée',
+      expediteur: invoice_source_email || null,
+      plaque: x_studio_plaque_1 ? x_studio_plaque_1[1] : null,
+    }))
+    if (!(Number.isInteger(one) && one > 0) || !out.length) return out
+    const lignes: any[] = await odooRpcCompany(company, 'account.move.line', 'search_read', [[['move_id', '=', one], ['display_type', '=', 'product']]], { fields: ['name', 'quantity', 'price_unit', 'price_subtotal', 'tax_ids'] })
+    const taxIds = [...new Set(lignes.flatMap(l => l.tax_ids))]
+    const taxes: any[] = taxIds.length ? await odooRpcCompany(company, 'account.tax', 'read', [taxIds], { fields: ['name'] }) : []
+    const pdf: any[] = await odooRpcCompany(company, 'ir.attachment', 'search_read', [[['res_model', '=', 'account.move'], ['res_id', '=', one], ['mimetype', '=', 'application/pdf']]], { fields: ['name', 'index_content'], order: 'id asc', limit: 3 })
+    return [{
+      ...out[0],
+      lignes: lignes.map(l => ({ libelle: String(l.name || '').replace(/\s+/g, ' ').slice(0, 300), quantite: l.quantity, prix: l.price_unit, htva: l.price_subtotal, tva: l.tax_ids.map((t: number) => taxes.find(x => x.id === t)?.name || t) })),
+      pdf: pdf.map(a => ({ nom: a.name, texte: String(a.index_content || '').replace(/\s+/g, ' ').trim().slice(0, 2000) || null })),
+    }]
   }
 
   if (kind === 'banque') {

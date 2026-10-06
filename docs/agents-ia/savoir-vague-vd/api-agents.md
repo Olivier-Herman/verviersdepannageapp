@@ -27,7 +27,8 @@ La société est **obligatoire** et vérifiée contre les droits de l'agent. Cha
 |---|---|---|
 | `fiche` | 1 | `numero` (numéro de mission) ou `plaque` |
 | `factures_clients` | 1, 2, 3 | `nom` (numéro ou référence), `partenaire`, `etat` (draft / posted / cancel), `impayees=1` |
-| `factures_achat` | 1, 2, 3 | les mêmes paramètres |
+| `factures_achat` | 1, 2, 3 | les mêmes paramètres, plus `id`. Chaque facture porte `canal` (`Peppol`, `mail`, `VD Soft`, `encodée ou scannée`), `expediteur` (mail d'origine) et `plaque`. **Avec `id`** : en plus les `lignes` (libellé, quantité, prix, HTVA, TVA) et `pdf` (nom et 2 000 premiers caractères du texte de chaque PDF joint). |
+| `reconciliation` | 1 | — (voir plus bas) |
 | `banque` | 1, 2, 3 | — (lignes non rapprochées, les 100 plus récentes) |
 | `etats_de_frais` | 1 | `numero` (numéro d'état de frais ou plaque), `etat` |
 | `domaine` | 1 | — (dates IN et ventes d'épaves, les 50 plus récentes de chaque) |
