@@ -19,6 +19,7 @@ export function useEndFinishedLiveActivities(userId: string | null | undefined) 
       try {
         const { Capacitor } = await import('@capacitor/core')
         if (!Capacitor.isNativePlatform() || Capacitor.getPlatform() !== 'ios') return
+        if (!Capacitor.isPluginAvailable('LiveActivity')) return   // ancienne app App Store : rien à fermer (06/10/2026)
         const r = await fetch('/api/missions/live-activities-finished', { cache: 'no-store' })
         if (!r.ok) return
         const { ids } = await r.json()
