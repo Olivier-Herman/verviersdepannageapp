@@ -24,6 +24,8 @@ import { refreshAwpSenders } from './handlers/awp-rejet'
 import { refreshImaSenders } from './handlers/ima-rejet'
 import { isSupplierCandidate, processSupplierMail, refreshInvoicePlatforms, setWatchedSenders, FOURNISSEUR_DONE_FOLDER } from './handlers/fournisseur'
 import { loadWatchedSenders, markPieceReceived, scanPieceRequests, remindOldPieceRequests } from './pieces'
+import { fixedRule } from './rules'
+import { usualFolder, folderIdByPath } from './learned'
 import { triageMail, isNoise, isAssistanceMission, isHandledElsewhere, twinInQueue, readAutoFamilies } from './triage'
 import { executeDecision } from './actions'
 import { handlerFor, handlerById } from './handlers'
@@ -89,6 +91,24 @@ export async function scanFolder(opts: { mailbox?: string; folder?: string; fold
 
   for (const msg of messages) {
     try {
+      // Règles fixes sans IA (lot 1, 06/10/2026) : corbeille ou dossier habituel, aucune carte.
+      const rule = fixedRule(msg, mailbox)
+      if (rule) {
+        const here = folder.split('/').pop()!.trim().toLowerCase()
+        const target = rule.kind === 'trash' ? null : rule.folder.toLowerCase()
+        if (target !== here && !(rule.kind === 'trash' && /^(éléments supprimés|deleted items)$/.test(here))) {
+          const fid = rule.kind === 'trash' ? 'deleteditems' : await findFolderIdByName(mailbox, rule.folder)
+          if (fid) {
+            const mv = await moveMessage(mailbox, msg.id, fid)
+            if (mv.ok) {
+              await upsert(sb, { handler: 'regle', mailbox, message_id: msg.id, folder, received_at: msg.receivedAt || null, from_email: msg.fromEmail, subject: msg.subject, updated_at: new Date().toISOString() },
+                { status: 'skipped', mail_moved: true, blocked_reason: rule.kind === 'trash' ? `Corbeille : ${rule.why}` : `Classé dans « ${rule.folder} » : ${rule.why}` })
+              report.applied++
+            } else report.errors.push(`${msg.subject} : ${mv.error}`)
+          }
+        }
+        report.skipped++; continue
+      }
       const handler = handlerFor(msg.fromEmail, msg.subject)
       if (!handler) {
         // Facture fournisseur ? (Olivier 23/09/2026) — lue, vérifiée dans Odoo
@@ -97,7 +117,7 @@ export async function scanFolder(opts: { mailbox?: string; folder?: string; fold
           const seen = await findKnownItem(sb, mailbox, 'fournisseur', msg, folder)
           // « Pas une facture » : déjà renvoyé au tri, on laisse le tri décider (il a sa propre mémoire).
           if (seen?.status === 'skipped') { if (!opts.triage) { report.skipped++; continue } }
-          else if (seen && ['applied', 'ignored', 'to_verify'].includes(seen.status)) { report.skipped++; continue }
+          else if (seen && ['applied', 'ignored', 'to_verify', 'decided'].includes(seen.status)) { report.skipped++; continue }
           // Lecture ratée : retentée jusqu'à 3 fois, puis lecture humaine (audit du 06/10/2026).
           let attempts = 0
           if (seen?.status === 'retry') {
@@ -146,11 +166,23 @@ export async function scanFolder(opts: { mailbox?: string; folder?: string; fold
             }
             const t = await triageMail(sb, mailbox, msg)
             if (!t) { report.skipped++; continue }
+            // Classement appris (Olivier 06/10/2026) : dossier habituel de cet expéditeur.
+            const uf = await usualFolder(sb, mailbox, msg.fromEmail).catch(() => null)
             if (t.family === 'info') {
-              await upsert(sb, base, { status: 'skipped', blocked_reason: 'Information sans demande — rien à décider', extracted: t })
-              report.skipped++; continue
+              // Information sans demande : rangée là où l'on range d'habitude cet expéditeur ;
+              // au moindre doute, une carte « Où classer ? » (le choix est ensuite retenu).
+              if (uf?.sure) {
+                const fid = await folderIdByPath(mailbox, uf.folder).catch(() => null)
+                const mv = fid ? await moveMessage(mailbox, msg.id, fid) : { ok: false as const }
+                if (mv.ok) {
+                  await upsert(sb, base, { status: 'skipped', mail_moved: true, blocked_reason: `Information sans demande — classée dans « ${uf.folder} » (dossier habituel)`, extracted: { ...t, usualFolder: uf } })
+                  report.applied++; continue
+                }
+              }
+              await upsert(sb, base, { status: 'to_decide', blocked_reason: 'Où classer ce mail ?', extracted: { ...t, usualFolder: uf, proposals: [{ key: 'classer', label: 'Classer', ready: true }, { key: 'laisser', label: 'Laisser', ready: true }] } })
+              report.captured++; report.toDecide = (report.toDecide || 0) + 1; continue
             }
-            await upsert(sb, base, { status: 'to_decide', blocked_reason: t.asked || null, extracted: t })
+            await upsert(sb, base, { status: 'to_decide', blocked_reason: t.asked || null, extracted: { ...t, usualFolder: uf } })
             report.captured++; report.toDecide = (report.toDecide || 0) + 1
             // Famille en automatique (jour 3) : l'action part tout de suite, avec le mode courant.
             const autoAction = (await readAutoFamilies(sb))[t.family]
@@ -222,11 +254,15 @@ export async function scanFolder(opts: { mailbox?: string; folder?: string; fold
       // Doublon (Olivier 23/09/2026 : « Allianz envoie souvent en double ») : le
       // même rejet, même n° de facture, déjà capturé sous un autre mail → on
       // l'ignore, on ne crée pas deux fois l'avoir.
-      const { data: twin } = await sb.from('mail_agent_items').select('id, status, message_id, folder')
-        .eq('mailbox', mailbox).eq('handler', handler.id).neq('message_id', msg.id)
+      // Toutes boîtes confondues : le même rejet arrive parfois sur info@ ET administration@ (06/10/2026).
+      const { data: twin } = await sb.from('mail_agent_items').select('id, status, message_id, folder, extracted')
+        .eq('handler', handler.id).neq('message_id', msg.id)
         .eq('extracted->>invoiceNumber', parsed.invoiceNumber)
         .in('status', ['ready', 'applied', 'blocked', 'to_verify']).limit(1).maybeSingle()
       if (twin) {
+        // Rattaché à la carte existante : la carte d'origine note le doublon reçu.
+        const dups = Array.isArray(twin.extracted?.duplicates) ? twin.extracted.duplicates : []
+        await sb.from('mail_agent_items').update({ extracted: { ...(twin.extracted || {}), duplicates: [...dups, { mailbox, at: msg.receivedAt || new Date().toISOString(), subject: msg.subject }] } }).eq('id', twin.id)
         await upsert(sb, base, {
           status: 'ignored',
           blocked_reason: `Doublon : le rejet de la facture ${parsed.invoiceNumber} est déjà capturé (${twin.status}, dossier « ${twin.folder} »).`,
@@ -377,14 +413,22 @@ async function findKnownItem(sb: any, mailbox: string, handler: string, msg: Age
     .eq('mailbox', mailbox).eq('message_id', msg.id).eq('handler', handler).maybeSingle()
   if (byId) return byId
   if (!msg.receivedAt) return null
-  let q = sb.from('mail_agent_items').select('id, status')
+  let q = sb.from('mail_agent_items').select('id, status, folder, extracted')
     .eq('mailbox', mailbox).eq('handler', handler).eq('received_at', msg.receivedAt)
   q = msg.fromEmail ? q.eq('from_email', msg.fromEmail) : q.is('from_email', null)
   q = msg.subject ? q.eq('subject', msg.subject) : q.is('subject', null)
   const { data: rows } = await q.order('id').limit(1)
   const moved = rows?.[0]
   if (!moved) return null
-  await sb.from('mail_agent_items').update({ message_id: msg.id, folder, updated_at: new Date().toISOString() }).eq('id', moved.id)
+  // Carte encore ouverte dont le mail a été rangé à la main ailleurs : traitée dans la boîte →
+  // fermée « Fait ailleurs » (pas pour un rejet : il faut une preuve, cf. settle.ts). 06/10/2026.
+  const now = new Date().toISOString()
+  if (['to_decide', 'to_verify', 'waiting'].includes(moved.status) && ['fournisseur', 'triage'].includes(handler) && moved.folder && moved.folder !== folder) {
+    await sb.from('mail_agent_items').update({ message_id: msg.id, folder, status: 'decided', applied_at: now, applied_by: 'agent', updated_at: now,
+      extracted: { ...(moved.extracted || {}), decision: { action: 'fait_ailleurs', by: 'agent', at: now, result: `Fait ailleurs : mail classé dans « ${folder} »` } } }).eq('id', moved.id)
+    return { id: moved.id, status: 'decided' }
+  }
+  await sb.from('mail_agent_items').update({ message_id: msg.id, folder, updated_at: now }).eq('id', moved.id)
   return moved
 }
 

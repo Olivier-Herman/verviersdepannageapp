@@ -299,3 +299,37 @@ export async function createReplyDraft(mailbox: string, messageId: string, html:
     return { ok: true, id: draft.id }
   } catch (e: any) { return { ok: false, error: e?.message || 'réponse impossible' } }
 }
+
+// ── Lot 1 du tri (Olivier 06/10/2026) ──────────────────────────────────────────
+
+/** État d'un mail : dossier, réponse/transfert (indicateur Outlook), fil. null = introuvable sous cet identifiant. */
+export async function messageState(mailbox: string, messageId: string): Promise<{ folderId: string; verb: number; conversationId: string | null } | null> {
+  guardMailbox(mailbox)
+  const res = await authedFetch(`/users/${encodeURIComponent(mailbox)}/messages/${encodeURIComponent(messageId)}?$select=parentFolderId,conversationId&$expand=${encodeURIComponent("singleValueExtendedProperties($filter=id eq 'Integer 0x1081')")}`)
+  if (res.status === 404) return null
+  if (!res.ok) throw new Error(`Graph ${res.status} : ${(await res.text()).slice(0, 160)}`)
+  const j = await res.json()
+  return { folderId: j.parentFolderId, verb: Number(j.singleValueExtendedProperties?.[0]?.value || 0), conversationId: j.conversationId || null }
+}
+
+/** Nos envois dans un fil (éléments envoyés), avec leurs destinataires. */
+export async function sentInConversation(mailbox: string, conversationId: string): Promise<{ sentAt: string; to: string[] }[]> {
+  guardMailbox(mailbox)
+  const f = encodeURIComponent(`conversationId eq '${conversationId.replace(/'/g, "''")}'`)
+  const j = await authedGet(`/users/${encodeURIComponent(mailbox)}/mailFolders/sentitems/messages?$filter=${f}&$select=sentDateTime,toRecipients,ccRecipients&$top=20`)
+  return (j.value || []).map((m: any) => ({ sentAt: m.sentDateTime, to: [...(m.toRecipients || []), ...(m.ccRecipients || [])].map((x: any) => String(x?.emailAddress?.address || '').toLowerCase()).filter(Boolean) }))
+}
+
+/** Expéditeurs des mails d'un dossier depuis une date (pour apprendre le classement). */
+export async function folderSenders(mailbox: string, folderId: string, sinceIso: string, max = 600): Promise<string[]> {
+  guardMailbox(mailbox)
+  const out: string[] = []
+  let url: string | null = `/users/${encodeURIComponent(mailbox)}/mailFolders/${folderId}/messages?$top=200&$select=from&$filter=${encodeURIComponent(`receivedDateTime ge ${sinceIso}`)}`
+  while (url && out.length < max) {
+    const j: any = await authedGet(url)
+    for (const m of j.value || []) { const a = String(m.from?.emailAddress?.address || '').toLowerCase(); if (a) out.push(a) }
+    const next: string | undefined = j['@odata.nextLink']
+    url = next ? next.replace('https://graph.microsoft.com/v1.0', '') : null
+  }
+  return out
+}

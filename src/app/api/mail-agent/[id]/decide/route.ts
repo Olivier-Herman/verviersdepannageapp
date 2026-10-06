@@ -77,8 +77,10 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   }
   if (action === 'classer') {
     const folder = String(body.folder || '')
-    if (!FILE_FOLDERS.includes(folder)) return NextResponse.json({ error: 'Dossier de classement inconnu' }, { status: 400 })
-    const fid = await findOrCreateFolder(item.mailbox, folder)
+    // Dossiers usuels (créés au besoin), ou n'importe quel dossier existant de la boîte, par son chemin :
+    // classement appris, le choix est retenu pour cet expéditeur (Olivier 06/10/2026).
+    const { folderIdByPath, rememberChoice } = await import('@/lib/mail-agent/learned')
+    const fid = FILE_FOLDERS.includes(folder) ? await findOrCreateFolder(item.mailbox, folder) : await folderIdByPath(item.mailbox, folder)
     if (!fid) return NextResponse.json({ error: `Impossible de trouver ou créer le dossier « ${folder} » dans ${item.mailbox}` }, { status: 400 })
     let mv = await moveMessage(item.mailbox, item.message_id, fid)
     // Mail déplacé à la main dans Outlook depuis la lecture : son identifiant a
@@ -91,6 +93,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     // Nouvel identifiant après déplacement : on le garde, sinon le scan
     // suivant reprend le mail pour une nouvelle carte.
     await sb.from('mail_agent_items').update({ status: 'decided', mail_moved: true, ...(mv.newId ? { message_id: mv.newId, folder } : {}), extracted: { ...(item.extracted || {}), decision }, updated_at: now }).eq('id', item.id)
+    if (folder !== 'Mail auto-géré') await rememberChoice(sb, item.mailbox, item.from_email, folder).catch(() => {})
     return NextResponse.json({ ok: true, status: 'decided', moved: true })
   }
   // Jour 2 : les actions métier. Résultat tracé sur l'item ; le mail est classé

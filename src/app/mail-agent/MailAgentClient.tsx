@@ -121,6 +121,13 @@ export default function MailAgentClient({
 
   const FAMILY_LABEL: Record<string, string> = { demande_avoir: 'Demande de note de crédit', demande_document: 'Demande de facture ou de document', double_paiement: 'Double paiement / remboursement', rappel_paiement: 'Rappel de paiement reçu', question_compta: 'Question comptable', reclamation: 'Réclamation client', contestation: 'Contestation de facture', info: 'Information', autre: 'Autre' }
   const FILE_FOLDERS = ['0 - Jona et Mobi', 'Fournisseur Divers', 'Mail auto-géré', 'clients divers', 'comptable thg']
+  // Tous les dossiers de rangement de la boîte, chargés à la demande (classement appris, 06/10/2026).
+  const [allFolders, setAllFolders] = useState<Record<string, string[]>>({})
+  const loadFolders = async (mailbox: string) => {
+    if (allFolders[mailbox]) return
+    const r = await fetch(`/api/mail-agent/folders?mailbox=${encodeURIComponent(mailbox)}`, { cache: 'no-store' }).then(x => x.json()).catch(() => null)
+    if (r?.folders) setAllFolders(p => ({ ...p, [mailbox]: r.folders }))
+  }
   const [folderFor, setFolderFor] = useState<string | null>(null)
   const [invFor, setInvFor] = useState<Record<string, string>>({})
   const [coFor, setCoFor] = useState<Record<string, string>>({})
@@ -313,7 +320,13 @@ export default function MailAgentClient({
                       {(x.proposals || []).map((p: any) => p.key === 'classer' ? (
                         folderFor === it.id ? (
                           <span key="classer" className="flex flex-wrap gap-1 items-center">
+                            {/* Classement appris (06/10/2026) : le dossier habituel de cet expéditeur d'abord. */}
+                            {x.usualFolder?.folder && <button onClick={() => decide(it.id, 'classer', x.usualFolder.folder)} disabled={busy === it.id} className="min-h-[44px] px-3 rounded-lg text-xs font-semibold bg-emerald-700 text-white disabled:opacity-50">→ {x.usualFolder.folder} (habituel)</button>}
                             {FILE_FOLDERS.map(f => <button key={f} onClick={() => decide(it.id, 'classer', f)} disabled={busy === it.id} className="px-2.5 py-1.5 rounded-lg text-xs font-medium bg-slate-800 text-white disabled:opacity-50">→ {f}</button>)}
+                            <select defaultValue="" disabled={busy === it.id} onFocus={() => loadFolders(it.mailbox || "")} onChange={e => e.target.value && decide(it.id, 'classer', e.target.value)} className="min-h-[44px] border rounded-lg px-2 text-xs bg-white text-slate-800 max-w-[16rem]">
+                              <option value="">{allFolders[it.mailbox || ""] ? 'Autre dossier…' : 'Autre dossier… (chargement)'}</option>
+                              {(allFolders[it.mailbox || ""] || []).map((f: string) => <option key={f} value={f}>{f}</option>)}
+                            </select>
                             <button onClick={() => setFolderFor(null)} className="px-2 py-1.5 text-xs text-slate-500">annuler</button>
                           </span>
                         ) : <button key="classer" onClick={() => setFolderFor(it.id)} disabled={busy === it.id} className="px-3 py-1.5 rounded-lg text-sm font-medium bg-slate-100 text-slate-700 disabled:opacity-50">Classer…</button>

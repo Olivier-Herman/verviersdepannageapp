@@ -7,6 +7,7 @@ import { scanMailboxes } from '@/lib/mail-agent'
 import { refreshAwpSenders } from '@/lib/mail-agent/handlers/awp-rejet'
 import { refreshImaSenders } from '@/lib/mail-agent/handlers/ima-rejet'
 import { withAiContext } from '@/lib/ai/usage'
+import { createAdminClient } from '@/lib/supabase'
 
 export const dynamic     = 'force-dynamic'
 export const maxDuration = 300   // scan incrémental de toute la boîte (185 dossiers)
@@ -20,7 +21,12 @@ async function handleGET(req: Request) {
     await Promise.all([refreshAwpSenders(), refreshImaSenders()])
     // Olivier 23/09/2026 : toutes les 15 min. Deux jours (06/10/2026) : une facture mise en attente
     // de sa version Peppol est revérifiée 24 h plus tard, il faut donc encore la voir.
-    return NextResponse.json({ ok: true, ...(await scanMailboxes({ sinceDays: 2, limit: 200 })) })
+    const scan = await scanMailboxes({ sinceDays: 2, limit: 200 })
+    // Cartes réglées dans la boîte : revérifiées et fermées « Fait ailleurs » ; rejets seulement sur preuve (06/10/2026).
+    let settle: any = null
+    try { const { settleOpenCards } = await import('@/lib/mail-agent/settle'); settle = await settleOpenCards(createAdminClient(), 60) }
+    catch (e: any) { settle = { error: e?.message || String(e) } }
+    return NextResponse.json({ ok: true, ...scan, settle })
   } catch (err: any) {
     console.error('[cron mail-agent] KO:', err?.message)
     return NextResponse.json({ error: err?.message || 'Erreur' }, { status: 500 })
