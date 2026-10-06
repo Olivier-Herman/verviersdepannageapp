@@ -10,7 +10,7 @@ import { odooRpc } from '@/lib/odoo'
 import { createAdminClient } from '@/lib/supabase'
 import { getBusinessNumber } from '@/lib/settings/business'
 
-const CHAU1_DEPUIS = '2026-09-01'
+const CHAU1_DEPUIS = '2026-06-15'
 const strip = (h: string) => String(h || '').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&').replace(/<[^>]+>/g, ' ').replace(/&nbsp;/g, ' ').replace(/\s+/g, ' ').trim()
 const norm = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase()
 
