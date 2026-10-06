@@ -983,9 +983,13 @@ export default function MissionDetailClient({
   }, [])
   const FORFAIT_PARC_TVAC = forfaitParcTvac
   const FORFAIT_PARC_HTVA = Math.round((FORFAIT_PARC_TVAC / 1.21) * 100) / 100
+  // Forfait gardiennage : accident police repris par Ethias / Kaze (31/08/2026), ET mission
+  // de source Ethias ou Kaze facturée à Ethias (Olivier 06/10/2026, 2DVR333).
+  const srcForfait = String(form.source || initialMission.source || '')
+  const billedForfait = String(form.billed_to_name || initialMission.billed_to_name || '')
   const forfaitParcApplicable =
-    (form.source || initialMission.source) === 'police_accident'
-    && /ethias|kaze/i.test(String(form.billed_to_name || initialMission.billed_to_name || ''))
+    (srcForfait === 'police_accident' && /ethias|kaze/i.test(billedForfait))
+    || (['ethias', 'kaze'].includes(srcForfait) && /ethias/i.test(billedForfait))
 
   // Nombre de remarques de facturation (pour l'alerte en haut de fiche).
   const [billingRemarkCount, setBillingRemarkCount] = useState(0)
@@ -3652,7 +3656,7 @@ export default function MissionDetailClient({
                         <span className="block text-ink-muted mt-0.5">
                           {storageFlat
                             ? `Le parc est facturé ${FORFAIT_PARC_TVAC} € TVAC (${FORFAIT_PARC_HTVA.toFixed(2)} € HTVA) au total, quel que soit le nombre de jours.`
-                            : 'Accident police repris par Ethias / Kaze : le parc se facture au forfait, pas au jour.'}
+                            : 'Accident police repris par Ethias / Kaze, ou mission Ethias / Kaze facturée à Ethias : le parc se facture au forfait, pas au jour.'}
                         </span>
                       </span>
                     </label>
