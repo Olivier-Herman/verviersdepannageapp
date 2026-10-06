@@ -157,3 +157,26 @@ export async function momoConfirm(userId: string, ids: number[], pin: string): P
   }
   return out
 }
+
+/** Rattrapage (tâche de 15 min) : un paiement confirmé par Momo alors que l'encodage Scrada était
+ *  coupé ou indisponible part dès qu'il est actif. Jamais une ligne déjà tentée en erreur : un
+ *  échec peut avoir écrit quand même, elle reste à vérifier à la main (visible chez Olivier). */
+export async function encodeConfirmedBacklog(): Promise<{ encoded: number; errors: string[] }> {
+  const out = { encoded: 0, errors: [] as string[] }
+  const on = (await getBusinessText('especes_scrada_actif').catch(() => 'non')).toLowerCase() === 'oui' && scradaConfigured()
+  if (!on) return out
+  const sb = createAdminClient()
+  const typeId = await getBusinessText('scrada_type_paiement_client')
+  const { data } = await sb.from('cash_handover_items').select('*').eq('status', 'confirmed').is('last_error', null).is('scrada_line_id', null).order('odoo_payment_id').limit(10)
+  for (const it of data || []) {
+    try {
+      const lineId = await encodeCashLine(it, it.confirmed_at, typeId)
+      await sb.from('cash_handover_items').update({ status: 'encoded', encoded_at: new Date().toISOString(), scrada_line_id: lineId || null, last_error: null }).eq('odoo_payment_id', it.odoo_payment_id).eq('status', 'confirmed')
+      out.encoded++
+    } catch (e: any) {
+      await sb.from('cash_handover_items').update({ last_error: `Scrada — ${String(e?.message || e).slice(0, 280)}` }).eq('odoo_payment_id', it.odoo_payment_id)
+      out.errors.push(`${it.payment_name} : ${e?.message || e}`)
+    }
+  }
+  return out
+}
