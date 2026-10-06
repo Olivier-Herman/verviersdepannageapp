@@ -20,6 +20,19 @@ async function handleGET(req: Request) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
   try {
+    // 0) Mails de police arrivés dans info@ → transférés à fourriere@ (sans doublon), 06/10/2026.
+    let infoForward: any = null
+    try { const { forwardPoliceFromInfo } = await import('@/lib/requisitoire/info-forward'); infoForward = await forwardPoliceFromInfo() }
+    catch (e: any) { infoForward = { error: e?.message || String(e) }; console.error('[cron poll-requisitoires] transfert info@ KO:', e?.message) }
+    // Une panne qui dure (1 h) se voit : une notification aux superadmins, une seule fois par panne.
+    {
+      const { cronFailed, cronRecovered } = await import('@/lib/cron-alert')
+      const { sendNotificationToRoles } = await import('@/lib/notifications/send')
+      const err = infoForward?.error || (infoForward?.errors?.length ? infoForward.errors.join(' ; ') : null)
+      const notify = (title: string, body: string) => sendNotificationToRoles(['superadmin'], 'cron_alert', { title, body, action_url: '/fourriere/requisitoires', data: { cron_error: 'true' } }).then(() => {})
+      if (err) await cronFailed('requisitoires-info-forward', String(err), 60 * 60_000, async () => notify('⚠️ Transfert des mails de police d’info@ en panne', `Les réquisitoires et levées arrivés dans info@ ne partent plus vers la fourrière depuis une heure : ${String(err).slice(0, 160)}`))
+      else await cronRecovered('requisitoires-info-forward', async () => notify('✅ Transfert des mails de police rétabli', 'Les mails de police d’info@ repartent vers la fourrière.'))
+    }
     // 1) Capture des nouveaux emails (+ auto-attache immédiate si match).
     const summary = await pollRequisitoires({ top: 25 })
     // 2) Re-scan de TOUTE la file en attente : rattache les anciens dont la fiche
@@ -30,7 +43,7 @@ async function handleGET(req: Request) {
     let saisie: any = null
     try { saisie = await pollSaisieMailbox(createAdminClient()) }
     catch (e: any) { saisie = { error: e?.message || String(e) }; console.error('[cron poll-requisitoires] veille saisie KO:', e?.message) }
-    return NextResponse.json({ ok: true, ...summary, rematch, saisie })
+    return NextResponse.json({ ok: true, ...summary, rematch, saisie, infoForward })
   } catch (err: any) {
     console.error('[cron poll-requisitoires] KO:', err?.message)
     return NextResponse.json({ error: err?.message || 'Erreur' }, { status: 500 })

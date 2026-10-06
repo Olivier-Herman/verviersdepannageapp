@@ -137,6 +137,13 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     .eq('id', params.id)
   if (updErr) return NextResponse.json({ error: updErr.message }, { status: 500 })
 
+  // Historique des levées (temporaire puis définitive), Olivier 06/10/2026.
+  if (type === 'temporaire' || type === 'definitive') {
+    await sb.from('mission_levees').insert({
+      mission_id: params.id, levee_type: type, levee_date: date, doc_path: firstPath, autorite: note || null, mode: 'manuel', created_by: actor.id,
+    }).then(() => {}, (e: any) => console.warn('[levee-saisie] historique KO:', e?.message))
+  }
+
   await sb.from('mission_logs').insert({
     mission_id: params.id,
     actor_id:   actor.id,

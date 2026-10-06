@@ -262,3 +262,45 @@ export async function moveMessageToFolder(mailbox: string, messageId: string, fo
     return { ok: false, error: e?.message || 'erreur' }
   }
 }
+
+// ── Transfert info@ → fourriere@ (Olivier 06/10/2026) ─────────────────────────
+// Graph ne déplace pas un mail d'une boîte à l'autre : on le TRANSFÈRE (pièces jointes,
+// corps et objet gardés), avec une marque reconnue par l'arrivée des réquisitoires.
+export const INFO_FORWARD_MARK = 'Transfert automatique d’info@ (mail de police)'
+export const INFO_FORWARDED_CATEGORY = 'VD Soft - Transféré à la fourrière'
+
+export interface PoliceCandidate { id: string; internetMessageId: string | null; subject: string; from: string; receivedDateTime: string; categories: string[]; bodyPreview: string; parentFolderId: string }
+
+/** Mails d'info@ reçus depuis `sinceIso` qui ressemblent à du courrier de police (tous dossiers). */
+export async function listPoliceMailsSince(mailbox: string, sinceIso: string): Promise<PoliceCandidate[]> {
+  const sel = '$select=id,internetMessageId,subject,from,receivedDateTime,categories,bodyPreview,parentFolderId'
+  const out = new Map<string, PoliceCandidate>()
+  const add = (v: any[]) => { for (const m of v || []) if (m.receivedDateTime >= sinceIso) out.set(m.id, { id: m.id, internetMessageId: m.internetMessageId || null, subject: m.subject || '', from: m.from?.emailAddress?.address || '', receivedDateTime: m.receivedDateTime, categories: m.categories || [], bodyPreview: m.bodyPreview || '', parentFolderId: m.parentFolderId || '' }) }
+  for (const q of ['"from:police.belgium.eu"', '"réquisitoire"', '"levée de saisie"', '"mainlevée"', '"saisie"']) {
+    const res = await authedFetch(`/users/${encodeURIComponent(mailbox)}/messages?$search=${encodeURIComponent(q)}&${sel}&$top=50`, { headers: { ConsistencyLevel: 'eventual' } })
+    if (!res.ok) throw new Error(`Graph recherche ${res.status} : ${(await res.text()).slice(0, 200)}`)
+    add((await res.json()).value)
+  }
+  return [...out.values()].sort((a, b) => a.receivedDateTime.localeCompare(b.receivedDateTime))
+}
+
+/** Le même mail (même internetMessageId) est-il déjà dans cette boîte ? */
+export async function hasInternetMessageId(mailbox: string, internetMessageId: string): Promise<boolean> {
+  const f = encodeURIComponent(`internetMessageId eq '${internetMessageId.replace(/'/g, "''")}'`)
+  const data = await authedGet(`/users/${encodeURIComponent(mailbox)}/messages?$filter=${f}&$select=id&$top=1`)
+  return (data.value || []).length > 0
+}
+
+/** Transfère un mail (pièces jointes comprises) vers une autre adresse, avec un commentaire en tête. */
+export async function forwardMessage(mailbox: string, messageId: string, to: string, comment: string): Promise<void> {
+  const res = await authedFetch(`/users/${encodeURIComponent(mailbox)}/messages/${encodeURIComponent(messageId)}/forward`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ comment, toRecipients: [{ emailAddress: { address: to } }] }),
+  })
+  if (!res.ok) throw new Error(`Transfert refusé (${res.status}) : ${(await res.text()).slice(0, 200)}`)
+}
+
+/** Nom d'un dossier (pour écarter « Mail auto-géré » et la corbeille). */
+export async function folderDisplayName(mailbox: string, folderId: string): Promise<string> {
+  try { const d = await authedGet(`/users/${encodeURIComponent(mailbox)}/mailFolders/${encodeURIComponent(folderId)}?$select=displayName`); return d.displayName || '' } catch { return '' }
+}

@@ -164,7 +164,15 @@ export default function NotificationsProvider({
   // titre d'onglet qui clignote + notification système du navigateur (si
   // l'utilisateur l'a autorisée dans Mon Profil), clic = retour sur l'onglet.
   // Olivier 2026-09-07.
-  const blockingPending = pending.find(n => n.payload?.data?.modal)
+  // Alarme NON bloquante (data.non_blocking, ex. levée de saisie à vérifier) : encadré
+  // en bas d'écran, « Me rappeler dans 15 min » la cache sur ce poste jusque-là.
+  // Olivier 06/10/2026 : un popup bloquant dérange quand on est dans une facture ou un dossier.
+  const [, setSnoozeTick] = useState(0)
+  useEffect(() => { const t = setInterval(() => setSnoozeTick(x => x + 1), 30_000); return () => clearInterval(t) }, [])
+  const snoozedUntil = (id: string) => { try { return Number(window.localStorage.getItem(`vd_snooze_${id}`) || 0) } catch { return 0 } }
+  const isShown = (n: NotifEvent) => !!n.payload?.data?.modal && !(n.payload?.data?.non_blocking && snoozedUntil(n.id) > Date.now())
+  const snooze = (id: string, minutes: number) => { try { window.localStorage.setItem(`vd_snooze_${id}`, String(Date.now() + minutes * 60_000)) } catch {} setSnoozeTick(x => x + 1) }
+  const blockingPending = pending.find(isShown)
   const blockingId = blockingPending?.id || null
   const blockingTitle = blockingPending?.payload?.title || ''
   const blockingBody = blockingPending?.payload?.body || ''
@@ -194,8 +202,8 @@ export default function NotificationsProvider({
       {children}
       {/* Popup BLOQUANT (réponse obligatoire) : un à la fois, au-dessus de tout */}
       {(() => {
-        const blocking = pending.find(n => n.payload?.data?.modal)
-        return blocking ? <BlockingNotificationModal notif={blocking} onDone={() => markRead(blocking.id)} /> : null
+        const blocking = pending.find(isShown)
+        return blocking ? <BlockingNotificationModal notif={blocking} onDone={() => markRead(blocking.id)} onSnooze={(min: number) => snooze(blocking.id, min)} /> : null
       })()}
       {/* Stack de bandeaux : top-right, plus recente en haut */}
       {pending.some(n => !n.payload?.data?.modal) && (

@@ -21,6 +21,7 @@ import { requalifySourceFromRequisitoire } from './requalify'
 export interface AttachOptions {
   leveeDate?: string                       // YYYY-MM-DD (override UI)
   leveeType?: 'definitive' | 'temporaire'  // override UI
+  mode?: 'auto' | 'manuel'                 // historique des levées (mission_levees)
 }
 
 
@@ -167,6 +168,14 @@ export async function attachRequisitoire(
 
   const { error: uErr } = await sb.from('incoming_missions').update(update).eq('id', missionId)
   if (uErr) return { ok: false, error: uErr.message }
+
+  // Historique des levées : la définitive n'efface plus la temporaire (Olivier 06/10/2026).
+  if (isLevee) {
+    await sb.from('mission_levees').insert({
+      mission_id: missionId, levee_type: leveeType, levee_date: leveeDate, doc_path: intake.doc_path || null,
+      intake_id: intakeId, autorite: ex.autorite || null, mode: opts.mode || 'manuel', created_by: actorId,
+    }).then(() => {}, (e: any) => console.warn('[requisitoire] historique levée KO :', e?.message))
+  }
 
   // ── Motif coché → la fiche est-elle vraiment une saisie ? (AVP / Mal garée) ─
   if (!isLevee) {

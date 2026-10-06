@@ -55,6 +55,13 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     if (!r.ok) return NextResponse.json({ error: r.error }, { status: 400 })
     return NextResponse.json({ ok: true })
   }
+  // Levée de saisie à vérifier (alarme fourrière, 06/10/2026) : { levee_action: 'attach'|'ignore', mission_id?, levee_date? }.
+  if (body?.levee_action === 'attach' || body?.levee_action === 'ignore') {
+    const { decideLeveeAlarm } = await import('@/lib/requisitoire/levee-auto')
+    const r = await decideLeveeAlarm(sb, params.id, userId, body)
+    if (!r.ok) return NextResponse.json({ error: r.error }, { status: 400 })
+    return NextResponse.json({ ok: true, already: !!r.already })
+  }
   // Question à l'équipe : { choice, comment } → responded_at + réponse aux demandeurs. 20/09/2026.
   if (typeof body?.choice === 'string') {
     const { data: n } = await sb.from('notifications_log').select('id, notif_type, payload, responded_at').eq('id', params.id).eq('user_id', userId).maybeSingle()

@@ -15,7 +15,7 @@
 
 import { randomUUID }        from 'crypto'
 import { createAdminClient } from '@/lib/supabase'
-import { listInboxMessages, searchMessages, getPdfAttachments, getMessageBody, type GraphMessage, type GraphMessageBody } from './graph'
+import { listInboxMessages, searchMessages, getPdfAttachments, getMessageBody, type GraphMessage, type GraphMessageBody, INFO_FORWARD_MARK } from './graph'
 import { extractRequisitoireFromPdf, extractRequisitoireFromText } from './extract'
 import { findRequisitoireCandidates } from './match'
 import { sourcesWithTag } from '@/lib/missions/source-catalog'
@@ -144,9 +144,15 @@ async function processMessage(
     .from('requisitoire_intake').select('id').eq('source_email_id', msg.id).maybeSingle()
   if (existing) { summary.skipped++; return }
 
+  // Avis de non-remise de la messagerie : jamais un réquisitoire ni une levée (06/10/2026).
+  const { isBounce } = await import('./levee-auto')
+  if (isBounce(msg.from, msg.subject)) { summary.skipped++; return }
+
   // Un mail d'une adresse police belge = à traiter systématiquement
   // (réquisitoire ou levée), même sans PJ ni mot-clé. Olivier 2026-07-01.
-  const fromPolice = /@police\.belgium\.eu\s*>?\s*$/i.test((msg.from || '').trim())
+  // Idem pour un mail de police transféré d'info@ par VD Soft (marque en tête du
+  // transfert, l'expéditeur devient info@) — Olivier 06/10/2026.
+  const fromPolice = /@police\.belgium\.eu\s*>?\s*$/i.test((msg.from || '').trim()) || (msg.bodyPreview || '').includes(INFO_FORWARD_MARK)
   const looksLevee = fromPolice || LEVEE_KEYWORDS.some(k => `${msg.subject} ${msg.bodyPreview}`.toLowerCase().includes(k))
 
   try {
@@ -238,6 +244,13 @@ async function processMessage(
       status: refFicheId ? 'pending' : status,
     })
     summary.captured++
+
+    // Levée de saisie : rattachée seule quand c'est sûr, sinon alarme fourrière (06/10/2026).
+    if (ex.doc_type === 'levee_saisie') {
+      const { handleLevee } = await import('./levee-auto')
+      const r = await handleLevee(sb, intakeId).catch((e: any) => { console.error('[requisitoire] levée auto KO :', e?.message); return 'skip' as const })
+      if (r === 'auto') summary.autoAttached = (summary.autoAttached || 0) + 1
+    }
 
     // Auto-rattachement (saisie/enlèvement UNIQUEMENT — pas les levées) :
     //  - réf SAI- de NOTRE relance → rattache direct à cette fiche (infaillible) ;
@@ -345,7 +358,11 @@ export async function rematchPendingRequisitoires(): Promise<{ scanned: number; 
       // ou dont la réponse porte notre réf SAI- (infaillible). Saisie UNIQUEMENT
       // (jamais les levées). Commande complète du bouton « Rattacher » (annexion +
       // PV + classement email). Olivier 2026-07-29 / réf SAI- 2026-08-11.
-      if ((row as any).doc_type !== 'levee_saisie') {
+      if ((row as any).doc_type === 'levee_saisie') {
+        // Levée : une seule décision par levée (rattachée, alarme ou file), 06/10/2026.
+        const { handleLevee } = await import('./levee-auto')
+        if (await handleLevee(sb, (row as any).id) === 'auto') autoAttached++
+      } else {
         const attachId = refFicheId ?? (match.autoAttach ? (match.best?.mission_id ?? null) : null)
         if (attachId) {
           const { attachRequisitoire } = await import('@/lib/requisitoire/attach')
