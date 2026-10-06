@@ -51,7 +51,7 @@ export const COMMON_PROPOSALS = [
 /** Dossiers de classement proposés au clic « Classer ». */
 export const FILE_FOLDERS = ['0 - Jona et Mobi', 'Fournisseur Divers', 'Mail auto-géré', 'clients divers', 'comptable thg']
 
-const NOISE_FROM = /no-?reply@kaze|circlekeur|scrada\.be|mailer-daemon|postmaster|noreply@(google|microsoft|linkedin|facebook|apple)|calendar-notification|notifications@github|no-reply@accounts|newsletter|marketing@|info@scrada|loyaltek|ticket@|aprovall|verviersdepannage\.(be|com)|towsoft\.ca|lemans\.org/i
+const NOISE_FROM = /no-?reply@kaze|circlekeur|scrada\.be|mailer-daemon|postmaster|noreply@(google|microsoft|linkedin|facebook|apple)|calendar-notification|notifications@github|no-reply@accounts|newsletter|marketing@|info@scrada|loyaltek|ticket@|aprovall|verviers-?depannage\.(be|com)|notifications@verviers-depannage\.odoo\.com|towsoft\.ca|lemans\.org/i
 const NOISE_SUBJECT = /^(accepté|accepted|refusé|declined|annulé|canceled|invitation|réunion|meeting)\s*:|undeliverable|non remis|out of office|absence du bureau|automatic reply|réponse automatique|CODA livre de caisse|Anomalies FleetCards|Fichier de Facturation \(TID\)|A new note was added|EMAIL TICKET|Towing Report|Confirmation d'intervention|Interventie goedgekeurd|^Mail IMA -|PRISE EN CHARGE|INTER PARTNER ASSISTANCE|🚫|Mal Garée —|Caisse Agent|clefs dans le digi/i
 // Ordres de mission d'assisteurs : l'intake s'en charge déjà.
 const MISSION_FROM = /imabenelux|ima\.eu|kaze\.so|touring\.be|vab\.be|allianz|awp|axa|eurocross|europ-assistance|ethias|hexalite|comex|anwb|ipa/i

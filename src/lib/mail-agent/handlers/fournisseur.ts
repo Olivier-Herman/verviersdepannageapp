@@ -32,23 +32,32 @@ export type CompanyKey = keyof typeof COMPANIES
 
 // Expéditeurs qui ne sont jamais des fournisseurs : assisteurs (leurs mails
 // « facture » sont des demandes, pas des factures à encoder) et nos boîtes.
-export const NOT_SUPPLIER = /touring\.be|vab\.be|allianz|awp|imabenelux|ima\.eu|axa|ethias|kaze\.so|eurocross|europ-assistance|verviersdepannage|just\.fgov|police|comex/i
-const INVOICE_SUBJECT = /facture|invoice|factuur|rechnung|rappel|reminder|herinnering/i
+export const NOT_SUPPLIER = /touring\.be|vab\.be|allianz|awp|imabenelux|ima\.eu|axa|ethias|kaze\.so|eurocross|europ-assistance|verviers-?depannage|just\.fgov|police|comex/i
+// « Nouveau document de … » (BillToBox), « votre facture est disponible »… (Olivier 06/10/2026 :
+// une facture qui n'arrive pas par Peppol se prend par mail, quelle que soit la plateforme).
+const INVOICE_SUBJECT = /facture|invoice|factuur|rechnung|rappel|reminder|herinnering|nouveau document de|nieuw document van|new document from|document disponible/i
+/** Plateformes d'envoi de factures (réglage « mail_factures_plateformes ») : un PDF joint suffit. */
+let PLATFORMS: string[] = ['billtobox.be', 'pennylane.com', 'clearfacts.be', 'storecove.com', 'codabox.com', 'einvoicing', 'clouddematinvoicing', 'falco-app.be']
+export async function refreshInvoicePlatforms(): Promise<void> {
+  try { const { getBusinessList } = await import('@/lib/settings/business'); PLATFORMS = (await getBusinessList('mail_factures_plateformes')).map(x => x.toLowerCase()) } catch { /* garde la liste connue */ }
+}
+const fromPlatform = (email: string) => PLATFORMS.some(d => (email || '').toLowerCase().includes(d))
 
 /** Candidat « facture fournisseur » : une PJ, un sujet de facture, pas un assisteur. */
 export function isSupplierCandidate(msg: AgentMessage): boolean {
   if (!msg.hasAttachments) return false
   if (NOT_SUPPLIER.test(msg.fromEmail)) return false
-  return INVOICE_SUBJECT.test(msg.subject || '')
+  return fromPlatform(msg.fromEmail) || INVOICE_SUBJECT.test(msg.subject || '')
 }
 
 export interface SupplierExtraction {
   supplier: string | null; invoice_number: string | null; invoice_date: string | null; total: number | null
-  addressee: string | null; addressee_vat: string | null; is_reminder: boolean
+  addressee: string | null; addressee_vat: string | null; is_reminder: boolean; is_credit_note: boolean
 }
 const PROMPT = `Tu lis un document reçu par une société de dépannage belge. Si c'est une facture (ou un rappel de facture) d'un fournisseur, réponds STRICTEMENT en JSON :
-{"supplier":"<nom du fournisseur émetteur>","invoice_number":"<numéro de facture exact>","invoice_date":"<AAAA-MM-JJ ou null>","total":<montant TTC en euros ou null>,"addressee":"<nom exact de la société destinataire tel qu'écrit>","addressee_vat":"<TVA du destinataire sans espaces ni points, ou null>","is_reminder":<true si c'est un rappel/relance, sinon false>}
-Si ce n'est PAS une facture fournisseur (bon de commande, devis, note de crédit reçue, publicité…), réponds {"not_invoice": true}. N'invente rien : null si absent.`
+{"supplier":"<nom du fournisseur émetteur>","invoice_number":"<numéro de facture exact>","invoice_date":"<AAAA-MM-JJ ou null>","total":<montant TTC en euros ou null>,"addressee":"<nom exact de la société destinataire tel qu'écrit>","addressee_vat":"<TVA du destinataire sans espaces ni points, ou null>","is_reminder":<true si c'est un rappel/relance, sinon false>,"is_credit_note":<true si le DOCUMENT est un avoir / une note de crédit (mot « AVOIR », « note de crédit », « credit note », « creditnota », ou total négatif), sinon false>}
+La nature se lit sur le DOCUMENT, jamais sur l'objet du mail : certains fournisseurs envoient leurs avoirs sous l'objet « Facture n° … » (Verviers Freins). Une note de crédit d'un fournisseur se décrit avec le même JSON, total en valeur absolue et "is_credit_note": true.
+Si ce n'est NI une facture NI une note de crédit fournisseur (bon de commande, devis, publicité…), réponds {"not_invoice": true}. N'invente rien : null si absent.`
 
 let _client: Anthropic | null = null
 const client = () => (_client ??= aiClient('mail-agent/handlers/fournisseur', { apiKey: process.env.ANTHROPIC_API_KEY! }))
@@ -76,6 +85,7 @@ export async function extractSupplierInvoice(mailbox: string, msg: AgentMessage)
     addressee: parsed.addressee ? String(parsed.addressee).slice(0, 120) : null,
     addressee_vat: parsed.addressee_vat ? String(parsed.addressee_vat).replace(/[\s.]/g, '').toUpperCase() : null,
     is_reminder: Boolean(parsed.is_reminder),
+    is_credit_note: Boolean(parsed.is_credit_note) || (typeof parsed.total === 'number' && parsed.total < 0),
   }
 }
 
@@ -117,12 +127,25 @@ export async function findVendorBill(company: CompanyKey, x: SupplierExtraction)
       if (r.length) return r[0]
     }
   }
-  if (x.total != null && x.supplier) {
+  // Fournisseur + montant : seulement à la même date (±3 jours). Sans elle, un abonnement
+  // au montant fixe était pris pour la facture du mois précédent (TowSoft 01/10/2026).
+  if (x.total != null && x.supplier && x.invoice_date) {
     const tok = x.supplier.split(/\s+/).filter(t => t.length >= 4)[0] || x.supplier.slice(0, 6)
-    const r: any[] = await odooRpcCompany(cid, 'account.move', 'search_read', [[['move_type', 'in', ['in_invoice', 'in_refund']], ['company_id', '=', cid], ['partner_id', 'ilike', tok], ['amount_total', '>=', Math.abs(x.total) - 0.02], ['amount_total', '<=', Math.abs(x.total) + 0.02]]], { fields, limit: 1 }) || []
+    const d = new Date(x.invoice_date), lo = new Date(d.getTime() - 3 * 86400_000).toISOString().slice(0, 10), hi = new Date(d.getTime() + 3 * 86400_000).toISOString().slice(0, 10)
+    const r: any[] = await odooRpcCompany(cid, 'account.move', 'search_read', [[['move_type', 'in', ['in_invoice', 'in_refund']], ['company_id', '=', cid], ['state', '!=', 'cancel'], ['partner_id', 'ilike', tok], ['amount_total', '>=', Math.abs(x.total) - 0.02], ['amount_total', '<=', Math.abs(x.total) + 0.02], ['invoice_date', '>=', lo], ['invoice_date', '<=', hi]]], { fields, limit: 1 }) || []
     if (r.length) return r[0]
   }
   return null
+}
+
+/** Ce fournisseur envoie-t-il d'habitude par Peppol (une facture Peppol ces 90 derniers jours) ? */
+async function usuallyPeppol(company: CompanyKey, x: SupplierExtraction): Promise<boolean> {
+  if (!x.supplier) return false
+  const cid = COMPANIES[company].id
+  const tok = x.supplier.split(/\s+/).filter(t => t.length >= 4)[0] || x.supplier.slice(0, 6)
+  const since = new Date(Date.now() - 90 * 86400_000).toISOString().slice(0, 10)
+  const n = await odooRpcCompany<number>(cid, 'account.move', 'search_count', [[['move_type', 'in', ['in_invoice', 'in_refund']], ['company_id', '=', cid], ['partner_id', 'ilike', tok], ['peppol_message_uuid', '!=', false], ['create_date', '>=', since]]]).catch(() => 0)
+  return n > 0
 }
 
 /** Dossier où ranger le mail traité : « Dépannage Riga » pour Riga (s'il existe dans la boîte), sinon « Fournisseur Divers ». */
@@ -134,14 +157,14 @@ async function doneFolderFor(mailbox: string, company: CompanyKey | null): Promi
   return { id: await findFolderIdByName(mailbox, FOURNISSEUR_DONE_FOLDER), name: FOURNISSEUR_DONE_FOLDER }
 }
 
-export interface SupplierOutcome { status: 'applied' | 'to_verify' | 'ignored' | 'skipped'; note: string; extracted: any }
+export interface SupplierOutcome { status: 'applied' | 'to_verify' | 'ignored' | 'skipped' | 'waiting'; note: string; extracted: any }
 
 /**
  * Traite un mail candidat de bout en bout. Ne lève jamais : l'orchestrateur
  * trace ce qu'il renvoie.
  */
-export async function processSupplierMail(sb: any, mailbox: string, msg: AgentMessage, base: Record<string, any>): Promise<SupplierOutcome> {
-  const x = await extractSupplierInvoice(mailbox, msg)
+export async function processSupplierMail(sb: any, mailbox: string, msg: AgentMessage, base: Record<string, any>, opts: { known?: SupplierExtraction; afterWait?: boolean } = {}): Promise<SupplierOutcome> {
+  const x = opts.known ?? await extractSupplierInvoice(mailbox, msg)
   if (x === 'not_invoice') return { status: 'skipped', note: 'pas une facture fournisseur', extracted: null }
   if (!x) return { status: 'to_verify', note: 'Facture fournisseur non lisible automatiquement — lecture humaine requise', extracted: null }
   const company = companyOf(x)
@@ -180,8 +203,19 @@ export async function processSupplierMail(sb: any, mailbox: string, msg: AgentMe
   if (issuer && issuer !== company) {
     return { status: 'to_verify', note: `Facture entre sociétés du groupe (${COMPANIES[issuer].label} → ${COMPANIES[company].label}) introuvable chez ${COMPANIES[company].label} : elle doit exister des deux côtés dans l'ERP (création automatique) — ne pas l'encoder, signaler l'écart`, extracted: { ...extracted, intraGroup: true } }
   }
+  // Avoir (note de crédit) : l'alias d'achats de l'ERP en ferait une facture POSITIVE (Verviers Freins
+  // 126015260 → « facture » de 45,70 € payée par Riga, 23/09/2026). Jamais transféré : signalé, à encoder
+  // en note de crédit (Olivier 06/10/2026 : la nature se lit sur le document, pas sur l'objet du mail).
+  if (x.is_credit_note) {
+    return { status: 'to_verify', note: `Note de crédit (avoir) ABSENTE de l'ERP (${COMPANIES[company].label}) : ${x.supplier || '?'} n° ${x.invoice_number || '?'}${x.total != null ? ' · ' + Math.abs(x.total) + ' €' : ''} — à encoder comme NOTE DE CRÉDIT (pas transférée : l'encodage automatique en ferait une facture)`, extracted }
+  }
   if (x.is_reminder) {
     return { status: 'to_verify', note: `Rappel d'une facture ABSENTE d'Odoo (${COMPANIES[company].label}) : ${x.supplier || '?'} n° ${x.invoice_number || '?'}${x.total != null ? ' · ' + x.total + ' €' : ''} — à encoder et à payer`, extracted }
+  }
+  // Fournisseur habitué de Peppol : la version Peppol arrive souvent quelques heures après le
+  // mail (Verviers Freins, Odoo SA, 01/10/2026 → doublons). On attend 24 h, puis on revérifie.
+  if (!opts.afterWait && await usuallyPeppol(company, x)) {
+    return { status: 'waiting' as any, note: `Fournisseur habitué de Peppol : attente de 24 h avant l'envoi à l'encodage (la version Peppol arrive souvent plus tard)`, extracted: { ...extracted, waitUntil: new Date(Date.now() + 24 * 3600_000).toISOString() } }
   }
   const alias = COMPANIES[company].alias
   const fw = await forwardMessage(mailbox, msg.id, alias, `Encodage automatique (agent mail VD Soft) — ${COMPANIES[company].label} · ${x.supplier || ''} n° ${x.invoice_number || ''}`)

@@ -18,8 +18,9 @@ async function handleGET(req: Request) {
   try {
     // Expéditeurs des rejets = réglages métier, relus à chaque passage (plus de liste codée).
     await Promise.all([refreshAwpSenders(), refreshImaSenders()])
-    // Olivier 23/09/2026 : toutes les 15 min, relire J-1 suffit.
-    return NextResponse.json({ ok: true, ...(await scanMailboxes({ sinceDays: 1, limit: 50 })) })
+    // Olivier 23/09/2026 : toutes les 15 min. Deux jours (06/10/2026) : une facture mise en attente
+    // de sa version Peppol est revérifiée 24 h plus tard, il faut donc encore la voir.
+    return NextResponse.json({ ok: true, ...(await scanMailboxes({ sinceDays: 2, limit: 50 })) })
   } catch (err: any) {
     console.error('[cron mail-agent] KO:', err?.message)
     return NextResponse.json({ error: err?.message || 'Erreur' }, { status: 500 })

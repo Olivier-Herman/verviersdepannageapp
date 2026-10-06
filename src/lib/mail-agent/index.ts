@@ -22,7 +22,7 @@ import { findFolderIdByName, listFolderMessages, listAllFolders, getMessageText,
 import type { AgentMessage } from './graph'
 import { refreshAwpSenders } from './handlers/awp-rejet'
 import { refreshImaSenders } from './handlers/ima-rejet'
-import { isSupplierCandidate, processSupplierMail } from './handlers/fournisseur'
+import { isSupplierCandidate, processSupplierMail, refreshInvoicePlatforms } from './handlers/fournisseur'
 import { triageMail, isNoise, isAssistanceMission, isHandledElsewhere, twinInQueue, readAutoFamilies } from './triage'
 import { executeDecision } from './actions'
 import { handlerFor, handlerById } from './handlers'
@@ -95,9 +95,16 @@ export async function scanFolder(opts: { mailbox?: string; folder?: string; fold
         if (isSupplierCandidate(msg)) {
           const seen = await findKnownItem(sb, mailbox, 'fournisseur', msg, folder)
           if (seen && ['applied', 'ignored', 'skipped', 'to_verify'].includes(seen.status)) { report.skipped++; continue }
+          // En attente de la version Peppol : revérifiée après 24 h, sans relire le PDF (pas de nouvel appel IA).
+          let known: any = null
+          if (seen?.status === 'waiting') {
+            const { data: it } = await sb.from('mail_agent_items').select('extracted').eq('id', seen.id).maybeSingle()
+            if (!it?.extracted?.waitUntil || new Date(it.extracted.waitUntil).getTime() > Date.now()) { report.skipped++; continue }
+            known = it.extracted
+          }
           const base = { handler: 'fournisseur', mailbox, message_id: msg.id, folder, received_at: msg.receivedAt || null, from_email: msg.fromEmail, subject: msg.subject, updated_at: new Date().toISOString() }
           try {
-            const out = await processSupplierMail(sb, mailbox, msg, base)
+            const out = await processSupplierMail(sb, mailbox, msg, base, known ? { known, afterWait: true } : {})
             await upsert(sb, base, { status: out.status, blocked_reason: out.note, extracted: out.extracted })
             if (out.status === 'applied') { report.captured++; report.applied++ }
             else if (out.status === 'to_verify') { report.captured++; report.toVerify++ }
@@ -269,7 +276,7 @@ const SKIP_FOLDERS = [
   'courrier indésirable', 'courrier indesirable', 'junk email', 'junk e-mail', 'brouillons', 'drafts', 'boîte d\'envoi', 'boite d\'envoi', 'outbox',
   'archive', 'historique des conversations', 'conversation history', 'notes', 'journal', 'rss feeds', 'flux rss',
 ]
-export async function scanAllFolders(opts: { mailbox?: string; limit?: number; sinceDays?: number; triage?: boolean; onlyFolders?: string[] } = {}): Promise<ScanReport & { folders: string[] }> {
+export async function scanAllFolders(opts: { mailbox?: string; limit?: number; sinceDays?: number; triage?: boolean; onlyFolders?: string[]; supplierOnlyFolders?: string[] } = {}): Promise<ScanReport & { folders: string[] }> {
   const mailbox = opts.mailbox || MAIL_AGENT_MAILBOX
   // Incrémental : par défaut les 45 derniers jours (bouton Scanner) ; le cron
   // passe J-1 toutes les 15 min (Olivier 23/09), un rejet ne reste jamais plus d'un quart
@@ -283,8 +290,14 @@ export async function scanAllFolders(opts: { mailbox?: string; limit?: number; s
     if (SKIP_FOLDERS.some(sk => lname === sk)) continue
     // Périmètre restreint (info@ : « 0 - Jona et Mobi » et « 0 - Scan Facturation »
     // avec leurs sous-dossiers, Olivier 23/09/2026 — « pour ne pas être noyés »).
-    if (opts.onlyFolders?.length && !opts.onlyFolders.some(o => f.path.toLowerCase().includes('/' + o.toLowerCase()))) continue
-    const r = await scanFolder({ mailbox, folder: f.path.replace(/^\//, ''), folderId: f.id, limit: opts.limit ?? 50, since, triage: opts.triage })
+    // Hors périmètre mais dossier « factures seulement » (racine de la Boîte de réception d'info@,
+    // Olivier 06/10/2026) : lu pour les factures fournisseurs, jamais pour le tri des cartes.
+    let triage = opts.triage
+    if (opts.onlyFolders?.length && !opts.onlyFolders.some(o => f.path.toLowerCase().includes('/' + o.toLowerCase()))) {
+      if (!opts.supplierOnlyFolders?.some(o => f.path.toLowerCase() === '/' + o.toLowerCase())) continue
+      triage = false
+    }
+    const r = await scanFolder({ mailbox, folder: f.path.replace(/^\//, ''), folderId: f.id, limit: opts.limit ?? 50, since, triage })
     total.folders.push(f.path)
     total.scanned += r.scanned; total.captured += r.captured; total.ready += r.ready; total.blocked += r.blocked
     total.toVerify += r.toVerify; total.skipped += r.skipped; total.applied += r.applied; total.toDecide = (total.toDecide || 0) + (r.toDecide || 0); total.errors.push(...r.errors)
@@ -300,10 +313,15 @@ export const MAILBOX_SCOPE: Record<string, string[] | undefined> = {
   'administration@verviersdepannage.com': undefined,
   'fourriere@verviersdepannage.be': undefined,   // tout, sauf ce que les modules Saisie / Domaine traitent (cf. isHandledElsewhere)
 }
+/** Dossiers lus pour les factures fournisseurs SEULEMENT, hors périmètre du tri (Olivier 06/10/2026). */
+export const SUPPLIER_ONLY_SCOPE: Record<string, string[] | undefined> = {
+  'info@verviersdepannage.com': ['Boîte de réception', 'Inbox'],
+}
 export async function scanMailboxes(opts: { sinceDays?: number; limit?: number } = {}): Promise<ScanReport & { folders: string[] }> {
   const sb = createAdminClient()
   const { data: st } = await sb.from('app_settings').select('value').eq('key', 'mail_agent_triage').maybeSingle()
   let triage = true; try { triage = st?.value ? JSON.parse(st.value) !== 'off' : true } catch {}
+  await refreshInvoicePlatforms()
   const total: ScanReport & { folders: string[]; riga?: any } = { scanned: 0, captured: 0, ready: 0, blocked: 0, toVerify: 0, skipped: 0, applied: 0, toDecide: 0, errors: [], folders: [] }
   // Mails de Dépannage Riga d'abord (Olivier 05/10/2026) : rangés dans « Dépannage
   // Riga » avant que le triage n'en fasse des cartes pour le bureau.
@@ -315,7 +333,7 @@ export async function scanMailboxes(opts: { sinceDays?: number; limit?: number }
     total.errors.push(...r.errors)
   } catch (e: any) { total.errors.push(`Riga : ${e?.message || String(e)}`) }
   for (const mailbox of TRIAGE_MAILBOXES) {
-    const r = await scanAllFolders({ ...opts, mailbox, triage, onlyFolders: MAILBOX_SCOPE[mailbox] })
+    const r = await scanAllFolders({ ...opts, mailbox, triage, onlyFolders: MAILBOX_SCOPE[mailbox], supplierOnlyFolders: SUPPLIER_ONLY_SCOPE[mailbox] })
     total.scanned += r.scanned; total.captured += r.captured; total.ready += r.ready; total.blocked += r.blocked; total.toVerify += r.toVerify
     total.skipped += r.skipped; total.applied += r.applied; total.toDecide = (total.toDecide || 0) + (r.toDecide || 0); total.errors.push(...r.errors); total.folders.push(...r.folders.map(f => `${mailbox}:${f}`))
   }
