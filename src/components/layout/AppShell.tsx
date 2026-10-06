@@ -72,7 +72,7 @@ export default function AppShell({
   const { data: session } = useSession()
   const userNavOrder = (session?.user as any)?.navOrder as string[] | null | undefined
   const userRoles = (session?.user as any)?.roles as string[] | null | undefined
-  const visibleNav = filterNavItems({ userModules, userRole, userNavOrder, userRoles })
+  const visibleNavAll = filterNavItems({ userModules, userRole, userNavOrder, userRoles })
   const [drawerOpen, setDrawerOpen] = useState(false)
   // Compteurs d'attention par entrée de menu (ex. congés en attente sur /personnel).
   const [navBadges, setNavBadges] = useState<Record<string, number>>({})
@@ -82,6 +82,8 @@ export default function AppShell({
   const [navEspacesFlag, setNavEspacesFlag] = useState<boolean | undefined>(undefined)
   // Autres flags du user (nav-badges) : masquent les sections `hiddenWhenFlag` (ex. facturation_v2 → « Liste par fiche (ancienne) »).
   const [navFlags, setNavFlags] = useState<Record<string, boolean>>({})
+  // Entrées réservées à des comptes nommés (ex. « Propositions des agents », Olivier 06/10/2026).
+  const visibleNav = visibleNavAll.filter(i => !i.ownerOnly || navFlags.agents_shortcut)
   // Menu v3 (lot 1) : zone « Maintenant » du rôle + favoris de l'utilisateur.
   const [navNow, setNavNow]   = useState<string[]>([])
   const [navFavs, setNavFavs] = useState<string[]>([])

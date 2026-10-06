@@ -34,7 +34,13 @@ export async function GET() {
     const h = await readAxaHealth().catch(() => null)
     if (h && !h.ok && h.consecutive_failures >= 3) badges['/admin/axa'] = 1
   }
-  const flags = { nav_menu_v2: await isPreviewOn('nav_menu_v2', u.role, u.id), nav_espaces: await isPreviewOn('nav_espaces', u.role, u.id), facturation_v2: await isPreviewOn('facturation_v2', u.role, u.id) }   // facturation_v2 : éteint « Liste par fiche (ancienne) » dans le menu (temps 3, 21/09/2026)   // espaces : pilotes Olivier + Jona (16/09/2026)   // u.id : les pilotes nommés (Jona) voient le menu v3
+  const agentsOwner = await getBusinessList('nav_agents_user_ids').then(ids => ids.includes(u.id)).catch(() => false)
+  if (agentsOwner) {
+    // Propositions et questions des agents en attente (Olivier 06/10/2026).
+    const { count } = await sb.from('agent_proposals').select('id', { count: 'exact', head: true }).eq('status', 'to_validate')
+    if (count) badges['/admin/agents'] = count
+  }
+  const flags = { agents_shortcut: agentsOwner, nav_menu_v2: await isPreviewOn('nav_menu_v2', u.role, u.id), nav_espaces: await isPreviewOn('nav_espaces', u.role, u.id), facturation_v2: await isPreviewOn('facturation_v2', u.role, u.id) }   // facturation_v2 : éteint « Liste par fiche (ancienne) » dans le menu (temps 3, 21/09/2026)   // espaces : pilotes Olivier + Jona (16/09/2026)   // u.id : les pilotes nommés (Jona) voient le menu v3
 
   // Gestion du personnel : congés en attente de traitement (pending + annulation demandée).
   if (isPersonnelStaff(u)) {

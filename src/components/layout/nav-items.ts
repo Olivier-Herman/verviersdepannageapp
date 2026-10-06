@@ -14,6 +14,8 @@ export interface NavItem {
   icon:     string
   moduleId: string | null
   role?:    'dispatcher_or_admin' | 'superadmin' | 'superadmin_or_rh' | 'non_driver' | 'mail_agent' | 'staff'
+  /** Réservé aux comptes nommés (réglage nav_agents_user_ids) : l'AppShell le montre seulement si /api/nav-badges renvoie flags.agents_shortcut. */
+  ownerOnly?: boolean
 }
 
 export const NAV_ITEMS: NavItem[] = [
@@ -44,6 +46,8 @@ export const NAV_ITEMS: NavItem[] = [
   // Olivier 2026-08-31 : Agent Mail en rodage → superadmin uniquement.
   // Le module 'mail_agent' existe déjà en base (désactivé) : pour l'ouvrir à
   // Jona/Momo, réactiver le module et repasser sur moduleId: 'mail_agent'.
+  // Olivier 06/10/2026 : raccourci vers les propositions des agents, visible par lui seul.
+  { href: '/admin/agents',      label: 'Propositions des agents', icon: '🤖', moduleId: null, role: 'superadmin', ownerOnly: true },
   { href: '/mail-agent',        label: 'Agent Mail',          icon: '📬', moduleId: null, role: 'mail_agent' },   // admin/superadmin + rôle complémentaire « mail_agent » (Jona, 28/09/2026)
   // Courrier papier (29/09/2026) : bouton direct dans le menu, demandé par Olivier.
   // En pilote (flag courrier) — la page renvoie à l'accueil ceux qui ne sont pas pilotes.
