@@ -5,8 +5,13 @@
 // ferme l'app. Ici :
 //  - au retour à l'écran (après ≥ 20 s d'absence), on compare la version de la page à celle
 //    en ligne ; différente → rechargement (sauf saisie en cours : au prochain retour) ;
-//  - un morceau de code introuvable (erreur de chargement) → rechargement immédiat, une fois.
-import { useEffect } from 'react'
+//  - un morceau de code introuvable (erreur de chargement) → rechargement immédiat, une fois ;
+//  - écran qui reste visible (PC de bureau, jamais en veille) : contrôle toutes les 5 min et au
+//    retour du focus ; si la version a changé, rechargement au prochain changement de page
+//    (rien en cours n'est perdu) ou dès que personne ne saisit (Momo 06/10/2026 : alerte espèces
+//    absente d'un onglet ouvert avant la mise en ligne).
+import { useEffect, useRef } from 'react'
+import { usePathname } from 'next/navigation'
 
 const MINE = process.env.NEXT_PUBLIC_BUILD_SHA || ''
 const KEY = 'vd_stale_reload_at'
@@ -27,16 +32,31 @@ const typing = () => {
 }
 
 export default function StaleVersionReload() {
+  const stale = useRef(false)
+  const pathname = usePathname()
+  const first = useRef(true)
+  // Changement de page dans l'app : la page quittée n'a plus rien en cours → on peut recharger.
   useEffect(() => {
-    let hiddenAt = 0
-    const check = async () => {
+    if (first.current) { first.current = false; return }
+    if (stale.current) reloadOnce('nouvelle version en ligne (changement de page)')
+  }, [pathname])
+  useEffect(() => {
+    let hiddenAt = 0, blurAt = 0
+    const check = async (soft = false) => {
       if (!MINE) return
       try {
         const r = await fetch('/api/version', { cache: 'no-store' })
         const { sha } = await r.json()
-        if (sha && sha !== MINE && !typing()) reloadOnce('nouvelle version en ligne')
+        if (sha && sha !== MINE) { stale.current = true; if (!soft && !typing()) reloadOnce('nouvelle version en ligne') }
       } catch { /* hors réseau : on réessaiera au prochain retour */ }
     }
+    // Écran toujours visible : on note seulement (soft) ; le rechargement attend un changement de
+    // page, un retour d'onglet ou de fenêtre — jamais au milieu d'un écran en cours d'usage.
+    const iv = setInterval(() => { if (document.visibilityState !== 'hidden') check(true) }, 5 * 60_000)
+    const onBlur = () => { blurAt = Date.now() }
+    // Focus de fenêtre : PC seulement (dans l'app native, la caméra fait perdre le focus).
+    const native = /VDNav\//.test(navigator.userAgent)
+    const onFocus = () => { if (!native && blurAt && Date.now() - blurAt >= 20_000) { if (stale.current && !typing()) reloadOnce('nouvelle version en ligne'); else check() } }
     const onVis = () => {
       if (document.visibilityState === 'hidden') { hiddenAt = Date.now(); return }
       if (hiddenAt && Date.now() - hiddenAt >= 20_000) check()
@@ -46,10 +66,15 @@ export default function StaleVersionReload() {
     const onError = (ev: ErrorEvent) => { if (isChunkError(ev.error || ev.message)) reloadOnce('morceau de code introuvable') }
     const onShow = (e: PageTransitionEvent) => { if (e.persisted) check() }
     document.addEventListener('visibilitychange', onVis)
+    window.addEventListener('blur', onBlur)
+    window.addEventListener('focus', onFocus)
     window.addEventListener('pageshow', onShow)
     window.addEventListener('unhandledrejection', onRejection)
     window.addEventListener('error', onError)
     return () => {
+      clearInterval(iv)
+      window.removeEventListener('blur', onBlur)
+      window.removeEventListener('focus', onFocus)
       document.removeEventListener('visibilitychange', onVis)
       window.removeEventListener('pageshow', onShow)
       window.removeEventListener('unhandledrejection', onRejection)

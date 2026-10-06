@@ -2,7 +2,7 @@
 //
 // Inventaire des espèces à remettre à Momo (Olivier 06/10/2026) : paiements en espèces
 // NON rapprochés de l'ERP — Dépannage caisse en entier, Encaissement Chauffeur depuis le
-// 01/09/2026 — avec qui a l'argent, le client, la facture, le véhicule, le lieu et la date
+// 15/06/2026 — avec qui a l'argent, le client, la facture, le véhicule, le lieu et la date
 // d'intervention. Un paiement déjà confirmé par Momo (ou encodé) n'est jamais représenté,
 // même tant qu'il n'est pas encore rapproché.
 
@@ -31,6 +31,20 @@ function holderFromText(text: string, users: U[]): U | null {
   return ini.length === 1 ? ini[0] : null
 }
 
+const words = (s: string) => norm(s).split(/[^a-z]+/).filter(w => w.length >= 3)
+
+/** Le mouvement d'encaissement en espèces (écran Mouvements) qui correspond au paiement :
+ *  même montant, même client, à deux jours près. Un seul candidat, sinon rien. */
+export async function movementFor(p: { amount: number; date: string; partner_id?: any }): Promise<any | null> {
+  const day = 86_400_000, d0 = new Date(`${p.date}T00:00:00Z`).getTime()
+  const { data } = await createAdminClient().from('interventions').select('driver_id, client_name, plate, brand_text, model_text, location_address, intervention_date')
+    .eq('payment_mode', 'cash').eq('amount', p.amount)
+    .gte('intervention_date', new Date(d0 - 2 * day).toISOString()).lt('intervention_date', new Date(d0 + 3 * day).toISOString()).limit(20)
+  const client = new Set(words(String(p.partner_id?.[1] || '')))
+  const hits = (data || []).filter((m: any) => m.driver_id && words(m.client_name || '').some(w => client.has(w)))
+  return hits.length === 1 ? hits[0] : null
+}
+
 export async function syncCashInventory(): Promise<{ total: number; added: number; closed: number }> {
   const sb = createAdminClient()
   const [jDep, jChau, mDep, mChau] = await Promise.all([getBusinessNumber('odoo_journal_caisse_depannage'), getBusinessNumber('odoo_journal_encaissement_chauffeur'), getBusinessNumber('odoo_methode_especes_depannage'), getBusinessNumber('odoo_methode_especes_chauffeur')])
@@ -52,13 +66,19 @@ export async function syncCashInventory(): Promise<{ total: number; added: numbe
     if (st) continue   // déjà suivi : on ne touche ni au statut ni à l'attribution
     const invoiceName = String(p.memo || '').split(/[\s(]/)[0]
     const inv: any[] = invoiceName ? await odooRpc('account.move', 'search_read', [[['name', '=', invoiceName], ['move_type', '=', 'out_invoice']]], { fields: ['id', 'x_studio_plaque_1'], limit: 1 }) : []
-    // Qui a l'argent
+    // Qui a l'argent : le mouvement d'encaissement VD Soft fait foi (Olivier 06/10/2026),
+    // puis « encaissé par », le mémo, le fil, et en dernier qui a créé le paiement.
+    const mv = await movementFor(p)
     let holder: U | null = null
+    if (mv) {
+      holder = U.find(u => u.id === mv.driver_id) || null
+      if (!holder) { const { data: d } = await sb.from('users').select('id, name, odoo_user_id').eq('id', mv.driver_id).maybeSingle(); holder = (d as U) || null }
+    }
     const isChau = p.journal_id?.[0] === jChau
     const texts: string[] = [String(p.memo || '')]
     const msgs: any[] = await odooRpc('mail.message', 'search_read', [[['model', 'in', ['account.payment', 'account.move']], ['res_id', 'in', [p.id, inv[0]?.id || 0]]]], { fields: ['body', 'model'], limit: 30 })
     for (const m of msgs) texts.push(strip(m.body))
-    if (isChau) {
+    if (!holder && isChau) {
       const by = texts.join(' ').match(/encaiss[ée] par\s+([^·.,;]+?)(?:\s*[·.,;]|$)/i)?.[1]
       if (by) holder = holderFromText(by, U)
     }
@@ -70,8 +90,9 @@ export async function syncCashInventory(): Promise<{ total: number; added: numbe
     // « Peugeot/508/CG250ZY » → « CG250ZY · Peugeot 508 »
     const vparts = inv[0]?.x_studio_plaque_1 ? String(inv[0].x_studio_plaque_1[1]).split('/') : []
     const plate = vparts.length ? vparts[vparts.length - 1] : null
-    const vehicle = plate ? [plate, vparts.slice(0, -1).filter(x => x && x !== 'Autre').join(' ')].filter(Boolean).join(' · ') : null
-    let place: string | null = null, idate: string | null = null, guessed = false
+    const vehicle = plate ? [plate, vparts.slice(0, -1).filter(x => x && x !== 'Autre').join(' ')].filter(Boolean).join(' · ')
+      : mv?.plate ? [mv.plate, [mv.brand_text, mv.model_text].filter(Boolean).join(' ')].filter(Boolean).join(' · ') : null
+    let place: string | null = mv?.location_address || null, idate: string | null = mv?.intervention_date ? String(mv.intervention_date).slice(0, 10) : null, guessed = false
     if (invoiceName) {
       const { data: m } = await sb.from('incoming_missions').select('incident_address, vehicle_location, created_at').or(`invoice_number.eq.${invoiceName}${inv[0] ? `,invoice_odoo_id.eq.${inv[0].id}` : ''}`).limit(1)
       if (m?.[0]) { place = m[0].incident_address || m[0].vehicle_location || null; idate = String(m[0].created_at).slice(0, 10) }

@@ -5,6 +5,7 @@
 //   - Momo (ses deux comptes) : les paiements à confirmer ; cases à cocher, « J'ai bien reçu
 //     l'argent » + code PIN, « Pas reçu », « Me le rappeler dans 15 min ». Fermeture par les boutons seulement.
 import { useCallback, useEffect, useState } from 'react'
+import { pollWhenVisible } from '@/lib/client/poll'
 
 type Item = {
   odoo_payment_id: number; journal: string; payment_name: string; payment_date: string; amount: number
@@ -50,7 +51,14 @@ export default function EspecesAlert() {
       if (seen !== today && wd !== 0 && wd !== 6) { setOpen(true); try { window.localStorage.setItem('vd_especes_vu', today) } catch {} }
     }
   }, [])
-  useEffect(() => { load(); const t = setInterval(load, 60_000); return () => clearInterval(t) }, [load])
+  // Toutes les 30 s tant que l'écran est visible, et tout de suite au retour sur l'app,
+  // au retour du focus (PC) et au retour du réseau : Momo ne recharge jamais (06/10/2026).
+  useEffect(() => {
+    const stop = pollWhenVisible(load, 30_000)
+    const now = () => { if (document.visibilityState !== 'hidden') load() }
+    window.addEventListener('focus', now); window.addEventListener('online', now)
+    return () => { stop(); window.removeEventListener('focus', now); window.removeEventListener('online', now) }
+  }, [load])
 
   const post = async (body: any) => {
     setBusy(true); setMsg(null)

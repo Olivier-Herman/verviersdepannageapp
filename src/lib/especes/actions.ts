@@ -14,6 +14,7 @@ import bcrypt from 'bcryptjs'
 import { createAdminClient } from '@/lib/supabase'
 import { getBusinessList, getBusinessText } from '@/lib/settings/business'
 import { encodeCashLine, scradaConfigured } from './scrada'
+import { sendPushToUsers } from '@/lib/push'
 
 const TZ = 'Europe/Brussels'
 function bxl(d = new Date()) {
@@ -60,7 +61,32 @@ export async function adminAction(ids: number[], action: 'transfer' | 'request')
   const now = new Date().toISOString()
   const patch = action === 'request' ? { status: 'requested', requested_at: now, next_show_at: null, updated_at: now } : { status: 'transferred', transferred_at: now, next_show_at: null, updated_at: now }
   const { data } = await sb.from('cash_handover_items').update(patch).in('odoo_payment_id', ids).in('status', OPEN).select('odoo_payment_id')
-  return (data || []).length
+  const n = (data || []).length
+  // Momo n'a pas forcément VD Soft ouvert : notification sur ses deux comptes (Olivier 06/10/2026).
+  // Un transfert hors 13 h–14 h est notifié par la tâche de 13 h (notifyMomoDue).
+  if (n && (action === 'request' || inMomoWindow())) await notifyMomo(n).catch(() => {})
+  return n
+}
+
+export async function notifyMomo(n: number) {
+  const ids = await getBusinessList('especes_momo_user_ids').catch(() => [] as string[])
+  if (!ids.length) return
+  await sendPushToUsers(ids, { title: 'Espèces à confirmer', body: `${n} remise${n > 1 ? 's' : ''} d’espèces à confirmer : ouvre VD Soft.`, url: '/', tag: 'especes-momo' })
+}
+
+/** Tâche de 15 min : ce qui devient visible pour Momo depuis le dernier passage (rappel demandé,
+ *  « pas reçu » revenu à 13 h, transferts au début de 13 h) → une notification. */
+export async function notifyMomoDue(now = new Date()) {
+  const sb = createAdminClient()
+  const since = now.getTime() - 15 * 60_000
+  const { data } = await sb.from('cash_handover_items').select('odoo_payment_id, status, next_show_at, transferred_at').in('status', ['requested', 'transferred'])
+  const b = bxl(now)
+  const due = (data || []).filter((x: any) => {
+    if (x.next_show_at) { const t = new Date(x.next_show_at).getTime(); return t > since && t <= now.getTime() && (x.status === 'requested' || inMomoWindow(now)) }
+    return x.status === 'transferred' && inMomoWindow(now) && b.min < 15
+  })
+  if (due.length) await notifyMomo(due.length)
+  return due.length
 }
 
 /** Ce que Momo voit maintenant : demandés (à toute heure) + transférés (13 h–14 h en semaine). */
