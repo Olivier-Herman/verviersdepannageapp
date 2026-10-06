@@ -36,6 +36,10 @@ const onSite = { type: 'host', value: SITE_HOST }
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  // Version de la page chargée : l'app la compare à la version en ligne au retour de
+  // veille et se recharge si elle a changé (Olivier 06/10/2026 : app figée après le
+  // verrouillage — des clics qui ne chargeaient plus le code d'une version retirée).
+  env: { NEXT_PUBLIC_BUILD_SHA: process.env.VERCEL_GIT_COMMIT_SHA || '' },
   async rewrites() {
     return {
       beforeFiles: [

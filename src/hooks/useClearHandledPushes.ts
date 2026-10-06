@@ -25,10 +25,6 @@ export function useClearHandledPushes(userId: string | null | undefined) {
       try {
         const { Capacitor } = await import('@capacitor/core')
         if (!Capacitor.isNativePlatform()) return
-        // Ancienne app de l'App Store (sans Live Activity) : app figée au retour du
-        // verrouillage depuis le 05/10 chez Matthieu et Fred (Olivier 06/10/2026) —
-        // traitement coupé sur ces versions le temps de confirmer la cause.
-        if (Capacitor.getPlatform() === 'ios' && !Capacitor.isPluginAvailable('LiveActivity')) return
         const { PushNotifications } = await import('@capacitor/push-notifications')
         const { notifications } = await PushNotifications.getDeliveredNotifications()
         if (!notifications?.length) return

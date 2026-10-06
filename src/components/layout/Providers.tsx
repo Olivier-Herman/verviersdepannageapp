@@ -10,6 +10,7 @@ import { I18nProvider }                from '@/lib/i18n/I18nProvider'
 import type { Lang }                   from '@/lib/i18n/types'
 import { PwaNativeGuard }              from '@/components/PwaNativeGuard'
 import TalkieProvider                  from '@/components/talkie/TalkieProvider'
+import StaleVersionReload              from '@/components/layout/StaleVersionReload'
 import TalkieOverlay                   from '@/components/talkie/TalkieOverlay'
 
 function AudioModeMount() {
@@ -46,6 +47,7 @@ export default function Providers({ children }: { children: React.ReactNode }) {
     <ThemeProvider>
       <SessionProvider>
         <AudioModeMount />
+        <StaleVersionReload />
         <TruckConfirmModal />
         <I18nMount>
           <PwaNativeGuard>
