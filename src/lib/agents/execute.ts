@@ -27,11 +27,6 @@ export interface Prepared {
 const today = () => new Date().toISOString().slice(0, 10)
 const ids = (v: unknown): number[] => (Array.isArray(v) ? v : []).map(Number).filter(n => Number.isInteger(n) && n > 0)
 
-/** Partenaires des sociétés du groupe (factures intra-groupe : sans limite pour Rémi). */
-async function groupPartnerIds(company: number): Promise<number[]> {
-  const r: any[] = await odooRpcCompany(company, 'res.company', 'search_read', [[]], { fields: ['partner_id'] }).catch(() => [])
-  return (r || []).map(c => c.partner_id?.[0]).filter(Boolean)
-}
 
 async function readBill(company: number, id: number) {
   const r: any[] = await odooRpcCompany(company, 'account.move', 'read', [[id]], {
@@ -59,10 +54,11 @@ export async function prepare(kind: ProposalKind, agent: AgentAccount, company: 
       if (dup?.length) throw new Error(`Doublon : ${dup[0].name} porte déjà la référence ${b.ref} pour ce fournisseur.`)
     }
     let directAllowed = false, directWhy: string | undefined
-    if (company === 2) {
-      const group = await groupPartnerIds(company)
-      if (group.includes(b.partner_id[0])) { directAllowed = true; directWhy = 'facture entre sociétés du groupe' }
-      else if (b.peppol_message_uuid && b.amount_untaxed <= await getBusinessNumber('agents_seuil_riga_htva')) { directAllowed = true; directWhy = 'Peppol, sous le seuil HTVA' }
+    // Riga (Olivier 06/10/2026) : « s'il est certain il le valide » — Peppol, PDF, mail ou scan,
+    // sans limite de montant. Au moindre doute (certain absent ou faux) : validation par Olivier.
+    if (company === 2 && body?.certain === true) {
+      directAllowed = true
+      directWhy = b.peppol_message_uuid ? 'Peppol, lecture certaine' : 'PDF / mail / scan, lecture certaine'
     }
     return { title: `${b.partner_id[1]} · ${b.ref || b.name || 'brouillon'}`, amount: b.amount_total, payload: { facture_id: id, fournisseur: b.partner_id[1], reference: b.ref, htva: b.amount_untaxed, peppol: Boolean(b.peppol_message_uuid) }, directAllowed, directWhy }
   }

@@ -265,7 +265,7 @@ const ACTION_LABEL: Record<string, string> = { lot_paiement: 'Valider et créer 
 const DIRECT_RULE: Record<string, string> = {
   note_credit: 'Note de crédit / refacturation si certaine (nuit comprise)',
   envoi_comptable: 'Pièces au comptable, depuis la boîte de Mobi (le jour)',
-  facture_achat: 'Achat Riga par Peppol sous le seuil, ou entre sociétés du groupe (le jour)',
+  facture_achat: 'Achat Riga validé quand l’agent est certain de sa lecture, tout canal (le jour)',
   rapprochement_bouton: 'Rapprochements au bouton prêts (Paynovate, SumUp, assureurs) (le jour)',
   rapprochement_banque: 'Rapprochement d’une ligne de banque (le jour)',
   plaque_achat: 'Plaque sur facture d’achat, véhicule retrouvé par VD Soft (le jour)',
