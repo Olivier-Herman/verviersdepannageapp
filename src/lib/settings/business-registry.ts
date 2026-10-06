@@ -30,6 +30,11 @@ export const BUSINESS_SETTINGS: BusinessSettingDef[] = [
   { key: 'odoo_journal_paie',            label: 'Journal des fiches de paie',               group: 'Odoo', kind: 'number', seed: 45, help: 'Exclu des achats et des dépenses.' },
   { key: 'odoo_taxe_achat_21',           label: 'TVA déductible 21 % (taxe d’achat)',       group: 'Odoo', kind: 'number', seed: 23, help: 'Utilisée quand un agent ventile une ligne de banque avec TVA (loyers, frais).' },
   { key: 'odoo_action_refacturer_avance', label: 'Action « Refacturer l’avance de fonds »', group: 'Odoo', kind: 'number', seed: 1227, help: 'Bouton de la facture d’achat que les agents utilisent pour refacturer une avance.' },
+  { key: 'odoo_journal_caisse_depannage',      label: 'Journal « Dépannage caisse »',       group: 'Odoo', kind: 'number', seed: 13 },
+  { key: 'odoo_journal_encaissement_chauffeur', label: 'Journal « Encaissement Chauffeur »', group: 'Odoo', kind: 'number', seed: 15 },
+  { key: 'odoo_methode_especes_depannage',     label: 'Mode « Espèces » (Dépannage caisse)', group: 'Odoo', kind: 'number', seed: 7 },
+  { key: 'odoo_methode_especes_chauffeur',     label: 'Mode « Espèces » (Encaissement Chauffeur)', group: 'Odoo', kind: 'number', seed: 14 },
+  { key: 'scrada_type_paiement_client',        label: 'Scrada — type « Paiement client »',  group: 'Odoo', kind: 'text', seed: '5781be90-4778-4ae4-973c-3b4690b3776d' },
   { key: 'odoo_journal_scrada',          label: 'Journal « Scrada » (livre de caisse)',      group: 'Odoo', kind: 'number', seed: 40, help: 'Reçoit chaque matin les relevés CODA de Scrada.' },
   { key: 'odoo_journal_paiement_fournisseurs', label: 'Journal bancaire des lots de paiement fournisseurs', group: 'Odoo', kind: 'number', seed: 12, help: 'Verviers Dépannage : les paiements fournisseurs partent toujours d’ING (Olivier 04/10/2026). Utilisé par les lots préparés par les agents.' },
   { key: 'odoo_methode_virement_sepa',   label: 'Méthode « Virement SEPA » du journal ci-dessus', group: 'Odoo', kind: 'number', seed: 24 },
@@ -75,6 +80,9 @@ export const BUSINESS_SETTINGS: BusinessSettingDef[] = [
   // ── Menu : zone « Maintenant » par rôle (lot 1 du menu v3, 09/09/2026) ──
   // Chemins de pages, séparés par des virgules, dans l'ordre d'affichage.
   { key: 'nav_agents_user_ids', label: 'Menu « Propositions des agents » — comptes', group: 'Menu', kind: 'list', seed: ['29df3445-f452-4ebc-a7bb-c16a8377289b', 'fd345b74-539b-466b-9b64-19d168f561d4'], help: 'Comptes VD Soft (identifiants) qui voient le raccourci et son compteur. Olivier (Mobi + Olivier Herman), 06/10/2026.' },
+  { key: 'especes_momo_user_ids',  label: 'Espèces — comptes de Momo (alerte de réception)', group: 'Menu', kind: 'list', seed: ['1b628f46-44ef-4a89-bdd7-a648e03f2154', 'e7cbab7f-1d0a-4109-ab60-7b223d088b57'], help: 'L’alerte suit la personne : elle s’affiche sur chacun de ces comptes (Olivier 06/10/2026).' },
+  { key: 'especes_receveur_user_id', label: 'Espèces — caisse qui reçoit (Momo)',            group: 'Menu', kind: 'text', seed: '1b628f46-44ef-4a89-bdd7-a648e03f2154', help: 'La caisse de l’app créditée quand Momo confirme la réception.' },
+  { key: 'especes_scrada_actif',   label: 'Espèces — encodage automatique dans Scrada (oui / non)', group: 'Menu', kind: 'text', seed: 'non', help: 'Non : la confirmation de Momo vide la caisse du chauffeur mais n’encode pas encore dans Scrada (période de test).' },
   { key: 'nav_now_dispatcher',  label: 'Menu « Maintenant » — dispatchers',              group: 'Menu', kind: 'list', seed: ['/dispatch', '/relivraison', '/fourriere', '/fourriere/saisies', '/missions-terminees'], help: 'Pages toujours visibles en haut du menu pour les dispatchers (rôle dispatcher ou module missions).' },
   { key: 'nav_now_facturation', label: 'Menu « Maintenant » — facturation',              group: 'Menu', kind: 'list', seed: ['/facturation/dossiers', '/facturation', '/facturation/allianz', '/facturation/touring', '/admin/amendes'], help: 'Pour les utilisateurs du module facturation qui ne sont pas dispatchers.' },
   { key: 'nav_now_superadmin',  label: 'Menu « Maintenant » — superadmins',              group: 'Menu', kind: 'list', seed: ['/dispatch', '/relivraison', '/fourriere', '/facturation/dossiers', '/chantiers'] },

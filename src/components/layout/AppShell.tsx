@@ -28,6 +28,7 @@ import { useTheme } from '@/components/theme/ThemeProvider'
 import { useOnDutyPing } from '@/hooks/useOnDutyPing'
 import { useMissionGpsTracking } from '@/hooks/useMissionGpsTracking'
 import FacturationButtonAnnounce from '@/components/facturation/FacturationButtonAnnounce'
+import EspecesAlert from '@/components/especes/EspecesAlert'
 import { useSidebarCollapsed } from './useSidebarCollapsed'
 import { Avatar } from '@/components/ui/Avatar'
 
@@ -165,6 +166,7 @@ export default function AppShell({
    <NotificationsProvider userId={userId || null}>
     <WatchPairingBridge />
     <FacturationButtonAnnounce userRole={userRole} userModules={userModules} />
+    <EspecesAlert />
     <div className="min-h-screen flex">
 
       {/* ── SIDEBAR DESKTOP ─────────────────────────────── */}

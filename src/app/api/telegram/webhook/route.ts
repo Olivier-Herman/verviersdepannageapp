@@ -39,6 +39,23 @@ export async function POST(req: Request) {
   const chatId: number | undefined = msg?.chat?.id ?? cbq?.message?.chat?.id
   if (!chatId) return NextResponse.json({ ok: true })
   const chatType = msg?.chat?.type || cbq?.message?.chat?.type
+  // Groupe de décisions d'Olivier : boutons du sujet « Espèces » (06/10/2026). Seul ce groupe
+  // (privé : Olivier et le bot) est écouté ; le clic vaut décision d'Olivier pour CE paiement.
+  if (cbq && chatType !== 'private' && String(cbq.data || '').startsWith('es:')) {
+    const { decisionsGroup, itemText } = await import('@/lib/especes/telegram')
+    const group = await decisionsGroup()
+    if (group && Number(cbq.message?.chat?.id) === group) {
+      const [, act, idStr] = String(cbq.data).split(':')
+      const id = Number(idStr)
+      const { adminAction } = await import('@/lib/especes/actions')
+      const n = await adminAction([id], act === 'r' ? 'request' : 'transfer')
+      const { data: it } = await sb.from('cash_handover_items').select('*').eq('odoo_payment_id', id).maybeSingle()
+      const note = n ? (act === 'r' ? '✅ Demandé à Momo : affiché chez lui maintenant.' : '✅ Transféré à Momo : dans son alerte de 13 h à 14 h.') : `ℹ️ Déjà traité (${it?.status || '?'}).`
+      await tg('answerCallbackQuery', { callback_query_id: cbq.id, text: note.replace(/^.. /, '') })
+      if (it) await tg('editMessageText', { chat_id: group, message_id: cbq.message.message_id, text: itemText(it, note), parse_mode: 'HTML' })
+    }
+    return NextResponse.json({ ok: true })
+  }
   if (chatType !== 'private') {
     // Groupe de décisions d'Olivier (05/10/2026) : on retient seulement quel groupe
     // a écrit au bot (id, nom, sujets activés) pour y ouvrir les sujets « Doubles
