@@ -8,6 +8,7 @@ import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase'
 import { importScradaCoda } from '@/lib/agents/scrada-coda'
 import { journal } from '@/lib/agents/core'
+import { pausedAndLogged } from '@/lib/agents/pause'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 120
@@ -18,6 +19,7 @@ async function trace(payload: Record<string, unknown>) {
 
 export async function GET(req: Request) {
   if (!process.env.CRON_SECRET || req.headers.get('authorization') !== `Bearer ${process.env.CRON_SECRET}`) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  if (await pausedAndLogged('vd-achats', 'Florent', 'Import Scrada du matin')) { await trace({ ok: true, pause: true }); return NextResponse.json({ ok: true, pause: true }) }
   try {
     const res = await importScradaCoda()
     await trace({ ok: !res.stopped, ...res })
