@@ -20,7 +20,7 @@ async function handleGET(req: Request) {
     await Promise.all([refreshAwpSenders(), refreshImaSenders()])
     // Olivier 23/09/2026 : toutes les 15 min. Deux jours (06/10/2026) : une facture mise en attente
     // de sa version Peppol est revérifiée 24 h plus tard, il faut donc encore la voir.
-    return NextResponse.json({ ok: true, ...(await scanMailboxes({ sinceDays: 2, limit: 50 })) })
+    return NextResponse.json({ ok: true, ...(await scanMailboxes({ sinceDays: 2, limit: 200 })) })
   } catch (err: any) {
     console.error('[cron mail-agent] KO:', err?.message)
     return NextResponse.json({ error: err?.message || 'Erreur' }, { status: 500 })

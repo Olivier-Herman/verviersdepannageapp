@@ -15,7 +15,7 @@
 import Anthropic from '@anthropic-ai/sdk'
 import { ANTHROPIC_MODEL } from '@/lib/anthropic-model'
 import { odooRpcCompany } from '@/lib/odoo'
-import { getPdfAttachments, getMessageText, findFolderIdByName, moveMessage, forwardMessage, type AgentMessage } from '../graph'
+import { getDocumentAttachments, getMessageText, findFolderIdByName, findOrCreateFolder, moveMessage, forwardMessage, type AgentMessage } from '../graph'
 import { aiClient } from '@/lib/ai/usage'
 
 export const FOURNISSEUR_DONE_FOLDER = 'Fournisseur Divers'
@@ -32,10 +32,18 @@ export type CompanyKey = keyof typeof COMPANIES
 
 // Expéditeurs qui ne sont jamais des fournisseurs : assisteurs (leurs mails
 // « facture » sont des demandes, pas des factures à encoder) et nos boîtes.
-export const NOT_SUPPLIER = /touring\.be|vab\.be|allianz|awp|imabenelux|ima\.eu|axa|ethias|kaze\.so|eurocross|europ-assistance|verviers-?depannage|just\.fgov|police|comex/i
+// Assureurs (AXA, Allianz, Ethias…) et police ne sont plus écartés d'office : leurs avis d'échéance et
+// factures sont de vrais achats (audit du 06/10/2026). Leurs mails de mission ou de rejet sont pris avant
+// par leurs propres handlers ; le reste est lu, et un document qui n'est pas une facture repasse au tri.
+export const NOT_SUPPLIER = /touring\.be|vab\.be|imabenelux|ima\.eu|kaze\.so|eurocross|europ-assistance|verviers-?depannage|just\.fgov|comex|hexalite|providers\.invoices|claims\.be/i
 // « Nouveau document de … » (BillToBox), « votre facture est disponible »… (Olivier 06/10/2026 :
 // une facture qui n'arrive pas par Peppol se prend par mail, quelle que soit la plateforme).
-const INVOICE_SUBJECT = /facture|invoice|factuur|rechnung|rappel|reminder|herinnering|nouveau document de|nieuw document van|new document from|document disponible/i
+const INVOICE_SUBJECT = /facture|invoice|factuur|rechnung|rappel|reminder|herinnering|nouveau document de|nieuw document van|new document from|document disponible|relev[ée] mensuel|avis d.[ée]ch[ée]ance|vervaldagbericht|note de cr[ée]dit|creditnota|d[ée]compte|quittance/i
+// Réponse à un de nos mails (« RE: », « TR: »…) avec une pièce : souvent la pièce qu'on a réclamée (Codra 05/10/2026, RGF 28/09).
+const REPLY_SUBJECT = /^\s*(re|r[ée]f|tr|fw|fwd|aw|antw)\s*:/i
+/** Expéditeurs dont on attend une pièce (pièces réclamées en attente), relus à chaque passage. */
+let WATCHED = new Set<string>()
+export function setWatchedSenders(emails: string[]) { WATCHED = new Set(emails.map(e => e.toLowerCase())) }
 /** Plateformes d'envoi de factures (réglage « mail_factures_plateformes ») : un PDF joint suffit. */
 let PLATFORMS: string[] = ['billtobox.be', 'pennylane.com', 'clearfacts.be', 'storecove.com', 'codabox.com', 'einvoicing', 'clouddematinvoicing', 'falco-app.be']
 export async function refreshInvoicePlatforms(): Promise<void> {
@@ -46,8 +54,9 @@ const fromPlatform = (email: string) => PLATFORMS.some(d => (email || '').toLowe
 /** Candidat « facture fournisseur » : une PJ, un sujet de facture, pas un assisteur. */
 export function isSupplierCandidate(msg: AgentMessage): boolean {
   if (!msg.hasAttachments) return false
+  if (WATCHED.has((msg.fromEmail || '').toLowerCase())) return true
   if (NOT_SUPPLIER.test(msg.fromEmail)) return false
-  return fromPlatform(msg.fromEmail) || INVOICE_SUBJECT.test(msg.subject || '')
+  return fromPlatform(msg.fromEmail) || INVOICE_SUBJECT.test(msg.subject || '') || REPLY_SUBJECT.test(msg.subject || '')
 }
 
 export interface SupplierExtraction {
@@ -63,20 +72,12 @@ let _client: Anthropic | null = null
 const client = () => (_client ??= aiClient('mail-agent/handlers/fournisseur', { apiKey: process.env.ANTHROPIC_API_KEY! }))
 const parseJson = (txt: string) => { const m = txt.match(/\{[\s\S]*\}/); try { return m ? JSON.parse(m[0]) : null } catch { return null } }
 
-export async function extractSupplierInvoice(mailbox: string, msg: AgentMessage): Promise<SupplierExtraction | 'not_invoice' | null> {
-  const pdfs = await getPdfAttachments(mailbox, msg.id)
-  let parsed: any = null
-  if (pdfs.length) {
-    const r = await client().messages.create({ model: ANTHROPIC_MODEL, max_tokens: 600, messages: [{ role: 'user', content: [{ type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: pdfs[0].base64 } }, { type: 'text', text: PROMPT }] }] })
-    parsed = parseJson((r.content[0] as any)?.text || '')
-  } else {
-    const text = await getMessageText(mailbox, msg.id)
-    const r = await client().messages.create({ model: ANTHROPIC_MODEL, max_tokens: 600, messages: [{ role: 'user', content: `${PROMPT}\n\nTexte du mail :\n${text.slice(0, 6000)}` }] })
-    parsed = parseJson((r.content[0] as any)?.text || '')
-  }
-  if (!parsed) return null
-  if (parsed.not_invoice) return 'not_invoice'
-  if (!parsed.invoice_number && !parsed.total) return null
+async function readOne(content: any[]): Promise<any> {
+  const r = await client().messages.create({ model: ANTHROPIC_MODEL, max_tokens: 600, messages: [{ role: 'user', content }] })
+  return parseJson((r.content[0] as any)?.text || '')
+}
+function toExtraction(parsed: any): SupplierExtraction | null {
+  if (!parsed || (!parsed.invoice_number && !parsed.total)) return null
   return {
     supplier: parsed.supplier ? String(parsed.supplier).slice(0, 120) : null,
     invoice_number: parsed.invoice_number ? String(parsed.invoice_number).trim().slice(0, 60) : null,
@@ -87,6 +88,35 @@ export async function extractSupplierInvoice(mailbox: string, msg: AgentMessage)
     is_reminder: Boolean(parsed.is_reminder),
     is_credit_note: Boolean(parsed.is_credit_note) || (typeof parsed.total === 'number' && parsed.total < 0),
   }
+}
+
+/** Lit TOUTES les pièces du mail (PDF et images, 8 au plus — audit du 06/10/2026 : seul le premier PDF était lu). */
+export async function extractSupplierInvoices(mailbox: string, msg: AgentMessage): Promise<{ docs: SupplierExtraction[]; unreadable: number; notInvoice: number }> {
+  const files = await getDocumentAttachments(mailbox, msg.id)
+  const out = { docs: [] as SupplierExtraction[], unreadable: 0, notInvoice: 0 }
+  if (!files.length) {
+    const text = await getMessageText(mailbox, msg.id)
+    const parsed = await readOne([{ type: 'text', text: `${PROMPT}\n\nTexte du mail :\n${text.slice(0, 6000)}` }])
+    if (parsed?.not_invoice) out.notInvoice++; else { const x = toExtraction(parsed); x ? out.docs.push(x) : out.unreadable++ }
+    return out
+  }
+  for (const f of files) {
+    const doc = f.mime === 'application/pdf'
+      ? { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: f.base64 } }
+      : { type: 'image', source: { type: 'base64', media_type: f.mime, data: f.base64 } }
+    const parsed = await readOne([doc, { type: 'text', text: PROMPT }])
+    if (parsed?.not_invoice) { out.notInvoice++; continue }
+    const x = toExtraction(parsed)
+    if (x) out.docs.push(x); else out.unreadable++
+  }
+  return out
+}
+
+/** Compatibilité : la première pièce lue (ancien comportement). */
+export async function extractSupplierInvoice(mailbox: string, msg: AgentMessage): Promise<SupplierExtraction | 'not_invoice' | null> {
+  const r = await extractSupplierInvoices(mailbox, msg)
+  if (r.docs.length) return r.docs[0]
+  return r.notInvoice ? 'not_invoice' : null
 }
 
 /** Société du groupe qui ÉMET la facture (d'après le nom du fournisseur), sinon null. */
@@ -123,8 +153,12 @@ export async function findVendorBill(company: CompanyKey, x: SupplierExtraction)
   if (x.invoice_number) {
     const num = x.invoice_number.replace(/[^A-Za-z0-9\/\-\.]/g, '')
     if (num.length >= 3) {
-      const r: any[] = await odooRpcCompany(cid, 'account.move', 'search_read', [[['move_type', 'in', ['in_invoice', 'in_refund']], ['company_id', '=', cid], '|', ['ref', 'ilike', num], ['payment_reference', 'ilike', num]]], { fields, limit: 1 }) || []
-      if (r.length) return r[0]
+      // Pièce annulée exclue, et le fournisseur OU le montant doit correspondre (Codra 26080351 : le
+      // brouillon annulé de 61,92 € faisait croire la facture complète déjà encodée, 05/10/2026).
+      const r: any[] = await odooRpcCompany(cid, 'account.move', 'search_read', [[['move_type', 'in', ['in_invoice', 'in_refund']], ['company_id', '=', cid], ['state', '!=', 'cancel'], '|', ['ref', 'ilike', num], ['payment_reference', 'ilike', num]]], { fields: [...fields, 'partner_id', 'amount_total'], limit: 5 }) || []
+      const tok = (x.supplier || '').split(/\s+/).filter(t => t.length >= 4)[0]?.toLowerCase()
+      const ok = r.find(b => (tok && String(b.partner_id?.[1] || '').toLowerCase().includes(tok)) || (x.total != null && Math.abs(Math.abs(Number(b.amount_total)) - Math.abs(x.total)) <= 0.02))
+      if (ok) return { name: ok.name, ref: ok.ref, payment_state: ok.payment_state }
     }
   }
   // Fournisseur + montant : seulement à la même date (±3 jours). Sans elle, un abonnement
@@ -154,19 +188,35 @@ async function doneFolderFor(mailbox: string, company: CompanyKey | null): Promi
     const id = await findFolderIdByName(mailbox, RIGA_FOLDER).catch(() => null)
     if (id) return { id, name: RIGA_FOLDER }
   }
-  return { id: await findFolderIdByName(mailbox, FOURNISSEUR_DONE_FOLDER), name: FOURNISSEUR_DONE_FOLDER }
+  // Créé s'il manque (administration@ n'en avait pas : la note disait « classée » sans déplacement, audit du 06/10/2026).
+  return { id: await findOrCreateFolder(mailbox, FOURNISSEUR_DONE_FOLDER).catch(() => null), name: FOURNISSEUR_DONE_FOLDER }
 }
 
-export interface SupplierOutcome { status: 'applied' | 'to_verify' | 'ignored' | 'skipped' | 'waiting'; note: string; extracted: any }
+export interface SupplierOutcome { status: 'applied' | 'to_verify' | 'ignored' | 'skipped' | 'waiting' | 'retry'; note: string; extracted: any }
+
+/** Déplace le mail et dit honnêtement ce qui s'est passé. */
+async function file(mailbox: string, msgId: string, done: { id: string | null; name: string }): Promise<string> {
+  if (!done.id) return 'laissé dans son dossier (dossier de classement introuvable)'
+  const r = await moveMessage(mailbox, msgId, done.id).catch(() => ({ ok: false }))
+  return r.ok ? `classé dans « ${done.name} »` : 'laissé dans son dossier (déplacement refusé)'
+}
 
 /**
  * Traite un mail candidat de bout en bout. Ne lève jamais : l'orchestrateur
  * trace ce qu'il renvoie.
  */
 export async function processSupplierMail(sb: any, mailbox: string, msg: AgentMessage, base: Record<string, any>, opts: { known?: SupplierExtraction; afterWait?: boolean } = {}): Promise<SupplierOutcome> {
-  const x = opts.known ?? await extractSupplierInvoice(mailbox, msg)
-  if (x === 'not_invoice') return { status: 'skipped', note: 'pas une facture fournisseur', extracted: null }
-  if (!x) return { status: 'to_verify', note: 'Facture fournisseur non lisible automatiquement — lecture humaine requise', extracted: null }
+  let x: SupplierExtraction
+  if (opts.known) x = opts.known
+  else {
+    const r = await extractSupplierInvoices(mailbox, msg)
+    // « Pas une facture » : l'orchestrateur le renvoie au tri normal (audit du 06/10/2026).
+    if (!r.docs.length && r.notInvoice && !r.unreadable) return { status: 'skipped', note: 'pas une facture fournisseur', extracted: null }
+    // Illisible : retenté aux passages suivants (3 fois), puis lecture humaine.
+    if (!r.docs.length) return { status: 'retry', note: 'Pièce non lisible automatiquement — nouvel essai au prochain passage', extracted: null }
+    if (r.docs.length > 1) return processSeveral(mailbox, msg, r.docs)
+    x = r.docs[0]
+  }
   const company = companyOf(x)
   const extracted: any = { ...x, company: company ? COMPANIES[company].label : null }
   if (!company) return { status: 'to_verify', note: `Destinataire non reconnu : « ${x.addressee || '?'} » — pour quelle société ?`, extracted }
@@ -178,9 +228,8 @@ export async function processSupplierMail(sb: any, mailbox: string, msg: AgentMe
       .eq('extracted->>invoice_number', x.invoice_number).eq('extracted->>company', COMPANIES[company].label)
       .in('status', ['applied', 'to_verify']).order('id').limit(1).maybeSingle()
     if (twin) {
-      const done = await doneFolderFor(mailbox, company)
-      if (done.id) await moveMessage(mailbox, msg.id, done.id).catch(() => {})
-      return { status: 'ignored', note: `Doublon : la facture ${x.invoice_number} a déjà été traitée (${twin.status}, boîte ${twin.mailbox}, dossier « ${twin.folder} »).`, extracted: { ...extracted, duplicateOf: twin.id } }
+      const where = await file(mailbox, msg.id, await doneFolderFor(mailbox, company))
+      return { status: 'ignored', note: `Doublon : la facture ${x.invoice_number} a déjà été traitée (${twin.status}, boîte ${twin.mailbox}, dossier « ${twin.folder} ») — mail ${where}.`, extracted: { ...extracted, duplicateOf: twin.id } }
     }
   }
   let bill: Awaited<ReturnType<typeof findVendorBill>>
@@ -193,8 +242,8 @@ export async function processSupplierMail(sb: any, mailbox: string, msg: AgentMe
   const done = await doneFolderFor(mailbox, company)
   const doneId = done.id
   if (bill) {
-    if (doneId) await moveMessage(mailbox, msg.id, doneId).catch(() => {})
-    return { status: 'applied', note: `Déjà dans Odoo (${COMPANIES[company].label}) : ${bill.name}${bill.payment_state ? ' · ' + bill.payment_state : ''} → classée dans « ${done.name} »`, extracted: { ...extracted, odooBill: bill.name } }
+    const where = await file(mailbox, msg.id, done)
+    return { status: 'applied', note: `Déjà dans Odoo (${COMPANIES[company].label}) : ${bill.name || 'brouillon'}${bill.payment_state ? ' · ' + bill.payment_state : ''} → mail ${where}`, extracted: { ...extracted, odooBill: bill.name } }
   }
   // Facture ENTRE sociétés du groupe (ex. location Riga → VD) : l'ERP la crée
   // automatiquement des deux côtés (Olivier 05/10/2026). Jamais d'encodage :
@@ -220,6 +269,30 @@ export async function processSupplierMail(sb: any, mailbox: string, msg: AgentMe
   const alias = COMPANIES[company].alias
   const fw = await forwardMessage(mailbox, msg.id, alias, `Encodage automatique (agent mail VD Soft) — ${COMPANIES[company].label} · ${x.supplier || ''} n° ${x.invoice_number || ''}`)
   if (!fw.ok) return { status: 'to_verify', note: `Absente d'Odoo, transfert vers ${alias} refusé (${fw.error || '?'})`, extracted }
-  if (doneId) await moveMessage(mailbox, msg.id, doneId).catch(() => {})
-  return { status: 'applied', note: `Absente d'Odoo → transférée pour encodage à ${alias} (${COMPANIES[company].label}), mail classé dans « ${done.name} »`, extracted: { ...extracted, forwardedTo: alias } }
+  const where = await file(mailbox, msg.id, done)
+  return { status: 'applied', note: `Absente d'Odoo → transférée pour encodage à ${alias} (${COMPANIES[company].label}), mail ${where}`, extracted: { ...extracted, forwardedTo: alias } }
+}
+
+/**
+ * Plusieurs pièces dans un même mail (RGF : 8 PDF, 28/09/2026). Chacune est cherchée dans l'ERP ;
+ * si toutes y sont, le mail est classé. Sinon il est SIGNALÉ avec la liste des absentes, jamais
+ * transféré tel quel : l'encodage automatique créerait aussi les pièces déjà présentes (doublons).
+ */
+async function processSeveral(mailbox: string, msg: AgentMessage, docs: SupplierExtraction[]): Promise<SupplierOutcome> {
+  const lines: string[] = [], absent: string[] = []
+  let company: CompanyKey | null = null
+  for (const d of docs) {
+    const c = companyOf(d); company = company || c
+    const label = `${d.is_credit_note ? 'NC' : 'pièce'} ${d.supplier || '?'} n° ${d.invoice_number || '?'}${d.total != null ? ' · ' + Math.abs(d.total) + ' €' : ''}${c ? ' (' + COMPANIES[c].label + ')' : ' (société ?)'}`
+    let bill: Awaited<ReturnType<typeof findVendorBill>> = null
+    if (c) { try { bill = await findVendorBill(c, d) } catch { bill = null } }
+    lines.push(`${label} → ${bill ? 'déjà dans Odoo : ' + (bill.name || 'brouillon') : 'ABSENTE'}`)
+    if (!bill) absent.push(label)
+  }
+  const extracted = { documents: docs, company: company ? COMPANIES[company].label : null }
+  if (!absent.length) {
+    const where = await file(mailbox, msg.id, await doneFolderFor(mailbox, company))
+    return { status: 'applied', note: `${docs.length} pièces, toutes déjà dans Odoo — mail ${where}`, extracted }
+  }
+  return { status: 'to_verify', note: `${docs.length} pièces dans ce mail, ${absent.length} absente(s) d'Odoo — à encoder une par une : ${absent.join(' ; ')}. Détail : ${lines.join(' | ')}`.slice(0, 1800), extracted }
 }

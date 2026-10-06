@@ -22,7 +22,8 @@ import { findFolderIdByName, listFolderMessages, listAllFolders, getMessageText,
 import type { AgentMessage } from './graph'
 import { refreshAwpSenders } from './handlers/awp-rejet'
 import { refreshImaSenders } from './handlers/ima-rejet'
-import { isSupplierCandidate, processSupplierMail, refreshInvoicePlatforms } from './handlers/fournisseur'
+import { isSupplierCandidate, processSupplierMail, refreshInvoicePlatforms, setWatchedSenders, FOURNISSEUR_DONE_FOLDER } from './handlers/fournisseur'
+import { loadWatchedSenders, markPieceReceived, scanPieceRequests, remindOldPieceRequests } from './pieces'
 import { triageMail, isNoise, isAssistanceMission, isHandledElsewhere, twinInQueue, readAutoFamilies } from './triage'
 import { executeDecision } from './actions'
 import { handlerFor, handlerById } from './handlers'
@@ -94,7 +95,16 @@ export async function scanFolder(opts: { mailbox?: string; folder?: string; fold
         // par société, classée ou envoyée pour encodage. Jamais deux fois.
         if (isSupplierCandidate(msg)) {
           const seen = await findKnownItem(sb, mailbox, 'fournisseur', msg, folder)
-          if (seen && ['applied', 'ignored', 'skipped', 'to_verify'].includes(seen.status)) { report.skipped++; continue }
+          // « Pas une facture » : déjà renvoyé au tri, on laisse le tri décider (il a sa propre mémoire).
+          if (seen?.status === 'skipped') { if (!opts.triage) { report.skipped++; continue } }
+          else if (seen && ['applied', 'ignored', 'to_verify'].includes(seen.status)) { report.skipped++; continue }
+          // Lecture ratée : retentée jusqu'à 3 fois, puis lecture humaine (audit du 06/10/2026).
+          let attempts = 0
+          if (seen?.status === 'retry') {
+            const { data: it } = await sb.from('mail_agent_items').select('extracted').eq('id', seen.id).maybeSingle()
+            attempts = Number(it?.extracted?.attempts || 0)
+          }
+          if (seen?.status !== 'skipped') {
           // En attente de la version Peppol : revérifiée après 24 h, sans relire le PDF (pas de nouvel appel IA).
           let known: any = null
           if (seen?.status === 'waiting') {
@@ -103,14 +113,19 @@ export async function scanFolder(opts: { mailbox?: string; folder?: string; fold
             known = it.extracted
           }
           const base = { handler: 'fournisseur', mailbox, message_id: msg.id, folder, received_at: msg.receivedAt || null, from_email: msg.fromEmail, subject: msg.subject, updated_at: new Date().toISOString() }
+          let goTriage = false
           try {
             const out = await processSupplierMail(sb, mailbox, msg, base, known ? { known, afterWait: true } : {})
-            await upsert(sb, base, { status: out.status, blocked_reason: out.note, extracted: out.extracted })
+            if (out.status === 'retry' && attempts + 1 >= 3) { out.status = 'to_verify'; out.note = 'Pièce non lisible automatiquement après 3 essais — lecture humaine requise' }
+            await upsert(sb, base, { status: out.status, blocked_reason: out.note, extracted: out.status === 'retry' ? { attempts: attempts + 1 } : out.extracted })
+            if (out.status === 'applied' || out.status === 'to_verify') await markPieceReceived(sb, msg.fromEmail, `${mailbox} · ${msg.subject || ''}`)
             if (out.status === 'applied') { report.captured++; report.applied++ }
             else if (out.status === 'to_verify') { report.captured++; report.toVerify++ }
+            else if (out.status === 'skipped') goTriage = true   // pas une facture → tri normal
             else report.skipped++
           } catch (e: any) { report.errors.push(`${msg.subject} : ${e?.message || String(e)}`) }
-          continue
+          if (!goTriage) continue
+          }
         }
         // Triage quotidien (jour 1, Olivier 23/09/2026) : tout le reste, sauf le
         // bruit et les ordres de mission, devient une carte de décision.
@@ -271,7 +286,7 @@ export async function scanFolder(opts: { mailbox?: string; folder?: string; fold
 // dossiers système. Tout le reste est scanné (Olivier 23/09/2026 : « l'agent
 // mail doit avoir une vue partout »).
 const SKIP_FOLDERS = [
-  MAIL_AGENT_DONE_FOLDER.toLowerCase(), 'mondial automatic dispatch', 'ima payement', 'fournisseur divers', '01 - total - anomalie détectée',
+  MAIL_AGENT_DONE_FOLDER.toLowerCase(), 'mondial automatic dispatch', 'ima payement', '01 - total - anomalie détectée',
   'éléments envoyés', 'elements envoyes', 'sent items', 'éléments supprimés', 'elements supprimes', 'deleted items',
   'courrier indésirable', 'courrier indesirable', 'junk email', 'junk e-mail', 'brouillons', 'drafts', 'boîte d\'envoi', 'boite d\'envoi', 'outbox',
   'archive', 'historique des conversations', 'conversation history', 'notes', 'journal', 'rss feeds', 'flux rss',
@@ -293,8 +308,13 @@ export async function scanAllFolders(opts: { mailbox?: string; limit?: number; s
     // Hors périmètre mais dossier « factures seulement » (racine de la Boîte de réception d'info@,
     // Olivier 06/10/2026) : lu pour les factures fournisseurs, jamais pour le tri des cartes.
     let triage = opts.triage
+    // « Fournisseur Divers » : des règles Outlook y rangent directement des factures (Car Parts, Pepinster
+    // Pneus, Univert) → lu pour les factures seulement, jamais pour le tri (audit du 06/10/2026).
+    if (lname === FOURNISSEUR_DONE_FOLDER.toLowerCase()) triage = false
     if (opts.onlyFolders?.length && !opts.onlyFolders.some(o => f.path.toLowerCase().includes('/' + o.toLowerCase()))) {
-      if (!opts.supplierOnlyFolders?.some(o => f.path.toLowerCase() === '/' + o.toLowerCase())) continue
+      // Racine ET sous-dossiers (sumup, rgf, brandt, AS24…) de la Boîte de réception d'info@, factures seulement.
+      const p = f.path.toLowerCase()
+      if (!opts.supplierOnlyFolders?.some(o => p === '/' + o.toLowerCase() || p.startsWith('/' + o.toLowerCase() + '/'))) continue
       triage = false
     }
     const r = await scanFolder({ mailbox, folder: f.path.replace(/^\//, ''), folderId: f.id, limit: opts.limit ?? 50, since, triage })
@@ -323,6 +343,10 @@ export async function scanMailboxes(opts: { sinceDays?: number; limit?: number }
   let triage = true; try { triage = st?.value ? JSON.parse(st.value) !== 'off' : true } catch {}
   await refreshInvoicePlatforms()
   const total: ScanReport & { folders: string[]; riga?: any } = { scanned: 0, captured: 0, ready: 0, blocked: 0, toVerify: 0, skipped: 0, applied: 0, toDecide: 0, errors: [], folders: [] }
+  // Pièces réclamées : nos demandes envoyées sont relevées, leurs destinataires surveillés (Olivier 06/10/2026).
+  for (const mb of ['info@verviersdepannage.com', 'administration@verviersdepannage.com']) await scanPieceRequests(sb, mb).catch(e => total.errors.push(`pièces réclamées (${mb}) : ${e?.message || e}`))
+  setWatchedSenders(await loadWatchedSenders(sb).catch(() => []))
+  await remindOldPieceRequests(sb).catch(() => {})
   // Mails de Dépannage Riga d'abord (Olivier 05/10/2026) : rangés dans « Dépannage
   // Riga » avant que le triage n'en fasse des cartes pour le bureau.
   try {

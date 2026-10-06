@@ -186,6 +186,24 @@ export async function getPdfAttachments(mailbox: string, messageId: string): Pro
     .map((a: any) => ({ name: a.name || 'document.pdf', base64: a.contentBytes }))
 }
 
+/** Pièces lisibles d'un message : PDF et images (photo, scan), 8 au plus (06/10/2026). */
+export async function getDocumentAttachments(mailbox: string, messageId: string): Promise<{ name: string; base64: string; mime: string }[]> {
+  guardMailbox(mailbox)
+  const data = await authedGet(`/users/${encodeURIComponent(mailbox)}/messages/${encodeURIComponent(messageId)}/attachments`)
+  return (data.value || [])
+    .filter((a: any) => !a.isInline && a.contentBytes && (a.size || 0) > 15_000 || (!a.isInline && a.contentBytes && /\.pdf$/i.test(a.name || '')))
+    .map((a: any) => {
+      const n = String(a.name || '')
+      const mime = /\.pdf$/i.test(n) || a.contentType === 'application/pdf' ? 'application/pdf'
+        : /\.png$/i.test(n) ? 'image/png' : /\.(jpe?g)$/i.test(n) ? 'image/jpeg' : /\.webp$/i.test(n) ? 'image/webp' : ''
+      return { name: n || 'document', base64: a.contentBytes, mime }
+    })
+    .filter((d: any) => d.mime)
+    // Des PDF présents : les images sont des logos ou des photos, pas la pièce (coût de lecture évité).
+    .filter((d: any, _i: number, all: any[]) => d.mime === 'application/pdf' || !all.some(x => x.mime === 'application/pdf'))
+    .slice(0, 8)
+}
+
 /**
  * Déplace un message vers un dossier. Retourne ok:false plutôt que de lever :
  * un mail non déplacé ne doit JAMAIS annuler un traitement comptable déjà fait.
