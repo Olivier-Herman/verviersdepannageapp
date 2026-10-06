@@ -525,8 +525,14 @@ async function startCall(sb: Sb, p: any, driver: Driver | undefined): Promise<vo
 export async function tickProposals(): Promise<{ checked: number; calls: number; escalated: number; closed: number }> {
   const sb = createAdminClient()
   const stats = { checked: 0, calls: 0, escalated: 0, closed: 0 }
-  const { data: open, error } = await sb.from('market_proposals').select('*').eq('status', 'pending').order('notified_at')
-  if (error) throw new Error(`Propositions illisibles : ${error.message}`)   // → alerte superadmins (cron)
+  // Coupure de quelques secondes de la base (05/10/2026) : on relit avant de parler de panne.
+  let open: any[] | null = null, error: any = null
+  for (let i = 0; i < 3; i++) {
+    ;({ data: open, error } = await sb.from('market_proposals').select('*').eq('status', 'pending').order('notified_at'))
+    if (!error) break
+    await new Promise(r => setTimeout(r, 2000))
+  }
+  if (error) throw new Error(`Propositions illisibles : ${String(error.message).slice(0, 120)}`)   // → alerte superadmins (cron)
   for (const p of (open || []) as any[]) {
     stats.checked++
     try {

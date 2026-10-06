@@ -7,7 +7,7 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { tickProposals } from '@/lib/missions/market-proposals'
-import { createAdminClient } from '@/lib/supabase'
+import { cronFailed, cronRecovered } from '@/lib/cron-alert'
 import { sendNotificationToRoles } from '@/lib/notifications/send'
 import { withAiContext } from '@/lib/ai/usage'
 
@@ -21,24 +21,26 @@ async function handleGET(req: NextRequest) {
   }
   try {
     const stats = await tickProposals()
+    await cronRecovered('market-proposals', async since => {
+      await sendNotificationToRoles(['superadmin'], 'market_proposal_update', {
+        title: '✅ Propositions de nuit rétablies',
+        body:  `Les délais tournent de nouveau (panne depuis ${new Date(since).toLocaleTimeString('fr-BE', { timeZone: 'Europe/Brussels', hour: '2-digit', minute: '2-digit' })}).`,
+        action_url: '/dispatch',
+        data: { cron_error: 'false' },
+      })
+    })
     return NextResponse.json({ ok: true, ...stats })
   } catch (e: any) {
     console.error('[cron/market-proposals]', e?.message)
-    // Un cron en échec doit se voir : notif aux superadmins, au plus une par heure.
-    try {
-      const sb = createAdminClient()
-      const since = new Date(Date.now() - 3600_000).toISOString()
-      const { data: recent } = await sb.from('notifications_log').select('id')
-        .eq('notif_type', 'market_proposal_update').eq('payload->data->>cron_error', 'true').gte('created_at', since).limit(1)
-      if (!recent?.length) {
-        await sendNotificationToRoles(['superadmin'], 'market_proposal_update', {
-          title: '⚠️ Propositions de nuit en panne',
-          body:  `Les délais (appel au 1er départ, passage à la réserve) ne tournent plus : ${String(e?.message || 'erreur').slice(0, 160)}`,
-          action_url: '/dispatch',
-          data: { cron_error: 'true' },
-        })
-      }
-    } catch { /* on a déjà loggé l'erreur d'origine */ }
+    // Un cron en échec doit se voir — mais une seule fois par panne, et seulement si elle dure 3 minutes.
+    await cronFailed('market-proposals', String(e?.message || 'erreur'), 3 * 60_000, async () => {
+      await sendNotificationToRoles(['superadmin'], 'market_proposal_update', {
+        title: '⚠️ Propositions de nuit en panne',
+        body:  `Les délais (appel au 1er départ, passage à la réserve) ne tournent plus depuis 3 minutes : ${String(e?.message || 'erreur').slice(0, 160)}`,
+        action_url: '/dispatch',
+        data: { cron_error: 'true' },
+      })
+    })
     return NextResponse.json({ ok: false, error: e?.message }, { status: 500 })
   }
 }
