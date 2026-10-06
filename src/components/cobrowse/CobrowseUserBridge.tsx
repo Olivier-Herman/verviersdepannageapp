@@ -49,6 +49,7 @@ export default function CobrowseUserBridge() {
   // Polling my-status toutes les 5 sec.
   // -----------------------------------------------------------------
   const fetchStatus = useCallback(async () => {
+    if (document.visibilityState !== 'visible') return   // app pas à l'écran : rien (06/10/2026)
     try {
       const r = await fetch('/api/cobrowse/my-status', { cache: 'no-store' })
       const j = await r.json()
@@ -339,8 +340,13 @@ export default function CobrowseUserBridge() {
 export function CobrowseUserBanner() {
   const [status, setStatus] = useState<MyStatus>(null)
 
+  // Toutes les 5 s SEULEMENT pendant une demande d'aide / session ; sinon toutes les 60 s,
+  // et rien quand l'app n'est pas à l'écran. Avant : 5 s sur chaque app ouverte, ~40 % de
+  // toutes les requêtes du serveur (Olivier 06/10/2026 : lenteurs régulières).
+  const live = !!status
   useEffect(() => {
     const fetchStatus = async () => {
+      if (document.visibilityState !== 'visible') return
       try {
         const r = await fetch('/api/cobrowse/my-status', { cache: 'no-store' })
         const j = await r.json()
@@ -348,9 +354,11 @@ export function CobrowseUserBanner() {
       } catch {}
     }
     fetchStatus()
-    const iv = setInterval(fetchStatus, 5000)
-    return () => clearInterval(iv)
-  }, [])
+    const iv = setInterval(fetchStatus, live ? 5000 : 60_000)
+    const onVis = () => { if (document.visibilityState === 'visible') fetchStatus() }
+    document.addEventListener('visibilitychange', onVis)
+    return () => { clearInterval(iv); document.removeEventListener('visibilitychange', onVis) }
+  }, [live])
 
   const stopSession = async () => {
     if (!status?.id) return
