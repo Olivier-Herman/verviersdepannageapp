@@ -57,13 +57,19 @@ export async function importScradaCoda(days = 14): Promise<ScradaImportResult> {
   const token = await getAppOnlyToken()
   if (!token) throw new Error('Microsoft 365 non configuré')
   const since = new Date(Date.now() - days * 86_400_000).toISOString()
-  const list = await graph(`/users/${encodeURIComponent(box)}/messages?$search=${encodeURIComponent(`"from:${sender}"`)}&$select=id,subject,receivedDateTime&$top=25`, token)
-  const mails = (list.value || []).filter((m: any) => m.receivedDateTime >= since && /coda/i.test(m.subject))
+  // Plusieurs boîtes possibles, séparées par des virgules : Scrada est passé d'info@ à administration@
+  // le 07/10/2026 et l'import de 6 h, qui ne lisait qu'info@, n'a rien trouvé.
+  const boxes = String(box || '').split(',').map(b => b.trim()).filter(Boolean)
+  const mails: { id: string; box: string }[] = []
+  for (const b of boxes) {
+    const list = await graph(`/users/${encodeURIComponent(b)}/messages?$search=${encodeURIComponent(`"from:${sender}"`)}&$select=id,subject,receivedDateTime&$top=25`, token)
+    for (const m of list.value || []) if (m.receivedDateTime >= since && /coda/i.test(m.subject)) mails.push({ id: m.id, box: b })
+  }
 
   // Les CODA, lus et triés par numéro de relevé.
   const codas: { number: number; date: string; start: number; end: number; lines: number; name: string; bytes: Buffer }[] = []
   for (const m of mails) {
-    const atts = await graph(`/users/${encodeURIComponent(box)}/messages/${encodeURIComponent(m.id)}/attachments`, token)
+    const atts = await graph(`/users/${encodeURIComponent(m.box)}/messages/${encodeURIComponent(m.id)}/attachments`, token)
     for (const a of atts.value || []) {
       if (!/\.cod$/i.test(a.name || '') || !a.contentBytes) continue
       const bytes = Buffer.from(a.contentBytes, 'base64')
@@ -72,6 +78,8 @@ export async function importScradaCoda(days = 14): Promise<ScradaImportResult> {
     }
   }
   codas.sort((a, b) => a.number - b.number)
+  // Un même relevé reçu dans deux boîtes ne compte qu'une fois.
+  for (let i = codas.length - 1; i > 0; i--) if (codas[i].number === codas[i - 1].number && codas[i].date === codas[i - 1].date) codas.splice(i, 1)
 
   const res: ScradaImportResult = { imported: [], skipped: 0 }
   for (const c of codas) {

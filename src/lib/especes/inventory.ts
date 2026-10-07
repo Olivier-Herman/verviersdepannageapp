@@ -8,7 +8,7 @@
 
 import { odooRpc } from '@/lib/odoo'
 import { createAdminClient } from '@/lib/supabase'
-import { getBusinessNumber } from '@/lib/settings/business'
+import { getBusinessNumber, getBusinessText } from '@/lib/settings/business'
 
 const CHAU1_DEPUIS = '2026-06-15'
 const strip = (h: string) => String(h || '').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&').replace(/<[^>]+>/g, ' ').replace(/&nbsp;/g, ' ').replace(/\s+/g, ' ').trim()
@@ -60,7 +60,18 @@ export async function syncCashInventory(): Promise<{ total: number; added: numbe
     const st = kmap.get(p.id)
     if (p.is_matched) {
       // Rapproché dans l'ERP : la boucle est bouclée (ou le paiement n'était plus à remettre).
-      if (st && !['reconciled'].includes(st)) { await sb.from('cash_handover_items').update({ status: 'reconciled', updated_at: new Date().toISOString() }).eq('odoo_payment_id', p.id); closed++ }
+      if (st && !['reconciled'].includes(st)) {
+        // Encodé dans Scrada sans passer par Momo (validé par Olivier) : l'argent sort de la caisse
+        // du chauffeur quand le relevé Scrada arrive et rapproche le paiement (Olivier 07/10/2026).
+        const { data: it } = await sb.from('cash_handover_items').select('holder_user_id, amount, payment_name, invoice, client, cash_transfer_id').eq('odoo_payment_id', p.id).maybeSingle()
+        const receiver = await getBusinessText('especes_receveur_user_id').catch(() => '')
+        // Seulement si cet encaissement figure bien dans la caisse de ce chauffeur (jamais de caisse négative).
+        const { data: inBox } = it?.holder_user_id ? await sb.from('cash_register').select('id').eq('driver_id', it.holder_user_id).eq('odoo_payment_id', p.id).eq('type', 'encaissement').limit(1) : { data: [] as any[] }
+        if (st === 'encoded' && it && !it.cash_transfer_id && it.holder_user_id && it.holder_user_id !== receiver && (inBox || []).length) {
+          await sb.from('cash_register').insert({ driver_id: it.holder_user_id, amount: it.amount, type: 'remise', notes: `Versé dans la caisse officielle (Scrada) — ${it.payment_name} ${it.invoice || ''} ${it.client || ''}`.trim() })
+        }
+        await sb.from('cash_handover_items').update({ status: 'reconciled', updated_at: new Date().toISOString() }).eq('odoo_payment_id', p.id); closed++
+      }
       continue
     }
     if (st) continue   // déjà suivi : on ne touche ni au statut ni à l'attribution
