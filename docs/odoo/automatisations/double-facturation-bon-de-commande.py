@@ -26,4 +26,4 @@ for so in records:
         if env.user.login == 'administration@verviersdepannage.com':
             so.message_post(body="⚠️ Ce dossier est déjà facturé ou commandé : " + ', '.join(hits[:3]) + ". À vérifier (double facturation possible).")
             continue
-        raise UserError("Ce dossier %s est déjà facturé : %s.\n\nEst-ce une deuxième mission réelle ?\n• Oui : coche « Autre mission (doublon vérifié) », indique le motif, puis confirme à nouveau.\n• Non : ne confirme pas ce bon de commande (doublon)." % (so.client_order_ref, ', '.join(hits[:3])))
+        raise UserError("Ce dossier %s est déjà facturé : %s.\n\nEst-ce une deuxième mission réelle ?\n• Oui : coche « Autre mission (doublon vérifié) », indique le motif, puis confirme à nouveau.\n• Non : menu Action › « C'est un doublon »." % (so.client_order_ref, ', '.join(hits[:3])))

@@ -71,10 +71,11 @@ export async function POST(req: Request) {
   // 1) Résout les ids account.move de chaque fiche (direct + via devis).
   const quoteIds = missions.filter(m => m.odoo_quote_id).map(m => m.odoo_quote_id as number)
   const quoteInvoiceMap = new Map<number, number[]>()   // saleOrderId → [moveId]
+  const quoteDoublon = new Map<number, string>()       // bon de commande annulé par « C'est un doublon » → facture existante
   if (quoteIds.length) {
     try {
-      const orders = await odooRpc<any[]>('sale.order', 'read', [quoteIds], { fields: ['id', 'invoice_ids'] })
-      for (const o of (orders || [])) quoteInvoiceMap.set(o.id, (o.invoice_ids || []).map(Number))
+      const orders = await odooRpc<any[]>('sale.order', 'read', [quoteIds], { fields: ['id', 'invoice_ids', 'state', 'x_doublon_de'] })
+      for (const o of (orders || [])) { quoteInvoiceMap.set(o.id, (o.invoice_ids || []).map(Number)); if (o.state === 'cancel' && o.x_doublon_de) quoteDoublon.set(o.id, o.x_doublon_de) }
     } catch (e: any) { console.error('[verify-invoices] read sale.order KO:', e.message) }
   }
 
@@ -90,12 +91,12 @@ export async function POST(req: Request) {
   }
 
   // 2) Lit l'état de toutes les factures d'un coup.
-  const moveById = new Map<number, { name: string; state: string; move_type: string }>()
+  const moveById = new Map<number, { name: string; state: string; move_type: string; x_doublon_de?: string | false }>()
   if (allMoveIds.size) {
     try {
       const moves = await odooRpc<any[]>('account.move', 'search_read',
-        [[['id', 'in', [...allMoveIds]]]], { fields: ['id', 'name', 'state', 'move_type'] })
-      for (const mv of (moves || [])) moveById.set(mv.id, { name: mv.name, state: mv.state, move_type: mv.move_type })
+        [[['id', 'in', [...allMoveIds]]]], { fields: ['id', 'name', 'state', 'move_type', 'x_doublon_de'] })
+      for (const mv of (moves || [])) moveById.set(mv.id, { name: mv.name, state: mv.state, move_type: mv.move_type, x_doublon_de: mv.x_doublon_de })
     } catch (e: any) { console.error('[verify-invoices] read account.move KO:', e.message) }
   }
 
@@ -142,6 +143,12 @@ export async function POST(req: Request) {
         notes: `Facturée n° ${posted.name} (vérification Odoo groupée)`,
       }).then(() => {}, () => {})
       completed.push({ id: m.id, ref: m.external_id, plate: m.vehicle_plate, number: posted.name })
+    } else if ((m.odoo_quote_id && quoteDoublon.get(m.odoo_quote_id as number)) || moves.find(mv => mv.state === 'cancel' && mv.x_doublon_de)) {
+      // « C'est un doublon » dans l'ERP (Olivier 07/10/2026) : la facture existe déjà pour ce dossier.
+      const existingName = (m.odoo_quote_id && quoteDoublon.get(m.odoo_quote_id as number)) || String(moves.find(mv => mv.state === 'cancel' && mv.x_doublon_de)?.x_doublon_de)
+      const r = await settleDuplicate(sb, m, existingName, user.id || null, now)
+      if (r.ok) completed.push({ id: m.id, ref: m.external_id, plate: m.vehicle_plate, number: existingName, ...(r.duplicateOf ? { note: `doublon de la fiche #${r.duplicateOf}` } : {}) } as any)
+      else none.push({ id: m.id, ref: m.external_id, plate: m.vehicle_plate, reason: r.error })
     } else if (moves.some(mv => mv.state === 'draft')) {
       draft.push({ id: m.id, ref: m.external_id, plate: m.vehicle_plate })
     } else {
@@ -188,4 +195,32 @@ export async function POST(req: Request) {
     ok: true, completed, draft, none,
     summary: { completed: completed.length, draft: draft.length, none: none.length },
   })
+}
+
+
+/**
+ * Fiche dont le bon de commande (ou la facture brouillon) a été annulé dans l'ERP par « C'est un
+ * doublon » : la facture existante couvre la mission (Olivier 07/10/2026).
+ *  - elle appartient à une AUTRE fiche → cette fiche-ci est une 2e fiche de la même mission :
+ *    marquée « doublon de » l'autre, sortie de la facturation (statut terminé), jamais supprimée ;
+ *  - sinon → cette fiche est rattachée à la facture existante, comme une facturation normale.
+ */
+async function settleDuplicate(sb: any, m: any, existingName: string, actorId: string | null, now: string): Promise<{ ok: true; duplicateOf?: number } | { ok: false; error: string }> {
+  const [inv] = await odooRpc<any[]>('account.move', 'search_read', [[['name', '=', existingName], ['move_type', '=', 'out_invoice'], ['state', '=', 'posted']]], { fields: ['id', 'name'], limit: 1 }).catch(() => [])
+  if (!inv) return { ok: false, error: `Facture existante ${existingName} introuvable dans l'ERP` }
+  const { data: owners } = await sb.from('incoming_missions').select('id, mission_number').or(`invoice_odoo_id.eq.${inv.id},invoice_number.eq.${inv.name}`).neq('id', m.id).limit(1)
+  const owner = owners?.[0]
+  if (owner) {
+    const { error } = await sb.from('incoming_missions').update({ status: 'completed', duplicate_of_mission_id: owner.id, updated_at: now }).eq('id', m.id)
+    if (error) return { ok: false, error: error.message }
+    const note = `Doublon de la fiche #${owner.mission_number} (facturée sur ${inv.name}) : bon de commande annulé dans l'ERP par « C'est un doublon ». Fiche sortie de la facturation, pointages et photos conservés.`
+    await sb.from('mission_logs').insert({ mission_id: m.id, actor_id: actorId, action: 'duplicate_of', notes: note, metadata: { duplicate_of: owner.id, invoice: inv.name } }).then(() => {}, () => {})
+    await sb.from('mission_remarks').insert({ mission_id: m.id, text: `⚠️ ${note}` }).then(() => {}, () => {})
+    return { ok: true, duplicateOf: owner.mission_number }
+  }
+  const { error } = await sb.from('incoming_missions').update({ status: 'completed', invoice_method: 'auto', invoice_number: inv.name, invoice_odoo_id: inv.id, invoice_url: invoiceUrl(inv.id), invoiced_at: now, invoiced_by: actorId, updated_at: now }).eq('id', m.id)
+  if (error) return { ok: false, error: error.message }
+  try { await releaseParcAndShift(sb, m.id) } catch (e: any) { console.error('[verify-invoices] release parc KO:', e.message) }
+  await sb.from('mission_logs').insert({ mission_id: m.id, actor_id: actorId, action: 'invoiced', notes: `Rattachée à la facture existante ${inv.name} (doublon annulé dans l'ERP par « C'est un doublon »)` }).then(() => {}, () => {})
+  return { ok: true }
 }

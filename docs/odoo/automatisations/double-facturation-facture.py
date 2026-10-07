@@ -40,4 +40,4 @@ for rec in records:
             rec.message_post(body="⚠️ Une facture existe déjà pour ce dossier : " + ', '.join([h.name for h in hits[:3]]) + ". À vérifier (double facturation possible).")
             continue
         detail = ', '.join(['%s (%.2f €, %s)' % (h.name, h.amount_total, h.commercial_partner_id.name) for h in hits[:3]])
-        raise UserError("Une facture existe déjà pour le dossier %s : %s.\n\nEst-ce une deuxième mission réelle ?\n• Oui : coche « Autre mission (doublon vérifié) », indique le motif, puis valide à nouveau.\n• Non : n'émets pas cette facture (doublon)." % (rec.ref, detail))
+        raise UserError("Une facture existe déjà pour le dossier %s : %s.\n\nEst-ce une deuxième mission réelle ?\n• Oui : coche « Autre mission (doublon vérifié) », indique le motif, puis valide à nouveau.\n• Non : menu Action › « C'est un doublon »." % (rec.ref, detail))
