@@ -329,20 +329,27 @@ export async function creditAndRebill(
 
 // ── Module « mauvais client », suite (Olivier 07/10/2026) ─────────────────────
 
-/** Valide la nouvelle facture et l'envoie par Peppol (seul canal coché). Sans Peppol pour ce client : validée, signalée. */
+/**
+ * Valide la nouvelle facture et l'envoie : par Peppol pour un client belge, par mail pour un
+ * client étranger (« envoi à société française de fait par mail, ils n'ont pas encore Peppol
+ * en France », Olivier 07/10/2026). Un seul canal coché. Aucun canal possible : validée, signalée.
+ */
 export async function postAndSendPeppol(id: number): Promise<{ name: string; sent: boolean; note: string }> {
-  const [m] = await odooRpc<any[]>('account.move', 'read', [[id]], { fields: ['state'] })
+  const [m] = await odooRpc<any[]>('account.move', 'read', [[id]], { fields: ['state', 'commercial_partner_id'] })
   if (m?.state === 'draft') await odooRpc('account.move', 'action_post', [[id]])
+  const [cp] = m?.commercial_partner_id ? await odooRpc<any[]>('res.partner', 'read', [[m.commercial_partner_id[0]]], { fields: ['country_id'] }) : [null]
+  const belgian = !cp?.country_id || /belg/i.test(String(cp.country_id[1]))
   const ctx = { context: { active_model: 'account.move', active_ids: [id], active_id: id } }
   const wiz = await odooRpc<number>('account.move.send.wizard', 'create', [{ move_id: id }], ctx)
   const [w0] = await odooRpc<any[]>('account.move.send.wizard', 'read', [[wiz]], { fields: ['sending_method_checkboxes'], ...ctx })
   const [after0] = await odooRpc<any[]>('account.move', 'read', [[id]], { fields: ['name'] })
-  if (!w0?.sending_method_checkboxes?.peppol) return { name: after0.name, sent: false, note: `${after0.name} validée ; ce client ne reçoit pas par Peppol : à envoyer` }
-  const boxes = Object.fromEntries(Object.entries<any>(w0.sending_method_checkboxes).map(([k, v]) => [k, { ...v, checked: k === 'peppol' }]))
-  await odooRpc('account.move.send.wizard', 'write', [[wiz], { sending_method_checkboxes: boxes, sending_methods: ['peppol'] }], ctx)
+  const method = belgian ? 'peppol' : 'email'
+  if (!w0?.sending_method_checkboxes?.[method]) return { name: after0.name, sent: false, note: `${after0.name} validée ; envoi ${belgian ? 'Peppol' : 'par mail'} impossible pour ce client : à envoyer` }
+  const boxes = Object.fromEntries(Object.entries<any>(w0.sending_method_checkboxes).map(([k, v]) => [k, { ...v, checked: k === method }]))
+  await odooRpc('account.move.send.wizard', 'write', [[wiz], { sending_method_checkboxes: boxes, sending_methods: [method] }], ctx)
   await odooRpc('account.move.send.wizard', 'action_send_and_print', [[wiz]], ctx)
-  const [a] = await odooRpc<any[]>('account.move', 'read', [[id]], { fields: ['name', 'peppol_move_state'] })
-  return { name: a.name, sent: true, note: `${a.name} validée et envoyée par Peppol (${a.peppol_move_state})` }
+  const [a] = await odooRpc<any[]>('account.move', 'read', [[id]], { fields: ['name', 'peppol_move_state', 'is_move_sent'] })
+  return { name: a.name, sent: !!a.is_move_sent || belgian, note: belgian ? `${a.name} validée et envoyée par Peppol (${a.peppol_move_state})` : `${a.name} validée et envoyée par mail` }
 }
 
 /** Note de crédit totale d'une facture (doublon), validée et lettrée avec elle. */
