@@ -44,6 +44,10 @@ const REPLY_SUBJECT = /^\s*(re|r[ée]f|tr|fw|fwd|aw|antw)\s*:/i
 /** Expéditeurs dont on attend une pièce (pièces réclamées en attente), relus à chaque passage. */
 let WATCHED = new Set<string>()
 export function setWatchedSenders(emails: string[]) { WATCHED = new Set(emails.map(e => e.toLowerCase())) }
+/** Fils de conversation de nos demandes ouvertes : une réponse d'un collègue du fournisseur compte aussi. */
+let WATCHED_CONV = new Set<string>()
+export function setWatchedConversations(ids: string[]) { WATCHED_CONV = new Set(ids) }
+export const isWatchedReply = (msg: AgentMessage) => WATCHED.has((msg.fromEmail || '').toLowerCase()) || (!!msg.conversationId && WATCHED_CONV.has(msg.conversationId))
 /** Plateformes d'envoi de factures (réglage « mail_factures_plateformes ») : un PDF joint suffit. */
 let PLATFORMS: string[] = ['billtobox.be', 'pennylane.com', 'clearfacts.be', 'storecove.com', 'codabox.com', 'einvoicing', 'clouddematinvoicing', 'falco-app.be']
 export async function refreshInvoicePlatforms(): Promise<void> {
@@ -54,7 +58,7 @@ const fromPlatform = (email: string) => PLATFORMS.some(d => (email || '').toLowe
 /** Candidat « facture fournisseur » : une PJ, un sujet de facture, pas un assisteur. */
 export function isSupplierCandidate(msg: AgentMessage): boolean {
   if (!msg.hasAttachments) return false
-  if (WATCHED.has((msg.fromEmail || '').toLowerCase())) return true
+  if (isWatchedReply(msg)) return true
   if (NOT_SUPPLIER.test(msg.fromEmail)) return false
   return fromPlatform(msg.fromEmail) || INVOICE_SUBJECT.test(msg.subject || '') || REPLY_SUBJECT.test(msg.subject || '')
 }

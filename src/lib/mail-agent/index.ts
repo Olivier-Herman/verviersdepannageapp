@@ -22,8 +22,8 @@ import { findFolderIdByName, listFolderMessages, listAllFolders, getMessageText,
 import type { AgentMessage } from './graph'
 import { refreshAwpSenders } from './handlers/awp-rejet'
 import { refreshImaSenders } from './handlers/ima-rejet'
-import { isSupplierCandidate, processSupplierMail, refreshInvoicePlatforms, setWatchedSenders, FOURNISSEUR_DONE_FOLDER } from './handlers/fournisseur'
-import { loadWatchedSenders, markPieceReceived, scanPieceRequests, remindOldPieceRequests } from './pieces'
+import { isSupplierCandidate, isWatchedReply, processSupplierMail, refreshInvoicePlatforms, setWatchedSenders, setWatchedConversations, FOURNISSEUR_DONE_FOLDER } from './handlers/fournisseur'
+import { loadWatchedSenders, loadWatchedConversations, markPieceReceived, notePieceReplyWithoutDocument, scanPieceRequests, remindOldPieceRequests } from './pieces'
 import { fixedRule } from './rules'
 import { replyAddress as imaReplyAddress } from './handlers/ima-rejet'
 import { forwardToAdmin, ADMIN_FORWARDED_CATEGORY } from './graph'
@@ -143,6 +143,8 @@ export async function scanFolder(opts: { mailbox?: string; folder?: string; fold
       if (!handler) {
         // Facture fournisseur ? (Olivier 23/09/2026) — lue, vérifiée dans Odoo
         // par société, classée ou envoyée pour encodage. Jamais deux fois.
+        // Réponse sans pièce jointe à une de nos demandes de pièces : Mobi est prévenu, le tri continue.
+        if (!msg.hasAttachments && isWatchedReply(msg)) await notePieceReplyWithoutDocument(sb, msg.fromEmail, { conversationId: msg.conversationId, subject: msg.subject, preview: msg.bodyPreview }).catch(() => {})
         if (isSupplierCandidate(msg)) {
           const seen = await findKnownItem(sb, mailbox, 'fournisseur', msg, folder)
           // « Pas une facture » : déjà renvoyé au tri, on laisse le tri décider (il a sa propre mémoire).
@@ -168,7 +170,8 @@ export async function scanFolder(opts: { mailbox?: string; folder?: string; fold
             const out = await processSupplierMail(sb, mailbox, msg, base, known ? { known, afterWait: true } : {})
             if (out.status === 'retry' && attempts + 1 >= 3) { out.status = 'to_verify'; out.note = 'Pièce non lisible automatiquement après 3 essais — lecture humaine requise' }
             await upsert(sb, base, { status: out.status, blocked_reason: out.note, extracted: out.status === 'retry' ? { attempts: attempts + 1 } : out.extracted })
-            if (out.status === 'applied' || out.status === 'to_verify') await markPieceReceived(sb, msg.fromEmail, `${mailbox} · ${msg.subject || ''}`)
+            if (out.status === 'applied' || out.status === 'to_verify') await markPieceReceived(sb, msg.fromEmail, `${mailbox} · ${msg.subject || ''}`, { mailbox, messageId: msg.id, conversationId: msg.conversationId, subject: msg.subject })
+            else if (out.status === 'skipped' && isWatchedReply(msg)) await notePieceReplyWithoutDocument(sb, msg.fromEmail, { conversationId: msg.conversationId, subject: msg.subject, preview: msg.bodyPreview }).catch(() => {})
             if (out.status === 'applied') { report.captured++; report.applied++ }
             else if (out.status === 'to_verify') { report.captured++; report.toVerify++ }
             else if (out.status === 'skipped') goTriage = true   // pas une facture → tri normal
@@ -438,6 +441,7 @@ export async function scanMailboxes(opts: { sinceDays?: number; limit?: number }
   // Pièces réclamées : nos demandes envoyées sont relevées, leurs destinataires surveillés (Olivier 06/10/2026).
   for (const mb of ['info@verviersdepannage.com', 'administration@verviersdepannage.com']) await scanPieceRequests(sb, mb).catch(e => total.errors.push(`pièces réclamées (${mb}) : ${e?.message || e}`))
   setWatchedSenders(await loadWatchedSenders(sb).catch(() => []))
+  setWatchedConversations(await loadWatchedConversations(sb).catch(() => []))
   await remindOldPieceRequests(sb).catch(() => {})
   // Mails de Dépannage Riga d'abord (Olivier 05/10/2026) : rangés dans « Dépannage
   // Riga » avant que le triage n'en fasse des cartes pour le bureau.

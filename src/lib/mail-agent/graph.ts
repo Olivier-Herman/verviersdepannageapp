@@ -26,6 +26,8 @@ export interface AgentMessage {
   categories?:   string[]
   /** Rejet transféré d'info@ : boîte d'où vient le transfert (l'expéditeur est celui d'origine). */
   forwardedFrom?: string
+  /** Fil de conversation (réponses à nos demandes de pièces). */
+  conversationId?: string
 }
 
 // ── Rejets d'info@ transférés à administration@ (Olivier 07/10/2026) ──────────
@@ -151,7 +153,7 @@ export async function listFolderMessages(mailbox: string, folderId: string, top 
   const filter = sinceIso ? `&$filter=receivedDateTime ge ${encodeURIComponent(sinceIso)}` : ''
   const url = `/users/${encodeURIComponent(mailbox)}/mailFolders/${folderId}/messages`
     + `?$top=${top}&$orderby=receivedDateTime desc${filter}`
-    + `&$select=id,subject,from,toRecipients,ccRecipients,receivedDateTime,bodyPreview,hasAttachments,categories`
+    + `&$select=id,subject,from,toRecipients,ccRecipients,receivedDateTime,bodyPreview,hasAttachments,categories,conversationId`
   const data = await authedGet(url)
   return (data.value || []).map((m: any) => unwrapAdminForward({
     id:             m.id,
@@ -164,6 +166,7 @@ export async function listFolderMessages(mailbox: string, folderId: string, top 
     toEmails:       (m.toRecipients || []).map((x: any) => person(x).email).filter(Boolean),
     ccEmails:       (m.ccRecipients || []).map((x: any) => person(x).email).filter(Boolean),
     categories:     Array.isArray(m.categories) ? m.categories : [],
+    conversationId: m.conversationId || undefined,
   }))
 }
 
