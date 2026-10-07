@@ -19,7 +19,7 @@ import { odooRpc } from '@/lib/odoo'
 import { fetchInvoicePdfFromOdoo } from '@/lib/relances/odoo'
 import { sendEmail, type EmailAttachment } from '@/lib/emails'
 import { getAppOnlyToken } from '@/lib/graph-mail-search'
-import { getMessageText, forwardMessage, findFolderIdByName, moveMessage } from './graph'
+import { getMessageText, forwardMessage, findOrCreateFolder, moveMessage } from './graph'
 import { readAutoFamilies } from './triage'
 import { COMPANIES, type CompanyKey } from './handlers/fournisseur'
 import { aiClient } from '@/lib/ai/usage'
@@ -176,7 +176,7 @@ export async function executeDecision(ctx: Ctx, action: string, params: { invoic
       const co = COMPANIES[params.company || 'vd']
       const fw = await forwardMessage(item.mailbox, item.message_id, co.alias, `Encodage (agent mail VD Soft) — ${co.label}`)
       if (!fw.ok) return { ok: false, note: '', error: fw.error }
-      const fid = await findFolderIdByName(item.mailbox, 'Fournisseur Divers'); if (fid) await moveMessage(item.mailbox, item.message_id, fid).catch(() => {})
+      const fid = await findOrCreateFolder(item.mailbox, 'Fournisseur Divers'); if (fid) await moveMessage(item.mailbox, item.message_id, fid).catch(() => {})
       return { ok: true, note: `Transféré pour encodage à ${co.alias} (${co.label}), mail classé dans Fournisseur Divers` }
     }
     return { ok: false, note: '', error: `Action inconnue : ${action}` }

@@ -18,7 +18,7 @@
 // zéro modification ici.
 
 import { createAdminClient } from '@/lib/supabase'
-import { findFolderIdByName, listFolderMessages, listAllFolders, getMessageText, getPdfAttachments, moveMessage } from './graph'
+import { findFolderIdByName, listFolderMessages, listAllFolders, getMessageText, getPdfAttachments, moveMessage, findOrCreateFolder } from './graph'
 import type { AgentMessage } from './graph'
 import { refreshAwpSenders } from './handlers/awp-rejet'
 import { refreshImaSenders } from './handlers/ima-rejet'
@@ -104,8 +104,11 @@ export async function scanFolder(opts: { mailbox?: string; folder?: string; fold
         const here = folder.split('/').pop()!.trim().toLowerCase()
         const target = rule.kind === 'trash' ? null : rule.folder.toLowerCase()
         if (target !== here && !(rule.kind === 'trash' && /^(éléments supprimés|deleted items)$/.test(here))) {
-          const fid = rule.kind === 'trash' ? 'deleteditems' : await findFolderIdByName(mailbox, rule.folder)
-          if (fid) {
+          // Dossier absent de la boîte (ex. « Scrada - Livre de Caisse » dans administration@, 07/10/2026) :
+          // créé sous la Boîte de réception ; un échec se voit dans les erreurs, jamais en silence.
+          const fid = rule.kind === 'trash' ? 'deleteditems' : await findOrCreateFolder(mailbox, rule.folder).catch(() => null)
+          if (!fid) report.errors.push(`${msg.subject} : dossier « ${rule.kind === 'file' ? rule.folder : ''} » introuvable et impossible à créer dans ${mailbox}`)
+          else {
             const mv = await moveMessage(mailbox, msg.id, fid)
             if (mv.ok) {
               await upsert(sb, { handler: 'regle', mailbox, message_id: msg.id, folder, received_at: msg.receivedAt || null, from_email: msg.fromEmail, subject: msg.subject, updated_at: new Date().toISOString() },
@@ -129,7 +132,7 @@ export async function scanFolder(opts: { mailbox?: string; folder?: string; fold
         if (mailbox.toLowerCase() === MAIL_AGENT_MAILBOX.toLowerCase()) {
           if (!(msg.categories || []).includes(ADMIN_FORWARDED_CATEGORY)) {
             const f = await forwardToAdmin(mailbox, msg, OUT_MAILBOX_ADMIN)
-            const doneId = await findFolderIdByName(mailbox, handler.doneFolder || MAIL_AGENT_DONE_FOLDER)
+            const doneId = await findOrCreateFolder(mailbox, handler.doneFolder || MAIL_AGENT_DONE_FOLDER)
             const mv = doneId ? await moveMessage(mailbox, msg.id, doneId) : { ok: false }
             await upsert(sb, base0, { status: 'skipped', mail_moved: !!mv.ok, blocked_reason: f.duplicate ? 'Déjà reçu dans administration@ : rien transféré, classé' : 'Transféré à administration@ (le rejet s’y traite et la réponse en part), classé' })
             report.applied++
@@ -196,7 +199,7 @@ export async function scanFolder(opts: { mailbox?: string; folder?: string; fold
             // Demande d'une assistance sur une facture arrivée dans info@ → administration@ (07/10/2026).
             if (mailbox.toLowerCase() === MAIL_AGENT_MAILBOX.toLowerCase() && ASSISTANCE_INVOICE_FAMILIES.has(t.family) && ASSISTANCE_SENDER.test(msg.fromEmail || '') && !(msg.categories || []).includes(ADMIN_FORWARDED_CATEGORY)) {
               const f = await forwardToAdmin(mailbox, msg, OUT_MAILBOX_ADMIN)
-              const doneId = await findFolderIdByName(mailbox, MAIL_AGENT_DONE_FOLDER)
+              const doneId = await findOrCreateFolder(mailbox, MAIL_AGENT_DONE_FOLDER)
               const mv = doneId ? await moveMessage(mailbox, msg.id, doneId) : { ok: false }
               await upsert(sb, base, { status: 'skipped', mail_moved: !!mv.ok, blocked_reason: f.duplicate ? 'Déjà reçu dans administration@ : classé' : 'Demande d’assistance sur une facture : transférée à administration@', extracted: t })
               report.applied++; continue
@@ -228,7 +231,7 @@ export async function scanFolder(opts: { mailbox?: string; folder?: string; fold
                 const res = await executeDecision({ sb, item: fresh, actor: 'agent', mode, odooBase: process.env.ODOO_URL || '' }, autoAction)
                 const now = new Date().toISOString()
                 if (res.ok) {
-                  let moved = false; try { const fid = await findFolderIdByName(mailbox, MAIL_AGENT_DONE_FOLDER); if (fid) moved = (await moveMessage(mailbox, msg.id, fid)).ok } catch {}
+                  let moved = false; try { const fid = await findOrCreateFolder(mailbox, MAIL_AGENT_DONE_FOLDER); if (fid) moved = (await moveMessage(mailbox, msg.id, fid)).ok } catch {}
                   await sb.from('mail_agent_items').update({ status: 'decided', mail_moved: moved, extracted: { ...t, decision: { action: autoAction, by: 'agent', at: now, result: res.note, links: res.links || [] } }, applied_at: now, applied_by: 'agent', updated_at: now }).eq('id', fresh.id)
                   report.applied++; report.toDecide = (report.toDecide || 1) - 1
                 } else await sb.from('mail_agent_items').update({ error: `automatique refusé : ${res.error}`, updated_at: now }).eq('id', fresh.id)
@@ -308,7 +311,7 @@ export async function scanFolder(opts: { mailbox?: string; folder?: string; fold
         })
         // Classé avec les rejets traités (Olivier 23/09 : « classer les mails dans
         // les bons dossiers une fois traités ») : le doublon ne traîne pas.
-        try { const doneId = await findFolderIdByName(mailbox, handler.doneFolder || MAIL_AGENT_DONE_FOLDER); if (doneId) await moveMessage(mailbox, msg.id, doneId) } catch {}
+        try { const doneId = await findOrCreateFolder(mailbox, handler.doneFolder || MAIL_AGENT_DONE_FOLDER); if (doneId) await moveMessage(mailbox, msg.id, doneId) } catch {}
         report.skipped++
         continue
       }
@@ -543,7 +546,7 @@ export async function applyItem(itemId: string, actor: string): Promise<ApplyRes
     // Classement du mail — jamais bloquant : la comptabilité est déjà faite.
     let moved = false
     const doneFolder = handlerById(item.handler)?.doneFolder || MAIL_AGENT_DONE_FOLDER
-    const doneId = await findFolderIdByName(item.mailbox, doneFolder)
+    const doneId = await findOrCreateFolder(item.mailbox, doneFolder)
     if (doneId) moved = (await moveMessage(item.mailbox, item.message_id, doneId)).ok
 
     await sb.from('mail_agent_items').update({
