@@ -13,7 +13,7 @@
 import crypto from 'crypto'
 import { createAdminClient } from '@/lib/supabase'
 
-export type ProposalKind = 'lot_paiement' | 'facture_achat' | 'note_credit' | 'envoi_comptable' | 'question_olivier' | 'rapprochement_bouton' | 'rapprochement_banque' | 'plaque_achat' | 'annulation_doublon' | 'ticket_achat' | 'refacturation_avance'
+export type ProposalKind = 'lot_paiement' | 'facture_achat' | 'note_credit' | 'envoi_comptable' | 'question_olivier' | 'rapprochement_bouton' | 'rapprochement_banque' | 'plaque_achat' | 'annulation_doublon' | 'ticket_achat' | 'refacturation_avance' | 'od_inter_societes'
 export const KIND_LABEL: Record<ProposalKind, string> = {
   lot_paiement:    'Lot de paiement fournisseurs',
   facture_achat:   'Valider une facture d’achat',
@@ -26,6 +26,7 @@ export const KIND_LABEL: Record<ProposalKind, string> = {
   annulation_doublon: 'Brouillon en double annulé (mail + Peppol)',
   ticket_achat:     'Ticket de caisse encodé',
   refacturation_avance: 'Refacturation d’une avance de fonds',
+  od_inter_societes: 'OD explicatives entre sociétés (une société paie pour l’autre)',
 }
 export const ALL_KINDS = Object.keys(KIND_LABEL) as ProposalKind[]
 export const COMPANY_LABEL: Record<number, string> = { 1: 'Verviers Dépannage', 2: 'Dépannage Riga', 3: 'DGJ VHU' }

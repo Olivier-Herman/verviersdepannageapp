@@ -204,7 +204,13 @@ export async function prepare(kind: ProposalKind, agent: AgentAccount, company: 
   if (kind === 'question_olivier') {
     // Facture d'achat au nom privé d'une personne (Olivier 05/10/2026) : ni
     // encodée ni écartée d'office, Olivier tranche. Les infos sont lues dans l'ERP.
-    if (String(p.sujet || '') !== 'facture_nom_prive') throw new Error('contenu.sujet : seul « facture_nom_prive » est prévu pour l’instant.')
+    // Question libre (Victor, coordinateur des trois sociétés — Olivier 07/10/2026).
+    if (String(p.sujet || '') === 'libre') {
+      const question = String(p.question || '').trim().slice(0, 2000), contexte = String(p.contexte || '').trim().slice(0, 4000)
+      if (!question) throw new Error('contenu.question obligatoire.')
+      return { title: question.slice(0, 160), amount: Number.isFinite(Number(p.montant)) ? Number(p.montant) : null, payload: { sujet: 'libre', question, contexte, lien: String(p.lien || '').slice(0, 500) || null }, directAllowed: false }
+    }
+    if (String(p.sujet || '') !== 'facture_nom_prive') throw new Error('contenu.sujet : « facture_nom_prive » ou « libre ».')
     const id = Number(p.facture_id)
     if (!Number.isInteger(id) || id <= 0) throw new Error('contenu.facture_id obligatoire.')
     const destinataire = String(p.destinataire || '').trim().slice(0, 300)
@@ -223,6 +229,22 @@ export async function prepare(kind: ProposalKind, agent: AgentAccount, company: 
       },
       directAllowed: false,
     }
+  }
+
+  if (kind === 'od_inter_societes') {
+    // Une société a payé une dépense de l'autre (carte ou compte) : pas de refacturation, une OD
+    // explicative de chaque côté (Olivier 07/10/2026). Comptes à fixer par Olivier : la validation
+    // ne passe encore rien dans l'ERP, elle sert de feu vert pour l'encodage.
+    const payeuse = Number(p.societe_payeuse), charge = Number(p.societe_charge)
+    if (![1, 2, 3].includes(payeuse) || ![1, 2, 3].includes(charge) || payeuse === charge) throw new Error('contenu.societe_payeuse et contenu.societe_charge : deux sociétés différentes parmi 1, 2, 3.')
+    if (!agent.companies.includes(payeuse) || !agent.companies.includes(charge)) throw new Error('Les deux sociétés doivent être dans vos droits.')
+    const montant = Number(p.montant)
+    if (!(montant > 0)) throw new Error('contenu.montant obligatoire (positif).')
+    const libelle = String(p.libelle || '').trim().slice(0, 300)
+    if (!libelle) throw new Error('contenu.libelle obligatoire.')
+    const date = String(p.date || '').slice(0, 10)
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) throw new Error('contenu.date (AAAA-MM-JJ) obligatoire.')
+    return { title: `OD inter-sociétés · ${libelle} · ${montant.toFixed(2)} €`, amount: montant, payload: { societe_payeuse: payeuse, societe_charge: charge, date, montant, libelle, reference_paiement: String(p.reference_paiement || '').slice(0, 200) || null, piece: String(p.piece || '').slice(0, 300) || null }, directAllowed: false }
   }
 
   // envoi_comptable
@@ -246,6 +268,7 @@ async function movePdf(company: number, id: number): Promise<EmailAttachment | n
 
 export async function execute(kind: ProposalKind, company: number, payload: any): Promise<Record<string, any>> {
   if (kind === 'question_olivier') throw new Error('Une question ne s’exécute pas : on y répond.')
+  if (kind === 'od_inter_societes') return { note: 'Feu vert donné : les deux OD explicatives sont à passer dans l’ERP (comptes à confirmer par Mobi).', manuel: true, ...payload }
   if (kind === 'rapprochement_bouton') {
     const { reconcileSource } = await import('./lot2')
     return { note: await reconcileSource(payload.source, payload.id, null) }
@@ -358,11 +381,11 @@ export async function execute(kind: ProposalKind, company: number, payload: any)
   }
 
   // envoi_comptable — depuis la boîte de Mobi, jamais administration@ (Olivier 05/10/2026),
-  // signé « Benoît — Assistant IA de Mobi » (seule exception de dévoilement : le cabinet le sait).
+  // signé « Victor — Assistant IA de Mobi » (seule exception de dévoilement : le cabinet le sait ; Victor remplace Benoît le 07/10/2026).
   const atts: EmailAttachment[] = []
   for (const id of payload.facture_ids as number[]) { const a = await movePdf(company, id); if (a) atts.push(a) }
   if (!atts.length) throw new Error('Aucun PDF trouvé pour ces pièces dans l’ERP.')
-  const html = `<p>${String(payload.message).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/\n/g, '<br>')}</p><p>Benoît — Assistant IA de Mobi</p>`
+  const html = `<p>${String(payload.message).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/\n/g, '<br>')}</p><p>Victor — Assistant IA de Mobi</p>`
   const { writeToComptable, COMPTABLE_AGENT } = await import('./comptable-mailbox')
   await writeToComptable({ kind: 'agent', agent: { name: COMPTABLE_AGENT } as any }, { to: [payload.a], subject: payload.objet, html, attachments: atts }, true)
   return { note: `Envoyé à ${payload.a} depuis la boîte de Mobi · ${atts.length} pièce${atts.length > 1 ? 's' : ''}`, pieces: atts.map(a => a.name) }
