@@ -56,6 +56,23 @@ export async function POST(req: Request) {
     }
     return NextResponse.json({ ok: true })
   }
+  // Doubles paiements (07/10/2026) : Rembourser / Garder / Rappel, depuis le groupe de décisions seulement.
+  if (cbq && chatType !== 'private' && String(cbq.data || '').startsWith('dp:')) {
+    const { decisionsGroup } = await import('@/lib/especes/telegram')
+    const group = await decisionsGroup()
+    if (group && Number(cbq.message?.chat?.id) === group) {
+      const [, act, idStr] = String(cbq.data).split(':')
+      const who = [cbq.from?.first_name, cbq.from?.last_name].filter(Boolean).join(' ') || cbq.from?.username || 'Telegram'
+      const { decide } = await import('@/lib/doubles-paiements')
+      let res: { note: string; c: any }
+      try { res = await decide(Number(idStr), act as any, who) } catch (e: any) { res = { note: `⚠️ Rien n'a été fait : ${e?.message || e}`, c: null } }
+      await tg('answerCallbackQuery', { callback_query_id: cbq.id, text: res.note.replace(/^.. /, '').slice(0, 190) })
+      if (res.c) await tg('editMessageText', { chat_id: group, message_id: cbq.message.message_id, text: `${res.c.body_html}
+
+<b>${res.note}</b>`, parse_mode: 'HTML', ...(res.c.status === 'open' ? { reply_markup: cbq.message.reply_markup } : {}) })
+    }
+    return NextResponse.json({ ok: true })
+  }
   if (chatType !== 'private') {
     // Groupe de décisions d'Olivier (05/10/2026) : on retient seulement quel groupe
     // a écrit au bot (id, nom, sujets activés) pour y ouvrir les sujets « Doubles
