@@ -54,6 +54,17 @@ function parseAmount(raw: string): number | null {
  * Extrait les données du rejet. Retourne null si le mail ne correspond à aucun
  * gabarit connu → l'appelant doit le classer 'to_verify'.
  */
+/** Adresse de réponse écrite dans le mail IMA : une demande explicite (« à l'adresse suivante … »)
+ *  prime sur le contact de la signature (« Mail: … »). Olivier 07/10/2026. */
+export function replyAddress(text: string): { email: string; phrase: string } | null {
+  const lines = String(text || '').split(/\n/)
+  const explicit = lines.find(l => /@/.test(l) && /(adresse|envoy|adress|transmet|r[ée]pon)/i.test(l) && !/^\s*mail\s*:/i.test(l))
+  const sig = lines.find(l => /^\s*mail\s*:\s*\S+@/i.test(l))
+  const line = explicit || sig
+  const email = line?.match(/[\w.+-]+@[\w-]+\.[\w.-]+/)?.[0]
+  return email ? { email: email.toLowerCase().replace(/\.$/, ''), phrase: line!.trim().slice(0, 200) } : null
+}
+
 export function extract(subject: string, text: string): RejectExtraction | null {
   // ── numéro de facture : dans l'objet, et confirmé dans le corps ──
   const subjMatch = (subject || '').match(/votre facture n[°o]\s*([0-9]{4}\/[0-9]{2}\/[0-9]{3,4})/i)
@@ -86,7 +97,8 @@ export function extract(subject: string, text: string): RejectExtraction | null 
     || text.match(/^.*note de cr[ée]dit.*$/im)?.[0]?.trim()
     || 'Facture rejetée par IMA'
 
-  return { invoiceNumber, amount, entity, mailReference: ref, reason }
+  const rep = replyAddress(text)
+  return { invoiceNumber, amount, entity, mailReference: ref, reason, replyTo: rep?.email || null, replyToPhrase: rep?.phrase || null }
 }
 
 

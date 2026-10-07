@@ -44,7 +44,9 @@ Réponds STRICTEMENT par un objet JSON :
   "plate": "<Nummerplaat, ou null>",
   "entity_name": "<le nom d'entreprise EXACT auquel Allianz exige que la facture soit libellée, ou null>",
   "entity_vat": "<le numéro de TVA/BTW exigé, sans espaces ni points, ou null>",
-  "reason": "<le motif du rejet, reformulé en une phrase courte en français>"
+  "reason": "<le motif du rejet, reformulé en une phrase courte en français>",
+  "reply_to": "<l'adresse e-mail à laquelle le prestataire doit répondre : celle que le document indique explicitement pour répondre ou renvoyer la facture ; à défaut, celle du contact « Suppliers » / « Fournisseurs » ; sinon null>",
+  "reply_to_phrase": "<la ligne du document, recopiée mot pour mot, qui donne cette adresse, ou null>"
 }
 
 Le numéro de TVA doit être renvoyé collé, préfixe pays inclus (ex : BE0837437919).
@@ -125,6 +127,8 @@ export const awpHandler: MailHandler = {
         entity,
         mailReference: parsed.dossier ? String(parsed.dossier).replace(/\s/g, '') : null,
         reason: String(parsed.reason || 'Facture rejetée par Allianz Partners').slice(0, 400),
+        replyTo: /^[\w.+-]+@[\w-]+\.[\w.-]+$/.test(String(parsed.reply_to || '')) ? String(parsed.reply_to).toLowerCase() : null,
+        replyToPhrase: parsed.reply_to_phrase ? String(parsed.reply_to_phrase).slice(0, 200) : null,
       }
     }
     return null

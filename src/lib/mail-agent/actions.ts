@@ -57,6 +57,15 @@ async function replyMail(mode: Mode, item: any, html: string, attachments: Email
   const draft: any = await r.json()
   const quoted = String(draft.body?.content || '')
   const patch: any = { body: { contentType: 'HTML', content: html + quoted } }
+  // Destinataire (Olivier 07/10/2026) : l'adresse de réponse LUE dans le mail ou la pièce jointe ; à défaut
+  // l'expéditeur d'origine — jamais notre propre boîte (rejet transféré d'info@).
+  const to = (draft.toRecipients || []).map((x: any) => String(x?.emailAddress?.address || '').toLowerCase())
+  const replyTo = String(item.extracted?.replyTo || '').toLowerCase()
+  if (replyTo && !/verviersdepannage\.(com|be)$/i.test(replyTo) && !(to.length === 1 && to[0] === replyTo)) {
+    patch.toRecipients = [{ emailAddress: { address: replyTo } }]
+  } else if (item.from_email && !/verviersdepannage\.(com|be)$/i.test(item.from_email) && to.some((a: string) => /verviersdepannage\.(com|be)$/i.test(a))) {
+    patch.toRecipients = [{ emailAddress: { address: item.from_email } }]
+  }
   if (cc) patch.ccRecipients = [{ emailAddress: { address: cc } }]
   const p1 = await fetch(`${base.replace(item.message_id, draft.id)}`, { method: 'PATCH', headers: H, body: JSON.stringify(patch) })
   if (!p1.ok) throw new Error(`corps de réponse refusé (${p1.status})`)

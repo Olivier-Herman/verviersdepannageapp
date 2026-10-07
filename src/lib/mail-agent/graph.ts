@@ -22,6 +22,22 @@ export interface AgentMessage {
   /** Destinataires directs — sert à écarter les mails où on est en simple copie. */
   toEmails:      string[]
   ccEmails:      string[]
+  /** Catégories Outlook (marque « transféré à administration@ »). */
+  categories?:   string[]
+  /** Rejet transféré d'info@ : boîte d'où vient le transfert (l'expéditeur est celui d'origine). */
+  forwardedFrom?: string
+}
+
+// ── Rejets d'info@ transférés à administration@ (Olivier 07/10/2026) ──────────
+export const ADMIN_FORWARD_MARK = 'Transfert automatique d’info@ (assistance)'
+export const ADMIN_FORWARDED_CATEGORY = 'VD Soft - Transféré à administration'
+/** Un transfert d'info@ porte en tête « <marque> — de <expéditeur d'origine> » : on rend au mail son vrai expéditeur. */
+export function unwrapAdminForward(m: AgentMessage): AgentMessage {
+  // Seulement un transfert fait par notre propre boîte info@ (jamais un mail extérieur qui imiterait la marque).
+  if (!/^info@verviersdepannage\.com$/i.test(m.fromEmail || '') || !m.bodyPreview?.startsWith(ADMIN_FORWARD_MARK)) return m
+  const orig = /— de (\S+@\S+?)(?:\s|$|—)/.exec(m.bodyPreview)?.[1]
+  if (!orig) return m
+  return { ...m, forwardedFrom: m.fromEmail, fromEmail: orig.toLowerCase(), fromName: '', subject: m.subject.replace(/^\s*(TR|FW|Fwd)\s*:\s*/i, '') }
 }
 
 /** fetch Graph authentifié, avec retry unique sur 401 (token expiré → refresh). */
@@ -135,9 +151,9 @@ export async function listFolderMessages(mailbox: string, folderId: string, top 
   const filter = sinceIso ? `&$filter=receivedDateTime ge ${encodeURIComponent(sinceIso)}` : ''
   const url = `/users/${encodeURIComponent(mailbox)}/mailFolders/${folderId}/messages`
     + `?$top=${top}&$orderby=receivedDateTime desc${filter}`
-    + `&$select=id,subject,from,toRecipients,ccRecipients,receivedDateTime,bodyPreview,hasAttachments`
+    + `&$select=id,subject,from,toRecipients,ccRecipients,receivedDateTime,bodyPreview,hasAttachments,categories`
   const data = await authedGet(url)
-  return (data.value || []).map((m: any) => ({
+  return (data.value || []).map((m: any) => unwrapAdminForward({
     id:             m.id,
     subject:        m.subject || '',
     fromEmail:      person(m.from).email,
@@ -147,6 +163,7 @@ export async function listFolderMessages(mailbox: string, folderId: string, top 
     hasAttachments: Boolean(m.hasAttachments),
     toEmails:       (m.toRecipients || []).map((x: any) => person(x).email).filter(Boolean),
     ccEmails:       (m.ccRecipients || []).map((x: any) => person(x).email).filter(Boolean),
+    categories:     Array.isArray(m.categories) ? m.categories : [],
   }))
 }
 
@@ -332,4 +349,27 @@ export async function folderSenders(mailbox: string, folderId: string, sinceIso:
     url = next ? next.replace('https://graph.microsoft.com/v1.0', '') : null
   }
   return out
+}
+
+/** Transfère à administration@ un rejet arrivé dans info@, sans doublon (même message déjà là = rien). Marque l'original. */
+export async function forwardToAdmin(mailbox: string, m: AgentMessage, admin: string): Promise<{ forwarded: boolean; duplicate: boolean }> {
+  guardMailbox(mailbox); guardMailbox(admin)
+  const j = await authedGet(`/users/${encodeURIComponent(mailbox)}/messages/${encodeURIComponent(m.id)}?$select=internetMessageId,categories`)
+  let duplicate = false
+  if (j.internetMessageId) {
+    const f = encodeURIComponent(`internetMessageId eq '${String(j.internetMessageId).replace(/'/g, "''")}'`)
+    duplicate = ((await authedGet(`/users/${encodeURIComponent(admin)}/messages?$filter=${f}&$select=id&$top=1`)).value || []).length > 0
+  }
+  if (!duplicate) {
+    const res = await authedFetch(`/users/${encodeURIComponent(mailbox)}/messages/${encodeURIComponent(m.id)}/forward`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ comment: `${ADMIN_FORWARD_MARK} — de ${m.fromEmail} — reçu le ${new Date(m.receivedAt).toLocaleString('fr-BE', { timeZone: 'Europe/Brussels' })}.`, toRecipients: [{ emailAddress: { address: admin } }] }),
+    })
+    if (res.status !== 202) throw new Error(`Transfert refusé (${res.status}) : ${(await res.text()).slice(0, 160)}`)
+  }
+  const cats: string[] = Array.isArray(j.categories) ? j.categories : []
+  if (!cats.includes(ADMIN_FORWARDED_CATEGORY)) {
+    await authedFetch(`/users/${encodeURIComponent(mailbox)}/messages/${encodeURIComponent(m.id)}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ categories: [...cats, ADMIN_FORWARDED_CATEGORY] }) })
+  }
+  return { forwarded: !duplicate, duplicate }
 }

@@ -269,6 +269,11 @@ export async function creditAndRebill(
   let creditNoteName: string | null = null
   // La NC porte exactement la référence du dossier et le véhicule de la facture (Olivier 07/10/2026).
   if (creditNoteId) await alignCreditNotes(1, inv.id, [creditNoteId])
+  // Une note de crédit non envoyée n'est pas terminée (Olivier 07/10/2026) : même canal que la facture.
+  if (creditNoteId) {
+    try { const s = await postAndSendPeppol(creditNoteId); if (!s.sent) warnings.push(s.note) }
+    catch (e: any) { warnings.push(`Note de crédit créée mais pas envoyée : ${e?.message || e}`) }
+  }
   if (creditNoteId) {
     const cn = await odooRpc<any[]>('account.move', 'read', [[creditNoteId]], { fields: ['name'] })
     creditNoteName = cn?.[0]?.name || null
@@ -330,21 +335,27 @@ export async function creditAndRebill(
 // ── Module « mauvais client », suite (Olivier 07/10/2026) ─────────────────────
 
 /**
- * Valide la nouvelle facture et l'envoie : par Peppol pour un client belge, par mail pour un
- * client étranger (« envoi à société française de fait par mail, ils n'ont pas encore Peppol
- * en France », Olivier 07/10/2026). Un seul canal coché. Aucun canal possible : validée, signalée.
+ * Valide la pièce (facture OU note de crédit) et l'envoie au client : par Peppol si le client y
+ * est inscrit (vérifié par l'ERP : « valid »), sinon par mail à son adresse de facturation
+ * (Olivier 07/10/2026 : « si le client est Peppol, on envoie bien par Peppol » ; « société
+ * française par mail, ils n'ont pas encore Peppol »). Un seul canal coché. Aucun canal : signalé.
  */
 export async function postAndSendPeppol(id: number): Promise<{ name: string; sent: boolean; note: string }> {
-  const [m] = await odooRpc<any[]>('account.move', 'read', [[id]], { fields: ['state', 'commercial_partner_id'] })
+  const [m] = await odooRpc<any[]>('account.move', 'read', [[id]], { fields: ['state', 'partner_id'] })
   if (m?.state === 'draft') await odooRpc('account.move', 'action_post', [[id]])
-  const [cp] = m?.commercial_partner_id ? await odooRpc<any[]>('res.partner', 'read', [[m.commercial_partner_id[0]]], { fields: ['country_id'] }) : [null]
-  const belgian = !cp?.country_id || /belg/i.test(String(cp.country_id[1]))
+  const [pt] = m?.partner_id ? await odooRpc<any[]>('res.partner', 'read', [[m.partner_id[0]]], { fields: ['peppol_verification_state'] }) : [null]
+  const belgian = pt?.peppol_verification_state === 'valid'   // = inscrit sur Peppol
   const ctx = { context: { active_model: 'account.move', active_ids: [id], active_id: id } }
   const wiz = await odooRpc<number>('account.move.send.wizard', 'create', [{ move_id: id }], ctx)
   const [w0] = await odooRpc<any[]>('account.move.send.wizard', 'read', [[wiz]], { fields: ['sending_method_checkboxes'], ...ctx })
   const [after0] = await odooRpc<any[]>('account.move', 'read', [[id]], { fields: ['name'] })
   const method = belgian ? 'peppol' : 'email'
   if (!w0?.sending_method_checkboxes?.[method]) return { name: after0.name, sent: false, note: `${after0.name} validée ; envoi ${belgian ? 'Peppol' : 'par mail'} impossible pour ce client : à envoyer` }
+  if (!belgian) {
+    // Mail : vers l'adresse de facturation du client (contact « facture » s'il existe).
+    const [w1] = await odooRpc<any[]>('account.move.send.wizard', 'read', [[wiz]], { fields: ['mail_partner_ids'], ...ctx })
+    if (!(w1?.mail_partner_ids || []).length) return { name: after0.name, sent: false, note: `${after0.name} validée ; aucune adresse mail de facturation pour ce client : à envoyer` }
+  }
   const boxes = Object.fromEntries(Object.entries<any>(w0.sending_method_checkboxes).map(([k, v]) => [k, { ...v, checked: k === method }]))
   await odooRpc('account.move.send.wizard', 'write', [[wiz], { sending_method_checkboxes: boxes, sending_methods: [method] }], ctx)
   await odooRpc('account.move.send.wizard', 'action_send_and_print', [[wiz]], ctx)
@@ -365,10 +376,12 @@ export async function creditInFull(invoiceId: number, reason: string): Promise<s
   if (draft.length !== 1) throw new Error('Note de crédit introuvable après création')
   await odooRpc('account.move', 'action_post', [[draft[0].id]])
   await alignCreditNotes(1, invoiceId, [draft[0].id])
-  const ls = await odooRpc<any[]>('account.move.line', 'search_read', [[['move_id', 'in', [invoiceId, draft[0].id]], ['account_id.account_type', '=', 'asset_receivable'], ['reconciled', '=', false]]], { fields: ['id'] })
-  if (ls.length === 2) await odooRpc('account.move.line', 'reconcile', [ls.map(l => l.id)])
-  const [nc] = await odooRpc<any[]>('account.move', 'read', [[draft[0].id]], { fields: ['name'] })
-  return nc.name
+  const ls0 = await odooRpc<any[]>('account.move.line', 'search_read', [[['move_id', 'in', [invoiceId, draft[0].id]], ['account_id.account_type', '=', 'asset_receivable'], ['reconciled', '=', false]]], { fields: ['id'] })
+  if (ls0.length === 2) await odooRpc('account.move.line', 'reconcile', [ls0.map(l => l.id)])
+  // Envoyée au client, même canal que ses factures (07/10/2026).
+  const sent = await postAndSendPeppol(draft[0].id)
+  if (!sent.sent) throw new Error(`Note de crédit ${sent.name} validée mais pas envoyée : ${sent.note}`)
+  return sent.name
 }
 
 export interface DuplicatePlan { keep: { id: number; name: string }; credit: { id: number; name: string }[]; why: string }

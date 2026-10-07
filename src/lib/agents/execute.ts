@@ -348,8 +348,11 @@ export async function execute(kind: ProposalKind, company: number, payload: any)
       const nc: any[] = await odooRpcCompany(company, 'account.move', 'read', [[ncId]], { fields: ['name', 'state'] })
       if (nc?.[0]?.state === 'draft') await odooRpcCompany(company, 'account.move', 'action_post', [[ncId]])
       await alignCreditNotes(company, inv.id, [ncId])   // même référence et même véhicule que la facture (07/10/2026)
+      // Envoyée au client dans le même passage (Peppol s'il y est inscrit, sinon mail) — 07/10/2026.
+      let sentNote = ''
+      if (company === 1) { const { postAndSendPeppol } = await import('@/lib/mail-agent/odoo'); const s = await postAndSendPeppol(ncId).catch((e: any) => ({ sent: false, note: String(e?.message || e) })); sentNote = s.sent ? ' et envoyée' : ` — pas envoyée : ${s.note}` }
       const n2: any[] = await odooRpcCompany(company, 'account.move', 'read', [[ncId]], { fields: ['name'] })
-      return { note: `Note de crédit ${n2?.[0]?.name || ncId} validée`, note_credit: n2?.[0]?.name }
+      return { note: `Note de crédit ${n2?.[0]?.name || ncId} validée${sentNote}`, note_credit: n2?.[0]?.name }
     }
     throw new Error('Note de crédit introuvable après création : vérifiez dans l’ERP.')
   }

@@ -27,6 +27,10 @@ export interface RejectExtraction {
   mailReference: string | null
   /** Motif tel que l'assisteur le formule, pour l'affichage. */
   reason:        string
+  /** Adresse à laquelle répondre, LUE dans le mail ou la pièce jointe (Olivier 07/10/2026 :
+   *  « ce n'est pas toujours l'email qui envoie qui doit recevoir la réponse »), et la phrase source. */
+  replyTo?:       string | null
+  replyToPhrase?: string | null
 }
 
 export interface MailHandler {

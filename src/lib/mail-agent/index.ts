@@ -25,6 +25,12 @@ import { refreshImaSenders } from './handlers/ima-rejet'
 import { isSupplierCandidate, processSupplierMail, refreshInvoicePlatforms, setWatchedSenders, FOURNISSEUR_DONE_FOLDER } from './handlers/fournisseur'
 import { loadWatchedSenders, markPieceReceived, scanPieceRequests, remindOldPieceRequests } from './pieces'
 import { fixedRule } from './rules'
+import { replyAddress as imaReplyAddress } from './handlers/ima-rejet'
+import { forwardToAdmin, ADMIN_FORWARDED_CATEGORY } from './graph'
+const OUT_MAILBOX_ADMIN = 'administration@verviersdepannage.com'
+// Familles « facture » du tri et expéditeurs d'assistances (rejet, contestation, demande de facture ou d'avoir).
+const ASSISTANCE_INVOICE_FAMILIES = new Set(['contestation', 'demande_avoir', 'demande_document', 'double_paiement', 'rappel_paiement'])
+const ASSISTANCE_SENDER = /imabenelux|ima\.eu|touring\.be|vab\.be|allianz|awp|axa-assistance|ip-assistance|eurocross|europ-assistance|ethias|anwb|acl\.lu|race\.es|pv\.be|vivium/i
 import { usualFolder, folderIdByPath } from './learned'
 import { triageMail, isNoise, isAssistanceMission, isHandledElsewhere, twinInQueue, readAutoFamilies } from './triage'
 import { executeDecision } from './actions'
@@ -111,6 +117,26 @@ export async function scanFolder(opts: { mailbox?: string; folder?: string; fold
         report.skipped++; continue
       }
       const handler = handlerFor(msg.fromEmail, msg.subject)
+      // Rejets arrivés dans info@ → transférés à administration@, d'où partent les réponses
+      // (Olivier 07/10/2026). Rejet de la facture d'une autre société (nous en copie) → corbeille.
+      if (handler && (handler.id === 'awp_rejet' || handler.id === 'ima_rejet')) {
+        const base0 = { handler: 'regle', mailbox, message_id: msg.id, folder, received_at: msg.receivedAt || null, from_email: msg.fromEmail, subject: msg.subject, updated_at: new Date().toISOString() }
+        if (handler.notOurs?.(msg.subject)) {
+          const mv = await moveMessage(mailbox, msg.id, 'deleteditems')
+          if (mv.ok) await upsert(sb, base0, { status: 'skipped', mail_moved: true, blocked_reason: 'Corbeille : rejet de la facture d’une autre société (nous sommes en copie)' })
+          report.skipped++; continue
+        }
+        if (mailbox.toLowerCase() === MAIL_AGENT_MAILBOX.toLowerCase()) {
+          if (!(msg.categories || []).includes(ADMIN_FORWARDED_CATEGORY)) {
+            const f = await forwardToAdmin(mailbox, msg, OUT_MAILBOX_ADMIN)
+            const doneId = await findFolderIdByName(mailbox, handler.doneFolder || MAIL_AGENT_DONE_FOLDER)
+            const mv = doneId ? await moveMessage(mailbox, msg.id, doneId) : { ok: false }
+            await upsert(sb, base0, { status: 'skipped', mail_moved: !!mv.ok, blocked_reason: f.duplicate ? 'Déjà reçu dans administration@ : rien transféré, classé' : 'Transféré à administration@ (le rejet s’y traite et la réponse en part), classé' })
+            report.applied++
+          }
+          report.skipped++; continue
+        }
+      }
       if (!handler) {
         // Facture fournisseur ? (Olivier 23/09/2026) — lue, vérifiée dans Odoo
         // par société, classée ou envoyée pour encodage. Jamais deux fois.
@@ -167,6 +193,14 @@ export async function scanFolder(opts: { mailbox?: string; folder?: string; fold
             }
             const t = await triageMail(sb, mailbox, msg)
             if (!t) { report.skipped++; continue }
+            // Demande d'une assistance sur une facture arrivée dans info@ → administration@ (07/10/2026).
+            if (mailbox.toLowerCase() === MAIL_AGENT_MAILBOX.toLowerCase() && ASSISTANCE_INVOICE_FAMILIES.has(t.family) && ASSISTANCE_SENDER.test(msg.fromEmail || '') && !(msg.categories || []).includes(ADMIN_FORWARDED_CATEGORY)) {
+              const f = await forwardToAdmin(mailbox, msg, OUT_MAILBOX_ADMIN)
+              const doneId = await findFolderIdByName(mailbox, MAIL_AGENT_DONE_FOLDER)
+              const mv = doneId ? await moveMessage(mailbox, msg.id, doneId) : { ok: false }
+              await upsert(sb, base, { status: 'skipped', mail_moved: !!mv.ok, blocked_reason: f.duplicate ? 'Déjà reçu dans administration@ : classé' : 'Demande d’assistance sur une facture : transférée à administration@', extracted: t })
+              report.applied++; continue
+            }
             // Classement appris (Olivier 06/10/2026) : dossier habituel de cet expéditeur.
             const uf = await usualFolder(sb, mailbox, msg.fromEmail).catch(() => null)
             if (t.family === 'info') {
@@ -246,7 +280,10 @@ export async function scanFolder(opts: { mailbox?: string; folder?: string; fold
         await upsert(sb, base, {
           status: 'to_verify',
           blocked_reason: `Mail non exploitable automatiquement (${handler.label}) — lecture humaine requise`,
-          extracted: { rawExcerpt: text.slice(0, 1200) },
+          extracted: { rawExcerpt: text.slice(0, 1200), ...(() => {
+            const r = handler.id === 'ima_rejet' ? imaReplyAddress(text) : null
+            return { replyTo: r?.email || msg.fromEmail || null, replyToPhrase: r?.phrase || 'adresse de réponse non indiquée, expéditeur utilisé' }
+          })() },
         })
         report.captured++; report.toVerify++
         continue
@@ -298,6 +335,9 @@ export async function scanFolder(opts: { mailbox?: string; folder?: string; fold
           mailReference: parsed.mailReference,
           reason:        parsed.reason,
           odooRef:       inv?.ref || null,
+          // Adresse de réponse lue dans le mail ou le PDF ; à défaut, l'expéditeur, signalé (07/10/2026).
+          replyTo:       parsed.replyTo || msg.fromEmail || null,
+          replyToPhrase: parsed.replyToPhrase || (parsed.replyTo ? null : 'adresse de réponse non indiquée, expéditeur utilisé'),
           ...(dupPlan ? { duplicatePlan: dupPlan } : {}),
         },
         checks:              checks.details,

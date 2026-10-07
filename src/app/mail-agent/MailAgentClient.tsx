@@ -396,6 +396,9 @@ export default function MailAgentClient({
                   {it.status === 'applied' ? '⚠ ' : ''}{it.blocked_reason}
                 </p>
               )}
+              {['awp_rejet', 'ima_rejet'].includes(it.handler || '') && it.extracted?.replyTo && (
+                <p className="text-xs text-slate-700">Réponse à : <b>{it.extracted.replyTo}</b>{it.extracted.replyToPhrase ? <span className="text-slate-500"> — « {it.extracted.replyToPhrase} »</span> : null}</p>
+              )}
               {it.error && (
                 <p className="text-sm bg-red-50 border border-red-200 text-red-800 rounded-lg p-2">{it.error}</p>
               )}
