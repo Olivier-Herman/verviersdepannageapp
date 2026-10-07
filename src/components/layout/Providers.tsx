@@ -31,7 +31,7 @@ export default function Providers({ children }: { children: React.ReactNode }) {
     if (!('serviceWorker' in navigator)) return
     // Le site public (/site) n'est pas l'app : pas de service worker chez un
     // visiteur qui vient juste lire une page. Olivier 2026-08-21.
-    if (location.pathname.startsWith('/site')) return
+    if (location.pathname.startsWith('/site') || location.pathname.startsWith('/compta')) return
 
     // Enregistrer notre SW custom minimaliste (push) en plus du SW next-pwa
     navigator.serviceWorker
