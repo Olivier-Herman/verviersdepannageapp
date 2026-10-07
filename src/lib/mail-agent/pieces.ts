@@ -116,9 +116,23 @@ export async function markPieceReceived(sb: any, fromEmail: string, via: string,
 }
 
 /** Réponse d'un fournisseur surveillé SANS pièce : le tri normal prépare la carte ; Mobi est prévenu. */
+const BOUNCE_FROM = /^(postmaster|mailer-daemon|microsoftexchange[^@]*)@/i
+const BOUNCE_SUBJECT = /^(non remis|undeliverable|unzustellbar|onbestelbaar|delivery status notification|mail delivery failed)/i
+
 export async function notePieceReplyWithoutDocument(sb: any, fromEmail: string, ctx: { conversationId?: string; subject?: string; preview?: string }): Promise<void> {
   const reqs = await openRequestsFor(sb, fromEmail, ctx.conversationId)
+  // Avis de non-remise (adresse inconnue…) : ce n'est pas une réponse du fournisseur. On le dit tel quel
+  // (L'Universelle, 07/10/2026 : l'avis « Non remis » avait été annoncé comme une réponse sans pièce).
+  const bounce = BOUNCE_FROM.test(fromEmail || '') || BOUNCE_SUBJECT.test(ctx.subject || '')
   for (const q of reqs) {
+    if (bounce) {
+      if (q.last_reply_at) continue
+      await sb.from('mail_piece_requests').update({ last_reply_at: new Date().toISOString(), received_via: 'NON REMIS : adresse refusée par le serveur du fournisseur' }).eq('id', q.id)
+      await telegramMobi(`⚠️ Demande NON REMISE — ${q.fournisseur || (q.emails || []).join(', ')}
+« ${q.subject} »
+L'adresse ${(q.emails || []).join(', ')} est refusée par leur serveur. Il faut une autre adresse : la demande reste ouverte.`)
+      continue
+    }
     if (q.last_reply_at && Date.now() - new Date(q.last_reply_at).getTime() < 3600_000) continue   // une seule alerte par réponse
     await sb.from('mail_piece_requests').update({ last_reply_at: new Date().toISOString() }).eq('id', q.id)
     await telegramMobi(`✉️ Réponse sans pièce — ${q.fournisseur || fromEmail}\n« ${q.subject} »\n${(ctx.preview || '').slice(0, 400)}\nUne carte est préparée dans l'agent mail.`)
