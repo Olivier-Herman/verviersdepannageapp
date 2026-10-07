@@ -102,12 +102,12 @@ export default function MailAgentClient({
     load()
   }
 
-  const apply = async (id: string) => {
+  const apply = async (id: string, duplicate = false) => {
     setBusy(id); setFlash(null)
-    const r = await (await fetch(`/api/mail-agent/${id}/apply`, { method: 'POST' })).json()
+    const r = await (await fetch(`/api/mail-agent/${id}/apply`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ duplicate }) })).json()
     setBusy(null)
     setFlash(r.ok
-      ? `Note de crédit ${r.creditNoteName || '?'} · nouvelle facture ${r.newInvoiceName || '?'} en brouillon`
+      ? `${r.credited?.length ? `Doublon crédité (${r.credited.join(', ')}) · ` : ''}Note de crédit ${r.creditNoteName || '?'} · nouvelle facture ${r.newInvoiceName || '?'} validée et envoyée`
         + (r.warnings?.length ? ` ⚠ ${r.warnings.join(' · ')}` : '')
       : `Non appliqué : ${r.error}`)
     load()
@@ -212,10 +212,10 @@ export default function MailAgentClient({
 
         {mode === 'draft' && (
           <p className="text-xs text-slate-600 bg-slate-50 border border-slate-200 rounded-lg p-3">
-            L'agent prépare, il ne valide pas. « Appliquer » lance dans Odoo la manip
-            « Créditer et facturer » : la note de crédit est comptabilisée et lettrée
-            avec la facture d'origine, et la <strong>nouvelle facture reste en brouillon</strong>,
-            adressée à la bonne entité — à toi de la relire, de la comptabiliser et de l'envoyer.
+            Rejet « mauvais client » dont tous les contrôles sont verts : l'agent le traite seul — note de crédit
+            lettrée avec la facture d'origine, <strong>nouvelle facture au bon client, validée et envoyée par Peppol</strong>,
+            mail classé. Dossier facturé deux fois : l'agent repère le doublon (la facture sans fiche ou sans photos)
+            et te propose « Créditer le doublon et corriger ». Les autres demandes restent à décider.
           </p>
         )}
 
@@ -422,12 +422,18 @@ export default function MailAgentClient({
                   {odooLink(it.new_invoice_id)
                     ? <a className="underline font-medium" href={odooLink(it.new_invoice_id)!} target="_blank" rel="noreferrer">{it.new_invoice_name}</a>
                     : <strong>{it.new_invoice_name || '?'}</strong>}
-                  {' '}en brouillon{it.mail_moved ? ' · mail classé' : ' · mail non déplacé'}
+                  {String(it.new_invoice_name || '').startsWith('Brouillon') ? ' en brouillon' : ''}{it.mail_moved ? ' · mail classé' : ' · mail non déplacé'}
                 </p>
               )}
 
               {(it.status === 'ready' || it.status === 'blocked' || (it.status === 'to_verify' && it.handler !== 'riga')) && (
                 <div className="flex gap-2 pt-1">
+                  {it.status === 'blocked' && canApply && it.extracted?.duplicatePlan && (
+                    <button onClick={() => apply(it.id, true)} disabled={busy === it.id}
+                      className="min-h-[44px] px-3 rounded-lg text-sm font-medium bg-amber-600 text-white disabled:opacity-50">
+                      {busy === it.id ? 'Application…' : `Créditer le doublon ${it.extracted.duplicatePlan.credit.map((c: any) => c.name).join(', ')} et corriger`}
+                    </button>
+                  )}
                   {it.status === 'ready' && canApply && (
                     <button onClick={() => apply(it.id)} disabled={busy === it.id}
                       className="px-3 py-1.5 rounded-lg text-sm font-medium bg-emerald-600 text-white disabled:opacity-50">

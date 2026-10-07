@@ -323,3 +323,63 @@ export async function creditAndRebill(
 
   return { creditNoteId, creditNoteName, newInvoiceId, newInvoiceName, newInvoiceTax, warnings }
 }
+
+// ── Module « mauvais client », suite (Olivier 07/10/2026) ─────────────────────
+
+/** Valide la nouvelle facture et l'envoie par Peppol (seul canal coché). Sans Peppol pour ce client : validée, signalée. */
+export async function postAndSendPeppol(id: number): Promise<{ name: string; sent: boolean; note: string }> {
+  const [m] = await odooRpc<any[]>('account.move', 'read', [[id]], { fields: ['state'] })
+  if (m?.state === 'draft') await odooRpc('account.move', 'action_post', [[id]])
+  const ctx = { context: { active_model: 'account.move', active_ids: [id], active_id: id } }
+  const wiz = await odooRpc<number>('account.move.send.wizard', 'create', [{ move_id: id }], ctx)
+  const [w0] = await odooRpc<any[]>('account.move.send.wizard', 'read', [[wiz]], { fields: ['sending_method_checkboxes'], ...ctx })
+  const [after0] = await odooRpc<any[]>('account.move', 'read', [[id]], { fields: ['name'] })
+  if (!w0?.sending_method_checkboxes?.peppol) return { name: after0.name, sent: false, note: `${after0.name} validée ; ce client ne reçoit pas par Peppol : à envoyer` }
+  const boxes = Object.fromEntries(Object.entries<any>(w0.sending_method_checkboxes).map(([k, v]) => [k, { ...v, checked: k === 'peppol' }]))
+  await odooRpc('account.move.send.wizard', 'write', [[wiz], { sending_method_checkboxes: boxes, sending_methods: ['peppol'] }], ctx)
+  await odooRpc('account.move.send.wizard', 'action_send_and_print', [[wiz]], ctx)
+  const [a] = await odooRpc<any[]>('account.move', 'read', [[id]], { fields: ['name', 'peppol_move_state'] })
+  return { name: a.name, sent: true, note: `${a.name} validée et envoyée par Peppol (${a.peppol_move_state})` }
+}
+
+/** Note de crédit totale d'une facture (doublon), validée et lettrée avec elle. */
+export async function creditInFull(invoiceId: number, reason: string): Promise<string> {
+  const [inv] = await odooRpc<any[]>('account.move', 'read', [[invoiceId]], { fields: ['state', 'payment_state', 'journal_id'] })
+  if (inv?.state !== 'posted' || inv.payment_state !== 'not_paid') throw new Error(`Facture ${invoiceId} non créditable (${inv?.state}/${inv?.payment_state})`)
+  let draft = await odooRpc<any[]>('account.move', 'search_read', [[['reversed_entry_id', '=', invoiceId], ['state', '=', 'draft']]], { fields: ['id'] })
+  if (!draft.length) {
+    const wz = await odooRpc<number>('account.move.reversal', 'create', [{ move_ids: [[6, 0, [invoiceId]]], date: new Date().toISOString().slice(0, 10), reason, journal_id: inv.journal_id ? inv.journal_id[0] : false }])
+    await odooRpc('account.move.reversal', 'refund_moves', [[wz]])
+    draft = await odooRpc<any[]>('account.move', 'search_read', [[['reversed_entry_id', '=', invoiceId], ['state', '=', 'draft']]], { fields: ['id'] })
+  }
+  if (draft.length !== 1) throw new Error('Note de crédit introuvable après création')
+  await odooRpc('account.move', 'action_post', [[draft[0].id]])
+  const ls = await odooRpc<any[]>('account.move.line', 'search_read', [[['move_id', 'in', [invoiceId, draft[0].id]], ['account_id.account_type', '=', 'asset_receivable'], ['reconciled', '=', false]]], { fields: ['id'] })
+  if (ls.length === 2) await odooRpc('account.move.line', 'reconcile', [ls.map(l => l.id)])
+  const [nc] = await odooRpc<any[]>('account.move', 'read', [[draft[0].id]], { fields: ['name'] })
+  return nc.name
+}
+
+export interface DuplicatePlan { keep: { id: number; name: string }; credit: { id: number; name: string }[]; why: string }
+
+/**
+ * Dossier facturé deux fois (même référence, même montant) : laquelle garder ?
+ * Celle dont la fiche VD Soft a un vrai déroulé (photos du chauffeur). Une facture sans
+ * fiche, ou dont la fiche n'a ni photo ni déroulé, est le doublon (Olivier 07/10/2026 :
+ * « si on a des pointages et des photos différents sur chaque fiche, deux factures sont
+ * justifiées »). Doute = pas de plan, une personne tranche.
+ */
+export async function duplicatePlan(sb: any, invoices: { id: number; name: string }[]): Promise<DuplicatePlan | null> {
+  const score: { inv: { id: number; name: string }; fiche: boolean; photos: number; why: string }[] = []
+  for (const inv of invoices) {
+    const { data } = await sb.from('incoming_missions').select('mission_number, driver_photos, on_site_at, completed_at').or(`invoice_number.eq.${inv.name},invoice_odoo_id.eq.${inv.id}`).limit(2)
+    const f = data?.[0]
+    const photos = Array.isArray(f?.driver_photos) ? f.driver_photos.length : 0
+    score.push({ inv, fiche: !!f, photos, why: f ? `fiche #${f.mission_number}, ${photos} photo${photos > 1 ? 's' : ''}` : 'aucune fiche VD Soft' })
+  }
+  const real = score.filter(s => s.fiche && s.photos > 0)
+  if (real.length !== 1) return null   // deux vraies missions, ou aucune preuve : une personne tranche
+  const keep = real[0]
+  const credit = score.filter(s => s !== keep)
+  return { keep: keep.inv, credit: credit.map(c => c.inv), why: `${keep.inv.name} : ${keep.why} — ${credit.map(c => `${c.inv.name} : ${c.why}`).join(' ; ')}` }
+}

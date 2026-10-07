@@ -29,7 +29,8 @@ import { usualFolder, folderIdByPath } from './learned'
 import { triageMail, isNoise, isAssistanceMission, isHandledElsewhere, twinInQueue, readAutoFamilies } from './triage'
 import { executeDecision } from './actions'
 import { handlerFor, handlerById } from './handlers'
-import { findInvoiceByName, resolveTargetPartner, runChecks, creditAndRebill } from './odoo'
+import { findInvoiceByName, resolveTargetPartner, runChecks, creditAndRebill, postAndSendPeppol, duplicatePlan, creditInFull, type DuplicatePlan } from './odoo'
+import { getBusinessText } from '@/lib/settings/business'
 import type { RejectEntity } from './handlers/types'
 
 export const MAIL_AGENT_MAILBOX = 'info@verviersdepannage.com'
@@ -277,10 +278,16 @@ export async function scanFolder(opts: { mailbox?: string; folder?: string; fold
       const inv    = await findInvoiceByName(parsed.invoiceNumber)
       const target = await resolveTargetPartner(parsed.entity)
       const checks = await runChecks(inv, target, parsed.amount)
+      // Dossier facturé deux fois : la facture à créditer est repérée (fiche + photos), Olivier
+      // valide d'un clic au début (07/10/2026). Sans certitude, le blocage reste tel quel.
+      let dupPlan: DuplicatePlan | null = null
+      if (!checks.ok && inv && checks.details?.duplicates?.length) {
+        dupPlan = await duplicatePlan(sb, [{ id: inv.id, name: inv.name }, ...checks.details.duplicates.map((d: any) => ({ id: d.id, name: d.name }))]).catch(() => null)
+      }
 
       await upsert(sb, base, {
         status:              checks.ok ? 'ready' : 'blocked',
-        blocked_reason:      checks.blocked || null,
+        blocked_reason:      dupPlan ? `Facturé deux fois : créditer ${dupPlan.credit.map(c => c.name).join(', ')} (doublon), puis corriger ${dupPlan.keep.name} — ${dupPlan.why}` : (checks.blocked || null),
         extracted: {
           invoiceNumber: parsed.invoiceNumber,
           amount:        parsed.amount,
@@ -291,6 +298,7 @@ export async function scanFolder(opts: { mailbox?: string; folder?: string; fold
           mailReference: parsed.mailReference,
           reason:        parsed.reason,
           odooRef:       inv?.ref || null,
+          ...(dupPlan ? { duplicatePlan: dupPlan } : {}),
         },
         checks:              checks.details,
         odoo_move_id:        inv?.id   || null,
@@ -305,9 +313,14 @@ export async function scanFolder(opts: { mailbox?: string; folder?: string; fold
     }
   }
 
-  // Mode autonome : on applique tout ce qui est vert. En 'draft' on s'arrête ici.
-  if (await getMode(sb) === 'auto') {
-    const { data: ready } = await sb.from('mail_agent_items').select('id').eq('status', 'ready')
+  // Mode autonome : on applique tout ce qui est vert. En 'draft', seuls les rejets « mauvais
+  // client » tout verts partent seuls (Olivier 07/10/2026, réglage mail_agent_rejets_auto).
+  const rejetsAuto = (await getBusinessText('mail_agent_rejets_auto').catch(() => 'oui')).toLowerCase() === 'oui'
+  const fullAuto = await getMode(sb) === 'auto'
+  if (fullAuto || rejetsAuto) {
+    let q = sb.from('mail_agent_items').select('id').eq('status', 'ready')
+    if (!fullAuto) q = q.in('handler', ['awp_rejet', 'ima_rejet'])
+    const { data: ready } = await q
     for (const r of ready || []) {
       const res = await applyItem(r.id, 'agent')
       if (res.ok) report.applied++
@@ -481,6 +494,11 @@ export async function applyItem(itemId: string, actor: string): Promise<ApplyRes
     }
 
     const res = await creditAndRebill(inv, target, entity)
+    // Jusqu'au bout (07/10/2026) : la nouvelle facture est validée et envoyée par Peppol.
+    if (res.newInvoiceId) {
+      try { const sent = await postAndSendPeppol(res.newInvoiceId); res.newInvoiceName = sent.name; if (!sent.sent) res.warnings.push(sent.note) }
+      catch (e: any) { res.warnings.push(`Nouvelle facture créée mais pas validée/envoyée : ${e?.message || e}`) }
+    }
 
     // Classement du mail — jamais bloquant : la comptabilité est déjà faite.
     let moved = false
@@ -507,4 +525,23 @@ export async function applyItem(itemId: string, actor: string): Promise<ApplyRes
     await sb.from('mail_agent_items').update({ status: 'error', error: msg, updated_at: new Date().toISOString() }).eq('id', itemId)
     return { ok: false, error: msg }
   }
+}
+
+/**
+ * « Créditer le doublon et corriger » (Olivier 07/10/2026) : le doublon repéré est crédité en
+ * entier, puis le module corrige la facture gardée (note de crédit, nouvelle facture au bon
+ * client, validée et envoyée, mail classé). Si la facture rejetée est elle-même le doublon,
+ * la carte passe sur la facture gardée : c'est le dossier qui est rejeté.
+ */
+export async function creditDuplicateAndApply(itemId: string, actor: string): Promise<ApplyResult & { credited?: string[] }> {
+  const sb = createAdminClient()
+  const { data: item } = await sb.from('mail_agent_items').select('*').eq('id', itemId).maybeSingle()
+  const plan: DuplicatePlan | undefined = item?.extracted?.duplicatePlan
+  if (!item || !plan) return { ok: false, error: 'Pas de doublon repéré sur cette carte' }
+  const credited: string[] = []
+  for (const c of plan.credit) credited.push(await creditInFull(c.id, `Doublon de ${plan.keep.name}`))
+  await sb.from('mail_agent_items').update({ status: 'ready', blocked_reason: null, odoo_move_id: plan.keep.id, odoo_move_name: plan.keep.name, updated_at: new Date().toISOString() }).eq('id', itemId)
+  const res = await applyItem(itemId, actor)
+  if (res.ok) await sb.from('mail_agent_items').update({ blocked_reason: `Doublon ${plan.credit.map(c => c.name).join(', ')} crédité (${credited.join(', ')}) ; ${plan.keep.name} corrigée${res.warnings?.length ? ' · ' + res.warnings.join(' · ') : ''}` }).eq('id', itemId)
+  return { ...res, credited }
 }
