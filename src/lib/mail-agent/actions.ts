@@ -12,6 +12,7 @@
 // dans administration@ ; 'auto' = avoir comptabilisé + mail envoyé. Tout part
 // d'administration@verviersdepannage.com (Olivier 23/09/2026), jamais d'info@.
 
+import { alignCreditNotes } from '@/lib/facturation/credit-note-align'
 import Anthropic from '@anthropic-ai/sdk'
 import { ANTHROPIC_MODEL } from '@/lib/anthropic-model'
 import { odooRpc } from '@/lib/odoo'
@@ -124,6 +125,7 @@ export async function executeDecision(ctx: Ctx, action: string, params: { invoic
       const w = await odooRpc<any[]>('account.move.reversal', 'read', [[wiz]], { fields: ['new_move_ids'] })
       const ncId: number = (w?.[0]?.new_move_ids || [])[0]
       if (!ncId) throw new Error('avoir non créé')
+      await alignCreditNotes(1, inv.id, [ncId])   // même référence et même véhicule que la facture (07/10/2026)
       let ncName = `brouillon #${ncId}`
       const atts: EmailAttachment[] = []
       if (mode === 'auto') { await odooRpc('account.move', 'action_post', [[ncId]]); const nc = await odooRpc<any[]>('account.move', 'read', [[ncId]], { fields: ['name'] }); ncName = nc?.[0]?.name || ncName; atts.push(await pdfOf(ncId, ncName)) }

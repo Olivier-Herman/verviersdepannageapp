@@ -7,6 +7,7 @@
 //   execute() — l'action réelle, après validation humaine ou en envoi direct.
 // Toujours sur la société de la proposition (odooRpcCompany).
 
+import { alignCreditNotes } from '@/lib/facturation/credit-note-align'
 import { odooRpcCompany } from '@/lib/odoo'
 import { getBusinessNumber, getBusinessList } from '@/lib/settings/business'
 import { findInvoiceByName, creditAndRebill } from '@/lib/mail-agent/odoo'
@@ -346,6 +347,7 @@ export async function execute(kind: ProposalKind, company: number, payload: any)
     if (ncId) {
       const nc: any[] = await odooRpcCompany(company, 'account.move', 'read', [[ncId]], { fields: ['name', 'state'] })
       if (nc?.[0]?.state === 'draft') await odooRpcCompany(company, 'account.move', 'action_post', [[ncId]])
+      await alignCreditNotes(company, inv.id, [ncId])   // même référence et même véhicule que la facture (07/10/2026)
       const n2: any[] = await odooRpcCompany(company, 'account.move', 'read', [[ncId]], { fields: ['name'] })
       return { note: `Note de crédit ${n2?.[0]?.name || ncId} validée`, note_credit: n2?.[0]?.name }
     }

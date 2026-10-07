@@ -22,6 +22,7 @@
 // Les 3 refacturations faites à la main sur la fiche mère [20] sont toutes
 // encore impayées.
 
+import { alignCreditNotes } from '@/lib/facturation/credit-note-align'
 import { odooRpc } from '@/lib/odoo'
 import type { RejectEntity } from './handlers/types'
 
@@ -266,6 +267,8 @@ export async function creditAndRebill(
   const newInvoiceId = newIds.find(id => id !== creditNoteId) ?? null
 
   let creditNoteName: string | null = null
+  // La NC porte exactement la référence du dossier et le véhicule de la facture (Olivier 07/10/2026).
+  if (creditNoteId) await alignCreditNotes(1, inv.id, [creditNoteId])
   if (creditNoteId) {
     const cn = await odooRpc<any[]>('account.move', 'read', [[creditNoteId]], { fields: ['name'] })
     creditNoteName = cn?.[0]?.name || null
@@ -354,6 +357,7 @@ export async function creditInFull(invoiceId: number, reason: string): Promise<s
   }
   if (draft.length !== 1) throw new Error('Note de crédit introuvable après création')
   await odooRpc('account.move', 'action_post', [[draft[0].id]])
+  await alignCreditNotes(1, invoiceId, [draft[0].id])
   const ls = await odooRpc<any[]>('account.move.line', 'search_read', [[['move_id', 'in', [invoiceId, draft[0].id]], ['account_id.account_type', '=', 'asset_receivable'], ['reconciled', '=', false]]], { fields: ['id'] })
   if (ls.length === 2) await odooRpc('account.move.line', 'reconcile', [ls.map(l => l.id)])
   const [nc] = await odooRpc<any[]>('account.move', 'read', [[draft[0].id]], { fields: ['name'] })
