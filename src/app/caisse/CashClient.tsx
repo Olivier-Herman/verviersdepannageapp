@@ -7,6 +7,7 @@ import { formatEur } from '@/lib/format'
 // Pattern utilisé partout dans les Client Components du projet (DriverClient, DispatchClient...)
 // — éviter d'importer depuis @/lib/supabase qui embarque next/headers (serveur uniquement).
 import { createClient } from '@supabase/supabase-js'
+import PinInput from '@/components/ui/PinInput'
 
 const sb = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -562,19 +563,9 @@ export default function CashClient({
               Saisis ton PIN pour confirmer la réception.
             </p>
 
-            <input
-              type="password"
-              inputMode="numeric"
-              autoFocus
-              maxLength={4}
-              value={pinValue}
-              onChange={e => setPinValue(e.target.value.replace(/\D/g, '').slice(0, 4))}
+            <PinInput value={pinValue} onChange={setPinValue} autoFocus
               onKeyDown={e => { if (e.key === 'Enter' && pinValue.length === 4) handleValidateWithPin() }}
-              placeholder="••••"
-              className="w-full bg-surface-2 border border-strong focus:border-brand rounded-xl
-                         px-4 py-4 text-ink text-3xl font-bold text-center tracking-[0.5em]
-                         outline-none mb-3"
-            />
+              className="w-full bg-surface-2 border border-strong rounded-xl px-4 py-4 text-ink text-3xl mb-3" />
 
             {pinError && (
               <div className="bg-critical-soft border border-critical/30 text-critical text-sm

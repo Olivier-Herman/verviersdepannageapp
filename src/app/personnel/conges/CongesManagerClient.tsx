@@ -5,6 +5,7 @@ import { useEffect, useState, useCallback } from 'react'
 import AppShell from '@/components/layout/AppShell'
 import PersonnelTabs from '@/components/layout/PersonnelTabs'
 import { CalendarDays, Check, X, ShieldCheck, RefreshCw, Clock, Plus } from 'lucide-react'
+import PinInput from '@/components/ui/PinInput'
 
 const TYPE_LABEL: Record<string, string> = { conge: 'Congé légal', recup: 'Récupération', sans_solde: 'Congé sans solde' }
 const fmtD = (d: string) => { const [y, m, j] = (d || '').split('-'); return j ? `${j}/${m}/${y}` : d }
@@ -192,7 +193,7 @@ export default function CongesManagerClient({ userRole, userName, userEmail, use
               </div>
               <input value={enc.reason} onChange={e => setEnc({ ...enc, reason: e.target.value })} placeholder="Motif (optionnel)" className="w-full bg-bg border rounded-lg px-3 py-2 text-sm text-ink" />
               <label className="block"><span className="text-ink-muted text-xs">Ton code PIN</span>
-                <input type="password" inputMode="numeric" value={enc.pin} onChange={e => setEnc({ ...enc, pin: e.target.value })} placeholder="••••" className="w-full mt-1 bg-bg border rounded-lg px-3 py-2 text-sm text-ink tracking-widest" /></label>
+                <PinInput value={enc.pin} onChange={v => setEnc({ ...enc, pin: v })} className="w-full mt-1 bg-bg border rounded-lg px-3 py-2 text-base text-ink" /></label>
               <p className="text-[11px] text-ink-muted">Le congé est enregistré <b>approuvé</b> et posé sur la feuille de présence. Le travailleur est notifié.</p>
               <button onClick={submitEncode} disabled={busy} className="w-full inline-flex items-center justify-center gap-1.5 bg-brand text-white text-sm font-medium px-4 py-2.5 rounded-lg disabled:opacity-50"><ShieldCheck size={15} /> {busy ? 'Enregistrement…' : 'Enregistrer le congé'}</button>
             </div>
@@ -212,8 +213,7 @@ export default function CongesManagerClient({ userRole, userName, userEmail, use
               modal.decision === 'approve' ? ' Le congé sera posé sur la feuille de présence et le travailleur notifié.'
               : modal.decision === 'cancel' ? ' La demande sera supprimée (et le congé retiré de la feuille de présence s\'il était posé).'
               : ' Le travailleur sera notifié.'}</p>
-            <input type="password" inputMode="numeric" value={pin} onChange={e => setPin(e.target.value)} placeholder="Code PIN" autoFocus
-              className="w-full bg-surface-2 border rounded-lg px-3 py-2 text-sm text-ink text-center tracking-widest" />
+            <PinInput value={pin} onChange={setPin} autoFocus className="w-full bg-surface-2 border rounded-lg px-3 py-2 text-base text-ink" />
             {modal.decision !== 'cancel' && (
               <input value={note} onChange={e => setNote(e.target.value)} placeholder="Note (optionnel)"
                 className="w-full mt-2 bg-surface-2 border rounded-lg px-3 py-2 text-sm text-ink" />

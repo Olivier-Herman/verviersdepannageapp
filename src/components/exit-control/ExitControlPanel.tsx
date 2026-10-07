@@ -14,6 +14,7 @@ import {
   Lock, Unlock, ShieldAlert, Smartphone, FileText, CreditCard, Truck, PenLine, Printer,
   Check, AlertTriangle, Loader2, Paperclip, KeyRound, SkipForward,
 } from 'lucide-react'
+import PinInput from '@/components/ui/PinInput'
 
 interface Props {
   missionId: string
@@ -207,7 +208,7 @@ export default function ExitControlPanel({ missionId, status, onChanged, refresh
               <p className="text-sm font-semibold flex items-center gap-1.5"><ShieldAlert size={16} className="text-warning" /> Sortie forcée hors procédure — tracée à ton nom</p>
               <textarea value={forceReason} onChange={e => setForceReason(e.target.value)} rows={2} placeholder="Motif (obligatoire)" className="border rounded-lg px-3 py-2 bg-surface text-sm" />
               <div className="flex flex-wrap gap-2 items-center">
-                <input value={forcePin} onChange={e => setForcePin(e.target.value.replace(/\D/g, '').slice(0, 4))} inputMode="numeric" placeholder="PIN (4 chiffres)" className="border rounded-lg px-3 py-2 bg-surface text-sm w-36 tracking-widest" />
+                <PinInput value={forcePin} onChange={setForcePin} className="border rounded-lg px-3 py-2 bg-surface text-base w-36" />
                 <button onClick={force} disabled={busy || forceReason.trim().length < 5 || forcePin.length !== 4}
                   className="px-3 py-2 rounded-lg bg-warning text-white text-sm font-semibold disabled:opacity-40 flex items-center gap-1.5">{busy ? <Loader2 size={14} className="animate-spin" /> : <KeyRound size={14} />} Confirmer la sortie forcée</button>
                 <button onClick={() => setShowForce(false)} className="px-3 py-2 rounded-lg border text-sm">Annuler</button>

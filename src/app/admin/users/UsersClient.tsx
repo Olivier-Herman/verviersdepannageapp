@@ -14,6 +14,7 @@ import { Plus, X, Mail, Key, ArrowLeft } from 'lucide-react'
 import { Avatar } from '@/components/ui/Avatar'
 import { Badge, type BadgeVariant } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
+import PinInput from '@/components/ui/PinInput'
 
 const ROLES = ['driver', 'dispatcher', 'admin', 'superadmin', 'partner', 'rh']
 
@@ -616,17 +617,8 @@ export default function UsersClient({ users, modules, currentUserRole = 'admin' 
               <label className="block text-ink text-sm font-medium mb-2">
                 Confirme avec ton PIN personnel à 4 chiffres
               </label>
-              <input
-                type="password"
-                inputMode="numeric"
-                pattern="[0-9]*"
-                maxLength={4}
-                value={deletePin}
-                onChange={e => { setDeletePin(e.target.value.replace(/\D/g, '').slice(0, 4)); setDeleteError('') }}
-                autoFocus
-                placeholder="••••"
-                className="w-full bg-surface-2 border border rounded-xl px-4 py-3 text-ink text-2xl text-center font-mono tracking-[0.5em] focus:outline-none focus:border-critical"
-              />
+              <PinInput value={deletePin} onChange={v => { setDeletePin(v); setDeleteError('') }} autoFocus
+                className="w-full bg-surface-2 border rounded-xl px-4 py-3 text-ink text-2xl" />
               {deleteError && (
                 <p className="text-critical text-xs mt-2">⚠ {deleteError}</p>
               )}

@@ -10,6 +10,7 @@ import TelegramLinkCard from '@/components/profile/TelegramLinkCard'
 import SamConversations from '@/components/sam/SamConversations'
 import { LanguageSelector } from '@/components/profile/LanguageSelector'
 import { filterNavItems } from '@/components/layout/nav-items'
+import PinInput from '@/components/ui/PinInput'
 
 // ── Types documents ────────────────────────────────────────
 const DOC_TYPES = [
@@ -461,17 +462,11 @@ export default function ProfileClient({ user }: { user: any }) {
             <div className="flex flex-col gap-3">
               <div>
                 <label className="text-ink-secondary text-xs mb-1.5 block">{hasPin ? 'Nouveau PIN' : 'PIN (4 chiffres)'}</label>
-                <input type="password" inputMode="numeric" maxLength={4} value={pin1}
-                  onChange={e => { setPin1(e.target.value.replace(/[^0-9]/g, '')); setPinError('') }}
-                  placeholder="••••"
-                  className="w-full bg-surface border border-strong focus:border-brand rounded-xl px-4 py-3 text-ink text-2xl font-bold text-center outline-none tracking-widest" />
+                <PinInput value={pin1} onChange={v => { setPin1(v); setPinError('') }} className="w-full bg-surface border border-strong rounded-xl px-4 py-3 text-ink text-2xl" />
               </div>
               <div>
                 <label className="text-ink-secondary text-xs mb-1.5 block">Confirmer le PIN</label>
-                <input type="password" inputMode="numeric" maxLength={4} value={pin2}
-                  onChange={e => { setPin2(e.target.value.replace(/[^0-9]/g, '')); setPinError('') }}
-                  placeholder="••••"
-                  className="w-full bg-surface border border-strong focus:border-brand rounded-xl px-4 py-3 text-ink text-2xl font-bold text-center outline-none tracking-widest" />
+                <PinInput value={pin2} onChange={v => { setPin2(v); setPinError('') }} className="w-full bg-surface border border-strong rounded-xl px-4 py-3 text-ink text-2xl" />
               </div>
               <button onClick={handleSetPin} disabled={pinLoading || pin1.length !== 4 || pin2.length !== 4}
                 className="w-full bg-brand text-white font-bold rounded-xl py-3 disabled:opacity-40 transition-all">

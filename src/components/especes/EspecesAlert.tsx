@@ -6,6 +6,7 @@
 //     l'argent » + code PIN, « Pas reçu », « Me le rappeler dans 15 min ». Fermeture par les boutons seulement.
 import { useCallback, useEffect, useState } from 'react'
 import { pollWhenVisible } from '@/lib/client/poll'
+import PinInput from '@/components/ui/PinInput'
 
 type Item = {
   odoo_payment_id: number; journal: string; payment_name: string; payment_date: string; amount: number
@@ -152,7 +153,7 @@ export default function EspecesAlert() {
           <div className="w-full max-w-xs bg-white rounded-2xl p-4 space-y-3 shadow-xl">
             <p className="font-bold text-slate-900">Code PIN VD Soft</p>
             <p className="text-sm text-slate-700">{sel.length} paiement{sel.length > 1 ? 's' : ''} · {eur(selTotal)}</p>
-            <input inputMode="numeric" autoComplete="one-time-code" maxLength={4} value={pin} onChange={e => setPin(e.target.value.replace(/\D/g, '').slice(0, 4))} className="w-full min-h-[52px] text-center text-2xl tracking-[0.5em] border rounded-xl text-slate-900" placeholder="••••" />
+            <PinInput value={pin} onChange={setPin} autoFocus className="w-full min-h-[52px] text-2xl border rounded-xl text-slate-900" />
             {msg && <p className="text-sm font-semibold text-red-800">{msg}</p>}
             <div className="flex flex-col gap-2">
               <button type="button" disabled={busy || pin.length !== 4} onClick={async () => {

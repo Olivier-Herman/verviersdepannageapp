@@ -47,7 +47,7 @@ export default function DerogationClient({ id }: { id: string }) {
         <div className="rounded-card border border-border bg-surface p-4 flex flex-col gap-3">
           <div className="text-[11px] font-bold uppercase tracking-wider text-ink-muted">Votre code</div>
           <div className="flex gap-2 justify-center">
-            {pin.map((d, i) => <input key={i} ref={refs[i]} type="password" inputMode="numeric" maxLength={1} value={d} aria-label={`Chiffre ${i + 1}`}
+            {pin.map((d, i) => <input key={i} ref={refs[i]} type="text" inputMode="numeric" pattern="[0-9]*" autoComplete="off" data-lpignore="true" data-1p-ignore="true" style={{ WebkitTextSecurity: 'disc' } as any} maxLength={1} value={d} aria-label={`Chiffre ${i + 1}`}
               onChange={e => { const v = e.target.value.replace(/\D/g, '').slice(-1); setPin(p => { const n = [...p]; n[i] = v; return n }); if (v && i < 3) refs[i + 1].current?.focus() }}
               onKeyDown={e => { if (e.key === 'Backspace' && !pin[i] && i > 0) refs[i - 1].current?.focus() }}
               className="w-14 h-16 text-center font-mono text-2xl font-bold rounded-btn border border-strong bg-surface text-ink" />)}

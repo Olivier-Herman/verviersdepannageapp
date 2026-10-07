@@ -8,6 +8,7 @@
 import { useState } from 'react'
 import AppShell from '@/components/layout/AppShell'
 import { KeyRound, Check, X, ShieldCheck } from 'lucide-react'
+import PinInput from '@/components/ui/PinInput'
 
 export default function VerifyCodeClient({
   userName, userRole, userModules, hasPin,
@@ -66,14 +67,8 @@ export default function VerifyCodeClient({
                 ))}
               </div>
 
-              <input
-                type="password" inputMode="numeric" pattern="\d*" maxLength={4} autoFocus
-                value={pin}
-                onChange={e => { setPin(e.target.value.replace(/\D/g, '').slice(0, 4)); setState('idle') }}
-                placeholder="••••"
-                className="w-full bg-surface-hover border border-strong focus:border-brand rounded-2xl px-4 py-3.5 text-ink text-2xl font-bold text-center tracking-[0.6em] outline-none"
-                disabled={busy}
-              />
+              <PinInput value={pin} onChange={v => { setPin(v); setState('idle') }} autoFocus disabled={busy}
+                className="w-full bg-surface-hover border border-strong rounded-2xl px-4 py-3.5 text-ink text-2xl" />
 
               {state === 'ko' && (
                 <p className="text-red-500 text-sm mt-3 inline-flex items-center gap-1"><X size={15} /> Ce n'est pas ton code. Réessaie, ou redéfinis-en un.</p>

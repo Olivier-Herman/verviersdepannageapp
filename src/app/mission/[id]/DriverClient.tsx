@@ -33,6 +33,7 @@ import {
 import { canUseMatthieu } from '@/lib/mecano/access'
 import { cleanVin, isPlausibleVin } from '@/lib/mecano/vin'
 import { useSourceLabel } from '@/lib/missions/source-tags-client'
+import PinInput from '@/components/ui/PinInput'
 
 const sb = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!)
 
@@ -3179,14 +3180,8 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
                   ) : (
                     <div className="space-y-2">
                       <p className="text-amber-900 text-[11px]">Saisis ton code à 4 chiffres pour confirmer cet encaissement inférieur au montant de la mission.</p>
-                      <input
-                        type="password" inputMode="numeric" pattern="\d*" maxLength={4}
-                        value={setAmtPin}
-                        onChange={e => setSetAmtPin(e.target.value.replace(/\D/g, '').slice(0, 4))}
-                        placeholder="••••"
-                        className="w-full bg-white border border-amber-300 rounded-xl px-3 py-2.5 text-ink text-xl font-bold text-center tracking-[0.5em] outline-none focus:border-amber-500"
-                        disabled={setAmtSubmitting}
-                      />
+                      <PinInput value={setAmtPin} onChange={setSetAmtPin} disabled={setAmtSubmitting}
+                        className="w-full bg-white border border-amber-300 rounded-xl px-3 py-2.5 text-ink text-xl" />
                     </div>
                   )}
                 </div>

@@ -57,6 +57,7 @@ import { useGarageClosure } from '@/lib/useGarageClosures'
 import Flux2ClosureCard from '@/components/dispatch/Flux2ClosureCard'
 import PointagesCard from '@/components/dispatch/PointagesCard'
 import { useGardiennageRegimeLabels } from '@/lib/tarifs/gardiennage-labels-client'
+import PinInput from '@/components/ui/PinInput'
 
 const sb = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -2255,8 +2256,7 @@ export default function MissionDetailClient({
           <span className="text-amber-700 dark:text-amber-300">Touring a répondu — les champs qui touchent le tarif sont figés (note, véhicule, facturation restent possibles).</span>
           {userRole === 'superadmin' && (unlockOpen ? (
             <span className="ml-auto flex items-center gap-2">
-              <input value={unlockPin} onChange={e => setUnlockPin(e.target.value)} type="password" inputMode="numeric"
-                placeholder="Code" className="w-24 bg-white dark:bg-surface border rounded-lg px-2 py-1 text-sm text-ink outline-none" autoFocus />
+              <PinInput value={unlockPin} onChange={setUnlockPin} autoFocus className="w-28 bg-white dark:bg-surface border rounded-lg px-2 py-1 text-sm text-ink" />
               <button onClick={doUnlock} disabled={unlockBusy || !unlockPin}
                 className="px-3 py-1 rounded-lg bg-amber-600 text-white text-xs font-bold disabled:opacity-50">{unlockBusy ? '…' : 'Valider'}</button>
               <button onClick={() => { setUnlockOpen(false); setUnlockPin('') }} className="text-amber-700 dark:text-amber-300 text-xs">annuler</button>

@@ -14,6 +14,7 @@ import PieceCapture from '@/components/restitution/PieceCapture'
 import TransportDocsCapture from '@/components/restitution/TransportDocsCapture'
 import { usePhotoQueue } from '@/components/qr/AddPhotosButton'
 import AddPhotosButton from '@/components/qr/AddPhotosButton'
+import PinInput from '@/components/ui/PinInput'
 
 type Ctx = any
 const eur = (n: number) => (Number(n) || 0).toLocaleString('fr-BE', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' €'
@@ -720,7 +721,7 @@ function DerogModal({ c, missionId, kind, label, onClose, onSent }: any) {
       <label className="text-[11px] font-bold uppercase tracking-wider text-ink-muted" htmlFor="dg-why">Motif (obligatoire)</label>
       <textarea id="dg-why" rows={3} className={input} value={reason} onChange={e => setReason(e.target.value)} placeholder="Ex. accord de l’agent Dumont par téléphone à 9h40" />
       {kind === 'montant' && <><label className="text-[11px] font-bold uppercase tracking-wider text-ink-muted" htmlFor="dg-amt">Nouveau montant TVAC</label><input id="dg-amt" className={input} inputMode="decimal" value={amount} onChange={e => setAmount(e.target.value)} placeholder="0,00" /></>}
-      {isMe && <><label className="text-[11px] font-bold uppercase tracking-wider text-ink-muted" htmlFor="dg-pin">Votre code</label><input id="dg-pin" type="password" inputMode="numeric" maxLength={4} className={`${input} font-mono text-center text-xl tracking-[0.5em]`} value={pin} onChange={e => setPin(e.target.value.replace(/\D/g, '').slice(0, 4))} /></>}
+      {isMe && <><label className="text-[11px] font-bold uppercase tracking-wider text-ink-muted" htmlFor="dg-pin">Votre code</label><PinInput id="dg-pin" value={pin} onChange={setPin} className={`${input} text-xl`} /></>}
       {err && <p className="text-sm text-critical font-semibold">{err}</p>}
       <Btn kind="brand" disabled={busy || missing.length > 0} onClick={send}>{busy ? 'Envoi…' : isMe ? 'Valider la dérogation' : 'Envoyer la demande'}</Btn>
       {missing.length > 0 && <p className="text-xs text-ink-muted">Il manque : {missing.join(', ')}.{isMe ? ' Pour demander à un autre responsable, choisissez-le dans la liste.' : ''}</p>}

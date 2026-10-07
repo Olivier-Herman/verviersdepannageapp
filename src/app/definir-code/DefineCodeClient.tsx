@@ -8,6 +8,7 @@
 import { useState, useEffect } from 'react'
 import AppShell from '@/components/layout/AppShell'
 import { KeyRound, Check, ShieldCheck } from 'lucide-react'
+import PinInput from '@/components/ui/PinInput'
 
 export default function DefineCodeClient({
   userName, userRole, userModules, hasPin,
@@ -70,14 +71,8 @@ export default function DefineCodeClient({
                 ))}
               </div>
 
-              <input
-                type="password" inputMode="numeric" pattern="\d*" maxLength={4} autoFocus
-                value={pin}
-                onChange={e => { setPin(e.target.value.replace(/\D/g, '').slice(0, 4)); setErr('') }}
-                placeholder="••••"
-                className="w-full bg-surface-hover border border-strong focus:border-brand rounded-2xl px-4 py-3.5 text-ink text-2xl font-bold text-center tracking-[0.6em] outline-none"
-                disabled={busy}
-              />
+              <PinInput value={pin} onChange={v => { setPin(v); setErr('') }} autoFocus disabled={busy}
+                className="w-full bg-surface-hover border border-strong rounded-2xl px-4 py-3.5 text-ink text-2xl" />
               {busy && <p className="text-ink-muted text-xs mt-3">⏳ Enregistrement…</p>}
               {err && <p className="text-red-500 text-sm mt-3">⚠️ {err}</p>}
 

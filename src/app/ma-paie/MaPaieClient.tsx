@@ -11,6 +11,7 @@ import { FileText, Download, Wallet, Info, Eye, X, CalendarClock, Save, UserCog,
 import { normalizeEtatCivil } from '@/lib/paie/compare-infos'
 import { hoursForRange } from '@/lib/conges/apply'
 import MyCalendar from '@/components/personnel/MyCalendar'
+import PinInput from '@/components/ui/PinInput'
 
 const CONGE_TYPE_LABEL: Record<string, string> = { conge: 'Congé légal', recup: 'Récupération', sans_solde: 'Congé sans solde' }
 const fmtDate = (d: string) => { const [, m, j] = (d || '').split('-'); return j ? `${j}/${m}` : d }
@@ -445,7 +446,7 @@ export default function MaPaieClient({ userRole, userName, userEmail, userModule
               <button onClick={() => { setAcceptPin(null); setPinVal('') }} className="text-ink-muted hover:text-ink"><X size={18} /></button>
             </div>
             <p className="text-ink-muted text-xs mb-3">Tu acceptes de remplacer ton collègue. Le changement sera appliqué au planning.</p>
-            <input type="password" inputMode="numeric" value={pinVal} onChange={e => setPinVal(e.target.value)} placeholder="••••" className="w-full bg-bg border rounded-lg px-3 py-2 text-sm text-ink tracking-widest text-center" />
+            <PinInput value={pinVal} onChange={setPinVal} className="w-full bg-bg border rounded-lg px-3 py-2 text-base text-ink" />
             <button onClick={() => decideSwap(acceptPin.id, 'approve', pinVal)} disabled={!pinVal} className="w-full mt-3 inline-flex items-center justify-center gap-1.5 bg-brand text-white text-sm font-medium px-4 py-2.5 rounded-lg disabled:opacity-50"><Check size={15} /> Accepter le remplacement</button>
           </div>
         </div>

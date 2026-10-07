@@ -8,6 +8,7 @@ import AppShell from '@/components/layout/AppShell'
 import PersonnelTabs from '@/components/layout/PersonnelTabs'
 import { applyHolidaysToDays } from '@/lib/prestations/belgian-holidays'
 import { Clock, RefreshCw, Save, Check, X, FileText, Send, ShieldCheck, CalendarCheck, StickyNote, Settings, Unlock, Lock } from 'lucide-react'
+import PinInput from '@/components/ui/PinInput'
 
 const MONTHS = ['', 'janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre']
 const periodLabel = (p: string) => { const [y, m] = (p || '').split('-'); return m ? `${MONTHS[+m]} ${y}` : p }
@@ -331,8 +332,7 @@ export default function PrestationsClient({ userRole, userName, userEmail, userM
                 ? <>Signe la feuille de <b>{periodLabel(period)}</b> avec ton code PIN. Elle sera envoyée au secrétariat social, signée à ton nom.</>
                 : <>Déverrouille la feuille de <b>{periodLabel(period)}</b> avec ton code PIN pour la corriger. Elle repassera en modifiable (pense à la re-valider et la renvoyer ensuite).</>}
             </p>
-            <input type="password" inputMode="numeric" value={pin} onChange={e => setPin(e.target.value)} placeholder="Code PIN"
-              className="w-full bg-surface-2 border rounded-lg px-3 py-2 text-sm text-ink text-center tracking-widest" autoFocus />
+            <PinInput value={pin} onChange={setPin} autoFocus className="w-full bg-surface-2 border rounded-lg px-3 py-2 text-base text-ink" />
             <div className="flex justify-end gap-2 mt-4">
               <button onClick={() => setPinModal(false)} className="px-3 py-2 rounded-lg border text-sm text-ink-secondary">Annuler</button>
               <button onClick={pinAction === 'sign' ? signSend : unlockConfirm} disabled={!pin || signing}

@@ -7,6 +7,7 @@
 // Pas de plaque (elles ont disparu), pas de km (pas de clé). Aucun envoi à la commune.
 import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
+import PinInput from '@/components/ui/PinInput'
 
 type Cand = { id: string; mission_number: number | null; source: string | null; vehicle_plate: string | null; vehicle_vin: string | null; vehicle_brand: string | null; vehicle_model: string | null; parc_zone_key: string | null; entered_at: string | null; days: number | null; lock: { blocked: boolean; reason: string | null } }
 type Desc = { vin: string | null; vin_image: number | null; plate: string | null; brand: string | null; model: string | null; color: string | null; condition: Record<string, string | null>; confidence: string }
@@ -256,7 +257,7 @@ export default function NouveauClient() {
             <div className="bg-amber-500/5 border border-amber-500/40 rounded-2xl p-4 space-y-2">
               <p className="text-amber-700 dark:text-amber-300 font-semibold text-sm">Sortie forcée : motif et PIN personnel</p>
               <textarea value={force.reason} onChange={e => setForce(f => f && ({ ...f, reason: e.target.value }))} rows={2} placeholder="Pourquoi ce véhicule sort malgré le blocage" className="w-full bg-surface-hover border rounded-xl px-3 py-2 text-ink text-sm" />
-              <input value={force.pin} onChange={e => setForce(f => f && ({ ...f, pin: e.target.value.replace(/\D/g, '').slice(0, 4) }))} inputMode="numeric" placeholder="PIN à 4 chiffres" className="w-40 bg-surface-hover border rounded-xl px-3 py-2 text-ink font-mono text-lg tracking-widest" />
+              <PinInput value={force.pin} onChange={v => setForce(f => f && ({ ...f, pin: v }))} className="w-40 bg-surface-hover border rounded-xl px-3 py-2 text-ink text-lg" />
             </div>
           )}
           <div className="fixed bottom-0 inset-x-0 p-3 bg-surface border-t flex gap-2 lg:static lg:border-0 lg:p-0">

@@ -11,6 +11,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Camera, Check, Loader2, QrCode, Trash2, AlertTriangle, SkipForward, ChevronRight, Lock, Unlock } from 'lucide-react'
 import SigPad from '@/components/mission/SigPad'
+import PinInput from '@/components/ui/PinInput'
 
 type Step = 'path' | 'informex' | 'identity' | 'cmr' | 'attestation'
 const STEP_TITLES: Record<Step, string> = {
@@ -146,7 +147,7 @@ export default function RestitutionWizard({ token, mission, initialPreview, onFi
         <p className="font-semibold flex items-center gap-2"><AlertTriangle className="text-warning" size={18} /> Passer « {STEP_TITLES[skipFor]} »</p>
         <p className="text-sm text-ink-secondary">Tracé sur la fiche à ton nom, avec le motif. Le PIN est celui de la personne qui a ouvert le QR sur la fiche.</p>
         <textarea value={skipReason} onChange={e => setSkipReason(e.target.value)} rows={2} placeholder="Motif (obligatoire)" className="border rounded-lg px-3 py-2 bg-surface text-sm" />
-        <input value={skipPin} onChange={e => setSkipPin(e.target.value.replace(/\D/g, '').slice(0, 4))} inputMode="numeric" placeholder="PIN (4 chiffres)" className="border rounded-lg px-3 py-2 bg-surface text-sm tracking-widest" />
+        <PinInput value={skipPin} onChange={setSkipPin} className="border rounded-lg px-3 py-2 bg-surface text-base w-36" />
         {error && <p className="text-critical text-sm">{error}</p>}
         <div className="flex gap-2">
           <button onClick={() => setSkipFor(null)} className="flex-1 py-2.5 rounded-lg border text-sm">Annuler</button>
@@ -332,7 +333,7 @@ function InformexStep({ token, p, busy, setBusy, setError, onDone, onManual, ski
         <p className="text-xs text-warning mt-2">Une référence tapée ne prouve rien (le V vert est dans le QR) : l'étape est <b>passée</b>, tracée à ton nom avec ton PIN, et l'attestation le mentionne.</p>
         <div className="flex gap-2 mt-2">
           <input value={manual} onChange={e => setManual(e.target.value)} placeholder="Référence du bon" className="border rounded-lg px-3 py-2 bg-surface text-sm flex-1 min-w-0" />
-          <input value={manualPin} onChange={e => setManualPin(e.target.value.replace(/\D/g, '').slice(0, 4))} inputMode="numeric" placeholder="PIN" className="border rounded-lg px-3 py-2 bg-surface text-sm w-20 tracking-widest" />
+          <PinInput value={manualPin} onChange={setManualPin} className="border rounded-lg px-3 py-2 bg-surface text-base w-32" />
           <button onClick={() => onManual(manual, manualPin)} disabled={busy || !manual.trim() || manualPin.length !== 4} className="px-3 rounded-lg border text-sm disabled:opacity-40">OK</button>
         </div>
       </details>
