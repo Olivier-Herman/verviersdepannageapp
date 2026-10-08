@@ -18,7 +18,7 @@ export interface SoundFamily { key: string; label: string; desc: string; types: 
 
 export const SOUND_FAMILIES: SoundFamily[] = [
   { key: 'mission', label: 'Mission', desc: 'Nouvelle mission, mission attribuée, Momo Market.',
-    types: ['new_mission_received', 'mission_assigned_manual', 'auto_dispatch_dispo_request', 'market_new_mission', 'market_claimed', 'kaze_accept_manual', 'axa_new_to_validate'] },
+    types: ['new_mission_received', 'mission_assigned_manual', 'auto_dispatch_dispo_request', 'market_new_mission', 'market_claimed', 'kaze_accept_manual', 'kaze_proposal_missing', 'axa_new_to_validate'] },
   { key: 'nuit', label: 'Garde de nuit', desc: 'Proposition de nuit au 1er départ / à la réserve, garde non couverte, échanges de garde.',
     types: ['market_proposal', 'market_proposal_update', 'reserve_notif_toggled', 'garde_uncovered', 'garde_swap_requested', 'garde_swap_decided'] },
   { key: 'siabis', label: 'Siabis', desc: 'Demande et décision « couvert » Siabis.',

@@ -205,7 +205,10 @@ async function handleGET(req: Request) {
     }
 
     results.new = results.inserted
-    return NextResponse.json({ ok: true, scanned: untagged.length, processed, ...results })
+    // Filet de sécurité IMA / Kaze (Olivier 08/10/2026) : mail « A traiter » sans proposition Kaze → alerte dispatch.
+    let imaWatch: any = null
+    try { const { watchImaProposals } = await import('@/lib/kaze/proposal-watch'); imaWatch = await watchImaProposals() } catch (e: any) { imaWatch = { error: e?.message } }
+    return NextResponse.json({ ok: true, scanned: untagged.length, processed, ...results, imaWatch })
 
   } catch (err: any) {
     console.error('[PollMissions] Erreur fatale:', err.message)

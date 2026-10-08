@@ -351,6 +351,14 @@ export const NOTIFICATION_TYPES: readonly NotificationType[] = [
     defaultEnabled:  true,
   },
   {
+    key:             'kaze_proposal_missing',
+    label:           'IMA / Kaze : proposition non transmise',
+    description:     "Un mail IMA « A traiter » est arrivé mais Kaze n'a pas envoyé la proposition à VD Soft : il faut l'accepter directement dans Kaze.",
+    category:        'admin',
+    applicableRoles: ['dispatcher', 'admin', 'superadmin'],
+    defaultEnabled:  true,
+  },
+  {
     key:             'vab_dossiers_ouverts',
     label:           'VAB : dossiers non clôturés',
     description:     "Des dossiers restent ouverts chez VAB alors que l'intervention est finie chez nous.",
