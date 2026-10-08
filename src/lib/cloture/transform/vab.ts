@@ -211,6 +211,8 @@ export interface VabTowCloseInput {
   /** Signature : 'signed' | 'refus' | 'absent' — repris du tronc commun. */
   signature?: string | null
   actorId?: string | null
+  /** « Transformer en remorquage » : un échec ici = pas de demande de remorquage chez VAB → alerte dispatch. */
+  transformation?: boolean
 }
 
 /**
@@ -219,9 +221,15 @@ export interface VabTowCloseInput {
  */
 export async function runVabTowClose(input: VabTowCloseInput): Promise<void> {
   const sb = createAdminClient()
-  const log = (action: string, notes: string, metadata: any = {}) =>
-    sb.from('mission_logs').insert({ mission_id: input.missionId, actor_id: input.actorId ?? null, action, notes, metadata })
+  const log = async (action: string, notes: string, metadata: any = {}) => {
+    await sb.from('mission_logs').insert({ mission_id: input.missionId, actor_id: input.actorId ?? null, action, notes, metadata })
       .then(() => {}, () => {})
+    // Transformation ratée ou impossible (compte occupé, dossier pas accepté…) : le dispatch le sait tout de suite.
+    if (input.transformation && (action === 'vab_close_failed' || (action === 'vab_close_skipped' && !/déjà clôturée/.test(notes)))) {
+      const { data: mm } = await sb.from('incoming_missions').select('vehicle_plate, mission_number').eq('id', input.missionId).maybeSingle()
+      await alertOnSiteFailed({ missionId: input.missionId, externalId: input.externalId, tow: true }, mm, notes.replace(/^VAB : /, '').slice(0, 160))
+    }
+  }
 
   const assignmentId = vabAssignmentId(input.externalId)
   if (!assignmentId) { await log('vab_close_skipped', 'VAB : AssignmentId introuvable dans external_id', { externalId: input.externalId }); return }
@@ -354,7 +362,7 @@ export async function runVabTowClose(input: VabTowCloseInput): Promise<void> {
     const { closeVabCodeScreen } = await import('@/lib/vab/close-codes')
 
     const { data: f } = await sb.from('incoming_missions')
-      .select('vehicle_mileage, vehicle_vin, mission_type, destination_name, destination_address, panne_motif, parked_at, status, depot_depart_id')
+      .select('vehicle_mileage, vehicle_vin, vehicle_vin_partial, mission_type, destination_name, destination_address, panne_motif, parked_at, status, depot_depart_id')
       .eq('id', input.missionId).maybeSingle()
     const km  = String((f as any)?.vehicle_mileage ?? '').replace(/\D+/g, '')
     const vin = String((f as any)?.vehicle_vin ?? '').trim()
@@ -403,7 +411,8 @@ export async function runVabTowClose(input: VabTowCloseInput): Promise<void> {
     // inconnu » n'apparaissait pas — trente échecs « Chassis Number must be
     // checked ». On envoie les 3 derniers chiffres du châssis ; s'il n'en a pas
     // assez, 3 chiffres aléatoires (voie « VIN inconnu », qui aboutit).
-    const chiffresVin = vin.replace(/\D+/g, '')
+    // Châssis partiel du chauffeur (5 derniers) quand le complet manque : ses 3 derniers chiffres valent mieux que du hasard.
+    const chiffresVin = (vin || String((f as any)?.vehicle_vin_partial ?? '')).replace(/\D+/g, '')
     const argsOnsite = (kmValeur: string) => ({
       assignmentId,
       km: kmValeur,

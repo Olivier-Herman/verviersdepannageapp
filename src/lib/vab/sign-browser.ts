@@ -642,6 +642,23 @@ export async function vabCloseOnSiteBrowser(opts: {
             } catch { /* frame indisponible */ }
           }
           await new Promise(r => setTimeout(r, 3000))
+          // ⚠️ VAB REFUSE UN KILOMÉTRAGE INFÉRIEUR AU PRÉCÉDENT, ET LE DIT : « Le kilométrage est
+          // inférieur au kilométrage précédent (44203) ». Sans relevé du chauffeur on envoyait
+          // 126 : refus à chaque essai, « Il faut d'abord vérifier le kilométrage » (208 échecs du
+          // 08/09 au 08/10, HRJULEC le 08/10). On reprend leur dernier relevé et on revérifie —
+          // testé sur HRJULEC : « Vérification kilométrage réussi ». Olivier 08/10/2026.
+          const précédent = await page.evaluate(`(function(){
+            var m = (document.body.innerText || '').match(/inf[ée]rieur au kilom[ée]trage pr[ée]c[ée]dent\\s*\\((\\d+)\\)/i);
+            return m ? m[1] : null })()`).catch(() => null) as string | null
+          if (précédent && Number(précédent) > Number(String(opts.km).replace(/\D+/g, '') || 0)) {
+            await clearAndType(page, 'input[id*="wtInput_MileageCheck"]', précédent)
+            await page.evaluate(`(function(){ var a = document.querySelector('a[id*="wtLink_CheckMileage"]'); if (a) a.click() })()`).catch(() => {})
+            await new Promise(r => setTimeout(r, 5000))
+            await clickOuiInFrames(page).catch(() => false)
+            const ok = await page.evaluate(`/kilom[ée]trage r[ée]ussi/i.test(document.body.innerText || '')`).catch(() => false)
+            steps.push(`km ${opts.km} refusé (inférieur au précédent) → relevé VAB ${précédent} repris${ok ? ' ✓' : ' (⚠ non confirmé)'}`)
+            await new Promise(r => setTimeout(r, 1500))
+          }
         }
       }
 

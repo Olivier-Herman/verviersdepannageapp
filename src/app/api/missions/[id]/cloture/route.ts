@@ -403,7 +403,17 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     //     amène la mission jusqu'à l'écran de code.
     const isTow = String((m as any).mission_type || '').toLowerCase().includes('remorquage')
     const arrived = outcome === 'delivered' || outcome === 'park'
-    const vabTask = (isTow && arrived
+    // « Transformer en remorquage » : la demande de remorquage doit exister chez VAB TOUT DE
+    // SUITE, pas à la livraison. On joue donc la clôture complète du dépannage maintenant
+    // (« Pas résolue — Remorquage » + formulaire de remorquage vers la destination saisie) ;
+    // l'action remorquage que VAB crée est rattachée à la fiche et clôturée à la livraison.
+    // Avant, on s'arrêtait à l'écran des codes et la demande partait à la livraison :
+    // 1DHN965 le 07/10, 46 min trop tard (Olivier 08/10/2026).
+    const transformation = outcomeIsRem(outcome)
+    // Dépannage réussi : même clôture complète tout de suite (codes « Mobilité rétablie »),
+    // c'est exactement ce que le filet faisait 13 min plus tard en médiane.
+    const complète = (isTow && arrived) || transformation || outcome === 'dsp'
+    const vabTask = (complète
       ? runVabTowClose({
           missionId:       (m as any).id,
           externalId:      (m as any).external_id,
@@ -412,6 +422,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
           keyRecovered:    common.keyRecovered ?? null,
           signature:       common.signature ?? null,
           actorId:         (actor as any)?.id ?? null,
+          transformation,
         })
       : runVabOnSite({
           missionId:     (m as any).id,
@@ -419,11 +430,10 @@ export async function POST(req: Request, { params }: { params: { id: string } })
           km:            km ?? null,
           vinLastDigits: vin5 || null,
           actorId:       (actor as any)?.id ?? null,
-          tow:           isTow || outcome === 'rem',
         })
     ).catch(() => {})
     try { const { waitUntil } = await import('@vercel/functions'); waitUntil(vabTask) } catch { /* hors Vercel */ }
-    result = { ok: true, queuedVab: true, vabStep: isTow && arrived ? 'tow_close' : 'on_site' }
+    result = { ok: true, queuedVab: true, vabStep: complète ? 'tow_close' : 'on_site' }
   }
   // ── TOUTE AUTRE ASSISTANCE : aucun appel externe ──────────────────────────
   // C'est le cas par DÉFAUT, pas une liste à maintenir (Olivier 2026-08-12) :
