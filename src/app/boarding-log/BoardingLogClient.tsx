@@ -15,6 +15,11 @@
 // couleur par source (celle du catalogue, jamais en dur), la navette qui balaie
 // l'étape en cours, la barre d'avancement de la mission, et à droite le rythme
 // du jour et les chauffeurs du jour.
+//
+// Écran vertical (Olivier 08/10/2026, écran pivoté en portrait) : la même page se
+// réorganise d'elle-même dès que l'écran est plus haut que large — chiffres sur
+// deux rangées, missions sur toute la largeur et en plus grand, « À regarder » et
+// « Chauffeurs » côte à côte en bas, journal sur quatre lignes au lieu de deux.
 
 import { pollWhenVisible } from '@/lib/client/poll'
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
@@ -124,17 +129,19 @@ export default function BoardingLogClient() {
   // On mesure après chaque rendu : aucune donnée n'est touchée, donc pas de
   // boucle de rendu.
   const fitAll = useCallback(() => {
+    // Écran vertical : plus de hauteur, donc journal plus long et missions plus grandes.
+    const portrait = window.innerHeight > window.innerWidth
     const f = feedRef.current
     if (f) {
       const first = f.querySelector('.bl-ev') as HTMLElement | null
       if (first) {
         const h = first.getBoundingClientRect().height
-        if (h) f.style.height = `${Math.round(h * 2)}px`
+        if (h) f.style.height = `${Math.round(h * (portrait ? 4 : 2))}px`
       }
     }
     const box = missionsRef.current
     if (box) {
-      let px = 16, guard = 0
+      let px = portrait ? Math.max(16, Math.min(30, window.innerWidth / 46)) : 16, guard = 0
       box.style.fontSize = `${px}px`
       while (box.scrollHeight > box.clientHeight + 1 && px > 8 && guard++ < 40) {
         px -= 0.5
@@ -491,4 +498,34 @@ body { margin:0; background:#E6EBF2; color:#111820;
 
 @media (prefers-reduced-motion:reduce) { .bl * { animation:none !important; transition:none !important; } }
 @media (max-width:1150px) { .bl-cols { grid-template-columns:1fr; } }
+
+/* ── écran vertical (portrait) : même contenu, réorganisé pour la hauteur ── */
+@media (orientation:portrait) {
+  .bl { gap:12px; padding:12px 14px; }
+  .bl-kpis { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); }
+  .bl-kpi { border-bottom:1px solid #E6ECF3; }
+  .bl-kpi + .bl-kpi { border-left:0; }
+  .bl-kpis > * { border-right:1px solid #E6ECF3; }
+  .bl-kpis > *:nth-child(4n) { border-right:0; }
+  .bl-kpi { padding:10px 14px 11px; }
+  .bl-kpil, .bl-kpis2 { font-size:clamp(11px,1.15vw,16px); }
+  .bl-kpiv, .bl-clock { font-size:clamp(24px,3.3vw,48px); }
+  .bl-trend { height:clamp(15px,1.6vw,24px); }
+  .bl-trend i { width:clamp(5px,.6vw,9px); }
+  .bl-clockbox { border-left:0; align-items:center; grid-column:span 2; }
+  .bl-live, .bl-stale { font-size:clamp(11px,1.1vw,15px); }
+  .bl-cols { grid-template-columns:1fr; grid-template-rows:minmax(0,1fr) auto; gap:12px; }
+  .bl-side { flex-direction:row; height:26vh; }
+  .bl-side .bl-card, .bl-side .bl-grow { flex:1 1 0; min-width:0; min-height:0; }
+  .bl-podium { overflow-y:auto; flex:1; min-height:0; }
+  .bl-card h2, .bl-card h2 span { font-size:clamp(11px,1.25vw,17px); }
+  .bl-anot { font-size:clamp(13.5px,1.5vw,20px); }
+  .bl-anod { font-size:clamp(12.5px,1.35vw,18px); }
+  .bl-anoh { font-size:clamp(11px,1.15vw,15px); }
+  .bl-pname, .bl-rank { font-size:clamp(13px,1.45vw,20px); }
+  .bl-pnum { font-size:clamp(15px,1.7vw,24px); }
+  .bl-pbar { height:clamp(6px,.7vw,10px); }
+  .bl-ev { font-size:clamp(14.5px,1.6vw,22px); grid-template-columns:4em 1.4em 1fr; }
+  .bl-evh { font-size:.86em; }
+}
 `
