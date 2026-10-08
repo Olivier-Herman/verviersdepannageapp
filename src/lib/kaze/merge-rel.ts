@@ -58,10 +58,14 @@ export async function mergeKazeRelIntoParked(opts: {
   }
 
   // 2. Compléter la fiche parc parent + transfert du lien Kaze.
-  const redelivery = (rel.destination_address || '').trim() || null
+  // Une vraie adresse déjà saisie n'est pas écrasée (même lieu écrit autrement → pas de nouvelle
+  // étiquette ; autre lieu → signalé au dispatch). 2EXG520, Olivier 08/10/2026.
+  const { data: pAddr } = await sb.from('incoming_missions').select('redelivery_address').eq('id', parentId).maybeSingle()
+  const { relivraisonZoneFor, resolveRedelivery } = await import('@/lib/parc/relivraison-zone')
+  const res = await resolveRedelivery(sb, (pAddr as any)?.redelivery_address, rel.destination_address)
+  const redelivery = res.address
   // K1 « en attente d'adresse » si la relivraison n'a pas de vraie destination
   // (absente ou = un de nos dépôts), sinon K.
-  const { relivraisonZoneFor } = await import('@/lib/parc/relivraison-zone')
   const relZone = await relivraisonZoneFor(sb, redelivery)
   const updParent: Record<string, any> = {
     parc_zone_key:   relZone,
@@ -73,8 +77,8 @@ export async function mergeKazeRelIntoParked(opts: {
   }
   if (redelivery)                  updParent.redelivery_address  = redelivery
   if (parcAddr)                    updParent.destination_address = parcAddr
-  if (rel.destination_lat != null) updParent.redelivery_lat      = rel.destination_lat
-  if (rel.destination_lng != null) updParent.redelivery_lng      = rel.destination_lng
+  if (res.fromIncoming && rel.destination_lat != null) updParent.redelivery_lat = rel.destination_lat
+  if (res.fromIncoming && rel.destination_lng != null) updParent.redelivery_lng = rel.destination_lng
   await sb.from('incoming_missions').update(updParent).eq('id', parentId)
   await sb.from('mission_logs').insert({
     mission_id: parentId, actor_id: actorId, action: 'request_relivraison',
@@ -98,7 +102,12 @@ export async function mergeKazeRelIntoParked(opts: {
 
   // 4. Étiquette REL du parent (best-effort).
   let labelPrinted = false
-  try { const r = await reprintLabelForMission({ kind: 'uuid', value: parentId }); labelPrinted = !!r.ok } catch { /* non bloquant */ }
+  if (res.changed) { try { const r = await reprintLabelForMission({ kind: 'uuid', value: parentId }); labelPrinted = !!r.ok } catch { /* non bloquant */ } }
+  if (res.conflit) {
+    await sb.from('mission_logs').insert({ mission_id: parentId, actor_id: null, action: 'redelivery_conflict',
+      notes: `⚠️ Kaze indique une autre adresse de relivraison (${res.conflit}) — la fiche garde ${redelivery}. À vérifier.`,
+      metadata: { kept: redelivery, incoming: res.conflit } }).then(() => {}, () => {})
+  }
 
   return { zone: relZone, labelPrinted, redelivery }
 }

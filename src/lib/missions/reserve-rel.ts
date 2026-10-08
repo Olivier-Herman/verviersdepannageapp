@@ -84,14 +84,19 @@ export async function reserveTowForParkedVehicle(opts: { sb: Sb; missionId: stri
       const { data: d } = await sb.from('depots').select('address').eq('is_default', true).eq('active', true).maybeSingle()
       parcAddr = (d?.address || '').trim() || null
     }
-    const redelivery = (m.destination_address || '').trim() || (m.destination_name || '').trim() || parked.redelivery_address || null
-    const { relivraisonZoneFor } = await import('@/lib/parc/relivraison-zone')
+    // Jamais notre dépôt comme adresse de relivraison, jamais écraser une vraie adresse déjà saisie
+    // (2EXG520 le 08/10 : le mail Ethias du remorquage vers notre dépôt a remplacé « Carrosserie
+    // Fontaine, Spa » par « R DE LA CITE 22A »).
+    const { relivraisonZoneFor, resolveRedelivery } = await import('@/lib/parc/relivraison-zone')
+    const res = await resolveRedelivery(sb, parked.redelivery_address,
+      (m.destination_address || '').trim() || (m.destination_name || '').trim(), m.destination_name)
+    const redelivery = res.address
     const zone = await relivraisonZoneFor(sb, redelivery)
     const updParent: Record<string, any> = { parc_zone_key: zone, parc_row_number: null, parc_slot_index: null, mission_type: 'REM+REL', updated_at: now }
     if (redelivery) updParent.redelivery_address = redelivery
     if (parcAddr)   updParent.destination_address = parcAddr
-    if (m.destination_lat != null) updParent.redelivery_lat = m.destination_lat
-    if (m.destination_lng != null) updParent.redelivery_lng = m.destination_lng
+    if (res.fromIncoming && m.destination_lat != null) updParent.redelivery_lat = m.destination_lat
+    if (res.fromIncoming && m.destination_lng != null) updParent.redelivery_lng = m.destination_lng
     await sb.from('incoming_missions').update(updParent).eq('id', parked.id)
     const srcLabel = String(m.source || '').toUpperCase()
     await sb.from('mission_logs').insert({
@@ -110,7 +115,18 @@ export async function reserveTowForParkedVehicle(opts: { sb: Sb; missionId: stri
       metadata: { parent_mission_id: parked.id },
     }).then(() => {}, () => {})
 
-    try { await reprintLabelForMission({ kind: 'uuid', value: parked.id }) } catch { /* non bloquant */ }
+    // Étiquette seulement si le lieu de relivraison change vraiment (sinon doublon dans le bac).
+    if (res.changed) { try { await reprintLabelForMission({ kind: 'uuid', value: parked.id }) } catch { /* non bloquant */ } }
+    if (res.conflit) {
+      await sb.from('mission_logs').insert({ mission_id: parked.id, actor_id: null, action: 'redelivery_conflict',
+        notes: `⚠️ ${srcLabel} indique une autre adresse de relivraison (${res.conflit}) — la fiche garde ${redelivery}. À vérifier.`,
+        metadata: { kept: redelivery, incoming: res.conflit, source: m.source } }).then(() => {}, () => {})
+      await sendPushToRole(['admin', 'superadmin', 'dispatcher'], {
+        title: `⚠️ ${plate} : adresse de relivraison différente`,
+        body:  `${srcLabel} indique « ${res.conflit} » ; la fiche #${parked.mission_number ?? ''} garde « ${redelivery} ». À vérifier.`,
+        url:   '/relivraison',
+      }).catch(() => {})
+    }
     await sendPushToRole(['admin', 'superadmin', 'dispatcher'], {
       title: `🅿️ Remorquage ${srcLabel} pour un véhicule au parc`,
       body:  `${plate} : la fiche principale #${parked.mission_number ?? ''} est en zone ${zone}, relivraison à créer depuis « À relivrer » quand le véhicule est prêt.`,

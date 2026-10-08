@@ -449,7 +449,11 @@ export async function PATCH(
       // formulaire d'affectation renvoie l'adresse inchangée à chaque PATCH →
       // une étiquette partait à chaque affectation de chauffeur sur la REL.
       const normAddr = (v: any) => String(v || '').replace(/\s+/g, ' ').trim().toLowerCase()
+      // 08/10/2026 (2EXG520) : même lieu écrit autrement (« Av. Reine Astrid 124, 4900 Spa » /
+      // « Avenue Reine Astrid 124, SPA, BEL ») = pas de changement, pas d'étiquette.
+      const { samePlace } = await import('@/lib/parc/relivraison-zone')
       const addrChanged = normAddr((data as any).redelivery_address) !== normAddr((before as any)?.redelivery_address)
+        && !samePlace((data as any).redelivery_address, (before as any)?.redelivery_address)
       if (target === 'K' && curZone === 'K' && addrChanged && String((data as any).redelivery_address || '').trim()) {
         try {
           const { reprintLabelForMission } = await import('@/lib/missions/reprint-label-helper')
