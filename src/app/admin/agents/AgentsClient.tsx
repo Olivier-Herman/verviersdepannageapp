@@ -6,6 +6,9 @@ import { useCallback, useEffect, useState } from 'react'
 const COMPANY: Record<number, string> = { 1: 'Verviers Dépannage', 2: 'Dépannage Riga', 3: 'DGJ VHU' }
 const KIND: Record<string, string> = { lot_paiement: 'Lot de paiement', facture_achat: 'Facture d’achat', note_credit: 'Note de crédit / refacturation', envoi_comptable: 'Envoi au comptable', question_olivier: 'Question à Mobi' }
 const ANSWERS: Record<string, { key: string; label: string }[]> = { facture_nom_prive: [{ key: 'encoder', label: 'Encoder chez VD' }, { key: 'prive', label: 'Privé, ne pas encoder' }] }
+/** Question libre : réponses proposées par l'agent + « Déjà réglé » (Olivier 08/10/2026). */
+const answersFor = (payload: any): { key: string; label: string }[] =>
+  payload?.sujet === 'libre' ? [...(Array.isArray(payload.choix) ? payload.choix : []), { key: 'deja_regle', label: 'Déjà réglé' }] : (ANSWERS[payload?.sujet] || [])
 const STATUS: Record<string, { label: string; cls: string }> = {
   to_validate: { label: 'À valider', cls: 'bg-amber-100 text-amber-900' },
   executing:   { label: 'En cours', cls: 'bg-sky-100 text-sky-900' },
@@ -132,7 +135,15 @@ export default function AgentsClient() {
                 {p.kind === 'rapprochement_banque' && (p.payload?.ventilation || []).length > 0 && (
                   <div className="text-sm text-slate-800"><p className="font-medium">Ventilation proposée :</p><ul className="list-disc pl-5">{p.payload.ventilation.map((l: string, i: number) => <li key={i}>{l}</li>)}</ul></div>
                 )}
-                {p.kind === 'question_olivier' && (
+                {p.kind === 'question_olivier' && p.payload?.sujet === 'libre' && (
+                  <div className="text-sm text-slate-800 space-y-2">
+                    {p.payload?.question && p.payload.question.length > 160 && <p className="font-medium text-slate-900 whitespace-pre-line">{p.payload.question}</p>}
+                    {p.payload?.contexte && <p className="text-slate-800 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 whitespace-pre-line">{p.payload.contexte}</p>}
+                    {p.payload?.lien && <a href={p.payload.lien} target="_blank" rel="noreferrer" className="inline-flex min-h-[44px] items-center text-sky-800 underline">Ouvrir le document lié</a>}
+                    {p.status === 'answered' && <p className="text-emerald-800 font-semibold whitespace-pre-line">Réponse : {p.result?.label} · {p.validated_by} · {fmt(p.validated_at)}{p.result?.canal === 'telegram' ? ' (Telegram)' : ''}</p>}
+                  </div>
+                )}
+                {p.kind === 'question_olivier' && p.payload?.sujet !== 'libre' && (
                   <div className="text-sm text-slate-800 space-y-0.5">
                     <p><b>Destinataire :</b> {p.payload?.destinataire}</p>
                     <p>{p.payload?.fournisseur} · {p.payload?.reference || 'sans référence'} · {p.payload?.date || 'sans date'} · {eur(p.payload?.htva)} HTVA / {eur(p.payload?.tvac)} TVAC</p>
@@ -158,11 +169,21 @@ export default function AgentsClient() {
                 {p.correction && <p className="text-sm text-violet-800">Demandé à l’agent : {p.correction}</p>}
 
                 {p.kind === 'question_olivier' && p.status === 'to_validate' && canDecide(p) && (
-                  <div className="flex flex-wrap gap-2 pt-1">
-                    {(ANSWERS[p.payload?.sujet] || []).map(a => (
-                      <button key={a.key} type="button" disabled={busy === p.id} onClick={() => post({ op: 'answer', id: p.id, choix: a.key }, p.id)}
-                        className={`min-h-[44px] px-4 rounded-xl text-sm font-semibold disabled:opacity-50 ${a.key === 'encoder' ? 'bg-emerald-600 text-white' : 'bg-white border border-slate-300 text-slate-800'}`}>{busy === p.id ? '…' : a.label}</button>
-                    ))}
+                  <div className="space-y-2 pt-1">
+                    <div className="flex flex-wrap gap-2">
+                      {answersFor(p.payload).map(a => (
+                        <button key={a.key} type="button" disabled={busy === p.id} onClick={() => post({ op: 'answer', id: p.id, choix: a.key }, p.id)}
+                          className={`min-h-[44px] px-4 rounded-xl text-sm font-semibold disabled:opacity-50 ${a.key === 'encoder' || a.key === 'c1' ? 'bg-emerald-600 text-white' : a.key === 'deja_regle' ? 'bg-slate-100 border border-slate-300 text-slate-800' : 'bg-white border border-slate-300 text-slate-800'}`}>{busy === p.id ? '…' : a.label}</button>
+                      ))}
+                    </div>
+                    {p.payload?.sujet === 'libre' && (
+                      <div className="flex flex-col sm:flex-row gap-2">
+                        <textarea value={text[p.id] || ''} onChange={e => setText(t => ({ ...t, [p.id]: e.target.value }))} rows={2} placeholder="Ou réponds avec tes mots…"
+                          className="flex-1 min-h-[44px] rounded-xl border border-slate-300 px-3 py-2 text-sm text-slate-900 bg-white" />
+                        <button type="button" disabled={busy === p.id || !(text[p.id] || '').trim()} onClick={() => post({ op: 'answer', id: p.id, choix: 'libre', texte: text[p.id] }, p.id)}
+                          className="min-h-[44px] px-4 rounded-xl text-sm font-semibold bg-sky-700 text-white disabled:opacity-50">{busy === p.id ? '…' : 'Envoyer ma réponse'}</button>
+                      </div>
+                    )}
                   </div>
                 )}
                 {decidable && p.kind !== 'question_olivier' && !open[p.id] && (

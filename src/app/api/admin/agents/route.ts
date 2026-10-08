@@ -61,7 +61,7 @@ export async function POST(req: Request) {
     }
     if (body.op === 'answer') {
       const { answerAgentQuestion } = await import('@/lib/agents/question')
-      const r = await answerAgentQuestion(String(body.id), me.id, me.name, String(body.choix || ''), 'ecran')
+      const r = await answerAgentQuestion(String(body.id), me.id, me.name, String(body.choix || ''), 'ecran', body.texte ? String(body.texte) : undefined)
       if (!r.ok) throw new Error(r.note)
       return NextResponse.json({ ok: true, note: r.note })
     }

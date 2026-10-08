@@ -208,7 +208,11 @@ export async function prepare(kind: ProposalKind, agent: AgentAccount, company: 
     if (String(p.sujet || '') === 'libre') {
       const question = String(p.question || '').trim().slice(0, 2000), contexte = String(p.contexte || '').trim().slice(0, 4000)
       if (!question) throw new Error('contenu.question obligatoire.')
-      return { title: question.slice(0, 160), amount: Number.isFinite(Number(p.montant)) ? Number(p.montant) : null, payload: { sujet: 'libre', question, contexte, lien: String(p.lien || '').slice(0, 500) || null }, directAllowed: false }
+      // Réponses proposées par l'agent (2 à 4, courtes) : boutons sur l'écran et sur Telegram (Olivier 08/10/2026).
+      const choix = (Array.isArray(p.choix) ? p.choix : []).map((c: any) => String(c || '').trim()).filter(Boolean).slice(0, 4)
+      if (choix.length === 1) throw new Error('contenu.choix : 2 à 4 réponses courtes, ou aucune.')
+      if (choix.some((c: string) => c.length > 60)) throw new Error('contenu.choix : chaque réponse fait au plus 60 caractères.')
+      return { title: question.slice(0, 160), amount: Number.isFinite(Number(p.montant)) ? Number(p.montant) : null, payload: { sujet: 'libre', question, contexte, lien: String(p.lien || '').slice(0, 500) || null, choix: choix.map((label: string, i: number) => ({ key: `c${i + 1}`, label })) }, directAllowed: false }
     }
     if (String(p.sujet || '') !== 'facture_nom_prive') throw new Error('contenu.sujet : « facture_nom_prive » ou « libre ».')
     const id = Number(p.facture_id)
