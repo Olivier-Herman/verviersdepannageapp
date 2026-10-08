@@ -26,7 +26,11 @@ async function handleGET(req: Request) {
     let settle: any = null
     try { const { settleOpenCards } = await import('@/lib/mail-agent/settle'); settle = await settleOpenCards(createAdminClient(), 60) }
     catch (e: any) { settle = { error: e?.message || String(e) } }
-    return NextResponse.json({ ok: true, ...scan, settle })
+    // Olivier 08/10/2026 : mails d'une mission d'assistance acceptée → dossier habituel de l'assistance.
+    let missionFiling: any = null
+    try { const { fileAcceptedMissionMails } = await import('@/lib/mail-agent/mission-filing'); const r = await fileAcceptedMissionMails(createAdminClient()); missionFiling = { missions: r.missions, moved: r.moved.length, skipped: r.skipped.length } }
+    catch (e: any) { missionFiling = { error: e?.message || String(e) } }
+    return NextResponse.json({ ok: true, ...scan, settle, missionFiling })
   } catch (err: any) {
     console.error('[cron mail-agent] KO:', err?.message)
     return NextResponse.json({ error: err?.message || 'Erreur' }, { status: 500 })
