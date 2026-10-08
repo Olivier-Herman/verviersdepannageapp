@@ -20,6 +20,8 @@
 // réorganise d'elle-même dès que l'écran est plus haut que large — chiffres sur
 // deux rangées, missions sur toute la largeur et en plus grand, « À regarder » et
 // « Chauffeurs » côte à côte en bas, journal sur quatre lignes au lieu de deux.
+// Téléphone (Olivier 08/10/2026) : « À regarder » et le journal disparaissent, les
+// chauffeurs tiennent sur une ligne de pastilles : la place va aux missions en cours.
 
 import { pollWhenVisible } from '@/lib/client/poll'
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
@@ -196,7 +198,7 @@ export default function BoardingLogClient() {
   const heure  = log?.heureBxl ?? new Date().getHours()
 
   return (
-    <div className="bl">
+    <div className={`bl${stale ? ' bl-stale-on' : ''}`}>
       {/* ── Bandeau : les chiffres du jour ──────────────────────────── */}
       <div className="bl-kpis">
         <Kpi label="À facturer" val={ops.aFacturer} color="#E11D2E" tint="#FFE6E9" sub={`${ops.factureesJour ?? 0} parties aujourd’hui`} />
@@ -527,5 +529,33 @@ body { margin:0; background:#E6EBF2; color:#111820;
   .bl-pbar { height:clamp(6px,.7vw,10px); }
   .bl-ev { font-size:clamp(14.5px,1.6vw,22px); grid-template-columns:4em 1.4em 1fr; }
   .bl-evh { font-size:.86em; }
+}
+
+/* ── téléphone : les missions avant tout ── */
+@media (orientation:portrait) and (max-width:700px) {
+  .bl { gap:8px; padding:8px; }
+  .bl-kpis { grid-template-columns:repeat(3,minmax(0,1fr)); }
+  .bl-kpis > *:nth-child(4n) { border-right:1px solid #E6ECF3; }
+  .bl-kpis > *:nth-child(3n) { border-right:0; }
+  .bl-kpi { padding:7px 9px 8px; }
+  .bl-kpil { font-size:10px; letter-spacing:.04em; }
+  .bl-kpis2 { display:none; }
+  .bl-kpiv { font-size:24px; }
+  .bl-trend { height:12px; }
+  .bl-clockbox { display:none; }
+  .bl-stale-on .bl-clockbox { display:flex; grid-column:1/-1; }   /* données figées : on le dit quand même */
+  .bl-side { flex-direction:column; height:auto; }
+  .bl-side .bl-card { flex:0 0 auto; }
+  .bl-side .bl-grow { display:none; }
+  .bl-veh { white-space:normal; }
+  .bl-step { white-space:normal; text-align:right; }
+  .bl-feed { display:none; }
+  .bl-card h2, .bl-card h2 span { font-size:11px; }
+  .bl-podium { flex-direction:row; flex-wrap:wrap; gap:6px; padding:8px 10px; overflow:visible; }
+  .bl-prow { display:flex; align-items:center; gap:6px; padding:4px 10px; border-radius:999px;
+    background:#F3F6FA; border:1px solid #E6ECF3; }
+  .bl-prow > span:nth-child(2) { display:flex; }
+  .bl-pbar { display:none; }
+  .bl-rank, .bl-pname, .bl-pnum { font-size:13px; }
 }
 `
