@@ -22,9 +22,12 @@ async function handleGET(req: Request) {
   }
   const sb = createAdminClient()
   try {
+    // Réponses de Touring à l'envoi mensuel (Excel rempli) : reportées avant la reconstruction.
+    let replies: any = null
+    try { const { processCheckReplies } = await import('@/lib/touring/check-xlsx'); replies = await processCheckReplies(sb) } catch (e: any) { replies = { error: e?.message } }
     const items = await buildTouringCheckList(sb)
     await persistCheckList(sb, items)
-    return NextResponse.json({ ok: true, count: items.length })
+    return NextResponse.json({ ok: true, count: items.length, replies })
   } catch (e: any) {
     return NextResponse.json({ ok: false, error: e?.message || 'échec' }, { status: 502 })
   }

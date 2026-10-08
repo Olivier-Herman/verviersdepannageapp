@@ -11,7 +11,7 @@ import { reconcileHorsComexWithAccords } from '@/lib/touring/accord-reconcile'
 import { buildTouringCheckList } from '@/lib/touring/check-list'
 import { persistCheckList } from '@/lib/touring/check-persist'
 import { getCheckToken, getCheckEmail, checkLink, CHECK_EMAIL_BCC } from '@/lib/touring/check-config'
-import { sendEmail, emailLayout } from '@/lib/emails'
+import { sendEmail, emailLayout, FROM_EMAIL } from '@/lib/emails'
 import { getBusinessList } from '@/lib/settings/business'
 import { withAiContext } from '@/lib/ai/usage'
 
@@ -29,7 +29,7 @@ function buildHtml(count: number, link: string): string {
     <p style="margin:0 0 14px;font-size:14.5px;color:#3d4250;">Voici notre relevé (${mois}) des dossiers Touring <b>hors COMEX</b> en attente de votre décision (déjà facturé, à facturer hors comex, contrat 105 non couvert, …).</p>
     <div style="display:flex;align-items:center;gap:14px;background:#f6f7f9;border:1px solid #e3e6ea;border-radius:12px;padding:16px 18px;margin:18px 0;">
       <div style="font-size:34px;font-weight:800;color:#d6002a;font-family:monospace;line-height:1;">${count}</div>
-      <div style="font-size:13.5px;color:#3d4250;"><b>dossier${count > 1 ? 's' : ''}</b> attend${count > 1 ? 'ent' : ''} votre retour.<br>Cliquez ci-dessous pour les traiter directement en ligne — plus besoin de renvoyer un Excel.</div>
+      <div style="font-size:13.5px;color:#3d4250;"><b>dossier${count > 1 ? 's' : ''}</b> attend${count > 1 ? 'ent' : ''} votre retour.<br>La liste est jointe en Excel : complétez la dernière colonne et renvoyez-la en réponse à ce mail. Vous pouvez aussi les traiter en ligne.</div>
     </div>
     <p style="font-size:12.5px;color:#0a7d4f;background:#e6f5ec;border-radius:8px;padding:8px 12px;margin:0 0 18px;">✓ Nous avons déjà rapproché de notre côté les dossiers présents dans vos accords — cette liste ne contient que les dossiers restants.</p>
     <a href="${link}" style="display:inline-block;background:#d6002a;color:#fff;text-decoration:none;font-weight:700;font-size:15px;padding:14px 26px;border-radius:10px;">Ouvrir la liste des dossiers →</a>
@@ -55,9 +55,16 @@ async function handleGET(req: Request) {
     const [token, email] = await Promise.all([getCheckToken(sb), getCheckEmail(sb)])
     const now = new Date()
     const mois = `${MONTHS_FR[now.getMonth()]} ${now.getFullYear()}`
-    await sendEmail(email, `Dossiers Touring à vérifier — ${mois}`, buildHtml(items.length, checkLink(token)), 'Touring BKO', await getBusinessList('touring_check_cc'), undefined, undefined, CHECK_EMAIL_BCC)
+    // Olivier 08/10/2026 : la page bloque chez Touring → l'Excel est joint, et la réponse est suivie.
+    const { buildCheckXlsx, registerCheckSend } = await import('@/lib/touring/check-xlsx')
+    const x = await buildCheckXlsx(sb)
+    const subject = `Dossiers Touring à vérifier — ${mois}`
+    await sendEmail(email, subject, buildHtml(items.length, checkLink(token)), 'Touring BKO', await getBusinessList('touring_check_cc'),
+      x.count ? [{ name: `Verviers Dépannage — dossiers Touring à vérifier — ${mois}.xlsx`, contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', contentBytes: x.b64 }] : undefined, undefined, CHECK_EMAIL_BCC)
+    await new Promise(r => setTimeout(r, 4000))   // le temps que le mail apparaisse dans les éléments envoyés
+    const tracked = await registerCheckSend(sb, FROM_EMAIL, subject, email).catch(() => false)
 
-    return NextResponse.json({ ok: true, reconciled: reconcile.reconciled, count: items.length, mailed: true, to: email })
+    return NextResponse.json({ ok: true, reconciled: reconcile.reconciled, count: items.length, mailed: true, to: email, excel: x.count, tracked })
   } catch (e: any) {
     return NextResponse.json({ ok: false, error: e?.message || 'échec' }, { status: 502 })
   }
