@@ -117,12 +117,10 @@ export async function draftReplyComptable(a: Actor, messageId: string, html: str
     await journal({ agent: who(a), action: 'boîte comptable refusée', detail: `réponse à un mail hors @${domain}`, ok: false })
     throw new Error(`Réponse refusée : le mail d'origine ne vient pas du cabinet (@${domain}).`)
   }
-  const d = await (await graph(`/users/${encodeURIComponent(box)}/messages/${encodeURIComponent(messageId)}/createReply`, { method: 'POST', body: '{}' })).json()
-  if (!d?.id) throw new Error('Brouillon de réponse non créé.')
-  const to = (d.toRecipients || []).filter((x: any) => inDomain(addr(x), domain))
-  const cc = (d.ccRecipients || []).filter((x: any) => inDomain(addr(x), domain))
-  await graph(`/users/${encodeURIComponent(box)}/messages/${d.id}`, { method: 'PATCH', body: JSON.stringify({ toRecipients: to, ccRecipients: cc, body: { contentType: 'HTML', content: `${html}<hr>${d.body?.content || ''}` } }) })
-  for (const x of attachments.slice(0, 20)) await graph(`/users/${encodeURIComponent(box)}/messages/${d.id}/attachments`, { method: 'POST', body: JSON.stringify({ '@odata.type': '#microsoft.graph.fileAttachment', ...x }) })
+  // Réponse au seul expéditeur (du cabinet, vérifié ci-dessus), en UNE écriture : texte et pièces
+  // posés à la création, plus rien ensuite (Olivier 08/10/2026, conflits Outlook).
+  const { createReplyDraftOnce } = await import('@/lib/mail-agent/draft-once')
+  const d = await createReplyDraftOnce(box, messageId, html, { attachments: attachments.slice(0, 20) })
   await journal({ agent: who(a), action: 'boîte comptable : brouillon de réponse', detail: `${orig.subject} · ${attachments.length} pièce(s)` })
   return { id: d.id }
 }

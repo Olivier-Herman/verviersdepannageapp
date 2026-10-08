@@ -151,14 +151,14 @@ export async function remindOldPieceRequests(sb: any): Promise<void> {
     if (!won?.length) continue
     let draftId: string | null = null
     try {
-      const d: any = await (await graph(`/users/${encodeURIComponent(q.mailbox)}/messages/${encodeURIComponent(q.message_id)}/createReply`, { method: 'POST', body: '{}' })).json()
-      if (d?.id) {
+      {
         const de = /rechnung|zahlung/i.test(q.subject || '')
         const txt = de
           ? `<p>Sehr geehrte Damen und Herren,</p><p>wir erlauben uns, auf unsere Anfrage vom ${ddmm(q.requested_at)} zurückzukommen, auf die wir noch keine Antwort erhalten haben. Wir wären Ihnen für eine kurze Rückmeldung dankbar.</p><p>Mit freundlichen Grüßen</p><p>Verwaltung<br>Verviers Dépannage SA</p>`
           : `<p>Madame, Monsieur,</p><p>Nous nous permettons de revenir vers vous au sujet de notre demande du ${ddmm(q.requested_at)}, restée sans réponse à ce jour. Nous vous remercions d'avance pour votre retour.</p><p>Avec nos remerciements,</p><p>Service administratif<br>Verviers Dépannage SA</p>`
-        await graph(`/users/${encodeURIComponent(q.mailbox)}/messages/${d.id}`, { method: 'PATCH', body: JSON.stringify({ body: { contentType: 'HTML', content: txt + '<hr>' + (d.body?.content || '') } }) })
-        draftId = d.id
+        // Une seule écriture, jamais retouchée ensuite (Olivier 08/10/2026, conflits Outlook).
+        const { createReplyDraftOnce } = await import('./draft-once')
+        draftId = (await createReplyDraftOnce(q.mailbox, q.message_id, txt)).id
       }
     } catch { /* la relance reste signalée même sans brouillon */ }
     await sb.from('mail_piece_requests').update({ relance_draft_id: draftId }).eq('id', q.id)

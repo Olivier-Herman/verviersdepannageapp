@@ -303,20 +303,11 @@ export async function createReplyDraft(mailbox: string, messageId: string, html:
 } = {}): Promise<{ ok: boolean; id?: string; error?: string }> {
   try {
     guardMailbox(mailbox)
-    const base = `/users/${encodeURIComponent(mailbox)}/messages`
-    const r = await authedFetch(`${base}/${encodeURIComponent(messageId)}/${opts.replyAll ? 'createReplyAll' : 'createReply'}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' })
-    if (r.status !== 201) return { ok: false, error: `Répondre refusé (${r.status}) : ${(await r.text()).slice(0, 160)}` }
-    const draft: any = await r.json()
-    const quoted = String(draft.body?.content || '')
-    const p1 = await authedFetch(`${base}/${draft.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ body: { contentType: 'HTML', content: html + quoted } }) })
-    if (!p1.ok) return { ok: false, error: `corps refusé (${p1.status})` }
-    if (opts.fromMailbox && opts.fromMailbox.toLowerCase() !== mailbox.toLowerCase()) {
-      await authedFetch(`${base}/${draft.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ from: { emailAddress: { address: opts.fromMailbox } } }) })
-    }
-    for (const a of opts.attachments || []) {
-      await authedFetch(`${base}/${draft.id}/attachments`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ '@odata.type': '#microsoft.graph.fileAttachment', name: a.name, contentType: a.contentType, contentBytes: a.contentBytes }) })
-    }
-    return { ok: true, id: draft.id }
+    // Une seule écriture (Olivier 08/10/2026) : plus de PATCH ni d'ajout de pièce après la création,
+    // sinon Outlook peut perdre les modifications faites sur le brouillon.
+    const { createReplyDraftOnce } = await import('./draft-once')
+    const r = await createReplyDraftOnce(mailbox, messageId, html, { from: opts.fromMailbox, attachments: opts.attachments, replyAll: opts.replyAll })
+    return { ok: true, id: r.id }
   } catch (e: any) { return { ok: false, error: e?.message || 'réponse impossible' } }
 }
 

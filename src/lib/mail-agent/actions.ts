@@ -52,32 +52,22 @@ async function replyMail(mode: Mode, item: any, html: string, attachments: Email
   const token = await getAppOnlyToken()
   const H = { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }
   const base = `${G}/users/${encodeURIComponent(item.mailbox)}/messages/${item.message_id}`
-  const r = await fetch(`${base}/createReply`, { method: 'POST', headers: H, body: JSON.stringify({}) })
-  if (r.status !== 201) throw new Error(`Répondre refusé (${r.status}) : ${(await r.text()).slice(0, 160)}`)
-  const draft: any = await r.json()
-  const quoted = String(draft.body?.content || '')
-  const patch: any = { body: { contentType: 'HTML', content: html + quoted } }
   // Destinataire (Olivier 07/10/2026) : l'adresse de réponse LUE dans le mail ou la pièce jointe ; à défaut
-  // l'expéditeur d'origine — jamais notre propre boîte (rejet transféré d'info@).
-  const to = (draft.toRecipients || []).map((x: any) => String(x?.emailAddress?.address || '').toLowerCase())
+  // l'expéditeur d'origine — jamais notre propre boîte (rejet transféré d'info@). Décidé AVANT de créer
+  // le brouillon : il est écrit en une seule fois (Olivier 08/10/2026, conflits Outlook).
+  const o: any = await (await fetch(`${base}?$select=from,replyTo`, { headers: H, cache: 'no-store' })).json().catch(() => ({}))
+  const ours = (a: string) => /verviersdepannage\.(com|be)$/i.test(a)
+  const to = ((o.replyTo?.length ? o.replyTo : [o.from]) || []).map((x: any) => String(x?.emailAddress?.address || '').toLowerCase()).filter(Boolean)
   const replyTo = String(item.extracted?.replyTo || '').toLowerCase()
-  if (replyTo && !/verviersdepannage\.(com|be)$/i.test(replyTo) && !(to.length === 1 && to[0] === replyTo)) {
-    patch.toRecipients = [{ emailAddress: { address: replyTo } }]
-  } else if (item.from_email && !/verviersdepannage\.(com|be)$/i.test(item.from_email) && to.some((a: string) => /verviersdepannage\.(com|be)$/i.test(a))) {
-    patch.toRecipients = [{ emailAddress: { address: item.from_email } }]
-  }
-  if (cc) patch.ccRecipients = [{ emailAddress: { address: cc } }]
-  const p1 = await fetch(`${base.replace(item.message_id, draft.id)}`, { method: 'PATCH', headers: H, body: JSON.stringify(patch) })
-  if (!p1.ok) throw new Error(`corps de réponse refusé (${p1.status})`)
+  let toRecipients: { emailAddress: { address: string } }[] | undefined
+  if (replyTo && !ours(replyTo) && !(to.length === 1 && to[0] === replyTo)) toRecipients = [{ emailAddress: { address: replyTo } }]
+  else if (item.from_email && !ours(item.from_email) && to.some(ours)) toRecipients = [{ emailAddress: { address: item.from_email } }]
+  const { createReplyDraftOnce } = await import('./draft-once')
+  const draft = await createReplyDraftOnce(item.mailbox, item.message_id, html, {
+    to: toRecipients, cc: cc ? [{ emailAddress: { address: cc } }] : undefined, from: OUT_MAILBOX, attachments,
+  })
   // Expéditeur administration@ (Olivier 23/09) — si la boîte refuse, le brouillon reste au nom de la boîte.
-  let fromNote = ''
-  if (item.mailbox.toLowerCase() !== OUT_MAILBOX) {
-    const p2 = await fetch(`${base.replace(item.message_id, draft.id)}`, { method: 'PATCH', headers: H, body: JSON.stringify({ from: { emailAddress: { address: OUT_MAILBOX } } }) })
-    fromNote = p2.ok ? '' : ` (expéditeur ${item.mailbox.split('@')[0]}@ : la boîte n'accepte pas l'envoi au nom d'administration@)`
-  }
-  for (const a of attachments) {
-    await fetch(`${base.replace(item.message_id, draft.id)}/attachments`, { method: 'POST', headers: H, body: JSON.stringify({ '@odata.type': '#microsoft.graph.fileAttachment', name: a.name, contentType: a.contentType, contentBytes: a.contentBytes }) })
-  }
+  const fromNote = draft.fromRefused ? ` (expéditeur ${item.mailbox.split('@')[0]}@ : la boîte n'accepte pas l'envoi au nom d'administration@)` : ''
   if (mode === 'auto') {
     const s = await fetch(`${base.replace(item.message_id, draft.id)}/send`, { method: 'POST', headers: H })
     if (s.status !== 202) throw new Error(`envoi refusé (${s.status}) : ${(await s.text()).slice(0, 160)}`)
