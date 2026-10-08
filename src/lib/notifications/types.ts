@@ -359,6 +359,14 @@ export const NOTIFICATION_TYPES: readonly NotificationType[] = [
     defaultEnabled:  true,
   },
   {
+    key:             'vab_onsite_failed',
+    label:           'VAB : clôture sur place non passée',
+    description:     "VD Soft n'a pas pu clôturer la mission chez VAB au moment du choix du chauffeur. Pour un remorquage, la demande de remorquage n'existe pas encore chez VAB : la faire dans Comet.",
+    category:        'admin',
+    applicableRoles: ['dispatcher', 'admin', 'superadmin'],
+    defaultEnabled:  true,
+  },
+  {
     key:             'vab_dossiers_ouverts',
     label:           'VAB : dossiers non clôturés',
     description:     "Des dossiers restent ouverts chez VAB alors que l'intervention est finie chez nous.",

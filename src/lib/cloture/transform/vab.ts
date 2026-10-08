@@ -57,6 +57,8 @@ export interface VabOnSiteInput {
   /** 5 derniers du VIN saisis par le chauffeur (le closer n'en garde que 3). */
   vinLastDigits?: string | null
   actorId?:    string | null
+  /** Le chauffeur a choisi « Transformer en remorquage » : la clôture sur place crée la demande de remorquage chez VAB. */
+  tow?:        boolean
 }
 
 /**
@@ -73,7 +75,7 @@ export async function runVabOnSite(input: VabOnSiteInput): Promise<void> {
   if (!assignmentId) { await log('vab_onsite_skipped', 'VAB : AssignmentId introuvable dans external_id', { externalId: input.externalId }); return }
 
   // Déjà fait ? (double validation, reprise du chauffeur…)
-  const { data: m } = await sb.from('incoming_missions').select('vab_onsite_at, vab_closed_at').eq('id', input.missionId).maybeSingle()
+  const { data: m } = await sb.from('incoming_missions').select('vab_onsite_at, vab_closed_at, vehicle_vin, vehicle_plate, mission_number').eq('id', input.missionId).maybeSingle()
   if ((m as any)?.vab_onsite_at || (m as any)?.vab_closed_at) {
     await log('vab_onsite_skipped', 'VAB : déjà amenée à l’écran de code, on ne rejoue pas', {})
     return
@@ -106,7 +108,11 @@ export async function runVabOnSite(input: VabOnSiteInput): Promise<void> {
   try {
     const km  = input.km == null || String(input.km).trim() === '' ? '' : String(input.km).trim()
     const vin = String(input.vinLastDigits || '').trim()
-    const r = await vabCloseOnSiteBrowser({ assignmentId, km, vinLastDigits: vin })
+    // Châssis complet (lu sur les photos ou fourni par VAB) : VAB peut le réclamer même après
+    // « VIN inconnu ». Sans lui, 1DHN965 est resté bloqué le 07/10 et la demande de remorquage
+    // n'est partie que 46 min plus tard (Olivier 08/10/2026 : « VD Soft aurait dû lire le VIN et le compléter »).
+    const vinFull = (vin.replace(/\s+/g, '').length >= 11 ? vin : String((m as any)?.vehicle_vin || '')).replace(/\s+/g, '').toUpperCase() || undefined
+    const r = await vabCloseOnSiteBrowser({ assignmentId, km, vinLastDigits: vin, vinFull })
     const secs = Math.round((Date.now() - started) / 1000)
 
     if (r.onCodeScreen) {
@@ -124,13 +130,30 @@ export async function runVabOnSite(input: VabOnSiteInput): Promise<void> {
         // cookieHeader + osvstate serviront à la reprise HTTP (codes + End + popup).
         handoff: r.onCodeScreen ? { cookieHeader: r.cookieHeader, osvstate: r.osvstate } : null },
     )
+    if (!r.onCodeScreen) await alertOnSiteFailed(input, m, r.error || 'écran de codes non atteint')
   } catch (e: any) {
     await log('vab_onsite_failed', `VAB : erreur pendant le pilotage — ${e?.message || e}`, { assignmentId })
+    await alertOnSiteFailed(input, m, String(e?.message || e))
   } finally {
     await releaseLock()
   }
 }
 
+
+/** Échec de la clôture sur place : le dispatch le sait tout de suite (avant, seul le journal le disait). */
+async function alertOnSiteFailed(input: VabOnSiteInput, m: any, raison: string) {
+  try {
+    const { sendNotificationToRoles } = await import('@/lib/notifications/send')
+    const qui = [m?.vehicle_plate, m?.mission_number ? `n° ${m.mission_number}` : ''].filter(Boolean).join(' · ')
+    await sendNotificationToRoles(['dispatcher', 'admin', 'superadmin'], 'vab_onsite_failed', {
+      title: input.tow ? `⚠️ VAB ${qui} : demande de remorquage NON passée` : `⚠️ VAB ${qui} : clôture sur place non passée`,
+      body: input.tow
+        ? `Le chauffeur a transformé en remorquage mais VAB n'a pas accepté la clôture (${raison.slice(0, 120)}). Fais la demande de remorquage dans Comet maintenant.`
+        : `VAB n'a pas accepté la clôture sur place (${raison.slice(0, 120)}). À clôturer dans Comet.`,
+      action_url: `/missions/${input.missionId}`,
+    } as any)
+  } catch (e: any) { console.error('[vab onsite] alerte KO :', e?.message) }
+}
 
 // ── KILOMÉTRAGE PRÉSENTÉ À VAB ──────────────────────────────────────────────
 // Le relevé de la fiche fait toujours foi quand le chauffeur l'a encodé.

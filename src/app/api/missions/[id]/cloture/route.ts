@@ -419,6 +419,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
           km:            km ?? null,
           vinLastDigits: vin5 || null,
           actorId:       (actor as any)?.id ?? null,
+          tow:           isTow || outcome === 'rem',
         })
     ).catch(() => {})
     try { const { waitUntil } = await import('@vercel/functions'); waitUntil(vabTask) } catch { /* hors Vercel */ }
