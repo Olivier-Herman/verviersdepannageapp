@@ -1,0 +1,138 @@
+# Journal des cas de courrier — décisions de Mobi
+
+Traitement des boîtes dossier par dossier avec Mobi (à partir du 08/10/2026). Chaque cas : le mail, ce qu'on
+vérifie, la décision, la règle à retenir pour les agents. Source de formation des agents (relayée à Hyper Projet).
+
+## Boîte de réception d'administration@
+
+### 1. Client qui conteste une relance alors que les factures sont déjà créditées
+- Mail : Ville de Verviers (27/07) répond à la relance REL-20260727-L1-642 (400 €) : « ce ne sont pas nos véhicules ».
+- Vérifié : les 2 factures (2026/04/291 et 2026/06/151) ont été annulées par notes de crédit le 23/09 ; le
+  propriétaire de 2HNC434 a été facturé et a payé ; celui de 2GKD778 n'a jamais été facturé.
+- Décision : **classer** (clients divers), sans réponse.
+- Règle : si les factures contestées sont déjà créditées et que rien n'est dû, on classe. Vérifier quand même que le
+  vrai débiteur a été facturé et le signaler.
+
+### 2. Huissier pour une copropriété : véhicule enlevé non réclamé, cession proposée
+- Mail : Étude Bordet (03/09, urgent) pour la copropriété Espace 58 (Andrimont) : Opel Corsa enlevée le 01/07,
+  non réclamée ; cession du véhicule à VD pour solde de tout compte.
+- Vérifié : la fiche était encodée « saisie judiciaire police » avec l'huissier comme agent, et un état de frais
+  avait été envoyé aux Frais de justice.
+- Décision : **accepter la cession** pour solde de tout compte (réponse depuis administration@ : acte de cession
+  signé, certificat d'immatriculation et clés) ; **corriger la fiche** (source Privé, client = la copropriété via
+  l'huissier) ; **annuler l'état de frais** auprès des Frais de justice (depuis fourriere@, dans le fil de l'envoi) ;
+  classer.
+- Règles : une expulsion demandée par un huissier ou un particulier n'est jamais une saisie judiciaire, et ne part
+  jamais aux Frais de justice ni au Parquet. Un huissier attend une réponse : ne jamais laisser sans suite.
+
+### 3. Sinistre : un assureur nous réclame des dommages causés par VD
+- Mail : Allianz (15/09), BMW X7 2HCH844 (sinistre du 12/09/2025) : « vos intentions de règlement ». Réclame 7 217,42 €
+  alors que le devis validé était de 3 873,31 € HTVA ; écart jamais expliqué.
+- Décision : **transférer à Momo** (momo@verviersdepannage.be) avec l'explication, l'historique complet et les pièces
+  (devis validé, facture, expertise) ; c'est Momo qui assure le suivi. Classer.
+- Règle : les sinistres et réclamations de responsabilité contre VD vont à Momo, avec un résumé daté du fil, les
+  montants et les pièces clés. L'agent ne paie pas et ne répond pas à l'assureur.
+
+### 4. Client qui pose une question sur une facture déjà payée, véhicule parti
+- Mail : ASD Verviers (23/09) sur la facture 2026/09/469 (220 €, gardiennage) : « le montant n'est pas plus élevé ? l'assurance a pris une partie ? »
+- Vérifié : intervention facturée à Ethias (2026/09/470), part client (gardiennage) déjà payée, véhicule reparti.
+- Décision : **classer sans répondre**.
+- Règle : facture du client payée et véhicule sorti = dossier clos ; une question de curiosité sur le montant ne demande pas de réponse.
+
+### 5. Assistance qui répond à une relance avec un commentaire par facture (factures d'avant 2026)
+- Mail : IMA pour Ethias (25/09), relance REL-20260923-L1-16 (6 752,92 €, 9 factures de 2022 à 2025) : tableau commenté.
+- Décisions de Mobi, par type de réponse :
+  - « payée le … dans un virement groupé » (20236218) : **solder par opération diverse** (compte d'attente), à
+    vérifier plus tard sur l'historique client de la comptable (et dans Billit pour le mouvement).
+  - « doublon, déjà payée via … » (20250122, 20254657) : **note de crédit totale**, envoyée par Peppol.
+  - « facture pas reçue » (20250706, 20254622) : **renvoyer par Peppol**.
+  - contestation de tarif (20234251, 1,50 €/km au lieu de 1,25 €) : **créditer et refacturer au tarif réclamé**
+    (2 521 km × 1,25 €, même dossier B3E279702AK) → 2026/10/174.
+  - contestations de fond (20242151 complément incompris, 20242080 « demande directe, pas appel police ») :
+    **crédit total**.
+  - puis classer.
+- Règles : une réponse d'assistance à une relance se traite ligne par ligne selon son motif (payée → lettrer ou OD
+  d'attente ; doublon → NC totale ; non reçue → renvoi ; tarif → NC + refacturation au bon tarif ; contestation →
+  décision de Mobi). Les NC et factures partent par Peppol si le client y est inscrit. La règle « rien avant 2026 »
+  ne s'oppose pas à solder une facture d'avant 2026 encore relancée.
+
+### 6. Propriétaire étranger qui abandonne son véhicule, déjà traité par un collègue
+- Mail : Peter Valen (27/09), VW Jetta NL 14-HKB-1 accidentée : abandon, demande de renvoi des plaques.
+- Vérifié : Jona avait tout fait (document d'abandon, plaques postées, frais remboursés, facture payée) ; mais le
+  gardiennage était resté ouvert et le véhicule n'était pas en circuit épave.
+- Décision : **classer**, **fermer le gardiennage à la date de l'abandon**, **mettre en circuit épave** (lot « pour
+  pièces » en brouillon dans les Ventes : VD-2026-004), **informer Jona** par mail qu'on a clôturé son dossier.
+- Règles : un abandon volontaire enregistré = gardiennage fermé à cette date et véhicule mis en circuit épave
+  (Ventes, origine abandon). Quand on clôt un dossier qu'un collègue suivait, on le prévient.
+
+### 7. Assistance qui renvoie le tableau de relance commenté (« encodée », « payée le … »)
+- Mails : AXA (28/09), relances L1-35 et L1-36.
+- Vérifié : tout ce qu'AXA dit « encodé le 28/09 » a été payé le 30/09 ; la seule facture ouverte (2026/01/289) avait
+  été payée le 20/01 NETTE des deux notes de crédit citées dans la communication du virement, mais les NC n'avaient
+  pas été lettrées.
+- Décision : **lettrer les 2 NC avec la facture** (tout soldé), **classer sans répondre**.
+- Règles : relire la communication du virement — une assistance déduit souvent ses NC du paiement ; le lettrage
+  doit alors réunir facture + NC + paiement. Un tableau de relance commenté qui ne demande rien = classer.
+
+### 8. Client qui demande nos coordonnées bancaires pour payer
+- Mail : Mme Frédérich (01/10), relance L1-1177 (facture 2026/03/016, 120 €) : « envoyez-moi vos coordonnées ».
+- Décision : **répondre tout de suite** dans le fil (compte, communication = n° de facture, facture en PDF jointe),
+  puis classer.
+- Règle : un client qui veut payer reçoit la réponse sans attendre (IBAN, communication = n° de facture, PDF joint).
+  Geste mécanique, l'agent mail peut le faire seul après avoir vérifié que la facture est toujours ouverte.
+
+### 9. Client qui signale avoir déjà payé une facture reçue après coup
+- Mail : RMA Track Days (01/10, en anglais) : facture Circuit 2026/09/638 (1 573 €) envoyée après leur paiement du 12/08.
+- Vérifié : paiement Belfius du 12/08 enregistré au compte du client mais jamais lettré (communication avec un
+  numéro de commande différent d'un chiffre : S05313 au lieu de S05314).
+- Décision : **lettrer** le paiement avec la facture, **répondre** (dans la langue du client) que tout est en ordre,
+  que c'est un plaisir de travailler pour eux et merci de leur confiance ; classer.
+- Règles : « déjà payé » → chercher le paiement au compte du client (paiement non lettré, référence approchante) et
+  lettrer. Un client du Circuit qui remercie reçoit une réponse cordiale, dans sa langue.
+
+### 10. Huissier : enlèvement pour une saisie, puis « solde reçu, restituez au débiteur »
+- Mails : Resalex (23/09 et 01/10), dossier SPW54750 (Région wallonne c/ Schroeder), KIA 2BGB598.
+- Vérifié : fiche encodée « saisie police » avec dossier destiné au Parquet ; véhicule toujours au parc.
+- Décision : **corriger la fiche** (source Privé, client l'huissier, dossier de saisie clos, rien au Parquet) ;
+  **facturer l'huissier** : enlèvement 200 € TVAC (165,29 € HTVA) + gardiennage jusqu'à la date de son courrier
+  (8 nuits × 20 € HTVA) → 2026/10/175 ; **restitution autorisée** au débiteur ; **le gardiennage continue** et sera
+  facturé, à partir du lendemain du courrier, à la personne qui récupère le véhicule ; classer les deux mails.
+- Règles : une saisie d'huissier n'est jamais une saisie police. L'huissier paie jusqu'à la date qu'il indique ; au-delà,
+  c'est la personne qui récupère le véhicule (sans refacturer l'enlèvement).
+- Suite (08/10) : Mobi ne voit plus la Kia au parc. Question envoyée à Jona (l'a-t-il rendue ?). **Si oui (réponse
+  attendue le 09/10) : annuler la fiche de gardiennage à charge du client** (volet 10160122, gardiennage à partir du 02/10).
+
+### 11. Formulaire DigiForm (transport de déchets / épave)
+- Mail : DigiForm (01/10), DGF-511240 : transport définitif d'une Toyota Yaris (épave) par Autobedrijf Hubert.
+- Décision : **tous les mails DigiForm vont dans « Fournisseur Divers »** (règle fixe de l'agent mail, info@ et
+  administration@ : no-reply@digiform.be → Fournisseur Divers).
+- Règle : un avis DigiForm est une confirmation administrative, pas une demande ; classer sans action.
+
+### 12. Assistance : « facture au mauvais nom » + « on ne retrouve pas le dossier »
+- Mails : Allianz (02/10, NL puis FR), relance L1-126 : 2026/01/536 doit être au nom d'AWP P&C SA ; 2026/02/081 sans
+  dossier retrouvable.
+- Vérifié : 2026/01/536 adressée à AP Solutions ; 2026/02/081 n'était pas une vraie facture mais une copie créée
+  automatiquement par l'ERP à la réception d'un document Peppol (doublon de notre 20256440, déjà payée).
+- Décision : 2026/01/536 → **NC + refacturation à AWP P&C S.A. – Belgian Branch** (2026/10/176, Peppol) ;
+  2026/02/081 → **NC totale** (doublon) ; **répondre en néerlandais** ce qui a été fait ; classer.
+- Règles : « mauvais destinataire » = NC + même facture au bon nom, même référence et même véhicule. Une facture sans
+  dossier peut être un doublon créé par une réception Peppol : comparer avec nos factures de même montant et même
+  client. Répondre dans la langue de l'interlocuteur quand Mobi le demande, même pour un client Peppol.
+
+### 13. Parquet : « je ne retrouve pas le dossier, pas de réquisitoire »
+- Mail : Parquet de Huy, Mme Cornil (02/10) : réquisitoires demandés pour EDF-2026-0017, 0033, 0034.
+- Vérifié : aucun des 3 dossiers n'avait de réquisitoire valable (capture de mail retirée) et aucune demande n'avait
+  été faite à la police ; pour la BMW X5 (EDF-0034), levée d'immobilisation reçue le 16/06 et frais payés le jour même
+  par le propriétaire (2026/06/363) — la fiche était restée « au parc » et l'état de frais était parti quand même.
+- Décision : **un mail par agent de police** (depuis fourriere@) pour demander le réquisitoire (Thyssens : Kangoo ;
+  Lemaire : moto) ; **EDF-0034 annulé**, fiche sortie au 16/06 ; **réponse au Parquet** (erreur sur 0034, réquisitoires
+  demandés pour les deux autres) ; classer. À la réception des réquisitoires : les transmettre à Mme Cornil.
+- Règles : un réquisitoire se demande à l'agent de police qui a fait la saisie, un mail par agent, jamais au Parquet.
+  Avant tout état de frais : vérifier qu'il n'y a pas eu de levée avec paiement du propriétaire (double facturation).
+
+### 14. Fournisseur qui renvoie la pièce complète demandée
+- Mail : Senlis Codra (05/10) : facture 26080351 complète (remorquage VW Caddy 1TGA969 en France, payé par carte).
+- Décision : **joindre le PDF complet à la facture d'achat déjà encodée** (BILL/2026/08/0101) comme pièce principale ;
+  classer dans Fournisseur Divers.
+- Règle : pièce réclamée reçue → la joindre à la facture d'achat existante (pas de nouvel encodage), pièce principale,
+  avec une note dans l'historique ; classer.
