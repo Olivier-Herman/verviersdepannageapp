@@ -125,12 +125,35 @@ export async function executeDecision(ctx: Ctx, action: string, params: { invoic
       const ncId: number = (w?.[0]?.new_move_ids || [])[0]
       if (!ncId) throw new Error('avoir non créé')
       await alignCreditNotes(1, inv.id, [ncId])   // même référence et même véhicule que la facture (07/10/2026)
-      let ncName = `brouillon #${ncId}`
-      const atts: EmailAttachment[] = []
-      if (mode === 'auto') { await odooRpc('account.move', 'action_post', [[ncId]]); const nc = await odooRpc<any[]>('account.move', 'read', [[ncId]], { fields: ['name'] }); ncName = nc?.[0]?.name || ncName; atts.push(await pdfOf(ncId, ncName)) }
-      const html = `<p>Bonjour,</p><p>Suite à votre message, vous trouverez ${mode === 'auto' ? 'ci-joint' : 'ci-après'} la note de crédit <b>${ncName}</b> qui annule notre facture ${inv.name} du ${inv.date} (${inv.amount_total.toLocaleString('fr-BE', { minimumFractionDigits: 2 })} € TVAC).</p>${SIGNATURE}`
-      const sent = await replyMail(mode, item, html, atts)
-      return { ok: true, note: `Avoir ${ncName} sur ${inv.name} (${mode === 'auto' ? 'comptabilisé' : 'en brouillon, à valider puis joindre au mail'}) · ${sent}`, links: [{ label: `Avoir ${ncName}`, url: odooLink(odooBase, ncId) }] }
+      const links = [{ label: 'Note de crédit', url: odooLink(odooBase, ncId) }]
+      // ENVOI SELON LA RÈGLE HABITUELLE (Olivier 08/10/2026) : client inscrit sur Peppol → la note de
+      // crédit part par Peppol et SUFFIT, pas de réponse par mail ; sinon réponse dans le fil depuis
+      // administration@ avec la note de crédit jointe. Jamais d'« envoi Peppol » à part.
+      const { partnerOnPeppol, postAndSendPeppol } = await import('./odoo')
+      const [invFull] = await odooRpc<any[]>('account.move', 'read', [[inv.id]], { fields: ['partner_id'] })
+      const peppol = await partnerOnPeppol(invFull?.partner_id?.[0])
+      const reconcile = async () => {
+        const ls = await odooRpc<any[]>('account.move.line', 'search_read', [[['move_id', 'in', [inv.id, ncId]], ['account_id.account_type', '=', 'asset_receivable'], ['reconciled', '=', false]]], { fields: ['id'] })
+        if (ls.length === 2) await odooRpc('account.move.line', 'reconcile', [ls.map(l => l.id)])
+      }
+      if (mode === 'auto') {
+        if (peppol) {
+          await odooRpc('account.move', 'action_post', [[ncId]]); await reconcile()
+          const sent = await postAndSendPeppol(ncId)
+          return { ok: sent.sent, note: `${sent.note} — client inscrit sur Peppol : pas de réponse par mail`, error: sent.sent ? undefined : sent.note, links }
+        }
+        await odooRpc('account.move', 'action_post', [[ncId]]); await reconcile()
+        const nc = await odooRpc<any[]>('account.move', 'read', [[ncId]], { fields: ['name'] })
+        const ncName = nc?.[0]?.name || `#${ncId}`
+        const html = `<p>Bonjour,</p><p>Suite à votre message, vous trouverez ci-joint la note de crédit <b>${ncName}</b> qui annule notre facture ${inv.name} du ${inv.date} (${inv.amount_total.toLocaleString('fr-BE', { minimumFractionDigits: 2 })} € TVAC).</p>${SIGNATURE}`
+        const sent = await replyMail(mode, item, html, [await pdfOf(ncId, ncName)])
+        return { ok: true, note: `Note de crédit ${ncName} sur ${inv.name} validée · ${sent}`, links }
+      }
+      // Mode brouillon : la note de crédit attend sa validation dans l'ERP.
+      if (peppol) return { ok: true, note: `Note de crédit sur ${inv.name} en brouillon : à valider puis envoyer par Peppol (client inscrit). Pas de réponse par mail.`, links }
+      const html = `<p>Bonjour,</p><p>Suite à votre message, nous établissons la note de crédit qui annule notre facture ${inv.name} du ${inv.date} (${inv.amount_total.toLocaleString('fr-BE', { minimumFractionDigits: 2 })} € TVAC). Vous la trouverez ci-jointe.</p>${SIGNATURE}`
+      const sent = await replyMail(mode, item, html)
+      return { ok: true, note: `Note de crédit sur ${inv.name} en brouillon (à valider, puis joindre son PDF au mail) · ${sent}`, links }
     }
     if (action === 'envoyer_doc') {
       const list: any[] = (x.facts?.invoices || []).filter((i: any) => !i.missing)

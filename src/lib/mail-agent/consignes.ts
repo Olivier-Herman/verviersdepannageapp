@@ -11,7 +11,7 @@ import { findOrCreateFolder, moveMessage, relocateMessage } from './graph'
 import { sendNotification } from '@/lib/notifications/send'
 import { aiClient } from '@/lib/ai/usage'
 
-export type MailStepKind = 'reply_draft' | 'avoir' | 'envoyer_doc' | 'repondre_paye' | 'encoder' | 'classer' | 'ef_frais_justice' | 'nc_refacture' | 'notify' | 'rien'
+export type MailStepKind = 'reply_draft' | 'comparer' | 'avoir' | 'envoyer_doc' | 'repondre_paye' | 'encoder' | 'classer' | 'ef_frais_justice' | 'nc_refacture' | 'notify' | 'rien'
 export interface MailStep { kind: MailStepKind; label: string; params: Record<string, any> }
 
 let client: Anthropic | null = null
@@ -20,7 +20,8 @@ const getClient = () => client || (client = aiClient('mail-agent/consignes', { a
 const SYSTEM = `Tu es l'Agent Mail d'un groupe de dépannage belge (sociétés : Verviers Dépannage "vd", Dépannage Riga "riga", DGJ VHU "dgj"). On te donne un mail reçu déjà analysé (résumé, demande, factures et fiches reconnues) et la consigne écrite par l'utilisateur (ou la consigne retenue pour cet expéditeur).
 Tu traduis la consigne en gestes concrets, dans l'ordre. Gestes possibles (kind → params) :
 - reply_draft { instruction } : préparer un BROUILLON de réponse à l'expéditeur (jamais envoyé), instruction = ce qu'il faut dire.
-- avoir { invoice } : créer l'avoir (note de crédit) qui annule la facture citée (nom exact d'une facture fournie).
+- comparer { invoice, other } : vérifier, ligne par ligne, si la facture « invoice » est reprise dans la facture « other » (numéros exacts AAAA/MM/NNN). Conclusion : incluse, en partie, ou différente. À mettre AVANT un avoir demandé parce qu'une facture serait déjà reprise dans une autre : l'avoir ne se fait que si la facture est entièrement reprise.
+- avoir { invoice } : créer l'avoir (note de crédit) qui annule la facture citée (nom exact d'une facture fournie). Son envoi suit la règle habituelle, tout seul : par Peppol si le client y est inscrit, sinon dans le fil depuis administration@. Ne demande JAMAIS un « envoi Peppol » à part.
 - envoyer_doc { invoice } : renvoyer au client le PDF d'une facture citée (null = toutes les factures reconnues).
 - repondre_paye { invoice } : répondre que la facture citée est payée (seulement si elle l'est).
 - encoder { company } : facture fournisseur à encoder : transférer le mail à l'encodage des achats de "vd", "riga" ou "dgj".
@@ -29,16 +30,26 @@ Tu traduis la consigne en gestes concrets, dans l'ordre. Gestes possibles (kind 
 - ef_frais_justice { mission_id } : saisie dont l'état de frais est parti au Parquet alors qu'il relève des Frais de justice : noter la levée « aux frais de justice » sur la fiche et RENVOYER le même état de frais (même numéro) à l'adresse des Frais de justice. mission_id = id d'une fiche fournie.
 - notify { user_id, message } : prévenir une personne par notification.
 - rien {} : rien d'autre à faire (retirer la carte).
+Client inscrit sur Peppol (champ « peppol » des factures) : la note de crédit suffit, AUCUN reply_draft, sauf si le mail pose une question qui demande plus qu'un document.
 Règles : la consigne prime ; n'utilise que les factures, fiches et personnes fournies ; « moi » = l'utilisateur qui parle ; les réponses à l'expéditeur restent des brouillons ; "label" = une phrase courte et concrète en français, sans jargon.
 Si une partie de la consigne ne correspond à AUCUN geste de la liste, ne l'invente pas : décris-la dans "impossible".
 Retourne UNIQUEMENT un JSON strict : { "understood": <1 phrase>, "steps": [ { "kind": …, "label": …, "params": { … } } ], "impossible": <null ou phrase : ce que tu ne sais pas encore faire> }`
+
+async function peppolOf(invoiceId: number): Promise<boolean> {
+  try {
+    const { odooRpc } = await import('@/lib/odoo')
+    const { partnerOnPeppol } = await import('./odoo')
+    const [m] = await odooRpc<any[]>('account.move', 'read', [[invoiceId]], { fields: ['partner_id'] })
+    return await partnerOnPeppol(m?.partner_id?.[0])
+  } catch { return false }
+}
 
 export async function planMail(item: any, instruction: string, people: { id: string; name: string; role: string }[], me: { id: string; name: string | null }): Promise<{ understood: string; steps: MailStep[]; impossible: string | null }> {
   const x = item.extracted || {}
   const invoices = (x.facts?.invoices || []).filter((i: any) => !i.missing)
   const ctx = {
     mail: { de: item.from_email, objet: item.subject, boite: item.mailbox, resume: x.summary, demande: x.asked },
-    factures: invoices.map((i: any) => ({ name: i.name, client: i.partner, montant: i.amount_total, etat: i.state, paiement: i.payment_state })),
+    factures: await Promise.all(invoices.map(async (i: any) => ({ name: i.name, client: i.partner, montant: i.amount_total, etat: i.state, paiement: i.payment_state, peppol: await peppolOf(i.id) }))),
     fiches: (x.facts?.fiches || []).map((f: any) => ({ id: f.id, plaque: f.plate, fiche: f.number, source: f.source, statut: f.status })),
     consigne: instruction, personnes: people, utilisateur_qui_parle: me,
   }
@@ -52,6 +63,7 @@ export async function planMail(item: any, instruction: string, people: { id: str
     const p = s?.params || {}
     switch (s?.kind) {
       case 'reply_draft': return !!p.instruction
+      case 'comparer': return invNames.has(p.invoice) && /^20\d{2}\/\d{2}\/\d{3,4}$/.test(String(p.other || '').trim()) && p.other !== p.invoice
       case 'avoir': case 'repondre_paye': return invNames.has(p.invoice)
       case 'envoyer_doc': return p.invoice == null || invNames.has(p.invoice)
       case 'encoder': return ['vd', 'riga', 'dgj'].includes(p.company)
@@ -76,10 +88,19 @@ export async function executeMailSteps(ctx: { sb: any; item: any; actor: string;
   const links: { label: string; url: string }[] = []
   const push = (kind: string, r: ActionResult) => { results.push({ kind, ok: r.ok, note: r.ok ? r.note : (r.error || 'échec') }); for (const l of r.links || []) links.push(l) }
   let folder: string | null = null
+  // Facture dont la comparaison n'a PAS conclu « entièrement reprise » : pas d'avoir dessus.
+  const notIncluded = new Map<string, string>()
   for (const s of steps) {
     const p = s.params || {}
     try {
+      if (s.kind === 'avoir' && notIncluded.has(p.invoice)) { results.push({ kind: s.kind, ok: false, note: `Avoir sur ${p.invoice} non créé : ${notIncluded.get(p.invoice)}` }); continue }
       switch (s.kind) {
+        case 'comparer': {
+          const { compareInvoices } = await import('./odoo')
+          const c = await compareInvoices(String(p.invoice).trim(), String(p.other).trim())
+          if (c.verdict !== 'incluse') notIncluded.set(c.a, `${c.a} n’est pas entièrement reprise dans ${c.b} — à trancher par une personne.`)
+          results.push({ kind: s.kind, ok: c.verdict === 'incluse', note: c.detail }); break
+        }
         case 'reply_draft': push(s.kind, await executeDecision(ctx, 'brouillon', { instruction: String(p.instruction).slice(0, 1000) })); break
         case 'avoir': push(s.kind, await executeDecision(ctx, 'avoir', { invoice: p.invoice })); break
         case 'envoyer_doc': push(s.kind, await executeDecision(ctx, 'envoyer_doc', { invoice: p.invoice || null })); break

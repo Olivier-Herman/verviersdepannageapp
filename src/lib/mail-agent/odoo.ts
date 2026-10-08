@@ -407,3 +407,42 @@ export async function duplicatePlan(sb: any, invoices: { id: number; name: strin
   const credit = score.filter(s => s !== keep)
   return { keep: keep.inv, credit: credit.map(c => c.inv), why: `${keep.inv.name} : ${keep.why} — ${credit.map(c => `${c.inv.name} : ${c.why}`).join(' ; ')}` }
 }
+
+// ── Comparer deux factures (Olivier 08/10/2026, Mme Torrekens : « la 440 est reprise dans la 320 ») ──
+export interface InvoiceComparison {
+  a: string; b: string
+  verdict: 'incluse' | 'partielle' | 'differente'
+  memeClient: boolean; memeDossier: boolean; memeVehicule: boolean
+  detail: string
+}
+/** Les lignes de la facture `a` figurent-elles dans `b` ? Ligne = même montant HTVA (au centime),
+ *  chaque ligne de `b` ne servant qu'une fois. Incluse = toutes ; partielle = certaines ; sinon différente. */
+export async function compareInvoices(aName: string, bName: string): Promise<InvoiceComparison> {
+  const moves = await odooRpc<any[]>('account.move', 'search_read', [[['name', 'in', [aName, bName]], ['move_type', 'in', ['out_invoice', 'out_refund']]]], { fields: ['id', 'name', 'commercial_partner_id', 'ref', 'x_studio_plaque_1', 'amount_untaxed'] })
+  const A = moves.find(m => m.name === aName), B = moves.find(m => m.name === bName)
+  if (!A || !B) throw new Error(`Facture ${!A ? aName : bName} introuvable.`)
+  const lines = async (id: number) => (await odooRpc<any[]>('account.move.line', 'search_read', [[['move_id', '=', id], ['display_type', '=', 'product']]], { fields: ['name', 'price_subtotal'] })).filter(l => Math.abs(l.price_subtotal) > 0.004)
+  const la = await lines(A.id), lb = await lines(B.id)
+  const used = new Set<number>(); const found: string[] = [], missing: string[] = []
+  for (const l of la) {
+    const i = lb.findIndex((x, k) => !used.has(k) && Math.abs(x.price_subtotal - l.price_subtotal) < 0.01)
+    const lab = `${String(l.name || '').split('\n')[0].slice(0, 60)} (${l.price_subtotal.toFixed(2)} € HTVA)`
+    if (i >= 0) { used.add(i); found.push(lab) } else missing.push(lab)
+  }
+  const verdict = la.length && !missing.length ? 'incluse' : found.length ? 'partielle' : 'differente'
+  const norm = (s: any) => String(s || '').toUpperCase().replace(/[^A-Z0-9]/g, '')
+  const memeClient = A.commercial_partner_id?.[0] === B.commercial_partner_id?.[0]
+  const memeDossier = !!norm(A.ref) && norm(A.ref) === norm(B.ref)
+  const memeVehicule = !!A.x_studio_plaque_1 && A.x_studio_plaque_1?.[0] === B.x_studio_plaque_1?.[0]
+  const detail = `${aName} ${verdict === 'incluse' ? 'est entièrement reprise dans' : verdict === 'partielle' ? 'est en partie reprise dans' : 'n’est pas reprise dans'} ${bName}`
+    + (found.length ? ` — lignes retrouvées : ${found.join(' ; ')}` : '') + (missing.length ? ` — absentes de ${bName} : ${missing.join(' ; ')}` : '')
+    + ` · ${memeClient ? 'même client' : 'client différent'}, ${memeDossier ? 'même dossier' : 'dossier différent'}, ${memeVehicule ? 'même véhicule' : 'véhicule différent'}.`
+  return { a: aName, b: bName, verdict, memeClient, memeDossier, memeVehicule, detail }
+}
+
+/** Client inscrit sur Peppol (vérifié par l'ERP) ? */
+export async function partnerOnPeppol(partnerId: number | null | undefined): Promise<boolean> {
+  if (!partnerId) return false
+  const [p] = await odooRpc<any[]>('res.partner', 'read', [[partnerId]], { fields: ['peppol_verification_state'] }).catch(() => [null])
+  return p?.peppol_verification_state === 'valid'
+}
