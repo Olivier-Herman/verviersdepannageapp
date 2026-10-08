@@ -16,11 +16,16 @@ async function handleGET(req: Request) {
     sb.from('mail_agent_items').select('id', { count: 'exact', head: true }).eq('status', 'ready'),
     sb.from('mail_agent_items').select('id', { count: 'exact', head: true }).eq('status', 'to_verify'),
   ])
+  // Mails qu'aucun module ne prend (aiguillage du 08/10/2026) : reçus depuis le dernier résumé.
+  const since = new Date(Date.now() - 3 * 86400_000).toISOString()
+  const { data: orphans } = await sb.from('mail_agent_items').select('subject, from_email').eq('status', 'skipped').like('blocked_reason', '→ Aucun module%').gte('created_at', since).order('created_at', { ascending: false }).limit(20)
+  const nOrphans = (orphans || []).length
   const total = (toDecide || 0) + (ready || 0)
-  if (!total) return NextResponse.json({ ok: true, sent: 0, toDecide, ready, toVerify })
-  const parts = [toDecide ? `${toDecide} à décider` : null, ready ? `${ready} rejet${ready > 1 ? 's' : ''} à valider` : null, toVerify ? `${toVerify} à vérifier` : null].filter(Boolean).join(' · ')
+  if (!total && !nOrphans) return NextResponse.json({ ok: true, sent: 0, toDecide, ready, toVerify })
+  const parts = [toDecide ? `${toDecide} à décider` : null, ready ? `${ready} rejet${ready > 1 ? 's' : ''} à valider` : null, toVerify ? `${toVerify} à vérifier` : null,
+    nOrphans ? `${nOrphans} non pris en charge (restés dans la boîte) : ${(orphans || []).slice(0, 3).map((o: any) => `« ${String(o.subject || '').slice(0, 40)} »`).join(', ')}${nOrphans > 3 ? '…' : ''}` : null].filter(Boolean).join(' · ')
   const res = await sendNotificationToRoles(['admin', 'superadmin'], 'mail_agent_digest', {
-    title:      `📬 Courrier : ${total} décision${total > 1 ? 's' : ''} en attente`,
+    title:      total ? `📬 Courrier : ${total} décision${total > 1 ? 's' : ''} en attente` : `📬 Courrier : ${nOrphans} mail${nOrphans > 1 ? 's' : ''} non pris en charge`,
     body:       parts,
     action_url: '/mail-agent',
   })

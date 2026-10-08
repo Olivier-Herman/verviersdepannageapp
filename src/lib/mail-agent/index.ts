@@ -33,6 +33,7 @@ const ASSISTANCE_INVOICE_FAMILIES = new Set(['contestation', 'demande_avoir', 'd
 const ASSISTANCE_SENDER = /imabenelux|ima\.eu|touring\.be|vab\.be|allianz|awp|axa-assistance|ip-assistance|eurocross|europ-assistance|ethias|anwb|acl\.lu|race\.es|pv\.be|vivium/i
 import { usualFolder, folderIdByPath } from './learned'
 import { triageMail, isNoise, isAssistanceMission, isHandledElsewhere, twinInQueue, readAutoFamilies } from './triage'
+import { routeByRules, routeByAI, treatableByMailAgent, handOff } from './routing'
 import { executeDecision } from './actions'
 import { handlerFor, handlerById } from './handlers'
 import { findInvoiceByName, resolveTargetPartner, runChecks, creditAndRebill, postAndSendPeppol, duplicatePlan, creditInFull, type DuplicatePlan } from './odoo'
@@ -187,6 +188,13 @@ export async function scanFolder(opts: { mailbox?: string; folder?: string; fold
           if (seen) { report.skipped++; continue }
           const base = { handler: 'triage', mailbox, message_id: msg.id, folder, received_at: msg.receivedAt || null, from_email: msg.fromEmail, subject: msg.subject, updated_at: new Date().toISOString() }
           try {
+            // AIGUILLAGE (Olivier 08/10/2026) : ce qui revient à un autre module lui est remis, sans carte.
+            const r0 = await routeByRules(msg)
+            if (r0) {
+              const note = await handOff(sb, mailbox, msg, r0).catch((e: any) => `remise impossible : ${e?.message || e}`)
+              await upsert(sb, base, { status: 'skipped', blocked_reason: `→ ${r0.label} : ${note}`, extracted: { route: { ...r0, note } } })
+              report.skipped++; continue
+            }
             const twin = await twinInQueue(sb, msg)
             if (twin) {
               // Même fil dans les deux boîtes : on garde la copie d'administration@,
@@ -206,6 +214,13 @@ export async function scanFolder(opts: { mailbox?: string; folder?: string; fold
               const mv = doneId ? await moveMessage(mailbox, msg.id, doneId) : { ok: false }
               await upsert(sb, base, { status: 'skipped', mail_moved: !!mv.ok, blocked_reason: f.duplicate ? 'Déjà reçu dans administration@ : classé' : 'Demande d’assistance sur une facture : transférée à administration@', extracted: t })
               report.applied++; continue
+            }
+            // Carte seulement si l'agent mail peut agir ; sinon le module qui convient, ou aucun (08/10/2026).
+            if (!treatableByMailAgent(t)) {
+              const r1 = await routeByAI(msg, t)
+              const note = await handOff(sb, mailbox, msg, r1).catch((e: any) => `remise impossible : ${e?.message || e}`)
+              await upsert(sb, base, { status: 'skipped', blocked_reason: `→ ${r1.label} : ${note}`, extracted: { ...t, route: { ...r1, note } } })
+              report.skipped++; continue
             }
             // Classement appris (Olivier 06/10/2026) : dossier habituel de cet expéditeur.
             const uf = await usualFolder(sb, mailbox, msg.fromEmail).catch(() => null)
