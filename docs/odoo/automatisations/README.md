@@ -36,3 +36,20 @@ Côté VD Soft (`/api/facturation/verify-invoices`, toutes les 15 min) : la fich
 annulé est rattachée à la facture existante, ou — si cette facture appartient à une autre fiche —
 marquée `duplicate_of_mission_id` (« Doublon de la fiche #… »), sortie de la facturation,
 jamais supprimée.
+
+## Alerte en haut de la fiche + deux boutons (Olivier, 08/10/2026 — 2ENJ663)
+
+Le contrôle ne retient plus que le **montant à 10 % près** (le critère « même véhicule le même jour »
+est retiré) et ignore les factures que VD Soft découpe par groupe pour une même mission
+(origine « 10174543 A » / « C »).
+
+- Champ calculé `x_doublon_alerte` (non stocké) : facture client brouillon (champ 28695,
+  `champ-alerte-doublon-facture.py`) et bon de commande non confirmé (champ 28698,
+  `champ-alerte-doublon-bon-de-commande.py`).
+- Bandeau en haut de la fiche quand l'alerte est posée : vues héritées 4420 (facture) et 4421
+  (bon de commande), avec deux boutons :
+  - « Confirmer la seconde facture » : actions serveur 1241 (facture, `action-confirmer-seconde-facture.py`)
+    et 1242 (bon de commande, `action-confirmer-seconde-commande.py`) — cochent « Autre mission »,
+    écrivent le motif (qui, quand) et valident / confirment ;
+  - « C'est un doublon, ne pas créer » : actions 1237 / 1238 existantes.
+- Le message d'arrêt à la validation renvoie à ces boutons.
