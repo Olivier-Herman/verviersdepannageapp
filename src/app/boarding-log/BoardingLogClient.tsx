@@ -95,7 +95,11 @@ export default function BoardingLogClient() {
     if (!p) return
     try {
       const [a, b] = await Promise.all([
-        fetch('/api/tableau-bord', { headers: { 'x-dashboard-pin': p }, cache: 'no-store' }).then(r => r.json()),
+        fetch('/api/tableau-bord', { headers: { 'x-dashboard-pin': p }, cache: 'no-store' }).then(r => {
+          // Code changé entre-temps : on l'oublie et on le redemande, au lieu d'afficher des données figées.
+          if (r.status === 401) { savedPin.current = ''; try { localStorage.removeItem('tb_pin'); sessionStorage.removeItem('tb_pin') } catch { /* noop */ }; setAuthed(false) }
+          return r.json()
+        }),
         fetch('/api/boarding-log',  { headers: { 'x-dashboard-pin': p }, cache: 'no-store' }).then(r => r.json()),
       ])
       if (a?.ok) setTb(a)
@@ -106,7 +110,9 @@ export default function BoardingLogClient() {
 
   useEffect(() => {
     try {
-      const p = sessionStorage.getItem('tb_pin')
+      // Gardé aussi sur l'appareil : installé sur l'écran d'accueil, l'app perd la session à chaque
+      // fermeture et redemandait le code (Olivier 08/10/2026).
+      const p = localStorage.getItem('tb_pin') || sessionStorage.getItem('tb_pin')
       if (p) { savedPin.current = p; setAuthed(true) }
     } catch { /* pas de sessionStorage */ }
   }, [])
@@ -163,7 +169,7 @@ export default function BoardingLogClient() {
       const r = await fetch('/api/tableau-bord', { headers: { 'x-dashboard-pin': code }, cache: 'no-store' })
       if (r.ok) {
         savedPin.current = code
-        try { sessionStorage.setItem('tb_pin', code) } catch { /* noop */ }
+        try { sessionStorage.setItem('tb_pin', code); localStorage.setItem('tb_pin', code) } catch { /* noop */ }
         setAuthed(true); setPin('')
       } else { setPinErr(true); setPin('') }
     } catch { setPinErr(true); setPin('') }
