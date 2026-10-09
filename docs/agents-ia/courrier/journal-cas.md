@@ -277,3 +277,13 @@ vérifie, la décision, la règle à retenir pour les agents. Source de formatio
 - Décision : **une NC par facture** : NC totale 2026-0331 sur le doublon, motif « Doublon d'import · <réf> »,
   générée sans envoi (Envoyer, tous les canaux décochés), lettrée ; mail classé.
 - Règle : une NC « hors délai » ou « doublon » vers le Parquet se génère SANS envoi (Envoyer + tout décocher).
+
+### 30. JustInvoice : tarif de l'année de facturation appliqué à une prestation de l'année précédente
+- Mails : taxation (30/06 et 01/07), dossiers 458905-26 (2026/02/105, enlèvement un samedi 2025 → tarif majoré 2025)
+  et 458920-26 (2026/02/120, enlèvement 2025 facturé au tarif 2026).
+- Décision d'Olivier : **NC totale et nouvelle facture pour chacune** (même quand la taxation ne demande qu'une NC) :
+  NC 2026-0332 / 2026-0333 et factures 2026/10/192 (149,08 €) / 2026/10/193 (244,77 €) au tarif 2025 (articles
+  « Parquet Enlèvement (Non Majoré 2025) » 92,01 € et « (Majoré 2025) » 138,03 €), générées sans envoi ; la nouvelle
+  facture + la NC (un seul PDF) envoyées en correction dans le dossier JustInvoice → « Correction soumise ».
+- Règle : on facture au tarif de l'année de la prestation (enlèvement : majoré le samedi/dimanche/nuit). Une
+  correction de montant = NC totale + nouvelle facture, jamais une NC partielle.
