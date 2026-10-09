@@ -327,3 +327,11 @@ vérifie, la décision, la règle à retenir pour les agents. Source de formatio
 - Demande d'information vieille de 3 mois d'une secrétaire du Parquet partie en congé (« vas-tu faire les factures ? »)
   → **classée sans réponse** (Olivier 09/10).
 - Règle : un mail dont l'objet est déjà réglé dans VD Soft ou l'ERP (lu, sorti, payé, annulé) se classe sans réponse.
+
+### 36. Assistance qui réclame la « copie des frais avancés » d'une facture
+- Mail : VAB (Fadoua Errahil, 07/07 + rappel 09/10), facture 2026/06/232, dossier 8282353 (VW Crafter 2ESA670) :
+  forfait « Avance de fonds » 135 € (garage HP Assistance).
+- Décision d'Olivier : **envoyer directement** la facture d'achat du garage (BILL/2026/04/0098, HP Assistance GmbH,
+  135 €, PDF de l'ERP) en réponse depuis administration@ ; mail classé.
+- Règle : le justificatif d'une avance de fonds = la facture d'achat du fournisseur (ERP, achats, même montant) ; on la
+  joint à la réponse. Signaler si cette facture d'achat n'est pas payée (ici « non payée »).
