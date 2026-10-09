@@ -370,4 +370,4 @@ vérifie, la décision, la règle à retenir pour les agents. Source de formatio
   2026/10/196 (prise en charge + majoration nuit, 162,66 € TVAC) **envoyées par Peppol** ; mail classé.
 - Règle : un transport demandé par le client sans accord de l'assistance n'est pas facturé à l'assistance.
 - Constat Peppol : VAB exige son n° de dossier (7 chiffres) dans BuyerReference et jamais dans OrderReference ; notre ERP
-  met la référence de la facture en OrderReference et le code client (006463) en BuyerReference → à corriger.
+  met la référence de la facture en OrderReference et le code client (006463) en BuyerReference. Décision d'Olivier : on continue comme aujourd'hui (006463 est le code utilisé depuis toujours sur nos factures VAB), pas de changement.
