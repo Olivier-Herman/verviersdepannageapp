@@ -378,6 +378,8 @@ export const sq: Dictionary = {
     addr_change_current:   "Adresa aktuale",
     addr_change_new:       "Adresa e re e marrë",
     addr_change_ok:        "E kuptova, po telefonoj dispeçerin",
+    message_ack_title:     "Mesazh i rëndësishëm",
+    message_ack_button:    "E lexova këtë mesazh",
     siabis_request_refused: "Refuzuar nga dispeçeri — kërko përsëri?",
     action_park:         'Vendos në parking',
     action_dpr:          'DPR',

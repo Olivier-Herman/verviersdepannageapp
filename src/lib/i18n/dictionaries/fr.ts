@@ -390,6 +390,8 @@ export const fr = {
     addr_change_current:   "Adresse actuelle",
     addr_change_new:       "Nouvelle adresse reçue",
     addr_change_ok:        "J’ai compris, j’appelle le dispatch",
+    message_ack_title:     "Message important",
+    message_ack_button:    "J’ai lu ce message",
     siabis_request_refused: "Refusé par le dispatch — redemander ?",
     action_park:         'Mise en parc',
     action_dpr:          'DPR',

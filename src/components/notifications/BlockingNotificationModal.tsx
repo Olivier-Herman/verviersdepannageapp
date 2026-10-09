@@ -272,6 +272,7 @@ function ExpertAccessModal({ notif, onDone }: { notif: NotifEvent; onDone: () =>
 
 // ── Message important : « J'ai lu ce message » obligatoire (Olivier 09/10/2026) ──
 function MessageAckModal({ notif, onDone }: { notif: NotifEvent; onDone: () => void }) {
+  const { t } = useT()
   const [sending, setSending] = useState(false)
   const [err, setErr] = useState<string | null>(null)
   async function ack() {
@@ -288,14 +289,14 @@ function MessageAckModal({ notif, onDone }: { notif: NotifEvent; onDone: () => v
       <div className="w-full max-w-lg rounded-2xl bg-white border-4 border-red-600 shadow-2xl overflow-hidden" onClick={e => e.stopPropagation()}>
         <div className="bg-red-600 text-white px-5 py-4 flex items-center gap-3">
           <AlertTriangle size={28} />
-          <p className="text-lg font-bold leading-tight">{notif.payload?.title || 'Message important'}</p>
+          <p className="text-lg font-bold leading-tight">{notif.payload?.title || t('mission_detail.message_ack_title')}</p>
         </div>
         <div className="px-5 py-5">
           <p className="text-slate-800 text-base whitespace-pre-line leading-relaxed">{notif.payload?.body}</p>
           {err && <p className="text-red-700 text-sm mt-3">⚠ {err}</p>}
         </div>
         <div className="px-5 py-4 border-t bg-slate-50">
-          <button type="button" disabled={sending} onClick={ack} className="w-full min-h-[52px] rounded-xl bg-red-600 hover:bg-red-700 text-white font-bold text-base disabled:opacity-60">{sending ? '…' : 'J’ai lu ce message'}</button>
+          <button type="button" disabled={sending} onClick={ack} className="w-full min-h-[52px] rounded-xl bg-red-600 hover:bg-red-700 text-white font-bold text-base disabled:opacity-60">{sending ? '…' : t('mission_detail.message_ack_button')}</button>
         </div>
       </div>
     </div>
