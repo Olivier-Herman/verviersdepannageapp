@@ -404,3 +404,9 @@ vérifie, la décision, la règle à retenir pour les agents. Source de formatio
   si c'est clôturé ; **message bloquant** sur son écran le lendemain à 9 h 15 (« regarde tes mails et réponds »), avec
   confirmation « J'ai lu ce message » (nouvelle option « Message bloquant » des annonces, 09/10).
 - Règle : un dossier qu'un collègue suit se renvoie à ce collègue ; l'agent ne répond pas à sa place à un tiers.
+
+### 45. Expert : « forfait d'entreposage de 220 € TTC au nom du sinistré, merci de signer pour accord »
+- Mail : EDA Liège (M. Goosse, 01/10 + rappels), Ford Fiesta 2DVR333 (fiche 10167595, au parc depuis le 28/09).
+- Décision d'Olivier : **on accepte** ; réponse **par mail « pour accord »** depuis info@ (pas de PDF signé), en citant
+  leurs références ; pas de note sur la fiche : la case à cocher du forfait expert sur la fiche suffit ; mail classé.
+- Règle : un accord de forfait d'entreposage proposé par l'expert se confirme par mail en reprenant ses références.
