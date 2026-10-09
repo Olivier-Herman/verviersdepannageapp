@@ -385,3 +385,13 @@ vérifie, la décision, la règle à retenir pour les agents. Source de formatio
 - Décision d'Olivier : NC totale 2026-0340 **envoyée par Peppol** ; mail classé.
 - Règle : si la fiche ne prouve pas l'intervention (pas d'arrivée, pas de photos) et que l'assistance conteste, on accorde
   la note de crédit demandée.
+
+### 43. GIE Argos : « facturez GIE ARGOS pour le compte de Groupama »
+- Mail : GIE Argos (01/10), facture 2026/09/451 (200 €, gardiennage GG036SD) adressée à Groupama Rhône-Alpes Auvergne,
+  déjà payée à la caisse fourrière le 22/09.
+- Décision d'Olivier : NC totale 2026-0341 + nouvelle facture 2026/10/197 au nom de GIE ARGOS « pour le compte de Groupama
+  Rhône-Alpes Auvergne » (autoliquidation conservée) ; paiement de caisse basculé sur la nouvelle facture ; réponse depuis
+  info@ avec **la facture ET la NC** jointes ; mail classé.
+- Règle : quand le payeur demande une facture à son nom (« pour le compte de »), NC totale + nouvelle facture, paiement
+  basculé ; joindre la facture et la NC dans la réponse.
+- Rappel d'Olivier (cas 42) : sans pointage ni photo, aucun appui pour contester une assistance → on crédite.
