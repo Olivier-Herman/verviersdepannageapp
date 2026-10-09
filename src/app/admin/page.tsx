@@ -174,6 +174,8 @@ export default async function AdminPage() {
           desc="Statistiques des missions proposées la nuit : acceptations, délais, refus, rappels, réserve, dispatch." />
         <Card href="/admin/notifications" icon={Bell} label="Notifications"
           desc="Canaux push, événements déclencheurs, destinataires." />
+        <Card href="/admin/vetements" icon={Users} label="Commande pulls et t-shirts"
+          desc="Module temporaire : tailles demandées par Sam au personnel, totaux pour le fournisseur, relance." />
         <Card href="/admin/sons-notifications" icon={Bell} label="Sons des notifications"
           desc="Écouter et choisir le son (avec ou sans voix) de chaque famille de notifications sur iPhone." />
         {user.role === 'superadmin' && (

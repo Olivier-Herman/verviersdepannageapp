@@ -16,6 +16,7 @@ import { useClearHandledPushes } from '@/hooks/useClearHandledPushes'
 import { useEndFinishedLiveActivities } from '@/hooks/useEndFinishedLiveActivities'
 import NotificationBanner from './NotificationBanner'
 import BlockingNotificationModal from './BlockingNotificationModal'
+import VetementsSamModal from '@/components/vetements/VetementsSamModal'
 
 interface NotifEvent {
   id:           string
@@ -200,6 +201,8 @@ export default function NotificationsProvider({
   return (
     <NotificationsContext.Provider value={{ dismiss, markRead, pending }}>
       {children}
+      {/* Commande vêtements : Sam demande les tailles (module temporaire, 09/10/2026) */}
+      <VetementsSamModal />
       {/* Popup BLOQUANT (réponse obligatoire) : un à la fois, au-dessus de tout */}
       {(() => {
         const blocking = pending.find(isShown)

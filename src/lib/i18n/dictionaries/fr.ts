@@ -823,6 +823,23 @@ export const fr = {
     conv_end_idle:    'terminée',
     help_tab:      'Aide',
   },
+  // Commande pulls et t-shirts — demande de Sam (module temporaire, 09/10/2026)
+  vetements: {
+    subtitle: 'Commande des nouveaux vêtements',
+    hello:    'Salut {name} ! On recommande des pulls et des t-shirts Verviers Dépannage pour toute l’équipe.',
+    ask:      'Il me faut juste tes tailles, aujourd’hui. Deux touches et c’est fini.',
+    tshirt:   'Ta taille de t-shirt',
+    pull:     'Ta taille de pull',
+    same:     'Même taille',
+    hint:     'Tu hésites entre deux tailles ? Prends la plus grande : on porte souvent le pull par-dessus le t-shirt.',
+    send:     'Envoyer mes tailles',
+    missing:  'Choisis tes deux tailles',
+    sending:  'Envoi…',
+    block:    'Réponse obligatoire aujourd’hui pour continuer à utiliser l’app.',
+    thanks:   'C’est noté, merci {name} ! Tu seras prévenu quand les vêtements arrivent.',
+    cont:     'Continuer',
+    error:    'Envoi impossible, réessaie.',
+  },
 }
 
 export type Dictionary = typeof fr
