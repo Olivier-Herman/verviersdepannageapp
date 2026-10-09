@@ -174,3 +174,9 @@ vérifie, la décision, la règle à retenir pour les agents. Source de formatio
   frais à charge de la personne qui reprend le véhicule ; châssis du mail ajouté à la fiche ; pas de réponse.
 - Règle : levée sans date = date de réception du mail (VD Soft le fait seul depuis le 09/10). L'agent ne relance
   pas la police pour une date, et ne lève pas d'alarme pour ça.
+
+### 20. Copie d'un PV d'expertise pour un sinistre d'avant VD Soft
+- Mail : Cimex à fourriere@ (03/08) : PV d'expertise, Suzuki Swift 2DAZ720, sinistre du 13/06/2025.
+- Décision : dossier de l'ancien système, déjà facturé, véhicule abandonné → **classer sans réponse** (Archive).
+- Règle : une copie d'expertise sans demande, pour un dossier clos (facturé, abandon), se classe. L'agent ne
+  répond pas et ne crée rien ; il ne cherche pas de fiche VD Soft pour un sinistre d'avant le 19/05/2026.
