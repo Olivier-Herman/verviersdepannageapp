@@ -20,6 +20,18 @@ export async function resolveTargets(sb: any, ann: any): Promise<string[]> {
 /** Envoie la notif (in-app + push) à tous les destinataires résolus. */
 export async function broadcastAnnouncement(sb: any, ann: any): Promise<{ targeted: number; sent: number; failed: number }> {
   const userIds = await resolveTargets(sb, ann)
+  // Annonce BLOQUANTE (09/10/2026) : plein écran, « J'ai lu ce message » obligatoire.
+  if (ann.blocking) {
+    let sent = 0, failed = 0
+    await Promise.all(userIds.map(async (uid) => {
+      const r = await sendNotification(uid, 'message_bloquant', {
+        title: `${ann.emoji} ${ann.title}`, body: ann.body, action_url: ann.action_url,
+        data: { modal: true, kind: 'message_ack', announcement_id: ann.id },
+      } as any).catch(() => ({ ok: false }))
+      if ((r as any)?.ok) sent++; else failed++
+    }))
+    return { targeted: userIds.length, sent, failed }
+  }
   const payload = {
     title:      `${ann.emoji} ${ann.title}`,
     body:       ann.body.length > 140 ? ann.body.slice(0, 137) + '…' : ann.body,

@@ -115,6 +115,7 @@ export async function POST(req: NextRequest) {
       audience,
       target_user_ids: audience === 'custom' ? ids : [],
       scheduled_at: scheduled,
+      blocking:   body.blocking === true,
       // Programmée dans le futur → on masque le modal jusqu'à la diffusion.
       active:     future ? false : (body.active !== false),
     }

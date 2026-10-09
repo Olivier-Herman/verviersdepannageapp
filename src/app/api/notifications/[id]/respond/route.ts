@@ -50,6 +50,16 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     if (!r.ok) return NextResponse.json({ error: r.error }, { status: 400 })
     return NextResponse.json({ ok: true, already: !!r.already })
   }
+  // Message important (annonce bloquante) : « J'ai lu ce message » → lu, répondu, compté dans le suivi des lectures.
+  if (body?.message_ack === true) {
+    const { data: n } = await sb.from('notifications_log').select('id, notif_type, payload, responded_at').eq('id', params.id).eq('user_id', userId).maybeSingle()
+    if (!n || n.notif_type !== 'message_bloquant') return NextResponse.json({ error: 'Notification inconnue' }, { status: 404 })
+    const now = new Date().toISOString()
+    if (!n.responded_at) await sb.from('notifications_log').update({ responded_at: now, read_at: now }).eq('id', n.id)
+    const annId = n.payload?.data?.announcement_id
+    if (annId) await sb.from('announcement_reads').upsert({ announcement_id: annId, user_id: userId, seen_at: now }, { onConflict: 'announcement_id,user_id' })
+    return NextResponse.json({ ok: true })
+  }
   if (body?.address_ack === true) {
     const r = await ackAddressChange(sb, params.id, userId)
     if (!r.ok) return NextResponse.json({ error: r.error }, { status: 400 })

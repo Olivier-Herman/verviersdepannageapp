@@ -9,9 +9,9 @@ import { useEffect, useState } from 'react'
 import AppShell from '@/components/layout/AppShell'
 import { Megaphone, Send, TestTube, Save, Check, Eye, Clock, Plus, Pencil, Trash2, X, Power, Users, CalendarClock } from 'lucide-react'
 
-type Ann = { id: string; emoji: string; title: string; body: string; action_url: string; cta_label: string; active: boolean; read: number; audience: string; target_user_ids: string[]; scheduled_at: string | null; broadcast_at: string | null }
+type Ann = { id: string; emoji: string; title: string; body: string; action_url: string; cta_label: string; active: boolean; read: number; audience: string; target_user_ids: string[]; scheduled_at: string | null; broadcast_at: string | null; blocking?: boolean }
 type Worker = { user_id: string; name: string; kind: string }
-const BLANK = { emoji: '✨', title: '', body: '', action_url: '/ma-paie', cta_label: 'Découvrir', active: true, audience: 'all', target_user_ids: [] as string[], scheduled_at: '' }
+const BLANK = { emoji: '✨', title: '', body: '', action_url: '/ma-paie', cta_label: 'Découvrir', active: true, audience: 'all', target_user_ids: [] as string[], scheduled_at: '', blocking: false }
 
 const toLocalInput = (iso?: string | null) => {
   if (!iso) return ''
@@ -146,6 +146,10 @@ export default function AnnoncesClient({ userRole, userName, userEmail, userModu
                 <input type="datetime-local" value={editing.scheduled_at || ''} onChange={e => setEditing({ ...editing, scheduled_at: e.target.value })} className="mt-1 bg-bg border rounded-lg px-3 py-2 text-sm text-ink" /></label>
               {editing.scheduled_at && <button onClick={() => setEditing({ ...editing, scheduled_at: '' })} className="text-xs text-ink-muted hover:text-red-500 pb-2.5">retirer</button>}
             </div>
+            <label className="flex items-start gap-2 text-sm text-ink cursor-pointer min-h-[44px]">
+              <input type="checkbox" checked={!!editing.blocking} onChange={e => setEditing({ ...editing, blocking: e.target.checked })} className="mt-1 size-4" />
+              <span><b>Message bloquant</b> — s’affiche en plein écran et reste affiché tant que la personne n’a pas cliqué « J’ai lu ce message » (suivi dans « qui a lu »).</span>
+            </label>
             {editing.scheduled_at
               ? <p className="text-[11px] text-ink-muted/80">📅 Sera diffusée automatiquement le <b>{fmt(new Date(editing.scheduled_at).toISOString())}</b> (à ±5 min). Masquée jusque-là.</p>
               : <label className="flex items-center gap-2 text-sm text-ink"><input type="checkbox" checked={editing.active !== false} onChange={e => setEditing({ ...editing, active: e.target.checked })} /> Active (le modal s'affiche aux destinataires non-lecteurs)</label>}

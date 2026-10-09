@@ -203,6 +203,14 @@ export const NOTIFICATION_TYPES: readonly NotificationType[] = [
     defaultEnabled:  true,
   },
   {
+    key:             'message_bloquant',
+    label:           'Message important à confirmer',
+    description:     'Un message de Mobi affiché en plein écran ; il reste affiché jusqu’au clic sur « J’ai lu ce message ».',
+    category:        'admin',
+    applicableRoles: ['driver', 'dispatcher', 'admin', 'superadmin'],
+    defaultEnabled:  true,
+  },
+  {
     key:             'levee_saisie_alarme',
     label:           'Levée de saisie à vérifier',
     description:     'Une levée de saisie reçue par mail ne peut pas être rattachée seule (plusieurs fiches possibles, deuxième levée, ordre anormal…). Le premier qui décide ferme l’alarme pour tous.',

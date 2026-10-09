@@ -18,6 +18,7 @@ interface NotifEvent {
 }
 
 export default function BlockingNotificationModal({ notif, onDone, onSnooze }: { notif: NotifEvent; onDone: () => void; onSnooze?: (minutes: number) => void }) {
+  if (notif.notif_type === 'message_bloquant') return <MessageAckModal notif={notif} onDone={onDone} />
   if (notif.notif_type === 'expert_access') return <ExpertAccessModal notif={notif} onDone={onDone} />
   if (notif.notif_type === 'siabis_couvert_request') return <SiabisCouvertModal notif={notif} onDone={onDone} />
   if (notif.notif_type === 'mission_address_changed') return <AddressChangeModal notif={notif} onDone={onDone} />
@@ -263,6 +264,38 @@ function ExpertAccessModal({ notif, onDone }: { notif: NotifEvent; onDone: () =>
         <div className="px-5 py-4 border-t bg-slate-50 flex items-center justify-between gap-3">
           <span className="text-xs text-slate-500">{Object.keys(decisions).length}/{items.length} décidé(s)</span>
           <button type="button" disabled={!complete || sending} onClick={submit} className="px-5 py-2.5 rounded-xl bg-blue-700 hover:bg-blue-800 disabled:opacity-40 disabled:cursor-not-allowed text-white font-bold">{sending ? 'Envoi…' : 'Confirmer'}</button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ── Message important : « J'ai lu ce message » obligatoire (Olivier 09/10/2026) ──
+function MessageAckModal({ notif, onDone }: { notif: NotifEvent; onDone: () => void }) {
+  const [sending, setSending] = useState(false)
+  const [err, setErr] = useState<string | null>(null)
+  async function ack() {
+    setSending(true); setErr(null)
+    try {
+      const r = await fetch(`/api/notifications/${notif.id}/respond`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ message_ack: true }) })
+      const j = await r.json().catch(() => ({}))
+      if (!r.ok) { setErr(j.error || 'Envoi impossible'); return }
+      onDone()
+    } catch { setErr('Erreur réseau') } finally { setSending(false) }
+  }
+  return (
+    <div className="fixed inset-0 z-[400] flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
+      <div className="w-full max-w-lg rounded-2xl bg-white border-4 border-red-600 shadow-2xl overflow-hidden" onClick={e => e.stopPropagation()}>
+        <div className="bg-red-600 text-white px-5 py-4 flex items-center gap-3">
+          <AlertTriangle size={28} />
+          <p className="text-lg font-bold leading-tight">{notif.payload?.title || 'Message important'}</p>
+        </div>
+        <div className="px-5 py-5">
+          <p className="text-slate-800 text-base whitespace-pre-line leading-relaxed">{notif.payload?.body}</p>
+          {err && <p className="text-red-700 text-sm mt-3">⚠ {err}</p>}
+        </div>
+        <div className="px-5 py-4 border-t bg-slate-50">
+          <button type="button" disabled={sending} onClick={ack} className="w-full min-h-[52px] rounded-xl bg-red-600 hover:bg-red-700 text-white font-bold text-base disabled:opacity-60">{sending ? '…' : 'J’ai lu ce message'}</button>
         </div>
       </div>
     </div>
