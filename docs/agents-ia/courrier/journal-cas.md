@@ -189,3 +189,15 @@ vérifie, la décision, la règle à retenir pour les agents. Source de formatio
   considérer les trois états de frais comme annulés, avec la raison pour chacun ; Olivier relit et envoie.
 - Règle : un état de frais parti pour un AVP, ou pour des frais finalement à charge du propriétaire, se fait annuler
   auprès du Parquet ; il n'y a pas de réquisitoire à fournir. L'agent prépare le brouillon, il n'envoie pas.
+
+### 22. Parquet : « nous n'avons pas reçu de facture » pour un dossier de plus de 6 mois
+- Mails : fdj.pplge@ (06/10) et Mme Cornil (08/10) réclament les factures de 7 véhicules remis au Finshop (Kangoo
+  25VB790, Audi S3 25VB2103, Astra 25VB2791, i20 26VB1091, Arosa 26VB1424, Partner 26VB1447, Juke 26VB1918).
+- Constat : aucun état de frais ni aucune facture (mails envoyés, ERP). 6 dossiers ont plus de 6 mois depuis la prise
+  en charge ; la Juke (11/05/2026) est encore dans le délai jusqu'au 11/11/2026.
+- Règle d'Olivier (09/10) : demande d'état de frais pour un dossier de **plus de 6 mois** (depuis le début de la
+  prestation) → **vérifier** s'il existe déjà une facture ou un état de frais ; **si oui, le renvoyer** ; **si non,
+  répondre que nous sommes hors délai** et que nous n'enverrons rien (il serait refusé à la liquidation : on ne perd
+  pas de temps). Dans le délai → l'état de frais suit le circuit normal.
+- Ce que fait l'agent : la vérification (VD Soft, ERP, mails envoyés), puis un brouillon de réponse depuis
+  fourriere@ (vouvoiement, « Le service Fourrière ») ; il n'envoie pas et ne génère pas d'état de frais hors délai.
