@@ -268,3 +268,12 @@ vérifie, la décision, la règle à retenir pour les agents. Source de formatio
   lettrées. Mails classés dans Frais de Justice.
 - Règle : dossier JustInvoice déclaré hors délai → note de crédit totale « Hors délai · <référence> » sur la facture
   si elle est encore ouverte, puis classer. L'agent prépare, Olivier valide (écriture comptable).
+
+### 29. JustInvoice : « cette facture a été payée » — doublon d'import resté ouvert
+- Mail : taxation (07/07), dossier 458960-26 : facture 20233719 (2023) payée le 06/02/2026, statut mis en liquidation
+  « pour la faire disparaître ».
+- Constat : l'original 20233719 est soldé (NC 2025-0333 + paiement) ; son doublon d'import 20257347 (réf. 20233719)
+  était resté ouvert.
+- Décision : **une NC par facture** : NC totale 2026-0331 sur le doublon, motif « Doublon d'import · <réf> »,
+  générée sans envoi (Envoyer, tous les canaux décochés), lettrée ; mail classé.
+- Règle : une NC « hors délai » ou « doublon » vers le Parquet se génère SANS envoi (Envoyer + tout décocher).
