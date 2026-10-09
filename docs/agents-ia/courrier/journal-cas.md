@@ -437,3 +437,18 @@ vérifie, la décision, la règle à retenir pour les agents. Source de formatio
 - Détail de paiement d'une assistance qui couvre des factures d'avant l'ERP (VAB n° 547, 29/10/2025) : solder les
   factures reprises encore ouvertes par une OD au compte des paiements entrants en suspens (OD1/2025/00117,
   2 288,87 €), puis envoyer le détail à la comptable.
+
+### 48. Comptable : « ventes payées mais restées ouvertes » (Scrada / SumUp) et réponses en attente (09/10)
+- Les mails de la comptable à mobi@ arrivent dans « Comptable THG » (pas en boîte de réception) : les lire à chaque
+  passage ; réponse qui clôt un point → classer dans /THG.
+- Vérifier une vente « payée en espèces » : chercher la ligne dans les relevés Scrada importés dans l'ERP (journal
+  Scrada), pas seulement dans le suivi des espèces remis à Momo (il ne reprend les chauffeurs que depuis le 15/06/2026).
+  Le 09/10, 5 ventes de mars à juin dites « jamais passées » étaient en fait encodées dans Scrada le 06/10.
+- Mode de paiement : lire la méthode du paiement (Bancontact, SumUp, Espèces), pas le journal ; une carte rangée
+  dans un journal de caisse n'a rien à faire dans Scrada.
+- Double encaissement en caisse d'une facture d'avant l'ERP : ligne de correction négative dans Scrada
+  (« Correction <n° facture> »), sur demande de la comptable.
+- Écart de quelques centimes ou euros que la comptable passe en différence de paiement : le solder de la même façon
+  dans l'ERP pour rester aligné (TVM chez Riga, 2,99 €).
+- Question de TVA sur les avances de fonds : l'échange de référence avec IMA est celui de Stéphanie Holsters
+  (31/10 → 03/11/2022, facture 20224451) ; il a été transmis à la comptable.
