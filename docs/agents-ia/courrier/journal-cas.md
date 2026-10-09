@@ -371,3 +371,10 @@ vérifie, la décision, la règle à retenir pour les agents. Source de formatio
 - Règle : un transport demandé par le client sans accord de l'assistance n'est pas facturé à l'assistance.
 - Constat Peppol : VAB exige son n° de dossier (7 chiffres) dans BuyerReference et jamais dans OrderReference ; notre ERP
   met la référence de la facture en OrderReference et le code client (006463) en BuyerReference. Décision d'Olivier : on continue comme aujourd'hui (006463 est le code utilisé depuis toujours sur nos factures VAB), pas de changement.
+
+### 41. VAB : « pas d'assistance valable, le client devait payer le tarif Siabis au dépanneur »
+- Mail : VAB (29/09), facture 2026/07/612 (114,37 €, dossier 8366847) : Kia T353SL (NL), dépannage A26 Sprimont,
+  client sans assistance ; rien encaissé sur place.
+- Décision d'Olivier : NC totale 2026-0339 **envoyée par Peppol** à VAB ; **on abandonne** le montant (client
+  néerlandais sans coordonnées) ; mail classé. Références Peppol VAB : on continue comme aujourd'hui (006463).
+- Règle : Siabis non couvert = encaisser sur place ; si ça n'a pas été fait et que le client est injoignable, on abandonne.
