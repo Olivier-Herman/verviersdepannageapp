@@ -362,3 +362,12 @@ vérifie, la décision, la règle à retenir pour les agents. Source de formatio
   remboursement sera préparé à réception (paiement à valider par Olivier). Le crédit de 240 € reste en compte d'ici là.
 - Règle : double paiement d'un client occasionnel qui le signale → remboursement, coordonnées demandées par écrit ;
   client régulier → crédit (cf. Logicx, 09/10).
+
+### 40. VAB refuse une facture : transport fait à la demande du client sans passer par VAB
+- Mail : VAB (14/08 + rappel 29/09), facture 2026/07/706 (dossier 8368489, Mercedes 2FML257) : remorquage de nuit vers
+  notre dépôt OK, mais relivraison vers CAR Avenue Namur faite à la demande du client sans consulter VAB.
+- Décision d'Olivier : **on laisse tomber le trajet** (pas de facture au client) ; NC totale 2026-0338 + nouvelle facture
+  2026/10/196 (prise en charge + majoration nuit, 162,66 € TVAC) **envoyées par Peppol** ; mail classé.
+- Règle : un transport demandé par le client sans accord de l'assistance n'est pas facturé à l'assistance.
+- Constat Peppol : VAB exige son n° de dossier (7 chiffres) dans BuyerReference et jamais dans OrderReference ; notre ERP
+  met la référence de la facture en OrderReference et le code client (006463) en BuyerReference → à corriger.
