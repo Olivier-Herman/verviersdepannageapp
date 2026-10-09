@@ -119,7 +119,7 @@ export async function markPieceReceived(sb: any, fromEmail: string, via: string,
 const BOUNCE_FROM = /^(postmaster|mailer-daemon|microsoftexchange[^@]*)@/i
 const BOUNCE_SUBJECT = /^(non remis|undeliverable|unzustellbar|onbestelbaar|delivery status notification|mail delivery failed)/i
 
-export async function notePieceReplyWithoutDocument(sb: any, fromEmail: string, ctx: { conversationId?: string; subject?: string; preview?: string }): Promise<void> {
+export async function notePieceReplyWithoutDocument(sb: any, fromEmail: string, ctx: { messageId?: string; conversationId?: string; subject?: string; preview?: string }): Promise<void> {
   const reqs = await openRequestsFor(sb, fromEmail, ctx.conversationId)
   // Avis de non-remise (adresse inconnue…) : ce n'est pas une réponse du fournisseur. On le dit tel quel
   // (L'Universelle, 07/10/2026 : l'avis « Non remis » avait été annoncé comme une réponse sans pièce).
@@ -133,8 +133,11 @@ export async function notePieceReplyWithoutDocument(sb: any, fromEmail: string, 
 L'adresse ${(q.emails || []).join(', ')} est refusée par leur serveur. Il faut une autre adresse : la demande reste ouverte.`)
       continue
     }
-    if (q.last_reply_at && Date.now() - new Date(q.last_reply_at).getTime() < 3600_000) continue   // une seule alerte par réponse
-    await sb.from('mail_piece_requests').update({ last_reply_at: new Date().toISOString() }).eq('id', q.id)
+    // Une seule alerte par réponse : le mail reste dans la boîte et le tri le relit à chaque passage
+    // (09/10/2026 : Verisure et Autosécurité réannoncés toutes les heures). Sans id de mail, garde-fou d'une heure.
+    const seen: string[] = q.alerted_reply_ids || []
+    if (ctx.messageId ? seen.includes(ctx.messageId) : (q.last_reply_at && Date.now() - new Date(q.last_reply_at).getTime() < 3600_000)) continue
+    await sb.from('mail_piece_requests').update({ last_reply_at: new Date().toISOString(), ...(ctx.messageId ? { alerted_reply_ids: [...seen, ctx.messageId].slice(-20) } : {}) }).eq('id', q.id)
     await telegramMobi(`✉️ Réponse sans pièce — ${q.fournisseur || fromEmail}\n« ${q.subject} »\n${(ctx.preview || '').slice(0, 400)}\nUne carte est préparée dans l'agent mail.`)
   }
 }

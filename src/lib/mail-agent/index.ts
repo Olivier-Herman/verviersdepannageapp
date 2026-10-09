@@ -145,7 +145,7 @@ export async function scanFolder(opts: { mailbox?: string; folder?: string; fold
         // Facture fournisseur ? (Olivier 23/09/2026) — lue, vérifiée dans Odoo
         // par société, classée ou envoyée pour encodage. Jamais deux fois.
         // Réponse sans pièce jointe à une de nos demandes de pièces : Mobi est prévenu, le tri continue.
-        if (!msg.hasAttachments && isWatchedReply(msg)) await notePieceReplyWithoutDocument(sb, msg.fromEmail, { conversationId: msg.conversationId, subject: msg.subject, preview: msg.bodyPreview }).catch(() => {})
+        if (!msg.hasAttachments && isWatchedReply(msg)) await notePieceReplyWithoutDocument(sb, msg.fromEmail, { messageId: msg.id, conversationId: msg.conversationId, subject: msg.subject, preview: msg.bodyPreview }).catch(() => {})
         if (isSupplierCandidate(msg)) {
           const seen = await findKnownItem(sb, mailbox, 'fournisseur', msg, folder)
           // « Pas une facture » : déjà renvoyé au tri, on laisse le tri décider (il a sa propre mémoire).
@@ -172,7 +172,7 @@ export async function scanFolder(opts: { mailbox?: string; folder?: string; fold
             if (out.status === 'retry' && attempts + 1 >= 3) { out.status = 'to_verify'; out.note = 'Pièce non lisible automatiquement après 3 essais — lecture humaine requise' }
             await upsert(sb, base, { status: out.status, blocked_reason: out.note, extracted: out.status === 'retry' ? { attempts: attempts + 1 } : out.extracted })
             if (out.status === 'applied' || out.status === 'to_verify') await markPieceReceived(sb, msg.fromEmail, `${mailbox} · ${msg.subject || ''}`, { mailbox, messageId: msg.id, conversationId: msg.conversationId, subject: msg.subject })
-            else if (out.status === 'skipped' && isWatchedReply(msg)) await notePieceReplyWithoutDocument(sb, msg.fromEmail, { conversationId: msg.conversationId, subject: msg.subject, preview: msg.bodyPreview }).catch(() => {})
+            else if (out.status === 'skipped' && isWatchedReply(msg)) await notePieceReplyWithoutDocument(sb, msg.fromEmail, { messageId: msg.id, conversationId: msg.conversationId, subject: msg.subject, preview: msg.bodyPreview }).catch(() => {})
             if (out.status === 'applied') { report.captured++; report.applied++ }
             else if (out.status === 'to_verify') { report.captured++; report.toVerify++ }
             else if (out.status === 'skipped') goTriage = true   // pas une facture → tri normal
