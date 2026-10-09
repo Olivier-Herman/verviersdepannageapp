@@ -211,3 +211,7 @@ vérifie, la décision, la règle à retenir pour les agents. Source de formatio
 - Règle : pas d'état de frais sans réquisitoire (PDF ou JPG), même quand le Parquet le réclame. Nouvelle règle des
   états de frais (09/10) : UN seul état de frais par saisie — dépannage + gardiennage jusqu'au dernier jour du mois
   qui suit l'entrée au maximum (ou la remise Domaine / la levée si plus tôt) ; le gardiennage au-delà n'est plus facturé.
+- Suite (09/10) : Olivier a retrouvé le réquisitoire dans l'ancien système (dossier legacy, le n° de PV était
+  connu) → rattaché à la fiche, **EDF-2026-0098** (prise en charge + gardiennage du 11/05 au 10/06, 170,44 € TVAC)
+  envoyé à Mme Cornil en réponse à son mail, avec le réquisitoire. Règle : pour un dossier legacy sans
+  réquisitoire, demander à Olivier de chercher dans l'ancien système avant de répondre « en attente ».
