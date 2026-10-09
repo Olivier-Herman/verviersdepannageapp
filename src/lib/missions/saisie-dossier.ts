@@ -396,7 +396,8 @@ export async function renderEtatFraisFromRow(sb: any, dossierId: string, efRowId
     recipient,
     destinataire: await resolveDestinataire(recipient, mission, destEmail),
     pv: d.dossier_ref,
-    dateSaisie: mission?.received_at || d.parked_at,
+    // Le dossier fait foi (date corrigée à la demande de la taxation, EDF-2026-0024, 09/10/2026).
+    dateSaisie: d.parked_at || mission?.received_at,
     parkedAt: d.parked_at,
     periodFrom: ef.period_from || d.parked_at,
     periodTo: ef.period_to,

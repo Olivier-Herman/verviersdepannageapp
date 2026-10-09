@@ -242,6 +242,12 @@ export default function SaisiesClient({ userRole, userName, userEmail, userModul
   const depotJustInvoice = (id: string, efId: string, plate: string) => { if (!confirm(`Déposer l'état de frais de ${plate} sur JustInvoice (SPF Justice) ?\n\nEnvoie l'état de frais signé + le réquisitoire au portail. Action réelle.`)) return; run(id, async () => { const j = await post(`/api/fourriere/saisies/${id}/justinvoice`, { ef_id: efId }); return `✓ Déposé sur JustInvoice${j.ref ? ` — dossier ${j.ref}` : ''}` }) }
   const sendAll = (ids: string[]) => { if (!ids.length) return; if (!confirm(`Envoyer ${ids.length} état(s) de frais au Parquet maintenant ?\n\nKm aller-retour comptés à 0 (franchise 30 km). Mails envoyés depuis fourriere@.`)) return; run('sync', async () => { const j = await post('/api/fourriere/saisies', { action: 'send_all', ids }); const ko = (j.results || []).filter((x: any) => !x.ok); return `✓ ${j.sent} envoyé(s)${j.failed ? ` · ⚠ ${j.failed} échec(s) : ${ko.map((x: any) => x.error).slice(0, 3).join(' ; ')}` : ''}` }) }
   const resendEf = (id: string, efId: string, numero: string) => { if (!confirm(`Renvoyer l'état de frais ${numero} (même numéro, données véhicule à jour) avec le réquisitoire ?`)) return; run(id, async () => { const j = await post(`/api/fourriere/saisies/${id}/etat-frais/${efId}/renvoyer`); return `✓ ${j.numero} renvoyé à ${j.email}` }) }
+  const correctionJI = (id: string, efId: string, numero: string, ref: string) => {
+    const comment = prompt(`Correction JustInvoice — dossier ${ref} (${numero})\n\nL'état de frais tel qu'il est maintenant dans VD Soft (corrigé) sera envoyé dans le même dossier, au statut « Correction soumise ».\n\nCommentaire pour le bureau de taxation (ce qui a été corrigé) :`, 'État de frais corrigé suivant votre demande.')
+    if (comment == null) return
+    const withReq = confirm('Joindre aussi le réquisitoire (PDF) ?\n\nOK = oui · Annuler = seulement l\'état de frais')
+    run(id, async () => { const j = await post(`/api/fourriere/saisies/${id}/etat-frais/${efId}/justinvoice-correction`, { docs: withReq ? ['CostState', 'Claim'] : ['CostState'], comment }); return `✓ Correction envoyée sur JustInvoice (${j.ref}) : ${(j.sent || []).join(', ')}` })
+  }
   const relanceEf = (id: string, efId: string, numero: string) => { if (!confirm(`Renvoyer ${numero} au Parquet avec un rappel courtois ?\n\nÀ réserver aux cas proches de la forclusion.`)) return; run(id, async () => { const j = await post(`/api/fourriere/saisies/${id}/ef-relance`, { ef_id: efId }); return `✓ Rappel envoyé à ${j.email}` }) }
   const relanceReq = (missionId: string | null, id: string) => { if (!missionId) { setMsg('⚠ Pas de fiche liée — relance impossible'); return } run(id, async () => { const j = await post(`/api/missions/${missionId}/requisitoire-relance`); return `✓ Relance envoyée${j.email ? ` à ${j.email}` : ''}` }) }
   const remove = (id: string, plate: string) => { if (!confirm(`Retirer ${plate} du suivi ?\n\nLa fiche reste intacte. Les états de frais de ce dossier seront supprimés.`)) return; run(id, async () => { await post(`/api/fourriere/saisies/${id}`, undefined, 'DELETE'); return '✓ Dossier retiré' }) }
@@ -393,7 +399,8 @@ export default function SaisiesClient({ userRole, userName, userEmail, userModul
                 onFacture={(efId) => factureOdoo(d.id, efId)}
                 onEfStatus={(efId, s) => efStatus(d.id, efId, s)}
                 onEfRelance={(efId, numero) => relanceEf(d.id, efId, numero)}
-                onEfResend={(efId, numero) => resendEf(d.id, efId, numero)} />
+                onEfResend={(efId, numero) => resendEf(d.id, efId, numero)}
+                onEfCorrection={(efId, numero, ref) => correctionJI(d.id, efId, numero, ref)} />
             ))}
           </div>
         )}
@@ -439,7 +446,7 @@ function Timeline({ steps }: { steps: Step[] }) {
 }
 
 // ── Carte dossier ────────────────────────────────────────────────────────────
-function DossierCard({ d, r, busy, onPrimary, onUpload, onGenerate, onRecipient, onClose, onPause, onRemove, onRelance, onJustInvoice, onFacture, onEfStatus, onEfRelance, onEfResend }: {
+function DossierCard({ d, r, busy, onPrimary, onUpload, onGenerate, onRecipient, onClose, onPause, onRemove, onRelance, onJustInvoice, onFacture, onEfStatus, onEfRelance, onEfResend, onEfCorrection }: {
   d: Dossier; r: Reading; busy: boolean
   onPrimary: () => void
   onUpload: (efId: string, f: File) => void
@@ -454,6 +461,7 @@ function DossierCard({ d, r, busy, onPrimary, onUpload, onGenerate, onRecipient,
   onEfStatus: (efId: string, status: 'accepte' | 'refuse' | 'annule') => void
   onEfRelance: (efId: string, numero: string) => void
   onEfResend: (efId: string, numero: string) => void
+  onEfCorrection: (efId: string, numero: string, ref: string) => void
 }) {
   const [open, setOpen] = useState(false)
   const [journal, setJournal] = useState<null | 'loading' | { at: string; icon: string; text: string; by: string | null; source: string }[]>(null)
@@ -578,6 +586,7 @@ function DossierCard({ d, r, busy, onPrimary, onUpload, onGenerate, onRecipient,
                               <button disabled={busy} onClick={() => onEfStatus(ef.id, 'accepte')} className="px-2 py-0.5 bg-surface hover:bg-surface-hover border text-ink-secondary rounded-md font-semibold">Validé sans doc</button>
                               <button disabled={busy} onClick={() => onEfStatus(ef.id, 'refuse')} className="px-2 py-0.5 bg-red-100 hover:bg-red-200 text-red-800 border border-red-300 rounded-md font-semibold">Refusé</button>
                             </>}
+                            {ef.justinvoice_ref && ['depose', 'liquide', 'facture'].includes(ef.status) && <button disabled={busy} onClick={() => onEfCorrection(ef.id, ef.numero, ef.justinvoice_ref!)} title="Le bureau de taxation demande une correction : corrige la fiche ou l'état de frais, puis renvoie-le dans le même dossier JustInvoice" className="px-2 py-0.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-800 border border-indigo-300 rounded-md font-semibold">Correction JustInvoice</button>}
                             {ef.status === 'accepte' && <button disabled={busy} onClick={() => onJustInvoice(ef.id)} className="px-2 py-0.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-md font-semibold">JustInvoice</button>}
                             {ef.status === 'depose' && <button disabled={busy} onClick={() => onFacture(ef.id)} title="Facturer sans attendre la liquidation" className="px-2 py-0.5 bg-surface hover:bg-surface-hover border text-ink-secondary rounded-md font-semibold">Facturer maintenant</button>}
                             {ef.status === 'liquide' && <button disabled={busy} onClick={() => onFacture(ef.id)} className="px-2 py-0.5 bg-teal-600 hover:bg-teal-700 text-white rounded-md font-semibold">Créer la facture</button>}

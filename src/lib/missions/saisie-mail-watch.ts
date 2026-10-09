@@ -25,6 +25,7 @@ import { sendNotificationToRoles } from '@/lib/notifications/send'
 
 const RE_STATUT   = /Dossier\s+(\d{5,}-\d{2})\s*[–—-]\s*Changement de statut/i
 const RE_EDF      = /EDF-\d{4}-\d{3,}(?:-[A-Z])?/i
+const RE_CORRECTION = /Dossier\s+\(?#?(\d{5,}-\d{2})\)?\s+besoin d.une correction/i
 const MAX_SCANS   = 3          // PDF passés à Claude par run (coût)
 
 export interface SaisieMailWatchSummary {
@@ -123,6 +124,29 @@ async function handleStatut(sb: any, msg: GraphMessage, ref: string, out: Saisie
   }).catch(() => {})
 }
 
+// ── A bis. « Besoin d'une correction » (bureau de taxation) ─────────────────
+// Olivier 09/10/2026 : un dossier arrivé sur JustInvoice a été validé ; on suit la demande et on renvoie la version
+// corrigée dans le même dossier (bouton « Correction JustInvoice » de l'écran Saisies). Ici : la demande est notée
+// sur l'état de frais et signalée ; le mail reste dans la boîte de réception tant que ce n'est pas corrigé.
+async function handleCorrection(sb: any, msg: GraphMessage, ref: string, out: SaisieMailWatchSummary): Promise<void> {
+  const body = await getMessageBody(FOURRIERE_MAILBOX, msg.id)
+  const text = ownPart(body.contentType === 'html' ? stripHtml(body.content) : body.content)
+  const reason = (text.match(/(?:manquants ou erron[ée]s\s*:?|Il n.y a)([\s\S]{0,500}?)(?:Nous vous prions|pourriez-vous|Cordialement|$)/i)?.[0] || text).replace(/\s+/g, ' ').trim().slice(0, 400)
+  const { data: ef } = await sb.from('saisie_etats_frais').select('id, numero, dossier_id').eq('justinvoice_ref', ref).maybeSingle()
+  if (!ef) { await recordEvent(sb, msg, 'correction', ref, `inconnu : ${reason.slice(0, 200)}`); out.ignored++; return }
+  const day = String(msg.receivedDateTime || '').slice(0, 10).split('-').reverse().join('/')
+  await sb.from('saisie_etats_frais').update({ status_note: `Correction demandée par la taxation le ${day} : ${reason}` }).eq('id', ef.id)
+  await recordEvent(sb, msg, 'correction', ref, reason.slice(0, 300), ef.id)
+  out.statuts++
+  const { data: d } = await sb.from('saisie_dossiers').select('vehicle_plate, mission_id').eq('id', ef.dossier_id).maybeSingle()
+  if (d?.mission_id) await sb.from('mission_remarks').insert({ mission_id: d.mission_id, text: `⚖️ JustInvoice ${ref} : correction demandée — ${reason}` }).then(() => {}, () => {})
+  await sendNotificationToRoles(['admin', 'superadmin'], 'saisie_facturation', {
+    title: `Saisie ${d?.vehicle_plate || ''} : correction demandée sur JustInvoice`,
+    body: `${ef.numero} (dossier ${ref}) — ${reason.slice(0, 160)}. Corrige puis « Correction JustInvoice ».`,
+    action_url: '/fourriere/saisies',
+  }).catch(() => {})
+}
+
 // ── B. Retour signé par courriel ────────────────────────────────────────────
 async function handleRetour(sb: any, msg: GraphMessage, out: SaisieMailWatchSummary, auto: boolean): Promise<void> {
   const pdfs = await getPdfAttachments(FOURRIERE_MAILBOX, msg.id)
@@ -203,11 +227,13 @@ export async function pollSaisieMailbox(sb: any, opts?: { top?: number; messages
     if (seenIds.has(msg.id)) continue
     const fromJustice = /@[a-z0-9.-]*just\.fgov\.be\s*>?\s*$/i.test((msg.from || '').trim())
     const statut = RE_STATUT.exec(msg.subject || '')
+    const correction = RE_CORRECTION.exec(msg.subject || '')
     const mentionsEdf = RE_EDF.test(`${msg.subject} ${msg.bodyPreview}`)
-    if (!statut && !mentionsEdf && !(fromJustice && msg.hasAttachments)) continue   // pas pour nous, on laisse l'intake réquisitoire faire
+    if (!statut && !correction && !mentionsEdf && !(fromJustice && msg.hasAttachments)) continue   // pas pour nous, on laisse l'intake réquisitoire faire
     out.scanned++
     try {
       if (statut) { await handleStatut(sb, msg, statut[1], out); continue }
+      if (correction) { await handleCorrection(sb, msg, correction[1], out); continue }
       if (msg.hasAttachments && (mentionsEdf || fromJustice)) {
         if (scanBudget <= 0) { out.ignored++; continue }   // pas d'event → repris au run suivant
         scanBudget--
