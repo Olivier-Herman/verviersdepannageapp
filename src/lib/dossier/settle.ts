@@ -14,6 +14,7 @@ export async function settleRootIfDone(sb: any, anyMissionId: string, actorId?: 
   const d = await buildDossier(anyMissionId, { cache: false })
   if (!d) return { settled: false, reason: 'dossier introuvable' }
   const { data: root } = await sb.from('incoming_missions').select('id, status, invoice_number, invoice_method, invoiced_at').eq('id', d.root_id).maybeSingle()
+  if (root?.status === 'completed' || root?.status === 'cancelled') await completeBilledChildren(sb, d.root_id, actorId)
   if (!root || root.status !== 'to_invoice') return { settled: false, reason: `racine ${root?.status || '?'}` }
   if (d.state.open) return { settled: false, reason: 'dossier encore en cours' }
   const legDone = (l: any) => (l.billed_refs?.length > 0 && l.billed_htva >= l.amount_htva - 0.01)
@@ -36,5 +37,29 @@ export async function settleRootIfDone(sb: any, anyMissionId: string, actorId?: 
     notes: `Dossier soldé : tous les groupes facturés ou sans frais (${refs.filter(Boolean).join(', ') || 'sans facture'}), véhicule sorti — fiche terminée.`,
     metadata: { via: 'settle_root', refs },
   }).then(() => {}, () => {})
+  await completeBilledChildren(sb, d.root_id, actorId)
   return { settled: true }
+}
+
+/**
+ * Fiches rattachées au dossier (relivraison AXA, Kaze…) facturées depuis le dossier : elles attendaient que
+ * le dossier soit couvert. Une fois la racine terminée ou annulée, elles restaient « à facturer » à vie
+ * et le dossier réapparaissait en facturation (#10175143 / relivraison #10177258, Jona 09/10/2026).
+ */
+export async function completeBilledChildren(sb: any, rootId: string, actorId?: string | null): Promise<number> {
+  const { data: kids } = await sb.from('incoming_missions').select('id, invoice_number')
+    .eq('parent_mission_id', rootId).eq('dossier_leg', false).eq('status', 'to_invoice').not('invoice_number', 'is', null)
+  let n = 0
+  for (const k of kids || []) {
+    if (!/^\d{4}\/\d{2}\/\d+/.test(String(k.invoice_number))) continue
+    const { error } = await sb.from('incoming_missions').update({ status: 'completed', updated_at: new Date().toISOString() }).eq('id', k.id).eq('status', 'to_invoice')
+    if (error) continue
+    n++
+    await sb.from('mission_logs').insert({
+      mission_id: k.id, actor_id: actorId || null, action: 'auto_completed',
+      notes: `Facturée n° ${k.invoice_number} avec le dossier, dossier principal soldé — fiche terminée.`,
+      metadata: { via: 'settle_children', root_id: rootId },
+    }).then(() => {}, () => {})
+  }
+  return n
 }
