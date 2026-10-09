@@ -236,3 +236,12 @@ vérifie, la décision, la règle à retenir pour les agents. Source de formatio
 - Suite (09/10) : version corrigée **postée par VD Soft** dans le dossier JustInvoice (CostState v2, statut
   « Correction soumise »), via le même flux que le formulaire « Add extra files » du portail. La facture ERP
   2026/09/360 (183,65 €) émise sur l'ancien montant reste à ajuster après la nouvelle liquidation (1,88 € TVAC).
+
+### 26. JustInvoice « approbation manquante » sur un dossier déposé trop tôt
+- Mail : bureau de taxation (28/09), dossier 542250-26 (EDF-2026-0053, Peugeot 307 90698) : approbation manquante.
+- Historique : le Parquet avait renvoyé l'état de frais (ne correspondait pas au réquisitoire) le 03/09 ; VD Soft l'a
+  quand même déposé (bug corrigé le jour même) ; version corrigée envoyée au Parquet le 09/09, sans réponse depuis.
+- Décision d'Olivier : **pas de relance** ; on attend l'approbation du Parquet et on l'envoie à ce moment-là dans le
+  dossier 542250-26. Le mail de la taxation reste dans la boîte de réception. L'EDF-0053-B (15,10 €) reste tel quel.
+- Règle : un état de frais qui a déjà un dossier JustInvoice ne fait jamais l'objet d'un deuxième dépôt : à
+  l'approbation, VD Soft envoie l'approbation et l'état de frais à jour dans le dossier existant (correction).

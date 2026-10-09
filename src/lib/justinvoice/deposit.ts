@@ -22,13 +22,22 @@ export async function depositEtatFrais(sb: any, dossierId: string, efId?: string
   if (!d) return { ok: false, error: 'Dossier introuvable' }
 
   // On dépose l'état de frais ciblé (efId) ou, à défaut, le + ancien 'accepte'.
-  const sel = 'id, numero, validation_doc_path, status'
+  const sel = 'id, numero, validation_doc_path, status, justinvoice_ref'
   const { data: efRow } = efId
     ? await sb.from('saisie_etats_frais').select(sel).eq('dossier_id', dossierId).eq('id', efId).maybeSingle()
     : await sb.from('saisie_etats_frais').select(sel).eq('dossier_id', dossierId).eq('status', 'accepte').order('created_at', { ascending: true }).limit(1).maybeSingle()
   if (!efRow) return { ok: false, error: 'Aucun état de frais accepté à déposer (scanne d\'abord le retour signé).' }
   if (efRow.status !== 'accepte') return { ok: false, error: `Cet état de frais est « ${efRow.status} », pas « accepté ».` }
   if (!efRow.validation_doc_path) return { ok: false, error: 'État de frais signé manquant sur cet état de frais.' }
+
+  // Déjà un dossier JustInvoice (dépôt antérieur, ex. 542250-26 / EDF-2026-0053 déposé sans approbation le 03/09) :
+  // JAMAIS un deuxième dossier — l'approbation et l'état de frais à jour partent DANS ce dossier comme correction
+  // (Olivier 09/10/2026 : « on attend l'approbation et on enverra à ce moment-là »).
+  if (efRow.justinvoice_ref) {
+    const { submitJustInvoiceCorrection } = await import('./correction')
+    const r = await submitJustInvoiceCorrection(sb, dossierId, efRow.id, { docs: ['Approval', 'CostState'], comment: `Approbation du Parquet et état de frais ${efRow.numero} à jour, suivant votre demande.` })
+    return r.ok ? { ok: true, ref: efRow.justinvoice_ref, numero: efRow.numero } : { ok: false, error: r.error }
+  }
 
   let reqPath: string | null = null
   let missionNumber: number | null = null
