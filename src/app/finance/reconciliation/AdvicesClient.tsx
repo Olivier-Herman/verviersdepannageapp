@@ -37,6 +37,9 @@ interface Item {
   linesSum: number
   delta: number
   blocking: string[]
+  source?: 'avis' | 'communication'
+  communication?: string
+  notes?: string[]
 }
 
 interface Report {
@@ -179,6 +182,7 @@ export default function AdvicesClient() {
           Les avis de la boîte info@ sont relus automatiquement à 5 h et à midi
           {report.cachedAt && <> — dernière lecture le {stamp(report.cachedAt)}</>}.
           {' '}Un avis sans virement n&apos;est pas une anomalie : l&apos;assureur annonce avant de payer.
+          {' '}Un virement qui cite ses factures dans sa communication (Touring, particuliers…) est aussi rapproché par elle.
         </p>
         <div className="flex gap-2">
           {readyIds.length > 0 && (
@@ -217,7 +221,7 @@ export default function AdvicesClient() {
       <div className="flex flex-col gap-2.5">
         {report.items.length === 0 && (
           <div className="rounded-card border border-dashed border-strong bg-surface-2 p-6 text-center text-[13.5px] text-ink-muted">
-            Aucun paiement assureur en attente.
+            Aucun paiement assureur ou virement à rapprocher en attente.
           </div>
         )}
 
@@ -255,6 +259,7 @@ export default function AdvicesClient() {
                     <span className="text-xs text-ink-muted">
                       {i.invoices.length ? `${i.invoices.length} facture${i.invoices.length > 1 ? 's' : ''}` : 'aucun détail'}
                       {i.advice?.reference ? ` · ${i.advice.reference}` : ''}
+                      {i.source === 'communication' ? ' · lues dans la communication du virement' : ''}
                     </span>
                   </span>
                 </button>
@@ -269,6 +274,16 @@ export default function AdvicesClient() {
 
               {isOpen && (
                 <div className="border-t border-border bg-surface-2 px-4 pb-3.5 pt-2">
+                  {i.source === 'communication' && i.communication && (
+                    <p className="mb-2 text-[12.5px] text-ink-secondary">
+                      Communication du virement : <span className="font-mono text-ink">{i.communication}</span>
+                    </p>
+                  )}
+                  {(i.notes || []).map((b, k) => (
+                    <p key={`n${k}`} className="mb-2 rounded-btn border-l-2 border-info bg-info-soft px-3 py-2 text-[12.5px] leading-relaxed">
+                      {b}
+                    </p>
+                  ))}
                   {i.blocking.map((b, k) => (
                     <p key={k} className="mb-2 rounded-btn border-l-2 border-alert bg-alert-soft px-3 py-2 text-[12.5px] leading-relaxed">
                       {b}

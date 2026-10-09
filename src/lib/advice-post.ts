@@ -59,6 +59,10 @@ export interface AdvicePostingPlan {
    * à quoi correspond chaque montant resté en compte d'attente.
    */
   unallocated: { ref: string; amount: number; reason: string; accountId?: number; creditLineId?: number | null }[]
+  /** Notes de crédit à délettrer d'abord : le client a payé la facture en entier sans les déduire. */
+  creditNotesToUnletter: { lineId: number; name: string; amount: number; invoiceName: string }[]
+  /** Paiement retrouvé par la communication du virement (pas d'avis). */
+  byCommunication?: boolean
   warnings:    string[]
 }
 
@@ -74,7 +78,9 @@ export function buildAdvicePlan(item: MatchedAdvicePayment): AdvicePostingPlan {
   if (!item.bank)             warnings.push('Aucun virement associé')
 
   const payer = PAYERS.find(p => p.key === item.payer)
-  if (!payer) warnings.push(`Payeur « ${item.payer} » non répertorié`)
+  const byCommunication = item.source === 'communication'
+  if (!payer && !byCommunication) warnings.push(`Payeur « ${item.payer} » non répertorié`)
+  if (byCommunication && !item.partnerId) warnings.push('Client du virement inconnu')
 
   // Les factures réglées puis reprises dans le même avis restent dues : on ne
   // les lettre pas, sinon on solderait une créance que l'assureur n'a pas payée.
@@ -100,7 +106,7 @@ export function buildAdvicePlan(item: MatchedAdvicePayment): AdvicePostingPlan {
     bankDate:    item.bank?.date ?? '',
     amount:      item.bank?.amount ?? 0,
     payerLabel:  item.payerLabel,
-    partnerId:   payer?.partnerId ?? 0,
+    partnerId:   payer?.partnerId ?? item.partnerId ?? 0,
     mailId:      item.advice?.mailId ?? null,
     adviceRef:   item.advice?.reference ?? null,
     invoiceIds:  withInvoice.map(i => i.invoiceId as number),
@@ -108,6 +114,8 @@ export function buildAdvicePlan(item: MatchedAdvicePayment): AdvicePostingPlan {
     invoiceAmounts: withInvoice.map(i => r2(i.amount)),
     neutralisees,
     unallocated,
+    creditNotesToUnletter: item.creditNotesToUnletter || [],
+    byCommunication,
     warnings,
   }
 }
@@ -162,11 +170,23 @@ export async function postAdvicePlan(plan: AdvicePostingPlan): Promise<{ reconci
   const originalPartner = Array.isArray(suspense[0].partner_id) ? suspense[0].partner_id[0] : (suspense[0].partner_id || false)
 
   // Les créances encore ouvertes sur ces factures.
-  const receivables = await odooRpc<any[]>('account.move.line', 'search_read', [[
+  const readReceivables = () => odooRpc<any[]>('account.move.line', 'search_read', [[
     ['move_id', 'in', plan.invoiceIds],
     ['account_id', '=', RECEIVABLE],
     ['reconciled', '=', false],
   ]], { fields: ['id', 'amount_residual', 'move_id'], limit: 300 })
+  let receivables = await readReceivables()
+
+  // Notes de crédit non déduites par le client : encore lettrées, du bon montant ? (avant toute écriture)
+  const ncPlan = plan.creditNotesToUnletter || []
+  if (ncPlan.length) {
+    const ncl = await odooRpc<any[]>('account.move.line', 'read', [ncPlan.map(n => n.lineId)], { fields: ['id', 'reconciled', 'credit', 'account_id'] })
+    for (const n of ncPlan) {
+      const x = ncl.find(l => l.id === n.lineId)
+      if (!x?.reconciled || Math.abs(Number(x.credit) - n.amount) > 0.005) throw new Error(`La note de crédit ${n.name} a changé depuis l'affichage : recharge la page.`)
+    }
+  }
+  const ncSum = r2(ncPlan.reduce((s, n) => s + n.amount, 0))
 
   if (!receivables.length && plan.invoiceIds.length) {
     throw new Error('Aucune créance ouverte sur ces factures — elles ont déjà été soldées')
@@ -175,7 +195,7 @@ export async function postAdvicePlan(plan: AdvicePostingPlan): Promise<{ reconci
   // Ce que les créances doivent couvrir : le virement MOINS ce qui part en OD.
   const odSum   = r2(plan.unallocated.reduce((s, u) => s + u.amount, 0))
   const toCover = r2(plan.amount - odSum)
-  const openSum = r2(receivables.reduce((s, l) => s + Number(l.amount_residual || 0), 0))
+  const openSum = r2(receivables.reduce((s, l) => s + Number(l.amount_residual || 0), 0) + ncSum)
   // Chaque facture est soldée pour son reste dû : le total doit tomber sur le
   // virement, à l'arrondi près (une ligne d'écart d'arrondi l'absorbe).
   if (Math.abs(openSum - toCover) > 0.05) {
@@ -186,6 +206,13 @@ export async function postAdvicePlan(plan: AdvicePostingPlan): Promise<{ reconci
       + (soldees > 0 ? ` — ${soldees} facture(s) déjà soldée(s) par ailleurs` : '')
       + '. À traiter à la main.',
     )
+  }
+
+  // Délettrage des notes de crédit non déduites (règle Olivier 09/10/2026) : la facture redevient due en entier,
+  // la note de crédit reste ouverte pour le paiement où le client la déduira.
+  if (ncPlan.length) {
+    for (const n of ncPlan) await odooRpc('account.move.line', 'remove_move_reconcile', [[n.lineId]])
+    receivables = await readReceivables()
   }
 
   // Une ligne par facture : son reste dû, son client, son numéro.
@@ -344,7 +371,8 @@ async function documentBankMove(plan: AdvicePostingPlan, bankMoveId: number): Pr
     ? `Réglées puis reprises dans le même avis (elles restent dues) : `
       + plan.neutralisees.map(n => `${n.name} — ${n.amount.toFixed(2)} €`).join(', ')
     : undefined
-  await documentLettrage(bankMoveId, `Avis de paiement ${plan.payerLabel}${plan.adviceRef ? ` — ${plan.adviceRef}` : ''}${reprises ? ` · ${reprises}` : ''}`)
+  const ncNote = (plan.creditNotesToUnletter || []).map(n => `note de crédit ${n.name} non déduite par le client : délettrée de ${n.invoiceName}, reste ouverte`).join(' · ')
+  await documentLettrage(bankMoveId, `${plan.byCommunication ? 'Factures citées dans la communication du virement' : 'Avis de paiement'} ${plan.payerLabel}${plan.adviceRef ? ` — ${plan.adviceRef}` : ''}${reprises ? ` · ${reprises}` : ''}${ncNote ? ` · ${ncNote}` : ''}`)
 
   if (!plan.mailId) return
   const doc = await adviceDoc(plan.mailId)

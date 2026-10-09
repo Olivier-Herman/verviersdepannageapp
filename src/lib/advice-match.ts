@@ -90,6 +90,15 @@ export interface MatchedAdvicePayment {
   linesSum:    number
   delta:       number
   blocking:    string[]
+  /** Paiement retrouvé par la communication du virement (pas d'avis) — lib/finance/communication-match.ts. */
+  source?:     'avis' | 'communication'
+  communication?: string
+  /** Client du virement (paiement lu dans la communication : pas de payeur répertorié). */
+  partnerId?:  number
+  /** Informations non bloquantes (note de crédit non déduite…). */
+  notes?:      string[]
+  /** Notes de crédit à délettrer avant le lettrage (client qui ne les a pas déduites). */
+  creditNotesToUnletter?: { lineId: number; name: string; amount: number; invoiceName: string }[]
 }
 
 export interface AdviceReport {
@@ -343,6 +352,12 @@ export async function buildAdviceReport(
       linesSum, delta, blocking,
     })
   }
+
+  // Virements qui citent leurs factures dans la communication (Touring, particuliers…) : rapprochés par elle.
+  try {
+    const { communicationItems } = await import('@/lib/finance/communication-match')
+    for (const it of await communicationItems(sinceIso, usedLineIds)) { items.push(it); usedLineIds.add(it.bank!.lineId) }
+  } catch (e: any) { console.error('[advice-match] communication KO:', e?.message) }
 
   // Virements sans avis : l'utilisateur joindra le document.
   for (const l of lines) {

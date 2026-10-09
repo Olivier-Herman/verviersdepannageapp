@@ -91,7 +91,7 @@ export async function reconcileSource(source: 'paynovate' | 'sumup' | 'assureur'
   if (source === 'assureur') {
     const { buildAdviceReport } = await import('@/lib/advice-match')
     const { buildAdvicePlan, postAdvicePlan } = await import('@/lib/advice-post')
-    const { data: d } = await sb.from('payout_reconciliations').select('id').in('provider', ['ima', 'awp']).eq('status', 'done').eq('bank_line_id', id).limit(1)
+    const { data: d } = await sb.from('payout_reconciliations').select('id').in('provider', ['ima', 'awp', 'communication']).eq('status', 'done').eq('bank_line_id', id).limit(1)
     if (d?.length) throw new Error('Virement déjà rapproché.')
     const report = await buildAdviceReport(2)
     const item = report.items.find(i => i.bank?.lineId === id)

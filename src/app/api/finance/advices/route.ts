@@ -33,7 +33,7 @@ async function alreadyDone(): Promise<Set<number>> {
   const { data } = await sb
     .from('payout_reconciliations')
     .select('bank_line_id')
-    .in('provider', ['ima', 'awp'])
+    .in('provider', ['ima', 'awp', 'communication'])
     .eq('status', 'done')
     .order('id', { ascending: true })
   return new Set((data || []).map(r => Number(r.bank_line_id)).filter(Boolean))
