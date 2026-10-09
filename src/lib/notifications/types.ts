@@ -203,6 +203,22 @@ export const NOTIFICATION_TYPES: readonly NotificationType[] = [
     defaultEnabled:  true,
   },
   {
+    key:             'levee_saisie_alarme',
+    label:           'Levée de saisie à vérifier',
+    description:     'Une levée de saisie reçue par mail ne peut pas être rattachée seule (plusieurs fiches possibles, deuxième levée, ordre anormal…). Le premier qui décide ferme l’alarme pour tous.',
+    category:        'dispatcher',
+    applicableRoles: ['dispatcher', 'admin', 'superadmin'],
+    defaultEnabled:  true,
+  },
+  {
+    key:             'cron_alert',
+    label:           'Lecture automatique en panne',
+    description:     'Une lecture automatique (réquisitoires, levées de saisie) échoue : à vérifier avant que des documents ne se perdent.',
+    category:        'admin',
+    applicableRoles: ['admin', 'superadmin'],
+    defaultEnabled:  true,
+  },
+  {
     key:             'verification_parc',
     label:           'Vérification physique au parc',
     description:     'Demande de vérifier sur place la présence de véhicules (popup bloquant jusqu\'à confirmation).',

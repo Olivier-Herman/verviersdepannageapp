@@ -18,6 +18,13 @@ import { moveMessageToFolder, AUTO_MANAGED_FOLDER } from './graph'
 import { isRequisitoireDoc } from './doc'
 import { requalifySourceFromRequisitoire } from './requalify'
 
+/** Jour belge de réception du mail (AAAA-MM-JJ) : la date d'une levée qui n'en porte pas (Olivier 09/10/2026). */
+export function mailDate(receivedAt?: string | null): string | null {
+  if (!receivedAt) return null
+  const d = new Date(receivedAt)
+  return isNaN(d.getTime()) ? null : d.toLocaleDateString('sv-SE', { timeZone: 'Europe/Brussels' })
+}
+
 export interface AttachOptions {
   leveeDate?: string                       // YYYY-MM-DD (override UI)
   leveeType?: 'definitive' | 'temporaire'  // override UI
@@ -126,7 +133,7 @@ export async function attachRequisitoire(
   }
 
   // ── Validation spécifique levée : date obligatoire (pilote le gardiennage) ──
-  const leveeDate = (opts.leveeDate || ex.levee_date || '').trim()
+  const leveeDate = (opts.leveeDate || ex.levee_date || mailDate(intake.received_at) || '').trim()   // sans date : celle du mail
   const leveeType = (opts.leveeType || ex.levee_type || 'definitive') as 'definitive' | 'temporaire'
   if (isLevee) {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(leveeDate)) {
