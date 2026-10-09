@@ -29,6 +29,7 @@ import { sourceLabel } from '@/lib/missions/source-catalog'
 import { getBusinessNumber } from '@/lib/settings/business'
 import { odooRpc } from '@/lib/odoo'
 import { buildInvoiceMoveUrl } from '@/lib/odoo-quote'
+import { isLegBilled } from '@/lib/dossier/billed'
 
 export type WhoKind = 'owner' | 'mandate' | 'garage' | 'assistance' | 'transport'
 export type Payer = 'client' | 'parquet' | 'fdj'
@@ -152,7 +153,7 @@ export async function openLegs(missionId: string, m: any): Promise<{ legs: any[]
     return {
       mission_id: l.mission_id, letter: l.letter, kind: l.kind, title: l.title, subtitle: l.subtitle,
       amount_htva: r2(l.amount_htva || 0), billed_htva: r2(l.billed_htva || 0), billed_refs: l.billed_refs,
-      due_htva: l.nothing_to_bill ? 0 : due, nothing: l.nothing_to_bill, unknown: !!l.amount_unknown, amount_note: l.amount_note,
+      due_htva: l.nothing_to_bill || isLegBilled(l) ? 0 : due, nothing: l.nothing_to_bill, unknown: !!l.amount_unknown, amount_note: l.amount_note,
       billed_to_id: l.billed_to_id, billed_to_name: l.billed_to_name, channel: l.channel || 'odoo', poste,
     }
   })

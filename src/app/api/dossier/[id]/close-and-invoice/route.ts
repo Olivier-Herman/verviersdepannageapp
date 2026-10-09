@@ -18,6 +18,7 @@ import { isPreviewOn }          from '@/lib/feature-flags'
 import { buildDossier, invalidateDossierCache }         from '@/lib/dossier/build'
 import { invoiceDossierGroups } from '@/lib/dossier/invoice'
 import { exitParcNow }          from '@/lib/parc/exit-parc'
+import { isLegBilled } from '@/lib/dossier/billed'
 
 export const dynamic     = 'force-dynamic'
 export const maxDuration = 60
@@ -50,7 +51,7 @@ async function handlePOST(req: Request, { params }: { params: { id: string } }) 
     const d = await buildDossier(root.id)   // COMPLET : en léger, un remorquage non figé vaut 0 € et sortait de la sélection (2GUV245, 08/09)
     if (!d) throw new Error('Dossier illisible après clôture')
     const pickable = d.legs.filter(l => !l.nothing_to_bill && l.amount_htva > 0 && (l.channel || 'odoo') === 'odoo' && l.kind !== 'out'
-      && !(l.billed_refs.length > 0 && l.billed_htva >= l.amount_htva - 0.01))
+      && !isLegBilled(l))
     // Les groupes cochés passent tels quels (invoiceDossierGroups vérifie et explique) ; on y ajoute le gardiennage qui vient de se fermer.
     const ids = Array.from(new Set([...wanted, ...pickable.filter(l => l.kind === 'gard' || wanted.length === 0).map(l => l.mission_id)]))
     if (!ids.length) return NextResponse.json({ ok: true, closed: true, invoices: [], warnings: ['Dossier clôturé, mais rien à facturer (tout est déjà facturé ou sans frais).'] })

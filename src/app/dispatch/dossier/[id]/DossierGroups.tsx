@@ -36,6 +36,7 @@ const countryToIso = (name?: string | null) => {
 }
 import type { Dossier, DossierLeg } from '@/lib/dossier/build'
 import { useGardiennageRegimeLabels } from '@/lib/tarifs/gardiennage-labels-client'
+import { isLegBilled } from '@/lib/dossier/billed'
 
 const eur = (n: number) => n.toLocaleString('fr-BE', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' €'
 // TVAC = HTVA × 1,21, arrondi au cent — affiché à côté du HTVA (Olivier 08/09/2026).
@@ -134,7 +135,7 @@ export default function DossierGroups({ initial, fiches, shared, isSuperadmin, o
       await refresh()
     } finally { setVerifying(false) }
   }
-  const billable = d.legs.filter(l => !l.nothing_to_bill && !(l.billed_refs.length && l.billed_htva >= l.amount_htva - 0.01) && l.amount_htva > 0)
+  const billable = d.legs.filter(l => !l.nothing_to_bill && !isLegBilled(l) && l.amount_htva > 0)
   const toggle = (l: string) => setOpen(p => { const n = new Set(p); n.has(l) ? n.delete(l) : n.add(l); return n })
   const toggleEmbed = (l: string) => setEmbed(p => { const n = new Set(p); n.has(l) ? n.delete(l) : n.add(l); return n })
 
@@ -378,7 +379,7 @@ function Group({ d, leg, canBill, isOpen, onToggle, embedOpen, onToggleEmbed, fi
           </span>
         </span>
         <span className="flex items-center gap-2 flex-shrink-0 max-w-[45%] md:max-w-none">
-          {leg.billed_refs.length > 0 && leg.billed_htva >= leg.amount_htva - 0.01
+          {isLegBilled(leg)
             ? <Stamp refs={leg.billed_refs} />
             : <span className={`text-[11px] font-semibold rounded-full px-2 py-0.5 truncate ${TONE[leg.status_tone]}`} title={leg.status_label}>{leg.status_label}</span>}
           <span className="text-ink-muted text-sm">{isOpen ? '▾' : '▸'}</span>
@@ -1043,7 +1044,7 @@ function EstimationTable({ d, me }: { d: Dossier; me: string }) {
       <table className="w-full min-w-[420px]">
         <tbody>
           {d.legs.map(l => {
-            const done = l.billed_refs.length > 0 && l.billed_htva >= l.amount_htva - 0.01
+            const done = isLegBilled(l)
             return (
               <tr key={l.letter} className={`border-t ${l.letter === me ? 'bg-brand/10 text-ink font-semibold' : done ? 'text-ink-faint' : 'text-ink-secondary'}`}>
                 <td className="px-3 py-1">

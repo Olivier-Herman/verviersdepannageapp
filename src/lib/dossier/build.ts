@@ -45,6 +45,7 @@ export interface DossierLeg {
   amount_note:     string | null
   billed_htva:     number
   billed_refs:     string[]
+  billed_done?:    boolean   // facturé, écart toléré compris (lib/dossier/billed.ts)
   nothing_to_bill: string | null
   days:            number | null
   regime:          string | null
@@ -865,6 +866,10 @@ async function buildDossierUncached(anyMissionId: string, light: boolean, price 
     kind: (e._plain ? 'ignored' : e._other ? 'autre_dossier' : e._orphan ? (e._verify ? 'a_verifier' : 'orphan') : (e.status === 'cancelled' ? 'cancelled' : 'ignored')) as DossierEvent['kind'],
     mission_number: e.mission_number ?? null, status: e.status,
   })).sort((a, b) => (ts(a.at) || 0) - (ts(b.at) || 0))
+
+  // Groupe facturé, écart toléré compris (une seule règle pour tous les écrans).
+  const tolerance = await getBusinessNumber('facturation_tolerance_ecart').catch(() => 0.01)
+  for (const l of legs) l.billed_done = (l.billed_refs || []).length > 0 && l.billed_htva >= l.amount_htva - tolerance
 
   // ── Totaux + factures ────────────────────────────────────────────────────
   const estimated = r2(legs.reduce((s, l) => s + l.amount_htva, 0))

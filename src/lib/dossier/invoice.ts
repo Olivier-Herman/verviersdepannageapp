@@ -21,6 +21,7 @@ import { actionLines }              from '@/lib/dossier/lines'
 import { createDraftInvoice, createSaleOrder, findFleetVehicleByPlate, type QuoteLine, type QuoteSection } from '@/lib/odoo-quote'
 import { withOdooActor, attachFileToInvoice } from '@/lib/odoo'
 import { primeSourceCatalog } from '@/lib/missions/source-catalog'
+import { isLegBilled } from '@/lib/dossier/billed'
 
 /** Plaque belge « 1ABC123 » → variantes d'écriture présentes dans Odoo. */
 function plateVariants(raw: string): string[] {
@@ -127,7 +128,7 @@ async function invoiceDossierGroupsLocked(sb: any, d: Dossier, input: { anyMissi
     if (parquetName || ((l.channel || 'odoo') === 'parquet' && !l.billed_to_id)) { warnings.push(`${d.number ?? d.ref}${l.letter} : Parquet — passe par l'état de frais du module Saisie`); return false }
     // D10 : intervention autoroute Siabis dont la tarification (couvert / non couvert) n'est pas tranchée.
     if ((l.alerts || []).some(a => /Siabis autoroute/i.test(a))) { warnings.push(`${d.number ?? d.ref}${l.letter} : Siabis autoroute non tranché — décide couvert / non couvert sur la fiche avant de facturer`); return false }
-    if (l.billed_refs.length && l.billed_htva >= l.amount_htva - 0.01) { warnings.push(`${d.number}${l.letter} : déjà facturé (${l.billed_refs.join(', ')})`); return false }
+    if (isLegBilled(l)) { warnings.push(`${d.number}${l.letter} : déjà facturé (${l.billed_refs.join(', ')})`); return false }
     return true
   })
   if (!billable.length) throw new Error('Rien à facturer dans la sélection')

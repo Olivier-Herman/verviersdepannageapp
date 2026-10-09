@@ -18,7 +18,8 @@ const TONE = {
   ok: 'bg-emerald-600 text-white', warn: 'bg-amber-500 text-white', live: 'bg-blue-600 text-white', bad: 'bg-red-600 text-white',
 } as const
 
-export const isLegBilled = (l: DossierLeg) => l.billed_refs.length > 0 && l.billed_htva >= l.amount_htva - 0.01
+export { isLegBilled } from '@/lib/dossier/billed'
+import { isLegBilled } from '@/lib/dossier/billed'
 // Groupe Parquet (saisie) : cochable dès qu'un client (le propriétaire) est choisi — on peut facturer
 // le propriétaire sans levée de saisie ; seule la restitution l'exige (Olivier 08/09/2026).
 export const canPickLeg  = (l: DossierLeg) => !l.nothing_to_bill && !isLegBilled(l) && l.amount_htva > 0

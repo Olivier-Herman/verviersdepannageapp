@@ -20,6 +20,7 @@ import { authOptions }         from '@/lib/auth'
 import { createAdminClient }   from '@/lib/supabase'
 import { odooRpc }             from '@/lib/odoo'
 import { releaseParcAndShift } from '@/lib/parc/release'
+import { isLegBilled } from '@/lib/dossier/billed'
 
 export const dynamic     = 'force-dynamic'
 // force-no-store au niveau du SEGMENT : la lecture des fiches to_invoice a une
@@ -118,7 +119,7 @@ export async function POST(req: Request) {
       await sb.from('incoming_missions').update({ invoice_number: posted.name, invoice_odoo_id: posted.id, invoice_url: invoiceUrl(posted.id), invoiced_at: now, invoiced_by: user.id || null }).eq('id', m.id).is('invoice_number', null)
       await sb.from('mission_billed_items').update({ invoice_number: posted.name }).eq('invoice_odoo_id', posted.id).is('invoice_number', null)
       let allCovered = false
-      try { const { buildDossier } = await import('@/lib/dossier/build'); const dd = await buildDossier(m.id, { light: true }); allCovered = !!dd && !dd.state.open && dd.legs.filter(l => l.kind !== 'out').every(l => (l.billed_refs.length && l.billed_htva >= l.amount_htva - 0.01) || !!l.nothing_to_bill || (l.amount_htva === 0 && !l.amount_unknown)) } catch {}
+      try { const { buildDossier } = await import('@/lib/dossier/build'); const dd = await buildDossier(m.id, { light: true }); allCovered = !!dd && !dd.state.open && dd.legs.filter(l => l.kind !== 'out').every(l => isLegBilled(l) || !!l.nothing_to_bill || (l.amount_htva === 0 && !l.amount_unknown)) } catch {}
       // Fiche rattachée dont le dossier principal est déjà soldé ou annulé : plus rien à attendre.
       if (!allCovered && (m as any).parent_mission_id) {
         const { data: par } = await sb.from('incoming_missions').select('status').eq('id', (m as any).parent_mission_id).maybeSingle()
@@ -129,6 +130,9 @@ export async function POST(req: Request) {
       if (updErr) { none.push({ id: m.id, ref: m.external_id, plate: m.vehicle_plate, reason: updErr.message }); continue }
       try { await releaseParcAndShift(sb, m.id) } catch (e: any) { console.error('[verify-invoices] release parc KO:', e.message) }
       await sb.from('mission_logs').insert({ mission_id: m.id, actor_id: user.id || null, action: 'invoiced', notes: `Facturée n° ${posted.name} (dossier entièrement couvert — vérification Odoo groupée)` }).then(() => {}, () => {})
+      // Solde aussi la fiche principale et les fiches rattachées (relivraison…) : sans ça, le dossier restait
+      // dans « À facturer » alors que tout était facturé (Olivier 09/10/2026).
+      try { const { settleRootIfDone } = await import('@/lib/dossier/settle'); await settleRootIfDone(sb, m.id, user.id || null) } catch (e: any) { console.warn('[verify-invoices] settle KO:', e?.message) }
       completed.push({ id: m.id, ref: m.external_id, plate: m.vehicle_plate, number: posted.name })
     } else if (posted) {
       // Complète la fiche (idem « Facturation OK »).

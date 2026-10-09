@@ -70,7 +70,7 @@ export async function loadComexById(sb: Sb, dossiers: Dossier[]): Promise<ComexB
 
 // ── Mêmes règles que DossiersClient (fonctions pures sur les postes) ─────────
 const isOdoo       = (l: DossierLeg) => (l.channel || 'odoo') === 'odoo'
-const isLegBilled  = (l: DossierLeg) => l.billed_refs.length > 0 && l.billed_htva >= l.amount_htva - 0.01
+import { isLegBilled } from './billed'
 const canPickLeg   = (l: DossierLeg) => !l.nothing_to_bill && !isLegBilled(l) && l.amount_htva > 0
   && (isOdoo(l) || (!!l.billed_to_id && !/parquet|frais de justice|fdj\b/i.test(String(l.billed_to_name || ''))))
 const ready        = (d: Dossier) => d.legs.filter(l => isOdoo(l) && (canPickLeg(l) || (l.amount_unknown && !isLegBilled(l) && !l.nothing_to_bill)) && !(l.kind === 'gard' && l.open))
