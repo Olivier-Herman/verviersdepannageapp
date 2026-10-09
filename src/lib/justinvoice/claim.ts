@@ -46,9 +46,39 @@ function extractRef(text: string): string | null {
   return m ? m[0] : null
 }
 
+/**
+ * Adresse ACTIVE du flux de dépôt, lue sur la page « Start Claim » du portail (connexion par code mail).
+ * Le SPF Justice a déplacé le flux (09/10/2026 : ancienne adresse logic.azure « trigger is not enabled », nouvelle
+ * sur powerplatform.com) : l'adresse en dur ne suffit plus. La ligne commentée « // var requestURL » est ignorée.
+ */
+export async function resolveClaimFlowUrl(): Promise<string | null> {
+  const { justInvoiceLogin } = await import('./login')
+  let s
+  try { s = await justInvoiceLogin() } catch { await new Promise(r => setTimeout(r, 15000)); s = await justInvoiceLogin() }
+  const page = await (await s.fetch('https://justinvoice.just.fgov.be/overview/claim/')).text()
+  const live = page.replace(/\/\/[^\n]*?var requestURL[^;\n]*;/g, '')
+  return live.match(/var requestURL = "([^"]+)"/)?.[1] || null
+}
+
+async function storedFlowUrl(): Promise<string> {
+  try {
+    const { createAdminClient } = await import('@/lib/supabase')
+    const { data } = await createAdminClient().from('app_settings').select('value').eq('key', 'justinvoice_flow_url').maybeSingle()
+    return data?.value ? JSON.parse(data.value) : ''
+  } catch { return '' }
+}
+async function storeFlowUrl(url: string) {
+  try {
+    const { createAdminClient } = await import('@/lib/supabase')
+    await createAdminClient().from('app_settings').upsert({ key: 'justinvoice_flow_url', value: JSON.stringify(url) }, { onConflict: 'key' })
+  } catch { /* non bloquant */ }
+}
+
 /** Dépose la créance. NE crée une vraie créance QUE si appelé pour de bon. */
 export async function submitJustInvoiceClaim(input: JustInvoiceClaimInput): Promise<JustInvoiceClaimResult> {
-  if (!FLOW_URL) return { ok: false, status: 0, error: 'JUSTINGOV_FLOW_URL manquant (endpoint + sig)' }
+  let flowUrl = (await storedFlowUrl()) || FLOW_URL
+  if (!flowUrl) { flowUrl = (await resolveClaimFlowUrl()) || ''; if (flowUrl) await storeFlowUrl(flowUrl) }
+  if (!flowUrl) return { ok: false, status: 0, error: 'Adresse de dépôt JustInvoice introuvable' }
 
   const efB64 = input.etatFrais.toString('base64')
   const files = [
@@ -66,22 +96,27 @@ export async function submitJustInvoiceClaim(input: JustInvoiceClaimInput): Prom
     files,
   }
 
+  const post = (url: string) => fetch(url, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      'origin': 'https://justinvoice.just.fgov.be',
+      'referer': 'https://justinvoice.just.fgov.be/',
+    },
+    body: JSON.stringify(body),
+  })
   let res: Response
-  try {
-    res = await fetch(FLOW_URL, {
-      method: 'POST',
-      headers: {
-        'content-type': 'application/json',
-        'origin': 'https://justinvoice.just.fgov.be',
-        'referer': 'https://justinvoice.just.fgov.be/',
-      },
-      body: JSON.stringify(body),
-    })
-  } catch (e: any) {
-    return { ok: false, status: 0, error: `Réseau : ${e?.message || e}` }
+  try { res = await post(flowUrl) } catch (e: any) { return { ok: false, status: 0, error: `Réseau : ${e?.message || e}` } }
+  let raw = await res.text().catch(() => '')
+  // Flux déplacé / désactivé par le SPF : on relit l'adresse active sur le portail et on réessaie UNE fois
+  // (le refus arrive avant tout traitement : aucun risque de double créance).
+  if (!res.ok && /NotEnabled|WorkflowNotFound|AuthorizationFailed|DirectApiAuthorizationRequired/i.test(raw)) {
+    const fresh = await resolveClaimFlowUrl().catch(() => null)
+    if (fresh && fresh !== flowUrl) {
+      await storeFlowUrl(fresh)
+      try { res = await post(fresh); raw = await res.text().catch(() => '') } catch (e: any) { return { ok: false, status: 0, error: `Réseau : ${e?.message || e}` } }
+    }
   }
-
-  const raw = await res.text().catch(() => '')
-  if (!res.ok) return { ok: false, status: res.status, raw: raw.slice(0, 500), error: `HTTP ${res.status}` }
+  if (!res.ok) return { ok: false, status: res.status, raw: raw.slice(0, 500), error: `HTTP ${res.status}${/NotEnabled/i.test(raw) ? ' — adresse de dépôt désactivée par le SPF Justice' : ''}` }
   return { ok: true, status: res.status, ref: extractRef(raw), raw: raw.slice(0, 500) }
 }
