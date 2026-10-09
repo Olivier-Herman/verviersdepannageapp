@@ -205,6 +205,14 @@ export async function generateEtatFrais(
   if (mission?.dossier_number && mission.dossier_number !== d.dossier_ref) { d.dossier_ref = mission.dossier_number; await sb.from('saisie_dossiers').update({ dossier_ref: mission.dossier_number }).eq('id', d.id).then(() => {}, () => {}) }
   if (mission?.vehicle_plate) { d.vehicle_plate = mission.vehicle_plate; d.vehicle_brand = mission.vehicle_brand || d.vehicle_brand; d.vehicle_model = mission.vehicle_model || d.vehicle_model }
 
+  // UN SEUL ÉTAT DE FRAIS PAR SAISIE (Olivier 09/10/2026) : dépannage + gardiennage jusqu'au dernier jour du
+  // mois qui suit l'entrée au maximum. Le gardiennage au-delà n'est plus facturé : jamais de deuxième état de
+  // frais (renvoyer l'existant reste possible : resendEtatFrais).
+  if (persist) {
+    const { data: prevEf } = await sb.from('saisie_etats_frais').select('numero, status').eq('dossier_id', dossierId).neq('status', 'annule').limit(1)
+    if (prevEf?.length) throw new Error(`Un seul état de frais par saisie : ${prevEf[0].numero} est déjà établi. Le gardiennage au-delà n'est plus facturé — renvoie l'état de frais existant si besoin.`)
+  }
+
   // RÈGLE : on n'établit un état de frais que si le réquisitoire est au dossier —
   // un vrai document PDF/JPG, pas une capture de mail (Olivier 2026-09-03).
   // (L'aperçu reste autorisé pour vérifier le calcul.) Olivier 2026-08-09.
@@ -254,10 +262,12 @@ export async function generateEtatFrais(
   // dépasse la période standard — 1er EF : dernier jour du mois suivant l'entrée ;
   // suivants : dernière coupe + 2 mois — on s'arrête à la période standard et
   // sendEtatFrais enchaîne les EF suivants jusqu'à la coupe visée.
+  // Règle du 09/10/2026 : la période s'arrête au plus tard au dernier jour du mois qui suit l'entrée (ou plus tôt :
+  // remise Domaine, levée). Plus de série d'états de frais : ce qui dépasse n'est pas facturé.
+  const firstPeriodEnd = d.parked_at ? firstBillableDate(d.parked_at) : null
+  if (firstPeriodEnd && billingTo > firstPeriodEnd) billingTo = firstPeriodEnd
+  const capped = false
   const target = billingTo
-  const standardTo = d.parked_at ? (!d.billed_to_date ? firstBillableDate(d.parked_at) : addMonthsISO(d.billed_to_date, 2)) : null
-  let capped = false
-  if (standardTo && billingTo > standardTo && standardTo > String(billingFrom || '').slice(0, 10)) { billingTo = standardTo; capped = true }
   // GARDE-FOU : une coupe antérieure au début de période (ex. Date IN Domaine
   // encodée avant l'entrée en parc) produirait un état de frais absurde.
   if (billingFrom && billingTo < String(billingFrom).slice(0, 10)) {

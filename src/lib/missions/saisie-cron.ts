@@ -184,26 +184,24 @@ export async function runSaisieCron(sb: any): Promise<SaisieCronSummary> {
 
     // ── Détermine l'action DUE + sa date de coupe (calculée automatiquement) ──
     let action: { kind: 'cloture_domaine' | 'facturer' | 'gardiennage'; cut: string } | null = null
-    if (remise && remise <= today && (!d.billed_to_date || d.billed_to_date < remise)) {
-      action = { kind: 'cloture_domaine', cut: remise }                               // coupe = Date IN
-    } else if (remise && d.billed_to_date && d.billed_to_date >= remise) {
+    // UN SEUL ÉTAT DE FRAIS PAR SAISIE (Olivier 09/10/2026) : dès qu'il est établi (billed_to_date), plus rien ici —
+    // ni état de clôture Domaine, ni gardiennage tous les 2 mois, ni série jusqu'à la levée.
+    if (remise && remise <= today && !d.billed_to_date) {
+      action = { kind: 'cloture_domaine', cut: remise }                               // coupe = Date IN (plafonnée au 1er mois)
+    } else if (remise && d.billed_to_date) {
       // État de clôture déjà établi → le dossier bascule au Domaine (plus de gardiennage ici).
       await sb.from('saisie_dossiers').update({ recipient: 'domaine', pending_action: null, pending_action_at: null, updated_at: new Date().toISOString() }).eq('id', d.id)
       await checkForclusion(sb, d, out)
       continue
     } else if (d.state === 'en_parc' && d.parked_at && today >= endOfMonthAfter(d.parked_at)) {
       action = { kind: 'facturer', cut: endOfMonthAfter(d.parked_at) }                // dernier jour du mois suivant
-    } else if (d.billed_to_date && today >= addMonths(d.billed_to_date, 2)) {
-      // Gardiennage récurrent tous les 2 mois — MÊME en attente de retour Parquet
-      // (règle B, Olivier 2026-08-10). Dès que le 1er EF est fait (billed_to_date).
-      action = { kind: 'gardiennage', cut: addMonths(d.billed_to_date, 2) }           // dernière coupe + 2 mois
     }
 
     // Levée « frais de justice » : la série finale part jusqu'à la levée, sans
     // attendre la 1re période (Olivier 16/09/2026 : « le robot envoie tout seul »).
     const leveeFJ = mission?.levee_saisie_payer === 'frais_justice' && mission?.levee_saisie_type !== 'temporaire'
       ? String(mission.levee_saisie_date || mission.levee_saisie_at || '').slice(0, 10) : ''
-    if (!action && leveeFJ && (!d.billed_to_date || String(d.billed_to_date).slice(0, 10) < leveeFJ)) action = { kind: 'facturer', cut: leveeFJ }
+    if (!action && leveeFJ && !d.billed_to_date) action = { kind: 'facturer', cut: leveeFJ }
 
     await checkForclusion(sb, d, out)
 

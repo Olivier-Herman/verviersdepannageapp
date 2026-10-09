@@ -105,15 +105,13 @@ function readDossier(d: Dossier): Reading {
   const isFirstEf = !d.ef_number
   const billableFrom = firstBillable(d.parked_at)
   const notYetBillable = isFirstEf && !d.billed_to_date && !d.domaine_remise_date && !!billableFrom && todayISO() < billableFrom
-  const nextCut = d.billed_to_date ? addMonthsStr(d.billed_to_date, 2) : null
-  const recurringDue = !!nextCut && todayISO() >= nextCut
-  const clotureDue = !!d.domaine_remise_date && (!d.billed_to_date || String(d.billed_to_date).slice(0, 10) < String(d.domaine_remise_date).slice(0, 10))
-  const newEfDue = !!d.pending_action || recurringDue || clotureDue
+  // UN SEUL état de frais par saisie (Olivier 09/10/2026) : plus de coupe suivante, plus de gardiennage récurrent.
+  const nextCut: string | null = null
   const leveeFJ = !!d.levee_date && d.levee_payer === 'frais_justice'
   const leveeBlocked = !!d.levee_date && isFirstEf && !d.domaine_remise_date && !leveeFJ
   const leveeCovered = leveeFJ && !!d.billed_to_date && String(d.billed_to_date).slice(0, 10) >= String(d.levee_date).slice(0, 10)
   const canEstablish = d.requisitoire_ok && d.recipient !== 'domaine' && d.state !== 'clos' && !leveeBlocked
-    && (leveeFJ ? !leveeCovered : (isFirstEf ? !notYetBillable : newEfDue))
+    && isFirstEf && (leveeFJ ? !leveeCovered : !notYetBillable)
   const forclusion = Math.max(0, ...etats.map(e => e.status === 'envoye' ? (e.forclusion_level || 0) : 0))
   const closable = ['facture', 'gardiennage_recurrent', 'liquide'].includes(d.state) || leveeBlocked || d.recipient === 'domaine'
 
@@ -168,10 +166,8 @@ function readDossier(d: Dossier): Reading {
   if (latest?.status === 'liquide')
     return { ...base, who: 'nous', headline: 'Liquidation OK — créer la facture', detail: `${latest.numero} · ${EUR(latest.total_tvac)} TVAC${latest.liquide_at ? ` · liquidé le ${fmt(latest.liquide_at)}` : ''}`, primary: { label: 'Créer la facture', kind: 'facture', efId: latest.id, tone: 'teal' } }
   if (canEstablish) {
-    if (leveeFJ) return { ...base, who: 'nous', headline: `Levée le ${fmt(d.levee_date)} (frais de justice) — états de frais jusqu'à la levée`, detail: 'La série complète part en un mail au SPF Justice.', primary: { label: 'Établir et envoyer', kind: 'generate' } }
-    if (isFirstEf) return { ...base, who: 'nous', headline: 'Premier état de frais à établir', detail: `Dépannage + gardiennage jusqu'au ${fmt(billableFrom)}.`, primary: { label: 'Établir et envoyer', kind: 'generate' } }
-    if (d.pending_action === 'cloture_domaine') return { ...base, who: 'nous', headline: `Clôture Domaine — état de frais final jusqu'au ${fmt(d.domaine_remise_date)}`, primary: { label: 'Établir et envoyer', kind: 'generate' } }
-    return { ...base, who: 'nous', headline: `Gardiennage à facturer jusqu'au ${fmt(d.pending_action_at || nextCut)}`, detail: 'Période de 2 mois échue.', primary: { label: 'Établir et envoyer', kind: 'generate' } }
+    const cut = [billableFrom, leveeFJ ? String(d.levee_date).slice(0, 10) : null, d.domaine_remise_date ? String(d.domaine_remise_date).slice(0, 10) : null].filter(Boolean).sort()[0] as string
+    return { ...base, who: 'nous', headline: 'État de frais à établir', detail: `Dépannage + gardiennage jusqu'au ${fmt(cut)} — un seul état de frais par saisie, le gardiennage au-delà n'est plus facturé.`, primary: { label: 'Établir et envoyer', kind: 'generate' } }
   }
   if (leveeBlocked)
     return { ...base, who: 'nous', headline: `Levée de saisie le ${fmt(d.levee_date)} — plus rien au Parquet`, detail: 'Le gardiennage éventuel après la levée se facture au client depuis la fiche.', primary: { label: 'Clôturer', kind: 'close', tone: 'neutral' } }
@@ -179,8 +175,6 @@ function readDossier(d: Dossier): Reading {
     return { ...base, who: 'rien', headline: `Premier état de frais le ${fmt(billableFrom)}`, detail: `Dans ${Math.abs(daysUntil(billableFrom) || 0)} j — dernier jour du mois suivant la saisie.` }
   if (allFacture && closable)
     return { ...base, who: 'nous', headline: 'Tout est facturé — à clôturer', primary: { label: 'Clôturer', kind: 'close', tone: 'neutral' } }
-  if (nextCut)
-    return { ...base, who: 'rien', headline: `Prochain état de frais le ${fmt(nextCut)}`, detail: `Gardiennage facturé jusqu'au ${fmt(d.billed_to_date)}.` }
   return { ...base, who: 'rien', headline: 'Rien à faire pour l\'instant' }
 }
 
@@ -629,12 +623,12 @@ function GenerateModal({ d, r, onClose, onDone, onMsg }: {
   const isCloture = d.pending_action === 'cloture_domaine'
   const isFirst = !d.ef_number && !d.billed_to_date
   const leveeFJ = !!d.levee_date && d.levee_payer === 'frais_justice'
-  // Coupe standard (miroir serveur) : 1er EF = fin du mois suivant l'entrée ; suivants = +2 mois.
-  const standardCut = isFirst && d.parked_at ? (firstBillable(d.parked_at) || today) : d.billed_to_date ? addMonthsStr(d.billed_to_date, 2) : today
+  // UN SEUL état de frais par saisie (Olivier 09/10/2026) : jusqu'au dernier jour du mois qui suit l'entrée au maximum.
+  const standardCut = d.parked_at ? (firstBillable(d.parked_at) || today) : today
+  const alreadyDone = !isFirst
   // Coupe visée : Date IN, levée FJ… ; si elle dépasse la période standard, la série est enchaînée.
   const target = (isCloture && d.domaine_remise_date) ? String(d.domaine_remise_date).slice(0, 10) : leveeFJ ? String(d.levee_date).slice(0, 10) : d.pending_action_at ? String(d.pending_action_at).slice(0, 10) : standardCut
-  const periods: string[] = []
-  { let cut = standardCut < target ? standardCut : target; periods.push(cut); let g = 0; while (cut < target && g++ < 24) { cut = addMonthsStr(cut, 2); periods.push(cut < target ? cut : target) } }
+  const periods: string[] = [standardCut < target ? standardCut : target]
   const [recipient, setRecipient] = useState<Recipient>((isCloture || d.recipient === 'domaine') ? 'parquet' : d.recipient)
   const [roundTripKm, setRoundTripKm] = useState('')
   const [loading, setLoading] = useState<'' | 'preview' | 'send'>('')
@@ -692,7 +686,8 @@ function GenerateModal({ d, r, onClose, onDone, onMsg }: {
                 )
               })}
             </ol>
-            <div className="text-[11px] text-ink-faint mt-1.5">📌 Coupes calculées : fin du mois suivant l'entrée, puis tous les 2 mois{periods.length > 1 ? ' — envoyés dans le même mail' : ''}.</div>
+            <div className="text-[11px] text-ink-faint mt-1.5">📌 Un seul état de frais par saisie : dépannage + gardiennage jusqu'au dernier jour du mois qui suit l'entrée au maximum (ou la remise au Domaine / la levée si c'est plus tôt). Le gardiennage au-delà n'est plus facturé.</div>
+            {alreadyDone && <div className="mt-2 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-[12.5px] text-amber-900">L'état de frais de cette saisie est déjà établi{d.ef_number ? ` (${d.ef_number})` : ''} : on n'en fait plus d'autre. Pour le renvoyer, utilise « Renvoyer » sur l'état de frais existant.</div>}
           </div>
 
           {!d.depannage_billed && (
@@ -711,7 +706,7 @@ function GenerateModal({ d, r, onClose, onDone, onMsg }: {
           <button onClick={onClose} className="px-3 py-2 text-sm text-ink-secondary hover:text-ink">Annuler</button>
           <div className="flex items-center gap-2">
             <button disabled={!!loading} onClick={preview} className="px-3 py-2 bg-surface-2 hover:bg-surface-hover disabled:opacity-50 border text-ink-secondary rounded-lg text-sm font-semibold">{loading === 'preview' ? '…' : '👁 Aperçu'}</button>
-            <button disabled={!!loading} onClick={send} className="px-4 py-2 bg-brand hover:bg-brand-hover disabled:opacity-50 text-white rounded-lg text-sm font-semibold">{loading === 'send' ? 'Envoi…' : periods.length > 1 ? `📧 Envoyer les ${periods.length}` : '📧 Envoyer'}</button>
+            <button disabled={!!loading || alreadyDone} onClick={send} className="px-4 py-2 bg-brand hover:bg-brand-hover disabled:opacity-50 text-white rounded-lg text-sm font-semibold">{loading === 'send' ? 'Envoi…' : periods.length > 1 ? `📧 Envoyer les ${periods.length}` : '📧 Envoyer'}</button>
           </div>
         </div>
       </div>
