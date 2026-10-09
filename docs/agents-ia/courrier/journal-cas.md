@@ -335,3 +335,11 @@ vérifie, la décision, la règle à retenir pour les agents. Source de formatio
   135 €, PDF de l'ERP) en réponse depuis administration@ ; mail classé.
 - Règle : le justificatif d'une avance de fonds = la facture d'achat du fournisseur (ERP, achats, même montant) ; on la
   joint à la réponse. Signaler si cette facture d'achat n'est pas payée (ici « non payée »).
+
+### 37. Assistance qui ne reconnaît pas une facture (pas de n° de dossier, plaque inconnue)
+- Mail : VAB (15/06 + rappel 09/10), facture 2026/03/174 (379,96 €) : intervention Siabis non couverte, facturée par
+  erreur au client VAB et payée le jour même par Bancontact à la caisse fourrière par le client.
+- Décision d'Olivier : répondre directement depuis administration@ que la facture a été adressée par erreur et réglée sur
+  place, de ne pas en tenir compte ; rien à changer dans l'ERP (soldée) ; mail classé.
+- Règle : avant de répondre à un « dossier inconnu », vérifier le paiement de la facture ; facture soldée par le client
+  = erreur de destinataire → excuses + « ne pas en tenir compte », sans écriture.
