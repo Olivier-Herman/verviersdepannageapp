@@ -245,3 +245,14 @@ vérifie, la décision, la règle à retenir pour les agents. Source de formatio
   dossier 542250-26. Le mail de la taxation reste dans la boîte de réception. L'EDF-0053-B (15,10 €) reste tel quel.
 - Règle : un état de frais qui a déjà un dossier JustInvoice ne fait jamais l'objet d'un deuxième dépôt : à
   l'approbation, VD Soft envoie l'approbation et l'état de frais à jour dans le dossier existant (correction).
+
+### 27. Approbation par le Parquet d'une facture ERP d'avant le circuit des états de frais
+- Mail : Mme Houyon (Parquet de Verviers, 18/09) : « ci-joint l'approbation de la facture et de la NC » — facture
+  2026/05/522 (Audi Q2 1RTB478 volée, 230,84 €) et NC 2026-0150 (15,10 €), mention « ROJ-FJGK13 – Signature
+  électronique octroyée », réquisitoire joint.
+- Décision d'Olivier : **déposer sur JustInvoice** (facture approuvée + NC dans un seul PDF + réquisitoire) → dossier
+  **563218-26**, noté dans le fil de la facture dans l'ERP ; mail classé (Frais de Justice).
+- Règle : une approbation du Parquet part dans le circuit JustInvoice, même pour une facture faite dans l'ERP ; la NC
+  approuvée avec la facture est jointe au même document.
+- Incident : le SPF a déplacé l'adresse de dépôt (ancien flux désactivé) ; VD Soft relit désormais l'adresse active
+  sur le portail quand elle est refusée.
