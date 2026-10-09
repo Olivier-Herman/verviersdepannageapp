@@ -180,3 +180,12 @@ vérifie, la décision, la règle à retenir pour les agents. Source de formatio
 - Décision : dossier de l'ancien système, déjà facturé, véhicule abandonné → **classer sans réponse** (Archive).
 - Règle : une copie d'expertise sans demande, pour un dossier clos (facturé, abandon), se classe. L'agent ne
   répond pas et ne crée rien ; il ne cherche pas de fiche VD Soft pour un sinistre d'avant le 19/05/2026.
+
+### 21. Parquet : « pas de réquisitoire pour ces états de frais »
+- Mail : Mme Cornil (Parquet) à fourriere@ le 18/09 : réquisitoire demandé pour EDF-2026-0046, 0062 et 0063.
+- Constat : 0046 (Ford Mustang) et 0063 (Hyundai Getz 2GVE545) concernent des fiches requalifiées en **AVP** après
+  l'envoi ; 0062 (Peugeot 308) a une levée du 23/09 **à charge du client**. Aucun des trois n'aurait dû partir au Parquet.
+- Décision : **brouillon de réponse** depuis fourriere@ (vouvoiement, signature « Le service Fourrière ») demandant de
+  considérer les trois états de frais comme annulés, avec la raison pour chacun ; Olivier relit et envoie.
+- Règle : un état de frais parti pour un AVP, ou pour des frais finalement à charge du propriétaire, se fait annuler
+  auprès du Parquet ; il n'y a pas de réquisitoire à fournir. L'agent prépare le brouillon, il n'envoie pas.
