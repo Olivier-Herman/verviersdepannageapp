@@ -16,7 +16,7 @@
 // Dédup : une ligne saisie_mail_events par mail (source_email_id unique).
 // Appelé par le cron poll-requisitoires (toutes les 10 min, même boîte).
 
-import { listInboxMessages, getMessageBody, getPdfAttachments, type GraphMessage } from '@/lib/requisitoire/graph'
+import { listInboxMessages, getMessageBody, getPdfAttachments, moveMessageToFolder, AUTO_MANAGED_FOLDER, type GraphMessage } from '@/lib/requisitoire/graph'
 import { FOURRIERE_MAILBOX } from '@/lib/requisitoire/intake'
 import { splitAndDispatch } from '@/lib/missions/saisie-scan-split'
 import { createSaisieParquetInvoice } from '@/lib/missions/saisie-odoo-invoice'
@@ -29,6 +29,17 @@ const MAX_SCANS   = 3          // PDF passés à Claude par run (coût)
 
 export interface SaisieMailWatchSummary {
   scanned: number; liquidated: number; statuts: number; retours: number; ignored: number; errors: string[]
+}
+
+/**
+ * Seule la partie ÉCRITE PAR LE PARQUET compte : notre envoi cité en dessous contient « signé, pour accord ou
+ * pour refus » et faisait passer toute réponse en refus (EDF-2026-0035, « ci-joint l'approbation de votre
+ * facture », classé refusé le 11/09/2026 ; Olivier 09/10/2026).
+ */
+export function ownPart(text: string): string {
+  const t = String(text || '')
+  const cut = t.search(/(?:^|\s)(?:De|From)\s?:\s[\s\S]{0,300}?(?:Envoy[ée]|Sent|Date)\s?:|-{3,}\s*(?:Message d'origine|Original Message)|_{10,}/i)
+  return cut > 0 ? t.slice(0, cut) : t
 }
 
 function stripHtml(html: string): string {
@@ -46,6 +57,11 @@ async function recordEvent(sb: any, msg: GraphMessage, kind: string, ref: string
     mailbox: FOURRIERE_MAILBOX, source_email_id: msg.id, kind, ref, subject: msg.subject, from_addr: msg.from,
     received_at: msg.receivedDateTime, ef_id: efId || null, outcome,
   }).then(() => {}, () => {})
+}
+
+/** Range un mail entièrement traité dans « Mail auto-géré » (comme la lecture des réquisitoires). */
+async function filed(msg: GraphMessage) {
+  await moveMessageToFolder(FOURRIERE_MAILBOX, msg.id, AUTO_MANAGED_FOLDER).catch(() => {})
 }
 
 // ── A. Changement de statut JustInvoice ─────────────────────────────────────
@@ -81,6 +97,8 @@ async function handleStatut(sb: any, msg: GraphMessage, ref: string, out: Saisie
     } else factureMsg = `déjà « ${ef.status} »`
     await recordEvent(sb, msg, 'liquidation', ref, factureMsg, ef.id)
     out.liquidated++
+    // Réglé jusqu'au bout (facture brouillon créée) → rangé (Olivier 09/10/2026). Sinon, reste à lire.
+    if (/créée/.test(factureMsg)) await filed(msg)
     const { data: d } = await sb.from('saisie_dossiers').select('vehicle_plate, mission_id').eq('id', ef.dossier_id).maybeSingle()
     if (d?.mission_id) {
       await sb.from('mission_remarks').insert({ mission_id: d.mission_id, text: `⚖️ JustInvoice ${ref} : transféré au bureau de liquidation — ${factureMsg}` }).then(() => {}, () => {})
@@ -118,14 +136,15 @@ async function handleRetour(sb: any, msg: GraphMessage, out: SaisieMailWatchSumm
   // dépôt automatique n'est fait si le mail est négatif ou si une pièce n'est
   // pas reconnue (réquisitoire renvoyé = signe de retour, pas d'accord).
   let mailText = ''
-  try { const b = await getMessageBody(FOURRIERE_MAILBOX, msg.id); mailText = b.contentType === 'html' ? stripHtml(b.content) : b.content } catch { /* sans corps → prudence ci-dessous */ }
-  const RE_REFUS = /ne correspond(ent)? pas|retourne le tout|vous retourne|refus|rejet|ne l[’']imprime pas|pi[eè]ces ad[eé]quates|incorrect|erron[eé]|manquant|ne peut (pas )?[eê]tre (accept|trait)|à corriger|a corriger|non conforme/i
+  try { const b = await getMessageBody(FOURRIERE_MAILBOX, msg.id); mailText = ownPart(b.contentType === 'html' ? stripHtml(b.content) : b.content) } catch { /* sans corps → prudence ci-dessous */ }
+  const RE_REFUS = /ne correspond(ent)? pas|retourne le tout|vous retourne|refus|rejet|d[ée]j[àa] pay[ée]|ne doit (donc )?pas nous [êe]tre adress|ne l[’']imprime pas|pi[eè]ces ad[eé]quates|incorrect|erron[eé]|manquant|ne peut (pas )?[eê]tre (accept|trait)|à corriger|a corriger|non conforme/i
   const mailRefus = RE_REFUS.test(mailText)
   const mailRefusExcerpt = mailRefus ? (mailText.match(new RegExp(`.{0,80}${RE_REFUS.source}.{0,120}`, 'i'))?.[0] || '').replace(/\s+/g, ' ').trim().slice(0, 240) : ''
 
   let attached = 0, refused = 0, unmatched = 0
   const notes: string[] = []
   const deposited: string[] = []
+  let depFail = false
   for (const pdf of pdfs.slice(0, 3)) {
     const res = await splitAndDispatch(sb, Buffer.from(pdf.contentBytes, 'base64'), null)
     attached += res.attached; refused += res.refused; unmatched += res.unmatched
@@ -149,11 +168,15 @@ async function handleRetour(sb: any, msg: GraphMessage, out: SaisieMailWatchSumm
         if (ef) {
           const dep = await depositEtatFrais(sb, r.dossierId, ef.id)
           if (dep.ok) deposited.push(`${r.numero} → ${dep.ref || 'déposé'}`)
-          else out.errors.push(`${r.numero} : dépôt JustInvoice KO — ${dep.error}`)
+          else { depFail = true; out.errors.push(`${r.numero} : dépôt JustInvoice KO — ${dep.error}`) }
         }
       }
     }
   }
+  // Approbation reconnue ET déposée sur JustInvoice, sans refus ni échec → rangé (Olivier 09/10/2026).
+  // Refus, correction, pièce non reconnue sans dépôt, dépôt en échec : le mail reste dans la boîte de réception.
+  if (deposited.length && !refused && !mailRefus && !depFail) await filed(msg)
+
   const outcome = `${attached} accepté(s), ${refused} refus, ${unmatched} non reconnu(s)${deposited.length ? ' ; déposés : ' + deposited.join(', ') : ''} — ${notes.join(' | ')}`.slice(0, 900)
   await recordEvent(sb, msg, 'retour_signe', notes.find(n => RE_EDF.test(n))?.match(RE_EDF)?.[0] || null, outcome)
   if (attached + refused + unmatched === 0) { out.ignored++; return }
