@@ -421,3 +421,19 @@ vérifie, la décision, la règle à retenir pour les agents. Source de formatio
   demande de l'assureur, preuve de paiement, attestation de plainte ; fiche sortie du parc à la date réelle d'enlèvement.
 - Règle : un PV d'expertise ou une demande de l'assureur sur un véhicule qui n'est plus chez nous → chercher d'abord
   le déroulé (plainte, échanges) avant de proposer une écriture ; ne jamais lire un paiement à un assureur comme un achat.
+
+### 47. Tri du dossier « 0 - Scan Facturation » d'info@ (09/10)
+- Approbation d'un état de frais signée par le juge et reçue sur info@ (EDF-2026-0074) : la faire suivre à fourriere@ pour
+  qu'elle entre dans le circuit des états de frais (le robot ne lit que fourriere@).
+- Assistance qui demande la prise en charge d'une mission encodée à la main sans document (Touring 2026/09/310) :
+  pas de prise en charge = NC totale, envoyée par Peppol (2026-0342).
+- Client qui croit à une double facturation alors que l'une est la prestation et l'autre l'avance de fonds du garage
+  (ACL 2026/09/258 + 2026/09/497) : répondre en expliquant les deux prestations ; les deux restent dues.
+- Facture au nom d'une société qui n'est pas dans l'ERP (Edenred → Car Parts BE0760371716) : pas pour nous, mail supprimé.
+- Facture privée d'un proche (SWDE au nom de Joseph Higny) : dans « 0 - A trier (Momo) ».
+- Double paiement déjà repris dans le tableau des doubles paiements (Tinlot) : attend la décision de Momo → classé.
+- Fournisseur avec qui Olivier est en contact (AS 24, prélèvement refusé, payé en instantané) → classé.
+- Rappel de facture déjà payée, demande déjà répondue, demande inconnue sans suite → classé.
+- Détail de paiement d'une assistance qui couvre des factures d'avant l'ERP (VAB n° 547, 29/10/2025) : solder les
+  factures reprises encore ouvertes par une OD au compte des paiements entrants en suspens (OD1/2025/00117,
+  2 288,87 €), puis envoyer le détail à la comptable.
