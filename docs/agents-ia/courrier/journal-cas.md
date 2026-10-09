@@ -156,3 +156,13 @@ vérifie, la décision, la règle à retenir pour les agents. Source de formatio
   oui, nouvelle adresse Lefin 12, 4860 Pepinster ; classer.
 - Règles : pièce reçue pour un virement sans facture → encoder la facture à la date du virement et lettrer ; mettre à
   jour le dossier de la comptable ; une adresse obsolète chez un fournisseur se corrige dès qu'il la propose.
+
+### 18. Assistance qui paie une facture en entier sans déduire notre note de crédit
+- Banque : Touring, 37 043,10 € le 02/10 (détail « Détails de paiement » dans info@ le 05/10, réf. 63000026358) pour
+  9 factures, dont la 2026/08/200 à 514,25 € alors que la NC 2026-0278 (101,64 €, demandée par Touring le 02/09,
+  émise le 23/09) y était lettrée → 101,64 € restaient en compte d'attente.
+- Décision : **délettrer la NC** de la 2026/08/200 ; le reste du virement solde la 2026/08/200 en entier ; la NC
+  reste **ouverte** et se lettrera quand Touring la déduira d'un prochain paiement.
+- Règle : le détail de paiement de l'assistance fait foi ; pas de remboursement, pas d'OD de trop-perçu, pas de mail.
+  Communication bancaire : numéros parfois collés ou coupés par la banque → retirer les espaces et vérifier chaque
+  numéro contre les factures existantes.
