@@ -215,3 +215,10 @@ vérifie, la décision, la règle à retenir pour les agents. Source de formatio
   connu) → rattaché à la fiche, **EDF-2026-0098** (prise en charge + gardiennage du 11/05 au 10/06, 170,44 € TVAC)
   envoyé à Mme Cornil en réponse à son mail, avec le réquisitoire. Règle : pour un dossier legacy sans
   réquisitoire, demander à Olivier de chercher dans l'ancien système avant de répondre « en attente ».
+
+### 24. JustInvoice « pages blanches » sur un dépôt inconnu de VD Soft
+- Mail : bureau de taxation de Liège (16/09) : dossier 527906-26, « il n'y a que des pages blanches dans vos pièces
+  jointes ». Dépôt du 10/08, rattaché à aucun état de frais de VD Soft.
+- Décision : c'était un **dépôt de test** (pages vides) → **classer sans suite** (Frais de Justice), sans réponse.
+- Règle : un dossier JustInvoice inconnu de VD Soft, daté de la période des essais (août 2026), est un test ; l'agent
+  classe. S'il ne sait pas relier un dossier JustInvoice à un état de frais, il demande à Olivier avant d'agir.
