@@ -201,3 +201,13 @@ vérifie, la décision, la règle à retenir pour les agents. Source de formatio
   pas de temps). Dans le délai → l'état de frais suit le circuit normal.
 - Ce que fait l'agent : la vérification (VD Soft, ERP, mails envoyés), puis un brouillon de réponse depuis
   fourriere@ (vouvoiement, « Le service Fourrière ») ; il n'envoie pas et ne génère pas d'état de frais hors délai.
+
+### 23. Parquet : facture réclamée, dossier dans le délai mais sans réquisitoire
+- Mail : Mme Cornil (08/10) : pas reçu de facture pour le dossier 26VB1918 (Nissan Juke 2BMT401, saisie du 11/05/2026
+  avenue de Spa, remise au Finshop le 10/06/2026). Délai de 6 mois non dépassé (jusqu'au 11/11/2026).
+- Constat : aucun réquisitoire (fiche, file des réquisitoires, boîtes fourriere@, info@, administration@, mobi@).
+- Décision : **répondre que nous sommes toujours dans l'attente du réquisitoire et que sans lui nous ne pouvons pas
+  facturer** ; l'état de frais suivra à sa réception (brouillon depuis fourriere@, Olivier envoie).
+- Règle : pas d'état de frais sans réquisitoire (PDF ou JPG), même quand le Parquet le réclame. Nouvelle règle des
+  états de frais (09/10) : UN seul état de frais par saisie — dépannage + gardiennage jusqu'au dernier jour du mois
+  qui suit l'entrée au maximum (ou la remise Domaine / la levée si plus tôt) ; le gardiennage au-delà n'est plus facturé.
