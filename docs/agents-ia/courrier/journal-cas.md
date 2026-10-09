@@ -395,3 +395,12 @@ vérifie, la décision, la règle à retenir pour les agents. Source de formatio
 - Règle : quand le payeur demande une facture à son nom (« pour le compte de »), NC totale + nouvelle facture, paiement
   basculé ; joindre la facture et la NC dans la réponse.
 - Rappel d'Olivier (cas 42) : sans pointage ni photo, aucun appui pour contester une assistance → on crédite.
+
+### 44. Dossier suivi par un collègue, resté sans réponse (police, véhicule abandonné)
+- Mails : inspecteur Alen (Police de la Route, 14→30/09) sur une SEAT Toledo dépannée le 12/09 (plaque ALZSP-218) ; Jona a
+  répondu jusqu'au 30/09 ; la dernière question (« que préconise la commune de Theux ? ») est restée sans réponse ; aucune
+  fiche VD Soft.
+- Décision d'Olivier : **demander à Jona** (mail depuis mobi@) s'il suit toujours le dossier, où il en est, et de classer
+  si c'est clôturé ; **message bloquant** sur son écran le lendemain à 9 h 15 (« regarde tes mails et réponds »), avec
+  confirmation « J'ai lu ce message » (nouvelle option « Message bloquant » des annonces, 09/10).
+- Règle : un dossier qu'un collègue suit se renvoie à ce collègue ; l'agent ne répond pas à sa place à un tiers.
