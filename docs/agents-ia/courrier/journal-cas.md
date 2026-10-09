@@ -287,3 +287,9 @@ vérifie, la décision, la règle à retenir pour les agents. Source de formatio
   facture + la NC (un seul PDF) envoyées en correction dans le dossier JustInvoice → « Correction soumise ».
 - Règle : on facture au tarif de l'année de la prestation (enlèvement : majoré le samedi/dimanche/nuit). Une
   correction de montant = NC totale + nouvelle facture, jamais une NC partielle.
+
+### 31. JustInvoice : « réquisitoire non signé + heure d'enlèvement manquante (tarif de nuit) »
+- Mail : taxation (01/07), dossier 458918-26, facture 2026/02/270 (226,26 €, enlèvement majoré 2025 du 05/12/2025).
+- Décision d'Olivier : ni réquisitoire signé ni heure dans l'ancien système → **on annule en interne** : NC totale
+  2026-0334, générée sans envoi, lettrée ; pas de nouvelle facture, rien vers JustInvoice ; mail classé.
+- Règle : quand la pièce exigée par la taxation est introuvable, on annule en interne (NC sans envoi), sans répondre.
