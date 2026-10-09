@@ -410,3 +410,14 @@ vérifie, la décision, la règle à retenir pour les agents. Source de formatio
 - Décision d'Olivier : **on accepte** ; réponse **par mail « pour accord »** depuis info@ (pas de PDF signé), en citant
   leurs références ; pas de note sur la fiche : la case à cocher du forfait expert sur la fiche suffit ; mail classé.
 - Règle : un accord de forfait d'entreposage proposé par l'expert se confirme par mail en reprenant ses références.
+
+### 46. Épave enlevée avec un faux bon d'enlèvement : l'assureur réclame la valeur de l'épave
+- Mails : Cimex (PV d'expertise, épave vendue par Ethias), M. Ledur d'Ethias (22/09 : remboursement de la meilleure offre
+  4 181 € TVAC, communication structurée), preuve de paiement du 29/09 ; Dacia Sandero 2EUD276 (fiche 10097098).
+- Déroulé (plainte du 23/09, PV VE.20.L1.018013/2026) : le 20/08, un homme muni d'un faux bon d'enlèvement Informex a payé
+  le forfait d'entreposage (250 €, facture 2026/08/507 au nom de GLOBAL AUTOEXPORT) et est reparti avec l'épave.
+- Décisions d'Olivier : le forfait payé par la personne qui a enlevé le véhicule reste acquis, Ethias ne doit plus rien
+  pour l'entreposage ; le virement de 4 181 € est un dédommagement (pas un achat, pas de TVA) ; pièces à la comptable :
+  demande de l'assureur, preuve de paiement, attestation de plainte ; fiche sortie du parc à la date réelle d'enlèvement.
+- Règle : un PV d'expertise ou une demande de l'assureur sur un véhicule qui n'est plus chez nous → chercher d'abord
+  le déroulé (plainte, échanges) avant de proposer une écriture ; ne jamais lire un paiement à un assureur comme un achat.
