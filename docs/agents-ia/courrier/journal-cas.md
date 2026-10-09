@@ -293,3 +293,10 @@ vérifie, la décision, la règle à retenir pour les agents. Source de formatio
 - Décision d'Olivier : ni réquisitoire signé ni heure dans l'ancien système → **on annule en interne** : NC totale
   2026-0334, générée sans envoi, lettrée ; pas de nouvelle facture, rien vers JustInvoice ; mail classé.
 - Règle : quand la pièce exigée par la taxation est introuvable, on annule en interne (NC sans envoi), sans répondre.
+
+### 32. JustInvoice : correction demandée sur une facture émise hors délai
+- Mail : taxation (21/05), dossier 428401-26, facture 2026/01/646 (170,79 €) : dates d'entreposage manquantes.
+- Constat : prestation du 26/07/2025 (réquisitoire), facture du 30/01/2026 → émise après les 6 mois.
+- Décision d'Olivier : **annuler en interne** (NC totale 2026-0335 sans envoi, lettrée), pas de correction ; mail classé.
+- Règle : avant de corriger une facture à la demande de la taxation, vérifier le délai (6 mois entre le début de
+  la prestation et la facture). Facture hors délai → annulation interne plutôt que correction.
