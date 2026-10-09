@@ -343,3 +343,14 @@ vérifie, la décision, la règle à retenir pour les agents. Source de formatio
   place, de ne pas en tenir compte ; rien à changer dans l'ERP (soldée) ; mail classé.
 - Règle : avant de répondre à un « dossier inconnu », vérifier le paiement de la facture ; facture soldée par le client
   = erreur de destinataire → excuses + « ne pas en tenir compte », sans écriture.
+
+### 38. Comptable : « CAISSE VD » (remarques sur la caisse)
+- Mail : Maureen (THG, 01/10) : 570 € de retraits d'espèces 2025 sans justificatif ; paiement Minkailov 220 € en double ;
+  4 encaissements chauffeur « restés ouverts » (à mettre dans Scrada).
+- Décisions d'Olivier (09/10) : 570 € → **pas pour l'instant** ; Minkailov (payé une seule fois, par carte via Paynovate)
+  → **opération inverse dans Scrada** (−220 €, remarque explicative) ; encaissements → **informer Maureen de ce qui est
+  déjà fait** (les 4 étaient encodés dans Scrada les 06-07/10), le reste suit la décision de Momo (circuit des espèces).
+- Réponse envoyée depuis mobi@ (tutoiement, « Victor — Assistant IA de Mobi ») + complément.
+- Règles : on n'écrit à la comptable que ce qui est fait ; un paiement carte n'a rien à faire dans le livre de caisse
+  Scrada → ligne inverse ; vérifier dans l'ERP (rapprochement avec un relevé SCRA) avant de dire qu'un encaissement
+  manque. Piège : répondre à un message ENVOYÉ renvoie vers soi-même → répondre au mail reçu de la comptable.
