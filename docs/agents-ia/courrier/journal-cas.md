@@ -319,3 +319,11 @@ vérifie, la décision, la règle à retenir pour les agents. Source de formatio
   2026/10/195 (13 jours), total identique ; les trois en un PDF déposé en correction → « Correction soumise ».
 - Règle : la taxation plafonne à 62 jours de gardiennage par facture ; quand le dossier a l'accord et est dans le délai,
   on répartit le total sur plusieurs factures sans rien perdre.
+
+### 35. Tri « À traiter par Mobi » (fourriere@) — classements sans décision
+- Classés sans action : mails du Domaine déjà lus par VD Soft (Dates IN, ventes d'épaves) → « Mail auto-géré » ;
+  inventaires de parc, informations (liquidation, délibération AVP de la Ville), directive Peppol → Archive ;
+  approbations anciennes, levée d'un véhicule déjà sorti, demande de réquisitoire pour une facture payée → Frais de Justice.
+- Demande d'information vieille de 3 mois d'une secrétaire du Parquet partie en congé (« vas-tu faire les factures ? »)
+  → **classée sans réponse** (Olivier 09/10).
+- Règle : un mail dont l'objet est déjà réglé dans VD Soft ou l'ERP (lu, sorti, payé, annulé) se classe sans réponse.
