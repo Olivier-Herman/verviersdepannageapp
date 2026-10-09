@@ -378,3 +378,10 @@ vérifie, la décision, la règle à retenir pour les agents. Source de formatio
 - Décision d'Olivier : NC totale 2026-0339 **envoyée par Peppol** à VAB ; **on abandonne** le montant (client
   néerlandais sans coordonnées) ; mail classé. Références Peppol VAB : on continue comme aujourd'hui (006463).
 - Règle : Siabis non couvert = encaisser sur place ; si ça n'a pas été fait et que le client est injoignable, on abandonne.
+
+### 42. IMA : « vous n'avez pas été mandatés » (note de crédit totale demandée)
+- Mail : IMA (29/09), facture 2026/07/088 (Ethias, 201,77 €, dossier B61189544) : remorquage VW 2EEA020 Route du Circuit
+  Malmedy, confirmé par IMA le 30/06, mais fiche sans arrivée ni chargement (statut forcé « à facturer » par le dispatch).
+- Décision d'Olivier : NC totale 2026-0340 **envoyée par Peppol** ; mail classé.
+- Règle : si la fiche ne prouve pas l'intervention (pas d'arrivée, pas de photos) et que l'assistance conteste, on accorde
+  la note de crédit demandée.
