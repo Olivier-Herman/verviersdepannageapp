@@ -222,3 +222,14 @@ vérifie, la décision, la règle à retenir pour les agents. Source de formatio
 - Décision : c'était un **dépôt de test** (pages vides) → **classer sans suite** (Frais de Justice), sans réponse.
 - Règle : un dossier JustInvoice inconnu de VD Soft, daté de la période des essais (août 2026), est un test ; l'agent
   classe. S'il ne sait pas relier un dossier JustInvoice à un état de frais, il demande à Olivier avant d'agir.
+
+### 25. JustInvoice « besoin d'une correction » sur un état de frais déjà validé
+- Mail : bureau de taxation de Liège (18/09), dossier 535059-26 (EDF-2026-0024, VW Golf 2HSL359) : la saisie date du 25/06
+  selon le réquisitoire (page 2) alors que l'état de frais dit 24/06 ; le gardiennage ne commence que le lendemain.
+- Décision d'Olivier : **on suit leur demande** — un dossier arrivé sur JustInvoice a été validé par le Parquet / les
+  frais de justice ; on **corrige l'état de frais** (même numéro) et on **renvoie la version corrigée** dans le dossier
+  JustInvoice. Ici : saisie 25/06, gardiennage du 26/06 au 31/07 = 36 jours, 181,77 € TVAC au lieu de 183,65 €.
+- Règle : pas de contestation ni de retrait d'un dossier JustInvoice ; on applique la correction demandée, même quand
+  nos propres données disent autre chose (ici le réquisitoire se contredit : 24/06 en page 1, 25/06 en page 2).
+- Ce que fait l'agent : met à jour l'état de frais (période, lignes, totaux), produit le PDF corrigé, le prépare pour le
+  dépôt ; signale si une facture ERP a déjà été émise sur l'ancien montant (à corriger par note de crédit sur accord).
