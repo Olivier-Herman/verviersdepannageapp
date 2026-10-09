@@ -256,3 +256,15 @@ vérifie, la décision, la règle à retenir pour les agents. Source de formatio
   approuvée avec la facture est jointe au même document.
 - Incident : le SPF a déplacé l'adresse de dépôt (ancien flux désactivé) ; VD Soft relit désormais l'adresse active
   sur le portail quand elle est refusée.
+
+### 28. JustInvoice « dossier hors délai, merci de transmettre la preuve d'envoi dans le délai légal de 6 mois »
+- Mails : bureau de taxation, 02→08/07/2026, 39 dossiers (458926-26 … 458986-26) déposés fin juin pour des factures
+  de 2022-2023 adressées au Parquet.
+- Décision d'Olivier (09/10) : **on annule tout simplement** — pas de preuve d'envoi, pas de contestation.
+- Retrouver la facture : par la **référence** (l'ancien numéro, ex. 20234714), pas par le numéro de l'ERP : les
+  factures anciennes ont été importées sous un numéro 20257xxx avec l'ancien numéro en référence.
+- Constat : 37 déjà annulées (notes de crédit, dont 9 « Hors délai » du 09/07) ; 2 encore ouvertes → notes de crédit
+  2026-0329 (253,77 €, réf. 20232348) et 2026-0330 (54,12 €, réf. 20235679), motif « Hors délai · <référence> »,
+  lettrées. Mails classés dans Frais de Justice.
+- Règle : dossier JustInvoice déclaré hors délai → note de crédit totale « Hors délai · <référence> » sur la facture
+  si elle est encore ouverte, puis classer. L'agent prépare, Olivier valide (écriture comptable).
