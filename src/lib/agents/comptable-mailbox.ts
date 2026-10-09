@@ -4,8 +4,9 @@
 // comptable — décision d'Olivier du 05/10/2026, à respecter AVANT tout usage :
 //   1. seul l'agent comptable (Victor depuis le 07/10/2026, Benoît avant) y touche ; tout autre agent est refusé et
 //      journalisé. Olivier lui-même (sa session) passe aussi par ici ;
-//   2. lecture limitée au dossier « Comptable THG » et, pour les mails envoyés,
-//      aux seuls messages dont TOUS les destinataires sont du domaine du cabinet ;
+//   2. lecture limitée au dossier « Comptable THG », à son archive « THG » (échanges traités, ajoutée par
+//      Olivier le 09/10/2026) et, pour les mails envoyés, aux seuls messages dont TOUS les destinataires
+//      sont du domaine du cabinet ;
 //      rien d'autre de la boîte n'est jamais lu ni renvoyé ;
 //   3. écriture (brouillon, envoi des pièces retrouvées) uniquement vers des
 //      adresses du domaine du cabinet ; tout autre destinataire refusé ;
@@ -23,8 +24,8 @@ export const COMPTABLE_AGENT = 'Victor'
 export type Actor = { kind: 'agent'; agent: AgentAccount } | { kind: 'mobi'; name: string }
 
 async function cfg() {
-  const [box, domain, folder] = await Promise.all([getBusinessText('agents_boite_comptable'), getBusinessText('agents_domaine_comptable'), getBusinessText('agents_dossier_comptable')])
-  return { box: box.toLowerCase(), domain: domain.toLowerCase().replace(/^@/, ''), folder }
+  const [box, domain, folder, archive] = await Promise.all([getBusinessText('agents_boite_comptable'), getBusinessText('agents_domaine_comptable'), getBusinessText('agents_dossier_comptable'), getBusinessText('agents_dossier_comptable_archive').catch(() => '')])
+  return { box: box.toLowerCase(), domain: domain.toLowerCase().replace(/^@/, ''), folder, archive }
 }
 
 function who(a: Actor) { return a.kind === 'agent' ? a.agent.name : a.name }
@@ -49,8 +50,8 @@ async function graph(path: string, init: RequestInit = {}) {
 const addr = (p: any) => String(p?.emailAddress?.address || '').toLowerCase()
 const inDomain = (email: string, domain: string) => email.endsWith(`@${domain}`)
 
-async function folderId(box: string, name: string): Promise<string> {
-  const r = await graph(`/users/${encodeURIComponent(box)}/mailFolders/inbox/childFolders?$top=100&$select=id,displayName`)
+async function folderId(box: string, name: string, parent = 'inbox'): Promise<string> {
+  const r = await graph(`/users/${encodeURIComponent(box)}/${parent === 'racine' ? 'mailFolders' : `mailFolders/${parent}/childFolders`}?$top=100&$select=id,displayName`)
   if (!r.ok) throw new Error(`Boîte comptable inaccessible (${r.status})`)
   const f = ((await r.json()).value || []).find((x: any) => String(x.displayName).trim().toLowerCase() === name.trim().toLowerCase())
   if (!f) throw new Error(`Dossier « ${name} » introuvable dans la boîte comptable.`)
@@ -60,10 +61,18 @@ async function folderId(box: string, name: string): Promise<string> {
 /** Règle 2 : liste du dossier du cabinet + mails envoyés exclusivement au cabinet. */
 export async function listComptableMails(a: Actor, top = 30) {
   await guard(a, 'lecture')
-  const { box, domain, folder } = await cfg()
+  const { box, domain, folder, archive } = await cfg()
   const sel = '$select=id,subject,from,toRecipients,ccRecipients,receivedDateTime,sentDateTime,bodyPreview,hasAttachments'
   const fid = await folderId(box, folder)
   const inbox = ((await (await graph(`/users/${encodeURIComponent(box)}/mailFolders/${fid}/messages?$top=${top}&$orderby=receivedDateTime desc&${sel}`)).json()).value || [])
+  // Archive « THG » (dossier à la racine de la boîte) : les échanges déjà traités, classés par Olivier ou la session.
+  let archived: any[] = []
+  if (archive) {
+    try {
+      const aid = await folderId(box, archive, 'racine')
+      archived = ((await (await graph(`/users/${encodeURIComponent(box)}/mailFolders/${aid}/messages?$top=${top}&$orderby=receivedDateTime desc&${sel}`)).json()).value || [])
+    } catch { /* archive absente : la lecture continue sans elle */ }
+  }
   const sentRaw = ((await (await graph(`/users/${encodeURIComponent(box)}/mailFolders/sentitems/messages?$top=100&$orderby=sentDateTime desc&${sel}`)).json()).value || [])
   const sent = sentRaw.filter((m: any) => { const all = [...(m.toRecipients || []), ...(m.ccRecipients || [])].map(addr); return all.length > 0 && all.every(e => inDomain(e, domain)) }).slice(0, top)
   const map = (m: any, sens: 'reçu' | 'envoyé') => ({ id: m.id, sens, objet: m.subject, de: addr(m.from), a: (m.toRecipients || []).map(addr), date: m.receivedDateTime || m.sentDateTime, apercu: String(m.bodyPreview || '').slice(0, 300), pieces: !!m.hasAttachments })
@@ -75,8 +84,8 @@ export async function listComptableMails(a: Actor, top = 30) {
     if (!r.ok) continue
     for (const m of (await r.json()).value || []) if (inDomain(addr(m.from), domain)) autres.push({ ...map(m, 'reçu'), boite: b })
   }
-  await journal({ agent: who(a), action: 'boîte comptable : lecture', detail: `${inbox.length} reçus, ${sent.length} envoyés, ${autres.length} dans info@/administration@` })
-  return [...inbox.map((m: any) => ({ ...map(m, 'reçu'), boite: box })), ...sent.map((m: any) => ({ ...map(m, 'envoyé'), boite: box })), ...autres]
+  await journal({ agent: who(a), action: 'boîte comptable : lecture', detail: `${inbox.length} reçus, ${archived.length} traités (archive), ${sent.length} envoyés, ${autres.length} dans info@/administration@` })
+  return [...inbox.map((m: any) => ({ ...map(m, 'reçu'), boite: box, traite: false })), ...archived.map((m: any) => ({ ...map(m, 'reçu'), boite: box, traite: true })), ...sent.map((m: any) => ({ ...map(m, 'envoyé'), boite: box })), ...autres]
 }
 
 /** Règle 3 : brouillon ou envoi uniquement vers le domaine du cabinet. */
