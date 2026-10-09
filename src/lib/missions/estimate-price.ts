@@ -1328,7 +1328,7 @@ async function estimateLinesTemplate(
 // « L'heure de l'appel détermine le tarif » : une mission reçue le 07/10 et facturée le 12/10 reste
 // à l'ancienne grille. On choisit donc la grille en vigueur à la DATE DE L'APPEL (réception de la
 // mission), plus à la date du jour. Repli : si aucune grille n'existait encore à cette date (grilles
-// encodées après coup, ex. effective_from 19/05), on garde la grille du jour, comme avant.
+// encodées après coup), la première grille qui a suivi l'appel.
 function callDate(mission: MissionLike): string {
   const d = mission.received_at || mission.intervention_date
   const t = d ? new Date(d) : new Date()
@@ -1337,7 +1337,11 @@ function callDate(mission: MissionLike): string {
 async function tariffRefDate(sb: ReturnType<typeof createAdminClient>, mission: MissionLike, table: string, source: string, missionType: string): Promise<string> {
   const d = callDate(mission)
   const { count } = await sb.from(table).select('id', { count: 'exact', head: true }).eq('source', source).eq('mission_type', missionType).lte('effective_from', d)
-  return count ? d : new Date().toISOString().slice(0, 10)
+  if (count) return d
+  // Aucune grille encore en vigueur à la date de l'appel : la PREMIÈRE grille qui a suivi (la plus
+  // proche de l'appel), jamais la grille du jour — sinon une vieille mission prendrait un tarif revalorisé.
+  const { data: next } = await sb.from(table).select('effective_from').eq('source', source).eq('mission_type', missionType).gt('effective_from', d).order('effective_from', { ascending: true }).limit(1)
+  return next?.[0]?.effective_from || new Date().toISOString().slice(0, 10)
 }
 
 /**
