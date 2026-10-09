@@ -300,3 +300,13 @@ vérifie, la décision, la règle à retenir pour les agents. Source de formatio
 - Décision d'Olivier : **annuler en interne** (NC totale 2026-0335 sans envoi, lettrée), pas de correction ; mail classé.
 - Règle : avant de corriger une facture à la demande de la taxation, vérifier le délai (6 mois entre le début de
   la prestation et la facture). Facture hors délai → annulation interne plutôt que correction.
+
+### 33. Directive Peppol frais de justice (SPF Justice, 22/12/2025) — appliquée à partir du 10/10/2026
+- Source : pièce jointe du rejet Peppol du 13/07/2026 (peppol.aca@just.fgov.be) ; lue en entier le 09/10.
+- Décision d'Olivier : **uniquement pour les nouveaux documents, à partir du 10/10/2026** (rien d'avant n'est repris).
+- Règles : facture et NC liées à un état de frais → N° de commande « ROJ-FJGK13 JINV<n° JustInvoice> » ; correction
+  acceptée → état de frais corrigé dans le même dossier JustInvoice + NC envoyée par Peppol ; nouvelle facture par Peppol
+  après liquidation ; 6 mois depuis la prestation pour l'état de frais ET la facture ; un seul n° JustInvoice par état
+  de frais ; annulations internes = NC sans envoi.
+- Incident du 09/10 : 3 NC (2026-0332, 0333, 0337) envoyées par Peppol avant la précision « à partir de demain » ;
+  contenu correct (ROJ-FJGK13 JINV…), envoi irréversible.
