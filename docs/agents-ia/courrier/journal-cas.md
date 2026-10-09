@@ -136,3 +136,23 @@ vérifie, la décision, la règle à retenir pour les agents. Source de formatio
   classer dans Fournisseur Divers.
 - Règle : pièce réclamée reçue → la joindre à la facture d'achat existante (pas de nouvel encodage), pièce principale,
   avec une note dans l'historique ; classer.
+
+### 15. Touring BKO : « le lien bloque, envoyez la liste en Excel »
+- Décision : traiter d'abord les réponses déjà données (9) avec le motif de Touring sur chaque fiche (sans frais,
+  facturation OK, accord, remise en attente), puis envoyer l'Excel des dossiers restants dans le fil ; l'envoi
+  mensuel joint désormais l'Excel et la réponse est suivie (relance J+7, alerte J+14).
+- Règle : une réponse libre de Touring n'est jamais appliquée seule ; « annulation par le chauffeur » = sans frais
+  avec ce motif ; « déjà facturé + accord » = facturation OK avec le n° d'accord.
+
+### 16. AXA : « plus besoin de copie par mail pour les factures Peppol »
+- Décision : AXA est déjà en ordre ; **classer**.
+- Règle : AXA = Peppol seul pour une facture belge avec TVA ; dossiers étrangers et rappels par mail à network.bnl@.
+
+### 17. Fournisseur qui envoie les avis demandés et propose de changer l'adresse de facturation
+- Mail : Ethias (08/10) : avis de prime accidents du travail T3 2026 (virements ING du 01/07 : 1 686,62 € et 74,67 €) ;
+  « devons-nous changer l'adresse de facturation ? ».
+- Décision : **encoder les deux avis** (datés du 01/07, même compte que le trimestre suivant, PDF joint) et **les
+  rapprocher des virements** ; **pièce reçue** et **PDF joint au point du dossier comptable** (réglé) ; **répondre**
+  oui, nouvelle adresse Lefin 12, 4860 Pepinster ; classer.
+- Règles : pièce reçue pour un virement sans facture → encoder la facture à la date du virement et lettrer ; mettre à
+  jour le dossier de la comptable ; une adresse obsolète chez un fournisseur se corrige dès qu'il la propose.

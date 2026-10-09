@@ -530,7 +530,7 @@ export async function estimateMissionPrice(mission: MissionLike, opts?: { skipRe
   }
 
   const sb = createAdminClient()
-  const today = new Date().toISOString().slice(0, 10)
+  const today = await tariffRefDate(sb, mission, 'source_tariffs', source, missionType)
   const vehicleClass = (mission.vehicle_class || 'car').toLowerCase()
 
   // 1. Lookup le tarif en vigueur (effective_from <= today, effective_to >= today ou null).
@@ -867,8 +867,8 @@ async function estimateBrackets(
   const kmBase = kmBasis === 'total' ? kmTotalRoute : kmCharged
   const kmRounded = Math.ceil(kmBase)  // arrondit superieur pour la tranche
 
-  // 2. Charge la grille de brackets en vigueur
-  const today = new Date().toISOString().slice(0, 10)
+  // 2. Charge la grille de brackets en vigueur (à la date de l'appel)
+  const today = await tariffRefDate(sb, mission, 'source_tariff_brackets', source, missionType)
   const { data: brackets } = await sb
     .from('source_tariff_brackets')
     .select('from_km, to_km, price_normal, price_majore, effective_from')
@@ -988,7 +988,7 @@ async function estimateLinesTemplate(
   tariff:      any,
   sb:          ReturnType<typeof createAdminClient>,
 ): Promise<PriceEstimate> {
-  const today = new Date().toISOString().slice(0, 10)
+  const today = await tariffRefDate(sb, mission, 'source_tariff_lines', source, missionType)
   const vehicleClass = (mission.vehicle_class || 'car').toLowerCase()
 
   // Lignes filtrees par vehicle_class : on prend les lignes specifiques
@@ -1323,6 +1323,23 @@ async function estimateLinesTemplate(
   }
 }
 
+
+// ── Date de référence des grilles (Olivier 09/10/2026, avenant IMA) ─────────
+// « L'heure de l'appel détermine le tarif » : une mission reçue le 07/10 et facturée le 12/10 reste
+// à l'ancienne grille. On choisit donc la grille en vigueur à la DATE DE L'APPEL (réception de la
+// mission), plus à la date du jour. Repli : si aucune grille n'existait encore à cette date (grilles
+// encodées après coup, ex. effective_from 19/05), on garde la grille du jour, comme avant.
+function callDate(mission: MissionLike): string {
+  const d = mission.received_at || mission.intervention_date
+  const t = d ? new Date(d) : new Date()
+  return (isNaN(+t) ? new Date() : t).toLocaleDateString('sv-SE', { timeZone: 'Europe/Brussels' })
+}
+async function tariffRefDate(sb: ReturnType<typeof createAdminClient>, mission: MissionLike, table: string, source: string, missionType: string): Promise<string> {
+  const d = callDate(mission)
+  const { count } = await sb.from(table).select('id', { count: 'exact', head: true }).eq('source', source).eq('mission_type', missionType).lte('effective_from', d)
+  return count ? d : new Date().toISOString().slice(0, 10)
+}
+
 /**
  * Tarification REL (relivraison) : on facture uniquement les kilometres
  * parcourus (parc -> client) au tarif km de la source. Pas de prise en
@@ -1342,7 +1359,7 @@ async function estimateRelivraisonPrice(
   source:  string,
 ): Promise<PriceEstimate> {
   const sb = createAdminClient()
-  const today = new Date().toISOString().slice(0, 10)
+  const today = await tariffRefDate(sb, mission, 'source_tariffs', source, 'relivraison')
 
   // ── Règle relivraison de la source (Olivier 21/09/2026) ─────────────────
   // « Pour la grille relivraison, ça dépend de chaque assistance. » La ligne
