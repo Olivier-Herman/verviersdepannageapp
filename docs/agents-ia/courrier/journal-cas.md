@@ -233,3 +233,6 @@ vérifie, la décision, la règle à retenir pour les agents. Source de formatio
   nos propres données disent autre chose (ici le réquisitoire se contredit : 24/06 en page 1, 25/06 en page 2).
 - Ce que fait l'agent : met à jour l'état de frais (période, lignes, totaux), produit le PDF corrigé, le prépare pour le
   dépôt ; signale si une facture ERP a déjà été émise sur l'ancien montant (à corriger par note de crédit sur accord).
+- Suite (09/10) : version corrigée **postée par VD Soft** dans le dossier JustInvoice (CostState v2, statut
+  « Correction soumise »), via le même flux que le formulaire « Add extra files » du portail. La facture ERP
+  2026/09/360 (183,65 €) émise sur l'ancien montant reste à ajuster après la nouvelle liquidation (1,88 € TVAC).
