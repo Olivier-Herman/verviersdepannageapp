@@ -6,7 +6,7 @@
 // et backfill les champs domaine (vente/firme/Date IN/Date OUT) sur la fiche
 // trouvée. Appelée à l'ouverture du module. Olivier 2026-07-30.
 
-import { SAISIE_SOURCES } from './vente-epaves-intake'
+import { domaineCandidates } from './vente-epaves-intake'
 
 export interface ParcSyncSummary { scanned: number; matched: number; ambiguous: number }
 
@@ -25,13 +25,7 @@ export async function syncVenteEpavesParc(sb: any): Promise<ParcSyncSummary> {
     const tail = (r.vin_tail || String(r.vin || '').slice(-5)).trim()
     if (!tail) continue
 
-    const { data: hits } = await sb.from('incoming_missions')
-      .select('id, mission_number, source, vehicle_vin, vehicle_brand, domaine_vente_date, domaine_vente_firm, domaine_remise_date, domaine_enlevement_date')
-      .in('source', SAISIE_SOURCES)
-      .is('archived_at', null)
-      .neq('status', 'cancelled')
-      .ilike('vehicle_vin', `%${tail}`)
-      .limit(5)
+    const hits = await domaineCandidates(sb, tail, 'id, mission_number, source, vehicle_vin, vehicle_brand, domaine_vente_date, domaine_vente_firm, domaine_remise_date, domaine_enlevement_date', r.brand)
 
     // Match unique, ou désambiguïsation par MARQUE (comme l'intake mail).
     let m: any = (hits || []).length === 1 ? hits![0] : null

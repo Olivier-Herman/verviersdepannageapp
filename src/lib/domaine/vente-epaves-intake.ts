@@ -100,13 +100,7 @@ export async function pollVenteEpaves(): Promise<VenteEpavesSummary> {
         if (s.applied >= MAX_APPLY_PER_RUN) break
         s.entries++
 
-        const { data: hits } = await sb.from('incoming_missions')
-          .select('id, mission_number, source, vehicle_vin, vehicle_plate, vehicle_brand, vehicle_model, parc_zone_key, domaine_vente_date, domaine_vente_firm, domaine_remise_date, domaine_enlevement_date')
-          .in('source', await sourcesWithTag('saisie_scope'))
-          .is('archived_at', null)
-          .neq('status', 'cancelled')
-          .ilike('vehicle_vin', `%${v.vinTail}`)
-          .limit(5)
+        const hits = await domaineCandidates(sb, v.vinTail, 'id, mission_number, source, vehicle_vin, vehicle_plate, vehicle_brand, vehicle_model, parc_zone_key, domaine_vente_date, domaine_vente_firm, domaine_remise_date, domaine_enlevement_date', v.brand)
 
         let outcome = 'no_match', matchedId: string | null = null
         // Match unique, ou désambiguïsation par MARQUE si le VIN (5 derniers)
@@ -196,4 +190,30 @@ export async function pollVenteEpaves(): Promise<VenteEpavesSummary> {
     }
   }
   return s
+}
+
+/**
+ * Fiches candidates pour un véhicule de la liste Domaine (Olivier 09/10/2026 : « en indiquant les 5 derniers
+ * du châssis je retrouve bien les fiches »). D'abord le châssis qui SE TERMINE par les 5 derniers, parmi les
+ * saisies ; sinon le numéro N'IMPORTE OÙ dans le châssis (châssis encodé avec des caractères en trop, ex.
+ * « …5093401 »), et aussi parmi les fiches police AVP / mal garée / accident (un véhicule vendu par le Domaine
+ * est une saisie, même classé autrement).
+ */
+export async function domaineCandidates(sb: any, tail: string, select: string, brand?: string | null): Promise<any[]> {
+  const scope = await sourcesWithTag('saisie_scope')
+  const q = (sources: string[], pattern: string) => sb.from('incoming_missions').select(select)
+    .in('source', sources).eq('dossier_leg', false).is('archived_at', null).neq('status', 'cancelled')
+    .ilike('vehicle_vin', pattern).limit(5)
+  const { data: exact } = await q(scope, `%${tail}`)
+  if (exact?.length) return exact
+  const wide = [...new Set([...scope, 'police_avp', 'police_mg', 'police_accident'])]
+  const { data: ends } = await q(wide, `%${tail}`)
+  if (ends?.length) return ends
+  // Au milieu du châssis : 5 chiffres peuvent tomber n'importe où dans un autre châssis (Kia « …241286… » pour
+  // une Ford « …24128 ») → seulement si la MARQUE concorde.
+  const b = String(brand || '').toLowerCase().split(/\s+/)[0]
+  if (!b) return []
+  const same = (x: string) => { const h = String(x || '').toLowerCase(); return !!h && (h.includes(b) || b.includes(h.split(/\s+/)[0])) || (b === 'vw' && h.includes('volkswagen')) }
+  const { data: inside } = await q(wide, `%${tail}%`)
+  return (inside || []).filter((h: any) => same(h.vehicle_brand))
 }
