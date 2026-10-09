@@ -354,3 +354,11 @@ vérifie, la décision, la règle à retenir pour les agents. Source de formatio
 - Règles : on n'écrit à la comptable que ce qui est fait ; un paiement carte n'a rien à faire dans le livre de caisse
   Scrada → ligne inverse ; vérifier dans l'ERP (rapprochement avec un relevé SCRA) avant de dire qu'un encaissement
   manque. Piège : répondre à un message ENVOYÉ renvoie vers soi-même → répondre au mail reçu de la comptable.
+
+### 39. Assistance étrangère qui signale un double paiement
+- Mail : SOS International (09/10), facture 2026/07/795 : payée sur place (Bancontact 31/07) ET par SOS (10/08).
+- Décision d'Olivier : **rembourser** SOS (pas de crédit : client occasionnel) ; réponse envoyée en anglais depuis info@
+  confirmant le double paiement et demandant les coordonnées bancaires (titulaire, IBAN, BIC, référence) ; le
+  remboursement sera préparé à réception (paiement à valider par Olivier). Le crédit de 240 € reste en compte d'ici là.
+- Règle : double paiement d'un client occasionnel qui le signale → remboursement, coordonnées demandées par écrit ;
+  client régulier → crédit (cf. Logicx, 09/10).
