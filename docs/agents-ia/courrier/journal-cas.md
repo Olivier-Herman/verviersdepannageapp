@@ -166,3 +166,11 @@ vérifie, la décision, la règle à retenir pour les agents. Source de formatio
 - Règle : le détail de paiement de l'assistance fait foi ; pas de remboursement, pas d'OD de trop-perçu, pas de mail.
   Communication bancaire : numéros parfois collés ou coupés par la banque → retirer les espaces et vérifier chaque
   numéro contre les factures existantes.
+
+### 19. Police : « le véhicule peut être récupéré par … après paiement des frais », sans date
+- Mail : commissaire Lemaire (ZP Vesdre) à fourriere@ le 09/10 : Skoda Octavia 1TTZ315 (fiche 10137601) peut être
+  récupérée par Mr YAR Ergin sur plateau ou remorque après paiement ; « sûrement la semaine prochaine ».
+- Décision : c'est une **levée définitive** ; **sans date dans le document, la date du mail compte** (09/10) ;
+  frais à charge de la personne qui reprend le véhicule ; châssis du mail ajouté à la fiche ; pas de réponse.
+- Règle : levée sans date = date de réception du mail (VD Soft le fait seul depuis le 09/10). L'agent ne relance
+  pas la police pour une date, et ne lève pas d'alarme pour ça.
