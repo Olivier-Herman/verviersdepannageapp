@@ -401,7 +401,7 @@ function TrouverGarage({ onGarage, partenaires }: { onGarage: (slug: string) => 
     const Q = natif('CapacitorBarcodeScanner')
     if (Q) {
       // Scanner plein écran de l'iPhone (hint 0 = QR code).
-      Q.scanBarcode({ hint: 0, scanInstructions: 'Visez le QR code de votre garage', scanButton: false, cameraDirection: 1 })
+      Q.scanBarcode({ hint: 0, scanInstructions: 'Visez le QR code de votre garage', scanButton: false, cameraDirection: 1, scanOrientation: 1 })
         .then((r: any) => { const s = slugDe(String(r?.ScanResult || '')); if (s) aller(s); else if (r?.ScanResult) setErr('Ce QR code n’est pas celui d’un garage partenaire.') })
         .catch(() => {})
       return

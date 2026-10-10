@@ -94,7 +94,7 @@ interface Mission {
   awaiting_payment?: boolean | null
 }
 interface VrLoc { id: string; name: string; address: string; lat: number | null; lng: number | null; is_default?: boolean }
-interface Props { mission: Mission; currentUserId?: string; userRole?: string; isReadOnly?: boolean; navApp?: NavApp; defaultParcZone?: string | null; encaissementChauffeur?: boolean; flux2?: boolean; onsiteV2?: boolean; parentClosingNote?: string | null; parentPanne?: string | null; parentPhotos?: string[]; relKey?: { location: string | null; hook: string | null } | null; reportClient?: string | null }
+interface Props { mission: Mission; currentUserId?: string; userRole?: string; isReadOnly?: boolean; navApp?: NavApp; defaultParcZone?: string | null; encaissementChauffeur?: boolean; consigneSource?: { fr: string; sq: string | null } | null; flux2?: boolean; onsiteV2?: boolean; parentClosingNote?: string | null; parentPanne?: string | null; parentPhotos?: string[]; relKey?: { location: string | null; hook: string | null } | null; reportClient?: string | null }
 
 // Photos prises à l'ENLÈVEMENT (mission parente), en lecture seule sur une
 // relivraison : le chauffeur voit l'état du véhicule tel qu'il a été chargé et
@@ -606,7 +606,7 @@ function BriefingTtsButton({ mission }: { mission: Mission }) {
 }
 
 // ─── Composant principal ──────────────────────────────────────────────────────
-export default function DriverClient({ mission: init, currentUserId, userRole, isReadOnly = false, navApp: initNav, defaultParcZone = null, encaissementChauffeur = false, flux2 = false, onsiteV2 = false, parentClosingNote = null, parentPanne = null, parentPhotos = [], relKey = null, reportClient = null }: Props) {
+export default function DriverClient({ mission: init, currentUserId, userRole, isReadOnly = false, navApp: initNav, defaultParcZone = null, encaissementChauffeur = false, consigneSource = null, flux2 = false, onsiteV2 = false, parentClosingNote = null, parentPanne = null, parentPhotos = [], relKey = null, reportClient = null }: Props) {
   const canMatthieu = canUseMatthieu(userRole, currentUserId)
   const router = useRouter()
   const { t, lang } = useT()   // traductions FR/albanais pour les messages d'erreur (strings)
@@ -3732,11 +3732,23 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
         </div>
       )}
 
+      {/* Consigne de la source, sur toute la mission (Olivier 10/10/2026) : ex. EBAC / Centracar, dépôt au garage
+          uniquement en semaine 9 h - 16 h. Texte réglé sur la source (catalogue), en français et en albanais. */}
+      {consigneSource && (
+        <div className={`mx-4 ${parentClosingNote ? 'mt-1' : 'mt-14'} mb-1 bg-amber-100 border-2 border-amber-500 rounded-2xl px-4 py-3 flex items-start gap-3 shadow-md`}>
+          <span className="text-3xl flex-shrink-0">🕘</span>
+          <div className="min-w-0">
+            <p className="text-amber-900 text-[11px] font-bold uppercase tracking-wide"><T k="mission_detail.source_notice_title" /></p>
+            <p className="text-amber-900 text-base font-black whitespace-pre-wrap leading-snug mt-0.5">{matSq && consigneSource.sq ? consigneSource.sq : consigneSource.fr}</p>
+          </div>
+        </div>
+      )}
+
       {/* La PANNE relevée à l'enlèvement — pour que le chauffeur sache ce qu'il
           va charger avant d'arriver. Elle ne se redemande jamais sur une
           relivraison : le véhicule ne se répare pas tout seul au parc. */}
       {parentPanne && (
-        <div className={`mx-4 ${parentClosingNote ? 'mt-1' : 'mt-14'} mb-1 bg-surface border rounded-2xl px-4 py-3 flex items-center gap-3`}>
+        <div className={`mx-4 ${parentClosingNote || consigneSource ? 'mt-1' : 'mt-14'} mb-1 bg-surface border rounded-2xl px-4 py-3 flex items-center gap-3`}>
           <span className="text-2xl flex-shrink-0">🔧</span>
           <div className="min-w-0">
             <p className="text-ink-muted text-[11px] font-bold uppercase tracking-wide">Panne relevée à l'enlèvement</p>

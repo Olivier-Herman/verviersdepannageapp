@@ -379,6 +379,7 @@ export const sq: Dictionary = {
     addr_change_new:       "Adresa e re e marrë",
     addr_change_ok:        "E kuptova, po telefonoj dispeçerin",
     client_msg_title:      "Mesazh nga klienti për ty",
+    source_notice_title:   "Udhëzim nga garazhi",
     client_msg_hint:       "Lexoje mirë: klienti do të shohë që e ke konfirmuar.",
     client_msg_accept:     "E lexova — e pranoj misionin",
     client_msg_ok:         "E lexova këtë mesazh",
