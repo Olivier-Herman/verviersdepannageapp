@@ -1,178 +1,153 @@
 'use client'
+/* eslint-disable @next/next/no-img-element */
 import Link from 'next/link'
 import { useState } from 'react'
 import { useEspace } from '../EspaceShell'
-import { Depanneuse, IlluDsp, IlluRem } from '../../_ui/illustrations'
+import { IMG, IcoPin, Plaque } from '../../_ui/suivi'
 import AdresseInline, { type AdresseChoisie } from '../../_ui/AdresseInline'
 
 const vide: AdresseChoisie = { texte: '', lat: null, lng: null }
+const PANNES = ['Ne démarre pas', 'Batterie', 'Crevaison', 'Accident', 'Bruit / fumée', 'Clés perdues ou enfermées', 'Autre']
 
-export default function NouvelleDemande() {
+export default function Commander() {
   const { societes } = useEspace()
-  const [societeId, setSocieteId] = useState(societes.length === 1 ? societes[0].id : '')
+  const [pas, setPas] = useState(0)
+  const [socId, setSocId] = useState(societes.length === 1 ? societes[0].id : '')
   const [type, setType] = useState<'DSP' | 'REM' | ''>('')
-  const [plaque, setPlaque] = useState('')
-  const [marque, setMarque] = useState('')
-  const [modele, setModele] = useState('')
+  const [plaque, setPlaque] = useState(''), [marque, setMarque] = useState(''), [modele, setModele] = useState('')
   const [adresse, setAdresse] = useState<AdresseChoisie>(vide)
-  const [destination, setDestination] = useState<AdresseChoisie>(vide)
-  const [planifier, setPlanifier] = useState(false)
-  const [quand, setQuand] = useState('')
-  const [contactNom, setContactNom] = useState('')
-  const [contactTel, setContactTel] = useState('')
-  const [remarques, setRemarques] = useState('')
-  const [busy, setBusy] = useState(false)
-  const [err, setErr] = useState('')
-  const [fait, setFait] = useState<{ numero: number } | null>(null)
+  const [panne, setPanne] = useState(''), [panneTxt, setPanneTxt] = useState('')
+  const [dest, setDest] = useState<AdresseChoisie>(vide), [destAutre, setDestAutre] = useState(false)
+  const [planifier, setPlanifier] = useState(false), [quand, setQuand] = useState('')
+  const [contactNom, setContactNom] = useState(''), [contactTel, setContactTel] = useState('')
+  const [message, setMessage] = useState(''), [reference, setReference] = useState('')
+  const [busy, setBusy] = useState(false), [err, setErr] = useState('')
+  const [fait, setFait] = useState<number | null>(null)
+  const societe = societes.find(s => s.id === socId)
+  const garage = !destAutre ? societe?.garages.find(g => g.adresse === dest.texte) : undefined
 
-  const manque = [!societeId && 'la société', !type && 'le type d’intervention', !plaque.trim() && 'la plaque', !adresse.texte.trim() && 'l’adresse', planifier && !quand && 'la date'].filter(Boolean) as string[]
+  const manque = (pas === 0 ? [!socId && 'la société', !type && 'le type']
+    : pas === 1 ? [!plaque.trim() && 'la plaque', !adresse.texte.trim() && 'l’adresse', type === 'REM' && !dest.texte.trim() && 'l’adresse de livraison']
+      : [planifier && !quand && 'la date', !contactNom.trim() && 'le contact sur place', !contactTel.trim() && 'son numéro']).filter(Boolean) as string[]
 
   const envoyer = async () => {
-    setErr('')
-    if (manque.length) return setErr(`Il manque ${manque.join(', ')}.`)
-    setBusy(true)
+    setBusy(true); setErr('')
     try {
       const r = await fetch('/api/espace/missions', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ societeId, type, plaque, marque, modele, adresse: adresse.texte, lat: adresse.lat, lng: adresse.lng, destination: destination.texte || null, quand: planifier && quand ? new Date(quand).toISOString() : null, contactNom, contactTel, remarques }),
+        body: JSON.stringify({
+          societeId: socId, type, plaque, marque, modele, adresse: adresse.texte, lat: adresse.lat, lng: adresse.lng,
+          destination: type === 'REM' ? dest.texte : null, destinationNom: garage?.nom || dest.nom || null, destLat: garage?.lat ?? dest.lat, destLng: garage?.lng ?? dest.lng,
+          panne: [panne, panneTxt.trim()].filter(Boolean).join(' — ') || null,
+          contactNom, contactTel, messageChauffeur: message.trim() || null, reference: reference.trim() || null,
+          quand: planifier && quand ? new Date(quand).toISOString() : null,
+        }),
       })
       const j = await r.json().catch(() => ({}))
       if (r.status === 401) { location.href = '/espace/connexion'; return }
       if (!r.ok) throw new Error(j.error || 'Envoi impossible')
-      setFait({ numero: j.numero }); window.scrollTo({ top: 0, behavior: 'smooth' })
+      setFait(j.numero); window.scrollTo({ top: 0, behavior: 'smooth' })
     } catch (e: any) { setErr(e.message) } finally { setBusy(false) }
   }
 
   if (fait) return (
-    <div className="mx-auto max-w-xl px-4 pt-10">
-      <div className="esp-card esp-pop overflow-hidden text-center">
-        <div className="esp-hero relative h-44">
-          <div className="esp-road" />
-          <div className="esp-drive absolute bottom-[14px] left-0 w-[240px]"><Depanneuse /></div>
-        </div>
-        <div className="p-7">
-          <div className="mx-auto -mt-14 grid h-16 w-16 place-items-center rounded-full bg-emerald-500 text-3xl text-white shadow-xl ring-8 ring-white">✓</div>
-          <h1 className="font-display mt-4 text-2xl font-extrabold">Demande envoyée</h1>
-          <p className="mt-2 text-slate-600">Notre équipe est prévenue à l’instant. Vous suivez l’intervention n° <b>{fait.numero}</b> en direct, de la validation jusqu’à la fin.</p>
-          <div className="mt-6 grid gap-2 sm:grid-cols-2">
-            <Link href="/espace" className="esp-btn esp-btn-red">Suivre l’intervention</Link>
-            <button onClick={() => location.reload()} className="esp-btn esp-btn-ghost">Nouvelle demande</button>
+    <div className="wrap">
+      <div className="card ok-wrap rise">
+        <img src={IMG.succes} alt="" />
+        <div style={{ padding: 26 }}>
+          <h2 style={{ fontSize: 28 }}>Demande envoyée</h2>
+          <p style={{ color: 'var(--ink2)' }}>Notre équipe est prévenue à l’instant. Vous suivez l’intervention n° <b>{fait}</b> en direct.</p>
+          <div className="foot" style={{ justifyContent: 'center', flexWrap: 'wrap' }}>
+            <Link href="/espace" className="btn btn-red">Suivre l’intervention</Link>
+            <button className="btn btn-ghost" onClick={() => location.reload()}>Nouvelle demande</button>
           </div>
         </div>
       </div>
     </div>
   )
 
+  const titres = ['Votre besoin', 'Le véhicule et le lieu', 'Quand et qui contacter']
   return (
-    <div className="mx-auto max-w-3xl px-4 pt-8">
-      <div className="esp-rise">
-        <h1 className="font-display text-3xl font-extrabold tracking-tight">Commander une intervention</h1>
-        <p className="mt-1 text-slate-600">Quelques informations et nous nous occupons du reste. Vous suivez tout en direct.</p>
-      </div>
+    <div className="wrap" style={{ maxWidth: 760, paddingBlock: '26px 30px' }}>
+      <div className="rise"><h1 style={{ fontSize: 32 }}>Commander une intervention</h1><p style={{ color: 'var(--ink2)', margin: '4px 0 0' }}>{titres[pas]} — étape {pas + 1} sur 3</p></div>
+      <div className="steps">{[0, 1, 2].map(i => <div key={i}><span style={{ width: `${i < pas ? 100 : i === pas ? 50 : 0}%` }} /></div>)}</div>
+      <div className="card rise" style={{ padding: 20 }}>
+        {pas === 0 && <>
+          {societes.length > 1 && <>
+            <h3 style={{ fontSize: 18, margin: '4px 0 12px' }}>Pour quelle société ?</h3>
+            <div className="socs">{societes.map(s => <button key={s.id} className={`soc ${socId === s.id ? 'on' : ''}`} onClick={() => { if (s.id !== socId) { setDest(vide); setDestAutre(false) } setSocId(s.id) }}><span className="dot" style={{ background: s.couleur || '#d42a2a' }} />{s.nom}{socId === s.id && <span style={{ marginLeft: 'auto', color: 'var(--red)' }}>✓</span>}</button>)}</div>
+            <div style={{ height: 22 }} />
+          </>}
+          <h3 style={{ fontSize: 18, margin: '4px 0 12px' }}>De quoi avez-vous besoin ?</h3>
+          <div className="choice">
+            {([['DSP', IMG.dsp, 'Dépannage sur place', 'Batterie, crevaison, démarrage… on répare sur place si c’est possible.'], ['REM', IMG.rem, 'Remorquage', 'Le véhicule ne roule plus : on le charge et on le livre où vous voulez.']] as const).map(([v, im, t, s]) => (
+              <button key={v} className={`opt ${type === v ? 'on' : ''}`} onClick={() => setType(v)}><img src={im} alt="" /><span className="ok">✓</span><div><b>{t}</b><p>{s}</p></div></button>
+            ))}
+          </div>
+        </>}
 
-      <div className="mt-6 space-y-4">
-        {societes.length > 1 && (
-          <Bloc n={1} titre="Pour quelle société ?">
-            <div className="grid gap-2 sm:grid-cols-2">
-              {societes.map(s => (
-                <button key={s.id} type="button" onClick={() => setSocieteId(s.id)} className={`flex min-h-[56px] items-center gap-3 rounded-2xl border-2 px-4 text-left font-bold transition ${societeId === s.id ? 'border-rose-600 bg-rose-50/60' : 'border-[#ece6df] bg-white hover:border-slate-300'}`}>
-                  <span className="h-3.5 w-3.5 rounded-full" style={{ background: s.couleur || '#cc2222' }} />{s.nom}
-                  {societeId === s.id && <span className="ml-auto text-rose-600">✓</span>}
-                </button>
-              ))}
+        {pas === 1 && <>
+          <div className="cols">
+            <label className="field"><span>Plaque *</span><div className="platein"><i>B</i><input value={plaque} onChange={e => setPlaque(e.target.value.toUpperCase().replace(/\s/g, ''))} placeholder="1ABC234" /></div></label>
+            <div className="cols">
+              <label className="field"><span>Marque</span><input className="input" value={marque} onChange={e => setMarque(e.target.value)} placeholder="Volkswagen" /></label>
+              <label className="field"><span>Modèle</span><input className="input" value={modele} onChange={e => setModele(e.target.value)} placeholder="Golf" /></label>
             </div>
-          </Bloc>
-        )}
-
-        <Bloc n={societes.length > 1 ? 2 : 1} titre="De quoi avez-vous besoin ?">
-          <div className="grid gap-3 sm:grid-cols-2">
-            <Choix actif={type === 'DSP'} onClick={() => setType('DSP')} titre="Dépannage sur place" sous="Batterie, crevaison, démarrage… on répare sur place si possible."><IlluDsp className="h-24" /></Choix>
-            <Choix actif={type === 'REM'} onClick={() => setType('REM')} titre="Remorquage" sous="Le véhicule ne roule plus : on le charge et on le livre où vous voulez."><IlluRem className="h-24" /></Choix>
           </div>
-        </Bloc>
-
-        <Bloc n={societes.length > 1 ? 3 : 2} titre="Le véhicule">
-          <div className="grid gap-3 sm:grid-cols-3">
-            <label className="sm:col-span-1">
-              <span className="mb-1 block text-xs font-bold uppercase tracking-wider text-slate-500">Plaque *</span>
-              <div className="flex overflow-hidden rounded-[14px] border-2 border-[#b91c1c] bg-white focus-within:shadow-[0_0_0_4px_rgba(204,34,34,.12)]">
-                <span className="grid w-7 place-items-center bg-[#1d4ed8] text-[10px] font-bold text-white">B</span>
-                <input value={plaque} onChange={e => setPlaque(e.target.value.toUpperCase())} placeholder="1ABC234" className="min-h-[46px] w-full bg-transparent px-3 font-mono text-lg font-bold tracking-widest text-[#b91c1c] outline-none placeholder:text-rose-200" />
-              </div>
-            </label>
-            <Champ label="Marque" v={marque} set={setMarque} ph="Volkswagen" />
-            <Champ label="Modèle" v={modele} set={setModele} ph="Golf" />
+          <div className="field" style={{ marginTop: 16 }}><span>Où se trouve le véhicule ? *</span><AdresseInline valeur={adresse} onChange={setAdresse} placeholder="Rue, numéro, localité" gps /></div>
+          <div className="field" style={{ marginTop: 16 }}>
+            <span>Première indication sur la panne</span>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>{PANNES.map(x => <button key={x} className={`chip ${panne === x ? 'on' : ''}`} onClick={() => setPanne(panne === x ? '' : x)}>{x}</button>)}</div>
+            <input className="input" style={{ marginTop: 8 }} value={panneTxt} onChange={e => setPanneTxt(e.target.value)} placeholder="Ce que vous savez déjà : voyant allumé, bruit, depuis quand…" />
           </div>
-        </Bloc>
-
-        <Bloc n={societes.length > 1 ? 4 : 3} titre="Où se trouve le véhicule ?">
-          <AdresseInline valeur={adresse} onChange={setAdresse} placeholder="Rue, numéro, localité" />
           {type === 'REM' && (
-            <div className="mt-4">
-              <span className="mb-1 block text-xs font-bold uppercase tracking-wider text-slate-500">Où le livrer ?</span>
-              <AdresseInline valeur={destination} onChange={setDestination} placeholder="Laissez vide si c’est à votre garage" />
+            <div className="field" style={{ marginTop: 16 }}>
+              <span>Où livrer le véhicule ? *</span>
+              <div className="socs">
+                {(societe?.garages || []).map(g => {
+                  const on = !destAutre && dest.texte === g.adresse
+                  return <button key={g.adresse} className={`soc ${on ? 'on' : ''}`} style={{ flexDirection: 'column', alignItems: 'flex-start', justifyContent: 'center', gap: 0, minHeight: 64, padding: '8px 14px' }} onClick={() => { setDestAutre(false); setDest({ texte: g.adresse, lat: g.lat, lng: g.lng, nom: g.nom }) }}>
+                    <span>{g.nom}{on && <span style={{ color: 'var(--red)' }}> ✓</span>}</span><small style={{ fontWeight: 500, color: 'var(--mute)' }}>{g.adresse}</small>
+                  </button>
+                })}
+                <button className={`soc ${destAutre ? 'on' : ''}`} style={{ minHeight: 64 }} onClick={() => { setDestAutre(true); setDest(vide) }}>Autre adresse…</button>
+              </div>
+              {destAutre && <div style={{ marginTop: 8 }}><AdresseInline valeur={dest} onChange={setDest} placeholder="Garage, rue, numéro, localité" autoFocus /></div>}
             </div>
           )}
-        </Bloc>
+        </>}
 
-        <Bloc n={societes.length > 1 ? 5 : 4} titre="Quand ?">
-          <div className="grid gap-2 sm:grid-cols-2">
-            <button type="button" onClick={() => setPlanifier(false)} className={`min-h-[56px] rounded-2xl border-2 px-4 text-left font-bold ${!planifier ? 'border-rose-600 bg-rose-50/60' : 'border-[#ece6df] bg-white'}`}>⚡ Dès que possible</button>
-            <button type="button" onClick={() => setPlanifier(true)} className={`min-h-[56px] rounded-2xl border-2 px-4 text-left font-bold ${planifier ? 'border-rose-600 bg-rose-50/60' : 'border-[#ece6df] bg-white'}`}>🗓️ À une date précise</button>
+        {pas === 2 && <>
+          <h3 style={{ fontSize: 18, margin: '4px 0 12px' }}>Quand ?</h3>
+          <div className="when2"><button className={!planifier ? 'on' : ''} onClick={() => setPlanifier(false)}>Dès que possible</button><button className={planifier ? 'on' : ''} onClick={() => setPlanifier(true)}>À une date précise</button></div>
+          {planifier && <input className="input rise" style={{ marginTop: 10 }} type="datetime-local" value={quand} onChange={e => setQuand(e.target.value)} min={new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 16)} />}
+          <h3 style={{ fontSize: 18, margin: '22px 0 12px' }}>Sur place</h3>
+          <div className="cols">
+            <label className="field"><span>Contact sur place *</span><input className="input" value={contactNom} onChange={e => setContactNom(e.target.value)} placeholder="Nom de la personne présente" /></label>
+            <label className="field"><span>Numéro du contact sur place *</span><input className="input" type="tel" value={contactTel} onChange={e => setContactTel(e.target.value)} placeholder="+32 4.. .. .. .." /></label>
           </div>
-          {planifier && <input type="datetime-local" value={quand} onChange={e => setQuand(e.target.value)} className="esp-input esp-pop mt-3" min={new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 16)} />}
-        </Bloc>
-
-        <Bloc n={societes.length > 1 ? 6 : 5} titre="Contact sur place et précisions" facultatif>
-          <div className="grid gap-3 sm:grid-cols-2">
-            <Champ label="Nom" v={contactNom} set={setContactNom} ph="Personne à contacter" />
-            <Champ label="Téléphone" v={contactTel} set={setContactTel} ph="+32 …" type="tel" />
+          <label className="field" style={{ marginTop: 14 }}><span>Message pour le chauffeur</span><textarea className="input" value={message} onChange={e => setMessage(e.target.value)} placeholder="Ex. : clés à l’accueil, véhicule au niveau -2, demander Julie…" /></label>
+          <p style={{ margin: '6px 2px 0', fontSize: 13, color: 'var(--ink2)' }}>Le chauffeur le voit en acceptant la mission et doit confirmer qu’il l’a lu. Vous voyez ensuite « lu et confirmé ».</p>
+          <label className="field" style={{ marginTop: 14 }}><span>Votre référence <small style={{ textTransform: 'none', letterSpacing: 0, fontWeight: 600 }}>(facultatif)</small></span><input className="input" value={reference} onChange={e => setReference(e.target.value)} placeholder="N° de dossier, de commande…" /></label>
+          <div className="card recap" style={{ padding: 14, marginTop: 16, boxShadow: 'none' }}>
+            <img src={type === 'DSP' ? IMG.dsp : IMG.rem} alt="" />
+            <div>
+              <b className="disp" style={{ fontSize: 17 }}>{type === 'DSP' ? 'Dépannage sur place' : 'Remorquage'} · {societe?.nom}</b>
+              <div style={{ margin: '6px 0', display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}><Plaque v={plaque || '—'} /><span className="veh">{[marque, modele].filter(Boolean).join(' ')}</span></div>
+              <div className="addr" style={{ margin: 0 }}><IcoPin /><span>{adresse.texte}</span></div>
+              {type === 'REM' && <div style={{ marginTop: 6, fontSize: 14, color: 'var(--ink2)' }}>Livraison : {garage?.nom || dest.texte}</div>}
+              {(panne || panneTxt) && <div style={{ marginTop: 6, fontSize: 14, color: 'var(--ink2)' }}>Panne : {[panne, panneTxt].filter(Boolean).join(' — ')}</div>}
+            </div>
           </div>
-          <label className="mt-3 block">
-            <span className="mb-1 block text-xs font-bold uppercase tracking-wider text-slate-500">Remarques</span>
-            <textarea value={remarques} onChange={e => setRemarques(e.target.value)} className="esp-input" placeholder="Clés, accès, panne constatée, votre référence…" />
-          </label>
-        </Bloc>
+        </>}
 
-        <div className="esp-card sticky bottom-20 z-10 flex flex-col gap-3 p-4 md:bottom-4 md:flex-row md:items-center">
-          <p className={`flex-1 text-sm ${err ? 'font-semibold text-rose-700' : 'text-slate-500'}`}>
-            {err || (manque.length ? `Encore : ${manque.join(', ')}.` : 'Tout est prêt. Notre équipe est prévenue dès l’envoi.')}
-          </p>
-          <button onClick={envoyer} disabled={busy} className="esp-btn esp-btn-red px-6 text-[15px] disabled:opacity-60">{busy ? 'Envoi…' : 'Envoyer la demande'}</button>
+        {err && <p className="err" style={{ marginTop: 12 }}>{err}</p>}
+        <div className="foot">
+          {pas > 0 ? <button className="btn btn-ghost" onClick={() => setPas(pas - 1)}>← Retour</button> : <span />}
+          <span style={{ flex: 1, textAlign: 'right', fontSize: 13, color: 'var(--mute)' }}>{manque.length ? 'Encore : ' + manque.join(', ') : ''}</span>
+          <button className="btn btn-red" disabled={!!manque.length || busy} onClick={() => pas < 2 ? (setPas(pas + 1), window.scrollTo({ top: 0, behavior: 'smooth' })) : envoyer()}>{pas < 2 ? 'Continuer →' : busy ? 'Envoi…' : 'Envoyer la demande'}</button>
         </div>
       </div>
     </div>
-  )
-}
-
-function Bloc({ n, titre, facultatif, children }: { n: number; titre: string; facultatif?: boolean; children: React.ReactNode }) {
-  return (
-    <section className="esp-card esp-rise p-5" style={{ animationDelay: `${n * 60}ms` }}>
-      <h2 className="mb-4 flex items-center gap-3 font-display text-lg font-extrabold">
-        <span className="grid h-8 w-8 place-items-center rounded-xl bg-slate-900 text-sm text-white">{n}</span>{titre}
-        {facultatif && <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">facultatif</span>}
-      </h2>
-      {children}
-    </section>
-  )
-}
-
-function Choix({ actif, onClick, titre, sous, children }: { actif: boolean; onClick: () => void; titre: string; sous: string; children: React.ReactNode }) {
-  return (
-    <button type="button" onClick={onClick} className={`group relative overflow-hidden rounded-3xl border-2 p-4 text-left transition ${actif ? 'border-rose-600 bg-gradient-to-br from-rose-50 to-amber-50 shadow-lg shadow-rose-900/10' : 'border-[#ece6df] bg-white hover:-translate-y-0.5 hover:border-slate-300'}`}>
-      <div className="flex h-28 items-center justify-center transition group-hover:scale-[1.03]">{children}</div>
-      <div className="mt-2 font-display text-base font-extrabold text-slate-900">{titre}</div>
-      <div className="text-sm text-slate-600">{sous}</div>
-      {actif && <span className="esp-pop absolute right-3 top-3 grid h-8 w-8 place-items-center rounded-full bg-rose-600 text-white">✓</span>}
-    </button>
-  )
-}
-
-function Champ({ label, v, set, ph, type = 'text' }: { label: string; v: string; set: (s: string) => void; ph?: string; type?: string }) {
-  return (
-    <label className="block">
-      <span className="mb-1 block text-xs font-bold uppercase tracking-wider text-slate-500">{label}</span>
-      <input type={type} value={v} onChange={e => set(e.target.value)} placeholder={ph} className="esp-input" />
-    </label>
   )
 }

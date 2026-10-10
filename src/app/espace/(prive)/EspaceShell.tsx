@@ -2,9 +2,11 @@
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { createContext, useContext, useState } from 'react'
+import { Marque, IcoPlus } from '../_ui/suivi'
 
 export interface CompteEspace { id: string; nom: string; email: string; role: 'societe' | 'gestionnaire' | 'collaborateur'; peutInviter: boolean; aMotDePasse: boolean }
-export interface SocieteEspace { id: string; nom: string; couleur: string | null }
+export interface GarageEspace { nom: string; adresse: string; lat: number | null; lng: number | null }
+export interface SocieteEspace { id: string; nom: string; couleur: string | null; garages: GarageEspace[] }
 const Ctx = createContext<{ compte: CompteEspace; societes: SocieteEspace[] } | null>(null)
 export const useEspace = () => useContext(Ctx)!
 
@@ -13,72 +15,46 @@ export default function EspaceShell({ compte, societes, children }: { compte: Co
   const [menu, setMenu] = useState(false)
   const [mdp, setMdp] = useState(false)
   const onglets = [
-    { href: '/espace', label: 'Mes interventions', actif: path === '/espace' },
-    { href: '/espace/nouvelle', label: 'Nouvelle demande', actif: path === '/espace/nouvelle' },
-    ...(compte.peutInviter ? [{ href: '/espace/equipe', label: 'Mon équipe', actif: path === '/espace/equipe' }] : []),
+    { href: '/espace', label: 'Mes interventions', court: 'Suivi' },
+    { href: '/espace/nouvelle', label: 'Commander', court: 'Commander' },
+    ...(compte.peutInviter ? [{ href: '/espace/equipe', label: 'Mon équipe', court: 'Équipe' }] : []),
   ]
   const initiales = compte.nom.split(/\s+/).map(x => x[0]).slice(0, 2).join('').toUpperCase()
   return (
     <Ctx.Provider value={{ compte, societes }}>
-      <header className="sticky top-0 z-30 border-b border-[#ece6df] bg-white/80 backdrop-blur-xl">
-        <div className="mx-auto flex h-16 max-w-6xl items-center gap-3 px-4">
-          <Link href="/espace" className="flex items-center gap-2.5">
-            <span className="grid h-10 w-10 place-items-center rounded-2xl bg-gradient-to-br from-[#e02626] to-[#7f1d1d] text-white shadow-lg shadow-rose-900/20">
-              <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 17h2m12 0h4v-4l-3-4h-5v8M3 17V7h10v10" /><circle cx="7" cy="17" r="2" /><circle cx="17" cy="17" r="2" /></svg>
-            </span>
-            <span className="leading-tight">
-              <span className="font-display block text-[15px] font-extrabold tracking-tight text-slate-900">Verviers Dépannage</span>
-              <span className="block text-[11px] font-semibold uppercase tracking-[.18em] text-rose-700">Espace client</span>
-            </span>
-          </Link>
-          <nav className="ml-6 hidden gap-1 md:flex">
-            {onglets.map(o => (
-              <Link key={o.href} href={o.href} className={`rounded-xl px-3.5 py-2 text-sm font-semibold transition ${o.actif ? 'bg-slate-900 text-white' : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'}`}>{o.label}</Link>
-            ))}
-          </nav>
-          <div className="relative ml-auto">
-            <button onClick={() => setMenu(v => !v)} className="flex min-h-[44px] items-center gap-2 rounded-2xl px-2 py-1 hover:bg-slate-100">
-              <span className="grid h-9 w-9 place-items-center rounded-full bg-slate-900 text-xs font-bold text-white">{initiales}</span>
-              <span className="hidden text-left leading-tight sm:block">
-                <span className="block text-sm font-bold text-slate-900">{compte.nom}</span>
-                <span className="block text-xs text-slate-500">{societes.map(s => s.nom).join(' · ')}</span>
-              </span>
+      <header className="top">
+        <div className="wrap">
+          <Link href="/espace"><Marque /></Link>
+          <nav className="nav">{onglets.map(o => <Link key={o.href} href={o.href} className={path === o.href ? 'on' : ''}>{o.label}</Link>)}</nav>
+          <div style={{ position: 'relative', marginLeft: 'auto' }}>
+            <button className="who" onClick={() => setMenu(v => !v)} aria-label="Mon compte">
+              <span className="avatar">{initiales}</span>
+              <span className="t"><b>{compte.nom}</b><span>{societes.map(s => s.nom).join(' · ')}</span></span>
             </button>
             {menu && (
-              <div className="esp-pop absolute right-0 mt-2 w-64 overflow-hidden rounded-2xl border border-[#ece6df] bg-white shadow-2xl">
-                <div className="border-b border-[#f3eee8] px-4 py-3 text-xs text-slate-500">Connecté avec <b className="text-slate-800">{compte.email}</b></div>
-                <button onClick={() => { setMenu(false); setMdp(true) }} className="block w-full px-4 py-3 text-left text-sm font-semibold text-slate-800 hover:bg-slate-50">{compte.aMotDePasse ? 'Changer mon mot de passe' : 'Choisir un mot de passe'}</button>
-                <button onClick={async () => { await fetch('/api/espace/connexion', { method: 'DELETE' }); location.href = '/espace/connexion' }} className="block w-full px-4 py-3 text-left text-sm font-semibold text-rose-700 hover:bg-rose-50">Se déconnecter</button>
+              <div className="card" style={{ position: 'absolute', right: 0, top: 54, width: 270, overflow: 'hidden', animation: 'pop .3s', zIndex: 50 }}>
+                <div style={{ padding: '12px 16px', fontSize: 12, color: 'var(--mute)', borderBottom: '1px solid var(--line)' }}>Connecté avec <b style={{ color: 'var(--ink)' }}>{compte.email}</b></div>
+                <button style={{ display: 'block', width: '100%', textAlign: 'left', padding: '13px 16px', fontWeight: 700, minHeight: 46 }} onClick={() => { setMenu(false); setMdp(true) }}>{compte.aMotDePasse ? 'Changer mon mot de passe' : 'Choisir un mot de passe'}</button>
+                <button style={{ display: 'block', width: '100%', textAlign: 'left', padding: '13px 16px', fontWeight: 700, color: 'var(--red)', minHeight: 46 }} onClick={async () => { await fetch('/api/espace/connexion', { method: 'DELETE' }); location.href = '/espace/connexion' }}>Se déconnecter</button>
               </div>
             )}
           </div>
         </div>
       </header>
-
-      <main className="pb-28 md:pb-12">{children}</main>
-
-      {/* Barre d'onglets sur téléphone */}
-      <nav className="fixed inset-x-0 bottom-0 z-30 border-t border-[#ece6df] bg-white/90 px-2 pb-[env(safe-area-inset-bottom)] backdrop-blur-xl md:hidden">
-        <div className="mx-auto flex max-w-md items-stretch justify-around">
-          {onglets.map(o => (
-            <Link key={o.href} href={o.href} className={`flex min-h-[56px] flex-1 flex-col items-center justify-center gap-0.5 text-[11px] font-bold ${o.actif ? 'text-rose-700' : 'text-slate-500'}`}>
-              <IconeOnglet href={o.href} actif={o.actif} />
-              {o.label.replace('Mes interventions', 'Suivi').replace('Nouvelle demande', 'Commander').replace('Mon équipe', 'Équipe')}
-            </Link>
-          ))}
-        </div>
+      <main>{children}</main>
+      <nav className="tabbar">
+        {onglets.map(o => (
+          <Link key={o.href} href={o.href} className={path === o.href ? 'on' : ''}>
+              {o.href === '/espace/nouvelle' ? <span className="plus"><IcoPlus s={20} /></span>
+                : o.href === '/espace/equipe' ? <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><circle cx="9" cy="8" r="3.2" /><path d="M3.5 19c.8-3 3-4.6 5.5-4.6s4.7 1.6 5.5 4.6M16 11.5a2.8 2.8 0 1 0-1-5.4M17.5 14.6c1.6.5 2.6 1.9 3 4.4" /></svg>
+                  : <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 5h16M4 12h10M4 19h7" /><circle cx="18" cy="16" r="3" /></svg>}
+              <span>{o.court}</span>
+          </Link>
+        ))}
       </nav>
-
       {mdp && <MotDePasse onClose={() => setMdp(false)} />}
     </Ctx.Provider>
   )
-}
-
-function IconeOnglet({ href, actif }: { href: string; actif: boolean }) {
-  const c = `h-6 w-6 ${actif ? 'text-rose-600' : 'text-slate-400'}`
-  if (href === '/espace/nouvelle') return <span className={`grid h-9 w-9 -mt-5 place-items-center rounded-2xl bg-gradient-to-br from-[#e02626] to-[#b51d1d] text-white shadow-lg shadow-rose-900/30`}><svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round"><path d="M12 5v14M5 12h14" /></svg></span>
-  if (href === '/espace/equipe') return <svg viewBox="0 0 24 24" className={c} fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><circle cx="9" cy="8" r="3.2" /><path d="M3.5 19c.8-3 3-4.6 5.5-4.6s4.7 1.6 5.5 4.6M16 11.5a2.8 2.8 0 1 0-1-5.4M17.5 14.6c1.6.5 2.6 1.9 3 4.4" /></svg>
-  return <svg viewBox="0 0 24 24" className={c} fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 5h16M4 12h10M4 19h7" /><circle cx="18" cy="16" r="3" /></svg>
 }
 
 function MotDePasse({ onClose }: { onClose: () => void }) {
@@ -95,20 +71,17 @@ function MotDePasse({ onClose }: { onClose: () => void }) {
     setOk(true); router.refresh()
   }
   return (
-    <div className="fixed inset-0 z-50 grid place-items-center bg-slate-900/40 p-4 backdrop-blur-sm">
-      <div className="esp-pop esp-card w-full max-w-sm p-6">
-        <div className="flex items-start justify-between">
-          <h2 className="font-display text-lg font-extrabold">Mot de passe</h2>
-          <button onClick={onClose} aria-label="Fermer" className="grid h-11 w-11 place-items-center rounded-xl text-slate-500 hover:bg-slate-100">✕</button>
-        </div>
+    <div className="modal">
+      <div className="card">
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start' }}><h2 style={{ fontSize: 20 }}>Mot de passe</h2><button className="x" style={{ background: 'var(--soft)', color: 'var(--ink)' }} onClick={onClose} aria-label="Fermer">✕</button></div>
         {ok ? (
-          <div className="mt-4 space-y-4"><p className="text-sm text-slate-700">C’est enregistré. Vous pourrez vous connecter avec ce mot de passe ou recevoir un code par mail.</p><button onClick={onClose} className="esp-btn esp-btn-red w-full">Fermer</button></div>
+          <><p style={{ color: 'var(--ink2)' }}>C’est enregistré. Vous pourrez vous connecter avec ce mot de passe, ou recevoir un code par mail.</p><button className="btn btn-red" style={{ width: '100%' }} onClick={onClose}>Fermer</button></>
         ) : (
-          <div className="mt-4 space-y-3">
-            <input type="password" className="esp-input" placeholder="Nouveau mot de passe" value={v} onChange={e => setV(e.target.value)} autoComplete="new-password" />
-            <input type="password" className="esp-input" placeholder="Confirmer" value={v2} onChange={e => setV2(e.target.value)} autoComplete="new-password" />
-            {err && <p className="text-sm font-semibold text-rose-700">{err}</p>}
-            <button onClick={go} disabled={busy} className="esp-btn esp-btn-red w-full disabled:opacity-60">{busy ? 'Enregistrement…' : 'Enregistrer'}</button>
+          <div style={{ display: 'grid', gap: 10, marginTop: 14 }}>
+            <input type="password" className="input" placeholder="Nouveau mot de passe" value={v} onChange={e => setV(e.target.value)} autoComplete="new-password" />
+            <input type="password" className="input" placeholder="Confirmer" value={v2} onChange={e => setV2(e.target.value)} autoComplete="new-password" />
+            {err && <p className="err">{err}</p>}
+            <button className="btn btn-red" disabled={busy} onClick={go}>{busy ? 'Enregistrement…' : 'Enregistrer'}</button>
           </div>
         )}
       </div>

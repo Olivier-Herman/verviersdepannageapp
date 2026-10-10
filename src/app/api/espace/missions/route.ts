@@ -4,7 +4,7 @@ import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase'
 import { getEspaceSession } from '@/lib/espace/session'
 import { MISSION_COLS, relivraisonsDe, scopeMissions, suiviClient, vehiculeLabel } from '@/lib/espace/missions'
-import { facturesEnvoyees } from '@/lib/espace/documents'
+import { documentsEnvoyes } from '@/lib/espace/documents'
 import { creerDemande, lireDemande } from '@/lib/espace/demande'
 
 export const dynamic = 'force-dynamic'
@@ -24,24 +24,35 @@ export async function GET(req: Request) {
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   const rows = (data || []) as any[]
   const rels = await relivraisonsDe(rows.map(m => m.id))
-  const factures = await facturesEnvoyees(rows).catch(() => new Map())
+  const docs = await documentsEnvoyes(rows).catch(() => new Map())
   const cids = [...new Set(rows.map(m => m.espace_compte_id).filter(Boolean))]
   const { data: comptes } = cids.length ? await sb.from('espace_comptes').select('id, nom').in('id', cids) : { data: [] as any[] }
   const nomCompte = new Map((comptes || []).map((c: any) => [c.id, c.nom]))
   const societeDe = new Map(s.societes.map(x => [x.odoo_partner_id, x]))
+  const { data: annul } = rows.length ? await sb.from('garage_cancellation_requests').select('mission_id').eq('status', 'pending').in('mission_id', rows.map(m => m.id)) : { data: [] as any[] }
+  const annulEnCours = new Set((annul || []).map((x: any) => x.mission_id))
   return NextResponse.json({
     missions: rows.map(m => {
       const rel = rels.get(m.id) || null
       const suivi = suiviClient(m, rel)
       const soc = societeDe.get(m.billed_to_id)
+      const d = docs.get(m.id)
+      const fini = suivi.ton === 'fini'
       return {
         id: m.id, numero: m.mission_number, plaque: m.vehicle_plate, vehicule: vehiculeLabel(m),
-        adresse: m.incident_address, destination: rel?.destination_address || m.destination_address || null,
-        recueLe: m.received_at, prevuLe: m.rdv_at, reference: m.dossier_number || null,
+        adresse: m.incident_address,
+        destination: rel?.destination_address || [m.destination_name, m.destination_address].filter(Boolean).join(' — ') || null,
+        recueLe: m.received_at, prevuLe: m.rdv_at, reference: m.dossier_number && !/^(SAISIE|GRG|ESP)-/.test(m.dossier_number) ? m.dossier_number : null,
         societe: soc ? { id: soc.id, nom: soc.nom, couleur: soc.couleur } : null,
         commandePar: m.espace_compte_id ? nomCompte.get(m.espace_compte_id) || 'Espace client' : null,
-        suivi, rapport: suivi.ton === 'fini',
-        facture: factures.get(m.id) || null,
+        panne: m.incident_description || null,
+        contact: m.assisted_name ? { nom: m.assisted_name, tel: m.assisted_phone || null } : null,
+        messageChauffeur: m.driver_message ? { texte: m.driver_message, confirme: !!m.driver_message_ack_at } : null,
+        // Photos du chauffeur : à la fin de l'intervention (elles sont aussi dans le rapport) ou si le dispatch les a ouvertes.
+        photos: (fini || m.photos_visible_to_garage) && Array.isArray(m.driver_photos) ? m.driver_photos.slice(0, 8) : [],
+        suivi, rapport: fini,
+        facture: d?.facture || null, avoir: d?.avoir || null,
+        annulable: !['fini', 'annule'].includes(suivi.ton), annulationEnCours: annulEnCours.has(m.id),
       }
     }),
   })

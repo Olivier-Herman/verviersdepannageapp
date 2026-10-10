@@ -1,21 +1,22 @@
 'use client'
+/* eslint-disable @next/next/no-img-element */
 import Link from 'next/link'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useEspace } from './EspaceShell'
-import { Depanneuse, IlluVide } from '../_ui/illustrations'
-import { Frise, Pastille, Progression, jour, type MissionEspace } from '../_ui/suivi'
+import { Frise, IMG, IcoDoc, IcoPin, IcoPlus, Pastille, Plaque, Progression, jour, typeLibelle, type MissionEspace } from '../_ui/suivi'
 
 type Filtre = 'cours' | 'finies' | 'toutes'
+const finieOuAnnulee = (m: MissionEspace) => m.suivi.ton === 'fini' || m.suivi.ton === 'annule'
 
-export default function TableauDeBord() {
+export default function Suivi() {
   const { compte, societes } = useEspace()
   const [missions, setMissions] = useState<MissionEspace[] | null>(null)
   const [err, setErr] = useState('')
   const [filtre, setFiltre] = useState<Filtre>('cours')
-  const [societe, setSociete] = useState<string>('')
+  const [soc, setSoc] = useState('')
   const [q, setQ] = useState('')
-  const [ouverte, setOuverte] = useState<MissionEspace | null>(null)
-  const [maj, setMaj] = useState<number>(0)
+  const [ouverte, setOuverte] = useState<string | null>(null)
+  const [toast, setToast] = useState('')
 
   const charger = useCallback(async () => {
     try {
@@ -23,226 +24,207 @@ export default function TableauDeBord() {
       if (r.status === 401) { location.href = '/espace/connexion'; return }
       const j = await r.json()
       if (!r.ok) throw new Error(j.error || 'Erreur')
-      setMissions(j.missions); setErr(''); setMaj(Date.now())
+      setMissions(j.missions); setErr('')
     } catch (e: any) { setErr(e.message || 'Connexion impossible') }
   }, [])
   useEffect(() => { charger(); const t = setInterval(charger, 30_000); return () => clearInterval(t) }, [charger])
-  useEffect(() => { if (ouverte && missions) setOuverte(missions.find(m => m.id === ouverte.id) || null) }, [missions]) // eslint-disable-line react-hooks/exhaustive-deps
+  const montrer = (t: string) => { setToast(t); setTimeout(() => setToast(''), 2800) }
 
-  const liste = useMemo(() => (missions || []).filter(m =>
-    (!societe || m.societe?.id === societe)
-    && (filtre === 'toutes' || (filtre === 'finies' ? ['fini', 'annule'].includes(m.suivi.ton) : !['fini', 'annule'].includes(m.suivi.ton)))
-    && (!q || `${m.plaque} ${m.vehicule} ${m.adresse} ${m.numero} ${m.reference || ''}`.toLowerCase().includes(q.toLowerCase()))
-  ), [missions, filtre, societe, q])
+  const toutes = useMemo(() => (missions || []).filter(m => !soc || m.societe?.id === soc), [missions, soc])
+  const liste = toutes.filter(m => (filtre === 'toutes' || (filtre === 'finies' ? finieOuAnnulee(m) : !finieOuAnnulee(m)))
+    && (!q || `${m.plaque} ${m.vehicule} ${m.adresse} ${m.numero} ${m.reference || ''}`.toLowerCase().includes(q.toLowerCase())))
+  const debutMois = new Date(); debutMois.setDate(1); debutMois.setHours(0, 0, 0, 0)
+  const kpi = {
+    cours: toutes.filter(m => ['accepte', 'route', 'action'].includes(m.suivi.ton)).length,
+    attente: toutes.filter(m => m.suivi.ton === 'attente').length,
+    mois: toutes.filter(m => m.suivi.ton === 'fini' && m.suivi.termineeLe && new Date(m.suivi.termineeLe) >= debutMois).length,
+  }
+  const h = new Date().getHours()
+  const detail = ouverte ? (missions || []).find(m => m.id === ouverte) || null : null
 
-  const stats = useMemo(() => {
-    const all = (missions || []).filter(m => !societe || m.societe?.id === societe)
-    const mois = new Date(); mois.setDate(1); mois.setHours(0, 0, 0, 0)
-    return {
-      cours: all.filter(m => ['accepte', 'route', 'action'].includes(m.suivi.ton)).length,
-      attente: all.filter(m => m.suivi.ton === 'attente').length,
-      mois: all.filter(m => m.suivi.ton === 'fini' && m.suivi.termineeLe && new Date(m.suivi.termineeLe) >= mois).length,
-    }
-  }, [missions, societe])
-
-  const prenom = compte.nom.split(/\s+/)[0]
-  const heureJ = new Date().getHours()
   return (
     <>
-      <section className="esp-hero">
-        <div className="mx-auto max-w-6xl px-4 pb-20 pt-8 md:pb-24 md:pt-12">
-          <div className="esp-rise flex flex-wrap items-end justify-between gap-6">
+      <section className="hero">
+        <img className="bg" src={IMG.route} alt="" />
+        <div className="wrap">
+          <div className="rise">
+            <div className="hello">{h < 12 ? 'Bonjour' : h < 18 ? 'Bon après-midi' : 'Bonsoir'} {compte.nom.split(/\s+/)[0]}</div>
+            <h1>Vos interventions,<br />en direct.</h1>
+            <p>Suivez chaque dépannage de la demande jusqu’à la livraison. Rapports et factures au même endroit.</p>
+            <Link href="/espace/nouvelle" className="btn btn-red" style={{ marginTop: 14 }}><IcoPlus /> Commander une intervention</Link>
+          </div>
+          <div className="kpis">{([['En cours', kpi.cours], ['En attente', kpi.attente], ['Terminées ce mois', kpi.mois]] as [string, number][]).map(([l, v], i) => <Kpi key={l} label={l} valeur={v} delai={120 + i * 90} />)}</div>
+        </div>
+      </section>
+
+      <div className="wrap">
+        <div className="bar rise">
+          <div className="seg">{([['cours', 'En cours'], ['finies', 'Terminées'], ['toutes', 'Toutes']] as [Filtre, string][]).map(([k, l]) => <button key={k} className={filtre === k ? 'on' : ''} onClick={() => setFiltre(k)}>{l}</button>)}</div>
+          {societes.length > 1 && <>
+            <button className={`chip ${!soc ? 'on' : ''}`} onClick={() => setSoc('')}>Toutes</button>
+            {societes.map(s => <button key={s.id} className={`chip ${soc === s.id ? 'on' : ''}`} onClick={() => setSoc(s.id)}><span className="dot" style={{ background: s.couleur || '#d42a2a' }} />{s.nom}</button>)}
+          </>}
+          <div className="search">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5" /></svg>
+            <input className="input" value={q} onChange={e => setQ(e.target.value)} placeholder="Plaque, adresse, n°…" />
+          </div>
+        </div>
+        <p style={{ textAlign: 'right', fontSize: 12, color: err ? '#b42318' : 'var(--mute)', margin: '8px 4px 0', fontWeight: err ? 700 : 400 }}>
+          {err || <><span className="live" style={{ color: 'var(--green)', display: 'inline-block', width: 8, height: 8, marginRight: 6 }} />Mis à jour en direct</>}
+        </p>
+
+        {missions === null && <div className="grid">{[0, 1, 2].map(i => <div key={i} className="card" style={{ height: 210, background: 'linear-gradient(90deg,#f1ebe4 25%,#f8f5f1 37%,#f1ebe4 63%)', backgroundSize: '400% 100%' }} />)}</div>}
+        {missions !== null && (liste.length ? (
+          <div className="grid">{liste.map((m, i) => <Carte key={m.id} m={m} i={i} onOpen={() => setOuverte(m.id)} />)}</div>
+        ) : (
+          <div className="card empty rise">
+            <img src={IMG.vide} alt="" />
             <div>
-              <p className="text-sm font-semibold text-rose-200/90">{heureJ < 12 ? 'Bonjour' : heureJ < 18 ? 'Bon après-midi' : 'Bonsoir'} {prenom}</p>
-              <h1 className="font-display mt-1 text-3xl font-extrabold tracking-tight md:text-4xl">Vos interventions, en direct.</h1>
-              <p className="mt-2 max-w-lg text-sm text-slate-300">Suivez chaque dépannage de la demande jusqu’à la livraison, et retrouvez rapports et factures au même endroit.</p>
+              <h3 style={{ fontSize: 22 }}>{filtre === 'cours' ? 'Aucune intervention en cours' : 'Rien à afficher ici'}</h3>
+              <p style={{ color: 'var(--ink2)' }}>{filtre === 'cours' ? 'Tout roule. Besoin d’un dépannage ou d’un remorquage ? Nous arrivons.' : 'Changez de filtre ou de recherche.'}</p>
+              {filtre === 'cours' && <Link href="/espace/nouvelle" className="btn btn-red">Commander une intervention</Link>}
             </div>
-            <Link href="/espace/nouvelle" className="esp-btn esp-btn-red px-5 text-[15px]">
-              <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round"><path d="M12 5v14M5 12h14" /></svg>
-              Commander une intervention
-            </Link>
           </div>
-          <div className="mt-8 grid grid-cols-3 gap-3 md:max-w-2xl">
-            <Tuile label="En cours" valeur={stats.cours} delai={80} />
-            <Tuile label="En attente" valeur={stats.attente} delai={160} />
-            <Tuile label="Terminées ce mois" valeur={stats.mois} delai={240} />
-          </div>
-        </div>
-        <div className="esp-road" />
-        <div className="esp-drive pointer-events-none absolute bottom-[14px] left-0 w-[210px] md:w-[260px]"><Depanneuse /></div>
-      </section>
+        ))}
+      </div>
 
-      <section className="mx-auto -mt-6 max-w-6xl px-4">
-        <div className="esp-card esp-rise flex flex-col gap-3 p-3 md:flex-row md:items-center" style={{ animationDelay: '120ms' }}>
-          <div className="flex gap-1 rounded-2xl bg-[#f6f1ec] p-1">
-            {([['cours', 'En cours'], ['finies', 'Terminées'], ['toutes', 'Toutes']] as [Filtre, string][]).map(([k, l]) => (
-              <button key={k} onClick={() => setFiltre(k)} className={`min-h-[40px] flex-1 rounded-xl px-4 text-sm font-bold transition md:flex-none ${filtre === k ? 'bg-white text-slate-900 shadow' : 'text-slate-500 hover:text-slate-800'}`}>{l}</button>
-            ))}
-          </div>
-          {societes.length > 1 && (
-            <div className="flex flex-wrap gap-1.5">
-              <Puce actif={!societe} onClick={() => setSociete('')}>Toutes les sociétés</Puce>
-              {societes.map(s => <Puce key={s.id} actif={societe === s.id} onClick={() => setSociete(s.id)} couleur={s.couleur}>{s.nom}</Puce>)}
-            </div>
-          )}
-          <div className="relative md:ml-auto md:w-72">
-            <svg viewBox="0 0 24 24" className="pointer-events-none absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5" /></svg>
-            <input value={q} onChange={e => setQ(e.target.value)} placeholder="Plaque, adresse, n°…" className="esp-input" style={{ paddingLeft: '2.6rem' }} />
-          </div>
-        </div>
-
-        <div className="mt-2 flex items-center justify-end gap-2 px-1 text-xs text-slate-500">
-          {err ? <span className="font-semibold text-rose-700">{err}</span> : maj ? <><span className="esp-live text-emerald-500" style={{ width: 8, height: 8 }} /> Mis à jour en direct</> : null}
-        </div>
-
-        <div className="mt-3 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-          {missions === null && [0, 1, 2].map(i => <div key={i} className="esp-card h-52 esp-shimmer" />)}
-          {missions !== null && liste.map((m, k) => <Carte key={m.id} m={m} k={k} onOpen={() => setOuverte(m)} />)}
-        </div>
-        {missions !== null && !liste.length && (
-          <div className="esp-card esp-rise mx-auto mt-6 flex max-w-lg flex-col items-center p-8 text-center">
-            <IlluVide className="w-48" />
-            <h3 className="font-display mt-4 text-lg font-extrabold">{filtre === 'cours' ? 'Aucune intervention en cours' : 'Rien à afficher ici'}</h3>
-            <p className="mt-1 text-sm text-slate-500">{filtre === 'cours' ? 'Besoin d’un dépannage ou d’un remorquage ? Nous arrivons.' : 'Changez de filtre ou de recherche.'}</p>
-            {filtre === 'cours' && <Link href="/espace/nouvelle" className="esp-btn esp-btn-red mt-5">Commander une intervention</Link>}
-          </div>
-        )}
-      </section>
-
-      {ouverte && <Detail m={ouverte} onClose={() => setOuverte(null)} />}
+      {detail && <Detail m={detail} onClose={() => setOuverte(null)} onChange={async (t) => { montrer(t); await charger() }} />}
+      {toast && <div className="toast">{toast}</div>}
     </>
   )
 }
 
-function Tuile({ label, valeur, delai }: { label: string; valeur: number; delai: number }) {
+function Kpi({ label, valeur, delai }: { label: string; valeur: number; delai: number }) {
   const [v, setV] = useState(0)
   useEffect(() => {
     let raf = 0; const t0 = performance.now()
-    const step = (t: number) => { const p = Math.min(1, (t - t0) / 700); setV(Math.round(valeur * (1 - Math.pow(1 - p, 3)))); if (p < 1) raf = requestAnimationFrame(step) }
-    raf = requestAnimationFrame(step); return () => cancelAnimationFrame(raf)
+    const st = (t: number) => { const p = Math.min(1, (t - t0) / 700); setV(Math.round(valeur * (1 - Math.pow(1 - p, 3)))); if (p < 1) raf = requestAnimationFrame(st) }
+    raf = requestAnimationFrame(st); return () => cancelAnimationFrame(raf)
   }, [valeur])
-  return (
-    <div className="esp-glass esp-rise rounded-2xl px-4 py-3" style={{ animationDelay: `${delai}ms` }}>
-      <div className="font-display text-2xl font-extrabold tabular-nums md:text-3xl">{v}</div>
-      <div className="text-[11px] font-semibold uppercase tracking-wider text-slate-300">{label}</div>
-    </div>
-  )
+  return <div className="kpi rise" style={{ animationDelay: `${delai}ms` }}><b>{v}</b><span>{label}</span></div>
 }
 
-function Puce({ actif, onClick, couleur, children }: { actif: boolean; onClick: () => void; couleur?: string | null; children: React.ReactNode }) {
+function Carte({ m, i, onOpen }: { m: MissionEspace; i: number; onOpen: () => void }) {
   return (
-    <button onClick={onClick} className={`inline-flex min-h-[40px] items-center gap-2 rounded-xl border px-3 text-sm font-semibold transition ${actif ? 'border-slate-900 bg-slate-900 text-white' : 'border-[#e5ddd4] bg-white text-slate-700 hover:border-slate-300'}`}>
-      {couleur && <span className="h-2.5 w-2.5 rounded-full" style={{ background: couleur }} />}{children}
-    </button>
-  )
-}
-
-function Plaque({ v }: { v: string | null }) {
-  if (!v) return null
-  return (
-    <span className="inline-flex items-stretch overflow-hidden rounded-md border-2 border-[#b91c1c] bg-white font-mono text-[13px] font-bold leading-none text-[#b91c1c] shadow-sm">
-      <span className="grid w-4 place-items-center bg-[#1d4ed8] text-[8px] text-white">B</span>
-      <span className="px-2 py-1.5 tracking-wider">{v}</span>
-    </span>
-  )
-}
-
-function TypeIcone({ type }: { type: string }) {
-  const dsp = type === 'DSP'
-  return (
-    <span className={`grid h-11 w-11 shrink-0 place-items-center rounded-2xl ${dsp ? 'bg-sky-50 text-sky-600' : 'bg-rose-50 text-rose-600'}`}>
-      {dsp
-        ? <svg viewBox="0 0 24 24" className="h-6 w-6" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14.7 6.3a4 4 0 0 0-5.4 5.4L3 18l3 3 6.3-6.3a4 4 0 0 0 5.4-5.4l-2.4 2.4-2.6-.4-.4-2.6z" /></svg>
-        : <svg viewBox="0 0 24 24" className="h-6 w-6" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 17h2m12 0h4v-4l-3-4h-5v8M3 17V7h10v10" /><circle cx="7" cy="17" r="2" /><circle cx="17" cy="17" r="2" /></svg>}
-    </span>
-  )
-}
-
-const typeLibelle = (t: string) => t === 'DSP' ? 'Dépannage sur place' : t === 'REM+REL' ? 'Remorquage et livraison' : t === 'REM' ? 'Remorquage' : 'Intervention'
-
-function Carte({ m, k, onOpen }: { m: MissionEspace; k: number; onOpen: () => void }) {
-  return (
-    <button onClick={onOpen} className="esp-card esp-card-hover esp-rise relative w-full overflow-hidden p-5 text-left" style={{ animationDelay: `${Math.min(k, 8) * 60}ms` }}>
-      {m.societe?.couleur && <span className="absolute inset-y-0 left-0 w-1.5" style={{ background: m.societe.couleur }} />}
-      <div className="flex items-start gap-3">
-        <TypeIcone type={m.suivi.type} />
-        <div className="min-w-0 flex-1">
-          <div className="flex flex-wrap items-center gap-2"><Plaque v={m.plaque} /><span className="truncate text-sm font-semibold text-slate-700">{m.vehicule}</span></div>
-          <div className="mt-1 text-xs font-semibold uppercase tracking-wide text-slate-400">{typeLibelle(m.suivi.type)} · n° {m.numero}</div>
+    <button className="card m" style={{ animationDelay: `${Math.min(i, 8) * 60}ms` }} onClick={onOpen}>
+      <span className="stripe" style={{ background: m.societe?.couleur || '#d42a2a' }} />
+      <div className="m-head">
+        <span className="m-ico"><img src={m.suivi.type === 'DSP' ? IMG.dsp : IMG.rem} alt="" /></span>
+        <div style={{ minWidth: 0 }}>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}><Plaque v={m.plaque} /><span className="veh">{m.vehicule}</span></div>
+          <div className="sub">{typeLibelle(m.suivi.type)} · n° {m.numero}</div>
         </div>
       </div>
-      <div className="mt-4 flex items-start gap-2 text-sm text-slate-600">
-        <svg viewBox="0 0 24 24" className="mt-0.5 h-4 w-4 shrink-0 text-rose-500" fill="currentColor"><path d="M12 2a7 7 0 0 0-7 7c0 5.2 7 13 7 13s7-7.8 7-13a7 7 0 0 0-7-7zm0 9.5A2.5 2.5 0 1 1 12 6.5a2.5 2.5 0 0 1 0 5z" /></svg>
-        <span className="line-clamp-2">{m.adresse}</span>
-      </div>
-      <div className="mt-4"><Progression etapes={m.suivi.etapes} /></div>
-      <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
-        <Pastille ton={m.suivi.ton} libelle={m.suivi.libelle} />
-        <span className="text-xs text-slate-500">{m.suivi.termineeLe ? `Terminée ${jour(m.suivi.termineeLe)}` : `Demandée ${jour(m.recueLe)}`}</span>
-      </div>
-      {(m.rapport || m.facture) && (
-        <div className="mt-3 flex gap-2 border-t border-[#f3eee8] pt-3 text-xs font-bold">
-          {m.rapport && <span className="rounded-lg bg-slate-100 px-2 py-1 text-slate-700">Rapport</span>}
-          {m.facture && <span className="rounded-lg bg-emerald-50 px-2 py-1 text-emerald-800">Facture {m.facture.numero}</span>}
-        </div>
+      <div className="addr"><IcoPin /><span>{m.adresse}</span></div>
+      <Progression etapes={m.suivi.etapes} annulee={m.suivi.ton === 'annule'} />
+      <div className="row"><Pastille ton={m.suivi.ton} libelle={m.suivi.libelle} /><span className="when">Demandée {jour(m.recueLe)}</span></div>
+      {(m.rapport || m.facture || m.photos.length > 0) && (
+        <div className="docs">{m.rapport && <span>Rapport</span>}{m.facture && <span className="f">Facture {m.facture.numero}</span>}{m.photos.length > 0 && <span>Photos</span>}</div>
       )}
     </button>
   )
 }
 
-function Detail({ m, onClose }: { m: MissionEspace; onClose: () => void }) {
+function Detail({ m, onClose, onChange }: { m: MissionEspace; onClose: () => void; onChange: (t: string) => void }) {
+  const [annul, setAnnul] = useState(false)
+  const [motif, setMotif] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [photo, setPhoto] = useState<string | null>(null)
   useEffect(() => { const f = (e: KeyboardEvent) => e.key === 'Escape' && onClose(); window.addEventListener('keydown', f); return () => window.removeEventListener('keydown', f) }, [onClose])
+  const annuler = async () => {
+    setBusy(true)
+    const r = await fetch(`/api/espace/missions/${m.id}/annulation`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ motif }) })
+    const j = await r.json().catch(() => ({}))
+    setBusy(false); setAnnul(false)
+    onChange(r.ok ? j.message : j.error || 'Erreur')
+  }
   return (
-    <div className="fixed inset-0 z-40 flex justify-end bg-slate-900/40 backdrop-blur-sm">
-      <aside className="esp-rise flex h-full w-full max-w-xl flex-col overflow-y-auto bg-[#f6f3ef] shadow-2xl" style={{ animationDuration: '.35s' }}>
-        <div className="esp-hero px-5 pb-6 pt-5">
-          <div className="flex items-start justify-between gap-3">
+    <div className="scrim">
+      <aside className="drawer">
+        <div className="dhead">
+          <img src={m.suivi.type === 'DSP' ? IMG.dsp : IMG.rem} alt="" />
+          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}>
             <div>
-              <div className="text-xs font-semibold uppercase tracking-[.18em] text-rose-200">{typeLibelle(m.suivi.type)} · n° {m.numero}</div>
-              <div className="mt-2 flex flex-wrap items-center gap-2"><Plaque v={m.plaque} /><span className="font-display text-lg font-extrabold">{m.vehicule}</span></div>
+              <div className="sub" style={{ color: '#ffcfb4' }}>{typeLibelle(m.suivi.type)} · n° {m.numero}</div>
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 10, flexWrap: 'wrap' }}><Plaque v={m.plaque} /><span className="disp" style={{ fontSize: 20, fontWeight: 800 }}>{m.vehicule}</span></div>
             </div>
-            <button onClick={onClose} aria-label="Fermer" className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-white/10 text-white hover:bg-white/20">✕</button>
+            <button className="x" onClick={onClose} aria-label="Fermer">✕</button>
           </div>
-          <div className="mt-4"><Pastille ton={m.suivi.ton} libelle={m.suivi.libelle} /></div>
+          <div style={{ marginTop: 14 }}><Pastille ton={m.suivi.ton} libelle={m.suivi.libelle} /></div>
         </div>
-        <div className="space-y-4 p-5">
-          <div className="esp-card p-5"><h3 className="mb-4 text-sm font-extrabold uppercase tracking-wider text-slate-500">Suivi</h3><Frise etapes={m.suivi.etapes} /></div>
-          <div className="esp-card divide-y divide-[#f3eee8]">
-            <Ligne label="Lieu d’intervention" v={m.adresse} />
-            {m.destination && <Ligne label="Livraison" v={m.destination} />}
-            {m.prevuLe && <Ligne label="Prévue" v={jour(m.prevuLe)} />}
-            <Ligne label="Demandée" v={jour(m.recueLe)} />
-            {m.reference && <Ligne label="Votre référence" v={m.reference} />}
-            {m.commandePar && <Ligne label="Commandée par" v={m.commandePar} />}
-            {m.societe && <Ligne label="Société" v={m.societe.nom} />}
-          </div>
-          <div className="esp-card p-5">
-            <h3 className="mb-3 text-sm font-extrabold uppercase tracking-wider text-slate-500">Documents</h3>
-            <div className="grid gap-2">
-              <Doc actif={m.rapport} href={`/api/espace/missions/${m.id}/rapport`} titre="Rapport d’intervention" sous={m.rapport ? 'Photos, constat et signature' : 'Disponible à la fin de l’intervention'} />
-              <Doc actif={!!m.facture} href={`/api/espace/missions/${m.id}/facture`} titre={m.facture ? `Facture ${m.facture.numero}` : 'Facture'} sous={m.facture ? 'PDF' : 'Disponible dès son envoi'} />
-            </div>
-          </div>
+
+        <div className="card sec" style={{ padding: 18 }}><h3>Suivi</h3><Frise etapes={m.suivi.etapes} /></div>
+
+        <div className="card sec" style={{ padding: 18 }}>
+          <h3>Détails</h3>
+          <dl className="kv">
+            <dt>Lieu d’intervention</dt><dd>{m.adresse}</dd>
+            {m.destination && <><dt>Livraison</dt><dd>{m.destination}</dd></>}
+            <dt>Demandée</dt><dd>{jour(m.recueLe)}</dd>
+            {m.prevuLe && <><dt>Prévue</dt><dd>{jour(m.prevuLe)}</dd></>}
+            {m.panne && <><dt>Panne signalée</dt><dd>{m.panne}</dd></>}
+            {m.contact && <><dt>Contact sur place</dt><dd>{m.contact.nom}{m.contact.tel && <> · <a href={`tel:${m.contact.tel.replace(/\s/g, '')}`} style={{ color: 'var(--red)' }}>{m.contact.tel}</a></>}</dd></>}
+            {m.reference && <><dt>Votre référence</dt><dd>{m.reference}</dd></>}
+            {m.commandePar && <><dt>Commandée par</dt><dd>{m.commandePar}</dd></>}
+            {m.societe && <><dt>Société</dt><dd>{m.societe.nom}</dd></>}
+          </dl>
         </div>
+
+        {m.messageChauffeur && (
+          <div className="card sec" style={{ padding: 18 }}>
+            <h3>Message pour le chauffeur</h3>
+            <p style={{ margin: '0 0 10px', fontWeight: 600 }}>« {m.messageChauffeur.texte} »</p>
+            {m.messageChauffeur.confirme ? <span className="pill t-fini">✓ Lu et confirmé par le chauffeur</span> : <span className="pill t-attente">Le chauffeur le confirmera en acceptant la mission</span>}
+          </div>
+        )}
+
+        {m.photos.length > 0 && (
+          <div className="card sec" style={{ padding: 18 }}>
+            <h3>Photos du chauffeur</h3>
+            <div className="photos">{m.photos.map(src => <button key={src} onClick={() => setPhoto(src)} style={{ padding: 0 }}><img src={src} alt="Photo du véhicule" /></button>)}</div>
+          </div>
+        )}
+
+        <div className="card sec" style={{ padding: 18 }}>
+          <h3>Documents</h3>
+          <DocLigne on={m.rapport} href={`/api/espace/missions/${m.id}/rapport`} titre="Rapport d’intervention" sous={m.rapport ? 'Photos, constat et signature' : 'Disponible à la fin de l’intervention'} />
+          <DocLigne on={!!m.facture} href={`/api/espace/missions/${m.id}/facture`} titre={m.facture ? `Facture ${m.facture.numero}` : 'Facture'} sous={m.facture ? 'PDF' : m.rapport ? 'Disponible dès son envoi' : 'Après l’intervention'} />
+          {m.avoir && <DocLigne on href={`/api/espace/missions/${m.id}/avoir`} titre={`Note de crédit ${m.avoir.numero}`} sous="PDF" />}
+        </div>
+
+        {m.annulable && (
+          <div className="sec" style={{ textAlign: 'center', paddingBottom: 30 }}>
+            {m.annulationEnCours ? <p style={{ color: 'var(--ink2)', fontWeight: 600 }}>Demande d’annulation en cours d’examen : notre équipe vous répond rapidement.</p>
+              : annul ? (
+                <div className="card" style={{ padding: 16, textAlign: 'left' }}>
+                  <b>Annuler cette intervention ?</b>
+                  <p style={{ color: 'var(--ink2)', fontSize: 14, margin: '6px 0 10px' }}>{m.suivi.ton === 'attente' ? 'Elle n’est pas encore validée : elle est annulée tout de suite, sans frais.' : 'Elle est déjà en cours : notre équipe examine votre demande et vous répond rapidement.'}</p>
+                  <textarea className="input" placeholder="Motif (facultatif)" value={motif} onChange={e => setMotif(e.target.value)} />
+                  <div className="foot"><button className="btn btn-ghost" onClick={() => setAnnul(false)}>Garder</button><button className="btn btn-red" disabled={busy} onClick={annuler}>{busy ? 'Envoi…' : 'Confirmer l’annulation'}</button></div>
+                </div>
+              ) : <button className="btn btn-ghost" onClick={() => setAnnul(true)}>Demander l’annulation</button>}
+          </div>
+        )}
+        <div style={{ height: 30 }} />
       </aside>
+      {photo && (
+        <div className="modal" style={{ zIndex: 95 }}>
+          <div style={{ position: 'relative', maxWidth: 900, width: '100%' }}>
+            <img src={photo} alt="Photo du véhicule" style={{ width: '100%', borderRadius: 18, maxHeight: '80vh', objectFit: 'contain', background: '#000' }} />
+            <button className="x" style={{ position: 'absolute', top: 10, right: 10, background: 'rgba(0,0,0,.55)' }} onClick={() => setPhoto(null)} aria-label="Fermer">✕</button>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
 
-function Ligne({ label, v }: { label: string; v: string | null }) {
-  return <div className="flex gap-4 px-5 py-3 text-sm"><span className="w-36 shrink-0 text-slate-500">{label}</span><span className="font-semibold text-slate-800">{v || '—'}</span></div>
-}
-
-function Doc({ actif, href, titre, sous }: { actif: boolean; href: string; titre: string; sous: string }) {
-  const corps = (
-    <>
-      <span className={`grid h-11 w-11 shrink-0 place-items-center rounded-xl ${actif ? 'bg-rose-50 text-rose-600' : 'bg-slate-100 text-slate-400'}`}>
-        <svg viewBox="0 0 24 24" className="h-6 w-6" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z" /><path d="M14 3v5h5M12 12v6m-3-3 3 3 3-3" /></svg>
-      </span>
-      <span className="min-w-0"><span className={`block truncate text-sm font-bold ${actif ? 'text-slate-900' : 'text-slate-400'}`}>{titre}</span><span className="block text-xs text-slate-500">{sous}</span></span>
-    </>
+function DocLigne({ on, href, titre, sous }: { on: boolean; href: string; titre: string; sous: string }) {
+  return (
+    <div className={`doc ${on ? '' : 'off'}`}>
+      <span className="ic"><IcoDoc /></span>
+      {on ? <a href={href} target="_blank" rel="noreferrer" style={{ textDecoration: 'none', minWidth: 0 }}><b>{titre}</b><small>{sous}</small></a> : <div><b>{titre}</b><small>{sous}</small></div>}
+      {on && <a className="dl" href={`${href}?dl=1`} aria-label="Télécharger"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><path d="M12 4v11m-4-4 4 4 4-4M5 20h14" /></svg></a>}
+    </div>
   )
-  return actif
-    ? <div className="flex items-center gap-3 rounded-2xl border border-[#ece6df] bg-white p-3"><a href={href} target="_blank" rel="noreferrer" className="flex min-w-0 flex-1 items-center gap-3">{corps}</a><a href={`${href}?dl=1`} className="grid h-11 w-11 place-items-center rounded-xl text-slate-500 hover:bg-slate-100" aria-label="Télécharger"><svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><path d="M12 4v11m-4-4 4 4 4-4M5 20h14" /></svg></a></div>
-    : <div className="flex items-center gap-3 rounded-2xl border border-dashed border-[#e5ddd4] bg-white/60 p-3">{corps}</div>
 }

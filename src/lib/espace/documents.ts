@@ -10,21 +10,29 @@ import { resolveMissionDocsBatch } from '@/lib/garage/mission-documents'
 import { isRelivraison } from '@/lib/missions/mission-types'
 
 export interface FactureClient { id: number; numero: string }
+export interface DocsClient { facture: FactureClient | null; avoir: FactureClient | null }
 
-/** Factures envoyées, par mission (un seul aller-retour par lot). */
-export async function facturesEnvoyees(missions: any[]): Promise<Map<string, FactureClient>> {
-  const out = new Map<string, FactureClient>()
+/** Facture et note de crédit validées ET envoyées, par mission (un seul aller-retour par lot). */
+export async function documentsEnvoyes(missions: any[]): Promise<Map<string, DocsClient>> {
+  const out = new Map<string, DocsClient>()
   const docs = await resolveMissionDocsBatch(missions.map(m => ({ id: m.id, odoo_quote_id: m.odoo_quote_id, invoice_odoo_id: m.invoice_odoo_id })))
-  const ids = [...new Set([...docs.values()].map(d => d.invoice?.id).filter((x): x is number => !!x))]
+  const ids = [...new Set([...docs.values()].flatMap(d => [d.invoice?.id, d.creditNote?.id]).filter((x): x is number => !!x))]
   if (!ids.length) return out
   let moves: any[] = []
-  try { moves = await odooRpc<any[]>('account.move', 'read', [ids], { fields: ['id', 'name', 'state', 'is_move_sent', 'peppol_move_state', 'payment_state'] }) } catch { return out }
+  try { moves = await odooRpc<any[]>('account.move', 'read', [ids], { fields: ['id', 'name', 'state', 'is_move_sent', 'peppol_move_state'] }) } catch { return out }
   const ok = new Map(moves.filter(v => v.state === 'posted' && (v.is_move_sent || ['processing', 'done'].includes(String(v.peppol_move_state || '')))).map(v => [v.id, v]))
   for (const m of missions) {
-    const inv = docs.get(m.id)?.invoice
-    const v = inv && ok.get(inv.id)
-    if (v) out.set(m.id, { id: v.id, numero: v.name })
+    const d = docs.get(m.id)
+    const f = d?.invoice && ok.get(d.invoice.id), a = d?.creditNote && ok.get(d.creditNote.id)
+    if (f || a) out.set(m.id, { facture: f ? { id: f.id, numero: f.name } : null, avoir: a ? { id: a.id, numero: a.name } : null })
   }
+  return out
+}
+
+/** Compatibilité : factures seules. */
+export async function facturesEnvoyees(missions: any[]): Promise<Map<string, FactureClient>> {
+  const out = new Map<string, FactureClient>()
+  for (const [k, v] of await documentsEnvoyes(missions)) if (v.facture) out.set(k, v.facture)
   return out
 }
 

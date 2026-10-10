@@ -1,10 +1,10 @@
-// Layout racine /garage : simple passe-plat. Les pages publiques (login,
-// activate) et set-password vivent ici sans garde ; les pages protégées sont
-// dans le groupe (app), dont le layout vérifie la session côté serveur.
-// Olivier 2026-06-02, revu 2026-09-09.
+// Ancien portail garage (/garage) : remplacé par l'espace client unique /espace le 10/10/2026 (Olivier :
+// « on va dans l'amélioration », un seul portail pour EBAC, Centracar, Car Parts, Car Avenue…).
+// Les comptes ont été repris dans l'espace avec leur mot de passe ; toute adresse /garage y mène.
+import { redirect } from 'next/navigation'
 
 export const dynamic = 'force-dynamic'
 
-export default function GarageLayout({ children }: { children: React.ReactNode }) {
-  return <>{children}</>
+export default function GarageLayout(_: { children: React.ReactNode }) {
+  redirect('/espace/connexion')
 }

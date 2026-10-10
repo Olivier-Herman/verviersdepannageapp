@@ -1,9 +1,9 @@
 // GET /api/espace/missions/[id]/rapport — rapport d'intervention (mission terminée)
-// GET /api/espace/missions/[id]/facture — facture validée et envoyée
+// GET /api/espace/missions/[id]/facture | avoir — facture ou note de crédit validée et envoyée
 import { NextResponse } from 'next/server'
 import { getEspaceSession } from '@/lib/espace/session'
 import { missionVisible, relivraisonsDe, suiviClient } from '@/lib/espace/missions'
-import { facturesEnvoyees, idsRapport } from '@/lib/espace/documents'
+import { documentsEnvoyes, idsRapport } from '@/lib/espace/documents'
 import { buildRapportData, renderRapportPdf } from '@/lib/missions/rapport-intervention'
 import { fetchInvoicePdfFromOdoo } from '@/lib/relances/odoo'
 
@@ -29,13 +29,14 @@ export async function GET(req: Request, { params }: { params: { id: string; doc:
     return pdf(await renderRapportPdf(d), `Rapport-intervention-${d.number.replace(/\s+/g, '')}.pdf`, dl)
   }
 
-  if (params.doc === 'facture') {
-    const f = (await facturesEnvoyees([m])).get(m.id)
-    if (!f) return NextResponse.json({ error: 'La facture n’est pas encore disponible.' }, { status: 404 })
+  if (params.doc === 'facture' || params.doc === 'avoir') {
+    const d = (await documentsEnvoyes([m])).get(m.id)
+    const f = params.doc === 'facture' ? d?.facture : d?.avoir
+    if (!f) return NextResponse.json({ error: 'Ce document n’est pas encore disponible.' }, { status: 404 })
     try {
-      return pdf(await fetchInvoicePdfFromOdoo(f.id), `Facture-${f.numero.replace(/[^\w.-]/g, '_')}.pdf`, dl)
+      return pdf(await fetchInvoicePdfFromOdoo(f.id), `${params.doc === 'avoir' ? 'Note-de-credit' : 'Facture'}-${f.numero.replace(/[^\w.-]/g, '_')}.pdf`, dl)
     } catch {
-      return NextResponse.json({ error: 'Facture momentanément indisponible.' }, { status: 502 })
+      return NextResponse.json({ error: 'Document momentanément indisponible.' }, { status: 502 })
     }
   }
   return NextResponse.json({ error: 'Document inconnu' }, { status: 404 })

@@ -14,10 +14,12 @@ export interface DemandeInput {
   plaque: string
   marque?: string; modele?: string
   adresse: string; lat?: number | null; lng?: number | null
-  destination?: string | null
-  contactNom?: string | null; contactTel?: string | null
-  remarques?: string | null
-  quand?: string | null           // ISO ; vide = dès que possible
+  destination?: string | null; destinationNom?: string | null; destLat?: number | null; destLng?: number | null
+  contactNom: string; contactTel: string          // contact sur place : obligatoires (Olivier 10/10/2026)
+  panne?: string | null                            // première indication sur la panne
+  messageChauffeur?: string | null                 // affiché au chauffeur à l'acceptation, à confirmer
+  reference?: string | null                        // référence du client (n° de dossier…)
+  quand?: string | null                            // ISO ; vide = dès que possible
 }
 
 const txt = (v: unknown, n = 300) => { const s = String(v ?? '').trim(); return s ? s.slice(0, n) : null }
@@ -30,13 +32,16 @@ export function lireDemande(b: any): DemandeInput | string {
   if (!plaque) return 'La plaque est obligatoire.'
   const adresse = txt(b?.adresse, 300)
   if (!adresse) return 'L’adresse de l’intervention est obligatoire.'
+  const destination = type === 'REM' ? txt(b?.destination, 300) : null
+  if (type === 'REM' && !destination) return 'Indiquez où livrer le véhicule.'
+  const contactNom = txt(b?.contactNom, 120), contactTel = txt(b?.contactTel, 40)
+  if (!contactNom || !contactTel) return 'Le contact sur place et son numéro sont obligatoires.'
   const quand = b?.quand && !isNaN(Date.parse(b.quand)) ? new Date(b.quand).toISOString() : null
   return {
     type, plaque, adresse, lat: num(b?.lat), lng: num(b?.lng),
     marque: txt(b?.marque, 60) || undefined, modele: txt(b?.modele, 60) || undefined,
-    destination: type === 'REM' ? txt(b?.destination, 300) : null,
-    contactNom: txt(b?.contactNom, 120), contactTel: txt(b?.contactTel, 40),
-    remarques: txt(b?.remarques, 1500), quand,
+    destination, destinationNom: type === 'REM' ? txt(b?.destinationNom, 120) : null, destLat: num(b?.destLat), destLng: num(b?.destLng),
+    contactNom, contactTel, panne: txt(b?.panne, 500), messageChauffeur: txt(b?.messageChauffeur, 1000), reference: txt(b?.reference, 80), quand,
   }
 }
 
@@ -46,19 +51,31 @@ export async function creerDemande(compte: EspaceCompte, societe: EspaceSociete,
   const quand = d.quand || now
   const rdv = new Date(quand).getTime() > Date.now() + 30 * 60_000
   const remarques = [
-    d.remarques,
-    d.contactNom || d.contactTel ? `Contact sur place : ${[d.contactNom, d.contactTel].filter(Boolean).join(' — ')}` : null,
+    `Contact sur place : ${d.contactNom} — ${d.contactTel}`,
+    d.panne ? `Panne signalée : ${d.panne}` : null,
+    d.messageChauffeur ? `Message pour le chauffeur (à confirmer à l’acceptation) : ${d.messageChauffeur}` : null,
     `Commandé depuis l’espace client par ${compte.nom}`,
   ].filter(Boolean).join('\n')
+  // Même circuit que l'ancien portail garage : annulation via la décision du dispatch, mails au garage,
+  // commande VHU (Car Parts) directement prête à assigner.
+  const { data: gp } = await sb.from('garage_partners').select('id').eq('odoo_partner_id', societe.odoo_partner_id).eq('active', true).limit(1)
+  const { isVhuSource } = await import('@/lib/missions/vhu')
+  const vhu = isVhuSource(societe.source_key)
   const { data: m, error } = await sb.from('incoming_missions').insert({
     external_id: `ESP-${Date.now().toString(36).toUpperCase()}`,
     source: societe.source_key,
     mission_type: d.type === 'DSP' ? 'depannage' : 'remorquage',
-    status: 'new',
+    status: vhu ? 'dispatching' : 'new',
     vehicle_plate: d.plaque, vehicle_brand: d.marque || null, vehicle_model: d.modele || null,
     incident_address: d.adresse, incident_lat: d.lat ?? null, incident_lng: d.lng ?? null,
-    destination_address: d.destination || null,
-    client_name: societe.nom, client_phone: d.contactTel || null,
+    destination_address: d.destination || null, destination_name: d.destinationNom || null,
+    destination_lat: d.destLat ?? null, destination_lng: d.destLng ?? null,
+    client_name: societe.nom, client_phone: d.contactTel,
+    assisted_name: d.contactNom, assisted_phone: d.contactTel,
+    incident_description: d.panne || null,
+    driver_message: d.messageChauffeur || null,
+    dossier_number: d.reference || null,
+    requested_by_garage_id: gp?.[0]?.id || null,
     billed_to_id: societe.odoo_partner_id, billed_to_name: societe.nom,
     amount_to_collect: null,
     remarks_general: remarques,

@@ -653,6 +653,8 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
   // Alertes fermeture garage (règles dynamiques depuis /admin/garage-closures).
   const garageNotice = useGarageClosure()
   const [loading, setLoading]   = useState(false)
+  // Message du client (espace client, Olivier 10/10/2026) : affiché à l'acceptation, le chauffeur confirme l'avoir lu.
+  const [msgClient, setMsgClient] = useState<null | 'accept' | 'lire'>(null)
   const [err, setErr]           = useState('')
   const [navApp, setNavApp]     = useState<NavApp>(initNav || 'gmaps')
   // Olivier 08/09/2026 (mission de Franck) : une fiche sans coordonnées (Kaze en
@@ -1555,6 +1557,11 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
     return () => { sb.removeChannel(ch) }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [M.id])
+
+  useEffect(() => {
+    if (isReadOnly || !(M as any).driver_message || (M as any).driver_message_ack_at) return
+    if ((M as any).assigned_to === currentUserId && ['accepted', 'in_progress', 'delivering'].includes(M.status)) setMsgClient(c => c || 'lire')
+  }, [M.status, (M as any).driver_message_ack_at]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── API statuts simples (avec reload) ───────────────────────────────────
   const api = async (action: string, extra: Record<string, any> = {}) => {
@@ -4904,12 +4911,32 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
             </div>
           )}
 
+          {msgClient && (M as any).driver_message && (
+            <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/60 p-4">
+              <div className="w-full max-w-md rounded-3xl bg-surface p-6 shadow-2xl">
+                <p className="text-xs font-bold uppercase tracking-wider text-amber-700 dark:text-amber-300"><T k="mission_detail.client_msg_title" /></p>
+                <p className="mt-3 rounded-2xl border-2 border-amber-400 bg-amber-50 p-4 text-lg font-bold text-gray-900 whitespace-pre-wrap">{(M as any).driver_message}</p>
+                <p className="mt-3 text-sm text-ink-secondary"><T k="mission_detail.client_msg_hint" /></p>
+                <button disabled={loading} className="mt-5 w-full min-h-[52px] rounded-2xl bg-blue-600 font-bold text-white disabled:opacity-50"
+                  onClick={async () => {
+                    const mode = msgClient
+                    await fetch(`/api/missions/${M.id}/message-chauffeur`, { method: 'POST' }).catch(() => {})
+                    setM(prev => ({ ...prev, driver_message_ack_at: new Date().toISOString() } as any))
+                    setMsgClient(null)
+                    if (mode === 'accept') api('accept')
+                  }}>
+                  {msgClient === 'accept' ? <T k="mission_detail.client_msg_accept" /> : <T k="mission_detail.client_msg_ok" />}
+                </button>
+              </div>
+            </div>
+          )}
+
           {M.status === 'assigned' && (
             <>
               <p className="text-ink-secondary text-xs text-center px-2">
                 <T k="mission_detail.btn_accept_hint" />
               </p>
-              <button onClick={() => api('accept')} disabled={loading}
+              <button onClick={() => ((M as any).driver_message && !(M as any).driver_message_ack_at) ? setMsgClient('accept') : api('accept')} disabled={loading}
                 className="w-full py-4 bg-blue-600 disabled:opacity-50 text-ink font-bold rounded-2xl text-base">
                 {loading ? <T k="mission_detail.loading" /> : <T k="mission_detail.btn_accept" />}
               </button>

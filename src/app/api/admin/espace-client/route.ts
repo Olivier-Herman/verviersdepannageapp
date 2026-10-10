@@ -20,13 +20,14 @@ async function admin() {
 export async function GET() {
   if (!(await admin())) return NextResponse.json({ error: 'Accès refusé' }, { status: 403 })
   const sb = createAdminClient()
-  const [soc, comptes, appels, sources] = await Promise.all([
+  const [soc, comptes, appels, sources, garages] = await Promise.all([
     sb.from('espace_societes').select('*').order('nom'),
     sb.from('espace_comptes').select('id, nom, emails, role, societe_ids, peut_inviter, invite_par, active, derniere_connexion, created_at').order('created_at'),
     sb.from('espace_appels').select('id, mission_id, status, detail, created_at').order('created_at', { ascending: false }).limit(15),
     sb.from('mission_source_catalog').select('key, label, default_billed_to_id, default_billed_to_name').eq('active', true).order('label'),
+    sb.from('espace_garages').select('id, societe_id, nom, adresse, ordre').order('ordre'),
   ])
-  return NextResponse.json({ societes: soc.data || [], comptes: comptes.data || [], appels: appels.data || [], sources: sources.data || [] })
+  return NextResponse.json({ societes: soc.data || [], comptes: comptes.data || [], appels: appels.data || [], sources: sources.data || [], garages: garages.data || [] })
 }
 
 export async function POST(req: Request) {
@@ -46,10 +47,22 @@ export async function POST(req: Request) {
     const emails = [...new Set((Array.isArray(b.emails) ? b.emails : String(b.emails || '').split(/[\s,;]+/)).map(normEmail).filter((e: string) => e.includes('@')))]
     const row = { nom: String(b.nom || '').trim(), emails, role: b.role, societe_ids: Array.isArray(b.societe_ids) ? b.societe_ids : [], peut_inviter: b.role === 'gestionnaire' || b.peut_inviter === true, updated_at: new Date().toISOString() }
     if (!row.nom || !emails.length || !['societe', 'gestionnaire', 'collaborateur'].includes(row.role) || !row.societe_ids.length) return NextResponse.json({ error: 'Nom, adresse(s), rôle et société(s) obligatoires.' }, { status: 400 })
-    if (row.role !== 'gestionnaire' && row.societe_ids.length !== 1) return NextResponse.json({ error: 'Un compte société ou collaborateur est rattaché à une seule société.' }, { status: 400 })
+    if (row.role === 'collaborateur' && row.societe_ids.length !== 1) return NextResponse.json({ error: 'Un collaborateur est rattaché à une seule société.' }, { status: 400 })
     const { data: deja } = await sb.from('espace_comptes').select('id').overlaps('emails', emails)
     if ((deja || []).some((d: any) => d.id !== b.id)) return NextResponse.json({ error: 'Une de ces adresses a déjà un accès.' }, { status: 409 })
     const r = b.id ? await sb.from('espace_comptes').update(row).eq('id', b.id) : await sb.from('espace_comptes').insert(row)
+    return r.error ? NextResponse.json({ error: r.error.message }, { status: 400 }) : NextResponse.json({ ok: true })
+  }
+
+  if (b.action === 'garage') {
+    const nom = String(b.nom || '').trim(), adresse = String(b.adresse || '').trim()
+    if (!b.societe_id || !nom || !adresse) return NextResponse.json({ error: 'Nom et adresse du garage obligatoires.' }, { status: 400 })
+    const { count } = await sb.from('espace_garages').select('id', { count: 'exact', head: true }).eq('societe_id', b.societe_id)
+    const r = await sb.from('espace_garages').insert({ societe_id: b.societe_id, nom, adresse, ordre: (count || 0) + 1 })
+    return r.error ? NextResponse.json({ error: r.error.message }, { status: 400 }) : NextResponse.json({ ok: true })
+  }
+  if (b.action === 'garage-suppr') {
+    const r = await sb.from('espace_garages').delete().eq('id', b.id)
     return r.error ? NextResponse.json({ error: r.error.message }, { status: 400 }) : NextResponse.json({ ok: true })
   }
 

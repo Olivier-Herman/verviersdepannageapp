@@ -10,7 +10,7 @@ import { createAdminClient } from '@/lib/supabase'
 import { isDsp, isRemorquage, isRelivraison } from '@/lib/missions/mission-types'
 import type { EspaceCompte, EspaceSociete } from './session'
 
-export const MISSION_COLS = 'id, mission_number, status, mission_type, vehicle_plate, vehicle_brand, vehicle_model, incident_address, incident_city, destination_address, destination_name, received_at, rdv_at, assigned_at, accepted_at, on_way_at, on_site_at, loaded_at, parked_at, delivering_at, completed_at, cancelled_at, billed_to_id, billed_to_name, espace_compte_id, invoice_odoo_id, odoo_quote_id, remarks_general, client_phone, dossier_number, parent_mission_id, created_at'
+export const MISSION_COLS = 'id, mission_number, status, mission_type, vehicle_plate, vehicle_brand, vehicle_model, incident_address, incident_city, destination_address, destination_name, received_at, rdv_at, assigned_at, accepted_at, on_way_at, on_site_at, loaded_at, parked_at, delivering_at, completed_at, cancelled_at, billed_to_id, billed_to_name, espace_compte_id, invoice_odoo_id, odoo_quote_id, remarks_general, client_phone, dossier_number, parent_mission_id, created_at, assisted_name, assisted_phone, incident_description, driver_message, driver_message_ack_at, driver_photos, photos_visible_to_garage, requested_by_garage_id, source'
 
 export function scopeMissions(q: any, compte: EspaceCompte, societes: EspaceSociete[]) {
   q = q.in('billed_to_id', societes.map(s => s.odoo_partner_id))
@@ -38,7 +38,7 @@ export function suiviClient(m: any, rel?: any | null): Suivi {
   const type: Suivi['type'] = rel ? 'REM+REL' : isDsp(m.mission_type) ? 'DSP' : isRemorquage(m.mission_type) ? 'REM' : 'AUTRE'
   if (m.status === 'cancelled') {
     return { statut: 'annulee', libelle: 'Annulée', ton: 'annule', type, termineeLe: null,
-      etapes: [{ cle: 'recue', libelle: 'Demande reçue', quand: m.received_at, faite: true, courante: false }, { cle: 'annulee', libelle: 'Annulée', quand: m.cancelled_at, faite: true, courante: true }] }
+      etapes: [{ cle: 'recue', libelle: 'Demande reçue', quand: null, faite: true, courante: false }, { cle: 'annulee', libelle: 'Annulée', quand: null, faite: true, courante: true }] }
   }
   const acceptee = m.status !== 'new'
   const fin = rel ? (FINI.includes(rel.status) ? (rel.completed_at || rel.updated_at) : null) : (FINI.includes(m.status) ? m.completed_at : null)
@@ -56,7 +56,8 @@ export function suiviClient(m: any, rel?: any | null): Suivi {
   }
   e.push({ cle: 'terminee', libelle: 'Terminée', quand: fin, faite: !!fin })
   const idx = (() => { let i = 0; e.forEach((x, k) => { if (x.faite) i = k }); return i })()
-  const etapes = e.map((x, k) => ({ ...x, courante: k === idx }))
+  // Le client ne voit pas les heures de pointage (Olivier 10/10/2026) : seules les étapes franchies.
+  const etapes = e.map((x, k) => ({ ...x, quand: null, courante: k === idx }))
   const cur = etapes[idx]
   const ton: Suivi['ton'] = cur.cle === 'terminee' ? 'fini' : cur.cle === 'recue' ? 'attente' : cur.cle === 'acceptee' ? 'accepte' : cur.cle === 'en_route' || cur.cle === 'relivraison' ? 'route' : 'action'
   const libelle = cur.cle === 'recue' ? 'En attente de validation' : cur.cle === 'action' && type === 'DSP' ? 'Dépannage en cours' : cur.cle === 'action' ? 'Remorquage en cours' : cur.libelle

@@ -1,92 +1,81 @@
 'use client'
-// Frise de suivi et pastilles de statut de l'espace client.
+// Éléments partagés de l'espace client (design du prototype validé le 10/10/2026).
 
 export type Ton = 'attente' | 'accepte' | 'route' | 'action' | 'fini' | 'annule'
-export interface Etape { cle: string; libelle: string; quand: string | null; faite: boolean; courante: boolean }
+export interface Etape { cle: string; libelle: string; faite: boolean; courante: boolean }
+export interface Doc { id: number; numero: string }
 export interface MissionEspace {
   id: string; numero: number; plaque: string | null; vehicule: string; adresse: string | null; destination: string | null
   recueLe: string; prevuLe: string | null; reference: string | null
   societe: { id: string; nom: string; couleur: string | null } | null
   commandePar: string | null
+  panne: string | null
+  contact: { nom: string; tel: string | null } | null
+  messageChauffeur: { texte: string; confirme: boolean } | null
+  photos: string[]
   suivi: { statut: string; libelle: string; ton: Ton; etapes: Etape[]; type: 'DSP' | 'REM' | 'REM+REL' | 'AUTRE'; termineeLe: string | null }
   rapport: boolean
-  facture: { id: number; numero: string } | null
+  facture: Doc | null
+  avoir: Doc | null
+  annulable: boolean
+  annulationEnCours: boolean
 }
 
-export const TONS: Record<Ton, { fond: string; texte: string; point: string; libelleCourt: string }> = {
-  attente: { fond: 'bg-amber-50', texte: 'text-amber-800', point: 'text-amber-500', libelleCourt: 'En attente' },
-  accepte: { fond: 'bg-sky-50', texte: 'text-sky-800', point: 'text-sky-500', libelleCourt: 'Acceptée' },
-  route: { fond: 'bg-indigo-50', texte: 'text-indigo-800', point: 'text-indigo-500', libelleCourt: 'En route' },
-  action: { fond: 'bg-rose-50', texte: 'text-rose-800', point: 'text-rose-500', libelleCourt: 'En cours' },
-  fini: { fond: 'bg-emerald-50', texte: 'text-emerald-800', point: 'text-emerald-500', libelleCourt: 'Terminée' },
-  annule: { fond: 'bg-slate-100', texte: 'text-slate-700', point: 'text-slate-400', libelleCourt: 'Annulée' },
+export const IMG = {
+  route: '/noprecache/espace/route.jpg', dsp: '/noprecache/espace/dsp.jpg', rem: '/noprecache/espace/rem.jpg',
+  vide: '/noprecache/espace/vide.jpg', succes: '/noprecache/espace/succes.jpg', nuit: '/noprecache/espace/nuit.jpg', equipe: '/noprecache/espace/equipe.jpg',
 }
+
+export const typeLibelle = (t: string) => t === 'DSP' ? 'Dépannage sur place' : t === 'REM+REL' ? 'Remorquage et livraison' : t === 'REM' ? 'Remorquage' : 'Intervention'
 
 export function Pastille({ ton, libelle }: { ton: Ton; libelle: string }) {
-  const t = TONS[ton]
-  const enCours = ton === 'route' || ton === 'action' || ton === 'accepte'
-  return (
-    <span className={`inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-bold ${t.fond} ${t.texte}`}>
-      {enCours ? <span className={`esp-live ${t.point}`} /> : <span className={`h-2.5 w-2.5 rounded-full bg-current ${t.point}`} />}
-      {libelle}
-    </span>
-  )
+  return <span className={`pill t-${ton}`}>{['route', 'action', 'accepte'].includes(ton) && <span className="live" />}{libelle}</span>
 }
 
-export const heure = (iso: string | null) => iso ? new Date(iso).toLocaleTimeString('fr-BE', { timeZone: 'Europe/Brussels', hour: '2-digit', minute: '2-digit' }) : ''
+export function Plaque({ v }: { v: string | null }) {
+  if (!v) return null
+  return <span className="plate"><i>B</i><span>{v}</span></span>
+}
+
+/** Le jour seulement : le client ne voit pas les heures de pointage. */
 export const jour = (iso: string | null) => {
   if (!iso) return ''
-  const d = new Date(iso), now = new Date()
+  const d = new Date(iso), j = new Date()
   const k = (x: Date) => x.toLocaleDateString('fr-BE', { timeZone: 'Europe/Brussels' })
-  const hier = new Date(now.getTime() - 86400_000)
-  if (k(d) === k(now)) return `aujourd’hui à ${heure(iso)}`
-  if (k(d) === k(hier)) return `hier à ${heure(iso)}`
-  return `${d.toLocaleDateString('fr-BE', { timeZone: 'Europe/Brussels', day: 'numeric', month: 'long' })} à ${heure(iso)}`
+  if (k(d) === k(j)) return 'aujourd’hui'
+  if (k(d) === k(new Date(j.getTime() - 86400_000))) return 'hier'
+  return 'le ' + d.toLocaleDateString('fr-BE', { timeZone: 'Europe/Brussels', day: 'numeric', month: 'long' })
 }
 
-export function Progression({ etapes }: { etapes: Etape[] }) {
+export function Progression({ etapes, annulee }: { etapes: Etape[]; annulee?: boolean }) {
   const i = Math.max(0, etapes.findIndex(e => e.courante))
-  const pct = etapes.length > 1 ? (i / (etapes.length - 1)) * 100 : 100
-  return <div className="esp-track"><span style={{ width: `${Math.max(6, pct)}%` }} /></div>
+  const pct = annulee ? 100 : etapes.length > 1 ? Math.max(6, (i / (etapes.length - 1)) * 100) : 100
+  return <div className="track"><span style={{ width: `${pct}%`, ...(annulee ? { background: '#c6cad4' } : {}) }} /></div>
 }
 
-/** Frise détaillée : verticale sur téléphone, horizontale sur grand écran. */
 export function Frise({ etapes }: { etapes: Etape[] }) {
   return (
-    <>
-      <ol className="md:hidden relative ml-3 border-l-2 border-dashed border-[#e5ddd4]">
-        {etapes.map((e, k) => (
-          <li key={e.cle} className="esp-rise relative pl-6 pb-5 last:pb-0" style={{ animationDelay: `${k * 70}ms` }}>
-            <Point e={e} className="absolute -left-[11px] top-0" />
-            <div className={`text-sm font-bold ${e.faite ? 'text-slate-900' : 'text-slate-400'}`}>{e.libelle}</div>
-            {e.faite && e.quand && <div className="text-xs text-slate-500">{jour(e.quand)}</div>}
+    <ol className="frise">
+      {etapes.map(e => {
+        const cur = e.courante && e.cle !== 'terminee' && e.cle !== 'annulee'
+        const done = e.faite && !cur
+        return (
+          <li key={e.cle} className={`${done ? 'done' : ''} ${cur ? 'cur' : ''}`}>
+            <span className="pt">{done ? '✓' : cur ? <span className="live" /> : null}</span>
+            <b>{e.libelle}</b>{cur && <small>En cours</small>}
           </li>
-        ))}
-      </ol>
-      <ol className="hidden md:grid" style={{ gridTemplateColumns: `repeat(${etapes.length}, minmax(0, 1fr))` }}>
-        {etapes.map((e, k) => (
-          <li key={e.cle} className="esp-rise relative flex flex-col items-center text-center" style={{ animationDelay: `${k * 80}ms` }}>
-            {k > 0 && <span className={`absolute right-1/2 top-[10px] h-[3px] w-full -translate-y-1/2 ${e.faite ? 'bg-gradient-to-r from-rose-500 to-amber-400' : 'bg-[#ece6df]'}`} />}
-            <Point e={e} className="relative z-10" />
-            <div className={`mt-2 px-1 text-[13px] font-bold leading-tight ${e.faite ? 'text-slate-900' : 'text-slate-400'}`}>{e.libelle}</div>
-            {e.faite && e.quand && <div className="text-[11px] text-slate-500">{heure(e.quand)}</div>}
-          </li>
-        ))}
-      </ol>
-    </>
+        )
+      })}
+    </ol>
   )
 }
 
-function Point({ e, className }: { e: Etape; className?: string }) {
-  if (e.courante && e.cle !== 'terminee' && e.cle !== 'annulee') {
-    return <span className={`${className} grid h-[22px] w-[22px] place-items-center rounded-full bg-white ring-4 ring-rose-100`}><span className="esp-live text-rose-600" /></span>
-  }
-  if (e.faite) {
-    return (
-      <span className={`${className} grid h-[22px] w-[22px] place-items-center rounded-full ${e.cle === 'annulee' ? 'bg-slate-400' : 'bg-gradient-to-br from-rose-500 to-amber-400'} text-white shadow`}>
-        <svg viewBox="0 0 16 16" className="h-3 w-3"><path d="M3 8.5 L6.5 12 L13 4.5" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" /></svg>
-      </span>
-    )
-  }
-  return <span className={`${className} block h-[22px] w-[22px] rounded-full border-2 border-[#e5ddd4] bg-white`} />
-}
+export const IcoPin = () => <svg width="16" height="16" viewBox="0 0 24 24" fill="#d42a2a" style={{ flex: 'none', marginTop: 2 }}><path d="M12 2a7 7 0 0 0-7 7c0 5.2 7 13 7 13s7-7.8 7-13a7 7 0 0 0-7-7zm0 9.5A2.5 2.5 0 1 1 12 6.5a2.5 2.5 0 0 1 0 5z" /></svg>
+export const IcoDoc = () => <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z" /><path d="M14 3v5h5M12 12v6m-3-3 3 3 3-3" /></svg>
+export const IcoPlus = ({ s = 18 }: { s?: number }) => <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.8" strokeLinecap="round"><path d="M12 5v14M5 12h14" /></svg>
+export const Marque = () => (
+  <div className="brand">
+    <span className="brand-mark"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 17h2m12 0h4v-4l-3-4h-5v8M3 17V7h10v10" /><circle cx="17" cy="17" r="2" /><circle cx="7" cy="17" r="2" /></svg></span>
+    <span><strong>Verviers Dépannage</strong><small>Espace client</small></span>
+  </div>
+)
