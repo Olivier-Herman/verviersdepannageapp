@@ -7,13 +7,13 @@ import { loadGoogleMaps } from '@/components/AddressField'
 import AdresseInline, { type AdresseChoisie } from '../../espace/_ui/AdresseInline'
 import { Frise, Plaque, IMG, type Etape } from '../../espace/_ui/suivi'
 
-interface Client { prenom: string; nom: string; plaque: string; marque: string | null; modele: string | null; assistance: boolean }
+interface Client { prenom: string; nom: string; plaque: string; marque: string | null; modele: string | null; assistance: boolean; garage: string | null }
 interface Commande {
   id: string; numero: number; adresse: string | null; panne: string | null
   suivi: { statut: string; libelle: string; etapes: Etape[] }
   aPayer: number | null; deplacementPourRien: boolean; annulable: boolean; annulationEnCours: boolean; parti: boolean
 }
-interface Etat { actif: boolean; deplacement: number | null; garage: { nom: string; couleur: string | null }; client: Client | null; commande: Commande | null }
+interface Etat { actif: boolean; deplacement: number | null; garages: { id: string; nom: string; adresse: string }[]; garage: { nom: string; couleur: string | null }; client: Client | null; commande: Commande | null }
 
 const PANNES = ['Ne démarre pas', 'Batterie', 'Crevaison', 'Accident', 'Bruit / fumée', 'Clés enfermées', 'Autre']
 const eur = (v: number) => v.toLocaleString('fr-BE', { style: 'currency', currency: 'EUR' })
@@ -23,6 +23,7 @@ export default function ClientApp({ slug, garage, tel }: { slug: string; garage:
   const [etat, setEtat] = useState<Etat | null>(null)
   const [ecran, setEcran] = useState<'accueil' | 'inscription' | 'reconnexion' | 'code' | 'commande'>('accueil')
   const [f, setF] = useState(vide)
+  const [garageId, setGarageId] = useState('')
   const [code, setCode] = useState(['', '', '', '', '', ''])
   const [err, setErr] = useState('')
   const [busy, setBusy] = useState(false)
@@ -89,7 +90,9 @@ export default function ClientApp({ slug, garage, tel }: { slug: string; garage:
       const champ = (k: keyof typeof vide, label: string, props: any = {}) => (
         <label className="field"><span>{label}</span><input className="input" value={f[k]} onChange={e => setF({ ...f, [k]: e.target.value })} {...props} /></label>
       )
-      const pret = Object.values(f).every(v => v.trim()) && f.email.includes('@')
+      const garages = etat.garages
+      const gChoisi = garages.length === 1 ? garages[0].id : garageId
+      const pret = Object.values(f).every(v => v.trim()) && f.email.includes('@') && (!garages.length || !!gChoisi)
       return page(
         <div className="dcl-pad rise">
           <h2>Votre inscription</h2>
@@ -102,11 +105,24 @@ export default function ClientApp({ slug, garage, tel }: { slug: string; garage:
             <h3 style={{ marginTop: 6 }}>Votre véhicule</h3>
             <label className="field"><span>Plaque</span><div className="platein"><i>B</i><input value={f.plaque} onChange={e => setF({ ...f, plaque: e.target.value.toUpperCase().replace(/\s/g, '') })} placeholder="1ABC234" /></div></label>
             <div className="dcl-two">{champ('marque', 'Marque', { placeholder: 'Kia' })}{champ('modele', 'Modèle', { placeholder: 'Ceed' })}</div>
+            {garages.length > 0 && (
+              <div>
+                <h3 style={{ marginTop: 6 }}>Votre garage {garage.nom}</h3>
+                <p className="dcl-sub">{garages.length > 1 ? 'Celui qui suit votre véhicule. En cas de remorquage, votre véhicule y est conduit.' : 'En cas de remorquage, votre véhicule y est conduit.'}</p>
+                <div className="dcl-gar" role="radiogroup">
+                  {garages.map(g => (
+                    <button key={g.id} type="button" role="radio" aria-checked={gChoisi === g.id} className={gChoisi === g.id ? 'on' : ''} onClick={() => setGarageId(g.id)}>
+                      <span className="rd" /><span><b>{g.nom}</b><small>{g.adresse}</small></span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
             {err && <p className="err">{err}</p>}
-            <button className="btn btn-red" disabled={!pret || busy} onClick={async () => { if (await post(`${api}/compte`, { etape: 'inscrire', ...f })) { setCode(['', '', '', '', '', '']); setEcran('code') } }}>
+            <button className="btn btn-red" disabled={!pret || busy} onClick={async () => { if (await post(`${api}/compte`, { etape: 'inscrire', ...f, garageId: gChoisi })) { setCode(['', '', '', '', '', '']); setEcran('code') } }}>
               {busy ? 'Envoi…' : 'Recevoir mon code par mail'}
             </button>
-            {!pret && <p className="dcl-small">Tous les champs sont obligatoires.</p>}
+            {!pret && <p className="dcl-small">{garages.length > 1 && !gChoisi && Object.values(f).every(v => v.trim()) ? 'Choisissez votre garage.' : 'Tous les champs sont obligatoires.'}</p>}
             <button className="link" style={{ minHeight: 44 }} onClick={() => { setErr(''); setEcran('accueil') }}>Retour</button>
           </div>
         </div>,
@@ -163,6 +179,7 @@ export default function ClientApp({ slug, garage, tel }: { slug: string; garage:
   const bonjour = (
     <>
       <p className="dcl-veh">Bonjour <b style={{ color: 'var(--ink)' }}>{c.prenom}</b> · <Plaque v={c.plaque} /> {[c.marque, c.modele].filter(Boolean).join(' ')}</p>
+      {c.garage && <p className="dcl-sub">Votre garage : <b style={{ color: 'var(--ink)' }}>{c.garage}</b></p>}
       {c.assistance && <div className="dcl-statut ok"><span className="ic">🛡️</span><div><b>Assistance {garage.nom}</b><br /><span style={{ fontSize: 13 }}>Vos dépannages sont pris en charge par votre garage.</span></div></div>}
     </>
   )
@@ -234,7 +251,7 @@ function Commander({ api, client, garage, deplacement, onRetour, onEnvoye }: { a
   const [gps, setGps] = useState<'cherche' | 'ok' | 'refus'>('cherche')
   const [panne, setPanne] = useState('')
   const [symptome, setSymptome] = useState('')
-  const [prix, setPrix] = useState<{ tvac: number | null; charge: boolean }>({ tvac: null, charge: false })
+  const [prix, setPrix] = useState<{ dsp: number | null; rem: number | null; garage: string | null; charge: boolean }>({ dsp: null, rem: null, garage: null, charge: false })
   const [err, setErr] = useState('')
   const [busy, setBusy] = useState(false)
   const carte = useRef<HTMLDivElement>(null)
@@ -274,10 +291,10 @@ function Commander({ api, client, garage, deplacement, onRetour, onEnvoye }: { a
   // Estimation (client sans assistance) à chaque nouvelle position.
   useEffect(() => {
     if (client.assistance || pos.lat == null || pos.lng == null) return
-    setPrix({ tvac: null, charge: true })
+    setPrix({ dsp: null, rem: null, garage: null, charge: true })
     const t = setTimeout(() => {
       fetch(`${api}/estimation`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ lat: pos.lat, lng: pos.lng }) })
-        .then(r => r.json()).then(j => setPrix({ tvac: j?.tvac ?? null, charge: false })).catch(() => setPrix({ tvac: null, charge: false }))
+        .then(r => r.json()).then(j => setPrix({ dsp: j?.dsp ?? null, rem: j?.rem ?? null, garage: j?.garage ?? null, charge: false })).catch(() => setPrix({ dsp: null, rem: null, garage: null, charge: false }))
     }, 400)
     return () => clearTimeout(t)
   }, [pos.lat, pos.lng, client.assistance, api])
@@ -311,10 +328,16 @@ function Commander({ api, client, garage, deplacement, onRetour, onEnvoye }: { a
       ) : (
         <>
           <div className="dcl-prix">
-            <span>Estimation Verviers Dépannage<small>déplacement et dépannage sur place · TVAC · à régler au chauffeur</small></span>
-            <b>{prix.charge ? '…' : prix.tvac != null ? `± ${eur(prix.tvac)}` : pos.lat == null ? '—' : 'sur place'}</b>
+            <span>Dépannage sur place<small>déplacement et intervention · TVAC · à régler au chauffeur</small></span>
+            <b>{prix.charge ? '…' : prix.dsp != null ? `± ${eur(prix.dsp)}` : pos.lat == null ? '—' : 'sur place'}</b>
           </div>
-          <p className="dcl-note">Si votre véhicule doit être remorqué, le prix est plus élevé : le chauffeur vous le confirme sur place avant de charger. Si vous annulez après le départ du dépanneur, ou si vous êtes absent à son arrivée, le déplacement vous est facturé{deplacement ? ` (${eur(deplacement)} TVAC)` : ''}.</p>
+          {(prix.charge || prix.rem != null) && (
+            <div className="dcl-prix" style={{ marginTop: 8, background: '#f3ece4', color: 'var(--ink2)' }}>
+              <span>Si remorquage{prix.garage ? ` jusqu’à ${prix.garage}` : ''}<small>si le véhicule ne peut pas être réparé sur place · TVAC</small></span>
+              <b>{prix.charge ? '…' : `± ${eur(prix.rem!)}`}</b>
+            </div>
+          )}
+          <p className="dcl-note">Estimations Verviers Dépannage. C’est le chauffeur qui décide sur place s’il faut remorquer, et il vous confirme le montant avant de charger. Si vous annulez après le départ du dépanneur, ou si vous êtes absent à son arrivée, le déplacement vous est facturé{deplacement ? ` (${eur(deplacement)} TVAC)` : ''}.</p>
         </>
       )}
       {err && <p className="err" style={{ marginTop: 10 }}>{err}</p>}

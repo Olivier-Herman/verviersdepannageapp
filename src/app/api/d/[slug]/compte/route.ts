@@ -39,15 +39,19 @@ export async function POST(req: Request, { params }: { params: { slug: string } 
         plaque: String(b.plaque || '').replace(/[\s.-]/g, '').toUpperCase().slice(0, 15), marque: txt(b.marque, 40), modele: txt(b.modele, 60),
       }
       if (!email.includes('@') || Object.values(f).some(v => !v)) return NextResponse.json({ error: 'Tous les champs sont obligatoires.' }, { status: 400 })
+      // Son garage : uniquement un garage de la société (Olivier 10/10/2026, pas d'adresse libre).
+      const { data: garages } = await sb.from('espace_garages').select('id').eq('societe_id', societe.id)
+      const garage_id = garages?.length === 1 ? garages[0].id : (garages || []).find(g => g.id === b.garageId)?.id || null
+      if (garages?.length && !garage_id) return NextResponse.json({ error: 'Choisissez votre garage.' }, { status: 400 })
       let c = await trouver()
       if (!c) {
-        const { data, error } = await sb.from('espace_clients').insert({ societe_id: societe.id, email, ...f }).select('*').single()
+        const { data, error } = await sb.from('espace_clients').insert({ societe_id: societe.id, email, garage_id, ...f }).select('*').single()
         if (error) throw error
         c = data
       } else if (!c.verifie_le) {
         // Pas encore confirmé : on reprend ce qu'il vient de taper. Un compte confirmé ne se réécrit pas sans code.
-        await sb.from('espace_clients').update({ ...f, updated_at: new Date().toISOString() }).eq('id', c.id)
-        c = { ...c, ...f }
+        await sb.from('espace_clients').update({ ...f, garage_id, updated_at: new Date().toISOString() }).eq('id', c.id)
+        c = { ...c, ...f, garage_id }
       }
       await envoyer(sb, c, email, societe.nom)
       return NextResponse.json({ ok: true })
@@ -76,7 +80,8 @@ export async function POST(req: Request, { params }: { params: { slug: string } 
         // Le garage est averti à la première confirmation, pour vérifier le client et cocher son assistance.
         const { data: comptes } = await sb.from('espace_comptes').select('emails, role').contains('societe_ids', [societe.id]).eq('active', true).in('role', ['societe', 'gestionnaire'])
         const to = Array.from(new Set((comptes || []).map((x: any) => x.emails?.[0]).filter(Boolean)))
-        await avertirGarageNouveauClient(to, societe.nom, c)
+        const { data: g } = c.garage_id ? await sb.from('espace_garages').select('nom').eq('id', c.garage_id).maybeSingle() : { data: null }
+        await avertirGarageNouveauClient(to, societe.nom, { ...c, garage: g?.nom || null })
       }
       const res = NextResponse.json({ ok: true })
       res.cookies.set(clientCookie(societe.clients_slug!), signClient(c), clientCookieOptions)

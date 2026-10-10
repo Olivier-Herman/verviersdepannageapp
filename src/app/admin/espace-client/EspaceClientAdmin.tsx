@@ -2,6 +2,7 @@
 // Admin de l'espace client (Olivier 10/10/2026) : sociétés (client facturé, source, son d'appel),
 // comptes (société, gestionnaire, collaborateur), invitations, test de l'appel au dépannage.
 import { useCallback, useEffect, useState } from 'react'
+import { verifyAddressViaPlaces } from '@/components/AddressField'
 
 interface Societe { id: string; nom: string; odoo_partner_id: number; source_key: string; appel_audio: string | null; couleur: string | null; active: boolean }
 interface Compte { id: string; nom: string; emails: string[]; role: 'societe' | 'gestionnaire' | 'collaborateur'; societe_ids: string[]; peut_inviter: boolean; invite_par: string | null; active: boolean; derniere_connexion: string | null }
@@ -55,7 +56,13 @@ export default function EspaceClientAdmin() {
                   <div className="flex flex-wrap gap-2">
                     <input className="min-h-[40px] flex-1 rounded-lg border border-border bg-surface px-2 text-sm text-ink" placeholder="Nom (ex. Centracar Aubel)" value={gForm.nom} onChange={e => setGForm({ ...gForm, nom: e.target.value })} />
                     <input className="min-h-[40px] flex-[2] rounded-lg border border-border bg-surface px-2 text-sm text-ink" placeholder="Adresse complète" value={gForm.adresse} onChange={e => setGForm({ ...gForm, adresse: e.target.value })} />
-                    <button onClick={async () => { if (await act({ action: 'garage', ...gForm }, 'Garage ajouté')) setGForm(null) }} className="min-h-[40px] rounded-lg bg-brand px-3 text-sm font-bold text-white">Ajouter</button>
+                    <button onClick={async () => {
+                      // Position du garage retrouvée ici (navigateur) : elle sert de destination aux remorquages des clients
+                      // du garage et à l'estimation du prix par la route.
+                      const v = await verifyAddressViaPlaces(gForm.adresse, process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || '').catch(() => null)
+                      if (!v) { setMsg('⚠ Adresse introuvable : vérifiez-la (rue, numéro, code postal, localité).'); return }
+                      if (await act({ action: 'garage', ...gForm, adresse: v.formatted, lat: v.lat, lng: v.lng }, 'Garage ajouté')) setGForm(null)
+                    }} className="min-h-[44px] rounded-lg bg-brand px-3 text-sm font-bold text-white">Ajouter</button>
                   </div>
                 ) : <button onClick={() => setGForm({ societe_id: s.id, nom: '', adresse: '' })} className="min-h-[36px] text-sm font-semibold text-brand">+ Ajouter un garage</button>}
               </div>

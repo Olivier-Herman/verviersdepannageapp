@@ -44,3 +44,11 @@
 .dcl .dcl-foot{margin-top:auto;padding:16px;padding-bottom:calc(16px + env(safe-area-inset-bottom,0px));text-align:center;font-size:12px;color:var(--mute)}
 .dcl .dcl-foot a{color:var(--red);font-weight:700}
 .dcl .dcl-tel{display:flex;align-items:center;justify-content:center;gap:8px;min-height:48px;border-radius:14px;background:#fff;border:1px solid var(--line);font-weight:800;color:var(--ink);text-decoration:none;margin-top:12px}
+.dcl .dcl-gar{display:grid;gap:8px;margin-top:8px}
+.dcl .dcl-gar button{display:flex;align-items:center;gap:12px;width:100%;min-height:58px;padding:10px 14px;border-radius:15px;border:2px solid var(--line);background:#fff;text-align:left}
+.dcl .dcl-gar button.on{border-color:var(--red);background:#fff6f4}
+.dcl .dcl-gar .rd{width:22px;height:22px;border-radius:50%;border:2px solid #d6cdc2;flex:none;display:grid;place-items:center}
+.dcl .dcl-gar button.on .rd{border-color:var(--red)}
+.dcl .dcl-gar button.on .rd::after{content:"";width:11px;height:11px;border-radius:50%;background:var(--red)}
+.dcl .dcl-gar b{display:block;font-size:15px}
+.dcl .dcl-gar small{color:var(--mute);font-size:13px}

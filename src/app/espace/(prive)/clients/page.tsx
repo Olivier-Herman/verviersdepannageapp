@@ -6,8 +6,8 @@ import QRCode from 'qrcode'
 import { useEspace } from '../EspaceShell'
 import { Plaque, jour } from '../../_ui/suivi'
 
-interface ClientG { id: string; prenom: string; nom: string; tel: string; email: string; adresse: string; plaque: string; marque: string | null; modele: string | null; assistance: boolean; assistance_le: string | null; created_at: string; commandes: number }
-interface SocieteG { id: string; nom: string; couleur: string | null; actif: boolean; lien: string; clients: ClientG[]; commission: { htva: number; base: number; nb: number; pct: number } }
+interface ClientG { id: string; prenom: string; nom: string; tel: string; email: string; adresse: string; plaque: string; marque: string | null; modele: string | null; assistance: boolean; assistance_le: string | null; created_at: string; commandes: number; garage_id: string | null }
+interface SocieteG { garages: { id: string; nom: string }[]; id: string; nom: string; couleur: string | null; actif: boolean; lien: string; clients: ClientG[]; commission: { htva: number; base: number; nb: number; pct: number } }
 
 const eur = (v: number) => v.toLocaleString('fr-BE', { style: 'currency', currency: 'EUR' })
 const NOMS_MOIS = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre']
@@ -67,12 +67,21 @@ export default function MesClients() {
             ) : (
               <div className="cl-wrapx">
                 <table className="cl-tbl">
-                  <thead><tr><th>Client</th><th>Véhicule</th><th>Inscrit</th><th>Prise en charge</th></tr></thead>
+                  <thead><tr><th>Client</th><th>Véhicule</th>{s.garages.length > 1 && <th>Son garage</th>}<th>Inscrit</th><th>Prise en charge</th></tr></thead>
                   <tbody>
                     {s.clients.map(c => (
                       <tr key={c.id}>
                         <td><b>{c.prenom} {c.nom}</b>{!c.assistance_le && <span className="cl-new">Nouveau</span>}<br /><small style={{ color: 'var(--mute)' }}>{c.tel} · {c.email}</small><br /><small style={{ color: 'var(--mute)' }}>{c.adresse}</small></td>
                         <td><Plaque v={c.plaque} /><br /><small>{[c.marque, c.modele].filter(Boolean).join(' ')}</small>{c.commandes > 0 && <><br /><small style={{ color: 'var(--mute)' }}>{c.commandes} dépannage{c.commandes > 1 ? 's' : ''}</small></>}</td>
+                        {s.garages.length > 1 && (
+                          <td>
+                            <select className="input" style={{ minHeight: 44, minWidth: 150 }} value={c.garage_id || ''} aria-label={`Garage de ${c.prenom} ${c.nom}`}
+                              onChange={e => patch({ clientId: c.id, garageId: e.target.value }, `${c.prenom} ${c.nom} : garage modifié`)}>
+                              {!c.garage_id && <option value="">— à choisir —</option>}
+                              {s.garages.map(g => <option key={g.id} value={g.id}>{g.nom}</option>)}
+                            </select>
+                          </td>
+                        )}
                         <td><small>{jour(c.created_at)}</small></td>
                         <td>
                           <div className="cl-seg">

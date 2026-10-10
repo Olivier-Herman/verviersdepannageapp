@@ -29,7 +29,7 @@ export async function GET(req: Request) {
   const out = []
   for (const so of societes) {
     const { data: clients } = await sb.from('espace_clients')
-      .select('id, prenom, nom, tel, email, adresse, plaque, marque, modele, assistance, assistance_par, assistance_le, verifie_le, created_at')
+      .select('id, prenom, nom, tel, email, adresse, plaque, marque, modele, assistance, assistance_par, assistance_le, verifie_le, created_at, garage_id')
       .eq('societe_id', so.id).eq('active', true).not('verifie_le', 'is', null).order('created_at', { ascending: false })
     const ids = (clients || []).map(c => c.id)
     const { data: cmds } = ids.length
@@ -37,7 +37,9 @@ export async function GET(req: Request) {
       : { data: [] as any[] }
     const nbCmd = new Map<string, number>()
     for (const m of cmds || []) nbCmd.set(m.espace_client_id, (nbCmd.get(m.espace_client_id) || 0) + 1)
+    const { data: garages } = await sb.from('espace_garages').select('id, nom').eq('societe_id', so.id).order('ordre')
     out.push({
+      garages: garages || [],
       id: so.id, nom: so.nom, couleur: so.couleur, actif: so.clients_actif,
       lien: `${base.replace(/\/$/, '')}/d/${so.clients_slug}`,
       clients: (clients || []).map(c => ({ ...c, commandes: nbCmd.get(c.id) || 0 })),
@@ -65,6 +67,12 @@ export async function PATCH(req: Request) {
   if (b?.clientId) {
     const { data: c } = await sb.from('espace_clients').select('id, societe_id').eq('id', b.clientId).maybeSingle()
     if (!c || !mesSocietes.some(x => x.id === c.societe_id)) return NextResponse.json({ error: 'Client inconnu' }, { status: 404 })
+    if ('garageId' in b) {
+      const { data: g } = await sb.from('espace_garages').select('id').eq('id', b.garageId).eq('societe_id', c.societe_id).maybeSingle()
+      if (!g) return NextResponse.json({ error: 'Garage inconnu' }, { status: 400 })
+      await sb.from('espace_clients').update({ garage_id: g.id, updated_at: now }).eq('id', c.id)
+      return NextResponse.json({ ok: true })
+    }
     await sb.from('espace_clients').update({ assistance: !!b.assistance, assistance_par: s.compte.nom, assistance_le: now, updated_at: now }).eq('id', c.id)
     return NextResponse.json({ ok: true })
   }

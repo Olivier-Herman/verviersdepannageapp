@@ -58,7 +58,9 @@ export async function POST(req: Request) {
     const nom = String(b.nom || '').trim(), adresse = String(b.adresse || '').trim()
     if (!b.societe_id || !nom || !adresse) return NextResponse.json({ error: 'Nom et adresse du garage obligatoires.' }, { status: 400 })
     const { count } = await sb.from('espace_garages').select('id', { count: 'exact', head: true }).eq('societe_id', b.societe_id)
-    const r = await sb.from('espace_garages').insert({ societe_id: b.societe_id, nom, adresse, ordre: (count || 0) + 1 })
+    const lat = Number(b.lat), lng = Number(b.lng)
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) return NextResponse.json({ error: 'Adresse non localisée : vérifiez-la.' }, { status: 400 })
+    const r = await sb.from('espace_garages').insert({ societe_id: b.societe_id, nom, adresse, lat, lng, ordre: (count || 0) + 1 })
     return r.error ? NextResponse.json({ error: r.error.message }, { status: 400 }) : NextResponse.json({ ok: true })
   }
   if (b.action === 'garage-suppr') {

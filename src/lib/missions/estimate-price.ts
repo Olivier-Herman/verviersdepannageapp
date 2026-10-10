@@ -271,6 +271,19 @@ export async function depotLoopKm(point: Coord): Promise<number | null> {
   return aller == null || retour == null ? null : Math.round((aller + retour) * 10) / 10
 }
 
+/** Idem pour un remorquage : dépôt → point → destination → dépôt (total) et point → destination (chargé). */
+export async function depotRemKm(point: Coord, destination: Coord): Promise<{ totalKm: number; chargedKm: number } | null> {
+  const sb = createAdminClient()
+  const { data: d } = await sb.from('depots').select('lat, lng').eq('is_default', true).eq('active', true).maybeSingle()
+  if (d?.lat == null || d?.lng == null) return null
+  const depot: Coord = { lat: Number(d.lat), lng: Number(d.lng) }
+  const a = await routesDistanceKm(depot, point)
+  const b = a == null ? null : await routesDistanceKm(point, destination)
+  const c = b == null ? null : await routesDistanceKm(destination, depot)
+  if (a == null || b == null || c == null) return null
+  return { totalKm: Math.round((a + b + c) * 10) / 10, chargedKm: Math.round(b * 10) / 10 }
+}
+
 export interface TemplateLine {
   kind:             'SERV-PEC' | 'SERV-KM' | 'SERV-PARC' | 'SERV-MAJ' | 'SERV-DIV'
   name:             string

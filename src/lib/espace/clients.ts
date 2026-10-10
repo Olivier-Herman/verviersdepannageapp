@@ -24,6 +24,7 @@ export interface SocieteClients extends EspaceSociete {
 export interface EspaceClient {
   id: string; societe_id: string; prenom: string; nom: string; tel: string; email: string; adresse: string
   plaque: string; marque: string | null; modele: string | null; assistance: boolean; verifie_le: string | null
+  garage_id: string | null
   odoo_partner_id: number | null; session_version: number; active: boolean; created_at: string
 }
 
@@ -64,20 +65,30 @@ export async function getClientSession(slug: string): Promise<{ client: EspaceCl
   return { client: client as EspaceClient, societe }
 }
 
-// ── Estimation affichée avant de commander (dépannage sur place, TVAC) ──
-export async function estimationDepannage(societe: SocieteClients, lat: number, lng: number): Promise<number | null> {
-  if (!societe.clients_source_key || !Number.isFinite(lat) || !Number.isFinite(lng)) return null
+// ── Estimations affichées avant de commander (TVAC) : dépannage sur place, et remorquage jusqu'au garage du
+// client quand il est connu (Olivier 10/10/2026). ──
+export async function estimations(societe: SocieteClients, client: EspaceClient, lat: number, lng: number): Promise<{ dsp: number | null; rem: number | null; garage: string | null }> {
+  const vide = { dsp: null, rem: null, garage: null }
+  if (!societe.clients_source_key || !Number.isFinite(lat) || !Number.isFinite(lng)) return vide
   const { withRoutingMode } = await import('@/lib/routing/mode')
-  const { depotLoopKm, estimateMissionPrice } = await import('@/lib/missions/estimate-price')
+  const { depotLoopKm, depotRemKm, estimateMissionPrice } = await import('@/lib/missions/estimate-price')
+  const { data: g } = client.garage_id
+    ? await createAdminClient().from('espace_garages').select('nom, lat, lng').eq('id', client.garage_id).maybeSingle()
+    : { data: null }
+  const now = new Date().toISOString()
+  const prix = async (mission_type: string, total_km: number, charged_km: number) => {
+    const e = await estimateMissionPrice({ source: societe.clients_source_key, mission_type, client_name: null, vehicle_mileage: null, total_km, charged_km, intervention_date: now, received_at: now } as any)
+    return e.ok && e.total_eur > 0 ? r2(e.total_eur * TVA) : null
+  }
   return withRoutingMode('free', async () => {
     const km = await depotLoopKm({ lat, lng })
-    if (km == null) return null
-    const now = new Date().toISOString()
-    const e = await estimateMissionPrice({
-      source: societe.clients_source_key, mission_type: 'depannage', client_name: null, vehicle_mileage: null,
-      total_km: km, charged_km: 0, intervention_date: now, received_at: now,
-    } as any)
-    return e.ok && e.total_eur > 0 ? r2(e.total_eur * TVA) : null
+    const dsp = km == null ? null : await prix('depannage', km, 0)
+    let rem: number | null = null
+    if (g?.lat != null && g?.lng != null) {
+      const r = await depotRemKm({ lat, lng }, { lat: Number(g.lat), lng: Number(g.lng) })
+      rem = r ? await prix('remorquage', r.totalKm, r.chargedKm) : null
+    }
+    return { dsp, rem, garage: g?.nom || null }
   })
 }
 
@@ -151,25 +162,29 @@ export async function creerCommande(client: EspaceClient, societe: SocieteClient
   const sb = createAdminClient()
   const now = new Date().toISOString()
   const nom = `${client.prenom} ${client.nom}`.trim()
-  const { data: garages } = await sb.from('espace_garages').select('nom').eq('societe_id', societe.id).order('ordre')
-  const lesGarages = (garages || []).map((g: any) => g.nom).join(' · ')
+  // Le garage du client (choisi à l'inscription) : destination d'office si la mission devient un remorquage.
+  const { data: garages } = await sb.from('espace_garages').select('id, nom, adresse, lat, lng').eq('societe_id', societe.id).order('ordre')
+  const sonGarage: any = (garages || []).find((g: any) => g.id === client.garage_id) || (garages?.length === 1 ? garages[0] : null)
   const assistance = client.assistance
   const source = assistance ? societe.source_key : societe.clients_source_key!
   const partner = assistance ? societe.odoo_partner_id : await partenaireClient(client)
   const panne = d.panne === 'Autre' ? `Autre : ${d.symptome}` : d.symptome ? `${d.panne} — ${d.symptome}` : d.panne
   const remarques = [
-    `Client du garage ${societe.nom}${lesGarages ? ` (${lesGarages})` : ''} — commande passée par le client lui-même.`,
+    `Client du garage ${societe.nom} — commande passée par le client lui-même.`,
+    sonGarage ? `Garage du client : ${sonGarage.nom}, ${sonGarage.adresse}. En cas de remorquage, livrer UNIQUEMENT à ce garage.` : null,
     assistance ? `Assistance ${societe.nom} : facturé à ${societe.nom}.` : `Pas d’assistance : le client paie tout au chauffeur (tarif ${societe.nom} + 20 %). Facture au nom du client.`,
     `Panne signalée : ${panne}`,
     `Client : ${nom} — ${client.tel} — ${client.email}`,
     `Adresse du client : ${client.adresse}`,
-  ].join('\n')
+  ].filter(Boolean).join('\n')
   const { data: gp } = await sb.from('garage_partners').select('id').eq('odoo_partner_id', societe.odoo_partner_id).eq('active', true).limit(1)
   const { data: m, error } = await sb.from('incoming_missions').insert({
     external_id: `CLI-${Date.now().toString(36).toUpperCase()}`,
     source, mission_type: 'depannage', status: 'new',
     vehicle_plate: client.plaque, vehicle_brand: client.marque, vehicle_model: client.modele,
     incident_address: d.adresse, incident_lat: d.lat, incident_lng: d.lng,
+    destination_address: sonGarage?.adresse || null, destination_name: sonGarage?.nom || null,
+    destination_lat: sonGarage?.lat ?? null, destination_lng: sonGarage?.lng ?? null,
     client_name: nom, client_phone: client.tel,
     assisted_name: nom, assisted_phone: client.tel,
     incident_description: panne,
