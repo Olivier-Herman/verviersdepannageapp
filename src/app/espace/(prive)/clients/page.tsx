@@ -1,14 +1,15 @@
 'use client'
 // « Mes clients » (Olivier 10/10/2026, prototype validé) : le garage active le service, diffuse son QR code
 // et classe chaque véhicule inscrit chez lui : assistance (facturé au garage) ou pas (le client paie le chauffeur).
-// Le garage d'un véhicule ne se change pas ici : seul le dispatch de Verviers Dépannage le réaffecte.
+// Le garage peut passer un véhicule d'un de ses sites à un autre (Chaineux → Eupen) ; vers un autre garage
+// partenaire, seul le dispatch de Verviers Dépannage le réaffecte.
 import { useCallback, useEffect, useState } from 'react'
 import QRCode from 'qrcode'
 import { useEspace } from '../EspaceShell'
 import { Plaque, jour } from '../../_ui/suivi'
 
-interface VehiculeG { id: string; plaque: string; marque: string | null; modele: string | null; assistance: boolean; assistance_le: string | null; created_at: string; commandes: number; garage: string; client: { prenom: string; nom: string; tel: string; email: string; adresse: string } }
-interface SocieteG { id: string; nom: string; couleur: string | null; actif: boolean; lien: string; vehicules: VehiculeG[]; commission: { htva: number; base: number; nb: number; pct: number } }
+interface VehiculeG { id: string; plaque: string; marque: string | null; modele: string | null; assistance: boolean; assistance_le: string | null; created_at: string; commandes: number; garage: string; garage_id: string; client: { prenom: string; nom: string; tel: string; email: string; adresse: string } }
+interface SocieteG { sites: { id: string; nom: string }[]; id: string; nom: string; couleur: string | null; actif: boolean; lien: string; vehicules: VehiculeG[]; commission: { htva: number; base: number; nb: number; pct: number } }
 
 const eur = (v: number) => v.toLocaleString('fr-BE', { style: 'currency', currency: 'EUR' })
 const NOMS_MOIS = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre']
@@ -74,7 +75,14 @@ export default function MesClients() {
                       <tr key={v.id}>
                         <td><b>{v.client.prenom} {v.client.nom}</b>{!v.assistance_le && <span className="cl-new">Nouveau</span>}<br /><small style={{ color: 'var(--mute)' }}>{v.client.tel} · {v.client.email}</small><br /><small style={{ color: 'var(--mute)' }}>{v.client.adresse}</small></td>
                         <td><Plaque v={v.plaque} /><br /><small>{[v.marque, v.modele].filter(Boolean).join(' ')}</small>{v.commandes > 0 && <><br /><small style={{ color: 'var(--mute)' }}>{v.commandes} dépannage{v.commandes > 1 ? 's' : ''}</small></>}</td>
-                        <td><small>{v.garage}</small></td>
+                        <td>
+                          {s.sites.length > 1 ? (
+                            <select className="input" style={{ minHeight: 44, minWidth: 150 }} value={v.garage_id} aria-label={`Garage de ${v.plaque}`}
+                              onChange={e => patch({ vehiculeId: v.id, garageId: e.target.value }, `${v.plaque} : garage modifié`)}>
+                              {s.sites.map(g => <option key={g.id} value={g.id}>{g.nom}</option>)}
+                            </select>
+                          ) : <small>{v.garage}</small>}
+                        </td>
                         <td><small>{jour(v.created_at)}</small></td>
                         <td>
                           <div className="cl-seg">

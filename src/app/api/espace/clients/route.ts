@@ -2,6 +2,7 @@
 //   GET   → par société : option, lien, clients inscrits, commission du mois.
 //   PATCH { societeId, actif }        → activer / couper l'option (gestionnaire seulement)
 //   PATCH { vehiculeId, assistance }  → classer un véhicule (gestionnaire ou compte de la société)
+//   PATCH { vehiculeId, garageId }    → passer le véhicule à un autre site du même garage
 import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase'
 import { getEspaceSession } from '@/lib/espace/session'
@@ -45,12 +46,13 @@ export async function GET(req: Request) {
     for (const m of cmds || []) nbCmd.set(m.espace_vehicule_id, (nbCmd.get(m.espace_vehicule_id) || 0) + 1)
     const { data: garages } = await sb.from('espace_garages').select('id, nom').eq('societe_id', so.id).order('ordre')
     out.push({
+      sites: garages || [],
       id: so.id, nom: so.nom, couleur: so.couleur, actif: so.clients_actif,
       lien: `${base.replace(/\/$/, '')}/d/${so.clients_slug}`,
       vehicules: (vehs || []).flatMap(x => {
         const c = (clients || []).find(y => y.id === x.client_id)
         if (!c?.verifie_le) return []
-        return [{ ...x, garage: (garages || []).find(g => g.id === x.garage_id)?.nom || '', client: { prenom: c.prenom, nom: c.nom, tel: c.tel, email: c.email, adresse: c.adresse }, commandes: nbCmd.get(x.id) || 0 }]
+        return [{ ...x, garage: (garages || []).find(g => g.id === x.garage_id)?.nom || '', garage_id: x.garage_id, client: { prenom: c.prenom, nom: c.nom, tel: c.tel, email: c.email, adresse: c.adresse }, commandes: nbCmd.get(x.id) || 0 }]
       }),
       commission: await commissionDuMois(so, mois),
     })
@@ -74,9 +76,16 @@ export async function PATCH(req: Request) {
     return NextResponse.json({ ok: true })
   }
   if (b?.vehiculeId) {
-    // Le garage classe le véhicule (assistance ou pas). Il ne change pas son garage : seul notre dispatch le fait.
-    const { data: v } = await sb.from('espace_vehicules').select('id, societe_id').eq('id', b.vehiculeId).maybeSingle()
+    // Le garage classe le véhicule (assistance ou pas) et peut le passer d'un de SES sites à un autre
+    // (EBAC Chaineux → EBAC Eupen, Olivier 10/10/2026). Vers un autre garage partenaire : seul notre dispatch.
+    const { data: v } = await sb.from('espace_vehicules').select('id, societe_id, garage_id').eq('id', b.vehiculeId).maybeSingle()
     if (!v || !mesSocietes.some(x => x.id === v.societe_id)) return NextResponse.json({ error: 'Véhicule inconnu' }, { status: 404 })
+    if ('garageId' in b) {
+      const { data: g } = await sb.from('espace_garages').select('id').eq('id', String(b.garageId)).eq('societe_id', v.societe_id).maybeSingle()
+      if (!g) return NextResponse.json({ error: 'Ce site n’est pas l’un des vôtres.' }, { status: 400 })
+      await sb.from('espace_vehicules').update({ garage_id: g.id, garage_change_par: s.compte.nom, garage_change_le: now, updated_at: now }).eq('id', v.id)
+      return NextResponse.json({ ok: true })
+    }
     await sb.from('espace_vehicules').update({ assistance: !!b.assistance, assistance_par: s.compte.nom, assistance_le: now, updated_at: now }).eq('id', v.id)
     return NextResponse.json({ ok: true })
   }
