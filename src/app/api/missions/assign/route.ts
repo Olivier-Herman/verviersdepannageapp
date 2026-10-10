@@ -103,12 +103,7 @@ export async function POST(req: Request) {
       await pushStartLiveActivity(mission_id)
     } catch (e: any) { console.error('[assign] push-to-start LA KO:', e?.message) }
 
-    // Olivier 2026-06-02 : si mission demandee par un garage, notifier le garage
-    // que la mission est acceptee (best-effort, log silencieux).
-    try {
-      const { notifyGarageOfMissionEvent } = await import('@/lib/notifications/garage')
-      await notifyGarageOfMissionEvent(mission_id, 'accepted')
-    } catch (e) { /* silent */ }
+    // Plus aucun mail au client garage sur l'avancement (Olivier 10/10/2026) : il suit dans son espace client.
 
     // Assignation directe depuis "En commande" (status='new') = confirmation
     // implicite : on cree le dossier Odoo comme le ferait /api/missions/confirm.

@@ -1024,16 +1024,7 @@ export async function POST(req: Request) {
     )
   }
 
-  // Olivier 2026-06-02 : notif garage si mission source=garage
-  try {
-    const { notifyGarageOfMissionEvent } = await import('@/lib/notifications/garage')
-    const newStatus = (updated as any)?.status
-    if (action === 'on_way') {
-      await notifyGarageOfMissionEvent(mission_id, 'on_way')
-    } else if (newStatus === 'to_invoice' || newStatus === 'completed') {
-      await notifyGarageOfMissionEvent(mission_id, 'completed')
-    }
-  } catch (e) { /* silent */ }
+  // Plus aucun mail au client garage sur l'avancement (Olivier 10/10/2026) : il suit dans son espace client.
 
   // ── TOUTE ENTRÉE EN PARC SORT UNE ÉTIQUETTE ───────────────────────────────
   // « Une entrée zone J et zone L crée une étiquette aussi. Ainsi qu'une entrée
