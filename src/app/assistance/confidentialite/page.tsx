@@ -20,6 +20,7 @@ export default function Confidentialite() {
             <li><b>Votre inscription</b> : prénom, nom, téléphone, adresse mail, adresse postale, plaque, marque et modèle de votre véhicule, et le garage partenaire que vous choisissez.</li>
             <li><b>Votre position</b> : seulement quand vous touchez « Me localiser » au moment de commander un dépannage, pour envoyer le dépanneur au bon endroit. Elle n’est jamais suivie en permanence ni en arrière-plan.</li>
             <li><b>Vos demandes de dépannage</b> : lieu, panne décrite, suivi de l’intervention, montant.</li>
+            <li><b>Les notifications</b>, si vous les acceptez : un identifiant technique de votre téléphone, utilisé seulement pour vous prévenir de l’avancement de votre dépannage (demande acceptée, chauffeur en route, chauffeur arrivé).</li>
           </ul>
         </S>
         <S t="Pourquoi">

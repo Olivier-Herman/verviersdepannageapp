@@ -574,6 +574,12 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Erreur mise à jour' }, { status: 500 })
   }
 
+  // VD Assistance (Olivier 10/10/2026) : le client en panne est prévenu (acceptée, en route, arrivé).
+  if ((updated as any)?.espace_client_id && ['accept', 'on_way', 'on_site'].includes(action)) {
+    const { prevenirClient } = await import('@/lib/espace/client-notif')
+    await prevenirClient(mission_id, action === 'accept' ? 'acceptee' : action === 'on_way' ? 'en_route' : 'sur_place')
+  }
+
   // Client d'un garage sans assistance (Olivier 10/10/2026) : le montant à encaisser suit la mission
   // (adresse corrigée, transformée en remorquage, déplacement pour rien).
   if ((updated as any)?.espace_client_id && ['mission_type', 'incident_lat', 'destination_lat', 'extra_addresses'].some(k => k in updatePayload)) {

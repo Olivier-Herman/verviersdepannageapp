@@ -250,6 +250,7 @@ export default function ClientApp({ slug, garage, tel, appStore }: { slug: strin
             <b>{finie ? '' : '± '}{eur(cmd.aPayer)}</b>
           </div>
         )}
+        {enCours && <Prevenir api={api} />}
         {enCours && cmd.annulable && <Annuler api={api} cmd={cmd} assistance={c.assistance} deplacement={etat.deplacement} onFait={m => { flash(m); charger() }} />}
         {enCours && !c.assistance && <p className="dcl-small">Facture Verviers Dépannage à votre nom, remise après l’intervention.</p>}
         {!enCours && <button className="dcl-big" onClick={() => setEcran('commande')}><img src={IMG.route} alt="" /><div><b>J’ai besoin d’un dépannage</b><span>Localisation et estimation en un geste</span></div></button>}
@@ -416,6 +417,56 @@ function Annuler({ api, cmd, assistance, deplacement, onFait }: { api: string; c
           onFait(r?.ok ? j.message : j?.error || 'Annulation impossible. Appelez-nous.')
         }}>{busy ? '…' : 'Oui, annuler'}</button>
       </div>
+    </div>
+  )
+}
+
+// Notifications de suivi (Olivier 10/10/2026) : proposées au moment de la demande, c'est le client qui accepte.
+// App iPhone : notifications natives ; navigateur / app installée : web push. Rien si l'appareil ne sait pas.
+function Prevenir({ api }: { api: string }) {
+  const [etat, setEtat] = useState<'?' | 'proposer' | 'ok' | 'refus' | 'busy'>('?')
+  const natif = () => (window as any).Capacitor?.Plugins?.PushNotifications
+  useEffect(() => {
+    let deja = false
+    try { deja = localStorage.getItem('vd_assist_notif') === '1' } catch {}
+    const web = 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window
+    if (deja || (web && Notification.permission === 'granted' && !natif())) { setEtat('ok'); return }
+    setEtat(natif() || web ? 'proposer' : 'ok')
+  }, [])
+  const enregistrer = async (body: any) => {
+    const r = await fetch(`${api}/push`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }).catch(() => null)
+    if (r?.ok) { try { localStorage.setItem('vd_assist_notif', '1') } catch {} setEtat('ok') } else setEtat('refus')
+  }
+  const activer = async () => {
+    setEtat('busy')
+    try {
+      const P = natif()
+      if (P) {
+        // Jamais « await » sur le plugin lui-même : seulement sur ses méthodes.
+        P.addListener('registration', (t: any) => enregistrer({ kind: 'apns', token: t?.value }))
+        P.addListener('registrationError', () => setEtat('refus'))
+        const perm = await P.requestPermissions()
+        if (perm?.receive !== 'granted') { setEtat('refus'); return }
+        await P.register()
+        return
+      }
+      if (await Notification.requestPermission() !== 'granted') { setEtat('refus'); return }
+      const reg = await navigator.serviceWorker.ready
+      const k = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY || ''
+      const raw = Uint8Array.from(atob((k + '='.repeat((4 - k.length % 4) % 4)).replace(/-/g, '+').replace(/_/g, '/')), c => c.charCodeAt(0))
+      const sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: raw })
+      await enregistrer({ kind: 'web', subscription: sub.toJSON() })
+    } catch { setEtat('refus') }
+  }
+  if (etat === '?' || etat === 'ok') return null
+  return (
+    <div className="dcl-card dcl-pad" style={{ marginTop: 12, display: 'flex', gap: 12, alignItems: 'center' }}>
+      <span style={{ fontSize: 26 }}>🔔</span>
+      <span style={{ flex: 1, fontSize: 14 }}>
+        <b>Être prévenu</b><br />
+        <span style={{ color: 'var(--ink2)' }}>{etat === 'refus' ? 'Notifications refusées : activez-les dans les réglages du téléphone, ou suivez ici.' : 'Une notification quand le chauffeur part et quand il arrive.'}</span>
+      </span>
+      {etat !== 'refus' && <button className="btn btn-red" style={{ width: 'auto', minHeight: 44 }} disabled={etat === 'busy'} onClick={activer}>{etat === 'busy' ? '…' : 'Me prévenir'}</button>}
     </div>
   )
 }
