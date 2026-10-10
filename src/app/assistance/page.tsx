@@ -1,12 +1,13 @@
-// Accueil de l'app VD Assistance (Olivier 10/10/2026) : le client rejoint son garage en scannant son QR code ou en
-// tapant le code du garage ; l'app rouvre ensuite directement sur ce garage.
-import { createAdminClient } from '@/lib/supabase'
-import Accueil from './Accueil'
+// VD Assistance (Olivier 10/10/2026) : l'app des clients des garages partenaires. ?garage=<code> = arrivé par le
+// lien ou le QR code d'un garage (inscription chez lui, ou ajout d'un véhicule chez lui).
+import { getBusinessText } from '@/lib/settings/business'
+import AssistanceApp from './AssistanceApp'
 
 export const dynamic = 'force-dynamic'
 
-export default async function Page() {
-  const { data } = await createAdminClient().from('espace_societes').select('nom, clients_slug, couleur')
-    .eq('active', true).eq('clients_actif', true).eq('demo', false).not('clients_slug', 'is', null).order('nom')
-  return <Accueil garages={(data || []).map(g => ({ nom: g.nom, slug: g.clients_slug!, couleur: g.couleur }))} />
+export default async function Page({ searchParams }: { searchParams: { garage?: string } }) {
+  const tel = await getBusinessText('telephone_depannage_public').catch(() => '')
+  const appStore = await getBusinessText('vd_assistance_app_store_url').catch(() => '')
+  const garage = String(searchParams?.garage || '').toLowerCase().replace(/[^a-z0-9-]/g, '') || null
+  return <AssistanceApp contexte={garage} tel={tel} appStore={appStore} />
 }

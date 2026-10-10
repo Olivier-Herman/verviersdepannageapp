@@ -1,4 +1,4 @@
-// POST /api/d/[slug]/push — abonnement du client aux notifications de suivi (Olivier 10/10/2026).
+// POST /api/assistance/push — abonnement du client aux notifications de suivi (Olivier 10/10/2026).
 //   { kind: 'web', subscription }  → navigateur / app installée (web push)
 //   { kind: 'apns', token }        → app iPhone VD Assistance
 import { NextResponse } from 'next/server'
@@ -7,8 +7,8 @@ import { getClientSession } from '@/lib/espace/clients'
 
 export const dynamic = 'force-dynamic'
 
-export async function POST(req: Request, { params }: { params: { slug: string } }) {
-  const s = await getClientSession(params.slug)
+export async function POST(req: Request) {
+  const s = await getClientSession()
   if (!s) return NextResponse.json({ error: 'Session expirée' }, { status: 401 })
   const b = await req.json().catch(() => ({}))
   const web = b?.kind === 'web' && typeof b?.subscription?.endpoint === 'string'

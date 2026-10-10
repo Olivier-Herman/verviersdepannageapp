@@ -26,14 +26,13 @@ export async function prevenirClient(missionId: string, etape: EtapeClient): Pro
     const action = `client_notifie_${etape}`
     const { count } = await sb.from('mission_logs').select('id', { count: 'exact', head: true }).eq('mission_id', m.id).eq('action', action)
     if (count) return
-    const { data: c } = await sb.from('espace_clients').select('id, active, societe_id').eq('id', m.espace_client_id).maybeSingle()
+    const { data: c } = await sb.from('espace_clients').select('id, active').eq('id', m.espace_client_id).maybeSingle()
     if (!c?.active) return
-    const { data: so } = await sb.from('espace_societes').select('clients_slug').eq('id', c.societe_id).maybeSingle()
     const { data: abos } = await sb.from('espace_client_push').select('id, kind, token, subscription').eq('client_id', c.id)
     await sb.from('mission_logs').insert({ mission_id: m.id, action, notes: `Client prévenu : ${TEXTES[etape].title}` }).then(() => {}, () => {})
     if (!abos?.length) return
     const t = TEXTES[etape]
-    const url = so?.clients_slug ? `/d/${so.clients_slug}` : '/assistance'
+    const url = '/assistance'
     const morts: string[] = []
     if (abos.some(a => a.kind === 'web') && process.env.VAPID_PRIVATE_KEY) {
       webpush.setVapidDetails(process.env.VAPID_SUBJECT!, process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY!, process.env.VAPID_PRIVATE_KEY)

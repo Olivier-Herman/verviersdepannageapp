@@ -9,6 +9,9 @@ export default async function Page() {
   const s = await getServerSession(authOptions)
   const u = s?.user as any
   if (!u) redirect('/login')
-  if (![u.role, ...(u.roles || [])].some((r: string) => r === 'admin' || r === 'superadmin')) redirect('/dashboard?error=access_denied')
-  return <EspaceClientAdmin />
+  const roles: string[] = [u.role, ...(u.roles || [])]
+  // Le dispatch voit seulement les véhicules VD Assistance, pour réaffecter un garage (Olivier 10/10/2026).
+  const admin = roles.some(r => r === 'admin' || r === 'superadmin')
+  if (!admin && !roles.includes('dispatcher')) redirect('/dashboard?error=access_denied')
+  return <EspaceClientAdmin dispatchSeul={!admin} />
 }

@@ -9,13 +9,13 @@ interface Compte { id: string; nom: string; emails: string[]; role: 'societe' | 
 const ROLE: Record<Compte['role'], string> = { societe: 'Société : voit toutes les missions de ses sociétés', gestionnaire: 'Gestionnaire : voit tout et crée des collaborateurs', collaborateur: 'Collaborateur : une société, ses commandes seulement' }
 const APPEL: Record<string, string> = { lance: 'Appel lancé', decroche: 'Décroché, message joué', termine: 'Message entendu', echec: 'Appel impossible', echec_message: 'Message non joué' }
 
-export default function EspaceClientAdmin() {
+export default function EspaceClientAdmin({ dispatchSeul = false }: { dispatchSeul?: boolean }) {
   const [d, setD] = useState<{ societes: Societe[]; comptes: Compte[]; appels: any[]; sources: any[]; garages: { id: string; societe_id: string; nom: string; adresse: string }[] } | null>(null)
   const [gForm, setGForm] = useState<{ societe_id: string; nom: string; adresse: string } | null>(null)
   const [msg, setMsg] = useState('')
   const [form, setForm] = useState<Partial<Compte> & { emailsTxt?: string } | null>(null)
   const charger = useCallback(async () => { const r = await fetch('/api/admin/espace-client', { cache: 'no-store' }); if (r.ok) setD(await r.json()) }, [])
-  useEffect(() => { charger() }, [charger])
+  useEffect(() => { if (!dispatchSeul) charger() }, [charger, dispatchSeul])
   const act = async (body: any, ok: string) => {
     setMsg('')
     const r = await fetch('/api/admin/espace-client', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
@@ -24,6 +24,7 @@ export default function EspaceClientAdmin() {
     if (r.ok) charger()
     return r.ok
   }
+  if (dispatchSeul) return <div className="mx-auto max-w-5xl space-y-5 px-4 py-6"><h1 className="text-2xl font-extrabold text-ink">VD Assistance</h1><VehiculesAssistance /></div>
   if (!d) return <div className="mx-auto max-w-5xl px-4 py-6 text-sm text-ink-muted">Chargement…</div>
   const nomSoc = (ids: string[]) => ids.map(id => d.societes.find(s => s.id === id)?.nom || '?').join(', ')
 
@@ -102,6 +103,8 @@ export default function EspaceClientAdmin() {
         </div>
       </section>
 
+      <VehiculesAssistance />
+
       <section className="space-y-2">
         <h2 className="text-sm font-extrabold uppercase tracking-wider text-ink-muted">Derniers appels au dépannage</h2>
         <div className="rounded-2xl border border-border bg-surface p-3 text-sm">
@@ -139,5 +142,42 @@ export default function EspaceClientAdmin() {
         </div>
       )}
     </div>
+  )
+}
+
+// Véhicules des clients VD Assistance : seul le dispatch réaffecte un véhicule à un autre garage (Olivier 10/10/2026).
+function VehiculesAssistance() {
+  const [q, setQ] = useState('')
+  const [d, setD] = useState<{ vehicules: any[]; garages: { id: string; nom: string; societe: string }[] } | null>(null)
+  const [msg, setMsg] = useState('')
+  const charger = useCallback(async (filtre: string) => {
+    const r = await fetch(`/api/admin/assistance-vehicules?q=${encodeURIComponent(filtre)}`, { cache: 'no-store' })
+    if (r.ok) setD(await r.json())
+  }, [])
+  useEffect(() => { const t = setTimeout(() => charger(q), 250); return () => clearTimeout(t) }, [q, charger])
+  const changer = async (id: string, garageId: string) => {
+    const r = await fetch('/api/admin/assistance-vehicules', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id, garageId }) })
+    const j = await r.json().catch(() => ({}))
+    setMsg(r.ok ? 'Garage du véhicule modifié' : `⚠ ${j.error || 'Erreur'}`); charger(q)
+  }
+  return (
+    <section className="space-y-2">
+      <h2 className="text-sm font-extrabold uppercase tracking-wider text-ink-muted">Véhicules des clients (VD Assistance)</h2>
+      <p className="text-sm text-ink-secondary">Le client ne peut pas changer le garage de son véhicule. Ici, vous le réaffectez ; s’il change de garage partenaire, la prise en charge repart à zéro et le nouveau garage est averti.</p>
+      <input className="min-h-[44px] w-full rounded-lg border border-border bg-surface px-3 text-sm text-ink" placeholder="Rechercher : plaque, nom, mail" value={q} onChange={e => setQ(e.target.value)} />
+      {msg && <p className="text-sm font-semibold text-ink">{msg}</p>}
+      {!d ? <p className="text-sm text-ink-muted">Chargement…</p> : d.vehicules.length === 0 ? <p className="text-sm text-ink-muted">Aucun véhicule inscrit.</p> : (
+        <div className="space-y-2">
+          {d.vehicules.map(v => (
+            <div key={v.id} className="flex flex-wrap items-center gap-2 rounded-xl border border-border bg-surface p-3 text-sm text-ink">
+              <span className="flex-1 min-w-[200px]"><b>{v.plaque}</b> {[v.marque, v.modele].filter(Boolean).join(' ')} — {v.client}<br /><span className="text-ink-muted">{v.email} · {v.tel} · {v.assistance ? 'assistance' : 'payé par le client'}</span></span>
+              <select className="min-h-[44px] rounded-lg border border-border bg-surface px-2 text-sm text-ink" value={v.garage_id} onChange={e => changer(v.id, e.target.value)} aria-label={`Garage de ${v.plaque}`}>
+                {d.garages.map(g => <option key={g.id} value={g.id}>{g.societe} — {g.nom}</option>)}
+              </select>
+            </div>
+          ))}
+        </div>
+      )}
+    </section>
   )
 }
