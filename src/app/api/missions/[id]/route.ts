@@ -312,6 +312,14 @@ export async function PATCH(
     .eq('id', params.id)
     .select()
     .single()
+  // Client d'un garage sans assistance (Olivier 10/10/2026) : le montant à encaisser suit les changements
+  // de la fiche (type, adresses), sauf montant fixé à la main.
+  if (!error && (data as any)?.espace_client_id && !('amount_to_collect' in updates)
+      && ['mission_type', 'incident_lat', 'destination_lat', 'extra_addresses', 'source'].some(k => k in updates)) {
+    const { recalcMontantClient } = await import('@/lib/espace/clients')
+    const amt = await recalcMontantClient(params.id).catch(() => null)
+    if (amt != null) (data as any).amount_to_collect = amt
+  }
   // Changement de source qui heurte (source, external_id) : une AUTRE fiche porte
   // déjà cette référence sous la source cible — presque toujours un doublon
   // (Mondial 10143710 vs sa jumelle requalifiée Siabis 10143620, 13/09/2026).

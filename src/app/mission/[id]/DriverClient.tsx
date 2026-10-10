@@ -94,7 +94,7 @@ interface Mission {
   awaiting_payment?: boolean | null
 }
 interface VrLoc { id: string; name: string; address: string; lat: number | null; lng: number | null; is_default?: boolean }
-interface Props { mission: Mission; currentUserId?: string; userRole?: string; isReadOnly?: boolean; navApp?: NavApp; defaultParcZone?: string | null; flux2?: boolean; onsiteV2?: boolean; parentClosingNote?: string | null; parentPanne?: string | null; parentPhotos?: string[]; relKey?: { location: string | null; hook: string | null } | null; reportClient?: string | null }
+interface Props { mission: Mission; currentUserId?: string; userRole?: string; isReadOnly?: boolean; navApp?: NavApp; defaultParcZone?: string | null; encaissementChauffeur?: boolean; flux2?: boolean; onsiteV2?: boolean; parentClosingNote?: string | null; parentPanne?: string | null; parentPhotos?: string[]; relKey?: { location: string | null; hook: string | null } | null; reportClient?: string | null }
 
 // Photos prises à l'ENLÈVEMENT (mission parente), en lecture seule sur une
 // relivraison : le chauffeur voit l'état du véhicule tel qu'il a été chargé et
@@ -606,7 +606,7 @@ function BriefingTtsButton({ mission }: { mission: Mission }) {
 }
 
 // ─── Composant principal ──────────────────────────────────────────────────────
-export default function DriverClient({ mission: init, currentUserId, userRole, isReadOnly = false, navApp: initNav, defaultParcZone = null, flux2 = false, onsiteV2 = false, parentClosingNote = null, parentPanne = null, parentPhotos = [], relKey = null, reportClient = null }: Props) {
+export default function DriverClient({ mission: init, currentUserId, userRole, isReadOnly = false, navApp: initNav, defaultParcZone = null, encaissementChauffeur = false, flux2 = false, onsiteV2 = false, parentClosingNote = null, parentPanne = null, parentPhotos = [], relKey = null, reportClient = null }: Props) {
   const canMatthieu = canUseMatthieu(userRole, currentUserId)
   const router = useRouter()
   const { t, lang } = useT()   // traductions FR/albanais pour les messages d'erreur (strings)
@@ -761,7 +761,8 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
   // GARAGE (`garage`, `garage_*`) : jamais d'encaissement — « pour garage on
   // facture au garage directement ». Ces sources ne portent pas de montant à
   // encaisser, donc rien ici ne leur en réclame.
-  const isPrive = M.source === 'prive'
+  // Clients des garages sans assistance (tag « encaissement_chauffeur ») : même règle que le privé.
+  const isPrive = M.source === 'prive' || encaissementChauffeur
   // Mal garée « déplacement payé » (trajet à vide) : le propriétaire paie sur place.
   const isMgDeplacement = M.source === 'police_mg' && M.mission_type === 'trajet_vide'
   const sncPaymentDue =

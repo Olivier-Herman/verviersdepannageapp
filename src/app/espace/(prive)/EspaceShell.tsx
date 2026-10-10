@@ -4,7 +4,7 @@ import { usePathname, useRouter } from 'next/navigation'
 import { createContext, useContext, useState } from 'react'
 import { Marque, IcoPlus } from '../_ui/suivi'
 
-export interface CompteEspace { id: string; nom: string; email: string; role: 'societe' | 'gestionnaire' | 'collaborateur'; peutInviter: boolean; aMotDePasse: boolean }
+export interface CompteEspace { id: string; nom: string; email: string; role: 'societe' | 'gestionnaire' | 'collaborateur'; peutInviter: boolean; aMotDePasse: boolean; mesClients: boolean }
 export interface GarageEspace { nom: string; adresse: string; lat: number | null; lng: number | null }
 export interface SocieteEspace { id: string; nom: string; couleur: string | null; garages: GarageEspace[] }
 const Ctx = createContext<{ compte: CompteEspace; societes: SocieteEspace[] } | null>(null)
@@ -17,6 +17,7 @@ export default function EspaceShell({ compte, societes, children }: { compte: Co
   const onglets = [
     { href: '/espace', label: 'Mes interventions', court: 'Suivi' },
     { href: '/espace/nouvelle', label: 'Commander', court: 'Commander' },
+    ...(compte.mesClients ? [{ href: '/espace/clients', label: 'Mes clients', court: 'Clients' }] : []),
     ...(compte.peutInviter ? [{ href: '/espace/equipe', label: 'Mon équipe', court: 'Équipe' }] : []),
   ]
   const initiales = compte.nom.split(/\s+/).map(x => x[0]).slice(0, 2).join('').toUpperCase()
@@ -46,6 +47,7 @@ export default function EspaceShell({ compte, societes, children }: { compte: Co
         {onglets.map(o => (
           <Link key={o.href} href={o.href} className={path === o.href ? 'on' : ''}>
               {o.href === '/espace/nouvelle' ? <span className="plus"><IcoPlus s={20} /></span>
+                : o.href === '/espace/clients' ? <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5" /><rect x="14" y="3" width="7" height="7" rx="1.5" /><rect x="3" y="14" width="7" height="7" rx="1.5" /><path d="M14 14h3v3h-3zM20 14v.01M14 20h.01M17 20h4v-3" /></svg>
                 : o.href === '/espace/equipe' ? <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><circle cx="9" cy="8" r="3.2" /><path d="M3.5 19c.8-3 3-4.6 5.5-4.6s4.7 1.6 5.5 4.6M16 11.5a2.8 2.8 0 1 0-1-5.4M17.5 14.6c1.6.5 2.6 1.9 3 4.4" /></svg>
                   : <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 5h16M4 12h10M4 19h7" /><circle cx="18" cy="16" r="3" /></svg>}
               <span>{o.court}</span>

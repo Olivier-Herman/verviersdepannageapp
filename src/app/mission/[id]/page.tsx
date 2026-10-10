@@ -114,6 +114,10 @@ export default async function MissionDriverPage({ params, searchParams }: Props)
   // Parc par défaut de la source (Administration → Sources de mission) : zone
   // suggérée à la mise en parc côté chauffeur (« catalog strict »).
   const defaultParcZone = await getDefaultParcZone(mission.source, supabase)
+  // Source dont le chauffeur encaisse tout (tag du catalogue « encaissement_chauffeur ») : clients des garages
+  // sans assistance (Olivier 10/10/2026). Même garde-fou que le privé : pas de clôture sans encaissement.
+  const { data: srcCat } = await supabase.from('mission_source_catalog').select('tags').eq('key', mission.source || '').maybeSingle()
+  const encaissementChauffeur = Array.isArray(srcCat?.tags) && srcCat.tags.includes('encaissement_chauffeur')
 
   // Relivraison : remarque de clôture du REM PARENT → alerte obligatoire sur
   // l'écran chauffeur (ex « Ne pas démarrer le véhicule »). Olivier 2026-08-10.
@@ -160,6 +164,7 @@ export default async function MissionDriverPage({ params, searchParams }: Props)
         isReadOnly={isStaff && !isDriverOfMission}
         navApp={currentUser.nav_app || 'gmaps'}
         defaultParcZone={defaultParcZone}
+        encaissementChauffeur={encaissementChauffeur}
         flux2={flux2}
         onsiteV2={onsiteV2}
         parentPanne={parentPanne}

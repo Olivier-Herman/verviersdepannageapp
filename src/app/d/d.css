@@ -1,0 +1,46 @@
+/* App des clients des garages — Verviers Dépannage. Design du prototype validé le 10/10/2026. Sous .esp.dcl */
+.dcl{min-height:100dvh;display:flex;justify-content:center}
+.dcl .dcl-app{width:100%;max-width:480px;min-height:100dvh;background:var(--bg);display:flex;flex-direction:column;box-shadow:0 0 40px -20px rgba(20,25,45,.25)}
+.dcl .dcl-co{display:flex;align-items:center;gap:10px;padding:12px 16px;padding-top:calc(12px + env(safe-area-inset-top,0px));background:#fff;border-bottom:1px solid var(--line);position:sticky;top:0;z-index:20}
+.dcl .dcl-co .lg{width:36px;height:36px;border-radius:11px;background:linear-gradient(135deg,#e2332f,#a91c1c);display:grid;place-items:center;flex:none}
+.dcl .dcl-co small{display:block;font-size:10px;color:var(--mute);font-weight:700;letter-spacing:.08em;text-transform:uppercase}
+.dcl .dcl-co b{font-family:var(--font-display);font-size:15px}
+.dcl .dcl-avec{margin-left:auto;font-size:11px;font-weight:800;border-radius:8px;padding:4px 8px;white-space:nowrap}
+.dcl .dcl-hero{position:relative;color:#fff;background:#1a1f33;overflow:hidden}
+.dcl .dcl-hero img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+.dcl .dcl-hero::after{content:"";position:absolute;inset:0;background:linear-gradient(180deg,rgba(14,17,30,.1),rgba(14,17,30,.88))}
+.dcl .dcl-hero>div{position:relative;z-index:2;padding:150px 18px 22px}
+.dcl .dcl-hero h1{font-size:28px;line-height:1.1;font-weight:800}
+.dcl .dcl-hero p{color:#e2ddd8;margin:.5em 0 0;font-size:15px}
+.dcl .dcl-pad{padding:16px}
+.dcl .dcl-pad h2{font-size:22px;font-weight:800}
+.dcl .dcl-pad h3{font-size:17px;font-weight:800}
+.dcl .dcl-sub{color:var(--ink2);font-size:14px;margin:4px 0 0}
+.dcl .dcl-small{text-align:center;font-size:12px;color:var(--mute);margin:10px 0 0}
+.dcl .dcl-two{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.dcl .dcl-stack{display:grid;gap:12px;margin-top:12px}
+.dcl .btn{width:100%;min-height:52px;font-weight:800}
+.dcl .dcl-big{display:block;width:100%;border-radius:24px;overflow:hidden;position:relative;color:#fff;text-align:left;min-height:190px;background:#1a1f33;margin-top:14px}
+.dcl .dcl-big img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+.dcl .dcl-big::after{content:"";position:absolute;inset:0;background:linear-gradient(180deg,rgba(212,42,42,.05),rgba(140,20,20,.9))}
+.dcl .dcl-big div{position:relative;z-index:2;padding:110px 18px 18px}
+.dcl .dcl-big b{font:800 22px var(--font-display);display:block}
+.dcl .dcl-big span{font-size:14px;color:#ffe9e5}
+.dcl .dcl-statut{display:flex;gap:12px;align-items:center;padding:14px;border-radius:18px;margin:14px 0 0}
+.dcl .dcl-statut.ok{background:#e5f6ee;color:#13704b}
+.dcl .dcl-statut .ic{width:40px;height:40px;border-radius:12px;background:#fff;display:grid;place-items:center;font-size:20px;flex:none}
+.dcl .dcl-map{height:240px;border-radius:18px;overflow:hidden;background:#e8efe6;margin-top:10px;position:relative}
+.dcl .dcl-map .vide{position:absolute;inset:0;display:grid;place-items:center;color:var(--mute);font-weight:700;font-size:14px;padding:16px;text-align:center}
+.dcl .dcl-chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+.dcl .dcl-chip{min-height:44px;padding:0 14px;border-radius:12px;border:1px solid var(--line);background:#fff;font-weight:700;font-size:14px}
+.dcl .dcl-chip.on{background:var(--ink);color:#fff;border-color:var(--ink)}
+.dcl .dcl-prix{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:12px 14px;border-radius:16px;background:#fff4e2;color:#8a520a;font-weight:700;margin-top:14px}
+.dcl .dcl-prix small{font-weight:600;display:block}
+.dcl .dcl-prix b{font:800 21px var(--font-display);color:#151a2d;white-space:nowrap}
+.dcl .dcl-note{font-size:12.5px;color:var(--ink2);margin:8px 2px 0}
+.dcl .dcl-veh{display:flex;align-items:center;gap:8px;flex-wrap:wrap;color:var(--ink2);margin:4px 0 0}
+.dcl .dcl-card{background:#fff;border:1px solid var(--line);border-radius:20px;overflow:hidden;box-shadow:0 12px 26px -22px rgba(20,25,45,.4)}
+.dcl .dcl-card>img{width:100%;height:150px;object-fit:cover;display:block}
+.dcl .dcl-foot{margin-top:auto;padding:16px;padding-bottom:calc(16px + env(safe-area-inset-bottom,0px));text-align:center;font-size:12px;color:var(--mute)}
+.dcl .dcl-foot a{color:var(--red);font-weight:700}
+.dcl .dcl-tel{display:flex;align-items:center;justify-content:center;gap:8px;min-height:48px;border-radius:14px;background:#fff;border:1px solid var(--line);font-weight:800;color:var(--ink);text-decoration:none;margin-top:12px}

@@ -50,17 +50,20 @@ export async function POST(req: Request, { params }: { params: { id: string } })
       .update({ status: 'cancelled', amount_to_collect: 0, updated_at: nowIso })
       .eq('id', cr.mission_id)
   } else if (decision === 'approved_billing_dpr') {
-    // Recup tarif DPR (fallback DSP). Au stade annulation, pas de km reels
-    // a integrer → on facture juste la prise en charge.
-    const { data: t } = await sb.from('garage_tariffs')
-      .select('dsp_prise_en_charge, dpr_prise_en_charge')
-      .eq('garage_partner_id', cr.requested_by_garage_id)
-      .maybeSingle()
-    const dprPrice = t?.dpr_prise_en_charge ?? t?.dsp_prise_en_charge ?? null
+    // Déplacement pour rien : forfait « trajet à vide » de la grille de la source (clients des garages : 75 € TVAC,
+    // Olivier 10/10/2026), sinon la prise en charge du dépannage. L'ancienne table garage_tariffs n'existe plus
+    // (le montant tombait à vide).
+    const { data: mi } = await sb.from('incoming_missions').select('source').eq('id', cr.mission_id).maybeSingle()
+    const prix = async (type: string) => (await sb.from('source_tariffs').select('unit_price')
+      .eq('source', mi?.source || '').eq('mission_type', type).is('effective_to', null).limit(1).maybeSingle()).data?.unit_price
+    const tv = await prix('trajet_vide')
+    const htva = Number(tv ?? await prix('depannage') ?? 0)
+    const dprPrice = htva > 0 ? Math.round(htva * 1.21 * 100) / 100 : null
     await sb.from('incoming_missions')
       .update({
         status:            'completed',
         completed_at:      nowIso,
+        ...(tv != null ? { mission_type: 'trajet_vide' } : {}),
         amount_to_collect: dprPrice,
         updated_at:        nowIso,
       })

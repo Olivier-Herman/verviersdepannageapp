@@ -262,3 +262,28 @@ to{opacity:1;transform:none}
 .esp p{margin:.45em 0 .6em}
 .esp .hero h1{margin-top:4px}
 .esp ol,.esp dl{margin:0}
+/* Mes clients (clients des garages, Olivier 10/10/2026) */
+.esp .cl-top{display:grid;grid-template-columns:1.2fr 1fr;gap:16px}
+@media(max-width:900px){.esp .cl-top{grid-template-columns:1fr}}
+.esp .cl-switch{display:flex;align-items:center;gap:12px;padding:14px 16px;border-radius:18px;border:1px solid var(--line);background:#fff;width:100%;text-align:left;min-height:64px}
+.esp .cl-tg{width:54px;height:32px;border-radius:99px;background:#d6d0c8;position:relative;flex:none;transition:background .2s}
+.esp .cl-tg::after{content:"";position:absolute;top:3px;left:3px;width:26px;height:26px;border-radius:50%;background:#fff;transition:left .2s;box-shadow:0 2px 6px rgba(0,0,0,.2)}
+.esp .cl-tg.on{background:var(--green)}
+.esp .cl-tg.on::after{left:25px}
+.esp .cl-kpi{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin-top:12px}
+.esp .cl-kpi div{background:#fff;border:1px solid var(--line);border-radius:16px;padding:12px}
+.esp .cl-kpi b{display:block;font:800 24px var(--font-display);font-variant-numeric:tabular-nums}
+.esp .cl-kpi span{font-size:12px;color:var(--mute);font-weight:600}
+.esp .cl-qr{display:flex;gap:16px;align-items:center;padding:18px;flex-wrap:wrap}
+.esp .cl-qr img{width:132px;height:132px;background:#fff;padding:6px;border-radius:12px;border:1px solid var(--line);flex:none}
+.esp .cl-lien{font:600 12px ui-monospace,monospace;background:var(--soft);padding:6px 8px;border-radius:8px;word-break:break-all;margin-top:6px}
+.esp .cl-tbl{width:100%;border-collapse:collapse;font-size:14px}
+.esp .cl-tbl th{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--mute);text-align:left;padding:10px 12px}
+.esp .cl-tbl td{padding:12px;border-top:1px solid var(--line);vertical-align:middle}
+.esp .cl-seg{display:inline-flex;background:var(--soft);border-radius:12px;padding:3px}
+.esp .cl-seg button{min-height:40px;padding:0 12px;border-radius:9px;font-weight:700;font-size:13px;color:var(--mute);white-space:nowrap}
+.esp .cl-seg button.on{background:#fff;box-shadow:0 1px 4px rgba(0,0,0,.12)}
+.esp .cl-seg button.on.a{color:#13704b}
+.esp .cl-seg button.on.p{color:#8a520a}
+.esp .cl-new{display:inline-block;background:#ffe9e7;color:#a61f1f;font-size:11px;font-weight:800;border-radius:8px;padding:2px 7px;margin-left:6px}
+.esp .cl-wrapx{overflow-x:auto}

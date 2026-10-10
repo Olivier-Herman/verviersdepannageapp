@@ -257,6 +257,20 @@ export async function computeMissionKm(missionId: string): Promise<{ chargedKm: 
   }
 }
 
+/**
+ * Km facturés d'un dépannage sur place avant toute fiche : dépôt par défaut → point → dépôt.
+ * Sert à l'estimation affichée au client d'un garage avant qu'il commande (Olivier 10/10/2026).
+ */
+export async function depotLoopKm(point: Coord): Promise<number | null> {
+  const sb = createAdminClient()
+  const { data: d } = await sb.from('depots').select('lat, lng').eq('is_default', true).eq('active', true).maybeSingle()
+  if (d?.lat == null || d?.lng == null) return null
+  const depot: Coord = { lat: Number(d.lat), lng: Number(d.lng) }
+  const aller = await routesDistanceKm(depot, point)
+  const retour = aller == null ? null : await routesDistanceKm(point, depot)
+  return aller == null || retour == null ? null : Math.round((aller + retour) * 10) / 10
+}
+
 export interface TemplateLine {
   kind:             'SERV-PEC' | 'SERV-KM' | 'SERV-PARC' | 'SERV-MAJ' | 'SERV-DIV'
   name:             string

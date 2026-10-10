@@ -574,6 +574,14 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Erreur mise à jour' }, { status: 500 })
   }
 
+  // Client d'un garage sans assistance (Olivier 10/10/2026) : le montant à encaisser suit la mission
+  // (adresse corrigée, transformée en remorquage, déplacement pour rien).
+  if ((updated as any)?.espace_client_id && ['mission_type', 'incident_lat', 'destination_lat', 'extra_addresses'].some(k => k in updatePayload)) {
+    const { recalcMontantClient } = await import('@/lib/espace/clients')
+    const amt = await recalcMontantClient(mission_id).catch(() => null)
+    if (amt != null) (updated as any).amount_to_collect = amt
+  }
+
   // ── RELIVRAISON TERMINÉE = LE VÉHICULE N'EST PLUS AU PARC (Olivier 14/09/2026) ──
   // Le trigger dossier_gardiennage_rel_exit ferme le gardiennage et passe la
   // fiche principale à facturer ; la PLACE de parc, elle, se libère ici (JS).

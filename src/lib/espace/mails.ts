@@ -11,7 +11,7 @@ const base = () => process.env.NEXTAUTH_URL || 'https://app.verviersdepannage.co
 const esc = (s: string) => String(s || '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c] as string))
 const prenom = (nom: string) => String(nom || '').trim().split(/\s+/)[0] || ''
 
-function cadre(image: string, surTitre: string, titre: string, corps: string) {
+function cadre(image: string, surTitre: string, titre: string, corps: string, sousMarque = 'Espace client') {
   return `<!doctype html><html><body style="margin:0;background:#f4efe9">
 <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#f4efe9;padding:28px 10px;font-family:'Segoe UI',Helvetica,Arial,sans-serif;color:#151a2d">
 <tr><td align="center">
@@ -19,7 +19,7 @@ function cadre(image: string, surTitre: string, titre: string, corps: string) {
 <tr><td style="padding:18px 26px;border-bottom:1px solid #f1e9e1">
   <table role="presentation" cellspacing="0" cellpadding="0"><tr>
     <td style="width:38px;height:38px;border-radius:12px;background:#d42a2a;text-align:center;vertical-align:middle;color:#ffffff;font-size:16px;font-weight:800">VD</td>
-    <td style="padding-left:12px"><div style="font-size:15px;font-weight:800;color:#151a2d">Verviers Dépannage</div><div style="font-size:10px;font-weight:800;letter-spacing:.2em;text-transform:uppercase;color:#d42a2a">Espace client</div></td>
+    <td style="padding-left:12px"><div style="font-size:15px;font-weight:800;color:#151a2d">Verviers Dépannage</div><div style="font-size:10px;font-weight:800;letter-spacing:.2em;text-transform:uppercase;color:#d42a2a">${sousMarque}</div></td>
   </tr></table>
 </td></tr>
 <tr><td><img src="${base()}/noprecache/espace/${image}" width="560" alt="" style="display:block;width:100%;height:auto;border:0"></td></tr>
@@ -48,4 +48,24 @@ export async function envoyerInvitation(to: string, nom: string, invitePar: stri
 <table role="presentation" cellspacing="0" cellpadding="0" style="margin:0 0 20px">${point('Commandez en 30 secondes', 'Dépannage sur place ou remorquage, livraison au garage de votre choix.')}${point('Suivez en direct', 'Chaque étape de l’intervention, de la validation à la livraison.')}${point('Retrouvez vos documents', 'Rapport d’intervention avec photos, et factures.')}</table>
 <table role="presentation" cellspacing="0" cellpadding="0" align="center"><tr><td style="border-radius:14px;background:#d42a2a"><a href="${base()}/espace/connexion?email=${encodeURIComponent(to)}" style="display:inline-block;padding:15px 30px;font-size:16px;font-weight:800;color:#ffffff;text-decoration:none">Ouvrir mon espace</a></td></tr></table>
 <p style="margin:18px 0 0;font-size:13px;color:#6c7387;text-align:center">Connexion avec cette adresse mail : vous recevez un code à chaque connexion, ou vous choisissez un mot de passe une fois connecté.</p>`))
+}
+
+// ── Clients des garages (Olivier 10/10/2026) : le code d'inscription du client, et l'avis au garage. ──
+
+export async function envoyerCodeClient(to: string, prenomClient: string, code: string, garage: string) {
+  const cases = code.split('').map(d => `<td style="width:46px;height:58px;border-radius:12px;background:#fff4f2;border:2px solid #f6cfc9;text-align:center;vertical-align:middle;font-size:28px;font-weight:800;color:#a91c1c">${d}</td><td style="width:8px"></td>`).join('')
+  await sendEmail(to, `${code} — votre code Verviers Dépannage`, cadre('mail-route.jpg', 'Votre code', 'Confirmez votre adresse', `
+<p style="margin:0 0 18px">Bonjour ${esc(prenomClient)},<br>voici votre code pour accéder au dépannage Verviers Dépannage, partenaire de votre garage ${esc(garage)} :</p>
+<table role="presentation" cellspacing="0" cellpadding="0" align="center" style="margin:0 auto 18px"><tr>${cases}</tr></table>
+<p style="margin:0;font-size:13px;color:#6c7387;text-align:center">Valable 15 minutes. Vous n’avez rien demandé ? Ignorez simplement ce message.</p>`, `Avec ${esc(garage)}`))
+}
+
+export async function avertirGarageNouveauClient(to: string[], garage: string, c: { prenom: string; nom: string; tel: string; email: string; adresse: string; plaque: string; marque: string | null; modele: string | null }) {
+  const ligne = (k: string, v: string) => `<tr><td style="padding:6px 0;color:#6c7387;font-size:13px;width:110px;vertical-align:top">${k}</td><td style="padding:6px 0;font-weight:700;color:#151a2d">${esc(v)}</td></tr>`
+  const html = cadre('mail-equipe.jpg', 'Nouveau client', `${esc(c.prenom)} ${esc(c.nom)} s’est inscrit`, `
+<p style="margin:0 0 14px">Un de vos clients vient de s’inscrire pour commander son dépannage avec votre QR code.</p>
+<table role="presentation" cellspacing="0" cellpadding="0" style="margin:0 0 18px;width:100%">${ligne('Client', `${c.prenom} ${c.nom}`)}${ligne('Téléphone', c.tel)}${ligne('Mail', c.email)}${ligne('Adresse', c.adresse)}${ligne('Véhicule', [c.marque, c.modele, c.plaque].filter(Boolean).join(' '))}</table>
+<p style="margin:0 0 18px">Vérifiez ce client. Si son véhicule est couvert par votre assistance, cochez <b>« Assistance »</b> : ses dépannages vous seront facturés. Sinon, il paie lui-même le chauffeur.</p>
+<table role="presentation" cellspacing="0" cellpadding="0" align="center"><tr><td style="border-radius:14px;background:#d42a2a"><a href="${base()}/espace/clients" style="display:inline-block;padding:15px 30px;font-size:16px;font-weight:800;color:#ffffff;text-decoration:none">Voir mes clients</a></td></tr></table>`)
+  for (const t of to) await sendEmail(t, `Nouveau client inscrit pour le dépannage : ${c.prenom} ${c.nom}`, html).catch(e => console.error('[clients garage] avis garage KO', t, e?.message))
 }

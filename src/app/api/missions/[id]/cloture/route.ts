@@ -33,7 +33,7 @@ export const maxDuration = 300
 
 const MISSION_COLS = 'id, source, source_format, raw_content, external_id, mission_type, status, loaded_at, vr_proposed, assigned_to, parent_mission_id, ' +
   'vehicle_vin, vehicle_vin_partial, vehicle_mileage, incident_description, vehicle_brand, vehicle_model, panne_motif, ' +
-  'destination_address, destination_name, destination_lat, destination_lng, touring_actions'
+  'destination_address, destination_name, destination_lat, destination_lng, touring_actions, espace_client_id'
 
 
 /**
@@ -297,6 +297,13 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     } catch (e: any) {
       console.warn('[cloture] recalcul montant Siabis KO (non bloquant):', e?.message)
     }
+  }
+
+  // Client d'un garage sans assistance (Olivier 10/10/2026) : la clôture peut changer le type (dépannage →
+  // remorquage, déplacement pour rien) : le montant à encaisser suit.
+  if ((m as any).espace_client_id) {
+    const { recalcMontantClient } = await import('@/lib/espace/clients')
+    await recalcMontantClient((m as any).id).catch(() => null)
   }
 
   // ── Transformation propre à l'assistance ───────────────────────────────────
