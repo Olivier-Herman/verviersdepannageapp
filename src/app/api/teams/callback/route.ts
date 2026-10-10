@@ -31,6 +31,15 @@ export async function POST(req: Request) {
         // Propositions de nuit (Olivier 30/09/2026) : décroché → message vocal ;
         // message terminé → on raccroche. Cf lib/missions/market-proposals.ts.
         if (!callId) continue
+        // Espace client (Olivier 10/10/2026) : appel du dépannage pour une nouvelle demande EBAC / Centracar.
+        try {
+          const { onEspaceCallEvent } = await import('@/lib/espace/demande')
+          const ev = eventType === '#microsoft.graph.call' && state === 'established' ? 'established'
+            : eventType === '#microsoft.graph.playPromptOperation' && event?.resourceData?.status === 'completed' ? 'prompt_completed' : null
+          if (ev && await onEspaceCallEvent(callId, ev)) continue
+        } catch (e: any) {
+          console.error('[teams/callback] espace client :', e?.message)
+        }
         try {
           const { handleProposalCallEvent } = await import('@/lib/missions/market-proposals')
           if (eventType === '#microsoft.graph.call' && state === 'established') {

@@ -136,6 +136,8 @@ export default async function AdminPage() {
           desc="Users avec rôle garage. Création + liaison avec 1+ garages partenaires. Envoi email de bienvenue avec magic link." />
         <Card href="/admin/garage-cancellations" icon={AlertTriangle} label="Annulations garage"
           desc="Demandes d'annulation des garages après acceptation. Choix : annulation totale (sans frais), facturation DPR, ou refus." />
+        <Card href="/admin/espace-client" icon={Users} label="Espace client"
+          desc="EBAC, Centracar : suivi des interventions, rapports et factures, commande en ligne avec appel du dépannage. Comptes, invitations, test de l'appel." />
         <Card href="/admin/users" icon={Users} label="Utilisateurs"
           desc="Dispatchers, chauffeurs, admins. Rôles, planning, priorité."
           count={usersActive} />

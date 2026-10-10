@@ -211,6 +211,14 @@ export const NOTIFICATION_TYPES: readonly NotificationType[] = [
     defaultEnabled:  true,
   },
   {
+    key:             'espace_client_demande',
+    label:           'Nouvelle demande de l’espace client',
+    description:     'Un client (EBAC, Centracar…) a commandé une intervention depuis son espace ; elle attend dans les commandes du dispatch.',
+    category:        'dispatcher',
+    applicableRoles: ['dispatcher', 'admin', 'superadmin'],
+    defaultEnabled:  true,
+  },
+  {
     key:             'levee_saisie_alarme',
     label:           'Levée de saisie à vérifier',
     description:     'Une levée de saisie reçue par mail ne peut pas être rattachée seule (plusieurs fiches possibles, deuxième levée, ordre anormal…). Le premier qui décide ferme l’alarme pour tous.',

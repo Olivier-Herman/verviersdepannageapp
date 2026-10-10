@@ -978,11 +978,12 @@
 
 <h2 class="subsection">E2. Rapport d’intervention (EBAC, Centracar)</h2>
 <div class="function">
- <h3><span class="num">150b</span>Rapport envoyé au client et joint à la facture</h3>
+ <h3><span class="num">150b</span>Rapport dans l’espace client et joint à la facture</h3>
  <p class="desc">Pour les clients EBAC et Centracar, chaque facture part avec un rapport d’intervention en PDF : véhicule, panne, lieu d’intervention (et dépôt / adresse de livraison en remorquage), constat du chauffeur, 4 photos, nom, prénom et signature de la personne dépannée ou du réceptionnaire.</p>
  <ol>
  <li>Le chauffeur ne peut pas clôturer sans ces éléments.</li>
- <li><b>Dès que le chauffeur termine la mission</b>, le rapport part par e-mail au client, à son adresse de facturation (contact « facturation » du client, sinon son adresse principale), depuis administration@. Une seule fois par mission. Le journal de la fiche note « Rapport envoyé à … », ou l’échec : dans ce cas, envoyez-le à la main depuis « Voir le rapport ».</li>
+ <li><b>Plus de mail au client à la clôture</b> (depuis le 10/10/2026) : dès que la mission est terminée, le client télécharge le rapport dans son <b>espace client</b>, avec le suivi de l’intervention.</li>
+ <li>Dans l’espace client, la <b>facture</b> apparaît toute seule dès qu’elle est validée et envoyée (Peppol ou mail). Un brouillon n’y est jamais visible.</li>
  <li>Sur la fiche, l’encadré « Rapport d’intervention pour … » permet de <b>voir le rapport</b> avant de facturer.</li>
  <li>À la création de la facture (dossier, facturation automatique ou rattachement d’une facture), le rapport est joint tout seul dans Odoo, une seule fois. Il ne devient jamais la pièce principale : l’export comptable garde le PDF de la facture.</li>
  <li>Si le rapport n’a pas pu être joint, le journal de la fiche le dit : joignez-le à la main depuis « Voir le rapport ».</li>
