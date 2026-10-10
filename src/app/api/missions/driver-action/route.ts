@@ -553,7 +553,7 @@ export async function POST(req: Request) {
   {
     const src = (mission as any).source
     const siabis = src === 'police_snc' || src === 'sia_couvert'
-    const fin = ['completed', 'complete_delivery', 'park'].includes(action)
+    const fin = ['completed', 'complete_delivery'].includes(action)
     if (siabis && fin && !(mission as any).snc_scenario) {
       const typeFinal  = String(updatePayload.mission_type || (mission as any).mission_type || '')
       const estRem     = /remorquage|rem\b|REM/i.test(typeFinal)
@@ -578,6 +578,10 @@ export async function POST(req: Request) {
   if ((updated as any)?.espace_client_id && ['accept', 'on_way', 'on_site'].includes(action)) {
     const { prevenirClient } = await import('@/lib/espace/client-notif')
     await prevenirClient(mission_id, action === 'accept' ? 'acceptee' : action === 'on_way' ? 'en_route' : 'sur_place')
+  }
+  if ((updated as any)?.espace_client_id && ['completed', 'complete_delivery'].includes(action)) {
+    const { majActiviteClient } = await import('@/lib/espace/client-notif')
+    await majActiviteClient(mission_id, 'terminee')
   }
 
   // Client d'un garage sans assistance (Olivier 10/10/2026) : le montant à encaisser suit la mission

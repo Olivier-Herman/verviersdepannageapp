@@ -17,7 +17,37 @@ const TEXTES: Record<EtapeClient, { title: string; body: string }> = {
   sur_place: { title: 'Votre chauffeur est arrivé', body: 'Il est sur place.' },
 }
 
+// ── Dynamic Island / écran verrouillé (app iPhone) : état de la Live Activity « AssistanceActivityAttributes ».
+// ContentState Swift = { step: Int (0 reçue · 1 acceptée · 2 en route · 3 sur place · 4 terminée), title, subtitle }.
+const ETAPES_LA: Record<EtapeClient | 'terminee' | 'annulee', { step: number; title: string; subtitle: string }> = {
+  acceptee: { step: 1, title: 'Demande acceptée', subtitle: 'Un dépanneur va partir vers vous' },
+  en_route: { step: 2, title: 'Chauffeur en route', subtitle: 'Restez près de votre véhicule' },
+  sur_place: { step: 3, title: 'Chauffeur arrivé', subtitle: 'Il est sur place' },
+  terminee: { step: 4, title: 'Intervention terminée', subtitle: 'Merci de votre confiance' },
+  annulee: { step: 4, title: 'Demande annulée', subtitle: 'Votre demande est annulée' },
+}
+
+/** Met à jour (ou termine) la Live Activity du client, si l'app iPhone en a démarré une pour cette mission. */
+export async function majActiviteClient(missionId: string, etape: keyof typeof ETAPES_LA): Promise<void> {
+  try {
+    const sb = createAdminClient()
+    const { data: m } = await sb.from('incoming_missions').select('client_la_token').eq('id', missionId).maybeSingle()
+    if (!m?.client_la_token) return
+    const { sendLiveActivityApnsTo } = await import('@/lib/native/pushLiveActivity')
+    const fin = etape === 'terminee' || etape === 'annulee'
+    const r = await sendLiveActivityApnsTo(APNS_TOPIC, m.client_la_token, {
+      event: fin ? 'end' : 'update',
+      'content-state': ETAPES_LA[etape],
+      ...(fin ? { 'dismissal-date': Math.floor(Date.now() / 1000) + 30 * 60 } : { 'stale-date': Math.floor(Date.now() / 1000) + 4 * 3600 }),
+    })
+    if (fin || r.invalid_token) await sb.from('incoming_missions').update({ client_la_token: null }).eq('id', missionId)
+  } catch (e: any) {
+    console.warn('[VD Assistance] Live Activity KO', e?.message)
+  }
+}
+
 export async function prevenirClient(missionId: string, etape: EtapeClient): Promise<void> {
+  await majActiviteClient(missionId, etape)
   try {
     const sb = createAdminClient()
     const { data: m } = await sb.from('incoming_missions').select('id, espace_client_id').eq('id', missionId).maybeSingle()

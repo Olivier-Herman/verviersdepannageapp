@@ -31,8 +31,9 @@ export interface LiveActivityPushResult {
  * `contentState` doit correspondre exactement à ContentState (MissionState) Swift.
  */
 // ── Transport bas niveau : envoie un `aps` liveactivity vers un token APNs ────
-async function postApnsLiveActivity(pushToken: string, aps: Record<string, any>): Promise<LiveActivityPushResult> {
-  const bundleId = process.env.APNS_BUNDLE_ID
+async function postApnsLiveActivity(pushToken: string, aps: Record<string, any>, bundleOverride?: string): Promise<LiveActivityPushResult> {
+  // App iPhone VD Assistance (clients des garages) : même clé d'équipe, autre identifiant d'app.
+  const bundleId = bundleOverride || process.env.APNS_BUNDLE_ID
   const sandbox  = process.env.APNS_USE_SANDBOX === 'true'
   if (!bundleId) return { ok: false, status: 0, reason: 'APNS_BUNDLE_ID manquant' }
   if (!pushToken) return { ok: false, status: 0, reason: 'push token vide' }
@@ -222,4 +223,9 @@ export async function pushStartLiveActivity(missionId: string): Promise<LiveActi
   } catch (e: any) {
     return { ok: false, status: 0, reason: e?.message || 'error' }
   }
+}
+
+/** Push libre vers une Live Activity d'une autre app de l'équipe (VD Assistance). */
+export async function sendLiveActivityApnsTo(bundleId: string, pushToken: string, aps: Record<string, any>): Promise<LiveActivityPushResult> {
+  return postApnsLiveActivity(pushToken, { timestamp: Math.floor(Date.now() / 1000), ...aps }, bundleId)
 }

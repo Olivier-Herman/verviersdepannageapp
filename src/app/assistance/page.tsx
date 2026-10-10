@@ -5,9 +5,9 @@ import AssistanceApp from './AssistanceApp'
 
 export const dynamic = 'force-dynamic'
 
-export default async function Page({ searchParams }: { searchParams: { garage?: string } }) {
+export default async function Page({ searchParams }: { searchParams: { garage?: string; action?: string } }) {
   const tel = await getBusinessText('telephone_depannage_public').catch(() => '')
   const appStore = await getBusinessText('vd_assistance_app_store_url').catch(() => '')
   const garage = String(searchParams?.garage || '').toLowerCase().replace(/[^a-z0-9-]/g, '') || null
-  return <AssistanceApp contexte={garage} tel={tel} appStore={appStore} />
+  return <AssistanceApp contexte={garage} tel={tel} appStore={appStore} action={searchParams?.action || null} />
 }

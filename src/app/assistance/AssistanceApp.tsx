@@ -35,6 +35,13 @@ const Pastille = ({ children, fond }: { children: React.ReactNode; fond: string 
 )
 
 const API = '/api/assistance'
+// Ponts vers l'app iPhone VD Assistance (plugins Capacitor). Jamais « await » sur le plugin lui-même, seulement sur
+// ses méthodes ; absents dans le navigateur : on retombe sur le web.
+const natif = (nom: string): any => (typeof window !== 'undefined' ? (window as any).Capacitor?.Plugins?.[nom] : null) || null
+const vibrer = (type: 'leger' | 'succes') => {
+  const H = natif('Haptics'); if (!H) return
+  try { (type === 'succes' ? H.notification({ type: 'SUCCESS' }) : H.impact({ style: 'MEDIUM' }))?.catch?.(() => {}) } catch {}
+}
 const PANNES = ['Ne démarre pas', 'Batterie', 'Crevaison', 'Accident', 'Bruit / fumée', 'Clés enfermées', 'Autre']
 const eur = (v: number) => v.toLocaleString('fr-BE', { style: 'currency', currency: 'EUR' })
 const PERSONNE = { prenom: '', nom: '', tel: '', email: '', adresse: '' }
@@ -53,7 +60,7 @@ async function poster(url: string, body: any): Promise<{ ok: boolean; j: any }> 
   } catch { return { ok: false, j: { error: 'Pas de connexion. Réessayez.' } } }
 }
 
-export default function AssistanceApp({ contexte, tel, appStore }: { contexte: string | null; tel: string; appStore: string }) {
+export default function AssistanceApp({ contexte, tel, appStore, action }: { contexte: string | null; tel: string; appStore: string; action?: string | null }) {
   const [etat, setEtat] = useState<Etat | null>(null)
   const [ecran, setEcran] = useState<'accueil' | 'inscription' | 'reconnexion' | 'code' | 'commande' | 'vehicules' | 'ajout'>('accueil')
   const [garageCtx, setGarageCtx] = useState<string | null>(contexte)
@@ -71,6 +78,14 @@ export default function AssistanceApp({ contexte, tel, appStore }: { contexte: s
     if (r && !r.error) setEtat(r)
   }, [])
   useEffect(() => { charger() }, [charger])
+  // Raccourci de l'icône ou Siri « Commander un dépannage » : on ouvre directement la commande.
+  const actionFaite = useRef(false)
+  useEffect(() => {
+    if (action !== 'commander' || actionFaite.current || !etat?.client) return
+    actionFaite.current = true
+    const enCoursAct = etat.commande && !['terminee', 'annulee'].includes(etat.commande.suivi.statut)
+    if (!enCoursAct && etat.vehicules.some(x => x.societe.actif)) setEcran('commande')
+  }, [action, etat])
   useEffect(() => {
     if (!etat?.commande || ['terminee', 'annulee'].includes(etat.commande.suivi.statut)) return
     const t = setInterval(charger, 20_000)
@@ -298,7 +313,7 @@ export default function AssistanceApp({ contexte, tel, appStore }: { contexte: s
   }
 
   if (ecran === 'commande' && !enCours) {
-    return page(<Commander vehicules={vehicules.filter(x => x.societe.actif)} onRetour={() => setEcran('accueil')} onEnvoye={() => { flash('Demande envoyée'); setEcran('accueil'); charger() }} />)
+    return page(<Commander vehicules={vehicules.filter(x => x.societe.actif)} onRetour={() => setEcran('accueil')} onEnvoye={(id, vh) => { vibrer('succes'); demarrerActivite(id, vh); flash('Demande envoyée'); setEcran('accueil'); charger() }} />)
   }
 
   const bonjour = <p className="dcl-veh">Bonjour <b style={{ color: 'var(--ink)' }}>{c.prenom}</b></p>
@@ -382,7 +397,16 @@ function TrouverGarage({ onGarage, partenaires }: { onGarage: (slug: string) => 
   const aller = async (slug: string) => { setErr(''); const e = await onGarage(slug); if (e) setErr(e) }
   const arreter = async () => { try { await lecteur.current?.stop(); lecteur.current?.clear() } catch {} lecteur.current = null; setScan(false) }
   const scanner = async () => {
-    setErr(''); setScan(true)
+    setErr('')
+    const Q = natif('CapacitorBarcodeScanner')
+    if (Q) {
+      // Scanner plein écran de l'iPhone (hint 0 = QR code).
+      Q.scanBarcode({ hint: 0, scanInstructions: 'Visez le QR code de votre garage', scanButton: false, cameraDirection: 1 })
+        .then((r: any) => { const s = slugDe(String(r?.ScanResult || '')); if (s) aller(s); else if (r?.ScanResult) setErr('Ce QR code n’est pas celui d’un garage partenaire.') })
+        .catch(() => {})
+      return
+    }
+    setScan(true)
     try {
       const { Html5Qrcode } = await import('html5-qrcode')
       const h = new Html5Qrcode('qr-garage')
@@ -448,7 +472,7 @@ function CodeSaisie({ code, setCode, onComplet }: { code: string[]; setCode: (c:
   )
 }
 
-function Commander({ vehicules, onRetour, onEnvoye }: { vehicules: Vehicule[]; onRetour: () => void; onEnvoye: () => void }) {
+function Commander({ vehicules, onRetour, onEnvoye }: { vehicules: Vehicule[]; onRetour: () => void; onEnvoye: (missionId: string, v: Vehicule) => void }) {
   const [vid, setVid] = useState(vehicules.length === 1 ? vehicules[0].id : '')
   const veh = vehicules.find(x => x.id === vid) || null
   const [pos, setPos] = useState<AdresseChoisie>({ texte: '', lat: null, lng: null })
@@ -470,6 +494,15 @@ function Commander({ vehicules, onRetour, onEnvoye }: { vehicules: Vehicule[]; o
     } catch { setPos({ texte: `${lat.toFixed(5)}, ${lng.toFixed(5)}`, lat, lng }) }
   }, [key])
   const localiser = () => {
+    vibrer('leger')
+    const G = natif('Geolocation')
+    if (G) {
+      setGps('cherche')
+      G.getCurrentPosition({ enableHighAccuracy: true, timeout: 15000 })
+        .then((q: any) => { setGps('ok'); adresseDe(q.coords.latitude, q.coords.longitude) })
+        .catch(() => setGps('refus'))
+      return
+    }
     if (!navigator.geolocation) { setGps('refus'); return }
     setGps('cherche')
     navigator.geolocation.getCurrentPosition(q => { setGps('ok'); adresseDe(q.coords.latitude, q.coords.longitude) }, () => setGps('refus'), { enableHighAccuracy: true, timeout: 15000 })
@@ -501,13 +534,15 @@ function Commander({ vehicules, onRetour, onEnvoye }: { vehicules: Vehicule[]; o
     return () => clearTimeout(t)
   }, [pos.lat, pos.lng, veh])
 
-  const pret = !!veh && pos.lat != null && !!panne && (panne !== 'Autre' || !!symptome.trim())
+  const [accord, setAccord] = useState(false)
+  const aCharge = !!veh && !veh.assistance
+  const pret = !!veh && pos.lat != null && !!panne && (panne !== 'Autre' || !!symptome.trim()) && (!aCharge || accord)
   const envoyer = async () => {
     setBusy(true); setErr('')
     const { ok, j } = await poster(`${API}/commande`, { vehiculeId: vid, adresse: pos.texte, lat: pos.lat, lng: pos.lng, panne, symptome })
     setBusy(false)
     if (!ok) return setErr(j?.error || 'La demande n’a pas pu partir. Appelez-nous.')
-    onEnvoye()
+    onEnvoye(j.id, veh!)
   }
 
   return (
@@ -561,9 +596,16 @@ function Commander({ vehicules, onRetour, onEnvoye }: { vehicules: Vehicule[]; o
           <p className="dcl-note">Estimations Verviers Dépannage. C’est le chauffeur qui décide sur place s’il faut remorquer, et il vous confirme le montant avant de charger. Si vous annulez après le départ du dépanneur, ou si vous êtes absent à son arrivée, le déplacement vous est facturé{veh.deplacement ? ` (${eur(veh.deplacement)} TVAC)` : ''}.</p>
         </>
       ))}
+      {aCharge && (
+        <label style={{ display: 'flex', gap: 12, alignItems: 'flex-start', marginTop: 14, padding: '12px 14px', borderRadius: 16, border: `2px solid ${accord ? 'var(--red)' : 'var(--line)'}`, background: '#fff', cursor: 'pointer' }}>
+          <input type="checkbox" checked={accord} onChange={e => setAccord(e.target.checked)} style={{ width: 24, height: 24, marginTop: 2, accentColor: '#d42a2a', flex: 'none' }} />
+          <span style={{ fontSize: 14, color: 'var(--ink2)' }}>Je demande l’intervention immédiate et j’accepte de régler le dépannage au chauffeur, au montant qu’il me confirme sur place{veh?.deplacement ? ` (déplacement pour rien : ${eur(veh.deplacement)} TVAC)` : ''}. <a className="link" href="/assistance/conditions" target="_blank" rel="noreferrer">Conditions du service</a></span>
+        </label>
+      )}
+      {veh?.assistance && <p className="dcl-small"><a className="link" href="/assistance/conditions" target="_blank" rel="noreferrer">Conditions du service</a></p>}
       {err && <p className="err" style={{ marginTop: 10 }}>{err}</p>}
-      <button className="btn btn-red" style={{ marginTop: 14 }} disabled={!pret || busy} onClick={envoyer}>{busy ? 'Envoi…' : 'Envoyer ma demande'}</button>
-      {!pret && <p className="dcl-small">{!veh ? 'Choisissez le véhicule.' : pos.lat == null ? 'Indiquez où vous êtes.' : !panne ? 'Choisissez ce qui se passe.' : 'Décrivez les symptômes.'}</p>}
+      <button className="btn btn-red" style={{ marginTop: 14 }} disabled={!pret || busy} onClick={envoyer}>{busy ? 'Envoi…' : aCharge ? 'Commander avec obligation de paiement' : 'Envoyer ma demande'}</button>
+      {!pret && <p className="dcl-small">{!veh ? 'Choisissez le véhicule.' : pos.lat == null ? 'Indiquez où vous êtes.' : !panne ? 'Choisissez ce qui se passe.' : panne === 'Autre' && !symptome.trim() ? 'Décrivez les symptômes.' : 'Cochez la case pour confirmer la commande.'}</p>}
       <button className="btn btn-ghost" style={{ marginTop: 10 }} onClick={onRetour}>Retour</button>
     </div>
   )
@@ -639,4 +681,15 @@ function Prevenir() {
       {etat !== 'refus' && <button className="btn btn-red" style={{ width: 'auto', minHeight: 44 }} disabled={etat === 'busy'} onClick={activer}>{etat === 'busy' ? '…' : 'Me prévenir'}</button>}
     </div>
   )
+}
+
+// Dynamic Island / écran verrouillé (app iPhone) : l'activité démarre à l'envoi de la demande ; le serveur la met à
+// jour à chaque étape grâce au jeton que l'app lui transmet.
+function demarrerActivite(missionId: string, v: Vehicule) {
+  const A = natif('AssistanceActivity')
+  if (!A || !missionId) return
+  try {
+    A.addListener('pushToken', (e: any) => { if (e?.missionId === missionId && e?.token) poster(`${API}/live-activity`, { missionId, token: e.token }) })
+    A.start({ missionId, plaque: v.plaque, vehicule: [v.marque, v.modele].filter(Boolean).join(' '), garage: v.garage.nom, step: 0, title: 'Demande envoyée', subtitle: 'On s’en occupe' })?.catch?.(() => {})
+  } catch {}
 }

@@ -69,6 +69,11 @@ export async function POST(req: Request, { params }: { params: { id: string } })
       })
       .eq('id', cr.mission_id)
   }
+  if (decision !== 'refused') {
+    // VD Assistance : la Dynamic Island du client se ferme.
+    const { majActiviteClient } = await import('@/lib/espace/client-notif')
+    await majActiviteClient(cr.mission_id, 'annulee')
+  }
   // si 'refused', on touche pas a la mission
 
   // Update la demande

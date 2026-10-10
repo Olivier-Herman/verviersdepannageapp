@@ -318,6 +318,8 @@ export async function annulerCommande(client: EspaceClient, missionId: string): 
   if (m.status === 'new') {
     await sb.from('incoming_missions').update({ status: 'cancelled', cancelled_at: now, cancelled_reason: `Annulée par le client (${nom}) avant validation`, updated_at: now }).eq('id', m.id).eq('status', 'new')
     await sb.from('mission_logs').insert({ mission_id: m.id, action: 'cancelled', notes: `Annulée par ${nom}, client du garage ${garageNom}, avant validation.` }).then(() => {}, () => {})
+    const { majActiviteClient } = await import('./client-notif')
+    await majActiviteClient(m.id, 'annulee')
     await sendNotificationToRoles(['dispatcher', 'admin', 'superadmin'], 'espace_client_demande', {
       title: '✕ Demande annulée par le client', body: `#${m.mission_number} ${m.vehicle_plate || ''} — client ${garageNom}, annulée avant validation.`, action_url: `/dispatch/${m.id}`, mission_id: m.id,
     }).catch(() => {})
