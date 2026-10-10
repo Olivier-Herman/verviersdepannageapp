@@ -212,7 +212,7 @@ export default function ClientApp({ slug, garage, tel }: { slug: string; garage:
         )}
         {enCours && cmd.annulable && <Annuler api={api} cmd={cmd} assistance={c.assistance} deplacement={etat.deplacement} onFait={m => { flash(m); charger() }} />}
         {enCours && !c.assistance && <p className="dcl-small">Facture Verviers Dépannage à votre nom, remise après l’intervention.</p>}
-        {!enCours && <button className="dcl-big" onClick={() => setEcran('commande')}><img src={IMG.route} alt="" /><div><b>J’ai besoin d’un dépannage</b><span>On vous localise automatiquement</span></div></button>}
+        {!enCours && <button className="dcl-big" onClick={() => setEcran('commande')}><img src={IMG.route} alt="" /><div><b>J’ai besoin d’un dépannage</b><span>Localisation et estimation en un geste</span></div></button>}
       </div>,
     )
   }
@@ -220,7 +220,7 @@ export default function ClientApp({ slug, garage, tel }: { slug: string; garage:
   return page(
     <div className="dcl-pad rise">
       {bonjour}
-      <button className="dcl-big" onClick={() => setEcran('commande')}><img src={IMG.route} alt="" /><div><b>J’ai besoin d’un dépannage</b><span>On vous localise automatiquement</span></div></button>
+      <button className="dcl-big" onClick={() => setEcran('commande')}><img src={IMG.route} alt="" /><div><b>J’ai besoin d’un dépannage</b><span>Localisation et estimation en un geste</span></div></button>
     </div>,
   )
 }
@@ -248,7 +248,8 @@ function CodeSaisie({ code, setCode, onComplet }: { code: string[]; setCode: (c:
 
 function Commander({ api, client, garage, deplacement, onRetour, onEnvoye }: { api: string; client: Client; garage: string; deplacement: number | null; onRetour: () => void; onEnvoye: () => void }) {
   const [pos, setPos] = useState<AdresseChoisie>({ texte: '', lat: null, lng: null })
-  const [gps, setGps] = useState<'cherche' | 'ok' | 'refus'>('cherche')
+  // Position demandée seulement quand le client touche « Me localiser » : il ne doit pas se sentir suivi.
+  const [gps, setGps] = useState<'attente' | 'cherche' | 'ok' | 'refus'>('attente')
   const [panne, setPanne] = useState('')
   const [symptome, setSymptome] = useState('')
   const [prix, setPrix] = useState<{ dsp: number | null; rem: number | null; garage: string | null; charge: boolean }>({ dsp: null, rem: null, garage: null, charge: false })
@@ -265,11 +266,11 @@ function Commander({ api, client, garage, deplacement, onRetour, onEnvoye }: { a
     } catch { setPos({ texte: `${lat.toFixed(5)}, ${lng.toFixed(5)}`, lat, lng }) }
   }, [key])
 
-  // Position du téléphone dès l'ouverture.
-  useEffect(() => {
+  const localiser = () => {
     if (!navigator.geolocation) { setGps('refus'); return }
+    setGps('cherche')
     navigator.geolocation.getCurrentPosition(p => { setGps('ok'); adresseDe(p.coords.latitude, p.coords.longitude) }, () => setGps('refus'), { enableHighAccuracy: true, timeout: 15000 })
-  }, [adresseDe])
+  }
 
   // Carte avec un point déplaçable.
   useEffect(() => {
@@ -312,12 +313,20 @@ function Commander({ api, client, garage, deplacement, onRetour, onEnvoye }: { a
   return (
     <div className="dcl-pad rise">
       <h2 style={{ fontSize: 20 }}>Où êtes-vous ?</h2>
-      <div className="dcl-map">
+      {pos.lat == null && (
+        <>
+          <button className="btn btn-red" style={{ marginTop: 10 }} disabled={gps === 'cherche'} onClick={localiser}>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><circle cx="12" cy="12" r="4" /><path d="M12 2v3M12 19v3M2 12h3M19 12h3" /></svg>
+            {gps === 'cherche' ? 'Localisation…' : 'Me localiser'}
+          </button>
+          <p className="dcl-small">{gps === 'refus' ? 'Position indisponible : saisissez l’adresse ci-dessous.' : 'Votre position n’est demandée qu’à ce moment-là, pour envoyer le dépanneur au bon endroit.'}</p>
+        </>
+      )}
+      <div className="dcl-map" style={{ display: pos.lat == null ? 'none' : undefined }}>
         <div ref={carte} style={{ position: 'absolute', inset: 0 }} />
-        {pos.lat == null && <div className="vide">{gps === 'cherche' ? 'Localisation de votre téléphone…' : 'Position indisponible : saisissez l’adresse ci-dessous.'}</div>}
       </div>
-      <p className="dcl-sub" style={{ marginTop: 8 }}>{pos.lat != null ? 'Déplacez le point si besoin, ou corrigez l’adresse :' : 'Adresse de la panne :'}</p>
-      <div style={{ marginTop: 6 }}><AdresseInline valeur={pos} onChange={setPos} placeholder="Rue, numéro, localité" gps={gps === 'refus'} /></div>
+      <p className="dcl-sub" style={{ marginTop: 10 }}>{pos.lat != null ? 'Déplacez le point si besoin, ou corrigez l’adresse :' : 'Ou tapez l’adresse de la panne :'}</p>
+      <div style={{ marginTop: 6 }}><AdresseInline valeur={pos} onChange={setPos} placeholder="Rue, numéro, localité" /></div>
 
       <h3 style={{ marginTop: 18 }}>Que se passe-t-il ?</h3>
       <div className="dcl-chips">{PANNES.map(x => <button key={x} className={`dcl-chip ${panne === x ? 'on' : ''}`} onClick={() => setPanne(x)}>{x}</button>)}</div>
