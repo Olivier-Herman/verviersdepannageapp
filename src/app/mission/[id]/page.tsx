@@ -118,6 +118,12 @@ export default async function MissionDriverPage({ params, searchParams }: Props)
   // sans assistance (Olivier 10/10/2026). Même garde-fou que le privé : pas de clôture sans encaissement.
   const { data: srcCat } = await supabase.from('mission_source_catalog').select('tags, driver_notice, driver_notice_sq, depot_horaires').eq('key', mission.source || '').maybeSingle()
   const encaissementChauffeur = Array.isArray(srcCat?.tags) && srcCat.tags.includes('encaissement_chauffeur')
+  // Client VD Assistance qui a l'app iPhone : le chauffeur demande le paiement dans l'app (Olivier 10/10/2026).
+  let paiementApp = false
+  if ((mission as any).espace_client_id) {
+    const { count } = await supabase.from('espace_client_push').select('id', { count: 'exact', head: true }).eq('client_id', (mission as any).espace_client_id).eq('kind', 'apns')
+    paiementApp = !!count
+  }
 
   // Relivraison : remarque de clôture du REM PARENT → alerte obligatoire sur
   // l'écran chauffeur (ex « Ne pas démarrer le véhicule »). Olivier 2026-08-10.
@@ -165,6 +171,7 @@ export default async function MissionDriverPage({ params, searchParams }: Props)
         navApp={currentUser.nav_app || 'gmaps'}
         defaultParcZone={defaultParcZone}
         encaissementChauffeur={encaissementChauffeur}
+        paiementApp={paiementApp}
         consigneSource={srcCat?.driver_notice ? { fr: srcCat.driver_notice, sq: srcCat.driver_notice_sq || null, horaires: (srcCat.depot_horaires as any) || null } : null}
         flux2={flux2}
         onsiteV2={onsiteV2}

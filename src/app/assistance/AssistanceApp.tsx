@@ -18,6 +18,7 @@ interface Commande {
   id: string; numero: number; adresse: string | null; panne: string | null; vehicule: string; plaque: string | null
   suivi: { statut: string; libelle: string; etapes: Etape[] }
   aPayer: number | null; aSaCharge: boolean; deplacementPourRien: boolean; annulable: boolean; annulationEnCours: boolean; parti: boolean
+  paiement: { montant: number; url: string; paye: boolean } | null
 }
 interface Etat { client: { prenom: string; nom: string; email: string } | null; vehicules: Vehicule[]; commande: Commande | null }
 interface Partenaire { id: string; nom: string; couleur: string | null; slug: string; sites: { id: string; nom: string; adresse: string }[] }
@@ -88,7 +89,7 @@ export default function AssistanceApp({ contexte, tel, appStore, action }: { con
   }, [action, etat])
   useEffect(() => {
     if (!etat?.commande || ['terminee', 'annulee'].includes(etat.commande.suivi.statut)) return
-    const t = setInterval(charger, 20_000)
+    const t = setInterval(charger, etat.commande.paiement && !etat.commande.paiement.paye ? 5_000 : 20_000)
     return () => clearInterval(t)
   }, [etat?.commande, charger])
   // Garages partenaires : ceux du lien ou QR code suivi, sinon tous.
@@ -345,7 +346,16 @@ export default function AssistanceApp({ contexte, tel, appStore, action }: { con
             {!annulee && <Frise etapes={cmd.suivi.etapes} />}
           </div>
         </div>
-        {cmd.aPayer != null && !annulee && (
+        {cmd.paiement && !annulee && (cmd.paiement.paye ? (
+          <div className="dcl-statut ok"><span className="ic"><IcoCarte c="#13704b" /></span><div><b>Paiement reçu, merci</b><br /><span style={{ fontSize: 13 }}>{eur(cmd.paiement.montant)} · la facture vous sera envoyée.</span></div></div>
+        ) : (
+          <div className="dcl-card dcl-pad" style={{ marginTop: 14, border: '2px solid var(--red)' }}>
+            <b style={{ fontSize: 17 }}>Paiement demandé par le chauffeur</b>
+            <p className="dcl-sub" style={{ margin: '4px 0 12px' }}>Paiement sécurisé par SumUp : Bancontact, carte ou Apple Pay.</p>
+            <a className="btn btn-red" href={cmd.paiement.url} onClick={() => vibrer('leger')}>Payer {eur(cmd.paiement.montant)}</a>
+          </div>
+        ))}
+        {cmd.aPayer != null && !annulee && !cmd.paiement && (
           <div className="dcl-prix">
             <span>{finie ? 'Montant de l’intervention' : 'À régler au chauffeur'}<small>{cmd.deplacementPourRien ? 'déplacement pour rien · TVAC' : 'estimation · TVAC · le chauffeur confirme le montant sur place'}</small></span>
             <b>{finie ? '' : '± '}{eur(cmd.aPayer)}</b>

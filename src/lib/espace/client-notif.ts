@@ -90,3 +90,26 @@ export async function prevenirClient(missionId: string, etape: EtapeClient): Pro
     console.warn('[VD Assistance] prévenir client KO', e?.message)
   }
 }
+
+/**
+ * Paiement demandé par le chauffeur (Olivier 10/10/2026) : notification sur l'app iPhone du client et Dynamic Island
+ * « Paiement à effectuer ». Renvoie false si le client n'a pas l'app (on reste alors sur le terminal).
+ */
+export async function demanderPaiementClient(missionId: string, montant: number): Promise<boolean> {
+  const sb = createAdminClient()
+  const { data: m } = await sb.from('incoming_missions').select('id, espace_client_id, client_la_token').eq('id', missionId).maybeSingle()
+  if (!m?.espace_client_id) return false
+  const { data: abos } = await sb.from('espace_client_push').select('id, token').eq('client_id', m.espace_client_id).eq('kind', 'apns')
+  if (!abos?.length) return false
+  const eur = montant.toLocaleString('fr-BE', { style: 'currency', currency: 'EUR' })
+  for (const a of abos) {
+    const r = await sendApnsPush(a.token, { title: `Paiement demandé : ${eur}`, body: 'Touchez pour payer en toute sécurité (Bancontact, carte, Apple Pay).', notif_type: 'client_paiement', action_url: '/assistance', mission_id: m.id } as any, { topic: APNS_TOPIC })
+    if (r.invalid_token) await sb.from('espace_client_push').delete().eq('id', a.id)
+  }
+  if (m.client_la_token) {
+    const { sendLiveActivityApnsTo } = await import('@/lib/native/pushLiveActivity')
+    await sendLiveActivityApnsTo(APNS_TOPIC, m.client_la_token, { event: 'update', 'content-state': { step: 3, title: 'Paiement à effectuer', subtitle: `${eur} — ouvrez l’app pour payer` } }).catch(() => null)
+  }
+  await sb.from('mission_logs').insert({ mission_id: m.id, action: 'client_paiement_demande', notes: `Paiement de ${eur} demandé dans l’app du client.` }).then(() => {}, () => {})
+  return true
+}

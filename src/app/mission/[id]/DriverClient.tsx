@@ -95,7 +95,7 @@ interface Mission {
   awaiting_payment?: boolean | null
 }
 interface VrLoc { id: string; name: string; address: string; lat: number | null; lng: number | null; is_default?: boolean }
-interface Props { mission: Mission; currentUserId?: string; userRole?: string; isReadOnly?: boolean; navApp?: NavApp; defaultParcZone?: string | null; encaissementChauffeur?: boolean; consigneSource?: { fr: string; sq: string | null; horaires: HorairesDepot | null } | null; flux2?: boolean; onsiteV2?: boolean; parentClosingNote?: string | null; parentPanne?: string | null; parentPhotos?: string[]; relKey?: { location: string | null; hook: string | null } | null; reportClient?: string | null }
+interface Props { mission: Mission; currentUserId?: string; userRole?: string; isReadOnly?: boolean; navApp?: NavApp; defaultParcZone?: string | null; encaissementChauffeur?: boolean; paiementApp?: boolean; consigneSource?: { fr: string; sq: string | null; horaires: HorairesDepot | null } | null; flux2?: boolean; onsiteV2?: boolean; parentClosingNote?: string | null; parentPanne?: string | null; parentPhotos?: string[]; relKey?: { location: string | null; hook: string | null } | null; reportClient?: string | null }
 
 // Photos prises à l'ENLÈVEMENT (mission parente), en lecture seule sur une
 // relivraison : le chauffeur voit l'état du véhicule tel qu'il a été chargé et
@@ -607,7 +607,7 @@ function BriefingTtsButton({ mission }: { mission: Mission }) {
 }
 
 // ─── Composant principal ──────────────────────────────────────────────────────
-export default function DriverClient({ mission: init, currentUserId, userRole, isReadOnly = false, navApp: initNav, defaultParcZone = null, encaissementChauffeur = false, consigneSource = null, flux2 = false, onsiteV2 = false, parentClosingNote = null, parentPanne = null, parentPhotos = [], relKey = null, reportClient = null }: Props) {
+export default function DriverClient({ mission: init, currentUserId, userRole, isReadOnly = false, navApp: initNav, defaultParcZone = null, encaissementChauffeur = false, paiementApp = false, consigneSource = null, flux2 = false, onsiteV2 = false, parentClosingNote = null, parentPanne = null, parentPhotos = [], relKey = null, reportClient = null }: Props) {
   const canMatthieu = canUseMatthieu(userRole, currentUserId)
   const router = useRouter()
   const { t, lang } = useT()   // traductions FR/albanais pour les messages d'erreur (strings)
@@ -656,6 +656,7 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
   const [loading, setLoading]   = useState(false)
   // Message du client (espace client, Olivier 10/10/2026) : affiché à l'acceptation, le chauffeur confirme l'avoir lu.
   const [msgClient, setMsgClient] = useState<null | 'accept' | 'lire'>(null)
+  const [encaisserAutrement, setEncaisserAutrement] = useState(false)
   // Consigne du garage (Olivier 10/10/2026) : rien pour un dépannage sur place ou dans le créneau de dépôt du
   // garage ; dès que la mission est un remorquage hors créneau (soir, week-end, férié), alerte à confirmer.
   const [horloge, setHorloge] = useState(() => Date.now())
@@ -3218,6 +3219,20 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
         </div>
   ) : null
 
+  // Client VD Assistance avec l'app : pas d'assistant d'encaissement, le paiement se demande dans son app
+  // (Olivier 10/10/2026). « Encaisser autrement » rouvre l'écran habituel (terminal) si le client n'y arrive pas.
+  if (screen === 'encaissement' && paiementApp && !encaisserAutrement) return (
+    <ScreenWrap title={t('mission_detail.pay_app_title')} back={() => setScreen('main')}>
+      <PaiementApp missionId={M.id} montant={Math.max(0, Number(M.amount_to_collect || 0) - Number(M.payment_amount || 0))}
+        onPaye={async () => {
+          const r = await fetch(`/api/missions/${M.id}`, { cache: 'no-store' }).then(x => x.json()).catch(() => null)
+          if (r && !r.error) setM(prev => ({ ...prev, ...r }))
+          setScreen('main')
+        }}
+        onAutrement={() => setEncaisserAutrement(true)} />
+    </ScreenWrap>
+  )
+
   if (screen === 'encaissement') return (
     <ScreenWrap title={t('cloture.pay_title')} back={() => setScreen('main')}>
       <div className="flex-1 px-4 py-4 space-y-4">
@@ -5048,7 +5063,7 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
                 {/* Paiement dû (Siabis non couvert / privé) → le bouton EST le bouton
                     d'encaissement (même action : écran encaissement). Olivier 2026-08-16. */}
                 {sncPaymentDue ? (
-                  <>💳 Encaisser{requiredAmount ? ` ${requiredAmount.toFixed(2)} €` : ''}</>
+                  paiementApp ? <>📲 <T k="mission_detail.action_request_payment" />{requiredAmount ? ` ${requiredAmount.toFixed(2)} €` : ''}</> : <>💳 Encaisser{requiredAmount ? ` ${requiredAmount.toFixed(2)} €` : ''}</>
                 ) : (
                   <>
                     <T k="mission_detail.btn_arrived_dest" />
@@ -5285,7 +5300,7 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
                   <span className={`text-sm font-medium ${
                     paidEffective ? (isToInvoice ? 'text-amber-400' : 'text-green-400') : 'text-ink-secondary'
                   }`}>
-                    {paidEffective ? (isToInvoice ? <T k="mission_detail.action_to_invoice" /> : <T k="mission_detail.action_paid" />) : <T k="mission_detail.action_collect" />}
+                    {paidEffective ? (isToInvoice ? <T k="mission_detail.action_to_invoice" /> : <T k="mission_detail.action_paid" />) : paiementApp ? <T k="mission_detail.action_request_payment" /> : <T k="mission_detail.action_collect" />}
                   </span>
                   {paidEffective && <span className={`absolute top-2 right-2 px-1.5 py-0.5 rounded-full text-xs font-bold text-ink ${isToInvoice ? 'bg-amber-500' : 'bg-green-500'}`}>✓</span>}
                 </button>
@@ -5671,6 +5686,71 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
           de 5h rattrapent les échecs. La modale chauffeur et sa route ont été
           supprimées le 07/09/2026 (inventaire code débranché). */}
       </AmbientBackground>
+    </div>
+  )
+}
+
+// Demande de paiement dans l'app VD Assistance du client (Olivier 10/10/2026) : un bouton, puis on attend SumUp ;
+// le paiement est enregistré par le serveur dès qu'il est confirmé.
+function PaiementApp({ missionId, montant, onPaye, onAutrement }: { missionId: string; montant: number; onPaye: () => void; onAutrement: () => void }) {
+  const { t } = useT()
+  const [etat, setEtat] = useState<'aucun' | 'attente' | 'paye' | 'echec' | '?'>('?')
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState('')
+  const [info, setInfo] = useState('')
+  const verifier = useCallback(async () => {
+    const r = await fetch(`/api/missions/${missionId}/paiement-client`, { cache: 'no-store' }).then(x => x.json()).catch(() => null)
+    if (!r || r.error) return
+    setEtat(r.etat); setInfo(r.alerte || '')
+    if (r.etat === 'paye') setTimeout(onPaye, 1800)
+  }, [missionId, onPaye])
+  useEffect(() => { verifier() }, [verifier])
+  useEffect(() => {
+    if (etat !== 'attente') return
+    const tm = setInterval(verifier, 4000)
+    return () => clearInterval(tm)
+  }, [etat, verifier])
+  const demander = async () => {
+    setBusy(true); setErr('')
+    const r = await fetch(`/api/missions/${missionId}/paiement-client`, { method: 'POST' }).catch(() => null)
+    const j = await r?.json().catch(() => ({}))
+    setBusy(false)
+    if (!r?.ok) { setErr(j?.error || 'Erreur'); return }
+    setEtat('attente')
+  }
+  return (
+    <div className="flex-1 px-4 py-4 space-y-4">
+      <div className="bg-brand rounded-2xl p-6 text-center">
+        <p className="text-ink/70 text-sm mb-1"><T k="cloture.pay_amount" /></p>
+        <p className="text-ink text-4xl font-semibold">{formatEur(montant)}</p>
+      </div>
+      {etat === 'paye' ? (
+        <div className="rounded-2xl border border-green-600/40 bg-green-600/15 p-5 text-center">
+          <p className="text-3xl">✅</p>
+          <p className="mt-2 text-lg font-bold text-green-700 dark:text-green-300"><T k="mission_detail.pay_app_done" /></p>
+        </div>
+      ) : etat === 'attente' ? (
+        <div className="rounded-2xl border border-amber-500/40 bg-amber-500/10 p-5 text-center space-y-2">
+          <p className="text-3xl animate-pulse">📲</p>
+          <p className="text-lg font-bold text-ink"><T k="mission_detail.pay_app_waiting" /></p>
+          <p className="text-sm text-ink-secondary"><T k="mission_detail.pay_app_waiting_hint" /></p>
+          {info && <p className="text-sm font-semibold text-amber-700 dark:text-amber-300">{info}</p>}
+          <button type="button" disabled={busy} onClick={demander} className="mt-2 min-h-[44px] rounded-xl border px-4 text-sm font-semibold text-ink"><T k="mission_detail.pay_app_resend" /></button>
+        </div>
+      ) : etat !== '?' && (
+        <>
+          {etat === 'echec' && <p className="rounded-xl bg-red-500/10 px-3 py-2 text-sm text-red-600 dark:text-red-300"><T k="mission_detail.pay_app_failed" /></p>}
+          <p className="text-sm text-ink-secondary"><T k="mission_detail.pay_app_hint" /></p>
+          <button type="button" disabled={busy || montant <= 0} onClick={demander}
+            className="w-full min-h-[56px] rounded-2xl bg-blue-600 text-base font-bold text-white disabled:opacity-50">
+            {busy ? '…' : `📲 ${t('mission_detail.action_request_payment')} — ${formatEur(montant)}`}
+          </button>
+        </>
+      )}
+      {err && <p className="rounded-xl bg-red-500/10 px-3 py-2 text-sm text-red-600 dark:text-red-300">⚠️ {err}</p>}
+      {etat !== 'paye' && (
+        <button type="button" onClick={onAutrement} className="w-full min-h-[44px] text-sm font-semibold text-ink-muted underline"><T k="mission_detail.pay_app_other" /></button>
+      )}
     </div>
   )
 }

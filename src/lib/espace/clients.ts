@@ -276,7 +276,7 @@ export async function creerCommande(client: EspaceClient, v: EspaceVehicule, d: 
 export async function commandeDuClient(client: EspaceClient) {
   const sb = createAdminClient()
   const { MISSION_COLS, suiviClient, relivraisonsDe } = await import('./missions')
-  const { data } = await sb.from('incoming_missions').select(`${MISSION_COLS}, amount_to_collect, payment_collected_at, espace_vehicule_id`)
+  const { data } = await sb.from('incoming_missions').select(`${MISSION_COLS}, amount_to_collect, payment_collected_at, payment_amount, espace_vehicule_id, client_paiement`)
     .eq('espace_client_id', client.id).is('parent_mission_id', null).order('created_at', { ascending: false }).limit(1)
   const m: any = data?.[0]
   if (!m) return null
@@ -297,6 +297,12 @@ export async function commandeDuClient(client: EspaceClient) {
     annulable: !fini && !dem?.length,
     annulationEnCours: !!dem?.length,
     parti: !!(m.on_way_at || m.on_site_at || m.loaded_at),
+    // Paiement demandé par le chauffeur dans l'app (SumUp) : le client voit « Payer » jusqu'à la confirmation.
+    paiement: m.client_paiement?.url ? {
+      montant: Number(m.client_paiement.montant || 0),
+      url: String(m.client_paiement.url),
+      paye: !!m.client_paiement.enregistre_le || (!!m.payment_collected_at && Number(m.payment_amount || 0) + 0.01 >= Number(m.client_paiement.montant || 0)),
+    } : null,
   }
 }
 
