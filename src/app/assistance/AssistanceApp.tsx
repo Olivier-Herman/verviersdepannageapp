@@ -22,6 +22,18 @@ interface Commande {
 interface Etat { client: { prenom: string; nom: string; email: string } | null; vehicules: Vehicule[]; commande: Commande | null }
 interface Partenaire { id: string; nom: string; couleur: string | null; slug: string; sites: { id: string; nom: string; adresse: string }[] }
 
+// Icônes dessinées (pas d'emoji : rendu identique sur tous les téléphones).
+const Ico = ({ d, c = 'currentColor', s = 22 }: { d: React.ReactNode; c?: string; s?: number }) => (
+  <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke={c} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flex: 'none' }}>{d}</svg>
+)
+const IcoBouclier = (p: { c?: string; s?: number }) => <Ico {...p} d={<><path d="M12 3l7 3v6c0 4.5-3 7.6-7 9-4-1.4-7-4.5-7-9V6l7-3z" /><path d="M9 12l2 2 4-4" /></>} />
+const IcoCarte = (p: { c?: string; s?: number }) => <Ico {...p} d={<><rect x="3" y="6" width="18" height="12" rx="2" /><path d="M3 10h18M7 15h3" /></>} />
+const IcoTel = (p: { c?: string; s?: number }) => <Ico {...p} d={<><rect x="7" y="2.5" width="10" height="19" rx="2.5" /><path d="M11 18h2" /></>} />
+const IcoCloche = (p: { c?: string; s?: number }) => <Ico {...p} d={<><path d="M6 16V11a6 6 0 1 1 12 0v5l1.5 2h-15L6 16z" /><path d="M10 20a2 2 0 0 0 4 0" /></>} />
+const Pastille = ({ children, fond }: { children: React.ReactNode; fond: string }) => (
+  <span style={{ width: 44, height: 44, borderRadius: 14, background: fond, display: 'grid', placeItems: 'center', flex: 'none' }}>{children}</span>
+)
+
 const API = '/api/assistance'
 const PANNES = ['Ne démarre pas', 'Batterie', 'Crevaison', 'Accident', 'Bruit / fumée', 'Clés enfermées', 'Autre']
 const eur = (v: number) => v.toLocaleString('fr-BE', { style: 'currency', currency: 'EUR' })
@@ -102,7 +114,7 @@ export default function AssistanceApp({ contexte, tel, appStore }: { contexte: s
   )
   const installCarte = etat?.client && plateforme !== 'app' && (installer || (plateforme === 'ios' && appStore)) ? (
     <div className="dcl-card dcl-pad" style={{ margin: '0 16px 4px', display: 'flex', gap: 12, alignItems: 'center' }}>
-      <span style={{ fontSize: 26 }}>📲</span>
+      <Pastille fond="#fff1ef"><IcoTel c="#d42a2a" /></Pastille>
       <span style={{ flex: 1, fontSize: 14 }}><b>Gardez VD Assistance sur votre écran</b><br /><span style={{ color: 'var(--ink2)' }}>En cas de panne, un seul geste.</span></span>
       {installer
         ? <button className="btn btn-red" style={{ width: 'auto', minHeight: 44 }} onClick={async () => { installer.prompt(); await installer.userChoice.catch(() => null); setInstaller(null) }}>Installer</button>
@@ -274,7 +286,7 @@ export default function AssistanceApp({ contexte, tel, appStore }: { contexte: s
             <div key={x.id} className="dcl-card dcl-pad">
               <div className="dcl-veh" style={{ margin: 0 }}><Plaque v={x.plaque} /> <b style={{ color: 'var(--ink)' }}>{[x.marque, x.modele].filter(Boolean).join(' ')}</b></div>
               <p className="dcl-sub" style={{ marginTop: 8 }}>Garage : <b style={{ color: 'var(--ink)' }}>{x.garage.nom}</b><br />{x.garage.adresse}</p>
-              <p style={{ margin: '8px 0 0', fontSize: 13, fontWeight: 700, color: x.assistance ? '#13704b' : '#8a520a' }}>{x.assistance ? `🛡️ Assistance ${x.societe.nom} : pris en charge` : '💳 Dépannage à régler au chauffeur'}</p>
+              <p style={{ margin: '8px 0 0', fontSize: 13, fontWeight: 700, color: x.assistance ? '#13704b' : '#8a520a', display: 'flex', gap: 6, alignItems: 'center' }}>{x.assistance ? <><IcoBouclier s={18} />Assistance {x.societe.nom} : pris en charge</> : <><IcoCarte s={18} />Dépannage à régler au chauffeur</>}</p>
               {!x.societe.actif && <p className="err" style={{ marginTop: 6 }}>{x.societe.nom} a suspendu ce service.</p>}
             </div>
           ))}
@@ -533,7 +545,7 @@ function Commander({ vehicules, onRetour, onEnvoye }: { vehicules: Vehicule[]; o
       {panne && <input className="input rise" style={{ marginTop: 10 }} value={symptome} onChange={e => setSymptome(e.target.value)} placeholder={panne === 'Autre' ? 'Décrivez les symptômes : bruit, voyant, odeur… (obligatoire)' : 'Un détail utile ? (facultatif)'} />}
 
       {veh && (veh.assistance ? (
-        <div className="dcl-statut ok"><span className="ic">🛡️</span><div><b>Pris en charge par {veh.societe.nom}</b><br /><span style={{ fontSize: 13 }}>Rien à payer.</span></div></div>
+        <div className="dcl-statut ok"><span className="ic"><IcoBouclier c="#13704b" /></span><div><b>Pris en charge par {veh.societe.nom}</b><br /><span style={{ fontSize: 13 }}>Rien à payer.</span></div></div>
       ) : (
         <>
           <div className="dcl-prix">
@@ -619,7 +631,7 @@ function Prevenir() {
   if (etat === '?' || etat === 'ok') return null
   return (
     <div className="dcl-card dcl-pad" style={{ marginTop: 12, display: 'flex', gap: 12, alignItems: 'center' }}>
-      <span style={{ fontSize: 26 }}>🔔</span>
+      <Pastille fond="#fff1ef"><IcoCloche c="#d42a2a" /></Pastille>
       <span style={{ flex: 1, fontSize: 14 }}>
         <b>Être prévenu</b><br />
         <span style={{ color: 'var(--ink2)' }}>{etat === 'refus' ? 'Notifications refusées : activez-les dans les réglages du téléphone, ou suivez ici.' : 'Une notification quand le chauffeur part et quand il arrive.'}</span>
