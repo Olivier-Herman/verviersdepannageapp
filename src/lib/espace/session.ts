@@ -60,7 +60,8 @@ export async function getEspaceSession(): Promise<{ compte: EspaceCompte; societ
   return { compte: compte as EspaceCompte, societes: societes as EspaceSociete[] }
 }
 
-export const normEmail = (e: unknown) => String(e || '').trim().toLowerCase()
+// « mailto: » arrive avec un copier-coller depuis un lien : on ne garde que l'adresse.
+export const normEmail = (e: unknown) => String(e || '').trim().replace(/^mailto:/i, '').trim().toLowerCase()
 
 export async function compteParEmail(email: string): Promise<EspaceCompte | null> {
   const e = normEmail(email)

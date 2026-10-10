@@ -181,7 +181,7 @@ export default function AssistanceApp({ contexte, tel, appStore, action }: { con
   if (!etat.client) {
     if (ecran === 'inscription' && ctx) {
       const champ = (k: keyof typeof PERSONNE, label: string, props: any = {}) => (
-        <label className="field"><span>{label}</span><input className="input" value={p[k]} onChange={e => setP({ ...p, [k]: e.target.value })} {...props} /></label>
+        <label className="field"><span>{label}</span><input className="input" value={p[k]} onChange={e => setP({ ...p, [k]: k === 'email' ? e.target.value.replace(/^mailto:/i, '').trim() : e.target.value })} {...props} /></label>
       )
       const site = ctx.sites.length === 1 ? ctx.sites[0].id : v.garageId
       const pret = Object.values(p).every(x => x.trim()) && p.email.includes('@') && v.plaque && v.marque.trim() && v.modele.trim() && !!site
@@ -193,7 +193,9 @@ export default function AssistanceApp({ contexte, tel, appStore, action }: { con
             <div className="dcl-two">{champ('prenom', 'Prénom', { autoComplete: 'given-name' })}{champ('nom', 'Nom', { autoComplete: 'family-name' })}</div>
             {champ('tel', 'Téléphone', { type: 'tel', autoComplete: 'tel', placeholder: '04.. .. .. ..' })}
             {champ('email', 'Adresse mail', { type: 'email', autoComplete: 'email' })}
-            {champ('adresse', 'Votre adresse', { autoComplete: 'street-address', placeholder: 'Rue, numéro, code postal, localité' })}
+            <div className="field"><span>Votre adresse</span>
+              <AdresseInline valeur={{ texte: p.adresse, lat: null, lng: null }} onChange={a => setP({ ...p, adresse: a.texte })} placeholder="Rue, numéro, code postal, localité" />
+            </div>
             <h3 style={{ marginTop: 6 }}>Votre véhicule</h3>
             <ChampsVehicule v={v} setV={setV} sites={ctx.sites} garage={ctx.nom} />
             {err && <p className="err">{err}</p>}
@@ -214,7 +216,7 @@ export default function AssistanceApp({ contexte, tel, appStore, action }: { con
           <h2>Déjà inscrit ?</h2>
           <p className="dcl-sub">Indiquez l’adresse mail de votre inscription : vous recevez un code.</p>
           <div className="dcl-stack">
-            <label className="field"><span>Adresse mail</span><input className="input" type="email" autoComplete="email" value={p.email} onChange={e => setP({ ...p, email: e.target.value })} /></label>
+            <label className="field"><span>Adresse mail</span><input className="input" type="email" autoComplete="email" value={p.email} onChange={e => setP({ ...p, email: e.target.value.replace(/^mailto:/i, '').trim() })} /></label>
             {err && <p className="err">{err}</p>}
             <button className="btn btn-red" disabled={!p.email.includes('@') || busy} onClick={async () => {
               const j = await post(`${API}/compte`, { etape: 'code', email: p.email })
@@ -383,7 +385,7 @@ function ChampsVehicule({ v, setV, sites, garage }: { v: typeof VEHICULE; setV: 
         <label className="field"><span>Modèle</span><input className="input" value={v.modele} onChange={e => setV({ ...v, modele: e.target.value })} placeholder="Ceed" /></label>
       </div>
       <div>
-        <h3 style={{ marginTop: 6 }}>Son garage{garage ? ` ${garage}` : ''}</h3>
+        <h3 style={{ marginTop: 6 }}>Son garage</h3>
         <p className="dcl-sub">Celui qui suit ce véhicule. En cas de remorquage, il y est conduit. Il ne se change plus ensuite.</p>
         <div className="dcl-gar" role="radiogroup">
           {sites.map(g => (
