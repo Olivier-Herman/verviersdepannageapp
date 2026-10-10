@@ -20,7 +20,8 @@ import { TtsButton } from '@/components/audio/TtsButton'
 import { openNavigation } from '@/lib/open-navigation'
 import AddressField, { verifyAddressViaPlaces } from '@/components/AddressField'
 import { T }    from '@/lib/i18n/T'
-import { isTransport } from '@/lib/missions/mission-types'
+import { isTransport, isRemorquage, isRemRel } from '@/lib/missions/mission-types'
+import { depotFerme, type HorairesDepot } from '@/lib/missions/horaires-depot'
 import { transportGabaritLabel } from '@/lib/tarifs/transport-gabarits'
 import { useT } from '@/lib/i18n/I18nProvider'
 import SigPad from '@/components/mission/SigPad'
@@ -94,7 +95,7 @@ interface Mission {
   awaiting_payment?: boolean | null
 }
 interface VrLoc { id: string; name: string; address: string; lat: number | null; lng: number | null; is_default?: boolean }
-interface Props { mission: Mission; currentUserId?: string; userRole?: string; isReadOnly?: boolean; navApp?: NavApp; defaultParcZone?: string | null; encaissementChauffeur?: boolean; consigneSource?: { fr: string; sq: string | null } | null; flux2?: boolean; onsiteV2?: boolean; parentClosingNote?: string | null; parentPanne?: string | null; parentPhotos?: string[]; relKey?: { location: string | null; hook: string | null } | null; reportClient?: string | null }
+interface Props { mission: Mission; currentUserId?: string; userRole?: string; isReadOnly?: boolean; navApp?: NavApp; defaultParcZone?: string | null; encaissementChauffeur?: boolean; consigneSource?: { fr: string; sq: string | null; horaires: HorairesDepot | null } | null; flux2?: boolean; onsiteV2?: boolean; parentClosingNote?: string | null; parentPanne?: string | null; parentPhotos?: string[]; relKey?: { location: string | null; hook: string | null } | null; reportClient?: string | null }
 
 // Photos prises à l'ENLÈVEMENT (mission parente), en lecture seule sur une
 // relivraison : le chauffeur voit l'état du véhicule tel qu'il a été chargé et
@@ -655,6 +656,14 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
   const [loading, setLoading]   = useState(false)
   // Message du client (espace client, Olivier 10/10/2026) : affiché à l'acceptation, le chauffeur confirme l'avoir lu.
   const [msgClient, setMsgClient] = useState<null | 'accept' | 'lire'>(null)
+  // Consigne du garage (Olivier 10/10/2026) : rien pour un dépannage sur place ou dans le créneau de dépôt du
+  // garage ; dès que la mission est un remorquage hors créneau (soir, week-end, férié), alerte à confirmer.
+  const [horloge, setHorloge] = useState(() => Date.now())
+  useEffect(() => {
+    if (!consigneSource?.horaires) return
+    const t = setInterval(() => setHorloge(Date.now()), 60_000)
+    return () => clearInterval(t)
+  }, [consigneSource])
   const [err, setErr]           = useState('')
   const [navApp, setNavApp]     = useState<NavApp>(initNav || 'gmaps')
   // Olivier 08/09/2026 (mission de Franck) : une fiche sans coordonnées (Kaze en
@@ -3732,23 +3741,11 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
         </div>
       )}
 
-      {/* Consigne de la source, sur toute la mission (Olivier 10/10/2026) : ex. EBAC / Centracar, dépôt au garage
-          uniquement en semaine 9 h - 16 h. Texte réglé sur la source (catalogue), en français et en albanais. */}
-      {consigneSource && (
-        <div className={`mx-4 ${parentClosingNote ? 'mt-1' : 'mt-14'} mb-1 bg-amber-100 border-2 border-amber-500 rounded-2xl px-4 py-3 flex items-start gap-3 shadow-md`}>
-          <span className="text-3xl flex-shrink-0">🕘</span>
-          <div className="min-w-0">
-            <p className="text-amber-900 text-[11px] font-bold uppercase tracking-wide"><T k="mission_detail.source_notice_title" /></p>
-            <p className="text-amber-900 text-base font-black whitespace-pre-wrap leading-snug mt-0.5">{matSq && consigneSource.sq ? consigneSource.sq : consigneSource.fr}</p>
-          </div>
-        </div>
-      )}
-
       {/* La PANNE relevée à l'enlèvement — pour que le chauffeur sache ce qu'il
           va charger avant d'arriver. Elle ne se redemande jamais sur une
           relivraison : le véhicule ne se répare pas tout seul au parc. */}
       {parentPanne && (
-        <div className={`mx-4 ${parentClosingNote || consigneSource ? 'mt-1' : 'mt-14'} mb-1 bg-surface border rounded-2xl px-4 py-3 flex items-center gap-3`}>
+        <div className={`mx-4 ${parentClosingNote ? 'mt-1' : 'mt-14'} mb-1 bg-surface border rounded-2xl px-4 py-3 flex items-center gap-3`}>
           <span className="text-2xl flex-shrink-0">🔧</span>
           <div className="min-w-0">
             <p className="text-ink-muted text-[11px] font-bold uppercase tracking-wide">Panne relevée à l'enlèvement</p>
@@ -4923,6 +4920,30 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
               Montant non calculé — préviens le dispatch avant de clôturer.
             </div>
           )}
+
+          {(() => {
+            const alerte = !!consigneSource?.horaires && !isReadOnly
+              && (isRemorquage(M.mission_type) || isRemRel(M.mission_type))
+              && !['new', 'dispatching', 'parked', 'completed', 'to_invoice', 'invoiced', 'cancelled', 'ignored'].includes(String(M.status))
+              && !(M as any).source_notice_ack_at && !msgClient
+              && depotFerme(consigneSource.horaires, new Date(horloge))
+            if (!alerte) return null
+            return (
+              <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/60 p-4">
+                <div className="w-full max-w-md rounded-3xl bg-surface p-6 shadow-2xl">
+                  <p className="text-xs font-bold uppercase tracking-wider text-amber-700 dark:text-amber-300">🕘 <T k="mission_detail.source_notice_title" /></p>
+                  <p className="mt-3 rounded-2xl border-2 border-amber-400 bg-amber-50 p-4 text-lg font-bold text-gray-900 whitespace-pre-wrap">{matSq && consigneSource!.sq ? consigneSource!.sq : consigneSource!.fr}</p>
+                  <button className="mt-5 w-full min-h-[52px] rounded-2xl bg-blue-600 font-bold text-white"
+                    onClick={async () => {
+                      setM(prev => ({ ...prev, source_notice_ack_at: new Date().toISOString() } as any))
+                      await fetch(`/api/missions/${M.id}/consigne-lue`, { method: 'POST' }).catch(() => {})
+                    }}>
+                    <T k="mission_detail.source_notice_ok" />
+                  </button>
+                </div>
+              </div>
+            )
+          })()}
 
           {msgClient && (M as any).driver_message && (
             <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/60 p-4">

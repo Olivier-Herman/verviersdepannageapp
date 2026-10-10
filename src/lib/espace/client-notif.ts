@@ -8,13 +8,16 @@ import webpush from 'web-push'
 import { createAdminClient } from '@/lib/supabase'
 import { sendApnsPush } from '@/lib/notifications/push-apns'
 
-export type EtapeClient = 'acceptee' | 'en_route' | 'sur_place'
+export type EtapeClient = 'acceptee' | 'en_route' | 'sur_place' | 'au_depot' | 'livre'
 const APNS_TOPIC = 'com.verviersdepannage.assistance'   // identifiant de l'app iPhone VD Assistance
 
 const TEXTES: Record<EtapeClient, { title: string; body: string }> = {
   acceptee: { title: 'Demande acceptée', body: 'Un dépanneur va partir vers vous. Gardez votre téléphone à portée de main.' },
   en_route: { title: 'Votre chauffeur est en route', body: 'Il arrive. Restez près de votre véhicule, en sécurité.' },
   sur_place: { title: 'Votre chauffeur est arrivé', body: 'Il est sur place.' },
+  // Remorquage hors des heures d'ouverture du garage : mise en parc chez nous, livraison au garage ensuite.
+  au_depot: { title: 'Votre véhicule est à notre dépôt', body: 'Il sera livré à votre garage dès son ouverture.' },
+  livre: { title: 'Véhicule livré à votre garage', body: 'Votre garage prend le relais.' },
 }
 
 // ── Dynamic Island / écran verrouillé (app iPhone) : état de la Live Activity « AssistanceActivityAttributes ».
@@ -23,6 +26,8 @@ const ETAPES_LA: Record<EtapeClient | 'terminee' | 'annulee', { step: number; ti
   acceptee: { step: 1, title: 'Demande acceptée', subtitle: 'Un dépanneur va partir vers vous' },
   en_route: { step: 2, title: 'Chauffeur en route', subtitle: 'Restez près de votre véhicule' },
   sur_place: { step: 3, title: 'Chauffeur arrivé', subtitle: 'Il est sur place' },
+  au_depot: { step: 3, title: 'Au dépôt', subtitle: 'Livraison au garage dès son ouverture' },
+  livre: { step: 4, title: 'Livré au garage', subtitle: 'Votre garage prend le relais' },
   terminee: { step: 4, title: 'Intervention terminée', subtitle: 'Merci de votre confiance' },
   annulee: { step: 4, title: 'Demande annulée', subtitle: 'Votre demande est annulée' },
 }
@@ -34,7 +39,7 @@ export async function majActiviteClient(missionId: string, etape: keyof typeof E
     const { data: m } = await sb.from('incoming_missions').select('client_la_token').eq('id', missionId).maybeSingle()
     if (!m?.client_la_token) return
     const { sendLiveActivityApnsTo } = await import('@/lib/native/pushLiveActivity')
-    const fin = etape === 'terminee' || etape === 'annulee'
+    const fin = etape === 'terminee' || etape === 'annulee' || etape === 'livre'
     const r = await sendLiveActivityApnsTo(APNS_TOPIC, m.client_la_token, {
       event: fin ? 'end' : 'update',
       'content-state': ETAPES_LA[etape],

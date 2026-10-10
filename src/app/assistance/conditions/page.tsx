@@ -22,7 +22,7 @@ export default async function Conditions() {
         <h2 style={{ marginTop: 6 }}>Conditions du service</h2>
         <p className="dcl-sub">VD Assistance — Verviers Dépannage SA, Lefin 12, 4860 Pepinster — BE 0460.759.205. Mise à jour : 10 octobre 2026.</p>
         <S t="Le service">
-          <p>VD Assistance permet aux clients des garages partenaires de Verviers Dépannage de commander un dépannage ou un remorquage, 24 h/24. L’intervention part en dépannage sur place ; si le véhicule ne peut pas être réparé sur place, le chauffeur le remorque jusqu’au garage relié à ce véhicule.</p>
+          <p>VD Assistance permet aux clients des garages partenaires de Verviers Dépannage de commander un dépannage ou un remorquage, 24 h/24. L’intervention part en dépannage sur place ; si le véhicule ne peut pas être réparé sur place, le chauffeur le remorque jusqu’au garage relié à ce véhicule. En dehors des heures d’ouverture de ce garage, le véhicule est mis à l’abri dans notre dépôt, puis livré au garage dès son ouverture.</p>
         </S>
         <S t="Prise en charge par votre garage">
           <p>Si votre garage a activé son assistance pour votre véhicule, l’intervention lui est facturée et vous n’avez rien à payer. L’application vous l’indique avant l’envoi de la demande.</p>

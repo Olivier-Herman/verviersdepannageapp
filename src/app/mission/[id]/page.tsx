@@ -116,7 +116,7 @@ export default async function MissionDriverPage({ params, searchParams }: Props)
   const defaultParcZone = await getDefaultParcZone(mission.source, supabase)
   // Source dont le chauffeur encaisse tout (tag du catalogue « encaissement_chauffeur ») : clients des garages
   // sans assistance (Olivier 10/10/2026). Même garde-fou que le privé : pas de clôture sans encaissement.
-  const { data: srcCat } = await supabase.from('mission_source_catalog').select('tags, driver_notice, driver_notice_sq').eq('key', mission.source || '').maybeSingle()
+  const { data: srcCat } = await supabase.from('mission_source_catalog').select('tags, driver_notice, driver_notice_sq, depot_horaires').eq('key', mission.source || '').maybeSingle()
   const encaissementChauffeur = Array.isArray(srcCat?.tags) && srcCat.tags.includes('encaissement_chauffeur')
 
   // Relivraison : remarque de clôture du REM PARENT → alerte obligatoire sur
@@ -165,7 +165,7 @@ export default async function MissionDriverPage({ params, searchParams }: Props)
         navApp={currentUser.nav_app || 'gmaps'}
         defaultParcZone={defaultParcZone}
         encaissementChauffeur={encaissementChauffeur}
-        consigneSource={srcCat?.driver_notice ? { fr: srcCat.driver_notice, sq: srcCat.driver_notice_sq || null } : null}
+        consigneSource={srcCat?.driver_notice ? { fr: srcCat.driver_notice, sq: srcCat.driver_notice_sq || null, horaires: (srcCat.depot_horaires as any) || null } : null}
         flux2={flux2}
         onsiteV2={onsiteV2}
         parentPanne={parentPanne}

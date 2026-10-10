@@ -583,6 +583,18 @@ export async function POST(req: Request) {
     const { majActiviteClient } = await import('@/lib/espace/client-notif')
     await majActiviteClient(mission_id, 'terminee')
   }
+  // Remorquage hors créneau du garage : mis en parc chez nous, puis relivré. Le client suit jusqu'à la livraison.
+  if ((updated as any)?.espace_client_id && action === 'park') {
+    const { prevenirClient } = await import('@/lib/espace/client-notif')
+    await prevenirClient(mission_id, 'au_depot')
+  }
+  if (['completed', 'complete_delivery'].includes(action) && (updated as any)?.parent_mission_id) {
+    const { data: parent } = await supabase.from('incoming_missions').select('id, espace_client_id').eq('id', (updated as any).parent_mission_id).maybeSingle()
+    if (parent?.espace_client_id) {
+      const { prevenirClient } = await import('@/lib/espace/client-notif')
+      await prevenirClient(parent.id, 'livre')
+    }
+  }
 
   // Client d'un garage sans assistance (Olivier 10/10/2026) : le montant à encaisser suit la mission
   // (adresse corrigée, transformée en remorquage, déplacement pour rien).

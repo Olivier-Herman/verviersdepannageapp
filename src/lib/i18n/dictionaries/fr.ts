@@ -392,6 +392,7 @@ export const fr = {
     addr_change_ok:        "J’ai compris, j’appelle le dispatch",
     client_msg_title:      "Message du client pour toi",
     source_notice_title:   "Consigne du garage",
+    source_notice_ok:      "J’ai lu la consigne",
     client_msg_hint:       "Lis-le bien : le client verra que tu l’as confirmé.",
     client_msg_accept:     "J’ai lu — j’accepte la mission",
     client_msg_ok:         "J’ai lu ce message",
