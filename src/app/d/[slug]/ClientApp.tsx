@@ -19,7 +19,7 @@ const PANNES = ['Ne démarre pas', 'Batterie', 'Crevaison', 'Accident', 'Bruit /
 const eur = (v: number) => v.toLocaleString('fr-BE', { style: 'currency', currency: 'EUR' })
 const vide = { prenom: '', nom: '', tel: '', email: '', adresse: '', plaque: '', marque: '', modele: '' }
 
-export default function ClientApp({ slug, garage, tel }: { slug: string; garage: { nom: string; couleur: string | null }; tel: string }) {
+export default function ClientApp({ slug, garage, tel, appStore }: { slug: string; garage: { nom: string; couleur: string | null }; tel: string; appStore: string }) {
   const [etat, setEtat] = useState<Etat | null>(null)
   const [ecran, setEcran] = useState<'accueil' | 'inscription' | 'reconnexion' | 'code' | 'commande'>('accueil')
   const [f, setF] = useState(vide)
@@ -42,6 +42,20 @@ export default function ClientApp({ slug, garage, tel }: { slug: string; garage:
     return () => clearInterval(t)
   }, [etat?.commande, charger])
   const flash = (t: string) => { setToast(t); setTimeout(() => setToast(''), 2800) }
+  // L'app (et l'icône sur l'écran) rouvre directement sur ce garage.
+  useEffect(() => { if (etat?.actif) { try { localStorage.setItem('vd_assistance_garage', slug) } catch {} } }, [etat?.actif, slug])
+  // Installation : bouton natif sur Android ; lien App Store sur iPhone (hors app installée).
+  const [installer, setInstaller] = useState<any>(null)
+  const [plateforme, setPlateforme] = useState<'app' | 'ios' | 'autre'>('autre')
+  useEffect(() => {
+    const ua = navigator.userAgent
+    const installee = /VDAssist\//.test(ua) || window.matchMedia?.('(display-mode: standalone)').matches || (navigator as any).standalone
+    setPlateforme(installee ? 'app' : /iPhone|iPad|iPod/.test(ua) ? 'ios' : 'autre')
+    const h = (e: any) => { e.preventDefault(); setInstaller(e) }
+    window.addEventListener('beforeinstallprompt', h)
+    return () => window.removeEventListener('beforeinstallprompt', h)
+  }, [])
+  const [suppr, setSuppr] = useState(false)
 
   const post = async (url: string, body: any) => {
     setBusy(true); setErr('')
@@ -59,19 +73,45 @@ export default function ClientApp({ slug, garage, tel }: { slug: string; garage:
   const tete = (
     <header className="dcl-co">
       <span className="lg"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 17h2m12 0h4v-4l-3-4h-5v8M3 17V7h10v10" /><circle cx="7" cy="17" r="2" /><circle cx="17" cy="17" r="2" /></svg></span>
-      <div><small>Dépannage 24 h/24</small><b>Verviers Dépannage</b></div>
+      <div><small>VD Assistance · 24 h/24</small><b>Verviers Dépannage</b></div>
       {avec}
     </header>
   )
+  const installCarte = plateforme !== 'app' && (installer || (plateforme === 'ios' && appStore)) ? (
+    <div className="dcl-card dcl-pad" style={{ margin: '0 16px 4px', display: 'flex', gap: 12, alignItems: 'center' }}>
+      <span style={{ fontSize: 26 }}>📲</span>
+      <span style={{ flex: 1, fontSize: 14 }}><b>Gardez VD Assistance sur votre écran</b><br /><span style={{ color: 'var(--ink2)' }}>En cas de panne, un seul geste.</span></span>
+      {installer
+        ? <button className="btn btn-red" style={{ width: 'auto', minHeight: 44 }} onClick={async () => { installer.prompt(); await installer.userChoice.catch(() => null); setInstaller(null) }}>Installer</button>
+        : <a className="btn btn-red" style={{ width: 'auto', minHeight: 44 }} href={appStore}>Télécharger</a>}
+    </div>
+  ) : null
   const pied = (
     <footer className="dcl-foot">
       {tel ? <>Urgence ou doute ? Appelez Verviers Dépannage 24 h/24 : <b style={{ color: 'var(--ink)', userSelect: 'all' }}>{tel}</b></> : 'Verviers Dépannage, 24 h/24'}
-      {etat?.client && <div style={{ marginTop: 10 }}><button className="link" style={{ minHeight: 44 }} onClick={async () => { await fetch(`${api}/compte`, { method: 'DELETE' }); setF(vide); setEcran('accueil'); charger() }}>Se déconnecter</button></div>}
+      <div style={{ marginTop: 10, display: 'flex', flexWrap: 'wrap', justifyContent: 'center', gap: '0 16px' }}>
+        {etat?.client && <button className="link" style={{ minHeight: 44 }} onClick={async () => { await fetch(`${api}/compte`, { method: 'DELETE' }); setF(vide); setEcran('accueil'); charger() }}>Se déconnecter</button>}
+        {etat?.client && <button className="link" style={{ minHeight: 44 }} onClick={() => setSuppr(true)}>Supprimer mon compte</button>}
+        {plateforme === 'app' && <a className="link" style={{ minHeight: 44, display: 'inline-flex', alignItems: 'center' }} href="/assistance?changer=1">Changer de garage</a>}
+        <a className="link" style={{ minHeight: 44, display: 'inline-flex', alignItems: 'center' }} href="/assistance/confidentialite">Confidentialité</a>
+      </div>
     </footer>
   )
   const page = (corps: React.ReactNode) => (
     <div className="dcl-app">
-      {tete}{corps}{pied}
+      {tete}{corps}{etat?.client ? installCarte : null}{pied}
+      {suppr && (
+        <div className="modal">
+          <div className="card">
+            <h2 style={{ fontSize: 20 }}>Supprimer votre compte ?</h2>
+            <p style={{ color: 'var(--ink2)' }}>Vos coordonnées et votre véhicule sont effacés, et vous êtes déconnecté. Les factures déjà établies restent conservées, comme la loi l’impose. Vous pourrez vous réinscrire à tout moment.</p>
+            <div className="dcl-two">
+              <button className="btn btn-ghost" onClick={() => setSuppr(false)}>Annuler</button>
+              <button className="btn btn-red" disabled={busy} onClick={async () => { if (await post(`${api}/compte`, { etape: 'supprimer' })) { setSuppr(false); setF(vide); setEcran('accueil'); flash('Compte supprimé'); charger() } }}>Supprimer</button>
+            </div>
+          </div>
+        </div>
+      )}
       {toast && <div className="toast">{toast}</div>}
     </div>
   )
@@ -107,7 +147,7 @@ export default function ClientApp({ slug, garage, tel }: { slug: string; garage:
             <div className="dcl-two">{champ('marque', 'Marque', { placeholder: 'Kia' })}{champ('modele', 'Modèle', { placeholder: 'Ceed' })}</div>
             {garages.length > 0 && (
               <div>
-                <h3 style={{ marginTop: 6 }}>Votre garage {garage.nom}</h3>
+                <h3 style={{ marginTop: 6 }}>Votre garage</h3>
                 <p className="dcl-sub">{garages.length > 1 ? 'Celui qui suit votre véhicule. En cas de remorquage, votre véhicule y est conduit.' : 'En cas de remorquage, votre véhicule y est conduit.'}</p>
                 <div className="dcl-gar" role="radiogroup">
                   {garages.map(g => (

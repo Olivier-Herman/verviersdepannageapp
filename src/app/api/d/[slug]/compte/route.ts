@@ -2,12 +2,16 @@
 //   { etape: 'inscrire', prenom, nom, tel, email, adresse, plaque, marque, modele } → code par mail
 //   { etape: 'code', email }            → code par mail (client déjà inscrit, autre téléphone)
 //   { etape: 'verifier', email, code }  → session ; à la première vérification, le garage est averti
+//   { etape: 'supprimer' }              → suppression du compte par le client (exigence Apple) : coordonnées effacées,
+//                                         les dépannages passés restent (factures) sans plus le désigner
 // DELETE → déconnexion.
+// Garage de démonstration (validation Apple) : une seule adresse, code fixe, aucun mail.
 import { NextResponse } from 'next/server'
 import crypto from 'crypto'
 import { createAdminClient } from '@/lib/supabase'
 import { normEmail } from '@/lib/espace/session'
-import { societeParSlug, clientCookie, clientCookieOptions, signClient } from '@/lib/espace/clients'
+import { societeParSlug, clientCookie, clientCookieOptions, signClient, getClientSession } from '@/lib/espace/clients'
+import { getBusinessText } from '@/lib/settings/business'
 import { envoyerCodeClient, avertirGarageNouveauClient } from '@/lib/espace/mails'
 
 export const dynamic = 'force-dynamic'
@@ -15,7 +19,8 @@ export const dynamic = 'force-dynamic'
 const hash = (id: string, code: string) => crypto.createHash('sha256').update(`${process.env.NEXTAUTH_SECRET}:client:${id}:${code}`).digest('hex')
 const txt = (v: unknown, n: number) => String(v ?? '').trim().slice(0, n)
 
-async function envoyer(sb: ReturnType<typeof createAdminClient>, client: { id: string; prenom: string }, email: string, garage: string) {
+async function envoyer(sb: ReturnType<typeof createAdminClient>, client: { id: string; prenom: string }, email: string, garage: string, demo = false) {
+  if (demo) return   // compte de démonstration : code fixe, pas de mail
   const depuis = new Date(Date.now() - 15 * 60_000).toISOString()
   const { count } = await sb.from('espace_client_codes').select('id', { count: 'exact', head: true }).eq('client_id', client.id).gte('created_at', depuis)
   if ((count || 0) >= 5) return
@@ -30,6 +35,10 @@ export async function POST(req: Request, { params }: { params: { slug: string } 
   const b = await req.json().catch(() => ({}))
   const email = normEmail(b?.email)
   const sb = createAdminClient()
+  const demoEmail = societe.demo ? normEmail(await getBusinessText('vd_assistance_demo_email').catch(() => '')) : ''
+  if (societe.demo && ['inscrire', 'code'].includes(b?.etape) && (!demoEmail || email !== demoEmail)) {
+    return NextResponse.json({ error: 'Ce garage de démonstration n’accepte que le compte de test.' }, { status: 403 })
+  }
   const trouver = async () => (await sb.from('espace_clients').select('*').eq('societe_id', societe.id).eq('email', email).eq('active', true).maybeSingle()).data
 
   try {
@@ -53,20 +62,42 @@ export async function POST(req: Request, { params }: { params: { slug: string } 
         await sb.from('espace_clients').update({ ...f, garage_id, updated_at: new Date().toISOString() }).eq('id', c.id)
         c = { ...c, ...f, garage_id }
       }
-      await envoyer(sb, c, email, societe.nom)
+      await envoyer(sb, c, email, societe.nom, !!societe.demo)
       return NextResponse.json({ ok: true })
     }
 
     if (b?.etape === 'code') {
       const c = await trouver()
-      if (c) await envoyer(sb, c, email, societe.nom)
+      if (c) await envoyer(sb, c, email, societe.nom, !!societe.demo)
       return NextResponse.json({ ok: true, inconnu: !c })
+    }
+
+    if (b?.etape === 'supprimer') {
+      const s = await getClientSession(params.slug)
+      if (!s) return NextResponse.json({ error: 'Session expirée : reconnectez-vous.' }, { status: 401 })
+      const now = new Date().toISOString()
+      await sb.from('espace_clients').update({
+        active: false, email: `supprime-${s.client.id}@invalid`, prenom: 'Compte', nom: 'supprimé', tel: '', adresse: '', plaque: '', marque: null, modele: null,
+        session_version: s.client.session_version + 1, updated_at: now,
+      }).eq('id', s.client.id)
+      await sb.from('espace_client_codes').delete().eq('client_id', s.client.id)
+      const res = NextResponse.json({ ok: true })
+      res.cookies.set(clientCookie(societe.clients_slug!), '', { ...clientCookieOptions, maxAge: 0 })
+      return res
     }
 
     if (b?.etape === 'verifier') {
       const code = String(b?.code || '').replace(/\D/g, '')
       const c = await trouver()
       if (!c || code.length !== 6) return NextResponse.json({ error: 'Code incorrect.' }, { status: 400 })
+      if (societe.demo) {
+        const fixe = await getBusinessText('vd_assistance_demo_code').catch(() => '')
+        if (!fixe || code !== fixe) return NextResponse.json({ error: 'Code incorrect.' }, { status: 400 })
+        await sb.from('espace_clients').update({ verifie_le: c.verifie_le || new Date().toISOString(), derniere_connexion: new Date().toISOString() }).eq('id', c.id)
+        const res = NextResponse.json({ ok: true })
+        res.cookies.set(clientCookie(societe.clients_slug!), signClient(c), clientCookieOptions)
+        return res
+      }
       const { data: k } = await sb.from('espace_client_codes').select('*').eq('client_id', c.id).is('used_at', null).gte('expires_at', new Date().toISOString()).order('created_at', { ascending: false }).limit(1).maybeSingle()
       if (!k || k.tentatives >= 5) return NextResponse.json({ error: 'Code expiré : demandez-en un nouveau.' }, { status: 400 })
       if (k.code_hash !== hash(c.id, code)) {

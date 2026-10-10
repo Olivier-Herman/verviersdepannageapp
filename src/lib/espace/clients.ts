@@ -20,6 +20,7 @@ import type { EspaceSociete } from './session'
 
 export interface SocieteClients extends EspaceSociete {
   clients_actif: boolean; clients_slug: string | null; clients_source_key: string | null
+  demo?: boolean
 }
 export interface EspaceClient {
   id: string; societe_id: string; prenom: string; nom: string; tel: string; email: string; adresse: string
@@ -30,7 +31,7 @@ export interface EspaceClient {
 
 const TVA = 1.21
 const r2 = (n: number) => Math.round(n * 100) / 100
-const SOC_COLS = 'id, nom, odoo_partner_id, source_key, appel_audio, couleur, clients_actif, clients_slug, clients_source_key'
+const SOC_COLS = 'id, nom, odoo_partner_id, source_key, appel_audio, couleur, clients_actif, clients_slug, clients_source_key, demo'
 
 export async function societeParSlug(slug: string): Promise<SocieteClients | null> {
   const s = String(slug || '').toLowerCase().replace(/[^a-z0-9-]/g, '')
@@ -166,8 +167,10 @@ export async function creerCommande(client: EspaceClient, societe: SocieteClient
   const { data: garages } = await sb.from('espace_garages').select('id, nom, adresse, lat, lng').eq('societe_id', societe.id).order('ordre')
   const sonGarage: any = (garages || []).find((g: any) => g.id === client.garage_id) || (garages?.length === 1 ? garages[0] : null)
   const assistance = client.assistance
-  const source = assistance ? societe.source_key : societe.clients_source_key!
-  const partner = assistance ? societe.odoo_partner_id : await partenaireClient(client)
+  const demo = !!societe.demo
+  const source = demo ? 'demo_assistance' : assistance ? societe.source_key : societe.clients_source_key!
+  // Garage de démonstration (validation Apple) : rien dans l'ERP, rien au dispatch.
+  const partner = demo ? null : assistance ? societe.odoo_partner_id : await partenaireClient(client)
   const panne = d.panne === 'Autre' ? `Autre : ${d.symptome}` : d.symptome ? `${d.panne} — ${d.symptome}` : d.panne
   const remarques = [
     `Client du garage ${societe.nom} — commande passée par le client lui-même.`,
@@ -180,7 +183,7 @@ export async function creerCommande(client: EspaceClient, societe: SocieteClient
   const { data: gp } = await sb.from('garage_partners').select('id').eq('odoo_partner_id', societe.odoo_partner_id).eq('active', true).limit(1)
   const { data: m, error } = await sb.from('incoming_missions').insert({
     external_id: `CLI-${Date.now().toString(36).toUpperCase()}`,
-    source, mission_type: 'depannage', status: 'new',
+    source, mission_type: 'depannage', status: demo ? 'ignored' : 'new',
     vehicle_plate: client.plaque, vehicle_brand: client.marque, vehicle_model: client.modele,
     incident_address: d.adresse, incident_lat: d.lat, incident_lng: d.lng,
     destination_address: sonGarage?.adresse || null, destination_name: sonGarage?.nom || null,
@@ -198,6 +201,7 @@ export async function creerCommande(client: EspaceClient, societe: SocieteClient
   }).select('id, mission_number').single()
   if (error || !m) throw new Error(error?.message || 'Création impossible')
   await sb.from('mission_logs').insert({ mission_id: m.id, action: 'received', notes: `Commande passée par ${nom}, client du garage ${societe.nom} (${assistance ? 'assistance du garage' : 'paiement au chauffeur'}).` }).then(() => {}, () => {})
+  if (demo) return m as any
   if (!assistance) await recalcMontantClient(m.id).catch(() => null)
 
   await sendNotificationToRoles(['dispatcher', 'admin', 'superadmin'], 'espace_client_demande', {
@@ -245,6 +249,10 @@ export async function annulerCommande(client: EspaceClient, societe: SocieteClie
   if (['completed', 'to_invoice', 'invoiced', 'cancelled'].includes(m.status)) return { ok: false, message: 'Cette intervention est déjà terminée ou annulée.' }
   const now = new Date().toISOString()
   const nom = `${client.prenom} ${client.nom}`
+  if (societe.demo) {
+    await sb.from('incoming_missions').update({ status: 'cancelled', cancelled_at: now, cancelled_reason: 'Démonstration', updated_at: now }).eq('id', m.id)
+    return { ok: true, message: 'Demande annulée, sans frais.' }
+  }
   if (m.status === 'new') {
     await sb.from('incoming_missions').update({ status: 'cancelled', cancelled_at: now, cancelled_reason: `Annulée par le client (${nom}) avant validation`, updated_at: now }).eq('id', m.id).eq('status', 'new')
     await sb.from('mission_logs').insert({ mission_id: m.id, action: 'cancelled', notes: `Annulée par ${nom}, client du garage ${societe.nom}, avant validation.` }).then(() => {}, () => {})
