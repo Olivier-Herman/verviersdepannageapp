@@ -87,6 +87,25 @@ export default function AssistanceApp({ contexte, tel, appStore, action }: { con
     const A = natif('AssistanceActivity')
     try { A?.end?.({ missionId: c.id })?.catch?.(() => {}) } catch {}
   }, [etat?.commande])
+  // App 1.0.1 et plus : au chargement, on ferme toute Dynamic Island qui ne correspond pas à la demande en cours
+  // (ancienne commande, activité orpheline). Sans list() (build 1.0), rien ne se passe.
+  const nettoye = useRef(false)
+  useEffect(() => {
+    if (!etat || nettoye.current) return
+    const A = natif('AssistanceActivity')
+    if (!A?.list) return
+    nettoye.current = true
+    const c = etat.commande
+    const active = c && !['terminee', 'annulee'].includes(c.suivi.statut) ? c.id : null
+    try {
+      A.list().then((r: any) => {
+        for (const x of r?.activities || []) {
+          if (!x.missionId) continue                        // l'app ferme d'elle-même les activités inconnues
+          if (x.missionId !== active) A.end({ missionId: x.missionId })?.catch?.(() => {})
+        }
+      }).catch(() => {})
+    } catch {}
+  }, [etat])
   // Raccourci de l'icône ou Siri « Commander un dépannage » : on ouvre directement la commande.
   const actionFaite = useRef(false)
   useEffect(() => {
