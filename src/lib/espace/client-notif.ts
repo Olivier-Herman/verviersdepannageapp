@@ -92,19 +92,32 @@ export async function prevenirClient(missionId: string, etape: EtapeClient): Pro
 }
 
 /**
- * Paiement demandé par le chauffeur (Olivier 10/10/2026) : notification sur l'app iPhone du client et Dynamic Island
- * « Paiement à effectuer ». Renvoie false si le client n'a pas l'app (on reste alors sur le terminal).
+ * Paiement demandé par le chauffeur (Olivier 10/10/2026) : notification sur l'app du client — app iPhone (APNs) ou
+ * webapp installée qui a accepté les notifications, Android compris (11/10/2026) — et Dynamic Island « Paiement à
+ * effectuer ». Renvoie false si le client ne peut pas être prévenu (on reste alors sur le terminal).
  */
 export async function demanderPaiementClient(missionId: string, montant: number): Promise<boolean> {
   const sb = createAdminClient()
   const { data: m } = await sb.from('incoming_missions').select('id, espace_client_id, client_la_token').eq('id', missionId).maybeSingle()
   if (!m?.espace_client_id) return false
-  const { data: abos } = await sb.from('espace_client_push').select('id, token').eq('client_id', m.espace_client_id).eq('kind', 'apns')
+  const { data: abos } = await sb.from('espace_client_push').select('id, kind, token, subscription').eq('client_id', m.espace_client_id)
   if (!abos?.length) return false
   const eur = montant.toLocaleString('fr-BE', { style: 'currency', currency: 'EUR' })
+  const titre = `Paiement demandé : ${eur}`, corps = 'Touchez pour payer en toute sécurité (carte, Apple Pay, Google Pay).'
+  if (abos.some(a => a.kind === 'web') && process.env.VAPID_PRIVATE_KEY) {
+    webpush.setVapidDetails(process.env.VAPID_SUBJECT!, process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY!, process.env.VAPID_PRIVATE_KEY)
+  }
   for (const a of abos) {
-    const r = await sendApnsPush(a.token, { title: `Paiement demandé : ${eur}`, body: 'Touchez pour payer en toute sécurité (Bancontact, carte, Apple Pay).', notif_type: 'client_paiement', action_url: '/assistance', mission_id: m.id } as any, { topic: APNS_TOPIC })
-    if (r.invalid_token) await sb.from('espace_client_push').delete().eq('id', a.id)
+    try {
+      if (a.kind === 'apns') {
+        const r = await sendApnsPush(a.token, { title: titre, body: corps, notif_type: 'client_paiement', action_url: '/assistance', mission_id: m.id } as any, { topic: APNS_TOPIC })
+        if (r.invalid_token) await sb.from('espace_client_push').delete().eq('id', a.id)
+      } else if (a.subscription) {
+        await webpush.sendNotification(a.subscription as any, JSON.stringify({ title: titre, body: corps, url: '/assistance', tag: `vd-assist-pay-${m.id}`, icon: '/noprecache/assistance/icon-192.png' }))
+      }
+    } catch (e: any) {
+      if (e?.statusCode === 404 || e?.statusCode === 410) await sb.from('espace_client_push').delete().eq('id', a.id)
+    }
   }
   if (m.client_la_token) {
     const { sendLiveActivityApnsTo } = await import('@/lib/native/pushLiveActivity')

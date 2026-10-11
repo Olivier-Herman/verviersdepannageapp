@@ -34,8 +34,8 @@ export async function POST(_req: Request, { params }: { params: { id: string } }
   const { sb, m } = c
   const reste = Math.round((Number(m.amount_to_collect || 0) - Number(m.payment_amount || 0)) * 100) / 100
   if (!(reste > 0)) return NextResponse.json({ error: 'Rien à encaisser sur cette mission.' }, { status: 400 })
-  const { count } = await sb.from('espace_client_push').select('id', { count: 'exact', head: true }).eq('client_id', m.espace_client_id).eq('kind', 'apns')
-  if (!count) return NextResponse.json({ error: 'Le client n’a pas activé l’app VD Assistance sur son iPhone : encaisse avec le terminal.' }, { status: 400 })
+  const { count } = await sb.from('espace_client_push').select('id', { count: 'exact', head: true }).eq('client_id', m.espace_client_id)
+  if (!count) return NextResponse.json({ error: 'Le client n’a pas activé les notifications de VD Assistance : encaisse avec le terminal.' }, { status: 400 })
   try {
     const reference = `VDA${m.mission_number || ''}-${Date.now().toString(36).toUpperCase()}`
     const { id, checkoutUrl } = await createCheckout({

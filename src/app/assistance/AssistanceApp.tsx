@@ -353,7 +353,7 @@ export default function AssistanceApp({ contexte, tel, appStore, action }: { con
         ) : (
           <div className="dcl-card dcl-pad" style={{ marginTop: 14, border: '2px solid var(--red)' }}>
             <b style={{ fontSize: 17 }}>Paiement demandé par le chauffeur</b>
-            <p className="dcl-sub" style={{ margin: '4px 0 12px' }}>Paiement sécurisé par SumUp : Bancontact, carte ou Apple Pay.</p>
+            <p className="dcl-sub" style={{ margin: '4px 0 12px' }}>Paiement sécurisé par SumUp : carte, Apple Pay ou Google Pay.</p>
             <a className="btn btn-red" href={cmd.paiement.url} onClick={() => vibrer('leger')}>Payer {eur(cmd.paiement.montant)}</a>
           </div>
         ))}

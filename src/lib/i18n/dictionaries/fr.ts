@@ -395,7 +395,7 @@ export const fr = {
     source_notice_ok:      "J’ai lu la consigne",
     action_request_payment: "Demander le paiement",
     pay_app_title:         "Paiement dans l’app du client",
-    pay_app_hint:          "Le client a l’app VD Assistance : il reçoit la demande sur son téléphone et paie lui-même (Bancontact, carte, Apple Pay). Rien à encoder.",
+    pay_app_hint:          "Le client a l’app VD Assistance : il reçoit la demande sur son téléphone et paie lui-même (carte, Apple Pay, Google Pay). Rien à encoder.",
     pay_app_waiting:       "En attente du paiement du client",
     pay_app_waiting_hint:  "Il a reçu la demande sur son téléphone. Dès qu’il a payé, c’est enregistré tout seul.",
     pay_app_resend:        "Renvoyer la demande",

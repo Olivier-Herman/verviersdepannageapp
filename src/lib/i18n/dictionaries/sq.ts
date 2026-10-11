@@ -383,7 +383,7 @@ export const sq: Dictionary = {
     source_notice_ok:      "E lexova udhëzimin",
     action_request_payment: "Kërko pagesën",
     pay_app_title:         "Pagesa në aplikacionin e klientit",
-    pay_app_hint:          "Klienti ka aplikacionin VD Assistance: e merr kërkesën në telefon dhe paguan vetë (Bancontact, kartë, Apple Pay). Nuk ka asgjë për të shkruar.",
+    pay_app_hint:          "Klienti ka aplikacionin VD Assistance: e merr kërkesën në telefon dhe paguan vetë (kartë, Apple Pay, Google Pay). Nuk ka asgjë për të shkruar.",
     pay_app_waiting:       "Në pritje të pagesës së klientit",
     pay_app_waiting_hint:  "E ka marrë kërkesën në telefon. Sapo të paguajë, regjistrohet vetë.",
     pay_app_resend:        "Dërgoje sërish kërkesën",
