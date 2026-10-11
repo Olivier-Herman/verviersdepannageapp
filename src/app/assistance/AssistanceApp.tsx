@@ -79,6 +79,14 @@ export default function AssistanceApp({ contexte, tel, appStore, action }: { con
     if (r && !r.error) setEtat(r)
   }, [])
   useEffect(() => { charger() }, [charger])
+  // Filet de sécurité : demande terminée ou annulée → l'app iPhone ferme elle-même sa Dynamic Island, même si
+  // l'envoi du serveur s'est perdu.
+  useEffect(() => {
+    const c = etat?.commande
+    if (!c || !['terminee', 'annulee'].includes(c.suivi.statut)) return
+    const A = natif('AssistanceActivity')
+    try { A?.end?.({ missionId: c.id })?.catch?.(() => {}) } catch {}
+  }, [etat?.commande])
   // Raccourci de l'icône ou Siri « Commander un dépannage » : on ouvre directement la commande.
   const actionFaite = useRef(false)
   useEffect(() => {

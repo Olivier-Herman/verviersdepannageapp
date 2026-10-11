@@ -45,7 +45,9 @@ export async function majActiviteClient(missionId: string, etape: keyof typeof E
       'content-state': ETAPES_LA[etape],
       ...(fin ? { 'dismissal-date': Math.floor(Date.now() / 1000) + 30 * 60 } : { 'stale-date': Math.floor(Date.now() / 1000) + 4 * 3600 }),
     })
-    if (fin || r.invalid_token) await sb.from('incoming_missions').update({ client_la_token: null }).eq('id', missionId)
+    // Jeton effacé seulement si Apple a pris la fin en compte (ou s'il est mort) : un envoi raté se retente.
+    if ((fin && r.ok) || r.invalid_token) await sb.from('incoming_missions').update({ client_la_token: null }).eq('id', missionId)
+    if (!r.ok) console.warn('[VD Assistance] Live Activity non mise à jour', r.status, r.reason)
   } catch (e: any) {
     console.warn('[VD Assistance] Live Activity KO', e?.message)
   }

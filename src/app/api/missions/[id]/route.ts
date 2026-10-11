@@ -312,6 +312,11 @@ export async function PATCH(
     .eq('id', params.id)
     .select()
     .single()
+  // VD Assistance : mission annulée par le dispatch → la Dynamic Island du client se ferme.
+  if (!error && (data as any)?.espace_client_id && updates.status === 'cancelled') {
+    const { majActiviteClient } = await import('@/lib/espace/client-notif')
+    await majActiviteClient(params.id, 'annulee')
+  }
   // Client d'un garage sans assistance (Olivier 10/10/2026) : le montant à encaisser suit les changements
   // de la fiche (type, adresses), sauf montant fixé à la main.
   if (!error && (data as any)?.espace_client_id && !('amount_to_collect' in updates)

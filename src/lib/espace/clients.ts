@@ -319,6 +319,8 @@ export async function annulerCommande(client: EspaceClient, missionId: string): 
   const nom = `${client.prenom} ${client.nom}`
   if (m.source === 'demo_assistance') {
     await sb.from('incoming_missions').update({ status: 'cancelled', cancelled_at: now, cancelled_reason: 'Démonstration', updated_at: now }).eq('id', m.id)
+    const { majActiviteClient } = await import('./client-notif')
+    await majActiviteClient(m.id, 'annulee')
     return { ok: true, message: 'Demande annulée, sans frais.' }
   }
   if (m.status === 'new') {
