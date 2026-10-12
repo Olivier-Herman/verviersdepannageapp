@@ -14,6 +14,17 @@ import { createAdminClient } from '@/lib/supabase'
 import { buildEncaissementUrl } from '@/lib/missions/encaissement-url'
 import { geocodeAddressServer } from '@/lib/geocode/server'
 import { recordExchange } from './journal'
+import { detailsAssistance, completerFiche, type DetailsAssistance } from '@/lib/missions/details-assistance'
+
+// Détails de l'assistance gardés 5 min par mission : une conversation fait plusieurs tours.
+const cacheDetails = new Map<string, { at: number; d: DetailsAssistance | null }>()
+async function detailsAssistanceCache(missionId: string) {
+  const c = cacheDetails.get(missionId)
+  if (c && Date.now() - c.at < 5 * 60_000) return c.d
+  const d = await detailsAssistance(missionId).catch(() => null)
+  cacheDetails.set(missionId, { at: Date.now(), d })
+  return d
+}
 
 export type SamCanal = 'app' | 'telegram'
 export type SamButton = { libelle: string; valeur: string }
@@ -29,7 +40,7 @@ export interface SamReply {
   texte_fr?: string
   boutons?: SamButton[]
   action?: SamAction | null
-  besoin?: { type: 'chercher_plaque'; plaque: string } | null
+  besoin?: { type: 'chercher_plaque'; plaque: string } | { type: 'details_assistance' } | null
   panne?: { resume: string; details?: string } | null
 }
 export interface SamTurn { reply: SamReply; openUrl?: string | null }
@@ -93,7 +104,7 @@ async function missionsEnCours(userId: string) {
 /** Une mission que le chauffeur a le droit de voir : la sienne (assignée à lui). */
 async function missionDuChauffeur(userId: string, missionId: string) {
   const { data } = await createAdminClient().from('incoming_missions')
-    .select('id, mission_number, source, mission_type, status, assigned_to, vehicle_plate, vehicle_brand, vehicle_model, client_name, incident_address, incident_lat, incident_lng, destination_address, destination_lat, destination_lng, amount_to_collect, awaiting_payment, intervention_date, received_at, on_site_at, loaded_at, completed_at, remarks_general')
+    .select('id, mission_number, source, mission_type, status, assigned_to, vehicle_plate, vehicle_brand, vehicle_model, client_name, client_phone, assisted_name, assisted_phone, billed_to_name, dossier_number, incident_address, incident_lat, incident_lng, incident_description, destination_name, destination_address, destination_lat, destination_lng, driver_message, amount_to_collect, awaiting_payment, intervention_date, received_at, on_site_at, loaded_at, completed_at, remarks_general')
     .eq('id', missionId).maybeSingle()
   if (!data || (data as any).assigned_to !== userId) return null
   return data as any
@@ -169,18 +180,37 @@ export async function samTurn(opts: { userId: string; canal: SamCanal; texte: st
   // Un bouton « mission » touché : sa valeur est l'id de la mission.
   const touched = (state?.buttons || []).find((b: SamButton) => b.libelle === opts.texte)
   if (touched && encours.some(m => m.id === touched.valeur)) missionId = touched.valeur
-  const mission = missionId ? await missionDuChauffeur(opts.userId, missionId) : null
+  let mission = missionId ? await missionDuChauffeur(opts.userId, missionId) : null
   if (!mission) missionId = null
 
   let resultat = opts.resultat ?? (touched ? { bouton: touched.valeur } : null)
+  // Fiche incomplète (pas de téléphone, pas d'adresse, pas d'arrivée pour un remorquage) : on va voir chez
+  // l'assistance AVANT de répondre, et on complète la fiche (Olivier 12/10/2026 : Sam et Sonic doivent pouvoir
+  // répondre à toutes les questions des chauffeurs).
+  let details: DetailsAssistance | null = null
+  let ficheCompletee: string[] = []
+  const chercherDetails = async () => {
+    if (!missionId) return
+    details = await detailsAssistanceCache(missionId)
+    if (details) { ficheCompletee = await completerFiche(missionId, details); if (ficheCompletee.length) mission = await missionDuChauffeur(opts.userId, missionId) }
+  }
+  if (mission && (!(mission.assisted_phone || mission.client_phone) || !mission.incident_address
+      || (/remorquage|relivraison|transport/i.test(String(mission.mission_type || '')) && !mission.destination_address))) await chercherDetails()
   let reply: SamReply | null = null
   for (let i = 0; i < 3; i++) {
     reply = await callBureau({
       chauffeur: { id: u.id, prenom: prenom(u), langue: u.language === 'sq' ? 'sq' : 'fr' },
       canal: opts.canal, texte: opts.texte, photo: i === 0 ? (opts.photo || undefined) : undefined,
-      contexte: { ecran: opts.ecran || (opts.canal === 'telegram' ? 'Telegram' : null), mission: missionUtile(mission), missions_en_cours: encours, erreurs: erreursConnues(mission), actions_possibles: ACTIONS_POSSIBLES, resultat },
+      contexte: {
+        ecran: opts.ecran || (opts.canal === 'telegram' ? 'Telegram' : null), mission: missionUtile(mission), missions_en_cours: encours,
+        erreurs: erreursConnues(mission), actions_possibles: ACTIONS_POSSIBLES, resultat,
+        // Ce que dit l'assistance (portail IMA, Kaze) : à utiliser pour répondre ; les champs vides de la fiche en ont été complétés.
+        details_assistance: details ? { ...details as DetailsAssistance, fiche_completee: ficheCompletee } : null,
+        besoins_possibles: ['chercher_plaque', 'details_assistance'],
+      },
     })
     if (reply.besoin?.type === 'chercher_plaque') { resultat = { recherche_plaque: reply.besoin.plaque, ...(await chercherPlaque(opts.userId, reply.besoin.plaque)) }; continue }
+    if (reply.besoin?.type === 'details_assistance' && !details) { await chercherDetails(); resultat = { details_assistance: details || 'rien trouvé chez l’assistance pour cette mission' }; continue }
     break
   }
   if (!reply) throw new Error('Pas de réponse')

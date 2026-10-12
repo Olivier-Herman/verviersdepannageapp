@@ -296,84 +296,24 @@ async function enrichFromIMAPortal(
   source: string,
   parsedData: any
 ): Promise<Partial<typeof parsedData>> {
-  // Portail IMA (imamobile.ima.eu) DÉSACTIVÉ. Depuis l'activation de Kaze, IMA a
-  // coupé l'ancien portail → le lien redirige vers une page de login/erreur.
-  // Avant, on la récupérait quand même (fetch jusqu'à 15 s) PUIS on la re-parsait
-  // avec Claude (2e appel) → latence + risque d'ÉCRASER les bons champs avec du
-  // bruit + placeholders coincés (retard d'ingestion). Les données Kaze font
-  // désormais foi. Réactivable via IMA_PORTAL_ENRICH=1 si le portail revenait.
-  // Olivier 2026-07-13.
-  if (process.env.IMA_PORTAL_ENRICH !== '1') return {}
-
-  const imaLinkMatch = rawContent.match(/https:\/\/imamobile\.ima\.eu\/[^\s"<>]+/)
-  if (!imaLinkMatch) return {}
-
-  const imaUrl = imaLinkMatch[0]
-  console.log(`[Processor] Enrichissement IMA: ${imaUrl}`)
-
-  try {
-    const res = await fetch(imaUrl, {
-      headers: {
-        'User-Agent':      'Mozilla/5.0 (compatible; VerviersDépannage/1.0)',
-        'Accept':          'text/html,application/xhtml+xml',
-        'Accept-Language': 'fr-BE,fr;q=0.9',
-      },
-      signal: AbortSignal.timeout(15000),
-    })
-
-    if (!res.ok) {
-      console.warn(`[Processor] IMA portal ${res.status}`)
-      return {}
-    }
-
-    const html = await res.text()
-    if (html.length < 100) return {}
-
-    // Convertir HTML en texte
-    const text = html
-      .replace(/<br\s*\/?>/gi, '\n').replace(/<\/p>/gi, '\n')
-      .replace(/<\/div>/gi, '\n').replace(/<\/tr>/gi, '\n')
-      .replace(/<\/td>/gi, ' | ').replace(/<[^>]+>/g, '')
-      .replace(/&nbsp;/g, ' ').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
-      .replace(/&amp;/g, '&').replace(/&eacute;/g, 'é').replace(/&egrave;/g, 'è')
-      .replace(/&agrave;/g, 'à').replace(/&ecirc;/g, 'ê')
-      .replace(/[ \t]+/g, ' ').replace(/\n{3,}/g, '\n\n').trim()
-
-    console.log(`[Processor] IMA portal HTML: ${text.length} chars`)
-
-    // Parser avec Claude
-    const { parseMissionContent } = await import('./parser')
-    const enriched = await parseMissionContent(
-      source as any,
-      { textContent: text, sourceFormat: 'email_plain', rawContent: html.slice(0, 15000) },
-      `IMA Portal enrichment`
-    )
-
-    // Retourner seulement les champs qui manquaient dans le parsing initial
-    const updates: Record<string, any> = {}
-    const fields = [
-      'client_name', 'client_phone', 'client_address',
-      'incident_address', 'incident_city',
-      'destination_name', 'destination_address',
-      'amount_guaranteed', 'vehicle_vin', 'vehicle_fuel',
-      'vehicle_gearbox', 'incident_type', 'incident_description',
-      'incident_at', 'dossier_number',
-    ] as const
-
-    for (const field of fields) {
-      if (enriched[field] && !parsedData[field]) {
-        updates[field] = enriched[field]
-      }
-    }
-
-    const count = Object.keys(updates).length
-    console.log(`[Processor] IMA enrichi: ${count} champ(s) ajouté(s)`)
-    return updates
-
-  } catch (err: any) {
-    console.warn(`[Processor] IMA portal erreur: ${err.message}`)
-    return {}
-  }
+  // Portail IMA (imamobile.ima.eu) : coupé un temps au passage à Kaze (désactivé le 13/07/2026), il RÉPOND de
+  // nouveau (constaté le 12/10/2026 : le mail ne portait qu'un résumé et un lien, le chauffeur n'avait ni téléphone
+  // ni adresse). Lecture directe de la page (sans IA), en ne remplissant que les champs VIDES du parsing : Kaze, le
+  // mail et le dispatch gardent la main. Coupable via IMA_PORTAL_ENRICH=0. Olivier 12/10/2026.
+  if (process.env.IMA_PORTAL_ENRICH === '0') return {}
+  const imaUrl = rawContent.match(/https:\/\/imamobile\.ima\.eu\/[^\s"<>]+/)?.[0]
+  if (!imaUrl) return {}
+  const { lirePortailIma } = await import('./details-assistance')
+  const d = await lirePortailIma(imaUrl)
+  if (!d) { console.warn('[Processor] Portail IMA inaccessible ou page inattendue'); return {} }
+  const updates: Record<string, any> = {}
+  const poser = (k: string, v: string | null) => { if (v && !parsedData[k]) updates[k] = v }
+  poser('client_name', d.contact); poser('client_phone', d.telephone)
+  poser('incident_address', d.lieu); poser('destination_address', d.livraison)
+  // Le commentaire de l'assistance (ex. « Moto ») suit la panne : c'est ce que lit le chauffeur.
+  poser('incident_description', [d.panne, d.commentaire ? `commentaire IMA : ${d.commentaire}` : null].filter(Boolean).join(' — ') || null)
+  console.log(`[Processor] Portail IMA : ${Object.keys(updates).length} champ(s) complété(s)`)
+  return updates
 }
 
 // ── Déclenchement flow Allianz ───────────────────────────────────────────────
