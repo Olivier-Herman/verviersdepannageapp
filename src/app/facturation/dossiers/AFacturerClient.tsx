@@ -218,7 +218,7 @@ export default function AFacturerClient({ initial, autoById, comexById = {}, isS
   const readings = useMemo(() => new Map(rows.map(d => {
     const r = readDossier(d, autoElig?.byMission?.[d.root_id], comexById[d.root_id], !!autoById[d.root_id], now)
     if (allianzClosed.has(d.root_id) && r.who !== 'client' && r.who !== 'fini')
-      return [d.root_id, { ...r, who: 'robot' as Who, headline: 'Clôturé dans Allianz — la facture se crée', detail: 'Quelques secondes ; la carte passe ensuite dans « Facturées ».', primary: undefined }] as const
+      return [d.root_id, { ...r, who: 'robot' as Who, headline: 'Clôturé dans Allianz — la facture se crée', detail: 'Quelques secondes ; la carte quitte ensuite la liste.', primary: undefined }] as const
     return [d.root_id, r] as const
   })), [rows, autoElig, comexById, autoById, now, allianzClosed])
   const norm = (s: string) => s.toLowerCase().replace(/[\s.-]/g, '')
@@ -227,12 +227,14 @@ export default function AFacturerClient({ initial, autoById, comexById = {}, isS
     return norm([d.ref, String(d.number ?? ''), d.vehicle.plate, d.vehicle.brand, d.vehicle.model, d.client.name, d.billed_to.name, d.dossier_number, d.source_label,
       ...d.legs.map(l => l.billed_to_name), ...d.legs.flatMap(l => l.billed_refs), ...d.legs.map(l => l.external_id)].filter(Boolean).join(' ')).includes(q)
   }
-  const scoped = useMemo(() => rows.filter(d => inGroup(d, activeGroup) && matches(d)), [rows, activeGroup, search])   // eslint-disable-line react-hooks/exhaustive-deps
+  // Un dossier facturé QUITTE la liste : on n'attend pas le paiement (Olivier
+  // 13/10/2026, 1FUB427). Le paiement et les relances se suivent ailleurs.
+  const scoped = useMemo(() => rows.filter(d => { const w = readings.get(d.root_id)?.who; return w !== 'client' && w !== 'fini' && inGroup(d, activeGroup) && matches(d) }), [rows, activeGroup, search, readings])   // eslint-disable-line react-hooks/exhaustive-deps
   const counts = useMemo(() => { const c: Record<string, number> = { all: scoped.length }; for (const d of scoped) { const w = readings.get(d.root_id)!.who; c[w] = (c[w] || 0) + 1 } return c }, [scoped, readings])
   const rank: Record<Who, number> = { nous: 0, robot: 1, eux: 2, veille: 3, client: 4, fini: 5 }
   const visible = useMemo(() => scoped.filter(d => filter === 'all' || readings.get(d.root_id)!.who === filter)
     .sort((a, b) => (rank[readings.get(a.root_id)!.who] - rank[readings.get(b.root_id)!.who]) || String(b.received_at || '').localeCompare(String(a.received_at || ''))), [scoped, filter, readings])
-  const groupCounts = useMemo(() => Object.fromEntries(SOURCE_GROUPS.map(g => [g.key, rows.filter(d => inGroup(d, g) && matches(d) && (filter === 'all' || readings.get(d.root_id)!.who === filter)).length])), [rows, SOURCE_GROUPS, filter, search, readings])   // eslint-disable-line react-hooks/exhaustive-deps
+  const groupCounts = useMemo(() => Object.fromEntries(SOURCE_GROUPS.map(g => [g.key, rows.filter(d => !['client', 'fini'].includes(readings.get(d.root_id)!.who) && inGroup(d, g) && matches(d) && (filter === 'all' || readings.get(d.root_id)!.who === filter)).length])), [rows, SOURCE_GROUPS, filter, search, readings])   // eslint-disable-line react-hooks/exhaustive-deps
 
   const refreshOne = async (rootId: string) => {
     try { const j = await fetch(`/api/dossier/${rootId}?t=${Date.now()}`, { cache: 'no-store' }).then(r => r.json()); if (j?.dossier) setRows(p => p.map(d => d.root_id === rootId ? j.dossier : d)) } catch {}
@@ -317,8 +319,7 @@ export default function AFacturerClient({ initial, autoById, comexById = {}, isS
     { key: 'robot', label: 'Robot', dot: WHO.robot.dot, help: 'auto-facturation programmée, heure annoncée' },
     { key: 'eux', label: 'Chez eux', dot: WHO.eux.dot, help: 'on attend l\'assisteur (COMEX, Hexalite, Comet, Kaze), le Parquet ou le Domaine' },
     { key: 'veille', label: 'Pas prêt', dot: WHO.veille.dot, help: 'véhicule au parc ou relivraison en cours : on facture à la clôture' },
-    { key: 'client', label: 'Facturées', dot: WHO.client.dot, help: 'facture émise, en attente du paiement (lu dans Odoo) — relancé le … si un rappel est parti' },
-    { key: 'all', label: 'Tous', help: 'tout le suivi' },
+    { key: 'all', label: 'Tous', help: 'tout ce qui reste à facturer' },
   ]
 
   return (
