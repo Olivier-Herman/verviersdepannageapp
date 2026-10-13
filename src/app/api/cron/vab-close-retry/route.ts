@@ -10,6 +10,9 @@
 // ouverts chez VAB. Tout ce qui y traîne alors que la mission est terminée chez
 // nous est repris. Nos propres compteurs ne servent qu'à ne pas rejouer.
 //
+// Complément du 13/10/2026 : la liste peut mentir par omission (dossier retiré de la liste
+// mais page encore ouverte, 2EVV422). Voir « HORS LISTE ≠ SOLDÉ » plus bas.
+//
 // ⚠️ Les dossiers sont traités UN PAR UN, jamais en parallèle : le compte VAB est
 // partagé et la séquence pilote un Chromium. Mais plusieurs peuvent passer dans
 // le MÊME appel, à la file, tant qu'il reste du temps — un seul par quart d'heure
@@ -59,7 +62,7 @@ async function handleGET(req: Request) {
   }
 
   try {
-    const { loginVab, listVabMissions, vabTaskTypes, estVehiculeRemplacementVab } = await import('@/lib/vab/scraper')
+    const { loginVab, listVabMissions, vabTaskTypes, estVehiculeRemplacementVab, vabDossierOuvert } = await import('@/lib/vab/scraper')
     const session = await loginVab()
     const { missions } = await listVabMissions(session)
     const tous = (missions as any[])
@@ -73,14 +76,35 @@ async function handleGET(req: Request) {
     const types = await vabTaskTypes(session).catch(() => ({} as Record<string, string>))
     const vr = tous.filter(a => estVehiculeRemplacementVab(types[a]))
     const ouverts = tous.filter(a => !vr.includes(a))
-    if (ouverts.length === 0) {
+    const sb = createAdminClient()
+    const COLS = 'id, vehicle_plate, external_id, status, assigned_to, mission_type, vab_assignment_ids, vab_closed_at, source'
+
+    // ── HORS LISTE ≠ SOLDÉ (Olivier 13/10/2026) ──────────────────────────────
+    // VAB retire parfois un dossier de sa liste alors que sa page reste ouverte (2EVV422,
+    // 56628600 : « Fin lieu de la panne » toujours là). Partir de la liste seule le rendait
+    // orphelin pour toujours. On regarde donc aussi les fiches terminées depuis moins de
+    // 14 jours, jamais soldées, dont aucune action n'est dans la liste : si la page du dossier
+    // est vivante (vrai numéro, pas « à accepter »), on la clôture comme les autres.
+    const aidHorsListe = new Map<string, string>()
+    const { data: nonSoldées } = await sb.from('incoming_missions').select(COLS)
+      .not('vab_assignment_ids', 'is', null).is('vab_closed_at', null).in('status', TERMINÉES)
+      .gte('received_at', new Date(Date.now() - 14 * 864e5).toISOString())
+      .order('received_at', { ascending: false }).limit(20)
+    for (const f of (nonSoldées || []) as any[]) {
+      const aids: string[] = (f.vab_assignment_ids || []).filter(Boolean)
+      if (!aids.length || aids.some(a => tous.includes(a))) continue
+      for (const a of [...aids].reverse()) {
+        if (await vabDossierOuvert(session, a)) { aidHorsListe.set(f.id, a); break }
+      }
+    }
+
+    if (ouverts.length === 0 && aidHorsListe.size === 0) {
       await trace({ ok: true, ouverts: 0, vrIgnorés: vr.length })
       return NextResponse.json({ ok: true, ouverts: 0, vrIgnorés: vr.length })
     }
 
-    const sb = createAdminClient()
-    const { data: fiches } = await sb.from('incoming_missions')
-      .select('id, vehicle_plate, external_id, status, assigned_to, mission_type, vab_assignment_ids, vab_closed_at, source')
+    const { data: dansLaListe } = ouverts.length ? await sb.from('incoming_missions')
+      .select(COLS)
       .overlaps('vab_assignment_ids', ouverts)
       .in('status', TERMINÉES)
       // ⚠️ PAS de filtre sur vab_closed_at : une fiche porte plusieurs actions VAB
@@ -88,7 +112,11 @@ async function handleGET(req: Request) {
       // la fiche sortait du filet alors que la seconde restait OUVERTE chez VAB
       // (2KAX587 : dépannage 56361254 clos le 07/09 21h07, remorquage 56362042
       // ouvert jusqu'au 09/09). La liste ouverte de VAB est la seule vérité.
-      .order('id', { ascending: true })
+      .order('id', { ascending: true }) : { data: [] as any[] }
+    const fiches = [...((dansLaListe || []) as any[]), ...((nonSoldées || []) as any[]).filter(f => aidHorsListe.has(f.id))]
+    /** L'action à clôturer : celle de la liste ouverte, sinon celle dont la page est vivante hors liste. */
+    const aidCible = (c: any): string | null =>
+      (c.vab_assignment_ids || []).find((a: string) => ouverts.includes(a)) || aidHorsListe.get(c.id) || c.external_id || null
 
     // ⚠️ PLUS de filtre flux 2 (Olivier 2026-08-16 : « tout ce que tu peux
     // clôturer doit l'être »). La clôture ne dépend pas du parcours du chauffeur :
@@ -106,7 +134,9 @@ async function handleGET(req: Request) {
     // Olivier 12/09/2026 : une fiche requalifiée Siabis couvert garde sa panne
     // OUVERTE chez VAB (1YEN885, 2JPR337 : VAB ne la clôture pas lui-même).
     // On la clôture donc comme les autres.
-    const candidats: any[] = (fiches || []) as any[]
+    // Trajet vide : clôture à la main (voir runVabTowClose), inutile de les représenter tous les quarts d'heure.
+    const { isTrajetVide } = await import('@/lib/missions/mission-types')
+    const candidats: any[] = ((fiches || []) as any[]).filter(f => !isTrajetVide(f.mission_type))
     if (candidats.length === 0) {
       await trace({ ok: true, ouverts: ouverts.length, vrIgnorés: vr.length, aTraiter: 0 })
       return NextResponse.json({ ok: true, ouverts: ouverts.length, vrIgnorés: vr.length, aTraiter: 0 })
@@ -122,7 +152,7 @@ async function handleGET(req: Request) {
     const { data: essais } = await sb.from('mission_logs')
       .select('mission_id, created_at')
       .in('mission_id', candidats.map(c => c.id))
-      .in('action', ['vab_close_failed', 'vab_close_skipped'])
+      .in('action', ['vab_close_failed', 'vab_close_skipped', 'vab_onsite_failed'])
       .order('created_at', { ascending: false })
     const dernierEssai = new Map<string, string>()
     const nbEssais = new Map<string, number>()
@@ -152,7 +182,7 @@ async function handleGET(req: Request) {
     if (hb.alive) {
       const enfilés: { plaque: string; assignmentId: string; nouveau: boolean }[] = []
       for (const cible of candidats) {
-        const aidOuvert = (cible.vab_assignment_ids || []).find((a: string) => ouverts.includes(a)) || cible.external_id
+        const aidOuvert = aidCible(cible)
         if (!aidOuvert) continue
         const r = await enqueueJob(sb, {
           kind: 'vab_close', dedupeKey: `vab_close:${aidOuvert}`, missionId: cible.id,
@@ -162,7 +192,7 @@ async function handleGET(req: Request) {
         enfilés.push({ plaque: cible.vehicle_plate, assignmentId: aidOuvert, nouveau: r.queued })
       }
       console.log(`[cron vab-close-retry] worker ${hb.host} vivant → ${enfilés.filter(e => e.nouveau).length} demande(s) posée(s), ${enfilés.filter(e => !e.nouveau).length} déjà en file`)
-      const bilan = { ok: true, mode: 'vps', worker: hb.host, ouverts: ouverts.length, vrIgnorés: vr.length, aTraiter: candidats.length, enfilés }
+      const bilan = { ok: true, mode: 'vps', worker: hb.host, ouverts: ouverts.length, horsListe: aidHorsListe.size, vrIgnorés: vr.length, aTraiter: candidats.length, enfilés }
       await trace(bilan)
       return NextResponse.json(bilan)
     }
@@ -191,8 +221,8 @@ async function handleGET(req: Request) {
       // viser celui-là reviendrait à travailler sur un dossier déjà fermé
       // pendant que l'autre reste ouvert. On prend celui qui figure dans la
       // liste ouverte de VAB. Olivier 2026-09-02.
-      const aidOuvert = (cible.vab_assignment_ids || []).find((a: string) => ouverts.includes(a))
-        || cible.external_id
+      const aidOuvert = aidCible(cible)
+      if (!aidOuvert) continue
       await runVabTowClose({ missionId: cible.id, externalId: aidOuvert, actorId: null })
       const { data: après } = await sb.from('incoming_missions')
         .select('vab_closed_at').eq('id', cible.id).maybeSingle()
@@ -204,7 +234,7 @@ async function handleGET(req: Request) {
     const soldés = résultats.filter(r => r.abouti).length
     console.log(`[cron vab-close-retry] ${résultats.length} traité(s), ${soldés} soldé(s) · reste ${candidats.length - résultats.length}`)
     const bilan = {
-      ok: true, mode: 'local', ouverts: ouverts.length, vrIgnorés: vr.length, aTraiter: candidats.length,
+      ok: true, mode: 'local', ouverts: ouverts.length, horsListe: aidHorsListe.size, vrIgnorés: vr.length, aTraiter: candidats.length,
       traités: résultats, soldés, reste: candidats.length - résultats.length,
     }
     await trace(bilan)

@@ -726,6 +726,34 @@ export async function vabDetailUrl(session: SessionCookies, assignmentId: string
 }
 
 /**
+ * Ce dossier est-il encore ouvert chez VAB, même s'il a quitté leur liste ? (13/10/2026)
+ *
+ * VAB retire parfois un dossier de sa liste alors que sa page reste vivante (2EVV422,
+ * 56628600 : « Fin lieu de la panne » toujours là le 13/10). On le jugeait « déjà soldé »
+ * et il restait ouvert pour toujours. Une page vivante porte un vrai numéro
+ * « dossier / contrat » (lien Contrat `AssignmentIds=8446654+%2f+35233181`) ; un dossier
+ * soldé ou la mauvaise des deux pages rend une coquille « 0 / 0 ». Un dossier encore
+ * « à accepter » hors liste n'est jamais piloté : VAB l'a peut-être retiré exprès.
+ */
+export function pageDossierOuvert(html: string): boolean {
+  const num = /AssignmentIds=([1-9]\d{4,})(?:\+|%20| )*%2f(?:\+|%20| )*([1-9]\d{4,})/i.test(html)
+    || /([1-9]\d{4,})\s*\/\s*([1-9]\d{4,})/.test(html.replace(/<[^>]+>/g, ' ').replace(/&nbsp;/g, ' '))
+  return num && !/>\s*Accepter\s*</i.test(html)
+}
+
+/** URL de la page vivante du dossier (panne ou remorquage), ou null s'il n'est plus ouvert. */
+export async function vabDossierOuvert(session: SessionCookies, assignmentId: string): Promise<string | null> {
+  for (const page of ['BreakdownAssignments_Details', 'TowAssignments_Details']) {
+    const url = `${VAB_BASE}/Comet/${page}.aspx?AssignmentId=${assignmentId}`
+    try {
+      const html = await (await fetch(url, { headers: { 'User-Agent': REAL_UA, Cookie: session.cookieHeader, 'Cache-Control': 'no-store' }, cache: 'no-store' })).text()
+      if (pageDossierOuvert(html)) return url
+    } catch { /* on essaie l'autre */ }
+  }
+  return null
+}
+
+/**
  * Lit la page « Contrat » d'une mission VAB (ContractsInfo.aspx) et en tire la
  * couverture. Olivier 20/09/2026.
  *

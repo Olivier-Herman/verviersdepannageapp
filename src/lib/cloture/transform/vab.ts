@@ -251,7 +251,15 @@ export async function runVabTowClose(input: VabTowCloseInput): Promise<void> {
   const assignmentId = vabAssignmentId(input.externalId)
   if (!assignmentId) { await log('vab_close_skipped', 'VAB : AssignmentId introuvable dans external_id', { externalId: input.externalId }); return }
 
-  const { data: m } = await sb.from('incoming_missions').select('vab_closed_at').eq('id', input.missionId).maybeSingle()
+  const { data: m } = await sb.from('incoming_missions').select('vab_closed_at, mission_type').eq('id', input.missionId).maybeSingle()
+  // Trajet vide (client qui refuse, véhicule introuvable) : nous ne connaissons pas encore le code
+  // VAB correspondant, et la clôture partirait en « Mobilité rétablie », ce qui est faux (2EVV422,
+  // 13/10/2026). On laisse la main à l'humain plutôt que d'écrire une fausse issue chez VAB.
+  const { isTrajetVide } = await import('@/lib/missions/mission-types')
+  if (isTrajetVide((m as any)?.mission_type)) {
+    await log('vab_close_skipped', 'VAB : trajet vide — clôture à faire à la main dans Comet (issue « client refuse / introuvable » pas encore connue de VD Soft)', { assignmentId, trajetVide: true })
+    return
+  }
   if ((m as any)?.vab_closed_at) {
     // Une fiche porte PLUSIEURS actions VAB (dépannage puis remorquage). Clôturer
     // la première posait vab_closed_at et on refusait de rejouer — la seconde
