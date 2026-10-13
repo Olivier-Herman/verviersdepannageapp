@@ -698,7 +698,16 @@ export async function vabCloseOnSiteBrowser(opts: {
             const v = document.querySelector('input[id*="wtLastDigitInputField"]') as HTMLInputElement
             v && v.dispatchEvent(new Event('change', { bubbles: true }))
           })
-          await new Promise(r => setTimeout(r, 500))
+          // Le lien « Vérifier » arrive désactivé (`Is_Loading`) le temps que VAB charge :
+          // cliqué trop tôt, rien ne se passe (2DPW634, 13/10). On attend qu'il soit actif.
+          for (let i = 0; i < 20; i++) {
+            await new Promise(r => setTimeout(r, 500))
+            const pret = await page.evaluate(() => {
+              const l = document.querySelector('a[id*="wtLink_CheckVin"], a[id*="wtDummyButton_ChassisnumberInput"]') as HTMLElement | null
+              return !l || (!l.hasAttribute('disabled') && !/Is_Loading/.test(l.className || ''))
+            }).catch(() => true)
+            if (pret) break
+          }
           // ── LE BON « VÉRIFIER » ──────────────────────────────────────────
           // VAB le dit lui-même quand on lui demande : « Chassis Number must be
           // checked » (capté le 26/08 en lisant enfin son validateur). Le châssis
@@ -896,29 +905,11 @@ export async function vabCloseOnSiteBrowser(opts: {
           if (cb && !cb.checked) cb.click()
         }).catch(() => {})
         steps.push('VIN inconnu conservé')
-        // …SAUF si VAB réclame encore le champ châssis, vide et obligatoire : on a le châssis
-        // complet, on décoche « VIN inconnu » et on le tape. Vu sur 1DHN965 le 07/10 : case
-        // cochée, champ obligatoire vide, « Fin lieu de la panne » refusé, pas de demande de
-        // remorquage. Le cas 2CFD437 (champ non réclamé) garde la case. Olivier 08/10/2026.
-        const réclamé = await page.evaluate(() => {
-          const c = document.querySelector('input[id*="wtChassisNumberInput"]') as HTMLInputElement | null
-          return !!c && !(c.value || '').trim() && (c.offsetParent !== null || /Mandatory|Required/i.test(c.className || ''))
-        }).catch(() => false)
-        if (réclamé && opts.vinFull && opts.vinFull.length >= 11) {
-          await page.evaluate(() => {
-            const cb = document.querySelector('input[type=checkbox][id*="wt436_wt20"], input[type=checkbox][id*="_wt20"]') as HTMLInputElement | null
-            if (cb && cb.checked) cb.click()
-          }).catch(() => {})
-          await new Promise(r => setTimeout(r, 1500))
-          if (await clearAndType(page, 'input[id*="wtChassisNumberInput"]', opts.vinFull)) {
-            await page.evaluate(() => {
-              const c = document.querySelector('input[id*="wtChassisNumberInput"]') as HTMLInputElement | null
-              c && c.dispatchEvent(new Event('change', { bubbles: true }))
-            })
-            steps.push('champ châssis réclamé malgré VIN inconnu → case décochée, châssis complet saisi')
-            await new Promise(r => setTimeout(r, 4000))
-          }
-        }
+        // Le 08/10, une branche décochait la case pour taper le châssis complet quand le champ
+        // semblait « réclamé » ; or VAB marque ce champ Mandatory dès que la case est cochée :
+        // elle partait à chaque fois et « Fin lieu de la panne » ne menait plus aux codes
+        // (5 échecs sur 5 du 10 au 13/10, boucle sans fin sur 2DPW634). Retirée le 13/10 :
+        // le cas 1DHN965 qui l'avait motivée atteignait bien l'écran des codes.
       }
       if (opts.vinFull && !vinInconnu) {
         const vide = await page.evaluate(() => {

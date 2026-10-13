@@ -583,6 +583,14 @@ export async function POST(req: Request) {
     const { majActiviteClient } = await import('@/lib/espace/client-notif')
     await majActiviteClient(mission_id, 'terminee')
   }
+  // Relivraison liée à COMEX : Touring attend sa clôture (Olivier 13/10/2026). En tâche de fond : le chauffeur a fini.
+  if (['completed', 'complete_delivery'].includes(action) && (updated as any)?.source_format === 'comex') {
+    const run = (async () => {
+      const { closeComexRelivraison } = await import('@/lib/touring/close-relivraison')
+      await closeComexRelivraison(mission_id, actor?.id ?? null).catch(e => console.warn('[driver-action] clôture relivraison Touring', e?.message))
+    })()
+    try { const { waitUntil } = await import('@vercel/functions'); waitUntil(run) } catch { await run }
+  }
   // Remorquage hors créneau du garage : mis en parc chez nous, puis relivré. Le client suit jusqu'à la livraison.
   if ((updated as any)?.espace_client_id && action === 'park') {
     const { prevenirClient } = await import('@/lib/espace/client-notif')

@@ -115,6 +115,23 @@ export async function runVabOnSite(input: VabOnSiteInput): Promise<void> {
     const r = await vabCloseOnSiteBrowser({ assignmentId, km, vinLastDigits: vin, vinFull })
     const secs = Math.round((Date.now() - started) / 1000)
 
+    // Même relecture HTTP que la clôture remorquage : dans le Chromium sans écran, les listes de
+    // codes s'affichent vides et `isCodeScreen()` répond « non » alors que le dossier y est
+    // (1DHN965, 07/10 : déclaré en échec, dispatch alerté pour rien). Le HTTP tranche.
+    if (!r.onCodeScreen) {
+      try {
+        const { loginVab } = await import('@/lib/vab/scraper')
+        const s2 = await loginVab()
+        const html = await (await fetch(
+          `https://comet.vab.be/Comet/BreakdownAssignments_Details.aspx?AssignmentId=${assignmentId}`,
+          { headers: { 'User-Agent': 'Mozilla/5.0', Cookie: s2.cookieHeader, 'Cache-Control': 'no-store' }, cache: 'no-store' })).text()
+        const $$ = cheerio.load(html)
+        let n = 0
+        $$('select').each((_, e) => { if (/SolutionCodeLevel1/i.test($$(e).attr('id') || '')) n = $$(e).find('option').length })
+        if (n > 1) { r.onCodeScreen = true; r.steps.push('écran de codes confirmé en HTTP') }
+      } catch { /* la relecture est un bonus : son échec ne change pas le verdict */ }
+    }
+
     if (r.onCodeScreen) {
       await sb.from('incoming_missions')
         .update({ vab_onsite_at: new Date().toISOString(), updated_at: new Date().toISOString() })
