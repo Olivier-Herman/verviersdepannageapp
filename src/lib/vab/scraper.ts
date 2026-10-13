@@ -743,7 +743,7 @@ export function pageDossierOuvert(html: string): boolean {
 
 /** URL de la page vivante du dossier (panne ou remorquage), ou null s'il n'est plus ouvert. */
 export async function vabDossierOuvert(session: SessionCookies, assignmentId: string): Promise<string | null> {
-  for (const page of ['BreakdownAssignments_Details', 'TowAssignments_Details']) {
+  for (const page of ['BreakdownAssignments_Details', 'TowAssignments_Details', 'DeliveryAssignments_Details']) {
     const url = `${VAB_BASE}/Comet/${page}.aspx?AssignmentId=${assignmentId}`
     try {
       const html = await (await fetch(url, { headers: { 'User-Agent': REAL_UA, Cookie: session.cookieHeader, 'Cache-Control': 'no-store' }, cache: 'no-store' })).text()

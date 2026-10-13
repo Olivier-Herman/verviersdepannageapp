@@ -65,7 +65,7 @@ export async function openAssignment(page: Page, assignmentId: string): Promise<
     // Hors liste ≠ soldé : VAB retire parfois un dossier de sa liste alors que sa page reste
     // ouverte (2EVV422, 13/10). On ouvre alors directement sa page, si elle est vivante.
     const { pageDossierOuvert } = await import('@/lib/vab/scraper')
-    for (const p of ['BreakdownAssignments_Details', 'TowAssignments_Details']) {
+    for (const p of ['BreakdownAssignments_Details', 'TowAssignments_Details', 'DeliveryAssignments_Details']) {
       await page.goto(`${BASE}/Comet/${p}.aspx?AssignmentId=${assignmentId}`, { waitUntil: 'domcontentloaded', timeout: 30000 })
       await new Promise(r => setTimeout(r, 6000))
       const html = await page.evaluate('document.documentElement.outerHTML').catch(() => '') as string

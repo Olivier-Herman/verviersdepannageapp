@@ -55,7 +55,19 @@ export async function runTouringImport(opts: { mode: TouringImportMode }): Promi
 
   const session  = await loginComex('dispatch')
   const missions = await listComexMissions(session)
-  const toValidate = missions.filter(m => m.COD_STATUT_MTR === STATUT_A_VALIDER)
+  // Mission déjà acceptée chez Touring (04 acceptée, 05 en route, 06 sur place) sans AUCUNE fiche VD Soft
+  // pour son dossier : acceptée dans COMEX avant que VD Soft la voie, elle n'arrivait jamais au dispatch
+  // (2026BE401353, 13/10/2026, Momo prévenu par téléphone). On l'importe comme une « à valider ».
+  const orphelines: typeof missions = []
+  for (const m of missions.filter(x => ['04', '05', '06'].includes(String(x.COD_STATUT_MTR)))) {
+    const dos = String(m.CID_DOS || '').trim()
+    if (!dos) continue
+    const { count: parDossier } = await sb.from('incoming_missions').select('id', { count: 'exact', head: true }).in('dossier_number', [dos, `${dos}-REL`])
+    if (parDossier) continue
+    const { count: parCles } = await sb.from('incoming_missions').select('id', { count: 'exact', head: true }).eq('source_format', 'comex').ilike('raw_content', `%${dos}%`)
+    if (!parCles) orphelines.push(m)
+  }
+  const toValidate = [...missions.filter(m => m.COD_STATUT_MTR === STATUT_A_VALIDER), ...orphelines]
 
   // billed_to par défaut de la source touring (catalog).
   const { data: cat } = await sb.from('mission_source_catalog')
@@ -252,6 +264,9 @@ export async function runTouringImport(opts: { mode: TouringImportMode }): Promi
       } else {
         results.push({ dossier: m.CID_DOS, plaque: m.NUM_PLAQUE, action: 'created', external_id: externalId })
         created++
+        if (ins?.id && m.COD_STATUT_MTR !== STATUT_A_VALIDER) await sb.from('mission_logs').insert({ mission_id: ins.id, action: 'touring_synced',
+          notes: `Touring : mission déjà ${m.COD_STATUT_MTR === '04' ? 'acceptée' : m.COD_STATUT_MTR === '05' ? 'en route' : 'sur place'} chez Touring (statut COMEX ${m.COD_STATUT_MTR}) mais absente de VD Soft — importée pour le dispatch.`,
+          metadata: { cid_dos: m.CID_DOS, seq: m.CID_SEQ_ACTION, statut: m.COD_STATUT_MTR, orpheline: true } }).then(() => {}, () => {})
         // Remorquage d'un véhicule déjà au parc chez nous → réserve sur le dossier
         // (règle commune à toutes les assistances, lib/missions/reserve-rel.ts).
         if (ins?.id) {
