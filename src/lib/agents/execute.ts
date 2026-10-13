@@ -61,6 +61,13 @@ export async function prepare(kind: ProposalKind, agent: AgentAccount, company: 
       directAllowed = true
       directWhy = b.peppol_message_uuid ? 'Peppol, lecture certaine' : 'PDF / mail / scan, lecture certaine'
     }
+    // Verviers Dépannage (Olivier 13/10/2026) : « si c'est du Peppol, ça doit se valider de toute
+    // façon ; il doit juste mettre un stop s'il hésite pour une avance de fonds ». Peppol = validée,
+    // sauf `stop: true` (doute avance de fonds) ; une pièce hors Peppol reste en validation.
+    if (company === 1 && b.peppol_message_uuid && body?.stop !== true) {
+      directAllowed = true
+      directWhy = 'Peppol (règle du 13/10/2026)'
+    }
     return { title: `${b.partner_id[1]} · ${b.ref || b.name || 'brouillon'}`, amount: b.amount_total, payload: { facture_id: id, fournisseur: b.partner_id[1], reference: b.ref, htva: b.amount_untaxed, peppol: Boolean(b.peppol_message_uuid) }, directAllowed, directWhy }
   }
 
