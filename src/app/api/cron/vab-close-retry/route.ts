@@ -92,7 +92,7 @@ async function handleGET(req: Request) {
       .order('received_at', { ascending: false }).limit(20)
     for (const f of (nonSoldées || []) as any[]) {
       const aids: string[] = (f.vab_assignment_ids || []).filter(Boolean)
-      if (!aids.length || aids.some(a => tous.includes(a))) continue
+      if (!aids.length || aids.some(a => ouverts.includes(a))) continue   // une livraison VR encore listée ne bloque pas le remorquage
       for (const a of [...aids].reverse()) {
         if (await vabDossierOuvert(session, a)) { aidHorsListe.set(f.id, a); break }
       }

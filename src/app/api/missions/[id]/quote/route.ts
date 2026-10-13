@@ -93,7 +93,7 @@ async function handlePOST(req: Request, { params }: { params: { id: string } }) 
       amount_to_collect, amount_to_collect_manual, special_tarif_htva, amount_guaranteed,
       ff_base_htva, ff_gardiennage_days, ff_gardiennage_pu,
       incident_lat, incident_lng, destination_lat, destination_lng,
-      snc_scenario, snc_requires_balisage, extra_addresses,
+      snc_scenario, snc_requires_balisage, extra_addresses, vab_vr, vr_forfait,
       odoo_quote_id, odoo_quote_url, invoice_odoo_id, needs_siabis_decision
     `)
     .eq('id', params.id)
@@ -247,6 +247,12 @@ async function handlePOST(req: Request, { params }: { params: { id: string } }) 
     const { vabFuelLine } = await import('@/lib/facturation/vab-fuel')
     const fuel = await vabFuelLine(sb, { clientId: mission.billed_to_id, mission, lines, dossierMissionIds: [mission.id, (mission as any).parent_mission_id] }).catch(() => null)
     if (fuel) { lines.push(fuel); totalForResponse = Math.round((totalForResponse + fuel.qty * fuel.price_unit) * 100) / 100 }
+  }
+  // Livraison de véhicule de remplacement VAB (Olivier 13/10/2026) : forfait VR en ligne distincte.
+  if (lines.length > 0 && ((mission as any).vab_vr || (mission as any).vr_forfait)) {
+    const { vabVrLine } = await import('@/lib/facturation/vab-vr')
+    const vr = await vabVrLine({ mission, lines }).catch(() => null)
+    if (vr) { lines.push(vr); totalForResponse = Math.round((totalForResponse + vr.qty * vr.price_unit) * 100) / 100 }
   }
 
   // 3+4) Lookup fleet.vehicle + Push Odoo (create/update). Olivier 2026-06-04 :

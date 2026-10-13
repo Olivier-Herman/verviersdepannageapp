@@ -86,6 +86,9 @@ export async function PATCH(
     // volontaire pouvait le poser. Aucun écran ne permettait de dire simplement
     // « ce dossier-là, on ne compte pas le parc ». Olivier 2026-08-31.
     'storage_waived',
+    // Forfait « livraison de véhicule de remplacement » VAB forcé (true) ou retiré (false) par le
+    // dispatch ; NULL = détection automatique (vab_vr). Olivier 13/10/2026.
+    'vr_forfait',
     // Forfait de gardiennage (accident police repris par Ethias/Kaze) : le
     // montant remplace le comptage au jour. NULL = comptage normal.
     'storage_flat_htva',

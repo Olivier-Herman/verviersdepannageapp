@@ -168,7 +168,7 @@ export async function computeMissionKm(missionId: string): Promise<{ chargedKm: 
   } catch { /* best-effort */ }
   const { data: m } = await sb
     .from('incoming_missions')
-    .select('mission_type, incident_lat, incident_lng, destination_lat, destination_lng, destination_address, extra_addresses, depot_depart_id, parked_at')
+    .select('mission_type, incident_lat, incident_lng, destination_lat, destination_lng, destination_address, extra_addresses, depot_depart_id, parked_at, vab_vr')
     .eq('id', missionId)
     .maybeSingle()
   if (!m) return { chargedKm: null, totalKm: null }
@@ -238,8 +238,17 @@ export async function computeMissionKm(missionId: string): Promise<{ chargedKm: 
   if (!depot) {
     totalKm = null
   } else {
-    const chain: Coord[] = [depot, incident, ...stops]
+    // Livraison de véhicule de remplacement VAB rattachée (Olivier 13/10/2026) : le chauffeur
+    // passe prendre le VR chez le concessionnaire AVANT la prise en charge (dépôt → concession →
+    // client → destination), ou APRÈS le dépôt de la voiture si c'est ce qui a été décidé
+    // (destination → concession → client → dépôt). Ces km font partie du total facturé.
+    const vr: any = (m as any).vab_vr
+    const vrPick: Coord | null = vr && !vr.standalone && vr.pickup?.lat != null && vr.pickup?.lng != null
+      ? { lat: Number(vr.pickup.lat), lng: Number(vr.pickup.lng) } : null
+    const vrAfter = !!vrPick && (vr.placement === 'after' || vr.placement === 'to_decide')   // déjà sur place : au plus probable, après
+    const chain: Coord[] = vrPick && !vrAfter ? [depot, vrPick, incident, ...stops] : [depot, incident, ...stops]
     if (destinationCoord && !isNonTow) chain.push(destinationCoord)
+    if (vrPick && vrAfter) chain.push(vrPick, incident)
     chain.push(depot)  // retour depot
     let acc = 0
     let ok = true

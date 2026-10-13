@@ -12,6 +12,7 @@ import { createAdminClient } from '@/lib/supabase'
 import { loginVab, listVabMissions, fetchVabMissionDetail } from './scraper'
 import { sendPushToRole, sendPushToUser } from '@/lib/push'
 import { reserveTowForParkedVehicle } from '@/lib/missions/reserve-rel'
+import { estLivraisonVr, vrDepuisDetail, rattacherVr, fondreVrSeul } from './vr'
 
 export type VabImportMode = 'preview' | 'send'
 
@@ -118,7 +119,12 @@ export async function runVabImport(opts: { mode: VabImportMode }): Promise<VabIm
 
   // On garde AUSSI les missions sans detailHref pour les REPORTER (sautées) au
   // lieu de les faire disparaître silencieusement (« OK mais rien n'arrive »).
-  const toImport = items.filter(i => !i.alreadyImported)
+  // Livraison de véhicule de remplacement (Olivier 13/10/2026) : traitée APRÈS les autres actions
+  // de la liste, pour qu'elle trouve la fiche remorquage du même dossier si VAB envoie les deux.
+  const typeParAid = new Map<string, string>()
+  for (const m of missions as any[]) { const a = m.detailHref?.match(/[?&]AssignmentId=(\d+)/i)?.[1]; if (a) typeParAid.set(a, String(m.dispatchDate || '')) }
+  const isVrItem = (i: VabPreviewItem) => estLivraisonVr(i.detailHref, typeParAid.get(i.detailHref?.match(/[?&]AssignmentId=(\d+)/i)?.[1] || '') || null)
+  const toImport = items.filter(i => !i.alreadyImported).sort((a, b) => Number(isVrItem(a)) - Number(isVrItem(b)))
   const results: Array<{ missionNumber: string; ok: boolean; action?: 'inserted' | 'merged' | 'skipped' | 'failed'; mergedInto?: string; error?: string }> = []
   let inserted = 0, merged = 0, skipped = 0, failed = 0
 
@@ -212,7 +218,7 @@ export async function runVabImport(opts: { mode: VabImportMode }): Promise<VabIm
         // action VAB sur un dossier dont la fiche est déjà terminée (completed /
         // to_invoice) ou annulée/ignorée doit créer une NOUVELLE fiche, pas être
         // avalée dans l'ancienne (sinon la mission n'arrive jamais dans le dispatch).
-        const FICHE_COLS = 'id, mission_type, destination_name, destination_address, redelivery_address, status, assigned_to, mission_number, vab_assignment_ids, vehicle_plate, source, remarks_billing'
+        const FICHE_COLS = 'id, mission_type, destination_name, destination_address, redelivery_address, status, assigned_to, mission_number, vab_assignment_ids, vehicle_plate, source, remarks_billing, vab_vr'
         const incomingPlate = detail.vehiclePlate?.replace(/\s/g, '').toUpperCase() || null
         const { data: existingRows } = await sb.from('incoming_missions')
           .select(FICHE_COLS)
@@ -222,10 +228,27 @@ export async function runVabImport(opts: { mode: VabImportMode }): Promise<VabIm
           .order('created_at', { ascending: false })
         let fiche: any = (existingRows || [])[0] || null
 
+        // ── LIVRAISON DE VÉHICULE DE REMPLACEMENT (Olivier 13/10/2026) ─────────
+        // Autre plaque que le remorquage (c'est le VR) : le garde-fou plaque ci-dessous l'écartait et
+        // créait une 2e fiche (1FIP491 / 2BKL091). Remorquage actif du même dossier → étapes de SA
+        // fiche ; sinon fiche « livraison VR » seule (forfait VR + tous les km), créée plus bas.
+        if (isVrItem(item) && assignmentId) {
+          const rem = (existingRows || []).find((r: any) => !r.vab_vr?.standalone && (!r.vab_vr || r.vab_vr.aid === assignmentId))
+          if (rem) {
+            const vr = await vrDepuisDetail(detail, assignmentId, fullDossier, false)
+            await rattacherVr(sb, rem, vr)
+            results.push({ missionNumber: item.missionNumber, ok: true, action: 'merged', mergedInto: rem.mission_number != null ? `#${rem.mission_number}` : rem.id })
+            merged++
+            continue
+          }
+          fiche = null
+        }
+
         // Garde-fou PLAQUE : un même dossier VAB peut porter une action sur un
         // AUTRE véhicule (2e voiture). Dans ce cas ce n'est pas une suite, c'est
         // une mission à part → elle mérite sa fiche. Olivier 2026-08-13.
         if (fiche && incomingPlate && fiche.vehicle_plate && fiche.vehicle_plate !== incomingPlate) fiche = null
+        if (fiche?.vab_vr?.standalone) fiche = null   // une livraison VR seule n'absorbe jamais un remorquage
 
         // Repli PAR PLAQUE : VAB ouvre parfois un dossier DIFFÉRENT pour le
         // remorquage qui suit un dépannage (vu en réel : 8316292 → 8315113,
@@ -233,7 +256,7 @@ export async function runVabImport(opts: { mode: VabImportMode }): Promise<VabIm
         // voir, et une 2e fiche atterrissait dans l'écran de commande, qu'un
         // humain annulait à la main. Même plaque + fiche encore ouverte = c'est
         // la suite de la même intervention. Olivier 2026-08-13.
-        if (!fiche && incomingPlate) {
+        if (!fiche && incomingPlate && !isVrItem(item)) {
           const { data: byPlate } = await sb.from('incoming_missions')
             .select(FICHE_COLS)
             .or(VAB_FICHE)
@@ -263,7 +286,7 @@ export async function runVabImport(opts: { mode: VabImportMode }): Promise<VabIm
         // On rattache donc l'AssignmentId à la fiche terminée, sans rien créer.
         // Garde-fous : même plaque, action de type REMORQUAGE, et fiche terminée
         // depuis moins de 24 h — au-delà, c'est une intervention distincte.
-        if (!fiche && incomingPlate && desiredType === 'remorquage' && assignmentId) {
+        if (!fiche && incomingPlate && desiredType === 'remorquage' && assignmentId && !isVrItem(item)) {
           const { data: finies } = await sb.from('incoming_missions')
             .select(FICHE_COLS + ', completed_at')
             .or(VAB_FICHE)
@@ -417,7 +440,10 @@ export async function runVabImport(opts: { mode: VabImportMode }): Promise<VabIm
         incidentAddress = detail.fromLocationFreeText
       }
 
+      // Livraison de VR sans remorquage actif : fiche « livraison VR » seule (transport : tous les km).
+      const vrSeul = isVrItem(item) && assignmentId ? await vrDepuisDetail(detail, assignmentId, fullDossier, true) : null
       const { data: insertedRow, error: insertErr } = await sb.from('incoming_missions').insert({
+        ...(vrSeul ? { vab_vr: vrSeul } : {}),
         external_id:        assignmentId || detail.missionNumber,
         dossier_number:     fullDossier,
         // Non couvert selon VAB → Siabis non couvert (police_snc), sans assistance
@@ -429,7 +455,8 @@ export async function runVabImport(opts: { mode: VabImportMode }): Promise<VabIm
         // Olivier 2026-06-04 : defaut DSP (depannage) si type non identifie
         // depuis taskType, pour eviter les missions sans mission_type qui
         // bloquent l affichage / le dispatch.
-        mission_type:       detail.taskType?.toLowerCase().includes('remorquage') ? 'remorquage'
+        mission_type:       vrSeul ? 'transport'
+                          : detail.taskType?.toLowerCase().includes('remorquage') ? 'remorquage'
                           : detail.taskType?.toLowerCase().includes('panne')      ? 'depannage'
                           : detail.taskType?.toLowerCase().includes('livraison')  ? 'depannage'
                           : 'depannage',
@@ -485,6 +512,8 @@ export async function runVabImport(opts: { mode: VabImportMode }): Promise<VabIm
         // Remorquage d'un véhicule déjà au parc chez nous → réserve sur le dossier
         // (règle commune à toutes les assistances, lib/missions/reserve-rel.ts).
         if (insertedRow?.id) {
+// Remorquage arrivé après une livraison de VR déjà créée seule et pas encore partie : on la fond ici.
+if (!vrSeul) { const base = (fullDossier.split('/')[0] || '').trim(); if (base.length >= 4) await fondreVrSeul(sb, insertedRow, base).catch(e => console.warn('[VAB] fusion VR', e?.message)) }
 // Coordonnées dès l'arrivée (ORS) : sans elles, un tiers des fiches VAB finissaient « à calculer ». Best-effort.
 try { const { ensureMissionCoords } = await import('@/lib/geocode/server'); await ensureMissionCoords(sb, insertedRow.id) } catch {}
           const r = await reserveTowForParkedVehicle({ sb, missionId: insertedRow.id, actorName: 'rattaché automatiquement à l’arrivée de l’action VAB' })

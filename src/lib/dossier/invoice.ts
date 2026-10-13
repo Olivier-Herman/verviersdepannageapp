@@ -215,6 +215,12 @@ async function invoiceDossierGroupsLocked(sb: any, d: Dossier, input: { anyMissi
           const fuel = await vabFuelLine(sb, { clientId, mission: m, lines, dossierMissionIds: d.legs.map(l => l.mission_id) }).catch(() => null)
           if (fuel) { lines.push(fuel); fuelDone = true }
         }
+        // Livraison de véhicule de remplacement VAB (Olivier 13/10/2026) : forfait VR sur l'action qui la porte.
+        if (has_tariff && lines.length && ((m as any).vab_vr || (m as any).vr_forfait)) {
+          const { vabVrLine } = await import('@/lib/facturation/vab-vr')
+          const vr = await vabVrLine({ mission: m, lines }).catch(() => null)
+          if (vr) lines.push(vr)
+        }
         sections.push({ section_label: `${d.number}${leg.letter} — ${leg.title} — ${actionDescription(leg, m)}${has_tariff ? '' : ' (à compléter)'}`, lines, mission_id: leg.mission_id })
         perLeg.push({ leg, lines, period_from: null, period_to: null })
       }

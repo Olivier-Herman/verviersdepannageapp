@@ -162,6 +162,9 @@ interface Mission {
   remarks_billing?:      string | null
   special_tarif_htva?:   number | null
   storage_waived?:       boolean | null
+  vab_vr?:               any
+  vr_forfait?:           boolean | null
+  vab_assignment_ids?:   string[] | null
   storage_flat_htva?:    number | null
   // Transport / rapatriement (Olivier 21/09/2026) : gabarit + prix/km manuel (« autre »).
   transport_vehicle_category?:  string | null
@@ -911,6 +914,8 @@ export default function MissionDetailClient({
   // Formulaire éditable
   /** « Pas de gardiennage » — miroir local de `storage_waived`. */
   const [storageWaived, setStorageWaived] = useState<boolean>(!!initialMission.storage_waived)
+  /** Forfait « livraison de véhicule de remplacement » VAB : case du dispatch (Olivier 13/10/2026). */
+  const [vrForfait, setVrForfait] = useState<boolean>(initialMission.vr_forfait ?? !!initialMission.vab_vr)
   /** Forfait gardiennage (Ethias / Kaze sur accident police) — 220 € HTVA. */
   const [storageFlat, setStorageFlat] = useState<boolean>(Number(initialMission.storage_flat_htva) > 0)
   const [form, setForm] = useState({
@@ -3603,6 +3608,31 @@ export default function MissionDetailClient({
                     </p>
                   )}
                 </div>
+
+                {/* Forfait véhicule de remplacement VAB (Olivier 13/10/2026) : ajouté d'office quand VD Soft
+                    reconnaît la livraison dans Comet ; la case permet de l'ajouter quand elle n'a pas été
+                    reconnue, ou de le retirer. Visible sur les fiches VAB. */}
+                {(String(form.source || initialMission.source || '') === 'vab' || (initialMission.vab_assignment_ids || []).length > 0 || !!initialMission.vab_vr) && (
+                  <label className={`flex items-start gap-2 mt-4 p-2.5 rounded-xl border cursor-pointer min-h-[44px] ${
+                    vrForfait ? 'border-teal-600 bg-teal-50' : 'border-dashed bg-surface-2'
+                  }`}>
+                    <input
+                      type="checkbox" checked={vrForfait}
+                      onChange={e => { setVrForfait(e.target.checked); silentPatch({ vr_forfait: e.target.checked }) }}
+                      className="mt-0.5 h-4 w-4 accent-teal-700"
+                    />
+                    <span className="text-xs">
+                      <span className={`font-semibold ${vrForfait ? 'text-teal-900' : 'text-ink'}`}>Forfait livraison véhicule de remplacement (VAB)</span>
+                      <span className="block text-ink-muted mt-0.5">
+                        {initialMission.vab_vr
+                          ? `Livraison reconnue dans Comet${initialMission.vab_vr.plate ? ` (${initialMission.vab_vr.plate})` : ''} : le forfait est ajouté selon l’heure (jour, soir/week-end, nuit).${vrForfait ? '' : ' Décoché : il ne sera pas facturé.'}`
+                          : vrForfait
+                            ? 'Ajouté à la facture selon l’heure (jour, soir/week-end, nuit).'
+                            : 'Coche si un véhicule de remplacement a été livré sur ce dossier et que VD Soft ne l’a pas reconnu.'}
+                      </span>
+                    </span>
+                  </label>
+                )}
 
                 {/* Olivier 2026-06-02 PM : dates parc modifiables (entree / sortie).
                     Le gardiennage est calcule sur cette fenetre uniquement. */}
