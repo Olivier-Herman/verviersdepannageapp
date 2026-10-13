@@ -31,13 +31,30 @@ export function sameAddress(a?: string | null, b?: string | null): boolean {
 export const isAddressChangePending = (ac: any) => !!ac && !!ac.new_address && !ac.decided_at
 
 /** Signale une nouvelle adresse de livraison reçue de l'assistance (sans rien modifier). */
-export async function flagAddressChange(sb: any, missionId: string, next: NewAddress, origin: { source: string; ref?: string | null }): Promise<boolean> {
+const DONE = ['completed', 'to_invoice', 'invoiced', 'cancelled', 'deleted', 'ignored']
+
+export async function flagAddressChange(sb: any, missionId: string, next: NewAddress, origin: { source: string; ref?: string | null }, field: 'destination_address' | 'redelivery_address' = 'destination_address'): Promise<boolean> {
   const { data: m } = await sb.from('incoming_missions')
-    .select('id, mission_number, status, vehicle_plate, vehicle_brand, vehicle_model, destination_address, destination_name, assigned_to, address_change')
+    .select('id, mission_number, status, vehicle_plate, vehicle_brand, vehicle_model, destination_address, destination_name, redelivery_address, assigned_to, address_change, merged_into_mission_id')
     .eq('id', missionId).maybeSingle()
   if (!m || !next.address) return false
-  if (['completed', 'to_invoice', 'invoiced', 'cancelled', 'deleted', 'ignored'].includes(String(m.status))) return false
-  if (sameAddress(m.destination_address, next.address)) return false
+  // Fiche d'assistance FUSIONNÉE dans une autre (2CAN920, 12/10/2026 : Touring passe
+  // de Malle à Turnhout pendant la relivraison, mais sa fiche était fusionnée dans le
+  // dossier Siabis → ignorée, véhicule livré à Malle). L'alerte suit la fusion : la
+  // relivraison ouverte du dossier principal, sinon son adresse de relivraison.
+  if (m.merged_into_mission_id && ['cancelled', 'ignored'].includes(String(m.status))) {
+    const masterId = m.merged_into_mission_id
+    const { data: rels } = await sb.from('incoming_missions').select('id, status')
+      .eq('parent_mission_id', masterId).eq('dossier_leg', false).ilike('mission_type', '%reliv%').order('created_at', { ascending: false })
+    const open = (rels || []).find((r: any) => !DONE.includes(String(r.status)))
+    if (open) return flagAddressChange(sb, open.id, next, origin)
+    if ((rels || []).some((r: any) => ['completed', 'to_invoice', 'invoiced'].includes(String(r.status)))) return false   // déjà relivré
+    return flagAddressChange(sb, masterId, next, origin, 'redelivery_address')
+  }
+  if (field === 'destination_address' && DONE.includes(String(m.status))) return false
+  if (field === 'redelivery_address' && ['cancelled', 'deleted', 'ignored'].includes(String(m.status))) return false
+  const current = field === 'redelivery_address' ? m.redelivery_address : m.destination_address
+  if (sameAddress(current, next.address)) return false
   // Déjà signalée (en attente) ou déjà tranchée par le dispatch (« garder ») : on ne
   // repropose pas la même adresse à chaque relevé (AXA, VAB, Kaze repassent souvent).
   if (m.address_change?.new_address && sameAddress(m.address_change.new_address, next.address)) return false
@@ -46,19 +63,19 @@ export async function flagAddressChange(sb: any, missionId: string, next: NewAdd
   const group = `ac-${missionId}-${Date.now()}`
   const change = {
     new_address: next.address, new_name: next.name || null, new_lat: next.lat ?? null, new_lng: next.lng ?? null,
-    old_address: m.destination_address || null, old_name: m.destination_name || null,
+    old_address: current || null, old_name: field === 'redelivery_address' ? null : m.destination_name || null, field,
     source: origin.source, ref: origin.ref || null, detected_at: now, request_group: group,
   }
   await sb.from('incoming_missions').update({ address_change: change, updated_at: now }).eq('id', missionId)
   await sb.from('mission_logs').insert({
     mission_id: missionId, action: 'address_change_received',
-    notes: `⚠️ ${origin.source} : nouvelle adresse de livraison reçue (${next.name ? next.name + ', ' : ''}${next.address}) — actuelle : ${m.destination_address || '—'}. En attente de la décision du dispatch.`,
+    notes: `⚠️ ${origin.source} : nouvelle adresse de ${field === 'redelivery_address' ? 'relivraison' : 'livraison'} reçue (${next.name ? next.name + ', ' : ''}${next.address}) — actuelle : ${current || '—'}. En attente de la décision du dispatch.`,
     metadata: change,
   }).then(() => {}, () => {})
 
   const plate = m.vehicle_plate || 'sans plaque'
   let driverName: string | null = null
-  if (m.assigned_to) {
+  if (m.assigned_to && field === 'destination_address') {
     const { data: u } = await sb.from('users').select('name').eq('id', m.assigned_to).maybeSingle()
     driverName = u?.name || null
     await sendNotification(m.assigned_to, 'mission_address_changed', {
@@ -92,14 +109,19 @@ export async function decideAddressChange(sb: any, notifId: string, userId: stri
       .eq('notif_type', 'mission_address_changed').is('responded_at', null).eq('payload->data->>request_group', d.request_group).eq('payload->data->>role', 'dispatch')
     else await sb.from('notifications_log').update({ responded_at: now, read_at: now }).eq('id', notifId)
   }
-  const { data: m } = await sb.from('incoming_missions').select('id, mission_number, vehicle_plate, assigned_to, destination_address, address_change').eq('id', d.mission_id).maybeSingle()
+  const { data: m } = await sb.from('incoming_missions').select('id, mission_number, vehicle_plate, assigned_to, destination_address, redelivery_address, address_change').eq('id', d.mission_id).maybeSingle()
   if (!m) return { ok: false, error: 'Fiche introuvable' }
   const ac = m.address_change || {}
   if (!isAddressChangePending(ac) || (d.request_group && ac.request_group !== d.request_group)) { await closeGroup(); return { ok: true, already: true } }
 
   const { data: me } = await sb.from('users').select('name').eq('id', userId).maybeSingle()
   const upd: Record<string, any> = { address_change: { ...ac, decision, decided_at: now, decided_by: userId, decided_by_name: me?.name || null }, updated_at: now }
-  if (decision === 'apply') {
+  const redel = ac.field === 'redelivery_address'
+  if (decision === 'apply' && redel) {
+    upd.redelivery_address = ac.new_address
+    upd.redelivery_lat = ac.new_lat ?? null
+    upd.redelivery_lng = ac.new_lng ?? null
+  } else if (decision === 'apply') {
     upd.destination_address = ac.new_address
     if (ac.new_name !== undefined) upd.destination_name = ac.new_name || null
     upd.destination_lat = ac.new_lat ?? null
@@ -109,10 +131,10 @@ export async function decideAddressChange(sb: any, notifId: string, userId: stri
   if (error) return { ok: false, error: error.message }
   await sb.from('mission_logs').insert({
     mission_id: m.id, actor_id: userId, action: decision === 'apply' ? 'address_change_applied' : 'address_change_kept',
-    notes: decision === 'apply' ? `Dispatch (${me?.name || '—'}) : nouvelle adresse de livraison appliquée — ${ac.new_address} (avant : ${ac.old_address || '—'}).` : `Dispatch (${me?.name || '—'}) : adresse de livraison inchangée — ${m.destination_address || '—'} (proposée : ${ac.new_address}).`,
+    notes: decision === 'apply' ? `Dispatch (${me?.name || '—'}) : nouvelle adresse de livraison appliquée — ${ac.new_address} (avant : ${ac.old_address || '—'}).` : `Dispatch (${me?.name || '—'}) : adresse de ${redel ? 'relivraison' : 'livraison'} inchangée — ${(redel ? m.redelivery_address : m.destination_address) || '—'} (proposée : ${ac.new_address}).`,
   }).then(() => {}, () => {})
   await closeGroup()
-  if (m.assigned_to) {
+  if (m.assigned_to && !redel) {
     await sendNotification(m.assigned_to, 'mission_address_changed', {
       title: decision === 'apply' ? `📍 Nouvelle adresse de livraison — ${m.vehicle_plate || ''}` : `📍 Adresse inchangée — ${m.vehicle_plate || ''}`,
       body: decision === 'apply' ? `Livre à : ${ac.new_name ? ac.new_name + ', ' : ''}${ac.new_address}` : `Le dispatch garde l'adresse : ${m.destination_address || '—'}`,
