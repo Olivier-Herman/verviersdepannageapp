@@ -274,6 +274,9 @@ export interface OverdueInvoice {
   isRefund:         boolean  // true = note de credit (out_refund) ouverte
   plate:            string | null
   vehicleLabel:     string | null
+  /** Référence du client sur la facture (n° de dossier, de sinistre…) : sans elle, une assistance
+   *  ne relie pas le rappel à son dossier (P&V, 12/10/2026). */
+  clientRef?:       string | null
 }
 
 export interface PartnerOverdueGroup {
@@ -381,7 +384,7 @@ export async function getOverdueInvoicesGroupedByPartner(): Promise<OverdueResul
       [domain],
       {
         fields: ['id', 'name', 'partner_id', 'invoice_date', 'invoice_date_due',
-                 'amount_total', 'amount_residual', 'invoice_origin', 'move_type'],
+                 'amount_total', 'amount_residual', 'invoice_origin', 'move_type', 'ref'],
         order:  'invoice_date_due asc, invoice_date desc',
         limit:  PAGE_SIZE,
         offset,
@@ -555,6 +558,7 @@ export async function getOverdueInvoicesGroupedByPartner(): Promise<OverdueResul
       isRefund,
       plate:          veh?.plate || null,
       vehicleLabel:   veh?.label || null,
+      clientRef:      (typeof m.ref === 'string' && m.ref.trim()) ? m.ref.trim() : null,
     }
 
     let group = groups.get(partnerId)

@@ -63,7 +63,7 @@ export function generateReminderXlsx(data: XlsxData): Buffer {
   rows.push([
     'N° facture', 'Date facture', 'Echeance',
     'Jours retard', 'Plaque', 'Vehicule',
-    'Montant TVAC', 'Reste du', 'Niveau',
+    'Montant TVAC', 'Reste du', 'Niveau', 'Votre reference',
   ])
 
   for (const inv of invoices) {
@@ -77,6 +77,7 @@ export function generateReminderXlsx(data: XlsxData): Buffer {
       Number(inv.amountTotal.toFixed(2)),
       Number(inv.amountResidual.toFixed(2)),
       `L${inv.level}`,
+      inv.clientRef || '',
     ])
   }
 

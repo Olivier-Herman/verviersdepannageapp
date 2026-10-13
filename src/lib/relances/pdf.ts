@@ -335,9 +335,10 @@ function buildInvoiceUrl(invoiceId: number): string {
 }
 
 function InvoiceRow({ inv, zebra }: { inv: OverdueInvoice; zebra: boolean }): React.ReactElement {
-  const plateText = inv.plate
+  const vehicule = inv.plate
     ? (inv.vehicleLabel ? `${inv.plate} · ${inv.vehicleLabel}` : inv.plate)
-    : '—'
+    : ''
+  const plateText = [vehicule, inv.clientRef ? `Votre réf. ${inv.clientRef}` : ''].filter(Boolean).join('\n') || '—'
   const rowStyle = zebra ? { ...styles.tr, ...styles.trZebra } : styles.tr
 
   // Le numero de facture est wrappe dans un Link cliquable avec underline
@@ -418,7 +419,7 @@ function ReminderDocument({ data }: { data: PdfData }): React.ReactElement {
           React.createElement(Text, { style: styles.cellDate     }, 'Date'),
           React.createElement(Text, { style: styles.cellDue      }, 'Échéance'),
           React.createElement(Text, { style: styles.cellDays     }, 'Jours'),
-          React.createElement(Text, { style: styles.cellPlate    }, 'Véhicule'),
+          React.createElement(Text, { style: styles.cellPlate    }, 'Véhicule / votre réf.'),
           React.createElement(Text, { style: styles.cellTotal    }, 'Mt TVAC'),
           React.createElement(Text, { style: styles.cellResidual }, 'Reste dû'),
         ),
