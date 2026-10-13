@@ -17,6 +17,7 @@ type Tool = {
   method:  'GET' | 'POST'
   path:    string
   params?: Param[]
+  fixed?:  Record<string, string>   // valeurs envoyées d'office (pas de champ à remplir)
   action?: string          // libellé de confirmation si l'outil modifie quelque chose
   slow?:   boolean
 }
@@ -53,6 +54,7 @@ const GROUPS: Group[] = [
     { id: 'notif', label: 'Notification in-app de test', desc: 'Envoie une notification à ton compte : bandeau + son. Vérifie le canal temps réel.', method: 'POST', path: '/api/notifications/test', action: 'T’envoyer une notification de test ?' },
     { id: 'push', label: 'Push de test', desc: 'Envoie un push à tes appareils enregistrés (web, iOS, Android).', method: 'POST', path: '/api/push/test', action: 'Envoyer un push de test à tes appareils ?' },
     { id: 'teams', label: 'Appel Teams de test', desc: 'Déclenche un appel Teams. Sans numéro, appelle le dispatcher de garde.', method: 'POST', path: '/api/teams/test-call', params: [{ name: 'to', label: 'Numéro (optionnel)', placeholder: '+32…' }], action: 'Lancer un appel Teams de test ?' },
+    { id: 'teams-adresse', label: 'Appel du dispatch : adresse modifiée', desc: 'Fait sonner la ligne du dépannage et joue le message « adresse de livraison modifiée par l’assistance », comme l’appel EBAC.', method: 'POST', path: '/api/teams/test-call', fixed: { message: 'adresse' }, action: 'Faire sonner le dispatch avec le message de test ?' },
     { id: 'print', label: 'Impression d’étiquette de test', desc: 'Compose le ZPL côté VD Soft et l’envoie au PC d’impression.', method: 'GET', path: '/api/admin/labels/test-print', params: [{ name: 'ticket_id', label: 'ID ticket (optionnel)' }], action: 'Imprimer une étiquette de test sur la Zebra ?' },
   ]},
   { title: 'Session', tools: [
@@ -69,7 +71,7 @@ export default function DiagnosticsClient() {
   const [open,    setOpen]    = useState<Record<string, boolean>>({})
 
   const run = async (t: Tool) => {
-    const v = values[t.id] || {}
+    const v = { ...(values[t.id] || {}), ...(t.fixed || {}) }
     for (const p of t.params || []) if (p.required && !String(v[p.name] || '').trim()) { alert(`${p.label} est requis.`); return }
     if (t.action && !confirm(t.action)) return
     setRunning(t.id)

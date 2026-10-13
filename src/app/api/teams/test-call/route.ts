@@ -12,6 +12,7 @@ import { getServerSession }  from 'next-auth'
 import { authOptions }       from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase'
 import { initiatePstnCall }  from '@/lib/teams/call'
+import { getBusinessText }   from '@/lib/settings/business'
 
 export const dynamic = 'force-dynamic'
 
@@ -26,6 +27,19 @@ export async function POST(req: Request) {
 
   let body: any = {}
   try { body = await req.json() } catch { /* body vide OK */ }
+
+  // Appel de la ligne du dépannage avec le message « adresse de livraison modifiée »
+  // (même chaîne que l'appel EBAC : message joué au décroché, puis raccroché).
+  // Olivier 13/10/2026, après 2CAN920.
+  if (body.message === 'adresse') {
+    const sb = createAdminClient()
+    let numero = ''
+    try { numero = (await getBusinessText('espace_client_appel_numero')).replace(/[\s./-]/g, '') } catch {}
+    if (!/^\+\d{8,15}$/.test(numero)) return NextResponse.json({ error: 'Numéro du dépannage non réglé (espace_client_appel_numero)' }, { status: 400 })
+    const r = await initiatePstnCall({ toPhone: numero, toDisplayName: 'Dépannage' })
+    await sb.from('espace_appels').insert({ mission_id: '00000000-0000-0000-0000-000000000000', call_id: r.callId || null, audio: 'changement-adresse.wav', status: r.ok ? 'lance' : 'echec', detail: r.ok ? 'test adresse modifiée' : String(r.error || '').slice(0, 300) })
+    return NextResponse.json(r)
+  }
 
   let toPhone = (body.to || '').trim()
   let toDisplayName: string | undefined = body.toName
