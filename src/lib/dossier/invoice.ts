@@ -22,6 +22,7 @@ import { createDraftInvoice, createSaleOrder, findFleetVehicleByPlate, type Quot
 import { withOdooActor, attachFileToInvoice } from '@/lib/odoo'
 import { primeSourceCatalog } from '@/lib/missions/source-catalog'
 import { isLegBilled } from '@/lib/dossier/billed'
+import { vabFuelLine } from '@/lib/facturation/vab-fuel'
 
 /** Plaque belge « 1ABC123 » → variantes d'écriture présentes dans Odoo. */
 function plateVariants(raw: string): string[] {
@@ -159,6 +160,7 @@ async function invoiceDossierGroupsLocked(sb: any, d: Dossier, input: { anyMissi
     ? await withOdooActor(input.actorUserId, () => resolveInvoiceVehicle(sb, root)).catch((e: any) => { warnings.push(`Véhicule non rattaché à la facture : ${e?.message || e}`); return null })
     : null
 
+  let fuelDone = false
   for (const [clientId, group] of byClient) {
     const sections: QuoteSection[] = []
     const perLeg: { leg: DossierLeg; lines: QuoteLine[]; period_from: string | null; period_to: string | null }[] = []
@@ -206,6 +208,13 @@ async function invoiceDossierGroupsLocked(sb: any, d: Dossier, input: { anyMissi
         const { lines: calc, has_tariff: calcOk } = ov ? { lines: ov, has_tariff: true } : await actionLines(m, draftById[leg.mission_id], hasGardLegs)
         const lines = calc, has_tariff = calcOk
         if (!has_tariff || !lines.length) { warnings.push(`${d.number}${leg.letter} : tarif introuvable, section à compléter dans Odoo`) }
+        // Supplément carburant VAB (Olivier 13/10/2026) : une ligne par DOSSIER facturé à
+        // VAB dont la date tombe dans une période annoncée par VAB (réglage
+        // vab_supplement_carburant), sur la première action, une seule fois par dossier.
+        if (has_tariff && lines.length && !fuelDone) {
+          const fuel = await vabFuelLine(sb, { clientId, mission: m, lines, dossierMissionIds: d.legs.map(l => l.mission_id) }).catch(() => null)
+          if (fuel) { lines.push(fuel); fuelDone = true }
+        }
         sections.push({ section_label: `${d.number}${leg.letter} — ${leg.title} — ${actionDescription(leg, m)}${has_tariff ? '' : ' (à compléter)'}`, lines, mission_id: leg.mission_id })
         perLeg.push({ leg, lines, period_from: null, period_to: null })
       }
@@ -355,3 +364,4 @@ async function invoiceDossierGroupsLocked(sb: any, d: Dossier, input: { anyMissi
   if (!result.invoices.length) throw new Error(warnings.join(' · ') || 'Aucune facture créée')
   return result
 }
+

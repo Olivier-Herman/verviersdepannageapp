@@ -241,6 +241,14 @@ async function handlePOST(req: Request, { params }: { params: { id: string } }) 
     return NextResponse.json({ ok: false, reason: 'no_tariff', skipped: true })
   }
 
+  // Supplément carburant VAB (Olivier 13/10/2026) : ligne distincte, une fois par dossier,
+  // pendant les périodes annoncées par VAB (lib/facturation/vab-fuel).
+  if (lines.length > 0) {
+    const { vabFuelLine } = await import('@/lib/facturation/vab-fuel')
+    const fuel = await vabFuelLine(sb, { clientId: mission.billed_to_id, mission, lines, dossierMissionIds: [mission.id, (mission as any).parent_mission_id] }).catch(() => null)
+    if (fuel) { lines.push(fuel); totalForResponse = Math.round((totalForResponse + fuel.qty * fuel.price_unit) * 100) / 100 }
+  }
+
   // 3+4) Lookup fleet.vehicle + Push Odoo (create/update). Olivier 2026-06-04 :
   // wrap dans withOdooActor pour tracer au user connecte (cle perso).
   // Mode facture directe : gère la facture existante selon son état Odoo.
