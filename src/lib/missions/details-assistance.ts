@@ -8,7 +8,7 @@
 import { createAdminClient } from '@/lib/supabase'
 
 export interface DetailsAssistance {
-  origine: 'portail IMA' | 'Kaze'
+  origine: 'portail IMA' | 'Kaze' | 'VAB' | 'Touring (COMEX)' | 'AXA' | 'Allianz'
   contact: string | null
   telephone: string | null
   lieu: string | null
@@ -67,10 +67,12 @@ export async function lirePortailIma(url: string): Promise<DetailsAssistance | n
   } catch { return null }
 }
 
-/** Détails d'une mission côté assistance : portail IMA (lien dans le mail) ou job Kaze. */
+/** Détails d'une mission côté assistance : portail IMA (lien du mail), Kaze, VAB, Touring (COMEX), AXA, Allianz.
+ *  On teste l'IDENTIFIANT propre à chaque assistance, pas la source : une mission non couverte reclassée Siabis
+ *  garde son lien avec l'assistance (Olivier 13/10/2026 : « étends ça à toutes les assistances »). */
 export async function detailsAssistance(missionId: string): Promise<DetailsAssistance | null> {
   const sb = createAdminClient()
-  const { data: m } = await sb.from('incoming_missions').select('id, source, external_id, raw_content').eq('id', missionId).maybeSingle()
+  const { data: m } = await sb.from('incoming_missions').select('id, source, source_format, external_id, raw_content, dossier_number, vab_assignment_ids, axa_mission_order_id').eq('id', missionId).maybeSingle()
   if (!m) return null
   const lien = String(m.raw_content || '').match(/https:\/\/imamobile\.ima\.eu\/[^\s"<>]+/)?.[0]
   if (lien) {
@@ -91,7 +93,108 @@ export async function detailsAssistance(missionId: string): Promise<DetailsAssis
       }
     } catch { return null }
   }
-  return null
+  return (await lireVab(m)) || (await lireComex(m)) || (await lireAxa(m)) || (await lireAllianz(m))
+}
+
+const adr = (...p: (string | null | undefined)[]) => p.map(x => String(x || '').trim()).filter(Boolean).join(', ') || null
+const court = (o: any) => JSON.stringify(o ?? {}).slice(0, 1500)
+
+/** VAB : AssignmentId dans external_id ou vab_assignment_ids ; session du connecteur. */
+async function lireVab(m: any): Promise<DetailsAssistance | null> {
+  const ids: string[] = Array.isArray(m.vab_assignment_ids) ? m.vab_assignment_ids : []
+  if (String(m.source).toLowerCase() !== 'vab' && m.source_format !== 'vab-scraper' && !ids.length) return null
+  const aid = String(m.external_id || '').match(/\d+/)?.[0] || ids[0]
+  if (!aid) return null
+  try {
+    const { loginVab, vabDetailUrl, fetchVabMissionDetail } = await import('@/lib/vab/scraper')
+    const sess = await loginVab()
+    const d: any = await fetchVabMissionDetail(sess, await vabDetailUrl(sess, aid), aid)
+    if (!d || 'error' in d) return null
+    return {
+      origine: 'VAB', contact: d.clientName || d.fromName || null, telephone: d.clientPhone || d.fromPhone || null,
+      lieu: [adr(d.fromStreet, [d.fromZip, d.fromCity].filter(Boolean).join(' ')), d.fromLocationFreeText].filter(Boolean).join(' — ') || null,
+      livraison: [adr(d.toName, d.toStreet, [d.toZip, d.toCity].filter(Boolean).join(' ')), d.toPhone ? `tél. ${d.toPhone}` : null].filter(Boolean).join(' — ') || null,
+      panne: d.codesDePanne || d.taskType || null, commentaire: d.descriptionText || null,
+      vehicule: [d.vehicleBrand, d.vehicleModel, d.vehiclePlate].filter(Boolean).join(' ') || null,
+      texte: String(d.rawSnippet || '').slice(0, 1500),
+    }
+  } catch { return null }
+}
+
+/** Touring : clés COMEX (CID_DOS / CID_SEQ_ACTION) dans le contenu brut d'une fiche COMEX. */
+async function lireComex(m: any): Promise<DetailsAssistance | null> {
+  try {
+    const { comexKeysOf } = await import('@/lib/touring/sync')
+    const keys = comexKeysOf(m)
+    if (!keys) return null
+    const { loginComex, getComexMissionDetail } = await import('@/lib/touring/comex')
+    const { mapComexToMission } = await import('@/lib/touring/map-mission')
+    const r = await getComexMissionDetail(await loginComex('dispatch'), keys)
+    const d = r?.content || r || {}
+    const k = mapComexToMission({ detail: d, status: 'new' } as any)
+    return {
+      origine: 'Touring (COMEX)', contact: k.client_name || k.assisted_name || null, telephone: k.client_phone || null,
+      lieu: k.incident_address || null, livraison: adr(k.destination_name, k.destination_address),
+      panne: k.incident_description || k.incident_type || null,
+      commentaire: d.DESCR_SIN && d.DESCR_SIN !== k.incident_description ? String(d.DESCR_SIN) : null,
+      vehicule: [k.vehicle_brand, k.vehicle_model, k.vehicle_plate].filter(Boolean).join(' ') || null,
+      texte: court(d),
+    }
+  } catch { return null }
+}
+
+/** AXA go&assist : axa_mission_order_id (repli external_id seulement pour une fiche AXA). */
+async function lireAxa(m: any): Promise<DetailsAssistance | null> {
+  try {
+    const { axaMissionOrderId } = await import('@/lib/axa/close-bg')
+    const id = axaMissionOrderId(m.axa_mission_order_id || (m.source === 'axa' ? m.external_id : null))
+    if (!id) return null
+    const { getMission } = await import('@/lib/axa/goassist')
+    const d = await getMission(id)
+    if (!d) return null
+    const dc = d.case || {}
+    const a = dc.incidentLocation?.address || {}
+    const dest = dc.service?.serviceDestination || null
+    const ct = (d.contacts || []).find((c: any) => c?.firstName || c?.lastName) || {}
+    const v = d.vehicle || dc.vehicle || {}
+    return {
+      origine: 'AXA', contact: [ct.firstName, ct.lastName].filter(Boolean).join(' ') || null, telephone: ct.phoneNumber || null,
+      lieu: adr(a.streetAddress, [a.postalCode, a.locality].filter(Boolean).join(' ')),
+      livraison: adr(dest?.name, dest?.address?.streetAddress, [dest?.address?.postalCode, dest?.address?.locality].filter(Boolean).join(' ')),
+      panne: dc.problemContext?.problemDescription || dc.problemContext?.problemCode || dc.service?.serviceCode || null,
+      commentaire: null,
+      vehicule: [v.brand, v.model, dc.registrationPlateNumber].filter(Boolean).join(' ') || null,
+      texte: court(d),
+    }
+  } catch { return null }
+}
+
+/** Allianz / Hexalite (Mondial) : n° d'affectation ; lecture seulement si un jeton valide existe (jamais d'OTP ici). */
+async function lireAllianz(m: any): Promise<DetailsAssistance | null> {
+  if (!['mondial', 'allianz'].includes(String(m.source || '').toLowerCase()) && !/allianzpartners/i.test(String(m.raw_content || ''))) return null
+  try {
+    const num = String(m.dossier_number || m.external_id || '').split('/')[0].trim()
+    const { fetchAllianzAssignmentByNumber, mapAllianzAssignment, parseAllianzDispatchLink } = await import('@/lib/allianz/intake')
+    let aid: string | null = num ? (await fetchAllianzAssignmentByNumber(num).catch(() => null))?.assignmentId || null : null
+    if (!aid) {
+      const { data: p } = await createAdminClient().from('allianz_otp_pending').select('assignment_id, dispatch_link').eq('mission_id', m.id).order('created_at', { ascending: false }).limit(1).maybeSingle()
+      aid = p?.assignment_id || parseAllianzDispatchLink(p?.dispatch_link).assignmentId || null
+    }
+    if (!aid) return null
+    const { getValidAllianzToken } = await import('@/lib/allianz/closure')
+    const { allianzFetchMissionData, allianzExtractMissionData } = await import('@/lib/missions/allianz')
+    const r = await allianzFetchMissionData(await getValidAllianzToken(), aid)
+    if (!r) return null
+    const x = allianzExtractMissionData(r.jobData, r.caseData)
+    const f = mapAllianzAssignment(r.jobData).fields as any
+    return {
+      origine: 'Allianz', contact: x.client_name || null, telephone: x.client_phone || null,
+      lieu: f.incident_address || x.incident_address || null, livraison: f.destination_address || null,
+      panne: x.incident_type || null, commentaire: x.incident_description || f.remarks_general || null,
+      vehicule: [f.vehicle_brand, f.vehicle_model, f.vehicle_plate].filter(Boolean).join(' ') || null,
+      texte: court({ job: r.jobData, dossier: r.caseData }),
+    }
+  } catch { return null }
 }
 
 /** Complète les champs VIDES de la fiche avec les détails de l'assistance. Renvoie la liste des champs complétés. */
