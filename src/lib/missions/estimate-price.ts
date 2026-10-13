@@ -321,6 +321,9 @@ export interface PriceEstimate {
   tariff_doc_path: string | null
   tariff_doc_name: string | null
   breakdown:     { label: string; amount: number | null; note?: string }[]
+  /** REL dont les km tombent dans les km inclus restants du remorquage du dossier :
+   *  un 0 € qui est vrai, pas un tarif à calculer (2DAY342, 13/10/2026). */
+  covered_by_rem_km?: boolean
   // Mode 'lines' uniquement : lignes pre-configurees a editer cote UI
   template_lines?: TemplateLine[]
   // Transport / rapatriement (Olivier 21/09/2026) : km aller-retour dépôt et
@@ -818,6 +821,7 @@ export async function estimateMissionPrice(mission: MissionLike, opts?: { skipRe
     tariff_doc_path: tariff.source_document_path,
     tariff_doc_name: tariff.source_document_name,
     breakdown,
+    covered_by_rem_km: !!chainInclusNote && forfait === 0 && kmExtra === 0 && parcEur === 0 && total === 0,
   }
 }
 

@@ -65,6 +65,10 @@ export async function actionLines(mission: any, draftLines: any[] | undefined, d
       const revenueAuParc = /reliv/i.test(String(mission.mission_type || '')) && Number(est.km_charged || 0) === 0
         && !!mission.parked_at && (!mission.loaded_at || Date.parse(mission.parked_at) >= Date.parse(mission.loaded_at))
       if (revenueAuParc) return { lines: [], has_tariff: true, reason: 'relivraison revenue au parc — 0 km, rien à facturer' }
+      // Relivraison dont les km tiennent dans les km inclus restants du
+      // remorquage (VAB, Touring : km comptés sur le dossier) : 0 € vrai, rien à
+      // facturer — pas « à calculer ». 2DAY342, Olivier 13/10/2026.
+      if (est.covered_by_rem_km) return { lines: [], has_tariff: true, reason: `couverte par les km inclus du remorquage — ${est.breakdown?.[0]?.note || 'rien à facturer'}` }
       const reason = Number(est.km_charged || 0) === 0 && /reliv/i.test(String(mission.mission_type || ''))
         ? `0 km : l'adresse de livraison${sameAddr ? ' est celle du départ (le parc)' : ' n\u2019est pas calculable'} — corrige « Livrer à » sur la fiche`
         : `montant calculé à 0 € (${est.breakdown?.[0]?.note || 'forfait 0, aucun km'})`
