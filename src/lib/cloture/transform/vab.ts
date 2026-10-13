@@ -233,6 +233,22 @@ export interface VabTowCloseInput {
 }
 
 /**
+ * Issue VAB d'un trajet vide, d'après le motif « déplacement pour rien » du chauffeur (`dpr_<code>`).
+ * Famille 815 « Client Pas Aidé » relevée dans Comet. Olivier 13/10/2026 : « attribue un code pour
+ * client refuse ». Les autres motifs (autre dépanneur, matériel, hors contrat…) restent à la main.
+ */
+const VAB_SOLUTION_DPR: Record<string, string> = {
+  '21': '815|10101',  // Le client refuse l'intervention → Demande du client
+  '20': '815|298',    // Le client est parti avant mon arrivée → Client pas trouvé
+  '29': '815|298',    // Mauvaise adresse → Client pas trouvé
+  '36': '815|15107',  // Garage fermé / refuse le véhicule → Renvoyé par le garage
+}
+export function vabSolutionTrajetVide(panneMotif: string | null | undefined): string | null {
+  const code = String(panneMotif || '').match(/^dpr_(\d+)$/)?.[1]
+  return (code && VAB_SOLUTION_DPR[code]) || null
+}
+
+/**
  * Clôture la mission chez VAB (remorquage). À lancer en TÂCHE DE FOND : la
  * séquence HTTP enchaîne plusieurs écrans OutSystems et prend 10-30 s.
  */
@@ -251,13 +267,14 @@ export async function runVabTowClose(input: VabTowCloseInput): Promise<void> {
   const assignmentId = vabAssignmentId(input.externalId)
   if (!assignmentId) { await log('vab_close_skipped', 'VAB : AssignmentId introuvable dans external_id', { externalId: input.externalId }); return }
 
-  const { data: m } = await sb.from('incoming_missions').select('vab_closed_at, mission_type').eq('id', input.missionId).maybeSingle()
-  // Trajet vide (client qui refuse, véhicule introuvable) : nous ne connaissons pas encore le code
-  // VAB correspondant, et la clôture partirait en « Mobilité rétablie », ce qui est faux (2EVV422,
-  // 13/10/2026). On laisse la main à l'humain plutôt que d'écrire une fausse issue chez VAB.
+  const { data: m } = await sb.from('incoming_missions').select('vab_closed_at, mission_type, panne_motif').eq('id', input.missionId).maybeSingle()
+  // Trajet vide : jamais « Mobilité rétablie » (2EVV422, 13/10/2026). Le motif choisi par le
+  // chauffeur donne l'issue « Client Pas Aidé » de VAB ; sans correspondance sûre, la main à l'humain.
   const { isTrajetVide } = await import('@/lib/missions/mission-types')
-  if (isTrajetVide((m as any)?.mission_type)) {
-    await log('vab_close_skipped', 'VAB : trajet vide — clôture à faire à la main dans Comet (issue « client refuse / introuvable » pas encore connue de VD Soft)', { assignmentId, trajetVide: true })
+  const trajetVide = isTrajetVide((m as any)?.mission_type)
+  const solutionTrajetVide = trajetVide ? vabSolutionTrajetVide((m as any)?.panne_motif) : null
+  if (trajetVide && !solutionTrajetVide) {
+    await log('vab_close_skipped', `VAB : trajet vide (motif ${(m as any)?.panne_motif || 'non renseigné'}) — clôture à faire à la main dans Comet`, { assignmentId, trajetVide: true })
     return
   }
   if ((m as any)?.vab_closed_at) {
@@ -491,6 +508,7 @@ export async function runVabTowClose(input: VabTowCloseInput): Promise<void> {
     const s = await loginVab()
     const codes = await closeVabCodeScreen({
       assignmentId, cookieHeader: s.cookieHeader, tow,
+      ...(solutionTrajetVide ? { solution: solutionTrajetVide } : {}),
       breakdown:   brk?.panne1,
       breakdownL2: brk?.panne2,
       destinationName:    destName,

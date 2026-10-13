@@ -77,7 +77,7 @@ async function handleGET(req: Request) {
     const vr = tous.filter(a => estVehiculeRemplacementVab(types[a]))
     const ouverts = tous.filter(a => !vr.includes(a))
     const sb = createAdminClient()
-    const COLS = 'id, vehicle_plate, external_id, status, assigned_to, mission_type, vab_assignment_ids, vab_closed_at, source'
+    const COLS = 'id, vehicle_plate, external_id, status, assigned_to, mission_type, panne_motif, vab_assignment_ids, vab_closed_at, source'
 
     // ── HORS LISTE ≠ SOLDÉ (Olivier 13/10/2026) ──────────────────────────────
     // VAB retire parfois un dossier de sa liste alors que sa page reste ouverte (2EVV422,
@@ -134,9 +134,10 @@ async function handleGET(req: Request) {
     // Olivier 12/09/2026 : une fiche requalifiée Siabis couvert garde sa panne
     // OUVERTE chez VAB (1YEN885, 2JPR337 : VAB ne la clôture pas lui-même).
     // On la clôture donc comme les autres.
-    // Trajet vide : clôture à la main (voir runVabTowClose), inutile de les représenter tous les quarts d'heure.
+    // Trajet vide sans issue VAB connue : clôture à la main (voir runVabTowClose), inutile de le représenter tous les quarts d'heure.
     const { isTrajetVide } = await import('@/lib/missions/mission-types')
-    const candidats: any[] = ((fiches || []) as any[]).filter(f => !isTrajetVide(f.mission_type))
+    const { vabSolutionTrajetVide } = await import('@/lib/cloture/transform/vab')
+    const candidats: any[] = ((fiches || []) as any[]).filter(f => !isTrajetVide(f.mission_type) || vabSolutionTrajetVide(f.panne_motif))
     if (candidats.length === 0) {
       await trace({ ok: true, ouverts: ouverts.length, vrIgnorés: vr.length, aTraiter: 0 })
       return NextResponse.json({ ok: true, ouverts: ouverts.length, vrIgnorés: vr.length, aTraiter: 0 })
