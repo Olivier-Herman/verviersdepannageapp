@@ -63,7 +63,9 @@ export async function runRead(kind: ReadKind, company: number, q: URLSearchParam
   }
 
   if (kind === 'factures_clients' || kind === 'factures_achat') {
-    const types = kind === 'factures_clients' ? ['out_invoice', 'out_refund'] : ['in_invoice', 'in_refund']
+    // Achats : les tickets (`in_receipt`) aussi — un brouillon déjà typé « Ticket » (scan, avance de
+    // fonds créée par VD Soft) restait invisible pour Florent et ne partait jamais (Olivier 13/10/2026).
+    const types = kind === 'factures_clients' ? ['out_invoice', 'out_refund'] : ['in_invoice', 'in_refund', 'in_receipt']
     const dom: any[] = [['move_type', 'in', types], ['company_id', '=', company]]
     const nom = clean(q.get('nom')), partenaire = clean(q.get('partenaire')), etat = clean(q.get('etat'), 10)
     if (nom) dom.push('|', ['name', 'ilike', nom], ['ref', 'ilike', nom])
