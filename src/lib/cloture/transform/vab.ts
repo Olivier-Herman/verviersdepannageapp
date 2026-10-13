@@ -258,6 +258,22 @@ export async function runVabTowClose(input: VabTowCloseInput): Promise<void> {
     await sb.from('mission_logs').insert({ mission_id: input.missionId, actor_id: input.actorId ?? null, action, notes, metadata })
       .then(() => {}, () => {})
     // Transformation ratée ou impossible (compte occupé, dossier pas accepté…) : le dispatch le sait tout de suite.
+    // Livraison de véhicule de remplacement : rien n'a échoué, VAB attend les infos du conducteur à la main.
+    // L'alerte « demande de remorquage NON passée » envoyait le dispatch faire un remorquage qui n'existe pas
+    // (1FIP491, 13/10/2026 : le remorquage du client était une autre fiche) → simple rappel à clôturer.
+    if (action === 'vab_close_skipped' && metadata?.vr) {
+      try {
+        const { data: mm } = await sb.from('incoming_missions').select('vehicle_plate, mission_number').eq('id', input.missionId).maybeSingle()
+        const { sendNotificationToRoles } = await import('@/lib/notifications/send')
+        const qui = [(mm as any)?.vehicle_plate, (mm as any)?.mission_number ? `n° ${(mm as any).mission_number}` : ''].filter(Boolean).join(' · ')
+        await sendNotificationToRoles(['dispatcher', 'admin', 'superadmin'], 'vab_vr_a_cloturer', {
+          title: `VAB ${qui} : véhicule de remplacement à clôturer`,
+          body: 'Livraison terminée. VAB demande les informations du conducteur : clôture à faire dans Comet.',
+          action_url: `/missions/${input.missionId}`,
+        } as any)
+      } catch { /* le rappel est un plus */ }
+      return
+    }
     if (input.transformation && (action === 'vab_close_failed' || (action === 'vab_close_skipped' && !/déjà clôturée/.test(notes)))) {
       const { data: mm } = await sb.from('incoming_missions').select('vehicle_plate, mission_number').eq('id', input.missionId).maybeSingle()
       await alertOnSiteFailed({ missionId: input.missionId, externalId: input.externalId, tow: true }, mm, notes.replace(/^VAB : /, '').slice(0, 160))

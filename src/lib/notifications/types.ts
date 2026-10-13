@@ -399,6 +399,14 @@ export const NOTIFICATION_TYPES: readonly NotificationType[] = [
     defaultEnabled:  true,
   },
   {
+    key:             'vab_vr_a_cloturer',
+    label:           'VAB : véhicule de remplacement à clôturer',
+    description:     "La livraison d'un véhicule de remplacement VAB est terminée : VAB demande les informations du conducteur, la clôture se fait dans Comet.",
+    category:        'admin',
+    applicableRoles: ['dispatcher', 'admin', 'superadmin'],
+    defaultEnabled:  true,
+  },
+  {
     key:             'vab_dossiers_ouverts',
     label:           'VAB : dossiers non clôturés',
     description:     "Des dossiers restent ouverts chez VAB alors que l'intervention est finie chez nous.",
