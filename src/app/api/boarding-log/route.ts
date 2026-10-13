@@ -227,7 +227,7 @@ export async function GET(req: Request) {
   // ouverts chez VAB, dont 6 datant de plus d'un jour. Olivier 2026-08-14.
   const since7j = new Date(Date.now() - 7 * 24 * 3600 * 1000).toISOString()
   const { data: closedMissions } = await sb.from('incoming_missions')
-    .select('id, mission_number, vehicle_plate, source, mission_type, status, completed_at, vab_closed_at, axa_closed_at')
+    .select('id, mission_number, vehicle_plate, source, source_format, mission_type, status, completed_at, vab_closed_at, axa_closed_at, vab_assignment_ids, axa_mission_order_id')
     .in('source', ENVOI_REEL)
     .in('status', ['to_invoice', 'completed'])
     .gte('completed_at', since7j)
@@ -239,7 +239,17 @@ export async function GET(req: Request) {
       .select('mission_id').eq('action', 'touring_closed').in('mission_id', closedIds).limit(500)
     for (const l of (tc || [])) touringClosed.add(l.mission_id)
   }
+  // Seulement les missions réellement LIÉES à la plateforme de l'assisteur (Olivier 13/10/2026 : les fausses
+  // alertes inquiètent pour rien). Une relivraison créée chez nous (auto_rel), une fiche venue d'un mail ou
+  // encodée à la main n'ont rien à clôturer chez lui. Une action créée par COMEX (relivraison comprise), elle,
+  // attend une clôture.
+  const lieeALAssisteur = (m: any) => m.source_format !== 'auto_rel' && (
+    m.source === 'touring' ? m.source_format === 'comex'
+    : m.source === 'vab' ? (m.source_format === 'vab-scraper' || (Array.isArray(m.vab_assignment_ids) && m.vab_assignment_ids.length > 0))
+    : m.source === 'axa' ? !!m.axa_mission_order_id
+    : true)
   for (const m of (closedMissions || [])) {
+    if (!lieeALAssisteur(m)) continue
     const ok = m.source === 'touring' ? touringClosed.has(m.id)
       : m.source === 'vab' ? !!m.vab_closed_at
       : !!m.axa_closed_at
