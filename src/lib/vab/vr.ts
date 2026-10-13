@@ -33,7 +33,9 @@ export interface VabVr {
 }
 
 /** Statuts où le chauffeur est déjà chez le client ou au-delà : l'ordre des étapes se décide avec lui. */
-const DEJA_SUR_PLACE = ['on_site', 'loaded', 'in_progress', 'delivering', 'parked']
+const DEJA_SUR_PLACE = ['on_site', 'loaded', 'in_progress', 'delivering']
+/** Voiture déjà déposée (garage ou parc) : la mission est finie, la livraison VR devient une nouvelle mission (Olivier 13/10/2026). */
+export const DEJA_DEPOSE = ['parked', 'gardiennage', 'completed', 'to_invoice']
 
 export async function vrDepuisDetail(detail: VabMissionDetail, aid: string, dossier: string, standalone: boolean): Promise<VabVr> {
   const pickupAddr = [detail.fromStreet, [detail.fromZip, detail.fromCity].filter(Boolean).join(' ')].filter(Boolean).join(', ') || null

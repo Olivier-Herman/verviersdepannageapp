@@ -12,7 +12,7 @@ import { createAdminClient } from '@/lib/supabase'
 import { loginVab, listVabMissions, fetchVabMissionDetail } from './scraper'
 import { sendPushToRole, sendPushToUser } from '@/lib/push'
 import { reserveTowForParkedVehicle } from '@/lib/missions/reserve-rel'
-import { estLivraisonVr, vrDepuisDetail, rattacherVr, fondreVrSeul } from './vr'
+import { estLivraisonVr, vrDepuisDetail, rattacherVr, fondreVrSeul, DEJA_DEPOSE } from './vr'
 
 export type VabImportMode = 'preview' | 'send'
 
@@ -233,7 +233,7 @@ export async function runVabImport(opts: { mode: VabImportMode }): Promise<VabIm
         // créait une 2e fiche (1FIP491 / 2BKL091). Remorquage actif du même dossier → étapes de SA
         // fiche ; sinon fiche « livraison VR » seule (forfait VR + tous les km), créée plus bas.
         if (isVrItem(item) && assignmentId) {
-          const rem = (existingRows || []).find((r: any) => !r.vab_vr?.standalone && (!r.vab_vr || r.vab_vr.aid === assignmentId))
+          const rem = (existingRows || []).find((r: any) => !DEJA_DEPOSE.includes(String(r.status)) && !r.vab_vr?.standalone && (!r.vab_vr || r.vab_vr.aid === assignmentId))
           if (rem) {
             const vr = await vrDepuisDetail(detail, assignmentId, fullDossier, false)
             await rattacherVr(sb, rem, vr)
