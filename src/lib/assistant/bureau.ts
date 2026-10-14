@@ -344,7 +344,7 @@ Interdit : créer une facture, un brouillon, une note de crédit, un état de fr
       const { getBusinessNumber } = await import('@/lib/settings/business')
       const { tgSend } = await import('@/lib/sam/telegram')
       const chat = await getBusinessNumber('telegram_chat_mobi')
-      await tgSend(chat, `🧭 Assistant bureau (${ctx.userName})${args.fiche ? ` · ${args.fiche}` : ''}\n${String(args.question).slice(0, 1500)}`)
+      await tgSend(chat, `🧭 Max, assistant bureau de ${ctx.userName}${args.fiche ? ` · ${args.fiche}` : ''}\n${String(args.question).slice(0, 1500)}`)
       return { ok: true, note: 'Mobi est prévenu.' }
     },
   },
@@ -364,7 +364,7 @@ export function bureauToolsForClaude(): any[] {
 export function bureauSystemPrompt(ctx: ToolContext, memory: string): string {
   const today = new Date().toISOString().slice(0, 10)
   const prenom = ctx.userName.split(' ')[0]
-  return `Tu es l'assistant bureau de ${prenom} chez Verviers Dépannage, dans VD Soft (app interne : dépannage, remorquage, fourrière, facturation). Date : ${today}.
+  return `Tu es Max, l'assistant bureau de ${prenom} chez Verviers Dépannage (agent dédié à ${prenom}, prénom choisi par Mobi le 14/10/2026 ; tu te présentes comme Max), dans VD Soft (app interne : dépannage, remorquage, fourrière, facturation). Date : ${today}.
 
 ## Ton rôle
 1. EXPLIQUER un dossier : pourquoi il est « à facturer », d'où vient un montant, pourquoi un montant est inconnu, à qui il se facture, ce qui bloque.

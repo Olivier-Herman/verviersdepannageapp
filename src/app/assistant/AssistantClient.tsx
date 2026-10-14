@@ -187,7 +187,7 @@ export default function AssistantClient(props: Props) {
   }
 
   return (
-    <AppShell title={bureau ? 'Assistant bureau' : 'Assistant IA'} userRole={props.userRole} userName={props.userName} userEmail={props.userEmail} userId={props.userId} userModules={props.userModules}>
+    <AppShell title={bureau ? 'Max — assistant bureau' : 'Assistant IA'} userRole={props.userRole} userName={props.userName} userEmail={props.userEmail} userId={props.userId} userModules={props.userModules}>
       <div className="flex h-[calc(100vh-60px)]">
         {/* Sidebar conversations */}
         <aside className="w-64 border-r border-surface-hover bg-surface flex flex-col">
@@ -230,7 +230,7 @@ export default function AssistantClient(props: Props) {
           {!activeId && (
             <div className="flex-1 flex items-center justify-center">
               <div className="text-center max-w-md p-6">
-                <h2 className="text-xl font-display font-bold text-ink mb-2">👋 Salut {props.userName.split(' ')[0]}</h2>
+                <h2 className="text-xl font-display font-bold text-ink mb-2">👋 Salut {props.userName.split(' ')[0]}{bureau ? ', moi c’est Max' : ''}</h2>
                 {bureau ? (
                   <div className="text-ink-muted text-sm mb-4 space-y-2 text-left">
                     <p>Pose-moi tes questions sur un dossier : pourquoi il est à facturer, d'où vient un montant, à qui il se facture, ce qui bloque. Donne la plaque ou le numéro de fiche.</p>
@@ -263,7 +263,7 @@ export default function AssistantClient(props: Props) {
                 {sending && (
                   <div className="flex items-center gap-2 text-ink-faint text-sm italic">
                     <span className="inline-block w-2 h-2 bg-brand rounded-full animate-pulse"></span>
-                    L'assistant réfléchit…
+                    {bureau ? 'Max cherche…' : 'L\'assistant réfléchit…'}
                   </div>
                 )}
                 <div ref={messagesEndRef} />
