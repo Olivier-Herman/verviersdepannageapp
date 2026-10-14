@@ -74,10 +74,57 @@ export function cleanAddressForGeocode(raw: string | null | undefined): string {
     .trim()
 }
 
-export async function geocodeAddressServer(raw: string | null | undefined): Promise<GeocodeHit | null> {
+/** Adresse sur autoroute (« A27 DIR SAP KM 15.3 », « Aire de Polleur, E42 », « E25 sortie 46 »). */
+export function isHighwayAddress(raw: string | null | undefined): boolean {
+  // Prudent : « Rue X 12 boîte A 3 » ne doit pas passer pour une autoroute. L'adresse COMMENCE par
+  // l'autoroute, ou la cite avec un repère (km, direction, sortie), ou parle d'aire / d'autoroute.
+  const t = String(raw || '')
+  return /^\s*[AE]\s?\d{1,3}\b/i.test(t) || /\bautoroute\b|\baire de\b/i.test(t)
+    || /\b[AE]\s?\d{1,3}\b.*\b(km|dir|direction|sortie|ext)\b/i.test(t)
+}
+
+/**
+ * AUTOROUTES (Olivier 14/10/2026, P567X / 2CNZ592 / 2EPD687) : le géocodage d'adresse ne trouve rien
+ * pour « A27 DIR SAP KM 15.3 » et les fiches restaient « km inconnus » jusqu'à ce que le bureau place le
+ * point. Google Places (la même recherche que les suggestions de la fiche) trouve l'aire, la sortie ou le
+ * tronçon dans la commune. Position approximative (quelques km au plus), assumée et écrite dans le label.
+ * Clé du navigateur, restreinte par referer : Places (New) l'accepte avec l'en-tête Referer.
+ */
+async function geocodeHighwayPlaces(text: string): Promise<GeocodeHit | null> {
+  const key = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY
+  if (!key) return null
+  const base = process.env.NEXTAUTH_URL || 'https://app.verviersdepannage.com'
+  try {
+    const r = await fetch('https://places.googleapis.com/v1/places:searchText', {
+      method: 'POST', cache: 'no-store', signal: AbortSignal.timeout(6000),
+      headers: { 'Content-Type': 'application/json', 'X-Goog-Api-Key': key, 'Referer': base.replace(/\/?$/, '/'),
+        'X-Goog-FieldMask': 'places.displayName,places.formattedAddress,places.location,places.types' },
+      body: JSON.stringify({ textQuery: text, regionCode: 'BE', languageCode: 'fr' }),
+    })
+    void countRoutingCall('google', 'adresse', !r.ok)
+    if (!r.ok) { lastFailure = 'transient'; return null }
+    const j: any = await r.json()
+    const p = (j.places || []).find((x: any) => x?.location && (x.types || []).some((t: string) => ['route', 'rest_stop', 'gas_station', 'intersection', 'point_of_interest'].includes(t)))
+    if (!p) { lastFailure = 'not_found'; return null }
+    lastFailure = null
+    const nom = [p.displayName?.text, p.formattedAddress].filter(Boolean).join(', ')
+    return { lat: Number(p.location.latitude), lng: Number(p.location.longitude), label: `${nom} (position approximative, autoroute)`, confidence: 0.6, layer: 'google:places_autoroute' }
+  } catch (e: any) { lastFailure = 'transient'; console.warn('[geocode] places autoroute KO:', e?.message); return null }
+}
+
+export async function geocodeAddressServer(raw: string | null | undefined, city?: string | null): Promise<GeocodeHit | null> {
   const text = cleanAddressForGeocode(raw)
   if (text.length < 6) return null
   lastFailure = null
+  if (isHighwayAddress(text)) {
+    const c = String(city || '').trim()
+    const h = await geocodeHighwayPlaces(c && !text.toLowerCase().includes(c.toLowerCase()) ? `${text}, ${c}` : text)
+    if (h) return h
+    // Texte trop chargé (« A27 - E42 ; Theux (Ext.7) - Heusy (Ext.6) ; km 8,2 … ») : l'autoroute + la commune.
+    const route = text.match(/\b[AE]\s?\d{1,3}\b/i)?.[0]?.replace(/\s/g, '').toUpperCase()
+    const lieu = c || text.match(/\(?\b([A-ZÀ-Ÿ][a-zà-ÿ'-]{2,})\s*\(Ext/)?.[1] || ''
+    if (route && lieu) { const h2 = await geocodeHighwayPlaces(`${route}, ${lieu}`); if (h2) return h2 }
+  }
 
   // Google d'abord : c'est ce que fait le navigateur, et il lit les adresses
   // des assisteurs (« qteam, CHAINEUX,HERVE, BEL » → le garage QTeam, pas le
@@ -143,14 +190,14 @@ export async function depotCoordsFor(sb: any, address: string | null | undefined
 export async function ensureMissionCoords(sb: any, missionId: string): Promise<{ incident: boolean; destination: boolean }> {
   const out = { incident: false, destination: false }
   const { data: m } = await sb.from('incoming_missions')
-    .select('id, incident_address, incident_lat, incident_lng, destination_address, destination_lat, destination_lng')
+    .select('id, incident_address, incident_city, incident_lat, incident_lng, destination_address, destination_lat, destination_lng')
     .eq('id', missionId).maybeSingle()
   if (!m) return out
   const upd: Record<string, any> = {}
   const notes: string[] = []
   let transient = false
   if ((m.incident_lat == null || m.incident_lng == null) && m.incident_address) {
-    const h = (await depotCoordsFor(sb, m.incident_address)) || (await geocodeAddressServer(m.incident_address))
+    const h = (await depotCoordsFor(sb, m.incident_address)) || (await geocodeAddressServer(m.incident_address, m.incident_city))
     if (h) { upd.incident_lat = h.lat; upd.incident_lng = h.lng; out.incident = true; notes.push(`intervention → ${h.label}`) }
     else if (lastFailure === 'transient') transient = true
   }
