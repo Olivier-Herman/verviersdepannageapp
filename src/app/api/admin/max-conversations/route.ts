@@ -15,6 +15,12 @@ export async function GET(req: Request) {
   const roles: string[] = [u?.role, ...(Array.isArray(u?.roles) ? u.roles : [])]
   if (!roles.includes('superadmin')) return NextResponse.json({ error: 'Superadmin uniquement' }, { status: 403 })
   const sb = createAdminClient()
+  // Coût de Max : mois en cours + 5 précédents (refacturation à VD, Olivier 14/10/2026).
+  if (new URL(req.url).searchParams.get('cout')) {
+    const { maxMonth, monthKey } = await import('@/lib/assistant/max-cost')
+    const mois = await Promise.all([0, -1, -2, -3, -4, -5].map(d => maxMonth(monthKey(d))))
+    return NextResponse.json({ mois })
+  }
   const id = new URL(req.url).searchParams.get('id')
   if (id) {
     const [{ data: conv }, { data: messages }, { data: actions }] = await Promise.all([

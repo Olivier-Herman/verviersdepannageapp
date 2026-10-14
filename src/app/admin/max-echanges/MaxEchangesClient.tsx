@@ -14,9 +14,13 @@ export default function MaxEchangesClient() {
   const [active, setActive] = useState<string | null>(null)
   const [detail, setDetail] = useState<{ messages: Message[]; actions: ActionRow[] } | null>(null)
   const [loading, setLoading] = useState(false)
+  const [cout, setCout] = useState<any[] | null>(null)
 
   useEffect(() => {
     fetch('/api/admin/max-conversations', { cache: 'no-store' }).then(r => r.json()).then(j => { if (j.error) setError(j.error); else setConvs(j.conversations || []) }).catch(e => setError(e.message))
+  }, [])
+  useEffect(() => {
+    fetch('/api/admin/max-conversations?cout=1', { cache: 'no-store' }).then(r => r.json()).then(j => setCout(j.mois || [])).catch(() => setCout([]))
   }, [])
   useEffect(() => {
     if (!active) { setDetail(null); return }
@@ -39,6 +43,28 @@ export default function MaxEchangesClient() {
           <p className="text-ink-muted text-sm">Toutes les conversations du bureau avec Max, en lecture seule : questions, réponses, recherches faites et corrections proposées, confirmées ou annulées.</p>
         </div>
       </div>
+      <section className="bg-surface border rounded-xl p-4">
+        <h2 className="text-sm font-semibold text-ink mb-1">Coût de Max</h2>
+        <p className="text-xs text-ink-muted mb-3">Coût de l’IA facturé par le fournisseur, en dollars, par mois et par personne. Le récap du mois écoulé t’arrive sur Telegram le 1er du mois.</p>
+        {cout === null && <p className="text-sm text-ink-faint">Calcul…</p>}
+        {cout && (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead><tr className="text-left text-ink-secondary text-xs"><th className="py-1.5 pr-3">Mois</th><th className="py-1.5 pr-3 text-right">Coût</th><th className="py-1.5 pr-3 text-right">Questions</th><th className="py-1.5">Par personne</th></tr></thead>
+              <tbody>
+                {cout.map((m: any) => (
+                  <tr key={m.mois} className="border-t align-top">
+                    <td className="py-2 pr-3 font-medium text-ink capitalize">{m.libelle}</td>
+                    <td className="py-2 pr-3 text-right tabular-nums font-semibold text-ink">{m.cout_usd.toFixed(2)} $</td>
+                    <td className="py-2 pr-3 text-right tabular-nums">{m.questions}</td>
+                    <td className="py-2 text-ink-secondary">{m.personnes.length ? m.personnes.map((p: any) => `${p.nom} ${p.cout_usd.toFixed(2)} $ (${p.questions})`).join(' · ') : '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
       {error && <p className="text-sm text-red-800 bg-red-50 border border-red-200 rounded-lg px-3 py-2">Impossible de charger les conversations : {error}</p>}
       <div className="flex items-center gap-2 flex-wrap">
         <label htmlFor="who" className="text-sm text-ink-secondary">Personne</label>

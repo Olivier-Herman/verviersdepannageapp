@@ -12,18 +12,22 @@ import Anthropic from '@anthropic-ai/sdk'
 import { createAdminClient } from '@/lib/supabase'
 import { TOOLS_BY_NAME, toolsForClaude, ToolContext } from './tools'
 import { ANTHROPIC_MODEL } from '@/lib/anthropic-model'
-import { aiClient } from '@/lib/ai/usage'
+import { aiClient, withAiContext } from '@/lib/ai/usage'
 
 const MODEL = ANTHROPIC_MODEL
 const MAX_TOOL_ITERATIONS = 10  // safety : eviter boucle infinie
 
 let cachedClient: Anthropic | null = null
-function getClient(): Anthropic {
-  if (cachedClient) return cachedClient
+let cachedMax: Anthropic | null = null
+// Max (assistant bureau) a sa propre ligne dans conso_ia (« assistant/max ») : Olivier
+// voit chaque mois ce qu'il coûte pour décider de le refacturer à VD (14/10/2026).
+function getClient(max = false): Anthropic {
+  if (max ? cachedMax : cachedClient) return (max ? cachedMax : cachedClient)!
   const apiKey = process.env.ANTHROPIC_API_KEY
   if (!apiKey) throw new Error('ANTHROPIC_API_KEY manquant en env vars')
-  cachedClient = aiClient('assistant/claude', { apiKey })
-  return cachedClient
+  const c = aiClient(max ? 'assistant/max' : 'assistant/claude', { apiKey })
+  if (max) cachedMax = c; else cachedClient = c
+  return c
 }
 
 /**
@@ -143,10 +147,10 @@ export async function runChatTurn(input: ChatTurnInput): Promise<ChatTurnOutput>
   // 4. Tool use loop
   const allToolCalls: ChatTurnOutput['toolCalls'] = []
   let finalText = ''
-  const client = getClient()
+  const client = getClient(bureau)
 
   for (let iter = 0; iter < MAX_TOOL_ITERATIONS; iter++) {
-    const resp = await client.messages.create({
+    const call = () => client.messages.create({
       model:      MODEL,
       max_tokens: 4096,
       // Prompt caching : system + tools sont identiques à chaque itération/tour →
@@ -155,6 +159,8 @@ export async function runChatTurn(input: ChatTurnInput): Promise<ChatTurnOutput>
       tools:      toolDefs,
       messages:   claudeMessages,
     })
+    // Max : coût rangé au nom de la personne (déclencheur « max:<prénom> »).
+    const resp = bureau ? await withAiContext({ declencheur: `max:${input.ctx.userName}`, ref: input.conversationId }, call) : await call()
 
     // Sauvegarde le message assistant (avec tous ses content blocks, y compris tool_use)
     await sb.from('assistant_messages').insert({
