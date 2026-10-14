@@ -62,6 +62,8 @@ export default function TalkieOverlay() {
   }, [visible, barSpace])
   const bottomPos = barSpace > 0 ? `${Math.round(barSpace + 12)}px` : 'calc(env(safe-area-inset-bottom, 0px) + 84px)'
   if (!t || !t.me || !t.channels.length || pathname.startsWith('/talkie')) return null
+  // Caché sur ordinateur pour qui l'a demandé (talkie_masque_pc) ; l'app iPhone (marqueur VDNav/) le garde.
+  if (t.hideOnWeb && !(typeof navigator !== 'undefined' && /VDNav\//.test(navigator.userAgent))) return null
 
   const label = (key: string) => { const c = t.channels.find(x => x.key === key); return !c ? '' : c.kind === 'garde' ? 'Garde de nuit' : c.label }
   const speaking = Object.entries(t.floor).find(([, f]) => f && f.id !== t.me!.id) as [string, { id: string; name: string }] | undefined
