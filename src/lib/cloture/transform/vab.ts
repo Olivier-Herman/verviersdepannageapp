@@ -75,9 +75,28 @@ export async function runVabOnSite(input: VabOnSiteInput): Promise<void> {
   if (!assignmentId) { await log('vab_onsite_skipped', 'VAB : AssignmentId introuvable dans external_id', { externalId: input.externalId }); return }
 
   // Déjà fait ? (double validation, reprise du chauffeur…)
-  const { data: m } = await sb.from('incoming_missions').select('vab_onsite_at, vab_closed_at, vehicle_vin, vehicle_plate, mission_number').eq('id', input.missionId).maybeSingle()
+  const { data: m } = await sb.from('incoming_missions').select('vab_onsite_at, vab_closed_at, vehicle_vin, vehicle_plate, mission_number, vab_vr').eq('id', input.missionId).maybeSingle()
   if ((m as any)?.vab_onsite_at || (m as any)?.vab_closed_at) {
     await log('vab_onsite_skipped', 'VAB : déjà amenée à l’écran de code, on ne rejoue pas', {})
+    return
+  }
+
+  // ── VÉHICULE DE REMPLACEMENT : PAS D'ÉCRAN DE CODES ──────────────────────
+  // Une fiche qui EST la livraison ou l'enlèvement d'un VR (page Delivery / Pickup chez VAB) se clôture par
+  // l'assistant de document (infos du conducteur), à la main dans Comet. La clôture sur place la cherchait
+  // et échouait (« écran on-site/code non trouvé », 1WXK155 enlèvement de VR, 14/10/2026) : simple rappel.
+  const vr: any = (m as any)?.vab_vr
+  if (vr && String(vr.aid) === String(assignmentId)) {
+    await log('vab_close_skipped', `VAB : véhicule de remplacement — clôture à faire dans Comet (informations du conducteur)`, { assignmentId, vr: true })
+    try {
+      const { sendNotificationToRoles } = await import('@/lib/notifications/send')
+      const qui = [(m as any)?.vehicle_plate, (m as any)?.mission_number ? `n° ${(m as any).mission_number}` : ''].filter(Boolean).join(' · ')
+      await sendNotificationToRoles(['dispatcher', 'admin', 'superadmin'], 'vab_vr_a_cloturer', {
+        title: `VAB ${qui} : véhicule de remplacement à clôturer`,
+        body: 'Mission terminée. VAB demande les informations du conducteur : clôture à faire dans Comet.',
+        action_url: `/missions/${input.missionId}`,
+      } as any)
+    } catch { /* le rappel est un plus */ }
     return
   }
 
