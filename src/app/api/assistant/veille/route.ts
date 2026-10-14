@@ -11,7 +11,9 @@ export async function GET() {
   const user = await assistantUser('bureau')
   if (!user) return NextResponse.json({ error: 'Accès refusé' }, { status: 403 })
   try {
-    return NextResponse.json({ heures: inWorkHours(), cartes: await veilleCards(createAdminClient(), user.id) })
+    const { getBusinessList } = await import('@/lib/settings/business')
+    const bureau = (await getBusinessList('assistant_bureau_users').catch(() => [] as string[])).map(x => String(x).toLowerCase()).includes(String(user.email || '').toLowerCase())
+    return NextResponse.json({ heures: inWorkHours(), cartes: await veilleCards(createAdminClient(), user.id, { bureau }) })
   } catch (e: any) {
     return NextResponse.json({ error: e?.message || String(e), cartes: [] }, { status: 500 })
   }

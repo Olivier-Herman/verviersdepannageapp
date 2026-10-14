@@ -105,6 +105,17 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   master    = aTime <= bTime ? a : b
   secondary = master.id === a.id ? b : a
 
+  // La fiche absorbée attend une clôture chez une assistance : la fusion l'annulerait et la
+  // clôture ne partirait jamais (Olivier 14/10/2026, 2CNZ592). On refuse et on dit quoi faire.
+  {
+    const { pendingAssistanceClosure } = await import('@/lib/missions/assistance-closure')
+    const pend = await pendingAssistanceClosure(sb, secondary.id)
+    if (pend) {
+      const ref = secondary.mission_number != null ? `#${secondary.mission_number}` : 'la fiche la plus récente'
+      return NextResponse.json({ error: `Fusion impossible : ${ref} attend encore sa clôture chez ${pend}. Si c'est la suite du remorquage (même voiture, autre trajet), demande à Max de la rattacher comme relivraison. Si c'est vraiment la même intervention, clôture-la d'abord chez l'assistance, puis fusionne.`, assistance_pending: pend }, { status: 409 })
+    }
+  }
+
   // ── Construire les màj de la principale (source CONSERVÉE) ────────────────
   const upd: Record<string, any> = { updated_at: new Date().toISOString() }
   // Payeur = assistance : on prend celui de la secondaire s'il existe.

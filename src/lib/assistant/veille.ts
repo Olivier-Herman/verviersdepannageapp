@@ -62,7 +62,7 @@ function depotMatch(depots: { name: string; address: string }[], addr?: string |
 const lastPointage = (m: any) => [m.loaded_at, m.on_site_at, m.on_way_at, m.accepted_at, m.assigned_at, m.received_at].filter(Boolean).sort().pop() || null
 
 /** Construit (et enregistre) les questions ouvertes, puis rend celles de cette personne. */
-export async function veilleCards(sb: Sb, userId: string): Promise<VeilleCard[]> {
+export async function veilleCards(sb: Sb, userId: string, opts: { bureau: boolean } = { bureau: true }): Promise<VeilleCard[]> {
   const now = Date.now()
   const mine = await aliasIds(sb, userId)
   const { getBusinessList } = await import('@/lib/settings/business')
@@ -99,7 +99,10 @@ export async function veilleCards(sb: Sb, userId: string): Promise<VeilleCard[]>
     const { data: row } = await sb.from('max_veille').insert({ mission_id: s.m.id, kind: s.kind, owner_user_id: s.kind === 'figee_attribuee' ? (assigner[s.m.id] || null) : null }).select('id, mission_id, kind, owner_user_id, status').single()
     if (row) open.push({ row, s })
   }
-  const forMe = open.filter(o => !o.row.owner_user_id || mine.includes(o.row.owner_user_id))
+  // Mission attribuée → seulement à qui l'a attribuée (tous ses profils). Sans chauffeur ou à
+  // trier → seulement aux personnes du bureau (réglage assistant_bureau_users), jamais à Mobi
+  // (Olivier 14/10/2026 : « il ne faut pas m'envoyer les notif de Momo a moi »).
+  const forMe = open.filter(o => o.row.owner_user_id ? mine.includes(o.row.owner_user_id) : opts.bureau)
   if (!forMe.length) return []
 
   const [{ data: users }, { data: depots }] = await Promise.all([
