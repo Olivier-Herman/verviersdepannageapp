@@ -9,6 +9,7 @@
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { Search } from 'lucide-react'
 import { T } from '@/lib/i18n/T'
 import { type NavItem } from './nav-items'
@@ -21,19 +22,32 @@ export default function AppNavMini({ items, userRole, userModules, badges = {}, 
   const modules  = useMemo(() => buildNavTree(items, userRole, userModules, espaces, flags), [items, userRole, userModules, espaces, flags])
   const active   = useMemo(() => findActiveModule(modules, pathname), [modules, pathname])
   const [openKey, setOpenKey] = useState<string | null>(null)
-  const [top, setTop] = useState(0)
+  // Position ÉCRAN du volet (Olivier 14/10/2026, Mac) : dessiné dans la barre de 64 px, qui défile
+  // (overflow-y-auto → tout ce qui dépasse est coupé), le volet restait invisible et le clic semblait
+  // ne rien faire. Il est maintenant rendu dans <body>, en position fixe, à droite du pictogramme.
+  const [pos, setPos] = useState({ top: 0, left: 0 })
   const navRef = useRef<HTMLElement>(null)
   const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const modBadge = (m: BuiltModule) => m.href ? (badges[m.href] || 0) : m.visibleSections.reduce((s, x) => s + (badges[x.href] || 0), 0)
   const openFor = (m: BuiltModule, el: HTMLElement) => {
     if (closeTimer.current) { clearTimeout(closeTimer.current); closeTimer.current = null }
-    const navTop = navRef.current?.getBoundingClientRect().top ?? 0
-    setTop(el.getBoundingClientRect().top - navTop + (navRef.current?.scrollTop ?? 0))
+    const r = el.getBoundingClientRect()
+    const maxTop = Math.max(8, window.innerHeight - 40 - 44 * (m.visibleSections.length + 1))
+    setPos({ top: Math.min(r.top, maxTop), left: r.right + 6 })
     setOpenKey(m.key)
   }
   const scheduleClose = () => { closeTimer.current = setTimeout(() => setOpenKey(null), 250) }
   useEffect(() => { setOpenKey(null) }, [pathname])
+  // Fermer au défilement de la barre ou au redimensionnement (le volet est positionné à l'écran).
+  useEffect(() => {
+    if (!openKey) return
+    const close = () => setOpenKey(null)
+    const nav = navRef.current
+    nav?.addEventListener('scroll', close, { passive: true })
+    window.addEventListener('resize', close)
+    return () => { nav?.removeEventListener('scroll', close); window.removeEventListener('resize', close) }
+  }, [openKey])
   const openMod = openKey ? modules.find(m => m.key === openKey) : null
 
   return (
@@ -71,9 +85,9 @@ export default function AppNavMini({ items, userRole, userModules, badges = {}, 
       })}
 
       {/* Volet des sections du module survolé / cliqué */}
-      {openMod && (
-        <div role="menu" style={{ top }} onMouseEnter={() => { if (closeTimer.current) clearTimeout(closeTimer.current) }} onMouseLeave={scheduleClose}
-          className="absolute left-full ml-1 z-50 min-w-[210px] bg-surface border rounded-xl shadow-xl p-1.5">
+      {openMod && typeof document !== 'undefined' && createPortal(
+        <div role="menu" style={{ top: pos.top, left: pos.left }} onMouseEnter={() => { if (closeTimer.current) clearTimeout(closeTimer.current) }} onMouseLeave={scheduleClose}
+          className="fixed z-[100] min-w-[210px] max-h-[calc(100vh-16px)] overflow-y-auto bg-surface border rounded-xl shadow-xl p-1.5">
           <Link href={landingHref(openMod) || '#'} className="block px-3 pt-1.5 pb-1 text-xs font-bold uppercase tracking-wide text-ink-muted hover:text-ink">
             {openMod.icon} {openMod.i18nKey ? <T k={openMod.i18nKey} /> : openMod.label}
           </Link>
@@ -89,7 +103,8 @@ export default function AppNavMini({ items, userRole, userModules, badges = {}, 
               </Link>
             )
           })}
-        </div>
+        </div>,
+        document.body,
       )}
     </nav>
   )
