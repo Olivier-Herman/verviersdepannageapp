@@ -15,6 +15,7 @@ export interface ToolContext {
   userId:    string
   userEmail: string
   userName:  string
+  conversationId?: string
 }
 
 export interface ToolDef {

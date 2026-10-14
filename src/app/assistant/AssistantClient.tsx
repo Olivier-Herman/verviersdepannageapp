@@ -11,7 +11,11 @@ interface Props {
   userEmail?:  string
   userId?:     string
   userModules: string[]
+  /** 'bureau' = assistant de Jona (comprendre / corriger un dossier, Olivier 14/10/2026). */
+  mode?:       'admin' | 'bureau'
 }
+
+interface ActionRow { id: string; kind: string; resume: string; status: string; error: string | null }
 
 interface Conversation {
   id:         string
@@ -55,6 +59,22 @@ export default function AssistantClient(props: Props) {
   const [sending, setSending] = useState(false)
   const [input, setInput] = useState('')
   const messagesEndRef = useRef<HTMLDivElement>(null)
+  const mode = props.mode || 'admin'
+  const bureau = mode === 'bureau'
+  const [actions, setActions] = useState<Record<string, ActionRow>>({})
+  const [deciding, setDeciding] = useState<string | null>(null)
+  const keepActions = (list: ActionRow[] | undefined) => setActions(Object.fromEntries((list || []).map(a => [a.id, a])))
+
+  async function decide(actionId: string, decision: 'confirmer' | 'annuler') {
+    if (!activeId || deciding) return
+    setDeciding(actionId)
+    try {
+      const r = await fetch(`/api/assistant/actions/${actionId}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ decision }) })
+      const j = await r.json().catch(() => ({}))
+      if (!r.ok && r.status !== 409 && !j.status) alert(j.error || 'Action impossible')
+      await loadMessages(activeId)
+    } finally { setDeciding(null) }
+  }
 
   useEffect(() => { loadConversations() }, [])
 
@@ -68,7 +88,7 @@ export default function AssistantClient(props: Props) {
   }, [messages, sending])
 
   async function loadConversations() {
-    const r = await fetch('/api/assistant/conversations')
+    const r = await fetch(`/api/assistant/conversations?mode=${mode}`)
     const j = await r.json()
     setConversations(j.conversations || [])
     if (!activeId && j.conversations?.length > 0) {
@@ -82,13 +102,14 @@ export default function AssistantClient(props: Props) {
       const r = await fetch(`/api/assistant/conversations/${id}`)
       const j = await r.json()
       setMessages(j.messages || [])
+      keepActions(j.actions)
     } finally {
       setLoading(false)
     }
   }
 
   async function createConversation() {
-    const r = await fetch('/api/assistant/conversations', { method: 'POST' })
+    const r = await fetch('/api/assistant/conversations', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mode }) })
     const j = await r.json()
     if (j.conversation) {
       setConversations(prev => [j.conversation, ...prev])
@@ -108,7 +129,7 @@ export default function AssistantClient(props: Props) {
     if (!text || sending) return
     let convId = activeId
     if (!convId) {
-      const r = await fetch('/api/assistant/conversations', { method: 'POST' })
+      const r = await fetch('/api/assistant/conversations', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mode }) })
       const j = await r.json()
       if (!j.conversation) return
       convId = j.conversation.id
@@ -142,6 +163,7 @@ export default function AssistantClient(props: Props) {
         }])
       } else {
         setMessages(j.messages || [])
+        keepActions(j.actions)
         // Refresh la liste pour le titre auto
         loadConversations()
       }
@@ -165,7 +187,7 @@ export default function AssistantClient(props: Props) {
   }
 
   return (
-    <AppShell title="Assistant IA" userRole={props.userRole} userName={props.userName} userEmail={props.userEmail} userId={props.userId} userModules={props.userModules}>
+    <AppShell title={bureau ? 'Assistant bureau' : 'Assistant IA'} userRole={props.userRole} userName={props.userName} userEmail={props.userEmail} userId={props.userId} userModules={props.userModules}>
       <div className="flex h-[calc(100vh-60px)]">
         {/* Sidebar conversations */}
         <aside className="w-64 border-r border-surface-hover bg-surface flex flex-col">
@@ -209,9 +231,17 @@ export default function AssistantClient(props: Props) {
             <div className="flex-1 flex items-center justify-center">
               <div className="text-center max-w-md p-6">
                 <h2 className="text-xl font-display font-bold text-ink mb-2">👋 Salut {props.userName.split(' ')[0]}</h2>
+                {bureau ? (
+                  <div className="text-ink-muted text-sm mb-4 space-y-2 text-left">
+                    <p>Pose-moi tes questions sur un dossier : pourquoi il est à facturer, d'où vient un montant, à qui il se facture, ce qui bloque. Donne la plaque ou le numéro de fiche.</p>
+                    <p>Je peux aussi <b>corriger</b> un dossier : je te résume ce que j'ai compris et ce que je vais changer, et rien ne se fait tant que tu n'as pas cliqué sur <b>Confirmer</b>.</p>
+                    <p>Je ne fais jamais de facture : une fois le dossier corrigé, tu factures comme d'habitude.</p>
+                  </div>
+                ) : (
                 <p className="text-ink-muted text-sm mb-4">
                   Je peux créer/modifier des tarifs, sources, règles, chercher des missions, ajouter des remarques, et répondre à tes questions sur l'app.
                 </p>
+                )}
                 <button
                   onClick={createConversation}
                   className="px-4 py-2 bg-brand hover:bg-brand-hover text-white rounded-lg text-sm font-medium transition"
@@ -229,7 +259,7 @@ export default function AssistantClient(props: Props) {
                 {!loading && messages.length === 0 && (
                   <p className="text-ink-faint text-sm italic text-center">Conversation vide. Pose ta première question.</p>
                 )}
-                {messages.map(m => <MessageView key={m.id} message={m} />)}
+                {messages.map(m => <MessageView key={m.id} message={m} results={toolResults(messages)} actions={actions} deciding={deciding} onDecide={decide} />)}
                 {sending && (
                   <div className="flex items-center gap-2 text-ink-faint text-sm italic">
                     <span className="inline-block w-2 h-2 bg-brand rounded-full animate-pulse"></span>
@@ -267,7 +297,16 @@ export default function AssistantClient(props: Props) {
   )
 }
 
-function MessageView({ message }: { message: Message }) {
+/** tool_use_id → résultat (JSON) : l'encadré d'une action proposée y lit son identifiant. */
+function toolResults(messages: Message[]): Record<string, any> {
+  const out: Record<string, any> = {}
+  for (const m of messages) if (Array.isArray(m.content)) for (const b of m.content) if (b.type === 'tool_result' && b.tool_use_id) {
+    try { out[b.tool_use_id] = JSON.parse(String(b.content || '{}')) } catch { out[b.tool_use_id] = null }
+  }
+  return out
+}
+
+function MessageView({ message, results, actions, deciding, onDecide }: { message: Message; results: Record<string, any>; actions: Record<string, ActionRow>; deciding: string | null; onDecide: (id: string, d: 'confirmer' | 'annuler') => void }) {
   const blocks = Array.isArray(message.content)
     ? message.content
     : [{ type: 'text' as const, text: (message.content as any)?.text || '' }]
@@ -275,6 +314,11 @@ function MessageView({ message }: { message: Message }) {
   // Skip messages that are pure tool_result (already shown grouped with tool_use)
   const onlyToolResults = blocks.every(b => b.type === 'tool_result')
   if (onlyToolResults && message.role === 'user') return null
+
+  // Décision sur une action (écrite par VD Soft dans la conversation) : note centrée.
+  if (message.role === 'user' && blocks.length === 1 && blocks[0].type === 'text' && String(blocks[0].text || '').startsWith('⚙️')) {
+    return <p className="text-center text-xs text-ink-muted italic">{blocks[0].text}</p>
+  }
 
   if (message.role === 'user') {
     return (
@@ -298,6 +342,9 @@ function MessageView({ message }: { message: Message }) {
                 </ReactMarkdown>
               </div>
             )
+          }
+          if (b.type === 'tool_use' && b.name === 'proposer_action') {
+            return <ActionCard key={i} input={b.input} result={b.id ? results[b.id] : null} actions={actions} deciding={deciding} onDecide={onDecide} />
           }
           if (b.type === 'tool_use') {
             return <ToolUseBlock key={i} name={b.name || ''} input={b.input} />
@@ -370,6 +417,12 @@ function ToolUseBlock({ name, input }: { name: string; input: any }) {
     if (name === 'list_users')           return 'Liste les utilisateurs'
     if (name === 'list_surcharges')      return 'Liste les surcharges'
     if (name === 'read_memory')          return `Lit mémoire ${input?.key ? `"${input.key}"` : '(toutes)'}`
+    if (name === 'chercher_fiches')      return `Cherche les fiches « ${input?.texte || ''} »`
+    if (name === 'lire_fiche')           return `Lit la fiche ${input?.ref || ''}`
+    if (name === 'lire_dossier')         return `Lit le dossier ${input?.ref || ''}`
+    if (name === 'chercher_mails')       return `Cherche dans les mails « ${input?.texte || ''} »`
+    if (name === 'lire_mail')            return `Lit un mail (${input?.boite || ''})`
+    if (name === 'signaler_doute')       return 'Prévient Mobi d’un doute'
     if (name === 'write_memory')         return `Mémoire : ${input?.key} = "${(input?.value || '').slice(0, 80)}…"`
     return name
   })()
@@ -389,6 +442,38 @@ function ToolUseBlock({ name, input }: { name: string; input: any }) {
           {JSON.stringify(input, null, 2)}
         </pre>
       )}
+    </div>
+  )
+}
+
+/** Action proposée par l'assistant bureau : rien n'est fait avant « Confirmer ». */
+function ActionCard({ input, result, actions, deciding, onDecide }: { input: any; result: any; actions: Record<string, ActionRow>; deciding: string | null; onDecide: (id: string, d: 'confirmer' | 'annuler') => void }) {
+  const id: string | undefined = result?.action_id
+  const row = id ? actions[id] : undefined
+  const status = row?.status || (id ? 'en_attente' : 'refusee')
+  const show = (v: any) => v == null ? '—' : typeof v === 'object' ? JSON.stringify(v, null, 1).replace(/[{}"]/g, '').trim() : String(v)
+  const tone = status === 'faite' ? 'border-green-300 bg-green-50' : status === 'echec' || status === 'refusee' ? 'border-red-300 bg-red-50' : status === 'annulee' ? 'border-slate-300 bg-slate-50' : 'border-amber-300 bg-amber-50'
+  return (
+    <div className={`border-2 rounded-2xl px-4 py-3 text-sm ${tone}`}>
+      <p className="text-xs font-semibold uppercase tracking-wide text-slate-700">{result?.type || 'Action proposée'}</p>
+      <p className="mt-1 text-slate-900">{input?.resume}</p>
+      {result?.avant !== undefined && (
+        <div className="mt-2 grid sm:grid-cols-2 gap-2 text-xs">
+          <div><p className="font-semibold text-slate-700">Avant</p><pre className="whitespace-pre-wrap break-words text-slate-800">{show(result.avant)}</pre></div>
+          <div><p className="font-semibold text-slate-700">Après</p><pre className="whitespace-pre-wrap break-words text-slate-800">{show(result.apres)}</pre></div>
+        </div>
+      )}
+      {!id && <p className="mt-2 text-xs text-red-800">Proposition refusée par VD Soft : {result?.error || 'erreur'}</p>}
+      {id && status === 'en_attente' && (
+        <div className="mt-3 flex gap-2">
+          <button onClick={() => onDecide(id, 'confirmer')} disabled={!!deciding} className="min-h-[44px] px-4 rounded-xl bg-green-700 hover:bg-green-800 text-white font-semibold disabled:opacity-50">{deciding === id ? 'En cours…' : 'Confirmer'}</button>
+          <button onClick={() => onDecide(id, 'annuler')} disabled={!!deciding} className="min-h-[44px] px-4 rounded-xl border border-slate-300 bg-white text-slate-800 font-semibold disabled:opacity-50">Annuler</button>
+        </div>
+      )}
+      {status === 'en_cours' && <p className="mt-2 text-xs text-slate-700">En cours…</p>}
+      {status === 'faite' && <p className="mt-2 text-xs font-semibold text-green-800">✓ Fait</p>}
+      {status === 'annulee' && <p className="mt-2 text-xs text-slate-700">Annulée — rien n’a été modifié.</p>}
+      {status === 'echec' && <p className="mt-2 text-xs text-red-800">Refusé par VD Soft : {row?.error}</p>}
     </div>
   )
 }

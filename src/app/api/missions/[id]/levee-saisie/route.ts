@@ -27,16 +27,23 @@ const MAX_FILE_SIZE = 10 * 1024 * 1024 // 10 MB
 // répond « frais de justice » (Olivier 09/09/2026 : « l'id 67 »).
 const FRAIS_JUSTICE_NAME    = 'Frais de Justice Verviers'
 
-async function getActor() {
+async function getActor(req: Request) {
+  // Appel interne de l'assistant bureau (Olivier 14/10/2026) : action confirmée par la
+  // personne elle-même dans sa conversation, rejouée ici avec SON compte (comme Sam).
+  const secret = req.headers.get('x-internal-secret'), actorId = req.headers.get('x-internal-actor')
+  const sb = createAdminClient()
+  if (secret && actorId && process.env.NEXTAUTH_SECRET && secret === process.env.NEXTAUTH_SECRET) {
+    const { data } = await sb.from('users').select('id, name, email').eq('id', actorId).maybeSingle()
+    return data ?? null
+  }
   const session = await getServerSession(authOptions)
   if (!session?.user?.email) return null
-  const sb = createAdminClient()
   const { data } = await sb.from('users').select('id, name, email').eq('email', session.user.email).maybeSingle()
   return data ?? null
 }
 
 export async function POST(req: Request, { params }: { params: { id: string } }) {
-  const actor = await getActor()
+  const actor = await getActor(req)
   if (!actor) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const formData = await req.formData()

@@ -130,7 +130,15 @@ export async function runChatTurn(input: ChatTurnInput): Promise<ChatTurnOutput>
   }
 
   const memoryText = await loadUserMemoryText(input.ctx.userId)
-  const system = systemPrompt(memoryText, input.ctx)
+  // Conversation « bureau » (assistant de Jona, Olivier 14/10/2026) : son propre savoir et
+  // ses propres outils (lecture + actions à confirmer, jamais de facturation).
+  const { data: conv } = await sb.from('assistant_conversations').select('mode').eq('id', input.conversationId).maybeSingle()
+  const bureau = conv?.mode === 'bureau'
+  const ctx = { ...input.ctx, conversationId: input.conversationId }
+  const B = bureau ? await import('./bureau') : null
+  const system = B ? B.bureauSystemPrompt(ctx, memoryText) : systemPrompt(memoryText, input.ctx)
+  const toolDefs = B ? B.bureauToolsForClaude() : toolsForClaude()
+  const toolsByName = B ? B.BUREAU_TOOLS_BY_NAME : TOOLS_BY_NAME
 
   // 4. Tool use loop
   const allToolCalls: ChatTurnOutput['toolCalls'] = []
@@ -144,7 +152,7 @@ export async function runChatTurn(input: ChatTurnInput): Promise<ChatTurnOutput>
       // Prompt caching : system + tools sont identiques à chaque itération/tour →
       // on les met en cache (relus à 10 %). Olivier 2026-08-09.
       system:     [{ type: 'text', text: system, cache_control: { type: 'ephemeral' } }],
-      tools:      toolsForClaude(),
+      tools:      toolDefs,
       messages:   claudeMessages,
     })
 
@@ -168,7 +176,7 @@ export async function runChatTurn(input: ChatTurnInput): Promise<ChatTurnOutput>
     // Execute tous les tool_use en parallele
     const toolResults: any[] = []
     for (const tu of toolUses) {
-      const tool = TOOLS_BY_NAME[tu.name]
+      const tool = toolsByName[tu.name]
       const t0 = Date.now()
       let result: any
       let success = true
@@ -176,7 +184,7 @@ export async function runChatTurn(input: ChatTurnInput): Promise<ChatTurnOutput>
 
       try {
         if (!tool) throw new Error(`Tool inconnu: ${tu.name}`)
-        result = await tool.execute(tu.input || {}, input.ctx)
+        result = await tool.execute(tu.input || {}, ctx)
       } catch (e: any) {
         success = false
         errorMsg = e?.message || String(e)

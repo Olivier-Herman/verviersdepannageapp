@@ -7,25 +7,13 @@ import { NextResponse }      from 'next/server'
 import { getServerSession }  from 'next-auth'
 import { authOptions }       from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase'
+import { assistantOwner }    from '@/lib/assistant/access'
 import { runChatTurn }       from '@/lib/assistant/claude'
 
 export const dynamic     = 'force-dynamic'
 export const maxDuration = 120  // tool use loop peut prendre du temps
 
-async function requireOwner(conversationId: string) {
-  const session = await getServerSession(authOptions)
-  if (!session?.user?.email) return null
-  const role  = (session.user as any).role  || ''
-  const roles = (session.user as any).roles || [role]
-  const allRoles: string[] = Array.isArray(roles) ? roles : [roles]
-  if (!allRoles.includes('superadmin')) return null
-  const sb = createAdminClient()
-  const { data: user } = await sb.from('users').select('id, name, email').eq('email', session.user.email).maybeSingle()
-  if (!user) return null
-  const { data: conv } = await sb.from('assistant_conversations').select('*').eq('id', conversationId).maybeSingle()
-  if (!conv || conv.user_id !== user.id) return null
-  return { user, conv }
-}
+const requireOwner = assistantOwner
 
 export async function POST(req: Request, { params }: { params: { id: string } }) {
   const auth = await requireOwner(params.id)
@@ -66,8 +54,10 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     .eq('conversation_id', params.id)
     .order('created_at', { ascending: true })
 
+  const { data: actions } = await sb.from('assistant_actions').select('id, kind, resume, status, error, result, decided_at').eq('conversation_id', params.id)
   return NextResponse.json({
     ok: true,
+    actions:       actions || [],
     assistantText: result.assistantText,
     toolCalls:     result.toolCalls,
     messages:      messages || [],
