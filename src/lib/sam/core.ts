@@ -259,6 +259,14 @@ async function executeAction(userId: string, a: SamAction): Promise<{ resultat: 
     // Comme une suggestion choisie dans l'app : l'adresse doit être reconnue (position connue).
     const hit = await geocodeAddressServer(adresse)
     if (!hit || (hit.confidence ?? 0) < 0.8) return { resultat: { fait: false, raison: 'adresse non reconnue : à choisir dans les suggestions de l’app' } }
+    // Même commune que demandée (2FVH314, Matthieu 14/10/2026) : « Rue de Battice 119, Aubel » est devenue
+    // « … 4890 Thimister-Clermont » et a été posée quand même. Une autre commune = on n'écrit rien, le
+    // chauffeur choisit lui-même dans les suggestions.
+    const plain = (x: string) => x.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    const cp = adresse.match(/\b\d{4}\b/)?.[0]
+    const ville = plain(adresse.replace(/\b(belgique|belgie|belgium|bel)\b/gi, '')).match(/([a-z][a-z' -]{2,})\s*$/)?.[1]?.trim()
+    const autreCommune = cp ? !hit.label.includes(cp) : (!!ville && !plain(hit.label).includes(ville))
+    if (autreCommune) return { resultat: { fait: false, raison: `rien n’a été changé : l’adresse trouvée est dans une autre commune (« ${hit.label} »). Demande au chauffeur si c’est bien là ; s’il confirme, refais la correction avec cette adresse exacte` } }
     // Même route que l'app chauffeur, au nom du chauffeur : mêmes contrôles de droits.
     const r = await fetch(`${APP_URL()}/api/missions/driver-action`, {
       method: 'POST', cache: 'no-store',
