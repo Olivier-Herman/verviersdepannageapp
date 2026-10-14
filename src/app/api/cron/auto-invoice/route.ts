@@ -157,6 +157,15 @@ async function handleGET(req: Request) {
     } catch (e: any) { failed++; details.push({ mission: ref(m), source: m.source, type: m.mission_type, outcome: 'failed', reason: `fetch: ${String(e?.message || e)}` }) }
   }
 
+  // Notes de commission des garages (Car Avenue Star, Olivier 14/10/2026) : une fois la facture envoyée,
+  // automatique ou manuelle, la note de X % part à son tour, non lettrée.
+  let commissions: { done: string[]; errors: string[] } = { done: [], errors: [] }
+  try {
+    const { notesCommissionDues } = await import('@/lib/facturation/commission-garage')
+    commissions = await notesCommissionDues()
+    for (const e of commissions.errors) console.error('[auto-invoice] commission :', e)
+  } catch (e: any) { commissions.errors.push(String(e?.message || e)); console.error('[auto-invoice] commissions KO :', e?.message) }
+
   // Compteur de couverture + DÉTAIL par mission (diagnostic). On garde aussi un
   // historique roulant des 20 derniers runs (auto_invoice_history).
   const summary = {
@@ -165,6 +174,7 @@ async function handleGET(req: Request) {
     eligible, invoiced, noTariff, combined, failed, hexalite, comex,
     ...(hexaliteError ? { hexaliteError } : {}),
     done: done.slice(0, 30),
+    commissions,
     details: details.slice(0, 60),
   }
   await sb.from('app_settings').upsert({ key: 'auto_invoice_last_run', value: summary }, { onConflict: 'key' }).then(() => {}, () => {})
