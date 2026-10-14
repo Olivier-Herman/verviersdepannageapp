@@ -325,6 +325,15 @@ export const NOTIFICATION_TYPES: readonly NotificationType[] = [
     defaultEnabled:  true,
   },
   {
+    // Le bureau retire une mission au chauffeur (relivraison remise en attente, Olivier 14/10/2026).
+    key:             'mission_retiree',
+    label:           'Mission retirée par le bureau',
+    description:     'Le bureau t’a retiré une mission (ex. relivraison remise en attente) : tu ne dois plus la faire.',
+    category:        'on_duty',
+    applicableRoles: ['driver', 'dispatcher', 'admin', 'superadmin'],
+    defaultEnabled:  true,
+  },
+  {
     key:             'mission_cancelled_by_insurer',
     label:           'Mission annulée par l\'assistance',
     description:     'L\'assisteur (Allianz, etc.) a annulé l\'affectation par e-mail → la fiche est annulée (ou trajet à vide si déjà démarrée).',

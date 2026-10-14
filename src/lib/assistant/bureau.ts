@@ -90,11 +90,12 @@ const EDITABLE: Record<string, string> = {
   redelivery_address: 'adresse de relivraison', dossier_number: 'n° de dossier assistance',
   billed_to_id: 'client facturé (identifiant)', billed_to_name: 'client facturé',
 }
-export const ACTION_KINDS = ['modifier_fiche', 'ajouter_remarque', 'sans_frais', 'deja_facture', 'levee_saisie'] as const
+export const ACTION_KINDS = ['modifier_fiche', 'ajouter_remarque', 'sans_frais', 'deja_facture', 'levee_saisie', 'remettre_a_relivrer'] as const
 export type ActionKind = typeof ACTION_KINDS[number]
 export const ACTION_LABEL: Record<ActionKind, string> = {
   modifier_fiche: 'Corriger la fiche', ajouter_remarque: 'Ajouter une remarque', sans_frais: 'Ne rien facturer (sans frais)',
   deja_facture: 'Marquer déjà facturé', levee_saisie: 'Enregistrer la levée de saisie',
+  remettre_a_relivrer: 'Retirer la relivraison et la remettre à relivrer',
 }
 
 /** Contrôle et prépare une action ; renvoie le résumé « avant → après » et ce qui sera exécuté. */
@@ -151,6 +152,19 @@ async function prepareAction(args: any): Promise<{ kind: ActionKind; mission_id:
     }
   }
 
+  if (kind === 'remettre_a_relivrer') {
+    const motif = String(args.motif || '').trim()
+    if (!motif) throw new Error('motif obligatoire (ex. « Franck ne peut pas prendre ce véhicule »).')
+    const { data: rel } = await sb().from('incoming_missions').select('id, mission_number, status, assigned_to, loaded_at, parent_mission_id, mission_type, incident_type').eq('id', String(args.mission_id || '')).maybeSingle()
+    if (!rel) throw new Error('mission_id inconnu (prendre le mission_id du groupe relivraison dans lire_dossier).')
+    if (!/rel/i.test(`${rel.mission_type} ${rel.incident_type}`)) throw new Error('Ce n’est pas une relivraison.')
+    if (rel.loaded_at) throw new Error('Le véhicule est déjà chargé sur cette relivraison : impossible de la remettre en attente.')
+    const { data: u } = rel.assigned_to ? await sb().from('users').select('name').eq('id', rel.assigned_to).maybeSingle() : { data: null }
+    return { kind, mission_id: rel.id, payload: { motif },
+      avant: { relivraison: `#${rel.mission_number} · ${rel.status}`, chauffeur: (u as any)?.name || '—' },
+      apres: { relivraison: 'en réserve sur le dossier (rien de supprimé)', chauffeur: '—', vehicule: 'reste au parc, dans « À relivrer »' } }
+  }
+
   // levee_saisie
   const type = String(args.levee_type || '')
   const date = String(args.date || '')
@@ -195,6 +209,12 @@ export async function executeAction(action: { kind: ActionKind; mission_id: stri
     const { markDossierLegs } = await import('@/lib/dossier/mark')
     const r = await markDossierLegs(p.dossier_id, { action: action.kind === 'sans_frais' ? 'no_charge' : 'already_billed', ids: p.mission_ids, reason: p.motif, number: p.numero }, { id: user.id })
     return { ok: true, groupes: r.covers }
+  }
+  if (action.kind === 'remettre_a_relivrer') {
+    const { remettreARelivrer } = await import('@/lib/missions/unrelivrer')
+    const r = await remettreARelivrer(sb(), action.mission_id!, user, String(p.motif || ''))
+    const { invalidateDossierCache } = await import('@/lib/dossier/build'); invalidateDossierCache()
+    return { ok: true, chauffeur_prevenu: r.driver }
   }
   // levee_saisie : même route que le bouton, rejouée avec le compte de la personne.
   const base = process.env.NEXTAUTH_URL || 'https://app.verviersdepannage.com'
@@ -312,7 +332,8 @@ Types :
 - sans_frais : { dossier_id, mission_ids: [groupes], motif } — « Ne rien facturer » sur ces groupes.
 - deja_facture : { dossier_id, mission_ids, numero } — la facture DOIT exister.
 - levee_saisie : { mission_id, levee_type: definitive|temporaire, date: AAAA-MM-JJ, payeur: frais_justice|client (définitive), note }.
-Interdit : créer une facture, un brouillon, une note de crédit, un état de frais ; changer un statut ; supprimer.`,
+- remettre_a_relivrer : { mission_id (de la relivraison), motif } — retire la relivraison au chauffeur et la remet en réserve sur le dossier : rien n'est supprimé, le véhicule reste au parc dans « À relivrer » pour être recréé plus tard pour quelqu'un d'autre. Refusé si le véhicule est déjà chargé. Le chauffeur est prévenu.
+Interdit : créer une facture, un brouillon, une note de crédit, un état de frais ; changer un statut autrement que par ces actions ; supprimer.`,
     input_schema: {
       type: 'object',
       properties: {
