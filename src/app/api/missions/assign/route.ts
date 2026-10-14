@@ -66,6 +66,8 @@ export async function POST(req: Request) {
         assigned_to: driver_id,
         assigned_at: now,
         truck_id:    (driver as any)?.current_truck_id || null,
+        // Nouvelle attribution = rappels et appel d'acceptation repartent de zéro (cron accept-reminders).
+        accept_reminder_count: 0, accept_reminder_at: null, accept_call_at: null,
       })
       .eq('id', mission_id)
 
@@ -154,12 +156,12 @@ export async function POST(req: Request) {
     const typeLabel    = ['rem', 'remorquage'].includes(mtNorm)                          ? '🚛 Remorquage'
                        : ['dsp', 'depannage', 'reparation_place'].includes(mtNorm)        ? '🔧 Dépannage'
                        : '📋 Mission'
-    const vehicleLabel = [mission.vehicle_brand, mission.vehicle_model, mission.vehicle_plate]
-      .filter(Boolean).join(' ')
 
+    // Mission verrouillée tant qu'elle n'est pas acceptée (Olivier 14/10/2026) : ni plaque, ni adresse
+    // dans la notification, seulement le type, l'assistance et la commune.
     await sendNotification(driver_id, 'mission_assigned_manual', {
       title:      `${typeLabel} — ${mission.source.toUpperCase()}`,
-      body:       `${vehicleLabel} — ${mission.incident_city || mission.incident_address || ''}`,
+      body:       `${mission.incident_city || 'Nouvelle mission'} — ouvre et appuie sur « Accepter » pour voir le client et l'adresse.`,
       action_url: `/mission/${mission_id}`,
       mission_id,
     })

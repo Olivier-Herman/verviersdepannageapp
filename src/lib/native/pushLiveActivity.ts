@@ -154,7 +154,7 @@ export async function pushMissionLiveActivity(
     const sb = createAdminClient()
     const { data } = await sb
       .from('incoming_missions')
-      .select('id, status, on_site_at, loaded_at, mission_type, incident_address, destination_address, live_activity_push_token')
+      .select('id, status, on_site_at, loaded_at, mission_type, incident_address, incident_city, destination_address, live_activity_push_token')
       .eq('id', missionId)
       .maybeSingle()
 
@@ -188,7 +188,7 @@ export async function pushStartLiveActivity(missionId: string): Promise<LiveActi
     const sb = createAdminClient()
     const { data: m } = await sb
       .from('incoming_missions')
-      .select('id, mission_number, external_id, vehicle_brand, vehicle_model, vehicle_plate, client_name, client_phone, mission_type, status, on_site_at, loaded_at, incident_address, destination_address, assigned_to')
+      .select('id, mission_number, external_id, vehicle_brand, vehicle_model, vehicle_plate, client_name, client_phone, mission_type, status, on_site_at, loaded_at, incident_address, incident_city, destination_address, assigned_to')
       .eq('id', missionId)
       .maybeSingle()
     if (!m || !(m as any).assigned_to) return { ok: false, status: 0, reason: 'no driver' }
@@ -199,12 +199,15 @@ export async function pushStartLiveActivity(missionId: string): Promise<LiveActi
 
     const mm: any = m
     const isRem = /remorq|rapatri|transport|\brem\b/i.test(String(mm.mission_type || '')) || !mm.mission_type
+    // Mission verrouillée tant qu'elle n'est pas acceptée (Olivier 14/10/2026) : ni client, ni plaque,
+    // ni adresse exacte sur l'écran verrouillé ; seulement la commune.
+    const verrou = mm.status === 'assigned'
     const attributes = {
       missionId:     mm.id,
       missionNumber: String(mm.mission_number || mm.external_id || ''),
-      vehicle:       [mm.vehicle_brand, mm.vehicle_model, mm.vehicle_plate].filter(Boolean).join(' '),
-      clientName:    mm.client_name || '',
-      clientPhone:   (mm.client_phone || '').replace(/[^\d+]/g, ''),
+      vehicle:       verrou ? '' : [mm.vehicle_brand, mm.vehicle_model, mm.vehicle_plate].filter(Boolean).join(' '),
+      clientName:    verrou ? '' : mm.client_name || '',
+      clientPhone:   verrou ? '' : (mm.client_phone || '').replace(/[^\d+]/g, ''),
       isRem,
     }
     const contentState = missionToLAState({ ...mm, driver_eta_minutes: null })
@@ -214,7 +217,7 @@ export async function pushStartLiveActivity(missionId: string): Promise<LiveActi
       attributes,
       contentState,
       staleSeconds: 8 * 3600,
-      alert: { title: 'Nouvelle mission', body: `${attributes.vehicle || 'Véhicule'} — ${mm.incident_address || ''}`.trim() },
+      alert: { title: 'Nouvelle mission', body: verrou ? `${mm.incident_city || ''} — appuie sur « Accepter » pour voir le client et l'adresse.`.replace(/^ — /, '') : `${attributes.vehicle || 'Véhicule'} — ${mm.incident_address || ''}`.trim() },
     })
     if (res.invalid_token) {
       await sb.from('users').update({ la_push_to_start_token: null }).eq('id', (m as any).assigned_to).then(() => {}, () => {})

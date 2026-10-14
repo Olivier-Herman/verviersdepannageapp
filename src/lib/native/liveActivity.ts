@@ -146,6 +146,7 @@ export function missionToLAState(m: {
   loaded_at?: string | null
   mission_type?: string | null
   incident_address?: string | null
+  incident_city?: string | null
   destination_address?: string | null
   driver_eta_minutes?: number | null
 }): MissionLAState {
@@ -154,7 +155,8 @@ export function missionToLAState(m: {
   const eta = m.driver_eta_minutes ?? null
 
   if (m.status === 'assigned')
-    return { step: 'assigned', title: 'Nouvelle mission', address: m.incident_address || '', badgeText: 'ASSIGNÉE', accent: 'red' }
+    // Pas encore acceptée : la commune seulement (mission verrouillée, Olivier 14/10/2026).
+    return { step: 'assigned', title: 'Nouvelle mission', address: m.incident_city || 'Appuie sur « Accepter »', badgeText: 'À ACCEPTER', accent: 'red' }
   if (loaded)
     return { step: 'loaded', title: 'En route vers la destination', address: m.destination_address || '', etaMinutes: eta, badgeText: 'LIVRAISON', accent: 'green' }
   if (onSite)

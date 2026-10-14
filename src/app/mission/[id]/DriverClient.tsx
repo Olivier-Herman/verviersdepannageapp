@@ -1653,10 +1653,12 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
   useEffect(() => {
     const laState = missionToLAState({
       status: M.status, on_site_at: M.on_site_at, loaded_at: M.loaded_at,
-      mission_type: M.mission_type, incident_address: M.incident_address,
+      mission_type: M.mission_type, incident_address: M.incident_address, incident_city: (M as any).incident_city,
       destination_address: M.destination_address, driver_eta_minutes: null,
     })
-    if (isActiveMissionStatus(M.status)) {
+    // Pas encore acceptée = mission verrouillée (Olivier 14/10/2026) : l'activité démarre à
+    // l'acceptation, avec le client et la plaque (ses attributs ne changent plus ensuite).
+    if (isActiveMissionStatus(M.status) && M.status !== 'assigned') {
       if (!laStartedRef.current) {
         laStartedRef.current = true
         startForMission({
@@ -2535,6 +2537,20 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
   // Touring en septembre, toutes par le flux unifié). Le bureau garde le même
   // écran sur la fiche dispatch pour rattraper une clôture manquée.
 
+  // Mission verrouillée tant qu'elle n'est pas acceptée (Olivier 14/10/2026) : le chauffeur voit le
+  // type, l'assistance et la commune ; le client, l'adresse, la plaque et la navigation s'ouvrent
+  // à « Accepter ». S'il ne peut pas la faire, il la rend au dispatch avec un motif.
+  const verrouille = M.status === 'assigned' && !isReadOnly && !!currentUserId && (M as any).assigned_to === currentUserId
+  const sourceVerrou = useSourceLabel(M.source) || M.source || ''
+  const [verrouNow, setVerrouNow] = useState(() => Date.now())
+  const [refusEcran, setRefusEcran] = useState<null | 'motif' | 'envoi' | 'fait'>(null)
+  const [refusErreur, setRefusErreur] = useState<string | null>(null)
+  useEffect(() => {
+    if (!verrouille) return
+    const t = setInterval(() => setVerrouNow(Date.now()), 15_000)
+    return () => clearInterval(t)
+  }, [verrouille])
+
   // Éviter l'hydratation mismatch (localStorage vs SSR)
   if (!mounted) return null
 
@@ -2547,6 +2563,111 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
     park: ['bg-amber-500',  t('close.label_park')],
   }
   const [closeBg, closeLabel] = closeLabels[closeType] || ['bg-ink-faint', closeType.toUpperCase()]
+
+  // Message du client à lire avant d'accepter : affiché sur l'écran verrouillé comme sur la vue principale.
+  const msgClientModal = msgClient && (M as any).driver_message ? (
+            <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/60 p-4">
+              <div className="w-full max-w-md rounded-3xl bg-surface p-6 shadow-2xl">
+                <p className="text-xs font-bold uppercase tracking-wider text-amber-700 dark:text-amber-300"><T k="mission_detail.client_msg_title" /></p>
+                <p className="mt-3 rounded-2xl border-2 border-amber-400 bg-amber-50 p-4 text-lg font-bold text-gray-900 whitespace-pre-wrap">{(M as any).driver_message}</p>
+                <p className="mt-3 text-sm text-ink-secondary"><T k="mission_detail.client_msg_hint" /></p>
+                <button disabled={loading} className="mt-5 w-full min-h-[52px] rounded-2xl bg-blue-600 font-bold text-white disabled:opacity-50"
+                  onClick={async () => {
+                    const mode = msgClient
+                    await fetch(`/api/missions/${M.id}/message-chauffeur`, { method: 'POST' }).catch(() => {})
+                    setM(prev => ({ ...prev, driver_message_ack_at: new Date().toISOString() } as any))
+                    setMsgClient(null)
+                    if (mode === 'accept') api('accept')
+                  }}>
+                  {msgClient === 'accept' ? <T k="mission_detail.client_msg_accept" /> : <T k="mission_detail.client_msg_ok" />}
+                </button>
+              </div>
+            </div>
+  ) : null
+
+  const accepterMission = () => ((M as any).driver_message && !(M as any).driver_message_ack_at) ? setMsgClient('accept') : api('accept')
+  const rendreMission = async (motif: string) => {
+    setRefusEcran('envoi'); setRefusErreur(null)
+    try {
+      const r = await fetch(`/api/missions/${M.id}/refus-chauffeur`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ motif }) })
+      const j = await r.json().catch(() => ({}))
+      if (!r.ok) { setRefusErreur(j.error || t('mission_detail.cannot_error')); setRefusEcran('motif'); return }
+      setRefusEcran('fait')
+    } catch { setRefusErreur(t('mission_detail.cannot_error')); setRefusEcran('motif') }
+  }
+
+  if (verrouille || refusEcran === 'fait') {
+    const depuis = (M as any).assigned_at ? Math.max(0, Math.floor((verrouNow - new Date((M as any).assigned_at).getTime()) / 60_000)) : null
+    const typeKey = rel ? 'mission_detail.lock_type_rel' : rem ? 'mission_detail.lock_type_rem' : ['DSP', 'depannage', 'reparation_place'].includes(mType) ? 'mission_detail.lock_type_dsp' : 'mission_detail.lock_type_other'
+    return (
+      <div className="min-h-screen bg-surface px-4 pt-12 pb-[calc(2rem+var(--talkie-space,0px))] flex flex-col gap-3">
+        <div className="flex items-center justify-between">
+          <button onClick={() => router.push('/mission')} className="w-11 h-11 flex items-center justify-center bg-surface-hover rounded-xl text-ink">←</button>
+          <span className="text-ink-muted text-sm font-mono">#{(M as any).mission_number || ''}</span>
+        </div>
+
+        {refusEcran === 'fait' ? (
+          <>
+            <div className="rounded-2xl border-2 border-emerald-500 bg-emerald-50 p-5">
+              <p className="text-emerald-900 text-xl font-black"><T k="mission_detail.cannot_done_title" /></p>
+              <p className="text-emerald-800 mt-1"><T k="mission_detail.cannot_done_body" /></p>
+            </div>
+            <div className="flex-1" />
+            <button onClick={() => router.push('/mission')} className="w-full min-h-[56px] rounded-2xl bg-blue-600 text-white font-bold text-lg"><T k="mission_detail.cannot_back_list" /></button>
+          </>
+        ) : refusEcran ? (
+          <>
+            <p className="text-ink text-2xl font-black mt-2"><T k="mission_detail.cannot_title" /></p>
+            {refusErreur && <p className="rounded-xl bg-red-50 border border-red-300 text-red-800 px-3 py-2 text-sm font-semibold">{refusErreur}</p>}
+            {(['autre_mission', 'camion', 'indisponible'] as const).map(k => (
+              <button key={k} disabled={refusEcran === 'envoi'} onClick={() => rendreMission(k)}
+                className="w-full min-h-[56px] rounded-2xl border-2 border-ink-faint/40 bg-surface text-ink font-bold text-base disabled:opacity-50">
+                <T k={`mission_detail.cannot_${k}`} />
+              </button>
+            ))}
+            <div className="flex-1" />
+            <button disabled={refusEcran === 'envoi'} onClick={() => { setRefusEcran(null); setRefusErreur(null) }}
+              className="w-full min-h-[52px] rounded-2xl bg-surface-hover text-ink font-bold disabled:opacity-50"><T k="mission_detail.cannot_cancel" /></button>
+          </>
+        ) : (
+          <>
+            {depuis != null && (
+              <span className={`self-start px-3 py-1 rounded-full text-sm font-bold ${depuis >= 10 ? 'bg-red-100 text-red-800' : 'bg-amber-100 text-amber-800'}`}>
+                <T k="mission_detail.lock_since" params={{ n: depuis }} />
+              </span>
+            )}
+            <div className="rounded-2xl border bg-surface p-4">
+              <p className="text-ink-muted text-[11px] font-bold uppercase tracking-wide"><T k="mission_detail.lock_mission" /></p>
+              <p className="text-ink text-2xl font-black mt-0.5"><T k={typeKey} /></p>
+              {sourceVerrou && <p className="text-ink-secondary font-semibold">{sourceVerrou}</p>}
+            </div>
+            <div className="rounded-2xl border bg-surface p-4">
+              <p className="text-ink-muted text-[11px] font-bold uppercase tracking-wide"><T k="mission_detail.lock_where" /></p>
+              <p className="text-ink text-2xl font-black mt-0.5">{(M as any).incident_city || '—'}</p>
+              <p className="text-ink-muted text-sm"><T k="mission_detail.lock_city_only" /></p>
+            </div>
+            <div className="rounded-2xl border bg-surface p-4">
+              <p className="text-ink-muted text-[11px] font-bold uppercase tracking-wide"><T k="mission_detail.lock_hidden_title" /></p>
+              <div className="mt-2 grid gap-2" aria-hidden>
+                <div className="h-3 w-2/3 rounded bg-ink-faint/30" /><div className="h-3 w-11/12 rounded bg-ink-faint/30" /><div className="h-3 w-1/2 rounded bg-ink-faint/30" />
+              </div>
+              <p className="text-ink-secondary text-sm font-semibold mt-3"><T k="mission_detail.lock_hidden_msg" /></p>
+            </div>
+            <div className="flex-1" />
+            <button onClick={accepterMission} disabled={loading}
+              className="w-full min-h-[60px] rounded-2xl bg-blue-600 disabled:opacity-50 text-white font-black text-xl">
+              {loading ? <T k="mission_detail.loading" /> : <T k="mission_detail.btn_accept" />}
+            </button>
+            <button onClick={() => setRefusEcran('motif')} disabled={loading}
+              className="w-full min-h-[48px] rounded-2xl border-2 border-red-500 text-red-600 font-bold disabled:opacity-50">
+              <T k="mission_detail.btn_cannot" />
+            </button>
+          </>
+        )}
+        {msgClientModal}
+      </div>
+    )
+  }
 
   // ── FLUX 2 : page « Action » puis clôture universelle ──────────────────────
   // Gaté : sans `flux2`, rien de ce bloc ne peut s'afficher (f2Screen ne change
@@ -4960,25 +5081,7 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
             )
           })()}
 
-          {msgClient && (M as any).driver_message && (
-            <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/60 p-4">
-              <div className="w-full max-w-md rounded-3xl bg-surface p-6 shadow-2xl">
-                <p className="text-xs font-bold uppercase tracking-wider text-amber-700 dark:text-amber-300"><T k="mission_detail.client_msg_title" /></p>
-                <p className="mt-3 rounded-2xl border-2 border-amber-400 bg-amber-50 p-4 text-lg font-bold text-gray-900 whitespace-pre-wrap">{(M as any).driver_message}</p>
-                <p className="mt-3 text-sm text-ink-secondary"><T k="mission_detail.client_msg_hint" /></p>
-                <button disabled={loading} className="mt-5 w-full min-h-[52px] rounded-2xl bg-blue-600 font-bold text-white disabled:opacity-50"
-                  onClick={async () => {
-                    const mode = msgClient
-                    await fetch(`/api/missions/${M.id}/message-chauffeur`, { method: 'POST' }).catch(() => {})
-                    setM(prev => ({ ...prev, driver_message_ack_at: new Date().toISOString() } as any))
-                    setMsgClient(null)
-                    if (mode === 'accept') api('accept')
-                  }}>
-                  {msgClient === 'accept' ? <T k="mission_detail.client_msg_accept" /> : <T k="mission_detail.client_msg_ok" />}
-                </button>
-              </div>
-            </div>
-          )}
+          {msgClientModal}
 
           {M.status === 'assigned' && (
             <>

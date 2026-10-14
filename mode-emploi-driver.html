@@ -702,13 +702,15 @@
 
 <div class="function">
  <h3><span class="num">25</span>Accepter / Refuser une mission assignée</h3>
- <p class="desc">Quand un dispatcher t'assigne une mission, tu reçois une notif push. Tu peux Accepter ou Refuser depuis la fiche.</p>
+ <p class="desc">Quand un dispatcher t'assigne une mission, tu reçois une notif push. Tant que tu n'as pas accepté, tu vois seulement le type de mission, l'assistance et la commune : le client, son téléphone, l'adresse exacte, la plaque et la navigation s'affichent quand tu appuies sur « Accepter ».</p>
  <p class="label">Comment faire</p>
  <ol>
  <li>Ouvre la mission (depuis la liste ou via la notif)</li>
- <li>Bouton vert « ✓ Accepter » → la mission passe en statut « Acceptée », tu peux la démarrer</li>
- <li>Bouton rouge « ✗ Refuser » → la mission retourne au dispatcher pour réassignation. Précise le motif (busy, trop loin, etc.)</li>
+ <li>Bouton bleu « ✅ Accepter la mission » → la mission passe en statut « Acceptée » et tout s'affiche : tu peux la démarrer</li>
+ <li>Bouton rouge « Je ne peux pas la prendre » → choisis la raison (déjà sur une autre mission, camion pas adapté, pas disponible) : la mission retourne au dispatch, qui est prévenu</li>
+ <li>Une mission donnée à l'avance pendant que tu en fais une autre s'accepte aussi tout de suite : « Accepter » veut dire « je la fais ensuite »</li>
  </ol>
+ <div class="warn">⏱️ Tu as 10 minutes maximum pour accepter. Des rappels arrivent après 3 minutes, puis à 10 minutes ton téléphone sonne : c'est un appel automatique de rappel, et le dispatch est prévenu.</div>
  <div class="warn">⚠️ Refuser sans raison valable fait perdre du temps au dispatcher. Si tu peux la faire, accepte-la.</div>
 </div>
 

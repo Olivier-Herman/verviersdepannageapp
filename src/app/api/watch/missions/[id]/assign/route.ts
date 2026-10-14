@@ -70,7 +70,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   // Update mission
   await sb
     .from('incoming_missions')
-    .update({ status: 'assigned', assigned_to: driverId, assigned_at: now })
+    .update({ status: 'assigned', assigned_to: driverId, assigned_at: now, accept_reminder_count: 0, accept_reminder_at: null, accept_call_at: null })
     .eq('id', missionId)
 
   // Cancel auto-dispatch en cours (manuel prime)

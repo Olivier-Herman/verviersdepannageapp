@@ -129,9 +129,19 @@ export default async function MissionListPage() {
                         <span className="text-ink-secondary text-xs font-mono">{(m as any).mission_number != null ? `#${(m as any).mission_number}` : (m.dossier_number || m.external_id)}</span>
                         <span className={`text-xs font-semibold ${st.color}`}>{st.label}</span>
                       </div>
-                      <p className="text-ink font-semibold">{m.client_name || 'Client inconnu'}</p>
-                      <p className="text-ink-secondary text-sm">{m.vehicle_brand} {m.vehicle_model} — {m.vehicle_plate}</p>
-                      <p className="text-ink-muted text-xs mt-1">{m.incident_address}{m.incident_city ? `, ${m.incident_city}` : ''}</p>
+                      {m.status === 'assigned' ? (
+                        // Pas encore acceptée = verrouillée : la commune seulement (Olivier 14/10/2026).
+                        <>
+                          <p className="text-ink font-semibold">{m.incident_city || 'Nouvelle mission'}</p>
+                          <p className="text-ink-secondary text-sm">🔒 Client et adresse visibles après « Accepter »</p>
+                        </>
+                      ) : (
+                        <>
+                          <p className="text-ink font-semibold">{m.client_name || 'Client inconnu'}</p>
+                          <p className="text-ink-secondary text-sm">{m.vehicle_brand} {m.vehicle_model} — {m.vehicle_plate}</p>
+                          <p className="text-ink-muted text-xs mt-1">{m.incident_address}{m.incident_city ? `, ${m.incident_city}` : ''}</p>
+                        </>
+                      )}
                     </Link>
                   )
                 })}

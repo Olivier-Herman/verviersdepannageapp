@@ -399,6 +399,22 @@ export const NOTIFICATION_TYPES: readonly NotificationType[] = [
     defaultEnabled:  true,
   },
   {
+    key:             'acceptation_en_retard',
+    label:           'Mission pas acceptée après 10 minutes',
+    description:     "Un chauffeur n'a pas accepté sa mission dans les 10 minutes : il est appelé automatiquement et le dispatch est prévenu.",
+    category:        'dispatcher',
+    applicableRoles: ['dispatcher', 'admin', 'superadmin'],
+    defaultEnabled:  true,
+  },
+  {
+    key:             'mission_refusee_chauffeur',
+    label:           'Mission refusée par le chauffeur',
+    description:     'Un chauffeur a répondu « Je ne peux pas la prendre » : la mission revient au dispatch.',
+    category:        'dispatcher',
+    applicableRoles: ['dispatcher', 'admin', 'superadmin'],
+    defaultEnabled:  true,
+  },
+  {
     key:             'vab_vr_a_cloturer',
     label:           'VAB : véhicule de remplacement à clôturer',
     description:     "La livraison d'un véhicule de remplacement VAB est terminée : VAB demande les informations du conducteur, la clôture se fait dans Comet.",
