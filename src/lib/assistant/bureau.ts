@@ -90,12 +90,13 @@ const EDITABLE: Record<string, string> = {
   redelivery_address: 'adresse de relivraison', dossier_number: 'n° de dossier assistance',
   billed_to_id: 'client facturé (identifiant)', billed_to_name: 'client facturé',
 }
-export const ACTION_KINDS = ['modifier_fiche', 'ajouter_remarque', 'sans_frais', 'deja_facture', 'levee_saisie', 'remettre_a_relivrer'] as const
+export const ACTION_KINDS = ['modifier_fiche', 'ajouter_remarque', 'sans_frais', 'deja_facture', 'levee_saisie', 'remettre_a_relivrer', 'rattacher_relivraison'] as const
 export type ActionKind = typeof ACTION_KINDS[number]
 export const ACTION_LABEL: Record<ActionKind, string> = {
   modifier_fiche: 'Corriger la fiche', ajouter_remarque: 'Ajouter une remarque', sans_frais: 'Ne rien facturer (sans frais)',
   deja_facture: 'Marquer déjà facturé', levee_saisie: 'Enregistrer la levée de saisie',
   remettre_a_relivrer: 'Retirer la relivraison et la remettre à relivrer',
+  rattacher_relivraison: 'Rattacher la commande comme relivraison du dossier',
 }
 
 /** Contrôle et prépare une action ; renvoie le résumé « avant → après » et ce qui sera exécuté. */
@@ -150,6 +151,20 @@ async function prepareAction(args: any): Promise<{ kind: ActionKind; mission_id:
       avant: { groupes: avant, total_htva: total },
       apres: kind === 'sans_frais' ? { groupes: legs.map(l => l.letter), etat: `sans frais — ${motif}`, plus_a_facturer_htva: total } : { groupes: legs.map(l => l.letter), etat: `facturé sur ${numero}` },
     }
+  }
+
+  if (kind === 'rattacher_relivraison') {
+    const plate = (p?: string | null) => String(p || '').replace(/[^A-Za-z0-9]/g, '').toUpperCase()
+    const [{ data: m }, { data: d }] = await Promise.all([
+      sb().from('incoming_missions').select('id, mission_number, source, status, vehicle_plate, incident_address, destination_address, dossier_number').eq('id', String(args.mission_id || '')).maybeSingle(),
+      sb().from('incoming_missions').select('id, mission_number, source, status, vehicle_plate, destination_address, invoice_number, billed_to_name, parent_mission_id').eq('id', String(args.dossier_id || '')).maybeSingle(),
+    ])
+    if (!m) throw new Error('mission_id : la commande à rattacher (fiche de l’assistance).')
+    if (!d) throw new Error('dossier_id : la fiche du premier remorquage (dossier qui garde la voiture).')
+    if (!plate(m.vehicle_plate) || plate(m.vehicle_plate) !== plate(d.vehicle_plate)) throw new Error('Plaques différentes : rattachement impossible.')
+    return { kind, mission_id: m.id, payload: { dossier_id: d.id },
+      avant: { commande: `#${m.mission_number} · ${m.source} · ${m.status} · ${m.incident_address || '—'} → ${m.destination_address || '—'}`, dossier: `#${d.mission_number} · ${d.source} · ${d.status}${d.destination_address ? ` · déposée : ${d.destination_address}` : ''}` },
+      apres: { commande: `relivraison du dossier #${d.mission_number}${d.status === 'parked' ? ' (en réserve, à créer depuis « À relivrer »)' : ' (à attribuer)'}`, cloture_assistance: `par la commande #${m.mission_number} (${m.source}, ${m.dossier_number || 'n° gardé'})`, premier_remorquage: d.invoice_number ? `déjà facturé ${d.invoice_number} : inchangé` : `client inchangé (${d.billed_to_name || '—'})` } }
   }
 
   if (kind === 'remettre_a_relivrer') {
@@ -209,6 +224,12 @@ export async function executeAction(action: { kind: ActionKind; mission_id: stri
     const { markDossierLegs } = await import('@/lib/dossier/mark')
     const r = await markDossierLegs(p.dossier_id, { action: action.kind === 'sans_frais' ? 'no_charge' : 'already_billed', ids: p.mission_ids, reason: p.motif, number: p.numero }, { id: user.id })
     return { ok: true, groupes: r.covers }
+  }
+  if (action.kind === 'rattacher_relivraison') {
+    const { rattacherRelivraison } = await import('@/lib/missions/unrelivrer')
+    const r = await rattacherRelivraison(sb(), action.mission_id!, String(p.dossier_id), user)
+    const { invalidateDossierCache } = await import('@/lib/dossier/build'); invalidateDossierCache()
+    return { ok: true, mode: r.mode, dossier: r.dossier }
   }
   if (action.kind === 'remettre_a_relivrer') {
     const { remettreARelivrer } = await import('@/lib/missions/unrelivrer')
@@ -332,6 +353,7 @@ Types :
 - sans_frais : { dossier_id, mission_ids: [groupes], motif } — « Ne rien facturer » sur ces groupes.
 - deja_facture : { dossier_id, mission_ids, numero } — la facture DOIT exister.
 - levee_saisie : { mission_id, levee_type: definitive|temporaire, date: AAAA-MM-JJ, payeur: frais_justice|client (définitive), note }.
+- rattacher_relivraison : { mission_id (la commande de l'assistance), dossier_id (la fiche du premier remorquage) } — la commande devient la relivraison du dossier (en réserve si la voiture est au parc, sinon à attribuer), avec ses numéros d'assistance : la clôture partira chez l'assistance par elle. Même plaque obligatoire. Pour la question « l'assistance prend-elle aussi le premier remorquage ? », si elle accepte : modifier_fiche sur le premier remorquage (billed_to_id + billed_to_name de l'assistance).
 - remettre_a_relivrer : { mission_id (de la relivraison), motif } — retire la relivraison au chauffeur et la remet en réserve sur le dossier : rien n'est supprimé, le véhicule reste au parc dans « À relivrer » pour être recréé plus tard pour quelqu'un d'autre. Refusé si le véhicule est déjà chargé. Le chauffeur est prévenu.
 Interdit : créer une facture, un brouillon, une note de crédit, un état de frais ; changer un statut autrement que par ces actions ; supprimer.`,
     input_schema: {

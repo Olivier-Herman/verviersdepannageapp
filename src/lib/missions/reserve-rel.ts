@@ -42,7 +42,7 @@ export interface ReserveResult {
 }
 
 /** À appeler juste après l'INSERT d'une fiche d'assistance (status new). Best-effort, ne jette jamais. */
-export async function reserveTowForParkedVehicle(opts: { sb: Sb; missionId: string; actorId?: string | null; actorName: string }): Promise<ReserveResult> {
+export async function reserveTowForParkedVehicle(opts: { sb: Sb; missionId: string; actorId?: string | null; actorName: string; parentId?: string }): Promise<ReserveResult> {
   const { sb, missionId, actorName } = opts
   const actorId = opts.actorId ?? null
   try {
@@ -50,8 +50,11 @@ export async function reserveTowForParkedVehicle(opts: { sb: Sb; missionId: stri
       .select('id, mission_number, source, source_format, billed_to_name, status, mission_type, vehicle_plate, dossier_leg, parent_mission_id, external_id, destination_name, destination_address, destination_lat, destination_lng')
       .eq('id', missionId).maybeSingle()
     if (!m) return { reserved: false, reason: 'fiche introuvable' }
-    if (m.status !== 'new' || m.dossier_leg || m.parent_mission_id) return { reserved: false, reason: 'pas une commande neuve' }
-    if (!['remorquage', 'REM+REL'].includes(String(m.mission_type || ''))) return { reserved: false, reason: 'pas un remorquage' }
+    // parentId : rattachement décidé par une personne (Max, Olivier 14/10/2026) — la commande
+    // peut déjà être « à dispatcher » et le dossier est désigné, pas cherché par la plaque.
+    const manual = !!opts.parentId
+    if ((manual ? !['new', 'dispatching'].includes(String(m.status)) : m.status !== 'new') || m.dossier_leg || m.parent_mission_id) return { reserved: false, reason: 'pas une commande neuve' }
+    if (!manual && !['remorquage', 'REM+REL'].includes(String(m.mission_type || ''))) return { reserved: false, reason: 'pas un remorquage' }
     const plate = String(m.vehicle_plate || '').replace(/\s/g, '').toUpperCase()
     if (!plate) return { reserved: false, reason: 'plaque inconnue' }
     // Assistance = source taguée « assistance » au catalogue, OU dossier COMEX (Touring
@@ -61,12 +64,14 @@ export async function reserveTowForParkedVehicle(opts: { sb: Sb; missionId: stri
     const assistanceLike = (await sourceHasTag(m.source, 'assistance'))
       || String((m as any).source_format || '') === 'comex'
       || /touring|vab|axa|allianz|mondial|ethias|kaze|europ|ima\b/i.test(String((m as any).billed_to_name || ''))
-    if (!assistanceLike) return { reserved: false, reason: 'source hors assistance' }
+    if (!assistanceLike && !manual) return { reserved: false, reason: 'source hors assistance' }
 
-    const { data: parked } = await sb.from('incoming_missions')
-      .select('id, mission_number, depot_depart_id, redelivery_address')
-      .eq('vehicle_plate', plate).eq('status', 'parked').eq('dossier_leg', false).neq('id', m.id)
-      .order('parked_at', { ascending: false }).limit(1).maybeSingle()
+    const { data: parked } = manual
+      ? await sb.from('incoming_missions').select('id, mission_number, depot_depart_id, redelivery_address').eq('id', opts.parentId!).eq('status', 'parked').maybeSingle()
+      : await sb.from('incoming_missions')
+        .select('id, mission_number, depot_depart_id, redelivery_address')
+        .eq('vehicle_plate', plate).eq('status', 'parked').eq('dossier_leg', false).neq('id', m.id)
+        .order('parked_at', { ascending: false }).limit(1).maybeSingle()
     if (!parked?.id) return { reserved: false, reason: 'véhicule pas au parc' }
 
     const { data: kids } = await sb.from('incoming_missions').select('id, status')

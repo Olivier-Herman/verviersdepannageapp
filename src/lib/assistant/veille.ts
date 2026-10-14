@@ -67,7 +67,7 @@ export async function veilleCards(sb: Sb, userId: string): Promise<VeilleCard[]>
   const mine = await aliasIds(sb, userId)
   const { getBusinessList } = await import('@/lib/settings/business')
   const triSources = await getBusinessList('max_veille_tri_sources').catch(() => [] as string[])
-  const COLS = 'id, mission_number, vehicle_plate, vehicle_brand, vehicle_model, mission_type, source, status, incident_address, destination_address, assigned_to, assigned_at, accepted_at, on_way_at, on_site_at, loaded_at, received_at, intervention_date, parent_mission_id, external_id, dossier_number, billed_to_name'
+  const COLS = 'id, source_format, touring_accepted_at, touring_onroad_at, vab_closed_at, mission_number, vehicle_plate, vehicle_brand, vehicle_model, mission_type, source, status, incident_address, destination_address, assigned_to, assigned_at, accepted_at, on_way_at, on_site_at, loaded_at, received_at, intervention_date, parent_mission_id, external_id, dossier_number, billed_to_name'
   const { data: cand } = await sb.from('incoming_missions').select(COLS)
     .in('status', [...ATTRIBUEE, ...SANS_CHAUFFEUR]).eq('dossier_leg', false).is('archived_at', null)
     .not('external_id', 'like', 'PROCESSING_%').not('external_id', 'like', 'UNKNOWN_SENDER_%')
@@ -117,10 +117,18 @@ export async function veilleCards(sb: Sb, userId: string): Promise<VeilleCard[]>
     const isRel = /rel/i.test(String(m.mission_type || '')) || !!m.parent_mission_id
     const mission = { id: m.id, numero: m.mission_number, plaque, type: m.mission_type, source: m.source, statut: m.status, lieu: m.incident_address, destination: m.destination_address, chauffeur, recue: m.received_at }
     const faits: string[] = [], raisonnement: string[] = [], alertes: string[] = []
+    let twin: any = null
     const verifie = ['dernier pointage', 'qui a attribué la mission']
     faits.push(`Fiche #${m.mission_number ?? '?'} · ${plaque || 'sans plaque'} · ${[m.vehicle_brand, m.vehicle_model].filter(Boolean).join(' ') || 'véhicule ?'} · ${m.source || '?'} · ${m.mission_type || '?'}`)
     faits.push(`Départ : ${m.incident_address || '—'}${m.destination_address ? ` → ${m.destination_address}` : ''}`)
     faits.push(`Reçue ${fmt(m.received_at)}${chauffeur ? ` · chauffeur : ${chauffeur}` : ' · aucun chauffeur'}${par ? ` · attribuée par ${par}` : ''}`)
+    // État chez l'assistance (ce que VD Soft en sait).
+    if (m.touring_accepted_at || m.source_format === 'comex') {
+      verifie.push('état chez Touring')
+      const { data: cx } = await sb.from('touring_comex_dossiers').select('in_comex, verdict, accepted_at').eq('mission_id', m.id).maybeSingle()
+      faits.push(`Chez Touring : ${m.touring_accepted_at ? `acceptée ${fmt(m.touring_accepted_at)}` : 'pas encore acceptée'}${m.touring_onroad_at ? `, « en route » envoyé ${fmt(m.touring_onroad_at)}` : ''}${cx ? (cx.in_comex ? ' · toujours dans COMEX' : ' · plus dans les listes COMEX') : ''} → ${m.touring_onroad_at ? 'Touring attend la suite' : 'à suivre'}`)
+    }
+    if (m.vab_closed_at) faits.push(`Chez VAB : clôturée ${fmt(m.vab_closed_at)}`)
     if (last) faits.push(`Dernier pointage : ${fmt(last)} (il y a ${Math.round(s.since)} h)${m.loaded_at ? ' · véhicule chargé' : ''}`)
     // Fiches jumelles (même plaque, 5 jours autour).
     if (plaque && plaque.replace(/[^A-Za-z0-9]/g, '').length >= 4) {
@@ -134,6 +142,7 @@ export async function veilleCards(sb: Sb, userId: string): Promise<VeilleCard[]>
       // Les fiches du même dossier (fiche d'origine d'une relivraison, autres relivraisons) ne sont pas suspectes.
       const sameDossier = (tw: any) => tw.id === m.parent_mission_id || tw.parent_mission_id === m.id || (!!m.parent_mission_id && tw.parent_mission_id === m.parent_mission_id)
       for (const tw of (twins || []).filter((tw: any) => !sameDossier(tw))) {
+        if (!twin) twin = tw
         faits.push(`Autre fiche de la même plaque : #${tw.mission_number} · ${tw.source} · ${tw.mission_type} · ${fmt(tw.received_at)} · ${tw.status}${tw.assigned_to ? ` · ${nm[tw.assigned_to] || ''}` : ''}${tw.destination_address ? ` · déposée : ${tw.destination_address}` : ''} · ${tw.invoice_number ? `facturée ${tw.invoice_number}` : 'pas encore facturée'}${tw.billed_to_name ? ` · client : ${tw.billed_to_name}` : ''}`)
         raisonnement.push(`#${tw.mission_number} concerne la même voiture : soit un doublon, soit l'étape suivante (relivraison). Une fusion ferait disparaître le lien avec l'assistance : à trancher avec Max dans « Autre chose ».`)
       }
@@ -156,7 +165,11 @@ export async function veilleCards(sb: Sb, userId: string): Promise<VeilleCard[]>
     } else if (s.kind === 'figee_sans_chauffeur') {
       titre = `Sans chauffeur depuis ${Math.round(s.since)} h`
       message = `Cette mission ${m.source || ''} attend depuis ${fmt(m.received_at)}, personne dessus. On fait quoi ?`
-      reponses.push({ id: 'je_men_occupe', libelle: 'Je m’en occupe', effet: 'Tu l’attribues toi-même ; je ne t’en reparle pas avant 4 h.', principale: true })
+      if (twin) {
+        const couvert = twin.invoice_number || /sia_couvert/i.test(String(twin.source)) || /touring|vab|axa|allianz|mondial|ethias|ima|europ/i.test(String(twin.billed_to_name || ''))
+        reponses.push({ id: `rattacher:${twin.id}`, libelle: `C’est la relivraison d’un véhicule qu’on a (#${twin.mission_number})`, effet: `Cette commande devient la relivraison du dossier #${twin.mission_number} avec ses numéros d’assistance (la clôture partira chez eux)${twin.status === 'parked' ? ', en réserve dans « À relivrer »' : ', à attribuer'}.${couvert ? '' : ' Le premier remorquage est non couvert et pas facturé : je te demanderai si l’assistance le prend aussi en charge.'}`, principale: true })
+      }
+      reponses.push({ id: 'je_men_occupe', libelle: 'Je m’en occupe', effet: 'Tu l’attribues toi-même ; je ne t’en reparle pas avant 4 h.', principale: !twin })
       reponses.push({ id: 'plus_tard', libelle: 'C’est prévu plus tard', effet: 'Je ne t’en reparle pas avant 12 h.' })
     } else {
       titre = 'Commande à trier'
@@ -197,6 +210,16 @@ export async function answerVeille(sb: Sb, cardId: string, reponse: string, user
     if (m.assigned_to) { const { sendNotification } = await import('@/lib/notifications/send'); await sendNotification(m.assigned_to, 'mission_retiree', { title: `Mission toujours ouverte — ${m.vehicle_plate || ''}`, body: `La mission #${m.mission_number ?? ''} est toujours ouverte : tu la fais quand ? Pense à pointer.`, mission_id: m.id, action_url: `/mission/${m.id}` }).catch(() => {}) }
     await log(`${user.name} via Max : chauffeur relancé.`)
     await close('plus_tard', 6); return 'Relancé 📣 Je repasse dans 6 h si rien ne bouge.'
+  }
+  if (reponse.startsWith('rattacher:')) {
+    const dossierId = reponse.split(':')[1]
+    const { rattacherRelivraison } = await import('@/lib/missions/unrelivrer')
+    const r = await rattacherRelivraison(sb, m.id, dossierId, user)
+    await close('reglee')
+    const { data: d } = await sb.from('incoming_missions').select('source, invoice_number, billed_to_name').eq('id', dossierId).maybeSingle()
+    const couvert = !!d?.invoice_number || /sia_couvert/i.test(String(d?.source)) || /touring|vab|axa|allianz|mondial|ethias|ima|europ/i.test(String(d?.billed_to_name || ''))
+    const base = `C’est fait 🙌 Rattachée au dossier #${r.dossier ?? ''} comme relivraison${r.mode === 'reserve' ? ', en réserve dans « À relivrer »' : ', à attribuer'}.`
+    return couvert ? `${base} Le premier remorquage est déjà couvert ou facturé : rien à demander de plus.` : `${base} Le premier remorquage est non couvert et pas encore facturé : demande à l’assistance si elle le prend aussi en charge. Si oui, dis-le-moi dans la discussion et je mets le dossier à son nom.`
   }
   if (reponse === 'plus_tard') { await close('plus_tard', 12); return 'Ok, je t’en reparle dans 12 h si rien ne bouge ⏰' }
   if (reponse === 'je_men_occupe') { await close('plus_tard', 4); return 'Top, je te laisse faire 👍' }

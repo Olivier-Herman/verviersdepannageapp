@@ -41,3 +41,45 @@ export async function remettreARelivrer(sb: Sb, relId: string, actor: { id: stri
   ]).then(() => {}, () => {})
   return { driver }
 }
+
+/**
+ * RATTACHER UNE COMMANDE COMME RELIVRAISON D'UN DOSSIER (Olivier 14/10/2026, 2CNZ592) : une
+ * assistance commande le transport d'une voiture que nous avons déjà remorquée. Ce n'est pas
+ * un doublon : la commande devient la relivraison du dossier, avec SES numéros d'assistance
+ * (la clôture part chez l'assistance par elle). Jamais de fusion.
+ *  - véhicule au parc sur le dossier → même mise en réserve que l'arrivée automatique
+ *    (reserveTowForParkedVehicle) : elle sera recréée depuis « À relivrer » ;
+ *  - sinon → elle devient l'étape relivraison active du dossier, à attribuer.
+ */
+export async function rattacherRelivraison(sb: Sb, missionId: string, dossierId: string, actor: { id: string; name: string }): Promise<{ mode: 'reserve' | 'active'; dossier: number | null }> {
+  const plateKey = (p?: string | null) => String(p || '').replace(/[^A-Za-z0-9]/g, '').toUpperCase()
+  const [{ data: m }, { data: d0 }] = await Promise.all([
+    sb.from('incoming_missions').select('id, mission_number, status, vehicle_plate, dossier_leg, parent_mission_id, loaded_at, assigned_to').eq('id', missionId).maybeSingle(),
+    sb.from('incoming_missions').select('id, mission_number, status, vehicle_plate, parent_mission_id, dossier_leg').eq('id', dossierId).maybeSingle(),
+  ])
+  if (!m) throw new Error('Commande introuvable.')
+  if (!d0) throw new Error('Dossier introuvable.')
+  // Toujours la fiche RACINE du dossier.
+  let d: any = d0
+  if (d0.parent_mission_id) { const { data: root } = await sb.from('incoming_missions').select('id, mission_number, status, vehicle_plate, parent_mission_id, dossier_leg').eq('id', d0.parent_mission_id).maybeSingle(); if (root) d = root }
+  if (m.id === d.id) throw new Error('C’est la même fiche.')
+  if (m.dossier_leg || m.parent_mission_id) throw new Error('Cette commande fait déjà partie d’un dossier.')
+  if (!['new', 'dispatching', 'assigned', 'accepted'].includes(String(m.status)) || m.loaded_at) throw new Error(`La commande est déjà ${m.status}${m.loaded_at ? ' (chargée)' : ''} : on ne la rattache plus.`)
+  if (['cancelled', 'ignored', 'deleted'].includes(String(d.status))) throw new Error('Le dossier est annulé.')
+  if (!plateKey(m.vehicle_plate) || plateKey(m.vehicle_plate) !== plateKey(d.vehicle_plate)) throw new Error('Les deux fiches n’ont pas la même plaque : rattachement refusé.')
+  const now = new Date().toISOString()
+  if (m.assigned_to) await sb.from('incoming_missions').update({ status: 'dispatching', assigned_to: null, assigned_at: null, accepted_at: null, truck_id: null, updated_at: now }).eq('id', m.id)
+  if (d.status === 'parked') {
+    const { reserveTowForParkedVehicle } = await import('./reserve-rel')
+    const r = await reserveTowForParkedVehicle({ sb, missionId: m.id, actorId: actor.id, actorName: `${actor.name} via Max`, parentId: d.id })
+    if (!r.reserved) throw new Error(`Mise en réserve refusée : ${r.reason}.`)
+    return { mode: 'reserve', dossier: d.mission_number }
+  }
+  const { error } = await sb.from('incoming_missions').update({ parent_mission_id: d.id, mission_type: 'REL', incident_type: 'relivraison', updated_at: now }).eq('id', m.id)
+  if (error) throw new Error(error.message)
+  await sb.from('mission_logs').insert([
+    { mission_id: m.id, actor_id: actor.id, action: 'rel_attached', notes: `${actor.name} via Max : commande rattachée comme relivraison du dossier #${d.mission_number ?? ''} (lien d'assistance gardé, clôture par cette fiche). À attribuer.`, metadata: { parent_mission_id: d.id } },
+    { mission_id: d.id, actor_id: actor.id, action: 'rel_attached', notes: `Relivraison #${m.mission_number ?? ''} rattachée au dossier par ${actor.name} via Max (commande de l'assistance, à attribuer).`, metadata: { rel_id: m.id } },
+  ]).then(() => {}, () => {})
+  return { mode: 'active', dossier: d.mission_number }
+}
