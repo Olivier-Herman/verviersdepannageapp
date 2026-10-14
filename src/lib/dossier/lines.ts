@@ -104,6 +104,12 @@ export async function actionLines(mission: any, draftLines: any[] | undefined, d
       }
     } catch {}
   }
+  // Suppléments VAB (carburant, forfait VR) : ici, et nulle part ailleurs, pour que
+  // l'en-tête du dossier, la facture et l'estimation affichent le même montant.
+  try {
+    const { vabSupplementLines } = await import('@/lib/facturation/vab-fuel')
+    lines.push(...await vabSupplementLines(createAdminClient(), mission, lines))
+  } catch {}
   return { lines, has_tariff: true }
 }
 

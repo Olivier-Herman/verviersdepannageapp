@@ -25,3 +25,26 @@ export async function vabFuelLine(sb: any, o: { clientId: number | null | undefi
   }
   return { kind: 'SERV-DIV', name: 'Supplément carburant VAB', qty: 1, price_unit: p.amount }
 }
+
+/**
+ * Suppléments VAB d'une action — LE point d'entrée unique (Olivier 14/10/2026 : « le
+ * calcul doit être reflété partout, pas plusieurs bases »). Appelé par actionLines
+ * (en-tête du dossier, facture par dossier, estimation figée) et par le devis.
+ *  - carburant : sur la fiche RACINE du dossier seulement (une fois par dossier) ;
+ *  - forfait VR : sur l'action qui porte la livraison du véhicule de remplacement.
+ */
+export async function vabSupplementLines(sb: any, mission: any, lines: QuoteLine[]): Promise<QuoteLine[]> {
+  const out: QuoteLine[] = []
+  if (!lines.length || !mission) return out
+  if (!mission.parent_mission_id && mission.id) {
+    const { data: kids } = await sb.from('incoming_missions').select('id').eq('parent_mission_id', mission.id)
+    const fuel = await vabFuelLine(sb, { clientId: mission.billed_to_id, mission, lines, dossierMissionIds: [mission.id, ...(kids || []).map((k: any) => k.id)] }).catch(() => null)
+    if (fuel) out.push(fuel)
+  }
+  if (mission.vab_vr || mission.vr_forfait) {
+    const { vabVrLine } = await import('./vab-vr')
+    const vr = await vabVrLine({ mission, lines: [...lines, ...out] }).catch(() => null)
+    if (vr) out.push(vr)
+  }
+  return out
+}

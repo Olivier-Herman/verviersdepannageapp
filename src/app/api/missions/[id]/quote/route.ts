@@ -241,18 +241,12 @@ async function handlePOST(req: Request, { params }: { params: { id: string } }) 
     return NextResponse.json({ ok: false, reason: 'no_tariff', skipped: true })
   }
 
-  // Supplément carburant VAB (Olivier 13/10/2026) : ligne distincte, une fois par dossier,
-  // pendant les périodes annoncées par VAB (lib/facturation/vab-fuel).
+  // Suppléments VAB (carburant, VR) : même fonction que l'en-tête du dossier et la
+  // facture (lib/facturation/vab-fuel, appelée aussi par actionLines). Olivier 14/10/2026.
   if (lines.length > 0) {
-    const { vabFuelLine } = await import('@/lib/facturation/vab-fuel')
-    const fuel = await vabFuelLine(sb, { clientId: mission.billed_to_id, mission, lines, dossierMissionIds: [mission.id, (mission as any).parent_mission_id] }).catch(() => null)
-    if (fuel) { lines.push(fuel); totalForResponse = Math.round((totalForResponse + fuel.qty * fuel.price_unit) * 100) / 100 }
-  }
-  // Livraison de véhicule de remplacement VAB (Olivier 13/10/2026) : forfait VR en ligne distincte.
-  if (lines.length > 0 && ((mission as any).vab_vr || (mission as any).vr_forfait)) {
-    const { vabVrLine } = await import('@/lib/facturation/vab-vr')
-    const vr = await vabVrLine({ mission, lines }).catch(() => null)
-    if (vr) { lines.push(vr); totalForResponse = Math.round((totalForResponse + vr.qty * vr.price_unit) * 100) / 100 }
+    const { vabSupplementLines } = await import('@/lib/facturation/vab-fuel')
+    const extra = await vabSupplementLines(sb, mission, lines).catch(() => [] as QuoteLine[])
+    for (const x of extra) { lines.push(x); totalForResponse = Math.round((totalForResponse + x.qty * x.price_unit) * 100) / 100 }
   }
 
   // 3+4) Lookup fleet.vehicle + Push Odoo (create/update). Olivier 2026-06-04 :
