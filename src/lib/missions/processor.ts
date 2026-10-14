@@ -708,6 +708,20 @@ export async function processEmailMessage(messageId: string): Promise<ProcessRes
       }
     }
 
+    // ── TSE TSH (Travel Support Europe) : leurs réponses « Sv: / RE: » ne sont pas des missions ──
+    // Une réponse au fil créait une fiche de plus (3 fiches pour TSe 143188, 14/10/2026). On la note
+    // sur la fiche du dossier (référence TSE dans l'objet) et on n'en crée pas.
+    if (source === 'tse' && /^\s*(sv|re|aw|vs|tr|fw|fwd)\s*:/i.test(subject)) {
+      const ref = subject.match(/TSE\s*[-–:]?\s*(\d{5,})/i)?.[1]
+      if (ref) {
+        const { data: f } = await supabase.from('incoming_missions').select('id').eq('source', 'tse').eq('external_id', ref).limit(1).maybeSingle()
+        if (f) await supabase.from('mission_logs').insert({ mission_id: f.id, action: 'email_reply', notes: `Réponse de Travel Support Europe reçue : « ${subject.slice(0, 120)} »`, metadata: { from: fromEmail } }).then(() => {}, () => {})
+      }
+      await markAsRead(token, messageId)
+      if (placeholderId) await supabase.from('incoming_missions').delete().eq('id', placeholderId)
+      return { status: 'skipped', reason: `Réponse TSE (${ref || 'sans référence'}) — pas une nouvelle mission` }
+    }
+
     // Récupérer les pièces jointes avec contentBytes
     let attachments: any[] = []
     if (message.hasAttachments) {
@@ -1313,7 +1327,10 @@ export async function processEmailMessage(messageId: string): Promise<ProcessRes
       incident_country:     parsed.incident_country || 'BE',
       destination_name:     parsed.destination_name,
       destination_address:  parsed.destination_address,
-      amount_guaranteed:    parsed.amount_guaranteed,
+      // TSE TSH (Olivier 14/10/2026) : la « Max coverage » du mail est le forfait convenu → tarif convenu HTVA.
+      ...(source === 'tse'
+        ? (parsed.amount_guaranteed ? { special_tarif_htva: parsed.amount_guaranteed } : {})
+        : { amount_guaranteed: parsed.amount_guaranteed }),
       // incident_at peut être une date mal formée renvoyée par le LLM →
       // rejet Postgres (timestamptz) qui ferait échouer TOUT l'UPDATE. On la
       // valide : si non parseable → null. (Olivier 2026-06-16)

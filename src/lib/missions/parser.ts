@@ -161,6 +161,19 @@ RÈGLES D'EXTRACTION:
 - vehicle_brand + vehicle_model = "Marque & type" (format MARQUE MODELE)
 - incident_at = "Heure de la commande: JJ/MM/AAAA HH:MM:SS" → ISO 8601`,
 
+  tse: `SOURCE: Travel Support Europe (TSE / TSH, Suède) — « New technical request » / « Nouvelle demande technique », en anglais ou en français, détails dans le corps du mail ou dans un PDF « Case_… ».
+RÈGLES D'EXTRACTION:
+- external_id = « Reference TSE » (nombre, ex 143188). À défaut, le nombre qui suit « TSE » / « TSe » dans l'objet.
+- dossier_number = même valeur que external_id.
+- mission_type : « Request » contenant towing / remorquage SEUL → remorquage ; « Roadside assistance » ou « Roadside assistance or towing » → depannage.
+- incident_type = panne en français court (tyre/tyre flat → pneu crevé, battery → batterie, engine → moteur…) ; incident_description = texte « Problem » (version française si présente) + « Request ».
+- vehicle_plate = « License plate » (sans espace, majuscules ; plaque étrangère telle quelle) ; « Vehicle make/model » : 1er mot = vehicle_brand (majuscules), reste = vehicle_model.
+- incident_address + incident_city + incident_country = « Location » (rue + n°, code postal + ville ; pays en code ISO 2 lettres, Belgium → BE). Ignorer la ligne « Lat: … Lng: … » dans l'adresse.
+- client_name + client_phone = « Tel and name driver » (ex « Michele Dupriez - +491703843194 » → nom puis téléphone international).
+- amount_guaranteed = montant de « Max coverage » (ex « Amount: 150.00 EUR » → 150) : c'est le forfait convenu, hors TVA.
+- destination_name / destination_address = null sauf si une adresse de destination est donnée.
+- incident_at = « Date » de la demande → ISO 8601.`,
+
   police:  `SOURCE: Mission créée manuellement via appel Police. Extraire toutes les informations disponibles.`,
   prive:   `SOURCE: Mission créée manuellement via appel privé. Extraire toutes les informations disponibles.`,
   garage:  `SOURCE: Mission créée manuellement par un garage partenaire. Extraire toutes les informations disponibles.`,

@@ -288,6 +288,15 @@ export async function extractContent(
     return { textContent: bodyText, sourceFormat: 'email_plain', rawContent: bodyText }
   }
 
+  // === TSE TSH (Travel Support Europe) : détails dans le corps (format 2026), sinon PDF « Case_… » ===
+  if (source === 'tse') {
+    const bodyText = extractEmailBody(graphMessage.body)
+    if (/(license plate|plaque|vehicle make|marque)/i.test(bodyText)) return { textContent: bodyText, sourceFormat: 'email_plain', rawContent: bodyText }
+    const pdfAtt = attachments.find(a => a.contentBytes && (a.name?.toLowerCase().endsWith('.pdf') || a.contentType?.toLowerCase().includes('pdf')))
+    if (pdfAtt?.contentBytes) return { textContent: `${bodyText}\n[Document PDF: ${pdfAtt.name}]`, pdfBase64: pdfAtt.contentBytes, sourceFormat: 'pdf', rawContent: `[PDF: ${pdfAtt.name}]` }
+    return { textContent: bodyText, sourceFormat: 'email_plain', rawContent: bodyText }
+  }
+
   // === MONDIAL / ALLIANZ + EUROCROSS → PDF joint ===
   if (source === 'mondial' || source === 'eurocross') {
     const pdfAtt = attachments.find(a =>
