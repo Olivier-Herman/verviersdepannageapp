@@ -8,6 +8,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { usePathname } from 'next/navigation'
 import { MessageView, toolResults, type ActionRow, type Message } from '@/components/assistant/MessageParts'
+import MaxVeille, { type VeilleCardData } from '@/components/assistant/MaxVeille'
 
 type Fiche = { id: string; numero: number | null; plaque: string | null; statut: string; client_facture: string | null; source: string | null }
 
@@ -46,6 +47,10 @@ export default function MaxPastille({ userName }: { userName: string }) {
   const [deciding, setDeciding] = useState<string | null>(null)
   const [input, setInput] = useState('')
   const [party, setParty] = useState(0)
+  // Veille (Olivier 14/10/2026) : questions de Max sur les missions figées.
+  const [cards, setCards] = useState<VeilleCardData[]>([])
+  const [tab, setTab] = useState<'regarder' | 'discussion'>('discussion')
+  const lastActivity = useRef(Date.now())
   const endRef = useRef<HTMLDivElement>(null)
 
   // Fiche ouverte : numéro et plaque pour la bulle et le bandeau.
@@ -63,6 +68,51 @@ export default function MaxPastille({ userName }: { userName: string }) {
   }, [page.ficheId])
 
   useEffect(() => { endRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [messages, sending, open])
+
+  // Activité de la personne : hors des heures de bureau, Max ne relance que si elle est là.
+  useEffect(() => {
+    const bump = () => { lastActivity.current = Date.now() }
+    const ev = ['mousemove', 'keydown', 'click', 'touchstart', 'scroll']
+    ev.forEach(e => window.addEventListener(e, bump, { passive: true }))
+    return () => ev.forEach(e => window.removeEventListener(e, bump))
+  }, [])
+  // Questions de Max : toutes les 3 minutes, page visible ; la fenêtre s'ouvre seule sur une
+  // nouvelle mission figée (une fois par question et par session). Lun-ven 8-19 h, sam 9-14 h,
+  // sinon seulement si la personne est active.
+  useEffect(() => {
+    let off = false
+    const load = async () => {
+      if (document.visibilityState !== 'visible') return
+      try {
+        const j = await fetch('/api/assistant/veille', { cache: 'no-store' }).then(r => r.ok ? r.json() : null)
+        if (off || !j) return
+        const active = Date.now() - lastActivity.current < 10 * 60_000
+        if (!j.heures && !active) { setCards([]); return }
+        const list: VeilleCardData[] = j.cartes || []
+        setCards(list)
+        const nouvelles = list.filter(c => c.kind !== 'tri_commandes').filter(c => { try { const k = `max_veille_vu_${c.id}`; if (sessionStorage.getItem(k)) return false; sessionStorage.setItem(k, '1'); return true } catch { return false } })
+        if (nouvelles.length) { setTab('regarder'); setOpen(true); setHint(false) }
+      } catch {}
+    }
+    const first = setTimeout(load, 4000)
+    const t = setInterval(load, 180_000)
+    return () => { off = true; clearTimeout(first); clearInterval(t) }
+  }, [])
+
+  async function answerCard(card: VeilleCardData, reponse: string): Promise<string> {
+    const r = await fetch(`/api/assistant/veille/${card.id}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ reponse }) })
+    const j = await r.json().catch(() => ({}))
+    if (!r.ok) throw new Error(j.error || 'Max n’a pas pu le faire.')
+    if (['remettre_a_relivrer', 'retirer', 'deja_fait'].includes(reponse)) setParty(p => p + 1)
+    return j.message || 'C’est noté.'
+  }
+  async function otherCard(card: VeilleCardData, texte: string) {
+    await fetch(`/api/assistant/veille/${card.id}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ reponse: 'autre' }) }).catch(() => {})
+    setTab('discussion')
+    const ctx = `[Question de Max sur la fiche #${card.mission.numero ?? '?'} ${card.mission.plaque || ''} (id ${card.mission.id}) : ${card.titre}. Faits : ${[...card.faits, ...card.alertes].join(' | ')}]`
+    await send(`${ctx}\n${texte}`)
+  }
+
 
   const keepActions = (list?: ActionRow[]) => setActions(Object.fromEntries((list || []).map(a => [a.id, a])))
 
@@ -135,11 +185,12 @@ export default function MaxPastille({ userName }: { userName: string }) {
               J’ai vu la fiche <b>{fiche.plaque || `#${fiche.numero}`}</b>. Un souci dessus ? 👀
             </div>
           )}
-          <button onClick={openPanel} aria-label="Ouvrir Max" title="Max, ton compagnon de bureau"
+          <button onClick={() => { if (cards.some(c => c.kind !== 'tri_commandes')) setTab('regarder'); openPanel() }} aria-label="Ouvrir Max" title="Max, ton compagnon de bureau"
             className="relative w-16 h-16 rounded-full border-[3px] border-orange-500 bg-surface shadow-xl max-bob focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src="/max/max.jpg" alt="Max" className="w-full h-full rounded-full object-cover" />
             <span className="absolute right-0.5 bottom-0.5 w-4 h-4 rounded-full bg-green-500 border-[3px] border-white" />
+            {cards.length > 0 && <span className="absolute -top-1 -right-1 min-w-[24px] h-6 px-1 rounded-full bg-red-600 text-white text-[13px] font-bold grid place-items-center border-2 border-white">{cards.filter(c => c.kind !== 'tri_commandes').length + (cards.some(c => c.kind === 'tri_commandes') ? 1 : 0)}</span>}
           </button>
         </div>
       )}
@@ -162,7 +213,19 @@ export default function MaxPastille({ userName }: { userName: string }) {
               : <>Tu es sur : <b>{page.ecran}</b>. Donne-moi une plaque ou un numéro de fiche, ou décris-la-moi.</>}
           </div>
 
-          <div className="flex-1 overflow-y-auto p-3 space-y-3">
+          {cards.length > 0 && (
+            <div className="flex gap-1.5 px-3 pt-3" role="tablist">
+              {([['regarder', `À regarder · ${cards.filter(c => c.kind !== 'tri_commandes').length + (cards.some(c => c.kind === 'tri_commandes') ? 1 : 0)}`], ['discussion', 'Discussion']] as const).map(([k, l]) => (
+                <button key={k} role="tab" aria-selected={tab === k} onClick={() => setTab(k)} className={`min-h-[40px] px-4 rounded-full text-[13px] font-semibold border ${tab === k ? 'bg-ink text-surface border-ink' : 'bg-surface text-ink-secondary'}`}>{l}</button>
+              ))}
+            </div>
+          )}
+
+          {tab === 'regarder' && cards.length > 0 && (
+            <div className="flex-1 overflow-y-auto p-3"><MaxVeille cards={cards} onAnswer={answerCard} onOther={otherCard} /></div>
+          )}
+
+          <div className={`flex-1 overflow-y-auto p-3 space-y-3 ${tab === 'regarder' && cards.length > 0 ? 'hidden' : ''}`}>
             {messages.length === 0 && (
               <div className="flex items-end gap-2">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -193,7 +256,7 @@ export default function MaxPastille({ userName }: { userName: string }) {
             <div ref={endRef} />
           </div>
 
-          <form onSubmit={e => { e.preventDefault(); send() }} className="border-t p-3 flex gap-2" style={{ paddingBottom: 'calc(12px + env(safe-area-inset-bottom, 0px))' }}>
+          <form onSubmit={e => { e.preventDefault(); setTab('discussion'); send() }} className="border-t p-3 flex gap-2" style={{ paddingBottom: 'calc(12px + env(safe-area-inset-bottom, 0px))' }}>
             <input value={input} onChange={e => setInput(e.target.value)} placeholder="Écris à Max…" disabled={sending}
               className="flex-1 min-w-0 h-11 rounded-xl border bg-surface-2 px-3 text-sm text-ink focus:outline-none focus:border-teal-700" />
             <button disabled={sending || !input.trim()} aria-label="Envoyer" className="w-12 h-11 rounded-xl bg-teal-700 text-white text-lg disabled:opacity-50">➤</button>

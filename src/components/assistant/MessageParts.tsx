@@ -53,7 +53,7 @@ export function MessageView({ message, results, actions, deciding, onDecide, rea
     return (
       <div className="flex justify-end">
         <div className="max-w-2xl bg-brand text-white rounded-2xl rounded-br-sm px-4 py-2 text-sm whitespace-pre-wrap break-words">
-          {blocks.map((b, i) => b.type === 'text' ? <span key={i}>{String(b.text || '').replace(/^\[Page ouverte : [^\]]*\]\n/, '')}</span> : null)}
+          {blocks.map((b, i) => b.type === 'text' ? <span key={i}>{String(b.text || '').replace(/^\[Page ouverte : [^\]]*\]\n/, '').replace(/^\[Question de Max [^\]]*\]\n/, '')}</span> : null)}
         </div>
       </div>
     )
