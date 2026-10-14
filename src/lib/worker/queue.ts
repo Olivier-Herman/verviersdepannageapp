@@ -19,7 +19,7 @@ export const HEARTBEAT_MAX_MS = 2 * 60 * 1000
 /** Une demande « en cours » depuis plus longtemps = worker tombé en pleine tâche. */
 export const RUNNING_MAX_MS   = 15 * 60 * 1000
 
-export type WorkerJobKind = 'vab_close'
+export type WorkerJobKind = 'vab_close' | 'vab_steps'
 
 export interface WorkerHeartbeat {
   alive:   boolean

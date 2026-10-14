@@ -20,7 +20,7 @@ import { createClient } from '@supabase/supabase-js'
 
 const VERSION      = process.env.WORKER_VERSION || 'dev'
 const HOST         = process.env.WORKER_NAME || os.hostname()
-const KINDS        = ['vab_close']
+const KINDS        = ['vab_close', 'vab_steps']
 const POLL_MS      = 20_000
 const HEARTBEAT_MS = 30_000
 const JOB_MAX_MS   = 12 * 60 * 1000
@@ -105,12 +105,22 @@ async function runVabClose(job: any) {
   return { ok: closed, result: { closed, plate: (f as any)?.vehicle_plate || null, seconds: Math.round((Date.now() - t0) / 1000) } }
 }
 
+/** Étapes VAB (accepté → départ → arrivé) que Vercel n'a pas pu passer sans navigateur (14/10/2026). */
+async function runVabSteps(job: any) {
+  const { missionId, upTo } = job.payload || {}
+  if (!missionId || !upTo) throw new Error('payload incomplet (missionId, upTo)')
+  const { syncVabStep } = await import('@/lib/vab/sync')
+  const t0 = Date.now()
+  const ok = await syncVabStep(sb, missionId, upTo)
+  return { ok, result: { ok, upTo, seconds: Math.round((Date.now() - t0) / 1000) } }
+}
+
 async function runJob(job: any) {
   busy = job.id
   log(`▶ ${job.kind} ${job.dedupe_key || job.id} (essai ${job.attempts})`)
   const timeout = new Promise<never>((_, rej) => setTimeout(() => rej(new Error(`délai dépassé (${JOB_MAX_MS / 60000} min)`)), JOB_MAX_MS))
   try {
-    const out = await Promise.race([job.kind === 'vab_close' ? runVabClose(job) : Promise.reject(new Error(`type inconnu : ${job.kind}`)), timeout])
+    const out = await Promise.race([job.kind === 'vab_close' ? runVabClose(job) : job.kind === 'vab_steps' ? runVabSteps(job) : Promise.reject(new Error(`type inconnu : ${job.kind}`)), timeout])
     await finish(job, out.ok, out.result, out.ok ? undefined : 'non soldé chez VAB — détail dans mission_logs')
     log(`${out.ok ? '✔' : '✖'} ${job.dedupe_key || job.id} ${JSON.stringify(out.result)}`)
   } catch (e: any) {

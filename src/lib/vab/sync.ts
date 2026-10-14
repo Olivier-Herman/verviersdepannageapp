@@ -133,6 +133,17 @@ export async function syncVabStep(sb: any, missionId: string, upToStep: VabStep)
       // l'écran de clôture n'apparaissait donc jamais.
       const tow = /TowAssignments/i.test(url)
       if (res === 'ignore' || (res === 'absent' && tow)) {
+        // Sur Vercel, cette route n'embarque pas Chromium (« input directory … does not exist ») : le
+        // rattrapage au navigateur est confié au worker du VPS, qui a un vrai Chrome (1WXK155, 14/10/2026 :
+        // « accepté » jamais passé chez VAB, puis clôture impossible). Worker absent : essai local, comme avant.
+        if (process.env.VERCEL && !process.env.WORKER_NAME) {
+          const { workerHeartbeat, enqueueJob } = await import('@/lib/worker/queue')
+          if ((await workerHeartbeat(sb)).alive) {
+            await enqueueJob(sb, { kind: 'vab_steps', dedupeKey: `vab_steps:${missionId}`, missionId, payload: { missionId, upTo: upToStep }, createdBy: 'vab-sync' })
+            await sb.from('mission_logs').insert({ mission_id: missionId, action: 'vab_synced', notes: `VAB Comet : « ${LABEL[step]} » ignoré en direct — confié au serveur navigateur (jusqu'à « ${LABEL[upToStep]} »).`, metadata: { step, upTo: upToStep, assignmentId: aid, auto: true, worker: true } }).then(() => {}, () => {})
+            break   // le worker reprend à partir de cette étape ; les étapes déjà passées restent journalisées ci-dessous
+          }
+        }
         const { vabStepInBrowser } = await import('./sign-browser')
         const r = await vabStepInBrowser(aid, step)
         // ⚠️ Sur une page de REMORQUAGE, `boutonEncoreLa` est AVEUGLE : les
