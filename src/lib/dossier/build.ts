@@ -496,12 +496,19 @@ async function buildDossierUncached(anyMissionId: string, light: boolean, price 
     ])) as string[]
 
     let amount = 0, note: string | null = null, nothing: string | null = null, days: number | null = null, amountUnknown = false
-    let regimeEff = String(m.mission_type || 'autre')   // régime tarifaire réellement appliqué (saisie → autre après levée)
+    // Saisie passée au Domaine sans levée : il n'y a PAS de gardiennage « autre » (à charge
+    // du propriétaire). Un volet créé au régime « autre » (zone du parc, reprise du 07/09)
+    // est lu au régime saisie : état de frais jusqu'à la remise, puis relevé Domaine.
+    // Olivier 14/10/2026, fiche 10009617 (527 nuits × 20 € adressées au propriétaire).
+    const gardRegime = kind === 'gard' && String(m.mission_type || 'autre') !== 'saisie'
+      && root.source === 'police_saisie' && !!root.domaine_remise_date && !(root.levee_saisie_at || root.levee_saisie_date)
+      ? 'saisie' : String(m.mission_type || 'autre')
+    let regimeEff = gardRegime   // régime tarifaire réellement appliqué (saisie → autre après levée)
     const facts: { label: string; value: string }[] = []
     let title = '', subtitle = '', started: string | null = null, ended: string | null = null, open = false
 
     if (kind === 'gard') {
-      const regime = String(m.mission_type || 'autre')
+      const regime = gardRegime
       const entry = ts(m.parked_at) || ts(m.received_at) || Date.now()
       // Remise au Domaine : la période à charge du Parquet s'arrête là, même si
       // la fiche gardiennage est encore ouverte (le véhicule reste au parc).
@@ -679,7 +686,7 @@ async function buildDossierUncached(anyMissionId: string, light: boolean, price 
       // facturer » quand le tarif arrive après coup (2GSE264, 08/09/2026).
       facts, amount_htva: amount, amount_note: note,
       billed_htva: gardPeriodBilled ? Math.max(billedHtva || 0, amount) : billedHtva || ((billedRefs.length && (!billedItems.length || (!!m.invoice_number && billedItems.every(it => !Number(it.amount_htva)))) && !amountUnknown) ? amount : 0),   // D9 : un groupe sans tarif n'est jamais « facturé » par une facture sans ligne
-      billed_refs: billedRefs, nothing_to_bill: nothing, days, regime: kind === 'gard' ? String(m.mission_type || 'autre') : null, free_days: kind === 'gard' ? (dayPriceByRegime[regimeEff]?.free || 0) : undefined, redelivery_address: (kind === 'gard' ? root.redelivery_address : m.redelivery_address) || null, amount_unknown: amountUnknown || undefined,
+      billed_refs: billedRefs, nothing_to_bill: nothing, days, regime: kind === 'gard' ? gardRegime : null, free_days: kind === 'gard' ? (dayPriceByRegime[regimeEff]?.free || 0) : undefined, redelivery_address: (kind === 'gard' ? root.redelivery_address : m.redelivery_address) || null, amount_unknown: amountUnknown || undefined,
       // Olivier 07/09/2026 : « tout ce qui est modifiable doit l'être dans la vue 2 ».
       editable: kind === 'gard' ? undefined : {
         client_name: m.client_name || null, client_phone: m.client_phone || null, client_address: m.client_address || null,
