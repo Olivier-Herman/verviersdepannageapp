@@ -242,6 +242,10 @@ export default async function AdminPage() {
             desc="Conversations des chauffeurs avec l'aide Sam (le jour) et Sonic (la nuit), avec ou sans mission : résumé et échange complet, traduction française. Superadmin uniquement." />
         )}
         {user.role === 'superadmin' && (
+          <Card href="/admin/max-echanges" icon={Radio} label="Conversations de Max"
+            desc="Toutes les conversations du bureau avec Max, en détail : questions, réponses, recherches et corrections proposées, confirmées ou annulées. Lecture seule. Superadmin uniquement." />
+        )}
+        {user.role === 'superadmin' && (
           <Card href="/admin/activity" icon={Radio} label="Journal d'activité"
             desc="Mouchard : toutes les actions (qui / quoi / quand / quelle mission) en flux temps réel, filtrable par utilisateur, action, période. Superadmin uniquement." />
         )}

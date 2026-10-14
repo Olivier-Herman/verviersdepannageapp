@@ -35,7 +35,7 @@ export function toolResults(messages: Message[]): Record<string, any> {
   return out
 }
 
-export function MessageView({ message, results, actions, deciding, onDecide }: { message: Message; results: Record<string, any>; actions: Record<string, ActionRow>; deciding: string | null; onDecide: (id: string, d: 'confirmer' | 'annuler') => void }) {
+export function MessageView({ message, results, actions, deciding, onDecide, readOnly = false }: { message: Message; results: Record<string, any>; actions: Record<string, ActionRow>; deciding: string | null; onDecide: (id: string, d: 'confirmer' | 'annuler') => void; readOnly?: boolean }) {
   const blocks = Array.isArray(message.content)
     ? message.content
     : [{ type: 'text' as const, text: (message.content as any)?.text || '' }]
@@ -73,7 +73,7 @@ export function MessageView({ message, results, actions, deciding, onDecide }: {
             )
           }
           if (b.type === 'tool_use' && b.name === 'proposer_action') {
-            return <ActionCard key={i} input={b.input} result={b.id ? results[b.id] : null} actions={actions} deciding={deciding} onDecide={onDecide} />
+            return <ActionCard key={i} input={b.input} result={b.id ? results[b.id] : null} actions={actions} deciding={deciding} onDecide={onDecide} readOnly={readOnly} />
           }
           if (b.type === 'tool_use') {
             return <ToolUseBlock key={i} name={b.name || ''} input={b.input} />
@@ -176,7 +176,7 @@ function ToolUseBlock({ name, input }: { name: string; input: any }) {
 }
 
 /** Action proposée par l'assistant bureau : rien n'est fait avant « Confirmer ». */
-export function ActionCard({ input, result, actions, deciding, onDecide }: { input: any; result: any; actions: Record<string, ActionRow>; deciding: string | null; onDecide: (id: string, d: 'confirmer' | 'annuler') => void }) {
+export function ActionCard({ input, result, actions, deciding, onDecide, readOnly = false }: { input: any; result: any; actions: Record<string, ActionRow>; deciding: string | null; onDecide: (id: string, d: 'confirmer' | 'annuler') => void; readOnly?: boolean }) {
   const id: string | undefined = result?.action_id
   const row = id ? actions[id] : undefined
   const status = row?.status || (id ? 'en_attente' : 'refusee')
@@ -193,7 +193,8 @@ export function ActionCard({ input, result, actions, deciding, onDecide }: { inp
         </div>
       )}
       {!id && <p className="mt-2 text-xs text-red-800">Proposition refusée par VD Soft : {result?.error || 'erreur'}</p>}
-      {id && status === 'en_attente' && (
+      {id && status === 'en_attente' && readOnly && <p className="mt-2 text-xs font-semibold text-amber-800">En attente de la décision de la personne.</p>}
+      {id && status === 'en_attente' && !readOnly && (
         <div className="mt-3 flex gap-2">
           <button onClick={() => onDecide(id, 'confirmer')} disabled={!!deciding} className="min-h-[44px] px-4 rounded-xl bg-green-700 hover:bg-green-800 text-white font-semibold disabled:opacity-50">{deciding === id ? 'En cours…' : 'Confirmer'}</button>
           <button onClick={() => onDecide(id, 'annuler')} disabled={!!deciding} className="min-h-[44px] px-4 rounded-xl border border-slate-300 bg-white text-slate-800 font-semibold disabled:opacity-50">Annuler</button>
