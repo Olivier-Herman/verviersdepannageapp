@@ -8,6 +8,7 @@ export const COMPANY = {
   address: 'Lefin 12, 4860 Pepinster',
   vat: 'BE0460.759.205',
   iban: 'BE26 3401 4658 5529',
+  bic: 'BBRUBEBB',
   phone: '+32 (0)87/35.18.20',
   email: 'administration@verviersdepannage.com',
   website: 'verviersdepannage.be',

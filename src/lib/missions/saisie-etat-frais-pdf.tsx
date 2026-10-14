@@ -182,6 +182,8 @@ function EtatFraisDoc({ input, qr, logo }: { input: EtatFraisInput; qr: string |
               <Text style={styles.addr}>{COMPANY.address}</Text>
               <Text style={styles.addr}>fourriere@verviersdepannage.be</Text>
               <Text style={styles.addrInk}>TVA {COMPANY.vat}</Text>
+              {/* Coordonnées bancaires : exigées par la taxation (535059-26, « informations bancaires manquantes », 14/10/2026). */}
+              <Text style={styles.addrInk}>IBAN {COMPANY.iban} · BIC {COMPANY.bic}</Text>
             </View>
             <View style={styles.party}>
               <Text style={styles.lbl}>Destinataire</Text>
@@ -256,7 +258,7 @@ function EtatFraisDoc({ input, qr, logo }: { input: EtatFraisInput; qr: string |
           </View>
         </View>
 
-        <Text style={styles.legal}>{COMPANY.name} · {COMPANY.address} · TVA {COMPANY.vat}</Text>
+        <Text style={styles.legal}>{COMPANY.name} · {COMPANY.address} · TVA {COMPANY.vat} · IBAN {COMPANY.iban} · BIC {COMPANY.bic}</Text>
       </Page>
     </Document>
   )
