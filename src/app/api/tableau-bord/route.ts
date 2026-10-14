@@ -10,6 +10,7 @@ import { NextResponse }      from 'next/server'
 import { createAdminClient } from '@/lib/supabase'
 import { isPoliceNoPointage, loadDepots } from '@/lib/perf/police-trip'
 import { sourcesWithTag } from '@/lib/missions/source-catalog'
+import { readTodoCount } from '@/lib/dossier/todo-count'
 
 export const dynamic     = 'force-dynamic'
 export const fetchCache   = 'force-no-store'
@@ -94,6 +95,7 @@ export async function GET(req: Request) {
     return apply(q)
   }
   const exclFuture = (q: any) => q.or(`intervention_date.is.null,intervention_date.lte.${RDV_THRESHOLD}`)
+  const todoDossiers = (await readTodoCount(sb).catch(() => null))?.count ?? null
 
   const [
     cCommande, cAttente, cAssign, cCours, cFacturer,
@@ -483,7 +485,10 @@ export async function GET(req: Request) {
       enAttente:     cAttente.count   || 0,
       assignees:     cAssign.count    || 0,
       enCours:       cCours.count     || 0,
-      aFacturer:     cFacturer.count  || 0,
+      // Dossiers à facturer hors Touring — le chiffre de la page Facturation (cache du
+      // cron 15 min). Le compte brut des fiches « à facturer » mêlait Touring, saisies
+      // Parquet, relivraisons et fiches déjà facturées : 92 pour 21 (Olivier 14/10/2026).
+      aFacturer:     todoDossiers ?? (cFacturer.count || 0),
       enParc:        cParc.count      || 0,
       aRelivrer,
       termineesJour: cTerminees.count || 0,

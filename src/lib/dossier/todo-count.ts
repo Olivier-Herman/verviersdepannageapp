@@ -117,10 +117,32 @@ export async function refreshTodoCountFrom(sb: Sb, dossiers: Dossier[], comexByI
   return count
 }
 
+/**
+ * Fiches « à facturer » qui portent déjà une facture : la facture a été validée
+ * hors de VD Soft (pas de « Facturation OK »), la racine n'était jamais soldée et
+ * restait « à facturer » à vie — 7 fiches sur 92 au tableau de bord le 14/10/2026
+ * (2DAY342, 1FUB427…). On solde leur dossier quand tout est facturé ou sans frais ;
+ * un brouillon non validé ou un groupe ouvert les laisse en place (settleRootIfDone).
+ */
+export async function settleInvoicedRoots(sb: Sb, max = 40): Promise<number> {
+  const { data } = await sb.from('incoming_missions').select('id, parent_mission_id')
+    .eq('status', 'to_invoice').is('archived_at', null)
+    .or('invoice_number.not.is.null,invoice_odoo_id.not.is.null')
+    .order('id').limit(200)
+  const { settleRootIfDone } = await import('./settle')
+  const roots = Array.from(new Set((data || []).map((m: any) => m.parent_mission_id || m.id))).slice(0, max)
+  let n = 0
+  for (const id of roots) {
+    try { if ((await settleRootIfDone(sb, id, null)).settled) n++ } catch (e: any) { console.warn('[todo-count] solde KO', id, e?.message) }
+  }
+  return n
+}
+
 /** Tout en un (cron) : construit, classe, met en cache. */
-export async function refreshFacturationTodoCount(sb: Sb): Promise<{ count: number; dossiers: number }> {
+export async function refreshFacturationTodoCount(sb: Sb): Promise<{ count: number; dossiers: number; soldes?: number }> {
+  const soldes = await settleInvoicedRoots(sb).catch(() => 0)
   const { dossiers } = await loadFacturationDossiers(sb)
   const comexById = await loadComexById(sb, dossiers)
   const count = await refreshTodoCountFrom(sb, dossiers, comexById)
-  return { count, dossiers: dossiers.length }
+  return { count, dossiers: dossiers.length, soldes }
 }
