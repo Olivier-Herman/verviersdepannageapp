@@ -661,6 +661,9 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
   // Consigne du garage (Olivier 10/10/2026) : rien pour un dépannage sur place ou dans le créneau de dépôt du
   // garage ; dès que la mission est un remorquage hors créneau (soir, week-end, férié), alerte à confirmer.
   const [horloge, setHorloge] = useState(() => Date.now())
+  const [derogOuvert, setDerogOuvert] = useState(false)
+  const [derogNom, setDerogNom] = useState('')
+  const [derogEnvoi, setDerogEnvoi] = useState(false)
   useEffect(() => {
     if (!consigneSource?.horaires) return
     const t = setInterval(() => setHorloge(Date.now()), 60_000)
@@ -5089,24 +5092,66 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
           )}
 
           {(() => {
-            const alerte = !!consigneSource?.horaires && !isReadOnly
+            const horsCreneau = !!consigneSource?.horaires && !isReadOnly
               && (isRemorquage(M.mission_type) || isRemRel(M.mission_type))
               && !['new', 'dispatching', 'parked', 'completed', 'to_invoice', 'invoiced', 'cancelled', 'ignored'].includes(String(M.status))
-              && !(M as any).source_notice_ack_at && !msgClient
-              && depotFerme(consigneSource.horaires, new Date(horloge))
-            if (!alerte) return null
+              && !(M as any).depot_derogation
+              && depotFerme(consigneSource!.horaires, new Date(horloge))
+            if (!horsCreneau) return null
+            // Dérogation (Olivier 14/10/2026, Centracar 1ENM790) : un employé du garage accepte quand même
+            // le véhicule → le chauffeur donne son nom, gardé sur la fiche pour expliquer le dépôt tardif.
+            const formDerog = (
+              <div className="mt-3 space-y-2">
+                <p className="text-sm font-semibold text-gray-900"><T k="mission_detail.depot_derog_q" /></p>
+                <input value={derogNom} onChange={e => setDerogNom(e.target.value)} maxLength={80}
+                  placeholder={t('mission_detail.depot_derog_ph')}
+                  className="w-full min-h-[48px] rounded-xl border-2 border-gray-300 bg-white px-3 text-gray-900" />
+                <button disabled={derogNom.trim().length < 2 || derogEnvoi} className="w-full min-h-[52px] rounded-2xl bg-green-700 font-bold text-white disabled:opacity-40"
+                  onClick={async () => {
+                    setDerogEnvoi(true)
+                    const r = await fetch(`/api/missions/${M.id}/consigne-lue`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ employe: derogNom.trim() }) }).catch(() => null)
+                    setDerogEnvoi(false)
+                    if (r?.ok) { setM(prev => ({ ...prev, source_notice_ack_at: (prev as any).source_notice_ack_at || new Date().toISOString(), depot_derogation: { employe: derogNom.trim(), at: new Date().toISOString() } } as any)); setDerogOuvert(false) }
+                    else setErr(t('mission_detail.depot_derog_err'))
+                  }}>
+                  <T k="mission_detail.depot_derog_ok" />
+                </button>
+                <button className="w-full min-h-[44px] text-sm text-gray-700 underline" onClick={() => setDerogOuvert(false)}><T k="close.cancel" /></button>
+              </div>
+            )
+            if ((M as any).source_notice_ack_at) {
+              // Consigne déjà lue : rappel discret sur la fiche, avec la dérogation possible.
+              return (
+                <div className="w-full rounded-2xl border-2 border-amber-400 bg-amber-50 p-3">
+                  <p className="text-sm font-bold text-amber-900">🕘 <T k="mission_detail.depot_closed_short" /></p>
+                  {derogOuvert ? formDerog : (
+                    <button className="mt-2 w-full min-h-[48px] rounded-xl border-2 border-green-700 font-bold text-green-800" onClick={() => setDerogOuvert(true)}>
+                      <T k="mission_detail.depot_derog_btn" />
+                    </button>
+                  )}
+                </div>
+              )
+            }
+            if (msgClient) return null
             return (
               <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/60 p-4">
                 <div className="w-full max-w-md rounded-3xl bg-surface p-6 shadow-2xl">
                   <p className="text-xs font-bold uppercase tracking-wider text-amber-700 dark:text-amber-300">🕘 <T k="mission_detail.source_notice_title" /></p>
                   <p className="mt-3 rounded-2xl border-2 border-amber-400 bg-amber-50 p-4 text-lg font-bold text-gray-900 whitespace-pre-wrap">{matSq && consigneSource!.sq ? consigneSource!.sq : consigneSource!.fr}</p>
-                  <button className="mt-5 w-full min-h-[52px] rounded-2xl bg-blue-600 font-bold text-white"
-                    onClick={async () => {
-                      setM(prev => ({ ...prev, source_notice_ack_at: new Date().toISOString() } as any))
-                      await fetch(`/api/missions/${M.id}/consigne-lue`, { method: 'POST' }).catch(() => {})
-                    }}>
-                    <T k="mission_detail.source_notice_ok" />
-                  </button>
+                  {derogOuvert ? formDerog : (
+                    <>
+                      <button className="mt-5 w-full min-h-[52px] rounded-2xl bg-blue-600 font-bold text-white"
+                        onClick={async () => {
+                          setM(prev => ({ ...prev, source_notice_ack_at: new Date().toISOString() } as any))
+                          await fetch(`/api/missions/${M.id}/consigne-lue`, { method: 'POST' }).catch(() => {})
+                        }}>
+                        <T k="mission_detail.source_notice_ok" />
+                      </button>
+                      <button className="mt-2 w-full min-h-[48px] rounded-2xl border-2 border-green-700 font-bold text-green-800" onClick={() => setDerogOuvert(true)}>
+                        <T k="mission_detail.depot_derog_btn" />
+                      </button>
+                    </>
+                  )}
                 </div>
               </div>
             )
