@@ -47,6 +47,8 @@ async function addMessage(conv: Conv, m: { role: 'chauffeur' | 'agent'; agent?: 
   const now = new Date().toISOString()
   await sb.from('sam_messages').insert({ conversation_id: conv.id, at: now, role: m.role, agent: m.agent || null, canal: m.canal, texte: m.texte.slice(0, 8000), texte_fr: m.texte_fr ? m.texte_fr.slice(0, 8000) : null, photo: !!m.photo })
   await sb.from('sam_conversations').update({ last_at: now, canal: m.canal }).eq('id', conv.id)
+  const { mirrorSam } = await import('./miroir')
+  await mirrorSam(conv.id, m)
 }
 
 /**

@@ -30,6 +30,8 @@ async function addMsg(conversationId: string, m: { role: 'chauffeur' | 'agent'; 
   const now = new Date().toISOString()
   await sb.from('sam_messages').insert({ conversation_id: conversationId, at: now, role: m.role, agent: m.agent || null, canal: m.canal, texte: m.texte.slice(0, 8000), texte_fr: m.texte_fr || null })
   await sb.from('sam_conversations').update({ last_at: now }).eq('id', conversationId)
+  const { mirrorSam } = await import('./miroir')
+  await mirrorSam(conversationId, m)
 }
 
 /** Appelé (en arrière-plan) après la clôture d'une mission par le chauffeur. */
