@@ -982,6 +982,18 @@ export async function processEmailMessage(messageId: string): Promise<ProcessRes
       return { status: 'error', error: parseErr.message, missionId: placeholderId }
     }
 
+    // ── ANWB (Olivier 14/10/2026) : mission déjà connue → complétée, autres documents → aucune fiche ──
+    if (source === 'anwb') {
+      const { decisionAnwb } = await import('./anwb')
+      const d = await decisionAnwb(supabase, parsed, { subject, placeholderId })
+      if (d.action === 'skip') {
+        console.log(`[Processor] ANWB : ${d.reason}`)
+        await markAsRead(token, messageId)
+        if (placeholderId) await supabase.from('incoming_missions').delete().eq('id', placeholderId)
+        return { status: 'skipped', reason: d.reason }
+      }
+    }
+
     // Enrichissement automatique depuis le portail IMA
     console.log(`[Processor] step=ima_enrich messageId=${msgIdShort}`)
     const imaEnrichment = await enrichFromIMAPortal(content.rawContent, source, parsed)
@@ -1328,7 +1340,8 @@ export async function processEmailMessage(messageId: string): Promise<ProcessRes
       destination_name:     parsed.destination_name,
       destination_address:  parsed.destination_address,
       // TSE TSH (Olivier 14/10/2026) : la « Max coverage » du mail est le forfait convenu → tarif convenu HTVA.
-      ...(source === 'tse'
+      // ANWB (14/10) : « Montant de la prise en charge » = forfait convenu HTVA, même règle.
+      ...(source === 'tse' || source === 'anwb'
         ? (parsed.amount_guaranteed ? { special_tarif_htva: parsed.amount_guaranteed } : {})
         : { amount_guaranteed: parsed.amount_guaranteed }),
       // incident_at peut être une date mal formée renvoyée par le LLM →
@@ -1588,6 +1601,11 @@ export async function processEmailMessage(messageId: string): Promise<ProcessRes
     if (!existingMissionId) {
       const { notifyMarketNewMission } = await import('@/lib/missions/market-notify')
       await notifyMarketNewMission(targetId)
+    }
+    // Nouvelle mission ANWB : appel du dispatch, comme pour une demande EBAC (Olivier 14/10/2026).
+    if (!existingMissionId && source === 'anwb' && targetId) {
+      const { appelerDispatchAnwb } = await import('./anwb')
+      await appelerDispatchAnwb(targetId).catch(e => console.warn('[Processor] appel ANWB', e?.message))
     }
 
     const durationMs = Date.now() - t0

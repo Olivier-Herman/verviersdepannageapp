@@ -298,7 +298,7 @@ export async function extractContent(
   }
 
   // === MONDIAL / ALLIANZ + EUROCROSS → PDF joint ===
-  if (source === 'mondial' || source === 'eurocross') {
+  if (source === 'mondial' || source === 'eurocross' || source === 'anwb') {
     const pdfAtt = attachments.find(a =>
       a.contentBytes &&
       (a.name?.toLowerCase().endsWith('.pdf') ||

@@ -34,6 +34,8 @@ export interface ParsedMission {
   client_language:      string | null
   /** Véhicule en sous-sol / parking souterrain (plateau impossible). */
   underground:          boolean | null
+  /** Type de document quand la source en envoie plusieurs (ANWB : transfert, depannage_pec, gardiennage…). */
+  document_kind?:       string | null
   confidence:           number
 }
 
@@ -174,6 +176,26 @@ RÈGLES D'EXTRACTION:
 - destination_name / destination_address = null sauf si une adresse de destination est donnée.
 - incident_at = « Date » de la demande → ISO 8601.`,
 
+  anwb: `SOURCE: ANWB Alarmcentrale (Pays-Bas) — PDF ANWB en français (en-tête « ANWB B.V. … Numéro de dossier / Numéro de mission »).
+RÈGLES D'EXTRACTION:
+- document_kind (OBLIGATOIRE), d'après la phrase d'ouverture du document :
+  « Mission de transfert / remorquage le … » → "transfert" ;
+  « Ceci est une prise en charge pour une dépannage » → "depannage_pec" ;
+  « nous prenons en charge les frais de gardiennage » ou « stallingskosten » → "gardiennage" ;
+  « frais de réparation » / « accord de réparation » → "reparation" ;
+  « se trouve dans votre atelier » / demande de diagnostic → "diagnostic" ;
+  document marqué « ANNULÉ » → "annulation" ; sinon → "autre".
+- external_id = « Numéro de mission » (ex 20266364496) ; à défaut « Numéro de dossier ». dossier_number = « Numéro de dossier » (ex 26081752201).
+- mission_type : transfert → "remorquage" quand le LIEU DU VÉHICULE et la DESTINATION sont tous deux en Belgique (l'adresse néerlandaise du conducteur ne compte pas) ; "transport" seulement si le lieu du véhicule ou la destination est hors Belgique. depannage_pec → "depannage".
+- incident_address + incident_city + incident_country = bloc « LIEU DU VÉHICULE » (nom du garage éventuel en tête : le garder dans incident_address). destination_name + destination_address = bloc « DESTINATION ».
+- client_name = « Conducteur » ; client_phone = « Téléphone » du conducteur (format international) ; client_address = « Adresse » du conducteur.
+- vehicle_plate = « Immatriculation » (sans espace, majuscules) ; « Marque / Type » : 1er mot = vehicle_brand (majuscules), reste = vehicle_model sans répéter la marque ni le carburant (« Nissan NISSAN QASHQAI Essence » → NISSAN / QASHQAI) ; vehicle_fuel depuis le type (Essence / Diesel) ; vehicle_gearbox = « Boite automatique » Oui → Automatique, Non → Manuelle.
+- incident_type = « Origine de la panne » en français court ; incident_description = « Observations » (traduire en français si en néerlandais).
+- amount_guaranteed = « Montant de la prise en charge : EUR x Hors TVA » (nombre seul, ex 300). C'est le forfait convenu hors TVA.
+- scheduled_at = date et heure de « Mission de transfert / remorquage le JJ-MM-AAAA HH:MM » (heure belge) → ISO 8601 UTC.
+- incident_at = « Date / heure » du document → ISO 8601 UTC.
+Ajoute dans le JSON le champ "document_kind".`,
+
   police:  `SOURCE: Mission créée manuellement via appel Police. Extraire toutes les informations disponibles.`,
   prive:   `SOURCE: Mission créée manuellement via appel privé. Extraire toutes les informations disponibles.`,
   garage:  `SOURCE: Mission créée manuellement par un garage partenaire. Extraire toutes les informations disponibles.`,
@@ -217,6 +239,7 @@ Extrais les données de cette mission et retourne ce JSON (null si absent):
   "scheduled_at": "rendez-vous fixé par l'assisteur, ISO 8601 UTC, sinon null",
   "client_language": "fr|nl|de|en ou null",
   "underground": null,
+  "document_kind": null,
   "confidence": 0.9
 }
 
@@ -328,6 +351,7 @@ export async function parseMissionContent(
     incident_city:        (parsed.incident_city        as string | null) || null,
     incident_country:     (parsed.incident_country     as string)        || 'BE',
     destination_name:     (parsed.destination_name     as string | null) || null,
+    document_kind:        (parsed.document_kind        as string | null) || null,
     destination_address:  (parsed.destination_address  as string | null) || null,
     amount_guaranteed:    parsed.amount_guaranteed != null
                             ? parseFloat(String(parsed.amount_guaranteed)) || null
