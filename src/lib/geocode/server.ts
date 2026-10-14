@@ -90,6 +90,24 @@ export function isHighwayAddress(raw: string | null | undefined): boolean {
  * tronçon dans la commune. Position approximative (quelques km au plus), assumée et écrite dans le label.
  * Clé du navigateur, restreinte par referer : Places (New) l'accepte avec l'en-tête Referer.
  */
+const RAYON_KM = 60
+let depotsCache: { at: number; list: { lat: number; lng: number }[] } | null = null
+async function depotsActifs(): Promise<{ lat: number; lng: number }[]> {
+  if (depotsCache && Date.now() - depotsCache.at < 3600_000) return depotsCache.list
+  try {
+    const { createAdminClient } = await import('@/lib/supabase')
+    const { data } = await createAdminClient().from('depots').select('lat, lng').eq('active', true)
+    const list = (data || []).filter((d: any) => d.lat != null && d.lng != null).map((d: any) => ({ lat: Number(d.lat), lng: Number(d.lng) }))
+    depotsCache = { at: Date.now(), list }
+    return list
+  } catch { return [] }
+}
+function kmEntre(a: number, b: number, c: number, d: number): number {
+  const r = (x: number) => x * Math.PI / 180
+  const h = Math.sin(r(c - a) / 2) ** 2 + Math.cos(r(a)) * Math.cos(r(c)) * Math.sin(r(d - b) / 2) ** 2
+  return 12742 * Math.asin(Math.sqrt(h))
+}
+
 async function geocodeHighwayPlaces(text: string): Promise<GeocodeHit | null> {
   const key = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY
   if (!key) return null
@@ -104,7 +122,11 @@ async function geocodeHighwayPlaces(text: string): Promise<GeocodeHit | null> {
     void countRoutingCall('google', 'adresse', !r.ok)
     if (!r.ok) { lastFailure = 'transient'; return null }
     const j: any = await r.json()
-    const p = (j.places || []).find((x: any) => x?.location && (x.types || []).some((t: string) => ['route', 'rest_stop', 'gas_station', 'intersection', 'point_of_interest'].includes(t)))
+    // Garde-fou : un point à plus de RAYON_KM de nos dépôts n'est pas notre intervention (« E40 DIR THEUX
+    // SORTIE THEUX » était tombé sur l'E40 à Bruxelles, 2FVH314, 14/10/2026).
+    const proches = await depotsActifs()
+    const p = (j.places || []).find((x: any) => x?.location && (x.types || []).some((t: string) => ['route', 'rest_stop', 'gas_station', 'intersection', 'point_of_interest'].includes(t))
+      && (!proches.length || proches.some(d => kmEntre(d.lat, d.lng, Number(x.location.latitude), Number(x.location.longitude)) <= RAYON_KM)))
     if (!p) { lastFailure = 'not_found'; return null }
     lastFailure = null
     const nom = [p.displayName?.text, p.formattedAddress].filter(Boolean).join(', ')
@@ -124,6 +146,9 @@ export async function geocodeAddressServer(raw: string | null | undefined, city?
     const route = text.match(/\b[AE]\s?\d{1,3}\b/i)?.[0]?.replace(/\s/g, '').toUpperCase()
     const lieu = c || text.match(/\(?\b([A-ZÀ-Ÿ][a-zà-ÿ'-]{2,})\s*\(Ext/)?.[1] || ''
     if (route && lieu) { const h2 = await geocodeHighwayPlaces(`${route}, ${lieu}`); if (h2) return h2 }
+    // « … SORTIE THEUX » / « DIR THEUX » : la sortie nommée, quelle que soit l'autoroute citée.
+    const sortie = text.match(/\bsortie\s+([a-zà-ÿ'-]{3,})/i)?.[1] || text.match(/\bdir(?:ection)?\.?\s+([a-zà-ÿ'-]{3,})/i)?.[1]
+    if (sortie) { const h3 = await geocodeHighwayPlaces(`sortie autoroute ${sortie}`); if (h3) return h3 }
   }
 
   // Google d'abord : c'est ce que fait le navigateur, et il lit les adresses
