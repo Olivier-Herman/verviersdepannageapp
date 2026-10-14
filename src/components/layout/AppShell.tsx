@@ -29,6 +29,7 @@ import { useOnDutyPing } from '@/hooks/useOnDutyPing'
 import { useMissionGpsTracking } from '@/hooks/useMissionGpsTracking'
 import FacturationButtonAnnounce from '@/components/facturation/FacturationButtonAnnounce'
 import EspecesAlert from '@/components/especes/EspecesAlert'
+import MaxPastille from '@/components/assistant/MaxPastille'
 import { useSidebarCollapsed } from './useSidebarCollapsed'
 import { Avatar } from '@/components/ui/Avatar'
 
@@ -168,6 +169,8 @@ export default function AppShell({
     <WatchPairingBridge />
     <FacturationButtonAnnounce userRole={userRole} userModules={userModules} />
     <EspecesAlert />
+    {/* Max, compagnon de bureau (Olivier 14/10/2026) : seulement pour qui y a accès. */}
+    {navFlags.max_assistant && <MaxPastille userName={userName || ''} />}
     <div className="min-h-screen flex">
 
       {/* ── SIDEBAR DESKTOP ─────────────────────────────── */}

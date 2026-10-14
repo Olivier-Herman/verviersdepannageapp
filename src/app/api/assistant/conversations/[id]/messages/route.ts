@@ -19,9 +19,15 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   const auth = await requireOwner(params.id)
   if (!auth) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
-  const body = await req.json() as { text?: string }
-  const text = String(body.text || '').trim()
-  if (!text) return NextResponse.json({ error: 'Texte requis' }, { status: 400 })
+  const body = await req.json() as { text?: string; contexte?: { ecran?: string; fiche?: { id?: string; numero?: number | null; plaque?: string | null } | null } }
+  const raw = String(body.text || '').trim()
+  if (!raw) return NextResponse.json({ error: 'Texte requis' }, { status: 400 })
+  // Pastille Max (Olivier 14/10/2026) : la page ouverte accompagne la question, pour que
+  // « pourquoi elle est à facturer ? » vise la fiche à l'écran sans redonner la plaque.
+  const ctx = body.contexte
+  const f = ctx?.fiche
+  const where = [ctx?.ecran, f?.id ? `fiche #${f.numero ?? '?'}${f.plaque ? ' ' + f.plaque : ''} (id ${f.id})` : null].filter(Boolean).join(' — ')
+  const text = auth.conv.mode === 'bureau' && where ? `[Page ouverte : ${String(where).slice(0, 300)}]\n${raw}` : raw
 
   let result
   try {
@@ -41,7 +47,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
 
   // Auto-genere un titre si conversation encore "Nouvelle conversation" et > 1er msg
   if (auth.conv.title === 'Nouvelle conversation') {
-    const newTitle = text.slice(0, 60).trim() || 'Nouvelle conversation'
+    const newTitle = raw.slice(0, 60).trim() || 'Nouvelle conversation'
     const sb = createAdminClient()
     sb.from('assistant_conversations').update({ title: newTitle }).eq('id', params.id).then(() => {})
   }
