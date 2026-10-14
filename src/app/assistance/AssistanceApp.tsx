@@ -459,6 +459,10 @@ function TrouverGarage({ onGarage, partenaires }: { onGarage: (slug: string) => 
   }
   return (
     <>
+      {/* App publique sur l'App Store (Olivier 14/10/2026) : qui arrive par hasard comprend tout de suite à qui elle s'adresse. */}
+      <p style={{ margin: '0 0 12px', padding: '10px 12px', borderRadius: 12, background: '#fff4f3', border: '1px solid #f3c9c6', color: '#7f1d1d', fontSize: 13.5, lineHeight: 1.45 }}>
+        Application réservée aux <b>clients des garages partenaires</b> de Verviers Dépannage. Scannez le QR code de votre garage pour commencer.
+      </p>
       <div style={{ display: scan ? 'block' : 'none', borderRadius: 18, overflow: 'hidden', background: '#000', marginBottom: 12 }}><div id="qr-garage" /></div>
       {scan ? <button className="btn btn-ghost" onClick={arreter}>Arrêter la caméra</button> : (
         <button className="btn btn-red" onClick={scanner}>
