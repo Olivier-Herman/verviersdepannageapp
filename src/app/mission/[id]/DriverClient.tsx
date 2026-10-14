@@ -34,6 +34,7 @@ import {
 import { canUseMatthieu } from '@/lib/mecano/access'
 import { cleanVin, isPlausibleVin } from '@/lib/mecano/vin'
 import { useSourceLabel } from '@/lib/missions/source-tags-client'
+import AddressSuggestions from '@/components/AddressSuggestions'
 import PinInput from '@/components/ui/PinInput'
 
 const sb = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!)
@@ -1924,7 +1925,11 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
   }
 
   // ── Modal adresse de destination (DSP→REM, SNC/SC REM client & REM dépôt) ──
+  // Destination sans position acceptée telle quelle, sur choix explicite du chauffeur (aucune suggestion ne va).
+  const [destKeepRaw, setDestKeepRaw] = useState(false)
+  const destNeedsPos = !!destPrompt && ['rem', 'rem_client', 'rem_direct', 'arrival'].includes(destPrompt.kind)
   const openDestPrompt = (kind: 'rem' | 'rem_client' | 'rem_depot' | 'rem_direct' | 'arrival' | 'park') => {
+    setDestKeepRaw(false)
     setShowGrid(false)
     setErr('')
     // Préremplit avec la destination de la mission (relivraison par défaut = destination).
@@ -4357,6 +4362,20 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
           </div>
         )}
 
+        {/* Lieu d'intervention sans position (adresse du mail de l'assistance) : km et prix ne se calculent
+            pas. Le chauffeur choisit la bonne adresse parmi les suggestions Google (Olivier 14/10/2026). */}
+        {!isReadOnly && M.incident_lat == null && (M.incident_address || '').trim().length >= 4
+          && ['accepted', 'in_progress', 'delivering'].includes(M.status) && (
+          <div className="rounded-2xl border-2 border-amber-400 bg-amber-50 p-4 space-y-2">
+            <p className="text-amber-900 font-bold text-sm"><T k="mission_detail.addr_unknown_incident" /></p>
+            <p className="text-gray-800 text-xs">{M.incident_address}{(M as any).incident_city ? `, ${(M as any).incident_city}` : ''}</p>
+            <AddressSuggestions
+              text={[M.incident_address, (M as any).incident_city].filter(Boolean).join(', ')}
+              gmKey={process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || ''}
+              onPick={a => apiSilent('update_address', { field: 'incident', value: a.label, lat: a.lat, lng: a.lng })} />
+          </div>
+        )}
+
         {/* Mal garée sur place : enlèvement par défaut ; si le propriétaire revient
             avant le chargement, « Déplacement payé » (tarif trajet à vide de la
             grille, TVAC) → encaissement normal puis Terminer. Olivier 29/09/2026. */}
@@ -5162,7 +5181,23 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
           {/* REM/REL : véhicule chargé → arrivée à destination (+ mise en parc pour REM uniquement) */}
           {(rem || rel) && !!M.loaded_at && ['delivering', 'in_progress'].includes(M.status) && (
             <>
-              <button onClick={() => {
+              <button onClick={async () => {
+                  // Siabis NON couvert, destination gardée sans position (Google ne la trouvait pas) :
+                  // le montant à encaisser ne se calcule pas. Le chauffeur est à destination → on prend
+                  // la position du téléphone (GPS de l'appareil, gratuit) et le serveur recalcule le
+                  // montant (Olivier 14/10/2026 : « il faut débloquer le chauffeur »). Le Siabis couvert,
+                  // lui, se vérifie à la facturation.
+                  if (M.source === 'police_snc' && ['rem_client', 'rem_direct'].includes(M.snc_scenario || '')
+                      && (M.destination_lat == null || M.destination_lng == null)) {
+                    setLoading(true)
+                    const pos = await captureGeo()
+                    if (pos) {
+                      await apiSilent('update_address', { field: 'destination', value: M.destination_address || 'Position du chauffeur à l’arrivée', lat: pos.lat, lng: pos.lng })
+                      setSncInfoMsg(t('mission_detail.snc_dest_from_gps'))
+                    } else setErr(t('mission_detail.snc_dest_no_gps'))
+                    setLoading(false)
+                    return
+                  }
                   // Siabis non couvert direct : encaissement obligatoire avant
                   // de livrer au client. On renvoie vers l'encaissement.
                   if (sncPaymentDue) { setScreen('encaissement'); return }
@@ -5540,16 +5575,29 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
             </p>
             <AddressField
               value={destAddr}
-              onChange={setDestAddr}
+              onChange={v => { setDestAddr(v); setDestLat(null); setDestLng(null) }}
               onSelect={(a, la, ln) => { setDestAddr(a); setDestLat(la); setDestLng(ln) }}
               gmKey={process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || ''}
               placeholder={destPrompt.kind === 'park' ? t('close.ph_redelivery') : t('close.ph_destination')}
             />
+            {/* Adresse sans position (souvent celle du mail de l'assistance) : suggestions Google en
+                boutons, et « Valider » attend qu'une adresse reconnue soit choisie (Olivier 14/10/2026). */}
+            {destLat == null && destAddr.trim().length >= 4 && (
+              <div className="space-y-2">
+                <p className="rounded-xl bg-amber-50 border border-amber-300 px-3 py-2 text-sm font-bold text-amber-900"><T k="mission_detail.addr_unknown_dest" /></p>
+                <AddressSuggestions text={destAddr} gmKey={process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || ''}
+                  onPick={a => { setDestAddr(a.label); setDestLat(a.lat); setDestLng(a.lng); setDestKeepRaw(false) }} />
+              </div>
+            )}
             {err && <p className="text-red-400 text-sm">⚠ {err}</p>}
-            <button onClick={() => confirmDestPrompt(false)} disabled={loading || !destAddr.trim()}
+            <button onClick={() => confirmDestPrompt(false)} disabled={loading || !destAddr.trim() || (destNeedsPos && destLat == null && !destKeepRaw)}
               className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-2xl text-sm font-bold transition disabled:opacity-50">
               {loading ? t('mission_detail.loading') : (destPrompt.kind === 'park' ? t('close.confirm_deposit') : t('close.validate'))}
             </button>
+            {destNeedsPos && destLat == null && destAddr.trim() && !destKeepRaw && (
+              <button type="button" onClick={() => setDestKeepRaw(true)} disabled={loading}
+                className="w-full min-h-[44px] text-ink-muted text-sm underline"><T k="mission_detail.addr_keep_raw" /></button>
+            )}
             {(destPrompt.kind === 'rem_depot' || destPrompt.kind === 'park') && (
               <button onClick={() => confirmDestPrompt(true)} disabled={loading}
                 className="w-full py-3 bg-surface-2 border text-ink rounded-2xl text-sm font-semibold transition disabled:opacity-50">
