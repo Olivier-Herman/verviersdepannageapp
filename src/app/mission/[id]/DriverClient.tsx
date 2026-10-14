@@ -1401,7 +1401,7 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
   useEffect(() => {
     if (onsiteV2 && onSite && !M.snc_scenario && !rel && !isReadOnly
         && !chooserPickedRef.current
-        && M.status === 'in_progress'
+        && (M.status === 'in_progress' || M.status === 'delivering')
         && (M.source === 'police_snc' || M.source === 'sia_couvert')
         && screen === 'main') {
       setScreen('onsite-chooser')
@@ -2423,7 +2423,10 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
       if ((M.source === 'police_snc' || M.source === 'sia_couvert')
           && closeType !== 'dpr' && !M.snc_scenario) {
         setErr('Choisis d\'abord le scénario (DSP / REM…) avant de clôturer.')
-        setLoading(false); return
+        setLoading(false)
+        // Ouvre directement le choix au lieu de laisser le chauffeur chercher le bouton.
+        if (onsiteV2) { chooserPickedRef.current = false; setScreen('onsite-chooser') }
+        return
       }
       // Best-effort : ne bloque pas la clôture si le réseau échoue pile maintenant.
       // Les photos non envoyées restent dans le brouillon et repartent seules.
@@ -2832,7 +2835,8 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
       </button>
     )
     const scenarioTiles: { key: 'dsp' | 'rem_client' | 'rem_depot' | 'rem_direct'; label: string; desc: string }[] = [
-      { key: 'dsp', label: '🔧 DSP — Dépannage sur place', desc: isSC ? "Réparation sur place, facturée à l'assistance (pas d'encaissement)." : 'Réparation sur place, le client paie en direct.' },
+      // Véhicule déjà sur le camion : ce n'est plus un dépannage sur place.
+      ...(M.loaded_at ? [] : [{ key: 'dsp' as const, label: '🔧 DSP — Dépannage sur place', desc: isSC ? "Réparation sur place, facturée à l'assistance (pas d'encaissement)." : 'Réparation sur place, le client paie en direct.' }]),
       ...(M.source === 'police_snc' ? [{ key: 'rem_client' as const, label: '🚛 REM avec paiement immédiat', desc: 'Remorquage vers la destination du client, paiement immédiat.' }] : []),
       ...(isSC ? [{ key: 'rem_direct' as const, label: '🚛 REM directe', desc: 'Remorquage direct sans passage dépôt (forfait SC + km).' }] : []),
       { key: 'rem_depot', label: '🏢 REM vers dépôt', desc: isSC ? 'Zone Transit, relivraison ultérieure au tarif assistance.' : 'Zone Transit, le client passera au bureau ensuite.' },
@@ -4336,7 +4340,9 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
                 {M.snc_requires_balisage ? ` · ${t('cloture.siabis_balisage_yes')}` : ''}
               </p>
             </div>
-            {onsiteV2 && onSite && !isReadOnly && !['completed', 'to_invoice', 'parked'].includes(M.status) && !M.loaded_at && (
+            {/* Chargé SANS scénario (1BBT931, 14/10/2026) : le bouton restait caché et la clôture refusait
+                faute de scénario — impasse. On le laisse tant que le scénario manque. */}
+            {onsiteV2 && onSite && !isReadOnly && !['completed', 'to_invoice', 'parked'].includes(M.status) && (!M.loaded_at || !M.snc_scenario) && (
               <button type="button" onClick={() => { chooserPickedRef.current = false; setScreen('onsite-chooser') }}
                 className={`min-h-[44px] px-3 rounded-xl text-sm font-bold text-white shrink-0 ${M.source === 'sia_couvert' ? 'bg-blue-600' : 'bg-red-600'}`}>
                 {t(M.snc_scenario ? 'cloture.siabis_modify' : 'cloture.siabis_choose')}
