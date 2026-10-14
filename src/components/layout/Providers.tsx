@@ -19,7 +19,8 @@ import MaxPastille                     from '@/components/assistant/MaxPastille'
 // Max partout (Olivier 14/10/2026 : « ils utilisent tjs les anciens visuels de la version
 // bureau ») : monté ici et plus dans AppShell, pour couvrir aussi les pages sans le cadre
 // commun (accueil, tableau de bord, boarding…). Seulement pour qui y a accès (nav-badges).
-const MAX_HORS = ['/login', '/site', '/espace', '/assistance', '/garage', '/capture', '/qr', '/v/', '/compta', '/verif-parc', '/caisse/ecran', '/assistant-bureau']
+// Écrans d'affichage (boarding, tableau de bord) : ni Max ni talkie (Olivier 14/10/2026).
+const MAX_HORS = ['/boarding', '/tableau-bord', '/login', '/site', '/espace', '/assistance', '/garage', '/capture', '/qr', '/v/', '/compta', '/verif-parc', '/caisse/ecran', '/assistant-bureau']
 function MaxMount() {
   const { data: session, status } = useSession()
   const path = usePathname() || ''

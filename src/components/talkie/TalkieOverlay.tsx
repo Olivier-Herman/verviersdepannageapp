@@ -62,6 +62,8 @@ export default function TalkieOverlay() {
   }, [visible, barSpace])
   const bottomPos = barSpace > 0 ? `${Math.round(barSpace + 12)}px` : 'calc(env(safe-area-inset-bottom, 0px) + 84px)'
   if (!t || !t.me || !t.channels.length || pathname.startsWith('/talkie')) return null
+  // Écrans d'affichage (boarding, tableau de bord) : pas de bouton talkie (Olivier 14/10/2026).
+  if (pathname.startsWith('/boarding') || pathname.startsWith('/tableau-bord')) return null
   // Caché sur ordinateur pour qui l'a demandé (talkie_masque_pc) ; l'app iPhone (marqueur VDNav/) le garde.
   if (t.hideOnWeb && !(typeof navigator !== 'undefined' && /VDNav\//.test(navigator.userAgent))) return null
 
