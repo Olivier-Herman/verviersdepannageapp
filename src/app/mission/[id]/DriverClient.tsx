@@ -1778,11 +1778,12 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
     // pour estimer le tarif. REM depot n en a pas besoin (mise en parc).
     const dLat = destOverride?.lat ?? M.destination_lat
     const dLng = destOverride?.lng ?? M.destination_lng
-    if ((scenario === 'rem_client' || scenario === 'rem_direct')
-        && (dLat == null || dLng == null)) {
-      setSncInfoMsg('Saisis d\'abord l\'adresse de destination (clique sur l\'itinéraire pour l\'ajouter).')
-      return
-    }
+    // Destination sans coordonnées (texte tapé ou repris de la fiche, sans choisir une suggestion) :
+    // AVANT, on sortait ici SANS enregistrer le scénario, et le message ne s'affichait que sur l'ancien
+    // écran → l'écran « Qu'est-ce qu'on fait ? » ne revenait plus et la fiche restait « Scénario à
+    // choisir » (1BBT931, Franck, 14/10/2026). Le scénario est désormais TOUJOURS enregistré ; seul
+    // le montant attend l'adresse (il se recalcule quand l'adresse est corrigée).
+    const sansDest = (scenario === 'rem_client' || scenario === 'rem_direct') && (dLat == null || dLng == null)
     setSncSaving(scenario); setErr('')
     try {
       const newType = scenario === 'dsp' ? 'depannage' : 'remorquage'
@@ -1795,6 +1796,10 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
       const j = await r.json()
       if (!r.ok) throw new Error(j.error || 'Erreur')
       setM(prev => ({ ...prev, snc_scenario: scenario as any, mission_type: newType }))
+      if (sansDest) {
+        setSncInfoMsg('Scénario enregistré. Choisis l\'adresse de destination dans les suggestions (« Modifier » sur l\'itinéraire) pour calculer le montant.')
+        return
+      }
 
       // 2) Calcul tarif SNC (sauf REM depot : pas d encaissement immediat)
       if (scenario !== 'rem_depot') {
@@ -4339,6 +4344,7 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
                 {M.snc_scenario ? t(`cloture.scen_${M.snc_scenario}`) : t('cloture.siabis_scen_todo')}
                 {M.snc_requires_balisage ? ` · ${t('cloture.siabis_balisage_yes')}` : ''}
               </p>
+              {onsiteV2 && sncInfoMsg && <p className="mt-2 rounded-lg bg-amber-100 border border-amber-400 px-2 py-1 text-xs font-semibold text-amber-900">⚠ {sncInfoMsg}</p>}
             </div>
             {/* Chargé SANS scénario (1BBT931, 14/10/2026) : le bouton restait caché et la clôture refusait
                 faute de scénario — impasse. On le laisse tant que le scénario manque. */}
@@ -5550,7 +5556,7 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
                 <T k="close.addr_later" />
               </button>
             )}
-            <button onClick={() => setDestPrompt(null)} disabled={loading}
+            <button onClick={() => { setDestPrompt(null); chooserPickedRef.current = false }} disabled={loading}
               className="w-full py-2 text-ink-muted text-sm disabled:opacity-50"><T k="close.cancel" /></button>
           </div>
         </div>
