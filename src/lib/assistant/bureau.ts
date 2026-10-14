@@ -212,19 +212,53 @@ export async function executeAction(action: { kind: ActionKind; mission_id: stri
 export const BUREAU_TOOLS: ToolDef[] = [
   {
     name: 'chercher_fiches', destructive: false,
-    description: 'Cherche des fiches par plaque, n° de fiche, n° de dossier assistance, client ou ville. 15 résultats max, les plus récentes d’abord.',
-    input_schema: { type: 'object', properties: { texte: { type: 'string' }, statut: { type: 'string' }, source: { type: 'string' } }, required: ['texte'] },
+    description: `Retrouve des fiches à partir de ce qu'on sait, même sans plaque ni numéro. Tous les critères sont optionnels et se combinent :
+texte (plaque, n° de fiche, n° de dossier assistance, nom du client), marque, modele, du / au (dates AAAA-MM-JJ : jour de réception de la mission ; un seul jour = du et au identiques), source (police_saisie = saisie, police_snc = Siabis non couvert, vab, touring, kaze, axa, mondial, prive, garage…), type (remorquage, depannage, relivraison, trajet_vide…), lieu (rue, ville, autoroute), chauffeur (prénom), statut.
+Ex. « une Polo saisie le 08/02/2026 » → { modele: "polo", source: "police_saisie", du: "2026-02-08", au: "2026-02-08" }. Si rien ne sort, élargis (quelques jours autour de la date, sans la source, marque seule) et dis-le. Rends la liste avec n° de fiche, plaque, véhicule, date, lieu, source.`,
+    input_schema: { type: 'object', properties: {
+      texte: { type: 'string' }, marque: { type: 'string' }, modele: { type: 'string' }, du: { type: 'string' }, au: { type: 'string' },
+      source: { type: 'string' }, type: { type: 'string' }, lieu: { type: 'string' }, chauffeur: { type: 'string' }, statut: { type: 'string' },
+    } },
     async execute(args) {
       const v = String(args.texte || '').trim()
-      let q = sb().from('incoming_missions').select('id, mission_number, dossier_number, external_id, source, status, mission_type, vehicle_plate, vehicle_brand, vehicle_model, client_name, billed_to_name, incident_address, received_at, parent_mission_id')
-        .eq('dossier_leg', false).order('received_at', { ascending: false }).limit(15)
-      if (/^\d{7,9}$/.test(v)) q = q.eq('mission_number', Number(v))
-      else { const s = `%${v}%`, plate = `%${v.replace(/[^A-Za-z0-9]/g, '')}%`; q = q.or(`vehicle_plate.ilike.${plate},dossier_number.ilike.${s},external_id.ilike.${s},client_name.ilike.${s},incident_address.ilike.${s}`) }
-      if (args.statut) q = q.eq('status', args.statut)
-      if (args.source) q = q.eq('source', args.source)
+      let q = sb().from('incoming_missions').select('id, mission_number, dossier_number, external_id, source, status, mission_type, vehicle_plate, vehicle_brand, vehicle_model, client_name, billed_to_name, incident_address, destination_address, received_at, assigned_to, parent_mission_id')
+        .eq('dossier_leg', false).order('received_at', { ascending: false }).limit(30)
+      if (v) {
+        if (/^\d{7,9}$/.test(v)) q = q.eq('mission_number', Number(v))
+        else { const s = `%${v}%`, plate = `%${v.replace(/[^A-Za-z0-9]/g, '')}%`; q = q.or(`vehicle_plate.ilike.${plate},dossier_number.ilike.${s},external_id.ilike.${s},client_name.ilike.${s}`) }
+      }
+      const like = (x: unknown) => `%${String(x).trim().replace(/[%,()]/g, ' ')}%`
+      if (args.marque) q = q.ilike('vehicle_brand', like(args.marque))
+      if (args.modele) q = q.ilike('vehicle_model', like(args.modele))
+      if (args.lieu) q = q.ilike('incident_address', like(args.lieu))
+      if (args.source) q = q.eq('source', String(args.source))
+      if (args.type) q = q.ilike('mission_type', like(args.type))
+      if (args.statut) q = q.eq('status', String(args.statut))
+      // Dates en heure de Bruxelles : le jour entier, de 00:00 à 23:59 locales.
+      const day = (d: string, end: boolean) => {
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) return null
+        // Décalage de Bruxelles ce jour-là (hiver +1 h, été +2 h).
+        const noon = new Date(`${d}T12:00:00Z`)
+        const off = Number(new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/Brussels', hour: '2-digit', hour12: false }).format(noon)) - 12
+        return new Date(`${d}T${end ? '23:59:59' : '00:00:00'}+0${off}:00`).toISOString()
+      }
+      const du = args.du ? day(String(args.du), false) : null, au = args.au ? day(String(args.au), true) : (args.du ? day(String(args.du), true) : null)
+      // Date de réception OU date d'intervention (fiches reprises de l'ancien logiciel).
+      if (du || au) {
+        const rng = (c: string) => [du && `${c}.gte.${du}`, au && `${c}.lte.${au}`].filter(Boolean).join(',')
+        q = q.or(`and(${rng('received_at')}),and(${rng('intervention_date')})`)
+      }
+      if (args.chauffeur) {
+        const { data: us } = await sb().from('users').select('id').ilike('name', like(args.chauffeur))
+        const ids = (us || []).map((u: any) => u.id)
+        if (!ids.length) return { fiches: [], note: `Aucun chauffeur « ${args.chauffeur} ».` }
+        q = q.in('assigned_to', ids)
+      }
       const { data, error } = await q
       if (error) throw new Error(error.message)
-      return { fiches: data || [] }
+      const { data: us } = await sb().from('users').select('id, name')
+      const nm = Object.fromEntries((us || []).map((u: any) => [u.id, u.name]))
+      return { nombre: data?.length || 0, fiches: (data || []).map((m: any) => ({ ...m, chauffeur: nm[m.assigned_to] || null, assigned_to: undefined })) }
     },
   },
   {
