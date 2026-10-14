@@ -38,7 +38,7 @@ export default function MobileNavDrawer({ open, onClose, userName, userRole, use
   // Rôles complémentaires (rh, mail_agent…) : sans eux, le menu mobile cachait ce
   // que le menu bureau montrait (Jona / Agent Mail, 28/09/2026).
   const userRoles = (session?.user as any)?.roles as string[] | null | undefined
-  const items = filterNavItems({ userModules, userRole, userNavOrder, userRoles })
+  const items = filterNavItems({ userModules, userRole, userNavOrder, userRoles, flags })
   const { theme, toggleTheme, mounted } = useTheme()
   const { onDuty, setOnDuty, isLockedByDuty } = useOnDutyPing()
 

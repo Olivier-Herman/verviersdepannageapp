@@ -16,11 +16,15 @@ export interface NavItem {
   role?:    'dispatcher_or_admin' | 'superadmin' | 'superadmin_or_rh' | 'non_driver' | 'mail_agent' | 'staff'
   /** Réservé aux comptes nommés (réglage nav_agents_user_ids) : l'AppShell le montre seulement si /api/nav-badges renvoie flags.agents_shortcut. */
   ownerOnly?: boolean
+  /** Visible seulement si /api/nav-badges renvoie ce flag à true pour l'utilisateur (ex. max_assistant). */
+  flag?: string
 }
 
 export const NAV_ITEMS: NavItem[] = [
   { href: '/dashboard',     label: 'Dashboard',        i18nKey: 'nav.dashboard',     icon: '🏠', moduleId: null },
   { href: '/recherche',     label: 'Recherche',        i18nKey: 'nav.search',        icon: '🔍', moduleId: null },
+  // Max, l'assistant bureau de Jona (Olivier 14/10/2026) : seulement pour qui y a accès.
+  { href: '/assistant-bureau', label: 'Max',          icon: '🧭', moduleId: null, flag: 'max_assistant' },
   { href: '/dispatch',      label: 'Dispatch',         icon: '📡', moduleId: 'missions' },
   // Olivier 2026-06-22 : module en construction → visible superadmin uniquement
   // pour l'instant (repasser sur moduleId 'relivraison' quand opérationnel).
@@ -89,6 +93,8 @@ export function filterNavItems(opts: {
   userRole:     string
   userNavOrder?: string[] | null
   userRoles?:   string[] | null
+  /** Flags du user (nav-badges) : sans eux, les entrées `flag` restent cachées. */
+  flags?:       Record<string, boolean>
 }): NavItem[] {
   const { userModules, userRole, userNavOrder, userRoles } = opts
   const roleList     = [userRole, ...(Array.isArray(userRoles) ? userRoles : [])]
@@ -98,6 +104,7 @@ export function filterNavItems(opts: {
   const isRH         = roleList.includes('rh')
 
   const visible = NAV_ITEMS.filter(item => {
+    if (item.flag) return !!opts.flags?.[item.flag]
     if (item.role === 'superadmin')          return isSuperadmin
     if (item.role === 'superadmin_or_rh')    return isSuperadmin || isRH
     if (item.role === 'mail_agent')          return isAdmin || roleList.includes('mail_agent')

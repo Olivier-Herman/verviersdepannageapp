@@ -40,7 +40,9 @@ export async function GET() {
     const { count } = await sb.from('agent_proposals').select('id', { count: 'exact', head: true }).eq('status', 'to_validate')
     if (count) badges['/admin/agents'] = count
   }
-  const flags = { agents_shortcut: agentsOwner, nav_menu_v2: await isPreviewOn('nav_menu_v2', u.role, u.id), nav_espaces: await isPreviewOn('nav_espaces', u.role, u.id), facturation_v2: await isPreviewOn('facturation_v2', u.role, u.id) }   // facturation_v2 : éteint « Liste par fiche (ancienne) » dans le menu (temps 3, 21/09/2026)   // espaces : pilotes Olivier + Jona (16/09/2026)   // u.id : les pilotes nommés (Jona) voient le menu v3
+  const { canUseBureau } = await import('@/lib/assistant/bureau')
+  const maxAssistant = await canUseBureau({ email: u.email, role: u.role, roles: Array.isArray(u.roles) ? u.roles : [] }).catch(() => false)
+  const flags = { agents_shortcut: agentsOwner, max_assistant: maxAssistant, nav_menu_v2: await isPreviewOn('nav_menu_v2', u.role, u.id), nav_espaces: await isPreviewOn('nav_espaces', u.role, u.id), facturation_v2: await isPreviewOn('facturation_v2', u.role, u.id) }   // facturation_v2 : éteint « Liste par fiche (ancienne) » dans le menu (temps 3, 21/09/2026)   // espaces : pilotes Olivier + Jona (16/09/2026)   // u.id : les pilotes nommés (Jona) voient le menu v3
 
   // Gestion du personnel : congés en attente de traitement (pending + annulation demandée).
   if (isPersonnelStaff(u)) {
