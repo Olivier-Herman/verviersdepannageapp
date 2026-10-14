@@ -23,6 +23,12 @@ export async function POST(req: Request) {
   const { data: u } = await createAdminClient().from('users').select('id, active').eq('email', email).maybeSingle()
   if (!u?.active) return NextResponse.json({ error: 'Non autorisé' }, { status: 401 })
   const b = await req.json().catch(() => ({}))
+  // Sam copilote : choix touché sous un message que Sam a écrit le premier (Olivier 14/10/2026).
+  if (b.copilote && Number.isFinite(Number(b.copilote.id))) {
+    const { repondreAlerte } = await import('@/lib/sam/copilote')
+    const r = await repondreAlerte(u.id, Number(b.copilote.id), Number(b.copilote.index), 'app')
+    return NextResponse.json({ ok: true, agent: r.agent, texte: r.texte, boutons: [], action: null, open_url: r.openUrl || null })
+  }
   // Réponse à la question de fin de conversation (mission clôturée) : pas d'appel à l'agent.
   if (b.question === 'oui' || b.question === 'non') {
     const { answerQuestion } = await import('@/lib/sam/cloture')
@@ -53,6 +59,8 @@ export async function GET() {
   if (!u?.active) return NextResponse.json({ error: 'Non autorisé' }, { status: 401 })
   const { pendingQuestion } = await import('@/lib/sam/cloture')
   const { agentDeService } = await import('@/lib/sam/core')
-  const [q, deService] = await Promise.all([pendingQuestion(u.id), agentDeService()])
-  return NextResponse.json({ ok: true, agent: deService, question: q ? { agent: q.agent, texte: q.texte, boutons: q.boutons } : null })
+  const { alerteEnAttente } = await import('@/lib/sam/copilote')
+  const [q, deService, al] = await Promise.all([pendingQuestion(u.id), agentDeService(), alerteEnAttente(u.id).catch(() => null)])
+  return NextResponse.json({ ok: true, agent: deService, question: q ? { agent: q.agent, texte: q.texte, boutons: q.boutons } : null,
+    copilote: al ? { id: al.id, agent: al.agent, texte: al.texte, boutons: al.boutons, mission_id: al.mission_id } : null })
 }

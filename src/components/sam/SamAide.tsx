@@ -57,10 +57,20 @@ export default function SamAide({ missionId, ecran }: { missionId?: string | nul
   // (Olivier 03/10/2026) : la fenêtre s'ouvre d'elle-même pour la poser.
   const [question, setQuestion] = useState<{ agent: string; texte: string; boutons: { libelle: string; valeur: string }[] } | null>(null)
   const shownQ = useRef<string | null>(null)
+  // Sam copilote : message que Sam écrit le premier, avec ses choix (Olivier 14/10/2026).
+  const [copilote, setCopilote] = useState<{ id: number; agent: string; texte: string; boutons: { libelle: string; valeur: string }[] } | null>(null)
+  const shownC = useRef<number | null>(null)
   useEffect(() => {
     let stop = false
     const check = () => fetch('/api/sam/aide', { cache: 'no-store' }).then(r => r.ok ? r.json() : null).then(j => {
       if (!stop && typeof j?.agent === 'string' && j.agent) setDeService(j.agent)
+      const c = j?.copilote
+      if (!stop && c?.id && shownC.current !== c.id) {
+        shownC.current = c.id
+        setCopilote(c); setAgent(c.agent || agentDuMoment())
+        setMsgs(m => [...m, { from: 'sam', text: c.texte, who: c.agent }])
+        setOpen(true)
+      }
       const q = j?.question
       if (stop || !q?.texte || shownQ.current === q.texte) return
       shownQ.current = q.texte
@@ -80,6 +90,18 @@ export default function SamAide({ missionId, ecran }: { missionId?: string | nul
       const j = await r.json().catch(() => ({}))
       if (j?.texte) setMsgs(m => [...m, { from: 'sam', text: j.texte, who: j.agent }])
     } catch { /* la conversation se fermera seule après 30 min */ } finally { setBusy(false) }
+  }
+  const answerCopilote = async (i: number) => {
+    const c = copilote; if (!c) return
+    setCopilote(null)
+    setMsgs(m => [...m, { from: 'me', text: c.boutons[i]?.libelle || '' }])
+    setBusy(true)
+    try {
+      const r = await fetch('/api/sam/aide', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ copilote: { id: c.id, index: i } }) })
+      const j = await r.json().catch(() => ({}))
+      if (j?.texte) setMsgs(m => [...m, { from: 'sam', text: j.texte, who: j.agent }])
+      setOpenUrl(j?.open_url || null)
+    } catch { /* le chauffeur peut écrire à Sam */ } finally { setBusy(false) }
   }
   const listRef = useRef<HTMLDivElement>(null)
   const fileRef = useRef<HTMLInputElement>(null)
@@ -155,6 +177,14 @@ export default function SamAide({ missionId, ecran }: { missionId?: string | nul
                   {question.boutons.map(b => (
                     <button key={b.valeur} type="button" onClick={() => answer(b)}
                       className={`min-h-[48px] text-left px-4 rounded-xl font-semibold ${b.valeur === 'cloturer_conversation' ? 'bg-emerald-700 text-white' : 'border-2 border-emerald-700 bg-surface text-ink'}`}>{b.libelle}</button>
+                  ))}
+                </div>
+              )}
+              {!busy && copilote && copilote.boutons.length > 0 && (
+                <div className="self-stretch flex flex-col gap-2">
+                  {copilote.boutons.map((b, i) => (
+                    <button key={b.valeur + i} type="button" onClick={() => answerCopilote(i)}
+                      className="min-h-[48px] text-left px-4 py-2 rounded-xl border-2 border-emerald-700 bg-surface text-ink font-semibold">{b.libelle}</button>
                   ))}
                 </div>
               )}

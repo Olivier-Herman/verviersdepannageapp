@@ -102,3 +102,18 @@ export async function summarize(conversationId: string): Promise<string | null> 
   const s = (res.content || []).filter((b: any) => b.type === 'text').map((b: any) => b.text).join(' ').trim()
   return s || null
 }
+
+/**
+ * Sam copilote (Olivier 14/10/2026) : l'agent écrit le PREMIER. Messages ajoutés à la conversation ouverte
+ * du chauffeur pour cette mission (ou une nouvelle), sans message chauffeur inventé. Renvoie la conversation.
+ */
+export async function recordCopilote(o: { userId: string; missionId: string; canal: SamCanal; agent: string; messages: { role: 'chauffeur' | 'agent'; texte: string }[] }): Promise<string | null> {
+  try {
+    let conv = await openConversation(o.userId)
+    if (conv && conv.mission_id && conv.mission_id !== o.missionId) { await endConversation(conv.id, 'inactivite'); conv = null }
+    if (conv && !conv.mission_id) { await createAdminClient().from('sam_conversations').update({ mission_id: o.missionId }).eq('id', conv.id); conv.mission_id = o.missionId }
+    const c = conv || await newConversation(o.userId, o.agent, o.missionId, o.canal)
+    for (const m of o.messages) await addMessage(c, { role: m.role, agent: m.role === 'agent' ? o.agent : null, canal: o.canal, texte: m.texte })
+    return c.id
+  } catch (e: any) { console.error('[sam/journal copilote]', e?.message || e); return null }
+}

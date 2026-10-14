@@ -152,6 +152,14 @@ export async function POST(req: Request) {
         if (r.texte) await tgSend(chatId, r.texte, [], r.agent || agentDuMoment())
         return NextResponse.json({ ok: true })
       }
+      if (data.startsWith('cp:')) {
+        // Sam copilote : choix sous un message que Sam a écrit le premier (Olivier 14/10/2026).
+        const [, aid, idx] = data.split(':')
+        const { repondreAlerte } = await import('@/lib/sam/copilote')
+        const r = await repondreAlerte(user.id, Number(aid), Number(idx), 'telegram')
+        await tgSend(chatId, r.texte, r.openUrl ? [[{ text: user.language === 'sq' ? 'Hap fishën' : 'Ouvrir ma fiche', url: r.openUrl }]] : [], r.agent)
+        return NextResponse.json({ ok: true })
+      }
       if (data === 'a:oui' || data === 'a:non') turn = await samConfirm({ userId: user.id, canal: 'telegram', oui: data === 'a:oui' })
       else {
         // Bouton de choix : on renvoie son LIBELLÉ (lisible dans l'historique).

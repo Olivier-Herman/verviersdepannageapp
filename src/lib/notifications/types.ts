@@ -408,6 +408,22 @@ export const NOTIFICATION_TYPES: readonly NotificationType[] = [
     defaultEnabled:  true,
   },
   {
+    key:             'sam_copilote',
+    label:           'Message de Sam sur ta mission',
+    description:     'Sam a vu quelque chose qui va te bloquer (adresse, scénario Siabis, montant…) et te propose la correction.',
+    category:        'driver',
+    applicableRoles: ['driver'],
+    defaultEnabled:  true,
+  },
+  {
+    key:             'sam_sans_reponse',
+    label:           'Chauffeur sans réponse à Sam',
+    description:     'Sam a signalé un blocage au chauffeur, qui n’a pas répondu en 10 minutes (ou un montant Siabis à fixer).',
+    category:        'dispatcher',
+    applicableRoles: ['dispatcher', 'admin', 'superadmin'],
+    defaultEnabled:  true,
+  },
+  {
     key:             'acceptation_en_retard',
     label:           'Mission pas acceptée après 10 minutes',
     description:     "Un chauffeur n'a pas accepté sa mission dans les 10 minutes : il est appelé automatiquement et le dispatch est prévenu.",

@@ -243,3 +243,39 @@ export async function ensureMissionCoords(sb: any, missionId: string): Promise<{
   }).then(() => {}, () => {})
   return out
 }
+
+/**
+ * Adresses Google candidates pour un texte non reconnu (Sam copilote, 14/10/2026) : même recherche que les
+ * suggestions de la fiche, jusqu'à `max` résultats ; `proche` = seulement à moins de RAYON_KM de nos dépôts.
+ */
+export async function placesCandidates(text: string, opts: { max?: number; proche?: boolean; rayonKm?: number } = {}): Promise<{ label: string; lat: number; lng: number }[]> {
+  const key = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY
+  const q = String(text || '').replace(/\b(belgique|belgie|belgium|bel)\b\.?/gi, '').replace(/[,\s]+$/g, '').trim()
+  if (!key || q.length < 4) return []
+  const base = process.env.NEXTAUTH_URL || 'https://app.verviersdepannage.com'
+  try {
+    const r = await fetch('https://places.googleapis.com/v1/places:searchText', {
+      method: 'POST', cache: 'no-store', signal: AbortSignal.timeout(6000),
+      headers: { 'Content-Type': 'application/json', 'X-Goog-Api-Key': key, 'Referer': base.replace(/\/?$/, '/'),
+        'X-Goog-FieldMask': 'places.displayName,places.formattedAddress,places.location,places.types' },
+      body: JSON.stringify({ textQuery: q, regionCode: 'BE', languageCode: 'fr', maxResultCount: Math.min(5, opts.max || 3) }),
+    })
+    void countRoutingCall('google', 'adresse', !r.ok)
+    if (!r.ok) return []
+    const j: any = await r.json()
+    const rayon = opts.rayonKm ?? (opts.proche ? RAYON_KM : 0)
+    const proches = rayon ? await depotsActifs() : []
+    const out: { label: string; lat: number; lng: number }[] = []
+    for (const p of j.places || []) {
+      if (!p?.location) continue
+      const lat = Number(p.location.latitude), lng = Number(p.location.longitude)
+      if (proches.length && !proches.some(d => kmEntre(d.lat, d.lng, lat, lng) <= rayon)) continue
+      const addr = String(p.formattedAddress || '')
+      const nom = String(p.displayName?.text || '')
+      const estab = (p.types || []).some((t: string) => t === 'establishment' || t === 'point_of_interest')
+      out.push({ label: estab && nom && !addr.startsWith(nom) ? `${nom}, ${addr}` : (addr || nom), lat, lng })
+      if (out.length >= (opts.max || 3)) break
+    }
+    return out
+  } catch { return [] }
+}
