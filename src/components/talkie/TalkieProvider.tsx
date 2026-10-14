@@ -47,6 +47,8 @@ export interface TalkieActivity { key: string; id: string; name: string; at: num
 interface TalkieCtx {
   /** Canal par défaut (la garde la nuit, sinon un canal direct) — choisi par le serveur. */
   primaryKey: string | null
+  /** Bouton caché sur ordinateur pour cette personne (réglage talkie_masque_pc). */
+  hideOnWeb?: boolean
   me: TalkieMember | null
   channels: TalkieChannel[]
   audioOn: boolean
@@ -104,6 +106,7 @@ export default function TalkieProvider({ children }: { children: React.ReactNode
   const lkConnected = (key: string) => lkRef.current.get(key)?.state === 'connected'
   const pttReadyRef = useRef(false)                          // module talkie natif présent et canal système rejoint
   const pttKeysRef  = useRef<string[]>([])
+  const [hideOnWeb, setHideOnWeb] = useState(false)
   const [primaryKey, setPrimaryKey] = useState<string | null>(null)   // canal du bouton de l'écran verrouillé (serveur)
 
   // ── Canaux accessibles (rechargés toutes les 2 min : le talkie des chauffeurs
@@ -117,6 +120,7 @@ export default function TalkieProvider({ children }: { children: React.ReactNode
       const list: TalkieChannel[] = Array.isArray(j?.channels) ? j.channels : []
       setChannels(prev => JSON.stringify(prev.map(c => c.channel)) === JSON.stringify(list.map(c => c.channel)) ? prev : list)
       setPrimaryKey(j?.primaryKey || null)
+      setHideOnWeb(!!j?.hideOnWeb)
       setChLoaded(true)
     }).catch(() => {})
     load()
@@ -462,7 +466,7 @@ export default function TalkieProvider({ children }: { children: React.ReactNode
   }, [beep, enableAudio, stopTalking, ensureRunning])
 
   const value: TalkieCtx = {
-    me, channels, primaryKey, audioOn, enableAudio, online, floor, talkingKey, startTalking, stopTalking,
+    me, channels, primaryKey, hideOnWeb, audioOn, enableAudio, online, floor, talkingKey, startTalking, stopTalking,
     lastActivity, msgsVersion, error, clearError: () => setError(null),
   }
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>
