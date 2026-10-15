@@ -22,10 +22,15 @@ export type ComexById = Record<string, { id: string; verdict: string | null; mon
 export async function loadFacturationDossiers(sb: Sb): Promise<{ dossiers: Dossier[]; roots: string[] }> {
   const since30 = new Date(Date.now() - 30 * 86_400_000).toISOString()
   const since7 = new Date(Date.now() - 7 * 86_400_000).toISOString()
+  // Sources « sans facturation » (Car Parts & Recycling…) : jamais dans « À facturer », même si une
+  // fiche y arrive par un autre chemin que la clôture chauffeur (Olivier 15/10/2026, 10188342).
+  const { data: sansFact } = await sb.from('mission_source_catalog').select('key').eq('skip_facturation', true)
+  const exclues = (sansFact || []).map((r: any) => r.key).filter(Boolean)
+  const horsSansFact = (q: any) => exclues.length ? q.not('source', 'in', `(${exclues.join(',')})`) : q
   const [{ data: toInv }, { data: legsDone }, { data: recent }, { data: legsOpen }] = await Promise.all([
-    sb.from('incoming_missions').select('id, parent_mission_id, completed_at')
+    horsSansFact(sb.from('incoming_missions').select('id, parent_mission_id, completed_at')
       .eq('status', 'to_invoice').eq('dossier_leg', false).is('archived_at', null)
-      .not('external_id', 'like', 'PROCESSING_%').order('completed_at', { ascending: false }).limit(300),
+      .not('external_id', 'like', 'PROCESSING_%')).order('completed_at', { ascending: false }).limit(300),
     sb.from('incoming_missions').select('id, parent_mission_id, parc_exit_at')
       .eq('dossier_leg', true).not('parc_exit_at', 'is', null).is('invoice_odoo_id', null).is('invoice_number', null)
       .is('no_charge_at', null).is('archived_at', null)

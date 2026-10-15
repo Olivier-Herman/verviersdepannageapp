@@ -178,7 +178,7 @@ export async function veilleCards(sb: Sb, userId: string, opts: { bureau: boolea
       titre = 'Commande à trier'
       message = `Commande ${m.source || ''} en attente depuis ${fmt(m.received_at)}. Elle est encore à faire ?`
       reponses.push({ id: 'a_faire', libelle: 'À faire', effet: 'Elle reste à dispatcher ; je ne te la redemande pas avant 7 jours.', principale: true })
-      reponses.push({ id: 'deja_fait', libelle: 'Déjà fait', effet: 'Elle passe en « à facturer » (faite sans pointage dans l’app), avec la remarque.' })
+      reponses.push({ id: 'deja_fait', libelle: 'Déjà fait', effet: 'Elle passe en « terminé » (faite sans pointage dans l’app ; Car Parts ne se facture pas), avec la remarque.' })
     }
     out.push({ id: row.id, kind: s.kind, mission, depuis_h: Math.round(s.since), dernier_pointage: last, attribuee_par: par, pour_moi: !!row.owner_user_id, titre, message, faits, raisonnement, alertes, verifie, reponses })
   }
@@ -192,7 +192,7 @@ export async function answerVeille(sb: Sb, cardId: string, reponse: string, user
   const { data: row } = await sb.from('max_veille').select('*').eq('id', cardId).maybeSingle()
   if (!row) throw new Error('Question introuvable.')
   if (row.status !== 'ouverte') return 'Déjà réglé par quelqu’un d’autre 👍'
-  const { data: m } = await sb.from('incoming_missions').select('id, mission_number, vehicle_plate, assigned_to, status, loaded_at').eq('id', row.mission_id).maybeSingle()
+  const { data: m } = await sb.from('incoming_missions').select('id, mission_number, vehicle_plate, assigned_to, status, loaded_at, source').eq('id', row.mission_id).maybeSingle()
   if (!m) throw new Error('Fiche introuvable.')
   const now = new Date().toISOString()
   const close = (status: 'reglee' | 'plus_tard', hours?: number) => sb.from('max_veille').update({ status, answer: reponse, answered_by: user.id, answered_at: now, snooze_until: hours ? new Date(Date.now() + hours * H).toISOString() : null }).eq('id', cardId)
@@ -228,10 +228,14 @@ export async function answerVeille(sb: Sb, cardId: string, reponse: string, user
   if (reponse === 'je_men_occupe') { await close('plus_tard', 4); return 'Top, je te laisse faire 👍' }
   if (reponse === 'a_faire') { await log(`${user.name} via Max : commande toujours à faire.`); await close('plus_tard', 24 * 7); return 'Noté : elle reste à faire.' }
   if (reponse === 'deja_fait') {
-    await sb.from('incoming_missions').update({ status: 'to_invoice', completed_at: now, updated_at: now }).eq('id', m.id).in('status', SANS_CHAUFFEUR)
+    // Source « sans facturation » (Car Parts & Recycling) : la commande faite passe directement en terminé,
+    // jamais en « à facturer » (Olivier 15/10/2026 : « un dossier Car Parts ne se facture pas »).
+    const { sourceSkipsFacturation } = await import('@/lib/missions/source-flags')
+    const sansFact = await sourceSkipsFacturation(m.source, sb)
+    await sb.from('incoming_missions').update({ status: sansFact ? 'completed' : 'to_invoice', completed_at: now, updated_at: now }).eq('id', m.id).in('status', SANS_CHAUFFEUR)
     await sb.from('mission_remarks').insert({ mission_id: m.id, text: `Faite sans pointage dans l’app — confirmé par ${user.name} (Max, ${new Date().toLocaleDateString('fr-BE')}).`, created_by: user.id }).then(() => {}, () => {})
-    await log(`${user.name} via Max : commande déjà faite → à facturer.`)
-    await close('reglee'); return 'Noté : elle passe en « à facturer ».'
+    await log(`${user.name} via Max : commande déjà faite → ${sansFact ? 'terminée (pas de facturation)' : 'à facturer'}.`)
+    await close('reglee'); return sansFact ? 'Noté : elle passe en « terminé » (pas de facturation).' : 'Noté : elle passe en « à facturer ».'
   }
   if (reponse === 'autre') { await close('plus_tard', 12); return 'Ok, on en parle dans la discussion.' }
   throw new Error('Réponse inconnue.')
