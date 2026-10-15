@@ -53,10 +53,24 @@ export default async function MissionDriverPage({ params, searchParams }: Props)
   // la meilleure façon de le bloquer. La coupure se fait sur l'acceptation.
   const onsiteV2 = await flagAppliesToMission('driver_onsite_v2', (currentUser as any).role, mission as any)
   // Mamie Josiane (blague, Olivier 15/10/2026) : seulement les comptes du réglage, sur LEUR mission.
+  // UNE seule fois (Olivier 15/10/2026) : elle s'attache à la PROCHAINE mission de REMORQUAGE ouverte par le
+  // chauffeur (app_settings mamie_josiane_mission), et ne revient plus sur aucune autre mission.
   const josiane = (mission as any).assigned_to === (currentUser as any).id && await (async () => {
     try {
       const { getBusinessList } = await import('@/lib/settings/business')
-      return (await getBusinessList('mamie_josiane_users')).map(x => String(x).toLowerCase()).includes(String(session.user!.email).toLowerCase())
+      const inscrit = (await getBusinessList('mamie_josiane_users')).map(x => String(x).toLowerCase()).includes(String(session.user!.email).toLowerCase())
+      if (!inscrit) return false
+      const key = 'mamie_josiane_mission'
+      const { data: lock } = await supabase.from('app_settings').select('value').eq('key', key).maybeSingle()
+      let cible: any = null
+      try { cible = lock?.value ? JSON.parse(String(lock.value)) : null } catch { cible = null }
+      const pourMoi = cible && cible.user === (currentUser as any).id
+      if (pourMoi) return cible.mission_id === (mission as any).id
+      const remorquage = /remorq|^rem\b|rem\+/i.test(String((mission as any).mission_type || ''))
+      const enCours = ['assigned', 'accepted', 'in_progress', 'delivering'].includes(String((mission as any).status))
+      if (!remorquage || !enCours) return false
+      await supabase.from('app_settings').upsert({ key, value: JSON.stringify({ user: (currentUser as any).id, mission_id: (mission as any).id, at: new Date().toISOString() }), updated_at: new Date().toISOString() }, { onConflict: 'key' })
+      return true
     } catch { return false }
   })()
 
