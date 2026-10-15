@@ -12,7 +12,9 @@ export async function GET() {
   if (!user) return NextResponse.json({ error: 'Accès refusé' }, { status: 403 })
   try {
     const { getBusinessList } = await import('@/lib/settings/business')
-    const bureau = (await getBusinessList('assistant_bureau_users').catch(() => [] as string[])).map(x => String(x).toLowerCase()).includes(String(user.email || '').toLowerCase())
+    // Questions de dispatch sans propriétaire : au dispatch titulaire seulement, pas à tout le bureau
+    // (Olivier 15/10/2026 : Jona fait la facturation et la fourrière, le dispatch en remplacement).
+    const bureau = (await getBusinessList('max_veille_dispatch_users').catch(() => [] as string[])).map(x => String(x).toLowerCase()).includes(String(user.email || '').toLowerCase())
     return NextResponse.json({ heures: inWorkHours(), cartes: await veilleCards(createAdminClient(), user.id, { bureau }) })
   } catch (e: any) {
     return NextResponse.json({ error: e?.message || String(e), cartes: [] }, { status: 500 })

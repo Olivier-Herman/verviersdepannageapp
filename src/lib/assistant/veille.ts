@@ -100,7 +100,7 @@ export async function veilleCards(sb: Sb, userId: string, opts: { bureau: boolea
     if (row) open.push({ row, s })
   }
   // Mission attribuée → seulement à qui l'a attribuée (tous ses profils). Sans chauffeur ou à
-  // trier → seulement aux personnes du bureau (réglage assistant_bureau_users), jamais à Mobi
+  // trier → seulement au dispatch titulaire (réglage max_veille_dispatch_users, sans Jona — 15/10), jamais à Mobi
   // (Olivier 14/10/2026 : « il ne faut pas m'envoyer les notif de Momo a moi »).
   const forMe = open.filter(o => o.row.owner_user_id ? mine.includes(o.row.owner_user_id) : opts.bureau)
   if (!forMe.length) return []
