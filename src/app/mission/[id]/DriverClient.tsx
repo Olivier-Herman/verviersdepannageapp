@@ -1582,6 +1582,12 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
   const api = async (action: string, extra: Record<string, any> = {}) => {
     console.log(`[api] CALL action=${action}`, { extra, currentStatus: M.status, currentLoaded: !!M.loaded_at })
     setLoading(true); setErr('')
+    // La carte « verrouillée » de l'écran iPhone (démarrée à distance à l'attribution) ne peut pas être
+    // fermée par le serveur (il n'a pas son jeton) : on la ferme ICI, sur le téléphone, avant l'acceptation ;
+    // le serveur démarre ensuite la carte complète (15/10/2026 — cartes en double sur HB224LG).
+    if (action === 'accept') {
+      try { await Promise.race([endForMission(M.id, missionToLAState({ status: 'assigned', incident_city: (M as any).incident_city } as any)), new Promise(r => setTimeout(r, 1500))]) } catch { /* jamais bloquant */ }
+    }
     try {
       // Lieu de pointage : on tente d'attacher la position GPS (non bloquant,
       // cap 2s) sauf si l'appelant a déjà fourni lat/lng.
@@ -1676,7 +1682,9 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
       } else {
         updateForMission(M.id, laState)
       }
-    } else if (laStartedRef.current) {
+    } else if (!isActiveMissionStatus(M.status)) {
+      // Mission terminée ou annulée : on ferme la carte même si elle a été démarrée à distance (le serveur
+      // ne sait pas toujours la fermer) — plus de carte fantôme sur l'écran verrouillé (15/10/2026).
       laStartedRef.current = false
       endForMission(M.id, laState)
     }

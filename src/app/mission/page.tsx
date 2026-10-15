@@ -10,6 +10,7 @@ import NewInterventionButton from '@/components/mission/NewInterventionButton'
 import ParcRelivraisonButton from '@/components/mission/ParcRelivraisonButton'
 import MissionsDuJourEasterEgg from '@/components/mission/MissionsDuJourEasterEgg'
 import { isPreviewOn } from '@/lib/feature-flags'
+import LiveActivityCleanup from '@/components/mission/LiveActivityCleanup'
 
 export const dynamic = 'force-dynamic'
 
@@ -63,6 +64,10 @@ export default async function MissionListPage() {
     .limit(20)
 
   const active    = missions || []
+  // Cartes iPhone à fermer : missions de ce chauffeur terminées ou annulées ces 2 derniers jours.
+  const { data: finies } = await supabase.from('incoming_missions').select('id')
+    .eq('assigned_to', user.id).in('status', ['completed', 'to_invoice', 'invoiced', 'parked', 'cancelled', 'ignored'])
+    .gte('updated_at', new Date(Date.now() - 2 * 864e5).toISOString()).limit(30)
   // Assistant vocal (Olivier 20/09/2026) — pilote Franck via le flag voice_assistant.
   const voiceOn = await isPreviewOn('voice_assistant', String((session.user as any).role || ''), user.id)
 
@@ -97,6 +102,7 @@ export default async function MissionListPage() {
       userName={user.name ?? ''}
       userModules={(session.user as any).modules ?? []}
     >
+      <LiveActivityCleanup ids={(finies || []).map((f: any) => f.id)} />
       {/* Wrapper relatif pour positionner le FAB */}
       <AmbientBackground>
         <div className="px-4 lg:px-8 py-6 max-w-2xl mx-auto space-y-6 pb-24 ambient-fade-up">
