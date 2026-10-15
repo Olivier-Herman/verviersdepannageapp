@@ -52,11 +52,15 @@ export default function MamieJosiane({ step, onClose }: { step: number | null; o
 }
 
 /** Étape atteinte par la mission (1 acceptée … 4 chargée, 6 clôturée) — la 5 (arrivée) vient du bouton. */
-export function etapeJosiane(m: { status?: string | null; accepted_at?: string | null; on_way_at?: string | null; on_site_at?: string | null; loaded_at?: string | null }): number {
-  if (['completed', 'to_invoice', 'invoiced', 'parked'].includes(String(m.status))) return 6
-  if (m.loaded_at) return 4
-  if (m.on_site_at) return 3
-  if (m.on_way_at) return 2
-  if (m.accepted_at) return 1
+/** Seuls comptent les pointages faits DEPUIS l'attribution au chauffeur : une mission réattribuée garde
+ *  ceux du chauffeur précédent (1WXM962 : accepté et en route par Fred Palm, puis donnée à Franck). */
+export function etapeJosiane(m: { status?: string | null; assigned_at?: string | null; accepted_at?: string | null; on_way_at?: string | null; on_site_at?: string | null; loaded_at?: string | null; completed_at?: string | null; parked_at?: string | null }): number {
+  const depuis = m.assigned_at ? Date.parse(m.assigned_at) : 0
+  const fait = (t?: string | null) => !!t && Date.parse(t) >= depuis
+  if (['completed', 'to_invoice', 'invoiced', 'parked'].includes(String(m.status)) && (fait(m.completed_at) || fait(m.parked_at))) return 6
+  if (fait(m.loaded_at)) return 4
+  if (fait(m.on_site_at)) return 3
+  if (fait(m.on_way_at)) return 2
+  if (fait(m.accepted_at)) return 1
   return 0
 }
