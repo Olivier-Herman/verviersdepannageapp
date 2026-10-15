@@ -52,6 +52,13 @@ export default async function MissionDriverPage({ params, searchParams }: Props)
   // changer les écrans sous les doigts d'un chauffeur au bord de la route, c'est
   // la meilleure façon de le bloquer. La coupure se fait sur l'acceptation.
   const onsiteV2 = await flagAppliesToMission('driver_onsite_v2', (currentUser as any).role, mission as any)
+  // Mamie Josiane (blague, Olivier 15/10/2026) : seulement les comptes du réglage, sur LEUR mission.
+  const josiane = (mission as any).assigned_to === (currentUser as any).id && await (async () => {
+    try {
+      const { getBusinessList } = await import('@/lib/settings/business')
+      return (await getBusinessList('mamie_josiane_users')).map(x => String(x).toLowerCase()).includes(String(session.user!.email).toLowerCase())
+    } catch { return false }
+  })()
 
   const isDriverOfMission = mission.assigned_to === currentUser.id
   // Bouton « Aide » (Sam / Sonic) pour tout chauffeur de la mission ; Telegram
@@ -176,6 +183,7 @@ export default async function MissionDriverPage({ params, searchParams }: Props)
         consigneSource={srcCat?.driver_notice ? { fr: srcCat.driver_notice, sq: srcCat.driver_notice_sq || null, horaires: (srcCat.depot_horaires as any) || null } : null}
         flux2={flux2}
         onsiteV2={onsiteV2}
+        josiane={josiane}
         parentPanne={parentPanne}
         parentClosingNote={parentClosingNote}
         parentPhotos={parentPhotos}

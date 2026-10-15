@@ -35,6 +35,7 @@ import { canUseMatthieu } from '@/lib/mecano/access'
 import { cleanVin, isPlausibleVin } from '@/lib/mecano/vin'
 import { useSourceLabel } from '@/lib/missions/source-tags-client'
 import AddressSuggestions from '@/components/AddressSuggestions'
+import MamieJosiane, { etapeJosiane } from '@/components/mission/MamieJosiane'
 import PinInput from '@/components/ui/PinInput'
 
 const sb = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!)
@@ -96,7 +97,7 @@ interface Mission {
   awaiting_payment?: boolean | null
 }
 interface VrLoc { id: string; name: string; address: string; lat: number | null; lng: number | null; is_default?: boolean }
-interface Props { mission: Mission; currentUserId?: string; userRole?: string; isReadOnly?: boolean; navApp?: NavApp; defaultParcZone?: string | null; encaissementChauffeur?: boolean; paiementApp?: boolean; consigneSource?: { fr: string; sq: string | null; horaires: HorairesDepot | null } | null; flux2?: boolean; onsiteV2?: boolean; parentClosingNote?: string | null; parentPanne?: string | null; parentPhotos?: string[]; relKey?: { location: string | null; hook: string | null } | null; reportClient?: string | null }
+interface Props { mission: Mission; currentUserId?: string; userRole?: string; isReadOnly?: boolean; navApp?: NavApp; defaultParcZone?: string | null; encaissementChauffeur?: boolean; paiementApp?: boolean; consigneSource?: { fr: string; sq: string | null; horaires: HorairesDepot | null } | null; flux2?: boolean; onsiteV2?: boolean; parentClosingNote?: string | null; parentPanne?: string | null; parentPhotos?: string[]; relKey?: { location: string | null; hook: string | null } | null; reportClient?: string | null; josiane?: boolean }
 
 // Photos prises à l'ENLÈVEMENT (mission parente), en lecture seule sur une
 // relivraison : le chauffeur voit l'état du véhicule tel qu'il a été chargé et
@@ -608,7 +609,7 @@ function BriefingTtsButton({ mission }: { mission: Mission }) {
 }
 
 // ─── Composant principal ──────────────────────────────────────────────────────
-export default function DriverClient({ mission: init, currentUserId, userRole, isReadOnly = false, navApp: initNav, defaultParcZone = null, encaissementChauffeur = false, paiementApp = false, consigneSource = null, flux2 = false, onsiteV2 = false, parentClosingNote = null, parentPanne = null, parentPhotos = [], relKey = null, reportClient = null }: Props) {
+export default function DriverClient({ mission: init, currentUserId, userRole, isReadOnly = false, navApp: initNav, defaultParcZone = null, encaissementChauffeur = false, paiementApp = false, consigneSource = null, flux2 = false, onsiteV2 = false, parentClosingNote = null, parentPanne = null, parentPhotos = [], relKey = null, reportClient = null, josiane = false }: Props) {
   const canMatthieu = canUseMatthieu(userRole, currentUserId)
   const router = useRouter()
   const { t, lang } = useT()   // traductions FR/albanais pour les messages d'erreur (strings)
@@ -660,6 +661,18 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
   const [encaisserAutrement, setEncaisserAutrement] = useState(false)
   // Consigne du garage (Olivier 10/10/2026) : rien pour un dépannage sur place ou dans le créneau de dépôt du
   // garage ; dès que la mission est un remorquage hors créneau (soir, week-end, férié), alerte à confirmer.
+  // Mamie Josiane (blague, Olivier 15/10/2026) : une apparition par nouvelle étape franchie, mémorisée par
+  // mission dans le téléphone (le rechargement après chaque pointage ne la fait pas revenir deux fois).
+  const [josianeStep, setJosianeStep] = useState<number | null>(null)
+  const josianeVue = (n: number) => {
+    if (!josiane || isReadOnly) return
+    const k = `vd_josiane_${init.id}`
+    let deja = 0
+    try { deja = Number(localStorage.getItem(k) || 0) } catch { /* stockage indisponible */ }
+    if (n <= deja) return
+    try { localStorage.setItem(k, String(n)) } catch { /* idem */ }
+    setJosianeStep(n)
+  }
   const [horloge, setHorloge] = useState(() => Date.now())
   const [derogOuvert, setDerogOuvert] = useState(false)
   const [derogNom, setDerogNom] = useState('')
@@ -1689,6 +1702,11 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
       endForMission(M.id, laState)
     }
   }, [M.status, M.on_site_at, M.loaded_at]) // eslint-disable-line
+
+  useEffect(() => {
+    const n = etapeJosiane(M as any)
+    if (n) josianeVue(n)
+  }, [M.status, (M as any).accepted_at, (M as any).on_way_at, M.on_site_at, M.loaded_at]) // eslint-disable-line
 
   // Repli iOS 16 : un bouton de la Live Activity ouvre l'app avec ?la=<action> →
   // on exécute l'action automatiquement puis on nettoie l'URL.
@@ -3880,6 +3898,7 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
       <h1 className="text-ink font-semibold text-xl">Mission terminée</h1>
       <p className="text-ink-muted text-sm">{M.client_name} · {plate(M.vehicle_plate)}</p>
       <button onClick={() => router.push('/mission')} className="w-full max-w-xs py-3 bg-surface border border text-ink-secondary rounded-2xl text-sm">← Mes missions</button>
+      <MamieJosiane step={josianeStep} onClose={() => setJosianeStep(null)} />
     </div>
   )
 
@@ -5166,6 +5185,7 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
           })()}
 
           {msgClientModal}
+          <MamieJosiane step={josianeStep} onClose={() => setJosianeStep(null)} />
 
           {M.status === 'assigned' && (
             <>
@@ -5235,6 +5255,7 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
           {(rem || rel) && !!M.loaded_at && ['delivering', 'in_progress'].includes(M.status) && (
             <>
               <button onClick={async () => {
+                  josianeVue(5)
                   // Siabis NON couvert, destination gardée sans position (Google ne la trouvait pas) :
                   // le montant à encaisser ne se calcule pas. Le chauffeur est à destination → on prend
                   // la position du téléphone (GPS de l'appareil, gratuit) et le serveur recalcule le
