@@ -736,6 +736,14 @@ export async function POST(req: Request) {
     if (TERMINAL.includes(finalStatus)) {
       await bounded(pushMissionLiveActivity(mission_id, { event: 'end' }))
       await supabase.from('incoming_missions').update({ live_activity_push_token: null }).eq('id', mission_id).then(() => {}, () => {})
+    } else if (action === 'accept' && ACTIVE.includes(finalStatus)) {
+      // La carte de l'écran verrouillé a démarré « verrouillée » (sans plaque, client ni téléphone :
+      // règle du 14/10). Ses informations sont figées au démarrage : à l'acceptation on la ferme et
+      // on en démarre une complète — marque, plaque, client, bouton Appeler (Franck, 15/10/2026).
+      const { pushStartLiveActivity } = await import('@/lib/native/pushLiveActivity')
+      await bounded(pushMissionLiveActivity(mission_id, { event: 'end' }))
+      await supabase.from('incoming_missions').update({ live_activity_push_token: null }).eq('id', mission_id).then(() => {}, () => {})
+      await bounded(pushStartLiveActivity(mission_id, { silent: true }))
     } else if (ACTIVE.includes(finalStatus)) {
       await bounded(pushMissionLiveActivity(mission_id))   // event auto → 'update'
     }

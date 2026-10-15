@@ -183,7 +183,7 @@ export async function pushMissionLiveActivity(
  * Utilise users.la_push_to_start_token (enregistré par le natif). Best-effort.
  * Olivier 2026-07-26.
  */
-export async function pushStartLiveActivity(missionId: string): Promise<LiveActivityPushResult> {
+export async function pushStartLiveActivity(missionId: string, opts: { silent?: boolean } = {}): Promise<LiveActivityPushResult> {
   try {
     const sb = createAdminClient()
     const { data: m } = await sb
@@ -217,7 +217,8 @@ export async function pushStartLiveActivity(missionId: string): Promise<LiveActi
       attributes,
       contentState,
       staleSeconds: 8 * 3600,
-      alert: { title: 'Nouvelle mission', body: verrou ? `${mm.incident_city || ''} — appuie sur « Accepter » pour voir le client et l'adresse.`.replace(/^ — /, '') : `${attributes.vehicle || 'Véhicule'} — ${mm.incident_address || ''}`.trim() },
+      // silent : remplacement de la carte verrouillée à l'acceptation → « Mission acceptée » + détails.
+      alert: opts.silent ? { title: 'Mission acceptée', body: `${attributes.vehicle || 'Véhicule'} — ${mm.incident_address || ''}`.trim() } : { title: 'Nouvelle mission', body: verrou ? `${mm.incident_city || ''} — appuie sur « Accepter » pour voir le client et l'adresse.`.replace(/^ — /, '') : `${attributes.vehicle || 'Véhicule'} — ${mm.incident_address || ''}`.trim() },
     })
     if (res.invalid_token) {
       await sb.from('users').update({ la_push_to_start_token: null }).eq('id', (m as any).assigned_to).then(() => {}, () => {})
