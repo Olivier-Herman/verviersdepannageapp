@@ -158,7 +158,10 @@ export default function SamAide({ missionId, ecran }: { missionId?: string | nul
         <div className="fixed inset-0 z-50 bg-black/40 flex items-end sm:items-center justify-center">
           <div className="bg-surface w-full sm:max-w-md h-[92vh] sm:h-[80vh] rounded-t-3xl sm:rounded-3xl flex flex-col overflow-hidden">
             <div className="bg-ink text-surface px-4 py-3 flex items-center gap-3">
-              <span className="w-10 h-10 rounded-full bg-emerald-700 text-white font-bold flex items-center justify-center">{agent[0]}</span>
+              {/* Visage de l'agent (Olivier 15/10/2026, style 3D de Max) ; l'initiale si l'image manque. */}
+              {/^(sam|sonic)$/i.test(agent)
+                ? <img src={`/noprecache/agents/${agent.toLowerCase()}.jpg`} alt="" className="w-10 h-10 rounded-full object-cover bg-emerald-700" />
+                : <span className="w-10 h-10 rounded-full bg-emerald-700 text-white font-bold flex items-center justify-center">{agent[0]}</span>}
               <span className="flex-1 min-w-0"><b className="block">{agent}</b><span className="text-xs opacity-80">{t('sam.subtitle')}</span></span>
               <button type="button" onClick={() => setOpen(false)} aria-label={t('sam.close')} className="w-11 h-11 rounded-full text-xl">✕</button>
             </div>
