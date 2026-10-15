@@ -64,12 +64,18 @@ export default async function MissionDriverPage({ params, searchParams }: Props)
       const { data: lock } = await supabase.from('app_settings').select('value').eq('key', key).maybeSingle()
       let cible: any = null
       try { cible = lock?.value ? JSON.parse(String(lock.value)) : null } catch { cible = null }
-      const pourMoi = cible && cible.user === (currentUser as any).id
-      if (pourMoi) return cible.mission_id === (mission as any).id
+      // { user, missions: [ids], max } — max missions de remorquage (Olivier 15/10 : celle-ci + la suivante,
+      // au cas où il ne l'aurait pas vue). Ancien format { mission_id } accepté.
+      const missions: string[] = cible ? (Array.isArray(cible.missions) ? cible.missions : (cible.mission_id ? [cible.mission_id] : [])) : []
+      const max = Number(cible?.max) || 1
+      const pourMoi = !cible || cible.user === (currentUser as any).id
+      if (!pourMoi) return false
+      if (missions.includes((mission as any).id)) return true
+      if (missions.length >= max) return false
       const remorquage = /remorq|^rem\b|rem\+/i.test(String((mission as any).mission_type || ''))
       const enCours = ['assigned', 'accepted', 'in_progress', 'delivering'].includes(String((mission as any).status))
       if (!remorquage || !enCours) return false
-      await supabase.from('app_settings').upsert({ key, value: JSON.stringify({ user: (currentUser as any).id, mission_id: (mission as any).id, at: new Date().toISOString() }), updated_at: new Date().toISOString() }, { onConflict: 'key' })
+      await supabase.from('app_settings').upsert({ key, value: JSON.stringify({ user: (currentUser as any).id, missions: [...missions, (mission as any).id], max, at: new Date().toISOString() }), updated_at: new Date().toISOString() }, { onConflict: 'key' })
       return true
     } catch { return false }
   })()
