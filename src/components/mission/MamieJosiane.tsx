@@ -1,7 +1,7 @@
 'use client'
 // Mamie Josiane, fan n° 1 de Franck (Olivier 15/10/2026) : une blague, réservée aux comptes du réglage
 // « mamie_josiane_users ». Elle apparaît APRÈS chaque pointage (jamais avant : elle ne retarde rien),
-// part d'un toucher ou seule après 6 s. Images : public/noprecache/josiane/1..6.jpg.
+// et reste jusqu'au toucher sur « Merci Mamie ». Images : public/noprecache/josiane/1..6.jpg.
 import { useEffect, useState } from 'react'
 
 const REPLIQUES = [
@@ -15,13 +15,15 @@ const REPLIQUES = [
 ]
 const COULEURS = ['#e2557e', '#f5d90a', '#1d5fd6', '#0f7a4d', '#ff8a3d']
 
-export default function MamieJosiane({ step, onClose }: { step: number | null; onClose: () => void }) {
+export default function MamieJosiane({ step, onClose, missionId }: { step: number | null; onClose: () => void; missionId?: string }) {
   const [show, setShow] = useState(false)
+  // Elle reste jusqu'au « Merci Mamie » (15/10/2026 : partie seule en 6 s, Franck ne l'a pas vue) ;
+  // chaque apparition et sa fermeture sont notées sur la fiche.
+  const trace = (ferme: boolean) => { if (missionId && step) fetch(`/api/missions/${missionId}/josiane`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ step, ferme }) }).catch(() => {}) }
   useEffect(() => {
     if (!step) return
     setShow(true)
-    const t = setTimeout(() => { setShow(false); onClose() }, 6500)
-    return () => clearTimeout(t)
+    trace(false)
   }, [step]) // eslint-disable-line react-hooks/exhaustive-deps
   if (!step || !show) return null
   return (
@@ -43,7 +45,7 @@ export default function MamieJosiane({ step, onClose }: { step: number | null; o
         style={{ animation: 'mj-pop .7s cubic-bezier(.2,1.6,.4,1) both' }} />
       <p className="relative mx-4 mt-4 max-w-[300px] rounded-[20px] bg-white px-4 py-3 text-center text-[17px] font-bold leading-snug text-gray-900"
         style={{ animation: 'mj-in .4s .55s ease-out both' }}>{REPLIQUES[step]}</p>
-      <button type="button" onClick={() => { setShow(false); onClose() }}
+      <button type="button" onClick={() => { trace(true); setShow(false); onClose() }}
         className="mt-4 min-h-[48px] rounded-2xl bg-pink-600 px-6 font-bold text-white" style={{ animation: 'mj-in .3s 1s both' }}>
         Merci Mamie 🙈
       </button>

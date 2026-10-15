@@ -3898,7 +3898,7 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
       <h1 className="text-ink font-semibold text-xl">Mission terminée</h1>
       <p className="text-ink-muted text-sm">{M.client_name} · {plate(M.vehicle_plate)}</p>
       <button onClick={() => router.push('/mission')} className="w-full max-w-xs py-3 bg-surface border border text-ink-secondary rounded-2xl text-sm">← Mes missions</button>
-      <MamieJosiane step={josianeStep} onClose={() => setJosianeStep(null)} />
+      <MamieJosiane step={josianeStep} missionId={M.id} onClose={() => setJosianeStep(null)} />
     </div>
   )
 
@@ -5185,7 +5185,7 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
           })()}
 
           {msgClientModal}
-          <MamieJosiane step={josianeStep} onClose={() => setJosianeStep(null)} />
+          <MamieJosiane step={josianeStep} missionId={M.id} onClose={() => setJosianeStep(null)} />
 
           {M.status === 'assigned' && (
             <>
