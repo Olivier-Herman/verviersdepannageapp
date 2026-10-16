@@ -82,6 +82,21 @@ export default function UsersClient({ users, modules, currentUserRole = 'admin' 
 }) {
   // ── Liste ──────────────────────────────────────────────
   const [search,      setSearch]      = useState('')
+  // Réactivation en un clic d'un membre parti (16/10/2026).
+  const [reactivating, setReactivating] = useState<string | null>(null)
+  const [reactivateError, setReactivateError] = useState('')
+  const reactiver = async (user: any) => {
+    setReactivating(user.id); setReactivateError('')
+    try {
+      const r = await fetch('/api/admin/users/actif', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ userId: user.id, active: true }) })
+      const j = await r.json().catch(() => ({}))
+      if (!r.ok) throw new Error(j.error || 'Réactivation impossible')
+      window.location.reload()
+    } catch (e: any) {
+      setReactivateError(`${user.name || 'Utilisateur'} : ${e.message}`)
+      setReactivating(null)
+    }
+  }
   const [selectedUser,setSelectedUser]= useState<any>(null)
   const [showNewUser, setShowNewUser] = useState(false)
   // Modal suppression user : PIN admin requis
@@ -763,14 +778,18 @@ export default function UsersClient({ users, modules, currentUserRole = 'admin' 
           </div>
         )}
 
+        {reactivateError && (
+          <div className="mb-3 rounded-card border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">{reactivateError}</div>
+        )}
+
         {/* Liste mobile */}
         <div className="flex flex-col gap-2 lg:hidden">
           {filtered.map(user => {
             const moduleCount = user.user_modules?.filter((m: any) => m.granted).length || 0
             const roles       = Array.isArray(user.roles) && user.roles.length > 0 ? user.roles : [user.role]
             return (
+              <div key={user.id} className="flex flex-col gap-1">
               <button
-                key={user.id}
                 onClick={() => openUser(user)}
                 className="bg-surface border rounded-card shadow-card p-4 flex items-center gap-3 text-left hover:shadow-md transition-all"
               >
@@ -790,6 +809,12 @@ export default function UsersClient({ users, modules, currentUserRole = 'admin' 
                   <span className="text-ink-faint text-xs">{moduleCount} modules</span>
                 </div>
               </button>
+              {!user.active && (
+                <Button size="md" variant="secondary" loading={reactivating === user.id} onClick={() => reactiver(user)}>
+                  Réactiver {user.name || ''}
+                </Button>
+              )}
+              </div>
             )
           })}
           {filtered.length === 0 && (
@@ -837,9 +862,17 @@ export default function UsersClient({ users, modules, currentUserRole = 'admin' 
                       <RoleBadges roles={roles} size="sm" />
                     </td>
                     <td className="py-3 pr-4">
-                      <Badge variant={user.active ? 'success' : 'neutral'} size="sm">
-                        {user.active ? 'Actif' : 'Inactif'}
-                      </Badge>
+                      <div className="flex items-center gap-2">
+                        <Badge variant={user.active ? 'success' : 'neutral'} size="sm">
+                          {user.active ? 'Actif' : 'Inactif'}
+                        </Badge>
+                        {!user.active && (
+                          <Button size="sm" variant="secondary" loading={reactivating === user.id}
+                            onClick={(e: any) => { e.stopPropagation(); reactiver(user) }}>
+                            Réactiver
+                          </Button>
+                        )}
+                      </div>
                     </td>
                     <td className="py-3 pr-4 text-ink-muted text-sm">{moduleCount}</td>
                     <td className="py-3 pr-4 text-ink-muted text-sm">
