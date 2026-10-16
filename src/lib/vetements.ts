@@ -11,13 +11,17 @@ const KEY = 'campagne_vetements'
 
 /** Lignes ajoutées à la main (sans compte, ou 2e lot pour quelqu'un) — Olivier 16/10/2026. */
 export interface LigneSup { id: string; nom: string; tshirt: string; pull: string }
-export interface Campagne { active: boolean; deadline: string | null; excluded: string[]; extras: LigneSup[] }
+/** Quantités commandées PAR PERSONNE (Olivier 16/10/2026 : 5 t-shirts, 1 pull à capuche, 1 pull sans capuche). */
+export interface Quantites { tshirt: number; hoodie: number; pull: number }
+export interface Campagne { active: boolean; deadline: string | null; excluded: string[]; extras: LigneSup[]; quantites: Quantites }
 
 export async function getCampagne(): Promise<Campagne> {
   const { data } = await createAdminClient().from('app_settings').select('value').eq('key', KEY).maybeSingle()
   let v: any = {}
   try { v = data?.value ? JSON.parse(String(data.value)) : {} } catch { v = {} }
-  return { active: !!v.active, deadline: v.deadline || null, excluded: Array.isArray(v.excluded) ? v.excluded.map(String) : [], extras: Array.isArray(v.extras) ? v.extras : [] }
+  const q = v.quantites || {}
+  const n = (x: any, d: number) => (Number.isFinite(Number(x)) && Number(x) >= 0 ? Number(x) : d)
+  return { active: !!v.active, deadline: v.deadline || null, excluded: Array.isArray(v.excluded) ? v.excluded.map(String) : [], extras: Array.isArray(v.extras) ? v.extras : [], quantites: { tshirt: n(q.tshirt, 1), hoodie: n(q.hoodie, 1), pull: n(q.pull, 0) } }
 }
 
 export async function saveCampagne(c: Campagne): Promise<void> {

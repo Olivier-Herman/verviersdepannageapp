@@ -4,7 +4,7 @@
 import { Fragment, useEffect, useState } from 'react'
 
 type Row = { id: string; name: string; role: string; excluded: boolean; tshirt: string | null; pull: string | null; answered_at: string | null; extra?: boolean }
-type State = { campagne: { active: boolean }; rows: Row[]; totals: { size: string; tshirt: number; pull: number }[] }
+type State = { campagne: { active: boolean; quantites: { tshirt: number; hoodie: number; pull: number } }; rows: Row[]; totals: { size: string; tshirt: number; pull: number }[] }
 
 export default function VetementsClient() {
   const [s, setS] = useState<State | null>(null)
@@ -26,7 +26,11 @@ export default function VetementsClient() {
   const answered = active.filter(r => r.tshirt)
   const waiting = active.filter(r => !r.tshirt)
   const order = () => {
-    const lines = ['Commande Verviers Dépannage — pulls et t-shirts', '', 'T-shirts : ' + s.totals.filter(t => t.tshirt).map(t => `${t.tshirt} × ${t.size}`).join(', '), 'Pulls : ' + s.totals.filter(t => t.pull).map(t => `${t.pull} × ${t.size}`).join(', '), '', ...answered.map(r => `${r.name} : t-shirt ${r.tshirt}, pull ${r.pull}`)]
+    const q = s.campagne.quantites
+    const ligne = (label: string, k: 'tshirt' | 'pull', mult: number) => mult > 0 ? [`${label} : ` + s.totals.filter(t => t[k]).map(t => `${t[k] * mult} × ${t.size}`).join(', ')] : []
+    const lines = ['Commande Verviers Dépannage — pulls et t-shirts', `Par personne : ${q.tshirt} t-shirt(s), ${q.hoodie} pull à capuche, ${q.pull} pull sans capuche`, '',
+      ...ligne('T-shirts', 'tshirt', q.tshirt), ...ligne('Pulls à capuche (hoodies)', 'pull', q.hoodie), ...ligne('Pulls sans capuche', 'pull', q.pull),
+      '', ...answered.map(r => `${r.name} : t-shirt ${r.tshirt}, pull ${r.pull}`)]
     const txt = lines.join('\n')
     navigator.clipboard?.writeText(txt).then(() => setMsg('Commande copiée : colle-la dans ton mail au fournisseur.'), () => setMsg(txt))
   }
@@ -80,9 +84,10 @@ export default function VetementsClient() {
         </div>
         <div className="flex-[1_1_260px] bg-surface border border-border rounded-2xl p-4 space-y-3">
           <p className="font-extrabold text-ink">Total à commander</p>
-          <div className="grid grid-cols-[1fr_auto_auto] gap-x-6 gap-y-1.5 text-sm">
-            <span className="text-xs font-bold text-ink-muted">TAILLE</span><span className="text-xs font-bold text-ink-muted">T-SHIRTS</span><span className="text-xs font-bold text-ink-muted">PULLS</span>
-            {s.totals.map(t => <Fragment key={t.size}><span className="font-bold text-ink">{t.size}</span><span className="text-right text-ink">{t.tshirt}</span><span className="text-right text-ink">{t.pull}</span></Fragment>)}
+          <p className="text-xs text-ink-secondary">Par personne : {s.campagne.quantites.tshirt} t-shirts, {s.campagne.quantites.hoodie} pull à capuche, {s.campagne.quantites.pull} pull sans capuche.</p>
+          <div className="grid grid-cols-[1fr_auto_auto_auto] gap-x-5 gap-y-1.5 text-sm">
+            <span className="text-xs font-bold text-ink-muted">TAILLE</span><span className="text-xs font-bold text-ink-muted text-right">T-SHIRTS</span><span className="text-xs font-bold text-ink-muted text-right">À CAPUCHE</span><span className="text-xs font-bold text-ink-muted text-right">SANS CAPUCHE</span>
+            {s.totals.map(t => <Fragment key={t.size}><span className="font-bold text-ink">{t.size}</span><span className="text-right text-ink">{t.tshirt * s.campagne.quantites.tshirt}</span><span className="text-right text-ink">{t.pull * s.campagne.quantites.hoodie}</span><span className="text-right text-ink">{t.pull * s.campagne.quantites.pull}</span></Fragment>)}
           </div>
           <p className="text-xs text-ink-muted">Les personnes en attente ne sont pas encore comptées.</p>
         </div>
