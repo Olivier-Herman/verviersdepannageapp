@@ -6,7 +6,7 @@
 // introduisent leurs états de frais auprès du bureau de taxation dans les six
 // mois à dater du jour de l'exécution de leur prestation ». Lecture prudente :
 // la prestation la plus ancienne de l'état de frais = début de sa période
-// (dépannage = jour de l'entrée). Le dépôt JustInvoice arrête l'horloge.
+// (dépannage = jour de l'entrée). L'ENVOI de l'état de frais arrête l'horloge (16/10/2026).
 //
 // Relance : JAMAIS automatique — le Parquet n'apprécie pas (Olivier 03/09).
 // Bouton manuel, réservé aux cas proches de la forclusion.
@@ -19,7 +19,9 @@ import type { SaisieRecipient } from '@/lib/missions/saisie-billing'
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://app.verviersdepannage.com'
 const FOURRIERE_FROM = 'fourriere@verviersdepannage.be'
 export const FORCLUSION_MONTHS = 6
-export const FORCLUSION_STOPS = ['depose', 'liquide', 'facture']   // l'horloge s'arrête au dépôt
+// Olivier 16/10/2026 : « la date limite est uniquement la date d'envoi » — un état de frais envoyé n'a plus de
+// délai, donc plus d'alerte ni de relance. L'horloge ne court que tant qu'il n'est pas parti (brouillon, refusé à renvoyer).
+export const FORCLUSION_STOPS = ['envoye', 'accepte', 'depose', 'liquide', 'facture', 'annule']
 
 const fmtFR = (ymd?: string | null) => (ymd ? String(ymd).slice(0, 10).split('-').reverse().join('/') : '—')
 

@@ -416,6 +416,8 @@ export async function renderEtatFraisFromRow(sb: any, dossierId: string, efRowId
 // renderEtatFraisFromRow) + réquisitoire, au même destinataire. Cas : le
 // Parquet a retourné l'état parce que marque / châssis / PVI ne collaient pas
 // avec le réquisitoire (90698, 03/09/2026). L'état repasse « envoyé ».
+const REQUISITOIRE_MANQUANT = 'Réquisitoire manquant (PDF ou JPG) : l’état de frais ne part pas au Parquet sans lui. Demande-le à la police depuis la fiche.'
+
 export async function resendEtatFrais(sb: any, dossierId: string, efRowId: string, userId?: string | null): Promise<SendEfResult> {
   const { data: d } = await sb.from('saisie_dossiers').select('*').eq('id', dossierId).maybeSingle()
   if (!d) return { ok: false, error: 'Dossier introuvable' }
@@ -429,6 +431,9 @@ export async function resendEtatFrais(sb: any, dossierId: string, efRowId: strin
   }
   const dest = await resolveRecipientEmail(recipient, d.motif_code, clientEmail, leveePayer)
   if (!dest) return { ok: false, error: recipient === 'client' ? "Email du client inconnu (compléter la fiche)" : 'Destinataire non configuré' }
+  // Jamais d'état de frais au Parquet / aux frais de justice sans réquisitoire PDF ou JPG (Olivier 16/10/2026 :
+  // « l'EDF n'aurait pas dû partir sans réquisitoire » — EDF-2026-0035, 1FIX936, parti le 09/08 avec une capture de mail).
+  if (recipient === 'parquet' && !(reqDocPath && isRequisitoireDoc(reqDocPath))) return { ok: false, error: REQUISITOIRE_MANQUANT }
   let gen: { pdf: Buffer; numero: string }
   try { gen = await renderEtatFraisFromRow(sb, dossierId, efRowId) }
   catch (e: any) { return { ok: false, error: e?.message || 'Génération échouée' } }
@@ -520,6 +525,9 @@ export async function sendEtatFrais(
   }
   const dest = await resolveRecipientEmail(recipient, d.motif_code, clientEmail, leveePayer)
   if (!dest) return { ok: false, error: recipient === 'client' ? "Email du client inconnu (compléter la fiche)" : 'Destinataire Domaine non configuré' }
+  // Jamais d'état de frais au Parquet / aux frais de justice sans réquisitoire PDF ou JPG (Olivier 16/10/2026 :
+  // « l'EDF n'aurait pas dû partir sans réquisitoire » — EDF-2026-0035, 1FIX936, parti le 09/08 avec une capture de mail).
+  if (recipient === 'parquet' && !(reqDocPath && isRequisitoireDoc(reqDocPath))) return { ok: false, error: REQUISITOIRE_MANQUANT }
 
   // Génère (persiste) l'état de frais.
   // Ou LA SÉRIE d'états de frais quand la coupe visée dépasse une période
