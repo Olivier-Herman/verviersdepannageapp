@@ -9,7 +9,6 @@
 
 const DAY = 24 * 60 * 60 * 1000
 const ms  = (ymd: string) => Date.parse(`${ymd}T00:00:00Z`)
-const isCyclo = (s?: string | null) => /cyclo|moto|scooter|mobylette/i.test(String(s || ''))
 
 export interface VenteEpaveRow {
   id:        string          // id de la ligne de trace
@@ -78,7 +77,9 @@ export async function computeVenteEpavesRegister(
     // override éditable, sinon date max d'enlèvement du mail, sinon enlèvement fiche.
     const dateIn  = r.date_in || m?.domaine_remise_date || ''
     const dateOut = r.date_out || r.max_enlevement_date || m?.domaine_enlevement_date || ''
-    const cyclo   = isCyclo(`${r.brand || ''} ${r.model || ''}`)
+    // Domaine : un seul tarif par jour pour tous les véhicules, cyclomoteurs compris — le SPF Finances a
+    // recalculé nos cyclos au tarif voiture (1,56 €) dans le relevé du 3e trimestre 2026 (R. Lehnen, 12/10/2026).
+    const cyclo = false
 
     let days = 0, amount = 0
     const ratesUsed = new Set<number | null>()

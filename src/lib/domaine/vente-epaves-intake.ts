@@ -181,7 +181,7 @@ export async function pollVenteEpaves(): Promise<VenteEpavesSummary> {
           date_in: v.emailDate || null,   // Date IN = colonne date du mail (registre)
           numero: v.numero, brand: v.brand, model: v.model, vin: v.vin, vin_tail: v.vinTail,
           matched_mission_id: matchedId, outcome,
-        }, { onConflict: 'source_email_id,vin' }).then(() => {}, () => {})
+        }, { onConflict: 'vente_date,vin' }).then(() => {}, () => {})   // un mail déplacé change d'id : la clé est la vente, pas le mail (16/10/2026)
       }
       s.processed++
     } catch (err: any) {

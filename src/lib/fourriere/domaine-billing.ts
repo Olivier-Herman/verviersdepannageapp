@@ -11,7 +11,6 @@
 
 const DAY = 24 * 60 * 60 * 1000
 const ms  = (ymd: string) => Date.parse(`${ymd}T00:00:00Z`)
-const isCyclo = (cls?: string | null) => /moto|cyclo/i.test(String(cls || ''))
 
 export interface DomaineRow {
   mission_number: number | null
@@ -66,7 +65,8 @@ export async function computeDomaineBilling(
     // Jours = remise → enlèvement INCLUS. Sans date d'enlèvement, on ne facture
     // pas encore (gardiennage non clôturé) → days = 0, montant 0 (visible mais à compléter).
     const enlMs = m.domaine_enlevement_date ? ms(m.domaine_enlevement_date) : null
-    const cyclo = isCyclo(m.vehicle_class)
+    // Domaine : tarif voiture pour tous, cyclomoteurs compris (relevé T3 2026 corrigé par le SPF Finances, 12/10/2026).
+    const cyclo = false
     let days = 0, amount = 0
     const ratesUsed = new Set<number | null>()
     if (enlMs != null && enlMs >= remiseMs) {
