@@ -26,5 +26,16 @@ export async function sendAvanceParMail(company: number, invoiceId: number): Pro
   const html = `<p>Madame, Monsieur,</p><p>Veuillez trouver en annexe notre facture <b>${inv.name}</b>${inv.ref ? ` (votre dossier <b>${inv.ref}</b>)` : ''}, ${eur} TVAC, relative à une avance de fonds, ainsi que la facture du prestataire en justificatif. La facture vous a également été transmise par Peppol.</p><p>Bien à vous,</p><p>Verviers Dépannage SA<br>Service administratif — ${ADMIN_FROM}</p>`
   await sendEmail(to, `Facture ${inv.name}${inv.ref ? ` — dossier ${inv.ref}` : ''} — avance de fonds et justificatif`, html, inv.partner_id[1], undefined,
     [facture, ...justifs].map(a => ({ name: a.name, contentType: 'application/pdf', contentBytes: a.datas })), ADMIN_FROM)
+  // Trace dans l'historique de la facture (le mail part de la boîte administration@, pas de l'ERP).
+  await noterEnvoiMail(company, invoiceId, to, [facture, ...justifs].map(a => a.name)).catch(() => {})
   return { ok: true, note: `envoyée aussi par mail à ${to} avec ${justifs.length} justificatif(s)` }
+}
+
+/** Note visible dans l'historique de la facture de l'ERP : envoi par mail depuis administration@. */
+export async function noterEnvoiMail(company: number, invoiceId: number, to: string, pieces: string[]): Promise<void> {
+  const when = new Date().toLocaleString('fr-BE', { timeZone: 'Europe/Brussels', dateStyle: 'short', timeStyle: 'short' })
+  await odooRpcCompany(company, 'account.move', 'message_post', [[invoiceId]], {
+    body: `Envoyée aussi par mail le ${when} depuis ${ADMIN_FROM} à ${to}, avec : ${pieces.join(', ')}.`,
+    message_type: 'comment', subtype_xmlid: 'mail.mt_note',
+  })
 }
