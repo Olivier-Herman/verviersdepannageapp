@@ -24,6 +24,11 @@ export interface JustInvoiceClaimInput {
   validationOffice?: string
   etatFraisName?: string
   requisitoireName?: string
+  /** Approbation distincte (PDF) : facture corrigée déposée dans un nouveau dossier avec l'approbation de
+   *  l'ancien (taxation de Liège, 12/10/2026 : « chaque facture doit être liée à un dossier unique »).
+   *  Absente → l'état de frais signé sert d'approbation. */
+  approbation?: Buffer
+  approbationName?: string
 }
 
 export interface JustInvoiceClaimResult {
@@ -84,7 +89,9 @@ export async function submitJustInvoiceClaim(input: JustInvoiceClaimInput): Prom
   const files = [
     { docType: 'CostState', docVersion: 1, fileName: input.etatFraisName || 'etat-de-frais.pdf', content: efB64 },
     { docType: 'Claim',     docVersion: 1, fileName: input.requisitoireName || 'requisitoire.pdf', content: input.requisitoire.toString('base64') },
-    { docType: 'Approval',  docVersion: 1, fileName: input.etatFraisName || 'etat-de-frais.pdf', content: efB64 },
+    input.approbation
+      ? { docType: 'Approval', docVersion: 1, fileName: input.approbationName || 'approbation.pdf', content: input.approbation.toString('base64') }
+      : { docType: 'Approval', docVersion: 1, fileName: input.etatFraisName || 'etat-de-frais.pdf', content: efB64 },
   ]
   const body = {
     serviceProvider: SERVICE_PROVIDER,

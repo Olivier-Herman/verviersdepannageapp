@@ -165,7 +165,7 @@ async function handleRetour(sb: any, msg: GraphMessage, out: SaisieMailWatchSumm
   // pas reconnue (réquisitoire renvoyé = signe de retour, pas d'accord).
   let mailText = ''
   try { const b = await getMessageBody(FOURRIERE_MAILBOX, msg.id); mailText = ownPart(b.contentType === 'html' ? stripHtml(b.content) : b.content) } catch { /* sans corps → prudence ci-dessous */ }
-  const RE_REFUS = /ne correspond(ent)? pas|retourne le tout|vous retourne|refus|rejet|d[ée]j[àa] pay[ée]|ne doit (donc )?pas nous [êe]tre adress|ne l[’']imprime pas|pi[eè]ces ad[eé]quates|incorrect|erron[eé]|manquant|ne peut (pas )?[eê]tre (accept|trait)|à corriger|a corriger|non conforme/i
+  const RE_REFUS = /ne correspond(ent)? pas|retourne le tout|vous retourn|refus|rejet|d[ée]j[àa] pay[ée]|ne doit (donc )?pas nous [êe]tre adress|ne l[’']imprime pas|pi[eè]ces ad[eé]quates|incorrect|erron[eé]|manquant|ne peut (pas )?[eê]tre (accept|trait)|à corriger|a corriger|non conforme|ne doi(t|vent) pas nous (revenir|parvenir)|nous ne traitons pas|transmettre à qui de droit|pas de notre ressort|pas notre ressort|incomp[ée]ten/i
   const mailRefus = RE_REFUS.test(mailText)
   const mailRefusExcerpt = mailRefus ? (mailText.match(new RegExp(`.{0,80}${RE_REFUS.source}.{0,120}`, 'i'))?.[0] || '').replace(/\s+/g, ' ').trim().slice(0, 240) : ''
 
