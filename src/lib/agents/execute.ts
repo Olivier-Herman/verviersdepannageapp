@@ -124,10 +124,14 @@ export async function prepare(kind: ProposalKind, agent: AgentAccount, company: 
     const lineId = Number(p.ligne_id)
     if (!Number.isInteger(lineId) || lineId <= 0) throw new Error('contenu.ligne_id obligatoire (ligne de banque non rapprochée).')
     const { line, resume } = await resolveBankParts(company, lineId, p.parts)
+    // Olivier 16/10/2026 : « si c'est la bonne facture avec le bon montant, pas besoin d'attendre ma validation ».
+    // Seul cas exécuté sans validation : UNE facture, montant identique au centime à la ligne de banque ET au reste
+    // dû, et sa référence (ou son numéro) retrouvée dans la communication de la banque. Tout le reste attend Olivier.
+    const exact = await exactBankMatch(company, line, p.parts)
     return {
       title: `${line.journal_id?.[1] || 'Banque'} ${line.date} · ${Number(line.amount).toFixed(2)} € · ${String(line.payment_ref || '').replace(/\s+/g, ' ').slice(0, 60)}`,
       amount: Number(line.amount), payload: { ligne_id: lineId, parts: p.parts, ventilation: resume },
-      directAllowed: true, directWhy: 'rapprochement de banque (permis quand Olivier l’active)',
+      directAllowed: exact.ok, directWhy: exact.ok ? `bonne facture, montant exact (${exact.why})` : undefined,
     }
   }
 
@@ -275,6 +279,18 @@ export async function prepare(kind: ProposalKind, agent: AgentAccount, company: 
 async function movePdf(company: number, id: number): Promise<EmailAttachment | null> {
   const a: any[] = await odooRpcCompany(company, 'ir.attachment', 'search_read', [[['res_model', '=', 'account.move'], ['res_id', '=', id], ['mimetype', '=', 'application/pdf']]], { fields: ['name', 'datas'], limit: 1, order: 'id asc' })
   return a?.[0]?.datas ? { name: a[0].name || `piece-${id}.pdf`, contentType: 'application/pdf', contentBytes: a[0].datas } : null
+}
+
+/** Rapprochement « évident » : une facture, montant exact, référence lue dans la communication (16/10/2026). */
+async function exactBankMatch(company: number, line: any, parts: any[]): Promise<{ ok: boolean; why: string }> {
+  if (!Array.isArray(parts) || parts.length !== 1 || !parts[0]?.facture_id || parts[0].montant != null && Math.abs(Math.abs(Number(parts[0].montant)) - Math.abs(Number(line.amount))) > 0.005) return { ok: false, why: '' }
+  const [m]: any[] = await odooRpcCompany(company, 'account.move', 'read', [[Number(parts[0].facture_id)]], { fields: ['name', 'ref', 'payment_reference', 'amount_residual'] })
+  if (!m || Math.abs(Math.abs(Number(m.amount_residual)) - Math.abs(Number(line.amount))) > 0.005) return { ok: false, why: '' }
+  const norm = (x: any) => String(x || '').toUpperCase().replace(/[^A-Z0-9]/g, '')
+  const comm = norm(`${line.payment_ref || ''} ${line.narration || ''}`)
+  const keys = [m.ref, m.payment_reference, m.name].map(norm).filter(k => k.length >= 5)
+  const hit = keys.find(k => comm.includes(k))
+  return hit ? { ok: true, why: `${m.name}, référence ${hit} dans la communication` } : { ok: false, why: '' }
 }
 
 export async function execute(kind: ProposalKind, company: number, payload: any): Promise<Record<string, any>> {
