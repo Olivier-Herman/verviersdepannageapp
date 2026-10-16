@@ -9,13 +9,15 @@ export const TAILLES = ['S', 'M', 'L', 'XL', '2XL'] as const
 export const STAFF_ROLES = ['driver', 'dispatcher', 'admin', 'superadmin']
 const KEY = 'campagne_vetements'
 
-export interface Campagne { active: boolean; deadline: string | null; excluded: string[] }
+/** Lignes ajoutées à la main (sans compte, ou 2e lot pour quelqu'un) — Olivier 16/10/2026. */
+export interface LigneSup { id: string; nom: string; tshirt: string; pull: string }
+export interface Campagne { active: boolean; deadline: string | null; excluded: string[]; extras: LigneSup[] }
 
 export async function getCampagne(): Promise<Campagne> {
   const { data } = await createAdminClient().from('app_settings').select('value').eq('key', KEY).maybeSingle()
   let v: any = {}
   try { v = data?.value ? JSON.parse(String(data.value)) : {} } catch { v = {} }
-  return { active: !!v.active, deadline: v.deadline || null, excluded: Array.isArray(v.excluded) ? v.excluded.map(String) : [] }
+  return { active: !!v.active, deadline: v.deadline || null, excluded: Array.isArray(v.excluded) ? v.excluded.map(String) : [], extras: Array.isArray(v.extras) ? v.extras : [] }
 }
 
 export async function saveCampagne(c: Campagne): Promise<void> {

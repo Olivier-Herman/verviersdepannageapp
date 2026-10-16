@@ -16,7 +16,11 @@ async function state() {
   const people = await personnelConcerne(camp)
   const { data: t } = await createAdminClient().from('tailles_vetements').select('user_id, tshirt, pull, answered_at, updated_at')
   const byId = new Map((t || []).map((x: any) => [x.user_id, x]))
-  const rows = people.map(p => ({ ...p, tshirt: byId.get(p.id)?.tshirt || null, pull: byId.get(p.id)?.pull || null, answered_at: byId.get(p.id)?.answered_at || null }))
+  const rows = [
+    ...people.map(p => ({ ...p, tshirt: byId.get(p.id)?.tshirt || null, pull: byId.get(p.id)?.pull || null, answered_at: byId.get(p.id)?.answered_at || null, extra: false })),
+    // Lignes ajoutées à la main (2e lot, personne sans compte) : comptées comme les autres.
+    ...camp.extras.map(x => ({ id: x.id, name: x.nom, role: 'extra', excluded: false, tshirt: x.tshirt, pull: x.pull, answered_at: null, extra: true })),
+  ]
   const counted = rows.filter(r => !r.excluded && r.tshirt)
   const totals = TAILLES.map(s => ({ size: s, tshirt: counted.filter(r => r.tshirt === s).length, pull: counted.filter(r => r.pull === s).length }))
   return { campagne: camp, rows, totals, sizes: TAILLES }
@@ -36,6 +40,12 @@ export async function POST(req: Request) {
   const uid = String(b.user_id || '')
   if (b.action === 'exclude' && uid) camp.excluded = [...new Set([...camp.excluded, uid])]
   else if (b.action === 'include' && uid) camp.excluded = camp.excluded.filter(x => x !== uid)
+  else if (b.action === 'add_extra') {
+    const nom = String(b.nom || '').trim().slice(0, 60), tshirt = String(b.tshirt || ''), pull = String(b.pull || '')
+    if (!nom || !(TAILLES as readonly string[]).includes(tshirt) || !(TAILLES as readonly string[]).includes(pull)) return NextResponse.json({ error: 'Nom et tailles obligatoires' }, { status: 400 })
+    camp.extras = [...camp.extras, { id: `extra-${Date.now()}`, nom, tshirt, pull }]
+  }
+  else if (b.action === 'remove_extra' && uid) camp.extras = camp.extras.filter(x => x.id !== uid)
   else if (b.action === 'close') camp.active = false
   else if (b.action === 'open') camp.active = true
   else if (b.action === 'remind') {

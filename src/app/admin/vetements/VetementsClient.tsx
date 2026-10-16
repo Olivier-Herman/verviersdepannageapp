@@ -3,7 +3,7 @@
 // taille, relance, exclusion d'une personne (ex. fin de contrat), clôture de la demande.
 import { Fragment, useEffect, useState } from 'react'
 
-type Row = { id: string; name: string; role: string; excluded: boolean; tshirt: string | null; pull: string | null; answered_at: string | null }
+type Row = { id: string; name: string; role: string; excluded: boolean; tshirt: string | null; pull: string | null; answered_at: string | null; extra?: boolean }
 type State = { campagne: { active: boolean }; rows: Row[]; totals: { size: string; tshirt: number; pull: number }[] }
 
 export default function VetementsClient() {
@@ -12,10 +12,11 @@ export default function VetementsClient() {
   const [msg, setMsg] = useState<string | null>(null)
   const load = () => fetch('/api/vetements/admin', { cache: 'no-store' }).then(r => r.json()).then(setS).catch(() => setMsg('Chargement impossible.'))
   useEffect(() => { load() }, [])
-  const act = async (action: string, user_id?: string) => {
+  const [nx, setNx] = useState({ nom: '', tshirt: 'M', pull: 'M' })
+  const act = async (action: string, user_id?: string, extra?: Record<string, string>) => {
     setBusy(true); setMsg(null)
     try {
-      const r = await fetch('/api/vetements/admin', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action, user_id }) })
+      const r = await fetch('/api/vetements/admin', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action, user_id, ...(extra || {}) }) })
       const j = await r.json(); if (!r.ok) throw new Error(j.error || 'Erreur')
       setS(j); if (action === 'remind') setMsg(`Relance envoyée à ${j.reminded} personne(s).`)
     } catch (e: any) { setMsg(e?.message || 'Erreur') } finally { setBusy(false) }
@@ -62,12 +63,20 @@ export default function VetementsClient() {
                   <td className="px-4 py-2.5 font-semibold text-ink">{r.name}</td>
                   <td className="px-4 py-2.5 font-extrabold text-ink">{r.tshirt || '—'}</td>
                   <td className="px-4 py-2.5 font-extrabold text-ink">{r.pull || '—'}</td>
-                  <td className="px-4 py-2.5">{r.excluded ? <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-slate-100 text-slate-700">Pas concerné</span> : r.tshirt ? <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-green-100 text-green-800">Répondu</span> : <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-red-100 text-red-800">En attente</span>}</td>
-                  <td className="px-4 py-2.5 text-right"><button type="button" disabled={busy} onClick={() => act(r.excluded ? 'include' : 'exclude', r.id)} className="min-h-[36px] px-3 rounded-lg border border-strong text-xs font-semibold text-ink">{r.excluded ? 'Inclure' : 'Pas concerné'}</button></td>
+                  <td className="px-4 py-2.5">{r.extra ? <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-sky-100 text-sky-800">Ajouté à la main</span> : r.excluded ? <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-slate-100 text-slate-700">Pas concerné</span> : r.tshirt ? <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-green-100 text-green-800">Répondu</span> : <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-red-100 text-red-800">En attente</span>}</td>
+                  <td className="px-4 py-2.5 text-right">{r.extra
+                    ? <button type="button" disabled={busy} onClick={() => act('remove_extra', r.id)} className="min-h-[36px] px-3 rounded-lg border border-strong text-xs font-semibold text-ink">Retirer</button>
+                    : <button type="button" disabled={busy} onClick={() => act(r.excluded ? 'include' : 'exclude', r.id)} className="min-h-[36px] px-3 rounded-lg border border-strong text-xs font-semibold text-ink">{r.excluded ? 'Inclure' : 'Pas concerné'}</button>}</td>
                 </tr>
               ))}
             </tbody>
           </table>
+          <form className="border-t border-border px-4 py-3 flex flex-wrap items-end gap-2" onSubmit={e => { e.preventDefault(); if (!nx.nom.trim()) return; act('add_extra', undefined, nx).then(() => setNx({ nom: '', tshirt: 'M', pull: 'M' })) }}>
+            <label className="text-xs font-semibold text-ink-secondary flex flex-col gap-1">Ajouter une ligne<input value={nx.nom} onChange={e => setNx({ ...nx, nom: e.target.value })} placeholder="Nom (ex. Axel — 2e lot)" className="h-11 rounded-lg border border-strong bg-surface px-3 text-sm text-ink" /></label>
+            <label className="text-xs font-semibold text-ink-secondary flex flex-col gap-1">T-shirt<select value={nx.tshirt} onChange={e => setNx({ ...nx, tshirt: e.target.value })} className="h-11 rounded-lg border border-strong bg-surface px-2 text-sm text-ink">{['S', 'M', 'L', 'XL', '2XL'].map(t => <option key={t}>{t}</option>)}</select></label>
+            <label className="text-xs font-semibold text-ink-secondary flex flex-col gap-1">Pull<select value={nx.pull} onChange={e => setNx({ ...nx, pull: e.target.value })} className="h-11 rounded-lg border border-strong bg-surface px-2 text-sm text-ink">{['S', 'M', 'L', 'XL', '2XL'].map(t => <option key={t}>{t}</option>)}</select></label>
+            <button disabled={busy || !nx.nom.trim()} className="min-h-[44px] px-4 rounded-xl bg-brand text-white font-bold text-sm disabled:opacity-50">Ajouter</button>
+          </form>
         </div>
         <div className="flex-[1_1_260px] bg-surface border border-border rounded-2xl p-4 space-y-3">
           <p className="font-extrabold text-ink">Total à commander</p>
