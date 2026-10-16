@@ -142,6 +142,23 @@ export async function getPdfAttachments(mailbox: string, messageId: string): Pro
   return out
 }
 
+/** Photos jointes (JPEG/PNG non intégrées au corps, ≥ 80 Ko) : réquisitoire photographié au téléphone par le
+ *  policier (Peugeot 207, 10/10/2026 — ignoré faute de PDF). Les logos et signatures intégrés sont exclus. */
+export async function getPhotoAttachments(mailbox: string, messageId: string): Promise<GraphPdfAttachment[]> {
+  const list = await authedGet(`/users/${encodeURIComponent(mailbox)}/messages/${messageId}/attachments`)
+  const out: GraphPdfAttachment[] = []
+  for (const att of list.value || []) {
+    const ctype = String(att.contentType || '').toLowerCase()
+    const name = String(att.name || '')
+    const isPhoto = /image\/(jpe?g|png)/.test(ctype) || /\.(jpe?g|png)$/i.test(name)
+    if (!isPhoto || att.isInline || Number(att.size || 0) < 80_000) continue
+    let contentBytes: string | undefined = att.contentBytes
+    if (!contentBytes) contentBytes = (await authedGet(`/users/${encodeURIComponent(mailbox)}/messages/${messageId}/attachments/${att.id}`)).contentBytes
+    if (contentBytes) out.push({ name, contentType: /png/.test(ctype) || /\.png$/i.test(name) ? 'image/png' : 'image/jpeg', contentBytes })
+  }
+  return out
+}
+
 /** Ajoute une catégorie Outlook au message (préserve l'existant). Best-effort. */
 export async function tagMessage(mailbox: string, messageId: string, category: string, existing: string[]): Promise<void> {
   if (existing.includes(category)) return

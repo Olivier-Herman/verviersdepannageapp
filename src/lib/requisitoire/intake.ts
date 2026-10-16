@@ -15,8 +15,8 @@
 
 import { randomUUID }        from 'crypto'
 import { createAdminClient } from '@/lib/supabase'
-import { listInboxMessages, searchMessages, getPdfAttachments, getMessageBody, type GraphMessage, type GraphMessageBody, INFO_FORWARD_MARK } from './graph'
-import { extractRequisitoireFromPdf, extractRequisitoireFromText } from './extract'
+import { listInboxMessages, searchMessages, getPdfAttachments, getPhotoAttachments, getMessageBody, type GraphMessage, type GraphMessageBody, INFO_FORWARD_MARK } from './graph'
+import { extractRequisitoireFromPdf, extractRequisitoireFromImage, extractRequisitoireFromText } from './extract'
 import { findRequisitoireCandidates } from './match'
 import { sourcesWithTag } from '@/lib/missions/source-catalog'
 
@@ -157,6 +157,9 @@ async function processMessage(
 
   try {
     const pdfs = msg.hasAttachments ? await getPdfAttachments(mailbox, msg.id) : []
+    // Sans PDF, un mail de police peut porter le réquisitoire en PHOTO (téléphone du policier).
+    const photos = pdfs.length === 0 && fromPolice && msg.hasAttachments ? await getPhotoAttachments(mailbox, msg.id) : []
+    const hasDoc = pdfs.length > 0 || photos.length > 0
 
     // Ni PDF, ni indice de levée / police → on ne dépense pas d'appel Claude.
     if (pdfs.length === 0 && !looksLevee) {
@@ -187,6 +190,14 @@ async function processMessage(
       })
       if (upErr) throw new Error(`upload PDF: ${upErr.message}`)
       ex = await extractRequisitoireFromPdf(pdf.contentBytes)
+    } else if (photos.length > 0) {
+      const ph = photos[0]
+      const safeName = ph.name.replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 120) || 'requisitoire.jpg'
+      docPath  = `_intake/${intakeId}/${safeName}`
+      fileName = ph.name
+      const { error: upErr } = await sb.storage.from(BUCKET).upload(docPath, Buffer.from(ph.contentBytes, 'base64'), { contentType: ph.contentType, upsert: false })
+      if (upErr) throw new Error(`upload photo: ${upErr.message}`)
+      ex = await extractRequisitoireFromImage(ph.contentBytes, ph.contentType)
     } else {
       // Levée probable sans document → lire le corps + annexer une capture HTML.
       const body = await getMessageBody(mailbox, msg.id)
@@ -220,7 +231,7 @@ async function processMessage(
     let status: string
     if (ex.doc_type === 'levee_saisie') {
       status = (hasStrongKey && ex.levee_date) ? 'pending' : 'to_verify'
-    } else if (pdfs.length === 0) {
+    } else if (!hasDoc) {
       // Un « réquisitoire » lu dans le CORPS d'un mail sans pièce jointe n'est pas
       // un réquisitoire (document PDF/JPG requis) → jamais rattaché tel quel,
       // seulement signalé à vérifier. Olivier 2026-09-03.
@@ -255,7 +266,7 @@ async function processMessage(
     // Auto-rattachement (saisie/enlèvement UNIQUEMENT — pas les levées) :
     //  - réf SAI- de NOTRE relance → rattache direct à cette fiche (infaillible) ;
     //  - sinon matching flou strict (clé forte + adresse précise + unique + date).
-    if (ex.doc_type !== 'levee_saisie' && pdfs.length > 0) {
+    if (ex.doc_type !== 'levee_saisie' && hasDoc) {
       const attachId = refFicheId ?? (match.autoAttach ? match.best?.mission_id ?? null : null)
       if (attachId) {
         try {
