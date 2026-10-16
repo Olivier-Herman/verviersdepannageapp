@@ -344,7 +344,16 @@ export async function execute(kind: ProposalKind, company: number, payload: any)
     const notes = await remapTaxes(company, sid)
     await odooRpcCompany(company, 'account.move', 'action_post', [[sid]])
     const [v]: any[] = await odooRpcCompany(company, 'account.move', 'read', [[sid]], { fields: ['name', 'amount_total'] })
-    return { note: `Vente ${v.name} validée pour ${payload.client} (dossier ${payload.dossier}), ${Number(v.amount_total).toFixed(2)} € TVAC, justificatif joint. Envoi au client : depuis l’ERP (pas encore automatique).`, facture: v.name, avertissements: notes.length ? [`TVA adaptée au client : ${notes.join(' ; ')}`] : [] }
+    // Olivier 16/10/2026 : une avance de fonds part par Peppol ET par mail (le justificatif ne passe pas dans Peppol).
+    let envoi = 'Envoi au client : depuis l’ERP (société sans envoi automatique).'
+    if (company === 1) {
+      const { postAndSendPeppol } = await import('@/lib/mail-agent/odoo')
+      const { sendAvanceParMail } = await import('@/lib/facturation/avance-mail')
+      const peppol = await postAndSendPeppol(sid).catch((e: any) => ({ sent: false, note: String(e?.message || e) }))
+      const mail = await sendAvanceParMail(company, sid).catch((e: any) => ({ ok: false, note: String(e?.message || e) }))
+      envoi = `${peppol.note} ; mail : ${mail.note}`
+    }
+    return { note: `Vente ${v.name} validée pour ${payload.client} (dossier ${payload.dossier}), ${Number(v.amount_total).toFixed(2)} € TVAC, justificatif joint. ${envoi}`, facture: v.name, avertissements: notes.length ? [`TVA adaptée au client : ${notes.join(' ; ')}`] : [] }
   }
   if (kind === 'annulation_doublon') {
     const d = await readBill(company, payload.brouillon_id)
