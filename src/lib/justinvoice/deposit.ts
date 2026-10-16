@@ -36,6 +36,8 @@ export async function depositEtatFrais(sb: any, dossierId: string, efId?: string
   if (efRow.justinvoice_ref) {
     const { submitJustInvoiceCorrection } = await import('./correction')
     const r = await submitJustInvoiceCorrection(sb, dossierId, efRow.id, { docs: ['Approval', 'CostState'], comment: `Approbation du Parquet et état de frais ${efRow.numero} à jour, suivant votre demande.` })
+    // Envoyé = déposé : l'état de frais ne repasse plus jamais par un dépôt automatique (boucle du 15/10/2026).
+    if (r.ok) await sb.from('saisie_etats_frais').update({ status: 'depose' }).eq('id', efRow.id)
     return r.ok ? { ok: true, ref: efRow.justinvoice_ref, numero: efRow.numero } : { ok: false, error: r.error }
   }
 

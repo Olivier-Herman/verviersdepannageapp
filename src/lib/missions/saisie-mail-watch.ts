@@ -151,6 +151,10 @@ async function handleCorrection(sb: any, msg: GraphMessage, ref: string, out: Sa
 async function handleRetour(sb: any, msg: GraphMessage, out: SaisieMailWatchSummary, auto: boolean): Promise<void> {
   const pdfs = await getPdfAttachments(FOURRIERE_MAILBOX, msg.id)
   if (pdfs.length === 0) { await recordEvent(sb, msg, 'ignore', null, 'pas de PDF'); out.ignored++; return }
+  // Marqué AVANT tout dépôt : le 15/10/2026, l'approbation « 2026-123 » (535059-26) n'a jamais été enregistrée
+  // (le passage s'arrêtait après le dépôt) et le mail a été relu toutes les 10 minutes → plus de 40 corrections
+  // renvoyées à JustInvoice. Un mail de retour n'est traité qu'UNE fois ; l'issue est complétée à la fin.
+  await recordEvent(sb, msg, 'retour_signe', null, 'en cours de traitement')
 
   // Le TEXTE du mail prime sur la pièce jointe. Le 03/09/2026 (90698, EDF-2026-0053)
   // le Parquet a RENVOYÉ notre PDF non signé avec « la facture ne correspond pas
@@ -202,7 +206,8 @@ async function handleRetour(sb: any, msg: GraphMessage, out: SaisieMailWatchSumm
   if (deposited.length && !refused && !mailRefus && !depFail) await filed(msg)
 
   const outcome = `${attached} accepté(s), ${refused} refus, ${unmatched} non reconnu(s)${deposited.length ? ' ; déposés : ' + deposited.join(', ') : ''} — ${notes.join(' | ')}`.slice(0, 900)
-  await recordEvent(sb, msg, 'retour_signe', notes.find(n => RE_EDF.test(n))?.match(RE_EDF)?.[0] || null, outcome)
+  await sb.from('saisie_mail_events').update({ ref: notes.find(n => RE_EDF.test(n))?.match(RE_EDF)?.[0] || null, outcome })
+    .eq('source_email_id', msg.id).eq('kind', 'retour_signe').then(() => {}, () => {})
   if (attached + refused + unmatched === 0) { out.ignored++; return }
   out.retours++
   await sendNotificationToRoles(['admin', 'superadmin'], 'saisie_facturation', {
