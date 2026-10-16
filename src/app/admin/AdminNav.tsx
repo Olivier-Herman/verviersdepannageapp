@@ -64,6 +64,7 @@ const GROUPS: NavGroup[] = [
       { href: '/admin/sam-echanges',  label: 'Échanges Sam / Sonic', icon: Radio },
       { href: '/admin/max-echanges',  label: 'Conversations de Max', icon: Radio },
       { href: '/admin/agents',        label: 'Propositions des agents', icon: Users },
+      { href: '/paiements',           label: 'Paiements fournisseurs', icon: Wallet },
       { href: '/admin/decharges',     label: 'Décharges',     icon: ShieldCheck },
       { href: '/admin/missions',      label: 'Missions',      icon: FileSignature },
     ],

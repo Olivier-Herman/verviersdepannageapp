@@ -358,9 +358,11 @@ export async function execute(kind: ProposalKind, company: number, payload: any)
     const ctx = { active_model: 'account.move', active_ids: factureIds }
     const wiz = await odooRpcCompany<number>(company, 'account.payment.register', 'create', [{ journal_id: journal, payment_method_line_id: method, payment_date: today(), group_payment: true }], { context: ctx })
     await odooRpcCompany(company, 'account.payment.register', 'action_create_payments', [[wiz]], { context: ctx })
-    const pays: any[] = await odooRpcCompany(company, 'account.payment', 'search_read', [[['reconciled_bill_ids', 'in', factureIds], ['batch_payment_id', '=', false], ['journal_id', '=', journal]]], { fields: ['id'] })
+    const pays: any[] = await odooRpcCompany(company, 'account.payment', 'search_read', [[['reconciled_bill_ids', 'in', factureIds], ['batch_payment_id', '=', false], ['journal_id', '=', journal], ['state', '!=', 'canceled']]], { fields: ['id'] })
     if (!pays.length) throw new Error('Paiements créés introuvables : vérifiez dans l’ERP avant de recommencer.')
-    await odooRpcCompany(company, 'account.payment', 'create_batch_payment', [pays.map(p => p.id)])
+    // `create_batch_payment` refuse l'appel par l'API sur l'ERP 19 (constaté le 16/10/2026) : le lot s'écrit directement.
+    const [ml]: any[] = await odooRpcCompany(company, 'account.payment.method.line', 'read', [[method]], { fields: ['payment_method_id'] })
+    await odooRpcCompany(company, 'account.batch.payment', 'create', [{ batch_type: 'outbound', journal_id: journal, payment_method_id: ml.payment_method_id[0], payment_ids: [[6, 0, pays.map(p => p.id)]] }])
     const batch: any[] = await odooRpcCompany(company, 'account.payment', 'read', [[pays[0].id]], { fields: ['batch_payment_id'] })
     return { note: `Lot créé : ${batch?.[0]?.batch_payment_id?.[1] || '?'} (${pays.length} paiement${pays.length > 1 ? 's' : ''}) — fichier à charger dans ING`, lot: batch?.[0]?.batch_payment_id?.[1], lot_id: batch?.[0]?.batch_payment_id?.[0], paiements: pays.map(p => p.id) }
   }

@@ -440,6 +440,22 @@ export const NOTIFICATION_TYPES: readonly NotificationType[] = [
     defaultEnabled:  true,
   },
   {
+    key:             'paiements_lot_du_jour',
+    label:           'Paiements fournisseurs : lot du jour à choisir',
+    description:     "14 h 30, jours ouvrables : la liste d'attente des factures fournisseur est prête, choisis ce qui part dans le lot.",
+    category:        'admin',
+    applicableRoles: ['dispatcher', 'admin', 'superadmin'],
+    defaultEnabled:  true,
+  },
+  {
+    key:             'paiements_lot_cree',
+    label:           'Paiements fournisseurs : lot créé',
+    description:     "Un lot de paiements fournisseurs vient d'être créé : il reste à générer le fichier et à l'encoder à la banque.",
+    category:        'admin',
+    applicableRoles: ['admin', 'superadmin'],
+    defaultEnabled:  true,
+  },
+  {
     key:             'vab_vr_a_cloturer',
     label:           'VAB : véhicule de remplacement à clôturer',
     description:     "La livraison d'un véhicule de remplacement VAB est terminée : VAB demande les informations du conducteur, la clôture se fait dans Comet.",

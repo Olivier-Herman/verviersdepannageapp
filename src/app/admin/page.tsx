@@ -235,6 +235,10 @@ export default async function AdminPage() {
           <Card href="/admin/diagnostics" icon={Radio} label="Diagnostics"
             desc="Un bouton par vérification : mails bloqués, COMEX, VAB, Graph, Odoo, parc, notifications, push, Teams, étiquette de test. Superadmin uniquement." />
         )}
+        {user.role === 'superadmin' && (
+          <Card href="/paiements" icon={Wallet} label="Paiements fournisseurs"
+            desc="Trie les factures fournisseur à payer et ajoute-les à la liste d'attente ; Momo choisit chaque jour ouvrable à 14 h 30 ce qui part dans le lot. VD et Riga séparés." />
+        )}
         <Card href="/admin/agents" icon={Users} label="Propositions des agents"
           desc="Les agents préparent (lots de paiement, factures d'achat, notes de crédit, pièces pour le comptable), vous validez, VD Soft exécute. Droits, clés et journal de chaque agent." />
         {user.role === 'superadmin' && (
