@@ -6,6 +6,7 @@ import { authOptions } from '@/lib/auth'
 import { redirect } from 'next/navigation'
 import { createAdminClient } from '@/lib/supabase'
 import AdminCashClient from './AdminCashClient'
+import { equipeEtAnciens } from '@/lib/users/anciens'
 
 export default async function AdminCashPage() {
   const session = await getServerSession(authOptions)
@@ -16,9 +17,8 @@ export default async function AdminCashPage() {
 
   const { data: drivers } = await supabase
     .from('users')
-    .select('id, name, email, role')
+    .select('id, name, email, role, active')
     .or('role.in.(driver,dispatcher,admin,superadmin),roles.ov.{driver,dispatcher,admin,superadmin}')
-    .eq('active', true)
     .order('name')
 
   const { data: entries } = await supabase
@@ -28,7 +28,7 @@ export default async function AdminCashPage() {
     .limit(200)
 
   return <AdminCashClient
-    drivers={drivers || []}
+    drivers={equipeEtAnciens((drivers || []).filter(d => d.active !== false || (entries || []).some((e: any) => e.driver_id === d.id)))}
     entries={entries || []}
     userRole={session.user.role}
   />

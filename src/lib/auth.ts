@@ -371,11 +371,15 @@ export const authOptions: NextAuthOptions = {
               loadModules(token.id as string),
               loadOdooAccess(token.id as string),
               loadNavOrder(token.id as string),
-              supabase.from('users').select('name, email, avatar_url, audio_mode, language, must_change_password, force_native_app, role, roles').eq('id', token.id).maybeSingle(),
+              supabase.from('users').select('name, email, avatar_url, audio_mode, language, must_change_password, force_native_app, role, roles, active').eq('id', token.id).maybeSingle(),
             ])
             ;(session.user as any).modules        = fresh
             ;(session.user as any).hasOdooAccess  = odooAccess
             ;(session.user as any).navOrder       = navOrder
+            // Compte désactivé (départ d'un chauffeur, 16/10/2026) : la session déjà ouverte
+            // sur son téléphone ne doit plus rien ouvrir. Sans utilisateur, pages et routes
+            // le traitent comme déconnecté.
+            if (dbUser.data && (dbUser.data as any).active === false) return { expires: session.expires } as any
             if (dbUser.data) {
               // Rôles rafraîchis depuis la DB (évite un JWT périmé après ajout d'un rôle).
               if ((dbUser.data as any).role)  (session.user as any).role  = (dbUser.data as any).role

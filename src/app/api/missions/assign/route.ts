@@ -48,9 +48,10 @@ export async function POST(req: Request) {
     // Assigner à un chauffeur
     const { data: driver } = await supabase
       .from('users')
-      .select('id, name, current_truck_id')
+      .select('id, name, current_truck_id, active')
       .eq('id', driver_id)
       .single()
+    if ((driver as any)?.active === false) return NextResponse.json({ error: 'Ce chauffeur ne fait plus partie de l\'équipe' }, { status: 400 })
 
     // Olivier 2026-06-01 : si on assigne/reassigne a un chauffeur, on
     // synchronise le truck_id de la mission avec le current_truck du

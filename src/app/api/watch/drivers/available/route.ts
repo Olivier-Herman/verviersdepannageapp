@@ -54,6 +54,7 @@ export async function GET(req: Request) {
     .from('users')
     .select('id, name, role, roles, suspended_at')
     .is('suspended_at', null)
+    .eq('active', true)
     .order('name', { ascending: true })
 
   // ⚠️ `modules` n'est PAS une colonne de `users` (table user_modules). Le

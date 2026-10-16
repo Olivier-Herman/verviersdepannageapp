@@ -19,6 +19,7 @@ import { NextResponse }      from 'next/server'
 import { getServerSession }  from 'next-auth'
 import { authOptions }       from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase'
+import { equipeEtAnciens } from '@/lib/users/anciens'
 
 export const dynamic = 'force-dynamic'
 
@@ -386,9 +387,8 @@ export async function GET(req: Request) {
   // Liste des chauffeurs (pour dropdown filtre côté client)
   const { data: allDrivers } = await sb
     .from('users')
-    .select('id, name')
+    .select('id, name, active')
     .or('role.eq.driver,role.eq.chauffeur,roles.cs.{driver},roles.cs.{chauffeur}')
-    .eq('active', true)
     .order('name', { ascending: true })
 
   return NextResponse.json({
@@ -406,6 +406,6 @@ export async function GET(req: Request) {
       previous: refusalsAutoDispatchPrev    || 0,
       delta:    pctDelta(refusalsAutoDispatchCurrent || 0, refusalsAutoDispatchPrev || 0),
     },
-    drivers_list: allDrivers || [],
+    drivers_list: equipeEtAnciens(allDrivers),
   })
 }

@@ -99,7 +99,8 @@ async function appelsAcceptation(sb: ReturnType<typeof createAdminClient>, now: 
     const { data: pris } = await sb.from('incoming_missions').update({ accept_call_at: stamp })
       .eq('id', m.id).is('accept_call_at', null).select('id').maybeSingle()
     if (!pris) continue
-    const { data: u } = await sb.from('users').select('name, phone').eq('id', m.assigned_to as string).maybeSingle()
+    const { data: u } = await sb.from('users').select('name, phone, active').eq('id', m.assigned_to as string).maybeSingle()
+    if ((u as any)?.active === false) continue
     let phone = (u as any)?.phone || null
     if (!phone) {
       const { data: p } = await sb.from('personnel').select('phone').eq('user_id', m.assigned_to as string).maybeSingle()

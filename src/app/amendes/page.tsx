@@ -6,6 +6,7 @@ import { authOptions }      from '@/lib/auth'
 import { redirect }         from 'next/navigation'
 import { createAdminClient } from '@/lib/supabase'
 import AmendesClient        from './AmendesClient'
+import { equipeEtAnciens } from '@/lib/users/anciens'
 
 export const metadata = { title: 'Amendes — VD Soft' }
 export const dynamic = 'force-dynamic'
@@ -24,10 +25,9 @@ export default async function AmendesPage() {
   const sb = createAdminClient()
   const { data: drivers } = await sb
     .from('users')
-    .select('id, name')
+    .select('id, name, active')
     .or('role.in.(driver,dispatcher,admin,superadmin),roles.ov.{driver,dispatcher,admin,superadmin}')
-    .eq('active', true)
     .order('name')
 
-  return <AmendesClient user={user} drivers={drivers || []} />
+  return <AmendesClient user={user} drivers={equipeEtAnciens(drivers)} />
 }

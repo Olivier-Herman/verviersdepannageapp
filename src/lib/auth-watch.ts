@@ -52,6 +52,10 @@ export async function verifyWatchAuth(req: Request): Promise<string | null> {
     const { payload } = await jwtVerify(token, getSecret(), { algorithms: ['HS256'] })
     if (payload.type !== 'watch') return null
     if (typeof payload.sub !== 'string' || !payload.sub) return null
+    // Compte désactivé : le jeton de 90 jours ne vaut plus rien.
+    const { createAdminClient } = await import('@/lib/supabase')
+    const { data: u } = await createAdminClient().from('users').select('active').eq('id', payload.sub).maybeSingle()
+    if (!u || (u as any).active === false) return null
     return payload.sub
   } catch {
     return null

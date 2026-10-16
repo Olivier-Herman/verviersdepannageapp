@@ -60,10 +60,11 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   // Driver
   const { data: driver } = await sb
     .from('users')
-    .select('id, name')
+    .select('id, name, active')
     .eq('id', driverId)
     .single()
   if (!driver) return NextResponse.json({ error: 'Chauffeur introuvable' }, { status: 404 })
+  if ((driver as any).active === false) return NextResponse.json({ error: 'Ce chauffeur ne fait plus partie de l\'équipe' }, { status: 400 })
 
   const now = new Date().toISOString()
 

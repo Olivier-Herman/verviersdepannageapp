@@ -25,9 +25,8 @@ export async function GET(req: NextRequest) {
     // Tous les chauffeurs avec leur solde
     const { data: drivers } = await supabase
       .from('users')
-      .select('id, name, email')
+      .select('id, name, email, active')
       .or('role.eq.driver,roles.cs.{driver}')
-      .eq('active', true)
 
     const results = await Promise.all((drivers || []).map(async (driver) => {
       const { data: entries } = await supabase
@@ -42,10 +41,11 @@ export async function GET(req: NextRequest) {
         return sum
       }, 0)
 
-      return { ...driver, balance: Math.round(balance * 100) / 100 }
+      return { ...driver, name: driver.active === false ? `${driver.name} (ancien)` : driver.name, balance: Math.round(balance * 100) / 100 }
     }))
 
-    return NextResponse.json(results)
+    // Un ancien chauffeur reste listé tant qu'il a un solde à régulariser.
+    return NextResponse.json(results.filter(r => r.active !== false || r.balance !== 0))
   }
 
   // Liste des responsables disponibles pour le transfert
