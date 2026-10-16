@@ -77,6 +77,7 @@ async function handleStatut(sb: any, msg: GraphMessage, ref: string, out: Saisie
   if (!ef) {
     // Dossier inconnu de VD Soft (ancien système) → on note, sans alerter.
     await recordEvent(sb, msg, 'statut', ref, `inconnu : ${statut}`)
+    if (/correction soumise/i.test(statut)) await filed(msg)
     out.ignored++; return
   }
 
@@ -109,6 +110,16 @@ async function handleStatut(sb: any, msg: GraphMessage, ref: string, out: Saisie
       body: `${ef.numero} (JustInvoice ${ref}) — ${factureMsg}. À poster dans Odoo.`,
       action_url: '/fourriere/saisies',
     }).catch(() => {})
+    return
+  }
+
+  // « Correction soumise » = simple accusé de réception de NOTRE correction : noté sur l'état de frais,
+  // puis le mail est rangé, sans alerte (Olivier 16/10/2026 : « classe automatiquement les accusés de correction »).
+  if (/correction soumise/i.test(statut)) {
+    await sb.from('saisie_etats_frais').update({ status_note: statut, justinvoice_detail_url: link }).eq('id', ef.id)
+    await recordEvent(sb, msg, 'statut', ref, statut, ef.id)
+    await filed(msg)
+    out.statuts++
     return
   }
 
