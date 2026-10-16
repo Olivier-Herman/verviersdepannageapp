@@ -440,6 +440,14 @@ export const NOTIFICATION_TYPES: readonly NotificationType[] = [
     defaultEnabled:  true,
   },
   {
+    key:             'paiements_a_trier',
+    label:           'Paiements fournisseurs : factures à trier',
+    description:     "13 h 30, jours ouvrables : des factures fournisseur attendent ton tri avant la liste d'attente de 14 h 30.",
+    category:        'admin',
+    applicableRoles: ['superadmin'],
+    defaultEnabled:  true,
+  },
+  {
     key:             'paiements_lot_du_jour',
     label:           'Paiements fournisseurs : lot du jour à choisir',
     description:     "14 h 30, jours ouvrables : la liste d'attente des factures fournisseur est prête, choisis ce qui part dans le lot.",

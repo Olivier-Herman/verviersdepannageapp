@@ -49,7 +49,7 @@
     { "path": "/api/cron/print-queue",               "schedule": "*/2 * * * *" },
     { "path": "/api/cron/accept-reminders",          "schedule": "*/2 * * * *" },
     { "path": "/api/cron/sam-copilote",              "schedule": "*/2 * * * *" },
-    { "path": "/api/cron/paiements-lot",             "schedule": "30 12,13 * * 1-5" },
+    { "path": "/api/cron/paiements-lot",             "schedule": "30 11,12,13 * * 1-5" },
     { "path": "/api/cron/rappel-fiches-ouvertes",    "schedule": "15 * * * *" },
     { "path": "/api/cron/circuit-weekly-reminder",   "schedule": "0 12 * * 1"   },
     { "path": "/api/cron/circuit-auto-invoice",      "schedule": "0 5 * * *"    },
