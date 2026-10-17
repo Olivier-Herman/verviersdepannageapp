@@ -153,6 +153,10 @@ export default function AppShell({
   // Attache tôt les listeners Live Activity (dont le push-to-start token) — no-op hors iOS.
   useEffect(() => { import('@/lib/native/liveActivity').then(m => m.initLiveActivity()).catch(() => {}) }, [])
   const [collapsed, toggleCollapsed] = useSidebarCollapsed()
+  // Olivier 17/10/2026 : menu replié = menu RETIRÉ (plus de barre d'icônes) ; le bouton ☰ l'affiche par-dessus la page.
+  const [peek, setPeek] = useState(false)
+  useEffect(() => { setPeek(false) }, [pathname])
+  const rail = collapsed && !peek
 
   // Mode embarqué (groupe de la vue dossier) : uniquement le contenu, sans chrome.
   if (embedded) {
@@ -170,13 +174,26 @@ export default function AppShell({
     <EspecesAlert />
     <div className="min-h-screen flex">
 
+      {/* Menu retiré (replié, ou fenêtre trop étroite : il réapparaît seul en écran large) : seul le bouton ☰ reste,
+          il affiche le menu complet par-dessus la page. */}
+      {!peek && (
+        <div className={`hidden lg:flex ${collapsed ? '' : 'xl:hidden'} fixed top-0 left-0 h-full w-14 z-30 bg-surface border-r flex-col items-center pt-3`}>
+          <button type="button" onClick={() => setPeek(true)} aria-label="Afficher le menu" title="Afficher le menu"
+            className="flex h-11 w-11 items-center justify-center rounded-lg bg-surface-hover text-ink hover:bg-brand-soft hover:text-brand transition-colors">
+            <Menu size={20} />
+          </button>
+        </div>
+      )}
+      {/* Menu affiché par-dessus : un clic à côté le referme. */}
+      {peek && <div className="hidden lg:block fixed inset-0 z-40 bg-black/20" onClick={() => setPeek(false)} aria-hidden />}
+
       {/* ── SIDEBAR DESKTOP ─────────────────────────────── */}
       <aside
-        className={`hidden lg:flex flex-col min-h-screen bg-surface border-r flex-shrink-0 fixed top-0 left-0 h-full z-30 transition-[width] duration-200 ease-in-out ${
-          collapsed ? 'w-16' : 'w-64'
+        className={`hidden ${peek ? 'lg:flex' : rail ? '' : 'xl:flex'} flex-col min-h-screen bg-surface border-r flex-shrink-0 fixed top-0 left-0 h-full w-64 ${
+          peek ? 'z-50 shadow-2xl' : 'z-30'
         }`}
       >
-        <div className={`flex items-center border-b ${collapsed ? 'px-2 py-3 gap-1 justify-between' : 'px-6 py-5 justify-between'}`}>
+        <div className={`flex items-center border-b ${rail ? 'px-2 py-3 gap-1 justify-between' : 'px-6 py-5 justify-between'}`}>
           <Link
             href="/dashboard"
             title="Retour au dashboard"
@@ -185,33 +202,24 @@ export default function AppShell({
             <img
               src="/logo.jpg"
               alt="VD Soft"
-              className={`object-contain transition-all duration-200 ${collapsed ? 'h-7 w-7' : 'h-10 w-auto'}`}
+              className={`object-contain transition-all duration-200 ${rail ? 'h-7 w-7' : 'h-10 w-auto'}`}
             />
           </Link>
           <button
             type="button"
-            onClick={toggleCollapsed}
-            aria-label={collapsed ? 'Déployer la sidebar' : 'Réduire la sidebar'}
-            title={collapsed ? 'Déployer' : 'Réduire'}
+            onClick={() => { if (peek) { setPeek(false); toggleCollapsed() } else toggleCollapsed() }}
+            aria-label={peek ? 'Garder le menu affiché' : 'Retirer le menu'}
+            title={peek ? 'Garder le menu affiché' : 'Retirer le menu'}
             className={`flex items-center justify-center rounded-md text-ink-secondary hover:text-ink hover:bg-surface-hover transition-colors flex-shrink-0 ${
-              collapsed ? 'w-6 h-6' : 'w-7 h-7'
+              rail ? 'w-6 h-6' : 'w-7 h-7'
             }`}
           >
-            {collapsed ? <ChevronRight size={16} /> : <ChevronLeft size={16} />}
+            {peek ? <ChevronRight size={16} /> : <ChevronLeft size={16} />}
           </button>
         </div>
-        {/* Olivier 17/10/2026 : menu replié → grand bouton en haut qui déplie tout le menu (la petite flèche était
-            trop difficile à viser). */}
-        {collapsed && (
-          <button type="button" onClick={toggleCollapsed} aria-label="Déplier le menu" title="Déplier le menu"
-            className="mx-2 mt-2 flex min-h-[44px] items-center justify-center rounded-lg bg-surface-hover text-lg text-ink hover:bg-brand-soft hover:text-brand transition-colors">
-            ☰
-          </button>
-        )}
-
         {/* Menu navigable (flag nav_menu_v2) — remplace UNIQUEMENT la liste du menu.
             Sidebar repliée → on garde la version icônes ci-dessous, inchangée. */}
-        {navV2 && !collapsed ? (
+        {navV2 && !rail ? (
           <AppNavV2
             espaces={navEspaces}
             flags={navFlags}
@@ -224,18 +232,18 @@ export default function AppShell({
             onToggleFavorite={toggleFavorite}
             onOpenPalette={() => setPaletteOpen(true)}
           />
-        ) : navV2 && collapsed ? (
+        ) : navV2 && rail ? (
           // Lot 3 : la barre réduite garde le menu v3 (pictogrammes + volets), plus de retour en v1.
           <AppNavMini items={visibleNav} userRole={userRole} userModules={userModules} badges={navBadges} onOpenPalette={() => setPaletteOpen(true)} espaces={navEspaces} flags={navFlags} />
         ) : (
-        <nav className={`flex-1 py-4 overflow-y-auto flex flex-col gap-0.5 ${collapsed ? 'px-2' : 'px-3'}`}>
+        <nav className={`flex-1 py-4 overflow-y-auto flex flex-col gap-0.5 ${rail ? 'px-2' : 'px-3'}`}>
           {visibleNav.map(item => {
             const active = pathname === item.href || pathname.startsWith(item.href + '/')
             const badge = navBadges[item.href] || 0
             return (
               <Link key={item.href} href={item.href}
                 className={`group relative flex items-center rounded-md text-sm font-medium transition-colors ${
-                  collapsed ? 'justify-center px-2 py-2.5' : 'gap-3 px-3 py-2.5'
+                  rail ? 'justify-center px-2 py-2.5' : 'gap-3 px-3 py-2.5'
                 } ${
                   active
                     ? 'bg-brand-soft text-brand'
@@ -245,15 +253,15 @@ export default function AppShell({
                 <span className="relative text-base">
                   {item.icon}
                   {/* Badge en pastille sur l'icône quand le menu est replié */}
-                  {collapsed && badge > 0 && (
+                  {rail && badge > 0 && (
                     <span className="absolute -top-1.5 -right-2 min-w-[15px] h-[15px] px-1 rounded-full bg-brand text-white text-[9px] font-bold flex items-center justify-center">{badge > 99 ? '99+' : badge}</span>
                   )}
                 </span>
-                {!collapsed && (item.i18nKey ? <T k={item.i18nKey} /> : item.label)}
-                {!collapsed && badge > 0 && (
+                {!rail && (item.i18nKey ? <T k={item.i18nKey} /> : item.label)}
+                {!rail && badge > 0 && (
                   <span className="ml-auto min-w-[18px] h-[18px] px-1.5 rounded-full bg-brand text-white text-[11px] font-bold flex items-center justify-center">{badge > 99 ? '99+' : badge}</span>
                 )}
-                {collapsed && <span className={TOOLTIP_CLS}>{item.i18nKey ? <T k={item.i18nKey} /> : item.label}</span>}
+                {rail && <span className={TOOLTIP_CLS}>{item.i18nKey ? <T k={item.i18nKey} /> : item.label}</span>}
               </Link>
             )
           })}
@@ -261,20 +269,20 @@ export default function AppShell({
         )}
 
         {/* ── FOOTER 3 ZONES ── */}
-        <div className={`py-2 border-t space-y-1 ${collapsed ? 'px-1.5' : 'px-2'}`}>
+        <div className={`py-2 border-t space-y-1 ${rail ? 'px-1.5' : 'px-2'}`}>
           {/* Zone 1 — User block (clic vers /profil) */}
-          <UserBlock userName={userName} userRole={userRole} userId={userId} userEmail={userEmail} collapsed={collapsed} />
+          <UserBlock userName={userName} userRole={userRole} userId={userId} userEmail={userEmail} collapsed={rail} />
 
           {/* Zone 2 — Status toggle */}
-          <StatusToggle onDuty={onDuty} setOnDuty={setOnDuty} isLockedByDuty={isLockedByDuty} collapsed={collapsed} />
+          <StatusToggle onDuty={onDuty} setOnDuty={setOnDuty} isLockedByDuty={isLockedByDuty} collapsed={rail} />
 
           {/* Zone 3 — Footer actions (Thème + Déconnexion) */}
-          <FooterActions theme={theme} toggleTheme={toggleTheme} mounted={mounted} collapsed={collapsed} />
+          <FooterActions theme={theme} toggleTheme={toggleTheme} mounted={mounted} collapsed={rail} />
         </div>
       </aside>
 
       {/* ── CONTENU PRINCIPAL ────────────────────────────── */}
-      <div className={`flex-1 flex flex-col min-h-screen transition-[margin] duration-200 ease-in-out ${collapsed ? 'lg:ml-16' : 'lg:ml-64'}`}>
+      <div className={`flex-1 flex flex-col min-h-screen transition-[margin] duration-200 ease-in-out ${collapsed ? 'lg:ml-14' : 'lg:ml-14 xl:ml-64'}`}>
 
         {/* Header mobile — burger à gauche, logo centré.
             Note (sub-phase 2.3.A bis) : le bouton retour à droite a été retiré
