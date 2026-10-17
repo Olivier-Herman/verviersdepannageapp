@@ -206,7 +206,7 @@ export async function domaineCandidates(sb: any, tail: string, select: string, b
     .ilike('vehicle_vin', pattern).limit(5)
   const { data: exact } = await q(scope, `%${tail}`)
   if (exact?.length) return exact
-  const wide = [...new Set([...scope, 'police_avp', 'police_mg', 'police_accident'])]
+  const wide = [...new Set([...scope, 'police_avp', 'police_mg', 'police_accident', 'legacy_odoo'])]
   const { data: ends } = await q(wide, `%${tail}`)
   if (ends?.length) return ends
   // Au milieu du châssis : 5 chiffres peuvent tomber n'importe où dans un autre châssis (Kia « …241286… » pour

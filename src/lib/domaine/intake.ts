@@ -97,7 +97,9 @@ export async function pollDomaineDatesIn(): Promise<DomaineIntakeSummary> {
         // Saisies actives (parked en pratique) pas encore vendues, non annulées/archivées.
         const { data: hits } = await sb.from('incoming_missions')
           .select('id, mission_number, source, vehicle_vin, vehicle_plate, vehicle_brand, vehicle_model, parc_zone_key, domaine_remise_date')
-          .in('source', await sourcesWithTag('saisie_scope'))
+          // + les anciennes fiches reprises de l'ERP (legacy_odoo), requalifiées en saisie juste en dessous : sans elles,
+          // la 206 WW138BD et le Master 2HUT240 restaient « non trouvés » (17/10/2026).
+          .in('source', [...await sourcesWithTag('saisie_scope'), 'legacy_odoo'])
           .is('domaine_vente_date', null)
           .is('archived_at', null)
           .neq('status', 'cancelled')
