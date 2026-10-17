@@ -10,10 +10,10 @@ import { NextResponse }      from 'next/server'
 import { getServerSession }  from 'next-auth'
 import { authOptions }       from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase'
+import { lineKind }          from '@/lib/odoo-quote'
 
 export const dynamic = 'force-dynamic'
 
-const VALID_KINDS = ['SERV-PEC', 'SERV-KM', 'SERV-PARC', 'SERV-MAJ', 'SERV-DIV']
 
 async function ensureAccess() {
   const session = await getServerSession(authOptions)
@@ -51,7 +51,7 @@ export async function PUT(req: Request, { params }: { params: { id: string } }) 
   const rawLines: any[] = Array.isArray(body.lines) ? body.lines : []
   // Valide et normalise les lignes
   const lines = rawLines.map(l => ({
-    kind:       VALID_KINDS.includes(l.kind) ? l.kind : 'SERV-DIV',
+    kind:       lineKind(l.kind),
     name:       String(l.name || ''),
     qty:        Number(l.qty) || 0,
     price_unit: Number(l.price_unit) || 0,

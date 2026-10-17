@@ -10,6 +10,7 @@
 // Cf [[facturation-phase2]] pour la vision.
 
 import { withRoutingMode } from '@/lib/routing/mode'
+import { lineKind } from '@/lib/odoo-quote'
 import { NextResponse }          from 'next/server'
 import { getServerSession }      from 'next-auth'
 import { authOptions }           from '@/lib/auth'
@@ -53,7 +54,7 @@ async function handlePOST(req: Request, { params }: { params: { id: string } }) 
   const requireTariff = !!body.requireTariff
   let customLines: QuoteLine[] | null = Array.isArray(body.lines) && body.lines.length > 0
     ? body.lines.map((l: any): QuoteLine => ({
-        kind:       (['SERV-PEC', 'SERV-KM', 'SERV-PARC', 'SERV-MAJ', 'SERV-DIV'].includes(l.kind) ? l.kind : 'SERV-DIV') as any,
+        kind:       lineKind(l.kind) as any,
         name:       String(l.name || ''),
         qty:        Number(l.qty || 0),
         price_unit: Number(l.price_unit || 0),
@@ -73,7 +74,7 @@ async function handlePOST(req: Request, { params }: { params: { id: string } }) 
       .maybeSingle()
     if (draft?.lines && Array.isArray(draft.lines) && draft.lines.length > 0) {
       customLines = draft.lines.map((l: any): QuoteLine => ({
-        kind:       (['SERV-PEC', 'SERV-KM', 'SERV-PARC', 'SERV-MAJ', 'SERV-DIV'].includes(l.kind) ? l.kind : 'SERV-DIV') as any,
+        kind:       lineKind(l.kind) as any,
         name:       String(l.name || ''),
         qty:        Number(l.qty || 0),
         price_unit: Number(l.price_unit || 0),

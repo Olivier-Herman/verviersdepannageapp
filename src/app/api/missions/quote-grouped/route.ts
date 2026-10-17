@@ -13,6 +13,7 @@
 // Acces : admin / superadmin / module 'facturation'.
 
 import { withRoutingMode } from '@/lib/routing/mode'
+import { lineKind } from '@/lib/odoo-quote'
 import { NextResponse }          from 'next/server'
 import { getServerSession }      from 'next-auth'
 import { authOptions }           from '@/lib/auth'
@@ -234,7 +235,7 @@ async function handlePOST(req: Request) {
     const draftLines = draftByMissionId.get(mission.id)
     if (draftLines) {
       const lines = draftLines.map((l: any) => ({
-        kind:       (['SERV-PEC', 'SERV-KM', 'SERV-PARC', 'SERV-MAJ', 'SERV-DIV'].includes(l.kind) ? l.kind : 'SERV-DIV'),
+        kind:       lineKind(l.kind),
         name:       String(l.name || ''),
         qty:        Number(l.qty || 0),
         price_unit: Number(l.price_unit || 0),

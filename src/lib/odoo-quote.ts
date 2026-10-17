@@ -33,6 +33,10 @@ const PRODUCT_CODES = [
   'PECSIAMAJ', 'SIAKILMAJ', 'SIABALMAJ',
 ] as const
 type ProductCode = typeof PRODUCT_CODES[number]
+/** Codes de ligne acceptés dans un brouillon / devis. Olivier 17/10/2026 : avant, seuls les SERV-* passaient et une
+ *  ligne Siabis (PECSIAMAJ, SIAKIL…) retombait en SERV-DIV dès qu'on modifiait les lignes → mauvais article. */
+export const LINE_KINDS: readonly string[] = PRODUCT_CODES
+export const lineKind = (k: unknown): ProductCode => (LINE_KINDS.includes(String(k)) ? k : 'SERV-DIV') as ProductCode
 export type { ProductCode }
 
 const VEHICLE_FIELD = 'x_studio_many2one_field_78n_1j6fmmeom'

@@ -14,6 +14,7 @@
 // motif 'facturation') et un nouveau groupe s'ouvre sur la période suivante.
 
 import { nightsBetween, brusselsMidnightAfter } from '@/lib/parc/nights'
+import { lineKind } from '@/lib/odoo-quote'
 import { createAdminClient }        from '@/lib/supabase'
 import { buildDossier, type Dossier, type DossierLeg } from '@/lib/dossier/build'
 import { buildInterventionDescription } from '@/lib/missions/build-quote-lines'
@@ -106,7 +107,7 @@ export async function invoiceDossierGroups(input: { anyMissionId: string; missio
 }
 
 async function invoiceDossierGroupsLocked(sb: any, d: Dossier, input: { anyMissionId: string; missionIds: string[]; actorUserId: string | null; dryRun?: boolean; periodTo?: Record<string, string>; linesOverride?: Record<string, QuoteLine[]>; asQuote?: boolean }): Promise<DossierInvoiceResult> {
-  const cleanLines = (raw: any[]): QuoteLine[] => raw.map((l: any) => ({ kind: (['SERV-PEC', 'SERV-KM', 'SERV-PARC', 'SERV-MAJ', 'SERV-DIV'].includes(l.kind) ? l.kind : 'SERV-DIV') as any, name: String(l.name || '').trim(), qty: Number(l.qty || 0), price_unit: Number(l.price_unit || 0) })).filter(l => l.name && l.qty > 0)
+  const cleanLines = (raw: any[]): QuoteLine[] => raw.map((l: any) => ({ kind: lineKind(l.kind) as any, name: String(l.name || '').trim(), qty: Number(l.qty || 0), price_unit: Number(l.price_unit || 0) })).filter(l => l.name && l.qty > 0)
   const override = (id: string): QuoteLine[] | null => input.linesOverride && Array.isArray(input.linesOverride[id]) ? cleanLines(input.linesOverride[id]) : null
 
   const wanted = new Set(input.missionIds)

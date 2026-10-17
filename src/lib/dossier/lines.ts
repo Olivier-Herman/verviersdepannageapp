@@ -9,6 +9,7 @@
 // mais apparaît à 0 dans le dossier » — le dossier n'appelait pas le moteur Siabis.
 
 import { estimateMissionPrice }     from '@/lib/missions/estimate-price'
+import { lineKind } from '@/lib/odoo-quote'
 import { buildLinesFromEstimate, buildOverrideLines } from '@/lib/missions/build-quote-lines'
 import type { QuoteLine }           from '@/lib/odoo-quote'
 import { createAdminClient }        from '@/lib/supabase'
@@ -39,11 +40,10 @@ export async function sncLines(mission: any): Promise<QuoteLine[] | null> {
 // forcés > Siabis > estimation. Le gardiennage est retiré quand le dossier a
 // ses propres groupes gardiennage (il ne doit pas être compté deux fois).
 export async function actionLines(mission: any, draftLines: any[] | undefined, dropParc: boolean): Promise<{ lines: QuoteLine[]; has_tariff: boolean; reason?: string }> {
-  const VALID = ['SERV-PEC', 'SERV-KM', 'SERV-PARC', 'SERV-MAJ', 'SERV-DIV']
   let lines: QuoteLine[] | null = null
   if (draftLines?.length) {
     lines = draftLines.map((l: any) => ({
-      kind: (VALID.includes(l.kind) ? l.kind : 'SERV-DIV') as any,
+      kind: lineKind(l.kind) as any,
       name: String(l.name || ''), qty: Number(l.qty || 0), price_unit: Number(l.price_unit || 0),
     })).filter(l => l.name && l.qty > 0)
   }
