@@ -5,7 +5,7 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useSession } from 'next-auth/react'
 import { signOutCascade } from '@/lib/auth-signout'
-import { useState, useEffect, useLayoutEffect } from 'react'
+import { useState, useEffect, useLayoutEffect, createContext, useContext } from 'react'
 import { Moon, Sun, LogOut, Menu, ChevronRight, ChevronLeft } from 'lucide-react'
 import VehicleCheckBanner from '@/components/check-vehicule/VehicleCheckBanner'
 import TruckCheckPopup from '@/components/check-vehicule/TruckCheckPopup'
@@ -31,6 +31,10 @@ import FacturationButtonAnnounce from '@/components/facturation/FacturationButto
 import EspecesAlert from '@/components/especes/EspecesAlert'
 import { useSidebarCollapsed } from './useSidebarCollapsed'
 import { Avatar } from '@/components/ui/Avatar'
+
+// Un AppShell placé dans un autre (pages admin qui ont gardé le leur, sous la mise en page Administration)
+// ne rend que son contenu : jamais deux menus.
+const InShell = createContext(false)
 
 const TOOLTIP_CLS =
   'absolute left-full top-1/2 -translate-y-1/2 ml-3 px-3 py-1.5 rounded-md ' +
@@ -153,12 +157,14 @@ export default function AppShell({
   // Attache tôt les listeners Live Activity (dont le push-to-start token) — no-op hors iOS.
   useEffect(() => { import('@/lib/native/liveActivity').then(m => m.initLiveActivity()).catch(() => {}) }, [])
   const [collapsed, toggleCollapsed] = useSidebarCollapsed()
+  const nested = useContext(InShell)
   // Olivier 17/10/2026 : menu replié = menu RETIRÉ (plus de barre d'icônes) ; le bouton ☰ l'affiche par-dessus la page.
   const [peek, setPeek] = useState(false)
   useEffect(() => { setPeek(false) }, [pathname])
   const rail = collapsed && !peek
 
   // Mode embarqué (groupe de la vue dossier) : uniquement le contenu, sans chrome.
+  if (nested) return <>{children}</>
   if (embedded) {
     return (
       <NotificationsProvider userId={userId || null}>
@@ -168,6 +174,7 @@ export default function AppShell({
   }
 
   return (
+   <InShell.Provider value={true}>
    <NotificationsProvider userId={userId || null}>
     <WatchPairingBridge />
     <FacturationButtonAnnounce userRole={userRole} userModules={userModules} />
@@ -364,6 +371,7 @@ export default function AppShell({
       </div>
     </div>
    </NotificationsProvider>
+   </InShell.Provider>
   )
 }
 
