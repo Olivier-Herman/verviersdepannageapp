@@ -4,6 +4,7 @@
 // Publique, sobre et rassurante. Styles inline (pas d'app shell).
 
 import { useEffect, useRef, useState } from 'react'
+import { compressImage } from '@/lib/image-compress'
 
 interface Info {
   ref: string | null; plate: string | null; vehicle: string | null
@@ -34,14 +35,23 @@ export default function RequisitoireDepotClient({ token }: { token: string }) {
 
   const submit = async () => {
     if (!files.length) { setErr('Joignez le réquisitoire (PDF ou photo).'); return }
+    const lourd = files.find(f => !f.type.startsWith('image/') && f.size > 4 * 1024 * 1024)
+    if (lourd) { setErr(`« ${lourd.name} » dépasse 4 Mo : envoyez-le par mail au service fourrière (en réponse à notre mail), ou prenez-le en photo.`); return }
     setBusy(true); setErr(null)
     try {
       const fd = new FormData()
-      files.forEach(f => fd.append('files', f))
+      // Photos réduites dans le téléphone avant l'envoi : une photo d'iPhone (3-6 Mo, souvent en HEIC) dépassait le
+      // plafond de 4,5 Mo par envoi et le dépôt échouait (inspectrice Awouters, 16/09 et 10/10/2026).
+      for (const f of files) {
+        if (f.type.startsWith('image/') || /\.(heic|heif)$/i.test(f.name)) {
+          const b = await compressImage(f)
+          fd.append('files', b === f ? f : new File([b], f.name.replace(/\.[^.]+$/, '') + '.jpg', { type: 'image/jpeg' }))
+        } else fd.append('files', f)
+      }
       if (note.trim()) fd.append('note', note.trim())
       const r = await fetch(`/api/requisitoire/depot/${token}`, { method: 'POST', body: fd })
       const j = await r.json()
-      if (!r.ok) throw new Error(j?.error || 'Erreur')
+      if (!r.ok) throw new Error(r.status === 413 ? 'Fichier trop lourd : envoyez une photo ou un PDF plus léger, ou un fichier à la fois.' : (j?.error || 'Erreur'))
       setState('done')
     } catch (e: any) { setErr(e?.message || 'Envoi impossible'); setBusy(false) }
   }
