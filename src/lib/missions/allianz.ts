@@ -137,8 +137,11 @@ export function allianzExtractMissionData(jobData: any, caseData?: any): Record<
   const location = customer.breakdownAddress || {}
   const applicant = caseData?.applicant || {}
 
-  const phone = applicant.preferredContactChannels?.[0]?.phoneNumber
-    || caseData?.contactChannel?.[0]?.phoneNumber || null
+  // Le 1er canal n'est pas forcément un téléphone (souvent l'e-mail) : on prend le 1er qui porte un numéro.
+  // Avant, mission 10194185 (AC-JM-757, 17/10/2026) : e-mail en 1er → « aucun numéro » alors qu'Hexalite l'affichait.
+  const channels: any[] = [...(applicant.preferredContactChannels || []), ...(caseData?.contactChannel || [])]
+  const phone = channels.find(c => c?.phoneNumber)?.phoneNumber || null
+  const email = channels.find(c => c?.email)?.email || null
 
   const clientName = [applicant.firstName, applicant.lastName].filter(Boolean).join(' ') || null
 
@@ -165,6 +168,7 @@ export function allianzExtractMissionData(jobData: any, caseData?: any): Record<
     incident_description: jobData?.additionalCaseRemarks || caseData?.additionalCaseRemarks || null,
     client_name:          clientName,
     client_phone:         phone,
+    client_email:         email,
     client_address:       clientAddr,
     vehicle_plate:        vehicle.vehicleLicensePlate || null,
     vehicle_brand:        vehicle.vehicleBrand        || null,
