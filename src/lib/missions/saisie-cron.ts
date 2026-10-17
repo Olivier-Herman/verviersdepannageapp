@@ -22,7 +22,7 @@
 
 import { sendEtatFrais, autoIntegrateNewSaisies, saisieScopeFrom, outOfParquetScope } from '@/lib/missions/saisie-dossier'
 import { forclusionDate, daysUntil, forclusionLevel, FORCLUSION_STOPS } from '@/lib/missions/saisie-relance'
-import { sendOfficerPortalMail } from '@/lib/requisitoire/officer-portal'
+import { sendOfficerPortalMail, findPoliceOfficerPartner } from '@/lib/requisitoire/officer-portal'
 import { hasValidRequisitoire } from '@/lib/requisitoire/doc'
 import { sendNotificationToRoles } from '@/lib/notifications/send'
 
@@ -106,9 +106,18 @@ export async function runSaisieCron(sb: any): Promise<SaisieCronSummary> {
     if (d.paused_at) continue
     const mission = d.mission_id
       ? (await sb.from('incoming_missions')
-          .select('source, status, domaine_remise_date, domaine_enlevement_date, levee_saisie_at, levee_saisie_date, levee_saisie_payer, levee_saisie_type, requisitoire_at, requisitoire_doc_path, requisitoire_last_reminder_at, officer_partner_id')
+          .select('source, status, domaine_remise_date, domaine_enlevement_date, levee_saisie_at, levee_saisie_date, levee_saisie_payer, levee_saisie_type, requisitoire_at, requisitoire_doc_path, requisitoire_last_reminder_at, officer_partner_id, officer_name')
           .eq('id', d.mission_id).maybeSingle()).data
       : null
+    // Agent tapé à la main sans contact relié → on le retrouve dans les contacts police, sinon aucune relance ne part.
+    if (mission && !mission.officer_partner_id && mission.officer_name && !hasValidRequisitoire(mission)) {
+      const pid = await findPoliceOfficerPartner(mission.officer_name)
+      if (pid) {
+        mission.officer_partner_id = pid
+        await sb.from('incoming_missions').update({ officer_partner_id: pid }).eq('id', d.mission_id)
+        await sb.from('mission_logs').insert({ mission_id: d.mission_id, action: 'note', notes: `Agent « ${mission.officer_name} » relié automatiquement à son contact police (relances réquisitoire).` }).then(() => {}, () => {})
+      }
+    }
     const remise = mission?.domaine_remise_date ? String(mission.domaine_remise_date).slice(0, 10) : null
 
     // ── Fiche requalifiée (AVP / Mal garée d'après le réquisitoire) : plus une

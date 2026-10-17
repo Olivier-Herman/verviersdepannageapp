@@ -92,7 +92,7 @@ async function etatsFrais(sb: any): Promise<Bloc> {
   const { data: efs } = await sb.from('saisie_etats_frais').select('numero, status, total_tvac, status_note, created_at').in('status', ['refuse', 'accepte']).order('created_at', { ascending: false }).limit(50)
   const { data: ds } = await sb.from('saisie_dossiers').select('id, mission_id, recipient, state').in('state', ['en_parc', 'gardiennage_recurrent', 'ef_envoye']).is('paused_at', null).limit(2000)
   const ids = (ds || []).map((d: any) => d.mission_id).filter(Boolean)
-  const { data: ms } = ids.length ? await sb.from('incoming_missions').select('id, requisitoire_doc_path').in('id', ids) : { data: [] }
+  const { data: ms } = ids.length ? await sb.from('incoming_missions').select('id, requisitoire_doc_path, officer_partner_id, vehicle_plate, officer_name').in('id', ids) : { data: [] }
   const { isRequisitoireDoc } = await import('@/lib/requisitoire/doc')
   const req = new Map((ms || []).map((m: any) => [m.id, m.requisitoire_doc_path]))
   const sansReq = (ds || []).filter((d: any) => d.recipient !== 'client' && !isRequisitoireDoc(String(req.get(d.mission_id) || ''))).length
@@ -100,6 +100,10 @@ async function etatsFrais(sb: any): Promise<Bloc> {
     texte: `${e.numero} — ${e.status === 'accepte' ? 'accepté, à déposer sur JustInvoice' : 'refusé'}`, montant: Number(e.total_tvac || 0),
     detail: String(e.status_note || '').slice(0, 180), niveau: e.status === 'accepte' ? 'attention' : 'info', lien: '/fourriere/saisies',
   }))
+  // Suivi (Olivier 17/10/2026) : sans contact agent relié, la relance automatique ne part jamais → à relier ici.
+  const sansAgent = (ds || []).filter((d: any) => d.recipient !== 'client' && !isRequisitoireDoc(String(req.get(d.mission_id) || '')))
+    .map((d: any) => (ms || []).find((m: any) => m.id === d.mission_id)).filter((m: any) => m && !m.officer_partner_id)
+  if (sansAgent.length) lignes.unshift({ texte: `${sansAgent.length} saisie(s) sans agent relié : aucune relance ne part`, detail: sansAgent.map((m: any) => `${m.vehicle_plate || '?'} (${m.officer_name || 'agent inconnu'})`).join(', ').slice(0, 300), niveau: 'urgent', lien: '/fourriere/relance-requisitoire' })
   if (sansReq) lignes.unshift({ texte: `${sansReq} dossier(s) Parquet sans réquisitoire`, detail: 'Aucun état de frais ne peut partir sans lui.', niveau: 'urgent', lien: '/fourriere/relance-requisitoire' })
   const acc = (efs || []).filter((e: any) => e.status === 'accepte').length
   return { cle: 'ef', titre: 'États de frais', resume: `${acc} accepté(s) à déposer · ${sansReq} sans réquisitoire`, niveau: sansReq ? 'urgent' : acc ? 'attention' : 'ok', lignes, lien: '/fourriere/saisies' }

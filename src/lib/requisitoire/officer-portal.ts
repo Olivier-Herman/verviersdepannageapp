@@ -226,3 +226,16 @@ export async function sendOfficerPortalMail(partnerId: number): Promise<PortalMa
   }
   return { ok: true, email: d.officer.email, count: targets.length }
 }
+
+/** Agent tapé à la main (« Simon bryan ») → son contact police dans l'ERP, si un seul correspond (tous les mots du
+ *  nom, adresse @police.belgium.eu). Sans ça, aucune relance ne partait (84194, 2HQZ859 — Olivier 17/10/2026). */
+export async function findPoliceOfficerPartner(name?: string | null): Promise<number | null> {
+  const words = String(name || '').toLowerCase().replace(/\(.*?\)/g, ' ').split(/[^a-zà-ÿ-]+/i).filter(w => w.length >= 3)
+  if (words.length < 2) return null
+  try {
+    const { odooRpc } = await import('@/lib/odoo')
+    const dom: any[] = [['email', 'ilike', '@police.belgium.eu'], ...words.map(w => ['name', 'ilike', w])]
+    const rows = await odooRpc<any[]>('res.partner', 'search_read', [dom], { fields: ['id'], limit: 2 })
+    return rows?.length === 1 ? rows[0].id : null
+  } catch { return null }
+}
