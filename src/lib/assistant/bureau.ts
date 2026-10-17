@@ -452,6 +452,8 @@ Assistances
 - Le lien avec l'assistance (Touring COMEX, VAB Comet, IMA/Kaze, AXA, Allianz/Hexalite ; Mondial = Allianz) fait foi.
 - Couvert ou non couvert se décide AVANT l'intervention ; pas de « tranchage » autoroute pour une assistance.
 - Siabis non couvert (police_snc) : le client est la personne/le propriétaire ; si une assistance a confirmé « VÉHICULE PAS COUVERT », pas de prise en charge. Une mission acceptée chez VAB (contrat couvert) se facture à VAB même si la fiche a été passée en Siabis par erreur.
+- Un Siabis non couvert n'a jamais d'assistance comme client facturé (Touring compris) : si tu en vois une sur la fiche, c'est une erreur à signaler, pas un client à remplacer. On facture la personne qui récupère le véhicule.
+- Touring et Siabis avec balisage : Touring envoie DEUX actions COMEX sur la même plaque, une pour la dépanneuse et une « Signalisation ». C'est la Signalisation qui coche le balisage sur la fiche, et les deux actions doivent être clôturées chez Touring.
 - VAB : trajet vide (annulé après acceptation dans Comet) = forfait départ ; supplément carburant 2,50 € par dossier pendant les périodes VAB (ajouté tout seul) ; les km de relivraison comptent après les km inclus du remorquage.
 - Relivraison : la règle (forfait ou km) dépend de l'assistance, elle est dans la grille.
 - Facture à un intermédiaire « pour le compte de » (ex. GIE ARGOS pour Groupama) : le bloc complet du client final et le n° de dossier vont dans une note sur la facture (à dire à ${prenom}, c'est lui qui facture).
