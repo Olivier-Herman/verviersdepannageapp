@@ -318,7 +318,7 @@ export async function POST(req: Request) {
       const pick = (k: string) => (k in updatePayload ? (updatePayload as any)[k] : (mission as any)[k])
       const sc = String((mission as any).snc_scenario || '')
       // Pas de scénario choisi → pas de montant (Olivier 16/09/2026, 2JWT144).
-      const scenario = ['dsp', 'rem_client', 'rem_direct'].includes(sc) ? sc : null
+      const scenario = ['dsp', 'rem_client', 'rem_direct', 'rem_depot'].includes(sc) ? sc : null
       if (!scenario) throw new Error('scenario_missing')
       const amt = await computeSncAmountToCollect({
         source:                'police_snc',
@@ -332,6 +332,7 @@ export async function POST(req: Request) {
         extra_addresses:       pick('extra_addresses'),
         billed_to_id:          (mission as any).billed_to_id,
         billed_to_name:        (mission as any).billed_to_name,
+        vehicle_plate:         pick('vehicle_plate'),
       }, scenario as any)
       if (amt != null && amt > 0) updatePayload.amount_to_collect = amt
     } catch { /* best-effort : ne bloque pas la mise à jour d'adresse */ }

@@ -1,6 +1,8 @@
 // src/app/api/missions/[id]/route.ts
 
 import { NextResponse }      from 'next/server'
+import { sncDepotEstFinal } from '@/lib/snc/depot-final'
+const pickPlate = (u: any, b: any): string | null => ('vehicle_plate' in (u || {}) ? u.vehicle_plate : b?.vehicle_plate) ?? null
 import { getServerSession }  from 'next-auth'
 import { authOptions }       from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase'
@@ -122,7 +124,7 @@ export async function PATCH(
   // On charge l etat actuel pour comparer (source avant change + verrou tarifaire).
   const { data: before } = await supabase
     .from('incoming_missions')
-    .select('redelivery_address, status, source, external_id, snc_scenario, mission_type, incident_type, amount_to_collect, amount_to_collect_manual, amount_guaranteed, special_tarif_htva, incident_lat, incident_lng, incident_address, incident_city, incident_country, incident_borne_km, incident_sens, incident_at, destination_lat, destination_lng, destination_name, destination_address, destination_borne_km, destination_sens, redelivery_address, redelivery_lat, redelivery_lng, depot_depart_id, depot_depart_locked, snc_requires_balisage, intervention_date, parked_at, delivering_at, received_at, extra_addresses, billed_to_id, billed_to_name, tariff_locked, transport_vehicle_category, transport_price_per_km_htva')
+    .select('redelivery_address, status, source, external_id, snc_scenario, mission_type, incident_type, amount_to_collect, amount_to_collect_manual, amount_guaranteed, special_tarif_htva, incident_lat, incident_lng, incident_address, incident_city, incident_country, incident_borne_km, incident_sens, incident_at, destination_lat, destination_lng, destination_name, destination_address, destination_borne_km, destination_sens, redelivery_address, redelivery_lat, redelivery_lng, depot_depart_id, depot_depart_locked, snc_requires_balisage, intervention_date, parked_at, delivering_at, received_at, extra_addresses, billed_to_id, billed_to_name, vehicle_plate, tariff_locked, transport_vehicle_category, transport_price_per_km_htva')
     .eq('id', params.id)
     .maybeSingle()
 
@@ -275,8 +277,9 @@ export async function PATCH(
     }
 
     if (finalSource === 'police_snc' && !lockedManual && (pricingTouched || sourceBecameSnc)) {
-      if (finalScenario === 'rem_depot') {
-        // Passage par le dépôt → pas d'encaissement immédiat (réglé au bureau).
+      if (finalScenario === 'rem_depot' && !sncDepotEstFinal(pickPlate(updates, before))) {
+        // Passage par le dépôt puis relivraison → pas d'encaissement immédiat (réglé au bureau). Plaque étrangère :
+        // le dépôt est le stop final, on calcule le montant comme un remorquage (Olivier 17/10/2026).
         updates.amount_to_collect = null
       } else {
         try {
@@ -285,7 +288,7 @@ export async function PATCH(
           // Olivier 16/09/2026 (2JWT144) : « impossible de calculer un montant si on
           // n'a pas de scénario défini ». Plus d'inférence depuis le type : sans
           // scénario choisi, pas de montant à réclamer (le chauffeur le choisit sur place).
-          const scenario = ['dsp', 'rem_client', 'rem_direct'].includes(String(finalScenario || '')) ? (finalScenario as any) : null
+          const scenario = ['dsp', 'rem_client', 'rem_direct', 'rem_depot'].includes(String(finalScenario || '')) ? (finalScenario as any) : null
           if (!scenario) { updates.amount_to_collect = null; throw new Error('scenario_missing') }
           const amt = await computeSncAmountToCollect({
             source:                'police_snc',
@@ -299,6 +302,7 @@ export async function PATCH(
             extra_addresses:       before?.extra_addresses,
             billed_to_id:          before?.billed_to_id,
             billed_to_name:        before?.billed_to_name,
+            vehicle_plate:         pickPlate(updates, before),
           }, scenario)
           if (amt != null && amt > 0) updates.amount_to_collect = amt
         } catch (e: any) {

@@ -2,6 +2,7 @@
 // DriverClient v4 — spec figée — DSP/REM, stops, mise en parc, realtime
 
 import { useState, useRef, useEffect, useCallback } from 'react'
+import { sncDepotEstFinal } from '@/lib/snc/depot-final'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@supabase/supabase-js'
 import { formatEur } from '@/lib/format'
@@ -794,7 +795,8 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
   const isMgDeplacement = M.source === 'police_mg' && M.mission_type === 'trajet_vide'
   const sncPaymentDue =
     (isSiabisMission || isPrive || isMgDeplacement)
-    && M.snc_scenario !== 'rem_depot'
+    // Dépôt : payé au bureau, SAUF plaque étrangère (le dépôt est le stop final). Olivier 17/10/2026.
+    && (M.snc_scenario !== 'rem_depot' || sncDepotEstFinal(M.vehicle_plate))
     && requiredAmount > 0
     && !paymentComplete
 
@@ -1757,7 +1759,7 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
   // Olivier 2026-08-21.
   useEffect(() => {
     if (M.source !== 'police_snc' || !M.snc_scenario) return
-    if (M.amount_to_collect != null || M.snc_scenario === 'rem_depot') return
+    if (M.amount_to_collect != null || (M.snc_scenario === 'rem_depot' && !sncDepotEstFinal(M.vehicle_plate))) return
     if (M.incident_lat == null || M.incident_lng == null) return
     let vivant = true
     fetch(`/api/missions/${M.id}`, {
@@ -1831,8 +1833,9 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
         return
       }
 
-      // 2) Calcul tarif SNC (sauf REM depot : pas d encaissement immediat)
-      if (scenario !== 'rem_depot') {
+      // 2) Calcul tarif SNC (sauf REM depot d'un véhicule belge : pas d encaissement immediat ; plaque étrangère =
+      //    le dépôt est le stop final, on encaisse — Olivier 17/10/2026)
+      if (scenario !== 'rem_depot' || sncDepotEstFinal(M.vehicle_plate)) {
         const variant = M.source === 'sia_couvert' ? 'sc' : 'snc'
         // Coords incident manquantes (FRÉQUENT sur une mission convertie depuis
         // Touring : le sinistre n'a pas toujours été géocodé) → on ne peut pas
@@ -1905,7 +1908,7 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
       })
       setM(prev => ({ ...prev, snc_requires_balisage: next }))
       // Si scenario deja choisi et pas REM depot → recalcul du tarif
-      if (M.snc_scenario && M.snc_scenario !== 'rem_depot' && M.incident_lat != null && M.incident_lng != null) {
+      if (M.snc_scenario && (M.snc_scenario !== 'rem_depot' || sncDepotEstFinal(M.vehicle_plate)) && M.incident_lat != null && M.incident_lng != null) {
         const variant = M.source === 'sia_couvert' ? 'sc' : 'snc'
         const pr = await fetch('/api/snc-preview-tarif', {
           method:  'POST',
@@ -2878,7 +2881,7 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
       ...(M.loaded_at ? [] : [{ key: 'dsp' as const, label: '🔧 DSP — Dépannage sur place', desc: isSC ? "Réparation sur place, facturée à l'assistance (pas d'encaissement)." : 'Réparation sur place, le client paie en direct.' }]),
       ...(M.source === 'police_snc' ? [{ key: 'rem_client' as const, label: '🚛 REM avec paiement immédiat', desc: 'Remorquage vers la destination du client, paiement immédiat.' }] : []),
       ...(isSC ? [{ key: 'rem_direct' as const, label: '🚛 REM directe', desc: 'Remorquage direct sans passage dépôt (forfait SC + km).' }] : []),
-      { key: 'rem_depot', label: '🏢 REM vers dépôt', desc: isSC ? 'Zone Transit, relivraison ultérieure au tarif assistance.' : 'Zone Transit, le client passera au bureau ensuite.' },
+      { key: 'rem_depot', label: '🏢 REM vers dépôt', desc: isSC ? 'Zone Transit, relivraison ultérieure au tarif assistance.' : sncDepotEstFinal(M.vehicle_plate) ? 'Véhicule étranger : notre dépôt est l\'arrivée, le client paie maintenant.' : 'Zone Transit, le client passera au bureau ensuite.' },
     ]
     return (
       <div className="fixed inset-0 bg-page z-40 flex flex-col">
@@ -4681,7 +4684,7 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
                 // SC : REM directe (forfait SC + km livraison assistance, pas
                 // de passage depot). Coherent avec le choix dispatcher.
                 ...(M.source === 'sia_couvert' ? [{ key: 'rem_direct' as const, label: '🚛 REM directe', desc: 'Remorquage direct sans passage dépôt (forfait SC + km livraison assistance).' }] : []),
-                { key: 'rem_depot' as const,  label: '🏢 REM vers dépôt Pepinster',       desc: M.source === 'sia_couvert' ? 'Mise en zone Transit, relivraison ultérieure au tarif assistance.' : 'Mise en zone Transit, le client passera au bureau ensuite.' },
+                { key: 'rem_depot' as const,  label: '🏢 REM vers dépôt Pepinster',       desc: M.source === 'sia_couvert' ? 'Mise en zone Transit, relivraison ultérieure au tarif assistance.' : sncDepotEstFinal(M.vehicle_plate) ? 'Véhicule étranger : notre dépôt est l\'arrivée, le client paie maintenant.' : 'Mise en zone Transit, le client passera au bureau ensuite.' },
               ]).map(opt => {
                 const isActive = M.snc_scenario === opt.key
                 return (

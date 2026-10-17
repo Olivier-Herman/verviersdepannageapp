@@ -7,6 +7,7 @@
 // fragile de l'app chauffeur). Olivier 2026-07-13 (cas 10062195).
 
 import { computeSncMetrics, buildSncQuoteLines } from '@/lib/snc/pricing'
+import { sncDepotEstFinal } from '@/lib/snc/depot-final'
 
 const TVA_RATE = 0.21
 type Scenario = 'dsp' | 'rem_client' | 'rem_depot' | 'rem_direct'
@@ -14,7 +15,8 @@ type Scenario = 'dsp' | 'rem_client' | 'rem_depot' | 'rem_direct'
 /**
  * Retourne le montant TVAC à encaisser, ou null si non applicable :
  *   - variant SC (Siabis couvert) → facturé à l'assistance, pas d'encaissement.
- *   - rem_depot → encaissement au bureau, pas immédiat.
+ *   - rem_depot → encaissement au bureau, pas immédiat — SAUF plaque étrangère : le dépôt est le stop final,
+ *     on encaisse (Olivier 17/10/2026).
  *   - coords manquantes / dépôts non configurés / calcul KO.
  */
 export async function computeSncAmountToCollect(m: {
@@ -29,10 +31,11 @@ export async function computeSncAmountToCollect(m: {
   extra_addresses?:       any
   billed_to_id?:          number | null
   billed_to_name?:        string | null
+  vehicle_plate?:         string | null
 }, scenario: Scenario): Promise<number | null> {
   const variant = m.source === 'sia_couvert' ? 'sc' : 'snc'
   if (variant === 'sc') return null                 // couvert = pas d'encaissement client
-  if (scenario === 'rem_depot') return null          // dépôt = paiement au bureau
+  if (scenario === 'rem_depot' && !sncDepotEstFinal(m.vehicle_plate)) return null   // dépôt puis relivraison = paiement au bureau
   if (m.incident_lat == null || m.incident_lng == null) return null
   if ((scenario === 'rem_client' || scenario === 'rem_direct')
       && (m.destination_lat == null || m.destination_lng == null)) return null

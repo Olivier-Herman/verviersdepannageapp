@@ -224,7 +224,7 @@ export async function repondreAlerte(userId: string, alerteId: number, index: nu
     } else if (act === 'scen' && m) {
       const scen = x
       const upd: Record<string, any> = { snc_scenario: scen, mission_type: scen === 'dsp' ? 'depannage' : 'remorquage', updated_at: new Date().toISOString() }
-      if (m.source === 'police_snc' && scen !== 'rem_depot') {
+      if (m.source === 'police_snc') {   // rem_depot : montant seulement si plaque étrangère (calculé dans amount.ts)
         const { computeSncAmountToCollect } = await import('@/lib/snc/amount')
         const amt = await computeSncAmountToCollect(m, scen as any).catch(() => null)
         if (amt != null && amt > 0) upd.amount_to_collect = amt

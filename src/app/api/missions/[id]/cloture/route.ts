@@ -13,6 +13,7 @@
 // et parle à l'assistance ; le chauffeur termine ensuite sur l'écran habituel.
 
 import { NextResponse }      from 'next/server'
+import { sncDepotEstFinal } from '@/lib/snc/depot-final'
 import { getServerSession }  from 'next-auth'
 import { authOptions }       from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase'
@@ -264,11 +265,11 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     try {
       const { computeSncAmountToCollect } = await import('@/lib/snc/amount')
       const { data: fresh } = await sb.from('incoming_missions')
-        .select('source, snc_scenario, snc_requires_balisage, amount_to_collect_manual, incident_lat, incident_lng, destination_lat, destination_lng, intervention_date, received_at, extra_addresses, billed_to_id, billed_to_name')
+        .select('source, vehicle_plate, snc_scenario, snc_requires_balisage, amount_to_collect_manual, incident_lat, incident_lng, destination_lat, destination_lng, intervention_date, received_at, extra_addresses, billed_to_id, billed_to_name')
         .eq('id', (m as any).id).maybeSingle()
       const f: any = fresh || {}
       if (f.source === 'police_snc' && f.amount_to_collect_manual !== true) {
-        if (f.snc_scenario === 'rem_depot') {
+        if (f.snc_scenario === 'rem_depot' && !sncDepotEstFinal(f.vehicle_plate)) {
           await sb.from('incoming_missions').update({ amount_to_collect: null }).eq('id', (m as any).id)
         } else {
           const amt = await computeSncAmountToCollect(f, f.snc_scenario)
