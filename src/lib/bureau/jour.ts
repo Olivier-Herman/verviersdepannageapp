@@ -90,7 +90,7 @@ async function domaine(sb: any): Promise<Bloc> {
 
 async function etatsFrais(sb: any): Promise<Bloc> {
   const { data: efs } = await sb.from('saisie_etats_frais').select('numero, status, total_tvac, status_note, created_at').in('status', ['refuse', 'accepte']).order('created_at', { ascending: false }).limit(50)
-  const { data: ds } = await sb.from('saisie_dossiers').select('id, mission_id, recipient, state').in('state', ['en_parc', 'gardiennage_recurrent', 'ef_envoye']).limit(2000)
+  const { data: ds } = await sb.from('saisie_dossiers').select('id, mission_id, recipient, state').in('state', ['en_parc', 'gardiennage_recurrent', 'ef_envoye']).is('paused_at', null).limit(2000)
   const ids = (ds || []).map((d: any) => d.mission_id).filter(Boolean)
   const { data: ms } = ids.length ? await sb.from('incoming_missions').select('id, requisitoire_doc_path').in('id', ids) : { data: [] }
   const { isRequisitoireDoc } = await import('@/lib/requisitoire/doc')
