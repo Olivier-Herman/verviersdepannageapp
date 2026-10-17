@@ -35,6 +35,8 @@ const OUTCOME: Record<string, { label: string; cls: string }> = {
   already_set: { label: 'ℹ️ Déjà datée',  cls: 'bg-sky-500/15 text-sky-700 dark:text-sky-300' },
   no_match:    { label: '⚠ Non trouvé',   cls: 'bg-amber-500/15 text-amber-700 dark:text-amber-300' },
   ambiguous:   { label: '⚠ Ambigu',       cls: 'bg-red-500/15 text-red-700 dark:text-red-300' },
+  // Remise annulée (levée de saisie, véhicule rendu au propriétaire) — Olivier 17/10/2026.
+  annulee:     { label: '✖ Remise annulée', cls: 'bg-slate-500/15 text-slate-700 dark:text-slate-300' },
 }
 
 export default function DatesInClient(props: { userRole: string; userName: string; userEmail?: string; userModules: string[] }) {
