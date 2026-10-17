@@ -73,12 +73,18 @@ async function domaine(sb: any): Promise<Bloc> {
   const { data: s } = await sb.from('app_settings').select('key, value').in('key', ['domaine_dates_in_last_run', 'vente_epaves_last_run'])
   const get = (k: string) => { try { return JSON.parse(String(s?.find((x: any) => x.key === k)?.value || '{}')) } catch { return {} } }
   const di = get('domaine_dates_in_last_run'), ve = get('vente_epaves_last_run')
-  const { count: sansFiche } = await sb.from('domaine_dates_in').select('id', { count: 'exact', head: true }).eq('outcome', 'no_match').gte('created_at', new Date(Date.now() - 30 * 864e5).toISOString())
+  // Un même véhicule revient sur plusieurs passages, et une fiche peut avoir reçu sa date de remise à la main depuis :
+  // on ne compte que les VIN distincts dont aucune fiche n'a de date de remise au Domaine (17/10/2026 : 29 → 8).
+  const { data: nm } = await sb.from('domaine_dates_in').select('vin, vin_tail').eq('outcome', 'no_match').gte('created_at', new Date(Date.now() - 30 * 864e5).toISOString())
+  const { data: posees } = await sb.from('incoming_missions').select('vehicle_vin').not('domaine_remise_date', 'is', null).not('vehicle_vin', 'is', null).gte('domaine_remise_date', new Date(Date.now() - 120 * 864e5).toISOString().slice(0, 10))
+  const vinsPoses = (posees || []).map((x: any) => String(x.vehicle_vin).toUpperCase())
+  const restants = new Set((nm || []).filter((d: any) => !vinsPoses.some((v: string) => d.vin_tail && v.includes(String(d.vin_tail).toUpperCase()))).map((d: any) => d.vin))
+  const sansFiche = restants.size
   const lignes: Ligne[] = [
     { texte: `Dates IN : dernier passage ${di.at ? new Date(di.at).toLocaleString('fr-BE', { timeZone: 'Europe/Brussels', dateStyle: 'short', timeStyle: 'short' }) : '—'}`, detail: `${di.applied ?? 0} encodée(s), ${di.noMatch ?? 0} sans fiche sur ce passage`, niveau: 'info', lien: '/fourriere/domaine/dates-in' },
     { texte: `Ventes d’épaves : dernier passage ${ve.at ? new Date(ve.at).toLocaleString('fr-BE', { timeZone: 'Europe/Brussels', dateStyle: 'short', timeStyle: 'short' }) : '—'}`, detail: `${ve.applied ?? 0} posée(s), ${ve.noMatch ?? 0} sans fiche`, niveau: 'info', lien: '/fourriere/domaine' },
   ]
-  if (sansFiche) lignes.push({ texte: `${sansFiche} véhicule(s) des dates IN sans fiche (30 jours)`, niveau: 'attention', lien: '/fourriere/domaine/dates-in' })
+  if (sansFiche) lignes.push({ texte: `${sansFiche} véhicule(s) des dates IN sans fiche ni date de remise (30 jours)`, niveau: 'attention', lien: '/fourriere/domaine/dates-in' })
   return { cle: 'domaine', titre: 'Domaine', resume: sansFiche ? `${sansFiche} remise(s) sans fiche` : 'À jour', niveau: sansFiche ? 'attention' : 'ok', lignes, lien: '/fourriere/domaine' }
 }
 
