@@ -732,7 +732,11 @@ export async function closeTouringMission(
         const list = await listComexMissions(session)
         const m = list.find(x => String(x.CID_DOS).toUpperCase() === keys.CID_DOS.toUpperCase()
           && String(x.CID_SEQ_ACTION) === keys.CID_SEQ_ACTION)
-        return m?.COD_STATUT_MTR ?? null
+        if (m?.COD_STATUT_MTR) return m.COD_STATUT_MTR
+        // Les actions « Signalisation » n'apparaissent pas dans la liste du compte chauffeur : on lit alors le
+        // statut sur le détail, sinon une clôture réussie remonte « non confirmée » (2026BE405209, 17/10/2026).
+        const det: any = await getComexMissionDetail(session, keys)
+        return (det?.content || det)?.COD_STATUT_MTR_ACT ?? null
       } catch { return null }
     }
     const statusBefore = await readStatus()

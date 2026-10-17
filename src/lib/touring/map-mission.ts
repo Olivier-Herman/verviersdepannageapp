@@ -159,8 +159,9 @@ export function mapComexToMission(input: ComexMapInput): Record<string, any> {
     destination_lat:     num(d.TO_LATITUDE),
     destination_lng:     num(d.TO_LONGITUDE),
 
-    // Facturation : Touring paie (billed_to par défaut du catalog).
-    ...(input.billedToId ? { billed_to_id: input.billedToId, billed_to_name: input.billedToName } : {}),
+    // Facturation : Touring paie (billed_to par défaut du catalog) — SAUF véhicule non couvert : un Siabis non
+    // couvert n'a pas de client facturé (Olivier 17/10/2026, fiche 10193462 arrivée avec Touring en client).
+    ...(input.billedToId && !comexVehiculeNonCouvert(d) ? { billed_to_id: input.billedToId, billed_to_name: input.billedToName } : {}),
 
     // Snapshot de l'assistance d'origine : quand la fiche est reclassée en Siabis
     // non couvert (police_snc), on mémorise DUR la source réelle (touring) + le
