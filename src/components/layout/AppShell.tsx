@@ -200,6 +200,14 @@ export default function AppShell({
             {collapsed ? <ChevronRight size={16} /> : <ChevronLeft size={16} />}
           </button>
         </div>
+        {/* Olivier 17/10/2026 : menu replié → grand bouton en haut qui déplie tout le menu (la petite flèche était
+            trop difficile à viser). */}
+        {collapsed && (
+          <button type="button" onClick={toggleCollapsed} aria-label="Déplier le menu" title="Déplier le menu"
+            className="mx-2 mt-2 flex min-h-[44px] items-center justify-center rounded-lg bg-surface-hover text-lg text-ink hover:bg-brand-soft hover:text-brand transition-colors">
+            ☰
+          </button>
+        )}
 
         {/* Menu navigable (flag nav_menu_v2) — remplace UNIQUEMENT la liste du menu.
             Sidebar repliée → on garde la version icônes ci-dessous, inchangée. */}

@@ -48,6 +48,17 @@ export default function AppNavMini({ items, userRole, userModules, badges = {}, 
     window.addEventListener('resize', close)
     return () => { nav?.removeEventListener('scroll', close); window.removeEventListener('resize', close) }
   }, [openKey])
+  // Clic en dehors de la barre et du volet → fermeture.
+  useEffect(() => {
+    if (!openKey) return
+    const onDown = (e: MouseEvent) => {
+      const t = e.target as Node
+      if (navRef.current?.contains(t) || (t as HTMLElement).closest?.('[role="menu"]')) return
+      setOpenKey(null)
+    }
+    document.addEventListener('mousedown', onDown)
+    return () => document.removeEventListener('mousedown', onDown)
+  }, [openKey])
   const openMod = openKey ? modules.find(m => m.key === openKey) : null
 
   return (
@@ -72,7 +83,9 @@ export default function AppNavMini({ items, userRole, userModules, badges = {}, 
         )
         return hasKids ? (
           <button key={m.key} type="button" className={cls} aria-haspopup="menu" aria-expanded={openKey === m.key}
-            onClick={e => openKey === m.key ? setOpenKey(null) : openFor(m, e.currentTarget)}
+            // Olivier 17/10/2026 : le survol ouvrait déjà le volet, puis le clic le refermait (bascule) → « ça ne
+            // réagit pas ». Le clic OUVRE toujours ; on ferme en cliquant ailleurs ou en quittant le volet.
+            onClick={e => openFor(m, e.currentTarget)}
             onMouseEnter={e => openFor(m, e.currentTarget)} onMouseLeave={scheduleClose}
             title={m.label}>
             {inner}
