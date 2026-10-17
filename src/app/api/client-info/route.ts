@@ -38,7 +38,9 @@ export async function POST(req: Request) {
   const ua = String(req.headers.get('user-agent') || b.ua || '').slice(0, 500)
   const platform = ['ios', 'android', 'web'].includes(b.platform) ? b.platform : (/iPhone|iPad/.test(ua) ? 'ios' : /Android/.test(ua) ? 'android' : 'web')
   const native = !!b.native
-  const appVersion = b.app_version ? String(b.app_version).slice(0, 30) : (ua.match(/VDNav\/([\d.]+)/)?.[1] || null)
+  // « VDNav/1 » dans le navigateur de l'app est un marqueur fixe, PAS la version (lu à tort comme
+  // « 1 » le 17/10 → popup affiché à des iPhones à jour). Seule la version donnée par l'app compte.
+  const appVersion = b.app_version ? String(b.app_version).slice(0, 30) : null
   const appBuild = b.app_build ? String(b.app_build).slice(0, 30) : null
   const deviceKey = `${platform}|${native ? 'app' : 'web'}|${String(b.model || '').slice(0, 40)}`
   const now = new Date().toISOString()
