@@ -236,6 +236,10 @@ export default async function AdminPage() {
             desc="Un bouton par vérification : mails bloqués, COMEX, VAB, Graph, Odoo, parc, notifications, push, Teams, étiquette de test. Superadmin uniquement." />
         )}
         {user.role === 'superadmin' && (
+          <Card href="/admin/bureau-du-jour" icon={Radio} label="Bureau du jour"
+            desc="La réunion bureau en un écran, en direct : agents, décisions, mails, Domaine, états de frais, rapprochements, paiements, facturation, fourrière. Mobi seul." />
+        )}
+        {user.role === 'superadmin' && (
           <Card href="/paiements" icon={Wallet} label="Paiements fournisseurs"
             desc="Trie les factures fournisseur à payer et ajoute-les à la liste d'attente ; Momo choisit chaque jour ouvrable à 14 h 30 ce qui part dans le lot. VD et Riga séparés." />
         )}

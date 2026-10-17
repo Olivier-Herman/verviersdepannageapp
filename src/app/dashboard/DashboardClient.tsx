@@ -50,6 +50,8 @@ interface ModuleItem {
 // Section 1 — actions principales (mises en avant, grandes cards)
 // `police_mission` est conditionnel sur hasTowsoft (1ère position si présent)
 const MAIN_ACTIONS: ActionItem[] = [
+  // Olivier 17/10/2026 : la réunion bureau en un écran — Mobi seul (superadmin), ni Momo ni Jona.
+  { id: 'bureau_du_jour',  label: 'Bureau du jour',         subtitle: 'Agents · mails · états de frais · paiements', href: '/admin/bureau-du-jour', icon: '🗂️', color: 'brand' },
   { id: 'police_mission',  label: 'Créer une mission',      subtitle: 'Police · Saisie · Mal Garée · SNC', href: '/mission/police', icon: '🚨', color: 'brand',   i18nKey: 'dashboard.tile_police_label',   i18nSubKey: 'dashboard.tile_police_subtitle' },
   { id: 'encaissement',    label: 'Encaissement Chauffeur', subtitle: 'Espèces · Carte · Virement',         href: '/encaissement',   icon: '💳', color: 'success', i18nKey: 'dashboard.tile_cash_label',     i18nSubKey: 'dashboard.tile_cash_subtitle' },
   { id: 'missions',        label: 'Dispatch Missions',      subtitle: 'Pipeline temps réel',                href: '/dispatch',       icon: '📡', color: 'info',    i18nKey: 'dashboard.tile_dispatch_label', i18nSubKey: 'dashboard.tile_dispatch_subtitle' },
@@ -120,6 +122,7 @@ export default function DashboardClient({
     if (id === 'matthieu')       return userRole !== 'garage' && userRole !== 'partner'   // tout le personnel
     if (id === 'police_mission') return hasTowsoft
     if (id === 'check_vehicle' || id === 'truck_check') return userRole !== 'garage' && userRole !== 'partner'   // check camion : tout le personnel (30/09/2026)
+    if (id === 'bureau_du_jour') return userRole === 'superadmin' || (Array.isArray(sessionUser.roles) && sessionUser.roles.includes('superadmin'))
     if (id === 'admin')          return isAdmin && userModules.includes('admin')
     if (id === 'gardiennage_arrivee') return isAdmin || userModules.includes('fourriere')
     if (id === 'encaissement')   return userModules.includes('encaissement')
