@@ -8,6 +8,7 @@
 // avec mapping dupliqué qui drifte (bug du 2026-05-18 où assisted_name +
 // vehicle_fuel manquaient sur le bouton manuel).
 
+import { isHighwayAddress } from '@/lib/highways/parse'
 import { createAdminClient } from '@/lib/supabase'
 import { loginVab, listVabMissions, fetchVabMissionDetail } from './scraper'
 import { sendPushToRole, sendPushToUser } from '@/lib/push'
@@ -203,7 +204,10 @@ export async function runVabImport(opts: { mode: VabImportMode }): Promise<VabIm
       // (autoroute). Couverte → Siabis couvert d'office : 15 fiches requalifiées à la
       // main depuis août. Non couverte → reste Siabis non couvert (ci-dessus). Le
       // dossier VAB reste lié (vab_assignment_ids) : pointages et clôture continuent.
-      const siabisVab = !ncVab && /^\s*siabis|\bsiabis/i.test(String(detail.codesDePanne || ''))
+      // ⚠️ Notre nom chez VAB est « VAB Siabis » (Olivier 17/10/2026) : le mot seul ne prouve rien.
+      // Siabis = un appel SUR AUTOROUTE ; ailleurs, la mission reste VAB.
+      const fromText = [detail.fromStreet, detail.fromZip, detail.fromCity, detail.fromLocationFreeText].filter(Boolean).join(', ')
+      const siabisVab = !ncVab && /^\s*siabis|\bsiabis/i.test(String(detail.codesDePanne || '')) && isHighwayAddress(fromText)
 
       // ── Anti-doublon / enrichissement par DOSSIER (Olivier 2026-07-01) ──────
       // Le dossier VAB = la valeur AVANT le "/" (dossier stable). La valeur APRÈS
