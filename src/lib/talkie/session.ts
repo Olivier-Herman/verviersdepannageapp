@@ -43,6 +43,10 @@ function secretName(key: string, nightKey: string | null): string {
 
 export async function talkieAccess(user: { id?: string; role?: string; roles?: string[] } | null | undefined, now = new Date()): Promise<TalkieAccess> {
   if (!user?.id) return { me: null, nightKey: null, channels: [] }
+  // Talkie retiré de l'app (Olivier 17/10/2026, « si besoin on la remettra ») : interrupteur
+  // « talkie_actif » des réglages métier. Sans canal, plus de bouton, de page ni de message.
+  try { const { getBusinessText } = await import('@/lib/settings/business'); if (String(await getBusinessText('talkie_actif')).trim().toLowerCase() !== 'oui') return { me: null, nightKey: null, channels: [] } }
+  catch { return { me: null, nightKey: null, channels: [] } }
   const sb = createAdminClient()
   const [night, itEmails, permEmails] = await Promise.all([gardeNight(sb, now), getBusinessList('talkie_it').catch(() => [] as string[]), getBusinessList('talkie_permanent').catch(() => [] as string[])])
   const [{ data: meRow }, { data: it }, { data: perm }] = await Promise.all([
