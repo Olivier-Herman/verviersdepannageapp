@@ -165,7 +165,7 @@ export async function POST(req: Request) {
 
   const { data: mission, error: fetchError } = await supabase
     .from('incoming_missions')
-    .select('id, status, assigned_to, external_id, vehicle_plate, vehicle_vin, vehicle_mileage, vehicle_brand, vehicle_model, amount_to_collect, source, source_format, saisie_motif_code, extra_addresses, driver_photos, odoo_task_id, odoo_vehicle_id, mission_type, photo_categories_covered, kaze_job_id, axa_mission_order_id, dossier_number, client_signature, snc_scenario, snc_requires_balisage, incident_lat, incident_lng, destination_address, destination_lat, destination_lng, billed_to_id, billed_to_name, redelivery_address, truck_id, intervention_date, received_at, completed_at, invoice_number, invoice_odoo_id, odoo_quote_id')
+    .select('id, status, assigned_to, external_id, vehicle_plate, vehicle_vin, vehicle_mileage, vehicle_brand, vehicle_model, amount_to_collect, source, source_format, saisie_motif_code, extra_addresses, driver_photos, odoo_task_id, odoo_vehicle_id, mission_type, photo_categories_covered, kaze_job_id, axa_mission_order_id, dossier_number, client_signature, snc_scenario, snc_requires_balisage, snc_remorque, incident_lat, incident_lng, destination_address, destination_lat, destination_lng, billed_to_id, billed_to_name, redelivery_address, truck_id, intervention_date, received_at, completed_at, invoice_number, invoice_odoo_id, odoo_quote_id')
     .eq('id', mission_id).single()
 
   if (fetchError || !mission) return NextResponse.json({ error: 'Mission introuvable' }, { status: 404 })
@@ -327,6 +327,7 @@ export async function POST(req: Request) {
         destination_lat:       pick('destination_lat'),
         destination_lng:       pick('destination_lng'),
         snc_requires_balisage: (mission as any).snc_requires_balisage,
+        snc_remorque:          (mission as any).snc_remorque,
         intervention_date:     (mission as any).intervention_date,
         received_at:           (mission as any).received_at,
         extra_addresses:       pick('extra_addresses'),

@@ -31,7 +31,7 @@ async function handleGET(req: Request, { params }: { params: { id: string } }) {
       levee_saisie_date, temp_returned_at, domaine_remise_date,
       parent_mission_id, amount_to_collect, amount_guaranteed,
       incident_lat, incident_lng, destination_lat, destination_lng,
-      snc_scenario, snc_requires_balisage,
+      snc_scenario, snc_requires_balisage, snc_remorque,
       billed_to_id, billed_to_name, special_tarif_htva,
       extra_addresses,
       external_id, dossier_number,
@@ -68,6 +68,7 @@ async function handleGET(req: Request, { params }: { params: { id: string } }) {
     mission_type:            ov('mission_type')           ?? missionDb.mission_type,
     snc_scenario:            ov('snc_scenario')           ?? (missionDb as any).snc_scenario,
     snc_requires_balisage:   ovBool('snc_requires_balisage') ?? (missionDb as any).snc_requires_balisage,
+    snc_remorque:            ovBool('snc_remorque')       ?? (missionDb as any).snc_remorque,
     incident_lat:            ovNum('incident_lat')        ?? missionDb.incident_lat,
     incident_lng:            ovNum('incident_lng')        ?? missionDb.incident_lng,
     destination_lat:         ovNum('destination_lat')     ?? missionDb.destination_lat,
@@ -198,7 +199,7 @@ async function handleGET(req: Request, { params }: { params: { id: string } }) {
       const variant = mission.source === 'sia_couvert' ? 'sc' : 'snc'
       const sncLines = buildSncQuoteLines({
         metrics,
-        requiresBalisage: Boolean((mission as any).snc_requires_balisage),
+        requiresBalisage: Boolean((mission as any).snc_requires_balisage), remorque: Boolean((mission as any).snc_remorque),
         missionRef,
         variant,
       })

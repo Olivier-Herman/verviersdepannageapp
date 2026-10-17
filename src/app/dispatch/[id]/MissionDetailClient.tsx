@@ -159,6 +159,7 @@ interface Mission {
   duration_min?:         number | null
   snc_scenario?:         'dsp' | 'rem_client' | 'rem_depot' | 'rem_direct' | string | null
   snc_requires_balisage?: boolean | null
+  snc_remorque?:          boolean | null
   remarks_billing?:      string | null
   special_tarif_htva?:   number | null
   storage_waived?:       boolean | null
@@ -958,6 +959,7 @@ export default function MissionDetailClient({
     // Olivier 2026-06-02 : modifiable quand source = police_snc/sia_couvert
     snc_scenario:         initialMission.snc_scenario               || '',
     snc_requires_balisage: Boolean(initialMission.snc_requires_balisage),
+    snc_remorque:          Boolean(initialMission.snc_remorque),
     // Olivier 2026-06-02 PM : tarif special HTVA (ecrase calcul automatique)
     special_tarif_htva:   initialMission.special_tarif_htva != null ? String(initialMission.special_tarif_htva) : '',
     // Transport / rapatriement (Olivier 21/09/2026) : gabarit + prix/km HTVA (« autre »).
@@ -2890,7 +2892,7 @@ export default function MissionDetailClient({
         {/* Bandeau infos additionnelles (Olivier 2026-05-26) : agrege les
             infos utiles non editables ailleurs sur la fiche. */}
         {(initialMission.vehicle_class === 'moto' || initialMission.distance_km
-          || initialMission.snc_scenario || initialMission.snc_requires_balisage || isTransport(form.mission_type)) && (
+          || initialMission.snc_scenario || initialMission.snc_requires_balisage || initialMission.snc_remorque || isTransport(form.mission_type)) && (
           <div className="px-4 lg:px-8 pt-4">
             <div className="bg-surface border rounded-xl p-4 space-y-2">
               <p className="text-ink-muted text-xs uppercase tracking-widest font-semibold">Infos mission</p>
@@ -2929,6 +2931,11 @@ export default function MissionDetailClient({
                 {initialMission.snc_requires_balisage && (
                   <div className="flex items-center gap-2 text-amber-700">
                     <span>🚧</span><span className="font-semibold">Balisage requis (autoroute / voie rapide)</span>
+                  </div>
+                )}
+                {initialMission.snc_remorque && (
+                  <div className="flex items-center gap-2 text-amber-700">
+                    <span>🚛</span><span className="font-semibold">Véhicule avec remorque (+50 % prise en charge et km)</span>
                   </div>
                 )}
               </div>
@@ -3334,6 +3341,21 @@ export default function MissionDetailClient({
                             <div className="text-ink text-sm font-medium">Intervention avec balisage (véhicule de sécurité)</div>
                             <div className="text-ink-muted text-xs mt-0.5">
                               Coche si un véhicule de sécurité doit être placé (autoroute / voie rapide). Génère un supplément SIABAL.
+                            </div>
+                          </div>
+                        </label>
+                        {/* Remorque (Olivier 17/10/2026) : +50 % sur prise en charge + km dépanneuse */}
+                        <label className="flex items-start gap-3 cursor-pointer p-3 bg-surface border rounded-xl hover:border-blue-400">
+                          <input
+                            type="checkbox"
+                            checked={Boolean(form.snc_remorque)}
+                            onChange={e => setForm(prev => ({ ...prev, snc_remorque: e.target.checked }))}
+                            className="mt-1 w-5 h-5"
+                          />
+                          <div className="flex-1">
+                            <div className="text-ink text-sm font-medium">Véhicule avec remorque</div>
+                            <div className="text-ink-muted text-xs mt-0.5">
+                              Ajoute une majoration de 50 % sur la prise en charge et les kilomètres de la dépanneuse.
                             </div>
                           </div>
                         </label>
@@ -4575,6 +4597,7 @@ export default function MissionDetailClient({
               mission_type:           form.mission_type,
               snc_scenario:           form.snc_scenario || null,
               snc_requires_balisage:  Boolean(form.snc_requires_balisage),
+              snc_remorque:           Boolean(form.snc_remorque),
               incident_lat:           form.incident_lat   ? Number(form.incident_lat)   : null,
               incident_lng:           form.incident_lng   ? Number(form.incident_lng)   : null,
               destination_lat:        form.destination_lat ? Number(form.destination_lat) : null,

@@ -253,6 +253,7 @@ export const sq: Dictionary = {
     siabis_choose:       'Zgjidh',
     siabis_modify:       'Ndrysho',
     siabis_balisage_yes: '🚧 Me sinjalizim',
+    siabis_remorque_yes: '🚛 Me rimorkio',
     scen_dsp:            'DSP — riparim në vend',
     scen_rem_client:     'Tërheqje me pagesë të menjëhershme',
     scen_rem_direct:     'Tërheqje e drejtpërdrejtë',

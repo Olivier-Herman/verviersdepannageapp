@@ -77,6 +77,7 @@ interface Mission {
   duration_min?: number | null
   snc_scenario?: 'dsp' | 'rem_client' | 'rem_depot' | 'rem_direct' | string | null
   snc_requires_balisage?: boolean | null
+  snc_remorque?: boolean | null
   police_blocked?: boolean | null
   remarks_billing?: string | null
   // Transport / rapatriement (Olivier 21/09/2026) : gabarit choisi par le bureau.
@@ -1783,6 +1784,7 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
         scenario: M.snc_scenario,
         variant: M.source === 'sia_couvert' ? 'sc' : 'snc',
         requires_balisage: Boolean(M.snc_requires_balisage),
+              remorque:          Boolean(M.snc_remorque),
         incident_lat: M.incident_lat, incident_lng: M.incident_lng,
         destination_lat: M.destination_lat, destination_lng: M.destination_lng,
         // ⚠️ La DATE D'INTERVENTION fait partie du calcul : c'est elle qui porte
@@ -1854,6 +1856,7 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
               scenario,
               variant,
               requires_balisage: Boolean(M.snc_requires_balisage),
+              remorque:          Boolean(M.snc_remorque),
               incident_lat:      M.incident_lat,
               incident_lng:      M.incident_lng,
               destination_lat:   dLat,
@@ -1897,6 +1900,21 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
     }
   }
 
+  // Remorque (Olivier 17/10/2026) : +50 % sur prise en charge + km dépanneuse. Le serveur recalcule le montant
+  // à encaisser au PATCH (champ tarifaire) ; on reprend la fiche renvoyée.
+  const setSncRemorque = async (val: boolean) => {
+    if (Boolean(M.snc_remorque) === val) return
+    try {
+      const r = await fetch(`/api/missions/${M.id}`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body:   JSON.stringify({ snc_remorque: val }),
+      })
+      const j = await r.json().catch(() => null)
+      if (!r.ok) throw new Error(j?.error || 'Erreur')
+      setM(prev => ({ ...prev, snc_remorque: val, ...(j?.mission && 'amount_to_collect' in j.mission ? { amount_to_collect: j.mission.amount_to_collect } : {}) }))
+    } catch (e: any) { setErr(e.message || 'Erreur') }
+  }
+
   // Toggle balisage SNC : re-PATCH + recalcule le tarif si scenario deja choisi
   const toggleSncBalisage = async () => {
     const next = !M.snc_requires_balisage
@@ -1916,6 +1934,7 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
           body:    JSON.stringify({
             scenario: M.snc_scenario, variant,
             requires_balisage: next,
+            remorque: Boolean(M.snc_remorque),
             incident_lat:    M.incident_lat,    incident_lng: M.incident_lng,
             destination_lat: M.destination_lat, destination_lng: M.destination_lng,
             intervention_at: M.intervention_date || (M as any).received_at || new Date().toISOString(),
@@ -2910,6 +2929,14 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
                 className={`py-3 rounded-xl border text-sm font-semibold disabled:opacity-50 ${M.snc_requires_balisage ? 'bg-amber-100 border-amber-500 text-amber-800' : 'bg-surface-2 border text-ink-secondary'}`}>Oui</button>
               <button type="button" disabled={loading} onClick={() => setSncBalisage(false)}
                 className={`py-3 rounded-xl border text-sm font-semibold disabled:opacity-50 ${!M.snc_requires_balisage ? 'bg-blue-100 border-blue-600 text-ink' : 'bg-surface-2 border text-ink-secondary'}`}>Non</button>
+            </div>
+            {/* Remorque — même cadre que le balisage : les majorations ensemble (Olivier 17/10/2026). */}
+            <p className="text-ink-secondary text-xs font-bold uppercase tracking-wide pt-1">Remorque&nbsp;? <span className="text-ink-muted font-normal normal-case">le véhicule tire une remorque — +50 % sur la prise en charge et les km</span></p>
+            <div className="grid grid-cols-2 gap-2">
+              <button type="button" disabled={loading} onClick={() => setSncRemorque(true)}
+                className={`py-3 rounded-xl border text-sm font-semibold disabled:opacity-50 ${M.snc_remorque ? 'bg-amber-100 border-amber-500 text-amber-800' : 'bg-surface-2 border text-ink-secondary'}`}>Oui</button>
+              <button type="button" disabled={loading} onClick={() => setSncRemorque(false)}
+                className={`py-3 rounded-xl border text-sm font-semibold disabled:opacity-50 ${!M.snc_remorque ? 'bg-blue-100 border-blue-600 text-ink' : 'bg-surface-2 border text-ink-secondary'}`}>Non</button>
             </div>
           </div>
 
@@ -4381,6 +4408,7 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
               <p className="text-sm font-semibold text-gray-900 mt-1">
                 {M.snc_scenario ? t(`cloture.scen_${M.snc_scenario}`) : t('cloture.siabis_scen_todo')}
                 {M.snc_requires_balisage ? ` · ${t('cloture.siabis_balisage_yes')}` : ''}
+                {M.snc_remorque ? ` · ${t('cloture.siabis_remorque_yes')}` : ''}
               </p>
               {onsiteV2 && sncInfoMsg && <p className="mt-2 rounded-lg bg-amber-100 border border-amber-400 px-2 py-1 text-xs font-semibold text-amber-900">⚠ {sncInfoMsg}</p>}
             </div>
@@ -4722,6 +4750,22 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
                 <div className="text-ink text-sm font-medium">Intervention avec balisage</div>
                 <div className="text-ink-muted text-xs mt-0.5">
                   Coche si un véhicule de sécurité a dû être placé (autoroute / voie rapide). Génère un supplément SIABAL.
+                </div>
+              </div>
+            </label>
+
+            {/* Remorque (Olivier 17/10/2026) */}
+            <label className="flex items-start gap-3 cursor-pointer p-3 bg-surface border border-blue-300 rounded-xl">
+              <input
+                type="checkbox"
+                checked={Boolean(M.snc_remorque)}
+                onChange={e => setSncRemorque(e.target.checked)}
+                className="mt-1 w-5 h-5"
+              />
+              <div className="flex-1">
+                <div className="text-ink text-sm font-medium">Véhicule avec remorque</div>
+                <div className="text-ink-muted text-xs mt-0.5">
+                  Coche si le véhicule tire une remorque. Ajoute 50 % sur la prise en charge et les km de la dépanneuse.
                 </div>
               </div>
             </label>

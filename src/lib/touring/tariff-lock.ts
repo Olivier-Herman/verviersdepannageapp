@@ -17,7 +17,7 @@ export const TARIFF_FIELDS: ReadonlySet<string> = new Set([
   'depot_depart_id', 'depot_depart_locked',
   'special_tarif_htva', 'amount_guaranteed', 'amount_to_collect',
   'intervention_date', 'parked_at', 'delivering_at',
-  'snc_scenario', 'snc_requires_balisage',
+  'snc_scenario', 'snc_requires_balisage', 'snc_remorque',
   // Transport / rapatriement : le gabarit et le prix/km manuel font le prix. Olivier 21/09/2026.
   'transport_vehicle_category', 'transport_price_per_km_htva',
 ])

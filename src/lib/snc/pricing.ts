@@ -494,7 +494,7 @@ export async function computeSncMetrics(input: SncCalcInput): Promise<SncCalcOut
 
 /** Construit les lignes de devis SNC selon metrics + balisage. */
 export interface SncQuoteLine {
-  kind:       string  // SIAREM | SIAKIL | SIABAL | PECSIAMAJ | SIAKILMAJ | SIABALMAJ
+  kind:       string  // SIAREM | SIAKIL | SIABAL | PECSIAMAJ | SIAKILMAJ | SIABALMAJ | SERV-MAJ (remorque)
   name:       string
   qty:        number
   price_unit: number
@@ -506,6 +506,8 @@ export function buildSncQuoteLines(opts: {
   missionRef:        string
   /** 'snc' (defaut) = avec km. 'sc' = Siabis Couvert, forfait sans km. */
   variant?:          'snc' | 'sc'
+  /** Véhicule avec remorque : +50 % sur la prise en charge et les km dépanneuse (Olivier 17/10/2026). */
+  remorque?:         boolean
 }): SncQuoteLine[] {
   const lines: SncQuoteLine[] = []
   const { metrics, requiresBalisage, missionRef } = opts
@@ -549,6 +551,13 @@ export function buildSncQuoteLines(opts: {
       qty:        surplus,
       price_unit: m ? 1.6529 : 1.0744,
     })
+  }
+
+  // Remorque (Olivier 17/10/2026, fiche 10193462) : +50 % sur la prise en charge + les km dépanneuse, au tarif
+  // déjà appliqué (le majoré week-end/nuit est déjà dans ces lignes). Ni le balisage ni la relivraison.
+  if (opts.remorque) {
+    const base = lines.reduce((t, l) => t + l.qty * l.price_unit, 0)
+    if (base > 0) lines.push({ kind: 'SERV-MAJ', name: 'Majoration remorque 50 % (prise en charge + km dépanneuse)', qty: 1, price_unit: Math.round(base * 0.5 * 100) / 100 })
   }
 
   // SC + rem_direct (Olivier 2026-06-02 PM, formule corrigee) : km livraison

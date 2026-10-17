@@ -94,7 +94,7 @@ async function handlePOST(req: Request, { params }: { params: { id: string } }) 
       amount_to_collect, amount_to_collect_manual, special_tarif_htva, amount_guaranteed,
       ff_base_htva, ff_gardiennage_days, ff_gardiennage_pu,
       incident_lat, incident_lng, destination_lat, destination_lng,
-      snc_scenario, snc_requires_balisage, extra_addresses, vab_vr, vr_forfait,
+      snc_scenario, snc_requires_balisage, snc_remorque, extra_addresses, vab_vr, vr_forfait,
       odoo_quote_id, odoo_quote_url, invoice_odoo_id, needs_siabis_decision
     `)
     .eq('id', params.id)
@@ -163,7 +163,7 @@ async function handlePOST(req: Request, { params }: { params: { id: string } }) 
     if (metrics) {
       const sncLines = buildSncQuoteLines({
         metrics,
-        requiresBalisage:  Boolean((mission as any).snc_requires_balisage),
+        requiresBalisage:  Boolean((mission as any).snc_requires_balisage), remorque: Boolean((mission as any).snc_remorque),
         missionRef,
         variant,
       })

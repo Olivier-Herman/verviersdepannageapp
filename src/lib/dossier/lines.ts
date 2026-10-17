@@ -32,7 +32,7 @@ export async function sncLines(mission: any): Promise<QuoteLine[] | null> {
   } as any)
   if (!metrics) return null
   const missionRef = mission.external_id || mission.dossier_number || `M-${String(mission.id).slice(0, 8)}`
-  return buildSncQuoteLines({ metrics, requiresBalisage: Boolean(mission.snc_requires_balisage), missionRef, variant })
+  return buildSncQuoteLines({ metrics, requiresBalisage: Boolean(mission.snc_requires_balisage), remorque: Boolean((mission as any).snc_remorque), missionRef, variant })
     .map(l => ({ kind: l.kind as any, name: l.name, qty: l.qty, price_unit: l.price_unit }))
 }
 

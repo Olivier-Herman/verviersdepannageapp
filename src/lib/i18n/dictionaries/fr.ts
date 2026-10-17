@@ -257,6 +257,7 @@ export const fr = {
     siabis_choose:       'Choisir',
     siabis_modify:       'Modifier',
     siabis_balisage_yes: '🚧 Avec balisage',
+    siabis_remorque_yes: '🚛 Avec remorque',
     scen_dsp:            'DSP — dépannage sur place',
     scen_rem_client:     'REM avec paiement immédiat',
     scen_rem_direct:     'REM directe',

@@ -40,6 +40,7 @@ interface Props {
     mission_type?:          string
     snc_scenario?:          string | null
     snc_requires_balisage?: boolean
+    snc_remorque?:          boolean
     incident_lat?:          number | null
     incident_lng?:          number | null
     destination_lat?:       number | null

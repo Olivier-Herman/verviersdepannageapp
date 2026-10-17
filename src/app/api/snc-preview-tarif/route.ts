@@ -35,6 +35,7 @@ export async function POST(req: Request) {
   }
   const variant = body.variant === 'sc' ? 'sc' : 'snc'
   const requiresBalisage = Boolean(body.requires_balisage)
+  const remorque = Boolean(body.remorque)
   const interventionLat = body.incident_lat != null ? Number(body.incident_lat) : null
   const interventionLng = body.incident_lng != null ? Number(body.incident_lng) : null
   const destinationLat  = body.destination_lat != null ? Number(body.destination_lat) : null
@@ -85,7 +86,7 @@ export async function POST(req: Request) {
     }, { status: 400 })
   }
 
-  const lines = buildSncQuoteLines({ metrics, requiresBalisage, missionRef: 'PREVIEW', variant })
+  const lines = buildSncQuoteLines({ metrics, requiresBalisage, remorque, missionRef: 'PREVIEW', variant })
   const totalHtva = lines.reduce((s, l) => s + l.qty * l.price_unit, 0)
   const totalTvac = Math.round(totalHtva * (1 + TVA_RATE) * 100) / 100
 
