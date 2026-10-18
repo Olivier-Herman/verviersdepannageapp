@@ -129,7 +129,7 @@ export default function ReleveClient() {
                 <input type="radio" className="mt-1 w-5 h-5" checked={choix === m.id} onChange={() => setChoix(m.id)} />
                 <div className="text-sm text-ink">
                   <b>#{m.mission_number}</b> · {m.vehicle_plate || '—'} · {[m.vehicle_brand, m.vehicle_model].filter(Boolean).join(' ')}<br />
-                  {m.source} · <b>{m.status}</b>{m.parc_zone_key ? ` · zone ${m.parc_zone_key}` : ''} · {String(m.intervention_date || '').slice(0, 10)}
+                  {m.source} · <b className={m.status === 'cancelled' ? 'text-red-700' : ''}>{m.status === 'cancelled' ? 'ANNULÉE' : m.status}</b>{m.parc_zone_key ? ` · zone ${m.parc_zone_key}` : ''} · {String(m.intervention_date || '').slice(0, 10)}
                   {m.vehicle_vin ? <><br /><span className="text-ink-muted">VIN {m.vehicle_vin}</span></> : null}
                   {m.officer_name || m.dossier_number ? <><br /><span className="text-ink-muted">{[m.officer_name, m.dossier_number].filter(Boolean).join(' · ')}</span></> : null}
                 </div>

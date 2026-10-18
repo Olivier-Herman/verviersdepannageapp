@@ -14,10 +14,15 @@ export const RELEVE_LIEUX: Record<string, { label: string; zone: string | null }
 }
 
 export const norm = (s: any) => String(s || '').toUpperCase().replace(/[^A-Z0-9]/g, '')
+/** 0 et O se confondent à la lecture (Olivier 18/10/2026). Châssis : O, I, Q n'existent pas (norme VIN) → 0, 1, 0.
+ *  Plaque : on essaie les deux lectures ; en base, « _ » (un caractère quelconque) remplace 0 / O. */
+const vinPropre = (v: string) => v.replace(/O/g, '0').replace(/Q/g, '0').replace(/I/g, '1')
+const lectures = (p: string) => [...new Set([p, p.replace(/O/g, '0'), p.replace(/0/g, 'O')])]
+const joker = (p: string) => p.replace(/[0O]/g, '_')
 const plateDash = (p: string) => /^\d[A-Z]{3}\d{3}$/.test(p) ? `${p[0]}-${p.slice(1, 4)}-${p.slice(4)}` : p
 
 export async function rechercherVehicule(s: ReleveSaisie) {
-  const plate = norm(s.plate), vin = norm(s.vin)
+  const plate = norm(s.plate), vin = vinPropre(norm(s.vin))
   // Châssis complet : on cherche sa fin (6) ; châssis partiel (ce qui est lisible, même au milieu) : tel quel dès 4 caractères.
   const vinTail = vin.length >= 17 ? vin.slice(-6) : vin.length >= 4 ? vin : ''
   // Ni plaque ni châssis lisibles : recherche par marque / modèle (+ date), véhicules encore au parc (Olivier 18/10/2026).
@@ -38,10 +43,10 @@ export async function rechercherVehicule(s: ReleveSaisie) {
 async function chercherVdSoft(plate: string, vinTail: string) {
   if (plate.length < 3 && !vinTail) return []
   const sb = createAdminClient()
-  const or = [plate.length >= 3 ? `vehicle_plate.ilike.%${plate}%` : null, plate.length >= 7 ? `vehicle_plate.ilike.%${plateDash(plate)}%` : null, vinTail ? `vehicle_vin.ilike.%${vinTail}%` : null, vinTail ? `vehicle_plate.ilike.%${vinTail}%` : null].filter(Boolean).join(',')
+  const or = [plate.length >= 3 ? `vehicle_plate.ilike.%${joker(plate)}%` : null, plate.length >= 7 ? `vehicle_plate.ilike.%${joker(plateDash(plate))}%` : null, vinTail ? `vehicle_vin.ilike.%${joker(vinTail)}%` : null, vinTail ? `vehicle_plate.ilike.%${joker(vinTail)}%` : null].filter(Boolean).join(',')
   const { data } = await sb.from('incoming_missions')
     .select('id, mission_number, source, status, vehicle_plate, vehicle_vin, vehicle_brand, vehicle_model, parc_zone_key, intervention_date, parked_at, dossier_number, officer_name, client_name, dossier_leg')
-    .or(or).neq('status', 'cancelled').order('intervention_date', { ascending: false }).limit(15)
+    .or(or).order('intervention_date', { ascending: false }).limit(15)   // annulées comprises : un véhicule présent avec une fiche annulée est une anomalie à voir
   return (data || []).filter((m: any) => !m.dossier_leg && m.source !== 'gardiennage')
 }
 
@@ -49,7 +54,7 @@ async function chercherTowsoft(plate: string, vin: string) {
   if (!process.env.TOWSOFT_PASS) return []
   const { searchTowsoftGlobal } = await import('@/lib/towsoft-client')
   const hits: any[] = []
-  if (plate.length >= 4) hits.push(...await searchTowsoftGlobal('immatriculation' as any, plate).catch(() => []))
+  if (plate.length >= 4) for (const p of lectures(plate)) hits.push(...await searchTowsoftGlobal('immatriculation' as any, p).catch(() => []))
   if (vin.length >= 4) {
     hits.push(...await searchTowsoftGlobal('niv' as any, vin).catch(() => []))
     if (vin.length >= 17) hits.push(...await searchTowsoftGlobal('niv' as any, vin.slice(-6)).catch(() => []))
@@ -98,7 +103,7 @@ async function chercherTowsoftModele(s: ReleveSaisie) {
 }
 
 async function chercherMails(plate: string, vin: string) {
-  const termes = [plate.length >= 5 ? plate : null, plate.length >= 7 ? plateDash(plate) : null, vin.length >= 8 ? vin : null].filter(Boolean) as string[]
+  const termes = [...new Set([...(plate.length >= 5 ? lectures(plate) : []), ...(plate.length >= 7 ? lectures(plate).map(plateDash) : []), vin.length >= 8 ? vin : null].filter(Boolean) as string[])]
   if (!termes.length) return []
   const { getAppOnlyToken } = await import('@/lib/graph-mail-search')
   const tok = await getAppOnlyToken()
@@ -116,7 +121,9 @@ async function chercherMails(plate: string, vin: string) {
 async function chercherErp(plate: string) {
   if (plate.length < 5) return []
   const { odooRpc } = await import('@/lib/odoo')
-  const veh: any[] = await odooRpc('fleet.vehicle', 'search_read', [['|', ['license_plate', 'ilike', plate], ['license_plate', 'ilike', plateDash(plate)]]], { fields: ['id', 'license_plate', 'model_id', 'vin_sn', 'state_id'], context: { active_test: false }, limit: 5 })
+  const variantes = [...new Set(lectures(plate).flatMap(p => [p, plateDash(p)]))]
+  const dom: any[] = [...Array(variantes.length - 1).fill('|'), ...variantes.map(v => ['license_plate', 'ilike', v])]
+  const veh: any[] = await odooRpc('fleet.vehicle', 'search_read', [dom], { fields: ['id', 'license_plate', 'model_id', 'vin_sn', 'state_id'], context: { active_test: false }, limit: 5 })
   if (!veh.length) return []
   const so: any[] = await odooRpc('sale.order', 'search_read', [[['x_studio_many2one_field_78n_1j6fmmeom', 'in', veh.map(v => v.id)]]], { fields: ['name', 'partner_id', 'date_order', 'invoice_ids', 'client_order_ref'], limit: 10 })
   const invIds = so.flatMap(s => s.invoice_ids || [])
