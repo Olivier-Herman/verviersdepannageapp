@@ -410,7 +410,9 @@ export async function POST(req: Request) {
     if (isJudicialSaisie(mission as any) && (zoneChoice === 'J' || zoneChoice === 'LABO')) parkZone = zoneChoice
     // Écran « Où déposes-tu le véhicule ? » (Olivier 18/10/2026) : Verviers, Labo et cyclos (zone S) imposent leur
     // zone ; « Dépôt Pepinster » garde la zone du catalogue (J pour une saisie judiciaire).
-    const depotChoice = String((park_data as any)?.depot_choice || '').toUpperCase()
+    const depotChoice = ['police_accident', 'accident'].includes(String(mission.source)) ? '' : String((park_data as any)?.depot_choice || '').toUpperCase()
+    // Accident : toujours en zone Transit (Olivier 18/10/2026).
+    if (['police_accident', 'accident'].includes(String(mission.source))) parkZone = 'Transit'
     if (depotChoice === 'VERVIERS') parkZone = 'Verviers'
     else if (depotChoice === 'LABO') parkZone = 'LABO'
     else if (depotChoice === 'S') parkZone = 'S'

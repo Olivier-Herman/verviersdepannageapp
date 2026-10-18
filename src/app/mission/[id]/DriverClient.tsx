@@ -2416,7 +2416,10 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
     // en dépôt, sauf REM + relivraison (zone Relivraison comme d'habitude). Olivier 18/10/2026 (remplace le choix
     // J / LABO des saisies judiciaires du 15/09).
     const avecRelivraison = !!(parkRedelivery ?? M.destination_address)
-    if (!zoneChoice && !avecRelivraison) { setJudicialPrompt(vr); return }
+    // Accident : toujours en zone Transit, pas de choix (Olivier 18/10/2026).
+    const accident = M.source === 'police_accident' || M.source === 'accident'
+    if (!zoneChoice && !avecRelivraison && !accident) { setJudicialPrompt(vr); return }
+    if (accident && !zoneChoice) zoneChoice = 'Transit'
     const depotChoice = zoneChoice && ['PEP', 'VERVIERS', 'LABO', 'S'].includes(zoneChoice) ? zoneChoice : undefined
     if (depotChoice === 'VERVIERS') vr = vrLocs.find(v => /verviers/i.test(v.name)) || vr
     else if (depotChoice) vr = vrLocs.find(v => /pepinster/i.test(v.name)) || vr
