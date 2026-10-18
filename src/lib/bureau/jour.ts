@@ -106,6 +106,17 @@ async function etatsFrais(sb: any): Promise<Bloc> {
   if (sansAgent.length) lignes.unshift({ texte: `${sansAgent.length} saisie(s) sans agent relié : aucune relance ne part`, detail: sansAgent.map((m: any) => `${m.vehicle_plate || '?'} (${m.officer_name || 'agent inconnu'})`).join(', ').slice(0, 300), niveau: 'urgent', lien: '/fourriere/relance-requisitoire' })
   if (sansReq) lignes.unshift({ texte: `${sansReq} dossier(s) Parquet sans réquisitoire`, detail: 'Aucun état de frais ne peut partir sans lui.', niveau: 'urgent', lien: '/fourriere/relance-requisitoire' })
   const acc = (efs || []).filter((e: any) => e.status === 'accepte').length
+  // Compte rendu du robot des saisies (Olivier 18/10/2026 : la notification sonnait le week-end → elle vit ici).
+  const { data: sc } = await sb.from('app_settings').select('value').eq('key', 'saisie_cron_last').maybeSingle()
+  try {
+    const r = JSON.parse(String(sc?.value || '{}'))
+    if (r.at) {
+      const quand = new Date(r.at).toLocaleString('fr-BE', { timeZone: 'Europe/Brussels', dateStyle: 'short', timeStyle: 'short' })
+      const acts = Array.isArray(r.actions) ? r.actions.map((x: any) => `${x.plate} (${x.kind})`).join(', ') : ''
+      const errs = Array.isArray(r.errors) ? r.errors.length : 0
+      lignes.push({ texte: `Robot des saisies — ${quand} : ${r.sent ?? 0} envoyé(s), ${r.relances ?? 0} relance(s)${r.forclusionAlerts ? `, ${r.forclusionAlerts} alerte(s) forclusion` : ''}${errs ? `, ${errs} erreur(s)` : ''}`, detail: [acts, errs ? `Erreurs : ${r.errors.join(' · ')}` : ''].filter(Boolean).join(' — ').slice(0, 400), niveau: errs || r.forclusionAlerts ? 'attention' : 'info', lien: '/fourriere/saisies' })
+    }
+  } catch { /* trace illisible : on n'affiche rien */ }
   return { cle: 'ef', titre: 'États de frais', resume: `${acc} accepté(s) à déposer · ${sansReq} sans réquisitoire`, niveau: sansReq ? 'urgent' : acc ? 'attention' : 'ok', lignes, lien: '/fourriere/saisies' }
 }
 

@@ -416,6 +416,38 @@ export async function renderEtatFraisFromRow(sb: any, dossierId: string, efRowId
 // renderEtatFraisFromRow) + réquisitoire, au même destinataire. Cas : le
 // Parquet a retourné l'état parce que marque / châssis / PVI ne collaient pas
 // avec le réquisitoire (90698, 03/09/2026). L'état repasse « envoyé ».
+/** Facture client PAYÉE pour ce véhicule depuis sa mise en parc (fiche VD Soft OU devis de l'ERP lié au véhicule —
+ *  ce qui couvre les factures de l'époque Towsoft). Le client a payé ⇒ pas d'état de frais au Parquet
+ *  (Olivier 18/10/2026 : « si Towsoft indique facture ok, il ne faut pas d'état de frais » — EDF-0026, EDF-0106). */
+export async function factureClientPayee(plate: string | null, missionId: string | null, depuis: string | null): Promise<string | null> {
+  try {
+    const { odooRpc } = await import('@/lib/odoo')
+    const ids = new Set<number>()
+    if (missionId) {
+      const sb = (await import('@/lib/supabase')).createAdminClient()
+      const { data: m } = await sb.from('incoming_missions').select('invoice_odoo_id').eq('id', missionId).maybeSingle()
+      if (m?.invoice_odoo_id) ids.add(m.invoice_odoo_id)
+      const { data: bi } = await sb.from('mission_billed_items').select('invoice_odoo_id').eq('mission_id', missionId)
+      for (const b of bi || []) if (b.invoice_odoo_id) ids.add(b.invoice_odoo_id)
+    }
+    const p = String(plate || '').toUpperCase().replace(/[^A-Z0-9]/g, '')
+    if (p.length >= 5 && !/^\d+$/.test(p)) {
+      const tiret = /^\d[A-Z]{3}\d{3}$/.test(p) ? `${p[0]}-${p.slice(1, 4)}-${p.slice(4)}` : p
+      const veh: any[] = await odooRpc('fleet.vehicle', 'search_read', [['|', ['license_plate', 'ilike', p], ['license_plate', 'ilike', tiret]]], { fields: ['id'], context: { active_test: false } })
+      if (veh.length) {
+        const so: any[] = await odooRpc('sale.order', 'search_read', [[['x_studio_many2one_field_78n_1j6fmmeom', 'in', veh.map(v => v.id)]]], { fields: ['invoice_ids'] })
+        for (const s of so) for (const i of s.invoice_ids || []) ids.add(i)
+      }
+    }
+    if (!ids.size) return null
+    const inv: any[] = await odooRpc('account.move', 'read', [[...ids]], { fields: ['name', 'move_type', 'state', 'payment_state', 'partner_id', 'invoice_date'] })
+    const debut = depuis ? new Date(+new Date(depuis) - 3 * 864e5).toISOString().slice(0, 10) : '0000'
+    const f = inv.find(i => i.move_type === 'out_invoice' && i.state === 'posted' && ['paid', 'in_payment'].includes(i.payment_state)
+      && String(i.invoice_date || '') >= debut && !/parquet|justice|spf|domaine|fin shop/i.test(String(i.partner_id?.[1] || '')))
+    return f ? `${f.name} (${f.partner_id?.[1] || 'client'})` : null
+  } catch { return null }
+}
+
 const REQUISITOIRE_MANQUANT = 'Réquisitoire manquant (PDF ou JPG) : l’état de frais ne part pas au Parquet sans lui. Demande-le à la police depuis la fiche.'
 
 export async function resendEtatFrais(sb: any, dossierId: string, efRowId: string, userId?: string | null): Promise<SendEfResult> {
@@ -434,6 +466,10 @@ export async function resendEtatFrais(sb: any, dossierId: string, efRowId: strin
   // Jamais d'état de frais au Parquet / aux frais de justice sans réquisitoire PDF ou JPG (Olivier 16/10/2026 :
   // « l'EDF n'aurait pas dû partir sans réquisitoire » — EDF-2026-0035, 1FIX936, parti le 09/08 avec une capture de mail).
   if (recipient === 'parquet' && !(reqDocPath && isRequisitoireDoc(reqDocPath))) return { ok: false, error: REQUISITOIRE_MANQUANT }
+  if (recipient === 'parquet') {
+    const payee = await factureClientPayee(plate ?? d.vehicle_plate, d.mission_id, d.parked_at)
+    if (payee) return { ok: false, error: `Le client a déjà payé (facture ${payee}) : pas d'état de frais au Parquet.` }
+  }
   let gen: { pdf: Buffer; numero: string }
   try { gen = await renderEtatFraisFromRow(sb, dossierId, efRowId) }
   catch (e: any) { return { ok: false, error: e?.message || 'Génération échouée' } }
@@ -528,6 +564,10 @@ export async function sendEtatFrais(
   // Jamais d'état de frais au Parquet / aux frais de justice sans réquisitoire PDF ou JPG (Olivier 16/10/2026 :
   // « l'EDF n'aurait pas dû partir sans réquisitoire » — EDF-2026-0035, 1FIX936, parti le 09/08 avec une capture de mail).
   if (recipient === 'parquet' && !(reqDocPath && isRequisitoireDoc(reqDocPath))) return { ok: false, error: REQUISITOIRE_MANQUANT }
+  if (recipient === 'parquet') {
+    const payee = await factureClientPayee(d.vehicle_plate, d.mission_id, d.parked_at)
+    if (payee) return { ok: false, error: `Le client a déjà payé (facture ${payee}) : pas d'état de frais au Parquet.` }
+  }
 
   // Génère (persiste) l'état de frais.
   // Ou LA SÉRIE d'états de frais quand la coupe visée dépasse une période
