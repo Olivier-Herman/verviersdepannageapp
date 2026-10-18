@@ -85,6 +85,7 @@ export const NAV_TREE_ESPACES: NavModule[] = [
     // (barre en haut de l'écran), plus des entrées de menu.
     sections: [
       { href: '/fourriere',                      label: 'Parc',                   icon: Search,        requires: '/fourriere' },
+      { href: '/fourriere/releve',               label: 'Relevé sans étiquette',  icon: ListChecks,    requires: '/fourriere' },   // inventaire terrain (Olivier 18/10/2026)
       { href: '/taches',                         label: 'Accident',        icon: ListChecks,    requires: '/fourriere' },   // Module Tâches, premier jet (28/09/2026) : véhicules arrivés au parc sur appel police, flag taches_accident
       { href: '/fourriere/requisitoires',        label: 'Réquisitoires',          icon: FileText,      requires: '/fourriere', heading: 'Documents' },
       { href: '/fourriere/saisies',              label: 'États de frais',         icon: FileWarning,   requires: '/fourriere', heading: 'Facturation' },
