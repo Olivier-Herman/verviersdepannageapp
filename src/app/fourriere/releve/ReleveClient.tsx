@@ -57,13 +57,7 @@ export default function ReleveClient() {
     } catch (e: any) { setErr(e.message) } finally { setBusy(null) }
   }
   const cloturer = async () => { setBusy('close'); try { await post({ id: rel.id, action: 'cloturer' }); await ouvrir(rel.id) } catch (e: any) { setErr(e.message) } finally { setBusy(null) } }
-  const exporter = () => {
-    const head = ['Réf. craie', 'Plaque', 'Châssis', 'Marque', 'Modèle', 'Date intervention', 'Décision', 'Fiche VD Soft', 'Fiche créée', 'Étiquette', 'Résultat', 'Remarque']
-    const rows = items.map(i => [i.ref_craie, i.plate, i.vin, i.brand, i.model, i.intervention_date, DECISIONS[i.decision] || i.decision, i.mission_number ? `#${i.mission_number}` : '', i.created_mission ? 'oui' : '', i.label_printed ? 'oui' : '', i.result, i.remark])
-    const csv = [head, ...rows].map(r => r.map(c => `"${String(c ?? '').replace(/"/g, '""')}"`).join(';')).join('\n')
-    const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8' }))
-    a.download = `releve-${rel.lieu}-${String(rel.started_at).slice(0, 10)}.csv`; a.click()
-  }
+
 
   const lieu = rel ? lieux[rel.lieu] : null
   const inp = 'w-full min-h-[44px] rounded-xl border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 px-3 text-ink'
@@ -211,7 +205,8 @@ export default function ReleveClient() {
         <div className="flex items-center justify-between gap-2 flex-wrap">
           <p className="font-semibold text-ink">Listing du relevé ({items.length})</p>
           <div className="flex gap-2">
-            {items.length > 0 && <button onClick={exporter} className={`${btn} border border-zinc-300 dark:border-zinc-700 text-ink text-sm`}>⬇ Télécharger (Excel)</button>}
+            {items.length > 0 && <a href={`/api/fourriere/releve?id=${rel.id}&format=csv`} download className={`${btn} inline-flex items-center border border-zinc-300 dark:border-zinc-700 text-ink text-sm`}>⬇ Ce relevé (Excel)</a>}
+            <a href={`/api/fourriere/releve?format=csv&lieu=${rel.lieu}&jour=${new Date(rel.started_at).toLocaleDateString('sv-SE', { timeZone: 'Europe/Brussels' })}`} download className={`${btn} inline-flex items-center border border-zinc-300 dark:border-zinc-700 text-ink text-sm`}>⬇ Tous les relevés du jour (Excel)</a>
             {!rel.closed_at && items.length > 0 && <button disabled={!!busy} onClick={cloturer} className={`${btn} bg-zinc-800 text-white text-sm`}>Terminer le relevé</button>}
           </div>
         </div>

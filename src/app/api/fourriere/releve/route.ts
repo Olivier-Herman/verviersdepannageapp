@@ -36,7 +36,35 @@ async function prochaineRefCraie(sb: ReturnType<typeof createAdminClient>): Prom
 export async function GET(req: Request) {
   const me = await acces(); if (!me) return NextResponse.json({ error: 'Accès réservé à la fourrière.' }, { status: 403 })
   const sb = createAdminClient()
-  const id = new URL(req.url).searchParams.get('id')
+  const qs = new URL(req.url).searchParams
+  const id = qs.get('id')
+  // Export Excel construit côté serveur : le téléchargement depuis la page ne marche pas sur la tablette Android
+  // (Olivier 18/10/2026). ?format=csv avec ?id=… (un relevé) ou ?jour=AAAA-MM-JJ&lieu=… (tous les relevés du jour).
+  if (qs.get('format') === 'csv') {
+    let rq = sb.from('parc_releves').select('id, lieu, started_at').order('started_at')
+    if (id) rq = rq.eq('id', id)
+    else {
+      const jour = /^\d{4}-\d{2}-\d{2}$/.test(qs.get('jour') || '') ? qs.get('jour')! : new Date().toISOString().slice(0, 10)
+      rq = rq.gte('started_at', `${jour}T00:00:00+02:00`).lt('started_at', `${jour}T23:59:59+02:00`)
+      if (qs.get('lieu')) rq = rq.eq('lieu', qs.get('lieu')!)
+    }
+    const { data: rels } = await rq
+    const ids = (rels || []).map(r => r.id)
+    const { data: its } = ids.length ? await sb.from('parc_releve_items').select('*').in('releve_id', ids).order('created_at') : { data: [] as any[] }
+    const DEC: Record<string, string> = { present_ok: 'Fiche confirmée', garder: 'Gardé au parc', scratch: 'Scratch', note: 'Noté' }
+    const relDe = new Map((rels || []).map(r => [r.id, r]))
+    const head = ['Relevé', 'Heure', 'Réf. craie', 'Plaque', 'Châssis', 'Marque', 'Modèle', 'Date intervention', 'Décision', 'Fiche VD Soft', 'Fiche créée', 'Étiquette imprimée', 'Résultat', 'Remarque']
+    const rows = (its || []).map((i: any) => {
+      const r: any = relDe.get(i.releve_id)
+      return [`${RELEVE_LIEUX[r?.lieu]?.label || r?.lieu} ${new Date(r?.started_at).toLocaleTimeString('fr-BE', { timeZone: 'Europe/Brussels', hour: '2-digit', minute: '2-digit' })}`,
+        new Date(i.created_at).toLocaleTimeString('fr-BE', { timeZone: 'Europe/Brussels', hour: '2-digit', minute: '2-digit' }),
+        i.ref_craie, i.plate, i.vin, i.brand, i.model, i.intervention_date, DEC[i.decision] || i.decision,
+        i.mission_number ? `#${i.mission_number}` : '', i.created_mission ? 'oui' : '', i.label_printed ? 'oui' : 'non', i.result, i.remark]
+    })
+    const csv = '\ufeff' + [head, ...rows].map(r => r.map(c => `"${String(c ?? '').replace(/"/g, '""')}"`).join(';')).join('\r\n')
+    const nom = id ? `releve-${String((rels || [])[0]?.started_at || '').slice(0, 10)}-${String(id).slice(0, 6)}` : `releves-${qs.get('jour') || new Date().toISOString().slice(0, 10)}`
+    return new Response(csv, { headers: { 'Content-Type': 'text/csv; charset=utf-8', 'Content-Disposition': `attachment; filename="${nom}.csv"`, 'Cache-Control': 'no-store' } })
+  }
   if (id) {
     const { data: r } = await sb.from('parc_releves').select('*').eq('id', id).maybeSingle()
     const { data: items } = await sb.from('parc_releve_items').select('*').eq('releve_id', id).order('created_at')
