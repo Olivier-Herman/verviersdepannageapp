@@ -49,6 +49,11 @@ interface Mission {
     zone: string | null; depuis: string | null; source: string
     piste: 'relivraison' | 'doublon'
   } | null
+  /** Pause chauffeur « Je reviens plus tard » (Olivier 18/10/2026). */
+  paused_at?: string | null
+  pause_until?: string | null
+  pause_reason?: string | null
+  transfer_to?: string | null
   id: string
   mission_number: number | null
   external_id: string
@@ -180,12 +185,13 @@ function MobileRow({ m, activeTab, drivers, driverStatuses, sources, onRefresh, 
   }
 
   return (
-    <div className={`bg-surface border rounded-2xl overflow-hidden max-w-full min-w-0 ${expanded ? 'ring-1 ring-brand/40' : ''} ${isGarage ? 'border-amber-500/40' : delai.urgency === 'critical' ? 'border-red-500/40' : ''}`}>
+    <div className={`bg-surface border rounded-2xl overflow-hidden max-w-full min-w-0 ${expanded ? 'ring-1 ring-brand/40' : ''} ${m.paused_at ? 'border-2 border-orange-500' : isGarage ? 'border-amber-500/40' : delai.urgency === 'critical' ? 'border-red-500/40' : ''}`}>
       <div onClick={onToggle} className={`px-3 py-2.5 grid grid-cols-[1fr_auto] gap-x-3 gap-y-1 ${expanded ? 'bg-brand/5' : ''}`}>
         {/* Audit dispatch B14 (08/09/2026) : les alertes des anciennes cartes téléphone. */}
         {judicial && (
           <div className="col-span-2 flex items-center gap-2 rounded-lg bg-red-600 text-white px-3 py-1.5 text-xs font-black uppercase tracking-wide animate-pulse"><span className="text-base leading-none">⚠️</span> Attention — Saisie Judiciaire</div>
         )}
+        <PauseBanner m={m} className="col-span-2" />
         {m.needs_siabis_decision && (
           <button onClick={e => { e.stopPropagation(); setSiabisOpen(true) }} className="col-span-2 px-3 py-2 rounded-lg bg-red-600 text-white text-xs font-bold flex items-center justify-center gap-1.5 animate-pulse">🛣️ AUTOROUTE — tarification à trancher →</button>
         )}
@@ -343,6 +349,22 @@ const TYPE_LABELS: Record<string, string> = {
  * principale et sa relivraison sont toutes les deux mission_type=remorquage,
  * et c est incident_type qui les distingue).
  */
+// Mission en pause : cadre orange + « Reprise prévue … » (Olivier 18/10/2026).
+function PauseBanner({ m, className = '' }: { m: { paused_at?: string | null; pause_until?: string | null; pause_reason?: string | null; transfer_to?: string | null }; className?: string }) {
+  if (m.paused_at) {
+    const late = m.pause_until && new Date(m.pause_until).getTime() < Date.now()
+    const when = m.pause_until ? new Date(m.pause_until).toLocaleString('fr-BE', { timeZone: 'Europe/Brussels', weekday: 'short', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '—'
+    return (
+      <div className={`flex items-center gap-2 rounded-lg px-3 py-1.5 text-xs font-bold ${late ? 'bg-red-100 text-red-800' : 'bg-amber-100 text-amber-900'} ${className}`}>
+        <span className="text-base leading-none">⏸</span>
+        <span>EN PAUSE · Reprise prévue {when}{late ? ' — dépassée' : ''}{m.pause_reason ? ` · ${m.pause_reason}` : ''}</span>
+      </div>
+    )
+  }
+  if (m.transfer_to) return <div className={`rounded-lg px-3 py-1.5 text-xs font-bold bg-blue-100 text-blue-900 ${className}`}>🔁 Transfert vers un autre chauffeur en attente de sa réponse</div>
+  return null
+}
+
 function getTypeLabel(m: { mission_type?: string | null; incident_type?: string | null }): string {
   if (m.incident_type === 'relivraison') return '🚛 REL'
   if (m.incident_type === 'dpr')          return '📍 DPR'
@@ -1025,8 +1047,8 @@ function MissionCard({ mission, drivers, driverStatuses, sources, onRefresh, onM
   const cardBg   = judicial  ? 'bg-red-600/15 hover:bg-red-600/25'
                  : isGarage  ? 'bg-amber-500/10 hover:bg-amber-500/20'
                  : 'bg-surface hover:bg-surface-2'
-  const cardBorder = judicial ? 'border-red-600' : URGENCY_BORDER[delai.urgency]
-  const cardRing   = judicial ? 'ring-2 ring-red-500' : isGarage ? 'ring-2 ring-amber-400' : ''
+  const cardBorder = judicial ? 'border-red-600' : mission.paused_at ? 'border-orange-500' : URGENCY_BORDER[delai.urgency]
+  const cardRing   = judicial ? 'ring-2 ring-red-500' : mission.paused_at ? 'ring-2 ring-orange-400' : isGarage ? 'ring-2 ring-amber-400' : ''
 
   return (
     <div
@@ -1034,6 +1056,7 @@ function MissionCard({ mission, drivers, driverStatuses, sources, onRefresh, onM
       className={`relative border-2 rounded-2xl p-4 cursor-pointer transition-all overflow-hidden min-w-0 ${cardBg} ${cardBorder} ${cardRing}`}
     >
       <MissionStamp mission={mission} />
+      <PauseBanner m={mission} className="mb-3 -mt-1" />
       {judicial && (
         <div className="mb-3 -mt-1 flex items-center gap-2 rounded-lg bg-red-600 text-white px-3 py-1.5 text-xs font-black uppercase tracking-wide animate-pulse">
           <span className="text-base leading-none">⚠️</span>
@@ -2045,7 +2068,8 @@ export default function DispatchClient({
                     return (
                       <tr key={m.id}
                         className={`transition cursor-pointer ${
-                          isGarage ? 'bg-amber-500/10 hover:bg-amber-500/20'
+                          m.paused_at ? 'bg-orange-500/10 hover:bg-orange-500/20 outline outline-2 -outline-offset-2 outline-orange-500'
+                          : isGarage ? 'bg-amber-500/10 hover:bg-amber-500/20'
                           : delai.urgency === 'critical' ? 'bg-red-500/5 hover:bg-surface-2'
                           : 'hover:bg-surface-2'
                         }`}
@@ -2069,6 +2093,7 @@ export default function DispatchClient({
                           {(m.dossier_number || (m.mission_number != null && m.external_id)) && (
                             <p className="text-ink-muted text-xs">{m.dossier_number || m.external_id}</p>
                           )}
+                          <PauseBanner m={m} className="mt-1 !py-1 !px-2 whitespace-nowrap" />
                         </td>
                         <td className="px-4 py-3">
                           <p className="text-ink">{m.client_name || '—'}</p>

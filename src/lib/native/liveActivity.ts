@@ -149,7 +149,20 @@ export function missionToLAState(m: {
   incident_city?: string | null
   destination_address?: string | null
   driver_eta_minutes?: number | null
+  paused_at?: string | null
+  pause_until?: string | null
 }): MissionLAState {
+  const st = missionToLAStateBase(m)
+  // Mission en pause (Olivier 18/10/2026) : même étape (les boutons natifs ne changent pas),
+  // titre et badge « En pause » avec l'heure de retour.
+  if (m.paused_at && !['assigned'].includes(m.status)) {
+    const h = m.pause_until ? new Intl.DateTimeFormat('fr-BE', { timeZone: 'Europe/Brussels', weekday: 'short', hour: '2-digit', minute: '2-digit' }).format(new Date(m.pause_until)) : null
+    return { ...st, title: h ? `En pause — retour ${h}` : 'En pause', badgeText: 'EN PAUSE', accent: 'amber', etaMinutes: null }
+  }
+  return st
+}
+
+function missionToLAStateBase(m: Parameters<typeof missionToLAState>[0]): MissionLAState {
   const onSite = !!m.on_site_at
   const loaded = !!m.loaded_at || m.status === 'delivering' || m.status === 'parked'
   const eta = m.driver_eta_minutes ?? null

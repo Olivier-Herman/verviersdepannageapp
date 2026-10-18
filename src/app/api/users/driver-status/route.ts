@@ -48,6 +48,8 @@ export async function GET() {
     .select('id, assigned_to, client_name, mission_type, status')
     .in('status', ['assigned', 'accepted', 'in_progress', 'delivering'])
     .in('assigned_to', drivers.map(d => d.id))
+    // Mission en pause : le chauffeur redevient libre pour le dispatch (Olivier 18/10/2026).
+    .is('paused_at', null)
 
   const STATUS_WEIGHT: Record<string, number> = { delivering: 4, in_progress: 3, accepted: 2, assigned: 1 }
   const missionByDriver = new Map<string, NonNullable<typeof activeMissions>[number]>()

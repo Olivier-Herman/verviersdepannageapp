@@ -154,7 +154,7 @@ export async function pushMissionLiveActivity(
     const sb = createAdminClient()
     const { data } = await sb
       .from('incoming_missions')
-      .select('id, status, on_site_at, loaded_at, mission_type, incident_address, incident_city, destination_address, live_activity_push_token')
+      .select('id, status, on_site_at, loaded_at, mission_type, incident_address, incident_city, destination_address, live_activity_push_token, paused_at, pause_until')
       .eq('id', missionId)
       .maybeSingle()
 

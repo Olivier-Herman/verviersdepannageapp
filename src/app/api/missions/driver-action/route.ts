@@ -174,6 +174,12 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Accès refusé' }, { status: 403 })
   }
 
+  // Pointer une étape pendant une pause = la reprise (Olivier 18/10/2026) : le chrono repart, c'est noté.
+  {
+    const { data: pz } = await supabase.from('incoming_missions').select('paused_at').eq('id', mission_id).maybeSingle()
+    if ((pz as any)?.paused_at) { try { const { resumeMission } = await import('@/lib/missions/pause-transfer'); await resumeMission(supabase as any, mission_id, { id: actor.id, name: (actor as any).name || 'Chauffeur' }) } catch {} }
+  }
+
   // SNC / Siabis couvert : le SCÉNARIO doit être choisi avant la clôture. Au
   // dispatch, « Laisser le chauffeur choisir » laisse snc_scenario = null → on
   // refuse la clôture tant qu'aucun scénario n'est sélectionné. Exception : DPR

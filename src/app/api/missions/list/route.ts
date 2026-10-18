@@ -56,6 +56,7 @@ export async function GET(req: Request) {
       kaze_cancelled_after_accept,
       is_rollable,
       needs_siabis_decision,
+      paused_at, pause_until, pause_reason, transfer_to,
       assigned_user:users!assigned_to(id, name, avatar_url)
     `)
     .order(sortField, { ascending: false, nullsFirst: false })

@@ -262,6 +262,8 @@ const FUEL_TYPES    = ['Autre', 'Diesel', 'Électrique', 'Essence', 'GPL', 'Hybr
 const GEARBOX_TYPES = ['Automatique', 'Manuelle', 'Semi-automatique']
 
 const LOG_ICONS: Record<string, string> = {
+  mission_paused: '⏸', mission_pause_moved: '⏸', mission_resumed: '▶️', pause_reminder: '⏰', pause_overdue: '⏰',
+  transfer_requested: '🔁', transfer_cancelled: '↩️', transfer_refused: '✗', transfer_accepted: '🔁', transfer_call: '📞',
   received:   '📥',
   parsed:     '🔍',
   dispatched: '✅',
@@ -2245,6 +2247,16 @@ export default function MissionDetailClient({
           <div className="min-w-0">
             <p className="text-amber-900 dark:text-amber-200 text-xs font-bold uppercase tracking-wide">Remarque du chauffeur (clôture)</p>
             <p className="text-amber-900 dark:text-amber-100 text-lg font-bold whitespace-pre-wrap leading-snug mt-0.5">{initialMission.closing_notes}</p>
+          </div>
+        </div>
+      )}
+      {/* Pause chauffeur « Je reviens plus tard » (Olivier 18/10/2026). */}
+      {(M as any).paused_at && (
+        <div className="mb-3 rounded-xl border-2 border-orange-500 bg-orange-50 text-orange-900 px-4 py-3 flex items-center gap-3">
+          <span className="text-2xl leading-none">⏸</span>
+          <div>
+            <p className="text-sm font-black uppercase tracking-wide">En pause — le chauffeur reviendra plus tard</p>
+            <p className="text-sm font-semibold">Reprise prévue {(M as any).pause_until ? new Date((M as any).pause_until).toLocaleString('fr-BE', { timeZone: 'Europe/Brussels', weekday: 'long', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '—'}{(M as any).pause_reason ? ` · ${(M as any).pause_reason}` : ''}</p>
           </div>
         </div>
       )}

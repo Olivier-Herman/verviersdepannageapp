@@ -25,6 +25,7 @@ import { isTransport, isRemorquage, isRemRel } from '@/lib/missions/mission-type
 import { depotFerme, type HorairesDepot } from '@/lib/missions/horaires-depot'
 import { transportGabaritLabel } from '@/lib/tarifs/transport-gabarits'
 import { useT } from '@/lib/i18n/I18nProvider'
+import MissionPauseTransfer from '@/components/missions/MissionPauseTransfer'
 import SigPad from '@/components/mission/SigPad'
 import ActionScreen, { type OutcomeKey, type PriseEnCharge } from '@/components/cloture/ActionScreen'
 import CloseScreen from '@/components/cloture/CloseScreen'
@@ -5486,6 +5487,9 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
               <p className="text-amber-300/80 text-xs mt-1"><T k="mission_detail.parked_card_subtitle" /></p>
             </div>
           )}
+
+          {/* Pause « Je reviens plus tard » et transfert à un autre chauffeur (Olivier 18/10/2026). */}
+          {!isReadOnly && <MissionPauseTransfer mission={M as any} onChanged={reloadMission} />}
 
           {/* Bouton secondaire — Actions (DPR, photos, etc.) toujours accessible quand on est sur place ou plus avancé */}
           {!flux2 && (onSite || M.status === 'parked' || M.status === 'delivering' || loaded) && (

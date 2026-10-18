@@ -325,6 +325,39 @@ export const NOTIFICATION_TYPES: readonly NotificationType[] = [
     defaultEnabled:  true,
   },
   {
+    // Pause et transfert d'une mission (Olivier 18/10/2026).
+    key:             'mission_pause_rappel',
+    label:           'Mission en pause : heure de reprise',
+    description:     'Rappel au chauffeur à l’heure prévue pour reprendre une mission mise en pause (« Je reviens plus tard »).',
+    category:        'on_duty',
+    applicableRoles: ['driver', 'dispatcher', 'admin', 'superadmin'],
+    defaultEnabled:  true,
+  },
+  {
+    key:             'mission_pause_depassee',
+    label:           'Mission en pause non reprise',
+    description:     'Dispatch : un chauffeur n’a pas repris une mission en pause 15 min après l’heure prévue.',
+    category:        'dispatcher',
+    applicableRoles: ['dispatcher', 'admin', 'superadmin'],
+    defaultEnabled:  true,
+  },
+  {
+    key:             'mission_transfert',
+    label:           'Mission transférée par un collègue',
+    description:     'Un autre chauffeur te transfère sa mission : à accepter ou refuser.',
+    category:        'on_duty',
+    applicableRoles: ['driver', 'dispatcher', 'admin', 'superadmin'],
+    defaultEnabled:  true,
+  },
+  {
+    key:             'mission_transfert_reponse',
+    label:           'Réponse à un transfert',
+    description:     'Le chauffeur à qui tu as proposé ta mission l’a acceptée ou refusée.',
+    category:        'on_duty',
+    applicableRoles: ['driver', 'dispatcher', 'admin', 'superadmin'],
+    defaultEnabled:  true,
+  },
+  {
     // Le bureau retire une mission au chauffeur (relivraison remise en attente, Olivier 14/10/2026).
     key:             'mission_retiree',
     label:           'Mission retirée par le bureau',

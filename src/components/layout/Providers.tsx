@@ -16,6 +16,7 @@ import { usePathname }                 from 'next/navigation'
 import { useState }                    from 'react'
 import MaxPastille                     from '@/components/assistant/MaxPastille'
 import AppUpdatePrompt                 from '@/components/layout/AppUpdatePrompt'
+import IncomingTransferPrompt          from '@/components/missions/IncomingTransferPrompt'
 
 // Max partout (Olivier 14/10/2026 : « ils utilisent tjs les anciens visuels de la version
 // bureau ») : monté ici et plus dans AppShell, pour couvrir aussi les pages sans le cadre
@@ -81,6 +82,7 @@ export default function Providers({ children }: { children: React.ReactNode }) {
               <TalkieOverlay />
               <MaxMount />
               <AppUpdatePrompt />
+              <IncomingTransferPrompt />
             </TalkieProvider>
           </PwaNativeGuard>
         </I18nMount>

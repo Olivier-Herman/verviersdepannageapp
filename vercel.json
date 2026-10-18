@@ -34,6 +34,7 @@
     { "path": "/api/cron/touring-comex-poll",        "schedule": "* * * * *"    },
     { "path": "/api/cron/live-activity-sweep",       "schedule": "*/2 * * * *"  },
     { "path": "/api/cron/max-cout", "schedule": "0 6 1 * *" },
+    { "path": "/api/cron/pause-transfer", "schedule": "* * * * *" },
     { "path": "/api/cron/touring-vr-scan",           "schedule": "* * * * *"    },
     { "path": "/api/cron/kaze-close-retry",          "schedule": "15,45 * * * *" },
     { "path": "/api/cron/poll-comex-bko",            "schedule": "*/3 * * * *"  },
