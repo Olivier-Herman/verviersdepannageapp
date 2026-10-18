@@ -133,7 +133,7 @@ export async function POST(req: Request) {
       }
       try {
         const { reprintLabelForMission } = await import('@/lib/missions/reprint-label-helper')
-        const r = await reprintLabelForMission({ kind: 'uuid', value: missionId! }, refCraie ? { banner: `VERVIERS\n${refCraie}` } : undefined)
+        const r = await reprintLabelForMission({ kind: 'uuid', value: missionId! }, refCraie ? { banner: refCraie } : undefined)
         printed = !!r.ok; result.push(r.ok ? 'étiquette imprimée' : `étiquette non imprimée (${(r as any).error || '?'})`)
       } catch (e: any) { result.push(`étiquette non imprimée (${e?.message})`) }
     }
