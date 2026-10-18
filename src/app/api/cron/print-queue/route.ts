@@ -25,6 +25,10 @@ async function handleGET(req: Request) {
   const sb = createAdminClient()
   const nowIso = new Date().toISOString()
 
+  // Alerte Telegram à Mobi si le PC d'impression ne répond plus ou si des étiquettes restent bloquées (Olivier 18/10/2026)
+  try { const { surveillerImprimante } = await import('@/lib/print/zebra-health'); await surveillerImprimante() }
+  catch (e: any) { console.error('[cron/print-queue] surveillance', e?.message) }
+
   // Charge les entrees a retry (pending + next_retry_at <= now + attempts < MAX)
   const { data: entries, error } = await sb
     .from('print_queue')
