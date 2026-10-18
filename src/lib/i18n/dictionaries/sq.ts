@@ -750,6 +750,12 @@ export const sq: Dictionary = {
     judicial_zone_desc:  'Zgjidh vendin. Nëse është laboratori, etiketa do ta tregojë me shkronja të mëdha.',
     judicial_zone_j:     '🅿️ Parkingu i sekuestrimit (zona J)',
     judicial_zone_labo:  '🔬 Zona LABO',
+    depot_choice_title:  'Ku e lë mjetin?',
+    depot_choice_desc:   'Etiketa printohet në Pepinster; për Verviers, Labo dhe ciklomotorët do ta shkruajë me shkronja të mëdha.',
+    depot_pepinster:     '🏢 Depoja Pepinster',
+    depot_verviers:      '📍 Depoja Verviers',
+    depot_labo:          '🔬 Zona Labo (Pepinster)',
+    depot_cyclo:         '🛵 Rachid — ciklomotorë (zona S)',
   },
 
   key_loc: {

@@ -408,6 +408,12 @@ export async function POST(req: Request) {
     const { isJudicialSaisie } = await import('@/lib/missions/judicial')
     const zoneChoice = String(park_data?.zone_key || '').toUpperCase()
     if (isJudicialSaisie(mission as any) && (zoneChoice === 'J' || zoneChoice === 'LABO')) parkZone = zoneChoice
+    // Écran « Où déposes-tu le véhicule ? » (Olivier 18/10/2026) : Verviers, Labo et cyclos (zone S) imposent leur
+    // zone ; « Dépôt Pepinster » garde la zone du catalogue (J pour une saisie judiciaire).
+    const depotChoice = String((park_data as any)?.depot_choice || '').toUpperCase()
+    if (depotChoice === 'VERVIERS') parkZone = 'Verviers'
+    else if (depotChoice === 'LABO') parkZone = 'LABO'
+    else if (depotChoice === 'S') parkZone = 'S'
     if (parkZone) updatePayload.parc_zone_key = parkZone
     if (park_data?.key_location) updatePayload.key_location  = park_data.key_location
     // Roulant / non roulant — obligatoire (demande Axel 2026-07-05).

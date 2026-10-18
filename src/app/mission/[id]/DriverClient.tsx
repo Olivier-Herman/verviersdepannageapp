@@ -2412,9 +2412,15 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
   const doPark = async (vr: VrLoc, zoneChoice?: string) => {
     // Roulant / non roulant OBLIGATOIRE (demande Axel 2026-07-05).
     if (isRollable === null) { setErr(t('mission_detail.rollable_required')); return }
-    // Saisie judiciaire : parking fourrière (J) ou zone LABO — une touche, pas
-    // de liste. Olivier 15/09/2026.
-    if (isJudicial && !zoneChoice) { setJudicialPrompt(vr); return }
+    // Où va le véhicule ? Dépôt Pepinster / Dépôt Verviers / Zone Labo / Rachid (cyclos, zone S) — pour toute mise
+    // en dépôt, sauf REM + relivraison (zone Relivraison comme d'habitude). Olivier 18/10/2026 (remplace le choix
+    // J / LABO des saisies judiciaires du 15/09).
+    const avecRelivraison = !!(parkRedelivery ?? M.destination_address)
+    if (!zoneChoice && !avecRelivraison) { setJudicialPrompt(vr); return }
+    const depotChoice = zoneChoice && ['PEP', 'VERVIERS', 'LABO', 'S'].includes(zoneChoice) ? zoneChoice : undefined
+    if (depotChoice === 'VERVIERS') vr = vrLocs.find(v => /verviers/i.test(v.name)) || vr
+    else if (depotChoice) vr = vrLocs.find(v => /pepinster/i.test(v.name)) || vr
+    const zoneKey = depotChoice === 'PEP' ? (isJudicial ? 'J' : undefined) : depotChoice === 'VERVIERS' ? 'Verviers' : depotChoice || zoneChoice
     setLoading(true); setErr('')
     try {
       // Best-effort : si le réseau est KO pile à la mise en parc, on ne bloque
@@ -2451,7 +2457,8 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
           },
           park_data: {
             stage_name:         vr.name,
-            zone_key:           zoneChoice || parkZoneOverride || suggestedZoneKey || undefined,
+            zone_key:           zoneKey || parkZoneOverride || suggestedZoneKey || undefined,
+            depot_choice:       depotChoice,
             // Roulant/non roulant : désormais pour TOUTES les mises en parc.
             is_rollable:        isRollable != null ? isRollable : undefined,
             is_right_direction: isPoliceAccident ? !!isRightDirection : undefined,
@@ -5667,20 +5674,22 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
         <div className="fixed inset-0 bg-black/80 z-[70] flex items-end">
           <div className="bg-surface w-full rounded-t-3xl p-6 space-y-4" onClick={e => e.stopPropagation()}>
             <div className="flex justify-between items-center">
-              <h2 className="text-ink font-semibold text-lg"><T k="close.judicial_zone_title" /></h2>
+              <h2 className="text-ink font-semibold text-lg"><T k="close.depot_choice_title" /></h2>
               <button onClick={() => setJudicialPrompt(null)} className="text-ink-muted text-2xl">×</button>
             </div>
-            <p className="text-ink-muted text-sm"><T k="close.judicial_zone_desc" /></p>
-            <button disabled={loading}
-              onClick={() => { const vr = judicialPrompt; setJudicialPrompt(null); setParkZoneOverride('J'); doPark(vr, 'J') }}
-              className="w-full py-5 bg-blue-600 hover:bg-blue-700 text-white rounded-2xl text-base font-bold transition disabled:opacity-50">
-              <T k="close.judicial_zone_j" />
-            </button>
-            <button disabled={loading}
-              onClick={() => { const vr = judicialPrompt; setJudicialPrompt(null); setParkZoneOverride('LABO'); doPark(vr, 'LABO') }}
-              className="w-full py-5 bg-amber-500 hover:bg-amber-600 text-black rounded-2xl text-base font-bold transition disabled:opacity-50">
-              <T k="close.judicial_zone_labo" />
-            </button>
+            <p className="text-ink-muted text-sm"><T k="close.depot_choice_desc" /></p>
+            {([
+              ['PEP', 'close.depot_pepinster', 'bg-blue-600 hover:bg-blue-700 text-white'],
+              ['VERVIERS', 'close.depot_verviers', 'bg-violet-600 hover:bg-violet-700 text-white'],
+              ['LABO', 'close.depot_labo', 'bg-amber-500 hover:bg-amber-600 text-black'],
+              ['S', 'close.depot_cyclo', 'bg-emerald-600 hover:bg-emerald-700 text-white'],
+            ] as const).map(([k, label, cls]) => (
+              <button key={k} disabled={loading}
+                onClick={() => { const vr = judicialPrompt; setJudicialPrompt(null); if (vr) doPark(vr, k) }}
+                className={`w-full min-h-[56px] py-4 rounded-2xl text-base font-bold transition disabled:opacity-50 ${cls}`}>
+                <T k={label} />
+              </button>
+            ))}
           </div>
         </div>
       )}

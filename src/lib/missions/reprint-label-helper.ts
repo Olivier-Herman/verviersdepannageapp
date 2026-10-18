@@ -153,7 +153,9 @@ export async function reprintLabelForMission(
     noteAppend: opts?.noteAppend,
     // Saisie judiciaire rangée au labo : ça se voit avant même de lire la
     // plaque. Olivier 15/09/2026.
-    banner: (mission as any).parc_zone_key === 'LABO' ? 'ZONE\nLABO' : undefined,
+    // + Dépôt Verviers et cyclos (zone S, Rachid) : l'étiquette sort à Pepinster, le lieu doit sauter aux yeux.
+    // Olivier 18/10/2026.
+    banner: ({ LABO: 'ZONE\nLABO', Verviers: 'DEPOT\nVERVIERS', S: 'CYCLO' } as Record<string, string>)[String((mission as any).parc_zone_key || '')],
   })
 
   if (!result.ok) return { ok: false, error: result.error || 'Impression echec', mission_id: mission.id }

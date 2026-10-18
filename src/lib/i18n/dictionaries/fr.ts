@@ -764,6 +764,12 @@ export const fr = {
     judicial_zone_desc:  'Choisis l’emplacement. Si c’est le labo, l’étiquette le dira en gros.',
     judicial_zone_j:     '🅿️ Parking fourrière (zone J)',
     judicial_zone_labo:  '🔬 Zone LABO',
+    depot_choice_title:  'Où déposes-tu le véhicule ?',
+    depot_choice_desc:   'L’étiquette s’imprime à Pepinster ; pour Verviers, Labo et cyclos elle le dira en gros.',
+    depot_pepinster:     '🏢 Dépôt Pepinster',
+    depot_verviers:      '📍 Dépôt Verviers',
+    depot_labo:          '🔬 Zone Labo (Pepinster)',
+    depot_cyclo:         '🛵 Rachid — cyclos (zone S)',
   },
 
   key_loc: {
