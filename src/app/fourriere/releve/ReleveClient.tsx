@@ -104,6 +104,7 @@ export default function ReleveClient() {
       {!rel.closed_at && (
         <div className="rounded-2xl border border-zinc-300 dark:border-zinc-700 p-4 space-y-3 bg-white/60 dark:bg-zinc-900/60">
           <p className="font-semibold text-ink">Véhicule n° {items.length + 1}</p>
+          <p className="text-xs text-ink-muted">Plaque ou châssis si visibles ; sinon marque et modèle (et la date si tu la connais) : la recherche montre alors les véhicules de ce modèle encore au parc et dans Towsoft.</p>
           <div className="grid grid-cols-2 gap-2">
             <input className={inp} placeholder="Plaque" value={s.plate} onChange={e => setS({ ...s, plate: e.target.value.toUpperCase() })} autoCapitalize="characters" />
             <input className={inp} placeholder="Châssis (VIN)" value={s.vin} onChange={e => setS({ ...s, vin: e.target.value.toUpperCase() })} autoCapitalize="characters" />
@@ -111,7 +112,7 @@ export default function ReleveClient() {
             <input className={inp} placeholder="Modèle" value={s.model} onChange={e => setS({ ...s, model: e.target.value })} />
             <label className="col-span-2 text-xs text-ink-muted">Date d’intervention (si connue)<input type="date" className={inp} value={s.date} onChange={e => setS({ ...s, date: e.target.value })} /></label>
           </div>
-          <button disabled={!!busy || (!s.plate.trim() && !s.vin.trim())} onClick={rechercher} className={`${btn} w-full bg-blue-600 text-white`}>{busy === 'search' ? 'Recherche… (VD Soft, Towsoft, mails, ERP)' : '🔎 Rechercher'}</button>
+          <button disabled={!!busy || (!s.plate.trim() && !s.vin.trim() && s.brand.trim().length < 2 && s.model.trim().length < 2)} onClick={rechercher} className={`${btn} w-full bg-blue-600 text-white`}>{busy === 'search' ? 'Recherche… (VD Soft, Towsoft, mails, ERP)' : '🔎 Rechercher'}</button>
         </div>
       )}
 

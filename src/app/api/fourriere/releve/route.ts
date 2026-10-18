@@ -60,7 +60,7 @@ export async function POST(req: Request) {
 
   const s = b.saisie || {}
   if (b.action === 'rechercher') {
-    if (!norm(s.plate) && !norm(s.vin)) return NextResponse.json({ error: 'Plaque ou châssis obligatoire.' }, { status: 400 })
+    if (!norm(s.plate) && !norm(s.vin) && String(s.brand || '').trim().length < 2 && String(s.model || '').trim().length < 2) return NextResponse.json({ error: 'Donne au moins la plaque, le châssis, ou la marque / le modèle.' }, { status: 400 })
     return NextResponse.json(await rechercherVehicule(s))
   }
 

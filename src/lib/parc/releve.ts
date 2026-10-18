@@ -19,7 +19,11 @@ const plateDash = (p: string) => /^\d[A-Z]{3}\d{3}$/.test(p) ? `${p[0]}-${p.slic
 export async function rechercherVehicule(s: ReleveSaisie) {
   const plate = norm(s.plate), vin = norm(s.vin)
   const vinTail = vin.length >= 6 ? vin.slice(-6) : ''
-  const [vd, ts, mails, erp] = await Promise.allSettled([chercherVdSoft(plate, vinTail), chercherTowsoft(plate, vin), chercherMails(plate, vin), chercherErp(plate)])
+  // Ni plaque ni châssis lisibles : recherche par marque / modèle (+ date), véhicules encore au parc (Olivier 18/10/2026).
+  const parModele = !plate && !vin
+  const [vd, ts, mails, erp] = await Promise.allSettled(parModele
+    ? [chercherVdSoftModele(s), chercherTowsoftModele(s), Promise.resolve([]), Promise.resolve([])]
+    : [chercherVdSoft(plate, vinTail), chercherTowsoft(plate, vin), chercherMails(plate, vin), chercherErp(plate)])
   const v = <T,>(r: PromiseSettledResult<T>, d: T) => r.status === 'fulfilled' ? r.value : d
   return {
     vdsoft:  v(vd, [] as any[]),
@@ -33,7 +37,7 @@ export async function rechercherVehicule(s: ReleveSaisie) {
 async function chercherVdSoft(plate: string, vinTail: string) {
   if (plate.length < 3 && !vinTail) return []
   const sb = createAdminClient()
-  const or = [plate.length >= 3 ? `vehicle_plate.ilike.%${plate}%` : null, plate.length >= 7 ? `vehicle_plate.ilike.%${plateDash(plate)}%` : null, vinTail ? `vehicle_vin.ilike.%${vinTail}%` : null].filter(Boolean).join(',')
+  const or = [plate.length >= 3 ? `vehicle_plate.ilike.%${plate}%` : null, plate.length >= 7 ? `vehicle_plate.ilike.%${plateDash(plate)}%` : null, vinTail ? `vehicle_vin.ilike.%${vinTail}%` : null, vinTail ? `vehicle_plate.ilike.%${vinTail}%` : null].filter(Boolean).join(',')
   const { data } = await sb.from('incoming_missions')
     .select('id, mission_number, source, status, vehicle_plate, vehicle_vin, vehicle_brand, vehicle_model, parc_zone_key, intervention_date, parked_at, dossier_number, officer_name, client_name, dossier_leg')
     .or(or).neq('status', 'cancelled').order('intervention_date', { ascending: false }).limit(15)
@@ -45,12 +49,49 @@ async function chercherTowsoft(plate: string, vin: string) {
   const { searchTowsoftGlobal } = await import('@/lib/towsoft-client')
   const hits: any[] = []
   if (plate.length >= 4) hits.push(...await searchTowsoftGlobal('immatriculation' as any, plate).catch(() => []))
-  if (vin.length >= 6) hits.push(...await searchTowsoftGlobal('niv' as any, vin.length >= 17 ? vin : vin.slice(-6)).catch(() => []))
-  return [...new Map(hits.map((h: any) => [h.towsoft_num, h])).values()].slice(0, 10).map((h: any) => ({
+  if (vin.length >= 6) {
+    hits.push(...await searchTowsoftGlobal('niv' as any, vin.length >= 17 ? vin : vin.slice(-6)).catch(() => []))
+    // Dans Towsoft, le chauffeur tapait parfois le châssis dans le champ plaque (Olivier 18/10/2026).
+    for (const q of [...new Set([vin, vin.slice(-8), vin.slice(-6)])].filter(x => x.length >= 6)) hits.push(...await searchTowsoftGlobal('immatriculation' as any, q).catch(() => []))
+  }
+  return [...new Map(hits.map((h: any) => [h.towsoft_num, h])).values()].slice(0, 10).map(towsoftLigne)
+}
+
+const towsoftLigne = (h: any) => ({
     num: h.towsoft_num, date: h.date_iso?.slice(0, 10) || h.date_raw, type: h.type, statut: h.statut, plate: h.plate, vin: h.vin,
     marque: [h.brand, h.model].filter(Boolean).join(' '), lieu: h.lieu_intervention, destination: h.destination,
     client: h.client, dossier: h.dossier, remarques: h.remarks, url: h.fiche_url,
-  }))
+  })
+
+const proche = (date: string | null | undefined) => (d: any) => date ? Math.abs(+new Date(String(d || '').slice(0, 10)) - +new Date(date)) : 0
+const mots = (x: any) => String(x || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').split(/[^a-z0-9]+/).filter(w => w.length >= 2)
+
+/** Sans plaque ni châssis : véhicules de la même marque (et du modèle si donné) encore au parc dans VD Soft. */
+async function chercherVdSoftModele(s: ReleveSaisie) {
+  const brand = String(s.brand || '').trim(), model = String(s.model || '').trim()
+  if (brand.length < 2 && model.length < 2) return []
+  let q = createAdminClient().from('incoming_missions')
+    .select('id, mission_number, source, status, vehicle_plate, vehicle_vin, vehicle_brand, vehicle_model, parc_zone_key, intervention_date, parked_at, dossier_number, officer_name, client_name, dossier_leg')
+    .in('status', ['parked', 'gardiennage']).is('dossier_leg', false).neq('source', 'gardiennage').limit(200)
+  if (brand.length >= 2) q = q.ilike('vehicle_brand', `%${brand}%`)
+  const { data } = await q
+  const mm = mots(model)
+  const out = (data || []).filter((m: any) => !mm.length || mm.some(w => mots(`${m.vehicle_model} ${m.vehicle_brand}`).includes(w)))
+  return out.sort((a: any, b: any) => proche(s.date)(a.intervention_date) - proche(s.date)(b.intervention_date)).slice(0, 25)
+}
+
+/** Sans plaque ni châssis : fiches Towsoft de cette marque / ce modèle, les plus proches de la date. */
+async function chercherTowsoftModele(s: ReleveSaisie) {
+  if (!process.env.TOWSOFT_PASS) return []
+  const brand = String(s.brand || '').trim(), model = String(s.model || '').trim()
+  if (brand.length < 2 && model.length < 2) return []
+  const { searchTowsoftGlobal } = await import('@/lib/towsoft-client')
+  const hits: any[] = [...await searchTowsoftGlobal('modele_marque' as any, [brand, model].filter(Boolean).join(' ')).catch(() => [])]
+  if (!hits.length && model) hits.push(...await searchTowsoftGlobal('modele_marque' as any, model).catch(() => []))
+  if (!hits.length && brand) hits.push(...await searchTowsoftGlobal('modele_marque' as any, brand).catch(() => []))
+  const mm = mots(model)
+  const f = hits.filter((h: any) => /saisie|police|fourri|abandon|accident|mal/i.test(`${h.type || ''} ${h.ticket || ''}`) && (!mm.length || mm.some(w => mots(`${h.brand} ${h.model}`).includes(w))))
+  return [...new Map(f.map((h: any) => [h.towsoft_num, h])).values()].sort((a: any, b: any) => proche(s.date)(a.date_iso) - proche(s.date)(b.date_iso)).slice(0, 15).map(towsoftLigne)
 }
 
 async function chercherMails(plate: string, vin: string) {
