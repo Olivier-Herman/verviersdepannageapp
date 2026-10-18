@@ -1,4 +1,5 @@
 'use client'
+import PauseBadge, { pauseFrame } from '@/components/missions/PauseBadge'
 // Vue dossier — écran. Un groupe par action (REM, gardiennage, REL…), lettré,
 // chronologique, le dernier ouvert. Chaque groupe : résumé, client de
 // facturation (hérité du dossier, modifiable), estimation de TOUT le dossier
@@ -368,7 +369,8 @@ function Group({ d, leg, canBill, isOpen, onToggle, embedOpen, onToggleEmbed, fi
   const gardiennageLabels = useGardiennageRegimeLabels()
   const k = KIND[leg.kind]
   return (
-    <div id={`grp-${leg.letter}`} className={`border rounded-2xl overflow-hidden bg-surface ${leg.open ? 'border-brand/50' : ''}`}>
+    <div id={`grp-${leg.letter}`} className={`border rounded-2xl overflow-hidden bg-surface ${fiche?.mission?.paused_at ? pauseFrame(fiche.mission) : leg.open ? 'border-brand/50' : ''}`}>
+      <PauseBadge m={fiche?.mission} className="rounded-none" />
       <button onClick={onToggle} className={`w-full grid grid-cols-[44px_minmax(0,1fr)_auto] gap-2 md:gap-3 items-center px-3 md:px-3.5 py-2.5 text-left ${k.head} hover:brightness-95 transition`}>
         <span className={`h-9 w-9 rounded-lg border flex items-center justify-center text-sm font-bold font-mono shadow-sm ${k.dot}`} title={d.number != null ? `${d.number}${leg.letter}` : leg.letter}>{leg.letter}</span>
         <span className="min-w-0">

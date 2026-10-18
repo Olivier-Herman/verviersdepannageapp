@@ -878,6 +878,7 @@ export const fr = {
     btn_pause:        '⏸ Je reviens plus tard',
     btn_transfer:     '🔁 Transférer à un autre chauffeur',
     stamp:            'EN PAUSE',
+    list_back:        'Retour prévu {when}',
     paused_until:     'Tu y retournes {when}. Je te rappelle à ce moment-là.',
     btn_resume:       '▶ Reprendre maintenant',
     btn_change:       'Changer l’heure',

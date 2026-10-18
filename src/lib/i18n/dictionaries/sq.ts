@@ -863,6 +863,7 @@ export const sq: Dictionary = {
     btn_pause:        '⏸ Kthehem më vonë',
     btn_transfer:     '🔁 Transfero te një shofer tjetër',
     stamp:            'NË PUSHIM',
+    list_back:        'Kthimi i parashikuar {when}',
     paused_until:     'Kthehesh atje {when}. Do të të kujtoj në atë moment.',
     btn_resume:       '▶ Rifillo tani',
     btn_change:       'Ndrysho orën',

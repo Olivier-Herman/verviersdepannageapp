@@ -2,7 +2,9 @@
 //  1. Pause : à l'heure prévue, rappel au chauffeur ; 15 min plus tard sans reprise, relance au
 //     chauffeur + alerte au dispatch.
 //  2. Transfert : 5 min sans réponse du chauffeur B → appel téléphonique automatique (message
-//     vocal transfert-a-accepter.wav, joué au décroché comme les autres appels).
+//     vocal transfert-a-accepter.wav, joué au décroché comme les autres appels) ; encore 5 min sans
+//     réponse → transfert annulé, la mission reste à A, prévenu par notification et par appel
+//     (transfert-annule.wav).
 // Un cron en échec doit se voir : erreur → réponse 500.
 import { NextResponse }      from 'next/server'
 import { createAdminClient } from '@/lib/supabase'
@@ -13,6 +15,24 @@ export const maxDuration = 60
 
 const RELANCE_MIN = 15
 const TRANSFER_CALL_MIN = 5
+const TRANSFER_CANCEL_MIN = 5   // après l'appel à B
+
+type Sb = ReturnType<typeof createAdminClient>
+/** Appel téléphonique automatique avec un message enregistré. */
+async function phoneCall(sb: Sb, missionId: string, userId: string, audio: string): Promise<{ ok: boolean; name: string; detail: string }> {
+  const { data: u } = await sb.from('users').select('name, phone').eq('id', userId).maybeSingle()
+  let phone = (u as any)?.phone || null
+  if (!phone) { const { data: p } = await sb.from('personnel').select('phone').eq('user_id', userId).maybeSingle(); phone = (p as any)?.phone || null }
+  const name = (u as any)?.name || 'Le chauffeur'
+  const { toE164 } = await import('@/lib/missions/market-proposals')
+  const e164 = toE164(phone)
+  if (!e164) return { ok: false, name, detail: 'pas de numéro de téléphone exploitable' }
+  const { initiatePstnCall } = await import('@/lib/teams/call')
+  const r = await initiatePstnCall({ toPhone: e164, toDisplayName: name })
+  const detail = r.ok ? '' : String(r.error || 'appel impossible')
+  await sb.from('espace_appels').insert({ mission_id: missionId, call_id: r.callId || null, audio, status: r.ok ? 'lance' : 'echec', detail: r.ok ? null : detail.slice(0, 300) })
+  return { ok: r.ok, name, detail }
+}
 
 export async function GET(req: Request) {
   if (!process.env.CRON_SECRET || req.headers.get('authorization') !== `Bearer ${process.env.CRON_SECRET}`) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -48,24 +68,27 @@ export async function GET(req: Request) {
     for (const m of tr || []) {
       const { data: pris } = await sb.from('incoming_missions').update({ transfer_call_at: iso }).eq('id', m.id).is('transfer_call_at', null).select('id').maybeSingle()
       if (!pris) continue
-      const { data: u } = await sb.from('users').select('name, phone').eq('id', m.transfer_to as string).maybeSingle()
-      let phone = (u as any)?.phone || null
-      if (!phone) { const { data: p } = await sb.from('personnel').select('phone').eq('user_id', m.transfer_to as string).maybeSingle(); phone = (p as any)?.phone || null }
-      const { toE164 } = await import('@/lib/missions/market-proposals')
-      const e164 = toE164(phone)
-      let ok = false, detail = ''
-      if (!e164) detail = 'pas de numéro de téléphone exploitable'
-      else {
-        const { initiatePstnCall } = await import('@/lib/teams/call')
-        const r = await initiatePstnCall({ toPhone: e164, toDisplayName: (u as any)?.name || e164 })
-        ok = r.ok; detail = r.ok ? '' : String(r.error || 'appel impossible')
-        await sb.from('espace_appels').insert({ mission_id: m.id, call_id: r.callId || null, audio: 'transfert-a-accepter.wav', status: r.ok ? 'lance' : 'echec', detail: r.ok ? null : detail.slice(0, 300) })
-      }
-      if (ok) calls++
-      const b = (u as any)?.name || 'Le chauffeur'
-      await log(m.id, 'transfer_call', ok ? `${b} n'a pas répondu au transfert de ${nm[m.transfer_from as string] || '?'} après ${TRANSFER_CALL_MIN} min : appel téléphonique automatique.` : `${b} n'a pas répondu au transfert après ${TRANSFER_CALL_MIN} min : appel automatique impossible (${detail}).`)
+      const c = await phoneCall(sb, m.id, m.transfer_to as string, 'transfert-a-accepter.wav')
+      if (c.ok) calls++
+      await log(m.id, 'transfer_call', c.ok ? `${c.name} n'a pas répondu au transfert de ${nm[m.transfer_from as string] || '?'} après ${TRANSFER_CALL_MIN} min : appel téléphonique automatique.` : `${c.name} n'a pas répondu au transfert après ${TRANSFER_CALL_MIN} min : appel automatique impossible (${c.detail}).`)
     }
-    return NextResponse.json({ ok: true, rappels: (due || []).length, relances: (late || []).length, appels: calls })
+
+    // 3. Toujours pas de réponse 5 min après l'appel : transfert annulé, la mission reste à A.
+    const { data: tc } = await sb.from('incoming_missions').select('id, vehicle_plate, assigned_to, transfer_to, transfer_from, transfer_call_at').not('transfer_to', 'is', null).not('transfer_call_at', 'is', null).lte('transfer_call_at', new Date(now - TRANSFER_CANCEL_MIN * 60_000).toISOString()).limit(20)
+    let annules = 0
+    for (const m of tc || []) {
+      const { data: pris } = await sb.from('incoming_missions').update({ transfer_to: null, transfer_from: null, transfer_reason: null, transfer_requested_at: null, transfer_call_at: null, updated_at: iso }).eq('id', m.id).eq('transfer_to', m.transfer_to as string).eq('transfer_call_at', m.transfer_call_at as string).select('id').maybeSingle()
+      if (!pris) continue
+      annules++
+      const a = (m.transfer_from || m.assigned_to) as string | null
+      const bName = nm[m.transfer_to as string] || 'Le collègue'
+      if (a) {
+        await sendNotification(a, 'mission_transfert_reponse', { title: `✗ Transfert annulé : ${bName} n'a pas répondu`, body: `La mission ${m.vehicle_plate || ''} reste à toi. Reprends-la ou propose-la à un autre collègue.`, mission_id: m.id, action_url: `/mission/${m.id}` }).catch(() => {})
+        const c = await phoneCall(sb, m.id, a, 'transfert-annule.wav')
+        await log(m.id, 'transfer_cancelled', `Transfert annulé automatiquement : ${bName} n'a pas répondu en ${TRANSFER_CALL_MIN + TRANSFER_CANCEL_MIN} min. La mission reste à ${c.name}${c.ok ? ', prévenu par appel téléphonique' : ` (appel impossible : ${c.detail})`}.`)
+      }
+    }
+    return NextResponse.json({ ok: true, rappels: (due || []).length, relances: (late || []).length, appels: calls, transferts_annules: annules })
   } catch (e: any) {
     return NextResponse.json({ ok: false, error: e?.message || String(e) }, { status: 500 })
   }

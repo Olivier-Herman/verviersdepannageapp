@@ -12,7 +12,7 @@ import { createAdminClient } from '@/lib/supabase'
 
 export const dynamic = 'force-dynamic'
 
-const FIELDS = 'id, mission_number, status, mission_type, incident_type, source, vehicle_plate, vehicle_brand, vehicle_model, client_name, incident_city, incident_address, destination_address, assigned_at, received_at, intervention_date, on_site_at, completed_at, cancelled_at, parked_at, invoice_number, invoice_method, dossier_number, parent_mission_id, estimated_htva'
+const FIELDS = 'id, mission_number, status, mission_type, incident_type, source, vehicle_plate, vehicle_brand, vehicle_model, client_name, incident_city, incident_address, destination_address, assigned_at, received_at, intervention_date, on_site_at, completed_at, cancelled_at, parked_at, invoice_number, invoice_method, dossier_number, parent_mission_id, estimated_htva, paused_at, pause_until, pause_reason, transfer_to'
 
 export async function GET(req: Request) {
   const session = await getServerSession(authOptions)

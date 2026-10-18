@@ -1,4 +1,5 @@
 // src/app/mission/page.tsx — Liste des missions du chauffeur connecté
+import DriverPauseTag from '@/components/missions/DriverPauseTag'
 import { getServerSession }  from 'next-auth'
 import { redirect }          from 'next/navigation'
 import { authOptions }       from '@/lib/auth'
@@ -47,7 +48,7 @@ export default async function MissionListPage() {
 
   const { data: missions } = await supabase
     .from('incoming_missions')
-    .select('id, mission_number, external_id, dossier_number, source, mission_type, status, client_name, vehicle_plate, vehicle_brand, vehicle_model, incident_address, incident_city, received_at, assigned_at, completed_at, parked_at, awaiting_payment, amount_to_collect, payment_amount')
+    .select('id, mission_number, external_id, dossier_number, source, mission_type, status, client_name, vehicle_plate, vehicle_brand, vehicle_model, incident_address, incident_city, received_at, assigned_at, completed_at, parked_at, awaiting_payment, amount_to_collect, payment_amount, paused_at, pause_until')
     .eq('assigned_to', user.id)
     // Olivier 2026-06-17 : une mission 'parked' est en parc (fourrière) → elle
     // sort de la liste active du chauffeur. On garde le cas awaiting_payment
@@ -130,7 +131,7 @@ export default async function MissionListPage() {
                   const st = STATUS_LABELS[m.status] || { label: m.status, color: 'text-ink-secondary' }
                   return (
                     <Link key={m.id} href={`/mission/${m.id}`}
-                      className="block bg-surface border border hover:border-brand/50 rounded-2xl p-4 transition-all">
+                      className={`block bg-surface hover:border-brand/50 rounded-2xl p-4 transition-all ${(m as any).paused_at ? 'border-2 border-orange-500 ring-2 ring-orange-400/60' : 'border'}`}>
                       <div className="flex items-center justify-between mb-2">
                         <span className="text-ink-secondary text-xs font-mono">{(m as any).mission_number != null ? `#${(m as any).mission_number}` : (m.dossier_number || m.external_id)}</span>
                         <span className={`text-xs font-semibold ${st.color}`}>{st.label}</span>
@@ -148,6 +149,7 @@ export default async function MissionListPage() {
                           <p className="text-ink-muted text-xs mt-1">{m.incident_address}{m.incident_city ? `, ${m.incident_city}` : ''}</p>
                         </>
                       )}
+                      {(m as any).paused_at && <DriverPauseTag until={(m as any).pause_until} />}
                     </Link>
                   )
                 })}

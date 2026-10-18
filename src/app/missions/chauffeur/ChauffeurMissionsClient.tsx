@@ -2,6 +2,7 @@
 // src/app/missions/chauffeur/ChauffeurMissionsClient.tsx — voir page.tsx.
 
 import { useEffect, useMemo, useState } from 'react'
+import PauseBadge from '@/components/missions/PauseBadge'
 import Link from 'next/link'
 import AppShell from '@/components/layout/AppShell'
 import { statusFr } from '@/lib/missions/status-label'
@@ -16,6 +17,7 @@ type Row = {
   assigned_at: string | null; received_at: string | null; completed_at: string | null; cancelled_at: string | null; parked_at: string | null
   invoice_number: string | null; invoice_method: 'manual' | 'auto' | null; dossier_number: string | null; parent_mission_id: string | null; estimated_htva: number | null
   ref_at: string | null
+  paused_at?: string | null; pause_until?: string | null; pause_reason?: string | null; transfer_to?: string | null
 }
 
 const fmt = (v: string | null) => v ? new Date(v).toLocaleString('fr-BE', { timeZone: 'Europe/Brussels', day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' }) : '—'
@@ -87,14 +89,14 @@ export default function ChauffeurMissionsClient({ drivers, catalogSources, initi
                   {shown.map(m => {
                     const kind = missionKind(m)
                     return (
-                      <tr key={m.id} className="border-t hover:bg-surface-hover/50">
+                      <tr key={m.id} className={`border-t hover:bg-surface-hover/50 ${m.paused_at ? 'bg-orange-500/10 outline outline-2 -outline-offset-2 outline-orange-500' : ''}`}>
                         <td className="px-3 py-2 whitespace-nowrap tabular-nums text-ink-secondary">{fmt(m.ref_at)}</td>
                         <td className="px-3 py-2 whitespace-nowrap"><Link href={`/dispatch/${m.id}`} className="text-brand font-semibold hover:underline">#{m.mission_number}</Link>{m.dossier_number ? <span className="block text-[11px] font-mono text-ink-faint">{m.dossier_number}</span> : null}</td>
                         <td className="px-3 py-2 whitespace-nowrap"><span className={`inline-block rounded-md px-2 py-0.5 text-[11px] font-semibold ${KIND_CLS[kind] || 'bg-surface-2 text-ink-secondary'}`}>{KIND_LABEL[kind] || kind}</span></td>
                         <td className="px-3 py-2 whitespace-nowrap text-ink-secondary">{getSourceLabel(m.source, catalogSources)}</td>
                         <td className="px-3 py-2"><span className="font-mono font-semibold text-ink">{m.vehicle_plate || '—'}</span>{(m.vehicle_brand || m.vehicle_model) && <span className="block text-xs text-ink-secondary">{[m.vehicle_brand, m.vehicle_model].filter(Boolean).join(' ')}</span>}</td>
                         <td className="px-3 py-2 text-ink-secondary max-w-[320px]"><span className="block truncate">{m.client_name || '—'}</span><span className="block text-xs truncate text-ink-muted">{m.incident_city || m.incident_address || ''}{m.destination_address ? ` → ${m.destination_address}` : ''}</span></td>
-                        <td className="px-3 py-2 whitespace-nowrap"><span className="text-xs text-ink-secondary">{statusFr(m.status)}</span>{(() => {
+                        <td className="px-3 py-2 whitespace-nowrap"><PauseBadge m={m} className="mb-1 !py-1 !px-2" /><span className="text-xs text-ink-secondary">{statusFr(m.status)}</span>{(() => {
                           // Badge en ligne (le tampon MissionStamp est en position absolue, fait pour une carte).
                           const b = m.status === 'cancelled' ? ['Annulée', 'text-red-700 dark:text-red-300 border-red-600/50']
                             : m.status === 'to_invoice' ? ['À facturer', 'text-amber-800 dark:text-amber-300 border-amber-500/60']

@@ -18,6 +18,7 @@ import AxaImportButton from '@/components/dispatch/AxaImportButton'
 import DispatcherOnDutyBadge from '@/components/dispatch/DispatcherOnDutyBadge'
 import { getSourceLabel, getSourceColor, type SourceDisplay as CatalogSource } from '@/lib/missions/source-display'
 import AutoDispatchButton from '@/components/dispatch/AutoDispatchButton'
+import PauseBadge from '@/components/missions/PauseBadge'
 import { HighwaySiabisModal, shouldOfferSiabis } from './HighwaySiabisModal'
 import NotifyDriverButton from './NotifyDriverButton'
 import { parseHighwayAddress } from '@/lib/highways/parse'
@@ -191,7 +192,7 @@ function MobileRow({ m, activeTab, drivers, driverStatuses, sources, onRefresh, 
         {judicial && (
           <div className="col-span-2 flex items-center gap-2 rounded-lg bg-red-600 text-white px-3 py-1.5 text-xs font-black uppercase tracking-wide animate-pulse"><span className="text-base leading-none">⚠️</span> Attention — Saisie Judiciaire</div>
         )}
-        <PauseBanner m={m} className="col-span-2" />
+        <PauseBadge m={m} className="col-span-2" />
         {m.needs_siabis_decision && (
           <button onClick={e => { e.stopPropagation(); setSiabisOpen(true) }} className="col-span-2 px-3 py-2 rounded-lg bg-red-600 text-white text-xs font-bold flex items-center justify-center gap-1.5 animate-pulse">🛣️ AUTOROUTE — tarification à trancher →</button>
         )}
@@ -349,22 +350,6 @@ const TYPE_LABELS: Record<string, string> = {
  * principale et sa relivraison sont toutes les deux mission_type=remorquage,
  * et c est incident_type qui les distingue).
  */
-// Mission en pause : cadre orange + « Reprise prévue … » (Olivier 18/10/2026).
-function PauseBanner({ m, className = '' }: { m: { paused_at?: string | null; pause_until?: string | null; pause_reason?: string | null; transfer_to?: string | null }; className?: string }) {
-  if (m.paused_at) {
-    const late = m.pause_until && new Date(m.pause_until).getTime() < Date.now()
-    const when = m.pause_until ? new Date(m.pause_until).toLocaleString('fr-BE', { timeZone: 'Europe/Brussels', weekday: 'short', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '—'
-    return (
-      <div className={`flex items-center gap-2 rounded-lg px-3 py-1.5 text-xs font-bold ${late ? 'bg-red-100 text-red-800' : 'bg-amber-100 text-amber-900'} ${className}`}>
-        <span className="text-base leading-none">⏸</span>
-        <span>EN PAUSE · Reprise prévue {when}{late ? ' — dépassée' : ''}{m.pause_reason ? ` · ${m.pause_reason}` : ''}</span>
-      </div>
-    )
-  }
-  if (m.transfer_to) return <div className={`rounded-lg px-3 py-1.5 text-xs font-bold bg-blue-100 text-blue-900 ${className}`}>🔁 Transfert vers un autre chauffeur en attente de sa réponse</div>
-  return null
-}
-
 function getTypeLabel(m: { mission_type?: string | null; incident_type?: string | null }): string {
   if (m.incident_type === 'relivraison') return '🚛 REL'
   if (m.incident_type === 'dpr')          return '📍 DPR'
@@ -1056,7 +1041,7 @@ function MissionCard({ mission, drivers, driverStatuses, sources, onRefresh, onM
       className={`relative border-2 rounded-2xl p-4 cursor-pointer transition-all overflow-hidden min-w-0 ${cardBg} ${cardBorder} ${cardRing}`}
     >
       <MissionStamp mission={mission} />
-      <PauseBanner m={mission} className="mb-3 -mt-1" />
+      <PauseBadge m={mission} className="mb-3 -mt-1" />
       {judicial && (
         <div className="mb-3 -mt-1 flex items-center gap-2 rounded-lg bg-red-600 text-white px-3 py-1.5 text-xs font-black uppercase tracking-wide animate-pulse">
           <span className="text-base leading-none">⚠️</span>
@@ -2093,7 +2078,7 @@ export default function DispatchClient({
                           {(m.dossier_number || (m.mission_number != null && m.external_id)) && (
                             <p className="text-ink-muted text-xs">{m.dossier_number || m.external_id}</p>
                           )}
-                          <PauseBanner m={m} className="mt-1 !py-1 !px-2 whitespace-nowrap" />
+                          <PauseBadge m={m} className="mt-1 !py-1 !px-2 whitespace-nowrap" />
                         </td>
                         <td className="px-4 py-3">
                           <p className="text-ink">{m.client_name || '—'}</p>
