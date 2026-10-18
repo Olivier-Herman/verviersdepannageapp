@@ -18,7 +18,8 @@ const plateDash = (p: string) => /^\d[A-Z]{3}\d{3}$/.test(p) ? `${p[0]}-${p.slic
 
 export async function rechercherVehicule(s: ReleveSaisie) {
   const plate = norm(s.plate), vin = norm(s.vin)
-  const vinTail = vin.length >= 6 ? vin.slice(-6) : ''
+  // Châssis complet : on cherche sa fin (6) ; châssis partiel (ce qui est lisible, même au milieu) : tel quel dès 4 caractères.
+  const vinTail = vin.length >= 17 ? vin.slice(-6) : vin.length >= 4 ? vin : ''
   // Ni plaque ni châssis lisibles : recherche par marque / modèle (+ date), véhicules encore au parc (Olivier 18/10/2026).
   const parModele = !plate && !vin
   const [vd, ts, mails, erp] = await Promise.allSettled(parModele
@@ -49,10 +50,12 @@ async function chercherTowsoft(plate: string, vin: string) {
   const { searchTowsoftGlobal } = await import('@/lib/towsoft-client')
   const hits: any[] = []
   if (plate.length >= 4) hits.push(...await searchTowsoftGlobal('immatriculation' as any, plate).catch(() => []))
-  if (vin.length >= 6) {
-    hits.push(...await searchTowsoftGlobal('niv' as any, vin.length >= 17 ? vin : vin.slice(-6)).catch(() => []))
+  if (vin.length >= 4) {
+    hits.push(...await searchTowsoftGlobal('niv' as any, vin).catch(() => []))
+    if (vin.length >= 17) hits.push(...await searchTowsoftGlobal('niv' as any, vin.slice(-6)).catch(() => []))
     // Dans Towsoft, le chauffeur tapait parfois le châssis dans le champ plaque (Olivier 18/10/2026).
-    for (const q of [...new Set([vin, vin.slice(-8), vin.slice(-6)])].filter(x => x.length >= 6)) hits.push(...await searchTowsoftGlobal('immatriculation' as any, q).catch(() => []))
+    const essais = vin.length >= 17 ? [vin, vin.slice(-8), vin.slice(-6)] : [vin]
+    for (const q of [...new Set(essais)]) hits.push(...await searchTowsoftGlobal('immatriculation' as any, q).catch(() => []))
   }
   return [...new Map(hits.map((h: any) => [h.towsoft_num, h])).values()].slice(0, 10).map(towsoftLigne)
 }
@@ -95,7 +98,7 @@ async function chercherTowsoftModele(s: ReleveSaisie) {
 }
 
 async function chercherMails(plate: string, vin: string) {
-  const termes = [plate.length >= 5 ? plate : null, plate.length >= 7 ? plateDash(plate) : null, vin.length >= 11 ? vin : null].filter(Boolean) as string[]
+  const termes = [plate.length >= 5 ? plate : null, plate.length >= 7 ? plateDash(plate) : null, vin.length >= 8 ? vin : null].filter(Boolean) as string[]
   if (!termes.length) return []
   const { getAppOnlyToken } = await import('@/lib/graph-mail-search')
   const tok = await getAppOnlyToken()

@@ -107,7 +107,7 @@ export default function ReleveClient() {
           <p className="text-xs text-ink-muted">Plaque ou châssis si visibles ; sinon marque et modèle (et la date si tu la connais) : la recherche montre alors les véhicules de ce modèle encore au parc et dans Towsoft.</p>
           <div className="grid grid-cols-2 gap-2">
             <input className={inp} placeholder="Plaque" value={s.plate} onChange={e => setS({ ...s, plate: e.target.value.toUpperCase() })} autoCapitalize="characters" />
-            <input className={inp} placeholder="Châssis (VIN)" value={s.vin} onChange={e => setS({ ...s, vin: e.target.value.toUpperCase() })} autoCapitalize="characters" />
+            <input className={inp} placeholder="Châssis (même partiel)" value={s.vin} onChange={e => setS({ ...s, vin: e.target.value.toUpperCase() })} autoCapitalize="characters" />
             <input className={inp} placeholder="Marque" value={s.brand} onChange={e => setS({ ...s, brand: e.target.value })} />
             <input className={inp} placeholder="Modèle" value={s.model} onChange={e => setS({ ...s, model: e.target.value })} />
             <label className="col-span-2 text-xs text-ink-muted">Date d’intervention (si connue)<input type="date" className={inp} value={s.date} onChange={e => setS({ ...s, date: e.target.value })} /></label>
