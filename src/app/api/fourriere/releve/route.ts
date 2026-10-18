@@ -26,6 +26,13 @@ async function acces() {
   return me
 }
 
+// V100, V101… : numérotation continue sur tous les relevés de Verviers.
+async function prochaineRefCraie(sb: ReturnType<typeof createAdminClient>): Promise<string> {
+  const { data } = await sb.from('parc_releve_items').select('ref_craie').not('ref_craie', 'is', null).like('ref_craie', 'V%')
+  const max = (data || []).reduce((m, r: any) => Math.max(m, parseInt(String(r.ref_craie).slice(1), 10) || 0), 99)
+  return `V${max + 1}`
+}
+
 export async function GET(req: Request) {
   const me = await acces(); if (!me) return NextResponse.json({ error: 'Accès réservé à la fourrière.' }, { status: 403 })
   const sb = createAdminClient()
@@ -74,12 +81,13 @@ export async function POST(req: Request) {
   const now = new Date().toISOString()
   let missionId: string | null = b.mission_id || null
   let created = false, printed = false
+  let refCraie: string | null = null
   const result: string[] = []
 
   // Fiche existante choisie : contrôle
   let fiche: any = null
   if (missionId) {
-    const { data } = await sb.from('incoming_missions').select('id, mission_number, status, parc_zone_key, vehicle_plate, vehicle_vin').eq('id', missionId).maybeSingle()
+    const { data } = await sb.from('incoming_missions').select('id, mission_number, status, parc_zone_key, vehicle_plate, vehicle_vin, remarks_general').eq('id', missionId).maybeSingle()
     if (!data) return NextResponse.json({ error: 'Fiche introuvable.' }, { status: 404 })
     fiche = data
   }
@@ -99,7 +107,7 @@ export async function POST(req: Request) {
       vehicle_brand: s.brand || null, vehicle_model: s.model || null, vehicle_class: 'car',
       received_at: intervention, intervention_date: intervention, parked_at: intervention, parc_zone_key: zone,
       remarks_general: remarque,
-    }).select('id, mission_number, status, parc_zone_key').single()
+    }).select('id, mission_number, status, parc_zone_key, remarks_general').single()
     if (error) return NextResponse.json({ error: `Création de la fiche : ${error.message}` }, { status: 500 })
     fiche = m; missionId = m.id; created = true
     result.push(`fiche #${m.mission_number} créée`)
@@ -116,9 +124,16 @@ export async function POST(req: Request) {
       result.push(`fiche #${fiche.mission_number} confirmée au parc`)
     }
     if (decision === 'garder' || (decision === 'present_ok' && b.reimprimer)) {
+      // Verviers : référence à la craie V100, V101… reprise sur l'étiquette (Olivier 18/10/2026)
+      if (rel.lieu === 'verviers') {
+        refCraie = await prochaineRefCraie(sb)
+        result.push(`réf. craie ${refCraie}`)
+        await sb.from('incoming_missions').update({ remarks_general: `${(fiche as any)?.remarks_general ? `${(fiche as any).remarks_general}\n` : ''}Réf. craie ${refCraie} (relevé de Verviers du ${new Date(rel.started_at).toLocaleDateString('fr-BE')}).` }).eq('id', missionId!)
+        await sb.from('mission_logs').insert({ mission_id: missionId, action: 'note', notes: `Référence ${refCraie} notée à la craie sur le pare-brise (relevé de Verviers).`, actor_id: me.id }).then(() => {}, () => {})
+      }
       try {
         const { reprintLabelForMission } = await import('@/lib/missions/reprint-label-helper')
-        const r = await reprintLabelForMission({ kind: 'uuid', value: missionId! })
+        const r = await reprintLabelForMission({ kind: 'uuid', value: missionId! }, refCraie ? { banner: `VERVIERS\n${refCraie}` } : undefined)
         printed = !!r.ok; result.push(r.ok ? 'étiquette imprimée' : `étiquette non imprimée (${(r as any).error || '?'})`)
       } catch (e: any) { result.push(`étiquette non imprimée (${e?.message})`) }
     }
@@ -134,7 +149,7 @@ export async function POST(req: Request) {
   const { data: item, error: iErr } = await sb.from('parc_releve_items').insert({
     releve_id: rel.id, plate, vin, brand: s.brand || null, model: s.model || null, intervention_date: date, remark: b.remark || null,
     candidates: b.candidates || null, decision, mission_id: missionId, mission_number: fiche?.mission_number ?? null,
-    created_mission: created, label_printed: printed, result: result.join(' · '), created_by: me.id,
+    created_mission: created, label_printed: printed, ref_craie: refCraie, result: result.join(' · '), created_by: me.id,
   }).select().single()
   if (iErr) return NextResponse.json({ error: iErr.message }, { status: 500 })
   return NextResponse.json({ item })

@@ -25,6 +25,7 @@ export default function ReleveClient() {
   const [zone, setZone] = useState('')
   const [remark, setRemark] = useState('')
   const [confirm, setConfirm] = useState<string | null>(null)
+  const [derniere, setDerniere] = useState<string | null>(null)   // dernière réf. craie attribuée (Verviers)
 
   const charger = () => fetch('/api/fourriere/releve', { cache: 'no-store' }).then(r => r.json()).then(j => { setLieux(j.lieux || {}); setReleves(j.releves || []) })
   const ouvrir = (id: string) => fetch(`/api/fourriere/releve?id=${id}`, { cache: 'no-store' }).then(r => r.json()).then(j => { setRel(j.releve); setItems(j.items || []) })
@@ -51,14 +52,14 @@ export default function ReleveClient() {
     setBusy(decision); setErr(null)
     try {
       const j = await post({ id: rel.id, action: 'decider', saisie: s, candidates: res, decision, mission_id: choix || undefined, source, zone: zone || undefined, remark: remark || undefined })
-      setItems(x => [...x, j.item]); setS({ ...vide }); setRes(null); setChoix(null); setRemark(''); setConfirm(null)
+      setItems(x => [...x, j.item]); setDerniere(j.item?.ref_craie || null); setS({ ...vide }); setRes(null); setChoix(null); setRemark(''); setConfirm(null)
       window.scrollTo({ top: 0, behavior: 'smooth' })
     } catch (e: any) { setErr(e.message) } finally { setBusy(null) }
   }
   const cloturer = async () => { setBusy('close'); try { await post({ id: rel.id, action: 'cloturer' }); await ouvrir(rel.id) } catch (e: any) { setErr(e.message) } finally { setBusy(null) } }
   const exporter = () => {
-    const head = ['Plaque', 'Châssis', 'Marque', 'Modèle', 'Date intervention', 'Décision', 'Fiche VD Soft', 'Fiche créée', 'Étiquette', 'Résultat', 'Remarque']
-    const rows = items.map(i => [i.plate, i.vin, i.brand, i.model, i.intervention_date, DECISIONS[i.decision] || i.decision, i.mission_number ? `#${i.mission_number}` : '', i.created_mission ? 'oui' : '', i.label_printed ? 'oui' : '', i.result, i.remark])
+    const head = ['Réf. craie', 'Plaque', 'Châssis', 'Marque', 'Modèle', 'Date intervention', 'Décision', 'Fiche VD Soft', 'Fiche créée', 'Étiquette', 'Résultat', 'Remarque']
+    const rows = items.map(i => [i.ref_craie, i.plate, i.vin, i.brand, i.model, i.intervention_date, DECISIONS[i.decision] || i.decision, i.mission_number ? `#${i.mission_number}` : '', i.created_mission ? 'oui' : '', i.label_printed ? 'oui' : '', i.result, i.remark])
     const csv = [head, ...rows].map(r => r.map(c => `"${String(c ?? '').replace(/"/g, '""')}"`).join(';')).join('\n')
     const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8' }))
     a.download = `releve-${rel.lieu}-${String(rel.started_at).slice(0, 10)}.csv`; a.click()
@@ -117,6 +118,12 @@ export default function ReleveClient() {
       )}
 
       {err && <p className="text-red-700 bg-red-50 rounded-xl p-3 text-sm">⚠ {err}</p>}
+      {derniere && (
+        <div className="rounded-2xl border-4 border-amber-500 bg-amber-50 p-4 flex items-center justify-between gap-3">
+          <div><p className="text-amber-900 text-sm font-semibold">Écris à la craie sur le pare-brise :</p><p className="text-amber-900 text-5xl font-black tracking-wide">{derniere}</p><p className="text-amber-800 text-xs">La même référence est imprimée sur l’étiquette.</p></div>
+          <button onClick={() => setDerniere(null)} className="min-h-[44px] px-4 rounded-xl border border-amber-400 text-amber-900 font-semibold">C’est noté ✕</button>
+        </div>
+      )}
 
       {res && (
         <div className="space-y-4">
@@ -211,6 +218,7 @@ export default function ReleveClient() {
         {items.length === 0 && <p className="text-sm text-ink-muted">Aucun véhicule relevé pour l’instant.</p>}
         {[...items].reverse().map(i => (
           <div key={i.id} className="rounded-xl border border-zinc-300 dark:border-zinc-700 p-3 text-sm text-ink">
+            {i.ref_craie && <span className="inline-block mr-2 px-2 py-0.5 rounded-md bg-amber-100 text-amber-900 font-black text-base">{i.ref_craie}</span>}
             <b>{i.plate || i.vin || '—'}</b> {[i.brand, i.model].filter(Boolean).join(' ')} · {DECISIONS[i.decision] || i.decision}{i.mission_number ? ` · fiche #${i.mission_number}` : ''}<br />
             <span className="text-ink-muted">{i.result}</span>{i.remark ? <><br /><span className="text-ink-muted">« {i.remark} »</span></> : null}
           </div>

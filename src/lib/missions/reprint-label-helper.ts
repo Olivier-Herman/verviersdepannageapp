@@ -25,6 +25,8 @@ export async function reprintLabelForMission(
     /** Olivier 2026-06-06 PM : mention ajoutee a la note de l etiquette
      *  (ex: 'Migration VD Soft OK' pendant la migration zone-par-zone). */
     noteAppend?: string
+    /** Bandeau imposé (ex. « VERVIERS\nV100 » au relevé de parc, Olivier 18/10/2026). */
+    banner?: string
   },
 ): Promise<{ ok: boolean; error?: string; mission_id?: string }> {
   const sb = createAdminClient()
@@ -155,7 +157,7 @@ export async function reprintLabelForMission(
     // plaque. Olivier 15/09/2026.
     // + Dépôt Verviers et cyclos (zone S, Rachid) : l'étiquette sort à Pepinster, le lieu doit sauter aux yeux.
     // Olivier 18/10/2026.
-    banner: ({ LABO: 'ZONE\nLABO', Verviers: 'DEPOT\nVERVIERS', S: 'CYCLO' } as Record<string, string>)[String((mission as any).parc_zone_key || '')],
+    banner: opts?.banner || ({ LABO: 'ZONE\nLABO', Verviers: 'DEPOT\nVERVIERS', S: 'CYCLO' } as Record<string, string>)[String((mission as any).parc_zone_key || '')],
   })
 
   if (!result.ok) return { ok: false, error: result.error || 'Impression echec', mission_id: mission.id }
