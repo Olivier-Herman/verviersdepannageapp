@@ -246,6 +246,12 @@ export default function FourriereClient({ userRole, userName, userEmail, userMod
               <ScanLine size={14} />
               Inventaire
             </Link>
+            <Link href="/fourriere/releve"
+              className="flex items-center gap-2 px-3 py-2 bg-surface-2 hover:bg-surface-hover border rounded-xl text-ink-secondary hover:text-ink text-sm transition"
+              title="Véhicules sans étiquette : recherche fiche, Towsoft, mails, ERP puis décision">
+              <ScanLine size={14} />
+              Relevé sans étiquette
+            </Link>
             {userRole === 'superadmin' && (
               <Link href="/fourriere/domaine"
                 className="flex items-center gap-2 px-3 py-2 bg-surface-2 hover:bg-surface-hover border rounded-xl text-ink-secondary hover:text-ink text-sm transition"

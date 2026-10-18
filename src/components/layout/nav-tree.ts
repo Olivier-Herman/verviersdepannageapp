@@ -188,6 +188,7 @@ export const NAV_TREE: NavModule[] = [
       { href: '/fourriere/destruction',         label: 'Sortie AVP',            icon: Trash2,        requires: '/fourriere' },
       { href: '/fourriere/destruction/dossiers', label: 'Dossiers de destruction', icon: FolderCheck, requires: '/fourriere' },
       { href: '/fourriere/inventaire',          label: 'Inventaire',            icon: ScanLine,      requires: '/fourriere' },
+      { href: '/fourriere/releve',              label: 'Relevé sans étiquette', icon: ListChecks,    requires: '/fourriere' },
       { href: '/fourriere/non-localises',       label: 'Non-localisés',         icon: AlertTriangle, requires: '/fourriere' },
       { href: '/fourriere/plan',                label: 'Plan du parc',          icon: MapIcon,           requires: '/fourriere' },
       { href: '/fourriere/domaine',             label: 'Domaine',               icon: Landmark,      requires: '/fourriere', superadminOnly: true },
