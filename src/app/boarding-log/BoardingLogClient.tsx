@@ -23,6 +23,7 @@
 // Téléphone (Olivier 08/10/2026) : « À regarder » et le journal disparaissent, les
 // chauffeurs tiennent sur une ligne de pastilles : la place va aux missions en cours.
 
+import { pauseWhen } from '@/components/missions/PauseBadge'
 import { pollWhenVisible } from '@/lib/client/poll'
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 
@@ -235,7 +236,7 @@ export default function BoardingLogClient() {
               const st = STEPS[si] || STEPS[0]
               const src = m.sourceHex ? { color: m.sourceHex, soft: m.sourceHex + '1A' } : NEUTRE
               return (
-                <article key={m.id} className="bl-mission"
+                <article key={m.id} className={`bl-mission${m.pausedAt ? ' paused' : ''}`}
                   style={{
                     ['--sc' as any]: src.color, ['--scs' as any]: src.soft,
                     ['--ec' as any]: st.color, ['--ecs' as any]: st.soft,
@@ -251,8 +252,13 @@ export default function BoardingLogClient() {
                     </div>
                   </div>
                   <div className="bl-right">
-                    <span className="bl-step">{m.statusLabel}</span>
-                    <span className={`bl-timer ${timerTone(m.since, nowMs)}`}>{depuis(m.since, nowMs)}</span>
+                    {m.pausedAt ? <>
+                      <span className="bl-step bl-paused">⏸ En pause</span>
+                      <span className={`bl-timer ${m.pauseUntil && Date.parse(m.pauseUntil) < nowMs ? 'red' : 'orange'}`}>reprise {m.pauseUntil ? pauseWhen(m.pauseUntil) : '—'}</span>
+                    </> : <>
+                      <span className="bl-step">{m.statusLabel}</span>
+                      <span className={`bl-timer ${timerTone(m.since, nowMs)}`}>{depuis(m.since, nowMs)}</span>
+                    </>}
                   </div>
                   <div className="bl-rail" style={{ gridTemplateColumns: `repeat(${STEPS.length}, 1fr)` }}>
                     {STEPS.map((s, i) => {
@@ -439,7 +445,9 @@ body { margin:0; background:#E6EBF2; color:#111820;
 .bl-right { text-align:right; display:flex; flex-direction:column; align-items:flex-end; gap:.18em; }
 .bl-timer { font-family:ui-monospace,'SF Mono',Menlo,monospace; font-size:1em; font-weight:600;
   font-variant-numeric:tabular-nums; color:#647385; }
-.bl-timer.amber { color:#B4680A; } .bl-timer.red { color:#C61D22; }
+.bl-timer.amber { color:#B4680A; } .bl-timer.red { color:#C61D22; } .bl-timer.orange { color:#C2410C; font-size:.8em; }
+.bl-mission.paused { outline:3px solid #F97316; outline-offset:-3px; background:#FFF7ED; }
+.bl-step.bl-paused { color:#9A3412; background:#FFEDD5; }
 .bl-step { font-size:.7em; font-weight:700; color:var(--ec); text-transform:uppercase; letter-spacing:.05em;
   background:var(--ecs); border-radius:999px; padding:.15em .6em; white-space:nowrap; }
 .bl-rail { grid-column:1/-1; display:grid; gap:.25em; margin-top:.05em; }

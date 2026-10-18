@@ -304,7 +304,7 @@ export async function GET(req: Request) {
   // Missions actives (assignées / en cours) détaillées, avec le point de départ
   // du compteur (assignation).
   const { data: active } = await sb.from('incoming_missions')
-    .select('id, mission_number, assigned_to, vehicle_plate, vehicle_brand, vehicle_model, mission_type, incident_city, assigned_at, accepted_at, status, on_way_at, on_site_at, loaded_at, delivering_at, parked_at, source')
+    .select('id, mission_number, assigned_to, vehicle_plate, vehicle_brand, vehicle_model, mission_type, incident_city, assigned_at, accepted_at, status, on_way_at, on_site_at, loaded_at, delivering_at, parked_at, source, paused_at, pause_until')
     .in('status', ['assigned', 'accepted', 'in_progress', 'delivering'])
     .order('assigned_at', { ascending: true })
     .limit(200)
@@ -458,6 +458,8 @@ export async function GET(req: Request) {
       statusLabel: step.label,
       stepAt: step.at,
       since: m.assigned_at || m.accepted_at || null,
+      // Pause chauffeur (Olivier 18/10/2026) : « EN PAUSE » + heure de reprise à la place du chrono.
+      pausedAt: m.paused_at || null, pauseUntil: m.pause_until || null,
       // Source affichée : libellé et couleur viennent du catalogue, jamais d'une
       // table en dur côté écran.
       source: m.source || null,

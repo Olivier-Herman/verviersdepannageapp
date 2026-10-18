@@ -1,5 +1,6 @@
 'use client'
 
+import { pauseWhen } from '@/components/missions/PauseBadge'
 import { useEffect, useRef, useState, useCallback } from 'react'
 
 // Mur d'écran ops — page publique protégée par PIN. Une seule page, temps réel
@@ -19,7 +20,7 @@ interface Kpi {
     allianz: { cloture: number | null; total: number }
   }
   chauffeurs?: { jour: DrvRow[]; semaine: DrvRow[]; mois: DrvRow[] }
-  enCours?: { id: string; missionNumber: number | null; driver: string; plate: string; vehicle: string; category: string; city: string; statusLabel: string; since: string | null }[]
+  enCours?: { id: string; missionNumber: number | null; driver: string; plate: string; vehicle: string; category: string; city: string; statusLabel: string; since: string | null; pausedAt?: string | null; pauseUntil?: string | null }[]
   domaine?: { aTransferer: number; aPreparer: number; enAttenteEnlevement: number }
   perf?: { parChauffeur: PerfRow[]; global: { acceptMin: number | null; routeMin: number | null; traitMin: number | null } }
 }
@@ -216,14 +217,19 @@ export default function TableauBordClient({ variant = 'full' }: { variant?: 'ful
         {ec.map(m => {
           const e = elapsed(m.since)
           return (
-            <div className="tb-ec-row" key={m.id}>
+            <div className="tb-ec-row" key={m.id} style={m.pausedAt ? { outline: '2px solid #F97316', outlineOffset: -2, background: '#FFF7ED', borderRadius: 8 } : undefined}>
               <span className="tb-ec-cat" style={{ background: `${CAT_COLOR[m.category] || CAT_COLOR.Autre}22`, color: CAT_COLOR[m.category] || CAT_COLOR.Autre, borderColor: `${CAT_COLOR[m.category] || CAT_COLOR.Autre}66` }}>{m.category}</span>
               <span className="tb-ec-num">{m.missionNumber ? `#${m.missionNumber}` : '—'}</span>
               <span className="tb-ec-drv">{m.driver}</span>
               <span className="tb-ec-veh">{[m.plate, m.vehicle].filter(Boolean).join(' · ') || '—'}</span>
               <span className="tb-ec-city">{m.city || '—'}</span>
-              <span className="tb-ec-st">{m.statusLabel}</span>
-              <span className={`tb-ec-timer sev${e.sev}`}>{e.txt}</span>
+              {m.pausedAt ? <>
+                <span className="tb-ec-st" style={{ color: '#9A3412', fontWeight: 700 }}>⏸ En pause</span>
+                <span className="tb-ec-timer" style={{ color: '#C2410C' }}>reprise {m.pauseUntil ? pauseWhen(m.pauseUntil) : '—'}</span>
+              </> : <>
+                <span className="tb-ec-st">{m.statusLabel}</span>
+                <span className={`tb-ec-timer sev${e.sev}`}>{e.txt}</span>
+              </>}
             </div>
           )
         })}
