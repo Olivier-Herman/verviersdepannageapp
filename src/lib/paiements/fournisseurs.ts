@@ -139,7 +139,11 @@ export async function listeAttente(C: number): Promise<EnAttente[]> {
   if (gone.length) await sb.from('paiements_attente').update({ statut: 'retire', retire_le: new Date().toISOString() }).in('id', gone.map(r => r.id))
   const live = rows.filter(r => !gone.includes(r))
   const bank = await ibans(C, [...new Set(live.map(r => byId.get(r.move_id)?.partner_id?.[0]).filter(Boolean))])
-  return live.map(r => ({ ...toFacture(byId.get(r.move_id), bank), id: r.id, ajoute_le: r.ajoute_le }))
+  // Comme au tri : fournisseurs externes d'abord, sociétés du groupe en fin de liste (Olivier 19/10/2026).
+  const societes: any[] = await odooRpcCompany(C, 'res.company', 'search_read', [[]], { fields: ['partner_id'] }).catch(() => [])
+  const groupe = new Set(societes.map(x => x.partner_id?.[0]).filter(Boolean))
+  return live.map(r => { const f = toFacture(byId.get(r.move_id), bank); return { ...f, groupe: groupe.has(f.partner_id), id: r.id, ajoute_le: r.ajoute_le } })
+    .sort((a, b) => Number(!!a.groupe) - Number(!!b.groupe))
 }
 
 export async function ajouter(C: number, moveIds: number[], userId: string | null): Promise<number> {

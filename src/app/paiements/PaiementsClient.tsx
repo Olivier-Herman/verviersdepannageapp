@@ -204,10 +204,12 @@ export default function PaiementsClient({ societes, peutTrier, userRole, userNam
             </h2>
             {attente.length === 0 && <div className="rounded-card border border-dashed p-4 text-sm text-ink-muted">La liste d’attente est vide.</div>}
             {attente.map((f, i) => (
-              <Ligne key={f.id} f={f} enAttenteDepuis onConfirmerCompte={confirmerCompte} onApercu={() => setApercu({ liste: attente, i })} action={
+              <Fragment key={f.id}>{f.groupe && !attente[i - 1]?.groupe && <h2 className="mt-4 text-xs font-semibold uppercase tracking-wider text-ink-muted">Sociétés du groupe ({attente.filter(x => x.groupe).length}) : se règlent à part</h2>}
+              <Ligne f={f} enAttenteDepuis onConfirmerCompte={confirmerCompte} onApercu={() => setApercu({ liste: attente, i })} action={
                 <button disabled={busy} onClick={async e => { e.preventDefault(); if (await post('retirer', [f.id!])) charger() }}
                   className="min-h-[44px] rounded-lg border px-3 text-sm font-semibold text-red-800 hover:bg-red-50 disabled:opacity-50">Retirer</button>
               } />
+              </Fragment>
             ))}
           </div>
         ) : (
@@ -217,7 +219,7 @@ export default function PaiementsClient({ societes, peutTrier, userRole, userNam
               {attente.length > 0 && <button onClick={() => setSel(Object.fromEntries(attente.filter(f => f.iban).map(f => [String(f.id), true])))} className="min-h-[36px] text-sm font-semibold text-brand">Tout cocher</button>}
             </div>
             {attente.length === 0 && <div className="rounded-card border border-dashed p-4 text-sm text-ink-muted">La liste d’attente est vide : rien à payer aujourd’hui pour {label}.</div>}
-            {attente.map((f, i) => <Ligne key={f.id} f={f} enAttenteDepuis coche={sel[String(f.id)]} onCoche={v => setSel(s => ({ ...s, [String(f.id)]: v }))} onApercu={() => setApercu({ liste: attente, i, cle: x => String(x.id) })} />)}
+            {attente.map((f, i) => <Fragment key={f.id}>{f.groupe && !attente[i - 1]?.groupe && <h2 className="mt-4 text-xs font-semibold uppercase tracking-wider text-ink-muted">Sociétés du groupe ({attente.filter(x => x.groupe).length}) : se règlent à part</h2>}<Ligne f={f} enAttenteDepuis coche={sel[String(f.id)]} onCoche={v => setSel(s => ({ ...s, [String(f.id)]: v }))} onApercu={() => setApercu({ liste: attente, i, cle: x => String(x.id) })} /></Fragment>)}
           </div>
         )}
       </div>
