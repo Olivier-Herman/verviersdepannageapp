@@ -161,7 +161,8 @@ function LeveeAlarmModal({ notif, onDone, onSnooze }: { notif: NotifEvent; onDon
 }
 
 // ── Rappel à traiter (paiements fournisseurs 13 h 30 / 14 h 30) ──
-// Encadré NON bloquant en bas d'écran, reste jusqu'au clic : le bandeau de 8 s passait
+// PLEIN ÉCRAN bloquant jusqu'au clic, « Me rappeler dans 15 min » le cache le temps de finir
+// (data.non_blocking ne sert ici qu'à autoriser ce report). Le bandeau de 8 s passait
 // inaperçu (Olivier 19/10/2026 : « je n'ai rien vu s'afficher »).
 function RappelModal({ notif, onDone, onSnooze }: { notif: NotifEvent; onDone: () => void; onSnooze?: (minutes: number) => void }) {
   const [sending, setSending] = useState(false)
@@ -176,8 +177,8 @@ function RappelModal({ notif, onDone, onSnooze }: { notif: NotifEvent; onDone: (
     } catch { setErr('Erreur réseau') } finally { setSending(false) }
   }
   return (
-    <div className="fixed z-[300] bottom-3 left-3 right-3 sm:left-auto sm:right-4 sm:w-[26rem] pointer-events-none">
-      <div className="pointer-events-auto rounded-2xl bg-white border-4 border-amber-500 shadow-2xl">
+    <div className="fixed inset-0 z-[300] bg-black/70 flex items-center justify-center p-4">
+      <div className="w-full max-w-lg rounded-2xl bg-white border-4 border-amber-500 shadow-2xl overflow-hidden">
         <div className="bg-amber-500 text-white px-5 py-3 flex items-center gap-3">
           <span className="text-2xl">💶</span>
           <p className="flex-1 text-base font-bold leading-tight">{notif.payload?.title || 'À traiter'}</p>

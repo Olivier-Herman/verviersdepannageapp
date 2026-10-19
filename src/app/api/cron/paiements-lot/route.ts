@@ -3,7 +3,7 @@
 // C'est Olivier qui trie (lui seul ajoute à la liste d'attente) ; Momo choisit dans la liste ce qui part.
 // Trois déclenchements (11 h 30, 12 h 30, 13 h 30 UTC) couvrent l'heure d'été et d'hiver : l'étape dépend de l'heure
 // à Bruxelles (13 h = tri, 14 h = lot), les autres passages ne font rien. Un échec doit se voir.
-// Encadré qui reste en bas d'écran jusqu'au clic (un bandeau de 8 s passait inaperçu, Olivier 19/10/2026).
+// Plein écran jusqu'au clic, report possible de 15 min (un bandeau de 8 s passait inaperçu, Olivier 19/10/2026).
 const RAPPEL = { modal: true, non_blocking: true, kind: 'rappel_paiements' }
 
 export const dynamic     = 'force-dynamic'
