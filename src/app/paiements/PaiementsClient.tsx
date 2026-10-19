@@ -12,6 +12,7 @@ type Facture = {
   id?: string; move_id: number; move_name: string; partner_name: string; ref: string | null
   invoice_date: string | null; due_date: string | null; amount: number; communication: string | null
   iban: string | null; ibanAConfirmer: { id: number; acc: string } | null; ajoute_le?: string
+  propose?: boolean; remarques?: string[]
 }
 
 const eur = (n: number) => n.toLocaleString('fr-BE', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' €'
@@ -43,7 +44,7 @@ function Ligne({ f, coche, onCoche, enAttenteDepuis, action, onConfirmerCompte }
           onChange={e => onCoche(e.target.checked)} />
       )}
       <div className="min-w-0">
-        <div className="font-semibold text-ink">{f.partner_name}</div>
+        <div className="flex flex-wrap items-center gap-2 font-semibold text-ink">{f.partner_name}{f.propose && <span className="rounded-md bg-emerald-50 px-2 py-0.5 text-xs font-semibold text-emerald-800">Proposé</span>}</div>
         <div className="mt-0.5 flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-ink-secondary">
           <span className="font-mono">{f.move_name}</span>
           {f.ref && <span>réf. {f.ref}</span>}
@@ -60,6 +61,7 @@ function Ligne({ f, coche, onCoche, enAttenteDepuis, action, onConfirmerCompte }
             {onConfirmerCompte && <button onClick={e => { e.preventDefault(); onConfirmerCompte(f.ibanAConfirmer!.id) }} className="min-h-[36px] rounded-lg border border-amber-300 bg-amber-50 px-3 text-amber-900">Confirmer ce compte</button>}
           </div>
         )}
+        {(f.remarques || []).map(t => <div key={t} className="mt-1 text-xs font-semibold text-amber-800">{t}</div>)}
         {bloquee && !f.ibanAConfirmer && <div className="mt-1 text-xs font-semibold text-red-800">Aucun compte bancaire (ou plusieurs) sur la fiche du fournisseur : à compléter avant de pouvoir payer</div>}
       </div>
       <div className="grid justify-items-end gap-1 text-right">
@@ -173,7 +175,15 @@ export default function PaiementsClient({ societes, peutTrier, userRole, userNam
         ) : etape === 'tri' ? (
           <div className="mt-5 grid gap-2">
             <div className="flex flex-wrap items-center justify-between gap-2">
-              <h2 className="text-xs font-semibold uppercase tracking-wider text-ink-muted">À trier ({aTrier.length})</h2>
+              <div className="flex flex-wrap items-center gap-3">
+                <h2 className="text-xs font-semibold uppercase tracking-wider text-ink-muted">À trier ({aTrier.length})</h2>
+                {aTrier.some(f => f.propose) && (
+                  <button onClick={() => setSel(s => ({ ...s, ...Object.fromEntries(aTrier.filter(f => f.propose).map(f => [String(f.move_id), true])) }))}
+                    className="min-h-[40px] rounded-lg border border-emerald-300 bg-emerald-50 px-3 text-sm font-semibold text-emerald-900">
+                    Cocher les propositions ({aTrier.filter(f => f.propose).length} · {eur(aTrier.filter(f => f.propose).reduce((t, f) => t + f.amount, 0))})
+                  </button>
+                )}
+              </div>
               <div className="flex items-center gap-2 rounded-lg border bg-surface px-2">
                 <Search size={14} className="text-ink-muted" />
                 <input value={q} onChange={e => setQ(e.target.value)} placeholder="Fournisseur, n° de facture…" className="min-h-[40px] bg-transparent text-sm text-ink outline-none" />

@@ -22,6 +22,9 @@ export type Facture = {
   iban: string | null          // compte du fournisseur autorisé aux paiements sortants ; null = à compléter
   // Compte connu mais pas encore confirmé pour les virements (l'ERP refuse alors de payer) : Olivier le confirme.
   ibanAConfirmer: { id: number; acc: string } | null
+  // Proposition affichée à l'écran (Olivier 19/10/2026 : « tout me proposer dans l'affichage et je sélectionne »).
+  propose?: boolean
+  remarques?: string[]
 }
 export type EnAttente = Facture & { id: string; ajoute_le: string }
 
@@ -88,7 +91,21 @@ export async function aTrier(C: number): Promise<Facture[]> {
   const enAttente = new Set((q || []).map(r => r.move_id))
   const keep = bills.filter(b => !dom.has(b.partner_id?.[0]) && !enAttente.has(b.id))
   const bank = await ibans(C, [...new Set(keep.map(b => b.partner_id?.[0]).filter(Boolean))])
-  return keep.map(b => toFacture(b, bank))
+  // Sociétés du groupe (VD, Riga, DGJ) : leurs factures se règlent à part, jamais dans un lot de virements.
+  const societes: any[] = await odooRpcCompany(C, 'res.company', 'search_read', [[]], { fields: ['partner_id'] }).catch(() => [])
+  const groupe = new Set(societes.map(x => x.partner_id?.[0]).filter(Boolean))
+  const horizon = new Date(Date.now() + 7 * 864e5).toISOString().slice(0, 10)
+  return keep.map(b => {
+    const f = toFacture(b, bank)
+    const r: string[] = []
+    const intra = groupe.has(f.partner_id), avant2026 = !!f.invoice_date && f.invoice_date < '2026-01-01', paie = /^PAIE\//.test(f.move_name || '')
+    if (intra) r.push('Société du groupe : se règle à part')
+    if (avant2026) r.push('Facture d’avant 2026 : vérifier qu’elle n’a pas déjà été payée à l’époque')
+    if (paie) r.push('Fiche de paie')
+    f.remarques = r
+    f.propose = !intra && !avant2026 && !paie && !!f.iban && !!f.due_date && f.due_date <= horizon
+    return f
+  })
 }
 
 /** Liste d'attente, relue dans l'ERP : une facture payée entre-temps (autrement) en sort d'elle-même. */
