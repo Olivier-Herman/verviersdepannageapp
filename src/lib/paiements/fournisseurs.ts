@@ -25,6 +25,7 @@ export type Facture = {
   ibanAConfirmer: { id: number; acc: string } | null
   // Proposition affichée à l'écran (Olivier 19/10/2026 : « tout me proposer dans l'affichage et je sélectionne »).
   propose?: boolean
+  carte?: boolean              // se paie par carte de crédit : jamais dans un lot de virements
   remarques?: string[]
 }
 export type EnAttente = Facture & { id: string; ajoute_le: string }
@@ -99,6 +100,8 @@ export async function aTrier(C: number): Promise<Facture[]> {
   // Fournisseurs payés automatiquement (banques, Police Fédérale) : jamais au tri (Olivier 19/10/2026).
   const { getBusinessList } = await import('@/lib/settings/business')
   const exclus = new Set((await getBusinessList('paiements_exclus_partner_ids').catch(() => [] as string[])).map(Number))
+  // Fournisseurs payés par carte de crédit (Peters, Olivier 19/10/2026) : affichés, jamais dans un lot de virements.
+  const carte = new Set((await getBusinessList('paiements_carte_partner_ids').catch(() => [] as string[])).map(Number))
   const keep = bills.filter(b => !dom.has(b.partner_id?.[0]) && !exclus.has(b.partner_id?.[0]) && !enAttente.has(b.id) && !/^PAIE\//.test(b.name || ''))
   const bank = await ibans(C, [...new Set(keep.map(b => b.partner_id?.[0]).filter(Boolean))])
   // Sociétés du groupe (VD, Riga, DGJ) : leurs factures se règlent à part, jamais dans un lot de virements.
@@ -110,9 +113,10 @@ export async function aTrier(C: number): Promise<Facture[]> {
     const r: string[] = []
     const intra = groupe.has(f.partner_id), avant2026 = !!f.invoice_date && f.invoice_date < '2026-01-01'
     if (intra) r.push('Société du groupe : se règle à part')
+    if (carte.has(f.partner_id)) { r.push('À payer par carte de crédit, pas par virement'); f.carte = true }
     if (avant2026) r.push('Facture d’avant 2026 : vérifier qu’elle n’a pas déjà été payée à l’époque')
     f.remarques = r
-    f.propose = !intra && !avant2026 && !!f.iban && !!f.due_date && f.due_date <= horizon
+    f.propose = !intra && !avant2026 && !f.carte && !!f.iban && !!f.due_date && f.due_date <= horizon
     return f
   })
 }
@@ -133,7 +137,7 @@ export async function listeAttente(C: number): Promise<EnAttente[]> {
 }
 
 export async function ajouter(C: number, moveIds: number[], userId: string | null): Promise<number> {
-  const dispo = (await aTrier(C)).filter(f => moveIds.includes(f.move_id))
+  const dispo = (await aTrier(C)).filter(f => moveIds.includes(f.move_id) && !f.carte)
   if (!dispo.length) return 0
   const { error } = await createAdminClient().from('paiements_attente').insert(dispo.map(f => ({
     company_id: C, move_id: f.move_id, move_name: f.move_name, partner_id: f.partner_id, partner_name: f.partner_name, ref: f.ref,

@@ -12,7 +12,7 @@ type Facture = {
   id?: string; move_id: number; move_name: string; partner_name: string; ref: string | null
   invoice_date: string | null; due_date: string | null; amount: number; communication: string | null
   iban: string | null; ibanAConfirmer: { id: number; acc: string } | null; ajoute_le?: string
-  propose?: boolean; remarques?: string[]
+  propose?: boolean; carte?: boolean; remarques?: string[]
 }
 
 const eur = (n: number) => n.toLocaleString('fr-BE', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' €'
@@ -36,7 +36,8 @@ function Ligne({ f, coche, onCoche, enAttenteDepuis, action, onConfirmerCompte }
   f: Facture; coche?: boolean; onCoche?: (v: boolean) => void; enAttenteDepuis?: boolean; action?: React.ReactNode
   onConfirmerCompte?: (bankId: number) => void
 }) {
-  const bloquee = !f.iban
+  const sansCompte = !f.iban && !f.carte
+  const bloquee = sansCompte || !!f.carte   // payé par carte : jamais dans un lot de virements
   return (
     <label className={`grid items-center gap-3 rounded-card border bg-surface p-3 ${onCoche ? 'cursor-pointer grid-cols-[28px_1fr_auto]' : 'grid-cols-[1fr_auto_auto]'} ${coche ? 'border-brand ring-1 ring-brand' : ''}`}>
       {onCoche && (
@@ -44,7 +45,7 @@ function Ligne({ f, coche, onCoche, enAttenteDepuis, action, onConfirmerCompte }
           onChange={e => onCoche(e.target.checked)} />
       )}
       <div className="min-w-0">
-        <div className="flex flex-wrap items-center gap-2 font-semibold text-ink">{f.partner_name}{f.propose && <span className="rounded-md bg-emerald-50 px-2 py-0.5 text-xs font-semibold text-emerald-800">Proposé</span>}</div>
+        <div className="flex flex-wrap items-center gap-2 font-semibold text-ink">{f.partner_name}{f.propose && <span className="rounded-md bg-emerald-50 px-2 py-0.5 text-xs font-semibold text-emerald-800">Proposé</span>}{f.carte && <span className="rounded-md bg-sky-50 px-2 py-0.5 text-xs font-semibold text-sky-800">Carte de crédit</span>}</div>
         <div className="mt-0.5 flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-ink-secondary">
           <span className="font-mono">{f.move_name}</span>
           {f.ref && <span>réf. {f.ref}</span>}
@@ -55,14 +56,14 @@ function Ligne({ f, coche, onCoche, enAttenteDepuis, action, onConfirmerCompte }
         {enAttenteDepuis && f.ajoute_le && f.ajoute_le.slice(0, 10) < todayIso() && (
           <div className="mt-1 text-xs font-semibold text-amber-800">En attente depuis le {fd(f.ajoute_le)} : pas encore prise</div>
         )}
-        {bloquee && f.ibanAConfirmer && (
+        {sansCompte && f.ibanAConfirmer && (
           <div className="mt-1 flex flex-wrap items-center gap-2 text-xs font-semibold text-amber-800">
             Compte {f.ibanAConfirmer.acc} pas encore confirmé pour les virements
             {onConfirmerCompte && <button onClick={e => { e.preventDefault(); onConfirmerCompte(f.ibanAConfirmer!.id) }} className="min-h-[36px] rounded-lg border border-amber-300 bg-amber-50 px-3 text-amber-900">Confirmer ce compte</button>}
           </div>
         )}
         {(f.remarques || []).map(t => <div key={t} className="mt-1 text-xs font-semibold text-amber-800">{t}</div>)}
-        {bloquee && !f.ibanAConfirmer && <div className="mt-1 text-xs font-semibold text-red-800">Aucun compte bancaire sur la facture, et la fiche du fournisseur n’en a aucun ou plusieurs : indiquer le bon compte sur la facture avant de pouvoir payer</div>}
+        {sansCompte && !f.ibanAConfirmer && <div className="mt-1 text-xs font-semibold text-red-800">Aucun compte bancaire sur la facture, et la fiche du fournisseur n’en a aucun ou plusieurs : indiquer le bon compte sur la facture avant de pouvoir payer</div>}
       </div>
       <div className="grid justify-items-end gap-1 text-right">
         <span className="font-mono font-semibold tabular-nums text-ink">{eur(f.amount)}</span>
