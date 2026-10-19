@@ -32,17 +32,21 @@ function Echeance({ due }: { due: string | null }) {
   return <span className="rounded-md bg-green-50 px-2 py-0.5 text-xs font-semibold text-green-800">Échéance {fd(due)}</span>
 }
 
-function Ligne({ f, coche, onCoche, enAttenteDepuis, action, onConfirmerCompte }: {
+function Ligne({ f, coche, onCoche, enAttenteDepuis, action, onConfirmerCompte, onApercu }: {
   f: Facture; coche?: boolean; onCoche?: (v: boolean) => void; enAttenteDepuis?: boolean; action?: React.ReactNode
   onConfirmerCompte?: (bankId: number) => void
+  onApercu?: () => void   // clic sur la ligne = aperçu de la facture (la case garde son rôle)
 }) {
   const sansCompte = !f.iban && !f.carte
   const bloquee = sansCompte || !!f.carte   // payé par carte : jamais dans un lot de virements
   return (
-    <label className={`grid items-center gap-3 rounded-card border bg-surface p-3 ${onCoche ? 'cursor-pointer grid-cols-[28px_1fr_auto]' : 'grid-cols-[1fr_auto_auto]'} ${coche ? 'border-brand ring-1 ring-brand' : ''}`}>
+    <div onClick={onApercu} role={onApercu ? 'button' : undefined} title={onApercu ? 'Voir la facture' : undefined}
+      className={`grid items-center gap-3 rounded-card border bg-surface p-3 ${onApercu ? 'cursor-pointer hover:border-brand/60' : ''} ${onCoche ? 'grid-cols-[44px_1fr_auto]' : 'grid-cols-[1fr_auto_auto]'} ${coche ? 'border-brand ring-1 ring-brand' : ''}`}>
       {onCoche && (
-        <input type="checkbox" className="h-6 w-6 accent-[var(--brand,#0b5cad)]" checked={!!coche} disabled={bloquee}
-          onChange={e => onCoche(e.target.checked)} />
+        <label onClick={e => e.stopPropagation()} className="-m-2 flex h-11 w-11 cursor-pointer items-center justify-center">
+          <input type="checkbox" className="h-6 w-6 accent-[var(--brand,#0b5cad)]" checked={!!coche} disabled={bloquee}
+            onChange={e => onCoche(e.target.checked)} />
+        </label>
       )}
       <div className="min-w-0">
         <div className="flex flex-wrap items-center gap-2 font-semibold text-ink">{f.partner_name}{f.propose && <span className="rounded-md bg-emerald-50 px-2 py-0.5 text-xs font-semibold text-emerald-800">Proposé</span>}{f.carte && <span className="rounded-md bg-sky-50 px-2 py-0.5 text-xs font-semibold text-sky-800">Carte de crédit</span>}</div>
@@ -59,7 +63,7 @@ function Ligne({ f, coche, onCoche, enAttenteDepuis, action, onConfirmerCompte }
         {sansCompte && f.ibanAConfirmer && (
           <div className="mt-1 flex flex-wrap items-center gap-2 text-xs font-semibold text-amber-800">
             Compte {f.ibanAConfirmer.acc} pas encore confirmé pour les virements
-            {onConfirmerCompte && <button onClick={e => { e.preventDefault(); onConfirmerCompte(f.ibanAConfirmer!.id) }} className="min-h-[36px] rounded-lg border border-amber-300 bg-amber-50 px-3 text-amber-900">Confirmer ce compte</button>}
+            {onConfirmerCompte && <button onClick={e => { e.preventDefault(); e.stopPropagation(); onConfirmerCompte(f.ibanAConfirmer!.id) }} className="min-h-[36px] rounded-lg border border-amber-300 bg-amber-50 px-3 text-amber-900">Confirmer ce compte</button>}
           </div>
         )}
         {(f.remarques || []).map(t => <div key={t} className="mt-1 text-xs font-semibold text-amber-800">{t}</div>)}
@@ -68,9 +72,10 @@ function Ligne({ f, coche, onCoche, enAttenteDepuis, action, onConfirmerCompte }
       <div className="grid justify-items-end gap-1 text-right">
         <span className="font-mono font-semibold tabular-nums text-ink">{eur(f.amount)}</span>
         <Echeance due={f.due_date} />
+        {onApercu && <span className="text-xs font-semibold text-brand">📄 Voir la facture</span>}
       </div>
-      {action}
-    </label>
+      {action && <div onClick={e => e.stopPropagation()}>{action}</div>}
+    </div>
   )
 }
 
@@ -88,6 +93,7 @@ export default function PaiementsClient({ societes, peutTrier, userRole, userNam
   const [confirm, setConfirm] = useState(false)
   const [fait, setFait] = useState<string>('')
   const [q, setQ] = useState('')
+  const [apercu, setApercu] = useState<{ liste: Facture[]; i: number; cle?: (f: Facture) => string } | null>(null)
 
   const charger = useCallback(async () => {
     setLoading(true); setErr('')
@@ -191,14 +197,14 @@ export default function PaiementsClient({ societes, peutTrier, userRole, userNam
               </div>
             </div>
             {aTrier.length === 0 && <div className="rounded-card border border-dashed p-4 text-sm text-ink-muted">Aucune facture à trier.</div>}
-            {aTrier.map(f => <Ligne key={f.move_id} f={f} coche={sel[String(f.move_id)]} onCoche={v => setSel(s => ({ ...s, [String(f.move_id)]: v }))} onConfirmerCompte={confirmerCompte} />)}
+            {aTrier.map((f, i) => <Ligne key={f.move_id} f={f} coche={sel[String(f.move_id)]} onCoche={v => setSel(s => ({ ...s, [String(f.move_id)]: v }))} onConfirmerCompte={confirmerCompte} onApercu={() => setApercu({ liste: aTrier, i, cle: x => String(x.move_id) })} />)}
 
             <h2 className="mt-6 text-xs font-semibold uppercase tracking-wider text-ink-muted">
               Dans la liste d’attente ({attente.length} · {eur(attente.reduce((s, f) => s + f.amount, 0))})
             </h2>
             {attente.length === 0 && <div className="rounded-card border border-dashed p-4 text-sm text-ink-muted">La liste d’attente est vide.</div>}
-            {attente.map(f => (
-              <Ligne key={f.id} f={f} enAttenteDepuis onConfirmerCompte={confirmerCompte} action={
+            {attente.map((f, i) => (
+              <Ligne key={f.id} f={f} enAttenteDepuis onConfirmerCompte={confirmerCompte} onApercu={() => setApercu({ liste: attente, i })} action={
                 <button disabled={busy} onClick={async e => { e.preventDefault(); if (await post('retirer', [f.id!])) charger() }}
                   className="min-h-[44px] rounded-lg border px-3 text-sm font-semibold text-red-800 hover:bg-red-50 disabled:opacity-50">Retirer</button>
               } />
@@ -211,7 +217,7 @@ export default function PaiementsClient({ societes, peutTrier, userRole, userNam
               {attente.length > 0 && <button onClick={() => setSel(Object.fromEntries(attente.filter(f => f.iban).map(f => [String(f.id), true])))} className="min-h-[36px] text-sm font-semibold text-brand">Tout cocher</button>}
             </div>
             {attente.length === 0 && <div className="rounded-card border border-dashed p-4 text-sm text-ink-muted">La liste d’attente est vide : rien à payer aujourd’hui pour {label}.</div>}
-            {attente.map(f => <Ligne key={f.id} f={f} enAttenteDepuis coche={sel[String(f.id)]} onCoche={v => setSel(s => ({ ...s, [String(f.id)]: v }))} />)}
+            {attente.map((f, i) => <Ligne key={f.id} f={f} enAttenteDepuis coche={sel[String(f.id)]} onCoche={v => setSel(s => ({ ...s, [String(f.id)]: v }))} onApercu={() => setApercu({ liste: attente, i, cle: x => String(x.id) })} />)}
           </div>
         )}
       </div>
@@ -236,6 +242,40 @@ export default function PaiementsClient({ societes, peutTrier, userRole, userNam
           )}
         </div>
       </div>
+      {apercu && apercu.liste[apercu.i] && (() => {
+        const f = apercu.liste[apercu.i]
+        const k = apercu.cle?.(f)
+        const cochable = !!k && !!f.iban && !f.carte
+        const aller = (d: number) => setApercu(a => a && ({ ...a, i: Math.min(a.liste.length - 1, Math.max(0, a.i + d)) }))
+        return (
+          <div className="fixed inset-0 z-[200] flex flex-col bg-black/70 p-2 sm:p-6">
+            <div className="mx-auto flex h-full w-full max-w-5xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl">
+              <div className="flex flex-wrap items-center gap-3 border-b px-4 py-3">
+                <div className="min-w-0 flex-1">
+                  <div className="truncate text-base font-bold text-slate-900">{f.partner_name}</div>
+                  <div className="flex flex-wrap gap-x-3 text-xs text-slate-700">
+                    <span className="font-mono">{f.move_name}</span>{f.ref && <span>réf. {f.ref}</span>}
+                    <span>échéance <b>{fd(f.due_date)}</b></span>
+                    <span className="font-mono font-semibold text-slate-900">{eur(f.amount)}</span>
+                  </div>
+                </div>
+                <span className="text-xs font-semibold text-slate-600">{apercu.i + 1} / {apercu.liste.length}</span>
+                <button onClick={() => aller(-1)} disabled={apercu.i === 0} className="min-h-[44px] rounded-lg border px-3 font-semibold text-slate-800 disabled:opacity-30">← Précédente</button>
+                <button onClick={() => aller(1)} disabled={apercu.i >= apercu.liste.length - 1} className="min-h-[44px] rounded-lg border px-3 font-semibold text-slate-800 disabled:opacity-30">Suivante →</button>
+                {cochable && (
+                  <button onClick={() => setSel(s => ({ ...s, [k!]: !s[k!] }))}
+                    className={`min-h-[44px] rounded-lg px-4 font-bold ${sel[k!] ? 'bg-emerald-600 text-white' : 'border-2 border-emerald-600 text-emerald-800'}`}>
+                    {sel[k!] ? '✓ Cochée' : etape === 'lot' ? 'Cocher pour le lot' : 'Cocher'}
+                  </button>
+                )}
+                <button onClick={() => setApercu(null)} aria-label="Fermer" className="min-h-[44px] min-w-[44px] rounded-lg bg-slate-100 px-3 text-lg font-bold text-slate-800">✕</button>
+              </div>
+              <iframe key={`${soc}-${f.move_id}`} title={`Facture ${f.move_name}`} className="w-full flex-1 bg-slate-100"
+                src={`/api/paiements/document?societe=${soc}&move=${f.move_id}#view=FitH`} />
+            </div>
+          </div>
+        )
+      })()}
     </AppShell>
   )
 }
