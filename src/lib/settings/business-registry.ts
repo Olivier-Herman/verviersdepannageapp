@@ -38,6 +38,8 @@ export const BUSINESS_SETTINGS: BusinessSettingDef[] = [
   { key: 'odoo_journal_scrada',          label: 'Journal « Scrada » (livre de caisse)',      group: 'Odoo', kind: 'number', seed: 40, help: 'Reçoit chaque matin les relevés CODA de Scrada.' },
   { key: 'odoo_journal_paiement_fournisseurs', label: 'Journal bancaire des lots de paiement fournisseurs', group: 'Odoo', kind: 'number', seed: 12, help: 'Verviers Dépannage : les paiements fournisseurs partent toujours d’ING (Olivier 04/10/2026). Utilisé par les lots préparés par les agents.' },
   { key: 'odoo_methode_virement_sepa',   label: 'Méthode « Virement SEPA » du journal ci-dessus', group: 'Odoo', kind: 'number', seed: 24 },
+  { key: 'odoo_partners_as24',          label: 'Fournisseurs AS 24 payés par domiciliation (le 1er = AS 24 - Belgium)', group: 'Odoo', kind: 'list', seed: ['2477', '186'], help: 'Factures validées par les agents : marquées payées par domiciliation ING. Les factures Viapass de la Société wallonne de financement passent sur le 1er (Olivier 19/10/2026).' },
+  { key: 'odoo_methode_domiciliation',  label: 'Méthode « Domiciliation » du journal de paiement fournisseurs', group: 'Odoo', kind: 'number', seed: 70 },
   // ── Boîtes mail qui engagent un flux ────────────────────────────────────
   { key: 'mail_parquet',            label: 'Parquet de Verviers (états de frais)',            group: 'Boîtes mail', kind: 'text', seed: 'fdj.pplge@just.fgov.be' },
   { key: 'mail_frais_justice',      label: 'Frais de justice Verviers (saisie judiciaire)',    group: 'Boîtes mail', kind: 'text', seed: 'frais.justice.verviers@just.fgov.be' },

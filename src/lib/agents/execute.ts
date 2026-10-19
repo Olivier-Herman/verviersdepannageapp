@@ -376,9 +376,32 @@ export async function execute(kind: ProposalKind, company: number, payload: any)
   if (kind === 'facture_achat') {
     const b = await readBill(company, payload.facture_id)
     if (!b || b.state !== 'draft') throw new Error('La facture n’est plus en brouillon (validée ou supprimée entre-temps).')
+    // AS 24 / Viapass (Olivier 19/10/2026) : la facture Viapass (prélèvement kilométrique) de la Société wallonne de
+    // financement est prélevée par AS 24 Belgium → encodée sur AS 24 - Belgium ; toute facture AS 24 est marquée payée
+    // par domiciliation pour ne jamais apparaître dans les factures à payer.
+    const as24 = company === 1 ? (await getBusinessList('odoo_partners_as24').catch(() => [] as string[])).map(Number).filter(Boolean) : []
+    const swf = /wallonne de financement/i.test(String(b.partner_id?.[1] || ''))
+    let domicilie = as24.includes(b.partner_id?.[0])
+    if (swf && as24.length) {
+      await odooRpcCompany(company, 'account.move', 'write', [[b.id], { partner_id: as24[0] }])
+      const chk = await readBill(company, b.id)
+      if (Math.abs(Number(chk?.amount_total) - Number(b.amount_total)) > 0.005) {
+        await odooRpcCompany(company, 'account.move', 'write', [[b.id], { partner_id: b.partner_id[0] }])
+        throw new Error('Facture Viapass : le montant change en passant sur AS 24 - Belgium, laissée en brouillon pour Mobi.')
+      }
+      domicilie = true
+    }
     await odooRpcCompany(company, 'account.move', 'action_post', [[b.id]])
+    let paiement = ''
+    if (domicilie) {
+      const [journal, method] = await Promise.all([getBusinessNumber('odoo_journal_paiement_fournisseurs'), getBusinessNumber('odoo_methode_domiciliation')])
+      const ctx = { context: { active_model: 'account.move', active_ids: [b.id], active_id: b.id } }
+      const wiz = await odooRpcCompany<number>(company, 'account.payment.register', 'create', [{ journal_id: journal, payment_method_line_id: method, payment_date: b.invoice_date || today(), communication: `${b.ref || ''} — domiciliation AS 24`.trim() }], ctx)
+      await odooRpcCompany(company, 'account.payment.register', 'action_create_payments', [[wiz]], ctx)
+      paiement = ` — ${swf ? 'Viapass passée sur AS 24 - Belgium, ' : ''}payée par domiciliation`
+    }
     const after = await readBill(company, b.id)
-    return { note: `Facture validée : ${after?.name || b.id}`, facture: after?.name }
+    return { note: `Facture validée : ${after?.name || b.id}${paiement}`, facture: after?.name }
   }
 
   if (kind === 'lot_paiement') {
