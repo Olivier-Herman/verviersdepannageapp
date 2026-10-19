@@ -160,7 +160,7 @@ function LeveeAlarmModal({ notif, onDone, onSnooze }: { notif: NotifEvent; onDon
   )
 }
 
-// ── Rappel à traiter (paiements fournisseurs 13 h 30 / 14 h 30) ──
+// ── Rappel à traiter (paiements fournisseurs : tri 13 h 30, lot dès l'ajout à la liste d'attente) ──
 // PLEIN ÉCRAN bloquant jusqu'au clic, « Me rappeler dans 15 min » le cache le temps de finir
 // (data.non_blocking ne sert ici qu'à autoriser ce report). Le bandeau de 8 s passait
 // inaperçu (Olivier 19/10/2026 : « je n'ai rien vu s'afficher »).

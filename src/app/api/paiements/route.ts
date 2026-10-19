@@ -37,7 +37,13 @@ export async function POST(req: NextRequest) {
     }
     if (action === 'ajouter' || action === 'retirer') {
       if (!acc.tri) return NextResponse.json({ error: 'Accès refusé' }, { status: 403 })
-      if (action === 'ajouter') return NextResponse.json({ ok: true, ajoutees: await ajouter(s.id, ids.map(Number), acc.id) })
+      if (action === 'ajouter') {
+        const ajoutees = await ajouter(s.id, ids.map(Number), acc.id)
+        // Tri validé → affichage aussitôt chez Momo (Olivier 19/10/2026), plus d'attente jusqu'à 14 h 30.
+        const { prevenirLotDuJour } = await import('@/lib/paiements/rappel-lot')
+        const momo = await prevenirLotDuJour().catch((e: any) => { console.error('[paiements] rappel Momo', e?.message || e); return null })
+        return NextResponse.json({ ok: true, ajoutees, momo_prevenu: !!momo?.sent })
+      }
       await retirer(s.id, ids.map(String), acc.id)
       return NextResponse.json({ ok: true })
     }

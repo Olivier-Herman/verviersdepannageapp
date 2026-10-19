@@ -60,7 +60,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     if (annId) await sb.from('announcement_reads').upsert({ announcement_id: annId, user_id: userId, seen_at: now }, { onConflict: 'announcement_id,user_id' })
     return NextResponse.json({ ok: true })
   }
-  // Rappel paiements fournisseurs (13 h 30 tri, 14 h 30 lot) : « Ouvrir les paiements » ferme l'encadré,
+  // Rappel paiements fournisseurs (13 h 30 tri, lot dès l'ajout à la liste d'attente) : « Ouvrir les paiements » ferme l'encadré,
   // et les rappels précédents du même type restés ouverts avec (Olivier 19/10/2026).
   if (body?.rappel_ack === true) {
     const { data: n } = await sb.from('notifications_log').select('id, notif_type').eq('id', params.id).eq('user_id', userId).maybeSingle()
