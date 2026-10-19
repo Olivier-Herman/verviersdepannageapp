@@ -544,7 +544,7 @@ export async function estimateMissionPrice(mission: MissionLike, opts?: { skipRe
     } as any)
     if (!metrics) return emptyEstimate(source, missionType, 'Siabis : dépôts non configurés ou coordonnées invalides')
     const missionRef = mm.external_id || mm.dossier_number || `M-${String(mm.id || '').slice(0, 8)}`
-    const sncLines = buildSncQuoteLines({ metrics, requiresBalisage: Boolean(mm.snc_requires_balisage), remorque: Boolean((mm as any).snc_remorque), missionRef, variant })
+    const sncLines = buildSncQuoteLines({ metrics, requiresBalisage: Boolean(mm.snc_requires_balisage), remorque: Boolean((mm as any).snc_remorque), supplements: (mm as any).snc_supplements, missionRef, variant })
     const total = Math.round(sncLines.reduce((t, l) => t + l.qty * l.price_unit, 0) * 100) / 100
     return {
       ok: true, source, mission_type: missionType, pricing_mode: 'lines', forfait: null,

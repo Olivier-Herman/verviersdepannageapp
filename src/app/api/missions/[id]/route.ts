@@ -105,7 +105,7 @@ export async function PATCH(
     // Bug rapporte : changer source vers police_snc ne propageait pas le
     // comportement SNC car snc_scenario restait NULL → quote, REL eligibility
     // etc. retombaient sur les defauts de l ancienne source.
-    'snc_scenario', 'snc_requires_balisage', 'snc_remorque',
+    'snc_scenario', 'snc_requires_balisage', 'snc_remorque', 'snc_supplements',
     // Olivier 2026-06-14 : bloc police éditable depuis la fiche dispatch.
     'police_zone', 'officer_name', 'officer_partner_id',
     // Olivier 2026-06-18 : clés (emplacement chauffeur + crochet boîte saisie bureau).
@@ -124,7 +124,7 @@ export async function PATCH(
   // On charge l etat actuel pour comparer (source avant change + verrou tarifaire).
   const { data: before } = await supabase
     .from('incoming_missions')
-    .select('redelivery_address, status, source, external_id, snc_scenario, mission_type, incident_type, amount_to_collect, amount_to_collect_manual, amount_guaranteed, special_tarif_htva, incident_lat, incident_lng, incident_address, incident_city, incident_country, incident_borne_km, incident_sens, incident_at, destination_lat, destination_lng, destination_name, destination_address, destination_borne_km, destination_sens, redelivery_address, redelivery_lat, redelivery_lng, depot_depart_id, depot_depart_locked, snc_requires_balisage, snc_remorque, intervention_date, parked_at, delivering_at, received_at, extra_addresses, billed_to_id, billed_to_name, vehicle_plate, tariff_locked, transport_vehicle_category, transport_price_per_km_htva')
+    .select('redelivery_address, status, source, external_id, snc_scenario, mission_type, incident_type, amount_to_collect, amount_to_collect_manual, amount_guaranteed, special_tarif_htva, incident_lat, incident_lng, incident_address, incident_city, incident_country, incident_borne_km, incident_sens, incident_at, destination_lat, destination_lng, destination_name, destination_address, destination_borne_km, destination_sens, redelivery_address, redelivery_lat, redelivery_lng, depot_depart_id, depot_depart_locked, snc_requires_balisage, snc_remorque, snc_supplements, intervention_date, parked_at, delivering_at, received_at, extra_addresses, billed_to_id, billed_to_name, vehicle_plate, tariff_locked, transport_vehicle_category, transport_price_per_km_htva')
     .eq('id', params.id)
     .maybeSingle()
 
@@ -265,7 +265,7 @@ export async function PATCH(
     // extra_addresses = les STOPS, qui entrent dans les kilomètres facturés : les
     // oublier ici laissait un montant périmé après l'ajout d'un passage par le
     // dispatch (le chemin chauffeur, lui, recalculait déjà). Olivier 2026-08-13.
-    const PRICING_FIELDS = ['source', 'snc_scenario', 'mission_type', 'incident_lat', 'incident_lng', 'destination_lat', 'destination_lng', 'snc_requires_balisage', 'snc_remorque', 'extra_addresses']
+    const PRICING_FIELDS = ['source', 'snc_scenario', 'mission_type', 'incident_lat', 'incident_lng', 'destination_lat', 'destination_lng', 'snc_requires_balisage', 'snc_remorque', 'snc_supplements', 'extra_addresses']
     const pricingTouched  = PRICING_FIELDS.some(f => f in updates)
     const sourceBecameSnc = 'source' in updates && updates.source === 'police_snc' && before?.source !== 'police_snc'
     // Olivier 16/09/2026 : « on efface l'assistance quand on passe en SNC, et dès
@@ -298,6 +298,7 @@ export async function PATCH(
             destination_lng:       pick('destination_lng'),
             snc_requires_balisage: pick('snc_requires_balisage'),
             snc_remorque:          pick('snc_remorque'),
+            snc_supplements:       pick('snc_supplements'),
             intervention_date:     before?.intervention_date,
             received_at:           before?.received_at,
             extra_addresses:       before?.extra_addresses,

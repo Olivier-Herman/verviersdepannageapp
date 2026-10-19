@@ -28,6 +28,7 @@
 
 import { getDrivingRoute } from '@/lib/routing/ors'
 import { createAdminClient } from '@/lib/supabase'
+import { SNC_SUPPLEMENTS, normSupplements, supplementPriceKey } from '@/lib/snc/supplements'
 
 export interface SncDepot {
   id:       number | string
@@ -66,6 +67,8 @@ export interface SncCalcInput {
 }
 
 export interface SncCalcOutput {
+  /** Prix HTVA des suppléments Siabis+ (réglages métier), clé = siabis_sup_<clé>[_maj]. */
+  supplement_prices?:     Record<string, number>
   depart_depot:           string    // nom du depot depanneuse (le plus proche parmi tous)
   depart_depot_id:        number | string
   balisage_depot?:        string    // nom du depot balisage (Pepinster ou Aywaille, le plus proche)
@@ -464,6 +467,7 @@ export async function computeSncMetrics(input: SncCalcInput): Promise<SncCalcOut
   }
 
   return {
+    supplement_prices:   await loadSupplementPrices(),
     depart_depot:        depart.name,
     depart_depot_id:     depart.id,
     balisage_depot:      balisageDepotInfo?.name,
@@ -492,6 +496,16 @@ export async function computeSncMetrics(input: SncCalcInput): Promise<SncCalcOut
   }
 }
 
+async function loadSupplementPrices(): Promise<Record<string, number>> {
+  const { getBusinessNumber } = await import('@/lib/settings/business')
+  const out: Record<string, number> = {}
+  for (const sp of SNC_SUPPLEMENTS) for (const maj of sp.majore ? [false, true] : [false]) {
+    const k = supplementPriceKey(sp.key, maj)
+    try { out[k] = await getBusinessNumber(k) } catch { /* prix non renseigné : ligne signalée à 0 */ }
+  }
+  return out
+}
+
 /** Construit les lignes de devis SNC selon metrics + balisage. */
 export interface SncQuoteLine {
   kind:       string  // SIAREM | SIAKIL | SIABAL | PECSIAMAJ | SIAKILMAJ | SIABALMAJ | SERV-MAJ (remorque)
@@ -508,6 +522,8 @@ export function buildSncQuoteLines(opts: {
   variant?:          'snc' | 'sc'
   /** Véhicule avec remorque : +50 % sur la prise en charge et les km dépanneuse (Olivier 17/10/2026). */
   remorque?:         boolean
+  /** Suppléments techniques Siabis+ cochés sur la fiche (grue, absorbant…), Olivier 19/10/2026. */
+  supplements?:      any
 }): SncQuoteLine[] {
   const lines: SncQuoteLine[] = []
   const { metrics, requiresBalisage, missionRef } = opts
@@ -601,6 +617,21 @@ export function buildSncQuoteLines(opts: {
         price_unit: m ? 1.65 : 1.0744,
       })
     }
+  }
+
+  // 4. Suppléments techniques / frais complémentaires Siabis+ (après la majoration remorque : jamais majorés à 50 %)
+  const sup = normSupplements(opts.supplements)
+  for (const sp of SNC_SUPPLEMENTS) {
+    const qty = sup[sp.key]
+    if (!qty) continue
+    const prices = metrics.supplement_prices || {}
+    const pu = (sp.majore && m ? prices[supplementPriceKey(sp.key, true)] : undefined) ?? prices[supplementPriceKey(sp.key)] ?? 0
+    lines.push({
+      kind:       'SERV-DIV',
+      name:       `Supplément Siabis+ — ${sp.label}${sp.unite && qty > 1 ? ` (${qty} × ${sp.unite})` : sp.unite ? ` (1 ${sp.unite})` : ''}${sp.majore && m ? ' (majoré)' : ''}${pu ? '' : ' — prix à renseigner dans les réglages'}`,
+      qty,
+      price_unit: pu,
+    })
   }
 
   return lines

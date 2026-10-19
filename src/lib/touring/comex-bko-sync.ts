@@ -41,7 +41,7 @@ export async function syncComexBko(sb: any): Promise<SyncResult> {
     // On inclut AUSSI les fiches 'sia_couvert' (Siabis couvert) FACTURÉES À
     // TOURING (billed_to_name ~ 'touring'). Olivier 2026-07-28.
     const { data: missions } = await sb.from('incoming_missions')
-      .select('id, mission_number, dossier_number, external_id, source, status, mission_type, estimated_htva, special_tarif_htva, amount_to_collect, incident_lat, incident_lng, destination_lat, destination_lng, vehicle_class, parent_mission_id, billed_to_name, billed_to_id, snc_scenario, snc_requires_balisage, snc_remorque, intervention_date, received_at, extra_addresses')
+      .select('id, mission_number, dossier_number, external_id, source, status, mission_type, estimated_htva, special_tarif_htva, amount_to_collect, incident_lat, incident_lng, destination_lat, destination_lng, vehicle_class, parent_mission_id, billed_to_name, billed_to_id, snc_scenario, snc_requires_balisage, snc_remorque, snc_supplements, intervention_date, received_at, extra_addresses')
       .in('dossier_number', expanded)
       .in('source', ['touring', 'sia_couvert'])
       .not('status', 'in', '(cancelled,ignored)')
@@ -60,7 +60,7 @@ export async function syncComexBko(sb: any): Promise<SyncResult> {
   // ou mal saisi), CONFIRMÉ par la plaque. Évite un « no_match » à cause d'une
   // simple faute de frappe dans le n° de dossier. Olivier 2026-07-31.
   {
-    const SEL_FB = 'id, mission_number, dossier_number, external_id, source, status, mission_type, estimated_htva, special_tarif_htva, amount_to_collect, incident_lat, incident_lng, destination_lat, destination_lng, vehicle_class, parent_mission_id, billed_to_name, billed_to_id, snc_scenario, snc_requires_balisage, snc_remorque, intervention_date, received_at, extra_addresses, vehicle_plate'
+    const SEL_FB = 'id, mission_number, dossier_number, external_id, source, status, mission_type, estimated_htva, special_tarif_htva, amount_to_collect, incident_lat, incident_lng, destination_lat, destination_lng, vehicle_class, parent_mission_id, billed_to_name, billed_to_id, snc_scenario, snc_requires_balisage, snc_remorque, snc_supplements, intervention_date, received_at, extra_addresses, vehicle_plate'
     const normPlate = (p: string) => String(p || '').toUpperCase().replace(/[^A-Z0-9]/g, '')
     for (const d of dossiers) {
       if (!d.dossier || byDossier.has(d.dossier)) continue
@@ -103,7 +103,7 @@ export async function syncComexBko(sb: any): Promise<SyncResult> {
         } as any)
         if (metrics) {
           const missionRef = m.external_id || m.dossier_number || String(m.id).slice(0, 8)
-          const lines = buildSncQuoteLines({ metrics, requiresBalisage: Boolean(m.snc_requires_balisage), remorque: Boolean((m as any).snc_remorque), missionRef, variant } as any)
+          const lines = buildSncQuoteLines({ metrics, requiresBalisage: Boolean(m.snc_requires_balisage), remorque: Boolean((m as any).snc_remorque), supplements: (m as any).snc_supplements, missionRef, variant } as any)
           const total = (lines || []).reduce((s: number, l: any) => s + l.qty * l.price_unit, 0)
           if (total > 0) return Math.round(total * 100) / 100
         }

@@ -41,6 +41,7 @@ interface Props {
     snc_scenario?:          string | null
     snc_requires_balisage?: boolean
     snc_remorque?:          boolean
+    snc_supplements?:       string
     incident_lat?:          number | null
     incident_lng?:          number | null
     destination_lat?:       number | null

@@ -1,5 +1,6 @@
 'use client'
 
+import { SNC_SUPPLEMENTS, normSupplements } from '@/lib/snc/supplements'
 import SamConversations from '@/components/sam/SamConversations'
 import { useState, useEffect, useRef, useMemo } from 'react'
 import { useRouter }   from 'next/navigation'
@@ -160,6 +161,7 @@ interface Mission {
   snc_scenario?:         'dsp' | 'rem_client' | 'rem_depot' | 'rem_direct' | string | null
   snc_requires_balisage?: boolean | null
   snc_remorque?:          boolean | null
+  snc_supplements?:       any
   remarks_billing?:      string | null
   special_tarif_htva?:   number | null
   storage_waived?:       boolean | null
@@ -962,6 +964,8 @@ export default function MissionDetailClient({
     snc_scenario:         initialMission.snc_scenario               || '',
     snc_requires_balisage: Boolean(initialMission.snc_requires_balisage),
     snc_remorque:          Boolean(initialMission.snc_remorque),
+    // Suppléments Siabis+ cochés sur la fiche (Olivier 19/10/2026)
+    snc_supplements:       normSupplements(initialMission.snc_supplements),
     // Olivier 2026-06-02 PM : tarif special HTVA (ecrase calcul automatique)
     special_tarif_htva:   initialMission.special_tarif_htva != null ? String(initialMission.special_tarif_htva) : '',
     // Transport / rapatriement (Olivier 21/09/2026) : gabarit + prix/km HTVA (« autre »).
@@ -2904,7 +2908,7 @@ export default function MissionDetailClient({
         {/* Bandeau infos additionnelles (Olivier 2026-05-26) : agrege les
             infos utiles non editables ailleurs sur la fiche. */}
         {(initialMission.vehicle_class === 'moto' || initialMission.distance_km
-          || initialMission.snc_scenario || initialMission.snc_requires_balisage || initialMission.snc_remorque || isTransport(form.mission_type)) && (
+          || initialMission.snc_scenario || initialMission.snc_requires_balisage || initialMission.snc_remorque || Object.keys(normSupplements(initialMission.snc_supplements)).length > 0 || isTransport(form.mission_type)) && (
           <div className="px-4 lg:px-8 pt-4">
             <div className="bg-surface border rounded-xl p-4 space-y-2">
               <p className="text-ink-muted text-xs uppercase tracking-widest font-semibold">Infos mission</p>
@@ -2948,6 +2952,11 @@ export default function MissionDetailClient({
                 {initialMission.snc_remorque && (
                   <div className="flex items-center gap-2 text-amber-700">
                     <span>🚛</span><span className="font-semibold">Véhicule avec remorque (+50 % prise en charge et km)</span>
+                  </div>
+                )}
+                {Object.keys(normSupplements(initialMission.snc_supplements)).length > 0 && (
+                  <div className="flex items-start gap-2 text-amber-700">
+                    <span>🧰</span><span className="font-semibold">Suppléments Siabis+ : {SNC_SUPPLEMENTS.filter(sp => normSupplements(initialMission.snc_supplements)[sp.key]).map(sp => { const n = normSupplements(initialMission.snc_supplements)[sp.key]; return sp.unite ? `${sp.label} × ${n}` : sp.label }).join(' · ')}</span>
                   </div>
                 )}
               </div>
@@ -3371,6 +3380,39 @@ export default function MissionDetailClient({
                             </div>
                           </div>
                         </label>
+                        {/* Suppléments Siabis+ (Olivier 19/10/2026) : cochés ici, repris tout seuls à la facturation. */}
+                        <div className="p-3 bg-surface border rounded-xl space-y-1">
+                          <div className="text-ink text-sm font-medium">Suppléments Siabis+</div>
+                          <div className="text-ink-muted text-xs">
+                            À cocher dès qu&apos;on les apprend : ils seront ajoutés tout seuls à la facture. * Grue, anneau, roue de secours et clés ne se cumulent pas : un seul des quatre.
+                          </div>
+                          {SNC_SUPPLEMENTS.map(sp => {
+                            const n = Number((form.snc_supplements as any)?.[sp.key] || 0)
+                            const setN = (val: number) => setForm(prev => {
+                              const cur: Record<string, number> = { ...((prev as any).snc_supplements || {}) }
+                              if (val > 0) {
+                                if (sp.exclusif) SNC_SUPPLEMENTS.filter(x => x.exclusif && x.key !== sp.key).forEach(x => { delete cur[x.key] })
+                                cur[sp.key] = val
+                              } else delete cur[sp.key]
+                              return { ...prev, snc_supplements: cur }
+                            })
+                            return (
+                              <div key={sp.key} className="flex items-center gap-3 min-h-[44px]">
+                                <label className="flex items-center gap-3 flex-1 cursor-pointer">
+                                  <input type="checkbox" className="w-5 h-5" checked={n > 0} onChange={e => setN(e.target.checked ? Math.max(1, n) : 0)} />
+                                  <span className="text-sm text-ink">{sp.label}{sp.exclusif ? ' *' : ''}{sp.aide ? <span className="text-ink-muted text-xs"> — {sp.aide}</span> : null}</span>
+                                </label>
+                                {sp.unite && n > 0 && (
+                                  <label className="flex items-center gap-2 text-xs text-ink-muted">
+                                    <input type="number" min={1} max={99} value={n} onChange={e => setN(Math.max(1, Math.min(99, Math.floor(Number(e.target.value) || 1))))}
+                                      className="w-20 min-h-[44px] border rounded-lg px-2 bg-surface text-ink text-sm" />
+                                    {sp.unite}{n > 1 ? 's' : ''}
+                                  </label>
+                                )}
+                              </div>
+                            )
+                          })}
+                        </div>
 
                         <p className="text-blue-900 text-xs bg-blue-50 border border-blue-200 rounded-lg px-2 py-1.5">
                           ℹ️ Tu peux pré-indiquer scénario + balisage pour orienter le chauffeur. Il pourra les modifier depuis sa fiche selon ce qu&apos;il constate sur place.
@@ -4610,6 +4652,7 @@ export default function MissionDetailClient({
               snc_scenario:           form.snc_scenario || null,
               snc_requires_balisage:  Boolean(form.snc_requires_balisage),
               snc_remorque:           Boolean(form.snc_remorque),
+              snc_supplements:        JSON.stringify((form as any).snc_supplements || {}),
               incident_lat:           form.incident_lat   ? Number(form.incident_lat)   : null,
               incident_lng:           form.incident_lng   ? Number(form.incident_lng)   : null,
               destination_lat:        form.destination_lat ? Number(form.destination_lat) : null,

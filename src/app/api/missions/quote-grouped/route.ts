@@ -82,7 +82,7 @@ async function sncSectionLines(mission: any): Promise<{ kind: string; name: stri
   const missionRef = mission.external_id || mission.dossier_number || `M-${String(mission.id).slice(0, 8)}`
   return buildSncQuoteLines({
     metrics,
-    requiresBalisage: Boolean(mission.snc_requires_balisage), remorque: Boolean((mission as any).snc_remorque),
+    requiresBalisage: Boolean(mission.snc_requires_balisage), remorque: Boolean((mission as any).snc_remorque), supplements: (mission as any).snc_supplements,
     missionRef,
     variant,
   }).map(l => ({ kind: l.kind as any, name: l.name, qty: l.qty, price_unit: l.price_unit }))

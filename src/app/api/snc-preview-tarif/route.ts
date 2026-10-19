@@ -86,7 +86,7 @@ export async function POST(req: Request) {
     }, { status: 400 })
   }
 
-  const lines = buildSncQuoteLines({ metrics, requiresBalisage, remorque, missionRef: 'PREVIEW', variant })
+  const lines = buildSncQuoteLines({ metrics, requiresBalisage, remorque, supplements: body.supplements, missionRef: 'PREVIEW', variant })
   const totalHtva = lines.reduce((s, l) => s + l.qty * l.price_unit, 0)
   const totalTvac = Math.round(totalHtva * (1 + TVA_RATE) * 100) / 100
 

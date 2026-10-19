@@ -265,7 +265,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     try {
       const { computeSncAmountToCollect } = await import('@/lib/snc/amount')
       const { data: fresh } = await sb.from('incoming_missions')
-        .select('source, vehicle_plate, snc_scenario, snc_requires_balisage, snc_remorque, amount_to_collect_manual, incident_lat, incident_lng, destination_lat, destination_lng, intervention_date, received_at, extra_addresses, billed_to_id, billed_to_name')
+        .select('source, vehicle_plate, snc_scenario, snc_requires_balisage, snc_remorque, snc_supplements, amount_to_collect_manual, incident_lat, incident_lng, destination_lat, destination_lng, intervention_date, received_at, extra_addresses, billed_to_id, billed_to_name')
         .eq('id', (m as any).id).maybeSingle()
       const f: any = fresh || {}
       if (f.source === 'police_snc' && f.amount_to_collect_manual !== true) {

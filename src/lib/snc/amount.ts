@@ -27,6 +27,7 @@ export async function computeSncAmountToCollect(m: {
   destination_lng?:       number | null
   snc_requires_balisage?: boolean | null
   snc_remorque?:          boolean | null
+  snc_supplements?:       any
   intervention_date?:     string | null
   received_at?:           string | null
   extra_addresses?:       any
@@ -64,7 +65,7 @@ export async function computeSncAmountToCollect(m: {
   })
   if (!metrics) return null
 
-  const lines = buildSncQuoteLines({ metrics, requiresBalisage: Boolean(m.snc_requires_balisage), remorque: Boolean(m.snc_remorque), missionRef: 'AUTO', variant })
+  const lines = buildSncQuoteLines({ metrics, requiresBalisage: Boolean(m.snc_requires_balisage), remorque: Boolean(m.snc_remorque), supplements: (m as any).snc_supplements, missionRef: 'AUTO', variant })
   const totalHtva = lines.reduce((s, l) => s + l.qty * l.price_unit, 0)
   const totalTvac = Math.round(totalHtva * (1 + TVA_RATE) * 100) / 100
   return totalTvac > 0 ? totalTvac : null

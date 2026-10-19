@@ -158,7 +158,7 @@ const CHAIN_COLS_LEGACY = `id, mission_number, external_id, dossier_number, sour
   storage_waived, storage_flat_htva, special_tarif_htva, estimated_htva,
   driver_photos, remarks_general, closing_notes, client_signature, client_signature_name, cancelled_reason,
   invoice_number, invoice_url, invoiced_at, invoice_odoo_id, invoice_created_at, payment_amount, amount_collected, payment_mode,
-  snc_scenario, snc_requires_balisage, snc_remorque, incident_lat, incident_lng, destination_lat, destination_lng, temp_returned_at, is_rollable`
+  snc_scenario, snc_requires_balisage, snc_remorque, snc_supplements, incident_lat, incident_lng, destination_lat, destination_lng, temp_returned_at, is_rollable`
 
 function kindOf(m: any): LegKind {
   if (m.dossier_leg) return 'gard'
