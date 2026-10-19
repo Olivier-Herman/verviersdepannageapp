@@ -3,6 +3,9 @@
 // C'est Olivier qui trie (lui seul ajoute à la liste d'attente) ; Momo choisit dans la liste ce qui part.
 // Trois déclenchements (11 h 30, 12 h 30, 13 h 30 UTC) couvrent l'heure d'été et d'hiver : l'étape dépend de l'heure
 // à Bruxelles (13 h = tri, 14 h = lot), les autres passages ne font rien. Un échec doit se voir.
+// Encadré qui reste en bas d'écran jusqu'au clic (un bandeau de 8 s passait inaperçu, Olivier 19/10/2026).
+const RAPPEL = { modal: true, non_blocking: true, kind: 'rappel_paiements' }
+
 export const dynamic     = 'force-dynamic'
 export const maxDuration = 120
 
@@ -34,7 +37,7 @@ export async function GET(req: Request) {
       const { getBusinessList } = await import('@/lib/settings/business')
       const { sendNotificationToMany } = await import('@/lib/notifications/send')
       const ids = await getBusinessList('paiements_tri_user_ids')
-      const r = await sendNotificationToMany(ids, 'paiements_a_trier', { title: 'Paiements fournisseurs à trier', body: `${parts.join(' · ')}. Ce que tu ajoutes à la liste d'attente part chez Momo à 14 h 30.`, action_url: '/paiements' })
+      const r = await sendNotificationToMany(ids, 'paiements_a_trier', { title: 'Paiements fournisseurs à trier', body: `${parts.join(' · ')}. Ce que tu ajoutes à la liste d'attente part chez Momo à 14 h 30.`, action_url: '/paiements', data: RAPPEL })
       return NextResponse.json({ ok: true, etape, parts, ...r })
     }
 
@@ -48,7 +51,7 @@ export async function GET(req: Request) {
     const { getBusinessList } = await import('@/lib/settings/business')
     const { sendNotificationToMany } = await import('@/lib/notifications/send')
     const ids = await getBusinessList('paiements_lot_user_ids')
-    const r = await sendNotificationToMany(ids, 'paiements_lot_du_jour', { title: 'Lot de paiement du jour', body: `${parts.join(' · ')}. Choisis ce qui part aujourd'hui.`, action_url: '/paiements' })
+    const r = await sendNotificationToMany(ids, 'paiements_lot_du_jour', { title: 'Lot de paiement du jour', body: `${parts.join(' · ')}. Choisis ce qui part aujourd'hui.`, action_url: '/paiements', data: RAPPEL })
     return NextResponse.json({ ok: true, parts, ...r })
   } catch (e: any) {
     console.error('[cron paiements-lot]', e?.message || e)

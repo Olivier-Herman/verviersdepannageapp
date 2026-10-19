@@ -60,6 +60,15 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     if (annId) await sb.from('announcement_reads').upsert({ announcement_id: annId, user_id: userId, seen_at: now }, { onConflict: 'announcement_id,user_id' })
     return NextResponse.json({ ok: true })
   }
+  // Rappel paiements fournisseurs (13 h 30 tri, 14 h 30 lot) : « Ouvrir les paiements » ferme l'encadré,
+  // et les rappels précédents du même type restés ouverts avec (Olivier 19/10/2026).
+  if (body?.rappel_ack === true) {
+    const { data: n } = await sb.from('notifications_log').select('id, notif_type').eq('id', params.id).eq('user_id', userId).maybeSingle()
+    if (!n || !['paiements_a_trier', 'paiements_lot_du_jour'].includes(n.notif_type)) return NextResponse.json({ error: 'Notification inconnue' }, { status: 404 })
+    const now = new Date().toISOString()
+    await sb.from('notifications_log').update({ responded_at: now, read_at: now }).eq('user_id', userId).eq('notif_type', n.notif_type).eq('channel', 'in_app').is('responded_at', null)
+    return NextResponse.json({ ok: true })
+  }
   if (body?.address_ack === true) {
     const r = await ackAddressChange(sb, params.id, userId)
     if (!r.ok) return NextResponse.json({ error: r.error }, { status: 400 })

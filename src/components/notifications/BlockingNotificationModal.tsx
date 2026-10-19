@@ -22,6 +22,7 @@ export default function BlockingNotificationModal({ notif, onDone, onSnooze }: {
   if (notif.notif_type === 'expert_access') return <ExpertAccessModal notif={notif} onDone={onDone} />
   if (notif.notif_type === 'siabis_couvert_request') return <SiabisCouvertModal notif={notif} onDone={onDone} />
   if (notif.notif_type === 'mission_address_changed') return <AddressChangeModal notif={notif} onDone={onDone} />
+  if (notif.notif_type === 'paiements_a_trier' || notif.notif_type === 'paiements_lot_du_jour') return <RappelModal notif={notif} onDone={onDone} onSnooze={onSnooze} />
   if (notif.notif_type === 'levee_saisie_alarme') return <LeveeAlarmModal notif={notif} onDone={onDone} onSnooze={onSnooze} />
   return <ParcVerificationModal notif={notif} onDone={onDone} />
 }
@@ -153,6 +154,39 @@ function LeveeAlarmModal({ notif, onDone, onSnooze }: { notif: NotifEvent; onDon
           </div>
           {onSnooze && <button type="button" disabled={!!sending} onClick={() => onSnooze(15)} className="w-full min-h-[44px] rounded-xl bg-slate-100 text-slate-800 font-semibold">⏰ Me rappeler dans 15 min</button>}
           <p className="text-xs text-slate-600">« Rattacher » enregistre la levée sur la fiche (elle arrête le gardiennage à sa date). « Ignorer » classe le mail sans rien changer.</p>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ── Rappel à traiter (paiements fournisseurs 13 h 30 / 14 h 30) ──
+// Encadré NON bloquant en bas d'écran, reste jusqu'au clic : le bandeau de 8 s passait
+// inaperçu (Olivier 19/10/2026 : « je n'ai rien vu s'afficher »).
+function RappelModal({ notif, onDone, onSnooze }: { notif: NotifEvent; onDone: () => void; onSnooze?: (minutes: number) => void }) {
+  const [sending, setSending] = useState(false)
+  const [err, setErr] = useState<string | null>(null)
+  async function open() {
+    setSending(true); setErr(null)
+    try {
+      const r = await fetch(`/api/notifications/${notif.id}/respond`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ rappel_ack: true }) })
+      if (!r.ok) { setErr('Impossible de fermer le rappel, réessaie.'); return }
+      onDone()
+      if (notif.payload?.action_url) window.location.href = notif.payload.action_url
+    } catch { setErr('Erreur réseau') } finally { setSending(false) }
+  }
+  return (
+    <div className="fixed z-[300] bottom-3 left-3 right-3 sm:left-auto sm:right-4 sm:w-[26rem] pointer-events-none">
+      <div className="pointer-events-auto rounded-2xl bg-white border-4 border-amber-500 shadow-2xl">
+        <div className="bg-amber-500 text-white px-5 py-3 flex items-center gap-3">
+          <span className="text-2xl">💶</span>
+          <p className="flex-1 text-base font-bold leading-tight">{notif.payload?.title || 'À traiter'}</p>
+        </div>
+        <div className="px-5 py-4 space-y-3">
+          <p className="text-slate-900">{notif.payload?.body}</p>
+          {err && <p className="text-sm font-semibold text-red-700">{err}</p>}
+          <button type="button" disabled={sending} onClick={open} className="w-full min-h-[52px] rounded-xl bg-amber-600 text-white font-bold px-3">{sending ? '…' : 'Ouvrir les paiements'}</button>
+          {onSnooze && <button type="button" disabled={sending} onClick={() => onSnooze(15)} className="w-full min-h-[44px] rounded-xl bg-slate-100 text-slate-800 font-semibold">⏰ Me rappeler dans 15 min</button>}
         </div>
       </div>
     </div>
