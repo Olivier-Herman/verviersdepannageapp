@@ -20,6 +20,7 @@ export type Facture = {
   move_id: number; move_name: string; partner_id: number; partner_name: string; ref: string | null
   invoice_date: string | null; due_date: string | null; amount: number; communication: string | null
   iban: string | null          // compte du fournisseur autorisé aux paiements sortants ; null = à compléter
+  compte_id: number | null     // id de ce compte dans l'ERP (celui de la facture en priorité)
   // Compte connu mais pas encore confirmé pour les virements (l'ERP refuse alors de payer) : Olivier le confirme.
   ibanAConfirmer: { id: number; acc: string } | null
   // Proposition affichée à l'écran (Olivier 19/10/2026 : « tout me proposer dans l'affichage et je sélectionne »).
@@ -67,16 +68,21 @@ async function ibans(C: number, partnerIds: number[]): Promise<Map<number, Compt
 }
 const confirmes = (l: Compte[] | undefined) => (l || []).filter(c => c.ok)
 
-const FIELDS = ['id', 'name', 'partner_id', 'ref', 'invoice_date', 'invoice_date_due', 'amount_residual', 'payment_reference', 'payment_state', 'state', 'move_type']
+const FIELDS = ['id', 'name', 'partner_id', 'partner_bank_id', 'ref', 'invoice_date', 'invoice_date_due', 'amount_residual', 'payment_reference', 'payment_state', 'state', 'move_type']
 
 function toFacture(b: any, bank: Map<number, Compte[]>): Facture {
   const all = bank.get(b.partner_id?.[0]) || []
   const banks = confirmes(all)
+  // Le compte indiqué sur la facture passe en premier (Olivier 19/10/2026), s'il appartient bien au fournisseur ;
+  // sinon, le seul compte confirmé de sa fiche.
+  const surFacture = all.find(c => c.id === b.partner_bank_id?.[0])
+  const choisi = surFacture ? (surFacture.ok ? surFacture : null) : (banks.length === 1 ? banks[0] : null)
+  const aConfirmer = surFacture ? (surFacture.ok ? null : surFacture) : (!banks.length && all.length === 1 ? all[0] : null)
   return {
     move_id: b.id, move_name: b.name, partner_id: b.partner_id?.[0], partner_name: b.partner_id?.[1] || '?', ref: b.ref || null,
     invoice_date: b.invoice_date || null, due_date: b.invoice_date_due || null, amount: Math.round(b.amount_residual * 100) / 100,
-    communication: b.payment_reference || null, iban: banks.length === 1 ? banks[0].acc : null,
-    ibanAConfirmer: !banks.length && all.length === 1 ? { id: all[0].id, acc: all[0].acc } : null,
+    communication: b.payment_reference || null, iban: choisi?.acc || null, compte_id: choisi?.id || null,
+    ibanAConfirmer: aConfirmer ? { id: aConfirmer.id, acc: aConfirmer.acc } : null,
   }
 }
 
@@ -151,10 +157,10 @@ export async function creerLot(C: number, ids: string[], userId: string | null) 
   const sansIban = choisies.filter(f => !f.iban)
   if (sansIban.length) throw new Error(`IBAN du fournisseur à compléter : ${sansIban.map(f => f.partner_name).join(', ')}`)
   const { journal, methodLine, method } = await journalSepa(C)
-  const bank = await ibans(C, [...new Set(choisies.map(f => f.partner_id))])
 
-  const parFournisseur = new Map<number, EnAttente[]>()
-  for (const f of choisies) parFournisseur.set(f.partner_id, [...(parFournisseur.get(f.partner_id) || []), f])
+  // Un paiement par fournisseur et par compte (deux factures sur deux comptes différents = deux virements).
+  const parFournisseur = new Map<string, EnAttente[]>()
+  for (const f of choisies) { const k = `${f.partner_id}:${f.compte_id}`; parFournisseur.set(k, [...(parFournisseur.get(k) || []), f]) }
 
   const today = new Date().toISOString().slice(0, 10)
   const crees: { id: number; name: string; amount: number; factures: EnAttente[] }[] = []
@@ -165,7 +171,7 @@ export async function creerLot(C: number, ids: string[], userId: string | null) 
       ? (factures[0].communication || factures[0].ref || factures[0].move_name)
       : factures.map(f => f.ref || f.move_name).join(' ').slice(0, 140)
     const ctx = { active_model: 'account.move', active_ids: moveIds }
-    const wiz = await odooRpcCompany<number>(C, 'account.payment.register', 'create', [{ journal_id: journal, payment_method_line_id: methodLine, payment_date: today, group_payment: true, communication, partner_bank_id: confirmes(bank.get(factures[0].partner_id))[0].id }], { context: ctx })
+    const wiz = await odooRpcCompany<number>(C, 'account.payment.register', 'create', [{ journal_id: journal, payment_method_line_id: methodLine, payment_date: today, group_payment: true, communication, partner_bank_id: factures[0].compte_id }], { context: ctx })
     await odooRpcCompany(C, 'account.payment.register', 'action_create_payments', [[wiz]], { context: ctx })
     const pays: any[] = await odooRpcCompany(C, 'account.payment', 'search_read', [[['reconciled_bill_ids', 'in', moveIds], ['batch_payment_id', '=', false], ['journal_id', '=', journal], ['state', '!=', 'canceled']]], { fields: ['id', 'name', 'amount'] })
     for (const p of pays) crees.push({ id: p.id, name: p.name, amount: p.amount, factures })

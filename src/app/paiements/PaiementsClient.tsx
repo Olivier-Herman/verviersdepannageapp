@@ -62,7 +62,7 @@ function Ligne({ f, coche, onCoche, enAttenteDepuis, action, onConfirmerCompte }
           </div>
         )}
         {(f.remarques || []).map(t => <div key={t} className="mt-1 text-xs font-semibold text-amber-800">{t}</div>)}
-        {bloquee && !f.ibanAConfirmer && <div className="mt-1 text-xs font-semibold text-red-800">Aucun compte bancaire (ou plusieurs) sur la fiche du fournisseur : à compléter avant de pouvoir payer</div>}
+        {bloquee && !f.ibanAConfirmer && <div className="mt-1 text-xs font-semibold text-red-800">Aucun compte bancaire sur la facture, et la fiche du fournisseur n’en a aucun ou plusieurs : indiquer le bon compte sur la facture avant de pouvoir payer</div>}
       </div>
       <div className="grid justify-items-end gap-1 text-right">
         <span className="font-mono font-semibold tabular-nums text-ink">{eur(f.amount)}</span>
