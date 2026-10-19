@@ -26,6 +26,7 @@ export type Facture = {
   // Proposition affichée à l'écran (Olivier 19/10/2026 : « tout me proposer dans l'affichage et je sélectionne »).
   propose?: boolean
   carte?: boolean              // se paie par carte de crédit : jamais dans un lot de virements
+  groupe?: boolean             // facture d'une société du groupe : affichée en fin de liste
   remarques?: string[]
 }
 export type EnAttente = Facture & { id: string; ajoute_le: string }
@@ -110,6 +111,8 @@ export async function aTrier(C: number): Promise<Facture[]> {
   const societes: any[] = await odooRpcCompany(C, 'res.company', 'search_read', [[]], { fields: ['partner_id'] }).catch(() => [])
   const groupe = new Set(societes.map(x => x.partner_id?.[0]).filter(Boolean))
   const horizon = new Date(Date.now() + 7 * 864e5).toISOString().slice(0, 10)
+  // Fournisseurs externes d'abord, factures entre sociétés du groupe en fin de liste (Olivier 19/10/2026) ;
+  // l'ordre par échéance est conservé dans chaque bloc (tri stable).
   return keep.map(b => {
     const f = toFacture(b, bank)
     const r: string[] = []
@@ -118,9 +121,10 @@ export async function aTrier(C: number): Promise<Facture[]> {
     if (carte.has(f.partner_id)) { r.push('À payer par carte de crédit, pas par virement'); f.carte = true }
     if (avant2026) r.push('Facture d’avant 2026 : vérifier qu’elle n’a pas déjà été payée à l’époque')
     f.remarques = r
+    f.groupe = intra
     f.propose = !intra && !avant2026 && !f.carte && !!f.iban && !!f.due_date && f.due_date <= horizon
     return f
-  })
+  }).sort((a, b) => Number(!!a.groupe) - Number(!!b.groupe))
 }
 
 /** Liste d'attente, relue dans l'ERP : une facture payée entre-temps (autrement) en sort d'elle-même. */

@@ -4,7 +4,7 @@
 //    d'attente (ce que Momo n'a pas encore pris) avec « Retirer ».
 // 2. Lot du jour (Momo, prévenu dès qu'Olivier ajoute à la liste d'attente) : coche ce qui part → « Créer le lot ».
 //    Ce qui n'est pas pris reste en attente et revient seul la fois suivante.
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { Fragment, useCallback, useEffect, useMemo, useState } from 'react'
 import { Loader2, Search } from 'lucide-react'
 import AppShell from '@/components/layout/AppShell'
 
@@ -12,7 +12,7 @@ type Facture = {
   id?: string; move_id: number; move_name: string; partner_name: string; ref: string | null
   invoice_date: string | null; due_date: string | null; amount: number; communication: string | null
   iban: string | null; ibanAConfirmer: { id: number; acc: string } | null; ajoute_le?: string
-  propose?: boolean; carte?: boolean; remarques?: string[]
+  propose?: boolean; carte?: boolean; groupe?: boolean; remarques?: string[]
 }
 
 const eur = (n: number) => n.toLocaleString('fr-BE', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' €'
@@ -197,7 +197,7 @@ export default function PaiementsClient({ societes, peutTrier, userRole, userNam
               </div>
             </div>
             {aTrier.length === 0 && <div className="rounded-card border border-dashed p-4 text-sm text-ink-muted">Aucune facture à trier.</div>}
-            {aTrier.map((f, i) => <Ligne key={f.move_id} f={f} coche={sel[String(f.move_id)]} onCoche={v => setSel(s => ({ ...s, [String(f.move_id)]: v }))} onConfirmerCompte={confirmerCompte} onApercu={() => setApercu({ liste: aTrier, i, cle: x => String(x.move_id) })} />)}
+            {aTrier.map((f, i) => <Fragment key={f.move_id}>{f.groupe && !aTrier[i - 1]?.groupe && <h2 className="mt-4 text-xs font-semibold uppercase tracking-wider text-ink-muted">Sociétés du groupe ({aTrier.filter(x => x.groupe).length}) : se règlent à part</h2>}<Ligne f={f} coche={sel[String(f.move_id)]} onCoche={v => setSel(s => ({ ...s, [String(f.move_id)]: v }))} onConfirmerCompte={confirmerCompte} onApercu={() => setApercu({ liste: aTrier, i, cle: x => String(x.move_id) })} /></Fragment>)}
 
             <h2 className="mt-6 text-xs font-semibold uppercase tracking-wider text-ink-muted">
               Dans la liste d’attente ({attente.length} · {eur(attente.reduce((s, f) => s + f.amount, 0))})
