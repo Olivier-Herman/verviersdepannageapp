@@ -96,7 +96,10 @@ export async function aTrier(C: number): Promise<Facture[]> {
   ])
   const enAttente = new Set((q || []).map(r => r.move_id))
   // Salaires (pièces PAIE/) : jamais dans les paiements fournisseurs (Olivier 19/10/2026).
-  const keep = bills.filter(b => !dom.has(b.partner_id?.[0]) && !enAttente.has(b.id) && !/^PAIE\//.test(b.name || ''))
+  // Fournisseurs payés automatiquement (banques, Police Fédérale) : jamais au tri (Olivier 19/10/2026).
+  const { getBusinessList } = await import('@/lib/settings/business')
+  const exclus = new Set((await getBusinessList('paiements_exclus_partner_ids').catch(() => [] as string[])).map(Number))
+  const keep = bills.filter(b => !dom.has(b.partner_id?.[0]) && !exclus.has(b.partner_id?.[0]) && !enAttente.has(b.id) && !/^PAIE\//.test(b.name || ''))
   const bank = await ibans(C, [...new Set(keep.map(b => b.partner_id?.[0]).filter(Boolean))])
   // Sociétés du groupe (VD, Riga, DGJ) : leurs factures se règlent à part, jamais dans un lot de virements.
   const societes: any[] = await odooRpcCompany(C, 'res.company', 'search_read', [[]], { fields: ['partner_id'] }).catch(() => [])
