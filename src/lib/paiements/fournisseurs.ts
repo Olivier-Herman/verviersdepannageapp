@@ -95,7 +95,8 @@ export async function aTrier(C: number): Promise<Facture[]> {
     sb.from('paiements_attente').select('move_id').eq('company_id', C).eq('statut', 'attente'),
   ])
   const enAttente = new Set((q || []).map(r => r.move_id))
-  const keep = bills.filter(b => !dom.has(b.partner_id?.[0]) && !enAttente.has(b.id))
+  // Salaires (pièces PAIE/) : jamais dans les paiements fournisseurs (Olivier 19/10/2026).
+  const keep = bills.filter(b => !dom.has(b.partner_id?.[0]) && !enAttente.has(b.id) && !/^PAIE\//.test(b.name || ''))
   const bank = await ibans(C, [...new Set(keep.map(b => b.partner_id?.[0]).filter(Boolean))])
   // Sociétés du groupe (VD, Riga, DGJ) : leurs factures se règlent à part, jamais dans un lot de virements.
   const societes: any[] = await odooRpcCompany(C, 'res.company', 'search_read', [[]], { fields: ['partner_id'] }).catch(() => [])
@@ -104,12 +105,11 @@ export async function aTrier(C: number): Promise<Facture[]> {
   return keep.map(b => {
     const f = toFacture(b, bank)
     const r: string[] = []
-    const intra = groupe.has(f.partner_id), avant2026 = !!f.invoice_date && f.invoice_date < '2026-01-01', paie = /^PAIE\//.test(f.move_name || '')
+    const intra = groupe.has(f.partner_id), avant2026 = !!f.invoice_date && f.invoice_date < '2026-01-01'
     if (intra) r.push('Société du groupe : se règle à part')
     if (avant2026) r.push('Facture d’avant 2026 : vérifier qu’elle n’a pas déjà été payée à l’époque')
-    if (paie) r.push('Fiche de paie')
     f.remarques = r
-    f.propose = !intra && !avant2026 && !paie && !!f.iban && !!f.due_date && f.due_date <= horizon
+    f.propose = !intra && !avant2026 && !!f.iban && !!f.due_date && f.due_date <= horizon
     return f
   })
 }
