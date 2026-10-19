@@ -19,6 +19,7 @@ import { KEY_LOCATIONS } from '@/lib/key-location'
 import { KeyTag } from '@/components/missions/KeyInfoCard'
 import { TtsButton } from '@/components/audio/TtsButton'
 import { openNavigation } from '@/lib/open-navigation'
+import CopiloteNavSheet from '@/components/missions/CopiloteNavSheet'
 import AddressField, { verifyAddressViaPlaces } from '@/components/AddressField'
 import { T }    from '@/lib/i18n/T'
 import { isTransport, isRemorquage, isRemRel } from '@/lib/missions/mission-types'
@@ -709,6 +710,14 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
     openNavigation(app, lat, lng, addr)
   }
   const [showNav, setShowNav]   = useState(false)
+  // Copilote au départ (Olivier 19/10/2026) : « En route » puis chargement → Sam / Sonic propose le GPS.
+  const [copilote, setCopilote] = useState<null | 'on_way' | 'dest'>(null)
+  useEffect(() => {
+    try {
+      const k = `vd_copilote_${init.id}`
+      if (sessionStorage.getItem(k) === 'dest') { sessionStorage.removeItem(k); setCopilote('dest') }
+    } catch { /* stockage indisponible */ }
+  }, [init.id])
   const [showVeh, setShowVeh]   = useState(false)
   const [showGrid, setShowGrid] = useState(false)
   // Petit mot d'accueil à l'acceptation d'une mission — du décor, rien de plus.
@@ -1628,6 +1637,8 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
       // préparées — une batterie, une crevaison — qui partent une seule fois
       // chacune. C'est la route qui décide et qui tient le compteur ; ici on se
       // contente de demander, et de ne rien afficher quand elle répond null.
+      // Véhicule chargé → en route vers la destination : le copilote s'ouvre après le rechargement.
+      if (action === 'load_vehicle' && j.mission?.status === 'delivering') { try { sessionStorage.setItem(`vd_copilote_${M.id}`, 'dest') } catch {} }
       const BOUTADES_ACTIVES = false   // arrêtée pour tout le monde (Olivier 03/10/2026)
       if (BOUTADES_ACTIVES && action === 'accept' && currentUserId === 'de9a37aa-41b5-4a56-894b-cc304f601d1a') {
         try {
@@ -1670,6 +1681,7 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
       const j = await r.json()
       if (!r.ok) throw new Error(j.error || 'Erreur')
       setM(j.mission)
+      if (action === 'load_vehicle' && j.mission?.status === 'delivering') setCopilote('dest')
     } catch (e: any) { setErr(e.message || 'Erreur') }
   }
 
@@ -5257,7 +5269,7 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
             </>
           )}
           {M.status === 'accepted' && (
-            <button onClick={() => initNav ? api('on_way') : setShowNav(true)} disabled={loading}
+            <button onClick={() => (!rel && M.incident_address) ? setCopilote('on_way') : (initNav ? api('on_way') : setShowNav(true))} disabled={loading}
               className="w-full py-4 bg-amber-500 disabled:opacity-50 text-ink font-bold rounded-2xl text-base">
               {loading ? <T k="mission_detail.loading" /> : (rel ? <T k="mission_detail.btn_on_way_park" /> : <T k="mission_detail.btn_on_way" />)}
             </button>
@@ -5942,6 +5954,34 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
           onClose={() => setAddrModal(null)}
         />
       )}
+
+      {/* Copilote au départ : GPS ou à vue (Olivier 19/10/2026). Le clic sur une adresse reste inchangé. */}
+      {copilote === 'on_way' && (
+        <CopiloteNavSheet mode="on_way" navApp={navApp} busy={loading}
+          address={`${M.incident_address || ''}${M.incident_city && !String(M.incident_address || '').includes(M.incident_city) ? `, ${M.incident_city}` : ''}`}
+          onClose={() => setCopilote(null)}
+          onEye={() => { setCopilote(null); api('on_way') }}
+          onGo={app => {
+            setCopilote(null)
+            if (app !== navApp || !initNav) { setNavApp(app); fetch('/api/users/nav-preference', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ nav_app: app }) }).catch(() => {}) }
+            navTo(app, M.incident_lat, M.incident_lng, M.incident_address, 'incident')
+            api('on_way')
+          }} />
+      )}
+      {copilote === 'dest' && (() => {
+        const next: any = allPoints.find((p: any) => !p.arrived_at)
+        if (!next?.address) return null
+        return (
+          <CopiloteNavSheet mode="dest" navApp={navApp} address={next.address}
+            onClose={() => setCopilote(null)}
+            onEye={() => setCopilote(null)}
+            onGo={app => {
+              setCopilote(null)
+              if (app !== navApp) { setNavApp(app); fetch('/api/users/nav-preference', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ nav_app: app }) }).catch(() => {}) }
+              navTo(app, next.lat, next.lng, next.address, next.id === '__dest__' ? 'destination' : undefined)
+            }} />
+        )
+      })()}
 
       {/* Nav app modal */}
       {showNav && <NavModal onPick={async app => {
