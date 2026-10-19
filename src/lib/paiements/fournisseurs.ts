@@ -102,7 +102,9 @@ export async function aTrier(C: number): Promise<Facture[]> {
   const exclus = new Set((await getBusinessList('paiements_exclus_partner_ids').catch(() => [] as string[])).map(Number))
   // Fournisseurs payés par carte de crédit (Peters, Olivier 19/10/2026) : affichés, jamais dans un lot de virements.
   const carte = new Set((await getBusinessList('paiements_carte_partner_ids').catch(() => [] as string[])).map(Number))
-  const keep = bills.filter(b => !dom.has(b.partner_id?.[0]) && !exclus.has(b.partner_id?.[0]) && !enAttente.has(b.id) && !/^PAIE\//.test(b.name || ''))
+  // Factures précises à ne plus afficher (déjà soldées chez la comptable, Olivier 19/10/2026) : la facture seule, pas le fournisseur.
+  const masquees = new Set((await getBusinessList('paiements_masques_move_ids').catch(() => [] as string[])).map(Number))
+  const keep = bills.filter(b => !dom.has(b.partner_id?.[0]) && !exclus.has(b.partner_id?.[0]) && !masquees.has(b.id) && !enAttente.has(b.id) && !/^PAIE\//.test(b.name || ''))
   const bank = await ibans(C, [...new Set(keep.map(b => b.partner_id?.[0]).filter(Boolean))])
   // Sociétés du groupe (VD, Riga, DGJ) : leurs factures se règlent à part, jamais dans un lot de virements.
   const societes: any[] = await odooRpcCompany(C, 'res.company', 'search_read', [[]], { fields: ['partner_id'] }).catch(() => [])
