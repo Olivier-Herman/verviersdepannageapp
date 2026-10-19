@@ -621,11 +621,16 @@ export function buildSncQuoteLines(opts: {
 
   // 4. Suppléments techniques / frais complémentaires Siabis+ (après la majoration remorque : jamais majorés à 50 %)
   const sup = normSupplements(opts.supplements)
+  const prices = metrics.supplement_prices || {}
+  const prixDe = (sp: typeof SNC_SUPPLEMENTS[number]) => (sp.majore && m ? prices[supplementPriceKey(sp.key, true)] : undefined) ?? prices[supplementPriceKey(sp.key)] ?? 0
+  // Non cumulatifs entre eux (grue, anneau, roue, clés) : plusieurs cochés → on ne facture que le plus cher (Olivier 19/10/2026)
+  const exclusifs = SNC_SUPPLEMENTS.filter(sp => sp.exclusif && sup[sp.key])
+  const exclusifRetenu = exclusifs.sort((a, b) => prixDe(b) - prixDe(a))[0]?.key
   for (const sp of SNC_SUPPLEMENTS) {
     const qty = sup[sp.key]
     if (!qty) continue
-    const prices = metrics.supplement_prices || {}
-    const pu = (sp.majore && m ? prices[supplementPriceKey(sp.key, true)] : undefined) ?? prices[supplementPriceKey(sp.key)] ?? 0
+    if (sp.exclusif && sp.key !== exclusifRetenu) continue
+    const pu = prixDe(sp)
     lines.push({
       kind:       'SERV-DIV',
       name:       `Supplément Siabis+ — ${sp.label}${sp.unite && qty > 1 ? ` (${qty} × ${sp.unite})` : sp.unite ? ` (1 ${sp.unite})` : ''}${sp.majore && m ? ' (majoré)' : ''}${pu ? '' : ' — prix à renseigner dans les réglages'}`,

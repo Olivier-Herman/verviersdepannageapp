@@ -7,7 +7,7 @@
 export interface SncSupplementDef {
   key:       string
   label:     string
-  /** « pas cumulatifs entre eux » (astérisque de la grille) : un seul par intervention. */
+  /** « pas cumulatifs entre eux » (astérisque de la grille) : plusieurs cochés → seul le plus cher est facturé. */
   exclusif?: boolean
   /** Quantité saisie (sacs, tranches de 15 min) ; sinon simple case à cocher. */
   unite?:    string
@@ -40,9 +40,8 @@ export function normSupplements(v: any): SncSupplements {
     const n = o[s.key] === true ? 1 : Math.floor(Number(o[s.key]) || 0)
     if (n > 0) out[s.key] = s.unite ? Math.min(n, 99) : 1
   }
-  // Un seul supplément « non cumulatif » : on garde le premier de la liste (la fiche n'en propose qu'un)
-  const excl = SNC_SUPPLEMENTS.filter(s => s.exclusif && out[s.key])
-  for (const s of excl.slice(1)) delete out[s.key]
+  // Les « non cumulatifs » restent tous cochés (c'est ce qui s'est passé) : seul le plus cher est facturé,
+  // dans le moteur Siabis (Olivier 19/10/2026).
   return out
 }
 

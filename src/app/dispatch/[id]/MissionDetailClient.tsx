@@ -3384,14 +3384,13 @@ export default function MissionDetailClient({
                         <div className="p-3 bg-surface border rounded-xl space-y-1">
                           <div className="text-ink text-sm font-medium">Suppléments Siabis+</div>
                           <div className="text-ink-muted text-xs">
-                            À cocher dès qu&apos;on les apprend : ils seront ajoutés tout seuls à la facture. * Grue, anneau, roue de secours et clés ne se cumulent pas : un seul des quatre.
+                            À cocher dès qu&apos;on les apprend : ils seront ajoutés tout seuls à la facture. * Grue, anneau, roue de secours et clés ne se cumulent pas : si plusieurs sont cochés, seul le plus cher est facturé.
                           </div>
                           {SNC_SUPPLEMENTS.map(sp => {
                             const n = Number((form.snc_supplements as any)?.[sp.key] || 0)
                             const setN = (val: number) => setForm(prev => {
                               const cur: Record<string, number> = { ...((prev as any).snc_supplements || {}) }
                               if (val > 0) {
-                                if (sp.exclusif) SNC_SUPPLEMENTS.filter(x => x.exclusif && x.key !== sp.key).forEach(x => { delete cur[x.key] })
                                 cur[sp.key] = val
                               } else delete cur[sp.key]
                               return { ...prev, snc_supplements: cur }
