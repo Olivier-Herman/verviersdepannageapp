@@ -340,6 +340,14 @@ export async function execute(kind: ProposalKind, company: number, payload: any)
     if (sale.length !== 1) throw new Error('Le bouton « Refacturer l’avance de fonds » n’a pas créé de vente brouillon : à voir dans l’ERP.')
     const sid = sale[0].id
     await odooRpcCompany(company, 'account.move', 'write', [[sid], { partner_id: payload.client_id, ref: payload.dossier }])
+    // Olivier 19/10/2026 (Hens) : on refacture le HTVA du fournisseur, jamais la TVA étrangère non récupérable, encodée
+    // sur l'achat comme une ligne à part « TVA étrangère … » (achat en intra 0 % au total payé).
+    const achatLignes: any[] = await odooRpcCompany(company, 'account.move.line', 'search_read', [[['move_id', '=', payload.achat_id], ['display_type', '=', 'product']]], { fields: ['name', 'price_subtotal'] })
+    const htvaFournisseur = Math.round(achatLignes.filter(l => !/^tva étrangère/i.test(String(l.name || '').trim())).reduce((t, l) => t + Number(l.price_subtotal || 0), 0) * 100) / 100
+    const venteLignes: any[] = await odooRpcCompany(company, 'account.move.line', 'search_read', [[['move_id', '=', sid], ['display_type', '=', 'product']]], { fields: ['id', 'price_unit'] })
+    if (venteLignes.length === 1 && htvaFournisseur > 0 && Math.abs(venteLignes[0].price_unit - htvaFournisseur) > 0.005) {
+      await odooRpcCompany(company, 'account.move', 'write', [[sid], { invoice_line_ids: [[1, venteLignes[0].id, { price_unit: htvaFournisseur }]] }])
+    }
     const { remapTaxes } = await import('./lot2')
     const notes = await remapTaxes(company, sid)
     await odooRpcCompany(company, 'account.move', 'action_post', [[sid]])
