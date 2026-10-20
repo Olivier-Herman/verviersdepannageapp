@@ -54,6 +54,16 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   const sb = createAdminClient()
   const now = new Date().toISOString()
 
+  // Personne ne force la clôture de SA PROPRE mission (Olivier 20/10/2026 : Matthieu a forcé K024FP, Siabis non
+  // couvert jamais encaissé) : la clôture passe par l'app chauffeur (encaissement, photos) ou par le bureau.
+  // Seul le superadmin garde la main. Réinitialiser ou remettre en dispatch reste permis.
+  if (role !== 'superadmin' && ['completed', 'to_invoice', 'parked', 'delivering'].includes(body.status)) {
+    const { data: own } = await sb.from('incoming_missions').select('assigned_to').eq('id', params.id).maybeSingle()
+    if (own?.assigned_to && own.assigned_to === userId) {
+      return NextResponse.json({ error: 'Tu ne peux pas forcer la clôture de ta propre mission : clôture-la depuis l’app chauffeur (encaissement, photos) ou demande au bureau.' }, { status: 403 })
+    }
+  }
+
   // Fiche « gardiennage » miroir (Vue dossier, dossier_leg) : ce n'est pas un
   // véhicule, c'est un reflet de facturation. La forcer en parc crée un
   // fantôme (compteur À Relivrer à 1, relivraison Kaze raccrochée dessus —
