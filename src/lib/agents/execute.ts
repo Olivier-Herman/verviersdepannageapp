@@ -54,6 +54,12 @@ export async function prepare(kind: ProposalKind, agent: AgentAccount, company: 
       const dup: any[] = await odooRpcCompany(company, 'account.move', 'search_read', [[['id', '!=', id], ['company_id', '=', company], ['move_type', '=', b.move_type], ['partner_id', '=', b.partner_id[0]], ['ref', '=', b.ref], ['state', '=', 'posted']]], { fields: ['name'], limit: 1 })
       if (dup?.length) throw new Error(`Doublon : ${dup[0].name} porte déjà la référence ${b.ref} pour ce fournisseur.`)
     }
+    // Garde-fou anti-doublon (Olivier 20/10/2026 : CFDP B1RGF1 et hôtel VER-IN encodés deux fois) : une autre pièce
+    // du même fournisseur, au même montant, datée à 60 jours près (validée ou brouillon) = doublon possible → jamais
+    // validée seule, elle part chez Olivier avec la pièce en face.
+    const d0 = new Date(b.invoice_date); const lo = new Date(d0.getTime() - 60 * 864e5).toISOString().slice(0, 10), hi = new Date(d0.getTime() + 60 * 864e5).toISOString().slice(0, 10)
+    const twins: any[] = await odooRpcCompany(company, 'account.move', 'search_read', [[['id', '!=', id], ['company_id', '=', company], ['move_type', '=', b.move_type], ['partner_id', '=', b.partner_id[0]], ['state', 'in', ['posted', 'draft']], ['amount_total', '>=', b.amount_total - 0.01], ['amount_total', '<=', b.amount_total + 0.01], ['invoice_date', '>=', lo], ['invoice_date', '<=', hi]]], { fields: ['name', 'ref', 'state'], limit: 3 })
+    const doublonPossible = twins.length ? twins.map(t => `${t.name || 'brouillon'}${t.ref ? ` (${t.ref})` : ''}`).join(', ') : null
     let directAllowed = false, directWhy: string | undefined
     // Riga (Olivier 06/10/2026) : « s'il est certain il le valide » — Peppol, PDF, mail ou scan,
     // sans limite de montant. Au moindre doute (certain absent ou faux) : validation par Olivier.
@@ -68,7 +74,14 @@ export async function prepare(kind: ProposalKind, agent: AgentAccount, company: 
       directAllowed = true
       directWhy = 'Peppol (règle du 13/10/2026)'
     }
-    return { title: `${b.partner_id[1]} · ${b.ref || b.name || 'brouillon'}`, amount: b.amount_total, payload: { facture_id: id, fournisseur: b.partner_id[1], reference: b.ref, htva: b.amount_untaxed, peppol: Boolean(b.peppol_message_uuid) }, directAllowed, directWhy }
+    // Hors Peppol (Olivier 20/10/2026, autonomie validée : 28 validations sur 28 sans correction) : seul si
+    // l'agent est certain de sa lecture et ne doute pas d'une avance de fonds.
+    if (company === 1 && !b.peppol_message_uuid && body?.certain === true && body?.stop !== true) {
+      directAllowed = true
+      directWhy = 'hors Peppol, lecture certaine (autonomie du 20/10/2026)'
+    }
+    if (doublonPossible) { directAllowed = false; directWhy = undefined }
+    return { title: `${b.partner_id[1]} · ${b.ref || b.name || 'brouillon'}${doublonPossible ? ` · ⚠️ doublon possible : ${doublonPossible}` : ''}`, amount: b.amount_total, payload: { facture_id: id, fournisseur: b.partner_id[1], reference: b.ref, htva: b.amount_untaxed, peppol: Boolean(b.peppol_message_uuid), ...(doublonPossible ? { doublon_possible: doublonPossible } : {}) }, directAllowed, directWhy }
   }
 
   if (kind === 'lot_paiement') {
@@ -131,7 +144,10 @@ export async function prepare(kind: ProposalKind, agent: AgentAccount, company: 
     return {
       title: `${line.journal_id?.[1] || 'Banque'} ${line.date} · ${Number(line.amount).toFixed(2)} € · ${String(line.payment_ref || '').replace(/\s+/g, ' ').slice(0, 60)}`,
       amount: Number(line.amount), payload: { ligne_id: lineId, parts: p.parts, ventilation: resume },
-      directAllowed: exact.ok, directWhy: exact.ok ? `bonne facture, montant exact (${exact.why})` : undefined,
+      // Riga (Olivier 20/10/2026, autonomie validée : 12 validations sur 12) : Rémi rapproche seul quand il est certain
+      // (règles du 20/10 : frais bancaires, DGJ, 580000, NN). Une ligne qui demande une pièce reste chez Olivier.
+      directAllowed: exact.ok || (company === 2 && body?.certain === true),
+      directWhy: exact.ok ? `bonne facture, montant exact (${exact.why})` : company === 2 && body?.certain === true ? 'Riga, rapprochement certain (autonomie du 20/10/2026)' : undefined,
     }
   }
 
