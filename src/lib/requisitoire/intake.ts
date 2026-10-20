@@ -148,6 +148,16 @@ async function processMessage(
   const { isBounce } = await import('./levee-auto')
   if (isBounce(msg.from, msg.subject)) { summary.skipped++; return }
 
+  // Retour d'une de NOS factures (objet « Verviers Depannage Facture (Réf 2026/10/192) »), souvent renvoyée par le
+  // Parquet avec notre propre réquisitoire joint : jamais un nouveau réquisitoire (Olivier 20/10/2026).
+  if (/Verviers\s+D[ée]pannage\s+(Facture|Note de cr[ée]dit|Avoir)\s*\(R[ée]f/i.test(msg.subject || '')) {
+    await sb.from('requisitoire_intake').insert({
+      mailbox, source_email_id: msg.id, from_addr: msg.from, subject: msg.subject, received_at: msg.receivedDateTime,
+      status: 'ignored', doc_type: 'autre', error: 'Retour d’une de nos factures : pas un nouveau réquisitoire.',
+    })
+    summary.skipped++; return
+  }
+
   // Un mail d'une adresse police belge = à traiter systématiquement
   // (réquisitoire ou levée), même sans PJ ni mot-clé. Olivier 2026-07-01.
   // Idem pour un mail de police transféré d'info@ par VD Soft (marque en tête du
