@@ -111,9 +111,12 @@ export async function aTrier(C: number): Promise<Facture[]> {
   const societes: any[] = await odooRpcCompany(C, 'res.company', 'search_read', [[]], { fields: ['partner_id'] }).catch(() => [])
   const groupe = new Set(societes.map(x => x.partner_id?.[0]).filter(Boolean))
   const horizon = new Date(Date.now() + 7 * 864e5).toISOString().slice(0, 10)
+  // Facture que le fournisseur marque lui-même comme réglée (communication « Facture payée », ex. Dema payé à la
+  // caisse) : jamais au tri (Olivier 20/10/2026).
+  const payeeSelonFacture = (b: any) => /^\s*(facture\s+)?(pay[ée]e|acquitt[ée]e|r[ée]gl[ée]e)\b|\bbetaald\b|\bbezahlt\b|\bpaid\b/i.test(String(b.payment_reference || ''))
   // Fournisseurs externes d'abord, factures entre sociétés du groupe en fin de liste (Olivier 19/10/2026) ;
   // l'ordre par échéance est conservé dans chaque bloc (tri stable).
-  return keep.map(b => {
+  return keep.filter(b => !payeeSelonFacture(b)).map(b => {
     const f = toFacture(b, bank)
     const r: string[] = []
     const intra = groupe.has(f.partner_id), avant2026 = !!f.invoice_date && f.invoice_date < '2026-01-01'
