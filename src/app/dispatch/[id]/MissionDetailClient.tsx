@@ -1878,7 +1878,12 @@ export default function MissionDetailClient({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [form.amount_guaranteed])
 
+  // Seule une FRAPPE du dispatcher dans le champ vaut « saisie manuelle ». Le montant que le serveur recalcule
+  // (adresse, scénario…) et réaffiche ici n'est pas une saisie : avant, il revenait marqué « manuel » et gelait
+  // le calcul automatique (2BXH134 livré sans encaissement, Olivier 20/10/2026).
+  const amountTypedRef = useRef(false)
   useEffect(() => {
+    if (!amountTypedRef.current) return
     const v = form.amount_to_collect
     const norm = v === '' || v == null ? null : Number(v)
     const orig = (initialMission as any).amount_to_collect != null ? Number((initialMission as any).amount_to_collect) : null
@@ -3648,7 +3653,7 @@ export default function MissionDetailClient({
                     <Input value={form.amount_guaranteed} onChange={fNum('amount_guaranteed')} placeholder="0.00" />
                   </Field>
                   <Field label="Paiement à réclamer au client (€)">
-                    <Input value={form.amount_to_collect} onChange={fNum('amount_to_collect')} placeholder="0.00" />
+                    <Input value={form.amount_to_collect} onChange={v => { amountTypedRef.current = true; fNum('amount_to_collect')(v) }} placeholder="0.00" />
                   </Field>
                 </div>
 
