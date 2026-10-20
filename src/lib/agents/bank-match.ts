@@ -31,7 +31,16 @@ async function bankLine(company: number, id: number) {
 
 /** TVA déductible 21 % : taxe, étiquettes et ligne de répartition, lues dans l'ERP. */
 async function tax21(company: number) {
-  const taxId = await getBusinessNumber('odoo_taxe_achat_21')
+  let taxId = await getBusinessNumber('odoo_taxe_achat_21')
+  // Le réglage vise la taxe de VD : pour une autre société (Riga, DGJ), sa propre taxe d'achat à 21 % (Riga 20/10/2026).
+  const [own]: any[] = await odooRpcCompany(company, 'account.tax', 'search_read', [[['id', '=', taxId], ['company_id', '=', company]]], { fields: ['id'] })
+  if (!own) {
+    // même taxe (même nom, ex. « 21% S ») dans la société visée
+    const [ref]: any[] = await odooRpcCompany(1, 'account.tax', 'read', [[taxId]], { fields: ['name'] })
+    const [t]: any[] = await odooRpcCompany(company, 'account.tax', 'search_read', [[['company_id', '=', company], ['type_tax_use', '=', 'purchase'], ['name', '=', ref?.name || '21% S']]], { fields: ['id'], limit: 1 })
+    if (!t) throw new Error('TVA 21 % : taxe d’achat introuvable pour cette société.')
+    taxId = t.id
+  }
   const reps: any[] = await odooRpcCompany(company, 'account.tax.repartition.line', 'search_read', [[['tax_id', '=', taxId], ['document_type', '=', 'invoice']]], { fields: ['id', 'repartition_type', 'account_id', 'tag_ids'] })
   const base = reps.find(r => r.repartition_type === 'base'), tax = reps.find(r => r.repartition_type === 'tax' && r.account_id)
   if (!base || !tax) throw new Error('TVA 21 % : répartition introuvable dans l’ERP.')
