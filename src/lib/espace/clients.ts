@@ -12,6 +12,8 @@
 //   - La demande part en dépannage sur place ; le chauffeur la transforme en remorquage si besoin.
 //   - Déplacement pour rien : forfait de la grille (75 € TVAC), non commissionné.
 //   - Commission du garage : un pourcentage (réglage métier) du prix payé, reversé par une note de crédit par mois.
+//     Mis à 0 le 20/10/2026 (décision de Momo) : pas de commission sur les clients sans assistance ; la contrepartie
+//     est le remorquage vers le garage, qui garde la réparation. À 0, l'espace du garage affiche cet argument.
 //   - Notifications au client en panne s'il les accepte (client-notif.ts) ; aucune au garage.
 
 import crypto from 'crypto'

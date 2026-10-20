@@ -52,9 +52,11 @@ export default function MesClients() {
               <div className="cl-kpi">
                 <div><b>{s.vehicules.length}</b><span>véhicules inscrits</span></div>
                 <div><b>{s.vehicules.filter(c => c.assistance).length}</b><span>avec assistance</span></div>
-                <div><b>{eur(s.commission.htva)}</b><span>commission de {moisLib}*</span></div>
+                {s.commission.pct > 0 && <div><b>{eur(s.commission.htva)}</b><span>commission de {moisLib}*</span></div>}
               </div>
-              <p style={{ fontSize: 12, color: 'var(--mute)', margin: '10px 0 0' }}>* {s.commission.pct} % du prix HTVA payé par vos clients sans assistance ({s.commission.nb} intervention{s.commission.nb > 1 ? 's' : ''} ce mois), reversés par une note de crédit en fin de mois. Les déplacements pour rien ne sont pas commissionnés.</p>
+              {s.commission.pct > 0
+                ? <p style={{ fontSize: 12, color: 'var(--mute)', margin: '10px 0 0' }}>* {s.commission.pct} % du prix HTVA payé par vos clients sans assistance ({s.commission.nb} intervention{s.commission.nb > 1 ? 's' : ''} ce mois), reversés par une note de crédit en fin de mois. Les déplacements pour rien ne sont pas commissionnés.</p>
+                : <p style={{ fontSize: 13, color: 'var(--ink2)', margin: '10px 0 0' }}>En cas de remorquage, le véhicule de votre client est toujours déposé dans votre garage : la réparation vous revient.</p>}
             </div>
             <QrCarte s={s} onCopie={() => montrer('Lien copié')} />
           </div>
