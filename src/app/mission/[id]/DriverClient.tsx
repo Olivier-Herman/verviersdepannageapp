@@ -2859,6 +2859,7 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
             if (r.dprCode) setF2DprMotif({ code: r.dprCode, label: r.dprLabel || r.dprCode })
             setCloseType('dpr'); setScreen('close'); return
           }
+          if (r.outcome === 'delivered' && sncAmountUnresolved) { setErr(t('mission_detail.snc_amount_unresolved')); setScreen('main'); return }
           if (r.outcome === 'delivered') { setCloseType('rem');  setScreen('close'); return }
           if (r.outcome === 'park') {
             // Olivier 10/09/2026 (2EMF957) : la mise en parc VD Soft est
@@ -5344,6 +5345,7 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
                   }
                   // Siabis non couvert direct : encaissement obligatoire avant
                   // de livrer au client. On renvoie vers l'encaissement.
+                  if (sncAmountUnresolved) { setErr(t('mission_detail.snc_amount_unresolved')); return }  // montant non calculé = jamais livrer impayé (Olivier 20/10/2026, 2BXH134)
                   if (sncPaymentDue) { setScreen('encaissement'); return }
                   // Olivier 2026-06-24 : REM sans adresse de destination → on
                   // demande de l'encoder à l'arrivée avant de clôturer.
@@ -5491,6 +5493,7 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
               {(M.mission_type === 'trajet_vide' || totPh >= 3) && (
                 <button onClick={() => {
                     // Siabis non couvert direct : encaissement obligatoire avant clôture.
+                    if (sncAmountUnresolved) { setErr(t('mission_detail.snc_amount_unresolved')); return }  // montant non calculé = jamais livrer impayé (Olivier 20/10/2026, 2BXH134)
                     if (sncPaymentDue) { setScreen('encaissement'); return }
                     setCloseType(M.mission_type === 'trajet_vide' ? 'dpr' : 'dsp'); setScreen('close')
                   }}
