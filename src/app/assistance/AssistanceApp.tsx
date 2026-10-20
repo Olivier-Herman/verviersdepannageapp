@@ -166,8 +166,12 @@ export default function AssistanceApp({ contexte, tel, appStore, action }: { con
   ) : null
   const pied = (
     <footer className="dcl-foot">
-      {tel ? <>Urgence ou doute ? Appelez Verviers Dépannage 24 h/24 : <b style={{ color: 'var(--ink)', userSelect: 'all' }}>{tel}</b></> : 'Verviers Dépannage, 24 h/24'}
-      <div style={{ marginTop: 10, display: 'flex', flexWrap: 'wrap', justifyContent: 'center', gap: '0 16px' }}>
+      {/* Deux lignes nettes : la phrase, puis le numéro d'un bloc, jamais coupé (Olivier 20/10/2026). */}
+      {tel ? <>
+        <div style={{ fontSize: 13 }}>Urgence ou doute ? Appelez Verviers Dépannage, 24 h/24</div>
+        <b style={{ display: 'block', marginTop: 4, fontSize: 18, color: 'var(--ink)', whiteSpace: 'nowrap', userSelect: 'all' }}>{tel}</b>
+      </> : 'Verviers Dépannage, 24 h/24'}
+      <div style={{ marginTop: 8, display: 'flex', flexWrap: 'wrap', justifyContent: 'center', gap: '0 18px', fontSize: 13 }}>
         {etat?.client && <button className="link" style={{ minHeight: 44 }} onClick={async () => { await fetch(`${API}/compte`, { method: 'DELETE' }); setP(PERSONNE); setEcran('accueil'); charger() }}>Se déconnecter</button>}
         {etat?.client && <button className="link" style={{ minHeight: 44 }} onClick={() => setSuppr(true)}>Supprimer mon compte</button>}
         <a className="link" style={{ minHeight: 44, display: 'inline-flex', alignItems: 'center' }} href="/assistance/confidentialite">Confidentialité</a>
