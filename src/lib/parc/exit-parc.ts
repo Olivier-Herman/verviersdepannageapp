@@ -24,8 +24,11 @@ export async function exitParcNow(sb: any, rootId: string, actor: { id: string |
   if (!gate.ok) return { ok: false, error: gate.error, status: 409, exit_control_blocked: true }
 
   const now = new Date().toISOString()
+  // Saisie dont l'état de frais est déjà parti : elle est facturée par lui, pas de passage en « à facturer » (20/10/2026).
+  const { data: sd } = await sb.from('saisie_dossiers').select('state').eq('mission_id', root.id).eq('state', 'ef_envoye').limit(1)
+  const parEF = (sd || []).length > 0
   const { error: upErr } = await sb.from('incoming_missions')
-    .update({ status: 'to_invoice', completed_at: now, updated_at: now })
+    .update({ status: parEF ? 'completed' : 'to_invoice', completed_at: now, updated_at: now, ...(parEF ? { invoice_notes: 'Facturé par l’état de frais déjà envoyé' } : {}) })
     .eq('id', root.id)
   if (upErr) return { ok: false, error: upErr.message, status: 500 }
   // Motif de sortie sur la fiche Gardiennage que le trigger vient de fermer.

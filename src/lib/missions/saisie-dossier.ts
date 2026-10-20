@@ -635,6 +635,10 @@ export async function sendEtatFrais(
     updated_at: new Date().toISOString(),
   }).eq('id', dossierId)
 
+  // La fiche déjà sortie du parc (restituée) et restée « à facturer » est facturée par cet état de frais :
+  // elle quitte la file de facturation (3 saisies restées bloquées, Olivier 20/10/2026).
+  if (d.mission_id) await sb.from('incoming_missions').update({ status: 'completed', invoice_notes: `Facturé par l'état de frais ${numeroLabel} (${dest.email})`, updated_at: new Date().toISOString() })
+    .eq('id', d.mission_id).eq('status', 'to_invoice').then(() => {}, () => {})
   if (d.mission_id) await sb.from('mission_logs').insert({ mission_id: d.mission_id, action: 'etat_frais_envoye', notes: `${gens.length > 1 ? 'États de frais' : 'État de frais'} ${numeroLabel} envoyé${gens.length > 1 ? 's' : ''} à ${dest.email} (${totalTvacAll.toFixed(2).replace('.', ',')} € TVAC)`, actor_id: userId || null, metadata: { numeros: gens.map(g => g.numero), email: dest.email } }).then(() => {}, () => {})
   return { ok: true, email: dest.email, numero: numeroLabel, count: gens.length }
 }
