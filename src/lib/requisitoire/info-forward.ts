@@ -44,7 +44,7 @@ export async function forwardPoliceFromInfo(): Promise<InfoForwardSummary> {
       const dup = !!m.internetMessageId && await hasInternetMessageId(FOURRIERE_MAILBOX, m.internetMessageId)
       if (dup) out.duplicates++
       else {
-        await forwardMessage(INFO, m.id, FOURRIERE_MAILBOX, `${INFO_FORWARD_MARK} — reçu le ${fr(m.receivedDateTime)} de ${m.from}.`)
+        await forwardMessage(INFO, m.id, FOURRIERE_MAILBOX, `${INFO_FORWARD_MARK} — reçu le ${fr(m.receivedDateTime)} de ${m.from}.`, m.from)
         out.forwarded++
       }
       await tagMessage(INFO, m.id, INFO_FORWARDED_CATEGORY, m.categories)

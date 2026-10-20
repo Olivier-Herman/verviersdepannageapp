@@ -309,10 +309,13 @@ export async function hasInternetMessageId(mailbox: string, internetMessageId: s
 }
 
 /** Transfère un mail (pièces jointes comprises) vers une autre adresse, avec un commentaire en tête. */
-export async function forwardMessage(mailbox: string, messageId: string, to: string, comment: string): Promise<void> {
+// replyTo : adresse de l'expéditeur d'origine, pour que « Répondre » dans la boîte de destination lui réponde
+// directement, et pas à la boîte qui a transféré (Olivier 20/10/2026).
+export async function forwardMessage(mailbox: string, messageId: string, to: string, comment: string, replyTo?: string): Promise<void> {
+  const reply = replyTo && /@/.test(replyTo) ? { message: { replyTo: [{ emailAddress: { address: replyTo.trim() } }] } } : {}
   const res = await authedFetch(`/users/${encodeURIComponent(mailbox)}/messages/${encodeURIComponent(messageId)}/forward`, {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ comment, toRecipients: [{ emailAddress: { address: to } }] }),
+    body: JSON.stringify({ comment, toRecipients: [{ emailAddress: { address: to } }], ...reply }),
   })
   if (!res.ok) throw new Error(`Transfert refusé (${res.status}) : ${(await res.text()).slice(0, 200)}`)
 }

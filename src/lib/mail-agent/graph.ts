@@ -357,7 +357,7 @@ export async function forwardToAdmin(mailbox: string, m: AgentMessage, admin: st
   if (!duplicate) {
     const res = await authedFetch(`/users/${encodeURIComponent(mailbox)}/messages/${encodeURIComponent(m.id)}/forward`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ comment: `${ADMIN_FORWARD_MARK} — de ${m.fromEmail} — reçu le ${new Date(m.receivedAt).toLocaleString('fr-BE', { timeZone: 'Europe/Brussels' })}.`, toRecipients: [{ emailAddress: { address: admin } }] }),
+      body: JSON.stringify({ comment: `${ADMIN_FORWARD_MARK} — de ${m.fromEmail} — reçu le ${new Date(m.receivedAt).toLocaleString('fr-BE', { timeZone: 'Europe/Brussels' })}.`, toRecipients: [{ emailAddress: { address: admin } }], ...(m.fromEmail && /@/.test(m.fromEmail) ? { message: { replyTo: [{ emailAddress: { address: m.fromEmail } }] } } : {}) }),  // « Répondre » va à l'expéditeur d'origine (20/10/2026)
     })
     if (res.status !== 202) throw new Error(`Transfert refusé (${res.status}) : ${(await res.text()).slice(0, 160)}`)
   }
