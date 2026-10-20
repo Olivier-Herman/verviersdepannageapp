@@ -1669,6 +1669,28 @@ async function estimateRelivraisonPrice(
  * build-quote-lines produisent exactement la même ligne.
  */
 async function estimateTransportPrice(mission: MissionLike, source: string): Promise<PriceEstimate> {
+  // Livraison de véhicule de remplacement VAB demandée APRÈS la fin du remorquage (fiche « transport » seule) :
+  // TOUS les km au prix VAB, sans gabarit ; le forfait VR et le carburant s'ajoutent ensuite (vabSupplementLines).
+  // Elle restait sans prix faute de gabarit (1WUL829, Olivier 20/10/2026).
+  const vrSeul: any = (mission as any).vab_vr
+  if (source === 'vab' && vrSeul?.standalone) {
+    const sb = createAdminClient()
+    const { data: t } = await sb.from('source_tariffs').select('km_price').eq('source', 'vab').eq('mission_type', 'transport').is('effective_to', null).maybeSingle()
+    const kmPrice = Number(t?.km_price || 0)
+    if (!(kmPrice > 0)) return emptyEstimate(source, 'transport', 'Livraison VR VAB : prix au km absent de la grille VAB « transport »')
+    const km0 = mission.id ? (await computeMissionKm(mission.id)).totalKm : null
+    if (km0 == null || !Number.isFinite(km0)) return emptyEstimate(source, 'transport', kmUnknownReason(mission))
+    const km = Math.round(km0 * 10) / 10
+    const total = Math.round(km * kmPrice * 100) / 100
+    return {
+      ok: true, source, mission_type: 'transport', pricing_mode: 'lines', forfait: null,
+      km_charged: km, km_inclus: 0, km_extra: 0, km_extra_eur: 0, parc_jours: 0, parc_eur: 0,
+      subtotal_eur: total, surcharge_pct: 0, surcharge_eur: 0, total_eur: total, is_autofac: false,
+      tariff_id: 'vab-vr-seul', tariff_doc_path: null, tariff_doc_name: null, km_total: km,
+      template_lines: [{ kind: 'SERV-KM', name: `Kilomètres de la livraison VR (tous, départ et retour dépôt) — ${km} km`, default_qty: km, default_price: kmPrice, apply_surcharges: false }],
+      breakdown: [{ label: 'Livraison VR VAB — kilomètres', amount: total, note: `${km} km × ${kmPrice.toFixed(2)} € (le forfait VR et le carburant s’ajoutent)` }],
+    } as PriceEstimate
+  }
   const cat = String(mission.transport_vehicle_category || '').toLowerCase().trim()
   if (!cat) {
     return emptyEstimate(source, 'transport', 'Transport : gabarit du véhicule à choisir sur la fiche (Voiture / Monospace / Camionnette L1/H1 / L2/H2 / Autre) — le prix se calcule ensuite')
