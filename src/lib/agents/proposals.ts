@@ -51,6 +51,18 @@ export async function submitProposal(agent: AgentAccount, body: any): Promise<{ 
     const n = await sendQuestion(full).catch(() => 0)
     return { id: row.id, status: 'to_validate', note: n ? `Question envoyée sur Telegram (${n} destinataire${n > 1 ? 's' : ''}).` : 'Question visible dans l’écran « Propositions des agents » (aucun Telegram relié pour l’instant).' }
   }
+  // Refacturation d'avance en attente : la vente brouillon est créée tout de suite, visible dans l'ERP
+  // pendant que la règle n'est pas autonome (Olivier 21/10/2026).
+  if (!direct && kind === 'refacturation_avance') {
+    try {
+      const { preparerBrouillonAvance } = await import('./execute')
+      const { sid } = await preparerBrouillonAvance(co.company, prep.payload)
+      await sb.from('agent_proposals').update({ payload: { ...prep.payload, ...(prep.directWhy ? { envoi_direct: prep.directWhy } : {}), brouillon_id: sid } }).eq('id', row.id)
+      await journal({ agent: agent.name, company: co.company, action: 'brouillon préparé', detail: `Vente brouillon ${sid} pour ${prep.payload.client} (dossier ${prep.payload.dossier}), en attente de validation`, proposalId: row.id })
+    } catch (e: any) {
+      await journal({ agent: agent.name, company: co.company, action: 'brouillon non préparé', detail: String(e?.message || e).slice(0, 400), ok: false, proposalId: row.id })
+    }
+  }
   if (!direct) return { id: row.id, status: 'to_validate', note: nightNote }
   return runExecution(row.id, `${agent.name} (envoi direct)`)
 }
@@ -95,6 +107,10 @@ export async function decideProposal(id: string, actor: Actor, action: 'valider'
       validated_by: actor.name, validated_at: now, updated_at: now,
     }).eq('id', id)
     await journal({ agent: p.agent_name, company: p.company_id, action: action === 'refuser' ? 'refusée' : 'renvoyée pour correction', detail: t, proposalId: id, actor: actor.name })
+    if (p.kind === 'refacturation_avance' && p.payload?.brouillon_id) {
+      const { annulerBrouillonAvance } = await import('./execute')
+      await annulerBrouillonAvance(p.company_id, p.payload).catch(() => {})
+    }
     return { id, status: action === 'refuser' ? 'refused' : 'returned' }
   }
   // Verrou : un double clic ne lance pas deux exécutions.

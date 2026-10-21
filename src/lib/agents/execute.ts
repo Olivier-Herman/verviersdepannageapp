@@ -309,6 +309,38 @@ async function exactBankMatch(company: number, line: any, parts: any[]): Promise
   return hit ? { ok: true, why: `${m.name}, référence ${hit} dans la communication` } : { ok: false, why: '' }
 }
 
+/** Vente brouillon d'une refacturation d'avance (bouton de l'ERP, client = l'assistance, réf = son dossier,
+ *  HTVA du fournisseur, TVA adaptée au client). Préparée dès le dépôt de la proposition pour qu'Olivier la
+ *  voie dans les brouillons avant de valider (Olivier 21/10/2026) ; validée et envoyée à l'exécution. */
+export async function preparerBrouillonAvance(company: number, payload: any): Promise<{ sid: number; notes: string[] }> {
+  const actionId = await getBusinessNumber('odoo_action_refacturer_avance')
+  const ctx = { context: { active_model: 'account.move', active_ids: [payload.achat_id], active_id: payload.achat_id } }
+  await odooRpcCompany(company, 'ir.actions.server', 'run', [[actionId]], ctx)
+  const sale: any[] = await odooRpcCompany(company, 'account.move', 'search_read', [[['move_type', '=', 'out_invoice'], ['invoice_origin', '=', payload.achat], ['state', '=', 'draft']]], { fields: ['id'], limit: 2 })
+  if (sale.length !== 1) throw new Error('Le bouton « Refacturer l’avance de fonds » n’a pas créé de vente brouillon : à voir dans l’ERP.')
+  const sid = sale[0].id
+  await odooRpcCompany(company, 'account.move', 'write', [[sid], { partner_id: payload.client_id, ref: payload.dossier }])
+  // Olivier 19/10/2026 (Hens) : on refacture le HTVA du fournisseur, jamais la TVA étrangère non récupérable, encodée
+  // sur l'achat comme une ligne à part « TVA étrangère … » (achat en intra 0 % au total payé).
+  const achatLignes: any[] = await odooRpcCompany(company, 'account.move.line', 'search_read', [[['move_id', '=', payload.achat_id], ['display_type', '=', 'product']]], { fields: ['name', 'price_subtotal'] })
+  const htvaFournisseur = Math.round(achatLignes.filter(l => !/^tva étrangère/i.test(String(l.name || '').trim())).reduce((t, l) => t + Number(l.price_subtotal || 0), 0) * 100) / 100
+  const venteLignes: any[] = await odooRpcCompany(company, 'account.move.line', 'search_read', [[['move_id', '=', sid], ['display_type', '=', 'product']]], { fields: ['id', 'price_unit'] })
+  if (venteLignes.length === 1 && htvaFournisseur > 0 && Math.abs(venteLignes[0].price_unit - htvaFournisseur) > 0.005) {
+    await odooRpcCompany(company, 'account.move', 'write', [[sid], { invoice_line_ids: [[1, venteLignes[0].id, { price_unit: htvaFournisseur }]] }])
+  }
+  const { remapTaxes } = await import('./lot2')
+  const notes = await remapTaxes(company, sid)
+  return { sid, notes }
+}
+
+/** Refus ou renvoi d'une refacturation : le brouillon préparé au dépôt est annulé (jamais une vente validée). */
+export async function annulerBrouillonAvance(company: number, payload: any): Promise<void> {
+  const id = Number(payload?.brouillon_id)
+  if (!id) return
+  const [d]: any[] = await odooRpcCompany(company, 'account.move', 'read', [[id]], { fields: ['state', 'move_type'] }).catch(() => [])
+  if (d?.move_type === 'out_invoice' && d.state === 'draft') await odooRpcCompany(company, 'account.move', 'button_cancel', [[id]])
+}
+
 export async function execute(kind: ProposalKind, company: number, payload: any): Promise<Record<string, any>> {
   if (kind === 'question_olivier') throw new Error('Une question ne s’exécute pas : on y répond.')
   if (kind === 'od_inter_societes') return { note: 'Feu vert donné : les deux OD explicatives sont à passer dans l’ERP (comptes à confirmer par Mobi).', manuel: true, ...payload }
@@ -349,24 +381,14 @@ export async function execute(kind: ProposalKind, company: number, payload: any)
     return { note: `Ticket ${fresh?.name || b.id} : ${payload.fournisseur}${sup.created ? ' (fiche créée)' : ''}, ${payload.montant.toFixed(2)} €, ${payload.date}. À rapprocher de sa ligne de banque.`, ticket: fresh?.name }
   }
   if (kind === 'refacturation_avance') {
-    const actionId = await getBusinessNumber('odoo_action_refacturer_avance')
-    const ctx = { context: { active_model: 'account.move', active_ids: [payload.achat_id], active_id: payload.achat_id } }
-    await odooRpcCompany(company, 'ir.actions.server', 'run', [[actionId]], ctx)
-    const sale: any[] = await odooRpcCompany(company, 'account.move', 'search_read', [[['move_type', '=', 'out_invoice'], ['invoice_origin', '=', payload.achat], ['state', '=', 'draft']]], { fields: ['id'], limit: 2 })
-    if (sale.length !== 1) throw new Error('Le bouton « Refacturer l’avance de fonds » n’a pas créé de vente brouillon : à voir dans l’ERP.')
-    const sid = sale[0].id
-    await odooRpcCompany(company, 'account.move', 'write', [[sid], { partner_id: payload.client_id, ref: payload.dossier }])
-    // Olivier 19/10/2026 (Hens) : on refacture le HTVA du fournisseur, jamais la TVA étrangère non récupérable, encodée
-    // sur l'achat comme une ligne à part « TVA étrangère … » (achat en intra 0 % au total payé).
-    const achatLignes: any[] = await odooRpcCompany(company, 'account.move.line', 'search_read', [[['move_id', '=', payload.achat_id], ['display_type', '=', 'product']]], { fields: ['name', 'price_subtotal'] })
-    const htvaFournisseur = Math.round(achatLignes.filter(l => !/^tva étrangère/i.test(String(l.name || '').trim())).reduce((t, l) => t + Number(l.price_subtotal || 0), 0) * 100) / 100
-    const venteLignes: any[] = await odooRpcCompany(company, 'account.move.line', 'search_read', [[['move_id', '=', sid], ['display_type', '=', 'product']]], { fields: ['id', 'price_unit'] })
-    if (venteLignes.length === 1 && htvaFournisseur > 0 && Math.abs(venteLignes[0].price_unit - htvaFournisseur) > 0.005) {
-      await odooRpcCompany(company, 'account.move', 'write', [[sid], { invoice_line_ids: [[1, venteLignes[0].id, { price_unit: htvaFournisseur }]] }])
+    // Brouillon préparé au dépôt (Olivier 21/10/2026) : on le reprend s'il est toujours là.
+    let sid = 0, notes: string[] = [], dejaValidee = false
+    if (payload.brouillon_id) {
+      const [d]: any[] = await odooRpcCompany(company, 'account.move', 'read', [[Number(payload.brouillon_id)]], { fields: ['state', 'move_type'] }).catch(() => [])
+      if (d?.move_type === 'out_invoice' && d.state !== 'cancel') { sid = Number(payload.brouillon_id); dejaValidee = d.state === 'posted' }
     }
-    const { remapTaxes } = await import('./lot2')
-    const notes = await remapTaxes(company, sid)
-    await odooRpcCompany(company, 'account.move', 'action_post', [[sid]])
+    if (!sid) ({ sid, notes } = await preparerBrouillonAvance(company, payload))
+    if (!dejaValidee) await odooRpcCompany(company, 'account.move', 'action_post', [[sid]])
     const [v]: any[] = await odooRpcCompany(company, 'account.move', 'read', [[sid]], { fields: ['name', 'amount_total'] })
     // Olivier 16/10/2026 : une avance de fonds part depuis l'ERP, « par e-mail » ET « par Peppol » cochés, avec le
     // justificatif dans le mail (Peppol seul ne le transmet pas) — la trace reste dans l'historique de la facture.
