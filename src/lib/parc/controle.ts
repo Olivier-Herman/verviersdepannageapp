@@ -26,6 +26,8 @@ type Sb = ReturnType<typeof createAdminClient>
 
 /** Zone Domaine du parc = zone I (Olivier 21/10/2026). */
 export const DOMAINE_ZONE = 'I'
+/** Zones hors contrôle pour l'instant : S = cyclos (Olivier 21/10/2026 : « on fait l'inventaire des voitures dans un premier temps »). */
+export const EXCLUDED_ZONES = ['S']
 /** Zone tampon physique : séparées seulement dans VD Soft. */
 export const TAMPON = ['J', 'K', 'K1', 'Transit']
 /** Clé utilisée par le téléphone pour « je suis dans la zone tampon ». */
@@ -71,7 +73,7 @@ export async function startControle(sb: Sb, by: Scanner): Promise<{ id: string; 
     rows.push(...(data || []))
     if (!data || data.length < 1000) break
   }
-  const items = rows.map(m => ({
+  const items = rows.filter(m => !EXCLUDED_ZONES.includes(m.parc_zone_key)).map(m => ({
     controle_id: c.id, mission_id: m.id, expected: true, expected_zone: m.parc_zone_key || null,
     plate: m.vehicle_plate || null, vehicle: vehicleLabel(m) || null, mission_number: m.mission_number ?? null,
     source: m.source || null, status_at_start: m.status, is_domaine: !!(m.domaine_remise_date || m.domaine_vente_date),

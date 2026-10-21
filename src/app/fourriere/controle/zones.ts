@@ -4,11 +4,14 @@ export const TAMPON = ['J', 'K', 'K1', 'Transit']
 export const TAMPON_KEY = 'TAMPON'
 export const LAST = [...TAMPON, 'LABO']
 
+/** Hors contrôle pour l'instant : S = cyclos (Olivier 21/10/2026). */
+export const EXCLUDED = ['S']
+
 export interface Zone { key: string; label: string; sort_order: number }
 
 export function orderZones(zones: Zone[]): Zone[] {
   const rank = (z: Zone) => (LAST.includes(z.key) ? 2000 + LAST.indexOf(z.key) : z.sort_order)
-  return zones.slice().sort((a, b) => rank(a) - rank(b))
+  return zones.filter(z => !EXCLUDED.includes(z.key)).sort((a, b) => rank(a) - rank(b))
 }
 
 export function zoneLabel(z: Zone): string {
