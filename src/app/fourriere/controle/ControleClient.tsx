@@ -112,7 +112,7 @@ export default function ControleClient({ initialId }: { initialId: string | null
         <div className="rounded-2xl border border-zinc-300 dark:border-zinc-700 p-5 space-y-3 bg-white/60 dark:bg-zinc-900/60">
           <h1 className="text-xl font-bold text-ink">Contrôle du parc</h1>
           <p className="text-sm text-ink-secondary">On scanne toutes les voitures du parc, zone par zone, avec les téléphones (à plusieurs si besoin). Cet écran montre en direct les voitures retrouvées. À la fin, VD Soft analyse les voitures non retrouvées et propose une décision pour chacune.</p>
-          <p className="text-sm text-ink-secondary">Ordre : zones de stockage, puis la zone tampon (J, relivraison, Transit) et LABO en dernier.</p>
+          <p className="text-sm text-ink-secondary">Ordre : zones de stockage, puis la zone tampon (J, relivraison, Transit, SNC) et LABO en dernier.</p>
           {err && <div className="text-red-700 bg-red-50 rounded-xl p-3 text-sm">{err}</div>}
           <button onClick={start} disabled={busy === 'start'} className="min-h-[44px] px-5 rounded-xl bg-red-700 text-white font-bold disabled:opacity-50">{busy === 'start' ? 'Préparation de la liste…' : 'Lancer un contrôle'}</button>
         </div>

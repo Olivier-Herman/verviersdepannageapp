@@ -85,7 +85,7 @@ export default function ScanClient({ userName }: { userName: string }) {
     let tamponAdded = false
     for (const z of zones) {
       if (z.key === 'Verviers') continue   // dépôt de Verviers : relevé sans étiquette du dimanche repris d'office
-      if (TAMPON.includes(z.key)) { if (!tamponAdded) { out.push({ key: TAMPON_KEY, label: 'Zone tampon (J, relivraison, Transit)' }); tamponAdded = true } continue }
+      if (TAMPON.includes(z.key)) { if (!tamponAdded) { out.push({ key: TAMPON_KEY, label: 'Zone tampon (J, relivraison, Transit, SNC)' }); tamponAdded = true } continue }
       out.push({ key: z.key, label: `Zone ${zoneLabel(z)}` })
     }
     return out

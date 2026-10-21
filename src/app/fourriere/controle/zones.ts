@@ -1,6 +1,6 @@
 // Ordre d'affichage et de scan des zones du contrôle du parc (Olivier 21/10/2026) :
-// zones de stockage d'abord (I = zone Domaine), puis la zone tampon (J, relivraison, Transit) et LABO en dernier.
-export const TAMPON = ['J', 'K', 'K1', 'Transit']
+// zones de stockage d'abord (I = zone Domaine), puis la zone tampon (J, relivraison, Transit, SNC) et LABO en dernier.
+export const TAMPON = ['J', 'K', 'K1', 'Transit', 'SNC']   // SNC aussi en zone tampon (Olivier 21/10/2026)
 export const TAMPON_KEY = 'TAMPON'
 export const LAST = [...TAMPON, 'LABO']
 

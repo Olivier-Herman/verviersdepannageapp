@@ -7,7 +7,7 @@
 //     caméra lit les étiquettes en continu. Une voiture trouvée dans une autre
 //     zone que celle de sa fiche y est transférée tout de suite (position réelle,
 //     zone seulement : pas de rangées ni de places) ;
-//  3. la ZONE TAMPON (J, relivraison K/K1 et Transit, au même endroit sur le
+//  3. la ZONE TAMPON (J, relivraison K/K1, Transit et SNC, au même endroit sur le
 //     parking : déchargement des chauffeurs) se scanne en dernier ; une voiture
 //     de ces zones y garde sa zone ; une voiture d'une autre zone trouvée là
 //     passe en Transit ;
@@ -29,7 +29,7 @@ export const DOMAINE_ZONE = 'I'
 /** Zones hors contrôle pour l'instant : S = cyclos (Olivier 21/10/2026 : « on fait l'inventaire des voitures dans un premier temps »). */
 export const EXCLUDED_ZONES = ['S']
 /** Zone tampon physique : séparées seulement dans VD Soft. */
-export const TAMPON = ['J', 'K', 'K1', 'Transit']
+export const TAMPON = ['J', 'K', 'K1', 'Transit', 'SNC']   // SNC (Siabis non couvert) aussi en zone tampon (Olivier 21/10/2026)
 /** Clé utilisée par le téléphone pour « je suis dans la zone tampon ». */
 export const TAMPON_KEY = 'TAMPON'
 /** Zones scannées en dernier (tampon puis LABO). */
