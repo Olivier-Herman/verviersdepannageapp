@@ -101,11 +101,12 @@ export async function aTrier(C: number): Promise<Facture[]> {
   // Fournisseurs payés automatiquement (banques, Police Fédérale) : jamais au tri (Olivier 19/10/2026).
   const { getBusinessList } = await import('@/lib/settings/business')
   const exclus = new Set((await getBusinessList('paiements_exclus_partner_ids').catch(() => [] as string[])).map(Number))
-  // Fournisseurs payés par carte de crédit (Peters, Olivier 19/10/2026) : affichés, jamais dans un lot de virements.
+  // Fournisseurs payés par carte de crédit (Peters) : plus du tout dans les paiements (Olivier 21/10/2026, « toujours
+  // les cartes de crédit visibles pfff ») — la facture se solde au rapprochement du relevé de carte.
   const carte = new Set((await getBusinessList('paiements_carte_partner_ids').catch(() => [] as string[])).map(Number))
   // Factures précises à ne plus afficher (déjà soldées chez la comptable, Olivier 19/10/2026) : la facture seule, pas le fournisseur.
   const masquees = new Set((await getBusinessList('paiements_masques_move_ids').catch(() => [] as string[])).map(Number))
-  const keep = bills.filter(b => !dom.has(b.partner_id?.[0]) && !exclus.has(b.partner_id?.[0]) && !masquees.has(b.id) && !enAttente.has(b.id) && !/^PAIE\//.test(b.name || ''))
+  const keep = bills.filter(b => !dom.has(b.partner_id?.[0]) && !exclus.has(b.partner_id?.[0]) && !carte.has(b.partner_id?.[0]) && !masquees.has(b.id) && !enAttente.has(b.id) && !/^PAIE\//.test(b.name || ''))
   const bank = await ibans(C, [...new Set(keep.map(b => b.partner_id?.[0]).filter(Boolean))])
   // Sociétés du groupe (VD, Riga, DGJ) : leurs factures se règlent à part, jamais dans un lot de virements.
   const societes: any[] = await odooRpcCompany(C, 'res.company', 'search_read', [[]], { fields: ['partner_id'] }).catch(() => [])
