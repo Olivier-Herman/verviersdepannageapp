@@ -241,10 +241,10 @@ export default function FourriereClient({ userRole, userName, userEmail, userMod
               <Trash2 size={14} />
               Sortie AVP
             </Link>
-            <Link href="/fourriere/inventaire"
+            <Link href="/fourriere/controle"
               className="flex items-center gap-2 px-3 py-2 bg-brand hover:bg-brand-hover text-white rounded-xl text-sm font-medium transition">
               <ScanLine size={14} />
-              Inventaire
+              Contrôle du parc
             </Link>
             <Link href="/fourriere/releve"
               className="flex items-center gap-2 px-3 py-2 bg-surface-2 hover:bg-surface-hover border rounded-xl text-ink-secondary hover:text-ink text-sm transition"

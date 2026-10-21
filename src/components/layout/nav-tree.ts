@@ -85,6 +85,7 @@ export const NAV_TREE_ESPACES: NavModule[] = [
     // (barre en haut de l'écran), plus des entrées de menu.
     sections: [
       { href: '/fourriere',                      label: 'Parc',                   icon: Search,        requires: '/fourriere' },
+      { href: '/fourriere/controle',             label: 'Contrôle du parc',       icon: ScanLine,      requires: '/fourriere' },   // remplace l'inventaire (Olivier 21/10/2026)
       { href: '/fourriere/releve',               label: 'Relevé sans étiquette',  icon: ListChecks,    requires: '/fourriere' },   // inventaire terrain (Olivier 18/10/2026)
       { href: '/taches',                         label: 'Accident',        icon: ListChecks,    requires: '/fourriere' },   // Module Tâches, premier jet (28/09/2026) : véhicules arrivés au parc sur appel police, flag taches_accident
       { href: '/fourriere/requisitoires',        label: 'Réquisitoires',          icon: FileText,      requires: '/fourriere', heading: 'Documents' },
@@ -188,7 +189,7 @@ export const NAV_TREE: NavModule[] = [
       { href: '/fourriere/relance-requisitoire', label: 'Relance réquisitoires', icon: Mail,         requires: '/fourriere' },
       { href: '/fourriere/destruction',         label: 'Sortie AVP',            icon: Trash2,        requires: '/fourriere' },
       { href: '/fourriere/destruction/dossiers', label: 'Dossiers de destruction', icon: FolderCheck, requires: '/fourriere' },
-      { href: '/fourriere/inventaire',          label: 'Inventaire',            icon: ScanLine,      requires: '/fourriere' },
+      { href: '/fourriere/controle',            label: 'Contrôle du parc',      icon: ScanLine,      requires: '/fourriere' },
       { href: '/fourriere/releve',              label: 'Relevé sans étiquette', icon: ListChecks,    requires: '/fourriere' },
       { href: '/fourriere/non-localises',       label: 'Non-localisés',         icon: AlertTriangle, requires: '/fourriere' },
       { href: '/fourriere/plan',                label: 'Plan du parc',          icon: MapIcon,           requires: '/fourriere' },

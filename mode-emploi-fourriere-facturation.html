@@ -41,10 +41,10 @@
  <h2>Application VD Soft — Profils Fourrière & Facturation</h2>
  <div class="intro">
  <p><strong>Ce guide est destiné aux utilisateurs disposant du module « fourriere » et / ou « facturation ».</strong></p>
- <p>Il couvre 7 fonctions communes à tous (Dashboard, recherche, profil...), les fonctions Fourrière (inventaire, actions par véhicule, restitution, gestion judiciaire des saisies) et les fonctions Facturation (validation factures, devis, missions terminées) + l'encaissement bureau.</p>
+ <p>Il couvre 7 fonctions communes à tous (Dashboard, recherche, profil...), les fonctions Fourrière (contrôle du parc, actions par véhicule, restitution, gestion judiciaire des saisies) et les fonctions Facturation (validation factures, devis, missions terminées) + l'encaissement bureau.</p>
  <p>📱 Cette interface est utilisable autant sur ordinateur (bureau) que mobile (terrain).</p>
  <p>🆘 <strong>En cas de problème</strong> : contacte un admin ou le dispatcher de garde.</p>
- <p style="margin-top: 20pt; color: #9ca3af; font-size: 9pt;">Version du document : 05/10/2026</p>
+ <p style="margin-top: 20pt; color: #9ca3af; font-size: 9pt;">Version du document : 21/10/2026</p>
  </div>
 </div>
 
@@ -66,7 +66,7 @@
  <table>
  <tr><td>100</td><td>Voir liste véhicules en fourrière (par zone)</td><td>p. 6</td></tr>
  <tr><td>101</td><td>Plan visuel du parc (glisser-déposer emplacements)</td><td>p. 6</td></tr>
- <tr><td>102</td><td>Inventaire détaillé (recherche, statut, motif)</td><td>p. 7</td></tr>
+ <tr><td>102</td><td>Contrôle du parc (scan à plusieurs, zone par zone)</td><td>p. 7</td></tr>
  <tr><td>103</td><td>Sortie AVP : mise en épave + rapport à la Ville (AVP date+60j)</td><td>p. 7</td></tr>
  <tr><td>104</td><td>Voir véhicules non-localisés (en parc sans zone/rangée)</td><td>p. 7</td></tr>
  <tr><td>105</td><td>Bloquer manuellement un emplacement</td><td>p. 8</td></tr>
@@ -258,15 +258,28 @@
 </div>
 
 <div class="function">
- <h3><span class="num">102</span>Inventaire détaillé</h3>
- <p class="desc">Liste tabulaire complète avec filtres (statut, motif, source, dates entrée/sortie).</p>
+ <h3><span class="num">102</span>Contrôle du parc (Fourrière → Contrôle du parc)</h3>
+ <p class="desc">Pour vérifier que toutes les voitures du parc sont bien là et dans la bonne zone. On scanne les étiquettes avec les téléphones, à plusieurs si besoin ; l’écran de contrôle montre en direct les voitures retrouvées.</p>
  <p class="label">Comment faire</p>
  <ol>
- <li>Fourrière → onglet « Inventaire » ou <code>/fourriere/inventaire</code></li>
- <li>Filtres en haut : zone, source, motif, dates</li>
- <li>Tri par colonne (date entrée, jours en parc, plaque)</li>
- <li>Export CSV / PDF possible (admin)</li>
+ <li>Sur l’ordinateur : « Lancer un contrôle ». VD Soft prépare la liste des voitures attendues, zone par zone (véhicules du Domaine compris).</li>
+ <li>Sur chaque téléphone : Fourrière → Contrôle du parc → « 📱 Scanner ». Choisis la zone où tu te trouves, puis « Démarrer le scan ».</li>
+ <li>Passe le téléphone devant chaque étiquette : la lecture est automatique, sans bouton. Le son te dit ce qui s’est passé :
+ <ul>
+ <li><strong>1 bip</strong> : la voiture est à sa place ;</li>
+ <li><strong>2 bips</strong> : elle était notée dans une autre zone, elle est déplacée automatiquement dans la zone où tu es ;</li>
+ <li><strong>3 bips</strong> : véhicule remis au Domaine, il ira dans la liste à mettre en zone Domaine ;</li>
+ <li><strong>son grave</strong> : la voiture n’est pas censée être au parc (sortie, annulée…), elle est mise à part pour décision ;</li>
+ <li><strong>buzz</strong> : étiquette inconnue. Utilise « 📸 Pas d’étiquette ».</li>
+ </ul></li>
+ <li>Voiture sans étiquette ou étiquette illisible : « 📸 Pas d’étiquette », photographie la plaque ou le numéro de châssis, puis touche la bonne fiche (« C’est elle »). Tu peux aussi taper la plaque.</li>
+ <li>Quand une zone est finie : « ✓ Zone terminée », le téléphone passe à la zone suivante.</li>
+ <li>Ordre : les zones de stockage d’abord, puis le Domaine, et <strong>en dernier la zone tampon</strong> (J, relivraison et Transit, au même endroit sur le parking) puis LABO. Dans la zone tampon, une voiture garde sa zone (J, relivraison ou Transit) ; une voiture d’une autre zone trouvée là passe en Transit.</li>
+ <li>Sur l’ordinateur : les cartes passent du gris au vert au fur et à mesure (orange = changée de zone). Quand tout est fait : « Tout est scanné ».</li>
+ <li>Analyse de fin : pour chaque voiture non retrouvée, VD Soft montre ce qu’il sait (facture, paiement, levée, état de frais, Domaine) et propose une décision (★) : « Sortir du parc », « Garder et rechercher » (elle passe dans les non-localisés) ou « Laisser tel quel ». Choisis, puis « Appliquer les décisions ». Rien ne sort du parc avant.</li>
+ <li>« Transférer en zone Domaine » range dans la zone Domaine les véhicules du Domaine scannés pendant le contrôle.</li>
  </ol>
+ <div class="tip">💡 On ne gère que les zones : pas de rangées ni d’emplacements pendant le contrôle.</div>
 </div>
 
 <div class="function">
@@ -305,7 +318,7 @@
  <p class="desc">Marquer un emplacement comme indisponible (panne, casse, photo manquante, etc.).</p>
  <p class="label">Comment faire</p>
  <ol>
- <li>Dans le plan visuel ou inventaire, sélectionne un emplacement</li>
+ <li>Dans le plan visuel, sélectionne un emplacement</li>
  <li>Bouton « Bloquer »</li>
  <li>Saisis le motif (manual / missing_label / panne / autre)</li>
  <li>L'emplacement devient gris dans le plan, indisponible pour assignation</li>
@@ -340,7 +353,7 @@
  </ol>
  <p class="label">Comment faire (depuis l'inventaire)</p>
  <ol>
- <li><code>/fourriere/inventaire</code> ou plan visuel</li>
+ <li>Depuis le plan visuel ou la fiche du véhicule</li>
  <li>Sélectionne le véhicule</li>
  <li>Action « Transférer » dans le menu</li>
  </ol>
@@ -392,7 +405,7 @@
  <p class="desc">Voir tous les changements de zone, déplacements et actions sur le véhicule.</p>
  <p class="label">Comment faire</p>
  <ol>
- <li>Sur la fiche véhicule (inventaire ou plan)</li>
+ <li>Sur la fiche véhicule (liste ou plan)</li>
  <li>Onglet « Historique »</li>
  <li>Liste chronologique des actions (qui, quand, action)</li>
  </ol>
@@ -1079,7 +1092,7 @@
 <hr style="border: none; border-top: 1pt solid #d1d5db; margin: 24pt 0 12pt 0;">
 
 <div style="text-align: center; font-size: 9pt; color: #9ca3af; padding: 8pt;">
- <p style="margin: 0;">Mode d'emploi VD Soft — Profils Fourrière & Facturation · Version du 05/10/2026</p>
+ <p style="margin: 0;">Mode d'emploi VD Soft — Profils Fourrière & Facturation · Version du 21/10/2026</p>
  <p style="margin: 4pt 0 0 0;">En cas de bug ou suggestion, contacte un admin.</p>
 </div>
 

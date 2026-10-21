@@ -248,7 +248,7 @@ export default function ParcClient({ userRole, userName, userEmail, userModules 
         <div className="inline-flex items-center gap-1 bg-surface-2 border rounded-xl p-1 text-sm">
           <span className="px-3 py-1.5 rounded-lg bg-surface text-ink font-semibold shadow-sm">Liste</span>
           <Link href="/fourriere/plan" className="px-3 py-1.5 rounded-lg text-ink-secondary hover:text-ink">Plan</Link>
-          <Link href="/fourriere/inventaire" className="px-3 py-1.5 rounded-lg text-ink-secondary hover:text-ink">Scanner</Link>
+          <Link href="/fourriere/controle" className="px-3 py-1.5 rounded-lg text-ink-secondary hover:text-ink">Contrôle du parc</Link>
           <Link href="/fourriere/non-localises" className="px-3 py-1.5 rounded-lg text-ink-secondary hover:text-ink">Non localisés{rows.some(v => v.unlocated) ? ` · ${rows.filter(v => v.unlocated).length}` : ''}</Link>
           <Link href="/fourriere/recherche" className="px-3 py-1.5 rounded-lg text-ink-secondary hover:text-ink">Recherche avancée</Link>
         </div>
