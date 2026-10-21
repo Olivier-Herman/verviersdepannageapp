@@ -39,10 +39,9 @@ export async function POST(req: NextRequest) {
       if (!acc.tri) return NextResponse.json({ error: 'Accès refusé' }, { status: 403 })
       if (action === 'ajouter') {
         const ajoutees = await ajouter(s.id, ids.map(Number), acc.id)
-        // Tri validé → affichage aussitôt chez Momo (Olivier 19/10/2026), plus d'attente jusqu'à 14 h 30.
-        const { prevenirLotDuJour } = await import('@/lib/paiements/rappel-lot')
-        const momo = await prevenirLotDuJour().catch((e: any) => { console.error('[paiements] rappel Momo', e?.message || e); return null })
-        return NextResponse.json({ ok: true, ajoutees, momo_prevenu: !!momo?.sent })
+        // Momo n'est plus prévenu à chaque ajout : un seul rappel à 14 h 30, lundi → vendredi (Olivier 21/10/2026 :
+        // « je peux alimenter plusieurs fois s'il faut sans que chaque fois il reçoive une notif »).
+        return NextResponse.json({ ok: true, ajoutees })
       }
       await retirer(s.id, ids.map(String), acc.id)
       return NextResponse.json({ ok: true })

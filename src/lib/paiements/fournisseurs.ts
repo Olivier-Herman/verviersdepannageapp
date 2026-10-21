@@ -2,7 +2,7 @@
 //
 // Circuit, VD et Riga bien séparés :
 //   1. Olivier trie les factures fournisseur à payer et les AJOUTE à la liste d'attente ;
-//   2. dès qu'Olivier ajoute à la liste d'attente, Momo est prévenu et choisit dans la liste d'attente ce qui part dans le lot ;
+//   2. à 14 h 30 (lundi → vendredi), Momo reçoit la liste d'attente et choisit dans la liste d'attente ce qui part dans le lot ;
 //      ce qu'il ne prend pas RESTE en attente et revient seul la fois suivante ;
 //   3. lot créé → Olivier prévenu : c'est lui qui génère le fichier XML et l'encode à la banque.
 // Un lot dont le XML est généré est FERMÉ : plus rien n'y entre, le paiement suivant ouvre un nouveau lot.

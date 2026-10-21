@@ -1,5 +1,5 @@
-// src/lib/paiements/rappel-lot.ts — Momo prévenu dès qu'Olivier valide son tri (Olivier 19/10/2026 :
-// « quand j'ai l'affichage et que je valide, ça s'affiche chez Momo » — plus d'attente jusqu'à 14 h 30).
+// src/lib/paiements/rappel-lot.ts — Momo prévenu de la liste d'attente une fois par jour ouvrable à 14 h 30
+// (cron paiements-lot ; Olivier 21/10/2026 : plus de notification à chaque ajout).
 // Plein écran jusqu'au clic, report possible de 15 min (un bandeau de 8 s passait inaperçu).
 export const RAPPEL_PAIEMENTS = { modal: true, non_blocking: true, kind: 'rappel_paiements' }
 

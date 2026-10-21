@@ -2,7 +2,7 @@
 // src/app/paiements/PaiementsClient.tsx — Paiements fournisseurs (Olivier 16/10/2026).
 // 1. Tri d'Olivier : factures à payer → « Ajouter à la liste d'attente » ; en dessous, la liste
 //    d'attente (ce que Momo n'a pas encore pris) avec « Retirer ».
-// 2. Lot du jour (Momo, prévenu dès qu'Olivier ajoute à la liste d'attente) : coche ce qui part → « Créer le lot ».
+// 2. Lot du jour (Momo, prévenu à 14 h 30 du lundi au vendredi) : coche ce qui part → « Créer le lot ».
 //    Ce qui n'est pas pris reste en attente et revient seul la fois suivante.
 import { Fragment, useCallback, useEffect, useMemo, useState } from 'react'
 import { Loader2, Search } from 'lucide-react'
@@ -134,7 +134,7 @@ export default function PaiementsClient({ societes, peutTrier, userRole, userNam
   async function valider() {
     if (etape === 'tri') {
       const j = await post('ajouter', coches.map(f => f.move_id))
-      if (j) { setSel({}); setFait(`${j.ajoutees} facture(s) ajoutée(s) à la liste d’attente.${j.momo_prevenu ? ' Momo est prévenu.' : ''}`); charger() }
+      if (j) { setSel({}); setFait(`${j.ajoutees} facture(s) ajoutée(s) à la liste d’attente. Momo la recevra à 14 h 30.`); charger() }
       return
     }
     const j = await post('lot', coches.map(f => f.id!))
@@ -152,7 +152,7 @@ export default function PaiementsClient({ societes, peutTrier, userRole, userNam
         <h1 className="font-display text-2xl font-bold text-ink">Paiements fournisseurs</h1>
         <p className="mt-1 max-w-prose text-sm text-ink-secondary">
           {peutTrier ? 'Tu tries les factures à payer et les ajoutes à la liste d’attente. ' : ''}
-          Dès qu’une facture est ajoutée à la liste d’attente, Momo est prévenu à l’écran pour choisir ce qui part dans le lot. Ce qui n’est pas pris reste en attente pour la fois suivante.
+          À 14 h 30, du lundi au vendredi, Momo reçoit à l’écran la liste d’attente pour choisir ce qui part dans le lot. Tu peux l’alimenter plusieurs fois avant : il n’est prévenu qu’une fois. Ce qui n’est pas pris reste en attente pour la fois suivante.
         </p>
 
         <div className="mt-4 flex flex-wrap items-center gap-2">

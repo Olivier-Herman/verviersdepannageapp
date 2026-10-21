@@ -1,10 +1,11 @@
 // src/app/api/cron/paiements-lot/route.ts — lot de paiement du jour (Olivier 16/10/2026).
 // 13 h 30 : Olivier est prévenu des factures à trier. Lundi → vendredi, jamais un jour férié.
-// Momo n'attend plus 14 h 30 : il est prévenu dès qu'Olivier ajoute à la liste d'attente (lib/paiements/rappel-lot.ts,
-// Olivier 19/10/2026). L'étape « lot » ne se lance plus qu'à la main (?etape=lot).
+// 14 h 30 : Momo est prévenu UNE fois de la liste d'attente (lib/paiements/rappel-lot.ts) — Olivier 21/10/2026 :
+// « remettre la notif à Momo uniquement à 14 h 30, une fois par jour du lundi au vendredi, comme ça je peux alimenter
+// plusieurs fois s'il faut sans que chaque fois il reçoive une notif ». Rien n'est envoyé si la liste est vide.
 // C'est Olivier qui trie (lui seul ajoute à la liste d'attente) ; Momo choisit dans la liste ce qui part.
 // Trois déclenchements (11 h 30, 12 h 30, 13 h 30 UTC) couvrent l'heure d'été et d'hiver : l'étape dépend de l'heure
-// à Bruxelles (13 h = tri), les autres passages ne font rien. Un échec doit se voir.
+// à Bruxelles (13 h = tri, 14 h = lot), le troisième passage ne fait rien. Un échec doit se voir.
 
 export const dynamic     = 'force-dynamic'
 export const maxDuration = 120
@@ -21,7 +22,7 @@ export async function GET(req: Request) {
     const heure = Number(new Date().toLocaleString('en-US', { timeZone: 'Europe/Brussels', hour: '2-digit', hour12: false }))
     const force = new URL(req.url).searchParams.get('force') === '1'
     const { SOCIETES, aTrier, jourOuvrable } = await import('@/lib/paiements/fournisseurs')
-    const etape = new URL(req.url).searchParams.get('etape') || (heure === 13 ? 'tri' : '')
+    const etape = new URL(req.url).searchParams.get('etape') || (heure === 13 ? 'tri' : heure === 14 ? 'lot' : '')
     if (!force && !etape) return NextResponse.json({ ok: true, skipped: `heure locale ${heure}` })
     if (!force && !jourOuvrable()) return NextResponse.json({ ok: true, skipped: 'week-end ou jour férié' })
 
@@ -38,7 +39,7 @@ export async function GET(req: Request) {
       const { getBusinessList } = await import('@/lib/settings/business')
       const { sendNotificationToMany } = await import('@/lib/notifications/send')
       const ids = await getBusinessList('paiements_tri_user_ids')
-      const r = await sendNotificationToMany(ids, 'paiements_a_trier', { title: 'Paiements fournisseurs à trier', body: `${parts.join(' · ')}. Ce que tu ajoutes à la liste d'attente s'affiche aussitôt chez Momo.`, action_url: '/paiements', data: RAPPEL_PAIEMENTS })
+      const r = await sendNotificationToMany(ids, 'paiements_a_trier', { title: 'Paiements fournisseurs à trier', body: `${parts.join(' · ')}. Ce que tu ajoutes à la liste d'attente sera présenté à Momo à 14 h 30.`, action_url: '/paiements', data: RAPPEL_PAIEMENTS })
       return NextResponse.json({ ok: true, etape, parts, ...r })
     }
 
