@@ -196,6 +196,7 @@ export default function ControleClient({ initialId }: { initialId: string | null
                   </div>
                   <div className="px-2.5 pb-2 text-[11px] text-ink-muted flex gap-1.5 flex-wrap min-h-[18px]">
                     {TAMPON.includes(zone.key) && <span>zone tampon</span>}
+                    {zone.key === 'Verviers' && <span>relevé sans étiquette repris, pas de scan</span>}
                     {here.length > 0 && <span>📱 {here.join(', ')}</span>}
                     {done && <span className="text-green-700 font-bold">✓ terminée ({done.by})</span>}
                   </div>
@@ -210,6 +211,7 @@ export default function ControleClient({ initialId }: { initialId: string | null
                           <div className="flex gap-1 flex-wrap">
                             {i.moved_to && <span className="mt-0.5 rounded bg-amber-600 text-white px-1 font-bold text-[10px]">venait de {i.moved_from || 'aucune'}</span>}
                             {i.is_domaine && <span className="mt-0.5 rounded bg-violet-600 text-white px-1 font-bold text-[10px]">Domaine</span>}
+                            {i.via === 'releve' && <span className="mt-0.5 rounded bg-sky-700 text-white px-1 font-bold text-[10px]">{i.scanned_by_name}</span>}
                             {!i.expected && i.scanned_at && <span className="mt-0.5 rounded bg-zinc-600 text-white px-1 font-bold text-[10px]">entrée pendant le contrôle</span>}
                           </div>
                         </div>

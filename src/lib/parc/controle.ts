@@ -78,7 +78,28 @@ export async function startControle(sb: Sb, by: Scanner): Promise<{ id: string; 
     const { error: e } = await sb.from('parc_controle_items').insert(items.slice(i, i + 500))
     if (e) throw new Error(e.message)
   }
+  await applyReleveVerviers(sb, c.id)
   return { id: c.id, created: true, count: items.length }
+}
+
+/** Zone Verviers : on tient compte du dernier relevé sans étiquette du dépôt de Verviers
+ *  (Olivier 21/10/2026 : « pour Verviers, on tient compte de l'inventaire fait dimanche,
+ *  le reste n'est plus à Verviers »). Les fiches gardées au relevé comptent comme
+ *  retrouvées ; les autres restent à retrouver (analyse de fin). Pas de scan à Verviers. */
+export async function applyReleveVerviers(sb: Sb, controleId: string) {
+  const { data: last } = await sb.from('parc_releves').select('started_at').eq('lieu', 'verviers').order('started_at', { ascending: false }).limit(1).maybeSingle()
+  if (!last) return
+  const day = String(last.started_at).slice(0, 10)
+  const { data: rels } = await sb.from('parc_releves').select('id').eq('lieu', 'verviers').gte('started_at', `${day}T00:00:00Z`).lt('started_at', `${day}T23:59:59Z`)
+  const { data: kept } = await sb.from('parc_releve_items').select('mission_id').in('releve_id', (rels || []).map(r => r.id)).eq('decision', 'garder').not('mission_id', 'is', null)
+  const ids = Array.from(new Set((kept || []).map(k => k.mission_id as string)))
+  const label = `Relevé du ${fmt(day)}`
+  for (let i = 0; i < ids.length; i += 200) {
+    await sb.from('parc_controle_items').update({ scanned_at: new Date().toISOString(), scanned_by_name: label, scanned_zone: 'Verviers', result: 'ok', via: 'releve' })
+      .eq('controle_id', controleId).eq('expected_zone', 'Verviers').in('mission_id', ids.slice(i, i + 200))
+  }
+  const { data: c } = await sb.from('parc_controles').select('zones_done').eq('id', controleId).maybeSingle()
+  await sb.from('parc_controles').update({ zones_done: { ...(c?.zones_done || {}), Verviers: { at: new Date().toISOString(), by: label } }, note: `Zone Verviers : ${label.toLowerCase()} repris (pas de scan à Verviers).` }).eq('id', controleId)
 }
 
 /** Retrouve la fiche correspondant à une étiquette, une plaque ou un châssis. */
@@ -195,10 +216,10 @@ export async function zoneDone(sb: Sb, controleId: string, by: Scanner, zone: st
 const PAID_STATES = ['paid', 'in_payment']
 const fmt = (d?: string | null) => d ? String(d).slice(0, 10).split('-').reverse().join('/') : ''
 
-interface Ctx { m: any; sd: any; log: any }
+interface Ctx { m: any; sd: any; log: any; expectedZone?: string | null }
 
 /** Analyse d'une voiture non retrouvée : ce que VD Soft sait + une proposition. */
-function analyse({ m, sd, log }: Ctx) {
+function analyse({ m, sd, log, expectedZone }: Ctx) {
   if (!m) return { category: 'aucune', label: 'Fiche introuvable', facts: [] as string[], proposal: 'laisser' }
   const facts: string[] = []
   const paid = m.paid_at || (m.payment_state_odoo && PAID_STATES.includes(m.payment_state_odoo)) || m.payment_collected_at
@@ -209,6 +230,7 @@ function analyse({ m, sd, log }: Ctx) {
   if (m.domaine_vente_date) facts.push(`Vendue par le Domaine le ${fmt(m.domaine_vente_date)}`)
   if (m.domaine_enlevement_date) facts.push(`Enlevée par l’acheteur le ${fmt(m.domaine_enlevement_date)}`)
   if (sd) facts.push(`État de frais : ${sd.ef_number || '—'} (${String(sd.state).replace(/_/g, ' ')})`)
+  if (expectedZone === 'Verviers') facts.unshift('Pas dans le relevé du dépôt de Verviers : n’est plus à Verviers')
   if (log) facts.push(`Dernière action : ${String(log.notes || log.action).slice(0, 90)} (${fmt(log.created_at)})`)
 
   if (!EXPECTED_STATUSES.includes(m.status) || m.archived_at) return { category: 'sortie_pendant', label: 'Sortie du parc pendant le contrôle', facts, proposal: 'laisser' }
@@ -229,7 +251,7 @@ export async function closeControle(sb: Sb, controleId: string, by: Scanner) {
   if (!c) throw new Error('Contrôle introuvable')
   if (c.status !== 'en_cours') return
   await sb.from('parc_controles').update({ status: 'cloture', closed_at: new Date().toISOString(), closed_by: by.id }).eq('id', controleId)
-  const { data: miss } = await sb.from('parc_controle_items').select('id, mission_id').eq('controle_id', controleId).eq('expected', true).is('scanned_at', null)
+  const { data: miss } = await sb.from('parc_controle_items').select('id, mission_id, expected_zone').eq('controle_id', controleId).eq('expected', true).is('scanned_at', null)
   const list = (miss || []).filter(i => i.mission_id)
   for (let i = 0; i < list.length; i += 100) {
     const chunk = list.slice(i, i + 100)
@@ -245,7 +267,7 @@ export async function closeControle(sb: Sb, controleId: string, by: Scanner) {
     const sm = new Map((sds || []).map(x => [x.mission_id, x]))
     const lm = new Map<string, any>(); for (const l of logs || []) if (!lm.has(l.mission_id)) lm.set(l.mission_id, l)
     await Promise.all(chunk.map(it => {
-      const a = analyse({ m: mm.get(it.mission_id), sd: sm.get(it.mission_id), log: lm.get(it.mission_id) })
+      const a = analyse({ m: mm.get(it.mission_id), sd: sm.get(it.mission_id), log: lm.get(it.mission_id), expectedZone: it.expected_zone })
       return sb.from('parc_controle_items').update({ analysis: a, decision: a.proposal === 'laisser' ? 'laisser' : null }).eq('id', it.id)
     }))
   }
