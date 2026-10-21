@@ -6,10 +6,12 @@
 // une donnée manquante (ex: plaque non saisie), on l'indique.
 
 import { useEffect } from 'react'
+import { reportClientError } from '@/lib/report-client-error'
 
 export default function MissionError({ error, reset }: { error: Error & { digest?: string }; reset: () => void }) {
   useEffect(() => {
     console.error('[mission/error]', error?.message, error?.stack)
+    reportClientError(error, 'mission')
   }, [error])
 
   return (
