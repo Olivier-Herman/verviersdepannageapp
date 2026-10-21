@@ -148,6 +148,16 @@ function FicheContent({ fiche, userModules, userRole, router, onClose, onChanged
   return (
     <div className="space-y-4">
 
+      {m.introuvable_at && (
+        <div className="rounded-card border-2 border-red-700 bg-red-50 text-red-900 px-4 py-3 flex items-start gap-3">
+          <span className="shrink-0 -rotate-6 border-[3px] border-red-700 text-red-700 rounded-md px-2 py-0.5 text-sm font-black tracking-widest">INTROUVABLE</span>
+          <div className="min-w-0">
+            <p className="text-sm font-black uppercase tracking-wide">Pas retrouvée au parc le {new Date(m.introuvable_at).toLocaleDateString('fr-BE', { timeZone: 'Europe/Brussels' })}</p>
+            <p className="text-sm whitespace-pre-wrap mt-0.5">{m.introuvable_note || ''}</p>
+          </div>
+        </div>
+      )}
+
       {isJudicialSaisie(m) && (
         <div className="bg-red-600 text-white rounded-card px-4 py-3 flex items-center gap-3 shadow-lg animate-pulse">
           <span className="text-3xl">⚠️</span>

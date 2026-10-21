@@ -2259,6 +2259,16 @@ export default function MissionDetailClient({
           </div>
         </div>
       )}
+      {/* Fiche introuvable : pas retrouvée au contrôle du parc, rien n'explique sa sortie (Olivier 21/10/2026). */}
+      {(M as any).introuvable_at && (
+        <div className="mb-3 rounded-xl border-2 border-red-700 bg-red-50 text-red-900 px-4 py-3 flex items-start gap-3">
+          <span className="shrink-0 -rotate-6 border-[3px] border-red-700 text-red-700 rounded-md px-2 py-0.5 text-sm font-black tracking-widest">INTROUVABLE</span>
+          <div className="min-w-0">
+            <p className="text-sm font-black uppercase tracking-wide">Pas retrouvée au parc — fiche sortie des listes du parc le {new Date((M as any).introuvable_at).toLocaleDateString('fr-BE', { timeZone: 'Europe/Brussels' })}</p>
+            <p className="text-sm whitespace-pre-wrap mt-0.5">{(M as any).introuvable_note || ''}</p>
+          </div>
+        </div>
+      )}
       {/* Pause chauffeur « Je reviens plus tard » (Olivier 18/10/2026). */}
       {(M as any).paused_at && (
         <div className="mb-3 rounded-xl border-2 border-orange-500 bg-orange-50 text-orange-900 px-4 py-3 flex items-center gap-3">

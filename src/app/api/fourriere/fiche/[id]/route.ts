@@ -41,7 +41,7 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
       dpr_motif, dpr_motif_label,
       parc_zone_key, parc_row_number, parc_slot_index,
       keys_digibox_slot, key_location, saisie_key_hook,
-      parked_at, storage_waived, loaded_at, received_at, intervention_date, completed_at,
+      parked_at, storage_waived, loaded_at, received_at, intervention_date, completed_at, introuvable_at, introuvable_note,
       requisitoire_at, requisitoire_note, requisitoire_doc_path,
       levee_saisie_date, levee_saisie_type, levee_saisie_at, levee_saisie_note,
       temp_garage_out_at, temp_returned_at,

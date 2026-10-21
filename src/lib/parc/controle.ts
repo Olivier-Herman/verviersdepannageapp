@@ -255,7 +255,7 @@ export async function closeControle(sb: Sb, controleId: string, by: Scanner) {
   if (!c) throw new Error('Contrôle introuvable')
   if (c.status !== 'en_cours') return
   await sb.from('parc_controles').update({ status: 'cloture', closed_at: new Date().toISOString(), closed_by: by.id }).eq('id', controleId)
-  const { data: miss } = await sb.from('parc_controle_items').select('id, mission_id, expected_zone').eq('controle_id', controleId).eq('expected', true).is('scanned_at', null)
+  const { data: miss } = await sb.from('parc_controle_items').select('id, mission_id, expected_zone').eq('controle_id', controleId).eq('expected', true).is('scanned_at', null).is('applied_at', null)   // déjà traitées avant la clôture : on n'y touche plus
   const list = (miss || []).filter(i => i.mission_id)
   for (let i = 0; i < list.length; i += 100) {
     const chunk = list.slice(i, i + 100)
@@ -277,7 +277,7 @@ export async function closeControle(sb: Sb, controleId: string, by: Scanner) {
   }
 }
 
-export const DECISIONS = ['sortir', 'rechercher', 'laisser', 'remettre', 'enquete'] as const
+export const DECISIONS = ['sortir', 'masquer', 'rechercher', 'laisser', 'remettre', 'enquete'] as const
 
 /** Applique les décisions prises sur l'analyse. */
 export async function applyDecisions(sb: Sb, controleId: string, by: Scanner) {
@@ -298,6 +298,14 @@ export async function applyDecisions(sb: Sb, controleId: string, by: Scanner) {
         await sb.from('mission_logs').insert({ mission_id: m.id, action: 'parc_exit_verified', notes: `Sortie du parc — ${why}` })
         res = `sortie du parc au ${fmt(exitIso)}`
       }
+    } else if (it.decision === 'masquer') {
+      // Introuvable (Olivier 21/10/2026) : sort des listes du parc, reste trouvable par la recherche,
+      // tampon « INTROUVABLE » + bandeau d'explication sur la fiche.
+      const note = [`Non retrouvée au contrôle du parc du ${fmt(now)} ; aucune facture, vente Domaine ni restitution trouvée.`, ...((it.analysis?.facts || []) as string[])].join('\n')
+      await sb.from('incoming_missions').update({ status: 'completed', completed_at: now, parc_exit_at: now, parc_exit_reason: 'introuvable', introuvable_at: now, introuvable_note: note.slice(0, 4000), updated_at: now }).eq('id', m.id)
+      try { await releaseParcAndShift(sb as any, m.id) } catch { /* non bloquant */ }
+      await sb.from('mission_logs').insert({ mission_id: m.id, action: 'parc_introuvable', notes: `Masquée (introuvable) — ${note.slice(0, 900)} (décision de ${by.name})` })
+      res = 'masquée (introuvable), sortie des listes du parc'
     } else if (it.decision === 'rechercher') {
       if (m.status === 'parked') await sb.from('incoming_missions').update({ status: 'unlocated', parc_row_number: null, parc_slot_index: null, updated_at: now }).eq('id', m.id)
       await sb.from('mission_logs').insert({ mission_id: m.id, action: 'parc_controle_absent', notes: `Contrôle du parc du ${fmt(now)} : non retrouvée, à rechercher (décision de ${by.name})` })

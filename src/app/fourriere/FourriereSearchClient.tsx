@@ -18,6 +18,7 @@ import DepotsTilesModal from './DepotsTilesModal'
 import { normalizePlate } from '@/lib/plate'
 
 interface SearchResult {
+  introuvable_at?:  string | null
   id:               string
   mission_number:   number | null
   dossier_number:   string | null
@@ -351,7 +352,8 @@ function ResultCard({ r, onOpen }: { r: SearchResult; onOpen: () => void }) {
                 {r.source_label}
               </span>
             )}
-            {isOut && <span className="text-xs px-1.5 py-0.5 bg-ink/10 text-ink-muted rounded">Sortie</span>}
+            {r.introuvable_at && <span className="text-[11px] px-1.5 py-0.5 -rotate-3 border-2 border-red-700 text-red-700 rounded font-black tracking-wider">INTROUVABLE</span>}
+            {isOut && !r.introuvable_at && <span className="text-xs px-1.5 py-0.5 bg-ink/10 text-ink-muted rounded">Sortie</span>}
             {!isOut && r.parc_zone_key && (
               <span className="text-xs px-1.5 py-0.5 bg-brand/15 text-brand rounded font-semibold">
                 {parcZoneLabel(r.parc_zone_key)}

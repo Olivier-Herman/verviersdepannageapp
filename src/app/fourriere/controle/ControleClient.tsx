@@ -18,7 +18,7 @@ interface Item {
 interface Ctrl { id: string; status: string; started_at: string; closed_at: string | null; applied_at: string | null; zones_done: Record<string, { at: string; by: string }>; scanners: Record<string, { name: string; zone: string; at: string }> }
 
 const fmtDate = (d?: string | null) => d ? new Date(d).toLocaleString('fr-BE', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : ''
-const DEC_LABEL: Record<string, string> = { sortir: 'Sortir du parc', rechercher: 'Garder et rechercher', laisser: 'Laisser tel quel', remettre: 'Remettre au parc', enquete: 'Signaler sur la fiche' }
+const DEC_LABEL: Record<string, string> = { masquer: 'Masquer (introuvable)', sortir: 'Sortir du parc', rechercher: 'Garder et rechercher', laisser: 'Laisser tel quel', remettre: 'Remettre au parc', enquete: 'Signaler sur la fiche' }
 const CAT_ORDER = ['paye', 'domaine', 'paye_sans_levee', 'levee', 'aucune', 'sortie_pendant']
 const CAT_HELP: Record<string, string> = {
   paye: 'Facture payée (et levée reçue pour une saisie) : la voiture est très probablement partie sans être sortie de VD Soft. La sortie prend la date du paiement ou de la levée.',
@@ -279,7 +279,7 @@ export default function ControleClient({ initialId }: { initialId: string | null
                         <td className="py-2 pr-3 whitespace-nowrap"><a href={`/dispatch/${i.mission_id}`} target="_blank" className="font-mono font-semibold text-ink underline">{i.plate || 'sans plaque'}</a><div className="text-xs text-ink-muted">{i.vehicle || '—'}{i.mission_number ? ` · #${i.mission_number}` : ''}</div></td>
                         <td className="pr-3 text-ink">{i.expected_zone || '—'}</td>
                         <td className="pr-3 text-xs text-ink-secondary">{(i.analysis?.facts || []).join(' · ') || '—'}</td>
-                        <td className="py-2">{decisionRow(i, ['sortir', 'rechercher', 'laisser'], i.analysis?.proposal)}</td>
+                        <td className="py-2">{decisionRow(i, ['sortir', 'masquer', 'rechercher', 'laisser'], i.analysis?.proposal)}</td>
                       </tr>
                     ))}
                   </tbody>

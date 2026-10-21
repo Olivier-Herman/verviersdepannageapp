@@ -86,7 +86,7 @@ export async function GET(req: Request) {
       incident_address, incident_city,
       police_pv_number, officer_name, police_zone,
       parc_zone_key, parc_row_number, parc_slot_index,
-      parked_at, loaded_at, received_at, intervention_date, updated_at
+      parked_at, loaded_at, received_at, intervention_date, updated_at, introuvable_at
     `)
     .eq('dossier_leg', false)   // fiches Gardiennage (dossier_leg) : jamais (audit 08/09/2026)
     .order('parked_at',  { ascending: false, nullsFirst: false })
@@ -94,7 +94,8 @@ export async function GET(req: Request) {
     .limit(100)
 
   if (!includeHistory) {
-    q = q.in('status', ACTIVE_PARC_STATUSES)
+    // Les fiches « introuvables » (contrôle du parc, Olivier 21/10/2026) restent trouvables, avec leur tampon.
+    q = q.or(`status.in.(${ACTIVE_PARC_STATUSES.join(',')}),introuvable_at.not.is.null`)
   }
   // Olivier 2026-07-04 : non-superadmin → jamais de missions 'unknown' (placeholder),
   // et 'cancelled' masquées sauf case cochée. Superadmin voit tout.
@@ -166,6 +167,7 @@ export async function GET(req: Request) {
       source_label:     sc?.label || r.source || null,
       source_color:     sc?.color || null,
       status:           r.status,
+      introuvable_at:   (r as any).introuvable_at || null,
       plate:            r.vehicle_plate,
       brand:            r.vehicle_brand,
       model:            r.vehicle_model,
