@@ -48,6 +48,46 @@ export async function noteCommission(invoiceId: number, pct: number): Promise<{ 
   return { name: sent.name, created: true, note: sent.note }
 }
 
+/** Facture annulée = commission annulée (Olivier 21/10/2026, Car Avenue 2026-0160 sur 2026/06/334). Une note de
+ *  commission dont la facture d'origine a été extournée est annulée à son tour par une facture qui la reprend
+ *  à l'identique (référence « Annulation de la note de commission … »), envoyée comme la note. */
+export async function annulerCommissionsFacturesAnnulees(): Promise<{ done: string[]; errors: string[] }> {
+  const out = { done: [] as string[], errors: [] as string[] }
+  for (const g of await commissionGarages()) {
+    const ncs = await odooRpc<any[]>('account.move', 'search_read', [[
+      ['move_type', '=', 'out_refund'], ['state', '=', 'posted'], ['partner_id', '=', g.partnerId],
+      ['invoice_date', '>=', g.since], ['ref', '=like', 'Commission%'], ['invoice_origin', '!=', false],
+    ]], { fields: ['id', 'name', 'invoice_origin', 'invoice_line_ids'], limit: 200 })
+    for (const nc of ncs) {
+      try {
+        const [inv] = await odooRpc<any[]>('account.move', 'search_read', [[['name', '=', nc.invoice_origin], ['move_type', '=', 'out_invoice']]], { fields: ['id', 'name'], limit: 1 })
+        if (!inv) continue
+        // Facture d'origine extournée par une note de crédit qui n'est pas une commission ?
+        const ext = await odooRpc<any[]>('account.move', 'search_read', [[['move_type', '=', 'out_refund'], ['state', '=', 'posted'], ['reversed_entry_id', '=', inv.id]]], { fields: ['name', 'ref'], limit: 5 })
+        const annulee = ext.filter(e => !/^Commission/.test(String(e.ref || '')))
+        if (!annulee.length) continue
+        // Déjà annulée (à la main, en extourne, ou par ce passage) ?
+        const deja = await odooRpc<any[]>('account.move', 'search_read', [[['move_type', '=', 'out_invoice'], ['state', '!=', 'cancel'], '|', ['reversed_entry_id', '=', nc.id], ['invoice_origin', '=', nc.name]]], { fields: ['name'], limit: 1 })
+        if (deja.length) continue
+        const ls = await odooRpc<any[]>('account.move.line', 'read', [nc.invoice_line_ids], { fields: ['name', 'product_id', 'quantity', 'price_unit', 'tax_ids', 'display_type', 'sequence'] })
+        const lines = ls.map((l: any) => l.display_type === 'product'
+          ? [0, 0, { name: l.name, product_id: l.product_id ? l.product_id[0] : false, quantity: l.quantity, price_unit: l.price_unit, tax_ids: [[6, 0, l.tax_ids]], sequence: l.sequence }]
+          : [0, 0, { name: l.name, display_type: l.display_type, sequence: l.sequence }])
+        const id = await odooRpc<number>('account.move', 'create', [{
+          move_type: 'out_invoice', partner_id: g.partnerId,
+          invoice_date: new Date().toLocaleDateString('sv-SE', { timeZone: 'Europe/Brussels' }),
+          ref: `Annulation de la note de commission ${nc.name} (facture ${inv.name} annulée par ${annulee[0].name})`,
+          invoice_origin: nc.name, invoice_line_ids: lines,
+        }])
+        const { postAndSendPeppol } = await import('@/lib/mail-agent/odoo')
+        const sent = await postAndSendPeppol(id)
+        out.done.push(`${nc.name} annulée par ${sent.name}`)
+      } catch (e: any) { out.errors.push(`${nc.name} : ${String(e?.message || e).slice(0, 160)}`) }
+    }
+  }
+  return out
+}
+
 /** Passe du cron : factures envoyées des garages commissionnés, sans note de commission. */
 export async function notesCommissionDues(): Promise<{ done: string[]; errors: string[] }> {
   const out = { done: [] as string[], errors: [] as string[] }

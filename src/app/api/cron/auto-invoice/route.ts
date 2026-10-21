@@ -163,6 +163,10 @@ async function handleGET(req: Request) {
   try {
     const { notesCommissionDues } = await import('@/lib/facturation/commission-garage')
     commissions = await notesCommissionDues()
+    // Facture extournée → sa note de commission est annulée (Olivier 21/10/2026).
+    const { annulerCommissionsFacturesAnnulees } = await import('@/lib/facturation/commission-garage')
+    const ann = await annulerCommissionsFacturesAnnulees()
+    commissions.done.push(...ann.done); commissions.errors.push(...ann.errors)
     for (const e of commissions.errors) console.error('[auto-invoice] commission :', e)
   } catch (e: any) { commissions.errors.push(String(e?.message || e)); console.error('[auto-invoice] commissions KO :', e?.message) }
 
