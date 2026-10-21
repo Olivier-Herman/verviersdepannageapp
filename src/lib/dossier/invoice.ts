@@ -34,7 +34,7 @@ function plateVariants(raw: string): string[] {
   return Array.from(new Set(out.filter(Boolean)))
 }
 
-async function resolveInvoiceVehicle(sb: any, root: any): Promise<number | null> {
+export async function resolveInvoiceVehicle(sb: any, root: any): Promise<number | null> {
   const linked = Number(root.odoo_vehicle_id || root.parsed_data?.odoo_vehicle_id || 0)
   if (linked) return linked
   const plate = String(root.vehicle_plate || '').trim()
@@ -56,6 +56,13 @@ async function resolveInvoiceVehicle(sb: any, root: any): Promise<number | null>
   }
   if (id) await sb.from('incoming_missions').update({ odoo_vehicle_id: id }).eq('id', root.id).then(() => {}, () => {})
   return id
+}
+
+/** Véhicule de la facture d'une fiche (Olivier 21/10/2026, 2026/10/436 sans plaque : la Mercedes 1XQA638 n'existait
+ *  pas dans l'ERP) : même règle que pour un dossier — plaque écrite de plusieurs façons, sinon création du véhicule. */
+export async function resolveMissionInvoiceVehicle(sb: any, missionId: string): Promise<number | null> {
+  const { data } = await sb.from('incoming_missions').select('id, odoo_vehicle_id, parsed_data, vehicle_plate, vehicle_brand, vehicle_model, vehicle_vin').eq('id', missionId).maybeSingle()
+  return data ? resolveInvoiceVehicle(sb, data) : null
 }
 
 export interface DossierInvoiceResult {

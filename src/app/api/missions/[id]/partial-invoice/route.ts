@@ -125,7 +125,11 @@ async function handlePOST(req: Request, { params }: { params: { id: string } }) 
   try {
     result = await withOdooActor(actor?.id, async () => {
       let fleetVehicleId: number | null = null
-      if (mission.vehicle_plate) fleetVehicleId = await findFleetVehicleByPlate(mission.vehicle_plate)
+      if (mission.vehicle_plate) {
+        // Plaque écrite de plusieurs façons, sinon véhicule créé dans l'ERP (Olivier 21/10/2026).
+        const { resolveMissionInvoiceVehicle } = await import('@/lib/dossier/invoice')
+        fleetVehicleId = await resolveMissionInvoiceVehicle(sb, mission.id).catch(() => null) ?? await findFleetVehicleByPlate(mission.vehicle_plate)
+      }
       return await createSaleOrder({
         partner_id:       partnerId,
         origin:           `${missionRef} (partiel)`,

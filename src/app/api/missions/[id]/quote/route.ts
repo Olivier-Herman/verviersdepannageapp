@@ -294,7 +294,9 @@ async function handlePOST(req: Request, { params }: { params: { id: string } }) 
     result = await withOdooActor(user?.id, async () => {
       let fleetVehicleId: number | null = null
       if (mission.vehicle_plate) {
-        fleetVehicleId = await findFleetVehicleByPlate(mission.vehicle_plate)
+        // Plaque écrite de plusieurs façons, sinon véhicule créé dans l'ERP (Olivier 21/10/2026).
+        const { resolveMissionInvoiceVehicle } = await import('@/lib/dossier/invoice')
+        fleetVehicleId = await resolveMissionInvoiceVehicle(sb, mission.id).catch(() => null) ?? await findFleetVehicleByPlate(mission.vehicle_plate)
       }
       const sections: QuoteSection[] = [{ lines }]
       // D8 (audit 08/09/2026) : le parc se facture par les groupes Gardiennage du

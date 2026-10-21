@@ -289,7 +289,8 @@ async function handlePOST(req: Request) {
     result = await withOdooActor(user?.id, async () => {
       let fleetVehicleId: number | null = null
       if (firstWithPlate?.vehicle_plate) {
-        fleetVehicleId = await findFleetVehicleByPlate(firstWithPlate.vehicle_plate)
+        const { resolveMissionInvoiceVehicle } = await import('@/lib/dossier/invoice')
+        fleetVehicleId = await resolveMissionInvoiceVehicle(sb, firstWithPlate.id).catch(() => null) ?? await findFleetVehicleByPlate(firstWithPlate.vehicle_plate)
       }
       const input = {
         partner_id:       partnerId,
