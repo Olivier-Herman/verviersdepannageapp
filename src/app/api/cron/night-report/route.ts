@@ -40,6 +40,12 @@ async function handleGET(req: NextRequest) {
     const title = `Garde de nuit du ${nightLabel}`
     const appUrl = process.env.NEXT_PUBLIC_APP_URL || process.env.NEXTAUTH_URL || 'https://app.verviersdepannage.com'
     const to = await getBusinessList('rapport_garde_nuit_destinataires')
+    // Nuit sans aucune proposition : pas de mail (Olivier 21/10/2026 : « on annule ce mail quand rien de spécial »).
+    // Le bilan reste visible dans Administration → Garde de nuit.
+    if (stats.empty && !force) {
+      await sb.from('app_settings').upsert({ key: 'rapport_garde_nuit_dernier_envoi', value: JSON.stringify(today), updated_at: now.toISOString() }, { onConflict: 'key' })
+      return NextResponse.json({ ok: true, sent: 0, empty: true, skipped: 'nuit sans proposition' })
+    }
     for (const email of to) await sendEmail(email, `🌙 ${title}`, renderNightReportHtml(stats, title, appUrl))
     await sb.from('app_settings').upsert({ key: 'rapport_garde_nuit_dernier_envoi', value: JSON.stringify(today), updated_at: now.toISOString() }, { onConflict: 'key' })
     return NextResponse.json({ ok: true, sent: to.length, empty: stats.empty })
