@@ -165,6 +165,7 @@ interface Mission {
   remarks_billing?:      string | null
   special_tarif_htva?:   number | null
   storage_waived?:       boolean | null
+  redelivery_wait?:      boolean | null
   vab_vr?:               any
   vr_forfait?:           boolean | null
   vab_assignment_ids?:   string[] | null
@@ -919,6 +920,8 @@ export default function MissionDetailClient({
   // Formulaire éditable
   /** « Pas de gardiennage » — miroir local de `storage_waived`. */
   const [storageWaived, setStorageWaived] = useState<boolean>(!!initialMission.storage_waived)
+  /** « Relivraison en attente » (Olivier 21/10/2026) : adresse connue mais on nous demande d'attendre → le gardiennage continue. */
+  const [redeliveryWait, setRedeliveryWait] = useState<boolean>(!!(initialMission as any).redelivery_wait)
   /** Forfait « livraison de véhicule de remplacement » VAB : case du dispatch (Olivier 13/10/2026). */
   const [vrForfait, setVrForfait] = useState<boolean>(initialMission.vr_forfait ?? !!initialMission.vab_vr)
   /** Forfait gardiennage (Ethias / Kaze sur accident police) — 220 € HTVA. */
@@ -3751,6 +3754,27 @@ export default function MissionDetailClient({
                       </span>
                     </span>
                   </label>
+                  {/* « Relivraison en attente » (Olivier 21/10/2026) : la règle du 22/09 arrête le gardiennage dès que
+                      l'adresse de relivraison est connue ; si on nous demande d'attendre, il continue. */}
+                  {!storageWaived && (
+                    <label className={`flex items-start gap-2 mb-3 p-2.5 rounded-xl border cursor-pointer ${
+                      redeliveryWait ? 'border-orange-500 bg-orange-50' : 'border-dashed bg-surface-2'
+                    }`}>
+                      <input
+                        type="checkbox" checked={redeliveryWait}
+                        onChange={e => { setRedeliveryWait(e.target.checked); silentPatch({ redelivery_wait: e.target.checked }) }}
+                        className="mt-0.5 h-4 w-4 accent-orange-600"
+                      />
+                      <span className="text-xs">
+                        <span className={`font-semibold ${redeliveryWait ? 'text-orange-900' : 'text-ink'}`}>Relivraison en attente (le gardiennage continue)</span>
+                        <span className="block text-ink-muted mt-0.5">
+                          {redeliveryWait
+                            ? 'On nous a demandé d’attendre avant de relivrer : les jours de parc continuent de compter, même si l’adresse de relivraison est connue.'
+                            : 'À cocher si l’adresse de relivraison est connue mais qu’on nous demande d’attendre. Sinon, le gardiennage s’arrête dès que l’adresse est connue.'}
+                        </span>
+                      </span>
+                    </label>
+                  )}
                   {/* ── FORFAIT GARDIENNAGE (Olivier 2026-08-31) ──────────────
                       « Lorsque la source est police accident et que le client
                       est Ethias ou Kaze : forfait 220 € HTVA, fixe. Donc on ne
