@@ -112,7 +112,7 @@ export default function ControleClient({ initialId }: { initialId: string | null
         <div className="rounded-2xl border border-zinc-300 dark:border-zinc-700 p-5 space-y-3 bg-white/60 dark:bg-zinc-900/60">
           <h1 className="text-xl font-bold text-ink">Contrôle du parc</h1>
           <p className="text-sm text-ink-secondary">On scanne toutes les voitures du parc, zone par zone, avec les téléphones (à plusieurs si besoin). Cet écran montre en direct les voitures retrouvées. À la fin, VD Soft analyse les voitures non retrouvées et propose une décision pour chacune.</p>
-          <p className="text-sm text-ink-secondary">Ordre : zones de stockage, Domaine, puis la zone tampon (J, relivraison, Transit) et LABO en dernier.</p>
+          <p className="text-sm text-ink-secondary">Ordre : zones de stockage, puis la zone tampon (J, relivraison, Transit) et LABO en dernier.</p>
           {err && <div className="text-red-700 bg-red-50 rounded-xl p-3 text-sm">{err}</div>}
           <button onClick={start} disabled={busy === 'start'} className="min-h-[44px] px-5 rounded-xl bg-red-700 text-white font-bold disabled:opacity-50">{busy === 'start' ? 'Préparation de la liste…' : 'Lancer un contrôle'}</button>
         </div>
@@ -179,7 +179,7 @@ export default function ControleClient({ initialId }: { initialId: string | null
           <span className="inline-flex gap-1.5 items-center"><i className="w-3.5 h-3.5 rounded bg-zinc-100 border border-zinc-300 dark:bg-zinc-800 dark:border-zinc-600" />pas encore scannée</span>
           <span className="inline-flex gap-1.5 items-center"><i className="w-3.5 h-3.5 rounded bg-green-100 border border-green-400" />à sa place</span>
           <span className="inline-flex gap-1.5 items-center"><i className="w-3.5 h-3.5 rounded bg-amber-100 border border-amber-400" />venait d’une autre zone (déplacée)</span>
-          <span className="inline-flex gap-1.5 items-center"><i className="w-3.5 h-3.5 rounded bg-violet-600" />Domaine : à mettre en zone Domaine</span>
+          <span className="inline-flex gap-1.5 items-center"><i className="w-3.5 h-3.5 rounded bg-violet-600" />Domaine : à mettre en zone I</span>
           <input value={q} onChange={e => setQ(e.target.value)} placeholder="Chercher une plaque…" className="ml-auto min-h-[40px] rounded-xl border border-zinc-300 dark:border-zinc-700 px-3 bg-transparent text-ink text-sm" />
         </div>
         <div className="overflow-x-auto pb-2">
@@ -292,11 +292,11 @@ export default function ControleClient({ initialId }: { initialId: string | null
 
       <div className="grid gap-4 md:grid-cols-3">
         <section className="rounded-2xl border border-zinc-300 dark:border-zinc-700 p-4 space-y-2 bg-white/60 dark:bg-zinc-900/60">
-          <h2 className="font-bold text-ink">À transférer en zone Domaine · {domaine.length}</h2>
+          <h2 className="font-bold text-ink">À transférer en zone I (Domaine) · {domaine.length}</h2>
           <p className="text-xs text-ink-muted">Véhicules remis au Domaine et scannés pendant ce contrôle : leur présence chez nous est certaine.</p>
           {domaine.length === 0 && <div className="text-sm text-ink-muted">Aucun.</div>}
-          {domaine.map(i => <div key={i.id} className="text-sm text-ink flex justify-between gap-2"><span className="font-mono">{i.plate || 'sans plaque'}</span><span className="text-xs text-ink-muted">{i.applied_at ? '✓ en zone Domaine' : `trouvée en ${i.moved_to || i.expected_zone || '?'}`}</span></div>)}
-          {domaineTodo.length > 0 && <button onClick={() => post('domaine')} disabled={!!busy} className="min-h-[44px] px-4 rounded-xl border border-violet-500 text-violet-800 dark:text-violet-300 font-semibold disabled:opacity-50">{busy === 'domaine' ? 'Transfert…' : `Transférer ces ${domaineTodo.length} véhicules en zone Domaine`}</button>}
+          {domaine.map(i => <div key={i.id} className="text-sm text-ink flex justify-between gap-2"><span className="font-mono">{i.plate || 'sans plaque'}</span><span className="text-xs text-ink-muted">{i.applied_at ? '✓ en zone I' : `trouvée en ${i.moved_to || i.expected_zone || '?'}`}</span></div>)}
+          {domaineTodo.length > 0 && <button onClick={() => post('domaine')} disabled={!!busy} className="min-h-[44px] px-4 rounded-xl border border-violet-500 text-violet-800 dark:text-violet-300 font-semibold disabled:opacity-50">{busy === 'domaine' ? 'Transfert…' : `Transférer ces ${domaineTodo.length} véhicules en zone I (Domaine)`}</button>}
         </section>
         <section className="rounded-2xl border border-zinc-300 dark:border-zinc-700 p-4 space-y-2 bg-white/60 dark:bg-zinc-900/60">
           <h2 className="font-bold text-ink">Trouvées en trop · {extras.length}</h2>

@@ -13,7 +13,7 @@
 //     passe en Transit ;
 //  4. « Tout est scanné » : analyse des voitures non retrouvées (paiement, levée,
 //     état de frais, Domaine, restitution) avec une proposition ; Mobi décide,
-//     puis « Appliquer ». Les véhicules du Domaine scannés partent en zone Domaine
+//     puis « Appliquer ». Les véhicules du Domaine scannés partent en zone I (zone Domaine)
 //     sur un bouton dédié (présence certaine puisqu'ils ont été scannés).
 
 import { createAdminClient } from '@/lib/supabase'
@@ -24,6 +24,8 @@ import { normalizePlate } from '@/lib/plate'
 
 type Sb = ReturnType<typeof createAdminClient>
 
+/** Zone Domaine du parc = zone I (Olivier 21/10/2026). */
+export const DOMAINE_ZONE = 'I'
 /** Zone tampon physique : séparées seulement dans VD Soft. */
 export const TAMPON = ['J', 'K', 'K1', 'Transit']
 /** Clé utilisée par le téléphone pour « je suis dans la zone tampon ». */
@@ -181,7 +183,7 @@ export async function scanControle(sb: Sb, controleId: string, by: Scanner, zone
 
   const isDom = !!(m.domaine_remise_date || m.domaine_vente_date)
   const finalZone = target || cur
-  const kind: ScanKind = isDom && finalZone !== 'Domaine' ? 'domaine' : target ? 'transfere' : 'ok'
+  const kind: ScanKind = isDom && finalZone !== DOMAINE_ZONE ? 'domaine' : target ? 'transfere' : 'ok'
   const patch = {
     scanned_at: now, scanned_by: by.id, scanned_by_name: by.name, scanned_zone: zone, result: kind,
     moved_from: target ? cur : null, moved_to: target, via: input.via || 'etiquette', photo_path: input.photoPath || null, is_domaine: isDom,
@@ -193,7 +195,7 @@ export async function scanControle(sb: Sb, controleId: string, by: Scanner, zone
     analysis: { category: 'entree_pendant', label: 'Entrée au parc pendant le contrôle' },
   }).select('*').single())
 
-  if (kind === 'domaine') return { kind, message: `${label} — remise au Domaine`, detail: `À transférer en zone Domaine en fin de contrôle${target ? ` · rangée en ${target}` : ''}`, item }
+  if (kind === 'domaine') return { kind, message: `${label} — remise au Domaine`, detail: `À transférer en zone I (Domaine) en fin de contrôle${target ? ` · rangée en ${target}` : ''}`, item }
   if (kind === 'transfere') return { kind, message: label, detail: `Était en ${cur || 'aucune zone'} → passée en ${target}`, item }
   return { kind, message: label, detail: zone === TAMPON_KEY ? `À sa place (${cur}) dans la zone tampon` : `À sa place en ${cur}`, item }
 }
@@ -317,15 +319,15 @@ export async function applyDecisions(sb: Sb, controleId: string, by: Scanner) {
   return out
 }
 
-/** Transfère en zone Domaine les véhicules du Domaine scannés pendant le contrôle. */
+/** Transfère en zone I (Domaine) les véhicules du Domaine scannés pendant le contrôle. */
 export async function transferDomaine(sb: Sb, controleId: string, by: Scanner) {
   const { data: items } = await sb.from('parc_controle_items').select('id, mission_id, plate').eq('controle_id', controleId).eq('result', 'domaine')
   let n = 0
   for (const it of items || []) {
     const { data: m } = await sb.from('incoming_missions').select(M_FIELDS).eq('id', it.mission_id).maybeSingle()
-    if (!m || m.parc_zone_key === 'Domaine' || !EXPECTED_STATUSES.includes(m.status)) continue
-    await moveZone(sb, m, 'Domaine', by, 'véhicule remis au Domaine, scanné au parc')
-    await sb.from('parc_controle_items').update({ moved_to: 'Domaine', applied_at: new Date().toISOString(), applied_result: 'transférée en zone Domaine' }).eq('id', it.id)
+    if (!m || m.parc_zone_key === DOMAINE_ZONE || !EXPECTED_STATUSES.includes(m.status)) continue
+    await moveZone(sb, m, DOMAINE_ZONE, by, 'véhicule remis au Domaine, scanné au parc')
+    await sb.from('parc_controle_items').update({ moved_to: DOMAINE_ZONE, applied_at: new Date().toISOString(), applied_result: 'transférée en zone I (Domaine)' }).eq('id', it.id)
     n++
   }
   return n

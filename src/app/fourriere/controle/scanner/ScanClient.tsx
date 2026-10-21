@@ -79,7 +79,7 @@ export default function ScanClient({ userName }: { userName: string }) {
   const busyRef = useRef(false)
   zoneRef.current = zone
 
-  // Zones proposées : stockage, Domaine, zone tampon (J + relivraison + Transit), LABO.
+  // Zones proposées : stockage (I = zone Domaine), zone tampon (J + relivraison + Transit), LABO.
   const options = (() => {
     const out: { key: string; label: string }[] = []
     let tamponAdded = false
