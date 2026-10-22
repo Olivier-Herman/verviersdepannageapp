@@ -34,6 +34,7 @@ export interface RequisitoireExtract {
   // Levée de saisie
   levee_date:      string | null    // date effective de levée (YYYY-MM-DD)
   levee_type:      'definitive' | 'temporaire' | null
+  garagiste?:      string | null    // [levée temporaire] garage qui prend le véhicule (nom, adresse, téléphone)
   raw_quote:       string | null
   // Formulaire + case MOTIF cochée (Olivier 2026-09-03) : la procédure de
   // facturation dépend du motif — judiciaire (saisie → Parquet) vs administratif
@@ -71,6 +72,7 @@ Retourne UNIQUEMENT un objet JSON (pas de markdown) avec EXACTEMENT :
   "heure_requisition": "string|null — [réquisitoire] heure de l'intervention/saisie HH:MM (24h) si présente, sinon null",
   "levee_date": "string|null — [levée] date effective de la levée de saisie YYYY-MM-DD",
   "levee_type": "string|null — [levée] 'definitive' ou 'temporaire' si précisé, sinon null",
+  "garagiste": "string|null — [prise en charge par un garagiste] nom, adresse et téléphone du garage qui prend le véhicule (« Coordonnées de la société prenant en charge… »), même manuscrits ; sinon null",
   "raw_quote": "string|null — très courte citation qui justifie (max 120 caractères)",
   "form_kind": "string|null — [réquisitoire] 'judiciaire' si l'en-tête est « RÉQUISITOIRE ENLÈVEMENT/GARDIENNAGE DE VÉHICULE » (bloc « DATE ET MOTIF DE LA SAISIE ») ; 'administratif' si l'en-tête est « RÉQUISITOIRE ADMINISTRATIF ENLÈVEMENT/GARDIENNAGE » (bloc « DATE ET MOTIF DE L'ENLÈVEMENT ») ; null si autre mise en page",
   "motif": "string|null — [réquisitoire] la case COCHÉE (☒ / X / croix) du bloc motif. Formulaire judiciaire : 'non_assurance' | 'accident' | 'vol' | 'degrade_incendie' | 'recherche_indices' | 'patrimoniale' | 'autre_judiciaire'. Formulaire administratif : 'stationnement' | 'accident_administratif' | 'abandon_voie_publique' | 'rodeo' | 'autre_administratif'. Si aucune case n'est clairement cochée ou si le texte libre ne permet pas de trancher : null"
@@ -154,6 +156,7 @@ function coerce(item: any): RequisitoireExtract {
     heure_requisition: s(item?.heure_requisition),
     levee_date:      s(item?.levee_date),
     levee_type:      lt as any,
+    garagiste:       s(item?.garagiste)?.slice(0, 200) ?? null,
     raw_quote:       s(item?.raw_quote)?.slice(0, 120) ?? null,
     form_kind:       ['judiciaire', 'administratif'].includes(item?.form_kind) ? item.form_kind : null,
     motif:           REQUISITOIRE_MOTIFS.includes(item?.motif) ? item.motif : null,
