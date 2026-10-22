@@ -28,6 +28,8 @@ export type Facture = {
   carte?: boolean              // se paie par carte de crédit : jamais dans un lot de virements
   groupe?: boolean             // facture d'une société du groupe : affichée en fin de liste
   remarques?: string[]
+  nc?: boolean                 // note de crédit d'un client particulier à rembourser (Olivier 22/10/2026)
+  aml_id?: number | null       // remboursement d'un double paiement : ligne de trop-perçu à payer
 }
 export type EnAttente = Facture & { id: string; ajoute_le: string }
 
@@ -128,7 +130,23 @@ export async function aTrier(C: number): Promise<Facture[]> {
     f.groupe = intra
     f.propose = !intra && !avant2026 && !f.carte && !!f.iban && !!f.due_date && f.due_date <= horizon
     return f
-  }).sort((a, b) => Number(!!a.groupe) - Number(!!b.groupe))
+  }).sort((a, b) => Number(!!a.groupe) - Number(!!b.groupe)).concat(await ncATrier(C))
+}
+
+/** Notes de crédit ouvertes des clients particuliers : remboursées sur le compte de leur fiche (Olivier 22/10/2026). */
+async function ncATrier(C: number): Promise<Facture[]> {
+  const { ncParticuliersIds } = await import('./remboursements')
+  const ids = await ncParticuliersIds(C).catch(() => [] as number[])
+  if (!ids.length) return []
+  const ncs: any[] = await odooRpcCompany(C, 'account.move', 'read', [ids], { fields: FIELDS })
+  const bank = await ibans(C, [...new Set(ncs.map(m => m.partner_id?.[0]).filter(Boolean))])
+  return ncs.map(m => {
+    const f = toFacture(m, bank)
+    f.nc = true
+    f.communication = `Remboursement note de crédit ${m.name}`
+    f.remarques = [f.iban ? 'Note de crédit d’un client : virement sur le compte de sa fiche' : 'Note de crédit d’un client : ajouter son numéro de compte sur sa fiche client (ou le rembourser sur sa carte au terminal)']
+    return f
+  })
 }
 
 /** Liste d'attente, relue dans l'ERP : une facture payée entre-temps (autrement) en sort d'elle-même. */
@@ -137,6 +155,9 @@ export async function listeAttente(C: number): Promise<EnAttente[]> {
   const { data: rows, error } = await sb.from('paiements_attente').select('*').eq('company_id', C).eq('statut', 'attente').order('due_date', { ascending: true, nullsFirst: false })
   if (error) throw new Error(error.message)
   if (!rows?.length) return []
+  const tropPercus = await remboursementsEnAttente(C, rows.filter(r => r.aml_id))
+  rows.splice(0, rows.length, ...rows.filter(r => !r.aml_id))
+  if (!rows.length) return tropPercus
   const bills: any[] = await odooRpcCompany(C, 'account.move', 'read', [rows.map(r => r.move_id)], { fields: FIELDS })
   const byId = new Map(bills.map(b => [b.id, b]))
   const gone = rows.filter(r => { const b = byId.get(r.move_id); return !b || b.state !== 'posted' || !['not_paid', 'partial'].includes(b.payment_state) })
@@ -146,8 +167,31 @@ export async function listeAttente(C: number): Promise<EnAttente[]> {
   // Comme au tri : fournisseurs externes d'abord, sociétés du groupe en fin de liste (Olivier 19/10/2026).
   const societes: any[] = await odooRpcCompany(C, 'res.company', 'search_read', [[]], { fields: ['partner_id'] }).catch(() => [])
   const groupe = new Set(societes.map(x => x.partner_id?.[0]).filter(Boolean))
-  return live.map(r => { const f = toFacture(byId.get(r.move_id), bank); return { ...f, communication: f.communication || r.communication || null, groupe: groupe.has(f.partner_id), id: r.id, ajoute_le: r.ajoute_le } })
-    .sort((a, b) => Number(!!a.groupe) - Number(!!b.groupe))
+  return live.map((r): EnAttente => { const f = toFacture(byId.get(r.move_id), bank); return { ...f, communication: r.communication || f.communication || null, groupe: groupe.has(f.partner_id), id: r.id, ajoute_le: r.ajoute_le } })
+    .sort((a, b) => Number(!!a.groupe) - Number(!!b.groupe)).concat(tropPercus)
+}
+
+/** Doubles paiements dans la liste d'attente : relus sur leur ligne de trop-perçu (lettrée = sortie de la liste). */
+async function remboursementsEnAttente(C: number, rows: any[]): Promise<EnAttente[]> {
+  if (!rows.length) return []
+  const sb = createAdminClient()
+  const amls: any[] = await odooRpcCompany(C, 'account.move.line', 'read', [rows.map(r => r.aml_id)], { fields: ['id', 'reconciled', 'amount_residual'] })
+  const byId = new Map(amls.map(a => [a.id, a]))
+  const gone = rows.filter(r => { const a = byId.get(r.aml_id); return !a || a.reconciled || Math.abs(a.amount_residual) < 0.01 })
+  if (gone.length) await sb.from('paiements_attente').update({ statut: 'retire', retire_le: new Date().toISOString() }).in('id', gone.map(r => r.id))
+  const live = rows.filter(r => !gone.includes(r))
+  const bank = await ibans(C, [...new Set(live.map(r => r.partner_id).filter(Boolean))])
+  const { data: rembs } = await sb.from('remboursements_clients').select('id, iban').in('id', live.map(r => r.remb_id).filter(Boolean))
+  return live.map(r => {
+    const iban = (rembs || []).find((x: any) => x.id === r.remb_id)?.iban || null
+    const compte = (bank.get(r.partner_id) || []).find(c => c.ok && c.acc.replace(/\s+/g, '').toUpperCase() === String(iban || '').toUpperCase())
+    const amount = Math.min(Number(r.amount), Math.abs(byId.get(r.aml_id).amount_residual))
+    return {
+      move_id: r.move_id, move_name: r.move_name, partner_id: r.partner_id, partner_name: r.partner_name, ref: r.ref, invoice_date: null, due_date: null,
+      amount, communication: r.communication, iban: compte?.acc || null, compte_id: compte?.id || null, ibanAConfirmer: null,
+      remarques: ['Remboursement d’un double paiement'], aml_id: r.aml_id, id: r.id, ajoute_le: r.ajoute_le,
+    }
+  })
 }
 
 export async function ajouter(C: number, moveIds: number[], userId: string | null): Promise<number> {
@@ -174,9 +218,13 @@ export async function ajouter(C: number, moveIds: number[], userId: string | nul
 }
 
 export async function retirer(C: number, ids: string[], userId: string | null): Promise<void> {
-  const { error } = await createAdminClient().from('paiements_attente').update({ statut: 'retire', retire_par: userId, retire_le: new Date().toISOString() })
+  const sb = createAdminClient()
+  const { data: rb } = await sb.from('paiements_attente').select('remb_id').eq('company_id', C).eq('statut', 'attente').in('id', ids).not('remb_id', 'is', null)
+  const { error } = await sb.from('paiements_attente').update({ statut: 'retire', retire_par: userId, retire_le: new Date().toISOString() })
     .eq('company_id', C).eq('statut', 'attente').in('id', ids)
   if (error) throw new Error(error.message)
+  // Un double paiement retiré revient au tri (la ligne de trop-perçu reste sur le compte client).
+  if (rb?.length) await sb.from('remboursements_clients').update({ statut: 'a_trier', attente_id: null, updated_at: new Date().toISOString() }).in('id', rb.map((r: any) => r.remb_id))
 }
 
 /**
@@ -193,10 +241,19 @@ export async function creerLot(C: number, ids: string[], userId: string | null) 
 
   // Un paiement par fournisseur et par compte (deux factures sur deux comptes différents = deux virements).
   const parFournisseur = new Map<string, EnAttente[]>()
-  for (const f of choisies) { const k = `${f.partner_id}:${f.compte_id}`; parFournisseur.set(k, [...(parFournisseur.get(k) || []), f]) }
+  for (const f of choisies.filter(x => !x.aml_id)) { const k = `${f.partner_id}:${f.compte_id}`; parFournisseur.set(k, [...(parFournisseur.get(k) || []), f]) }
 
   const today = new Date().toISOString().slice(0, 10)
   const crees: { id: number; name: string; amount: number; factures: EnAttente[] }[] = []
+  // Doubles paiements : un virement par trop-perçu, créé sur la ligne même, qui la solde (Olivier 22/10/2026).
+  for (const f of choisies.filter(x => x.aml_id)) {
+    const ctx = { active_model: 'account.move.line', active_ids: [f.aml_id] }
+    const wiz = await odooRpcCompany<number>(C, 'account.payment.register', 'create', [{ journal_id: journal, payment_method_line_id: methodLine, payment_date: today, amount: f.amount, communication: f.communication || 'Remboursement double paiement', partner_bank_id: f.compte_id }], { context: ctx })
+    await odooRpcCompany(C, 'account.payment.register', 'action_create_payments', [[wiz]], { context: ctx })
+    const [p]: any[] = await odooRpcCompany(C, 'account.payment', 'search_read', [[['partner_id', '=', f.partner_id], ['journal_id', '=', journal], ['batch_payment_id', '=', false], ['state', '!=', 'canceled'], ['payment_type', '=', 'outbound']]], { fields: ['id', 'name', 'amount'], order: 'id desc', limit: 1 })
+    if (!p) throw new Error(`Remboursement de ${f.partner_name} : virement non créé, vérifier dans l’ERP avant de recommencer`)
+    crees.push({ id: p.id, name: p.name, amount: p.amount, factures: [f] })
+  }
   for (const factures of parFournisseur.values()) {
     const moveIds = factures.map(f => f.move_id)
     // Communication : celle de la facture (structurée si le fournisseur en donne une), sinon sa référence.

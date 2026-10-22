@@ -16,8 +16,9 @@ export async function GET(req: NextRequest) {
   const C = Number(req.nextUrl.searchParams.get('societe') || SOCIETES[0].id)
   try {
     societe(C)
-    const [attente, trier] = await Promise.all([listeAttente(C), acc.tri ? aTrier(C) : Promise.resolve(null)])
-    return NextResponse.json({ attente, aTrier: trier, droits: { tri: acc.tri, lot: acc.lot } })
+    const { doublesATrier } = await import('@/lib/paiements/remboursements')
+    const [attente, trier, doubles] = await Promise.all([listeAttente(C), acc.tri ? aTrier(C) : Promise.resolve(null), acc.tri ? doublesATrier(C) : Promise.resolve([])])
+    return NextResponse.json({ attente, aTrier: trier, doubles, droits: { tri: acc.tri, lot: acc.lot } })
   } catch (e: any) {
     return NextResponse.json({ error: e?.message || String(e) }, { status: 500 })
   }
@@ -26,7 +27,7 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   const session = await getServerSession(authOptions)
   const acc = await accesPaiements(session)
-  const { societe: C, action, ids } = await req.json().catch(() => ({} as any))
+  const { societe: C, action, ids, choix, iban } = await req.json().catch(() => ({} as any))
   if (!Array.isArray(ids) || !ids.length) return NextResponse.json({ error: 'Rien de coché' }, { status: 400 })
   try {
     const s = societe(Number(C))
@@ -34,6 +35,14 @@ export async function POST(req: NextRequest) {
       if (!acc.tri) return NextResponse.json({ error: 'Accès refusé' }, { status: 403 })
       await confirmerCompte(s.id, Number(ids[0]))
       return NextResponse.json({ ok: true })
+    }
+    if (action === 'decider_double') {
+      // Double paiement reçu : rembourser (liste d'attente), compenser, ou rembourser la personne (Olivier 22/10/2026).
+      if (!acc.tri) return NextResponse.json({ error: 'Accès refusé' }, { status: 403 })
+      if (!['rembourser', 'compenser', 'personne'].includes(String(choix))) return NextResponse.json({ error: 'Choix inconnu' }, { status: 400 })
+      const { deciderDouble } = await import('@/lib/paiements/remboursements')
+      const statut = await deciderDouble(s.id, String(ids[0]), choix, iban ? String(iban) : null, acc.id)
+      return NextResponse.json({ ok: true, statut })
     }
     if (action === 'ajouter' || action === 'retirer') {
       if (!acc.tri) return NextResponse.json({ error: 'Accès refusé' }, { status: 403 })

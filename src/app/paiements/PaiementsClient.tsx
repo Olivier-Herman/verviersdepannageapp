@@ -12,7 +12,43 @@ type Facture = {
   id?: string; move_id: number; move_name: string; partner_name: string; ref: string | null
   invoice_date: string | null; due_date: string | null; amount: number; communication: string | null
   iban: string | null; ibanAConfirmer: { id: number; acc: string } | null; ajoute_le?: string
-  propose?: boolean; carte?: boolean; groupe?: boolean; remarques?: string[]
+  propose?: boolean; carte?: boolean; groupe?: boolean; remarques?: string[]; nc?: boolean; aml_id?: number | null
+}
+type Double = { id: string; partner_name: string; amount: number; recu_le: string | null; facture: string | null; motif: string | null; iban: string | null; options: string[]; statut: string; choix: string | null }
+
+// Double paiement reçu (Olivier 22/10/2026) : rembourser sur le compte qui a payé, compenser, ou (SOS) rembourser la
+// personne qui a payé sur place — décision une par une, puis le remboursement rejoint la liste d'attente.
+function CarteDouble({ d, busy, onDecider }: { d: Double; busy: boolean; onDecider: (choix: string, iban?: string) => void }) {
+  const [choix, setChoix] = useState(d.statut === 'compte_a_demander' && d.choix ? d.choix : 'rembourser')
+  const [iban, setIban] = useState('')
+  const opts = [['rembourser', 'Rembourser'], ...(d.options.includes('personne') ? [['personne', 'À la personne qui a payé sur place']] : []), ...(d.options.includes('compenser') ? [['compenser', 'Compenser sur leurs factures ouvertes']] : [])]
+  if (d.statut === 'a_compenser') return (
+    <div className="rounded-card border bg-surface p-3"><div className="font-semibold text-ink">{d.partner_name} · <span className="font-mono">{eur(d.amount)}</span></div>
+      <div className="mt-1 text-xs font-semibold text-amber-800">À compenser sur leurs factures ouvertes (pas de virement) — facture {d.facture}</div></div>
+  )
+  return (
+    <div className="grid gap-2 rounded-card border-2 border-sky-300 bg-surface p-3">
+      <div className="flex flex-wrap items-start justify-between gap-2">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2 font-semibold text-ink">{d.partner_name}<span className="rounded-md bg-amber-50 px-2 py-0.5 text-xs font-semibold text-amber-800">Double paiement</span></div>
+          <div className="mt-0.5 flex flex-wrap gap-x-3 text-xs text-ink-secondary"><span>reçu le {fd(d.recu_le)}</span><span>facture {d.facture}</span></div>
+          {d.motif && <div className="mt-1 text-xs text-ink-secondary">{d.motif}</div>}
+        </div>
+        <span className="font-mono font-semibold tabular-nums text-ink">{eur(d.amount)}</span>
+      </div>
+      <div className="flex flex-wrap gap-2">
+        {opts.map(([k, l]) => <button key={k} onClick={() => setChoix(k)} aria-pressed={choix === k} className={`min-h-[40px] rounded-lg border px-3 text-sm font-semibold ${choix === k ? 'border-sky-600 bg-sky-50 text-sky-900' : 'text-ink'}`}>{l}</button>)}
+      </div>
+      {choix === 'rembourser' && <div className="text-xs text-ink-secondary">Compte qui a payé : <span className="font-mono text-ink">{d.iban || 'inconnu'}</span></div>}
+      {(choix === 'personne' || (choix === 'rembourser' && !d.iban)) && (
+        <input value={iban} onChange={e => setIban(e.target.value)} placeholder="Numéro de compte (BE…)" className="min-h-[44px] max-w-sm rounded-lg border bg-surface px-3 font-mono text-sm text-ink" />
+      )}
+      {choix === 'compenser' && <div className="text-xs text-ink-secondary">Pas de virement : le trop-perçu est imputé sur leurs factures ouvertes.</div>}
+      {d.statut === 'compte_a_demander' && <div className="text-xs font-semibold text-red-800">Il manque le numéro de compte pour faire le virement.</div>}
+      <div><button disabled={busy || ((choix === 'personne' || (choix === 'rembourser' && !d.iban)) && iban.trim().length < 10)} onClick={() => onDecider(choix, iban.trim() || undefined)}
+        className="min-h-[44px] rounded-xl bg-brand px-4 text-sm font-bold text-white disabled:opacity-40">{choix === 'compenser' ? 'Compenser' : 'Ajouter à la liste d’attente'}</button></div>
+    </div>
+  )
 }
 
 const eur = (n: number) => n.toLocaleString('fr-BE', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' €'
@@ -85,7 +121,7 @@ export default function PaiementsClient({ societes, peutTrier, userRole, userNam
 }) {
   const [soc, setSoc] = useState(societes[0].id)
   const [etape, setEtape] = useState<'tri' | 'lot'>(peutTrier ? 'tri' : 'lot')
-  const [data, setData] = useState<{ attente: Facture[]; aTrier: Facture[] | null } | null>(null)
+  const [data, setData] = useState<{ attente: Facture[]; aTrier: Facture[] | null; doubles: Double[] } | null>(null)
   const [loading, setLoading] = useState(true)
   const [err, setErr] = useState('')
   const [sel, setSel] = useState<Record<string, boolean>>({})
@@ -101,7 +137,7 @@ export default function PaiementsClient({ societes, peutTrier, userRole, userNam
       const r = await fetch(`/api/paiements?societe=${soc}`, { cache: 'no-store' })
       const j = await r.json()
       if (!r.ok) throw new Error(j.error || 'Chargement impossible')
-      setData({ attente: j.attente || [], aTrier: j.aTrier })
+      setData({ attente: j.attente || [], aTrier: j.aTrier, doubles: j.doubles || [] })
     } catch (e: any) { setErr(e.message) } finally { setLoading(false) }
   }, [soc])
   useEffect(() => { setSel({}); setFait(''); setConfirm(false); charger() }, [charger])
@@ -125,6 +161,17 @@ export default function PaiementsClient({ societes, peutTrier, userRole, userNam
       if (!r.ok) throw new Error(j.error || 'Action impossible')
       return j
     } catch (e: any) { setErr(e.message); return null } finally { setBusy(false) }
+  }
+
+  async function deciderDouble(id: string, choix: string, iban?: string) {
+    setBusy(true); setErr('')
+    try {
+      const r = await fetch('/api/paiements', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ societe: soc, action: 'decider_double', ids: [id], choix, iban }) })
+      const j = await r.json()
+      if (!r.ok) throw new Error(j.error || 'Action impossible')
+      setFait(j.statut === 'attente' ? 'Remboursement ajouté à la liste d’attente.' : j.statut === 'compensation' ? 'Noté : à compenser sur leurs factures ouvertes.' : 'Il manque le numéro de compte.')
+      charger()
+    } catch (e: any) { setErr(e.message) } finally { setBusy(false) }
   }
 
   async function confirmerCompte(bankId: number) {
@@ -197,7 +244,12 @@ export default function PaiementsClient({ societes, peutTrier, userRole, userNam
               </div>
             </div>
             {aTrier.length === 0 && <div className="rounded-card border border-dashed p-4 text-sm text-ink-muted">Aucune facture à trier.</div>}
-            {aTrier.map((f, i) => <Fragment key={f.move_id}>{f.groupe && !aTrier[i - 1]?.groupe && <h2 className="mt-4 text-xs font-semibold uppercase tracking-wider text-ink-muted">Sociétés du groupe ({aTrier.filter(x => x.groupe).length}) : se règlent à part</h2>}<Ligne f={f} coche={sel[String(f.move_id)]} onCoche={v => setSel(s => ({ ...s, [String(f.move_id)]: v }))} onConfirmerCompte={confirmerCompte} onApercu={() => setApercu({ liste: aTrier, i, cle: x => String(x.move_id) })} /></Fragment>)}
+            {aTrier.map((f, i) => <Fragment key={f.move_id}>{f.nc && !aTrier[i - 1]?.nc && <h2 className="mt-4 text-xs font-semibold uppercase tracking-wider text-ink-muted">Notes de crédit à rembourser ({aTrier.filter(x => x.nc).length})</h2>}{f.groupe && !aTrier[i - 1]?.groupe && <h2 className="mt-4 text-xs font-semibold uppercase tracking-wider text-ink-muted">Sociétés du groupe ({aTrier.filter(x => x.groupe).length}) : se règlent à part</h2>}<Ligne f={f} coche={sel[String(f.move_id)]} onCoche={v => setSel(s => ({ ...s, [String(f.move_id)]: v }))} onConfirmerCompte={confirmerCompte} onApercu={() => setApercu({ liste: aTrier, i, cle: x => String(x.move_id) })} /></Fragment>)}
+
+            {(data?.doubles || []).length > 0 && <>
+              <h2 className="mt-6 text-xs font-semibold uppercase tracking-wider text-ink-muted">Remboursements clients — doubles paiements ({data!.doubles.length})</h2>
+              {data!.doubles.map(d => <CarteDouble key={d.id} d={d} busy={busy} onDecider={(c, ib) => deciderDouble(d.id, c, ib)} />)}
+            </>}
 
             <h2 className="mt-6 text-xs font-semibold uppercase tracking-wider text-ink-muted">
               Dans la liste d’attente ({attente.length} · {eur(attente.reduce((s, f) => s + f.amount, 0))})
