@@ -7,6 +7,7 @@
 // signature au nom du vrai utilisateur dans le chatter Odoo.
 // ============================================================
 
+import { refClient } from '@/lib/facturation/ref-client'
 import { createAdminClient } from '@/lib/supabase'
 import { AsyncLocalStorage } from 'async_hooks'
 import { resolveBrandId, resolveModelId } from '@/lib/odoo-fleet'
@@ -387,7 +388,7 @@ export async function createSaleOrder(data: {
   const orderId = await rpc<number>('sale.order', 'create', [{
     partner_id: data.partnerId,
     sale_order_template_id: SALE_TEMPLATE_ID,
-    client_order_ref: data.reference,
+    client_order_ref: refClient(data.reference),
     [FIELD_PLAQUE]: data.vehicleId,
     payment_term_id: 1,
     order_line: [
@@ -586,7 +587,7 @@ export async function createTGRQuote(params: {
   // 3. Créer le devis
   const orderData: any = {
     partner_id:       partnerId,
-    client_order_ref: reference,
+    client_order_ref: refClient(reference),
     note:             `Transport TGR — ${plate} ${brand} ${model}\nDe : ${pickupAddress}\nVers : ${deliveryAddress}`,
     order_line: [[0, 0, {
       product_id:      productId,
