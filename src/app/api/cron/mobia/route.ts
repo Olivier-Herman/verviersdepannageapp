@@ -22,6 +22,12 @@ async function handleGET(req: Request) {
   }
   const essai = new URL(req.url).searchParams.get('essai') || undefined
   if (!essai && !mobiaAuTravail()) return NextResponse.json({ ok: true, skipped: 'hors horaires' })
+  // Pause décidée par Mobi (22/10/2026) : réglage « mobia_actif ».
+  if (!essai) {
+    const { getBusinessText } = await import('@/lib/settings/business')
+    const actif = await getBusinessText('mobia_actif').catch(() => 'oui')
+    if (String(actif).trim().toLowerCase() !== 'oui') return NextResponse.json({ ok: true, skipped: 'en pause' })
+  }
   try {
     const r = await runMobia({ dryKey: essai })
     return NextResponse.json({ ok: true, ...r })
