@@ -152,6 +152,18 @@ export async function listeAttente(C: number): Promise<EnAttente[]> {
 
 export async function ajouter(C: number, moveIds: number[], userId: string | null): Promise<number> {
   const dispo = (await aTrier(C)).filter(f => moveIds.includes(f.move_id) && !f.carte)
+  // Remboursement d'une note de crédit client (Olivier 22/10/2026, NC 2026-0360) : elle part dans le même lot
+  // que les fournisseurs, sur l'IBAN du client. Jamais proposée au tri, seulement ajoutée sur demande.
+  const autres = moveIds.filter(id => !dispo.some(f => f.move_id === id))
+  if (autres.length) {
+    const ncs: any[] = await odooRpcCompany(C, 'account.move', 'read', [autres], { fields: FIELDS })
+    const ok = ncs.filter(m => m.move_type === 'out_refund' && m.state === 'posted' && ['not_paid', 'partial'].includes(m.payment_state))
+    if (ok.length) {
+      const { data: deja } = await createAdminClient().from('paiements_attente').select('move_id').eq('company_id', C).eq('statut', 'attente').in('move_id', ok.map(m => m.id))
+      const bank = await ibans(C, [...new Set(ok.map(m => m.partner_id?.[0]).filter(Boolean))])
+      dispo.push(...ok.filter(m => !(deja || []).some((d: any) => d.move_id === m.id)).map(m => ({ ...toFacture(m, bank), communication: `Remboursement note de crédit ${m.name}` })))
+    }
+  }
   if (!dispo.length) return 0
   const { error } = await createAdminClient().from('paiements_attente').insert(dispo.map(f => ({
     company_id: C, move_id: f.move_id, move_name: f.move_name, partner_id: f.partner_id, partner_name: f.partner_name, ref: f.ref,
@@ -194,7 +206,7 @@ export async function creerLot(C: number, ids: string[], userId: string | null) 
     const ctx = { active_model: 'account.move', active_ids: moveIds }
     const wiz = await odooRpcCompany<number>(C, 'account.payment.register', 'create', [{ journal_id: journal, payment_method_line_id: methodLine, payment_date: today, group_payment: true, communication, partner_bank_id: factures[0].compte_id }], { context: ctx })
     await odooRpcCompany(C, 'account.payment.register', 'action_create_payments', [[wiz]], { context: ctx })
-    const pays: any[] = await odooRpcCompany(C, 'account.payment', 'search_read', [[['reconciled_bill_ids', 'in', moveIds], ['batch_payment_id', '=', false], ['journal_id', '=', journal], ['state', '!=', 'canceled']]], { fields: ['id', 'name', 'amount'] })
+    const pays: any[] = await odooRpcCompany(C, 'account.payment', 'search_read', [['|', ['reconciled_bill_ids', 'in', moveIds], ['reconciled_invoice_ids', 'in', moveIds], ['batch_payment_id', '=', false], ['journal_id', '=', journal], ['state', '!=', 'canceled']]], { fields: ['id', 'name', 'amount'] })
     for (const p of pays) crees.push({ id: p.id, name: p.name, amount: p.amount, factures })
   }
   if (!crees.length) throw new Error('Paiements créés introuvables : vérifier dans l’ERP avant de recommencer')
