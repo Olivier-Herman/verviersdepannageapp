@@ -146,7 +146,7 @@ export async function listeAttente(C: number): Promise<EnAttente[]> {
   // Comme au tri : fournisseurs externes d'abord, sociétés du groupe en fin de liste (Olivier 19/10/2026).
   const societes: any[] = await odooRpcCompany(C, 'res.company', 'search_read', [[]], { fields: ['partner_id'] }).catch(() => [])
   const groupe = new Set(societes.map(x => x.partner_id?.[0]).filter(Boolean))
-  return live.map(r => { const f = toFacture(byId.get(r.move_id), bank); return { ...f, groupe: groupe.has(f.partner_id), id: r.id, ajoute_le: r.ajoute_le } })
+  return live.map(r => { const f = toFacture(byId.get(r.move_id), bank); return { ...f, communication: f.communication || r.communication || null, groupe: groupe.has(f.partner_id), id: r.id, ajoute_le: r.ajoute_le } })
     .sort((a, b) => Number(!!a.groupe) - Number(!!b.groupe))
 }
 
