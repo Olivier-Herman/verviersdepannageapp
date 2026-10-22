@@ -79,6 +79,33 @@ export async function syncComexBko(sb: any): Promise<SyncResult> {
     }
   }
 
+  // Dernier secours (Olivier 22/10/2026, 2CKJ771) : Touring facture parfois une relivraison sous un DOSSIER SÉPARÉ
+  // dont notre fiche a été annulée comme doublon (2026BE407550 → relivraison faite sous 2026BE407279-REL). On
+  // retrouve alors la fiche par la PLAQUE, dans les 15 jours autour de la date du dossier, jamais une fiche annulée ;
+  // une prestation de transport (TGR) prend la relivraison en priorité.
+  {
+    const SEL_PL = 'id, mission_number, dossier_number, external_id, source, status, mission_type, estimated_htva, special_tarif_htva, amount_to_collect, incident_lat, incident_lng, destination_lat, destination_lng, vehicle_class, parent_mission_id, billed_to_name, billed_to_id, snc_scenario, snc_requires_balisage, snc_remorque, snc_supplements, intervention_date, received_at, extra_addresses, vehicle_plate'
+    const normPlate = (p: string) => String(p || '').toUpperCase().replace(/[^A-Z0-9]/g, '')
+    const parseFr = (s: string) => { const m = String(s || '').match(/^(\d{2})\/(\d{2})\/(\d{4})/); return m ? new Date(`${m[3]}-${m[2]}-${m[1]}T12:00:00Z`) : null }
+    for (const d of dossiers as any[]) {
+      if (!d.dossier || byDossier.has(d.dossier) || !d.plaque) continue
+      const at = parseFr(d.fileDate || d.file_date) || new Date()
+      const { data: cand } = await sb.from('incoming_missions').select(SEL_PL)
+        .ilike('vehicle_plate', `%${normPlate(d.plaque)}%`)
+        .eq('dossier_leg', false)
+        .not('status', 'in', '(cancelled,ignored)')
+        .gte('received_at', new Date(at.getTime() - 15 * 864e5).toISOString())
+        .lte('received_at', new Date(at.getTime() + 15 * 864e5).toISOString())
+        .limit(10)
+      let hit = (cand || []).filter((m: any) => normPlate(m.vehicle_plate) === normPlate(d.plaque))
+      if (/TGR|transport|reliv/i.test(String(d.prestation || ''))) {
+        const rel = hit.filter((m: any) => /reliv|^rel$/i.test(String(m.mission_type || '')))
+        if (rel.length) hit = rel
+      }
+      if (hit.length) byDossier.set(d.dossier, hit)
+    }
+  }
+
   // Tarif attendu VD Soft : estimated_htva figé si présent, sinon calcul live.
   async function vdTariff(m: any): Promise<number | null> {
     if (m.special_tarif_htva && Number(m.special_tarif_htva) > 0) return Number(m.special_tarif_htva)
