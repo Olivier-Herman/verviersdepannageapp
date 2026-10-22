@@ -10,6 +10,8 @@
 // « Votre numéro d'accord … », « MAN_… ») passe inchangée, comme une référence déjà propre.
 
 const MISSION_IMA = /(?<![0-9A-Z])([BF]\d[0-9A-Z]\d{6})(?:[A-Z]{2})?(?![0-9A-Z])/
+// VAB : « dossier/mission » (8453064/35264110), à garder entier même écrit avec des espaces.
+const MISSION_VAB = /(?<!\d)(\d{7}) ?\/ ?(\d{8})(?!\d)/
 const INTERNE = /^(ACC|SNC|SAISIE)-\d+$/i
 const PV = /^VE\./i
 
@@ -33,6 +35,8 @@ export function refAssistance<T extends string | null | undefined>(raw: T): T | 
   const s = String(raw).replace(/\s+/g, ' ').trim()
   const ima = MISSION_IMA.exec(s)
   if (ima) return ima[1]
+  const vab = MISSION_VAB.exec(s)
+  if (vab) return `${vab[1]}/${vab[2]}`
   const parts = s.split(/ \/ | - /).map(p => p.trim().replace(/(-REL)+$/i, '')).filter(p => p && !INTERNE.test(p))
   for (const p of parts) {
     const n = numeroEnTete(p)
