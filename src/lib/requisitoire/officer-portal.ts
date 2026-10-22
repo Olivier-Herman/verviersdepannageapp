@@ -195,11 +195,13 @@ function buildPortalHtml(d: PortalData, link: string): string {
 
 export interface PortalMailResult { ok: boolean; error?: string; email?: string; count?: number }
 
-export async function sendOfficerPortalMail(partnerId: number): Promise<PortalMailResult> {
+/** `onlyIds` (robot des saisies) : seulement les véhicules dus — 1re demande à J+3, puis tous les 7 jours, saisies
+ *  uniquement (Olivier 22/10/2026 : relances parties le lendemain, AVP inclus). Bouton manuel : tous les manquants. */
+export async function sendOfficerPortalMail(partnerId: number, onlyIds?: string[]): Promise<PortalMailResult> {
   const d = await loadOfficerPortal(partnerId)
   if (!d) return { ok: false, error: 'Policier inconnu' }
   if (!d.officer.email) return { ok: false, error: "Email du policier inconnu (compléter le contact Odoo)" }
-  const targets = d.pending.filter(v => v.received_at == null)
+  const targets = d.pending.filter(v => v.received_at == null && (!onlyIds || onlyIds.includes(v.id)))
   if (!targets.length) return { ok: false, error: 'Aucun réquisitoire en attente pour ce policier' }
 
   const link = portalLink(partnerId)

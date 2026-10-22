@@ -88,7 +88,7 @@ export async function closeSaisieDossierIfOutOfScope(sb: any, missionId: string)
 export async function runSaisieCron(sb: any): Promise<SaisieCronSummary> {
   const auto = await getAutoSend(sb)
   const today = belgianToday()
-  const duePartners = new Map<number, string[]>()   // policier → plaques à relancer (mail groupé)
+  const duePartners = new Map<number, { plates: string[]; ids: string[] }>()   // policier → véhicules à relancer (mail groupé)
   const out: SaisieCronSummary = { auto, checked: 0, prepared: 0, sent: 0, relances: 0, actions: [], errors: [], integrated: 0, closed: 0, forclusionAlerts: 0 }
 
   // 0) Intègre automatiquement les nouvelles saisies en parc.
@@ -221,9 +221,11 @@ export async function runSaisieCron(sb: any): Promise<SaisieCronSummary> {
     if (mission && !hasValidRequisitoire(mission)) {
       // Relance GROUPÉE : un mail par policier (portail), pas un par véhicule
       // (Olivier 16/09/2026). Sans contact Odoo lié → pas d'email → rien.
-      if (d.mission_id && mission.officer_partner_id && daysSince(mission.requisitoire_last_reminder_at) >= 7) {
-        const arr = duePartners.get(mission.officer_partner_id) || []
-        arr.push(d.vehicle_plate || '—'); duePartners.set(mission.officer_partner_id, arr)
+      // 1re demande 3 jours après l'enlèvement, jamais le lendemain (Olivier 22/10/2026) ; ensuite tous les 7 jours.
+      const due = mission.requisitoire_last_reminder_at ? daysSince(mission.requisitoire_last_reminder_at) >= 7 : daysSince(d.parked_at) >= 3
+      if (d.mission_id && mission.officer_partner_id && due) {
+        const e = duePartners.get(mission.officer_partner_id) || { plates: [], ids: [] }
+        e.plates.push(d.vehicle_plate || '—'); e.ids.push(d.mission_id); duePartners.set(mission.officer_partner_id, e)
       }
       continue
     }
@@ -250,8 +252,8 @@ export async function runSaisieCron(sb: any): Promise<SaisieCronSummary> {
   }
 
   // Relances réquisitoire : un mail par policier avec TOUS ses manquants.
-  for (const [pid, plates] of duePartners) {
-    const r = await sendOfficerPortalMail(pid)
+  for (const [pid, { plates, ids }] of duePartners) {
+    const r = await sendOfficerPortalMail(pid, ids)
     if (r.ok) { out.relances++; out.actions.push({ plate: plates.join('/'), kind: `relance réquisitoire (${r.count})` }) }
     // Email inconnu = déjà visible dans l'écran Relance (⚠️) : pas une erreur de cron.
     else if (!/Email du policier inconnu/.test(r.error || '')) out.errors.push(`Relance policier ${pid} (${plates.join(', ')}) : ${r.error}`)
