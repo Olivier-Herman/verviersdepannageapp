@@ -1,4 +1,4 @@
-import { refClient } from '@/lib/facturation/ref-client'
+import { refFacture } from '@/lib/facturation/ref-client'
 // src/lib/odoo-quote.ts
 //
 // Phase 2 facturation : creation / update de devis Odoo (sale.order) depuis
@@ -162,7 +162,7 @@ export async function createSaleOrder(input: CreateQuoteInput): Promise<{ id: nu
   const vals: any = {
     partner_id:        input.partner_id,
     origin:            input.origin,
-    client_order_ref:  refClient(input.client_order_ref) || null,
+    client_order_ref:  (await refFacture(input.client_order_ref, input.partner_id)) || null,
     order_line:        orderLines,
   }
   if (input.fleet_vehicle_id) {
@@ -240,7 +240,7 @@ export async function createDraftInvoice(input: CreateQuoteInput): Promise<{ id:
     move_type:        'out_invoice',
     partner_id:       input.partner_id,
     invoice_origin:   input.origin,
-    ref:              refClient(input.client_order_ref) || input.origin || false,
+    ref:              (await refFacture(input.client_order_ref, input.partner_id)) || input.origin || false,
     invoice_line_ids: invoiceLines,
   }
   if (input.fleet_vehicle_id) vals[INVOICE_VEHICLE_FIELD] = input.fleet_vehicle_id
@@ -257,7 +257,7 @@ export async function updateDraftInvoice(moveId: number, input: CreateQuoteInput
   const invoiceLines = await buildInvoiceLines(input.sections, input.description)
   const vals: any = {
     invoice_origin:   input.origin,
-    ref:              refClient(input.client_order_ref) || input.origin || false,
+    ref:              (await refFacture(input.client_order_ref, input.partner_id)) || input.origin || false,
     invoice_line_ids: [[5, 0, 0], ...invoiceLines],   // 5,0,0 = supprime les lignes existantes
   }
   if (input.partner_id) vals.partner_id = input.partner_id
@@ -301,7 +301,7 @@ export async function updateSaleOrder(quoteId: number, input: Partial<CreateQuot
   const vals: any = {}
   if (input.partner_id != null)        vals.partner_id        = input.partner_id
   if (input.origin != null)            vals.origin            = input.origin
-  if (input.client_order_ref != null)  vals.client_order_ref  = refClient(input.client_order_ref)
+  if (input.client_order_ref != null)  vals.client_order_ref  = await refFacture(input.client_order_ref, input.partner_id)
   if (input.fleet_vehicle_id != null)  vals[VEHICLE_FIELD]    = input.fleet_vehicle_id
 
   if (input.sections) {
