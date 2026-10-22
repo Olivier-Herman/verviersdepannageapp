@@ -125,11 +125,26 @@ async function geocodeHighwayPlaces(text: string): Promise<GeocodeHit | null> {
     // Garde-fou : un point à plus de RAYON_KM de nos dépôts n'est pas notre intervention (« E40 DIR THEUX
     // SORTIE THEUX » était tombé sur l'E40 à Bruxelles, 2FVH314, 14/10/2026).
     const proches = await depotsActifs()
-    const p = (j.places || []).find((x: any) => x?.location && (x.types || []).some((t: string) => ['route', 'rest_stop', 'gas_station', 'intersection', 'point_of_interest'].includes(t))
-      && (!proches.length || proches.some(d => kmEntre(d.lat, d.lng, Number(x.location.latitude), Number(x.location.longitude)) <= RAYON_KM)))
+    // Ordre de préférence (Olivier 22/10/2026, 1EHS211 : « A26 BK 10,6 > LIEGE » était tombé sur le « Centre
+    // d'Inspection, Voie de l'Air Pur 257 », un simple point d'intérêt) : la route elle-même, puis une aire, une
+    // station, un échangeur ; un point d'intérêt seulement s'il porte le nom de l'autoroute.
+    const ref = text.match(/\b[AE]\s?\d{1,3}\b/i)?.[0]?.replace(/\s/g, '').toUpperCase() || ''
+    const portRef = (x: any) => !!ref && String(x.displayName?.text || '').toUpperCase().replace(/\s/g, '').includes(ref)
+    const rang = (x: any) => { const t: string[] = x.types || []
+      if (t.includes('route')) return 0
+      if (t.includes('rest_stop') || t.includes('gas_station')) return 1
+      if (t.includes('intersection')) return 2
+      if (t.includes('point_of_interest') && portRef(x)) return 3
+      return 9 }
+    const p = (j.places || [])
+      .filter((x: any) => x?.location && rang(x) < 9
+        && (!proches.length || proches.some(d => kmEntre(d.lat, d.lng, Number(x.location.latitude), Number(x.location.longitude)) <= RAYON_KM)))
+      .sort((a: any, b: any) => rang(a) - rang(b))[0]
     if (!p) { lastFailure = 'not_found'; return null }
     lastFailure = null
-    const nom = [p.displayName?.text, p.formattedAddress].filter(Boolean).join(', ')
+    // Étiquette : l'autoroute et la commune, pas l'adresse d'un bâtiment voisin.
+    const commune = String(p.formattedAddress || '').match(/\b\d{4}\s+([^,]+)/)?.[1]?.trim() || ''
+    const nom = rang(p) === 0 || !p.displayName?.text ? `${ref || 'Autoroute'}${commune ? ` près de ${commune}` : ''}` : `${p.displayName.text}${commune ? `, ${commune}` : ''}`
     return { lat: Number(p.location.latitude), lng: Number(p.location.longitude), label: `${nom} (position approximative, autoroute)`, confidence: 0.6, layer: 'google:places_autoroute' }
   } catch (e: any) { lastFailure = 'transient'; console.warn('[geocode] places autoroute KO:', e?.message); return null }
 }

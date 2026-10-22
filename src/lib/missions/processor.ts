@@ -1627,8 +1627,8 @@ export async function processEmailMessage(messageId: string): Promise<ProcessRes
 
 /**
  * L'assistance annonce-t-elle que le client n'est PAS couvert ? Rend l'extrait
- * qui l'a décidé (pour la remarque), sinon null. Sources mail uniquement —
- * Touring passe par comexVehiculeNonCouvert (COMEX).
+ * qui l'a décidé (pour la remarque), sinon null. Sources mail (Touring aussi depuis le 22/10/2026 :
+ * le mail arrive avant COMEX) ; côté COMEX, comexVehiculeNonCouvert.
  */
 export function detectNonCouvert(source: string, text: string): string | null {
   const t = String(text || '').replace(/\s+/g, ' ')
@@ -1638,6 +1638,12 @@ export function detectNonCouvert(source: string, text: string): string | null {
       /facture[^.]{0,60}pour acquittement/i,
       /(?:non|pas) couvert/i,
     ],
+    // Touring par mail (Olivier 22/10/2026, 1EHS211 #10201625) : le mail d'assignation porte le produit COMEX
+    // 1050101 et « Véhicule pas couvert » — même règle que comexVehiculeNonCouvert côté COMEX.
+    touring: [
+      /\b1050101\b/,
+      /v[ée]hicule (?:pas|non) couvert/i,
+    ],
     axa: [
       /[àa] (?:la )?charge du (?:client|b[ée]n[ée]ficiaire)/i,
       /non[ _-]?couvert/i,
@@ -1646,7 +1652,8 @@ export function detectNonCouvert(source: string, text: string): string | null {
     ],
   }
   const key = ['ethias', 'vivium', 'pv_assistance', 'ima', 'fidelia'].includes(source) ? 'ima'
-            : ['axa', 'ardenne'].includes(source) ? 'axa' : null
+            : ['axa', 'ardenne'].includes(source) ? 'axa'
+            : source === 'touring' ? 'touring' : null
   if (!key) return null
   for (const re of rules[key]) {
     const m = t.match(re)

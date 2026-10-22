@@ -166,7 +166,7 @@ export async function runTouringImport(opts: { mode: TouringImportMode }): Promi
       // valider »). Olivier 2026-08-09 — cf project_touring_lifecycle_chainage.
       if (m.CID_DOS) {
         const { data: lineage } = await sb.from('incoming_missions')
-          .select('id, status, mission_number, raw_content, touring_actions, snc_requires_balisage, mission_type, loaded_at, destination_address, vehicle_vin, vehicle_mileage')
+          .select('id, status, mission_number, source, raw_content, touring_actions, snc_requires_balisage, mission_type, loaded_at, destination_address, vehicle_vin, vehicle_mileage')
           // La REL du dossier (dossier_number « …-REL ») compte aussi : une fois
           // le REM en parc (to_invoice), c'est elle qui porte l'action de transfert.
           .in('dossier_number', [m.CID_DOS, `${m.CID_DOS}-REL`])
@@ -220,6 +220,11 @@ export async function runTouringImport(opts: { mode: TouringImportMode }): Promi
           if (vrProp !== null) adoptPayload.vr_proposed = vrProp
           const adoption = comexActionAdoption(detail, lin as any)
           Object.assign(adoptPayload, adoption.patch)
+          // « Véhicule pas couvert » sur l'action rattachée (1EHS211 #10201625, Olivier 22/10/2026) : même bascule
+          // que pour une fiche mail pilotée par COMEX — seulement si la fiche est encore « touring » (un dispatcher
+          // qui l'a reclassée à la main n'est pas contredit).
+          const ncAdopt = comexVehiculeNonCouvert(detail) && String(lin.source) === 'touring'
+          if (ncAdopt) { adoptPayload.source = 'police_snc'; adoptPayload.billed_to_id = null; adoptPayload.billed_to_name = null }
           const { error: adoptErr } = await sb.from('incoming_missions')
             .update(adoptPayload)
             .eq('id', lin.id)
@@ -228,6 +233,7 @@ export async function runTouringImport(opts: { mode: TouringImportMode }): Promi
             failed++
           } else {
             results.push({ dossier: m.CID_DOS, plaque: m.NUM_PLAQUE, action: 'linked', external_id: externalId, reason: `action ${m.CID_SEQ_ACTION} rattachée à la commande (fiche #${lin.mission_number}, séq ${curSeq}→${newSeq})${adoption.note ? ' — ' + adoption.note : ''}` })
+            if (ncAdopt) await sb.from('mission_logs').insert({ mission_id: lin.id, action: 'source_changed', notes: 'Touring COMEX : « véhicule pas couvert » (produit 1050101) → Siabis non couvert, le client paie sur place.' }).then(() => {}, () => {})
             if (adoption.note) await sb.from('mission_logs').insert({ mission_id: lin.id, action: 'touring_synced', notes: `Touring : action ${m.CID_SEQ_ACTION} rattachée (séquence ${curSeq} → ${newSeq}) — ${adoption.note}.`, metadata: { cid_dos: m.CID_DOS, seq_from: curSeq, seq_to: newSeq, external_id: externalId, adoption: adoption.patch } }).then(() => {}, () => {})
             // Touring a converti lui-même : leur dépannage d'origine reste ouvert. On le DIT, on ne le clôture pas.
             if (adoption.patch.mission_type === 'remorquage' && curSeq >= 0) {
