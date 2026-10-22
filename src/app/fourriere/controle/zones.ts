@@ -5,7 +5,7 @@ export const TAMPON_KEY = 'TAMPON'
 export const LAST = [...TAMPON, 'LABO']
 
 /** Hors contrôle pour l'instant : S = cyclos (Olivier 21/10/2026). */
-export const EXCLUDED = ['S']
+export const EXCLUDED = ['S', 'T']   // T = chez le garagiste, pas sur le parking
 
 export interface Zone { key: string; label: string; sort_order: number }
 

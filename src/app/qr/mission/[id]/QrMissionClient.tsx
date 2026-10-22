@@ -131,6 +131,8 @@ export default function QrMissionClient({
   const [noChargeReason, setNoChargeReason] = useState('')
   const [actionMenu,     setActionMenu]     = useState<null | 'transfer' | 'domaine' | 'scratch'>(null)
   const [selectedState,  setSelectedState]  = useState<string | null>(null)
+  // Zone T « chez le garagiste » (Olivier 22/10/2026) : garage qui prend le véhicule.
+  const [garageT, setGarageT] = useState('')
   // Zones de parc : parc_zones via l'API (plus de table codée ni d'état Odoo — 09/09/2026).
   const [zoneList, setZoneList] = useState<{ key: string; label: string }[]>([])
   useEffect(() => { fetch('/api/parc/zones-and-depots').then(r => r.json()).then(j => setZoneList(Array.isArray(j?.zones) ? j.zones : [])).catch(() => {}) }, [])
@@ -268,7 +270,7 @@ export default function QrMissionClient({
       const r = await fetch(`/api/missions/${mission.id}/transfer-parc`, {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ zone_key: toZone }),
+        body:    JSON.stringify({ zone_key: toZone, ...(toZone === 'T' && garageT.trim() ? { garage: garageT.trim() } : {}) }),
       })
       const j = await r.json()
       if (!r.ok) { showToast('err', j.error || 'Erreur transfert'); return }
@@ -345,6 +347,11 @@ export default function QrMissionClient({
                 <p className="text-ink-secondary text-sm mt-0.5">{brandModel}</p>
               )}
             </div>
+            {mission.parc_zone_key === 'T' && (
+              <div className="rounded-xl bg-amber-50 border-2 border-amber-400 px-3 py-2 text-amber-900 text-sm">
+                <b>Chez le garagiste</b>{(mission as any).zone_t_at ? ` depuis le ${new Date((mission as any).zone_t_at).toLocaleDateString('fr-BE', { timeZone: 'Europe/Brussels' })}` : ''}{(mission as any).zone_t_garage ? ` — ${(mission as any).zone_t_garage}` : ''}. Pas de gardiennage. Au retour : « Transférer » vers une de nos zones, le gardiennage reprend.
+              </div>
+            )}
             {mission.parc_zone_key && (
               <div className="flex-shrink-0 text-center">
                 <div className="text-2xl font-display font-extrabold text-brand">{parcZoneLabel(mission.parc_zone_key)}</div>
@@ -553,6 +560,13 @@ export default function QrMissionClient({
                 </button>
               ))}
             </div>
+            {selectedState === 'T' && (
+              <div className="rounded-xl bg-amber-50 border border-amber-300 p-3 space-y-2">
+                <p className="text-amber-900 text-xs">Le garagiste emmène le véhicule (levée de saisie temporaire). Le gardiennage s’arrête aujourd’hui ; il reprendra au retour du véhicule. Sans retour après 2 mois, le véhicule sort du parc.</p>
+                <input value={garageT} onChange={e => setGarageT(e.target.value)} placeholder="Garage (nom, téléphone) — facultatif"
+                  className="w-full min-h-[44px] rounded-lg border border-amber-300 bg-white px-3 text-sm text-amber-950" />
+              </div>
+            )}
             <div className="flex gap-2">
               <button onClick={() => { setActionMenu(null); setSelectedState(null) }} disabled={working}
                 className="flex-1 py-2 bg-surface-2 border text-ink-secondary rounded-xl text-sm font-medium">

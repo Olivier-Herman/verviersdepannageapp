@@ -27,7 +27,7 @@ type Sb = ReturnType<typeof createAdminClient>
 /** Zone Domaine du parc = zone I (Olivier 21/10/2026). */
 export const DOMAINE_ZONE = 'I'
 /** Zones hors contrôle pour l'instant : S = cyclos (Olivier 21/10/2026 : « on fait l'inventaire des voitures dans un premier temps »). */
-export const EXCLUDED_ZONES = ['S']
+export const EXCLUDED_ZONES = ['S', 'T']   // T = chez le garagiste (Olivier 22/10/2026)
 /** Zone tampon physique : séparées seulement dans VD Soft. */
 export const TAMPON = ['J', 'K', 'K1', 'Transit', 'SNC']   // SNC (Siabis non couvert) aussi en zone tampon (Olivier 21/10/2026)
 /** Clé utilisée par le téléphone pour « je suis dans la zone tampon ». */

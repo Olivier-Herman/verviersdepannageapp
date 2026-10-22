@@ -44,7 +44,7 @@
  <p>Il couvre 7 fonctions communes à tous (Dashboard, recherche, profil...), les fonctions Fourrière (contrôle du parc, actions par véhicule, restitution, gestion judiciaire des saisies) et les fonctions Facturation (validation factures, devis, missions terminées) + l'encaissement bureau.</p>
  <p>📱 Cette interface est utilisable autant sur ordinateur (bureau) que mobile (terrain).</p>
  <p>🆘 <strong>En cas de problème</strong> : contacte un admin ou le dispatcher de garde.</p>
- <p style="margin-top: 20pt; color: #9ca3af; font-size: 9pt;">Version du document : 21/10/2026</p>
+ <p style="margin-top: 20pt; color: #9ca3af; font-size: 9pt;">Version du document : 22/10/2026</p>
  </div>
 </div>
 
@@ -339,6 +339,18 @@
 </div>
 
 <h2 class="subsection">D2. Actions par véhicule</h2>
+<div class="function">
+ <h3><span class="num">D2-bis</span>Véhicule parti chez le garagiste (zone T)</h3>
+ <p class="desc">Levée de saisie temporaire : le garagiste vient chercher la voiture pour la réparer et la ramener avant la levée définitive. Il paie le dépannage et le gardiennage jusqu’au jour où il la prend (facture au client).</p>
+ <ol>
+ <li>Fais la facture du dépannage et du gardiennage jusqu’à aujourd’hui, comme pour une sortie.</li>
+ <li>Scanne l’étiquette du véhicule → « Transférer » → zone <strong>T</strong>. Note le garage (nom, téléphone) dans la case prévue.</li>
+ <li>Le gardiennage s’arrête ce jour-là. La fiche affiche « Chez le garagiste depuis le … ».</li>
+ <li>Au retour : scanne l’étiquette (ou cherche la plaque ou le châssis) → « Transférer » vers une de nos zones. Le gardiennage reprend à partir du jour du retour. Si un état de frais doit partir plus tard au Parquet, il ne compte que depuis le retour.</li>
+ <li>Sans retour après 2 mois, le véhicule sort tout seul du parc, motif « pas revenu de chez le garagiste ».</li>
+ </ol>
+ <div class="tip">💡 Le contrôle du parc ne cherche pas les véhicules de la zone T : ils ne sont pas chez nous.</div>
+</div>
 
 <div class="function">
  <h3><span class="num">110</span>Transférer un véhicule vers une autre zone</h3>
@@ -1094,7 +1106,7 @@
 <hr style="border: none; border-top: 1pt solid #d1d5db; margin: 24pt 0 12pt 0;">
 
 <div style="text-align: center; font-size: 9pt; color: #9ca3af; padding: 8pt;">
- <p style="margin: 0;">Mode d'emploi VD Soft — Profils Fourrière & Facturation · Version du 21/10/2026</p>
+ <p style="margin: 0;">Mode d'emploi VD Soft — Profils Fourrière & Facturation · Version du 22/10/2026</p>
  <p style="margin: 4pt 0 0 0;">En cas de bug ou suggestion, contacte un admin.</p>
 </div>
 

@@ -19,6 +19,7 @@ export const dynamic = 'force-dynamic'
 interface Body {
   zone_key: string
   reason?:  string  // optionnel, libre
+  garage?:  string  // zone T « chez le garagiste » : garage qui prend le véhicule (Olivier 22/10/2026)
 }
 
 export async function POST(req: Request, { params }: { params: { id: string } }) {
@@ -92,6 +93,10 @@ export async function POST(req: Request, { params }: { params: { id: string } })
       updated_at:      new Date().toISOString(),
     })
     .eq('id', params.id)
+  // Zone T : garage noté (le déclencheur arrête le gardiennage et date le départ).
+  if (newZoneKey === 'T' && body.garage && String(body.garage).trim()) {
+    await sb.from('incoming_missions').update({ zone_t_garage: String(body.garage).trim().slice(0, 200) }).eq('id', params.id)
+  }
   if (upErr) {
     return NextResponse.json({ error: `Update KO : ${upErr.message}` }, { status: 500 })
   }
