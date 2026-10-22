@@ -15,6 +15,7 @@ import TalkieOverlay                   from '@/components/talkie/TalkieOverlay'
 import { usePathname }                 from 'next/navigation'
 import { useState }                    from 'react'
 import MaxPastille                     from '@/components/assistant/MaxPastille'
+import VeilleAlerte                    from '@/components/assistant/VeilleAlerte'
 import AppUpdatePrompt                 from '@/components/layout/AppUpdatePrompt'
 import IncomingTransferPrompt          from '@/components/missions/IncomingTransferPrompt'
 
@@ -26,15 +27,17 @@ const MAX_HORS = ['/boarding', '/tableau-bord', '/login', '/site', '/espace', '/
 function MaxMount() {
   const { data: session, status } = useSession()
   const path = usePathname() || ''
-  const [ok, setOk] = useState(false)
+  const [ok, setOk] = useState<'max' | 'alerte' | null>(null)
   const uid = (session?.user as any)?.id
   useEffect(() => {
-    if (status !== 'authenticated' || !uid) { setOk(false); return }
+    if (status !== 'authenticated' || !uid) { setOk(null); return }
     let off = false
-    fetch('/api/nav-badges', { cache: 'no-store' }).then(r => r.ok ? r.json() : null).then(j => { if (!off) setOk(!!j?.flags?.max_assistant) }).catch(() => {})
+    fetch('/api/nav-badges', { cache: 'no-store' }).then(r => r.ok ? r.json() : null).then(j => { if (!off) setOk(j?.flags?.max_assistant ? 'max' : j?.flags?.veille_alerte ? 'alerte' : null) }).catch(() => {})
     return () => { off = true }
   }, [status, uid])
   if (!ok || MAX_HORS.some(p => path.startsWith(p))) return null
+  // Sans Max : ses questions en alerte au milieu de l'écran (Olivier 22/10/2026).
+  if (ok === 'alerte') return <VeilleAlerte />
   return <MaxPastille userName={(session?.user as any)?.name || ''} />
 }
 

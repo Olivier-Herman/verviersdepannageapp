@@ -38,6 +38,19 @@ export function inWorkHours(d = new Date()): boolean {
   return false
 }
 
+/** Prochain jour ouvrable (lun-ven) à 10 h 30, heure de Bruxelles. */
+export function prochainJourOuvre1030(from = new Date()): Date {
+  for (let i = 1; i <= 7; i++) {
+    const d = new Date(from.getTime() + i * 86_400_000)
+    const p = Object.fromEntries(new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/Brussels', weekday: 'short', year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(d).map(x => [x.type, x.value]))
+    if (p.weekday === 'Sat' || p.weekday === 'Sun') continue
+    const guess = new Date(`${p.year}-${p.month}-${p.day}T10:30:00Z`)
+    const hBxl = Number(new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/Brussels', hour: '2-digit', hour12: false }).format(guess)) % 24
+    return new Date(guess.getTime() - (hBxl - 10) * H)
+  }
+  return new Date(from.getTime() + 24 * H)
+}
+
 /** Les profils d'une même personne : même odoo_partner_id. */
 export async function aliasIds(sb: Sb, userId: string): Promise<string[]> {
   const { data: me } = await sb.from('users').select('id, odoo_partner_id').eq('id', userId).maybeSingle()
@@ -223,6 +236,12 @@ export async function answerVeille(sb: Sb, cardId: string, reponse: string, user
     const couvert = !!d?.invoice_number || /sia_couvert/i.test(String(d?.source)) || /touring|vab|axa|allianz|mondial|ethias|ima|europ/i.test(String(d?.billed_to_name || ''))
     const base = `C’est fait 🙌 Rattachée au dossier #${r.dossier ?? ''} comme relivraison${r.mode === 'reserve' ? ', en réserve dans « À relivrer »' : ', à attribuer'}.`
     return couvert ? `${base} Le premier remorquage est déjà couvert ou facturé : rien à demander de plus.` : `${base} Le premier remorquage est non couvert et pas encore facturé : demande à l’assistance si elle le prend aussi en charge. Si oui, dis-le-moi dans la discussion et je mets le dossier à son nom.`
+  }
+  if (reponse === 'plus_tard_demain') {
+    // Alerte sans Max (Olivier 22/10/2026) : reproposée le jour ouvrable suivant vers 10 h 30, jamais en tout début de journée.
+    const at = prochainJourOuvre1030()
+    await sb.from('max_veille').update({ status: 'plus_tard', answer: reponse, answered_by: user.id, answered_at: now, snooze_until: at.toISOString() }).eq('id', cardId)
+    return `Ok, je te la repropose ${new Intl.DateTimeFormat('fr-BE', { timeZone: 'Europe/Brussels', weekday: 'long', day: 'numeric', month: 'long' }).format(at)} vers 10 h 30.`
   }
   if (reponse === 'plus_tard') { await close('plus_tard', 12); return 'Ok, je t’en reparle dans 12 h si rien ne bouge ⏰' }
   if (reponse === 'je_men_occupe') { await close('plus_tard', 4); return 'Top, je te laisse faire 👍' }

@@ -2,13 +2,13 @@
 // figées, commandes à trier). Olivier 14/10/2026. Réservé aux personnes qui ont Max.
 import { NextResponse }      from 'next/server'
 import { createAdminClient } from '@/lib/supabase'
-import { assistantUser }     from '@/lib/assistant/access'
+import { veilleUser }        from '@/lib/assistant/access'
 import { veilleCards, inWorkHours } from '@/lib/assistant/veille'
 
 export const dynamic = 'force-dynamic'
 
 export async function GET() {
-  const user = await assistantUser('bureau')
+  const user = await veilleUser()
   if (!user) return NextResponse.json({ error: 'Accès refusé' }, { status: 403 })
   try {
     const { getBusinessList } = await import('@/lib/settings/business')

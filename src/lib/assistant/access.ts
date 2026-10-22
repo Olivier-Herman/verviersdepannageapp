@@ -20,6 +20,25 @@ export async function assistantUser(mode: AssistantMode) {
   return user ?? null
 }
 
+/** Questions de la veille : les personnes qui ont Max, et celles du réglage « veille_alerte_users »
+ *  (alerte au milieu de l'écran, sans Max — Olivier 22/10/2026). */
+export async function veilleUser() {
+  const withMax = await assistantUser('bureau')
+  if (withMax) return withMax
+  const session = await getServerSession(authOptions)
+  const email = String(session?.user?.email || '').toLowerCase()
+  if (!email || !(await inVeilleAlerte(email))) return null
+  const { data: user } = await createAdminClient().from('users').select('id, name, email').eq('email', session!.user!.email!).maybeSingle()
+  return user ?? null
+}
+
+export async function inVeilleAlerte(email: string | null | undefined): Promise<boolean> {
+  if (!email) return false
+  const { getBusinessList } = await import('@/lib/settings/business')
+  const list = await getBusinessList('veille_alerte_users').catch(() => [] as string[])
+  return list.map(x => String(x).trim().toLowerCase()).includes(String(email).toLowerCase())
+}
+
 export async function assistantOwner(conversationId: string) {
   const { data: conv } = await createAdminClient().from('assistant_conversations').select('*').eq('id', conversationId).maybeSingle()
   if (!conv) return null
