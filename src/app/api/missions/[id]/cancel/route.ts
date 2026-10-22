@@ -89,6 +89,14 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     metadata:   { reason, cancelled_by: cancelledBy, scope },
   })
 
+  // Doublon : rattaché à la fiche gardée, sa référence de dossier ne se perd plus (Olivier 22/10/2026).
+  if (/doublon/i.test(reason)) {
+    try {
+      const { rattacherDoublon } = await import('@/lib/missions/rattacher-doublon')
+      await rattacherDoublon(sb, params.id, { id: (user as any).id || null, name: cancelledBy })
+    } catch (e: any) { console.warn('[cancel] rattachement doublon KO :', e?.message) }
+  }
+
 
   // ── Tout le dossier ───────────────────────────────────────────────────────
   // Depuis un groupe, « annuler tout le dossier » : les autres fiches non
