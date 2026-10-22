@@ -528,6 +528,22 @@ export async function estimateMissionPrice(mission: MissionLike, opts?: { skipRe
   if (source === 'police_snc' || source === 'sia_couvert') {
     const mm = mission as any
     const variant: 'snc' | 'sc' = source === 'sia_couvert' ? 'sc' : 'snc'
+    // Relivraison ultérieure d'un Siabis non couvert (depuis le parc) : supplément km A/R dépôt ↔ destination,
+    // sans 2e forfait (Siabis+, Olivier 22/10/2026).
+    const { isRelivraison } = await import('@/lib/missions/mission-types')
+    if (variant === 'snc' && isRelivraison(mm.mission_type) && mm.incident_lat != null && mm.destination_lat != null) {
+      const { computeSncRelivraison } = await import('@/lib/snc/pricing')
+      const r = await computeSncRelivraison({ depotLat: Number(mm.incident_lat), depotLng: Number(mm.incident_lng), destLat: Number(mm.destination_lat), destLng: Number(mm.destination_lng), at: mission.intervention_date || mission.received_at || null })
+      const total = Math.round(r.line.qty * r.line.price_unit * 100) / 100
+      return {
+        ok: true, source, mission_type: missionType, pricing_mode: 'lines', forfait: null,
+        km_charged: r.km, km_inclus: 0, km_extra: r.km, km_extra_eur: total,
+        parc_jours: 0, parc_eur: 0, subtotal_eur: total, surcharge_pct: 0, surcharge_eur: 0, total_eur: total,
+        is_autofac: false, tariff_id: `${source}-siabis-rel`, tariff_doc_path: null, tariff_doc_name: null,
+        breakdown: [{ label: r.line.name, amount: total, note: `${r.km} km × ${r.line.price_unit} € (Siabis+ : pas de 2e forfait)` }],
+        template_lines: [{ kind: 'SERV-DIV' as const, name: r.line.name, default_qty: r.line.qty, default_price: r.line.price_unit, apply_surcharges: false }],
+      }
+    }
     if (!mm.snc_scenario) {
       return emptyEstimate(source, missionType, `${variant === 'sc' ? 'Siabis couvert' : 'Siabis non couvert'} : scénario à choisir sur la fiche (DSP / REM directe / REM dépôt), le tarif se calcule ensuite`)
     }

@@ -7,7 +7,19 @@
 //   - SIAKIL      : kilometre depanneuse (1.0744 normal / 1.65 majore = SIAKILMAJ)
 //   - SIABAL      : supplement balisage (150 normal / 175.21 majore = SIABALMAJ)
 //
-// Logique km selon scenario :
+// ⚖️ CONFORMITÉ SIABIS+ (Olivier 22/10/2026) — Arrêté du Gouvernement wallon du 22/08/2019, annexe 3, et bon
+// d'intervention SPW/SOFICO/Police fédérale (prix TVAC) : pour le Siabis NON couvert (facturé à l'usager), le forfait
+// « comprend les déplacements jusqu'au lieu de dépannage et retour au dépôt » (balisage idem). Le supplément
+// kilométrique (1,30 € TVAC = 1,0744 HTVA ; majoré 1,95 TVAC = 1,6116 HTVA) ne vaut que pour une destination demandée
+// par l'usager (art. 5), « calculé sur base d'un aller/retour à partir du point le plus favorable à l'usager » :
+//   - dsp / rem_depot : forfait seul, aucun km ;
+//   - rem_client      : A/R entre le point le plus favorable (lieu d'intervention ≈ sortie d'autoroute, ou dépôt)
+//                       et la destination ;
+//   - relivraison ultérieure depuis le parc : A/R dépôt → destination (computeSncRelivraison), sans 2e forfait ;
+//   - remorque / caravane : ligne « Type 4/5 » de la grille (130 € TVAC, majoré 195), pas +50 %.
+// Le Siabis COUVERT (SC, facturé à l'assistance) garde ses règles contractuelles ci-dessous.
+//
+// Logique km selon scenario (SC, et affichage SNC) :
 //   - dsp        : km depanneuse = depot -> intervention -> depot (aller-retour)
 //   - rem_client : km depanneuse = depot -> intervention -> destination -> depot (SNC)
 //   - rem_direct : SC uniquement. Olivier 2026-06-02 PM v3 (formule finale) :
@@ -86,6 +98,10 @@ export interface SncCalcOutput {
   /** SC + rem_direct : nom de l assistance utilise pour le calcul (si match). */
   livraison_assistance?:  string | null
   km_balisage:            number    // km balisage (aller-retour intervention depuis SON depot)
+  /** SNC (Siabis+) : km facturables = A/R entre le point le plus favorable à l'usager et la destination qu'il a
+   *  demandée (0 en DSP / REM dépôt : le trajet dépôt ↔ intervention est compris dans le forfait). */
+  km_supplement?:         number
+  km_supplement_from?:    string | null
   is_majored:             boolean
   note:                   string    // explication calcul (visible facturation)
   /** Olivier 2026-06-02 PM : detail visuel des segments km pour controle.
@@ -93,6 +109,20 @@ export interface SncCalcOutput {
   km_segments?:           Array<{ label: string; km: number }>
 }
 
+
+// Grille Siabis+ (bon d'intervention SPW/SOFICO, prix TVAC ÷ 1,21) : km 1,30 / majoré 1,95 ; remorque 130 / 195.
+const SNC_KM = 1.0744, SNC_KM_MAJ = 1.6116, SNC_REMORQUE = 107.44, SNC_REMORQUE_MAJ = 161.16
+
+/** Relivraison ultérieure d'un Siabis non couvert, depuis le parc (Olivier 22/10/2026) : pas de 2e forfait, seulement
+ *  le supplément kilométrique A/R dépôt → destination (« point le plus favorable » = le dépôt, où est le véhicule),
+ *  au tarif majoré si la relivraison commence en heures majorées. */
+export async function computeSncRelivraison(input: { depotLat: number; depotLng: number; destLat: number; destLng: number; at: Date | string | null }): Promise<{ km: number; majored: boolean; line: SncQuoteLine }> {
+  const aller  = await calculateRouteKm(input.depotLat, input.depotLng, input.destLat, input.destLng)
+  const retour = await calculateRouteKm(input.destLat, input.destLng, input.depotLat, input.depotLng)
+  const km = aller + retour
+  const majored = await isSncMajored(input.at)
+  return { km, majored, line: { kind: majored ? 'SIAKILMAJ' : 'SIAKIL', name: `Relivraison — supplément kilomètres A/R dépôt ↔ destination${majored ? ' (majoré)' : ''}`, qty: km, price_unit: majored ? SNC_KM_MAJ : SNC_KM } }
+}
 
 /** Distance haversine en km entre 2 points GPS. */
 function haversineKm(lat1: number, lng1: number, lat2: number, lng2: number): number {
@@ -448,6 +478,27 @@ export async function computeSncMetrics(input: SncCalcInput): Promise<SncCalcOut
     }
   }
 
+  // ── SNC : seuls les km vers une destination demandée par l'usager sont facturables (Siabis+, art. 5 et annexe 3) ──
+  let kmSupplement = 0
+  let kmSupplementFrom: string | null = null
+  if (variantIn === 'snc') {
+    for (const sg of kmSegments) sg.label = `${sg.label} — compris dans le forfait`
+    if (input.scenario === 'rem_client' && input.destinationLat != null && input.destinationLng != null) {
+      const destLat = input.destinationLat, destLng = input.destinationLng
+      const viaStops = async (o: { lat: number; lng: number }) => {
+        let prev = o, t = 0
+        for (const st of stops) { t += await calculateRouteKm(prev.lat, prev.lng, st.lat, st.lng); prev = st }
+        return t + await calculateRouteKm(prev.lat, prev.lng, destLat, destLng)
+      }
+      const fromSite  = await viaStops({ lat: input.interventionLat, lng: input.interventionLng })
+      const fromDepot = await viaStops({ lat: depart.lat, lng: depart.lng })
+      const site = fromSite <= fromDepot
+      kmSupplementFrom = site ? 'lieu d’intervention (sortie d’autoroute)' : depart.name
+      kmSupplement = 2 * Math.min(fromSite, fromDepot)
+      kmSegments.push({ label: `Supplément km (A/R) : ${kmSupplementFrom} ↔ destination — facturé`, km: kmSupplement })
+    }
+  }
+
   const isMajored = await isSncMajored(input.interventionAt)
 
   // SC + rem_direct : lookup tarif assistance facturee (km_price + km_inclus)
@@ -478,9 +529,12 @@ export async function computeSncMetrics(input: SncCalcInput): Promise<SncCalcOut
     livraison_km_inclus: livKmInclus,
     livraison_assistance: livAssistance,
     km_balisage:         kmBalisage,
+    km_supplement:       variantIn === 'snc' ? kmSupplement : undefined,
+    km_supplement_from:  kmSupplementFrom,
     km_segments:         kmSegments,
     is_majored:          isMajored,
-    note: `Dépôt dépanneuse : ${depart.name}. Km dépanneuse : ${kmDepanneuse}.` +
+    note: `Dépôt dépanneuse : ${depart.name}. Km dépanneuse : ${kmDepanneuse}${variantIn === 'snc' ? ' (compris dans le forfait Siabis+)' : ''}.` +
+          (variantIn === 'snc' && kmSupplement > 0 ? ` Supplément km facturé : ${kmSupplement} km A/R depuis ${kmSupplementFrom}.` : '') +
           (input.interventionAt
             ? ` Intervention : ${typeof input.interventionAt === 'string' ? input.interventionAt : input.interventionAt.toISOString()}.`
             : ' Intervention : (date manquante).') +
@@ -551,12 +605,14 @@ export function buildSncQuoteLines(opts: {
   // Olivier 2026-06-02 PM : "pas de kilometre a compter uniquement le forfait".
   const isScRemDirect = variant === 'sc' && metrics.km_livraison && metrics.km_livraison > 0
 
-  if (variant === 'snc' && metrics.km_depanneuse > 0) {
-    lines.push({
+  if (variant === 'snc') {
+    // Siabis+ : seuls les km vers la destination demandée par l'usager, A/R depuis le point le plus favorable.
+    const km = metrics.km_supplement ?? 0
+    if (km > 0) lines.push({
       kind:       m ? 'SIAKILMAJ' : 'SIAKIL',
-      name:       `Kilomètre dépanneuse${m ? ' (majoré)' : ''}`,
-      qty:        metrics.km_depanneuse,
-      price_unit: m ? 1.65 : 1.0744,
+      name:       `Supplément kilomètres A/R (destination demandée)${m ? ' (majoré)' : ''}`,
+      qty:        km,
+      price_unit: m ? SNC_KM_MAJ : SNC_KM,
     })
   } else if (variant === 'sc' && !isScRemDirect && metrics.km_depanneuse > 30) {
     // SC standard (dsp / rem_depot) : 30 km inclus dans le forfait, surplus facture.
@@ -571,7 +627,10 @@ export function buildSncQuoteLines(opts: {
 
   // Remorque (Olivier 17/10/2026, fiche 10193462) : +50 % sur la prise en charge + les km dépanneuse, au tarif
   // déjà appliqué (le majoré week-end/nuit est déjà dans ces lignes). Ni le balisage ni la relivraison.
-  if (opts.remorque) {
+  if (opts.remorque && variant === 'snc') {
+    // Siabis+ : remorque / caravane = « Type 4/5 » de la grille officielle, pas une majoration (Olivier 22/10/2026).
+    lines.push({ kind: 'SERV-DIV', name: `Remorque / caravane (Siabis+)${m ? ' (majoré)' : ''}`, qty: 1, price_unit: m ? SNC_REMORQUE_MAJ : SNC_REMORQUE })
+  } else if (opts.remorque) {
     const base = lines.reduce((t, l) => t + l.qty * l.price_unit, 0)
     if (base > 0) lines.push({ kind: 'SERV-MAJ', name: 'Majoration remorque 50 % (prise en charge + km dépanneuse)', qty: 1, price_unit: Math.round(base * 0.5 * 100) / 100 })
   }
@@ -608,15 +667,7 @@ export function buildSncQuoteLines(opts: {
       qty:        1,
       price_unit: m ? 175.21 : 150,
     })
-    // Km balisage : SNC seulement (SC = pas de km du tout)
-    if (variant === 'snc' && metrics.km_balisage > 0) {
-      lines.push({
-        kind:       m ? 'SIAKILMAJ' : 'SIAKIL',
-        name:       `Kilomètre balisage${m ? ' (majoré)' : ''}`,
-        qty:        metrics.km_balisage,
-        price_unit: m ? 1.65 : 1.0744,
-      })
-    }
+    // Km balisage : jamais facturés — le forfait balisage Siabis+ comprend le déplacement aller-retour (22/10/2026).
   }
 
   // 4. Suppléments techniques / frais complémentaires Siabis+ (après la majoration remorque : jamais majorés à 50 %)
