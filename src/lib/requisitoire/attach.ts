@@ -117,7 +117,7 @@ export async function attachRequisitoire(
   if (intake.status === 'attached') return { ok: false, error: 'Déjà rattaché' }
 
   const { data: mission, error: mErr } = await sb
-    .from('incoming_missions').select('id, dossier_number, vehicle_plate, vehicle_vin, incident_at, dossier_leg').eq('id', missionId).maybeSingle()
+    .from('incoming_missions').select('id, dossier_number, vehicle_plate, vehicle_vin, incident_at, dossier_leg, requisitoire_doc_path').eq('id', missionId).maybeSingle()
   if (mErr)     return { ok: false, error: mErr.message }
   if (!mission) return { ok: false, error: 'Fiche introuvable' }
   if ((mission as any).dossier_leg) return { ok: false, error: 'Cette fiche est le volet Gardiennage du dossier : rattache le réquisitoire à la fiche principale.' }
@@ -125,6 +125,12 @@ export async function attachRequisitoire(
   const ex = (intake.extracted || {}) as RequisitoireExtract
   const isLevee = intake.doc_type === 'levee_saisie'
   let dateAdapted = false
+
+  // Le robot ne remplace jamais un réquisitoire déjà rattaché : le document reste « à vérifier »
+  // (1RCN112, 22/10/2026 : une prise en charge garagiste avait écrasé le réquisitoire du 16/10).
+  if (!isLevee && !actorId && (mission as any).requisitoire_doc_path) {
+    return { ok: false, error: 'Cette fiche a déjà un réquisitoire : document mis de côté, à vérifier par une personne.' }
+  }
 
   // Un réquisitoire est un DOCUMENT (PDF / JPG). La capture HTML d'un mail ne
   // vaut que pour une levée (preuve du corps du mail). Olivier 2026-09-03.

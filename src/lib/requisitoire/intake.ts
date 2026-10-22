@@ -283,7 +283,10 @@ async function processMessage(
           const { attachRequisitoire } = await import('@/lib/requisitoire/attach')
           const res = await attachRequisitoire(sb, intakeId, attachId, null, {})
           if (res.ok) summary.autoAttached = (summary.autoAttached || 0) + 1
-          else console.warn(`[requisitoire] auto-attache ${intakeId} refusée : ${res.error}`)
+          else {
+            console.warn(`[requisitoire] auto-attache ${intakeId} refusée : ${res.error}`)
+            await sb.from('requisitoire_intake').update({ status: 'to_verify', error: res.error }).eq('id', intakeId)
+          }
         } catch (e: any) {
           console.error(`[requisitoire] auto-attache ${intakeId} KO :`, e?.message)
         }

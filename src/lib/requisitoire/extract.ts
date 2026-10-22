@@ -92,6 +92,10 @@ CLASSIFICATION (doc_type) — PRIORITÉ À LA LEVÉE :
   Indices : "mainlevée", "levée de la saisie", "la saisie est levée", "fin de
   saisie", "restitution autorisée", "peut être restitué", "véhicule à restituer",
   "libéré", "vous pouvez restituer/récupérer".
+- « PRISE EN CHARGE PAR UN GARAGISTE » (formulaire de police, annexe au PV : le véhicule
+  « reste saisi » mais un garagiste l'emmène pour sa remise en ordre) → 'levee_saisie'
+  avec levee_type 'temporaire' et levee_date = date du document (« Ce JJ/MM/AAAA à … »).
+  Ce n'est JAMAIS un réquisitoire, même s'il cite la saisie et son motif.
 - 'requisitoire' si le document ORDONNE l'enlèvement / la saisie / la mise en
   fourrière / le gardiennage (MISE EN PLACE de la saisie).
 - 'autre' uniquement si ce n'est NI un réquisitoire NI une levée (facture, courrier divers).
