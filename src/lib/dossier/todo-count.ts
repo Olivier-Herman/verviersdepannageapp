@@ -56,9 +56,18 @@ export async function loadFacturationDossiers(sb: Sb): Promise<{ dossiers: Dossi
   const rootsSeen = new Set<string>()
   for (let i = 0; i < roots.length; i += 40) {
     const built = await Promise.all(roots.slice(i, i + 40).map(id => buildDossier(id, { light: true, cache: true }).catch(() => null)))
-    for (const d of built) if (d && !rootsSeen.has(d.root_id)) { rootsSeen.add(d.root_id); dossiers.push(d) }
+    for (const d of built) if (d && !rootsSeen.has(d.root_id)) { rootsSeen.add(d.root_id); if (!isSaisie(d)) dossiers.push(d) }
   }
   return { dossiers, roots: dossiers.map(d => d.root_id) }
+}
+
+/**
+ * Saisie judiciaire : jamais dans la Facturation par dossier (Olivier 22/10/2026 : « il n'y a pas à voir de
+ * saisie dans cette liste »). Elle se règle par l'état de frais (module Saisie), le Domaine ou au comptoir
+ * à la levée.
+ */
+export function isSaisie(d: Dossier): boolean {
+  return !!(d as any).parquet || d.legs.some(l => l.regime === 'saisie' || l.channel === 'parquet' || l.channel === 'domaine')
 }
 
 /** Dossiers présents dans COMEX BKO (circuit « validation Touring »). */
