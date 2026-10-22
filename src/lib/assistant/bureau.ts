@@ -303,6 +303,34 @@ Ex. « une Polo saisie le 08/02/2026 » → { modele: "polo", source: "police_sa
     },
   },
   {
+    name: 'vehicules_zone', destructive: false,
+    description: `Liste tous les véhicules présents au parc dans une zone (ex. « zone T », « zone A », « Box ») : n° de fiche, plaque, VIN, marque, modèle, type (saisie, AVP, accident…), entré le, clé. Sans zone ou zone inconnue : renvoie la liste des zones avec leur nombre de véhicules. Rends TOUTE la liste en tableau (plaque, VIN, marque, modèle), sans la tronquer.`,
+    input_schema: { type: 'object', properties: { zone: { type: 'string', description: 'clé de la zone, ex. "T"' } } },
+    async execute(args) {
+      const { PARC_STATUSES } = await import('@/lib/requisitoire/relance-items')
+      const { data: zones } = await sb().from('parc_zones').select('key, label, depot_id').eq('active', true)
+      const { data: deps } = await sb().from('depots').select('id, name')
+      const depName = Object.fromEntries((deps || []).map((d: any) => [d.id, d.name]))
+      const z = String(args.zone || '').trim().replace(/^zone\s+/i, '')
+      const zone = (zones || []).find((x: any) => x.key.toLowerCase() === z.toLowerCase())
+      if (!zone) {
+        const { data: all } = await sb().from('incoming_missions').select('parc_zone_key').in('status', PARC_STATUSES).eq('dossier_leg', false).not('parc_zone_key', 'is', null).limit(5000)
+        const n: Record<string, number> = {}; for (const r of all || []) n[(r as any).parc_zone_key] = (n[(r as any).parc_zone_key] || 0) + 1
+        return { note: z ? `Zone « ${z} » inconnue.` : 'Aucune zone demandée.', zones: (zones || []).map((x: any) => ({ zone: x.key, nom: x.label, depot: depName[x.depot_id] || null, vehicules: n[x.key] || 0 })) }
+      }
+      const { data, error } = await sb().from('incoming_missions')
+        .select('mission_number, vehicle_plate, vehicle_vin, vehicle_brand, vehicle_model, source, status, parked_at, key_location, dossier_number')
+        .eq('parc_zone_key', zone.key).in('status', PARC_STATUSES).eq('dossier_leg', false).order('parked_at', { ascending: true }).limit(1000)
+      if (error) throw new Error(error.message)
+      const TYPE: Record<string, string> = { police_saisie: 'saisie', police_avp: 'AVP', police_accident: 'accident', police_mg: 'mal garée', police_snc: 'Siabis non couvert', legacy_odoo: 'ancienne fiche' }
+      const fr = (d?: string | null) => d ? new Date(d).toLocaleDateString('fr-BE', { timeZone: 'Europe/Brussels' }) : null
+      return {
+        zone: zone.key, nom: zone.label, depot: depName[zone.depot_id] || null, nombre: data?.length || 0,
+        vehicules: (data || []).map((m: any) => ({ fiche: m.mission_number, plaque: m.vehicle_plate, vin: m.vehicle_vin || null, marque: m.vehicle_brand, modele: m.vehicle_model, type: TYPE[m.source] || m.source, entre_le: fr(m.parked_at), cle: m.key_location || null, dossier: m.dossier_number || null, statut: m.status === 'unlocated' ? 'introuvable au parc' : undefined })),
+      }
+    },
+  },
+  {
     name: 'lire_fiche', destructive: false,
     description: 'Lit une fiche (numéro, plaque ou id) : identité, adresses, client facturé, statut, remarques, levée, Domaine.',
     input_schema: { type: 'object', properties: { ref: { type: 'string' } }, required: ['ref'] },
