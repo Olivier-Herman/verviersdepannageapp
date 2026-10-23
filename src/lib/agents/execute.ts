@@ -151,6 +151,18 @@ export async function prepare(kind: ProposalKind, agent: AgentAccount, company: 
     }
   }
 
+  if (kind === 'declaration_tva') {
+    // Mail « … - DECLARATION TVA MM-AAAA » du cabinet comptable (Olivier 23/10/2026) : relu dans info@ par VD Soft.
+    const { lireDeclaration, factureExistante } = await import('./tva-declaration')
+    const { decl: d } = await lireDeclaration(String(p.message_id || ''))
+    if (d.societe !== company) throw new Error(`Ce mail concerne la société ${d.societe}, pas ${company}.`)
+    if (d.societe === 3) throw new Error('DGJ : hors périmètre tant que ses relevés ne sont pas dans l’ERP (Olivier 23/10/2026).')
+    const deja = await factureExistante(d)
+    if (deja) throw new Error(`Déjà encodée : ${deja}.`)
+    return { title: `${d.ref} · ${d.montant.toFixed(2)} € · échéance ${d.echeance.split('-').reverse().join('/')}`, amount: d.montant,
+      payload: { message_id: d.message_id, sujet: d.sujet, periode: d.periode, montant: d.montant, echeance: d.echeance, communication: d.communication, ref: d.ref }, directAllowed: false }
+  }
+
   if (kind === 'plaque_achat') {
     // Le véhicule du parc est retrouvé par VD Soft à partir de la plaque lue sur la pièce (Olivier 05/10/2026 : fait seul).
     const id = Number(p.facture_id)
@@ -347,6 +359,11 @@ export async function execute(kind: ProposalKind, company: number, payload: any)
   if (kind === 'rapprochement_bouton') {
     const { reconcileSource } = await import('./lot2')
     return { note: await reconcileSource(payload.source, payload.id, null) }
+  }
+  if (kind === 'declaration_tva') {
+    const { encoderDeclaration } = await import('./tva-declaration')
+    const r = await encoderDeclaration(String(payload.message_id))
+    return { note: `Facture ${r.facture} créée et validée (${r.montant.toFixed(2)} €), le mail joint en PDF.`, facture: r.facture }
   }
   if (kind === 'plaque_achat') {
     // Relue au moment d'exécuter : un véhicule a pu être créé entre-temps.
