@@ -22,6 +22,7 @@ import { KeyTag, KeyControls, isSaisieSource } from '@/components/missions/KeyIn
 import { PhotoGrid } from '@/components/ui/PhotoLightbox'
 import AddPhotosButton from '@/components/qr/AddPhotosButton'
 import ScanDocumentsCard from '@/components/missions/ScanDocumentsCard'
+import VrContratBureau from '@/components/missions/VrContratBureau'
 import DriverRouteCard from '@/components/dispatch/DriverRouteCard'
 import MergeMissionButton from '@/components/dispatch/MergeMissionButton'
 import CancelMissionButton from '@/components/missions/CancelMissionButton'
@@ -4574,6 +4575,7 @@ export default function MissionDetailClient({
                 </div>
               )}
               <ScanDocumentsCard missionId={M.id} />
+              {!!(initialMission as any).vab_vr && <VrContratBureau missionId={M.id} />}
 
               {/* Kilométrage intégré au bloc Lieu/Destination (Olivier 2026-06-14). */}
 

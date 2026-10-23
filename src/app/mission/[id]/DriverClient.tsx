@@ -28,6 +28,7 @@ import { transportGabaritLabel } from '@/lib/tarifs/transport-gabarits'
 import { useT } from '@/lib/i18n/I18nProvider'
 import MissionPauseTransfer from '@/components/missions/MissionPauseTransfer'
 import SigPad from '@/components/mission/SigPad'
+import VrContratCard from '@/components/mission/VrContratCard'
 import ActionScreen, { type OutcomeKey, type PriseEnCharge } from '@/components/cloture/ActionScreen'
 import CloseScreen from '@/components/cloture/CloseScreen'
 import {
@@ -4656,6 +4657,9 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
             Ce n'est plus une clôture déguisée : la demande ne touche pas au statut
             de la mission chez eux, donc le chauffeur peut la lancer sur place et
             poursuivre son intervention normalement. */}
+        {/* Contrat du véhicule de remplacement VAB (Olivier 23/10/2026) : le lien VAB fait foi, pas la source. */}
+        {!!(M as any).vab_vr && <VrContratCard missionId={M.id} vr={(M as any).vab_vr} />}
+
         {canTouringVr && (
           <button
             disabled={vrEnvoi || !!(M as any).touring_vr_requested_at}
