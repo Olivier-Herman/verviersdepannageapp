@@ -251,15 +251,30 @@ export async function createRelivraisonMission(input: RelivraisonInput): Promise
   // est terminee, prete a etre facturee separement (chaque fiche est facturable
   // independamment). Le reste de la chaine (relivraison) est portee par la
   // nouvelle REL qui suivra son propre cycle vers 'to_invoice' a sa cloture.
+  // Exception (Olivier 23/10/2026, Dacia 2HJZ854 / AXA) : une RELIVRAISON remise au parc sans avoir roulé
+  // (ni « en route », ni chargement, ni « sur place ») n'a rien coûté : elle se clôt SANS FRAIS, sinon le
+  // même trajet est facturé deux fois (cette fiche + la nouvelle). Une tentative réelle reste facturable.
+  const parentIsRel = /^REL-/i.test(String(parent.external_id || '')) || ['REL', 'relivraison'].includes(String(parent.mission_type || ''))
+  let parentRolled = true
+  if (parentIsRel) {
+    const { data: moves } = await sb.from('mission_logs').select('id').eq('mission_id', input.parentMissionId)
+      .in('action', ['on_way', 'load_vehicle', 'on_site']).limit(1)
+    parentRolled = !!moves?.length
+  }
+  const nowParent = new Date().toISOString()
   await sb
     .from('incoming_missions')
-    .update({ status: 'to_invoice', completed_at: new Date().toISOString() })
+    .update(parentIsRel && !parentRolled
+      ? { status: 'completed', completed_at: nowParent, no_charge_at: nowParent, no_charge_reason: `Relivraison non effectuée, reprise par ${externalId}` }
+      : { status: 'to_invoice', completed_at: nowParent })
     .eq('id', input.parentMissionId)
   await sb.from('mission_logs').insert({
     mission_id: input.parentMissionId,
     action:     'completed',
-    notes:      `Terminée — relivraison déléguée à la mission ${externalId}, à facturer`,
-    metadata:   { rel_mission_id: rel.id },
+    notes:      parentIsRel && !parentRolled
+      ? `Terminée sans frais — relivraison non effectuée, reprise par la mission ${externalId}`
+      : `Terminée — relivraison déléguée à la mission ${externalId}, à facturer`,
+    metadata:   { rel_mission_id: rel.id, sans_frais: parentIsRel && !parentRolled },
   })
 
   // Stage FSM Odoo de la mission parente → "A facturer"
