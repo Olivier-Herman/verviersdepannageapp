@@ -151,7 +151,7 @@ export function parcoursHtml(etapes: Etape[]): string {
 }
 
 // ── Photos : 2-3 vues d'ensemble choisies par l'IA légère ─────────────────
-const PROMPT_PHOTOS = 'Photos prises par un chauffeur de dépannage. Choisis au maximum 3 photos montrant une VUE D’ENSEMBLE du véhicule dépanné (voiture entière ou presque, nette, angles différents si possible). Exclus : documents, cartes d’identité, plaques de VIN, compteurs, détails, photos floues ou sans véhicule. Réponds uniquement en JSON : {"choix":[numéros]}'
+const PROMPT_PHOTOS = 'Photos prises par un chauffeur de dépannage, imprimées en petit sur une facture. Choisis au maximum 3 photos montrant une VUE D’ENSEMBLE du véhicule dépanné : voiture entière ou presque, NETTE, BIEN EXPOSÉE (pas sombre, pas surexposée, pas de reflet ni de flash qui masque le véhicule), angles différents. Exclus : documents, cartes d’identité, plaques de VIN, compteurs, détails, photos floues, de nuit illisibles ou sans véhicule. Mieux vaut UNE seule bonne photo, ou aucune, qu’une photo médiocre. Réponds uniquement en JSON : {"choix":[numéros]}'
 
 export async function vignettesPhotos(urls: string[]): Promise<string | null> {
   const list = urls.filter(Boolean).slice(0, 12)
