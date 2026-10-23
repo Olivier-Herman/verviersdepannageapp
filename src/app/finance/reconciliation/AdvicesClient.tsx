@@ -226,7 +226,10 @@ export default function AdvicesClient() {
         )}
 
         {report.items.map((i, idx) => {
-          const st  = STATE[i.state] ?? STATE.miss
+          // Annoncé il y a plus de 10 jours sans virement : en retard, à réclamer (Olivier 23/10/2026).
+          const age = i.state === 'pending' && i.advice ? Math.floor((Date.now() - new Date(i.advice.receivedAt).getTime()) / 86400e3) : 0
+          const late = age > 10
+          const st  = late ? { label: `En retard · ${age} j`, cls: 'bg-alert-soft text-alert', bar: 'border-l-alert' } : (STATE[i.state] ?? STATE.miss)
           const id  = i.bank?.lineId ?? -idx
           const isOpen = open.has(id)
           const canPick = i.state === 'ready' && !!i.bank
@@ -248,7 +251,7 @@ export default function AdvicesClient() {
                       {eur(i.bank?.amount ?? i.linesSum)}
                     </span>
                     <span className="text-[13.5px] text-ink-muted">
-                      {i.bank ? `reçu le ${day(i.bank.date)}` : `annoncé le ${day(i.advice!.receivedAt.slice(0, 10))}`}
+                      {i.bank ? `reçu le ${day(i.bank.date)}` : `annoncé le ${day(i.advice!.receivedAt.slice(0, 10))}${late ? ' · virement toujours pas arrivé, à réclamer' : ''}`}
                     </span>
                   </span>
                   <span className="flex flex-wrap items-center gap-2">

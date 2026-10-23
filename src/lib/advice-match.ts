@@ -40,11 +40,14 @@ export type AdviceState = 'pending' | 'ready' | 'gap' | 'miss' | 'orphan' | 'don
  * 30/09/2026 (Olivier 05/10/2026). `partnerId` reste la fiche principale.
  */
 export const PAYERS = [
-  { key: 'ima', label: 'IMA Benelux (Ethias)', partnerId: 16, partnerIds: [16],      labelMatch: 'IMA BENELUX' },
-  { key: 'awp', label: 'AWP / Mondial',        partnerId: 45, partnerIds: [45, 126], labelMatch: 'AWP' },
+  { key: 'ima', label: 'IMA Benelux (Ethias)', partnerId: 16, partnerIds: [16],      labelMatch: 'IMA BENELUX', refMatch: /\bIMA\s+(BENELUX|ASSURANCES)\b/i },
+  { key: 'awp', label: 'AWP / Mondial',        partnerId: 45, partnerIds: [45, 126], labelMatch: 'AWP',         refMatch: /\bAWP\b/i },
 ] as const
 
 const payerOf = (pid: unknown) => PAYERS.find(p => (p.partnerIds as readonly number[]).includes(Number(pid)))
+/** Payeur d'une ligne de banque : par son tiers, ou par le libellé du virement quand le tiers manque ou
+ *  diffère (AWP 134,82 du 15/10 sans tiers, IMA ASSURANCES du 14/10 — Olivier 23/10/2026 : « des attendus déjà reçus »). */
+const payerOfLine = (l: any) => payerOf(Array.isArray(l.partner_id) ? l.partner_id[0] : l.partner_id) || PAYERS.find(p => p.refMatch.test(String(l.payment_ref || '')))
 
 /** Fenêtre d'appariement avis → virement, en jours. */
 const WINDOW_DAYS = 10
@@ -138,7 +141,7 @@ async function insurerBankLines(sinceIso: string) {
   return odooRpc<any[]>('account.bank.statement.line', 'search_read', [[
     ['amount', '>', 0],
     ['date', '>=', sinceIso.slice(0, 10)],
-    ['partner_id', 'in', partnerIds],
+    '|', '|', ['partner_id', 'in', partnerIds], ['payment_ref', 'ilike', 'AWP'], ['payment_ref', 'ilike', 'IMA '],
   ]], {
     fields: ['id', 'date', 'amount', 'payment_ref', 'move_id', 'partner_id', 'is_reconciled'],
     order: 'date desc, id desc',
@@ -292,8 +295,7 @@ export async function buildAdviceReport(
     // lignes, et virement postérieur à l'avis dans la fenêtre.
     const bank = lines.find(l => {
       if (usedLineIds.has(l.id)) return false
-      const pid = Array.isArray(l.partner_id) ? l.partner_id[0] : l.partner_id
-      if (payerOf(pid)?.key !== payer.key) return false
+      if (payerOfLine(l)?.key !== payer.key) return false
       if (Math.abs(Number(l.amount) - linesSum) > 0.02) return false
       const gap = daysBetween(advice.receivedAt.slice(0, 10), l.date)
       return gap >= -2 && gap <= WINDOW_DAYS
@@ -330,8 +332,11 @@ export async function buildAdviceReport(
       blocking.push(`Le détail totalise ${linesSum.toFixed(2)} € pour un virement de ${Number(bank.amount).toFixed(2)} €`)
     }
 
+    // Sans virement retrouvé mais toutes les factures déjà soldées : l'argent est arrivé autrement → sort de la file.
+    const toutPaye = resolved.length > 0 && resolved.every(x => x.neutralisee || ['paid', 'in_payment'].includes(String(x.paymentState)))
     const state: AdviceState =
-      !bank                                          ? 'pending'
+      !bank && toutPaye                              ? 'done'
+      : !bank                                        ? 'pending'
       : bank.is_reconciled                           ? 'done'
       : resolved.some(x => x.issue === 'introuvable' && !x.unallocated) ? 'miss'
       : blocking.length                              ? 'gap'
@@ -362,8 +367,7 @@ export async function buildAdviceReport(
   // Virements sans avis : l'utilisateur joindra le document.
   for (const l of lines) {
     if (usedLineIds.has(l.id) || l.is_reconciled) continue
-    const pid   = Array.isArray(l.partner_id) ? l.partner_id[0] : l.partner_id
-    const payer = payerOf(pid)
+    const payer = payerOfLine(l)
     items.push({
       state: 'orphan',
       payer: payer?.key ?? 'inconnu', payerLabel: payer?.label ?? 'Payeur inconnu',
