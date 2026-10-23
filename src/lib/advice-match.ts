@@ -191,20 +191,24 @@ async function invoicesByRefs(refs: string[]): Promise<Map<string, any>> {
  * s'annulent et la facture reste simplement ouverte, ce qui est le fait.
  */
 function resolveLines(advice: PaymentAdvice, invoices: Map<string, any>): MatchedInvoice[] {
+  // « 2026/01/370A » puis « 2026/01/370ACR » (AWP, avis A2526105 du 17/04) : la ligne « …CR » reprend la
+  // précédente ; on les additionne pour qu'elles s'annulent (Olivier 23/10/2026).
+  const refs0 = new Set(advice.lines.map(l => normRef(l.invoiceRef)))
+  const base = (r: string) => (/CR$/i.test(r) && refs0.has(r.replace(/CR$/i, '')) ? r.replace(/CR$/i, '') : r)
   const parLigne = new Map<string, number>()
   for (const l of advice.lines) {
-    const ref = normRef(l.invoiceRef)
+    const ref = base(normRef(l.invoiceRef))
     parLigne.set(ref, r2((parLigne.get(ref) ?? 0) + l.amount))
   }
 
   const vues = new Set<string>()
   return advice.lines.filter(l => {
-    const ref = normRef(l.invoiceRef)
+    const ref = base(normRef(l.invoiceRef))
     if (vues.has(ref)) return false
     vues.add(ref)
     return true
   }).map(l0 => {
-    const l = { ...l0, invoiceRef: normRef(l0.invoiceRef), amount: parLigne.get(normRef(l0.invoiceRef)) ?? l0.amount }
+    const l = { ...l0, invoiceRef: base(normRef(l0.invoiceRef)), amount: parLigne.get(base(normRef(l0.invoiceRef))) ?? l0.amount }
     const inv = invoices.get(l.invoiceRef)
 
     // Réglée puis reprise : rien à lettrer, la facture reste due.
@@ -278,6 +282,19 @@ export async function buildAdviceReport(
   ])
   const advices = cache.advices
 
+  // Détail reçu longtemps après le virement : on va chercher, hors fenêtre, les virements dont la
+  // communication cite la référence d'un avis (une seule requête).
+  const known = new Set(lines.map(l => l.id))
+  const refs = [...new Set(advices.map(a => String(a.reference || '').replace(/\s+/g, '').slice(0, 16)).filter(r => r.length >= 8))]
+  if (refs.length) {
+    const ors = refs.map(r => ['payment_ref', 'ilike', r] as any)
+    const dom: any[] = [['amount', '>', 0], ['date', '<', sinceIso.slice(0, 10)], ...Array(ors.length - 1).fill('|'), ...ors]
+    try {
+      const old = await odooRpc<any[]>('account.bank.statement.line', 'search_read', [dom], { fields: ['id', 'date', 'amount', 'payment_ref', 'move_id', 'partner_id', 'is_reconciled'], limit: 100 })
+      for (const l of old) if (!known.has(l.id)) lines.push(l)
+    } catch (e: any) { console.error('[advice-match] virements anciens KO:', e?.message) }
+  }
+
   const invoices = await invoicesByRefs(advices.flatMap(a => a.lines.map(l => l.invoiceRef)))
 
   // Les lignes déjà passées en OD — chargées en bloc, une requête pour l'écran.
@@ -297,6 +314,11 @@ export async function buildAdviceReport(
       if (usedLineIds.has(l.id)) return false
       if (payerOfLine(l)?.key !== payer.key) return false
       if (Math.abs(Number(l.amount) - linesSum) > 0.02) return false
+      // La référence de l'avis citée dans la communication suffit, quelle que soit la date : le détail
+      // peut arriver des mois après le virement (AWP 2 829,41 payé le 17/04, détail reçu le 05/10/2026).
+      const n = (x: string) => String(x || '').toUpperCase().replace(/[^A-Z0-9]/g, '')
+      const refAvis = n(advice.reference || "").slice(0, 16)
+      if (refAvis.length >= 8 && n(l.payment_ref).includes(refAvis)) return true
       const gap = daysBetween(advice.receivedAt.slice(0, 10), l.date)
       return gap >= -2 && gap <= WINDOW_DAYS
     })
