@@ -20,6 +20,7 @@ import { buildDossier, type Dossier, type DossierLeg } from '@/lib/dossier/build
 import { buildInterventionDescription } from '@/lib/missions/build-quote-lines'
 import { actionLines }              from '@/lib/dossier/lines'
 import { createDraftInvoice, createSaleOrder, findFleetVehicleByPlate, type QuoteLine, type QuoteSection } from '@/lib/odoo-quote'
+import { factureEnrichieActive, etapesDossier, libelleSection, nettoyerLignes, enrichirFacture, type Etape } from '@/lib/facturation/facture-enrichie'
 import { withOdooActor, attachFileToInvoice } from '@/lib/odoo'
 import { primeSourceCatalog } from '@/lib/missions/source-catalog'
 import { isLegBilled } from '@/lib/dossier/billed'
@@ -167,6 +168,11 @@ async function invoiceDossierGroupsLocked(sb: any, d: Dossier, input: { anyMissi
     ? await withOdooActor(input.actorUserId, () => resolveInvoiceVehicle(sb, root)).catch((e: any) => { warnings.push(`Véhicule non rattaché à la facture : ${e?.message || e}`); return null })
     : null
 
+  // Facture enrichie (23/10/2026) : parcours, sinistre, photos, libellés propres — derrière l'interrupteur du réglage.
+  const enrichi = !input.asQuote && !input.dryRun && await factureEnrichieActive()
+  const etapes = enrichi ? await etapesDossier(sb, d, rowById).catch(e => { warnings.push(`Facture enrichie : parcours non calculé (${e?.message || e})`); return [] as Etape[] }) : []
+  const etapeDe = (id: string) => etapes.find(e => e.mission_id === id && e.kind !== 'reprise')
+
   for (const [clientId, group] of byClient) {
     const sections: QuoteSection[] = []
     const perLeg: { leg: DossierLeg; lines: QuoteLine[]; period_from: string | null; period_to: string | null }[] = []
@@ -207,7 +213,7 @@ async function invoiceDossierGroupsLocked(sb: any, d: Dossier, input: { anyMissi
           warnings.push(`${d.number}${leg.letter} : 0 jour facturable, groupe ignoré`); continue
         }
         const ov = override(leg.mission_id); const finalLines = ov ?? lines
-        sections.push({ section_label: `${d.number}${leg.letter} — Gardiennage${m.parc_zone_key ? ' zone ' + m.parc_zone_key : ''}`, lines: finalLines, mission_id: leg.mission_id })
+        sections.push({ section_label: enrichi && etapes.length ? libelleSection(etapeDe(leg.mission_id), 'Gardiennage') : `${d.number}${leg.letter} — Gardiennage${m.parc_zone_key ? ' zone ' + m.parc_zone_key : ''}`, lines: enrichi ? nettoyerLignes(finalLines) : finalLines, mission_id: leg.mission_id })
         perLeg.push({ leg, lines: finalLines, period_from: from, period_to: to })
       } else {
         const ov = override(leg.mission_id)
@@ -215,7 +221,7 @@ async function invoiceDossierGroupsLocked(sb: any, d: Dossier, input: { anyMissi
         const lines = calc, has_tariff = calcOk
         if (!has_tariff || !lines.length) { warnings.push(`${d.number}${leg.letter} : tarif introuvable, section à compléter dans Odoo`) }
         // Suppléments VAB (carburant, VR) : déjà dans actionLines (lib/facturation/vab-fuel).
-        sections.push({ section_label: `${d.number}${leg.letter} — ${leg.title} — ${actionDescription(leg, m)}${has_tariff ? '' : ' (à compléter)'}`, lines, mission_id: leg.mission_id })
+        sections.push({ section_label: enrichi && etapes.length ? `${libelleSection(etapeDe(leg.mission_id), actionDescription(leg, m))}${has_tariff ? '' : ' (à compléter)'}` : `${d.number}${leg.letter} — ${leg.title} — ${actionDescription(leg, m)}${has_tariff ? '' : ' (à compléter)'}`, lines: enrichi ? nettoyerLignes(lines) : lines, mission_id: leg.mission_id })
         perLeg.push({ leg, lines, period_from: null, period_to: null })
       }
     }
@@ -256,7 +262,7 @@ async function invoiceDossierGroupsLocked(sb: any, d: Dossier, input: { anyMissi
       client_order_ref: d.dossier_number || root?.external_id || undefined,
       fleet_vehicle_id: fleetVehicleId,
       sections,
-      description:      buildInterventionDescription(root || {}),
+      description:      enrichi && etapes.length ? undefined : buildInterventionDescription(root || {}),   // enrichie : le parcours remplace « Intervention du … »
     }))
 
     if (input.asQuote) {
@@ -267,6 +273,14 @@ async function invoiceDossierGroupsLocked(sb: any, d: Dossier, input: { anyMissi
       }
       result.invoices.push({ odoo_id: created.id, url: created.url, client_id: clientId, client_name: clientName, covers, sections, total_htva: r2(perLeg.reduce((s, p) => s + p.lines.reduce((t, l) => t + l.qty * l.price_unit, 0), 0)) })
       continue
+    }
+    if (enrichi && etapes.length) {
+      try {
+        const rowsFact = [root, ...perLeg.map(p => rowById[p.leg.mission_id]).filter((r: any) => r && r.id !== root?.id)].filter(Boolean)
+        const etapesFact = etapes.filter(e => perLeg.some(p => p.leg.mission_id === e.mission_id) || e.kind === 'reprise')
+        const notes = await withOdooActor(input.actorUserId, () => enrichirFacture({ sb, moveId: created.id, etapes: etapesFact.length ? etapesFact : etapes, rows: rowsFact, clientName, fleetVehicleId }))
+        notes.forEach(n => warnings.push(`Facture enrichie : ${n}`))
+      } catch (e: any) { warnings.push(`Facture enrichie non appliquée : ${e?.message || e}`) }
     }
     // D1 : les brouillons de lignes des fiches facturées sont purgés (comme le module classique).
     await sb.from('mission_invoice_drafts').delete().in('mission_id', perLeg.map(p => p.leg.mission_id)).then(() => {}, () => {})
