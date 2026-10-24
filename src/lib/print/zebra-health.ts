@@ -38,7 +38,7 @@ export async function surveillerImprimante(): Promise<{ ok: boolean; alerte?: st
     try {
       const { getBusinessNumber } = await import('@/lib/settings/business')
       const { tgSend } = await import('@/lib/sam/telegram')
-      await notifierTelegram(await getBusinessNumber('telegram_chat_mobi'), text, [], 'Imprimante')
+      await notifierTelegram(await getBusinessNumber('telegram_chat_mobi'), text, [], 'Imprimante', { urgent: true })   // panne = urgence, à toute heure (Olivier 24/10/2026)
     } catch (e: any) { console.error('[zebra-health] telegram', e?.message) }
   }
 

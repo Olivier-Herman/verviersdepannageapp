@@ -6,6 +6,8 @@
 // de messagerie. Sans accès à l'agenda : réglage `mobi_heures_vd` (par défaut lun-ven 9 h-18 h, son horaire
 // actuel). Hors heures, une notification non urgente est retenue (table telegram_differes) puis envoyée en bloc
 // au début du créneau suivant (cron telegram-differes). Les réponses du bot à Mobi ne passent pas par ici.
+// URGENT (passe à toute heure, Olivier 24/10/2026) : toute panne qui empêche l'app de fonctionner normalement
+// (imprimante, connecteur, cron en échec…) et l'alerte de coût IA. Le reste attend le créneau.
 
 import { createAdminClient } from '@/lib/supabase'
 import { getBusinessNumber, getBusinessText } from '@/lib/settings/business'
