@@ -8,6 +8,7 @@
 // Règles de contenu : aucun compte de l'ERP, pas de téléphone, pas de mention d'automatisation.
 
 import crypto from 'crypto'
+import { notifierTelegram } from '@/lib/notif/heures-mobi'
 import { createAdminClient } from '@/lib/supabase'
 import { getBusinessNumber } from '@/lib/settings/business'
 import { tgSend } from '@/lib/sam/telegram'
@@ -83,7 +84,7 @@ async function notifyMobi(dossierId: string, p: any, kind: string, t: string) {
   const qui = (d?.destinataire || 'La comptable').split('·')[0].trim()
   const quoi = kind === 'ok' ? '✅ a validé le point' : kind === 'reouvert' ? '↩️ a rouvert le point' : '💬 a ajouté une remarque sur le point'
   const corps = `${qui} ${quoi} n° ${p.numero} — ${p.compte}\n(${d?.titre || 'dossier comptable'})${kind === 'remarque' ? `\n\n« ${t} »` : ''}`
-  await tgSend(chat, corps, [], 'Dossier comptable')
+  await notifierTelegram(chat, corps, [], 'Dossier comptable')
 }
 
 /** Mise à jour d'un point par VD (réponse, état, suivi) ; s'inscrit dans le fil. */

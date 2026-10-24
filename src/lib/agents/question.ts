@@ -8,6 +8,7 @@
 // aussi répondre depuis l'écran « Propositions des agents ».
 
 import { createAdminClient } from '@/lib/supabase'
+import { notifierTelegram } from '@/lib/notif/heures-mobi'
 import { tgSend } from '@/lib/sam/telegram'
 import { COMPANY_LABEL, journal } from './core'
 
@@ -61,7 +62,7 @@ export async function sendQuestion(p: any): Promise<number> {
     [{ text: 'Voir dans VD Soft', url: `${APP_URL()}/admin/agents` }, ...(odoo ? [{ text: 'Ouvrir dans Odoo', url: odoo }] : [])],
   ]
   let sent = 0
-  for (const l of links) { try { await tgSend(Number(l.chat_id), text, rows, p.agent_name); sent++ } catch { /* un échec n'empêche pas les autres */ } }
+  for (const l of links) { try { await notifierTelegram(Number(l.chat_id), text, rows, p.agent_name); sent++ } catch { /* un échec n'empêche pas les autres */ } }
   return sent
 }
 

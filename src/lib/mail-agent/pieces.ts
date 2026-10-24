@@ -12,6 +12,7 @@
 // à J+14, escalade à Mobi.
 
 import { getAppOnlyToken } from '@/lib/graph-mail-search'
+import { notifierTelegram } from '@/lib/notif/heures-mobi'
 import { getBusinessNumber } from '@/lib/settings/business'
 import { tgSend } from '@/lib/sam/telegram'
 import { addDoc, updatePoint } from '@/lib/compta/dossier'
@@ -23,7 +24,7 @@ const DAY = 86_400_000
 const ddmm = (iso: string) => new Date(iso).toLocaleDateString('fr-BE', { day: '2-digit', month: '2-digit', timeZone: 'Europe/Brussels' })
 
 async function telegramMobi(text: string): Promise<void> {
-  try { await tgSend(await getBusinessNumber('telegram_chat_mobi'), text, [], 'Pièces réclamées') } catch { /* jamais bloquant */ }
+  try { await notifierTelegram(await getBusinessNumber('telegram_chat_mobi'), text, [], 'Pièces réclamées') } catch { /* jamais bloquant */ }
 }
 async function graph(path: string, init: RequestInit = {}): Promise<Response> {
   const call = (tok: string | null) => fetch(`${G}${path}`, { ...init, headers: { Authorization: `Bearer ${tok}`, 'Content-Type': 'application/json', ...(init.headers || {}) }, cache: 'no-store' })

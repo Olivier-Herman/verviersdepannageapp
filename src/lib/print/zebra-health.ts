@@ -3,6 +3,7 @@
 // PC injoignable depuis 10 min, ou étiquette en attente depuis 10 min → message privé à Mobi sur Telegram ;
 // retour à la normale → second message. Un seul message par panne.
 import { createAdminClient } from '@/lib/supabase'
+import { notifierTelegram } from '@/lib/notif/heures-mobi'
 
 const KEY = 'zebra_health'
 const SEUIL_MS = 10 * 60 * 1000
@@ -37,7 +38,7 @@ export async function surveillerImprimante(): Promise<{ ok: boolean; alerte?: st
     try {
       const { getBusinessNumber } = await import('@/lib/settings/business')
       const { tgSend } = await import('@/lib/sam/telegram')
-      await tgSend(await getBusinessNumber('telegram_chat_mobi'), text, [], 'Imprimante')
+      await notifierTelegram(await getBusinessNumber('telegram_chat_mobi'), text, [], 'Imprimante')
     } catch (e: any) { console.error('[zebra-health] telegram', e?.message) }
   }
 

@@ -5,6 +5,7 @@ export const dynamic     = 'force-dynamic'
 export const maxDuration = 120
 
 import { NextRequest, NextResponse } from 'next/server'
+import { notifierTelegram } from '@/lib/notif/heures-mobi'
 import { getServerSession }          from 'next-auth'
 import { authOptions }               from '@/lib/auth'
 import { accesPaiements }            from '@/lib/paiements/acces'
@@ -78,5 +79,5 @@ async function prevenirLotCree(label: string, r: { lot: string; factures: number
   const ids = await getBusinessList('paiements_xml_user_ids')
   if (ids.length) await sendNotificationToMany(ids, 'paiements_lot_cree', { title, body, action_url: '/paiements' })
   const { tgSend } = await import('@/lib/sam/telegram')
-  await tgSend(await getBusinessNumber('telegram_chat_mobi'), `${title}\n${body}`).catch(() => {})
+  await notifierTelegram(await getBusinessNumber('telegram_chat_mobi'), `${title}\n${body}`).catch(() => {})
 }

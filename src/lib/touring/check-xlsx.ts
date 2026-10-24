@@ -9,6 +9,7 @@
 //     (statut « répondu ») et Mobi est prévenu. Rien n'est APPLIQUÉ seul : chaque réponse se valide à l'écran.
 
 import * as XLSX from 'xlsx'
+import { notifierTelegram } from '@/lib/notif/heures-mobi'
 import { getAppOnlyToken } from '@/lib/graph-mail-search'
 import { getBusinessNumber } from '@/lib/settings/business'
 import { tgSend } from '@/lib/sam/telegram'
@@ -110,7 +111,7 @@ export async function processCheckReplies(sb: any): Promise<{ replies: number; a
     await sb.from('mail_piece_requests').update({ status: answers ? 'received' : 'open', last_reply_at: last }).eq('id', q.id)
     out.replies++; out.answers += answers
     if (answers || !q.last_reply_at || q.last_reply_at < last) {
-      try { await tgSend(await getBusinessNumber('telegram_chat_mobi'), answers ? `Touring a répondu à la liste « ${q.subject} » : ${answers} réponse(s) reportée(s) dans Check Touring, à valider.` : `Touring a répondu à « ${q.subject} » sans Excel rempli : à lire dans ${q.mailbox}.`, [], 'Check Touring') } catch { /* jamais bloquant */ }
+      try { await notifierTelegram(await getBusinessNumber('telegram_chat_mobi'), answers ? `Touring a répondu à la liste « ${q.subject} » : ${answers} réponse(s) reportée(s) dans Check Touring, à valider.` : `Touring a répondu à « ${q.subject} » sans Excel rempli : à lire dans ${q.mailbox}.`, [], 'Check Touring') } catch { /* jamais bloquant */ }
     }
   }
   return out

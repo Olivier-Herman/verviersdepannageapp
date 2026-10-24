@@ -10,6 +10,7 @@
 // boutons du dossier). Tout est gardé : conversations, actions, résultats.
 
 import { createAdminClient } from '@/lib/supabase'
+import { notifierTelegram } from '@/lib/notif/heures-mobi'
 import type { ToolDef, ToolContext } from './tools'
 
 const sb = () => createAdminClient()
@@ -415,7 +416,7 @@ Interdit : créer une facture, un brouillon, une note de crédit, un état de fr
       const { getBusinessNumber } = await import('@/lib/settings/business')
       const { tgSend } = await import('@/lib/sam/telegram')
       const chat = await getBusinessNumber('telegram_chat_mobi')
-      await tgSend(chat, `🧭 Max, assistant bureau de ${ctx.userName}${args.fiche ? ` · ${args.fiche}` : ''}\n${String(args.question).slice(0, 1500)}`)
+      await notifierTelegram(chat, `🧭 Max, assistant bureau de ${ctx.userName}${args.fiche ? ` · ${args.fiche}` : ''}\n${String(args.question).slice(0, 1500)}`)
       return { ok: true, note: 'Mobi est prévenu.' }
     },
   },
