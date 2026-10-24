@@ -5,6 +5,7 @@
 
 import { toOdooFuel, shouldWriteFuel } from '@/lib/odoo-fuel'
 import { resolveBrandId, resolveModelId, isOtherName } from '@/lib/odoo-fleet'
+import { odooSend } from '@/lib/odoo-transport'
 
 const FSM_URL     = process.env.ODOO_TEST_URL || process.env.ODOO_URL!
 const FSM_DB      = process.env.ODOO_TEST_DB  || process.env.ODOO_DB!
@@ -67,23 +68,10 @@ export async function rpcFsm<T = any>(
   args: any[] = [],
   kwargs: object = {}
 ): Promise<T> {
-  const res = await fetch(`${FSM_URL}/jsonrpc`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      jsonrpc: '2.0',
-      method: 'call',
-      id: Date.now(),
-      params: {
-        service: 'object',
-        method: 'execute_kw',
-        args: [FSM_DB, FSM_UID, FSM_API_KEY, model, method, args, kwargs]
-      }
-    })
-  })
-  const data = await res.json()
+  // Transport commun (JSON-2 ou JSON-RPC) — base FSM (ODOO_TEST_* si posées) inchangée.
+  const data = await odooSend<T>({ url: FSM_URL, db: FSM_DB, uid: FSM_UID, apiKey: FSM_API_KEY }, model, method, args, kwargs as Record<string, any>)
   if (data.error) throw new Error(`[FSM RPC] ${model}.${method}: ${JSON.stringify(data.error)}`)
-  return data.result
+  return data.result as T
 }
 
 // ============================================================

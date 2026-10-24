@@ -87,7 +87,7 @@ async function main() {
   if (payments.length) {
     const atts = await odooRpc<any[]>('ir.attachment', 'search_read', [[['res_model', '=', 'account.payment'], ['res_id', 'in', payments]]], { fields: ['id', 'name'] })
     const seenNames = new Set<string>()
-    for (const a of atts) { if (seenNames.has(a.name)) continue; seenNames.add(a.name); await odooRpc('ir.attachment', 'copy', [[a.id], { res_model: 'account.move', res_id: bm.id }]) }
+    for (const a of atts) { if (seenNames.has(a.name)) continue; seenNames.add(a.name); await odooRpc('ir.attachment', 'copy', [[a.id]], { default: { res_model: 'account.move', res_id: bm.id } })   // nommé ; le résultat (id, ou liste d'ids en JSON-2) n'est pas utilisé }
     // 2. Paiements intermédiaires : brouillon (délettre) puis annulés.
     await odooRpc('account.payment', 'action_draft', [payments])
     await odooRpc('account.payment', 'action_cancel', [payments])

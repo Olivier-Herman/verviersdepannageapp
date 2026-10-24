@@ -13,6 +13,7 @@ import { NextResponse }     from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions }      from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase'
+import { odooSend } from '@/lib/odoo-transport'
 
 const ODOO_URL = process.env.ODOO_URL!
 const ODOO_DB  = process.env.ODOO_DB!
@@ -20,16 +21,8 @@ const ODOO_UID = parseInt(process.env.ODOO_UID || '8')
 const ODOO_KEY = process.env.ODOO_API_KEY!
 
 async function odooCall(model: string, method: string, args: any[], kwargs: any = {}) {
-  const res = await fetch(`${ODOO_URL}/jsonrpc`, {
-    method:  'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      jsonrpc: '2.0', method: 'call', id: 1,
-      params: { service: 'object', method: 'execute_kw',
-        args: [ODOO_DB, ODOO_UID, ODOO_KEY, model, method, args, kwargs] },
-    }),
-  })
-  const data = await res.json()
+  // Transport commun (JSON-2 ou JSON-RPC, cf. @/lib/odoo-transport) — compte de service, sans contexte société.
+  const data = await odooSend({ url: ODOO_URL, db: ODOO_DB, uid: ODOO_UID, apiKey: ODOO_KEY }, model, method, args, kwargs as Record<string, any>)
   if (data.error) throw new Error(data.error.data?.message || data.error.message)
   return data.result
 }

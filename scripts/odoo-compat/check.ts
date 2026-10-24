@@ -12,19 +12,21 @@
 // listées dans le rapport pour un essai manuel sur la copie de test.
 import { readFileSync, writeFileSync } from 'fs'
 import { join } from 'path'
+import { odooExecute, odooApiMode } from '../../src/lib/odoo-transport'
 
 const URL_ = process.env.ODOO_CHECK_URL || process.env.ODOO_URL!
 const DB = process.env.ODOO_CHECK_DB || process.env.ODOO_DB!
 const UID = Number(process.env.ODOO_CHECK_UID || process.env.ODOO_UID)
 const KEY = process.env.ODOO_CHECK_KEY || process.env.ODOO_API_KEY!
 
-async function call(service: string, method: string, args: any[]) {
-  const r = await fetch(`${URL_}/jsonrpc`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ jsonrpc: '2.0', method: 'call', params: { service, method, args }, id: Date.now() }) })
-  const j = await r.json()
-  if (j.error) throw new Error(j.error?.data?.message || j.error?.message || 'erreur Odoo')
-  return j.result
+// Transport commun de l'app (JSON-2 ou JSON-RPC selon ODOO_API) : le contrôle
+// passe par le même chemin que VD Soft.
+const ID = { url: URL_, db: DB, uid: UID, apiKey: KEY }
+const kw = (model: string, method: string, args: any[], kwargs: any = {}) => odooExecute(ID, model, method, args, kwargs)
+async function serverVersion(): Promise<string> {
+  const r = await fetch(`${URL_.replace(/\/$/, '')}/web/version`)
+  return (await r.json()).version
 }
-const kw = (model: string, method: string, args: any[], kwargs: any = {}) => call('object', 'execute_kw', [DB, UID, KEY, model, method, args, kwargs])
 
 const cache = new Map<string, Record<string, { type: string; relation?: string }> | null>()
 async function fieldsOf(model: string) {
@@ -57,8 +59,9 @@ async function checkPath(model: string, path: string): Promise<string | null> {
   // Exceptions connues et acceptées (champ absent mais code mort ou ponctuel) : listées à part.
   const known: Record<string, Record<string, string>> = JSON.parse(readFileSync(join(__dirname, 'known.json'), 'utf8'))
   const accepted: string[] = []
-  const ver = await call('common', 'version', [])
-  console.log(`Base ${DB} — Odoo ${ver.server_version}`)
+  const v = await serverVersion()
+  const ver = { server_version: v, server_serie: v.split('+')[0] }
+  console.log(`Base ${DB} — Odoo ${v} — transport ${await odooApiMode()}`)
   const problems: { model: string; what: string; files: string[] }[] = []
   let checked = 0
   for (const [model, u] of Object.entries<any>(inv.models)) {

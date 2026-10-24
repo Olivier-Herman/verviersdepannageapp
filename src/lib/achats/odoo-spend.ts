@@ -13,6 +13,30 @@
 import { achatsRpc as odooRpc, getGroupCompanyPartnerIds } from './odoo-rpc'   // connecteur multi-société dédié Achats
 import { paieJournalId } from '@/lib/paie/push-odoo'   // journal des fiches de paie (regroupé en « Salaires » dans les fournisseurs)
 
+// read_group(domain, fields, groupby) n'existe plus sous cette forme : Odoo 19 ne
+// l'expose pas en JSON-2 et Odoo 20 lui a donné la signature de
+// formatted_read_group. On appelle donc formatted_read_group (présent en 19 et
+// 20, sur les deux transports) et on rend les lignes à l'ancien format :
+// « amount_untaxed » (et non « amount_untaxed:sum »), « __count »,
+// « <champ>_count », libellé seul pour un regroupement par date.
+export async function readGroup(model: string, domain: any[], aggregates: string[], groupby: string[], kwargs: Record<string, any> = {}): Promise<any[]> {
+  const rows = await odooRpc<any[]>(model, 'formatted_read_group', [], {
+    ...kwargs, domain, groupby, aggregates: [...aggregates, '__count'],
+  })
+  return (rows || []).map((r) => {
+    // Comme read_group : « __count » sans regroupement, « <champ>_count » sinon.
+    const out: Record<string, any> = groupby.length ? {} : { __count: r.__count }
+    for (const a of aggregates) out[a.split(':')[0]] = r[a]
+    for (const g of groupby) {
+      const [field, granularity] = g.split(':')
+      const v = r[g]
+      out[g] = granularity && Array.isArray(v) ? v[1] : v
+      out[`${field}_count`] = r.__count
+    }
+    return out
+  })
+}
+
 /** 1er jour du mois, `monthsBack` mois en arrière (fenêtre glissante). */
 function periodStart(monthsBack: number): string {
   const d = new Date()
@@ -71,16 +95,15 @@ export async function analyzeAchats(monthsBack = 12, config: SupplierConfig = { 
   // encombrerait la liste) et on les regroupe en une seule ligne « Salaires ».
   const notPaie = [['journal_id', '!=', await paieJournalId()]]
   const [overviewRows, draftRows, monthRows, supplierRows, catRows, bills] = await Promise.all([
-    odooRpc<any[]>('account.move', 'read_group', [billDom, ['amount_untaxed:sum'], []]),
-    odooRpc<any[]>('account.move', 'read_group', [[['move_type', '=', 'in_invoice'], ['state', '=', 'draft']], ['amount_untaxed:sum'], []]),
-    odooRpc<any[]>('account.move', 'read_group', [billDom, ['amount_untaxed:sum'], ['invoice_date:month']]),
-    odooRpc<any[]>('account.move', 'read_group', [[...baseDom, ...notPaie], ['amount_untaxed:sum'], ['partner_id']]),   // fournisseurs (hors salaires)
-    odooRpc<any[]>('account.move.line', 'read_group', [
+    readGroup('account.move', billDom, ['amount_untaxed:sum'], []),
+    readGroup('account.move', [['move_type', '=', 'in_invoice'], ['state', '=', 'draft']], ['amount_untaxed:sum'], []),
+    readGroup('account.move', billDom, ['amount_untaxed:sum'], ['invoice_date:month']),
+    readGroup('account.move', [...baseDom, ...notPaie], ['amount_untaxed:sum'], ['partner_id']),   // fournisseurs (hors salaires)
+    readGroup('account.move.line',
       [['move_id.move_type', '=', 'in_invoice'], ['move_id.state', '=', 'posted'], ['date', '>=', start], ['account_id.internal_group', '=', 'expense'],
         ...(exclArr.length ? [['move_id.partner_id', 'not in', exclArr]] : []),
         ...(companyPartners.length ? [['move_id.commercial_partner_id', 'not in', companyPartners]] : [])],
-      ['balance:sum'], ['account_id'],
-    ], { context: { lang: 'fr_BE' } }),   // libellés de comptes en français
+      ['balance:sum'], ['account_id'], { context: { lang: 'fr_BE' } }),   // libellés de comptes en français
     odooRpc<any[]>('account.move', 'search_read', [billDom, ['partner_id', 'ref', 'invoice_date', 'amount_total']], { limit: 4000 }),
   ])
 

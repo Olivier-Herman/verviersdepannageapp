@@ -11,6 +11,7 @@ donc tout déploiement web s'applique immédiatement à tous les téléphones, a
   Client service_role : `createAdminClient` dans `src/lib/supabase.ts`.
 - NextAuth + Azure AD. Microsoft Graph pour les boîtes mail (info@, administration@, fourriere@).
 - Odoo par RPC (`src/lib/odoo.ts`) : Odoo tient les factures et les clients, VD Soft tient le parc et les fiches.
+  Tout appel Odoo passe par `src/lib/odoo-transport.ts` (JSON-2 ou JSON-RPC) : jamais de `fetch(.../jsonrpc)` dans une route. Choix du transport : réglage `odoo_api` de `app_settings` ("json2" | "jsonrpc", relu chaque minute), sinon `ODOO_API`, sinon jsonrpc. JSON-2 veut des arguments NOMMÉS au-delà des ids (`send_mail` : `res_id`) ; `read_group` est remplacé par `formatted_read_group`.
 - Vercel : hébergement et une quarantaine de crons dans `vercel.json`.
 - Anthropic SDK (extraction de documents, agent mail) ; modèle centralisé dans `src/lib/anthropic-model.ts`.
 - Google Maps Places (navigateur), OpenRouteService (routage), Capacitor (caméra, géoloc, push).

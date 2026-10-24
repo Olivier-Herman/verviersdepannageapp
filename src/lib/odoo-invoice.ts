@@ -5,29 +5,18 @@
 // synchrone optimiste) et par le cron /api/cron/sync-invoice-urls (best-effort
 // resilient).
 
+import { odooSend } from '@/lib/odoo-transport'
+
 const ODOO_URL     = process.env.ODOO_URL!
 const ODOO_DB      = process.env.ODOO_DB!
 const ODOO_UID     = parseInt(process.env.ODOO_UID || '8')
 const ODOO_API_KEY = process.env.ODOO_API_KEY!
 
 async function rpc<T = any>(model: string, method: string, args: any[] = [], kwargs: object = {}): Promise<T> {
-  const res = await fetch(`${ODOO_URL}/jsonrpc`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      jsonrpc: '2.0',
-      method: 'call',
-      id: Date.now(),
-      params: {
-        service: 'object',
-        method: 'execute_kw',
-        args: [ODOO_DB, ODOO_UID, ODOO_API_KEY, model, method, args, kwargs]
-      }
-    })
-  })
-  const data = await res.json()
+  // Transport commun (JSON-2 ou JSON-RPC) — compte de service, sans contexte société (comme avant).
+  const data = await odooSend<T>({ url: ODOO_URL, db: ODOO_DB, uid: ODOO_UID, apiKey: ODOO_API_KEY }, model, method, args, kwargs as Record<string, any>)
   if (data.error) throw new Error(`Odoo RPC [${model}.${method}]: ${JSON.stringify(data.error)}`)
-  return data.result
+  return data.result as T
 }
 
 export interface ResolvedInvoice {

@@ -16,6 +16,7 @@ import { createAdminClient } from '@/lib/supabase'
 import { getMissionTypeLabel } from '@/lib/missions/mission-types'
 import { listParcZones } from '@/lib/parc/zones'
 import { searchAllMailboxes, isGraphConfigured, SEARCH_MAILBOXES } from '@/lib/graph-mail-search'
+import { odooSend } from '@/lib/odoo-transport'
 
 export const dynamic     = 'force-dynamic'
 export const maxDuration = 15
@@ -26,18 +27,8 @@ const ODOO_UID     = parseInt(process.env.ODOO_UID || '8')
 const ODOO_API_KEY = process.env.ODOO_API_KEY || ''
 
 async function odooCall<T = any>(model: string, method: string, args: any[] = [], kwargs: object = {}): Promise<T> {
-  const res = await fetch(`${ODOO_URL}/jsonrpc`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      jsonrpc: '2.0', method: 'call', id: Date.now(),
-      params: {
-        service: 'object', method: 'execute_kw',
-        args: [ODOO_DB, ODOO_UID, ODOO_API_KEY, model, method, args, kwargs]
-      }
-    })
-  })
-  const data = await res.json()
+  // Transport commun (JSON-2 ou JSON-RPC, cf. @/lib/odoo-transport) — compte de service, sans contexte société.
+  const data = await odooSend({ url: ODOO_URL, db: ODOO_DB, uid: ODOO_UID, apiKey: ODOO_API_KEY }, model, method, args, kwargs as Record<string, any>)
   if (data.error) throw new Error(`Odoo ${model}.${method}: ${JSON.stringify(data.error)}`)
   return data.result
 }
