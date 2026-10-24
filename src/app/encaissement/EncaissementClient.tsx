@@ -1376,8 +1376,9 @@ export default function EncaissementClient({
           </div>
         )}
 
-        {/* 6 boutons de paiement */}
-        {!sumupStatus && (
+        {/* 6 boutons de paiement — restent affichés après un refus, sinon le chauffeur est bloqué sur
+            « Paiement refusé — réessaie » sans aucun moyen de réessayer (Seba, 25/10/2026). */}
+        {sumupStatus !== 'PAID' && (
           <div className="flex flex-col gap-2 mb-6">
             {[
               { mode: 'cash',          icon: '💵', label: 'Espèces',              sumup: false },
