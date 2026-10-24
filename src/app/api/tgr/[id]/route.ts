@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession }          from 'next-auth'
 import { authOptions }               from '@/lib/auth'
 import { createAdminClient }         from '@/lib/supabase'
+import { odooSend, masterIdentity } from '@/lib/odoo-transport'
 import { sendPushToUser }            from '@/lib/push'
 import { createTGRQuote, setTGRVehicleTermine, withOdooActor } from '@/lib/odoo'
 import { formatEur }                 from '@/lib/format'
@@ -180,19 +181,9 @@ export async function POST(
         }
         // Confirmer le devis automatiquement
         try {
-          const confirmRes = await fetch(`${process.env.ODOO_URL}/jsonrpc`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              jsonrpc: '2.0', method: 'call', id: Date.now(),
-              params: {
-                service: 'object', method: 'execute_kw',
-                args: [process.env.ODOO_DB, parseInt(process.env.ODOO_UID||'8'), process.env.ODOO_API_KEY,
-                  'sale.order', 'action_confirm', [[odooQuoteId]]
-                ]
-              }
-            })
-          })
+          // Transport commun (JSON-2 ou JSON-RPC) — compte de service. Comme avant,
+          // une erreur Odoo à la confirmation n'interrompt pas l'acceptation.
+          await odooSend(masterIdentity(), 'sale.order', 'action_confirm', [[odooQuoteId]])
           console.log('[TGR] Devis confirmé:', odooQuoteId)
         } catch(e: any) {
           console.error('[TGR] Erreur confirmation devis:', e.message)
@@ -207,22 +198,9 @@ export async function POST(
     // Si le devis n'a pas pu être créé, on tente quand même de récupérer le prix
     if (!odooEstimatedAmount && mission.distance_km) {
       try {
-        const priceRes = await fetch(`${process.env.ODOO_URL}/jsonrpc`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            jsonrpc: '2.0', method: 'call', id: Date.now(),
-            params: {
-              service: 'object', method: 'execute_kw',
-              args: [process.env.ODOO_DB, parseInt(process.env.ODOO_UID||'8'), process.env.ODOO_API_KEY,
-                'product.product', 'search_read',
-                [[['default_code', '=', 'TGRTouring']]],
-                { fields: ['list_price'], limit: 1 }
-              ]
-            }
-          })
-        })
-        const priceData = await priceRes.json()
+        const priceData = await odooSend<any[]>(masterIdentity(), 'product.product', 'search_read',
+          [[['default_code', '=', 'TGRTouring']]],
+          { fields: ['list_price'], limit: 1 })
         if (priceData.result?.[0]?.list_price) {
           odooEstimatedAmount = priceData.result[0].list_price * mission.distance_km
         }

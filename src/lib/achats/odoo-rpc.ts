@@ -15,7 +15,7 @@
 // Dépannage uniquement). Aucun autre module n'utilise ce connecteur.
 // ============================================================
 
-import { fetchWithRetry } from '@/lib/fetch-with-retry'
+import { odooSend } from '@/lib/odoo-transport'
 
 const ODOO_URL = process.env.ODOO_URL!
 const ODOO_DB  = process.env.ODOO_DB!
@@ -35,18 +35,13 @@ export async function achatsRpc<T = any>(model: string, method: string, args: an
   }
   const finalKwargs = { ...kwargs, ...(Object.keys(context).length ? { context } : {}) }
 
-  const res = await fetchWithRetry(`${ODOO_URL}/jsonrpc`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      jsonrpc: '2.0', method: 'call', id: Date.now(),
-      params: { service: 'object', method: 'execute_kw', args: [ODOO_DB, UID, KEY, model, method, args, finalKwargs] },
-    }),
-    timeoutMs: 25000, maxAttempts: 3, logPrefix: `[Odoo Achats ${model}.${method}]`,
-  })
-  const data = await res.json()
+  // Transport commun (JSON-2 ou JSON-RPC) — identité « VD Achats » inchangée.
+  const data = await odooSend<T>(
+    { url: ODOO_URL, db: ODOO_DB, uid: UID, apiKey: KEY }, model, method, args, finalKwargs,
+    { timeoutMs: 25000, maxAttempts: 3, logPrefix: `[Odoo Achats ${model}.${method}]` },
+  )
   if (data.error) throw new Error(`Odoo RPC [${model}.${method}]: ${JSON.stringify(data.error?.data?.message || data.error)}`)
-  return data.result
+  return data.result as T
 }
 
 // Partenaires = les sociétés du groupe elles-mêmes (VD, Riga, DGJ). Sert à

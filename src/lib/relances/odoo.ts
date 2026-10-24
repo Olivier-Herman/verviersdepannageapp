@@ -19,6 +19,7 @@
 // partners en contentieux pour les sortir des relances email.
 
 import { RELANCE_EXCLUDED_TAG_NAME } from './constants'
+import { odooSend, odooApiMode } from '@/lib/odoo-transport'
 
 const ODOO_URL     = process.env.ODOO_URL!
 const ODOO_DB      = process.env.ODOO_DB!
@@ -64,22 +65,12 @@ async function getVdCompanyId(): Promise<number | null> {
 }
 
 async function rpc<T = any>(model: string, method: string, args: any[] = [], kwargs: object = {}): Promise<T> {
-  const res = await fetch(`${ODOO_URL}/jsonrpc`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      jsonrpc: '2.0', method: 'call', id: Date.now(),
-      params: {
-        service: 'object', method: 'execute_kw',
-        args: [ODOO_DB, ODOO_UID, ODOO_API_KEY, model, method, args, kwargs],
-      },
-    }),
-  })
-  const data = await res.json()
+  // Transport commun (JSON-2 ou JSON-RPC) — compte de service, sans contexte société (comme avant).
+  const data = await odooSend<T>({ url: ODOO_URL, db: ODOO_DB, uid: ODOO_UID, apiKey: ODOO_API_KEY }, model, method, args, kwargs as Record<string, any>)
   if (data.error) {
     throw new Error(`Odoo [${model}.${method}] ${JSON.stringify(data.error?.data?.message ?? data.error)}`)
   }
-  return data.result
+  return data.result as T
 }
 
 /**
@@ -177,7 +168,16 @@ export async function fetchInvoicePdfFromOdoo(invoiceId: number): Promise<Buffer
     console.warn(`[relances/odoo] ir.attachment lookup failed for invoice ${invoiceId}:`, e.message)
   }
 
-  // ── Strategy 2 : HTTP login + render ──
+  // ── Strategy 2 : HTTP login + render (DERNIER RECOURS, ancien transport seulement) ──
+  // La session web (/web/session/authenticate + cookie) appartient au monde
+  // JSON-RPC : en JSON-2 on s'en tient au PDF déjà rangé par Odoo (stratégies 0
+  // et 1). Le rendu à la volée ne reste possible qu'avec ODOO_API=jsonrpc
+  // (ou l'interrupteur odoo_api = "jsonrpc").
+  if (await odooApiMode() === 'json2') {
+    throw new Error(
+      `Impossible de recuperer le PDF de la facture ${invoiceId} : aucun PDF rangé dans Odoo (pièce jointe absente). Ouvrir la facture dans Odoo pour l'imprimer une fois, puis réessayer.`
+    )
+  }
   // 1. Login : POST /web/session/authenticate
   //    Sur Odoo 18+, l api_key peut etre utilisee comme password.
   //    Le login est l email du user Odoo (UID 8 chez VD).

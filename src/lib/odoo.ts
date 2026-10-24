@@ -1,5 +1,5 @@
 // ============================================================
-// VERVIERS DÉPANNAGE — Connecteur Odoo JSON-RPC
+// VERVIERS DÉPANNAGE — Connecteur Odoo (transport JSON-2 / JSON-RPC : @/lib/odoo-transport)
 // Odoo 19 — verviers-depannage.odoo.com
 // Service account fallback : compte dedié "VD App" (ODOO_UID + ODOO_API_KEY
 // en env vars). Si l'utilisateur appelant a sa propre cle API encodee dans
@@ -11,6 +11,7 @@ import { refFacture } from '@/lib/facturation/ref-client'
 import { createAdminClient } from '@/lib/supabase'
 import { AsyncLocalStorage } from 'async_hooks'
 import { resolveBrandId, resolveModelId } from '@/lib/odoo-fleet'
+import { odooSend } from '@/lib/odoo-transport'
 
 const ODOO_URL     = process.env.ODOO_URL!
 const ODOO_DB      = process.env.ODOO_DB!
@@ -147,31 +148,19 @@ async function rpc<T = any>(model: string, method: string, args: any[] = [], kwa
   // Olivier 2026-06-03 (audit J-2 W6) : timeout + retry. Avant un Odoo
   // lent bloquait la Vercel function jusqu au timeout 5 min. Retry sur
   // 429/5xx transients (Odoo restart, surcharge ponctuelle).
-  const { fetchWithRetry } = await import('@/lib/fetch-with-retry')
   // Verrou société (cf. plus haut) : Verviers Dépannage sauf demande explicite
   // via withOdooCompany / odooRpcCompany. Un `allowed_company_ids` passé dans
   // kwargs.context est volontairement ignoré : c'est le paramètre qui décide.
   const scopedKwargs = { ...kwargs, context: { ...((kwargs as any).context || {}), allowed_company_ids: [companyId] } }
-  const res = await fetchWithRetry(`${ODOO_URL}/jsonrpc`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      jsonrpc: '2.0',
-      method: 'call',
-      id: Date.now(),
-      params: {
-        service: 'object',
-        method: 'execute_kw',
-        args: [ODOO_DB, creds.uid, creds.apiKey, model, method, args, scopedKwargs]
-      }
-    }),
-    timeoutMs:   20000,
-    maxAttempts: 3,
-    logPrefix:   `[Odoo ${model}.${method}]`,
-  })
-  const data = await res.json()
+  // Transport commun (JSON-2 ou JSON-RPC, cf. @/lib/odoo-transport) ; mêmes
+  // timeout et réessais qu'avant, même identité, même contexte.
+  const data = await odooSend<T>(
+    { url: ODOO_URL, db: ODOO_DB, uid: creds.uid, apiKey: creds.apiKey },
+    model, method, args, scopedKwargs,
+    { timeoutMs: 20000, maxAttempts: 3, logPrefix: `[Odoo ${model}.${method}]` },
+  )
   if (data.error) throw new Error(`Odoo RPC [${model}.${method}]: ${JSON.stringify(data.error)}`)
-  return data.result
+  return data.result as T
 }
 
 // ============================================================

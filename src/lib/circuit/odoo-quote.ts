@@ -112,7 +112,7 @@ export async function createCircuitQuote(input: CreateCircuitQuoteInput): Promis
   const hasIncentive = input.lines.some(l => l.type === 'incentive')
   if (confirmed && hasIncentive) {
     try {
-      await odooRpc('mail.template', 'send_mail', [[INCENTIVE_CONFIRM_TEMPLATE_ID], orderId], { force_send: true })
+      await odooRpc('mail.template', 'send_mail', [[INCENTIVE_CONFIRM_TEMPLATE_ID]], { res_id: orderId, force_send: true })   // arguments nommés (JSON-2)
     } catch (e: any) {
       console.warn(`[Odoo Circuit] envoi mail.template ${INCENTIVE_CONFIRM_TEMPLATE_ID} KO order=${orderId}:`, e?.message)
     }
@@ -252,7 +252,7 @@ export async function createRaceWeekendQuote(input: {
   } else if (mode === 'send') {
     // Envoie le devis au client (modèle « Send Quotation ») + passe l'état en « sent ».
     try {
-      await odooRpc('mail.template', 'send_mail', [[QUOTATION_TEMPLATE_ID], orderId!], { force_send: true })
+      await odooRpc('mail.template', 'send_mail', [[QUOTATION_TEMPLATE_ID]], { res_id: orderId!, force_send: true })   // arguments nommés (JSON-2)
       await odooRpc('sale.order', 'action_quotation_sent', [[orderId!]]).catch(() => {})
     } catch (e: any) { console.warn(`[Odoo Course] envoi devis KO order=${orderId}:`, e?.message) }
   }

@@ -2,6 +2,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession }          from 'next-auth'
 import { authOptions }               from '@/lib/auth'
+import { odooSend } from '@/lib/odoo-transport'
 
 const ODOO_URL     = process.env.ODOO_URL!
 const ODOO_DB      = process.env.ODOO_DB!
@@ -15,18 +16,8 @@ function normalizePlate(plate: string): string {
 async function odooCall<T = any>(
   model: string, method: string, args: any[] = [], kwargs: object = {}
 ): Promise<T> {
-  const res = await fetch(`${ODOO_URL}/jsonrpc`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      jsonrpc: '2.0', method: 'call', id: Date.now(),
-      params: {
-        service: 'object', method: 'execute_kw',
-        args: [ODOO_DB, ODOO_UID, ODOO_API_KEY, model, method, args, kwargs]
-      }
-    })
-  })
-  const data = await res.json()
+  // Transport commun (JSON-2 ou JSON-RPC, cf. @/lib/odoo-transport) — compte de service, sans contexte société.
+  const data = await odooSend({ url: ODOO_URL, db: ODOO_DB, uid: ODOO_UID, apiKey: ODOO_API_KEY }, model, method, args, kwargs as Record<string, any>)
   if (data.error) throw new Error(`Odoo: ${JSON.stringify(data.error)}`)
   return data.result
 }
