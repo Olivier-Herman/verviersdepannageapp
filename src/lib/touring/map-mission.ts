@@ -8,6 +8,7 @@
 // assisted_name = membre Touring (MEM_*), billed_to = Touring (paie).
 
 import { mapComexVr } from './vr'
+import { withBrusselsOffset } from '@/lib/time/bxl-offset'
 
 const s = (v: any): string | null => {
   const t = v == null ? '' : String(v).trim()
@@ -94,7 +95,7 @@ function comexDate(v: any): string | null {
   const t = s(v)
   if (!t) return null
   // Déjà ISO-like ; on force un offset Bruxelles si absent.
-  return /[zZ]|[+-]\d{2}:?\d{2}$/.test(t) ? t : `${t.replace(/\.\d+$/, '')}+02:00`
+  return /[zZ]|[+-]\d{2}:?\d{2}$/.test(t) ? t : withBrusselsOffset(t.replace(/\.\d+$/, ''))
 }
 
 export interface ComexMapInput {

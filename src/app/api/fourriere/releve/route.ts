@@ -8,6 +8,7 @@
 //        decision : present_ok (la fiche trouvée est bien ici) | garder (créer la fiche si besoin + étiquette)
 //                   | scratch (épave, sortie du parc) | note (juste noter)
 import { NextResponse }      from 'next/server'
+import { withBrusselsOffset } from '@/lib/time/bxl-offset'
 import { getServerSession }  from 'next-auth'
 import { authOptions }       from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase'
@@ -45,7 +46,7 @@ export async function GET(req: Request) {
     if (id) rq = rq.eq('id', id)
     else {
       const jour = /^\d{4}-\d{2}-\d{2}$/.test(qs.get('jour') || '') ? qs.get('jour')! : new Date().toISOString().slice(0, 10)
-      rq = rq.gte('started_at', `${jour}T00:00:00+02:00`).lt('started_at', `${jour}T23:59:59+02:00`)
+      rq = rq.gte('started_at', withBrusselsOffset(`${jour}T00:00:00`)).lt('started_at', withBrusselsOffset(`${jour}T23:59:59`))
       if (qs.get('lieu')) rq = rq.eq('lieu', qs.get('lieu')!)
     }
     const { data: rels } = await rq

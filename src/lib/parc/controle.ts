@@ -17,6 +17,7 @@
 //     sur un bouton dédié (présence certaine puisqu'ils ont été scannés).
 
 import { createAdminClient } from '@/lib/supabase'
+import { withBrusselsOffset } from '@/lib/time/bxl-offset'
 import { releaseParcAndShift } from '@/lib/parc/release'
 import { exitPaidVehicle } from '@/lib/parc/verification'
 import { parseScanInput } from '@/lib/towsoft-migration/parse-scan'
@@ -289,7 +290,7 @@ export async function applyDecisions(sb: Sb, controleId: string, by: Scanner) {
     const { data: m } = await sb.from('incoming_missions').select('id, status, parc_zone_key').eq('id', it.mission_id).maybeSingle()
     if (!m) res = 'fiche introuvable'
     else if (it.decision === 'sortir') {
-      const exitIso = it.analysis?.exit_date ? `${String(it.analysis.exit_date).slice(0, 10)}T12:00:00+02:00` : now
+      const exitIso = it.analysis?.exit_date ? withBrusselsOffset(`${String(it.analysis.exit_date).slice(0, 10)}T12:00:00`) : now
       const why = `contrôle du parc du ${fmt(now)} : non retrouvée — ${it.analysis?.label || 'sortie décidée par Mobi'}`
       if (m.status === 'parked') res = await exitPaidVehicle(sb, m.id, exitIso, why)
       else {

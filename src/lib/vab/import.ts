@@ -9,6 +9,7 @@
 // vehicle_fuel manquaient sur le bouton manuel).
 
 import { isHighwayAddress } from '@/lib/highways/parse'
+import { withBrusselsOffset } from '@/lib/time/bxl-offset'
 import { createAdminClient } from '@/lib/supabase'
 import { loginVab, listVabMissions, fetchVabMissionDetail } from './scraper'
 import { sendPushToRole, sendPushToUser } from '@/lib/push'
@@ -167,7 +168,7 @@ export async function runVabImport(opts: { mode: VabImportMode }): Promise<VabIm
       let interventionIso: string | null = null
       if (detail.interventionAt) {
         const m = detail.interventionAt.match(/(\d{2})-(\d{2})-(\d{4})\s+(\d{2}):(\d{2}):(\d{2})/)
-        if (m) interventionIso = `${m[3]}-${m[2]}-${m[1]}T${m[4]}:${m[5]}:${m[6]}+02:00`
+        if (m) interventionIso = withBrusselsOffset(`${m[3]}-${m[2]}-${m[1]}T${m[4]}:${m[5]}:${m[6]}`)
       }
 
       const aidMatch = item.detailHref.match(/[?&]AssignmentId=(\d+)/i)

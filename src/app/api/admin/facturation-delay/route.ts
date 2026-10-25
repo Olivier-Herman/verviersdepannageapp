@@ -6,6 +6,7 @@
 // qui gonfle la moyenne. Superadmin. Olivier 2026-07-31.
 
 import { NextResponse }      from 'next/server'
+import { withBrusselsOffset } from '@/lib/time/bxl-offset'
 import { getServerSession }  from 'next-auth'
 import { authOptions }       from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase'
@@ -40,7 +41,7 @@ export async function GET(req: Request) {
   const sinceParam = sp.get('since')
   const sb = createAdminClient()
   const startPeriod = sinceParam
-    ? new Date(sinceParam.length <= 10 ? `${sinceParam}T00:00:00+02:00` : sinceParam).toISOString()
+    ? new Date(sinceParam.length <= 10 ? withBrusselsOffset(`${sinceParam}T00:00:00`) : sinceParam).toISOString()
     : bxlDayStartISO(days)
 
   // Ensemble COMEX BKO (mêmes règles que le tableau de bord).
