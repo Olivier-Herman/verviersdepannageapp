@@ -6,6 +6,7 @@
 // avant le rappel mensuel. Auth : Bearer CRON_SECRET.
 
 import { NextResponse } from 'next/server'
+import { gardeHeureBxl } from '@/lib/cron/heure-bxl'
 import { createAdminClient } from '@/lib/supabase'
 import { reconcileHorsComexWithAccords } from '@/lib/touring/accord-reconcile'
 import { withAiContext } from '@/lib/ai/usage'
@@ -31,5 +32,7 @@ async function handleGET(req: Request) {
 
 // Les appels d'IA de ce passage sont comptés sous « cron:touring-accord-reconcile » (conso_ia).
 export async function GET(...args: Parameters<typeof handleGET>) {
+  // Heure de Bruxelles (8 h) malgré le changement d'heure : planifiée deux fois en UTC (25/10/2026).
+  if (args[0].headers.get('authorization') === `Bearer ${process.env.CRON_SECRET}`) { const g = await gardeHeureBxl(args[0], 'touring-accord-reconcile', [8]); if (g) return g }
   return withAiContext({ declencheur: 'cron:touring-accord-reconcile' }, () => handleGET(...args))
 }

@@ -1,5 +1,6 @@
 // src/app/api/tgr/[id]/route.ts
 import { NextRequest, NextResponse } from 'next/server'
+import { aBruxelles } from '@/lib/time/bxl-offset'
 import { getServerSession }          from 'next-auth'
 import { authOptions }               from '@/lib/auth'
 import { createAdminClient }         from '@/lib/supabase'
@@ -240,7 +241,7 @@ export async function POST(
       const dateOnly = plannedDateStr ? String(plannedDateStr).slice(0, 10) : null
       const hour = plannedSlotStr === 'before_noon' ? 10 : plannedSlotStr === 'during_day' ? 14 : 9
       const interventionDate = dateOnly
-        ? new Date(`${dateOnly}T${String(hour).padStart(2, '0')}:00:00`).toISOString()
+        ? aBruxelles(dateOnly, hour).toISOString()   // créneau en heure belge (avant : lu en UTC, +1 h au planning)
         : new Date().toISOString()
 
       const extId = `tgr_${missionId}`

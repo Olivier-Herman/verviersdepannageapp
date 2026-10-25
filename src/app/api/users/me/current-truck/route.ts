@@ -9,6 +9,7 @@
 // Olivier 2026-06-01.
 
 import { NextResponse }      from 'next/server'
+import { aBruxelles, jourBruxelles } from '@/lib/time/bxl-offset'
 import { getServerSession }  from 'next-auth'
 import { authOptions }       from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase'
@@ -20,13 +21,13 @@ export const dynamic = 'force-dynamic'
  * Si current_truck_set_at < ce seuil, on doit redemander confirmation au chauffeur.
  */
 function lastThreshold(now: Date): Date {
-  const today7  = new Date(now); today7.setHours(7, 0, 0, 0)
-  const today17 = new Date(now); today17.setHours(17, 0, 0, 0)
+  // Seuils 7 h et 17 h en heure BELGE (avant : setHours en UTC sur le serveur, une à deux heures trop tard).
+  const jour = jourBruxelles(0, now)
+  const today7 = aBruxelles(jour, 7), today17 = aBruxelles(jour, 17)
   if (now >= today17) return today17
   if (now >= today7)  return today7
   // Avant 7h : dernier seuil = 17h hier
-  const yesterday17 = new Date(today17); yesterday17.setDate(yesterday17.getDate() - 1)
-  return yesterday17
+  return aBruxelles(jourBruxelles(-1, now), 17)
 }
 
 export async function GET() {

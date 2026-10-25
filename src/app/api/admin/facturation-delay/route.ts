@@ -6,7 +6,7 @@
 // qui gonfle la moyenne. Superadmin. Olivier 2026-07-31.
 
 import { NextResponse }      from 'next/server'
-import { withBrusselsOffset } from '@/lib/time/bxl-offset'
+import { withBrusselsOffset, aBruxelles, jourBruxelles } from '@/lib/time/bxl-offset'
 import { getServerSession }  from 'next-auth'
 import { authOptions }       from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase'
@@ -20,13 +20,8 @@ const PERIOD_DAYS = 7
 let TOURING_SOURCES: string[] = []   // tag « touring » du catalogue, posé à chaque appel
 
 function bxlDayStartISO(daysAgo = 0): string {
-  const now = new Date()
-  const bxl = new Date(now.toLocaleString('en-US', { timeZone: 'Europe/Brussels' }))
-  const utc = new Date(now.toLocaleString('en-US', { timeZone: 'UTC' }))
-  const offsetMs = bxl.getTime() - utc.getTime()
-  const midnight = new Date(bxl); midnight.setHours(0, 0, 0, 0)
-  midnight.setDate(midnight.getDate() - daysAgo)
-  return new Date(midnight.getTime() - offsetMs).toISOString()
+  // Minuit belge il y a N jours, avec le décalage de CE jour-là (changement d'heure, 25/10/2026).
+  return aBruxelles(jourBruxelles(-daysAgo), 0).toISOString()
 }
 
 export async function GET(req: Request) {

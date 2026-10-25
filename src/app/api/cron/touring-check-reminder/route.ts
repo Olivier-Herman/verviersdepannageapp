@@ -6,6 +6,7 @@
 // Auth : Bearer CRON_SECRET.
 
 import { NextResponse } from 'next/server'
+import { gardeHeureBxl } from '@/lib/cron/heure-bxl'
 import { createAdminClient } from '@/lib/supabase'
 import { reconcileHorsComexWithAccords } from '@/lib/touring/accord-reconcile'
 import { buildTouringCheckList } from '@/lib/touring/check-list'
@@ -73,5 +74,7 @@ async function handleGET(req: Request) {
 
 // Les appels d'IA de ce passage sont comptés sous « cron:touring-check-reminder » (conso_ia).
 export async function GET(...args: Parameters<typeof handleGET>) {
+  // Heure de Bruxelles (13 h) malgré le changement d'heure : planifiée deux fois en UTC (25/10/2026).
+  if (args[0].headers.get('authorization') === `Bearer ${process.env.CRON_SECRET}`) { const g = await gardeHeureBxl(args[0], 'touring-check-reminder', [13]); if (g) return g }
   return withAiContext({ declencheur: 'cron:touring-check-reminder' }, () => handleGET(...args))
 }

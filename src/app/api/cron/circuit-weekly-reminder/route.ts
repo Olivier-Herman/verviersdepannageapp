@@ -14,6 +14,7 @@
 // Auth : Bearer CRON_SECRET
 
 import { NextResponse }      from 'next/server'
+import { gardeHeureBxl } from '@/lib/cron/heure-bxl'
 import { createAdminClient } from '@/lib/supabase'
 import { sendPushToRole }    from '@/lib/push'
 import { withAiContext } from '@/lib/ai/usage'
@@ -112,5 +113,7 @@ function formatDateShort(iso: string): string {
 
 // Les appels d'IA de ce passage sont comptés sous « cron:circuit-weekly-reminder » (conso_ia).
 export async function GET(...args: Parameters<typeof handleGET>) {
+  // Heure de Bruxelles (12 h) malgré le changement d'heure : planifiée deux fois en UTC (25/10/2026).
+  if (args[0].headers.get('authorization') === `Bearer ${process.env.CRON_SECRET}`) { const g = await gardeHeureBxl(args[0], 'circuit-weekly-reminder', [12]); if (g) return g }
   return withAiContext({ declencheur: 'cron:circuit-weekly-reminder' }, () => handleGET(...args))
 }

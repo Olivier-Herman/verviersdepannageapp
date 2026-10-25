@@ -5,6 +5,7 @@
 // Protégé par CRON_SECRET. Olivier 2026-07-29.
 
 import { NextResponse }        from 'next/server'
+import { gardeHeureBxl } from '@/lib/cron/heure-bxl'
 import { createAdminClient }   from '@/lib/supabase'
 import { pollDomaineDatesIn }  from '@/lib/domaine/intake'
 import { withAiContext } from '@/lib/ai/usage'
@@ -34,5 +35,7 @@ async function handleGET(req: Request) {
 
 // Les appels d'IA de ce passage sont comptés sous « cron:poll-domaine-dates-in » (conso_ia).
 export async function GET(...args: Parameters<typeof handleGET>) {
+  // Heure de Bruxelles (13 h) malgré le changement d'heure : planifiée deux fois en UTC (25/10/2026).
+  if (args[0].headers.get('authorization') === `Bearer ${process.env.CRON_SECRET}`) { const g = await gardeHeureBxl(args[0], 'poll-domaine-dates-in', [13]); if (g) return g }
   return withAiContext({ declencheur: 'cron:poll-domaine-dates-in' }, () => handleGET(...args))
 }

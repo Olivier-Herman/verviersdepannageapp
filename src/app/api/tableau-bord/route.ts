@@ -7,6 +7,7 @@
 // VHU exclu). Données via service_role (no-store). Olivier 2026-07-30.
 
 import { NextResponse }      from 'next/server'
+import { aBruxelles, jourBruxelles } from '@/lib/time/bxl-offset'
 import { createAdminClient } from '@/lib/supabase'
 import { isPoliceNoPointage, loadDepots } from '@/lib/perf/police-trip'
 import { sourcesWithTag } from '@/lib/missions/source-catalog'
@@ -37,22 +38,12 @@ function roundTripKm(depot: { lat: number; lng: number }, lat: number, lng: numb
 
 // Instant UTC (ISO) de minuit à Bruxelles il y a `daysAgo` jours (gère l'heure d'été).
 function bxlDayStartISO(daysAgo = 0): string {
-  const now = new Date()
-  const bxl = new Date(now.toLocaleString('en-US', { timeZone: 'Europe/Brussels' }))
-  const utc = new Date(now.toLocaleString('en-US', { timeZone: 'UTC' }))
-  const offsetMs = bxl.getTime() - utc.getTime()
-  const midnight = new Date(bxl); midnight.setHours(0, 0, 0, 0)
-  midnight.setDate(midnight.getDate() - daysAgo)
-  return new Date(midnight.getTime() - offsetMs).toISOString()
+  // Minuit belge il y a N jours, avec le décalage de CE jour-là (changement d'heure, 25/10/2026).
+  return aBruxelles(jourBruxelles(-daysAgo), 0).toISOString()
 }
 // Minuit du 1er du mois courant (Bruxelles) en UTC ISO.
 function bxlMonthStartISO(): string {
-  const now = new Date()
-  const bxl = new Date(now.toLocaleString('en-US', { timeZone: 'Europe/Brussels' }))
-  const utc = new Date(now.toLocaleString('en-US', { timeZone: 'UTC' }))
-  const offsetMs = bxl.getTime() - utc.getTime()
-  const first = new Date(bxl); first.setDate(1); first.setHours(0, 0, 0, 0)
-  return new Date(first.getTime() - offsetMs).toISOString()
+  return aBruxelles(jourBruxelles(0).slice(0, 8) + '01', 0).toISOString()
 }
 
 // Nombre de clôtures Allianz prêtes (Hexalite TO_ASSIGN ∩ VD Soft to_invoice).

@@ -1,6 +1,7 @@
 // src/app/api/towsoft/create/route.ts
 
 import { NextResponse }      from 'next/server'
+import { withBrusselsOffset } from '@/lib/time/bxl-offset'
 import { getServerSession }  from 'next-auth'
 import { authOptions }       from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase'
@@ -314,11 +315,8 @@ export async function POST(req: Request) {
         const [dd, mm, yyyy] = (date || '').split('-')
         const [hh, mn] = (time || '00:00').split(':')
         if (dd && mm && yyyy) {
-          const month = parseInt(mm, 10)
-          const offMin = (month >= 4 && month <= 10) ? 120 : 60   // BE : +2 été, +1 hiver
-          const offH = String(Math.floor(offMin / 60)).padStart(2, '0')
-          const offM = String(offMin % 60).padStart(2, '0')
-          interventionISO = new Date(`${yyyy}-${mm}-${dd}T${hh}:${mn}:00+${offH}:${offM}`).toISOString()
+          // Vrai décalage de Bruxelles ce jour-là (avant : deviné par le mois, faux fin octobre — 25/10/2026).
+          interventionISO = new Date(withBrusselsOffset(`${yyyy}-${mm}-${dd}T${hh}:${mn}:00`)).toISOString()
         }
       } catch {}
     }

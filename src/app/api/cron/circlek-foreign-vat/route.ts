@@ -5,6 +5,7 @@
 // Protégé par CRON_SECRET. Olivier 2026-09-30.
 
 import { NextResponse } from 'next/server'
+import { gardeHeureBxl } from '@/lib/cron/heure-bxl'
 import { fixCircleKForeignVat } from '@/lib/finance/circlek-foreign-vat'
 import { withAiContext } from '@/lib/ai/usage'
 
@@ -28,5 +29,7 @@ async function handleGET(req: Request) {
 
 // Les appels d'IA de ce passage sont comptés sous « cron:circlek-foreign-vat » (conso_ia).
 export async function GET(...args: Parameters<typeof handleGET>) {
+  // Heure de Bruxelles (8 h) malgré le changement d'heure : planifiée deux fois en UTC (25/10/2026).
+  if (args[0].headers.get('authorization') === `Bearer ${process.env.CRON_SECRET}`) { const g = await gardeHeureBxl(args[0], 'circlek-foreign-vat', [8]); if (g) return g }
   return withAiContext({ declencheur: 'cron:circlek-foreign-vat' }, () => handleGET(...args))
 }

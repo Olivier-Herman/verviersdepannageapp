@@ -14,6 +14,7 @@
 // Olivier 2026-06-01.
 
 import { estimateMissionPrice } from '@/lib/missions/estimate-price'
+import { withBrusselsOffset } from '@/lib/time/bxl-offset'
 import { NextResponse }      from 'next/server'
 import { getServerSession }  from 'next-auth'
 import { authOptions }       from '@/lib/auth'
@@ -100,21 +101,9 @@ export async function POST(req: Request) {
       const [dd, mm, yyyy] = (date || '').split('-')
       const [hh, mn]       = (time || '00:00').split(':')
       if (dd && mm && yyyy) {
-        // Fallback : interprete en heure Europe/Brussels (UTC+1 hiver / UTC+2 ete)
-        // en construisant explicitement avec offset. Approximation simple :
-        // on devine l offset selon le mois (jan/feb/dec/oct fin = +1, autres = +2).
-        const offsetMinutes = (() => {
-          const month = parseInt(mm, 10)
-          // DST en BE : dernier dimanche de mars → dernier dimanche d octobre = UTC+2
-          // Approximation : avril-octobre inclusif = +2, sinon +1.
-          return (month >= 4 && month <= 10) ? -120 : -60
-        })()
-        const localStr = `${yyyy}-${mm}-${dd}T${hh}:${mn}:00`
-        const sign = offsetMinutes >= 0 ? '+' : '-'
-        const absMin = Math.abs(offsetMinutes)
-        const offH = String(Math.floor(absMin / 60)).padStart(2, '0')
-        const offM = String(absMin % 60).padStart(2, '0')
-        interventionISO = new Date(`${localStr}${sign}${offH}:${offM}`).toISOString()
+        // Heure locale de Bruxelles → UTC avec le vrai décalage du jour (avant : décalage deviné « par le mois »,
+        // faux du dernier dimanche d'octobre au 31/10 — audit du changement d'heure, 25/10/2026).
+        interventionISO = new Date(withBrusselsOffset(`${yyyy}-${mm}-${dd}T${hh}:${mn}:00`)).toISOString()
       }
     } catch {}
   }

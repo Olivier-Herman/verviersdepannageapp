@@ -2,6 +2,7 @@
 // Chaque geste rend un résultat lisible ; un geste en échec n'empêche pas les autres.
 
 import { createAdminClient } from '@/lib/supabase'
+import { aBruxelles, jourBruxelles } from '@/lib/time/bxl-offset'
 import { sendNotification } from '@/lib/notifications/send'
 import { sendEmail } from '@/lib/emails'
 import { createDraftMail } from '@/lib/mail-agent/graph'
@@ -61,7 +62,7 @@ export async function executePlan(courrier: { id: string; pages: Page[]; reading
           results.push({ kind: s.kind, ok: true, note: m?.requisitoire_at ? 'Scan rangé ; le réquisitoire était déjà marqué reçu.' : 'Réquisitoire marqué reçu, scan rangé dans la fiche.' }); break
         }
         case 'task': {
-          const due = new Date(); due.setDate(due.getDate() + Math.max(0, Number(p.due_days) || 0)); due.setHours(18, 0, 0, 0)
+          const due = aBruxelles(jourBruxelles(Math.max(0, Number(p.due_days) || 0)), 18)   // 18 h belges (avant : 18 h UTC = 19 h/20 h)
           const { data: t } = await sb.from('courrier_tasks').insert({ courrier_id: courrier.id, assignee_id: p.assignee_id, title: String(p.title).slice(0, 300), due_at: due.toISOString(), created_by: actorId }).select('id').single()
           await sendNotification(p.assignee_id, 'courrier_task', { title: 'Courrier : tâche pour vous', body: String(p.title).slice(0, 180), action_url: `/courrier?c=${courrier.id}` } as any).catch(() => null)
           results.push({ kind: s.kind, ok: !!t, note: t ? 'Tâche créée et notifiée.' : 'Tâche non créée.' }); break

@@ -22,3 +22,14 @@ export function brusselsOffset(local: string): string {
 
 /** Heure locale de Bruxelles sans fuseau → ISO avec le bon décalage. */
 export const withBrusselsOffset = (local: string): string => `${String(local).slice(0, 19)}${brusselsOffset(local)}`
+
+/** Date du jour à Bruxelles « AAAA-MM-JJ », décalée de `plusJours` (calendrier, sans souci d'heure d'été). */
+export function jourBruxelles(plusJours = 0, d = new Date()): string {
+  const base = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Brussels', year: 'numeric', month: '2-digit', day: '2-digit' }).format(d)
+  const t = new Date(`${base}T12:00:00Z`); t.setUTCDate(t.getUTCDate() + plusJours)
+  return t.toISOString().slice(0, 10)
+}
+
+/** Instant (Date) d'une heure locale de Bruxelles un jour donné : `aBruxelles('2026-10-26', 7)` = 7 h belges. */
+export const aBruxelles = (jour: string, heure: number, minute = 0): Date =>
+  new Date(withBrusselsOffset(`${jour}T${String(heure).padStart(2, '0')}:${String(minute).padStart(2, '0')}:00`))

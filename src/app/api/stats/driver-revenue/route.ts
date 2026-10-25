@@ -17,6 +17,7 @@
 // Permission : module 'stats' (ou admin/superadmin).
 
 import { NextResponse }      from 'next/server'
+import { aBruxelles, jourBruxelles } from '@/lib/time/bxl-offset'
 import { getServerSession }  from 'next-auth'
 import { authOptions }       from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase'
@@ -37,19 +38,19 @@ const VAT = 1.21
 const round2 = (n: number) => Math.round(n * 100) / 100
 
 function startOf(date: Date, unit: 'day' | 'week' | 'month' | 'quarter' | 'year'): Date {
-  const d = new Date(date)
-  d.setHours(0, 0, 0, 0)
-  if (unit === 'day') return d
+  // Débuts de période en heure BELGE (avant : minuit UTC du serveur, 25/10/2026).
+  const jour = jourBruxelles(0, date)
+  const [y, m, d] = jour.split('-').map(Number)
+  if (unit === 'day') return aBruxelles(jour, 0)
   if (unit === 'week') {
-    const day = d.getDay()
-    const diff = day === 0 ? -6 : 1 - day
-    d.setDate(d.getDate() + diff)
-    return d
+    const wd = new Date(Date.UTC(y, m - 1, d)).getUTCDay()   // 0 = dimanche
+    const t = new Date(Date.UTC(y, m - 1, d)); t.setUTCDate(t.getUTCDate() + (wd === 0 ? -6 : 1 - wd))
+    return aBruxelles(t.toISOString().slice(0, 10), 0)
   }
-  if (unit === 'month')   { d.setDate(1); return d }
-  if (unit === 'quarter') { d.setDate(1); d.setMonth(Math.floor(d.getMonth() / 3) * 3); return d }
-  if (unit === 'year')    { d.setDate(1); d.setMonth(0); return d }
-  return d
+  const pad = (n: number) => String(n).padStart(2, '0')
+  if (unit === 'month') return aBruxelles(`${y}-${pad(m)}-01`, 0)
+  if (unit === 'quarter') return aBruxelles(`${y}-${pad(Math.floor((m - 1) / 3) * 3 + 1)}-01`, 0)
+  return aBruxelles(`${y}-01-01`, 0)
 }
 
 function computePeriod(period: string, customFrom?: string, customTo?: string): { from: string; to: string; label: string } {

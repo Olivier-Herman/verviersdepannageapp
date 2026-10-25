@@ -3,6 +3,7 @@
 // Chaque matin ouvrable à 8 h 30 (Bruxelles) : « N mails attendent une
 // décision » aux décideurs (admin / superadmin). Olivier 23/09/2026, jour 3.
 import { NextResponse }      from 'next/server'
+import { gardeHeureBxl } from '@/lib/cron/heure-bxl'
 import { createAdminClient } from '@/lib/supabase'
 import { sendNotificationToRoles } from '@/lib/notifications/send'
 import { withAiContext } from '@/lib/ai/usage'
@@ -35,5 +36,7 @@ async function handleGET(req: Request) {
 
 // Les appels d'IA de ce passage sont comptés sous « cron:mail-agent-digest » (conso_ia).
 export async function GET(...args: Parameters<typeof handleGET>) {
+  // Heure de Bruxelles (8 h) malgré le changement d'heure : planifiée deux fois en UTC (25/10/2026).
+  if (args[0].headers.get('authorization') === `Bearer ${process.env.CRON_SECRET}`) { const g = await gardeHeureBxl(args[0], 'mail-agent-digest', [8]); if (g) return g }
   return withAiContext({ declencheur: 'cron:mail-agent-digest' }, () => handleGET(...args))
 }

@@ -8,6 +8,7 @@
 // Olivier 2026-07-29.
 
 import { NextResponse }        from 'next/server'
+import { gardeHeureBxl } from '@/lib/cron/heure-bxl'
 import { createAdminClient }   from '@/lib/supabase'
 import { invoiceCircuitOrder } from '@/lib/circuit/invoice'
 import { withAiContext } from '@/lib/ai/usage'
@@ -71,5 +72,7 @@ async function handleGET(req: Request) {
 
 // Les appels d'IA de ce passage sont comptés sous « cron:circuit-auto-invoice » (conso_ia).
 export async function GET(...args: Parameters<typeof handleGET>) {
+  // Heure de Bruxelles (7 h) malgré le changement d'heure : planifiée deux fois en UTC (25/10/2026).
+  if (args[0].headers.get('authorization') === `Bearer ${process.env.CRON_SECRET}`) { const g = await gardeHeureBxl(args[0], 'circuit-auto-invoice', [7]); if (g) return g }
   return withAiContext({ declencheur: 'cron:circuit-auto-invoice' }, () => handleGET(...args))
 }

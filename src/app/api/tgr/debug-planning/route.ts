@@ -8,6 +8,7 @@
 // GET /api/tgr/debug-planning?tgr=<id ou référence>
 
 import { NextResponse }      from 'next/server'
+import { aBruxelles } from '@/lib/time/bxl-offset'
 import { getServerSession }  from 'next-auth'
 import { authOptions }       from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase'
@@ -41,7 +42,7 @@ export async function GET(req: Request) {
   const dateOnly = m.deadline_date ? String(m.deadline_date).slice(0, 10) : null
   const hour = m.deadline_slot === 'before_noon' ? 10 : m.deadline_slot === 'during_day' ? 14 : 9
   const interventionDate = dateOnly
-    ? new Date(`${dateOnly}T${String(hour).padStart(2, '0')}:00:00`).toISOString()
+    ? aBruxelles(dateOnly, hour).toISOString()   // créneau en heure belge (avant : lu en UTC, +1 h au planning)
     : new Date().toISOString()
 
   const extId = `tgr_${m.id}`

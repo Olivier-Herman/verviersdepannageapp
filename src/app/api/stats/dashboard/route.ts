@@ -16,6 +16,7 @@
 // Permission : module 'stats' granté sur l user.
 
 import { NextResponse }      from 'next/server'
+import { aBruxelles, jourBruxelles } from '@/lib/time/bxl-offset'
 import { getServerSession }  from 'next-auth'
 import { authOptions }       from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase'
@@ -39,23 +40,19 @@ interface Period {
 }
 
 function startOf(date: Date, unit: 'day' | 'week' | 'month' | 'quarter' | 'year'): Date {
-  const d = new Date(date)
-  d.setHours(0, 0, 0, 0)
-  if (unit === 'day') return d
+  // Débuts de période en heure BELGE (avant : minuit UTC du serveur, 25/10/2026).
+  const jour = jourBruxelles(0, date)
+  const [y, m, d] = jour.split('-').map(Number)
+  if (unit === 'day') return aBruxelles(jour, 0)
   if (unit === 'week') {
-    const day = d.getDay() // 0=sunday
-    const diff = day === 0 ? -6 : 1 - day  // lundi=debut de semaine
-    d.setDate(d.getDate() + diff)
-    return d
+    const wd = new Date(Date.UTC(y, m - 1, d)).getUTCDay()   // 0 = dimanche
+    const t = new Date(Date.UTC(y, m - 1, d)); t.setUTCDate(t.getUTCDate() + (wd === 0 ? -6 : 1 - wd))
+    return aBruxelles(t.toISOString().slice(0, 10), 0)
   }
-  if (unit === 'month') { d.setDate(1); return d }
-  if (unit === 'quarter') {
-    d.setDate(1)
-    d.setMonth(Math.floor(d.getMonth() / 3) * 3)
-    return d
-  }
-  if (unit === 'year') { d.setDate(1); d.setMonth(0); return d }
-  return d
+  const pad = (n: number) => String(n).padStart(2, '0')
+  if (unit === 'month') return aBruxelles(`${y}-${pad(m)}-01`, 0)
+  if (unit === 'quarter') return aBruxelles(`${y}-${pad(Math.floor((m - 1) / 3) * 3 + 1)}-01`, 0)
+  return aBruxelles(`${y}-01-01`, 0)
 }
 
 function computePeriod(period: string, customFrom?: string, customTo?: string): Period {
@@ -351,9 +348,10 @@ export async function GET(req: Request) {
   for (const m of current) {
     const ts = m.intervention_date || m.received_at
     if (!ts) continue
-    const d = new Date(ts)
-    const wday = (d.getDay() + 6) % 7  // 0=lundi
-    const hour = d.getHours()
+    // Jour et heure BELGES (avant : heure UTC du serveur, une à deux heures d'écart).
+    const bp = Object.fromEntries(new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/Brussels', weekday: 'short', hour: '2-digit', hourCycle: 'h23' }).formatToParts(new Date(ts)).map(x => [x.type, x.value]))
+    const wday = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].indexOf(String(bp.weekday))  // 0=lundi
+    const hour = Number(bp.hour) % 24
     heatmap[wday][hour]++
   }
 

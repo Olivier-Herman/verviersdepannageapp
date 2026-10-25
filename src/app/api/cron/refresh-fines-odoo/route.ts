@@ -5,6 +5,7 @@
 // Planifié ~8h heure locale Belgique (voir vercel.json). Olivier 2026-07-01.
 
 import { NextResponse }      from 'next/server'
+import { gardeHeureBxl } from '@/lib/cron/heure-bxl'
 import { createAdminClient } from '@/lib/supabase'
 import { refreshManyFinesOdoo } from '@/lib/fines/odoo-bill'
 import { withAiContext } from '@/lib/ai/usage'
@@ -29,5 +30,7 @@ async function handleGET(req: Request) {
 
 // Les appels d'IA de ce passage sont comptés sous « cron:refresh-fines-odoo » (conso_ia).
 export async function GET(...args: Parameters<typeof handleGET>) {
+  // Heure de Bruxelles (8 h) malgré le changement d'heure : planifiée deux fois en UTC (25/10/2026).
+  if (args[0].headers.get('authorization') === `Bearer ${process.env.CRON_SECRET}`) { const g = await gardeHeureBxl(args[0], 'refresh-fines-odoo', [8]); if (g) return g }
   return withAiContext({ declencheur: 'cron:refresh-fines-odoo' }, () => handleGET(...args))
 }

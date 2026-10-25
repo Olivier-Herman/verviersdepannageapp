@@ -2,6 +2,7 @@
 // Envoie le contenu extrait à Claude API et retourne les données normalisées
 
 import type { MissionSource, MissionType } from '@/types'
+import { withBrusselsOffset } from '@/lib/time/bxl-offset'
 import type { ExtractedContent }           from './extractor'
 import { ANTHROPIC_MODELS }                from '@/lib/anthropic-model'
 import { recordAiUsage } from '@/lib/ai/usage'
@@ -91,7 +92,7 @@ RÈGLES D'EXTRACTION:
 - vehicle_fuel = "Carburant", vehicle_gearbox = "Type de boîte de vitesse"
 - "Lieu de survenance" = incident_address + incident_city + incident_country
 - "Lieu de livraison" = destination_address ; le NOM du garage est souvent dans "Information additionnelle" → destination_name
-- "Date et heure programmée" : si un créneau est renseigné (ex "2026-09-04T11:00:00 2026-09-04T11:30:00", heure de Bruxelles), scheduled_at = DÉBUT du créneau converti en UTC ; sinon null
+- "Date et heure programmée" : si un créneau est renseigné (ex "2026-09-04T11:00:00 2026-09-04T11:30:00", heure de Bruxelles), scheduled_at = DÉBUT du créneau, en heure de Bruxelles telle qu'écrite, format AAAA-MM-JJTHH:MM:SS SANS fuseau (aucune conversion) ; sinon null
 - "Langue parlée" → client_language : French→fr, Dutch/Nederlands→nl, German/Deutsch→de, English→en
 - "Est en sous-sol" : OUI → underground = true, NON → false
 - "Diagnostique" contient des codes internes AXA (COUNTRIES, CASE_SOURCE…) : à IGNORER
@@ -192,7 +193,7 @@ RÈGLES D'EXTRACTION:
 - vehicle_plate = « Immatriculation » (sans espace, majuscules) ; « Marque / Type » : 1er mot = vehicle_brand (majuscules), reste = vehicle_model sans répéter la marque ni le carburant (« Nissan NISSAN QASHQAI Essence » → NISSAN / QASHQAI) ; vehicle_fuel depuis le type (Essence / Diesel) ; vehicle_gearbox = « Boite automatique » Oui → Automatique, Non → Manuelle.
 - incident_type = « Origine de la panne » en français court ; incident_description = « Observations » (traduire en français si en néerlandais).
 - amount_guaranteed = « Montant de la prise en charge : EUR x Hors TVA » (nombre seul, ex 300). C'est le forfait convenu hors TVA.
-- scheduled_at = date et heure de « Mission de transfert / remorquage le JJ-MM-AAAA HH:MM » (heure belge) → ISO 8601 UTC.
+- scheduled_at = date et heure de « Mission de transfert / remorquage le JJ-MM-AAAA HH:MM » (heure belge) → AAAA-MM-JJTHH:MM:SS en heure belge, SANS fuseau ni conversion.
 - incident_at = « Date / heure » du document → ISO 8601 UTC.
 Ajoute dans le JSON le champ "document_kind".`,
 
@@ -236,7 +237,7 @@ Extrais les données de cette mission et retourne ce JSON (null si absent):
   "destination_address": "adresse complète de destination",
   "amount_guaranteed": null,
   "incident_at": "ISO 8601 UTC datetime ou null",
-  "scheduled_at": "rendez-vous fixé par l'assisteur, ISO 8601 UTC, sinon null",
+  "scheduled_at": "rendez-vous fixé par l'assisteur, heure de Bruxelles AAAA-MM-JJTHH:MM:SS sans fuseau, sinon null",
   "client_language": "fr|nl|de|en ou null",
   "underground": null,
   "document_kind": null,
@@ -357,9 +358,21 @@ export async function parseMissionContent(
                             ? parseFloat(String(parsed.amount_guaranteed)) || null
                             : null,
     incident_at:          (parsed.incident_at          as string | null) || null,
-    scheduled_at:         (parsed.scheduled_at         as string | null) || null,
+    // Heure belge rendue sans fuseau par le modèle → UTC dans le code (le modèle ne connaît pas l'heure d'été, 25/10/2026).
+    scheduled_at:         toScheduledUtc(parsed.scheduled_at as string | null),
     client_language:      (() => { const l = String(parsed.client_language || '').toLowerCase().slice(0, 2); return ['fr', 'nl', 'de', 'en'].includes(l) ? l : null })(),
     underground:          typeof parsed.underground === 'boolean' ? parsed.underground : null,
     confidence:           parseFloat(String(parsed.confidence))          || 0.5,
   }
+}
+
+/** Heure belge AAAA-MM-JJTHH:MM[:SS] (sans fuseau) → ISO UTC ; une valeur déjà munie d'un fuseau est gardée. */
+function toScheduledUtc(v: string | null): string | null {
+  if (!v) return null
+  const t = String(v).trim()
+  if (/[zZ]|[+-]\d{2}:?\d{2}$/.test(t)) { const d = new Date(t); return isFinite(d.getTime()) ? d.toISOString() : null }
+  const m = t.match(/^(\d{4}-\d{2}-\d{2})[T ](\d{2}:\d{2})(?::(\d{2}))?/)
+  if (!m) return null
+  const d = new Date(withBrusselsOffset(`${m[1]}T${m[2]}:${m[3] || '00'}`))
+  return isFinite(d.getTime()) ? d.toISOString() : null
 }

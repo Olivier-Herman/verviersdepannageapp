@@ -4,6 +4,7 @@
 // passé (délai pour ajouter un supplément), on CONFIRME le devis puis on FACTURE.
 
 import { NextRequest, NextResponse } from 'next/server'
+import { gardeHeureBxl } from '@/lib/cron/heure-bxl'
 import { createAdminClient } from '@/lib/supabase'
 import { odooRpc } from '@/lib/odoo'
 import { invoiceCircuitOrder } from '@/lib/circuit/invoice'
@@ -54,5 +55,7 @@ async function handleGET(req: NextRequest) {
 
 // Les appels d'IA de ce passage sont comptés sous « cron:circuit-race-invoice » (conso_ia).
 export async function GET(...args: Parameters<typeof handleGET>) {
+  // Heure de Bruxelles (7 h) malgré le changement d'heure : planifiée deux fois en UTC (25/10/2026).
+  if (args[0].headers.get('authorization') === `Bearer ${process.env.CRON_SECRET}`) { const g = await gardeHeureBxl(args[0], 'circuit-race-invoice', [7]); if (g) return g }
   return withAiContext({ declencheur: 'cron:circuit-race-invoice' }, () => handleGET(...args))
 }

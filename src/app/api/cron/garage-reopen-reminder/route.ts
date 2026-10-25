@@ -5,6 +5,7 @@
 // Olivier 2026-07-14.
 
 import { NextResponse }      from 'next/server'
+import { gardeHeureBxl } from '@/lib/cron/heure-bxl'
 import { createAdminClient } from '@/lib/supabase'
 import { sendPushToRole }    from '@/lib/push'
 import { withAiContext } from '@/lib/ai/usage'
@@ -64,5 +65,7 @@ async function handleGET(req: Request) {
 
 // Les appels d'IA de ce passage sont comptés sous « cron:garage-reopen-reminder » (conso_ia).
 export async function GET(...args: Parameters<typeof handleGET>) {
+  // Heure de Bruxelles (9 h) malgré le changement d'heure : planifiée deux fois en UTC (25/10/2026).
+  if (args[0].headers.get('authorization') === `Bearer ${process.env.CRON_SECRET}`) { const g = await gardeHeureBxl(args[0], 'garage-reopen-reminder', [9]); if (g) return g }
   return withAiContext({ declencheur: 'cron:garage-reopen-reminder' }, () => handleGET(...args))
 }

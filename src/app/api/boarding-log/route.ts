@@ -14,6 +14,7 @@
 //      celles-là sont toutes nées d'un cas réel rencontré cette semaine.
 
 import { NextResponse }      from 'next/server'
+import { aBruxelles, jourBruxelles } from '@/lib/time/bxl-offset'
 import { getServerSession }  from 'next-auth'
 import { authOptions }       from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase'
@@ -31,13 +32,7 @@ const VALID_PINS = [
  *  clôturé n'existe pas : il n'y a personne à qui parler. */
 let ENVOI_REEL: string[] = []   // tag « cloture_externe » du catalogue, posé à chaque appel
 
-const bxlDayStartISO = (daysAgo = 0) => {
-  const now = new Date()
-  const bxl = new Date(now.toLocaleString('en-US', { timeZone: 'Europe/Brussels' }))
-  bxl.setHours(0, 0, 0, 0); bxl.setDate(bxl.getDate() - daysAgo)
-  const off = now.getTime() - new Date(now.toLocaleString('en-US', { timeZone: 'Europe/Brussels' })).getTime()
-  return new Date(bxl.getTime() + off).toISOString()
-}
+const bxlDayStartISO = (daysAgo = 0) => aBruxelles(jourBruxelles(-daysAgo), 0).toISOString()   // décalage du jour même (25/10/2026)
 
 export async function GET(req: Request) {
   ENVOI_REEL = await sourcesWithTag('cloture_externe')

@@ -5,6 +5,7 @@
 // respect de l'échéance) + le lien vers la page de supervision. Olivier 2026-07-11.
 
 import { NextRequest, NextResponse } from 'next/server'
+import { gardeHeureBxl } from '@/lib/cron/heure-bxl'
 import { createAdminClient } from '@/lib/supabase'
 import { getTgrSupervisionData } from '@/lib/tgr/supervision'
 import { buildTgrReportEmail } from '@/lib/tgr/report-email'
@@ -46,5 +47,7 @@ async function handleGET(req: NextRequest) {
 
 // Les appels d'IA de ce passage sont comptés sous « cron:tgr-supervisor-report » (conso_ia).
 export async function GET(...args: Parameters<typeof handleGET>) {
+  // Heure de Bruxelles (10 h) malgré le changement d'heure : planifiée deux fois en UTC (25/10/2026).
+  if (args[0].headers.get('authorization') === `Bearer ${process.env.CRON_SECRET}`) { const g = await gardeHeureBxl(args[0], 'tgr-supervisor-report', [10]); if (g) return g }
   return withAiContext({ declencheur: 'cron:tgr-supervisor-report' }, () => handleGET(...args))
 }
