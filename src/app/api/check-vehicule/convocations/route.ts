@@ -8,6 +8,7 @@
 // Accès : admin / superadmin / dispatcher.
 
 import { NextResponse }      from 'next/server'
+import { brusselsOffset } from '@/lib/time/bxl-offset'
 import { getServerSession }  from 'next-auth'
 import { authOptions }       from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase'
@@ -20,16 +21,8 @@ export const maxDuration  = 60
 const ALLOWED = ['admin', 'superadmin', 'dispatcher']
 const ok = (u: any) => ALLOWED.includes(u?.role) || (Array.isArray(u?.roles) && u.roles.some((r: string) => ALLOWED.includes(r)))
 
-/** Offset Bruxelles ('+01:00' ou '+02:00') pour une date donnée. */
-function brusselsOffset(dateStr: string): string {
-  try {
-    const d = new Date(dateStr + 'T12:00:00Z')
-    const s = d.toLocaleString('en-US', { timeZone: 'Europe/Brussels', timeZoneName: 'shortOffset' })
-    const m = s.match(/GMT([+-]\d{1,2})/)
-    const h = m ? parseInt(m[1], 10) : 2
-    return (h >= 0 ? '+' : '-') + String(Math.abs(h)).padStart(2, '0') + ':00'
-  } catch { return '+01:00' }
-}
+/** Offset Bruxelles pour une date donnée (calcul commun, src/lib/time/bxl-offset.ts). */
+const brusselsOffsetDay = (dateStr: string) => brusselsOffset(dateStr)
 
 export async function GET() {
   const session = await getServerSession(authOptions)
@@ -60,7 +53,7 @@ export async function POST(req: Request) {
   let rdvAt: string | null = null, reminderAt: string | null = null
   if (ex.rdv_date && /^\d{4}-\d{2}-\d{2}$/.test(ex.rdv_date)) {
     const time = ex.rdv_time && /^\d{1,2}:\d{2}$/.test(ex.rdv_time) ? ex.rdv_time.padStart(5, '0') : '09:00'
-    rdvAt = new Date(`${ex.rdv_date}T${time}:00${brusselsOffset(ex.rdv_date)}`).toISOString()
+    rdvAt = new Date(`${ex.rdv_date}T${time}:00${brusselsOffsetDay(ex.rdv_date)}`).toISOString()
     reminderAt = new Date(new Date(rdvAt).getTime() - 30 * 24 * 3600 * 1000).toISOString()
   }
 

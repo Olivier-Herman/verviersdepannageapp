@@ -9,6 +9,7 @@
 // ('on' | 'off') — voir /api/missions/driver-action. Les clôtures antérieures
 // se classent par la présence d'un journal Flux 2 sur la mission.
 import type { SupabaseClient } from '@supabase/supabase-js'
+import { withBrusselsOffset } from '@/lib/time/bxl-offset'
 
 export interface ChantierMetric { label: string; value: string; tone?: 'ok' | 'warn' | 'muted' }
 export type ChantierMetrics = Record<string, ChantierMetric[]>
@@ -27,7 +28,7 @@ export async function chantierMetrics(sb: SupabaseClient): Promise<ChantierMetri
 }
 
 async function flux2Metrics(sb: SupabaseClient): Promise<ChantierMetric[]> {
-  const since = FLUX2_MEASURE_START + 'T00:00:00+02:00'
+  const since = withBrusselsOffset(FLUX2_MEASURE_START + 'T00:00:00')
   const [{ data: done, error: e1 }, { data: f2, error: e2 }] = await Promise.all([
     sb.from('mission_logs').select('mission_id, metadata').in('action', ['completed', 'complete_delivery']).gte('created_at', since).limit(5000),
     sb.from('mission_logs').select('mission_id').in('action', FLUX2_LOGS).gte('created_at', since).limit(5000),
@@ -50,7 +51,7 @@ async function flux2Metrics(sb: SupabaseClient): Promise<ChantierMetric[]> {
   }
   const total = flux2 + legacy
   const pct = total ? Math.round(flux2 * 100 / total) : 0
-  const daysLeft = Math.max(0, Math.ceil((new Date(FLUX2_MEASURE_END + 'T00:00:00+02:00').getTime() - Date.now()) / 86_400_000))
+  const daysLeft = Math.max(0, Math.ceil((new Date(withBrusselsOffset(FLUX2_MEASURE_END + 'T00:00:00')).getTime() - Date.now()) / 86_400_000))
   return [
     { label: `Clôtures depuis le ${fmt(FLUX2_MEASURE_START)}`, value: String(total), tone: 'muted' },
     { label: 'Par le Flux 2', value: total ? `${flux2} (${pct} %)` : '0', tone: 'ok' },

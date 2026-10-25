@@ -44,6 +44,30 @@ function walk(dir) {
   }
 }
 for (const d of SCAN) if (existsSync(join(ROOT, d))) walk(join(ROOT, d))
+
+// Fuseau horaire en dur (changement d'heure du 25/10/2026 : « +02:00 » fixe = missions Touring une heure trop
+// tôt). Tout le code est contrôlé : une heure belge sans fuseau passe par withBrusselsOffset()
+// (src/lib/time/bxl-offset.ts). Olivier : « ça ne peut pas arriver, il faut un automatisme ».
+const TZ_RE = /\+0[12]:?00(?![0-9])/
+function walkTz(dir) {
+  for (const name of readdirSync(dir)) {
+    const p = join(dir, name)
+    const st = statSync(p)
+    if (st.isDirectory()) { if (name === 'node_modules' || name === '.next') continue; walkTz(p); continue }
+    if (!/\.(ts|tsx)$/.test(name) || /\.test\.|\.spec\./.test(name)) continue
+    const rel = relative(ROOT, p).replace(/\\/g, '/')
+    if (rel === 'src/lib/time/bxl-offset.ts') continue
+    readFileSync(p, 'utf8').split('\n').forEach((line, i) => {
+      const t = line.trim()
+      if (t.startsWith('//') || t.startsWith('*') || t.startsWith('/*')) return
+      const code = line.replace(/\/\/.*$/, '')
+      if (!TZ_RE.test(code) || !/['"`]/.test(code)) return
+      if (ALLOW.some(a => `${rel}:fuseau`.startsWith(a))) return
+      hits.push(`${rel}:${i + 1} — fuseau horaire en dur (utiliser withBrusselsOffset) : ${t.slice(0, 110)}`)
+    })
+  }
+}
+walkTz(join(ROOT, 'src'))
 if (hits.length) {
   console.error(`\n✖ check-hardcode : ${hits.length} valeur(s) métier en dur — à sortir dans les réglages (src/lib/settings/business-registry.ts) ou les tarifs, ou à déclarer dans scripts/check-hardcode.allow :\n`)
   for (const h of hits) console.error('  ' + h)
