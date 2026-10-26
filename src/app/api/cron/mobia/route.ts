@@ -2,10 +2,10 @@
 //
 // Mobia (Olivier 03/10/2026) : toutes les 15 min pendant ses horaires, un
 // brouillon de réponse pour chaque nouveau mail du dossier « Claudy » d'info@
-// (src/lib/mobia/run.ts). Horaires (heure de Bruxelles) : lundi-vendredi
-// 8 h-20 h, samedi 8 h-15 h, congé le dimanche. Hors horaires, rien : les mails
-// arrivés pendant l'absence sont traités à la reprise (samedi après 15 h et
-// dimanche → lundi 8 h).
+// (src/lib/mobia/run.ts). Horaires : ceux d'Olivier chez VD (26/10/2026 : lundi-jeudi 9 h-18 h, heure belge —
+// réglage mobi_heures_vd, ou son agenda dès qu'il est lisible ; cf. lib/notif/heures-mobi). Hors horaires, rien :
+// les mails arrivés pendant l'absence attendent le créneau suivant (le retard doit se voir, Olivier 26/10/2026).
+// Avant : lundi-vendredi 8 h-20 h, samedi 8 h-15 h.
 //   ?essai=<id ou internetMessageId> : essai sur un mail (même déjà traité),
 //   sans brouillon, sans notification — renvoie le texte qui serait préparé.
 
@@ -21,7 +21,7 @@ async function handleGET(req: Request) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
   const essai = new URL(req.url).searchParams.get('essai') || undefined
-  if (!essai && !mobiaAuTravail()) return NextResponse.json({ ok: true, skipped: 'hors horaires' })
+  if (!essai && !(await mobiaAuTravail())) return NextResponse.json({ ok: true, skipped: 'hors horaires' })
   // Pause décidée par Mobi (22/10/2026) : réglage « mobia_actif ».
   if (!essai) {
     const { getBusinessText } = await import('@/lib/settings/business')
@@ -43,12 +43,8 @@ export async function GET(...args: Parameters<typeof handleGET>) {
   return withAiContext({ declencheur: 'cron:mobia' }, () => handleGET(...args))
 }
 
-/** Horaires de Mobia (Olivier 03/10/2026), heure de Bruxelles. */
-function mobiaAuTravail(d = new Date()): boolean {
-  const parts = new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/Brussels', weekday: 'short', hour: '2-digit', hour12: false }).formatToParts(d)
-  const day = parts.find(p => p.type === 'weekday')?.value || ''
-  const h = Number(parts.find(p => p.type === 'hour')?.value) % 24
-  if (day === 'Sun') return false
-  if (day === 'Sat') return h >= 8 && h < 15
-  return h >= 8 && h < 20
+/** Horaires de Mobia = heures VD d'Olivier (26/10/2026). */
+async function mobiaAuTravail(): Promise<boolean> {
+  const { mobiEnHeuresVD } = await import('@/lib/notif/heures-mobi')
+  return mobiEnHeuresVD()
 }
