@@ -3,8 +3,8 @@
 // de ces heures-là je ne prends que les notifs urgentes. »)
 //
 // Heures : les rendez-vous « Verviers Dépannage » de l'agenda de mobi@ (invité à ceux d'Olivier), lus par l'ERP
-// de messagerie. Sans accès à l'agenda : réglage `mobi_heures_vd` (par défaut lun-ven 9 h-18 h, son horaire
-// actuel). Hors heures, une notification non urgente est retenue (table telegram_differes) puis envoyée en bloc
+// de messagerie. Sans accès à l'agenda : réglage `mobi_heures_vd` (par défaut lun-jeu 9 h-18 h : plus de
+// vendredi chez VD depuis le 26/10/2026). Hors heures, une notification non urgente est retenue (table telegram_differes) puis envoyée en bloc
 // au début du créneau suivant (cron telegram-differes). Les réponses du bot à Mobi ne passent pas par ici.
 // URGENT (passe à toute heure, Olivier 24/10/2026) : toute panne qui empêche l'app de fonctionner normalement
 // (imprimante, connecteur, cron en échec…) et l'alerte de coût IA. Le reste attend le créneau.
@@ -43,9 +43,9 @@ async function creneauxAgenda(): Promise<{ start: number; end: number }[] | null
   return slots
 }
 
-/** Réglage de secours : « 1-5 09:00-18:00 » (jours 1 = lundi … 7 = dimanche). */
+/** Réglage de secours : « 1-4 09:00-18:00 » (jours 1 = lundi … 7 = dimanche). */
 async function horaireReglage(d: Date): Promise<boolean> {
-  const v = (await getBusinessText('mobi_heures_vd').catch(() => '')) || '1-5 09:00-18:00'
+  const v = (await getBusinessText('mobi_heures_vd').catch(() => '')) || '1-4 09:00-18:00'
   const m = v.match(/(\d)-(\d)\s+(\d{1,2}):(\d{2})-(\d{1,2}):(\d{2})/)
   if (!m) return true
   const { wd, min } = bxl(d); const jour = wd === 0 ? 7 : wd

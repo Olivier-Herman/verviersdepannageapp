@@ -28,6 +28,10 @@ export async function GET(req: Request) {
 
     // 13 h 30 : Olivier seul est prévenu qu'il y a des factures à trier (Momo ne reçoit pas cette notification).
     if (etape === 'tri') {
+      // Olivier n'est chez VD que du lundi au jeudi (26/10/2026) : hors de ses heures VD, pas de rappel de tri ;
+      // les factures restent au tri et reviennent au rappel suivant.
+      const { mobiEnHeuresVD } = await import('@/lib/notif/heures-mobi')
+      if (!force && !(await mobiEnHeuresVD())) return NextResponse.json({ ok: true, skipped: 'Mobi hors de ses heures VD' })
       const today = new Date().toLocaleDateString('sv-SE', { timeZone: 'Europe/Brussels' })
       const parts: string[] = []
       for (const s of SOCIETES) {
