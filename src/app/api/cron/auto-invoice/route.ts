@@ -11,6 +11,7 @@
 import { NextResponse }      from 'next/server'
 import { createAdminClient } from '@/lib/supabase'
 import { getAutoInvoiceRules, getAutoInvoiceDelayHours, checkAutoInvoiceEligible, AUTO_INVOICE_TYPES } from '@/lib/facturation/auto-invoice'
+import { facturationAutoSuspendue, SKIP_SUSPENDUE } from '@/lib/facturation/suspension'
 import { getValidAllianzToken, listAllianzToAssign } from '@/lib/allianz/closure'
 import { sourcesWithTag } from '@/lib/missions/source-catalog'
 import { withAiContext } from '@/lib/ai/usage'
@@ -41,6 +42,12 @@ async function handleGET(req: Request) {
   }
 
   const sb = createAdminClient()
+  // Interrupteur général sur off : rien ne part (factures ni commissions). Le passage est quand même noté, sinon
+  // l'alerte « la facturation automatique ne tourne plus » s'allume ; l'arriéré repart à la reprise.
+  if (await facturationAutoSuspendue(sb)) {
+    await sb.from('app_settings').upsert({ key: 'auto_invoice_last_run', value: { at: new Date().toISOString(), suspendue: true, scanned: 0, invoiced: 0, details: [] } }, { onConflict: 'key' }).then(() => {}, () => {})
+    return NextResponse.json(SKIP_SUSPENDUE)
+  }
   const rules = await getAutoInvoiceRules(sb)
   const delayH = await getAutoInvoiceDelayHours(sb)
 

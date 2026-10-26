@@ -14,6 +14,7 @@
 import { NextResponse }      from 'next/server'
 import { createAdminClient } from '@/lib/supabase'
 import { getAutomationEnabled, AUTOMATION_FLAGS } from '@/lib/facturation/automation-flags'
+import { facturationAutoSuspendue, SKIP_SUSPENDUE } from '@/lib/facturation/suspension'
 import { withAiContext } from '@/lib/ai/usage'
 
 export const dynamic     = 'force-dynamic'
@@ -30,6 +31,8 @@ async function handleGET(req: Request) {
   const secret  = process.env.NEXTAUTH_SECRET || ''
   const sb = createAdminClient()
 
+  // Interrupteur général de la facturation automatique (Olivier 26/10/2026) : off = on saute ; l'arriéré repart à la reprise.
+  if (await facturationAutoSuspendue(sb)) return NextResponse.json(SKIP_SUSPENDUE)
   // Toggle (module Facturation auto) : pause si désactivé.
   if (!(await getAutomationEnabled(sb, AUTOMATION_FLAGS.comexAutoAccept))) {
     return NextResponse.json({ ok: true, disabled: true })

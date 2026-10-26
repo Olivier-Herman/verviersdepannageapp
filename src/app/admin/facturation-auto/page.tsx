@@ -2,6 +2,7 @@ import { getServerSession }  from 'next-auth'
 import { redirect }          from 'next/navigation'
 import { authOptions }       from '@/lib/auth'
 import FacturationAutoClient from './FacturationAutoClient'
+import { peutBasculer }      from '@/lib/facturation/suspension'
 
 export const dynamic    = 'force-dynamic'
 export const revalidate = 0
@@ -19,6 +20,7 @@ export default async function FacturationAutoPage() {
       userName={user.name || ''}
       userEmail={user.email}
       userModules={user.modules || []}
+      interrupteur={await peutBasculer(user.id)}
     />
   )
 }

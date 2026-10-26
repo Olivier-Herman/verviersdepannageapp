@@ -10,6 +10,7 @@
 import { NextResponse }        from 'next/server'
 import { gardeHeureBxl } from '@/lib/cron/heure-bxl'
 import { createAdminClient }   from '@/lib/supabase'
+import { facturationAutoSuspendue, SKIP_SUSPENDUE } from '@/lib/facturation/suspension'
 import { invoiceCircuitOrder } from '@/lib/circuit/invoice'
 import { withAiContext } from '@/lib/ai/usage'
 
@@ -23,6 +24,8 @@ async function handleGET(req: Request) {
   }
   const onlyOrder = Number(new URL(req.url).searchParams.get('order_id')) || null
   const sb = createAdminClient()
+  // Interrupteur général de la facturation automatique (Olivier 26/10/2026) : off = on saute ; l'arriéré repart à la reprise.
+  if (!onlyOrder && await facturationAutoSuspendue(sb)) return NextResponse.json(SKIP_SUSPENDUE)
   const today = new Date().toISOString().slice(0, 10)
 
   // Prestations non facturées, avec devis Odoo.

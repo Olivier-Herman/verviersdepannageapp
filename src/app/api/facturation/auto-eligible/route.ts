@@ -16,6 +16,7 @@ import { createAdminClient } from '@/lib/supabase'
 import { getAutoInvoiceRules, getAutoInvoiceDelayHours, checkAutoInvoiceEligible, autoInvoiceType, AUTO_INVOICE_TYPES } from '@/lib/facturation/auto-invoice'
 import { getValidAllianzToken, listAllianzToAssign } from '@/lib/allianz/closure'
 import { sourcesWithTag } from '@/lib/missions/source-catalog'
+import { facturationAutoSuspendue, peutBasculer } from '@/lib/facturation/suspension'
 
 export const dynamic     = 'force-dynamic'
 export const maxDuration = 60
@@ -26,8 +27,10 @@ const assignNo = (v: string | null | undefined) => String(v || '').split('/')[0]
 export async function GET(req: Request) {
   // Auth : superadmin OU secret interne.
   const isInternal = req.headers.get('x-internal-secret') === process.env.NEXTAUTH_SECRET && !!process.env.NEXTAUTH_SECRET
+  let viewerId: string | null = null
   if (!isInternal) {
     const session = await getServerSession(authOptions)
+    viewerId = (session?.user as any)?.id || null
     if ((session?.user as any)?.role !== 'superadmin') {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
@@ -38,6 +41,9 @@ export async function GET(req: Request) {
   const sb = createAdminClient()
   const rules  = await getAutoInvoiceRules(sb)
   const delayH = await getAutoInvoiceDelayHours(sb)
+  // Interrupteur général : pris en compte pour Olivier seul (« le bandeau, juste pour moi ») — les autres comptes
+  // gardent l'affichage habituel, rien ne leur signale la suspension (26/10/2026).
+  const suspendue = (isInternal || await peutBasculer(viewerId)) && await facturationAutoSuspendue(sb)
   const activeSources = Object.entries(rules)
     .filter(([, r]) => AUTO_INVOICE_TYPES.some(t => r?.[t.key]))
     .map(([s]) => s)
@@ -96,7 +102,7 @@ export async function GET(req: Request) {
       if (verbose) items.push({ mission_number: m.mission_number, source: m.source, mission_type: m.mission_type, type, status: 'blocked', reason: 'dans COMEX BKO' })
       continue
     }
-    const check = checkAutoInvoiceEligible(m as any, rules)
+    const check = checkAutoInvoiceEligible(m as any, rules, suspendue)
     let reason: string | null = null
     let status = 'blocked'
     let eligibleAt: string | undefined

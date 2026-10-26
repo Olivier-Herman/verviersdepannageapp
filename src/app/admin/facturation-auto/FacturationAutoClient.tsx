@@ -3,12 +3,15 @@
 import { useEffect, useState } from 'react'
 import AppShell from '@/components/layout/AppShell'
 import { AUTO_INVOICE_TYPES } from '@/lib/facturation/auto-invoice'
+import InterrupteurFacturation from './InterrupteurFacturation'
 
 type Rules = Record<string, Record<string, boolean>>
 interface Source { key: string; label: string }
 
 export default function FacturationAutoClient(props: {
   userRole: string; userName: string; userEmail?: string; userModules: string[]
+  /** Comptes d'Olivier seulement (vérifié côté serveur) : interrupteur général + bandeau. */
+  interrupteur?: boolean
 }) {
   const [rules, setRules]     = useState<Rules>({})
   const [sources, setSources] = useState<Source[]>([])
@@ -87,6 +90,8 @@ export default function FacturationAutoClient(props: {
     <AppShell title="Facturation automatique" userRole={props.userRole} userName={props.userName} userEmail={props.userEmail} userModules={props.userModules}>
       <main className="p-4 max-w-3xl mx-auto space-y-4">
         {toast && <div className="fixed top-20 left-1/2 -translate-x-1/2 z-[70] bg-surface border shadow-lg rounded-xl px-4 py-2 text-sm font-medium text-ink">{toast}</div>}
+
+        {props.interrupteur && <InterrupteurFacturation />}
 
         <div>
           <h1 className="text-ink text-lg font-bold">🧾 Facturation automatique par source</h1>

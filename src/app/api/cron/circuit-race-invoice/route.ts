@@ -6,6 +6,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { gardeHeureBxl } from '@/lib/cron/heure-bxl'
 import { createAdminClient } from '@/lib/supabase'
+import { facturationAutoSuspendue, SKIP_SUSPENDUE } from '@/lib/facturation/suspension'
 import { odooRpc } from '@/lib/odoo'
 import { invoiceCircuitOrder } from '@/lib/circuit/invoice'
 import { withAiContext } from '@/lib/ai/usage'
@@ -22,6 +23,8 @@ async function handleGET(req: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
   const sb = createAdminClient()
+  // Interrupteur général de la facturation automatique (Olivier 26/10/2026) : off = on saute ; l'arriéré repart à la reprise.
+  if (await facturationAutoSuspendue(sb)) return NextResponse.json(SKIP_SUSPENDUE)
   const today = new Date(); today.setHours(0, 0, 0, 0)
 
   const { data: rows } = await sb.from('circuit_race_weekends')

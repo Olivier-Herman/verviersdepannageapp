@@ -86,9 +86,12 @@ export interface AutoInvoiceCheck {
 export function checkAutoInvoiceEligible(
   mission: { source?: string | null; mission_type?: string | null; parent_mission_id?: string | null; billed_to_name?: string | null },
   rules: AutoInvoiceRules,
+  /** Interrupteur général sur off (facturation/suspension.ts) : rien n'est éligible, quelle que soit la règle. */
+  suspendue = false,
 ): AutoInvoiceCheck {
   const type = autoInvoiceType(mission.mission_type)
   if (!type) return { eligible: false, reason: 'type hors périmètre (DSP/REM only)' }
+  if (suspendue) return { eligible: false, type, reason: 'facturation automatique suspendue' }
   // Transport / rapatriement : MANUEL tant qu'Olivier n'a pas validé la grille par
   // gabarit (21/09/2026). Le montant est proposé, le bouton Facturer reste à la
   // main — jamais dans les « missions sèches » du robot, même règle activée.

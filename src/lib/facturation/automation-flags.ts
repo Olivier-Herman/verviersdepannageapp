@@ -8,6 +8,8 @@
 export const AUTOMATION_FLAGS = {
   allianzAutoClose: 'auto_close_allianz_enabled',
   comexAutoAccept:  'auto_accept_comex_enabled',
+  // Interrupteur général (Olivier 26/10/2026) : off = aucune facturation automatique (cf. facturation/suspension.ts).
+  facturationAuto:  'auto_invoice_global_enabled',
 } as const
 
 export async function getAutomationEnabled(sb: any, key: string, def = true): Promise<boolean> {
