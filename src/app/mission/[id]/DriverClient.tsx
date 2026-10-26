@@ -20,6 +20,8 @@ import { KeyTag } from '@/components/missions/KeyInfoCard'
 import { TtsButton } from '@/components/audio/TtsButton'
 import { openNavigation } from '@/lib/open-navigation'
 import CopiloteNavSheet from '@/components/missions/CopiloteNavSheet'
+import SignalerErreur from '@/components/SignalerErreur'
+import MissionTruckModal from '@/components/missions/MissionTruckModal'
 import AddressField, { verifyAddressViaPlaces } from '@/components/AddressField'
 import { T }    from '@/lib/i18n/T'
 import { isTransport, isRemorquage, isRemRel } from '@/lib/missions/mission-types'
@@ -714,6 +716,7 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
   const [showNav, setShowNav]   = useState(false)
   // Copilote au départ (Olivier 19/10/2026) : « En route » puis chargement → Sam / Sonic propose le GPS.
   const [copilote, setCopilote] = useState<null | 'on_way' | 'dest'>(null)
+  const [truckSkip, setTruckSkip] = useState(false)   // aucun camion configuré : on ne bloque pas
   useEffect(() => {
     try {
       const k = `vd_copilote_${init.id}`
@@ -3006,7 +3009,7 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
               </button>
             ))}
           </div>
-          {err && <p className="text-red-600 text-sm bg-red-50 border border-red-200 rounded-xl px-3 py-2">⚠️ {err}</p>}
+          {err && <p className="text-red-600 text-sm bg-red-50 border border-red-200 rounded-xl px-3 py-2">⚠️ {err}<SignalerErreur message={err} where="action" missionId={M.id} /></p>}
         </div>
       </div>
     )
@@ -3159,7 +3162,7 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
               ⚠ {requiredCats.filter(id => !coveredCats.includes(id)).length} angle(s) requis manquant(s)
             </p>
           )}
-          {err && <p className="text-red-400 text-sm mt-3">⚠️ {err}</p>}
+          {err && <p className="text-red-400 text-sm mt-3">⚠️ {err}<SignalerErreur message={err} where="action" missionId={M.id} /></p>}
         </div>
         <div className="px-4 py-4 border-t border space-y-2">
           {/* Plus de bouton « Enregistrer » : les photos partent automatiquement
@@ -3364,7 +3367,7 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
             Enregistrer
           </button>
         </div>
-        {err && <p className="text-red-400 text-xs px-4 pb-2">⚠️ {err}</p>}
+        {err && <p className="text-red-400 text-xs px-4 pb-2">⚠️ {err}<SignalerErreur message={err} where="action" missionId={M.id} /></p>}
       </ScreenWrap>
     )
   }
@@ -3453,7 +3456,7 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
               )
             })()}
 
-            {err && <p className="text-red-400 text-xs">⚠️ {err}</p>}
+            {err && <p className="text-red-400 text-xs">⚠️ {err}<SignalerErreur message={err} where="action" missionId={M.id} /></p>}
             <div className="flex gap-3">
               <button onClick={() => { setSetAmtModalOpen(false); setSetAmtPinMode(false); setSetAmtPin(''); setSetAmtNoPin(false); setErr('') }} disabled={setAmtSubmitting}
                 className="flex-1 py-3 bg-surface-hover text-ink-secondary rounded-2xl text-sm">Annuler</button>
@@ -3580,7 +3583,7 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
           <p className="text-ink-muted text-xs uppercase tracking-widest font-medium mb-2">Adresse *</p>
           <AddrInput value={newStopAddr} onChange={setNewStopAddr} onPick={(a, lat, lng) => { setNewStopAddr(a); setNewStopLat(lat); setNewStopLng(lng) }} />
         </div>
-        {err && <p className="text-red-400 text-sm">⚠️ {err}</p>}
+        {err && <p className="text-red-400 text-sm">⚠️ {err}<SignalerErreur message={err} where="action" missionId={M.id} /></p>}
       </div>
       <div className="px-4 py-4 border-t border space-y-3">
         {editStopId && (
@@ -3607,7 +3610,7 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
           value={modVal}
           onChange={v => { setModVal(v); setModLat(null); setModLng(null) }}
           onPick={(a, lat, lng) => { setModVal(a); setModLat(lat); setModLng(lng) }} />
-        {err && <p className="text-red-400 text-sm">⚠️ {err}</p>}
+        {err && <p className="text-red-400 text-sm">⚠️ {err}<SignalerErreur message={err} where="action" missionId={M.id} /></p>}
       </div>
       <div className="px-4 py-4 border-t border flex gap-3">
         <button onClick={() => setScreen('main')} className="flex-1 py-3 bg-surface-hover text-ink-secondary rounded-2xl text-sm">Annuler</button>
@@ -3930,7 +3933,7 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
               <span className="text-amber-300 text-xs"><T k="close.photos_add" /></span>
             </button>
           )}
-          {err && <p className="text-red-400 text-sm bg-red-500/10 rounded-xl px-3 py-2">⚠️ {err}</p>}
+          {err && <p className="text-red-400 text-sm bg-red-500/10 rounded-xl px-3 py-2">⚠️ {err}<SignalerErreur message={err} where="action" missionId={M.id} /></p>}
         </div>
 
         <div className="px-4 py-4 border-t border">
@@ -4245,7 +4248,7 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
               <p className="text-ink-muted text-xs uppercase tracking-wide mb-1">Motif actuel</p>
               <p className="text-ink text-sm whitespace-pre-wrap">{derogPending.motive}</p>
             </div>
-            {err && <p className="text-red-400 text-xs">⚠️ {err}</p>}
+            {err && <p className="text-red-400 text-xs">⚠️ {err}<SignalerErreur message={err} where="action" missionId={M.id} /></p>}
             <button
               onClick={() => { setDerogManageOpen(false); setDerogMotive(derogPending.motive); setDerogModalOpen(true) }}
               disabled={derogSubmitting}
@@ -4421,7 +4424,7 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
               className="w-full bg-surface-hover border border rounded-xl p-3 text-ink text-sm outline-none focus:border-brand"
               disabled={derogSubmitting}
             />
-            {err && <p className="text-red-400 text-xs">⚠️ {err}</p>}
+            {err && <p className="text-red-400 text-xs">⚠️ {err}<SignalerErreur message={err} where="action" missionId={M.id} /></p>}
             <div className="flex gap-3">
               <button onClick={() => setDerogModalOpen(false)} disabled={derogSubmitting}
                 className="flex-1 py-3 bg-surface-hover text-ink-secondary rounded-2xl text-sm">Annuler</button>
@@ -5124,7 +5127,7 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
 
 
 
-        {err && <p className="text-red-400 text-sm bg-red-500/10 rounded-xl px-3 py-2">⚠️ {err}</p>}
+        {err && <p className="text-red-400 text-sm bg-red-500/10 rounded-xl px-3 py-2">⚠️ {err}<SignalerErreur message={err} where="action" missionId={M.id} /></p>}
       </div>
 
       {/* Olivier 2026-06-01 — Workflow encaisser-avant-creer.
@@ -5188,7 +5191,7 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
                 {loading ? '⏳ Finalisation...' : continueLabel}
               </button>
             )}
-            {err && <p className="text-red-400 text-sm bg-red-500/10 rounded-xl px-3 py-2 text-center">⚠️ {err}</p>}
+            {err && <p className="text-red-400 text-sm bg-red-500/10 rounded-xl px-3 py-2 text-center">⚠️ {err}<SignalerErreur message={err} where="action" missionId={M.id} /></p>}
           </div>
         )
       })()}
@@ -5744,7 +5747,7 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
                 placeholder={t('mission_detail.snc_dpr_note_ph')}
                 className="mt-1 w-full rounded-xl bg-surface-2 border border px-3 py-2 text-ink text-sm" />
             </label>
-            {err && <div className="bg-red-500/10 text-red-600 rounded-xl px-3 py-2 text-sm">⚠ {err}</div>}
+            {err && <div className="bg-red-500/10 text-red-600 rounded-xl px-3 py-2 text-sm">⚠ {err}<SignalerErreur message={err} where="action" missionId={M.id} /></div>}
             <div className="grid grid-cols-2 gap-2">
               <button onClick={() => setShowSncDpr(false)} disabled={loading}
                 className="py-4 rounded-2xl bg-surface border border text-ink-secondary font-semibold disabled:opacity-50">{t('common.cancel')}</button>
@@ -5809,7 +5812,7 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
                   onPick={a => { setDestAddr(a.label); setDestLat(a.lat); setDestLng(a.lng); setDestKeepRaw(false) }} />
               </div>
             )}
-            {err && <p className="text-red-400 text-sm">⚠ {err}</p>}
+            {err && <p className="text-red-400 text-sm">⚠ {err}<SignalerErreur message={err} where="action" missionId={M.id} /></p>}
             <button onClick={() => confirmDestPrompt(false)} disabled={loading || !destAddr.trim() || (destNeedsPos && destLat == null && !destKeepRaw)}
               className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-2xl text-sm font-bold transition disabled:opacity-50">
               {loading ? t('mission_detail.loading') : (destPrompt.kind === 'park' ? t('close.confirm_deposit') : t('close.validate'))}
@@ -6026,6 +6029,12 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
         />
       )}
 
+      {/* Pas de mission avec chauffeur sans camion (Olivier 26/10/2026) : la fiche lui demande avec quel camion il roule. */}
+      {!isReadOnly && !!currentUserId && (M as any).assigned_to === currentUserId && !(M as any).truck_id && !truckSkip
+        && isActiveMissionStatus(M.status) && M.status !== 'assigned' && (
+        <MissionTruckModal missionId={M.id} onDone={id => setM(m => ({ ...m, truck_id: id } as any))} onSkip={() => setTruckSkip(true)} />
+      )}
+
       {/* Copilote au départ : GPS ou à vue (Olivier 19/10/2026). Le clic sur une adresse reste inchangé. */}
       {copilote === 'on_way' && (
         <CopiloteNavSheet mode="on_way" navApp={navApp} busy={loading}
@@ -6158,7 +6167,7 @@ function PaiementApp({ missionId, montant, onPaye, onAutrement }: { missionId: s
           </button>
         </>
       )}
-      {err && <p className="rounded-xl bg-red-500/10 px-3 py-2 text-sm text-red-600 dark:text-red-300">⚠️ {err}</p>}
+      {err && <p className="rounded-xl bg-red-500/10 px-3 py-2 text-sm text-red-600 dark:text-red-300">⚠️ {err}<SignalerErreur message={err} where="action" missionId={missionId} /></p>}
       {etat !== 'paye' && (
         <button type="button" onClick={onAutrement} className="w-full min-h-[44px] text-sm font-semibold text-ink-muted underline"><T k="mission_detail.pay_app_other" /></button>
       )}

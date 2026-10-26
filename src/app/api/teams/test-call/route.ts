@@ -42,6 +42,26 @@ export async function POST(req: Request) {
     return NextResponse.json(r)
   }
 
+  // Appel « erreur signalée à Sam / Sonic » (Olivier 26/10/2026) : fait sonner les comptes du réglage
+  // signalement_appel_user_ids avec le même message qu'un vrai signalement.
+  if (body.message === 'signalement') {
+    const sb = createAdminClient()
+    const { getBusinessList } = await import('@/lib/settings/business')
+    const { toE164 } = await import('@/lib/missions/market-proposals')
+    const ids = await getBusinessList('signalement_appel_user_ids').catch(() => [] as string[])
+    const { data: qui } = await sb.from('users').select('id, name, phone').in('id', ids.length ? ids : ['00000000-0000-0000-0000-000000000000'])
+    const res: any[] = []
+    for (const p of qui || []) {
+      const e164 = toE164(p.phone)
+      if (!e164) { res.push({ nom: p.name, ok: false, error: 'pas de numéro' }); continue }
+      const r = await initiatePstnCall({ toPhone: e164, toDisplayName: p.name || 'Mobi' })
+      await sb.from('espace_appels').insert({ mission_id: '00000000-0000-0000-0000-000000000000', call_id: r.callId || null, audio: 'erreur-signalee.wav', status: r.ok ? 'lance' : 'echec', detail: r.ok ? 'test signalement' : String(r.error || '').slice(0, 300) })
+      res.push({ nom: p.name, ok: r.ok, error: r.ok ? undefined : r.error })
+    }
+    if (!res.length) return NextResponse.json({ error: 'Personne à appeler (réglage signalement_appel_user_ids)' }, { status: 400 })
+    return NextResponse.json({ ok: res.every(x => x.ok), appels: res }, { status: res.some(x => x.ok) ? 200 : 502 })
+  }
+
   let toPhone = (body.to || '').trim()
   let toDisplayName: string | undefined = body.toName
 

@@ -60,7 +60,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   // Driver
   const { data: driver } = await sb
     .from('users')
-    .select('id, name, active')
+    .select('id, name, active, current_truck_id')
     .eq('id', driverId)
     .single()
   if (!driver) return NextResponse.json({ error: 'Chauffeur introuvable' }, { status: 404 })
@@ -71,7 +71,9 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   // Update mission
   await sb
     .from('incoming_missions')
-    .update({ status: 'assigned', assigned_to: driverId, assigned_at: now, accept_reminder_count: 0, accept_reminder_at: null, accept_call_at: null })
+    .update({ status: 'assigned', assigned_to: driverId, assigned_at: now, accept_reminder_count: 0, accept_reminder_at: null, accept_call_at: null,
+      // Camion du chauffeur, comme l'attribution depuis le dispatch (Olivier 26/10/2026 : jamais de mission sans camion)
+      truck_id: (driver as any).current_truck_id || null })
     .eq('id', missionId)
 
   // Cancel auto-dispatch en cours (manuel prime)

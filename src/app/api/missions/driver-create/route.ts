@@ -53,9 +53,14 @@ export async function POST(req: Request) {
     }
   }
 
+  // Pas de mission avec chauffeur sans camion (Olivier 26/10/2026) : son camion du moment. S'il n'en a pas,
+  // la fiche lui demande avec quel camion il roule (MissionTruckModal).
+  const { data: me } = await supabase.from('users').select('current_truck_id').eq('id', session.user.id).maybeSingle()
+
   const { data, error } = await supabase
     .from('incoming_missions')
     .insert({
+      truck_id:         me?.current_truck_id || null,
       external_id:      `TERRAIN-${Date.now()}`,
       source:           source         || 'prive',
       mission_type,
@@ -88,7 +93,14 @@ export async function POST(req: Request) {
 
   if (error) {
     console.error('[DriverCreate]', error)
-    return NextResponse.json({ error: error.message }, { status: 500 })
+    // Refus enregistré avec ce que le chauffeur avait encodé (Olivier 26/10/2026 : création de 2FNJ975 ratée
+    // le 24/10 sans aucune trace) ; la référence revient à l'écran pour « Signaler à Sam ».
+    const { data: log } = await supabase.from('error_logs').insert({
+      level: 'error', route: '/api/missions/driver-create', message: error.message.slice(0, 2000),
+      metadata: { code: error.code || null, details: error.details || null, hint: error.hint || null, payload: body },
+      user_id: session.user.id, user_email: session.user.email || null,
+    }).select('id').single()
+    return NextResponse.json({ error: 'La mission n’a pas pu être créée. Tes informations ne sont pas perdues : réessaie ou signale-le.', error_id: log?.id || null }, { status: 500 })
   }
 
   // Log — Olivier 2026-06-03 : bug audit. La table mission_logs utilise

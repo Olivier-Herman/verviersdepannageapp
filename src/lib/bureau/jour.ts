@@ -25,6 +25,25 @@ async function agentsNuit(sb: any): Promise<Bloc> {
   return { cle: 'agents', titre: 'Agents (24 h)', resume: `${actions.length} action(s)${ko.length ? `, ${ko.length} en échec` : ''}`, niveau: ko.length ? 'urgent' : actions.length ? 'info' : 'ok', lignes, lien: '/admin/agents' }
 }
 
+// Erreurs que les chauffeurs ont signalées à Sam / Sonic (Olivier 26/10/2026) : à corriger, 3 derniers jours.
+async function erreursSignalees(sb: any): Promise<Bloc> {
+  const since = new Date(Date.now() - 3 * 864e5).toISOString()
+  const { data, error } = await sb.from('error_logs').select('id, created_at, message, route, user_email, metadata')
+    .gte('created_at', since).not('metadata->signale', 'is', null).order('created_at', { ascending: false }).limit(30)
+  if (error) throw new Error(error.message)
+  const { refErreur } = await import('@/lib/erreurs/ref')
+  const lignes: Ligne[] = (data || []).map((e: any) => {
+    const sg = e.metadata?.signale || {}
+    const quand = new Date(sg.at || e.created_at).toLocaleString('fr-BE', { timeZone: 'Europe/Brussels', dateStyle: 'short', timeStyle: 'short' })
+    return {
+      id: e.id, texte: `${refErreur(e.id)} · ${String(e.message).slice(0, 140)}`, niveau: 'attention',
+      detail: `${quand} · ${String(e.user_email || '').split('@')[0]} · ${sg.where || e.route || ''}${sg.note ? ` — « ${String(sg.note).slice(0, 160)} »` : ''}`,
+      lien: sg.mission_id ? `/dispatch/${sg.mission_id}` : '/admin/logs',
+    }
+  })
+  return { cle: 'erreurs', titre: 'Erreurs signalées (3 j)', resume: lignes.length ? `${lignes.length} erreur(s) signalée(s) par les chauffeurs` : 'Aucune', niveau: lignes.length ? 'attention' : 'ok', lignes, lien: '/admin/logs' }
+}
+
 async function decisions(sb: any): Promise<Bloc> {
   const { data } = await sb.from('agent_proposals').select('id, agent_name, kind, title, amount, status, payload, created_at').in('status', ['to_validate', 'failed']).order('created_at', { ascending: true }).limit(50)
   const lignes: Ligne[] = (data || []).map((p: any) => ({
@@ -190,6 +209,7 @@ export async function bureauDuJour(): Promise<Bloc[]> {
   const sb = createAdminClient()
   const defs: [string, string, () => Promise<Bloc>][] = [
     ['agents', 'Agents (24 h)', () => agentsNuit(sb)],
+    ['erreurs', 'Erreurs signalées (3 j)', () => erreursSignalees(sb)],
     ['decisions', 'Décisions des agents', () => decisions(sb)],
     ['mails', 'Mails', () => mails()],
     ['domaine', 'Domaine', () => domaine(sb)],

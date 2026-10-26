@@ -913,6 +913,33 @@ export const fr = {
     night2_2:    'Dernière ligne droite de la nuit. On encode l’adresse ?',
     night2_3:    'Le client va dormir tranquille. Je t’ouvre le GPS pour la livraison ?',
   },
+  // Signaler une erreur à Sam / Sonic (Olivier 26/10/2026)
+  signaler: {
+    btn:          '🛟 Signaler à {agent}',
+    ref:          'Réf. {ref}',
+    intro:        'Pas de souci, j’envoie tout au bureau : l’écran, ce que tu as encodé et l’erreur exacte. Tu veux ajouter un mot ?',
+    placeholder:  'Facultatif : ce que tu essayais de faire…',
+    sent_with:    'Envoyé avec : l’écran, la mission, l’heure, ton téléphone et la version de l’app.',
+    send:         'Envoyer à {agent}',
+    sending:      'Envoi…',
+    done:         '✓ Erreur signalée',
+    close:        'Fermer',
+    failed:       'L’envoi n’est pas passé. Appelle le dispatch.',
+    reply_create: 'C’est transmis 👍 Le bureau est prévenu. En attendant, appelle le dispatch pour qu’il crée la fiche à ta place : rien ne se perd.',
+    reply_other:  'C’est transmis 👍 Le bureau est prévenu. Réessaie dans un instant ; si ça bloque encore, appelle le dispatch.',
+  },
+  // Mission sans camion (Olivier 26/10/2026)
+  truck_mission: {
+    title:      'Avec quel camion fais-tu cette mission ?',
+    text:       'Il n’y en a pas sur la fiche. On en a besoin pour le suivi des camions.',
+    current:    'ton camion du moment',
+    used_by:    'utilisé par {name}',
+    confirm:    'Confirmer ce camion',
+    saving:     'Enregistrement…',
+    note:       'Le camion choisi devient ton camion du moment.',
+    none:       'Aucun camion n’est configuré. Préviens le dispatch.',
+    error:      'Le camion n’a pas été enregistré. Réessaie.',
+  },
   pause_transfer: {
     btn_pause:        '⏸ Je reviens plus tard',
     btn_transfer:     '🔁 Transférer à un autre chauffeur',
