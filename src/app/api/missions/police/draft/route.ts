@@ -210,6 +210,8 @@ export async function POST(req: Request) {
       // tout de suite dans /mission (sans passer par dispatch)
       assigned_to:         user.id || null,
       assigned_at:         nowIso,
+      // Pas de mission avec chauffeur sans camion (Olivier 26/10/2026) : son camion du moment.
+      truck_id:            user.id ? ((await supabase.from('users').select('current_truck_id').eq('id', user.id).maybeSingle()).data?.current_truck_id || null) : null,
       created_at:          nowIso,
       updated_at:          nowIso,
     })

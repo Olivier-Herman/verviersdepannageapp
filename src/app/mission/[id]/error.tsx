@@ -6,12 +6,11 @@
 // une donnée manquante (ex: plaque non saisie), on l'indique.
 
 import { useEffect } from 'react'
-import { reportClientError } from '@/lib/report-client-error'
+import SignalerErreur from '@/components/SignalerErreur'
 
 export default function MissionError({ error, reset }: { error: Error & { digest?: string }; reset: () => void }) {
   useEffect(() => {
     console.error('[mission/error]', error?.message, error?.stack)
-    reportClientError(error, 'mission')
   }, [error])
 
   return (
@@ -31,6 +30,11 @@ export default function MissionError({ error, reset }: { error: Error & { digest
             {error.message}
           </p>
         )}
+        {/* Enregistre le plantage (avec sa référence) et propose de le signaler à Sam (26/10/2026). */}
+        <div className="mb-4 flex justify-center">
+          <SignalerErreur message={error?.message || 'Plantage de la fiche mission'} where="mission"
+            context={{ pile: String(error?.stack || '').slice(0, 1500), digest: error?.digest || null }} />
+        </div>
         <div className="flex flex-col gap-2">
           <button onClick={() => reset()}
             className="w-full py-3 bg-brand text-white font-semibold rounded-xl text-sm">

@@ -14,6 +14,7 @@ import Script from 'next/script'
 import ScanButton from '@/components/ScanButton'
 import BrandModelPicker, { findOther, OTHER_NAME, type CatalogItem } from '@/components/vehicles/BrandModelPicker'
 import { T } from '@/lib/i18n/T'
+import SignalerErreur from '@/components/SignalerErreur'
 import { normalizePlate } from '@/lib/plate'
 import { parseHighwayAddress } from '@/lib/highways/parse'
 
@@ -167,6 +168,7 @@ export default function NewDriverMissionClient() {
 
   const [saving,     setSaving]     = useState(false)
   const [error,      setError]      = useState('')
+  const [errorId,    setErrorId]    = useState<string | null>(null)
   const [gpsLoading, setGpsLoading] = useState(false)
 
   // ── Charger marques au montage ────────────────────────────────────────────
@@ -255,7 +257,7 @@ export default function NewDriverMissionClient() {
   // ── Soumission ────────────────────────────────────────────────────────────
 
   const handleSubmit = async (skipVehicle = false) => {
-    setError('')
+    setError(''); setErrorId(null)
     setSaving(true)
     try {
       let plate: string|null = null
@@ -297,7 +299,7 @@ export default function NewDriverMissionClient() {
         }),
       })
       const data = await r.json()
-      if (!r.ok) { setError(data.error || 'Erreur'); return }
+      if (!r.ok) { setError(data.error || 'Erreur'); setErrorId(data.error_id || null); return }
       router.push(`/mission/${data.mission.id}`)
     } catch {
       setError('Erreur réseau, réessaye')
@@ -592,6 +594,8 @@ export default function NewDriverMissionClient() {
           {error && (
             <div className="bg-red-500/10 border border-red-500/30 rounded-xl px-4 py-3 text-sm text-red-400">
               ⚠️ {error}
+              <SignalerErreur message={error} where="creation" errorId={errorId}
+                context={{ plaque: vehicleFound?.plate || manualPlate || null, adresse: address || null, type: missionType || null, source: source || null }} />
             </div>
           )}
         </div>

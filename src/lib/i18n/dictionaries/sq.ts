@@ -897,6 +897,33 @@ export const sq: Dictionary = {
     night2_2:    'Vija e fundit e natës. E vendosim adresën?',
     night2_3:    'Klienti do të flejë i qetë. Ta hap GPS-in për dorëzimin?',
   },
+  // Raporto një gabim te Sam / Sonic (Olivier 26/10/2026)
+  signaler: {
+    btn:          '🛟 Njofto {agent}',
+    ref:          'Ref. {ref}',
+    intro:        'Pa problem, ia dërgoj gjithçka zyrës: ekranin, çfarë ke shkruar dhe gabimin e saktë. Do të shtosh diçka?',
+    placeholder:  'Opsionale: çfarë po përpiqeshe të bëje…',
+    sent_with:    'Dërgohet me: ekranin, misionin, orën, telefonin tënd dhe versionin e aplikacionit.',
+    send:         'Dërgoja {agent}',
+    sending:      'Po dërgohet…',
+    done:         '✓ Gabimi u njoftua',
+    close:        'Mbyll',
+    failed:       'Dërgimi dështoi. Telefono dispeçerin.',
+    reply_create: 'U dërgua 👍 Zyra është njoftuar. Ndërkohë, telefono dispeçerin që ta krijojë ai fishën: asgjë nuk humbet.',
+    reply_other:  'U dërgua 👍 Zyra është njoftuar. Provo përsëri pas pak; nëse ende bllokohet, telefono dispeçerin.',
+  },
+  // Mision pa kamion (Olivier 26/10/2026)
+  truck_mission: {
+    title:      'Me cilin kamion e bën këtë mision?',
+    text:       'Nuk ka asnjë në fishë. Na duhet për ndjekjen e kamionëve.',
+    current:    'kamioni yt i momentit',
+    used_by:    'në përdorim nga {name}',
+    confirm:    'Konfirmo këtë kamion',
+    saving:     'Po regjistrohet…',
+    note:       'Kamioni i zgjedhur bëhet kamioni yt i momentit.',
+    none:       'Asnjë kamion nuk është konfiguruar. Njofto dispeçerin.',
+    error:      'Kamioni nuk u regjistrua. Provo përsëri.',
+  },
   pause_transfer: {
     btn_pause:        '⏸ Kthehem më vonë',
     btn_transfer:     '🔁 Transfero te një shofer tjetër',
