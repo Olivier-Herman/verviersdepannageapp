@@ -5,7 +5,8 @@
 import { useEffect, useState } from 'react'
 
 interface Ligne { id: number; action: 'suspension' | 'reprise' | 'refus'; par_nom: string | null; motif: string | null; at: string }
-interface Etat { visible: boolean; enMarche?: boolean; depuis?: string | null; par?: string | null; motif?: string | null; journal?: Ligne[] }
+interface Rattrapage { at: string; factures: number; sel: number; relances: number; allianz: number; comex: number; erreurs: string[] }
+interface Etat { visible: boolean; enMarche?: boolean; depuis?: string | null; par?: string | null; motif?: string | null; journal?: Ligne[]; rattrapage?: Rattrapage | null }
 
 const quand = (iso?: string | null) => iso ? new Date(iso).toLocaleString('fr-BE', { timeZone: 'Europe/Brussels', day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : ''
 
@@ -31,6 +32,8 @@ export default function InterrupteurFacturation() {
       const j = await r.json().catch(() => ({}))
       if (!r.ok) { setErr(j.error || 'Échec'); return }
       setConfirmer(null); setMotif(''); await load()
+      // Remise sur on : le rattrapage tourne en fond (1-2 min) ; on relit pour afficher son résumé.
+      if (confirmer) setTimeout(load, 90_000)
     } catch { setErr('Erreur réseau') } finally { setBusy(false) }
   }
 
@@ -58,6 +61,11 @@ export default function InterrupteurFacturation() {
             {on ? '⏸️ Suspendre' : '▶️ Relancer'}
           </button>
         </div>
+        {on && etat.rattrapage && etat.depuis && etat.rattrapage.at >= etat.depuis && (
+          <p className="text-xs text-emerald-800 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2">
+            Rattrapage à la reprise ({quand(etat.rattrapage.at)}) : {etat.rattrapage.factures} facture(s), {etat.rattrapage.sel} SEL, {etat.rattrapage.relances} relance(s), {etat.rattrapage.allianz} clôture(s) Allianz, {etat.rattrapage.comex} validation(s) Touring. Le circuit rattrape au passage de 7 h.
+          </p>
+        )}
         <button type="button" onClick={() => setVoirJournal(v => !v)} className="text-xs font-semibold text-ink-secondary underline min-h-[32px]">
           {voirJournal ? 'Masquer le journal' : `Voir le journal${etat.journal?.length ? ` (${etat.journal.length})` : ''}`}
         </button>

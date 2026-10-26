@@ -217,6 +217,17 @@ export function buildInvoiceReminderHtml(p: { level: ReminderLevel; partnerName:
   return emailLayout(content, t.title)
 }
 
+/**
+ * Niveau de relance à envoyer pour une facture (null = rien). Rattrapage (facturation relancée après un arrêt,
+ * Olivier 26/10/2026) : si J+15 ET J+30 sont déjà dépassés sans aucune relance, on envoie directement la plus avancée
+ * (J+30) — jamais deux relances le même jour, et jamais un J+15 après un J+30.
+ */
+export function niveauRelance(overdue: number, r15: string | null, r30: string | null, today: Date, J1: number, J2: number): ReminderLevel | null {
+  if (overdue < J1 || r30) return null
+  if (!r15) return overdue >= J2 ? 30 : 15
+  return overdue >= J2 && daysBetween(r15, today) >= MIN_DAYS_BETWEEN_LEVELS ? 30 : null
+}
+
 export async function sendInvoiceReminders(sb: any): Promise<ReminderSummary> {
   const out: ReminderSummary = { mode: 'off', candidates: 0, sent: 0, skipped: {}, sent_refs: [], errors: [] }
   const skip = (why: string) => { out.skipped[why] = (out.skipped[why] || 0) + 1 }
@@ -266,9 +277,7 @@ export async function sendInvoiceReminders(sb: any): Promise<ReminderSummary> {
     if (noReminderPartners.has(partnerId)) { skip('partenaire_institutionnel'); continue }
     const r15 = fiches.map(f => f.reminder_15_at).filter(Boolean).sort()[0] || null
     const r30 = fiches.map(f => f.reminder_30_at).filter(Boolean).sort()[0] || null
-    let level: ReminderLevel | null = null
-    if (!r15) level = 15
-    else if (!r30 && overdue >= J2 && daysBetween(r15, today) >= MIN_DAYS_BETWEEN_LEVELS) level = 30
+    const level = niveauRelance(overdue, r15, r30, today, J1, J2)
     if (!level) continue
     jobs.push({ mv, fiches, level, lead })
   }

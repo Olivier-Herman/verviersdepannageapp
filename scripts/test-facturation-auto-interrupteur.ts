@@ -6,6 +6,9 @@ import assert from 'node:assert/strict'
 import { createAdminClient } from '@/lib/supabase'
 import { peutBasculer, basculerFacturationAuto, facturationAutoSuspendue, etatFacturationAuto } from '@/lib/facturation/suspension'
 import { checkAutoInvoiceEligible } from '@/lib/facturation/auto-invoice'
+import { niveauRelance } from '@/lib/facturation/paiements'
+import { texteRattrapage } from '@/lib/facturation/suspension'
+import { readFileSync } from 'node:fs'
 import { getBusinessList } from '@/lib/settings/business'
 
 function fakeSb() {
@@ -69,5 +72,38 @@ function fakeSb() {
   const s = checkAutoInvoiceEligible(m, rules, true)
   assert.equal(s.eligible, false); assert.match(String(s.reason), /suspendue/)
 
-  console.log('✅ Interrupteur de facturation automatique : 4 groupes de tests OK (dont : un autre superadmin ne peut pas basculer)')
+  // 5. Off pendant N jours puis on : tout est rattrapé, sans doublon
+  //    a) relances : facture échue le jour de l'arrêt, arrêt de N jours
+  const jour = (d: number) => new Date(Date.UTC(2026, 9, 1 + d, 10))
+  for (const N of [5, 20, 45]) {
+    const reprise = jour(N)
+    const lvl = niveauRelance(N, null, null, reprise, 15, 30)
+    assert.equal(lvl, N < 15 ? null : N < 30 ? 15 : 30, `arrêt ${N} j : ${N < 15 ? 'rien encore' : N < 30 ? 'J+15' : 'directement J+30 (la plus avancée)'}`)
+    if (lvl === 30) {
+      // le J+30 posé, plus jamais de J+15 ni de second J+30, même des semaines après
+      assert.equal(niveauRelance(N + 1, null, reprise.toISOString(), jour(N + 1), 15, 30), null)
+      assert.equal(niveauRelance(N + 40, null, reprise.toISOString(), jour(N + 40), 15, 30), null)
+    }
+    if (lvl === 15) assert.equal(niveauRelance(N, reprise.toISOString(), null, reprise, 15, 30), null, 'pas deux relances le même jour')
+  }
+  //    b) chaque automatisme repart de l'arriéré complet : aucune sélection ne s'arrête à une date (sinon ce qui
+  //       attendait pendant l'arrêt serait oublié) — et chacune écarte ce qui est déjà fait (anti-doublon).
+  const src = (f: string) => readFileSync(f, 'utf8')
+  const backlog: [string, RegExp, RegExp][] = [
+    ['src/app/api/cron/auto-invoice/route.ts', /\.eq\('status', 'to_invoice'\)/, /\.is\('invoice_odoo_id', null\)/],
+    ['src/app/api/cron/circuit-auto-invoice/route.ts', /\.is\('invoiced_at', null\)/, /\.is\('invoiced_at', null\)/],
+    ['src/app/api/cron/circuit-race-invoice/route.ts', /\.is\('invoiced_at', null\)/, /\.is\('invoiced_at', null\)/],
+    ['src/app/api/cron/auto-accept-comex/route.ts', /\.eq\('in_comex', true\)/, /\.eq\('verdict', 'ok'\)/],
+    ['src/lib/agents/aurelie-sel.ts', /\['state', '=', 'draft'\]/, /\['state', '=', 'draft'\]/],
+  ]
+  for (const [f, sel, anti] of backlog) {
+    const s = src(f)
+    assert.match(s, sel, `${f} : sélection de l'arriéré`); assert.match(s, anti, `${f} : anti-doublon`)
+    assert.doesNotMatch(s.replace(/\/\/.*$/gm, ''), /\.gte\('(completed_at|created_at|received_at)'/, `${f} : aucune borne de date qui oublierait l'arrêt`)
+  }
+  //    c) résumé envoyé à Olivier à la reprise
+  const t = texteRattrapage({ at: '', factures: 23, sel: 4, relances: 6, allianz: 2, comex: 3, erreurs: [] })
+  assert.match(t, /23 factures, 4 factures SEL, 6 relances, 2 clôtures Allianz, 3 validations Touring/)
+
+  console.log('✅ Interrupteur de facturation automatique : 5 groupes de tests OK (dont : un autre superadmin ne peut pas basculer ; off N jours puis on → tout est rattrapé)')
 })().catch(e => { console.error('❌', e?.message || e); process.exit(1) })

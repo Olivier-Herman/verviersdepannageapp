@@ -70,3 +70,42 @@ export async function basculerFacturationAuto(sb: any, enMarche: boolean, par: {
 
 /** Réponse type d'un cron sauté pendant la suspension. */
 export const SKIP_SUSPENDUE = { ok: true, skipped: 'facturation automatique suspendue (interrupteur général)' }
+
+export interface ResumeRattrapage { at: string; factures: number; sel: number; relances: number; allianz: number; comex: number; erreurs: string[] }
+
+/**
+ * Remise sur on (« Quand je réactive, il faut que tout se résorbe », Olivier 26/10/2026) : un passage IMMÉDIAT de
+ * chaque automatisme (mêmes routes que les crons, mêmes garde-fous anti-doublon), puis le résumé à Olivier sur
+ * Telegram et gardé pour son écran. Ce qu'un passage ne finit pas (plafonds par passage) part aux passages suivants ;
+ * le circuit (facturé chaque matin à 7 h) rattrape au passage de 7 h.
+ */
+export async function rattraperApresReprise(sb: any): Promise<ResumeRattrapage> {
+  const base = (process.env.NEXTAUTH_URL || '').replace(/\/$/, '')
+  const out: ResumeRattrapage = { at: new Date().toISOString(), factures: 0, sel: 0, relances: 0, allianz: 0, comex: 0, erreurs: [] }
+  const appel = async (path: string) => {
+    try {
+      const r = await fetch(`${base}${path}`, { headers: { Authorization: `Bearer ${process.env.CRON_SECRET}` }, cache: 'no-store' })
+      return await r.json().catch(() => ({}))
+    } catch (e: any) { out.erreurs.push(`${path} : ${e?.message || e}`); return {} }
+  }
+  if (!base || !process.env.CRON_SECRET) { out.erreurs.push('adresse de l’app ou secret des tâches absent'); return out }
+  const inv = await appel('/api/cron/auto-invoice');           out.factures = Number(inv?.invoiced) || 0
+  const sel = await appel('/api/cron/aurelie-sel');            out.sel = Array.isArray(sel?.validees) ? sel.validees.length : 0
+  const pay = await appel('/api/cron/facturation-paiements');  out.relances = Number(pay?.reminders?.sent) || 0
+  const alz = await appel('/api/cron/auto-close-allianz');     out.allianz = Number(alz?.closed) || 0
+  const cmx = await appel('/api/cron/auto-accept-comex');      out.comex = Number(cmx?.accepted) || 0
+  await sb.from('app_settings').upsert({ key: 'facturation_auto_dernier_rattrapage', value: JSON.stringify(out) }, { onConflict: 'key' }).then(() => {}, () => {})
+  try {
+    const { getBusinessNumber } = await import('@/lib/settings/business')
+    const { notifierTelegram } = await import('@/lib/notif/heures-mobi')
+    const chat = await getBusinessNumber('telegram_chat_mobi')
+    await notifierTelegram(chat, texteRattrapage(out), [], undefined, { urgent: true })   // sa propre action : tout de suite
+  } catch (e: any) { out.erreurs.push(`Telegram : ${e?.message || e}`) }
+  return out
+}
+
+export function texteRattrapage(r: ResumeRattrapage): string {
+  const n = (x: number, un: string, plus: string) => `${x} ${x > 1 ? plus : un}`
+  return `▶️ Facturation automatique relancée. Rattrapage du premier passage : ${n(r.factures, 'facture', 'factures')}, ${n(r.sel, 'facture SEL', 'factures SEL')}, ${n(r.relances, 'relance', 'relances')}, ${n(r.allianz, 'clôture Allianz', 'clôtures Allianz')}, ${n(r.comex, 'validation Touring', 'validations Touring')}. `
+    + `Le reste éventuel part aux passages suivants (toutes les 15 min) ; le circuit au passage de 7 h.${r.erreurs.length ? ` ⚠ ${r.erreurs.join(' · ')}` : ''}`
+}
