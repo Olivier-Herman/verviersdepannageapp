@@ -228,8 +228,10 @@ export async function retirer(C: number, ids: string[], userId: string | null): 
 }
 
 /**
- * Momo a coché : un paiement par fournisseur (ses factures regroupées, sur son IBAN), rangé dans le
- * lot ouvert de la société, ou dans un nouveau lot. Le reste de la liste d'attente n'est pas touché.
+ * Momo a coché : UN VIREMENT PAR FACTURE, avec la communication de la facture (structurée si le fournisseur en donne
+ * une), rangé dans le lot ouvert de la société, ou dans un nouveau lot. Jamais de paiement groupé (règle du 29/09) :
+ * le 26/10 les deux factures ONSS (solde T3 +++063/1275/65139+++ et avance 116678795275) étaient parties en un seul
+ * virement de 20 350,42 € avec une communication fabriquée — l'ONSS ne peut pas l'imputer. Le reste de la liste d'attente n'est pas touché.
  */
 export async function creerLot(C: number, ids: string[], userId: string | null) {
   const sb = createAdminClient()
@@ -239,9 +241,8 @@ export async function creerLot(C: number, ids: string[], userId: string | null) 
   if (sansIban.length) throw new Error(`IBAN du fournisseur à compléter : ${sansIban.map(f => f.partner_name).join(', ')}`)
   const { journal, methodLine, method } = await journalSepa(C)
 
-  // Un paiement par fournisseur et par compte (deux factures sur deux comptes différents = deux virements).
-  const parFournisseur = new Map<string, EnAttente[]>()
-  for (const f of choisies.filter(x => !x.aml_id)) { const k = `${f.partner_id}:${f.compte_id}`; parFournisseur.set(k, [...(parFournisseur.get(k) || []), f]) }
+  // Un virement par facture, jamais regroupé par fournisseur.
+  const parFacture: EnAttente[][] = choisies.filter(x => !x.aml_id).map(f => [f])
 
   const today = new Date().toISOString().slice(0, 10)
   const crees: { id: number; name: string; amount: number; factures: EnAttente[] }[] = []
@@ -254,12 +255,10 @@ export async function creerLot(C: number, ids: string[], userId: string | null) 
     if (!p) throw new Error(`Remboursement de ${f.partner_name} : virement non créé, vérifier dans l’ERP avant de recommencer`)
     crees.push({ id: p.id, name: p.name, amount: p.amount, factures: [f] })
   }
-  for (const factures of parFournisseur.values()) {
+  for (const factures of parFacture) {
     const moveIds = factures.map(f => f.move_id)
     // Communication : celle de la facture (structurée si le fournisseur en donne une), sinon sa référence.
-    const communication = factures.length === 1
-      ? (factures[0].communication || factures[0].ref || factures[0].move_name)
-      : factures.map(f => f.ref || f.move_name).join(' ').slice(0, 140)
+    const communication = factures[0].communication || factures[0].ref || factures[0].move_name
     const ctx = { active_model: 'account.move', active_ids: moveIds }
     const wiz = await odooRpcCompany<number>(C, 'account.payment.register', 'create', [{ journal_id: journal, payment_method_line_id: methodLine, payment_date: today, group_payment: true, communication, partner_bank_id: factures[0].compte_id }], { context: ctx })
     await odooRpcCompany(C, 'account.payment.register', 'action_create_payments', [[wiz]], { context: ctx })

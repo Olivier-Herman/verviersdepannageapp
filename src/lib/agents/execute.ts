@@ -466,7 +466,8 @@ export async function execute(kind: ProposalKind, company: number, payload: any)
     const paid = still.filter(b => b.state !== 'posted' || !['not_paid', 'partial'].includes(b.payment_state)).map(b => b.id)
     if (paid.length) throw new Error(`Déjà payées ou modifiées depuis la proposition : ${paid.join(', ')}. Refusez et demandez un nouveau lot.`)
     const ctx = { active_model: 'account.move', active_ids: factureIds }
-    const wiz = await odooRpcCompany<number>(company, 'account.payment.register', 'create', [{ journal_id: journal, payment_method_line_id: method, payment_date: today(), group_payment: true }], { context: ctx })
+    // Un paiement par facture, jamais groupé (règle du 29/09, rappelée le 26/10 sur les deux factures ONSS).
+    const wiz = await odooRpcCompany<number>(company, 'account.payment.register', 'create', [{ journal_id: journal, payment_method_line_id: method, payment_date: today(), group_payment: false }], { context: ctx })
     await odooRpcCompany(company, 'account.payment.register', 'action_create_payments', [[wiz]], { context: ctx })
     const pays: any[] = await odooRpcCompany(company, 'account.payment', 'search_read', [[['reconciled_bill_ids', 'in', factureIds], ['batch_payment_id', '=', false], ['journal_id', '=', journal], ['state', '!=', 'canceled']]], { fields: ['id'] })
     if (!pays.length) throw new Error('Paiements créés introuvables : vérifiez dans l’ERP avant de recommencer.')
