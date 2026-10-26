@@ -2,7 +2,9 @@
 // sans aucune trace). Le chauffeur envoie l'erreur affichée et un mot facultatif :
 //   - la ligne d'erreur (error_logs) est marquée « signalée » avec son mot et le contexte de l'écran ;
 //   - l'échange entre dans sa conversation avec Sam / Sonic (journal des conversations) ;
-//   - Mobi est prévenu sur Telegram et l'erreur remonte au bureau du jour (bloc « Erreurs signalées »).
+//   - Mobi est prévenu sur Telegram, à toute heure, et son téléphone sonne (appel automatique, message
+//     erreur-signalee.wav ; comptes du réglage signalement_appel_user_ids, Olivier 26/10/2026) ;
+//   - l'erreur remonte au bureau du jour (bloc « Erreurs signalées »).
 // La réponse de Sam est fixe : rien à attendre d'un appel à l'IA quand quelque chose vient de planter.
 //   { error_id?, message, where, mission_id?, context?, note? } → { ok, agent, texte, ref }
 
@@ -74,8 +76,29 @@ export async function POST(req: Request) {
     const { getBusinessNumber } = await import('@/lib/settings/business')
     await notifierTelegram(await getBusinessNumber('telegram_chat_mobi'),
       `🛟 ${u.name || 'Un chauffeur'} signale une erreur à ${agent}${ref ? ` · ${ref}` : ''}\n${OU[where] || where}${plaque ? ` · ${plaque}` : ''}\n${message}${note ? `\n« ${note} »` : ''}`,
-      [], agent)
+      [], agent, { urgent: true })
   } catch (e: any) { console.error('[sam/signaler] telegram', e?.message) }
+
+  // « L'erreur à Sam et Sonic doit faire sonner mon tel » (Olivier 26/10/2026).
+  try {
+    const { getBusinessList } = await import('@/lib/settings/business')
+    const ids = await getBusinessList('signalement_appel_user_ids').catch(() => [] as string[])
+    if (ids.length) {
+      const [{ data: qui }, { toE164 }, { initiatePstnCall }] = await Promise.all([
+        sb.from('users').select('id, name, phone').in('id', ids),
+        import('@/lib/missions/market-proposals'),
+        import('@/lib/teams/call'),
+      ])
+      for (const p of qui || []) {
+        const e164 = toE164(p.phone)
+        if (!e164) { console.error('[sam/signaler] appel : pas de numéro pour', p.name); continue }
+        const r = await initiatePstnCall({ toPhone: e164, toDisplayName: p.name || 'Mobi' })
+        // espace_appels porte le message joué au décroché (mission vide = signalement sans mission).
+        await sb.from('espace_appels').insert({ mission_id: missionId || '00000000-0000-0000-0000-000000000000', call_id: r.callId || null, audio: 'erreur-signalee.wav', status: r.ok ? 'lance' : 'echec', detail: r.ok ? `signalement ${ref}` : String(r.error || 'appel impossible').slice(0, 300) })
+        if (!r.ok) console.error('[sam/signaler] appel échoué', p.name, r.error)
+      }
+    }
+  } catch (e: any) { console.error('[sam/signaler] appel', e?.message) }
 
   return NextResponse.json({ ok: true, agent, texte, ref })
 }
