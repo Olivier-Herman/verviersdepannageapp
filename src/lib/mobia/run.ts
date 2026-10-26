@@ -358,3 +358,13 @@ export async function runMobia(opts: { dryKey?: string } = {}): Promise<{ checke
   }
   return { checked: mails.length, results }
 }
+
+/** Mails du dossier « Claudy » encore sans brouillon (relevé du lundi, lecture seule — 26/10/2026). */
+export async function compterClaudySansBrouillon(): Promise<number> {
+  const sb = createAdminClient()
+  const mails = await listClaudy(await setting<string>('mobia_dossier', 'Claudy'))
+  if (!mails.length) return 0
+  const { data } = await sb.from('mobia_mails').select('key').in('key', mails.map(m => m.key)).in('status', ['done', 'legacy'])
+  const faits = new Set((data || []).map((r: any) => r.key))
+  return mails.filter(m => !faits.has(m.key)).length
+}
