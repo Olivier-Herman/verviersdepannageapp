@@ -10,6 +10,7 @@
 import { useState } from 'react'
 import { AlertTriangle } from 'lucide-react'
 import { useT } from '@/lib/i18n/I18nProvider'
+import PinInput from '@/components/ui/PinInput'
 
 interface Item { mission_id: string; plate: string; vehicle: string; days: number; zone?: string | null; context?: string | null }
 interface NotifEvent {
@@ -21,6 +22,7 @@ export default function BlockingNotificationModal({ notif, onDone, onSnooze }: {
   if (notif.notif_type === 'message_bloquant') return <MessageAckModal notif={notif} onDone={onDone} />
   if (notif.notif_type === 'expert_access') return <ExpertAccessModal notif={notif} onDone={onDone} />
   if (notif.notif_type === 'siabis_couvert_request') return <SiabisCouvertModal notif={notif} onDone={onDone} />
+  if (notif.notif_type === 'snc_dpr_request') return <SncDprModal notif={notif} onDone={onDone} />
   if (notif.notif_type === 'mission_address_changed') return <AddressChangeModal notif={notif} onDone={onDone} />
   if (notif.notif_type === 'paiements_a_trier' || notif.notif_type === 'paiements_lot_du_jour') return <RappelModal notif={notif} onDone={onDone} onSnooze={onSnooze} />
   if (notif.notif_type === 'levee_saisie_alarme') return <LeveeAlarmModal notif={notif} onDone={onDone} onSnooze={onSnooze} />
@@ -239,6 +241,66 @@ function SiabisCouvertModal({ notif, onDone }: { notif: NotifEvent; onDone: () =
           <button type="button" disabled={!!sending} onClick={() => decide('refuse')} className="px-4 py-2.5 rounded-xl bg-white border-2 border-red-500 text-red-700 font-bold disabled:opacity-40">{sending === 'refuse' ? 'Envoi…' : '✕ Refuser (reste non couvert)'}</button>
           <button type="button" disabled={!!sending} onClick={() => decide('approve')} className="px-4 py-2.5 rounded-xl bg-green-600 hover:bg-green-700 text-white font-bold disabled:opacity-40">{sending === 'approve' ? 'Envoi…' : '✓ Confirmer couvert'}</button>
         </div>
+      </div>
+    </div>
+  )
+}
+
+// ── SNC : client parti = déplacement pour rien, signé par code PIN (Olivier 26/10/2026) ──
+function SncDprModal({ notif, onDone }: { notif: NotifEvent; onDone: () => void }) {
+  const d = notif.payload?.data || {}
+  const [pin, setPin] = useState('')
+  const [sending, setSending] = useState<null | 'approve' | 'refuse'>(null)
+  const [err, setErr] = useState<string | null>(null)
+  const [warning, setWarning] = useState<string | null>(null)
+  async function decide(decision: 'approve' | 'refuse') {
+    if (pin.length !== 4) { setErr('Tape ton code à 4 chiffres pour signer.'); return }
+    setSending(decision); setErr(null)
+    try {
+      const r = await fetch(`/api/notifications/${notif.id}/respond`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ dpr_decision: decision, pin }) })
+      const j = await r.json().catch(() => ({}))
+      if (!r.ok) { setErr(j.error || 'Envoi impossible'); if (j.code === 'pin_invalid') setPin(''); return }
+      if (j.warning) { setWarning(j.warning); return }
+      onDone()
+    } catch { setErr('Erreur réseau') } finally { setSending(null) }
+  }
+  const arrivee = d.on_site_at ? new Date(d.on_site_at).toLocaleTimeString('fr-BE', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Brussels' }) : null
+  return (
+    <div className="fixed inset-0 z-[400] flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
+      <div className="w-full max-w-lg rounded-2xl bg-white border-4 border-red-600 shadow-2xl overflow-hidden" onClick={e => e.stopPropagation()}>
+        <div className="bg-red-600 text-white px-5 py-4 flex items-center gap-3">
+          <span className="text-3xl">❌</span>
+          <div>
+            <p className="text-lg font-bold leading-tight">Client parti — déplacement pour rien</p>
+            <p className="text-sm opacity-90">Réponse obligatoire — le premier qui répond décide.</p>
+          </div>
+        </div>
+        {warning ? (
+          <div className="px-5 py-5 space-y-4">
+            <p className="text-slate-900">✅ Mission <b>#{d.mission_number}</b> clôturée sans facturation.</p>
+            <p className="rounded-xl bg-amber-50 border border-amber-300 px-4 py-3 text-amber-900 text-sm">⚠ {warning}</p>
+            <div className="flex justify-end"><button type="button" onClick={onDone} className="px-5 py-3 min-h-[44px] rounded-xl bg-slate-800 text-white font-bold">J’ai compris</button></div>
+          </div>
+        ) : (<>
+        <div className="px-5 py-5 space-y-3">
+          <p className="text-slate-900"><b>{d.driver_name || 'Un chauffeur'}</b> est sur place pour la fiche <b>#{d.mission_number}</b> (Siabis non couvert) et le client est parti{arrivee ? <> (arrivé à {arrivee})</> : null}.</p>
+          <div className="rounded-xl bg-slate-50 border px-4 py-3">
+            <div className="font-mono text-2xl font-bold text-slate-900">{d.plate || 'sans plaque'}</div>
+            <div className="text-sm text-slate-700">{d.vehicle}{d.city ? ` · ${d.city}` : ''}</div>
+            {d.remarque && <div className="text-sm text-slate-800 mt-1">« {d.remarque} »</div>}
+          </div>
+          <p className="text-sm text-slate-700">Valider = la mission est <b>clôturée sans facturation</b>, <b>pas de paiement</b>, et le dossier est clôturé chez Touring en « client parti avant l’arrivée ». Refuser = le chauffeur continue la mission (appelle-le).</p>
+          <div>
+            <p className="text-sm font-semibold text-slate-900 mb-1">Ton code personnel (signature) :</p>
+            <PinInput value={pin} onChange={v => { setPin(v); setErr(null) }} autoFocus disabled={!!sending} className="h-14 rounded-xl border-2 border-slate-300 bg-white text-slate-900 text-3xl" ariaLabel="Code personnel" />
+          </div>
+          {err && <p className="text-red-700 text-sm font-semibold">⚠ {err}</p>}
+        </div>
+        <div className="px-5 py-4 border-t bg-slate-50 flex flex-wrap items-center justify-end gap-3">
+          <button type="button" disabled={!!sending} onClick={() => decide('refuse')} className="px-4 py-2.5 min-h-[44px] rounded-xl bg-white border-2 border-slate-400 text-slate-800 font-bold disabled:opacity-40">{sending === 'refuse' ? 'Envoi…' : '✕ Refuser (il continue)'}</button>
+          <button type="button" disabled={!!sending || pin.length !== 4} onClick={() => decide('approve')} className="px-4 py-2.5 min-h-[44px] rounded-xl bg-red-600 hover:bg-red-700 text-white font-bold disabled:opacity-40">{sending === 'approve' ? 'Envoi…' : '✓ Valider : clôture sans facturation'}</button>
+        </div>
+        </>)}
       </div>
     </div>
   )

@@ -22,7 +22,7 @@ export const SOUND_FAMILIES: SoundFamily[] = [
   { key: 'nuit', label: 'Garde de nuit', desc: 'Proposition de nuit au 1er départ / à la réserve, garde non couverte, échanges de garde.',
     types: ['market_proposal', 'market_proposal_update', 'reserve_notif_toggled', 'garde_uncovered', 'garde_swap_requested', 'garde_swap_decided'] },
   { key: 'siabis', label: 'Siabis', desc: 'Demande et décision « couvert » Siabis.',
-    types: ['siabis_couvert_request', 'siabis_couvert_decided'] },
+    types: ['siabis_couvert_request', 'siabis_couvert_decided', 'snc_dpr_request', 'snc_dpr_decided'] },
   { key: 'escalade', label: 'Urgent / escalade', desc: 'Appel d’escalade, mission refusée ou sans réponse, annulation par l’assistance, connexion perdue.',
     types: ['escalation_call', 'auto_dispatch_refused', 'auto_dispatch_timeout', 'fiche_ouverte_dispatch', 'acceptation_en_retard', 'sam_sans_reponse', 'mission_refusee_chauffeur', 'mission_cancelled_by_insurer', 'kaze_cancelled_after_start', 'axa_cancelled_after_start', 'touring_cancelled', 'garage_cancel_request', 'comex_login_failed', 'axa_poll_down', 'email_parse_error', 'mission_address_changed'] },
   { key: 'check', label: 'Contrôle véhicule / rappel', desc: 'Contrôle véhicule, code personnel, fiche restée ouverte.',

@@ -417,6 +417,16 @@ export const fr = {
     action_swap_to_rem:  'DSP → REM',
     siabis_request_btn: "Demander Siabis couvert (dispatch)",
     siabis_request_pending: "Demande envoyée au dispatch — en attente",
+    // SNC : client parti = déplacement pour rien, validé par le dispatch (26/10/2026)
+    snc_dpr_btn:           "Client parti — déplacement pour rien",
+    snc_dpr_pending:       "Client parti : demande envoyée au dispatch — en attente de sa validation",
+    snc_dpr_refused:       "Le dispatch n’a pas validé le déplacement pour rien : appelle-le et continue la mission.",
+    snc_dpr_approved:      "Déplacement pour rien validé : mission clôturée sans facturation, rien à encaisser.",
+    snc_dpr_confirm_title: "Le client est parti ?",
+    snc_dpr_confirm_body:  "Pas de paiement : la mission sera clôturée sans facturation. Le dispatch doit valider avec son code avant que tu repartes.",
+    snc_dpr_note_label:    "Remarque pour le dispatch (facultatif)",
+    snc_dpr_note_ph:       "Ex. personne sur place, véhicule absent…",
+    snc_dpr_send:          "Envoyer au dispatch",
     // Adresse de livraison modifiée par l'assistance (05/10/2026)
     addr_change_title:     "Adresse de livraison modifiée par l’assistance",
     addr_change_body:      "Ne livre pas : appelle le dispatch, il décide de l’adresse.",

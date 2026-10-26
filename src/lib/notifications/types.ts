@@ -529,6 +529,22 @@ export const NOTIFICATION_TYPES: readonly NotificationType[] = [
     defaultEnabled:  true,
   },
   {
+    key:             'snc_dpr_request',
+    label:           'SNC : client parti (déplacement pour rien)',
+    description:     'Un chauffeur signale que le client est parti avant son arrivée : popup obligatoire, le dispatch valide avec son code ou refuse.',
+    category:        'dispatcher',
+    applicableRoles: ['dispatcher', 'admin', 'superadmin'],
+    defaultEnabled:  true,
+  },
+  {
+    key:             'snc_dpr_decided',
+    label:           'Réponse du dispatch (client parti)',
+    description:     'Le dispatch a validé ou refusé le déplacement pour rien.',
+    category:        'driver',
+    applicableRoles: ['driver'],
+    defaultEnabled:  true,
+  },
+  {
     key:             'question_equipe',
     label:           'Question de la direction',
     description:     'Une question à laquelle on répond d’un bouton (ex. Utile / Pas utile). Revient toutes les 10 min tant qu’on n’a pas répondu.',

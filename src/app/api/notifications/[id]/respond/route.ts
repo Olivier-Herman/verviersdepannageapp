@@ -11,6 +11,7 @@ import { createAdminClient } from '@/lib/supabase'
 import { applyParcVerificationResponse } from '@/lib/missions/parc-verification'
 import { decideBureauAccess } from '@/lib/expert/access'
 import { decideSiabisCouvert } from '@/lib/missions/siabis-couvert-request'
+import { decideSncDpr } from '@/lib/missions/snc-dpr-request'
 import { decideAddressChange, ackAddressChange } from '@/lib/missions/address-change'
 
 export const dynamic = 'force-dynamic'
@@ -42,6 +43,12 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     const r = await decideSiabisCouvert(sb, params.id, userId, body.siabis_decision)
     if (!r.ok) return NextResponse.json({ error: r.error }, { status: 400 })
     return NextResponse.json({ ok: true, already: !!r.already })
+  }
+  // SNC client parti (déplacement pour rien) : { dpr_decision: 'approve' | 'refuse', pin } — signé par code PIN. 26/10/2026.
+  if (body?.dpr_decision === 'approve' || body?.dpr_decision === 'refuse') {
+    const r = await decideSncDpr(sb, params.id, userId, body.dpr_decision, body?.pin ?? null)
+    if (!r.ok) return NextResponse.json({ error: r.error, code: r.code }, { status: r.code === 'pin_invalid' ? 403 : 400 })
+    return NextResponse.json({ ok: true, already: !!r.already, warning: r.warning || null })
   }
   // Adresse de livraison modifiée par l'assistance (05/10/2026) : dispatch { address_decision: 'apply'|'keep' },
   // chauffeur { address_ack: true }.

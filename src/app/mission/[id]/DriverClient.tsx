@@ -55,6 +55,7 @@ interface Stop {
 interface Mission {
   id: string; status: string; mission_type?: string
   siabis_couvert_requested_at?: string | null; siabis_couvert_decided_at?: string | null; siabis_couvert_decision?: string | null   // demande couvert → dispatch (20/09/2026)
+  snc_dpr_requested_at?: string | null; snc_dpr_decided_at?: string | null; snc_dpr_decision?: string | null   // SNC client parti → validation dispatch par code (26/10/2026)
   address_change?: { new_address?: string; new_name?: string | null; old_address?: string | null; decided_at?: string | null } | null   // adresse modifiée par l'assistance (05/10/2026)
   incident_type?: string                                       // 'relivraison' = REL
   parent_mission_id?: string | null                            // si REL, lien vers la mission parente parc
@@ -1137,6 +1138,8 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
   const [f2DprMotif,      setF2DprMotif]      = useState<{ code: string; label: string } | null>(null)
   const [garageReopenDate, setGarageReopenDate] = useState('')   // garage fermé → réouverture
   const [showDprMotif,    setShowDprMotif]    = useState(false)
+  const [showSncDpr,      setShowSncDpr]      = useState(false)   // SNC client parti → demande au dispatch (26/10/2026)
+  const [sncDprNote,      setSncDprNote]      = useState('')
   const [dprFromRem,      setDprFromRem]      = useState(false)  // true si conversion depuis refus REM
   // true = refus À DESTINATION (véhicule chargé) → au lieu d'une clôture DPR,
   // on met le véhicule EN PARC en conservant le motif de refus. Olivier 2026-07-09.
@@ -2090,6 +2093,30 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
     finally { setLoading(false) }
   }
 
+  // ── SNC : client parti = déplacement pour rien (Olivier 26/10/2026) ─────────
+  // Pas de paiement, clôture sans facturation — mais jamais par le chauffeur seul : le dispatch valide dans un popup
+  // obligatoire, signé par son code personnel. Toutes les portes DPR d'une mission SNC mènent ici.
+  const sncDprAvailable = M.source === 'police_snc' && !loaded && (!!M.on_way_at || onSite) && !['cancelled', 'completed', 'to_invoice'].includes(String(M.status))
+  const sncDprPending = !!M.snc_dpr_requested_at && (!M.snc_dpr_decided_at || M.snc_dpr_decided_at < M.snc_dpr_requested_at)
+  const sncDprRefused = !sncDprPending && M.snc_dpr_decision === 'refused'
+  const openSncDpr = () => {
+    setShowGrid(false); setF2Screen('none'); setErr('')
+    if (sncDprPending) { setErr(t('mission_detail.snc_dpr_pending')); return }
+    if (!sncDprAvailable) { setErr(loaded ? 'Véhicule chargé : ce n’est plus un déplacement pour rien.' : 'Passe d’abord « En route ».'); return }
+    setSncDprNote(''); setShowSncDpr(true)
+  }
+  const requestSncDpr = async () => {
+    setLoading(true); setErr('')
+    try {
+      const r = await fetch(`/api/missions/${M.id}/snc-dpr-request`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ remarque: sncDprNote.trim() || null }) })
+      const j = await r.json().catch(() => ({}))
+      if (!r.ok) throw new Error(j.error || 'Erreur')
+      setM(prev => ({ ...prev, snc_dpr_requested_at: j.requested_at || new Date().toISOString(), snc_dpr_decided_at: null, snc_dpr_decision: null }))
+      setShowSncDpr(false)
+    } catch (e: any) { setErr(e.message || 'Demande impossible') }
+    finally { setLoading(false) }
+  }
+
   // ── « Ceci n'est pas un Siabis » ────────────────────────────────────────────
   // Cas typique : véhicule HORS AUTOROUTE → le tarif Siabis ne s'applique pas.
   // On repasse sur la SOURCE d'assistance d'origine (ex. touring) + son client à
@@ -2821,6 +2848,7 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
         onLoad={() => { setF2Screen('none'); api('load_vehicle') }}
         onDprCodes={setF2Dpr}
         onPick={async o => {
+          if (o === 'dpr' && M.source === 'police_snc') { openSncDpr(); return }
           if (o === 'park' && await quickPark()) return
           setF2Outcome(o); setF2Screen('close')
         }}
@@ -5518,6 +5546,16 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
           )}
 
           {/* Pause « Je reviens plus tard » et transfert à un autre chauffeur (Olivier 18/10/2026). */}
+          {/* SNC client parti : état de la demande au dispatch (26/10/2026) */}
+          {M.source === 'police_snc' && sncDprPending && (
+            <div className="w-full py-3 px-4 bg-amber-500/10 border border-amber-500/40 rounded-2xl text-center text-amber-700 dark:text-amber-300 text-sm font-semibold">⏳ {t('mission_detail.snc_dpr_pending')}</div>
+          )}
+          {M.source === 'police_snc' && sncDprRefused && M.status !== 'completed' && (
+            <div className="w-full py-3 px-4 bg-red-500/10 border border-red-500/40 rounded-2xl text-center text-red-700 dark:text-red-300 text-sm font-semibold">⛔ {t('mission_detail.snc_dpr_refused')}</div>
+          )}
+          {M.source === 'police_snc' && M.snc_dpr_decision === 'approved' && M.status === 'completed' && (
+            <div className="w-full py-3 px-4 bg-green-500/10 border border-green-500/40 rounded-2xl text-center text-green-700 dark:text-green-300 text-sm font-semibold">✅ {t('mission_detail.snc_dpr_approved')}</div>
+          )}
           {!isReadOnly && <MissionPauseTransfer mission={M as any} onChanged={reloadMission} />}
 
           {/* Bouton secondaire — Actions (DPR, photos, etc.) toujours accessible quand on est sur place ou plus avancé */}
@@ -5567,7 +5605,7 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
                     page Action ET ce menu — et celui-ci n'impose rien.
                     L'écran de clôture, lui, exempte déjà le DPR de photos. */}
                 <button
-                  onClick={() => { setShowGrid(false); setF2Outcome('dpr'); setF2Screen('close') }}
+                  onClick={() => { if (M.source === 'police_snc') { openSncDpr(); return } setShowGrid(false); setF2Outcome('dpr'); setF2Screen('close') }}
                   disabled={loading}
                   className="w-full py-3 bg-surface border border text-ink-secondary font-medium rounded-2xl text-sm">
                   <T k="mission_detail.btn_refuse_dpr" />
@@ -5675,7 +5713,7 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
                 </button>
               )}
               {/* DPR — ouvre la modal motif avant de basculer */}
-              {!flux2 && <button onClick={() => { setShowGrid(false); setDprFromRem(false); setDprToPark(false); setDprMotif(''); setDprMotifAutre(''); setShowDprMotif(true) }}
+              {!flux2 && <button onClick={() => { if (M.source === 'police_snc') { openSncDpr(); return } setShowGrid(false); setDprFromRem(false); setDprToPark(false); setDprMotif(''); setDprMotifAutre(''); setShowDprMotif(true) }}
                 className="rounded-2xl py-5 flex flex-col items-center justify-center gap-2 border bg-surface border transition active:scale-95">
                 <span className="text-2xl">❌</span>
                 <span className="text-sm font-medium text-ink-secondary"><T k="mission_detail.action_dpr" /></span>
@@ -5686,6 +5724,32 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
                 <span className="text-2xl">🏁</span>
                 <span className="text-sm font-bold text-ink"><T k="mission_detail.action_finish" /></span>
               </button>}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── SNC : client parti → confirmation avant la demande au dispatch (26/10/2026) ── */}
+      {showSncDpr && (
+        <div className="fixed inset-0 bg-black/80 z-[70] flex items-end">
+          <div className="bg-surface w-full rounded-t-3xl p-6 pb-[calc(env(safe-area-inset-bottom)+1.5rem)] space-y-4" onClick={e => e.stopPropagation()}>
+            <div className="flex justify-between items-center">
+              <h2 className="text-ink font-semibold text-lg">❌ {t('mission_detail.snc_dpr_confirm_title')}</h2>
+              <button onClick={() => setShowSncDpr(false)} className="w-11 h-11 flex items-center justify-center text-ink-muted text-2xl">×</button>
+            </div>
+            <p className="text-ink-secondary text-sm">{t('mission_detail.snc_dpr_confirm_body')}</p>
+            <label className="block">
+              <span className="text-ink-muted text-xs font-semibold">{t('mission_detail.snc_dpr_note_label')}</span>
+              <textarea value={sncDprNote} onChange={e => setSncDprNote(e.target.value)} rows={2} maxLength={300}
+                placeholder={t('mission_detail.snc_dpr_note_ph')}
+                className="mt-1 w-full rounded-xl bg-surface-2 border border px-3 py-2 text-ink text-sm" />
+            </label>
+            {err && <div className="bg-red-500/10 text-red-600 rounded-xl px-3 py-2 text-sm">⚠ {err}</div>}
+            <div className="grid grid-cols-2 gap-2">
+              <button onClick={() => setShowSncDpr(false)} disabled={loading}
+                className="py-4 rounded-2xl bg-surface border border text-ink-secondary font-semibold disabled:opacity-50">{t('common.cancel')}</button>
+              <button onClick={requestSncDpr} disabled={loading}
+                className="py-4 rounded-2xl bg-red-600 text-white font-bold disabled:opacity-50">{loading ? '⏳' : t('mission_detail.snc_dpr_send')}</button>
             </div>
           </div>
         </div>
