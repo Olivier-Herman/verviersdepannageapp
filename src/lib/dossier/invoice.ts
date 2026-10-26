@@ -171,7 +171,7 @@ async function invoiceDossierGroupsLocked(sb: any, d: Dossier, input: { anyMissi
   // Facture enrichie (23/10/2026) : parcours, sinistre, photos, libellés propres — derrière l'interrupteur du réglage.
   const enrichi = !input.asQuote && !input.dryRun && await factureEnrichieActive()
   const etapes = enrichi ? await etapesDossier(sb, d, rowById).catch(e => { warnings.push(`Facture enrichie : parcours non calculé (${e?.message || e})`); return [] as Etape[] }) : []
-  const etapeDe = (id: string) => etapes.find(e => e.mission_id === id && e.kind !== 'reprise')
+  const etapeDe = (id: string) => etapes.find(e => e.mission_id === id)
 
   for (const [clientId, group] of byClient) {
     const sections: QuoteSection[] = []
@@ -277,7 +277,7 @@ async function invoiceDossierGroupsLocked(sb: any, d: Dossier, input: { anyMissi
     if (enrichi && etapes.length) {
       try {
         const rowsFact = [root, ...perLeg.map(p => rowById[p.leg.mission_id]).filter((r: any) => r && r.id !== root?.id)].filter(Boolean)
-        const etapesFact = etapes.filter(e => perLeg.some(p => p.leg.mission_id === e.mission_id) || e.kind === 'reprise')
+        const etapesFact = etapes.filter(e => perLeg.some(p => p.leg.mission_id === e.mission_id))
         const notes = await withOdooActor(input.actorUserId, () => enrichirFacture({ sb, moveId: created.id, etapes: etapesFact.length ? etapesFact : etapes, rows: rowsFact, clientName, fleetVehicleId }))
         notes.forEach(n => warnings.push(`Facture enrichie : ${n}`))
       } catch (e: any) { warnings.push(`Facture enrichie non appliquée : ${e?.message || e}`) }

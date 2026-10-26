@@ -192,8 +192,12 @@ export async function POST(req: Request, { params }: { params: { id: string } })
         .select('id, parked_at, parc_origin_mission_id')
         .eq('parent_mission_id', rootId).eq('dossier_leg', true).is('parc_exit_at', null)
         .order('parked_at', { ascending: false }).limit(1).maybeSingle()
-      const cutIso  = `${date}T23:59:59.000Z`                       // fin du jour de levée
-      const nextIso = `${date}T23:59:59.001Z`                       // le lendemain commence ici
+      // Fin du jour de levée en heure BELGE : 23:59:59 UTC tombait le lendemain à 1 h (2 h en été) → une nuit
+      // de trop au tarif saisie et un volet « autre » ouvert après la sortie réelle (2JVG512, Olivier 26/10/2026).
+      const { brusselsMidnightAfter } = await import('@/lib/parc/nights')
+      const midnight = new Date(brusselsMidnightAfter(String(date).slice(0, 10))).getTime()
+      const cutIso  = new Date(midnight - 1).toISOString()          // fin du jour de levée
+      const nextIso = new Date(midnight).toISOString()              // le lendemain commence ici
       // On ne coupe que si la période courante a commencé AVANT la levée :
       // sinon il n'y a rien à facturer au Parquet et le groupe unique suffit.
       if (openLeg && (!openLeg.parked_at || openLeg.parked_at < cutIso)) {

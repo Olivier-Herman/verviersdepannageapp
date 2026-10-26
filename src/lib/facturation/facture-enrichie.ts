@@ -85,7 +85,7 @@ export function localite(addr?: string | null): string {
   return titre(parts.length > 1 ? parts[parts.length - 1].replace(/^\d{4,5}\s*/, '') : parts[0])
 }
 
-export interface Etape { n: number; mission_id: string; kind: DossierLeg['kind'] | 'reprise'; titre: string; date: string; quoi: string; cote: string }
+export interface Etape { n: number; mission_id: string; kind: DossierLeg['kind']; titre: string; date: string; quoi: string; cote: string }
 
 /** Étapes du dossier, dans l'ordre, avec un numéro (repris dans les sections de la facture). */
 export async function etapesDossier(sb: any, d: Dossier, rowById: Record<string, any>): Promise<Etape[]> {
@@ -107,14 +107,12 @@ export async function etapesDossier(sb: any, d: Dossier, rowById: Record<string,
       const vers = surPlace ? '' : auDepot ? ` → ${depotDe(m)}` : ` → ${m.destination_address}`
       out.push({ n: 0, mission_id: leg.mission_id, kind: 'rem', titre: police ? 'Appel police' : surPlace ? 'Dépannage' : 'Remorquage', date: day(m.intervention_date || m.received_at),
         quoi: `${police && /accident/i.test(String(m.source)) ? 'Accident ' : ''}${DEPOT_TXT.test(String(m.incident_address || '')) ? depotDe(m) : (m.incident_address || '')}${vers}`, cote: police ? String(m.police_zone || '') : '' })
-      // Appel police repris par une assistance (lien assisteur sur la facture).
-      const assist = leg.billed_to_name && !/parquet|frais de justice|police|client divers/i.test(String(leg.billed_to_name))
-      if (police && assist && (d.dossier_number || '').match(/[A-Z0-9]{6,}/)) {
-        const ref = String(d.dossier_number).split(/\s*\/\s*/).map(s => s.trim()).find(s => !/^(ACC|SNC|SAISIE)-/i.test(s)) || ''
-        out.push({ n: 0, mission_id: leg.mission_id, kind: 'reprise', titre: `Reprise par ${leg.billed_to_name}`, date: day(m.intervention_date || m.received_at), quoi: `${ref ? `Mission ${ref.replace(/([BF]\d[0-9A-Z]\d{6})[A-Z]{2}\b/, '$1')} : ` : ''}appel police pris en charge par l’assistance`, cote: '' })
-      }
+      // Plus d'étape « Reprise par … » : le parcours ne montre que remorquages, parc et relivraisons (Olivier 26/10/2026 —
+      // elle sortait même sur la facture d'un propriétaire qui avait payé sa levée, 2026/10/544).
     } else if (leg.kind === 'gard') {
       const from = m.parked_at || leg.started_at, to = m.parc_exit_at || leg.ended_at
+      // Volet ouvert après la sortie réelle (levée et sortie le même jour) : rien à montrer.
+      if (from && to && new Date(to).getTime() <= new Date(from).getTime()) continue
       const nuits = from && to ? nightsBetween(from, to) : null
       const flat = Number(root.storage_flat_htva) > 0 || Number(m.storage_flat_htva) > 0
       const offert = !flat && (!!root.storage_waived || !!m.storage_waived || /offert|aucune nuit facturable|gratuit/i.test(String(leg.nothing_to_bill || '')))

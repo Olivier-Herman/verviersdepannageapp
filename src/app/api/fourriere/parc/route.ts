@@ -14,7 +14,7 @@ import { authOptions }       from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase'
 import { sessionAccess }     from '@/lib/access'
 import { listParcZones }     from '@/lib/parc/zones'
-import { nightsBetween }     from '@/lib/parc/nights'
+import { nightsBetween, brusselsMidnightAfter } from '@/lib/parc/nights'
 import { isRequisitoireDoc } from '@/lib/requisitoire/doc'
 
 export const dynamic     = 'force-dynamic'
@@ -91,7 +91,7 @@ export async function GET() {
     let storage = 0, storageNote = ''
     if (m.no_charge_at || m.storage_waived) { storage = 0; storageNote = m.storage_waived ? 'offert' : 'sans frais' }
     else if (regime === 'saisie' && m.levee_saisie_date && m.levee_saisie_type !== 'temporaire') {
-      const after = nightsBetween(`${String(m.levee_saisie_date).slice(0, 10)}T23:59:59Z`)
+      const after = nightsBetween(new Date(brusselsMidnightAfter(String(m.levee_saisie_date).slice(0, 10))).getTime() - 1000)
       storage = Math.max(0, after) * (rate.autre?.car || 20); storageNote = `${after} nuit(s) hors saisie × ${rate.autre?.car || 20} €`
     } else { const billable = Math.max(0, nights - (r.free || 0)); storage = billable * price; storageNote = `${billable} nuit(s) × ${price.toFixed(2)} €${r.free ? ` (${r.free} offertes)` : ''}` }
     const zoneConf = m.parc_zone_key ? zoneByKey.get(String(m.parc_zone_key).toLowerCase()) : null
