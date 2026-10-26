@@ -4,11 +4,15 @@
 // l'agent, validation / refus / correction par une personne, exécution par
 // VD Soft. Trace complète : qui a préparé, qui a validé, quand, résultat.
 
+import { facturationAutoSuspendue } from '@/lib/facturation/suspension'
 import { createAdminClient } from '@/lib/supabase'
 import { type AgentAccount, type ProposalKind, ALL_KINDS, KIND_LABEL, COMPANY_LABEL, checkCompany, isNight, journal } from './core'
 import { prepare, execute } from './execute'
 
 export interface Actor { id: string; name: string; isSuperadmin: boolean }
+
+/** Types qui préparent une facturation de vente : bloqués quand l'interrupteur général est sur off. */
+export const FACTURATION_KINDS: ProposalKind[] = ['note_credit', 'refacturation_avance']
 
 /** Dépôt d'une proposition. Exécutée tout de suite si l'envoi direct est permis. */
 export async function submitProposal(agent: AgentAccount, body: any): Promise<{ id: string; status: string; note?: string; error?: string }> {
@@ -21,6 +25,11 @@ export async function submitProposal(agent: AgentAccount, body: any): Promise<{ 
   }
   const co = checkCompany(agent, body?.societe)
   if (!co.ok) { await journal({ agent: agent.name, company: Number(body?.societe) || null, action: 'proposition refusée', detail: co.error, ok: false }); throw new Error(co.error) }
+  // Facturation à l'arrêt (interrupteur général, Olivier 26/10/2026) : aucun agent ne prépare de facturation de vente.
+  if (FACTURATION_KINDS.includes(kind) && await facturationAutoSuspendue(sb)) {
+    await journal({ agent: agent.name, company: co.company, action: 'proposition refusée', detail: `« ${KIND_LABEL[kind]} » : facturation à l’arrêt`, ok: false })
+    throw new Error('Facturation à l’arrêt : pas de proposition de ce type pour l’instant. Réessayer à la reprise (GET /api/agents/facturation-auto/etat).')
+  }
   const why = String(body?.pourquoi || '').trim().slice(0, 2000)
   if (!why) throw new Error('pourquoi obligatoire : ce que vous avez vérifié et pourquoi vous le proposez.')
 

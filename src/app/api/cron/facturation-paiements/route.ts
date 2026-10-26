@@ -8,6 +8,7 @@
 // Trace du dernier passage dans app_settings (facturation_paiements_last_run)
 // pour qu'un cron muet se voie à l'écran.
 
+import { facturationAutoSuspendue } from '@/lib/facturation/suspension'
 import { NextResponse }      from 'next/server'
 import { createAdminClient } from '@/lib/supabase'
 import { syncInvoicePayments, sendInvoiceReminders } from '@/lib/facturation/paiements'
@@ -27,7 +28,10 @@ async function handleGET(req: Request) {
   try {
     summary.payments = await syncInvoicePayments(sb)
   } catch (e: any) { summary.ok = false; summary.payments_error = e?.message || String(e) }
-  try {
+  // Facturation à l'arrêt (interrupteur général, 26/10/2026) : la lecture des paiements continue, les relances J+15/J+30
+  // attendent la reprise.
+  if (await facturationAutoSuspendue(sb)) summary.reminders = { skipped: 'facturation à l’arrêt' }
+  else try {
     summary.reminders = await sendInvoiceReminders(sb)
   } catch (e: any) { summary.ok = false; summary.reminders_error = e?.message || String(e) }
   // app_settings.value est du TEXTE : toujours sérialisé, toujours JSON.parse à la lecture.
