@@ -62,7 +62,6 @@ function AddressInput({ value, onChange, onSelect, onBlur, mapsReady }: {
     const g = (window as any).google
     if (!g?.maps?.places) return
     acRef.current = new g.maps.places.Autocomplete(ref.current, {
-      componentRestrictions: { country: ['be','lu','fr','nl','de'] },
       fields: ['formatted_address','geometry','address_components'],
     })
     acRef.current.addListener('place_changed', () => {

@@ -533,7 +533,6 @@ export default function EncaissementClient({
 
   const PLACES_OPTIONS = {
     types: ['address'] as string[],
-    componentRestrictions: { country: ['be', 'fr', 'de', 'nl', 'lu'] }
   }
 
   const initAC = (
@@ -543,8 +542,8 @@ export default function EncaissementClient({
     componentSetter?: (place: any) => void
   ) => {
     if (!inputRef.current || !window.google?.maps?.places || acRef.current) return
-    // Adresse d'un client : tous pays (client polonais bloqué le 27/10/2026), résultats belges d'abord (region=BE).
-    acRef.current = new window.google.maps.places.Autocomplete(inputRef.current, inputRef === clientAddressInputRef ? { types: ['address'] } : PLACES_OPTIONS)
+    // Tous pays (Olivier 27/10/2026 : « il ne faut pas de limite de pays »).
+    acRef.current = new window.google.maps.places.Autocomplete(inputRef.current, PLACES_OPTIONS)
     acRef.current.addListener('place_changed', () => {
       const place = acRef.current.getPlace()
       if (place?.formatted_address) setter(place.formatted_address)

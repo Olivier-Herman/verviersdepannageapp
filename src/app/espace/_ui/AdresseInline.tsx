@@ -22,7 +22,7 @@ export default function AdresseInline({ valeur, onChange, placeholder, gps = fal
     if (q.trim().length < 3 || !svc.current) { setSugg([]); return }
     t.current = setTimeout(() => {
       const g = (window as any).google
-      svc.current.getPlacePredictions({ input: q, componentRestrictions: { country: ['be', 'lu', 'fr', 'nl', 'de'] }, bounds: new g.maps.LatLngBounds({ lat: 49.49, lng: 2.51 }, { lat: 51.51, lng: 6.41 }) },
+      svc.current.getPlacePredictions({ input: q, bounds: new g.maps.LatLngBounds({ lat: 49.49, lng: 2.51 }, { lat: 51.51, lng: 6.41 }) },
         (res: any[] | null) => setSugg((res || []).slice(0, 5).map(p => ({ id: p.place_id, principal: p.structured_formatting?.main_text || p.description, secondaire: p.structured_formatting?.secondary_text || '' }))))
     }, 220)
   }

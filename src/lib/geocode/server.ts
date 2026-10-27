@@ -42,7 +42,8 @@ export function lastGeocodeFailure() { return lastFailure }
 async function geocodeGoogle(text: string): Promise<GeocodeHit | null> {
   if (!GOOGLE_KEY) return null
   const url = 'https://maps.googleapis.com/maps/api/geocode/json?address=' + encodeURIComponent(text)
-    + '&region=be&components=country:BE|country:LU|country:FR|country:NL|country:DE&language=fr&key=' + encodeURIComponent(GOOGLE_KEY)
+    // Tous pays (Olivier 27/10/2026 : « il ne faut pas de limite de pays ») ; region=be garde la Belgique en premier.
+    + '&region=be&language=fr&key=' + encodeURIComponent(GOOGLE_KEY)
   try {
     const r = await fetch(url, { cache: 'no-store', signal: AbortSignal.timeout(6000) })
     if (!r.ok) { void countRoutingCall('google', 'adresse', true); lastFailure = 'transient'; return null }
@@ -174,7 +175,7 @@ export async function geocodeAddressServer(raw: string | null | undefined, city?
   if (lastFailure === 'not_found' && GOOGLE_KEY) return null   // Google a cherché, il n'y a rien : ORS ne fera pas mieux
 
   if (!ORS_KEY) return null
-  const url = `${ORS_BASE}/geocode/search?api_key=${encodeURIComponent(ORS_KEY)}&text=${encodeURIComponent(text)}&boundary.country=BE,LU,FR,NL,DE&size=3`
+  const url = `${ORS_BASE}/geocode/search?api_key=${encodeURIComponent(ORS_KEY)}&text=${encodeURIComponent(text)}&focus.point.lat=50.59&focus.point.lon=5.86&size=3`   // tous pays, proches de Verviers d'abord (27/10/2026)
   let j: any = null
   try {
     const r = await fetch(url, { cache: 'no-store', signal: AbortSignal.timeout(6000) })

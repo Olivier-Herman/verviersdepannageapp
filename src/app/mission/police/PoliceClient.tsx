@@ -306,7 +306,6 @@ export default function PoliceClient({ userRole = 'driver' }: { userRole?: strin
       // Pas de restriction 'types' pour autoriser adresses ET etablissements
       // (ex: "Garage Untel", "McDonald s Verviers", etc.)
       acRef.current = new window.google.maps.places.Autocomplete(locationRef.current, {
-        componentRestrictions: { country: ['be', 'lu', 'nl', 'de', 'fr'] },
       })
       acRef.current.addListener('place_changed', () => {
         const place = acRef.current.getPlace()
@@ -372,7 +371,6 @@ export default function PoliceClient({ userRole = 'driver' }: { userRole?: strin
       if (destAcRef.current) return  // deja init
       // Pas de restriction 'types' pour autoriser adresses ET etablissements
       destAcRef.current = new window.google.maps.places.Autocomplete(destinationRef.current, {
-        componentRestrictions: { country: ['be', 'lu', 'nl', 'de', 'fr'] },
       })
       destAcRef.current.addListener('place_changed', () => {
         const place = destAcRef.current.getPlace()

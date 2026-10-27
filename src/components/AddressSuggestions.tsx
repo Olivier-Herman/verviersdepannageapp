@@ -34,7 +34,6 @@ export default function AddressSuggestions({ text, gmKey, onPick, max = 4 }: {
         const svc = new g.maps.places.AutocompleteService()
         svc.getPlacePredictions({
           input: q,
-          componentRestrictions: { country: ['be', 'lu', 'fr', 'nl', 'de'] },
           bounds: new g.maps.LatLngBounds({ lat: 49.49, lng: 2.51 }, { lat: 51.51, lng: 6.41 }),
         }, (res: any[], status: string) => {
           if (stop) return

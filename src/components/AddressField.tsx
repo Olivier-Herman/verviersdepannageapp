@@ -43,7 +43,6 @@ export async function verifyAddressViaPlaces(
     acService.getPlacePredictions(
       {
         input: address,
-        componentRestrictions: { country: ['be','lu','fr','nl','de'] },
         // Biais Belgique : les résultats belges remontent en premier (sans
         // exclure les pays frontaliers). Olivier 2026-06-29.
         bounds: new google.maps.LatLngBounds(
@@ -178,7 +177,6 @@ export default function AddressField({
     const init = () => {
       if (!(window as any).google?.maps?.places || acRef.current) return
       acRef.current = new (window as any).google.maps.places.Autocomplete(ref.current!, {
-        componentRestrictions: { country: ['be','lu','fr','nl','de'] },
         fields: ['name', 'formatted_address', 'geometry', 'address_components', 'types'],
         // Biais Belgique : priorise les adresses belges dans les suggestions
         // (strictBounds=false par défaut → les pays frontaliers restent

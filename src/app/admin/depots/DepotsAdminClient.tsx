@@ -63,7 +63,6 @@ function AddressInput({ value, onChange, onSelect, gmKey }: {
     const init = () => {
       if (cancelled || !ref.current || !(window as any).google?.maps?.places || acRef.current) return
       acRef.current = new (window as any).google.maps.places.Autocomplete(ref.current, {
-        componentRestrictions: { country: ['be','lu','fr','nl','de'] },
         fields: ['formatted_address','geometry'],
       })
       acRef.current.addListener('place_changed', () => {
