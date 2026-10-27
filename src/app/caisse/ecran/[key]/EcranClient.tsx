@@ -436,8 +436,8 @@ export default function EcranClient({ displayKey }: { displayKey: string }) {
       if (cancelled || !manAddrInputRef.current || manAcRef.current) return
       const g = (window as any).google
       if (!g?.maps?.places) return
+      // Adresse d'un client : tous pays (client polonais bloqué le 27/10/2026), résultats belges d'abord (region=BE).
       const ac = new g.maps.places.Autocomplete(manAddrInputRef.current, {
-        componentRestrictions: { country: ['be', 'lu', 'fr', 'nl', 'de'] },
         fields: ['address_components', 'formatted_address'], types: ['address'],
       })
       manAcRef.current = ac

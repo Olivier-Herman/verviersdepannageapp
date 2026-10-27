@@ -150,7 +150,7 @@ export default function VrClient({ token, gmKey }: { token: string; gmKey: strin
         await loadGoogleMaps(gmKey)
         const g = (window as any).google
         new g.maps.places.AutocompleteService().getPlacePredictions(
-          { input: q, types: ['address'], componentRestrictions: { country: ['be', 'nl', 'lu', 'fr', 'de'] } },
+          { input: q, types: ['address'] },   // Adresse d'un client : tous pays (client polonais bloqué le 27/10/2026).
           (res: any[], st: string) => {
             if (stop) return
             setPreds(st === g.maps.places.PlacesServiceStatus.OK && res ? res.slice(0, 5).map(p => ({ id: p.place_id, main: p.structured_formatting?.main_text || p.description, sub: p.structured_formatting?.secondary_text || '' })) : [])

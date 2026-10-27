@@ -136,7 +136,7 @@ export default function RestituerEtFacturerModal({ mission, onClose, onSuccess }
       if (autocompleteRef.current) return true
       autocompleteRef.current = new window.google.maps.places.Autocomplete(addressInputRef.current, {
         types: ['address'],
-        componentRestrictions: { country: ['be', 'fr', 'de', 'nl', 'lu'] },
+        // Adresse d'un client : tous pays (client polonais bloqué le 27/10/2026), résultats belges d'abord (region=BE).
       })
       autocompleteRef.current.addListener('place_changed', () => {
         const p = autocompleteRef.current.getPlace()

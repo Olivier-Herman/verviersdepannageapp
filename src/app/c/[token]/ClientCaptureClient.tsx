@@ -42,7 +42,8 @@ export default function ClientCaptureClient({ token, gmKey }: { token: string; g
     if (state !== 'ready' || !gmKey) return
     const init = () => {
       if (!addrRef.current || !window.google?.maps?.places || acRef.current) return
-      acRef.current = new window.google.maps.places.Autocomplete(addrRef.current, { types: ['address'], componentRestrictions: { country: ['be', 'fr', 'de', 'nl', 'lu'] } })
+      // Adresse d'un client : tous pays (client polonais bloqué le 27/10/2026), résultats belges d'abord (region=BE).
+      acRef.current = new window.google.maps.places.Autocomplete(addrRef.current, { types: ['address'] })
       acRef.current.addListener('place_changed', () => {
         const p = acRef.current.getPlace(); const c = p?.address_components || []
         const get = (k: string) => c.find((x: any) => x.types.includes(k))?.long_name || ''
