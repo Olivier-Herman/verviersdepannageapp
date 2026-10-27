@@ -14,6 +14,7 @@ import { NextResponse }      from 'next/server'
 import { getServerSession }  from 'next-auth'
 import { authOptions }       from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase'
+import { sessionAccess }     from '@/lib/access'
 
 export const dynamic = 'force-dynamic'
 
@@ -27,9 +28,8 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const user = session.user as any
-  const role = user.role || ''
-  const modules: string[] = user.modules || []
-  if (!modules.includes('fourriere') && !['admin', 'superadmin'].includes(role)) {
+  // role ET roles[] (Olivier 27/10/2026 : blocage police sur un AVP).
+  if (!sessionAccess(session, { modules: ['fourriere'] }).ok) {
     return NextResponse.json({ error: 'Forbidden : module fourriere requis' }, { status: 403 })
   }
 
