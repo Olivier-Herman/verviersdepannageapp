@@ -8,7 +8,7 @@
 // POST { action, key?, … }
 //   register    { first_name, bureau }            → crée l'appareil + demande d'accès
 //   add_bureau  { bureau }                        → nouvelle demande d'accès
-//   lookup      { plate, bureau }                 → fiche Police – Accident en parc (zone + photos) ou null
+//   lookup      { plate, bureau }                 → véhicule en parc (zone + photos) ; saisie / AVP / mal garée : plaque + cachet seulement
 //   seen        { mission_id, bureau }            → « Véhicule vu » (registre + contrôle de sortie)
 //   note        { mission_id, text }              → question / remarque sur la fiche
 //   path        { mission_id, path, destination?, note? } → chemin de sortie choisi par l'expert
@@ -102,7 +102,7 @@ export async function POST(req: Request) {
       if (!r.found) {
         const message = r.reason === 'too_short' ? 'Encodez au moins 3 caractères (plaque) ou les 5 derniers du numéro de châssis.'
           : r.reason === 'ambiguous' ? 'Plusieurs véhicules ont un châssis qui se termine ainsi : encodez plus de caractères, ou adressez-vous au comptoir.'
-          : 'Aucun véhicule accidenté déposé par la police pour cette plaque ou cette fin de châssis. Adressez-vous au comptoir.'
+          : 'Aucun véhicule au parc pour cette plaque ou cette fin de châssis. Adressez-vous au comptoir.'
         return json({ ok: true, found: false, reason: r.reason, message })
       }
       return json({ ok: true, found: true, via: r.via, vehicle: r.vehicle })
@@ -112,7 +112,9 @@ export async function POST(req: Request) {
       if (!approvedFor(bureau)) return json({ error: 'Accès pas encore validé pour ce bureau.' }, 403)
       const missionId = String(body.mission_id || '')
       const { data: m } = await sb.from('incoming_missions').select('id, status, source').eq('id', missionId).maybeSingle()
-      if (!m || m.status !== 'parked' || m.source !== 'police_accident') return json({ error: 'Véhicule introuvable en parc.' }, 404)
+      if (!m || m.status !== 'parked') return json({ error: 'Véhicule introuvable en parc.' }, 404)
+      const { CACHET_PROCEDURE } = await import('@/lib/expert/access')
+      if (CACHET_PROCEDURE[m.source]) return json({ error: 'Véhicule sous procédure : adressez-vous au comptoir.' }, 403)
       await recordExpertVisit(sb, device, bureau, missionId)
       return json({ ok: true, ...(await snapshot(sb, device)) })
     }

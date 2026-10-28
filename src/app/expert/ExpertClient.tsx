@@ -219,7 +219,15 @@ export default function ExpertClient() {
             {result.reason === 'none' && plate.length < 5 && <p className="text-xs text-ink-muted mt-1">Pas de plaque ? Encodez les 5 derniers caractères du numéro de châssis.</p>}
           </div>
         )}
-        {v && (
+        {v?.cachet && (
+          // Saisie, AVP, mal garée : aucune info, un cachet (Olivier 28/10/2026).
+          <div className="border-2 rounded-xl p-4 flex flex-col items-center gap-3 border-red-300 bg-red-50 text-center">
+            <p className="font-mono text-xl font-bold tracking-wider text-gray-900">{v.plate}</p>
+            <p className="-rotate-6 rounded-lg border-4 border-red-700 px-5 py-2 text-3xl font-black uppercase tracking-widest text-red-700">{v.cachet}</p>
+            <p className="text-sm text-red-900">Véhicule sous procédure : aucune information disponible ici. Adressez-vous au comptoir.</p>
+          </div>
+        )}
+        {v && !v.cachet && (
           <div className="border rounded-xl p-3 flex flex-col gap-2 bg-success/5 border-success/40">
             <p className="font-mono text-xl font-bold tracking-wider">{v.plate}</p>
             <p className="text-sm text-ink-secondary">{[v.brand, v.model].filter(Boolean).join(' ')}{v.vin ? ` · châssis …${String(v.vin).slice(-6)}` : ''}{v.parked_at ? ` · en parc depuis le ${fmt(v.parked_at)}` : ''}</p>
