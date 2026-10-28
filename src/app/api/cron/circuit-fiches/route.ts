@@ -1,5 +1,5 @@
 // src/app/api/cron/circuit-fiches/route.ts — fiches de réservation du Circuit encodées dès réception (Olivier
-// 28/10/2026). Toutes les heures ; logique et règles : lib/circuit/fiches.ts. Résumé à Olivier sur Telegram.
+// 28/10/2026). Une fois par jour (le matin) ; logique et règles : lib/circuit/fiches.ts. Résumé à Olivier sur Telegram.
 import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase'
 import { traiterFiches } from '@/lib/circuit/fiches'

@@ -264,3 +264,26 @@ export async function createRaceWeekendQuote(input: {
   const orders = await odooRpc<any[]>('sale.order', 'read', [[orderId!]], { fields: ['id', 'name'] })
   return { id: orderId!, name: orders[0]?.name || `S${orderId}` }
 }
+
+const fmtFr = (iso: string) => { const [y, m, d] = iso.split('-'); return `${d}/${m}/${y}` }
+const libelleIncentive = (date: string, qty: number) => `${TYPE_LABELS.incentive} - Circuit Spa-Francorchamps ${fmtFr(date)}${qty > 1 ? ` (${qty} dépanneuses)` : ''}`
+
+/** Correctif de fiche (Olivier 28/10/2026) : ajoute des jours incentive à un devis existant, avant la note de bas de devis. */
+export async function ajouterJoursCircuit(orderId: number, jours: { date: string; nb: number }[]): Promise<void> {
+  const productId = await findProductIdByCode(PRODUCT_REF_INCENTIVE)
+  const lines = await odooRpc<any[]>('sale.order.line', 'search_read', [[['order_id', '=', orderId]]], { fields: ['sequence', 'display_type'] })
+  const maxProduit = Math.max(10, ...lines.filter(l => !l.display_type).map(l => l.sequence || 0))
+  await odooRpc('sale.order', 'write', [[orderId], { order_line: jours.map((j, i) => {
+    const qty = Math.max(1, Math.min(6, j.nb))
+    return [0, 0, { product_id: productId, product_uom_qty: qty, name: libelleIncentive(j.date, qty), sequence: maxProduit + 1 + i }]
+  }) }])
+}
+
+/** Correctif de fiche : nouveau nombre de dépanneuses pour un jour d'un devis. false = ligne introuvable. */
+export async function modifierJourCircuit(orderId: number, date: string, nb: number): Promise<boolean> {
+  const lines = await odooRpc<any[]>('sale.order.line', 'search_read', [[['order_id', '=', orderId], ['display_type', '=', false], ['name', 'ilike', fmtFr(date)]]], { fields: ['id', 'qty_invoiced'], limit: 1 })
+  if (!lines.length || Number(lines[0].qty_invoiced) > 0) return false
+  const qty = Math.max(1, Math.min(6, nb))
+  await odooRpc('sale.order.line', 'write', [[lines[0].id], { product_uom_qty: qty, name: libelleIncentive(date, qty) }])
+  return true
+}
