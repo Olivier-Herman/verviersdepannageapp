@@ -10,6 +10,7 @@ export const maxDuration = 120
 
 export async function GET(req: Request) {
   if (!process.env.CRON_SECRET || req.headers.get('authorization') !== `Bearer ${process.env.CRON_SECRET}`) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  { const { assistantEnPause, SKIP_PAUSE } = await import('@/lib/facturation/suspension'); if (await assistantEnPause(createAdminClient(), 'circuit')) return NextResponse.json(SKIP_PAUSE) }   // « Mes assistants » (Olivier 28/10/2026)
   const sb = createAdminClient()
   const res = await syncAgendasCircuit()
   const erreurs = Object.entries(res).filter(([, v]: any) => v?.erreur).map(([k, v]: any) => `${k} : ${v.erreur}`)

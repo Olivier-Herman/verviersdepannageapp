@@ -9,6 +9,7 @@
 //   ?essai=<id ou internetMessageId> : essai sur un mail (même déjà traité),
 //   sans brouillon, sans notification — renvoie le texte qui serait préparé.
 
+import { createAdminClient } from '@/lib/supabase'
 import { NextResponse } from 'next/server'
 import { runMobia } from '@/lib/mobia/run'
 import { withAiContext } from '@/lib/ai/usage'
@@ -20,6 +21,7 @@ async function handleGET(req: Request) {
   if (!process.env.CRON_SECRET || req.headers.get('authorization') !== `Bearer ${process.env.CRON_SECRET}`) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
+  { const { assistantEnPause, SKIP_PAUSE } = await import('@/lib/facturation/suspension'); if (await assistantEnPause(createAdminClient(), 'mobia')) return NextResponse.json(SKIP_PAUSE) }   // « Mes assistants » (Olivier 28/10/2026)
   const essai = new URL(req.url).searchParams.get('essai') || undefined
   if (!essai && !(await mobiaAuTravail())) return NextResponse.json({ ok: true, skipped: 'hors horaires' })
   // Pause décidée par Mobi (22/10/2026) : réglage « mobia_actif ».

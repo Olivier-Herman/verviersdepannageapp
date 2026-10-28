@@ -16,6 +16,7 @@ async function handleGET(req: Request) {
   if (req.headers.get('authorization') !== `Bearer ${process.env.CRON_SECRET}`) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
+  { const { assistantEnPause, SKIP_PAUSE } = await import('@/lib/facturation/suspension'); if (await assistantEnPause(createAdminClient(), 'agent_mail')) return NextResponse.json(SKIP_PAUSE) }   // « Mes assistants » (Olivier 28/10/2026)
   try {
     const sb = createAdminClient()
     // Justine (tri des mails d'info@ et d'administration@) travaille aux heures VD d'Olivier : lundi-jeudi 9 h-18 h

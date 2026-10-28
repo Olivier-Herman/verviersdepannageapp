@@ -5,12 +5,14 @@ import { authenticateAgent, journal } from '@/lib/agents/core'
 import { COMPTABLE_AGENT } from '@/lib/agents/comptable-mailbox'
 import { updatePoint, addDoc } from '@/lib/compta/dossier'
 import { createAdminClient } from '@/lib/supabase'
+import { refusAgentEnPause } from '@/lib/facturation/suspension'
 
 export const dynamic = 'force-dynamic'
 
 export async function POST(req: Request) {
   const agent = await authenticateAgent(req)
   if (!agent) return NextResponse.json({ error: 'Clé d’agent absente, invalide ou désactivée.' }, { status: 401 })
+  { const pause = await refusAgentEnPause(agent); if (pause) return pause }   // « Mes assistants » en pause (Olivier 28/10/2026)
   if (agent.name !== COMPTABLE_AGENT) { await journal({ agent: agent.name, action: 'dossier comptable refusé', ok: false }); return NextResponse.json({ error: `Réservé à ${COMPTABLE_AGENT}.` }, { status: 403 }) }
   const b = await req.json().catch(() => ({}))
   const { data: p } = await createAdminClient().from('dossier_comptable_points').select('id, numero, compte').eq('id', String(b?.point_id || '')).maybeSingle()

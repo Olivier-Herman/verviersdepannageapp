@@ -58,7 +58,7 @@ async function handleGET(req: NextRequest) {
 
 // Les appels d'IA de ce passage sont comptés sous « cron:circuit-race-invoice » (conso_ia).
 export async function GET(...args: Parameters<typeof handleGET>) {
-  // Heure de Bruxelles (7 h) malgré le changement d'heure : planifiée deux fois en UTC (25/10/2026).
-  if (args[0].headers.get('authorization') === `Bearer ${process.env.CRON_SECRET}`) { const g = await gardeHeureBxl(args[0], 'circuit-race-invoice', [7]); if (g) return g }
+  // Heure de Bruxelles (9 h depuis le 28/10/2026 : dans les heures de Mobi, interrupteur « Mes assistants ») malgré le changement d'heure : planifiée deux fois en UTC.
+  if (args[0].headers.get('authorization') === `Bearer ${process.env.CRON_SECRET}`) { const g = await gardeHeureBxl(args[0], 'circuit-race-invoice', [9]); if (g) return g }
   return withAiContext({ declencheur: 'cron:circuit-race-invoice' }, () => handleGET(...args))
 }

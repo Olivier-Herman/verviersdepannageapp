@@ -3,12 +3,14 @@
 import { NextResponse } from 'next/server'
 import { authenticateAgent } from '@/lib/agents/core'
 import { draftReplyComptable } from '@/lib/agents/comptable-mailbox'
+import { refusAgentEnPause } from '@/lib/facturation/suspension'
 
 export const dynamic = 'force-dynamic'
 
 export async function POST(req: Request) {
   const agent = await authenticateAgent(req)
   if (!agent) return NextResponse.json({ error: 'Clé d’agent absente, invalide ou désactivée.' }, { status: 401 })
+  { const pause = await refusAgentEnPause(agent); if (pause) return pause }   // « Mes assistants » en pause (Olivier 28/10/2026)
   const b = await req.json().catch(() => ({}))
   if (!b?.repondre_a || !b?.html) return NextResponse.json({ error: 'repondre_a et html obligatoires.' }, { status: 400 })
   try {

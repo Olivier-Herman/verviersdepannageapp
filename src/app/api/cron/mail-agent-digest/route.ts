@@ -11,6 +11,7 @@ export const dynamic = 'force-dynamic'
 async function handleGET(req: Request) {
   const auth = req.headers.get('authorization')
   if (!process.env.CRON_SECRET || auth !== `Bearer ${process.env.CRON_SECRET}`) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  { const { assistantEnPause, SKIP_PAUSE } = await import('@/lib/facturation/suspension'); if (await assistantEnPause(createAdminClient(), 'agent_mail')) return NextResponse.json(SKIP_PAUSE) }   // « Mes assistants » (Olivier 28/10/2026)
   const sb = createAdminClient()
   const [{ count: toDecide }, { count: ready }, { count: toVerify }] = await Promise.all([
     sb.from('mail_agent_items').select('id', { count: 'exact', head: true }).eq('status', 'to_decide'),

@@ -23,10 +23,117 @@ export interface EtatFacturationAuto {
 
 export interface LigneJournal { id: number; action: 'suspension' | 'reprise' | 'refus'; par_nom: string | null; motif: string | null; at: string }
 
-/** true = la facturation automatique est suspendue (interrupteur général sur off). */
+/** true = la facturation automatique est suspendue : interrupteur « Mes assistants » ou son bloc à lui. */
 export async function facturationAutoSuspendue(sb: any): Promise<boolean> {
+  return assistantEnPause(sb, 'facturation')
+}
+
+// « MES ASSISTANTS » (Olivier 28/10/2026 : « tu restes mon assistant à moi et non pas à Verviers Dépannage, donc tout
+// ce qu'on fait doit être désactivable quand je ne travaille pas ou quand je le décide » ; « ça doit être le même
+// interrupteur, la facturation auto fait partie de mes assistants »). Le même bouton met en pause tout ce qui travaille
+// TOUT SEUL pour lui : facturation automatique, agents (Victor, Aurélie, Justine…), Mobia, Agent Mail, Circuit (fiches,
+// agendas), comptes d'achat, et ses notifications Telegram (gardées, envoyées à la reprise). Ce qu'une personne fait à
+// la main (dans VD Soft ou en session avec Claude) n'est jamais bloqué. Restent en marche, outils de l'équipe : Sam et
+// Sonic, Max, l'arrivée des missions des assistances, le contrôle du parc.
+// Option « pause automatique en dehors de mes heures » (réglage assistants_pause_hors_heures, oui / non) : hors des
+// heures VD de Mobi (mobiEnHeuresVD), comme une pause.
+
+export async function pauseManuelle(sb: any): Promise<boolean> {
   return !(await getAutomationEnabled(sb, AUTOMATION_FLAGS.facturationAuto, true))
 }
+
+export async function pauseHorsHeuresActive(sb: any): Promise<boolean> {
+  const { data } = await sb.from('app_settings').select('value').eq('key', 'assistants_pause_hors_heures').maybeSingle()
+  return /oui|true/i.test(String(data?.value || ''))
+}
+
+export async function definirPauseHorsHeures(sb: any, active: boolean, par: { id?: string | null; nom?: string | null }): Promise<void> {
+  if (!(await peutBasculer(par.id))) { await noterRefus(sb, par, active); throw new Error('NON_AUTORISE') }
+  await sb.from('app_settings').upsert({ key: 'assistants_pause_hors_heures', value: JSON.stringify(active ? 'oui' : 'non') }, { onConflict: 'key' })
+  await sb.from('facturation_auto_journal').insert({ action: active ? 'suspension' : 'reprise', par_id: par.id || null, par_nom: par.nom || null, motif: active ? 'Option activée : pause automatique en dehors des heures' : 'Option désactivée : plus de pause automatique en dehors des heures' })
+}
+
+/** true = les assistants de Mobi ne travaillent pas tout seuls en ce moment (pause manuelle, ou hors heures avec l'option). */
+export async function assistantsEnPause(sb: any): Promise<boolean> {
+  if (await pauseManuelle(sb)) return true
+  if (!(await pauseHorsHeuresActive(sb))) return false
+  const { mobiEnHeuresVD } = await import('@/lib/notif/heures-mobi')
+  return !(await mobiEnHeuresVD())
+}
+
+// Chaque bloc se met aussi en pause seul (Olivier 28/10/2026 : « chaque bloc est cliquable pour activer ou désactiver
+// indépendamment ») : réglage assistants_pauses = { <clé>: true } pour les blocs en pause.
+export const ASSISTANTS = [
+  { cle: 'facturation',    nom: 'Facturation automatique', role: 'Factures des fiches clôturées, factures SEL (Aurélie), relances, clôtures Allianz, validations Touring' },
+  { cle: 'victor',         nom: 'Victor',                  role: 'Comptabilité, échanges avec Maureen' },
+  { cle: 'agents',         nom: 'Florent, Rémi et les autres agents', role: 'Banque, factures d’achat, propositions à valider' },
+  { cle: 'agent_mail',     nom: 'Justine (Agent Mail)',    role: 'Tri des mails d’info@ et d’administration@' },
+  { cle: 'mobia',          nom: 'Mobia',                   role: 'Dossier Claudy' },
+  { cle: 'circuit',        nom: 'Circuit de Spa',          role: 'Fiches de réservation, agendas d’info@ et de Mobi' },
+  { cle: 'comptes_achats', nom: 'Comptes d’achat',         role: 'Bon compte sur chaque facture d’achat, reclassement du mois' },
+  { cle: 'telegram',       nom: 'Notifications Telegram',  role: 'Tes alertes et demandes de validation, gardées pendant la pause' },
+] as const
+export type CleAssistant = typeof ASSISTANTS[number]['cle']
+
+export async function pausesIndividuelles(sb: any): Promise<Partial<Record<CleAssistant, boolean>>> {
+  const { data } = await sb.from('app_settings').select('value').eq('key', 'assistants_pauses').maybeSingle()
+  try { const v = typeof data?.value === 'string' ? JSON.parse(data.value) : data?.value; return v && typeof v === 'object' ? v : {} } catch { return {} }
+}
+
+/** true = ce bloc ne travaille pas tout seul en ce moment (pause générale, ou ce bloc en pause). */
+export async function assistantEnPause(sb: any, cle: CleAssistant): Promise<boolean> {
+  if (await assistantsEnPause(sb)) return true
+  return !!(await pausesIndividuelles(sb))[cle]
+}
+
+export async function basculerAssistant(sb: any, cle: CleAssistant, enMarche: boolean, par: { id?: string | null; nom?: string | null }, motif?: string | null): Promise<{ change: boolean }> {
+  const a = ASSISTANTS.find(x => x.cle === cle); if (!a) throw new Error('Assistant inconnu')
+  if (!(await peutBasculer(par.id))) { await noterRefus(sb, par, enMarche); throw new Error('NON_AUTORISE') }
+  const p = await pausesIndividuelles(sb)
+  if (!p[cle] === enMarche) return { change: false }
+  if (enMarche) delete p[cle]; else p[cle] = true
+  await sb.from('app_settings').upsert({ key: 'assistants_pauses', value: JSON.stringify(p) }, { onConflict: 'key' })
+  await sb.from('facturation_auto_journal').insert({ action: enMarche ? 'reprise' : 'suspension', par_id: par.id || null, par_nom: par.nom || null, motif: `${a.nom} ${enMarche ? 'relancé' : 'mis en pause'}${motif ? ` — ${String(motif).slice(0, 250)}` : ''}` })
+  return { change: true }
+}
+
+/** Agent du village qui veut ÉCRIRE dans VD Soft pendant la pause : refusé (423), il peut toujours lire. */
+export async function refusAgentEnPause(agent: { name?: string | null }): Promise<Response | null> {
+  const { createAdminClient } = await import('@/lib/supabase')
+  const cle: CleAssistant = /victor/i.test(String(agent?.name || '')) ? 'victor' : 'agents'
+  if (!(await assistantEnPause(createAdminClient(), cle))) return null
+  return new Response(JSON.stringify({ error: 'En pause : Mobi a mis ses assistants en pause. Rien n’est fait ; réessaie plus tard.', pause: true }), { status: 423, headers: { 'Content-Type': 'application/json' } })
+}
+
+/** Reprise d'un bloc : son passage tourne tout de suite (mêmes routes que les crons, mêmes garde-fous anti-doublon). */
+const PASSAGES: Partial<Record<CleAssistant, string[]>> = {
+  circuit: ['/api/cron/circuit-fiches', '/api/cron/circuit-agenda'],
+  comptes_achats: ['/api/cron/comptes-achats'],
+  agent_mail: ['/api/cron/mail-agent'],
+  mobia: ['/api/cron/mobia'],
+}
+export async function relancerBlocs(sb: any, cles: CleAssistant[]): Promise<void> {
+  const base = (process.env.NEXTAUTH_URL || '').replace(/\/$/, '')
+  if (!base || !process.env.CRON_SECRET) return
+  if (cles.includes('facturation')) await rattraperApresReprise(sb).catch(() => null)
+  for (const c of cles) for (const path of PASSAGES[c] || [])
+    await fetch(`${base}${path}`, { headers: { Authorization: `Bearer ${process.env.CRON_SECRET}` }, cache: 'no-store' }).catch(() => null)
+}
+
+/** Ce qui attend pendant la pause, par bloc (affiché sous chaque bloc). */
+export async function enAttente(sb: any): Promise<Partial<Record<CleAssistant, string>>> {
+  const out: Partial<Record<CleAssistant, string>> = {}
+  const [m, t] = await Promise.all([
+    sb.from('incoming_missions').select('id', { count: 'exact', head: true }).eq('status', 'to_invoice'),
+    sb.from('telegram_differes').select('id', { count: 'exact', head: true }),
+  ])
+  if (m.count) out.facturation = `${m.count} fiche${m.count > 1 ? 's' : ''} clôturée${m.count > 1 ? 's' : ''} à facturer`
+  if (t.count) out.telegram = `${t.count} message${t.count > 1 ? 's' : ''} gardé${t.count > 1 ? 's' : ''}`
+  return out
+}
+
+/** Réponse type d'un cron d'assistant sauté pendant la pause. */
+export const SKIP_PAUSE = { ok: true, skipped: 'assistants de Mobi en pause (interrupteur « Mes assistants »)' }
 
 export async function etatFacturationAuto(sb: any): Promise<EtatFacturationAuto> {
   const enMarche = await getAutomationEnabled(sb, AUTOMATION_FLAGS.facturationAuto, true)
@@ -57,7 +164,7 @@ export async function noterRefus(sb: any, par: { id?: string | null; nom?: strin
 export async function basculerFacturationAuto(sb: any, enMarche: boolean, par: { id?: string | null; nom?: string | null }, motif?: string | null): Promise<{ change: boolean }> {
   // Contrôle dans l'action elle-même, pas seulement dans la route : aucun chemin ne contourne la règle.
   if (!(await peutBasculer(par.id))) { await noterRefus(sb, par, enMarche); throw new Error('NON_AUTORISE') }
-  const actuel = await getAutomationEnabled(sb, AUTOMATION_FLAGS.facturationAuto, true)
+  const actuel = !(await pauseManuelle(sb))
   if (actuel === enMarche) return { change: false }
   await setAutomationEnabled(sb, AUTOMATION_FLAGS.facturationAuto, enMarche)
   const { error } = await sb.from('facturation_auto_journal').insert({
@@ -77,7 +184,7 @@ export interface ResumeRattrapage { at: string; factures: number; sel: number; r
  * Remise sur on (« Quand je réactive, il faut que tout se résorbe », Olivier 26/10/2026) : un passage IMMÉDIAT de
  * chaque automatisme (mêmes routes que les crons, mêmes garde-fous anti-doublon), puis le résumé à Olivier sur
  * Telegram et gardé pour son écran. Ce qu'un passage ne finit pas (plafonds par passage) part aux passages suivants ;
- * le circuit (facturé chaque matin à 7 h) rattrape au passage de 7 h.
+ * le circuit (facturé chaque matin à 9 h depuis le 28/10/2026, pour rester dans les heures de Mobi) rattrape au passage de 9 h.
  */
 export async function rattraperApresReprise(sb: any): Promise<ResumeRattrapage> {
   const base = (process.env.NEXTAUTH_URL || '').replace(/\/$/, '')
@@ -107,5 +214,5 @@ export async function rattraperApresReprise(sb: any): Promise<ResumeRattrapage> 
 export function texteRattrapage(r: ResumeRattrapage): string {
   const n = (x: number, un: string, plus: string) => `${x} ${x > 1 ? plus : un}`
   return `▶️ Facturation automatique relancée. Rattrapage du premier passage : ${n(r.factures, 'facture', 'factures')}, ${n(r.sel, 'facture SEL', 'factures SEL')}, ${n(r.relances, 'relance', 'relances')}, ${n(r.allianz, 'clôture Allianz', 'clôtures Allianz')}, ${n(r.comex, 'validation Touring', 'validations Touring')}. `
-    + `Le reste éventuel part aux passages suivants (toutes les 15 min) ; le circuit au passage de 7 h.${r.erreurs.length ? ` ⚠ ${r.erreurs.join(' · ')}` : ''}`
+    + `Le reste éventuel part aux passages suivants (toutes les 15 min) ; le circuit au passage de 9 h.${r.erreurs.length ? ` ⚠ ${r.erreurs.join(' · ')}` : ''}`
 }

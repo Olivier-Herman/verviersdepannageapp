@@ -9,6 +9,7 @@ import AmbientBackground from '@/components/AmbientBackground'
 import GardeBanner from '@/components/personnel/GardeBanner'
 import NightSwitchCard from '@/components/personnel/NightSwitchCard'
 import TalkieEntry from '@/components/personnel/TalkieEntry'
+import InterrupteurAssistants from '@/components/assistants/InterrupteurAssistants'
 import { T } from '@/lib/i18n/T'
 import { useT } from '@/lib/i18n/I18nProvider'
 
@@ -170,6 +171,7 @@ export default function DashboardClient({
           <GardeBanner />
           <NightSwitchCard />
           <TalkieEntry />
+          <InterrupteurAssistants />
 
           {/* Hero header — desktop visible, mobile garde le header sticky AppShell */}
           <div className="hidden lg:block mb-8 ambient-fade-up">

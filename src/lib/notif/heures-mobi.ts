@@ -61,7 +61,9 @@ export async function mobiEnHeuresVD(d = new Date()): Promise<boolean> {
 /** Notification Telegram : vers Mobi hors de ses heures VD, retenue sauf si urgente. Autres destinataires : directe. */
 export async function notifierTelegram(chatId: number, texte: string, rows: Rows = [], expediteur?: string, opts: { urgent?: boolean } = {}) {
   const mobi = await getBusinessNumber('telegram_chat_mobi').catch(() => 0)
-  if (chatId === mobi && !opts.urgent && !(await mobiEnHeuresVD())) {
+  // « Mes assistants » en pause (Olivier 28/10/2026) : ses notifications non urgentes sont gardées comme hors heures.
+  const enPause = async () => { const { assistantEnPause } = await import('@/lib/facturation/suspension'); return assistantEnPause(createAdminClient(), 'telegram') }
+  if (chatId === mobi && !opts.urgent && (!(await mobiEnHeuresVD()) || (await enPause()))) {
     await createAdminClient().from('telegram_differes').insert({ chat_id: chatId, texte, rows, expediteur: expediteur || null })
     return { differe: true }
   }
@@ -72,6 +74,7 @@ export async function notifierTelegram(chatId: number, texte: string, rows: Rows
 export async function envoyerDifferes(): Promise<number> {
   if (!(await mobiEnHeuresVD())) return 0
   const sb = createAdminClient()
+  { const { assistantEnPause } = await import('@/lib/facturation/suspension'); if (await assistantEnPause(sb, 'telegram')) return 0 }
   const { data } = await sb.from('telegram_differes').select('*').order('id').limit(50)
   let n = 0
   for (const m of data || []) {

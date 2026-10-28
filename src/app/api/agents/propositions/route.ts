@@ -6,12 +6,14 @@ import { NextResponse } from 'next/server'
 import { authenticateAgent } from '@/lib/agents/core'
 import { submitProposal } from '@/lib/agents/proposals'
 import { createAdminClient } from '@/lib/supabase'
+import { refusAgentEnPause } from '@/lib/facturation/suspension'
 
 export const dynamic = 'force-dynamic'
 
 export async function POST(req: Request) {
   const agent = await authenticateAgent(req)
   if (!agent) return NextResponse.json({ error: 'Clé d’agent absente, invalide ou désactivée.' }, { status: 401 })
+  { const pause = await refusAgentEnPause(agent); if (pause) return pause }   // « Mes assistants » en pause (Olivier 28/10/2026)
   const body = await req.json().catch(() => null)
   if (!body) return NextResponse.json({ error: 'Corps JSON attendu.' }, { status: 400 })
   try { return NextResponse.json({ ok: true, ...(await submitProposal(agent, body)) }) }
