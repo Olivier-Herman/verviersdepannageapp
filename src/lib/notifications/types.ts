@@ -325,6 +325,15 @@ export const NOTIFICATION_TYPES: readonly NotificationType[] = [
     defaultEnabled:  true,
   },
   {
+    // Arrivée détectée par la position (Olivier 28/10/2026).
+    key:             'mission_arrivee_proche',
+    label:           'Arrivée sur place ou à destination',
+    description:     'Le chauffeur est à moins de 200 m de l’intervention ou 150 m de la destination : l’app lui propose de pointer (il confirme toujours lui-même).',
+    category:        'on_duty',
+    applicableRoles: ['driver', 'dispatcher', 'admin', 'superadmin'],
+    defaultEnabled:  true,
+  },
+  {
     // Pause et transfert d'une mission (Olivier 18/10/2026).
     key:             'mission_pause_rappel',
     label:           'Mission en pause : heure de reprise',

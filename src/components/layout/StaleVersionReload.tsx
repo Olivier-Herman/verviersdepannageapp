@@ -13,18 +13,9 @@
 import { useEffect, useRef } from 'react'
 import { usePathname } from 'next/navigation'
 
-const MINE = process.env.NEXT_PUBLIC_BUILD_SHA || ''
-const KEY = 'vd_stale_reload_at'
+import { isChunkError, reloadOnce } from '@/lib/client/chunk-reload'
 
-function reloadOnce(reason: string) {
-  try {
-    const last = Number(sessionStorage.getItem(KEY) || 0)
-    if (Date.now() - last < 60_000) return   // jamais en boucle
-    sessionStorage.setItem(KEY, String(Date.now()))
-  } catch { /* stockage indisponible : on recharge quand même */ }
-  console.warn('[version] rechargement :', reason)
-  window.location.reload()
-}
+const MINE = process.env.NEXT_PUBLIC_BUILD_SHA || ''
 
 const typing = () => {
   const el = document.activeElement as HTMLElement | null
@@ -61,7 +52,6 @@ export default function StaleVersionReload() {
       if (document.visibilityState === 'hidden') { hiddenAt = Date.now(); return }
       if (hiddenAt && Date.now() - hiddenAt >= 20_000) check()
     }
-    const isChunkError = (e: any) => /ChunkLoadError|Loading chunk|Failed to fetch dynamically imported module|Importing a module script failed|error loading dynamically imported module/i.test(String(e?.message || e?.name || e || ''))
     const onRejection = (ev: PromiseRejectionEvent) => { if (isChunkError(ev.reason)) reloadOnce('morceau de code introuvable') }
     const onError = (ev: ErrorEvent) => { if (isChunkError(ev.error || ev.message)) reloadOnce('morceau de code introuvable') }
     const onShow = (e: PageTransitionEvent) => { if (e.persisted) check() }

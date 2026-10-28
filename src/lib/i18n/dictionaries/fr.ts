@@ -940,6 +940,38 @@ export const fr = {
     none:       'Aucun camion n’est configuré. Préviens le dispatch.',
     error:      'Le camion n’a pas été enregistré. Réessaie.',
   },
+  // Pointages faits sans réseau (Olivier 28/10/2026)
+  pointages_attente: {
+    un:        '1 pointage en attente d’envoi (pas de réseau, fait à {heure}) — envoyé dès que le réseau revient',
+    plusieurs: '{n} pointages en attente d’envoi (pas de réseau, depuis {heure}) — envoyés dès que le réseau revient',
+    refuse:    'Le pointage de {heure} n’a pas été accepté :',
+    ok:        'J’ai compris',
+  },
+  // Arrivée détectée par la position (Olivier 28/10/2026)
+  arrivee: {
+    sur_place_titre:  'Il semblerait que tu arrives sur place.',
+    dest_titre:       'Il semblerait que tu arrives à destination.',
+    distance:         'Tu es à {m} m.',
+    confirme_sur_place: '✓ Je suis sur place',
+    confirme_dest:    '✓ Arrivé à destination',
+    pas_encore:       'Pas encore',
+    note:             'Rien n’est pointé sans ton accord.',
+  },
+  // Clôture grisée : ce qui manque (Olivier 28/10/2026)
+  manque: {
+    titre:  'Il manque encore :',
+    photos: '📷 Photos : {n} sur {min}',
+    depot:  '🏢 Choisis le dépôt ci-dessus',
+  },
+  // Numéro du client absent (Olivier 28/10/2026)
+  numero_client: {
+    demander:  '📞 Demander le numéro à {agent}',
+    cherche:   '{agent} cherche chez l’assistance…',
+    trouve:    'Trouvé : {tel}. Je l’ai ajouté sur la fiche.',
+    absent:    '{source} n’a pas de numéro pour ce client.',
+    appeler:   '📞 Appeler {nom}',
+    erreur:    'La recherche n’a pas abouti. Réessaie dans un instant.',
+  },
   pause_transfer: {
     btn_pause:        '⏸ Je reviens plus tard',
     btn_transfer:     '🔁 Transférer à un autre chauffeur',

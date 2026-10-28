@@ -3,9 +3,19 @@
 // Plantage hors d'une page (menus, fenêtres communes) : message en français + rapport automatique
 // au lieu de « Application error » en anglais (Olivier 21/10/2026).
 import './globals.css'
+import { useEffect, useState } from 'react'
 import SignalerErreur from '@/components/SignalerErreur'
+import { isChunkError, reloadOnce } from '@/lib/client/chunk-reload'
 
 export default function GlobalError({ error, reset }: { error: Error & { digest?: string }; reset: () => void }) {
+  // Ancienne version après une mise en ligne : on recharge au lieu d'afficher l'erreur (28/10/2026).
+  const [maj, setMaj] = useState(() => isChunkError(error))
+  useEffect(() => { if (maj && !reloadOnce('morceau de code introuvable (écran d’erreur)')) setMaj(false) }, [maj])
+  if (maj) return (
+    <html lang="fr"><body style={{ margin: 0, fontFamily: 'system-ui, sans-serif', background: '#F5F7FA', color: '#1E293B' }}>
+      <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16, fontWeight: 600 }}>🔄 Mise à jour de l’app…</div>
+    </body></html>
+  )
   return (
     <html lang="fr">
       <body style={{ margin: 0, fontFamily: 'system-ui, sans-serif', background: '#F5F7FA', color: '#1E293B' }}>
