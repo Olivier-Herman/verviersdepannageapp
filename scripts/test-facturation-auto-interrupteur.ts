@@ -78,11 +78,12 @@ function fakeSb() {
   for (const N of [5, 20, 45]) {
     const reprise = jour(N)
     const lvl = niveauRelance(N, null, null, reprise, 15, 30)
-    assert.equal(lvl, N < 15 ? null : N < 30 ? 15 : 30, `arrêt ${N} j : ${N < 15 ? 'rien encore' : N < 30 ? 'J+15' : 'directement J+30 (la plus avancée)'}`)
-    if (lvl === 30) {
-      // le J+30 posé, plus jamais de J+15 ni de second J+30, même des semaines après
-      assert.equal(niveauRelance(N + 1, null, reprise.toISOString(), jour(N + 1), 15, 30), null)
-      assert.equal(niveauRelance(N + 40, null, reprise.toISOString(), jour(N + 40), 15, 30), null)
+    // Premier contact = toujours le premier rappel (28/10/2026), même après un long arrêt ; le second 15 j plus tard.
+    assert.equal(lvl, N < 15 ? null : 15, `arrêt ${N} j : ${N < 15 ? 'rien encore' : 'premier rappel'}`)
+    if (lvl === 15) {
+      assert.equal(niveauRelance(N + 7, reprise.toISOString(), null, jour(N + 7), 15, 30), null, 'pas de second rappel avant 15 j')
+      assert.equal(niveauRelance(Math.max(N + 15, 30), reprise.toISOString(), null, jour(Math.max(N + 15, 30)), 15, 30), 30, 'second rappel après 15 j et J+30')
+      assert.equal(niveauRelance(N + 40, reprise.toISOString(), jour(N + 30).toISOString(), jour(N + 40), 15, 30), null, 'jamais un troisième')
     }
     if (lvl === 15) assert.equal(niveauRelance(N, reprise.toISOString(), null, reprise, 15, 30), null, 'pas deux relances le même jour')
   }

@@ -47,7 +47,7 @@ const NO_REMINDER_TAGS = ['hexalite', 'touring', 'integration', 'cloture_externe
 /** Partenaires Odoo « institutionnels » (réglages métier) : jamais relancés par ce robot. */
 const NO_REMINDER_PARTNER_KEYS = ['odoo_partner_frais_justice', 'odoo_partner_spf_finances', 'odoo_partner_touring', 'odoo_partner_anwb']
 const MAX_REMINDERS_PER_RUN = 25       // garde-fou : pas de rafale au premier passage
-const MIN_DAYS_BETWEEN_LEVELS = 7      // J+30 au plus tôt 7 j après le J+15
+const ECART_ENTRE_RAPPELS = 15        // second rappel au plus tôt 15 j après le premier (28/10/2026)
 const LOOKBACK_DAYS = 400              // fiches facturées depuis moins de ~13 mois
 
 const MISSION_COLS = 'id, parent_mission_id, dossier_leg, external_id, mission_number, vehicle_plate, source, status, invoice_method, invoice_number, invoice_odoo_id, invoiced_at, paid_at, payment_state_odoo, reminder_15_at, reminder_30_at, billed_to_id, billed_to_name, client_name, kaze_job_id, axa_mission_order_id, vab_assignment_ids, touring_accepted_at'
@@ -159,7 +159,9 @@ export async function syncInvoicePayments(sb: any): Promise<PaymentSyncSummary> 
 // ─────────────────────────────────────────────────────────────────────────────
 // 2. Relances J+15 / J+30 au client facturé
 // ─────────────────────────────────────────────────────────────────────────────
-export interface ReminderSummary { mode: string; candidates: number; sent: number; skipped: Record<string, number>; sent_refs: string[]; errors: string[] }
+export interface ApercuRelance { facture: string; client: string; email: string | null; echeance: string | null; retard: number; reste: number; niveau: ReminderLevel; sansFiche: boolean; bloque: string | null }
+export interface ReminderSummary { mode: string; candidates: number; sent: number; skipped: Record<string, number>; sent_refs: string[]; errors: string[]; apercu?: ApercuLigne[] }
+type ApercuLigne = ApercuRelance
 
 interface ReminderTexts { subject: string; title: string; intro: string; closing: string; accent: string; badge: string }
 function textsFor(level: ReminderLevel, invoice: string, due: number): ReminderTexts {
@@ -218,21 +220,36 @@ export function buildInvoiceReminderHtml(p: { level: ReminderLevel; partnerName:
 }
 
 /**
- * Niveau de relance à envoyer pour une facture (null = rien). Rattrapage (facturation relancée après un arrêt,
- * Olivier 26/10/2026) : si J+15 ET J+30 sont déjà dépassés sans aucune relance, on envoie directement la plus avancée
- * (J+30) — jamais deux relances le même jour, et jamais un J+15 après un J+30.
+ * Niveau de relance à envoyer pour une facture (null = rien). Le PREMIER contact est toujours le premier rappel
+ * (courtois), même pour une facture très en retard : le second rappel dit « malgré notre précédent rappel » et ne
+ * peut partir que s'il y en a eu un (Olivier 28/10/2026). Le second part au plus tôt 15 jours après le premier, une
+ * fois J+30 atteint ; jamais deux relances le même jour, jamais un premier rappel après un second.
  */
 export function niveauRelance(overdue: number, r15: string | null, r30: string | null, today: Date, J1: number, J2: number): ReminderLevel | null {
   if (overdue < J1 || r30) return null
-  if (!r15) return overdue >= J2 ? 30 : 15
-  return overdue >= J2 && daysBetween(r15, today) >= MIN_DAYS_BETWEEN_LEVELS ? 30 : null
+  if (!r15) return 15
+  return overdue >= J2 && daysBetween(r15, today) >= ECART_ENTRE_RAPPELS ? 30 : null
 }
 
-export async function sendInvoiceReminders(sb: any): Promise<ReminderSummary> {
+/** Partenaires facturés via un assisteur (lien plateforme ou source exclue) : jamais relancés d'ici. */
+async function partenairesAssisteurs(sb: any, sources: Set<string>): Promise<Set<number>> {
+  const out = new Set<number>()
+  for (let o = 0; o < 40000; o += 1000) {
+    const { data } = await sb.from('incoming_missions').select('billed_to_id, source, kaze_job_id, axa_mission_order_id, vab_assignment_ids, touring_accepted_at')
+      .not('billed_to_id', 'is', null).gte('created_at', '2025-01-01').order('id').range(o, o + 999)
+    for (const m of data || []) if (m.kaze_job_id || m.axa_mission_order_id || (Array.isArray(m.vab_assignment_ids) ? m.vab_assignment_ids.length : m.vab_assignment_ids) || m.touring_accepted_at || sources.has(String(m.source || '').toLowerCase())) out.add(Number(m.billed_to_id))
+    if (!data || data.length < 1000) break
+  }
+  return out
+}
+
+export async function sendInvoiceReminders(sb: any, opts: { apercu?: boolean } = {}): Promise<ReminderSummary> {
   const out: ReminderSummary = { mode: 'off', candidates: 0, sent: 0, skipped: {}, sent_refs: [], errors: [] }
   const skip = (why: string) => { out.skipped[why] = (out.skipped[why] || 0) + 1 }
   const mode = (await getBusinessText('relance_facture_mode').catch(() => 'off')).toLowerCase()
   out.mode = mode
+  // Bloc « Relances clients » de l'interrupteur « Mes assistants » (Olivier 28/10/2026) : en pause, rien ne part.
+  if (!opts.apercu) { const { assistantEnPause } = await import('@/lib/facturation/suspension'); if (await assistantEnPause(sb, 'relances')) { skip('pause_mes_assistants'); return out } }
   const J1 = await getBusinessNumber('relance_facture_j1_jours')
   const J2 = await getBusinessNumber('relance_facture_j2_jours')
 
@@ -281,8 +298,50 @@ export async function sendInvoiceReminders(sb: any): Promise<ReminderSummary> {
     if (!level) continue
     jobs.push({ mv, fiches, level, lead })
   }
+  // Factures SANS fiche (Circuit, ventes directes… — Olivier 28/10/2026 : « pour les rappels on automatise ») : mêmes
+  // exclusions (Parquet / SPF / frais de justice, assisteurs, sociétés du groupe, tag « Exclure relances »), niveau
+  // tiré de l'historique des relances (invoice_reminders), factures émises depuis le 01/01/2025.
+  try {
+    const dejaVus = new Set<number>([...byMove.keys(), ...Array.from(idx.byId.keys())])
+    // Clients jamais rappelés d'ici (Car Avenue : notes de crédit de commission jamais lettrées, restes artificiels).
+    const { getBusinessList } = await import('@/lib/settings/business')
+    const sansRappel = new Set((await getBusinessList('relance_partenaires_exclus').catch(() => [] as string[])).map(Number))
+    const assist = await partenairesAssisteurs(sb, noReminderSources)
+    const societes: any[] = await odooRpc('res.company', 'search_read', [[]], { fields: ['partner_id'] }).catch(() => [])
+    const groupe = new Set(societes.map(x => x.partner_id?.[0]).filter(Boolean))
+    const limite = new Date(Date.now() - J1 * 86_400_000).toISOString().slice(0, 10)
+    // Factures d'avant 2026 : jamais rappelées automatiquement (payées à l'époque sans lettrage possible, Olivier 28/10/2026).
+    const libres: any[] = await odooRpc('account.move', 'search_read', [[['move_type', '=', 'out_invoice'], ['state', '=', 'posted'], ['payment_state', 'in', ['not_paid', 'partial']], ['invoice_date', '>=', '2026-01-01'], ['invoice_date_due', '<=', limite]]], { fields: ['id', 'name', 'state', 'move_type', 'payment_state', 'amount_residual', 'amount_total', 'invoice_date', 'invoice_date_due', 'partner_id', 'payment_reference', 'commercial_partner_id'], limit: 3000 })
+    const ids = libres.filter(m => !dejaVus.has(m.id)).map(m => m.id)
+    const hist = new Map<number, { r15: string | null; r30: string | null }>()
+    if (ids.length) {
+      const { data: rows } = await sb.from('invoice_reminders').select('invoice_ids_odoo, level, sent_at').eq('dry_run', false).overlaps('invoice_ids_odoo', ids)
+      for (const r of rows || []) for (const id of r.invoice_ids_odoo || []) {
+        const h = hist.get(id) || { r15: null, r30: null }
+        if (r.level === 1 && (!h.r15 || r.sent_at < h.r15)) h.r15 = r.sent_at
+        if (r.level >= 2 && (!h.r30 || r.sent_at < h.r30)) h.r30 = r.sent_at
+        hist.set(id, h)
+      }
+    }
+    for (const mv of libres) {
+      if (dejaVus.has(mv.id) || !(Number(mv.amount_residual) > 0) || !mv.invoice_date_due) continue
+      const pid = Array.isArray(mv.partner_id) ? mv.partner_id[0] : null, cid = Array.isArray(mv.commercial_partner_id) ? mv.commercial_partner_id[0] : pid
+      if (!pid) continue
+      out.candidates++
+      if ([pid, cid].some(x => noReminderPartners.has(x!))) { skip('partenaire_institutionnel'); continue }
+      if (/parquet|justice|fdj\b|spf|domaine/i.test(`${mv.partner_id?.[1] || ''} ${mv.commercial_partner_id?.[1] || ''}`)) { skip('parquet_domaine'); continue }
+      if ([pid, cid].some(x => assist.has(x!))) { skip('assisteur_source'); continue }
+      if ([pid, cid].some(x => groupe.has(x!))) { skip('societe_du_groupe'); continue }
+      if ([pid, cid].some(x => sansRappel.has(x!))) { skip('client_sans_rappel'); continue }
+      const h = hist.get(mv.id) || { r15: null, r30: null }
+      const level = niveauRelance(daysBetween(mv.invoice_date_due, today), h.r15, h.r30, today, J1, J2)
+      if (!level) continue
+      jobs.push({ mv, fiches: [], level, lead: null })
+    }
+  } catch (e: any) { out.errors.push(`factures sans fiche : ${e?.message || e}`) }
+
   if (!jobs.length) return out
-  if (mode !== 'on') { skip('mode_off'); out.skipped.mode_off = jobs.length; return out }
+  if (mode !== 'on' && !opts.apercu) { skip('mode_off'); out.skipped.mode_off = jobs.length; return out }
 
   // Partenaires : mail + tag « Exclure relances » (même règle que /relances).
   const partnerIds = Array.from(new Set(jobs.map(j => (j.mv.partner_id as [number, string])[0])))
@@ -294,7 +353,20 @@ export async function sendInvoiceReminders(sb: any): Promise<ReminderSummary> {
     const cats = await odooRpc<any[]>('res.partner.category', 'read', [catIds], { fields: ['id', 'name'] })
     for (const c of cats || []) if (String(c.name || '').toLowerCase() === RELANCE_EXCLUDED_TAG_NAME.toLowerCase()) excludedCats.add(c.id)
   }
-  for (const r of rows || []) partners.set(r.id, { name: r.name, email: r.email && String(r.email).includes('@') ? String(r.email).trim() : null, excluded: (r.category_id || []).some((c: number) => excludedCats.has(c)) })
+  // Adresse de remplissage (« exemple@… », notre propre domaine) = pas d'adresse : le rappel ne part pas.
+  const vraieAdresse = (e: any) => { const v = String(e || '').trim(); return v.includes('@') && !/^exemple@|@verviersdepannage\.(be|com)$/i.test(v) ? v : null }
+  for (const r of rows || []) partners.set(r.id, { name: r.name, email: vraieAdresse(r.email), excluded: (r.category_id || []).some((c: number) => excludedCats.has(c)) })
+
+  // Aperçu (rien n'est envoyé) : ce qui partirait, avec la raison quand ça ne part pas.
+  if (opts.apercu) {
+    out.apercu = jobs.map(j => {
+      const pid = (j.mv.partner_id as [number, string])[0], p = partners.get(pid)
+      return { facture: j.mv.name, client: p?.name || (j.mv.partner_id as any)[1], email: p?.email || null, echeance: j.mv.invoice_date_due,
+        retard: daysBetween(j.mv.invoice_date_due!, today), reste: Number(j.mv.amount_residual || 0), niveau: j.level, sansFiche: !j.fiches.length,
+        bloque: !p ? 'client introuvable' : p.excluded ? 'tag « Exclure relances »' : !p.email ? 'pas d’adresse mail' : null }
+    }).sort((a, b) => b.retard - a.retard)
+    return out
+  }
 
   let sentThisRun = 0
   const nowISO = new Date().toISOString()
