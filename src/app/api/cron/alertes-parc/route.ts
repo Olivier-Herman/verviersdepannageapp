@@ -1,7 +1,7 @@
 // src/app/api/cron/alertes-parc/route.ts — alertes du parc (Olivier 28/10/2026, point 3 des optimisations ; né du scooter
 // SAPJ268 resté en Transit sans contrôle et du réquisitoire 1XVR831 qui ne correspondait à aucun véhicule).
 // Chaque matin de semaine : véhicules en zone Transit depuis plus de 48 h, et réquisitoires restés « à rattacher »
-// depuis plus de 24 h. Notification au dispatch dans l'app, résumé à Mobi sur Telegram (dans ses heures).
+// depuis plus de 24 h. Notification à la fourrière (Jona) dans l'app, résumé à Mobi sur Telegram (dans ses heures).
 // Bloc « Alertes du parc » de « Mes assistants ».
 import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase'
@@ -33,8 +33,11 @@ export async function GET(req: Request) {
     reqs.length ? `${reqs.length} réquisitoire(s) sans véhicule correspondant : vérifier au parc ou demander la correction à la police.` : '',
   ].filter(Boolean).join(' ')
   try {
-    const { sendNotificationToRoles } = await import('@/lib/notifications/send')
-    await sendNotificationToRoles(['dispatcher', 'admin'], 'alertes_parc', { title: 'Parc : à vérifier', body, action_url: '/fourriere' } as any)
+    // À la fourrière, pas au dispatch (Olivier 28/10/2026) : réglage alertes_parc_user_ids (Jona).
+    const { sendNotificationToMany } = await import('@/lib/notifications/send')
+    const { getBusinessList } = await import('@/lib/settings/business')
+    const ids = await getBusinessList('alertes_parc_user_ids').catch(() => [] as string[])
+    if (ids.length) await sendNotificationToMany(ids, 'alertes_parc', { title: 'Parc : à vérifier', body, action_url: '/fourriere' } as any)
   } catch (e: any) { console.error('[alertes-parc] notification', e?.message) }
   try {
     const { notifierTelegram } = await import('@/lib/notif/heures-mobi')
