@@ -29,7 +29,10 @@ async function creneauxAgenda(): Promise<{ start: number; end: number }[] | null
   let slots: { start: number; end: number }[] | null = null
   try {
     const box = await getBusinessText('agents_boite_comptable')   // mobi@ (boîte de Mobi)
-    const tok = await getAppOnlyToken()
+    // Accès délégué à l'agenda (connexion par code d'appareil du 28/10/2026) : l'accès applicatif est refusé (403)
+    // sur les agendas, d'où le repli permanent sur l'horaire du réglage avant cette date.
+    const { jetonAgenda } = await import('@/lib/calendar/device')
+    const tok = (await jetonAgenda(box).catch(() => null)) || await getAppOnlyToken()
     const from = new Date(Date.now() - 86400e3).toISOString(), to = new Date(Date.now() + 8 * 86400e3).toISOString()
     const r = await fetch(`https://graph.microsoft.com/v1.0/users/${encodeURIComponent(box)}/calendarView?startDateTime=${from}&endDateTime=${to}&$top=100&$select=subject,start,end,isCancelled`,
       { headers: { Authorization: `Bearer ${tok}`, Prefer: 'outlook.timezone="UTC"' }, cache: 'no-store' })

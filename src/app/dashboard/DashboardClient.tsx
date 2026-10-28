@@ -11,7 +11,6 @@ import NightSwitchCard from '@/components/personnel/NightSwitchCard'
 import TalkieEntry from '@/components/personnel/TalkieEntry'
 import InterrupteurAssistants from '@/components/assistants/InterrupteurAssistants'
 import { T } from '@/lib/i18n/T'
-import { useT } from '@/lib/i18n/I18nProvider'
 
 // ─────────────────────────────────────────────────────────
 // CONFIGURATION DES SECTIONS
@@ -78,30 +77,15 @@ const MODULES: ModuleItem[] = [
   { id: 'depose',        label: 'Dépose Véhicule', href: '/depose',         icon: '🗺️', color: 'warning', i18nKey: 'dashboard.tile_depose_label'  },
 ]
 
-// Section 3 — appels rapides
-const CALL_MODULE_MAP: Record<string, string> = {
-  depannage: 'Service Dépannage',
-  fourriere: 'Service Fourrière',
-  rentacar:  'Service Rent A Car',
-}
-
-const CALL_MODULES = [
-  { id: 'depannage', label: 'Dépannage',  icon: '🚗', i18nKey: 'dashboard.tile_depannage_label' },
-  { id: 'fourriere', label: 'Fourrière',  icon: '🚓', i18nKey: 'dashboard.tile_fourriere_label' },
-  { id: 'rentacar',  label: 'Rent A Car', icon: '🔑', i18nKey: 'dashboard.tile_rentacar_label'  },
-]
-
 // ─────────────────────────────────────────────────────────
 // COMPOSANT PRINCIPAL
 // ─────────────────────────────────────────────────────────
 
 export default function DashboardClient({
   session,
-  callShortcuts,
   hasTowsoft = false,
 }: {
   session: Session
-  callShortcuts: any[]
   hasTowsoft?: boolean
 }) {
   const sessionUser = session.user as any
@@ -147,14 +131,8 @@ export default function DashboardClient({
 
   const visibleActions = MAIN_ACTIONS.filter(a => isVisible(a.id))
   const visibleModules = MODULES.filter(m => isVisible(m.id))
-  const visibleCalls   = CALL_MODULES.filter(c => userModules.includes(c.id))
 
-  const getPhone = (id: string): string | undefined => {
-    const label = CALL_MODULE_MAP[id]
-    return callShortcuts.find(s => s.label === label)?.phone
-  }
-
-  const isEmpty = visibleActions.length === 0 && visibleModules.length === 0 && visibleCalls.length === 0
+  const isEmpty = visibleActions.length === 0 && visibleModules.length === 0
 
   return (
     <AppShell
@@ -215,19 +193,7 @@ export default function DashboardClient({
           {/* Mes assistants — sous les modules (Olivier 28/10/2026), Olivier seul */}
           <InterrupteurAssistants partie="bloc" />
 
-          {/* Section 3 — Appels rapides */}
-          {visibleCalls.length > 0 && (
-            <section className="mb-4 ambient-fade-up ambient-stagger-3">
-              <h2 className="text-ink-muted text-xs font-semibold uppercase tracking-widest mb-3">
-                <T k="dashboard.section_calls" />
-              </h2>
-              <div className="flex flex-wrap gap-2">
-                {visibleCalls.map(c => (
-                  <QuickCall key={c.id} item={c} phone={getPhone(c.id)} />
-                ))}
-              </div>
-            </section>
-          )}
+          {/* Appels rapides (Dépannage, Fourrière, Rent a Car) retirés le 28/10/2026 : jamais utilisés (Olivier). */}
 
           {/* Empty state */}
           {isEmpty && (
@@ -290,35 +256,5 @@ function ModuleCard({ item }: { item: ModuleItem }) {
         {item.i18nKey ? <T k={item.i18nKey} /> : item.label}
       </span>
     </Link>
-  )
-}
-
-function QuickCall({
-  item,
-  phone,
-}: {
-  item: { id: string; label: string; icon: string; i18nKey?: string }
-  phone?: string
-}) {
-  const { t } = useT()
-  if (!phone) {
-    return (
-      <span
-        title={t('errors.generic')}
-        className="inline-flex items-center gap-2 bg-surface border rounded-md px-3.5 py-2 text-sm font-medium text-ink-faint opacity-50 cursor-not-allowed"
-      >
-        <span aria-hidden="true">{item.icon}</span>
-        <span>{item.i18nKey ? <T k={item.i18nKey} /> : item.label}</span>
-      </span>
-    )
-  }
-  return (
-    <a
-      href={`tel:${phone}`}
-      className="inline-flex items-center gap-2 bg-surface border rounded-md px-3.5 py-2 text-sm font-medium text-ink hover:bg-surface-hover hover:border-strong transition-colors"
-    >
-      <span aria-hidden="true">{item.icon}</span>
-      <span>{item.i18nKey ? <T k={item.i18nKey} /> : item.label}</span>
-    </a>
   )
 }

@@ -97,10 +97,20 @@ export async function basculerAssistant(sb: any, cle: CleAssistant, enMarche: bo
   return { change: true }
 }
 
+/** Bloc d'un agent du village, d'après son nom ou son identifiant (« aurelie », « Victor »…). */
+export function blocDeLAgent(nom?: string | null): CleAssistant {
+  const n = String(nom || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
+  if (/victor/.test(n)) return 'victor'
+  if (/justine/.test(n)) return 'agent_mail'
+  if (/aurelie/.test(n)) return 'facturation'
+  if (/mobia/.test(n)) return 'mobia'
+  return 'agents'
+}
+
 /** Agent du village qui veut ÉCRIRE dans VD Soft pendant la pause : refusé (423), il peut toujours lire. */
 export async function refusAgentEnPause(agent: { name?: string | null }): Promise<Response | null> {
   const { createAdminClient } = await import('@/lib/supabase')
-  const cle: CleAssistant = /victor/i.test(String(agent?.name || '')) ? 'victor' : 'agents'
+  const cle = blocDeLAgent(agent?.name)
   if (!(await assistantEnPause(createAdminClient(), cle))) return null
   return new Response(JSON.stringify({ error: 'En pause : Mobi a mis ses assistants en pause. Rien n’est fait ; réessaie plus tard.', pause: true }), { status: 423, headers: { 'Content-Type': 'application/json' } })
 }

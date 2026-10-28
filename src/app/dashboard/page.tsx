@@ -15,12 +15,6 @@ export default async function DashboardPage() {
   const supabase = createAdminClient()
   const user = session.user as any
 
-  // Récupérer les raccourcis d'appel
-  const { data: shortcuts } = await supabase
-    .from('call_shortcuts')
-    .select('label, phone')
-    .order('sort_order')
-
   // Vérifier si le chauffeur a un towsoft_name configuré
   const { data: dbUser } = await supabase
     .from('users')
@@ -31,7 +25,6 @@ export default async function DashboardPage() {
   return (
     <DashboardClient
       session={session}
-      callShortcuts={shortcuts || []}
       hasTowsoft={!!dbUser?.towsoft_name}
       
     />

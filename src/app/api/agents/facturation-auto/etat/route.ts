@@ -6,7 +6,7 @@
 import { NextResponse } from 'next/server'
 import { authenticateAgent } from '@/lib/agents/core'
 import { createAdminClient } from '@/lib/supabase'
-import { facturationAutoSuspendue, assistantEnPause } from '@/lib/facturation/suspension'
+import { facturationAutoSuspendue, assistantEnPause, blocDeLAgent } from '@/lib/facturation/suspension'
 
 export const dynamic = 'force-dynamic'
 
@@ -16,6 +16,7 @@ export async function GET(req: Request) {
   const sb = createAdminClient()
   return NextResponse.json({
     facturation_auto: !(await facturationAutoSuspendue(sb)),
-    actif: !(await assistantEnPause(sb, /victor/i.test(String(agent.name || '')) ? 'victor' : 'agents')),
+    // ?agent=<slug> : un agent du village sans clé à lui (Aurélie, Lucie, Mobia) lu avec la clé d'un autre (28/10/2026).
+    actif: !(await assistantEnPause(sb, blocDeLAgent(new URL(req.url).searchParams.get('agent') || agent.name))),
   })
 }
