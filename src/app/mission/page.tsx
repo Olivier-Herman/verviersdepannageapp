@@ -12,6 +12,7 @@ import ParcRelivraisonButton from '@/components/mission/ParcRelivraisonButton'
 import MissionsDuJourEasterEgg from '@/components/mission/MissionsDuJourEasterEgg'
 import { isPreviewOn } from '@/lib/feature-flags'
 import LiveActivityCleanup from '@/components/mission/LiveActivityCleanup'
+import PointagesAttente from '@/components/missions/PointagesAttente'
 
 export const dynamic = 'force-dynamic'
 
@@ -104,6 +105,8 @@ export default async function MissionListPage() {
       userModules={(session.user as any).modules ?? []}
     >
       <LiveActivityCleanup ids={(finies || []).map((f: any) => f.id)} />
+      {/* Pointages faits sans réseau : envoyés aussi depuis la liste (28/10/2026) */}
+      <PointagesAttente />
       {/* Wrapper relatif pour positionner le FAB */}
       <AmbientBackground>
         <div className="px-4 lg:px-8 py-6 max-w-2xl mx-auto space-y-6 pb-24 ambient-fade-up">

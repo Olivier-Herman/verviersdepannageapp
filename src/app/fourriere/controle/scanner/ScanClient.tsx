@@ -14,6 +14,9 @@ type Kind = 'ok' | 'transfere' | 'domaine' | 'en_trop' | 'deja' | 'inconnu' | 'e
 interface Feed { at: number; kind: Kind; message: string; detail?: string }
 
 const READER_ID = 'controle-parc-reader'
+// Batterie (Olivier 28/10/2026) : caméra en 640×480, lecteur du téléphone quand il existe, 5 lectures/s,
+// veille après 60 s sans scan ou quand l'app passe en arrière-plan.
+const VEILLE_MS = 60_000
 const DEDUP_MS = 4000
 
 // Sons : un seul AudioContext, débloqué au toucher « Démarrer » (obligatoire sur iPhone).
@@ -67,6 +70,8 @@ export default function ScanClient({ userName }: { userName: string }) {
   const [zone, setZone] = useState<string>('')
   const [running, setRunning] = useState(false)
   const [camErr, setCamErr] = useState<string | null>(null)
+  const [veille, setVeille] = useState(false)
+  const activiteRef = useRef(Date.now())
   const [feed, setFeed] = useState<Feed[]>([])
   const [flash, setFlash] = useState<Kind | null>(null)
   const [manual, setManual] = useState('')
@@ -129,14 +134,16 @@ export default function ScanClient({ userName }: { userName: string }) {
     unlockAudio(); setCamErr(null)
     try {
       const { Html5Qrcode, Html5QrcodeSupportedFormats } = await import('html5-qrcode')
-      const s = new Html5Qrcode(READER_ID, { formatsToSupport: [Html5QrcodeSupportedFormats.QR_CODE], verbose: false } as any)
+      const s = new Html5Qrcode(READER_ID, { formatsToSupport: [Html5QrcodeSupportedFormats.QR_CODE], verbose: false, experimentalFeatures: { useBarCodeDetectorIfSupported: true } } as any)
       scannerRef.current = s
-      await s.start({ facingMode: 'environment' }, { fps: 10, qrbox: (w: number, h: number) => { const m = Math.floor(Math.min(w, h) * 0.7); return { width: m, height: m } } } as any,
+      activiteRef.current = Date.now(); setVeille(false)
+      await s.start({ facingMode: 'environment' }, { fps: 5, videoConstraints: { facingMode: 'environment', width: { ideal: 640 }, height: { ideal: 480 } }, qrbox: (w: number, h: number) => { const m = Math.floor(Math.min(w, h) * 0.7); return { width: m, height: m } } } as any,
         (text: string) => {
           if (busyRef.current) return
           const now = Date.now(), last = lastRef.current.get(text) || 0
           if (now - last < DEDUP_MS) return
           lastRef.current.set(text, now)
+          activiteRef.current = now
           send({ raw: text, via: 'etiquette' })
         }, () => {})
       setRunning(true)
@@ -149,6 +156,15 @@ export default function ScanClient({ userName }: { userName: string }) {
     scannerRef.current = null; setRunning(false)
   }
   useEffect(() => () => { stopCam() }, [])
+  // Veille : 60 s sans étiquette lue, ou app en arrière-plan → caméra coupée ; un toucher la relance.
+  useEffect(() => {
+    if (!running) return
+    const iv = setInterval(() => { if (Date.now() - activiteRef.current > VEILLE_MS) { stopCam(); setVeille(true) } }, 5_000)
+    const onVis = () => { if (document.visibilityState === 'hidden') { stopCam(); setVeille(true) } }
+    document.addEventListener('visibilitychange', onVis)
+    return () => { clearInterval(iv); document.removeEventListener('visibilitychange', onVis) }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [running])
 
   async function chooseZone(z: string) {
     setZone(z); setConfirmDone(false)
@@ -204,8 +220,8 @@ export default function ScanClient({ userName }: { userName: string }) {
         <div id={READER_ID} className="w-full" />
         {!running && (
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 p-4 text-center">
-            <p className="text-white text-sm">La caméra lit les étiquettes toute seule : aucun bouton à presser. Chaque lecture donne un son.</p>
-            <button onClick={startCam} disabled={!zone} className="min-h-[48px] px-6 rounded-xl bg-green-600 text-white font-bold disabled:opacity-40">{zone ? 'Démarrer le scan' : 'Choisissez votre zone'}</button>
+            <p className="text-white text-sm">{veille ? 'Caméra en veille pour économiser la batterie.' : 'La caméra lit les étiquettes toute seule : aucun bouton à presser. Chaque lecture donne un son.'}</p>
+            <button onClick={startCam} disabled={!zone} className="min-h-[48px] px-6 rounded-xl bg-green-600 text-white font-bold disabled:opacity-40">{!zone ? 'Choisissez votre zone' : veille ? 'Toucher pour reprendre' : 'Démarrer le scan'}</button>
             {camErr && <p className="text-red-300 text-xs">{camErr}</p>}
           </div>
         )}

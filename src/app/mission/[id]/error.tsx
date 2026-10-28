@@ -5,13 +5,19 @@
 // par un message clair en français + bouton recharger. Si l'erreur est due à
 // une donnée manquante (ex: plaque non saisie), on l'indique.
 
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
+import { isChunkError, reloadOnce } from '@/lib/client/chunk-reload'
 import SignalerErreur from '@/components/SignalerErreur'
 
 export default function MissionError({ error, reset }: { error: Error & { digest?: string }; reset: () => void }) {
   useEffect(() => {
     console.error('[mission/error]', error?.message, error?.stack)
   }, [error])
+
+  // Ancienne version après une mise en ligne : rechargement au lieu de l'erreur (28/10/2026).
+  const [maj, setMaj] = useState(() => isChunkError(error))
+  useEffect(() => { if (maj && !reloadOnce('morceau de code introuvable (fiche mission)')) setMaj(false) }, [maj])
+  if (maj) return <div className="min-h-screen flex items-center justify-center bg-surface text-ink font-semibold">🔄 Mise à jour de l’app…</div>
 
   return (
     <div className="min-h-screen flex items-center justify-center p-6 bg-surface">

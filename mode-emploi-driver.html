@@ -739,9 +739,13 @@
  <p class="desc">Indique que tu es arrivé(e) sur le lieu d'intervention.</p>
  <p class="label">Comment faire</p>
  <ol>
- <li>Bouton « 📍 Sur place » apparaît dès que tu es à proximité du lieu</li>
- <li>Clique → statut reste « En cours » mais l'app log l'arrivée (horodatage)</li>
+ <li>Touche « 📍 Sur place » en arrivant : l'heure d'arrivée est enregistrée</li>
+ <li>À moins de 200 m du lieu, l'app t'affiche « Il semblerait que tu arrives sur place. » : touche « ✓ Je suis sur place » pour pointer, ou « Pas encore »</li>
+ <li>Téléphone en poche ou verrouillé : tu reçois la même chose en notification ; touche-la pour ouvrir la fiche</li>
+ <li>Même chose à moins de 150 m de la destination, avec « Il semblerait que tu arrives à destination. »</li>
+ <li>Rien n'est jamais pointé sans ton accord, et la question n'est posée qu'une fois par étape</li>
  </ol>
+ <div class="tip">💡 Pas de réseau (zone blanche, sous-sol) ? « En route », « Sur place » et « Véhicule chargé » sont gardés sur le téléphone avec la vraie heure. Un bandeau « ⏳ pointage en attente d'envoi » s'affiche et disparaît dès que le réseau revient et que le pointage est parti. La clôture, l'encaissement et la mise au parc demandent toujours du réseau.</div>
 </div>
 
 <div class="function">
@@ -1056,6 +1060,21 @@
  <li>S’il refuse, tu reçois « ⛔ Déplacement pour rien refusé » : appelle le dispatch et continue la mission</li>
  </ol>
  <div class="warn">⚠️ Seulement avant de charger le véhicule. Une fois le véhicule chargé, ce n’est plus un déplacement pour rien.</div>
+</div>
+
+<div class="function">
+ <h3><span class="num">48b</span>Pas de numéro du client sur la fiche</h3>
+ <p class="desc">Quand la fiche n'a aucun numéro de téléphone du client, le bouton « 📞 Demander le numéro à Sam » (Sonic la nuit) apparaît sous son nom.</p>
+ <ol>
+ <li>Touche le bouton : Sam va chercher le numéro chez l'assistance (IMA, Touring, VAB, AXA, Mondial…)</li>
+ <li>Trouvé : il est ajouté sur la fiche et le bouton « 📞 Appeler » apparaît</li>
+ <li>Pas trouvé : Sam te dit que l'assistance n'a pas de numéro pour ce client</li>
+ </ol>
+</div>
+
+<div class="function">
+ <h3><span class="num">48c</span>« Clôturer » est grisé : ce qui manque</h3>
+ <p class="desc">Sous le bouton de clôture grisé, la liste « Il manque encore : » dit exactement ce qui bloque : photos (par exemple « 3 sur 4 »), encaissement incomplet, signature, clé, roulant ou non… Touche une ligne avec une flèche › pour aller directement la compléter.</p>
 </div>
 
 <div class="function">

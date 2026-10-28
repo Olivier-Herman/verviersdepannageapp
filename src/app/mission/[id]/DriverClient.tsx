@@ -22,6 +22,9 @@ import { openNavigation } from '@/lib/open-navigation'
 import CopiloteNavSheet from '@/components/missions/CopiloteNavSheet'
 import SignalerErreur from '@/components/SignalerErreur'
 import MissionTruckModal from '@/components/missions/MissionTruckModal'
+import PointagesAttente from '@/components/missions/PointagesAttente'
+import NumeroClientSam from '@/components/missions/NumeroClientSam'
+import { POINTAGES_DIFFERABLES, estErreurReseau, mettreEnAttente } from '@/lib/client/pointage-queue'
 import AddressField, { verifyAddressViaPlaces } from '@/components/AddressField'
 import { T }    from '@/lib/i18n/T'
 import { isTransport, isRemorquage, isRemRel } from '@/lib/missions/mission-types'
@@ -1450,27 +1453,39 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
   // Suggère de pointer « Sur place » dès que le chauffeur est à ~200 m de
   // l'incident. Non bloquant (il confirme d'un tap) → pas besoin d'attendre un
   // arrêt : le risque de faux positif est nul. 100 % GPS (gratuit). Olivier 2026-07-28.
-  const [geoSuggest, setGeoSuggest] = useState(false)
-  const geoSuggestedRef = useRef(false)
+  // Étendu le 28/10/2026 (Olivier, maquette validée) : un vrai écran « Il semblerait que tu arrives… » au lieu du
+  // bandeau, et aussi à la destination (150 m) — même calcul, toujours confirmé par le chauffeur. Demandé une seule
+  // fois par étape, même après un rechargement de la fiche.
+  const [geoSuggest, setGeoSuggest] = useState<null | { kind: 'sur_place' | 'dest'; m: number }>(null)
+  const geoKind: 'sur_place' | 'dest' | null =
+    M.status === 'in_progress' && !onSite && !rel ? 'sur_place'
+    : M.status === 'delivering' && !!M.loaded_at ? 'dest' : null
   useEffect(() => {
-    // Cible = incident. Uniquement dans l'état où « Sur place » est valide.
-    const target = (M.incident_lat != null && M.incident_lng != null)
-      ? { lat: Number(M.incident_lat), lng: Number(M.incident_lng) } : null
-    const canSuggest = M.status === 'in_progress' && !onSite && !rel
-    if (!target || !canSuggest || geoSuggestedRef.current) return
+    const target = geoKind === 'sur_place'
+      ? (M.incident_lat != null && M.incident_lng != null ? { lat: Number(M.incident_lat), lng: Number(M.incident_lng) } : null)
+      : geoKind === 'dest'
+        ? (M.destination_lat != null && M.destination_lng != null ? { lat: Number(M.destination_lat), lng: Number(M.destination_lng) } : null)
+        : null
+    if (!target || !geoKind) return
+    const cle = `vd_arrivee_${M.id}_${geoKind}`
+    try { if (sessionStorage.getItem(cle)) return } catch { /* stockage indisponible */ }
+    const rayon = geoKind === 'sur_place' ? 200 : 150
     let cancelled = false
     const tick = async () => {
       const pos = await captureGeo()
-      if (cancelled || !pos || geoSuggestedRef.current) return
-      if (distanceMeters(pos, target) <= 200) {   // dans les 200 m → on propose
-        geoSuggestedRef.current = true
-        setGeoSuggest(true)
+      if (cancelled || !pos) return
+      const d = distanceMeters(pos, target)
+      // Destination : seulement si le bouton « Arrivé à destination » est à l'écran (sinon rien à confirmer).
+      if (d <= rayon && (geoKind === 'sur_place' || document.getElementById('btn-arrivee-dest'))) {
+        cancelled = true
+        try { sessionStorage.setItem(cle, '1') } catch { /* rien */ }
+        setGeoSuggest({ kind: geoKind, m: Math.max(10, Math.round(d / 10) * 10) })
       }
     }
     const iv = setInterval(tick, 20000)
     tick()
     return () => { cancelled = true; clearInterval(iv) }
-  }, [M.status, M.incident_lat, M.incident_lng, onSite, rel])
+  }, [geoKind, M.id, M.incident_lat, M.incident_lng, M.destination_lat, M.destination_lng])
   // Olivier 2026-06-03 : logging temporaire pour diagnostiquer la boucle.
   // JSON.stringify pour que les valeurs soient visibles en texte (sinon
   // la console affiche juste "Object" qu il faut cliquer pour expand).
@@ -1621,10 +1636,11 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
     if (action === 'accept') {
       try { await Promise.race([endForMission(M.id, missionToLAState({ status: 'assigned', incident_city: (M as any).incident_city } as any)), new Promise(r => setTimeout(r, 1500))]) } catch { /* jamais bloquant */ }
     }
+    const tPointage = new Date().toISOString()   // heure réelle, si le pointage doit attendre le réseau
+    let geo: { lat: number; lng: number } | null = null
     try {
       // Lieu de pointage : on tente d'attacher la position GPS (non bloquant,
       // cap 2s) sauf si l'appelant a déjà fourni lat/lng.
-      let geo: { lat: number; lng: number } | null = null
       if (GEO_POINTAGE_ACTIONS.has(action) && (extra as any).lat == null) {
         geo = await captureGeo()
       }
@@ -1673,6 +1689,16 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
       }
     } catch (e: any) {
       console.error(`[api] ERR action=${action}:`, e?.message || e)
+      // Pas de réseau : un pointage simple attend sur le téléphone avec son heure réelle (Olivier 28/10/2026).
+      if (POINTAGES_DIFFERABLES.has(action) && estErreurReseau(e)) {
+        mettreEnAttente({ mission_id: M.id, action, extra: { ...(geo || {}), ...extra }, client_at: tPointage })
+        setM(m => ({ ...m,
+          ...(action === 'on_way' ? { status: 'in_progress', on_way_at: tPointage } : {}),
+          ...(action === 'on_site' ? { status: 'in_progress', on_site_at: tPointage } : {}),
+          ...(action === 'load_vehicle' ? { status: 'delivering', loaded_at: tPointage } : {}),
+        } as any))
+        return
+      }
       setErr(e.message || 'Erreur')
     }
     finally { setLoading(false) }
@@ -3937,10 +3963,36 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
         </div>
 
         <div className="px-4 py-4 border-t border">
+          {/* Ce qui grise le bouton, en une liste ; chaque ligne mène à l'endroit à corriger (Olivier 28/10/2026). */}
+          {!loading && (() => {
+            const manques: { txt: string; go?: () => void }[] = closeType === 'park' ? [
+              !parkDepot && { txt: t('manque.depot') },
+              totPh < 3 && { txt: t('manque.photos', { n: totPh, min: 3 }), go: () => goPhotos('close') },
+              !keyLocation && { txt: t('close.key_before_confirm') },
+              isRollable === null && { txt: `🚗 ${t('mission_detail.rollable_required')}` },
+            ].filter(Boolean) as any : [
+              closeType !== 'dpr' && totPh < minPh && { txt: t('manque.photos', { n: totPh, min: minPh }), go: () => goPhotos('close') },
+              closeType !== 'dpr' && !paymentComplete && { txt: t('close.pay_incomplete', { paid: formatEur(M.payment_amount ?? 0, { suffix: false }), total: formatEur(requiredAmount, { suffix: false }), cur: M.amount_currency || 'EUR' }), go: () => setScreen('encaissement') },
+              M.source === 'kaze' && !sig && { txt: t('close.sig_kaze_required'), go: () => setScreen('sig') },
+              ...(reportNeeded ? reportMissing.filter(x => x !== t('close.report_m_sig') && !/photo/i.test(x)).map(x => ({ txt: `📝 ${x}` })) : []),
+            ].filter(Boolean) as any
+            if (!manques.length) return null
+            return (
+              <div className="mb-3 space-y-1.5" role="status">
+                <p className="text-sm font-bold text-ink"><T k="manque.titre" /></p>
+                {manques.map((x, i) => x.go ? (
+                  <button key={i} type="button" onClick={x.go}
+                    className="flex min-h-[44px] w-full items-center justify-between gap-2 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-left text-sm font-semibold text-red-800">
+                    <span>{x.txt}</span><span aria-hidden>›</span>
+                  </button>
+                ) : (
+                  <p key={i} className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm font-semibold text-red-800">{x.txt}</p>
+                ))}
+              </div>
+            )
+          })()}
           {closeType === 'park' ? (
             <>
-              {!keyLocation && <p className="text-amber-400 text-xs text-center mb-2"><T k="close.key_before_confirm" /></p>}
-              {isRollable === null && <p className="text-amber-400 text-xs text-center mb-2">🚗 <T k="mission_detail.rollable_required" /></p>}
               <button onClick={() => parkDepot && doPark(parkDepot)}
                 disabled={loading || !parkDepot || totPh < 3 || !keyLocation || isRollable === null}
                 className="w-full py-4 bg-amber-500 disabled:opacity-40 text-ink font-semibold rounded-2xl">
@@ -3949,21 +4001,6 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
             </>
           ) : (
             <>
-              {/* Blocage cloture tant que paiement incomplet (sauf DPR : pas de prestation, pas d encaissement attendu) */}
-              {closeType !== 'dpr' && !paymentComplete && (
-                <p className="text-amber-400 text-xs text-center mb-2 px-2">
-                  {t('close.pay_incomplete', { paid: formatEur(M.payment_amount ?? 0, { suffix: false }), total: formatEur(requiredAmount, { suffix: false }), cur: M.amount_currency || 'EUR' })}
-                </p>
-              )}
-              {/* Blocage signature obligatoire pour les missions Kaze (IMA) */}
-              {M.source === 'kaze' && !sig && (
-                <p className="text-red-400 text-xs text-center mb-2 px-2">
-                  {t('close.sig_kaze_required')}
-                </p>
-              )}
-              {reportNeeded && reportMissing.length > 0 && (
-                <p className="text-red-400 text-xs text-center mb-2 px-2">{t('close.report_missing', { list: reportMissing.join(', ') })}</p>
-              )}
               <button onClick={doClose} disabled={loading
                 || (closeType !== 'dpr' && (totPh < minPh || !paymentComplete))
                 || (M.source === 'kaze' && !sig)
@@ -4065,25 +4102,43 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
             📞 {M.client_phone}
           </a>
         )}
+        {/* Aucun numéro : Sam le cherche chez l'assistance (Olivier 28/10/2026). */}
+        {!M.client_phone && !(M as any).assisted_phone && !isReadOnly && isActiveMissionStatus(M.status) && (
+          <NumeroClientSam missionId={M.id} nomClient={M.client_name} onTrouve={tel => setM(m => ({ ...m, client_phone: tel } as any))} />
+        )}
         {/* Stepper visuel : étapes du workflow chauffeur */}
         <Stepper status={M.status} onSite={onSite} loaded={loaded} isRem={rem} isRel={rel} />
       </div>
 
+      {/* Pointages faits sans réseau, envoyés au retour du réseau (28/10/2026) */}
+      {!isReadOnly && <PointagesAttente missionId={M.id} onEnvoye={reloadMission} />}
+
       {/* Geofence : suggestion « Sur place ? » quand arrivé + à l'arrêt > 4 min */}
-      {geoSuggest && !onSite && (
-        <div className="mx-4 mt-3 bg-emerald-500/10 border-2 border-emerald-400 rounded-2xl p-4 flex items-center gap-3">
-          <span className="text-3xl">📍</span>
-          <div className="flex-1">
-            <p className="text-emerald-300 font-bold text-sm">Vous semblez arrivé sur place</p>
-            <p className="text-emerald-200/70 text-xs">Confirmer le pointage « Sur place » ?</p>
-          </div>
-          <div className="flex flex-col gap-1.5">
-            <button onClick={() => { setGeoSuggest(false); api('on_site') }} disabled={loading}
-              className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white rounded-xl text-sm font-bold whitespace-nowrap">
-              ✅ Sur place
+      {geoSuggest && geoSuggest.kind === geoKind && (
+        <div className="fixed inset-0 z-[320] flex items-end justify-center bg-black/60 sm:items-center" role="dialog" aria-modal="true" aria-labelledby="arrivee-titre">
+          <div className="w-full max-w-md space-y-3 rounded-t-3xl bg-white p-4 text-gray-900 sm:rounded-3xl dark:bg-slate-800 dark:text-slate-100"
+            style={{ paddingBottom: 'max(1.5rem, env(safe-area-inset-bottom))' }}>
+            <div className="flex gap-3">
+              <div className="flex h-11 w-11 flex-none items-center justify-center rounded-full bg-amber-100 text-2xl">📍</div>
+              <div className="rounded-2xl rounded-tl-sm bg-blue-50 px-3 py-2 text-sm text-blue-900 dark:bg-blue-950 dark:text-blue-100">
+                <b id="arrivee-titre"><T k={geoSuggest.kind === 'sur_place' ? 'arrivee.sur_place_titre' : 'arrivee.dest_titre'} /></b><br />
+                <T k="arrivee.distance" params={{ m: geoSuggest.m }} />
+              </div>
+            </div>
+            <button type="button" disabled={loading}
+              onClick={() => {
+                const k = geoSuggest.kind; setGeoSuggest(null)
+                if (k === 'sur_place') api('on_site')
+                else document.getElementById('btn-arrivee-dest')?.click()   // même chemin que le bouton de la fiche
+              }}
+              className="min-h-[60px] w-full rounded-2xl bg-green-700 text-lg font-bold text-white disabled:opacity-50">
+              <T k={geoSuggest.kind === 'sur_place' ? 'arrivee.confirme_sur_place' : 'arrivee.confirme_dest'} />
             </button>
-            <button onClick={() => setGeoSuggest(false)}
-              className="px-4 py-1 text-emerald-200/60 text-xs">Pas encore</button>
+            <button type="button" onClick={() => setGeoSuggest(null)}
+              className="min-h-[50px] w-full rounded-2xl border border-gray-300 bg-white font-semibold text-gray-800 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-100">
+              <T k="arrivee.pas_encore" />
+            </button>
+            <p className="text-xs text-gray-700 dark:text-slate-300"><T k="arrivee.note" /></p>
           </div>
         </div>
       )}
@@ -5360,7 +5415,7 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
           {/* REM/REL : véhicule chargé → arrivée à destination (+ mise en parc pour REM uniquement) */}
           {(rem || rel) && !!M.loaded_at && ['delivering', 'in_progress'].includes(M.status) && (
             <>
-              <button onClick={async () => {
+              <button id="btn-arrivee-dest" onClick={async () => {
                   josianeVue(5)
                   // Siabis NON couvert, destination gardée sans position (Google ne la trouvait pas) :
                   // le montant à encaisser ne se calcule pas. Le chauffeur est à destination → on prend

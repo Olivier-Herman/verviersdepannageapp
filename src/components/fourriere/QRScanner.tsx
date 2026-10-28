@@ -17,9 +17,14 @@ interface Props {
 
 const SCANNER_ID = 'qr-scanner-region'
 const DEDUP_MS   = 3500   // ignorer le meme QR scanné plusieurs fois en 3.5s
+// Batterie (Olivier 28/10/2026 : « le scan QR consomme très vite notre batterie » à l'inventaire) :
+// caméra en 640×480, lecteur du téléphone quand il existe, 5 lectures/s, veille après 60 s sans scan.
+const VEILLE_MS  = 60_000
+const SCAN_FPS   = 5
 
 export default function QRScanner({ onScan, paused, onClose, title = 'Scan QR — Inventaire' }: Props) {
-  const [status, setStatus] = useState<'idle' | 'starting' | 'running' | 'paused' | 'error'>('idle')
+  const [status, setStatus] = useState<'idle' | 'starting' | 'running' | 'paused' | 'error' | 'veille'>('idle')
+  const activiteRef = useRef(Date.now())
   const [error, setError]   = useState<string | null>(null)
   const [cameras, setCameras] = useState<{ id: string; label: string }[]>([])
   const [currentCameraId, setCurrentCameraId] = useState<string | null>(null)
@@ -78,12 +83,15 @@ export default function QRScanner({ onScan, paused, onClose, title = 'Scan QR �
       const scanner = new Html5Qrcode(SCANNER_ID, {
         formatsToSupport: [Html5QrcodeSupportedFormats.QR_CODE],
         verbose: false,
-      })
+        experimentalFeatures: { useBarCodeDetectorIfSupported: true },   // lecteur intégré du téléphone
+      } as any)
       scannerRef.current = scanner
+      activiteRef.current = Date.now()
       await scanner.start(
         cameraId,
         {
-          fps: 8,
+          fps: SCAN_FPS,
+          videoConstraints: { deviceId: { exact: cameraId }, width: { ideal: 640 }, height: { ideal: 480 } },
           qrbox: (vw: number, vh: number) => {
             const min = Math.min(vw, vh)
             const side = Math.floor(min * 0.7)
@@ -96,6 +104,7 @@ export default function QRScanner({ onScan, paused, onClose, title = 'Scan QR �
           const last = lastScansRef.current.get(decodedText) || 0
           if (now - last < DEDUP_MS) return
           lastScansRef.current.set(decodedText, now)
+          activiteRef.current = now
           // Garbage collect anciens enregistrements
           for (const [k, t] of lastScansRef.current.entries()) {
             if (now - t > DEDUP_MS * 2) lastScansRef.current.delete(k)
@@ -114,6 +123,22 @@ export default function QRScanner({ onScan, paused, onClose, title = 'Scan QR �
       setError(e?.message || 'Caméra inaccessible')
       setStatus('error')
     }
+  }
+
+  // Veille : 60 s sans scan, ou app passée en arrière-plan → caméra coupée ; « Toucher pour reprendre ».
+  useEffect(() => {
+    const iv = setInterval(() => {
+      if (status === 'running' && Date.now() - activiteRef.current > VEILLE_MS) { stopScanner(); setStatus('veille') }
+    }, 5_000)
+    const onVis = () => { if (document.visibilityState === 'hidden' && scannerRef.current) { stopScanner(); setStatus('veille') } }
+    document.addEventListener('visibilitychange', onVis)
+    return () => { clearInterval(iv); document.removeEventListener('visibilitychange', onVis) }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [status])
+
+  function reveiller() {
+    if (!currentCameraId) return
+    setStatus('starting'); startScanner(currentCameraId)
   }
 
   async function pauseScanner() {
@@ -175,6 +200,14 @@ export default function QRScanner({ onScan, paused, onClose, title = 'Scan QR �
           <div className="absolute inset-0 flex items-center justify-center text-white text-sm">
             Démarrage caméra…
           </div>
+        )}
+        {status === 'veille' && (
+          <button type="button" onClick={reveiller}
+            className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-black/85 text-white">
+            <Camera size={48} />
+            <span className="text-lg font-bold">Toucher pour reprendre</span>
+            <span className="px-8 text-center text-sm text-white/70">Caméra en veille pour économiser la batterie</span>
+          </button>
         )}
         {status === 'paused' && (
           <div className="absolute inset-0 flex items-center justify-center bg-black/60 text-white text-sm">

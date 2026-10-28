@@ -247,6 +247,14 @@ export async function POST(req: Request) {
   }
 
   const mapping = ACTION_MAP[action]
+  // Pointage fait sans réseau puis envoyé au retour (Olivier 28/10/2026) : l'heure réelle du téléphone, seulement
+  // pour les pointages simples, dans les 12 dernières heures et jamais dans le futur.
+  const clientAt = (() => {
+    const v = (body as any).client_at
+    if (!v || !['on_way', 'on_site', 'load_vehicle'].includes(action)) return null
+    const t = Date.parse(String(v))
+    return Number.isFinite(t) && t <= Date.now() + 2 * 60_000 && t >= Date.now() - 12 * 3600_000 ? new Date(Math.min(t, Date.now())).toISOString() : null
+  })()
   const now     = new Date().toISOString()
 
   // Mise en parc IMMÉDIATE à la clôture Flux 2 (Olivier 10/09/2026, 2EMF957) :
@@ -258,7 +266,7 @@ export async function POST(req: Request) {
 
   const updatePayload: Record<string, unknown> = { updated_at: now }
   if (mapping.status && !isParkUpdate)         updatePayload.status     = mapping.status
-  if (mapping.timestampField && !isParkUpdate) updatePayload[mapping.timestampField] = now
+  if (mapping.timestampField && !isParkUpdate) updatePayload[mapping.timestampField] = clientAt || now
   // Ré-clôture : garder la date de clôture d'origine (fenêtre 6h non réinitialisée).
 
   // Sources internes sans facturation (ex. Car Parts & Recycling) : la mission
@@ -735,8 +743,10 @@ export async function POST(req: Request) {
   }
   await supabase.from('mission_logs').insert({
     mission_id, actor_id: actor.id, action: isParkUpdate ? 'park_completed' : action,
-    notes: isParkUpdate ? 'Mise en parc complétée (dépôt / clé / roulant / photos)' : mapping.logMessage,
-    metadata: { action, status: mapping.status || mission.status, ...closure },
+    notes: isParkUpdate ? 'Mise en parc complétée (dépôt / clé / roulant / photos)'
+      : clientAt ? `${mapping.logMessage} — pointé sans réseau à ${new Date(clientAt).toLocaleTimeString('fr-BE', { timeZone: 'Europe/Brussels', hour: '2-digit', minute: '2-digit' })}, envoyé au retour du réseau`
+      : mapping.logMessage,
+    metadata: { action, status: mapping.status || mission.status, ...closure, ...(clientAt ? { client_at: clientAt } : {}) },
   })
 
   // ── Live Activity : synchro à CHAQUE transition ───────────────────────────

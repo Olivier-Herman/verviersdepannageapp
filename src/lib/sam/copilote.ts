@@ -33,6 +33,21 @@ const prenom = (n: string | null | undefined) => String(n || '').trim().split(/\
 
 interface Probleme { kind: Kind; texte: string; boutons: Bouton[]; donnees?: any }
 
+/** Minutes de trajet estimées entre le chargement et la destination, sans aucun service payant : vol d'oiseau × 1,3
+ *  (les routes ne sont pas droites) à 70 km/h de moyenne ; null si une position manque. */
+export function trajetEstimeMin(m: { incident_lat?: any; incident_lng?: any; destination_lat?: any; destination_lng?: any }): number | null {
+  const a = [Number(m.incident_lat), Number(m.incident_lng)], b = [Number(m.destination_lat), Number(m.destination_lng)]
+  if ([m.incident_lat, m.incident_lng, m.destination_lat, m.destination_lng].some(x => x == null) || [...a, ...b].some(x => !Number.isFinite(x))) return null
+  const R = 6371, rad = (d: number) => d * Math.PI / 180
+  const s = Math.sin(rad(b[0] - a[0]) / 2) ** 2 + Math.cos(rad(a[0])) * Math.cos(rad(b[0])) * Math.sin(rad(b[1] - a[1]) / 2) ** 2
+  const km = 2 * R * Math.asin(Math.min(1, Math.sqrt(s))) * 1.3
+  return Math.round(km / 70 * 60)
+}
+function delaiPasArrive(m: any, defaut: number): number {
+  const t = trajetEstimeMin(m)
+  return t == null ? defaut : t + 30
+}
+
 export async function detecter(sb: Sb, m: any, lang: Lang, pasArriveMin: number): Promise<Probleme | null> {
   const L = (fr: string, sq: string) => (lang === 'sq' ? sq : fr)
   const p = prenom(m.driver_name)
@@ -69,7 +84,9 @@ export async function detecter(sb: Sb, m: any, lang: Lang, pasArriveMin: number)
   }
 
   // 3. Siabis sur place sans scénario.
-  if (SIABIS.includes(m.source) && !m.snc_scenario && m.on_site_at && minDepuis(m.on_site_at) >= 2 && ['in_progress', 'delivering'].includes(m.status)) {
+  //    10 min et pas 2 : l'écran « Qu'est-ce qu'on fait ? » est déjà ouvert sur place, le chauffeur parle d'abord
+  //    à la police ou au client (Olivier 28/10/2026 : 12 relances en un mois, souvent trop tôt).
+  if (SIABIS.includes(m.source) && !m.snc_scenario && m.on_site_at && minDepuis(m.on_site_at) >= 10 && ['in_progress', 'delivering'].includes(m.status)) {
     const sc = m.source === 'sia_couvert'
     const charge = !!m.loaded_at
     const dest = m.destination_address ? ` (${String(m.destination_address).split(',')[0]})` : ''
@@ -100,8 +117,9 @@ export async function detecter(sb: Sb, m: any, lang: Lang, pasArriveMin: number)
     }
   }
 
-  // 5. Chargé depuis longtemps, jamais « Arrivé à destination ».
-  if (m.status === 'delivering' && m.loaded_at && minDepuis(m.loaded_at) >= pasArriveMin && !SIABIS.includes(m.source)) {
+  // 5. Chargé depuis longtemps, jamais « Arrivé à destination ». Délai = trajet estimé + 30 min quand les deux
+  //    positions sont connues (Olivier 28/10/2026 : un long trajet est normal), sinon le réglage (90 min).
+  if (m.status === 'delivering' && m.loaded_at && minDepuis(m.loaded_at) >= delaiPasArrive(m, pasArriveMin) && !SIABIS.includes(m.source)) {
     const ou = m.destination_address ? String(m.destination_address).split(',').slice(0, 2).join(',') : L('la destination', 'destinacioni')
     return {
       kind: 'pas_arrive',
@@ -125,7 +143,7 @@ export async function tickCopilote(opts: { dryRun?: boolean } = {}): Promise<{ m
   const { getBusinessNumber } = await import('@/lib/settings/business')
   const pasArriveMin = await getBusinessNumber('sam_copilote_pas_arrive_min').catch(() => 90)
   const { data: ms, error } = await sb.from('incoming_missions')
-    .select('id, mission_number, source, status, mission_type, assigned_to, vehicle_plate, incident_address, incident_city, incident_lat, destination_address, destination_lat, destination_lng, snc_scenario, amount_to_collect, payment_amount, accepted_at, on_site_at, loaded_at')
+    .select('id, mission_number, source, status, mission_type, assigned_to, vehicle_plate, incident_address, incident_city, incident_lat, destination_address, destination_lat, destination_lng, snc_scenario, amount_to_collect, payment_amount, accepted_at, on_site_at, loaded_at, incident_lng')
     .in('status', ['accepted', 'in_progress', 'delivering']).not('assigned_to', 'is', null).limit(80)
   if (error) throw new Error(`Missions illisibles : ${error.message}`)
   const { data: ouvertes } = await sb.from('sam_alertes').select('id, mission_id, kind, user_id, created_at, answered_at, resolved_at, dispatch_notified_at').is('resolved_at', null)

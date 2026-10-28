@@ -924,6 +924,38 @@ export const sq: Dictionary = {
     none:       'Asnjë kamion nuk është konfiguruar. Njofto dispeçerin.',
     error:      'Kamioni nuk u regjistrua. Provo përsëri.',
   },
+  // Pointime pa rrjet (Olivier 28/10/2026)
+  pointages_attente: {
+    un:        '1 pointim në pritje për dërgim (pa rrjet, bërë në {heure}) — dërgohet sapo të kthehet rrjeti',
+    plusieurs: '{n} pointime në pritje për dërgim (pa rrjet, që nga {heure}) — dërgohen sapo të kthehet rrjeti',
+    refuse:    'Pointimi i orës {heure} nuk u pranua:',
+    ok:        'E kuptova',
+  },
+  // Mbërritja e zbuluar nga pozicioni (Olivier 28/10/2026)
+  arrivee: {
+    sur_place_titre:  'Duket se po mbërrin në vend.',
+    dest_titre:       'Duket se po mbërrin në destinacion.',
+    distance:         'Je {m} m larg.',
+    confirme_sur_place: '✓ Jam në vend',
+    confirme_dest:    '✓ Arrita në destinacion',
+    pas_encore:       'Ende jo',
+    note:             'Asgjë nuk pointohet pa pëlqimin tënd.',
+  },
+  // Mbyllja gri: çfarë mungon (Olivier 28/10/2026)
+  manque: {
+    titre:  'Mungon ende:',
+    photos: '📷 Foto: {n} nga {min}',
+    depot:  '🏢 Zgjidh depon më lart',
+  },
+  // Numri i klientit mungon (Olivier 28/10/2026)
+  numero_client: {
+    demander:  '📞 Kërkoji numrin {agent}',
+    cherche:   '{agent} po kërkon te asistenca…',
+    trouve:    'U gjet: {tel}. E shtova në fishë.',
+    absent:    '{source} nuk ka numër për këtë klient.',
+    appeler:   '📞 Telefono {nom}',
+    erreur:    'Kërkimi nuk pati sukses. Provo përsëri pas pak.',
+  },
   pause_transfer: {
     btn_pause:        '⏸ Kthehem më vonë',
     btn_transfer:     '🔁 Transfero te një shofer tjetër',
