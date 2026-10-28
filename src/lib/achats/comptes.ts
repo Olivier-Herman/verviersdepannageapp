@@ -53,7 +53,7 @@ async function comptes() {
 export async function corrigerBrouillons(): Promise<{ lignes: number; factures: string[] }> {
   const regles = await lireRegles(); const { byId, byCode } = await comptes()
   const ids = Object.keys(regles).map(Number).filter(Number.isInteger)
-  const ls: any[] = await odooRpc('account.move.line', 'search_read', [[['partner_id', 'in', ids], ['parent_state', '=', 'draft'], ['display_type', '=', 'product'], ['move_id.move_type', 'in', ['in_invoice', 'in_refund']]]], { fields: ['id', 'name', 'account_id', 'partner_id', 'move_id', 'move_name'] })
+  const ls: any[] = await odooRpc('account.move.line', 'search_read', [[['partner_id', 'in', ids], ['parent_state', '=', 'draft'], ['display_type', '=', 'product'], ['move_id.move_type', 'in', ['in_invoice', 'in_refund', 'in_receipt']]]], { fields: ['id', 'name', 'account_id', 'partner_id', 'move_id', 'move_name'] })
   const parFacture = new Map<number, any[]>(); const noms = new Set<string>()
   for (const l of ls) {
     const src = byId.get(l.account_id?.[0]); if (!src) continue
@@ -73,7 +73,7 @@ export async function reclasserMois(m: string, opts: { simuler?: boolean } = {})
   const regles = await lireRegles(); const { byId } = await comptes()
   const ids = Object.keys(regles).map(Number).filter(Number.isInteger)
   const du = `${m}-01`, au = finMois(m)
-  const factures: any[] = await odooRpc('account.move.line', 'search_read', [[['partner_id', 'in', ids], ['parent_state', '=', 'posted'], ['date', '>=', du], ['date', '<=', au], ['display_type', '=', 'product'], ['move_id.move_type', 'in', ['in_invoice', 'in_refund']]]], { fields: ['name', 'balance', 'account_id', 'partner_id'] })
+  const factures: any[] = await odooRpc('account.move.line', 'search_read', [[['partner_id', 'in', ids], ['parent_state', '=', 'posted'], ['date', '>=', du], ['date', '<=', au], ['display_type', '=', 'product'], ['move_id.move_type', 'in', ['in_invoice', 'in_refund', 'in_receipt']]]], { fields: ['name', 'balance', 'account_id', 'partner_id'] })
   const reclasses: any[] = await odooRpc('account.move.line', 'search_read', [[['partner_id', 'in', ids], ['parent_state', '=', 'posted'], ['date', '>=', du], ['date', '<=', au], ['move_id.move_type', '=', 'entry'], ['move_id.ref', '=like', `${REF} %`]]], { fields: ['balance', 'account_id', 'partner_id'] })
   // écart[partenaire][compte] = voulu − réel
   const ecart = new Map<number, Map<number, number>>()
