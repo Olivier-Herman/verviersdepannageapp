@@ -107,7 +107,7 @@ export default function CreateClientModal({ initialName, prefill, gmKey, onClose
     const init = () => {
       if (!(window as any).google?.maps?.places || acRef.current) return
       acRef.current = new (window as any).google.maps.places.Autocomplete(streetInputRef.current!, {
-        componentRestrictions: { country: ['be','lu','fr','nl','de'] },
+        // Adresse d'un client : tous pays (client polonais bloqué le 27/10/2026), résultats belges d'abord (region=BE).
         fields: ['address_components', 'formatted_address'],
         types:  ['address'],
       })

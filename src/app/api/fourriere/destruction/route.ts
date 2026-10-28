@@ -87,6 +87,7 @@ export async function GET() {
     `)
     .eq('source', 'police_avp')
     .in('status', ['parked', 'delivering'])
+    .eq('police_blocked', false)   // bloqué par la police : jamais à la destruction (Olivier 27/10/2026)
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
@@ -142,12 +143,21 @@ export async function POST(req: Request) {
       id, external_id, dossier_number, source, status,
       vehicle_plate, vehicle_brand, vehicle_model, vehicle_vin,
       parc_zone_key, parc_row_number, parc_slot_index,
-      parked_at, intervention_date, received_at, driver_photos
+      parked_at, intervention_date, received_at, driver_photos, police_blocked
     `)
     .in('id', missionIds)
   if (mErr) return NextResponse.json({ error: mErr.message }, { status: 500 })
   if (!missions || missions.length === 0) {
     return NextResponse.json({ error: 'Aucune mission trouvee' }, { status: 404 })
+  }
+
+  // Bloqué par la police (Olivier 27/10/2026) : la police doit d'abord lever le blocage.
+  const bloques = missions.filter((m: any) => m.police_blocked)
+  if (bloques.length > 0) {
+    return NextResponse.json({
+      error: `${bloques.map((m: any) => m.vehicle_plate || m.id).join(', ')} : bloqué par la police, impossible à détruire tant que le blocage n'est pas levé`,
+      invalid_ids: bloques.map((m: any) => m.id),
+    }, { status: 400 })
   }
 
   // Securite : uniquement des AVP en parc

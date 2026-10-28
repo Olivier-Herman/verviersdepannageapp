@@ -548,8 +548,7 @@ function EditableAddress({ value, field, missionId, gmKey, onSaved, placeholder 
       const g = (window as any).google
       try {
         new g.maps.places.AutocompleteService().getPlacePredictions({
-          input: q, sessionToken: tokenRef.current, componentRestrictions: { country: ['be', 'lu', 'fr', 'nl', 'de'] },
-          bounds: new g.maps.LatLngBounds({ lat: 49.49, lng: 2.51 }, { lat: 51.51, lng: 6.41 }),
+          input: q, sessionToken: tokenRef.current, bounds: new g.maps.LatLngBounds({ lat: 49.49, lng: 2.51 }, { lat: 51.51, lng: 6.41 }),
         }, (res: any[], status: string) => {
           if (status !== g.maps.places.PlacesServiceStatus.OK || !res) { setPreds([]); return }
           setPreds(res.slice(0, 5).map(r => ({ id: r.place_id, main: r.structured_formatting?.main_text || r.description, sub: r.structured_formatting?.secondary_text || '' })))

@@ -2844,8 +2844,8 @@ export default function MissionDetailClient({
         {/* Bandeau "Bloquee par la police" — visible si police_blocked=true
             (ou si mal_garee et module fourriere, pour pouvoir ajouter la coche
             apres-coup quand la demande police arrive en differé).
-            Olivier 2026-05-26, etendu 2026-06-04. */}
-        {(policeBlocked || (initialMission.source === 'police_mg' && userModules.includes('fourriere'))) && (
+            Olivier 2026-05-26, etendu 2026-06-04 ; tout véhicule au parc (AVP compris) le 27/10/2026. */}
+        {(policeBlocked || (['parked', 'delivering', 'unlocated', 'awaiting_payment'].includes(initialMission.status) && (userModules.includes('fourriere') || ['admin', 'superadmin'].includes(userRole)))) && (
           <div className="px-4 lg:px-8 pt-4">
             <div className={`border-2 rounded-xl p-4 flex items-start gap-3 ${
               policeBlocked

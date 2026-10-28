@@ -48,7 +48,6 @@ function initPlacesAutocomplete(
 ) {
   const ac = new (window as any).google.maps.places.Autocomplete(input, {
     // Pas de restriction de type — permet adresses ET établissements (garages, concessionnaires…)
-    componentRestrictions: { country: ['be', 'nl', 'fr', 'de', 'lu'] },
     fields: ['formatted_address', 'name', 'geometry'],
   })
   ac.addListener('place_changed', () => {
