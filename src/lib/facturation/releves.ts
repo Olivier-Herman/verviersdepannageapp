@@ -5,7 +5,7 @@
 // mercredi 28/10/2026), groupé par assistance.
 // Le mail liste chaque facture ouverte (notre n°, leur n° de dossier, plaque, date d'intervention, reste dû) et donne
 // un lien personnel (90 jours, sans compte) vers /releve/<jeton> où chaque facture se télécharge (PDF, ZIP, Excel).
-// Un relevé ne part que s'il y a au moins une facture échue. Assistances : réglage releve_assistances_partner_ids
+// Seules les factures échues y figurent ; sans facture échue, pas de relevé. Assistances : réglage releve_assistances_partner_ids
 // (Touring, Ethias, Allianz-AP Solutions, VAB, AXA-IPA, P&V, AWP, IMA, ANWB, Eurocross, ACL). RES, Europ Assistance
 // et les clients suivent les rappels classiques (paiements.ts). Jamais le Parquet.
 // Envoi : réglage releve_assistances_mode (off / on) ET bloc « Relances clients » de « Mes assistants ».
@@ -43,7 +43,13 @@ async function adresseFacturation(partnerId: number): Promise<string | null> {
 /** Factures ouvertes d'une assistance, enrichies de la plaque et de l'intervention (fiche VD Soft). */
 export async function releveDe(partnerId: number): Promise<Releve> {
   const auj = jour()
-  const inv: any[] = await odooRpc('account.move', 'search_read', [[['move_type', '=', 'out_invoice'], ['state', '=', 'posted'], ['payment_state', 'in', ['not_paid', 'partial']], ['commercial_partner_id', '=', partnerId], ['amount_residual', '>', 0]]], { fields: ['id', 'name', 'ref', 'invoice_date', 'invoice_date_due', 'amount_total', 'amount_residual', 'commercial_partner_id', 'x_studio_plaque_1'], order: 'invoice_date_due asc, id asc', limit: 2000 })
+  // Seulement les factures ÉCHUES (Olivier 28/10/2026 : « on ne prend que les échues »), dans le mail comme sur la page,
+  // et émises depuis 2026 (avant : payées à l'époque sans lettrage possible, même règle que les rappels clients).
+  const inv: any[] = await odooRpc('account.move', 'search_read', [[['move_type', '=', 'out_invoice'], ['state', '=', 'posted'], ['payment_state', 'in', ['not_paid', 'partial']], ['commercial_partner_id', '=', partnerId], ['amount_residual', '>', 0], ['invoice_date_due', '<', auj], ['invoice_date', '>=', '2026-01-01']]], { fields: ['id', 'name', 'ref', 'invoice_date', 'invoice_date_due', 'amount_total', 'amount_residual', 'commercial_partner_id', 'x_studio_plaque_1'], order: 'invoice_date_due asc, id asc', limit: 2000 })
+  // Factures annoncées dans un avis de paiement pas encore arrivé à la banque (IMA, ANWB… Olivier 28/10/2026) : retirées
+  // du relevé pendant 15 jours. Réglage releve_factures_annoncees = { "<n° facture>": "<date de l'avis>" }.
+  const annoncees = await facturesAnnoncees()
+  for (let i = inv.length - 1; i >= 0; i--) if (annoncees.has(inv[i].name)) inv.splice(i, 1)
   const [p]: any[] = await odooRpc('res.partner', 'read', [[partnerId]], { fields: ['name'] })
   const fiches = new Map<number, any>()
   if (inv.length) {
@@ -61,6 +67,27 @@ export async function releveDe(partnerId: number): Promise<Releve> {
     }
   })
   return { partnerId, partner: p?.name || `#${partnerId}`, email: await adresseFacturation(partnerId), lignes, total: Math.round(lignes.reduce((s, l) => s + l.reste, 0) * 100) / 100, echues: lignes.filter(l => l.retard > 0).length }
+}
+
+/** Factures annoncées payées par un avis de paiement de moins de 15 jours. */
+export async function facturesAnnoncees(): Promise<Set<string>> {
+  const { data } = await createAdminClient().from('app_settings').select('value').eq('key', 'releve_factures_annoncees').maybeSingle()
+  let v: Record<string, string> = {}
+  try { v = typeof data?.value === 'string' ? JSON.parse(data.value) : (data?.value || {}) } catch { /* illisible */ }
+  const limite = new Date(Date.now() - 15 * 86_400_000).toISOString().slice(0, 10)
+  return new Set(Object.entries(v).filter(([, d]) => String(d) >= limite).map(([n]) => n))
+}
+
+/** Ajoute des factures annoncées par un avis de paiement (garde les autres, oublie celles de plus de 15 jours). */
+export async function noterAvisDePaiement(factures: string[], dateAvis: string): Promise<void> {
+  const sb = createAdminClient()
+  const { data } = await sb.from('app_settings').select('value').eq('key', 'releve_factures_annoncees').maybeSingle()
+  let v: Record<string, string> = {}
+  try { v = typeof data?.value === 'string' ? JSON.parse(data.value) : (data?.value || {}) } catch { /* illisible */ }
+  const limite = new Date(Date.now() - 15 * 86_400_000).toISOString().slice(0, 10)
+  for (const k of Object.keys(v)) if (v[k] < limite) delete v[k]
+  for (const f of factures) v[f] = dateAvis
+  await sb.from('app_settings').upsert({ key: 'releve_factures_annoncees', value: JSON.stringify(v) }, { onConflict: 'key' })
 }
 
 export function lienReleve(token: string): string {
