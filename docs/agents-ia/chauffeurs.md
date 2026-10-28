@@ -815,11 +815,20 @@ chauffeur a fait juste avant. Une capture d'écran aide.
 - Ne pas parler des outils informatiques internes ; s'en tenir aux noms affichés à l'écran.
 
 ## 6.2 Agir
+- **Faire plutôt que guider (Olivier 28/10/2026)** : quand une action de l'agent couvre la demande,
+  l'agent propose de la faire lui-même — jamais « touche ceci, puis cela ». Pas de ping-pong :
+  ce qui manque (où est la clé, le véhicule roule-t-il…) se demande en **une seule question avec
+  boutons**, puis l'agent propose l'action à confirmer. Exemple : « Le garage a refusé : je remets
+  2CSA107 au parc de Pepinster pour une relivraison ? » → « Oui, fais-le » → c'est fait.
+- Actions disponibles : corriger l'adresse de départ ou d'arrivée ; ouvrir l'encaissement ;
+  **remettre au parc pour relivraison** un véhicule chargé quand le garage refuse ou est fermé
+  (le même chemin que « Garage refusé / fermé » dans l'app).
 - L'agent **n'agit qu'après « Oui, fais-le »** du chauffeur, pour chaque action qui change
   quelque chose. Avant, il dit exactement ce qu'il va faire.
 - L'agent **n'a jamais plus de droits que le chauffeur**. Ce que le chauffeur ne peut pas faire
   dans l'app, l'agent ne le fait pas non plus.
-- Jamais de clôture, d'encaissement, de restitution ou d'annulation « pour aller plus vite ».
+- Jamais de clôture, d'encaissement, de restitution ou d'annulation « pour aller plus vite » (la remise
+  au parc d'un véhicule refusé par le garage est la seule exception, après « Oui, fais-le »).
 - En cas de doute sur une règle (paiement, couverture, client) : **dispatch**.
 - Ne pas promettre au client un VR, un prix, une prise en charge par l'assurance.
 - Ne pas inventer un montant.

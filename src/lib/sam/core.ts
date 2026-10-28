@@ -84,6 +84,9 @@ const ACTIONS_POSSIBLES = [
     parametres: { mission_id: 'id de la mission', champ: '"incident" (départ) ou "destination" (arrivée)', adresse: 'adresse complète : rue, numéro, code postal, ville' } },
   { id: 'ouvrir_encaissement', libelle: 'Ouvrir l’écran d’encaissement d’une mission du chauffeur (le chauffeur encaisse lui-même)',
     parametres: { mission_id: 'id de la mission' } },
+  // Olivier 28/10/2026 : « Sam demande juste confirmation et le fait lui-même », pas de ping-pong « touche ceci puis cela ».
+  { id: 'remettre_en_parc', libelle: 'Véhicule chargé que le garage refuse ou qui est fermé : le remettre au parc pour une relivraison plus tard (même chose que « Garage refusé / fermé » dans l’app). Pose UNE seule question avec boutons pour ce qui manque (où est la clé, le véhicule roule-t-il), puis propose l’action à confirmer ; ne guide jamais le chauffeur écran par écran.',
+    parametres: { mission_id: 'id de la mission', motif: '"garage_refuse", "garage_ferme" ou "autre"', precision: 'si motif "autre" : la raison en quelques mots', date_reouverture: 'si garage fermé et connue : AAAA-MM-JJ', cle: '"in_vehicle" (dans le véhicule), "digibox_depannage", "digibox_rac", "bureau_rac" ou "no_key"', roulant: '"oui" ou "non"', depot: '"PEP" (Pepinster, par défaut) ou "VERVIERS"' } },
 ]
 
 async function loadDriver(userId: string) {
@@ -276,6 +279,42 @@ async function executeAction(userId: string, a: SamAction): Promise<{ resultat: 
     const j = await r.json().catch(() => ({}))
     if (!r.ok) return { resultat: { fait: false, raison: j.error || `refusé (${r.status})` } }
     return { resultat: { fait: true, adresse: hit.label } }
+  }
+  if (a.id === 'remettre_en_parc') {
+    if (mission.status !== 'delivering' || !mission.loaded_at) return { resultat: { fait: false, raison: 'le véhicule n’est pas chargé sur le camion : rien à remettre au parc' } }
+    const motif = ['garage_refuse', 'garage_ferme', 'autre'].includes(String(p.motif)) ? String(p.motif) : 'garage_refuse'
+    const LIB: Record<string, string> = { garage_refuse: 'Garage a refusé le véhicule', garage_ferme: 'Garage fermé' }
+    const cle = ['in_vehicle', 'digibox_depannage', 'digibox_rac', 'bureau_rac', 'no_key'].includes(String(p.cle)) ? String(p.cle) : null
+    const roulant = p.roulant === 'oui' ? true : p.roulant === 'non' ? false : null
+    if (!cle || roulant == null) return { resultat: { fait: false, raison: 'il manque où est la clé et/ou si le véhicule roule : demande-le en une question avec boutons' } }
+    const sb = createAdminClient()
+    const { data: depots } = await sb.from('depots').select('name, address, lat, lng, is_default, is_default_parc').eq('active', true)
+    const verviers = p.depot === 'VERVIERS'
+    const dep = (depots || []).find((d: any) => verviers ? /verviers/i.test(d.name) : /pepinster/i.test(d.name))
+      || (depots || []).find((d: any) => d.is_default_parc) || (depots || []).find((d: any) => d.is_default)
+    if (!dep) return { resultat: { fait: false, raison: 'dépôt introuvable' } }
+    const reouv = /^\d{4}-\d{2}-\d{2}$/.test(String(p.date_reouverture || '')) ? String(p.date_reouverture) : null
+    // Même route et même contenu que le bouton « Garage refusé / fermé » de l'app, au nom du chauffeur.
+    const r = await fetch(`${APP_URL()}/api/missions/driver-action`, {
+      method: 'POST', cache: 'no-store',
+      headers: { 'Content-Type': 'application/json', 'x-internal-secret': process.env.NEXTAUTH_SECRET || '', 'x-internal-actor': userId },
+      body: JSON.stringify({
+        mission_id: mission.id, action: 'park',
+        closing_data: {
+          final_mission_type: mission.mission_type,
+          dpr_motif: motif, dpr_motif_label: motif === 'autre' ? String(p.precision || 'Autre').slice(0, 200) : LIB[motif],
+          dpr_converted_from_rem: true,
+          ...(motif === 'garage_ferme' && reouv ? { garage_reopen_date: reouv } : {}),
+          closing_notes: `Remis au parc par ${(await agentDeService().catch(() => 'Sam'))}, à la demande du chauffeur`,
+        },
+        park_data: { stage_name: dep.name, depot_choice: verviers ? 'VERVIERS' : 'PEP', is_rollable: roulant, key_location: cle },
+        park_address: dep.address, park_lat: dep.lat, park_lng: dep.lng,
+        redelivery_address: mission.destination_address || undefined,
+      }),
+    })
+    const j = await r.json().catch(() => ({}))
+    if (!r.ok) return { resultat: { fait: false, raison: j.error || `refusé (${r.status})` } }
+    return { resultat: { fait: true, depot: dep.name, zone: j.mission?.parc_zone_key || null, relivraison: mission.destination_address || null } }
   }
   return { resultat: { fait: false, raison: 'action non autorisée' } }
 }
