@@ -66,6 +66,7 @@ export async function assistantsEnPause(sb: any): Promise<boolean> {
 export const ASSISTANTS = [
   { cle: 'facturation',    nom: 'Facturation automatique', role: 'Factures des fiches clôturées, factures SEL (Aurélie), relances, clôtures Allianz, validations Touring' },
   { cle: 'relances',       nom: 'Relances clients',        role: 'Rappels de paiement J+15 / J+30 depuis administration@ (jamais au Parquet)' },
+  { cle: 'rapprochement',  nom: 'Rapprochement des paiements', role: 'Lettrage des avis de paiement des assistances quand tout concorde avec la banque' },
   { cle: 'victor',         nom: 'Victor',                  role: 'Comptabilité, échanges avec Maureen' },
   { cle: 'agents',         nom: 'Florent, Rémi et les autres agents', role: 'Banque, factures d’achat, propositions à valider' },
   { cle: 'agent_mail',     nom: 'Justine (Agent Mail)',    role: 'Tri des mails d’info@ et d’administration@' },
