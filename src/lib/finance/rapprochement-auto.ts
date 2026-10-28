@@ -44,8 +44,13 @@ export async function rapprocherAvis(opts: { simuler?: boolean } = {}): Promise<
   }
 
   // 3. À trancher par une personne (écart, facture introuvable) depuis plus de 3 jours.
+  // Mis de côté par Olivier (« sans retour de leur part ou sans sujet lancé par moi, on le laisse de côté », AWP 10 000 €
+  // avis BEVO492090, 28/10/2026) : réglage rapprochement_mis_de_cote = références d'avis ou n° de lignes de banque.
+  const { getBusinessList } = await import('@/lib/settings/business')
+  const deCote = new Set(await getBusinessList('rapprochement_mis_de_cote').catch(() => [] as string[]))
   const limite = Date.now() - 3 * 86_400_000
-  for (const i of report.items.filter(i => (i.state === 'gap' || i.state === 'miss') && Date.parse(i.bank?.date || i.advice?.receivedAt || '') < limite))
+  for (const i of report.items.filter(i => (i.state === 'gap' || i.state === 'miss') && Date.parse(i.bank?.date || i.advice?.receivedAt || '') < limite
+    && !deCote.has(String(i.advice?.reference || '')) && !deCote.has(String(i.bank?.lineId || ''))))
     out.aTrancher.push(`${libelle(i)} : ${i.blocking[0] || i.state}`)
   return out
 }
