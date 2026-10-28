@@ -24,7 +24,7 @@ import SignalerErreur from '@/components/SignalerErreur'
 import MissionTruckModal from '@/components/missions/MissionTruckModal'
 import PointagesAttente from '@/components/missions/PointagesAttente'
 import NumeroClientSam from '@/components/missions/NumeroClientSam'
-import { POINTAGES_DIFFERABLES, estErreurReseau, mettreEnAttente } from '@/lib/client/pointage-queue'
+import { POINTAGES_DIFFERABLES, estErreurReseau, mettreEnAttente, etatAvecAttente, dejaEnAttente } from '@/lib/client/pointage-queue'
 import AddressField, { verifyAddressViaPlaces } from '@/components/AddressField'
 import { T }    from '@/lib/i18n/T'
 import { isTransport, isRemorquage, isRemRel } from '@/lib/missions/mission-types'
@@ -640,6 +640,8 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
   }
 
   const [M, setM]               = useState<Mission>(init)
+  // Pointages faits sans réseau, pas encore partis : la fiche les montre déjà comme faits (28/10/2026).
+  useEffect(() => { setM(m => etatAvecAttente(m as any)) }, [])
   const [screen, setScreen]     = useState<Screen>('main')
   // Écran exact transmis à Sam par le bouton Aide (Olivier 03/10/2026).
   useEffect(() => {
@@ -1629,6 +1631,8 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
   // ── API statuts simples (avec reload) ───────────────────────────────────
   const api = async (action: string, extra: Record<string, any> = {}) => {
     console.log(`[api] CALL action=${action}`, { extra, currentStatus: M.status, currentLoaded: !!M.loaded_at })
+    // Pointage déjà gardé sur le téléphone (pas de réseau) : il partira tout seul, ne pas le doubler.
+    if (POINTAGES_DIFFERABLES.has(action) && dejaEnAttente(M.id, action)) return
     setLoading(true); setErr('')
     // La carte « verrouillée » de l'écran iPhone (démarrée à distance à l'attribution) ne peut pas être
     // fermée par le serveur (il n'a pas son jeton) : on la ferme ICI, sur le téléphone, avant l'acceptation ;

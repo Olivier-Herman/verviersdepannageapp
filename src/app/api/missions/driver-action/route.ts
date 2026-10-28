@@ -243,6 +243,13 @@ export async function POST(req: Request) {
   // save_photos reste permis sur une mission active ou en parc (pas de changement de statut).
   if (action !== 'save_photos') {
     const allowed = ALLOWED[mission.status] ?? []
+    // Pointage déjà fait (double tap, ou pointage hors réseau parti juste avant — Matthieu 1ERU757, 28/10/2026) :
+    // pas d'erreur, on renvoie la fiche telle qu'elle est.
+    const DEJA: Record<string, string> = { accept: 'accepted_at', on_way: 'on_way_at', on_site: 'on_site_at', load_vehicle: 'loaded_at' }
+    if (!allowed.includes(action) && DEJA[action]) {
+      const { data: full } = await supabase.from('incoming_missions').select('*').eq('id', mission_id).maybeSingle()
+      if (full && (full as any)[DEJA[action]] && full.assigned_to === actor?.id) return NextResponse.json({ ok: true, deja: true, mission: full })
+    }
     if (!allowed.includes(action)) {
       return NextResponse.json({ error: `Action '${action}' non permise depuis '${mission.status}'` }, { status: 422 })
     }
