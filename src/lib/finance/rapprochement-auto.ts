@@ -5,8 +5,9 @@
 // lib/advice-match.ts. Jusqu'ici, le lettrage attendait une validation (5 à 6 jours en moyenne). Désormais :
 //   • état « ready » (virement arrivé, toutes les factures retrouvées, montants concordants AU CENTIME avec la banque —
 //     le contrôle se fait contre le virement, pas contre l'avis) → lettré seul, une ligne par facture (reconcileSource,
-//     le même chemin que le bouton). Paiement lu dans la communication sans avis : seulement s'il porte UNE facture
-//     (règle du 16/10/2026, rapprochement exact = sans validation).
+//     le même chemin que le bouton). Paiement lu dans la communication sans avis : pareil, même sur plusieurs factures,
+//     tant que les numéros cités couvrent le reste à lettrer au centime (Olivier 28/10/2026, virements Touring que l'ERP
+//     avait lettrés en partie).
 //   • état « pending » (avis reçu, virement pas encore là) → ses factures sortent du relevé des assistances.
 //   • « gap » / « miss » (écart, facture introuvable) depuis plus de 3 jours → remontés à Mobi, rien n'est touché.
 
@@ -37,7 +38,6 @@ export async function rapprocherAvis(opts: { simuler?: boolean } = {}): Promise<
 
   // 2. Prêts : lettrage seul.
   for (const i of report.items.filter(i => i.state === 'ready' && i.bank && !faits.has(i.bank.lineId))) {
-    if (i.source === 'communication' && i.invoices.length !== 1) { out.aTrancher.push(`${libelle(i)} : paiement par communication sur plusieurs factures, à valider`); continue }
     if (opts.simuler) { out.lettres.push(`${libelle(i)} — ${i.invoices.length} facture(s) (simulation)`); continue }
     try { out.lettres.push(await reconcileSource('assureur', i.bank!.lineId, null)) }
     catch (e: any) { out.erreurs.push(`${libelle(i)} : ${e?.message || e}`) }
