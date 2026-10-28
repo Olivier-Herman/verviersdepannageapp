@@ -22,7 +22,7 @@ export interface CreditNoteToUnletter { lineId: number; name: string; amount: nu
 export async function communicationItems(sinceIso: string, skipLineIds: Set<number>): Promise<MatchedAdvicePayment[]> {
   const lines = await odooRpc<any[]>('account.bank.statement.line', 'search_read', [[
     ['amount', '>', 0], ['date', '>=', sinceIso.slice(0, 10)], ['is_reconciled', '=', false],
-  ]], { fields: ['id', 'date', 'amount', 'payment_ref', 'move_id', 'partner_id'], order: 'date desc, id desc', limit: 500 })
+  ]], { fields: ['id', 'date', 'amount', 'amount_residual', 'payment_ref', 'move_id', 'partner_id'], order: 'date desc, id desc', limit: 500 })
 
   const withMentions = lines
     .filter(l => !skipLineIds.has(l.id))
@@ -66,10 +66,19 @@ export async function communicationItems(sinceIso: string, skipLineIds: Set<numb
       })
     }
 
+    // Virement déjà lettré EN PARTIE (Touring 26/10/2026 : 2 factures sur 8 lettrées à la main) : on compare au reste
+    // à lettrer du virement, et les factures déjà soldées ne bloquent plus — le contrôle au centime sur le reste suffit.
+    const reste = r2(Math.abs(Number(l.amount_residual || 0)))
+    const partiel = reste > 0.005 && reste < Number(l.amount) - 0.005
+    const montant = partiel ? reste : Number(l.amount)
+    const notes: string[] = []
+    if (partiel) for (let k = invoices.length - 1; k >= 0; k--) if (invoices[k].issue === 'déjà soldée') {
+      notes.push(`${invoices[k].invoiceName} déjà lettrée (sur ce virement ou ailleurs) : reste à lettrer ${reste.toFixed(2)} € sur ${Number(l.amount).toFixed(2)} €.`)
+      invoices.splice(k, 1)   // hors du lettrage : seules les factures encore ouvertes couvrent le reste
+    }
     const found = invoices.filter(i => i.invoiceId && !i.issue)
     let linesSum = r2(found.reduce((s, i) => s + i.amount, 0))
-    let delta = r2(linesSum - Number(l.amount))
-    const notes: string[] = []
+    let delta = r2(linesSum - montant)
     let unletter: CreditNoteToUnletter[] = []
 
     // Le client a payé plus que les restes dus : notes de crédit lettrées qu'il n'a pas déduites ?
@@ -95,7 +104,7 @@ export async function communicationItems(sinceIso: string, skipLineIds: Set<numb
           notes.push(`${o.invoiceName} payée en entier sans déduire la note de crédit ${o.name} (${o.amount.toFixed(2)} €) : au rapprochement, la note de crédit est délettrée et reste ouverte pour le paiement où le client la déduira.`)
         }
         linesSum = r2(found.reduce((s, i) => s + i.amount, 0))
-        delta = r2(linesSum - Number(l.amount))
+        delta = r2(linesSum - montant)
       }
     }
 
@@ -104,7 +113,7 @@ export async function communicationItems(sinceIso: string, skipLineIds: Set<numb
       if (x.issue === 'introuvable') blocking.push(`La communication cite ${x.ref}, qui ne correspond à aucune facture`)
       if (x.issue === 'déjà soldée') blocking.push(`${x.invoiceName} est déjà soldée`)
     }
-    if (Math.abs(delta) > 0.02) blocking.push(`Les factures citées totalisent ${linesSum.toFixed(2)} € pour un virement de ${Number(l.amount).toFixed(2)} €`)
+    if (Math.abs(delta) > 0.02) blocking.push(`Les factures citées totalisent ${linesSum.toFixed(2)} € pour ${partiel ? `un reste à lettrer de ${montant.toFixed(2)} €` : `un virement de ${montant.toFixed(2)} €`}`)
 
     const partner = Array.isArray(l.partner_id) ? l.partner_id : null
     const firstInv = moves.find(m => m.id === found[0]?.invoiceId)
@@ -113,7 +122,7 @@ export async function communicationItems(sinceIso: string, skipLineIds: Set<numb
       payer: 'communication',
       payerLabel: partner?.[1] || firstInv?.commercial_partner_id?.[1] || 'Virement client',
       advice: null,
-      bank: { lineId: l.id, date: l.date, amount: Number(l.amount), moveName: Array.isArray(l.move_id) ? l.move_id[1] : '' },
+      bank: { lineId: l.id, date: l.date, amount: montant, moveName: Array.isArray(l.move_id) ? l.move_id[1] : '' },
       invoices, linesSum, delta, blocking,
       source: 'communication',
       communication: String(l.payment_ref || '').replace(/^[\s\S]*?communication\s*:?\s*/i, '').slice(0, 300),
