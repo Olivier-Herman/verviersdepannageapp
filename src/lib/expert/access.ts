@@ -8,16 +8,18 @@
 //     « fourriere ») ; le PREMIER qui répond décide et ferme le popup chez
 //     les autres (toutes les notifications du même request_id sont marquées
 //     répondues).
-//   - Un expert validé cherche une plaque : uniquement les fiches
-//     Police – Accident EN PARC ; il reçoit la zone + les photos d'entrée ;
-//     « Véhicule vu » enregistre la visite (registre) → arme le contrôle de sortie.
+//   - Un expert validé cherche une plaque parmi TOUS les véhicules en parc (Olivier 28/10/2026 : un accident
+//     Touring, 1ASC555, était introuvable) ; il reçoit la zone + les photos d'entrée ; « Véhicule vu » enregistre
+//     la visite (registre) → arme le contrôle de sortie.
+//   - Saisie, AVP, mal garée : trouvés, mais sans aucune info — la plaque et un cachet, rien d'autre.
 
 import { randomBytes, randomUUID } from 'crypto'
 import { sendNotification } from '@/lib/notifications/send'
 import { normalizePlate } from '@/lib/plate'
 import { armExitControlFromVisit } from '@/lib/missions/exit-control'
 
-export const EXPERT_SOURCES = ['police_accident']
+/** Véhicules sous procédure : l'expert ne voit que la plaque et ce cachet (Olivier 28/10/2026). */
+export const CACHET_PROCEDURE: Record<string, string> = { police_saisie: 'SAISIE', police_avp: 'AVP', police_mg: 'MAL GARÉE' }
 
 export function newDeviceKey(): string {
   return randomBytes(24).toString('hex')
@@ -157,8 +159,8 @@ export async function lookupParkedAccident(sb: any, queryRaw: string): Promise<
   if (q.length < 3) return { found: false, reason: 'too_short' }
   const { data: rows } = await sb.from('incoming_missions')
     .select('id, mission_number, vehicle_plate, vehicle_brand, vehicle_model, vehicle_vin, parc_zone_key, parked_at, driver_photos, source, status')
-    .eq('status', 'parked').in('source', EXPERT_SOURCES)
-    .order('parked_at', { ascending: false }).limit(500)
+    .eq('status', 'parked')   // les volets de dossier (gardiennage) ont leur propre statut
+    .order('parked_at', { ascending: false }).limit(3000)
   const list = rows || []
   let via: 'plate' | 'vin' = 'plate'
   let m = list.find((r: any) => normalizePlate(String(r.vehicle_plate || '')) === q)
@@ -171,6 +173,8 @@ export async function lookupParkedAccident(sb: any, queryRaw: string): Promise<
     if (vinMatches.length === 1) { m = vinMatches[0]; via = 'vin' }
   }
   if (!m) return { found: false, reason: 'none' }
+  const cachet = CACHET_PROCEDURE[m.source]
+  if (cachet) return { found: true, via, vehicle: { id: null, plate: m.vehicle_plate, cachet } }
   let zoneLabel = m.parc_zone_key || null
   if (m.parc_zone_key) {
     const { data: z } = await sb.from('parc_zones').select('label').eq('key', m.parc_zone_key).maybeSingle()
