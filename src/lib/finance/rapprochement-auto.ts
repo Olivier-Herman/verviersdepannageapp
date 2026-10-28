@@ -15,6 +15,7 @@ import { createAdminClient } from '@/lib/supabase'
 import { buildAdviceReport, type MatchedAdvicePayment } from '@/lib/advice-match'
 import { reconcileSource } from '@/lib/agents/lot2'
 import { noterAvisDePaiement } from '@/lib/facturation/releves'
+import { planCommission, lettrerCommission } from '@/lib/finance/commission-nc'
 
 export interface ResultatRapprochement { lettres: string[]; enAttente: number; aTrancher: string[]; erreurs: string[] }
 
@@ -43,6 +44,20 @@ export async function rapprocherAvis(opts: { simuler?: boolean } = {}): Promise<
     catch (e: any) { out.erreurs.push(`${libelle(i)} : ${e?.message || e}`) }
   }
 
+  // 2 bis. Garage commissionné qui paie en déduisant ses NC de commission (Car Avenue — méthode d'Olivier, 28/10/2026) :
+  // NC de commission déliées puis paiement + NC citées lettrés sur la facture, si tout tombe juste au centime.
+  const traites = new Set<number>()
+  for (const i of report.items.filter(i => i.source === 'communication' && i.state === 'gap' && i.bank && !faits.has(i.bank.lineId))) {
+    const factures = i.invoices.filter(f => f.invoiceId && (f.invoiceTotal ?? 0) > 0)
+    if (factures.length !== 1 || !/\bNC\b/i.test(i.communication || '')) continue
+    try {
+      const plan = await planCommission(i.communication || '', Number(i.bank!.amount), factures[0].invoiceId!)
+      if (!plan.ok) { out.aTrancher.push(`${libelle(i)} : ${plan.raison}`); traites.add(i.bank!.lineId); continue }
+      out.lettres.push(opts.simuler ? `${libelle(i)} — ${plan.facture} + ${plan.nc!.join(', ')}${plan.adelier!.length ? ` (délier ${plan.adelier!.join(', ')})` : ''} (simulation)` : await lettrerCommission(i.bank!.lineId, plan))
+      traites.add(i.bank!.lineId)
+    } catch (e: any) { out.erreurs.push(`${libelle(i)} : ${e?.message || e}`); traites.add(i.bank!.lineId) }
+  }
+
   // 3. À trancher par une personne (écart, facture introuvable) depuis plus de 3 jours.
   // Mis de côté par Olivier (« sans retour de leur part ou sans sujet lancé par moi, on le laisse de côté », AWP 10 000 €
   // avis BEVO492090, 28/10/2026) : réglage rapprochement_mis_de_cote = références d'avis ou n° de lignes de banque.
@@ -50,7 +65,7 @@ export async function rapprocherAvis(opts: { simuler?: boolean } = {}): Promise<
   const deCote = new Set(await getBusinessList('rapprochement_mis_de_cote').catch(() => [] as string[]))
   const limite = Date.now() - 3 * 86_400_000
   for (const i of report.items.filter(i => (i.state === 'gap' || i.state === 'miss') && Date.parse(i.bank?.date || i.advice?.receivedAt || '') < limite
-    && !deCote.has(String(i.advice?.reference || '')) && !deCote.has(String(i.bank?.lineId || ''))))
+    && !deCote.has(String(i.advice?.reference || '')) && !deCote.has(String(i.bank?.lineId || '')) && !traites.has(i.bank?.lineId ?? -1)))
     out.aTrancher.push(`${libelle(i)} : ${i.blocking[0] || i.state}`)
   return out
 }
