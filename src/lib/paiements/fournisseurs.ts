@@ -56,10 +56,19 @@ async function lotOuvert(C: number, journal: number) {
   return b || null
 }
 
-/** Fournisseurs payés par domiciliation : jamais dans un lot de virements. */
+/** Fournisseurs payés par domiciliation : jamais dans un lot de virements. Deux traces : un paiement encodé
+ *  « domiciliation », ou (Olivier 28/10/2026, Electrabel prélevé depuis mai mais proposé au virement) une ligne de
+ *  banque « domiciliation » des 4 derniers mois rapprochée au fournisseur. Mandat annulé (Monni, 28/10/2026) :
+ *  réglage paiements_mandat_annule_partner_ids, ses factures reviennent au tri. */
 async function fournisseursDomicilies(C: number): Promise<Set<number>> {
-  const rows: any[] = await odooRpcCompany(C, 'account.payment', 'search_read', [[['payment_type', '=', 'outbound'], '|', ['payment_method_line_id.name', 'ilike', 'domicil'], ['memo', 'ilike', 'domicil']]], { fields: ['partner_id'], limit: 5000 })
-  return new Set(rows.map(r => r.partner_id?.[0]).filter(Boolean))
+  const depuis = new Date(Date.now() - 120 * 864e5).toISOString().slice(0, 10)
+  const [pay, banque]: any[][] = await Promise.all([
+    odooRpcCompany(C, 'account.payment', 'search_read', [[['payment_type', '=', 'outbound'], '|', ['payment_method_line_id.name', 'ilike', 'domicil'], ['memo', 'ilike', 'domicil']]], { fields: ['partner_id'], limit: 5000 }),
+    odooRpcCompany(C, 'account.bank.statement.line', 'search_read', [[['amount', '<', 0], ['date', '>=', depuis], ['payment_ref', 'ilike', 'domiciliation'], ['partner_id', '!=', false]]], { fields: ['partner_id'], limit: 5000 }),
+  ])
+  const { getBusinessList } = await import('@/lib/settings/business')
+  const annules = new Set((await getBusinessList('paiements_mandat_annule_partner_ids').catch(() => [] as string[])).map(Number))
+  return new Set([...pay, ...banque].map(r => r.partner_id?.[0]).filter((id: number) => id && !annules.has(id)))
 }
 
 type Compte = { id: number; acc: string; ok: boolean }
