@@ -282,6 +282,11 @@ async function executeAction(userId: string, a: SamAction): Promise<{ resultat: 
   }
   if (a.id === 'remettre_en_parc') {
     if (mission.status !== 'delivering' || !mission.loaded_at) return { resultat: { fait: false, raison: 'le véhicule n’est pas chargé sur le camion : rien à remettre au parc' } }
+    // Relivraison partie du parc (Olivier 28/10/2026, 2CSA107) : le dossier est toujours au parc ; la « mise en parc »
+    // de la relivraison créerait une seconde fiche. Pas encore géré seul : le dispatch s'en occupe.
+    if (/\bREL\b|relivraison/i.test(String(mission.mission_type || '')) && !/REM/i.test(String(mission.mission_type || ''))) {
+      return { resultat: { fait: false, raison: 'c’est une relivraison partie du parc : je ne peux pas la remettre au parc moi-même. Dis au chauffeur de ramener le véhicule au dépôt et d’appeler le dispatch, qui clôture la relivraison' } }
+    }
     const motif = ['garage_refuse', 'garage_ferme', 'autre'].includes(String(p.motif)) ? String(p.motif) : 'garage_refuse'
     const LIB: Record<string, string> = { garage_refuse: 'Garage a refusé le véhicule', garage_ferme: 'Garage fermé' }
     const cle = ['in_vehicle', 'digibox_depannage', 'digibox_rac', 'bureau_rac', 'no_key'].includes(String(p.cle)) ? String(p.cle) : null
