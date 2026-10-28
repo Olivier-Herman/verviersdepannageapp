@@ -21,6 +21,9 @@ import AutoInvoiceAlert      from '@/components/facturation/AutoInvoiceAlert'
 import SuspensionBanner      from '@/components/facturation/SuspensionBanner'
 import { billingGroups } from '@/lib/missions/source-catalog'
 
+import BlocagesAFacturer from '@/components/facturation/BlocagesAFacturer'
+import { peutBasculer } from '@/lib/facturation/suspension'
+
 export const dynamic = 'force-dynamic'
 
 
@@ -69,6 +72,8 @@ export default async function FacturationDossiersPage() {
     <AppShell title={v2 ? 'À facturer' : 'Facturation par dossier'} userName={u.name || ''} userEmail={u.email || undefined} userId={u.id} userRole={role} userModules={modules}>
       <SuspensionBanner />
       <AutoInvoiceAlert />
+      {/* Olivier seul (28/10/2026) : les raisons de blocage en plus de la liste de l'équipe. */}
+      {(await peutBasculer(u.id)) && <BlocagesAFacturer />}
       {v2
         ? <AFacturerClient initial={dossiers} autoById={autoById} comexById={comexById} isSuperadmin={role === 'superadmin'} billingGroups={groups} capped={roots.length >= MAX_DOSSIERS} />
         : <DossiersClient initial={dossiers} autoById={autoById} comexById={comexById} isSuperadmin={role === 'superadmin'} billingGroups={groups} capped={roots.length >= MAX_DOSSIERS} />}

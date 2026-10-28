@@ -74,8 +74,6 @@ export default async function AdminPage() {
   const session = await getServerSession(authOptions)
   if (!session) redirect('/login')
   const user = session.user as any
-  const { peutBasculer } = await import('@/lib/facturation/suspension')
-  const estOlivier = await peutBasculer(user.id)   // écrans réservés à Olivier (28/10/2026)
   const isAdmin = ['admin', 'superadmin'].some(r => (user.roles || [user.role]).includes(r))
   if (!isAdmin) redirect('/dashboard?error=access_denied')
 
@@ -160,10 +158,6 @@ export default async function AdminPage() {
         {user.role === 'superadmin' && (
           <Card href="/admin/francofolies" icon={DollarSign} label="Francofolies"
             desc="Prix réquisition mal garée + gardiennage/jour pour l'évènement Francofolies de Spa." />
-        )}
-        {estOlivier && (
-          <Card href="/admin/a-facturer" icon={Receipt} label="À facturer — pourquoi ça bloque"
-            desc="Les fiches terminées pas encore facturées, rangées par raison, avec ce qu'il faut faire. Visible par toi seul." />
         )}
         {user.role === 'superadmin' && (
           <Card href="/admin/facturation-auto" icon={Receipt} label="Facturation automatique"

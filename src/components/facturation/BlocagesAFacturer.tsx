@@ -1,6 +1,7 @@
 'use client'
-// « À facturer — pourquoi ça bloque » (maquette 8JhA5Spa6fRXrTmDYasPCH) : un groupe par raison, ce qu'il faut faire,
-// les fiches avec leurs jours d'attente (rouge > 21 j, orange > 7 j). Lecture seule : chaque ligne ouvre la fiche.
+// Panneau « Pourquoi ça bloque » en haut de Facturation › À facturer, pour Olivier SEUL (28/10/2026 : « mon écran à
+// facturer différent des autres utilisateurs, avec beaucoup plus d'info ») — maquette 8JhA5Spa6fRXrTmDYasPCH. Un groupe
+// par raison, ce qu'il faut faire, les fiches avec leurs jours d'attente (rouge > 21 j, orange > 7 j).
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import type { GroupeAF } from '@/lib/facturation/a-facturer'
@@ -13,27 +14,30 @@ const TON = {
 } as const
 const fr = (iso: string | null) => iso ? new Date(iso).toLocaleDateString('fr-BE', { timeZone: 'Europe/Brussels', day: '2-digit', month: '2-digit' }) : '—'
 
-export default function AFacturerClient() {
+export default function BlocagesAFacturer() {
   const [data, setData] = useState<{ groupes: GroupeAF[]; total: number; plus21: number } | null>(null)
   const [err, setErr] = useState<string | null>(null)
   const [ouverts, setOuverts] = useState<Record<string, boolean>>({})
+  const [replie, setReplie] = useState(false)
   useEffect(() => {
     fetch('/api/admin/a-facturer', { cache: 'no-store' }).then(async r => { const j = await r.json(); if (!r.ok) throw new Error(j.error || 'Erreur'); setData(j); if (j.groupes?.[0]) setOuverts({ [j.groupes[0].cle]: true }) })
       .catch(e => setErr(String(e?.message || e)))
+    try { setReplie(localStorage.getItem('blocages_af_replie') === '1') } catch { /* sans stockage */ }
   }, [])
 
-  if (err) return <div className="p-6 text-red-800 font-semibold">⚠ {err}</div>
-  if (!data) return <div className="p-6 text-slate-700">Chargement des fiches à facturer…</div>
+  if (err) return null   // pas Olivier (403) ou panne : la liste de l'équipe reste là
+  if (!data) return <div className="max-w-5xl mx-auto px-4 pt-4 text-sm text-slate-700">Chargement des raisons de blocage…</div>
+  const basculerPanneau = () => { const v = !replie; setReplie(v); try { localStorage.setItem('blocages_af_replie', v ? '1' : '0') } catch { /* sans stockage */ } }
   const action = data.groupes.filter(g => !['hexalite', 'combinee', 'normal', 'siabis'].includes(g.cle)).reduce((s, g) => s + g.lignes.length, 0)
   const rien = data.groupes.filter(g => ['hexalite', 'combinee', 'normal'].includes(g.cle)).reduce((s, g) => s + g.lignes.length, 0)
 
   return (
-    <div className="max-w-5xl mx-auto px-4 py-6 space-y-4">
+    <div className="max-w-5xl mx-auto px-4 pt-4 pb-2 space-y-3">
       <div className="flex flex-wrap gap-3 justify-between items-end">
         <div>
-          <p className="text-sm font-semibold text-slate-700">Facturation</p>
-          <h1 className="text-2xl font-extrabold text-slate-900">À facturer — pourquoi ça bloque</h1>
-          <p className="text-sm text-slate-800">{data.total} fiche{data.total > 1 ? 's' : ''} terminée{data.total > 1 ? 's' : ''} pas encore facturée{data.total > 1 ? 's' : ''}, regroupées par raison.</p>
+          <p className="text-xs font-bold uppercase tracking-wider text-slate-700">Visible par toi seul</p>
+          <h2 className="text-xl font-extrabold text-slate-900">Pourquoi ça bloque</h2>
+          <p className="text-sm text-slate-800">{data.total} fiche{data.total > 1 ? 's' : ''} terminée{data.total > 1 ? 's' : ''} pas encore facturée{data.total > 1 ? 's' : ''}, regroupées par raison. <button type="button" onClick={basculerPanneau} className="underline font-semibold min-h-[32px]">{replie ? 'Afficher le détail' : 'Replier'}</button></p>
         </div>
         <div className="flex gap-2">
           {[[data.plus21, 'en attente > 21 j', 'text-red-800'], [action, 'action de notre part', 'text-orange-800'], [rien, 'rien à faire', 'text-emerald-800']].map(([n, l, c]) => (
@@ -42,9 +46,9 @@ export default function AFacturerClient() {
         </div>
       </div>
 
-      {data.groupes.length === 0 && <p className="bg-emerald-50 border border-emerald-200 rounded-xl px-4 py-3 text-emerald-900">Aucune fiche en attente de facturation.</p>}
+      {!replie && data.groupes.length === 0 && <p className="bg-emerald-50 border border-emerald-200 rounded-xl px-4 py-3 text-emerald-900">Aucune fiche en attente de facturation.</p>}
 
-      {data.groupes.map(g => {
+      {!replie && data.groupes.map(g => {
         const t = TON[g.ton], o = !!ouverts[g.cle]
         return (
           <section key={g.cle} className="bg-white border border-slate-200 rounded-2xl overflow-hidden">
@@ -81,7 +85,7 @@ export default function AFacturerClient() {
           </section>
         )
       })}
-      <p className="text-xs text-slate-700">Recalculé à chaque ouverture. Une fiche disparaît d’elle-même dès qu’elle est facturée.</p>
+      {!replie && <p className="text-xs text-slate-700">Recalculé à chaque ouverture. Une fiche disparaît d’elle-même dès qu’elle est facturée.</p>}
     </div>
   )
 }

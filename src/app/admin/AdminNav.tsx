@@ -7,7 +7,6 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { useEffect, useState } from 'react'
 import {
   Tag, MapPin, Users, Car,
   Receipt, DollarSign,
@@ -19,7 +18,7 @@ import {
   Moon,
   type LucideIcon } from 'lucide-react'
 
-type NavItem = { href: string; label: string; icon: LucideIcon; /** Réservé à Olivier (vérifié côté serveur). */ olivierSeul?: boolean }
+type NavItem = { href: string; label: string; icon: LucideIcon }
 type NavGroup = { title: string; items: NavItem[] }
 
 const GROUPS: NavGroup[] = [
@@ -51,7 +50,6 @@ const GROUPS: NavGroup[] = [
       { href: '/admin/tarifs-transport', label: 'Tarifs transport', icon: Truck },
       { href: '/admin/surcharges', label: 'Surcharges', icon: DollarSign },
       { href: '/admin/facturation-auto', label: 'Facturation auto', icon: Receipt },
-      { href: '/admin/a-facturer', label: 'À facturer', icon: Receipt, olivierSeul: true },
     ],
   },
   {
@@ -106,9 +104,6 @@ const GROUPS: NavGroup[] = [
 
 export default function AdminNav() {
   const pathname = usePathname()
-  // Entrées réservées à Olivier (« À facturer », 28/10/2026) : visibles seulement si le serveur le reconnaît.
-  const [olivier, setOlivier] = useState(false)
-  useEffect(() => { fetch('/api/admin/facturation-auto', { cache: 'no-store' }).then(r => r.json()).then(j => setOlivier(!!j?.visible)).catch(() => {}) }, [])
   const isHome = pathname === '/admin'
 
   return (
@@ -135,7 +130,7 @@ export default function AdminNav() {
               {group.title}
             </span>
             <div className="flex gap-1">
-              {group.items.filter(it => !it.olivierSeul || olivier).map(({ href, label, icon: Icon }) => {
+              {group.items.map(({ href, label, icon: Icon }) => {
                 const active = pathname === href || pathname.startsWith(href + '/')
                 return (
                   <Link key={href} href={href}
