@@ -53,9 +53,7 @@ export const NAV_ITEMS: NavItem[] = [
   // Olivier 06/10/2026 : raccourci vers les propositions des agents, visible par lui seul.
   { href: '/admin/agents',      label: 'Propositions des agents', icon: '🤖', moduleId: null, role: 'superadmin', ownerOnly: true },
   { href: '/mail-agent',        label: 'Agent Mail',          icon: '📬', moduleId: null, role: 'mail_agent' },   // admin/superadmin + rôle complémentaire « mail_agent » (Jona, 28/09/2026)
-  // Courrier papier (29/09/2026) : bouton direct dans le menu, demandé par Olivier.
-  // En pilote (flag courrier) — la page renvoie à l'accueil ceux qui ne sont pas pilotes.
-  { href: '/courrier',          label: 'Courrier',            icon: '✉️', moduleId: null, role: 'mail_agent' },
+  // Courrier papier : retiré du menu le 28/10/2026 (inutilisé depuis le 29/09, décision d'Olivier) ; la page reste.
   // Olivier 2026-06-02 : Dépanneuses retirée de la sidebar globale (fonction
   // secondaire, accessible via /admin → tuile + AdminNav latérale).
   { href: '/finance',           label: 'Finance',             icon: '💵', moduleId: 'finance' },
@@ -72,7 +70,7 @@ export const NAV_ITEMS: NavItem[] = [
   { href: '/admin',         label: 'Administration',   icon: '⚙️', moduleId: 'admin' },
   { href: '/ma-paie',       label: 'Mes Prestations',  icon: '📋', moduleId: null },
   { href: '/aide',          label: 'Aide',             i18nKey: 'nav.help',          icon: '📖', moduleId: null },
-  { href: '/assistant',     label: 'Assistant IA',     icon: '🤖', moduleId: null, role: 'superadmin' },
+  // Assistant IA (/assistant) : retiré du menu le 28/10/2026, fait doublon avec l'assistant de Mobi (décision d'Olivier) ; la page reste.
   { href: '/journal',       label: 'Journal',          icon: '📓', moduleId: null, role: 'superadmin' },
   { href: '/chantiers',     label: 'Chantiers',        icon: '🧱', moduleId: null, role: 'superadmin' },
   // 'Mon Profil' retire de la sidebar : doublon avec le UserBlock cliquable
