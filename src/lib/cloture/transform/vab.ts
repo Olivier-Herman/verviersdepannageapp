@@ -439,14 +439,17 @@ export async function runVabTowClose(input: VabTowCloseInput): Promise<void> {
     const { closeVabCodeScreen } = await import('@/lib/vab/close-codes')
 
     const { data: f } = await sb.from('incoming_missions')
-      .select('vehicle_mileage, vehicle_vin, vehicle_vin_partial, mission_type, destination_name, destination_address, panne_motif, parked_at, status, depot_depart_id')
+      .select('vehicle_mileage, vehicle_vin, vehicle_vin_partial, mission_type, destination_name, destination_address, panne_motif, parked_at, parc_zone_key, status, depot_depart_id')
       .eq('id', input.missionId).maybeSingle()
     const km  = String((f as any)?.vehicle_mileage ?? '').replace(/\D+/g, '')
     const vin = String((f as any)?.vehicle_vin ?? '').trim()
     // Fiche au parc (REM vers notre dépôt, relivraison plus tard) : chez VAB
     // c'est un remorquage livré à NOTRE dépôt (Olivier 12/09/2026 : « tu fais
     // rem avec adresse dépôt »).
-    const auParc = !!(f as any)?.parked_at || (f as any)?.status === 'parked'
+    // « Au parc » = statut au parc ou zone de parc posée. Une simple date « mis en parc » ne suffit plus : le dispatch en
+    // enregistrait une par défaut sur des fiches jamais passées au parc → remorquage déclaré vers notre dépôt au lieu
+    // du garage (2ERC572, Olivier 28/10/2026).
+    const auParc = (f as any)?.status === 'parked' || !!(f as any)?.parc_zone_key
     const tow = auParc || /remorquage|rem\b/i.test(String((f as any)?.mission_type || ''))
     let destName = String((f as any)?.destination_name || '')
     let destAddr = String((f as any)?.destination_address || '')

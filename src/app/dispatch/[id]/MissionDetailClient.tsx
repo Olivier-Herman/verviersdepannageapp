@@ -987,6 +987,8 @@ export default function MissionDetailClient({
       || (['parked', 'delivering', 'unlocated', 'awaiting_payment'].includes(initialMission.status) ? new Date().toISOString() : null)
     ),
   })
+  // Valeur par défaut affichée pour la sortie de parc (« maintenant ») : jamais enregistrée telle quelle (voir handleSave).
+  const deliveringDefautRef = useRef<string>(form.delivering_at)
   // Le montant est écrit sur la fiche à la coche, pas lu depuis le code à la
   // facturation : si le forfait change, les anciens dossiers gardent le leur.
   //
@@ -2048,10 +2050,18 @@ export default function MissionDetailClient({
     setLoadingSave(true)
     setSaveOk(false)
     // Convertit les datetime-local en ISO avant envoi (parked_at / delivering_at)
+    // Les dates de parc affichées PAR DÉFAUT (création de la fiche / maintenant) ne sont jamais enregistrées si
+    // personne ne les a saisies : sinon une fiche jamais passée au parc devenait « au parc » au premier
+    // enregistrement, et la clôture VAB déclarait un remorquage vers notre dépôt (2ERC572, 2JRA485, 1NGD878 —
+    // Olivier 28/10/2026). Seule une date déjà en base ou changée à la main part au serveur.
+    const parkedDefaut = isoToLocalDt((initialMission as any).created_at || initialMission.received_at || null)
+    const parkedSaisi = !!initialMission.parked_at || (form.parked_at && form.parked_at !== parkedDefaut)
+    const deliveringSaisi = !!(initialMission as any).delivering_at || (form.delivering_at && form.delivering_at !== deliveringDefautRef.current)
+    const { parked_at: _p, delivering_at: _d, ...formSansDates } = form
     const payload = {
-      ...form,
-      parked_at:        localDtToIso(form.parked_at),
-      delivering_at:    localDtToIso(form.delivering_at),
+      ...formSansDates,
+      ...(parkedSaisi ? { parked_at: localDtToIso(form.parked_at) } : {}),
+      ...(deliveringSaisi ? { delivering_at: localDtToIso(form.delivering_at) } : {}),
       billed_to_id:     billedPartnerId,
       depot_depart_id:  depotId || null,
       extra_addresses:  stops.length > 0 ? stops : null,
@@ -4700,8 +4710,9 @@ export default function MissionDetailClient({
               billed_to_id:           billedPartnerId,
               billed_to_name:         form.billed_to_name,
               special_tarif_htva:     form.special_tarif_htva ? Number(form.special_tarif_htva) : null,
-              parked_at:              localDtToIso(form.parked_at),
-              delivering_at:          localDtToIso(form.delivering_at),
+              // Dates de parc par défaut (jamais saisies) : pas envoyées à l'estimation, sinon gardiennage fantôme.
+              parked_at:              (initialMission.parked_at || form.parked_at !== isoToLocalDt((initialMission as any).created_at || initialMission.received_at || null)) ? localDtToIso(form.parked_at) : null,
+              delivering_at:          ((initialMission as any).delivering_at || form.delivering_at !== deliveringDefautRef.current) ? localDtToIso(form.delivering_at) : null,
               transport_vehicle_category:  form.transport_vehicle_category || null,
               transport_price_per_km_htva: form.transport_price_per_km_htva ? Number(form.transport_price_per_km_htva) : null,
             }}
