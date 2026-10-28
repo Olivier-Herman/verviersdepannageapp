@@ -85,7 +85,7 @@ const ACTIONS_POSSIBLES = [
   { id: 'ouvrir_encaissement', libelle: 'Ouvrir l’écran d’encaissement d’une mission du chauffeur (le chauffeur encaisse lui-même)',
     parametres: { mission_id: 'id de la mission' } },
   // Olivier 28/10/2026 : « Sam demande juste confirmation et le fait lui-même », pas de ping-pong « touche ceci puis cela ».
-  { id: 'remettre_en_parc', libelle: 'Véhicule chargé que le garage refuse ou qui est fermé : le remettre au parc pour une relivraison plus tard (même chose que « Garage refusé / fermé » dans l’app). Pose UNE seule question avec boutons pour ce qui manque (où est la clé, le véhicule roule-t-il), puis propose l’action à confirmer ; ne guide jamais le chauffeur écran par écran.',
+  { id: 'remettre_en_parc', libelle: 'Véhicule chargé que le garage refuse ou qui est fermé : le remettre au parc pour une relivraison plus tard (même chose que « Garage refusé / fermé » dans l’app). Pose UNE seule question avec boutons pour ce qui manque (où est la clé, le véhicule roule-t-il — inutile pour une relivraison partie du parc, type REL), puis propose l’action à confirmer ; ne guide jamais le chauffeur écran par écran.',
     parametres: { mission_id: 'id de la mission', motif: '"garage_refuse", "garage_ferme" ou "autre"', precision: 'si motif "autre" : la raison en quelques mots', date_reouverture: 'si garage fermé et connue : AAAA-MM-JJ', cle: '"in_vehicle" (dans le véhicule), "digibox_depannage", "digibox_rac", "bureau_rac" ou "no_key"', roulant: '"oui" ou "non"', depot: '"PEP" (Pepinster, par défaut) ou "VERVIERS"' } },
 ]
 
@@ -282,10 +282,24 @@ async function executeAction(userId: string, a: SamAction): Promise<{ resultat: 
   }
   if (a.id === 'remettre_en_parc') {
     if (mission.status !== 'delivering' || !mission.loaded_at) return { resultat: { fait: false, raison: 'le véhicule n’est pas chargé sur le camion : rien à remettre au parc' } }
-    // Relivraison partie du parc (Olivier 28/10/2026, 2CSA107) : le dossier est toujours au parc ; la « mise en parc »
-    // de la relivraison créerait une seconde fiche. Pas encore géré seul : le dispatch s'en occupe.
-    if (/\bREL\b|relivraison/i.test(String(mission.mission_type || '')) && !/REM/i.test(String(mission.mission_type || ''))) {
-      return { resultat: { fait: false, raison: 'c’est une relivraison partie du parc : je ne peux pas la remettre au parc moi-même. Dis au chauffeur de ramener le véhicule au dépôt et d’appeler le dispatch, qui clôture la relivraison' } }
+    // Relivraison partie du parc (Olivier 28/10/2026, 2CSA107) : le dossier est toujours au parc → on clôture la
+    // relivraison avec le motif (action « rel_refused »), sans seconde mise en parc ; le dispatch est prévenu.
+    const estRel = /\bREL\b|relivraison/i.test(String(mission.mission_type || '')) && !/REM/i.test(String(mission.mission_type || ''))
+    const motifR = ['garage_refuse', 'garage_ferme', 'autre'].includes(String(p.motif)) ? String(p.motif) : 'garage_refuse'
+    if (estRel) {
+      const reouvR = /^\d{4}-\d{2}-\d{2}$/.test(String(p.date_reouverture || '')) ? String(p.date_reouverture) : null
+      const r = await fetch(`${APP_URL()}/api/missions/driver-action`, {
+        method: 'POST', cache: 'no-store',
+        headers: { 'Content-Type': 'application/json', 'x-internal-secret': process.env.NEXTAUTH_SECRET || '', 'x-internal-actor': userId },
+        body: JSON.stringify({ mission_id: mission.id, action: 'rel_refused', closing_data: {
+          dpr_motif: motifR, dpr_motif_label: motifR === 'autre' ? String(p.precision || 'Autre').slice(0, 200) : motifR === 'garage_ferme' ? 'Garage fermé' : 'Garage a refusé le véhicule',
+          ...(motifR === 'garage_ferme' && reouvR ? { garage_reopen_date: reouvR } : {}),
+          closing_notes: `Signalé à ${(await agentDeService().catch(() => 'Sam'))} par le chauffeur`,
+        } }),
+      })
+      const j = await r.json().catch(() => ({}))
+      if (!r.ok) return { resultat: { fait: false, raison: j.error || `refusé (${r.status})` } }
+      return { resultat: { fait: true, relivraison_refusee: true, consigne: 'ramène le véhicule au dépôt ; le dispatch prévoit une nouvelle relivraison' } }
     }
     const motif = ['garage_refuse', 'garage_ferme', 'autre'].includes(String(p.motif)) ? String(p.motif) : 'garage_refuse'
     const LIB: Record<string, string> = { garage_refuse: 'Garage a refusé le véhicule', garage_ferme: 'Garage fermé' }

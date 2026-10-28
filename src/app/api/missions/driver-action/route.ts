@@ -43,6 +43,8 @@ const ACTION_MAP: Record<string, { status?: string; timestampField?: string; log
   arrive_stop:      {                                                          logMessage: 'Arrivée à un stop' },
   depart_stop:      {                                                          logMessage: 'En route vers un stop' },
   complete_delivery:{ status: 'to_invoice',  timestampField: 'completed_at',  logMessage: 'Livraisons terminées — à facturer' },
+  // Relivraison refusée par le garage / garage fermé : le véhicule revient au parc, le dossier y reste (Olivier 28/10/2026).
+  rel_refused:      { status: 'to_invoice',  timestampField: 'completed_at',  logMessage: 'Livraison refusée — véhicule ramené au parc' },
   change_type:      {                                                          logMessage: 'Type de mission modifié' },
   save_photos:      {                                                          logMessage: 'Photos sauvegardées' },
   update_address:   {                                                          logMessage: 'Adresse modifiée' },
@@ -71,7 +73,7 @@ const ALLOWED: Record<string, string[]> = {
   // depuis delivering » en pleine nuit, sur une mission qu'il venait de faire.
   // Redire une chose déjà vraie n'est pas une erreur : c'est sans effet.
   // Cas 1BIL216, Fred, 28/08 22h35 (Olivier 2026-08-31).
-  delivering:  ['load_vehicle', 'arrive_stop', 'depart_stop', 'complete_delivery', 'completed', 'park', 'update_address', 'update_stops', 'save_photos', 'change_type', 'mark_photo_category', 'set_amount_to_collect'],
+  delivering:  ['load_vehicle', 'arrive_stop', 'depart_stop', 'complete_delivery', 'completed', 'park', 'rel_refused', 'update_address', 'update_stops', 'save_photos', 'change_type', 'mark_photo_category', 'set_amount_to_collect'],
 }
 
 interface Stop {
@@ -165,7 +167,7 @@ export async function POST(req: Request) {
 
   const { data: mission, error: fetchError } = await supabase
     .from('incoming_missions')
-    .select('id, status, assigned_to, external_id, vehicle_plate, vehicle_vin, vehicle_mileage, vehicle_brand, vehicle_model, amount_to_collect, source, source_format, saisie_motif_code, extra_addresses, driver_photos, odoo_task_id, odoo_vehicle_id, mission_type, photo_categories_covered, kaze_job_id, axa_mission_order_id, dossier_number, client_signature, snc_scenario, snc_requires_balisage, snc_remorque, snc_supplements, incident_lat, incident_lng, destination_address, destination_lat, destination_lng, billed_to_id, billed_to_name, redelivery_address, truck_id, intervention_date, received_at, completed_at, invoice_number, invoice_odoo_id, odoo_quote_id')
+    .select('id, status, assigned_to, external_id, vehicle_plate, vehicle_vin, vehicle_mileage, vehicle_brand, vehicle_model, amount_to_collect, source, source_format, saisie_motif_code, extra_addresses, driver_photos, odoo_task_id, odoo_vehicle_id, mission_type, photo_categories_covered, kaze_job_id, axa_mission_order_id, dossier_number, client_signature, snc_scenario, snc_requires_balisage, snc_remorque, snc_supplements, incident_lat, incident_lng, destination_address, destination_lat, destination_lng, billed_to_id, billed_to_name, redelivery_address, truck_id, intervention_date, received_at, completed_at, invoice_number, invoice_odoo_id, odoo_quote_id, parent_mission_id')
     .eq('id', mission_id).single()
 
   if (fetchError || !mission) return NextResponse.json({ error: 'Mission introuvable' }, { status: 404 })
@@ -492,6 +494,21 @@ export async function POST(req: Request) {
       updatePayload.park_stage_name = closing_data.depot.name || 'Dépôt'
       delete updatePayload.completed_at
     }
+  }
+
+  // ── Relivraison refusée (garage refusé / fermé) ─────────────────────────
+  // Seulement une relivraison partie du parc : le dossier principal reste au parc (le trigger SQL ne le fait plus
+  // passer « à facturer » quand la relivraison porte un motif de refus, migration 202610281700). Le trajet reste
+  // facturable à l'assistance (Olivier 28/10/2026).
+  if (action === 'rel_refused') {
+    const estRel = !!(mission as any).parent_mission_id && /\bREL\b|relivraison/i.test(String((mission as any).mission_type || ''))
+    if (!estRel) return NextResponse.json({ error: 'Seule une relivraison partie du parc peut être « refusée à destination ». Pour un remorquage, utilise « Garage refusé / fermé ».' }, { status: 422 })
+    const motif = ['garage_refuse', 'garage_ferme', 'autre'].includes(String(closing_data?.dpr_motif)) ? String(closing_data!.dpr_motif) : 'garage_refuse'
+    updatePayload.dpr_motif = motif
+    updatePayload.dpr_motif_label = closing_data?.dpr_motif_label || (motif === 'garage_ferme' ? 'Garage fermé' : motif === 'garage_refuse' ? 'Garage a refusé le véhicule' : 'Autre')
+    updatePayload.dpr_converted_from_rem = true
+    if (closing_data?.garage_reopen_date) updatePayload.garage_reopen_date = closing_data.garage_reopen_date
+    updatePayload.closing_notes = [closing_data?.closing_notes, `Livraison refusée (${updatePayload.dpr_motif_label}) : véhicule ramené au parc.`].filter(Boolean).join('\n')
   }
 
   // ── Clôture directe (DSP/DPR) ────────────────────────────────────────────
@@ -1116,6 +1133,21 @@ export async function POST(req: Request) {
     } catch (e: any) {
       console.warn(`[driver-action] REL print KO mission=${mission_id}:`, e?.message)
     }
+  }
+
+  // Relivraison refusée : trace sur le dossier et le dispatch prévu une nouvelle relivraison (28/10/2026).
+  if (action === 'rel_refused' && (mission as any).parent_mission_id) {
+    try {
+      const raison = String((updated as any)?.dpr_motif_label || 'refus')
+      await supabase.from('mission_logs').insert({ mission_id: (mission as any).parent_mission_id, actor_id: actor.id, action: 'delivery_refused',
+        notes: `Relivraison ${mission.external_id || ''} refusée (${raison}) à ${(mission as any).destination_address || 'destination'} : véhicule ramené au parc par ${actor.name || 'le chauffeur'}, à relivrer.` })
+      const { sendNotificationToRoles } = await import('@/lib/notifications/send')
+      await sendNotificationToRoles(['dispatcher', 'admin', 'superadmin'], 'relivraison_refusee', {
+        title: `Relivraison refusée : ${mission.vehicle_plate || ''}`,
+        body: `${raison} — ${(mission as any).destination_address || ''}. Le véhicule revient au parc : nouvelle relivraison à prévoir.`,
+        action_url: `/dispatch/${(mission as any).parent_mission_id}`, mission_id: (mission as any).parent_mission_id,
+      })
+    } catch (e: any) { console.warn('[driver-action] rel_refused suivi', e?.message) }
   }
 
   // Conversation Sam / Sonic encore ouverte sur cette mission : l'agent demande au

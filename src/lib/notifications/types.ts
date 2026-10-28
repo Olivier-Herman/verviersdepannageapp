@@ -325,6 +325,15 @@ export const NOTIFICATION_TYPES: readonly NotificationType[] = [
     defaultEnabled:  true,
   },
   {
+    // Relivraison refusée à destination (Olivier 28/10/2026, 2CSA107).
+    key:             'relivraison_refusee',
+    label:           'Relivraison refusée à destination',
+    description:     'Le garage a refusé le véhicule ou était fermé : il revient au parc, une nouvelle relivraison est à prévoir.',
+    category:        'dispatcher',
+    applicableRoles: ['dispatcher', 'admin', 'superadmin'],
+    defaultEnabled:  true,
+  },
+  {
     // Arrivée détectée par la position (Olivier 28/10/2026).
     key:             'mission_arrivee_proche',
     label:           'Arrivée sur place ou à destination',

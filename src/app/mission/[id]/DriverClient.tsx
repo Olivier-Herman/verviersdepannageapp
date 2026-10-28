@@ -5763,7 +5763,8 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
               )}
               {/* Garage refusé / fermé → retour parc (véhicule chargé). Déplacé
                   depuis l'écran principal vers cette grille. Olivier 2026-07-10. */}
-              {rem && !rel && loaded && (
+              {/* Relivraison partie du parc aussi (Olivier 28/10/2026, 2CSA107) : le véhicule revient au parc. */}
+              {(rem || rel) && loaded && (
                 <button onClick={() => { setShowGrid(false); setDprFromRem(false); setDprToPark(true); setDprMotif(''); setDprMotifAutre(''); setShowDprMotif(true) }}
                   className="rounded-2xl py-5 flex flex-col items-center justify-center gap-2 border bg-red-600/10 border-red-600/30 transition active:scale-95">
                   <span className="text-2xl">🔒</span>
@@ -6037,6 +6038,27 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
                   if (!dprMotif) return
                   if (dprMotif === 'autre' && !dprMotifAutre.trim()) return
                   setShowDprMotif(false)
+                  // Relivraison partie du parc refusée : le dossier est toujours au parc → on clôture la
+                  // relivraison avec le motif (pas de seconde mise en parc). Olivier 28/10/2026.
+                  if (dprToPark && rel) {
+                    (async () => {
+                      setLoading(true); setErr('')
+                      try {
+                        const r = await fetch('/api/missions/driver-action', {
+                          method: 'POST', headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({ mission_id: M.id, action: 'rel_refused', closing_data: {
+                            dpr_motif: dprMotif,
+                            dpr_motif_label: dprMotif === 'autre' ? dprMotifAutre.trim() : DPR_MOTIFS.find(m => m.id === dprMotif)?.label,
+                            ...(dprMotif === 'garage_ferme' && garageReopenDate ? { garage_reopen_date: garageReopenDate } : {}),
+                          } }),
+                        })
+                        const j = await r.json().catch(() => ({}))
+                        if (!r.ok) throw new Error(j.error || 'Erreur')
+                        window.location.href = '/mission'
+                      } catch (e: any) { setErr(e.message || 'Erreur') } finally { setLoading(false) }
+                    })()
+                    return
+                  }
                   // Refus à destination (véhicule chargé) → mise en parc avec
                   // motif conservé. Sinon → clôture DPR classique.
                   if (dprToPark) {
