@@ -171,7 +171,7 @@ export default function DashboardClient({
           <GardeBanner />
           <NightSwitchCard />
           <TalkieEntry />
-          <InterrupteurAssistants />
+          <InterrupteurAssistants partie="bandeau" />
 
           {/* Hero header — desktop visible, mobile garde le header sticky AppShell */}
           <div className="hidden lg:block mb-8 ambient-fade-up">
@@ -211,6 +211,9 @@ export default function DashboardClient({
               </div>
             </section>
           )}
+
+          {/* Mes assistants — sous les modules (Olivier 28/10/2026), Olivier seul */}
+          <InterrupteurAssistants partie="bloc" />
 
           {/* Section 3 — Appels rapides */}
           {visibleCalls.length > 0 && (

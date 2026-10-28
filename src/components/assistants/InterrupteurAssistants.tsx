@@ -18,7 +18,8 @@ type Demande = { enMarche: boolean; cle?: string; nom?: string }
 
 const quand = (iso?: string | null) => iso ? new Date(iso).toLocaleString('fr-BE', { timeZone: 'Europe/Brussels', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : ''
 
-export default function InterrupteurAssistants() {
+/** partie « bandeau » : seulement le bandeau de pause (haut du tableau de bord) ; « bloc » : le bloc sans bandeau. */
+export default function InterrupteurAssistants({ partie }: { partie?: 'bandeau' | 'bloc' } = {}) {
   const [etat, setEtat] = useState<Etat | null>(null)
   const [demande, setDemande] = useState<Demande | null>(null)
   const [motif, setMotif] = useState('')
@@ -54,9 +55,7 @@ export default function InterrupteurAssistants() {
   const blocs = etat.assistants || []
   const vert = 'text-emerald-800', orange = 'text-orange-800'
 
-  return (
-    <div className="mb-6 space-y-3">
-      {pause && (
+  const bandeau = pause && partie !== 'bloc' && (
         <div className="rounded-2xl border-2 border-orange-600 bg-orange-50 px-4 py-3 flex gap-3 items-start">
           <span aria-hidden="true" className="mt-0.5 text-orange-700 font-black">II</span>
           <div>
@@ -66,7 +65,12 @@ export default function InterrupteurAssistants() {
             <p className="text-sm text-orange-900 mt-0.5">Rien ne part tout seul : ni facture, ni écriture, ni mail, ni notification. Ce qui arrive est gardé et traité à la reprise.{manuel && etat.motif ? ` Motif : ${etat.motif}` : ''}</p>
           </div>
         </div>
-      )}
+  )
+  if (partie === 'bandeau') return bandeau ? <div className="mb-6">{bandeau}</div> : null
+
+  return (
+    <div className="mb-6 space-y-3">
+      {bandeau}
 
       <section className="bg-white border border-slate-200 rounded-2xl p-4 sm:p-5 space-y-4 shadow-sm">
         <div className="flex flex-wrap gap-3 items-center justify-between">
