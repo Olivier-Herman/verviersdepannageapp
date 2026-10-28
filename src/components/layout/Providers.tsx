@@ -23,7 +23,7 @@ import IncomingTransferPrompt          from '@/components/missions/IncomingTrans
 // bureau ») : monté ici et plus dans AppShell, pour couvrir aussi les pages sans le cadre
 // commun (accueil, tableau de bord, boarding…). Seulement pour qui y a accès (nav-badges).
 // Écrans d'affichage (boarding, tableau de bord) : ni Max ni talkie (Olivier 14/10/2026).
-const MAX_HORS = ['/boarding', '/tableau-bord', '/login', '/site', '/espace', '/assistance', '/garage', '/capture', '/qr', '/v/', '/compta', '/verif-parc', '/caisse/ecran', '/assistant-bureau']
+const MAX_HORS = ['/boarding', '/tableau-bord', '/login', '/site', '/espace', '/assistance', '/garage', '/capture', '/qr', '/v/', '/compta', '/releve', '/verif-parc', '/caisse/ecran', '/assistant-bureau']
 function MaxMount() {
   const { data: session, status } = useSession()
   const path = usePathname() || ''
@@ -59,7 +59,7 @@ export default function Providers({ children }: { children: React.ReactNode }) {
     if (!('serviceWorker' in navigator)) return
     // Le site public (/site) n'est pas l'app : pas de service worker chez un
     // visiteur qui vient juste lire une page. Olivier 2026-08-21.
-    if (location.pathname.startsWith('/site') || location.pathname.startsWith('/compta') || location.pathname.startsWith('/verif-parc') || location.pathname.startsWith('/espace')) return
+    if (location.pathname.startsWith('/site') || location.pathname.startsWith('/compta') || location.pathname.startsWith('/releve') || location.pathname.startsWith('/verif-parc') || location.pathname.startsWith('/espace')) return
 
     // Enregistrer notre SW custom minimaliste (push) en plus du SW next-pwa
     navigator.serviceWorker
