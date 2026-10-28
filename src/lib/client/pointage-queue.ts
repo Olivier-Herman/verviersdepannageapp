@@ -61,3 +61,21 @@ export async function envoyerPointages(): Promise<number> {
   } finally { enCours = false }
   return n
 }
+
+/** Ce que les pointages encore en attente changent sur la fiche : appliqué à l'ouverture, pour que l'écran ne
+ *  repropose pas un pointage déjà fait hors réseau (Matthieu 1ERU757, 28/10/2026). */
+export function etatAvecAttente<T extends Record<string, any>>(m: T): T {
+  const enAttente = lirePointages().filter(p => p.mission_id === m.id && !p.erreur)
+  let out: any = m
+  for (const p of enAttente) {
+    if (p.action === 'on_way' && !out.on_way_at) out = { ...out, status: ['assigned', 'accepted'].includes(out.status) ? 'in_progress' : out.status, on_way_at: p.client_at }
+    if (p.action === 'on_site' && !out.on_site_at) out = { ...out, status: ['assigned', 'accepted'].includes(out.status) ? 'in_progress' : out.status, on_site_at: p.client_at }
+    if (p.action === 'load_vehicle' && !out.loaded_at) out = { ...out, status: 'delivering', loaded_at: p.client_at }
+  }
+  return out
+}
+
+/** Ce pointage attend déjà d'être envoyé pour cette mission. */
+export function dejaEnAttente(missionId: string, action: string): boolean {
+  return lirePointages().some(p => p.mission_id === missionId && p.action === action && !p.erreur)
+}
