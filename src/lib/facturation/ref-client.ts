@@ -42,6 +42,14 @@ export function refAssistance<T extends string | null | undefined>(raw: T): T | 
     const n = numeroEnTete(p)
     if (n) return n
   }
+  // Un numéro de PV collé devant le numéro de l'assistance (« ACC-6581 / VE.47.L1.018896/2026 0126564013 », facture AXA
+  // du 13/10/2026) : on prend le premier numéro qui suit, hors PV.
+  for (const p of parts.filter(x => PV.test(x))) {
+    for (const w of p.split(' ').slice(1)) {
+      const n = numeroEnTete(w)
+      if (n) return n
+    }
+  }
   return raw
 }
 
