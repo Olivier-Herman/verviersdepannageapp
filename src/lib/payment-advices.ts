@@ -32,7 +32,7 @@ import { getAppOnlyToken }  from '@/lib/graph-mail-search'
 import { getBusinessText } from '@/lib/settings/business'
 import { aiClient } from '@/lib/ai/usage'
 
-export type AdviceProvider = 'ima' | 'awp'
+export type AdviceProvider = 'ima' | 'awp' | 'anwb'
 
 export interface AdviceLine {
   invoiceRef: string          // n° de facture Odoo tel qu'annoncé
@@ -257,7 +257,7 @@ function anthropic(): Anthropic {
   return aiClient('payment-advices', { apiKey })
 }
 
-async function extractAwpPdf(pdf: Buffer): Promise<{
+async function extractAwpPdf(pdf: Buffer, prompt: string = AWP_PROMPT): Promise<{
   adviceDate: string | null; reference: string | null; total: number; lines: AdviceLine[]
 }> {
   const res = await anthropic().messages.create({
@@ -268,13 +268,13 @@ async function extractAwpPdf(pdf: Buffer): Promise<{
       role: 'user',
       content: [
         { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: pdf.toString('base64') } },
-        { type: 'text', text: AWP_PROMPT },
+        { type: 'text', text: prompt },
       ],
     }],
   })
 
   const block = res.content.find(b => b.type === 'text')
-  if (!block || block.type !== 'text') throw new Error('Claude n\'a rien renvoyé pour cet avis AWP')
+  if (!block || block.type !== 'text') throw new Error('Claude n\'a rien renvoyé pour cet avis')
 
   const cleaned = block.text.trim().replace(/^```json\s*/i, '').replace(/```\s*$/, '').trim()
   let raw: any
@@ -335,6 +335,50 @@ async function readAwpAdvice(mail: MailRef, token: string): Promise<PaymentAdvic
   }
 }
 
+// ── ANWB : le « Remittance Advice » (Olivier 28/10/2026) ────────────
+// crediteuren@financeservices.anwb.nl · « Remittance file » · PDF « VERVIERS DEPANNAGE SPRL_<id>_.pdf » :
+// Payment Date, Pay Amount, Payment Ref ID, puis un tableau Invoice Number / Invoice Date / Gross / Discount / Tax /
+// Paid Amount. Même lecteur PDF que les avis AWP, avec sa propre consigne.
+const ANWB_PROMPT = `Ce PDF est un avis de virement (« Remittance Advice ») d'ANWB B.V. vers Verviers Dépannage.
+Réponds UNIQUEMENT par un objet JSON, sans texte autour :
+{
+  "adviceDate": "2026-10-27",      // « Payment Date » au format ISO (la date est écrite mois/jour/année)
+  "reference":  "104258",          // « Payment Ref ID »
+  "total":      350.00,            // « Pay Amount »
+  "lines": [
+    { "invoiceRef": "2026/09/645", "amount": 350.00, "theirRef": null, "invoiceDate": "2026-09-30" }
+  ]
+}
+Règles :
+- « Invoice Number » → invoiceRef tel quel ; « Paid Amount » → amount (pas le Gross) ; « Invoice Date » → invoiceDate ISO (mois/jour/année).
+- Montants en nombres décimaux avec un point. Une ligne négative reste négative.
+- Reprends TOUTES les lignes. Valeur absente : null. N'invente jamais un montant ni un numéro.`
+
+async function readAnwbAdvice(mail: MailRef, token: string): Promise<PaymentAdvice> {
+  const atts = await attachmentsOf(mail.id, token)
+  const pdf  = atts.find(a => /\.pdf$/i.test(a.name))
+  if (!pdf) return emptyAdvice('anwb', mail, ['Aucun PDF joint à cet avis'])
+  const bytes = await attachmentBytes(mail.id, pdf.id, token)
+  const doc   = { name: pdf.name, mime: pdf.contentType || 'application/pdf', bytes: bytes.length, b64: bytes.toString('base64') }
+  try {
+    const x     = await extractAwpPdf(bytes, ANWB_PROMPT)
+    const sum   = r2(x.lines.reduce((s, l) => s + l.amount, 0))
+    const delta = r2(sum - x.total)
+    return {
+      provider: 'anwb',
+      mailId: mail.id, subject: mail.subject, receivedAt: mail.receivedDateTime,
+      adviceDate: x.adviceDate ?? mail.receivedDateTime.slice(0, 10),
+      reference: x.reference ?? null,
+      total: x.total, lines: x.lines,
+      checksum: { linesSum: sum, delta, ok: x.lines.length > 0 && Math.abs(delta) < 0.005 },
+      warnings: Math.abs(delta) < 0.005 ? [] : [`Le détail ne boucle pas : ${sum.toFixed(2)} € de lignes pour un total annoncé de ${x.total.toFixed(2)} €`],
+      doc,
+    }
+  } catch (e: any) {
+    return { ...emptyAdvice('anwb', mail, [String(e?.message || e)]), doc }
+  }
+}
+
 function emptyAdvice(provider: AdviceProvider, mail: MailRef, warnings: string[]): PaymentAdvice {
   return {
     provider, mailId: mail.id, subject: mail.subject, receivedAt: mail.receivedDateTime,
@@ -362,6 +406,7 @@ async function adviceSources() {
     // (BEVO492090, 30/09/2026) — même PDF, même lecteur. Seuls ces avis sont lus :
     // le filtre d'objet écarte tout autre mail de cet expéditeur (missions comprises).
     { provider: 'awp' as const, sender: await getBusinessText('mail_aps_avis_paiement'), subject: /payment advice note/i },
+    { provider: 'anwb' as const, sender: await getBusinessText('mail_anwb_avis_paiement'), subject: /remittance/i },
   ]
 }
 
@@ -399,7 +444,7 @@ export async function readAdviceMail(ref: AdviceMailRef): Promise<PaymentAdvice>
   if (!token) throw new Error('Microsoft Graph non configuré (AZURE_AD_*)')
 
   const mail: MailRef = { id: ref.id, subject: ref.subject, receivedDateTime: ref.receivedAt }
-  const advice = ref.provider === 'ima' ? await readImaAdvice(mail, token) : await readAwpAdvice(mail, token)
+  const advice = ref.provider === 'ima' ? await readImaAdvice(mail, token) : ref.provider === 'anwb' ? await readAnwbAdvice(mail, token) : await readAwpAdvice(mail, token)
   return { ...advice, internetMessageId: ref.internetMessageId ?? null }
 }
 

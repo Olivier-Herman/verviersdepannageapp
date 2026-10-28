@@ -48,6 +48,7 @@ export const BUSINESS_SETTINGS: BusinessSettingDef[] = [
   { key: 'mail_frais_justice',      label: 'Frais de justice Verviers (saisie judiciaire)',    group: 'Boîtes mail', kind: 'text', seed: 'frais.justice.verviers@just.fgov.be' },
   { key: 'mail_domaine_agent',      label: 'SPF Finances — Domaine (Dates IN, ventes d’épaves)', group: 'Boîtes mail', kind: 'text', seed: 'rosemarie.lehnen@minfin.fed.be' },
   { key: 'mail_ima_avis_paiement',  label: 'IMA — avis de paiement',                          group: 'Boîtes mail', kind: 'text', seed: 'dfc@imabenelux.com' },
+  { key: 'mail_anwb_avis_paiement', label: 'ANWB — avis de paiement (Remittance file)',          group: 'Boîtes mail', kind: 'text', seed: 'crediteuren@financeservices.anwb.nl' },
   { key: 'mail_awp_avis_paiement',  label: 'Allianz — avis de paiement',                      group: 'Boîtes mail', kind: 'text', seed: 'accountancy.be@allianz.com' },
   { key: 'mail_scrada_coda',        label: 'Scrada — expéditeur des relevés CODA',            group: 'Boîtes mail', kind: 'text', seed: 'info@scrada.be', help: 'Relevés du livre de caisse importés chaque matin dans le journal Scrada (Olivier 05/10/2026).' },
   { key: 'mail_ima_propositions',   label: 'IMA — expéditeur des mails « A traiter » (propositions)', group: 'Boîtes mail', kind: 'text', seed: 'noreply@ima.eu', help: 'Mail sans proposition Kaze dans VD Soft après 3 min → alerte au dispatch (08/10/2026).' },

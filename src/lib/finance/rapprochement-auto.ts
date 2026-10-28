@@ -19,7 +19,7 @@ import { noterAvisDePaiement } from '@/lib/facturation/releves'
 export interface ResultatRapprochement { lettres: string[]; enAttente: number; aTrancher: string[]; erreurs: string[] }
 
 async function dejaFaits(): Promise<Set<number>> {
-  const { data } = await createAdminClient().from('payout_reconciliations').select('bank_line_id').in('provider', ['ima', 'awp', 'communication']).eq('status', 'done')
+  const { data } = await createAdminClient().from('payout_reconciliations').select('bank_line_id').in('provider', ['ima', 'awp', 'anwb', 'communication']).eq('status', 'done')
   return new Set((data || []).map(r => Number(r.bank_line_id)).filter(Boolean))
 }
 

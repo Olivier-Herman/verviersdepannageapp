@@ -42,6 +42,7 @@ export type AdviceState = 'pending' | 'ready' | 'gap' | 'miss' | 'orphan' | 'don
 export const PAYERS = [
   { key: 'ima', label: 'IMA Benelux (Ethias)', partnerId: 16, partnerIds: [16],      labelMatch: 'IMA BENELUX', refMatch: /\bIMA\s+(BENELUX|ASSURANCES)\b/i },
   { key: 'awp', label: 'AWP / Mondial',        partnerId: 45, partnerIds: [45, 126], labelMatch: 'AWP',         refMatch: /\bAWP\b/i },
+  { key: 'anwb', label: 'ANWB',                partnerId: 56, partnerIds: [56],      labelMatch: 'ANWB',        refMatch: /\bANWB\b/i },
 ] as const
 
 const payerOf = (pid: unknown) => PAYERS.find(p => (p.partnerIds as readonly number[]).includes(Number(pid)))
@@ -143,7 +144,7 @@ async function insurerBankLines(sinceIso: string) {
     ['date', '>=', sinceIso.slice(0, 10)],
     '|', '|', ['partner_id', 'in', partnerIds], ['payment_ref', 'ilike', 'AWP'], ['payment_ref', 'ilike', 'IMA '],
   ]], {
-    fields: ['id', 'date', 'amount', 'payment_ref', 'move_id', 'partner_id', 'is_reconciled'],
+    fields: ['id', 'date', 'amount', 'amount_residual', 'payment_ref', 'move_id', 'partner_id', 'is_reconciled'],
     order: 'date desc, id desc',
     limit: 300,
   })
@@ -305,12 +306,12 @@ export async function buildAdviceReport(
 
   for (const advice of advices) {
     const payer = PAYERS.find(p => p.key === advice.provider)!
-    const resolved = resolveLines(advice, invoices)
-    const linesSum = r2(resolved.reduce((s, x) => s + x.amount, 0))   // les neutralisées valent 0
+    let resolved = resolveLines(advice, invoices)
+    let linesSum = r2(resolved.reduce((s, x) => s + x.amount, 0))   // les neutralisées valent 0
 
     // Appariement : même payeur, montant du virement égal à la somme des
     // lignes, et virement postérieur à l'avis dans la fenêtre.
-    const bank = lines.find(l => {
+    let bank = lines.find(l => {
       if (usedLineIds.has(l.id)) return false
       if (payerOfLine(l)?.key !== payer.key) return false
       if (Math.abs(Number(l.amount) - linesSum) > 0.02) return false
@@ -322,6 +323,25 @@ export async function buildAdviceReport(
       const gap = daysBetween(advice.receivedAt.slice(0, 10), l.date)
       return gap >= -2 && gap <= WINDOW_DAYS
     })
+    // Virement que l'ERP a déjà lettré EN PARTIE (il rapproche seul la première facture qu'il reconnaît — Olivier
+    // 28/10/2026) : il ne passe pas au montant entier. On cherche alors, chez le même payeur, une ligne dont le RESTE à
+    // lettrer égale la somme des factures encore ouvertes de l'avis ; les factures déjà lettrées sortent du lettrage.
+    let partiel: { reste: number; deja: string[] } | null = null
+    if (!bank) {
+      const ouvertes = resolved.filter(x => x.issue !== 'déjà soldée')
+      const deja = resolved.filter(x => x.issue === 'déjà soldée')
+      const sOuv = r2(ouvertes.reduce((s, x) => s + x.amount, 0))
+      if (deja.length && ouvertes.length) {
+        const cand = lines.find(l => {
+          if (usedLineIds.has(l.id) || l.is_reconciled || payerOfLine(l)?.key !== payer.key) return false
+          const reste = r2(Math.abs(Number(l.amount_residual || 0)))
+          if (!(reste > 0.005 && reste < Number(l.amount) - 0.005) || Math.abs(reste - sOuv) > 0.02) return false
+          const gap = daysBetween(advice.receivedAt.slice(0, 10), l.date)
+          return gap >= -2 && gap <= WINDOW_DAYS
+        })
+        if (cand) { bank = cand; resolved = ouvertes; linesSum = sOuv; partiel = { reste: sOuv, deja: deja.map(x => x.invoiceName || x.ref) } }
+      }
+    }
     if (bank) usedLineIds.add(bank.id)
 
     // Décisions humaines « passer cette ligne en OD ». La clé s'appuie sur la
@@ -349,9 +369,10 @@ export async function buildAdviceReport(
     }
     for (const w of advice.warnings) blocking.push(w)
 
-    const delta = bank ? r2(linesSum - Number(bank.amount)) : 0
+    const montantBanque = partiel ? partiel.reste : Number(bank?.amount ?? 0)
+    const delta = bank ? r2(linesSum - montantBanque) : 0
     if (bank && Math.abs(delta) > 0.02) {
-      blocking.push(`Le détail totalise ${linesSum.toFixed(2)} € pour un virement de ${Number(bank.amount).toFixed(2)} €`)
+      blocking.push(`Le détail totalise ${linesSum.toFixed(2)} € pour un virement de ${montantBanque.toFixed(2)} €`)
     }
 
     // Sans virement retrouvé mais toutes les factures déjà soldées : l'argent est arrivé autrement → sort de la file.
@@ -372,11 +393,12 @@ export async function buildAdviceReport(
         reference: advice.reference, total: advice.total,
       },
       bank: bank ? {
-        lineId: bank.id, date: bank.date, amount: Number(bank.amount),
+        lineId: bank.id, date: bank.date, amount: montantBanque,
         moveName: Array.isArray(bank.move_id) ? bank.move_id[1] : '',
       } : null,
       invoices: resolved,
       linesSum, delta, blocking,
+      ...(partiel ? { notes: [`Déjà lettrées par l'ERP sur ce virement : ${partiel.deja.join(', ')} — reste à lettrer ${partiel.reste.toFixed(2)} €.`] } : {}),
     })
   }
 
