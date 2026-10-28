@@ -68,6 +68,7 @@ export const ASSISTANTS = [
   { cle: 'relances',       nom: 'Relances clients',        role: 'Rappels de paiement J+15 / J+30 depuis administration@ (jamais au Parquet)' },
   { cle: 'rapprochement',  nom: 'Rapprochement des paiements', role: 'Lettrage des avis de paiement des assistances quand tout concorde avec la banque' },
   { cle: 'parc',           nom: 'Alertes du parc',         role: 'Véhicules oubliés en Transit, réquisitoires sans véhicule (chaque matin)' },
+  { cle: 'tri_mails',      nom: 'Tri des mails d’info@',   role: 'Range les mails automatiques sans action (codes, livraisons, plannings, publicités)' },
   { cle: 'victor',         nom: 'Victor',                  role: 'Comptabilité, échanges avec Maureen' },
   { cle: 'agents',         nom: 'Florent, Rémi et les autres agents', role: 'Banque, factures d’achat, propositions à valider' },
   { cle: 'agent_mail',     nom: 'Justine (Agent Mail)',    role: 'Tri des mails d’info@ et d’administration@' },

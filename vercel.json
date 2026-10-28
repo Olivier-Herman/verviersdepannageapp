@@ -64,6 +64,7 @@
     { "path": "/api/cron/releves-assistances",       "schedule": "30 8 * * 3"     },
     { "path": "/api/cron/rapprochement-avis",        "schedule": "15 8,12 * * *"  },
     { "path": "/api/cron/alertes-parc",              "schedule": "0 8 * * 1-5"    },
+    { "path": "/api/cron/tri-mails-info",            "schedule": "25 * * * *"     },
     { "path": "/api/cron/comptes-achats",            "schedule": "20 8 * * *"     },
     { "path": "/api/cron/refresh-fines-odoo",        "schedule": "0 6,7 * * *"    },
     { "path": "/api/cron/circlek-foreign-vat",       "schedule": "30 6,7 * * *"   },
