@@ -15,6 +15,24 @@ export function reloadOnce(reason: string): boolean {
     sessionStorage.setItem(KEY, String(Date.now()))
   } catch { /* stockage indisponible : on recharge quand même */ }
   console.warn('[version] rechargement :', reason)
-  window.location.reload()
+  void rechargerQuandJoignable()
   return true
+}
+
+/**
+ * Recharge seulement quand la page répond. Écrans blancs de Franck (29/10/2026) : un rechargement lancé au retour
+ * dans l'app avec un réseau faible laissait la fenêtre blanche, et il fallait fermer l'app. On télécharge d'abord la
+ * page ; tant qu'elle ne vient pas, l'écran actuel reste affiché et on réessaie (3 s, 6 s… jusqu'à 30 s).
+ */
+async function rechargerQuandJoignable(): Promise<void> {
+  for (let i = 1; ; i++) {
+    try {
+      const ctl = new AbortController()
+      const t = setTimeout(() => ctl.abort(), 10_000)
+      const r = await fetch(window.location.href, { cache: 'no-store', credentials: 'same-origin', signal: ctl.signal })
+      clearTimeout(t)
+      if (r.status < 500) { window.location.reload(); return }
+    } catch { /* hors réseau ou trop lent : on réessaie */ }
+    await new Promise(res => setTimeout(res, Math.min(30_000, 3_000 * i)))
+  }
 }
