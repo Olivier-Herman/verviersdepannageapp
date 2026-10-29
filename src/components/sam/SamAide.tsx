@@ -76,7 +76,11 @@ export default function SamAide({ missionId, ecran }: { missionId?: string | nul
       shownQ.current = q.texte
       setQuestion(q); setAgent(q.agent || agentDuMoment())
       setMsgs(m => [...m, { from: 'sam', text: q.texte, who: q.agent }])
-      setOpen(true)
+      // La fenêtre s'ouvre seule UNE fois par question : la fenêtre Aide est remontée à chaque fiche ouverte, et Fred
+      // revoyait la même question à chaque fiche (10216754, 29/10/2026). Ensuite, elle attend dans la fenêtre Aide.
+      let dejaVue = false
+      try { dejaVue = sessionStorage.getItem('sam_q_vue') === q.texte; sessionStorage.setItem('sam_q_vue', q.texte) } catch { /* stockage indisponible */ }
+      if (!dejaVue) setOpen(true)
     }).catch(() => {})
     check(); const id = setInterval(check, 20_000)
     return () => { stop = true; clearInterval(id) }

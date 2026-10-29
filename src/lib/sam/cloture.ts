@@ -43,6 +43,10 @@ export async function samMissionClosed(userId: string, missionId: string): Promi
       .eq('user_id', userId).eq('mission_id', missionId).is('ended_at', null).gte('last_at', since)
       .order('last_at', { ascending: false }).limit(1).maybeSingle()
     if (!conv) return
+    // Conversation ouverte par Sam copilote où le chauffeur n'a rien écrit (alerte réglée sur la fiche) : rien à lui
+    // demander, elle se ferme sans question (Fred, 10216754, 29/10/2026 : « Tout est réglé ? » reçu sans avoir parlé à Sam).
+    const { count: ecrits } = await sb.from('sam_messages').select('id', { count: 'exact', head: true }).eq('conversation_id', conv.id).eq('role', 'chauffeur')
+    if (!ecrits) { await endConversation(conv.id, 'mission_cloturee'); return }
     const url = process.env.MOBIOUEB_ADRESSE, secret = process.env.MOBIOUEB_EXTERNE_SECRET
     if (!url || !secret) return
     const [{ data: u }, { data: m }] = await Promise.all([
