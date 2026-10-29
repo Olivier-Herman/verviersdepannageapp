@@ -78,8 +78,8 @@ export async function detecter(sb: Sb, m: any, lang: Lang, pasArriveMin: number)
         const cands = await garagesAgrees(m, 4).catch(() => [])
         if (cands.length) return {
           kind: 'garage_agree', donnees: { candidats: cands },
-          texte: L(`Touring veut ${plaque} dans un garage de son réseau agréé (« ${m.destination_address || 'réseau agréé'} »), pas n'importe lequel. Lequel ?${cands[0].demande ? ` Le premier est à ${cands[0].label.split(',').pop()?.trim()}, comme demandé par le client ; les autres sont les plus proches.` : ' Voici les plus proches.'}`,
-                   `Touring e do ${plaque} në një garazh të rrjetit të tij të miratuar (« ${m.destination_address || 'rrjeti i miratuar'} »). Cilin?${cands[0].demande ? ' I pari është ai që kërkoi klienti, të tjerët janë më të afërt.' : ' Ja më të afërtit.'}`),
+          texte: L(`Touring veut ${plaque} dans un garage de son réseau agréé (« ${m.destination_address || 'réseau agréé'} »), pas n'importe lequel. Lequel ?${cands[0].demande ? ' Le premier est celui indiqué par Touring ; les autres sont les plus proches.' : ' Voici les plus proches.'}`,
+                   `Touring e do ${plaque} në një garazh të rrjetit të tij të miratuar (« ${m.destination_address || 'rrjeti i miratuar'} »). Cilin?${cands[0].demande ? ' I pari është ai i treguar nga Touring, të tjerët janë më të afërt.' : ' Ja më të afërtit.'}`),
           boutons: [...cands.map((c, i) => ({ libelle: `🔧 ${c.nom} (${c.label.split(',').pop()?.trim()})`, valeur: `addr:destination:${i}` })), { libelle: L('Un autre, je t\'écris lequel', 'Një tjetër, ta shkruaj'), valeur: 'addr:aucune' }],
         }
       }
