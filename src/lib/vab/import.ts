@@ -223,7 +223,7 @@ export async function runVabImport(opts: { mode: VabImportMode }): Promise<VabIm
         // action VAB sur un dossier dont la fiche est déjà terminée (completed /
         // to_invoice) ou annulée/ignorée doit créer une NOUVELLE fiche, pas être
         // avalée dans l'ancienne (sinon la mission n'arrive jamais dans le dispatch).
-        const FICHE_COLS = 'id, mission_type, destination_name, destination_address, redelivery_address, status, assigned_to, mission_number, vab_assignment_ids, vehicle_plate, source, remarks_billing, vab_vr'
+        const FICHE_COLS = 'id, mission_type, destination_name, destination_address, redelivery_address, status, assigned_to, mission_number, vab_assignment_ids, vehicle_plate, source, remarks_billing, vab_vr, pause_released_at'
         const incomingPlate = detail.vehiclePlate?.replace(/\s/g, '').toUpperCase() || null
         const { data: existingRows } = await sb.from('incoming_missions')
           .select(FICHE_COLS)
@@ -326,7 +326,8 @@ export async function runVabImport(opts: { mode: VabImportMode }): Promise<VabIm
           // dispatcher l'a déjà reclassée, on ne repasse pas derrière lui.
           // Indépendant de la fusion ci-dessous (c'est la fiche qui est non
           // couverte, qu'on la fusionne ou non). Olivier 20/09/2026.
-          if (ncVab && String(fiche.source || '').toLowerCase() === 'vab' && ['new', 'dispatching'].includes(String(fiche.status))) {
+          // Une fiche remise au dispatch en pause est déjà partie (29/10/2026) : pas de bascule.
+          if (ncVab && String(fiche.source || '').toLowerCase() === 'vab' && ['new', 'dispatching'].includes(String(fiche.status)) && !(fiche as any).pause_released_at) {
             const prevRemark = String(fiche.remarks_billing || '').trim()
             const ncUpd: Record<string, any> = {
               source: 'police_snc',
