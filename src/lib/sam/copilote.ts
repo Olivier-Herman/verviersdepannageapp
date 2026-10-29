@@ -71,17 +71,15 @@ export async function detecter(sb: Sb, m: any, lang: Lang, pasArriveMin: number)
   // 2 bis. Touring « réseau agréé » (« centrale de pneu ») : un garage DE LA LISTE TOURING, pas la société du même
   //    nom trouvée sur la carte (Olivier 29/10/2026, 2HGW277). Proposé dès qu'il est sur place, avant le chargement.
   if (isRem(m.mission_type) && ['in_progress', 'delivering'].includes(m.status) && (m.on_site_at || m.loaded_at)) {
-    const { destinationReseauAgree, garagesAgrees } = await import('@/lib/touring/garages-agrees')
+    const { destinationReseauAgree } = await import('@/lib/touring/garages-agrees')
     if (destinationReseauAgree(m)) {
       const { count: choisi } = await sb.from('mission_logs').select('id', { count: 'exact', head: true }).eq('mission_id', m.id).eq('action', 'touring_garage_choisi')
-      if (!choisi) {
-        const cands = await garagesAgrees(m, 4).catch(() => [])
-        if (cands.length) return {
-          kind: 'garage_agree', donnees: { candidats: cands },
-          texte: L(`Touring veut ${plaque} dans un garage de son réseau agréé (« ${m.destination_address || 'réseau agréé'} »), pas n'importe lequel. Lequel ?${cands[0].demande ? ' Le premier est celui indiqué par Touring ; les autres sont les plus proches.' : ' Voici les plus proches.'}`,
-                   `Touring e do ${plaque} në një garazh të rrjetit të tij të miratuar (« ${m.destination_address || 'rrjeti i miratuar'} »). Cilin?${cands[0].demande ? ' I pari është ai i treguar nga Touring, të tjerët janë më të afërt.' : ' Ja më të afërtit.'}`),
-          boutons: [...cands.map((c, i) => ({ libelle: `🔧 ${c.nom} (${c.label.split(',').pop()?.trim()})`, valeur: `addr:destination:${i}` })), { libelle: L('Un autre, je t\'écris lequel', 'Një tjetër, ta shkruaj'), valeur: 'addr:aucune' }],
-        }
+      // La liste complète est sur la fiche (maquette validée le 29/10/2026) : Sam l'ouvre, il ne choisit pas à sa place.
+      if (!choisi) return {
+        kind: 'garage_agree',
+        texte: L(`Touring veut ${plaque} dans un garage de son réseau agréé (« ${m.destination_address || 'réseau agréé'} »), pas n'importe lequel. Choisis-le dans la liste Touring sur ta fiche : les plus proches sont en haut.`,
+                 `Touring e do ${plaque} në një garazh të rrjetit të tij të miratuar (« ${m.destination_address || 'rrjeti i miratuar'} »). Zgjidhe në listën Touring në fishën tënde: më të afërtit janë sipër.`),
+        boutons: [{ libelle: L('🔧 Ouvrir la liste des garages', '🔧 Hap listën e garazheve'), valeur: 'open' }],
       }
     }
   }

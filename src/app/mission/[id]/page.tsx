@@ -209,6 +209,13 @@ export default async function MissionDriverPage({ params, searchParams }: Props)
         parentPhotos={parentPhotos}
         relKey={relKey}
         reportClient={(await sourceHasTag(mission.source, 'rapport_facture')) ? await sourceLabel(mission.source) : null}
+        garageAgree={await (async () => {
+          // Destination Touring « réseau agréé » : le chauffeur choisit dans la liste Touring (29/10/2026).
+          const { data: ch } = await supabase.from('mission_logs').select('id').eq('mission_id', mission.id).eq('action', 'touring_garage_choisi').limit(1)
+          if (ch?.length) return 'choisi' as const
+          const { destinationReseauAgree } = await import('@/lib/touring/garages-agrees')
+          return destinationReseauAgree(mission as any) ? 'a_choisir' as const : null
+        })()}
       />
       {showAide && <SamAide missionId={mission.id} ecran={`Fiche mission #${mission.mission_number ?? ''} (${mission.mission_type || ''}, statut ${mission.status})`} />}
     </>

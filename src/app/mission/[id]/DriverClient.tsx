@@ -31,6 +31,7 @@ import { isTransport, isRemorquage, isRemRel } from '@/lib/missions/mission-type
 import { depotFerme, type HorairesDepot } from '@/lib/missions/horaires-depot'
 import { transportGabaritLabel } from '@/lib/tarifs/transport-gabarits'
 import { useT } from '@/lib/i18n/I18nProvider'
+import GarageAgreePicker from '@/components/touring/GarageAgreePicker'
 import MissionPauseTransfer from '@/components/missions/MissionPauseTransfer'
 import SigPad from '@/components/mission/SigPad'
 import VrContratCard from '@/components/mission/VrContratCard'
@@ -108,7 +109,7 @@ interface Mission {
   awaiting_payment?: boolean | null
 }
 interface VrLoc { id: string; name: string; address: string; lat: number | null; lng: number | null; is_default?: boolean }
-interface Props { mission: Mission; currentUserId?: string; userRole?: string; isReadOnly?: boolean; navApp?: NavApp; defaultParcZone?: string | null; encaissementChauffeur?: boolean; paiementApp?: boolean; consigneSource?: { fr: string; sq: string | null; horaires: HorairesDepot | null } | null; flux2?: boolean; onsiteV2?: boolean; parentClosingNote?: string | null; parentPanne?: string | null; parentPhotos?: string[]; relKey?: { location: string | null; hook: string | null } | null; reportClient?: string | null; josiane?: boolean }
+interface Props { mission: Mission; currentUserId?: string; userRole?: string; isReadOnly?: boolean; navApp?: NavApp; defaultParcZone?: string | null; encaissementChauffeur?: boolean; paiementApp?: boolean; consigneSource?: { fr: string; sq: string | null; horaires: HorairesDepot | null } | null; flux2?: boolean; onsiteV2?: boolean; parentClosingNote?: string | null; parentPanne?: string | null; parentPhotos?: string[]; relKey?: { location: string | null; hook: string | null } | null; reportClient?: string | null; josiane?: boolean; garageAgree?: 'a_choisir' | 'choisi' | null }
 
 // Photos prises à l'ENLÈVEMENT (mission parente), en lecture seule sur une
 // relivraison : le chauffeur voit l'état du véhicule tel qu'il a été chargé et
@@ -620,10 +621,13 @@ function BriefingTtsButton({ mission }: { mission: Mission }) {
 }
 
 // ─── Composant principal ──────────────────────────────────────────────────────
-export default function DriverClient({ mission: init, currentUserId, userRole, isReadOnly = false, navApp: initNav, defaultParcZone = null, encaissementChauffeur = false, paiementApp = false, consigneSource = null, flux2 = false, onsiteV2 = false, parentClosingNote = null, parentPanne = null, parentPhotos = [], relKey = null, reportClient = null, josiane = false }: Props) {
+export default function DriverClient({ mission: init, currentUserId, userRole, isReadOnly = false, navApp: initNav, defaultParcZone = null, encaissementChauffeur = false, paiementApp = false, consigneSource = null, flux2 = false, onsiteV2 = false, parentClosingNote = null, parentPanne = null, parentPhotos = [], relKey = null, reportClient = null, josiane = false, garageAgree: garageAgreeInit = null }: Props) {
   const canMatthieu = canUseMatthieu(userRole, currentUserId)
   const router = useRouter()
   const { t, lang } = useT()   // traductions FR/albanais pour les messages d'erreur (strings)
+  // Destination Touring « réseau agréé » : garage choisi dans la liste Touring (Olivier 29/10/2026).
+  const [garageAgree, setGarageAgree] = useState(garageAgreeInit)
+  const [garagePicker, setGaragePicker] = useState(false)
   const matSq = lang === 'sq'
   const MAT = matSq ? {
     tileTitle: 'Një pyetje për këtë automjet? Pyet mekanikun.',
@@ -5131,7 +5135,31 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
             n'était modifiable qu'enfouie dans l'itinéraire (ressemblait à un stop)
             → le chauffeur ajoutait des stops. Carte dédiée + visible ; « Définir »
             si aucune destination encore renseignée. */}
-        {(onSite || loaded || rel) && (rem || rel || !!M.destination_address) && (
+        {/* Destination Touring « réseau agréé » (centrale de pneus…) : garage à choisir dans la liste Touring,
+            pas la société du même nom sur la carte (Olivier 29/10/2026, maquette validée). */}
+        {(onSite || loaded) && garageAgree === 'a_choisir' && !isReadOnly && (
+          <div className="w-full bg-amber-50 dark:bg-amber-500/10 border-2 border-amber-500 rounded-2xl p-4">
+            <p className="text-amber-800 dark:text-amber-300 text-xs uppercase tracking-widest font-bold mb-1">🏁 {t('garage_agree.bloc_titre')}</p>
+            <p className="text-ink text-sm font-semibold">{t('garage_agree.bloc_dest')}{M.destination_address ? ` · ${M.destination_address}` : ''}</p>
+            <p className="text-amber-900 dark:text-amber-200 text-sm mt-2">⚠️ {t('garage_agree.bloc_texte')}</p>
+            <button type="button" onClick={() => setGaragePicker(true)} className="w-full min-h-[52px] mt-3 rounded-2xl bg-red-600 text-white font-bold text-base active:scale-[0.99]">{t('garage_agree.bouton')}</button>
+          </div>
+        )}
+        {garageAgree === 'choisi' && (onSite || loaded) && !isReadOnly && (
+          <div className="w-full flex items-center gap-2 px-3 py-2 rounded-2xl border border-green-600/50 bg-green-50 dark:bg-green-500/10">
+            <span className="text-green-800 dark:text-green-300 text-sm font-semibold flex-1">{t('garage_agree.choisi')}</span>
+            <button type="button" onClick={() => setGaragePicker(true)} className="min-h-[44px] px-4 rounded-xl border text-ink text-sm font-semibold">{t('garage_agree.changer')}</button>
+          </div>
+        )}
+        {garagePicker && (
+          <GarageAgreePicker missionId={M.id} onClose={() => setGaragePicker(false)}
+            onChosen={g => {
+              setGaragePicker(false); setGarageAgree('choisi')
+              setM(prev => ({ ...prev, destination_address: g.label, destination_lat: g.lat as any, destination_lng: g.lng as any, destination_name: g.nom }))
+            }} />
+        )}
+
+        {(onSite || loaded || rel) && (rem || rel || !!M.destination_address) && !(garageAgree === 'a_choisir' && !isReadOnly && (onSite || loaded)) && (
           <button
             onClick={() => {
               if (M.destination_address) {

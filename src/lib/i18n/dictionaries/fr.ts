@@ -1059,6 +1059,28 @@ export const fr = {
     erreur:     'Envoi impossible, réessaie.',
     chargement: 'Préparation du code…',
   },
+  garage_agree: {
+    bloc_titre:   'Garage à choisir',
+    bloc_dest:    'Réseau agréé Touring',
+    bloc_texte:   'Touring veut le véhicule dans un garage de sa liste. Choisis-le : sans lui, ni km ni prix.',
+    bouton:       '🔧 Choisir le garage agréé',
+    choisi:       'Garage du réseau agréé Touring ✓',
+    changer:      'Changer',
+    naviguer:     '🧭 Naviguer',
+    titre:        'Garages agréés Touring',
+    sous_titre:   '{n} garages · triés par distance',
+    recherche:    '🔎 Nom ou commune',
+    indique:      'Indiqué par Touring',
+    proches:      'Les plus proches',
+    suivants:     'Voir les {n} suivants',
+    aucun:        'Aucun garage pour cette recherche.',
+    chargement:   'Chargement de la liste Touring…',
+    deposer_chez: 'Déposer le véhicule chez',
+    oui:          '✅ Oui, c’est celui-là',
+    non:          'Non, retour à la liste',
+    enregistre:   'Garage enregistré ✅',
+    erreur:       'La liste Touring ne répond pas. Réessaie dans un instant.',
+  },
 }
 
 export type Dictionary = typeof fr

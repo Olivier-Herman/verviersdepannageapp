@@ -10,7 +10,7 @@
 import { loginComex, getComexProviders, type ComexProvider } from '@/lib/touring/comex'
 import { parseComexKeys } from '@/lib/cloture/transform/touring'
 
-export interface GarageAgree { label: string; lat: number; lng: number; cidPrx: string; nom: string; demande: boolean }
+export interface GarageAgree { label: string; lat: number; lng: number; cidPrx: string; nom: string; demande: boolean; km: number; localite: string }
 
 const norm = (s: string) => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase()
 
@@ -55,7 +55,7 @@ export async function garagesAgrees(m: any, max = 4): Promise<GarageAgree[]> {
   const demandes = to ? valides.filter(p => (to.nom && norm(p.nom) === to.nom) || (to.cp && p.cp === to.cp && to.rue && norm(p.rue).includes(to.rue))) : []
   const tri = [...demandes, ...valides.filter(p => !demandes.includes(p))].slice(0, max)
   return tri.map(p => ({
-    cidPrx: p.cidPrx, nom: p.nom, lat: Number(p.lat), lng: Number(p.lng), demande: demandes.includes(p),
+    cidPrx: p.cidPrx, nom: p.nom, lat: Number(p.lat), lng: Number(p.lng), demande: demandes.includes(p), km: Number(p.distance) || 0, localite: p.localite,
     label: `${p.nom}, ${[p.rue, p.numRue].filter(Boolean).join(' ')}, ${p.cp} ${p.localite}`.replace(/\s+,/g, ','),
   }))
 }
