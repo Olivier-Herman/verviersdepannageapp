@@ -40,7 +40,7 @@ export async function POST(req: Request) {
       ? await samConfirm({ userId: u.id, canal: 'app', oui: b.confirmer })
       : await samTurn({
           userId: u.id, canal: 'app', texte: String(b.texte || '').slice(0, 2000) || '(sans texte)',
-          ecran: b.ecran ? String(b.ecran).slice(0, 300) : null, missionId: b.mission_id || null,
+          ecran: b.ecran ? String(b.ecran).slice(0, 200) : null, missionId: b.mission_id || null,
           photo: typeof b.photo === 'string' && b.photo.length < 7_000_000 ? b.photo.replace(/^data:image\/\w+;base64,/, '') : null,
         })
     return NextResponse.json({ ok: true, agent: turn.reply.agent || agentDuMoment(), transfert: turn.reply.transfert || null, texte: turn.reply.texte, boutons: turn.reply.boutons || [], action: turn.reply.action || null, open_url: turn.openUrl || null })

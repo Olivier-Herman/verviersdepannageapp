@@ -205,8 +205,10 @@ export async function samTurn(opts: { userId: string; canal: SamCanal; texte: st
       chauffeur: { id: u.id, prenom: prenom(u), langue: u.language === 'sq' ? 'sq' : 'fr' },
       canal: opts.canal, texte: opts.texte, photo: i === 0 ? (opts.photo || undefined) : undefined,
       contexte: {
-        ecran: opts.ecran || (opts.canal === 'telegram' ? 'Telegram' : null), mission: missionUtile(mission), missions_en_cours: encours,
-        erreurs: erreursConnues(mission), actions_possibles: ACTIONS_POSSIBLES, resultat,
+        // Limites du bureau (écran ≤ 200, erreur ≤ 500 caractères) : au-delà, toute la demande est refusée et le chauffeur
+        // lit « Sam n'est pas disponible » (Franck 29/10/2026, écran de 230 caractères).
+        ecran: (opts.ecran || (opts.canal === 'telegram' ? 'Telegram' : null))?.slice(0, 200) ?? null, mission: missionUtile(mission), missions_en_cours: encours,
+        erreurs: erreursConnues(mission).map(e => e.slice(0, 500)).slice(0, 20), actions_possibles: ACTIONS_POSSIBLES, resultat,
         // Ce que dit l'assistance (portail IMA, Kaze) : à utiliser pour répondre ; les champs vides de la fiche en ont été complétés.
         details_assistance: details ? { ...details as DetailsAssistance, fiche_completee: ficheCompletee } : null,
         besoins_possibles: ['chercher_plaque', 'details_assistance'],
