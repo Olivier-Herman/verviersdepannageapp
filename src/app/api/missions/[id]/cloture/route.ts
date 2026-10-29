@@ -71,7 +71,10 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
     try {
       const session = await loginComex('user')
       const providers = await getComexProviders(session, keys, motif.touring)
-      return NextResponse.json({ providers })
+      // Garage du réseau agréé déjà choisi avec Sam en route (29/10/2026) : présélectionné.
+      const { data: ch } = await sb.from('mission_logs').select('metadata').eq('mission_id', (m as any).id).eq('action', 'touring_garage_choisi').order('created_at', { ascending: false }).limit(1).maybeSingle()
+      const choisi = (ch as any)?.metadata?.cidPrx || null
+      return NextResponse.json({ providers, choisi: providers.some((p: any) => p.cidPrx === choisi) ? choisi : null })
     } catch { return NextResponse.json({ providers: [] }) }
   }
 

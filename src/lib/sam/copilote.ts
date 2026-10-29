@@ -68,6 +68,24 @@ export async function detecter(sb: Sb, m: any, lang: Lang, pasArriveMin: number)
     }
   }
 
+  // 2 bis. Touring « réseau agréé » (« centrale de pneu ») : un garage DE LA LISTE TOURING, pas la société du même
+  //    nom trouvée sur la carte (Olivier 29/10/2026, 2HGW277). Proposé dès qu'il est sur place, avant le chargement.
+  if (isRem(m.mission_type) && ['in_progress', 'delivering'].includes(m.status) && (m.on_site_at || m.loaded_at)) {
+    const { destinationReseauAgree, garagesAgrees } = await import('@/lib/touring/garages-agrees')
+    if (destinationReseauAgree(m)) {
+      const { count: choisi } = await sb.from('mission_logs').select('id', { count: 'exact', head: true }).eq('mission_id', m.id).eq('action', 'touring_garage_choisi')
+      if (!choisi) {
+        const cands = await garagesAgrees(m, 4).catch(() => [])
+        if (cands.length) return {
+          kind: 'adresse_destination', donnees: { candidats: cands },
+          texte: L(`Touring veut ${plaque} dans un garage de son réseau agréé (« ${m.destination_address || 'réseau agréé'} »), pas n'importe lequel. Lequel ?${cands[0].demande ? ` Le premier est à ${cands[0].label.split(',').pop()?.trim()}, comme demandé par le client ; les autres sont les plus proches.` : ' Voici les plus proches.'}`,
+                   `Touring e do ${plaque} në një garazh të rrjetit të tij të miratuar (« ${m.destination_address || 'rrjeti i miratuar'} »). Cilin?${cands[0].demande ? ' I pari është ai që kërkoi klienti, të tjerët janë më të afërt.' : ' Ja më të afërtit.'}`),
+          boutons: [...cands.map((c, i) => ({ libelle: `🔧 ${c.nom} (${c.label.split(',').pop()?.trim()})`, valeur: `addr:destination:${i}` })), { libelle: L('Un autre, je t\'écris lequel', 'Një tjetër, ta shkruaj'), valeur: 'addr:aucune' }],
+        }
+      }
+    }
+  }
+
   // 2. Destination sans position (remorquage, une fois sur place ou chargé).
   if (isRem(m.mission_type) && ['in_progress', 'delivering'].includes(m.status) && (m.on_site_at || m.loaded_at)
       && m.destination_address && (m.destination_lat == null || m.destination_lng == null)) {
@@ -143,7 +161,7 @@ export async function tickCopilote(opts: { dryRun?: boolean } = {}): Promise<{ m
   const { getBusinessNumber } = await import('@/lib/settings/business')
   const pasArriveMin = await getBusinessNumber('sam_copilote_pas_arrive_min').catch(() => 90)
   const { data: ms, error } = await sb.from('incoming_missions')
-    .select('id, mission_number, source, status, mission_type, assigned_to, vehicle_plate, incident_address, incident_city, incident_lat, destination_address, destination_lat, destination_lng, snc_scenario, amount_to_collect, payment_amount, accepted_at, on_site_at, loaded_at, incident_lng')
+    .select('id, mission_number, source, status, mission_type, assigned_to, vehicle_plate, incident_address, incident_city, incident_lat, destination_address, destination_lat, destination_lng, snc_scenario, amount_to_collect, payment_amount, accepted_at, on_site_at, loaded_at, incident_lng, raw_content, destination_name, incident_description, touring_actions')
     .in('status', ['accepted', 'in_progress', 'delivering']).not('assigned_to', 'is', null).limit(80)
   if (error) throw new Error(`Missions illisibles : ${error.message}`)
   const { data: ouvertes } = await sb.from('sam_alertes').select('id, mission_id, kind, user_id, created_at, answered_at, resolved_at, dispatch_notified_at').is('resolved_at', null)
@@ -241,6 +259,10 @@ export async function repondreAlerte(userId: string, alerteId: number, index: nu
         body: JSON.stringify({ mission_id: a.mission_id, action: 'update_address', field: x === 'incident' ? 'incident' : 'destination', value: c.label, lat: c.lat, lng: c.lng }),
       })
       if (!r.ok) throw new Error(`refusé (${r.status})`)
+      if (c.cidPrx) {   // garage du réseau agréé Touring : retenu pour la clôture
+        await sb.from('incoming_missions').update({ destination_name: c.nom }).eq('id', a.mission_id)
+        await sb.from('mission_logs').insert({ mission_id: a.mission_id, actor_id: userId, action: 'touring_garage_choisi', notes: `Garage du réseau agréé Touring choisi avec ${a.agent || 'Sam'} : ${c.label}`, metadata: { cidPrx: c.cidPrx, nom: c.nom } }).then(() => {}, () => {})
+      }
       texte = L(`C'est corrigé ✅ ${x === 'incident' ? 'Lieu d\'intervention' : 'Destination'} : ${c.label}. Le km et le prix se calculent.`, `U korrigjua ✅ ${x === 'incident' ? 'Vendi i ndërhyrjes' : 'Destinacioni'}: ${c.label}. Km dhe çmimi llogariten.`)
     } else if (act === 'addr') {
       texte = L('D\'accord. Écris-moi ici la bonne adresse (rue, numéro, commune), je la corrige.', 'Në rregull. Më shkruaj këtu adresën e saktë (rruga, numri, komuna), unë e korrigjoj.')

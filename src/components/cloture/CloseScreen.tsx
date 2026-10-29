@@ -221,7 +221,7 @@ export default function CloseScreen({
     fetch(`/api/missions/${missionId}/cloture?garages=1&branch=${branch}&motifKey=${encodeURIComponent(motifKey)}`,
       { cache: 'no-store' })
       .then(r => r.json())
-      .then(d => { if (alive) setProviders(d.providers || []) })
+      .then(d => { if (alive) { setProviders(d.providers || []); if (d.choisi) setGarageCid(g => g || d.choisi) } })
       .catch(() => alive && setProviders([]))
     return () => { alive = false }
   }, [isRem, motifKey, missionId, branch])
