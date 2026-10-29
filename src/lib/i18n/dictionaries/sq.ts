@@ -676,6 +676,10 @@ export const sq: Dictionary = {
 
   // Ekrani i mbylljes / vendosjes në parking (shoferi) — moduli 100% dygjuhësh.
   close: {
+    rel_msg: '💬 Mesazh për shoferin e rikthimit',
+    rel_msg_hint: 'Do të shfaqet i madh në fishën e tij, para se të prekë automjetin.',
+    rel_msg_ph: 'P.sh.: mos e ndiz, çelësi në kroskot, rrota rezervë në bagazh…',
+    rel_msg_title: 'Mesazh nga shoferi që e la në park',
     // Rapport client joint à la facture (EBAC, Centracar — 29/09/2026)
     report_title: 'Raport për {client}: i detyrueshëm',
     report_signer_dsp: 'Personi i ndihmuar jep mbiemrin, emrin dhe nënshkruan.',

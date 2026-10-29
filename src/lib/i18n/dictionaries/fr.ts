@@ -691,6 +691,10 @@ export const fr = {
 
   // Écran de clôture / mise en parc (chauffeur) — module 100% bilingue.
   close: {
+    rel_msg: '💬 Message pour le chauffeur de la relivraison',
+    rel_msg_hint: 'Il s’affichera en grand sur sa fiche, avant qu’il touche au véhicule.',
+    rel_msg_ph: 'Ex. : ne pas démarrer, clé dans la boîte à gants, roue de secours dans le coffre…',
+    rel_msg_title: 'Message du chauffeur qui l’a mis au parc',
     // Rapport client joint à la facture (EBAC, Centracar — 29/09/2026)
     report_title: 'Rapport pour {client} : obligatoire',
     report_signer_dsp: 'La personne dépannée donne son nom, son prénom et signe.',

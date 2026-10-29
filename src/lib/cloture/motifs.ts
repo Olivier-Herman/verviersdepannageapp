@@ -87,6 +87,17 @@ export function findMotif(branch: Branch, key: string): Motif | undefined {
   return motifsForBranch(branch).find(m => m.key === key)
 }
 
+/** Motif de remorquage correspondant aux codes de panne déjà donnés par Touring (action COMEX) : identiques d'abord,
+ *  sinon même cause et même description. Sert à la mise en parc d'un remorquage direct sans diagnostic : pas d'écran de clôture en plus
+ *  avant l'écran de parc (Franck, 29/10/2026). */
+export function motifFromTouringCodes(c: { cause?: string | null; desc?: string | null; result?: string | null } | null): Motif | undefined {
+  // Jamais deviné sur une cause vague : « cause inconnue » (46) laisse le chauffeur choisir.
+  if (!c?.cause || !c.desc || c.desc === '46') return undefined
+  const list = motifsForBranch('remorquage').filter(m => !m.catchAll)
+  return list.find(m => m.touring.cause === c.cause && m.touring.desc === c.desc && m.touring.result === c.result)
+    || list.find(m => m.touring.cause === c.cause && m.touring.desc === c.desc)
+}
+
 /** Le catch-all « Autre » de la branche (toujours présent). */
 export function catchAllOf(branch: Branch): Motif {
   const list = motifsForBranch(branch)

@@ -149,7 +149,20 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   if (!OUTCOMES[outcome]) return NextResponse.json({ error: 'Issue inconnue' }, { status: 400 })
 
   const branch   = branchOf(outcome)
-  const motifKey = body?.motifKey ? String(body.motifKey) : null
+  let motifKey = body?.motifKey ? String(body.motifKey) : null
+  // Mise en parc d'un remorquage sans diagnostic (Touring REM direct) : la panne vient des codes déjà donnés par
+  // Touring ; sinon l'app ouvre l'écran de clôture en secours (Franck 29/10/2026 : double écran à la mise en parc).
+  if (!motifKey && outcome === 'park' && body?.autoMotif) {
+    const { motifFromTouringCodes } = await import('@/lib/cloture/motifs')
+    for (const a of Array.isArray((m as any).touring_actions) ? (m as any).touring_actions : []) {
+      try {
+        const r = typeof a?.raw === 'string' ? JSON.parse(a.raw) : (a?.raw || a)
+        const mo = motifFromTouringCodes({ cause: r?.COD_PANNE_CAUSE, desc: r?.COD_PANNE_DESC, result: r?.COD_PANNE_RESULT })
+        if (mo) { motifKey = mo.key; break }
+      } catch { /* action illisible */ }
+    }
+    if (!motifKey) return NextResponse.json({ error: 'Panne à choisir' }, { status: 400 })
+  }
   if (needsMotif(outcome) && branch && (!motifKey || !findMotif(branch, motifKey))) {
     return NextResponse.json({ error: 'Motif absent ou hors branche' }, { status: 400 })
   }

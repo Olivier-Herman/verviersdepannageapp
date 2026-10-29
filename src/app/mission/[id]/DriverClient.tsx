@@ -2522,6 +2522,9 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
             final_mission_type: mType,
             photo_urls: allUrls.length ? allUrls : undefined,
             signature: sig || undefined,
+            // Message pour le chauffeur de la relivraison : affiché en grand sur sa fiche (29/10/2026 ; il n'était
+            // jamais envoyé depuis l'écran de parc).
+            closing_notes: closeNote.trim() || undefined,
             discharge_data: disch.length > 0 ? disch : undefined,
             // Refus à destination (véhicule chargé → retour parc) : on conserve
             // le motif de refus. mission_type reste 'remorquage' (le chargé/tow a
@@ -2661,11 +2664,13 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
   // Panne inconnue ou assistance qui refuse → l'écran de clôture reste en secours.
   const quickPark = async (): Promise<boolean> => {
     const motif = String((M as any).panne_motif || '').trim()
-    if (!motif) return false
+    // Pas de diagnostic sur la fiche (remorquage direct Touring) : le serveur prend la panne déjà donnée par Touring
+    // (autoMotif) ; s'il ne la trouve pas, l'écran de clôture reste en secours (Franck 29/10/2026).
+    if (!motif && (M as any).source_format !== 'comex') return false
     setLoading(true); setErr('')
     try {
       const r = await fetch(`/api/missions/${M.id}/cloture`, { method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ outcome: 'park', motifKey: motif, dprCode: null, common: { signature: null, signaturePng: null, keyRecovered: null, keyLocation: null, vehicleLocation: null, vin: '', km: '', remark: '' } }) })
+        body: JSON.stringify({ outcome: 'park', motifKey: motif || null, autoMotif: !motif, dprCode: null, common: { signature: null, signaturePng: null, keyRecovered: null, keyLocation: null, vehicleLocation: null, vin: '', km: '', remark: '' } }) })
       const j = await r.json().catch(() => ({}))
       if (!r.ok || !j.ok) return false
       if (j.queued) setErr("Enregistré ✅ — l'assistance est injoignable pour l'instant, on s'en occupe automatiquement dès qu'elle revient.")
@@ -3953,11 +3958,12 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
             </div>
           ))}
 
-          {/* Remarques */}
+          {/* Remarques — à la mise en parc : message pour le chauffeur de la relivraison (29/10/2026) */}
           <div>
-            <p className="text-ink-muted text-xs uppercase tracking-widest font-medium mb-2"><T k="close.remarks" /> <span className="text-ink-faint normal-case tracking-normal">{t('close.optional_paren')}</span></p>
+            <p className="text-ink-muted text-xs uppercase tracking-widest font-medium mb-2">{closeType === 'park' ? t('close.rel_msg') : <T k="close.remarks" />} <span className="text-ink-faint normal-case tracking-normal">{t('close.optional_paren')}</span></p>
+            {closeType === 'park' && <p className="text-ink-secondary text-xs mb-2">{t('close.rel_msg_hint')}</p>}
             <textarea rows={3} value={closeNote} onChange={e => setCloseNote(e.target.value)}
-              placeholder={t('close.remarks_ph')}
+              placeholder={closeType === 'park' ? t('close.rel_msg_ph') : t('close.remarks_ph')}
               className="w-full bg-surface border border focus:border-brand rounded-xl px-3 py-3 text-ink text-sm outline-none resize-none" />
           </div>
 
@@ -4047,7 +4053,7 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
         <div className="mx-4 mt-14 mb-1 bg-amber-100 border-2 border-amber-500 rounded-2xl px-4 py-3 flex items-start gap-3 shadow-md">
           <span className="text-3xl flex-shrink-0">⚠️</span>
           <div className="min-w-0">
-            <p className="text-amber-900 text-[11px] font-bold uppercase tracking-wide">Consigne du 1ᵉʳ enlèvement</p>
+            <p className="text-amber-900 text-[11px] font-bold uppercase tracking-wide">{t('close.rel_msg_title')}</p>
             <p className="text-amber-900 text-lg font-black whitespace-pre-wrap leading-snug mt-0.5">{parentClosingNote}</p>
           </div>
         </div>

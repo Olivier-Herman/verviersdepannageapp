@@ -90,7 +90,10 @@ export default function CloseScreen({
   // véhicule quelque part — à la dépose d'un remorquage (issue « livré ») ou en
   // mise en parc. Sur un dépannage réussi, le client repart AVEC son véhicule et
   // sa clé : ces deux questions n'ont aucun sens. Olivier 2026-08-12.
-  const askLocKey = outcome === 'delivered' || outcome === 'park'
+  // Mise en parc : cet écran ne sert plus qu'à la panne (et au km pour l'assistance) ; signature, clé et message pour
+  // la relivraison sont sur l'écran de parc qui suit — pas deux fois la même chose (Franck 29/10/2026).
+  const isPark = outcome === 'park'
+  const askLocKey = outcome === 'delivered'
 
   // Livraison : y a-t-il des codes à reprendre de la 1re jambe ? Si non (REM natif
   // Touring), on demande le motif ici plutôt que de clôturer en « cause inconnue ».
@@ -332,7 +335,7 @@ export default function CloseScreen({
           <button onClick={onBack} className="w-9 h-9 flex items-center justify-center bg-surface-hover rounded-xl text-ink">←</button>
           <div className="flex-1 min-w-0">
             <p className="text-ink font-semibold truncate">
-              {isDpr ? 'Déplacement pour rien' : isDelivered ? 'Livraison — clôture' : isRem ? 'Clôture · remorquage' : 'Clôture · dépannage réussi'}
+              {isDpr ? 'Déplacement pour rien' : isPark ? 'Mise en parc · la panne' : isDelivered ? 'Livraison — clôture' : isRem ? 'Clôture · remorquage' : 'Clôture · dépannage réussi'}
             </p>
             <p className="text-ink-muted text-xs truncate">{[vehicle, plate].filter(Boolean).join(' · ')}</p>
           </div>
@@ -365,7 +368,7 @@ export default function CloseScreen({
         ) : (
           <>
             {/* ── Motif (branche fixée par l'issue) ────────────────────────── */}
-            <p className={sectCls}>{isRem || isDelivered ? 'Pourquoi le remorquage ?' : "Qu'est-ce que tu as fait ?"}</p>
+            <p className={sectCls}>{isRem || isDelivered || isPark ? 'Pourquoi le remorquage ?' : "Qu'est-ce que tu as fait ?"}</p>
             {!motifs && <p className="text-ink-muted text-sm py-4 text-center">{t('cloture.motifs_loading')}</p>}
             <div className="grid grid-cols-3 gap-2.5">
               {ordered.map(m => {
@@ -441,7 +444,7 @@ export default function CloseScreen({
         )}
 
         {/* ── Signature ──────────────────────────────────────────────────── */}
-        <div id="f2-sig" className="space-y-2 pt-1">
+        <div id="f2-sig" className={`space-y-2 pt-1 ${isPark ? 'hidden' : ''}`}>
           <p className={sectCls}>{t('cloture.signature')}</p>
           {sigPng ? (
             <div className="flex items-center gap-2">
@@ -548,7 +551,7 @@ export default function CloseScreen({
         )}
 
         {/* ── Remarque ──────────────────────────────────────────────────── */}
-        <div className="space-y-2 pt-1">
+        <div className={`space-y-2 pt-1 ${isPark ? 'hidden' : ''}`}>
           <p className={sectCls}>Remarque <span className="normal-case tracking-normal font-medium text-ink-faint">— facultatif</span></p>
           <textarea rows={3} value={remark} onChange={e => setRemark(e.target.value)}
             placeholder={t('cloture.remark_ph')}
