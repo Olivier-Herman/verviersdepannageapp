@@ -1,18 +1,12 @@
 // src/lib/sam/cloture.ts
 //
-// Fin de conversation à la clôture de la mission (Olivier 03/10/2026) : quand
-// le chauffeur clôture une mission alors qu'une conversation Sam / Sonic liée à
-// cette mission est encore ouverte, l'agent lui demande s'il peut la clôturer.
-// Le texte vient du bureau (écrit d'avance, aucun appel d'IA). La question est
-// livrée sur le canal de la conversation (Telegram, ou la fenêtre Aide à sa
-// prochaine ouverture) avec deux boutons :
-//   cloturer_conversation  → conversation close tout de suite + « apres_oui »
-//   continuer_conversation → la conversation reste ouverte
-// Sans réponse, elle se ferme d'elle-même après 30 min, comme toujours.
+// Fin de conversation à la clôture de la mission. Jusqu'au 29/10/2026, l'agent demandait au chauffeur s'il pouvait
+// clôturer la conversation (Olivier 03/10/2026). Désormais (Olivier 29/10/2026) : « si la mission passe en terminé,
+// c'est que le problème est réglé » → tout se ferme sans question (samMissionClosed). pendingQuestion / answerQuestion
+// restent pour une question encore en attente au moment du changement.
 
 import { createAdminClient } from '@/lib/supabase'
 import { IDLE_MINUTES, endConversation } from './journal'
-import { tgSend } from './telegram'
 
 export type SamQuestion = {
   conversation_id: string
@@ -34,51 +28,21 @@ async function addMsg(conversationId: string, m: { role: 'chauffeur' | 'agent'; 
   await mirrorSam(conversationId, m)
 }
 
-/** Appelé (en arrière-plan) après la clôture d'une mission par le chauffeur. */
+/**
+ * Appelé (en arrière-plan) quand la mission passe à « terminée ». Règle d'Olivier (29/10/2026) : « si la mission passe
+ * en terminé, c'est que le problème est réglé » → plus aucune question au chauffeur : les conversations Sam / Sonic de
+ * cette mission se ferment sans un mot et ses alertes Sam copilote sont closes.
+ */
 export async function samMissionClosed(userId: string, missionId: string): Promise<void> {
   try {
     const sb = createAdminClient()
-    const since = new Date(Date.now() - IDLE_MINUTES * 60_000).toISOString()
-    const { data: conv } = await sb.from('sam_conversations').select('id, canal, agent')
-      .eq('user_id', userId).eq('mission_id', missionId).is('ended_at', null).gte('last_at', since)
-      .order('last_at', { ascending: false }).limit(1).maybeSingle()
-    if (!conv) return
-    // Conversation ouverte par Sam copilote où le chauffeur n'a rien écrit (alerte réglée sur la fiche) : rien à lui
-    // demander, elle se ferme sans question (Fred, 10216754, 29/10/2026 : « Tout est réglé ? » reçu sans avoir parlé à Sam).
-    const { count: ecrits } = await sb.from('sam_messages').select('id', { count: 'exact', head: true }).eq('conversation_id', conv.id).eq('role', 'chauffeur')
-    if (!ecrits) { await endConversation(conv.id, 'mission_cloturee'); return }
-    const url = process.env.MOBIOUEB_ADRESSE, secret = process.env.MOBIOUEB_EXTERNE_SECRET
-    if (!url || !secret) return
-    const [{ data: u }, { data: m }] = await Promise.all([
-      sb.from('users').select('id, name, surnom, language').eq('id', userId).maybeSingle(),
-      sb.from('incoming_missions').select('id, mission_number, vehicle_plate').eq('id', missionId).maybeSingle(),
-    ])
-    const canal = conv.canal === 'telegram' ? 'telegram' : 'app'
-    const r = await fetch(`${url.replace(/\/$/, '')}/api/externe/sam/mission-cloturee`, {
-      method: 'POST', cache: 'no-store', signal: AbortSignal.timeout(20_000),
-      headers: { Authorization: `Bearer ${secret}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        chauffeur: { id: userId, prenom: String(u?.name || '').trim().split(/\s+/)[0] || 'chauffeur', langue: u?.language === 'sq' ? 'sq' : 'fr' },
-        canal,
-        mission: { id: missionId, numero: m?.mission_number != null ? String(m.mission_number) : undefined, plaque: m?.vehicle_plate || undefined },
-      }),
-    })
-    if (!r.ok) { console.warn('[sam/cloture] bureau', r.status); return }
-    const j = await r.json()
-    if (!j?.texte) return
-    const boutons = (Array.isArray(j.boutons) ? j.boutons : [])
-      .filter((b: any) => b && (b.valeur === 'cloturer_conversation' || b.valeur === 'continuer_conversation') && b.libelle)
-    const q: SamQuestion = {
-      conversation_id: conv.id, mission_id: missionId, agent: String(j.agent || conv.agent || 'Sam'),
-      texte: String(j.texte), texte_fr: j.texte_fr || null, boutons, apres_oui: j.apres_oui?.texte ? { texte: String(j.apres_oui.texte), texte_fr: j.apres_oui.texte_fr || null } : null,
-      at: new Date().toISOString(),
-    }
-    await addMsg(conv.id, { role: 'agent', agent: q.agent, canal, texte: q.texte, texte_fr: q.texte_fr })
-    await sb.from('sam_state').upsert({ user_id: userId, question: q, updated_at: new Date().toISOString() }, { onConflict: 'user_id' })
-    if (canal === 'telegram') {
-      const { data: link } = await sb.from('telegram_links').select('chat_id').eq('user_id', userId).maybeSingle()
-      if (link?.chat_id) await tgSend(Number(link.chat_id), q.texte, q.boutons.map(b => [{ text: b.libelle, data: b.valeur === 'cloturer_conversation' ? 'q:oui' : 'q:non' }]), q.agent)
-    }
+    const now = new Date().toISOString()
+    const { data: convs } = await sb.from('sam_conversations').select('id').eq('mission_id', missionId).is('ended_at', null)
+    for (const c of convs || []) await endConversation(c.id, 'mission_cloturee')
+    await sb.from('sam_alertes').update({ resolved_at: now }).eq('mission_id', missionId).is('resolved_at', null)
+    // Question de fin restée en attente (ancien fonctionnement) sur cette mission : retirée.
+    const { data: st } = await sb.from('sam_state').select('question').eq('user_id', userId).maybeSingle()
+    if ((st as any)?.question?.mission_id === missionId) await sb.from('sam_state').update({ question: null }).eq('user_id', userId)
   } catch (e: any) {
     console.error('[sam/cloture]', e?.message || e)
   }

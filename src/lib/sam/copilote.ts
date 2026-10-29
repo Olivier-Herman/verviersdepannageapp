@@ -147,6 +147,12 @@ export async function tickCopilote(opts: { dryRun?: boolean } = {}): Promise<{ m
     .in('status', ['accepted', 'in_progress', 'delivering']).not('assigned_to', 'is', null).limit(80)
   if (error) throw new Error(`Missions illisibles : ${error.message}`)
   const { data: ouvertes } = await sb.from('sam_alertes').select('id, mission_id, kind, user_id, created_at, answered_at, resolved_at, dispatch_notified_at').is('resolved_at', null)
+  // Mission sortie des statuts actifs (terminée, annulée…) : ses alertes sont closes — mission terminée = problème
+  // réglé (Olivier 29/10/2026), sinon l'alerte se rouvrait encore 2 h dans la fenêtre Aide.
+  if (!opts.dryRun) {
+    const actives = new Set((ms || []).map(m => m.id))
+    for (const a of (ouvertes || []).filter(a => !actives.has(a.mission_id))) { await sb.from('sam_alertes').update({ resolved_at: new Date().toISOString() }).eq('id', a.id); stats.resolues++ }
+  }
   const users = new Map<string, any>()
   for (const m of ms || []) {
     stats.missions++

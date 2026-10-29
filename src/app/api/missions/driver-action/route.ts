@@ -1157,8 +1157,8 @@ export async function POST(req: Request) {
     } catch (e: any) { console.warn('[driver-action] rel_refused suivi', e?.message) }
   }
 
-  // Conversation Sam / Sonic encore ouverte sur cette mission : l'agent demande au
-  // chauffeur s'il peut la clôturer (Olivier 03/10/2026). En arrière-plan.
+  // Mission terminée = problème réglé (Olivier 29/10/2026) : conversations Sam / Sonic et alertes de la
+  // mission closes sans rien demander au chauffeur. En arrière-plan.
   if (['to_invoice', 'completed'].includes((updated as any)?.status)) {
     try {
       const { samMissionClosed } = await import('@/lib/sam/cloture')
