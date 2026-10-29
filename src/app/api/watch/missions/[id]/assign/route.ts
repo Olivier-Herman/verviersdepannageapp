@@ -73,7 +73,9 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     .from('incoming_missions')
     .update({ status: 'assigned', assigned_to: driverId, assigned_at: now, accept_reminder_count: 0, accept_reminder_at: null, accept_call_at: null,
       // Camion du chauffeur, comme l'attribution depuis le dispatch (Olivier 26/10/2026 : jamais de mission sans camion)
-      truck_id: (driver as any).current_truck_id || null })
+      truck_id: (driver as any).current_truck_id || null,
+      // Mission en pause attribuée : la pause est levée (29/10/2026).
+      paused_at: null, pause_until: null, pause_reason: null, pause_reminded_at: null, pause_relance_at: null, pause_released_at: null, pause_released_by: null, pause_prev_status: null })
     .eq('id', missionId)
 
   // Cancel auto-dispatch en cours (manuel prime)

@@ -28,7 +28,7 @@ export async function GET(req: Request) {
   const since = new Date(Date.now() - WINDOW_MIN * 60_000).toISOString()
   const { data } = await sb.from('incoming_missions')
     .select('id, mission_number, source, source_format, mission_type, status, vehicle_plate, vehicle_brand, vehicle_model, incident_city, incident_address, external_id, received_at, needs_siabis_decision, raw_content')
-    .in('status', ['new', 'dispatching']).is('assigned_to', null).eq('dossier_leg', false)
+    .in('status', ['new', 'dispatching']).is('assigned_to', null).is('pause_released_at', null).eq('dossier_leg', false)
     .neq('source', 'garage').neq('source', 'unknown').gte('received_at', since)
     .order('received_at', { ascending: false }).limit(200)
   // Fiches DÉJÀ attribuées pour la même plaque (24 h) : « tu l'as déjà » / « prise par X »

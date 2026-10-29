@@ -2288,7 +2288,7 @@ export default function MissionDetailClient({
         <div className="mb-3 rounded-xl border-2 border-orange-500 bg-orange-50 text-orange-900 px-4 py-3 flex items-center gap-3">
           <span className="text-2xl leading-none">⏸</span>
           <div>
-            <p className="text-sm font-black uppercase tracking-wide">En pause — le chauffeur reviendra plus tard</p>
+            <p className="text-sm font-black uppercase tracking-wide">{(M as any).pause_released_at ? 'En pause — remise au dispatch, à réattribuer (tout chauffeur peut la reprendre)' : 'En pause — le chauffeur reviendra plus tard'}</p>
             <p className="text-sm font-semibold">Reprise prévue {(M as any).pause_until ? new Date((M as any).pause_until).toLocaleString('fr-BE', { timeZone: 'Europe/Brussels', weekday: 'long', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '—'}{(M as any).pause_reason ? ` · ${(M as any).pause_reason}` : ''}</p>
           </div>
         </div>

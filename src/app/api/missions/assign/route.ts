@@ -3,6 +3,7 @@
 // Assigne ou désassigne un chauffeur sur une mission.
 // À l'assignation : update auto la task FSM Odoo (stage → Assigné + champs chauffeur).
 
+import { PAUSE_LEVEE } from '@/lib/missions/pause-transfer'
 import { NextResponse }              from 'next/server'
 import { getServerSession }          from 'next-auth'
 import { authOptions }               from '@/lib/auth'
@@ -69,6 +70,8 @@ export async function POST(req: Request) {
         truck_id:    (driver as any)?.current_truck_id || null,
         // Nouvelle attribution = rappels et appel d'acceptation repartent de zéro (cron accept-reminders).
         accept_reminder_count: 0, accept_reminder_at: null, accept_call_at: null,
+        // Mission en pause (remise au dispatch ou non) attribuée par le dispatch : la pause est levée (29/10/2026).
+        ...PAUSE_LEVEE,
       })
       .eq('id', mission_id)
 

@@ -42,7 +42,7 @@ export async function runTouringCancelDetect(sb: any): Promise<CancelDetectSumma
   const out: CancelDetectSummary = { checked: 0, missingNew: 0, recovered: 0, confirmed: 0, deplacement: 0, sansFrais: 0, actions: [] }
 
   const { data: fiches } = await sb.from('incoming_missions')
-    .select('id, mission_number, dossier_number, vehicle_plate, status, mission_type, loaded_at, completed_at, touring_onroad_at, touring_missing_since, parent_mission_id')
+    .select('id, mission_number, dossier_number, vehicle_plate, status, mission_type, loaded_at, completed_at, touring_onroad_at, touring_missing_since, parent_mission_id, pause_released_at')
     .eq('source_format', 'comex')
     .in('status', ACTIVE_STATUSES)
     .eq('dossier_leg', false)
@@ -94,7 +94,8 @@ export async function runTouringCancelDetect(sb: any): Promise<CancelDetectSumma
     // (idem 1SLA516 le 28/09, sur place depuis 22 min). Absente de la liste ne veut
     // donc PAS dire annulée pour une mission en cours : on prévient le dispatch une
     // fois, il vérifie chez Touring et décide. Plus aucune conversion automatique.
-    if (!['new', 'dispatching'].includes(String(f.status))) {
+    // Mission remise au dispatch en pause (29/10/2026) : statut 'dispatching' mais déjà commencée → traitée comme en cours.
+    if (!['new', 'dispatching'].includes(String(f.status)) || f.pause_released_at) {
       if (!f.touring_missing_since) {
         await sb.from('incoming_missions').update({ touring_missing_since: new Date().toISOString() }).eq('id', f.id)
         await sb.from('mission_logs').insert({ mission_id: f.id, action: 'touring_missing_warning',

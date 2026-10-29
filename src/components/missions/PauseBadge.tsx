@@ -1,7 +1,7 @@
 // Mission en pause / transfert en attente (Olivier 18/10/2026) : le même bandeau dans toutes les
 // vues bureau (dispatch carte, liste, tableau, fiche, dossier, missions par chauffeur).
 // Pause : orange « EN PAUSE · Reprise prévue … », rouge quand l'heure est dépassée.
-export type PauseFields = { paused_at?: string | null; pause_until?: string | null; pause_reason?: string | null; transfer_to?: string | null }
+export type PauseFields = { paused_at?: string | null; pause_until?: string | null; pause_reason?: string | null; transfer_to?: string | null; pause_released_at?: string | null; released_by?: { name?: string | null } | null }
 
 export const pauseFrame = (m: PauseFields | null | undefined) => (m?.paused_at ? 'border-2 border-orange-500 ring-2 ring-orange-400/60' : '')
 
@@ -16,7 +16,10 @@ export default function PauseBadge({ m, className = '' }: { m: PauseFields | nul
     return (
       <div className={`flex items-center gap-2 rounded-lg px-3 py-1.5 text-xs font-bold ${late ? 'bg-red-100 text-red-800' : 'bg-orange-100 text-orange-900'} ${className}`}>
         <span className="text-base leading-none">⏸</span>
-        <span>EN PAUSE · Reprise prévue {pauseWhen(m.pause_until)}{late ? ' — dépassée' : ''}{m.pause_reason ? ` · ${m.pause_reason}` : ''}</span>
+        <span>{m.pause_released_at
+          // Remise au dispatch (29/10/2026) : sans chauffeur, à réattribuer ; tout chauffeur peut la reprendre.
+          ? <>EN PAUSE, REMISE AU DISPATCH par {m.released_by?.name || 'un chauffeur'} le {pauseWhen(m.pause_released_at)} · à reprendre dès {pauseWhen(m.pause_until)}{late ? ' (dépassé)' : ''}{m.pause_reason ? ` · ${m.pause_reason}` : ''} · déjà commencée, à réattribuer</>
+          : <>EN PAUSE · Reprise prévue {pauseWhen(m.pause_until)}{late ? ' — dépassée' : ''}{m.pause_reason ? ` · ${m.pause_reason}` : ''}</>}</span>
       </div>
     )
   }

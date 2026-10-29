@@ -91,7 +91,7 @@ export async function runTouringImport(opts: { mode: TouringImportMode }): Promi
 
       // Dédup : fiche déjà présente (import COMEX précédent OU mail Touring).
       const { data: existing } = await sb.from('incoming_missions')
-        .select('id, status, source_format, source')
+        .select('id, status, source_format, source, pause_released_at')
         .eq('external_id', externalId)
         .maybeSingle()
       if (existing) {
@@ -123,7 +123,8 @@ export async function runTouringImport(opts: { mode: TouringImportMode }): Promi
         }
         // 2) COMEX MAÎTRE (contenu) si encore à valider — best effort, n'empêche pas
         //    le lien ci-dessus. Écrase les champs de contenu par les données COMEX.
-        const earlyStatus = ['new', 'dispatching'].includes(String((existing as any).status))
+        // Pas une mission remise au dispatch en pause : elle est déjà commencée (29/10/2026).
+        const earlyStatus = ['new', 'dispatching'].includes(String((existing as any).status)) && !(existing as any).pause_released_at
         if (earlyStatus) {
           const mapped = mapComexToMission({ detail, status: 'new', billedToId, billedToName })
           const contentUpd: Record<string, any> = {}

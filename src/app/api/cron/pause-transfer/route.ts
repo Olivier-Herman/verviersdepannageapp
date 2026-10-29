@@ -44,15 +44,22 @@ export async function GET(req: Request) {
     const log = (missionId: string, action: string, notes: string) => sb.from('mission_logs').insert({ mission_id: missionId, action, notes }).then(() => {}, () => {})
 
     // 1a. Rappel à l'heure prévue.
-    const { data: due } = await sb.from('incoming_missions').select('id, mission_number, vehicle_plate, incident_address, assigned_to, pause_until').not('paused_at', 'is', null).is('pause_reminded_at', null).lte('pause_until', iso).limit(30)
+    const { data: due } = await sb.from('incoming_missions').select('id, mission_number, vehicle_plate, incident_address, assigned_to, pause_until, pause_released_at, pause_released_by').not('paused_at', 'is', null).is('pause_reminded_at', null).lte('pause_until', iso).limit(30)
     for (const m of due || []) {
       const { data: pris } = await sb.from('incoming_missions').update({ pause_reminded_at: iso }).eq('id', m.id).is('pause_reminded_at', null).select('id').maybeSingle()
-      if (!pris || !m.assigned_to) continue
+      if (!pris) continue
+      // Remise au dispatch (29/10/2026) : personne ne l'a reprise à l'heure prévue → alerte au dispatch, une fois.
+      if (m.pause_released_at && !m.assigned_to) {
+        await sendNotificationToRoles(['dispatcher', 'admin', 'superadmin'], 'mission_pause_depassee', { title: `⏸ ${m.vehicle_plate || 'Mission'} : à reprendre maintenant`, body: `Remise au dispatch en pause par ${nm[m.pause_released_by as string] || 'un chauffeur'} ; l'heure de reprise est arrivée et personne ne l'a reprise.`, mission_id: m.id, action_url: `/dispatch/${m.id}` }).catch(() => {})
+        await log(m.id, 'pause_reminder', `Heure de reprise atteinte, mission toujours en pause au dispatch : alerte au dispatch.`)
+        continue
+      }
+      if (!m.assigned_to) continue
       await sendNotification(m.assigned_to, 'mission_pause_rappel', { title: `⏰ C'est l'heure de reprendre ${m.vehicle_plate || ''}`, body: `${m.incident_address || ''} — ouvre la mission et appuie sur « Reprendre ».`, mission_id: m.id, action_url: `/mission/${m.id}` }).catch(() => {})
       await log(m.id, 'pause_reminder', `Rappel envoyé à ${nm[m.assigned_to] || 'le chauffeur'} : heure de reprise atteinte.`)
     }
     // 1b. 15 min après, toujours en pause : relance + dispatch.
-    const { data: late } = await sb.from('incoming_missions').select('id, mission_number, vehicle_plate, incident_address, assigned_to, pause_until').not('paused_at', 'is', null).not('pause_reminded_at', 'is', null).is('pause_relance_at', null).lte('pause_until', new Date(now - RELANCE_MIN * 60_000).toISOString()).limit(30)
+    const { data: late } = await sb.from('incoming_missions').select('id, mission_number, vehicle_plate, incident_address, assigned_to, pause_until').not('paused_at', 'is', null).is('pause_released_at', null).not('pause_reminded_at', 'is', null).is('pause_relance_at', null).lte('pause_until', new Date(now - RELANCE_MIN * 60_000).toISOString()).limit(30)
     for (const m of late || []) {
       const { data: pris } = await sb.from('incoming_missions').update({ pause_relance_at: iso }).eq('id', m.id).is('pause_relance_at', null).select('id').maybeSingle()
       if (!pris) continue

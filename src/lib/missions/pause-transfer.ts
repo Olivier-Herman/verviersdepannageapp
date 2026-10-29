@@ -61,6 +61,67 @@ export async function resumeMission(sb: Sb, missionId: string, actor: { id: stri
   return { resumed: true }
 }
 
+// ── Pause remise au dispatch (Olivier 29/10/2026, maquette validée) ────────────
+// La mission quitte le chauffeur (statut 'dispatching', plus de chauffeur) mais reste marquée en pause : ligne orange
+// au dispatch, liste « Missions en pause » pour tous les chauffeurs. Rien n'est envoyé à l'assistance.
+export async function releaseToDispatch(sb: Sb, missionId: string, actor: { id: string; name: string }, untilIso: string, reason?: string | null) {
+  const m = await mission(sb, missionId)
+  if (m.assigned_to !== actor.id) throw new Error('Cette mission n’est pas à toi.')
+  if (!ACTIVE.includes(String(m.status))) throw new Error('On ne peut remettre au dispatch qu’une mission acceptée et en cours.')
+  if (m.loaded_at) throw new Error('Le véhicule est chargé : pas de pause possible.')
+  if (m.transfer_to) throw new Error('Un transfert est en attente : annule-le d’abord.')
+  const until = new Date(untilIso)
+  if (isNaN(until.getTime()) || until.getTime() < Date.now() - 60_000) throw new Error('Choisis une heure de reprise dans le futur.')
+  const now = new Date().toISOString()
+  await syncLA(missionId, 'end')
+  const { error } = await sb.from('incoming_missions').update({
+    status: 'dispatching', assigned_to: null, assigned_at: null, truck_id: null, live_activity_push_token: null,
+    paused_at: m.paused_at || now, pause_until: until.toISOString(), pause_reason: reason || null, pause_reminded_at: null, pause_relance_at: null,
+    pause_released_at: now, pause_released_by: actor.id, pause_prev_status: m.status, updated_at: now,
+  }).eq('id', missionId).eq('assigned_to', actor.id)
+  if (error) throw new Error(error.message)
+  await log(sb, missionId, actor.id, 'mission_pause_dispatch', `${actor.name} · remise au dispatch en pause — à reprendre dès ${fmt(until.toISOString())}${reason ? ` (${reason})` : ''}`, { until: until.toISOString(), reason: reason || null, prev_status: m.status })
+  const { sendNotificationToRoles } = await import('@/lib/notifications/send')
+  await sendNotificationToRoles(['dispatcher', 'admin', 'superadmin'], 'mission_pause_dispatch', {
+    title: `⏸ ${m.vehicle_plate || 'Mission'} remise au dispatch par ${actor.name}`,
+    body: `${reason ? reason + ' · ' : ''}${m.incident_city || ''} — à reprendre dès ${fmt(until.toISOString())}. Tout chauffeur peut la reprendre.`,
+    mission_id: missionId, action_url: `/dispatch/${missionId}`,
+  }).catch(() => {})
+  return { until: until.toISOString() }
+}
+
+/** Un chauffeur reprend une mission remise au dispatch : elle repart chez lui depuis « acceptée » (en route depuis
+ *  sa position) ; photos, notes et pointages du premier chauffeur restent dans l'historique. */
+export async function takePausedMission(sb: Sb, missionId: string, actor: { id: string; name: string }) {
+  const { data: m } = await sb.from('incoming_missions').select('id, vehicle_plate, incident_city, status, assigned_to, paused_at, pause_total_seconds, pause_released_at, pause_released_by').eq('id', missionId).maybeSingle()
+  if (!m) throw new Error('Mission introuvable.')
+  if (!(m as any).pause_released_at || (m as any).assigned_to) throw new Error('Cette mission a déjà été reprise.')
+  const now = new Date()
+  const secs = (m as any).paused_at ? Math.max(0, Math.round((now.getTime() - new Date((m as any).paused_at).getTime()) / 1000)) : 0
+  const { data: b } = await sb.from('users').select('current_truck_id').eq('id', actor.id).maybeSingle()
+  const { data: pris, error } = await sb.from('incoming_missions').update({
+    assigned_to: actor.id, assigned_at: now.toISOString(), accepted_at: now.toISOString(), status: 'accepted',
+    on_way_at: null, on_site_at: null, truck_id: (b as any)?.current_truck_id || null,
+    paused_at: null, pause_until: null, pause_reason: null, pause_reminded_at: null, pause_relance_at: null,
+    pause_total_seconds: ((m as any).pause_total_seconds || 0) + secs,
+    pause_released_at: null, pause_released_by: null, pause_prev_status: null,
+    accept_reminder_count: 0, accept_reminder_at: null, accept_call_at: null, updated_at: now.toISOString(),
+  }).eq('id', missionId).is('assigned_to', null).not('pause_released_at', 'is', null).select('id').maybeSingle()
+  if (error) throw new Error(error.message)
+  if (!pris) throw new Error('Cette mission a déjà été reprise.')
+  const parQui = (await userName(sb, (m as any).pause_released_by)) || 'un chauffeur'
+  await log(sb, missionId, actor.id, 'mission_pause_reprise', `${actor.name} · reprise de la mission remise au dispatch par ${parQui} — pause de ${Math.round(secs / 60)} min`, { pause_seconds: secs, released_by: (m as any).pause_released_by })
+  const { sendNotificationToRoles } = await import('@/lib/notifications/send')
+  await sendNotificationToRoles(['dispatcher', 'admin', 'superadmin'], 'mission_pause_reprise', {
+    title: `▶️ ${(m as any).vehicle_plate || 'Mission'} reprise par ${actor.name}`,
+    body: `Elle était en pause au dispatch (remise par ${parQui}).`, mission_id: missionId, action_url: `/dispatch/${missionId}`,
+  }).catch(() => {})
+  return { taken: true }
+}
+
+/** Le dispatch attribue lui-même une mission en pause : la pause est levée (la mission repart de zéro chez le nouveau chauffeur). */
+export const PAUSE_LEVEE = { paused_at: null, pause_until: null, pause_reason: null, pause_reminded_at: null, pause_relance_at: null, pause_released_at: null, pause_released_by: null, pause_prev_status: null }
+
 // ── Transfert ─────────────────────────────────────────────────────────────────
 export async function requestTransfer(sb: Sb, missionId: string, actor: { id: string; name: string }, toUserId: string, reason: string, called: boolean) {
   if (!called) throw new Error('Appelle d’abord le chauffeur et confirme qu’il est d’accord.')

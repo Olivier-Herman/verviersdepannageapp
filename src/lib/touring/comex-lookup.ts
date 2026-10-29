@@ -145,14 +145,14 @@ export async function importComexByRefs(opts: {
 
   // Fiche déjà présente avec ce ref (import COMEX précédent ou 1er mail) ?
   const { data: existing } = await supabase.from('incoming_missions')
-    .select('id, status, source_format').eq('external_id', externalId).maybeSingle()
+    .select('id, status, source_format, pause_released_at').eq('external_id', externalId).maybeSingle()
 
   if (existing && existing.id !== placeholderId) {
     // ADOPTION : lien COMEX essentiel (persiste toujours) + contenu si à valider.
     await supabase.from('incoming_missions')
       .update({ source_format: 'comex', raw_content: comexRaw, updated_at: new Date().toISOString() })
       .eq('id', existing.id)
-    if (['new', 'dispatching'].includes(String(existing.status))) {
+    if (['new', 'dispatching'].includes(String(existing.status)) && !(existing as any).pause_released_at) {   // pas une mission en pause (29/10/2026)
       const upd: Record<string, any> = {}
       for (const f of COMEX_OVERWRITE_FIELDS) {
         const v = (payload as any)[f]

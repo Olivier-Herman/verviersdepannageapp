@@ -56,8 +56,9 @@ export async function GET(req: Request) {
       kaze_cancelled_after_accept,
       is_rollable,
       needs_siabis_decision,
-      paused_at, pause_until, pause_reason, transfer_to,
-      assigned_user:users!assigned_to(id, name, avatar_url)
+      paused_at, pause_until, pause_reason, transfer_to, pause_released_at,
+      assigned_user:users!assigned_to(id, name, avatar_url),
+      released_by:users!pause_released_by(name)
     `)
     .order(sortField, { ascending: false, nullsFirst: false })
     // .range() au lieu de .limit() pour eviter un bug Supabase JS observe

@@ -32,6 +32,7 @@ import { depotFerme, type HorairesDepot } from '@/lib/missions/horaires-depot'
 import { transportGabaritLabel } from '@/lib/tarifs/transport-gabarits'
 import { useT } from '@/lib/i18n/I18nProvider'
 import GarageAgreePicker from '@/components/touring/GarageAgreePicker'
+import ParamToast from '@/components/missions/ParamToast'
 import MissionPauseTransfer from '@/components/missions/MissionPauseTransfer'
 import SigPad from '@/components/mission/SigPad'
 import VrContratCard from '@/components/mission/VrContratCard'
@@ -5135,6 +5136,9 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
             n'était modifiable qu'enfouie dans l'itinéraire (ressemblait à un stop)
             → le chauffeur ajoutait des stops. Carte dédiée + visible ; « Définir »
             si aucune destination encore renseignée. */}
+        {/* Mission en pause reprise depuis « Missions en pause » (29/10/2026). */}
+        <ParamToast param="reprise" k="pause_transfer.taken" />
+
         {/* Destination Touring « réseau agréé » (centrale de pneus…) : garage à choisir dans la liste Touring,
             pas la société du même nom sur la carte (Olivier 29/10/2026, maquette validée). */}
         {(onSite || loaded) && garageAgree === 'a_choisir' && !isReadOnly && (

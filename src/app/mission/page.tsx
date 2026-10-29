@@ -6,6 +6,8 @@ import { authOptions }       from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase'
 import Link       from 'next/link'
 import AppShell   from '@/components/layout/AppShell'
+import ParamToast from '@/components/missions/ParamToast'
+import { PauseTabs } from './en-pause/EnPauseClient'
 import AmbientBackground from '@/components/AmbientBackground'
 import NewInterventionButton from '@/components/mission/NewInterventionButton'
 import ParcRelivraisonButton from '@/components/mission/ParcRelivraisonButton'
@@ -66,6 +68,8 @@ export default async function MissionListPage() {
     .limit(20)
 
   const active    = missions || []
+  const { count: pausedCount } = await supabase.from('incoming_missions').select('id', { count: 'exact', head: true })
+    .not('pause_released_at', 'is', null).is('assigned_to', null).eq('status', 'dispatching')
   // Cartes iPhone à fermer : missions de ce chauffeur terminées ou annulées ces 2 derniers jours.
   const { data: finies } = await supabase.from('incoming_missions').select('id')
     .eq('assigned_to', user.id).in('status', ['completed', 'to_invoice', 'invoiced', 'parked', 'cancelled', 'ignored'])
@@ -112,6 +116,10 @@ export default async function MissionListPage() {
         <div className="px-4 lg:px-8 py-6 max-w-2xl mx-auto space-y-6 pb-24 ambient-fade-up">
 
           {/* Easter egg discret : date du jour → 3 taps = compteur du jour + record perso */}
+          {/* Pause remise au dispatch (Olivier 29/10/2026) : onglets « Mes missions / En pause (n) » + confirmation. */}
+          <ParamToast param="remise" k="pause_transfer.released_toast" />
+          <PauseTabs active="mine" count={pausedCount || 0} />
+
           <MissionsDuJourEasterEgg count={todayCount} record={record} newRecord={newRecord} firstName={(user.name || '').split(' ')[0]} />
           {voiceOn && (
             <Link href="/mission/vocal" className="block w-full rounded-2xl bg-brand text-white text-center font-bold py-4 shadow-md active:scale-[0.98]">🎙️ Dicter une fiche ou un pointage</Link>

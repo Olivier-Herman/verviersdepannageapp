@@ -360,6 +360,23 @@ export const NOTIFICATION_TYPES: readonly NotificationType[] = [
     defaultEnabled:  true,
   },
   {
+    // Pause remise au dispatch (Olivier 29/10/2026).
+    key:             'mission_pause_dispatch',
+    label:           'Mission remise au dispatch en pause',
+    description:     'Dispatch : un chauffeur a rendu une mission en pause ; elle est à réattribuer (tout chauffeur peut aussi la reprendre).',
+    category:        'dispatcher',
+    applicableRoles: ['dispatcher', 'admin', 'superadmin'],
+    defaultEnabled:  true,
+  },
+  {
+    key:             'mission_pause_reprise',
+    label:           'Mission en pause reprise par un chauffeur',
+    description:     'Dispatch : un chauffeur a repris une mission qui était en pause au dispatch.',
+    category:        'dispatcher',
+    applicableRoles: ['dispatcher', 'admin', 'superadmin'],
+    defaultEnabled:  true,
+  },
+  {
     key:             'mission_transfert',
     label:           'Mission transférée par un collègue',
     description:     'Un autre chauffeur te transfère sa mission : à accepter ou refuser.',

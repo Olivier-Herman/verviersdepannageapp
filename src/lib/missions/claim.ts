@@ -31,7 +31,7 @@ export async function claimMission(missionId: string, userId: string, opts: { vi
   const sb = createAdminClient()
 
   const { data: m } = await sb.from('incoming_missions')
-    .select('id, status, assigned_to, received_at, source, source_format, kaze_proposal_id, dossier_number, external_id, axa_mission_order_id, touring_missing_since')
+    .select('id, status, assigned_to, received_at, source, source_format, kaze_proposal_id, dossier_number, external_id, axa_mission_order_id, touring_missing_since, pause_released_at')
     .eq('id', missionId)
     .maybeSingle()
   if (!m) return { ok: false, status: 404, error: 'Mission introuvable' }
@@ -39,6 +39,8 @@ export async function claimMission(missionId: string, userId: string, opts: { vi
   if (m.assigned_to)                          return { ok: false, status: 409, error: 'Mission deja prise par un autre chauffeur' }
   if (!CLAIMABLE_STATUSES.includes(m.status)) return { ok: false, status: 409, error: 'Mission deja traitee' }
   if ((m as any).touring_missing_since) return { ok: false, status: 410, error: 'Mission retirée par l’assistance' }
+  // Remise au dispatch en pause (29/10/2026) : déjà acceptée chez l'assistance, elle se reprend depuis « Missions en pause ».
+  if ((m as any).pause_released_at) return { ok: false, status: 409, error: 'Mission en pause : reprends-la depuis « Missions en pause ».' }
 
   if (opts.freshMinutes != null) {
     const ageMs = Date.now() - new Date(m.received_at).getTime()
