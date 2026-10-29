@@ -85,8 +85,8 @@ const ACTIONS_POSSIBLES = [
   { id: 'ouvrir_encaissement', libelle: 'Ouvrir l’écran d’encaissement d’une mission du chauffeur (le chauffeur encaisse lui-même)',
     parametres: { mission_id: 'id de la mission' } },
   // Olivier 28/10/2026 : « Sam demande juste confirmation et le fait lui-même », pas de ping-pong « touche ceci puis cela ».
-  // Libellé ≤ 200 caractères (limite du bureau : au-delà, TOUTE demande à Sam est refusée → « Sam n'est pas disponible »,
-  // Franck 29/10/2026) ; la consigne longue passe dans « comment ».
+  // Libellé ≤ 2000 caractères (limite du bureau : au-delà, TOUTE demande à Sam est refusée → « Sam n'est pas disponible »,
+  // Franck 29/10/2026 ; coupé à l'envoi par sécurité) ; la consigne longue passe dans « comment ».
   { id: 'remettre_en_parc', libelle: 'Véhicule chargé que le garage refuse ou qui est fermé : le remettre au parc pour une relivraison plus tard (comme « Garage refusé / fermé » dans l’app)',
     parametres: { comment: 'Pose UNE seule question avec boutons pour ce qui manque (où est la clé, le véhicule roule-t-il — inutile pour une relivraison partie du parc, type REL), puis propose l’action à confirmer ; ne guide jamais le chauffeur écran par écran.', mission_id: 'id de la mission', motif: '"garage_refuse", "garage_ferme" ou "autre"', precision: 'si motif "autre" : la raison en quelques mots', date_reouverture: 'si garage fermé et connue : AAAA-MM-JJ', cle: '"in_vehicle" (dans le véhicule), "digibox_depannage", "digibox_rac", "bureau_rac" ou "no_key"', roulant: '"oui" ou "non"', depot: '"PEP" (Pepinster, par défaut) ou "VERVIERS"' } },
 ]
@@ -207,10 +207,10 @@ export async function samTurn(opts: { userId: string; canal: SamCanal; texte: st
       chauffeur: { id: u.id, prenom: prenom(u), langue: u.language === 'sq' ? 'sq' : 'fr' },
       canal: opts.canal, texte: opts.texte, photo: i === 0 ? (opts.photo || undefined) : undefined,
       contexte: {
-        // Limites du bureau (écran ≤ 200, erreur ≤ 500 caractères) : au-delà, toute la demande est refusée et le chauffeur
-        // lit « Sam n'est pas disponible » (Franck 29/10/2026, écran de 230 caractères).
-        ecran: (opts.ecran || (opts.canal === 'telegram' ? 'Telegram' : null))?.slice(0, 200) ?? null, mission: missionUtile(mission), missions_en_cours: encours,
-        erreurs: erreursConnues(mission).map(e => e.slice(0, 500)).slice(0, 20), actions_possibles: ACTIONS_POSSIBLES.map(a => ({ ...a, libelle: a.libelle.slice(0, 200) })), resultat,
+        // Limites du bureau (2000 caractères depuis le 29/10/2026) : au-delà, toute la demande est refusée et le chauffeur
+        // lit « Sam n'est pas disponible » (Franck 29/10/2026).
+        ecran: (opts.ecran || (opts.canal === 'telegram' ? 'Telegram' : null))?.slice(0, 2000) ?? null, mission: missionUtile(mission), missions_en_cours: encours,
+        erreurs: erreursConnues(mission).map(e => e.slice(0, 2000)).slice(0, 20), actions_possibles: ACTIONS_POSSIBLES.map(a => ({ ...a, libelle: a.libelle.slice(0, 2000) })), resultat,
         // Ce que dit l'assistance (portail IMA, Kaze) : à utiliser pour répondre ; les champs vides de la fiche en ont été complétés.
         details_assistance: details ? { ...details as DetailsAssistance, fiche_completee: ficheCompletee } : null,
         besoins_possibles: ['chercher_plaque', 'details_assistance'],
