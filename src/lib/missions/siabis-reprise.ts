@@ -10,8 +10,10 @@
 //      au nom que la prise en charge demande (« Facture à établir à l'ordre de », ex. IMA ASSURANCES) ;
 //   4. le chauffeur est prévenu (notification, Telegram, fenêtre Aide) : il ne fait plus payer et clôture ;
 //      le dispatch aussi.
-// Garde-fous (sinon : rien n'est touché, le dispatch est alerté) : client déjà payé ; fiche d'assistance liée à
-// une plateforme à clôturer (Touring COMEX, VAB Comet, AXA, Kaze, Allianz) — la fusion ferait perdre la clôture.
+// Client déjà payé : il se fait rembourser par son assistance avec notre facture — la fiche reste non couverte,
+// celle de l'assistance est seulement absorbée (31/10/2026).
+// Garde-fou (sinon : rien n'est touché, le dispatch est alerté) : fiche d'assistance liée à une plateforme à
+// clôturer (Touring COMEX, VAB Comet, AXA, Kaze, Allianz) — la fusion ferait perdre la clôture.
 
 import type { createAdminClient } from '@/lib/supabase'
 
@@ -78,9 +80,28 @@ export async function repriseSiabisParAssistance(sb: Sb, opts: { dryRun?: boolea
         mission_id: snc.id, action_url: `/dispatch/${snc.id}`,
       }).catch(() => {})
     }
-    if (Number(snc.payment_amount || 0) > 0) { await alerter(`le client a déjà payé ${Number(snc.payment_amount).toFixed(2)} € (remboursement à voir)`); continue }
     const pf = plateforme(f)
     if (pf) { await alerter(`la fiche de l'assistance attend sa clôture chez ${pf}`); continue }
+    // Client déjà payé : il s'arrange avec son assistance en lui envoyant notre facture (Olivier 31/10/2026).
+    // On ne change rien au Siabis non couvert ; la fiche de l'assistance est seulement absorbée (pas de doublon
+    // à dispatcher), sans prévenir personne.
+    if (Number(snc.payment_amount || 0) > 0) {
+      out.traitees.push(`${ref} ← #${f.mission_number} (${f.source}) : client déjà payé, reste non couvert (fusion seule)`)
+      if (opts.dryRun) continue
+      const now = new Date().toISOString()
+      await sb.from('incoming_missions').update({
+        remarks_billing: [snc.remarks_billing, `Prise en charge ${f.source} ${f.dossier_number || f.external_id || ''} reçue après le paiement du client (${Number(snc.payment_amount).toFixed(2)} €) : le client se fait rembourser par son assistance avec notre facture.`].filter(Boolean).join('\n'),
+        remarks_general: [snc.remarks_general, `— Fusion de la fiche #${f.mission_number} (${f.source}) le ${now.slice(0, 10)} : client déjà payé, reste non couvert`].filter(Boolean).join('\n'),
+        updated_at: now,
+      }).eq('id', snc.id)
+      await sb.from('incoming_missions').update({ status: 'cancelled', merged_into_mission_id: snc.id, closing_notes: `Fusionnée dans #${snc.mission_number}`, updated_at: now }).eq('id', f.id).in('status', ['new', 'dispatching'])
+      await sb.from('mission_logs').update({ mission_id: snc.id }).eq('mission_id', f.id)
+      await sb.from('mission_logs').insert([
+        { mission_id: snc.id, action: 'merge_in', notes: `Fiche #${f.mission_number} (${f.source}) fusionnée dans celle-ci — client déjà payé : il se fait rembourser par son assistance`, metadata: { secondary_id: f.id, auto: 'siabis_reprise_paye' } },
+        { mission_id: f.id, action: 'merged', notes: `Fusionnée dans #${snc.mission_number}`, metadata: { master_id: snc.id } },
+      ])
+      continue
+    }
 
     const montantTvac = Number(snc.amount_to_collect || 0)
     const entite = (await entiteAFacturer(f.raw_content)) || (f.billed_to_id ? { id: f.billed_to_id, name: f.billed_to_name } : null)
