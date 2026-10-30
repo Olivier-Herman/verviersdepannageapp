@@ -320,6 +320,8 @@ export const sq: Dictionary = {
     pay_open:            '💳 Hap arkëtimin',
   },
   mission_detail: {
+    chooser_dpr: '🚫 Udhëtim për asgjë (DPR)',
+    chooser_dpr_desc: 'Automjeti mungon, klienti iku, tashmë i riparuar… Asgjë për të bërë në vend.',
     prive_no_amount: '⚠️ Dispeceria nuk ka vendosur asnjë shumë — prek këtu për të shkruar sumën që të komunikuan.',
     transport_title:           'Transport / riatdhesim',
     transport_gabarit:         'Madhësia e automjetit',

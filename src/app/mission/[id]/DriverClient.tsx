@@ -3048,6 +3048,22 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
                 {sncSaving === opt.key && <div className="text-blue-700 text-xs mt-1">⏳ Application en cours…</div>}
               </button>
             ))}
+            {/* Déplacement pour rien : absent de cet écran bloquant, le chauffeur restait coincé (Sebastien, 2JSG820,
+                30/10/2026 — pas la première fois). Même chemin que partout ailleurs : Siabis non couvert → demande
+                validée par le dispatch ; couvert → écran DPR de l'assistance. */}
+            {!M.loaded_at && (
+              <button type="button" disabled={sncSaving !== null || loading}
+                onClick={() => {
+                  chooserPickedRef.current = true
+                  setScreen('main')
+                  if (M.source === 'police_snc') { openSncDpr(); return }
+                  if (flux2) { setF2Outcome('dpr'); setF2Screen('close') } else { setCloseType('dpr'); setScreen('close') }
+                }}
+                className="w-full p-4 rounded-2xl border border-dashed bg-surface text-left active:scale-[0.99] transition disabled:opacity-50">
+                <div className="text-ink font-semibold">{t('mission_detail.chooser_dpr')}</div>
+                <div className="text-ink-muted text-xs mt-0.5">{t('mission_detail.chooser_dpr_desc')}</div>
+              </button>
+            )}
           </div>
           {err && <p className="text-red-600 text-sm bg-red-50 border border-red-200 rounded-xl px-3 py-2">⚠️ {err}<SignalerErreur message={err} where="action" missionId={M.id} /></p>}
         </div>

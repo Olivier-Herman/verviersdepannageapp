@@ -327,6 +327,8 @@ export const fr = {
     pay_open:            '💳 Ouvrir l\'encaissement',
   },
   mission_detail: {
+    chooser_dpr: '🚫 Déplacement pour rien (DPR)',
+    chooser_dpr_desc: 'Véhicule absent, client parti, déjà dépanné… Rien à faire sur place.',
     prive_no_amount: "⚠️ Aucun montant encodé par le dispatch — tape ici pour saisir celui qu'on t'a communiqué.",
     // Transport / rapatriement (21/09/2026) : bandeau infos mission
     transport_title:           'Transport / rapatriement',
