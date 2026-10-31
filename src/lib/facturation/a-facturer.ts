@@ -7,7 +7,7 @@ import { createAdminClient } from '@/lib/supabase'
 import { listSourceCatalog } from '@/lib/missions/source-catalog'
 import { checkAutoInvoiceEligible, getAutoInvoiceRules } from '@/lib/facturation/auto-invoice'
 
-export type CleGroupe = 'touring' | 'touring_comex' | 'forcees' | 'axa' | 'saisies' | 'siabis' | 'hexalite' | 'combinee' | 'regle' | 'normal' | 'autre'
+export type CleGroupe = 'touring' | 'touring_comex' | 'forcees' | 'saisies' | 'siabis' | 'hexalite' | 'combinee' | 'regle' | 'normal' | 'autre'
 export interface LigneAF { id: string; numero: number | null; plaque: string | null; client: string | null; terminee: string | null; jours: number; detail: string }
 export interface GroupeAF { cle: CleGroupe; titre: string; pourquoi: string; afaire: string; ton: 'rouge' | 'orange' | 'bleu' | 'vert'; lignes: LigneAF[] }
 
@@ -15,7 +15,6 @@ const DEF: Record<CleGroupe, Omit<GroupeAF, 'cle' | 'lignes'>> = {
   touring:       { ton: 'rouge',  titre: 'Touring — pas encore proposé dans COMEX', pourquoi: 'Touring propose lui-même le montant dans COMEX ; tant qu’il ne l’a pas fait, la fiche attend. Normal quelques jours, anormal au-delà de 3 semaines.', afaire: 'réclamer à Touring les dossiers de plus de 21 jours.' },
   touring_comex: { ton: 'orange', titre: 'Touring — dans COMEX, pas encore validé', pourquoi: 'Le dossier est dans COMEX mais n’a pas été accepté : le montant de Touring ne correspond pas au nôtre, ou il reste un statut à passer.', afaire: 'comparer les montants dans COMEX et accepter ou contester.' },
   forcees:       { ton: 'orange', titre: 'Forcées « à facturer » par le dispatch', pourquoi: 'Le statut a été forcé à la main : la facturation automatique ne les prend pas.', afaire: 'facturer à la main ou remettre la fiche dans le bon circuit.' },
-  axa:           { ton: 'bleu',   titre: 'AXA — client à choisir (01 ou 34)', pourquoi: 'Le client facturé n’est pas tranché entre AXA 01 et AXA 34 : la facture ne peut pas partir.', afaire: 'choisir 01 ou 34 sur la fiche.' },
   saisies:       { ton: 'orange', titre: 'Police — état de frais ou client manquant', pourquoi: 'Une fiche police se facture par état de frais ou au client qui récupère le véhicule.', afaire: 'faire l’état de frais, ou indiquer qui paie.' },
   siabis:        { ton: 'bleu',   titre: 'Siabis couvert — facturé à Touring via COMEX', pourquoi: 'Ces interventions Siabis sont payées par Touring : elles suivent le circuit COMEX.', afaire: 'suivre dans COMEX.' },
   hexalite:      { ton: 'vert',   titre: 'Allianz (Mondial) — auto-facture Hexalite attendue', pourquoi: 'Allianz crée elle-même la facture (SEL) ; elle est validée dès qu’elle arrive.', afaire: 'rien, sauf au-delà de 10 jours.' },
@@ -24,7 +23,7 @@ const DEF: Record<CleGroupe, Omit<GroupeAF, 'cle' | 'lignes'>> = {
   normal:        { ton: 'vert',   titre: 'Rien à faire — part au prochain passage', pourquoi: 'La facturation automatique la prendra à son prochain passage (dans tes heures, toutes les 15 minutes).', afaire: 'rien.' },
   autre:         { ton: 'orange', titre: 'À regarder', pourquoi: 'Aucune raison connue n’explique l’attente.', afaire: 'ouvrir la fiche.' },
 }
-const ORDRE: CleGroupe[] = ['touring', 'forcees', 'axa', 'saisies', 'touring_comex', 'regle', 'autre', 'siabis', 'hexalite', 'combinee', 'normal']
+const ORDRE: CleGroupe[] = ['touring', 'forcees', 'saisies', 'touring_comex', 'regle', 'autre', 'siabis', 'hexalite', 'combinee', 'normal']
 const TYPE: Record<string, string> = { remorquage: 'Remorquage', depannage: 'Dépannage', 'REM+REL': 'Remorquage + relivraison', relivraison: 'Relivraison', REL: 'Relivraison', trajet_vide: 'Trajet vide', transport: 'Transport' }
 
 export async function blocagesAFacturer(): Promise<{ groupes: GroupeAF[]; total: number; plus21: number }> {
@@ -57,7 +56,6 @@ export async function blocagesAFacturer(): Promise<{ groupes: GroupeAF[]; total:
     const c = comex.get(m.id)
     let cle: CleGroupe, detail = TYPE[m.mission_type] || m.mission_type || ''
     if (forcees.has(m.id)) { cle = 'forcees'; detail += ' — statut forcé' }
-    else if (/01 ou 34/i.test(String(m.billed_to_name || ''))) cle = 'axa'
     else if (src.startsWith('police_')) cle = 'saisies'
     else if (src === 'sia_couvert') cle = 'siabis'
     else if (/touring/.test(src)) { cle = c && c.in_comex && !c.accepted_at ? 'touring_comex' : 'touring'; if (c?.verdict && cle === 'touring_comex') detail += ` — verdict ${c.verdict}` }
