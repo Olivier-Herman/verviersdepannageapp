@@ -887,6 +887,7 @@ export default function MissionDetailClient({
   restitutionV2?: boolean // restitution unifiée (pilote, Olivier 28/09/2026)
   reportClient?: string | null // rapport d'intervention joint à la facture (EBAC, Centracar — 29/09/2026)
 }) {
+  const [forceScen, setForceScen] = useState(false)   // choix du scénario Siabis au forçage (01/11/2026)
   // Audit dispatch B8 (08/09/2026) : chaque router.refresh() de la fiche signale
   // aussi « cette fiche a changé » aux lignes dépliées / dossiers qui l'embarquent.
   const nextRouter = useRouter()
@@ -4492,6 +4493,8 @@ export default function MissionDetailClient({
 
                     <button type="button"
                       onClick={async () => {
+                        // Siabis sans scénario : on le choisit ici, dans le même geste (Olivier 01/11/2026).
+                        if (['police_snc', 'sia_couvert'].includes(String((M as any).source)) && !(M as any).snc_scenario) { setForceScen(true); return }
                         if (!confirm('Forcer la clôture (passe en "À facturer") sans pointage ni photo ?')) return
                         try {
                           const r = await fetch(`/api/missions/${initialMission.id}/force-status`, {
@@ -4499,7 +4502,7 @@ export default function MissionDetailClient({
                             headers: { 'Content-Type': 'application/json' },
                             body:    JSON.stringify({ status: 'to_invoice' }),
                           })
-                          if (!r.ok) { const j = await r.json().catch(() => ({})); alert(j.error || 'Clôture refusée'); return }
+                          if (!r.ok) { const j = await r.json().catch(() => ({})); if (j.scenario_required) { setForceScen(true); return } alert(j.error || 'Clôture refusée'); return }
                           setStatus('to_invoice')
                           setM(prev => ({ ...prev, status: 'to_invoice', completed_at: new Date().toISOString() } as any))
                           router.refresh()
@@ -4512,6 +4515,34 @@ export default function MissionDetailClient({
                         <p className="text-ink-muted text-xs">Passe en "À facturer" sans pointage ni photos</p>
                       </div>
                     </button>
+                    {forceScen && (
+                      <div className="rounded-xl border-2 border-success/40 bg-success/5 p-3 space-y-2">
+                        <div className="flex items-start gap-2">
+                          <p className="flex-1 text-ink text-sm font-semibold">Siabis : qu&apos;a-t-on fait du véhicule ? <span className="block text-ink-muted text-xs font-normal">Choisis le scénario : la clôture est forcée dans la foulée.</span></p>
+                          <button type="button" onClick={() => setForceScen(false)} aria-label="Fermer" className="w-9 h-9 rounded-lg border text-ink-secondary">✕</button>
+                        </div>
+                        {(String((M as any).source) === 'sia_couvert'
+                          ? [['dsp', '🔧 Dépannage sur place'], ['rem_direct', '🚛 Remorquage direct'], ['rem_depot', '🏢 Remorquage vers notre dépôt']]
+                          : [['dsp', '🔧 Dépannage sur place'], ['rem_client', '🚛 Remorquage, le client paie'], ['rem_depot', '🏢 Remorquage vers notre dépôt']]
+                        ).map(([k, l]) => (
+                          <button key={k} type="button"
+                            onClick={async () => {
+                              try {
+                                const r = await fetch(`/api/missions/${initialMission.id}/force-status`, {
+                                  method: 'POST', headers: { 'Content-Type': 'application/json' },
+                                  body: JSON.stringify({ status: 'to_invoice', snc_scenario: k }),
+                                })
+                                const j = await r.json().catch(() => ({}))
+                                if (!r.ok) { alert(j.error || 'Clôture refusée'); return }
+                                setForceScen(false); setStatus('to_invoice')
+                                setM(prev => ({ ...prev, status: 'to_invoice', snc_scenario: k, completed_at: new Date().toISOString() } as any))
+                                router.refresh()
+                              } catch (e: any) { alert('Erreur : ' + e.message) }
+                            }}
+                            className="w-full min-h-[44px] px-3 rounded-lg border bg-surface text-left text-sm text-ink hover:border-success">{l}</button>
+                        ))}
+                      </div>
+                    )}
                     {/* 'Forcer en parc' déplacé sous 'Sauvegarder les modifications'. */}
                   </div>
                 </div>

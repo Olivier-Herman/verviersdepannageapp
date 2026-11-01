@@ -46,6 +46,9 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     parc_zone_key?:    string | null
     parc_row_number?:  number | null
     parc_slot_index?:  number | null
+    // Scénario Siabis choisi dans la fenêtre « Forcer la clôture » quand il manque (Olivier 01/11/2026, Momo bloqué
+    // 4 fois sur X222VJ).
+    snc_scenario?:     string | null
   }
   if (!body.status || !(ALLOWED_STATUS as readonly string[]).includes(body.status)) {
     return NextResponse.json({ error: `Status invalide. Allowed: ${ALLOWED_STATUS.join(', ')}` }, { status: 400 })
@@ -126,9 +129,23 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   // GARDE : une clôture forcée doit quand même avoir le SCÉNARIO (SNC), sinon la
   // mission est incomplète / non facturable. Olivier 2026-08-10 (cas 2ENY965).
   if (body.status === 'completed' || body.status === 'to_invoice') {
-    const { data: m } = await sb.from('incoming_missions').select('source, snc_scenario').eq('id', params.id).maybeSingle()
-    if (['police_snc', 'sia_couvert'].includes(m?.source || '') && !m?.snc_scenario) {
-      return NextResponse.json({ error: 'Scénario SNC requis avant de clôturer (dépannage sur place / REM…). Choisis le scénario sur la fiche, puis réessaie.' }, { status: 400 })
+    const { data: m } = await sb.from('incoming_missions').select('*').eq('id', params.id).maybeSingle()
+    const siabis = ['police_snc', 'sia_couvert'].includes(m?.source || '')
+    const permis = m?.source === 'sia_couvert' ? ['dsp', 'rem_direct', 'rem_depot'] : ['dsp', 'rem_client', 'rem_depot']
+    if (siabis && !m?.snc_scenario && body.snc_scenario && permis.includes(body.snc_scenario)) {
+      // Même effet que le choix sur la fiche : scénario + type, montant à encaisser recalculé pour un non couvert.
+      update.snc_scenario = body.snc_scenario
+      update.mission_type = body.snc_scenario === 'dsp' ? 'depannage' : 'remorquage'
+      if (m?.source === 'police_snc') {
+        try {
+          const { computeSncAmountToCollect } = await import('@/lib/snc/amount')
+          const amt = await computeSncAmountToCollect({ ...(m as any), mission_type: update.mission_type }, body.snc_scenario as any)
+          if (amt != null && amt > 0) update.amount_to_collect = amt
+        } catch { /* le montant se recalculera à la facturation */ }
+      }
+      await sb.from('mission_logs').insert({ mission_id: params.id, actor_id: userId, action: 'snc_scenario', notes: `Scénario Siabis choisi en forçant la clôture : ${body.snc_scenario}`, metadata: { scenario: body.snc_scenario, via: 'force_status' } }).then(() => {}, () => {})
+    } else if (siabis && !m?.snc_scenario) {
+      return NextResponse.json({ error: 'Scénario Siabis requis avant de clôturer : choisis-le (dépannage sur place, remorquage…) puis réessaie.', scenario_required: true, source: m?.source }, { status: 400 })
     }
     update.completed_at = now
   }

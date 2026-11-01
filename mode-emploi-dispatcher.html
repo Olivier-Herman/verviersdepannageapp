@@ -78,7 +78,7 @@
  <tr><td>60</td><td>Ouvrir fiche dispatch détaillée d'une mission</td><td>p. 9</td></tr>
  <tr><td>61</td><td>Confirmer / Refuser une mission en statut « À confirmer »</td><td>p. 9</td></tr>
  <tr><td>62</td><td>Assigner / Déléguer un chauffeur manuellement</td><td>p. 10</td></tr>
- <tr><td>63</td><td>Forcer le statut d'une mission (admin)</td><td>p. 10</td></tr>
+ <tr><td>63</td><td>Forcer la clôture ou réinitialiser une mission</td><td>p. 10</td></tr>
  <tr><td>64</td><td>Modifier les infos mission</td><td>p. 11</td></tr>
  <tr><td>65</td><td>Ajouter / retirer un avertissement</td><td>p. 11</td></tr>
  <tr><td>66</td><td>Modifier le client facturé (recherche dans l'app)</td><td>p. 12</td></tr>
@@ -315,16 +315,16 @@
 </div>
 
 <div class="function">
- <h3><span class="num">63</span>Forcer le statut d'une mission (admin)</h3>
- <p class="desc">Cas exceptionnel : tu veux forcer un statut spécifique (ex: skip étape, debug, correction d'erreur).</p>
+ <h3><span class="num">63</span>Forcer la clôture ou réinitialiser une mission</h3>
+ <p class="desc">Cas exceptionnel : débloquer une mission ou la clôturer sans les pointages du chauffeur.</p>
  <p class="label">Comment faire</p>
  <ol>
- <li>Sur fiche dispatch, menu actions admin</li>
- <li>« Forcer le statut » : sélecteur de tous les statuts</li>
- <li>Confirme</li>
- <li>Log dans mission_logs avec « status_forced »</li>
+ <li>Sur la fiche, cadre « 🛠 Actions dispatcher »</li>
+ <li>« Forcer la clôture » : la mission passe « À facturer » sans pointage ni photo. « Réinitialiser » la remet en attente sans chauffeur</li>
+ <li>Siabis sans scénario : le cadre te demande d'abord ce qui a été fait (dépannage sur place, remorquage direct ou vers le dépôt) ; un toucher choisit le scénario et force la clôture dans la foulée</li>
+ <li>Tout est noté dans l'historique de la fiche</li>
  </ol>
- <div class="warn">⚠️ Action admin uniquement. Toujours laisser une trace dans les l'historique.</div>
+ <div class="warn">⚠️ Un chauffeur (même dispatcher) ne peut pas forcer la clôture de sa propre mission : un collègue du bureau le fait.</div>
 </div>
 
 <div class="function">

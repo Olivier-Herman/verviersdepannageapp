@@ -180,7 +180,11 @@ function MobileRow({ m, activeTab, drivers, driverStatuses, sources, onRefresh, 
     try {
       const r = await fetch(`/api/missions/${m.id}/force-status`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status }) })
       const j = await r.json().catch(() => ({}))
-      if (!r.ok) { alert(j.error || `Erreur ${r.status}`); return }
+      if (!r.ok) {
+        // Siabis sans scénario : la fiche propose le choix dans « Forcer la clôture » (01/11/2026).
+        if (j.scenario_required) { if (confirm(`${j.error}\n\nOuvrir la fiche pour choisir le scénario et forcer la clôture ?`)) window.location.href = `/dispatch/${m.id}`; return }
+        alert(j.error || `Erreur ${r.status}`); return
+      }
       setForceOpen(false); onRefresh()
     } finally { setForcing(false) }
   }
