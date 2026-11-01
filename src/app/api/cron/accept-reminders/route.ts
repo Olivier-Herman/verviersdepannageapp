@@ -49,9 +49,11 @@ async function veillesAppel(sb: ReturnType<typeof createAdminClient>) {
       const { initiatePstnCall } = await import('@/lib/teams/call')
       const r = await initiatePstnCall({ toPhone: e164, toDisplayName: (who as any)?.name || e164 })
       detail = r.ok ? 'appel lancé' : String(r.error || 'appel impossible')
-      await sb.from('espace_appels').insert({ mission_id: m.id, call_id: r.callId || null, audio: 'nouvelle-mission.wav', status: r.ok ? 'lance' : 'echec', detail: r.ok ? null : detail.slice(0, 300) })
+      // Le message joué au décroché est retrouvé par l'appel : la ligne reste nécessaire, mais sans fiche liée (comme l'appel de test).
+      await sb.from('espace_appels').insert({ mission_id: '00000000-0000-0000-0000-000000000000', call_id: r.callId || null, audio: 'nouvelle-mission.wav', status: r.ok ? 'lance' : 'echec', detail: r.ok ? null : detail.slice(0, 300) })
     }
-    await sb.from('mission_logs').insert({ mission_id: m.id, action: 'appel_veille', notes: `Veille d'appel : mission attribuée à ${(chauffeur as any)?.name || 'le chauffeur'} → ${(who as any)?.name || '?'} appelé (${detail}).` }).then(() => {}, () => {})
+    // Demande personnelle : rien dans l'historique de la mission (Olivier 01/11/2026), une ligne de journal serveur seulement.
+    console.log(`[veille d'appel] ${(chauffeur as any)?.name || 'chauffeur'} → ${(who as any)?.name || '?'} : ${detail}`)
   }
   if (reste.length !== veilles.length) await sb.from('app_settings').upsert({ key: 'appels_veille', value: JSON.stringify(reste) }, { onConflict: 'key' })
 }
