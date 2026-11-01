@@ -175,6 +175,31 @@ export async function getValidAllianzToken(): Promise<string> {
   throw new Error('Token Allianz expiré ou absent — relance une connexion Allianz (OTP).')
 }
 
+/**
+ * Garde la connexion Hexalite en vie (Olivier 01/11/2026 : « quand les assistants sont en pause, la connexion
+ * continue à se faire normalement mais on ne valide aucune facture »). Allianz ne donne qu'un accès de 24 h, renouvelé
+ * jusqu'ici seulement à l'arrivée d'une mission : un week-end sans mission Allianz, il expirait. Ici, quand l'accès le
+ * plus récent finit dans moins de 2 h, on demande un code (même chemin que le bouton « Reconnecter ») ; le mail du code
+ * est lu et validé automatiquement. Une demande à la fois (20 min d'attente entre deux).
+ */
+export async function maintenirConnexionAllianz(): Promise<{ action: 'ok' | 'demande' | 'attente'; expire?: string | null }> {
+  const sb = createAdminClient()
+  const { data } = await sb.from('allianz_otp_pending').select('access_token, status, created_at')
+    .in('status', ['verified', 'done']).not('access_token', 'is', null).order('created_at', { ascending: false }).limit(5)
+  const now = Math.floor(Date.now() / 1000)
+  const exps = (data || []).map(r => jwtExp(r.access_token)).filter((x): x is number => !!x)
+  const best = exps.length ? Math.max(...exps) : null
+  const expire = best ? new Date(best * 1000).toISOString() : null
+  if (best && best - now > 2 * 3600) return { action: 'ok', expire }
+  const { count } = await sb.from('allianz_otp_pending').select('id', { count: 'exact', head: true })
+    .like('assignment_id', 'reauth_%').eq('status', 'waiting').gte('created_at', new Date(Date.now() - 20 * 60_000).toISOString())
+  if (count) return { action: 'attente', expire }
+  const { allianzRequestOTP } = await import('@/lib/missions/allianz')
+  const { refNo } = await allianzRequestOTP()
+  await sb.from('allianz_otp_pending').insert({ ref_no: refNo, assignment_id: `reauth_${Date.now()}`, dispatch_link: null, mission_id: null, status: 'waiting' })
+  return { action: 'demande', expire }
+}
+
 // ─── Génération des heures (Olivier 2026-06-12) ──────────────────────────
 // début = réception + 1 min · arrivée = début + rand(15..30) · fin = arrivée + rand(15..20)
 function brusselsIso(d: Date): string {

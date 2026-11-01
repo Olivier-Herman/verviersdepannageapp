@@ -31,8 +31,14 @@ async function handleGET(req: Request) {
   const secret  = process.env.NEXTAUTH_SECRET || ''
   const sb = createAdminClient()
 
+  // Connexion Hexalite entretenue AVANT tout interrupteur : elle doit rester valide même assistants en pause
+  // (Olivier 01/11/2026) ; seules les clôtures (donc les factures) attendent la reprise.
+  let connexion: any = null
+  try { const { maintenirConnexionAllianz } = await import('@/lib/allianz/closure'); connexion = await maintenirConnexionAllianz() }
+  catch (e: any) { connexion = { erreur: e?.message || String(e) }; console.error('[auto-close-allianz] connexion', connexion.erreur) }
+
   // Interrupteur général de la facturation automatique (Olivier 26/10/2026) : off = on saute ; l'arriéré repart à la reprise.
-  if (await facturationAutoSuspendue(sb)) return NextResponse.json(SKIP_SUSPENDUE)
+  if (await facturationAutoSuspendue(sb)) return NextResponse.json({ ...SKIP_SUSPENDUE, connexion })
   // Toggle (module Facturation auto) : pause si désactivé.
   if (!(await getAutomationEnabled(sb, AUTOMATION_FLAGS.allianzAutoClose))) {
     return NextResponse.json({ ok: true, disabled: true })
