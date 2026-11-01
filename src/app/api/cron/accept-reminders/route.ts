@@ -23,6 +23,39 @@ const INTERVAL_MIN    = 5   // délai minimum entre deux rappels
 const MAX_REMINDERS   = 4   // ~3 + 3×5 = jusqu'à ~18 min de relance
 const CALL_AFTER_MIN  = 10  // délai maximum pour accepter : au-delà, on appelle le chauffeur
 
+// Veille d'appel ponctuelle (Olivier 01/11/2026 : « téléphone-moi à la prochaine mission assignée à Franck, uniquement
+// la prochaine et si c'est avant 8 h ») : réglage appels_veille = [{ chauffeur_id, appeler_id, depuis, jusqu_au }].
+// Première mission attribuée au chauffeur après « depuis » et avant « jusqu_au » → un appel, puis la veille s'efface ;
+// passé « jusqu_au » sans mission, elle s'efface aussi.
+async function veillesAppel(sb: ReturnType<typeof createAdminClient>) {
+  const { data: row } = await sb.from('app_settings').select('value').eq('key', 'appels_veille').maybeSingle()
+  let veilles: any[] = []
+  try { veilles = JSON.parse(String((row as any)?.value || '[]')) } catch { return }
+  if (!Array.isArray(veilles) || !veilles.length) return
+  const reste: any[] = []
+  for (const v of veilles) {
+    if (Date.now() > Date.parse(v.jusqu_au)) continue
+    const { data: m } = await sb.from('incoming_missions').select('id, mission_number, vehicle_plate, incident_city, assigned_at')
+      .eq('assigned_to', v.chauffeur_id).gt('assigned_at', v.depuis).lte('assigned_at', v.jusqu_au).order('assigned_at').limit(1).maybeSingle()
+    if (!m) { reste.push(v); continue }
+    const [{ data: who }, { data: chauffeur }] = await Promise.all([
+      sb.from('users').select('name, phone').eq('id', v.appeler_id).maybeSingle(),
+      sb.from('users').select('name').eq('id', v.chauffeur_id).maybeSingle(),
+    ])
+    const { toE164 } = await import('@/lib/missions/market-proposals')
+    const e164 = toE164((who as any)?.phone)
+    let detail = 'pas de numéro'
+    if (e164) {
+      const { initiatePstnCall } = await import('@/lib/teams/call')
+      const r = await initiatePstnCall({ toPhone: e164, toDisplayName: (who as any)?.name || e164 })
+      detail = r.ok ? 'appel lancé' : String(r.error || 'appel impossible')
+      await sb.from('espace_appels').insert({ mission_id: m.id, call_id: r.callId || null, audio: 'nouvelle-mission.wav', status: r.ok ? 'lance' : 'echec', detail: r.ok ? null : detail.slice(0, 300) })
+    }
+    await sb.from('mission_logs').insert({ mission_id: m.id, action: 'appel_veille', notes: `Veille d'appel : mission attribuée à ${(chauffeur as any)?.name || 'le chauffeur'} → ${(who as any)?.name || '?'} appelé (${detail}).` }).then(() => {}, () => {})
+  }
+  if (reste.length !== veilles.length) await sb.from('app_settings').upsert({ key: 'appels_veille', value: JSON.stringify(reste) }, { onConflict: 'key' })
+}
+
 async function handleGET(req: Request) {
   const auth = req.headers.get('authorization')
   if (!process.env.CRON_SECRET || auth !== `Bearer ${process.env.CRON_SECRET}`) {
@@ -30,6 +63,7 @@ async function handleGET(req: Request) {
   }
 
   const sb = createAdminClient()
+  await veillesAppel(sb).catch(e => console.error('[accept-reminders] veille d’appel', e?.message || e))
   const now        = Date.now()
   const assignedBefore = new Date(now - FIRST_DELAY_MIN * 60_000).toISOString()
   const remindBefore   = new Date(now - INTERVAL_MIN * 60_000).toISOString()
