@@ -42,6 +42,26 @@ export interface SendNotificationResult {
  * @param type   key du catalogue NOTIFICATION_TYPES
  * @param payload contenu de la notif (title, body, etc.)
  */
+// ── Absences (réglage notifs_absences : [{ user_ids, jusqu_au: 'AAAA-MM-JJ', motif }]) ──────────────────────
+// Ce qui reste pendant une absence = le dispatch : catégories « dispatch » et « en service », plus les alertes
+// d'exploitation rangées ailleurs. Jamais : paiements, congés, courrier, fourrière, questions et annonces.
+const DISPATCH_HORS_CATEGORIE = new Set(['touring_cancelled', 'expert_access', 'expert_visit', 'verification_parc', 'message_bloquant', 'kaze_accept_manual', 'kaze_proposal_missing', 'vab_onsite_failed', 'vab_vr_a_cloturer', 'market_claimed', 'kaze_cancelled_after_start'])
+const PAS_DISPATCH = new Set(['payment_validated', 'mobia_draft', 'courrier_task', 'levee_saisie_alarme'])
+function estDispatch(type: string): boolean {
+  if (PAS_DISPATCH.has(type)) return false
+  if (DISPATCH_HORS_CATEGORIE.has(type)) return true
+  const cat = NOTIFICATION_TYPES.find(t => t.key === type)?.category
+  return cat === 'dispatcher' || cat === 'on_duty'
+}
+async function absentHorsDispatch(sb: ReturnType<typeof createAdminClient>, userId: string, type: string): Promise<boolean> {
+  if (estDispatch(type)) return false
+  const { data } = await sb.from('app_settings').select('value').eq('key', 'notifs_absences').maybeSingle()
+  let liste: any[] = []
+  try { liste = JSON.parse(String((data as any)?.value || '[]')) } catch { return false }
+  const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Brussels' }).format(new Date())
+  return (Array.isArray(liste) ? liste : []).some(a => Array.isArray(a?.user_ids) && a.user_ids.includes(userId) && String(a.jusqu_au || '') >= today)
+}
+
 export async function sendNotification(
   userId:  string,
   type:    string,
@@ -74,6 +94,11 @@ export async function sendNotification(
   const prefMap = new Map<string, boolean>()
   if (prefRow && typeof prefRow.enabled === 'boolean') prefMap.set(type, prefRow.enabled)
   if (!isEnabled(type, prefMap)) {
+    return { ok: false, skipped: 'disabled_by_pref' }
+  }
+  // 2 bis. Absence datée (Olivier 01/11/2026 : Momo en vacances jusqu'au 10/11 inclus, Matthieu au PC de Momo) :
+  // pendant l'absence, seules les notifications de dispatch passent ; tout revient seul le lendemain de la date.
+  if (await absentHorsDispatch(sb, userId, type)) {
     return { ok: false, skipped: 'disabled_by_pref' }
   }
 
