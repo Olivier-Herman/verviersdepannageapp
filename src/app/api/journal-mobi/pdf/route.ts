@@ -17,5 +17,5 @@ export async function GET(req: Request) {
   const mois = new URL(req.url).searchParams.get('mois') || ''
   if (!/^\d{4}-\d{2}$/.test(mois)) return NextResponse.json({ error: 'mois=AAAA-MM' }, { status: 400 })
   const pdf = await pdfJournalMois(await lireMois(createAdminClient(), mois))
-  return new NextResponse(pdf as any, { headers: { 'Content-Type': 'application/pdf', 'Content-Disposition': `inline; filename="journal-taches-mobi-${mois}.pdf"` } })
+  return new NextResponse(pdf as any, { headers: { 'Content-Type': 'application/pdf', 'Content-Disposition': `inline; filename="journal-taches-mobi-${mois}.pdf"`, 'Cache-Control': 'no-store' } })
 }
