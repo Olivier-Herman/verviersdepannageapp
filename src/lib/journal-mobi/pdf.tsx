@@ -10,11 +10,11 @@ const s = StyleSheet.create({
   page: { padding: 44, paddingBottom: 56, fontSize: 9.5, color: INK, fontFamily: 'Helvetica', lineHeight: 1.4 },
   top: { flexDirection: 'row', justifyContent: 'space-between', borderBottomWidth: 2.5, borderBottomColor: BRAND, paddingBottom: 10 },
   badge: { fontSize: 8, color: BRAND, letterSpacing: 1, textTransform: 'uppercase', fontFamily: 'Helvetica-Bold' },
-  h1: { fontSize: 22, fontFamily: 'Times-Bold', marginTop: 2 },
+  h1: { fontSize: 22, fontFamily: 'Times-Bold', marginTop: 2, lineHeight: 1.25, marginBottom: 3 },
   sub: { fontSize: 9, color: MUT, marginTop: 2 },
   kpis: { flexDirection: 'row', marginTop: 16, marginBottom: 6 },
   k: { flex: 1, backgroundColor: SOFT, borderRadius: 6, padding: 8, marginRight: 6 },
-  kb: { fontSize: 17, fontFamily: 'Times-Bold' },
+  kb: { fontSize: 17, fontFamily: 'Times-Bold', lineHeight: 1.25, marginBottom: 2 },
   ks: { fontSize: 8, color: MUT },
   h2: { fontSize: 12.5, fontFamily: 'Times-Bold', marginTop: 14, marginBottom: 4, paddingBottom: 3, borderBottomWidth: 1, borderBottomColor: LINE },
   row: { flexDirection: 'row', borderBottomWidth: 0.6, borderBottomColor: LINE, paddingVertical: 3.5 },
@@ -32,7 +32,8 @@ const s = StyleSheet.create({
 })
 
 const MOIS = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre']
-const fmt = (n: number) => n.toLocaleString('fr-BE')
+// Séparateur des milliers en espace simple : l'espace fine du français s'imprime en « / » avec la police du PDF.
+const fmt = (n: number) => String(Math.round(n)).replace(/\B(?=(\d{3})+(?!\d))/g, ' ')
 const libMois = (m: string) => { const [y, mm] = m.split('-').map(Number); return `${MOIS[mm - 1].replace(/^./, c => c.toUpperCase())} ${y}` }
 const jourLong = (d: string) => new Date(`${d}T12:00:00Z`).toLocaleDateString('fr-BE', { weekday: 'long', day: 'numeric', month: 'long', timeZone: 'Europe/Brussels' }).replace(/^./, c => c.toUpperCase())
 const heure = (iso: string | null) => iso ? new Date(iso).toLocaleTimeString('fr-BE', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Brussels' }) : ''
@@ -41,6 +42,7 @@ const _somme = (rows: { cle: string; titre: string; quantite: number }[]) => {
   for (const r of rows) { const x = m.get(r.cle) || { titre: r.titre, n: 0 }; x.n += r.quantite; m.set(r.cle, x) }
   return [...m.values()].sort((a, b) => b.n - a.n)
 }
+const minus = (t: string) => t.charAt(0).toLowerCase() + t.slice(1)
 const court = (t: string) => t.replace(/\s*\(.*\)\s*$/, '')
 
 // Dans ce document, tout est présenté comme les tâches de Mobi, sans distinguer ce qui est fait par ses outils
@@ -108,7 +110,7 @@ function Doc({ j, emisLe }: { j: MoisJournal; emisLe: string }) {
             <View key={d} style={s.day} wrap={false}>
               <View style={s.dayH}><Text>{jourLong(d)}</Text><Text style={{ color: MUT, fontFamily: 'Helvetica' }}>{fmt(n)} tâches</Text></View>
               {tj.map((t, i) => <View key={i} style={s.item}><Text style={s.h}>{heure(t.at)}</Text><Text style={{ flex: 1 }}>{t.titre}{t.detail ? ` — ${t.detail}` : ''}</Text></View>)}
-              {th.length > 0 && <View style={s.item}><Text style={s.h}>journée</Text><Text style={{ flex: 1 }}>{th.map(t => `${fmt(t.n)} ${court(t.titre).toLowerCase()}`).join(' · ')}</Text></View>}
+              {th.length > 0 && <View style={s.item}><Text style={s.h}>journée</Text><Text style={{ flex: 1 }}>{th.map(t => `${fmt(t.n)} ${minus(court(t.titre))}`).join(' · ')}</Text></View>}
             </View>
           )
         })}
