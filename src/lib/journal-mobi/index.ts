@@ -109,6 +109,12 @@ export async function agregerJour(sb: Sb, jour: string): Promise<Record<string, 
     for (const [cle, type, titre, n] of lignes) if (n > 0) rows.push({ jour, type, domaine: cle, titre, quantite: n, ref: `${type}:${jour}:${cle}` })
   } catch (e: any) { console.warn('[journal-mobi] ERP', e?.message) }
 
+  // Courrier scanné et inventaires du parc faits dans VD Soft (quand ces modules servent).
+  for (const [table, cle, titre] of [['courriers', 'courrier', 'Courrier relevé et traité'], ['inventaire_session_items', 'inventaire', 'Inventaire du parking : véhicules contrôlés']] as const) {
+    const { count } = await sb.from(table).select('id', { count: 'exact', head: true }).gte('created_at', d1).lt('created_at', d2)
+    if (count) rows.push({ jour, type: 'mobi', domaine: cle, titre, quantite: count, ref: `mobi:${jour}:${cle}` })
+  }
+
   // Mails traités par l'agent mail (factures fournisseurs, rejets d'assistances, tri) : seul → automatismes ;
   // décidés par Olivier → Mobi.
   try {
@@ -157,6 +163,7 @@ export async function noterTache(sb: Sb, t: { at?: string; domaine?: string; tit
 
 export interface MoisJournal {
   mois: string                                    // AAAA-MM
+  regulieres: string[]                            // tâches régulières non chiffrées (réglage journal_mobi_taches_regulieres)
   taches: { jour: string; at: string | null; domaine: string; titre: string; detail: string | null }[]   // séances
   mobi: { jour: string; cle: string; titre: string; quantite: number }[]                                    // comptées
   auto: { jour: string; cle: string; titre: string; quantite: number }[]
@@ -170,8 +177,9 @@ export async function lireMois(sb: Sb, mois: string): Promise<MoisJournal> {
     const { data } = await sb.from('journal_mobi').select('jour, at, type, domaine, titre, detail, quantite, ref').gte('jour', `${mois}-01`).lt('jour', fin).order('jour').order('at').range(off, off + 999)
     all.push(...(data || [])); if ((data || []).length < 1000) break
   }
+  const regulieres = await liste('journal_mobi_taches_regulieres')
   return {
-    mois,
+    mois, regulieres,
     taches: all.filter(r => r.type === 'mobi' && String(r.ref || '').startsWith('seance:')).map(r => ({ jour: r.jour, at: r.at, domaine: r.domaine || '', titre: r.titre, detail: r.detail })),
     mobi: all.filter(r => r.type === 'mobi' && !String(r.ref || '').startsWith('seance:')).map(r => ({ jour: r.jour, cle: r.domaine, titre: r.titre, quantite: r.quantite || 0 })),
     auto: all.filter(r => r.type === 'auto').map(r => ({ jour: r.jour, cle: r.domaine, titre: r.titre, quantite: r.quantite || 0 })),

@@ -56,6 +56,8 @@ const THEMES: { titre: string; cles: string[] }[] = [
   { titre: 'Paiements fournisseurs et comptes d’achat', cles: ['erp_paiements_fourn', 'erp_paiements_fourn_auto', 'comptes_achats'] },
   { titre: 'Clôtures chez les assistances pour la facturation', cles: ['clotures'] },
   { titre: 'Circuit de Spa-Francorchamps', cles: ['circuit'] },
+  { titre: 'Courrier relevé et traité', cles: ['courrier'] },
+  { titre: 'Inventaire du parking', cles: ['inventaire'] },
   { titre: 'Autres interventions sur les fiches', cles: ['m_autres'] },
 ]
 const themeDe = (cle: string) => THEMES.find(t => t.cles.includes(cle))?.titre || THEMES[THEMES.length - 1].titre
@@ -87,6 +89,11 @@ function Doc({ j, emisLe }: { j: MoisJournal; emisLe: string }) {
         <View style={s.row}><Text style={[s.cell, s.th]}>Domaine</Text><Text style={[s.num, s.th]}>Nombre</Text></View>
         {parTheme.map(x => <View key={x.titre} style={s.row}><Text style={s.cell}>{x.titre}</Text><Text style={s.num}>{fmt(x.n)}</Text></View>)}
         {j.taches.length > 0 && <View style={s.row}><Text style={s.cell}>Dossiers particuliers traités (détail jour par jour)</Text><Text style={s.num}>{fmt(j.taches.length)}</Text></View>}
+
+        {j.regulieres.length > 0 && <>
+          <Text style={s.h2}>Tâches régulières</Text>
+          {j.regulieres.map(t => <View key={t} style={s.row}><Text style={s.cell}>{t}</Text><Text style={[s.num, { color: MUT }]}>tout le mois</Text></View>)}
+        </>}
         <Foot />
       </Page>
 
