@@ -9,6 +9,7 @@
 
 import { alignCreditNotes } from '@/lib/facturation/credit-note-align'
 import { odooRpcCompany } from '@/lib/odoo'
+import { createAdminClient } from '@/lib/supabase'
 import { getBusinessNumber, getBusinessList } from '@/lib/settings/business'
 import { findInvoiceByName, creditAndRebill } from '@/lib/mail-agent/odoo'
 import { sendEmail, type EmailAttachment } from '@/lib/emails'
@@ -80,6 +81,12 @@ export async function prepare(kind: ProposalKind, agent: AgentAccount, company: 
       directAllowed = true
       directWhy = 'hors Peppol, lecture certaine (autonomie du 20/10/2026)'
     }
+    // Autonomie complète (Olivier 02/11/2026, 44 validations sur 44 sans correction ni refus en 30 jours) : Florent
+    // valide seul toute facture d'achat de VD. Restent chez Olivier : le doute d'avance de fonds (stop) et le doublon possible.
+    if (company === 1 && !directAllowed && body?.stop !== true) {
+      directAllowed = true
+      directWhy = 'autonomie complète (02/11/2026)'
+    }
     if (doublonPossible) { directAllowed = false; directWhy = undefined }
     return { title: `${b.partner_id[1]} · ${b.ref || b.name || 'brouillon'}${doublonPossible ? ` · ⚠️ doublon possible : ${doublonPossible}` : ''}`, amount: b.amount_total, payload: { facture_id: id, fournisseur: b.partner_id[1], reference: b.ref, htva: b.amount_untaxed, peppol: Boolean(b.peppol_message_uuid), ...(doublonPossible ? { doublon_possible: doublonPossible } : {}) }, directAllowed, directWhy }
   }
@@ -141,13 +148,16 @@ export async function prepare(kind: ProposalKind, agent: AgentAccount, company: 
     // Seul cas exécuté sans validation : UNE facture, montant identique au centime à la ligne de banque ET au reste
     // dû, et sa référence (ou son numéro) retrouvée dans la communication de la banque. Tout le reste attend Olivier.
     const exact = await exactBankMatch(company, line, p.parts)
+    const regle = exact.ok ? null : await regleBanqueAutonome(company, line, p.parts)
+    // Riga, autonomie complète (Olivier 02/11/2026, 21 validations sur 21) : Rémi rapproche seul, sauf s'il met un stop.
+    const rigaSeul = company === 2 && body?.stop !== true
     return {
       title: `${line.journal_id?.[1] || 'Banque'} ${line.date} · ${Number(line.amount).toFixed(2)} € · ${String(line.payment_ref || '').replace(/\s+/g, ' ').slice(0, 60)}`,
       amount: Number(line.amount), payload: { ligne_id: lineId, parts: p.parts, ventilation: resume },
       // Riga (Olivier 20/10/2026, autonomie validée : 12 validations sur 12) : Rémi rapproche seul quand il est certain
       // (règles du 20/10 : frais bancaires, DGJ, 580000, NN). Une ligne qui demande une pièce reste chez Olivier.
-      directAllowed: exact.ok || (company === 2 && body?.certain === true),
-      directWhy: exact.ok ? `bonne facture, montant exact (${exact.why})` : company === 2 && body?.certain === true ? 'Riga, rapprochement certain (autonomie du 20/10/2026)' : undefined,
+      directAllowed: exact.ok || !!regle || rigaSeul,
+      directWhy: exact.ok ? `bonne facture, montant exact (${exact.why})` : regle ? regle : rigaSeul ? 'Riga, autonomie complète (02/11/2026)' : undefined,
     }
   }
 
@@ -319,6 +329,55 @@ async function exactBankMatch(company: number, line: any, parts: any[]): Promise
   const keys = [m.ref, m.payment_reference, m.name].map(norm).filter(k => k.length >= 5)
   const hit = keys.find(k => comm.includes(k))
   return hit ? { ok: true, why: `${m.name}, référence ${hit} dans la communication` } : { ok: false, why: '' }
+}
+
+/** Cas tranchés au bureau du 02/11/2026 que l'agent banque de VD passe seul (Olivier : « oui » aux quatre).
+ *  Renvoie la raison affichée, ou null : tout ce qui ne colle pas exactement reste en validation. */
+export async function regleBanqueAutonome(company: number, line: any, parts: any[]): Promise<string | null> {
+  if (company !== 1 || !Array.isArray(parts) || !parts.length) return null
+  const amount = Number(line.amount), ref = String(line.payment_ref || '').replace(/\s+/g, ' ')
+  const r2 = (n: number) => Math.round(n * 100) / 100
+  const seul = parts.length === 1 ? parts[0] : null
+  // Loyer sans facture : bénéficiaire et montant exact listés dans les réglages.
+  if (seul?.compte && amount < 0) {
+    const sb = createAdminClient()
+    const { data } = await sb.from('app_settings').select('value').eq('key', 'banque_loyers_sans_facture').maybeSingle()
+    let loyers: { motif: string; montant: number; compte: string }[] = []
+    try { loyers = JSON.parse(String(data?.value || '[]')) } catch { loyers = [] }
+    const l = loyers.find(x => x.motif && ref.toUpperCase().includes(String(x.motif).toUpperCase()))
+    if (l && String(seul.compte) === String(l.compte) && Math.abs(-amount - Number(l.montant)) < 0.005) return `loyer sans facture (${l.motif}), montant habituel`
+  }
+  // Frais de carte de la banque : décompte de frais Mastercard, en frais bancaires.
+  if (seul?.compte && amount < 0 && /^6572/.test(String(seul.compte)) && /d[ée]compte de frais.*master ?card/i.test(ref)) return 'frais de carte de la banque'
+  // Dépôt d'espèces : transfert de fonds, avec la ligne opposée du même montant dans l'autre journal à 3 jours près.
+  if (seul?.compte && /^58/.test(String(seul.compte)) && (/d[ée]p[ôo]t d.esp[èe]ces/i.test(ref) || /CB\/CABA\/versement/i.test(ref))) {
+    const d = new Date(line.date).getTime(), lo = new Date(d - 3 * 864e5).toISOString().slice(0, 10), hi = new Date(d + 3 * 864e5).toISOString().slice(0, 10)
+    const twin: any[] = await odooRpcCompany(company, 'account.bank.statement.line', 'search_read', [[['id', '!=', line.id], ['journal_id', '!=', line.journal_id?.[0]], ['amount', '=', r2(-amount)], ['date', '>=', lo], ['date', '<=', hi]]], { fields: ['id'], limit: 1 })
+    if (twin.length) return 'dépôt d’espèces, même montant en face entre la caisse et la banque'
+  }
+  // Salaire : la fiche de paie soldée entièrement, moins l'avance ouverte du même employé, au centime.
+  if (amount < 0 && parts.length <= 2) {
+    const fiche = parts.find(x => x?.facture_id), avance = parts.find(x => x?.ecriture_ligne_id)
+    if (fiche && fiche.montant == null && (parts.length === 1 || avance)) {
+      const [m]: any[] = await odooRpcCompany(company, 'account.move', 'read', [[Number(fiche.facture_id)]], { fields: ['ref', 'commercial_partner_id'] })
+      if (m && /^PAIE-/.test(String(m.ref || ''))) {
+        if (!avance) return 'salaire, fiche de paie soldée au centime'
+        const [a]: any[] = await odooRpcCompany(company, 'account.move.line', 'read', [[Number(avance.ecriture_ligne_id)]], { fields: ['partner_id'] })
+        if (a?.partner_id?.[0] === m.commercial_partner_id?.[0]) return 'salaire, fiche de paie moins l’avance du même employé'
+      }
+    }
+  }
+  // Acompte sur commande : « Sxxxxx » d'un devis confirmé, pas encore facturé, même client et même montant.
+  if (seul?.compte && seul.partenaire_id && amount > 0 && /^400/.test(String(seul.compte))) {
+    const so = ref.match(/\bS\d{5}\b/)?.[0]
+    if (so) {
+      const [o]: any[] = await odooRpcCompany(company, 'sale.order', 'search_read', [[['name', '=', so]]], { fields: ['partner_id', 'state', 'invoice_status', 'amount_total'], limit: 1 })
+      const [pa]: any[] = o ? await odooRpcCompany(company, 'res.partner', 'read', [[o.partner_id[0]]], { fields: ['commercial_partner_id'] }) : []
+      if (o && o.state === 'sale' && o.invoice_status === 'to invoice' && Math.abs(Number(o.amount_total) - amount) < 0.005
+        && [o.partner_id[0], pa?.commercial_partner_id?.[0]].includes(Number(seul.partenaire_id))) return `acompte sur la commande ${so} confirmée, même montant`
+    }
+  }
+  return null
 }
 
 /** Vente brouillon d'une refacturation d'avance (bouton de l'ERP, client = l'assistance, réf = son dossier,
