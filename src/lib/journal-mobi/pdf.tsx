@@ -36,44 +36,54 @@ const fmt = (n: number) => n.toLocaleString('fr-BE')
 const libMois = (m: string) => { const [y, mm] = m.split('-').map(Number); return `${MOIS[mm - 1].replace(/^./, c => c.toUpperCase())} ${y}` }
 const jourLong = (d: string) => new Date(`${d}T12:00:00Z`).toLocaleDateString('fr-BE', { weekday: 'long', day: 'numeric', month: 'long', timeZone: 'Europe/Brussels' }).replace(/^./, c => c.toUpperCase())
 const heure = (iso: string | null) => iso ? new Date(iso).toLocaleTimeString('fr-BE', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Brussels' }) : ''
-const somme = (rows: { cle: string; titre: string; quantite: number }[]) => {
+const _somme = (rows: { cle: string; titre: string; quantite: number }[]) => {
   const m = new Map<string, { titre: string; n: number }>()
   for (const r of rows) { const x = m.get(r.cle) || { titre: r.titre, n: 0 }; x.n += r.quantite; m.set(r.cle, x) }
   return [...m.values()].sort((a, b) => b.n - a.n)
 }
 const court = (t: string) => t.replace(/\s*\(.*\)\s*$/, '')
 
+// Dans ce document, tout est présenté comme les tâches de Mobi, sans distinguer ce qui est fait par ses outils
+// (Olivier 02/11/2026) : les lignes sont regroupées par thème, avec des libellés neutres.
+const THEMES: { titre: string; cles: string[] }[] = [
+  { titre: 'Facturation des dossiers et des assistances', cles: ['m_factu', 'facturation'] },
+  { titre: 'Paiements reconnus, lettrés et rapprochés', cles: ['paiements', 'erp_lettrages', 'erp_lettrages_auto'] },
+  { titre: 'Comptabilité : pièces encodées (factures, achats, notes de crédit, relevés)', cles: ['erp_pieces', 'erp_pieces_auto'] },
+  { titre: 'Correspondance : mails traités et envoyés', cles: ['mails', 'mails_auto', 'mails_decides'] },
+  { titre: 'Rappels et relances (clients, réquisitoires, fiches ouvertes)', cles: ['relances'] },
+  { titre: 'Fourrière, parc et Justice (restitutions, levées, états de frais, Domaine)', cles: ['m_fourriere', 'm_parc', 'fourriere'] },
+  { titre: 'Dispatch, suivi des assistances et corrections de fiches', cles: ['m_dispatch', 'corrections'] },
+  { titre: 'Autres interventions sur les fiches', cles: ['m_autres'] },
+]
+const themeDe = (cle: string) => THEMES.find(t => t.cles.includes(cle))?.titre || THEMES[THEMES.length - 1].titre
+
 function Doc({ j, emisLe }: { j: MoisJournal; emisLe: string }) {
-  const mobiT = somme(j.mobi), autoT = somme(j.auto)
-  const totMobi = mobiT.reduce((a, x) => a + x.n, 0) + j.taches.length
-  const totAuto = autoT.reduce((a, x) => a + x.n, 0)
-  const compta = [...j.auto, ...j.mobi].filter(r => /factu|paiement|erp|mails/.test(r.cle)).reduce((a, r) => a + r.quantite, 0)
-  const jours = [...new Set([...j.mobi, ...j.auto, ...j.taches].map(r => r.jour))].sort()
+  const lignes = [...j.mobi, ...j.auto]
+  const parTheme = THEMES.map(t => ({ titre: t.titre, n: lignes.filter(r => t.cles.includes(r.cle)).reduce((a, r) => a + r.quantite, 0) })).filter(t => t.n > 0)
+  const total = parTheme.reduce((a, t) => a + t.n, 0) + j.taches.length
+  const compta = lignes.filter(r => /factu|paiement|erp|mails/.test(r.cle)).reduce((a, r) => a + r.quantite, 0)
+  const fourr = lignes.filter(r => /fourriere|m_parc/.test(r.cle)).reduce((a, r) => a + r.quantite, 0)
+  const jours = [...new Set([...lignes, ...j.taches].map(r => r.jour))].sort()
   const titre = libMois(j.mois)
   const Foot = () => <View style={s.foot} fixed><Text>Journal des tâches — {titre}</Text><Text render={({ pageNumber, totalPages }) => `Page ${pageNumber} / ${totalPages}`} /></View>
   return (
     <Document title={`Journal des tâches — ${titre}`} author="Olivier Herman (Mobi)">
       <Page size="A4" style={s.page}>
         <View style={s.top}>
-          <View><Text style={s.badge}>Journal des tâches · Verviers Dépannage</Text><Text style={s.h1}>{titre}</Text><Text style={s.sub}>Olivier Herman (Mobi) — organisation, facturation, fourrière et automatisation</Text></View>
+          <View><Text style={s.badge}>Journal des tâches · Verviers Dépannage</Text><Text style={s.h1}>{titre}</Text><Text style={s.sub}>Olivier Herman (Mobi) — organisation, facturation, comptabilité et fourrière</Text></View>
           <View style={{ alignItems: 'flex-end' }}><Text style={s.sub}>Établi le {emisLe}</Text><Text style={s.sub}>{jours.length} jours d’activité</Text></View>
         </View>
         <View style={s.kpis}>
-          <View style={s.k}><Text style={[s.kb, { color: ME }]}>{fmt(totMobi)}</Text><Text style={s.ks}>tâches réalisées par Mobi</Text></View>
-          <View style={s.k}><Text style={[s.kb, { color: AUTO }]}>{fmt(totAuto)}</Text><Text style={s.ks}>actions de ses automatismes</Text></View>
-          <View style={s.k}><Text style={s.kb}>{fmt(compta)}</Text><Text style={s.ks}>factures, paiements, pièces et mails</Text></View>
+          <View style={s.k}><Text style={[s.kb, { color: ME }]}>{fmt(total)}</Text><Text style={s.ks}>tâches accomplies</Text></View>
+          <View style={s.k}><Text style={[s.kb, { color: AUTO }]}>{fmt(compta)}</Text><Text style={s.ks}>factures, paiements, pièces et mails</Text></View>
+          <View style={s.k}><Text style={s.kb}>{fmt(fourr)}</Text><Text style={s.ks}>tâches fourrière et Justice</Text></View>
           <View style={[s.k, { marginRight: 0 }]}><Text style={s.kb}>{jours.length}</Text><Text style={s.ks}>jours couverts</Text></View>
         </View>
 
-        <Text style={s.h2}>Mobi lui-même</Text>
-        <View style={s.row}><Text style={[s.cell, s.th]}>Tâche</Text><Text style={[s.num, s.th]}>Nombre</Text></View>
-        {mobiT.map(x => <View key={x.titre} style={s.row}><Text style={s.cell}>{x.titre}</Text><Text style={s.num}>{fmt(x.n)}</Text></View>)}
-        {j.taches.length > 0 && <View style={s.row}><Text style={s.cell}>Dossiers traités en séance (détail jour par jour)</Text><Text style={s.num}>{fmt(j.taches.length)}</Text></View>}
-
-        <Text style={s.h2}>Automatismes de Mobi</Text>
-        <View style={s.row}><Text style={[s.cell, s.th]}>Automatisme</Text><Text style={[s.num, s.th]}>Actions</Text></View>
-        {autoT.map(x => <View key={x.titre} style={s.row}><Text style={s.cell}>{x.titre}</Text><Text style={s.num}>{fmt(x.n)}</Text></View>)}
-        <Text style={s.note}>« Automatismes » : travail fait seul par les outils mis en place par Mobi (facturation, paiements, comptabilité, relances, fourrière, mails). Le fonctionnement courant de l’app (réception des missions, dispatch, pointages) et ce qui est signé par un autre membre de l’équipe ne figurent pas dans ce document.</Text>
+        <Text style={s.h2}>Tâches accomplies</Text>
+        <View style={s.row}><Text style={[s.cell, s.th]}>Domaine</Text><Text style={[s.num, s.th]}>Nombre</Text></View>
+        {parTheme.map(x => <View key={x.titre} style={s.row}><Text style={s.cell}>{x.titre}</Text><Text style={s.num}>{fmt(x.n)}</Text></View>)}
+        {j.taches.length > 0 && <View style={s.row}><Text style={s.cell}>Dossiers particuliers traités (détail jour par jour)</Text><Text style={s.num}>{fmt(j.taches.length)}</Text></View>}
         <Foot />
       </Page>
 
@@ -81,15 +91,14 @@ function Doc({ j, emisLe }: { j: MoisJournal; emisLe: string }) {
         <View style={s.top}><View><Text style={s.badge}>Détail jour par jour</Text><Text style={[s.h1, { fontSize: 18 }]}>{titre}</Text></View></View>
         {jours.map(d => {
           const tj = j.taches.filter(t => t.jour === d)
-          const mj = j.mobi.filter(r => r.jour === d).sort((a, b) => b.quantite - a.quantite)
-          const aj = j.auto.filter(r => r.jour === d).sort((a, b) => b.quantite - a.quantite)
-          const nM = mj.reduce((a, r) => a + r.quantite, 0) + tj.length, nA = aj.reduce((a, r) => a + r.quantite, 0)
+          const lj = lignes.filter(r => r.jour === d)
+          const th = THEMES.map(t => ({ titre: t.titre, n: lj.filter(r => t.cles.includes(r.cle)).reduce((a, r) => a + r.quantite, 0) })).filter(t => t.n > 0).sort((a, b) => b.n - a.n)
+          const n = th.reduce((a, t) => a + t.n, 0) + tj.length
           return (
             <View key={d} style={s.day} wrap={false}>
-              <View style={s.dayH}><Text>{jourLong(d)}</Text><Text style={{ color: MUT, fontFamily: 'Helvetica' }}>Mobi : {fmt(nM)} · automatismes : {fmt(nA)}</Text></View>
-              {tj.map((t, i) => <View key={i} style={s.item}><Text style={s.h}>{heure(t.at)}</Text><Text style={{ flex: 1 }}><Text style={s.tagMe}>Mobi  </Text>{t.titre}{t.detail ? ` — ${t.detail}` : ''}</Text></View>)}
-              {mj.length > 0 && <View style={s.item}><Text style={s.h}>journée</Text><Text style={{ flex: 1 }}><Text style={s.tagMe}>Mobi  </Text>{mj.map(r => `${fmt(r.quantite)} ${court(r.titre).toLowerCase()}`).join(' · ')}</Text></View>}
-              {aj.length > 0 && <View style={s.item}><Text style={s.h}>journée</Text><Text style={{ flex: 1 }}><Text style={s.tagAuto}>Auto  </Text>{aj.map(r => `${fmt(r.quantite)} ${court(r.titre).toLowerCase()}`).join(' · ')}</Text></View>}
+              <View style={s.dayH}><Text>{jourLong(d)}</Text><Text style={{ color: MUT, fontFamily: 'Helvetica' }}>{fmt(n)} tâches</Text></View>
+              {tj.map((t, i) => <View key={i} style={s.item}><Text style={s.h}>{heure(t.at)}</Text><Text style={{ flex: 1 }}>{t.titre}{t.detail ? ` — ${t.detail}` : ''}</Text></View>)}
+              {th.length > 0 && <View style={s.item}><Text style={s.h}>journée</Text><Text style={{ flex: 1 }}>{th.map(t => `${fmt(t.n)} ${court(t.titre).toLowerCase()}`).join(' · ')}</Text></View>}
             </View>
           )
         })}
