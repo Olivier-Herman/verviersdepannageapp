@@ -47,5 +47,6 @@ export async function GET(req: Request) {
     }
   }
   await sb.from('app_settings').upsert({ key: 'tri_mails_info_last_run', value: JSON.stringify({ at: new Date().toISOString(), ranges: ranges.length, erreurs }) }, { onConflict: 'key' }).then(() => {}, () => {})
+  { const { compterTache } = await import('@/lib/journal-mobi'); await compterTache(sb, 'tri_info', 'Mails automatiques d’info@ triés et rangés', ranges.length).catch(() => {}) }   // journal des tâches de Mobi
   return NextResponse.json({ ok: !erreurs.length, ranges, erreurs })
 }

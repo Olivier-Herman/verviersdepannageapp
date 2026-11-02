@@ -17,6 +17,7 @@ export async function GET(req: Request) {
   try {
     const res = await passageComptesAchats()
     await sb.from('app_settings').upsert({ key: 'comptes_achats_last_run', value: JSON.stringify({ at: new Date().toISOString(), ok: true, ...res }) }, { onConflict: 'key' }).then(() => {}, () => {})
+    { const { compterTache } = await import('@/lib/journal-mobi'); const r: any = res; const n = Number(r?.brouillons?.lignes || 0) + (Array.isArray(r?.mois) ? r.mois.filter((x: any) => x?.ecriture).length : 0); await compterTache(sb, 'comptes_achats', 'Comptes de charge posés sur les achats et reclassements', n).catch(() => {}) }
     return NextResponse.json({ ok: true, ...res })
   } catch (e: any) {
     const msg = String(e?.message || e)

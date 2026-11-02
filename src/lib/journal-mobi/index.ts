@@ -33,6 +33,9 @@ export const CATEGORIES: { cle: string; titre: string; compte: boolean; test: (a
   { cle: 'facturation', compte: true, titre: 'Facturation automatique (factures émises, fiches clôturées)', test: a => /^(invoiced|invoice_autoposted|auto_completed|completed|rapport_facture|billing_updated)$/.test(a) },
   { cle: 'paiements', compte: true, titre: 'Paiements reconnus et rapprochés', test: a => a === 'invoice_paid' },
   { cle: 'corrections', compte: true, titre: 'Corrections de fiches (type de mission, assistance, incohérences)', test: a => /correction|corrige|source_changed|source_requalified|auto_convert|escalated|status_fix|redelivery_conflict|regularisation/.test(a) },
+  // Choix d'Olivier sur la page de tri (02/11/2026) : appels et clôtures chez les assistances comptent aussi.
+  { cle: 'appels', compte: true, titre: 'Appels aux chauffeurs (missions non acceptées à temps)', test: a => /appel_acceptation|transfer_call/.test(a) },
+  { cle: 'clotures', compte: true, titre: 'Clôtures chez les assistances pour la facturation (Touring, VAB, AXA, Allianz)', test: a => /^(touring_closed|vab_closed|axa_validated_in_portal|justinvoice_depose)$/.test(a) },
   { cle: 'app', compte: false, titre: 'Fonctionnement de l’app', test: () => true },
 ]
 export const categorieDe = (action: string) => CATEGORIES.find(c => c.test(action))!
@@ -100,6 +103,8 @@ export async function agregerJour(sb: Sb, jour: string): Promise<Record<string, 
       ['erp_lettrages', 'mobi', 'Comptabilité : paiements lettrés et rapprochements bancaires', await compte('account.partial.reconcile', mUids)],
       ['erp_pieces_auto', 'auto', 'Comptabilité automatique : pièces créées seules (factures, achats reçus, relevés)', await compte('account.move', aUids)],
       ['erp_lettrages_auto', 'auto', 'Comptabilité automatique : paiements lettrés et rapprochements', await compte('account.partial.reconcile', aUids)],
+      ['erp_paiements_fourn', 'mobi', 'Paiements fournisseurs préparés (lots de virements)', mUids.length ? Number(await odooRpc('account.payment', 'search_count', [[['create_uid', 'in', mUids], ['payment_type', '=', 'outbound'], ['create_date', '>=', dt(d1)], ['create_date', '<', dt(d2)]]])) : 0],
+      ['erp_paiements_fourn_auto', 'auto', 'Paiements fournisseurs préparés (lots de virements)', aUids.length ? Number(await odooRpc('account.payment', 'search_count', [[['create_uid', 'in', aUids], ['payment_type', '=', 'outbound'], ['create_date', '>=', dt(d1)], ['create_date', '<', dt(d2)]]])) : 0],
     ]
     for (const [cle, type, titre, n] of lignes) if (n > 0) rows.push({ jour, type, domaine: cle, titre, quantite: n, ref: `${type}:${jour}:${cle}` })
   } catch (e: any) { console.warn('[journal-mobi] ERP', e?.message) }
@@ -130,6 +135,16 @@ export async function agregerJour(sb: Sb, jour: string): Promise<Record<string, 
   const limite = new Date(); limite.setUTCMonth(limite.getUTCMonth() - 12)
   await sb.from('journal_mobi').delete().lt('jour', limite.toISOString().slice(0, 10))
   return counts
+}
+
+/** Compte une tâche faite par un passage automatique qui ne laisse pas d'historique (tri d'info@, comptes d'achat,
+ *  Circuit) : s'ajoute au compteur du jour. */
+export async function compterTache(sb: Sb, cle: string, titre: string, n: number) {
+  if (!(n > 0)) return
+  const jour = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Brussels' }).format(new Date())
+  const ref = `auto:${jour}:${cle}`
+  const { data } = await sb.from('journal_mobi').select('quantite').eq('ref', ref).maybeSingle()
+  await sb.from('journal_mobi').upsert({ jour, type: 'auto', domaine: cle, titre, quantite: ((data as any)?.quantite || 0) + n, ref }, { onConflict: 'ref' })
 }
 
 /** Ajoute une tâche de Mobi (séance, intervention). `ref` évite les doublons. */

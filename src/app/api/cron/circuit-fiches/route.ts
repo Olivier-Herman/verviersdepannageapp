@@ -27,6 +27,7 @@ async function handleGET(req: Request) {
   try {
     const res = await traiterFiches()
     await createAdminClient().from('app_settings').upsert({ key: 'circuit_fiches_last_run', value: JSON.stringify({ at: new Date().toISOString(), fiches: res.length, res }) }, { onConflict: 'key' }).then(() => {}, () => {})
+    { const { compterTache } = await import('@/lib/journal-mobi'); await compterTache(createAdminClient(), 'circuit', 'Circuit de Spa : fiches de réservation encodées en devis', Array.isArray(res) ? res.length : 0).catch(() => {}) }
     return NextResponse.json({ ok: true, fiches: res })
   } catch (e: any) {
     return NextResponse.json({ ok: false, error: String(e?.message || e) }, { status: 500 })

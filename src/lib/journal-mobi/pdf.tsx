@@ -49,10 +49,13 @@ const THEMES: { titre: string; cles: string[] }[] = [
   { titre: 'Facturation des dossiers et des assistances', cles: ['m_factu', 'facturation'] },
   { titre: 'Paiements reconnus, lettrés et rapprochés', cles: ['paiements', 'erp_lettrages', 'erp_lettrages_auto'] },
   { titre: 'Comptabilité : pièces encodées (factures, achats, notes de crédit, relevés)', cles: ['erp_pieces', 'erp_pieces_auto'] },
-  { titre: 'Correspondance : mails traités et envoyés', cles: ['mails', 'mails_auto', 'mails_decides'] },
+  { titre: 'Correspondance : mails traités, triés et envoyés', cles: ['mails', 'mails_auto', 'mails_decides', 'tri_info'] },
   { titre: 'Rappels et relances (clients, réquisitoires, fiches ouvertes)', cles: ['relances'] },
   { titre: 'Fourrière, parc et Justice (restitutions, levées, états de frais, Domaine)', cles: ['m_fourriere', 'm_parc', 'fourriere'] },
-  { titre: 'Dispatch, suivi des assistances et corrections de fiches', cles: ['m_dispatch', 'corrections'] },
+  { titre: 'Dispatch, suivi des assistances et corrections de fiches', cles: ['m_dispatch', 'corrections', 'appels'] },
+  { titre: 'Paiements fournisseurs et comptes d’achat', cles: ['erp_paiements_fourn', 'erp_paiements_fourn_auto', 'comptes_achats'] },
+  { titre: 'Clôtures chez les assistances pour la facturation', cles: ['clotures'] },
+  { titre: 'Circuit de Spa-Francorchamps', cles: ['circuit'] },
   { titre: 'Autres interventions sur les fiches', cles: ['m_autres'] },
 ]
 const themeDe = (cle: string) => THEMES.find(t => t.cles.includes(cle))?.titre || THEMES[THEMES.length - 1].titre
