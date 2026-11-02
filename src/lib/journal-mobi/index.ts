@@ -24,18 +24,16 @@ export function domaineDe(scope: string): string {
 }
 
 // ── Catégories des automatismes (actions de fiche sans nom) ──────────────────────────────────────────────────────
-export const CATEGORIES: { cle: string; titre: string; test: (a: string) => boolean }[] = [
-  { cle: 'missions', titre: 'Missions reçues des assistances et créées automatiquement', test: a => a === 'received' },
-  { cle: 'relances', titre: 'Rappels et relances (réquisitoires, fiches ouvertes, pauses)', test: a => /relance|reminder|overdue/.test(a) },
-  { cle: 'fourriere', titre: 'Fourrière, parc et Justice (états de frais, Domaine, contrôles du parc)', test: a => /etat_frais|requisitoire|officer|justinvoice|levee_saisie|domaine|parc_|zone_k|zone_t|gardiennage|exit_control|epave/.test(a) },
-  { cle: 'facturation', titre: 'Facturation automatique (factures émises, fiches clôturées)', test: a => /^(invoiced|invoice_autoposted|auto_completed|completed|rapport_facture|billing_updated)$/.test(a) },
-  { cle: 'paiements', titre: 'Paiements reconnus et rapprochés', test: a => a === 'invoice_paid' },
-  { cle: 'assistances', titre: 'Synchronisations avec les plateformes des assistances', test: a => /kaze|touring|vab|axa|comex|cancelled_by|anwb|^note$/.test(a) },
-  { cle: 'preparation', titre: 'Fiches préparées (adresses localisées, compléments, doublons évités)', test: a => /enrich|geocod|email_|address_change|source_|auto_convert|escalated|vehicle_ocr/.test(a) },
-  { cle: 'sam', titre: 'Sam et Sonic : alertes et conversations avec les chauffeurs', test: a => a === 'sam_copilote' },
-  { cle: 'appels', titre: 'Appels téléphoniques automatiques', test: a => /appel|_call$/.test(a) },
-  { cle: 'dispatch', titre: 'Dispatch, relivraisons et étiquettes', test: a => /dispatched|rel_|relivraison|reoffered|label|cancelled|merged|transfer/.test(a) },
-  { cle: 'autres', titre: 'Autres contrôles et corrections', test: () => true },
+// compte = false : fait partie du fonctionnement de l'app (lecture des mails de missions, préparation des fiches,
+// synchronisation des pointages, dispatch, Sam, appels) — jamais attribué à Mobi (Olivier 02/11/2026). Comptent :
+// corrections de fiches et de factures, facturation, paiements, relances, fourrière (+ ERP et mails, plus bas).
+export const CATEGORIES: { cle: string; titre: string; compte: boolean; test: (a: string) => boolean }[] = [
+  { cle: 'relances', compte: true, titre: 'Rappels et relances (réquisitoires, fiches ouvertes)', test: a => /relance|open_reminder/.test(a) },
+  { cle: 'fourriere', compte: true, titre: 'Fourrière, parc et Justice (états de frais, Domaine, contrôles du parc)', test: a => /etat_frais|requisitoire|officer|justinvoice|levee_saisie|domaine|parc_|zone_k|zone_t|gardiennage|exit_control|epave/.test(a) },
+  { cle: 'facturation', compte: true, titre: 'Facturation automatique (factures émises, fiches clôturées)', test: a => /^(invoiced|invoice_autoposted|auto_completed|completed|rapport_facture|billing_updated)$/.test(a) },
+  { cle: 'paiements', compte: true, titre: 'Paiements reconnus et rapprochés', test: a => a === 'invoice_paid' },
+  { cle: 'corrections', compte: true, titre: 'Corrections de fiches (type de mission, assistance, incohérences)', test: a => /correction|corrige|source_changed|source_requalified|auto_convert|escalated|status_fix|redelivery_conflict|regularisation/.test(a) },
+  { cle: 'app', compte: false, titre: 'Fonctionnement de l’app', test: () => true },
 ]
 export const categorieDe = (action: string) => CATEGORIES.find(c => c.test(action))!
 
@@ -76,8 +74,7 @@ export async function agregerJour(sb: Sb, jour: string): Promise<Record<string, 
     for (const x of data || []) { const c = categorieDe(String(x.action)).cle; counts[c] = (counts[c] || 0) + 1 }
     if ((data || []).length < 1000) break
   }
-  const { count: conv } = await sb.from('sam_conversations').select('id', { count: 'exact', head: true }).gte('started_at', d1).lt('started_at', d2)
-  if (conv) counts.sam = (counts.sam || 0) + conv
+  delete counts.app; delete counts.sam
   const rows: any[] = Object.entries(counts).filter(([, n]) => n > 0).map(([cle, n]) => ({
     jour, type: 'auto', domaine: cle, titre: CATEGORIES.find(c => c.cle === cle)!.titre, quantite: n, ref: `auto:${jour}:${cle}`,
   }))
@@ -106,6 +103,17 @@ export async function agregerJour(sb: Sb, jour: string): Promise<Record<string, 
     ]
     for (const [cle, type, titre, n] of lignes) if (n > 0) rows.push({ jour, type, domaine: cle, titre, quantite: n, ref: `${type}:${jour}:${cle}` })
   } catch (e: any) { console.warn('[journal-mobi] ERP', e?.message) }
+
+  // Mails traités par l'agent mail (factures fournisseurs, rejets d'assistances, tri) : seul → automatismes ;
+  // décidés par Olivier → Mobi.
+  try {
+    const { data: items } = await sb.from('mail_agent_items').select('status, applied_by').gte('created_at', d1).lt('created_at', d2).limit(2000)
+    const fini = (items || []).filter((x: any) => !['to_decide', 'to_verify'].includes(String(x.status)))
+    const parMobi = fini.filter((x: any) => x.applied_by && mobiIds.includes(String(x.applied_by))).length
+    const seuls = fini.filter((x: any) => !x.applied_by).length
+    if (seuls) rows.push({ jour, type: 'auto', domaine: 'mails_auto', titre: 'Mails traités seuls (factures fournisseurs encodées, rejets, tri)', quantite: seuls, ref: `auto:${jour}:mails_auto` })
+    if (parMobi) rows.push({ jour, type: 'mobi', domaine: 'mails_decides', titre: 'Mails de factures et de rejets décidés', quantite: parMobi, ref: `mobi:${jour}:mails_decides` })
+  } catch (e: any) { console.warn('[journal-mobi] agent mail', e?.message) }
 
   // Ses mails envoyés (mobi@).
   try {

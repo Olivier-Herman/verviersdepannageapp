@@ -47,7 +47,7 @@ function Doc({ j, emisLe }: { j: MoisJournal; emisLe: string }) {
   const mobiT = somme(j.mobi), autoT = somme(j.auto)
   const totMobi = mobiT.reduce((a, x) => a + x.n, 0) + j.taches.length
   const totAuto = autoT.reduce((a, x) => a + x.n, 0)
-  const missions = j.auto.filter(r => r.cle === 'missions').reduce((a, r) => a + r.quantite, 0)
+  const compta = [...j.auto, ...j.mobi].filter(r => /factu|paiement|erp|mails/.test(r.cle)).reduce((a, r) => a + r.quantite, 0)
   const jours = [...new Set([...j.mobi, ...j.auto, ...j.taches].map(r => r.jour))].sort()
   const titre = libMois(j.mois)
   const Foot = () => <View style={s.foot} fixed><Text>Journal des tâches — {titre}</Text><Text render={({ pageNumber, totalPages }) => `Page ${pageNumber} / ${totalPages}`} /></View>
@@ -61,7 +61,7 @@ function Doc({ j, emisLe }: { j: MoisJournal; emisLe: string }) {
         <View style={s.kpis}>
           <View style={s.k}><Text style={[s.kb, { color: ME }]}>{fmt(totMobi)}</Text><Text style={s.ks}>tâches réalisées par Mobi</Text></View>
           <View style={s.k}><Text style={[s.kb, { color: AUTO }]}>{fmt(totAuto)}</Text><Text style={s.ks}>actions de ses automatismes</Text></View>
-          <View style={s.k}><Text style={s.kb}>{fmt(missions)}</Text><Text style={s.ks}>missions créées sans encodage</Text></View>
+          <View style={s.k}><Text style={s.kb}>{fmt(compta)}</Text><Text style={s.ks}>factures, paiements, pièces et mails</Text></View>
           <View style={[s.k, { marginRight: 0 }]}><Text style={s.kb}>{jours.length}</Text><Text style={s.ks}>jours couverts</Text></View>
         </View>
 
@@ -73,7 +73,7 @@ function Doc({ j, emisLe }: { j: MoisJournal; emisLe: string }) {
         <Text style={s.h2}>Automatismes de Mobi</Text>
         <View style={s.row}><Text style={[s.cell, s.th]}>Automatisme</Text><Text style={[s.num, s.th]}>Actions</Text></View>
         {autoT.map(x => <View key={x.titre} style={s.row}><Text style={s.cell}>{x.titre}</Text><Text style={s.num}>{fmt(x.n)}</Text></View>)}
-        <Text style={s.note}>« Automatismes » : opérations faites seules par les outils mis en place par Mobi, sans intervention humaine. Ce qui est fait et signé par un autre membre de l’équipe ne figure pas dans ce document.</Text>
+        <Text style={s.note}>« Automatismes » : travail fait seul par les outils mis en place par Mobi (facturation, paiements, comptabilité, relances, fourrière, mails). Le fonctionnement courant de l’app (réception des missions, dispatch, pointages) et ce qui est signé par un autre membre de l’équipe ne figurent pas dans ce document.</Text>
         <Foot />
       </Page>
 
