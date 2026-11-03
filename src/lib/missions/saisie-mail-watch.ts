@@ -247,6 +247,11 @@ export async function pollSaisieMailbox(sb: any, opts?: { top?: number; messages
     const mentionsEdf = RE_EDF.test(`${msg.subject} ${msg.bodyPreview}`)
     if (!statut && !correction && !mentionsEdf && !(fromJustice && msg.hasAttachments)) continue   // pas pour nous, on laisse l'intake réquisitoire faire
     out.scanned++
+    // Nos propres factures / notes de crédit que le Parquet nous renvoie (« Verviers Depannage Avoir (Ref 2026-0364) »,
+    // 03/11/2026) : ce ne sont jamais des retours signés.
+    if (!statut && !correction && /Verviers D[ée]pannage\s+(Facture|Avoir|Note de cr[ée]dit)\s*\((R[ée]f|Ref)/i.test(msg.subject || '')) {
+      await recordEvent(sb, msg, 'ignore', null, 'notre facture ou note de crédit renvoyée, pas un retour signé'); out.ignored++; continue
+    }
     try {
       if (statut) { await handleStatut(sb, msg, statut[1], out); continue }
       if (correction) { await handleCorrection(sb, msg, correction[1], out); continue }

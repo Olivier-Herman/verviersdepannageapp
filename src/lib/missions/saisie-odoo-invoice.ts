@@ -55,7 +55,7 @@ export async function createSaisieParquetInvoice(sb: any, dossierId: string, efI
   const partnerId = PARTNER_BY_RECIPIENT[d.recipient]
   if (!partnerId) return { ok: false, error: `Pas de facture Odoo ici pour « ${d.recipient} » (le Domaine se facture via le module Domaine, le client via la fiche).` }
 
-  const sel = 'id, numero, lines_json, status, justinvoice_ref, validation_doc_path, period_from, period_to'
+  const sel = 'id, numero, lines_json, status, justinvoice_ref, validation_doc_path, period_from, period_to, odoo_invoice_id'
   let ef: any = null
   if (efId) {
     ef = (await sb.from('saisie_etats_frais').select(sel).eq('dossier_id', dossierId).eq('id', efId).maybeSingle()).data
@@ -67,6 +67,14 @@ export async function createSaisieParquetInvoice(sb: any, dossierId: string, efI
     return { ok: false, error: 'Aucun état de frais déposé/liquidé à facturer' }
   }
   if (!['depose', 'liquide'].includes(ef.status)) return { ok: false, error: `Cet état de frais est « ${ef.status} », pas déposé ni liquidé.` }
+  // Une seule facture par état de frais (Olivier 03/11/2026 : « le Parquet a déjà difficile de payer une facture, il ne
+  // va pas en payer deux pour le même dossier ») : EDF-2026-0024 en a eu trois (avant correction, avant liquidation, à la
+  // liquidation). Une facture encore valable dans l'ERP pour ce n° d'état de frais = on n'en crée pas d'autre.
+  {
+    const { odooRpc } = await import('@/lib/odoo')
+    const deja = await odooRpc<any[]>('account.move', 'search_read', [[['move_type', '=', 'out_invoice'], ['state', '!=', 'cancel'], ['payment_state', '!=', 'reversed'], ['invoice_origin', 'in', [ef.numero, String(ef.numero).replace(/-[A-Z]$/, '')]]]], { fields: ['name'], limit: 1 })
+    if (deja.length) return { ok: false, error: `${ef.numero} est déjà facturé (${deja[0].name}) : pas de deuxième facture.` }
+  }
   const jiRef = ef.justinvoice_ref || d.justinvoice_ref || null
   if (!jiRef) return { ok: false, error: 'N° JustInvoice manquant — la facture Peppol doit le porter (dépose d\'abord sur JustInvoice).' }
 

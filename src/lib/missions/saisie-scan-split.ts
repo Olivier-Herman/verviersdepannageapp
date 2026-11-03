@@ -85,8 +85,11 @@ export async function splitAndDispatch(sb: any, pdfBuffer: Buffer, userId?: stri
 
     // On rattache à l'ÉTAT DE FRAIS précis (par son n° EDF), pas « le dernier ».
     const { data: ef } = await sb.from('saisie_etats_frais')
-      .select('id, dossier_id, numero').eq('numero', numero).maybeSingle()
+      .select('id, dossier_id, numero, status').eq('numero', numero).maybeSingle()
     if (!ef) { res.note = `Aucun état de frais ${numero}`; out.unmatched++; out.results.push(res); continue }
+    // Un état de frais déjà déposé, liquidé, facturé ou annulé ne revient jamais en « accepté » : le 03/11/2026, notre
+    // propre note de crédit renvoyée par le Parquet a fait repasser EDF-2026-0024 (facturé et payé) en « accepté ».
+    if (['depose', 'liquide', 'facture', 'annule'].includes(ef.status)) { res.note = `${numero} déjà « ${ef.status} » : page ignorée`; out.unmatched++; out.results.push(res); continue }
     const { data: dossier } = await sb.from('saisie_dossiers')
       .select('id, mission_id, vehicle_plate').eq('id', ef.dossier_id).maybeSingle()
 
