@@ -90,6 +90,9 @@ function allianzLineAmount(tariffName: string, distance: number, rates: AllianzR
   if (/fuel/.test(n))                   return { amount: rates.fuel, qty: 1 }
   if (/remorquage sans/.test(n))        return { amount: rates.remorquage, qty: 1 }
   if (/r[ée]par[ée] sur place/.test(n)) return { amount: rates.repare, qty: 1 }
+  // Trajet à vide (service D) : notre forfait de la grille Mondial (97,02 € au 03/11/2026). Sans lui, la ligne restait
+  // non calculable et aucun trajet vide n'était jamais clôturé sur Hexalite → Allianz ne les payait pas (Olivier 03/11/2026).
+  if (/trajet\s+[àa]\s+vide/.test(n))   return rates.trajetVide != null ? { amount: rates.trajetVide, qty: 1 } : null
   if (/suppl[ée]ment distance/.test(n)) {
     const qty = supplementKm(distance, rates.kmInclus)
     return { amount: round2(qty * rates.kmPrice), qty }
