@@ -343,8 +343,14 @@ export async function creditAndRebill(
 export async function postAndSendPeppol(id: number): Promise<{ name: string; sent: boolean; note: string }> {
   const [m] = await odooRpc<any[]>('account.move', 'read', [[id]], { fields: ['state', 'partner_id'] })
   if (m?.state === 'draft') await odooRpc('account.move', 'action_post', [[id]])
-  const [pt] = m?.partner_id ? await odooRpc<any[]>('res.partner', 'read', [[m.partner_id[0]]], { fields: ['peppol_verification_state'] }) : [null]
-  const belgian = pt?.peppol_verification_state === 'valid'   // = inscrit sur Peppol
+  const [pt] = m?.partner_id ? await odooRpc<any[]>('res.partner', 'read', [[m.partner_id[0]]], { fields: ['peppol_verification_state', 'commercial_partner_id'] }) : [null]
+  // Une adresse de facturation (sous-fiche) n'est souvent pas vérifiée Peppol alors que sa société l'est : c'est la
+  // société qui reçoit sur Peppol (Parquet de Liège, NC 2026-0364 partie par mail le 03/11/2026).
+  let belgian = pt?.peppol_verification_state === 'valid'   // = inscrit sur Peppol
+  if (!belgian && pt?.commercial_partner_id?.[0] && pt.commercial_partner_id[0] !== m.partner_id[0]) {
+    const [cp] = await odooRpc<any[]>('res.partner', 'read', [[pt.commercial_partner_id[0]]], { fields: ['peppol_verification_state'] })
+    belgian = cp?.peppol_verification_state === 'valid'
+  }
   const ctx = { context: { active_model: 'account.move', active_ids: [id], active_id: id } }
   const wiz = await odooRpc<number>('account.move.send.wizard', 'create', [{ move_id: id }], ctx)
   const [w0] = await odooRpc<any[]>('account.move.send.wizard', 'read', [[wiz]], { fields: ['sending_method_checkboxes'], ...ctx })
@@ -443,6 +449,11 @@ export async function compareInvoices(aName: string, bName: string): Promise<Inv
 /** Client inscrit sur Peppol (vérifié par l'ERP) ? */
 export async function partnerOnPeppol(partnerId: number | null | undefined): Promise<boolean> {
   if (!partnerId) return false
-  const [p] = await odooRpc<any[]>('res.partner', 'read', [[partnerId]], { fields: ['peppol_verification_state'] }).catch(() => [null])
-  return p?.peppol_verification_state === 'valid'
+  const [p] = await odooRpc<any[]>('res.partner', 'read', [[partnerId]], { fields: ['peppol_verification_state', 'commercial_partner_id'] }).catch(() => [null])
+  if (p?.peppol_verification_state === 'valid') return true
+  // Sous-fiche (adresse de facturation) : c'est la société qui est inscrite sur Peppol (03/11/2026).
+  const cid = p?.commercial_partner_id?.[0]
+  if (!cid || cid === partnerId) return false
+  const [c] = await odooRpc<any[]>('res.partner', 'read', [[cid]], { fields: ['peppol_verification_state'] }).catch(() => [null])
+  return c?.peppol_verification_state === 'valid'
 }

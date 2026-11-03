@@ -24,9 +24,27 @@ export async function communicationItems(sinceIso: string, skipLineIds: Set<numb
     ['amount', '>', 0], ['date', '>=', sinceIso.slice(0, 10)], ['is_reconciled', '=', false],
   ]], { fields: ['id', 'date', 'amount', 'amount_residual', 'payment_ref', 'move_id', 'partner_id'], order: 'date desc, id desc', limit: 500 })
 
+  // Le Parquet et les frais de justice paient avec le n° de l'ÉTAT DE FRAIS (« EDF-2026-0024 »), pas celui de la
+  // facture (Olivier 03/11/2026 : « c'est pas top comme truc mais on va pas avoir le choix »). Lu tel quel, « 2026-0024 »
+  // désignait une note de crédit IPA. On remplace donc chaque n° d'état de frais par la facture qui le porte
+  // (invoice_origin), ouverte de préférence ; introuvable → le n° est retiré, jamais pris pour une note de crédit.
+  const edfRe = /\bEDF[-\s]?(\d{4})[-\s]?(\d{3,4})(?:[-\s]?([A-Z])\b)?/gi
+  const edfNums = [...new Set(lines.flatMap(l => [...String(l.payment_ref || '').matchAll(edfRe)].map(x => `EDF-${x[1]}-${x[2].padStart(4, '0')}`)))]
+  const edfInv = new Map<string, string>()
+  if (edfNums.length) {
+    const origins = edfNums.flatMap(n => [n, `${n}-B`, `${n}-C`])
+    const ms = await odooRpc<any[]>('account.move', 'search_read', [[['invoice_origin', 'in', origins], ['state', '=', 'posted'], ['move_type', '=', 'out_invoice']]], { fields: ['name', 'invoice_origin', 'amount_residual', 'invoice_date'], order: 'invoice_date desc, id desc' })
+    for (const n of edfNums) {
+      const cand = ms.filter(m => String(m.invoice_origin).replace(/-[A-Z]$/, '') === n)
+      const pick = cand.find(m => Math.abs(Number(m.amount_residual || 0)) > 0.005) || cand[0]
+      if (pick) edfInv.set(n, pick.name)
+    }
+  }
+  const commText = (l: any) => String(l.payment_ref || '').replace(edfRe, (_m, y, n) => ` ${edfInv.get(`EDF-${y}-${String(n).padStart(4, '0')}`) || ''} `)
+
   const withMentions = lines
     .filter(l => !skipLineIds.has(l.id))
-    .map(l => ({ l, mentions: invoiceMentions(String(l.payment_ref || '')) }))
+    .map(l => ({ l, mentions: invoiceMentions(commText(l)) }))
     .filter(x => x.mentions.length)
   if (!withMentions.length) return []
 
