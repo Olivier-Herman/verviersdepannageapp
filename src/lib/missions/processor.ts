@@ -6,6 +6,7 @@ import { parseMissionContent }          from './parser'
 import { sendPushToRole, sendPushToUser } from '@/lib/push'
 import { sendNotification, sendNotificationToRoles } from '@/lib/notifications/send'
 import { sourcesWithTag } from '@/lib/missions/source-catalog'
+import { gopAttachment, intakeGop, linkPendingGop } from './gop'
 
 const MISSIONS_EMAIL = process.env.MISSIONS_EMAIL!
 
@@ -518,7 +519,23 @@ export type ProcessResult =
 
 // ── Traitement d'un email ─────────────────────────────────────────────────────
 
+const GOP_PENDING = new Map<string, string>()
+
 export async function processEmailMessage(messageId: string): Promise<ProcessResult> {
+  const res = await processEmailMessageInner(messageId)
+  const pending = GOP_PENDING.get(messageId)
+  if (pending !== undefined) {
+    GOP_PENDING.delete(messageId)
+    const linked = await linkPendingGop(createAdminClient(), messageId).catch(() => false)
+    if (!linked) await sendPushToRole(['superadmin'], {
+      title: '💶 Garantie de paiement à placer', body: pending,
+      url: '/dispatch', tag: `gop-${messageId.slice(-12)}`, icon: '/icons/apple-touch-icon.png',
+    })
+  }
+  return res
+}
+
+async function processEmailMessageInner(messageId: string): Promise<ProcessResult> {
   const t0         = Date.now()
   const msgIdShort = messageId.slice(-12)
   const supabase   = createAdminClient()
@@ -732,6 +749,22 @@ export async function processEmailMessage(messageId: string): Promise<ProcessRes
         console.log('[Processor] Fallback MIME $value...')
         attachments = await getAttachmentsFromMime(token, messageId)
       }
+    }
+
+    // ── Garantie de paiement Allianz (« GOP … .pdf ») : placée sur la fiche qu'elle couvre, pas
+    // une nouvelle mission (Olivier 04/11/2026). Fiche introuvable → flux normal, et Mobi prévenu.
+    const gopAtt = gopAttachment(fromEmail, attachments)
+    if (gopAtt) {
+      const r = await intakeGop(supabase, { att: gopAtt, sourceEmailId: messageId, fromEmail, receivedAt })
+        .catch((e: any) => ({ placed: false, why: `lecture impossible : ${e?.message}` } as Awaited<ReturnType<typeof intakeGop>>))
+      // Reprise d'un remorquage à nous : la GOP n'ouvre pas de nouvelle fiche (fiche fantôme 10220393, 03/11).
+      if (r.placed && r.reprise) {
+        await markAsRead(token, messageId)
+        if (placeholderId) await supabase.from('incoming_missions').delete().eq('id', placeholderId)
+        return { status: 'skipped', reason: `Garantie de paiement placée sur la fiche ${r.missionNumber ?? ''}` }
+      }
+      // Pas encore de fiche : la GOP peut être le premier mail de l'affectation → reliée après le flux normal.
+      if (!r.placed && !r.dossierKnown) GOP_PENDING.set(messageId, `${subject.slice(0, 80)} — ${r.why || 'fiche introuvable'}`)
     }
 
     console.log(`[Processor] step=extract_content messageId=${msgIdShort}`)
