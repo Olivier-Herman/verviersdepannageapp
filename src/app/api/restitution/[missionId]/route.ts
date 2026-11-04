@@ -70,6 +70,19 @@ async function buildContext(sb: any, session: any, missionId: string) {
   const derogs = await approvedDerogations(sb, m.id, open?.id || null)
   const needLegs = !!open && (!!open.odoo_partner_id || derogs.some(d => d.kind === 'identite' && d.status === 'approved'))
   const invId = open?.invoice_odoo_id || null
+  // Garantie de paiement d'une assistance : sa part est facturée et déduite AVANT le calcul,
+  // sinon le client paierait tout (Olivier 04/11/2026). Le client paie le solde pour sortir.
+  const { data: gars } = await sb.from('mission_guarantees').select('id, invoice_odoo_id').eq('mission_id', m.id).eq('status', 'placed')
+  if (needLegs && (gars || []).some((g: any) => !g.invoice_odoo_id)) {
+    const { assurerPartsAssistance } = await import('@/lib/facturation/garantie')
+    await assurerPartsAssistance(sb, m.id, me.id)
+    dropLegs(m.id)
+  }
+  const garInvoiceIds = new Set<number>()
+  if ((gars || []).length) {
+    const { data: g2 } = await sb.from('mission_guarantees').select('invoice_odoo_id').eq('mission_id', m.id).not('invoice_odoo_id', 'is', null)
+    for (const g of g2 || []) garInvoiceIds.add(Number((g as any).invoice_odoo_id))
+  }
   // Tout le reste en parallèle.
   const [meR, respR, names, rel, legsR, assist, invoice, ivR, terms] = await Promise.all([
     sb.from('users').select('id, name, odoo_api_key, restitution_responsable').eq('id', me.id).maybeSingle(),
@@ -91,7 +104,7 @@ async function buildContext(sb: any, session: any, missionId: string) {
   // information, sans décision au comptoir (comme les autres clients tiers).
   const openInvoices = (needLegs
     ? await dossierOpenInvoices(sb, [...new Set([m.id, ...legsR.legs.map((l: any) => l.mission_id)])], invId, open?.third_invoices || [])
-    : []).map((i: any) => (assist as any).assist?.has(Number(i.partner_id)) ? { ...i, third: true, circuit: 'assistance' } : i)
+    : []).map((i: any) => (assist as any).assist?.has(Number(i.partner_id)) || garInvoiceIds.has(Number(i.id)) ? { ...i, third: true, circuit: 'assistance' } : i)
   // Facture supprimée dans Odoo (brouillon effacé) : on défait le lien et les lignes
   // « facturées », sinon le dossier croit tout payé et laisse sortir le véhicule
   // pour 0 € (TEST-MG, 29/09/2026).

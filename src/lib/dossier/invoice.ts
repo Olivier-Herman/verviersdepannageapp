@@ -13,6 +13,7 @@
 // Gardiennage en cours coché : la période s'arrête à maintenant (parc_exit_at,
 // motif 'facturation') et un nouveau groupe s'ouvre sur la période suivante.
 
+import { lignesGarantie } from '@/lib/facturation/garantie'
 import { nightsBetween, brusselsMidnightAfter } from '@/lib/parc/nights'
 import { lineKind } from '@/lib/odoo-quote'
 import { createAdminClient }        from '@/lib/supabase'
@@ -97,6 +98,12 @@ function actionDescription(leg: DossierLeg, m: any): string {
 // asQuote (D11) : un DEVIS Odoo (sale.order) par client au lieu d'une facture ;
 // rien n'est marqué facturé, on ne coupe pas le gardiennage, odoo_quote_id est
 // posé sur les fiches. La facture partira ensuite d'Odoo ou du dossier.
+/** Ajoute la déduction « Pris en charge par … » sauf si elle y est déjà (lignes retouchées à la main). */
+function avecGarantie(lines: QuoteLine[], garantie: QuoteLine[]): QuoteLine[] {
+  if (!garantie.length || !lines.length || lines.some(l => /^Pris en charge par /.test(l.name))) return lines
+  return [...lines, ...garantie]
+}
+
 export async function invoiceDossierGroups(input: { anyMissionId: string; missionIds: string[]; actorUserId: string | null; dryRun?: boolean; periodTo?: Record<string, string>; linesOverride?: Record<string, QuoteLine[]>; asQuote?: boolean }): Promise<DossierInvoiceResult> {
   const sb = createAdminClient()
   const d = await buildDossier(input.anyMissionId)
@@ -212,13 +219,14 @@ async function invoiceDossierGroupsLocked(sb: any, d: Dossier, input: { anyMissi
         } else {
           warnings.push(`${d.number}${leg.letter} : 0 jour facturable, groupe ignoré`); continue
         }
-        const ov = override(leg.mission_id); const finalLines = ov ?? lines
+        const ov = override(leg.mission_id); const finalLines = avecGarantie(ov ?? lines, await lignesGarantie(sb, leg.mission_id))
         sections.push({ section_label: enrichi && etapes.length ? libelleSection(etapeDe(leg.mission_id), 'Gardiennage') : `${d.number}${leg.letter} — Gardiennage${m.parc_zone_key ? ' zone ' + m.parc_zone_key : ''}`, lines: enrichi ? nettoyerLignes(finalLines) : finalLines, mission_id: leg.mission_id })
         perLeg.push({ leg, lines: finalLines, period_from: from, period_to: to })
       } else {
         const ov = override(leg.mission_id)
         const { lines: calc, has_tariff: calcOk } = ov ? { lines: ov, has_tariff: true } : await actionLines(m, draftById[leg.mission_id], hasGardLegs)
-        const lines = calc, has_tariff = calcOk
+        // Garantie de paiement d'une assistance : sa part est déduite, le client ne paie que le solde.
+        const lines = avecGarantie(calc, await lignesGarantie(sb, leg.mission_id)), has_tariff = calcOk
         if (!has_tariff || !lines.length) { warnings.push(`${d.number}${leg.letter} : tarif introuvable, section à compléter dans Odoo`) }
         // Suppléments VAB (carburant, VR) : déjà dans actionLines (lib/facturation/vab-fuel).
         sections.push({ section_label: enrichi && etapes.length ? `${libelleSection(etapeDe(leg.mission_id), actionDescription(leg, m))}${has_tariff ? '' : ' (à compléter)'}` : `${d.number}${leg.letter} — ${leg.title} — ${actionDescription(leg, m)}${has_tariff ? '' : ' (à compléter)'}`, lines: enrichi ? nettoyerLignes(lines) : lines, mission_id: leg.mission_id })

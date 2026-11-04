@@ -6,7 +6,7 @@ import PauseBadge, { pauseFrame } from '@/components/missions/PauseBadge'
 // avec total, et « Ouvrir la fiche complète » = ta fiche dispatch actuelle en
 // embed. Les mails sans action sont des lignes fines. Olivier 07/09/2026.
 
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { MISSION_TYPE_KEYS, GARDIENNAGE_TYPE_KEYS, TYPE_LABEL_SELECT } from '@/lib/missions/mission-types'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
@@ -250,6 +250,8 @@ export default function DossierGroups({ initial, fiches, shared, isSuperadmin, o
                 <RelivrerFromDossier d={d} leg={rootLeg} gmKey={shared.googleMapsKey} onDone={refresh} />
               </div>
             ) : null })()}
+            {/* Garantie de paiement d'une assistance (Olivier 04/11/2026) : part assistance / solde client. */}
+            <GarantiePanel dossierId={d.root_id} canBill={canBill} onChanged={async () => { await refresh(); router.refresh() }} />
             {/* Olivier 09/09/2026 : réquisitoire, levée de saisie et sortie du parc
                 DANS l'en-tête — « comme ça on ne doit pas chaque fois ouvrir toute
                 la fiche pour les compléter ». Même panneau que la fiche (racine). */}
@@ -1110,6 +1112,84 @@ function OdooVehicleSuggest({ missionId, plate, current, onDone }: {
         </button>
       ))}
       <button type="button" disabled={busy} onClick={() => onDone()} className="px-2 py-0.5 rounded border bg-surface text-ink-secondary">Ignorer</button>
+    </div>
+  )
+}
+
+// ── Garantie de paiement d'une assistance (maquette validée 04/11/2026) ───────────────────────
+// Qui paie quoi : la part de l'assistance (plafonnée) et le solde du client, gardiennage inclus
+// ou exclu au choix. « Facturer la part de l'assistance » crée sa facture en brouillon ; la
+// facture du client et la restitution ne demandent ensuite que le solde.
+function GarantiePanel({ dossierId, canBill, onChanged }: { dossierId: string; canBill: boolean; onChanged: () => void | Promise<void> }) {
+  const [list, setList] = useState<any[] | null>(null)
+  const [busy, setBusy] = useState<string | null>(null)
+  const [err, setErr] = useState<string | null>(null)
+  const [done, setDone] = useState<string | null>(null)
+  const load = useCallback(async () => {
+    try { const r = await fetch(`/api/dossier/${dossierId}/garantie`, { cache: 'no-store' }); const j = await r.json(); setList(r.ok ? j.garanties || [] : []) } catch { setList([]) }
+  }, [dossierId])
+  useEffect(() => { load() }, [load])
+  if (!list || !list.length) return null
+  const e2 = (n: number) => n.toLocaleString('fr-BE', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' €'
+  async function call(method: 'PATCH' | 'POST', body: any, key: string) {
+    setBusy(key); setErr(null); setDone(null)
+    try {
+      const r = await fetch(`/api/dossier/${dossierId}/garantie`, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+      const j = await r.json()
+      if (!r.ok || j.ok === false) throw new Error(j.error || `Erreur ${r.status}`)
+      if (method === 'POST') setDone('Facture de l’assistance créée en brouillon. Le client ne paie plus que le solde.')
+      await load(); await onChanged()
+    } catch (e: any) { setErr(e.message || 'Erreur réseau') } finally { setBusy(null) }
+  }
+  return (
+    <div className="mt-2 space-y-2">
+      {list.map(g => {
+        const p = g.plan, validated = g.invoice?.state === 'posted'
+        return (
+          <div key={g.id} className="rounded-xl border-2 border-emerald-600/50 bg-emerald-600/5 px-3 py-2.5 text-xs">
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+              <span className="font-semibold text-emerald-800 dark:text-emerald-300">💶 Garantie de paiement</span>
+              <span className="text-ink">{g.assistance}</span>
+              <span className="text-ink-muted">dossier <b className="font-mono text-ink">{g.dossier_ref || '—'}</b></span>
+              <span className="text-ink-muted">jusqu’à <b className="text-ink">{g.amount_ttc != null ? e2(Number(g.amount_ttc)) : '—'} TVAC</b></span>
+              {g.doc_url && <a href={g.doc_url} target="_blank" rel="noreferrer" className="text-brand underline">voir la garantie</a>}
+            </div>
+            <div className="mt-2 flex flex-wrap items-center gap-2">
+              <span className="text-ink-muted">Gardiennage</span>
+              <div className="inline-flex rounded-lg border overflow-hidden">
+                {[{ v: false, l: 'Exclu (client)' }, { v: true, l: 'Inclus' }].map(o => (
+                  <button key={String(o.v)} disabled={!canBill || validated || !!busy} onClick={() => g.gardiennage_inclus !== o.v && call('PATCH', { id: g.id, gardiennage_inclus: o.v }, 'gard' + g.id)}
+                    className={`min-h-[44px] sm:min-h-0 px-3 py-1.5 font-semibold ${g.gardiennage_inclus === o.v ? 'bg-emerald-600 text-white' : 'bg-surface text-ink-secondary hover:bg-surface-2'} disabled:opacity-60`}>{o.l}</button>
+                ))}
+              </div>
+            </div>
+            <div className="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-2">
+              <div className="rounded-lg bg-surface border px-3 py-2">
+                <div className="text-ink-muted">Part de l’assistance{p.plafond_atteint ? ' (plafond atteint)' : ''}</div>
+                <div className="text-ink text-base font-bold tabular-nums">{e2(p.assistance_ttc)} <span className="text-[10px] font-normal text-ink-muted">TVAC</span></div>
+                <div className="text-ink-muted">{p.parts.filter((x: any) => x.part_htva > 0).map((x: any) => `${x.letter} ${x.title}`).join(' · ') || 'tarif du remorquage pas encore calculé'}</div>
+              </div>
+              <div className="rounded-lg bg-surface border px-3 py-2">
+                <div className="text-ink-muted">Solde à payer par le client{g.client_name ? ` (${g.client_name})` : ''}</div>
+                <div className="text-ink text-base font-bold tabular-nums">{e2(p.client_ttc)} <span className="text-[10px] font-normal text-ink-muted">TVAC</span></div>
+                <div className="text-ink-muted">{p.hors_garantie.length ? `dont non couvert : ${p.hors_garantie.map((h: any) => `${h.letter} ${h.title}`).join(' · ')}` : 'reste au-delà de la garantie'} · la sortie du parc attend ce paiement</div>
+              </div>
+            </div>
+            <div className="mt-2 flex flex-wrap items-center gap-2">
+              {g.invoice ? (
+                <span className="text-ink-secondary">{validated ? '✓ Facture de l’assistance validée' : '🧾 Facture de l’assistance en brouillon'}{g.invoice.url && <> · <a href={g.invoice.url} target="_blank" rel="noreferrer" className="text-brand underline">Ouvrir dans Odoo</a></>}</span>
+              ) : canBill ? (
+                <button disabled={!!busy || p.assistance_htva <= 0} onClick={() => call('POST', { id: g.id }, 'bill' + g.id)} className="min-h-[44px] sm:min-h-0 px-3 py-1.5 rounded-lg font-semibold bg-emerald-600 hover:bg-emerald-700 text-white disabled:opacity-50">
+                  {busy === 'bill' + g.id ? '⏳ Facturation…' : `Facturer la part de l’assistance (${e2(p.assistance_ttc)} TVAC)`}
+                </button>
+              ) : null}
+              {busy && busy.startsWith('gard') && <span className="text-ink-muted">⏳ Recalcul…</span>}
+            </div>
+            {err && <p className="mt-1.5 text-red-700 dark:text-red-300">⚠ {err}</p>}
+            {done && <p className="mt-1.5 text-emerald-800 dark:text-emerald-300">✓ {done}</p>}
+          </div>
+        )
+      })}
     </div>
   )
 }

@@ -32,6 +32,7 @@ export type GopData = {
   client_phone: string | null
   incident_at: string | null
   payer: string | null
+  payer_vat: string | null
 }
 
 /** La pièce jointe « GOP … .pdf » d'un mail Allianz, sinon null. */
@@ -44,7 +45,7 @@ export async function readGop(pdfBase64: string): Promise<GopData> {
   const client = aiClient('missions/gop', { apiKey: process.env.ANTHROPIC_API_KEY! }) as Anthropic
   const prompt = `Ceci est une garantie de paiement d'une compagnie d'assistance adressée à un dépanneur.
 Réponds en JSON STRICT, sans texte autour :
-{"payer":"entité qui garantit (ex. AWP P&C S.A. - Belgian Branch)","dossier_ref":"n° de dossier tel qu'écrit","assistance_mission":"n° de mission (chiffres seuls)","plate":"plaque","vin":"NIV/VIN","amount_ttc":<montant garanti TVA comprise, nombre>,"client_name":"…","client_address":"rue, CP ville","client_phone":"…","incident_at":"date et heure de l'incident telles qu'écrites"}
+{"payer":"entité qui garantit (ex. AWP P&C S.A. - Belgian Branch)","payer_vat":"n° d'entreprise ou de TVA de cette entité (ex. 0837.437.919)","dossier_ref":"n° de dossier tel qu'écrit","assistance_mission":"n° de mission (chiffres seuls)","plate":"plaque","vin":"NIV/VIN","amount_ttc":<montant garanti TVA comprise, nombre>,"client_name":"…","client_address":"rue, CP ville","client_phone":"…","incident_at":"date et heure de l'incident telles qu'écrites"}
 Une donnée absente = null. Ne devine rien. Si le montant est indiqué hors TVA, mets null.`
   const res = await client.messages.create({ model: ANTHROPIC_MODEL, max_tokens: 800, messages: [{ role: 'user', content: [
     { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: pdfBase64 } },
@@ -61,6 +62,7 @@ Une donnée absente = null. Ne devine rien. Si le montant est indiqué hors TVA,
     amount_ttc: Number.isFinite(amt) && amt > 0 ? Math.round(amt * 100) / 100 : null,
     client_name: s(j.client_name), client_address: s(j.client_address), client_phone: s(j.client_phone),
     incident_at: s(j.incident_at), payer: s(j.payer),
+    payer_vat: (() => { const d = String(j.payer_vat ?? '').replace(/\D/g, ''); return d.length === 10 ? `BE${d}` : d.length === 9 ? `BE0${d}` : null })(),
   }
 }
 
@@ -134,7 +136,7 @@ export async function intakeGop(sb: any, opts: { att: GopAttachment; sourceEmail
   await sb.from('mission_guarantees').insert({
     mission_id: hit.id, assistance, dossier_ref: g.dossier_ref, assistance_mission: g.assistance_mission,
     plate: g.plate, vin: g.vin, amount_ttc: g.amount_ttc, client_name: g.client_name, client_address: g.client_address,
-    client_phone: g.client_phone, incident_at: g.incident_at, doc_path: docPath, source_email_id: opts.sourceEmailId,
+    client_phone: g.client_phone, incident_at: g.incident_at, assistance_vat: g.payer_vat, doc_path: docPath, source_email_id: opts.sourceEmailId,
     status: hit.id ? 'placed' : 'to_verify', placed_how: hit.id ? hit.how : (hit as any).why,
   })
   if (hit.id) return { placed: true, reprise: hit.reprise, missionId: hit.id, missionNumber: hit.mission_number }
