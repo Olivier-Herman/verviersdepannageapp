@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
-import { createCheckout, sendPaymentEmail, getCheckoutStatus, getTransactionByForeignId } from '@/lib/sumup'
+import { createCheckout, forceBancontact, sendPaymentEmail, getCheckoutStatus, getTransactionByForeignId } from '@/lib/sumup'
 import { createAdminClient } from '@/lib/supabase'
 
 export async function POST(req: NextRequest) {
@@ -22,6 +22,9 @@ export async function POST(req: NextRequest) {
       description: description || `Intervention ${reference}`,
     })
 
+    // QR : paiement forcé en Bancontact (le client scanne, son app bancaire s'ouvre) ; repli sur la page SumUp.
+    const bancontactUrl = mode === 'qr' ? await forceBancontact(id, clientName) : null
+
     if (mode === 'email') {
       if (!clientEmail) return NextResponse.json({ error: 'Email client requis' }, { status: 400 })
       await sendPaymentEmail({
@@ -37,7 +40,8 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({
       checkoutId: id,
       checkoutUrl,
-      qrUrl: `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(checkoutUrl)}`,
+      qrUrl: `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(bancontactUrl || checkoutUrl)}`,
+      bancontact: !!bancontactUrl,
       // foreign-tx-id = notre référence → permet de réconcilier la transaction
       // faite dans l'app SumUp via l'API Transactions (cf. GET ?ref=).
       // callback : l'app SumUp revient sur notre page de retour (smp-status=success|failed),

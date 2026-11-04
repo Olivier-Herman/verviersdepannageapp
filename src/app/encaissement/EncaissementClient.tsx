@@ -1358,14 +1358,14 @@ export default function EncaissementClient({
         {/* QR Code SumUp */}
         {sumupData?.qrUrl && sumupMode === 'qr' && !sumupStatus && (
           <div className="bg-white rounded-2xl p-4 mb-4 text-center">
-            <p className="text-ink-muted text-xs mb-2">Montrez ce QR au client — il paye sur son téléphone</p>
+            <p className="text-ink-muted text-xs mb-2">{sumupData.bancontact ? 'Le client scanne ce QR : son app bancaire s’ouvre, il confirme le paiement' : 'Montrez ce QR au client — il paye sur son téléphone'}</p>
             <img
               src={sumupData.qrUrl}
               alt="QR Code SumUp"
               className="mx-auto w-52 h-52 pointer-events-none"
               draggable={false}
             />
-            <p className="text-ink-secondary text-xs mt-2">Carte, Apple Pay, Google Pay acceptés</p>
+            <p className="text-ink-secondary text-xs mt-2">{sumupData.bancontact ? 'Paiement Bancontact (Payconiq, KBC, BNP, ING, Belfius…). Carte Visa / Mastercard ou Apple Pay : utilisez « Tap to Pay ».' : 'Carte, Apple Pay, Google Pay acceptés'}</p>
           </div>
         )}
 
@@ -1383,8 +1383,8 @@ export default function EncaissementClient({
             {[
               { mode: 'cash',          icon: '💵', label: 'Espèces',              sumup: false },
               { mode: 'terminal',      icon: '💳', label: 'SumUp Terminal',        sumup: true  },
-              { mode: 'qr',            icon: '📱', label: 'QR Code',               sumup: true  },
-              { mode: 'tap',           icon: '📲', label: 'Tap to Pay',            sumup: true  },
+              { mode: 'qr',            icon: '📱', label: 'QR Bancontact',         sumup: true  },
+              { mode: 'tap',           icon: '📲', label: 'Tap to Pay (sans contact)', sumup: true  },
               { mode: 'email',         icon: '✉️',  label: 'Lien Email',            sumup: true, disabled: !clientEmail },
               { mode: 'sumup_manual',  icon: '🔵', label: 'SumUp Manuel',          sumup: false },
               { mode: 'bancontact',    icon: '🏦', label: 'Bancontact Bureau',     sumup: false },

@@ -51,6 +51,29 @@ export async function createCheckout(data: {
 }
 
 // ============================================================
+// Forcer Bancontact sur un checkout (Olivier 04/11/2026)
+// Sur la page SumUp, le client doit choisir « Bancontact » et taper son nom ; une carte co-badgée en Apple Pay
+// part en Mastercard. En lançant le paiement « bancontact » côté serveur, SumUp renvoie l'adresse de la page
+// Bancontact elle-même (PPRO) : le client scanne le QR et son app bancaire s'ouvre, toujours en Bancontact.
+// null si SumUp refuse : l'appelant garde alors la page SumUp habituelle.
+// ============================================================
+export async function forceBancontact(checkoutId: string, nom?: string | null): Promise<string | null> {
+  const parts = String(nom || '').trim().split(/\s+/).filter(Boolean)
+  const first = parts.length > 1 ? parts.slice(0, -1).join(' ') : (parts[0] || 'Client')
+  const last = parts.length > 1 ? parts[parts.length - 1] : 'Verviers Dépannage'
+  try {
+    const res = await fetch(`https://api.sumup.com/v0.1/checkouts/${checkoutId}`, {
+      method: 'PUT',
+      headers: { 'Authorization': `Bearer ${SUMUP_API_KEY}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ payment_type: 'bancontact', personal_details: { first_name: first.slice(0, 60), last_name: last.slice(0, 60), address: { country: 'BE' } } }),
+    })
+    const j = await res.json().catch(() => null)
+    const url = j?.next_step?.url
+    return res.ok && typeof url === 'string' && url.startsWith('https://') ? url : null
+  } catch { return null }
+}
+
+// ============================================================
 // Récupérer le statut d'un checkout
 // ============================================================
 export async function getCheckoutStatus(checkoutId: string): Promise<{
