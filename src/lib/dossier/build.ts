@@ -493,7 +493,8 @@ async function buildDossierUncached(anyMissionId: string, light: boolean, price 
     // réglée — 0048MLL ressortait « Éligible auto » après coup.
     const autoFact = String(m.invoice_method || '') === 'auto' && !!m.invoiced_at && !m.invoice_number
     const billedRefs = Array.from(new Set([
-      ...billedItems.map(refOf).filter(Boolean),
+      // La part d'une assistance sous garantie n'est pas « la » facture du groupe : le solde client reste à facturer.
+      ...billedItems.filter(it => it.kind !== 'GARANTIE').map(refOf).filter(Boolean),
       ...(m.invoice_number ? [m.invoice_number] : (m.invoice_odoo_id && !billedItems.length ? [`brouillon Odoo #${m.invoice_odoo_id}`] : autoFact ? ['auto-facturation'] : [])),
     ])) as string[]
 

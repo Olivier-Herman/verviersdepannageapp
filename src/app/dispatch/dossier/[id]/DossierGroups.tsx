@@ -250,8 +250,6 @@ export default function DossierGroups({ initial, fiches, shared, isSuperadmin, o
                 <RelivrerFromDossier d={d} leg={rootLeg} gmKey={shared.googleMapsKey} onDone={refresh} />
               </div>
             ) : null })()}
-            {/* Garantie de paiement d'une assistance (Olivier 04/11/2026) : part assistance / solde client. */}
-            <GarantiePanel dossierId={d.root_id} canBill={canBill} onChanged={async () => { await refresh(); router.refresh() }} />
             {/* Olivier 09/09/2026 : réquisitoire, levée de saisie et sortie du parc
                 DANS l'en-tête — « comme ça on ne doit pas chaque fois ouvrir toute
                 la fiche pour les compléter ». Même panneau que la fiche (racine). */}
@@ -298,6 +296,8 @@ export default function DossierGroups({ initial, fiches, shared, isSuperadmin, o
             {d.state.open && <p className="text-[11px] text-ink-faint mt-1">Dossier en cours : pas de facturation automatique avant la sortie du véhicule.</p>}
           </div>}
         </div>
+        {/* Garantie de paiement d'une assistance (Olivier 04/11/2026) : part assistance / solde client, sur toute la largeur. */}
+        <div className="mx-3 md:mx-5 mb-2"><GarantiePanel dossierId={d.root_id} canBill={canBill} onChanged={async () => { await refresh(); router.refresh() }} /></div>
         {banner && (
           <div className={`mx-3 md:mx-5 mb-2 rounded-xl px-3 py-2 text-xs flex flex-wrap items-center gap-2 ${banner.tone === 'ok' ? 'bg-emerald-600/10 border border-emerald-600/40 text-emerald-800 dark:text-emerald-300' : 'bg-amber-500/10 border border-amber-500/40 text-amber-800 dark:text-amber-300'}`}>
             <span className="flex-1 min-w-0">{banner.text}</span>
@@ -1142,7 +1142,7 @@ function GarantiePanel({ dossierId, canBill, onChanged }: { dossierId: string; c
     } catch (e: any) { setErr(e.message || 'Erreur réseau') } finally { setBusy(null) }
   }
   return (
-    <div className="mt-2 space-y-2">
+    <div className="space-y-2">
       {list.map(g => {
         const p = g.plan, validated = g.invoice?.state === 'posted'
         return (
@@ -1163,7 +1163,7 @@ function GarantiePanel({ dossierId, canBill, onChanged }: { dossierId: string; c
                 ))}
               </div>
             </div>
-            <div className="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-2">
+            <div className="mt-2 grid grid-cols-1 sm:grid-cols-2 lg:max-w-3xl gap-2">
               <div className="rounded-lg bg-surface border px-3 py-2">
                 <div className="text-ink-muted">Part de l’assistance{p.plafond_atteint ? ' (plafond atteint)' : ''}</div>
                 <div className="text-ink text-base font-bold tabular-nums">{e2(p.assistance_ttc)} <span className="text-[10px] font-normal text-ink-muted">TVAC</span></div>

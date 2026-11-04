@@ -22,6 +22,8 @@ export { isLegBilled } from '@/lib/dossier/billed'
 import { isLegBilled } from '@/lib/dossier/billed'
 // Groupe Parquet (saisie) : cochable dès qu'un client (le propriétaire) est choisi — on peut facturer
 // le propriétaire sans levée de saisie ; seule la restitution l'exige (Olivier 08/09/2026).
+/** Ce qui reste à facturer sur un groupe (une part déjà facturée, ex. garantie d'une assistance, est déduite). */
+const resteHt = (l: DossierLeg) => Math.max(0, Math.round((l.amount_htva - (l.billed_htva || 0)) * 100) / 100)
 export const canPickLeg  = (l: DossierLeg) => !l.nothing_to_bill && !isLegBilled(l) && l.amount_htva > 0
   && ((l.channel || 'odoo') === 'odoo' || (!!l.billed_to_id && !/parquet|frais de justice|fdj\b/i.test(String(l.billed_to_name || ''))))
 
@@ -82,7 +84,7 @@ export default function BillingModal({ d, onClose, onDone, initialSelection }: {
   for (const l of d.legs) { const k = l.billed_to_name || '— client à définir'; (byClient.get(k) || byClient.set(k, []).get(k)!).push(l) }
   const chosen = d.legs.filter(l => sel.has(l.mission_id))
   const allPickable = d.legs.filter(canPickLeg)
-  const total = chosen.reduce((s, l) => s + l.amount_htva, 0)
+  const total = chosen.reduce((s, l) => s + resteHt(l), 0)
   const nInv = new Set(chosen.map(l => l.billed_to_id ?? 'none')).size
   const missingClient = chosen.some(l => !l.billed_to_id)
   const runningChosen = chosen.some(l => l.kind === 'gard' && l.open)
@@ -196,7 +198,7 @@ export default function BillingModal({ d, onClose, onDone, initialSelection }: {
           </div>
         )}
         {!result && !preview && Array.from(byClient.entries()).map(([client, legs]) => {
-          const ch = legs.filter(l => sel.has(l.mission_id)); const sum = ch.reduce((s, l) => s + l.amount_htva, 0)
+          const ch = legs.filter(l => sel.has(l.mission_id)); const sum = ch.reduce((s, l) => s + resteHt(l), 0)
           return (
             <div key={client} className="border rounded-xl px-3 py-2">
               <div className="flex justify-between text-sm font-semibold text-ink"><span>{ch.length ? 'Facture → ' : <span className="text-ink-muted">Rien pour </span>}{client}{/parquet|justice/i.test(client) && <span className={`ml-2 text-[10.5px] rounded-full px-2 py-0.5 ${TONE.warn}`}>Parquet : passe par l'état de frais, pas par Odoo</span>}</span><span className="tabular-nums text-right">{ch.length ? <>{eur(sum)} HTVA<span className="block text-xs font-normal text-ink-muted">{tvac(sum)} TVAC</span></> : ''}</span></div>
@@ -207,7 +209,7 @@ export default function BillingModal({ d, onClose, onDone, initialSelection }: {
                   <button disabled={!pick} onClick={() => toggle(l.mission_id)} className={`w-full grid grid-cols-[22px_1fr_auto] gap-2 items-center py-1 text-left text-xs ${pick ? 'text-ink-secondary' : 'opacity-50 cursor-default'}`}>
                     <span className={`w-4 h-4 rounded border-[1.5px] flex items-center justify-center text-[10px] ${sel.has(l.mission_id) ? 'bg-brand border-brand text-white' : 'border-ink-muted'}`}>{sel.has(l.mission_id) ? '✓' : (isLegBilled(l) ? '✓' : l.nothing_to_bill ? '–' : '')}</span>
                     <span><span className="font-mono">{l.letter}</span> {l.title}{l.kind === 'gard' && l.days != null ? ` ${l.days} j` : ''}{l.kind === 'gard' && l.open && <span className={`ml-1.5 rounded-full px-1.5 py-0.5 text-[10px] font-semibold ${TONE.live}`}>en cours · arrêté à aujourd'hui si coché</span>}</span>
-                    <span className="tabular-nums">{isLegBilled(l) ? `déjà facturé · ${cleanRef(l.billed_refs[0])}` : l.nothing_to_bill ? l.nothing_to_bill : l.channel === 'domaine' ? `${eur(l.amount_htva)} · relevé Domaine` : <>{eur(l.amount_htva)} <span className="text-ink-faint">· {tvac(l.amount_htva)} TVAC</span></>}</span>
+                    <span className="tabular-nums">{isLegBilled(l) ? `déjà facturé · ${cleanRef(l.billed_refs[0])}` : l.nothing_to_bill ? l.nothing_to_bill : l.channel === 'domaine' ? `${eur(l.amount_htva)} · relevé Domaine` : <>{eur(resteHt(l))} <span className="text-ink-faint">· {tvac(resteHt(l))} TVAC</span>{l.billed_htva > 0 && <span className="text-ink-faint"> · reste sur {eur(l.amount_htva)}</span>}</>}</span>
                   </button>
                   {(l.alerts || []).length > 0 && (
                     <div className="ml-6 mb-1 space-y-0.5">{(l.alerts || []).map((a, i) => <div key={i} className={`rounded-md px-2 py-1 text-[11px] font-semibold ${/Siabis/.test(a) ? TONE.bad : TONE.warn}`}>⚠ {a}</div>)}</div>
