@@ -15,9 +15,36 @@ import { sendNotification, sendNotificationToRoles } from '@/lib/notifications/s
 
 export interface NewAddress { address: string; name?: string | null; lat?: number | null; lng?: number | null }
 
+// Types de voie (et leurs abréviations des assistances : « R DES PECHEURS ») et pays
+// (« SPRIMONT, BEL ») ne distinguent pas deux adresses. 1XDF537 et 1KGV178, 04/11/2026.
 const norm = (s: string) => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase()
-  .replace(/\b(rue|avenue|av|chaussee|place|boulevard|bd|route|chemin|belgique|belgium)\b/g, ' ')
-  .replace(/[^a-z0-9]+/g, ' ').trim()
+  .replace(/[^a-z0-9]+/g, ' ')
+  .replace(/\b(rue|r|avenue|av|ave|chaussee|chee|ch|place|pl|boulevard|bd|bld|route|rte|chemin|che|impasse|imp|allee|quai|square|sq|belgique|belgium|belgie|belgien|bel|be|b)\b/g, ' ')
+  .replace(/\s+/g, ' ').trim()
+const numbers = (s: string) => new Set((norm(s).match(/\b\d{1,4}[a-z]?\b/g) || []).filter(n => !/^\d{4}$/.test(n)))   // n° de maison, pas le code postal
+const distM = (a: { lat: number; lng: number }, b: { lat: number; lng: number }) => {
+  const R = 6371000, r = Math.PI / 180, dLat = (b.lat - a.lat) * r, dLng = (b.lng - a.lng) * r
+  const h = Math.sin(dLat / 2) ** 2 + Math.cos(a.lat * r) * Math.cos(b.lat * r) * Math.sin(dLng / 2) ** 2
+  return 2 * R * Math.asin(Math.sqrt(h))
+}
+
+/**
+ * Même adresse, vérifiée par Google (Olivier 04/11/2026 : « nos adresses sont normalisées par
+ * Google, il faut normaliser celle de l'assistance avant de comparer »). L'adresse reçue est
+ * géocodée ; à moins de 75 m de la nôtre, avec le même numéro, c'est la même adresse.
+ */
+export async function sameAddressGeo(current: string | null | undefined, cur: { lat?: number | null; lng?: number | null }, next: NewAddress): Promise<boolean> {
+  if (sameAddress(current, next.address)) return true
+  const na = numbers(current || ''), nb = numbers(next.address || '')
+  if (na.size && nb.size && ![...na].some(n => nb.has(n))) return false   // numéros différents : vraie autre adresse
+  try {
+    const { geocodeAddressServer } = await import('@/lib/geocode/server')
+    const here = cur.lat != null && cur.lng != null ? { lat: Number(cur.lat), lng: Number(cur.lng) } : await geocodeAddressServer(current)
+    const there = next.lat != null && next.lng != null ? { lat: Number(next.lat), lng: Number(next.lng) } : await geocodeAddressServer(next.address)
+    if (!here || !there) return false
+    return distM(here, there) <= 75
+  } catch { return false }
+}
 /** Même adresse ? (même code postal + mêmes mots/numéros, à l'accent et la casse près) */
 export function sameAddress(a?: string | null, b?: string | null): boolean {
   const x = norm(a || ''), y = norm(b || '')
@@ -35,7 +62,7 @@ const DONE = ['completed', 'to_invoice', 'invoiced', 'cancelled', 'deleted', 'ig
 
 export async function flagAddressChange(sb: any, missionId: string, next: NewAddress, origin: { source: string; ref?: string | null }, field: 'destination_address' | 'redelivery_address' = 'destination_address'): Promise<boolean> {
   const { data: m } = await sb.from('incoming_missions')
-    .select('id, mission_number, status, vehicle_plate, vehicle_brand, vehicle_model, destination_address, destination_name, redelivery_address, assigned_to, address_change, merged_into_mission_id')
+    .select('id, mission_number, status, vehicle_plate, vehicle_brand, vehicle_model, destination_address, destination_name, destination_lat, destination_lng, redelivery_address, redelivery_lat, redelivery_lng, assigned_to, address_change, merged_into_mission_id')
     .eq('id', missionId).maybeSingle()
   if (!m || !next.address) return false
   // Fiche d'assistance FUSIONNÉE dans une autre (2CAN920, 12/10/2026 : Touring passe
@@ -54,10 +81,13 @@ export async function flagAddressChange(sb: any, missionId: string, next: NewAdd
   if (field === 'destination_address' && DONE.includes(String(m.status))) return false
   if (field === 'redelivery_address' && ['cancelled', 'deleted', 'ignored'].includes(String(m.status))) return false
   const current = field === 'redelivery_address' ? m.redelivery_address : m.destination_address
+  const curCoords = field === 'redelivery_address' ? { lat: m.redelivery_lat, lng: m.redelivery_lng } : { lat: m.destination_lat, lng: m.destination_lng }
   if (sameAddress(current, next.address)) return false
   // Déjà signalée (en attente) ou déjà tranchée par le dispatch (« garder ») : on ne
   // repropose pas la même adresse à chaque relevé (AXA, VAB, Kaze repassent souvent).
   if (m.address_change?.new_address && sameAddress(m.address_change.new_address, next.address)) return false
+  // Écrite autrement : Google tranche (un appel seulement quand le texte diffère, après les contrôles gratuits).
+  if (await sameAddressGeo(current, curCoords, next)) return false
 
   const now = new Date().toISOString()
   const group = `ac-${missionId}-${Date.now()}`
