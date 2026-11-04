@@ -332,6 +332,8 @@ async function buildDossierUncached(anyMissionId: string, light: boolean, price 
   const { data: items } = await sb.from('mission_billed_items')
     .select('mission_id, kind, label, qty, amount_htva, period_from, period_to, invoice_number, billed_to_name, billed_at, odoo_quote_id, invoice_odoo_id, dossier_letter')
     .in('mission_id', ids)
+  // Part payée par une assistance sous garantie de paiement : le client ne la doit pas sur place.
+  const garantieHt = r2((items || []).filter((it: any) => it.kind === 'GARANTIE').reduce((t: number, it: any) => t + Number(it.amount_htva || 0), 0))
   // Brouillons Odoo devenus factures : on ramène le numéro posté maintenant
   // (best effort, 4 s max) plutôt que d'attendre le cron. Olivier 08/09/2026.
   if (!light) {
@@ -951,7 +953,7 @@ async function buildDossierUncached(anyMissionId: string, light: boolean, price 
       domaine: root.domaine_vente_date ? `Vendu au Domaine${root.domaine_vente_firm ? ' · ' + root.domaine_vente_firm : ''}` : (root.domaine_remise_date ? `Remis au Domaine le ${String(root.domaine_remise_date).slice(0, 10)}` : null),
       touring_check: root.touring_check_stamp || null,
     },
-    totals: { estimated, billed, collected, remaining: r2(Math.max(0, estimated - billed)), due_tvac: r2(Math.max(0, estimated * 1.21 - collected)) },   // D13 : collected est TVAC (encaissé sur place)
+    totals: { estimated, billed, collected, remaining: r2(Math.max(0, estimated - billed)), due_tvac: r2(Math.max(0, (estimated - garantieHt) * 1.21 - collected)) },   // D13 : collected est TVAC (encaissé sur place) ; part d'une assistance sous garantie de paiement déduite (04/11/2026)
     invoices: invoicesOut,
     paid: allPaid || undefined, paid_at: paidAt,
   }
