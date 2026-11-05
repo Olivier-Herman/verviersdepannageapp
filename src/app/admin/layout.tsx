@@ -2,6 +2,7 @@ import { getServerSession } from 'next-auth'
 import { redirect } from 'next/navigation'
 import { authOptions } from '@/lib/auth'
 import AdminNav from './AdminNav'
+import { isPreviewOn } from '@/lib/feature-flags'
 import AdminLayoutClient from './AdminLayoutClient'
 
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
@@ -25,7 +26,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
       userId={userId}
       userModules={userModules}
     >
-      <AdminNav />
+      <AdminNav obd={await isPreviewOn('obd_diagnostic', userRole, userId)} />
       <div className="flex-1 overflow-y-auto">
         {children}
       </div>

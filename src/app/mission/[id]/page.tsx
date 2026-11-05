@@ -204,6 +204,7 @@ export default async function MissionDriverPage({ params, searchParams }: Props)
         flux2={flux2}
         onsiteV2={onsiteV2}
         josiane={josiane}
+        obdDiag={await (await import('@/lib/feature-flags')).isPreviewOn('obd_diagnostic', (currentUser as any).role, (currentUser as any).id)}
         parentPanne={parentPanne}
         parentClosingNote={parentClosingNote}
         parentPhotos={parentPhotos}

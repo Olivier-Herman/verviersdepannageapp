@@ -7,6 +7,7 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
+import { Wrench } from 'lucide-react'
 import {
   Tag, MapPin, Users, Car,
   Receipt, DollarSign,
@@ -18,7 +19,7 @@ import {
   Moon,
   type LucideIcon } from 'lucide-react'
 
-type NavItem = { href: string; label: string; icon: LucideIcon }
+type NavItem = { href: string; label: string; icon: LucideIcon; obd?: boolean }
 type NavGroup = { title: string; items: NavItem[] }
 
 const GROUPS: NavGroup[] = [
@@ -76,6 +77,8 @@ const GROUPS: NavGroup[] = [
       { href: '/admin/flux2',          label: 'Flux 2',        icon: ToggleLeft },
       { href: '/admin/labels',         label: 'Étiquettes',    icon: Printer },
       { href: '/admin/check-vehicule', label: 'Check véhicule', icon: ClipboardCheck },
+      // Préversion diagnostic OBD (05/11/2026) : seulement si le drapeau obd_diagnostic est visible pour l'utilisateur.
+      { href: '/admin/diagnostics-obd', label: 'Diagnostics OBD', icon: Wrench, obd: true },
     ],
   },
   {
@@ -102,7 +105,7 @@ const GROUPS: NavGroup[] = [
   },
 ]
 
-export default function AdminNav() {
+export default function AdminNav({ obd = false }: { obd?: boolean }) {
   const pathname = usePathname()
   const isHome = pathname === '/admin'
 
@@ -130,7 +133,7 @@ export default function AdminNav() {
               {group.title}
             </span>
             <div className="flex gap-1">
-              {group.items.map(({ href, label, icon: Icon }) => {
+              {group.items.filter(it => !it.obd || obd).map(({ href, label, icon: Icon }) => {
                 const active = pathname === href || pathname.startsWith(href + '/')
                 return (
                   <Link key={href} href={href}

@@ -1,0 +1,254 @@
+'use client'
+// src/components/obd/DiagnosticPanel.tsx — diagnostic OBD du chauffeur (Olivier 05/11/2026, maquette validée
+// https://claude.ai/artifact/F1KAFhsPsLkFqvgZvQS8oS). Deux usages :
+//   • dans une mission (missionId) : les codes vont sur la fiche, puis « Je dépanne / Je remorque » ;
+//   • seul, hors intervention : fiche de diagnostic identifiée par le VIN (lu par le boîtier, photo ou saisie,
+//     toujours modifiable), plaque facultative ; une intervention du même véhicule est proposée, jamais imposée.
+// Les codes sont enregistrés AVANT l'avis et avant tout effacement. L'effacement est signé par le PIN du chauffeur.
+// Préversion : seuls les pilotes du drapeau obd_diagnostic voient ce composant, et seule l'app de test a le Bluetooth.
+import { useEffect, useRef, useState } from 'react'
+import { useT } from '@/lib/i18n/I18nProvider'
+import { checkVin, cleanVin } from '@/lib/obd/vin'
+import type { ObdLink, ObdReading } from '@/lib/obd/ble'
+
+type Step = 'start' | 'busy' | 'vin' | 'result'
+type Vehicle = { marque: string | null; modele: string | null; motorisation: string | null; annee: number | null } | null
+
+const btn = 'w-full min-h-[48px] rounded-xl font-semibold text-sm px-4 transition disabled:opacity-50'
+const vehicleLabel = (v: Vehicle) => v ? [v.marque, v.modele, v.motorisation, v.annee].filter(Boolean).join(' · ') : ''
+
+export default function DiagnosticPanel({ missionId, plate: plate0, onDone }: { missionId?: string; plate?: string | null; onDone?: () => void }) {
+  const { t, lang } = useT()
+  const [available, setAvailable] = useState<boolean | null>(null)
+  const [step, setStep] = useState<Step>('start')
+  const [status, setStatus] = useState('')
+  const [err, setErr] = useState<string | null>(null)
+  const [reading, setReading] = useState<ObdReading | null>(null)
+  const [vin, setVin] = useState('')
+  const [vinSource, setVinSource] = useState<'obd' | 'photo' | 'saisie'>('saisie')
+  const [vehicle, setVehicle] = useState<Vehicle>(null)
+  const [plate, setPlate] = useState(plate0 || '')
+  const [diag, setDiag] = useState<{ id: string; numero: string; propositions: { id: string; mission_number: number; label: string }[] } | null>(null)
+  const [analysis, setAnalysis] = useState<any>(null)
+  const [analysisErr, setAnalysisErr] = useState(false)
+  const [pinOpen, setPinOpen] = useState(false)
+  const [pin, setPin] = useState('')
+  const [pinErr, setPinErr] = useState<string | null>(null)
+  const [cleared, setCleared] = useState<{ result: 'ok' | 'refuse'; at: string } | null>(null)
+  const [decision, setDecision] = useState<string | null>(null)
+  const [ended, setEnded] = useState<string | null>(null)
+  const [ocrBusy, setOcrBusy] = useState(false)
+  const link = useRef<ObdLink | null>(null)
+  const fileRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => { import('@/lib/obd/ble').then(m => m.obdAvailable()).then(setAvailable).catch(() => setAvailable(false)) }, [])
+  useEffect(() => () => { link.current?.close().catch(() => {}) }, [])
+
+  // Décodage dès que le VIN est valide (hors intervention).
+  const vc = checkVin(vin)
+  useEffect(() => {
+    if (step !== 'vin' || !vc.valid) { if (!vc.valid) setVehicle(null); return }
+    let stop = false
+    fetch(`/api/obd/vin?vin=${vin}`, { cache: 'no-store' }).then(r => r.json()).then(j => { if (!stop && j.ok) setVehicle(j.vehicle) }).catch(() => {})
+    return () => { stop = true }
+  }, [vin, step, vc.valid])
+
+  async function lancer() {
+    setErr(null); setStep('busy'); setStatus(t('obd.recherche'))
+    try {
+      const ble = await import('@/lib/obd/ble')
+      const l = await ble.connectObd(s => setStatus(s === 'connexion' ? t('obd.connexion') : s === 'lecture' ? t('obd.lecture') : t('obd.recherche')))
+      link.current = l
+      const r = await ble.readVehicle(l, s => setStatus(s === 'lecture' ? t('obd.lecture') : status))
+      setReading(r)
+      if (r.vin && checkVin(r.vin).valid) { setVin(r.vin); setVinSource('obd') }
+      if (missionId) await enregistrer(r, r.vin && checkVin(r.vin).valid ? r.vin : null, r.vin ? 'obd' : 'saisie')
+      else setStep('vin')
+    } catch (e: any) {
+      setErr(t('obd.erreur_connexion')); setStep('start')
+      link.current?.close().catch(() => {}); link.current = null
+    }
+  }
+
+  async function enregistrer(r: ObdReading, v: string | null, src: string) {
+    setStep('busy'); setStatus(t('obd.lecture'))
+    const res = await fetch('/api/obd/diagnostics', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ mission_id: missionId || null, vin: v, vin_source: v ? src : null, plate: plate || null, codes: r.codes, measures: r.measures, adapter: link.current?.name || null }) })
+    const j = await res.json().catch(() => ({}))
+    if (!res.ok) { setErr(j.error || 'Erreur'); setStep(missionId ? 'start' : 'vin'); return }
+    setDiag({ id: j.id, numero: j.numero, propositions: j.propositions || [] })
+    if (j.vehicle) setVehicle(j.vehicle)
+    setStep('result')
+    fetch(`/api/obd/diagnostics/${j.id}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'analyse' }) })
+      .then(r2 => r2.json()).then(a => { if (a.ok) setAnalysis(a.analysis); else setAnalysisErr(true) }).catch(() => setAnalysisErr(true))
+  }
+
+  async function photoVin(f: File) {
+    setOcrBusy(true); setErr(null)
+    try {
+      const b64 = await new Promise<string>((res, rej) => { const fr = new FileReader(); fr.onload = () => res(String(fr.result)); fr.onerror = rej; fr.readAsDataURL(f) })
+      const r = await fetch('/api/obd/vin', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ image: b64, mime: f.type }) })
+      const j = await r.json()
+      if (j.ok && j.vin) { setVin(j.vin); setVinSource('photo') } else setErr(t('obd.ocr_ko'))
+    } catch { setErr(t('obd.ocr_ko')) } finally { setOcrBusy(false) }
+  }
+
+  async function action(body: any) {
+    const r = await fetch(`/api/obd/diagnostics/${diag!.id}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+    const j = await r.json().catch(() => ({}))
+    return { ok: r.ok && j.ok !== false, ...j }
+  }
+
+  async function signerEffacement(code: string) {
+    setPinErr(null)
+    const a = await action({ action: 'clear_authorize', pin: code })
+    if (!a.ok) { setPinErr(a.error || 'Erreur'); setPin(''); return }
+    setPinOpen(false); setPin('')
+    let result: 'ok' | 'refuse' = 'refuse'
+    try { if (link.current) { const ble = await import('@/lib/obd/ble'); result = await ble.clearCodes(link.current) } } catch { result = 'refuse' }
+    await action({ action: 'clear_result', result })
+    setCleared({ result, at: new Date().toLocaleString('fr-BE', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) })
+  }
+
+  const tap = (k: string) => {
+    if (k === '⌫') { setPin(p => p.slice(0, -1)); return }
+    setPin(p => { const n = (p + k).slice(0, 4); if (n.length === 4) setTimeout(() => signerEffacement(n), 50); return n })
+  }
+
+  const reset = () => { setStep('start'); setReading(null); setVin(''); setVehicle(null); setDiag(null); setAnalysis(null); setAnalysisErr(false); setCleared(null); setDecision(null); setEnded(null); setErr(null); link.current?.close().catch(() => {}); link.current = null }
+
+  const A = analysis ? (lang === 'sq' ? analysis.sq : analysis.fr) : null
+  const libelle = (code: string) => (A?.codes || []).find((c: any) => c.code === code)?.libelle || null
+  const grave = (code: string) => (analysis?.fr?.codes || []).find((c: any) => c.code === code)?.gravite
+
+  if (available === false) return (
+    <div className="rounded-2xl border bg-surface p-4 text-sm text-ink-secondary">🔧 {t('obd.pas_module')}</div>
+  )
+
+  return (
+    <div className="space-y-3">
+      {step === 'start' && (
+        <div className="rounded-2xl border bg-surface p-4 space-y-3">
+          <p className="font-semibold text-ink">🔧 {t('obd.titre')}</p>
+          <p className="text-sm text-ink-secondary">{t('obd.sous_titre')}</p>
+          {err && <p className="text-sm rounded-xl bg-amber-500/10 text-amber-800 dark:text-amber-300 p-3">{err}</p>}
+          <button className={`${btn} bg-blue-700 hover:bg-blue-800 text-white`} disabled={available === null} onClick={lancer}>{t('obd.lancer')}</button>
+        </div>
+      )}
+
+      {step === 'busy' && (
+        <div className="rounded-2xl border bg-surface p-4 text-center space-y-2">
+          <div className="mx-auto h-8 w-8 rounded-full border-4 border-blue-200 border-t-blue-700 animate-spin" />
+          <p className="text-sm text-ink">{status}</p>
+        </div>
+      )}
+
+      {step === 'vin' && reading && (
+        <div className="rounded-2xl border bg-surface p-4 space-y-3">
+          {vinSource === 'obd' && vin ? <span className="inline-block text-xs font-semibold rounded-full px-2 py-0.5 bg-emerald-600/10 text-emerald-800 dark:text-emerald-300">{t('obd.vin_lu')}</span>
+            : <p className="text-sm rounded-xl bg-amber-500/10 text-amber-800 dark:text-amber-300 p-3">{t('obd.vin_ko')}</p>}
+          <button className={`${btn} border bg-surface text-ink`} disabled={ocrBusy} onClick={() => fileRef.current?.click()}>{ocrBusy ? t('obd.ocr_en_cours') : t('obd.vin_photo')}</button>
+          <input ref={fileRef} type="file" accept="image/*" capture="environment" hidden onChange={e => { const f = e.target.files?.[0]; if (f) photoVin(f); e.target.value = '' }} />
+          <label className="block text-xs text-ink-muted">{t('obd.vin_label')}</label>
+          <input value={vin} onChange={e => { setVin(cleanVin(e.target.value)); setVinSource('saisie') }} maxLength={17} autoCapitalize="characters" autoCorrect="off" spellCheck={false}
+            className="w-full min-h-[48px] rounded-xl border bg-surface-2 px-3 font-mono text-lg tracking-wider text-ink" placeholder="VF3…" />
+          <div className="flex flex-wrap gap-1.5 text-xs">
+            <span className={`rounded-full px-2 py-0.5 font-semibold ${vc.ok17 ? 'bg-emerald-600/10 text-emerald-800 dark:text-emerald-300' : 'bg-amber-500/10 text-amber-800 dark:text-amber-300'}`}>{vin.length}/17</span>
+            {vc.ok17 && <span className={`rounded-full px-2 py-0.5 font-semibold ${vc.check === false ? 'bg-red-600/10 text-red-700 dark:text-red-300' : 'bg-emerald-600/10 text-emerald-800 dark:text-emerald-300'}`}>{vc.check === null ? t('obd.vin_ctrl_na') : vc.check ? t('obd.vin_ctrl_ok') : t('obd.vin_ctrl_ko')}</span>}
+          </div>
+          {vc.valid && <div><p className="text-xs text-ink-muted">{t('obd.vehicule')}</p><p className="font-semibold text-ink">{vehicleLabel(vehicle) || [vc.brand, vc.year].filter(Boolean).join(' · ') || t('obd.vehicule_inconnu')}</p></div>}
+          <label className="block text-xs text-ink-muted">{t('obd.plaque_label')}</label>
+          <input value={plate} onChange={e => setPlate(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 10))} className="w-full min-h-[48px] rounded-xl border bg-surface-2 px-3 font-mono text-ink" placeholder="1ABC234" />
+          {err && <p className="text-sm text-red-700 dark:text-red-300">{err}</p>}
+          <button className={`${btn} bg-blue-700 hover:bg-blue-800 text-white`} disabled={!vc.valid} onClick={() => enregistrer(reading, vin, vinSource)}>{t('obd.continuer')}</button>
+        </div>
+      )}
+
+      {step === 'result' && diag && reading && (
+        <>
+          {!missionId && (
+            <div className="rounded-2xl border bg-surface p-4">
+              <p className="text-xs text-ink-muted">{t('obd.fiche', { n: diag.numero })}</p>
+              <p className="font-semibold text-ink">{vehicleLabel(vehicle) || t('obd.vehicule_inconnu')}</p>
+              <p className="text-xs text-ink-muted font-mono">VIN {vin}{plate ? ` · ${plate}` : ''}</p>
+            </div>
+          )}
+          <p className="text-sm rounded-xl bg-emerald-600/10 text-emerald-800 dark:text-emerald-300 p-3">✓ {missionId ? t('obd.enregistre_fiche') : t('obd.enregistre_diag')} · {diag.numero}</p>
+          {A?.partiel && <p className="text-sm rounded-xl bg-amber-500/10 text-amber-800 dark:text-amber-300 p-3">⚠️ {t('obd.partiel')} : {A.partiel}</p>}
+
+          <div className="rounded-2xl border bg-surface p-4 space-y-2">
+            <p className="font-semibold text-ink">{t('obd.codes')}</p>
+            {reading.codes.length === 0 && <p className="text-sm text-ink-secondary">{t('obd.aucun_code')}</p>}
+            {reading.codes.map(c => (
+              <div key={c.code} className="rounded-xl border p-3">
+                <p className="font-mono font-bold text-ink">{c.code} {grave(c.code) === 'grave' && <span className="ml-1 text-xs rounded-full px-2 py-0.5 bg-red-600/10 text-red-700 dark:text-red-300">!</span>}{c.type === 'en_attente' && <span className="ml-1 text-xs font-sans font-normal text-ink-muted">({t('obd.en_attente')})</span>}</p>
+                <p className="text-sm text-ink-secondary">{libelle(c.code) || '…'}</p>
+              </div>
+            ))}
+            <p className="text-xs text-ink-muted pt-1">{t('obd.mesures')}</p>
+            <div className="grid grid-cols-[1fr_auto] gap-x-3 gap-y-1 text-sm">
+              {reading.measures.batterie_v != null && <><span className="text-ink-secondary">{t('obd.batterie')}</span><span className="font-semibold tabular-nums text-ink">{String(reading.measures.batterie_v).replace('.', ',')} V</span></>}
+              {reading.measures.temp_moteur_c != null && <><span className="text-ink-secondary">{t('obd.temperature')}</span><span className="font-semibold tabular-nums text-ink">{reading.measures.temp_moteur_c} °C</span></>}
+              {reading.measures.regime_tr_min != null && <><span className="text-ink-secondary">{t('obd.regime')}</span><span className="font-semibold tabular-nums text-ink">{reading.measures.regime_tr_min} tr/min</span></>}
+              {reading.measures.temoin_moteur != null && <><span className="text-ink-secondary">{t('obd.temoin')}</span><span className="font-semibold text-ink">{reading.measures.temoin_moteur ? t('obd.allume') : t('obd.eteint')}</span></>}
+            </div>
+          </div>
+
+          <div className={`rounded-2xl p-4 space-y-1.5 ${analysis?.verdict === 'rem' ? 'bg-red-600/10 text-red-800 dark:text-red-200' : analysis ? 'bg-emerald-600/10 text-emerald-800 dark:text-emerald-200' : 'border bg-surface text-ink-secondary'}`}>
+            {!analysis && !analysisErr && <p className="text-sm">⏳ {t('obd.avis_attente')}</p>}
+            {analysisErr && <p className="text-sm">{t('obd.avis_ko')}</p>}
+            {A && <>
+              <p className="font-semibold">{t('obd.avis')} : {analysis.verdict === 'dsp' ? t('obd.dsp') : analysis.verdict === 'rem' ? t('obd.rem') : t('obd.controle')}</p>
+              <p className="text-sm"><b>{t('obd.pourquoi')} :</b> {A.pourquoi}</p>
+              {A.a_essayer?.length > 0 && <p className="text-sm"><b>{t('obd.essayer')} :</b> {A.a_essayer.join(' · ')}</p>}
+            </>}
+          </div>
+
+          {cleared && <p className={`text-sm rounded-xl p-3 ${cleared.result === 'ok' ? 'bg-emerald-600/10 text-emerald-800 dark:text-emerald-300' : 'bg-amber-500/10 text-amber-800 dark:text-amber-300'}`}>{cleared.result === 'ok' ? `✓ ${t('obd.efface', { d: cleared.at })}` : t('obd.refuse')}</p>}
+
+          {pinOpen ? (
+            <div className="rounded-2xl border-2 border-red-600 bg-surface p-4 space-y-3">
+              <p className="font-semibold text-ink">🔐 {t('obd.pin_titre')}</p>
+              <p className="text-xs text-ink-muted">{t('obd.pin_texte')}</p>
+              <div className="flex justify-center gap-3">{[0, 1, 2, 3].map(i => <span key={i} className={`h-4 w-4 rounded-full border-2 border-ink ${i < pin.length ? 'bg-ink' : ''}`} />)}</div>
+              {pinErr && <p className="text-sm text-center text-red-700 dark:text-red-300">{pinErr}</p>}
+              <div className="grid grid-cols-3 gap-2">{['1', '2', '3', '4', '5', '6', '7', '8', '9', '', '0', '⌫'].map((k, i) => k ? <button key={i} onClick={() => tap(k)} className="min-h-[52px] rounded-xl border bg-surface-2 text-xl font-bold text-ink">{k}</button> : <span key={i} />)}</div>
+              <button className={`${btn} border bg-surface text-ink`} onClick={() => { setPinOpen(false); setPin(''); setPinErr(null) }}>{lang === 'sq' ? 'Anulo' : 'Annuler'}</button>
+            </div>
+          ) : (!cleared && reading.codes.length > 0 && (
+            <button className={`${btn} border bg-surface text-ink`} onClick={() => setPinOpen(true)}>🧹 {t('obd.effacer')}</button>
+          ))}
+
+          {missionId ? (
+            decision ? <p className="text-sm rounded-xl bg-blue-600/10 text-blue-800 dark:text-blue-200 p-3">✓ {decision === 'dsp' ? t('obd.je_depanne') : t('obd.je_remorque')} — {t('obd.decision_notee')}</p> : (
+              <div className="space-y-2">
+                <p className="text-xs text-ink-muted">{t('obd.decision')}</p>
+                <div className="grid grid-cols-2 gap-2">
+                  {(['dsp', 'rem'] as const).map(d => (
+                    <button key={d} className={`${btn} ${analysis?.verdict === d ? 'bg-brand text-white' : 'border bg-surface text-ink'}`} onClick={async () => { await action({ action: 'decision', decision: d }); setDecision(d); onDone?.() }}>{d === 'dsp' ? t('obd.je_depanne') : t('obd.je_remorque')}</button>
+                  ))}
+                </div>
+              </div>
+            )
+          ) : ended ? (
+            <>
+              <p className="text-sm rounded-xl bg-blue-600/10 text-blue-800 dark:text-blue-200 p-3">✓ {ended}</p>
+              <button className={`${btn} border bg-surface text-ink`} onClick={reset}>{t('obd.recommencer')}</button>
+            </>
+          ) : diag.propositions.length > 0 ? (
+            <div className="rounded-2xl border bg-surface p-4 space-y-2">
+              <p className="font-semibold text-ink">{t('obd.existe_titre')}</p>
+              <p className="text-xs text-ink-muted">{t('obd.existe_texte')}</p>
+              {diag.propositions.map(p => (
+                <button key={p.id} className={`${btn} bg-blue-700 hover:bg-blue-800 text-white`} onClick={async () => { const a = await action({ action: 'attach', mission_id: p.id }); if (a.ok) setEnded(t('obd.rattache', { n: a.mission_number })) }}>{t('obd.rattacher')} · {p.label}</button>
+              ))}
+              <button className={`${btn} border bg-surface text-ink`} onClick={() => setEnded(t('obd.termine', { n: diag.numero }))}>{t('obd.garder_seul')}</button>
+            </div>
+          ) : (
+            <button className={`${btn} bg-blue-700 hover:bg-blue-800 text-white`} onClick={() => setEnded(t('obd.termine', { n: diag.numero }))}>{t('obd.terminer')}</button>
+          )}
+        </>
+      )}
+    </div>
+  )
+}

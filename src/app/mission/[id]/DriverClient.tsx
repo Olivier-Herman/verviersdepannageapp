@@ -32,6 +32,8 @@ import { depotFerme, type HorairesDepot } from '@/lib/missions/horaires-depot'
 import { transportGabaritLabel } from '@/lib/tarifs/transport-gabarits'
 import { useT } from '@/lib/i18n/I18nProvider'
 import GarageAgreePicker from '@/components/touring/GarageAgreePicker'
+import dynamicImport from 'next/dynamic'
+const DiagnosticPanel = dynamicImport(() => import('@/components/obd/DiagnosticPanel'), { ssr: false })
 import ParamToast from '@/components/missions/ParamToast'
 import MissionPauseTransfer from '@/components/missions/MissionPauseTransfer'
 import SigPad from '@/components/mission/SigPad'
@@ -110,7 +112,7 @@ interface Mission {
   awaiting_payment?: boolean | null
 }
 interface VrLoc { id: string; name: string; address: string; lat: number | null; lng: number | null; is_default?: boolean }
-interface Props { mission: Mission; currentUserId?: string; userRole?: string; isReadOnly?: boolean; navApp?: NavApp; defaultParcZone?: string | null; encaissementChauffeur?: boolean; paiementApp?: boolean; consigneSource?: { fr: string; sq: string | null; horaires: HorairesDepot | null } | null; flux2?: boolean; onsiteV2?: boolean; parentClosingNote?: string | null; parentPanne?: string | null; parentPhotos?: string[]; relKey?: { location: string | null; hook: string | null } | null; reportClient?: string | null; josiane?: boolean; garageAgree?: 'a_choisir' | 'choisi' | null }
+interface Props { mission: Mission; currentUserId?: string; userRole?: string; isReadOnly?: boolean; navApp?: NavApp; defaultParcZone?: string | null; encaissementChauffeur?: boolean; paiementApp?: boolean; consigneSource?: { fr: string; sq: string | null; horaires: HorairesDepot | null } | null; flux2?: boolean; onsiteV2?: boolean; parentClosingNote?: string | null; parentPanne?: string | null; parentPhotos?: string[]; relKey?: { location: string | null; hook: string | null } | null; reportClient?: string | null; josiane?: boolean; garageAgree?: 'a_choisir' | 'choisi' | null; obdDiag?: boolean }
 
 // Photos prises à l'ENLÈVEMENT (mission parente), en lecture seule sur une
 // relivraison : le chauffeur voit l'état du véhicule tel qu'il a été chargé et
@@ -622,12 +624,13 @@ function BriefingTtsButton({ mission }: { mission: Mission }) {
 }
 
 // ─── Composant principal ──────────────────────────────────────────────────────
-export default function DriverClient({ mission: init, currentUserId, userRole, isReadOnly = false, navApp: initNav, defaultParcZone = null, encaissementChauffeur = false, paiementApp = false, consigneSource = null, flux2 = false, onsiteV2 = false, parentClosingNote = null, parentPanne = null, parentPhotos = [], relKey = null, reportClient = null, josiane = false, garageAgree: garageAgreeInit = null }: Props) {
+export default function DriverClient({ mission: init, currentUserId, userRole, isReadOnly = false, navApp: initNav, defaultParcZone = null, encaissementChauffeur = false, paiementApp = false, consigneSource = null, flux2 = false, onsiteV2 = false, parentClosingNote = null, parentPanne = null, parentPhotos = [], relKey = null, reportClient = null, josiane = false, garageAgree: garageAgreeInit = null, obdDiag = false }: Props) {
   const canMatthieu = canUseMatthieu(userRole, currentUserId)
   const router = useRouter()
   const { t, lang } = useT()   // traductions FR/albanais pour les messages d'erreur (strings)
   // Destination Touring « réseau agréé » : garage choisi dans la liste Touring (Olivier 29/10/2026).
   const [garageAgree, setGarageAgree] = useState(garageAgreeInit)
+  const [diagOpen, setDiagOpen] = useState(false)
   const [garagePicker, setGaragePicker] = useState(false)
   const matSq = lang === 'sq'
   const MAT = matSq ? {
@@ -5161,6 +5164,10 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
         {/* Mission en pause reprise depuis « Missions en pause » (29/10/2026). */}
         <ParamToast param="reprise" k="pause_transfer.taken" />
 
+        {/* Diagnostic OBD sur place (Olivier 05/11/2026) : préversion, seulement les pilotes du drapeau obd_diagnostic. */}
+        {obdDiag && onSite && !isReadOnly && (diagOpen
+          ? <div className="w-full"><DiagnosticPanel missionId={M.id} plate={M.vehicle_plate || null} /></div>
+          : <button type="button" onClick={() => setDiagOpen(true)} className="w-full min-h-[52px] rounded-2xl border-2 border-blue-700/60 bg-blue-50 dark:bg-blue-500/10 text-blue-800 dark:text-blue-200 font-bold text-base">🔧 {t('obd.titre')}</button>)}
         {/* Destination Touring « réseau agréé » (centrale de pneus…) : garage à choisir dans la liste Touring,
             pas la société du même nom sur la carte (Olivier 29/10/2026, maquette validée). */}
         {(onSite || loaded) && garageAgree === 'a_choisir' && !isReadOnly && (

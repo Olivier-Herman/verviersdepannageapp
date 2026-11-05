@@ -43,7 +43,7 @@ export async function GET() {
   const { canUseBureau } = await import('@/lib/assistant/bureau')
   const maxAssistant = await canUseBureau({ email: u.email, role: u.role, roles: Array.isArray(u.roles) ? u.roles : [] }).catch(() => false)
   const veilleAlerte = !maxAssistant && await import('@/lib/assistant/access').then(m => m.inVeilleAlerte(u.email)).catch(() => false)
-  const flags = { agents_shortcut: agentsOwner, max_assistant: maxAssistant, veille_alerte: veilleAlerte, nav_menu_v2: await isPreviewOn('nav_menu_v2', u.role, u.id), nav_espaces: await isPreviewOn('nav_espaces', u.role, u.id), facturation_v2: await isPreviewOn('facturation_v2', u.role, u.id) }   // facturation_v2 : éteint « Liste par fiche (ancienne) » dans le menu (temps 3, 21/09/2026)   // espaces : pilotes Olivier + Jona (16/09/2026)   // u.id : les pilotes nommés (Jona) voient le menu v3
+  const flags = { agents_shortcut: agentsOwner, max_assistant: maxAssistant, veille_alerte: veilleAlerte, nav_menu_v2: await isPreviewOn('nav_menu_v2', u.role, u.id), nav_espaces: await isPreviewOn('nav_espaces', u.role, u.id), facturation_v2: await isPreviewOn('facturation_v2', u.role, u.id), obd_diagnostic: await isPreviewOn('obd_diagnostic', u.role, u.id) }   // diagnostic OBD : préversion Mobi, Olivier, Franck (05/11/2026)   // facturation_v2 : éteint « Liste par fiche (ancienne) » dans le menu (temps 3, 21/09/2026)   // espaces : pilotes Olivier + Jona (16/09/2026)   // u.id : les pilotes nommés (Jona) voient le menu v3
 
   // Gestion du personnel : congés en attente de traitement (pending + annulation demandée).
   if (isPersonnelStaff(u)) {

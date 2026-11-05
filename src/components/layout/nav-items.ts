@@ -37,6 +37,8 @@ export const NAV_ITEMS: NavItem[] = [
   { href: '/personnel',     label: 'Gestion du personnel', icon: '👤', moduleId: null, role: 'superadmin_or_rh' },
   { href: '/mission',          label: 'Mes Missions',        i18nKey: 'nav.my_missions',   icon: '🚗', moduleId: 'driver_missions' },
   { href: '/missions-dispo',   label: 'Momo Market',                                       icon: '🛒', moduleId: 'driver_missions' },
+  // Diagnostic OBD hors intervention (Olivier 05/11/2026) : préversion, seulement les pilotes du drapeau obd_diagnostic.
+  { href: '/diagnostic',       label: 'Diagnostic',          i18nKey: 'obd.titre',         icon: '🔧', moduleId: null, flag: 'obd_diagnostic' },
   // Olivier 2026-08-03 : « La tête à Matthieu » — accessible à tout le personnel.
   { href: '/matthieu',      label: 'La tête à Matthieu', icon: '🔧', moduleId: null },
   { href: '/services/tgr',  label: 'TGR Touring',      i18nKey: 'nav.services_tgr',  icon: '🛡️', moduleId: 'tgr' },

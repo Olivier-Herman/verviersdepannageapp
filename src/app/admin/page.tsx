@@ -9,6 +9,7 @@
 
 import Link from 'next/link'
 import { getServerSession }  from 'next-auth'
+import { Wrench } from 'lucide-react'
 import { authOptions }       from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase'
 import { readAxaHealth, axaDownSince } from '@/lib/axa/health'
@@ -78,6 +79,7 @@ export default async function AdminPage() {
   if (!isAdmin) redirect('/dashboard?error=access_denied')
 
   const sb = createAdminClient()
+  const obdOn = await (await import('@/lib/feature-flags')).isPreviewOn('obd_diagnostic', user.role, user.id)
   const axaHealth = await readAxaHealth(sb).catch(() => null)
   const axaWarn = axaHealth && !axaHealth.ok ? `Déconnecté ${axaDownSince(axaHealth)} — réamorcer le jeton` : null
 
@@ -200,6 +202,8 @@ export default async function AdminPage() {
           desc="Bibliothèque de templates ZPL pour l'imprimante Zebra (parc, REL, etc.). Aperçu + impression sur demande." />
         <Card href="/admin/check-vehicule" icon={ClipboardCheck} label="Check véhicule"
           desc="Checklist de prise en charge véhicule par les chauffeurs." />
+        {obdOn && <Card href="/admin/diagnostics-obd" icon={Wrench} label="Diagnostics OBD"
+          desc="Préversion : lectures du boîtier OBD faites par les chauffeurs (codes, avis de Sam, effacements signés), avec ou sans intervention." />}
       </Group>
 
       <Group title="Documents & Comptabilité">
