@@ -1,6 +1,9 @@
 // /api/missions/[id]/paiement-client — paiement demandé dans l'app VD Assistance du client (Olivier 10/10/2026).
 // Le client est connu (il a commandé depuis l'app) : pas d'assistant d'encaissement. Le chauffeur touche « Demander le
 // paiement » sur la mission ; le client paie sur la page SumUp depuis son iPhone.
+// Bancontact en premier (Olivier 05/11/2026, maquette https://claude.ai/artifact/Fjj4wCC7srWaJWQPyHoRNr) : un 2e paiement
+// SumUp forcé en Bancontact ouvre directement l'app Bancontact du client ; l'autre reste carte / Apple Pay / Google Pay.
+// Le premier des deux qui est payé est enregistré.
 //   POST → crée le paiement SumUp du solde de la mission, prévient le client (notification + Dynamic Island).
 //   GET  → statut ; dès que SumUp confirme, enregistre le paiement par la route d'encaissement habituelle
 //          (/api/interventions : ligne d'encaissement, mission payée, prix figé, rapprochement SumUp).
@@ -8,7 +11,7 @@ import { NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase'
-import { createCheckout, getCheckoutStatus } from '@/lib/sumup'
+import { createCheckout, getCheckoutStatus, forceBancontact } from '@/lib/sumup'
 
 export const dynamic = 'force-dynamic'
 
@@ -43,7 +46,16 @@ export async function POST(_req: Request, { params }: { params: { id: string } }
       description: `Dépannage ${[m.vehicle_brand, m.vehicle_model, m.vehicle_plate].filter(Boolean).join(' ')}`,
       returnUrl: `${process.env.NEXT_PUBLIC_APP_URL}/assistance/paye`,
     })
-    await sb.from('incoming_missions').update({ client_paiement: { checkout_id: id, url: checkoutUrl, montant: reste, reference, demande_le: new Date().toISOString() } }).eq('id', m.id)
+    // Paiement Bancontact : son propre paiement SumUp (référence distincte), forcé en Bancontact. Sans lui, la carte reste.
+    let bancontact: { checkout_id: string; url: string; reference: string } | null = null
+    try {
+      const bcRef = `${reference}-BC`
+      const bc = await createCheckout({ amount: reste, reference: bcRef, description: `Dépannage ${[m.vehicle_brand, m.vehicle_model, m.vehicle_plate].filter(Boolean).join(' ')}`, returnUrl: `${process.env.NEXT_PUBLIC_APP_URL}/assistance/paye` })
+      const { data: cl } = await sb.from('espace_clients').select('prenom, nom').eq('id', m.espace_client_id).maybeSingle()
+      const url = await forceBancontact(bc.id, cl ? `${cl.prenom || ''} ${cl.nom || ''}` : null)
+      if (url) bancontact = { checkout_id: bc.id, url, reference: bcRef }
+    } catch (e: any) { console.warn('[paiement client] Bancontact KO', e?.message) }
+    await sb.from('incoming_missions').update({ client_paiement: { checkout_id: id, url: checkoutUrl, montant: reste, reference, bancontact, demande_le: new Date().toISOString() } }).eq('id', m.id)
     const { demanderPaiementClient } = await import('@/lib/espace/client-notif')
     await demanderPaiementClient(m.id, reste)
     return NextResponse.json({ ok: true, montant: reste })
@@ -60,9 +72,16 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
   const p = m.client_paiement as any
   if (!p?.checkout_id) return NextResponse.json({ etat: 'aucun' })
   if (p.enregistre_le) return NextResponse.json({ etat: 'paye', montant: p.montant })
-  const st = await getCheckoutStatus(p.checkout_id).catch(() => null)
-  if (!st || st.status === 'PENDING') return NextResponse.json({ etat: 'attente', montant: p.montant, demande_le: p.demande_le })
+  // Deux paiements possibles (carte et Bancontact) : le premier payé compte.
+  const [stCarte, stBc] = await Promise.all([
+    getCheckoutStatus(p.checkout_id).catch(() => null),
+    p.bancontact?.checkout_id ? getCheckoutStatus(p.bancontact.checkout_id).catch(() => null) : Promise.resolve(null),
+  ])
+  const viaBc = stBc?.status === 'PAID' && stCarte?.status !== 'PAID'
+  const st = viaBc ? stBc : stCarte
+  if (!st || st.status === 'PENDING' || (st.status !== 'PAID' && stBc && stBc.status === 'PENDING')) return NextResponse.json({ etat: 'attente', montant: p.montant, demande_le: p.demande_le })
   if (st.status !== 'PAID') return NextResponse.json({ etat: 'echec', montant: p.montant })
+  if (viaBc) { p.reference = p.bancontact.reference; p.moyen = 'bancontact' }
   // Payé : un seul enregistrement, même si le chauffeur et le bureau regardent en même temps.
   const { data: pris } = await sb.from('incoming_missions').update({ client_paiement: { ...p, enregistre_le: new Date().toISOString(), transaction: st.transactionId || null } })
     .eq('id', m.id).filter('client_paiement->>enregistre_le', 'is', null).select('id')
@@ -77,7 +96,7 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
         amount: p.montant, payment_mode: 'sumup', payment_reference: p.reference,
         client_id: m.billed_to_id || null, client_name: m.billed_to_name || (cl ? `${cl.prenom} ${cl.nom}` : null),
         client_phone: cl?.tel || m.client_phone || null, client_address: cl?.adresse || null,
-        notes: 'Payé par le client dans l’app VD Assistance (SumUp en ligne).',
+        notes: `Payé par le client dans l’app VD Assistance (SumUp en ligne${p.moyen === 'bancontact' ? ', Bancontact' : ''}).`,
       }),
     }).catch(() => null)
     if (!r?.ok) {

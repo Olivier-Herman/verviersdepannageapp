@@ -105,7 +105,7 @@ export async function demanderPaiementClient(missionId: string, montant: number)
   const { data: abos } = await sb.from('espace_client_push').select('id, kind, token, subscription').eq('client_id', m.espace_client_id)
   if (!abos?.length) return false
   const eur = montant.toLocaleString('fr-BE', { style: 'currency', currency: 'EUR' })
-  const titre = `Paiement demandé : ${eur}`, corps = 'Touchez pour payer en toute sécurité (carte, Apple Pay, Google Pay).'
+  const titre = `Paiement demandé : ${eur}`, corps = 'Touchez pour payer en toute sécurité : Bancontact, carte, Apple Pay ou Google Pay.'
   if (abos.some(a => a.kind === 'web') && process.env.VAPID_PRIVATE_KEY) {
     webpush.setVapidDetails(process.env.VAPID_SUBJECT!, process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY!, process.env.VAPID_PRIVATE_KEY)
   }

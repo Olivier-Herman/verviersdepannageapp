@@ -18,7 +18,7 @@ interface Commande {
   id: string; numero: number; adresse: string | null; panne: string | null; vehicule: string; plaque: string | null
   suivi: { statut: string; libelle: string; etapes: Etape[] }
   aPayer: number | null; aSaCharge: boolean; deplacementPourRien: boolean; annulable: boolean; annulationEnCours: boolean; parti: boolean
-  paiement: { montant: number; url: string; paye: boolean } | null
+  paiement: { montant: number; url: string; bancontactUrl?: string | null; paye: boolean } | null
 }
 interface Etat { client: { prenom: string; nom: string; email: string } | null; vehicules: Vehicule[]; commande: Commande | null }
 interface Partenaire { id: string; nom: string; couleur: string | null; slug: string; sites: { id: string; nom: string; adresse: string }[] }
@@ -384,8 +384,17 @@ export default function AssistanceApp({ contexte, tel, appStore, action }: { con
         ) : (
           <div className="dcl-card dcl-pad" style={{ marginTop: 14, border: '2px solid var(--red)' }}>
             <b style={{ fontSize: 17 }}>Paiement demandé par le chauffeur</b>
-            <p className="dcl-sub" style={{ margin: '4px 0 12px' }}>Paiement sécurisé par SumUp : carte, Apple Pay ou Google Pay.</p>
-            <a className="btn btn-red" href={cmd.paiement.url} onClick={() => vibrer('leger')}>Payer {eur(cmd.paiement.montant)}</a>
+            <div style={{ fontSize: 30, fontWeight: 800, margin: '6px 0 12px' }}>{eur(cmd.paiement.montant)}</div>
+            {/* Bancontact en premier (Olivier 05/11/2026) : ouvre l'app Bancontact ou celle de la banque du client. */}
+            {cmd.paiement.bancontactUrl && <>
+              <a className="btn" href={cmd.paiement.bancontactUrl} onClick={() => vibrer('leger')} style={{ background: '#005498', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10 }}>
+                <span style={{ background: '#fff', borderRadius: 6, padding: '3px 6px', fontSize: 11, fontWeight: 800, letterSpacing: '.02em' }}><b style={{ color: '#005498' }}>BAN</b><b style={{ color: '#f9b200' }}>CONTACT</b></span>
+                Payer avec Bancontact
+              </a>
+              <p className="dcl-small" style={{ textAlign: 'center', margin: '6px 0 12px' }}>Ouvre votre app Bancontact ou celle de votre banque.</p>
+            </>}
+            <a className={cmd.paiement.bancontactUrl ? 'btn' : 'btn btn-red'} href={cmd.paiement.url} onClick={() => vibrer('leger')} style={cmd.paiement.bancontactUrl ? { background: 'transparent', border: '1.5px solid #dfe3e8', color: 'inherit' } : undefined}>{cmd.paiement.bancontactUrl ? 'Carte, Apple Pay ou Google Pay' : `Payer ${eur(cmd.paiement.montant)}`}</a>
+            <p className="dcl-small" style={{ textAlign: 'center', marginTop: 8 }}>Paiement sécurisé. La facture vous est envoyée ensuite.</p>
           </div>
         ))}
         {cmd.aPayer != null && !annulee && !cmd.paiement && (

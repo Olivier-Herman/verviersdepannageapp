@@ -303,6 +303,7 @@ export async function commandeDuClient(client: EspaceClient) {
     paiement: m.client_paiement?.url ? {
       montant: Number(m.client_paiement.montant || 0),
       url: String(m.client_paiement.url),
+      bancontactUrl: m.client_paiement.bancontact?.url ? String(m.client_paiement.bancontact.url) : null,
       paye: !!m.client_paiement.enregistre_le || (!!m.payment_collected_at && Number(m.payment_amount || 0) + 0.01 >= Number(m.client_paiement.montant || 0)),
     } : null,
   }
