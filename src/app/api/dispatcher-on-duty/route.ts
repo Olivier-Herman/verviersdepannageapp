@@ -68,6 +68,8 @@ export async function PATCH(req: Request) {
     })
     .eq('id', 1)
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  // De garde = au dispatch : plus en mode Chauffeur (Olivier 05/11/2026), sinon ses alertes de garde seraient perdues.
+  if (userId) await sb.from('users').update({ work_mode: null }).eq('id', userId)
 
   return NextResponse.json({ ok: true })
 }

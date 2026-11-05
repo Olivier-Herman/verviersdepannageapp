@@ -11,6 +11,7 @@
 import webpush from 'web-push'
 import { createAdminClient } from '@/lib/supabase'
 import { sendPushNotification } from './notifications/push'
+import { retirerModeChauffeur } from '@/lib/work-mode'
 
 // Configuration VAPID
 webpush.setVapidDetails(
@@ -78,6 +79,9 @@ const OFFLINE_GATED_NOTIF_TYPES = new Set<NotifType>([
 async function filterByNotifPref(userIds: string[], notifType?: NotifType): Promise<string[]> {
   if (!notifType || userIds.length === 0) return userIds
   let ids = userIds
+
+  // Mode Chauffeur (Olivier 05/11/2026) : plus d'alertes du dispatch.
+  if (notifType === 'dispatch_new_mission' || notifType === 'derogation_request') ids = await retirerModeChauffeur(ids)
 
   // 1) Préférences par role (toggle profil). cash_transfer (non mappe) ne peut
   //    pas etre bloque par l user (notif essentielle).
@@ -293,6 +297,12 @@ export async function sendPushToRole(
     if (Array.isArray(u.roles) && u.roles.some((r: string) => roles.includes(r))) {
       ids.add(u.id)
     }
+  }
+
+  // Mode Chauffeur (Olivier 05/11/2026) : un envoi adressé au dispatch ne le concerne plus.
+  if (roles.includes('dispatcher')) {
+    const garder = new Set(await retirerModeChauffeur(Array.from(ids)))
+    for (const id of Array.from(ids)) if (!garder.has(id)) ids.delete(id)
   }
 
   if (ids.size === 0) return

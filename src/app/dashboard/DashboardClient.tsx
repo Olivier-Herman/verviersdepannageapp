@@ -8,6 +8,7 @@ import AppShell from '@/components/layout/AppShell'
 import AmbientBackground from '@/components/AmbientBackground'
 import GardeBanner from '@/components/personnel/GardeBanner'
 import NightSwitchCard from '@/components/personnel/NightSwitchCard'
+import { chauffeurModules } from '@/lib/work-mode-view'
 import TalkieEntry from '@/components/personnel/TalkieEntry'
 import InterrupteurAssistants from '@/components/assistants/InterrupteurAssistants'
 import { T } from '@/lib/i18n/T'
@@ -84,11 +85,16 @@ const MODULES: ModuleItem[] = [
 export default function DashboardClient({
   session,
   hasTowsoft = false,
+  enChauffeur = false,
 }: {
   session: Session
   hasTowsoft?: boolean
+  enChauffeur?: boolean
 }) {
-  const sessionUser = session.user as any
+  // Mode Chauffeur (Olivier 05/11/2026) : l'accueil d'un chauffeur.
+  const sessionUser = (enChauffeur
+    ? { ...session.user, role: 'driver', roles: ['driver'], modules: chauffeurModules((session.user as any).modules || []) }
+    : session.user) as any
   const userModules: string[] = sessionUser.modules || []
   const userRole: string      = sessionUser.role || ''
   const isAdmin               = ['admin', 'superadmin'].includes(userRole)
@@ -147,9 +153,9 @@ export default function DashboardClient({
       <AmbientBackground>
         <div className="px-4 lg:px-8 py-5 lg:py-8 max-w-5xl mx-auto">
           <GardeBanner />
-          <NightSwitchCard />
+          {!enChauffeur && <NightSwitchCard />}
           <TalkieEntry />
-          <InterrupteurAssistants partie="bandeau" />
+          {!enChauffeur && <InterrupteurAssistants partie="bandeau" />}
 
           {/* Hero header — desktop visible, mobile garde le header sticky AppShell */}
           <div className="hidden lg:block mb-8 ambient-fade-up">
@@ -191,7 +197,7 @@ export default function DashboardClient({
           )}
 
           {/* Mes assistants — sous les modules (Olivier 28/10/2026), Olivier seul */}
-          <InterrupteurAssistants partie="bloc" />
+          {!enChauffeur && <InterrupteurAssistants partie="bloc" />}
 
           {/* Appels rapides (Dépannage, Fourrière, Rent a Car) retirés le 28/10/2026 : jamais utilisés (Olivier). */}
 

@@ -4,6 +4,7 @@ import { redirect }          from 'next/navigation'
 import { authOptions }       from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase'
 import DashboardClient       from './DashboardClient'
+import { readWorkMode }       from '@/lib/work-mode'
 
 export const dynamic  = 'force-dynamic'
 export const revalidate = 0
@@ -26,7 +27,7 @@ export default async function DashboardPage() {
     <DashboardClient
       session={session}
       hasTowsoft={!!dbUser?.towsoft_name}
-      
+      enChauffeur={(await readWorkMode(user)).mode === 'chauffeur'}
     />
   )
 }

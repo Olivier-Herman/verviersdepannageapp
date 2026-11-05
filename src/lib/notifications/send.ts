@@ -13,6 +13,7 @@
 import { createAdminClient } from '@/lib/supabase'
 import { NOTIFICATION_TYPES, isEnabled } from './types'
 import { sendPushNotification } from './push'
+import { retirerModeChauffeur } from '@/lib/work-mode'
 
 export interface NotificationPayload {
   /** Titre court affiche dans le bandeau */
@@ -62,6 +63,22 @@ async function absentHorsDispatch(sb: ReturnType<typeof createAdminClient>, user
   return (Array.isArray(liste) ? liste : []).some(a => Array.isArray(a?.user_ids) && a.user_ids.includes(userId) && String(a.jusqu_au || '') >= today)
 }
 
+// ── Mode Chauffeur (Olivier 05/11/2026) : plus d'alertes du dispatch, puisqu'un autre l'assure. Ses propres missions et
+// les alertes d'administration continuent d'arriver. Les types mixtes vont au bureau ET au chauffeur de la mission.
+const ALERTES_DISPATCH_HORS_CATEGORIE = new Set(['expert_access', 'expert_visit', 'verification_parc', 'kaze_accept_manual', 'kaze_proposal_missing', 'vab_onsite_failed', 'vab_vr_a_cloturer', 'escalation_call', 'payment_derogation_requested', 'restitution_derogation_requested', 'driver_amount_set'])
+const ALERTES_MIXTES = new Set(['axa_cancelled_after_start', 'mission_address_changed', 'touring_cancelled', 'kaze_cancelled_after_start', 'mission_cancelled_by_insurer'])
+async function coupeeEnChauffeur(sb: ReturnType<typeof createAdminClient>, userId: string, type: string, missionId?: string): Promise<boolean> {
+  if (PAS_DISPATCH.has(type)) return false
+  const t = NOTIFICATION_TYPES.find(x => x.key === type)
+  const mixte = ALERTES_MIXTES.has(type)
+  if (!mixte && !ALERTES_DISPATCH_HORS_CATEGORIE.has(type) && !(t?.category === 'dispatcher' && !t.applicableRoles.includes('driver'))) return false
+  if ((await retirerModeChauffeur([userId])).length) return false
+  if (!mixte) return true
+  if (!missionId) return false
+  const { data } = await sb.from('incoming_missions').select('assigned_to').eq('id', missionId).maybeSingle()
+  return (data as any)?.assigned_to !== userId
+}
+
 export async function sendNotification(
   userId:  string,
   type:    string,
@@ -99,6 +116,10 @@ export async function sendNotification(
   // 2 bis. Absence datée (Olivier 01/11/2026 : Momo en vacances jusqu'au 10/11 inclus, Matthieu au PC de Momo) :
   // pendant l'absence, seules les notifications de dispatch passent ; tout revient seul le lendemain de la date.
   if (await absentHorsDispatch(sb, userId, type)) {
+    return { ok: false, skipped: 'disabled_by_pref' }
+  }
+
+  if (await coupeeEnChauffeur(sb, userId, type, payload.mission_id)) {
     return { ok: false, skipped: 'disabled_by_pref' }
   }
 

@@ -5,6 +5,7 @@ import { createAdminClient } from '@/lib/supabase'
 import { sendEmail, emailLayout } from '@/lib/emails'
 import { getBusinessList } from '@/lib/settings/business'
 import { sendPushToUser } from '@/lib/push'
+import { retirerModeChauffeur } from '@/lib/work-mode'
 import { LEVEL_LABEL_FR, levelEmoji } from './levels'
 
 export const PHOTO_BUCKET = 'check-photos'
@@ -32,7 +33,9 @@ async function officeUserIds(sb: any): Promise<string[]> {
     sb.from('users').select('id').eq('active', true).or('role.in.(admin,superadmin,dispatcher),roles.ov.{admin,superadmin,dispatcher}'),
     checkResponsibles(sb),
   ])
-  return [...new Set([...(data || []).map((u: any) => u.id), ...resp])]
+  // Mode Chauffeur (Olivier 05/11/2026) : le bureau seulement ; un responsable du parc reste prévenu.
+  const bureau = await retirerModeChauffeur((data || []).map((u: any) => u.id))
+  return [...new Set([...bureau, ...resp])]
 }
 
 export async function loadCheck(sb: any, id: string) {

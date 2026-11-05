@@ -18,6 +18,7 @@ import { readAxaHealth }      from '@/lib/axa/health'
 import { getBusinessList }    from '@/lib/settings/business'
 import { sourcesWithTag }     from '@/lib/missions/source-catalog'
 import { readTodoCount }      from '@/lib/dossier/todo-count'
+import { readWorkMode }       from '@/lib/work-mode'
 
 export const dynamic    = 'force-dynamic'
 export const fetchCache = 'force-no-store'
@@ -157,6 +158,10 @@ export async function GET() {
     console.warn('[nav-badges] compteurs menu v3 :', e?.message || e)
   }
 
+  // Bouton Chauffeur / Dispatch (Olivier 05/11/2026) : en Chauffeur, ni raccourcis ni favoris du bureau, comme un chauffeur.
+  const work = await readWorkMode(u).catch(() => ({ available: false, mode: 'dispatch' as const }))
+  if (work.mode === 'chauffeur') { flags.max_assistant = false; return NextResponse.json({ badges, flags, nav: { now: [], favorites: [] }, work }) }
+
   // ── Zone « Maintenant » (réglage par rôle) + favoris de l'utilisateur ───────
   let now: string[] = []
   try {
@@ -172,5 +177,5 @@ export async function GET() {
     favorites = Array.isArray((me as any)?.nav_favorites) ? (me as any).nav_favorites : []
   } catch { /* colonne absente → pas de favoris */ }
 
-  return NextResponse.json({ badges, flags, nav: { now, favorites } })
+  return NextResponse.json({ badges, flags, nav: { now, favorites }, work })
 }

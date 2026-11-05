@@ -21,6 +21,8 @@ import MobileNavDrawer from './MobileNavDrawer'
 import NavPalette from './NavPalette'
 import AppNavMini from './AppNavMini'
 import MobileTabBar from './MobileTabBar'
+import WorkModeButton from './WorkModeButton'
+import { chauffeurModules, type WorkMode } from '@/lib/work-mode-view'
 import GlobalSearch from '@/components/GlobalSearch'
 import { TruckSwitcherIcon } from '@/components/trucks/TruckSwitcherIcon'
 import DispatchAlertBadge from '@/components/notifications/DispatchAlertBadge'
@@ -88,7 +90,13 @@ export default function AppShell({
   // Autres flags du user (nav-badges) : masquent les sections `hiddenWhenFlag` (ex. facturation_v2 → « Liste par fiche (ancienne) »).
   const [navFlags, setNavFlags] = useState<Record<string, boolean>>({})
   // Entrées réservées à des comptes nommés (ex. « Propositions des agents », Olivier 06/10/2026).
-  const visibleNavAll = filterNavItems({ userModules, userRole, userNavOrder, userRoles, flags: navFlags })
+  // Bouton Chauffeur / Dispatch (Olivier 05/11/2026) : en Chauffeur, menus et alertes d'un chauffeur ; les droits ne changent pas.
+  const [work, setWork] = useState<{ available: boolean; mode: WorkMode }>({ available: false, mode: 'dispatch' })
+  const enChauffeur = work.available && work.mode === 'chauffeur'
+  const navRole = enChauffeur ? 'driver' : userRole
+  const navModules = enChauffeur ? chauffeurModules(userModules) : userModules
+  const navRoles = enChauffeur ? ['driver'] : userRoles
+  const visibleNavAll = filterNavItems({ userModules: navModules, userRole: navRole, userNavOrder, userRoles: navRoles, flags: navFlags })
   const visibleNav = visibleNavAll.filter(i => !i.ownerOnly || navFlags.agents_shortcut)
   // Menu v3 (lot 1) : zone « Maintenant » du rôle + favoris de l'utilisateur.
   const [navNow, setNavNow]   = useState<string[]>([])
@@ -106,6 +114,7 @@ export default function AppShell({
         if (c.badges && typeof c.badges === 'object') setNavBadges(c.badges)
         if (Array.isArray(c.now)) setNavNow(c.now)
         if (Array.isArray(c.favorites)) setNavFavs(c.favorites)
+        if (c.work?.available) setWork(c.work)
       }
     } catch { /* stockage indisponible : on attend le fetch */ }
   }, [])
@@ -126,9 +135,10 @@ export default function AppShell({
         setNavV2Flag(!!d.flags?.nav_menu_v2)
         setNavEspacesFlag(!!d.flags?.nav_espaces)
         setNavFlags(d.flags && typeof d.flags === 'object' ? d.flags : {})
+        if (d.work) setWork(d.work)
         if (Array.isArray(d.nav?.now)) setNavNow(d.nav.now)
         if (Array.isArray(d.nav?.favorites)) setNavFavs(d.nav.favorites)
-        try { window.localStorage.setItem('vd_nav_cache', JSON.stringify({ badges: d.badges || {}, now: d.nav?.now || [], favorites: d.nav?.favorites || [] })) } catch {}
+        try { window.localStorage.setItem('vd_nav_cache', JSON.stringify({ badges: d.badges || {}, now: d.nav?.now || [], favorites: d.nav?.favorites || [], work: d.work })) } catch {}
       }).catch(() => {})
     load()
     const stop = pollWhenVisible(load, 60000, { immediate: false })   // toutes les minutes, onglet visible seulement
@@ -177,7 +187,7 @@ export default function AppShell({
    <InShell.Provider value={true}>
    <NotificationsProvider userId={userId || null}>
     <WatchPairingBridge />
-    <FacturationButtonAnnounce userRole={userRole} userModules={userModules} />
+    <FacturationButtonAnnounce userRole={navRole} userModules={navModules} />
     <EspecesAlert />
     <div className="min-h-screen flex">
 
@@ -231,8 +241,8 @@ export default function AppShell({
             espaces={navEspaces}
             flags={navFlags}
             items={visibleNav}
-            userRole={userRole}
-            userModules={userModules}
+            userRole={navRole}
+            userModules={navModules}
             badges={navBadges}
             now={navNow}
             favorites={navFavs}
@@ -241,7 +251,7 @@ export default function AppShell({
           />
         ) : navV2 && rail ? (
           // Lot 3 : la barre réduite garde le menu v3 (pictogrammes + volets), plus de retour en v1.
-          <AppNavMini items={visibleNav} userRole={userRole} userModules={userModules} badges={navBadges} onOpenPalette={() => setPaletteOpen(true)} espaces={navEspaces} flags={navFlags} />
+          <AppNavMini items={visibleNav} userRole={navRole} userModules={navModules} badges={navBadges} onOpenPalette={() => setPaletteOpen(true)} espaces={navEspaces} flags={navFlags} />
         ) : (
         <nav className={`flex-1 py-4 overflow-y-auto flex flex-col gap-0.5 ${rail ? 'px-2' : 'px-3'}`}>
           {visibleNav.map(item => {
@@ -311,7 +321,8 @@ export default function AppShell({
             >
               <img src="/logo.jpg" alt="VD Soft" className="h-8 w-auto object-contain" />
             </Link>
-            <DispatchAlertBadge userRole={userRole} />
+            {work.available && <WorkModeButton mode={work.mode} />}
+            <DispatchAlertBadge userRole={navRole} />
             <TruckSwitcherIcon />
             <GlobalSearch shortcut={!navV2} />
           </div>
@@ -324,10 +335,11 @@ export default function AppShell({
           open={drawerOpen}
           onClose={() => setDrawerOpen(false)}
           userName={userName}
-          userRole={userRole}
+          userRole={navRole}
+          userRoles={navRoles}
           userEmail={userEmail}
           userId={userId}
-          userModules={userModules}
+          userModules={navModules}
           navBadges={navBadges}
           navV2={navV2}
           espaces={navEspaces}
@@ -339,11 +351,11 @@ export default function AppShell({
         />
         {navV2 && (
           <NavPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} espaces={navEspaces} flags={navFlags}
-            items={visibleNav} userRole={userRole} userModules={userModules} now={navNow} badges={navBadges} />
+            items={visibleNav} userRole={navRole} userModules={navModules} now={navNow} badges={navBadges} />
         )}
         {navV2 && navNow.length > 0 && (
           // Lot 3 : barre du bas sur téléphone — les 4 pages « Maintenant » du rôle + Menu.
-          <MobileTabBar items={visibleNav} userRole={userRole} userModules={userModules} now={navNow} badges={navBadges} onOpenMenu={() => setDrawerOpen(true)} espaces={navEspaces} flags={navFlags} />
+          <MobileTabBar items={visibleNav} userRole={navRole} userModules={navModules} now={navNow} badges={navBadges} onOpenMenu={() => setDrawerOpen(true)} espaces={navEspaces} flags={navFlags} />
         )}
 
         {/* Header desktop */}
@@ -351,7 +363,8 @@ export default function AppShell({
           <div className="flex items-center justify-between gap-4">
             <h1 className="font-display text-ink font-bold text-2xl">{title}</h1>
             {headerExtra && <div className="flex-1 ml-8">{headerExtra}</div>}
-            <DispatchAlertBadge userRole={userRole} />
+            {work.available && <WorkModeButton mode={work.mode} />}
+            <DispatchAlertBadge userRole={navRole} />
             <TruckSwitcherIcon />
             <GlobalSearch shortcut={!navV2} />
           </div>

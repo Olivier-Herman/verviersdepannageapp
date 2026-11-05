@@ -17,6 +17,7 @@ interface Props {
   onClose:      () => void
   userName:     string
   userRole:     string
+  userRoles?:   string[] | null
   userEmail?:   string
   userId?:      string
   userModules:  string[]
@@ -31,13 +32,13 @@ interface Props {
   onOpenPalette?: () => void
 }
 
-export default function MobileNavDrawer({ open, onClose, userName, userRole, userEmail, userId, userModules, navBadges = {}, navV2 = false, espaces = false, flags = {}, navNow = [], navFavs = [], onToggleFavorite, onOpenPalette }: Props) {
+export default function MobileNavDrawer({ open, onClose, userName, userRole, userRoles: userRolesProp, userEmail, userId, userModules, navBadges = {}, navV2 = false, espaces = false, flags = {}, navNow = [], navFavs = [], onToggleFavorite, onOpenPalette }: Props) {
   const pathname = usePathname()
   const { data: session } = useSession()
   const userNavOrder = (session?.user as any)?.navOrder as string[] | null | undefined
   // Rôles complémentaires (rh, mail_agent…) : sans eux, le menu mobile cachait ce
   // que le menu bureau montrait (Jona / Agent Mail, 28/09/2026).
-  const userRoles = (session?.user as any)?.roles as string[] | null | undefined
+  const userRoles = userRolesProp ?? ((session?.user as any)?.roles as string[] | null | undefined)
   const items = filterNavItems({ userModules, userRole, userNavOrder, userRoles, flags })
   const { theme, toggleTheme, mounted } = useTheme()
   const { onDuty, setOnDuty, isLockedByDuty } = useOnDutyPing()

@@ -258,9 +258,10 @@ export async function POST(req: Request, { params }: { params: { id: string } })
         .eq('active', true)
         .or('role.in.(dispatcher,admin,superadmin),roles.ov.{dispatcher,admin,superadmin}')
       const scannerName = user.name || user.email || 'Un chauffeur'
-      for (const d of (dispatchers || [])) {
-        if (d.id === userId) continue
-        sendPushToUser(d.id, {
+      const { retirerModeChauffeur } = await import('@/lib/work-mode')
+      for (const id of await retirerModeChauffeur((dispatchers || []).map((d: any) => d.id))) {
+        if (id === userId) continue
+        sendPushToUser(id, {
           title: '🔁 Relivraison à confirmer',
           body:  `${scannerName} a saisi l'adresse de relivraison de ${parent.vehicle_plate || 'un véhicule'} au scan — à vérifier.`,
           url:   `/dispatch/${relMissionId}`,

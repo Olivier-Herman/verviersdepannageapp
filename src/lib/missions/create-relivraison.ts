@@ -303,8 +303,9 @@ export async function createRelivraisonMission(input: RelivraisonInput): Promise
       .select('id')
       .eq('active', true)
       .or('role.eq.dispatcher,role.eq.admin,role.eq.superadmin')
-    for (const dispatcher of (dispatchers || [])) {
-      sendPushToUser(dispatcher.id, {
+    const { retirerModeChauffeur } = await import('@/lib/work-mode')
+    for (const id of await retirerModeChauffeur((dispatchers || []).map((d: any) => d.id))) {
+      sendPushToUser(id, {
         title: '🅿️ Mission REL à assigner',
         body:  `${parent.client_name || 'Véhicule'} ${parent.vehicle_plate || ''} → ${input.redeliveryAddress}`,
         url:   `/dispatch/${rel.id}`,

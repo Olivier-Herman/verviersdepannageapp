@@ -79,7 +79,8 @@ export async function POST(req: NextRequest) {
     .eq('active', true)
 
   if (notifyUsers?.length) {
-    await sendPushToUsers(notifyUsers.map(u => u.id), {
+    const { retirerModeChauffeur } = await import('@/lib/work-mode')
+    await sendPushToUsers(await retirerModeChauffeur(notifyUsers.map(u => u.id)), {
       title: `🚗 Nouvelle mission TGR — ${plate}`,
       body:  `${brand} ${model} · ${pickupAddress.split(',')[0]} → ${deliveryAddress.split(',')[0]}`,
       url:   '/admin/tgr',
