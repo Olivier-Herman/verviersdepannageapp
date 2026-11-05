@@ -10,6 +10,8 @@ import { useEffect, useRef, useState } from 'react'
 import { useT } from '@/lib/i18n/I18nProvider'
 import { checkVin, cleanVin } from '@/lib/obd/vin'
 import type { ObdLink, ObdReading } from '@/lib/obd/ble'
+import PortHelp from './PortHelp'
+import { shrinkPhoto } from './shrink'
 
 type Step = 'start' | 'busy' | 'vin' | 'result'
 type Vehicle = { marque: string | null; modele: string | null; motorisation: string | null; annee: number | null } | null
@@ -17,7 +19,7 @@ type Vehicle = { marque: string | null; modele: string | null; motorisation: str
 const btn = 'w-full min-h-[48px] rounded-xl font-semibold text-sm px-4 transition disabled:opacity-50'
 const vehicleLabel = (v: Vehicle) => v ? [v.marque, v.modele, v.motorisation, v.annee].filter(Boolean).join(' · ') : ''
 
-export default function DiagnosticPanel({ missionId, plate: plate0, onDone }: { missionId?: string; plate?: string | null; onDone?: () => void }) {
+export default function DiagnosticPanel({ missionId, plate: plate0, vehicle: vehicle0, onDone }: { missionId?: string; plate?: string | null; vehicle?: string | null; onDone?: () => void }) {
   const { t, lang } = useT()
   const [available, setAvailable] = useState<boolean | null>(null)
   const [step, setStep] = useState<Step>('start')
@@ -86,8 +88,8 @@ export default function DiagnosticPanel({ missionId, plate: plate0, onDone }: { 
   async function photoVin(f: File) {
     setOcrBusy(true); setErr(null)
     try {
-      const b64 = await new Promise<string>((res, rej) => { const fr = new FileReader(); fr.onload = () => res(String(fr.result)); fr.onerror = rej; fr.readAsDataURL(f) })
-      const r = await fetch('/api/obd/vin', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ image: b64, mime: f.type }) })
+      const b64 = await shrinkPhoto(f, 1800)   // le VIN doit rester lisible
+      const r = await fetch('/api/obd/vin', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ image: b64, mime: 'image/jpeg' }) })
       const j = await r.json()
       if (j.ok && j.vin) { setVin(j.vin); setVinSource('photo') } else setErr(t('obd.ocr_ko'))
     } catch { setErr(t('obd.ocr_ko')) } finally { setOcrBusy(false) }
@@ -127,6 +129,7 @@ export default function DiagnosticPanel({ missionId, plate: plate0, onDone }: { 
 
   return (
     <div className="space-y-3">
+      {step === 'start' && available && <PortHelp vehicle={vehicle0} />}
       {step === 'start' && (
         <div className="rounded-2xl border bg-surface p-4 space-y-3">
           <p className="font-semibold text-ink">🔧 {t('obd.titre')}</p>

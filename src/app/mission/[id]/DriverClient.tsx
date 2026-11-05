@@ -5166,7 +5166,7 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
 
         {/* Diagnostic OBD sur place (Olivier 05/11/2026) : préversion, seulement les pilotes du drapeau obd_diagnostic. */}
         {obdDiag && onSite && !isReadOnly && (diagOpen
-          ? <div className="w-full"><DiagnosticPanel missionId={M.id} plate={M.vehicle_plate || null} /></div>
+          ? <div className="w-full"><DiagnosticPanel missionId={M.id} plate={M.vehicle_plate || null} vehicle={[M.vehicle_brand, M.vehicle_model].filter(Boolean).join(' ') || null} /></div>
           : <button type="button" onClick={() => setDiagOpen(true)} className="w-full min-h-[52px] rounded-2xl border-2 border-blue-700/60 bg-blue-50 dark:bg-blue-500/10 text-blue-800 dark:text-blue-200 font-bold text-base">🔧 {t('obd.titre')}</button>)}
         {/* Destination Touring « réseau agréé » (centrale de pneus…) : garage à choisir dans la liste Touring,
             pas la société du même nom sur la carte (Olivier 29/10/2026, maquette validée). */}

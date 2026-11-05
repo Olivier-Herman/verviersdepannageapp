@@ -21,6 +21,7 @@ export default async function DiagnosticsObdPage() {
   const sb = createAdminClient()
   const { data } = await sb.from('obd_diagnostics').select('*').order('created_at', { ascending: false }).limit(200)
   const rows = data || []
+  const { data: prises } = await sb.from('obd_port_locations').select('id, label, fr, status, source_url, confirmed_by, updated_at').order('updated_at', { ascending: false }).limit(200)
   const uids = [...new Set(rows.flatMap((d: any) => [d.created_by, d.cleared_by]).filter(Boolean))]
   const mids = [...new Set(rows.map((d: any) => d.mission_id).filter(Boolean))]
   const [{ data: us }, { data: ms }] = await Promise.all([
@@ -65,6 +66,20 @@ export default async function DiagnosticsObdPage() {
           <p className="px-3 py-2 text-xs text-ink-muted border-t">* code en attente (pas encore confirmé par la voiture).</p>
         </div>
       )}
+      <section className="space-y-2">
+        <h2 className="text-ink font-semibold text-base">Emplacements de la prise par modèle</h2>
+        <p className="text-ink-muted text-sm">« À confirmer » vient de la documentation en ligne et peut être faux. « Vérifié » a été confirmé par un chauffeur.</p>
+        {(prises || []).length === 0 ? <p className="rounded-xl border bg-surface p-4 text-center text-ink-secondary text-sm">Aucun emplacement pour l’instant.</p> : (
+          <div className="overflow-x-auto rounded-xl border bg-surface"><table className="w-full text-sm">
+            <thead><tr className="text-left text-ink-muted text-xs uppercase tracking-wide">{['Modèle', 'Emplacement', 'État', 'Source'].map(h => <th key={h} className="px-3 py-2 font-semibold">{h}</th>)}</tr></thead>
+            <tbody>{(prises || []).map((p: any) => <tr key={p.id} className="border-t align-top">
+              <td className="px-3 py-2 text-ink">{p.label}</td><td className="px-3 py-2 text-ink-secondary">{p.fr}</td>
+              <td className="px-3 py-2 whitespace-nowrap">{p.status === 'verifie' ? `Vérifié (${(p.confirmed_by || []).length})` : 'À confirmer'}</td>
+              <td className="px-3 py-2">{p.source_url ? <a className="text-brand underline" href={p.source_url} target="_blank" rel="noreferrer">voir la page</a> : p.status === 'verifie' ? 'Chauffeur' : '—'}</td>
+            </tr>)}</tbody>
+          </table></div>
+        )}
+      </section>
     </div>
   )
 }
