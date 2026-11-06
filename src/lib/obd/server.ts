@@ -1,5 +1,6 @@
 // src/lib/obd/server.ts — diagnostic OBD côté serveur (Olivier 05/11/2026, maquette validée
 // https://claude.ai/artifact/F1KAFhsPsLkFqvgZvQS8oS). Préversion : drapeau « obd_diagnostic », Mobi, Olivier et Franck.
+import { createAdminClient } from '@/lib/supabase'
 import Anthropic from '@anthropic-ai/sdk'
 import { aiClient } from '@/lib/ai/usage'
 import { ANTHROPIC_MODEL } from '@/lib/anthropic-model'
@@ -13,7 +14,29 @@ export async function obdAccess(user: any): Promise<boolean> {
 export interface Vehicle { marque: string | null; modele: string | null; motorisation: string | null; annee: number | null; source: 'vpic' | 'vin' }
 
 /** Décodage du VIN : base publique vPIC (NHTSA, gratuite), sinon marque et année tirées du VIN. */
+/** La base américaine ignore le modèle des VIN européens (Opel 2020 sans « Combo », Olivier 06/11/2026) : on le cherche
+ *  dans nos fiches, le même châssis d'abord, puis les mêmes premiers caractères (9 fois sur 10 le bon modèle sur 219 essais). */
+async function modeleDepuisFiches(vin: string): Promise<{ modele: string; estime: boolean } | null> {
+  const sb = createAdminClient()
+  for (const n of [17, 8, 6]) {
+    const { data } = await sb.from('incoming_missions').select('vehicle_model').ilike('vehicle_vin', n === 17 ? vin : `${vin.slice(0, n)}%`).not('vehicle_model', 'is', null).limit(200)
+    const compte = new Map<string, number>()
+    for (const x of (data || []) as any[]) { const m = String(x.vehicle_model).trim(); if (m && !/^(autre|inconnu|\?+|-+)$/i.test(m)) compte.set(m, (compte.get(m) || 0) + 1) }
+    const total = [...compte.values()].reduce((a, b) => a + b, 0)
+    const [top] = [...compte.entries()].sort((a, b) => b[1] - a[1])
+    if (top && (n === 17 || (total >= 2 && top[1] / total >= 0.6))) return { modele: top[0], estime: n !== 17 }
+  }
+  return null
+}
+
 export async function decodeVin(raw: string): Promise<Vehicle | null> {
+  const v = await decodeVinBase(raw)
+  if (!v || v.modele) return v
+  const f = await modeleDepuisFiches(cleanVin(raw)).catch(() => null)
+  return f ? { ...v, modele: f.estime ? `${f.modele} ?` : f.modele, source: v.source } : v
+}
+
+async function decodeVinBase(raw: string): Promise<Vehicle | null> {
   const vin = cleanVin(raw)
   const c = checkVin(vin)
   if (!c.valid) return null
