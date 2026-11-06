@@ -26,7 +26,12 @@ export async function POST(req: Request) {
     const { data: m } = await sb.from('incoming_missions').select('id, vehicle_plate').eq('id', missionId).maybeSingle()
     if (!m) missionId = null; else plate = plate || m.vehicle_plate || null
   }
-  const vehicle = vin ? await decodeVin(vin) : null
+  let vehicle = vin ? await decodeVin(vin) : null
+  // Le modèle donné par l'assistance sur la fiche vaut mieux qu'une estimation (Olivier 06/11/2026).
+  if (missionId) {
+    const { data: fiche } = await sb.from('incoming_missions').select('vehicle_brand, vehicle_model').eq('id', missionId).maybeSingle()
+    if ((fiche as any)?.vehicle_model) vehicle = { marque: (fiche as any).vehicle_brand || vehicle?.marque || null, modele: (fiche as any).vehicle_model, motorisation: vehicle?.motorisation || null, annee: vehicle?.annee || null, source: vehicle?.source || 'vin' }
+  }
   const { data: row, error } = await sb.from('obd_diagnostics').insert({
     mission_id: missionId, vin, vin_source: vin ? (['obd', 'photo', 'saisie'].includes(b.vin_source) ? b.vin_source : 'saisie') : null,
     plate, vehicle, codes, measures: b.measures || {}, adapter: b.adapter ? String(b.adapter).slice(0, 60) : null, created_by: user.id,

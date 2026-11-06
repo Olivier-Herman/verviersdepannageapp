@@ -200,6 +200,7 @@ export default function DiagnosticPanel({ missionId, plate: plate0, vehicle: veh
               {reading.measures.batterie_v != null && <><span className="text-ink-secondary">{t('obd.batterie')}</span><span className="font-semibold tabular-nums text-ink">{String(reading.measures.batterie_v).replace('.', ',')} V</span></>}
               {reading.measures.temp_moteur_c != null && <><span className="text-ink-secondary">{t('obd.temperature')}</span><span className="font-semibold tabular-nums text-ink">{reading.measures.temp_moteur_c} °C</span></>}
               {reading.measures.regime_tr_min != null && <><span className="text-ink-secondary">{t('obd.regime')}</span><span className="font-semibold tabular-nums text-ink">{reading.measures.regime_tr_min} tr/min</span></>}
+              {reading.measures.carburant && <><span className="text-ink-secondary">{t('obd.carburant')}</span><span className="font-semibold text-ink">{lang === 'sq' ? ({ essence: 'benzinë', diesel: 'naftë', 'électrique': 'elektrike', GPL: 'GPL', GNC: 'GNC' } as Record<string, string>)[reading.measures.carburant] || (/hybride/.test(reading.measures.carburant) ? 'hibride' : reading.measures.carburant) : reading.measures.carburant}</span></>}
               {reading.measures.temoin_moteur != null && <><span className="text-ink-secondary">{t('obd.temoin')}</span><span className="font-semibold text-ink">{reading.measures.temoin_moteur ? t('obd.allume') : t('obd.eteint')}</span></>}
             </div>
           </div>

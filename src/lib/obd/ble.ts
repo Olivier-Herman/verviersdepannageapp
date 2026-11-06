@@ -14,7 +14,7 @@ export interface ObdLink { deviceId: string; name: string; send: (cmd: string, t
 export interface ObdReading {
   vin: string | null
   codes: { code: string; type: 'memorise' | 'en_attente' }[]
-  measures: { batterie_v: number | null; temp_moteur_c: number | null; regime_tr_min: number | null; temoin_moteur: boolean | null; nb_codes: number | null }
+  measures: { batterie_v: number | null; temp_moteur_c: number | null; regime_tr_min: number | null; carburant?: string | null; temoin_moteur: boolean | null; nb_codes: number | null }
   protocol: string | null
 }
 
@@ -88,11 +88,12 @@ export async function readVehicle(link: ObdLink, onStatus?: (s: string) => void)
   const pending = E.parseDtcs(await link.send('07', 6000), 7)
   const temp = E.parseCoolant(await link.send('0105'))
   const rpm = E.parseRpm(await link.send('010C'))
+  const carburant = E.parseFuelType(await link.send('0151'))
   const volt = E.parseAtVoltage(await link.send('ATRV')) ?? E.parseModuleVoltage(await link.send('0142'))
   return {
     vin, protocol,
     codes: [...stored.map(code => ({ code, type: 'memorise' as const })), ...pending.filter(c => !stored.includes(c)).map(code => ({ code, type: 'en_attente' as const }))],
-    measures: { batterie_v: volt, temp_moteur_c: temp, regime_tr_min: rpm, temoin_moteur: status?.mil ?? null, nb_codes: status?.count ?? null },
+    measures: { batterie_v: volt, temp_moteur_c: temp, regime_tr_min: rpm, carburant, temoin_moteur: status?.mil ?? null, nb_codes: status?.count ?? null },
   }
 }
 

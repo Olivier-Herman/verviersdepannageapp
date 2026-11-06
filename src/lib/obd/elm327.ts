@@ -78,6 +78,10 @@ export function parseCoolant(raw: string): number | null { const d = payload(raw
 export function parseRpm(raw: string): number | null { const d = payload(raw, 0x01, 0x0c); return d.length >= 2 ? Math.round((d[0] * 256 + d[1]) / 4) : null }
 
 /** Mode 01 PID 42 : tension du module de commande (V). */
+/** Mode 01 PID 51 : carburant déclaré par la voiture, quand elle le donne (Olivier 06/11/2026). */
+const CARBURANTS: Record<number, string> = { 1: 'essence', 2: 'méthanol', 3: 'éthanol', 4: 'diesel', 5: 'GPL', 6: 'GNC', 8: 'électrique', 17: 'hybride essence', 18: 'hybride diesel', 19: 'hybride électrique', 20: 'hybride', 21: 'hybride rechargeable' }
+export function parseFuelType(raw: string): string | null { const d = payload(raw, 0x01, 0x51); return d.length ? CARBURANTS[d[0]] || null : null }
+
 export function parseModuleVoltage(raw: string): number | null { const d = payload(raw, 0x01, 0x42); return d.length >= 2 ? Math.round((d[0] * 256 + d[1]) / 10) / 100 : null }
 
 /** Commande AT RV : tension lue par le boîtier sur la prise (V), « 12.4V ». */

@@ -1101,6 +1101,7 @@ export const sq: Dictionary = {
     vin_lu:           'VIN u lexua nga pajisja',
     vin_ko:           'Pajisja nuk arriti të lexojë numrin e shasisë.',
     relancer:         'Rilexo',
+    carburant:        'Karburanti',
     retour:           'Kthehu',
     vin_photo:        '📷 Foto e targës së shasisë ose e lejes së qarkullimit',
     vin_label:        'VIN (17 karaktere), mund të ndryshohet në çdo kohë',

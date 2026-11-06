@@ -1117,6 +1117,7 @@ export const fr = {
     vin_lu:           'VIN lu par le boîtier',
     vin_ko:           'Le boîtier n’a pas pu lire le numéro de châssis.',
     relancer:         'Relancer la lecture',
+    carburant:        'Carburant',
     retour:           'Retour',
     vin_photo:        '📷 Photo de la plaque de châssis ou de la carte grise',
     vin_label:        'VIN (17 caractères), modifiable à tout moment',
