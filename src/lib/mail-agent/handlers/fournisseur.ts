@@ -17,6 +17,7 @@ import { ANTHROPIC_MODEL } from '@/lib/anthropic-model'
 import { odooRpcCompany } from '@/lib/odoo'
 import { getDocumentAttachments, getMessageText, findFolderIdByName, findOrCreateFolder, moveMessage, forwardMessage, type AgentMessage } from '../graph'
 import { aiClient } from '@/lib/ai/usage'
+import { estRelevéMensuelSumup, lireFraisSumup, encoderFraisSumup } from './sumup-mensuel'
 
 export const FOURNISSEUR_DONE_FOLDER = 'Fournisseur Divers'
 /** Dossier de Justine (Riga) dans info@ et administration@ : les factures Riga y
@@ -210,6 +211,16 @@ async function file(mailbox: string, msgId: string, done: { id: string | null; n
  * trace ce qu'il renvoie.
  */
 export async function processSupplierMail(sb: any, mailbox: string, msg: AgentMessage, base: Record<string, any>, opts: { known?: SupplierExtraction; afterWait?: boolean } = {}): Promise<SupplierOutcome> {
+  // Relevé mensuel SumUp : seule la facture de frais est encodée (Olivier 06/11/2026), jamais de transfert à l'encodage.
+  if (estRelevéMensuelSumup(msg)) {
+    const f = await lireFraisSumup(mailbox, msg).catch(() => null)
+    if (!f) return { status: 'to_verify', note: 'Relevé mensuel SumUp : facture de frais non lue avec certitude, à encoder à la main (frais seuls, pas les relevés).', extracted: null }
+    const extracted: any = { supplier: 'SumUp', invoice_number: f.numero, total: f.frais, company: COMPANIES.vd.label }
+    const deja: any[] = await odooRpcCompany(COMPANIES.vd.id, 'account.move', 'search_read', [[['company_id', '=', COMPANIES.vd.id], ['move_type', '=', 'in_invoice'], ['ref', '=', f.numero], ['state', '!=', 'cancel']]], { fields: ['name'], limit: 1 })
+    if (!deja.length) await encoderFraisSumup(COMPANIES.vd.id, f)
+    const where = await file(mailbox, msg.id, await doneFolderFor(mailbox, 'vd'))
+    return { status: 'applied', note: `Frais SumUp ${f.mois} : ${f.frais} € ${deja.length ? 'déjà encodés' : 'encodés en brouillon'} (${f.numero}), relevés écartés, mail ${where}`, extracted }
+  }
   let x: SupplierExtraction
   if (opts.known) x = opts.known
   else {

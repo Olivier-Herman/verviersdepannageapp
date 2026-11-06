@@ -2082,7 +2082,7 @@ export default function DispatchClient({
                           {(m.dossier_number || (m.mission_number != null && m.external_id)) && (
                             <p className="text-ink-muted text-xs">{m.dossier_number || m.external_id}</p>
                           )}
-                          <PauseBadge m={m} className="mt-1 !py-1 !px-2 whitespace-nowrap" />
+                          <PauseBadge m={m} className="mt-1 !py-1 !px-2 max-w-xs" />
                         </td>
                         <td className="px-4 py-3">
                           <p className="text-ink">{m.client_name || '—'}</p>
