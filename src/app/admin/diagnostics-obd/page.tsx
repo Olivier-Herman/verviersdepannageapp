@@ -11,7 +11,8 @@ import { isPreviewOn } from '@/lib/feature-flags'
 export const dynamic = 'force-dynamic'
 
 const fmt = (iso: string | null) => iso ? new Date(iso).toLocaleString('fr-BE', { timeZone: 'Europe/Brussels', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : ''
-const VERDICT: Record<string, string> = { dsp: 'Dépannage sur place', rem: 'Remorquage', controle: 'Rien d’anormal' }
+const VERDICT: Record<string, string> = { dsp: 'Dépannage sur place', rem: 'Remorquage', controle: 'Rien d’anormal', incomplet: 'Lecture à refaire' }
+const EFFACE: Record<string, string> = { ok: 'Effacés, vérifié', partiel: 'Code(s) restant(s)', refuse: 'Refusé par la voiture', lien_perdu: 'Boîtier déconnecté', non_verifie: 'Accepté, non vérifié' }
 
 export default async function DiagnosticsObdPage() {
   const session = await getServerSession(authOptions)
@@ -54,16 +55,16 @@ export default async function DiagnosticsObdPage() {
                     <td className="px-3 py-2 font-semibold text-ink">{d.numero}</td>
                     <td className="px-3 py-2 text-ink">{[v.marque, v.modele, v.annee].filter(Boolean).join(' · ') || '—'}<div className="font-mono text-xs text-ink-muted">{d.vin || 'VIN non lu'}{d.plate ? ` · ${d.plate}` : ''}</div></td>
                     <td className="px-3 py-2 text-ink-secondary">{name[d.created_by] || '—'}</td>
-                    <td className="px-3 py-2 font-mono text-ink">{(d.codes || []).length ? (d.codes || []).map((c: any) => c.code + (c.type === 'en_attente' ? '*' : '')).join(', ') : <span className="font-sans text-ink-muted">aucun</span>}</td>
+                    <td className="px-3 py-2 font-mono text-ink">{(d.codes || []).length ? (d.codes || []).map((c: any) => c.code + (c.type === 'en_attente' ? '*' : c.type === 'permanent' ? '†' : '')).join(', ') : <span className="font-sans text-ink-muted">{d.lecture?.complete === false ? 'non confirmés' : 'aucun'}</span>}{d.lecture?.complete === false && <div className="font-sans text-xs font-semibold text-amber-800 dark:text-amber-300">Lecture incomplète</div>}</td>
                     <td className="px-3 py-2 text-ink-secondary">{d.analysis ? VERDICT[d.analysis.verdict] || '—' : '—'}{d.decision ? <div className="text-xs">Chauffeur : {d.decision === 'dsp' ? 'dépannage sur place' : 'remorquage'}</div> : null}</td>
-                    <td className="px-3 py-2 text-ink-secondary">{d.cleared_by ? <>{d.clear_result === 'ok' ? 'Effacés' : d.clear_result === 'refuse' ? 'Refusé par la voiture' : 'Signé'}<div className="text-xs">{name[d.cleared_by] || ''} · {fmt(d.cleared_at)}</div></> : '—'}</td>
+                    <td className="px-3 py-2 text-ink-secondary">{d.cleared_by ? <>{EFFACE[d.clear_result] || 'Signé'}<div className="text-xs">{name[d.cleared_by] || ''} · {fmt(d.cleared_at)}</div></> : '—'}</td>
                     <td className="px-3 py-2">{d.mission_id ? <Link className="text-brand underline" href={`/dispatch/${d.mission_id}`}>#{num[d.mission_id] || '…'}</Link> : <span className="text-ink-muted">seul</span>}</td>
                   </tr>
                 )
               })}
             </tbody>
           </table>
-          <p className="px-3 py-2 text-xs text-ink-muted border-t">* code en attente (pas encore confirmé par la voiture).</p>
+          <p className="px-3 py-2 text-xs text-ink-muted border-t">* code en attente (pas encore confirmé par la voiture). † code permanent (la voiture l’efface seule après réparation).</p>
         </div>
       )}
       <section className="space-y-2">

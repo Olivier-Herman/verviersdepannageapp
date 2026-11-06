@@ -6,7 +6,7 @@ import { NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase'
-import { obdAccess, decodeVin, matchingMissions } from '@/lib/obd/server'
+import { obdAccess, decodeVin, matchingMissions, corrigerCarburantFiche } from '@/lib/obd/server'
 import { cleanVin, checkVin } from '@/lib/obd/vin'
 
 export const dynamic = 'force-dynamic'
@@ -19,7 +19,7 @@ export async function POST(req: Request) {
   const sb = createAdminClient()
   const vin = b.vin ? cleanVin(b.vin) : null
   if (vin && !checkVin(vin).valid) return NextResponse.json({ error: 'Numéro de châssis invalide' }, { status: 400 })
-  const codes = (Array.isArray(b.codes) ? b.codes : []).filter((c: any) => /^[PCBU][0-3][0-9A-F]{3}$/.test(String(c?.code))).map((c: any) => ({ code: String(c.code), type: c.type === 'en_attente' ? 'en_attente' : 'memorise' }))
+  const codes = (Array.isArray(b.codes) ? b.codes : []).filter((c: any) => /^[PCBU][0-3][0-9A-F]{3}$/.test(String(c?.code))).map((c: any) => ({ code: String(c.code), type: ['en_attente', 'permanent'].includes(c.type) ? c.type : 'memorise', ecu: c.ecu ? String(c.ecu).slice(0, 8) : null }))
   let missionId: string | null = typeof b.mission_id === 'string' ? b.mission_id : null
   let plate = b.plate ? String(b.plate).toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 10) : null
   if (missionId) {
@@ -35,14 +35,16 @@ export async function POST(req: Request) {
   const { data: row, error } = await sb.from('obd_diagnostics').insert({
     mission_id: missionId, vin, vin_source: vin ? (['obd', 'photo', 'saisie'].includes(b.vin_source) ? b.vin_source : 'saisie') : null,
     plate, vehicle, codes, measures: b.measures || {}, adapter: b.adapter ? String(b.adapter).slice(0, 60) : null, created_by: user.id,
+    protocol: b.protocol ? String(b.protocol).slice(0, 8) : null, lecture: b.lecture || null, image_figee: b.freeze || null, raw: Array.isArray(b.raw) ? b.raw.slice(0, 80) : null,
   }).select('id, numero').single()
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   if (missionId) {
     await sb.from('mission_logs').insert({ mission_id: missionId, actor_id: user.id, action: 'obd_diagnostic',
-      notes: `Diagnostic OBD ${row.numero} : ${codes.length ? codes.map((c: any) => c.code + (c.type === 'en_attente' ? ' (en attente)' : '')).join(', ') : 'aucun code de panne'}${vin ? ` · VIN ${vin}` : ''}`,
+      notes: `Diagnostic OBD ${row.numero} : ${codes.length ? codes.map((c: any) => c.code + (c.type === 'en_attente' ? ' (en attente)' : c.type === 'permanent' ? ' (permanent)' : '')).join(', ') : b.lecture?.complete === false ? 'lecture incomplète, codes non confirmés' : 'aucun code de panne'}${vin ? ` · VIN ${vin}` : ''}`,
       metadata: { diagnostic_id: row.id } }).then(() => {}, () => {})
     // Le VIN lu par le boîtier complète la fiche s'il manque.
     if (vin) await sb.from('incoming_missions').update({ vehicle_vin: vin }).eq('id', missionId).is('vehicle_vin', null).then(() => {}, () => {})
+    await corrigerCarburantFiche(sb, missionId, b.measures, row.numero, user.id).catch(() => {})
   }
   const propositions = missionId ? [] : await matchingMissions(sb, vin, plate)
   return NextResponse.json({ ok: true, id: row.id, numero: row.numero, vehicle, propositions })

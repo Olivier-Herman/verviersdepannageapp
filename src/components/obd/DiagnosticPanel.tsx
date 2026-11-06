@@ -9,7 +9,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useT } from '@/lib/i18n/I18nProvider'
 import { checkVin, cleanVin } from '@/lib/obd/vin'
-import type { ObdLink, ObdReading } from '@/lib/obd/ble'
+import type { ClearResult, ObdLink, ObdReading } from '@/lib/obd/ble'
 import PortHelp from './PortHelp'
 import { shrinkPhoto } from './shrink'
 
@@ -36,7 +36,8 @@ export default function DiagnosticPanel({ missionId, plate: plate0, vehicle: veh
   const [pinOpen, setPinOpen] = useState(false)
   const [pin, setPin] = useState('')
   const [pinErr, setPinErr] = useState<string | null>(null)
-  const [cleared, setCleared] = useState<{ result: 'ok' | 'refuse'; at: string } | null>(null)
+  const [cleared, setCleared] = useState<{ result: ClearResult; at: string; reste: string[] } | null>(null)
+  const [moteurMsg, setMoteurMsg] = useState(false)
   const [decision, setDecision] = useState<string | null>(null)
   const [ended, setEnded] = useState<string | null>(null)
   const [ocrBusy, setOcrBusy] = useState(false)
@@ -77,7 +78,7 @@ export default function DiagnosticPanel({ missionId, plate: plate0, vehicle: veh
   async function enregistrer(r: ObdReading, v: string | null, src: string) {
     setStep('busy'); setStatus(t('obd.lecture'))
     const res = await fetch('/api/obd/diagnostics', { method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ mission_id: missionId || null, vin: v, vin_source: v ? src : null, plate: plate || null, codes: r.codes, measures: r.measures, adapter: link.current?.name || null }) })
+      body: JSON.stringify({ mission_id: missionId || null, vin: v, vin_source: v ? src : null, plate: plate || null, codes: r.codes, measures: r.measures, adapter: link.current?.name || null, protocol: r.protocol, lecture: r.lecture, freeze: r.freeze, raw: r.raw }) })
     const j = await res.json().catch(() => ({}))
     if (!res.ok) { setErr(j.error || 'Erreur'); setStep(missionId ? 'start' : 'vin'); return }
     setDiag({ id: j.id, numero: j.numero, propositions: j.propositions || [] })
@@ -108,10 +109,19 @@ export default function DiagnosticPanel({ missionId, plate: plate0, vehicle: veh
     const a = await action({ action: 'clear_authorize', pin: code })
     if (!a.ok) { setPinErr(a.error || 'Erreur'); setPin(''); return }
     setPinOpen(false); setPin('')
-    let result: 'ok' | 'refuse' = 'refuse'
-    try { if (link.current) { const ble = await import('@/lib/obd/ble'); result = await ble.clearCodes(link.current) } } catch { result = 'refuse' }
-    await action({ action: 'clear_result', result })
-    setCleared({ result, at: new Date().toLocaleString('fr-BE', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) })
+    let c: { result: ClearResult; reste: string[]; raw: { cmd: string; raw: string }[] } = { result: 'lien_perdu', reste: [], raw: [] }
+    try { if (link.current) { const ble = await import('@/lib/obd/ble'); c = await ble.clearCodes(link.current, reading?.protocol || null) } } catch { c = { result: 'lien_perdu', reste: [], raw: [] } }
+    await action({ action: 'clear_result', result: c.result, reste: c.reste, raw: c.raw })
+    setCleared({ result: c.result, reste: c.reste, at: new Date().toLocaleString('fr-BE', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) })
+  }
+
+  // Moteur tournant : certaines voitures refusent ; on demande de le couper avant de signer.
+  async function demanderEffacement() {
+    setMoteurMsg(false)
+    try {
+      if (link.current) { const ble = await import('@/lib/obd/ble'); if (await ble.moteurTourne(link.current, reading?.protocol || null)) { setMoteurMsg(true); return } }
+    } catch { /* sans réponse : l'effacement dira lui-même si le boîtier est perdu */ }
+    setPinOpen(true)
   }
 
   const tap = (k: string) => {
@@ -119,7 +129,7 @@ export default function DiagnosticPanel({ missionId, plate: plate0, vehicle: veh
     setPin(p => { const n = (p + k).slice(0, 4); if (n.length === 4) setTimeout(() => signerEffacement(n), 50); return n })
   }
 
-  const reset = () => { setStep('start'); setReading(null); setVin(''); setVehicle(null); setDiag(null); setAnalysis(null); setAnalysisErr(false); setCleared(null); setDecision(null); setEnded(null); setErr(null); link.current?.close().catch(() => {}); link.current = null }
+  const reset = () => { setStep('start'); setReading(null); setVin(''); setVehicle(null); setDiag(null); setAnalysis(null); setAnalysisErr(false); setCleared(null); setMoteurMsg(false); setDecision(null); setEnded(null); setErr(null); link.current?.close().catch(() => {}); link.current = null }
 
   const A = analysis ? (lang === 'sq' ? analysis.sq : analysis.fr) : null
   const libelle = (code: string) => (A?.codes || []).find((c: any) => c.code === code)?.libelle || null
@@ -184,38 +194,65 @@ export default function DiagnosticPanel({ missionId, plate: plate0, vehicle: veh
             </div>
           )}
           <p className="text-sm rounded-xl bg-emerald-600/10 text-emerald-800 dark:text-emerald-300 p-3">✓ {missionId ? t('obd.enregistre_fiche') : t('obd.enregistre_diag')} · {diag.numero}</p>
+          {reading.lecture.muette ? (
+            <div className="rounded-xl bg-amber-500/10 text-amber-800 dark:text-amber-300 p-3 text-sm space-y-1">
+              <p className="font-semibold">⚠️ {t('obd.muette_titre')}</p>
+              <p>{t('obd.muette_texte')}</p>
+            </div>
+          ) : reading.lecture.complete ? (
+            <p className="text-sm rounded-xl bg-emerald-600/10 text-emerald-800 dark:text-emerald-300 p-3 font-semibold">✓ {t('obd.lecture_complete')}</p>
+          ) : (
+            <div className="rounded-xl bg-amber-500/10 text-amber-800 dark:text-amber-300 p-3 text-sm space-y-1">
+              <p className="font-semibold">⚠️ {t('obd.lecture_incomplete')}</p>
+              <p>{reading.lecture.manques.includes('lien_perdu') ? t('obd.lien_perdu') : reading.lecture.manques.includes('temoin_sans_code') ? t('obd.temoin_sans_code') : t('obd.lecture_incomplete_texte')}</p>
+            </div>
+          )}
+          {!reading.lecture.complete && <button className={`${btn} bg-blue-700 hover:bg-blue-800 text-white`} onClick={lancer}>{t('obd.relancer')}</button>}
           {A?.partiel && <p className="text-sm rounded-xl bg-amber-500/10 text-amber-800 dark:text-amber-300 p-3">⚠️ {t('obd.partiel')} : {A.partiel}</p>}
 
           <div className="rounded-2xl border bg-surface p-4 space-y-2">
             <p className="font-semibold text-ink">{t('obd.codes')}</p>
-            {reading.codes.length === 0 && <p className="text-sm text-ink-secondary">{t('obd.aucun_code')}</p>}
+            {reading.codes.length === 0 && <p className="text-sm text-ink-secondary">{reading.lecture.complete ? t('obd.aucun_code') : t('obd.codes_non_confirmes')}</p>}
             {reading.codes.map(c => (
               <div key={c.code} className="rounded-xl border p-3">
-                <p className="font-mono font-bold text-ink">{c.code} {grave(c.code) === 'grave' && <span className="ml-1 text-xs rounded-full px-2 py-0.5 bg-red-600/10 text-red-700 dark:text-red-300">!</span>}{c.type === 'en_attente' && <span className="ml-1 text-xs font-sans font-normal text-ink-muted">({t('obd.en_attente')})</span>}</p>
+                <p className="font-mono font-bold text-ink">{c.code} {grave(c.code) === 'grave' && <span className="ml-1 text-xs rounded-full px-2 py-0.5 bg-red-600/10 text-red-700 dark:text-red-300">!</span>}{c.type === 'en_attente' && <span className="ml-1 text-xs font-sans font-normal text-ink-muted">({t('obd.en_attente')})</span>}{c.type === 'permanent' && <span className="ml-1 text-xs font-sans font-normal text-ink-muted">({t('obd.permanent')})</span>}</p>
                 <p className="text-sm text-ink-secondary">{libelle(c.code) || '…'}</p>
               </div>
             ))}
+            {reading.freeze && (reading.freeze.vitesse_kmh != null || reading.freeze.temp_moteur_c != null || reading.freeze.regime_tr_min != null) && <>
+              <p className="text-xs text-ink-muted pt-1">{t('obd.figee', { code: reading.freeze.code })}</p>
+              <div className="grid grid-cols-[1fr_auto] gap-x-3 gap-y-1 text-sm">
+                {reading.freeze.vitesse_kmh != null && <><span className="text-ink-secondary">{t('obd.vitesse')}</span><span className="font-semibold tabular-nums text-ink">{reading.freeze.vitesse_kmh} km/h</span></>}
+                {reading.freeze.temp_moteur_c != null && <><span className="text-ink-secondary">{t('obd.temperature')}</span><span className="font-semibold tabular-nums text-ink">{reading.freeze.temp_moteur_c} °C</span></>}
+                {reading.freeze.regime_tr_min != null && <><span className="text-ink-secondary">{t('obd.regime')}</span><span className="font-semibold tabular-nums text-ink">{reading.freeze.regime_tr_min} tr/min</span></>}
+                {reading.freeze.charge_pct != null && <><span className="text-ink-secondary">{t('obd.charge')}</span><span className="font-semibold tabular-nums text-ink">{reading.freeze.charge_pct} %</span></>}
+              </div>
+            </>}
             <p className="text-xs text-ink-muted pt-1">{t('obd.mesures')}</p>
             <div className="grid grid-cols-[1fr_auto] gap-x-3 gap-y-1 text-sm">
               {reading.measures.batterie_v != null && <><span className="text-ink-secondary">{t('obd.batterie')}</span><span className="font-semibold tabular-nums text-ink">{String(reading.measures.batterie_v).replace('.', ',')} V</span></>}
               {reading.measures.temp_moteur_c != null && <><span className="text-ink-secondary">{t('obd.temperature')}</span><span className="font-semibold tabular-nums text-ink">{reading.measures.temp_moteur_c} °C</span></>}
               {reading.measures.regime_tr_min != null && <><span className="text-ink-secondary">{t('obd.regime')}</span><span className="font-semibold tabular-nums text-ink">{reading.measures.regime_tr_min} tr/min</span></>}
-              {reading.measures.carburant && <><span className="text-ink-secondary">{t('obd.carburant')}</span><span className="font-semibold text-ink">{lang === 'sq' ? ({ essence: 'benzinë', diesel: 'naftë', 'électrique': 'elektrike', GPL: 'GPL', GNC: 'GNC' } as Record<string, string>)[reading.measures.carburant] || (/hybride/.test(reading.measures.carburant) ? 'hibride' : reading.measures.carburant) : reading.measures.carburant}</span></>}
+              {!reading.lecture.muette && <><span className="text-ink-secondary">{t('obd.carburant')}</span><span className="font-semibold text-ink text-right">{!reading.measures.carburant ? t('obd.non_lu') : lang === 'sq' ? ({ essence: 'benzinë', diesel: 'naftë', 'électrique': 'elektrike', GPL: 'GPL', GNC: 'GNC' } as Record<string, string>)[reading.measures.carburant] || (/hybride/.test(reading.measures.carburant) ? 'hibride' : reading.measures.carburant) : reading.measures.carburant}{reading.measures.carburant_source === 'allumage' && <span className="block text-xs font-normal text-ink-muted">{t('obd.selon_allumage')}</span>}</span></>}
               {reading.measures.temoin_moteur != null && <><span className="text-ink-secondary">{t('obd.temoin')}</span><span className="font-semibold text-ink">{reading.measures.temoin_moteur ? t('obd.allume') : t('obd.eteint')}</span></>}
+              {reading.measures.km_temoin_allume != null && reading.measures.km_temoin_allume > 0 && <><span className="text-ink-secondary">{t('obd.km_temoin')}</span><span className="font-semibold tabular-nums text-ink">{reading.measures.km_temoin_allume.toLocaleString('fr-BE')} km</span></>}
+              {reading.measures.km_depuis_effacement != null && <><span className="text-ink-secondary">{t('obd.km_effacement')}</span><span className="font-semibold tabular-nums text-ink">{reading.measures.km_depuis_effacement.toLocaleString('fr-BE')} km</span></>}
+              {reading.measures.kilometrage != null && <><span className="text-ink-secondary">{t('obd.kilometrage')}</span><span className="font-semibold tabular-nums text-ink">{reading.measures.kilometrage.toLocaleString('fr-BE')} km</span></>}
             </div>
           </div>
 
-          <div className={`rounded-2xl p-4 space-y-1.5 ${analysis?.verdict === 'rem' ? 'bg-red-600/10 text-red-800 dark:text-red-200' : analysis ? 'bg-emerald-600/10 text-emerald-800 dark:text-emerald-200' : 'border bg-surface text-ink-secondary'}`}>
+          <div className={`rounded-2xl p-4 space-y-1.5 ${analysis?.verdict === 'rem' ? 'bg-red-600/10 text-red-800 dark:text-red-200' : analysis?.verdict === 'incomplet' ? 'bg-amber-500/10 text-amber-800 dark:text-amber-300' : analysis ? 'bg-emerald-600/10 text-emerald-800 dark:text-emerald-200' : 'border bg-surface text-ink-secondary'}`}>
             {!analysis && !analysisErr && <p className="text-sm">⏳ {t('obd.avis_attente')}</p>}
             {analysisErr && <p className="text-sm">{t('obd.avis_ko')}</p>}
             {A && <>
-              <p className="font-semibold">{t('obd.avis')} : {analysis.verdict === 'dsp' ? t('obd.dsp') : analysis.verdict === 'rem' ? t('obd.rem') : t('obd.controle')}</p>
+              <p className="font-semibold">{t('obd.avis')} : {analysis.verdict === 'dsp' ? t('obd.dsp') : analysis.verdict === 'rem' ? t('obd.rem') : analysis.verdict === 'incomplet' ? t('obd.incomplet') : t('obd.controle')}</p>
               <p className="text-sm"><b>{t('obd.pourquoi')} :</b> {A.pourquoi}</p>
               {A.a_essayer?.length > 0 && <p className="text-sm"><b>{t('obd.essayer')} :</b> {A.a_essayer.join(' · ')}</p>}
             </>}
           </div>
 
-          {cleared && <p className={`text-sm rounded-xl p-3 ${cleared.result === 'ok' ? 'bg-emerald-600/10 text-emerald-800 dark:text-emerald-300' : 'bg-amber-500/10 text-amber-800 dark:text-amber-300'}`}>{cleared.result === 'ok' ? `✓ ${t('obd.efface', { d: cleared.at })}` : t('obd.refuse')}</p>}
+          {cleared && <p className={`text-sm rounded-xl p-3 ${cleared.result === 'ok' ? 'bg-emerald-600/10 text-emerald-800 dark:text-emerald-300' : 'bg-amber-500/10 text-amber-800 dark:text-amber-300'}`}>{cleared.result === 'ok' ? `✓ ${t('obd.efface', { d: cleared.at })}` : cleared.result === 'partiel' ? t('obd.efface_partiel', { codes: cleared.reste.join(', ') }) : cleared.result === 'non_verifie' ? t('obd.efface_non_verifie') : cleared.result === 'lien_perdu' ? t('obd.efface_lien_perdu') : t('obd.refuse')}</p>}
+          {moteurMsg && !cleared && <div className="text-sm rounded-xl bg-amber-500/10 text-amber-800 dark:text-amber-300 p-3 space-y-1"><p className="font-semibold">{t('obd.couper_titre')}</p><p>{t('obd.couper_texte')}</p></div>}
 
           {pinOpen ? (
             <div className="rounded-2xl border-2 border-red-600 bg-surface p-4 space-y-3">
@@ -226,8 +263,8 @@ export default function DiagnosticPanel({ missionId, plate: plate0, vehicle: veh
               <div className="grid grid-cols-3 gap-2">{['1', '2', '3', '4', '5', '6', '7', '8', '9', '', '0', '⌫'].map((k, i) => k ? <button key={i} onClick={() => tap(k)} className="min-h-[52px] rounded-xl border bg-surface-2 text-xl font-bold text-ink">{k}</button> : <span key={i} />)}</div>
               <button className={`${btn} border bg-surface text-ink`} onClick={() => { setPinOpen(false); setPin(''); setPinErr(null) }}>{lang === 'sq' ? 'Anulo' : 'Annuler'}</button>
             </div>
-          ) : (!cleared && reading.codes.length > 0 && (
-            <button className={`${btn} border bg-surface text-ink`} onClick={() => setPinOpen(true)}>🧹 {t('obd.effacer')}</button>
+          ) : (!cleared && reading.codes.some(c => c.type !== 'permanent') && (
+            <button className={`${btn} border bg-surface text-ink`} onClick={demanderEffacement}>🧹 {t('obd.effacer')}</button>
           ))}
 
           {missionId ? (

@@ -13,6 +13,8 @@ const WMI: Record<string, string> = {
   W0L: 'Opel', W0V: 'Opel', WF0: 'Ford', WFO: 'Ford', SAL: 'Land Rover', SAJ: 'Jaguar', YV1: 'Volvo', YV4: 'Volvo',
   KNA: 'Kia', KNE: 'Kia', KMH: 'Hyundai', TMA: 'Hyundai', JTD: 'Toyota', JTE: 'Toyota', SB1: 'Toyota', VNK: 'Toyota', NMT: 'Toyota',
   JMZ: 'Mazda', JN1: 'Nissan', SJN: 'Nissan', JHM: 'Honda', SHH: 'Honda', '1HG': 'Honda', TSM: 'Suzuki', JS2: 'Suzuki',
+  WVG: 'Volkswagen', VWV: 'Volkswagen', WA1: 'Audi', TRU: 'Audi', WBY: 'BMW', WB1: 'BMW', W1V: 'Mercedes-Benz', WDC: 'Mercedes-Benz', VXK: 'Opel', VXE: 'Opel', VR1: 'DS', YAR: 'Toyota', JTM: 'Toyota', JTN: 'Toyota',
+  '6FP': 'Ford', NM0: 'Ford', NLH: 'Hyundai', MAL: 'Hyundai', U5Y: 'Kia', LGX: 'BYD', MA3: 'Suzuki', JSA: 'Suzuki', KL1: 'Chevrolet', ZAC: 'Jeep', JMB: 'Mitsubishi', XP7: 'Tesla',
   VF8: 'Matra', SCC: 'Lotus', WP0: 'Porsche', XTA: 'Lada', LSJ: 'MG', LRW: 'Tesla', '5YJ': 'Tesla', '7SA': 'Tesla',
 }
 const YEAR = 'ABCDEFGHJKLMNPRSTVWXY123456789'   // A = 2010 … Y = 2030, 1 = 2031… (cycle de 30 ans ; 1 à 9 = 2001-2009 avant 2010)
@@ -38,6 +40,8 @@ export function checkVin(vin: string): VinCheck {
   const brand = WMI[v.slice(0, 3)] || null
   const yi = ok17 ? YEAR.indexOf(v[9]) : -1
   // Lettre : 2010-2030. Chiffre : 2001-2009 (un véhicule de 2031+ n'existe pas encore).
-  const year = yi < 0 ? null : yi < 21 ? 2010 + yi : 2001 + (yi - 21)
+  // Une année future est forcément une fausse lecture : hors d'Amérique du Nord, ce caractère n'indique pas toujours l'année.
+  const y = yi < 0 ? null : yi < 21 ? 2010 + yi : 2001 + (yi - 21)
+  const year = y != null && y <= new Date().getFullYear() + 1 ? y : null
   return { ok17, northAmerica, check, valid: ok17 && check !== false, brand, year }
 }

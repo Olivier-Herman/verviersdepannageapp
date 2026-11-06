@@ -1,0 +1,74 @@
+// Contrôle de la lecture du boîtier OBD, sans voiture : npx tsx --tsconfig tsconfig.json scripts/obd-elm327-check.ts
+// Chaque cas part d'une réponse type (format de la documentation ELM327, en-têtes allumés).
+import assert from 'node:assert/strict'
+import * as E from '../src/lib/obd/elm327'
+
+const codes = (raw: string, mode = 3, p: string | null = '6') => E.dtcsOf(E.parseReply(raw, mode, null, p)).map(c => c.code)
+
+// Codes : un calculateur, deux calculateurs, message long, aucun code.
+assert.deepEqual(codes('7E8 04 43 01 01 33\r\r>'), ['P0133'])
+assert.deepEqual(codes('7E8 04 43 01 01 33 00 00 00\r7E9 02 43 00 00 00 00 00 00\r\r>'), ['P0133'], 'bourrage ignoré, 2e calculateur vide')
+assert.deepEqual(codes('7E8 04 43 01 01 33\r7E9 04 43 01 07 00\r\r>'), ['P0133', 'P0700'])
+assert.deepEqual(codes('7E8 10 0A 43 04 01 33 01 71\r7E9 02 43 00\r7E8 21 03 00 04 20 00 00 00\r\r>'), ['P0133', 'P0171', 'P0300', 'P0420'], 'trames entremêlées')
+assert.deepEqual(codes('18 DA F1 10 04 43 01 01 33\r\r>', 3, '7'), ['P0133'], 'CAN 29 bits')
+assert.deepEqual(codes('48 6B 10 43 01 33 01 71 00 00 AA\r\r>', 3, 'A3'), ['P0133', 'P0171'], 'ancien protocole')
+assert.equal(E.parseReply('7E8 02 43 00\r\r>', 3, null, '6').status, 'ok')
+assert.deepEqual(codes('7E8 02 43 00\r\r>'), [])
+// Sans en-têtes (boîtier qui ignorerait ATH1).
+assert.deepEqual(codes('43 01 01 33\r\r>', 3, null), ['P0133'])
+assert.deepEqual(codes('00A\r0: 43 04 01 33 01\r1: 71 03 00 04 20\r\r>', 3, null), ['P0133', 'P0171', 'P0300', 'P0420'])
+
+// Jamais de faux code : refus, réponse décalée, erreurs, silence.
+assert.equal(E.parseReply('7E8 03 7F 03 11\r\r>', 3, null, '6').status, 'refus')
+assert.deepEqual(codes('7E8 03 7F 03 11\r\r>'), [])
+assert.equal(E.parseReply('7E8 06 41 01 00 07 E5 00\r\r>', 3, null, '6').detail, 'decalee')
+assert.deepEqual(codes('7E8 06 41 01 00 07 E5 00\r\r>'), [])
+for (const [raw, detail] of [[E.TIMEOUT, 'delai'], [E.LIEN_PERDU, 'lien_perdu'], ['UNABLE TO CONNECT\r\r>', 'voiture_muette'], ['BUFFER FULL\r>', 'bus'], ['7E8 04 43 01 01 33\r<DATA ERROR\r>', 'bus'], ['CAN ERROR\r>', 'bus']] as const) {
+  const r = E.parseReply(raw, 3, null, '6')
+  assert.equal(r.status, 'erreur', raw); assert.equal(r.detail, detail, raw); assert.deepEqual(E.dtcsOf(r), [])
+}
+assert.equal(E.parseReply('NO DATA\r\r>', 3, null, '6').status, 'pas_de_reponse')
+assert.equal(E.parseReply('7E8 10 0A 43 04 01 33 01 71\r\r>', 3, null, '6').detail, 'corrompu', 'message long tronqué')
+
+// Témoin : le moteur peut répondre en second, plusieurs calculateurs s'additionnent.
+const mon = E.monitorOf(E.parseReply('7E9 06 41 01 00 07 E5 00\r7E8 06 41 01 83 07 E5 00\r\r>', 1, 1, '6'))!
+assert.equal(mon.mil, true); assert.equal(mon.count, 3)
+
+// Allumage et contrôles non terminés.
+const m2 = E.monitorOf(E.parseReply('7E8 06 41 01 00 6D 01 01\r\r>', 1, 1, '6'))!
+assert.equal(m2.allumage, 'compression')   // 0x6D : bit 3 allumé
+assert.equal(E.monitorOf(E.parseReply('7E8 06 41 01 00 07 E5 00\r\r>', 1, 1, '6'))!.allumage, 'etincelle')
+
+// Carburant : table SAE.
+const fuel = (n: number) => E.fuelType(E.parseReply(`7E8 03 41 51 ${n.toString(16).padStart(2, '0')}\r\r>`, 1, 0x51, '6'))
+assert.equal(fuel(4), 'diesel'); assert.equal(fuel(19), 'hybride diesel'); assert.equal(fuel(18), 'hybride éthanol'); assert.equal(fuel(0), null)
+
+// Mesures disponibles.
+const sup = E.supportedOf(E.parseReply('7E8 06 41 00 BE 3F B8 13\r\r>', 1, 0, '6'), 0)
+assert.ok(sup.has(1)); assert.ok(sup.has(5)); assert.ok(sup.has(0x20)); assert.ok(!sup.has(2))
+
+// VIN sur plusieurs trames, CAN puis ancien protocole.
+const can = '7E8 10 14 49 02 01 57 30 56\r7E8 21 45 55 48 4E 53 33 4C\r7E8 22 4A 39 31 39 38 30 31\r\r>'
+assert.equal(E.vinOf(E.parseReply(can, 9, 2, '6')), 'W0VEUHNS3LJ919801')
+const old = ['49 02 01 00 00 00 57', '49 02 02 30 56 45 55', '49 02 03 48 4E 53 33', '49 02 04 4C 4A 39 31', '49 02 05 39 38 30 31'].map(l => `48 6B 10 ${l} AA`).join('\r') + '\r\r>'
+assert.equal(E.vinOf(E.parseReply(old, 9, 2, '3')), 'W0VEUHNS3LJ919801')
+
+// Image figée et effacement.
+assert.deepEqual(E.freezeValue(E.parseReply('7E8 05 42 02 00 01 33\r\r>', 2, 2, '6')), [1, 0x33])
+assert.equal(E.clearAccepted('7E8 01 44\r\r>', '6'), true)
+assert.equal(E.clearAccepted('7E8 03 7F 04 22\r\r>', '6'), false)
+
+// Verdict de la lecture.
+const ok = E.parseReply('7E8 02 43 00\r\r>', 3, null, '6'), non = E.parseReply('NO DATA\r>', 3, null, '6'), err = E.parseReply(E.TIMEOUT, 3)
+const premier = E.parseReply('7E8 06 41 00 BE 3F B8 13\r\r>', 1, 0, '6')
+const base = { perdu: false, premier, stored: ok, pending: ok, nbStored: 0, monitor: { mil: false, count: 0, allumage: null, moniteurs: 0, non_prets: 0 } as E.Monitor }
+assert.equal(E.lectureOf(base).complete, true)
+assert.equal(E.lectureOf({ ...base, stored: non }).complete, true, 'silence confirmé par 0 code')
+assert.equal(E.lectureOf({ ...base, stored: non, monitor: null }).complete, false)
+assert.equal(E.lectureOf({ ...base, stored: err }).complete, false)
+assert.equal(E.lectureOf({ ...base, premier: E.parseReply('UNABLE TO CONNECT\r>', 1, 0) }).muette, true)
+assert.equal(E.lectureOf({ ...base, monitor: { ...base.monitor, mil: true } }).manques[0], 'temoin_sans_code')
+assert.equal(E.lectureOf({ ...base, monitor: { ...base.monitor, count: 2 }, nbStored: 1 }).manques[0], 'codes_manquants')
+assert.equal(E.lectureOf({ ...base, perdu: true }).complete, false)
+
+console.log('OK : lecture du boîtier conforme')
