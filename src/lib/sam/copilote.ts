@@ -45,7 +45,8 @@ export function trajetEstimeMin(m: { incident_lat?: any; incident_lng?: any; des
 }
 function delaiPasArrive(m: any, defaut: number): number {
   const t = trajetEstimeMin(m)
-  return t == null ? defaut : t + 30
+  // Olivier 06/11/2026 : trop rapide à +30 min, pas le temps de décharger : trajet + 60 min, jamais avant le réglage (90 min).
+  return t == null ? defaut : Math.max(defaut, t + 60)
 }
 
 export async function detecter(sb: Sb, m: any, lang: Lang, pasArriveMin: number): Promise<Probleme | null> {
@@ -133,7 +134,7 @@ export async function detecter(sb: Sb, m: any, lang: Lang, pasArriveMin: number)
     }
   }
 
-  // 5. Chargé depuis longtemps, jamais « Arrivé à destination ». Délai = trajet estimé + 30 min quand les deux
+  // 5. Chargé depuis longtemps, jamais « Arrivé à destination ». Délai = trajet estimé + 60 min (90 min au moins) quand les deux
   //    positions sont connues (Olivier 28/10/2026 : un long trajet est normal), sinon le réglage (90 min).
   if (m.status === 'delivering' && m.loaded_at && minDepuis(m.loaded_at) >= delaiPasArrive(m, pasArriveMin) && !SIABIS.includes(m.source)) {
     const ou = m.destination_address ? String(m.destination_address).split(',').slice(0, 2).join(',') : L('la destination', 'destinacioni')
