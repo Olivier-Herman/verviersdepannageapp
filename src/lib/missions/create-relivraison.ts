@@ -154,7 +154,10 @@ export async function createRelivraisonMission(input: RelivraisonInput): Promise
   // (nouvelle action) et touring_accepted_at reste vide : le SLA auto ne doit pas
   // inventer un « sur place » sur une relivraison qui peut attendre des jours.
   let comexLink: Record<string, any> = { source_format: 'auto_rel' }
-  if ((parent as any).source_format === 'comex') {
+  // Lien COMEX seulement si la REL reste chez Touring : une REL reprise par un garage ou un privé n'est pas dans COMEX,
+  // le contrôle d'annulation l'annulait comme « retirée » (2GEH293, Olivier 06/11/2026).
+  const resteTouring = String(input.sourceOverride?.trim() || parent.source || '').toLowerCase() === 'touring'
+  if ((parent as any).source_format === 'comex' && resteTouring) {
     try {
       const c = JSON.parse((parent as any).raw_content || '{}')
       if (c?.CID_DOS && c?.CID_SEQ_ACTION) {
