@@ -44,7 +44,7 @@ Codes de panne : ${input.codes.length ? input.codes.map(c => `${c.code} (${c.typ
 Mesures : ${JSON.stringify(input.measures)}.
 
 Dis au chauffeur si un DÉPANNAGE SUR PLACE est raisonnable (batterie, connecteur, fusible, capteur sans risque, code ancien sans symptôme…) ou si le REMORQUAGE s'impose (risque moteur, boîte, freins, direction, airbag, refroidissement, fuite…). « controle » seulement s'il n'y a aucun code et rien d'anormal.
-Règles : phrases courtes et concrètes, sans jargon ; c'est un pré-diagnostic, la décision reste au chauffeur. Certaines marques cachent leurs codes propres : si les codes ne suffisent pas à expliquer la panne décrite, dis-le dans « partiel ».
+Règles : phrases courtes et concrètes, sans jargon ; le chauffeur ne peut pas te répondre sur cet écran, ne lui pose aucune question et ne lui demande pas de te décrire quoi que ce soit ; c'est un pré-diagnostic, la décision reste au chauffeur. Certaines marques cachent leurs codes propres : si les codes ne suffisent pas à expliquer la panne décrite, dis-le dans « partiel ».
 Réponds en JSON STRICT, sans texte autour :
 {"verdict":"dsp|rem|controle","fr":{"codes":[{"code":"P0301","libelle":"…","gravite":"grave|moyen|leger"}],"resume":"titre court","pourquoi":"1 ou 2 phrases","a_essayer":["…"],"partiel":null},"sq":{"codes":[{"code":"P0301","libelle":"… en albanais"}],"resume":"…","pourquoi":"…","a_essayer":["…"],"partiel":null}}
 « sq » = la même chose en albanais simple.`

@@ -1116,6 +1116,8 @@ export const fr = {
     erreur_connexion: 'Pas de boîtier connecté. Vérifie qu’il est branché, que le Bluetooth est allumé et que le contact est mis.',
     vin_lu:           'VIN lu par le boîtier',
     vin_ko:           'Le boîtier n’a pas pu lire le numéro de châssis.',
+    relancer:         'Relancer la lecture',
+    retour:           'Retour',
     vin_photo:        '📷 Photo de la plaque de châssis ou de la carte grise',
     vin_label:        'VIN (17 caractères), modifiable à tout moment',
     vin_ctrl_ok:      'chiffre de contrôle OK',

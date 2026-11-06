@@ -1100,6 +1100,8 @@ export const sq: Dictionary = {
     erreur_connexion: 'Asnjë pajisje e lidhur. Kontrollo që është futur në prizë, që Bluetooth është i ndezur dhe kontakti është ndezur.',
     vin_lu:           'VIN u lexua nga pajisja',
     vin_ko:           'Pajisja nuk arriti të lexojë numrin e shasisë.',
+    relancer:         'Rilexo',
+    retour:           'Kthehu',
     vin_photo:        '📷 Foto e targës së shasisë ose e lejes së qarkullimit',
     vin_label:        'VIN (17 karaktere), mund të ndryshohet në çdo kohë',
     vin_ctrl_ok:      'shifra e kontrollit OK',

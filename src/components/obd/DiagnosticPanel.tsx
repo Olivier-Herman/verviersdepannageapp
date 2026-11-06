@@ -58,6 +58,8 @@ export default function DiagnosticPanel({ missionId, plate: plate0, vehicle: veh
   async function lancer() {
     setErr(null); setStep('busy'); setStatus(t('obd.recherche'))
     try {
+      // Relance : on referme d'abord la connexion précédente au boîtier.
+      await link.current?.close().catch(() => {}); link.current = null
       const ble = await import('@/lib/obd/ble')
       const l = await ble.connectObd(s => setStatus(s === 'connexion' ? t('obd.connexion') : s === 'lecture' ? t('obd.lecture') : t('obd.recherche')))
       link.current = l
@@ -128,7 +130,7 @@ export default function DiagnosticPanel({ missionId, plate: plate0, vehicle: veh
   )
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-3 pb-28">
       {step === 'start' && available && <PortHelp vehicle={vehicle0} />}
       {step === 'start' && (
         <div className="rounded-2xl border bg-surface p-4 space-y-3">
@@ -164,6 +166,11 @@ export default function DiagnosticPanel({ missionId, plate: plate0, vehicle: veh
           <input value={plate} onChange={e => setPlate(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 10))} className="w-full min-h-[48px] rounded-xl border bg-surface-2 px-3 font-mono text-ink" placeholder="1ABC234" />
           {err && <p className="text-sm text-red-700 dark:text-red-300">{err}</p>}
           <button className={`${btn} bg-blue-700 hover:bg-blue-800 text-white`} disabled={!vc.valid} onClick={() => enregistrer(reading, vin, vinSource)}>{t('obd.continuer')}</button>
+          {/* Sans ces boutons, un échec de lecture obligeait à fermer l'app (Olivier 06/11/2026). */}
+          <div className="grid grid-cols-2 gap-2">
+            <button className={`${btn} border bg-surface text-ink`} onClick={lancer}>{t('obd.relancer')}</button>
+            <button className={`${btn} border bg-surface text-ink`} onClick={() => { link.current?.close().catch(() => {}); link.current = null; reset() }}>{t('obd.retour')}</button>
+          </div>
         </div>
       )}
 
