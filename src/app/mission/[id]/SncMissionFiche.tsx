@@ -20,7 +20,7 @@
 //   9. Bouton "Gerer les photos" (redirige vers DriverClient via ?legacy=1)
 //  10. Actions principales selon scenario+status
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@supabase/supabase-js'
 import { Loader2 } from 'lucide-react'
@@ -28,6 +28,7 @@ import { formatEur } from '@/lib/format'
 import { buildEncaissementUrl } from '@/lib/missions/encaissement-url'
 import AddressField from '@/components/AddressField'
 import { openNavigation, navHttpsUrl } from '@/lib/open-navigation'
+import BurstCamera from '@/components/camera/BurstCamera'
 
 const sb = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -455,6 +456,40 @@ export default function SncMissionFiche({
   const goLegacyPark = () => {
     window.location.href = `${window.location.pathname}?legacy=1&park=1`
   }
+  // Photos avant le scénario (Olivier 06/11/2026) : le chauffeur photographie sur place, remonte en sécurité dans son
+  // camion, puis choisit. Une prise = un envoi, dans l'ordre ; sans réseau, la photo attend et repart seule.
+  const [camera, setCamera] = useState(false)
+  const [photosEnAttente, setPhotosEnAttente] = useState(0)
+  const fileRef = useRef<Blob[]>([])
+  const envoiRef = useRef(false)
+  const envoyerPhotos = useCallback(async () => {
+    if (envoiRef.current) return
+    envoiRef.current = true
+    try {
+      while (fileRef.current.length) {
+        const fd = new FormData()
+        fd.append('files', fileRef.current[0], `siabis-${Date.now()}.jpg`)
+        fd.append('via', 'fiche')
+        const r = await fetch(`/api/missions/${M.id}/photos-add`, { method: 'POST', body: fd })
+        if (!r.ok) throw new Error('envoi')
+        const j = await r.json().catch(() => ({}))
+        fileRef.current.shift()
+        setPhotosEnAttente(fileRef.current.length)
+        if (Array.isArray(j.urls)) setM(prev => ({ ...prev, driver_photos: [...(prev.driver_photos || []), ...j.urls] }))
+      }
+    } catch { /* réseau KO : la photo reste en file, nouvel essai ci-dessous */ }
+    finally { envoiRef.current = false }
+  }, [M.id])
+  useEffect(() => {
+    if (!photosEnAttente) return
+    const onLine = () => { envoyerPhotos() }
+    window.addEventListener('online', onLine)
+    const iv = setInterval(envoyerPhotos, 15000)
+    return () => { window.removeEventListener('online', onLine); clearInterval(iv) }
+  }, [photosEnAttente, envoyerPhotos])
+  const prendrePhoto = (b: Blob) => { fileRef.current.push(b); setPhotosEnAttente(fileRef.current.length); envoyerPhotos() }
+  const nbPhotos = (M.driver_photos || []).length
+
   const goLegacyPhotos = () => {
     window.location.href = `${window.location.pathname}?legacy=1&photos=1`
   }
@@ -652,6 +687,19 @@ export default function SncMissionFiche({
 
         {/* 5. Scenario SNC : tuiles editables (mirror PoliceClient lignes 1226-1250) */}
         {!isReadOnly && (
+          <>
+          {camera && <BurstCamera title="Photos sur place" count={nbPhotos + photosEnAttente} onShot={prendrePhoto} onClose={() => setCamera(false)} />}
+          <Section title="Photos sur place">
+            <button type="button" onClick={() => setCamera(true)}
+              className="w-full min-h-[60px] rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-base">
+              📷 {nbPhotos + photosEnAttente ? 'Ajouter une photo' : 'Prendre les photos'}
+            </button>
+            {nbPhotos + photosEnAttente > 0 && (
+              <p className="mt-2 rounded-lg bg-emerald-50 px-3 py-2 text-sm font-semibold text-emerald-800">
+                ✓ {nbPhotos + photosEnAttente} photo{nbPhotos + photosEnAttente > 1 ? 's' : ''}{photosEnAttente > 0 ? `, dont ${photosEnAttente} en cours d’envoi` : nbPhotos > 1 ? ' enregistrées' : ' enregistrée'}. Mets-toi en sécurité avant de choisir.
+              </p>
+            )}
+          </Section>
           <Section title={isSC ? 'Scénario Siabis couvert' : 'Scénario d\'intervention SNC'}>
             <div className="space-y-3">
               <div className="grid grid-cols-1 gap-2">
@@ -734,6 +782,7 @@ export default function SncMissionFiche({
               )}
             </div>
           </Section>
+          </>
         )}
 
         {/* 7. Destination
