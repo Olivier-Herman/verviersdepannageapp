@@ -4,6 +4,7 @@
 import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase'
 import { rapprocherAvis } from '@/lib/finance/rapprochement-auto'
+import { lettrerFraisSumup } from '@/lib/finance/sumup-frais'
 import { notifierTelegram } from '@/lib/notif/heures-mobi'
 import { getBusinessNumber } from '@/lib/settings/business'
 
@@ -15,6 +16,9 @@ export async function GET(req: Request) {
   const sb = createAdminClient()
   { const { assistantEnPause, SKIP_PAUSE } = await import('@/lib/facturation/suspension'); if (await assistantEnPause(sb, 'rapprochement')) return NextResponse.json(SKIP_PAUSE) }
   const r = await rapprocherAvis()
+  // Frais SumUp du mois, exacts au centime (Olivier 06/11/2026).
+  try { const f = await lettrerFraisSumup(); r.lettres.push(...f.lettres); r.aTrancher.push(...f.aTrancher) }
+  catch (e: any) { r.erreurs.push(`Frais SumUp : ${e?.message || e}`) }
   await sb.from('app_settings').upsert({ key: 'rapprochement_avis_last_run', value: JSON.stringify({ at: new Date().toISOString(), ...r }) }, { onConflict: 'key' }).then(() => {}, () => {})
   const lundi = new Date().toLocaleDateString('en-GB', { timeZone: 'Europe/Brussels', weekday: 'short' }) === 'Mon' && new Date().getUTCHours() < 11
   const lignes = [
