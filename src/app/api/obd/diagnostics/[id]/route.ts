@@ -55,8 +55,9 @@ export async function POST(req: Request, { params }: { params: { id: string } })
 
   if (b.action === 'boite') {
     if (!['manuelle', 'automatique'].includes(b.boite)) return NextResponse.json({ error: 'Boîte inconnue' }, { status: 400 })
-    await sb.from('obd_diagnostics').update({ vehicle: { ...(d.vehicle || {}), boite: b.boite } }).eq('id', d.id)
-    if (d.mission_id) await corrigerBoiteFiche(sb, d.mission_id, b.boite, d.numero, user.id).catch(() => {})
+    const source = b.source === 'boitier' ? 'boitier' : 'chauffeur'
+    await sb.from('obd_diagnostics').update({ vehicle: { ...(d.vehicle || {}), boite: b.boite, boite_source: source } }).eq('id', d.id)
+    if (d.mission_id) await corrigerBoiteFiche(sb, d.mission_id, b.boite, d.numero, user.id, source).catch(() => {})
     return NextResponse.json({ ok: true })
   }
 

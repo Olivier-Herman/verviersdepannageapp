@@ -125,6 +125,11 @@ export function textOf(reply: Reply): string | null {
   return null
 }
 
+/** Le boîtier voit-il un calculateur de boîte (« TCM-TransmisCtrl » sur l'Opel du 07/11/2026) ? Signe d'une boîte automatique, pas une preuve. */
+export function hasGearboxEcu(reply: Reply): boolean {
+  return reply.messages.some(m => /TCM|TRANS|GEARBOX|GETRIEBE/i.test(m.data.slice(2).filter(b => b >= 0x20 && b <= 0x7e).map(b => String.fromCharCode(b)).join('')))
+}
+
 /** Mesures disponibles sur cette voiture : réponses à 0100, 0120, 0140… (masque de 32 bits par calculateur). */
 export function supportedOf(reply: Reply, base: number): Set<number> {
   const out = new Set<number>()

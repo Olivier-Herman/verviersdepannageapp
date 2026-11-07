@@ -86,4 +86,9 @@ assert.equal(E.word(reel('7E8 04 41 31 FF FF \r\r>', 1, 0x31)), 65535)
 assert.equal(E.textOf(E.parseReply('7E8 10 0F 49 0A 01 45 43 4D\r7E8 21 00 2D 45 6E 67 69 6E\r7E8 22 65 00 00 00 00 00 00\r\r>', 9, 0x0a, '6')), 'ECM-Engine')
 assert.equal(E.textOf(E.parseReply('NO DATA\r>', 9, 0x0a, '6')), null)
 
+// Calculateur de boîte : réponse réelle de l'Opel (D-0005).
+const noms = E.parseReply('7E8 10 17 49 0A 01 45 43 4D \r7E8 21 00 2D 45 6E 67 69 6E \r7E8 22 65 43 6F 6E 74 72 6F \r7E9 10 17 49 0A 01 54 43 4D \r7E8 23 6C 00 00 FF FF FF FF \r7E9 21 00 2D 54 72 61 6E 73 \r7E9 22 6D 69 73 43 74 72 6C \r7E9 23 00 00 00 FF FF FF FF \r\r>', 9, 0x0a, 'A6')
+assert.equal(E.textOf(noms), 'ECM-EngineControl'); assert.equal(E.hasGearboxEcu(noms), true)
+assert.equal(E.hasGearboxEcu(E.parseReply('7E8 10 0F 49 0A 01 45 43 4D\r7E8 21 00 2D 45 6E 67 69 6E\r7E8 22 65 00 00 00 00 00 00\r\r>', 9, 0x0a, '6')), false)
+
 console.log('OK : lecture du boîtier conforme')

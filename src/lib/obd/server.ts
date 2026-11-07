@@ -148,14 +148,14 @@ export function familleBoite(s: string | null | undefined): 'manuelle' | 'automa
 }
 
 /** Le chauffeur a vu la boîte (Olivier 07/11/2026) : elle complète ou corrige la fiche, et c'est noté dans son historique. */
-export async function corrigerBoiteFiche(sb: any, missionId: string, boite: 'manuelle' | 'automatique', numero: string, userId: string): Promise<void> {
+export async function corrigerBoiteFiche(sb: any, missionId: string, boite: 'manuelle' | 'automatique', numero: string, userId: string, source: 'chauffeur' | 'boitier' = 'chauffeur'): Promise<void> {
   const { data: m } = await sb.from('incoming_missions').select('vehicle_gearbox').eq('id', missionId).maybeSingle()
   if (!m || familleBoite(m.vehicle_gearbox) === boite) return
   const lu = boite === 'automatique' ? 'Automatique' : 'Manuelle'
   const { error } = await sb.from('incoming_missions').update({ vehicle_gearbox: lu }).eq('id', missionId)
   if (error) return
   await sb.from('mission_logs').insert({ mission_id: missionId, actor_id: userId, action: 'obd_diagnostic',
-    notes: `Boîte indiquée par le chauffeur (diagnostic ${numero}) : « ${m.vehicle_gearbox || 'vide'} » → « ${lu} »`, metadata: { avant: m.vehicle_gearbox, apres: lu } }).then(() => {}, () => {})
+    notes: `Boîte ${source === 'boitier' ? 'déduite par le boîtier (calculateur de boîte), laissée par le chauffeur' : 'indiquée par le chauffeur'} (diagnostic ${numero}) : « ${m.vehicle_gearbox || 'vide'} » → « ${lu} »`, metadata: { avant: m.vehicle_gearbox, apres: lu } }).then(() => {}, () => {})
 }
 
 /**

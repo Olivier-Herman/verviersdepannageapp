@@ -18,7 +18,7 @@ export interface ObdMeasures {
   carburant?: string | null; carburant_source?: 'voiture' | 'allumage' | null
   temoin_moteur: boolean | null; nb_codes: number | null
   km_temoin_allume?: number | null; km_depuis_effacement?: number | null; demarrages_depuis_effacement?: number | null; minutes_depuis_effacement?: number | null
-  calculateur_nom?: string | null; calibration?: string | null
+  calculateur_nom?: string | null; calibration?: string | null; calculateur_boite?: boolean
   kilometrage?: number | null; controles_total?: number | null; controles_non_prets?: number | null
 }
 export interface ObdFreeze { code: string; charge_pct: number | null; temp_moteur_c: number | null; regime_tr_min: number | null; vitesse_kmh: number | null }
@@ -147,7 +147,8 @@ export async function readVehicle(link: ObdLink, onStatus?: (s: string) => void)
   let vin = E.vinOf(await ask('0902', 9, 2, 6000))
   if (!vin && !link.lost()) vin = E.vinOf(await ask('0902', 9, 2, 8000))   // souvent lu au 2e essai (essai du 06/11/2026)
   // Nom et référence du calculateur : gardés sur la fiche, ils aideront à reconnaître le moteur (Olivier 07/11/2026).
-  const calculateur_nom = E.textOf(await ask('090A', 9, 0x0a, 3000, 1)), calibration = E.textOf(await ask('0904', 9, 4, 3000, 1))
+  const nomsR = await ask('090A', 9, 0x0a, 3000, 1)
+  const calculateur_nom = E.textOf(nomsR), calculateur_boite = E.hasGearboxEcu(nomsR), calibration = E.textOf(await ask('0904', 9, 4, 3000, 1))
   const monitor = E.monitorOf(await ask('0101', 1, 1))
   const storedR = await ask('03', 3, null, 6000), pendingR = await ask('07', 7, null, 6000), permR = await ask('0A', 0x0a, null, 6000)
   const stored = E.dtcsOf(storedR), pending = E.dtcsOf(pendingR), perm = E.dtcsOf(permR)
@@ -177,7 +178,7 @@ export async function readVehicle(link: ObdLink, onStatus?: (s: string) => void)
     vin, protocol, lecture, freeze, raw,
     codes: [...liste(stored, 'memorise'), ...liste(pending, 'en_attente'), ...liste(perm, 'permanent')],
     measures: {
-      batterie_v: volt, temp_moteur_c: temp, regime_tr_min: regime, carburant, carburant_source, calculateur_nom, calibration,
+      batterie_v: volt, temp_moteur_c: temp, regime_tr_min: regime, carburant, carburant_source, calculateur_nom, calibration, calculateur_boite,
       temoin_moteur: monitor?.mil ?? null, nb_codes: monitor?.count ?? null,
       km_temoin_allume: await val(0x21, E.word), km_depuis_effacement: await val(0x31, E.word),
       demarrages_depuis_effacement: await val(0x30, r => E.valueOf(r)[0] ?? null), minutes_depuis_effacement: await val(0x4e, E.word),
