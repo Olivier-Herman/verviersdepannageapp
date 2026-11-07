@@ -116,6 +116,15 @@ export function vinOf(reply: Reply): string | null {
   return null
 }
 
+/** Texte du mode 09 (référence ou nom du calculateur) du premier calculateur qui en donne. */
+export function textOf(reply: Reply): string | null {
+  for (const m of reply.messages) {
+    const t = m.data.slice(2).filter(b => b >= 0x20 && b <= 0x7e).map(b => String.fromCharCode(b)).join('').trim()
+    if (t) return t.slice(0, 60)
+  }
+  return null
+}
+
 /** Mesures disponibles sur cette voiture : réponses à 0100, 0120, 0140… (masque de 32 bits par calculateur). */
 export function supportedOf(reply: Reply, base: number): Set<number> {
   const out = new Set<number>()

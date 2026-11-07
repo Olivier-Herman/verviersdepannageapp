@@ -1090,6 +1090,13 @@ export const sq: Dictionary = {
     erreur:       'Lista Touring nuk përgjigjet. Provo përsëri pas pak.',
   },
   obd: {
+    carburant_lu: 'Karburanti i lexuar nga pajisja: {c}',
+    moteur_question: 'Cili motor? (opsionale)',
+    moteur_recherche: 'Po kërkohen motorët e këtij modeli…',
+    moteur_a_confirmer: 'Listë për t’u konfirmuar',
+    moteur_ne_sais_pas: 'Nuk e di',
+    moteur_sans: 'Në rregull, Sam do të vazhdojë pa motorin.',
+    moteur_note: 'Motori u shënua: {m}. Sam do ta përdorë për mendimin e tij.',
     avis_relancer: 'Kërkoje përsëri mendimin e Sam',
     km_max: 'mbi 65 000 km',
     lecture_complete: 'Lexim i plotë',

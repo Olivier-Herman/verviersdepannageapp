@@ -13,7 +13,7 @@ import type { ClearResult, ObdLink, ObdReading } from '@/lib/obd/ble'
 import PortHelp from './PortHelp'
 import { shrinkPhoto } from './shrink'
 
-type Step = 'start' | 'busy' | 'vin' | 'result'
+type Step = 'start' | 'busy' | 'vin' | 'moteur' | 'result'
 type Vehicle = { marque: string | null; modele: string | null; motorisation: string | null; annee: number | null } | null
 
 const btn = 'w-full min-h-[48px] rounded-xl font-semibold text-sm px-4 transition disabled:opacity-50'
@@ -38,6 +38,9 @@ export default function DiagnosticPanel({ missionId, plate: plate0, vehicle: veh
   const [pinErr, setPinErr] = useState<string | null>(null)
   const [cleared, setCleared] = useState<{ result: ClearResult; at: string; reste: string[] } | null>(null)
   const [moteurMsg, setMoteurMsg] = useState(false)
+  const [moteurs, setMoteurs] = useState<{ id: string; status: string; options: { id: string; label: string }[] } | null>(null)
+  const [moteurChoisi, setMoteurChoisi] = useState<string | null>(null)   // id d'option, ou 'aucun' pour « Je ne sais pas »
+  const moteurAttente = useRef<AbortController | null>(null)
   const [decision, setDecision] = useState<string | null>(null)
   const [ended, setEnded] = useState<string | null>(null)
   const [ocrBusy, setOcrBusy] = useState(false)
@@ -83,8 +86,33 @@ export default function DiagnosticPanel({ missionId, plate: plate0, vehicle: veh
     if (!res.ok) { setErr(j.error || 'Erreur'); setStep(missionId ? 'start' : 'vin'); return }
     setDiag({ id: j.id, numero: j.numero, propositions: j.propositions || [] })
     if (j.vehicle) setVehicle(j.vehicle)
-    setStep('result')
-    demanderAvis(j.id)
+    if (j.vehicle?.marque && j.vehicle?.modele && !j.vehicle?.motorisation && !r.lecture.muette) chercherMoteurs(j.id, j.vehicle, r)
+    else { setStep('result'); demanderAvis(j.id) }
+  }
+
+  // Le boîtier ne donne pas le moteur : liste facultative, jamais bloquante. Sans liste à temps, cette étape disparaît.
+  async function chercherMoteurs(id: string, v: NonNullable<Vehicle>, r: ObdReading) {
+    setMoteurs(null); setMoteurChoisi(null); setStep('moteur')
+    const ctl = new AbortController(); moteurAttente.current = ctl
+    const limite = setTimeout(() => ctl.abort(), 15000)
+    const suite = () => { if (moteurAttente.current === ctl) { moteurAttente.current = null; setStep('result'); demanderAvis(id) } }
+    try {
+      const q = new URLSearchParams({ marque: v.marque || '', modele: v.modele || '', annee: String(v.annee || ''), carburant: r.measures.carburant || '', source: r.measures.carburant_source || '' })
+      const res = await fetch(`/api/obd/moteurs?${q}`, { cache: 'no-store', signal: ctl.signal })
+      const j = await res.json()
+      if (moteurAttente.current !== ctl) return
+      if (j.id && j.options?.length) setMoteurs({ id: j.id, status: j.status, options: j.options })
+      else suite()
+    } catch { suite() } finally { clearTimeout(limite) }
+  }
+
+  async function continuerMoteur() {
+    moteurAttente.current = null
+    if (moteurs && moteurChoisi && moteurChoisi !== 'aucun') {
+      const a = await action({ action: 'moteur', liste_id: moteurs.id, option_id: moteurChoisi })
+      if (a.ok) setVehicle(p => p ? { ...p, motorisation: a.label } : p)
+    }
+    setStep('result'); demanderAvis(diag!.id)
   }
 
   // Sur le réseau mobile, la réponse peut se perdre alors que l'avis est enregistré (D-0004, 07/11/2026) : on redemande.
@@ -142,7 +170,7 @@ export default function DiagnosticPanel({ missionId, plate: plate0, vehicle: veh
     setPin(p => { const n = (p + k).slice(0, 4); if (n.length === 4) setTimeout(() => signerEffacement(n), 50); return n })
   }
 
-  const reset = () => { setStep('start'); setReading(null); setVin(''); setVehicle(null); setDiag(null); setAnalysis(null); setAnalysisErr(false); setCleared(null); setMoteurMsg(false); setDecision(null); setEnded(null); setErr(null); link.current?.close().catch(() => {}); link.current = null }
+  const reset = () => { setStep('start'); setReading(null); setVin(''); setVehicle(null); setDiag(null); setAnalysis(null); setAnalysisErr(false); setCleared(null); setMoteurMsg(false); setMoteurs(null); setMoteurChoisi(null); moteurAttente.current = null; setDecision(null); setEnded(null); setErr(null); link.current?.close().catch(() => {}); link.current = null }
 
   const A = analysis ? (lang === 'sq' ? analysis.sq : analysis.fr) : null
   const libelle = (code: string) => (A?.codes || []).find((c: any) => c.code === code)?.libelle || null
@@ -195,6 +223,28 @@ export default function DiagnosticPanel({ missionId, plate: plate0, vehicle: veh
             <button className={`${btn} border bg-surface text-ink`} onClick={() => { link.current?.close().catch(() => {}); link.current = null; reset() }}>{t('obd.retour')}</button>
           </div>
         </div>
+      )}
+
+      {step === 'moteur' && reading && (
+        <>
+          <div className="rounded-2xl border bg-surface p-4 space-y-1">
+            <p className="text-xs text-ink-muted">{t('obd.vehicule')}</p>
+            <p className="font-semibold text-ink">{vehicleLabel(vehicle)}</p>
+            {reading.measures.carburant && <p className="text-xs text-ink-muted">{t('obd.carburant_lu', { c: reading.measures.carburant })}</p>}
+          </div>
+          <div className="rounded-2xl border bg-surface p-4 space-y-2">
+            <p className="font-semibold text-ink">{t('obd.moteur_question')}</p>
+            {!moteurs ? <p className="text-sm text-ink-secondary">⏳ {t('obd.moteur_recherche')}</p> : <>
+              {moteurs.status !== 'verifie' && <span className="inline-block text-xs font-semibold rounded-full px-2 py-0.5 bg-amber-500/10 text-amber-800 dark:text-amber-300">{t('obd.moteur_a_confirmer')}</span>}
+              {moteurs.options.map(o => (
+                <button key={o.id} onClick={() => setMoteurChoisi(o.id)} className={`w-full min-h-[48px] rounded-xl border-2 px-3 text-left text-sm font-semibold text-ink ${moteurChoisi === o.id ? 'border-blue-700 bg-blue-600/10' : 'bg-surface'}`}>{o.label}</button>
+              ))}
+              <button onClick={() => setMoteurChoisi('aucun')} className={`w-full min-h-[48px] rounded-xl border-2 px-3 text-left text-sm text-ink-secondary ${moteurChoisi === 'aucun' ? 'border-blue-700 bg-blue-600/10' : 'bg-surface'}`}>{t('obd.moteur_ne_sais_pas')}</button>
+            </>}
+          </div>
+          {moteurChoisi && <p className="text-sm rounded-xl bg-emerald-600/10 text-emerald-800 dark:text-emerald-300 p-3 font-semibold">{moteurChoisi === 'aucun' ? t('obd.moteur_sans') : t('obd.moteur_note', { m: moteurs?.options.find(o => o.id === moteurChoisi)?.label || '' })}</p>}
+          <button className={`${btn} bg-blue-700 hover:bg-blue-800 text-white`} onClick={continuerMoteur}>{t('obd.continuer')}</button>
+        </>
       )}
 
       {step === 'result' && diag && reading && (

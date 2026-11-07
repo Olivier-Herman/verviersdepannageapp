@@ -1106,6 +1106,13 @@ export const fr = {
     erreur:       'La liste Touring ne répond pas. Réessaie dans un instant.',
   },
   obd: {
+    carburant_lu: 'Carburant lu par le boîtier : {c}',
+    moteur_question: 'Quel moteur ? (facultatif)',
+    moteur_recherche: 'Recherche des moteurs de ce modèle…',
+    moteur_a_confirmer: 'Liste à confirmer',
+    moteur_ne_sais_pas: 'Je ne sais pas',
+    moteur_sans: 'OK, Sam fera sans le moteur.',
+    moteur_note: 'Moteur noté : {m}. Sam s’en servira pour son avis.',
     avis_relancer: 'Redemander l’avis de Sam',
     km_max: 'plus de 65 000 km',
     lecture_complete: 'Lecture complète',

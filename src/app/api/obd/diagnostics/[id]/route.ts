@@ -1,5 +1,6 @@
 // /api/obd/diagnostics/[id] — suite d'une fiche de diagnostic OBD (Olivier 05/11/2026).
 //   POST { action: 'analyse' }                    → avis de Sam (fr + sq, DSP ou REM), enregistré sur la fiche
+//   POST { action: 'moteur', liste_id, option_id } → moteur choisi par le chauffeur, avant l'avis de Sam ; son choix confirme la liste
 //   POST { action: 'clear_authorize', pin }        → signature de l'effacement par le PIN du chauffeur (4 chiffres).
 //        Pas de PIN valide, pas d'effacement. Les codes lus sont gardés avant (cleared_codes).
 //   POST { action: 'clear_result', result, reste, raw } → résultat vérifié par relecture (ok | partiel | refuse | lien_perdu | non_verifie)
@@ -38,6 +39,17 @@ export async function POST(req: Request, { params }: { params: { id: string } })
       await log(`Avis de Sam sur le diagnostic ${d.numero} : ${a.verdict === 'dsp' ? 'dépannage sur place possible' : a.verdict === 'rem' ? 'remorquage conseillé' : a.verdict === 'incomplet' ? 'lecture à refaire' : 'contrôle, rien d’anormal'} — ${a.fr?.pourquoi || ''}`)
       return NextResponse.json({ ok: true, analysis: a })
     } catch (e: any) { return NextResponse.json({ error: 'Sam ne répond pas : réessaie dans un instant.' }, { status: 502 }) }
+  }
+
+  if (b.action === 'moteur') {
+    const { data: liste } = await sb.from('obd_engine_options').select('*').eq('id', String(b.liste_id || '')).maybeSingle()
+    const option = (liste?.options || []).find((o: any) => o.id === b.option_id)
+    if (!liste || !option) return NextResponse.json({ error: 'Moteur introuvable' }, { status: 404 })
+    await sb.from('obd_diagnostics').update({ moteur: option.label, vehicle: { ...(d.vehicle || {}), motorisation: option.label } }).eq('id', d.id)
+    const options = liste.options.map((o: any) => o.id === option.id ? { ...o, votes: [...new Set([...(o.votes || []), user.id])] } : o)
+    await sb.from('obd_engine_options').update({ options, status: 'verifie', updated_at: now }).eq('id', liste.id)
+    await log(`Moteur choisi par le chauffeur (diagnostic ${d.numero}) : ${option.label}`)
+    return NextResponse.json({ ok: true, label: option.label })
   }
 
   if (b.action === 'clear_authorize') {

@@ -82,4 +82,8 @@ assert.equal(E.fuelType(reel('7E8 03 41 51 01 \r\r>', 1, 0x51)), 'essence')
 assert.equal(E.rpm(reel('7E8 04 41 0C 0D 3C \r\r>', 1, 0x0c)), 847)
 assert.equal(E.word(reel('7E8 04 41 31 FF FF \r\r>', 1, 0x31)), 65535)
 
+// Nom du calculateur (mode 09, PID 0A), sur plusieurs trames.
+assert.equal(E.textOf(E.parseReply('7E8 10 0F 49 0A 01 45 43 4D\r7E8 21 00 2D 45 6E 67 69 6E\r7E8 22 65 00 00 00 00 00 00\r\r>', 9, 0x0a, '6')), 'ECM-Engine')
+assert.equal(E.textOf(E.parseReply('NO DATA\r>', 9, 0x0a, '6')), null)
+
 console.log('OK : lecture du boîtier conforme')
