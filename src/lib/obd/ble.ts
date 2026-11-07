@@ -46,17 +46,37 @@ async function client(): Promise<Ble> {
 }
 
 const enc = new TextEncoder(), dec = new TextDecoder()
+const BOITIER_MEMO = 'vd-obd-boitier'
 
 /** Recherche le boîtier (fenêtre de choix du système), s'y connecte et prépare le dialogue ELM327. */
 export async function connectObd(onStatus?: (s: string) => void): Promise<ObdLink> {
   const ble = await client()
   await ble.initialize({ androidNeverForLocation: true })
-  onStatus?.('recherche')
-  const device = await ble.requestDevice({ optionalServices: ['0000fff0-0000-1000-8000-00805f9b34fb', 'e7810a71-73ae-499d-8c15-faa9aef0c3f2', '000018f0-0000-1000-8000-00805f9b34fb'] })
-  onStatus?.('connexion')
   let perdu = false
   let surPerte: (() => void) | null = null
-  await ble.connect(device.deviceId, () => { perdu = true; surPerte?.() })
+  const onDisconnect = () => { perdu = true; surPerte?.() }
+  // Le téléphone retient son boîtier : la liste de tous les appareils Bluetooth autour (illisible, « Unknown »)
+  // ne s'ouvre que la première fois ou si ce boîtier ne répond pas (Olivier 07/11/2026).
+  let device: { deviceId: string; name?: string } | null = null
+  let memo: string | null = null
+  try { memo = localStorage.getItem(BOITIER_MEMO) } catch { memo = null }
+  if (memo) {
+    onStatus?.('connexion')
+    try {
+      const [connu] = await ble.getDevices([memo])
+      if (connu) {
+        await Promise.race([ble.connect(connu.deviceId, onDisconnect), new Promise((_, ko) => setTimeout(() => ko(new Error('délai')), 8000))])
+        device = connu
+      }
+    } catch { await ble.disconnect(memo).catch(() => {}) }
+  }
+  if (!device) {
+    onStatus?.('recherche')
+    device = await ble.requestDevice({ optionalServices: ['0000fff0-0000-1000-8000-00805f9b34fb', 'e7810a71-73ae-499d-8c15-faa9aef0c3f2', '000018f0-0000-1000-8000-00805f9b34fb'] })
+    onStatus?.('connexion')
+    await ble.connect(device.deviceId, onDisconnect)
+  }
+  try { localStorage.setItem(BOITIER_MEMO, device.deviceId) } catch { /* sans mémoire : la liste s'ouvrira la prochaine fois */ }
   const services = await ble.getServices(device.deviceId)
   let svc = '', rx = '', tx = ''
   for (const s of services) {
