@@ -17,7 +17,7 @@ type Step = 'start' | 'busy' | 'vin' | 'moteur' | 'result'
 type Vehicle = { marque: string | null; modele: string | null; motorisation: string | null; annee: number | null } | null
 
 const btn = 'w-full min-h-[48px] rounded-xl font-semibold text-sm px-4 transition disabled:opacity-50'
-const vehicleLabel = (v: Vehicle) => v ? [v.marque, v.modele, v.motorisation, v.annee].filter(Boolean).join(' · ') : ''
+const vehicleLabel = (v: Vehicle) => v ? [v.marque, v.modele, v.motorisation, (v as any).boite, v.annee].filter(Boolean).join(' · ') : ''
 
 export default function DiagnosticPanel({ missionId, plate: plate0, vehicle: vehicle0, onDone }: { missionId?: string; plate?: string | null; vehicle?: string | null; onDone?: () => void }) {
   const { t, lang } = useT()
@@ -119,6 +119,7 @@ export default function DiagnosticPanel({ missionId, plate: plate0, vehicle: veh
       const a = await action({ action: 'moteur', liste_id: moteurs.id, option_id: moteurChoisi })
       if (a.ok) setVehicle(p => p ? { ...p, motorisation: a.label } : p)
     }
+    if (boite) setVehicle(p => p ? { ...p, boite } as any : p)
     setStep('result'); demanderAvis(diag!.id)
   }
 
@@ -258,7 +259,8 @@ export default function DiagnosticPanel({ missionId, plate: plate0, vehicle: veh
             </>}
           </div>}
           {moteurChoisi && <p className="text-sm rounded-xl bg-emerald-600/10 text-emerald-800 dark:text-emerald-300 p-3 font-semibold">{moteurChoisi === 'aucun' ? t('obd.moteur_sans') : t('obd.moteur_note', { m: moteurs?.options.find(o => o.id === moteurChoisi)?.label || '' })}</p>}
-          <button className={`${btn} bg-blue-700 hover:bg-blue-800 text-white`} onClick={continuerMoteur}>{t('obd.continuer')}</button>
+          {/* Pendant la recherche (15 s au plus, la 1re fois pour un modèle), « Continuer » attend : sinon le moteur était sauté (D-0005). */}
+          <button className={`${btn} bg-blue-700 hover:bg-blue-800 text-white`} disabled={!moteurs} onClick={continuerMoteur}>{moteurs ? t('obd.continuer') : t('obd.moteur_recherche')}</button>
         </>
       )}
 
