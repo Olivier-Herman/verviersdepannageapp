@@ -1,6 +1,7 @@
 // /api/obd/diagnostics/[id] — suite d'une fiche de diagnostic OBD (Olivier 05/11/2026).
 //   POST { action: 'analyse' }                    → avis de Sam (fr + sq, DSP ou REM), enregistré sur la fiche
 //   POST { action: 'moteur', liste_id, option_id } → moteur choisi par le chauffeur, avant l'avis de Sam ; son choix confirme la liste
+//   POST { action: 'boite', boite }               → manuelle | automatique, vue par le chauffeur ; complète ou corrige la fiche
 //   POST { action: 'clear_authorize', pin }        → signature de l'effacement par le PIN du chauffeur (4 chiffres).
 //        Pas de PIN valide, pas d'effacement. Les codes lus sont gardés avant (cleared_codes).
 //   POST { action: 'clear_result', result, reste, raw } → résultat vérifié par relecture (ok | partiel | refuse | lien_perdu | non_verifie)
@@ -11,7 +12,7 @@ import { getServerSession } from 'next-auth'
 import bcrypt from 'bcryptjs'
 import { authOptions } from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase'
-import { obdAccess, analyse, corrigerCarburantFiche } from '@/lib/obd/server'
+import { obdAccess, analyse, corrigerCarburantFiche, corrigerBoiteFiche } from '@/lib/obd/server'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 60
@@ -34,7 +35,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
       // La panne signalée sur la fiche aide Sam ; pas le carburant de la fiche, peu fiable (Olivier 06/11/2026).
       const { data: fiche } = d.mission_id ? await sb.from('incoming_missions').select('incident_description, panne_motif_label, vehicle_gearbox, vehicle_mileage').eq('id', d.mission_id).maybeSingle() : { data: null as any }
       const a = await analyse({ codes: d.codes || [], measures: d.measures || {}, vehicle: d.vehicle, vin: d.vin, lecture: d.lecture, freeze: d.image_figee,
-        symptome: fiche ? { panne: fiche.panne_motif_label || null, description: fiche.incident_description || null, boite: fiche.vehicle_gearbox || null, kilometrage: fiche.vehicle_mileage || null } : null })
+        symptome: { panne: fiche?.panne_motif_label || null, description: fiche?.incident_description || null, boite: d.vehicle?.boite || fiche?.vehicle_gearbox || null, kilometrage: fiche?.vehicle_mileage || null } })
       await sb.from('obd_diagnostics').update({ analysis: a }).eq('id', d.id)
       await log(`Avis de Sam sur le diagnostic ${d.numero} : ${a.verdict === 'dsp' ? 'dépannage sur place possible' : a.verdict === 'rem' ? 'remorquage conseillé' : a.verdict === 'incomplet' ? 'lecture à refaire' : 'contrôle, rien d’anormal'} — ${a.fr?.pourquoi || ''}`)
       return NextResponse.json({ ok: true, analysis: a })
@@ -50,6 +51,13 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     await sb.from('obd_engine_options').update({ options, status: 'verifie', updated_at: now }).eq('id', liste.id)
     await log(`Moteur choisi par le chauffeur (diagnostic ${d.numero}) : ${option.label}`)
     return NextResponse.json({ ok: true, label: option.label })
+  }
+
+  if (b.action === 'boite') {
+    if (!['manuelle', 'automatique'].includes(b.boite)) return NextResponse.json({ error: 'Boîte inconnue' }, { status: 400 })
+    await sb.from('obd_diagnostics').update({ vehicle: { ...(d.vehicle || {}), boite: b.boite } }).eq('id', d.id)
+    if (d.mission_id) await corrigerBoiteFiche(sb, d.mission_id, b.boite, d.numero, user.id).catch(() => {})
+    return NextResponse.json({ ok: true })
   }
 
   if (b.action === 'clear_authorize') {
@@ -93,6 +101,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
       notes: `Diagnostic OBD ${d.numero} rattaché : ${(d.codes || []).map((c: any) => c.code).join(', ') || 'aucun code de panne'}`, metadata: { diagnostic_id: d.id } }).then(() => {}, () => {})
     if (d.vin && !m.vehicle_vin) await sb.from('incoming_missions').update({ vehicle_vin: d.vin }).eq('id', m.id).then(() => {}, () => {})
     await corrigerCarburantFiche(sb, m.id, d.measures, d.numero, user.id).catch(() => {})
+    if (d.vehicle?.boite) await corrigerBoiteFiche(sb, m.id, d.vehicle.boite, d.numero, user.id).catch(() => {})
     return NextResponse.json({ ok: true, mission_number: m.mission_number })
   }
 

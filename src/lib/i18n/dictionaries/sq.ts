@@ -1090,6 +1090,9 @@ export const sq: Dictionary = {
     erreur:       'Lista Touring nuk përgjigjet. Provo përsëri pas pak.',
   },
   obd: {
+    boite_question: 'Kutia e shpejtësisë (opsionale)',
+    boite_manuelle: 'Manuale',
+    boite_automatique: 'Automatike',
     carburant_lu: 'Karburanti i lexuar nga pajisja: {c}',
     moteur_question: 'Cili motor? (opsionale)',
     moteur_recherche: 'Po kërkohen motorët e këtij modeli…',

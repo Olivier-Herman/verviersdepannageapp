@@ -1106,6 +1106,9 @@ export const fr = {
     erreur:       'La liste Touring ne répond pas. Réessaie dans un instant.',
   },
   obd: {
+    boite_question: 'Boîte de vitesses (facultatif)',
+    boite_manuelle: 'Manuelle',
+    boite_automatique: 'Automatique',
     carburant_lu: 'Carburant lu par le boîtier : {c}',
     moteur_question: 'Quel moteur ? (facultatif)',
     moteur_recherche: 'Recherche des moteurs de ce modèle…',

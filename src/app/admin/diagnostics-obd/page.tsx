@@ -54,7 +54,7 @@ export default async function DiagnosticsObdPage() {
                   <tr key={d.id} className="border-t align-top">
                     <td className="px-3 py-2 whitespace-nowrap text-ink-secondary">{fmt(d.created_at)}</td>
                     <td className="px-3 py-2 font-semibold text-ink">{d.numero}</td>
-                    <td className="px-3 py-2 text-ink">{[v.marque, v.modele, v.motorisation, v.annee].filter(Boolean).join(' · ') || '—'}<div className="font-mono text-xs text-ink-muted">{d.vin || 'VIN non lu'}{d.plate ? ` · ${d.plate}` : ''}</div></td>
+                    <td className="px-3 py-2 text-ink">{[v.marque, v.modele, v.motorisation, v.boite, v.annee].filter(Boolean).join(' · ') || '—'}<div className="font-mono text-xs text-ink-muted">{d.vin || 'VIN non lu'}{d.plate ? ` · ${d.plate}` : ''}</div></td>
                     <td className="px-3 py-2 text-ink-secondary">{name[d.created_by] || '—'}</td>
                     <td className="px-3 py-2 font-mono text-ink">{(d.codes || []).length ? (d.codes || []).map((c: any) => c.code + (c.type === 'en_attente' ? '*' : c.type === 'permanent' ? '†' : '')).join(', ') : <span className="font-sans text-ink-muted">{d.lecture?.complete === false ? 'non confirmés' : 'aucun'}</span>}{d.lecture?.complete === false && <div className="font-sans text-xs font-semibold text-amber-800 dark:text-amber-300">Lecture incomplète</div>}</td>
                     <td className="px-3 py-2 text-ink-secondary">{d.analysis ? VERDICT[d.analysis.verdict] || '—' : '—'}{d.decision ? <div className="text-xs">Chauffeur : {d.decision === 'dsp' ? 'dépannage sur place' : 'remorquage'}</div> : null}</td>

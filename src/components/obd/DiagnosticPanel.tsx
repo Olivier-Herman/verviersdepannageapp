@@ -41,6 +41,8 @@ export default function DiagnosticPanel({ missionId, plate: plate0, vehicle: veh
   const [moteurs, setMoteurs] = useState<{ id: string; status: string; options: { id: string; label: string }[] } | null>(null)
   const [moteurChoisi, setMoteurChoisi] = useState<string | null>(null)   // id d'option, ou 'aucun' pour « Je ne sais pas »
   const moteurAttente = useRef<AbortController | null>(null)
+  const [boite, setBoite] = useState<'manuelle' | 'automatique' | null>(null)   // cochée d'avance si la fiche la connaît
+  const boiteFiche = useRef<'manuelle' | 'automatique' | null>(null)
   const [decision, setDecision] = useState<string | null>(null)
   const [ended, setEnded] = useState<string | null>(null)
   const [ocrBusy, setOcrBusy] = useState(false)
@@ -86,6 +88,7 @@ export default function DiagnosticPanel({ missionId, plate: plate0, vehicle: veh
     if (!res.ok) { setErr(j.error || 'Erreur'); setStep(missionId ? 'start' : 'vin'); return }
     setDiag({ id: j.id, numero: j.numero, propositions: j.propositions || [] })
     if (j.vehicle) setVehicle(j.vehicle)
+    setBoite(j.boite || null); boiteFiche.current = j.boite || null
     if (j.vehicle?.marque && j.vehicle?.modele && !j.vehicle?.motorisation && !r.lecture.muette) chercherMoteurs(j.id, j.vehicle, r)
     else { setStep('result'); demanderAvis(j.id) }
   }
@@ -108,6 +111,7 @@ export default function DiagnosticPanel({ missionId, plate: plate0, vehicle: veh
 
   async function continuerMoteur() {
     moteurAttente.current = null
+    if (boite && boite !== boiteFiche.current) await action({ action: 'boite', boite })
     if (moteurs && moteurChoisi && moteurChoisi !== 'aucun') {
       const a = await action({ action: 'moteur', liste_id: moteurs.id, option_id: moteurChoisi })
       if (a.ok) setVehicle(p => p ? { ...p, motorisation: a.label } : p)
@@ -170,7 +174,7 @@ export default function DiagnosticPanel({ missionId, plate: plate0, vehicle: veh
     setPin(p => { const n = (p + k).slice(0, 4); if (n.length === 4) setTimeout(() => signerEffacement(n), 50); return n })
   }
 
-  const reset = () => { setStep('start'); setReading(null); setVin(''); setVehicle(null); setDiag(null); setAnalysis(null); setAnalysisErr(false); setCleared(null); setMoteurMsg(false); setMoteurs(null); setMoteurChoisi(null); moteurAttente.current = null; setDecision(null); setEnded(null); setErr(null); link.current?.close().catch(() => {}); link.current = null }
+  const reset = () => { setStep('start'); setReading(null); setVin(''); setVehicle(null); setDiag(null); setAnalysis(null); setAnalysisErr(false); setCleared(null); setMoteurMsg(false); setBoite(null); boiteFiche.current = null; setMoteurs(null); setMoteurChoisi(null); moteurAttente.current = null; setDecision(null); setEnded(null); setErr(null); link.current?.close().catch(() => {}); link.current = null }
 
   const A = analysis ? (lang === 'sq' ? analysis.sq : analysis.fr) : null
   const libelle = (code: string) => (A?.codes || []).find((c: any) => c.code === code)?.libelle || null
@@ -231,6 +235,14 @@ export default function DiagnosticPanel({ missionId, plate: plate0, vehicle: veh
             <p className="text-xs text-ink-muted">{t('obd.vehicule')}</p>
             <p className="font-semibold text-ink">{vehicleLabel(vehicle)}</p>
             {reading.measures.carburant && <p className="text-xs text-ink-muted">{t('obd.carburant_lu', { c: reading.measures.carburant })}</p>}
+          </div>
+          <div className="rounded-2xl border bg-surface p-4 space-y-2">
+            <p className="font-semibold text-ink">{t('obd.boite_question')}</p>
+            <div className="grid grid-cols-2 gap-2">
+              {(['manuelle', 'automatique'] as const).map(b => (
+                <button key={b} onClick={() => setBoite(b)} className={`min-h-[48px] rounded-xl border-2 px-3 text-sm font-semibold text-ink ${boite === b ? 'border-blue-700 bg-blue-600/10' : 'bg-surface'}`}>{t(b === 'manuelle' ? 'obd.boite_manuelle' : 'obd.boite_automatique')}</button>
+              ))}
+            </div>
           </div>
           <div className="rounded-2xl border bg-surface p-4 space-y-2">
             <p className="font-semibold text-ink">{t('obd.moteur_question')}</p>

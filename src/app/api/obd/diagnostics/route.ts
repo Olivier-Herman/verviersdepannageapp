@@ -6,7 +6,7 @@ import { NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase'
-import { obdAccess, decodeVin, matchingMissions, corrigerCarburantFiche } from '@/lib/obd/server'
+import { obdAccess, decodeVin, matchingMissions, corrigerCarburantFiche, familleBoite } from '@/lib/obd/server'
 import { cleanVin, checkVin } from '@/lib/obd/vin'
 
 export const dynamic = 'force-dynamic'
@@ -27,9 +27,11 @@ export async function POST(req: Request) {
     if (!m) missionId = null; else plate = plate || m.vehicle_plate || null
   }
   let vehicle = vin ? await decodeVin(vin) : null
+  let boite: 'manuelle' | 'automatique' | null = null
   // Le modèle donné par l'assistance sur la fiche vaut mieux qu'une estimation (Olivier 06/11/2026).
   if (missionId) {
-    const { data: fiche } = await sb.from('incoming_missions').select('vehicle_brand, vehicle_model').eq('id', missionId).maybeSingle()
+    const { data: fiche } = await sb.from('incoming_missions').select('vehicle_brand, vehicle_model, vehicle_gearbox').eq('id', missionId).maybeSingle()
+    boite = familleBoite((fiche as any)?.vehicle_gearbox)
     if ((fiche as any)?.vehicle_model) vehicle = { marque: (fiche as any).vehicle_brand || vehicle?.marque || null, modele: (fiche as any).vehicle_model, motorisation: vehicle?.motorisation || null, annee: vehicle?.annee || null, source: vehicle?.source || 'vin' }
   }
   const { data: row, error } = await sb.from('obd_diagnostics').insert({
@@ -47,7 +49,7 @@ export async function POST(req: Request) {
     await corrigerCarburantFiche(sb, missionId, b.measures, row.numero, user.id).catch(() => {})
   }
   const propositions = missionId ? [] : await matchingMissions(sb, vin, plate)
-  return NextResponse.json({ ok: true, id: row.id, numero: row.numero, vehicle, propositions })
+  return NextResponse.json({ ok: true, id: row.id, numero: row.numero, vehicle, boite, propositions })
 }
 
 export async function GET() {

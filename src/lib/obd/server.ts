@@ -110,6 +110,7 @@ Dis au chauffeur si un DÉPANNAGE SUR PLACE est raisonnable (batterie, connecteu
 Règles : phrases courtes et concrètes, sans jargon ; le chauffeur ne peut pas te répondre sur cet écran, ne lui pose aucune question et ne lui demande pas de te décrire quoi que ce soit ; c'est un pré-diagnostic, la décision reste au chauffeur.
 Libellés : traduis la définition de référence, sans inventer. Pour une « AUCUNE DÉFINITION DE RÉFÉRENCE », écris seulement « Code propre à la marque, à vérifier » et ne lui donne pas de sens précis.
 Lecture incomplète : ne dis jamais que la voiture n'a rien ; explique ce qui manque dans « partiel » et conseille de relancer. Un témoin allumé sans code veut dire que le boîtier ne voit pas tout.
+Boîte automatique : ne conseille jamais un démarrage en poussant la voiture.
 Carburant : seul celui des mesures compte ; s'il manque, n'en suppose aucun. Hybride ou électrique : le boîtier ne lit pas la batterie de traction ni ses défauts, dis-le dans « partiel » et ne propose aucune manipulation sur la partie haute tension.
 Certaines marques cachent leurs codes propres : si les codes ne suffisent pas à expliquer la panne signalée, dis-le dans « partiel ».
 Réponds en JSON STRICT, sans texte autour :
@@ -136,6 +137,25 @@ function familleCarburant(s: string | null | undefined): string | null {
   if (/diesel/.test(t)) return 'Diesel'
   if (/essence|sans plomb|gasoline/.test(t)) return 'Essence'
   return null
+}
+
+/** Boîte de la fiche ou du chauffeur → manuelle | automatique, si on peut le dire. */
+export function familleBoite(s: string | null | undefined): 'manuelle' | 'automatique' | null {
+  const t = String(s || '').toLowerCase()
+  if (/auto/.test(t)) return 'automatique'
+  if (/manu|mecan|méca/.test(t)) return 'manuelle'
+  return null
+}
+
+/** Le chauffeur a vu la boîte (Olivier 07/11/2026) : elle complète ou corrige la fiche, et c'est noté dans son historique. */
+export async function corrigerBoiteFiche(sb: any, missionId: string, boite: 'manuelle' | 'automatique', numero: string, userId: string): Promise<void> {
+  const { data: m } = await sb.from('incoming_missions').select('vehicle_gearbox').eq('id', missionId).maybeSingle()
+  if (!m || familleBoite(m.vehicle_gearbox) === boite) return
+  const lu = boite === 'automatique' ? 'Automatique' : 'Manuelle'
+  const { error } = await sb.from('incoming_missions').update({ vehicle_gearbox: lu }).eq('id', missionId)
+  if (error) return
+  await sb.from('mission_logs').insert({ mission_id: missionId, actor_id: userId, action: 'obd_diagnostic',
+    notes: `Boîte indiquée par le chauffeur (diagnostic ${numero}) : « ${m.vehicle_gearbox || 'vide'} » → « ${lu} »`, metadata: { avant: m.vehicle_gearbox, apres: lu } }).then(() => {}, () => {})
 }
 
 /**
