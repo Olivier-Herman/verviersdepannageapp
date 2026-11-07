@@ -89,16 +89,19 @@ export default function DiagnosticPanel({ missionId, plate: plate0, vehicle: veh
     setDiag({ id: j.id, numero: j.numero, propositions: j.propositions || [] })
     if (j.vehicle) setVehicle(j.vehicle)
     setBoite(j.boite || null); boiteFiche.current = j.boite || null
-    if (j.vehicle?.marque && j.vehicle?.modele && !j.vehicle?.motorisation && !r.lecture.muette) chercherMoteurs(j.id, j.vehicle, r)
+    if (!r.lecture.muette) chercherMoteurs(j.vehicle || null, r)
     else { setStep('result'); demanderAvis(j.id) }
   }
 
-  // Le boîtier ne donne pas le moteur : liste facultative, jamais bloquante. Sans liste à temps, cette étape disparaît.
-  async function chercherMoteurs(id: string, v: NonNullable<Vehicle>, r: ObdReading) {
+  // La boîte s'affiche toujours : la fiche peut se tromper (Olivier 07/11/2026). La liste des moteurs est facultative :
+  // moteur déjà connu ou rien trouvé à temps, elle n'apparaît simplement pas.
+  async function chercherMoteurs(v: Vehicle, r: ObdReading) {
+    const vide = { id: '', status: '', options: [] }
     setMoteurs(null); setMoteurChoisi(null); setStep('moteur')
+    if (!v?.marque || !v?.modele || v?.motorisation) { setMoteurs(vide); return }
     const ctl = new AbortController(); moteurAttente.current = ctl
     const limite = setTimeout(() => ctl.abort(), 15000)
-    const suite = () => { if (moteurAttente.current === ctl) { moteurAttente.current = null; setStep('result'); demanderAvis(id) } }
+    const suite = () => { if (moteurAttente.current === ctl) { moteurAttente.current = null; setMoteurs(vide) } }
     try {
       const q = new URLSearchParams({ marque: v.marque || '', modele: v.modele || '', annee: String(v.annee || ''), carburant: r.measures.carburant || '', source: r.measures.carburant_source || '' })
       const res = await fetch(`/api/obd/moteurs?${q}`, { cache: 'no-store', signal: ctl.signal })
@@ -233,7 +236,7 @@ export default function DiagnosticPanel({ missionId, plate: plate0, vehicle: veh
         <>
           <div className="rounded-2xl border bg-surface p-4 space-y-1">
             <p className="text-xs text-ink-muted">{t('obd.vehicule')}</p>
-            <p className="font-semibold text-ink">{vehicleLabel(vehicle)}</p>
+            <p className="font-semibold text-ink">{vehicleLabel(vehicle) || t('obd.vehicule_inconnu')}</p>
             {reading.measures.carburant && <p className="text-xs text-ink-muted">{t('obd.carburant_lu', { c: reading.measures.carburant })}</p>}
           </div>
           <div className="rounded-2xl border bg-surface p-4 space-y-2">
@@ -244,7 +247,7 @@ export default function DiagnosticPanel({ missionId, plate: plate0, vehicle: veh
               ))}
             </div>
           </div>
-          <div className="rounded-2xl border bg-surface p-4 space-y-2">
+          {(!moteurs || moteurs.options.length > 0) && <div className="rounded-2xl border bg-surface p-4 space-y-2">
             <p className="font-semibold text-ink">{t('obd.moteur_question')}</p>
             {!moteurs ? <p className="text-sm text-ink-secondary">⏳ {t('obd.moteur_recherche')}</p> : <>
               {moteurs.status !== 'verifie' && <span className="inline-block text-xs font-semibold rounded-full px-2 py-0.5 bg-amber-500/10 text-amber-800 dark:text-amber-300">{t('obd.moteur_a_confirmer')}</span>}
@@ -253,7 +256,7 @@ export default function DiagnosticPanel({ missionId, plate: plate0, vehicle: veh
               ))}
               <button onClick={() => setMoteurChoisi('aucun')} className={`w-full min-h-[48px] rounded-xl border-2 px-3 text-left text-sm text-ink-secondary ${moteurChoisi === 'aucun' ? 'border-blue-700 bg-blue-600/10' : 'bg-surface'}`}>{t('obd.moteur_ne_sais_pas')}</button>
             </>}
-          </div>
+          </div>}
           {moteurChoisi && <p className="text-sm rounded-xl bg-emerald-600/10 text-emerald-800 dark:text-emerald-300 p-3 font-semibold">{moteurChoisi === 'aucun' ? t('obd.moteur_sans') : t('obd.moteur_note', { m: moteurs?.options.find(o => o.id === moteurChoisi)?.label || '' })}</p>}
           <button className={`${btn} bg-blue-700 hover:bg-blue-800 text-white`} onClick={continuerMoteur}>{t('obd.continuer')}</button>
         </>
