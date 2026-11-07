@@ -84,8 +84,21 @@ export default function DiagnosticPanel({ missionId, plate: plate0, vehicle: veh
     setDiag({ id: j.id, numero: j.numero, propositions: j.propositions || [] })
     if (j.vehicle) setVehicle(j.vehicle)
     setStep('result')
-    fetch(`/api/obd/diagnostics/${j.id}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'analyse' }) })
-      .then(r2 => r2.json()).then(a => { if (a.ok) setAnalysis(a.analysis); else setAnalysisErr(true) }).catch(() => setAnalysisErr(true))
+    demanderAvis(j.id)
+  }
+
+  // Sur le réseau mobile, la réponse peut se perdre alors que l'avis est enregistré (D-0004, 07/11/2026) : on redemande.
+  async function demanderAvis(id: string) {
+    setAnalysisErr(false)
+    for (let essai = 0; essai < 3; essai++) {
+      if (essai) await new Promise(r => setTimeout(r, 3000))
+      try {
+        const r = await fetch(`/api/obd/diagnostics/${id}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'analyse' }) })
+        const a = await r.json()
+        if (a.ok) { setAnalysis(a.analysis); return }
+      } catch { /* nouvel essai */ }
+    }
+    setAnalysisErr(true)
   }
 
   async function photoVin(f: File) {
@@ -236,14 +249,17 @@ export default function DiagnosticPanel({ missionId, plate: plate0, vehicle: veh
               {!reading.lecture.muette && <><span className="text-ink-secondary">{t('obd.carburant')}</span><span className="font-semibold text-ink text-right">{!reading.measures.carburant ? t('obd.non_lu') : lang === 'sq' ? ({ essence: 'benzinë', diesel: 'naftë', 'électrique': 'elektrike', GPL: 'GPL', GNC: 'GNC' } as Record<string, string>)[reading.measures.carburant] || (/hybride/.test(reading.measures.carburant) ? 'hibride' : reading.measures.carburant) : reading.measures.carburant}{reading.measures.carburant_source === 'allumage' && <span className="block text-xs font-normal text-ink-muted">{t('obd.selon_allumage')}</span>}</span></>}
               {reading.measures.temoin_moteur != null && <><span className="text-ink-secondary">{t('obd.temoin')}</span><span className="font-semibold text-ink">{reading.measures.temoin_moteur ? t('obd.allume') : t('obd.eteint')}</span></>}
               {reading.measures.km_temoin_allume != null && reading.measures.km_temoin_allume > 0 && <><span className="text-ink-secondary">{t('obd.km_temoin')}</span><span className="font-semibold tabular-nums text-ink">{reading.measures.km_temoin_allume.toLocaleString('fr-BE')} km</span></>}
-              {reading.measures.km_depuis_effacement != null && <><span className="text-ink-secondary">{t('obd.km_effacement')}</span><span className="font-semibold tabular-nums text-ink">{reading.measures.km_depuis_effacement.toLocaleString('fr-BE')} km</span></>}
+              {reading.measures.km_depuis_effacement != null && <><span className="text-ink-secondary">{t('obd.km_effacement')}</span><span className="font-semibold tabular-nums text-ink">{reading.measures.km_depuis_effacement >= 65535 ? t('obd.km_max') : `${reading.measures.km_depuis_effacement.toLocaleString('fr-BE')} km`}</span></>}
               {reading.measures.kilometrage != null && <><span className="text-ink-secondary">{t('obd.kilometrage')}</span><span className="font-semibold tabular-nums text-ink">{reading.measures.kilometrage.toLocaleString('fr-BE')} km</span></>}
             </div>
           </div>
 
           <div className={`rounded-2xl p-4 space-y-1.5 ${analysis?.verdict === 'rem' ? 'bg-red-600/10 text-red-800 dark:text-red-200' : analysis?.verdict === 'incomplet' ? 'bg-amber-500/10 text-amber-800 dark:text-amber-300' : analysis ? 'bg-emerald-600/10 text-emerald-800 dark:text-emerald-200' : 'border bg-surface text-ink-secondary'}`}>
             {!analysis && !analysisErr && <p className="text-sm">⏳ {t('obd.avis_attente')}</p>}
-            {analysisErr && <p className="text-sm">{t('obd.avis_ko')}</p>}
+            {analysisErr && <>
+              <p className="text-sm">{t('obd.avis_ko')}</p>
+              <button className={`${btn} border bg-surface text-ink`} onClick={() => demanderAvis(diag.id)}>{t('obd.avis_relancer')}</button>
+            </>}
             {A && <>
               <p className="font-semibold">{t('obd.avis')} : {analysis.verdict === 'dsp' ? t('obd.dsp') : analysis.verdict === 'rem' ? t('obd.rem') : analysis.verdict === 'incomplet' ? t('obd.incomplet') : t('obd.controle')}</p>
               <p className="text-sm"><b>{t('obd.pourquoi')} :</b> {A.pourquoi}</p>

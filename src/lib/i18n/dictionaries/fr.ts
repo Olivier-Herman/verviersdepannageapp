@@ -1106,6 +1106,8 @@ export const fr = {
     erreur:       'La liste Touring ne répond pas. Réessaie dans un instant.',
   },
   obd: {
+    avis_relancer: 'Redemander l’avis de Sam',
+    km_max: 'plus de 65 000 km',
     lecture_complete: 'Lecture complète',
     lecture_incomplete: 'Lecture incomplète',
     lecture_incomplete_texte: 'Les codes n’ont pas tous pu être lus. Cela ne veut pas dire que la voiture n’a rien.',

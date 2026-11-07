@@ -27,6 +27,8 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   const log = (notes: string) => d.mission_id ? sb.from('mission_logs').insert({ mission_id: d.mission_id, actor_id: user.id, action: 'obd_diagnostic', notes, metadata: { diagnostic_id: d.id } }).then(() => {}, () => {}) : Promise.resolve()
 
   if (b.action === 'analyse') {
+    // Déjà enregistré : l'écran a pu perdre la réponse, on la renvoie sans refaire l'analyse.
+    if (d.analysis) return NextResponse.json({ ok: true, analysis: d.analysis })
     try {
       // La panne signalée sur la fiche aide Sam ; pas le carburant de la fiche, peu fiable (Olivier 06/11/2026).
       const { data: fiche } = d.mission_id ? await sb.from('incoming_missions').select('incident_description, panne_motif_label, vehicle_gearbox, vehicle_mileage').eq('id', d.mission_id).maybeSingle() : { data: null as any }

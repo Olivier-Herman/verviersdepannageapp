@@ -71,4 +71,15 @@ assert.equal(E.lectureOf({ ...base, monitor: { ...base.monitor, mil: true } }).m
 assert.equal(E.lectureOf({ ...base, monitor: { ...base.monitor, count: 2 }, nbStored: 1 }).manques[0], 'codes_manquants')
 assert.equal(E.lectureOf({ ...base, perdu: true }).complete, false)
 
+// Réponses réelles du boîtier sur une Opel 2020 (D-0004, 07/11/2026) : deux calculateurs, aucun code, essence.
+const reel = (raw: string, mode: number, pid: number | null = null) => E.parseReply(raw, mode, pid, 'A6')
+const sReel = reel('SEARCHING...\r7E8 06 41 00 BE 3E A8 13 \r7E9 06 41 00 80 00 00 01 \r\r>', 1, 0)
+assert.equal(sReel.status, 'ok'); assert.ok(E.supportedOf(sReel, 0).has(0x0c))
+assert.deepEqual(E.dtcsOf(reel('7E8 02 43 00 \r7E9 02 43 00 \r\r>', 3)), [])
+const mReel = E.monitorOf(reel('7E8 06 41 01 00 07 E1 00 \r7E9 06 41 01 00 04 00 00 \r\r>', 1, 1))!
+assert.equal(mReel.mil, false); assert.equal(mReel.count, 0); assert.equal(mReel.allumage, 'etincelle')
+assert.equal(E.fuelType(reel('7E8 03 41 51 01 \r\r>', 1, 0x51)), 'essence')
+assert.equal(E.rpm(reel('7E8 04 41 0C 0D 3C \r\r>', 1, 0x0c)), 847)
+assert.equal(E.word(reel('7E8 04 41 31 FF FF \r\r>', 1, 0x31)), 65535)
+
 console.log('OK : lecture du boîtier conforme')

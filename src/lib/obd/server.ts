@@ -102,7 +102,7 @@ Véhicule : ${v ? [v.marque, v.modele, v.motorisation, v.annee].filter(Boolean).
 Panne signalée (texte de l'assistance, simple information) : ${panne || 'non renseignée'}.
 Codes de panne et définitions de référence :
 ${lignesRef || 'aucun'}
-Mesures lues par le boîtier : ${JSON.stringify(input.measures)}.
+Mesures lues par le boîtier : ${JSON.stringify(input.measures)}. Un compteur à 65535 (km, minutes) ou 255 (démarrages) est au maximum : ce n'est pas une valeur exacte, ne le cite pas comme telle.
 Image figée au moment du défaut : ${input.freeze ? JSON.stringify(input.freeze) : 'aucune'}.
 État de la lecture : ${lecture ? (lecture.complete ? 'complète' : `INCOMPLÈTE (${lecture.manques.join(', ')})`) : 'inconnu'}.
 
