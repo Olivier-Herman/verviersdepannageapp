@@ -153,6 +153,11 @@ export async function remindOldPieceRequests(sb: any): Promise<void> {
   for (const q of data || []) {
     const { data: won } = await sb.from('mail_piece_requests').update({ relanced_at: new Date().toISOString() }).eq('id', q.id).is('relanced_at', null).select('id')
     if (!won?.length) continue
+    // Adresse refusée par le serveur : relancer la même adresse ne sert à rien (Tinqueux, 17/10/2026). On redemande une adresse.
+    if (/^NON REMIS/.test(q.received_via || '')) {
+      await telegramMobi(`📭 Toujours pas d'autre adresse — ${q.fournisseur || (q.emails || []).join(', ')}\n« ${q.subject} » (demandé le ${ddmm(q.requested_at)}, NON REMIS).\nL'adresse ${(q.emails || []).join(', ')} est refusée : il faut une autre adresse ou un appel.`)
+      continue
+    }
     let draftId: string | null = null
     try {
       {
