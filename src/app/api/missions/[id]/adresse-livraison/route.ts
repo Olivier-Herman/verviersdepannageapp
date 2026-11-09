@@ -40,6 +40,8 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   const body = await req.json().catch(() => ({}))
   const address = String(body?.address || '').trim()
   if (!adresseComplete(address)) return NextResponse.json({ error: 'Il manque la rue ou le code postal' }, { status: 400 })
+  // Adresse choisie dans les suggestions (position connue), jamais un texte libre (Olivier 09/11/2026).
+  if (!Number.isFinite(body?.lat) || !Number.isFinite(body?.lng)) return NextResponse.json({ error: 'Choisis l’adresse dans les suggestions' }, { status: 400 })
 
   const patch: Record<string, any> = { destination_address: address, updated_at: new Date().toISOString() }
   if (body?.name) patch.destination_name = String(body.name).trim()

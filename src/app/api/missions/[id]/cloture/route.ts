@@ -243,6 +243,15 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   // main (2FKB345, 19/08). Le tarif se calcule sur source + type — un type faux,
   // c'est une facture fausse.
   const dest = body?.destination
+  // Remorquage vers une « autre adresse » (pas un garage de la liste de l'assistance) : adresse choisie dans les
+  // suggestions, avec rue, code postal et localité. Un texte libre partait tel quel chez l'assistance, qui ne le
+  // corrige plus ensuite (Olivier 09/11/2026, 1WEE625 « Luxud saint vith » → CHECK ADDRESS chez Touring).
+  if (outcomeIsRem(outcome) && !body?.toCidIntv) {
+    const ma = body?.manualAddress || {}
+    const choisie = Number.isFinite(dest?.lat) && Number.isFinite(dest?.lng)
+      && !!String(ma.rue || '').trim() && !!String(ma.cp || '').trim() && !!String(ma.loc || '').trim()
+    if (!choisie) return NextResponse.json({ error: 'Choisis l’adresse de destination dans les suggestions : il faut la rue, le code postal et la localité.' }, { status: 400 })
+  }
   if (outcome === 'rem2dsp') {
     patch.mission_type = 'depannage'
   }

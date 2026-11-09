@@ -10,7 +10,6 @@
 import { useEffect, useState } from 'react'
 import { useT } from '@/lib/i18n/I18nProvider'
 import AddressField from '@/components/AddressField'
-import { splitAddress, adresseComplete } from '@/lib/address-parts'
 
 const GM_KEY = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || ''
 
@@ -34,13 +33,11 @@ export default function DestinationLivraison({ current, onChange }: {
   const [coords, setCoords] = useState<{ lat: number; lng: number } | null>(null)
   const [parts, setParts]   = useState({ rue: '', num: '', cp: '', loc: '' })
 
-  // Suggestion choisie → ses morceaux ; adresse tapée sans suggestion → on la découpe.
-  const p = parts.rue || parts.cp ? parts : (() => {
-    const s = splitAddress(text)
-    return { rue: s.street, num: s.number, cp: s.zip, loc: s.city }
-  })()
-  const address = (p.rue || p.cp) ? `${p.rue} ${p.num}`.trim() + `, ${p.cp} ${p.loc}`.trim() : text.trim()
-  const ok = adresseComplete(address)
+  // Une suggestion CHOISIE, avec rue, code postal et localité : le texte libre ne suffit plus (Olivier 09/11/2026,
+  // 1WEE625 « Luxud saint vith »).
+  const p = parts
+  const address = `${p.rue} ${p.num}`.trim() + `, ${p.cp} ${p.loc}`.trim()
+  const ok = !!coords && !!p.rue && !!p.cp && !!p.loc
 
   useEffect(() => {
     onChange(ok ? { address, name: nom.trim(), ...(coords || {}), manual: { nom: nom.trim(), rue: p.rue, num: p.num, cp: p.cp, loc: p.loc } } : null)
@@ -67,7 +64,7 @@ export default function DestinationLivraison({ current, onChange }: {
         <p className={`text-xs font-semibold rounded-lg px-2 py-1.5 border ${ok
           ? 'text-green-800 bg-green-50 border-green-200 dark:text-green-300 dark:bg-green-500/10'
           : 'text-amber-900 bg-amber-100 border-amber-300 dark:text-amber-200 dark:bg-amber-500/10'}`}>
-          {ok ? `✓ ${address}` : t('cloture.dest_incomplete_missing')}
+          {ok ? `✓ ${address}` : t('cloture.dest_pick_suggestion')}
         </p>
       )}
     </div>
