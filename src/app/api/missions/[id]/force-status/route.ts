@@ -15,6 +15,7 @@ import { createAdminClient } from '@/lib/supabase'
 import { isRelEligibleSource } from '@/lib/missions/rel-eligible'
 import { isRemorquage }        from '@/lib/missions/mission-types'
 import { assertExitAllowed }   from '@/lib/missions/exit-control'
+import { sourceSkipsFacturation } from '@/lib/missions/source-flags'
 
 export const dynamic     = 'force-dynamic'
 export const maxDuration = 60   // clôture Kaze en arrière-plan peut prendre ~10s
@@ -92,6 +93,13 @@ export async function POST(req: Request, { params }: { params: { id: string } })
       const gate = await assertExitAllowed(sb, params.id)
       if (!gate.ok) return NextResponse.json({ error: gate.error, exit_control_blocked: true }, { status: 409 })
     }
+  }
+
+  // Source jamais facturée (Car Parts & Recycling) : « à facturer » devient « terminée », comme à la clôture chauffeur.
+  // 3 fiches Car Parts forcées « à facturer » le 05/11/2026 (Olivier 09/11/2026, sans prévenir le dispatcher).
+  if (body.status === 'to_invoice') {
+    const { data: src } = await sb.from('incoming_missions').select('source').eq('id', params.id).maybeSingle()
+    if (await sourceSkipsFacturation(src?.source, sb)) body.status = 'completed'
   }
 
   const update: any = {
