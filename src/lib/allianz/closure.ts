@@ -456,10 +456,17 @@ export async function closeAllianzAssignment(input: CloseInput): Promise<CloseRe
     // Bills = lignes ayant un `self` (assignmentTariffId), montants depuis la grille.
     // Une ligne non calculable (ex "Siabis") => on la signale (clôture manuelle).
     const nonComputable: string[] = []
+    // Une prestation se facture UNE fois : Allianz renvoie parfois plusieurs variantes du même libellé (8 lignes
+    // « Remorquage sans réparation » pour 1GAM502, toutes cochées → « vous avez coché toutes les cases du
+    // remorquage », Allianz 09/11/2026). Les suivantes partent à 0.
+    const dejaFacture = new Set<string>()
     const bills = tariffs.filter(t => t.self).map(t => {
       if (isIgnoredAllianzLine(t.tariffName)) return null   // ligne ignorée : ni bill, ni blocage
       const calc = allianzLineAmount(t.tariffName, declaredDistance, rates)
       if (!calc) { nonComputable.push(t.tariffName || '?'); return null }
+      const cle = (t.tariffName || '').trim().toLowerCase()
+      if (dejaFacture.has(cle)) return tariffToBill(t, 0, 0)
+      if (calc.amount) dejaFacture.add(cle)
       return tariffToBill(t, calc.amount, calc.qty)
     }).filter(Boolean) as any[]
 
