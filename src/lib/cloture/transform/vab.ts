@@ -563,13 +563,20 @@ export async function runVabTowClose(input: VabTowCloseInput): Promise<void> {
         .update({ vab_closed_at: new Date().toISOString(), updated_at: new Date().toISOString() })
         .eq('id', input.missionId)
     }
+    // Adresse de livraison sans rue : VAB refuse le remorquage. On la note pour que le filet
+    // ne réessaie pas tant qu'elle n'a pas changé, et on la demande au chauffeur.
+    const adresseIllisible = !codes.ok && codes.steps.some(x => x.startsWith('adresse illisible')) ? destAddr : null
     await log(
       codes.ok ? 'vab_closed' : 'vab_close_failed',
       codes.ok
         ? `VAB : ${tow ? 'remorquage' : 'dépannage'} clôturé automatiquement en ${secs2}s (${étapes.join(' → ')})`
         : `VAB : clôture non aboutie après ${secs2}s — ${codes.error || 'raison inconnue'} (${étapes.join(' → ')})`,
-      { assignmentId, steps: étapes, error: codes.error ?? null, seconds: secs2, tow },
+      { assignmentId, steps: étapes, error: codes.error ?? null, seconds: secs2, tow, ...(adresseIllisible != null ? { adresseIllisible } : {}) },
     )
+    if (adresseIllisible != null) {
+      const { demanderAdresseLivraison } = await import('@/lib/cloture/adresse-livraison')
+      await demanderAdresseLivraison(input.missionId, adresseIllisible).catch(() => {})
+    }
     return
   } catch (e: any) {
     await log('vab_close_failed', `VAB : erreur pendant la clôture — ${e?.message || e}`, { assignmentId })

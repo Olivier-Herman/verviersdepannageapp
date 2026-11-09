@@ -153,6 +153,14 @@ export const NOTIFICATION_TYPES: readonly NotificationType[] = [
     defaultEnabled:  true,
   },
   {
+    key:             'adresse_livraison_incomplete',
+    label:           'Adresse de livraison à compléter',
+    description:     "L'adresse de livraison d'une mission terminée n'a pas de rue : l'assistance ne peut pas clôturer tant qu'elle n'est pas complétée.",
+    category:        'driver',
+    applicableRoles: ['driver'],
+    defaultEnabled:  true,
+  },
+  {
     key:             'check_vehicule_due',
     label:           'Check véhicule à effectuer',
     description:     'Rappel pour effectuer le check véhicule quotidien.',

@@ -313,6 +313,15 @@ export const fr = {
     close_as_is:         'Clôturer tel quel',
     add_number:          'Ajouter le numéro',
     skip_assistance:     'Continuer sans clôturer',
+    dest_incomplete_title:   'Adresse de livraison incomplète',
+    dest_incomplete_text:    'La fiche dit seulement « {adresse} ». L’assistance a besoin de la rue et du numéro : où as-tu déposé le véhicule ?',
+    dest_incomplete_missing: 'Il manque encore la rue ou le code postal.',
+    dest_complete_btn:       'Complète l’adresse de livraison',
+    dest_send:               'Envoyer l’adresse',
+    dest_send_failed:        'L’adresse n’est pas partie. Réessaie ou appelle le dispatch.',
+    dest_saved:              'Merci ! L’adresse est enregistrée et envoyée à l’assistance.',
+    dest_notif_title:        '{plaque} : adresse de livraison à compléter',
+    dest_notif_body:         'La fiche dit seulement « {adresse} » et l’assistance ne peut pas clôturer. Touche ici et indique où tu as déposé le véhicule.',
 
     // Encaissement
     pay_title:           'Encaisser le paiement',

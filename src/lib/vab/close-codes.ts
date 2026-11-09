@@ -25,6 +25,7 @@
 //   • le bouton « Confirmer » de l'écran, c'est `wtLink_End`.
 
 import * as cheerio from 'cheerio'
+import { splitAddress } from '@/lib/address-parts'
 
 const BASE = 'https://comet.vab.be/Comet'
 const UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36'
@@ -169,17 +170,8 @@ const plat = (s: string) => (s || '').normalize('NFD').replace(/[̀-ͯ]/g, '')
  * VAB veut le code postal, la ville, la rue et le numéro dans des champs séparés.
  */
 export function decoupeAdresse(adresse: string): { zip: string; city: string; street: string; number: string } {
-  const parts = (adresse || '').split(',').map(s => s.trim()).filter(Boolean)
-  let zip = '', city = '', street = '', number = ''
-  for (const p of parts) {
-    const mz = p.match(/\b(\d{4})\b\s*(.*)$/)
-    if (mz && !zip) { zip = mz[1]; city = mz[2].trim(); continue }
-    const mr = p.match(/^(.+?)\s+(\d+[A-Za-z]?)$/)
-    if (mr && !street) { street = mr[1].trim(); number = mr[2]; }
-  }
-  // Dernier recours : la voie est la partie qui n'est ni le nom ni la ville.
-  if (!street && parts.length >= 2) street = parts[parts.length - 2]
-  return { zip, city, street, number }
+  // Même découpage que Touring et l'écran de clôture : une seule règle pour tous.
+  return splitAddress(adresse)
 }
 
 /**

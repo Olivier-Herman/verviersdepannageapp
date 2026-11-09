@@ -22,6 +22,7 @@ import { availableOutcomes, outcomeIsRem, DPR_END_CODES, OUTCOMES, type Outcome 
 import { parseComexKeys, transformTouring } from '@/lib/cloture/transform/touring'
 import { loginComex, getComexProviders, closeTouringMission } from '@/lib/touring/comex'
 import { findMotif } from '@/lib/cloture/motifs'
+import { adresseComplete } from '@/lib/address-parts'
 import { enqueueClose, isRetryable } from '@/lib/cloture/queue'
 import { prefillCodes } from '@/lib/cloture/prefill'
 import { runVabOnSite, runVabTowClose } from '@/lib/cloture/transform/vab'
@@ -119,9 +120,13 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
   const priorMotif = String((m as any).panne_motif || '')
   const priorMotifKey = priorMotif && findMotif('remorquage', priorMotif) ? priorMotif : null
 
+  // Adresse de livraison de la fiche : sans rue, l'écran la fait compléter au chauffeur (2JXX385, 09/11/2026).
+  const ficheDest = String((m as any).destination_address || '').trim() || null
+
   return NextResponse.json({
     hasPrefill,
     priorMotifKey,
+    destination: { address: ficheDest, complete: adresseComplete(ficheDest) },
     allowedFins,
     assistance: flux2AssistanceOf(m as any),
     outcomes:   outcomes
@@ -248,6 +253,20 @@ export async function POST(req: Request, { params }: { params: { id: string } })
       if (Number.isFinite(dest.lat)) patch.destination_lat = dest.lat
       if (Number.isFinite(dest.lng)) patch.destination_lng = dest.lng
     }
+  }
+  // Livraison sur une fiche dont l'adresse n'avait pas de rue : le chauffeur vient de la
+  // compléter. Elle remplace l'adresse incomplète AVANT la clôture chez l'assistance.
+  if (outcome === 'delivered' && dest?.address && adresseComplete(String(dest.address))
+      && !adresseComplete((m as any).destination_address)) {
+    patch.destination_address = String(dest.address)
+    if (dest.name) patch.destination_name = String(dest.name)
+    if (Number.isFinite(dest.lat)) patch.destination_lat = dest.lat
+    if (Number.isFinite(dest.lng)) patch.destination_lng = dest.lng
+    await sb.from('mission_logs').insert({
+      mission_id: (m as any).id, actor_id: (actor as any)?.id ?? null, action: 'destination_completee',
+      notes: `Adresse de livraison complétée par le chauffeur : ${(m as any).destination_address || '—'} → ${dest.address}`,
+      metadata: { avant: (m as any).destination_address || null, apres: dest.address, via: 'cloture' },
+    }).then(() => {}, () => {})
   }
 
   // ── SIABIS : le cycle est connu → le scénario tarifaire aussi ─────────────

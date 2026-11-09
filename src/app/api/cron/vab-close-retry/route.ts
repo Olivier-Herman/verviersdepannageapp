@@ -77,7 +77,7 @@ async function handleGET(req: Request) {
     const vr = tous.filter(a => estVehiculeRemplacementVab(types[a]))
     const ouverts = tous.filter(a => !vr.includes(a))
     const sb = createAdminClient()
-    const COLS = 'id, vehicle_plate, external_id, status, assigned_to, mission_type, panne_motif, vab_assignment_ids, vab_closed_at, source'
+    const COLS = 'id, vehicle_plate, external_id, status, assigned_to, mission_type, panne_motif, vab_assignment_ids, vab_closed_at, source, destination_address'
 
     // ── HORS LISTE ≠ SOLDÉ (Olivier 13/10/2026) ──────────────────────────────
     // VAB retire parfois un dossier de sa liste alors que sa page reste ouverte (2EVV422,
@@ -151,15 +151,26 @@ async function handleGET(req: Request) {
     // le filet rejouait le même. On passe donc au moins tenté récemment, et le
     // jamais tenté d'abord.
     const { data: essais } = await sb.from('mission_logs')
-      .select('mission_id, created_at')
+      .select('mission_id, created_at, action, metadata')
       .in('mission_id', candidats.map(c => c.id))
       .in('action', ['vab_close_failed', 'vab_close_skipped', 'vab_onsite_failed'])
       .order('created_at', { ascending: false })
     const dernierEssai = new Map<string, string>()
     const nbEssais = new Map<string, number>()
+    // Dernier échec « adresse de livraison sans rue » : l'adresse alors refusée.
+    const adresseRefusée = new Map<string, string>()
     for (const l of (essais || []) as any[]) {
-      if (!dernierEssai.has(l.mission_id)) dernierEssai.set(l.mission_id, l.created_at)
+      if (!dernierEssai.has(l.mission_id)) {
+        dernierEssai.set(l.mission_id, l.created_at)
+        if (l.action === 'vab_close_failed' && typeof l.metadata?.adresseIllisible === 'string') adresseRefusée.set(l.mission_id, l.metadata.adresseIllisible)
+      }
       nbEssais.set(l.mission_id, (nbEssais.get(l.mission_id) || 0) + 1)
+    }
+    // Adresse de livraison sans rue : rejouer avec la MÊME adresse échoue à coup sûr (2JXX385 : 46 essais
+    // du 06 au 09/11/2026). Le chauffeur a été prévenu ; on attend qu'elle change (Olivier 09/11/2026).
+    for (let i = candidats.length - 1; i >= 0; i--) {
+      const c = candidats[i]
+      if (adresseRefusée.has(c.id) && adresseRefusée.get(c.id) === String(c.destination_address || '')) candidats.splice(i, 1)
     }
     // Recul : après 3 échecs, on n'insiste qu'une fois par heure (le compte VAB
     // était mobilisé toutes les 15 min pour rien, 12/09/2026).

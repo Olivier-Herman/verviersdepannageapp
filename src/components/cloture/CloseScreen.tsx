@@ -20,7 +20,8 @@ import { useEffect, useState } from 'react'
 import { useT } from '@/lib/i18n/I18nProvider'
 import SigPad from '@/components/mission/SigPad'
 import AddressField from '@/components/AddressField'
-import { splitAddress } from '@/lib/address-parts'
+import { splitAddress, adresseComplete } from '@/lib/address-parts'
+import DestinationLivraison, { type DestinationSaisie } from './DestinationLivraison'
 import type { OutcomeKey } from './ActionScreen'
 
 const GM_KEY = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || ''
@@ -98,6 +99,10 @@ export default function CloseScreen({
   // Livraison : y a-t-il des codes à reprendre de la 1re jambe ? Si non (REM natif
   // Touring), on demande le motif ici plutôt que de clôturer en « cause inconnue ».
   const [hasPrefill, setHasPrefill] = useState<boolean | null>(null)
+  // Livraison : adresse de la fiche sans rue (« 4910 Theux ») → le chauffeur la complète ici,
+  // sinon l'assistance refuse la clôture (2JXX385, Olivier 09/11/2026).
+  const [destFiche, setDestFiche] = useState<{ address: string | null; complete: boolean } | null>(null)
+  const [destLivr, setDestLivr]   = useState<DestinationSaisie | null>(null)
   const [motifs, setMotifs]       = useState<MotifItem[] | null>(null)
   const [suggested, setSuggested] = useState<string[]>([])
   const [suggestVia, setSuggestVia] = useState<string | null>(null)
@@ -141,6 +146,7 @@ export default function CloseScreen({
       .then(d => {
         if (!alive) return
         setHasPrefill(!!d.hasPrefill)
+        if (d.destination) setDestFiche({ address: d.destination.address ?? null, complete: !!d.destination.complete })
         // Motif déjà donné à l'aller : on le représélectionne au lieu de faire
         // recommencer. Le chauffeur reste libre d'en changer. Olivier 2026-08-12.
         if (!d.hasPrefill && d.priorMotifKey) setMotifKey(k => k || String(d.priorMotifKey))
@@ -255,8 +261,12 @@ export default function CloseScreen({
   // Sans numéro de maison : simple vérification au clic, jamais un blocage (établissement connu).
   const [askNoNumber, setAskNoNumber] = useState(false)
   const noHouseNumber = isRem && destMode === 'manual' && destOk && !String(effManual.num || '').trim()
+  // Adresse tapée à la main sans rue ou sans code postal : on le dit, sans bloquer (seule une adresse vide bloque).
+  const remAddrIncomplete = isRem && destMode === 'manual' && destOk
+    && !adresseComplete((effManual.rue || effManual.cp) ? `${effManual.rue} ${effManual.num}, ${effManual.cp} ${effManual.loc}` : typed)
+  const destLivrManque = isDelivered && !!destFiche && !destFiche.complete && !destLivr
   const canSubmit = isDpr ? !!dprCode
-    : isDelivered ? (hasPrefill !== false || !!motifKey)
+    : isDelivered ? ((hasPrefill !== false || !!motifKey) && !destLivrManque)
     : (!!motifKey && destOk)
 
   const scrollTo = (id: string) => {
@@ -279,6 +289,11 @@ export default function CloseScreen({
     // réflexe de rapidité — sans avoir à deviner. Olivier 2026-08-11.
     if (suggested.length) body.diag = { suggested, via: suggestVia, rank: suggested.indexOf(motifKey) }
     if (skipAssistance) body.skipAssistance = true
+    if (isDelivered && destLivr) {
+      body.manualAddress = destLivr.manual
+      body.destination = { address: destLivr.address, name: destLivr.name || undefined,
+        ...(destLivr.lat != null && destLivr.lng != null ? { lat: destLivr.lat, lng: destLivr.lng } : {}) }
+    }
 
     if (isRem) {
       if (destMode === 'manual') {
@@ -389,6 +404,10 @@ export default function CloseScreen({
           </>
         )}
 
+        {isDelivered && destFiche && !destFiche.complete && (
+          <DestinationLivraison current={destFiche.address} onChange={setDestLivr} />
+        )}
+
         {/* ── Dépose (remorquage) ────────────────────────────────────────── */}
         {isRem && (
           <div id="f2-dest" className="space-y-2 pt-1">
@@ -436,6 +455,11 @@ export default function CloseScreen({
                 {(manual.rue || manual.cp) && (
                   <p className="text-[11px] text-ink-muted bg-surface-2 border rounded-lg px-2 py-1.5">
                     → {[`${manual.rue} ${manual.num}`.trim(), `${manual.cp} ${manual.loc}`.trim()].filter(Boolean).join(', ')}
+                  </p>
+                )}
+                {remAddrIncomplete && (
+                  <p className="text-xs font-semibold text-amber-900 bg-amber-100 border border-amber-300 rounded-lg px-2 py-1.5 dark:text-amber-200 dark:bg-amber-500/10">
+                    {t('cloture.dest_incomplete_missing')}
                   </p>
                 )}
               </div>
@@ -591,12 +615,12 @@ export default function CloseScreen({
           <>
             {!busy && !canSubmit && (
               <p className="text-sm font-semibold text-amber-800 dark:text-amber-300 bg-amber-50 dark:bg-amber-500/10 border border-amber-200 rounded-xl px-3 py-2">
-                {isDpr || !motifKey ? t('cloture.pick_motif') : t('cloture.pick_place')}
+                {isDpr || (!motifKey && !destLivrManque) ? t('cloture.pick_motif') : destLivrManque ? t('cloture.dest_incomplete_title') : t('cloture.pick_place')}
               </p>
             )}
             <button onClick={() => (noHouseNumber ? setAskNoNumber(true) : submit())} disabled={busy || !canSubmit}
               className="w-full py-4 bg-green-600 disabled:opacity-40 text-white font-bold rounded-2xl text-base">
-              {busy ? t('cloture.submitting') : !canSubmit ? (isDpr || !motifKey ? t('cloture.pick_motif') : t('cloture.pick_place')) : t('cloture.submit')}
+              {busy ? t('cloture.submitting') : !canSubmit ? (isDpr || (!motifKey && !destLivrManque) ? t('cloture.pick_motif') : destLivrManque ? t('cloture.dest_complete_btn') : t('cloture.pick_place')) : t('cloture.submit')}
             </button>
           </>
         )}
