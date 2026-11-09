@@ -316,6 +316,7 @@ export const fr = {
     dest_incomplete_title:   'Adresse de livraison incomplète',
     dest_incomplete_text:    'La fiche dit seulement « {adresse} ». L’assistance a besoin de la rue et du numéro : où as-tu déposé le véhicule ?',
     dest_incomplete_missing: 'Il manque encore la rue ou le code postal.',
+    dest_pick_suggestion: 'Choisis l’adresse dans les suggestions : il faut la rue, le code postal et la localité.',
     dest_complete_btn:       'Complète l’adresse de livraison',
     dest_send:               'Envoyer l’adresse',
     dest_send_failed:        'L’adresse n’est pas partie. Réessaie ou appelle le dispatch.',

@@ -310,6 +310,7 @@ export const sq: Dictionary = {
     dest_incomplete_title:   'Adresa e dorëzimit është e paplotë',
     dest_incomplete_text:    'Fleta thotë vetëm « {adresse} ». Asistenca ka nevojë për rrugën dhe numrin: ku e le automjetin?',
     dest_incomplete_missing: 'Mungon ende rruga ose kodi postar.',
+    dest_pick_suggestion: 'Zgjidh adresën nga sugjerimet: duhen rruga, kodi postar dhe qyteti.',
     dest_complete_btn:       'Plotëso adresën e dorëzimit',
     dest_send:               'Dërgo adresën',
     dest_send_failed:        'Adresa nuk u dërgua. Provo përsëri ose telefono dispeçerin.',

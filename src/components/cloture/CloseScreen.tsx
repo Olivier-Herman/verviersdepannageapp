@@ -20,7 +20,7 @@ import { useEffect, useState } from 'react'
 import { useT } from '@/lib/i18n/I18nProvider'
 import SigPad from '@/components/mission/SigPad'
 import AddressField from '@/components/AddressField'
-import { splitAddress, adresseComplete } from '@/lib/address-parts'
+import { splitAddress } from '@/lib/address-parts'
 import DestinationLivraison, { type DestinationSaisie } from './DestinationLivraison'
 import type { OutcomeKey } from './ActionScreen'
 
@@ -257,13 +257,16 @@ export default function CloseScreen({
     const p = splitAddress(typed)
     return { ...manual, rue: p.street || typed, num: p.number, cp: p.zip, loc: p.city }
   })()
-  const destOk = !isRem || (destMode === 'list' ? !!garageCid : !!(manual.rue || manual.cp || typed))
+  // « Autre adresse » = une suggestion CHOISIE, avec rue, code postal et localité (Olivier 09/11/2026, 1WEE625 :
+  // « Luxud saint vith » tapé sans choisir → Touring a créé le remorquage en « CHECK ADDRESS »). Le texte libre
+  // ne suffit plus : l'assistance reprend ces champs tels quels et ne les accepte plus corrigés après coup.
+  const adresseChoisie = !!coords && !!manual.rue && !!manual.cp && !!manual.loc
+  const destOk = !isRem || (destMode === 'list' ? !!garageCid : adresseChoisie)
   // Sans numéro de maison : simple vérification au clic, jamais un blocage (établissement connu).
   const [askNoNumber, setAskNoNumber] = useState(false)
   const noHouseNumber = isRem && destMode === 'manual' && destOk && !String(effManual.num || '').trim()
-  // Adresse tapée à la main sans rue ou sans code postal : on le dit, sans bloquer (seule une adresse vide bloque).
-  const remAddrIncomplete = isRem && destMode === 'manual' && destOk
-    && !adresseComplete((effManual.rue || effManual.cp) ? `${effManual.rue} ${effManual.num}, ${effManual.cp} ${effManual.loc}` : typed)
+  // Texte tapé sans suggestion choisie, ou suggestion sans rue / code postal (une ville seule) : on le dit.
+  const remAddrIncomplete = isRem && destMode === 'manual' && !!typed && !adresseChoisie
   const destLivrManque = isDelivered && !!destFiche && !destFiche.complete && !destLivr
   const canSubmit = isDpr ? !!dprCode
     : isDelivered ? ((hasPrefill !== false || !!motifKey) && !destLivrManque)
@@ -447,7 +450,8 @@ export default function CloseScreen({
                   onChange={e => setManual({ ...manual, nom: e.target.value })}
                   className="w-full border rounded-xl px-3 py-2.5 text-sm bg-surface" />
                 <AddressField
-                  value={addrText} onChange={setAddrText} gmKey={GM_KEY}
+                  value={addrText} gmKey={GM_KEY}
+                  onChange={v => { setAddrText(v); setCoords(null); setManual(m => ({ ...m, rue: '', num: '', cp: '', loc: '' })) }}
                   placeholder={t('cloture.addr_search_ph')}
                   onSelect={(_a, lat, lng) => setCoords({ lat, lng })}
                   onParts={p => setManual(m => ({ ...m, rue: p.rue, num: p.num, cp: p.cp, loc: p.loc, nom: m.nom || p.name || '' }))}
@@ -459,7 +463,7 @@ export default function CloseScreen({
                 )}
                 {remAddrIncomplete && (
                   <p className="text-xs font-semibold text-amber-900 bg-amber-100 border border-amber-300 rounded-lg px-2 py-1.5 dark:text-amber-200 dark:bg-amber-500/10">
-                    {t('cloture.dest_incomplete_missing')}
+                    {t('cloture.dest_pick_suggestion')}
                   </p>
                 )}
               </div>
