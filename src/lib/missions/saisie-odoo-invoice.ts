@@ -15,6 +15,7 @@
 // Partner Parquet = res.partner 65 (mention signature élec portée par le partner).
 // Olivier 2026-08-10 / 2026-09-03. Cf [[project_facturation_saisie_module]].
 
+import { lendemain } from '@/lib/missions/saisie-billing'
 import { createDraftInvoice, type QuoteLine, type ProductCode } from '@/lib/odoo-quote'
 import { attachToOdoo } from '@/lib/odoo-attachment'
 
@@ -91,7 +92,7 @@ export async function createSaisieParquetInvoice(sb: any, dossierId: string, efI
     `État de frais ${ef.numero}`,
     d.dossier_ref ? `Notice / dossier : ${d.dossier_ref}` : '',
     `Véhicule ${d.vehicle_plate || ''} ${veh}`.trim(),
-    ef.period_from && ef.period_to ? `Période du ${fmtD(ef.period_from)} au ${fmtD(ef.period_to)}` : '',
+    ef.period_from && ef.period_to ? `Période du ${fmtD(lendemain(ef.period_from))} au ${fmtD(ef.period_to)}` : '',
   ].filter(Boolean)
 
   try {

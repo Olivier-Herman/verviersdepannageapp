@@ -74,6 +74,13 @@ interface TariffLine {
 const r2 = (n: number) => Math.round(n * 100) / 100
 const dayStart = (iso: string) => { const d = new Date(iso); d.setHours(0, 0, 0, 0); return d }
 
+/** Jour suivant (AAAA-MM-JJ) : début affiché d'un gardiennage, qui ne compte pas le jour d'enlèvement. */
+export const lendemain = (d: string | null | undefined): string => {
+  if (!d) return ''
+  const t = new Date(`${String(d).slice(0, 10)}T12:00:00Z`); t.setUTCDate(t.getUTCDate() + 1)
+  return t.toISOString().slice(0, 10)
+}
+
 // Nuits pleines rattachées à leur année, entre deux dates (le jour de `from` n'est
 // pas compté ; chaque nuit compte pour l'année de son jour de début).
 function nightsByYear(from: string, to: string): Map<number, number> {

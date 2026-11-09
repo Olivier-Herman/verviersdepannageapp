@@ -12,6 +12,7 @@
 //     suivi & mentions ; bandeau légal.
 // Montants issus de computeSaisieBilling → identiques à la fiche.
 
+import { lendemain } from '@/lib/missions/saisie-billing'
 import React from 'react'
 import { Document, Page, Text, View, StyleSheet, Image, renderToBuffer } from '@react-pdf/renderer'
 import { readFileSync } from 'fs'
@@ -136,12 +137,17 @@ function logoDataUrl(): string | null {
   catch { return null }
 }
 
+// Le gardiennage commence le LENDEMAIN de l'enlèvement (nuits pleines) : la taxation de Liège a refusé « du 12/09 »
+// pour un enlèvement du 12/09 (563218-26 et 563243-26, 06/11/2026). La période enregistrée commence au jour exclu ;
+// on affiche le jour suivant. Les lignes d'une nouvelle année (« 01/01 ») commencent déjà au bon jour.
+const debutAffiche = (from: string) => /-01-01$/.test(from.slice(0, 10)) ? from : lendemain(from)
+
 // Libellé « meta » sous chaque ligne (comme la maquette).
 function lineMeta(l: SaisieBillingResult['lines'][number], parkedAt: string): string {
   if (l.kind === 'SERV-PEC') return `Intervention du ${fmtD(parkedAt)} — forfait de base`
   if (l.kind === 'SERV-KM')  return `Kilométrage facturé au-delà de la franchise`
   if (l.kind === 'SERV-DIV') return `Frais administratifs de dossier`
-  if (l.kind === 'SERV-PARC' && l.period) return `Du ${fmtD(l.period.from)} au ${fmtD(l.period.to)} — ${l.qty} jour${l.qty > 1 ? 's' : ''} au tarif ${l.period.year}`
+  if (l.kind === 'SERV-PARC' && l.period) return `Du ${fmtD(debutAffiche(l.period.from))} au ${fmtD(l.period.to)} — ${l.qty} jour${l.qty > 1 ? 's' : ''} au tarif ${l.period.year}`
   if (l.kind === 'SERV-PARC') return `${l.qty} jour${l.qty > 1 ? 's' : ''}`
   return ''
 }
@@ -149,7 +155,7 @@ function lineMeta(l: SaisieBillingResult['lines'][number], parkedAt: string): st
 function EtatFraisDoc({ input, qr, logo }: { input: EtatFraisInput; qr: string | null; logo: string | null }) {
   const b = input.billing
   const tva = b.totalTvac - b.totalHtva
-  const period = `${input.periodFrom ? 'du ' + fmtD(input.periodFrom) + ' au ' : ''}${fmtD(input.periodTo)}`
+  const period = `${input.periodFrom ? 'du ' + fmtD(lendemain(input.periodFrom)) + ' au ' : ''}${fmtD(input.periodTo)}`
   return (
     <Document>
       <Page size="A4" style={styles.page}>
