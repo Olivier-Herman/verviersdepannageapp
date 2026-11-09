@@ -33,7 +33,10 @@ export async function settleRootIfDone(sb: any, anyMissionId: string, actorId?: 
   if (root.levee_saisie_type === 'temporaire') return toZoneT(sb, d.root_id, root, number, refs, actorId)
   const upd: Record<string, any> = { status: 'completed', completed_at: undefined, updated_at: now }
   delete upd.completed_at
-  if (number && !root.invoice_number) { upd.invoice_number = number; upd.invoice_method = root.invoice_method || 'manual'; upd.invoiced_at = root.invoiced_at || now }
+  if (number && !root.invoice_number) { upd.invoice_number = number; upd.invoice_method = root.invoice_method || 'manual' }
+  // Date de facturation posée même quand le numéro l'était déjà (brouillon validé ensuite) : sans elle, la fiche
+  // sort du délai médian et du compteur « facturées » du tableau de bord (387 fiches au 09/11/2026).
+  if ((number || root.invoice_number) && !root.invoiced_at) upd.invoiced_at = now
   const { error } = await sb.from('incoming_missions').update(upd).eq('id', d.root_id).eq('status', 'to_invoice')
   if (error) return { settled: false, reason: error.message }
   await sb.from('mission_logs').insert({
@@ -51,7 +54,10 @@ async function toZoneT(sb: any, rootId: string, root: any, number: string | null
   const garage = (doc?.extracted as any)?.garagiste || null
   const now = new Date().toISOString()
   const upd: Record<string, any> = { status: 'parked', parc_zone_key: 'T', zone_t_at: now, zone_t_garage: garage, updated_at: now }
-  if (number && !root.invoice_number) { upd.invoice_number = number; upd.invoice_method = root.invoice_method || 'manual'; upd.invoiced_at = root.invoiced_at || now }
+  if (number && !root.invoice_number) { upd.invoice_number = number; upd.invoice_method = root.invoice_method || 'manual' }
+  // Date de facturation posée même quand le numéro l'était déjà (brouillon validé ensuite) : sans elle, la fiche
+  // sort du délai médian et du compteur « facturées » du tableau de bord (387 fiches au 09/11/2026).
+  if ((number || root.invoice_number) && !root.invoiced_at) upd.invoiced_at = now
   const { error } = await sb.from('incoming_missions').update(upd).eq('id', rootId).eq('status', 'to_invoice')
   if (error) return { settled: false, reason: error.message }
   await sb.from('mission_logs').insert({

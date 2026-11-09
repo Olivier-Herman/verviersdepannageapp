@@ -79,6 +79,8 @@ export async function syncDraftInvoiceNumbers(sb: any, odooIds: number[]): Promi
     out[mv.id] = String(mv.name)
     const url = buildInvoiceUrl(mv.id, mv.move_type)
     await sb.from('incoming_missions').update({ invoice_number: mv.name, invoice_url: url, updated_at: now }).eq('invoice_odoo_id', mv.id).is('invoice_number', null).then(() => {}, () => {})
+    // Facture validée = facturée : date posée si absente (délai médian et « facturées » du tableau de bord).
+    await sb.from('incoming_missions').update({ invoiced_at: now }).eq('invoice_odoo_id', mv.id).is('invoiced_at', null).then(() => {}, () => {})
     await sb.from('mission_billed_items').update({ invoice_number: mv.name }).eq('invoice_odoo_id', mv.id).is('invoice_number', null).then(() => {}, () => {})
   }
   return out
