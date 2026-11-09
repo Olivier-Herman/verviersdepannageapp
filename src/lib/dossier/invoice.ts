@@ -240,6 +240,17 @@ async function invoiceDossierGroupsLocked(sb: any, d: Dossier, input: { anyMissi
         perLeg.push({ leg, lines, period_from: null, period_to: null })
       }
     }
+    // Un seul supplément carburant par dossier et par facture : chez Touring (COMEX), le dépannage suivi d'un
+    // remorquage est à 0 € et le supplément n'est payé qu'une fois (Olivier 09/11/2026). Le premier est gardé.
+    {
+      const unSeul = (ls: QuoteLine[], vus: Set<string>) => {
+        const garde = ls.filter(l => !/^Supplément carburant/i.test(l.name) || (!vus.has(l.name) && !!vus.add(l.name)))
+        ls.splice(0, ls.length, ...garde)
+      }
+      const vusS = new Set<string>(), vusP = new Set<string>()
+      for (const sct of sections) unSeul(sct.lines, vusS)
+      for (const p of perLeg) unSeul(p.lines, vusP)
+    }
     // Groupes à 0 € (gardiennage sans nuit facturable, relivraison revenue au
     // parc…), même client, pas encore couverts : ils sont COUVERTS par la
     // facture du dossier (ils en sortent, poste marqué, journal) mais SANS
