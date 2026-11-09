@@ -45,8 +45,9 @@ export function trajetEstimeMin(m: { incident_lat?: any; incident_lng?: any; des
 }
 function delaiPasArrive(m: any, defaut: number): number {
   const t = trajetEstimeMin(m)
-  // Olivier 06/11/2026 : trop rapide à +30 min, pas le temps de décharger : trajet + 60 min, jamais avant le réglage (90 min).
-  return t == null ? defaut : Math.max(defaut, t + 60)
+  // Olivier 06/11/2026 : trop rapide à +30 min, pas le temps de décharger. 09/11/2026 : souvent deux véhicules chargés,
+  // livrés l'un après l'autre → trajet estimé × 1,5 + 150 min, jamais avant le réglage (90 min).
+  return t == null ? defaut : Math.max(defaut, Math.round(t * 1.5) + 150)
 }
 
 /**
@@ -54,7 +55,7 @@ function delaiPasArrive(m: any, defaut: number): number {
  * envoyé pendant la mission (aucun service payant). Position récente (≤ 15 min) :
  *   - à plus d'1 km de la destination → il roule encore : on ne demande rien ;
  *   - à moins d'1 km depuis au moins 20 min → il est arrivé et n'a pas pointé : on demande.
- * Sans position récente (GPS coupé, pas de coordonnées de destination) : règle en temps (trajet estimé + 60 min,
+ * Sans position récente (GPS coupé, pas de coordonnées de destination) : règle en temps (trajet estimé × 1,5 + 150 min,
  * jamais avant le réglage).
  */
 async function doitDemanderArrivee(sb: Sb, m: any, defaut: number): Promise<boolean> {
