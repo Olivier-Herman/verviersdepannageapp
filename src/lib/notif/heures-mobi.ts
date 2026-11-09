@@ -55,6 +55,21 @@ async function horaireReglage(d: Date): Promise<boolean> {
   return jour >= +m[1] && jour <= +m[2] && min >= +m[3] * 60 + +m[4] && min < +m[5] * 60 + +m[6]
 }
 
+/**
+ * Mobi travaille-t-il ce JOUR-là pour VD ? Les agents suivent ses jours, pas ses heures (Olivier 09/11/2026 : « un agent
+ * qui a un passage à 7 h un jour que je travaille doit passer »). Ses notifications, elles, restent à ses heures.
+ */
+export async function mobiJourVD(d = new Date()): Promise<boolean> {
+  const jourBxl = (t: number) => new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Brussels' }).format(new Date(t))
+  const slots = await creneauxAgenda()
+  if (slots) return slots.some(s => jourBxl(s.start) === jourBxl(d.getTime()))
+  const v = (await getBusinessText('mobi_heures_vd').catch(() => '')) || '1-4 09:00-18:00'
+  const m = v.match(/(\d)-(\d)/)
+  if (!m) return true
+  const { wd } = bxl(d); const jour = wd === 0 ? 7 : wd
+  return jour >= +m[1] && jour <= +m[2]
+}
+
 export async function mobiEnHeuresVD(d = new Date()): Promise<boolean> {
   const slots = await creneauxAgenda()
   if (slots) return slots.some(s => d.getTime() >= s.start && d.getTime() < s.end)

@@ -35,8 +35,9 @@ export async function facturationAutoSuspendue(sb: any): Promise<boolean> {
 // agendas), comptes d'achat, et ses notifications Telegram (gardées, envoyées à la reprise). Ce qu'une personne fait à
 // la main (dans VD Soft ou en session avec Claude) n'est jamais bloqué. Restent en marche, outils de l'équipe : Sam et
 // Sonic, Max, l'arrivée des missions des assistances, le contrôle du parc.
-// Option « pause automatique en dehors de mes heures » (réglage assistants_pause_hors_heures, oui / non) : hors des
-// heures VD de Mobi (mobiEnHeuresVD), comme une pause.
+// Option « pause automatique en dehors de mes heures » (réglage assistants_pause_hors_heures, oui / non) : les jours où
+// Mobi ne travaille pas pour VD (mobiJourVD), comme une pause. Un jour de travail, chaque agent passe à son heure, même
+// avant l'arrivée de Mobi (Olivier 09/11/2026) ; ses notifications Telegram restent limitées à ses heures.
 
 export async function pauseManuelle(sb: any): Promise<boolean> {
   return !(await getAutomationEnabled(sb, AUTOMATION_FLAGS.facturationAuto, true))
@@ -57,8 +58,8 @@ export async function definirPauseHorsHeures(sb: any, active: boolean, par: { id
 export async function assistantsEnPause(sb: any): Promise<boolean> {
   if (await pauseManuelle(sb)) return true
   if (!(await pauseHorsHeuresActive(sb))) return false
-  const { mobiEnHeuresVD } = await import('@/lib/notif/heures-mobi')
-  return !(await mobiEnHeuresVD())
+  const { mobiJourVD } = await import('@/lib/notif/heures-mobi')
+  return !(await mobiJourVD())
 }
 
 // Chaque bloc se met aussi en pause seul (Olivier 28/10/2026 : « chaque bloc est cliquable pour activer ou désactiver
