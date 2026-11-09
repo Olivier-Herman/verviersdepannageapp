@@ -15,6 +15,7 @@
 
 import { lignesGarantie } from '@/lib/facturation/garantie'
 import { nightsBetween, brusselsMidnightAfter } from '@/lib/parc/nights'
+import { jourBruxelles } from '@/lib/time/bxl-offset'
 import { lineKind } from '@/lib/odoo-quote'
 import { createAdminClient }        from '@/lib/supabase'
 import { buildDossier, type Dossier, type DossierLeg } from '@/lib/dossier/build'
@@ -190,10 +191,16 @@ async function invoiceDossierGroupsLocked(sb: any, d: Dossier, input: { anyMissi
         // Fin de période : sortie réelle, sinon la date choisie (minuit belge du lendemain), sinon maintenant.
         // « jusqu'au JJ inclus » = minuit suivant JJ ; si JJ est aujourd'hui, la nuit n'est pas
         // encore passée → on coupe MAINTENANT (audit 08/09 : la date du jour faisait échouer).
+        // Date FUTURE (Olivier 09/11/2026) : gardiennage facturé d'AVANCE jusqu'à ce jour inclus ; la période
+        // suivante s'ouvre le lendemain. Le véhicule sort avant : rien n'est crédité (0 nuit sur la suite) ;
+        // il sort après : seules les nuits suivantes restent dues. Aujourd'hui : on coupe maintenant, comme avant.
         let chosen: string | null = null
+        let avance = false
         if (!m.parc_exit_at && input.periodTo?.[leg.mission_id]) {
-          const midnight = brusselsMidnightAfter(input.periodTo[leg.mission_id])
-          chosen = new Date(midnight).getTime() > Date.now() ? nowIso : midnight
+          const jour = input.periodTo[leg.mission_id]
+          const midnight = brusselsMidnightAfter(jour)
+          avance = jour > jourBruxelles()
+          chosen = avance ? midnight : (new Date(midnight).getTime() > Date.now() ? nowIso : midnight)
           if (new Date(chosen).getTime() <= new Date(from).getTime()) throw new Error(`${d.number ?? d.ref}${leg.letter} : la date de fin de gardiennage doit être après l'entrée (${fmtDay(from)})`)
         }
         const to   = m.parc_exit_at || chosen || nowIso
@@ -204,7 +211,7 @@ async function invoiceDossierGroupsLocked(sb: any, d: Dossier, input: { anyMissi
         const days = chosen ? Math.max(0, nightsBetween(from, to) - freeDays) : (leg.days || 0)
         const lines: QuoteLine[] = []
         if (Number(m.storage_flat_htva) > 0 && !m.storage_waived) {
-          lines.push({ kind: 'SERV-PARC', name: `Forfait gardiennage — zone ${m.parc_zone_key || '?'} du ${fmtDay(from)} au ${fmtDay(to)}`, qty: 1, price_unit: r2(Number(m.storage_flat_htva)) })
+          lines.push({ kind: 'SERV-PARC', name: `Forfait gardiennage${avance ? ' facturé d’avance' : ''} — zone ${m.parc_zone_key || '?'} du ${fmtDay(from)} au ${fmtDay(to)}`, qty: 1, price_unit: r2(Number(m.storage_flat_htva)) })
         } else if (!chosen && (leg as any).gard_split && days > 0) {
           // Levée de saisie au milieu de la période : deux lignes, chacune à son tarif,
           // exactement comme le calcul du dossier (plus de prix moyen arrondi).
@@ -215,7 +222,7 @@ async function invoiceDossierGroupsLocked(sb: any, d: Dossier, input: { anyMissi
         } else if (days > 0 && leg.amount_htva > 0 && (leg.days || 0) > 0) {
           // Prix du tarif quand il est connu ; sinon moyenne (forfaits, cas particuliers).
           const pu = !chosen && (leg as any).day_price && Math.abs((leg as any).day_price * (leg.days as number) - leg.amount_htva) < 0.01 ? r2((leg as any).day_price) : r2(leg.amount_htva / (leg.days as number))
-          lines.push({ kind: 'SERV-PARC', name: `Gardiennage (${leg.regime}) — zone ${m.parc_zone_key || '?'} du ${fmtDay(from)} au ${fmtDay(new Date(new Date(to).getTime() - 1000).toISOString())} : ${days} jour${days > 1 ? 's' : ''}`, qty: days, price_unit: pu })
+          lines.push({ kind: 'SERV-PARC', name: `Gardiennage${avance ? ' facturé d’avance' : ''} (${leg.regime}) — zone ${m.parc_zone_key || '?'} du ${fmtDay(from)} au ${fmtDay(new Date(new Date(to).getTime() - 1000).toISOString())} : ${days} jour${days > 1 ? 's' : ''}`, qty: days, price_unit: pu })
         } else {
           warnings.push(`${d.number}${leg.letter} : 0 jour facturable, groupe ignoré`); continue
         }

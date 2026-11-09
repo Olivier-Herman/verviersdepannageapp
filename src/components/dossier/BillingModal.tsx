@@ -217,10 +217,14 @@ export default function BillingModal({ d, onClose, onDone, initialSelection }: {
                   {l.kind === 'gard' && l.open && sel.has(l.mission_id) && (
                     <div className="ml-6 mb-1 flex flex-wrap items-center gap-2 text-[11px] text-ink-secondary">
                       <span>Gardiennage facturé jusqu'au</span>
-                      <input type="date" value={periodTo[l.mission_id] || today} max={today} min={l.started_at ? String(l.started_at).slice(0, 10) : undefined}
+                      <input type="date" value={periodTo[l.mission_id] || today} min={l.started_at ? String(l.started_at).slice(0, 10) : undefined}
                         onChange={e => setPeriodTo(p => ({ ...p, [l.mission_id]: e.target.value || today }))}
                         className="border rounded px-1.5 py-0.5 bg-surface text-ink text-[11px]" />
                       <span className="text-ink-faint">inclus · le solde continue dans un nouveau groupe dès le lendemain</span>
+                      {/* Date future = facturé d'avance (Olivier 09/11/2026) */}
+                      {(periodTo[l.mission_id] || today) > today && (
+                        <span className={`w-full rounded-md px-2 py-1 font-semibold ${TONE.warn}`}>Facturé d’avance : si le véhicule sort avant cette date, rien n’est remboursé ; s’il sort après, seuls les jours suivants restent à facturer.</span>
+                      )}
                     </div>
                   )}
                   </React.Fragment>
@@ -236,7 +240,7 @@ export default function BillingModal({ d, onClose, onDone, initialSelection }: {
         {!result && !preview && (
           <>
             {missingClient && <div className={`rounded-lg px-3 py-2 text-xs ${TONE.bad}`}>Un groupe coché n'a pas de client de facturation. Renseigne-le sur le groupe (ligne « Facturer à ») avant de facturer.</div>}
-            {runningChosen && <div className={`rounded-lg px-3 py-2 text-xs ${TONE.warn}`}>Un gardiennage en cours est coché : sa période s'arrête à aujourd'hui et un nouveau groupe s'ouvre sur la suite.</div>}
+            {runningChosen && <div className={`rounded-lg px-3 py-2 text-xs ${TONE.warn}`}>Un gardiennage en cours est coché : sa période s'arrête à la date choisie (aujourd'hui par défaut, ou plus tard pour facturer d'avance) et un nouveau groupe s'ouvre sur la suite.</div>}
             {!preview && d.state.open && /relivraison/i.test(String(d.state.reason || '')) && <div className={`rounded-lg px-3 py-2 text-xs ${TONE.warn}`}>⚠ Relivraison en cours : la facturer maintenant, c'est facturer avant la livraison.</div>}
             {d.state.open && <div className={`rounded-lg px-3 py-2 text-xs ${TONE.live}`}>Dossier en cours ({d.state.reason}) : facturation manuelle autorisée. L'automatique attendra la sortie du véhicule.</div>}
             {error && <div className={`rounded-lg px-3 py-2 text-xs ${TONE.bad}`}>{error}</div>}
