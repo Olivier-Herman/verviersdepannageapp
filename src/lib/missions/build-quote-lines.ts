@@ -176,6 +176,18 @@ export function buildOverrideLines(
   return null
 }
 
+/**
+ * Règles de prix à montant fixe (ex. « Supplément carburant Touring » +2,50 €) : l'estimation les ajoute au total,
+ * mais aucune ligne ne les portait, la facture sortait donc sans elles (2JNW921, 2BDN091, 09/11/2026). Une ligne
+ * SERV-DIV par règle. VAB a son propre supplément (lib/facturation/vab-fuel) : jamais compté deux fois.
+ */
+export function ruleLines(estimate: PriceEstimate, mission: { source?: string | null }): QuoteLine[] {
+  if (String(mission.source || '').toLowerCase() === 'vab') return []
+  return (estimate.breakdown || [])
+    .filter(b => /^Règle: /.test(b.label) && Number(b.amount) > 0 && /€\s*$/.test(String(b.note || '')) && /^\+/.test(String(b.note || '')))
+    .map(b => ({ kind: 'SERV-DIV' as any, name: b.label.replace(/^Règle: /, ''), qty: 1, price_unit: Math.round(Number(b.amount) * 100) / 100 }))
+}
+
 export function buildLinesFromEstimate(
   estimate: PriceEstimate,
   mission:  MissionLike,
@@ -265,6 +277,8 @@ export function buildLinesFromEstimate(
       })
     }
   }
+
+  lines.push(...ruleLines(estimate, mission))
 
   if (estimate.surcharge_pct > 0 && estimate.surcharge_eur > 0) {
     // Majoration : on pousse directement le MONTANT calculé par l'estimation

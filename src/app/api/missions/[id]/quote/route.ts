@@ -16,7 +16,7 @@ import { getServerSession }      from 'next-auth'
 import { authOptions }           from '@/lib/auth'
 import { createAdminClient }     from '@/lib/supabase'
 import { estimateMissionPrice }  from '@/lib/missions/estimate-price'
-import { buildOverrideLines, buildInterventionDescription } from '@/lib/missions/build-quote-lines'
+import { buildOverrideLines, buildInterventionDescription, ruleLines } from '@/lib/missions/build-quote-lines'
 import { createSaleOrder, updateSaleOrder, createDraftInvoice, updateDraftInvoice, getInvoiceMove, findFleetVehicleByPlate, QuoteNotFoundError, type QuoteLine, type QuoteSection } from '@/lib/odoo-quote'
 import { attachFileToOrder, attachFileToInvoice, postChatterMessage, withOdooActor, odooRpc } from '@/lib/odoo'
 
@@ -219,6 +219,9 @@ async function handlePOST(req: Request, { params }: { params: { id: string } }) 
       price_unit: Math.round(pu * 100) / 100,
     })
   }
+
+  // Règles de prix à montant fixe (supplément carburant Touring…) : déjà dans total_eur, jamais en ligne (09/11/2026).
+  lines.push(...ruleLines(estimate, mission as any))
 
   if (estimate.surcharge_pct > 0 && estimate.surcharge_eur > 0) {
     // Majoration : montant exact déjà calculé (surcharge_eur), robuste quelle que
