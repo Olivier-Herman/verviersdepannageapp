@@ -252,6 +252,14 @@ export async function pollSaisieMailbox(sb: any, opts?: { top?: number; messages
     if (!statut && !correction && /Verviers D[ée]pannage\s+(Facture|Avoir|Note de cr[ée]dit)\s*\((R[ée]f|Ref)/i.test(msg.subject || '')) {
       await recordEvent(sb, msg, 'ignore', null, 'notre facture ou note de crédit renvoyée, pas un retour signé'); out.ignored++; continue
     }
+    // Transfert à un autre service (« TR: », nous seulement en copie) : les Frais de justice de Verviers ont transmis
+    // EDF-2026-0130 au Parquet de Tongres le 06/11/2026, avec notre PDF non signé ; il avait été lu comme accepté.
+    // Ce n'est jamais un retour signé : le mail reste dans la boîte pour être lu.
+    const transfert = /^\s*(TR|FW|Fwd|WG)\s*:/i.test(msg.subject || '') && Array.isArray(msg.to) && msg.to.length > 0
+      && !msg.to.includes(FOURRIERE_MAILBOX.toLowerCase())
+    if (!statut && !correction && transfert) {
+      await recordEvent(sb, msg, 'ignore', null, 'transmis à un autre service (nous en copie), pas un retour signé'); out.ignored++; continue
+    }
     try {
       if (statut) { await handleStatut(sb, msg, statut[1], out); continue }
       if (correction) { await handleCorrection(sb, msg, correction[1], out); continue }

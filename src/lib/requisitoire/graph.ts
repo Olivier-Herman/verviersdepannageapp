@@ -26,6 +26,8 @@ export interface GraphMessage {
   categories:       string[]
   hasAttachments:   boolean
   bodyPreview:      string
+  /** Destinataires directs (« À »), sans la copie. */
+  to?:              string[]
 }
 
 export interface GraphPdfAttachment {
@@ -72,7 +74,7 @@ async function authedGet(path: string): Promise<any> {
 export async function listInboxMessages(mailbox: string, top = 25): Promise<GraphMessage[]> {
   const data = await authedGet(
     `/users/${encodeURIComponent(mailbox)}/mailFolders/inbox/messages` +
-    `?$top=${top}&$select=id,subject,from,receivedDateTime,categories,hasAttachments,bodyPreview` +
+    `?$top=${top}&$select=id,subject,from,toRecipients,receivedDateTime,categories,hasAttachments,bodyPreview` +
     `&$orderby=receivedDateTime desc`,
   )
   return (data.value || []).map((m: any) => ({
@@ -83,6 +85,7 @@ export async function listInboxMessages(mailbox: string, top = 25): Promise<Grap
     categories:       Array.isArray(m.categories) ? m.categories : [],
     hasAttachments:   Boolean(m.hasAttachments),
     bodyPreview:      m.bodyPreview || '',
+    to:               (m.toRecipients || []).map((r: any) => String(r?.emailAddress?.address || '').toLowerCase()).filter(Boolean),
   }))
 }
 
