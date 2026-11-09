@@ -611,7 +611,11 @@ async function buildDossierUncached(anyMissionId: string, light: boolean, price 
       // ne sert plus qu'aux km affichés.
       const est: any = pre.get(m.id)?.est ?? null
       if (!priced) {
-        if (Number(m.special_tarif_htva) > 0) { amount = r2(Number(m.special_tarif_htva)); note = 'prix convenu' }
+        // Déjà facturé : le montant figé de la fiche peut dater d'avant la facture (lignes corrigées en facturant,
+        // 2FGT170 facturé 408,05 € pour 468,05 € figés). En léger, la facture fait foi, sinon le dossier reste
+        // « à facturer » dans la liste et la pastille (Olivier 09/11/2026).
+        if (billedRefs.length && billedHtva > 0) { amount = billedHtva; note = 'postes déjà facturés' }
+        else if (Number(m.special_tarif_htva) > 0) { amount = r2(Number(m.special_tarif_htva)); note = 'prix convenu' }
         else { amount = r2(Number(m.estimated_htva) || 0); note = Number(m.estimated_htva) > 0 ? 'estimation figée' : 'estimation à calculer'; if (!(Number(m.estimated_htva) > 0)) amountUnknown = true }
       } else {
         const built: { lines: any[]; has_tariff: boolean; reason?: string; failed?: boolean } = pre.get(m.id)?.built || { lines: [], has_tariff: false }
