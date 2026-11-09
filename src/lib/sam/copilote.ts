@@ -49,6 +49,39 @@ function delaiPasArrive(m: any, defaut: number): number {
   return t == null ? defaut : Math.max(defaut, t + 60)
 }
 
+/**
+ * « Tu es arrivé ? » (Olivier 09/11/2026 : encore trop tôt) : on regarde d'abord OÙ est le camion, avec le GPS déjà
+ * envoyé pendant la mission (aucun service payant). Position récente (≤ 15 min) :
+ *   - à plus d'1 km de la destination → il roule encore : on ne demande rien ;
+ *   - à moins d'1 km depuis au moins 20 min → il est arrivé et n'a pas pointé : on demande.
+ * Sans position récente (GPS coupé, pas de coordonnées de destination) : règle en temps (trajet estimé + 60 min,
+ * jamais avant le réglage).
+ */
+async function doitDemanderArrivee(sb: Sb, m: any, defaut: number): Promise<boolean> {
+  const dLat = Number(m.destination_lat), dLng = Number(m.destination_lng)
+  if (m.assigned_to && m.destination_lat != null && m.destination_lng != null && Number.isFinite(dLat) && Number.isFinite(dLng)) {
+    const { data: u } = await sb.from('users').select('last_location_lat, last_location_lng, location_updated_at').eq('id', m.assigned_to).maybeSingle()
+    const frais = u?.location_updated_at && Date.now() - new Date(u.location_updated_at).getTime() <= 15 * 60_000 && u.last_location_lat != null
+    if (frais) {
+      const dist = (a: number, b: number) => {
+        const R = 6371000, rad = (x: number) => x * Math.PI / 180
+        const s = Math.sin(rad(dLat - a) / 2) ** 2 + Math.cos(rad(a)) * Math.cos(rad(dLat)) * Math.sin(rad(dLng - b) / 2) ** 2
+        return 2 * R * Math.asin(Math.min(1, Math.sqrt(s)))
+      }
+      if (dist(Number(u.last_location_lat), Number(u.last_location_lng)) > 1000) return false
+      // Sur place depuis quand ? Premier relevé à moins d'1 km dans l'heure (positions de la mission).
+      const { data: pings } = await sb.from('mission_position_pings').select('lat, lng, recorded_at').eq('mission_id', m.id)
+        .gte('recorded_at', new Date(Date.now() - 3600_000).toISOString()).order('recorded_at', { ascending: true }).limit(200)
+      let depuis: number | null = null
+      for (const p of pings || []) {
+        if (dist(Number(p.lat), Number(p.lng)) <= 1000) { if (depuis == null) depuis = new Date(p.recorded_at).getTime() } else depuis = null
+      }
+      return depuis != null && Date.now() - depuis >= 20 * 60_000
+    }
+  }
+  return minDepuis(m.loaded_at) >= delaiPasArrive(m, defaut)
+}
+
 export async function detecter(sb: Sb, m: any, lang: Lang, pasArriveMin: number): Promise<Probleme | null> {
   const L = (fr: string, sq: string) => (lang === 'sq' ? sq : fr)
   const p = prenom(m.driver_name)
@@ -136,7 +169,7 @@ export async function detecter(sb: Sb, m: any, lang: Lang, pasArriveMin: number)
 
   // 5. Chargé depuis longtemps, jamais « Arrivé à destination ». Délai = trajet estimé + 60 min (90 min au moins) quand les deux
   //    positions sont connues (Olivier 28/10/2026 : un long trajet est normal), sinon le réglage (90 min).
-  if (m.status === 'delivering' && m.loaded_at && minDepuis(m.loaded_at) >= delaiPasArrive(m, pasArriveMin) && !SIABIS.includes(m.source)) {
+  if (m.status === 'delivering' && m.loaded_at && !SIABIS.includes(m.source) && await doitDemanderArrivee(sb, m, pasArriveMin)) {
     const ou = m.destination_address ? String(m.destination_address).split(',').slice(0, 2).join(',') : L('la destination', 'destinacioni')
     return {
       kind: 'pas_arrive',
