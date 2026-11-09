@@ -152,6 +152,15 @@ export async function importComexByRefs(opts: {
     await supabase.from('incoming_missions')
       .update({ source_format: 'comex', raw_content: comexRaw, updated_at: new Date().toISOString() })
       .eq('id', existing.id)
+    // Renvoyée par Touring après un refus (même n° de commande) : la fiche annulée revient (09/11/2026, 2KAP202).
+    if (String(existing.status) === 'cancelled') {
+      const contenu: Record<string, any> = {}
+      for (const f of COMEX_OVERWRITE_FIELDS) { const v = (payload as any)[f]; if (v !== undefined && v !== null && v !== '') contenu[f] = v }
+      const { reactiverSiRenvoyee } = await import('@/lib/touring/resend-reactivate')
+      if (await reactiverSiRenvoyee(supabase, { missionId: existing.id, statutComex: String(match.COD_STATUT_MTR || ''), detail, contenu, dossier: String(match.CID_DOS || '') })) {
+        return { matched: true, missionId: existing.id, externalId, action: 'linked' }
+      }
+    }
     if (['new', 'dispatching'].includes(String(existing.status)) && !(existing as any).pause_released_at) {   // pas une mission en pause (29/10/2026)
       const upd: Record<string, any> = {}
       for (const f of COMEX_OVERWRITE_FIELDS) {

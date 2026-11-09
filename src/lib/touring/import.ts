@@ -97,6 +97,14 @@ export async function runTouringImport(opts: { mode: TouringImportMode }): Promi
       if (existing) {
         // Déjà liée à COMEX → rien à faire.
         if ((existing as any).source_format === 'comex') {
+          // Renvoyée par Touring après un refus : la fiche annulée revient (09/11/2026, 2KAP202).
+          if ((existing as any).status === 'cancelled' && mode !== 'preview') {
+            const { reactiverSiRenvoyee } = await import('@/lib/touring/resend-reactivate')
+            if (await reactiverSiRenvoyee(sb, { missionId: (existing as any).id, statutComex: String((m as any).COD_STATUT_MTR || ''), detail, dossier: String(m.CID_DOS || '') })) {
+              results.push({ dossier: m.CID_DOS, plaque: m.NUM_PLAQUE, action: 'linked', external_id: externalId, reason: 'renvoyée par Touring → fiche réactivée' })
+              continue
+            }
+          }
           results.push({ dossier: m.CID_DOS, plaque: m.NUM_PLAQUE, action: 'skipped', external_id: externalId, reason: 'déjà liée COMEX' })
           skipped++
           continue
