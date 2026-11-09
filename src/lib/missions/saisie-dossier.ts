@@ -189,7 +189,9 @@ export interface GenerateEfResult {
 export async function generateEtatFrais(
   sb: any,
   dossierId: string,
-  opts: { billingTo?: string; recipient?: SaisieRecipient; chargedKmBeyond?: number; roundTripKm?: number; persist?: boolean } = {},
+  opts: { billingTo?: string; recipient?: SaisieRecipient; chargedKmBeyond?: number; roundTripKm?: number; persist?: boolean
+    /** Exception décidée par Olivier : une seule période jusqu'à billingTo si elle fait 61 nuits au plus (1RTB478, 09/11/2026). */
+    uneSeulePeriode61?: boolean } = {},
   userId?: string | null,
 ): Promise<GenerateEfResult> {
   const persist = opts.persist !== false   // défaut true ; false = aperçu (ne consomme pas de n°, n'avance pas)
@@ -265,7 +267,9 @@ export async function generateEtatFrais(
   // Règle du 09/10/2026 : la période s'arrête au plus tard au dernier jour du mois qui suit l'entrée (ou plus tôt :
   // remise Domaine, levée). Plus de série d'états de frais : ce qui dépasse n'est pas facturé.
   const firstPeriodEnd = d.parked_at ? firstBillableDate(d.parked_at) : null
-  if (firstPeriodEnd && billingTo > firstPeriodEnd) billingTo = firstPeriodEnd
+  const nuitsPeriode = (a: string, b: string) => Math.round((Date.parse(`${b.slice(0, 10)}T12:00:00Z`) - Date.parse(`${a.slice(0, 10)}T12:00:00Z`)) / 86_400_000)
+  const exception61 = !!opts.uneSeulePeriode61 && !!billingFrom && nuitsPeriode(String(billingFrom), billingTo) <= 61
+  if (firstPeriodEnd && billingTo > firstPeriodEnd && !exception61) billingTo = firstPeriodEnd
   const capped = false
   const target = billingTo
   // GARDE-FOU : une coupe antérieure au début de période (ex. Date IN Domaine
