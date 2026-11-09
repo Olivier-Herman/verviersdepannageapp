@@ -218,6 +218,9 @@ export function invalidateDossierCache(rootId?: string) {
   else LIGHT_CACHE.clear()
 }
 
+// Sources qui ne sont pas une assistance (police, client privé, garage, parc, reprises d'historique).
+const PAS_ASSISTANCE = /^(police_|garage|legacy_|fourriere_|demo_)|^(gardiennage|prive|francofolies|unknown)$/
+
 export async function buildDossier(anyMissionId: string, opts: { light?: boolean; price?: boolean; cache?: boolean } = {}): Promise<Dossier | null> {
   const light = !!opts.light
   const price = !!opts.price
@@ -507,6 +510,7 @@ async function buildDossierUncached(anyMissionId: string, light: boolean, price 
       && root.source === 'police_saisie' && !!root.domaine_remise_date && !(root.levee_saisie_at || root.levee_saisie_date)
       ? 'saisie' : String(m.mission_type || 'autre')
     let regimeEff = gardRegime   // régime tarifaire réellement appliqué (saisie → autre après levée)
+    let freeEff: number | undefined   // nuits offertes réellement appliquées (tarif, ou reprise par une assistance)
     const facts: { label: string; value: string }[] = []
     let title = '', subtitle = '', started: string | null = null, ended: string | null = null, open = false
 
@@ -550,7 +554,12 @@ async function buildDossierUncached(anyMissionId: string, light: boolean, price 
       const tarif = dayPriceByRegime[regimeEff]
       let dayPrice = tarif?.price || 0
       if (!dayPrice && rootEst?.parc_jours > 0) dayPrice = r2(Number(rootEst.parc_eur) / Number(rootEst.parc_jours))
-      days = Math.max(0, rawDays - (tarif?.free || 0))
+      // Appel police repris par une assistance (relivraison ou autre mission d'assistance dans le dossier) : les nuits
+      // offertes du gardiennage assistance s'appliquent au gardiennage police (Olivier 09/11/2026, AXA 0126572371).
+      const repriseAssistance = regime === 'autre' && root.source === 'police_accident'
+        && legRows.some(r => !r.dossier_leg && r.id !== root.id && r.source && !PAS_ASSISTANCE.test(String(r.source)))
+      freeEff = Math.max(tarif?.free || 0, repriseAssistance ? (dayPriceByRegime['assistance']?.free || 0) : 0)
+      days = Math.max(0, rawDays - freeEff)
       let split: { saisie: number; autre: number; autrePrice: number } | null = null
       if (regime === 'saisie' && levee && root.levee_saisie_date) {
         // Fin du jour de la levée en heure BELGE (avant : 23:59:59 UTC = 01:59 le lendemain,
@@ -571,7 +580,7 @@ async function buildDossierUncached(anyMissionId: string, light: boolean, price 
       if (m.no_charge_at) { amount = 0; nothing = `sans frais${m.no_charge_reason ? ' : ' + String(m.no_charge_reason) : ''}` }
       else if (m.storage_waived) { amount = 0; nothing = 'gardiennage offert (abandon volontaire)' }
       else if (Number(m.storage_flat_htva) > 0) { amount = r2(Number(m.storage_flat_htva)); note = 'forfait gardiennage' }
-      else if (days <= 0 && !open) { amount = 0; nothing = `aucune nuit facturable (${rawDays} nuit${rawDays > 1 ? 's' : ''}${(tarif?.free || 0) > 0 ? `, ${tarif?.free} offerte${(tarif?.free || 0) > 1 ? 's' : ''}` : ''})` }
+      else if (days <= 0 && !open) { amount = 0; nothing = `aucune nuit facturable (${rawDays} nuit${rawDays > 1 ? 's' : ''}${freeEff > 0 ? `, ${freeEff} offerte${freeEff > 1 ? 's' : ''}${repriseAssistance ? ' : reprise par l’assistance' : ''}` : ''})` }
       else if (split) {
         legSplit = { ...split, saisiePrice: dayPrice, cut: String(root.levee_saisie_date).slice(0, 10) }
         amount = r2(split.saisie * dayPrice + split.autre * split.autrePrice)
@@ -584,7 +593,7 @@ async function buildDossierUncached(anyMissionId: string, light: boolean, price 
       const originName = m.parc_origin_mission_id ? (legRows.find(x => x.id === m.parc_origin_mission_id)) : null
       facts.push({ label: 'Entrée', value: `${fmtD(started)}${originName?.assigned_to ? ' — ' + (nameById[originName.assigned_to] || '') : ''}` })
       facts.push({ label: 'Sortie', value: exit && m.parc_exit_reason === 'facturation' && ts(m.parc_exit_at)! > Date.now() ? `payé d’avance jusqu’au ${fmtD(new Date(ts(m.parc_exit_at)! - 1000).toISOString())} — la période suivante démarre ensuite` : exit ? `${fmtD(m.parc_exit_at)} — ${({ relivraison: 'relivraison', sortie: 'sortie du parc', annulation: 'annulation', reparc: 'nouveau séjour', correction: 'correction', facturation: 'facturé, période suivante ouverte', levee_saisie: 'fin de saisie (levée)', abandon: 'abandon volontaire du véhicule', destruction: 'destruction', restitution: 'restitution au client', enlevement_transporteur: 'enlèvement par un transporteur', adresse_relivraison: 'adresse de relivraison connue — gardiennage arrêté (Olivier 22/09/2026)' } as any)[m.parc_exit_reason] || m.parc_exit_reason || ''}` : 'toujours au parc' })
-      facts.push({ label: 'Durée', value: `${rawDays} jour${rawDays > 1 ? 's' : ''}${tarif?.free ? ` (${tarif.free} offert${tarif.free > 1 ? 's' : ''})` : ''}` })
+      facts.push({ label: 'Durée', value: `${rawDays} jour${rawDays > 1 ? 's' : ''}${freeEff ? ` (${freeEff} offert${freeEff > 1 ? 's' : ''}${repriseAssistance ? ', reprise par l’assistance' : ''})` : ''}` })
       const KEY_LOC: Record<string, string> = { in_vehicle: 'dans le véhicule', reception: 'réception', digibox: 'digibox', office: 'bureau', hook: 'crochet' }
       if (m.key_location || m.keys_digibox_slot || m.saisie_key_hook) facts.push({ label: 'Clés', value: [m.key_location ? (KEY_LOC[m.key_location] || m.key_location) : null, m.keys_digibox_slot ? `digibox ${m.keys_digibox_slot}` : null, m.saisie_key_hook ? `crochet ${m.saisie_key_hook}` : null].filter(Boolean).join(' · ') })
       if (m.redelivery_address) facts.push({ label: 'Relivraison', value: `${m.redelivery_address}${m.garage_reopen_date ? ` · réouverture ${m.garage_reopen_date}` : ''}` })
@@ -689,7 +698,7 @@ async function buildDossierUncached(anyMissionId: string, light: boolean, price 
       // facturer » quand le tarif arrive après coup (2GSE264, 08/09/2026).
       facts, amount_htva: amount, amount_note: note,
       billed_htva: gardPeriodBilled ? Math.max(billedHtva || 0, amount) : billedHtva || ((billedRefs.length && (!billedItems.length || (!!m.invoice_number && billedItems.every(it => !Number(it.amount_htva)))) && !amountUnknown) ? amount : 0),   // D9 : un groupe sans tarif n'est jamais « facturé » par une facture sans ligne
-      billed_refs: billedRefs, nothing_to_bill: nothing, days, regime: kind === 'gard' ? gardRegime : null, free_days: kind === 'gard' ? (dayPriceByRegime[regimeEff]?.free || 0) : undefined, redelivery_address: (kind === 'gard' ? root.redelivery_address : m.redelivery_address) || null, amount_unknown: amountUnknown || undefined,
+      billed_refs: billedRefs, nothing_to_bill: nothing, days, regime: kind === 'gard' ? gardRegime : null, free_days: kind === 'gard' ? (freeEff ?? dayPriceByRegime[regimeEff]?.free ?? 0) : undefined, redelivery_address: (kind === 'gard' ? root.redelivery_address : m.redelivery_address) || null, amount_unknown: amountUnknown || undefined,
       // Olivier 07/09/2026 : « tout ce qui est modifiable doit l'être dans la vue 2 ».
       editable: kind === 'gard' ? undefined : {
         client_name: m.client_name || null, client_phone: m.client_phone || null, client_address: m.client_address || null,
