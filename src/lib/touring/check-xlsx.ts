@@ -56,15 +56,19 @@ export async function registerCheckSend(sb: any, mailbox: string, subject: strin
 }
 
 /** Lit l'Excel renvoyé : « Dossier Touring » → réponse (lignes remplies seulement). */
-export function parseCheckReply(bytes: Buffer): { dossier: string; answer: string }[] {
+// Touring a effacé le titre de la colonne réponse et écrit dans « Votre réponse précédente » (envoi du 05/11/2026,
+// 17 réponses ignorées) : la colonne précédente est rendue aussi ; elle compte si elle diffère de ce qu'on avait envoyé.
+export function parseCheckReply(bytes: Buffer): { dossier: string; answer: string; precedente: string }[] {
   const wb = XLSX.read(bytes, { type: 'buffer' })
-  const out: { dossier: string; answer: string }[] = []
+  const out: { dossier: string; answer: string; precedente: string }[] = []
   for (const name of wb.SheetNames) {
     for (const row of XLSX.utils.sheet_to_json<Record<string, any>>(wb.Sheets[name], { defval: '' })) {
       const keys = Object.keys(row)
       const dk = keys.find(k => /dossier/i.test(k)); const ak = keys.find(k => /votre r[ée]ponse/i.test(k) && !/pr[ée]c[ée]dente/i.test(k))
+      const pk = keys.find(k => /pr[ée]c[ée]dente/i.test(k))
       const dossier = dk ? baseDossier(row[dk]) : ''; const answer = ak ? String(row[ak] || '').trim() : ''
-      if (dossier && answer) out.push({ dossier, answer })
+      const precedente = pk ? String(row[pk] || '').trim() : ''
+      if (dossier && (answer || precedente)) out.push({ dossier, answer, precedente })
     }
   }
   return out
@@ -98,10 +102,13 @@ export async function processCheckReplies(sb: any): Promise<{ replies: number; a
       const a = await (await fetch(`${G}/users/${encodeURIComponent(q.mailbox)}/messages/${m.id}/attachments`, { headers: H, cache: 'no-store' })).json().catch(() => ({}))
       for (const x of (a.value || []).filter((x: any) => /\.xlsx?$/i.test(x.name || '') && x.contentBytes)) {
         for (const r of parseCheckReply(Buffer.from(x.contentBytes, 'base64'))) {
-          const { code, note } = codeFor(r.answer)
-          const { data: rows } = await sb.from('touring_check_dossiers').select('id, dossier_number').eq('status', 'pending')
+          const { data: rows } = await sb.from('touring_check_dossiers').select('id, dossier_number, response_note').eq('status', 'pending')
           const hit = (rows || []).find((d: any) => baseDossier(d.dossier_number) === r.dossier)
           if (!hit) continue
+          // Réponse écrite dans la colonne « précédente » : seulement si elle a changé depuis notre envoi.
+          const texte = r.answer || (r.precedente && r.precedente !== String(hit.response_note || '').trim() ? r.precedente : '')
+          if (!texte) continue
+          const { code, note } = codeFor(texte)
           await sb.from('touring_check_dossiers').update({ status: 'answered', response_code: code, response_note: note, answered_at: new Date().toISOString() }).eq('id', hit.id)
           answers++
         }
