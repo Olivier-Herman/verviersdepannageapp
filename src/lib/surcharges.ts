@@ -7,6 +7,7 @@
 // Cf migration 202605131500_surcharges.sql pour la structure des tables.
 
 import { createAdminClient } from '@/lib/supabase'
+import { isRelivraison } from '@/lib/missions/mission-types'
 
 // ─── Jours feries BE ─────────────────────────────────────────────────────────
 
@@ -175,8 +176,9 @@ async function resolveClientKey(
  */
 /** Une relivraison ne porte JAMAIS de majoration, même exécutée en heures
  *  majorées (nuit / week-end / férié). Olivier 2026-08-11. */
+/** « relivraison » comme « REL » : jamais de majoration (Olivier 09/11/2026). */
 export function isRelivraisonMission(m: { mission_type?: string | null }): boolean {
-  return (m.mission_type || '').toLowerCase().trim() === 'relivraison'
+  return isRelivraison(m.mission_type)
 }
 
 export async function getApplicableSurcharges(

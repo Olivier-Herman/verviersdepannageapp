@@ -120,8 +120,9 @@ export async function computeSncRelivraison(input: { depotLat: number; depotLng:
   const aller  = await calculateRouteKm(input.depotLat, input.depotLng, input.destLat, input.destLng)
   const retour = await calculateRouteKm(input.destLat, input.destLng, input.depotLat, input.depotLng)
   const km = aller + retour
-  const majored = await isSncMajored(input.at)
-  return { km, majored, line: { kind: majored ? 'SIAKILMAJ' : 'SIAKIL', name: `Relivraison — supplément kilomètres A/R dépôt ↔ destination${majored ? ' (majoré)' : ''}`, qty: km, price_unit: majored ? SNC_KM_MAJ : SNC_KM } }
+  // Une relivraison n'est JAMAIS majorée : elle se fait aux heures de bureau, la faire le soir ou le week-end
+  // est notre choix (Olivier 09/11/2026). Seul le remorquage peut l'être.
+  return { km, majored: false, line: { kind: 'SIAKIL', name: 'Relivraison — supplément kilomètres A/R dépôt ↔ destination', qty: km, price_unit: SNC_KM } }
 }
 
 /** Distance haversine en km entre 2 points GPS. */

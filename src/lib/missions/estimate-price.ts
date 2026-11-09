@@ -941,7 +941,8 @@ async function estimateBrackets(
   // 3. Determine si l heure est majoree (regle IPA hardcodee pour l instant)
   const interventionDateStr = mission.intervention_date || mission.received_at
   const interventionDate = interventionDateStr ? new Date(interventionDateStr) : new Date()
-  const majoree = isIpaMajoredHour(interventionDate)
+  // Une relivraison tarifée sur la grille du remorquage n'est jamais majorée (Olivier 09/11/2026).
+  const majoree = !isRelivraison(mission.mission_type) && isIpaMajoredHour(interventionDate)
 
   // 4. Trouve le bracket couvrant kmRounded
   let matchingBracket = brackets.find(b => kmRounded >= b.from_km && kmRounded <= b.to_km)

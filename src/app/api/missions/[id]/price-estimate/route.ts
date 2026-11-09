@@ -13,6 +13,7 @@ import { getServerSession }  from 'next-auth'
 import { authOptions }       from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase'
 import { estimateMissionPrice } from '@/lib/missions/estimate-price'
+import { isRelivraison } from '@/lib/missions/mission-types'
 
 export const dynamic = 'force-dynamic'
 
@@ -148,7 +149,7 @@ async function handleGET(req: Request, { params }: { params: { id: string } }) {
   // Olivier 2026-06-02 PM : le chauffeur choisit le scenario depuis sa fiche,
   // donc avant son choix on ne peut pas calculer le tarif precis.
   if ((mission.source === 'police_snc' || mission.source === 'sia_couvert')
-      && !(mission as any).snc_scenario) {
+      && !isRelivraison(mission.mission_type) && !(mission as any).snc_scenario) {
     return NextResponse.json({
       ok: false,
       source: mission.source, mission_type: mission.mission_type || 'remorquage',
@@ -166,7 +167,7 @@ async function handleGET(req: Request, { params }: { params: { id: string } }) {
   // Olivier 2026-05-25 : "Une fois sur la fiche dispatch, l estimation tarif
   // en bas de page n est plus disponible" pour SNC.
   if ((mission.source === 'police_snc' || mission.source === 'sia_couvert')
-      && (mission as any).snc_scenario) {
+      && !isRelivraison(mission.mission_type) && (mission as any).snc_scenario) {
     try {
       const { computeSncMetrics, buildSncQuoteLines } = await import('@/lib/snc/pricing')
       // Stops chauffeur (extra_addresses) : ordonnes par sort_order
