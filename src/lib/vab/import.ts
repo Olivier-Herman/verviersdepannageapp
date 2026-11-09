@@ -290,7 +290,10 @@ export async function runVabImport(opts: { mode: VabImportMode }): Promise<VabIm
         //
         // On rattache donc l'AssignmentId à la fiche terminée, sans rien créer.
         // Garde-fous : même plaque, action de type REMORQUAGE, et fiche terminée
-        // depuis moins de 24 h — au-delà, c'est une intervention distincte.
+        // depuis moins de 3 h — au-delà, c'est une intervention distincte.
+        // 24 h était trop large : le 09/11/2026, un 2e remorquage de 2GXF003
+        // commandé à 19h41 (fiche du matin terminée à 8h41) a été absorbé et
+        // n'est jamais arrivé au dispatch (Matthieu).
         if (!fiche && incomingPlate && desiredType === 'remorquage' && assignmentId && !isVrItem(item)) {
           const { data: finies } = await sb.from('incoming_missions')
             .select(FICHE_COLS + ', completed_at')
@@ -298,7 +301,7 @@ export async function runVabImport(opts: { mode: VabImportMode }): Promise<VabIm
             .eq('vehicle_plate', incomingPlate)
             .eq('dossier_leg', false)
             .in('status', ['completed', 'to_invoice'])
-            .gte('completed_at', new Date(Date.now() - 24 * 3600 * 1000).toISOString())
+            .gte('completed_at', new Date(Date.now() - 3 * 3600 * 1000).toISOString())
             .order('completed_at', { ascending: false }).limit(1)
           const finie: any = (finies || [])[0] || null
           if (finie) {
