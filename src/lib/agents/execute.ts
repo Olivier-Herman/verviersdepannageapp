@@ -59,7 +59,7 @@ export async function prepare(kind: ProposalKind, agent: AgentAccount, company: 
     // du même fournisseur, au même montant, datée à 60 jours près (validée ou brouillon) = doublon possible → jamais
     // validée seule, elle part chez Olivier avec la pièce en face.
     const d0 = new Date(b.invoice_date); const lo = new Date(d0.getTime() - 60 * 864e5).toISOString().slice(0, 10), hi = new Date(d0.getTime() + 60 * 864e5).toISOString().slice(0, 10)
-    const twins: any[] = await odooRpcCompany(company, 'account.move', 'search_read', [[['id', '!=', id], ['company_id', '=', company], ['move_type', '=', b.move_type], ['partner_id', '=', b.partner_id[0]], ['state', 'in', ['posted', 'draft']], ['amount_total', '>=', b.amount_total - 0.01], ['amount_total', '<=', b.amount_total + 0.01], ['invoice_date', '>=', lo], ['invoice_date', '<=', hi]]], { fields: ['name', 'ref', 'state'], limit: 3 })
+    const twins: any[] = await odooRpcCompany(company, 'account.move', 'search_read', [[['id', '!=', id], ['company_id', '=', company], ['move_type', '=', b.move_type], ['partner_id', '=', b.partner_id[0]], ['state', 'in', ['posted', 'draft']], ['amount_total', '>=', b.amount_total - 0.01], ['amount_total', '<=', b.amount_total + 0.01], ['invoice_date', '>=', lo], ['invoice_date', '<=', hi]]], { fields: ['name', 'ref', 'state', 'invoice_date'], limit: 3 })
     const doublonPossible = twins.length ? twins.map(t => `${t.name || 'brouillon'}${t.ref ? ` (${t.ref})` : ''}`).join(', ') : null
     let directAllowed = false, directWhy: string | undefined
     // Riga (Olivier 06/10/2026) : « s'il est certain il le valide » — Peppol, PDF, mail ou scan,
@@ -87,7 +87,19 @@ export async function prepare(kind: ProposalKind, agent: AgentAccount, company: 
       directAllowed = true
       directWhy = 'autonomie complète (02/11/2026)'
     }
-    if (doublonPossible) { directAllowed = false; directWhy = undefined }
+    // Exception (Olivier 10/11/2026) : frais bancaires mensuels. Même banque (réglage agents_fournisseurs_banques), même
+    // montant que le mois précédent mais référence différente et pièce Peppol = frais récurrents, pas un doublon :
+    // Florent (VD) et Gaëtan (DGJ) les valident seuls (Belfius 61446367/77/87 et ING 2026/01/006869453 du 09/11).
+    let fraisBancaires = false
+    if (doublonPossible && b.peppol_message_uuid && b.ref && body?.stop !== true) {
+      const banques = (await getBusinessList('agents_fournisseurs_banques').catch(() => [] as string[])).map(x => x.toLowerCase())
+      const nom = String(b.partner_id[1] || '').toLowerCase()
+      const banque = banques.some(x => x && nom.includes(x))
+      const recurrents = twins.every(t => t.ref && String(t.ref).trim() !== String(b.ref).trim() && t.invoice_date && Math.abs(Date.parse(t.invoice_date) - Date.parse(b.invoice_date)) >= 20 * 864e5)
+      fraisBancaires = banque && recurrents && [1, 3].includes(company)
+    }
+    if (doublonPossible && !fraisBancaires) { directAllowed = false; directWhy = undefined }
+    if (fraisBancaires) { directAllowed = true; directWhy = 'frais bancaires mensuels, référence différente (règle du 10/11/2026)' }
     return { title: `${b.partner_id[1]} · ${b.ref || b.name || 'brouillon'}${doublonPossible ? ` · ⚠️ doublon possible : ${doublonPossible}` : ''}`, amount: b.amount_total, payload: { facture_id: id, fournisseur: b.partner_id[1], reference: b.ref, htva: b.amount_untaxed, peppol: Boolean(b.peppol_message_uuid), ...(doublonPossible ? { doublon_possible: doublonPossible } : {}) }, directAllowed, directWhy }
   }
 
