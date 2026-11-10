@@ -230,7 +230,10 @@ export async function runSaisieCron(sb: any): Promise<SaisieCronSummary> {
       // approuvé (pas encore envoyé, ou envoyé sans validation).
       const nRel = mission.requisitoire_reminder_count || 0
       // 3 relances ou plus = la 2e date d'au moins 7 jours (une relance par semaine au plus).
-      if (nRel >= 3 || (nRel >= 2 && mission.requisitoire_last_reminder_at && daysSince(mission.requisitoire_last_reminder_at) >= 7)) {
+      // Sans agent identifiable (aucun contact police relié), aucune relance ne peut partir : 14 jours après l'enlèvement,
+      // le dossier est traité comme « deux relances sans réponse » (Mobi, 10/11/2026 — OAJT406, 2JUG131).
+      const sansAgent = !mission.officer_partner_id && !!d.parked_at && daysSince(d.parked_at) >= 14
+      if (nRel >= 3 || (nRel >= 2 && mission.requisitoire_last_reminder_at && daysSince(mission.requisitoire_last_reminder_at) >= 7) || sansAgent) {
         const { data: approuve } = await sb.from('saisie_etats_frais').select('numero, validation_at, total_tvac')
           .eq('dossier_id', d.id).eq('status', 'accepte').not('validation_doc_path', 'is', null).order('validation_at', { ascending: false }).limit(1).maybeSingle()
         if (approuve && !d.requisitoire_parquet_demande_at) {
@@ -241,7 +244,7 @@ export async function runSaisieCron(sb: any): Promise<SaisieCronSummary> {
         }
         if (approuve && d.requisitoire_parquet_demande_at && daysSince(d.requisitoire_parquet_demande_at) < 7) continue
         const now = new Date().toISOString()
-        const raison = `Sans réquisitoire après ${mission.requisitoire_reminder_count} relances${d.requisitoire_parquet_demande_at ? ' et la demande au Parquet' : ''} : partie Parquet abandonnée, seule la partie Domaine est facturée (de l’entrée au Domaine jusqu’à la sortie) — règle de Mobi du 10/11/2026.`
+        const raison = `Sans réquisitoire ${nRel ? `après ${nRel} relance(s)` : 'et sans agent identifiable 14 jours après l’enlèvement'}${d.requisitoire_parquet_demande_at ? ' et la demande au Parquet' : ''} : partie Parquet abandonnée, seule la partie Domaine est facturée (de l’entrée au Domaine jusqu’à la sortie) — règle de Mobi du 10/11/2026.`
         await sb.from('saisie_dossiers').update({ paused_at: now, paused_reason: raison, updated_at: now }).eq('id', d.id)
         if (d.mission_id) {
           await sb.from('incoming_missions').update({ requisitoire_stop: true }).eq('id', d.mission_id)
