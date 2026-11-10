@@ -105,6 +105,8 @@ export default function SamAide({ missionId, ecran }: { missionId?: string | nul
       const j = await r.json().catch(() => ({}))
       if (j?.texte) setMsgs(m => [...m, { from: 'sam', text: j.texte, who: j.agent }])
       setOpenUrl(j?.open_url || null)
+      // « Ouvrir … » touché : on y va tout de suite (le lien reste affiché si la page ne change pas).
+      if (j?.ouvrir && j?.open_url) window.location.assign(j.open_url)
     } catch { /* le chauffeur peut écrire à Sam */ } finally { setBusy(false) }
   }
   const listRef = useRef<HTMLDivElement>(null)

@@ -634,6 +634,15 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
   const [garageAgree, setGarageAgree] = useState(garageAgreeInit)
   const [diagOpen, setDiagOpen] = useState(false)
   const [garagePicker, setGaragePicker] = useState(false)
+  // Lien « Ouvrir la liste des garages » de Sam (…?garages=1) : la liste s'ouvre directement (Olivier 10/11/2026).
+  useEffect(() => {
+    const u = new URL(window.location.href)
+    if (u.searchParams.get('garages') !== '1') return
+    u.searchParams.delete('garages')
+    window.history.replaceState(null, '', u.pathname + (u.search || '') + u.hash)
+    if (garageAgreeInit === 'a_choisir' && !isReadOnly) setGaragePicker(true)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
   const matSq = lang === 'sq'
   const MAT = matSq ? {
     tileTitle: 'Një pyetje për këtë automjet? Pyet mekanikun.',

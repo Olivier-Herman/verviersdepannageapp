@@ -269,7 +269,7 @@ export async function alerteEnAttente(userId: string) {
 }
 
 /** Le chauffeur touche un choix. Renvoie le message de Sam et, au besoin, un lien à ouvrir. */
-export async function repondreAlerte(userId: string, alerteId: number, index: number, canal: 'app' | 'telegram'): Promise<{ texte: string; agent: string; openUrl?: string | null }> {
+export async function repondreAlerte(userId: string, alerteId: number, index: number, canal: 'app' | 'telegram'): Promise<{ texte: string; agent: string; openUrl?: string | null; ouvrir?: boolean }> {
   const sb = createAdminClient()
   const { data: a } = await sb.from('sam_alertes').select('*').eq('id', alerteId).eq('user_id', userId).maybeSingle()
   const { data: u } = await sb.from('users').select('language').eq('id', userId).maybeSingle()
@@ -281,6 +281,7 @@ export async function repondreAlerte(userId: string, alerteId: number, index: nu
   await sb.from('sam_alertes').update({ answered_at: new Date().toISOString(), answer: b.valeur }).eq('id', a.id)
   const { data: m } = await sb.from('incoming_missions').select('*').eq('id', a.mission_id).maybeSingle()
   let texte = '', openUrl: string | null = null, resolu = true
+  let ouvrir = false   // « Ouvrir » touché : l'app y va toute seule, sans second bouton
   const [act, x, y] = b.valeur.split(':')
   try {
     if (act === 'addr' && x !== 'aucune') {
@@ -316,8 +317,13 @@ export async function repondreAlerte(userId: string, alerteId: number, index: nu
     } else if (act === 'arr') {
       texte = L('Parfait. Ouvre ta fiche et appuie sur « Arrivé à destination » pour terminer.', 'Shumë mirë. Hap fishën dhe shtyp « Arrita në destinacion » për të përfunduar.')
       openUrl = `${APP_URL()}/mission/${a.mission_id}`
+    } else if (act === 'open' && a.kind === 'garage_agree') {
+      // Le bouton ouvre DIRECTEMENT la liste des garages agréés sur la fiche, pas seulement la fiche (Olivier
+      // 10/11/2026, 2JRZ794 : Fred arrivait sur sa fiche sans liste et ne trouvait pas le bouton).
+      texte = L('Je t\'ouvre la liste des garages Touring.', 'Po ta hap listën e garazheve Touring.')
+      openUrl = `${APP_URL()}/mission/${a.mission_id}?garages=1`; ouvrir = true; resolu = false
     } else if (act === 'open') {
-      texte = L('Je t\'ouvre ta fiche.', 'Po ta hap fishën.'); openUrl = `${APP_URL()}/mission/${a.mission_id}`; resolu = false
+      texte = L('Je t\'ouvre ta fiche.', 'Po ta hap fishën.'); openUrl = `${APP_URL()}/mission/${a.mission_id}`; ouvrir = true; resolu = false
     } else if (act === 'disp') {
       const { sendNotificationToRoles } = await import('@/lib/notifications/send')
       await sendNotificationToRoles(['dispatcher', 'admin', 'superadmin'], 'sam_sans_reponse', { title: `💶 Montant à fixer`, body: `#${m?.mission_number ?? ''} ${m?.vehicle_plate || ''} : Siabis non couvert sans montant à encaisser, le chauffeur attend.`, action_url: `/dispatch/${a.mission_id}`, mission_id: a.mission_id }).catch(() => {})
@@ -331,5 +337,5 @@ export async function repondreAlerte(userId: string, alerteId: number, index: nu
   }
   if (resolu) await sb.from('sam_alertes').update({ resolved_at: new Date().toISOString() }).eq('id', a.id)
   await recordCopilote({ userId, missionId: a.mission_id, canal, agent: a.agent || 'Sam', messages: [{ role: 'chauffeur', texte: b.libelle }, { role: 'agent', texte }] })
-  return { texte, agent: a.agent || 'Sam', openUrl }
+  return { texte, agent: a.agent || 'Sam', openUrl, ouvrir }
 }
