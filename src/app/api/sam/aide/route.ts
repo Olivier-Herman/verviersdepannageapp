@@ -27,7 +27,7 @@ export async function POST(req: Request) {
   if (b.copilote && Number.isFinite(Number(b.copilote.id))) {
     const { repondreAlerte } = await import('@/lib/sam/copilote')
     const r = await repondreAlerte(u.id, Number(b.copilote.id), Number(b.copilote.index), 'app')
-    return NextResponse.json({ ok: true, agent: r.agent, texte: r.texte, boutons: [], action: null, open_url: r.openUrl || null })
+    return NextResponse.json({ ok: true, agent: r.agent, texte: r.texte, boutons: [], action: null, open_url: r.openUrl || null, ouvrir: !!r.ouvrir })
   }
   // Réponse à la question de fin de conversation (mission clôturée) : pas d'appel à l'agent.
   if (b.question === 'oui' || b.question === 'non') {

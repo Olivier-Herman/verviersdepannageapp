@@ -32,6 +32,7 @@ import { depotFerme, type HorairesDepot } from '@/lib/missions/horaires-depot'
 import { transportGabaritLabel } from '@/lib/tarifs/transport-gabarits'
 import { useT } from '@/lib/i18n/I18nProvider'
 import GarageAgreePicker from '@/components/touring/GarageAgreePicker'
+import PrixClientSiabis from '@/components/missions/PrixClientSiabis'
 import dynamicImport from 'next/dynamic'
 const DiagnosticPanel = dynamicImport(() => import('@/components/obd/DiagnosticPanel'), { ssr: false })
 import ParamToast from '@/components/missions/ParamToast'
@@ -634,6 +635,15 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
   const [garageAgree, setGarageAgree] = useState(garageAgreeInit)
   const [diagOpen, setDiagOpen] = useState(false)
   const [garagePicker, setGaragePicker] = useState(false)
+  // Lien « Ouvrir la liste des garages » de Sam (…?garages=1) : la liste s'ouvre directement (Olivier 10/11/2026).
+  useEffect(() => {
+    const u = new URL(window.location.href)
+    if (u.searchParams.get('garages') !== '1') return
+    u.searchParams.delete('garages')
+    window.history.replaceState(null, '', u.pathname + (u.search || '') + u.hash)
+    if (garageAgreeInit === 'a_choisir' && !isReadOnly) setGaragePicker(true)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
   const matSq = lang === 'sq'
   const MAT = matSq ? {
     tileTitle: 'Një pyetje për këtë automjet? Pyet mekanikun.',
@@ -5176,6 +5186,13 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
         {obdDiag && onSite && !isReadOnly && (diagOpen
           ? <div className="w-full"><DiagnosticPanel missionId={M.id} plate={M.vehicle_plate || null} vehicle={[M.vehicle_brand, M.vehicle_model].filter(Boolean).join(' ') || null} /></div>
           : <button type="button" onClick={() => setDiagOpen(true)} className="w-full min-h-[52px] rounded-2xl border-2 border-blue-700/60 bg-blue-50 dark:bg-blue-500/10 text-blue-800 dark:text-blue-200 font-bold text-base">🔧 {t('obd.titre')}</button>)}
+        {/* Siabis non couvert : prix à annoncer au client avec le calcul ligne par ligne, affiché d'office ; le client
+            décide (Olivier 10/11/2026). Pas pour un montant tapé par le dispatch. */}
+        {M.source === 'police_snc' && requiredAmount > 0 && !paymentComplete && !isReadOnly
+          && (M as any).amount_to_collect_manual !== true && (
+          <PrixClientSiabis missionId={M.id} montantTvac={requiredAmount}
+            recalc={[requiredAmount, M.snc_scenario, M.destination_lat, M.destination_lng, (M as any).snc_remorque].join('|')} />
+        )}
         {/* Destination Touring « réseau agréé » (centrale de pneus…) : garage à choisir dans la liste Touring,
             pas la société du même nom sur la carte (Olivier 29/10/2026, maquette validée). */}
         {(onSite || loaded) && garageAgree === 'a_choisir' && !isReadOnly && (

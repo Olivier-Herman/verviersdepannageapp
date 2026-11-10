@@ -246,10 +246,15 @@ async function lireCalculateurs(link: ObdLink, protocol: string | null, vin: str
   // Réglages du boîtier : seul un refus est gardé dans le journal (il est limité en taille).
   const ok = async (cmd: string) => { const r = await link.send(cmd, 2000); if (/OK/i.test(r)) return true; raw.push({ cmd, raw: r.slice(0, 200) }); return false }
   const ask = async (cmd: string, label: string, garder = true) => { const r = await link.send(cmd, 3000); if (garder) raw.push({ cmd: label, raw: r.slice(0, 1500) }); return r }
-  if (!(await ok('ATFCSD300000')) || !(await ok('ATFCSM1'))) { await link.send('ATFCSM0', 2000); return vide('boitier') }
+  // Contrôle de flux réglé à la main : l'ELM327 refuse « FC SM 1 » (« ? ») tant que l'en-tête ET les données du
+  // contrôle de flux ne sont pas définis. L'en-tête n'était posé qu'ensuite, adresse par adresse : tous les boîtiers
+  // refusaient (Vlink, Olivier 10/11/2026, D-0011). Un boîtier qui refuse quand même garde son contrôle de flux
+  // automatique : on lit alors tout de même chaque calculateur (les réponses courtes passent), au lieu de tout sauter.
+  const fcManuel = (await ok('ATFCSH7E0')) && (await ok('ATFCSD300000')) && (await ok('ATFCSM1'))
+  if (!fcManuel) await link.send('ATFCSM0', 2000)
   const codes: ObdCode[] = [], lus: CalculateurLu[] = [], essais: { adresse: string; statut: string }[] = []
   // Adresse sans réponse connue : on écoute toute la plage de diagnostic (600 à 7FF) et l'en-tête dit qui répond.
-  const viser = async (c: { tx: string; rx: string }) => (await ok('ATSH' + c.tx)) && (await ok(c.rx ? 'ATCRA' + c.rx : 'ATCF600') && (c.rx || await ok('ATCM600'))) && (await ok('ATFCSH' + c.tx))
+  const viser = async (c: { tx: string; rx: string }) => (await ok('ATSH' + c.tx)) && (await ok(c.rx ? 'ATCRA' + c.rx : 'ATCF600') && (c.rx || await ok('ATCM600'))) && (!fcManuel || await ok('ATFCSH' + c.tx))
   const lireCodes = async (c: Calculateur, nom: string | null) => {
     const r = E.parseReply(await ask('1902FF', `${c.tx} 1902FF`), 0x19, 0x02, protocol)
     const l = r.status === 'ok' ? E.udsDtcsOf(r) : []

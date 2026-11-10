@@ -283,7 +283,8 @@ export default function DiagnosticPanel({ missionId, plate: plate0, vehicle: veh
               <p>{t('obd.muette_texte')}</p>
             </div>
           ) : reading.lecture.complete ? (
-            <p className="text-sm rounded-xl bg-emerald-600/10 text-emerald-800 dark:text-emerald-300 p-3 font-semibold">✓ {t('obd.lecture_complete')}</p>
+            // Moteur lu en entier mais pas les autres calculateurs : pas de « Lecture complète » (Olivier 10/11/2026, D-0011).
+            <p className="text-sm rounded-xl bg-emerald-600/10 text-emerald-800 dark:text-emerald-300 p-3 font-semibold">✓ {t(reading.measures.calculateurs_scan && reading.measures.calculateurs_scan !== 'ok' ? 'obd.moteur_seul_lu' : 'obd.lecture_complete')}</p>
           ) : (
             <div className="rounded-xl bg-amber-500/10 text-amber-800 dark:text-amber-300 p-3 text-sm space-y-1">
               <p className="font-semibold">⚠️ {t('obd.lecture_incomplete')}</p>

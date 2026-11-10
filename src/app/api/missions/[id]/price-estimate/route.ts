@@ -30,7 +30,7 @@ async function handleGET(req: Request, { params }: { params: { id: string } }) {
       id, source, mission_type, client_name, vehicle_mileage,
       parked_at, delivering_at, completed_at, intervention_date, received_at, incident_type, storage_waived, storage_flat_htva,
       levee_saisie_date, temp_returned_at, domaine_remise_date,
-      parent_mission_id, amount_to_collect, amount_guaranteed,
+      parent_mission_id, amount_to_collect, amount_to_collect_manual, amount_guaranteed,
       incident_lat, incident_lng, destination_lat, destination_lng,
       snc_scenario, snc_requires_balisage, snc_remorque, snc_supplements,
       billed_to_id, billed_to_name, special_tarif_htva,
@@ -122,8 +122,12 @@ async function handleGET(req: Request, { params }: { params: { id: string } }) {
   const toCollectTvac = mission.amount_to_collect != null && Number(mission.amount_to_collect) > 0
     ? Number(mission.amount_to_collect) : 0
   const toCollect = toCollectTvac > 0 ? Math.round((toCollectTvac / 1.21) * 10000) / 10000 : 0
-  if (toCollect > 0) {
-    return NextResponse.json({
+  // Siabis non couvert : le montant à encaisser est CALCULÉ par l'app (src/lib/snc/amount.ts), ce n'est pas un prix
+  // forcé. On montre donc le calcul ligne par ligne, pour que le chauffeur l'explique au client et que le client
+  // décide (Olivier 10/11/2026, dossier 10224881). Seul un montant tapé par le dispatch reste « prix convenu ».
+  const autoSiabis = mission.source === 'police_snc' && (missionDb as any).amount_to_collect_manual !== true
+    && !!(mission as any).snc_scenario && !isRelivraison(mission.mission_type)
+  const forcedResponse = () => NextResponse.json({
       ok:            true,
       source:        mission.source,
       mission_type:  mission.mission_type || 'autre',
@@ -142,7 +146,7 @@ async function handleGET(req: Request, { params }: { params: { id: string } }) {
       guaranteed_exceeded: guaranteed > 0 && toCollect > guaranteed,
       breakdown: [{ label: 'Paiement à réclamer au client', amount: toCollect, note: `${toCollectTvac.toFixed(2)} € TVAC` }],
     })
-  }
+  if (toCollect > 0 && !autoSiabis) return forcedResponse()
 
   // SNC / SC sans scenario : on retourne un message dedie au lieu de tomber
   // sur le fallback "tarif police_snc/depannage indisponible".
@@ -188,6 +192,7 @@ async function handleGET(req: Request, { params }: { params: { id: string } }) {
         stops,
       })
       if (!metrics) {
+        if (toCollect > 0) return forcedResponse()   // calcul impossible : on garde au moins le montant de la fiche
         return NextResponse.json({
           ok: false, source: mission.source, mission_type: mission.mission_type,
           pricing_mode: 'forfait', reason: 'SNC : depots non configures ou coordonnees invalides',
@@ -357,11 +362,30 @@ async function handleGET(req: Request, { params }: { params: { id: string } }) {
         })
       }
 
+      // Lignes lisibles par le chauffeur (TVAC, sans référence de dossier), traduites côté app via `kind`.
+      const tvac = (htva: number) => Math.round(htva * 1.21 * 100) / 100
+      const client_lines = sncLines.map(l => {
+        const k = String(l.kind || '')
+        const kind = (k === 'SIAREM' || k === 'PECSIAMAJ') ? 'pec'
+          : (k === 'SIAKIL' || k === 'SIAKILMAJ') ? (variant === 'snc' ? 'km' : 'km_dep')
+          : /^Remorque/i.test(l.name) ? 'remorque' : /^Supplément balisage/i.test(l.name) ? 'balisage' : 'autre'
+        return {
+          kind, majore: !!metrics.is_majored,
+          km: (kind === 'km' || kind === 'km_dep') ? Math.round(l.qty * 10) / 10 : null,
+          from: kind === 'km' ? ((metrics as any).km_supplement_from || null) : null,
+          label: l.name.replace(/\s+—\s+.*$/, ''),
+          tvac: tvac(l.qty * l.price_unit),
+        }
+      })
+      // Le gardiennage n'entre jamais dans le montant encaissé par le chauffeur (src/lib/snc/amount.ts) : pas ici.
+
       return NextResponse.json({
         ok:            true,
         source:        mission.source,
         mission_type:  mission.mission_type || 'remorquage',
         pricing_mode:  'lines',
+        client_lines,
+        amount_to_collect_tvac: toCollectTvac || null,
         forfait:       null,
         km_charged:    metrics.km_depanneuse || 0,
         km_inclus:     0,
@@ -384,6 +408,7 @@ async function handleGET(req: Request, { params }: { params: { id: string } }) {
       })
     } catch (e: any) {
       console.error('[price-estimate SNC]', e.message)
+      if (toCollect > 0) return forcedResponse()   // calcul en panne : on garde au moins le montant de la fiche
       // Fallback sur estimateMissionPrice (qui retournera probablement "no tariff")
     }
   }
