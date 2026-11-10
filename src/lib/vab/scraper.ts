@@ -881,7 +881,10 @@ export async function fetchVabMissionDetail(
   }
   const html = await res.text()
   const $ = cheerio.load(html)
-  const aidMatch = detailHref.match(/[?&]AssignmentId=(\d+)/i)
+  // « Transfert de véhicule de remplacement » (TransferAssignments, Olivier 10/11/2026) : deux actions sur une page,
+  // enlèvement (AssignmentId_Pickup) + livraison chez notre client (AssignmentId_Delivery) ; la livraison fait foi.
+  const transfert = /TransferAssignments/i.test(detailHref)
+  const aidMatch = detailHref.match(/[?&]AssignmentId(?:_Delivery)?=(\d+)/i)
   const assignmentId = aidMatch ? aidMatch[1] : null
 
   // Pattern VAB COMET (OutSystems) confirme par l'inspection du HTML brut :
@@ -1078,6 +1081,12 @@ export async function fetchVabMissionDetail(
     const m = txt.match(/(\d{6,10})\s*\/\s*(\d{6,10})/)
     if (m) { dossierBase = m[1]; dossierNumber = m[2] }
   })
+  // Transfert : le titre porte DEUX dossiers collés (enlèvement puis livraison) et se lisait de travers
+  // (« 8471934 / 3536717684 »). Le dossier de la LIVRAISON (celui de notre client) est dans le lien « Email ».
+  if (transfert) {
+    const f2 = html.match(/FileNumber2=(\d{6,10})/i), t2 = html.match(/TaskId2=(\d{6,10})/i)
+    if (f2) { dossierBase = f2[1]; dossierNumber = t2 ? t2[1] : null }
+  }
 
   // ── Description / remarques (Olivier 20/09/2026) ─────────────────────────
   // Vu en réel : sur « Détails de la panne » le texte libre est dans le panneau
@@ -1162,7 +1171,7 @@ export async function fetchVabMissionDetail(
     clientPhone:    generalPhoneFinal,
     interventionAt: generalFields['À'] || generalFields['A'] || null,
 
-    vehiclePlate:   vehicleFields['Immatriculation'] || null,
+    vehiclePlate:   vehicleFields['Immatriculation'] || (transfert ? extractFields($('body'))['Immatriculation'] : null) || null,
     vehicleBrand,
     vehicleModel,
     vehicleVin:     vehicleFields['Numéro de châssis'] || vehicleFields['VIN'] || null,

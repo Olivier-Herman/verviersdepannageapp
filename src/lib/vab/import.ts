@@ -55,7 +55,7 @@ export async function runVabImport(opts: { mode: VabImportMode }): Promise<VabIm
 
   // Dedup par AssignmentId (= external_id en BDD pour les missions VAB)
   const assignmentIds = missions
-    .map(m => m.detailHref?.match(/[?&]AssignmentId=(\d+)/i)?.[1])
+    .map(m => m.detailHref?.match(/[?&]AssignmentId(?:_Delivery)?=(\d+)/i)?.[1])
     .filter((x): x is string => !!x)
 
   // Une mission VAB est « déjà importée » si son AssignmentId est l'external_id
@@ -81,7 +81,7 @@ export async function runVabImport(opts: { mode: VabImportMode }): Promise<VabIm
   }
 
   const items: VabPreviewItem[] = missions.map(m => {
-    const aid = m.detailHref?.match(/[?&]AssignmentId=(\d+)/i)?.[1] || null
+    const aid = m.detailHref?.match(/[?&]AssignmentId(?:_Delivery)?=(\d+)/i)?.[1] || null
     return {
       missionNumber:   m.missionNumber,
       detailHref:      m.detailHref,
@@ -124,8 +124,8 @@ export async function runVabImport(opts: { mode: VabImportMode }): Promise<VabIm
   // Livraison de véhicule de remplacement (Olivier 13/10/2026) : traitée APRÈS les autres actions
   // de la liste, pour qu'elle trouve la fiche remorquage du même dossier si VAB envoie les deux.
   const typeParAid = new Map<string, string>()
-  for (const m of missions as any[]) { const a = m.detailHref?.match(/[?&]AssignmentId=(\d+)/i)?.[1]; if (a) typeParAid.set(a, String(m.dispatchDate || '')) }
-  const isVrItem = (i: VabPreviewItem) => estLivraisonVr(i.detailHref, typeParAid.get(i.detailHref?.match(/[?&]AssignmentId=(\d+)/i)?.[1] || '') || null)
+  for (const m of missions as any[]) { const a = m.detailHref?.match(/[?&]AssignmentId(?:_Delivery)?=(\d+)/i)?.[1]; if (a) typeParAid.set(a, String(m.dispatchDate || '')) }
+  const isVrItem = (i: VabPreviewItem) => estLivraisonVr(i.detailHref, typeParAid.get(i.detailHref?.match(/[?&]AssignmentId(?:_Delivery)?=(\d+)/i)?.[1] || '') || null)
   const toImport = items.filter(i => !i.alreadyImported).sort((a, b) => Number(isVrItem(a)) - Number(isVrItem(b)))
   const results: Array<{ missionNumber: string; ok: boolean; action?: 'inserted' | 'merged' | 'skipped' | 'failed'; mergedInto?: string; error?: string }> = []
   let inserted = 0, merged = 0, skipped = 0, failed = 0
@@ -148,7 +148,7 @@ export async function runVabImport(opts: { mode: VabImportMode }): Promise<VabIm
     // Une ligne qu'on ne sait pas identifier ne doit pas être importée : on la
     // signale, elle se traite à la main. Mieux vaut une ligne visible dans le
     // rapport qu'une fiche fantôme de plus par heure.
-    if (!item.detailHref.match(/[?&]AssignmentId=(\d+)/i)) {
+    if (!item.detailHref.match(/[?&]AssignmentId(?:_Delivery)?=(\d+)/i)) {
       results.push({
         missionNumber: item.missionNumber, ok: false, action: 'skipped',
         error: "Ligne VAB sans AssignmentId exploitable (ligne fusionnée côté VAB ?) — non importée pour ne pas créer un doublon à chaque passage",
@@ -171,8 +171,10 @@ export async function runVabImport(opts: { mode: VabImportMode }): Promise<VabIm
         if (m) interventionIso = withBrusselsOffset(`${m[3]}-${m[2]}-${m[1]}T${m[4]}:${m[5]}:${m[6]}`)
       }
 
-      const aidMatch = item.detailHref.match(/[?&]AssignmentId=(\d+)/i)
+      const aidMatch = item.detailHref.match(/[?&]AssignmentId(?:_Delivery)?=(\d+)/i)
       const assignmentId = aidMatch ? aidMatch[1] : null
+      // Transfert de VR : l'action d'enlèvement voyage avec la livraison (Olivier 10/11/2026).
+      const pickupAid = item.detailHref.match(/[?&]AssignmentId_Pickup=(\d+)/i)?.[1] || null
       // N° dossier = 1re partie du TITRE du détail (dossierBase, autoritaire).
       // Repli sur missionNumber (liste) si le titre n'a pas été parsé — mais
       // missionNumber peut être un numéro partagé/voisin (cf bug 8387138 sur 2
@@ -240,7 +242,7 @@ export async function runVabImport(opts: { mode: VabImportMode }): Promise<VabIm
         if (isVrItem(item) && assignmentId) {
           const rem = (existingRows || []).find((r: any) => !DEJA_DEPOSE.includes(String(r.status)) && !r.vab_vr?.standalone && (!r.vab_vr || r.vab_vr.aid === assignmentId))
           if (rem) {
-            const vr = await vrDepuisDetail(detail, assignmentId, fullDossier, false)
+            const vr = await vrDepuisDetail(detail, assignmentId, fullDossier, false, pickupAid)
             await rattacherVr(sb, rem, vr)
             results.push({ missionNumber: item.missionNumber, ok: true, action: 'merged', mergedInto: rem.mission_number != null ? `#${rem.mission_number}` : rem.id })
             merged++
@@ -450,7 +452,7 @@ export async function runVabImport(opts: { mode: VabImportMode }): Promise<VabIm
       }
 
       // Livraison de VR sans remorquage actif : fiche « livraison VR » seule (transport : tous les km).
-      const vrSeul = isVrItem(item) && assignmentId ? await vrDepuisDetail(detail, assignmentId, fullDossier, true) : null
+      const vrSeul = isVrItem(item) && assignmentId ? await vrDepuisDetail(detail, assignmentId, fullDossier, true, pickupAid) : null
       const { data: insertedRow, error: insertErr } = await sb.from('incoming_missions').insert({
         ...(vrSeul ? { vab_vr: vrSeul } : {}),
         external_id:        assignmentId || detail.missionNumber,
@@ -494,7 +496,7 @@ export async function runVabImport(opts: { mode: VabImportMode }): Promise<VabIm
         received_at:        new Date().toISOString(),
         intervention_date:  interventionIso || new Date().toISOString(),
         // Mémorise l'AssignmentId pour la dédup future (fin de la boucle d'import).
-        vab_assignment_ids: assignmentId ? [assignmentId] : [],
+        vab_assignment_ids: assignmentId ? [assignmentId, ...(pickupAid ? [pickupAid] : [])] : [],
         // Passage en SNC = l'assistance s'efface (billed_to null) ; le bureau
         // remettra un client facturé s'il y a lieu.
         ...(defaultBilledToId && !ncVab ? {
