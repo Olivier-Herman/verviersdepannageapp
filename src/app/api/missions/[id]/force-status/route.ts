@@ -327,5 +327,20 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     }
   }
 
+  // Relivraison liée à COMEX forcée « terminée / à facturer » par le dispatch : Touring attend sa clôture comme si le
+  // chauffeur l'avait terminée (2GGJ679 vers Embourg, 10/11/2026 : restée « en route » chez Touring). En arrière-plan.
+  if (body.status === 'completed' || body.status === 'to_invoice') {
+    const { data: rm } = await sb.from('incoming_missions').select('source_format, mission_type').eq('id', params.id).maybeSingle()
+    const { isRelivraison } = await import('@/lib/missions/mission-types')
+    if (rm?.source_format === 'comex' && isRelivraison((rm as any).mission_type)) {
+      const relBg = (async () => {
+        const { closeComexRelivraison } = await import('@/lib/touring/close-relivraison')
+        await closeComexRelivraison(params.id, userId).catch(e => console.warn('[force-status] clôture relivraison Touring', e?.message))
+      })()
+      try { const { waitUntil } = await import('@vercel/functions'); waitUntil(relBg) }
+      catch { await relBg }
+    }
+  }
+
   return NextResponse.json({ ok: true, new_status: body.status })
 }

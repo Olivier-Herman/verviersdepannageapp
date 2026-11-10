@@ -65,5 +65,16 @@ export async function closeComexRelivraison(missionId: string, actorId: string |
     return { ok: true, note: 'en file' }
   }
   await log('assistance_close_error', `Relivraison : clôture Touring refusée — ${r.error || '?'}`, { seq: keys.CID_SEQ_ACTION })
+  // Un refus ne reste plus dans le journal de la fiche (1SXJ696 vers Manage, 10/11/2026 : « en route » chez Touring
+  // des heures après la livraison) : le dispatch est prévenu tout de suite.
+  try {
+    const { sendNotificationToRoles } = await import('@/lib/notifications/send')
+    const { data: f } = await sb.from('incoming_missions').select('mission_number, vehicle_plate').eq('id', m.id).maybeSingle()
+    await sendNotificationToRoles(['dispatcher', 'admin', 'superadmin'], 'touring_close_failed', {
+      title: `Touring : relivraison ${f?.vehicle_plate || ''} non clôturée dans COMEX`,
+      body: `Fiche ${f?.mission_number || ''} (dossier ${keys.CID_DOS}) : ${r.error || 'clôture refusée'}. Touring la voit encore en cours.`,
+      action_url: `/dispatch/${m.id}`,
+    })
+  } catch { /* la trace reste dans le journal de la fiche */ }
   return { ok: false, note: r.error || 'refusée' }
 }
