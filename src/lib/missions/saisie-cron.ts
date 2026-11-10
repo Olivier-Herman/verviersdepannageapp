@@ -106,7 +106,7 @@ export async function runSaisieCron(sb: any): Promise<SaisieCronSummary> {
     if (d.paused_at) continue
     const mission = d.mission_id
       ? (await sb.from('incoming_missions')
-          .select('source, status, domaine_remise_date, domaine_enlevement_date, levee_saisie_at, levee_saisie_date, levee_saisie_payer, levee_saisie_type, requisitoire_at, requisitoire_doc_path, requisitoire_last_reminder_at, requisitoire_stop, officer_partner_id, officer_name')
+          .select('source, status, domaine_remise_date, domaine_enlevement_date, levee_saisie_at, levee_saisie_date, levee_saisie_payer, levee_saisie_type, requisitoire_at, requisitoire_doc_path, requisitoire_last_reminder_at, requisitoire_reminder_count, requisitoire_stop, officer_partner_id, officer_name')
           .eq('id', d.mission_id).maybeSingle()).data
       : null
     // Agent tapé à la main sans contact relié → on le retrouve dans les contacts police, sinon aucune relance ne part.
@@ -222,6 +222,23 @@ export async function runSaisieCron(sb: any): Promise<SaisieCronSummary> {
       // Relance GROUPÉE : un mail par policier (portail), pas un par véhicule
       // (Olivier 16/09/2026). Sans contact Odoo lié → pas d'email → rien.
       // 1re demande 3 jours après l'enlèvement, jamais le lendemain (Olivier 22/10/2026) ; ensuite tous les 7 jours.
+      // Règle de Mobi (10/11/2026) : pas de réquisitoire 7 jours après la 2e relance → on laisse tomber la partie Parquet.
+      // Dossier en pause « à charge du Domaine » (seule la partie Domaine est facturée, de l'entrée au Domaine jusqu'à
+      // la sortie), relances arrêtées, état de frais Parquet encore ouvert annulé.
+      const nRel = mission.requisitoire_reminder_count || 0
+      // 3 relances ou plus = la 2e date d'au moins 7 jours (une relance par semaine au plus).
+      if (nRel >= 3 || (nRel >= 2 && mission.requisitoire_last_reminder_at && daysSince(mission.requisitoire_last_reminder_at) >= 7)) {
+        const now = new Date().toISOString()
+        const raison = `Sans réquisitoire après ${mission.requisitoire_reminder_count} relances : partie Parquet abandonnée, seule la partie Domaine est facturée (de l’entrée au Domaine jusqu’à la sortie) — règle de Mobi du 10/11/2026.`
+        await sb.from('saisie_dossiers').update({ paused_at: now, paused_reason: raison, updated_at: now }).eq('id', d.id)
+        if (d.mission_id) {
+          await sb.from('incoming_missions').update({ requisitoire_stop: true }).eq('id', d.mission_id)
+          await sb.from('mission_logs').insert({ mission_id: d.mission_id, action: 'note', notes: raison }).then(() => {}, () => {})
+        }
+        await sb.from('saisie_etats_frais').update({ status: 'annule', status_note: raison }).eq('dossier_id', d.id).in('status', ['envoye', 'accepte', 'refuse'])
+        out.actions.push({ plate: d.vehicle_plate || '—', kind: 'Parquet abandonné (sans réquisitoire)' })
+        continue
+      }
       const due = mission.requisitoire_last_reminder_at ? daysSince(mission.requisitoire_last_reminder_at) >= 7 : daysSince(d.parked_at) >= 3
       // « Arrêter les relances » de la fiche : le robot le respecte aussi (10/11/2026 : 4e relance à E. Lemaire évitée).
       if (d.mission_id && mission.officer_partner_id && due && !mission.requisitoire_stop) {
