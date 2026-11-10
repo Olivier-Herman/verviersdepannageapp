@@ -97,7 +97,11 @@ async function domaine(sb: any): Promise<Bloc> {
   const { data: nm } = await sb.from('domaine_dates_in').select('vin, vin_tail').eq('outcome', 'no_match').gte('created_at', new Date(Date.now() - 30 * 864e5).toISOString())
   const { data: posees } = await sb.from('incoming_missions').select('vehicle_vin').not('domaine_remise_date', 'is', null).not('vehicle_vin', 'is', null).gte('domaine_remise_date', new Date(Date.now() - 120 * 864e5).toISOString().slice(0, 10))
   const vinsPoses = (posees || []).map((x: any) => String(x.vehicle_vin).toUpperCase())
-  const restants = new Set((nm || []).filter((d: any) => !vinsPoses.some((v: string) => d.vin_tail && v.includes(String(d.vin_tail).toUpperCase()))).map((d: any) => d.vin))
+  // Un véhicule écarté une fois (« laisser tomber » : outcome 'ignored' ou 'annulee') ne revient plus, même si le Domaine
+  // le relist dans un passage suivant (BMW 520 …62019, Mini …86090, Golf …01461 : écartés le 21/10, revenus le 10/11/2026).
+  const { data: ec } = await sb.from('domaine_dates_in').select('vin').in('outcome', ['ignored', 'annulee'])
+  const ecartes = new Set((ec || []).map((x: any) => String(x.vin || '').toUpperCase()))
+  const restants = new Set((nm || []).filter((d: any) => !ecartes.has(String(d.vin || '').toUpperCase()) && !vinsPoses.some((v: string) => d.vin_tail && v.includes(String(d.vin_tail).toUpperCase()))).map((d: any) => d.vin))
   const sansFiche = restants.size
   const lignes: Ligne[] = [
     { texte: `Dates IN : dernier passage ${di.at ? new Date(di.at).toLocaleString('fr-BE', { timeZone: 'Europe/Brussels', dateStyle: 'short', timeStyle: 'short' }) : '—'}`, detail: `${di.applied ?? 0} encodée(s), ${di.noMatch ?? 0} sans fiche sur ce passage`, niveau: 'info', lien: '/fourriere/domaine/dates-in' },
