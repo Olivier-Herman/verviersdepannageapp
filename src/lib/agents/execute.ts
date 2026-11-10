@@ -87,19 +87,15 @@ export async function prepare(kind: ProposalKind, agent: AgentAccount, company: 
       directAllowed = true
       directWhy = 'autonomie complète (02/11/2026)'
     }
-    // Exception (Olivier 10/11/2026) : frais bancaires mensuels. Même banque (réglage agents_fournisseurs_banques), même
-    // montant que le mois précédent mais référence différente et pièce Peppol = frais récurrents, pas un doublon :
-    // Florent (VD) et Gaëtan (DGJ) les valident seuls (Belfius 61446367/77/87 et ING 2026/01/006869453 du 09/11).
-    let fraisBancaires = false
-    if (doublonPossible && b.peppol_message_uuid && b.ref && body?.stop !== true) {
-      const banques = (await getBusinessList('agents_fournisseurs_banques').catch(() => [] as string[])).map(x => x.toLowerCase())
-      const nom = String(b.partner_id[1] || '').toLowerCase()
-      const banque = banques.some(x => x && nom.includes(x))
-      const recurrents = twins.every(t => t.ref && String(t.ref).trim() !== String(b.ref).trim() && t.invoice_date && Math.abs(Date.parse(t.invoice_date) - Date.parse(b.invoice_date)) >= 20 * 864e5)
-      fraisBancaires = banque && recurrents && [1, 3].includes(company)
+    // Exception (Olivier 10/11/2026) : facture mensuelle récurrente. Même fournisseur, même montant qu'une pièce d'au moins
+    // 20 jours d'écart, mais référence différente, et reçue par Peppol = facture du mois, pas un doublon : Florent (VD) et
+    // Gaëtan (DGJ) la valident seuls (frais Belfius et ING, honoraires Herman Olivier 2026-121, 09-10/11).
+    let recurrente = false
+    if (doublonPossible && b.peppol_message_uuid && b.ref && body?.stop !== true && [1, 3].includes(company)) {
+      recurrente = twins.every(t => t.ref && String(t.ref).trim() !== String(b.ref).trim() && t.invoice_date && Math.abs(Date.parse(t.invoice_date) - Date.parse(b.invoice_date)) >= 20 * 864e5)
     }
-    if (doublonPossible && !fraisBancaires) { directAllowed = false; directWhy = undefined }
-    if (fraisBancaires) { directAllowed = true; directWhy = 'frais bancaires mensuels, référence différente (règle du 10/11/2026)' }
+    if (doublonPossible && !recurrente) { directAllowed = false; directWhy = undefined }
+    if (recurrente) { directAllowed = true; directWhy = 'facture mensuelle récurrente, référence différente (règle du 10/11/2026)' }
     return { title: `${b.partner_id[1]} · ${b.ref || b.name || 'brouillon'}${doublonPossible ? ` · ⚠️ doublon possible : ${doublonPossible}` : ''}`, amount: b.amount_total, payload: { facture_id: id, fournisseur: b.partner_id[1], reference: b.ref, htva: b.amount_untaxed, peppol: Boolean(b.peppol_message_uuid), ...(doublonPossible ? { doublon_possible: doublonPossible } : {}) }, directAllowed, directWhy }
   }
 

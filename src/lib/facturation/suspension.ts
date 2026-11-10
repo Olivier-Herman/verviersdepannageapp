@@ -107,7 +107,7 @@ export function blocDeLAgent(nom?: string | null): CleAssistant {
   const n = String(nom || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
   if (/victor/.test(n)) return 'victor'
   if (/justine/.test(n)) return 'agent_mail'
-  if (/aurelie/.test(n)) return 'facturation'
+  if (/aurelie/.test(n)) return 'agents'   // hors facturation depuis le 10/11/2026 (autofactures SEL, rien n'est envoyé)
   if (/mobia/.test(n)) return 'mobia'
   return 'agents'
 }
