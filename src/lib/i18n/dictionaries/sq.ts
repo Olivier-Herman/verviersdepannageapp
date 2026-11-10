@@ -1137,6 +1137,7 @@ export const sq: Dictionary = {
     avis_relancer: 'Kërkoje përsëri mendimin e Sam',
     km_max: 'mbi 65 000 km',
     lecture_complete: 'Lexim i plotë',
+    moteur_seul_lu:   'Motori u lexua plotësisht, sistemet e tjera nuk u lexuan',
     lecture_incomplete: 'Lexim i paplotë',
     lecture_incomplete_texte: 'Nuk u lexuan dot të gjitha kodet. Kjo nuk do të thotë që makina nuk ka asgjë.',
     temoin_sans_code: 'Drita e motorit është e ndezur, por nuk erdhi asnjë kod: pajisja nuk i sheh të gjitha. Kontrollo lidhjen dhe rinis.',

@@ -17,7 +17,7 @@ export default async function DiagnosticPage() {
   if (!(await isPreviewOn('obd_diagnostic', u.role, u.id))) redirect('/dashboard')
   return (
     <AppShell title="Diagnostic" userName={u.name || ''} userEmail={u.email || undefined} userId={u.id} userRole={u.role} userModules={u.modules || []}>
-      <div className="max-w-md mx-auto p-3 space-y-3">
+      <div className="max-w-md mx-auto p-3 pb-56 space-y-3">
         <h1 className="text-lg font-bold text-ink">🔧 <T k="obd.titre" /></h1>
         <DiagnosticPanel />
       </div>
