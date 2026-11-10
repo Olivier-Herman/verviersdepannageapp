@@ -15,13 +15,15 @@ import type { VabMissionDetail } from './scraper'
 
 /** Une ligne VAB est une livraison de VR : page Delivery, ou type « … remplacement » dans la liste. */
 export function estLivraisonVr(detailHref: string | null | undefined, typeLabel?: string | null): boolean {
-  return /DeliveryAssignments/i.test(String(detailHref || '')) || /remplacement|vervangwagen|replacement/i.test(String(typeLabel || ''))
+  return /DeliveryAssignments|TransferAssignments/i.test(String(detailHref || '')) || /remplacement|vervangwagen|replacement/i.test(String(typeLabel || ''))
 }
 
 export type VrPlacement = 'before' | 'after' | 'to_decide'
 
 export interface VabVr {
   aid:        string
+  /** Transfert (enlèvement + livraison) : action d'enlèvement du VR, gardée pour ne pas la réimporter. */
+  pickup_aid?: string | null
   dossier:    string
   plate:      string | null
   pickup:     { name: string | null; address: string | null; lat: number | null; lng: number | null }
@@ -37,7 +39,7 @@ const DEJA_SUR_PLACE = ['on_site', 'loaded', 'in_progress', 'delivering']
 /** Voiture déjà déposée (garage ou parc) : la mission est finie, la livraison VR devient une nouvelle mission (Olivier 13/10/2026). */
 export const DEJA_DEPOSE = ['parked', 'gardiennage', 'completed', 'to_invoice']
 
-export async function vrDepuisDetail(detail: VabMissionDetail, aid: string, dossier: string, standalone: boolean): Promise<VabVr> {
+export async function vrDepuisDetail(detail: VabMissionDetail, aid: string, dossier: string, standalone: boolean, pickupAid: string | null = null): Promise<VabVr> {
   const pickupAddr = [detail.fromStreet, [detail.fromZip, detail.fromCity].filter(Boolean).join(' ')].filter(Boolean).join(', ') || null
   let lat: number | null = null, lng: number | null = null
   if (pickupAddr) {
@@ -48,7 +50,7 @@ export async function vrDepuisDetail(detail: VabMissionDetail, aid: string, doss
     } catch { /* sans coordonnées, le km manquera : la fiche le signalera « à calculer » */ }
   }
   return {
-    aid, dossier,
+    aid, pickup_aid: pickupAid, dossier,
     plate: detail.vehiclePlate?.replace(/\s/g, '').toUpperCase() || null,
     pickup: { name: detail.fromName, address: pickupAddr, lat, lng },
     deliver: { name: detail.toName, address: [detail.toStreet, [detail.toZip, detail.toCity].filter(Boolean).join(' ')].filter(Boolean).join(', ') || null, phone: detail.toPhone },
@@ -65,7 +67,7 @@ export async function rattacherVr(sb: any, fiche: any, vr: VabVr): Promise<VrPla
   const ids: string[] = Array.isArray(fiche.vab_assignment_ids) ? fiche.vab_assignment_ids : []
   await sb.from('incoming_missions').update({
     vab_vr: { ...vr, placement, standalone: false },
-    vab_assignment_ids: ids.includes(vr.aid) ? ids : [...ids, vr.aid],
+    vab_assignment_ids: Array.from(new Set([...ids, vr.aid, ...(vr.pickup_aid ? [vr.pickup_aid] : [])])),
     updated_at: new Date().toISOString(),
   }).eq('id', fiche.id)
   const quoi = `véhicule de remplacement ${vr.plate || ''} à prendre chez ${vr.pickup.name || vr.pickup.address || 'le concessionnaire'} et à livrer chez le client`.replace(/\s+/g, ' ')
