@@ -12,7 +12,7 @@ export const metadata = {
   title: 'Fourrière — récupérer un véhicule saisi',
   description:
     'Votre véhicule a été enlevé par la police ? Procédure, documents à apporter, horaires et frais '
-  + 'au tarif officiel des frais de justice. Pepinster, du lundi au vendredi de 9h à 17h.',
+  + 'au tarif officiel des frais de justice. Pepinster, du lundi au vendredi de 9h à 17h, le samedi de 9h à 13h.',
 }
 
 export default async function Fourriere() {
@@ -67,8 +67,8 @@ export default async function Fourriere() {
               <div className="proc-b">
                 <h3>Venez au dépôt de Pepinster</h3>
                 <p>
-                  Rue Lefin 12, 4860 Pepinster. Fourrière accessible <strong>du lundi au vendredi, de 9h à
-                  17h</strong>. Fermée les week-ends et jours fériés.
+                  Rue Lefin 12, 4860 Pepinster. Fourrière accessible <strong>du lundi au vendredi de 9h à
+                  17h, le samedi de 9h à 13h</strong>. Fermée les dimanches et jours fériés.
                 </p>
               </div>
             </div>

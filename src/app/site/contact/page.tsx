@@ -7,7 +7,7 @@ export const metadata = {
   title: 'Contact & dépôts',
   description:
     'Un seul numéro 24h/24 : 087 35 18 20. Dépôts de Pepinster, Verviers et Aywaille. '
-  + 'Fourrière du lundi au vendredi de 9h à 17h.',
+  + 'Fourrière du lundi au vendredi de 9h à 17h, le samedi de 9h à 13h.',
 }
 
 export default function Contact() {
@@ -35,7 +35,7 @@ export default function Contact() {
                 <address>{d.adresse.map((l, i) => <span key={i}>{l}<br /></span>)}</address>
                 <p style={{ fontSize: '.9rem', color: 'var(--muted)' }}>
                   {d.nom === 'Pepinster'
-                    ? 'Fourrière : lundi au vendredi, 9h – 17h. Fermée week-ends et jours fériés.'
+                    ? 'Fourrière : lundi au vendredi 9h – 17h, samedi 9h – 13h. Fermée dimanches et jours fériés.'
                     : d.note}
                 </p>
               </div>

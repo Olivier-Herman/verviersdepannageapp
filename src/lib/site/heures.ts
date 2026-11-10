@@ -2,7 +2,8 @@
 //
 // Deux usages (lot 1 du site, Olivier 10/11/2026) :
 //   · la version de nuit : hors des heures du bureau (réglage `site_heures_bureau`,
-//     « 1-5 08:00-18:00 », jours fériés fermés), le site pousse l'appel au
+//     « 1-5 09:00-17:00, 6 09:00-13:00 », jours fériés fermés — Olivier 10/11/2026 :
+//     lundi-vendredi 9 h-17 h, samedi 9 h-13 h), le site pousse l'appel au
 //     dépanneur de garde plutôt qu'un formulaire ;
 //   · l'échéance promise : « rappel sous 48 h ouvrables » = 48 heures qui ne
 //     comptent que les jours ouvrables (lundi-vendredi hors fériés). Une demande
@@ -23,13 +24,16 @@ export function jourOuvrable(d: Date): boolean {
   return jour <= 5 && !isBelgianHoliday(d)
 }
 
-/** Bureau ouvert selon « 1-5 08:00-18:00 » (jours 1 = lundi … 7 = dimanche), fermé les jours fériés. */
+/**
+ * Bureau ouvert selon des plages « 1-5 09:00-17:00, 6 09:00-13:00 » (jours 1 = lundi … 7 = dimanche,
+ * un jour seul ou un intervalle), fermé les jours fériés. Réglage illisible : ouvert (version de jour).
+ */
 export function bureauOuvert(spec: string, d = new Date()): boolean {
-  const m = spec.match(/(\d)-(\d)\s+(\d{1,2}):(\d{2})-(\d{1,2}):(\d{2})/)
-  if (!m) return true
+  const plages = Array.from(spec.matchAll(/(\d)(?:-(\d))?\s+(\d{1,2}):(\d{2})-(\d{1,2}):(\d{2})/g))
+  if (!plages.length) return true
   if (isBelgianHoliday(d)) return false
   const { jour, min } = bxl(d)
-  return jour >= +m[1] && jour <= +m[2] && min >= +m[3] * 60 + +m[4] && min < +m[5] * 60 + +m[6]
+  return plages.some(m => jour >= +m[1] && jour <= +(m[2] || m[1]) && min >= +m[3] * 60 + +m[4] && min < +m[5] * 60 + +m[6])
 }
 
 /** Échéance à `heures` heures ouvrables : seules comptent les heures des jours ouvrables. */
