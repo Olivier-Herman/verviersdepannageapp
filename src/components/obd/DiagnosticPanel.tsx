@@ -12,6 +12,7 @@ import { checkVin, cleanVin } from '@/lib/obd/vin'
 import type { ClearResult, ObdLink, ObdReading } from '@/lib/obd/ble'
 import PortHelp from './PortHelp'
 import { shrinkPhoto } from './shrink'
+import { nomSysteme } from '@/lib/obd/calculateurs'
 
 type Step = 'start' | 'busy' | 'vin' | 'moteur' | 'result'
 type Vehicle = { marque: string | null; modele: string | null; motorisation: string | null; annee: number | null } | null
@@ -70,7 +71,7 @@ export default function DiagnosticPanel({ missionId, plate: plate0, vehicle: veh
       const ble = await import('@/lib/obd/ble')
       const l = await ble.connectObd(s => setStatus(s === 'connexion' ? t('obd.connexion') : s === 'lecture' ? t('obd.lecture') : t('obd.recherche')))
       link.current = l
-      const r = await ble.readVehicle(l, s => setStatus(s === 'lecture' ? t('obd.lecture') : status))
+      const r = await ble.readVehicle(l, s => setStatus(s === 'calculateurs' ? t('obd.lecture_calculateurs') : s === 'lecture' ? t('obd.lecture') : status), { marque: vehicle0 || null })
       setReading(r)
       if (r.vin && checkVin(r.vin).valid) { setVin(r.vin); setVinSource('obd') }
       if (missionId) await enregistrer(r, r.vin && checkVin(r.vin).valid ? r.vin : null, r.vin ? 'obd' : 'saisie')
@@ -296,11 +297,13 @@ export default function DiagnosticPanel({ missionId, plate: plate0, vehicle: veh
             <p className="font-semibold text-ink">{t('obd.codes')}</p>
             {reading.codes.length === 0 && <p className="text-sm text-ink-secondary">{reading.lecture.complete ? t('obd.aucun_code') : t('obd.codes_non_confirmes')}</p>}
             {reading.codes.map(c => (
-              <div key={c.code} className="rounded-xl border p-3">
+              <div key={(c.ecu || '') + c.code} className="rounded-xl border p-3">
+                {c.systeme && <p className="text-xs font-semibold text-ink-muted">{c.systeme === 'autre' && c.nom ? c.nom : nomSysteme(c.systeme, lang === 'sq' ? 'sq' : 'fr', c.ecu)}{c.actif && <span className="ml-1 font-normal">· {t('obd.defaut_present')}</span>}</p>}
                 <p className="font-mono font-bold text-ink">{c.code} {grave(c.code) === 'grave' && <span className="ml-1 text-xs rounded-full px-2 py-0.5 bg-red-600/10 text-red-700 dark:text-red-300">!</span>}{c.type === 'en_attente' && <span className="ml-1 text-xs font-sans font-normal text-ink-muted">({t('obd.en_attente')})</span>}{c.type === 'permanent' && <span className="ml-1 text-xs font-sans font-normal text-ink-muted">({t('obd.permanent')})</span>}</p>
                 <p className="text-sm text-ink-secondary">{libelle(c.code) || '…'}</p>
               </div>
             ))}
+            <Calculateurs m={reading.measures} />
             {reading.freeze && (reading.freeze.vitesse_kmh != null || reading.freeze.temp_moteur_c != null || reading.freeze.regime_tr_min != null) && <>
               <p className="text-xs text-ink-muted pt-1">{t('obd.figee', { code: reading.freeze.code })}</p>
               <div className="grid grid-cols-[1fr_auto] gap-x-3 gap-y-1 text-sm">
@@ -348,7 +351,7 @@ export default function DiagnosticPanel({ missionId, plate: plate0, vehicle: veh
               <div className="grid grid-cols-3 gap-2">{['1', '2', '3', '4', '5', '6', '7', '8', '9', '', '0', '⌫'].map((k, i) => k ? <button key={i} onClick={() => tap(k)} className="min-h-[52px] rounded-xl border bg-surface-2 text-xl font-bold text-ink">{k}</button> : <span key={i} />)}</div>
               <button className={`${btn} border bg-surface text-ink`} onClick={() => { setPinOpen(false); setPin(''); setPinErr(null) }}>{lang === 'sq' ? 'Anulo' : 'Annuler'}</button>
             </div>
-          ) : (!cleared && reading.codes.some(c => c.type !== 'permanent') && (
+          ) : (!cleared && reading.codes.some(c => c.type !== 'permanent' && !c.systeme) && (
             <button className={`${btn} border bg-surface text-ink`} onClick={demanderEffacement}>🧹 {t('obd.effacer')}</button>
           ))}
 
@@ -382,6 +385,22 @@ export default function DiagnosticPanel({ missionId, plate: plate0, vehicle: veh
           )}
         </>
       )}
+    </div>
+  )
+}
+
+/** Quels calculateurs ont été lus : le chauffeur sait ce que « aucun code » couvre (ABS, airbag…) et ce qu'il ne couvre pas. */
+function Calculateurs({ m }: { m: ObdReading['measures'] }) {
+  const { t, lang } = useT()
+  const L = lang === 'sq' ? 'sq' : 'fr'
+  if (!m.calculateurs_scan) return null
+  if (m.calculateurs_scan !== 'ok') return <p className="text-xs rounded-xl bg-amber-500/10 text-amber-800 dark:text-amber-300 p-2">{t('obd.systemes_non_lus')}</p>
+  const lus = (m.calculateurs || []).filter(c => c.statut === 'ok'), muets = (m.calculateurs || []).filter(c => c.statut !== 'ok')
+  return (
+    <div className="space-y-1 text-xs">
+      {lus.length > 0 && <p className="text-ink-secondary">✓ {t('obd.systemes_lus', { liste: lus.map(c => (c.systeme === 'autre' && c.nom ? c.nom : nomSysteme(c.systeme, L, c.adresse)) + (c.nb_codes ? ` (${c.nb_codes})` : '')).join(', ') })}</p>}
+      {muets.length > 0 && <p className="text-ink-muted">{t('obd.systemes_muets', { liste: muets.map(c => nomSysteme(c.systeme, L, c.adresse)).join(', ') })}</p>}
+      {!lus.some(c => !['moteur', 'boite'].includes(c.systeme)) && <p className="rounded-xl bg-amber-500/10 text-amber-800 dark:text-amber-300 p-2">{t('obd.systemes_marque')}</p>}
     </div>
   )
 }

@@ -1116,6 +1116,12 @@ export const fr = {
     erreur:       'La liste Touring ne répond pas. Réessaie dans un instant.',
   },
   obd: {
+    lecture_calculateurs: 'Lecture des autres calculateurs (ABS, airbag…)…',
+    systemes_lus: 'Calculateurs lus : {liste}',
+    systemes_muets: 'Sans réponse : {liste}',
+    systemes_non_lus: 'Seul le moteur a été lu : les autres calculateurs (ABS, airbag…) n’ont pas pu être interrogés sur cette voiture.',
+    systemes_marque: 'Pour cette marque, seuls le moteur et la boîte ont été lus, pas l’ABS ni l’airbag. L’app apprend les autres calculateurs au fil des lectures.',
+    defaut_present: 'défaut présent',
     boite_question: 'Boîte de vitesses (facultatif)',
     boite_manuelle: 'Manuelle',
     boite_automatique: 'Automatique',

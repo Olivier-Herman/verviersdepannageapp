@@ -2,6 +2,7 @@
 // Chaque cas part d'une réponse type (format de la documentation ELM327, en-têtes allumés).
 import assert from 'node:assert/strict'
 import * as E from '../src/lib/obd/elm327'
+import * as C from '../src/lib/obd/calculateurs'
 
 const codes = (raw: string, mode = 3, p: string | null = '6') => E.dtcsOf(E.parseReply(raw, mode, null, p)).map(c => c.code)
 
@@ -90,5 +91,32 @@ assert.equal(E.textOf(E.parseReply('NO DATA\r>', 9, 0x0a, '6')), null)
 const noms = E.parseReply('7E8 10 17 49 0A 01 45 43 4D \r7E8 21 00 2D 45 6E 67 69 6E \r7E8 22 65 43 6F 6E 74 72 6F \r7E9 10 17 49 0A 01 54 43 4D \r7E8 23 6C 00 00 FF FF FF FF \r7E9 21 00 2D 54 72 61 6E 73 \r7E9 22 6D 69 73 43 74 72 6C \r7E9 23 00 00 00 FF FF FF FF \r\r>', 9, 0x0a, 'A6')
 assert.equal(E.textOf(noms), 'ECM-EngineControl'); assert.equal(E.hasGearboxEcu(noms), true)
 assert.equal(E.hasGearboxEcu(E.parseReply('7E8 10 0F 49 0A 01 45 43 4D\r7E8 21 00 2D 45 6E 67 69 6E\r7E8 22 65 00 00 00 00 00 00\r\r>', 9, 0x0a, '6')), false)
+
+// Autres calculateurs (UDS 19 02) : ABS de VW à l'adresse 77D, un code confirmé, un « test pas encore fait » ignoré.
+const uds = (raw: string) => E.udsDtcsOf(E.parseReply(raw, 0x19, 0x02, 'A6'))
+assert.deepEqual(uds('77D 03 59 02 FF\r\r>'), [], 'calculateur sans code')
+assert.deepEqual(uds('77D 0B 59 02 FF 50 10 29 09 C1 23 00 50\r\r>').map(c => [c.code, c.ecu, c.detail, c.actif, c.confirme]), [['C1010', '77D', '29', true, true]], 'état 50 = pas une panne')
+assert.deepEqual(uds('77F 10 0B 59 02 FF 90 01 00\r77F 21 08 C1 23 00 04\r\r>').map(c => [c.code, c.confirme]), [['B1001', true], ['U0123', false]], 'message long (airbag)')
+assert.equal(E.parseReply('77D 03 7F 19 11\r\r>', 0x19, 0x02, 'A6').status, 'refus')
+assert.equal(E.parseReply('NO DATA\r\r>', 0x19, 0x02, 'A6').status, 'pas_de_reponse')
+assert.deepEqual(uds('77D 03 7F 19 78\r77D 07 59 02 FF C1 23 00 09\r\r>').map(c => c.code), ['U0123'], 'réponse retardée (7F 78)')
+
+// Groupe de marques : par le châssis d'abord (la Caddy du 09/11/2026), la marque seulement sans châssis.
+assert.equal(C.groupeDe('WV1ZZZSKZMX045145'), 'vag')
+assert.equal(C.groupeDe('VF1RJA00X12345678'), 'renault')
+assert.equal(C.groupeDe('VF3ABCDEF12345678', 'Volkswagen'), 'psa', 'le châssis Peugeot l’emporte sur la marque écrite')
+assert.equal(C.groupeDe('WBA12345678901234', 'Volkswagen'), null, 'châssis BMW : pas d’adresses VW')
+assert.equal(C.groupeDe(null, 'Skoda Octavia'), 'vag')
+assert.equal(C.calculateursDe(null).length, 8, 'marque inconnue : seulement 7E0 à 7E7')
+assert.ok(C.calculateursDe('vag').some(c => c.tx === '713' && c.rx === '77D' && c.systeme === 'abs'))
+assert.ok(C.calculateursDe('renault').some(c => c.tx === '752' && c.rx === '772' && c.systeme === 'airbag'))
+
+// Apprentissage : Peugeot/Citroën récentes seulement, nom donné par le calculateur → système.
+assert.equal(C.groupeDe('VR3UHZKXZNT123456'), 'psa')
+assert.equal(C.decouverteAutorisee('VR3UHZKXZNT123456', 'psa'), true)
+assert.equal(C.decouverteAutorisee('VF3XXXXXX71234567', 'psa'), false, 'avant 2010 : pas d’essai')
+assert.equal(C.decouverteAutorisee('WV1ZZZSKZMX045145', 'vag'), false, 'groupe connu : pas d’essai')
+assert.equal(C.systemeDeNom('ESP 9.1'), 'abs'); assert.equal(C.systemeDeNom('AIRBAG'), 'airbag'); assert.equal(C.systemeDeNom('BSI 2010'), 'carrosserie'); assert.equal(C.systemeDeNom('XYZ'), 'autre')
+assert.equal(E.textOf(E.parseReply('68D 10 0A 62 F1 97 45 53 50\r68D 21 20 39 2E 31 AA AA AA\r\r>', 0x22, 0xf1, 'A6')), 'ESP 9.1', 'nom du calculateur (22 F1 97)')
 
 console.log('OK : lecture du boîtier conforme')

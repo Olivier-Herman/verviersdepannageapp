@@ -1100,6 +1100,12 @@ export const sq: Dictionary = {
     erreur:       'Lista Touring nuk përgjigjet. Provo përsëri pas pak.',
   },
   obd: {
+    lecture_calculateurs: 'Duke lexuar njësitë e tjera (ABS, airbag…)…',
+    systemes_lus: 'Njësitë e lexuara: {liste}',
+    systemes_muets: 'Pa përgjigje: {liste}',
+    systemes_non_lus: 'U lexua vetëm motori: njësitë e tjera (ABS, airbag…) nuk mund të pyeten në këtë makinë.',
+    systemes_marque: 'Për këtë markë u lexuan vetëm motori dhe kambio, jo ABS-ja dhe airbag-ët. Aplikacioni i mëson njësitë e tjera me çdo lexim.',
+    defaut_present: 'defekt aktiv',
     boite_question: 'Kutia e shpejtësisë (opsionale)',
     boite_manuelle: 'Manuale',
     boite_automatique: 'Automatike',

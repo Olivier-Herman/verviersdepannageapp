@@ -6,13 +6,19 @@
 'use client'
 
 import * as E from './elm327'
+import { adressesFixes, calculateursDe, ESSAIS_PAR_LECTURE, groupeDe, systemeDeNom, type Calculateur, type Groupe, type SystemeId } from './calculateurs'
 
 type Ble = typeof import('@capacitor-community/bluetooth-le').BleClient
 
 export interface ObdLink { deviceId: string; name: string; send: (cmd: string, timeoutMs?: number) => Promise<string>; close: () => Promise<void>; lost: () => boolean; initRaw: RawEntry[] }
 
 export interface RawEntry { cmd: string; raw: string }
-export type ObdCode = { code: string; type: 'memorise' | 'en_attente' | 'permanent'; ecu?: string }
+// systeme : code lu sur un autre calculateur que le moteur (ABS, airbag…), qui ne s'efface pas par le boîtier.
+export type ObdCode = { code: string; type: 'memorise' | 'en_attente' | 'permanent'; ecu?: string; systeme?: SystemeId; detail?: string; actif?: boolean; nom?: string | null }
+// appris : adresse venue de l'apprentissage ; decouvert : trouvée pendant cette lecture-ci.
+export interface CalculateurLu { adresse: string; rx?: string | null; systeme: SystemeId; nom?: string | null; statut: 'ok' | 'absent' | 'refus' | 'erreur'; nb_codes: number; appris?: boolean; decouvert?: boolean }
+// ok : tous lus ; protocole : voiture pas en CAN 11 bits ; boitier : boîtier qui refuse les réglages ; lien_perdu.
+export type ScanStatut = 'ok' | 'protocole' | 'boitier' | 'lien_perdu'
 export interface ObdMeasures {
   batterie_v: number | null; temp_moteur_c: number | null; regime_tr_min: number | null
   carburant?: string | null; carburant_source?: 'voiture' | 'allumage' | null
@@ -20,6 +26,7 @@ export interface ObdMeasures {
   km_temoin_allume?: number | null; km_depuis_effacement?: number | null; demarrages_depuis_effacement?: number | null; minutes_depuis_effacement?: number | null
   calculateur_nom?: string | null; calibration?: string | null; calculateur_boite?: boolean
   kilometrage?: number | null; controles_total?: number | null; controles_non_prets?: number | null
+  calculateurs?: CalculateurLu[]; calculateurs_essais?: { adresse: string; statut: string }[]; calculateurs_groupe?: Groupe | null; calculateurs_scan?: ScanStatut
 }
 export interface ObdFreeze { code: string; charge_pct: number | null; temp_moteur_c: number | null; regime_tr_min: number | null; vitesse_kmh: number | null }
 export interface ObdReading {
@@ -135,7 +142,7 @@ export async function connectObd(onStatus?: (s: string) => void): Promise<ObdLin
 }
 
 /** Lecture complète : codes, mesures disponibles, image figée. Rien n'est effacé ici. */
-export async function readVehicle(link: ObdLink, onStatus?: (s: string) => void): Promise<ObdReading> {
+export async function readVehicle(link: ObdLink, onStatus?: (s: string) => void, opts?: { marque?: string | null }): Promise<ObdReading> {
   onStatus?.('lecture')
   const raw: RawEntry[] = [...link.initRaw]
   const log = async (cmd: string, timeoutMs?: number) => { const r = await link.send(cmd, timeoutMs); raw.push({ cmd, raw: r.slice(0, 1500) }); return r }
@@ -194,10 +201,15 @@ export async function readVehicle(link: ObdLink, onStatus?: (s: string) => void)
 
   const vus = new Set<string>()
   const liste = (l: { code: string; ecu: string }[], type: ObdCode['type']): ObdCode[] => l.filter(c => !vus.has(c.code) && vus.add(c.code)).map(c => ({ code: c.code, type, ecu: c.ecu }))
+  const codesMoteur = [...liste(stored, 'memorise'), ...liste(pending, 'en_attente'), ...liste(perm, 'permanent')]
+  onStatus?.('calculateurs')
+  const autres = await lireCalculateurs(link, protocol, vin, groupeDe(vin, opts?.marque), raw)
   return {
     vin, protocol, lecture, freeze, raw,
-    codes: [...liste(stored, 'memorise'), ...liste(pending, 'en_attente'), ...liste(perm, 'permanent')],
+    // Un code déjà lu par le mode 03 n'est pas répété ; ceux des autres calculateurs gardent leur système.
+    codes: [...codesMoteur, ...autres.codes.filter(c => !(c.systeme === 'moteur' && vus.has(c.code)))],
     measures: {
+      calculateurs: autres.lus, calculateurs_essais: autres.essais, calculateurs_groupe: autres.groupe, calculateurs_scan: autres.scan,
       batterie_v: volt, temp_moteur_c: temp, regime_tr_min: regime, carburant, carburant_source, calculateur_nom, calibration, calculateur_boite,
       temoin_moteur: monitor?.mil ?? null, nb_codes: monitor?.count ?? null,
       km_temoin_allume: await val(0x21, E.word), km_depuis_effacement: await val(0x31, E.word),
@@ -205,6 +217,75 @@ export async function readVehicle(link: ObdLink, onStatus?: (s: string) => void)
       kilometrage: await val(0xa6, E.odometer), controles_total: monitor?.moniteurs ?? null, controles_non_prets: monitor?.non_prets ?? null,
     },
   }
+}
+
+/** Ce que le serveur a appris pour ce groupe de marques : adresses confirmées, et quelques adresses à essayer. */
+async function planCalculateurs(vin: string | null, groupe: Groupe | null): Promise<{ appris: Calculateur[]; essais: string[] }> {
+  if (!groupe) return { appris: [], essais: [] }
+  try {
+    const r = await fetch(`/api/obd/calculateurs?groupe=${groupe}${vin ? `&vin=${vin}` : ''}`, { cache: 'no-store', signal: AbortSignal.timeout(4000) })
+    const j = await r.json()
+    return { appris: Array.isArray(j.appris) ? j.appris : [], essais: Array.isArray(j.essais) ? j.essais : [] }
+  } catch { return { appris: [], essais: [] } }   // hors réseau : on lit ce qui est connu d'office
+}
+
+const nomDe = (r: E.Reply) => { const t = E.textOf(r); return t ? t.replace(/\s+/g, ' ').slice(0, 40) : null }
+
+/**
+ * Tous les autres calculateurs (ABS, airbag, tableau de bord…), en lecture seule (UDS 19 02 FF), un par un.
+ * CAN 11 bits seulement : les en-têtes et le contrôle de flux sont réglés pour chaque adresse, puis remis comme avant
+ * (le mode 04 et la relecture du moteur repartent vers toutes les adresses). Rien n'est jamais effacé ici.
+ * Apprentissage (Olivier 10/11/2026) : quelques adresses de plus sont essayées à chaque lecture (« qui es-tu ? », 22 F1 97) ;
+ * celles qui répondent sont lues aussitôt et enregistrées par le serveur, qui les lira d'office une fois confirmées.
+ */
+async function lireCalculateurs(link: ObdLink, protocol: string | null, vin: string | null, groupe: Groupe | null, raw: RawEntry[]): Promise<{ codes: ObdCode[]; lus: CalculateurLu[]; essais: { adresse: string; statut: string }[]; groupe: Groupe | null; scan: ScanStatut }> {
+  const vide = (scan: ScanStatut) => ({ codes: [], lus: [], essais: [], groupe, scan })
+  if (link.lost()) return vide('lien_perdu')
+  if (!/^A?[68]$/i.test(protocol || '')) return vide('protocole')
+  const plan = await planCalculateurs(vin, groupe)
+  // Réglages du boîtier : seul un refus est gardé dans le journal (il est limité en taille).
+  const ok = async (cmd: string) => { const r = await link.send(cmd, 2000); if (/OK/i.test(r)) return true; raw.push({ cmd, raw: r.slice(0, 200) }); return false }
+  const ask = async (cmd: string, label: string, garder = true) => { const r = await link.send(cmd, 3000); if (garder) raw.push({ cmd: label, raw: r.slice(0, 1500) }); return r }
+  if (!(await ok('ATFCSD300000')) || !(await ok('ATFCSM1'))) { await link.send('ATFCSM0', 2000); return vide('boitier') }
+  const codes: ObdCode[] = [], lus: CalculateurLu[] = [], essais: { adresse: string; statut: string }[] = []
+  // Adresse sans réponse connue : on écoute toute la plage de diagnostic (600 à 7FF) et l'en-tête dit qui répond.
+  const viser = async (c: { tx: string; rx: string }) => (await ok('ATSH' + c.tx)) && (await ok(c.rx ? 'ATCRA' + c.rx : 'ATCF600') && (c.rx || await ok('ATCM600'))) && (await ok('ATFCSH' + c.tx))
+  const lireCodes = async (c: Calculateur, nom: string | null) => {
+    const r = E.parseReply(await ask('1902FF', `${c.tx} 1902FF`), 0x19, 0x02, protocol)
+    const l = r.status === 'ok' ? E.udsDtcsOf(r) : []
+    const systeme = c.systeme !== 'autre' ? c.systeme : systemeDeNom(nom)
+    for (const d of l) codes.push({ code: d.code, type: d.confirme || d.actif ? 'memorise' : 'en_attente', ecu: d.ecu, systeme, detail: d.detail, actif: d.actif, nom })
+    return { r, l, systeme }
+  }
+  try {
+    for (const c of calculateursDe(groupe, plan.appris)) {
+      if (link.lost()) break
+      const appris = !adressesFixes(groupe).has(c.tx)
+      if (!(await viser(c))) { lus.push({ adresse: c.tx, systeme: c.systeme, statut: 'erreur', nb_codes: 0, appris }); continue }
+      const { r, l, systeme } = await lireCodes(c, c.nom || null)
+      // Une adresse commune muette (7E2…7E7) n'existe simplement pas sur cette voiture : on ne la garde pas.
+      if (r.status === 'pas_de_reponse' && systeme === 'autre') continue
+      lus.push({ adresse: c.tx, rx: r.messages[0]?.ecu || c.rx || null, systeme, nom: c.nom || null, statut: r.status === 'ok' ? 'ok' : r.status === 'pas_de_reponse' ? 'absent' : r.status === 'refus' ? 'refus' : 'erreur', nb_codes: l.length, appris })
+      if (appris) { await ok('ATCRA') }
+    }
+    const fixes = new Set(calculateursDe(groupe, plan.appris).map(c => c.tx))
+    for (const tx of plan.essais.filter(t => /^[67][0-9A-F]{2}$/.test(t) && !fixes.has(t)).slice(0, ESSAIS_PAR_LECTURE)) {
+      if (link.lost()) break
+      if (!(await viser({ tx, rx: '' }))) { essais.push({ adresse: tx, statut: 'erreur' }); continue }
+      const raw22 = await link.send('22F197', 2500)
+      const q = E.parseReply(raw22, 0x22, 0xf1, protocol)
+      if (q.status === 'pas_de_reponse' || (q.status === 'erreur' && q.detail === 'delai')) { essais.push({ adresse: tx, statut: 'absent' }); continue }
+      if (q.status !== 'ok' && q.status !== 'refus') { essais.push({ adresse: tx, statut: 'erreur' }); continue }
+      raw.push({ cmd: `${tx} 22F197`, raw: raw22.slice(0, 600) })
+      // Il répond : on lit ses codes tout de suite, et on le montre au chauffeur comme les autres.
+      const nom = q.status === 'ok' ? nomDe(q) : null
+      const { r, l, systeme } = await lireCodes({ tx, rx: '', systeme: 'autre' }, nom)
+      lus.push({ adresse: tx, rx: q.messages[0]?.ecu || r.messages[0]?.ecu || null, systeme, nom, statut: r.status === 'ok' ? 'ok' : r.status === 'refus' ? 'refus' : 'erreur', nb_codes: l.length, appris: true, decouvert: true })
+    }
+  } finally {
+    for (const cmd of ['ATCRA', 'ATFCSM0', 'ATSH7DF']) await link.send(cmd, 2000)
+  }
+  return { codes, lus, essais, groupe, scan: link.lost() ? 'lien_perdu' : 'ok' }
 }
 
 /** Le moteur tourne-t-il ? Certaines voitures n'acceptent l'effacement que contact mis, moteur coupé. */

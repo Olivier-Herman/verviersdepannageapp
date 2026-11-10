@@ -104,6 +104,26 @@ export function dtcsOf(reply: Reply): { code: string; ecu: string }[] {
   return [...out].map(([code, ecu]) => ({ code, ecu }))
 }
 
+/**
+ * Codes d'un calculateur lus en UDS (19 02 FF) : « 59 02 masque » puis 4 octets par code (3 du code, 1 d'état).
+ * Seuls les codes en défaut, en attente ou confirmés sont gardés : un code qui n'a que « test pas encore fait » n'est
+ * pas une panne. Le 3e octet précise le défaut (« -29 ») sans changer le code.
+ */
+export function udsDtcsOf(reply: Reply): { code: string; ecu: string; detail: string; actif: boolean; confirme: boolean }[] {
+  const out = new Map<string, { code: string; ecu: string; detail: string; actif: boolean; confirme: boolean }>()
+  for (const m of reply.messages) {
+    const d = m.data.slice(3)
+    for (let i = 0; i + 3 < d.length; i += 4) {
+      const [a, b, c, s] = d.slice(i, i + 4)
+      if (!(s & 0x0d)) continue
+      const code = dtcFromBytes(a, b)
+      if (!code || out.has(m.ecu + code)) continue
+      out.set(m.ecu + code, { code, ecu: m.ecu, detail: c.toString(16).toUpperCase().padStart(2, '0'), actif: !!(s & 0x01), confirme: !!(s & 0x08) })
+    }
+  }
+  return [...out.values()]
+}
+
 /** Numéro de châssis (mode 09, PID 02) : le premier calculateur qui donne 17 caractères valides. */
 export function vinOf(reply: Reply): string | null {
   const parEcu = new Map<string, number[]>()
