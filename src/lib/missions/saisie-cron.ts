@@ -106,7 +106,7 @@ export async function runSaisieCron(sb: any): Promise<SaisieCronSummary> {
     if (d.paused_at) continue
     const mission = d.mission_id
       ? (await sb.from('incoming_missions')
-          .select('source, status, domaine_remise_date, domaine_enlevement_date, levee_saisie_at, levee_saisie_date, levee_saisie_payer, levee_saisie_type, requisitoire_at, requisitoire_doc_path, requisitoire_last_reminder_at, officer_partner_id, officer_name')
+          .select('source, status, domaine_remise_date, domaine_enlevement_date, levee_saisie_at, levee_saisie_date, levee_saisie_payer, levee_saisie_type, requisitoire_at, requisitoire_doc_path, requisitoire_last_reminder_at, requisitoire_stop, officer_partner_id, officer_name')
           .eq('id', d.mission_id).maybeSingle()).data
       : null
     // Agent tapé à la main sans contact relié → on le retrouve dans les contacts police, sinon aucune relance ne part.
@@ -223,7 +223,8 @@ export async function runSaisieCron(sb: any): Promise<SaisieCronSummary> {
       // (Olivier 16/09/2026). Sans contact Odoo lié → pas d'email → rien.
       // 1re demande 3 jours après l'enlèvement, jamais le lendemain (Olivier 22/10/2026) ; ensuite tous les 7 jours.
       const due = mission.requisitoire_last_reminder_at ? daysSince(mission.requisitoire_last_reminder_at) >= 7 : daysSince(d.parked_at) >= 3
-      if (d.mission_id && mission.officer_partner_id && due) {
+      // « Arrêter les relances » de la fiche : le robot le respecte aussi (10/11/2026 : 4e relance à E. Lemaire évitée).
+      if (d.mission_id && mission.officer_partner_id && due && !mission.requisitoire_stop) {
         const e = duePartners.get(mission.officer_partner_id) || { plates: [], ids: [] }
         e.plates.push(d.vehicle_plate || '—'); e.ids.push(d.mission_id); duePartners.set(mission.officer_partner_id, e)
       }
