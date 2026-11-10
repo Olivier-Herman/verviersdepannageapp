@@ -106,7 +106,7 @@ export async function runSaisieCron(sb: any): Promise<SaisieCronSummary> {
     if (d.paused_at) continue
     const mission = d.mission_id
       ? (await sb.from('incoming_missions')
-          .select('source, status, domaine_remise_date, domaine_enlevement_date, levee_saisie_at, levee_saisie_date, levee_saisie_payer, levee_saisie_type, requisitoire_at, requisitoire_doc_path, requisitoire_last_reminder_at, requisitoire_reminder_count, requisitoire_stop, officer_partner_id, officer_name')
+          .select('source, status, domaine_remise_date, domaine_enlevement_date, levee_saisie_at, levee_saisie_date, levee_saisie_payer, levee_saisie_type, requisitoire_at, requisitoire_doc_path, requisitoire_last_reminder_at, requisitoire_reminder_count, requisitoire_stop, police_pv_number, vehicle_vin, officer_partner_id, officer_name')
           .eq('id', d.mission_id).maybeSingle()).data
       : null
     // Agent tapé à la main sans contact relié → on le retrouve dans les contacts police, sinon aucune relance ne part.
@@ -225,11 +225,23 @@ export async function runSaisieCron(sb: any): Promise<SaisieCronSummary> {
       // Règle de Mobi (10/11/2026) : pas de réquisitoire 7 jours après la 2e relance → on laisse tomber la partie Parquet.
       // Dossier en pause « à charge du Domaine » (seule la partie Domaine est facturée, de l'entrée au Domaine jusqu'à
       // la sortie), relances arrêtées, état de frais Parquet encore ouvert annulé.
+      // Dernier recours (même jour) : si le Parquet a DÉJÀ approuvé notre état de frais, on lui demande UNE fois une copie
+      // du réquisitoire, et on n'abandonne que 7 jours plus tard sans réponse. Jamais si l'état de frais n'a pas été
+      // approuvé (pas encore envoyé, ou envoyé sans validation).
       const nRel = mission.requisitoire_reminder_count || 0
       // 3 relances ou plus = la 2e date d'au moins 7 jours (une relance par semaine au plus).
       if (nRel >= 3 || (nRel >= 2 && mission.requisitoire_last_reminder_at && daysSince(mission.requisitoire_last_reminder_at) >= 7)) {
+        const { data: approuve } = await sb.from('saisie_etats_frais').select('numero, validation_at, total_tvac')
+          .eq('dossier_id', d.id).eq('status', 'accepte').not('validation_doc_path', 'is', null).order('validation_at', { ascending: false }).limit(1).maybeSingle()
+        if (approuve && !d.requisitoire_parquet_demande_at) {
+          const r = await demanderRequisitoireAuParquet(sb, d, mission, approuve)
+          if (r.ok) { out.actions.push({ plate: d.vehicle_plate || '—', kind: `réquisitoire demandé au Parquet (${r.to})` }) }
+          else out.errors.push(`${d.vehicle_plate}: demande de réquisitoire au Parquet — ${r.error}`)
+          continue
+        }
+        if (approuve && d.requisitoire_parquet_demande_at && daysSince(d.requisitoire_parquet_demande_at) < 7) continue
         const now = new Date().toISOString()
-        const raison = `Sans réquisitoire après ${mission.requisitoire_reminder_count} relances : partie Parquet abandonnée, seule la partie Domaine est facturée (de l’entrée au Domaine jusqu’à la sortie) — règle de Mobi du 10/11/2026.`
+        const raison = `Sans réquisitoire après ${mission.requisitoire_reminder_count} relances${d.requisitoire_parquet_demande_at ? ' et la demande au Parquet' : ''} : partie Parquet abandonnée, seule la partie Domaine est facturée (de l’entrée au Domaine jusqu’à la sortie) — règle de Mobi du 10/11/2026.`
         await sb.from('saisie_dossiers').update({ paused_at: now, paused_reason: raison, updated_at: now }).eq('id', d.id)
         if (d.mission_id) {
           await sb.from('incoming_missions').update({ requisitoire_stop: true }).eq('id', d.mission_id)
@@ -324,4 +336,41 @@ async function checkForclusion(sb: any, d: any, out: SaisieCronSummary): Promise
       action_url: '/fourriere/saisies',
     }).catch(() => {})
   }
+}
+
+/** Demande unique au Parquet d'une copie du réquisitoire (dernier recours, Olivier 10/11/2026). Envoyée à l'adresse qui a
+ *  reçu (et approuvé) notre état de frais, depuis fourriere@ ; la réponse avec le PDF est rattachée par le robot des
+ *  réquisitoires comme un envoi de la police. */
+async function demanderRequisitoireAuParquet(sb: any, d: any, mission: any, ef: { numero: string; validation_at: string | null; total_tvac: number | null }): Promise<{ ok: boolean; to?: string; error?: string }> {
+  const { sendEmail, emailLayout, infoRow } = await import('@/lib/emails')
+  const { getBusinessText } = await import('@/lib/settings/business')
+  const { FOURRIERE_FROM } = await import('@/lib/requisitoire/relance')
+  const to = String(d.sent_to || '').trim()
+    || await getBusinessText(d.motif_code === 'SAISIE_JUDICIAIRE' ? 'mail_frais_justice' : 'mail_parquet').catch(() => '')
+  if (!to) return { ok: false, error: 'adresse du Parquet inconnue' }
+  const esc = (x: unknown) => String(x ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+  const vehicule = [d.vehicle_brand, d.vehicle_model].filter(Boolean).join(' ')
+  const saisie = d.parked_at ? new Date(d.parked_at).toLocaleDateString('fr-BE', { timeZone: 'Europe/Brussels' }) : ''
+  const pv = mission.police_pv_number || d.dossier_ref || ''
+  const subject = `Demande de copie du réquisitoire — ${pv || d.vehicle_plate || ef.numero} — état de frais ${ef.numero}`
+  const inner = `
+    <p style="margin:0 0 14px;font-size:14px;color:#222;line-height:1.6;">Madame, Monsieur,</p>
+    <p style="margin:0 0 14px;font-size:14px;color:#222;line-height:1.6;">Vous avez approuvé notre état de frais ${esc(ef.numero)}${ef.validation_at ? ` le ${esc(new Date(ef.validation_at).toLocaleDateString('fr-BE', { timeZone: 'Europe/Brussels' }))}` : ''}. Pour le déposer, il nous manque le réquisitoire du véhicule ci-dessous, que nous n'avons pas pu obtenir auprès du service de police malgré nos demandes.</p>
+    <table width="100%" cellpadding="0" cellspacing="0">
+      ${pv ? infoRow('N° de PV', esc(pv)) : ''}
+      ${d.vehicle_plate ? infoRow('Plaque', esc(d.vehicle_plate)) : ''}
+      ${vehicule ? infoRow('Véhicule', esc(vehicule)) : ''}
+      ${mission.vehicle_vin ? infoRow('N° de châssis', esc(mission.vehicle_vin)) : ''}
+      ${saisie ? infoRow('Date de la saisie', esc(saisie)) : ''}
+      ${mission.officer_name ? infoRow('Agent', esc(mission.officer_name)) : ''}
+    </table>
+    <p style="margin:16px 0 0;font-size:14px;color:#222;line-height:1.6;">Auriez-vous l'amabilité de nous en transmettre une copie (PDF ou photo) en réponse à ce message ?</p>
+    <p style="margin:14px 0 0;font-size:14px;color:#222;line-height:1.6;">Avec nos remerciements,<br>Service fourrière — Verviers Dépannage SA</p>`
+  try {
+    await sendEmail(to, subject, emailLayout(inner, subject), undefined, undefined, undefined, FOURRIERE_FROM)
+  } catch (e: any) { return { ok: false, error: e?.message || String(e) } }
+  const now = new Date().toISOString()
+  await sb.from('saisie_dossiers').update({ requisitoire_parquet_demande_at: now, updated_at: now }).eq('id', d.id)
+  if (d.mission_id) await sb.from('mission_logs').insert({ mission_id: d.mission_id, action: 'note', notes: `Réquisitoire demandé au Parquet (${to}) : 2 relances à l'agent restées sans réponse. Sans réponse le ${new Date(Date.now() + 7 * 864e5).toLocaleDateString('fr-BE', { timeZone: 'Europe/Brussels' })}, la partie Parquet sera abandonnée.` }).then(() => {}, () => {})
+  return { ok: true, to }
 }
