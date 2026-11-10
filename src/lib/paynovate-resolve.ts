@@ -68,7 +68,7 @@ const INVOICE_RE = /^\d{4}\/\d{2}\/\d{3,4}$/
  * Rend lisible une référence tapée à la main.
  * Renvoie la liste des numéros de facture candidats (souvent un seul).
  */
-export function normalizeInvoiceRefs(raw: string): string[] {
+export function normalizeInvoiceRefs(raw: string, when?: string | null): string[] {
   let s = String(raw || '').trim()
   if (!s) return []
 
@@ -92,6 +92,15 @@ export function normalizeInvoiceRefs(raw: string): string[] {
   // Slashes oubliés : « 202604314 » → 2026/04/314
   const flat = s.match(/^(20\d{2})(\d{2})(\d{3,4})$/)
   if (flat) return [`${flat[1]}/${flat[2]}/${flat[3]}`]
+
+  // Année omise : « 11062 » ou « 11/062 » → 2026/11/062 (Logicx, 03/11/2026 : trois cartes au terminal). Le millésime
+  // vient de la date d'encaissement ; un mois postérieur à celui de l'encaissement = facture de l'année précédente.
+  const court = s.match(/^(0[1-9]|1[0-2])\/?(\d{3,4})$/)
+  if (court) {
+    const d = when ? new Date(when) : new Date()
+    const y = Number(court[1]) > d.getUTCMonth() + 1 ? d.getUTCFullYear() - 1 : d.getUTCFullYear()
+    return [`${y}/${court[1]}/${court[2]}`]
+  }
 
   return INVOICE_RE.test(s) ? [s] : []
 }
@@ -387,7 +396,7 @@ export async function resolveReference(
   }
 
   // ── 2. Référence corrigeable ──────────────────────────────
-  const guessed = normalizeInvoiceRefs(raw)
+  const guessed = normalizeInvoiceRefs(raw, when)
   if (guessed.length) {
     const rows = await readInvoices(guessed)
     if (rows.length === guessed.length) {
