@@ -33,6 +33,7 @@ import { transportGabaritLabel } from '@/lib/tarifs/transport-gabarits'
 import { useT } from '@/lib/i18n/I18nProvider'
 import GarageAgreePicker from '@/components/touring/GarageAgreePicker'
 import PrixClientSiabis from '@/components/missions/PrixClientSiabis'
+import EtapeVrVab from '@/components/mission/EtapeVrVab'
 import dynamicImport from 'next/dynamic'
 const DiagnosticPanel = dynamicImport(() => import('@/components/obd/DiagnosticPanel'), { ssr: false })
 import ParamToast from '@/components/missions/ParamToast'
@@ -4796,6 +4797,10 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
             de la mission chez eux, donc le chauffeur peut la lancer sur place et
             poursuivre son intervention normalement. */}
         {/* Contrat du véhicule de remplacement VAB (Olivier 23/10/2026) : le lien VAB fait foi, pas la source. */}
+        {/* Étape « prendre le véhicule de remplacement » (Olivier 10/11/2026) : visible dans le trajet du chauffeur. */}
+        {!!(M as any).vab_vr && !(M as any).vab_vr.standalone && !isReadOnly && !['completed', 'to_invoice', 'invoiced', 'cancelled', 'ignored'].includes(String(M.status)) && (
+          <EtapeVrVab missionId={M.id} vr={(M as any).vab_vr} mode="chauffeur" navApp={navApp} onChange={() => router.refresh()} />
+        )}
         {!!(M as any).vab_vr && <VrContratCard missionId={M.id} vr={(M as any).vab_vr} />}
 
         {canTouringVr && (

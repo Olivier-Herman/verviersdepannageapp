@@ -3,6 +3,7 @@
 import { SNC_SUPPLEMENTS, normSupplements } from '@/lib/snc/supplements'
 import SamConversations from '@/components/sam/SamConversations'
 import { useState, useEffect, useRef, useMemo } from 'react'
+import EtapeVrVab from '@/components/mission/EtapeVrVab'
 import { useRouter }   from 'next/navigation'
 import Link            from 'next/link'
 import { buildEncaissementUrl } from '@/lib/missions/encaissement-url'
@@ -3613,6 +3614,12 @@ export default function MissionDetailClient({
               </div>
                 )
               })()}
+
+              {/* Véhicule de remplacement VAB : étape posée depuis Comet, seul l'ordre se choisit (Olivier 10/11/2026).
+                  Hors du bloc des stops : un dépannage n'a pas ce bloc, mais peut porter une livraison de VR. */}
+              {!!initialMission.vab_vr && !initialMission.vab_vr.standalone && (
+                <EtapeVrVab missionId={initialMission.id} vr={initialMission.vab_vr} mode="dispatch" onChange={() => router.refresh()} />
+              )}
 
               {/* Stops intermédiaires (REM uniquement) */}
               {!isSansDestination(form.mission_type) && (
