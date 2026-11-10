@@ -3,6 +3,7 @@
 //   { placement: 'before' }   → prise du VR avant la prise en charge (cas normal)
 //   { placement: 'after' }    → après le dépôt de la voiture : destination → concession → client
 //   { placement: 'separate' } → mission à part (forfait VR + tous les km), retirée de cette fiche
+//   { pris: true }            → le chauffeur a pris le véhicule de remplacement (heure notée, Olivier 10/11/2026)
 import { NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
@@ -16,7 +17,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   if (!u?.email) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   const b = await req.json().catch(() => ({}))
   const placement = String(b?.placement || '')
-  if (!['before', 'after', 'separate'].includes(placement)) return NextResponse.json({ error: 'placement : before, after ou separate' }, { status: 400 })
+  if (b?.pris !== true && !['before', 'after', 'separate'].includes(placement)) return NextResponse.json({ error: 'placement : before, after ou separate' }, { status: 400 })
   const sb = createAdminClient()
   const { data: me } = await sb.from('users').select('id, name, role, roles').eq('email', u.email).maybeSingle()
   const { data: m } = await sb.from('incoming_missions')
@@ -29,6 +30,15 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   if (!vr || vr.standalone) return NextResponse.json({ error: 'Pas de livraison de véhicule de remplacement sur cette mission' }, { status: 409 })
   const now = new Date().toISOString()
   const qui = me.name || 'le dispatch'
+
+  if (b?.pris === true) {
+    if (vr.picked_at) return NextResponse.json({ ok: true, picked_at: vr.picked_at })
+    await sb.from('incoming_missions').update({ vab_vr: { ...vr, picked_at: now }, updated_at: now }).eq('id', m.id)
+    await sb.from('mission_logs').insert({ mission_id: m.id, actor_id: me.id, action: 'vab_vr_pris',
+      notes: `Véhicule de remplacement ${vr.plate || ''} pris chez ${vr.pickup?.name || vr.pickup?.address || 'le loueur'} (${qui}).`.replace(/\s+/g, ' '),
+      metadata: { aid: vr.aid } }).then(() => {}, () => {})
+    return NextResponse.json({ ok: true, picked_at: now })
+  }
 
   if (placement !== 'separate') {
     await sb.from('incoming_missions').update({ vab_vr: { ...vr, placement }, updated_at: now }).eq('id', m.id)
@@ -44,12 +54,12 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     mission_type: 'transport', vehicle_plate: vr.plate, client_name: vr.deliver?.name || null, client_phone: vr.deliver?.phone || null,
     incident_address: vr.pickup?.address || null, incident_lat: vr.pickup?.lat ?? null, incident_lng: vr.pickup?.lng ?? null,
     destination_name: vr.deliver?.name || null, destination_address: vr.deliver?.address || null,
-    billed_to_id: m.billed_to_id, billed_to_name: m.billed_to_name, vab_assignment_ids: [vr.aid],
+    billed_to_id: m.billed_to_id, billed_to_name: m.billed_to_name, vab_assignment_ids: [vr.aid, ...(vr.pickup_aid ? [vr.pickup_aid] : [])],
     vab_vr: { ...vr, standalone: true, placement: 'before' }, received_at: now, intervention_date: now,
     remarks_general: `Livraison du véhicule de remplacement séparée de la mission #${m.mission_number ?? '?'} (${qui}).`,
   }).select('id, mission_number').single()
   if (error || !nouv) return NextResponse.json({ error: error?.message || 'Création impossible' }, { status: 500 })
-  const ids = (Array.isArray(m.vab_assignment_ids) ? m.vab_assignment_ids : []).filter((a: string) => a !== vr.aid)
+  const ids = (Array.isArray(m.vab_assignment_ids) ? m.vab_assignment_ids : []).filter((a: string) => a !== vr.aid && a !== vr.pickup_aid)
   await sb.from('incoming_missions').update({ vab_vr: null, vab_assignment_ids: ids, updated_at: now }).eq('id', m.id)
   await sb.from('mission_logs').insert([
     { mission_id: m.id, actor_id: me.id, action: 'vab_vr_ordre', notes: `Véhicule de remplacement : mission séparée #${nouv.mission_number ?? '?'} (${qui}).`, metadata: { placement, into: nouv.id } },
