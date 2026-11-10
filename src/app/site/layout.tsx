@@ -14,6 +14,7 @@ import { Barlow, Barlow_Condensed, JetBrains_Mono } from 'next/font/google'
 import SiteHeader from './_components/SiteHeader'
 import SiteFooter from './_components/SiteFooter'
 import Assistant  from './_components/Assistant'
+import { EtatSiteProvider } from './_components/EtatSite'
 import { SITE_URL, TEL, DEPOTS } from './_data'
 import './vd-site.css'
 
@@ -97,10 +98,12 @@ export default function SiteLayout({ children }: { children: React.ReactNode }) 
   return (
     <div className={`vdsite ${display.variable} ${body.variable} ${mono.variable}`}>
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(JSON_LD) }} />
-      <SiteHeader />
-      <main>{children}</main>
-      <SiteFooter />
-      <Assistant />
+      <EtatSiteProvider>
+        <SiteHeader />
+        <main>{children}</main>
+        <SiteFooter />
+        <Assistant />
+      </EtatSiteProvider>
     </div>
   )
 }

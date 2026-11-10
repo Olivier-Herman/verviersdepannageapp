@@ -40,6 +40,7 @@ export default function SiteFooter() {
             <h4>Infos</h4>
             <ul>
               <li><Link href={p('/contact')}>Contact</Link></li>
+              <li><Link href={p('/emploi')}>On recrute</Link></li>
               <li><Link href={p('/mentions-legales')}>Mentions légales</Link></li>
               <li><Link href={p('/confidentialite')}>Politique de confidentialité</Link></li>
               <li><Link href={p('/tarifs')}>Tarifs officiels</Link></li>

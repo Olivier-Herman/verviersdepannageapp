@@ -59,6 +59,7 @@ const GROUPS: NavGroup[] = [
       { href: '/admin/axa',       label: 'AXA',       icon: Radio },
       { href: '/admin/dispatch',      label: 'Dispatch',      icon: Radio },
       { href: '/admin/garde-nuit',    label: 'Garde de nuit', icon: Moon },
+      { href: '/admin/demandes-site', label: 'Demandes du site', icon: Bell },
       { href: '/admin/notifications', label: 'Notifications', icon: Bell },
       { href: '/admin/sons-notifications', label: 'Sons des notifications', icon: Bell },
       { href: '/admin/vetements', label: 'Pulls et t-shirts', icon: Users },

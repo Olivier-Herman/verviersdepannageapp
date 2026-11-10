@@ -3,6 +3,9 @@ import {
   TEL, TEL_HREF, CHIFFRES, TICKER,
   COMMUNES, COMMUNES_AUTRES, DEPOTS, ASSISTEURS, p,
 } from './_data'
+import RappelForm       from './_components/RappelForm'
+import BandeRecrutement from './_components/BandeRecrutement'
+import { Moment }       from './_components/EtatSite'
 
 export const metadata = {
   alternates: { canonical: '/' },
@@ -18,13 +21,18 @@ export default function SiteAccueil() {
       <div className="hero">
         <div className="wrap hero-in">
           <div className="stack g22">
-            <span className="borne on-dark">Urgence 24h/24 · 7j/7</span>
+            <span className="borne on-dark">
+              <Moment quand="jour">Urgence 24h/24 · 7j/7</Moment>
+              <Moment quand="nuit">Nuit, week-end et jours fériés · le dépanneur de garde répond</Moment>
+            </span>
             <h1>Une panne, un accident,<br />une voiture immobilisée&nbsp;?<br /><em>On arrive.</em></h1>
             <p className="hero-lede">
               Dépannage et remorquage dans toute la région verviétoise, les Fagnes et la vallée
               de l’Amblève. Un seul numéro, jour et nuit, week-ends et jours fériés compris.
             </p>
             <div><a className="big-tel" href={TEL_HREF}>☎ <span className="num">{TEL}</span></a></div>
+            <Moment quand="nuit"><p className="nuit-box"><b>À cette heure, appelez&nbsp;:</b> c’est le plus rapide. Le dépanneur de garde décroche lui-même.</p></Moment>
+            <RappelForm onDark />
             <p className="hero-sub">
               Cette nuit comme les autres, quelqu’un décroche. En moyenne 3 à 4 interventions entre 22h et 6h.
             </p>
@@ -248,6 +256,7 @@ export default function SiteAccueil() {
           </p>
         </div>
       </section>
+      <BandeRecrutement />
     </>
   )
 }

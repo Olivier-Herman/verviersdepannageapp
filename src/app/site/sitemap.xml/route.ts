@@ -19,6 +19,7 @@ const PAGES: { path: string; priority: string; freq: string }[] = [
   { path: '/pros',      priority: '0.6', freq: 'monthly' },
   { path: '/vente',     priority: '0.8', freq: 'daily'   },
   { path: '/contact',   priority: '0.7', freq: 'yearly'  },
+  { path: '/emploi',    priority: '0.5', freq: 'monthly' },
 ]
 
 const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')

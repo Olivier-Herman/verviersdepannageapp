@@ -30,7 +30,7 @@ const withPWA = require("next-pwa")({
 const SITE_HOST  = 'verviersdepannage.be'
 const SITE_PAGES = [
   'depannage', 'fourriere', 'tarifs', 'circuit', 'pros', 'contact',
-  'vente', 'mentions-legales', 'confidentialite', 'robots.txt', 'sitemap.xml',
+  'vente', 'emploi', 'mentions-legales', 'confidentialite', 'robots.txt', 'sitemap.xml',
 ]
 const onSite = { type: 'host', value: SITE_HOST }
 

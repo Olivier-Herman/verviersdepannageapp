@@ -9,7 +9,7 @@ export type BusinessSettingKind = 'number' | 'text' | 'emails' | 'list'
 export interface BusinessSettingDef {
   key:      string
   label:    string
-  group:    'Odoo' | 'Boîtes mail' | 'Montants' | 'Facturation' | 'Menu' | 'Dispatch' | 'Fourrière'
+  group:    'Odoo' | 'Boîtes mail' | 'Montants' | 'Facturation' | 'Menu' | 'Dispatch' | 'Fourrière' | 'Site public'
   kind:     BusinessSettingKind
   seed:     number | string | string[]
   help?:    string
@@ -43,6 +43,13 @@ export const BUSINESS_SETTINGS: BusinessSettingDef[] = [
   { key: 'odoo_partners_as24',          label: 'Fournisseurs AS 24 payés par domiciliation (le 1er = AS 24 - Belgium)', group: 'Odoo', kind: 'list', seed: ['2477', '186'], help: 'Factures validées par les agents : marquées payées par domiciliation ING. Les factures Viapass de la Société wallonne de financement passent sur le 1er (Olivier 19/10/2026).' },
   { key: 'odoo_partner_tva',            label: 'Partenaire « VAT Revenue Services » (service TVA)', group: 'Odoo', kind: 'number', seed: 8, help: 'Tiers des factures « Déclaration TVA » créées depuis les mails du cabinet comptable (Olivier 23/10/2026).' },
   { key: 'odoo_methode_domiciliation',  label: 'Méthode « Domiciliation » du journal de paiement fournisseurs', group: 'Odoo', kind: 'number', seed: 70 },
+  // ── Site public (lot 1, maquette validée le 10/11/2026) ──────────────────
+  { key: 'site_rappel_destinataires',      label: 'Demandes « Rappelez-moi » — prévenus par mail', group: 'Site public', kind: 'emails', seed: ['info@verviersdepannage.be'], help: 'La demande arrive aussi dans l’écran « Demandes du site ».' },
+  { key: 'site_candidature_destinataires', label: 'Candidatures chauffeur — prévenus par mail',    group: 'Site public', kind: 'emails', seed: ['mobi@verviersdepannage.be', 'momo@verviersdepannage.be'], help: 'Le CV éventuel est joint au mail.' },
+  { key: 'site_delai_rappel_heures',       label: 'Délai de rappel promis (heures ouvrables)',      group: 'Site public', kind: 'number', seed: 48, help: 'Affiché au visiteur et compté dans l’écran (week-ends et jours fériés ne comptent pas).' },
+  { key: 'site_delai_devis_heures',        label: 'Délai d’envoi d’un devis promis (heures ouvrables)', group: 'Site public', kind: 'number', seed: 24 },
+  { key: 'site_heures_bureau',             label: 'Heures du bureau (en dehors : version de nuit du site)', group: 'Site public', kind: 'text', seed: '1-5 08:00-18:00', help: 'Jours (1 = lundi … 7 = dimanche) puis heures. Jours fériés : fermé.' },
+  { key: 'site_recrutement_actif',         label: 'On recrute des chauffeurs (oui / non)',          group: 'Site public', kind: 'text', seed: 'oui', help: 'À « non », la bande « Venez rouler avec nous » disparaît de l’accueil ; la page reste joignable.' },
   // ── Boîtes mail qui engagent un flux ────────────────────────────────────
   { key: 'mail_parquet',            label: 'Parquet de Verviers (états de frais)',            group: 'Boîtes mail', kind: 'text', seed: 'fdj.pplge@just.fgov.be' },
   { key: 'mail_frais_justice',      label: 'Frais de justice Verviers (saisie judiciaire)',    group: 'Boîtes mail', kind: 'text', seed: 'frais.justice.verviers@just.fgov.be' },

@@ -176,6 +176,8 @@ export default async function AdminPage() {
           desc="Heures jour/nuit + plage auto-dispatch nuit (modifiables sans déploiement)." />
         <Card href="/admin/garde-nuit" icon={Moon} label="Garde de nuit"
           desc="Statistiques des missions proposées la nuit : acceptations, délais, refus, rappels, réserve, dispatch." />
+        <Card href="/admin/demandes-site" icon={Bell} label="Demandes du site"
+          desc="« Rappelez-moi » avec le temps restant avant le rappel promis, et candidatures chauffeur avec leur CV. Cocher « Traité » une fois fait." />
         <Card href="/admin/notifications" icon={Bell} label="Notifications"
           desc="Canaux push, événements déclencheurs, destinataires." />
         <Card href="/admin/vetements" icon={Users} label="Commande pulls et t-shirts"
