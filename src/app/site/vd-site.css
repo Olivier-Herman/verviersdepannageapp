@@ -4,30 +4,30 @@
  * Tailwind et ses propres variables de thème. Sans ce cloisonnement, les deux
  * feuilles se marchent dessus. Aucun token n'est lu depuis globals.css.
  *
- * Parti pris visuel : un seul monde, celui du logo — noir #050708, rouge
- * #D92132, blanc. Les séparateurs reprennent les barres diagonales du logo.
+ * Parti pris visuel (maquette validée le 10/11/2026) : le monde du logo — noir, rouge
+ * #E11D2E, blanc, lettrage condensé type DIN en capitales. Les séparateurs reprennent les barres diagonales du logo.
  * Pas de variante sombre : le site alterne déjà fonds clairs et panneaux noirs,
  * et un visiteur anonyme n'a pas de préférence enregistrée chez nous.
  */
 
 .vdsite {
   --black:#050708;
-  --ground:#F1F1F0;
+  --ground:#F4F4F2;
   --surface:#FFFFFF;
   --surface-2:#E4E4E2;
-  --ink:#0A0D0F;
-  --ink-2:#3B4045;
-  --muted:#6C7176;
-  --line:#D6D6D4;
+  --ink:#141518;
+  --ink-2:#3B3E44;
+  --muted:#5A5E66;
+  --line:#DCDDDD;
   --line-2:#B4B4B1;
-  --red:#D92132;
-  --red-bright:#F0424F;
-  --red-soft:#FCE9EB;
-  --panel:#050708;
-  --panel-2:#14181A;
-  --panel-ink:#F2F2F1;
-  --panel-muted:#90969A;
-  --panel-line:#23282B;
+  --red:#E11D2E;
+  --red-bright:#FF4D5A;
+  --red-soft:#FFE5E8;
+  --panel:#141518;
+  --panel-2:#1E2025;
+  --panel-ink:#F4F4F2;
+  --panel-muted:#A9ADB4;
+  --panel-line:#33363D;
 
   background:var(--ground);
   color:var(--ink);
@@ -49,13 +49,16 @@
 .vdsite :focus-visible { outline:2.5px solid var(--red); outline-offset:3px; border-radius:2px; }
 
 .vdsite h1, .vdsite h2, .vdsite h3, .vdsite h4, .vdsite .disp {
-  font-family:var(--font-site-display), var(--font-site-body), sans-serif;
+  font-family:var(--font-site-display), 'Arial Narrow', var(--font-site-body), sans-serif;
   text-wrap:balance;
 }
-.vdsite h1 { font-weight:800; font-size:clamp(2.3rem,6.2vw,4.6rem); line-height:.96; letter-spacing:-.035em; }
-.vdsite h2 { font-weight:800; font-size:clamp(1.7rem,3.6vw,2.7rem); line-height:1.04; letter-spacing:-.028em; }
-.vdsite h3 { font-weight:700; font-size:1.2rem;  line-height:1.2;  letter-spacing:-.015em; }
-.vdsite h4 { font-weight:700; font-size:1rem;    letter-spacing:-.01em; }
+.vdsite h1, .vdsite h2, .vdsite h3 { text-transform:uppercase; }
+.vdsite h1 em, .vdsite h2 em { font-style:italic; font-weight:300; }
+.vdsite .mono { font-family:var(--font-site-mono), ui-monospace, Menlo, monospace; font-variant-numeric:tabular-nums; }
+.vdsite h1 { font-weight:700; font-size:clamp(2.6rem,7vw,4.6rem); line-height:1; letter-spacing:.01em; }
+.vdsite h2 { font-weight:700; font-size:clamp(1.9rem,4.4vw,2.9rem); line-height:1.02; letter-spacing:.01em; }
+.vdsite h3 { font-weight:600; font-size:1.35rem; line-height:1.1;  letter-spacing:.01em; }
+.vdsite h4 { font-weight:700; font-size:1rem;    letter-spacing:.01em; }
 
 .vdsite .wrap  { max-width:1180px; margin:0 auto; padding:0 22px; }
 .vdsite .stack { display:flex; flex-direction:column; }
@@ -81,7 +84,7 @@
 }
 .vdsite .kerb {
   height:16px;
-  background:repeating-linear-gradient(90deg, #D92132 0 30px, #F4F4F2 30px 60px);
+  background:repeating-linear-gradient(90deg, var(--red) 0 30px, #F4F4F2 30px 60px);
 }
 
 /* ── en-tête ── */
@@ -148,7 +151,7 @@
 .vdsite .big-tel {
   display:inline-flex; align-items:center; gap:12px;
   background:var(--red); color:#fff; text-decoration:none;
-  font-family:var(--font-site-display), sans-serif; font-weight:800; letter-spacing:-.02em;
+  font-family:var(--font-site-display), sans-serif; font-weight:700; letter-spacing:.01em;
   font-size:clamp(1.25rem,3.4vw,1.75rem); padding:16px 28px; border-radius:999px;
 }
 .vdsite .big-tel:hover { filter:brightness(1.08); }
@@ -186,8 +189,8 @@
 .vdsite .ticker { background:var(--red); color:#fff; overflow:hidden; padding:14px 0; }
 .vdsite .ticker-in { display:flex; width:max-content; animation:vd-slide 38s linear infinite; }
 .vdsite .ticker-in > span {
-  font-family:var(--font-site-display), sans-serif; font-weight:800;
-  font-size:1.06rem; letter-spacing:-.015em; padding:0 22px;
+  font-family:var(--font-site-display), sans-serif; font-weight:700;
+  font-size:1.06rem; letter-spacing:.01em; padding:0 22px;
   white-space:nowrap; display:inline-flex; align-items:center; gap:22px;
 }
 .vdsite .ticker-in > span::after {
@@ -210,8 +213,8 @@
 }
 .vdsite .stat:hover { transform:translateY(-4px); border-color:var(--red); }
 .vdsite .stat b {
-  font-family:var(--font-site-display), sans-serif; font-weight:800;
-  font-size:2.6rem; letter-spacing:-.035em; line-height:1; font-variant-numeric:tabular-nums;
+  font-family:var(--font-site-display), sans-serif; font-weight:700;
+  font-size:2.6rem; letter-spacing:.01em; line-height:1; font-variant-numeric:tabular-nums;
 }
 .vdsite .stat span { font-size:.92rem; color:var(--ink-2); line-height:1.35; }
 .vdsite .stat i { font-style:normal; font-size:.74rem; color:var(--muted); }
@@ -255,7 +258,7 @@
 }
 @media (max-width:600px) { .vdsite .proc-item { grid-template-columns:1fr; gap:10px; } }
 .vdsite .proc-n {
-  font-family:var(--font-site-display), sans-serif; font-weight:800;
+  font-family:var(--font-site-display), sans-serif; font-weight:700;
   font-size:2.4rem; color:var(--red); line-height:1;
 }
 .vdsite .proc-b { display:flex; flex-direction:column; gap:8px; }
@@ -281,7 +284,7 @@
   background:var(--surface); border:1px solid var(--line); border-radius:999px;
   padding:13px 22px; flex:1 1 150px; text-align:center;
   font-family:var(--font-site-display), sans-serif; font-weight:700;
-  font-size:1rem; letter-spacing:-.01em; color:var(--ink-2);
+  font-size:1rem; letter-spacing:.01em; color:var(--ink-2);
   transition:border-color .2s ease, color .2s ease;
 }
 .vdsite .logo-cell:hover { border-color:var(--red); color:var(--ink); }
@@ -357,7 +360,7 @@
   display:flex; justify-content:space-between; align-items:flex-end; gap:12px;
 }
 .vdsite .lot-foot small { display:block; font-size:.7rem; color:var(--muted); letter-spacing:.05em; text-transform:uppercase; font-weight:600; }
-.vdsite .lot-foot b { font-family:var(--font-site-display), sans-serif; font-weight:800; font-size:1.1rem; letter-spacing:-.02em; }
+.vdsite .lot-foot b { font-family:var(--font-site-display), sans-serif; font-weight:700; font-size:1.1rem; letter-spacing:.01em; }
 .vdsite .clock { font-variant-numeric:tabular-nums; font-weight:600; }
 .vdsite .clock.soon { color:var(--red); }
 
@@ -391,7 +394,7 @@
 .vdsite .bid-state { display:flex; gap:22px; padding:14px 0; border-top:1px solid var(--panel-line); border-bottom:1px solid var(--panel-line); }
 .vdsite .bid-state > div { display:flex; flex-direction:column; gap:3px; }
 .vdsite .bid-state small { font-size:.7rem; text-transform:uppercase; letter-spacing:.07em; color:var(--panel-muted); font-weight:600; }
-.vdsite .bid-state b { font-family:var(--font-site-display), sans-serif; font-weight:800; font-size:1.5rem; color:#fff; letter-spacing:-.02em; }
+.vdsite .bid-state b { font-family:var(--font-site-display), sans-serif; font-weight:700; font-size:1.5rem; color:#fff; letter-spacing:.01em; }
 .vdsite .f { display:flex; flex-direction:column; gap:5px; }
 .vdsite .f label { font-size:.8rem; color:var(--panel-muted); font-weight:600; }
 .vdsite .f input, .vdsite .f select, .vdsite .f textarea {
@@ -401,13 +404,13 @@
 .vdsite .f input::placeholder, .vdsite .f textarea::placeholder { color:var(--panel-muted); }
 .vdsite .frow { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
 @media (max-width:520px) { .vdsite .frow { grid-template-columns:1fr; } }
-.vdsite .f-amount input { font-family:var(--font-site-display), sans-serif; font-weight:800; font-size:1.5rem; letter-spacing:-.02em; }
+.vdsite .f-amount input { font-family:var(--font-site-display), sans-serif; font-weight:700; font-size:1.5rem; letter-spacing:.01em; }
 .vdsite .check { display:flex; gap:10px; align-items:flex-start; font-size:.85rem; color:var(--panel-muted); }
 .vdsite .check input { width:auto; margin-top:3px; }
 .vdsite .submit {
   background:var(--red-bright); color:#fff; border:0; border-radius:999px;
   padding:14px 22px; cursor:pointer;
-  font-family:var(--font-site-display), sans-serif; font-weight:800; font-size:1.02rem; letter-spacing:-.01em;
+  font-family:var(--font-site-display), sans-serif; font-weight:700; font-size:1.02rem; letter-spacing:.01em;
 }
 .vdsite .submit:hover { filter:brightness(1.08); }
 .vdsite .submit:disabled { opacity:.55; cursor:default; }
@@ -424,7 +427,7 @@
 /* ── pages légales ── */
 .vdsite .legal { max-width:72ch; display:flex; flex-direction:column; gap:14px; }
 .vdsite .legal h2 {
-  font-size:1.28rem; letter-spacing:-.018em; margin-top:22px;
+  font-size:1.28rem; letter-spacing:.01em; margin-top:22px;
   padding-top:22px; border-top:1px solid var(--line);
 }
 .vdsite .legal h2:first-child { margin-top:0; padding-top:0; border-top:0; }

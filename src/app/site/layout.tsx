@@ -10,20 +10,26 @@
 // la route. Olivier 2026-08-21.
 
 import type { Metadata, Viewport } from 'next'
-import { Bricolage_Grotesque, Instrument_Sans } from 'next/font/google'
+import { Barlow, Barlow_Condensed, JetBrains_Mono } from 'next/font/google'
 import SiteHeader from './_components/SiteHeader'
 import SiteFooter from './_components/SiteFooter'
 import Assistant  from './_components/Assistant'
 import { SITE_URL, TEL, DEPOTS } from './_data'
 import './vd-site.css'
 
-const display = Bricolage_Grotesque({
-  subsets: ['latin'], weight: ['600', '800'],
+// Habillage de la maquette validée le 10/11/2026 : titres condensés en
+// capitales (lettrage de camion), texte en Barlow, chiffres et plaques en mono.
+const display = Barlow_Condensed({
+  subsets: ['latin'], weight: ['300', '600', '700'], style: ['normal', 'italic'],
   variable: '--font-site-display', display: 'swap',
 })
-const body = Instrument_Sans({
-  subsets: ['latin'], weight: ['400', '500', '600'],
+const body = Barlow({
+  subsets: ['latin'], weight: ['400', '500', '600', '700'],
   variable: '--font-site-body', display: 'swap',
+})
+const mono = JetBrains_Mono({
+  subsets: ['latin'], weight: ['500', '700'],
+  variable: '--font-site-mono', display: 'swap',
 })
 
 export const metadata: Metadata = {
@@ -44,7 +50,7 @@ export const metadata: Metadata = {
 }
 
 export const viewport: Viewport = {
-  themeColor:   '#D92132',
+  themeColor:   '#E11D2E',
   width:        'device-width',
   initialScale: 1,
   maximumScale: 5,
@@ -89,7 +95,7 @@ const JSON_LD = {
 
 export default function SiteLayout({ children }: { children: React.ReactNode }) {
   return (
-    <div className={`vdsite ${display.variable} ${body.variable}`}>
+    <div className={`vdsite ${display.variable} ${body.variable} ${mono.variable}`}>
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(JSON_LD) }} />
       <SiteHeader />
       <main>{children}</main>
