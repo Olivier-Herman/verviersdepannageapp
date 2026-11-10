@@ -127,9 +127,36 @@ export async function getMessageBody(mailbox: string, messageId: string): Promis
 }
 
 /** Récupère les pièces jointes PDF (avec contentBytes) d'un message. */
+/** PDF (base64) contenus dans un message MIME brut : parties « application/pdf » encodées en base64, à toute profondeur. */
+export function pdfsFromMime(mime: string): { name: string; contentBytes: string }[] {
+  const out: { name: string; contentBytes: string }[] = []
+  const re = /Content-Type:\s*application\/pdf[\s\S]*?\r?\n\r?\n([A-Za-z0-9+/=\r\n]+?)(?:\r?\n--|$)/gi
+  let m: RegExpExecArray | null
+  while ((m = re.exec(mime))) {
+    const head = mime.slice(m.index, m.index + 600)
+    if (!/Content-Transfer-Encoding:\s*base64/i.test(head)) continue
+    const name = head.match(/filename="?([^"\r\n;]+)/i)?.[1] || 'document.pdf'
+    const b64 = m[1].replace(/\s+/g, '')
+    if (b64.length > 200) out.push({ name, contentBytes: b64 })
+  }
+  return out
+}
+
 export async function getPdfAttachments(mailbox: string, messageId: string): Promise<GraphPdfAttachment[]> {
   const list = await authedGet(`/users/${encodeURIComponent(mailbox)}/messages/${messageId}/attachments`)
   const out: GraphPdfAttachment[] = []
+  // Messages joints (« Approbation EDF-… » du Parquet de Verviers, 14/10/2026) : le PDF signé est DANS le message
+  // attaché, à côté de notre propre état de frais non signé. Ils passent en premier ; sans ça, seule notre copie
+  // non signée était lue et prise pour l'approbation (EDF-2026-0070/0071, refusés par la taxation le 09/11/2026).
+  const nested: GraphPdfAttachment[] = []
+  for (const att of list.value || []) {
+    if (!/itemAttachment/i.test(String(att['@odata.type'] || '')) && !/rfc822/i.test(String(att.contentType || ''))) continue
+    try {
+      const r = await authedFetch(`/users/${encodeURIComponent(mailbox)}/messages/${messageId}/attachments/${att.id}/$value`)
+      if (r.ok) for (const p of pdfsFromMime(await r.text())) nested.push({ name: p.name, contentType: 'application/pdf', contentBytes: p.contentBytes })
+    } catch { /* message joint illisible : on garde les pièces directes */ }
+  }
+  out.push(...nested)
   for (const att of list.value || []) {
     const name = String(att.name || '')
     const ctype = String(att.contentType || '')

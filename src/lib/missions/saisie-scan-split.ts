@@ -16,10 +16,13 @@ const BUCKET = 'mission-remarks'
 const PROMPT = `Ce document est un « État de frais » de fourrière (société Verviers Dépannage) qui a été renvoyé SIGNÉ par le Parquet / les frais de justice.
 1) Lis son NUMÉRO, au format EDF-AAAA-NNNN (généralement en haut à droite, en gros). Recopie-le exactement.
 2) Indique s'il porte une mention de REFUS / désaccord / non-accord (sinon considère que c'est un accord).
+3) Indique s'il porte une SIGNATURE manuscrite OU un CACHET / tampon officiel ajouté par le Parquet ou les frais de justice
+   (mention « pour approbation », signature d'un magistrat, cachet daté). Le document imprimé seul, sans rien d'ajouté à la main
+   ou au tampon, n'est PAS signé, même s'il mentionne « En attente de validation du Parquet ».
 Réponds STRICTEMENT en JSON, sans texte autour :
-{"numero": "EDF-2026-0001" ou null si illisible, "refus": true ou false}`
+{"numero": "EDF-2026-0001" ou null si illisible, "refus": true ou false, "signe": true ou false}`
 
-interface PageRead { numero: string | null; refus: boolean }
+interface PageRead { numero: string | null; refus: boolean; signe: boolean }
 
 async function readEdf(client: Anthropic, pdfBase64: string): Promise<PageRead> {
   try {
@@ -36,11 +39,11 @@ async function readEdf(client: Anthropic, pdfBase64: string): Promise<PageRead> 
     })
     const txt = (resp.content as any[]).filter(b => b.type === 'text').map(b => b.text).join('').trim()
     const m = txt.match(/\{[\s\S]*\}/)
-    if (!m) return { numero: null, refus: false }
+    if (!m) return { numero: null, refus: false, signe: false }
     const j = JSON.parse(m[0])
     const numero = j.numero ? String(j.numero).toUpperCase().replace(/\s+/g, '').match(/EDF-\d{4}-\d{3,}/)?.[0] || null : null
-    return { numero, refus: j.refus === true }
-  } catch { return { numero: null, refus: false } }
+    return { numero, refus: j.refus === true, signe: j.signe === true }
+  } catch { return { numero: null, refus: false, signe: false } }
 }
 
 export interface ScanSplitPageResult {
@@ -78,10 +81,13 @@ export async function splitAndDispatch(sb: any, pdfBuffer: Buffer, userId?: stri
     const buf = Buffer.from(bytes)
     const b64 = buf.toString('base64')
 
-    const { numero, refus } = await readEdf(client, b64)
+    const { numero, refus, signe } = await readEdf(client, b64)
     const res: ScanSplitPageResult = { page: i + 1, numero, refus, matched: false, note: '' }
 
     if (!numero) { res.note = 'N° EDF illisible'; out.unmatched++; out.results.push(res); continue }
+    // Un accord exige une signature ou un cachet : le 14/10/2026, notre propre état de frais non signé, joint au mail
+    // du Parquet à côté de la vraie approbation, a été pris pour l'accord et déposé sur JustInvoice (EDF-2026-0070/0071).
+    if (!refus && !signe) { res.note = `${numero} : page non signée (notre exemplaire ?), ignorée`; out.unmatched++; out.results.push(res); continue }
 
     // On rattache à l'ÉTAT DE FRAIS précis (par son n° EDF), pas « le dernier ».
     const { data: ef } = await sb.from('saisie_etats_frais')
