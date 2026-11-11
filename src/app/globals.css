@@ -268,3 +268,15 @@ body {
 /* Anciens écrans en colonne blanche centrée (affichage téléphone d'origine) : fond de la page,
    alignés sous le bandeau, sans hauteur d'écran forcée. */
 .reglages-contenu .min-h-screen.bg-surface { background: transparent; min-height: 0; margin-left: 0; max-width: 72rem; }
+/* Le fond décoratif (AmbientBackground) enfermait les fenêtres des écrans de Réglages dans une couche
+   sous la barre du haut (téléphone) et le menu de gauche (ordinateur). Sans cette couche, une fenêtre
+   z-50 passe au-dessus de tout. Le contenu reste devant les taches de couleur (ordre du document). */
+.reglages-zone > .relative > .relative.z-10 { z-index: auto; }
+/* Anciennes fenêtres pas encore passées au modèle commun : coins arrondis, ombre, champs plus grands. */
+.reglages-contenu .fixed.inset-0 > div:first-child { border-radius: 1.5rem; box-shadow: 0 25px 50px -12px rgba(0,0,0,.35); }
+.reglages-contenu .fixed.inset-0 :is(input:not([type=checkbox]):not([type=radio]):not([type=color]), select) { min-height: 44px; border-radius: .9rem; }
+.reglages-contenu .fixed.inset-0 textarea { border-radius: .9rem; }
+.reglages-contenu .fixed.inset-0 button { min-height: 40px; border-radius: .9rem; }
+/* Anciens champs repris tels quels dans les fenêtres au modèle commun (rendues hors de la zone). */
+.fenetre-reglages :is(input:not([type=checkbox]):not([type=radio]):not([type=color]):not([type=file]), select) { min-height: 44px; border-radius: .9rem; }
+.fenetre-reglages textarea { border-radius: .9rem; }

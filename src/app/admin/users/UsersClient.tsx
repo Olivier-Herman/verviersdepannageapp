@@ -898,7 +898,6 @@ export default function UsersClient({ users, modules, currentUserRole = 'admin' 
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
           <div
             className="absolute inset-0 bg-ink/40 backdrop-blur-sm"
-            onClick={roleSaving ? undefined : () => setShowRoleModal(false)}
             aria-hidden="true"
           />
           <div

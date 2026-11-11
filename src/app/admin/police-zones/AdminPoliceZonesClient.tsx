@@ -3,6 +3,8 @@
 // Olivier 2026-06-02 : CRUD admin zones de police (pattern zero-hardcode).
 // Une seule zone peut etre is_default (preselectionnee dans le form chauffeur).
 
+import { Fenetre, BoutonsPied } from '@/components/admin/Fenetre'
+import { PenLine, Plus } from 'lucide-react'
 import { useState }   from 'react'
 import { useRouter }  from 'next/navigation'
 interface Zone {
@@ -131,9 +133,10 @@ export default function AdminPoliceZonesClient({ initialZones }: { initialZones:
       </div>
 
       {editing && (
-        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/70 px-4">
-          <div className="bg-surface w-full max-w-md rounded-2xl border p-5 space-y-3" onClick={e => e.stopPropagation()}>
-            <h3 className="text-ink font-bold text-base">{editing.id ? '✏️ Modifier la zone' : '+ Nouvelle zone'}</h3>
+        <Fenetre titre={editing.id ? 'Modifier la zone' : 'Nouvelle zone'} couleur="info"
+          icone={editing.id ? <PenLine size={22} /> : <Plus size={24} />} onClose={() => setEditing(null)}
+          pied={<BoutonsPied couleur="info" onAnnuler={() => setEditing(null)} onValider={save} enCours={busy} desactive={!editing.name} libelle={editing.id ? 'Enregistrer' : 'Créer'} />}>
+          <div className="space-y-4">
 
             <div>
               <label className="block text-ink-muted text-xs font-semibold mb-1.5">Nom *</label>
@@ -173,17 +176,8 @@ export default function AdminPoliceZonesClient({ initialZones }: { initialZones:
             </label>
 
             {error && <p className="text-critical text-xs">⚠ {error}</p>}
-
-            <div className="flex gap-2">
-              <button onClick={() => setEditing(null)} disabled={busy}
-                className="flex-1 py-2.5 bg-surface-2 border text-ink-secondary rounded-xl text-sm">Annuler</button>
-              <button onClick={save} disabled={busy || !editing.name}
-                className="flex-1 py-2.5 bg-brand text-white rounded-xl text-sm font-semibold disabled:opacity-50">
-                {busy ? '⏳ ...' : 'Enregistrer'}
-              </button>
-            </div>
           </div>
-        </div>
+        </Fenetre>
       )}
     </div>
   )

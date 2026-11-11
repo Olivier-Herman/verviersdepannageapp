@@ -730,180 +730,87 @@ export default function TarifsClient(props: Props) {
           )
         })()}
 
-        {/* ── Text describe modal ───────────────────────────── */}
+        {/* ── Décrire un barème en texte (modèle commun, Olivier 11/11/2026) ── */}
         {showTextModal && (
-          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-            <div className="bg-surface rounded-lg p-6 max-w-2xl w-full">
-              <h2 className="text-lg font-display font-bold mb-2">📝 Décrire un barème en texte</h2>
-              <p className="text-xs text-ink-faint mb-4">
-                Écris en français le barème comme tu le décrirais au téléphone. L'IA va extraire les tarifs structurés.
-                Tu pourras valider/ajuster avant enregistrement.
-              </p>
-              <div className="space-y-3">
-                <div>
-                  <label className="text-xs text-ink-faint uppercase tracking-wider">Source (optionnel)</label>
-                  <select value={textHint} onChange={e => setTextHint(e.target.value)} className="w-full mt-1 px-3 py-2 bg-surface-hover rounded">
-                    <option value="">Auto (laisse l'IA détecter)</option>
-                    {sortedSources.map(s => <option key={s.source} value={s.source}>{s.label}</option>)}
-                  </select>
-                </div>
-                <div>
-                  <label className="text-xs text-ink-faint uppercase tracking-wider">Barème</label>
-                  <textarea
-                    value={textInput}
-                    onChange={e => setTextInput(e.target.value)}
-                    rows={10}
-                    placeholder={`Exemples :
+          <Fenetre titre="Décrire un barème" sousTitre="En français, comme au téléphone : les tarifs sont lus pour vous, à vérifier ensuite"
+            couleur="success" icone={<PenLine size={24} />} onClose={() => setShowTextModal(false)}
+            pied={<BoutonsPied couleur="success" onAnnuler={() => setShowTextModal(false)} onValider={handleExtractText} enCours={textExtracting} desactive={!textInput.trim()} libelle="Lire le barème" />}>
+            <ChampListe label="Assistance (facultatif)" valeur={textHint} onChange={setTextHint}
+              options={[{ value: '', label: 'À reconnaître dans le texte' }, ...sortedSources.map(x => ({ value: x.source, label: x.label }))]} />
+            <ChampTexteLong label="Barème" lignes={9} valeur={textInput} onChange={setTextInput}
+              placeholder={`Exemples :
 
-• "TGR Touring : remorquage 2.00€/km chargé (incident → destination), pas de forfait"
+« TGR Touring : remorquage 2 € par km chargé, sans forfait »
 
-• "Privé : remorquage 75€ forfait incluant 20 km, puis 2.50€/km extra sur le total parcouru. Mise en parc 10€/jour."
+« Privé : remorquage 75 € pour 20 km, puis 2,50 € par km. Parc 10 € par jour. »
 
-• "AXA : DSP forfait 65€, REM forfait 95€ + 1.80€/km au-delà de 25 km inclus. Autofacturation. Valide à partir du 1er juin 2026."`}
-                    className="w-full mt-1 px-3 py-2 bg-surface-hover rounded text-sm font-mono"
-                  />
-                </div>
-                {textError && <div className="text-red-500 text-sm">{textError}</div>}
-                {textExtracting && <div className="text-ink-faint text-sm">⏳ Analyse IA en cours (5-15s)…</div>}
-              </div>
-              <div className="flex gap-2 mt-6">
-                <button onClick={() => setShowTextModal(false)} disabled={textExtracting} className="flex-1 px-4 py-2 bg-surface-hover rounded text-sm">
-                  Annuler
-                </button>
-                <button onClick={handleExtractText} disabled={!textInput.trim() || textExtracting} className="flex-1 px-4 py-2 bg-brand text-surface rounded font-medium text-sm disabled:opacity-50">
-                  {textExtracting ? '⏳ Analyse…' : '🤖 Interpréter avec IA'}
-                </button>
-              </div>
-            </div>
-          </div>
+« AXA : dépannage 65 €, remorquage 95 € pour 25 km puis 1,80 € par km. L'assistance se facture elle-même. Valable dès le 1er juin 2026. »`} />
+            {textError && <Note ton="attention">{textError}</Note>}
+            {textExtracting && <Note>Lecture en cours, 5 à 15 secondes…</Note>}
+          </Fenetre>
         )}
 
-        {/* ── Upload modal ──────────────────────────────────── */}
+        {/* ── Importer une grille en PDF (modèle commun) ── */}
         {showUpload && (
-          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-            <div className="bg-surface rounded-lg p-6 max-w-md w-full">
-              <h2 className="text-lg font-display font-bold mb-4">📄 Importer un PDF tarifaire</h2>
-              <div className="space-y-3">
-                <div>
-                  <label className="text-xs text-ink-faint uppercase tracking-wider">Source (optionnel, aide l'IA)</label>
-                  <select value={uploadHint} onChange={e => setUploadHint(e.target.value)} className="w-full mt-1 px-3 py-2 bg-surface-hover rounded">
-                    <option value="">Auto (laisse l'IA détecter)</option>
-                    {sortedSources.map(s => <option key={s.source} value={s.source}>{s.label}</option>)}
-                  </select>
-                </div>
-                <div>
-                  <label className="text-xs text-ink-faint uppercase tracking-wider">PDF</label>
-                  <input
-                    ref={fileInputRef}
-                    type="file"
-                    accept="application/pdf"
-                    onChange={e => setUploadFile(e.target.files?.[0] || null)}
-                    className="w-full mt-1 px-3 py-2 bg-surface-hover rounded text-sm"
-                  />
-                </div>
-                {uploadError && <div className="text-red-500 text-sm">{uploadError}</div>}
-                {uploading && <div className="text-ink-faint text-sm">Analyse IA en cours (10-30s)…</div>}
-              </div>
-              <div className="flex gap-2 mt-6">
-                <button onClick={() => setShowUpload(false)} disabled={uploading} className="flex-1 px-4 py-2 bg-surface-hover rounded text-sm">
-                  Annuler
-                </button>
-                <button onClick={handleExtract} disabled={!uploadFile || uploading} className="flex-1 px-4 py-2 bg-brand text-surface rounded font-medium text-sm disabled:opacity-50">
-                  {uploading ? '⏳ Analyse…' : '🤖 Analyser avec IA'}
-                </button>
-              </div>
-            </div>
-          </div>
+          <Fenetre titre="Importer une grille" sousTitre="Un PDF de l’assistance : les tarifs sont lus pour vous, à vérifier ensuite"
+            couleur="success" icone={<FileUp size={24} />} onClose={() => setShowUpload(false)}
+            pied={<BoutonsPied couleur="success" onAnnuler={() => setShowUpload(false)} onValider={handleExtract} enCours={uploading} desactive={!uploadFile} libelle="Lire le PDF" />}>
+            <ChampListe label="Assistance (facultatif)" valeur={uploadHint} onChange={setUploadHint}
+              options={[{ value: '', label: 'À reconnaître dans le PDF' }, ...sortedSources.map(x => ({ value: x.source, label: x.label }))]} />
+            <label className="flex flex-col items-center justify-center gap-2 min-h-[140px] rounded-3xl border-2 border-dashed border-strong bg-surface-hover/50 hover:border-emerald-400 cursor-pointer px-4 text-center">
+              <FileUp size={30} className="text-emerald-600" />
+              <span className="text-ink font-semibold">{uploadFile ? uploadFile.name : 'Choisir le PDF'}</span>
+              <span className="text-ink-muted text-sm">{uploadFile ? 'Touchez pour en choisir un autre' : 'Grille tarifaire envoyée par l’assistance'}</span>
+              <input ref={fileInputRef} type="file" accept="application/pdf" className="sr-only"
+                onChange={e => setUploadFile(e.target.files?.[0] || null)} />
+            </label>
+            {uploadError && <Note ton="attention">{uploadError}</Note>}
+            {uploading && <Note>Lecture en cours, 10 à 30 secondes…</Note>}
+          </Fenetre>
         )}
 
-        {/* ── Validation modal ──────────────────────────────── */}
+        {/* ── Vérifier les tarifs lus (modèle commun) ── */}
         {showValidation && (
-          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-            <div className="bg-surface rounded-lg p-6 max-w-5xl w-full max-h-[90vh] overflow-y-auto">
-              <h2 className="text-lg font-display font-bold mb-2">✅ Validation extraction IA</h2>
-              <p className="text-sm text-ink-faint mb-4">
-                {extractedItems.length} ligne(s) extraite(s) depuis <code className="text-xs">{extractDocName}</code>.
-                Décoche les lignes incorrectes, ajuste les valeurs si besoin, puis enregistre.
-              </p>
-
-              {extractedItems.length === 0 ? (
-                <div className="text-center py-8 text-ink-faint">
-                  Aucun tarif identifié par l'IA. Tu peux ajouter manuellement ou ajuster le PDF.
-                </div>
-              ) : (
-                <div className="space-y-3">
-                  {extractedItems.map((item, idx) => (
-                    <div key={idx} className={`p-3 rounded border ${item._include ? 'border-brand bg-brand/5' : 'border-surface-hover opacity-50'}`}>
-                      <div className="flex items-start gap-3">
-                        <input
-                          type="checkbox"
-                          checked={item._include}
-                          onChange={e => {
-                            const next = [...extractedItems]
-                            next[idx]._include = e.target.checked
-                            setExtractedItems(next)
-                          }}
-                          className="mt-1"
-                        />
-                        <div className="flex-1 grid grid-cols-2 lg:grid-cols-4 gap-2 text-sm">
-                          <FieldSelect label="Source" value={item.source} options={sortedSources.map(s => s.source)} optionLabels={SOURCE_LABELS} onChange={v => updateField(idx, 'source', v)} />
-                          <FieldSelect label="Type" value={item.mission_type} options={typesForSource(item.source)} optionLabels={TYPE_LABELS} onChange={v => updateField(idx, 'mission_type', v)} />
-                          <FieldNumber label="Forfait €" value={item.unit_price} onChange={v => updateField(idx, 'unit_price', v)} />
-                          <FieldNumber label="Km inclus" value={item.km_inclus} onChange={v => updateField(idx, 'km_inclus', v)} />
-                          <FieldNumber label="€/km extra" value={item.km_price} onChange={v => updateField(idx, 'km_price', v)} />
-                          <FieldNumber label="€/jour parc" value={item.parc_day_price} onChange={v => updateField(idx, 'parc_day_price', v)} />
-                          <div className="col-span-2 lg:col-span-4">
-                            <label className="text-[10px] text-ink-faint uppercase tracking-wider">Base de calcul des km</label>
-                            <select
-                              value={item.km_basis || 'total'}
-                              onChange={e => updateField(idx, 'km_basis', e.target.value)}
-                              className="w-full px-2 py-1 bg-surface-hover rounded text-sm"
-                            >
-                              <option value="total">Km totaux (dépôt → ... → retour) — privé / garage</option>
-                              <option value="charged">Km chargés (incident → destination) — assurances</option>
-                            </select>
-                          </div>
-                          <div className="col-span-2 lg:col-span-4">
-                            <p className="text-[10px] text-ink-faint italic">
-                              💡 Les majorations nuit/week-end/jour férié sont gérées séparément par le module Surcharges (selon l'heure réelle de l'intervention).
-                            </p>
-                          </div>
-                          <div className="col-span-2 lg:col-span-4">
-                            <label className="text-xs text-ink-faint flex items-center gap-2">
-                              <input
-                                type="checkbox"
-                                checked={item.is_autofac}
-                                onChange={e => updateField(idx, 'is_autofac', e.target.checked)}
-                              />
-                              Autofacturation (l'assurance facture elle-même)
-                            </label>
-                          </div>
-                          {item.raw_quote && (
-                            <div className="col-span-2 lg:col-span-4 text-xs text-ink-faint italic border-l-2 border-brand/30 pl-2 mt-1">
-                              "{item.raw_quote}"
-                            </div>
-                          )}
-                        </div>
-                      </div>
+          <Fenetre large titre="Vérifier les tarifs lus" couleur="success" icone={<FileText size={24} />}
+            sousTitre={`${extractedItems.length} tarif${extractedItems.length > 1 ? 's' : ''} lu${extractedItems.length > 1 ? 's' : ''}${extractDocName ? ` dans ${extractDocName}` : ''} : décochez ceux qui sont faux, corrigez au besoin`}
+            onClose={() => setShowValidation(false)}
+            pied={<BoutonsPied couleur="success" onAnnuler={() => setShowValidation(false)} onValider={handleSaveExtracted} enCours={saving}
+              desactive={extractedItems.filter(x => x._include).length === 0}
+              libelle={`Enregistrer ${extractedItems.filter(x => x._include).length} tarif${extractedItems.filter(x => x._include).length > 1 ? 's' : ''}`} />}>
+            {extractedItems.length === 0 ? (
+              <Note>Aucun tarif reconnu. Ajoutez-le à la main, ou essayez un autre document.</Note>
+            ) : extractedItems.map((item, idx) => (
+              <section key={idx} className={`rounded-3xl border-2 p-4 space-y-3 transition ${item._include ? 'border-emerald-300 bg-emerald-50/40' : 'border-strong opacity-60'}`}>
+                <Interrupteur label={`${SOURCE_LABELS[item.source] || item.source || 'Assistance ?'} · ${libelleType(item.mission_type)}`}
+                  aide={item._include ? 'Sera enregistré' : 'Ne sera pas enregistré'} valeur={!!item._include}
+                  onChange={v => { const next = [...extractedItems]; next[idx]._include = v; setExtractedItems(next) }} />
+                {item._include && (
+                  <>
+                    <div className="grid sm:grid-cols-2 gap-3">
+                      <ChampListe label="Assistance" valeur={item.source} onChange={v => updateField(idx, 'source', v)}
+                        options={sortedSources.map(x => ({ value: x.source, label: x.label || x.source }))} />
+                      <ChampListe label="Type d’intervention" valeur={item.mission_type} onChange={v => updateField(idx, 'mission_type', v)}
+                        options={typesForSource(item.source).map(t => ({ value: t, label: libelleType(t) }))} />
                     </div>
-                  ))}
-                </div>
-              )}
-
-              <div className="flex gap-2 mt-6 sticky bottom-0 bg-surface pt-3 border-t border-surface-hover">
-                <button onClick={() => setShowValidation(false)} disabled={saving} className="px-4 py-2 bg-surface-hover rounded text-sm">
-                  Annuler
-                </button>
-                <div className="flex-1 text-center text-sm text-ink-faint self-center">
-                  {extractedItems.filter(x => x._include).length} ligne(s) à enregistrer
-                </div>
-                <button onClick={handleSaveExtracted} disabled={saving || extractedItems.filter(x => x._include).length === 0} className="px-4 py-2 bg-brand text-surface rounded font-medium text-sm disabled:opacity-50">
-                  {saving ? '⏳ Enregistrement…' : '✅ Enregistrer'}
-                </button>
-              </div>
-            </div>
-          </div>
+                    <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                      <ChampNombre label="Forfait" unite="€" valeur={item.unit_price} onChange={v => updateField(idx, 'unit_price', v)} />
+                      <ChampNombre label="Km inclus" unite="km" placeholder="0" valeur={item.km_inclus || null} onChange={v => updateField(idx, 'km_inclus', v ?? 0)} />
+                      <ChampNombre label="Prix du km en plus" unite="€ / km" valeur={item.km_price} onChange={v => updateField(idx, 'km_price', v)} />
+                      <ChampNombre label="Parc, par jour" unite="€ / jour" placeholder="Facultatif" valeur={item.parc_day_price} onChange={v => updateField(idx, 'parc_day_price', v)} />
+                    </div>
+                    <ChampListe label="Km comptés" valeur={item.km_basis || 'total'} onChange={v => updateField(idx, 'km_basis', v)} options={[
+                      { value: 'total',   label: 'Tous : dépôt, lieu, destination, retour' },
+                      { value: 'charged', label: 'Seulement le trajet chargé : lieu → destination' },
+                    ]} />
+                    <Interrupteur label="L’assistance se facture elle-même" valeur={!!item.is_autofac} onChange={v => updateField(idx, 'is_autofac', v)} />
+                    {item.raw_quote && <Note>Lu dans le document : « {item.raw_quote} »</Note>}
+                  </>
+                )}
+              </section>
+            ))}
+          </Fenetre>
         )}
+
         </>}
 
         {/* ── Fenêtre d'ajout / modification (maquette validée par Olivier le 11/11/2026) ── */}

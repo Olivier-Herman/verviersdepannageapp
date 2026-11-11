@@ -35,7 +35,7 @@ export function Fenetre({ titre, sousTitre, couleur = 'info', icone, onClose, pi
   if (!monte) return null
   return createPortal(
     <div className="fixed inset-0 z-[100] bg-black/55 flex items-stretch sm:items-center justify-center sm:p-4" role="dialog" aria-modal="true" aria-label={titre}>
-      <div className={`w-full ${large ? 'sm:max-w-4xl' : 'sm:max-w-2xl'} h-full sm:h-auto sm:max-h-[92vh] bg-surface sm:rounded-3xl shadow-2xl overflow-hidden flex flex-col`}>
+      <div className={`fenetre-reglages w-full ${large ? 'sm:max-w-4xl' : 'sm:max-w-2xl'} h-full sm:h-auto sm:max-h-[92vh] bg-surface sm:rounded-3xl shadow-2xl overflow-hidden flex flex-col`}>
         <header className={`relative flex items-center gap-4 px-5 py-4 sm:py-5 pt-[max(1rem,env(safe-area-inset-top))] text-white bg-gradient-to-br ${DEGRADE[couleur]}`}>
           {icone && <span className="w-12 h-12 rounded-2xl flex items-center justify-center bg-white/20 ring-1 ring-white/30 flex-shrink-0">{icone}</span>}
           <div className="flex-1 min-w-0">
