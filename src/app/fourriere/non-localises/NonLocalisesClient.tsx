@@ -35,8 +35,15 @@ interface Props {
   userName:    string
   userEmail?:  string | null
   userModules: string[]
+  /** Embarqué dans le Contrôle du parc (préversion ma_journee, P7) : sans AppShell. */
+  embedded?:   boolean
 }
 
+
+function MaybeShell({ embedded, children, userRole, userName, userEmail, userModules }: { embedded: boolean; children: React.ReactNode; userRole: string; userName: string; userEmail?: string | null; userModules: string[] }) {
+  if (embedded) return <>{children}</>
+  return <AppShell title="Véhicules non-localisés" userRole={userRole} userName={userName} userEmail={userEmail || undefined} userModules={userModules}>{children}</AppShell>
+}
 
 function fmtDateOnly(d: string | null): string {
   if (!d) return '—'
@@ -60,7 +67,7 @@ function escCsv(v: any): string {
   return /[,"\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s
 }
 
-export default function NonLocalisesClient({ userRole, userName, userEmail, userModules }: Props) {
+export default function NonLocalisesClient({ userRole, userName, userEmail, userModules, embedded = false }: Props) {
   const [vehicles, setVehicles] = useState<UnlocatedVehicle[]>([])
   const [loading, setLoading]   = useState(true)
   const [filter, setFilter]     = useState('')
@@ -163,7 +170,7 @@ export default function NonLocalisesClient({ userRole, userName, userEmail, user
   }
 
   return (
-    <AppShell title="Véhicules non-localisés" userRole={userRole} userName={userName} userEmail={userEmail || undefined} userModules={userModules}>
+    <MaybeShell embedded={embedded} userRole={userRole} userName={userName} userEmail={userEmail} userModules={userModules}>
       <AmbientBackground>
         <div className="p-4 lg:p-6 space-y-4 ambient-fade-up">
 
@@ -386,6 +393,6 @@ export default function NonLocalisesClient({ userRole, userName, userEmail, user
 
         </div>
       </AmbientBackground>
-    </AppShell>
+    </MaybeShell>
   )
 }

@@ -127,6 +127,7 @@ export const BUSINESS_SETTINGS: BusinessSettingDef[] = [
   { key: 'talkie_permanent', label: 'Talkie — chauffeurs avec accès permanent (essais)', group: 'Dispatch', kind: 'emails', seed: [], help: 'Ces chauffeurs ont leur canal direct avec Mobi / IT jour et nuit, même hors garde (essais de l’app iPhone, Olivier 01/10/2026). Vider la liste après les essais.' },
   { key: 'talkie_it', label: 'Talkie — canal Mobi / IT', group: 'Dispatch', kind: 'emails', seed: ['mobi@verviersdepannage.be'], help: 'Comptes joignables par le canal direct de chaque chauffeur : il peut leur parler en direct s’il a un souci (Olivier 30/09/2026).' },
   // ── Fourrière ─────────────────────────────────────────────────────────────
+  { key: 'controle_parc_rappel_jours', label: 'Contrôle du parc — rappel après N jours (0 = coupé)', group: 'Fourrière', kind: 'number', seed: 0, help: 'Si le dernier contrôle du parc date de plus de N jours, Mobi reçoit un rappel (Telegram, au plus une fois par semaine). La date du dernier contrôle s’affiche dans l’écran Contrôle du parc. Olivier 11/11/2026.' },
   { key: 'epaviste_destruction', label: 'Épaviste des dossiers de destruction', group: 'Fourrière', kind: 'text', seed: 'Car Parts & Recycling', help: 'Nom inscrit sur chaque dossier de destruction et sur le document remis à la personne qui se présente.' },
   // ── Menu : zone « Maintenant » par rôle (lot 1 du menu v3, 09/09/2026) ──
   // Chemins de pages, séparés par des virgules, dans l'ordre d'affichage.
