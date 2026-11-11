@@ -100,20 +100,29 @@ export async function loginComexBko(account: BkoAccount, opts: { force?: boolean
   let lastErr = 'login COMEX BKO échoué'
   // En échec répété : une seule tentative par essai (pas 3).
   const tentatives = pause.echecs >= PAUSE_APRES ? 1 : 3
+  // Diagnostic (11/11/2026) : ce que Touring répond à chaque étape, enregistré quand la connexion échoue.
+  const etapes: any[] = []
+  const trace = async (nom: string, r: Response, cookieAvant: string, cookieApres: string) => {
+    let debut = ''
+    try { debut = (await r.clone().text()).replace(/\s+/g, ' ').slice(0, 160) } catch {}
+    const sc = ((r.headers as any).getSetCookie?.() as string[] | undefined) || []
+    etapes.push({ nom, status: r.status, location: r.headers.get('location'), server: r.headers.get('server'), setCookies: sc.map(c => c.split('=')[0]), cookieRenouvele: cookieAvant !== cookieApres, aCookie: !!cookieApres, debut })
+  }
   for (let attempt = 1; attempt <= tentatives; attempt++) {
     try {
       let cookie = ''
       // 1) welcome
       let r = await fetch(`${BASE}/welcome.do`, { headers: hdr(cookie), signal: AbortSignal.timeout(20000) })
-      cookie = grabJsession(r, cookie)
+      let avant = cookie; cookie = grabJsession(r, cookie); await trace('welcome', r, avant, cookie)
       // 2) pré-vol canILog (crée la saved request)
       r = await fetch(`${BASE}/secured/canILog.do`, { method: 'POST', headers: hdr(cookie, true), body: creds, redirect: 'manual', signal: AbortSignal.timeout(20000) })
-      cookie = grabJsession(r, cookie)
+      avant = cookie; cookie = grabJsession(r, cookie); await trace('prevol', r, avant, cookie)
       // 3) j_security_check → 303 + rotation session
       r = await fetch(`${BASE}/j_security_check`, { method: 'POST', headers: hdr(cookie, true), body: creds, redirect: 'manual', signal: AbortSignal.timeout(20000) })
-      cookie = grabJsession(r, cookie)
+      avant = cookie; cookie = grabJsession(r, cookie); await trace('security_check', r, avant, cookie)
       // 4) confirmation
       r = await fetch(`${BASE}/secured/canILog.do`, { headers: hdr(cookie), signal: AbortSignal.timeout(20000) })
+      await trace('canILog', r, cookie, cookie)
       const txt = (await r.text()).trim()
       if (!/^logged/.test(txt)) throw new Error(`login COMEX BKO échoué (canILog="${txt.slice(0, 40)}")`)
       if (pause.echecs) await ecrirePause({ echecs: 0, dernier: null, depuis: null })
@@ -125,6 +134,12 @@ export async function loginComexBko(account: BkoAccount, opts: { force?: boolean
   }
   const now = new Date().toISOString()
   await ecrirePause({ echecs: pause.echecs + 1, dernier: now, depuis: pause.depuis || now })
+  try {
+    const { createAdminClient } = await import('@/lib/supabase')
+    let ip: string | null = null
+    try { ip = (await (await fetch('https://api.ipify.org?format=json', { signal: AbortSignal.timeout(5000) })).json())?.ip || null } catch {}
+    await createAdminClient().from('app_settings').upsert({ key: 'comex_bko_login_diag', value: JSON.stringify({ at: now, compte: user, erreur: lastErr, node: process.version, region: process.env.VERCEL_REGION || null, ipSortante: ip, etapes: etapes.slice(-8) }) }, { onConflict: 'key' })
+  } catch { /* diagnostic best-effort */ }
   throw new Error(lastErr)
 }
 
