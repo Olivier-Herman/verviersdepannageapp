@@ -67,6 +67,23 @@ const trajet = (m: M) => [court(m.incident_address) || m.incident_city, m.destin
 const vehicule = (m: M) => [m.vehicle_brand, m.vehicle_model].filter(Boolean).join(' ')
 
 // ── Morceaux d'affichage (hors du composant : pas recréés à chaque seconde) ──
+// Avancement : reçue, acceptée, en route, sur place, chargée ou réparée, livrée.
+const Avancement = ({ m }: { m: M }) => {
+  const dsp = typeCourt(m) === 'DSP'
+  const etapes: [string, string | null][] = [['Reçue', m.received_at], ['Acceptée', m.accepted_at], ['En route', m.on_way_at], ['Sur place', m.on_site_at], [dsp ? 'Terminée' : 'Chargée', dsp ? null : m.loaded_at], [dsp ? '' : 'Livraison', dsp ? null : m.delivering_at]]
+  const vis = etapes.filter(e => e[0])
+  const cur = vis.findIndex(e => !e[1])
+  return (
+    <div className="grid gap-1" style={{ gridTemplateColumns: `repeat(${vis.length}, minmax(0,1fr))` }}>
+      {vis.map(([l, t], i) => (
+        <div key={l} className="text-center text-[10.5px] text-stone-500">
+          <div className={`h-1.5 rounded mb-1 ${t ? 'bg-emerald-500' : i === cur ? 'bg-amber-400' : 'bg-stone-200'}`} />
+          {l}<b className="block text-stone-900 tabular-nums">{t ? new Date(t).toLocaleTimeString('fr-BE', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Brussels' }) : '–'}</b>
+        </div>
+      ))}
+    </div>
+  )
+}
 const Source = ({ m, sources }: { m: M; sources: SourceDisplay[] }) => (
   <span className={`px-2 py-0.5 rounded-md text-[11.5px] font-bold text-white whitespace-nowrap ${getSourceColor(m.source, sources)}`}>{getSourceLabel(m.source, sources)}</span>
 )
@@ -128,6 +145,8 @@ export default function DispatchV2Client({ userName, userEmail, userId, userRole
   const [picker, setPicker] = useState<M | null>(null)
   const [selId, setSelId] = useState<string | null>(null)
   const choisir = (m: M) => setSelId(m.id)   // fermeture par le ✕ du volet
+  // Chauffeur proposé : calculé à l'ouverture d'une mission à valider ou sans chauffeur, jamais en boucle.
+  const [prop, setProp] = useState<{ id: string; data: any | null } | null>(null)
   const [siabis, setSiabis] = useState<{ m: M; next: (() => void) | null } | null>(null)
   const [refus, setRefus] = useState<M | null>(null)
   const modalOuverte = useRef(false)
@@ -224,6 +243,13 @@ export default function DispatchV2Client({ userName, userEmail, userId, userRole
     ...board.att.filter(m => minutesDepuis(m.intervention_date && new Date(m.intervention_date).getTime() < now ? m.intervention_date : m.received_at, now) >= 15)].length : 0
   const sel = selId ? ([...(board?.cmd || []), ...(board?.att || []), ...(board?.lances || []), ...(autres || [])].find(m => m.id === selId) || null) : null
   const alertesSel = sel && board ? board.alertes.filter(a => a.mission.id === sel.id) : []
+  const aAffecter = !!sel && (sel.status === 'new' || sel.status === 'dispatching')
+  useEffect(() => {
+    if (!selId || !aAffecter) return
+    if (prop?.id === selId) return
+    setProp({ id: selId, data: null })
+    fetch(`/api/dispatch/v2/proposition/${selId}`, { cache: 'no-store' }).then(r => r.json()).then(d => setProp(p => (p?.id === selId ? { id: selId, data: d } : p))).catch(() => setProp(p => (p?.id === selId ? { id: selId, data: { propositions: [], raison: 'La proposition n\'a pas pu être calculée.' } } : p)))
+  }, [selId, aAffecter])   // eslint-disable-line react-hooks/exhaustive-deps
   const listeBrute = filtre === 'cours' ? (board?.lances || null) : autres
   const liste = useMemo(() => {
     if (!listeBrute) return null
@@ -391,11 +417,36 @@ export default function DispatchV2Client({ userName, userEmail, userId, userRole
                 </dl>
                 {Array.isArray(sel.warnings) && sel.warnings.length > 0 && <div className="flex flex-wrap gap-1">{sel.warnings.map((w: string) => <span key={w} className="px-2 py-0.5 rounded-full bg-amber-100 text-amber-900 text-[12px] font-bold">⚠ {w}</span>)}</div>}
                 {alertesSel.map(a => <div key={a.type}>{carteAlerte(a)}</div>)}
+                {aAffecter && (
+                  <div className="rounded-xl border-2 border-emerald-600 bg-emerald-50 p-2.5 flex flex-col gap-2">
+                    <span className="text-[11px] font-extrabold uppercase tracking-wider text-emerald-800">Chauffeur proposé</span>
+                    {!prop?.data ? <span className="text-stone-600 text-sm">Calcul en cours…</span>
+                      : !prop.data.propositions?.length ? <span className="text-stone-700 text-sm">{prop.data.raison || 'Aucune proposition.'}</span>
+                      : <>
+                        {(() => { const p0 = prop.data.propositions[0]; return (
+                          <>
+                            <div className="flex items-start gap-2">
+                              <span className="w-9 h-9 rounded-xl bg-emerald-700 text-white font-extrabold text-xs flex items-center justify-center flex-none">{String(p0.nom).split(' ').map((x: string) => x[0]).join('').slice(0, 2)}</span>
+                              <span className="min-w-0"><b className="text-stone-900">{p0.nom}{p0.eta_min != null ? ` · sur place dans ${p0.eta_min} min` : ''}</b><br /><span className="text-stone-600 text-[13px]">{p0.raison}</span></span>
+                            </div>
+                            <Btn ton="g" disabled={occupe === sel.id} onClick={() => affecter(sel, p0.id)}>{sel.status === 'new' ? 'Valider et affecter' : 'Affecter'} à {String(p0.nom).split(' ')[0]}</Btn>
+                          </>) })()}
+                        {prop.data.propositions.slice(1).map((p: any) => (
+                          <div key={p.id} className="flex items-center gap-2 border-t border-dashed border-emerald-200 pt-2">
+                            <span className="flex-1 min-w-0 text-[13px]"><b className="text-stone-900">{p.nom}</b>{p.eta_min != null ? ` · ${p.eta_min} min` : ''} <span className="text-stone-600">{p.raison.split(', ')[0]}</span></span>
+                            <Btn disabled={occupe === sel.id} onClick={() => affecter(sel, p.id)}>Choisir</Btn>
+                          </div>
+                        ))}
+                        <span className="text-stone-500 text-[12px]">Tri {prop.data.tri}.</span>
+                      </>}
+                    <Btn onClick={() => setPicker(sel)}>Voir tous les chauffeurs</Btn>
+                  </div>
+                )}
                 <div className="flex gap-1.5 flex-wrap">
-                  {sel.status === 'new' && <><Btn ton="g" grand disabled={occupe === sel.id} onClick={() => setPicker(sel)}>Valider et affecter</Btn><Btn disabled={occupe === sel.id} onClick={() => valider(sel)}>Valider</Btn><Btn ton="d" disabled={occupe === sel.id} onClick={() => setRefus(sel)}>Refuser</Btn></>}
-                  {sel.status === 'dispatching' && <Btn ton="p" grand disabled={occupe === sel.id} onClick={() => setPicker(sel)}>Affecter un chauffeur</Btn>}
+                  {sel.status === 'new' && <><Btn grand disabled={occupe === sel.id} onClick={() => valider(sel)}>Valider sans affecter</Btn><Btn ton="d" disabled={occupe === sel.id} onClick={() => setRefus(sel)}>Refuser</Btn></>}
                   {['assigned', 'accepted', 'in_progress', 'delivering'].includes(sel.status) && <Btn grand onClick={() => setPicker(sel)}>Réaffecter</Btn>}
                 </div>
+                <Avancement m={sel} />
                 <div className="flex gap-1.5 flex-wrap">
                   <Link href={`/dispatch/${sel.id}?fiche=1`} className="flex-1 min-h-[44px] px-3.5 rounded-xl font-bold text-sm bg-white border border-stone-300 text-stone-900 inline-flex items-center justify-center">Fiche complète</Link>
                   <Link href={`/dispatch/dossier/${sel.id}`} className="flex-1 min-h-[44px] px-3.5 rounded-xl font-bold text-sm bg-white border border-stone-300 text-stone-900 inline-flex items-center justify-center">Dossier</Link>
