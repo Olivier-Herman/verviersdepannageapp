@@ -12,6 +12,7 @@ import { sessionAccess }     from '@/lib/access'
 import { createAdminClient } from '@/lib/supabase'
 import { loadVentesAdminData } from '@/lib/ventes/admin-data'
 import SortiesClient         from './SortiesClient'
+import { isPreviewOn } from '@/lib/feature-flags'
 
 export const dynamic = 'force-dynamic'
 
@@ -36,6 +37,7 @@ export default async function SortiesPage() {
   return (
     <SortiesClient userRole={role} userName={user.name || ''} userEmail={user.email || ''} userModules={modules}
       sales={ventes.sales} abandons={ventes.abandons} canDomaine={canDomaine} canVentes={canVentes}
-      counts={{ avp: avp.count || 0, dossiers: dossiers.count || 0, domaine: domaine.count || 0, ventes: ventes.sales.length }} />
+      counts={{ avp: avp.count || 0, dossiers: dossiers.count || 0, domaine: domaine.count || 0, ventes: ventes.sales.length }}
+      habille={await isPreviewOn('ma_journee', role, user.id)} />
   )
 }

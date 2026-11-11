@@ -8,6 +8,7 @@ import { getServerSession } from 'next-auth'
 import { redirect }         from 'next/navigation'
 import { authOptions }      from '@/lib/auth'
 import DestructionClient    from './DestructionClient'
+import { isPreviewOn }       from '@/lib/feature-flags'
 
 export const dynamic = 'force-dynamic'
 
@@ -29,6 +30,7 @@ export default async function DestructionPage() {
       userName={user.name || ''}
       userEmail={user.email || ''}
       userModules={modules}
+      releveCommune={await isPreviewOn('ma_journee', role, (user as any).id)}
     />
   )
 }
