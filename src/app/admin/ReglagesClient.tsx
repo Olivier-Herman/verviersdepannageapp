@@ -8,51 +8,14 @@
 
 import { useMemo, useState } from 'react'
 import Link from 'next/link'
-import {
-  Search, X, Archive, ChevronRight, AlertTriangle,
-  Bot, Banknote, Wallet, PhoneCall, Car, Shield, FileText,
-  Radio, Receipt, Map as MapIcon, ConciergeBell, Users, Bell, SlidersHorizontal, Activity,
-  type LucideIcon,
-} from 'lucide-react'
+import { Search, X, Archive, ChevronRight, AlertTriangle, FileText, SlidersHorizontal } from 'lucide-react'
 import {
   QUOTIDIEN, QUOTIDIEN_AUSSI, RUBRIQUES, RANGE,
   lienVisible, ecranVisible, normaliser, GROUPE_AFFICHE,
   type ReglageEcran, type ReglageLien, type Visibilite,
 } from '@/lib/admin/reglages'
+import { DEGRADE, VOILE, VISUEL, type Couleur } from '@/lib/admin/reglages-visuel'
 import { BUSINESS_SETTINGS } from '@/lib/settings/business-registry'
-
-type Couleur = 'brand' | 'success' | 'info' | 'warning' | 'purple' | 'alert'
-/** Dégradés francs (11/11/2026 : « pas un écran vert ») : cartes du quotidien et icônes des rubriques. */
-const DEGRADE: Record<Couleur, string> = {
-  brand:   'from-rose-500 to-red-600 shadow-red-500/30',
-  success: 'from-emerald-500 to-teal-600 shadow-emerald-500/30',
-  info:    'from-sky-500 to-blue-600 shadow-blue-500/30',
-  warning: 'from-amber-400 to-orange-500 shadow-orange-500/30',
-  purple:  'from-violet-500 to-purple-600 shadow-purple-500/30',
-  alert:   'from-orange-500 to-rose-500 shadow-rose-500/30',
-}
-const VOILE: Record<Couleur, string> = {
-  brand: 'from-rose-500/10', success: 'from-emerald-500/10', info: 'from-sky-500/10', warning: 'from-amber-400/15', purple: 'from-violet-500/10', alert: 'from-orange-500/10',
-}
-
-const VISUEL: Record<string, { icon: LucideIcon; couleur: Couleur }> = {
-  '/admin/agents':        { icon: Bot,       couleur: 'purple' },
-  '/paiements':           { icon: Banknote,  couleur: 'success' },
-  '/admin/cash':          { icon: Wallet,    couleur: 'warning' },
-  '/admin/demandes-site': { icon: PhoneCall, couleur: 'info' },
-  '/admin/amendes':       { icon: AlertTriangle, couleur: 'alert' },
-  '/admin/ventes':        { icon: Car,       couleur: 'info' },
-  '/admin/tgr':           { icon: Shield,    couleur: 'purple' },
-  '/admin/documents':     { icon: FileText,  couleur: 'success' },
-  missions:      { icon: Radio,             couleur: 'info' },
-  prix:          { icon: Receipt,           couleur: 'success' },
-  parc:          { icon: MapIcon,           couleur: 'warning' },
-  accueil:       { icon: ConciergeBell,     couleur: 'purple' },
-  personnes:     { icon: Users,             couleur: 'brand' },
-  notifications: { icon: Bell,              couleur: 'alert' },
-  general:       { icon: SlidersHorizontal, couleur: 'info' },
-  surveillance:  { icon: Activity,          couleur: 'success' },
-}
 
 /** Chiffres du jour calculés par la page (voir page.tsx). */
 export interface ChiffresReglages {
@@ -129,7 +92,7 @@ export default function ReglagesClient({ superadmin, obd, alertes, chiffres, pre
         <div aria-hidden className="pointer-events-none absolute -left-10 -bottom-20 w-56 h-56 rounded-full bg-violet-500/40 blur-3xl" />
         <div className="relative grid gap-5 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">
         <div>
-          <h1 className="font-display font-bold text-3xl lg:text-4xl tracking-tight">Réglages</h1>
+          <h1 data-garder className="font-display font-bold text-3xl lg:text-4xl tracking-tight">Réglages</h1>
           <p className="text-white/85 text-base mt-1">
             {prenom ? `Bonjour ${prenom}. ` : ''}
             {aFaire > 0 ? `${aFaire} chose${aFaire > 1 ? 's' : ''} vous attend${aFaire > 1 ? 'ent' : ''} aujourd’hui.` : 'Rien ne vous attend pour le moment.'}

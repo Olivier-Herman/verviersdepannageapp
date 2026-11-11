@@ -246,3 +246,11 @@ body {
   html.vd-tabbar .fixed.bottom-4:not(.vd-tabbar-el) { bottom: calc(var(--vd-tabbar-h, 0px) + 1rem); }
   html.vd-tabbar .fixed.bottom-5:not(.vd-tabbar-el) { bottom: calc(var(--vd-tabbar-h, 0px) + 1.25rem); }
 }
+
+/* Écrans de Réglages (Olivier 11/11/2026) : le titre de l'écran est dans le bandeau de couleur
+   d'AdminNav ; le <h1> propre à chaque page ferait doublon. data-garder = titre à conserver
+   (accueil de Réglages, fiche d'une source dont le nom est le titre). */
+.reglages-contenu h1:not([data-garder]) { display: none; }
+/* La mise en colonnes des cartes calcule une largeur minimale (colonnes × carte) que le cadre
+   de l'app laisserait déborder de l'écran : la zone prend toujours la largeur disponible. */
+.reglages-contenu { contain: inline-size; }

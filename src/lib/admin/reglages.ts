@@ -207,18 +207,27 @@ const correspond = (pathname: string, href: string) => pathname === href || path
  * et « Rangé » sont des écrans d'un seul onglet. Le href le plus long gagne
  * (/admin/labels/test-print avant /admin/labels).
  */
-export function ecranDe(pathname: string, v: Visibilite): { ecran: ReglageEcran; actif: string } | null {
-  let best: { ecran: ReglageEcran; actif: string } | null = null
-  const essayer = (e: ReglageEcran, l: ReglageLien) => {
-    if (correspond(pathname, l.href) && (!best || l.href.length > best.actif.length)) best = { ecran: e, actif: l.href }
+export interface EcranTrouve {
+  ecran:    ReglageEcran
+  /** href de l'onglet actif. */
+  actif:    string
+  /** Clé de rubrique, href du bouton « Au quotidien », ou 'range' : sert à l'habillage. */
+  visuel:   string
+  /** Nom de la rubrique (« Au quotidien », « Rangé » pour les autres). */
+  rubrique: string
+}
+
+export function ecranDe(pathname: string, v: Visibilite): EcranTrouve | null {
+  let best: EcranTrouve | null = null
+  const essayer = (e: ReglageEcran, l: ReglageLien, visuel: string, rubrique: string) => {
+    if (correspond(pathname, l.href) && (!best || l.href.length > best.actif.length)) best = { ecran: e, actif: l.href, visuel, rubrique }
   }
   for (const r of RUBRIQUES) for (const e of r.ecrans) {
     const vis = ecranVisible(e, v)
-    if (vis) for (const o of vis.onglets) essayer(vis, o)
+    if (vis) for (const o of vis.onglets) essayer(vis, o, r.key, r.label)
   }
-  for (const l of [...QUOTIDIEN, ...QUOTIDIEN_AUSSI, ...RANGE]) {
-    essayer({ key: l.href, label: l.label, desc: l.desc || '', onglets: [l] }, l)
-  }
+  for (const l of [...QUOTIDIEN, ...QUOTIDIEN_AUSSI]) essayer({ key: l.href, label: l.label, desc: l.desc || '', onglets: [l] }, l, l.href, 'Au quotidien')
+  for (const l of RANGE) essayer({ key: l.href, label: l.label, desc: l.desc || '', onglets: [l] }, l, 'range', 'Rangé')
   return best
 }
 

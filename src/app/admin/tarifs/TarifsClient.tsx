@@ -4,6 +4,9 @@ import { useEffect, useState, useRef } from 'react'
 import { MISSION_TYPE_KEYS, GARDIENNAGE_TYPE_KEYS, TYPE_LABEL_LONG } from '@/lib/missions/mission-types'
 import AppShell from '@/components/layout/AppShell'
 import RulesPanel from './RulesPanel'
+import { Search, X, Plus, FileText, FileUp, PenLine, Trash2 } from 'lucide-react'
+import BandeauChiffres from '@/components/admin/BandeauChiffres'
+import { normaliser } from '@/lib/admin/reglages'
 
 interface Props {
   userRole:    string
@@ -130,11 +133,27 @@ function typesForSource(src: string): string[] {
   return (src || '').toLowerCase() === 'gardiennage' ? [...GARDIENNAGE_TYPE_KEYS] : MISSION_TYPES
 }
 
+// Habillage en cartes (Olivier 11/11/2026, maquette validée) : une carte par assistance,
+// une pastille de couleur par type, le prix en gros, ce qu'il comprend en clair.
+const COULEUR_TYPE: Record<string, string> = {
+  depannage: 'bg-amber-500', remorquage: 'bg-blue-600', relivraison: 'bg-purple-600',
+  trajet_vide: 'bg-stone-400', transport: 'bg-teal-600', parc: 'bg-emerald-600',
+}
+const DEGRADES_SOURCE = [
+  'from-sky-500 to-blue-600', 'from-violet-500 to-purple-600', 'from-amber-400 to-orange-500',
+  'from-rose-500 to-red-600', 'from-emerald-500 to-teal-600', 'from-orange-500 to-rose-500',
+]
+const degradeSource = (s: string) => DEGRADES_SOURCE[[...s].reduce((n, c) => (n * 31 + c.charCodeAt(0)) >>> 0, 7) % DEGRADES_SOURCE.length]
+const prix = (n: number) => `${n.toFixed(2).replace('.', ',')} €`
+/** Libellé du type sans l'emoji de tête. */
+const libelleType = (k: string) => (TYPE_LABELS[k] || k).replace(/^[^\p{L}]+/u, '')
+
 export default function TarifsClient(props: Props) {
   const [tariffs, setTariffs] = useState<Tariff[]>([])
   const [loading, setLoading] = useState(true)
   const [filterSource, setFilterSource] = useState<string>('')
   const [view, setView] = useState<'tariffs' | 'rules'>('tariffs')
+  const [recherche, setRecherche] = useState('')
   const [sources, setSources] = useState<{ source: string; label: string }[]>([])
   const SOURCE_LABELS = Object.fromEntries(sources.map(s => [s.source, s.label]))
   // Sources triées par dénomination (ordre alphabétique) pour les sélecteurs.
@@ -483,7 +502,7 @@ export default function TarifsClient(props: Props) {
   }
 
   const handleDelete = async (id: string) => {
-    if (!confirm('Désactiver ce tarif (sera marqué effective_to = aujourd\'hui) ?')) return
+    if (!confirm('Désactiver ce tarif ? Il cessera de s\'appliquer à partir d\'aujourd\'hui.')) return
     const res = await fetch(`/api/admin/tarifs/${id}`, { method: 'DELETE' })
     if (res.ok) loadTariffs()
   }
@@ -549,145 +568,166 @@ export default function TarifsClient(props: Props) {
       userId={props.userId}
       userModules={props.userModules}
     >
-      <div className="space-y-4 max-w-6xl mx-auto p-4">
-        {/* ── Toggle Tarifs / Règles dynamiques ─────────────── */}
-        <div className="flex gap-2 border-b border-surface-hover">
-          <button
-            onClick={() => setView('tariffs')}
-            className={`px-4 py-2 text-sm font-medium ${view === 'tariffs' ? 'text-brand border-b-2 border-brand' : 'text-ink-faint'}`}
-          >
-            📋 Tarifs de base
-          </button>
-          <button
-            onClick={() => setView('rules')}
-            className={`px-4 py-2 text-sm font-medium ${view === 'rules' ? 'text-brand border-b-2 border-brand' : 'text-ink-faint'}`}
-          >
-            🤖 Règles dynamiques
-          </button>
+      <div className="space-y-4 w-full max-w-[1800px] px-4 py-4 lg:px-0">
+        {(() => {
+          const parSource = new Map<string, Tariff[]>()
+          for (const t of sortedTariffs) parSource.set(t.source, [...(parSource.get(t.source) || []), t])
+          const autoSeules = [...parSource.values()].filter(l => l.some(t => t.is_autofac)).length
+          return <BandeauChiffres chiffres={[
+            { label: 'Tarifs', valeur: tariffs.length },
+            { label: 'Assistances', valeur: parSource.size },
+            { label: 'Facturées seules', valeur: autoSeules },
+          ]} />
+        })()}
+
+        {/* ── Barre : base / règles, recherche, actions ─────── */}
+        <div className="flex flex-wrap items-center gap-3">
+          <div role="tablist" className="inline-flex p-1 rounded-full bg-surface-hover">
+            {([['tariffs', 'Tarifs de base'], ['rules', 'Règles dynamiques']] as const).map(([k, l]) => (
+              <button key={k} role="tab" aria-selected={view === k} onClick={() => setView(k)}
+                className={`min-h-[40px] px-4 rounded-full text-sm font-semibold transition ${view === k ? 'bg-surface text-ink shadow-card' : 'text-ink-muted hover:text-ink'}`}>
+                {l}
+              </button>
+            ))}
+          </div>
+          {view === 'tariffs' && (
+            <div className="relative flex-1 min-w-[220px] max-w-md">
+              <Search size={18} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-ink-faint pointer-events-none" />
+              <input type="text" inputMode="search" value={recherche} onChange={e => setRecherche(e.target.value)}
+                placeholder="Chercher une assistance…" aria-label="Chercher une assistance"
+                className="w-full min-h-[46px] pl-10 pr-11 rounded-2xl bg-surface border border-strong text-ink text-sm outline-none focus:border-emerald-500" />
+              {recherche && (
+                <button onClick={() => setRecherche('')} aria-label="Effacer la recherche"
+                  className="absolute right-0.5 top-1/2 -translate-y-1/2 w-11 h-11 flex items-center justify-center text-ink-muted hover:text-ink">
+                  <X size={18} />
+                </button>
+              )}
+            </div>
+          )}
+          {view === 'tariffs' && (
+            <div className="flex flex-wrap gap-2 lg:ml-auto">
+              <button onClick={openNewManual}
+                className="inline-flex items-center gap-1.5 min-h-[46px] px-4 rounded-2xl text-white text-sm font-bold bg-gradient-to-br from-emerald-500 to-teal-600 shadow-md shadow-emerald-500/30 hover:brightness-105">
+                <Plus size={18} /> Ajouter
+              </button>
+              <button onClick={() => setShowTextModal(true)}
+                className="inline-flex items-center gap-1.5 min-h-[46px] px-4 rounded-2xl bg-surface border border-strong text-ink text-sm font-semibold hover:border-ink-faint">
+                <PenLine size={17} /> Décrire en texte
+              </button>
+              <button onClick={() => setShowUpload(true)}
+                className="inline-flex items-center gap-1.5 min-h-[46px] px-4 rounded-2xl bg-surface border border-strong text-ink text-sm font-semibold hover:border-ink-faint">
+                <FileUp size={17} /> Importer un PDF
+              </button>
+            </div>
+          )}
         </div>
 
         {view === 'rules' && <RulesPanel />}
 
         {view === 'tariffs' && <>
-        {/* ── Onglets par source ─────────────────────────────── */}
-        <div className="flex gap-1 overflow-x-auto pb-1">
-          <SourceTab active={filterSource === ''} label="Toutes" count={null} onClick={() => setFilterSource('')} />
-          {sortedSources.map(s => {
-            const count = tariffs.filter(t => t.source === s.source).length
-            return <SourceTab key={s.source} active={filterSource === s.source} label={s.label} count={filterSource === '' ? count : null} onClick={() => setFilterSource(s.source)} />
-          })}
-        </div>
-
-        {/* ── Actions ────────────────────────────────────────── */}
-        <div className="bg-surface p-3 rounded-lg flex flex-wrap gap-2 items-center">
-          <div className="text-sm text-ink-faint">
-            {filterSource ? `${tariffs.length} tarif${tariffs.length !== 1 ? 's' : ''} ${SOURCE_LABELS[filterSource] || filterSource}` : `${tariffs.length} tarifs au total`}
+        {loading && (
+          <div className="columns-1 md:columns-2 xl:columns-3 gap-4 [&>*]:mb-4">
+            {[0, 1, 2].map(i => <div key={i} className="h-48 rounded-3xl bg-surface border border-strong animate-pulse" />)}
           </div>
-          <div className="ml-auto flex gap-2">
-            <button onClick={openNewManual} className="px-4 py-2 bg-surface-hover text-ink rounded font-medium text-sm border border-surface-hover hover:border-brand transition">
-              + Ajouter manuellement
-            </button>
-            <button onClick={() => setShowTextModal(true)} className="px-4 py-2 bg-surface-hover text-ink rounded font-medium text-sm border border-surface-hover hover:border-brand transition">
-              📝 Décrire en texte
-            </button>
-            <button onClick={() => setShowUpload(true)} className="px-4 py-2 bg-brand text-surface rounded font-medium text-sm">
-              📄 Importer un PDF
-            </button>
-          </div>
-        </div>
-
-        {loading && <div className="text-center text-ink-faint py-8">Chargement…</div>}
+        )}
 
         {!loading && tariffs.length === 0 && (
-          <div className="bg-surface p-8 rounded-lg text-center text-ink-faint">
-            Aucun tarif enregistré. Clique sur "Importer un PDF" pour commencer, ou ajoute des tarifs manuellement via SQL.
+          <div className="bg-surface border border-strong rounded-3xl p-10 text-center">
+            <p className="text-ink font-semibold">Aucun tarif enregistré.</p>
+            <p className="text-ink-muted text-sm mt-1">Ajoutez-en un, décrivez un barème en texte ou importez la grille en PDF.</p>
           </div>
         )}
 
-        {!loading && tariffs.length > 0 && (
-          <div className="bg-surface rounded-lg overflow-hidden">
-            <table className="w-full text-sm">
-              <thead className="text-xs text-ink-faint uppercase tracking-wider bg-surface-hover">
-                <tr>
-                  <th className="text-left p-2">Source</th>
-                  <th className="text-left p-2">Type</th>
-                  <th className="text-right p-2">Forfait</th>
-                  <th className="text-right p-2">Km inclus</th>
-                  <th className="text-right p-2">€/km extra</th>
-                  <th className="text-right p-2">Parc/jour</th>
-                  <th className="text-center p-2">Surch. nuit/WE/JF</th>
-                  <th className="text-center p-2">Autofac</th>
-                  <th className="text-center p-2">Effective</th>
-                  <th className="text-center p-2"></th>
-                </tr>
-              </thead>
-              <tbody>
-                {sortedTariffs.map(t => {
-                  const isBrackets = t.pricing_mode === 'brackets'
-                  const isLines    = t.pricing_mode === 'lines'
-                  return (
-                    <tr key={t.id} className="border-t border-surface-hover hover:bg-surface-hover/50 cursor-pointer"
-                        onClick={() => isBrackets ? openBrackets(t) : isLines ? openLines(t) : setEditTariff(t)}>
-                      <td className="p-2 font-medium">{SOURCE_LABELS[t.source] || t.source}</td>
-                      <td className="p-2">
-                        {TYPE_LABELS[t.mission_type] || t.mission_type}
-                        {t.mission_type === 'relivraison' && (
-                          <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-semibold bg-success/15 text-success border border-success/30"
-                                title={REL_MODE_LABELS[t.rel_mode || 'forfait']}>
-                            {REL_MODE_SHORT[t.rel_mode || 'forfait']}{t.rel_depart === 'nearest_depot' ? ' · dépôt le plus proche' : ''}
-                          </span>
-                        )}
-                      </td>
-                      {isBrackets ? (
-                        <td colSpan={5} className="p-2 text-center">
-                          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-info/15 text-info border border-info/30 rounded-md text-xs font-semibold">
-                            📊 Tarif par tranches de km
-                          </span>
-                          <span className="text-ink-faint text-xs ml-2">
-                            Au-delà de {t.beyond_max_km} km : +{Number(t.beyond_max_step_price || 0).toFixed(2)} €/{t.beyond_max_step_km} km
-                          </span>
-                        </td>
-                      ) : isLines ? (
-                        <td colSpan={5} className="p-2 text-center">
-                          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-purple-500/15 text-purple-600 border border-purple-500/30 rounded-md text-xs font-semibold">
-                            📋 Lignes pré-configurées
-                          </span>
-                          <span className="text-ink-faint text-xs ml-2">
-                            Set de prestations — qty/PU édités à la facturation
-                          </span>
-                        </td>
-                      ) : (
-                        <>
-                          <td className="p-2 text-right">{formatPrice(t.unit_price)}</td>
-                          <td className="p-2 text-right">{t.km_inclus || '—'}</td>
-                          <td className="p-2 text-right">{formatPrice(t.km_price)}</td>
-                          <td className="p-2 text-right">{formatPrice(t.parc_day_price)}</td>
-                          <td className="p-2 text-center text-xs">{t.surcharge_night_pct || 0}/{t.surcharge_we_pct || 0}/{t.surcharge_holiday_pct || 0}</td>
-                        </>
-                      )}
-                      <td className="p-2 text-center">{t.is_autofac ? '✓' : '—'}</td>
-                      <td className="p-2 text-center text-xs">{t.effective_from}{t.effective_to ? ` → ${t.effective_to}` : ''}</td>
-                      <td className="p-2 text-center" onClick={e => e.stopPropagation()}>
-                        {t.source_document_path && (
-                          <a
-                            href={`/api/admin/tarifs/document?path=${encodeURIComponent(t.source_document_path)}`}
-                            target="_blank"
-                            rel="noopener"
-                            title="Voir le PDF source"
-                            className="inline-block mr-2"
-                          >
-                            📄
-                          </a>
-                        )}
-                        <button onClick={() => handleDelete(t.id)} title="Désactiver" className="text-red-500">🗑️</button>
-                      </td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
-          </div>
-        )}
+        {!loading && tariffs.length > 0 && (() => {
+          const mots = normaliser(recherche).split(/\s+/).filter(Boolean)
+          const groupes = new Map<string, Tariff[]>()
+          for (const t of sortedTariffs) {
+            const nom = SOURCE_LABELS[t.source] || t.source
+            if (mots.length && !mots.every(m => normaliser(`${nom} ${t.source}`).includes(m))) continue
+            groupes.set(t.source, [...(groupes.get(t.source) || []), t])
+          }
+          if (!groupes.size) return <p className="text-ink-muted text-sm text-center py-10">Aucune assistance ne correspond à « {recherche.trim()} ».</p>
+          return (
+            <div className="columns-1 md:columns-2 xl:columns-3 gap-4 lg:gap-5 [&>*]:mb-4 lg:[&>*]:mb-5 [&>*]:break-inside-avoid">
+              {[...groupes.entries()].map(([src, liste]) => {
+                const nom = SOURCE_LABELS[src] || src
+                const auto = liste.some(t => t.is_autofac)
+                return (
+                  <section key={src} className="bg-surface border border-strong rounded-3xl shadow-card p-4">
+                    <header className="flex items-center gap-3 mb-1">
+                      <span className={`w-11 h-11 rounded-2xl flex items-center justify-center text-white font-bold text-lg bg-gradient-to-br shadow-md flex-shrink-0 ${degradeSource(src)}`}>
+                        {(nom.match(/\p{L}/u)?.[0] || '?').toUpperCase()}
+                      </span>
+                      <div className="flex-1 min-w-0">
+                        <h3 className="font-display text-ink font-bold text-lg leading-tight truncate">{nom}</h3>
+                        <p className="text-ink-muted text-xs">{liste.length} tarif{liste.length > 1 ? 's' : ''}</p>
+                      </div>
+                      {auto && <span className="px-2.5 py-1 rounded-full bg-emerald-100 text-emerald-800 text-xs font-bold whitespace-nowrap" title="Au moins un de ces tarifs est facturé automatiquement">Facturée seule</span>}
+                    </header>
+                    <div>
+                      {liste.map(t => {
+                        const isBrackets = t.pricing_mode === 'brackets'
+                        const isLines    = t.pricing_mode === 'lines'
+                        const isRel      = t.mission_type === 'relivraison'
+                        const relMode    = t.rel_mode || 'forfait'
+                        // Ce que le prix comprend, en clair.
+                        const details: string[] = []
+                        if (isBrackets) {
+                          if (t.beyond_max_km) details.push(`Au-delà de ${t.beyond_max_km} km : + ${Number(t.beyond_max_step_price || 0).toFixed(2).replace('.', ',')} € par ${t.beyond_max_step_km} km`)
+                          else details.push('Prix selon la distance')
+                        } else if (isLines) {
+                          details.push('Quantités et prix ajustés à la facturation')
+                        } else {
+                          if (isRel && relMode === 'all_km') details.push('Tous les km sont comptés')
+                          else if (isRel && relMode === 'after_included') details.push('Km au-delà des inclus du dossier')
+                          else if (isRel && relMode === 'rem_tariff') details.push('Même prix que le remorquage')
+                          if (t.km_inclus > 0) details.push(`${t.km_inclus} km inclus${t.km_price ? ` · puis ${prix(t.km_price)}/km` : ''}`)
+                          else if (t.km_price && t.unit_price) details.push(`Puis ${prix(t.km_price)}/km`)
+                          if (t.parc_day_price) details.push(`Parc ${prix(t.parc_day_price)} par jour`)
+                          const maj = [t.surcharge_night_pct, t.surcharge_we_pct, t.surcharge_holiday_pct]
+                          if (maj.some(Boolean)) details.push(`Majorations nuit / week-end / fériés : ${maj.map(x => x || 0).join(' / ')} %`)
+                          if (!details.length) details.push('Forfait')
+                        }
+                        if (isRel && t.rel_depart === 'nearest_depot') details.push('départ du dépôt le plus proche')
+                        if (t.effective_to) details.push(`jusqu'au ${t.effective_to}`)
+                        const montant = isBrackets || isLines || (isRel && relMode === 'rem_tariff') ? null
+                          : t.unit_price ? prix(t.unit_price) : t.km_price ? `${prix(t.km_price)}/km` : null
+                        const pastille = isBrackets ? ['Par tranches', 'bg-blue-100 text-blue-800']
+                          : isLines ? ['Lignes prévues', 'bg-violet-100 text-violet-800']
+                          : isRel && relMode === 'rem_tariff' ? ['Tarif remorquage', 'bg-violet-100 text-violet-800'] : null
+                        return (
+                          <div key={t.id} className="flex items-center gap-1 border-t border-strong first:border-t-0">
+                            <button onClick={() => isBrackets ? openBrackets(t) : isLines ? openLines(t) : setEditTariff(t)}
+                              className="flex-1 min-w-0 flex items-center gap-3 min-h-[60px] py-2.5 pl-1 pr-2 -ml-1 rounded-xl text-left hover:bg-surface-hover transition-colors">
+                              <span aria-hidden className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${COULEUR_TYPE[t.mission_type] || 'bg-stone-300'}`} />
+                              <span className="flex-1 min-w-0">
+                                <span className="block text-ink font-semibold text-[15px]">{libelleType(t.mission_type)}</span>
+                                <span className="block text-ink-muted text-xs leading-snug">{details.join(' · ')}</span>
+                              </span>
+                              {montant && <span className="font-display text-ink font-bold text-lg tabular-nums whitespace-nowrap">{montant}</span>}
+                              {pastille && <span className={`px-2.5 py-1 rounded-full text-xs font-bold whitespace-nowrap ${pastille[1]}`}>{pastille[0]}</span>}
+                            </button>
+                            {t.source_document_path && (
+                              <a href={`/api/admin/tarifs/document?path=${encodeURIComponent(t.source_document_path)}`} target="_blank" rel="noopener"
+                                title="Voir la grille en PDF" aria-label="Voir la grille en PDF"
+                                className="w-10 h-11 flex items-center justify-center rounded-xl text-ink-faint hover:text-ink hover:bg-surface-hover">
+                                <FileText size={17} />
+                              </a>
+                            )}
+                            <button onClick={() => handleDelete(t.id)} title="Désactiver ce tarif" aria-label="Désactiver ce tarif"
+                              className="w-10 h-11 flex items-center justify-center rounded-xl text-ink-faint hover:text-red-700 hover:bg-red-50">
+                              <Trash2 size={17} />
+                            </button>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </section>
+                )
+              })}
+            </div>
+          )
+        })()}
 
         {/* ── Text describe modal ───────────────────────────── */}
         {showTextModal && (

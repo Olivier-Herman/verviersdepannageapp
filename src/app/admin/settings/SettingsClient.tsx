@@ -188,7 +188,7 @@ export default function SettingsClient({
   return (
     <div className="px-4 py-5">
       {/* Onglets de la page (11/11/2026 : Paramètres en premier, c'est lui qui s'ouvre ; même style que les onglets de Réglages). */}
-      <div role="tablist" className="flex gap-2 mb-5 overflow-x-auto pb-1 scrollbar-hide">
+      <div role="tablist" className="flex gap-2 mb-5 overflow-x-auto [contain:inline-size] pb-1 scrollbar-hide">
         {([
           { key: 'params',       label: 'Paramètres' },
           ...LIST_TYPES,
