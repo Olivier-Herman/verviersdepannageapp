@@ -7,7 +7,6 @@
 // Olivier 10/11/2026.
 
 import { useCallback, useEffect, useState } from 'react'
-import Link from 'next/link'
 
 type Req = {
   id: string; kind: 'rappel' | 'candidature'; created_at: string
@@ -116,9 +115,8 @@ export default function DemandesSiteClient() {
 
   return (
     <div className="min-h-screen bg-surface max-w-3xl mx-auto flex flex-col">
-      <div className="bg-surface-2 border-b border-app px-5 pt-12 pb-4">
+      <div className="bg-surface-2 border-b border-app px-5 pt-4 pb-4">
         <div className="flex items-center gap-3">
-          <Link href="/admin" className="w-10 h-10 flex items-center justify-center bg-surface-hover rounded-xl text-ink text-lg">←</Link>
           <div className="flex-1">
             <h1 className="text-ink font-bold text-lg">Demandes du site</h1>
             <p className="text-ink-muted text-xs">Ce que les visiteurs du site ont laissé. Le délai de rappel ne compte que les jours ouvrables.</p>

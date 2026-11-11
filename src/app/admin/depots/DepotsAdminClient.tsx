@@ -9,8 +9,7 @@
 // visuelle. La logique CRUD (POST/PUT/DELETE /api/depots) est intacte.
 
 import { useState, useRef, useEffect } from 'react'
-import Link from 'next/link'
-import { ArrowLeft, MapPin, Plus, X } from 'lucide-react'
+import { MapPin, Plus, X } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { Badge } from '@/components/ui/Badge'
 import { ConfirmModal } from '@/components/ui/ConfirmModal'
@@ -175,13 +174,6 @@ export default function DepotsAdminClient({ initialDepots, googleMapsKey = '' }:
     <div className="px-4 lg:px-6 py-6 max-w-3xl mx-auto">
       {/* Header */}
       <div className="flex items-center gap-3 mb-6">
-        <Link
-          href="/admin"
-          aria-label="Retour à l'administration"
-          className="inline-flex items-center justify-center w-9 h-9 rounded-md text-ink-secondary hover:bg-surface-hover hover:text-ink transition-colors"
-        >
-          <ArrowLeft size={16} />
-        </Link>
         <h1 className="font-display text-2xl font-bold text-ink">Dépôts</h1>
         <div className="ml-auto">
           <Button variant="primary" iconLeft={<Plus size={16} />} onClick={openNew}>

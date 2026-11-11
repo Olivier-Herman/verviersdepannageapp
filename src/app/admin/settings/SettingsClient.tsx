@@ -29,7 +29,7 @@ export default function SettingsClient({
   onglet?:      string
 }) {
   const router = useRouter()
-  const ongletInitial = (['motif', 'payment_mode', 'calls', 'params'] as const).find(o => o === onglet) || (focus ? 'params' : 'motif')
+  const ongletInitial = (['motif', 'payment_mode', 'calls', 'params'] as const).find(o => o === onglet) || 'params'
   const [activeTab, setActiveTab] = useState<'motif' | 'payment_mode' | 'calls' | 'params'>(ongletInitial)
   const [filtre, setFiltre] = useState('')
 
@@ -187,35 +187,21 @@ export default function SettingsClient({
 
   return (
     <div className="px-4 py-5">
-      {/* Tabs */}
-      <div className="flex gap-2 mb-5 overflow-x-auto pb-1">
-        {LIST_TYPES.map(t => (
-          <button
-            key={t.key}
-            onClick={() => { setActiveTab(t.key as any); setShowAdd(false) }}
-            className={`px-3 py-2 rounded-xl text-xs font-semibold whitespace-nowrap transition-all ${
-              activeTab === t.key ? 'bg-brand text-white' : 'bg-surface-2 text-ink-muted border border'
-            }`}
-          >
+      {/* Onglets de la page (11/11/2026 : Paramètres en premier, c'est lui qui s'ouvre ; même style que les onglets de Réglages). */}
+      <div role="tablist" className="flex gap-2 mb-5 overflow-x-auto pb-1 scrollbar-hide">
+        {([
+          { key: 'params',       label: 'Paramètres' },
+          ...LIST_TYPES,
+          { key: 'calls',        label: 'Raccourcis d’appel' },
+        ] as { key: 'motif' | 'payment_mode' | 'calls' | 'params'; label: string }[]).map(t => (
+          <button key={t.key} type="button" role="tab" aria-selected={activeTab === t.key}
+            onClick={() => { setActiveTab(t.key); setShowAdd(false) }}
+            className={`flex items-center min-h-[44px] px-4 rounded-xl text-sm font-semibold whitespace-nowrap border transition-colors ${
+              activeTab === t.key ? 'bg-brand/10 border-brand text-brand' : 'bg-surface border-strong text-ink-secondary hover:text-ink hover:border-brand/40'
+            }`}>
             {t.label}
           </button>
         ))}
-        <button
-          onClick={() => { setActiveTab('calls' as any); setShowAdd(false) }}
-          className={`px-3 py-2 rounded-xl text-xs font-semibold whitespace-nowrap transition-all ${
-            activeTab === 'calls' ? 'bg-brand text-white' : 'bg-surface-2 text-ink-muted border border'
-          }`}
-        >
-          Raccourcis appel
-        </button>
-        <button
-          onClick={() => { setActiveTab('params'); setShowAdd(false) }}
-          className={`px-3 py-2 rounded-xl text-xs font-semibold whitespace-nowrap transition-all ${
-            activeTab === 'params' ? 'bg-brand text-white' : 'bg-surface-2 text-ink-muted border border'
-          }`}
-        >
-          ⚙️ Paramètres
-        </button>
       </div>
 
       {/* ── Onglet Paramètres ── */}

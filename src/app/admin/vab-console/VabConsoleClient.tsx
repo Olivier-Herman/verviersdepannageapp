@@ -6,7 +6,6 @@
 // action et affiche le résultat (nouveaux boutons + message).
 
 import { useCallback, useEffect, useState } from 'react'
-import Link from 'next/link'
 
 interface Dump {
   ok: boolean; error?: string; message?: string | null; status?: number
@@ -81,9 +80,8 @@ export default function VabConsoleClient() {
 
   return (
     <div className="min-h-screen bg-surface max-w-4xl mx-auto flex flex-col">
-      <div className="bg-surface-2 border-b border-app px-5 pt-12 pb-4">
+      <div className="bg-surface-2 border-b border-app px-5 pt-4 pb-4">
         <div className="flex items-center gap-3">
-          <Link href="/admin" className="w-10 h-10 flex items-center justify-center bg-surface-hover rounded-xl text-ink text-lg">←</Link>
           <div className="flex-1">
             <h1 className="text-ink font-bold text-lg">🛠️ Console VAB</h1>
             <p className="text-ink-muted text-xs">Pilotage pas-à-pas d'une mission VAB Comet. ⚠️ Chaque action est réelle et irréversible côté VAB.</p>

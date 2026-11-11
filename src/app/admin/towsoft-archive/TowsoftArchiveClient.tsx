@@ -6,9 +6,8 @@
 // (60 missions / 3 min = ~1,5 jour).
 
 import { useState, useEffect } from 'react'
-import Link from 'next/link'
 import AppShell from '@/components/layout/AppShell'
-import { ArrowLeft, RefreshCw, Loader2, BarChart3, Archive, Zap } from 'lucide-react'
+import { RefreshCw, Loader2, BarChart3, Archive, Zap } from 'lucide-react'
 
 interface Stats {
   total:        number
@@ -140,10 +139,6 @@ export default function TowsoftArchiveClient({ userRole, userName, userEmail, us
       <div className="p-4 lg:p-6 max-w-4xl mx-auto space-y-4">
 
         <div className="flex items-center gap-3 flex-wrap">
-          <Link href="/admin"
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-surface-2 hover:bg-surface-hover border rounded-lg text-ink-secondary hover:text-ink text-xs font-medium transition">
-            <ArrowLeft size={13} /> Admin
-          </Link>
           <h1 className="font-display text-xl font-bold text-ink flex-1 flex items-center gap-2">
             <Archive size={20} className="text-brand" />
             Archive TowSoft (recherche enrichie)

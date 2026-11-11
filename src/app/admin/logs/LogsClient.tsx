@@ -3,9 +3,8 @@
 // Page diagnostique logs erreurs serveur.
 
 import { useEffect, useState } from 'react'
-import Link from 'next/link'
 import AppShell from '@/components/layout/AppShell'
-import { ArrowLeft, RefreshCw, AlertTriangle, AlertCircle, Info, Loader2 } from 'lucide-react'
+import { RefreshCw, AlertTriangle, AlertCircle, Info, Loader2 } from 'lucide-react'
 
 interface LogRow {
   id: string
@@ -59,10 +58,6 @@ export default function LogsClient({ userRole, userName, userEmail, userModules 
     <AppShell title="Logs serveur" userRole={userRole} userName={userName} userEmail={userEmail || undefined} userModules={userModules}>
       <div className="p-4 lg:p-6 max-w-6xl mx-auto space-y-4">
         <div className="flex items-center gap-3">
-          <Link href="/admin"
-            className="inline-flex items-center justify-center w-9 h-9 rounded-md text-ink-secondary hover:bg-surface-hover hover:text-ink transition-colors">
-            <ArrowLeft size={16} />
-          </Link>
           <h1 className="font-display text-xl font-bold text-ink">Logs serveur (superadmin)</h1>
         </div>
 

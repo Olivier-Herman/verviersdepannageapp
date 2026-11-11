@@ -1,8 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import Link from 'next/link'
-import { ArrowLeft, Plus, Trash2 } from 'lucide-react'
+import { Plus, Trash2 } from 'lucide-react'
 
 interface Period {
   id: number
@@ -127,10 +126,6 @@ export default function GardeScheduleClient({ initialPeriods }: { initialPeriods
   return (
     <div className="px-4 lg:px-6 py-6 max-w-3xl mx-auto">
       <div className="flex items-center gap-3 mb-6">
-        <Link href="/admin"
-          className="inline-flex items-center justify-center w-9 h-9 rounded-md text-ink-secondary hover:bg-surface-hover hover:text-ink transition-colors">
-          <ArrowLeft size={16} />
-        </Link>
         <h1 className="font-display text-2xl font-bold text-ink">Plages de garde</h1>
       </div>
 

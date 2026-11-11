@@ -2,7 +2,6 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import Link from 'next/link'
 import { formatEur } from '@/lib/format'
 
 interface Entry {
@@ -104,15 +103,8 @@ export default function AdminCashClient({ drivers, entries, userRole }: {
 
   return (
     <div className="min-h-screen bg-surface max-w-2xl mx-auto flex flex-col">
-      <div className="bg-surface-2 border-b border px-5 pt-12 pb-4">
-        <div className="flex items-center gap-3 mb-3">
-          <Link href="/admin" className="w-10 h-10 flex items-center justify-center bg-surface-hover rounded-xl text-ink text-lg">←</Link>
-          <Link href="/dashboard" className="flex-1 flex justify-center">
-            <img src="/logo.jpg" alt="VD" className="h-8 w-auto object-contain" />
-          </Link>
-          <div className="w-10" />
-        </div>
-        <h1 className="text-ink font-bold text-lg">Vue caisses — Administration</h1>
+      <div className="bg-surface-2 border-b border px-5 pt-4 pb-4">
+        <h1 className="text-ink font-bold text-lg">Caisses</h1>
       </div>
 
       <div className="flex-1 px-5 py-6">
