@@ -9,7 +9,7 @@ import { NextResponse }      from 'next/server'
 import { getServerSession }  from 'next-auth'
 import { authOptions }       from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase'
-import { autoDepositIfAuto } from '@/lib/justinvoice/deposit'
+import { enregistrerRetourSigne } from '@/lib/saisies/retour-signe'
 
 export const dynamic     = 'force-dynamic'
 export const maxDuration = 30
@@ -27,9 +27,6 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   const userId = (session!.user as any).id || null
   const sb = createAdminClient()
 
-  const { data: d } = await sb.from('saisie_dossiers').select('id, mission_id, ef_number').eq('id', params.id).maybeSingle()
-  if (!d) return NextResponse.json({ error: 'Dossier introuvable' }, { status: 404 })
-
   const form = await req.formData().catch(() => null)
   const file = form?.get('file') as File | null
   const refus = String(form?.get('refus') || '') === 'true'
@@ -37,38 +34,8 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   if (!file || file.size === 0) return NextResponse.json({ error: 'Fichier manquant' }, { status: 400 })
   if (file.size > MAX) return NextResponse.json({ error: 'Fichier trop volumineux (max 15 MB)' }, { status: 400 })
 
-  const safe = file.name.replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 120) || 'signe.pdf'
-  const path = `saisie-validation/${d.id}/${Date.now()}_${safe}`
-  const buf = new Uint8Array(await file.arrayBuffer())
-  const { error: upErr } = await sb.storage.from('mission-remarks').upload(path, buf, { contentType: file.type || 'application/pdf', upsert: false })
-  if (upErr) return NextResponse.json({ error: upErr.message }, { status: 500 })
-
-  const now = new Date().toISOString()
-  // Rattache à l'état de frais ciblé (ef_id) ou, à défaut, au + ancien 'envoye'.
-  const q = sb.from('saisie_etats_frais').select('id, numero').eq('dossier_id', d.id)
-  const { data: efRow } = efId
-    ? await q.eq('id', efId).maybeSingle()
-    : await q.eq('status', 'envoye').order('created_at', { ascending: true }).limit(1).maybeSingle()
-  if (efRow) {
-    await sb.from('saisie_etats_frais').update({ status: refus ? 'refuse' : 'accepte', validation_doc_path: path, validation_at: now }).eq('id', efRow.id)
-  }
-
-  await sb.from('saisie_dossiers').update({
-    validation_doc_path: path,
-    validation_at: now,
-    state: refus ? 'refuse' : 'accepte',
-    notes: `${refus ? 'Refusé' : 'Accepté'} par le Parquet (dépôt manuel${efRow?.numero ? ' — ' + efRow.numero : ''}).`,
-    updated_at: now,
-  }).eq('id', d.id)
-
-  if (d.mission_id) {
-    await sb.from('mission_remarks')
-      .insert({ mission_id: d.mission_id, text: `${refus ? '❌ Refus' : '✅ Accord'} Parquet — état de frais ${d.ef_number || ''} (dépôt manuel)`, created_by: userId })
-      .then(() => {}, () => {})
-  }
-
-  // Temps 3 : validé ⇒ dépôt JustInvoice dans la foulée (robot en mode envoi).
-  let deposit: any = null
-  if (!refus && efRow) deposit = await autoDepositIfAuto(sb, d.id, efRow.id)
+  const r = await enregistrerRetourSigne(sb, { dossierId: params.id, efId, contenu: new Uint8Array(await file.arrayBuffer()), nom: file.name, type: file.type, refus, userId, origine: 'dépôt manuel' })
+  if (!r.ok) return NextResponse.json({ error: r.error }, { status: r.status })
+  const deposit = r.deposit
   return NextResponse.json({ ok: true, deposit })
 }
