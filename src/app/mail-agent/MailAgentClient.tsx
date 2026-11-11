@@ -187,7 +187,7 @@ export default function MailAgentClient({
   return (
     <AppShell title="Agent Mail" backHref="/dashboard"
       userRole={userRole} userName={userName} userEmail={userEmail} userModules={userModules}>
-      <div className={habille ? 'max-w-[1800px] mx-auto p-4 lg:p-6 space-y-4' : 'max-w-5xl mx-auto p-4 space-y-4'}>
+      <div className={habille ? 'max-w-[1800px] min-w-0 [contain:inline-size] mx-auto p-4 lg:p-6 space-y-4' : 'max-w-5xl mx-auto p-4 space-y-4'}>
 
         <div className={habille ? 'flex flex-wrap items-end justify-between gap-4 rounded-3xl text-white shadow-md p-5 lg:p-7 bg-[radial-gradient(120%_160%_at_100%_0%,#92400e_0%,#17110f_62%)]' : 'flex flex-wrap items-center justify-between gap-3'}>
           <div>
@@ -227,7 +227,7 @@ export default function MailAgentClient({
         )}
 
         {habille ? (
-          <div className="grid grid-cols-2 sm:grid-cols-4 xl:grid-cols-7 gap-3">
+          <div className="grid grid-cols-[repeat(2,minmax(0,1fr))] sm:grid-cols-[repeat(4,minmax(0,1fr))] xl:grid-cols-[repeat(7,minmax(0,1fr))] gap-3">
             {TABS.map(t => (
               <button key={t.key} onClick={() => setTab(t.key)}
                 className={`text-left rounded-2xl px-4 py-3 min-h-[80px] border shadow-sm ${t.key === 'to_decide' || t.key === 'ready' ? 'bg-amber-50 border-amber-300 text-amber-900' : t.key === 'blocked' ? 'bg-red-50 border-red-300 text-red-800' : 'bg-white border-slate-200 text-slate-800'} ${tab === t.key ? 'ring-2 ring-current ring-offset-2' : ''}`}>

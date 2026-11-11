@@ -233,15 +233,15 @@ export default function ParcClient({ userRole, userName, userEmail, userModules,
 
   return (
     <AppShell title="Parc" userRole={userRole} userName={userName} userEmail={userEmail || undefined} userModules={userModules}>
-      <div className={journee ? 'px-3 lg:px-6 py-5 space-y-4 max-w-[1800px] mx-auto' : 'px-3 lg:px-6 py-5 space-y-4 max-w-5xl mx-auto'}>
+      <div className={journee ? 'px-3 lg:px-6 py-5 space-y-4 max-w-[1800px] min-w-0 [contain:inline-size] mx-auto' : 'px-3 lg:px-6 py-5 space-y-4 max-w-5xl mx-auto'}>
         <div className={journee ? 'rounded-3xl text-white shadow-md p-5 lg:p-7 flex items-end justify-between flex-wrap gap-4 bg-[radial-gradient(120%_160%_at_100%_0%,#0f5953_0%,#10181a_62%)]' : 'flex items-end justify-between flex-wrap gap-3'}>
           <div>
             <h1 className={journee ? 'text-2xl lg:text-3xl font-extrabold tracking-tight' : 'text-ink text-2xl font-bold leading-tight'}>{journee ? 'Parc' : '🚓 Parc'}</h1>
             <p className={journee ? 'text-white/75 text-sm mt-1 [&_b]:text-white' : 'text-ink-muted text-sm mt-0.5'}><b className="text-ink">{rows.length}</b> véhicules · <b className="text-ink">{counts.nous || 0}</b> nous attend{(counts.nous || 0) > 1 ? 'ent' : ''}{counts.eux ? ` · ${counts.eux} chez eux` : ''}{counts.robot ? ` · ${counts.robot} au robot` : ''}{over60 ? ` · ${over60} depuis plus de 60 j` : ''}</p>
           </div>
-          <div className="flex items-center gap-2">
-            <div className="relative">
-              <input value={q} onChange={e => setQ(e.target.value)} placeholder="Plaque, VIN, PV, policier, client…" className={journee ? 'w-64 lg:w-80 bg-white/10 border border-white/25 rounded-2xl pl-4 pr-9 min-h-[48px] text-base text-white placeholder:text-white/60 focus:outline-none focus:border-white' : 'w-64 bg-surface-2 border rounded-xl pl-3 pr-8 py-2 text-sm text-ink placeholder:text-ink-faint focus:outline-none focus:border-brand'} />
+          <div className={journee ? 'flex items-center gap-2 w-full sm:w-auto' : 'flex items-center gap-2'}>
+            <div className={journee ? 'relative flex-1 min-w-0' : 'relative'}>
+              <input value={q} onChange={e => setQ(e.target.value)} placeholder="Plaque, VIN, PV, policier, client…" className={journee ? 'w-full sm:w-80 bg-white/10 border border-white/25 rounded-2xl pl-4 pr-9 min-h-[48px] text-base text-white placeholder:text-white/60 focus:outline-none focus:border-white' : 'w-64 bg-surface-2 border rounded-xl pl-3 pr-8 py-2 text-sm text-ink placeholder:text-ink-faint focus:outline-none focus:border-brand'} />
               {q && <button onClick={() => setQ('')} className={`absolute right-2 top-1/2 -translate-y-1/2 ${journee ? 'text-white/70 hover:text-white p-2' : 'text-ink-faint hover:text-ink'}`}>×</button>}
             </div>
             <button onClick={load} className={journee ? 'min-h-[48px] min-w-[48px] bg-white/10 hover:bg-white/20 border border-white/25 rounded-2xl text-base' : 'px-3 py-2 bg-surface-2 hover:bg-surface-hover border rounded-xl text-sm text-ink-secondary'} title="Rafraîchir">↻</button>
@@ -249,7 +249,7 @@ export default function ParcClient({ userRole, userName, userEmail, userModules,
         </div>
 
         {/* Vues du même parc */}
-        <div className="inline-flex items-center gap-1 bg-surface-2 border rounded-xl p-1 text-sm">
+        <div className={journee ? 'flex max-w-full overflow-x-auto items-center gap-1 bg-surface-2 border rounded-xl p-1 text-sm whitespace-nowrap [&>*]:shrink-0' : 'inline-flex items-center gap-1 bg-surface-2 border rounded-xl p-1 text-sm'}>
           <span className="px-3 py-1.5 rounded-lg bg-surface text-ink font-semibold shadow-sm">Liste</span>
           <Link href="/fourriere/plan" className="px-3 py-1.5 rounded-lg text-ink-secondary hover:text-ink">Plan</Link>
           <Link href="/fourriere/controle" className="px-3 py-1.5 rounded-lg text-ink-secondary hover:text-ink">Contrôle du parc</Link>
@@ -261,10 +261,10 @@ export default function ParcClient({ userRole, userName, userEmail, userModules,
         </div>
 
         {journee ? (
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+          <div className="grid grid-cols-[repeat(2,minmax(0,1fr))] sm:grid-cols-[repeat(3,minmax(0,1fr))] lg:grid-cols-[repeat(5,minmax(0,1fr))] gap-2 sm:gap-3">
             {TABS.map(t => { const w = t.key !== 'all' ? WHO[t.key as Who] : null; return (
-              <button key={t.key} onClick={() => setFilter(t.key)} title={t.help} className={`text-left rounded-2xl px-4 py-3 min-h-[80px] border shadow-sm ${w ? w.cls : 'bg-surface text-ink'} ${filter === t.key ? 'ring-2 ring-current ring-offset-2 ring-offset-surface' : ''}`}>
-                <b className="block text-3xl font-extrabold leading-none tabular-nums">{counts[t.key] || 0}</b>
+              <button key={t.key} onClick={() => setFilter(t.key)} title={t.help} className={`text-left rounded-2xl px-3 sm:px-4 py-2.5 sm:py-3 min-h-[64px] sm:min-h-[80px] border shadow-sm ${w ? w.cls : 'bg-surface text-ink'} ${filter === t.key ? 'ring-2 ring-current ring-offset-2 ring-offset-surface' : ''}`}>
+                <b className="block text-2xl sm:text-3xl font-extrabold leading-none tabular-nums">{counts[t.key] || 0}</b>
                 <span className="inline-flex items-center gap-1.5 text-[13px] font-semibold mt-1">{t.dot && <span className={`inline-block w-2 h-2 rounded-full ${t.dot}`} />}{t.label}</span>
               </button>) })}
           </div>
@@ -290,7 +290,7 @@ export default function ParcClient({ userRole, userName, userEmail, userModules,
 
         {msg && <div className="text-sm px-4 py-2.5 rounded-xl bg-surface-2 border text-ink">{msg}</div>}
 
-        <div className={journee ? 'grid grid-cols-1 2xl:grid-cols-2 gap-4 items-start' : 'space-y-4'}>
+        <div className={journee ? 'grid grid-cols-[minmax(0,1fr)] 2xl:grid-cols-[repeat(2,minmax(0,1fr))] gap-4 items-start' : 'space-y-4'}>
         {loading ? <div className="text-center py-16 text-ink-faint text-sm">Chargement du parc…</div>
           : visible.length === 0 ? (
             <div className="bg-surface border rounded-2xl p-10 text-center text-ink-muted"><p className="text-4xl mb-2">{filter === 'nous' ? '🎉' : '🚓'}</p><p className="font-medium text-ink">{filter === 'nous' ? 'Rien ne nous attend' : 'Aucun véhicule ici'}</p></div>
