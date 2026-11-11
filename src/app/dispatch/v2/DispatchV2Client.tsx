@@ -17,12 +17,14 @@ import DriverPickerModal from '@/components/DriverPickerModal'
 import { HighwaySiabisModal, shouldOfferSiabis } from '../HighwaySiabisModal'
 import { getSourceLabel, getSourceColor, type SourceDisplay } from '@/lib/missions/source-display'
 import { pollWhenVisible } from '@/lib/client/poll'
+import FicheComplete from './FicheComplete'
 
 const sb = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!)
 
 interface Props {
   userName: string; userEmail?: string; userId?: string; userRole: string; userModules: string[]
   sources: SourceDisplay[]
+  drivers: any[]
 }
 type M = Record<string, any>
 type Alerte = { type: string; depuis: string | null; mission: M; [k: string]: any }
@@ -133,7 +135,7 @@ const Section = ({ titre, sous, nb, vide, children }: { titre: string; sous: str
 )
 
 
-export default function DispatchV2Client({ userName, userEmail, userId, userRole, userModules, sources }: Props) {
+export default function DispatchV2Client({ userName, userEmail, userId, userRole, userModules, sources, drivers }: Props) {
   const [board, setBoard] = useState<Board | null>(null)
   const [erreur, setErreur] = useState<string | null>(null)
   const [now, setNow] = useState(() => Date.now())
@@ -144,13 +146,14 @@ export default function DispatchV2Client({ userName, userEmail, userId, userRole
   const [message, setMessage] = useState<{ txt: string; ton: 'ok' | 'info' | 'err' } | null>(null)
   const [picker, setPicker] = useState<M | null>(null)
   const [selId, setSelId] = useState<string | null>(null)
+  const [complete, setComplete] = useState<{ id: string; titre: string } | null>(null)   // fiche complète embarquée (indépendante de la sélection)
   const choisir = (m: M) => setSelId(m.id)   // fermeture par le ✕ du volet
   // Chauffeur proposé : calculé à l'ouverture d'une mission à valider ou sans chauffeur, jamais en boucle.
   const [prop, setProp] = useState<{ id: string; data: any | null } | null>(null)
   const [siabis, setSiabis] = useState<{ m: M; next: (() => void) | null } | null>(null)
   const [refus, setRefus] = useState<M | null>(null)
   const modalOuverte = useRef(false)
-  modalOuverte.current = !!(picker || siabis || refus)
+  modalOuverte.current = !!(picker || siabis || refus || complete)
 
   const dire = (txt: string, ton: 'ok' | 'info' | 'err' = 'ok') => { setMessage({ txt, ton }); setTimeout(() => setMessage(m => (m?.txt === txt ? null : m)), ton === 'info' ? 9000 : 4500) }
 
@@ -448,7 +451,7 @@ export default function DispatchV2Client({ userName, userEmail, userId, userRole
                 </div>
                 <Avancement m={sel} />
                 <div className="flex gap-1.5 flex-wrap">
-                  <Link href={`/dispatch/${sel.id}?fiche=1`} className="flex-1 min-h-[44px] px-3.5 rounded-xl font-bold text-sm bg-white border border-stone-300 text-stone-900 inline-flex items-center justify-center">Fiche complète</Link>
+                  <Btn ton="p" grand onClick={() => setComplete({ id: sel.id, titre: [sel.vehicle_plate, sel.mission_number ? '#' + sel.mission_number : ''].filter(Boolean).join(' · ') })}>Tout le détail et les actions</Btn>
                   <Link href={`/dispatch/dossier/${sel.id}`} className="flex-1 min-h-[44px] px-3.5 rounded-xl font-bold text-sm bg-white border border-stone-300 text-stone-900 inline-flex items-center justify-center">Dossier</Link>
                 </div>
               </div>
@@ -457,6 +460,9 @@ export default function DispatchV2Client({ userName, userEmail, userId, userRole
         </div>
       </div>
 
+      {complete && (
+        <FicheComplete missionId={complete.id} titre={complete.titre} drivers={drivers} sources={sources} onFermer={() => { setComplete(null); apres() }} />
+      )}
       {picker && <DriverPickerModal missionId={picker.id} incidentLat={picker.incident_lat} incidentLng={picker.incident_lng} onPick={id => affecter(picker, id)} onClose={() => setPicker(null)} />}
       {siabis && (
         <HighwaySiabisModal missionId={siabis.m.id} highwayRef={shouldOfferSiabis(siabis.m.source, siabis.m.incident_address).highwayRef} blocking={!!siabis.next}
