@@ -29,7 +29,13 @@ const fmtDT = (iso?: string | null) => {
 
 type Send = { at: string; email: string | null }
 
-export default function RelanceRequisitoireClient({ initialItems, appUrl, embedded = false }: { initialItems: Item[]; appUrl: string; embedded?: boolean }) {
+// S3 (lot 4, Olivier 11/11/2026) : au-delà de 6 mois depuis la saisie, un réquisitoire ne sert plus à un état de frais.
+export const HORS_DELAI_JOURS = 183
+export const estHorsDelai = (saisieAt: string | null) => !!saisieAt && (Date.now() - Date.parse(saisieAt)) / 86_400_000 > HORS_DELAI_JOURS
+
+export default function RelanceRequisitoireClient({ initialItems, appUrl, embedded = false, trierDelai = false }: { initialItems: Item[]; appUrl: string; embedded?: boolean
+  /** Préversion ma_journee : « À relancer » (moins de 6 mois) et « Hors délai », replié. */
+  trierDelai?: boolean }) {
   const [items, setItems]     = useState<Item[]>(initialItems)
   const [showStop, setShowStop] = useState(false)
   const [busy, setBusy]       = useState<string | null>(null)
@@ -43,7 +49,9 @@ export default function RelanceRequisitoireClient({ initialItems, appUrl, embedd
   const [histOpen, setHistOpen]   = useState<string | null>(null)
   const [hist, setHist]           = useState<Record<string, Send[] | 'loading'>>({})
 
-  const visible = useMemo(() => items.filter(i => showStop || !i.stop), [items, showStop])
+  const [vueDelai, setVueDelai] = useState<'relancer' | 'hors'>('relancer')
+  const nHors = useMemo(() => items.filter(i => !i.stop && estHorsDelai(i.saisie_at)).length, [items])
+  const visible = useMemo(() => items.filter(i => (showStop || !i.stop) && (!trierDelai || (vueDelai === 'hors') === estHorsDelai(i.saisie_at))), [items, showStop, trierDelai, vueDelai])
   const stats = useMemo(() => ({
     total: items.filter(i => !i.stop).length,
     sansEmail: items.filter(i => !i.stop && !i.officer_email).length,
@@ -255,8 +263,15 @@ export default function RelanceRequisitoireClient({ initialItems, appUrl, embedd
           </div>
         )}
 
+        {trierDelai && (
+          <div className="flex flex-wrap gap-2">
+            <button onClick={() => setVueDelai('relancer')} className={`min-h-[44px] px-4 rounded-xl border text-sm font-semibold ${vueDelai === 'relancer' ? 'bg-sky-600 text-white border-sky-600' : 'bg-surface text-ink'}`}>À relancer · {stats.total - nHors}</button>
+            <button onClick={() => setVueDelai('hors')} className={`min-h-[44px] px-4 rounded-xl border text-sm font-semibold ${vueDelai === 'hors' ? 'bg-slate-700 text-white border-slate-700' : 'bg-surface text-ink-muted'}`}>Hors délai (plus de 6 mois) · {nHors}</button>
+            {vueDelai === 'hors' && <p className="w-full text-xs text-ink-muted">Saisies de plus de 6 mois : un réquisitoire ne servirait plus à un état de frais. Rien n'est supprimé ni clôturé ; elles ne comptent plus dans « À relancer ».</p>}
+          </div>
+        )}
         {visible.length === 0 ? (
-          <p className="text-sm text-ink-muted italic py-8 text-center">Aucune saisie en attente de réquisitoire. 🎉</p>
+          <p className="text-sm text-ink-muted italic py-8 text-center">{trierDelai && vueDelai === 'hors' ? 'Aucune saisie hors délai.' : 'Aucune saisie en attente de réquisitoire. 🎉'}</p>
         ) : (
           <div className="space-y-2">
             {visible.map(it => {
