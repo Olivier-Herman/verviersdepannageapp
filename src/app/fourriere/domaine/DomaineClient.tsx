@@ -14,9 +14,16 @@ interface Row {
 interface Group { vente: string; firm: string; rows: Row[]; days: number; amount: number }
 const fmt = (ymd: string) => (ymd ? ymd.split('-').reverse().join('/') : '')
 
-export default function DomaineClient({ userRole, userName, userEmail, userModules, embedded = false }: { embedded?: boolean;
+export default function DomaineClient({ userRole, userName, userEmail, userModules, embedded = false, sortiesEnTete = false }: { embedded?: boolean;
   userRole: string; userName: string; userEmail: string; userModules: string[]
+  /** Préversion ma_journee (P4, Olivier 11/11/2026) : les ventes sans date de sortie en tête, un geste par vente. */
+  sortiesEnTete?: boolean
 }) {
+  const [attente, setAttente] = useState<{ vente: string; firms: string[]; lines: number; auParc: number; plates: string[] }[]>([])
+  const [dateSortie, setDateSortie] = useState<Record<string, string>>({})
+  const [sortant, setSortant] = useState<string | null>(null)
+  const chargerAttente = () => { if (sortiesEnTete) fetch('/api/fourriere/domaine/sorties-attente', { cache: 'no-store' }).then(r => r.ok ? r.json() : null).then(j => { if (j?.ventes) setAttente(j.ventes) }).catch(() => {}) }
+  useEffect(() => { chargerAttente() }, [sortiesEnTete])   // eslint-disable-line react-hooks/exhaustive-deps
   const now = new Date()
   const [year, setYear] = useState(now.getFullYear())
   const [from, setFrom] = useState('')
@@ -102,7 +109,7 @@ export default function DomaineClient({ userRole, userName, userEmail, userModul
       const j = await r.json()
       if (!r.ok) { setMsg(`⚠ ${j.error || 'Échec'}`); return }
       setMsg(value ? `✓ Sortie ${fmt(value)} appliquée à ${j.lines} ligne(s)${j.facturable ? ` · ${j.facturable} → à facturer` : ''}` : '✓ Sortie effacée sur la vente')
-      load()
+      load(); chargerAttente()
     } catch { setMsg('⚠ Erreur réseau') }
   }
 
@@ -184,6 +191,24 @@ export default function DomaineClient({ userRole, userName, userEmail, userModul
           {!embedded && <h1 className="text-ink text-xl font-bold">🏛️ Vente d'épaves — Registre Domaine</h1>}
           <p className="text-ink-muted text-sm">Reflet fidèle des tableaux de Rosemarie (toutes les lignes, rapprochées ou non). Gardiennage = Date IN → Date OUT au tarif parc saisie. <span className="text-amber-600 font-semibold">Orange = non rapproché à une fiche VD Soft</span> (mais compté).</p>
         </div>
+
+        {sortiesEnTete && attente.length > 0 && (
+          <div className="bg-amber-50 border border-amber-300 rounded-2xl p-4 space-y-2 text-amber-900">
+            <p className="font-bold">Ventes sans date de sortie : {attente.length} vente{attente.length > 1 ? 's' : ''}, {attente.reduce((s, v) => s + v.auParc, 0)} véhicule(s) encore au parc</p>
+            <p className="text-xs">Indique le jour où l'acheteur est venu les chercher : tous les véhicules de la vente sortent du parc et passent « à facturer », comme dans le registre.</p>
+            <div className="divide-y divide-amber-200">
+              {attente.map(v => (
+                <div key={v.vente} className="flex items-center gap-3 flex-wrap py-2.5">
+                  <div className="flex-1 min-w-[200px] text-sm"><b>Vente du {fmt(v.vente)}</b>{v.firms.length ? ` · ${v.firms.join(', ')}` : ''}<span className="block text-xs">{v.lines} ligne(s) · {v.auParc} au parc{v.plates.length ? ` : ${v.plates.join(', ')}` : ''}</span></div>
+                  <input type="date" aria-label={`Date de sortie de la vente du ${fmt(v.vente)}`} value={dateSortie[v.vente] || new Date().toISOString().slice(0, 10)} onChange={e => setDateSortie(d => ({ ...d, [v.vente]: e.target.value }))}
+                    className="min-h-[44px] bg-white border border-amber-300 rounded-xl px-3 text-sm text-slate-800" />
+                  <button disabled={sortant === v.vente} onClick={async () => { setSortant(v.vente); await editVente(v.vente, dateSortie[v.vente] || new Date().toISOString().slice(0, 10)); setSortant(null) }}
+                    className="min-h-[44px] px-4 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-sm font-bold disabled:opacity-50">{sortant === v.vente ? '…' : `Sortir ${v.auParc || v.lines} véhicule${(v.auParc || v.lines) > 1 ? 's' : ''}`}</button>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         <div className="bg-surface border rounded-2xl p-4 space-y-3">
           <div className="flex items-end gap-3 flex-wrap">
