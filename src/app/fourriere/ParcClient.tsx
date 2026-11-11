@@ -27,6 +27,8 @@ export interface V {
   zone: string | null; zone_label: string | null; row: number | null; slot: number | null
   /** Zone d'attente (Transit, J, K, K1, LABO… réglage de la zone) : le véhicule reste à ranger. */
   zone_waiting?: boolean
+  /** Remis au Domaine mais pas encore dans la zone Domaine (Q6). */
+  domaine_hors_zone?: boolean; zone_domaine?: string
   entered_at: string | null; nights: number; regime: string; storage_htva: number; storage_note: string
   client_name: string | null; officer_name: string | null; officer_partner_id: number | null; police_zone: string | null; pv: string | null
   motif: string | null; motif_code: string | null
@@ -106,6 +108,7 @@ export function readVehicle(v: V, opts: { zonesSeules?: boolean } = {}): Reading
   if (opts.zonesSeules && v.zone_waiting) return { ...base, who: 'nous', headline: `En ${v.zone_label || v.zone} (zone d'attente) depuis ${v.nights} j — à ranger`, detail: 'Déplace-le dans sa zone.', primary: { label: 'Changer de zone', kind: 'zone', tone: 'brand' } }
   if (legacy) return { ...base, who: 'nous', headline: 'Fiche d\'avant VD Soft — à qualifier', detail: `Entré le ${fmtY(v.entered_at)} (${v.nights} nuits). Saisie, AVP, épave, ou déjà sorti ? Le choix se fait sur la fiche (source), le véhicule entre alors dans son circuit.`, primary: { label: 'Qualifier', kind: 'qualify', href: `/dispatch/${v.id}`, tone: 'brand' } }
   if (v.destruction) return { ...base, who: 'nous', headline: `Dossier de destruction ${v.destruction.status ? `· ${v.destruction.status}` : 'ouvert'}`, detail: 'Présentation, frais à la date de présentation, épaviste.', primary: { label: 'Ouvrir le dossier', kind: 'destruction', href: '/fourriere/destruction/dossiers', tone: 'ghost' } }
+  if (opts.zonesSeules && v.domaine_remise_date && v.domaine_hors_zone) return { ...base, who: 'nous', headline: `Remis au Domaine le ${fmtY(v.domaine_remise_date)} — à mettre en zone ${v.zone_domaine || 'Domaine'}`, detail: 'Tous les véhicules remis se regroupent dans la zone Domaine. Écran Domaine › Remises : tous d\'un coup.', primary: { label: 'Changer de zone', kind: 'zone', tone: 'brand' } }
   if (v.domaine_remise_date) return { ...base, who: 'eux', headline: `Remis au Domaine le ${fmtY(v.domaine_remise_date)} — enlèvement attendu`, detail: v.domaine_enlevement_date ? `Enlèvement prévu le ${fmtY(v.domaine_enlevement_date)}.` : 'Date d\'enlèvement pas encore connue.', primary: { label: 'Domaine', kind: 'link', href: '/fourriere/domaine', tone: 'ghost' } }
   if (v.redelivery) return { ...base, who: 'veille', headline: `Relivraison programmée${v.redelivery.at ? ` le ${fmtY(v.redelivery.at)}` : ''}`, detail: v.redelivery_address ? `Vers ${v.redelivery_address}.` : undefined }
   if (v.abandon_at && !saisie) return { ...base, who: 'nous', headline: `Abandon signé le ${fmtY(v.abandon_at)} — épave ou vente ?`, detail: 'Le véhicule est à nous : destruction (dossier) ou mise en vente sur le site.', primary: { label: 'Mettre en vente', kind: 'sell', href: '/admin/ventes', tone: 'ghost' } }

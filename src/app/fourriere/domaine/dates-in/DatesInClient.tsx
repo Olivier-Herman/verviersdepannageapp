@@ -39,7 +39,13 @@ const OUTCOME: Record<string, { label: string; cls: string }> = {
   annulee:     { label: '✖ Remise annulée', cls: 'bg-slate-500/15 text-slate-700 dark:text-slate-300' },
 }
 
-export default function DatesInClient(props: { userRole: string; userName: string; userEmail?: string; userModules: string[] }) {
+// Embarqué dans l'écran Domaine à onglets (Q5, préversion ma_journee) : sans AppShell.
+function Coquille({ embedded, children, userRole, userName, userEmail, userModules }: { embedded: boolean; children: React.ReactNode; userRole: string; userName: string; userEmail?: string; userModules: string[] }) {
+  if (embedded) return <>{children}</>
+  return <AppShell title="Domaine — Dates IN" userRole={userRole} userName={userName} userEmail={userEmail} userModules={userModules}>{children}</AppShell>
+}
+
+export default function DatesInClient(props: { userRole: string; userName: string; userEmail?: string; userModules: string[]; embedded?: boolean }) {
   const [items, setItems]   = useState<Item[]>([])
   const [counts, setCounts] = useState<any>(null)
   const [lastRun, setLastRun] = useState<any>(null)
@@ -106,9 +112,9 @@ export default function DatesInClient(props: { userRole: string; userName: strin
   }
 
   return (
-    <AppShell title="Domaine — Dates IN" userRole={props.userRole} userName={props.userName} userEmail={props.userEmail} userModules={props.userModules}>
+    <Coquille embedded={!!props.embedded} {...props}>
       <div className="p-4 lg:p-6 space-y-4 max-w-6xl mx-auto">
-        <Link href="/fourriere/domaine" className="text-ink-muted text-sm">← Domaine (gardiennage)</Link>
+        {!props.embedded && <Link href="/fourriere/domaine" className="text-ink-muted text-sm">← Domaine (gardiennage)</Link>}
         <div className="flex items-start justify-between flex-wrap gap-3">
           <div>
             <h1 className="text-ink text-2xl font-bold">🏛 Domaine — Dates IN</h1>
@@ -199,6 +205,6 @@ export default function DatesInClient(props: { userRole: string; userName: strin
           </div>
         )}
       </div>
-    </AppShell>
+    </Coquille>
   )
 }

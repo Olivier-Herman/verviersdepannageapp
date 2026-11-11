@@ -69,6 +69,9 @@ export async function GET() {
     if (cyclo) rate[k].moto = Number((t as any).default_price || 0); else { rate[k].car = Number((t as any).default_price || 0); rate[k].free = Number((t as any).free_days || 0) }
   }
   const zoneByKey = new Map(zones.map(z => [z.key.toLowerCase(), z]))
+  // Zone des véhicules remis au Domaine (Q6, Olivier 11/11/2026 : I).
+  const { getBusinessText } = await import('@/lib/settings/business')
+  const zoneDomaine = (await getBusinessText('domaine_zone_parc').catch(() => 'I')) || 'I'
   const parquetBy = new Map((parquet || []).map((p: any) => [p.mission_id, p]))
   const destrBy   = new Map((destr || []).map((d: any) => [d.mission_id, d]))
   const relBy     = new Map((rels || []).map((r: any) => [r.parent_mission_id, r]))
@@ -108,6 +111,7 @@ export async function GET() {
       requisitoire_at: m.requisitoire_at, requisitoire_reminders: m.requisitoire_reminder_count || 0, requisitoire_last_reminder_at: m.requisitoire_last_reminder_at, requisitoire_stop: !!m.requisitoire_stop,
       levee_date: m.levee_saisie_date, levee_type: m.levee_saisie_type, levee_payer: m.levee_saisie_payer,
       domaine_remise_date: m.domaine_remise_date, domaine_enlevement_date: m.domaine_enlevement_date,
+      domaine_hors_zone: !!m.domaine_remise_date && m.parc_zone_key !== zoneDomaine, zone_domaine: zoneDomaine,
       avp_asked_at: m.avp_confirm_asked_at, avp_asked_count: m.avp_confirm_count || 0, abandon_at: m.abandon_at,
       parquet: pq ? { state: pq.state, billed_to_date: pq.billed_to_date, ef_number: pq.ef_number, paused: !!pq.paused_at, recipient: pq.recipient } : null,
       destruction: dd ? { id: dd.id, status: `${dd.dossier_number}${dd.epaviste ? ` · ${dd.epaviste}` : ''}` } : null,
