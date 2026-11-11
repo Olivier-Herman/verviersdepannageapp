@@ -191,6 +191,18 @@ export default function ParcClient({ userRole, userName, userEmail, userModules,
 
   const readings = useMemo(() => new Map(rows.map(v => [v.id, readVehicle(v, { zonesSeules: journee })] as const)), [rows, journee])
   const [zoneFor, setZoneFor] = useState<string | null>(null)
+  // Q2 (11/11/2026) : déplacer plusieurs véhicules d'un coup (préversion).
+  const [selZ, setSelZ] = useState<Set<string>>(new Set())
+  const [moving, setMoving] = useState(false)
+  const moveMany = async (key: string) => {
+    setMoving(true); let ok = 0; const ko: string[] = []
+    for (const id of [...selZ]) {
+      const v = rows.find(x => x.id === id); if (!v || v.zone === key) continue
+      try { const r = await fetch(`/api/missions/${id}/transfer-parc`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ zone_key: key }) }); if (r.ok) ok++; else ko.push(v.plate || '?') } catch { ko.push(v.plate || '?') }
+    }
+    setMsg(`✓ ${ok} véhicule(s) déplacé(s) en ${zones.find(z => z.key === key)?.label || key}${ko.length ? ` · ⚠ échec : ${ko.join(', ')}` : ''}`)
+    setSelZ(new Set()); setMoving(false); await load()
+  }
   const moveZone = async (v: V, key: string) => {
     setBusy(v.id)
     try { const r = await fetch(`/api/missions/${v.id}/transfer-parc`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ zone_key: key }) }); const j = await r.json().catch(() => ({})); if (!r.ok) throw new Error(j.error || 'Déplacement impossible'); setMsg(`✓ ${v.plate || 'Véhicule'} déplacé en ${zones.find(z => z.key === key)?.label || key}`); setZoneFor(null); await load() }
@@ -265,7 +277,9 @@ export default function ParcClient({ userRole, userName, userEmail, userModules,
         {/* Vues du même parc */}
         <div className={journee ? 'flex max-w-full overflow-x-auto items-center gap-1 bg-surface-2 border rounded-xl p-1 text-sm whitespace-nowrap [&>*]:shrink-0' : 'inline-flex items-center gap-1 bg-surface-2 border rounded-xl p-1 text-sm'}>
           <span className="px-3 py-1.5 rounded-lg bg-surface text-ink font-semibold shadow-sm">Liste</span>
-          <Link href="/fourriere/plan" className="px-3 py-1.5 rounded-lg text-ink-secondary hover:text-ink">Plan</Link>
+          {journee
+            ? <Link href="/fourriere/zones" className="px-3 py-1.5 rounded-lg text-ink-secondary hover:text-ink">Par zone</Link>
+            : <Link href="/fourriere/plan" className="px-3 py-1.5 rounded-lg text-ink-secondary hover:text-ink">Plan</Link>}
           {journee
             ? <Link href="/fourriere/controle" className="px-3 py-1.5 rounded-lg text-ink-secondary hover:text-ink">Contrôle{rows.some(v => v.unlocated) ? ` · ${rows.filter(v => v.unlocated).length} à retrouver` : ''}</Link>
             : <>
@@ -317,6 +331,7 @@ export default function ParcClient({ userRole, userName, userEmail, userModules,
                 <div className="px-4 pt-3.5 pb-3 flex items-start justify-between gap-3 flex-wrap">
                   <div className="min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
+                      {journee && <input type="checkbox" checked={selZ.has(v.id)} onChange={() => setSelZ(p => { const n = new Set(p); n.has(v.id) ? n.delete(v.id) : n.add(v.id); return n })} aria-label={`Sélectionner ${v.plate || ''}`} className="w-5 h-5" />}
                       <span className="font-mono font-black text-ink text-xl tracking-wide">{v.plate || v.vin || '—'}</span>
                       <span className="text-ink-secondary text-sm">{[v.brand, v.model].filter(Boolean).join(' ') || '—'}</span>
                       {v.mission_number && <span className="text-[11px] font-mono px-1.5 py-0.5 rounded bg-surface-2 border text-ink-muted">#{v.mission_number}</span>}
@@ -389,6 +404,14 @@ export default function ParcClient({ userRole, userName, userEmail, userModules,
           })}
         </div>
       </div>
+      {journee && selZ.size > 0 && (
+        <div className="fixed inset-x-0 z-40 px-3" style={{ bottom: 'calc(env(safe-area-inset-bottom, 0px) + 76px)' }}>
+          <div className="max-w-3xl mx-auto bg-surface border rounded-2xl shadow-lg p-3 space-y-2">
+            <div className="flex items-center gap-2"><b className="text-sm">{selZ.size} véhicule(s) · déplacer vers :</b><button onClick={() => setSelZ(new Set())} className="ml-auto min-h-[40px] px-3 rounded-xl border text-sm">Annuler</button></div>
+            <div className="flex flex-wrap gap-2">{zones.map(z => <button key={z.key} disabled={moving} onClick={() => moveMany(z.key)} className={`min-h-[44px] min-w-[44px] px-3 rounded-xl border text-sm font-bold disabled:opacity-40 ${z.waiting ? 'bg-amber-50 text-amber-900 border-amber-300' : 'bg-surface text-ink'}`}>{z.label}</button>)}</div>
+          </div>
+        </div>
+      )}
       {fiche && <VehicleFicheSheet missionId={fiche} onClose={() => { setFiche(null); load() }} userModules={userModules} userRole={userRole} />}
     </AppShell>
   )
