@@ -55,8 +55,15 @@ function etat(m: M): { txt: string; cls: string } {
 }
 // Compte à rebours ou ancienneté, recalculé chaque seconde.
 function minutesDepuis(iso: string | null | undefined, now: number) { return iso ? Math.max(0, Math.floor((now - new Date(iso).getTime()) / 60000)) : 0 }
+function duree(min: number) {
+  if (min < 60) return `${min} min`
+  if (min < 24 * 60) return `${Math.floor(min / 60)} h ${String(min % 60).padStart(2, '0')}`
+  const j = Math.floor(min / 1440); return `${j} jour${j > 1 ? 's' : ''}`
+}
 function couleurAnciennete(min: number) { return min >= 30 ? 'text-red-800' : min >= 15 ? 'text-amber-800' : 'text-emerald-800' }
-const trajet = (m: M) => [m.incident_address || m.incident_city, m.destination_address ? '→ ' + (m.destination_name ? m.destination_name + ', ' : '') + m.destination_address : ''].filter(Boolean).join(' ')
+// Adresse courte : sans le pays final ni ce qui suit un « | » (doublons d'adresse des assistances).
+const court = (a?: string | null) => String(a || '').replace(/\s*\|.*$/, '').replace(/,?\s*(BEL|Belgique|Belgium|BE)\s*$/i, '').replace(/\s+/g, ' ').trim()
+const trajet = (m: M) => [court(m.incident_address) || m.incident_city, m.destination_name || m.destination_address ? '→ ' + court(m.destination_name || m.destination_address) : ''].filter(Boolean).join(' ')
 const vehicule = (m: M) => [m.vehicle_brand, m.vehicle_model].filter(Boolean).join(' ')
 
 // ── Morceaux d'affichage (hors du composant : pas recréés à chaque seconde) ──
@@ -83,7 +90,8 @@ const Carte = ({ m, sources, occupe, titre, delai, delaiCls, niveau, detail, chi
       <Source m={m} sources={sources} /><span className="px-1.5 py-0.5 rounded-md bg-stone-100 text-stone-800 text-[11.5px] font-bold">{typeCourt(m)}</span><Plaque m={m} />
       <span className="text-stone-600 text-[13px]">{vehicule(m)}</span>
     </div>
-    <div className="text-stone-600 text-[13px]">{detail ?? trajet(m)}{m.incident_description && !detail ? <> · {m.incident_description}</> : null}</div>
+    <div className="text-stone-700 text-[13px] truncate" title={detail ? undefined : trajet(m)}>{detail ?? trajet(m)}</div>
+    {m.incident_description && !detail && <div className="text-stone-500 text-[12.5px] line-clamp-1" title={m.incident_description}>{m.incident_description}</div>}
     {Array.isArray(m.warnings) && m.warnings.length > 0 && (
       <div className="flex flex-wrap gap-1">{m.warnings.map((w: string) => <span key={w} className="px-2 py-0.5 rounded-full bg-amber-100 text-amber-900 text-[11.5px] font-bold">⚠ {w}</span>)}</div>
     )}
@@ -220,7 +228,7 @@ export default function DispatchV2Client({ userName, userEmail, userId, userRole
     return (
       <Carte sources={sources} occupe={occupe} key={m.id} m={m} niveau="r"
         titre={m.limite ? `À accepter chez ${getSourceLabel(m.source, sources)}` : 'À valider'}
-        delai={reste != null ? (reste > 0 ? `reste ${Math.floor(reste / 60)} min ${String(reste % 60).padStart(2, '0')}` : 'délai dépassé') : `reçue il y a ${min} min`}
+        delai={reste != null ? (reste > 0 ? `reste ${Math.floor(reste / 60)} min ${String(reste % 60).padStart(2, '0')}` : 'délai dépassé') : `reçue il y a ${duree(min)}`}
         delaiCls={reste != null ? (reste < 180 ? 'text-red-800' : 'text-amber-800') : couleurAnciennete(min)}>
         <Btn ton="g" grand disabled={occupe === m.id} onClick={() => setPicker(m)}>Valider et affecter</Btn>
         <Btn disabled={occupe === m.id} onClick={() => valider(m)}>Valider</Btn>
@@ -233,7 +241,7 @@ export default function DispatchV2Client({ userName, userEmail, userId, userRole
     const min = minutesDepuis(prevue ? null : (m.intervention_date || m.received_at), now)
     return (
       <Carte sources={sources} occupe={occupe} key={m.id} m={m} niveau={prevue ? 'b' : 'r'} titre="Sans chauffeur"
-        delai={prevue ? `prévue à ${hm(new Date(m.intervention_date))}` : `depuis ${min} min`}
+        delai={prevue ? `prévue à ${hm(new Date(m.intervention_date))}` : `depuis ${duree(min)}`}
         delaiCls={prevue ? 'text-blue-800' : couleurAnciennete(min)}>
         <Btn ton="p" grand disabled={occupe === m.id} onClick={() => setPicker(m)}>Affecter un chauffeur</Btn>
       </Carte>
@@ -248,23 +256,23 @@ export default function DispatchV2Client({ userName, userEmail, userId, userRole
           <Btn ton="p" grand onClick={() => setSiabis({ m, next: null })}>Trancher</Btn>
         </Carte>)
       case 'adresse': return (
-        <Carte sources={sources} occupe={occupe} key={a.type + m.id} m={m} niveau="a" titre={`Adresse modifiée par ${getSourceLabel(m.source, sources)}`} delai={a.depuis ? `depuis ${min} min` : undefined} delaiCls="text-amber-800"
+        <Carte sources={sources} occupe={occupe} key={a.type + m.id} m={m} niveau="a" titre={`Adresse modifiée par ${getSourceLabel(m.source, sources)}`} delai={a.depuis ? `depuis ${duree(min)}` : undefined} delaiCls="text-amber-800"
           detail={<>{a.ancienne || '—'} → <b className="text-stone-900">{a.nouveau_nom ? a.nouveau_nom + ', ' : ''}{a.nouvelle}</b></>}>
           <Btn ton="p" grand disabled={occupe === m.id} onClick={() => adresse(a, 'apply')}>Appliquer</Btn>
           <Btn grand disabled={occupe === m.id} onClick={() => adresse(a, 'keep')}>Garder l'actuelle</Btn>
         </Carte>)
       case 'pas_acceptee': return (
         <Carte sources={sources} occupe={occupe} key={a.type + m.id} m={m} niveau="a" titre={`Pas encore acceptée par ${prenom}`}
-          delai={`${min} min · ${a.appel_fait ? 'appel automatique fait' : 'appel à 10'}`} delaiCls={min >= 10 ? 'text-red-800' : 'text-amber-800'}>
+          delai={`${duree(min)} · ${a.appel_fait ? 'appel automatique fait' : 'appel à 10'}`} delaiCls={min >= 10 ? 'text-red-800' : 'text-amber-800'}>
           {m.assigned_user?.phone && <a href={`tel:${m.assigned_user.phone}`} onClick={e => e.stopPropagation()} className="flex-1 min-h-[44px] px-3.5 rounded-xl font-bold text-sm bg-white border border-stone-300 text-stone-900 inline-flex items-center justify-center">Appeler {prenom}</a>}
           <Btn grand onClick={() => setPicker(m)}>Réaffecter</Btn>
         </Carte>)
       case 'derogation': return (
-        <Carte sources={sources} occupe={occupe} key={a.type + m.id} m={m} niveau="b" titre="Dérogation de paiement" detail={a.motif || 'Le chauffeur demande une dérogation.'} delai={`depuis ${min} min`} delaiCls={couleurAnciennete(min)}>
+        <Carte sources={sources} occupe={occupe} key={a.type + m.id} m={m} niveau="b" titre="Dérogation de paiement" detail={a.motif || 'Le chauffeur demande une dérogation.'} delai={`depuis ${duree(min)}`} delaiCls={couleurAnciennete(min)}>
           <Btn ton="p" grand onClick={fiche}>Décider</Btn>
         </Carte>)
       case 'pause_depassee': return (
-        <Carte sources={sources} occupe={occupe} key={a.type + m.id} m={m} niveau="a" titre="Pause dépassée" detail={a.motif || undefined} delai={`depuis ${min} min`} delaiCls="text-red-800">
+        <Carte sources={sources} occupe={occupe} key={a.type + m.id} m={m} niveau="a" titre="Pause dépassée" detail={a.motif || undefined} delai={`depuis ${duree(min)}`} delaiCls="text-red-800">
           <Btn grand onClick={fiche}>Ouvrir la fiche</Btn>
         </Carte>)
       case 'annulee_ima': return (
@@ -279,12 +287,14 @@ export default function DispatchV2Client({ userName, userEmail, userId, userRole
     <AppShell title="Dispatch" userName={userName} userEmail={userEmail} userId={userId} userRole={userRole} userModules={userModules}>
       <div className="p-2.5 lg:p-3 flex flex-col gap-2.5">
         {/* Repères du jour */}
-        <div className="flex flex-wrap gap-2 items-center">
-          <span className="px-3 py-1.5 rounded-full bg-red-100 text-red-800 font-bold text-sm">À traiter · {n}</span>
-          <span className="px-3 py-1.5 rounded-full bg-amber-100 text-amber-900 font-bold text-sm">En retard · {enRetard}</span>
-          <span className="px-3 py-1.5 rounded-full bg-stone-100 text-stone-800 font-bold text-sm">En cours · {board?.lances.length ?? 0}</span>
+        <div className="flex flex-wrap gap-2 items-center rounded-2xl px-3 py-2.5 text-white" style={{ background: 'linear-gradient(135deg,#1b1220 0%,#4a1230 55%,#E11D2E 100%)' }}>
+          {([['À traiter', n, '#fca5a5'], ['En retard', enRetard, '#fcd34d'], ['En cours', board?.lances.length ?? 0, null]] as const).map(([l, v, c]) => (
+            <span key={l} className="inline-flex items-center gap-2 min-h-[36px] px-3 rounded-full font-semibold text-sm bg-white/15 ring-1 ring-white/25 whitespace-nowrap">
+              {c && <i className="w-2 h-2 rounded-full" style={{ background: c }} />}{l} <b className="text-base tabular-nums">{v}</b>
+            </span>
+          ))}
           <span className="flex-1" />
-          <Link href="/dispatch/new" className="min-h-[44px] px-4 rounded-xl bg-stone-900 text-white font-bold text-sm inline-flex items-center">+ Nouvelle mission</Link>
+          <Link href="/dispatch/new" className="min-h-[44px] px-4 rounded-xl bg-white text-red-900 font-extrabold text-sm inline-flex items-center">+ Nouvelle mission</Link>
         </div>
         {erreur && <div className="rounded-xl bg-red-100 text-red-900 px-4 py-2.5 text-sm font-semibold">Les données n'ont pas pu être relues ({erreur}). Nouvel essai dans quelques secondes.</div>}
         {message && <div className={`rounded-xl px-4 py-2.5 text-sm font-semibold ${message.ton === 'err' ? 'bg-red-100 text-red-900' : message.ton === 'info' ? 'bg-amber-100 text-amber-900' : 'bg-emerald-100 text-emerald-900'}`}>{message.txt}</div>}
@@ -328,12 +338,12 @@ export default function DispatchV2Client({ userName, userEmail, userId, userRole
                       return (
                         <tr key={m.id} className="border-t border-stone-200 hover:bg-stone-50 cursor-pointer align-top" onClick={() => { window.location.href = `/dispatch/${m.id}?fiche=1` }}>
                           <td className="px-2 py-2"><span className={`inline-block px-2 py-0.5 rounded-full text-[12px] font-bold whitespace-nowrap ${e.cls}`}>{e.txt}</span>
-                            {m.status === 'assigned' && m.assigned_at && <div className={`mt-1 text-[12.5px] font-bold tabular-nums ${minutesDepuis(m.assigned_at, now) >= 10 ? 'text-red-800' : 'text-amber-800'}`}>{minutesDepuis(m.assigned_at, now)} min</div>}
+                            {m.status === 'assigned' && m.assigned_at && <div className={`mt-1 text-[12.5px] font-bold tabular-nums ${minutesDepuis(m.assigned_at, now) >= 10 ? 'text-red-800' : 'text-amber-800'}`}>{duree(minutesDepuis(m.assigned_at, now))}</div>}
                             {m.intervention_date && new Date(m.intervention_date).getTime() > now && <div className="mt-1 text-[12.5px] text-stone-600">{new Date(m.intervention_date).toLocaleString('fr-BE', { weekday: 'short', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Brussels' })}</div>}
                           </td>
                           <td className="px-2 py-2"><div className="flex gap-1.5 items-center flex-wrap"><Source m={m} sources={sources} /><span className="px-1.5 py-0.5 rounded-md bg-stone-100 text-stone-800 text-[11.5px] font-bold">{typeCourt(m)}</span></div>
                             <div className="mt-1 flex gap-1.5 items-center flex-wrap"><Plaque m={m} /><span className="text-stone-600">{vehicule(m)}</span></div></td>
-                          <td className="px-2 py-2 text-stone-800">{m.incident_address || m.incident_city || '—'}{m.destination_address && <div className="text-stone-500">→ {m.destination_name ? m.destination_name + ', ' : ''}{m.destination_address}</div>}{m.incident_description && <div className="text-stone-500">{m.incident_description}</div>}</td>
+                          <td className="px-2 py-2 text-stone-800 max-w-[420px]"><div className="truncate">{court(m.incident_address) || m.incident_city || '—'}</div>{(m.destination_name || m.destination_address) && <div className="text-stone-500 truncate">→ {court(m.destination_name || m.destination_address)}</div>}{m.incident_description && <div className="text-stone-500 text-[12.5px] line-clamp-1" title={m.incident_description}>{m.incident_description}</div>}</td>
                           <td className="px-2 py-2 text-stone-900">{m.assigned_user?.name || <span className="text-stone-400">—</span>}</td>
                         </tr>
                       )
