@@ -9,6 +9,7 @@ import { redirect }           from 'next/navigation'
 import { authOptions }        from '@/lib/auth'
 import { createAdminClient }  from '@/lib/supabase'
 import MissionsTermineesClient from './MissionsTermineesClient'
+import { isPreviewOn } from '@/lib/feature-flags'
 
 export const dynamic    = 'force-dynamic'
 export const revalidate = 0
@@ -41,6 +42,7 @@ export default async function MissionsTermineesPage() {
       userEmail={user.email || ''}
       userId={user.id || ''}
       userModules={modules}
+      habille={await isPreviewOn('ma_journee', role, user.id)}
     />
   )
 }

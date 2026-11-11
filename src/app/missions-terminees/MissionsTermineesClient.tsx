@@ -5,6 +5,7 @@ import { missionKind } from '@/lib/missions/mission-types'
 import { useCallback, useEffect, useState } from 'react'
 import Link from 'next/link'
 import AppShell from '@/components/layout/AppShell'
+import { Bandeau, Tuiles, CONTENEUR_HABILLE } from '@/components/ui/Bandeau'
 import AmbientBackground from '@/components/AmbientBackground'
 import { T } from '@/lib/i18n/T'
 import MissionStamp from '@/components/missions/MissionStamp'
@@ -147,7 +148,7 @@ interface Props {
   userModules: string[]
 }
 
-export default function MissionsTermineesClient({ catalogSources, userRole, userName, userEmail, userId, userModules }: Props) {
+export default function MissionsTermineesClient({ catalogSources, userRole, userName, userEmail, userId, userModules, habille = false }: Props & { habille?: boolean }) {
   const [missions, setMissions] = useState<TerminatedMission[]>([])
   const [total,    setTotal]    = useState(0)
   const [page,     setPage]     = useState(1)
@@ -191,10 +192,24 @@ export default function MissionsTermineesClient({ catalogSources, userRole, user
   return (
     <AppShell title="Missions terminées" userRole={userRole} userName={userName} userEmail={userEmail || undefined} userId={userId || undefined} userModules={userModules}>
       <AmbientBackground>
-      <div className="p-4 lg:p-6 space-y-4">
+      <div className={habille ? CONTENEUR_HABILLE : 'p-4 lg:p-6 space-y-4'}>
+
+        {/* R8 (préversion ma_journee, Olivier 11/11/2026) : bandeau + tuiles, mêmes filtres. */}
+        {habille && (
+          <>
+            <Bandeau teinte="ardoise" titre="Missions terminées" sousTitre="Toutes les missions clôturées : à facturer, facturées, sans frais, annulées. Les archivées sont masquées par défaut." />
+            <Tuiles colonnes={5} actif={statusFilter} onChoix={k => setStatusFilter(k as StatusFilter)} items={[
+              { key: 'all', label: 'Toutes', n: counts.all },
+              { key: 'to_invoice', label: 'À facturer', n: counts.to_invoice, cls: 'bg-amber-50 border-amber-300 text-amber-900' },
+              { key: 'invoiced', label: 'Facturées', n: counts.invoiced, cls: 'bg-green-50 border-green-300 text-green-900' },
+              { key: 'no_charge', label: 'Sans frais', n: counts.no_charge, cls: 'bg-violet-50 border-violet-300 text-violet-900' },
+              { key: 'cancelled', label: 'Annulées', n: counts.cancelled, cls: 'bg-red-50 border-red-300 text-red-800' },
+            ]} />
+          </>
+        )}
 
         {/* Hero header */}
-        <div className="ambient-fade-up flex items-start gap-3">
+        <div className={habille ? 'hidden' : 'ambient-fade-up flex items-start gap-3'}>
           <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-info/20 via-success/15 to-purple-500/15 flex items-center justify-center text-2xl shadow-lg shadow-info/10 flex-shrink-0">
             <span>📂</span>
           </div>
@@ -205,7 +220,7 @@ export default function MissionsTermineesClient({ catalogSources, userRole, user
         </div>
 
         {/* Filtres chips */}
-        <div className="flex flex-wrap gap-2">
+        <div className={habille ? 'hidden' : 'flex flex-wrap gap-2'}>
           <Chip active={statusFilter === 'all'}        onClick={() => setStatusFilter('all')}        count={counts.all}        label="Toutes" />
           <Chip active={statusFilter === 'to_invoice'} onClick={() => setStatusFilter('to_invoice')} count={counts.to_invoice} label="À facturer" color="bg-warning" />
           <Chip active={statusFilter === 'invoiced'}   onClick={() => setStatusFilter('invoiced')}   count={counts.invoiced}   label="Facturées"  color="bg-success" />
