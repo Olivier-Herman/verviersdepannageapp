@@ -192,9 +192,9 @@ const trajetCourt = (m: M) => [commune(m.incident_address, m.incident_city), m.d
 // Carte de la file : juste de quoi reconnaître la mission et agir. Le détail est dans le volet de droite.
 const Carte = ({ m, sources, occupe, sel, onSel, titre, delai, delaiCls, niveau, detail, children, glissable }: { m: M; sources: SourceDisplay[]; occupe: string | null; sel: boolean; onSel: (m: M) => void; titre: string; delai?: string; delaiCls?: string; niveau: 'r' | 'a' | 'b'; detail?: React.ReactNode; children?: React.ReactNode; glissable?: boolean }) => (
   <div role="button" tabIndex={0} onClick={() => onSel(m)} draggable={glissable} onDragStart={glissable ? e => { e.dataTransfer.setData('text/vd-mission', m.id); e.dataTransfer.effectAllowed = 'move' } : undefined} onKeyDown={e => { if (e.key === 'Enter') onSel(m) }}
-    className={`cursor-pointer rounded-xl border border-stone-200 border-l-[5px] p-2.5 flex flex-col gap-1.5 ${niveau === 'r' ? 'border-l-red-600 bg-red-50/60' : niveau === 'a' ? 'border-l-amber-500 bg-white' : 'border-l-blue-600 bg-white'} ${sel ? 'ring-2 ring-stone-900' : ''} ${occupe === m.id ? 'opacity-60' : ''}`}>
-    <div className="flex items-start justify-between gap-2">
-      <b className="text-[14px] text-stone-900">{titre}</b>
+    className={`cursor-pointer min-w-0 rounded-xl border border-stone-200 border-l-[5px] p-2.5 flex flex-col gap-1.5 ${niveau === 'r' ? 'border-l-red-600 bg-red-50/60' : niveau === 'a' ? 'border-l-amber-500 bg-white' : 'border-l-blue-600 bg-white'} ${sel ? 'ring-2 ring-stone-900' : ''} ${occupe === m.id ? 'opacity-60' : ''}`}>
+    <div className="flex items-start justify-between gap-2 min-w-0">
+      <b className="text-[14px] text-stone-900 min-w-0">{titre}</b>
       {delai && <span className={`font-extrabold text-[13px] tabular-nums whitespace-nowrap ${delaiCls || ''}`}>{delai}</span>}
     </div>
     <div className="flex items-center gap-1.5 min-w-0">
@@ -421,7 +421,7 @@ export default function DispatchV2Client({ userName, userEmail, userId, userRole
 
   return (
     <AppShell title="Dispatch" userName={userName} userEmail={userEmail} userId={userId} userRole={userRole} userModules={userModules}>
-      <div className="p-2.5 lg:p-3 flex flex-col gap-2.5">
+      <div className="p-2.5 lg:p-3 flex flex-col gap-2.5 min-w-0 max-w-full [contain:inline-size]">
         {/* Repères du jour */}
         <div className="flex flex-wrap gap-2 items-center rounded-2xl px-3 py-2.5 text-white" style={{ background: 'linear-gradient(135deg,#1b1220 0%,#4a1230 55%,#E11D2E 100%)' }}>
           {([['À traiter', n, '#fca5a5'], ['En retard', enRetard, '#fcd34d'], ['En cours', board?.lances.length ?? 0, null]] as const).map(([l, v, c]) => (
@@ -441,10 +441,10 @@ export default function DispatchV2Client({ userName, userEmail, userId, userRole
         {erreur && <div className="rounded-xl bg-red-100 text-red-900 px-4 py-2.5 text-sm font-semibold">Les données n'ont pas pu être relues ({erreur}). Nouvel essai dans quelques secondes.</div>}
         {message && <div className={`rounded-xl px-4 py-2.5 text-sm font-semibold ${message.ton === 'err' ? 'bg-red-100 text-red-900' : message.ton === 'info' ? 'bg-amber-100 text-amber-900' : 'bg-emerald-100 text-emerald-900'}`}>{message.txt}</div>}
 
-        <div className={`grid gap-2.5 lg:h-[calc(100vh-170px)] ${sel ? 'lg:grid-cols-[minmax(320px,1fr)_minmax(0,1.3fr)] xl:grid-cols-[minmax(320px,1fr)_minmax(0,1.3fr)_minmax(340px,1fr)]' : 'lg:grid-cols-[minmax(340px,1fr)_minmax(0,1.6fr)]'}`}>
+        <div className={`grid grid-cols-[minmax(0,1fr)] gap-2.5 min-w-0 lg:h-[calc(100vh-170px)] ${sel ? 'lg:grid-cols-[minmax(320px,1fr)_minmax(0,1.3fr)] xl:grid-cols-[minmax(320px,1fr)_minmax(0,1.3fr)_minmax(340px,1fr)]' : 'lg:grid-cols-[minmax(340px,1fr)_minmax(0,1.6fr)]'}`}>
           {/* Colonne « À traiter » */}
-          <section className={`rounded-2xl border bg-surface flex-col min-h-0 ${ongletTel === 'traiter' ? 'flex' : 'hidden lg:flex'}`}>
-            <header className="flex items-center justify-between px-3 pt-3 pb-2"><b className="text-[16px] text-ink">À traiter · {n}</b><span className="text-stone-500 text-[13px]">le plus pressé en haut</span></header>
+          <section className={`rounded-2xl border bg-surface flex-col min-h-0 min-w-0 ${ongletTel === 'traiter' ? 'flex' : 'hidden lg:flex'}`}>
+            <header className="flex items-center justify-between gap-2 px-3 pt-3 pb-2"><b className="text-[16px] text-ink whitespace-nowrap">À traiter · {n}</b><span className="text-stone-500 text-[13px] truncate hidden sm:inline">le plus pressé en haut</span></header>
             {!board ? <p className="px-3 pb-3 text-stone-500">Chargement…</p> : <>
               <div className="px-3 pb-2 flex flex-col gap-2 lg:max-h-[66%] lg:overflow-y-auto lg:flex-none lg:border-b-2 lg:border-dashed lg:border-stone-200">
                 <Section titre="En commande" sous="à valider" nb={board.cmd.length} vide="Rien à valider.">{board.cmd.map(carteCmd)}</Section>
